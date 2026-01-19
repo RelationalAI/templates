@@ -31,11 +31,18 @@ The reliability_weight parameter lets you tune the trade-off: set it to 0 for pu
 - **Logistics carrier selection**: Choose freight carriers balancing cost and on-time delivery rates
 - **IT vendor selection**: Source software/services balancing cost, support quality, and vendor stability
 
-## Problem Description
+## Problem Details
 
-A company needs to source products from multiple suppliers. Each supplier has a reliability score (probability of on-time delivery), capacity limits, and different costs. Some suppliers are cheaper but less reliable.
+### Model
 
-The goal is to determine order quantities from each supplier to meet demand at minimum cost, with an optional penalty for using unreliable suppliers.
+**Concepts:**
+- `Supplier`: Vendors with reliability scores and capacity
+- `Product`: Items to procure
+- `SupplierProduct`: Links suppliers to products with cost and lead time
+- `Order`: Decision entity for quantity ordered
+
+**Relationships:**
+- `SupplierProduct` connects `Supplier` → `Product` with pricing
 
 ### Decision Variables
 
@@ -108,9 +115,14 @@ python supplier_reliability.py
 
 ## Expected Output
 
-<!-- TODO: Run template and paste actual output here -->
 ```
+
 Status: OPTIMAL
-Total Cost: $X.XX
-...
+Total cost: $4850.00
+Order quantities:
+name  float
+   4  150.0
+   6  300.0
+   7  100.0
+   8  200.0
 ```

@@ -69,14 +69,16 @@ def define_problem(model, min_coverage=2, max_shifts_per_worker=1):
     s.satisfy(require(Assignment.assigned >= 0, Assignment.assigned <= 1))
 
     # Constraint: each worker works at most max_shifts_per_worker shifts
-    worker_total = sum(Assignment.assigned).where(Assignment.worker == Worker)
-    s.satisfy(require(worker_total <= max_shifts_per_worker).where(Worker))
+    Asn = Assignment.ref()
+    worker_shifts = sum(Asn.assigned).where(Asn.worker == Worker).per(Worker)
+    s.satisfy(require(worker_shifts <= max_shifts_per_worker))
 
     # Constraint: each shift needs minimum coverage
-    shift_total = sum(Assignment.assigned).where(Assignment.shift == Shift)
-    s.satisfy(require(shift_total >= min_coverage).where(Shift))
+    Asn2 = Assignment.ref()
+    shift_coverage = sum(Asn2.assigned).where(Asn2.shift == Shift).per(Shift)
+    s.satisfy(require(shift_coverage >= min_coverage))
 
-    # No objective - pure CSP (any valid assignment is acceptable)
+    # CSP: no objective, just find any feasible solution
 
     return s
 
@@ -110,7 +112,7 @@ if __name__ == "__main__":
     print("\nAssignments:")
     df = sol["variables"]
     if "int128" in df.columns:
-        active = df[df["int128"] >= 1]
+        active = df[df["int128"].astype(int) >= 1]
     elif "float" in df.columns:
         active = df[df["float"] >= 0.5]
     else:

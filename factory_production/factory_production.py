@@ -4,35 +4,33 @@ from pathlib import Path
 from time import time_ns
 
 from pandas import read_csv
-from relationalai.semantics import Model, data, require, sum, where
+from relationalai.semantics import Model, data, define, require, sum, where
 from relationalai.semantics.reasoners.optimization import Solver, SolverModel
 
 
 def define_model(config=None):
-    """Define base model with Machine, Product, and Production concepts."""
+    """Define base model with Machine, Product, and ProductionTime concepts."""
     model = Model(f"factory_{time_ns()}", config=config, use_lqp=False)
 
-    Concept, Property = model.Concept, model.Property
-
     # Concepts
-    Machine = Concept("Machine")
-    Machine.id = Property("{Machine} has {id:int}")
-    Machine.name = Property("{Machine} has {name:string}")
-    Machine.hours_available = Property("{Machine} has {hours_available:float}")
-    Machine.hourly_cost = Property("{Machine} has {hourly_cost:float}")
+    Machine = model.Concept("Machine")
+    Machine.id = model.Property("{Machine} has {id:int}")
+    Machine.name = model.Property("{Machine} has {name:string}")
+    Machine.hours_available = model.Property("{Machine} has {hours_available:float}")
+    Machine.hourly_cost = model.Property("{Machine} has {hourly_cost:float}")
 
-    Product = Concept("Product")
-    Product.id = Property("{Product} has {id:int}")
-    Product.name = Property("{Product} has {name:string}")
-    Product.price = Property("{Product} has {price:float}")
-    Product.min_production = Property("{Product} has {min_production:int}")
+    Product = model.Concept("Product")
+    Product.id = model.Property("{Product} has {id:int}")
+    Product.name = model.Property("{Product} has {name:string}")
+    Product.price = model.Property("{Product} has {price:float}")
+    Product.min_production = model.Property("{Product} has {min_production:int}")
 
-    Production = Concept("Production")
-    Production.machine = Property("{Production} on {machine:Machine}")
-    Production.product = Property("{Production} of {product:Product}")
-    Production.hours_per_unit = Property("{Production} takes {hours_per_unit:float}")
+    ProdTime = model.Concept("ProductionTime")
+    ProdTime.machine = model.Property("{ProductionTime} on {machine:Machine}")
+    ProdTime.product = model.Property("{ProductionTime} of {product:Product}")
+    ProdTime.hours_per_unit = model.Property("{ProductionTime} takes {hours_per_unit:float}")
 
-    # Load data from CSVs
+    # Load data
     data_dir = Path(__file__).parent / "data"
 
     machines_df = read_csv(data_dir / "machines.csv")
@@ -41,18 +39,21 @@ def define_model(config=None):
     products_df = read_csv(data_dir / "products.csv")
     data(products_df).into(Product, keys=["id"])
 
-    # Load production times with references
     times_df = read_csv(data_dir / "production_times.csv")
     times_data = data(times_df)
     where(Machine.id(times_data.machine_id), Product.id(times_data.product_id)).define(
-        Production.machine(Production, Machine),
-        Production.product(Production, Product),
-        Production.hours_per_unit(Production, times_data.hours_per_unit),
+        ProdTime.new(machine=Machine, product=Product, hours_per_unit=times_data.hours_per_unit)
     )
 
-    # Store references
+    # Production: decision variable for units produced per machine/product
+    Production = model.Concept("Production")
+    Production.prod_time = model.Property("{Production} uses {prod_time:ProductionTime}")
+    Production.quantity = model.Property("{Production} has {quantity:float}")
+    define(Production.new(prod_time=ProdTime))
+
     model.Machine = Machine
     model.Product = Product
+    model.ProdTime = ProdTime
     model.Production = Production
 
     return model
@@ -64,34 +65,30 @@ def define_problem(model):
     Product = model.Product
     Production = model.Production
 
-    # Decision variable: quantity to produce
-    Production.quantity = model.Property("{Production} has {quantity:float}")
-
     s = SolverModel(model, "cont")
 
     # Variable: quantity >= 0
     s.solve_for(
         Production.quantity,
-        name=["qty", Production.machine.id, Production.product.id],
+        name=["qty", Production.prod_time.machine.id, Production.prod_time.product.id],
         lower=0
     )
 
     # Constraint: total production hours per machine <= hours_available
-    total_hours = sum(Production.quantity * Production.hours_per_unit).where(
-        Production.machine == Machine
-    )
+    Prod = Production.ref()
+    total_hours = sum(Prod.quantity * Prod.prod_time.hours_per_unit).where(
+        Prod.prod_time.machine == Machine
+    ).per(Machine)
     s.satisfy(require(total_hours <= Machine.hours_available))
 
     # Constraint: total production per product >= min_production
-    total_produced = sum(Production.quantity).where(Production.product == Product)
+    total_produced = sum(Prod.quantity).where(Prod.prod_time.product == Product).per(Product)
     s.satisfy(require(total_produced >= Product.min_production))
 
     # Objective: maximize profit (revenue - machine costs)
-    # Revenue = sum(quantity * price)
-    revenue = sum(Production.quantity * Production.product.price)
-    # Machine cost = sum(hours_used * hourly_cost)
+    revenue = sum(Production.quantity * Production.prod_time.product.price)
     machine_cost = sum(
-        Production.quantity * Production.hours_per_unit * Production.machine.hourly_cost
+        Production.quantity * Production.prod_time.hours_per_unit * Production.prod_time.machine.hourly_cost
     )
     profit = revenue - machine_cost
     s.maximize(profit)

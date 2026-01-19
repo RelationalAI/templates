@@ -31,11 +31,17 @@ The challenge is balancing the trade-off between selling early at higher prices 
 - **Grocery perishables**: Markdown items approaching expiration to minimize spoilage
 - **Event ticket pricing**: Adjust prices as event date approaches based on remaining inventory
 
-## Problem Description
+## Problem Details
 
-A retailer needs to clear seasonal inventory over several weeks. Products can be marked down (discounted) to stimulate demand—deeper discounts drive more sales but at lower margins. Once a product is marked down, its price cannot go back up (a common retail constraint).
+### Model
 
-The goal is to choose the optimal discount level for each product in each week to maximize total revenue, accounting for how discounts affect demand.
+**Concepts:**
+- `Product`: Items with initial price, cost, and inventory
+- `Discount`: Available discount levels with demand lift factors
+- `PricingDecision`: Decision entity for discount selection per product-week
+
+**Relationships:**
+- `PricingDecision` connects `Product` → `Discount` for each time period
 
 ### Decision Variables
 
@@ -108,9 +114,26 @@ python markdown_optimization.py
 
 ## Expected Output
 
-<!-- TODO: Run template and paste actual output here -->
 ```
+
 Status: OPTIMAL
-Total Expected Revenue: $X.XX
-...
+Total expected revenue: $51128.00
+Pricing decisions:
+     name  float
+dec_1_1_4    1.0
+dec_1_2_4    1.0
+dec_1_3_4    1.0
+dec_1_4_4    1.0
+dec_2_1_4    1.0
+dec_2_2_4    1.0
+dec_2_3_4    1.0
+dec_2_4_4    1.0
+dec_3_1_4    1.0
+dec_3_2_4    1.0
+dec_3_3_4    1.0
+dec_3_4_4    1.0
+dec_4_1_4    1.0
+dec_4_2_4    1.0
+dec_4_3_4    1.0
+dec_4_4_4    1.0
 ```

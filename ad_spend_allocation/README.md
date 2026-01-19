@@ -31,11 +31,17 @@ The challenge is that each channel has minimum spend thresholds (you can't spend
 - **R&D portfolio allocation**: Distribute research budget across projects based on expected payoff
 - **Fundraising channel optimization**: Allocate nonprofit outreach budget across direct mail, email, events
 
-## Problem Description
+## Problem Details
 
-A marketing team manages multiple advertising campaigns across different channels (Search, Social, Display, Video, Email). Each channel has minimum and maximum spend limits. Each campaign has a total budget. The effectiveness (conversion rate) varies by channel-campaign combination.
+### Model
 
-The goal is to allocate spend across channels and campaigns to maximize total expected conversions while respecting budget constraints and channel limits.
+**Concepts:**
+- `Channel`: Advertising platforms with cost and reach metrics
+- `Campaign`: Marketing initiatives with budget and target audience
+- `Allocation`: Decision entity for spend per channel-campaign pair
+
+**Relationships:**
+- `Allocation` connects `Channel` → `Campaign` with performance metrics
 
 ### Decision Variables
 
@@ -108,9 +114,24 @@ python ad_spend_allocation.py
 
 ## Expected Output
 
-<!-- TODO: Run template and paste actual output here -->
 ```
+
 Status: OPTIMAL
-Total Expected Conversions: X
-...
+Total expected conversions: 3430
+Spend allocation:
+      name   float
+active_1_1     1.0
+active_1_2     1.0
+active_1_3     1.0
+active_2_1     1.0
+active_4_2     1.0
+active_5_1     1.0
+active_5_3     1.0
+ spend_1_1  5000.0
+ spend_1_2 10000.0
+ spend_1_3  8000.0
+ spend_2_1  8000.0
+ spend_4_2 10000.0
+ spend_5_1  2000.0
+ spend_5_3  2000.0
 ```

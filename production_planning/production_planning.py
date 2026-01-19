@@ -4,49 +4,50 @@ from pathlib import Path
 from time import time_ns
 
 from pandas import read_csv
-from relationalai.semantics import Model, data, define, require, sum
+from relationalai.semantics import Model, data, define, require, sum, where
 from relationalai.semantics.reasoners.optimization import Solver, SolverModel
 
 
 def define_model(config=None):
     """Define base model with Product, Machine, and ProductionRate concepts."""
     model = Model(f"production_planning_{time_ns()}", config=config, use_lqp=False)
-    Concept, Property, Relationship = model.Concept, model.Property, model.Relationship
 
+    # Concepts
+    Product = model.Concept("Product")
+    Product.id = model.Property("{Product} has {id:int}")
+    Product.name = model.Property("{Product} has {name:string}")
+    Product.demand = model.Property("{Product} has {demand:int}")
+    Product.profit = model.Property("{Product} has {profit:float}")
+
+    Machine = model.Concept("Machine")
+    Machine.id = model.Property("{Machine} has {id:int}")
+    Machine.name = model.Property("{Machine} has {name:string}")
+    Machine.hours_available = model.Property("{Machine} has {hours_available:float}")
+
+    Rate = model.Concept("ProductionRate")
+    Rate.machine = model.Property("{ProductionRate} on {machine:Machine}")
+    Rate.product = model.Property("{ProductionRate} for {product:Product}")
+    Rate.hours_per_unit = model.Property("{ProductionRate} has {hours_per_unit:float}")
+
+    # Load data
     data_dir = Path(__file__).parent / "data"
 
-    # Product: items to produce with demand and profit
-    Product = Concept("Product")
-    Product.name = Property("{Product} has name {name:String}")
-    Product.demand = Property("{Product} has demand {demand:int}")
-    Product.profit = Property("{Product} has profit {profit:float}")
     products_df = read_csv(data_dir / "products.csv")
-    data(products_df).into(Product, id="id", properties=["name", "demand", "profit"])
+    data(products_df).into(Product, keys=["id"])
 
-    # Machine: production resources with time availability
-    Machine = Concept("Machine")
-    Machine.name = Property("{Machine} has name {name:String}")
-    Machine.hours_available = Property("{Machine} has hours_available {hours_available:float}")
     machines_df = read_csv(data_dir / "machines.csv")
-    data(machines_df).into(Machine, id="id", properties=["name", "hours_available"])
+    data(machines_df).into(Machine, keys=["id"])
 
-    # ProductionRate: how long each machine takes to produce each product
-    Rate = Concept("ProductionRate")
-    Rate.hours_per_unit = Property("{ProductionRate} has hours_per_unit {hours_per_unit:float}")
-    Rate.machine = Relationship("{ProductionRate} on {machine:Machine}")
-    Rate.product = Relationship("{ProductionRate} for {product:Product}")
     rates_df = read_csv(data_dir / "production_rates.csv")
-    data(rates_df).into(
-        Rate,
-        keys=["machine_id", "product_id"],
-        properties=["hours_per_unit"],
-        relationships={"machine": ("machine_id", Machine), "product": ("product_id", Product)},
+    rates_data = data(rates_df)
+    where(Machine.id(rates_data.machine_id), Product.id(rates_data.product_id)).define(
+        Rate.new(machine=Machine, product=Product, hours_per_unit=rates_data.hours_per_unit)
     )
 
     # Production: decision variable for units produced per machine/product
-    Production = Concept("Production")
-    Production.rate = Relationship("{Production} uses {rate:ProductionRate}")
-    Production.quantity = Property("{Production} has quantity {quantity:float}")
+    Production = model.Concept("Production")
+    Production.rate = model.Property("{Production} uses {rate:ProductionRate}")
+    Production.quantity = model.Property("{Production} has {quantity:float}")
     define(Production.new(rate=Rate))
 
     model.Product, model.Machine, model.Rate, model.Production = Product, Machine, Rate, Production
@@ -59,7 +60,7 @@ def define_problem(model):
     Product, Machine, Rate, Production = model.Product, model.Machine, model.Rate, model.Production
 
     # Decision variable: quantity to produce via each machine/product combination
-    s.solve_for(Production.quantity, name=[Production.rate.machine, Production.rate.product], lower=0, type="int")
+    s.solve_for(Production.quantity, name=["qty", Production.rate.machine.id, Production.rate.product.id], lower=0, type="int")
 
     # Constraint: machine capacity - total hours used on machine cannot exceed availability
     Prod = Production.ref()

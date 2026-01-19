@@ -31,9 +31,17 @@ The classic "diet problem" was one of the first practical applications of linear
 - **Pharmaceutical compounding**: Mix ingredients to meet drug specifications while minimizing production cost
 - **Alloy mixing**: Blend metals to achieve target material properties at minimum cost
 
-## Problem Description
+## Problem Details
 
-Given a set of foods with known costs and nutritional content, determine how much of each food to purchase to meet daily nutritional requirements (minimum and maximum bounds) while minimizing total cost.
+### Model
+
+**Concepts:**
+- `Food`: Available food items with cost and nutritional content
+- `Nutrient`: Nutritional requirements with min/max bounds
+- `Contains`: Links foods to nutrients with quantity per serving
+
+**Relationships:**
+- `Contains` connects `Food` → `Nutrient` with quantity values
 
 ### Decision Variables
 

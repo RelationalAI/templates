@@ -11,42 +11,45 @@ from relationalai.semantics.reasoners.optimization import Solver, SolverModel
 def define_model(config=None):
     """Define base model with Vehicle and Trip concepts."""
     model = Model(f"vehicle_scheduling_{time_ns()}", config=config, use_lqp=False)
-    Concept, Property, Relationship = model.Concept, model.Property, model.Relationship
 
+    # Concepts
+    Vehicle = model.Concept("Vehicle")
+    Vehicle.id = model.Property("{Vehicle} has {id:int}")
+    Vehicle.name = model.Property("{Vehicle} has {name:string}")
+    Vehicle.capacity = model.Property("{Vehicle} has {capacity:int}")
+    Vehicle.cost_per_mile = model.Property("{Vehicle} has {cost_per_mile:float}")
+    Vehicle.fixed_cost = model.Property("{Vehicle} has {fixed_cost:float}")
+
+    Trip = model.Concept("Trip")
+    Trip.id = model.Property("{Trip} has {id:int}")
+    Trip.name = model.Property("{Trip} has {name:string}")
+    Trip.origin = model.Property("{Trip} from {origin:string}")
+    Trip.destination = model.Property("{Trip} to {destination:string}")
+    Trip.distance = model.Property("{Trip} has {distance:int}")
+    Trip.load = model.Property("{Trip} has {load:int}")
+    Trip.start_time = model.Property("{Trip} has {start_time:int}")
+    Trip.end_time = model.Property("{Trip} has {end_time:int}")
+
+    # Load data
     data_dir = Path(__file__).parent / "data"
 
-    # Vehicle: available vehicles with capacity and costs
-    Vehicle = Concept("Vehicle")
-    Vehicle.name = Property("{Vehicle} has name {name:String}")
-    Vehicle.capacity = Property("{Vehicle} has capacity {capacity:int}")
-    Vehicle.cost_per_mile = Property("{Vehicle} has cost_per_mile {cost_per_mile:float}")
-    Vehicle.fixed_cost = Property("{Vehicle} has fixed_cost {fixed_cost:float}")
     vehicles_df = read_csv(data_dir / "vehicles.csv")
-    data(vehicles_df).into(Vehicle, id="id", properties=["name", "capacity", "cost_per_mile", "fixed_cost"])
+    data(vehicles_df).into(Vehicle, keys=["id"])
 
-    # Trip: routes to be serviced
-    Trip = Concept("Trip")
-    Trip.name = Property("{Trip} has name {name:String}")
-    Trip.origin = Property("{Trip} from origin {origin:String}")
-    Trip.destination = Property("{Trip} to destination {destination:String}")
-    Trip.distance = Property("{Trip} has distance {distance:int}")
-    Trip.load = Property("{Trip} has load {load:int}")
-    Trip.start_time = Property("{Trip} has start_time {start_time:int}")
-    Trip.end_time = Property("{Trip} has end_time {end_time:int}")
     trips_df = read_csv(data_dir / "trips.csv")
-    data(trips_df).into(Trip, id="id", properties=["name", "origin", "destination", "distance", "load", "start_time", "end_time"])
+    data(trips_df).into(Trip, keys=["id"])
 
     # Assignment: decision variable for vehicle-to-trip assignment
-    Assignment = Concept("Assignment")
-    Assignment.vehicle = Relationship("{Assignment} assigns {vehicle:Vehicle}")
-    Assignment.trip = Relationship("{Assignment} to {trip:Trip}")
-    Assignment.assigned = Property("{Assignment} is assigned {assigned:float}")
+    Assignment = model.Concept("Assignment")
+    Assignment.vehicle = model.Property("{Assignment} assigns {vehicle:Vehicle}")
+    Assignment.trip = model.Property("{Assignment} to {trip:Trip}")
+    Assignment.assigned = model.Property("{Assignment} is {assigned:float}")
     define(Assignment.new(vehicle=Vehicle, trip=Trip))
 
-    # VehicleUsage: track whether vehicle is used (for fixed cost)
-    VehicleUsage = Concept("VehicleUsage")
-    VehicleUsage.vehicle = Relationship("{VehicleUsage} for {vehicle:Vehicle}")
-    VehicleUsage.used = Property("{VehicleUsage} is used {used:float}")
+    # VehicleUsage: track whether vehicle is used
+    VehicleUsage = model.Concept("VehicleUsage")
+    VehicleUsage.vehicle = model.Property("{VehicleUsage} for {vehicle:Vehicle}")
+    VehicleUsage.used = model.Property("{VehicleUsage} is {used:float}")
     define(VehicleUsage.new(vehicle=Vehicle))
 
     model.Vehicle, model.Trip, model.Assignment, model.VehicleUsage = Vehicle, Trip, Assignment, VehicleUsage
@@ -59,25 +62,25 @@ def define_problem(model):
     Vehicle, Trip, Assignment, VehicleUsage = model.Vehicle, model.Trip, model.Assignment, model.VehicleUsage
 
     # Decision variable: binary assignment of trips to vehicles
-    s.solve_for(Assignment.assigned, type="bin", name=[Assignment.vehicle, Assignment.trip])
+    s.solve_for(Assignment.assigned, type="bin", name=[Assignment.vehicle.id, Assignment.trip.id])
 
     # Decision variable: binary vehicle usage
-    s.solve_for(VehicleUsage.used, type="bin", name=VehicleUsage.vehicle)
+    s.solve_for(VehicleUsage.used, type="bin", name=VehicleUsage.vehicle.id)
 
     # Constraint: each trip assigned to exactly one vehicle
     Asn = Assignment.ref()
     trip_coverage = sum(Asn.assigned).where(Asn.trip == Trip).per(Trip)
     s.satisfy(require(trip_coverage == 1))
 
-    # Constraint: vehicle capacity - total load assigned to vehicle cannot exceed capacity
+    # Constraint: vehicle capacity
     vehicle_load = sum(Asn.assigned * Asn.trip.load).where(Asn.vehicle == Vehicle).per(Vehicle)
     s.satisfy(require(vehicle_load <= Vehicle.capacity))
 
     # Constraint: link vehicle usage to assignments
     vehicle_trips = sum(Asn.assigned).where(Asn.vehicle == VehicleUsage.vehicle).per(VehicleUsage)
-    s.satisfy(require(VehicleUsage.used * 100 >= vehicle_trips))  # If any trip assigned, vehicle is used
+    s.satisfy(require(VehicleUsage.used * 100 >= vehicle_trips))
 
-    # Objective: minimize total cost (fixed + variable)
+    # Objective: minimize total cost
     variable_cost = sum(Assignment.assigned * Assignment.trip.distance * Assignment.vehicle.cost_per_mile)
     fixed_cost = sum(VehicleUsage.used * VehicleUsage.vehicle.fixed_cost)
     total_cost = variable_cost + fixed_cost

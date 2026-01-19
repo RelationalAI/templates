@@ -4,49 +4,52 @@ from pathlib import Path
 from time import time_ns
 
 from pandas import read_csv
-from relationalai.semantics import Model, data, define, require, sum
+from relationalai.semantics import Model, data, define, require, sum, where
 from relationalai.semantics.reasoners.optimization import Solver, SolverModel
 
 
 def define_model(config=None):
     """Define base model with Supplier, Product, and SupplyOption concepts."""
     model = Model(f"supplier_reliability_{time_ns()}", config=config, use_lqp=False)
-    Concept, Property, Relationship = model.Concept, model.Property, model.Relationship
 
+    # Concepts
+    Supplier = model.Concept("Supplier")
+    Supplier.id = model.Property("{Supplier} has {id:int}")
+    Supplier.name = model.Property("{Supplier} has {name:string}")
+    Supplier.reliability = model.Property("{Supplier} has {reliability:float}")
+    Supplier.capacity = model.Property("{Supplier} has {capacity:int}")
+
+    Product = model.Concept("Product")
+    Product.id = model.Property("{Product} has {id:int}")
+    Product.name = model.Property("{Product} has {name:string}")
+    Product.demand = model.Property("{Product} has {demand:int}")
+
+    SupplyOption = model.Concept("SupplyOption")
+    SupplyOption.id = model.Property("{SupplyOption} has {id:int}")
+    SupplyOption.supplier = model.Property("{SupplyOption} from {supplier:Supplier}")
+    SupplyOption.product = model.Property("{SupplyOption} for {product:Product}")
+    SupplyOption.cost_per_unit = model.Property("{SupplyOption} has {cost_per_unit:float}")
+
+    # Load data
     data_dir = Path(__file__).parent / "data"
 
-    # Supplier: sources with reliability scores and capacity limits
-    Supplier = Concept("Supplier")
-    Supplier.name = Property("{Supplier} has name {name:String}")
-    Supplier.reliability = Property("{Supplier} has reliability {reliability:float}")
-    Supplier.capacity = Property("{Supplier} has capacity {capacity:int}")
     suppliers_df = read_csv(data_dir / "suppliers.csv")
-    data(suppliers_df).into(Supplier, id="id", properties=["name", "reliability", "capacity"])
+    data(suppliers_df).into(Supplier, keys=["id"])
 
-    # Product: items with demand requirements
-    Product = Concept("Product")
-    Product.name = Property("{Product} has name {name:String}")
-    Product.demand = Property("{Product} has demand {demand:int}")
     products_df = read_csv(data_dir / "products.csv")
-    data(products_df).into(Product, id="id", properties=["name", "demand"])
+    data(products_df).into(Product, keys=["id"])
 
-    # SupplyOption: which suppliers can supply which products at what cost
-    SupplyOption = Concept("SupplyOption")
-    SupplyOption.cost_per_unit = Property("{SupplyOption} has cost_per_unit {cost_per_unit:float}")
-    SupplyOption.supplier = Relationship("{SupplyOption} from {supplier:Supplier}")
-    SupplyOption.product = Relationship("{SupplyOption} for {product:Product}")
     options_df = read_csv(data_dir / "supply_options.csv")
-    data(options_df).into(
-        SupplyOption,
-        id="id",
-        properties=["cost_per_unit"],
-        relationships={"supplier": ("supplier_id", Supplier), "product": ("product_id", Product)},
+    options_data = data(options_df)
+    where(Supplier.id(options_data.supplier_id), Product.id(options_data.product_id)).define(
+        SupplyOption.new(id=options_data.id, supplier=Supplier, product=Product,
+                         cost_per_unit=options_data.cost_per_unit)
     )
 
     # Order: decision variable for quantity ordered via each supply option
-    Order = Concept("Order")
-    Order.option = Relationship("{Order} uses {option:SupplyOption}")
-    Order.quantity = Property("{Order} has quantity {quantity:float}")
+    Order = model.Concept("Order")
+    Order.option = model.Property("{Order} uses {option:SupplyOption}")
+    Order.quantity = model.Property("{Order} has {quantity:float}")
     define(Order.new(option=SupplyOption))
 
     model.Supplier, model.Product, model.SupplyOption, model.Order = Supplier, Product, SupplyOption, Order
@@ -59,7 +62,7 @@ def define_problem(model, reliability_weight=0.0):
     Supplier, Product, SupplyOption, Order = model.Supplier, model.Product, model.SupplyOption, model.Order
 
     # Decision variable: quantity to order via each supply option
-    s.solve_for(Order.quantity, name=Order.option, lower=0)
+    s.solve_for(Order.quantity, name=Order.option.id, lower=0)
 
     # Constraint: total orders from supplier cannot exceed supplier capacity
     Ord = Order.ref()

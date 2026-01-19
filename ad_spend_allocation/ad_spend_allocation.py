@@ -4,52 +4,53 @@ from pathlib import Path
 from time import time_ns
 
 from pandas import read_csv
-from relationalai.semantics import Model, data, define, require, sum
+from relationalai.semantics import Model, data, define, require, sum, where
 from relationalai.semantics.reasoners.optimization import Solver, SolverModel
 
 
 def define_model(config=None):
     """Define base model with Channel, Campaign, and Effectiveness concepts."""
     model = Model(f"ad_spend_{time_ns()}", config=config, use_lqp=False)
-    Concept, Property, Relationship = model.Concept, model.Property, model.Relationship
 
+    # Concepts
+    Channel = model.Concept("Channel")
+    Channel.id = model.Property("{Channel} has {id:int}")
+    Channel.name = model.Property("{Channel} has {name:string}")
+    Channel.min_spend = model.Property("{Channel} has {min_spend:float}")
+    Channel.max_spend = model.Property("{Channel} has {max_spend:float}")
+    Channel.roi_coefficient = model.Property("{Channel} has {roi_coefficient:float}")
+
+    Campaign = model.Concept("Campaign")
+    Campaign.id = model.Property("{Campaign} has {id:int}")
+    Campaign.name = model.Property("{Campaign} has {name:string}")
+    Campaign.budget = model.Property("{Campaign} has {budget:float}")
+    Campaign.target_conversions = model.Property("{Campaign} has {target_conversions:int}")
+
+    Effectiveness = model.Concept("Effectiveness")
+    Effectiveness.channel = model.Property("{Effectiveness} via {channel:Channel}")
+    Effectiveness.campaign = model.Property("{Effectiveness} for {campaign:Campaign}")
+    Effectiveness.conversion_rate = model.Property("{Effectiveness} has {conversion_rate:float}")
+
+    # Load data
     data_dir = Path(__file__).parent / "data"
 
-    # Channel: advertising channels with spend limits
-    Channel = Concept("Channel")
-    Channel.name = Property("{Channel} has name {name:String}")
-    Channel.min_spend = Property("{Channel} has min_spend {min_spend:float}")
-    Channel.max_spend = Property("{Channel} has max_spend {max_spend:float}")
-    Channel.roi_coefficient = Property("{Channel} has roi_coefficient {roi_coefficient:float}")
     channels_df = read_csv(data_dir / "channels.csv")
-    data(channels_df).into(Channel, id="id", properties=["name", "min_spend", "max_spend", "roi_coefficient"])
+    data(channels_df).into(Channel, keys=["id"])
 
-    # Campaign: marketing campaigns with budgets and targets
-    Campaign = Concept("Campaign")
-    Campaign.name = Property("{Campaign} has name {name:String}")
-    Campaign.budget = Property("{Campaign} has budget {budget:float}")
-    Campaign.target_conversions = Property("{Campaign} has target_conversions {target_conversions:int}")
     campaigns_df = read_csv(data_dir / "campaigns.csv")
-    data(campaigns_df).into(Campaign, id="id", properties=["name", "budget", "target_conversions"])
+    data(campaigns_df).into(Campaign, keys=["id"])
 
-    # Effectiveness: conversion rate for channel/campaign combinations
-    Effectiveness = Concept("Effectiveness")
-    Effectiveness.channel = Relationship("{Effectiveness} via {channel:Channel}")
-    Effectiveness.campaign = Relationship("{Effectiveness} for {campaign:Campaign}")
-    Effectiveness.conversion_rate = Property("{Effectiveness} has conversion_rate {conversion_rate:float}")
     eff_df = read_csv(data_dir / "effectiveness.csv")
-    data(eff_df).into(
-        Effectiveness,
-        keys=["channel_id", "campaign_id"],
-        properties=["conversion_rate"],
-        relationships={"channel": ("channel_id", Channel), "campaign": ("campaign_id", Campaign)},
+    eff_data = data(eff_df)
+    where(Channel.id(eff_data.channel_id), Campaign.id(eff_data.campaign_id)).define(
+        Effectiveness.new(channel=Channel, campaign=Campaign, conversion_rate=eff_data.conversion_rate)
     )
 
     # Allocation: decision variable for spend per channel/campaign
-    Allocation = Concept("Allocation")
-    Allocation.effectiveness = Relationship("{Allocation} uses {effectiveness:Effectiveness}")
-    Allocation.spend = Property("{Allocation} has spend {spend:float}")
-    Allocation.active = Property("{Allocation} is active {active:float}")
+    Allocation = model.Concept("Allocation")
+    Allocation.effectiveness = model.Property("{Allocation} uses {effectiveness:Effectiveness}")
+    Allocation.spend = model.Property("{Allocation} has {spend:float}")
+    Allocation.active = model.Property("{Allocation} is {active:float}")
     define(Allocation.new(effectiveness=Effectiveness))
 
     model.Channel, model.Campaign, model.Effectiveness, model.Allocation = Channel, Campaign, Effectiveness, Allocation
@@ -62,10 +63,10 @@ def define_problem(model):
     Channel, Campaign, Effectiveness, Allocation = model.Channel, model.Campaign, model.Effectiveness, model.Allocation
 
     # Decision variable: continuous spend amount
-    s.solve_for(Allocation.spend, name=[Allocation.effectiveness.channel, Allocation.effectiveness.campaign], lower=0)
+    s.solve_for(Allocation.spend, name=["spend", Allocation.effectiveness.channel.id, Allocation.effectiveness.campaign.id], lower=0)
 
     # Decision variable: binary indicator for whether channel is used for campaign
-    s.solve_for(Allocation.active, type="bin", name=["active", Allocation.effectiveness.channel, Allocation.effectiveness.campaign])
+    s.solve_for(Allocation.active, type="bin", name=["active", Allocation.effectiveness.channel.id, Allocation.effectiveness.campaign.id])
 
     # Constraint: spend bounded by min/max when active
     s.satisfy(require(Allocation.spend >= Allocation.effectiveness.channel.min_spend * Allocation.active))

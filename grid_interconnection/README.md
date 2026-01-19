@@ -31,11 +31,18 @@ This template models the capital allocation decision: maximizing long-term reven
 - **Retail network planning**: Select store locations considering market potential, real estate costs, and distribution reach
 - **Cloud resource allocation**: Assign workloads to servers across availability zones with capacity and cost constraints
 
-## Problem Description
+## Problem Details
 
-An electric utility evaluates renewable energy projects (solar farms, wind farms, batteries) that want to connect to the grid. Each project connects to a specific substation, generates annual revenue, and requires a connection cost. Substations have capacity limits that can be expanded through upgrades.
+### Model
 
-The goal is to decide which projects to approve and which substation upgrades to make to maximize net revenue (annual revenue minus costs) while staying within budget.
+**Concepts:**
+- `Substation`: Grid connection points with current and max capacity
+- `Project`: Renewable energy projects with capacity needs and revenue
+- `Upgrade`: Capacity expansion options with cost and added capacity
+
+**Relationships:**
+- `Project` connects to `Substation` for grid access
+- `Upgrade` connects to `Substation` for capacity expansion
 
 ### Decision Variables
 
@@ -112,9 +119,13 @@ python grid_interconnection.py
 
 ## Expected Output
 
-<!-- TODO: Run template and paste actual output here -->
 ```
+
 Status: OPTIMAL
-Net Annual Revenue: $X.XX
-...
+Net annual revenue: $190000.00
+Approved projects and upgrades:
+        name  float
+   Battery_E    1.0
+Solar_Farm_C    1.0
+ Wind_Farm_B    1.0
 ```

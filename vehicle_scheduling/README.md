@@ -31,11 +31,18 @@ The optimizer determines both which vehicles to use and which trips each vehicle
 - **Field service dispatch**: Assign technician visits to service vehicles
 - **Taxi/rideshare dispatch**: Assign ride requests to available drivers
 
-## Problem Description
+## Problem Details
 
-A logistics company has a fleet of vehicles (vans, trucks) with different capacities and cost structures. Multiple trips need to be completed, each with a load requirement and distance. Each vehicle has a fixed cost (if used at all) plus a variable cost per mile.
+### Model
 
-The goal is to assign trips to vehicles to minimize total cost (fixed + variable) while ensuring all trips are completed and vehicle capacities are respected.
+**Concepts:**
+- `Vehicle`: Fleet units with capacity and cost structure
+- `Trip`: Delivery tasks with origin, destination, load, and time windows
+- `Assignment`: Decision entity for vehicle-trip assignment
+- `VehicleUsage`: Tracks whether each vehicle is used (for fixed costs)
+
+**Relationships:**
+- `Assignment` connects `Vehicle` → `Trip`
 
 ### Decision Variables
 
@@ -104,9 +111,17 @@ python vehicle_scheduling.py
 
 ## Expected Output
 
-<!-- TODO: Run template and paste actual output here -->
 ```
+
 Status: OPTIMAL
-Total Cost: $X.XX
-...
+Total cost: $196.00
+Vehicle assignments:
+name  float
+   4    1.0
+ 4_1    1.0
+ 4_2    1.0
+ 4_3    1.0
+ 4_4    1.0
+ 4_5    1.0
+ 4_6    1.0
 ```

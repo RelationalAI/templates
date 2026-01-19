@@ -31,11 +31,17 @@ The key insight is that diversification reduces risk: a portfolio of assets that
 - **Endowment management**: Balance growth objectives with spending needs and risk tolerance
 - **Personal retirement planning**: Allocate 401(k) across funds based on risk tolerance and time horizon
 
-## Problem Description
+## Problem Details
 
-An investor wants to allocate capital across multiple stocks. Each stock has an expected return, but returns are uncertain and correlated with each other. The covariance matrix captures how stocks move together—diversification reduces risk when stocks are not perfectly correlated.
+### Model
 
-The goal is to find stock quantities that minimize portfolio variance (risk) while achieving a minimum expected return.
+**Concepts:**
+- `Stock`: Available investments with expected return and variance
+- `Covariance`: Pairwise risk correlation between stocks
+- `Allocation`: Decision entity for investment amount per stock
+
+**Relationships:**
+- `Covariance` links pairs of `Stock` entities
 
 ### Decision Variables
 
@@ -97,9 +103,13 @@ python portfolio_optimization.py
 
 ## Expected Output
 
-<!-- TODO: Run template and paste actual output here -->
 ```
+
 Status: OPTIMAL
-Portfolio risk (variance): X.XXXX
-...
+Portfolio risk (variance): 3583.7207
+Minimum return target: 20
+Stock allocations:
+ name      float
+qty_1 236.749121
+qty_3 187.802251
 ```

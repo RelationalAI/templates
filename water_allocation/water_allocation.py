@@ -12,28 +12,27 @@ def define_model(config=None):
     """Define base model with Source, User, and Connection concepts."""
     model = Model(f"water_allocation_{time_ns()}", config=config, use_lqp=False)
 
-    Concept, Property = model.Concept, model.Property
-
     # Concepts
-    Source = Concept("Source")
-    Source.id = Property("{Source} has {id:int}")
-    Source.name = Property("{Source} has {name:string}")
-    Source.capacity = Property("{Source} has {capacity:float}")
-    Source.cost_per_unit = Property("{Source} has {cost_per_unit:float}")
+    Source = model.Concept("Source")
+    Source.id = model.Property("{Source} has {id:int}")
+    Source.name = model.Property("{Source} has {name:string}")
+    Source.capacity = model.Property("{Source} has {capacity:float}")
+    Source.cost_per_unit = model.Property("{Source} has {cost_per_unit:float}")
 
-    User = Concept("User")
-    User.id = Property("{User} has {id:int}")
-    User.name = Property("{User} has {name:string}")
-    User.demand = Property("{User} has {demand:float}")
-    User.priority = Property("{User} has {priority:int}")
+    User = model.Concept("User")
+    User.id = model.Property("{User} has {id:int}")
+    User.name = model.Property("{User} has {name:string}")
+    User.demand = model.Property("{User} has {demand:float}")
+    User.priority = model.Property("{User} has {priority:int}")
 
-    Connection = Concept("Connection")
-    Connection.source = Property("{Connection} from {source:Source}")
-    Connection.user = Property("{Connection} to {user:User}")
-    Connection.max_flow = Property("{Connection} has {max_flow:float}")
-    Connection.loss_rate = Property("{Connection} has {loss_rate:float}")
+    Connection = model.Concept("Connection")
+    Connection.source = model.Property("{Connection} from {source:Source}")
+    Connection.user = model.Property("{Connection} to {user:User}")
+    Connection.max_flow = model.Property("{Connection} has {max_flow:float}")
+    Connection.loss_rate = model.Property("{Connection} has {loss_rate:float}")
+    Connection.flow = model.Property("{Connection} has {flow:float}")
 
-    # Load data from CSVs
+    # Load data
     data_dir = Path(__file__).parent / "data"
 
     sources_df = read_csv(data_dir / "sources.csv")
@@ -42,17 +41,12 @@ def define_model(config=None):
     users_df = read_csv(data_dir / "users.csv")
     data(users_df).into(User, keys=["id"])
 
-    # Load connections with references
     conn_df = read_csv(data_dir / "connections.csv")
     conn_data = data(conn_df)
     where(Source.id(conn_data.source_id), User.id(conn_data.user_id)).define(
-        Connection.source(Connection, Source),
-        Connection.user(Connection, User),
-        Connection.max_flow(Connection, conn_data.max_flow),
-        Connection.loss_rate(Connection, conn_data.loss_rate),
+        Connection.new(source=Source, user=User, max_flow=conn_data.max_flow, loss_rate=conn_data.loss_rate)
     )
 
-    # Store references
     model.Source = Source
     model.User = User
     model.Connection = Connection
@@ -66,12 +60,9 @@ def define_problem(model):
     User = model.User
     Connection = model.Connection
 
-    # Decision variable: flow on each connection
-    Connection.flow = model.Property("{Connection} has {flow:float}")
-
     s = SolverModel(model, "cont")
 
-    # Variable: flow >= 0, <= max_flow
+    # Variable: flow >= 0
     s.solve_for(
         Connection.flow,
         name=["flow", Connection.source.id, Connection.user.id],
@@ -80,18 +71,15 @@ def define_problem(model):
     )
 
     # Constraint: total outflow from each source <= capacity
-    s.satisfy(require(
-        sum(Connection.flow).where(Connection.source == Source) <= Source.capacity
-    ))
+    Conn = Connection.ref()
+    outflow = sum(Conn.flow).where(Conn.source == Source).per(Source)
+    s.satisfy(require(outflow <= Source.capacity))
 
     # Constraint: effective inflow to each user >= demand
-    # effective_inflow = flow * (1 - loss_rate)
-    effective_inflow = sum(Connection.flow * (1 - Connection.loss_rate)).where(
-        Connection.user == User
-    )
+    effective_inflow = sum(Conn.flow * (1 - Conn.loss_rate)).where(Conn.user == User).per(User)
     s.satisfy(require(effective_inflow >= User.demand))
 
-    # Objective: minimize total cost (source cost * flow)
+    # Objective: minimize total cost
     total_cost = sum(Connection.flow * Connection.source.cost_per_unit)
     s.minimize(total_cost)
 

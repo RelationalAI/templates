@@ -4,52 +4,53 @@ from pathlib import Path
 from time import time_ns
 
 from pandas import read_csv
-from relationalai.semantics import Model, data, define, require, sum
+from relationalai.semantics import Model, data, define, require, sum, where
 from relationalai.semantics.reasoners.optimization import Solver, SolverModel
 
 
 def define_model(config=None):
     """Define base model with Nurse, Shift, and Availability concepts."""
     model = Model(f"hospital_staffing_{time_ns()}", config=config, use_lqp=False)
-    Concept, Property, Relationship = model.Concept, model.Property, model.Relationship
 
+    # Concepts
+    Nurse = model.Concept("Nurse")
+    Nurse.id = model.Property("{Nurse} has {id:int}")
+    Nurse.name = model.Property("{Nurse} has {name:string}")
+    Nurse.skill_level = model.Property("{Nurse} has {skill_level:int}")
+    Nurse.hourly_cost = model.Property("{Nurse} has {hourly_cost:float}")
+
+    Shift = model.Concept("Shift")
+    Shift.id = model.Property("{Shift} has {id:int}")
+    Shift.name = model.Property("{Shift} has {name:string}")
+    Shift.start_hour = model.Property("{Shift} has {start_hour:int}")
+    Shift.duration = model.Property("{Shift} has {duration:int}")
+    Shift.min_nurses = model.Property("{Shift} has {min_nurses:int}")
+    Shift.min_skill = model.Property("{Shift} has {min_skill:int}")
+
+    Availability = model.Concept("Availability")
+    Availability.nurse = model.Property("{Availability} for {nurse:Nurse}")
+    Availability.shift = model.Property("{Availability} in {shift:Shift}")
+    Availability.available = model.Property("{Availability} is {available:int}")
+
+    # Load data
     data_dir = Path(__file__).parent / "data"
 
-    # Nurse: staff members with skills and costs
-    Nurse = Concept("Nurse")
-    Nurse.name = Property("{Nurse} has name {name:String}")
-    Nurse.skill_level = Property("{Nurse} has skill_level {skill_level:int}")
-    Nurse.hourly_cost = Property("{Nurse} has hourly_cost {hourly_cost:float}")
     nurses_df = read_csv(data_dir / "nurses.csv")
-    data(nurses_df).into(Nurse, id="id", properties=["name", "skill_level", "hourly_cost"])
+    data(nurses_df).into(Nurse, keys=["id"])
 
-    # Shift: time periods requiring staffing
-    Shift = Concept("Shift")
-    Shift.name = Property("{Shift} has name {name:String}")
-    Shift.start_hour = Property("{Shift} has start_hour {start_hour:int}")
-    Shift.duration = Property("{Shift} has duration {duration:int}")
-    Shift.min_nurses = Property("{Shift} has min_nurses {min_nurses:int}")
-    Shift.min_skill = Property("{Shift} has min_skill {min_skill:int}")
     shifts_df = read_csv(data_dir / "shifts.csv")
-    data(shifts_df).into(Shift, id="id", properties=["name", "start_hour", "duration", "min_nurses", "min_skill"])
+    data(shifts_df).into(Shift, keys=["id"])
 
-    # Availability: which nurses can work which shifts
-    Availability = Concept("Availability")
-    Availability.nurse = Relationship("{Availability} for {nurse:Nurse}")
-    Availability.shift = Relationship("{Availability} in {shift:Shift}")
-    Availability.available = Property("{Availability} is available {available:int}")
     avail_df = read_csv(data_dir / "availability.csv")
-    data(avail_df).into(
-        Availability,
-        keys=["nurse_id", "shift_id"],
-        properties=["available"],
-        relationships={"nurse": ("nurse_id", Nurse), "shift": ("shift_id", Shift)},
+    avail_data = data(avail_df)
+    where(Nurse.id(avail_data.nurse_id), Shift.id(avail_data.shift_id)).define(
+        Availability.new(nurse=Nurse, shift=Shift, available=avail_data.available)
     )
 
     # Assignment: decision variable for nurse-to-shift assignment
-    Assignment = Concept("Assignment")
-    Assignment.availability = Relationship("{Assignment} uses {availability:Availability}")
-    Assignment.assigned = Property("{Assignment} is assigned {assigned:float}")
+    Assignment = model.Concept("Assignment")
+    Assignment.availability = model.Property("{Assignment} uses {availability:Availability}")
+    Assignment.assigned = model.Property("{Assignment} is {assigned:float}")
     define(Assignment.new(availability=Availability))
 
     model.Nurse, model.Shift, model.Availability, model.Assignment = Nurse, Shift, Availability, Assignment
@@ -62,7 +63,7 @@ def define_problem(model):
     Nurse, Shift, Availability, Assignment = model.Nurse, model.Shift, model.Availability, model.Assignment
 
     # Decision variable: binary assignment
-    s.solve_for(Assignment.assigned, type="bin", name=[Assignment.availability.nurse, Assignment.availability.shift])
+    s.solve_for(Assignment.assigned, type="bin", name=["x", Assignment.availability.nurse.id, Assignment.availability.shift.id])
 
     # Constraint: can only assign if available
     s.satisfy(require(Assignment.assigned <= Assignment.availability.available))

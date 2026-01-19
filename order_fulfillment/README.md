@@ -18,6 +18,8 @@ E-commerce companies must decide which warehouse should fulfill each order. This
 
 Simple rules like "ship from nearest warehouse" often fail because the nearest FC may not have inventory, shipping costs aren't always proportional to distance (carrier contracts vary), and capacity constraints create bottlenecks.
 
+An e-commerce company has multiple fulfillment centers (FCs) across regions. Customer orders arrive and must be assigned to FCs for fulfillment. Each FC has a capacity limit and each FC-customer pair has a different shipping cost.
+
 ## Why is optimization valuable?
 
 - **Shipping cost reduction**: Achieves lower outbound shipping costs through optimal sourcing decisions <!-- TODO: Add % improvement from results -->
@@ -31,11 +33,17 @@ Simple rules like "ship from nearest warehouse" often fail because the nearest F
 - **Call center routing**: Assign incoming calls to agents across multiple call centers
 - **Cloud workload placement**: Assign compute jobs to data centers based on capacity and latency
 
-## Problem Description
+## Problem Details
 
-An e-commerce company has multiple fulfillment centers (FCs) across regions. Customer orders arrive and must be assigned to FCs for fulfillment. Each FC has a capacity limit and each FC-customer pair has a different shipping cost.
+### Model
 
-The goal is to assign orders to fulfillment centers to minimize total shipping cost while ensuring all orders are completely fulfilled and no FC exceeds its capacity.
+**Concepts:**
+- `Warehouse`: Fulfillment centers with inventory and shipping costs
+- `Order`: Customer orders with quantity and destination
+- `Fulfillment`: Decision entity for order-warehouse assignment
+
+**Relationships:**
+- `Fulfillment` connects `Warehouse` → `Order` with shipping cost
 
 ### Decision Variables
 
@@ -106,9 +114,43 @@ python order_fulfillment.py
 
 ## Expected Output
 
-<!-- TODO: Run template and paste actual output here -->
 ```
+
 Status: OPTIMAL
-Total Shipping Cost: $X.XX
-...
+Total shipping cost: $490.00
+Assignments:
+   name  float
+qty_1_1   25.0
+qty_1_3   15.0
+qty_2_2   15.0
+qty_2_4   40.0
+qty_2_6   35.0
+qty_2_8   30.0
+qty_3_2   15.0
+qty_3_5   20.0
+qty_3_7   25.0
+sel_1_1    1.0
+sel_1_2    1.0
+sel_1_3    1.0
+sel_1_4    1.0
+sel_1_5    1.0
+sel_1_6    1.0
+sel_1_7    1.0
+sel_1_8    1.0
+sel_2_1    1.0
+sel_2_2    1.0
+sel_2_3    1.0
+sel_2_4    1.0
+sel_2_5    1.0
+sel_2_6    1.0
+sel_2_7    1.0
+sel_2_8    1.0
+sel_3_1    1.0
+sel_3_2    1.0
+sel_3_3    1.0
+sel_3_4    1.0
+sel_3_5    1.0
+sel_3_6    1.0
+sel_3_7    1.0
+sel_3_8    1.0
 ```

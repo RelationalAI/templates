@@ -33,11 +33,17 @@ The challenge is that demand must be met, but machine capacity is limited—so t
 - **Steel mill scheduling**: Decide which grades to produce on which rolling mills
 - **Contract manufacturing**: Allocate capacity across customer orders with different margins
 
-## Problem Description
+## Problem Details
 
-A manufacturing facility has multiple machines that can produce different products. Each machine has limited hours available. Each product has a demand requirement and a profit margin. Different products take different amounts of time to produce on different machines.
+### Model
 
-The goal is to determine how many units of each product to produce on each machine to maximize profit while meeting all demand requirements.
+**Concepts:**
+- `Product`: Items to manufacture with demand and holding costs
+- `Period`: Time buckets for planning horizon
+- `Production`: Decision entity for units produced per product-period
+
+**Relationships:**
+- `Production` links `Product` → `Period` for multi-period planning
 
 ### Decision Variables
 
@@ -106,9 +112,15 @@ python production_planning.py
 
 ## Expected Output
 
-<!-- TODO: Run template and paste actual output here -->
 ```
+
 Status: OPTIMAL
-Total Profit: $X.XX
-...
+Total profit: $14945.00
+Production schedule:
+   name  float
+qty_1_1    4.0
+qty_1_3   95.0
+qty_2_2   70.0
+qty_3_1   96.0
+qty_3_2   11.0
 ```

@@ -14,11 +14,12 @@ Schedule production across machines to maximize profit while meeting minimum req
 
 ## What is this problem?
 
-Manufacturing facilities must decide what to produce given limited resources. This template models a factory with multiple machines producing different products, where each machine has limited hours available and different hourly operating costs. Each product has a selling price and minimum production requirement.
+Manufacturing facilities must decide what to produce given limited resources. This template models a factory with multiple machines producing different products, where each machine has limited hours available and different hourly operating costs. Each product has a selling price and minimum production requirement. Different machines take different amounts of time to produce each product.
 
 The goal is to find the optimal product mix—how much of each product to make on each machine—to maximize profit (revenue minus machine operating costs) while respecting machine capacity and meeting minimum production targets.
 
 **Note**: This template uses continuous (LP) variables suitable for high-volume production where fractional units are acceptable. For discrete production units, see the `production_planning` template which uses integer variables.
+
 
 ## Why is optimization valuable?
 
@@ -33,11 +34,19 @@ The goal is to find the optimal product mix—how much of each product to make o
 - **Bakery production**: Decide daily quantities of bread, pastries, and cakes given oven capacity
 - **Print shop scheduling**: Allocate press time across print jobs to maximize revenue
 
-## Problem Description
+## Problem Details
 
-A factory has multiple machines that can produce different products. Each machine has limited hours available per period and an operating cost per hour. Each product has a selling price and a minimum production requirement. Different machines take different amounts of time to produce each product.
+### Model
 
-The goal is to determine how many units of each product to produce on each machine to maximize profit (revenue minus machine costs) while meeting minimum production requirements.
+**Concepts:**
+- `Machine`: Factory equipment with available hours and operating costs
+- `Product`: Items to produce with selling price and minimum requirements
+- `ProductionTime`: Links machines to products with hours per unit
+- `Production`: Decision entity tracking quantity produced per machine-product pair
+
+**Relationships:**
+- `ProductionTime` connects `Machine` → `Product` with production rate
+- `Production` references `ProductionTime` for costing calculations
 
 ### Decision Variables
 
@@ -107,9 +116,13 @@ python factory_production.py
 
 ## Expected Output
 
-<!-- TODO: Run template and paste actual output here -->
 ```
+
 Status: OPTIMAL
-Total Profit: $X.XX
-...
+Total profit: $20977.78
+Production plan:
+   name     float
+qty_1_1 80.000000
+qty_2_3 38.888889
+qty_3_2 75.000000
 ```

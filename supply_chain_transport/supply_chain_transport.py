@@ -4,60 +4,63 @@ from pathlib import Path
 from time import time_ns
 
 from pandas import read_csv
-from relationalai.semantics import Model, data, define, require, sum
+from relationalai.semantics import Model, data, define, require, sum, where
 from relationalai.semantics.reasoners.optimization import Solver, SolverModel
 
 
 def define_model(config=None):
     """Define base model with Warehouse, Customer, TransportMode, and Route concepts."""
     model = Model(f"supply_chain_transport_{time_ns()}", config=config, use_lqp=False)
-    Concept, Property, Relationship = model.Concept, model.Property, model.Relationship
 
+    # Concepts
+    Warehouse = model.Concept("Warehouse")
+    Warehouse.id = model.Property("{Warehouse} has {id:int}")
+    Warehouse.name = model.Property("{Warehouse} has {name:string}")
+    Warehouse.inventory = model.Property("{Warehouse} has {inventory:int}")
+
+    Customer = model.Concept("Customer")
+    Customer.id = model.Property("{Customer} has {id:int}")
+    Customer.name = model.Property("{Customer} has {name:string}")
+    Customer.demand = model.Property("{Customer} has {demand:int}")
+    Customer.due_day = model.Property("{Customer} has {due_day:int}")
+
+    TransportMode = model.Concept("TransportMode")
+    TransportMode.id = model.Property("{TransportMode} has {id:int}")
+    TransportMode.name = model.Property("{TransportMode} has {name:string}")
+    TransportMode.cost_per_unit = model.Property("{TransportMode} has {cost_per_unit:float}")
+    TransportMode.transit_days = model.Property("{TransportMode} has {transit_days:int}")
+    TransportMode.capacity = model.Property("{TransportMode} has {capacity:int}")
+
+    Route = model.Concept("Route")
+    Route.id = model.Property("{Route} has {id:int}")
+    Route.warehouse = model.Property("{Route} from {warehouse:Warehouse}")
+    Route.customer = model.Property("{Route} to {customer:Customer}")
+    Route.distance = model.Property("{Route} has {distance:int}")
+
+    # Load data
     data_dir = Path(__file__).parent / "data"
 
-    # Warehouse: sources with inventory
-    Warehouse = Concept("Warehouse")
-    Warehouse.name = Property("{Warehouse} has name {name:String}")
-    Warehouse.inventory = Property("{Warehouse} has inventory {inventory:int}")
     warehouses_df = read_csv(data_dir / "warehouses.csv")
-    data(warehouses_df).into(Warehouse, id="id", properties=["name", "inventory"])
+    data(warehouses_df).into(Warehouse, keys=["id"])
 
-    # Customer: destinations with demand and due dates
-    Customer = Concept("Customer")
-    Customer.name = Property("{Customer} has name {name:String}")
-    Customer.demand = Property("{Customer} has demand {demand:int}")
-    Customer.due_day = Property("{Customer} has due_day {due_day:int}")
     customers_df = read_csv(data_dir / "customers.csv")
-    data(customers_df).into(Customer, id="id", properties=["name", "demand", "due_day"])
+    data(customers_df).into(Customer, keys=["id"])
 
-    # TransportMode: available transport options
-    TransportMode = Concept("TransportMode")
-    TransportMode.name = Property("{TransportMode} has name {name:String}")
-    TransportMode.cost_per_unit = Property("{TransportMode} has cost_per_unit {cost_per_unit:float}")
-    TransportMode.transit_days = Property("{TransportMode} has transit_days {transit_days:int}")
-    TransportMode.capacity = Property("{TransportMode} has capacity {capacity:int}")
     modes_df = read_csv(data_dir / "transport_modes.csv")
-    data(modes_df).into(TransportMode, id="id", properties=["name", "cost_per_unit", "transit_days", "capacity"])
+    data(modes_df).into(TransportMode, keys=["id"])
 
-    # Route: warehouse to customer connections
-    Route = Concept("Route")
-    Route.distance = Property("{Route} has distance {distance:int}")
-    Route.warehouse = Relationship("{Route} from {warehouse:Warehouse}")
-    Route.customer = Relationship("{Route} to {customer:Customer}")
     routes_df = read_csv(data_dir / "routes.csv")
-    data(routes_df).into(
-        Route,
-        id="id",
-        properties=["distance"],
-        relationships={"warehouse": ("warehouse_id", Warehouse), "customer": ("customer_id", Customer)},
+    routes_data = data(routes_df)
+    where(Warehouse.id(routes_data.warehouse_id), Customer.id(routes_data.customer_id)).define(
+        Route.new(id=routes_data.id, warehouse=Warehouse, customer=Customer, distance=routes_data.distance)
     )
 
     # Shipment: decision variable for quantity shipped via route and mode
-    Shipment = Concept("Shipment")
-    Shipment.route = Relationship("{Shipment} on {route:Route}")
-    Shipment.mode = Relationship("{Shipment} via {mode:TransportMode}")
-    Shipment.quantity = Property("{Shipment} has quantity {quantity:float}")
-    Shipment.selected = Property("{Shipment} is selected {selected:float}")
+    Shipment = model.Concept("Shipment")
+    Shipment.route = model.Property("{Shipment} on {route:Route}")
+    Shipment.mode = model.Property("{Shipment} via {mode:TransportMode}")
+    Shipment.quantity = model.Property("{Shipment} has {quantity:float}")
+    Shipment.selected = model.Property("{Shipment} is {selected:float}")
     define(Shipment.new(route=Route, mode=TransportMode))
 
     model.Warehouse = Warehouse
@@ -76,15 +79,14 @@ def define_problem(model):
     )
 
     # Decision variable: quantity to ship via each route/mode combination
-    s.solve_for(Shipment.quantity, name=[Shipment.route, Shipment.mode], lower=0)
+    s.solve_for(Shipment.quantity, name=["qty", Shipment.route.id, Shipment.mode.id], lower=0)
 
-    # Binary variable: whether shipment is used (for fixed costs if needed)
-    s.solve_for(Shipment.selected, type="bin", name=["sel", Shipment.route, Shipment.mode])
+    # Binary variable: whether shipment is used
+    s.solve_for(Shipment.selected, type="bin", name=["sel", Shipment.route.id, Shipment.mode.id])
 
     # Constraint: shipment quantity bounded by mode capacity when selected
-    M = 10000  # Big-M
     s.satisfy(require(Shipment.quantity <= Shipment.mode.capacity * Shipment.selected))
-    s.satisfy(require(Shipment.quantity >= Shipment.selected))  # At least 1 if selected
+    s.satisfy(require(Shipment.quantity >= Shipment.selected))
 
     # Constraint: total outbound from warehouse cannot exceed inventory
     Sh = Shipment.ref()
@@ -95,8 +97,7 @@ def define_problem(model):
     inbound = sum(Sh.quantity).where(Sh.route.customer == Customer).per(Customer)
     s.satisfy(require(inbound >= Customer.demand))
 
-    # Constraint: on-time delivery (transit_days <= due_day)
-    # Only allow shipments where mode transit time meets customer due date
+    # Constraint: on-time delivery
     s.satisfy(
         require(Shipment.quantity == 0).where(
             Shipment.mode.transit_days > Shipment.route.customer.due_day

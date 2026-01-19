@@ -18,6 +18,8 @@ Equipment requires periodic preventive maintenance, but scheduling is complex: m
 
 The goal is to minimize total maintenance cost by scheduling machines in the right slots—avoiding expensive overtime when possible while ensuring all machines get serviced.
 
+The goal is to schedule each machine for maintenance at minimum total cost while respecting crew capacity and conflict constraints.
+
 ## Why is optimization valuable?
 
 - **Downtime reduction**: Reduces unplanned downtime through optimally timed maintenance <!-- TODO: Add % improvement from results -->
@@ -31,11 +33,19 @@ The goal is to minimize total maintenance cost by scheduling machines in the rig
 - **HVAC preventive maintenance**: Schedule building system maintenance across a property portfolio
 - **Server patching windows**: Schedule system updates during maintenance windows to minimize disruption
 
-## Problem Description
+## Problem Details
 
-A factory has machines that require periodic preventive maintenance. Maintenance must be scheduled during available time slots, each with limited crew hours. Some machines cannot be maintained simultaneously (conflicts). Each time slot may have different cost multipliers (e.g., weekend overtime).
+### Model
 
-The goal is to schedule each machine for maintenance at minimum total cost while respecting crew capacity and conflict constraints.
+**Concepts:**
+- `Machine`: Equipment requiring maintenance with failure costs
+- `Technician`: Maintenance staff with skills and availability
+- `MaintenanceTask`: Links machines to required maintenance activities
+- `Assignment`: Decision entity for technician-task scheduling
+
+**Relationships:**
+- `MaintenanceTask` connects `Machine` → maintenance requirements
+- `Assignment` connects `Technician` → `MaintenanceTask`
 
 ### Decision Variables
 
@@ -110,9 +120,15 @@ python machine_maintenance.py
 
 ## Expected Output
 
-<!-- TODO: Run template and paste actual output here -->
 ```
+
 Status: OPTIMAL
-Total Maintenance Cost: $X.XX
-...
+Total maintenance cost: $19500.00
+Maintenance schedule:
+name  float
+ 1_1    1.0
+ 2_2    1.0
+ 3_4    1.0
+ 4_1    1.0
+ 5_1    1.0
 ```

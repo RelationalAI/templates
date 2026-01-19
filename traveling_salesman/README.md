@@ -18,6 +18,8 @@ The traveling salesman problem (TSP) is one of the most studied optimization pro
 
 This template provides a working MILP formulation using subtour elimination constraints, making it a foundation for real-world routing applications.
 
+This template uses the Miller-Tucker-Zemlin (MTZ) formulation, which adds ordering variables to prevent "subtours" (disconnected loops that don't include all cities).
+
 ## Why is optimization valuable?
 
 - **Distance reduction**: Finding optimal routes reduces travel compared to intuitive or greedy approaches <!-- TODO: Add % improvement from results -->
@@ -31,13 +33,17 @@ This template provides a working MILP formulation using subtour elimination cons
 - **Manufacturing toolpaths**: Minimize drill or laser head movement visiting multiple positions on a workpiece
 - **Genome sequencing**: Find optimal orderings of DNA fragments for assembly
 
-## Problem Description
+## Problem Details
 
-A salesperson needs to visit a set of cities and return to the starting city. Each pair of cities has a known travel distance. The salesperson must visit each city exactly once.
+### Model
 
-The goal is to find the shortest possible route (tour) that visits all cities and returns to the origin.
+**Concepts:**
+- `City`: Locations to visit
+- `Distance`: Travel cost between city pairs
+- `Visit`: Decision entity for tour sequencing
 
-This template uses the Miller-Tucker-Zemlin (MTZ) formulation, which adds ordering variables to prevent "subtours" (disconnected loops that don't include all cities).
+**Relationships:**
+- `Distance` connects pairs of `City` entities with travel cost
 
 ### Decision Variables
 
@@ -92,9 +98,18 @@ python traveling_salesman.py
 
 ## Expected Output
 
-<!-- TODO: Run template and paste actual output here -->
 ```
+
 Status: OPTIMAL
-Shortest tour distance: X.XX
-...
+Shortest tour distance: 8.50
+Selected edges (tour):
+ name  float
+  u_1    1.0
+  u_2    4.0
+  u_3    1.0
+  u_4    3.0
+x_1_3    1.0
+x_2_1    1.0
+x_3_4    1.0
+x_4_2    1.0
 ```

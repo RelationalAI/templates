@@ -31,11 +31,17 @@ CSP is useful when multiple valid solutions exist and any is acceptable, or when
 - **Sports league scheduling**: Create game schedules avoiding conflicts and ensuring fairness
 - **Course timetabling**: Assign classes to rooms and time slots respecting instructor and student constraints
 
-## Problem Description
+## Problem Details
 
-A business needs to staff multiple shifts with available workers. Each shift has a capacity (maximum number of workers). Workers have different availabilities—some can only work certain shifts. Each worker can be assigned to at most one shift.
+### Model
 
-The goal is to find a feasible assignment where all constraints are satisfied. This is a "satisfaction" problem rather than an "optimization" problem—we're looking for any valid solution, not necessarily the best one.
+**Concepts:**
+- `Worker`: Employees available for scheduling
+- `Shift`: Time periods requiring coverage
+- `Assignment`: Decision entity for worker-shift pairing
+
+**Relationships:**
+- `Assignment` connects `Worker` → `Shift` based on availability constraints
 
 ### Decision Variables
 
@@ -100,8 +106,20 @@ python shift_assignment.py
 
 ## Expected Output
 
-<!-- TODO: Run template and paste actual output here -->
 ```
 Status: OPTIMAL
-...
+
+Assignments:
+  name int128
+x_10_2      1
+ x_1_1      1
+ x_2_3      1
+ x_3_2      1
+ x_4_3      1
+ x_5_2      1
+ x_6_1      1
+ x_7_2      1
+ x_8_3      1
 ```
+
+A valid shift assignment was found with workers assigned to shifts (format: x_{worker_id}_{shift_id}). Since this is a CSP (Constraint Satisfaction Problem), there is no objective value—any feasible assignment is equally valid.

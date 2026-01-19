@@ -18,6 +18,8 @@ The maximum flow problem is a fundamental network optimization: given a network 
 
 This template models a simple network where node 1 is the source (origin of flow) and the highest-numbered node is the sink (destination).
 
+This is a fundamental problem with applications in transportation planning, telecommunications, and supply chain logistics.
+
 ## Why is optimization valuable?
 
 - **Capacity analysis**: Determine the maximum throughput of a network given current infrastructure <!-- TODO: Add % improvement from results -->
@@ -31,13 +33,17 @@ This template models a simple network where node 1 is the source (origin of flow
 - **Pipeline capacity**: Determine maximum oil/gas flow through a pipeline network
 - **Supply chain throughput**: Find maximum product flow from suppliers through distribution to customers
 
-## Problem Description
+## Problem Details
 
-A network consists of nodes connected by directed edges with capacity limits. One node is the "source" (where flow originates) and another is the "sink" (where flow terminates). Flow must be conserved at intermediate nodes—what flows in must flow out.
+### Model
 
-The goal is to push as much flow as possible from source to sink without exceeding any edge's capacity.
+**Concepts:**
+- `Node`: Network locations (sources, sinks, transshipment points)
+- `Arc`: Connections between nodes with capacity and cost
+- `Flow`: Decision entity for flow amount on each arc
 
-This is a fundamental problem with applications in transportation planning, telecommunications, and supply chain logistics.
+**Relationships:**
+- `Arc` connects source `Node` → destination `Node`
 
 ### Decision Variables
 
@@ -91,9 +97,18 @@ python network_flow.py
 
 ## Expected Output
 
-<!-- TODO: Run template and paste actual output here -->
 ```
+
 Status: OPTIMAL
-Maximum Flow: X
-...
+Maximum flow: 13
+Edge flows:
+    name  float
+flow_1_2    5.0
+flow_1_3    8.0
+flow_2_4    4.0
+flow_2_5    1.0
+flow_3_5    5.0
+flow_3_6    3.0
+flow_4_6    4.0
+flow_5_6    6.0
 ```

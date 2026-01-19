@@ -4,51 +4,52 @@ from pathlib import Path
 from time import time_ns
 
 from pandas import read_csv
-from relationalai.semantics import Model, data, define, require, sum
+from relationalai.semantics import Model, data, define, require, sum, where
 from relationalai.semantics.reasoners.optimization import Solver, SolverModel
 
 
 def define_model(config=None):
     """Define base model with FulfillmentCenter, Order, and ShippingCost concepts."""
     model = Model(f"order_fulfillment_{time_ns()}", config=config, use_lqp=False)
-    Concept, Property, Relationship = model.Concept, model.Property, model.Relationship
 
+    # Concepts
+    FC = model.Concept("FulfillmentCenter")
+    FC.id = model.Property("{FulfillmentCenter} has {id:int}")
+    FC.name = model.Property("{FulfillmentCenter} has {name:string}")
+    FC.capacity = model.Property("{FulfillmentCenter} has {capacity:int}")
+    FC.fixed_cost = model.Property("{FulfillmentCenter} has {fixed_cost:float}")
+
+    Order = model.Concept("Order")
+    Order.id = model.Property("{Order} has {id:int}")
+    Order.customer = model.Property("{Order} for {customer:string}")
+    Order.quantity = model.Property("{Order} has {quantity:int}")
+    Order.priority = model.Property("{Order} has {priority:int}")
+
+    ShippingCost = model.Concept("ShippingCost")
+    ShippingCost.fc = model.Property("{ShippingCost} from {fc:FulfillmentCenter}")
+    ShippingCost.order = model.Property("{ShippingCost} for {order:Order}")
+    ShippingCost.cost_per_unit = model.Property("{ShippingCost} has {cost_per_unit:float}")
+
+    # Load data
     data_dir = Path(__file__).parent / "data"
 
-    # FulfillmentCenter: warehouses that can fulfill orders
-    FC = Concept("FulfillmentCenter")
-    FC.name = Property("{FulfillmentCenter} has name {name:String}")
-    FC.capacity = Property("{FulfillmentCenter} has capacity {capacity:int}")
-    FC.fixed_cost = Property("{FulfillmentCenter} has fixed_cost {fixed_cost:float}")
     fc_df = read_csv(data_dir / "fulfillment_centers.csv")
-    data(fc_df).into(FC, id="id", properties=["name", "capacity", "fixed_cost"])
+    data(fc_df).into(FC, keys=["id"])
 
-    # Order: customer orders to fulfill
-    Order = Concept("Order")
-    Order.customer = Property("{Order} for customer {customer:String}")
-    Order.quantity = Property("{Order} has quantity {quantity:int}")
-    Order.priority = Property("{Order} has priority {priority:int}")
     orders_df = read_csv(data_dir / "orders.csv")
-    data(orders_df).into(Order, id="id", properties=["customer", "quantity", "priority"])
+    data(orders_df).into(Order, keys=["id"])
 
-    # ShippingCost: cost to ship from FC to order destination
-    ShippingCost = Concept("ShippingCost")
-    ShippingCost.cost_per_unit = Property("{ShippingCost} has cost_per_unit {cost_per_unit:float}")
-    ShippingCost.fc = Relationship("{ShippingCost} from {fc:FulfillmentCenter}")
-    ShippingCost.order = Relationship("{ShippingCost} for {order:Order}")
     costs_df = read_csv(data_dir / "shipping_costs.csv")
-    data(costs_df).into(
-        ShippingCost,
-        keys=["fc_id", "order_id"],
-        properties=["cost_per_unit"],
-        relationships={"fc": ("fc_id", FC), "order": ("order_id", Order)},
+    costs_data = data(costs_df)
+    where(FC.id(costs_data.fc_id), Order.id(costs_data.order_id)).define(
+        ShippingCost.new(fc=FC, order=Order, cost_per_unit=costs_data.cost_per_unit)
     )
 
     # Assignment: decision variable for fulfilling orders from FCs
-    Assignment = Concept("Assignment")
-    Assignment.shipping = Relationship("{Assignment} uses {shipping:ShippingCost}")
-    Assignment.quantity = Property("{Assignment} has quantity {quantity:float}")
-    Assignment.selected = Property("{Assignment} is selected {selected:float}")
+    Assignment = model.Concept("Assignment")
+    Assignment.shipping = model.Property("{Assignment} uses {shipping:ShippingCost}")
+    Assignment.qty = model.Property("{Assignment} has {qty:float}")
+    Assignment.selected = model.Property("{Assignment} is {selected:float}")
     define(Assignment.new(shipping=ShippingCost))
 
     model.FC, model.Order, model.ShippingCost, model.Assignment = FC, Order, ShippingCost, Assignment
@@ -61,25 +62,25 @@ def define_problem(model):
     FC, Order, ShippingCost, Assignment = model.FC, model.Order, model.ShippingCost, model.Assignment
 
     # Decision variable: quantity fulfilled via each assignment
-    s.solve_for(Assignment.quantity, name=[Assignment.shipping.fc, Assignment.shipping.order], lower=0)
+    s.solve_for(Assignment.qty, name=["qty", Assignment.shipping.fc.id, Assignment.shipping.order.id], lower=0)
 
     # Binary variable: whether FC is used for this order
-    s.solve_for(Assignment.selected, type="bin", name=["sel", Assignment.shipping.fc, Assignment.shipping.order])
+    s.solve_for(Assignment.selected, type="bin", name=["sel", Assignment.shipping.fc.id, Assignment.shipping.order.id])
 
     # Constraint: quantity bounded when selected
-    s.satisfy(require(Assignment.quantity <= Assignment.shipping.order.quantity * Assignment.selected))
+    s.satisfy(require(Assignment.qty <= Assignment.shipping.order.quantity * Assignment.selected))
 
     # Constraint: FC capacity - total fulfilled from FC cannot exceed capacity
     Asn = Assignment.ref()
-    fc_usage = sum(Asn.quantity).where(Asn.shipping.fc == FC).per(FC)
+    fc_usage = sum(Asn.qty).where(Asn.shipping.fc == FC).per(FC)
     s.satisfy(require(fc_usage <= FC.capacity))
 
     # Constraint: order fulfillment - each order must be fully fulfilled
-    order_fulfilled = sum(Asn.quantity).where(Asn.shipping.order == Order).per(Order)
+    order_fulfilled = sum(Asn.qty).where(Asn.shipping.order == Order).per(Order)
     s.satisfy(require(order_fulfilled == Order.quantity))
 
     # Objective: minimize total shipping cost
-    total_cost = sum(Assignment.quantity * Assignment.shipping.cost_per_unit)
+    total_cost = sum(Assignment.qty * Assignment.shipping.cost_per_unit)
     s.minimize(total_cost)
 
     return s

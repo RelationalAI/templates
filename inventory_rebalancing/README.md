@@ -31,11 +31,17 @@ The challenge is that simple heuristics ("move from highest inventory to lowest"
 - **Bike-share rebalancing**: Redistribute bikes across stations based on predicted demand
 - **Spare parts positioning**: Allocate service parts across depots to minimize response time
 
-## Problem Description
+## Problem Details
 
-A company has multiple warehouse sites with varying inventory levels, and stores with demand requirements. Inventory can be transferred between sites via lanes that have different costs per unit and capacity limits.
+### Model
 
-The goal is to determine how much inventory to ship on each lane to satisfy all store demand at minimum total transfer cost.
+**Concepts:**
+- `Location`: Warehouses or stores with current inventory
+- `Product`: Items to rebalance
+- `Transfer`: Decision entity for units moved between locations
+
+**Relationships:**
+- `Transfer` connects source `Location` → destination `Location` for each `Product`
 
 ### Decision Variables
 
@@ -106,9 +112,14 @@ python inventory_rebalancing.py
 
 ## Expected Output
 
-<!-- TODO: Run template and paste actual output here -->
 ```
+
 Status: OPTIMAL
-Total Transfer Cost: $X.XX
-...
+Total transfer cost: $1500.00
+Transfers:
+name  float
+   1   50.0
+   3  150.0
+   4   70.0
+   6  100.0
 ```

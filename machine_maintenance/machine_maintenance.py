@@ -4,50 +4,52 @@ from pathlib import Path
 from time import time_ns
 
 from pandas import read_csv
-from relationalai.semantics import Model, data, define, require, sum
+from relationalai.semantics import Model, data, define, require, sum, where
 from relationalai.semantics.reasoners.optimization import Solver, SolverModel
 
 
 def define_model(config=None):
     """Define base model with Machine, TimeSlot, and Conflict concepts."""
     model = Model(f"machine_maintenance_{time_ns()}", config=config, use_lqp=False)
-    Concept, Property, Relationship = model.Concept, model.Property, model.Relationship
 
+    # Concepts
+    Machine = model.Concept("Machine")
+    Machine.id = model.Property("{Machine} has {id:int}")
+    Machine.name = model.Property("{Machine} has {name:string}")
+    Machine.maintenance_hours = model.Property("{Machine} has {maintenance_hours:int}")
+    Machine.failure_cost = model.Property("{Machine} has {failure_cost:float}")
+    Machine.importance = model.Property("{Machine} has {importance:int}")
+
+    TimeSlot = model.Concept("TimeSlot")
+    TimeSlot.id = model.Property("{TimeSlot} has {id:int}")
+    TimeSlot.day = model.Property("{TimeSlot} on {day:string}")
+    TimeSlot.crew_hours = model.Property("{TimeSlot} has {crew_hours:int}")
+    TimeSlot.cost_multiplier = model.Property("{TimeSlot} has {cost_multiplier:float}")
+
+    Conflict = model.Concept("Conflict")
+    Conflict.machine1 = model.Property("{Conflict} between {machine1:Machine}")
+    Conflict.machine2 = model.Property("{Conflict} and {machine2:Machine}")
+
+    # Load data
     data_dir = Path(__file__).parent / "data"
 
-    # Machine: equipment requiring maintenance
-    Machine = Concept("Machine")
-    Machine.name = Property("{Machine} has name {name:String}")
-    Machine.maintenance_hours = Property("{Machine} has maintenance_hours {maintenance_hours:int}")
-    Machine.failure_cost = Property("{Machine} has failure_cost {failure_cost:float}")
-    Machine.importance = Property("{Machine} has importance {importance:int}")
     machines_df = read_csv(data_dir / "machines.csv")
-    data(machines_df).into(Machine, id="id", properties=["name", "maintenance_hours", "failure_cost", "importance"])
+    data(machines_df).into(Machine, keys=["id"])
 
-    # TimeSlot: available maintenance windows
-    TimeSlot = Concept("TimeSlot")
-    TimeSlot.day = Property("{TimeSlot} on day {day:String}")
-    TimeSlot.crew_hours = Property("{TimeSlot} has crew_hours {crew_hours:int}")
-    TimeSlot.cost_multiplier = Property("{TimeSlot} has cost_multiplier {cost_multiplier:float}")
     slots_df = read_csv(data_dir / "time_slots.csv")
-    data(slots_df).into(TimeSlot, id="id", properties=["day", "crew_hours", "cost_multiplier"])
+    data(slots_df).into(TimeSlot, keys=["id"])
 
-    # Conflict: machines that cannot be maintained simultaneously
-    Conflict = Concept("Conflict")
-    Conflict.machine1 = Relationship("{Conflict} between {machine1:Machine}")
-    Conflict.machine2 = Relationship("{Conflict} and {machine2:Machine}")
     conflicts_df = read_csv(data_dir / "conflicts.csv")
-    data(conflicts_df).into(
-        Conflict,
-        keys=["machine1_id", "machine2_id"],
-        relationships={"machine1": ("machine1_id", Machine), "machine2": ("machine2_id", Machine)},
+    conflicts_data = data(conflicts_df)
+    where(Machine.id(conflicts_data.machine1_id), (M2 := Machine.ref()).id(conflicts_data.machine2_id)).define(
+        Conflict.new(machine1=Machine, machine2=M2)
     )
 
     # Schedule: decision variable for machine-to-slot assignment
-    Schedule = Concept("Schedule")
-    Schedule.machine = Relationship("{Schedule} for {machine:Machine}")
-    Schedule.slot = Relationship("{Schedule} in {slot:TimeSlot}")
-    Schedule.assigned = Property("{Schedule} is assigned {assigned:float}")
+    Schedule = model.Concept("Schedule")
+    Schedule.machine = model.Property("{Schedule} for {machine:Machine}")
+    Schedule.slot = model.Property("{Schedule} in {slot:TimeSlot}")
+    Schedule.assigned = model.Property("{Schedule} is {assigned:float}")
     define(Schedule.new(machine=Machine, slot=TimeSlot))
 
     model.Machine, model.TimeSlot, model.Conflict, model.Schedule = Machine, TimeSlot, Conflict, Schedule
@@ -60,7 +62,7 @@ def define_problem(model):
     Machine, TimeSlot, Conflict, Schedule = model.Machine, model.TimeSlot, model.Conflict, model.Schedule
 
     # Decision variable: binary assignment of machines to time slots
-    s.solve_for(Schedule.assigned, type="bin", name=[Schedule.machine, Schedule.slot])
+    s.solve_for(Schedule.assigned, type="bin", name=[Schedule.machine.id, Schedule.slot.id])
 
     # Constraint: each machine scheduled exactly once
     Sch = Schedule.ref()
@@ -83,10 +85,7 @@ def define_problem(model):
     )
 
     # Objective: minimize total maintenance cost (base cost * slot multiplier)
-    # Higher importance machines have higher implicit priority via failure_cost
-    total_cost = sum(
-        Schedule.assigned * Schedule.machine.failure_cost * Schedule.slot.cost_multiplier
-    )
+    total_cost = sum(Schedule.assigned * Schedule.machine.failure_cost * Schedule.slot.cost_multiplier)
     s.minimize(total_cost)
 
     return s

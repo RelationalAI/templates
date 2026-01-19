@@ -14,7 +14,34 @@ RelationalAI provides multiple reasoners, each designed for different analytical
 
 *Italicized reasoners are planned for future templates.*
 
-This collection currently includes **18 Prescriptive Reasoner templates** covering optimization problems across industries.
+---
+
+## Prescriptive Reasoner Templates
+
+The Prescriptive Reasoner solves optimization problems: given constraints and objectives, it finds the best decision. Use it when you need to answer "What should we do?"
+
+| Template | Problem Type | Industry | Method | Complexity |
+|----------|--------------|----------|--------|------------|
+| [ad_spend_allocation](./ad_spend_allocation/) | Allocation | Marketing | MILP | Intermediate |
+| [diet](./diet/) | Allocation | Healthcare / Nutrition | LP | Beginner |
+| [factory_production](./factory_production/) | Allocation | Manufacturing | LP | Beginner |
+| [grid_interconnection](./grid_interconnection/) | Design | Energy | MILP | Intermediate |
+| [hospital_staffing](./hospital_staffing/) | Allocation | Healthcare | MILP | Intermediate |
+| [inventory_rebalancing](./inventory_rebalancing/) | Allocation | Supply Chain | LP | Beginner |
+| [machine_maintenance](./machine_maintenance/) | Scheduling | Manufacturing | MILP | Intermediate |
+| [markdown_optimization](./markdown_optimization/) | Pricing | Retail | MILP | Intermediate |
+| [network_flow](./network_flow/) | Allocation | Logistics | LP | Beginner |
+| [order_fulfillment](./order_fulfillment/) | Allocation | E-commerce | MILP | Beginner |
+| [portfolio_optimization](./portfolio_optimization/) | Allocation | Finance | QP | Intermediate |
+| [production_planning](./production_planning/) | Allocation | Manufacturing | MILP | Beginner |
+| [shift_assignment](./shift_assignment/) | Allocation | Workforce | CSP | Beginner |
+| [supplier_reliability](./supplier_reliability/) | Allocation | Supply Chain | LP | Beginner |
+| [supply_chain_transport](./supply_chain_transport/) | Scheduling | Logistics | MILP | Intermediate |
+| [traveling_salesman](./traveling_salesman/) | Routing | Logistics | MILP | Intermediate |
+| [vehicle_scheduling](./vehicle_scheduling/) | Scheduling | Transportation | MILP | Intermediate |
+| [water_allocation](./water_allocation/) | Design | Utilities | LP | Beginner |
+
+---
 
 ## Prerequisites
 
@@ -39,14 +66,16 @@ rai init
 
 Or configure programmatically by passing a `config` object to the templates.
 
-## Quick Start
+---
+
+## Using Prescriptive Templates
 
 Each template is self-contained in its own folder with:
 - `*.py` - Main Python file with entry point function
 - `data/*.csv` - Sample data files
 - `README.md` - Problem description, business context, and usage
 
-### Prescriptive Reasoner Example
+### Quick Start
 
 ```python
 # Example: Run the diet optimization
@@ -66,11 +95,11 @@ cd diet
 python diet.py
 ```
 
-## Using Snowflake Tables
+### Using Snowflake Tables
 
 The templates use CSV files by default, but can be adapted to use Snowflake tables as input and output.
 
-### Loading Data from Snowflake
+#### Loading Data from Snowflake
 
 Replace CSV loading with Snowflake table access:
 
@@ -86,7 +115,7 @@ from relationalai.semantics import snowflake
 snowflake("DATABASE.SCHEMA.TABLE_NAME").into(Concept, keys=["id"])
 ```
 
-### Exporting Results to Snowflake
+#### Exporting Results to Snowflake
 
 After solving, export the solution back to Snowflake:
 
@@ -101,7 +130,7 @@ solution_df = result['variables']
 snowflake("DATABASE.SCHEMA.RESULTS_TABLE").write(solution_df)
 ```
 
-### Full Snowflake Integration Example
+#### Full Snowflake Integration Example
 
 ```python
 from relationalai.semantics import Model, snowflake
@@ -134,67 +163,6 @@ def solve_with_snowflake(config=None, solver_name="highs"):
 
     return s
 ```
-
----
-
-## Prescriptive Reasoner Templates
-
-The Prescriptive Reasoner solves optimization problems: given constraints and objectives, it finds the best decision. Use it when you need to answer "What should we do?"
-
-### Template Index
-
-#### By Problem Type
-
-##### Allocation
-| Template | Industry | Method | Complexity |
-|----------|----------|--------|------------|
-| [diet](./diet/) | Healthcare / Nutrition | LP | Beginner |
-| [ad_spend_allocation](./ad_spend_allocation/) | Marketing | MILP | Intermediate |
-| [factory_production](./factory_production/) | Manufacturing | LP | Beginner |
-| [hospital_staffing](./hospital_staffing/) | Healthcare | MILP | Intermediate |
-| [inventory_rebalancing](./inventory_rebalancing/) | Supply Chain | LP | Beginner |
-| [network_flow](./network_flow/) | Logistics | LP | Beginner |
-| [order_fulfillment](./order_fulfillment/) | E-commerce | MILP | Beginner |
-| [portfolio_optimization](./portfolio_optimization/) | Finance | QP | Intermediate |
-| [production_planning](./production_planning/) | Manufacturing | MILP | Beginner |
-| [shift_assignment](./shift_assignment/) | Workforce | CSP | Beginner |
-| [supplier_reliability](./supplier_reliability/) | Supply Chain | LP | Beginner |
-
-##### Scheduling
-| Template | Industry | Method | Complexity |
-|----------|----------|--------|------------|
-| [machine_maintenance](./machine_maintenance/) | Manufacturing | MILP | Intermediate |
-| [supply_chain_transport](./supply_chain_transport/) | Logistics | MILP | Intermediate |
-| [vehicle_scheduling](./vehicle_scheduling/) | Transportation | MILP | Intermediate |
-
-##### Routing
-| Template | Industry | Method | Complexity |
-|----------|----------|--------|------------|
-| [traveling_salesman](./traveling_salesman/) | Logistics | MILP | Intermediate |
-
-##### Pricing
-| Template | Industry | Method | Complexity |
-|----------|----------|--------|------------|
-| [markdown_optimization](./markdown_optimization/) | Retail | MILP | Intermediate |
-
-##### Design
-| Template | Industry | Method | Complexity |
-|----------|----------|--------|------------|
-| [grid_interconnection](./grid_interconnection/) | Energy | MILP | Intermediate |
-| [water_allocation](./water_allocation/) | Utilities | LP | Beginner |
-
-#### By Industry
-
-| Industry | Templates |
-|----------|-----------|
-| **Manufacturing** | factory_production, production_planning, machine_maintenance |
-| **Supply Chain / Logistics** | inventory_rebalancing, supplier_reliability, supply_chain_transport, order_fulfillment, network_flow |
-| **Transportation** | traveling_salesman, vehicle_scheduling |
-| **Healthcare** | diet, hospital_staffing |
-| **Finance** | portfolio_optimization |
-| **Retail / Marketing** | markdown_optimization, ad_spend_allocation |
-| **Energy / Utilities** | water_allocation, grid_interconnection |
-| **Workforce** | shift_assignment |
 
 ### Template Structure
 

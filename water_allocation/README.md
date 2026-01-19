@@ -31,11 +31,17 @@ Different sources have different costs (groundwater pumping is typically more ex
 - **District heating**: Allocate heat from plants to buildings through pipe networks
 - **Irrigation canal management**: Distribute water from reservoirs to farms through canal systems
 
-## Problem Description
+## Problem Details
 
-A water utility manages multiple water sources (reservoirs, groundwater) that supply different user groups (municipal, industrial, agricultural). Each source has a capacity limit and cost per unit. Each user has a demand requirement. Connections between sources and users may have flow limits and transmission losses.
+### Model
 
-The goal is to allocate water to satisfy all user demands at minimum total cost.
+**Concepts:**
+- `Source`: Water supply points with capacity and cost per unit
+- `User`: Demand points with required water volume
+- `Connection`: Links sources to users with max flow and loss rate
+
+**Relationships:**
+- `Connection` connects `Source` → `User` with transmission parameters
 
 ### Decision Variables
 
@@ -107,9 +113,16 @@ python water_allocation.py
 
 ## Expected Output
 
-<!-- TODO: Run template and paste actual output here -->
 ```
+
 Status: OPTIMAL
-Total Cost: $X.XX
-...
+Total cost: $874.28
+Flow allocations:
+    name      float
+flow_1_1 317.934783
+flow_1_2 182.065217
+flow_1_3 500.000000
+flow_2_1 316.980805
+flow_2_2 250.000000
+flow_2_3  56.818182
 ```

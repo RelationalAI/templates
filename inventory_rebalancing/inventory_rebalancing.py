@@ -4,54 +4,55 @@ from pathlib import Path
 from time import time_ns
 
 from pandas import read_csv
-from relationalai.semantics import Model, data, define, require, sum
+from relationalai.semantics import Model, data, define, require, sum, where
 from relationalai.semantics.reasoners.optimization import Solver, SolverModel
 
 
 def define_model(config=None):
     """Define base model with Site, Lane, and Demand concepts."""
     model = Model(f"inventory_rebalancing_{time_ns()}", config=config, use_lqp=False)
-    Concept, Property, Relationship = model.Concept, model.Property, model.Relationship
 
+    # Concepts
+    Site = model.Concept("Site")
+    Site.id = model.Property("{Site} has {id:int}")
+    Site.name = model.Property("{Site} has {name:string}")
+    Site.inventory = model.Property("{Site} has {inventory:int}")
+
+    Lane = model.Concept("Lane")
+    Lane.id = model.Property("{Lane} has {id:int}")
+    Lane.source = model.Property("{Lane} from {source:Site}")
+    Lane.dest = model.Property("{Lane} to {dest:Site}")
+    Lane.cost_per_unit = model.Property("{Lane} has {cost_per_unit:float}")
+    Lane.capacity = model.Property("{Lane} has {capacity:int}")
+
+    Demand = model.Concept("Demand")
+    Demand.id = model.Property("{Demand} has {id:int}")
+    Demand.site = model.Property("{Demand} at {site:Site}")
+    Demand.quantity = model.Property("{Demand} has {quantity:int}")
+
+    # Load data
     data_dir = Path(__file__).parent / "data"
 
-    # Site: warehouse/store locations with initial inventory
-    Site = Concept("Site")
-    Site.name = Property("{Site} has name {name:String}")
-    Site.inventory = Property("{Site} has inventory {inventory:int}")
     sites_df = read_csv(data_dir / "sites.csv")
-    data(sites_df).into(Site, id="id", properties=["name", "inventory"])
+    data(sites_df).into(Site, keys=["id"])
 
-    # Lane: transfer routes between sites
-    Lane = Concept("Lane")
-    Lane.cost_per_unit = Property("{Lane} has cost_per_unit {cost_per_unit:float}")
-    Lane.capacity = Property("{Lane} has capacity {capacity:int}")
-    Lane.source = Relationship("{Lane} from {source:Site}")
-    Lane.dest = Relationship("{Lane} to {dest:Site}")
     lanes_df = read_csv(data_dir / "lanes.csv")
-    data(lanes_df).into(
-        Lane,
-        id="id",
-        properties=["cost_per_unit", "capacity"],
-        relationships={"source": ("source_id", Site), "dest": ("dest_id", Site)},
+    lanes_data = data(lanes_df)
+    where(Site.id(lanes_data.source_id), (Dest := Site.ref()).id(lanes_data.dest_id)).define(
+        Lane.new(id=lanes_data.id, source=Site, dest=Dest,
+                 cost_per_unit=lanes_data.cost_per_unit, capacity=lanes_data.capacity)
     )
 
-    # Demand: required quantity at destination sites
-    Demand = Concept("Demand")
-    Demand.quantity = Property("{Demand} has quantity {quantity:int}")
-    Demand.site = Relationship("{Demand} at {site:Site}")
     demand_df = read_csv(data_dir / "demand.csv")
-    data(demand_df).into(
-        Demand,
-        id="id",
-        properties=["quantity"],
-        relationships={"site": ("site_id", Site)},
+    demand_data = data(demand_df)
+    where(Site.id(demand_data.site_id)).define(
+        Demand.new(id=demand_data.id, site=Site, quantity=demand_data.quantity)
     )
 
     # Transfer: decision variable for transfer quantity on each lane
-    Transfer = Concept("Transfer")
-    Transfer.lane = Relationship("{Transfer} uses {lane:Lane}")
-    Transfer.quantity = Property("{Transfer} has quantity {quantity:float}")
+    Transfer = model.Concept("Transfer")
+    Transfer.lane = model.Property("{Transfer} uses {lane:Lane}")
+    Transfer.quantity = model.Property("{Transfer} has {quantity:float}")
     define(Transfer.new(lane=Lane))
 
     model.Site, model.Lane, model.Demand, model.Transfer = Site, Lane, Demand, Transfer
@@ -64,7 +65,7 @@ def define_problem(model):
     Site, Lane, Demand, Transfer = model.Site, model.Lane, model.Demand, model.Transfer
 
     # Decision variable: quantity to transfer on each lane
-    s.solve_for(Transfer.quantity, name=Transfer.lane, lower=0)
+    s.solve_for(Transfer.quantity, name=Transfer.lane.id, lower=0)
 
     # Constraint: transfer cannot exceed lane capacity
     s.satisfy(require(Transfer.quantity <= Transfer.lane.capacity))

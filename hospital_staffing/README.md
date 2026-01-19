@@ -29,11 +29,19 @@ Hospitals must schedule nurses across shifts while ensuring patient safety, meet
 - **Security guard rostering**: Cover facilities 24/7 with appropriate skill mix
 - **Airline crew scheduling**: Assign pilots and flight attendants to flights respecting regulations
 
-## Problem Description
+## Problem Details
 
-A hospital needs to staff three shifts (Morning, Afternoon, Night) with nurses who have different skill levels and hourly rates. Each shift has minimum staffing requirements and needs at least one nurse with sufficient skill. Nurses have varying availability and can only work one shift per day.
+### Model
 
-The goal is to find the lowest-cost assignment that meets all coverage and skill requirements.
+**Concepts:**
+- `Nurse`: Staff members with skill level and hourly cost
+- `Shift`: Time periods with coverage and skill requirements
+- `Availability`: Links nurses to shifts they can work
+- `Assignment`: Decision entity for nurse-shift scheduling
+
+**Relationships:**
+- `Availability` connects `Nurse` → `Shift` indicating eligibility
+- `Assignment` references `Availability` for valid assignments
 
 ### Decision Variables
 
@@ -107,9 +115,16 @@ python hospital_staffing.py
 
 ## Expected Output
 
-<!-- TODO: Run template and paste actual output here -->
 ```
+
 Status: OPTIMAL
-Total Staffing Cost: $X.XX
-...
+Total staffing cost: $1792.00
+Staff assignments:
+ name  float
+x_1_1    1.0
+x_2_3    1.0
+x_3_2    1.0
+x_4_2    1.0
+x_5_1    1.0
+x_6_3    1.0
 ```

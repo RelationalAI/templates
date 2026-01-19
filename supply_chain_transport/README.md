@@ -31,11 +31,20 @@ The challenge is that faster modes cost more, but some customers have tight dead
 - **Intermodal routing**: Choose truck-rail-truck combinations for long-haul freight
 - **Last-mile delivery**: Select delivery method (courier, locker, store pickup) based on cost and customer preference
 
-## Problem Description
+## Problem Details
 
-A company needs to ship products from warehouses to customers. Multiple transport modes are available (truck, rail, air), each with different costs, transit times, and capacities. Customers have demand requirements and delivery deadlines.
+### Model
 
-The goal is to determine how much to ship via each warehouse-customer-mode combination to minimize total transport cost while meeting all demand and delivery time constraints.
+**Concepts:**
+- `Warehouse`: Storage locations with inventory levels
+- `Customer`: Demand points with required quantities and due dates
+- `TransportMode`: Shipping options with cost, capacity, and transit time
+- `Route`: Links warehouses to customers with distance
+- `Shipment`: Decision entity for quantity shipped per route-mode
+
+**Relationships:**
+- `Route` connects `Warehouse` → `Customer`
+- `Shipment` combines `Route` × `TransportMode`
 
 ### Decision Variables
 
@@ -118,9 +127,18 @@ python supply_chain_transport.py
 
 ## Expected Output
 
-<!-- TODO: Run template and paste actual output here -->
 ```
+
 Status: OPTIMAL
-Total Transport Cost: $X.XX
-...
+Total transport cost: $1560.00
+Shipments:
+   name  float
+qty_2_2  150.0
+qty_4_2  180.0
+qty_7_2  250.0
+qty_9_2  200.0
+sel_2_2    1.0
+sel_4_2    1.0
+sel_7_2    1.0
+sel_9_2    1.0
 ```
