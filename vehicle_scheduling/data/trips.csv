@@ -1,0 +1,7 @@
+id,name,origin,destination,distance,load,start_time,end_time
+1,Trip_A,Depot,Site_1,20,50,8,10
+2,Trip_B,Depot,Site_2,35,80,9,12
+3,Trip_C,Depot,Site_3,15,40,10,11
+4,Trip_D,Site_1,Site_2,25,60,11,14
+5,Trip_E,Site_2,Depot,35,0,14,16
+6,Trip_F,Site_3,Depot,15,0,12,13

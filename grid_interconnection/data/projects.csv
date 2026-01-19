@@ -1,0 +1,8 @@
+id,name,substation_id,capacity_needed,annual_revenue,connection_cost
+1,Solar_Farm_A,1,50,200000,150000
+2,Wind_Farm_B,1,80,350000,250000
+3,Solar_Farm_C,2,40,150000,100000
+4,Wind_Farm_D,3,100,400000,300000
+5,Battery_E,3,30,120000,80000
+6,Solar_Farm_F,4,60,220000,180000
+7,Wind_Farm_G,4,70,280000,200000

@@ -1,0 +1,116 @@
+# Supplier Reliability
+
+Select suppliers to meet product demand while balancing cost and reliability.
+
+## Classification
+
+| Dimension | Value |
+|-----------|-------|
+| **Reasoner** | Prescriptive |
+| **Problem Type** | Allocation |
+| **Industry** | Supply Chain / Procurement |
+| **Method** | LP (Linear Programming) |
+| **Complexity** | Beginner |
+
+## What is this problem?
+
+Procurement teams must balance cost against supply chain risk. Cheaper suppliers may have reliability issues (delays, quality problems, disruptions), while more reliable suppliers charge premium prices. This template models sourcing products from multiple suppliers with different reliability scores and costs.
+
+The reliability_weight parameter lets you tune the trade-off: set it to 0 for pure cost minimization, or increase it to penalize unreliable suppliers.
+
+## Why is optimization valuable?
+
+- **Risk-aware sourcing**: Quantify the cost of reliability and make informed trade-offs <!-- TODO: Add % improvement from results -->
+- **Disruption resilience**: Diversify supplier base to reduce exposure to single points of failure
+- **Scenario analysis**: Evaluate impact of supplier issues before they happen, enabling proactive contingency planning
+
+## What are similar problems?
+
+- **Cloud provider selection**: Choose between AWS, Azure, GCP balancing cost, reliability, and vendor lock-in
+- **Contract manufacturing allocation**: Distribute production across contract manufacturers with different quality levels
+- **Logistics carrier selection**: Choose freight carriers balancing cost and on-time delivery rates
+- **IT vendor selection**: Source software/services balancing cost, support quality, and vendor stability
+
+## Problem Description
+
+A company needs to source products from multiple suppliers. Each supplier has a reliability score (probability of on-time delivery), capacity limits, and different costs. Some suppliers are cheaper but less reliable.
+
+The goal is to determine order quantities from each supplier to meet demand at minimum cost, with an optional penalty for using unreliable suppliers.
+
+### Decision Variables
+
+- `Order.quantity` (continuous): Units to order via each supply option
+
+### Objective
+
+Minimize total procurement cost (with optional reliability penalty):
+```
+minimize sum(quantity * cost_per_unit) + weight * sum(quantity * (1 - reliability))
+```
+
+### Constraints
+
+1. **Supplier capacity**: Total orders from each supplier cannot exceed capacity
+2. **Demand satisfaction**: Total supply for each product must meet demand
+
+## Data
+
+Data files are located in the `data/` subdirectory.
+
+### suppliers.csv
+
+| Column | Description |
+|--------|-------------|
+| id | Unique supplier identifier |
+| name | Supplier name |
+| reliability | On-time delivery probability (0.0 to 1.0) |
+| capacity | Maximum units supplier can provide |
+
+### products.csv
+
+| Column | Description |
+|--------|-------------|
+| id | Unique product identifier |
+| name | Product name |
+| demand | Units required |
+
+### supply_options.csv
+
+| Column | Description |
+|--------|-------------|
+| id | Unique option identifier |
+| supplier_id | Reference to supplier |
+| product_id | Reference to product |
+| cost_per_unit | Cost per unit from this supplier ($) |
+
+## Usage
+
+```python
+from supplier_reliability import solve, extract_solution
+
+# Pure cost minimization
+solver_model = solve(reliability_weight=0.0)
+result = extract_solution(solver_model)
+
+# With reliability preference (penalize unreliable suppliers)
+solver_model = solve(reliability_weight=50.0)
+result = extract_solution(solver_model)
+
+print(f"Status: {result['status']}")
+print(f"Total cost: ${result['objective']:.2f}")
+```
+
+Or run directly:
+
+```bash
+python supplier_reliability.py
+```
+
+## Expected Output
+
+<!-- TODO: Run template and paste actual output here -->
+```
+Status: OPTIMAL
+Total Cost: $X.XX
+...
+```

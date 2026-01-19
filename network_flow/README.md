@@ -1,0 +1,99 @@
+# Network Flow
+
+Find the maximum flow through a network from source to sink.
+
+## Classification
+
+| Dimension | Value |
+|-----------|-------|
+| **Reasoner** | Prescriptive |
+| **Problem Type** | Allocation |
+| **Industry** | Logistics / Transportation |
+| **Method** | LP (Linear Programming) |
+| **Complexity** | Beginner |
+
+## What is this problem?
+
+The maximum flow problem is a fundamental network optimization: given a network of nodes and edges with capacity limits, find the maximum amount of "flow" that can be pushed from a source node to a sink node. Flow must be conserved at intermediate nodes—what flows in must flow out.
+
+This template models a simple network where node 1 is the source (origin of flow) and the highest-numbered node is the sink (destination).
+
+## Why is optimization valuable?
+
+- **Capacity analysis**: Determine the maximum throughput of a network given current infrastructure <!-- TODO: Add % improvement from results -->
+- **Bottleneck identification**: Find which edges limit overall flow (the "min-cut"), enabling targeted infrastructure investment
+- **What-if scenarios**: Quantify the impact of adding capacity to specific edges before committing to expensive upgrades
+
+## What are similar problems?
+
+- **Highway traffic flow**: Determine maximum vehicle throughput from suburbs to downtown
+- **Data center bandwidth**: Find maximum data transfer rate between servers through network switches
+- **Pipeline capacity**: Determine maximum oil/gas flow through a pipeline network
+- **Supply chain throughput**: Find maximum product flow from suppliers through distribution to customers
+
+## Problem Description
+
+A network consists of nodes connected by directed edges with capacity limits. One node is the "source" (where flow originates) and another is the "sink" (where flow terminates). Flow must be conserved at intermediate nodes—what flows in must flow out.
+
+The goal is to push as much flow as possible from source to sink without exceeding any edge's capacity.
+
+This is a fundamental problem with applications in transportation planning, telecommunications, and supply chain logistics.
+
+### Decision Variables
+
+- `Edge.flow` (continuous): Flow on each edge
+
+### Objective
+
+Maximize total flow reaching the sink:
+```
+maximize sum(flow into sink)
+```
+
+### Constraints
+
+1. **Capacity**: Flow on each edge cannot exceed edge capacity
+2. **Conservation**: At each intermediate node, inflow equals outflow
+
+## Data
+
+Data files are located in the `data/` subdirectory.
+
+### edges.csv
+
+| Column | Description |
+|--------|-------------|
+| i | Source node of the edge |
+| j | Target node of the edge |
+| cap | Maximum flow capacity of this edge |
+
+Node 1 is the source, and the highest-numbered node is the sink.
+
+## Usage
+
+```python
+from network_flow import solve, extract_solution
+
+# Run optimization
+solver_model = solve()
+result = extract_solution(solver_model)
+
+print(f"Status: {result['status']}")
+print(f"Maximum flow: {result['objective']:.0f}")
+print(result['variables'])
+```
+
+Or run directly:
+
+```bash
+python network_flow.py
+```
+
+## Expected Output
+
+<!-- TODO: Run template and paste actual output here -->
+```
+Status: OPTIMAL
+Maximum Flow: X
+...
+```

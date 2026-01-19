@@ -1,0 +1,107 @@
+# Shift Assignment
+
+Assign workers to shifts respecting availability and capacity constraints.
+
+## Classification
+
+| Dimension | Value |
+|-----------|-------|
+| **Reasoner** | Prescriptive |
+| **Problem Type** | Allocation |
+| **Industry** | Workforce Management |
+| **Method** | CSP (Constraint Satisfaction Problem) |
+| **Complexity** | Beginner |
+
+## What is this problem?
+
+Businesses need to staff shifts with available workers, but workers have different availabilities and each shift has minimum coverage requirements. This template is a Constraint Satisfaction Problem (CSP)—unlike optimization problems, the goal is to find any valid schedule that satisfies all constraints, not necessarily the "best" one.
+
+CSP is useful when multiple valid solutions exist and any is acceptable, or when you need to determine feasibility before optimizing.
+
+## Why is constraint satisfaction valuable?
+
+- **Feasibility checking**: Quickly determine if staffing requirements can be met with available workers
+- **Alternative generation**: Find multiple valid schedules to offer employees choice
+- **Constraint debugging**: When infeasible, identify which constraints are causing the problem
+
+## What are similar problems?
+
+- **Exam scheduling**: Assign exams to time slots avoiding student conflicts
+- **Conference room booking**: Schedule meetings into rooms respecting capacity and equipment needs
+- **Sports league scheduling**: Create game schedules avoiding conflicts and ensuring fairness
+- **Course timetabling**: Assign classes to rooms and time slots respecting instructor and student constraints
+
+## Problem Description
+
+A business needs to staff multiple shifts with available workers. Each shift has a capacity (maximum number of workers). Workers have different availabilities—some can only work certain shifts. Each worker can be assigned to at most one shift.
+
+The goal is to find a feasible assignment where all constraints are satisfied. This is a "satisfaction" problem rather than an "optimization" problem—we're looking for any valid solution, not necessarily the best one.
+
+### Decision Variables
+
+- `Assignment.assigned` (binary): 1 if worker is assigned to shift, 0 otherwise
+
+### Constraints
+
+1. **Availability**: Workers can only be assigned to shifts they're available for
+2. **Shift capacity**: Number of workers per shift cannot exceed capacity
+3. **Single assignment**: Each worker is assigned to at most one shift
+
+### Goal
+
+Find any feasible assignment satisfying all constraints (no optimization objective—this is a satisfaction problem).
+
+## Data
+
+Data files are located in the `data/` subdirectory.
+
+### workers.csv
+
+| Column | Description |
+|--------|-------------|
+| id | Unique worker identifier |
+| name | Worker name |
+
+### shifts.csv
+
+| Column | Description |
+|--------|-------------|
+| id | Unique shift identifier |
+| name | Shift name (e.g., Morning, Afternoon, Night) |
+| capacity | Maximum number of workers for this shift |
+
+### availability.csv
+
+| Column | Description |
+|--------|-------------|
+| worker_id | Reference to worker |
+| shift_id | Reference to shift |
+
+Each row indicates that the worker is available for that shift.
+
+## Usage
+
+```python
+from shift_assignment import solve, extract_solution
+
+# Run optimization
+solver_model = solve()
+result = extract_solution(solver_model)
+
+print(f"Status: {result['status']}")
+print(result['variables'])
+```
+
+Or run directly:
+
+```bash
+python shift_assignment.py
+```
+
+## Expected Output
+
+<!-- TODO: Run template and paste actual output here -->
+```
+Status: OPTIMAL
+...
+```
