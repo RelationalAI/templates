@@ -47,7 +47,8 @@ The Prescriptive Reasoner solves optimization problems: given constraints and ob
 
 ### Python Environment
 
-- Python 3.9+
+- Python 3.10+
+- RelationalAI v0.13+
 - pandas
 
 ### RelationalAI SDK
