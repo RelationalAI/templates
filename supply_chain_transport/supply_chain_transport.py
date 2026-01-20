@@ -79,10 +79,10 @@ def define_problem(model):
     )
 
     # Decision variable: quantity to ship via each route/mode combination
-    s.solve_for(Shipment.quantity, name=["qty", Shipment.route.id, Shipment.mode.id], lower=0)
+    s.solve_for(Shipment.quantity, name=["qty", Shipment.route.warehouse.name, Shipment.route.customer.name, Shipment.mode.name], lower=0)
 
     # Binary variable: whether shipment is used
-    s.solve_for(Shipment.selected, type="bin", name=["sel", Shipment.route.id, Shipment.mode.id])
+    s.solve_for(Shipment.selected, type="bin", name=["sel", Shipment.route.warehouse.name, Shipment.route.customer.name, Shipment.mode.name])
 
     # Constraint: shipment quantity bounded by mode capacity when selected
     s.satisfy(require(Shipment.quantity <= Shipment.mode.capacity * Shipment.selected))

@@ -117,10 +117,12 @@ python production_planning.py
 Status: OPTIMAL
 Total profit: $14945.00
 Production schedule:
-   name  float
-qty_1_1    4.0
-qty_1_3   95.0
-qty_2_2   70.0
-qty_3_1   96.0
-qty_3_2   11.0
+                  name  float
+qty_Machine_1_Widget_A    4.0
+qty_Machine_1_Widget_C   95.0
+qty_Machine_2_Widget_B   70.0
+qty_Machine_3_Widget_A   96.0
+qty_Machine_3_Widget_B   11.0
 ```
+
+The schedule shows which machines produce which products and in what quantities.

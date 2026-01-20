@@ -65,7 +65,7 @@ def define_problem(model):
     # Variable: flow >= 0
     s.solve_for(
         Connection.flow,
-        name=["flow", Connection.source.id, Connection.user.id],
+        name=["flow", Connection.source.name, Connection.user.name],
         lower=0,
         upper=Connection.max_flow
     )

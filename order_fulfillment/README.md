@@ -14,16 +14,14 @@ Assign customer orders to fulfillment centers to minimize total shipping cost.
 
 ## What is this problem?
 
-E-commerce companies must decide which warehouse should fulfill each order. This template models assigning orders to fulfillment centers where each FC has a capacity limit and shipping costs vary by FC-customer pair.
+E-commerce companies must decide which warehouse should fulfill each order. This template models assigning orders to fulfillment centers where each FC has a capacity limit, a fixed operating cost when used, and variable shipping costs by FC-customer pair.
 
 Simple rules like "ship from nearest warehouse" often fail because the nearest FC may not have inventory, shipping costs aren't always proportional to distance (carrier contracts vary), and capacity constraints create bottlenecks.
 
-An e-commerce company has multiple fulfillment centers (FCs) across regions. Customer orders arrive and must be assigned to FCs for fulfillment. Each FC has a capacity limit and each FC-customer pair has a different shipping cost.
-
 ## Why is optimization valuable?
 
-- **Shipping cost reduction**: Achieves lower outbound shipping costs through optimal sourcing decisions <!-- TODO: Add % improvement from results -->
-- **Delivery speed**: Improved on-time delivery by selecting FCs that can actually fulfill orders quickly
+- **Shipping cost reduction**: Achieves lower outbound shipping costs through optimal sourcing decisions
+- **FC utilization**: Balances fixed costs of using FCs against shipping savings
 - **Capacity balancing**: Distributes workload across fulfillment centers to prevent bottlenecks
 
 ## What are similar problems?
@@ -38,29 +36,31 @@ An e-commerce company has multiple fulfillment centers (FCs) across regions. Cus
 ### Model
 
 **Concepts:**
-- `Warehouse`: Fulfillment centers with inventory and shipping costs
-- `Order`: Customer orders with quantity and destination
-- `Fulfillment`: Decision entity for order-warehouse assignment
+- `FulfillmentCenter`: Warehouses with capacity and fixed operating costs
+- `Order`: Customer orders with quantity requirements
+- `Assignment`: Decision entity for order-FC shipping assignment
+- `FCUsage`: Tracks whether each FC is activated (for fixed costs)
 
 **Relationships:**
-- `Fulfillment` connects `Warehouse` → `Order` with shipping cost
+- `Assignment` connects `FulfillmentCenter` → `Order` with shipping cost
 
 ### Decision Variables
 
-- `Assignment.quantity` (continuous): Units to ship from each FC to each order
-- `Assignment.selected` (binary): 1 if FC-order assignment is used, 0 otherwise
+- `Assignment.qty` (continuous): Units to ship from each FC to each order
+- `FCUsage.used` (binary): 1 if FC is used at all, 0 otherwise
 
 ### Objective
 
-Minimize total shipping cost:
+Minimize total cost (shipping + fixed):
 ```
-minimize sum(quantity * cost_per_unit)
+minimize sum(quantity * cost_per_unit) + sum(fc_used * fixed_cost)
 ```
 
 ### Constraints
 
 1. **Order fulfillment**: Each order must be completely fulfilled (total quantity assigned equals order quantity)
 2. **FC capacity**: Total quantity assigned from each FC cannot exceed its capacity
+3. **FC usage linking**: If any quantity is shipped from an FC, that FC is marked as used
 
 ## Data
 
@@ -73,7 +73,7 @@ Data files are located in the `data/` subdirectory.
 | id | Unique fulfillment center identifier |
 | name | FC name (e.g., FC_East) |
 | capacity | Maximum units FC can fulfill |
-| fixed_cost | Fixed operating cost ($) |
+| fixed_cost | Fixed operating cost if FC is used ($) |
 
 ### orders.csv
 
@@ -115,42 +115,22 @@ python order_fulfillment.py
 ## Expected Output
 
 ```
-
 Status: OPTIMAL
-Total shipping cost: $490.00
+Total cost (shipping + fixed): $1475.00
+
 Assignments:
-   name  float
-qty_1_1   25.0
-qty_1_3   15.0
-qty_2_2   15.0
-qty_2_4   40.0
-qty_2_6   35.0
-qty_2_8   30.0
-qty_3_2   15.0
-qty_3_5   20.0
-qty_3_7   25.0
-sel_1_1    1.0
-sel_1_2    1.0
-sel_1_3    1.0
-sel_1_4    1.0
-sel_1_5    1.0
-sel_1_6    1.0
-sel_1_7    1.0
-sel_1_8    1.0
-sel_2_1    1.0
-sel_2_2    1.0
-sel_2_3    1.0
-sel_2_4    1.0
-sel_2_5    1.0
-sel_2_6    1.0
-sel_2_7    1.0
-sel_2_8    1.0
-sel_3_1    1.0
-sel_3_2    1.0
-sel_3_3    1.0
-sel_3_4    1.0
-sel_3_5    1.0
-sel_3_6    1.0
-sel_3_7    1.0
-sel_3_8    1.0
+              name  float
+   fc_used_FC_East    1.0
+   fc_used_FC_West    1.0
+qty_FC_East_Cust_A   25.0
+qty_FC_East_Cust_B   15.0
+qty_FC_East_Cust_C   15.0
+qty_FC_East_Cust_E   20.0
+qty_FC_East_Cust_G   25.0
+qty_FC_West_Cust_B   15.0
+qty_FC_West_Cust_D   40.0
+qty_FC_West_Cust_F   35.0
+qty_FC_West_Cust_H   30.0
 ```
+
+The solution shows which FCs are activated and how orders are assigned to minimize total shipping cost. Both FCs are used to balance shipping distances across customers.

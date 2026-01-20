@@ -62,7 +62,7 @@ def define_problem(model):
     Machine, TimeSlot, Conflict, Schedule = model.Machine, model.TimeSlot, model.Conflict, model.Schedule
 
     # Decision variable: binary assignment of machines to time slots
-    s.solve_for(Schedule.assigned, type="bin", name=[Schedule.machine.id, Schedule.slot.id])
+    s.solve_for(Schedule.assigned, type="bin", name=["x", Schedule.machine.name, Schedule.slot.day])
 
     # Constraint: each machine scheduled exactly once
     Sch = Schedule.ref()

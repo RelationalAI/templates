@@ -120,11 +120,16 @@ python hospital_staffing.py
 Status: OPTIMAL
 Total staffing cost: $1792.00
 Staff assignments:
- name  float
-x_1_1    1.0
-x_2_3    1.0
-x_3_2    1.0
-x_4_2    1.0
-x_5_1    1.0
-x_6_3    1.0
+               name  float
+  x_Nurse_A_Morning    1.0
+    x_Nurse_B_Night    1.0
+x_Nurse_C_Afternoon    1.0
+x_Nurse_D_Afternoon    1.0
+  x_Nurse_E_Morning    1.0
+    x_Nurse_F_Night    1.0
 ```
+
+The optimal schedule assigns all 6 nurses across the 3 shifts:
+- **Morning**: Nurse_A (skill 3) + Nurse_E (skill 2) - meets min_skill=2
+- **Afternoon**: Nurse_C (skill 3) + Nurse_D (skill 1) - meets min_skill=1
+- **Night**: Nurse_B (skill 2) + Nurse_F (skill 1) - meets min_skill=2

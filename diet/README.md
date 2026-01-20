@@ -20,7 +20,7 @@ The classic "diet problem" was one of the first practical applications of linear
 
 ## Why is optimization valuable?
 
-- **Cost reduction**: Finds the cheapest food combination that meets all nutrition targets—manual planning often overspends or misses requirements <!-- TODO: Add % improvement from results -->
+- **Cost reduction**: Finds the cheapest food combination that meets all nutrition targets—manual planning often overspends or misses requirements
 - **Compliance guarantee**: Mathematically ensures dietary guidelines are satisfied, eliminating guesswork and audit risk
 - **Scalability**: Same approach works whether planning for 10 foods or 10,000 menu items across multiple facilities
 
@@ -45,7 +45,7 @@ The classic "diet problem" was one of the first practical applications of linear
 
 ### Decision Variables
 
-- `Food.amount` (continuous): Amount of each food to purchase
+- `Food.amount` (continuous): Servings of each food to include
 
 ### Objective
 
@@ -56,10 +56,8 @@ minimize sum(Food.cost * Food.amount)
 
 ### Constraints
 
-For each nutrient, the total intake must be within bounds:
-```
-Nutrient.min <= sum(Food.contains.qty * Food.amount) <= Nutrient.max
-```
+1. **Nutrient bounds**: Total intake must be within min/max for each nutrient
+2. **Non-negative**: Food amounts must be >= 0
 
 ## Data
 
@@ -111,16 +109,16 @@ Status: OPTIMAL
 Minimum cost: $11.83
 
 Food amounts:
-      name     float
-  hamburger  0.000000
-    chicken  0.000000
-     hotdog  0.000000
-      fries  0.000000
-   macaroni  0.000000
-      pizza  0.000000
-      salad  0.604514
-       milk 10.869565
-   icecream  2.817536
+     name     float
+  chicken  0.000000
+    fries  0.000000
+hamburger  0.604514
+   hotdog  0.000000
+ icecream  2.591319
+ macaroni  0.000000
+     milk  6.970139
+    pizza  0.000000
+    salad  0.000000
 ```
 
-The optimal diet consists primarily of milk, supplemented with salad and ice cream, for a total cost of $11.83 per day.
+The optimal diet minimizes cost while satisfying all nutritional constraints. Note that hotdog (1800mg sodium) is excluded because it exceeds the daily sodium limit (1779mg) in a single serving. The solution demonstrates how tight nutritional bounds naturally guide the optimizer toward feasible food combinations.

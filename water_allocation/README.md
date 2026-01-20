@@ -118,11 +118,13 @@ python water_allocation.py
 Status: OPTIMAL
 Total cost: $874.28
 Flow allocations:
-    name      float
-flow_1_1 317.934783
-flow_1_2 182.065217
-flow_1_3 500.000000
-flow_2_1 316.980805
-flow_2_2 250.000000
-flow_2_3  56.818182
+                         name      float
+flow_Reservoir_A_Agricultural 500.000000
+  flow_Reservoir_A_Industrial 182.065217
+   flow_Reservoir_A_Municipal 317.934783
+flow_Reservoir_B_Agricultural  56.818182
+  flow_Reservoir_B_Industrial 250.000000
+   flow_Reservoir_B_Municipal 316.980805
 ```
+
+The allocation shows water flowing from each reservoir to each user type, meeting all demands while respecting source capacities.

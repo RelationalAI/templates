@@ -120,9 +120,13 @@ python supplier_reliability.py
 Status: OPTIMAL
 Total cost: $4850.00
 Order quantities:
-name  float
-   4  150.0
-   6  300.0
-   7  100.0
-   8  200.0
+                   name  float
+   qty_SupplierB_Gadget  150.0
+qty_SupplierC_Component  200.0
+   qty_SupplierC_Gadget  100.0
+   qty_SupplierC_Widget  300.0
 ```
+
+The cost-minimizing solution sources from the cheapest suppliers:
+- **SupplierC** (lowest cost, 75% reliability): Widget (300), Gadget (100), Component (200)
+- **SupplierB** (mid cost, 85% reliability): Gadget (150)

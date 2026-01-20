@@ -61,7 +61,7 @@ def define_problem(model, min_coverage=2, max_shifts_per_worker=1):
     # Decision variable: binary assignment
     s.solve_for(
         Assignment.assigned,
-        name=["x", Assignment.worker.id, Assignment.shift.id],
+        name=["x", Assignment.worker.name, Assignment.shift.name],
         type="int"
     )
 

@@ -20,7 +20,7 @@ The challenge is that faster modes cost more, but some customers have tight dead
 
 ## Why is optimization valuable?
 
-- **Freight cost reduction**: Achieves savings through optimal mode selection and consolidation <!-- TODO: Add % improvement from results -->
+- **Freight cost reduction**: Achieves savings through optimal mode selection and consolidation
 - **Service compliance**: Meet delivery windows at minimum cost by using expensive fast modes only when necessary
 - **Network visibility**: Understand total landed cost across all shipment options
 
@@ -128,17 +128,18 @@ python supply_chain_transport.py
 ## Expected Output
 
 ```
-
 Status: OPTIMAL
-Total transport cost: $1560.00
+Total transport cost: $2100.00
+
 Shipments:
-   name  float
-qty_2_2  150.0
-qty_4_2  180.0
-qty_7_2  250.0
-qty_9_2  200.0
-sel_2_2    1.0
-sel_4_2    1.0
-sel_7_2    1.0
-sel_9_2    1.0
+                                  name  float
+qty_Warehouse_Central_Customer_A_Truck   80.0
+qty_Warehouse_Central_Customer_B_Truck  120.0
+    qty_Warehouse_East_Customer_D_Rail  300.0
+    qty_Warehouse_West_Customer_C_Rail  250.0
 ```
+
+The optimal solution demonstrates multi-modal transport selection:
+- **Urgent customers** (A, B with due days 1-2) ship from Warehouse_Central via **Truck** (1-day transit)
+- **Regular customers** (C, D with due days 4-5) use **Rail** (3-day transit) for cost savings
+- Variable names now show the full route: warehouse → customer → mode

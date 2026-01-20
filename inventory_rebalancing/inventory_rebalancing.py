@@ -65,7 +65,7 @@ def define_problem(model):
     Site, Lane, Demand, Transfer = model.Site, model.Lane, model.Demand, model.Transfer
 
     # Decision variable: quantity to transfer on each lane
-    s.solve_for(Transfer.quantity, name=Transfer.lane.id, lower=0)
+    s.solve_for(Transfer.quantity, name=["qty", Transfer.lane.source.name, Transfer.lane.dest.name], lower=0)
 
     # Constraint: transfer cannot exceed lane capacity
     s.satisfy(require(Transfer.quantity <= Transfer.lane.capacity))

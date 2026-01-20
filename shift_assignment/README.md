@@ -110,16 +110,20 @@ python shift_assignment.py
 Status: OPTIMAL
 
 Assignments:
-  name int128
-x_10_2      1
- x_1_1      1
- x_2_3      1
- x_3_2      1
- x_4_3      1
- x_5_2      1
- x_6_1      1
- x_7_2      1
- x_8_3      1
+              name int128
+   x_Alice_Morning      1
+       x_Bob_Night      1
+x_Carlos_Afternoon      1
+     x_Diana_Night      1
+ x_Ethan_Afternoon      1
+   x_Frank_Morning      1
+ x_Grace_Afternoon      1
+     x_Henry_Night      1
+ x_Irene_Afternoon      1
+  x_Jack_Afternoon      1
 ```
 
-A valid shift assignment was found with workers assigned to shifts (format: x_{worker_id}_{shift_id}). Since this is a CSP (Constraint Satisfaction Problem), there is no objective value—any feasible assignment is equally valid.
+A valid shift assignment was found. Since this is a CSP (Constraint Satisfaction Problem), there is no objective value—any feasible assignment is equally valid. The solution shows:
+- **Morning**: Alice, Frank (2 workers)
+- **Afternoon**: Carlos, Ethan, Grace, Irene, Jack (5 workers)
+- **Night**: Bob, Diana, Henry (3 workers)

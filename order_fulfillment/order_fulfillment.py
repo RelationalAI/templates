@@ -49,38 +49,47 @@ def define_model(config=None):
     Assignment = model.Concept("Assignment")
     Assignment.shipping = model.Property("{Assignment} uses {shipping:ShippingCost}")
     Assignment.qty = model.Property("{Assignment} has {qty:float}")
-    Assignment.selected = model.Property("{Assignment} is {selected:float}")
     define(Assignment.new(shipping=ShippingCost))
 
-    model.FC, model.Order, model.ShippingCost, model.Assignment = FC, Order, ShippingCost, Assignment
+    # FCUsage: track whether each FC is used (for fixed costs)
+    FCUsage = model.Concept("FCUsage")
+    FCUsage.fc = model.Property("{FCUsage} for {fc:FulfillmentCenter}")
+    FCUsage.used = model.Property("{FCUsage} is {used:float}")
+    define(FCUsage.new(fc=FC))
+
+    model.FC, model.Order, model.ShippingCost, model.Assignment, model.FCUsage = FC, Order, ShippingCost, Assignment, FCUsage
     return model
 
 
 def define_problem(model):
     """Define decision variables, constraints, and objective."""
     s = SolverModel(model, "cont")
-    FC, Order, ShippingCost, Assignment = model.FC, model.Order, model.ShippingCost, model.Assignment
+    FC, Order, ShippingCost, Assignment, FCUsage = model.FC, model.Order, model.ShippingCost, model.Assignment, model.FCUsage
 
     # Decision variable: quantity fulfilled via each assignment
-    s.solve_for(Assignment.qty, name=["qty", Assignment.shipping.fc.id, Assignment.shipping.order.id], lower=0)
+    s.solve_for(Assignment.qty, name=["qty", Assignment.shipping.fc.name, Assignment.shipping.order.customer], lower=0)
 
-    # Binary variable: whether FC is used for this order
-    s.solve_for(Assignment.selected, type="bin", name=["sel", Assignment.shipping.fc.id, Assignment.shipping.order.id])
-
-    # Constraint: quantity bounded when selected
-    s.satisfy(require(Assignment.qty <= Assignment.shipping.order.quantity * Assignment.selected))
+    # Binary variable: whether FC is used at all
+    s.solve_for(FCUsage.used, type="bin", name=["fc_used", FCUsage.fc.name])
 
     # Constraint: FC capacity - total fulfilled from FC cannot exceed capacity
     Asn = Assignment.ref()
-    fc_usage = sum(Asn.qty).where(Asn.shipping.fc == FC).per(FC)
-    s.satisfy(require(fc_usage <= FC.capacity))
+    fc_total_qty = sum(Asn.qty).where(Asn.shipping.fc == FC).per(FC)
+    s.satisfy(require(fc_total_qty <= FC.capacity))
+
+    # Constraint: link FC usage to assignments - if any qty from FC, then FC is used
+    # fc_total_qty <= capacity * used (so if used=0, all qty must be 0)
+    fc_total_qty_for_usage = sum(Asn.qty).where(Asn.shipping.fc == FCUsage.fc).per(FCUsage)
+    s.satisfy(require(fc_total_qty_for_usage <= FCUsage.fc.capacity * FCUsage.used))
 
     # Constraint: order fulfillment - each order must be fully fulfilled
     order_fulfilled = sum(Asn.qty).where(Asn.shipping.order == Order).per(Order)
     s.satisfy(require(order_fulfilled == Order.quantity))
 
-    # Objective: minimize total shipping cost
-    total_cost = sum(Assignment.qty * Assignment.shipping.cost_per_unit)
+    # Objective: minimize total cost (shipping + fixed FC costs)
+    shipping_cost = sum(Assignment.qty * Assignment.shipping.cost_per_unit)
+    fixed_cost = sum(FCUsage.used * FCUsage.fc.fixed_cost)
+    total_cost = shipping_cost + fixed_cost
     s.minimize(total_cost)
 
     return s
@@ -109,8 +118,8 @@ if __name__ == "__main__":
     sol = extract_solution(sm)
 
     print(f"Status: {sol['status']}")
-    print(f"Total shipping cost: ${sol['objective']:.2f}")
+    print(f"Total cost (shipping + fixed): ${sol['objective']:.2f}")
     print("\nAssignments:")
     df = sol["variables"]
-    active = df[df["float"] > 0] if "float" in df.columns else df
+    active = df[df["float"] > 0.001] if "float" in df.columns else df
     print(active.to_string(index=False))

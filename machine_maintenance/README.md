@@ -125,10 +125,15 @@ python machine_maintenance.py
 Status: OPTIMAL
 Total maintenance cost: $19500.00
 Maintenance schedule:
-name  float
- 1_1    1.0
- 2_2    1.0
- 3_4    1.0
- 4_1    1.0
- 5_1    1.0
+             name  float
+x_CNC_Mill_Monday    1.0
+   x_Drill_Monday    1.0
+  x_Lathe_Tuesday    1.0
+ x_Press_Thursday    1.0
+  x_Welder_Monday    1.0
 ```
+
+The schedule assigns each machine to a day while respecting crew hours and avoiding conflicts:
+- **Monday**: CNC_Mill (4h) + Drill (2h) + Welder (2h) = 8h (at capacity)
+- **Tuesday**: Lathe (3h)
+- **Thursday**: Press (5h)

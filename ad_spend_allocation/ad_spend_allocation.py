@@ -63,10 +63,10 @@ def define_problem(model):
     Channel, Campaign, Effectiveness, Allocation = model.Channel, model.Campaign, model.Effectiveness, model.Allocation
 
     # Decision variable: continuous spend amount
-    s.solve_for(Allocation.spend, name=["spend", Allocation.effectiveness.channel.id, Allocation.effectiveness.campaign.id], lower=0)
+    s.solve_for(Allocation.spend, name=["spend", Allocation.effectiveness.channel.name, Allocation.effectiveness.campaign.name], lower=0)
 
     # Decision variable: binary indicator for whether channel is used for campaign
-    s.solve_for(Allocation.active, type="bin", name=["active", Allocation.effectiveness.channel.id, Allocation.effectiveness.campaign.id])
+    s.solve_for(Allocation.active, type="bin", name=["active", Allocation.effectiveness.channel.name, Allocation.effectiveness.campaign.name])
 
     # Constraint: spend bounded by min/max when active
     s.satisfy(require(Allocation.spend >= Allocation.effectiveness.channel.min_spend * Allocation.active))

@@ -70,7 +70,7 @@ def define_problem(model):
     # Variable: quantity >= 0
     s.solve_for(
         Production.quantity,
-        name=["qty", Production.prod_time.machine.id, Production.prod_time.product.id],
+        name=["qty", Production.prod_time.machine.name, Production.prod_time.product.name],
         lower=0
     )
 

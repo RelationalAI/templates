@@ -112,16 +112,19 @@ python vehicle_scheduling.py
 ## Expected Output
 
 ```
-
 Status: OPTIMAL
-Total cost: $196.00
+Total cost: $183.50
+
 Vehicle assignments:
-name  float
-   4    1.0
- 4_1    1.0
- 4_2    1.0
- 4_3    1.0
- 4_4    1.0
- 4_5    1.0
- 4_6    1.0
+            name  float
+    used_Truck_2    1.0
+      used_Van_1    1.0
+x_Truck_2_Trip_A    1.0
+x_Truck_2_Trip_B    1.0
+  x_Van_1_Trip_C    1.0
+  x_Van_1_Trip_D    1.0
+  x_Van_1_Trip_E    1.0
+  x_Van_1_Trip_F    1.0
 ```
+
+The solution uses 2 vehicles: Van_1 handles 4 trips (C, D, E, F) while Truck_2 handles 2 trips (A, B), balancing fixed costs against variable mileage costs.

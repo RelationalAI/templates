@@ -62,10 +62,10 @@ def define_problem(model):
     Vehicle, Trip, Assignment, VehicleUsage = model.Vehicle, model.Trip, model.Assignment, model.VehicleUsage
 
     # Decision variable: binary assignment of trips to vehicles
-    s.solve_for(Assignment.assigned, type="bin", name=[Assignment.vehicle.id, Assignment.trip.id])
+    s.solve_for(Assignment.assigned, type="bin", name=["x", Assignment.vehicle.name, Assignment.trip.name])
 
     # Decision variable: binary vehicle usage
-    s.solve_for(VehicleUsage.used, type="bin", name=VehicleUsage.vehicle.id)
+    s.solve_for(VehicleUsage.used, type="bin", name=["used", VehicleUsage.vehicle.name])
 
     # Constraint: each trip assigned to exactly one vehicle
     Asn = Assignment.ref()

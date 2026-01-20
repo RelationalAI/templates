@@ -117,9 +117,13 @@ python inventory_rebalancing.py
 Status: OPTIMAL
 Total transfer cost: $1500.00
 Transfers:
-name  float
-   1   50.0
-   3  150.0
-   4   70.0
-   6  100.0
+                   name  float
+qty_Warehouse_A_Store_1   50.0
+qty_Warehouse_B_Store_1  150.0
+qty_Warehouse_B_Store_2   70.0
+qty_Warehouse_C_Store_2  100.0
 ```
+
+The optimal rebalancing plan transfers inventory from warehouses to stores:
+- **Store_1** receives 50 units from Warehouse_A + 150 units from Warehouse_B
+- **Store_2** receives 70 units from Warehouse_B + 100 units from Warehouse_C

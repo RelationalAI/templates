@@ -20,7 +20,7 @@ The key insight is that diversification reduces risk: a portfolio of assets that
 
 ## Why is optimization valuable?
 
-- **Better risk-adjusted returns**: Achieves target returns with mathematically minimal risk through optimal diversification <!-- TODO: Add % improvement from results -->
+- **Better risk-adjusted returns**: Achieves target returns with mathematically minimal risk through optimal diversification
 - **Efficient frontier analysis**: Understand the full range of risk-return trade-offs available to make informed investment decisions
 - **Constraint handling**: Incorporate regulatory limits, sector caps, and investment policies into allocation decisions systematically
 
@@ -104,12 +104,19 @@ python portfolio_optimization.py
 ## Expected Output
 
 ```
-
 Status: OPTIMAL
-Portfolio risk (variance): 3583.7207
+Portfolio risk (variance): 1462.6398
 Minimum return target: 20
+
 Stock allocations:
  name      float
-qty_1 236.749121
-qty_3 187.802251
+qty_1  15.447778   (Low return 2.5%, low risk - diversification anchor)
+qty_2 411.690255   (Medium return 4.0%, medium risk - core holding)
+qty_3  44.945648   (High return 7.0%, high risk - growth allocation)
 ```
+
+The optimal portfolio demonstrates diversification across all three assets:
+- **Stock 2** (medium risk-return) dominates as the efficient core holding
+- **Stock 3** (high return) provides growth potential despite higher risk
+- **Stock 1** (low risk) provides stability through low correlation with others
+- Total risk (1463) is lower than any single-asset portfolio achieving the same return

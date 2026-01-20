@@ -60,7 +60,7 @@ def define_problem(model):
     Product, Machine, Rate, Production = model.Product, model.Machine, model.Rate, model.Production
 
     # Decision variable: quantity to produce via each machine/product combination
-    s.solve_for(Production.quantity, name=["qty", Production.rate.machine.id, Production.rate.product.id], lower=0, type="int")
+    s.solve_for(Production.quantity, name=["qty", Production.rate.machine.name, Production.rate.product.name], lower=0, type="int")
 
     # Constraint: machine capacity - total hours used on machine cannot exceed availability
     Prod = Production.ref()

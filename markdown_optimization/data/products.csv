@@ -1,5 +1,5 @@
-id,name,initial_price,cost,initial_inventory
-1,Sweater,80,30,100
-2,Jacket,150,60,80
-3,Pants,60,25,120
-4,Shirt,40,15,150
+id,name,initial_price,cost,initial_inventory,base_demand,salvage_rate
+1,Sweater,80,30,100,20,0.15
+2,Jacket,150,60,80,12,0.20
+3,Pants,60,25,120,25,0.10
+4,Shirt,40,15,150,30,0.10

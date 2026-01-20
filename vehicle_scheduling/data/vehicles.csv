@@ -1,5 +1,5 @@
 id,name,capacity,cost_per_mile,fixed_cost
-1,Van_1,100,0.5,50
-2,Van_2,100,0.5,50
-3,Truck_1,300,0.8,80
-4,Truck_2,300,0.8,80
+1,Van_1,100,0.5,40
+2,Van_2,100,0.5,40
+3,Truck_1,150,0.7,60
+4,Truck_2,150,0.7,60

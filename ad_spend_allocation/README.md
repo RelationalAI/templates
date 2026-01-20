@@ -119,19 +119,19 @@ python ad_spend_allocation.py
 Status: OPTIMAL
 Total expected conversions: 3430
 Spend allocation:
-      name   float
-active_1_1     1.0
-active_1_2     1.0
-active_1_3     1.0
-active_2_1     1.0
-active_4_2     1.0
-active_5_1     1.0
-active_5_3     1.0
- spend_1_1  5000.0
- spend_1_2 10000.0
- spend_1_3  8000.0
- spend_2_1  8000.0
- spend_4_2 10000.0
- spend_5_1  2000.0
- spend_5_3  2000.0
+                         name   float
+ active_Email_Brand_Awareness     1.0
+   active_Email_Seasonal_Sale     1.0
+active_Search_Brand_Awareness     1.0
+ active_Search_Product_Launch     1.0
+  active_Search_Seasonal_Sale     1.0
+active_Social_Brand_Awareness     1.0
+  active_Video_Product_Launch     1.0
+  spend_Email_Brand_Awareness  2000.0
+    spend_Email_Seasonal_Sale  2000.0
+ spend_Search_Brand_Awareness  5000.0
+  spend_Search_Product_Launch 10000.0
+   spend_Search_Seasonal_Sale  8000.0
+ spend_Social_Brand_Awareness  8000.0
+   spend_Video_Product_Launch 10000.0
 ```

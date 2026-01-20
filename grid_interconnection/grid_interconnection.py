@@ -71,7 +71,7 @@ def define_problem(model, budget=500000):
     s.solve_for(Project.approved, type="bin", name=Project.name)
 
     # Decision variable: select upgrade
-    s.solve_for(Upgrade.selected, type="bin", name=["upg", Upgrade.substation.id, Upgrade.capacity_added])
+    s.solve_for(Upgrade.selected, type="bin", name=["upg", Upgrade.substation.name, Upgrade.capacity_added])
 
     # Constraint: capacity at substation
     Proj = Project.ref()

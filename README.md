@@ -20,26 +20,26 @@ RelationalAI provides multiple reasoners, each designed for different analytical
 
 The Prescriptive Reasoner solves optimization problems: given constraints and objectives, it finds the best decision. Use it when you need to answer "What should we do?"
 
-| Template | Problem Type | Industry | Method | Complexity |
-|----------|--------------|----------|--------|------------|
-| [ad_spend_allocation](./ad_spend_allocation/) | Allocation | Marketing | MILP | Intermediate |
-| [diet](./diet/) | Allocation | Healthcare / Nutrition | LP | Beginner |
-| [factory_production](./factory_production/) | Allocation | Manufacturing | LP | Beginner |
-| [grid_interconnection](./grid_interconnection/) | Design | Energy | MILP | Intermediate |
+| Template | Problem Type | Sector | Method | Complexity |
+|----------|--------------|--------|--------|------------|
+| [ad_spend_allocation](./ad_spend_allocation/) | Allocation | Marketing & Revenue | MILP | Intermediate |
+| [diet](./diet/) | Allocation | Healthcare | LP | Beginner |
+| [factory_production](./factory_production/) | Allocation | Supply Chain & Manufacturing | LP | Beginner |
+| [grid_interconnection](./grid_interconnection/) | Design | Energy & Utilities | MILP | Intermediate |
 | [hospital_staffing](./hospital_staffing/) | Allocation | Healthcare | MILP | Intermediate |
-| [inventory_rebalancing](./inventory_rebalancing/) | Allocation | Supply Chain | LP | Beginner |
-| [machine_maintenance](./machine_maintenance/) | Scheduling | Manufacturing | MILP | Intermediate |
+| [inventory_rebalancing](./inventory_rebalancing/) | Allocation | Supply Chain & Manufacturing | LP | Beginner |
+| [machine_maintenance](./machine_maintenance/) | Scheduling | Supply Chain & Manufacturing | MILP | Intermediate |
 | [markdown_optimization](./markdown_optimization/) | Pricing | Retail | MILP | Intermediate |
-| [network_flow](./network_flow/) | Allocation | Logistics | LP | Beginner |
-| [order_fulfillment](./order_fulfillment/) | Allocation | E-commerce | MILP | Beginner |
-| [portfolio_optimization](./portfolio_optimization/) | Allocation | Finance | QP | Intermediate |
-| [production_planning](./production_planning/) | Allocation | Manufacturing | MILP | Beginner |
-| [shift_assignment](./shift_assignment/) | Allocation | Workforce | CSP | Beginner |
-| [supplier_reliability](./supplier_reliability/) | Allocation | Supply Chain | LP | Beginner |
-| [supply_chain_transport](./supply_chain_transport/) | Scheduling | Logistics | MILP | Intermediate |
-| [traveling_salesman](./traveling_salesman/) | Routing | Logistics | MILP | Intermediate |
+| [network_flow](./network_flow/) | Allocation | Supply Chain & Manufacturing | LP | Beginner |
+| [order_fulfillment](./order_fulfillment/) | Allocation | Supply Chain & Manufacturing | MILP | Beginner |
+| [portfolio_optimization](./portfolio_optimization/) | Allocation | Finance & Financial Services | QP | Intermediate |
+| [production_planning](./production_planning/) | Allocation | Supply Chain & Manufacturing | MILP | Beginner |
+| [shift_assignment](./shift_assignment/) | Allocation | Retail | CSP | Beginner |
+| [supplier_reliability](./supplier_reliability/) | Allocation | Supply Chain & Manufacturing | LP | Beginner |
+| [supply_chain_transport](./supply_chain_transport/) | Scheduling | Supply Chain & Manufacturing | MILP | Intermediate |
+| [traveling_salesman](./traveling_salesman/) | Routing | Transportation | MILP | Intermediate |
 | [vehicle_scheduling](./vehicle_scheduling/) | Scheduling | Transportation | MILP | Intermediate |
-| [water_allocation](./water_allocation/) | Design | Utilities | LP | Beginner |
+| [water_allocation](./water_allocation/) | Design | Energy & Utilities | LP | Beginner |
 
 ---
 
@@ -212,7 +212,7 @@ Each prescriptive template README includes classification metadata:
 |-----------|-------------|
 | **Reasoner** | Prescriptive (all templates) |
 | **Problem Type** | Allocation, Scheduling, Routing, Pricing, Design |
-| **Industry** | Healthcare, Finance, Manufacturing, Retail, etc. |
+| **Sector** | Healthcare, Finance & Financial Services, Supply Chain & Manufacturing, Retail, etc. |
 | **Method** | LP, MILP, QP, CSP |
 | **Complexity** | Beginner, Intermediate |
 

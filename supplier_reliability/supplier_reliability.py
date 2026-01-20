@@ -62,7 +62,7 @@ def define_problem(model, reliability_weight=0.0):
     Supplier, Product, SupplyOption, Order = model.Supplier, model.Product, model.SupplyOption, model.Order
 
     # Decision variable: quantity to order via each supply option
-    s.solve_for(Order.quantity, name=Order.option.id, lower=0)
+    s.solve_for(Order.quantity, name=["qty", Order.option.supplier.name, Order.option.product.name], lower=0)
 
     # Constraint: total orders from supplier cannot exceed supplier capacity
     Ord = Order.ref()

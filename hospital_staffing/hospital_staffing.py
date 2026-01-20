@@ -63,7 +63,7 @@ def define_problem(model):
     Nurse, Shift, Availability, Assignment = model.Nurse, model.Shift, model.Availability, model.Assignment
 
     # Decision variable: binary assignment
-    s.solve_for(Assignment.assigned, type="bin", name=["x", Assignment.availability.nurse.id, Assignment.availability.shift.id])
+    s.solve_for(Assignment.assigned, type="bin", name=["x", Assignment.availability.nurse.name, Assignment.availability.shift.name])
 
     # Constraint: can only assign if available
     s.satisfy(require(Assignment.assigned <= Assignment.availability.available))
