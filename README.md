@@ -10,7 +10,8 @@ RelationalAI provides multiple reasoners, each designed for different analytical
 |----------|---------|-------------------|
 | **Prescriptive** | Optimization & decision-making | "What should we do?" |
 | *Predictive* | *Forecasting & classification* | *"What will happen?"* |
-| *Descriptive* | *Pattern discovery & analytics* | *"What happened?"* |
+| *Rules* | *Business logic & inference* | *"What follows from this?"* |
+| *Graph* | *Relationship analysis & traversal* | *"How are things connected?"* |
 
 *Italicized reasoners are planned for future templates.*
 
@@ -241,9 +242,10 @@ Each prescriptive template README includes classification metadata:
 
 | Solver | Methods | Notes |
 |--------|---------|-------|
-| **HiGHS** | LP, MILP, QP | Included with RAI SDK |
-| **MiniZinc** | CSP | Requires [separate installation](https://www.minizinc.org/software.html) |
-| **Ipopt** | NLP | Requires [separate installation](https://coin-or.github.io/Ipopt/INSTALL.html) |
+| **HiGHS** | LP, MILP, QP | Integrated with RAI SDK |
+| **Ipopt** | NLP | Integrated with RAI SDK |
+| **MiniZinc** | CSP | Integrated with RAI SDK |
+| **Gurobi** | LP, MILP, QP | Integrated with RAI SDK; requires [separate license](https://www.gurobi.com/downloads/) |
 
 #### Variable Types
 
