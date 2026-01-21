@@ -95,7 +95,7 @@ solver_model = solve()
 result = extract_solution(solver_model)
 
 print(f"Status: {result['status']}")
-print(result['variables'])
+print(result['assignments'])
 ```
 
 Or run directly:
@@ -109,21 +109,22 @@ python shift_assignment.py
 ```
 Status: OPTIMAL
 
-Assignments:
-              name int128
-   x_Alice_Morning      1
-       x_Bob_Night      1
-x_Carlos_Afternoon      1
-     x_Diana_Night      1
- x_Ethan_Afternoon      1
-   x_Frank_Morning      1
- x_Grace_Afternoon      1
-     x_Henry_Night      1
- x_Irene_Afternoon      1
-  x_Jack_Afternoon      1
+Final assignments:
+worker     shift
+ Alice   Morning
+   Bob   Morning
+Carlos     Night
+ Diana   Morning
+ Ethan     Night
+ Frank   Morning
+ Grace Afternoon
+ Henry     Night
+ Irene   Morning
+  Jack Afternoon
 ```
 
-A valid shift assignment was found. Since this is a CSP (Constraint Satisfaction Problem), there is no objective value—any feasible assignment is equally valid. The solution shows:
-- **Morning**: Alice, Frank (2 workers)
-- **Afternoon**: Carlos, Ethan, Grace, Irene, Jack (5 workers)
-- **Night**: Bob, Diana, Henry (3 workers)
+A valid shift assignment was found. Since this is a CSP (Constraint Satisfaction Problem), there is no objective value—any feasible assignment is equally valid. The solution satisfies:
+- Each shift has at least 2 workers (min_coverage constraint)
+- Each worker is assigned to at most 1 shift (max_shifts_per_worker constraint)
+
+Note: CSP may return different valid solutions on different runs.

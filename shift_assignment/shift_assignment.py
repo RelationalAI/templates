@@ -157,29 +157,16 @@ def solve(config=None, solver_name="minizinc", min_coverage=2, max_shifts_per_wo
     return s
 
 
-# =============================================================================
-# Backward compatibility
-# =============================================================================
-
 def extract_solution(solver_model):
-    """Extract solution - prefer querying relations directly (see __main__)."""
-    if hasattr(solver_model, 'Assignment'):
-        Assignment = solver_model.Assignment
-        solution_df = select(
+    """Extract solution as meaningful dataframe (not internal solver hashes)."""
+    Assignment = solver_model.Assignment
+    return {
+        "status": solver_model.termination_status,
+        "assignments": select(
             Assignment.worker.name.alias("worker"),
             Assignment.shift.name.alias("shift")
-        ).where(Assignment.is_assigned(True)).to_df()
-        return {
-            "status": solver_model.termination_status,
-            "objective": None,
-            "assignments": solution_df,
-        }
-    else:
-        return {
-            "status": solver_model.termination_status,
-            "objective": None,
-            "variables": solver_model.variable_values().to_df(),
-        }
+        ).where(Assignment.is_assigned(True)).to_df(),
+    }
 
 
 if __name__ == "__main__":

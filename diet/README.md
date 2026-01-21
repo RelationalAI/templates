@@ -93,7 +93,7 @@ result = extract_solution(solver_model)
 
 print(f"Status: {result['status']}")
 print(f"Minimum cost: ${result['objective']:.2f}")
-print(result['variables'])
+print(result['diet'])
 ```
 
 Or run directly:
@@ -108,17 +108,11 @@ python diet.py
 Status: OPTIMAL
 Minimum cost: $11.83
 
-Food amounts:
-     name     float
-  chicken  0.000000
-    fries  0.000000
+Optimal diet:
+     name    amount
 hamburger  0.604514
-   hotdog  0.000000
  icecream  2.591319
- macaroni  0.000000
      milk  6.970139
-    pizza  0.000000
-    salad  0.000000
 ```
 
 The optimal diet minimizes cost while satisfying all nutritional constraints. Note that hotdog (1800mg sodium) is excluded because it exceeds the daily sodium limit (1779mg) in a single serving. The solution demonstrates how tight nutritional bounds naturally guide the optimizer toward feasible food combinations.
