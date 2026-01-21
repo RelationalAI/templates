@@ -32,10 +32,13 @@ def solve(config=None, solver_name="highs"):
     # Load nutrients (with min/max bounds)
     data_dir = Path(__file__).parent / "data"
     nutrient_csv = read_csv(data_dir / "nutrients.csv")
+    # Convert string columns to object dtype (relationalai doesn't support StringDtype)
+    nutrient_csv = nutrient_csv.astype({col: "object" for col in nutrient_csv.select_dtypes("string").columns})
     data(nutrient_csv).into(Nutrient, keys=["name"])
 
     # Load foods (with cost and nutrient content)
     food_csv = read_csv(data_dir / "foods.csv")
+    food_csv = food_csv.astype({col: "object" for col in food_csv.select_dtypes("string").columns})
     food_data = data(food_csv)
     food = Food.new(name=food_data.name)
     define(food, food.cost(food_data.cost))

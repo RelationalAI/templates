@@ -50,11 +50,17 @@ def solve(config=None, solver_name="minizinc", min_coverage=2, max_shifts_per_wo
     Assignment.shift = model.Property("{Assignment} has {shift:Shift}")
 
     data_dir = Path(__file__).parent / "data"
-    data(read_csv(data_dir / "workers.csv")).into(Worker, keys=["id"])
-    data(read_csv(data_dir / "shifts.csv")).into(Shift, keys=["id"])
+
+    # Helper to convert StringDtype to object (relationalai compatibility)
+    def load_csv(path):
+        df = read_csv(path)
+        return df.astype({col: "object" for col in df.select_dtypes("string").columns})
+
+    data(load_csv(data_dir / "workers.csv")).into(Worker, keys=["id"])
+    data(load_csv(data_dir / "shifts.csv")).into(Shift, keys=["id"])
 
     # Create assignments only for available worker-shift pairs
-    avail = data(read_csv(data_dir / "availability.csv"))
+    avail = data(load_csv(data_dir / "availability.csv"))
     where(
         Worker.id(avail.worker_id),
         Shift.id(avail.shift_id)
