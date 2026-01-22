@@ -117,14 +117,17 @@ python factory_production.py
 ## Expected Output
 
 ```
-
 Status: OPTIMAL
 Total profit: $20977.78
+
 Production plan:
-                name     float
-qty_Machine_A_Widget 80.000000
-qty_Machine_B_Device 38.888889
-qty_Machine_C_Gadget 75.000000
+  machine product  quantity
+Machine_A  Device 40.000000
+Machine_B  Device 38.888889
+Machine_C  Gadget 15.000000
+Machine_C  Widget 90.000000
 ```
 
-The optimal plan assigns products to machines based on production rates and profit margins.
+The optimal plan assigns products to machines based on production rates and profit margins. Total profit is maximized by allocating machine capacity to the most profitable product-machine combinations.
+
+Note: Alternative optimal solutions may distribute production differently across machines at the same total profit.

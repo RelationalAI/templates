@@ -116,15 +116,15 @@ Status: OPTIMAL
 Total cost: $183.50
 
 Vehicle assignments:
-            name  float
-    used_Truck_2    1.0
-      used_Van_1    1.0
-x_Truck_2_Trip_A    1.0
-x_Truck_2_Trip_B    1.0
-  x_Van_1_Trip_C    1.0
-  x_Van_1_Trip_D    1.0
-  x_Van_1_Trip_E    1.0
-  x_Van_1_Trip_F    1.0
+vehicle   trip   from     to
+Truck_1 Trip_A  Depot Site_1
+Truck_1 Trip_B  Depot Site_2
+  Van_1 Trip_C  Depot Site_3
+  Van_1 Trip_D Site_1 Site_2
+  Van_1 Trip_E Site_2  Depot
+  Van_1 Trip_F Site_3  Depot
 ```
 
-The solution uses 2 vehicles: Van_1 handles 4 trips (C, D, E, F) while Truck_2 handles 2 trips (A, B), balancing fixed costs against variable mileage costs.
+The solution uses 2 vehicles: Van_1 handles 4 trips (C, D, E, F) while Truck_1 handles 2 trips (A, B), balancing fixed costs against variable mileage costs.
+
+Note: Alternative optimal solutions may use different vehicles (e.g., Truck_2 instead of Truck_1) at the same total cost.

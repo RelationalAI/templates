@@ -98,17 +98,17 @@ python network_flow.py
 ## Expected Output
 
 ```
-
 Status: OPTIMAL
 Maximum flow: 13
+
 Edge flows:
-    name  float
-flow_1_2    5.0
-flow_1_3    8.0
-flow_2_4    4.0
-flow_2_5    1.0
-flow_3_5    5.0
-flow_3_6    3.0
-flow_4_6    4.0
-flow_5_6    6.0
+i j  flow
+1 2   5.0
+1 3   8.0
+2 4   4.0
+2 5   1.0
+3 5   5.0
+3 6   3.0
+4 6   4.0
+5 6   6.0
 ```

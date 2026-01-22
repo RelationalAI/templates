@@ -109,18 +109,24 @@ python shift_assignment.py
 ```
 Status: OPTIMAL
 
-Final assignments:
+Assignments:
 worker     shift
  Alice   Morning
    Bob   Morning
-Carlos     Night
+Carlos Afternoon
  Diana   Morning
  Ethan     Night
  Frank   Morning
  Grace Afternoon
- Henry     Night
+ Henry   Morning
  Irene   Morning
-  Jack Afternoon
+  Jack     Night
+
+Coverage per shift:
+    shift  workers
+Afternoon        2
+  Morning        6
+    Night        2
 ```
 
 A valid shift assignment was found. Since this is a CSP (Constraint Satisfaction Problem), there is no objective value—any feasible assignment is equally valid. The solution satisfies:

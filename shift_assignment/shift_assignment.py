@@ -4,7 +4,7 @@
 from pathlib import Path
 
 from pandas import read_csv
-from relationalai.semantics import Model, count, data, define, require, select, sum, where
+from relationalai.semantics import Model, data, define, require, select, sum, where
 from relationalai.semantics.reasoners.optimization import Solver, SolverModel
 
 model = Model("shift_assignment", config=globals().get("config", None), use_lqp=False)
@@ -95,8 +95,4 @@ print(assignments[["worker", "shift"]].to_string(index=False))
 
 # Coverage summary
 print("\nCoverage per shift:")
-coverage = select(
-    Assignment.shift.name.alias("shift"),
-    count(Assignment).alias("workers")
-).where(Assignment.assigned >= 1).to_df()
-print(coverage.to_string(index=False))
+print(assignments.groupby("shift").size().reset_index(name="workers").to_string(index=False))

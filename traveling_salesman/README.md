@@ -99,17 +99,15 @@ python traveling_salesman.py
 ## Expected Output
 
 ```
-
 Status: OPTIMAL
 Shortest tour distance: 8.50
+
 Selected edges (tour):
- name  float
-  u_1    1.0
-  u_2    4.0
-  u_3    1.0
-  u_4    3.0
-x_1_3    1.0
-x_2_1    1.0
-x_3_4    1.0
-x_4_2    1.0
+i j  dist
+1 2   2.0
+2 4   1.5
+3 1   2.5
+4 3   2.5
 ```
+
+The optimal tour visits all 4 cities and returns to the start: 1 → 2 → 4 → 3 → 1 with total distance 8.50.

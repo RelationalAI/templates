@@ -132,14 +132,16 @@ Status: OPTIMAL
 Total transport cost: $2100.00
 
 Shipments:
-                                  name  float
-qty_Warehouse_Central_Customer_A_Truck   80.0
-qty_Warehouse_Central_Customer_B_Truck  120.0
-    qty_Warehouse_East_Customer_D_Rail  300.0
-    qty_Warehouse_West_Customer_C_Rail  250.0
+        warehouse   customer  mode  quantity
+Warehouse_Central Customer_A Truck      80.0
+Warehouse_Central Customer_C  Rail     250.0
+   Warehouse_East Customer_B Truck     120.0
+   Warehouse_East Customer_D  Rail     300.0
 ```
 
 The optimal solution demonstrates multi-modal transport selection:
-- **Urgent customers** (A, B with due days 1-2) ship from Warehouse_Central via **Truck** (1-day transit)
+- **Urgent customers** (A, B with due days 1-2) use **Truck** (1-day transit)
 - **Regular customers** (C, D with due days 4-5) use **Rail** (3-day transit) for cost savings
-- Variable names now show the full route: warehouse → customer → mode
+- The optimizer selects the lowest-cost combination of warehouse-customer-mode routes
+
+Note: Alternative optimal solutions may route from different warehouses at the same total cost.
