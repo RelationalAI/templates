@@ -1,106 +1,89 @@
-"""Traveling Salesman - Find shortest route visiting all cities exactly once."""
+# Traveling Salesman:
+# Find shortest route visiting all cities exactly once (MTZ formulation)
 
 from pathlib import Path
-from time import time_ns
 
 from pandas import read_csv
-from relationalai.semantics import Model, count, data, define, require, sum, where
+from relationalai.semantics import Model, count, data, define, require, select, sum, where
 from relationalai.semantics.reasoners.optimization import Solver, SolverModel
 
+model = Model("tsp", config=globals().get("config", None), use_lqp=False)
 
-def define_model(config=None):
-    """Define base model with Edge and Node concepts."""
-    model = Model(f"tsp_{time_ns()}", config=config, use_lqp=False)
+# --------------------------------------------------
+# Load Data and Define Ontology
+# --------------------------------------------------
 
-    Edge = model.Concept("Edge")
-    Node = model.Concept("Node")
-    Edge.dist = model.Property("{Edge} has {dist:float}")
+data_dir = Path(__file__).parent / "data"
 
-    # Load edges from CSV
-    data_dir = Path(__file__).parent / "data"
-    csv = read_csv(data_dir / "distances.csv")
-    data(csv).into(Edge, keys=["i", "j"])
+# Edges with distances between nodes
+Edge = model.Concept("Edge")
+Edge.dist = model.Property("{Edge} has {dist:float}")
+data(read_csv(data_dir / "distances.csv")).into(Edge, keys=["i", "j"])
 
-    # Create nodes from edge endpoints
-    define(Node.new(v=Edge.i))
+# Create nodes from edge endpoints
+Node = model.Concept("Node")
+define(Node.new(v=Edge.i))
 
-    # Store node count for MTZ constraints
-    model.node_count = count(Node.ref())
+# Store node count for MTZ constraints
+node_count = count(Node.ref())
 
-    model.Edge = Edge
-    model.Node = Node
-    return model
+# --------------------------------------------------
+# Define Optimization Problem
+# --------------------------------------------------
 
+# Decision variable: binary edge selection
+Edge.x_edge = model.Property("{Edge} is selected if {x:float}")
 
-def define_problem(model):
-    """Define decision variables, constraints, and objective (MTZ formulation)."""
-    Edge = model.Edge
-    Node = model.Node
-    node_count = model.node_count
+# Auxiliary variable: node ordering (for subtour elimination)
+Node.u_node = model.Property("{Node} has auxiliary value {u:float}")
 
-    s = SolverModel(model, "cont")
+# Objective: minimize total distance
+total_dist = sum(Edge.dist * Edge.x_edge)
 
-    # Decision variable: binary edge selection
-    Edge.x_edge = model.Property("{Edge} is selected if {x:float}")
-    s.solve_for(Edge.x_edge, type="bin", name=["x", Edge.i, Edge.j])
+# Constraint: fix u=1 for node 1 (symmetry breaking)
+start_node = require(Node.u_node == 1).where(Node.v(1))
 
-    # Auxiliary variable: node ordering (for subtour elimination)
-    Node.u_node = model.Property("{Node} has auxiliary value {u:float}")
-    s.solve_for(Node.u_node, type="int", name=["u", Node.v], lower=1, upper=node_count)
+# Constraint: exactly one incoming and one outgoing edge per node
+node_flow = sum(Edge.x_edge).per(Node)
+flow_balance = require(
+    node_flow.where(Edge.j(Node.v)) == 1,
+    node_flow.where(Edge.i(Node.v)) == 1
+)
 
-    # Objective: minimize total distance
-    total_dist = sum(Edge.dist * Edge.x_edge)
-    s.minimize(total_dist)
+# Constraint: MTZ subtour elimination
+Ni = Node
+Nj = Node.ref()
+mtz = where(
+    Edge.i > 1, Edge.j > 1,
+    Ni.v(Edge.i), Nj.v(Edge.j),
+).require(
+    Ni.u_node - Nj.u_node + node_count * Edge.x_edge <= node_count - 1
+)
 
-    # Constraint: fix u=1 for node 1 (symmetry breaking)
-    s.satisfy(require(Node.u_node == 1).where(Node.v(1)))
+# --------------------------------------------------
+# Set Up Solver Model
+# --------------------------------------------------
 
-    # Constraint: exactly one incoming and one outgoing edge per node
-    node_flow = sum(Edge.x_edge).per(Node)
-    s.satisfy(require(
-        node_flow.where(Edge.j(Node.v)) == 1,
-        node_flow.where(Edge.i(Node.v)) == 1
-    ))
+s = SolverModel(model, "cont")
+s.solve_for(Edge.x_edge, type="bin", name=["x", Edge.i, Edge.j])
+s.solve_for(Node.u_node, type="int", name=["u", Node.v], lower=1, upper=node_count)
+s.minimize(total_dist)
+s.satisfy(start_node)
+s.satisfy(flow_balance)
+s.satisfy(mtz)
 
-    # Constraint: MTZ subtour elimination
-    s.satisfy(where(
-        Ni := Node, Nj := Node.ref(),
-        Edge.i > 1, Edge.j > 1,
-        Ni.v(Edge.i), Nj.v(Edge.j),
-    ).require(
-        Ni.u_node - Nj.u_node + node_count * Edge.x_edge <= node_count - 1
-    ))
+# --------------------------------------------------
+# Solve and Display Results
+# --------------------------------------------------
 
-    return s
+solver = Solver("highs")
+s.solve(solver, time_limit_sec=60)
 
+print(f"Status: {s.termination_status}")
+print(f"Shortest tour distance: {s.objective_value:.2f}")
 
-def solve(config=None, solver_name="highs"):
-    """Orchestrate model, problem, and solver execution."""
-    model = define_model(config)
-    solver_model = define_problem(model)
+# Access solution via populated relations
+tour = select(Edge.i, Edge.j, Edge.dist).where(Edge.x_edge > 0.5).to_df()
 
-    solver = Solver(solver_name)
-    solver_model.solve(solver, time_limit_sec=60)
-
-    return solver_model
-
-
-def extract_solution(solver_model):
-    """Extract solution as dict with metadata."""
-    return {
-        "status": solver_model.termination_status,
-        "objective": solver_model.objective_value,
-        "variables": solver_model.variable_values().to_df(),
-    }
-
-
-if __name__ == "__main__":
-    sm = solve()
-    sol = extract_solution(sm)
-
-    print(f"Status: {sol['status']}")
-    print(f"Shortest tour distance: {sol['objective']:.2f}")
-    print("\nSelected edges (tour):")
-    df = sol["variables"]
-    active = df[df["float"] > 0.5] if "float" in df.columns else df
-    print(active.to_string(index=False))
+print("\nSelected edges (tour):")
+print(tour.to_string(index=False))

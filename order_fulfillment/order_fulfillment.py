@@ -1,125 +1,114 @@
-"""Order Fulfillment - Assign orders to fulfillment centers minimizing total cost."""
+# Order Fulfillment:
+# Assign orders to fulfillment centers minimizing total cost
 
 from pathlib import Path
-from time import time_ns
 
 from pandas import read_csv
-from relationalai.semantics import Model, data, define, require, sum, where
+from relationalai.semantics import Model, data, define, require, select, sum, where
 from relationalai.semantics.reasoners.optimization import Solver, SolverModel
 
+model = Model("order_fulfillment", config=globals().get("config", None), use_lqp=False)
 
-def define_model(config=None):
-    """Define base model with FulfillmentCenter, Order, and ShippingCost concepts."""
-    model = Model(f"order_fulfillment_{time_ns()}", config=config, use_lqp=False)
+# --------------------------------------------------
+# Load Data and Define Ontology
+# --------------------------------------------------
 
-    # Concepts
-    FC = model.Concept("FulfillmentCenter")
-    FC.id = model.Property("{FulfillmentCenter} has {id:int}")
-    FC.name = model.Property("{FulfillmentCenter} has {name:string}")
-    FC.capacity = model.Property("{FulfillmentCenter} has {capacity:int}")
-    FC.fixed_cost = model.Property("{FulfillmentCenter} has {fixed_cost:float}")
+data_dir = Path(__file__).parent / "data"
 
-    Order = model.Concept("Order")
-    Order.id = model.Property("{Order} has {id:int}")
-    Order.customer = model.Property("{Order} for {customer:string}")
-    Order.quantity = model.Property("{Order} has {quantity:int}")
-    Order.priority = model.Property("{Order} has {priority:int}")
+# Fulfillment centers with capacity and fixed costs
+FC = model.Concept("FulfillmentCenter")
+FC.id = model.Property("{FulfillmentCenter} has {id:int}")
+FC.name = model.Property("{FulfillmentCenter} has {name:string}")
+FC.capacity = model.Property("{FulfillmentCenter} has {capacity:int}")
+FC.fixed_cost = model.Property("{FulfillmentCenter} has {fixed_cost:float}")
+data(read_csv(data_dir / "fulfillment_centers.csv")).into(FC, keys=["id"])
 
-    ShippingCost = model.Concept("ShippingCost")
-    ShippingCost.fc = model.Property("{ShippingCost} from {fc:FulfillmentCenter}")
-    ShippingCost.order = model.Property("{ShippingCost} for {order:Order}")
-    ShippingCost.cost_per_unit = model.Property("{ShippingCost} has {cost_per_unit:float}")
+# Orders with customer, quantity, and priority
+Order = model.Concept("Order")
+Order.id = model.Property("{Order} has {id:int}")
+Order.customer = model.Property("{Order} for {customer:string}")
+Order.quantity = model.Property("{Order} has {quantity:int}")
+Order.priority = model.Property("{Order} has {priority:int}")
+data(read_csv(data_dir / "orders.csv")).into(Order, keys=["id"])
 
-    # Load data
-    data_dir = Path(__file__).parent / "data"
+# Shipping costs between FCs and orders
+ShippingCost = model.Concept("ShippingCost")
+ShippingCost.fc = model.Property("{ShippingCost} from {fc:FulfillmentCenter}")
+ShippingCost.order = model.Property("{ShippingCost} for {order:Order}")
+ShippingCost.cost_per_unit = model.Property("{ShippingCost} has {cost_per_unit:float}")
 
-    fc_df = read_csv(data_dir / "fulfillment_centers.csv")
-    data(fc_df).into(FC, keys=["id"])
+costs_data = data(read_csv(data_dir / "shipping_costs.csv"))
+where(FC.id(costs_data.fc_id), Order.id(costs_data.order_id)).define(
+    ShippingCost.new(fc=FC, order=Order, cost_per_unit=costs_data.cost_per_unit)
+)
 
-    orders_df = read_csv(data_dir / "orders.csv")
-    data(orders_df).into(Order, keys=["id"])
+# Assignment: decision variable for fulfilling orders from FCs
+Assignment = model.Concept("Assignment")
+Assignment.shipping = model.Property("{Assignment} uses {shipping:ShippingCost}")
+Assignment.qty = model.Property("{Assignment} has {qty:float}")
+define(Assignment.new(shipping=ShippingCost))
 
-    costs_df = read_csv(data_dir / "shipping_costs.csv")
-    costs_data = data(costs_df)
-    where(FC.id(costs_data.fc_id), Order.id(costs_data.order_id)).define(
-        ShippingCost.new(fc=FC, order=Order, cost_per_unit=costs_data.cost_per_unit)
-    )
+# FCUsage: track whether each FC is used (for fixed costs)
+FCUsage = model.Concept("FCUsage")
+FCUsage.fc = model.Property("{FCUsage} for {fc:FulfillmentCenter}")
+FCUsage.used = model.Property("{FCUsage} is {used:float}")
+define(FCUsage.new(fc=FC))
 
-    # Assignment: decision variable for fulfilling orders from FCs
-    Assignment = model.Concept("Assignment")
-    Assignment.shipping = model.Property("{Assignment} uses {shipping:ShippingCost}")
-    Assignment.qty = model.Property("{Assignment} has {qty:float}")
-    define(Assignment.new(shipping=ShippingCost))
+# --------------------------------------------------
+# Define Optimization Problem
+# --------------------------------------------------
 
-    # FCUsage: track whether each FC is used (for fixed costs)
-    FCUsage = model.Concept("FCUsage")
-    FCUsage.fc = model.Property("{FCUsage} for {fc:FulfillmentCenter}")
-    FCUsage.used = model.Property("{FCUsage} is {used:float}")
-    define(FCUsage.new(fc=FC))
+Asn = Assignment.ref()
 
-    model.FC, model.Order, model.ShippingCost, model.Assignment, model.FCUsage = FC, Order, ShippingCost, Assignment, FCUsage
-    return model
+# Constraint: FC capacity
+fc_total_qty = sum(Asn.qty).where(Asn.shipping.fc == FC).per(FC)
+capacity_limit = require(fc_total_qty <= FC.capacity)
 
+# Constraint: link FC usage to assignments
+fc_total_qty_for_usage = sum(Asn.qty).where(Asn.shipping.fc == FCUsage.fc).per(FCUsage)
+usage_link = require(fc_total_qty_for_usage <= FCUsage.fc.capacity * FCUsage.used)
 
-def define_problem(model):
-    """Define decision variables, constraints, and objective."""
-    s = SolverModel(model, "cont")
-    FC, Order, ShippingCost, Assignment, FCUsage = model.FC, model.Order, model.ShippingCost, model.Assignment, model.FCUsage
+# Constraint: each order must be fully fulfilled
+order_fulfilled = sum(Asn.qty).where(Asn.shipping.order == Order).per(Order)
+fulfill_all = require(order_fulfilled == Order.quantity)
 
-    # Decision variable: quantity fulfilled via each assignment
-    s.solve_for(Assignment.qty, name=["qty", Assignment.shipping.fc.name, Assignment.shipping.order.customer], lower=0)
+# Objective: minimize total cost (shipping + fixed FC costs)
+shipping_cost = sum(Assignment.qty * Assignment.shipping.cost_per_unit)
+fixed_cost = sum(FCUsage.used * FCUsage.fc.fixed_cost)
+total_cost = shipping_cost + fixed_cost
 
-    # Binary variable: whether FC is used at all
-    s.solve_for(FCUsage.used, type="bin", name=["fc_used", FCUsage.fc.name])
+# --------------------------------------------------
+# Set Up Solver Model
+# --------------------------------------------------
 
-    # Constraint: FC capacity - total fulfilled from FC cannot exceed capacity
-    Asn = Assignment.ref()
-    fc_total_qty = sum(Asn.qty).where(Asn.shipping.fc == FC).per(FC)
-    s.satisfy(require(fc_total_qty <= FC.capacity))
+s = SolverModel(model, "cont")
+s.solve_for(Assignment.qty, name=["qty", Assignment.shipping.fc.name, Assignment.shipping.order.customer], lower=0)
+s.solve_for(FCUsage.used, type="bin", name=["fc_used", FCUsage.fc.name])
+s.minimize(total_cost)
+s.satisfy(capacity_limit)
+s.satisfy(usage_link)
+s.satisfy(fulfill_all)
 
-    # Constraint: link FC usage to assignments - if any qty from FC, then FC is used
-    # fc_total_qty <= capacity * used (so if used=0, all qty must be 0)
-    fc_total_qty_for_usage = sum(Asn.qty).where(Asn.shipping.fc == FCUsage.fc).per(FCUsage)
-    s.satisfy(require(fc_total_qty_for_usage <= FCUsage.fc.capacity * FCUsage.used))
+# --------------------------------------------------
+# Solve and Display Results
+# --------------------------------------------------
 
-    # Constraint: order fulfillment - each order must be fully fulfilled
-    order_fulfilled = sum(Asn.qty).where(Asn.shipping.order == Order).per(Order)
-    s.satisfy(require(order_fulfilled == Order.quantity))
+solver = Solver("highs")
+s.solve(solver, time_limit_sec=60)
 
-    # Objective: minimize total cost (shipping + fixed FC costs)
-    shipping_cost = sum(Assignment.qty * Assignment.shipping.cost_per_unit)
-    fixed_cost = sum(FCUsage.used * FCUsage.fc.fixed_cost)
-    total_cost = shipping_cost + fixed_cost
-    s.minimize(total_cost)
+print(f"Status: {s.termination_status}")
+print(f"Total cost (shipping + fixed): ${s.objective_value:.2f}")
 
-    return s
+# Access solution via populated relations
+assignments = select(
+    Assignment.shipping.fc.name.alias("fulfillment_center"),
+    Assignment.shipping.order.customer.alias("customer"),
+    Assignment.qty.alias("quantity")
+).where(Assignment.qty > 0.001).to_df()
 
+print("\nAssignments:")
+print(assignments.to_string(index=False))
 
-def solve(config=None, solver_name="highs"):
-    """Orchestrate model, problem, and solver execution."""
-    model = define_model(config)
-    solver_model = define_problem(model)
-    solver = Solver(solver_name)
-    solver_model.solve(solver, time_limit_sec=60)
-    return solver_model
-
-
-def extract_solution(solver_model):
-    """Extract solution as dict with metadata."""
-    return {
-        "status": solver_model.termination_status,
-        "objective": solver_model.objective_value,
-        "variables": solver_model.variable_values().to_df(),
-    }
-
-
-if __name__ == "__main__":
-    sm = solve()
-    sol = extract_solution(sm)
-
-    print(f"Status: {sol['status']}")
-    print(f"Total cost (shipping + fixed): ${sol['objective']:.2f}")
-    print("\nAssignments:")
-    df = sol["variables"]
-    active = df[df["float"] > 0.001] if "float" in df.columns else df
-    print(active.to_string(index=False))
+# Show which FCs are used
+fc_used = select(FCUsage.fc.name.alias("fc")).where(FCUsage.used > 0.5).to_df()
+print(f"\nActive fulfillment centers: {', '.join(fc_used['fc'].tolist())}")
