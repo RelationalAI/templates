@@ -1,28 +1,29 @@
-# Inventory Rebalancing:
-# Transfer inventory between sites to meet demand at minimum cost
+# inventory rebalancing problem:
+# transfer inventory between sites to meet demand at minimum cost
 
 from pathlib import Path
 
 from pandas import read_csv
+
 from relationalai.semantics import Model, data, define, require, select, sum, where
 from relationalai.semantics.reasoners.optimization import Solver, SolverModel
 
 model = Model("inventory_rebalancing", config=globals().get("config", None), use_lqp=False)
 
 # --------------------------------------------------
-# Load Data and Define Ontology
+# Define ontology & load data
 # --------------------------------------------------
 
 data_dir = Path(__file__).parent / "data"
 
-# Sites with current inventory
+# Concept: sites with current inventory
 Site = model.Concept("Site")
 Site.id = model.Property("{Site} has {id:int}")
 Site.name = model.Property("{Site} has {name:string}")
 Site.inventory = model.Property("{Site} has {inventory:int}")
 data(read_csv(data_dir / "sites.csv")).into(Site, keys=["id"])
 
-# Lanes between sites with cost and capacity
+# Relationship: lanes between sites with cost and capacity
 Lane = model.Concept("Lane")
 Lane.id = model.Property("{Lane} has {id:int}")
 Lane.source = model.Property("{Lane} from {source:Site}")
@@ -37,7 +38,7 @@ where(Site.id(lanes_data.source_id), Dest.id(lanes_data.dest_id)).define(
              cost_per_unit=lanes_data.cost_per_unit, capacity=lanes_data.capacity)
 )
 
-# Demand at each site
+# Concept: demand at each site
 Demand = model.Concept("Demand")
 Demand.id = model.Property("{Demand} has {id:int}")
 Demand.site = model.Property("{Demand} at {site:Site}")
@@ -48,47 +49,45 @@ where(Site.id(demand_data.site_id)).define(
     Demand.new(id=demand_data.id, site=Site, quantity=demand_data.quantity)
 )
 
-# Transfer: decision variable for transfer quantity on each lane
+# --------------------------------------------------
+# Model the problem
+# --------------------------------------------------
+
+# Decision concept: transfers on each lane
 Transfer = model.Concept("Transfer")
 Transfer.lane = model.Property("{Transfer} uses {lane:Lane}")
 Transfer.quantity = model.Property("{Transfer} has {quantity:float}")
 define(Transfer.new(lane=Lane))
 
-# --------------------------------------------------
-# Define Optimization Problem
-# --------------------------------------------------
-
 Tr = Transfer.ref()
 Dm = Demand.ref()
 
+s = SolverModel(model, "cont")
+
+# Variable: transfer quantity
+s.solve_for(Transfer.quantity, name=["qty", Transfer.lane.source.name, Transfer.lane.dest.name], lower=0)
+
 # Constraint: transfer cannot exceed lane capacity
 capacity_limit = require(Transfer.quantity <= Transfer.lane.capacity)
+s.satisfy(capacity_limit)
 
 # Constraint: total outbound from source cannot exceed source inventory
 outbound = sum(Tr.quantity).where(Tr.lane.source == Site).per(Site)
 inventory_limit = require(outbound <= Site.inventory)
+s.satisfy(inventory_limit)
 
 # Constraint: demand satisfaction at each destination site
 inbound = sum(Tr.quantity).where(Tr.lane.dest == Dm.site).per(Dm)
 local_inv = sum(Site.inventory).where(Site == Dm.site).per(Dm)
 demand_met = require(inbound + local_inv >= Dm.quantity)
+s.satisfy(demand_met)
 
 # Objective: minimize total transfer cost
 total_cost = sum(Transfer.quantity * Transfer.lane.cost_per_unit)
-
-# --------------------------------------------------
-# Set Up Solver Model
-# --------------------------------------------------
-
-s = SolverModel(model, "cont")
-s.solve_for(Transfer.quantity, name=["qty", Transfer.lane.source.name, Transfer.lane.dest.name], lower=0)
 s.minimize(total_cost)
-s.satisfy(capacity_limit)
-s.satisfy(inventory_limit)
-s.satisfy(demand_met)
 
 # --------------------------------------------------
-# Solve and Display Results
+# Solve and check solution
 # --------------------------------------------------
 
 solver = Solver("highs")
@@ -97,7 +96,6 @@ s.solve(solver, time_limit_sec=60)
 print(f"Status: {s.termination_status}")
 print(f"Total transfer cost: ${s.objective_value:.2f}")
 
-# Access solution via populated relations
 transfers = select(
     Transfer.lane.source.name.alias("from"),
     Transfer.lane.dest.name.alias("to"),

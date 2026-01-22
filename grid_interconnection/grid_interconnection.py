@@ -1,21 +1,22 @@
-# Grid Interconnection:
-# Approve renewable projects and upgrades to maximize net revenue within budget
+# grid interconnection problem:
+# approve renewable projects and upgrades to maximize net revenue within budget
 
 from pathlib import Path
 
 from pandas import read_csv
+
 from relationalai.semantics import Model, data, require, select, sum, where
 from relationalai.semantics.reasoners.optimization import Solver, SolverModel
 
 model = Model("grid", config=globals().get("config", None), use_lqp=False)
 
 # --------------------------------------------------
-# Load Data and Define Ontology
+# Define ontology & load data
 # --------------------------------------------------
 
 data_dir = Path(__file__).parent / "data"
 
-# Substations with current and max capacity
+# Concept: substations with current and max capacity
 Substation = model.Concept("Substation")
 Substation.id = model.Property("{Substation} has {id:int}")
 Substation.name = model.Property("{Substation} has {name:string}")
@@ -23,7 +24,7 @@ Substation.current_capacity = model.Property("{Substation} has {current_capacity
 Substation.max_capacity = model.Property("{Substation} has {max_capacity:int}")
 data(read_csv(data_dir / "substations.csv")).into(Substation, keys=["id"])
 
-# Projects with capacity needs, revenue, and connection costs
+# Concept: projects with capacity needs, revenue, and connection costs
 Project = model.Concept("Project")
 Project.id = model.Property("{Project} has {id:int}")
 Project.name = model.Property("{Project} has {name:string}")
@@ -41,7 +42,7 @@ where(Substation.id(projects_data.substation_id)).define(
                 connection_cost=projects_data.connection_cost)
 )
 
-# Upgrades with capacity additions and costs
+# Concept: upgrades with capacity additions and costs
 Upgrade = model.Concept("Upgrade")
 Upgrade.id = model.Property("{Upgrade} has {id:int}")
 Upgrade.substation = model.Property("{Upgrade} for {substation:Substation}")
@@ -57,44 +58,43 @@ where(Substation.id(upgrades_data.substation_id)).define(
 )
 
 # --------------------------------------------------
-# Define Optimization Problem
+# Model the problem
 # --------------------------------------------------
 
-budget = 500000  # total investment budget
+# Parameters
+budget = 500000
 
 Proj = Project.ref()
 Upg = Upgrade.ref()
+
+s = SolverModel(model, "cont")
+
+# Variable: binary approval and selection
+s.solve_for(Project.approved, type="bin", name=Project.name)
+s.solve_for(Upgrade.selected, type="bin", name=["upg", Upgrade.substation.name, Upgrade.capacity_added])
 
 # Constraint: capacity at substation must accommodate approved projects
 project_demand = sum(Proj.approved * Proj.capacity_needed).where(Proj.substation == Substation).per(Substation)
 upgrade_capacity = sum(Upg.selected * Upg.capacity_added).where(Upg.substation == Substation).per(Substation)
 capacity_ok = require(Substation.current_capacity + upgrade_capacity >= project_demand)
+s.satisfy(capacity_ok)
 
 # Constraint: at most one upgrade per substation
 upgrades_per_sub = sum(Upg.selected).where(Upg.substation == Substation).per(Substation)
 one_upgrade = require(upgrades_per_sub <= 1)
+s.satisfy(one_upgrade)
 
 # Constraint: budget
 total_investment = sum(Project.approved * Project.connection_cost) + sum(Upgrade.selected * Upgrade.upgrade_cost)
 budget_ok = require(total_investment <= budget)
+s.satisfy(budget_ok)
 
 # Objective: maximize net revenue
 net_revenue = sum(Project.approved * (Project.annual_revenue - Project.connection_cost))
-
-# --------------------------------------------------
-# Set Up Solver Model
-# --------------------------------------------------
-
-s = SolverModel(model, "cont")
-s.solve_for(Project.approved, type="bin", name=Project.name)
-s.solve_for(Upgrade.selected, type="bin", name=["upg", Upgrade.substation.name, Upgrade.capacity_added])
 s.maximize(net_revenue)
-s.satisfy(capacity_ok)
-s.satisfy(one_upgrade)
-s.satisfy(budget_ok)
 
 # --------------------------------------------------
-# Solve and Display Results
+# Solve and check solution
 # --------------------------------------------------
 
 solver = Solver("highs")
@@ -103,7 +103,6 @@ s.solve(solver, time_limit_sec=60)
 print(f"Status: {s.termination_status}")
 print(f"Net annual revenue: ${s.objective_value:.2f}")
 
-# Access solution via populated relations
 approved = select(Project.name).where(Project.approved > 0.5).to_df()
 print("\nApproved projects:")
 print(approved.to_string(index=False))

@@ -168,42 +168,88 @@ def solve_with_snowflake(config=None, solver_name="highs"):
 
 ### Template Structure
 
-Each prescriptive template follows a consistent code pattern:
+Each prescriptive template follows a consistent 3-section structure:
 
 ```python
-"""Problem Name - Brief description."""
+# problem name:
+# brief description of what the optimization does
 
-def define_model(config=None):
-    """Define base model with concepts and data."""
-    # Create model, load data, define concepts
-    return model
+from pathlib import Path
+from pandas import read_csv
+from relationalai.semantics import Model, data, ...
+from relationalai.semantics.reasoners.optimization import Solver, SolverModel
 
-def define_problem(model):
-    """Define decision variables, constraints, and objective."""
-    # Set up SolverModel with variables, constraints, objective
-    return solver_model
+model = Model("name", config=globals().get("config", None), use_lqp=False)
 
-def solve(config=None, solver_name="highs"):
-    """Orchestrate model, problem, and solver execution."""
-    model = define_model(config)
-    solver_model = define_problem(model)
-    solver = Solver(solver_name)
-    solver_model.solve(solver, time_limit_sec=60)
-    return solver_model
+# --------------------------------------------------
+# Define ontology & load data
+# --------------------------------------------------
 
-def extract_solution(solver_model):
-    """Extract solution as dict with metadata."""
-    return {
-        "status": solver_model.termination_status,
-        "objective": solver_model.objective_value,
-        "variables": solver_model.variable_values().to_df(),
-    }
+data_dir = Path(__file__).parent / "data"
 
-if __name__ == "__main__":
-    sm = solve()
-    sol = extract_solution(sm)
-    # Print results
+# Concept: description
+Concept = model.Concept("Concept")
+Concept.property = model.Property("{Concept} has {property:type}")
+data(read_csv(data_dir / "file.csv")).into(Concept, keys=["key"])
+
+# Relationship: description (joins multiple concepts)
+Relationship = model.Concept("Relationship")
+...
+
+# --------------------------------------------------
+# Model the problem
+# --------------------------------------------------
+
+# Decision concept: description (created to hold decision variables)
+Decision = model.Concept("Decision")
+...
+
+# Parameters
+param = value
+
+s = SolverModel(model, "cont")
+
+# Variable: description
+s.solve_for(...)
+
+# Constraint: description
+s.satisfy(...)
+
+# Objective: description
+s.minimize(...) / s.maximize(...)
+
+# --------------------------------------------------
+# Solve and check solution
+# --------------------------------------------------
+
+solver = Solver("highs")
+s.solve(solver, time_limit_sec=60)
+
+print(f"Status: {s.termination_status}")
+print(f"Objective: {s.objective_value:.2f}")
+# ... extract and display results
 ```
+
+#### Section Contents
+
+| Section | Purpose | Contains |
+|---------|---------|----------|
+| **Define ontology & load data** | Describe the domain data model | Concepts, relationships, properties, rules |
+| **Model the problem** | Formulate the optimization | Decision concepts, parameters, solver model, variables, constraints, objective |
+| **Solve and check solution** | Execute and inspect | Solver instantiation, solve call, result extraction and display |
+
+#### Comment Prefixes
+
+| Prefix | Section | Meaning |
+|--------|---------|---------|
+| `# Concept:` | Ontology | Base data entity with properties |
+| `# Relationship:` | Ontology | Entity joining multiple concepts |
+| `# Rule:` | Ontology | Derived fact or business logic |
+| `# Decision concept:` | Problem | Concept created to hold decision variables |
+| `# Parameters` | Problem | Constants and scalar values |
+| `# Variable:` | Problem | `solve_for` declaration |
+| `# Constraint:` | Problem | `s.satisfy` call |
+| `# Objective:` | Problem | `s.minimize` or `s.maximize` call |
 
 ### Classification Schema
 
