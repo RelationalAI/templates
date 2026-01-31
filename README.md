@@ -30,16 +30,17 @@ The Prescriptive Reasoner solves optimization problems: given constraints and ob
 | [hospital_staffing](./hospital_staffing/) | Allocation | Healthcare | MILP | Intermediate |
 | [inventory_rebalancing](./inventory_rebalancing/) | Allocation | Supply Chain & Manufacturing | LP | Beginner |
 | [machine_maintenance](./machine_maintenance/) | Scheduling | Supply Chain & Manufacturing | MILP | Intermediate |
-| [markdown_optimization](./markdown_optimization/) | Pricing | Retail | MILP | Intermediate |
+| [retail_markdown](./retail_markdown/) | Pricing | Retail | MILP | Intermediate |
 | [network_flow](./network_flow/) | Allocation | Supply Chain & Manufacturing | LP | Beginner |
 | [order_fulfillment](./order_fulfillment/) | Allocation | Supply Chain & Manufacturing | MILP | Beginner |
-| [portfolio_optimization](./portfolio_optimization/) | Allocation | Finance & Financial Services | QP | Intermediate |
+| [portfolio_balancing](./portfolio_balancing/) | Allocation | Finance & Financial Services | QP | Intermediate |
 | [production_planning](./production_planning/) | Allocation | Supply Chain & Manufacturing | MILP | Beginner |
 | [shift_assignment](./shift_assignment/) | Allocation | Retail | CSP | Beginner |
 | [supplier_reliability](./supplier_reliability/) | Allocation | Supply Chain & Manufacturing | LP | Beginner |
 | [supply_chain_transport](./supply_chain_transport/) | Scheduling | Supply Chain & Manufacturing | MILP | Intermediate |
 | [traveling_salesman](./traveling_salesman/) | Routing | Transportation | MILP | Intermediate |
 | [vehicle_scheduling](./vehicle_scheduling/) | Scheduling | Transportation | MILP | Intermediate |
+| [test_data_generation](./test_data_generation/) | Design | Data Engineering | LP | Intermediate |
 | [water_allocation](./water_allocation/) | Design | Energy & Utilities | LP | Beginner |
 
 ---
@@ -230,13 +231,40 @@ print(f"Objective: {s.objective_value:.2f}")
 # ... extract and display results
 ```
 
-#### Section Contents
+#### Section Details
 
-| Section | Purpose | Contains |
-|---------|---------|----------|
-| **Define ontology & load data** | Describe the domain data model | Concepts, relationships, properties, rules |
-| **Model the problem** | Formulate the optimization | Decision concepts, parameters, solver model, variables, constraints, objective |
-| **Solve and check solution** | Execute and inspect | Solver instantiation, solve call, result extraction and display |
+**Section 1: Define ontology & load data** — *What EXISTS?*
+
+This section describes the domain data model: the real-world entities, their attributes, and how they relate. Everything here is fixed input data that the optimizer cannot change.
+
+| Element | Description |
+|---------|-------------|
+| **Concepts** | Domain entities (e.g., `Product`, `Warehouse`, `Customer`) |
+| **Properties** | Data attributes on concepts (e.g., `Product.cost`, `Warehouse.capacity`) |
+| **Relationships** | How concepts connect (e.g., `Order` links `Customer` to `Product`) |
+| **Rules** | Derived facts or business logic computed from data |
+
+**Section 2: Model the problem** — *What to DECIDE?*
+
+This section formulates the optimization: what decisions the solver can make, what rules those decisions must follow, and what goal to optimize toward.
+
+| Element | Description |
+|---------|-------------|
+| **Decision concepts** | New concepts created to hold decision variables (e.g., `Allocation`, `Assignment`) |
+| **Parameters** | Constants and scalar values used in the formulation |
+| **Variables** | `s.solve_for(...)` — quantities the solver determines |
+| **Constraints** | `s.satisfy(...)` — rules decisions must obey |
+| **Objective** | `s.minimize(...)` or `s.maximize(...)` — the goal |
+
+**Section 3: Solve and check solution** — *Execute and extract*
+
+This section runs the solver and inspects the results.
+
+| Element | Description |
+|---------|-------------|
+| **Solver instantiation** | `Solver("highs")` — choose the solver backend |
+| **Solve call** | `s.solve(solver, time_limit_sec=60)` — run optimization |
+| **Result extraction** | Query decision variable values and display results |
 
 #### Comment Prefixes
 
@@ -269,10 +297,10 @@ Each prescriptive template README includes classification metadata:
 
 | Type | Core Decision | Example Templates |
 |------|---------------|-------------------|
-| **Allocation** | How much/which resource goes where? | diet, portfolio_optimization, order_fulfillment |
+| **Allocation** | How much/which resource goes where? | diet, portfolio_balancing, order_fulfillment |
 | **Scheduling** | When does each activity occur? | machine_maintenance, vehicle_scheduling |
 | **Routing** | What path through a network? | traveling_salesman |
-| **Pricing** | What price/discount to set? | markdown_optimization |
+| **Pricing** | What price/discount to set? | retail_markdown |
 | **Design** | What infrastructure to build? | grid_interconnection, water_allocation |
 
 #### Solution Methods

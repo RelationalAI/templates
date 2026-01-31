@@ -84,7 +84,7 @@ The covariance matrix is symmetric (covar_ij = covar_ji).
 ## Usage
 
 ```python
-from portfolio_optimization import solve, extract_solution
+from portfolio_balancing import solve, extract_solution
 
 # Run optimization with minimum return target of 20 and budget of 1000
 solver_model = solve(min_return=20, budget=1000)
@@ -98,7 +98,7 @@ print(result['variables'])
 Or run directly:
 
 ```bash
-python portfolio_optimization.py
+python portfolio_balancing.py
 ```
 
 ## Expected Output

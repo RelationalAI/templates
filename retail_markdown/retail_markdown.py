@@ -1,14 +1,15 @@
-# markdown optimization problem:
+# retail markdown problem:
 # set discount levels across weeks to maximize revenue while clearing inventory
 
 from pathlib import Path
+from time import time_ns
 
 from pandas import read_csv
 
 from relationalai.semantics import Float, Integer, Model, data, std, sum, where
 from relationalai.semantics.reasoners.optimization import Solver, SolverModel
 
-model = Model("markdown", config=globals().get("config", None), use_lqp=False)
+model = Model(f"retail_markdown_{time_ns()}", config=globals().get("config", None), use_lqp=False)
 
 # --------------------------------------------------
 # Define ontology & load data
@@ -34,10 +35,12 @@ Discount.demand_lift = model.Property("{Discount} has {demand_lift:float}")
 data(read_csv(data_dir / "discounts.csv")).into(Discount, keys=["level"])
 
 # Concept: time periods with demand multipliers
-TimePeriod = model.Concept("TimePeriod")
-TimePeriod.week_num = model.Property("{TimePeriod} has {week_num:int}")
-TimePeriod.demand_multiplier = model.Property("{TimePeriod} has {demand_multiplier:float}")
-data(read_csv(data_dir / "weeks.csv")).into(TimePeriod, keys=["week_num"])
+# Note: Uses integer index pattern with std.range() for time-indexed variables.
+# Future API may support Week as foreign key in multi-arity properties.
+Week = model.Concept("Week")
+Week.week_num = model.Property("{Week} has {week_num:int}")
+Week.demand_multiplier = model.Property("{Week} has {demand_multiplier:float}")
+data(read_csv(data_dir / "weeks.csv")).into(Week, keys=["week_num"])
 
 # --------------------------------------------------
 # Model the problem
@@ -50,7 +53,7 @@ weeks = std.range(week_start, week_end + 1)
 
 t = Integer.ref()
 d = Discount.ref()
-w = TimePeriod.ref()
+w = Week.ref()
 
 s = SolverModel(model, "cont", use_pb=True)
 

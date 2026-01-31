@@ -97,7 +97,7 @@ Data files are located in the `data/` subdirectory.
 ## Usage
 
 ```python
-from markdown_optimization import solve, extract_solution
+from retail_markdown import solve, extract_solution
 
 # Run optimization
 solver_model = solve()
@@ -111,7 +111,7 @@ print(result['variables'])
 Or run directly:
 
 ```bash
-python markdown_optimization.py
+python retail_markdown.py
 ```
 
 ## Expected Output

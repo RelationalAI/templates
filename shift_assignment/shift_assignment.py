@@ -28,16 +28,15 @@ Shift.id = model.Property("{Shift} has {id:int}")
 Shift.name = model.Property("{Shift} has {name:string}")
 data(read_csv(data_dir / "shifts.csv")).into(Shift, keys=["id"])
 
-# Relationship: assignments linking available worker-shift pairs
+# Relationship: worker-shift availability (creates assignment domain)
+# Note: Future API will support Worker.available_for = model.Relationship(...)
 Assignment = model.Concept("Assignment")
 Assignment.worker = model.Property("{Assignment} has {worker:Worker}")
 Assignment.shift = model.Property("{Assignment} has {shift:Shift}")
+Assignment.assigned = model.Property("{Assignment} assigned {assigned:int}")
 
 avail = data(read_csv(data_dir / "availability.csv"))
-where(
-    Worker.id(avail.worker_id),
-    Shift.id(avail.shift_id)
-).define(
+where(Worker.id(avail.worker_id), Shift.id(avail.shift_id)).define(
     Assignment.new(worker=Worker, shift=Shift)
 )
 
@@ -54,22 +53,17 @@ Asn = Assignment.ref()
 s = SolverModel(model, "int")
 
 # Variable: binary assignment (0 or 1)
-Assignment.assigned = model.Property("{Assignment} assigned {assigned:int}")
-s.solve_for(
-    Assignment.assigned,
-    name=["x", Assignment.worker.name, Assignment.shift.name],
-    type="bin"
-)
-
-# Constraint: each worker works at most max_shifts_per_worker shifts
-worker_shifts = sum(Asn.assigned).where(Asn.worker == Worker).per(Worker)
-max_shifts = require(worker_shifts <= max_shifts_per_worker)
-s.satisfy(max_shifts)
+s.solve_for(Assignment.assigned, name=["x", Assignment.worker.name, Assignment.shift.name], type="bin")
 
 # Constraint: each shift has minimum coverage
-shift_coverage = sum(Asn.assigned).where(Asn.shift == Shift).per(Shift)
-min_workers = require(shift_coverage >= min_coverage)
-s.satisfy(min_workers)
+s.satisfy(where(Asn.shift == Shift).require(
+    sum(Asn.assigned).per(Shift) >= min_coverage
+))
+
+# Constraint: each worker works at most max_shifts_per_worker shifts
+s.satisfy(where(Asn.worker == Worker).require(
+    sum(Asn.assigned).per(Worker) <= max_shifts_per_worker
+))
 
 # --------------------------------------------------
 # Solve and check solution
@@ -82,12 +76,11 @@ print(f"Status: {s.termination_status}")
 
 assignments = select(
     Assignment.worker.name.alias("worker"),
-    Assignment.shift.name.alias("shift"),
-    Assignment.assigned
+    Assignment.shift.name.alias("shift")
 ).where(Assignment.assigned >= 1).to_df()
 
 print("\nAssignments:")
-print(assignments[["worker", "shift"]].to_string(index=False))
+print(assignments.to_string(index=False))
 
 print("\nCoverage per shift:")
 print(assignments.groupby("shift").size().reset_index(name="workers").to_string(index=False))
