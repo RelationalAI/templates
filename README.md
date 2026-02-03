@@ -172,8 +172,9 @@ def solve_with_snowflake(config=None, solver_name="highs"):
 Each prescriptive template follows a consistent 3-section structure:
 
 ```python
-# problem name:
-# brief description of what the optimization does
+# Problem Statement: <problem name>
+# <Brief description of what the optimization does and what decisions it makes.
+# This is the "what and why" - helps users understand the template's purpose.>
 
 from pathlib import Path
 from pandas import read_csv
@@ -288,6 +289,7 @@ This section runs the solver and inspects the results. When scenario parameters 
 
 | Prefix | Section | Meaning |
 |--------|---------|---------|
+| `# Problem Statement:` | Header | What this optimization does and why |
 | `# Concept:` | Ontology | Base data entity with properties |
 | `# Relationship:` | Ontology | Entity joining multiple concepts |
 | `# Rule:` | Ontology | Derived fact or business logic |
