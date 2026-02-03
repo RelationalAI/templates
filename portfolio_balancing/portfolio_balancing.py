@@ -1,10 +1,9 @@
-# portfolio optimization problem:
+# portfolio balancing:
 # minimize portfolio risk for a given return target (Markowitz mean-variance)
 
 from pathlib import Path
 
 from pandas import read_csv
-
 from relationalai.semantics import Float, Model, data, require, select, sum, where
 from relationalai.semantics.reasoners.optimization import Solver, SolverModel
 
