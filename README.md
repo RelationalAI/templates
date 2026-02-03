@@ -205,8 +205,8 @@ Relationship = model.Concept("Relationship")
 Decision = model.Concept("Decision")
 ...
 
-# Parameters
-param = value
+# Parameters (used in variables, constraints, objective below)
+PARAM = value
 
 s = SolverModel(model, "cont")
 
@@ -219,16 +219,30 @@ s.satisfy(...)
 # Objective: description
 s.minimize(...) / s.maximize(...)
 
+# Scenarios (optional, for what-if analysis)
+SCENARIO_PARAM = "..."
+SCENARIO_VALUES = [...]
+
 # --------------------------------------------------
 # Solve and check solution
 # --------------------------------------------------
 
+# Simple solve (no scenario analysis)
 solver = Solver("highs")
-s.solve(solver, time_limit_sec=60)
+s.solve(solver)
 
 print(f"Status: {s.termination_status}")
 print(f"Objective: {s.objective_value:.2f}")
 # ... extract and display results
+
+# --- OR ---
+
+# Scenario analysis loop (when SCENARIO_VALUES defined)
+for scenario_value in SCENARIO_VALUES:
+    s = SolverModel(model, "cont")
+    # ... configure variables/constraints with scenario_value
+    s.solve(solver)
+    # ... collect results per scenario
 ```
 
 #### Section Details
@@ -255,15 +269,17 @@ This section formulates the optimization: what decisions the solver can make, wh
 | **Variables** | `s.solve_for(...)` — quantities the solver determines |
 | **Constraints** | `s.satisfy(...)` — rules decisions must obey |
 | **Objective** | `s.minimize(...)` or `s.maximize(...)` — the goal |
+| **Scenarios** | (Optional) What-if analysis: `SCENARIO_PARAM`, `SCENARIO_VALUES` |
 
 **Section 3: Solve and check solution** — *Execute and extract*
 
-This section runs the solver and inspects the results.
+This section runs the solver and inspects the results. When scenario parameters are defined, this section includes a loop over `SCENARIO_VALUES`.
 
 | Element | Description |
 |---------|-------------|
 | **Solver instantiation** | `Solver("highs")` — choose the solver backend |
-| **Solve call** | `s.solve(solver, time_limit_sec=60)` — run optimization |
+| **Scenario loop** | (Optional) `for scenario_value in SCENARIO_VALUES:` — iterate what-if cases |
+| **Solve call** | `s.solve(solver)` — run optimization |
 | **Result extraction** | Query decision variable values and display results |
 
 #### Comment Prefixes
@@ -278,6 +294,21 @@ This section runs the solver and inspects the results.
 | `# Variable:` | Problem | `solve_for` declaration |
 | `# Constraint:` | Problem | `s.satisfy` call |
 | `# Objective:` | Problem | `s.minimize` or `s.maximize` call |
+| `# Scenarios` | Problem | What-if analysis (`SCENARIO_PARAM`, `SCENARIO_VALUES`) |
+
+#### Parameters vs Scenario Parameters
+
+| Type | Purpose | When Set | Example |
+|------|---------|----------|---------|
+| **Parameters** | Fixed constants used in the formulation (bounds, thresholds, weights) | At problem definition time | `BUDGET = 100000`, `MIN_SERVICE_LEVEL = 0.95` |
+| **Scenario Parameters** | Values to vary for what-if analysis across multiple solves | After formulation, before solve | `SCENARIO_PARAM = "budget"`, `SCENARIO_VALUES = [80000, 100000, 120000]` |
+
+**Parameters** are baked into the formulation—they define the problem. **Scenario Parameters** control how the solve section runs—they enable sensitivity analysis by solving the same formulation multiple times with different parameter values.
+
+A parameter can become a scenario parameter when you want to explore its impact:
+1. Define `BUDGET = 100000` as a parameter in the formulation
+2. Add `SCENARIO_PARAM = "BUDGET"` and `SCENARIO_VALUES = [80000, 100000, 120000]`
+3. The solve loop runs three times, substituting each value
 
 ### Classification Schema
 
