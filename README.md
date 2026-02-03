@@ -205,9 +205,10 @@ Relationship = model.Concept("Relationship")
 Decision = model.Concept("Decision")
 ...
 
-# Parameters (used in variables, constraints, objective below)
+# Parameters (used in constraints and objective below)
 PARAM = value
 
+# Solver model
 s = SolverModel(model, "cont")
 
 # Variable: description
@@ -265,7 +266,8 @@ This section formulates the optimization: what decisions the solver can make, wh
 | Element | Description |
 |---------|-------------|
 | **Decision concepts** | New concepts created to hold decision variables (e.g., `Allocation`, `Assignment`) |
-| **Parameters** | Constants and scalar values used in the formulation |
+| **Parameters** | Constants used in constraints and objective |
+| **Solver model** | `SolverModel(model, "cont")` — instantiate the solver |
 | **Variables** | `s.solve_for(...)` — quantities the solver determines |
 | **Constraints** | `s.satisfy(...)` — rules decisions must obey |
 | **Objective** | `s.minimize(...)` or `s.maximize(...)` — the goal |
@@ -290,7 +292,8 @@ This section runs the solver and inspects the results. When scenario parameters 
 | `# Relationship:` | Ontology | Entity joining multiple concepts |
 | `# Rule:` | Ontology | Derived fact or business logic |
 | `# Decision concept:` | Problem | Concept created to hold decision variables |
-| `# Parameters` | Problem | Constants and scalar values |
+| `# Parameters` | Problem | Constants used in formulation |
+| `# Solver model` | Problem | `SolverModel` instantiation |
 | `# Variable:` | Problem | `solve_for` declaration |
 | `# Constraint:` | Problem | `s.satisfy` call |
 | `# Objective:` | Problem | `s.minimize` or `s.maximize` call |
