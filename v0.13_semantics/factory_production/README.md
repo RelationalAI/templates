@@ -1,3 +1,16 @@
+---
+title: "Factory Production"
+description: "Schedule production across machines to maximize profit while meeting minimum requirements."
+featured: false
+experience_level: beginner
+industry: "Manufacturing"
+reasoning_types:
+  - Prescriptive
+tags:
+  - Allocation
+  - LP
+---
+
 # Factory Production
 
 Schedule production across machines to maximize profit while meeting minimum requirements.

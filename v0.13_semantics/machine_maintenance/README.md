@@ -1,3 +1,16 @@
+---
+title: "Machine Maintenance"
+description: "Schedule preventive maintenance for machines to minimize cost while avoiding conflicts."
+featured: false
+experience_level: intermediate
+industry: "Manufacturing"
+reasoning_types:
+  - Prescriptive
+tags:
+  - Scheduling
+  - MILP
+---
+
 # Machine Maintenance
 
 Schedule preventive maintenance for machines to minimize cost while avoiding conflicts.

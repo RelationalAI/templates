@@ -1,3 +1,17 @@
+---
+title: "Diet Optimization"
+description: "Select foods to satisfy daily nutritional requirements at minimum cost."
+featured: false
+experience_level: beginner
+industry: "Healthcare"
+reasoning_types:
+  - Prescriptive
+tags:
+  - Allocation
+  - LP
+  - Nutrition
+---
+
 # Diet Optimization
 
 Select foods to satisfy daily nutritional requirements at minimum cost.

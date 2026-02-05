@@ -1,3 +1,17 @@
+---
+title: "Supply Chain Transport"
+description: "Route shipments from warehouses to customers using multiple transport modes to minimize cost."
+featured: false
+experience_level: intermediate
+industry: "Supply Chain / Logistics"
+reasoning_types:
+  - Prescriptive
+tags:
+  - Scheduling
+  - MILP
+  - Transportation
+---
+
 # Supply Chain Transport
 
 Route shipments from warehouses to customers using multiple transport modes to minimize cost.

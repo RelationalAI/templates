@@ -1,3 +1,16 @@
+---
+title: "Water Allocation"
+description: "Allocate water from sources to users at minimum cost while meeting demand."
+featured: false
+experience_level: beginner
+industry: "Utilities"
+reasoning_types:
+  - Prescriptive
+tags:
+  - Design
+  - LP
+---
+
 # Water Allocation
 
 Allocate water from sources to users at minimum cost while meeting demand.

@@ -1,3 +1,16 @@
+---
+title: "Production Planning"
+description: "Schedule production across machines to meet demand while maximizing profit."
+featured: false
+experience_level: beginner
+industry: "Manufacturing"
+reasoning_types:
+  - Prescriptive
+tags:
+  - Allocation
+  - MILP
+---
+
 # Production Planning
 
 Schedule production across machines to meet demand while maximizing profit.

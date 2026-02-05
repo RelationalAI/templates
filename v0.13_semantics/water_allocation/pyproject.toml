@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rai-template-water-allocation"
+version = "0.0.0"
+description = "RelationalAI template: water_allocation"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "relationalai==0.13.3",
+  "pandas",
+]
+
+[tool.setuptools]
+packages = []

@@ -1,3 +1,16 @@
+---
+title: "Ad Spend Allocation"
+description: "Allocate advertising budget across channels and campaigns to maximize conversions."
+featured: false
+experience_level: intermediate
+industry: "Marketing"
+reasoning_types:
+  - Prescriptive
+tags:
+  - Allocation
+  - MILP
+---
+
 # Ad Spend Allocation
 
 Allocate advertising budget across channels and campaigns to maximize conversions.

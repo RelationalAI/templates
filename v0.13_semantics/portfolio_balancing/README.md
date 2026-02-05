@@ -1,3 +1,16 @@
+---
+title: "Portfolio Optimization"
+description: "Allocate investment across stocks to minimize risk while achieving a target return."
+featured: false
+experience_level: intermediate
+industry: "Finance"
+reasoning_types:
+  - Prescriptive
+tags:
+  - Allocation
+  - QP
+---
+
 # Portfolio Optimization
 
 Allocate investment across stocks to minimize risk while achieving a target return.
