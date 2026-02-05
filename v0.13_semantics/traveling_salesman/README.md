@@ -1,3 +1,16 @@
+---
+title: "Traveling Salesman"
+description: "Find the shortest route visiting all cities exactly once and returning to the start."
+featured: false
+experience_level: intermediate
+industry: "Supply Chain / Logistics"
+reasoning_types:
+  - Prescriptive
+tags:
+  - Routing
+  - MILP
+---
+
 # Traveling Salesman
 
 Find the shortest route visiting all cities exactly once and returning to the start.

@@ -1,3 +1,16 @@
+---
+title: "Markdown Optimization"
+description: "Set discount levels for products across a selling season to maximize revenue while clearing inventory."
+featured: false
+experience_level: intermediate
+industry: "Retail"
+reasoning_types:
+  - Prescriptive
+tags:
+  - Pricing
+  - MILP
+---
+
 # Markdown Optimization
 
 Set discount levels for products across a selling season to maximize revenue while clearing inventory.

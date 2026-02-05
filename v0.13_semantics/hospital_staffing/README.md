@@ -1,3 +1,17 @@
+---
+title: "Hospital Staffing"
+description: "Assign nurses to shifts to ensure adequate coverage while minimizing staffing cost."
+featured: false
+experience_level: intermediate
+industry: "Healthcare"
+reasoning_types:
+  - Prescriptive
+tags:
+  - Allocation
+  - MILP
+  - Staffing
+---
+
 # Hospital Staffing
 
 Assign nurses to shifts to ensure adequate coverage while minimizing staffing cost.

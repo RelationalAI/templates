@@ -1,3 +1,17 @@
+---
+title: "Test Data Generation"
+description: "Determine optimal row counts for test database tables that satisfy schema constraints, then generate valid test data."
+featured: false
+experience_level: intermediate
+industry: "Data Engineering"
+reasoning_types:
+  - Prescriptive
+tags:
+  - Design
+  - LP
+  - Data
+---
+
 # Test Data Generation
 
 Determine optimal row counts for test database tables that satisfy schema constraints, then generate valid test data.

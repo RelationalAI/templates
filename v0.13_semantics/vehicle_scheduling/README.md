@@ -1,3 +1,16 @@
+---
+title: "Vehicle Scheduling"
+description: "Assign trips to vehicles to minimize total cost including fixed and variable components."
+featured: false
+experience_level: intermediate
+industry: "Supply Chain / Logistics"
+reasoning_types:
+  - Prescriptive
+tags:
+  - Scheduling
+  - MILP
+---
+
 # Vehicle Scheduling
 
 Assign trips to vehicles to minimize total cost including fixed and variable components.

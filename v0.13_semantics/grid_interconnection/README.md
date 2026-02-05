@@ -1,3 +1,16 @@
+---
+title: "Grid Interconnection"
+description: "Approve renewable energy projects and substation upgrades to maximize net revenue."
+featured: false
+experience_level: intermediate
+industry: "Utilities"
+reasoning_types:
+  - Prescriptive
+tags:
+  - Design
+  - MILP
+---
+
 # Grid Interconnection
 
 Approve renewable energy projects and substation upgrades to maximize net revenue.

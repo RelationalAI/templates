@@ -1,3 +1,17 @@
+---
+title: "Shift Assignment"
+description: "Assign workers to shifts respecting availability and capacity constraints."
+featured: false
+experience_level: beginner
+industry: "Workforce Management"
+reasoning_types:
+  - Prescriptive
+tags:
+  - Allocation
+  - CSP
+  - Scheduling
+---
+
 # Shift Assignment
 
 Assign workers to shifts respecting availability and capacity constraints.
