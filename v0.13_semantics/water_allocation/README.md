@@ -13,18 +13,6 @@ tags:
 
 # Water Allocation
 
-Allocate water from sources to users at minimum cost while meeting demand.
-
-## Classification
-
-| Dimension | Value |
-|-----------|-------|
-| **Reasoner** | Prescriptive |
-| **Problem Type** | Design |
-| **Industry** | Utilities / Water Management |
-| **Method** | LP (Linear Programming) |
-| **Complexity** | Beginner |
-
 ## What is this problem?
 
 Water utilities must distribute water from sources (reservoirs, treatment plants, groundwater) to users (residential, industrial, agricultural) through a network of pipelines. This template models allocating flow across connections to meet all user demands at minimum cost, accounting for source costs, connection capacities, and transmission losses.

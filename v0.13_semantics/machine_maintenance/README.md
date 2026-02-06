@@ -13,18 +13,6 @@ tags:
 
 # Machine Maintenance
 
-Schedule preventive maintenance for machines to minimize cost while avoiding conflicts.
-
-## Classification
-
-| Dimension | Value |
-|-----------|-------|
-| **Reasoner** | Prescriptive |
-| **Problem Type** | Scheduling |
-| **Industry** | Manufacturing |
-| **Method** | MILP (Mixed-Integer Linear Programming) |
-| **Complexity** | Intermediate |
-
 ## What is this problem?
 
 Equipment requires periodic preventive maintenance, but scheduling is complex: maintenance crews have limited hours, some machines can't be serviced simultaneously (they share resources or technicians), and weekend/overtime slots cost more. This template models scheduling maintenance across time slots while respecting crew capacity and machine conflicts.

@@ -14,18 +14,6 @@ tags:
 
 # Network Flow
 
-Find the maximum flow through a network from source to sink.
-
-## Classification
-
-| Dimension | Value |
-|-----------|-------|
-| **Reasoner** | Prescriptive |
-| **Problem Type** | Allocation |
-| **Industry** | Logistics / Transportation |
-| **Method** | LP (Linear Programming) |
-| **Complexity** | Beginner |
-
 ## What is this problem?
 
 The maximum flow problem is a fundamental network optimization: given a network of nodes and edges with capacity limits, find the maximum amount of "flow" that can be pushed from a source node to a sink node. Flow must be conserved at intermediate nodes—what flows in must flow out.

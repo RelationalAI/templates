@@ -14,18 +14,6 @@ tags:
 
 # Test Data Generation
 
-Determine optimal row counts for test database tables that satisfy schema constraints, then generate valid test data.
-
-## Classification
-
-| Dimension | Value |
-|-----------|-------|
-| **Reasoner** | Prescriptive |
-| **Problem Type** | Design |
-| **Industry** | Data Engineering |
-| **Method** | LP (Linear Programming) |
-| **Complexity** | Intermediate |
-
 ## What is this problem?
 
 QA teams need realistic test data that satisfies all schema constraints (referential integrity, uniqueness, cardinality bounds) while matching target size and distribution specifications. Simply generating random data often violates foreign key relationships or produces unrealistic data distributions.

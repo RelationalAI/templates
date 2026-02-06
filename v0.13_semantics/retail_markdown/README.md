@@ -13,18 +13,6 @@ tags:
 
 # Markdown Optimization
 
-Set discount levels for products across a selling season to maximize revenue while clearing inventory.
-
-## Classification
-
-| Dimension | Value |
-|-----------|-------|
-| **Reasoner** | Prescriptive |
-| **Problem Type** | Pricing |
-| **Industry** | Retail |
-| **Method** | MILP (Mixed-Integer Linear Programming) |
-| **Complexity** | Intermediate |
-
 ## What is this problem?
 
 Retailers must clear seasonal inventory before it loses value, but markdown decisions are complex: deeper discounts drive more sales but at lower margins, and once you mark down a product, you typically can't raise the price again. This template models choosing optimal discount levels (0%, 10%, 20%, 30%, 50%) for products across multiple weeks to maximize revenue recovery.

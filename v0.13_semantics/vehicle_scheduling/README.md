@@ -13,18 +13,6 @@ tags:
 
 # Vehicle Scheduling
 
-Assign trips to vehicles to minimize total cost including fixed and variable components.
-
-## Classification
-
-| Dimension | Value |
-|-----------|-------|
-| **Reasoner** | Prescriptive |
-| **Problem Type** | Scheduling |
-| **Industry** | Logistics / Transportation |
-| **Method** | MILP (Mixed-Integer Linear Programming) |
-| **Complexity** | Intermediate |
-
 ## What is this problem?
 
 Fleet operators must assign trips to vehicles while minimizing total cost. Each vehicle has a fixed cost (insurance, depreciation, parking) that applies if the vehicle is used at all, plus variable mileage costs. This template models assigning trips to a mixed fleet of vans and trucks with different capacities and cost structures.
