@@ -3,7 +3,7 @@ title: "Vehicle Scheduling"
 description: "Assign trips to vehicles to minimize total cost including fixed and variable components."
 featured: false
 experience_level: intermediate
-industry: "Supply Chain / Logistics"
+industry: "Supply Chain"
 reasoning_types:
   - Prescriptive
 tags:

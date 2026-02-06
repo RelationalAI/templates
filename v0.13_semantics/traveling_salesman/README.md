@@ -3,7 +3,7 @@ title: "Traveling Salesman"
 description: "Find the shortest route visiting all cities exactly once and returning to the start."
 featured: false
 experience_level: intermediate
-industry: "Supply Chain / Logistics"
+industry: "Supply Chain"
 reasoning_types:
   - Prescriptive
 tags:

@@ -3,7 +3,7 @@ title: "Inventory Rebalancing"
 description: "Transfer inventory between warehouse sites to meet demand at minimum cost."
 featured: false
 experience_level: beginner
-industry: "Supply Chain / Logistics"
+industry: "Supply Chain"
 reasoning_types:
   - Prescriptive
 tags:

@@ -3,7 +3,7 @@ title: "Supplier Reliability"
 description: "Select suppliers to meet product demand while balancing cost and reliability."
 featured: false
 experience_level: beginner
-industry: "Supply Chain / Logistics"
+industry: "Supply Chain"
 reasoning_types:
    - Prescriptive
 tags:

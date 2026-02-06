@@ -3,7 +3,7 @@ title: "Network Flow"
 description: "Find the maximum flow through a network from source to sink."
 featured: false
 experience_level: beginner
-industry: "Supply Chain / Logistics"
+industry: "Supply Chain"
 reasoning_types:
   - Prescriptive
 tags:
