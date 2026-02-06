@@ -3,7 +3,7 @@ title: "Supply Chain Transport"
 description: "Route shipments from warehouses to customers using multiple transport modes to minimize cost."
 featured: false
 experience_level: intermediate
-industry: "Supply Chain / Logistics"
+industry: "Supply Chain"
 reasoning_types:
   - Prescriptive
 tags:

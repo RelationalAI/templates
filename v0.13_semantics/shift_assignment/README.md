@@ -1,7 +1,7 @@
 ---
 title: "Shift Assignment"
 description: "Assign workers to shifts respecting availability and capacity constraints."
-featured: false
+featured: true
 experience_level: beginner
 industry: "Workforce Management"
 reasoning_types:
