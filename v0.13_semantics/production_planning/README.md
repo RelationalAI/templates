@@ -1,7 +1,7 @@
 ---
 title: "Production Planning"
 description: "Schedule production across machines to meet demand while maximizing profit."
-featured: false
+featured: true
 experience_level: beginner
 industry: "Manufacturing"
 reasoning_types:
