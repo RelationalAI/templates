@@ -14,18 +14,6 @@ tags:
 
 # Supply Chain Transport
 
-Route shipments from warehouses to customers using multiple transport modes to minimize cost.
-
-## Classification
-
-| Dimension | Value |
-|-----------|-------|
-| **Reasoner** | Prescriptive |
-| **Problem Type** | Scheduling |
-| **Industry** | Logistics / Supply Chain |
-| **Method** | MILP (Mixed-Integer Linear Programming) |
-| **Complexity** | Intermediate |
-
 ## What is this problem?
 
 Companies ship products from warehouses to customers using different transport modes (truck, rail, air), each with different costs, transit times, and capacities. This template models choosing the optimal mode for each shipment to minimize total cost while meeting delivery deadlines.

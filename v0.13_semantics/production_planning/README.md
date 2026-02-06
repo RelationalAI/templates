@@ -13,18 +13,6 @@ tags:
 
 # Production Planning
 
-Schedule production across machines to meet demand while maximizing profit.
-
-## Classification
-
-| Dimension | Value |
-|-----------|-------|
-| **Reasoner** | Prescriptive |
-| **Problem Type** | Allocation |
-| **Industry** | Manufacturing |
-| **Method** | MILP (Mixed-Integer Linear Programming) |
-| **Complexity** | Beginner |
-
 ## What is this problem?
 
 Manufacturing facilities must coordinate production across machines to meet customer demand while maximizing profit. This template models scheduling discrete production quantities where different products have different profit margins, and machines have varying efficiency (hours per unit) and availability.

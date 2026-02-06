@@ -14,18 +14,6 @@ tags:
 
 # Diet Optimization
 
-Select foods to satisfy daily nutritional requirements at minimum cost.
-
-## Classification
-
-| Dimension | Value |
-|-----------|-------|
-| **Reasoner** | Prescriptive |
-| **Problem Type** | Allocation |
-| **Industry** | Healthcare / Nutrition |
-| **Method** | LP (Linear Programming) |
-| **Complexity** | Beginner |
-
 ## What is this problem?
 
 Meal planning services, hospitals, and institutional food services need to design menus that meet nutritional requirements without overspending. This template models selecting from 9 common foods (hamburger, chicken, hot dog, fries, macaroni, pizza, salad, milk, ice cream) to satisfy daily limits on calories, protein, fat, and sodium at minimum cost.

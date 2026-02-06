@@ -13,18 +13,6 @@ tags:
 
 # Grid Interconnection
 
-Approve renewable energy projects and substation upgrades to maximize net revenue.
-
-## Classification
-
-| Dimension | Value |
-|-----------|-------|
-| **Reasoner** | Prescriptive |
-| **Problem Type** | Design |
-| **Industry** | Energy / Utilities |
-| **Method** | MILP (Mixed-Integer Linear Programming) |
-| **Complexity** | Intermediate |
-
 ## What is this problem?
 
 Electric utilities face a growing queue of renewable energy projects seeking grid connection—solar farms, wind installations, and battery storage facilities. Each project requires substation capacity and connection infrastructure. With limited budgets and capacity constraints, utilities must strategically select which projects to approve and where to invest in infrastructure upgrades.

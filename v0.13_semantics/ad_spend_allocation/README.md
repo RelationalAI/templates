@@ -13,17 +13,6 @@ tags:
 
 # Ad Spend Allocation
 
-Allocate advertising budget across channels and campaigns to maximize conversions.
-
-## Classification
-
-| Dimension | Value |
-|-----------|-------|
-| **Reasoner** | Prescriptive |
-| **Problem Type** | Allocation |
-| **Industry** | Marketing / Advertising |
-| **Method** | MILP (Mixed-Integer Linear Programming) |
-| **Complexity** | Intermediate |
 
 ## What is this problem?
 

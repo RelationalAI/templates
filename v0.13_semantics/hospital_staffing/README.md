@@ -14,18 +14,6 @@ tags:
 
 # Hospital Staffing
 
-Assign nurses to shifts to ensure adequate coverage while minimizing staffing cost.
-
-## Classification
-
-| Dimension | Value |
-|-----------|-------|
-| **Reasoner** | Prescriptive |
-| **Problem Type** | Allocation |
-| **Industry** | Healthcare |
-| **Method** | MILP (Mixed-Integer Linear Programming) |
-| **Complexity** | Intermediate |
-
 ## What is this problem?
 
 Hospitals must schedule nurses across shifts while ensuring patient safety, meeting regulatory requirements, and controlling labor costs—typically 40-60% of a hospital's operating budget. This template models assigning nurses with different skill levels and hourly rates to Morning, Afternoon, and Night shifts, respecting individual availability and ensuring each shift has adequate coverage including at least one highly-skilled nurse.

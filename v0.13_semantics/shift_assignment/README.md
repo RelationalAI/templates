@@ -14,18 +14,6 @@ tags:
 
 # Shift Assignment
 
-Assign workers to shifts respecting availability and capacity constraints.
-
-## Classification
-
-| Dimension | Value |
-|-----------|-------|
-| **Reasoner** | Prescriptive |
-| **Problem Type** | Allocation |
-| **Industry** | Workforce Management |
-| **Method** | CSP (Constraint Satisfaction Problem) |
-| **Complexity** | Beginner |
-
 ## What is this problem?
 
 Businesses need to staff shifts with available workers, but workers have different availabilities and each shift has minimum coverage requirements. This template is a Constraint Satisfaction Problem (CSP)—unlike optimization problems, the goal is to find any valid schedule that satisfies all constraints, not necessarily the "best" one.

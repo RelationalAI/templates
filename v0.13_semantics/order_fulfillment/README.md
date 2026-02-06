@@ -14,18 +14,6 @@ tags:
 
 # Order Fulfillment
 
-Assign customer orders to fulfillment centers to minimize total shipping cost.
-
-## Classification
-
-| Dimension | Value |
-|-----------|-------|
-| **Reasoner** | Prescriptive |
-| **Problem Type** | Allocation |
-| **Industry** | E-commerce / Logistics |
-| **Method** | MILP (Mixed-Integer Linear Programming) |
-| **Complexity** | Beginner |
-
 ## What is this problem?
 
 E-commerce companies must decide which warehouse should fulfill each order. This template models assigning orders to fulfillment centers where each FC has a capacity limit, a fixed operating cost when used, and variable shipping costs by FC-customer pair.

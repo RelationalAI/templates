@@ -13,18 +13,6 @@ tags:
 
 # Portfolio Optimization
 
-Allocate investment across stocks to minimize risk while achieving a target return.
-
-## Classification
-
-| Dimension | Value |
-|-----------|-------|
-| **Reasoner** | Prescriptive |
-| **Problem Type** | Allocation |
-| **Industry** | Finance |
-| **Method** | QP (Quadratic Programming) |
-| **Complexity** | Intermediate |
-
 ## What is this problem?
 
 Investors must allocate capital across multiple assets to achieve target returns while managing risk. This template implements the classic Markowitz mean-variance optimization—finding stock allocations that minimize portfolio variance (risk) while achieving a minimum expected return.

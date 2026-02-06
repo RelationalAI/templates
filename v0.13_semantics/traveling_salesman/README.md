@@ -13,18 +13,6 @@ tags:
 
 # Traveling Salesman
 
-Find the shortest route visiting all cities exactly once and returning to the start.
-
-## Classification
-
-| Dimension | Value |
-|-----------|-------|
-| **Reasoner** | Prescriptive |
-| **Problem Type** | Routing |
-| **Industry** | Logistics / Routing |
-| **Method** | MILP (Mixed-Integer Linear Programming) |
-| **Complexity** | Intermediate |
-
 ## What is this problem?
 
 The traveling salesman problem (TSP) is one of the most studied optimization problems. A salesperson (or vehicle, robot, or tool) must visit multiple locations and return to the start. The challenge is finding the shortest route among the astronomical number of possibilities—for just 20 cities, there are over 60 quadrillion possible routes.

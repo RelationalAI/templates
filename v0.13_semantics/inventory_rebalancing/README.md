@@ -13,18 +13,6 @@ tags:
 
 # Inventory Rebalancing
 
-Transfer inventory between warehouse sites to meet demand at minimum cost.
-
-## Classification
-
-| Dimension | Value |
-|-----------|-------|
-| **Reasoner** | Prescriptive |
-| **Problem Type** | Allocation |
-| **Industry** | Supply Chain / Logistics |
-| **Method** | LP (Linear Programming) |
-| **Complexity** | Beginner |
-
 ## What is this problem?
 
 Inventory is often in the wrong place—one warehouse has excess stock while another faces stockouts. This template models transferring inventory between sites via lanes with different costs and capacity limits to meet demand at minimum transfer cost.

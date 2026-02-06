@@ -15,18 +15,6 @@ tags:
 
 # Supplier Reliability
 
-Select suppliers to meet product demand while balancing cost and reliability.
-
-## Classification
-
-| Dimension | Value |
-|-----------|-------|
-| **Reasoner** | Prescriptive |
-| **Problem Type** | Allocation |
-| **Industry** | Supply Chain / Procurement |
-| **Method** | LP (Linear Programming) |
-| **Complexity** | Beginner |
-
 ## What is this problem?
 
 Procurement teams must balance cost against supply chain risk. Cheaper suppliers may have reliability issues (delays, quality problems, disruptions), while more reliable suppliers charge premium prices. This template models sourcing products from multiple suppliers with different reliability scores and costs.

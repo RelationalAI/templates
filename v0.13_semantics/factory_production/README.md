@@ -13,18 +13,6 @@ tags:
 
 # Factory Production
 
-Schedule production across machines to maximize profit while meeting minimum requirements.
-
-## Classification
-
-| Dimension | Value |
-|-----------|-------|
-| **Reasoner** | Prescriptive |
-| **Problem Type** | Allocation |
-| **Industry** | Manufacturing |
-| **Method** | LP (Linear Programming) |
-| **Complexity** | Beginner |
-
 ## What is this problem?
 
 Manufacturing facilities must decide what to produce given limited resources. This template models a factory with multiple machines producing different products, where each machine has limited hours available and different hourly operating costs. Each product has a selling price and minimum production requirement. Different machines take different amounts of time to produce each product.
