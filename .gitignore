@@ -39,3 +39,8 @@ metadata.jsonl
 
 # uv lock file
 uv.lock
+
+dev_temp/
+instructions.md
+
+.gitignore
