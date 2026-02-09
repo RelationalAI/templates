@@ -3,6 +3,7 @@
 
 from pathlib import Path
 
+import pandas; pandas.options.future.infer_string = False
 from pandas import read_csv
 
 from relationalai.semantics import Model, data, per, require, select, sum

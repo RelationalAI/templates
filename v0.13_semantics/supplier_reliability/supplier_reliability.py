@@ -3,6 +3,7 @@
 
 from pathlib import Path
 
+import pandas; pandas.options.future.infer_string = False
 from pandas import read_csv
 
 from relationalai.semantics import Model, data, define, require, select, sum, where
@@ -54,32 +55,37 @@ Order.option = model.Property("{Order} uses {option:SupplyOption}")
 Order.quantity = model.Property("{Order} has {quantity:float}")
 define(Order.new(option=SupplyOption))
 
+# Derived relationships for direct access (avoids multi-hop traversals)
+Order.supplier = model.Property("{Order} has {supplier:Supplier}")
+define(Order.supplier(Supplier)).where(Order.option(SupplyOption), SupplyOption.supplier(Supplier))
+
+Order.product = model.Property("{Order} has {product:Product}")
+define(Order.product(Product)).where(Order.option(SupplyOption), SupplyOption.product(Product))
+
+Order.cost_per_unit = model.Property("{Order} has {cost_per_unit:float}")
+define(Order.cost_per_unit(SupplyOption.cost_per_unit)).where(Order.option(SupplyOption))
+
 # Parameters
 reliability_weight = 0.0  # penalty weight for unreliable suppliers (0 = cost only)
-
-Ord = Order.ref()
-Pr = Product.ref()
 
 s = SolverModel(model, "cont")
 
 # Variable: order quantity
-s.solve_for(Order.quantity, name=["qty", Order.option.supplier.name, Order.option.product.name], lower=0)
+s.solve_for(Order.quantity, name=["qty", Order.supplier.name, Order.product.name], lower=0)
 
 # Constraint: total orders from supplier cannot exceed supplier capacity
-orders_from_supplier = sum(Ord.quantity).where(Ord.option.supplier == Supplier).per(Supplier)
-capacity_limit = require(orders_from_supplier <= Supplier.capacity)
+capacity_limit = require(sum(Order.quantity).where(Order.supplier == Supplier).per(Supplier) <= Supplier.capacity)
 s.satisfy(capacity_limit)
 
 # Constraint: demand satisfaction for each product
-orders_for_product = sum(Ord.quantity).where(Ord.option.product == Pr).per(Pr)
-meet_demand = require(orders_for_product >= Pr.demand)
+meet_demand = require(sum(Order.quantity).where(Order.product == Product).per(Product) >= Product.demand)
 s.satisfy(meet_demand)
 
 # Objective: minimize cost with optional reliability penalty
-direct_cost = sum(Order.quantity * Order.option.cost_per_unit)
+direct_cost = sum(Order.quantity * Order.cost_per_unit)
 if reliability_weight > 0:
     reliability_penalty = reliability_weight * sum(
-        Order.quantity * (1.0 - Order.option.supplier.reliability)
+        Order.quantity * (1.0 - Order.supplier.reliability)
     )
     total_cost = direct_cost + reliability_penalty
 else:
@@ -97,8 +103,8 @@ print(f"Status: {s.termination_status}")
 print(f"Total cost: ${s.objective_value:.2f}")
 
 orders = select(
-    Order.option.supplier.name.alias("supplier"),
-    Order.option.product.name.alias("product"),
+    Order.supplier.name.alias("supplier"),
+    Order.product.name.alias("product"),
     Order.quantity
 ).where(Order.quantity > 0.001).to_df()
 

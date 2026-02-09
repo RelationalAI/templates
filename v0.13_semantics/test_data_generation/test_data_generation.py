@@ -7,6 +7,7 @@ import random
 import string as string_module
 from datetime import date, timedelta
 
+import pandas; pandas.options.future.infer_string = False
 from pandas import read_csv, DataFrame
 import pandas as pd
 

@@ -135,10 +135,10 @@ Total transport cost: $2100.00
 
 Shipments:
         warehouse   customer  mode  quantity
-Warehouse_Central Customer_A Truck      80.0
-Warehouse_Central Customer_C  Rail     250.0
-   Warehouse_East Customer_B Truck     120.0
-   Warehouse_East Customer_D  Rail     300.0
+Warehouse_Central Customer_B Truck     120.0
+   Warehouse_East Customer_C  Rail     250.0
+   Warehouse_West Customer_A Truck      80.0
+   Warehouse_West Customer_D  Rail     300.0
 ```
 
 The optimal solution demonstrates multi-modal transport selection:

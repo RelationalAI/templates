@@ -113,22 +113,22 @@ Status: OPTIMAL
 
 Assignments:
 worker     shift
- Alice   Morning
-   Bob   Morning
-Carlos Afternoon
- Diana   Morning
+ Alice Afternoon
+   Bob     Night
+Carlos     Night
+ Diana Afternoon
  Ethan     Night
  Frank   Morning
- Grace Afternoon
- Henry   Morning
+ Grace     Night
+ Henry     Night
  Irene   Morning
   Jack     Night
 
 Coverage per shift:
     shift  workers
 Afternoon        2
-  Morning        6
-    Night        2
+  Morning        2
+    Night        6
 ```
 
 A valid shift assignment was found. Since this is a CSP (Constraint Satisfaction Problem), there is no objective value—any feasible assignment is equally valid. The solution satisfies:

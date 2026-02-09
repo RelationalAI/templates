@@ -128,15 +128,15 @@ Total maintenance cost: $19500.00
 Maintenance schedule:
  machine      day
 CNC_Mill  Tuesday
-   Drill   Monday
+   Drill  Tuesday
    Lathe   Monday
-   Press Thursday
-  Welder   Monday
+   Press   Monday
+  Welder Thursday
 ```
 
 The schedule assigns each machine to a day while respecting crew hours and avoiding conflicts:
-- **Monday**: Drill (2h) + Lathe (3h) + Welder (2h) = 7h
-- **Tuesday**: CNC_Mill (4h)
-- **Thursday**: Press (5h)
+- **Monday**: Lathe (3h) + Press (5h) = 8h
+- **Tuesday**: CNC_Mill (4h) + Drill (2h) = 6h
+- **Thursday**: Welder (2h)
 
 Note: Alternative optimal solutions may schedule machines on different days at the same total cost.

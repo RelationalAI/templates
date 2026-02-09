@@ -121,18 +121,20 @@ Status: OPTIMAL
 Total cost (shipping + fixed): $1475.00
 
 Assignments:
-              name  float
-   fc_used_FC_East    1.0
-   fc_used_FC_West    1.0
-qty_FC_East_Cust_A   25.0
-qty_FC_East_Cust_B   15.0
-qty_FC_East_Cust_C   15.0
-qty_FC_East_Cust_E   20.0
-qty_FC_East_Cust_G   25.0
-qty_FC_West_Cust_B   15.0
-qty_FC_West_Cust_D   40.0
-qty_FC_West_Cust_F   35.0
-qty_FC_West_Cust_H   30.0
+fulfillment_center customer  quantity
+           FC_East   Cust_A      25.0
+           FC_East   Cust_B      30.0
+           FC_East   Cust_C      15.0
+           FC_East   Cust_E      20.0
+           FC_East   Cust_G      10.0
+           FC_West   Cust_D      40.0
+           FC_West   Cust_F      35.0
+           FC_West   Cust_G      15.0
+           FC_West   Cust_H      30.0
+
+Active fulfillment centers: FC_East, FC_West
 ```
 
 The solution shows which FCs are activated and how orders are assigned to minimize total shipping cost. Both FCs are used to balance shipping distances across customers.
+
+Note: Alternative optimal solutions may split orders differently across fulfillment centers at the same total cost.

@@ -3,6 +3,7 @@
 
 from pathlib import Path
 
+import pandas; pandas.options.future.infer_string = False
 from pandas import read_csv
 from relationalai.semantics import Float, Model, data, require, select, sum, where
 from relationalai.semantics.reasoners.optimization import Solver, SolverModel

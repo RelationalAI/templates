@@ -123,7 +123,7 @@ Total profit: $20977.78
 
 Production plan:
   machine product  quantity
-Machine_A  Device 40.000000
+Machine_A  Widget 80.000000
 Machine_B  Device 38.888889
 Machine_C  Gadget 15.000000
 Machine_C  Widget 90.000000

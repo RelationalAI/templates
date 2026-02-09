@@ -119,11 +119,11 @@ from test_data_generation import generate_test_data
 
 row_counts = {
     'Customer': {'actual': 100},
-    'Product': {'actual': 50},
-    'Order': {'actual': 500},
-    'OrderLine': {'actual': 1500},
-    'Supplier': {'actual': 50},
-    'SupplierProduct': {'actual': 200}
+    'Product': {'actual': 500},
+    'Order': {'actual': 1200},
+    'OrderLine': {'actual': 3600},
+    'Supplier': {'actual': 20},
+    'SupplierProduct': {'actual': 1500}
 }
 
 generated_data = generate_test_data(row_counts, seed=42)
@@ -138,18 +138,18 @@ Status: OPTIMAL
 Total weighted deviation: 18000.00
 
 Optimal row counts:
-  Customer: 1000 rows (target: 1000, deviation: 0)
+  Customer: 100 rows (target: 100, deviation: 0)
   Product: 500 rows (target: 500, deviation: 0)
   Order: 1200 rows (target: 800, deviation: 400)
   OrderLine: 3600 rows (target: 5000, deviation: 1400)
-  Supplier: 50 rows (target: 50, deviation: 0)
-  SupplierProduct: 2500 rows (target: 2500, deviation: 0)
+  Supplier: 20 rows (target: 20, deviation: 0)
+  SupplierProduct: 1500 rows (target: 1500, deviation: 0)
 
 ==================================================
 GENERATED TEST DATA
 ==================================================
 
-Customer: 1000 rows
+Customer: 100 rows
 customer_id              email       region created_date
           1  user1_abcd@gmail.com      North   2020-05-15
           2  user2_efgh@yahoo.com       East   2021-08-22
@@ -158,6 +158,6 @@ customer_id              email       region created_date
 ```
 
 The output shows:
-- **Order target conflict**: Target was 800 but constraint `OrderLine <= Order * 3` forced increase to 1200
+- **Order target conflict**: Target was 800 but frequency constraint (10-15 orders per customer with 100 customers) forced minimum to 1000, capped at max_rows 1200
 - **OrderLine reduction**: Target was 5000 but can't exceed 1200 * 3 = 3600
 - **Weighted resolution**: Higher-priority tables (Customer, Product) hit exact targets; lower-priority tables absorb deviations

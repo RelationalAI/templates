@@ -24,7 +24,8 @@ Output:
 
 from pathlib import Path
 
-from pandas import read_csv as pd_read_csv
+import pandas; pandas.options.future.infer_string = False
+from pandas import read_csv
 
 from relationalai.semantics import Model, data, sum, where, require, select
 from relationalai.semantics.reasoners.optimization import Solver, SolverModel

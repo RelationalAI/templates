@@ -124,10 +124,10 @@ Total staffing cost: $1792.00
 Staff assignments:
   nurse     shift
 Nurse_A   Morning
-Nurse_B   Morning
+Nurse_B     Night
 Nurse_C     Night
 Nurse_D Afternoon
-Nurse_E     Night
+Nurse_E   Morning
 Nurse_F Afternoon
 ```
 

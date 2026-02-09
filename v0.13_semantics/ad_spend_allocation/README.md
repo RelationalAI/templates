@@ -269,9 +269,10 @@ where(
 )
 ```
 
+
 ### 3) Define decision variables (MILP)
 
-An `Allocation` decision concept is created for every `Effectiveness` row. The optimization reasoner then “solves for” two properties.
+An `Allocation` decision concept is created for every `Effectiveness` row. The optimization reasoner then "solves for" two properties.
 
 ```python
 # `Allocation`: decision concept (one allocation per effectiveness row).
@@ -404,7 +405,7 @@ print(allocations.to_string(index=False))
   <summary>Why do I get <code>Status: INFEASIBLE</code>?</summary>
 
 
-- Check that each campaign budget is high enough to pay for at least one active channel’s `min_spend`.
+- Check that each campaign budget is high enough to pay for at least one active channel's `min_spend`.
 - Check that channel `min_spend` values are not greater than `max_spend`.
 - Confirm conversion rates are present for each campaign (missing effectiveness rows reduce options).
 

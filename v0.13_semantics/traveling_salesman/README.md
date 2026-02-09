@@ -105,10 +105,12 @@ Shortest tour distance: 8.50
 
 Selected edges (tour):
 i j  dist
-1 2   2.0
-2 4   1.5
-3 1   2.5
-4 3   2.5
+1 3   2.5
+2 1   2.0
+3 4   2.5
+4 2   1.5
 ```
 
-The optimal tour visits all 4 cities and returns to the start: 1 → 2 → 4 → 3 → 1 with total distance 8.50.
+The optimal tour visits all 4 cities and returns to the start: 1 → 3 → 4 → 2 → 1 with total distance 8.50.
+
+Note: Alternative optimal solutions may traverse the same tour in reverse direction at the same total distance.

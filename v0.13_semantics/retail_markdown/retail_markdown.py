@@ -4,6 +4,7 @@
 from pathlib import Path
 from time import time_ns
 
+import pandas; pandas.options.future.infer_string = False
 from pandas import read_csv
 
 from relationalai.semantics import Float, Integer, Model, data, std, sum, where
@@ -34,13 +35,11 @@ Discount.discount_pct = model.Property("{Discount} has {discount_pct:float}")
 Discount.demand_lift = model.Property("{Discount} has {demand_lift:float}")
 data(read_csv(data_dir / "discounts.csv")).into(Discount, keys=["level"])
 
-# Concept: time periods with demand multipliers
-# Note: Uses integer index pattern with std.range() for time-indexed variables.
-# Future API may support Week as foreign key in multi-arity properties.
-Week = model.Concept("Week")
-Week.week_num = model.Property("{Week} has {week_num:int}")
-Week.demand_multiplier = model.Property("{Week} has {demand_multiplier:float}")
-data(read_csv(data_dir / "weeks.csv")).into(Week, keys=["week_num"])
+# Week demand multipliers: loaded as dict for use in per-week constraints.
+# Note: Week is NOT defined as a Concept because non-solver concepts in satisfy()
+# where clauses cause "Uninitialized property: error_<concept>" in RAI v0.13.
+weeks_df = read_csv(data_dir / "weeks.csv")
+demand_multiplier = dict(zip(weeks_df["week_num"], weeks_df["demand_multiplier"]))
 
 # --------------------------------------------------
 # Model the problem
@@ -53,7 +52,6 @@ weeks = std.range(week_start, week_end + 1)
 
 t = Integer.ref()
 d = Discount.ref()
-w = Week.ref()
 
 s = SolverModel(model, "cont", use_pb=True)
 
@@ -110,13 +108,13 @@ s.satisfy(where(
 ))
 
 # Constraint: sales only occur at the selected discount level
-s.satisfy(where(
-    Product.selected(t, d, x_sel),
-    Product.sales(t, d, x_sales),
-    w.week_num == t
-).require(
-    x_sales <= Product.base_demand * d.demand_lift * w.demand_multiplier * x_sel
-))
+for wk, dm in demand_multiplier.items():
+    s.satisfy(where(
+        Product.selected(wk, d, x_sel),
+        Product.sales(wk, d, x_sales),
+    ).require(
+        x_sales <= Product.base_demand * d.demand_lift * dm * x_sel
+    ))
 
 # Constraint: cumulative sales tracking - week 1
 x_sales_w1, x_cum_w1 = Float.ref(), Float.ref()
