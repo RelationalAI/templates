@@ -47,13 +47,12 @@ This helps you:
 
 ### Access
 
-- RelationalAI account with access to a Snowflake account that has the RAI Native App installed.
+- A Snowflake account that has the RAI Native App installed.
+- A Snowflake user with permissions to access the RAI Native App.
 
 ### Tools
 
 - Python >= 3.10
-- Python packages: `relationalai==0.13.3`, `pandas` (see `pyproject.toml`)
-- Optional: the `rai` CLI (installed with the `relationalai` Python package)
 
 ## Quickstart
 
