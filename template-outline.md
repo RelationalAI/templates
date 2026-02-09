@@ -1,20 +1,28 @@
-
-# Template README outline
-
-Use this file as a starting point for each template’s `README.md`. The goal is to help readers:
-
-1. Understand what the template does (and whether it’s for them)
-2. Get to a first successful run quickly
-3. Use the template as a “map” into deeper RelationalAI documentation
-
-Keep the README concise and skimmable. Prefer short sections, copy/paste commands, and a small number of high-confidence doc links with one-line descriptions.
-
 ---
+title: "<YOUR TEMPLATE TITLE>"
+description: "<YOUR TEMPLATE DESCRIPTION>"
+experience_level: <beginner|intermediate|advanced>
+industry: <YOUR TARGET INDUSTRY/SECTOR> (use "General" if broadly applicable)
+reasoning_types:
+  - Prescriptive
+  - Predictive
+  - Graph
+tags:
+  - <KEYWORD_1>
+  - <KEYWORD_2>
+  - <KEYWORD_3>
+---
+
+Problem statement and motivation (1–2 paragraphs).
+Focus on the “why” and the value of RelationalAI, not on the technical details of the model or code.
+Use language that’s accessible to a broad audience.
+
+**NOTE:** You do not need to add a H1 title at the top of the README.
 
 ## Who this is for
 
-- Target audience: (e.g., new RelationalAI users / data engineers / OR practitioners)
-- Assumed knowledge: (e.g., basic Python, basic optimization concepts)
+- Target audience
+- Assumed knowledge
 
 ## What you’ll build / learn
 
@@ -110,23 +118,11 @@ Provide a short annotated tree. Keep it to the top level and the most important 
 
 **Start here**: point to the one command/script that runs end-to-end.
 
-## How it works
+## Sample data
 
-Give a short, end-to-end explanation (3–7 bullets). Example:
+Describe what the sample data represents, and any important notes about its structure or contents.
 
-- Ingest sample CSVs into relations
-- Derive intermediate relations (feature engineering / aggregations)
-- Apply constraints/objective (if optimization)
-- Compute outputs (recommended actions / assignments)
-- Export results to CSV / print summary
-
-If helpful, add a small diagram:
-
-```text
-CSV inputs → load → base relations → model logic → results → export
-```
-
-## Data model
+## Model overview
 
 Describe the main entities and the most important relationships.
 
@@ -162,19 +158,21 @@ Only include a Relationships table if the model defines relations **beyond conce
 | `demand(product, date, units)` | `product`, `date`, `units` | Units are weekly; non-negative |
 | `lane(source, destination, capacity)` | `source`, `destination`, `capacity` | Capacity is per day |
 
-## Features showcased
+## How it works
 
-Call out the RelationalAI features that readers can learn from this template.
-Include links to relevant docs and a one-line description of how each feature is used in the template.
+Give a short, end-to-end walkthrough of the template, with relevant code examples. Example:
 
-For each item: what it is + why it’s used here.
+- Ingest sample CSVs into relations
+- Derive intermediate relations (feature engineering / aggregations)
+- Apply constraints/objective (if optimization)
+- Compute outputs (recommended actions / assignments)
+- Export results to CSV / print summary
 
-- **Feature 1**: (e.g., constraints)
-  - Used to: (one line)
-- **Feature 2**: (e.g., recursion)
-  - Used to: (one line)
-- **Feature 3**: (e.g., incremental updates / transactions)
-  - Used to: (one line)
+If helpful, add a small diagram:
+
+```text
+CSV inputs → load → base relations → model logic → results → export
+```
 
 ## Customize this template
 
