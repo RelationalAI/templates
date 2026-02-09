@@ -375,9 +375,9 @@ print(allocations.to_string(index=False))
 - Add campaign conversion targets as constraints (using `Campaign.target_conversions`).
 - Add diminishing returns (piecewise linear approximations) if conversion rate decreases with spend.
 
-### Scale up / productionize (optional)
+### Scale up / productionize
 
-- Replace CSV ingestion with Snowflake sources (see the overview in `../README.md`).
+- Replace CSV ingestion with Snowflake sources.
 - Write allocations back to Snowflake after solving.
 
 ## Troubleshooting
