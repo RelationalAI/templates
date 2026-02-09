@@ -24,27 +24,14 @@ Output:
 
 from pathlib import Path
 
-import pandas; pandas.options.future.infer_string = False
-from pandas import read_csv
+import pandas
 
-from relationalai.semantics import Model, data, sum, where, require, select
+pandas.options.future.infer_string = False
+from pandas import read_csv
+from relationalai.semantics import Model, data, require, select, sum, where
 from relationalai.semantics.reasoners.optimization import Solver, SolverModel
 
-
 DATA_DIR = Path(__file__).parent / "data"
-
-def read_csv(path):
-    """Read CSV with RAI-compatible dtypes.
-
-    Pandas may use StringDtype for string columns, but RAI's data().into()
-    requires object dtype. This function ensures compatibility.
-    """
-    df = pd_read_csv(path)
-    # Convert StringDtype to object for RAI compatibility
-    string_cols = df.select_dtypes("string").columns
-    if len(string_cols) > 0:
-        df = df.astype({col: "object" for col in string_cols})
-    return df
 
 # Create a Semantics model container. (This template uses direct compilation
 # rather than LQP; keeping it explicit makes template behavior stable.)
@@ -78,16 +65,17 @@ data(read_csv(data_dir / "campaigns.csv")).into(Campaign, keys=["id"])
 Effectiveness = model.Concept("Effectiveness")
 Effectiveness.channel = model.Property("{Effectiveness} via {channel:Channel}")
 Effectiveness.campaign = model.Property("{Effectiveness} for {campaign:Campaign}")
-Effectiveness.conversion_rate = model.Property("{Effectiveness} has {conversion_rate:float}")
+Effectiveness.conversion_rate = model.Property(
+    "{Effectiveness} has {conversion_rate:float}"
+)
 
 eff_data = data(read_csv(data_dir / "effectiveness.csv"))
-where(
-    Channel.id == eff_data.channel_id,
-    Campaign.id == eff_data.campaign_id
-).define(
+where(Channel.id == eff_data.channel_id, Campaign.id == eff_data.campaign_id).define(
     # Create one `Effectiveness` instance per CSV row, resolving the foreign keys
     # into actual `Channel` and `Campaign` concept instances.
-    Effectiveness.new(channel=Channel, campaign=Campaign, conversion_rate=eff_data.conversion_rate)
+    Effectiveness.new(
+        channel=Channel, campaign=Campaign, conversion_rate=eff_data.conversion_rate
+    )
 )
 
 # --------------------------------------------------
@@ -96,7 +84,9 @@ where(
 
 # `Allocation`: decision concept (one allocation per effectiveness row).
 Allocation = model.Concept("Allocation")
-Allocation.effectiveness = model.Property("{Allocation} uses {effectiveness:Effectiveness}")
+Allocation.effectiveness = model.Property(
+    "{Allocation} uses {effectiveness:Effectiveness}"
+)
 Allocation.spend = model.Property("{Allocation} has {spend:float}")
 Allocation.active = model.Property("{Allocation} is {active:float}")
 model.define(Allocation.new(effectiveness=Effectiveness))
@@ -110,32 +100,52 @@ solver_model = SolverModel(model, "cont")
 # `spend` is continuous with a lower bound of 0.
 solver_model.solve_for(
     Allocation.spend,
-    name=["spend", Allocation.effectiveness.channel.name, Allocation.effectiveness.campaign.name],
-    lower=0
+    name=[
+        "spend",
+        Allocation.effectiveness.channel.name,
+        Allocation.effectiveness.campaign.name,
+    ],
+    lower=0,
 )
 
 # `active` is a binary variable (0 or 1) that indicates whether the channel–campaign pair is active.
 solver_model.solve_for(
     Allocation.active,
     type="bin",
-    name=["active", Allocation.effectiveness.channel.name, Allocation.effectiveness.campaign.name]
+    name=[
+        "active",
+        Allocation.effectiveness.channel.name,
+        Allocation.effectiveness.campaign.name,
+    ],
 )
 
 # Constraint: spend bounded by per-channel min/max *only when active*.
 # If `active = 0`, both bounds force `spend = 0`.
-min_spend_bound = require(Allocation.spend >= Allocation.effectiveness.channel.min_spend * Allocation.active)
+min_spend_bound = require(
+    Allocation.spend >= Allocation.effectiveness.channel.min_spend * Allocation.active
+)
 solver_model.satisfy(min_spend_bound)
 
-max_spend_bound = require(Allocation.spend <= Allocation.effectiveness.channel.max_spend * Allocation.active)
+max_spend_bound = require(
+    Allocation.spend <= Allocation.effectiveness.channel.max_spend * Allocation.active
+)
 solver_model.satisfy(max_spend_bound)
 
 # Constraint: per-campaign budget across all channels.
-campaign_spend = sum(Allocation.spend).where(Allocation.effectiveness.campaign == Campaign).per(Campaign)
+campaign_spend = (
+    sum(Allocation.spend)
+    .where(Allocation.effectiveness.campaign == Campaign)
+    .per(Campaign)
+)
 budget_limit = require(campaign_spend <= Campaign.budget)
 solver_model.satisfy(budget_limit)
 
 # Constraint: require at least one active channel per campaign.
-campaign_channels = sum(Allocation.active).where(Allocation.effectiveness.campaign == Campaign).per(Campaign)
+campaign_channels = (
+    sum(Allocation.active)
+    .where(Allocation.effectiveness.campaign == Campaign)
+    .per(Campaign)
+)
 min_channels = require(campaign_channels >= 1)
 solver_model.satisfy(min_channels)
 
@@ -153,15 +163,19 @@ solver_model.solve(solver_backend, time_limit_sec=60)
 print(f"Status: {solver_model.termination_status}")
 print(f"Total expected conversions: {solver_model.objective_value:.0f}")
 
-allocations = select(
-    Allocation.effectiveness.channel.name.alias("channel"),
-    Allocation.effectiveness.campaign.name.alias("campaign"),
-    Allocation.active.alias("active?"),
-    Allocation.spend
-).where(
-    # Hide zero allocations to keep the output compact.
-    Allocation.spend > 0.001
-).to_df()
+allocations = (
+    select(
+        Allocation.effectiveness.channel.name.alias("channel"),
+        Allocation.effectiveness.campaign.name.alias("campaign"),
+        Allocation.active.alias("active?"),
+        Allocation.spend,
+    )
+    .where(
+        # Hide zero allocations to keep the output compact.
+        Allocation.spend > 0.001
+    )
+    .to_df()
+)
 
 print("\nSpend allocation:")
 print(allocations.to_string(index=False))
