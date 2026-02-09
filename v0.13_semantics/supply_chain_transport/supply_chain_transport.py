@@ -57,7 +57,7 @@ where(Warehouse.id(routes_data.warehouse_id), Customer.id(routes_data.customer_i
 # Model the problem
 # --------------------------------------------------
 
-# Decision concept: shipments as route × mode combinations
+# Decision concept: shipments as route x mode combinations
 Shipment = model.Concept("Shipment")
 Shipment.route = model.Property("{Shipment} on {route:Route}")
 Shipment.mode = model.Property("{Shipment} via {mode:TransportMode}")
@@ -67,55 +67,75 @@ define(Shipment.new(route=Route, mode=TransportMode))
 
 Sh = Shipment.ref()
 
-s = SolverModel(model, "cont")
-
-# Variable: shipment quantity and selection
-s.solve_for(Shipment.quantity, name=["qty", Shipment.route.warehouse.name, Shipment.route.customer.name, Shipment.mode.name], lower=0)
-s.solve_for(Shipment.selected, type="bin", name=["sel", Shipment.route.warehouse.name, Shipment.route.customer.name, Shipment.mode.name])
-
-# Constraint: shipment quantity bounded by mode capacity when selected
-capacity_bound = require(Shipment.quantity <= Shipment.mode.capacity * Shipment.selected)
-s.satisfy(capacity_bound)
-
-min_bound = require(Shipment.quantity >= Shipment.selected)
-s.satisfy(min_bound)
-
-# Constraint: total outbound from warehouse cannot exceed inventory
-outbound = sum(Sh.quantity).where(Sh.route.warehouse == Warehouse).per(Warehouse)
-inventory_limit = require(outbound <= Warehouse.inventory)
-s.satisfy(inventory_limit)
-
-# Constraint: demand satisfaction for each customer
-inbound = sum(Sh.quantity).where(Sh.route.customer == Customer).per(Customer)
-demand_met = require(inbound >= Customer.demand)
-s.satisfy(demand_met)
-
-# Constraint: on-time delivery (no shipments via modes that would be late)
-on_time = require(Shipment.quantity == 0).where(
-    Shipment.mode.transit_days > Shipment.route.customer.due_day
-)
-s.satisfy(on_time)
-
-# Objective: minimize total transport cost
-total_cost = sum(Shipment.quantity * Shipment.mode.cost_per_unit)
-s.minimize(total_cost)
+# Scenarios (what-if analysis)
+SCENARIO_PARAM = "excluded_warehouse"
+SCENARIO_VALUES = [None, "Warehouse_East", "Warehouse_Central"]
+SCENARIO_CONCEPT = "Warehouse"  # Entity type for exclusion scenarios
 
 # --------------------------------------------------
-# Solve and check solution
+# Solve with Scenario Analysis (Entity Exclusion)
 # --------------------------------------------------
 
-solver = Solver("highs")
-s.solve(solver, time_limit_sec=60)
+scenario_results = []
 
-print(f"Status: {s.termination_status}")
-print(f"Total transport cost: ${s.objective_value:.2f}")
+for scenario_value in SCENARIO_VALUES:
+    print(f"\nRunning scenario: {SCENARIO_PARAM} = {scenario_value}")
 
-shipments = select(
-    Shipment.route.warehouse.name.alias("warehouse"),
-    Shipment.route.customer.name.alias("customer"),
-    Shipment.mode.name.alias("mode"),
-    Shipment.quantity
-).where(Shipment.quantity > 0.001).to_df()
+    # Set scenario parameter (entity to exclude)
+    excluded_warehouse = scenario_value
 
-print("\nShipments:")
-print(shipments.to_string(index=False))
+    # Create fresh SolverModel for each scenario
+    s = SolverModel(model, "cont")
+
+    # Variable: shipment quantity and selection
+    s.solve_for(Shipment.quantity, name=["qty", Shipment.route.warehouse.name, Shipment.route.customer.name, Shipment.mode.name], lower=0)
+    s.solve_for(Shipment.selected, type="bin", name=["sel", Shipment.route.warehouse.name, Shipment.route.customer.name, Shipment.mode.name])
+
+    # Constraint: shipment quantity bounded by mode capacity when selected
+    capacity_bound = require(Shipment.quantity <= Shipment.mode.capacity * Shipment.selected)
+    s.satisfy(capacity_bound)
+
+    min_bound = require(Shipment.quantity >= Shipment.selected)
+    s.satisfy(min_bound)
+
+    # Constraint: total outbound from warehouse cannot exceed inventory
+    outbound = sum(Sh.quantity).where(Sh.route.warehouse == Warehouse).per(Warehouse)
+    inventory_limit = require(outbound <= Warehouse.inventory)
+    s.satisfy(inventory_limit)
+
+    # Constraint: demand satisfaction for each customer
+    inbound = sum(Sh.quantity).where(Sh.route.customer == Customer).per(Customer)
+    demand_met = require(inbound >= Customer.demand)
+    s.satisfy(demand_met)
+
+    # Constraint: on-time delivery (no shipments via modes that would be late)
+    on_time = require(Shipment.quantity == 0).where(
+        Shipment.mode.transit_days > Shipment.route.customer.due_day
+    )
+    s.satisfy(on_time)
+
+    # Constraint: exclude warehouse if specified
+    if excluded_warehouse is not None:
+        exclude = require(Shipment.quantity == 0).where(Shipment.route.warehouse.name == excluded_warehouse)
+        s.satisfy(exclude)
+
+    # Objective: minimize total transport cost (distance-weighted)
+    total_cost = sum(Shipment.quantity * Shipment.mode.cost_per_unit * Shipment.route.distance / 100)
+    s.minimize(total_cost)
+
+    solver = Solver("highs")
+    s.solve(solver, time_limit_sec=60)
+
+    scenario_results.append({
+        "scenario": scenario_value,
+        "status": str(s.termination_status),
+        "objective": s.objective_value,
+    })
+    print(f"  Status: {s.termination_status}, Objective: {s.objective_value}")
+
+# Summary
+print("\n" + "=" * 50)
+print("Scenario Analysis Summary")
+print("=" * 50)
+for result in scenario_results:
+    print(f"  {result['scenario']}: {result['status']}, obj={result['objective']}")

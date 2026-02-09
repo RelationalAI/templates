@@ -121,3 +121,21 @@ The optimal portfolio demonstrates diversification across all three assets:
 - **Stock 3** (high return) provides growth potential despite higher risk
 - **Stock 1** (low risk) provides stability through low correlation with others
 - Total risk (1463) is lower than any single-asset portfolio achieving the same return
+
+## Scenario Analysis
+
+This template includes **efficient frontier analysis** — how does the minimum return target affect portfolio risk?
+
+| Parameter | Type | Values | Description |
+|-----------|------|--------|-------------|
+| `min_return` | Numeric | `10`, `20`, `30` | Minimum portfolio return target |
+
+### Expected Results
+
+| Scenario | Objective (Risk/Variance) | Impact |
+|----------|--------------------------|--------|
+| min_return = 10 | 365.66 | Low return target allows diversification |
+| min_return = 20 | 1,462.64 | Baseline — moderate risk |
+| min_return = 30 | 3,290.94 | +125% risk — forces concentration in high-return stock |
+
+This is a classic Markowitz efficient frontier demonstration: higher return targets require accepting proportionally higher risk through portfolio concentration.

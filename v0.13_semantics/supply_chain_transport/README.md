@@ -147,3 +147,21 @@ The optimal solution demonstrates multi-modal transport selection:
 - The optimizer selects the lowest-cost combination of warehouse-customer-mode routes
 
 Note: Alternative optimal solutions may route from different warehouses at the same total cost.
+
+## Scenario Analysis
+
+This template includes **facility outage analysis** — what happens when a warehouse goes offline?
+
+| Parameter | Type | Values | Description |
+|-----------|------|--------|-------------|
+| `excluded_warehouse` | Entity (Warehouse) | `None`, `"Warehouse_East"`, `"Warehouse_Central"` | Warehouse to take offline |
+
+### Expected Results
+
+| Scenario | Objective (Cost) | Impact |
+|----------|-----------------|--------|
+| Baseline (None) | $2,420 | All warehouses available |
+| Exclude Warehouse_East | $2,620 | +8% — rerouting through farther warehouses |
+| Exclude Warehouse_Central | $2,690 | +11% — Central serves many customers at short distance |
+
+Warehouse_Central has the largest impact when excluded because it has short distances to key high-demand customers, forcing shipments through longer, more expensive routes.

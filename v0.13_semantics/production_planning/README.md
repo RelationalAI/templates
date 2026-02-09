@@ -127,3 +127,21 @@ qty_Machine_3_Widget_B   11.0
 ```
 
 The schedule shows which machines produce which products and in what quantities.
+
+## Scenario Analysis
+
+This template includes **demand sensitivity analysis** — how do demand changes affect profit?
+
+| Parameter | Type | Values | Description |
+|-----------|------|--------|-------------|
+| `demand_multiplier` | Numeric | `0.8`, `1.0`, `1.1` | Multiplier applied to all product demands |
+
+### Expected Results
+
+| Scenario | Objective (Profit) | Impact |
+|----------|-------------------|--------|
+| 0.8x demand | $15,020 | +0.5% — less demand = more flexibility for high-profit items |
+| 1.0x demand | $14,945 | Baseline |
+| 1.1x demand | $14,770 | -1.2% — tighter constraints reduce optimizer freedom |
+
+Lower demand gives the optimizer more flexibility to focus on high-margin products, while higher demand forces production of all items regardless of profit margin.

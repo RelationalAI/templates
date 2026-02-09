@@ -55,40 +55,55 @@ define(Production.new(rate=Rate))
 
 Prod = Production.ref()
 
-s = SolverModel(model, "cont")
-
-# Variable: production quantity (integer)
-s.solve_for(Production.quantity, name=["qty", Production.rate.machine.name, Production.rate.product.name], lower=0, type="int")
-
-# Constraint: machine capacity
-machine_hours = sum(Prod.quantity * Prod.rate.hours_per_unit).where(Prod.rate.machine == Machine).per(Machine)
-capacity_limit = require(machine_hours <= Machine.hours_available)
-s.satisfy(capacity_limit)
-
-# Constraint: meet demand
-product_qty = sum(Prod.quantity).where(Prod.rate.product == Product).per(Product)
-meet_demand = require(product_qty >= Product.demand)
-s.satisfy(meet_demand)
-
-# Objective: maximize total profit
-total_profit = sum(Production.quantity * Production.rate.product.profit)
-s.maximize(total_profit)
+# Scenarios (what-if analysis)
+SCENARIO_PARAM = "demand_multiplier"
+SCENARIO_VALUES = [0.8, 1.0, 1.1]
 
 # --------------------------------------------------
-# Solve and check solution
+# Solve with Scenario Analysis (Numeric Parameter)
 # --------------------------------------------------
 
-solver = Solver("highs")
-s.solve(solver, time_limit_sec=60)
+scenario_results = []
 
-print(f"Status: {s.termination_status}")
-print(f"Total profit: ${s.objective_value:.2f}")
+for scenario_value in SCENARIO_VALUES:
+    print(f"\nRunning scenario: {SCENARIO_PARAM} = {scenario_value}")
 
-schedule = select(
-    Production.rate.machine.name.alias("machine"),
-    Production.rate.product.name.alias("product"),
-    Production.quantity
-).where(Production.quantity > 0).to_df()
+    # Set scenario parameter value
+    demand_multiplier = scenario_value
 
-print("\nProduction schedule:")
-print(schedule.to_string(index=False))
+    # Create fresh SolverModel for each scenario
+    s = SolverModel(model, "cont")
+
+    # Variable: production quantity (integer)
+    s.solve_for(Production.quantity, name=["qty", Production.rate.machine.name, Production.rate.product.name], lower=0, type="int")
+
+    # Constraint: machine capacity
+    machine_hours = sum(Prod.quantity * Prod.rate.hours_per_unit).where(Prod.rate.machine == Machine).per(Machine)
+    capacity_limit = require(machine_hours <= Machine.hours_available)
+    s.satisfy(capacity_limit)
+
+    # Constraint: meet demand (scaled by demand_multiplier)
+    product_qty = sum(Prod.quantity).where(Prod.rate.product == Product).per(Product)
+    meet_demand = require(product_qty >= Product.demand * demand_multiplier)
+    s.satisfy(meet_demand)
+
+    # Objective: maximize total profit
+    total_profit = sum(Production.quantity * Production.rate.product.profit)
+    s.maximize(total_profit)
+
+    solver = Solver("highs")
+    s.solve(solver, time_limit_sec=60)
+
+    scenario_results.append({
+        "scenario": scenario_value,
+        "status": str(s.termination_status),
+        "objective": s.objective_value,
+    })
+    print(f"  Status: {s.termination_status}, Objective: {s.objective_value}")
+
+# Summary
+print("\n" + "=" * 50)
+print("Scenario Analysis Summary")
+print("=" * 50)
+for result in scenario_results:
+    print(f"  {result['scenario']}: {result['status']}, obj={result['objective']}")

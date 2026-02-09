@@ -133,3 +133,21 @@ qty_SupplierC_Component  200.0
 The cost-minimizing solution sources from the cheapest suppliers:
 - **SupplierC** (lowest cost, 75% reliability): Widget (300), Gadget (100), Component (200)
 - **SupplierB** (mid cost, 85% reliability): Gadget (150)
+
+## Scenario Analysis
+
+This template includes **supplier disruption analysis** — what happens if a key supplier goes offline?
+
+| Parameter | Type | Values | Description |
+|-----------|------|--------|-------------|
+| `excluded_supplier` | Entity (Supplier) | `None`, `"SupplierC"`, `"SupplierB"` | Supplier to exclude from sourcing |
+
+### Expected Results
+
+| Scenario | Objective (Cost) | Impact |
+|----------|-----------------|--------|
+| Baseline (None) | $4,850 | All suppliers available |
+| Exclude SupplierC | $6,750 | +39% — cheapest supplier removed |
+| Exclude SupplierB | $5,150 | +6% — moderate cost increase |
+
+SupplierC is the cheapest ($5-7/unit) so excluding it causes the largest cost increase. SupplierB ($8-9/unit) is mid-range, so its exclusion has less impact.

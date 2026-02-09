@@ -68,45 +68,66 @@ define(Order.cost_per_unit(SupplyOption.cost_per_unit)).where(Order.option(Suppl
 # Parameters
 reliability_weight = 0.0  # penalty weight for unreliable suppliers (0 = cost only)
 
-s = SolverModel(model, "cont")
-
-# Variable: order quantity
-s.solve_for(Order.quantity, name=["qty", Order.supplier.name, Order.product.name], lower=0)
-
-# Constraint: total orders from supplier cannot exceed supplier capacity
-capacity_limit = require(sum(Order.quantity).where(Order.supplier == Supplier).per(Supplier) <= Supplier.capacity)
-s.satisfy(capacity_limit)
-
-# Constraint: demand satisfaction for each product
-meet_demand = require(sum(Order.quantity).where(Order.product == Product).per(Product) >= Product.demand)
-s.satisfy(meet_demand)
-
-# Objective: minimize cost with optional reliability penalty
-direct_cost = sum(Order.quantity * Order.cost_per_unit)
-if reliability_weight > 0:
-    reliability_penalty = reliability_weight * sum(
-        Order.quantity * (1.0 - Order.supplier.reliability)
-    )
-    total_cost = direct_cost + reliability_penalty
-else:
-    total_cost = direct_cost
-s.minimize(total_cost)
+# Scenarios (what-if analysis)
+SCENARIO_PARAM = "excluded_supplier"
+SCENARIO_VALUES = [None, "SupplierC", "SupplierB"]
+SCENARIO_CONCEPT = "Supplier"  # Entity type for exclusion scenarios
 
 # --------------------------------------------------
-# Solve and check solution
+# Solve with Scenario Analysis (Entity Exclusion)
 # --------------------------------------------------
 
-solver = Solver("highs")
-s.solve(solver, time_limit_sec=60)
+scenario_results = []
 
-print(f"Status: {s.termination_status}")
-print(f"Total cost: ${s.objective_value:.2f}")
+for scenario_value in SCENARIO_VALUES:
+    print(f"\nRunning scenario: {SCENARIO_PARAM} = {scenario_value}")
 
-orders = select(
-    Order.supplier.name.alias("supplier"),
-    Order.product.name.alias("product"),
-    Order.quantity
-).where(Order.quantity > 0.001).to_df()
+    # Set scenario parameter (entity to exclude)
+    excluded_supplier = scenario_value
 
-print("\nOrder quantities:")
-print(orders.to_string(index=False))
+    # Create fresh SolverModel for each scenario
+    s = SolverModel(model, "cont")
+
+    # Variable: order quantity
+    s.solve_for(Order.quantity, name=["qty", Order.supplier.name, Order.product.name], lower=0)
+
+    # Constraint: total orders from supplier cannot exceed supplier capacity
+    capacity_limit = require(sum(Order.quantity).where(Order.supplier == Supplier).per(Supplier) <= Supplier.capacity)
+    s.satisfy(capacity_limit)
+
+    # Constraint: demand satisfaction for each product
+    meet_demand = require(sum(Order.quantity).where(Order.product == Product).per(Product) >= Product.demand)
+    s.satisfy(meet_demand)
+
+    # Constraint: exclude supplier if specified
+    if excluded_supplier is not None:
+        exclude = require(Order.quantity == 0).where(Order.supplier.name == excluded_supplier)
+        s.satisfy(exclude)
+
+    # Objective: minimize cost with optional reliability penalty
+    direct_cost = sum(Order.quantity * Order.cost_per_unit)
+    if reliability_weight > 0:
+        reliability_penalty = reliability_weight * sum(
+            Order.quantity * (1.0 - Order.supplier.reliability)
+        )
+        total_cost = direct_cost + reliability_penalty
+    else:
+        total_cost = direct_cost
+    s.minimize(total_cost)
+
+    solver = Solver("highs")
+    s.solve(solver, time_limit_sec=60)
+
+    scenario_results.append({
+        "scenario": scenario_value,
+        "status": str(s.termination_status),
+        "objective": s.objective_value,
+    })
+    print(f"  Status: {s.termination_status}, Objective: {s.objective_value}")
+
+# Summary
+print("\n" + "=" * 50)
+print("Scenario Analysis Summary")
+print("=" * 50)
+for result in scenario_results:
+    print(f"  {result['scenario']}: {result['status']}, obj={result['objective']}")

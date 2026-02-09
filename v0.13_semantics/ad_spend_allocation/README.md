@@ -420,6 +420,24 @@ print(allocations.to_string(index=False))
 
 </details>
 
+## Scenario Analysis
+
+This template includes **budget sensitivity analysis** — how does a company-wide marketing budget cap affect total conversions?
+
+| Parameter | Type | Values | Description |
+|-----------|------|--------|-------------|
+| `total_budget` | Numeric | `35000`, `45000`, `55000` | Total budget across all campaigns |
+
+### Expected Results
+
+| Scenario | Objective (Conversions) | Impact |
+|----------|------------------------|--------|
+| $35,000 budget | 2,880 | -16% — binding constraint forces cuts |
+| $45,000 budget | 3,430 | Baseline — matches sum of per-campaign budgets |
+| $55,000 budget | 3,430 | Same as $45k — per-campaign limits are binding |
+
+The $55k scenario demonstrates that the total budget is non-binding when per-campaign budgets ($15k + $20k + $10k = $45k) already cap total spend.
+
 ---
 
 ## Next steps

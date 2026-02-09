@@ -36,45 +36,63 @@ where(Stock.index(pairs.i), Stock2.index(pairs.j)).define(
 # --------------------------------------------------
 
 # Parameters
-min_return = 20
 budget = 1000
+
+Stock.quantity = model.Property("{Stock} quantity is {x:float}")
 
 c = Float.ref()
 
-s = SolverModel(model, "cont")
-
-# Variable: quantity of each stock
-Stock.quantity = model.Property("{Stock} quantity is {x:float}")
-s.solve_for(Stock.quantity, name=["qty", Stock.index])
-
-# Constraint: no short selling
-bounds = require(Stock.quantity >= 0)
-s.satisfy(bounds)
-
-# Constraint: budget limit
-budget_constraint = require(sum(Stock.quantity) <= budget)
-s.satisfy(budget_constraint)
-
-# Constraint: minimum return target
-return_constraint = require(sum(Stock.returns * Stock.quantity) >= min_return)
-s.satisfy(return_constraint)
-
-# Objective: minimize portfolio risk (variance)
-risk = sum(c * Stock.quantity * Stock2.quantity).where(Stock.covar(Stock2, c))
-s.minimize(risk)
+# Scenarios (what-if analysis)
+SCENARIO_PARAM = "min_return"
+SCENARIO_VALUES = [10, 20, 30]
 
 # --------------------------------------------------
-# Solve and check solution
+# Solve with Scenario Analysis (Numeric Parameter)
 # --------------------------------------------------
 
-solver = Solver("highs")
-s.solve(solver, time_limit_sec=60)
+scenario_results = []
 
-print(f"Status: {s.termination_status}")
-print(f"Portfolio risk (variance): {s.objective_value:.4f}")
-print(f"Minimum return target: {min_return}")
+for scenario_value in SCENARIO_VALUES:
+    print(f"\nRunning scenario: {SCENARIO_PARAM} = {scenario_value}")
 
-allocations = select(Stock.index, Stock.quantity).where(Stock.quantity > 0.001).to_df()
+    # Set scenario parameter value
+    min_return = scenario_value
 
-print("\nStock allocations:")
-print(allocations.to_string(index=False))
+    # Create fresh SolverModel for each scenario
+    s = SolverModel(model, "cont")
+
+    # Variable: quantity of each stock
+    s.solve_for(Stock.quantity, name=["qty", Stock.index])
+
+    # Constraint: no short selling
+    bounds = require(Stock.quantity >= 0)
+    s.satisfy(bounds)
+
+    # Constraint: budget limit
+    budget_constraint = require(sum(Stock.quantity) <= budget)
+    s.satisfy(budget_constraint)
+
+    # Constraint: minimum return target (scenario parameter)
+    return_constraint = require(sum(Stock.returns * Stock.quantity) >= min_return)
+    s.satisfy(return_constraint)
+
+    # Objective: minimize portfolio risk (variance)
+    risk = sum(c * Stock.quantity * Stock2.quantity).where(Stock.covar(Stock2, c))
+    s.minimize(risk)
+
+    solver = Solver("highs")
+    s.solve(solver, time_limit_sec=60)
+
+    scenario_results.append({
+        "scenario": scenario_value,
+        "status": str(s.termination_status),
+        "objective": s.objective_value,
+    })
+    print(f"  Status: {s.termination_status}, Objective: {s.objective_value}")
+
+# Summary
+print("\n" + "=" * 50)
+print("Scenario Analysis Summary")
+print("=" * 50)
+for result in scenario_results:
+    print(f"  {result['scenario']}: {result['status']}, obj={result['objective']}")

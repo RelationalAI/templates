@@ -21,27 +21,27 @@ RelationalAI provides multiple reasoners, each designed for different analytical
 
 The Prescriptive Reasoner solves optimization problems: given constraints and objectives, it finds the best decision. Use it when you need to answer "What should we do?"
 
-| Template | Problem Type | Sector | Method | Complexity |
-|----------|--------------|--------|--------|------------|
-| [ad_spend_allocation](./ad_spend_allocation/) | Allocation | Marketing & Revenue | MILP | Intermediate |
-| [diet](./diet/) | Allocation | Healthcare | LP | Beginner |
-| [factory_production](./factory_production/) | Allocation | Supply Chain & Manufacturing | LP | Beginner |
-| [grid_interconnection](./grid_interconnection/) | Design | Energy & Utilities | MILP | Intermediate |
-| [hospital_staffing](./hospital_staffing/) | Allocation | Healthcare | MILP | Intermediate |
-| [inventory_rebalancing](./inventory_rebalancing/) | Allocation | Supply Chain & Manufacturing | LP | Beginner |
-| [machine_maintenance](./machine_maintenance/) | Scheduling | Supply Chain & Manufacturing | MILP | Intermediate |
-| [retail_markdown](./retail_markdown/) | Pricing | Retail | MILP | Intermediate |
-| [network_flow](./network_flow/) | Allocation | Supply Chain & Manufacturing | LP | Beginner |
-| [order_fulfillment](./order_fulfillment/) | Allocation | Supply Chain & Manufacturing | MILP | Beginner |
-| [portfolio_balancing](./portfolio_balancing/) | Allocation | Finance & Financial Services | QP | Intermediate |
-| [production_planning](./production_planning/) | Allocation | Supply Chain & Manufacturing | MILP | Beginner |
-| [shift_assignment](./shift_assignment/) | Allocation | Retail | CSP | Beginner |
-| [supplier_reliability](./supplier_reliability/) | Allocation | Supply Chain & Manufacturing | LP | Beginner |
-| [supply_chain_transport](./supply_chain_transport/) | Scheduling | Supply Chain & Manufacturing | MILP | Intermediate |
-| [traveling_salesman](./traveling_salesman/) | Routing | Transportation | MILP | Intermediate |
-| [vehicle_scheduling](./vehicle_scheduling/) | Scheduling | Transportation | MILP | Intermediate |
-| [test_data_generation](./test_data_generation/) | Design | Data Engineering | LP | Intermediate |
-| [water_allocation](./water_allocation/) | Design | Energy & Utilities | LP | Beginner |
+| Template | Problem Type | Sector | Method | Complexity | Scenarios |
+|----------|--------------|--------|--------|------------|-----------|
+| [ad_spend_allocation](./ad_spend_allocation/) | Allocation | Marketing & Revenue | MILP | Intermediate | `total_budget` (numeric) |
+| [diet](./diet/) | Allocation | Healthcare | LP | Beginner | - |
+| [factory_production](./factory_production/) | Allocation | Supply Chain & Manufacturing | LP | Beginner | - |
+| [grid_interconnection](./grid_interconnection/) | Design | Energy & Utilities | MILP | Intermediate | - |
+| [hospital_staffing](./hospital_staffing/) | Allocation | Healthcare | MILP | Intermediate | - |
+| [inventory_rebalancing](./inventory_rebalancing/) | Allocation | Supply Chain & Manufacturing | LP | Beginner | - |
+| [machine_maintenance](./machine_maintenance/) | Scheduling | Supply Chain & Manufacturing | MILP | Intermediate | - |
+| [retail_markdown](./retail_markdown/) | Pricing | Retail | MILP | Intermediate | - |
+| [network_flow](./network_flow/) | Allocation | Supply Chain & Manufacturing | LP | Beginner | - |
+| [order_fulfillment](./order_fulfillment/) | Allocation | Supply Chain & Manufacturing | MILP | Beginner | - |
+| [portfolio_balancing](./portfolio_balancing/) | Allocation | Finance & Financial Services | QP | Intermediate | `min_return` (numeric) |
+| [production_planning](./production_planning/) | Allocation | Supply Chain & Manufacturing | MILP | Beginner | `demand_multiplier` (numeric) |
+| [shift_assignment](./shift_assignment/) | Allocation | Retail | CSP | Beginner | - |
+| [supplier_reliability](./supplier_reliability/) | Allocation | Supply Chain & Manufacturing | LP | Beginner | `excluded_supplier` (entity) |
+| [supply_chain_transport](./supply_chain_transport/) | Scheduling | Supply Chain & Manufacturing | MILP | Intermediate | `excluded_warehouse` (entity) |
+| [traveling_salesman](./traveling_salesman/) | Routing | Transportation | MILP | Intermediate | - |
+| [vehicle_scheduling](./vehicle_scheduling/) | Scheduling | Transportation | MILP | Intermediate | - |
+| [test_data_generation](./test_data_generation/) | Design | Data Engineering | LP | Intermediate | - |
+| [water_allocation](./water_allocation/) | Design | Energy & Utilities | LP | Beginner | - |
 
 ---
 
