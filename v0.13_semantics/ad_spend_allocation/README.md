@@ -46,7 +46,7 @@ tags:
 
 ### Configuration
 
-This template creates a `Model(..., config=...)` using the active profile from a `raiconfig.toml` (or a `Config` object).
+This template creates a **RelationalAI model** using the active profile from a `raiconfig.toml` (or a `Config` object).
 
 - If you already have RAI configured, you can skip setup.
 - Otherwise, create or update `raiconfig.toml` with:
@@ -85,7 +85,7 @@ export RAI_PROFILE=<profile-name>
    python -m pip install relationalai==0.13.3 pandas
    ```
 
-3. **(Optional) Configure RAI connection**
+3. **Configure Snowflake connection and RAI profile**
 
    ```bash
    rai init
@@ -137,7 +137,7 @@ export RAI_PROFILE=<profile-name>
 
 **Start here**: `ad_spend_allocation.py`
 
-## How it works (overview)
+## How it works
 
 - Load three CSVs into the model as concepts and properties.
 - Construct an `Allocation` decision concept for each `(channel, campaign)` pair.
@@ -150,35 +150,54 @@ export RAI_PROFILE=<profile-name>
   - Each campaign must use at least one channel.
 - Maximize total expected conversions: `sum(spend * conversion_rate)`.
 
-## Data model (relations)
+## Data model
 
-Describe the main entities and the most important relationships.
+The model is built around four concepts. Each table below lists the concept’s properties (one row per property).
 
-Include two compact tables:
+### `Channel`
 
-### Concepts (entity types)
+A marketing channel (e.g., Search, Social) with spend bounds used to constrain the optimization.
 
-| Concept type | Main properties | Identifying properties | Notes |
+| Property | Type | Identifying? | Notes |
 |---|---|---|---|
-| `Channel` | `name`, `min_spend`, `max_spend`, `roi_coefficient` | `id` | Loaded from `data/channels.csv` |
-| `Campaign` | `name`, `budget`, `target_conversions` | `id` | Loaded from `data/campaigns.csv` |
-| `Effectiveness` | `channel`, `campaign`, `conversion_rate` | (`channel`, `campaign`) | One row per channel–campaign pair |
-| `Allocation` | `effectiveness`, `spend`, `active` | `effectiveness` | Decision concept created for all `Effectiveness` |
+| `id` | int | Yes | Loaded as the key from `data/channels.csv` |
+| `name` | string | No | Human-readable channel name |
+| `min_spend` | float | No | Minimum spend if the channel is active |
+| `max_spend` | float | No | Maximum spend allowed (per allocation) |
+| `roi_coefficient` | float | No | Included in sample data; not used in the objective in this template |
 
-### Relationships
+### `Campaign`
 
-The template uses semantic “reading strings” when declaring properties. The table below summarizes the key ones.
+A marketing campaign with a budget constraint applied during optimization.
 
-| Relationship | Schema (reading string fields) | Notes |
-|---|---|---|
-| `Channel.id` | `Channel`, `id:int` | Key used when loading `channels.csv` |
-| `Campaign.id` | `Campaign`, `id:int` | Key used when loading `campaigns.csv` |
-| `Effectiveness.channel` | `Effectiveness`, `channel:Channel` | Joined via `channels.csv.id == effectiveness.csv.channel_id` |
-| `Effectiveness.campaign` | `Effectiveness`, `campaign:Campaign` | Joined via `campaigns.csv.id == effectiveness.csv.campaign_id` |
-| `Effectiveness.conversion_rate` | `Effectiveness`, `conversion_rate:float` | Conversions per $ |
-| `Allocation.effectiveness` | `Allocation`, `effectiveness:Effectiveness` | One allocation per effectiveness row |
-| `Allocation.spend` | `Allocation`, `spend:float` | Continuous decision variable |
-| `Allocation.active` | `Allocation`, `active:float` | Binary decision variable (0/1) |
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `id` | int | Yes | Loaded as the key from `data/campaigns.csv` |
+| `name` | string | No | Human-readable campaign name |
+| `budget` | float | No | Upper bound on total spend across all channels for the campaign |
+| `target_conversions` | float | No | Included in sample data; not enforced as a constraint in this template |
+
+### `Effectiveness`
+
+A channel–campaign pair with an expected conversion rate used in the objective.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `channel` | `Channel` | Part of compound key | Joined via `data/effectiveness.csv.channel_id` |
+| `campaign` | `Campaign` | Part of compound key | Joined via `data/effectiveness.csv.campaign_id` |
+| `conversion_rate` | float | No | Expected conversions per $ spent |
+
+### `Allocation`
+
+A decision concept created for each `Effectiveness` row; the solver chooses `spend` and `active`.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `effectiveness` | `Effectiveness` | Yes | One allocation per channel–campaign pair |
+| `spend` | float | No | Continuous decision variable ($\ge 0$) |
+| `active` | float | No | Binary decision variable (0/1) |
+
+This template does not define any standalone (non-property) relations beyond these concept properties.
 
 ## Sample data
 
@@ -249,7 +268,6 @@ Include the top 5–8 failure modes with specific fixes.
 
   - Run `rai init` to create/update `raiconfig.toml`.
   - If you have multiple profiles, set `RAI_PROFILE` or switch profiles in your config.
-  - See the configuration guide linked below for profile discovery and precedence.
 </details>
 
 <details>
