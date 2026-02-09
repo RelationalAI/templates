@@ -29,6 +29,9 @@ from pandas import read_csv as pd_read_csv
 from relationalai.semantics import Model, data, sum, where, require, select
 from relationalai.semantics.reasoners.optimization import Solver, SolverModel
 
+
+DATA_DIR = Path(__file__).parent / "data"
+
 def read_csv(path):
     """Read CSV with RAI-compatible dtypes.
 
@@ -49,8 +52,6 @@ model = Model("ad_spend", use_lqp=False)
 # --------------------------------------------------
 # Define ontology & load data
 # --------------------------------------------------
-
-data_dir = Path(__file__).parent / "data"
 
 # `Channel`: marketing channel with spend bounds (and an extra ROI field kept to
 # show how additional attributes can live alongside the optimization inputs).
