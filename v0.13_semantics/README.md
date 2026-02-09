@@ -394,6 +394,3 @@ To add a new template:
 4. Write a README.md with problem description and classification
 5. Update this index
 
-## License
-
-[Add license information]
