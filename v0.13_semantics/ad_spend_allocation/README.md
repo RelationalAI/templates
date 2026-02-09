@@ -81,22 +81,16 @@ tags:
    ```text
    Status: OPTIMAL
    Total expected conversions: 3430
+
    Spend allocation:
-                            name   float
-    active_Email_Brand_Awareness     1.0
-      active_Email_Seasonal_Sale     1.0
-   active_Search_Brand_Awareness     1.0
-    active_Search_Product_Launch     1.0
-     active_Search_Seasonal_Sale     1.0
-   active_Social_Brand_Awareness     1.0
-     active_Video_Product_Launch     1.0
-     spend_Email_Brand_Awareness  2000.0
-       spend_Email_Seasonal_Sale  2000.0
-    spend_Search_Brand_Awareness  5000.0
-     spend_Search_Product_Launch 10000.0
-      spend_Search_Seasonal_Sale  8000.0
-    spend_Social_Brand_Awareness  8000.0
-      spend_Video_Product_Launch 10000.0
+   channel        campaign  active?   spend
+     Email Brand_Awareness      1.0  2000.0
+     Email   Seasonal_Sale      1.0  2000.0
+    Search Brand_Awareness      1.0  5000.0
+    Search  Product_Launch      1.0 10000.0
+    Search   Seasonal_Sale      1.0  8000.0
+    Social Brand_Awareness      1.0  8000.0
+     Video  Product_Launch      1.0 10000.0
    ```
 
 ## Repository structure
