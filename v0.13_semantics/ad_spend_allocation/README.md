@@ -13,6 +13,17 @@ tags:
 
 # Ad Spend Allocation
 
+Marketing teams must distribute limited advertising budgets across multiple channels (Search, Social, Display, Video, Email) and campaigns to maximize return on investment.
+This template models allocating spend across 5 channels and 3 campaigns, where each channel-campaign combination has different conversion effectiveness.
+The challenge is that each channel has minimum spend thresholds (you can't spend just $10 on a channel—there are setup costs) and maximum caps, while campaign budgets constrain total spend.
+
+This templates uses RelationalAI's **prescriptive reasoner** to find the best allocation of spend across channel-campaign pairs to maximize total expected conversions, while respecting these constraints.
+This helps you:
+
+- **Improve ROAS**: Achieve higher Return on Ad Spend compared to manual allocation or simple rules <!-- TODO: Add % improvement from results -->
+- **Budget efficiency**: Eliminate waste from over-allocating to saturated channels while identifying under-invested opportunities
+- **Make data-driven decisions**: Replace gut-feel allocation with mathematically optimal distribution based on measured conversion rates
+
 ## Who this is for
 
 - You want an end-to-end example of **prescriptive reasoning (optimization)** with RelationalAI.
@@ -107,6 +118,84 @@ tags:
 ```
 
 **Start here**: `ad_spend_allocation.py`
+
+## Sample data
+
+Data files are in `data/`.
+
+### `channels.csv`
+
+| Column | Meaning |
+| --- | --- |
+| `id` | Unique channel identifier |
+| `name` | Channel name (e.g., Search, Social) |
+| `min_spend` | Minimum spend if the channel is active |
+| `max_spend` | Maximum spend allowed |
+| `roi_coefficient` | Additional channel attribute (not used in the objective in this template) |
+
+### `campaigns.csv`
+
+| Column | Meaning |
+| --- | --- |
+| `id` | Unique campaign identifier |
+| `name` | Campaign name |
+| `budget` | Total spend allowed for the campaign |
+| `target_conversions` | Campaign attribute (not used as a constraint in this template) |
+
+### `effectiveness.csv`
+
+| Column | Meaning |
+| --- | --- |
+| `channel_id` | Foreign key to `channels.csv.id` |
+| `campaign_id` | Foreign key to `campaigns.csv.id` |
+| `conversion_rate` | Expected conversions per $ spent |
+
+## Model overview
+
+The semantic model for this template is built around four concepts.
+
+### `Channel`
+
+A marketing channel (e.g., Search, Social) with spend bounds used to constrain the optimization.
+
+| Property | Type | Identifying? | Notes |
+| --- | --- | --- | --- |
+| `id` | int | Yes | Loaded as the key from `data/channels.csv` |
+| `name` | string | No | Human-readable channel name |
+| `min_spend` | float | No | Minimum spend if the channel is active |
+| `max_spend` | float | No | Maximum spend allowed (per allocation) |
+| `roi_coefficient` | float | No | Included in sample data; not used in the objective in this template |
+
+### `Campaign`
+
+A marketing campaign with a budget constraint applied during optimization.
+
+| Property | Type | Identifying? | Notes |
+| --- | --- | --- | --- |
+| `id` | int | Yes | Loaded as the key from `data/campaigns.csv` |
+| `name` | string | No | Human-readable campaign name |
+| `budget` | float | No | Upper bound on total spend across all channels for the campaign |
+| `target_conversions` | float | No | Included in sample data; not enforced as a constraint in this template |
+
+### `Effectiveness`
+
+A channel–campaign pair with an expected conversion rate used in the objective.
+
+| Property | Type | Identifying? | Notes |
+| --- | --- | --- | --- |
+| `channel` | `Channel` | Part of compound key | Joined via `data/effectiveness.csv.channel_id` |
+| `campaign` | `Campaign` | Part of compound key | Joined via `data/effectiveness.csv.campaign_id` |
+| `conversion_rate` | float | No | Expected conversions per $ spent |
+
+### `Allocation`
+
+A decision concept created for each `Effectiveness` row; the solver chooses `spend` and `active`.
+
+| Property | Type | Identifying? | Notes |
+| --- | --- | --- | --- |
+| `effectiveness` | `Effectiveness` | Yes | One allocation per channel–campaign pair |
+| `spend` | float | No | Continuous decision variable ($\ge 0$) |
+| `active` | float | No | Binary decision variable (0/1) |
 
 ## How it works
 
@@ -268,92 +357,6 @@ allocations = select(
 
 print(allocations.to_string(index=False))
 ```
-
-## Data model
-
-The model is built around four concepts. Each table below lists the concept’s properties (one row per property).
-
-### `Channel`
-
-A marketing channel (e.g., Search, Social) with spend bounds used to constrain the optimization.
-
-| Property | Type | Identifying? | Notes |
-| --- | --- | --- | --- |
-| `id` | int | Yes | Loaded as the key from `data/channels.csv` |
-| `name` | string | No | Human-readable channel name |
-| `min_spend` | float | No | Minimum spend if the channel is active |
-| `max_spend` | float | No | Maximum spend allowed (per allocation) |
-| `roi_coefficient` | float | No | Included in sample data; not used in the objective in this template |
-
-### `Campaign`
-
-A marketing campaign with a budget constraint applied during optimization.
-
-| Property | Type | Identifying? | Notes |
-| --- | --- | --- | --- |
-| `id` | int | Yes | Loaded as the key from `data/campaigns.csv` |
-| `name` | string | No | Human-readable campaign name |
-| `budget` | float | No | Upper bound on total spend across all channels for the campaign |
-| `target_conversions` | float | No | Included in sample data; not enforced as a constraint in this template |
-
-### `Effectiveness`
-
-A channel–campaign pair with an expected conversion rate used in the objective.
-
-| Property | Type | Identifying? | Notes |
-| --- | --- | --- | --- |
-| `channel` | `Channel` | Part of compound key | Joined via `data/effectiveness.csv.channel_id` |
-| `campaign` | `Campaign` | Part of compound key | Joined via `data/effectiveness.csv.campaign_id` |
-| `conversion_rate` | float | No | Expected conversions per $ spent |
-
-### `Allocation`
-
-A decision concept created for each `Effectiveness` row; the solver chooses `spend` and `active`.
-
-| Property | Type | Identifying? | Notes |
-| --- | --- | --- | --- |
-| `effectiveness` | `Effectiveness` | Yes | One allocation per channel–campaign pair |
-| `spend` | float | No | Continuous decision variable ($\ge 0$) |
-| `active` | float | No | Binary decision variable (0/1) |
-
-This template does not define any standalone (non-property) relations beyond these concept properties.
-
-## Sample data
-
-Data files are in `data/`.
-
-### `channels.csv`
-
-| Column | Meaning |
-| --- | --- |
-| `id` | Unique channel identifier |
-| `name` | Channel name (e.g., Search, Social) |
-| `min_spend` | Minimum spend if the channel is active |
-| `max_spend` | Maximum spend allowed |
-| `roi_coefficient` | Additional channel attribute (not used in the objective in this template) |
-
-### `campaigns.csv`
-
-| Column | Meaning |
-| --- | --- |
-| `id` | Unique campaign identifier |
-| `name` | Campaign name |
-| `budget` | Total spend allowed for the campaign |
-| `target_conversions` | Campaign attribute (not used as a constraint in this template) |
-
-### `effectiveness.csv`
-
-| Column | Meaning |
-| --- | --- |
-| `channel_id` | Foreign key to `channels.csv.id` |
-| `campaign_id` | Foreign key to `campaigns.csv.id` |
-| `conversion_rate` | Expected conversions per $ spent |
-
-## Features showcased
-
-- **Semantic modeling (concepts + properties)** — Declare entity types and relate them with readable property declarations.
-- **Optimization modeling** — Create continuous and binary decision variables, constraints, and a linear objective.
-- **Solver backend integration (HiGHS)** — Solve a MILP and inspect the solution.
 
 ## Customize this template
 
