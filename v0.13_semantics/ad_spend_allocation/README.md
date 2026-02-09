@@ -44,23 +44,6 @@ tags:
 - Python packages: `relationalai==0.13.3`, `pandas` (see `pyproject.toml`)
 - Optional: the `rai` CLI (installed with the `relationalai` Python package)
 
-### Configuration
-
-This template creates a **RelationalAI model** using the active profile from a `raiconfig.toml` (or a `Config` object).
-
-- If you already have RAI configured, you can skip setup.
-- Otherwise, create or update `raiconfig.toml` with:
-
-  ```bash
-  rai init
-  ```
-
-If you use multiple profiles, you can select one via:
-
-```bash
-export RAI_PROFILE=<profile-name>
-```
-
 ## Quickstart
 
 1. **Create and activate a virtual environment**
@@ -77,12 +60,6 @@ export RAI_PROFILE=<profile-name>
 
    ```bash
    python -m pip install -e .
-   ```
-
-   If you prefer not to install the project, installing dependencies directly also works:
-
-   ```bash
-   python -m pip install relationalai==0.13.3 pandas
    ```
 
 3. **Configure Snowflake connection and RAI profile**
@@ -260,8 +237,6 @@ Data files are in `data/`.
 - Write allocations back to Snowflake after solving.
 
 ## Troubleshooting
-
-Include the top 5–8 failure modes with specific fixes.
 
 <details>
   <summary>Why does authentication/configuration fail?</summary>
