@@ -13,6 +13,9 @@ tags:
 
 # Ad Spend Allocation
 
+> [!WARNING]
+> This template uses the early access `relational.semantics` API in version `0.13` of the `relationalai` Python package.
+
 ## What this template is for
 
 Marketing teams must distribute limited advertising budgets across multiple channels (Search, Social, Display, Video, Email) and campaigns to maximize return on investment.
