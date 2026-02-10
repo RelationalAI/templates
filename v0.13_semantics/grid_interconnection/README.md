@@ -114,34 +114,33 @@ python grid_interconnection.py
 
 ## Expected Output
 
-```
-Running scenario: budget = 500000000
-  Status: OPTIMAL, Objective: 1200000000.0
+Decision variables shown for the baseline scenario (budget = $2B). The summary below shows objectives for all scenarios.
 
-  Approved projects:
-  ...
-
-Running scenario: budget = 1000000000
-  Status: OPTIMAL, Objective: 2710000000.0
-
-  Approved projects:
-  ...
-
+```text
 Running scenario: budget = 2000000000
   Status: OPTIMAL, Objective: 4398000000.0
 
   Approved projects:
-  ...
+           name  value
+    Azure_South    1.0
+    MetaAI_West    1.0
+      Oracle_SA    1.0
+Stargate_Phase2    1.0
+    xAI_Permian    1.0
+
+  Selected upgrades:
+                 name  value
+upg_Permian_Basin_200    1.0
 
 ==================================================
 Scenario Analysis Summary
 ==================================================
-  500000000: OPTIMAL, obj=1200000000.0
   1000000000: OPTIMAL, obj=2710000000.0
   2000000000: OPTIMAL, obj=4398000000.0
+  3000000000: OPTIMAL, obj=5879000000.0
 ```
 
-At $500M, only a few high-margin projects can be approved. Doubling the budget to $1B more than doubles net revenue ($2.71B) as additional projects and substation upgrades become affordable. At $2B, most viable projects are approved, yielding $4.4B in net revenue.
+At $1B, only the two highest-margin AI training projects are approved ($2.71B net revenue). The $2B baseline approves 5 projects plus a Permian Basin substation upgrade ($4.4B). At $3B, 10 projects are approved ($5.88B), but marginal returns diminish as remaining projects have lower margins.
 
 ## Scenario Analysis
 
@@ -149,9 +148,9 @@ This template includes **budget sensitivity analysis** — how does capital budg
 
 | Parameter | Type | Values | Description |
 |-----------|------|--------|-------------|
-| `budget` | Numeric | `500000000`, `1000000000`, `2000000000` | Total capital budget for connection costs and substation upgrades |
+| `budget` | Numeric | `1000000000`, `2000000000`, `3000000000` | Total capital budget for connection costs and substation upgrades |
 
-At $500M budget, only the highest-margin projects are feasible ($1.2B net revenue). At $1B, the optimizer can approve additional projects and fund substation upgrades to unlock capacity ($2.71B net revenue, +126%). At $2B, most viable projects are approved ($4.4B), but returns diminish as remaining projects have lower margins or require expensive upgrades.
+At $1B, only the two highest-margin AI training projects are feasible ($2.71B net revenue). The $2B baseline unlocks 5 projects plus a substation upgrade ($4.4B, +63%). At $3B, 10 projects are approved ($5.88B, +34% over baseline), but marginal returns diminish as remaining projects have lower margins.
 
 ---
 

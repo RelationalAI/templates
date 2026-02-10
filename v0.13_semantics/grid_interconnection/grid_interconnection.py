@@ -64,14 +64,14 @@ where(Substation.id(upgrades_data.substation_id)).define(
 # --------------------------------------------------
 
 # Parameters
-budget = 1000000000
+budget = 2000000000
 
 Proj = Project.ref()
 Upg = Upgrade.ref()
 
 # Scenarios (what-if analysis)
 SCENARIO_PARAM = "budget"
-SCENARIO_VALUES = [500000000, 1000000000, 2000000000]
+SCENARIO_VALUES = [1000000000, 2000000000, 3000000000]
 
 # --------------------------------------------------
 # Solve with Scenario Analysis (Numeric Parameter)
