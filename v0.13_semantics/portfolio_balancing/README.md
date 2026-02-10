@@ -84,43 +84,36 @@ The covariance matrix is symmetric (covar_ij = covar_ji).
 
 ## Usage
 
-```python
-from portfolio_balancing import solve, extract_solution
-
-# Run optimization with minimum return target of 20 and budget of 1000
-solver_model = solve(min_return=20, budget=1000)
-result = extract_solution(solver_model)
-
-print(f"Status: {result['status']}")
-print(f"Portfolio risk (variance): {result['objective']:.4f}")
-print(result['variables'])
-```
-
-Or run directly:
-
 ```bash
 python portfolio_balancing.py
 ```
 
 ## Expected Output
 
-```
-Status: OPTIMAL
-Portfolio risk (variance): 1462.6398
-Minimum return target: 20
+The script solves three minimum-return scenarios. Decision variables shown for the baseline scenario (min_return = 20). The summary below shows objectives for all scenarios.
 
-Stock allocations:
- name      float
-qty_1  15.447778   (Low return 2.5%, low risk - diversification anchor)
-qty_2 411.690255   (Medium return 4.0%, medium risk - core holding)
-qty_3  44.945648   (High return 7.0%, high risk - growth allocation)
+```text
+Running scenario: min_return = 20
+  Status: OPTIMAL, Objective: 1462.6398441737488
+
+  Portfolio allocation:
+ name      value
+qty_1  15.447778
+qty_2 411.690255
+qty_3  44.945648
+
+==================================================
+Scenario Analysis Summary
+==================================================
+  10: OPTIMAL, obj=365.65996104343725
+  20: OPTIMAL, obj=1462.6398441737488
+  30: OPTIMAL, obj=3290.939649390935
 ```
 
 The optimal portfolio demonstrates diversification across all three assets:
 - **Stock 2** (medium risk-return) dominates as the efficient core holding
 - **Stock 3** (high return) provides growth potential despite higher risk
 - **Stock 1** (low risk) provides stability through low correlation with others
-- Total risk (1463) is lower than any single-asset portfolio achieving the same return
 
 ## Scenario Analysis
 
@@ -130,12 +123,4 @@ This template includes **efficient frontier analysis** — how does the minimum 
 |-----------|------|--------|-------------|
 | `min_return` | Numeric | `10`, `20`, `30` | Minimum portfolio return target |
 
-### Expected Results
-
-| Scenario | Objective (Risk/Variance) | Impact |
-|----------|--------------------------|--------|
-| min_return = 10 | 365.66 | Low return target allows diversification |
-| min_return = 20 | 1,462.64 | Baseline — moderate risk |
-| min_return = 30 | 3,290.94 | +125% risk — forces concentration in high-return stock |
-
-This is a classic Markowitz efficient frontier demonstration: higher return targets require accepting proportionally higher risk through portfolio concentration.
+This is a classic Markowitz efficient frontier demonstration: higher return targets require accepting proportionally higher risk (+125% variance from min_return 20 to 30) through portfolio concentration.

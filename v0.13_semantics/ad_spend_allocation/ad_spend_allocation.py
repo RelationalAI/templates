@@ -172,6 +172,12 @@ for scenario_value in SCENARIO_VALUES:
     })
     print(f"  Status: {solver_model.termination_status}, Objective: {solver_model.objective_value}")
 
+    # Print spend allocation from solver results
+    var_df = solver_model.variable_values().to_df()
+    spend_df = var_df[var_df["name"].str.startswith("spend") & (var_df["float"] > 0.001)].rename(columns={"float": "value"})
+    print(f"\n  Spend allocation:")
+    print(spend_df.to_string(index=False))
+
 # Summary
 print("\n" + "=" * 50)
 print("Scenario Analysis Summary")

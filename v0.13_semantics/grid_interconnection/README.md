@@ -1,9 +1,9 @@
 ---
 title: "Grid Interconnection"
-description: "Approve renewable energy projects and substation upgrades to maximize net revenue."
+description: "Approve data center interconnection requests and substation upgrades to maximize net revenue within capital budget."
 featured: false
 experience_level: intermediate
-industry: "Utilities"
+industry: "Energy & Utilities"
 reasoning_types:
   - Prescriptive
 tags:
@@ -15,35 +15,35 @@ tags:
 
 ## What is this problem?
 
-Electric utilities face a growing queue of renewable energy projects seeking grid connection—solar farms, wind installations, and battery storage facilities. Each project requires substation capacity and connection infrastructure. With limited budgets and capacity constraints, utilities must strategically select which projects to approve and where to invest in infrastructure upgrades.
+Utilities managing power grid infrastructure face a surge of data center interconnection requests. AI training facilities, hyperscale cloud campuses, and enterprise colocation sites each require substantial substation capacity (80-350 MW) and connection infrastructure. With limited capital budgets and substation capacity constraints, utilities must strategically select which projects to approve and where to invest in infrastructure upgrades.
 
-This template models the capital allocation decision: maximizing long-term revenue from approved projects while managing connection costs and substation capacity limits.
+This template models the capital allocation decision: maximizing net revenue (10-year NPV minus connection costs) from approved data center projects while managing substation capacity limits and upgrade investments.
 
 ## Why is optimization valuable?
 
-- **Investment prioritization**: Identify the highest-value portfolio of projects given budget and infrastructure constraints <!-- TODO: Add % improvement from results -->
+- **Investment prioritization**: Identify the highest-value portfolio of data center projects given budget and infrastructure constraints
 - **Infrastructure planning**: Determine which substation upgrades provide the best return on investment
-- **Scenario analysis**: Evaluate how different budget levels or capacity expansions affect project approvals before committing capital
+- **Budget sensitivity**: Evaluate how different capital budgets affect which projects get approved and total net revenue
 
 ## What are similar problems?
 
-- **Data center server placement**: Decide which servers to deploy across racks with power and cooling constraints
 - **Telecom tower site selection**: Choose cell tower locations balancing coverage, capacity, and installation costs
-- **Retail network planning**: Select store locations considering market potential, real estate costs, and distribution reach
 - **Cloud resource allocation**: Assign workloads to servers across availability zones with capacity and cost constraints
+- **Retail network planning**: Select store locations considering market potential, real estate costs, and distribution reach
+- **Renewable interconnection queues**: Prioritize solar/wind projects competing for limited grid capacity
 
 ## Problem Details
 
 ### Model
 
 **Concepts:**
-- `Substation`: Grid connection points with current and max capacity
-- `Project`: Renewable energy projects with capacity needs and revenue
-- `Upgrade`: Capacity expansion options with cost and added capacity
+- `Substation`: Grid connection points with current capacity (MW)
+- `Project`: Data center interconnection requests with capacity needs, 10-year revenue (NPV), and connection costs
+- `Upgrade`: Substation capacity expansion options with cost and added capacity
 
 **Relationships:**
 - `Project` connects to `Substation` for grid access
-- `Upgrade` connects to `Substation` for capacity expansion
+- `Upgrade` applies to `Substation` for capacity expansion
 
 ### Decision Variables
 
@@ -52,12 +52,12 @@ This template models the capital allocation decision: maximizing long-term reven
 
 ### Objective
 
-Maximize net value:
+Maximize net revenue:
 ```
-maximize sum(approved * (annual_revenue - connection_cost))
+maximize sum(approved * (revenue - connection_cost))
 ```
 
-Note: This simplified formulation treats connection costs (one-time) and annual revenue as comparable for ranking purposes. In practice, you would discount annual revenue over a planning horizon or use NPV calculations.
+Revenue represents 10-year NPV of each data center project. Connection cost is the one-time infrastructure cost to connect the project to the grid.
 
 ### Constraints
 
@@ -71,25 +71,33 @@ Data files are located in the `data/` subdirectory.
 
 ### substations.csv
 
+6 substations with varying current capacity (220-500 MW).
+
 | Column | Description |
 |--------|-------------|
 | id | Unique substation identifier |
-| name | Substation name |
+| name | Substation name (e.g., Permian_Basin, Dallas_North) |
 | current_capacity | Existing capacity (MW) |
 | max_capacity | Maximum possible capacity after upgrades (MW) |
 
 ### projects.csv
 
+14 data center interconnection requests spanning AI training, hyperscale cloud, and enterprise colocation facilities.
+
 | Column | Description |
 |--------|-------------|
 | id | Unique project identifier |
-| name | Project name (e.g., Solar_Farm_A) |
+| name | Project name (e.g., Stargate_Phase2, xAI_Permian, HyperCloud_DFW) |
 | substation_id | Substation where project connects |
-| capacity_needed | Capacity required (MW) |
-| annual_revenue | Expected annual revenue ($) |
-| connection_cost | One-time connection cost ($) |
+| capacity_needed | Capacity required (MW), ranges 80-350 MW |
+| revenue | 10-year NPV ($), ranges $176M-$2.03B |
+| connection_cost | One-time connection cost ($), ranges $85M-$520M |
+
+Revenue margins vary by project type: AI training (64-74%), hyperscale cloud (61-65%), enterprise colocation (47-55%).
 
 ### upgrades.csv
+
+12 upgrade options (2 per substation) with capacity additions of 100-500 MW and costs of $90M-$420M.
 
 | Column | Description |
 |--------|-------------|
@@ -100,20 +108,6 @@ Data files are located in the `data/` subdirectory.
 
 ## Usage
 
-```python
-from grid_interconnection import solve, extract_solution
-
-# Run optimization with $500,000 budget
-solver_model = solve(budget=500000)
-result = extract_solution(solver_model)
-
-print(f"Status: {result['status']}")
-print(f"Net revenue: ${result['objective']:.2f}")
-print(result['variables'])
-```
-
-Or run directly:
-
 ```bash
 python grid_interconnection.py
 ```
@@ -121,12 +115,48 @@ python grid_interconnection.py
 ## Expected Output
 
 ```
-
-Status: OPTIMAL
-Net annual revenue: $190000.00
-Approved projects and upgrades:
-        name  float
-   Battery_E    1.0
-Solar_Farm_C    1.0
- Wind_Farm_B    1.0
+Running scenario: budget = 500000000
+  Status: OPTIMAL, Objective: 1200000000.0
+
+  Approved projects:
+  ...
+
+Running scenario: budget = 1000000000
+  Status: OPTIMAL, Objective: 2710000000.0
+
+  Approved projects:
+  ...
+
+Running scenario: budget = 2000000000
+  Status: OPTIMAL, Objective: 4398000000.0
+
+  Approved projects:
+  ...
+
+==================================================
+Scenario Analysis Summary
+==================================================
+  500000000: OPTIMAL, obj=1200000000.0
+  1000000000: OPTIMAL, obj=2710000000.0
+  2000000000: OPTIMAL, obj=4398000000.0
 ```
+
+At $500M, only a few high-margin projects can be approved. Doubling the budget to $1B more than doubles net revenue ($2.71B) as additional projects and substation upgrades become affordable. At $2B, most viable projects are approved, yielding $4.4B in net revenue.
+
+## Scenario Analysis
+
+This template includes **budget sensitivity analysis** — how does capital budget affect which data center projects get approved and total net revenue?
+
+| Parameter | Type | Values | Description |
+|-----------|------|--------|-------------|
+| `budget` | Numeric | `500000000`, `1000000000`, `2000000000` | Total capital budget for connection costs and substation upgrades |
+
+At $500M budget, only the highest-margin projects are feasible ($1.2B net revenue). At $1B, the optimizer can approve additional projects and fund substation upgrades to unlock capacity ($2.71B net revenue, +126%). At $2B, most viable projects are approved ($4.4B), but returns diminish as remaining projects have lower margins or require expensive upgrades.
+
+---
+
+## Next steps
+
+- Add entity exclusion scenarios (e.g., exclude a substation for maintenance) to analyze infrastructure resilience.
+- Extend with multi-period planning to model phased project approvals over time.
+- Add priority tiers or contractual commitments as additional constraints.

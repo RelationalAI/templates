@@ -20,7 +20,7 @@ The challenge is that each channel has minimum spend thresholds (you can't spend
 This templates uses RelationalAI's **prescriptive reasoner** to find the best allocation of spend across channel-campaign pairs to maximize total expected conversions, while respecting these constraints.
 This helps you:
 
-- **Improve ROAS**: Achieve higher Return on Ad Spend compared to manual allocation or simple rules <!-- TODO: Add % improvement from results -->
+- **Improve ROAS**: Achieve higher Return on Ad Spend compared to manual allocation or simple rules
 - **Budget efficiency**: Eliminate waste from over-allocating to saturated channels while identifying under-invested opportunities
 - **Make data-driven decisions**: Replace gut-feel allocation with mathematically optimal distribution based on measured conversion rates
 
@@ -41,7 +41,7 @@ This helps you:
 - **Model + solve script**: `ad_spend_allocation.py`
 - **Sample data**: `data/channels.csv`, `data/campaigns.csv`, `data/effectiveness.csv`
 - **Python dependencies**: `pyproject.toml`
-- **Outputs**: prints solver status, objective value, and a spend allocation table
+- **Outputs**: prints solver status, objective value, and spend allocation table for each budget scenario
 
 ## Prerequisites
 
@@ -86,21 +86,28 @@ This helps you:
 
 5. **Expected output**
 
-   The script prints a termination status, the objective value (total expected conversions), and a table of non-zero spend decisions, for example:
+   The script solves three budget scenarios. Decision variables shown for the baseline scenario (total_budget = 45000). The summary below shows objectives for all scenarios.
 
    ```text
-   Status: OPTIMAL
-   Total expected conversions: 3430
+   Running scenario: total_budget = 45000
+     Status: OPTIMAL, Objective: 3430.0
 
-   Spend allocation:
-   channel        campaign  active?   spend
-     Email Brand_Awareness      1.0  2000.0
-     Email   Seasonal_Sale      1.0  2000.0
-    Search Brand_Awareness      1.0  5000.0
-    Search  Product_Launch      1.0 10000.0
-    Search   Seasonal_Sale      1.0  8000.0
-    Social Brand_Awareness      1.0  8000.0
-     Video  Product_Launch      1.0 10000.0
+     Spend allocation:
+                           name   value
+    spend_Email_Brand_Awareness  2000.0
+      spend_Email_Seasonal_Sale  2000.0
+   spend_Search_Brand_Awareness  5000.0
+    spend_Search_Product_Launch 10000.0
+     spend_Search_Seasonal_Sale  8000.0
+   spend_Social_Brand_Awareness  8000.0
+     spend_Video_Product_Launch 10000.0
+
+   ==================================================
+   Scenario Analysis Summary
+   ==================================================
+     35000: OPTIMAL, obj=2880.0
+     45000: OPTIMAL, obj=3430.0
+     55000: OPTIMAL, obj=3430.0
    ```
 
 ## Repository structure
@@ -200,34 +207,13 @@ A decision concept created for each `Effectiveness` row; the solver chooses `spe
 
 This section walks through the highlights in `ad_spend_allocation.py`.
 
-### 1) Read CSVs with RAI-compatible dtypes
-
-```python
-from pandas import read_csv as pd_read_csv
-
-def read_csv(path):
-  """Read CSV with RAI-compatible dtypes.
-
-  Pandas may use StringDtype for string columns, but RAI's data().into()
-  requires object dtype. This function ensures compatibility.
-  """
-  df = pd_read_csv(path)
-  # Convert StringDtype to object for RAI compatibility
-  string_cols = df.select_dtypes("string").columns
-  if len(string_cols) > 0:
-    df = df.astype({col: "object" for col in string_cols})
-  return df
-```
-
-### 2) Create a model and load inputs
+### 1) Create a model and load inputs
 
 The template builds a Semantics `Model`, defines concepts + properties, and loads CSVs into those concepts.
 
 ```python
 model = Model("ad_spend", use_lqp=False)
 
-# `Channel`: marketing channel with spend bounds (and an extra ROI field kept to
-# show how additional attributes can live alongside the optimization inputs).
 Channel = model.Concept("Channel")
 Channel.id = model.Property("{Channel} has {id:int}")
 Channel.name = model.Property("{Channel} has {name:string}")
@@ -236,9 +222,6 @@ Channel.max_spend = model.Property("{Channel} has {max_spend:float}")
 Channel.roi_coefficient = model.Property("{Channel} has {roi_coefficient:float}")
 data(read_csv(DATA_DIR / "channels.csv")).into(Channel, keys=["id"])
 
-# `Campaign`: each campaign has a total budget across all channels.
-# `target_conversions` is loaded as an example attribute; it is not used as a
-# constraint in this template.
 Campaign = model.Concept("Campaign")
 Campaign.id = model.Property("{Campaign} has {id:int}")
 Campaign.name = model.Property("{Campaign} has {name:string}")
@@ -247,115 +230,96 @@ Campaign.target_conversions = model.Property("{Campaign} has {target_conversions
 data(read_csv(DATA_DIR / "campaigns.csv")).into(Campaign, keys=["id"])
 ```
 
-### 2) Build channel–campaign effectiveness rows
+### 2) Build channel-campaign effectiveness rows
 
 `effectiveness.csv` contains foreign keys (`channel_id`, `campaign_id`). The template resolves them into `Channel` and `Campaign` instances and creates an `Effectiveness` concept per row.
 
 ```python
-# `Effectiveness`: one row per (channel, campaign) with an expected conversion rate.
 Effectiveness = model.Concept("Effectiveness")
 Effectiveness.channel = model.Property("{Effectiveness} via {channel:Channel}")
 Effectiveness.campaign = model.Property("{Effectiveness} for {campaign:Campaign}")
 Effectiveness.conversion_rate = model.Property("{Effectiveness} has {conversion_rate:float}")
 
 eff_data = data(read_csv(DATA_DIR / "effectiveness.csv"))
-where(
-    Channel.id == eff_data.channel_id,
-    Campaign.id == eff_data.campaign_id
-).define(
-    # Create one `Effectiveness` instance per CSV row, resolving the foreign keys
-    # into actual `Channel` and `Campaign` concept instances.
+where(Channel.id == eff_data.channel_id, Campaign.id == eff_data.campaign_id).define(
     Effectiveness.new(channel=Channel, campaign=Campaign, conversion_rate=eff_data.conversion_rate)
 )
 ```
 
+### 3) Define decision variables and solve per scenario
 
-### 3) Define decision variables (MILP)
-
-An `Allocation` decision concept is created for every `Effectiveness` row. The optimization reasoner then "solves for" two properties.
+An `Allocation` decision concept is created for every `Effectiveness` row. The script then loops over budget scenarios, creating a fresh `SolverModel` for each.
 
 ```python
-# `Allocation`: decision concept (one allocation per effectiveness row).
 Allocation = model.Concept("Allocation")
 Allocation.effectiveness = model.Property("{Allocation} uses {effectiveness:Effectiveness}")
 Allocation.spend = model.Property("{Allocation} has {spend:float}")
 Allocation.active = model.Property("{Allocation} is {active:float}")
 model.define(Allocation.new(effectiveness=Effectiveness))
 
-solver_model = SolverModel(model, "cont")
+SCENARIO_VALUES = [35000, 45000, 55000]
 
-# Decision variables.
-# The `name=[...]` metadata is used to label variables in solver model. These show up if you print the solver model
-# and are helpful for debugging.
+for scenario_value in SCENARIO_VALUES:
+    total_budget = scenario_value
+    solver_model = SolverModel(model, "cont")
 
-# `spend` is continuous with a lower bound of 0.
-solver_model.solve_for(
-    Allocation.spend,
-    name=["spend", Allocation.effectiveness.channel.name, Allocation.effectiveness.campaign.name],
-    lower=0
-)
+    # `spend` is continuous with a lower bound of 0.
+    solver_model.solve_for(
+        Allocation.spend,
+        name=["spend", Allocation.effectiveness.channel.name, Allocation.effectiveness.campaign.name],
+        lower=0,
+    )
 
-# `active` is a binary variable (0 or 1) that indicates whether the channel–campaign pair is active.
-solver_model.solve_for(
-    Allocation.active,
-    type="bin",
-    name=["active", Allocation.effectiveness.channel.name, Allocation.effectiveness.campaign.name]
-)
+    # `active` is a binary variable (0 or 1).
+    solver_model.solve_for(
+        Allocation.active,
+        type="bin",
+        name=["active", Allocation.effectiveness.channel.name, Allocation.effectiveness.campaign.name],
+    )
 ```
 
 ### 4) Add constraints
 
-The template encodes spend bounds, a per-campaign budget, and a minimum coverage rule.
+Each scenario iteration adds the same structural constraints, plus a total budget constraint parameterized by the scenario value.
 
 ```python
-# Constraint: spend bounded by per-channel min/max *only when active*.
-# If `active = 0`, both bounds force `spend = 0`.
-min_spend_bound = require(Allocation.spend >= Allocation.effectiveness.channel.min_spend * Allocation.active)
-solver_model.satisfy(min_spend_bound)
+    # Spend bounded by per-channel min/max when active.
+    solver_model.satisfy(require(
+        Allocation.spend >= Allocation.effectiveness.channel.min_spend * Allocation.active
+    ))
+    solver_model.satisfy(require(
+        Allocation.spend <= Allocation.effectiveness.channel.max_spend * Allocation.active
+    ))
 
-max_spend_bound = require(Allocation.spend <= Allocation.effectiveness.channel.max_spend * Allocation.active)
-solver_model.satisfy(max_spend_bound)
+    # Per-campaign budget across all channels.
+    campaign_spend = sum(Allocation.spend).where(
+        Allocation.effectiveness.campaign == Campaign
+    ).per(Campaign)
+    solver_model.satisfy(require(campaign_spend <= Campaign.budget))
 
-# Constraint: per-campaign budget across all channels.
-campaign_spend = sum(Allocation.spend).where(Allocation.effectiveness.campaign == Campaign).per(Campaign)
-budget_limit = require(campaign_spend <= Campaign.budget)
-solver_model.satisfy(budget_limit)
+    # At least one active channel per campaign.
+    campaign_channels = sum(Allocation.active).where(
+        Allocation.effectiveness.campaign == Campaign
+    ).per(Campaign)
+    solver_model.satisfy(require(campaign_channels >= 1))
 
-# Constraint: require at least one active channel per campaign.
-campaign_channels = sum(Allocation.active).where(Allocation.effectiveness.campaign == Campaign).per(Campaign)
-min_channels = require(campaign_channels >= 1)
-solver_model.satisfy(min_channels)
+    # Total budget across all campaigns (scenario parameter).
+    solver_model.satisfy(require(sum(Allocation.spend) <= total_budget))
 ```
 
-### 5) Maximize conversions, solve, and print a compact solution
+### 5) Maximize conversions and extract results
 
-The objective is linear in spend: maximize total expected conversions $= \sum spend \cdot conversion\_rate$.
-
-```python
-total_conversions = sum(Allocation.spend * Allocation.effectiveness.conversion_rate)
-solver_model.maximize(total_conversions)
-
-solver_backend = Solver("highs")
-solver_model.solve(solver_backend, time_limit_sec=60)
-
-print(f"Status: {solver_model.termination_status}")
-print(f"Total expected conversions: {solver_model.objective_value:.0f}")
-```
-
-The final table is produced by querying the solved properties and filtering out near-zero spend allocations.
+The objective is linear in spend: maximize $\sum spend \cdot conversion\_rate$. After solving, `variable_values()` extracts the solution directly from the solver.
 
 ```python
-allocations = select(
-    Allocation.effectiveness.channel.name.alias("channel"),
-    Allocation.effectiveness.campaign.name.alias("campaign"),
-    Allocation.active.alias("active?"),
-    Allocation.spend
-).where(
-    # Hide zero allocations to keep the output compact.
-    Allocation.spend > 0.001
-).to_df()
+    total_conversions = sum(Allocation.spend * Allocation.effectiveness.conversion_rate)
+    solver_model.maximize(total_conversions)
 
-print(allocations.to_string(index=False))
+    solver_model.solve(Solver("highs"), time_limit_sec=60)
+
+    # Extract spend allocation from solver results
+    var_df = solver_model.variable_values().to_df()
+    spend_df = var_df[var_df["name"].str.startswith("spend") & (var_df["float"] > 0.001)].rename(columns={"float": "value"})
 ```
 
 ## Customize this template
@@ -428,15 +392,7 @@ This template includes **budget sensitivity analysis** — how does a company-wi
 |-----------|------|--------|-------------|
 | `total_budget` | Numeric | `35000`, `45000`, `55000` | Total budget across all campaigns |
 
-### Expected Results
-
-| Scenario | Objective (Conversions) | Impact |
-|----------|------------------------|--------|
-| $35,000 budget | 2,880 | -16% — binding constraint forces cuts |
-| $45,000 budget | 3,430 | Baseline — matches sum of per-campaign budgets |
-| $55,000 budget | 3,430 | Same as $45k — per-campaign limits are binding |
-
-The $55k scenario demonstrates that the total budget is non-binding when per-campaign budgets ($15k + $20k + $10k = $45k) already cap total spend.
+The $45k and $55k scenarios produce the same objective (3,430) because per-campaign budgets ($15k + $20k + $10k = $45k) already cap total spend — the $55k total budget is non-binding. At $35k (-16%), the binding total budget forces cuts to lower-converting allocations.
 
 ---
 

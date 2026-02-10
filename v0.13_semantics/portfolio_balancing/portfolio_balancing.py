@@ -90,6 +90,12 @@ for scenario_value in SCENARIO_VALUES:
     })
     print(f"  Status: {s.termination_status}, Objective: {s.objective_value}")
 
+    # Print portfolio allocation from solver results
+    var_df = s.variable_values().to_df()
+    qty_df = var_df[var_df["name"].str.startswith("qty") & (var_df["float"] > 0.001)].rename(columns={"float": "value"})
+    print(f"\n  Portfolio allocation:")
+    print(qty_df.to_string(index=False))
+
 # Summary
 print("\n" + "=" * 50)
 print("Scenario Analysis Summary")

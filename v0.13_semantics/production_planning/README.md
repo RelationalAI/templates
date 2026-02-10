@@ -23,7 +23,7 @@ The challenge is that demand must be met, but machine capacity is limited—so t
 
 ## Why is optimization valuable?
 
-- **Profit maximization**: Improves production profitability by optimally allocating constrained capacity to highest-value products <!-- TODO: Add % improvement from results -->
+- **Profit maximization**: Improves production profitability by optimally allocating constrained capacity to highest-value products
 - **Resource efficiency**: Ensures expensive equipment runs on the most profitable work
 - **Demand fulfillment**: Meets customer commitments while maximizing margin
 
@@ -93,40 +93,33 @@ Data files are located in the `data/` subdirectory.
 
 ## Usage
 
-```python
-from production_planning import solve, extract_solution
-
-# Run optimization
-solver_model = solve()
-result = extract_solution(solver_model)
-
-print(f"Status: {result['status']}")
-print(f"Total profit: ${result['objective']:.2f}")
-print(result['variables'])
-```
-
-Or run directly:
-
 ```bash
 python production_planning.py
 ```
 
 ## Expected Output
 
-```
-
-Status: OPTIMAL
-Total profit: $14945.00
-Production schedule:
-                  name  float
+Decision variables shown for the baseline scenario (demand_multiplier = 1.0). The summary below shows objectives for all scenarios.
+
+```text
+Running scenario: demand_multiplier = 1.0
+  Status: OPTIMAL, Objective: 14945.0
+
+  Production plan:
+                  name  value
 qty_Machine_1_Widget_A    4.0
 qty_Machine_1_Widget_C   95.0
 qty_Machine_2_Widget_B   70.0
 qty_Machine_3_Widget_A   96.0
 qty_Machine_3_Widget_B   11.0
-```
 
-The schedule shows which machines produce which products and in what quantities.
+==================================================
+Scenario Analysis Summary
+==================================================
+  0.8: OPTIMAL, obj=15020.0
+  1.0: OPTIMAL, obj=14945.0
+  1.1: OPTIMAL, obj=14770.0
+```
 
 ## Scenario Analysis
 
@@ -136,12 +129,4 @@ This template includes **demand sensitivity analysis** — how do demand changes
 |-----------|------|--------|-------------|
 | `demand_multiplier` | Numeric | `0.8`, `1.0`, `1.1` | Multiplier applied to all product demands |
 
-### Expected Results
-
-| Scenario | Objective (Profit) | Impact |
-|----------|-------------------|--------|
-| 0.8x demand | $15,020 | +0.5% — less demand = more flexibility for high-profit items |
-| 1.0x demand | $14,945 | Baseline |
-| 1.1x demand | $14,770 | -1.2% — tighter constraints reduce optimizer freedom |
-
-Lower demand gives the optimizer more flexibility to focus on high-margin products, while higher demand forces production of all items regardless of profit margin.
+Lower demand (0.8x) gives the optimizer more flexibility to focus on high-margin products (+0.5% profit), while higher demand (1.1x) forces production of all items regardless of profit margin (-1.2%).

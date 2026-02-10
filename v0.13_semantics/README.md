@@ -26,7 +26,7 @@ The Prescriptive Reasoner solves optimization problems: given constraints and ob
 | [ad_spend_allocation](./ad_spend_allocation/) | Allocation | Marketing & Revenue | MILP | Intermediate | `total_budget` (numeric) |
 | [diet](./diet/) | Allocation | Healthcare | LP | Beginner | - |
 | [factory_production](./factory_production/) | Allocation | Supply Chain & Manufacturing | LP | Beginner | - |
-| [grid_interconnection](./grid_interconnection/) | Design | Energy & Utilities | MILP | Intermediate | - |
+| [grid_interconnection](./grid_interconnection/) | Design | Energy & Utilities | MILP | Intermediate | `budget` (numeric) |
 | [hospital_staffing](./hospital_staffing/) | Allocation | Healthcare | MILP | Intermediate | - |
 | [inventory_rebalancing](./inventory_rebalancing/) | Allocation | Supply Chain & Manufacturing | LP | Beginner | - |
 | [machine_maintenance](./machine_maintenance/) | Scheduling | Supply Chain & Manufacturing | MILP | Intermediate | - |
@@ -223,6 +223,7 @@ s.minimize(...) / s.maximize(...)
 # Scenarios (optional, for what-if analysis)
 SCENARIO_PARAM = "..."
 SCENARIO_VALUES = [...]
+SCENARIO_CONCEPT = "..."  # (entity exclusion scenarios only) 
 
 # --------------------------------------------------
 # Solve and check solution
@@ -393,4 +394,3 @@ To add a new template:
 3. Add sample CSV data files in a `data/` subdirectory
 4. Write a README.md with problem description and classification
 5. Update this index
-

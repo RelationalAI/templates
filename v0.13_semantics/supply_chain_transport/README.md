@@ -109,44 +109,33 @@ Data files are located in the `data/` subdirectory.
 
 ## Usage
 
-```python
-from supply_chain_transport import solve, extract_solution
-
-# Run optimization
-solver_model = solve()
-result = extract_solution(solver_model)
-
-print(f"Status: {result['status']}")
-print(f"Total cost: ${result['objective']:.2f}")
-print(result['variables'])
-```
-
-Or run directly:
-
 ```bash
 python supply_chain_transport.py
 ```
 
 ## Expected Output
 
+Decision variables shown for the baseline scenario (no warehouse excluded). The summary below shows objectives for all scenarios.
+
+```text
+Running scenario: excluded_warehouse = None
+  Status: OPTIMAL, Objective: 2420.0
+
+  Shipments:
+                                 name  value
+qty_Warehouse_Central_Customer_C_Rail  250.0
+qty_Warehouse_Central_Customer_D_Rail   20.0
+  qty_Warehouse_East_Customer_A_Truck   80.0
+  qty_Warehouse_West_Customer_B_Truck  120.0
+   qty_Warehouse_West_Customer_D_Rail  280.0
+
+==================================================
+Scenario Analysis Summary
+==================================================
+  None: OPTIMAL, obj=2420.0
+  Warehouse_East: OPTIMAL, obj=2620.0
+  Warehouse_Central: OPTIMAL, obj=2690.0
 ```
-Status: OPTIMAL
-Total transport cost: $2100.00
-
-Shipments:
-        warehouse   customer  mode  quantity
-Warehouse_Central Customer_B Truck     120.0
-   Warehouse_East Customer_C  Rail     250.0
-   Warehouse_West Customer_A Truck      80.0
-   Warehouse_West Customer_D  Rail     300.0
-```
-
-The optimal solution demonstrates multi-modal transport selection:
-- **Urgent customers** (A, B with due days 1-2) use **Truck** (1-day transit)
-- **Regular customers** (C, D with due days 4-5) use **Rail** (3-day transit) for cost savings
-- The optimizer selects the lowest-cost combination of warehouse-customer-mode routes
-
-Note: Alternative optimal solutions may route from different warehouses at the same total cost.
 
 ## Scenario Analysis
 
@@ -156,12 +145,4 @@ This template includes **facility outage analysis** — what happens when a ware
 |-----------|------|--------|-------------|
 | `excluded_warehouse` | Entity (Warehouse) | `None`, `"Warehouse_East"`, `"Warehouse_Central"` | Warehouse to take offline |
 
-### Expected Results
-
-| Scenario | Objective (Cost) | Impact |
-|----------|-----------------|--------|
-| Baseline (None) | $2,420 | All warehouses available |
-| Exclude Warehouse_East | $2,620 | +8% — rerouting through farther warehouses |
-| Exclude Warehouse_Central | $2,690 | +11% — Central serves many customers at short distance |
-
-Warehouse_Central has the largest impact when excluded because it has short distances to key high-demand customers, forcing shipments through longer, more expensive routes.
+Excluding Warehouse_Central (+11%) has a larger impact than Warehouse_East (+8%) because Central has short distances to key high-demand customers, forcing shipments through longer, more expensive routes.

@@ -23,7 +23,7 @@ The reliability_weight parameter lets you tune the trade-off: set it to 0 for pu
 
 ## Why is optimization valuable?
 
-- **Risk-aware sourcing**: Quantify the cost of reliability and make informed trade-offs <!-- TODO: Add % improvement from results -->
+- **Risk-aware sourcing**: Quantify the cost of reliability and make informed trade-offs
 - **Disruption resilience**: Diversify supplier base to reduce exposure to single points of failure
 - **Scenario analysis**: Evaluate impact of supplier issues before they happen, enabling proactive contingency planning
 
@@ -95,42 +95,34 @@ Data files are located in the `data/` subdirectory.
 
 ## Usage
 
-```python
-from supplier_reliability import solve, extract_solution
-
-# Pure cost minimization
-solver_model = solve(reliability_weight=0.0)
-result = extract_solution(solver_model)
-
-# With reliability preference (penalize unreliable suppliers)
-solver_model = solve(reliability_weight=50.0)
-result = extract_solution(solver_model)
-
-print(f"Status: {result['status']}")
-print(f"Total cost: ${result['objective']:.2f}")
-```
-
-Or run directly:
-
 ```bash
 python supplier_reliability.py
 ```
 
 ## Expected Output
 
-```
-
-Status: OPTIMAL
-Total cost: $4850.00
-Order quantities:
-                   name  float
+Decision variables shown for the baseline scenario (no supplier excluded). The summary below shows objectives for all scenarios.
+
+```text
+Running scenario: excluded_supplier = None
+  Status: OPTIMAL, Objective: 4850.0
+
+  Orders:
+                   name  value
    qty_SupplierB_Gadget  150.0
 qty_SupplierC_Component  200.0
    qty_SupplierC_Gadget  100.0
    qty_SupplierC_Widget  300.0
+
+==================================================
+Scenario Analysis Summary
+==================================================
+  None: OPTIMAL, obj=4850.0
+  SupplierC: OPTIMAL, obj=6750.0
+  SupplierB: OPTIMAL, obj=5150.0
 ```
 
-The cost-minimizing solution sources from the cheapest suppliers:
+The cost-minimizing baseline sources from the cheapest suppliers:
 - **SupplierC** (lowest cost, 75% reliability): Widget (300), Gadget (100), Component (200)
 - **SupplierB** (mid cost, 85% reliability): Gadget (150)
 
@@ -142,12 +134,4 @@ This template includes **supplier disruption analysis** — what happens if a ke
 |-----------|------|--------|-------------|
 | `excluded_supplier` | Entity (Supplier) | `None`, `"SupplierC"`, `"SupplierB"` | Supplier to exclude from sourcing |
 
-### Expected Results
-
-| Scenario | Objective (Cost) | Impact |
-|----------|-----------------|--------|
-| Baseline (None) | $4,850 | All suppliers available |
-| Exclude SupplierC | $6,750 | +39% — cheapest supplier removed |
-| Exclude SupplierB | $5,150 | +6% — moderate cost increase |
-
-SupplierC is the cheapest ($5-7/unit) so excluding it causes the largest cost increase. SupplierB ($8-9/unit) is mid-range, so its exclusion has less impact.
+SupplierC is the cheapest ($5-7/unit) so excluding it causes the largest cost increase (+39%). SupplierB ($8-9/unit) is mid-range, so its exclusion has less impact (+6%).

@@ -67,6 +67,9 @@ define(Shipment.new(route=Route, mode=TransportMode))
 
 Sh = Shipment.ref()
 
+# Parameters
+# (none beyond scenario parameter)
+
 # Scenarios (what-if analysis)
 SCENARIO_PARAM = "excluded_warehouse"
 SCENARIO_VALUES = [None, "Warehouse_East", "Warehouse_Central"]
@@ -132,6 +135,12 @@ for scenario_value in SCENARIO_VALUES:
         "objective": s.objective_value,
     })
     print(f"  Status: {s.termination_status}, Objective: {s.objective_value}")
+
+    # Print shipment plan from solver results
+    var_df = s.variable_values().to_df()
+    qty_df = var_df[var_df["name"].str.startswith("qty") & (var_df["float"] > 0.001)].rename(columns={"float": "value"})
+    print(f"\n  Shipments:")
+    print(qty_df.to_string(index=False))
 
 # Summary
 print("\n" + "=" * 50)
