@@ -256,7 +256,7 @@ This section walks through the highlights in `ad_spend_allocation.py`.
 
 All code snippets below are copied verbatim from the template script (with non-highlight sections omitted between snippets).
 
-### 1) Configure inputs and create the model
+### Configure inputs and create the model
 
 ```python
 from pathlib import Path
@@ -282,7 +282,7 @@ pandas.options.future.infer_string = False
 model = Model("ad_spend", use_lqp=False)
 ```
 
-### 2) Define concepts and load CSV data
+### Define concepts and load CSV data
 
 ```python
 # Channel concept: marketing channel with spend bounds (and an extra ROI field
@@ -313,7 +313,7 @@ Campaign.target_conversions = model.Property("{Campaign} has {target_conversions
 data(read_csv(DATA_DIR / "campaigns.csv")).into(Campaign, keys=["id"])
 ```
 
-### 3) Build channel-campaign effectiveness rows
+### Build channel-campaign effectiveness rows
 
 `effectiveness.csv` contains foreign keys (`channel_id`, `campaign_id`). The template resolves them into `Channel` and `Campaign` instances and creates an `Effectiveness` concept per row.
 
@@ -340,7 +340,7 @@ where(
 )
 ```
 
-### 4) Define decision variables and solve per scenario
+### Define decision variables and solve per scenario
 
 An `Allocation` decision concept is created for every `Effectiveness` row. The script then loops over budget scenarios, creating a fresh `SolverModel` for each.
 
@@ -399,7 +399,7 @@ for scenario_value in SCENARIO_VALUES:
     )
 ```
 
-### 5) Add constraints, solve, and print results
+### Add constraints, solve, and print results
 
 Each scenario iteration adds the same structural constraints, plus a total budget constraint parameterized by the scenario value.
 
@@ -488,8 +488,6 @@ This template includes a simple **what-if analysis** that reruns the same optimi
 How to customize the scenarios:
 
 - In `ad_spend_allocation.py`, edit `SCENARIO_VALUES` to the budgets you want to test.
-- Each scenario sets `total_budget = scenario_value` and adds the constraint `sum(Allocation.spend) <= total_budget`.
-- The script prints a solve + allocation table per scenario, then a summary comparing objective values.
 
 How to interpret results:
 
