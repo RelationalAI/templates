@@ -76,7 +76,7 @@ You can customize the data and model as needed after you have it running end-to-
    From this folder:
 
    ```bash
-   python -m pip install -e .
+   python -m pip install .
    ```
 
 3. **Configure Snowflake connection and RAI profile**
