@@ -57,7 +57,8 @@ Prescriptive reasoning helps you:
 
 ## Quickstart
 
-<Steps>
+Follow these steps to run the template with the included sample data.
+You can customize the data and model as needed after you have it running end-to-end.
 
 1. **Create and activate a virtual environment**
 
@@ -155,8 +156,6 @@ Prescriptive reasoning helps you:
      45000: OPTIMAL, obj=3430.0
      55000: OPTIMAL, obj=3430.0
    ```
-
-   </Steps>
 
 ## Repository structure
 
