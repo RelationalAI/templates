@@ -508,7 +508,7 @@ How to interpret results:
 - Add campaign conversion targets as constraints (using `Campaign.target_conversions`).
 - Add diminishing returns (piecewise linear approximations) if conversion rate decreases with spend.
 
-### Scale up / productionize
+### Scale up and productionize
 
 - Replace CSV ingestion with Snowflake sources.
 - Write allocations back to Snowflake after solving.
