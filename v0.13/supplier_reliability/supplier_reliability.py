@@ -67,27 +67,11 @@ define(Order.cost_per_unit(SupplyOption.cost_per_unit)).where(Order.option(Suppl
 
 # Parameters
 reliability_weight = 0.0  # penalty weight for unreliable suppliers (0 = cost only)
+excluded_supplier = None
 
-# Scenarios (what-if analysis)
-SCENARIO_PARAM = "excluded_supplier"
-SCENARIO_VALUES = [None, "SupplierC", "SupplierB"]
-SCENARIO_CONCEPT = "Supplier"  # Entity type for exclusion scenarios
 
-# --------------------------------------------------
-# Solve with Scenario Analysis (Entity Exclusion)
-# --------------------------------------------------
-
-scenario_results = []
-
-for scenario_value in SCENARIO_VALUES:
-    print(f"\nRunning scenario: {SCENARIO_PARAM} = {scenario_value}")
-
-    # Set scenario parameter (entity to exclude)
-    excluded_supplier = scenario_value
-
-    # Create fresh SolverModel for each scenario
-    s = SolverModel(model, "cont")
-
+def build_formulation(s):
+    """Register variables, constraints, and objective on the solver model."""
     # Variable: order quantity
     s.solve_for(Order.quantity, name=["qty", Order.supplier.name, Order.product.name], lower=0)
 
@@ -114,6 +98,31 @@ for scenario_value in SCENARIO_VALUES:
     else:
         total_cost = direct_cost
     s.minimize(total_cost)
+
+
+s = SolverModel(model, "cont")
+build_formulation(s)
+
+# Scenarios (what-if analysis)
+SCENARIO_PARAM = "excluded_supplier"
+SCENARIO_VALUES = [None, "SupplierC", "SupplierB"]
+SCENARIO_CONCEPT = "Supplier"  # Entity type for exclusion scenarios
+
+# --------------------------------------------------
+# Solve and check solution
+# --------------------------------------------------
+
+scenario_results = []
+
+for scenario_value in SCENARIO_VALUES:
+    print(f"\nRunning scenario: {SCENARIO_PARAM} = {scenario_value}")
+
+    # Set scenario parameter (entity to exclude)
+    excluded_supplier = scenario_value
+
+    # Create fresh SolverModel for each scenario
+    s = SolverModel(model, "cont")
+    build_formulation(s)
 
     solver = Solver("highs")
     s.solve(solver, time_limit_sec=60)

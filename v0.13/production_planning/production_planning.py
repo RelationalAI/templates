@@ -56,27 +56,11 @@ define(Production.new(rate=Rate))
 Prod = Production.ref()
 
 # Parameters
-# (none beyond scenario parameter)
+demand_multiplier = 1.0
 
-# Scenarios (what-if analysis)
-SCENARIO_PARAM = "demand_multiplier"
-SCENARIO_VALUES = [0.8, 1.0, 1.1]
 
-# --------------------------------------------------
-# Solve with Scenario Analysis (Numeric Parameter)
-# --------------------------------------------------
-
-scenario_results = []
-
-for scenario_value in SCENARIO_VALUES:
-    print(f"\nRunning scenario: {SCENARIO_PARAM} = {scenario_value}")
-
-    # Set scenario parameter value
-    demand_multiplier = scenario_value
-
-    # Create fresh SolverModel for each scenario
-    s = SolverModel(model, "cont")
-
+def build_formulation(s):
+    """Register variables, constraints, and objective on the solver model."""
     # Variable: production quantity (integer)
     s.solve_for(Production.quantity, name=["qty", Production.rate.machine.name, Production.rate.product.name], lower=0, type="int")
 
@@ -93,6 +77,30 @@ for scenario_value in SCENARIO_VALUES:
     # Objective: maximize total profit
     total_profit = sum(Production.quantity * Production.rate.product.profit)
     s.maximize(total_profit)
+
+
+s = SolverModel(model, "cont")
+build_formulation(s)
+
+# Scenarios (what-if analysis)
+SCENARIO_PARAM = "demand_multiplier"
+SCENARIO_VALUES = [0.8, 1.0, 1.1]
+
+# --------------------------------------------------
+# Solve and check solution
+# --------------------------------------------------
+
+scenario_results = []
+
+for scenario_value in SCENARIO_VALUES:
+    print(f"\nRunning scenario: {SCENARIO_PARAM} = {scenario_value}")
+
+    # Set scenario parameter value
+    demand_multiplier = scenario_value
+
+    # Create fresh SolverModel for each scenario
+    s = SolverModel(model, "cont")
+    build_formulation(s)
 
     solver = Solver("highs")
     s.solve(solver, time_limit_sec=60)

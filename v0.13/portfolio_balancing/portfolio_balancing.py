@@ -37,30 +37,15 @@ where(Stock.index(pairs.i), Stock2.index(pairs.j)).define(
 
 # Parameters
 budget = 1000
+min_return = 20
 
 Stock.quantity = model.Property("{Stock} quantity is {x:float}")
 
 c = Float.ref()
 
-# Scenarios (what-if analysis)
-SCENARIO_PARAM = "min_return"
-SCENARIO_VALUES = [10, 20, 30]
 
-# --------------------------------------------------
-# Solve with Scenario Analysis (Numeric Parameter)
-# --------------------------------------------------
-
-scenario_results = []
-
-for scenario_value in SCENARIO_VALUES:
-    print(f"\nRunning scenario: {SCENARIO_PARAM} = {scenario_value}")
-
-    # Set scenario parameter value
-    min_return = scenario_value
-
-    # Create fresh SolverModel for each scenario
-    s = SolverModel(model, "cont")
-
+def build_formulation(s):
+    """Register variables, constraints, and objective on the solver model."""
     # Variable: quantity of each stock
     s.solve_for(Stock.quantity, name=["qty", Stock.index])
 
@@ -79,6 +64,30 @@ for scenario_value in SCENARIO_VALUES:
     # Objective: minimize portfolio risk (variance)
     risk = sum(c * Stock.quantity * Stock2.quantity).where(Stock.covar(Stock2, c))
     s.minimize(risk)
+
+
+s = SolverModel(model, "cont")
+build_formulation(s)
+
+# Scenarios (what-if analysis)
+SCENARIO_PARAM = "min_return"
+SCENARIO_VALUES = [10, 20, 30]
+
+# --------------------------------------------------
+# Solve and check solution
+# --------------------------------------------------
+
+scenario_results = []
+
+for scenario_value in SCENARIO_VALUES:
+    print(f"\nRunning scenario: {SCENARIO_PARAM} = {scenario_value}")
+
+    # Set scenario parameter value
+    min_return = scenario_value
+
+    # Create fresh SolverModel for each scenario
+    s = SolverModel(model, "cont")
+    build_formulation(s)
 
     solver = Solver("highs")
     s.solve(solver, time_limit_sec=60)

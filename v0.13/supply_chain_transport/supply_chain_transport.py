@@ -68,28 +68,11 @@ define(Shipment.new(route=Route, mode=TransportMode))
 Sh = Shipment.ref()
 
 # Parameters
-# (none beyond scenario parameter)
+excluded_warehouse = None
 
-# Scenarios (what-if analysis)
-SCENARIO_PARAM = "excluded_warehouse"
-SCENARIO_VALUES = [None, "Warehouse_East", "Warehouse_Central"]
-SCENARIO_CONCEPT = "Warehouse"  # Entity type for exclusion scenarios
 
-# --------------------------------------------------
-# Solve with Scenario Analysis (Entity Exclusion)
-# --------------------------------------------------
-
-scenario_results = []
-
-for scenario_value in SCENARIO_VALUES:
-    print(f"\nRunning scenario: {SCENARIO_PARAM} = {scenario_value}")
-
-    # Set scenario parameter (entity to exclude)
-    excluded_warehouse = scenario_value
-
-    # Create fresh SolverModel for each scenario
-    s = SolverModel(model, "cont")
-
+def build_formulation(s):
+    """Register variables, constraints, and objective on the solver model."""
     # Variable: shipment quantity and selection
     s.solve_for(Shipment.quantity, name=["qty", Shipment.route.warehouse.name, Shipment.route.customer.name, Shipment.mode.name], lower=0)
     s.solve_for(Shipment.selected, type="bin", name=["sel", Shipment.route.warehouse.name, Shipment.route.customer.name, Shipment.mode.name])
@@ -125,6 +108,31 @@ for scenario_value in SCENARIO_VALUES:
     # Objective: minimize total transport cost (distance-weighted)
     total_cost = sum(Shipment.quantity * Shipment.mode.cost_per_unit * Shipment.route.distance / 100)
     s.minimize(total_cost)
+
+
+s = SolverModel(model, "cont")
+build_formulation(s)
+
+# Scenarios (what-if analysis)
+SCENARIO_PARAM = "excluded_warehouse"
+SCENARIO_VALUES = [None, "Warehouse_East", "Warehouse_Central"]
+SCENARIO_CONCEPT = "Warehouse"  # Entity type for exclusion scenarios
+
+# --------------------------------------------------
+# Solve and check solution
+# --------------------------------------------------
+
+scenario_results = []
+
+for scenario_value in SCENARIO_VALUES:
+    print(f"\nRunning scenario: {SCENARIO_PARAM} = {scenario_value}")
+
+    # Set scenario parameter (entity to exclude)
+    excluded_warehouse = scenario_value
+
+    # Create fresh SolverModel for each scenario
+    s = SolverModel(model, "cont")
+    build_formulation(s)
 
     solver = Solver("highs")
     s.solve(solver, time_limit_sec=60)

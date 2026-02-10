@@ -69,25 +69,9 @@ budget = 2000000000
 Proj = Project.ref()
 Upg = Upgrade.ref()
 
-# Scenarios (what-if analysis)
-SCENARIO_PARAM = "budget"
-SCENARIO_VALUES = [1000000000, 2000000000, 3000000000]
 
-# --------------------------------------------------
-# Solve with Scenario Analysis (Numeric Parameter)
-# --------------------------------------------------
-
-scenario_results = []
-
-for scenario_value in SCENARIO_VALUES:
-    print(f"\nRunning scenario: {SCENARIO_PARAM} = {scenario_value}")
-
-    # Set scenario parameter value
-    budget = scenario_value
-
-    # Create fresh SolverModel for each scenario
-    s = SolverModel(model, "cont")
-
+def build_formulation(s):
+    """Register variables, constraints, and objective on the solver model."""
     # Variable: binary approval and selection
     s.solve_for(Project.approved, type="bin", name=Project.name)
     s.solve_for(Upgrade.selected, type="bin", name=["upg", Upgrade.substation.name, Upgrade.capacity_added])
@@ -111,6 +95,30 @@ for scenario_value in SCENARIO_VALUES:
     # Objective: maximize net revenue
     net_revenue = sum(Project.approved * (Project.revenue - Project.connection_cost))
     s.maximize(net_revenue)
+
+
+s = SolverModel(model, "cont")
+build_formulation(s)
+
+# Scenarios (what-if analysis)
+SCENARIO_PARAM = "budget"
+SCENARIO_VALUES = [1000000000, 2000000000, 3000000000]
+
+# --------------------------------------------------
+# Solve and check solution
+# --------------------------------------------------
+
+scenario_results = []
+
+for scenario_value in SCENARIO_VALUES:
+    print(f"\nRunning scenario: {SCENARIO_PARAM} = {scenario_value}")
+
+    # Set scenario parameter value
+    budget = scenario_value
+
+    # Create fresh SolverModel for each scenario
+    s = SolverModel(model, "cont")
+    build_formulation(s)
 
     solver = Solver("highs")
     s.solve(solver, time_limit_sec=60)

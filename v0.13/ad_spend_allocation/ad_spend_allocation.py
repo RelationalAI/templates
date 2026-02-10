@@ -42,7 +42,7 @@ pandas.options.future.infer_string = False
 # --------------------------------------------------
 
 # Create a Semantics model container.
-model = Model("ad_spend", use_lqp=False)
+model = Model("ad_spend", config=globals().get("config", None), use_lqp=False)
 
 # Channel concept: marketing channel with spend bounds (and an extra ROI field
 # kept to show how additional attributes can live alongside the optimization inputs).
@@ -108,27 +108,14 @@ Allocation.active = model.Property("{Allocation} is {active:float}")
 # Define Allocation entities.
 model.define(Allocation.new(effectiveness=Effectiveness))
 
-# --------------------------------------------------
-# Solve with Scenario Analysis (Numeric Parameter)
-# --------------------------------------------------
+# Parameters
+total_budget = 45000
 
-# Scenarios (what-if analysis)
-SCENARIO_PARAM = "total_budget"
-SCENARIO_VALUES = [35000, 45000, 55000]
 
-scenario_results = []
-
-for scenario_value in SCENARIO_VALUES:
-    print(f"\nRunning scenario: {SCENARIO_PARAM} = {scenario_value}")
-
-    # Set scenario parameter value
-    total_budget = scenario_value
-
-    # Create fresh SolverModel for each scenario
-    solver_model = SolverModel(model, "cont")
-
+def build_formulation(s):
+    """Register variables, constraints, and objective on the solver model."""
     # Variable: spend (continuous, >= 0)
-    solver_model.solve_for(
+    s.solve_for(
         Allocation.spend,
         name=[
             "spend",
@@ -139,7 +126,7 @@ for scenario_value in SCENARIO_VALUES:
     )
 
     # Variable: active (binary 0/1)
-    solver_model.solve_for(
+    s.solve_for(
         Allocation.active,
         type="bin",
         name=[
@@ -153,13 +140,13 @@ for scenario_value in SCENARIO_VALUES:
     min_spend_bound = require(
         Allocation.spend >= Allocation.effectiveness.channel.min_spend * Allocation.active
     )
-    solver_model.satisfy(min_spend_bound)
+    s.satisfy(min_spend_bound)
 
     # Constraint: maximum spend per channel when active
     max_spend_bound = require(
         Allocation.spend <= Allocation.effectiveness.channel.max_spend * Allocation.active
     )
-    solver_model.satisfy(max_spend_bound)
+    s.satisfy(max_spend_bound)
 
     # Constraint: per-campaign budget across all channels
     campaign_spend = (
@@ -168,7 +155,7 @@ for scenario_value in SCENARIO_VALUES:
         .per(Campaign)
     )
     budget_limit = require(campaign_spend <= Campaign.budget)
-    solver_model.satisfy(budget_limit)
+    s.satisfy(budget_limit)
 
     # Constraint: require at least one active channel per campaign
     campaign_channels = (
@@ -177,31 +164,55 @@ for scenario_value in SCENARIO_VALUES:
         .per(Campaign)
     )
     min_channels = require(campaign_channels >= 1)
-    solver_model.satisfy(min_channels)
+    s.satisfy(min_channels)
 
     # Constraint: total budget across all campaigns (scenario parameter)
     total_budget_limit = require(sum(Allocation.spend) <= total_budget)
-    solver_model.satisfy(total_budget_limit)
+    s.satisfy(total_budget_limit)
 
     # Objective: maximize total expected conversions
     total_conversions = sum(Allocation.spend * Allocation.effectiveness.conversion_rate)
-    solver_model.maximize(total_conversions)
+    s.maximize(total_conversions)
+
+
+s = SolverModel(model, "cont")
+build_formulation(s)
+
+# Scenarios (what-if analysis)
+SCENARIO_PARAM = "total_budget"
+SCENARIO_VALUES = [35000, 45000, 55000]
+
+# --------------------------------------------------
+# Solve and check solution
+# --------------------------------------------------
+
+scenario_results = []
+
+for scenario_value in SCENARIO_VALUES:
+    print(f"\nRunning scenario: {SCENARIO_PARAM} = {scenario_value}")
+
+    # Set scenario parameter value
+    total_budget = scenario_value
+
+    # Create fresh SolverModel for each scenario
+    s = SolverModel(model, "cont")
+    build_formulation(s)
 
     # Solve the model with a time limit of 60 seconds. The `Solver` class provides
     # an interface to various optimization solvers. Here we use the open-source
     # HiGHS solver, which is suitable for linear and mixed-integer problems.
     solver_backend = Solver("highs")
-    solver_model.solve(solver_backend, time_limit_sec=60)
+    s.solve(solver_backend, time_limit_sec=60)
 
     scenario_results.append({
         "scenario": scenario_value,
-        "status": str(solver_model.termination_status),
-        "objective": solver_model.objective_value,
+        "status": str(s.termination_status),
+        "objective": s.objective_value,
     })
-    print(f"  Status: {solver_model.termination_status}, Objective: {solver_model.objective_value}")
+    print(f"  Status: {s.termination_status}, Objective: {s.objective_value}")
 
     # Print spend allocation from solver results
-    var_df = solver_model.variable_values().to_df()
+    var_df = s.variable_values().to_df()
     spend_df = var_df[var_df["name"].str.startswith("spend") & (var_df["float"] > 0.001)].rename(columns={"float": "value"})
     print(f"\n  Spend allocation:")
     print(spend_df.to_string(index=False))
