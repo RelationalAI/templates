@@ -25,72 +25,96 @@ Output:
 from pathlib import Path
 
 import pandas
-
-pandas.options.future.infer_string = False
 from pandas import read_csv
+
 from relationalai.semantics import Model, data, require, select, sum, where
 from relationalai.semantics.reasoners.optimization import Solver, SolverModel
 
 DATA_DIR = Path(__file__).parent / "data"
 
+# Disable pandas inference of string types. This ensures that string columns
+# in the CSVs are loaded as object dtype. This is only required when using
+# relationalai versions prior to v1.0.
+pandas.options.future.infer_string = False
+
+# --------------------------------------------------
+# Define the semantic model & load data
+# --------------------------------------------------
+
 # Create a Semantics model container.
 model = Model("ad_spend", use_lqp=False)
 
-# --------------------------------------------------
-# Define ontology & load data
-# --------------------------------------------------
-
+# Channel concept: marketing channel with spend bounds (and an extra ROI field
+# kept to show how additional attributes can live alongside the optimization inputs).
 Channel = model.Concept("Channel")
 Channel.id = model.Property("{Channel} has {id:int}")
 Channel.name = model.Property("{Channel} has {name:string}")
 Channel.min_spend = model.Property("{Channel} has {min_spend:float}")
 Channel.max_spend = model.Property("{Channel} has {max_spend:float}")
 Channel.roi_coefficient = model.Property("{Channel} has {roi_coefficient:float}")
+
+# Load channels from CSV. The `keys` argument specifies the unique identifier for
+# the concept. The .into() method will create one Channel entity per row in
+# the CSV, using the specified keys to ensure uniqueness. Other properties are
+# populated based on the column names in the CSV matching the property declarations.
 data(read_csv(DATA_DIR / "channels.csv")).into(Channel, keys=["id"])
 
+# Campaign concept: each campaign has a total budget across all channels.
+# target_conversions is loaded as an example attribute; it is not used as a
+# constraint in this template.
 Campaign = model.Concept("Campaign")
 Campaign.id = model.Property("{Campaign} has {id:int}")
 Campaign.name = model.Property("{Campaign} has {name:string}")
 Campaign.budget = model.Property("{Campaign} has {budget:float}")
 Campaign.target_conversions = model.Property("{Campaign} has {target_conversions:int}")
+
+# Load campaigns from CSV data.
 data(read_csv(DATA_DIR / "campaigns.csv")).into(Campaign, keys=["id"])
 
+# Effectiveness concept: models the conversion rate for each channel-campaign pair.
+# This is the key input that links channels and campaigns and allows us to model
+# the optimization problem. In a real-world scenario, this could be derived from
+# historical data or A/B tests rather than loaded from a CSV.
 Effectiveness = model.Concept("Effectiveness")
 Effectiveness.channel = model.Property("{Effectiveness} via {channel:Channel}")
 Effectiveness.campaign = model.Property("{Effectiveness} for {campaign:Campaign}")
-Effectiveness.conversion_rate = model.Property(
-    "{Effectiveness} has {conversion_rate:float}"
-)
+Effectiveness.conversion_rate = model.Property("{Effectiveness} has {conversion_rate:float}")
 
+# Load effectiveness data from CSV.
 eff_data = data(read_csv(DATA_DIR / "effectiveness.csv"))
-where(Channel.id == eff_data.channel_id, Campaign.id == eff_data.campaign_id).define(
-    Effectiveness.new(
-        channel=Channel, campaign=Campaign, conversion_rate=eff_data.conversion_rate
-    )
+
+# Define Effectiveness entities by joining the CSV data with the Channel and
+# Campaign concepts.
+where(
+    Channel.id == eff_data.channel_id,
+    Campaign.id == eff_data.campaign_id
+).define(
+    Effectiveness.new(channel=Channel, campaign=Campaign, conversion_rate=eff_data.conversion_rate)
 )
 
 # --------------------------------------------------
-# Model the problem
+# Model the decision problems
 # --------------------------------------------------
 
+# Allocation concept: represents the decision variables for how much to spend on each
+# channel-campaign pair. Each Allocation is linked to an Effectiveness entity, which
+# provides the conversion rate for that channel-campaign pair. The `spend` and
+# `active` properties represent the decision variables that the solver will determine.
 Allocation = model.Concept("Allocation")
-Allocation.effectiveness = model.Property(
-    "{Allocation} uses {effectiveness:Effectiveness}"
-)
+Allocation.effectiveness = model.Property("{Allocation} uses {effectiveness:Effectiveness}")
 Allocation.spend = model.Property("{Allocation} has {spend:float}")
 Allocation.active = model.Property("{Allocation} is {active:float}")
+
+# Define Allocation entities.
 model.define(Allocation.new(effectiveness=Effectiveness))
-
-# Parameters
-# (none beyond scenario parameter)
-
-# Scenarios (what-if analysis)
-SCENARIO_PARAM = "total_budget"
-SCENARIO_VALUES = [35000, 45000, 55000]
 
 # --------------------------------------------------
 # Solve with Scenario Analysis (Numeric Parameter)
 # --------------------------------------------------
+
+# Scenarios (what-if analysis)
+SCENARIO_PARAM = "total_budget"
+SCENARIO_VALUES = [35000, 45000, 55000]
 
 scenario_results = []
 
@@ -125,12 +149,13 @@ for scenario_value in SCENARIO_VALUES:
         ],
     )
 
-    # Constraint: spend bounded by per-channel min/max when active
+    # Constraint: minimum spend per channel when active
     min_spend_bound = require(
         Allocation.spend >= Allocation.effectiveness.channel.min_spend * Allocation.active
     )
     solver_model.satisfy(min_spend_bound)
 
+    # Constraint: maximum spend per channel when active
     max_spend_bound = require(
         Allocation.spend <= Allocation.effectiveness.channel.max_spend * Allocation.active
     )
@@ -162,6 +187,9 @@ for scenario_value in SCENARIO_VALUES:
     total_conversions = sum(Allocation.spend * Allocation.effectiveness.conversion_rate)
     solver_model.maximize(total_conversions)
 
+    # Solve the model with a time limit of 60 seconds. The `Solver` class provides
+    # an interface to various optimization solvers. Here we use the open-source
+    # HiGHS solver, which is suitable for linear and mixed-integer problems.
     solver_backend = Solver("highs")
     solver_model.solve(solver_backend, time_limit_sec=60)
 
