@@ -4,14 +4,14 @@ This script demonstrates an end-to-end mixed-integer linear optimization (MILP)
 workflow in RelationalAI:
 
 - Load sample CSVs describing marketing channels, campaigns, and channel-campaign
-    effectiveness (conversion rate).
+  effectiveness (conversion rate).
 - Model those entities as *concepts* with typed properties.
 - Create an `Allocation` decision concept with two decision variables per
-    channel-campaign pair:
-    - `spend` (continuous, $>= 0$)
-    - `active` (binary 0/1)
+  channel-campaign pair:
+  - `spend` (continuous, $>= 0$)
+  - `active` (binary 0/1)
 - Add constraints for channel min/max spend (when active), per-campaign budget,
-    and "at least one channel per campaign" coverage.
+  and "at least one channel per campaign" coverage.
 - Maximize total expected conversions: sum(spend * conversion_rate).
 
 Run:
@@ -29,6 +29,10 @@ from pandas import read_csv
 
 from relationalai.semantics import Model, data, require, select, sum, where
 from relationalai.semantics.reasoners.optimization import Solver, SolverModel
+
+# --------------------------------------------------
+# Configure inputs
+# --------------------------------------------------
 
 DATA_DIR = Path(__file__).parent / "data"
 
@@ -53,11 +57,9 @@ Channel.min_spend = model.Property("{Channel} has {min_spend:float}")
 Channel.max_spend = model.Property("{Channel} has {max_spend:float}")
 Channel.roi_coefficient = model.Property("{Channel} has {roi_coefficient:float}")
 
-# Load channels from CSV. The `keys` argument specifies the unique identifier for
-# the concept. The .into() method will create one Channel entity per row in
-# the CSV, using the specified keys to ensure uniqueness. Other properties are
-# populated based on the column names in the CSV matching the property declarations.
-data(read_csv(DATA_DIR / "channels.csv")).into(Channel, keys=["id"])
+# Load channel data from CSV.
+channel_csv = read_csv(DATA_DIR / "channels.csv")
+data(channel_csv).into(Channel, keys=["id"])
 
 # Campaign concept: each campaign has a total budget across all channels.
 # target_conversions is loaded as an example attribute; it is not used as a
@@ -68,8 +70,9 @@ Campaign.name = model.Property("{Campaign} has {name:string}")
 Campaign.budget = model.Property("{Campaign} has {budget:float}")
 Campaign.target_conversions = model.Property("{Campaign} has {target_conversions:int}")
 
-# Load campaigns from CSV data.
-data(read_csv(DATA_DIR / "campaigns.csv")).into(Campaign, keys=["id"])
+# Load campaign data from CSV.
+campaign_csv = read_csv(DATA_DIR / "campaigns.csv")
+data(campaign_csv).into(Campaign, keys=["id"])
 
 # Effectiveness concept: models the conversion rate for each channel-campaign pair.
 # This is the key input that links channels and campaigns and allows us to model
@@ -80,7 +83,7 @@ Effectiveness.channel = model.Property("{Effectiveness} via {channel:Channel}")
 Effectiveness.campaign = model.Property("{Effectiveness} for {campaign:Campaign}")
 Effectiveness.conversion_rate = model.Property("{Effectiveness} has {conversion_rate:float}")
 
-# Load effectiveness data from CSV.
+# Load channel-campaign effectiveness data from CSV.
 eff_data = data(read_csv(DATA_DIR / "effectiveness.csv"))
 
 # Define Effectiveness entities by joining the CSV data with the Channel and
@@ -93,7 +96,7 @@ where(
 )
 
 # --------------------------------------------------
-# Model the decision problems
+# Model the decision problem
 # --------------------------------------------------
 
 # Allocation concept: represents the decision variables for how much to spend on each
@@ -108,7 +111,7 @@ Allocation.active = model.Property("{Allocation} is {active:float}")
 # Define Allocation entities.
 model.define(Allocation.new(effectiveness=Effectiveness))
 
-# Parameters
+# Scenario parameter.
 total_budget = 45000
 
 
@@ -174,19 +177,14 @@ def build_formulation(s):
     total_conversions = sum(Allocation.spend * Allocation.effectiveness.conversion_rate)
     s.maximize(total_conversions)
 
-
-s = SolverModel(model, "cont")
-build_formulation(s)
-
-# Scenarios (what-if analysis)
-SCENARIO_PARAM = "total_budget"
-SCENARIO_VALUES = [35000, 45000, 55000]
-
 # --------------------------------------------------
-# Solve and check solution
+# Solve with Scenario Analysis (Numeric Parameter)
 # --------------------------------------------------
 
 scenario_results = []
+
+SCENARIO_PARAM = "total_budget"
+SCENARIO_VALUES = [35000, 45000, 55000]
 
 for scenario_value in SCENARIO_VALUES:
     print(f"\nRunning scenario: {SCENARIO_PARAM} = {scenario_value}")
@@ -194,28 +192,37 @@ for scenario_value in SCENARIO_VALUES:
     # Set scenario parameter value
     total_budget = scenario_value
 
-    # Create fresh SolverModel for each scenario
-    s = SolverModel(model, "cont")
-    build_formulation(s)
+    # Create a fresh SolverModel for each scenario.
+    solver_model = SolverModel(model, "cont")
+    build_formulation(solver_model)
 
     # Solve the model with a time limit of 60 seconds. The `Solver` class provides
     # an interface to various optimization solvers. Here we use the open-source
     # HiGHS solver, which is suitable for linear and mixed-integer problems.
-    solver_backend = Solver("highs")
-    s.solve(solver_backend, time_limit_sec=60)
+    solver = Solver("highs")
+    solver_model.solve(solver, time_limit_sec=60)
 
     scenario_results.append({
         "scenario": scenario_value,
-        "status": str(s.termination_status),
-        "objective": s.objective_value,
+        "status": str(solver_model.termination_status),
+        "objective": solver_model.objective_value,
     })
-    print(f"  Status: {s.termination_status}, Objective: {s.objective_value}")
+    print(
+        f"  Status: {solver_model.termination_status}, "
+        f"Objective: {solver_model.objective_value}"
+    )
 
     # Print spend allocation from solver results
-    var_df = s.variable_values().to_df()
-    spend_df = var_df[var_df["name"].str.startswith("spend") & (var_df["float"] > 0.001)].rename(columns={"float": "value"})
+    var_df = solver_model.variable_values().to_df()
+    spend_df = var_df[
+        var_df["name"].str.startswith("spend") & (var_df["float"] > 0.001)
+    ].rename(columns={"float": "value"})
     print(f"\n  Spend allocation:")
     print(spend_df.to_string(index=False))
+
+# --------------------------------------------------
+# Solve and check solution
+# --------------------------------------------------
 
 # Summary
 print("\n" + "=" * 50)

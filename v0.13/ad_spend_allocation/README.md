@@ -14,7 +14,7 @@ tags:
 # Ad Spend Allocation
 
 > [!WARNING]
-> This template uses the early access `relational.semantics` API in version `0.13` of the `relationalai` Python package.
+> This template uses the early access `relationalai.semantics` API in version `0.13.3` of the `relationalai` Python package.
 
 ## What this template is for
 
@@ -22,7 +22,7 @@ Marketing teams must distribute limited advertising budgets across multiple chan
 This template models allocating spend across 5 channels and 3 campaigns, where each channel-campaign combination has different conversion effectiveness.
 
 The challenge is that each channel has minimum spend thresholds (you can't spend just $10 on a channel—there are setup costs) and maximum caps, while campaign budgets constrain total spend.
-This templates uses RelationalAI's **prescriptive reasoner** to find the best allocation of spend across channel-campaign pairs to maximize total expected conversions, while respecting these constraints.
+This template uses RelationalAI's **prescriptive reasoner** to find the best allocation of spend across channel-campaign pairs to maximize total expected conversions, while respecting these constraints.
 
 Prescriptive reasoning helps you:
 
@@ -100,54 +100,39 @@ You can customize the data and model as needed after you have it running end-to-
 
    ```text
    Running scenario: total_budget = 35000
-   Export model...
-   Execute solver job...
-   Extract result...
-   Finished solve
-
      Status: OPTIMAL, Objective: 2880.0
 
      Spend allocation:
                            name   value
-   spend_Email_Brand_Awareness  2000.0
-     spend_Email_Seasonal_Sale  2000.0
-   spend_Search_Product_Launch 10000.0
+    spend_Email_Brand_Awareness  2000.0
+      spend_Email_Seasonal_Sale  2000.0
+    spend_Search_Product_Launch 10000.0
      spend_Search_Seasonal_Sale  8000.0
    spend_Social_Brand_Awareness  3000.0
      spend_Video_Product_Launch 10000.0
 
    Running scenario: total_budget = 45000
-   Export model...
-   Execute solver job...
-   Extract result...
-   Finished solve
-
      Status: OPTIMAL, Objective: 3430.0
 
      Spend allocation:
                            name   value
-   spend_Email_Brand_Awareness  2000.0
-     spend_Email_Seasonal_Sale  2000.0
+    spend_Email_Brand_Awareness  2000.0
+      spend_Email_Seasonal_Sale  2000.0
    spend_Search_Brand_Awareness  5000.0
-   spend_Search_Product_Launch 10000.0
+    spend_Search_Product_Launch 10000.0
      spend_Search_Seasonal_Sale  8000.0
    spend_Social_Brand_Awareness  8000.0
      spend_Video_Product_Launch 10000.0
 
    Running scenario: total_budget = 55000
-   Export model...
-   Execute solver job...
-   Extract result...
-   Finished solve
-
      Status: OPTIMAL, Objective: 3430.0
 
      Spend allocation:
                            name   value
-   spend_Email_Brand_Awareness  2000.0
-     spend_Email_Seasonal_Sale  2000.0
+    spend_Email_Brand_Awareness  2000.0
+      spend_Email_Seasonal_Sale  2000.0
    spend_Search_Brand_Awareness  5000.0
-   spend_Search_Product_Launch 10000.0
+    spend_Search_Product_Launch 10000.0
      spend_Search_Seasonal_Sale  8000.0
    spend_Social_Brand_Awareness  8000.0
      spend_Video_Product_Launch 10000.0
@@ -160,14 +145,14 @@ You can customize the data and model as needed after you have it running end-to-
      55000: OPTIMAL, obj=3430.0
    ```
 
-## Repository structure
+## Template structure
 
 ```text
 .
 ├─ README.md
 ├─ pyproject.toml
-├─ ad_spend_allocation.py
-└─ data/
+├─ ad_spend_allocation.py      # main runner / entrypoint
+└─ data/                       # sample input data
    ├─ channels.csv
    ├─ campaigns.csv
    └─ effectiveness.csv
@@ -257,9 +242,9 @@ A decision concept created for each `Effectiveness` row; the solver chooses `spe
 
 This section walks through the highlights in `ad_spend_allocation.py`.
 
-All code snippets below are copied verbatim from the template script (with non-highlight sections omitted between snippets).
+### Import libraries and configure inputs
 
-### Configure inputs and create the model
+First, the script imports the Semantics APIs (`Model`, `data`, `where`, `require`, `sum`) and configures local inputs like `DATA_DIR`:
 
 ```python
 from pathlib import Path
@@ -269,6 +254,10 @@ from pandas import read_csv
 
 from relationalai.semantics import Model, data, require, select, sum, where
 from relationalai.semantics.reasoners.optimization import Solver, SolverModel
+
+# --------------------------------------------------
+# Configure inputs
+# --------------------------------------------------
 
 DATA_DIR = Path(__file__).parent / "data"
 
@@ -282,10 +271,12 @@ pandas.options.future.infer_string = False
 # --------------------------------------------------
 
 # Create a Semantics model container.
-model = Model("ad_spend", use_lqp=False)
+model = Model("ad_spend", config=globals().get("config", None), use_lqp=False)
 ```
 
 ### Define concepts and load CSV data
+
+Next, it defines the `Channel` and `Campaign` concepts and loads `channels.csv` and `campaigns.csv` via `data(...).into(...)`:
 
 ```python
 # Channel concept: marketing channel with spend bounds (and an extra ROI field
@@ -297,11 +288,9 @@ Channel.min_spend = model.Property("{Channel} has {min_spend:float}")
 Channel.max_spend = model.Property("{Channel} has {max_spend:float}")
 Channel.roi_coefficient = model.Property("{Channel} has {roi_coefficient:float}")
 
-# Load channels from CSV. The `keys` argument specifies the unique identifier for
-# the concept. The .into() method will create one Channel entity per row in
-# the CSV, using the specified keys to ensure uniqueness. Other properties are
-# populated based on the column names in the CSV matching the property declarations.
-data(read_csv(DATA_DIR / "channels.csv")).into(Channel, keys=["id"])
+# Load channel data from CSV.
+channel_csv = read_csv(DATA_DIR / "channels.csv")
+data(channel_csv).into(Channel, keys=["id"])
 
 # Campaign concept: each campaign has a total budget across all channels.
 # target_conversions is loaded as an example attribute; it is not used as a
@@ -312,11 +301,10 @@ Campaign.name = model.Property("{Campaign} has {name:string}")
 Campaign.budget = model.Property("{Campaign} has {budget:float}")
 Campaign.target_conversions = model.Property("{Campaign} has {target_conversions:int}")
 
-# Load campaigns from CSV data.
-data(read_csv(DATA_DIR / "campaigns.csv")).into(Campaign, keys=["id"])
+# Load campaign data from CSV.
+campaign_csv = read_csv(DATA_DIR / "campaigns.csv")
+data(campaign_csv).into(Campaign, keys=["id"])
 ```
-
-### Build channel-campaign effectiveness rows
 
 `effectiveness.csv` contains foreign keys (`channel_id`, `campaign_id`). The template resolves them into `Channel` and `Campaign` instances and creates an `Effectiveness` concept per row.
 
@@ -330,7 +318,7 @@ Effectiveness.channel = model.Property("{Effectiveness} via {channel:Channel}")
 Effectiveness.campaign = model.Property("{Effectiveness} for {campaign:Campaign}")
 Effectiveness.conversion_rate = model.Property("{Effectiveness} has {conversion_rate:float}")
 
-# Load effectiveness data from CSV.
+# Load channel-campaign effectiveness data from CSV.
 eff_data = data(read_csv(DATA_DIR / "effectiveness.csv"))
 
 # Define Effectiveness entities by joining the CSV data with the Channel and
@@ -343,9 +331,10 @@ where(
 )
 ```
 
-### Define decision variables and solve per scenario
+### Define decision variables, constraints, and objective
 
-An `Allocation` decision concept is created for every `Effectiveness` row. The script then loops over budget scenarios, creating a fresh `SolverModel` for each.
+An `Allocation` decision concept is created for every `Effectiveness` row.
+The script defines a `build_formulation` helper that registers decision variables, constraints, and the objective on a `SolverModel`. It then loops over budget scenarios and solves a fresh model for each.
 
 ```python
 # Allocation concept: represents the decision variables for how much to spend on each
@@ -360,27 +349,14 @@ Allocation.active = model.Property("{Allocation} is {active:float}")
 # Define Allocation entities.
 model.define(Allocation.new(effectiveness=Effectiveness))
 
-# --------------------------------------------------
-# Solve with Scenario Analysis (Numeric Parameter)
-# --------------------------------------------------
+# Scenario parameter.
+total_budget = 45000
 
-# Scenarios (what-if analysis)
-SCENARIO_PARAM = "total_budget"
-SCENARIO_VALUES = [35000, 45000, 55000]
 
-scenario_results = []
-
-for scenario_value in SCENARIO_VALUES:
-    print(f"\nRunning scenario: {SCENARIO_PARAM} = {scenario_value}")
-
-    # Set scenario parameter value
-    total_budget = scenario_value
-
-    # Create fresh SolverModel for each scenario
-    solver_model = SolverModel(model, "cont")
-
+def build_formulation(s):
+    """Register variables, constraints, and objective on the solver model."""
     # Variable: spend (continuous, >= 0)
-    solver_model.solve_for(
+    s.solve_for(
         Allocation.spend,
         name=[
             "spend",
@@ -391,7 +367,7 @@ for scenario_value in SCENARIO_VALUES:
     )
 
     # Variable: active (binary 0/1)
-    solver_model.solve_for(
+    s.solve_for(
         Allocation.active,
         type="bin",
         name=[
@@ -400,24 +376,18 @@ for scenario_value in SCENARIO_VALUES:
             Allocation.effectiveness.campaign.name,
         ],
     )
-```
 
-### Add constraints, solve, and print results
-
-Each scenario iteration adds the same structural constraints, plus a total budget constraint parameterized by the scenario value.
-
-```python
     # Constraint: minimum spend per channel when active
     min_spend_bound = require(
         Allocation.spend >= Allocation.effectiveness.channel.min_spend * Allocation.active
     )
-    solver_model.satisfy(min_spend_bound)
+    s.satisfy(min_spend_bound)
 
     # Constraint: maximum spend per channel when active
     max_spend_bound = require(
         Allocation.spend <= Allocation.effectiveness.channel.max_spend * Allocation.active
     )
-    solver_model.satisfy(max_spend_bound)
+    s.satisfy(max_spend_bound)
 
     # Constraint: per-campaign budget across all channels
     campaign_spend = (
@@ -426,7 +396,7 @@ Each scenario iteration adds the same structural constraints, plus a total budge
         .per(Campaign)
     )
     budget_limit = require(campaign_spend <= Campaign.budget)
-    solver_model.satisfy(budget_limit)
+    s.satisfy(budget_limit)
 
     # Constraint: require at least one active channel per campaign
     campaign_channels = (
@@ -435,32 +405,94 @@ Each scenario iteration adds the same structural constraints, plus a total budge
         .per(Campaign)
     )
     min_channels = require(campaign_channels >= 1)
-    solver_model.satisfy(min_channels)
+    s.satisfy(min_channels)
 
     # Constraint: total budget across all campaigns (scenario parameter)
     total_budget_limit = require(sum(Allocation.spend) <= total_budget)
-    solver_model.satisfy(total_budget_limit)
+    s.satisfy(total_budget_limit)
 
     # Objective: maximize total expected conversions
     total_conversions = sum(Allocation.spend * Allocation.effectiveness.conversion_rate)
-    solver_model.maximize(total_conversions)
+    s.maximize(total_conversions)
+```
+
+With the formulation defined, each scenario iteration sets `total_budget`, builds a fresh `SolverModel`, and solves.
+
+```python
+scenario_results = []
+
+SCENARIO_PARAM = "total_budget"
+SCENARIO_VALUES = [35000, 45000, 55000]
+
+for scenario_value in SCENARIO_VALUES:
+    print(f"\nRunning scenario: {SCENARIO_PARAM} = {scenario_value}")
+
+    # Set scenario parameter value
+    total_budget = scenario_value
+
+    # Create a fresh SolverModel for each scenario.
+    solver_model = SolverModel(model, "cont")
+    build_formulation(solver_model)
 
     # Solve the model with a time limit of 60 seconds. The `Solver` class provides
     # an interface to various optimization solvers. Here we use the open-source
     # HiGHS solver, which is suitable for linear and mixed-integer problems.
-    solver_backend = Solver("highs")
-    solver_model.solve(solver_backend, time_limit_sec=60)
+    solver = Solver("highs")
+    solver_model.solve(solver, time_limit_sec=60)
 
     scenario_results.append({
-        "scenario": scenario_value,
-        "status": str(solver_model.termination_status),
-        "objective": solver_model.objective_value,
+      "scenario": scenario_value,
+      "status": str(solver_model.termination_status),
+      "objective": solver_model.objective_value,
     })
-    print(f"  Status: {solver_model.termination_status}, Objective: {solver_model.objective_value}")
+    print(
+      f"  Status: {solver_model.termination_status}, "
+      f"Objective: {solver_model.objective_value}"
+    )
 
     # Print spend allocation from solver results
     var_df = solver_model.variable_values().to_df()
-    spend_df = var_df[var_df["name"].str.startswith("spend") & (var_df["float"] > 0.001)].rename(columns={"float": "value"})
+    spend_df = var_df[
+      var_df["name"].str.startswith("spend") & (var_df["float"] > 0.001)
+    ].rename(columns={"float": "value"})
+    print(f"\n  Spend allocation:")
+    print(spend_df.to_string(index=False))
+
+# Summary
+print("\n" + "=" * 50)
+print("Scenario Analysis Summary")
+print("=" * 50)
+for result in scenario_results:
+    print(f"  {result['scenario']}: {result['status']}, obj={result['objective']}")
+```
+
+### Solve and print results
+
+For each scenario, the model is solved with a time limit of 60 seconds using the HiGHS solver.
+The script prints the solver status, objective value, and a table of spend allocations for channel-campaign pairs with non-trivial spend (greater than $0.001):
+
+```python
+    # Solve the model with a time limit of 60 seconds. The `Solver` class provides
+    # an interface to various optimization solvers. Here we use the open-source
+    # HiGHS solver, which is suitable for linear and mixed-integer problems.
+    solver = Solver("highs")
+    solver_model.solve(solver, time_limit_sec=60)
+
+    scenario_results.append({
+      "scenario": scenario_value,
+      "status": str(solver_model.termination_status),
+      "objective": solver_model.objective_value,
+    })
+    print(
+      f"  Status: {solver_model.termination_status}, "
+      f"Objective: {solver_model.objective_value}"
+    )
+
+    # Print spend allocation from solver results
+    var_df = solver_model.variable_values().to_df()
+    spend_df = var_df[
+      var_df["name"].str.startswith("spend") & (var_df["float"] > 0.001)
+    ].rename(columns={"float": "value"})
     print(f"\n  Spend allocation:")
     print(spend_df.to_string(index=False))
 ```
@@ -551,9 +583,3 @@ How to interpret results:
 - Confirm input CSVs were read correctly and contain rows.
 
 </details>
-
-## Next steps
-
-- Add scenario parameters (e.g., channel saturation, campaign priorities) and compare solutions.
-- Persist the results (CSV or Snowflake table) and build a small dashboard.
-- Extend the objective (e.g., weighted conversions, CAC/ROAS trade-offs).

@@ -1,21 +1,45 @@
-# hospital staffing problem:
-# assign nurses to shifts meeting coverage and skill requirements at minimum cost
+"""Hospital staffing (prescriptive optimization) template.
+
+This script models assigning nurses to shifts while meeting coverage and skill
+requirements at minimum cost:
+
+- Load sample CSVs describing nurses, shifts, and nurse-shift availability.
+- Create decision variables for assigning nurses to shifts.
+- Enforce availability, coverage, and skill constraints.
+- Minimize total staffing cost.
+
+Run:
+    `python hospital_staffing.py`
+
+Output:
+    Prints the solver termination status, objective value, and a table of nurse
+    shift assignments.
+"""
 
 from pathlib import Path
 
-import pandas; pandas.options.future.infer_string = False
+import pandas
 from pandas import read_csv
 
 from relationalai.semantics import Model, data, define, require, select, sum, where
 from relationalai.semantics.reasoners.optimization import Solver, SolverModel
 
+# --------------------------------------------------
+# Configure inputs
+# --------------------------------------------------
+
+DATA_DIR = Path(__file__).parent / "data"
+
+# Disable pandas inference of string types. This ensures that string columns
+# in the CSVs are loaded as object dtype. This is only required when using
+# relationalai versions prior to v1.0.
+pandas.options.future.infer_string = False
+
+# --------------------------------------------------
+# Define semantic model & load data
+# --------------------------------------------------
+
 model = Model("hospital_staffing", config=globals().get("config", None), use_lqp=False)
-
-# --------------------------------------------------
-# Define ontology & load data
-# --------------------------------------------------
-
-data_dir = Path(__file__).parent / "data"
 
 # Concept: nurses with skill level and hourly cost
 Nurse = model.Concept("Nurse")
@@ -23,7 +47,9 @@ Nurse.id = model.Property("{Nurse} has {id:int}")
 Nurse.name = model.Property("{Nurse} has {name:string}")
 Nurse.skill_level = model.Property("{Nurse} has {skill_level:int}")
 Nurse.hourly_cost = model.Property("{Nurse} has {hourly_cost:float}")
-data(read_csv(data_dir / "nurses.csv")).into(Nurse, keys=["id"])
+
+# Load nurse data from CSV and create Nurse entities.
+data(read_csv(DATA_DIR / "nurses.csv")).into(Nurse, keys=["id"])
 
 # Concept: shifts with coverage requirements
 Shift = model.Concept("Shift")
@@ -33,7 +59,9 @@ Shift.start_hour = model.Property("{Shift} has {start_hour:int}")
 Shift.duration = model.Property("{Shift} has {duration:int}")
 Shift.min_nurses = model.Property("{Shift} has {min_nurses:int}")
 Shift.min_skill = model.Property("{Shift} has {min_skill:int}")
-data(read_csv(data_dir / "shifts.csv")).into(Shift, keys=["id"])
+
+# Load shift data from CSV and create Shift entities.
+data(read_csv(DATA_DIR / "shifts.csv")).into(Shift, keys=["id"])
 
 # Relationship: availability linking nurses to shifts
 Availability = model.Concept("Availability")
@@ -41,8 +69,15 @@ Availability.nurse = model.Property("{Availability} for {nurse:Nurse}")
 Availability.shift = model.Property("{Availability} in {shift:Shift}")
 Availability.available = model.Property("{Availability} is {available:int}")
 
-avail_data = data(read_csv(data_dir / "availability.csv"))
-where(Nurse.id(avail_data.nurse_id), Shift.id(avail_data.shift_id)).define(
+# Load availability data from CSV.
+avail_data = data(read_csv(DATA_DIR / "availability.csv"))
+
+# Define Availability entities by joining nurse/shift IDs from the CSV with the
+# Nurse and Shift concepts.
+where(
+    Nurse.id == avail_data.nurse_id,
+    Shift.id == avail_data.shift_id
+).define(
     Availability.new(nurse=Nurse, shift=Shift, available=avail_data.available)
 )
 
@@ -61,7 +96,15 @@ Asn = Assignment.ref()
 s = SolverModel(model, "cont")
 
 # Variable: binary assignment
-s.solve_for(Assignment.assigned, type="bin", name=["x", Assignment.availability.nurse.name, Assignment.availability.shift.name])
+s.solve_for(
+    Assignment.assigned,
+    type="bin",
+    name=[
+        "x",
+        Assignment.availability.nurse.name,
+        Assignment.availability.shift.name,
+    ],
+)
 
 # Constraint: can only assign if available
 must_be_available = require(Assignment.assigned <= Assignment.availability.available)
@@ -87,7 +130,9 @@ s.satisfy(min_skilled)
 
 # Objective: minimize total staffing cost
 total_cost = sum(
-    Assignment.assigned * Assignment.availability.shift.duration * Assignment.availability.nurse.hourly_cost
+    Assignment.assigned
+    * Assignment.availability.shift.duration
+    * Assignment.availability.nurse.hourly_cost
 )
 s.minimize(total_cost)
 
