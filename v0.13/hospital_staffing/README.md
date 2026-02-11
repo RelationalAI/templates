@@ -394,5 +394,66 @@ Common next steps:
 
 ## Troubleshooting
 
-- If `rai init` fails, confirm your Snowflake account has the RAI Native App installed and that your user has access.
-- If the solve is infeasible, check `data/availability.csv` to ensure each shift has enough available nurses to satisfy `min_nurses` and `min_skill`.
+<details>
+    <summary>Why does authentication/configuration fail?</summary>
+
+
+- Run `rai init` to create/update `raiconfig.toml`.
+- If you have multiple profiles, set `RAI_PROFILE` or switch profiles in your config.
+
+</details>
+
+<details>
+    <summary>Why does the script fail to connect to the RAI Native App?</summary>
+
+
+- Verify the Snowflake account/role/warehouse and `rai_app_name` are correct in `raiconfig.toml`.
+- Ensure the RAI Native App is installed and you have access.
+
+</details>
+
+<details>
+    <summary><code>ModuleNotFoundError</code> when running the script</summary>
+
+- Confirm your virtual environment is activated.
+- Install the template dependencies from this folder: `python -m pip install .`
+
+</details>
+
+<details>
+    <summary>CSV loading fails (missing file or column)</summary>
+
+- Confirm the CSVs exist under `data/` and the filenames match.
+- Ensure the headers match the expected schema:
+    - `nurses.csv`: `id`, `name`, `skill_level`, `hourly_cost`
+    - `shifts.csv`: `id`, `name`, `start_hour`, `duration`, `min_nurses`, `min_skill`
+    - `availability.csv`: `nurse_id`, `shift_id`, `available`
+
+</details>
+
+<details>
+    <summary>Why do I get <code>Status: INFEASIBLE</code>?</summary>
+
+
+- Check `data/availability.csv` to ensure each shift has enough available nurses to satisfy `min_nurses`.
+- Ensure each shift has at least one available nurse with `skill_level >= min_skill`.
+
+</details>
+
+<details>
+    <summary>Why is the assignment table empty?</summary>
+
+
+- The script filters assignments with `Assignment.assigned > 0.5`. If nothing prints, inspect feasibility and input data.
+- Confirm the CSVs were read correctly and contain rows.
+
+</details>
+
+<details>
+    <summary>Solver fails or returns an unexpected termination status</summary>
+
+
+- Try re-running; transient connectivity issues can affect the solve step.
+- If the solve is slow, increase the time limit in `hospital_staffing.py`.
+
+</details>

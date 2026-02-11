@@ -37,6 +37,31 @@ When you create the **How it works** section, match the formatting conventions u
 - Code snippets must be copied from the template script:
 	- Do not rename variables, change indentation, or “clean up” code inside snippets.
 	- It’s fine to omit non-highlight sections between snippets.
+- Every code block must have its own short introductory explainer sentence/paragraph immediately above it.
+	- Do not place two fenced code blocks back-to-back without explanatory text between them.
+	- The explainer should tell the reader what the snippet is doing and why it matters in the model/solve.
+	- Match the house style used in newer templates:
+		- Use simple sequencing words to guide the reader through the workflow (for example: “First…”, “Next…”, “Then…”, “Finally…”, “With the feasible region defined…”).
+		- When an explainer directly introduces the following code block, end the paragraph with a colon.
+		- Mention concrete APIs/symbols that appear in the snippet (for example, `data(...).into(...)`, `where(...).define(...)`, `SolverModel`, `solve_for`, `require`).
 - Every fenced code block must specify a language:
 	- Use ````python` for Python, ````bash` for shell commands, and ````text` for expected output.
 	- Ensure fences are properly closed; a missing closing fence often breaks headings (e.g., `# ...`) into extra H1s.
+
+## Troubleshooting section formatting
+
+When you create the **Troubleshooting** section, match the formatting conventions used in the existing templates (for example, the Diet Optimization, Ad Spend Allocation, and Factory Production READMEs):
+
+- Use collapsible sections with HTML `<details>` blocks and a `<summary>` line.
+- Inside each `<details>` block:
+	- Leave a blank line after the `<summary>`.
+	- Use a short bulleted list with actionable steps.
+	- Use `<code>...</code>` in the summary for error/status strings (for example, `<code>ModuleNotFoundError</code>` or `<code>Status: INFEASIBLE</code>`).
+- Prefer a small set of common questions (include only what’s relevant to the template):
+	- Authentication/config (`rai init`, `raiconfig.toml`, `RAI_PROFILE`)
+	- Connection to the RAI Native App (Snowflake role/warehouse/app access)
+	- Dependency errors (`ModuleNotFoundError`, virtualenv activation, `python -m pip install .`)
+	- Input data problems (missing CSV file/columns; list expected headers)
+	- Infeasibility (`Status: INFEASIBLE`; point to the most likely data/constraint causes)
+	- Empty output tables (call out any output filters like `> 0.001` or `> 0.5`)
+	- Solver/termination-status issues (time limit, problem size)
