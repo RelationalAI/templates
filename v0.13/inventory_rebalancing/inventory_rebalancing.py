@@ -1,28 +1,54 @@
-# inventory rebalancing problem:
-# transfer inventory between sites to meet demand at minimum cost
+"""Inventory Rebalancing (prescriptive optimization) template.
+
+This script demonstrates a simple inventory transfer optimization model in RelationalAI:
+
+- Load sample CSVs describing sites, transfer lanes, and demand.
+- Model sites, lanes, and demand as *concepts*.
+- Choose non-negative transfer quantities subject to capacity and inventory limits.
+- Satisfy demand at each destination site.
+- Minimize total transfer cost.
+
+Run:
+    `python inventory_rebalancing.py`
+
+Output:
+    Prints the solver termination status, total transfer cost, and a table of
+    non-trivial transfers.
+"""
 
 from pathlib import Path
 
-import pandas; pandas.options.future.infer_string = False
+import pandas
 from pandas import read_csv
 
 from relationalai.semantics import Model, data, define, require, select, sum, where
 from relationalai.semantics.reasoners.optimization import Solver, SolverModel
 
+# --------------------------------------------------
+# Configure inputs
+# --------------------------------------------------
+
+DATA_DIR = Path(__file__).parent / "data"
+
+# Disable pandas inference of string types. This ensures that string columns
+# in the CSVs are loaded as object dtype. This is only required when using
+# relationalai versions prior to v1.0.
+pandas.options.future.infer_string = False
+
+# --------------------------------------------------
+# Define semantic model & load data
+# --------------------------------------------------
+
 model = Model("inventory_rebalancing", config=globals().get("config", None), use_lqp=False)
-
-# --------------------------------------------------
-# Define ontology & load data
-# --------------------------------------------------
-
-data_dir = Path(__file__).parent / "data"
 
 # Concept: sites with current inventory
 Site = model.Concept("Site")
 Site.id = model.Property("{Site} has {id:int}")
 Site.name = model.Property("{Site} has {name:string}")
 Site.inventory = model.Property("{Site} has {inventory:int}")
-data(read_csv(data_dir / "sites.csv")).into(Site, keys=["id"])
+
+# Load site data from CSV and populate the Site concept.
+data(read_csv(DATA_DIR / "sites.csv")).into(Site, keys=["id"])
 
 # Relationship: lanes between sites with cost and capacity
 Lane = model.Concept("Lane")
@@ -32,11 +58,20 @@ Lane.dest = model.Property("{Lane} to {dest:Site}")
 Lane.cost_per_unit = model.Property("{Lane} has {cost_per_unit:float}")
 Lane.capacity = model.Property("{Lane} has {capacity:int}")
 
-lanes_data = data(read_csv(data_dir / "lanes.csv"))
+# Load lane data from CSV and create Lane entities.
+lanes_data = data(read_csv(DATA_DIR / "lanes.csv"))
 Dest = Site.ref()
-where(Site.id(lanes_data.source_id), Dest.id(lanes_data.dest_id)).define(
-    Lane.new(id=lanes_data.id, source=Site, dest=Dest,
-             cost_per_unit=lanes_data.cost_per_unit, capacity=lanes_data.capacity)
+where(
+    Site.id == lanes_data.source_id,
+    Dest.id == lanes_data.dest_id
+).define(
+    Lane.new(
+        id=lanes_data.id,
+        source=Site,
+        dest=Dest,
+        cost_per_unit=lanes_data.cost_per_unit,
+        capacity=lanes_data.capacity
+    )
 )
 
 # Concept: demand at each site
@@ -45,8 +80,9 @@ Demand.id = model.Property("{Demand} has {id:int}")
 Demand.site = model.Property("{Demand} at {site:Site}")
 Demand.quantity = model.Property("{Demand} has {quantity:int}")
 
-demand_data = data(read_csv(data_dir / "demand.csv"))
-where(Site.id(demand_data.site_id)).define(
+# Load demand data from CSV and create Demand entities.
+demand_data = data(read_csv(DATA_DIR / "demand.csv"))
+where(Site.id == demand_data.site_id).define(
     Demand.new(id=demand_data.id, site=Site, quantity=demand_data.quantity)
 )
 

@@ -1,6 +1,7 @@
 ---
 name: update-template-readme
 description: Update a template's README file to reflect code changes.
+tools: ['edit/createFile', 'edit/editFiles', 'read/readFile']
 ---
 
 # README Updater for RelationalAI Templates
