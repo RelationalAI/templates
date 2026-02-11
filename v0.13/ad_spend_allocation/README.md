@@ -549,9 +549,3 @@ How to interpret results:
 - Confirm input CSVs were read correctly and contain rows.
 
 </details>
-
-## Next steps
-
-- Add scenario parameters (e.g., channel saturation, campaign priorities) and compare solutions.
-- Persist the results (CSV or Snowflake table) and build a small dashboard.
-- Extend the objective (e.g., weighted conversions, CAC/ROAS trade-offs).

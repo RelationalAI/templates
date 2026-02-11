@@ -398,9 +398,3 @@ print(plan.to_string(index=False))
 - If the solve is slow, reduce problem size (fewer machines/products/routes) or increase the time limit in `factory_production.py`.
 
 </details>
-
-## Next steps
-
-- Add scenario analysis (vary prices, costs, or minimums) and compare objective values.
-- Add operational constraints like changeovers, overtime tiers, or machine maintenance windows.
-

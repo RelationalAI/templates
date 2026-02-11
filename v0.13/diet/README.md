@@ -345,8 +345,3 @@ Here are some ideas for how to customize and extend this template to fit your sp
 - Confirm the CSVs were read correctly and contain rows.
 
 </details>
-
-## Next steps
-
-- Add more nutrients, foods, and additional business constraints (e.g., variety).
-- Compare solutions under different nutritional policies by changing `data/nutrients.csv`.
