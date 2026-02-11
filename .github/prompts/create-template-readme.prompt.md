@@ -1,7 +1,7 @@
 ---
 name: create-template-readme
 description: Use this prompt to create a README file for a template based on the template's code.
-tools: ['edit/createFile', 'edit/editFiles', 'web/githubRepo', 'search/codebase']
+tools: ['edit/createFile', 'edit/editFiles', 'read/readFile']
 ---
 
 # Comprehensive README Generator for RelationalAI Templates
@@ -30,11 +30,11 @@ When you create the **How it works** section, match the formatting conventions u
 
 - Start with a short lead-in line like: `This section walks through the highlights in <script>.py`.
 - Prefer a small set of consistent subheadings (the following are examples only; adjust names as required to fit the content):
-	- `### Configure inputs and create the model`
+	- `### Import libraries and configure inputs`
 	- `### Define concepts and load CSV data`
 	- `### Define decision variables, constraints, and objective`
 	- `### Solve and print results`
-- Code snippets must be **verbatim** copies from the template script:
+- Code snippets must be copied from the template script:
 	- Do not rename variables, change indentation, or “clean up” code inside snippets.
 	- It’s fine to omit non-highlight sections between snippets.
 - Every fenced code block must specify a language:
