@@ -257,7 +257,7 @@ A decision concept created for each `Effectiveness` row; the solver chooses `spe
 
 This section walks through the highlights in `ad_spend_allocation.py`.
 
-### Configure inputs and create the model
+### Import libraries and configure inputs
 
 ```python
 from pathlib import Path

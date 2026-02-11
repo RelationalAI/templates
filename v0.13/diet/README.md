@@ -177,7 +177,7 @@ This template uses a relationship (not just properties) to represent per-food nu
 
 This section walks through the highlights in `diet.py`.
 
-### Configure inputs and create the model
+### Import libraries and configure inputs
 
 ```python
 from pathlib import Path

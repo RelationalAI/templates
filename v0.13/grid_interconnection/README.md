@@ -210,7 +210,7 @@ Represents a candidate substation upgrade option.
 
 This section walks through the highlights in `grid_interconnection.py`.
 
-### Configure inputs and create the model
+### Import libraries and configure inputs
 
 ```python
 from pathlib import Path

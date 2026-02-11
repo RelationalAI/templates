@@ -198,9 +198,7 @@ The optimization model is built around four concepts.
 
 This section walks through the highlights in `factory_production.py`.
 
-All code snippets below are copied verbatim from the template script (with non-highlight sections omitted between snippets).
-
-### Configure inputs and create the model
+### Import libraries and configure inputs
 
 ```python
 from pathlib import Path
