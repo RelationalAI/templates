@@ -99,6 +99,19 @@ Reformat the script to follow this high-level structure (use these headings verb
 - Use `DATA_DIR` (not `data_dir`) for the `data/` folder path.
 - Avoid one-line multi-statement imports (e.g., `import pandas; ...`).
 - Prefer readable line wrapping for long expressions (Black-like style), but do not reformat unrelated code.
+- Comment and docstring formatting should match the canonical templates:
+  - Module docstring:
+    - Use a short, one-line title ending with `template.`
+    - Use a `Run:` block with the exact command, indented by 4 spaces.
+    - Use an `Output:` block describing what is printed, indented by 4 spaces.
+    - For bullet lists, use `- ` at column 0 and wrap continuation lines with 2 spaces of indentation.
+  - Inline comments:
+    - Use sentence case and end full-sentence comments with a period.
+    - Prefer concept intro comments of the form:
+      - `# <ConceptName> concept: <what it represents>.`
+      - `# <ConceptName> decision concept: <what it represents>.`
+    - Keep CSV-load comments short and consistent:
+      - `# Load <entity> data from CSV.`
 - For multi-line `where(...)` blocks, put one condition per line and do **not**
   include a trailing comma after the last condition. Keep the closing `)` and the
   chained call on the same line when applicable (e.g., `).define(`, `).per(...)`).
