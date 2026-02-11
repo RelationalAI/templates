@@ -220,11 +220,11 @@ from pathlib import Path
 import pandas
 from pandas import read_csv
 
-from relationalai.semantics import Model, data, require, select, sum, where
+from relationalai.semantics import Model, data, require, sum, where
 from relationalai.semantics.reasoners.optimization import Solver, SolverModel
 
 # --------------------------------------------------
-# Configure inputs and create the model
+# Configure inputs
 # --------------------------------------------------
 
 DATA_DIR = Path(__file__).parent / "data"
@@ -247,17 +247,18 @@ First, define the semantic model and load the input tables from CSV. `data(...).
 # Create a Semantics model container.
 model = Model("grid", config=globals().get("config", None), use_lqp=False)
 
-# Concept: substations with current and max capacity
+# Substation concept: substations with current and maximum capacity.
 Substation = model.Concept("Substation")
 Substation.id = model.Property("{Substation} has {id:int}")
 Substation.name = model.Property("{Substation} has {name:string}")
 Substation.current_capacity = model.Property("{Substation} has {current_capacity:int}")
 Substation.max_capacity = model.Property("{Substation} has {max_capacity:int}")
 
-# Load substations from CSV.
-data(read_csv(DATA_DIR / "substations.csv")).into(Substation, keys=["id"])
+# Load substation data from CSV.
+substation_csv = read_csv(DATA_DIR / "substations.csv")
+data(substation_csv).into(Substation, keys=["id"])
 
-# Concept: projects with capacity needs, revenue, and connection costs
+# Project concept: interconnection requests with capacity needs and economics.
 Project = model.Concept("Project")
 Project.id = model.Property("{Project} has {id:int}")
 Project.name = model.Property("{Project} has {name:string}")
@@ -271,7 +272,7 @@ Project.approved = model.Property("{Project} is {approved:float}")
 projects_data = data(read_csv(DATA_DIR / "projects.csv"))
 
 # Define Project entities by joining each project row to its Substation.
-where(Substation.id(projects_data.substation_id)).define(
+where(Substation.id == projects_data.substation_id).define(
     Project.new(
         id=projects_data.id,
         name=projects_data.name,
@@ -282,7 +283,7 @@ where(Substation.id(projects_data.substation_id)).define(
     )
 )
 
-# Concept: upgrades with capacity additions and costs
+# Upgrade concept: candidate substation upgrades that add capacity.
 Upgrade = model.Concept("Upgrade")
 Upgrade.id = model.Property("{Upgrade} has {id:int}")
 Upgrade.substation = model.Property("{Upgrade} for {substation:Substation}")
@@ -294,7 +295,7 @@ Upgrade.selected = model.Property("{Upgrade} is {selected:float}")
 upgrades_data = data(read_csv(DATA_DIR / "upgrades.csv"))
 
 # Define Upgrade entities by joining each upgrade row to its Substation.
-where(Substation.id(upgrades_data.substation_id)).define(
+where(Substation.id == upgrades_data.substation_id).define(
     Upgrade.new(
         id=upgrades_data.id,
         substation=Substation,
@@ -306,24 +307,19 @@ where(Substation.id(upgrades_data.substation_id)).define(
 
 ### Define decision variables, constraints, and objective
 
-The script solves multiple budget scenarios:
+Next, the script defines a helper `build_formulation(...)` that uses `solve_for`, `require`, and `maximize` to register decision variables, constraints, and the objective:
 
 ```python
-SCENARIO_VALUES = [1000000000, 2000000000, 3000000000]
+Proj = Project.ref()
+Upg = Upgrade.ref()
 
-scenario_results = []
 
-for scenario_value in SCENARIO_VALUES:
-    print(f"\nRunning scenario: {SCENARIO_PARAM} = {scenario_value}")
-
-    # Set scenario parameter value
-    budget = scenario_value
-
-    # Create fresh SolverModel for each scenario
-    solver_model = SolverModel(model, "cont")
-
-    # Variable: binary approval and selection
+def build_formulation(solver_model):
+    """Register variables, constraints, and objective on a solver model."""
+    # Project.approved decision property: binary approval decision for each project.
     solver_model.solve_for(Project.approved, type="bin", name=Project.name)
+
+    # Upgrade.selected decision property: binary selection decision for each upgrade.
     solver_model.solve_for(
         Upgrade.selected,
         type="bin",
@@ -341,11 +337,6 @@ for scenario_value in SCENARIO_VALUES:
         .where(Upg.substation == Substation)
         .per(Substation)
     )
-```
-
-Then it adds constraints, defines the objective, and solves:
-
-```python
     capacity_ok = require(Substation.current_capacity + upgrade_capacity >= project_demand)
     solver_model.satisfy(capacity_ok)
 
@@ -355,13 +346,34 @@ Then it adds constraints, defines the objective, and solves:
     solver_model.satisfy(one_upgrade)
 
     # Constraint: budget
-    total_investment = sum(Project.approved * Project.connection_cost) + sum(Upgrade.selected * Upgrade.upgrade_cost)
+    total_investment = sum(Project.approved * Project.connection_cost) + sum(
+        Upgrade.selected * Upgrade.upgrade_cost
+    )
     budget_ok = require(total_investment <= budget)
     solver_model.satisfy(budget_ok)
 
     # Objective: maximize net revenue
     net_revenue = sum(Project.approved * (Project.revenue - Project.connection_cost))
     solver_model.maximize(net_revenue)
+```
+
+Then it solves multiple budget scenarios by creating a fresh `SolverModel` each time and calling `build_formulation(...)`:
+
+```python
+SCENARIO_PARAM = "budget"
+SCENARIO_VALUES = [1000000000, 2000000000, 3000000000]
+
+scenario_results = []
+
+for scenario_value in SCENARIO_VALUES:
+    print(f"\nRunning scenario: {SCENARIO_PARAM} = {scenario_value}")
+
+    # Set scenario parameter value
+    budget = scenario_value
+
+    # Create fresh SolverModel for each scenario
+    solver_model = SolverModel(model, "cont")
+    build_formulation(solver_model)
 
     solver = Solver("highs")
     solver_model.solve(solver, time_limit_sec=60)
@@ -376,13 +388,18 @@ For each scenario, the script prints the objective and the selected decisions:
 
     # Print approved projects from solver results
     var_df = solver_model.variable_values().to_df()
-    approved_df = var_df[~var_df["name"].str.startswith("upg") & (var_df["float"] > 0.5)].rename(columns={"float": "value"})
-    print(f"\n  Approved projects:")
+
+    approved_df = var_df[
+        ~var_df["name"].str.startswith("upg") & (var_df["float"] > 0.5)
+    ].rename(columns={"float": "value"})
+    print("\n  Approved projects:")
     print(approved_df.to_string(index=False))
 
-    upgrades_df = var_df[var_df["name"].str.startswith("upg") & (var_df["float"] > 0.5)].rename(columns={"float": "value"})
+    upgrades_df = var_df[
+        var_df["name"].str.startswith("upg") & (var_df["float"] > 0.5)
+    ].rename(columns={"float": "value"})
     if not upgrades_df.empty:
-        print(f"\n  Selected upgrades:")
+        print("\n  Selected upgrades:")
         print(upgrades_df.to_string(index=False))
 
 # Summary
