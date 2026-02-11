@@ -17,6 +17,7 @@ You are an expert technical writer specializing in creating educational and enga
 3. Take inspiration from the following README files for other templates in the repository:
    - [ad_spend_allocation](../../v0.13/ad_spend_allocation/README.md)
    - [diet](../../v0.13/diet/README.md)
+   Follow their structure, formatting, and style as closely as possible, while tailoring the content to fit the specific features and functionality of the ${input:templateName} template. Make sure to include all relevant sections such as "What this template is for", "Who this is for", "What you'll build", "What's included", "Prerequisites", and "Quickstart".
 4. Do not use emojis.
 5. Do not include badges in the README file.
 6. Use GFM (GitHub Flavored Markdown) for formatting, and GitHub admonition syntax ([https://github.com/orgs/community/discussions/16925](https://github.com/orgs/community/discussions/16925)) where appropriate.
