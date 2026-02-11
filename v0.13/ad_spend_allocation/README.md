@@ -14,7 +14,7 @@ tags:
 # Ad Spend Allocation
 
 > [!WARNING]
-> This template uses the early access `relational.semantics` API in version `0.13` of the `relationalai` Python package.
+> This template uses the early access `relational.semantics` API in version `0.13.3` of the `relationalai` Python package.
 
 ## What this template is for
 
@@ -22,7 +22,7 @@ Marketing teams must distribute limited advertising budgets across multiple chan
 This template models allocating spend across 5 channels and 3 campaigns, where each channel-campaign combination has different conversion effectiveness.
 
 The challenge is that each channel has minimum spend thresholds (you can't spend just $10 on a channel—there are setup costs) and maximum caps, while campaign budgets constrain total spend.
-This templates uses RelationalAI's **prescriptive reasoner** to find the best allocation of spend across channel-campaign pairs to maximize total expected conversions, while respecting these constraints.
+This template uses RelationalAI's **prescriptive reasoner** to find the best allocation of spend across channel-campaign pairs to maximize total expected conversions, while respecting these constraints.
 
 Prescriptive reasoning helps you:
 
@@ -259,6 +259,8 @@ This section walks through the highlights in `ad_spend_allocation.py`.
 
 ### Import libraries and configure inputs
 
+First, the script imports the Semantics APIs (`Model`, `data`, `where`, `require`, `sum`) and configures local inputs like `DATA_DIR`:
+
 ```python
 from pathlib import Path
 
@@ -284,6 +286,8 @@ model = Model("ad_spend", use_lqp=False)
 ```
 
 ### Define concepts and load CSV data
+
+Next, it defines the `Channel` and `Campaign` concepts and loads `channels.csv` and `campaigns.csv` via `data(...).into(...)`:
 
 ```python
 # Channel concept: marketing channel with spend bounds (and an extra ROI field
@@ -314,8 +318,6 @@ Campaign.target_conversions = model.Property("{Campaign} has {target_conversions
 data(read_csv(DATA_DIR / "campaigns.csv")).into(Campaign, keys=["id"])
 ```
 
-### Build channel-campaign effectiveness rows
-
 `effectiveness.csv` contains foreign keys (`channel_id`, `campaign_id`). The template resolves them into `Channel` and `Campaign` instances and creates an `Effectiveness` concept per row.
 
 ```python
@@ -341,7 +343,7 @@ where(
 )
 ```
 
-### Define decision variables and solve per scenario
+### Define decision variables, constraints, and objective
 
 An `Allocation` decision concept is created for every `Effectiveness` row. The script then loops over budget scenarios, creating a fresh `SolverModel` for each.
 
@@ -400,8 +402,6 @@ for scenario_value in SCENARIO_VALUES:
     )
 ```
 
-### Add constraints, solve, and print results
-
 Each scenario iteration adds the same structural constraints, plus a total budget constraint parameterized by the scenario value.
 
 ```python
@@ -442,7 +442,14 @@ Each scenario iteration adds the same structural constraints, plus a total budge
     # Objective: maximize total expected conversions
     total_conversions = sum(Allocation.spend * Allocation.effectiveness.conversion_rate)
     solver_model.maximize(total_conversions)
+```
 
+### Solve and print results
+
+For each scenario, the model is solved with a time limit of 60 seconds using the HiGHS solver.
+The script prints the solver status, objective value, and a table of spend allocations for channel-campaign pairs with non-trivial spend (greater than $0.001):
+
+```python
     # Solve the model with a time limit of 60 seconds. The `Solver` class provides
     # an interface to various optimization solvers. Here we use the open-source
     # HiGHS solver, which is suitable for linear and mixed-integer problems.

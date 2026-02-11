@@ -179,6 +179,8 @@ This section walks through the highlights in `diet.py`.
 
 ### Import libraries and configure inputs
 
+This template uses `Concept` objects from `relationalai.semantics` to model foods and nutrients, and uses `Solver` and `SolverModel` from `relationalai.semantics.reasoners.optimization` to define and solve the linear program:
+
 ```python
 from pathlib import Path
 
@@ -208,6 +210,8 @@ model = Model("diet", config=globals().get("config", None), use_lqp=False)
 ```
 
 ### Define concepts and load CSV data
+
+First, it declares `Nutrient` and `Food` concepts, loads `nutrients.csv` into `Nutrient`, and then uses `define(...).where(...)` to populate `Food.nutrients` from the nutrient columns in `foods.csv`:
 
 ```python
 # Nutrient concept: represents a nutrient with minimum and maximum daily requirements.
@@ -240,6 +244,8 @@ for nutrient_name in nutrient_csv.name:
 
 ### Define decision variables, constraints, and objective
 
+Next, it creates one continuous, non-negative decision variable per food (`Food.amount`), enforces nutrient bounds with `require(...)`, and minimizes total cost:
+
 ```python
 # Create a continuous optimization model.
 s = SolverModel(model, "cont")
@@ -268,6 +274,8 @@ s.minimize(total_cost)
 ```
 
 ### Solve and print results
+
+Finally, it solves with the HiGHS backend and prints only foods with a non-trivial amount (`Food.amount > 0.001`):
 
 ```python
 # Solve the model with a time limit of 60 seconds using the HiGHS solver.

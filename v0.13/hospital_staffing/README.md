@@ -216,6 +216,8 @@ This section walks through the highlights in `hospital_staffing.py`.
 
 ### Import libraries and configure inputs
 
+This template uses `Concept` objects from `relationalai.semantics` to model nurses, shifts, and availability, and uses `Solver` and `SolverModel` from `relationalai.semantics.reasoners.optimization` to define and solve the optimization problem:
+
 ```python
 from pathlib import Path
 
@@ -238,6 +240,8 @@ pandas.options.future.infer_string = False
 ```
 
 ### Define concepts and load CSV data
+
+Next, define the semantic model and load the input tables from CSV. `data(...).into(...)` creates entities for `Nurse` and `Shift`, and `where(...).define(...)` is used to join `availability.csv` onto those concepts:
 
 ```python
 # --------------------------------------------------
@@ -288,6 +292,8 @@ where(
 ```
 
 ### Define decision variables, constraints, and objective
+
+Then, create one binary decision variable per nurse–shift availability row, add constraints for availability, coverage, and skill requirements, and minimize total staffing cost:
 
 ```python
 # --------------------------------------------------
@@ -347,6 +353,8 @@ s.minimize(total_cost)
 ```
 
 ### Solve and print results
+
+Finally, solve with the HiGHS backend and print only assignments where `Assignment.assigned > 0.5`:
 
 ```python
 # --------------------------------------------------
@@ -415,6 +423,7 @@ Common next steps:
 <details>
     <summary><code>ModuleNotFoundError</code> when running the script</summary>
 
+
 - Confirm your virtual environment is activated.
 - Install the template dependencies from this folder: `python -m pip install .`
 
@@ -422,6 +431,7 @@ Common next steps:
 
 <details>
     <summary>CSV loading fails (missing file or column)</summary>
+
 
 - Confirm the CSVs exist under `data/` and the filenames match.
 - Ensure the headers match the expected schema:

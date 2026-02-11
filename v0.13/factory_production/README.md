@@ -200,6 +200,8 @@ This section walks through the highlights in `factory_production.py`.
 
 ### Import libraries and configure inputs
 
+This template uses `Concept` objects from `relationalai.semantics` to model machines, products, and production times, and uses `Solver` and `SolverModel` from `relationalai.semantics.reasoners.optimization` to define and solve the linear program:
+
 ```python
 from pathlib import Path
 
@@ -226,6 +228,8 @@ model = Model("factory", use_lqp=False)
 ```
 
 ### Define concepts and load CSV data
+
+Next, it declares the `Machine`, `Product`, and `ProductionTime` concepts and loads the corresponding CSV tables. `data(...).into(...)` creates entities from `machines.csv` and `products.csv`, and `where(...).define(...)` joins `production_times.csv` onto those concepts:
 
 ```python
 # Machine concept: represents a production machine with available hours and hourly cost
@@ -268,6 +272,8 @@ where(
 ```
 
 ### Define decision variables, constraints, and objective
+
+Then it creates one continuous, non-negative decision variable per machine–product route, adds machine-hour and minimum-production constraints with `require(...)`, and maximizes profit:
 
 ```python
 # Decision concept: production quantities for each machine/product
@@ -313,6 +319,8 @@ s.maximize(profit)
 ```
 
 ### Solve and print results
+
+Finally, it solves using the HiGHS backend and prints only rows where `Production.quantity > 0`:
 
 ```python
 solver = Solver("highs")

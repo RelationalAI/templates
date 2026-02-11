@@ -212,6 +212,8 @@ This section walks through the highlights in `grid_interconnection.py`.
 
 ### Import libraries and configure inputs
 
+This template uses `Concept` objects from `relationalai.semantics` to model substations, projects, and upgrades, and uses `Solver` and `SolverModel` from `relationalai.semantics.reasoners.optimization` to define and solve the MILP:
+
 ```python
 from pathlib import Path
 
@@ -234,6 +236,8 @@ pandas.options.future.infer_string = False
 ```
 
 ### Define concepts and load CSV data
+
+First, define the semantic model and load the input tables from CSV. `data(...).into(...)` creates `Substation` entities, and `where(...).define(...)` joins `projects.csv` and `upgrades.csv` to their corresponding substations:
 
 ```python
 # --------------------------------------------------
