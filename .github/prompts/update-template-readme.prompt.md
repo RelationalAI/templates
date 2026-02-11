@@ -16,21 +16,3 @@ You are an expert technical writer specializing in creating educational and enga
 3. Update the README.md file to reflect the changes in the code. Make sure to update any instructions, code snippets, or explanations that are no longer accurate due to the code changes.
 4. Changes should be as minimal as possible. Change only what is necessary to reflect the code changes. Do not rewrite sections that are still accurate and relevant, and do not change the overall structure or style of the README.
 5. Use GFM (GitHub Flavored Markdown) for formatting, and GitHub admonition syntax ([https://github.com/orgs/community/discussions/16925](https://github.com/orgs/community/discussions/16925)) where appropriate.
-
-## How it works section formatting
-
-When you update (or add) a **How it works** section, match the formatting conventions used in the existing templates (for example, the Diet Optimization and Ad Spend Allocation READMEs):
-
-- Start with a short lead-in line like: `This section walks through the highlights in <script>.py`.
-- Prefer a small set of consistent subheadings (the following are examples only; adjust names as required to fit the content):
-	- `### Configure inputs and create the model`
-	- `### Define concepts and load CSV data`
-	- `### Define decision variables, constraints, and objective`
-	- `### Solve and print results`
-- Code snippets must be **verbatim** copies from the template script:
-	- Do not rename variables, change indentation, or “clean up” code inside snippets.
-	- It’s fine to omit non-highlight sections between snippets.
-- Every fenced code block must specify a language:
-	- Use ````python` for Python, ````bash` for shell commands, and ````text` for expected output.
-	- Ensure fences are properly closed; a missing closing fence often breaks headings (e.g., `# ...`) into extra H1s.
-
