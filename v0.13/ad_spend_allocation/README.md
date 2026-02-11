@@ -160,14 +160,14 @@ You can customize the data and model as needed after you have it running end-to-
      55000: OPTIMAL, obj=3430.0
    ```
 
-## Repository structure
+## Template structure
 
 ```text
 .
 ├─ README.md
 ├─ pyproject.toml
-├─ ad_spend_allocation.py
-└─ data/
+├─ ad_spend_allocation.py      # main runner / entrypoint
+└─ data/                       # sample input data
    ├─ channels.csv
    ├─ campaigns.csv
    └─ effectiveness.csv
@@ -256,8 +256,6 @@ A decision concept created for each `Effectiveness` row; the solver chooses `spe
 ## How it works
 
 This section walks through the highlights in `ad_spend_allocation.py`.
-
-All code snippets below are copied verbatim from the template script (with non-highlight sections omitted between snippets).
 
 ### Configure inputs and create the model
 

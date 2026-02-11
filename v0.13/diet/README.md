@@ -102,14 +102,14 @@ Follow these steps to run the template with the included sample data.
         milk  6.970139
    ```
 
-## Repository structure
+## Template structure
 
 ```text
 .
 ├─ README.md
 ├─ pyproject.toml
-├─ diet.py
-└─ data/
+├─ diet.py            # main runner / entrypoint
+└─ data/              # sample input data
    ├─ foods.csv
    └─ nutrients.csv
 ```

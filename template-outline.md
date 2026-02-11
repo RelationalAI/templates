@@ -13,6 +13,8 @@ tags:
   - <KEYWORD_3>
 ---
 
+## What this template is for
+
 Problem statement and motivation (1–2 paragraphs).
 Focus on the “why” and the value of RelationalAI, not on the technical details of the model or code.
 Use language that’s accessible to a broad audience.
@@ -24,7 +26,7 @@ Use language that’s accessible to a broad audience.
 - Target audience
 - Assumed knowledge
 
-## What you’ll build / learn
+## What you’ll build
 
 - Bullet list of outcomes (3–6)
 - Mention the main RelationalAI features used (high level)
@@ -49,61 +51,56 @@ Use language that’s accessible to a broad audience.
 - RelationalAI tooling used: (CLI / SDK)
 - OS notes: (if any)
 
-### Configuration
-
-- Environment variables required (list them)
-- Auth setup steps (where/how)
-
 ## Quickstart
 
 This section should be copy/paste-friendly and get users to a successful run with minimal reading.
 
 1. **Download or clone**
-	- (ZIP instructions if you want, but keep it short)
+   - (ZIP instructions if you want, but keep it short)
 
 2. **Install dependencies**
 
-	```bash
-	# example
-	python -m venv .venv
-	source .venv/bin/activate
-	pip install -r requirements.txt
-	```
+   ```bash
+   # example
+   python -m venv .venv
+   source .venv/bin/activate
+   pip install -r requirements.txt
+   ```
 
 3. **Configure credentials**
 
-	```bash
-	# example
-	export RAI_PROFILE=...
-	```
+   ```bash
+   # example
+   export RAI_PROFILE=...
+   ```
 
 4. **Create/select database + engine** (if applicable)
 
-	```bash
-	# example
-	rai db create ...
-	rai engine create ...
-	```
+   ```bash
+   # example
+   rai db create ...
+   rai engine create ...
+   ```
 
 5. **Load sample data**
 
-	```bash
-	# example
-	python load_data.py
-	```
+   ```bash
+   # example
+   python load_data.py
+   ```
 
 6. **Run the template**
 
-	```bash
-	# example
-	python run.py
-	```
+   ```bash
+   # example
+   python run.py
+   ```
 
 7. **Expected output**
 
-	Show a tiny snippet (a few lines) so users can confirm success.
+   Show a tiny snippet (a few lines) so users can confirm success.
 
-## Repository structure
+## Template structure
 
 Provide a short annotated tree. Keep it to the top level and the most important subfolders.
 
