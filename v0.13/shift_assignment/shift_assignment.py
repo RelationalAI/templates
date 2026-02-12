@@ -1,51 +1,86 @@
-# shift assignment problem:
-# assign workers to shifts ensuring minimum coverage while limiting shifts per worker
+"""Shift Assignment (prescriptive optimization) template.
+
+This script demonstrates a small constraint satisfaction / feasibility problem in
+RelationalAI:
+
+- Load sample CSVs describing workers, shifts, and worker-shift availability.
+- Create an `Assignment` decision concept for each available worker-shift pair.
+- Choose a binary assignment variable for each pair.
+- Enforce minimum coverage per shift and a maximum number of shifts per worker.
+
+Run:
+    `python shift_assignment.py`
+
+Output:
+    Prints the solver termination status, a table of assignments, and a coverage
+    summary per shift.
+"""
 
 from pathlib import Path
 
-import pandas; pandas.options.future.infer_string = False
+import pandas
 from pandas import read_csv
 
-from relationalai.semantics import Model, data, define, require, select, sum, where
+from relationalai.semantics import Model, data, require, select, sum, where
 from relationalai.semantics.reasoners.optimization import Solver, SolverModel
 
+# --------------------------------------------------
+# Configure inputs
+# --------------------------------------------------
+
+DATA_DIR = Path(__file__).parent / "data"
+
+# Disable pandas inference of string types. This ensures that string columns
+# in the CSVs are loaded as object dtype. This is only required when using
+# relationalai versions prior to v1.0.
+pandas.options.future.infer_string = False
+
+# --------------------------------------------------
+# Define semantic model & load data
+# --------------------------------------------------
+
+# Create a Semantics model container.
 model = Model("shift_assignment", config=globals().get("config", None), use_lqp=False)
 
-# --------------------------------------------------
-# Define ontology & load data
-# --------------------------------------------------
-
-data_dir = Path(__file__).parent / "data"
-
-# Concept: workers
+# Worker concept: employees available for scheduling.
 Worker = model.Concept("Worker")
 Worker.id = model.Property("{Worker} has {id:int}")
 Worker.name = model.Property("{Worker} has {name:string}")
-data(read_csv(data_dir / "workers.csv")).into(Worker, keys=["id"])
 
-# Concept: shifts
+# Load worker data from CSV.
+data(read_csv(DATA_DIR / "workers.csv")).into(Worker, keys=["id"])
+
+# Shift concept: time periods that require staffing.
 Shift = model.Concept("Shift")
 Shift.id = model.Property("{Shift} has {id:int}")
 Shift.name = model.Property("{Shift} has {name:string}")
-data(read_csv(data_dir / "shifts.csv")).into(Shift, keys=["id"])
 
-# Relationship: worker-shift availability (creates assignment domain)
-# Note: Future API will support Worker.available_for = model.Relationship(...)
+# Load shift data from CSV.
+data(read_csv(DATA_DIR / "shifts.csv")).into(Shift, keys=["id"])
+
+# Assignment decision concept: a worker-shift pair that can potentially be staffed.
+# The availability table determines which pairs exist.
 Assignment = model.Concept("Assignment")
 Assignment.worker = model.Property("{Assignment} has {worker:Worker}")
 Assignment.shift = model.Property("{Assignment} has {shift:Shift}")
 Assignment.assigned = model.Property("{Assignment} assigned {assigned:int}")
 
-avail = data(read_csv(data_dir / "availability.csv"))
-where(Worker.id(avail.worker_id), Shift.id(avail.shift_id)).define(
+# Load availability data from CSV.
+avail = data(read_csv(DATA_DIR / "availability.csv"))
+
+# Define Assignment entities by joining availability rows to Worker and Shift.
+where(
+    Worker.id == avail.worker_id,
+    Shift.id == avail.shift_id
+).define(
     Assignment.new(worker=Worker, shift=Shift)
 )
 
 # --------------------------------------------------
-# Model the problem
+# Model the decision problem
 # --------------------------------------------------
 
-# Parameters
+# Parameters.
 min_coverage = 2
 max_shifts_per_worker = 1
 
@@ -54,17 +89,27 @@ Asn = Assignment.ref()
 s = SolverModel(model, "int")
 
 # Variable: binary assignment (0 or 1)
-s.solve_for(Assignment.assigned, name=["x", Assignment.worker.name, Assignment.shift.name], type="bin")
+s.solve_for(
+    Assignment.assigned,
+    name=["x", Assignment.worker.name, Assignment.shift.name],
+    type="bin",
+)
 
 # Constraint: each shift has minimum coverage
-s.satisfy(where(Asn.shift == Shift).require(
+shift_coverage = where(
+    Asn.shift == Shift
+).require(
     sum(Asn.assigned).per(Shift) >= min_coverage
-))
+)
+s.satisfy(shift_coverage)
 
 # Constraint: each worker works at most max_shifts_per_worker shifts
-s.satisfy(where(Asn.worker == Worker).require(
+worker_capacity = where(
+    Asn.worker == Worker
+).require(
     sum(Asn.assigned).per(Worker) <= max_shifts_per_worker
-))
+)
+s.satisfy(worker_capacity)
 
 # --------------------------------------------------
 # Solve and check solution
