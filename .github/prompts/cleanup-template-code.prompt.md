@@ -1,15 +1,14 @@
 ---
 name: cleanup-template-code
 description: Reorganize a RelationalAI template script to match the standard structure and comments used by other templates, without changing functionality.
-inputs:
-  version:
-    description: Template version folder (defaults to v0.13).
-    default: v0.13
-  templateName:
-    description: Template folder name (for example, diet).
 ---
 
 # Template Code Cleanup for RelationalAI Templates
+
+## Configuration Options
+
+VERSION=${{input:version:v0.13}}
+TEMPLATE_NAME=${{input:templateName}}
 
 ## Role
 
@@ -29,11 +28,11 @@ You MUST NOT:
 
 ## Task
 
-Given a template located at `${input:version}/${input:templateName}/`:
+Given a template located at `${VERSION}/${TEMPLATE_NAME}/`:
 
 If no `version` input is provided, default to `v0.13`.
 
-1. Review the entire template folder, focusing on the main script `${input:templateName}.py` (or the template’s actual entrypoint).
+1. Review the entire template folder, focusing on the main script `${TEMPLATE_NAME}.py` (or the template’s actual entrypoint).
 2. Update the script so it matches the organization, formatting, and commenting style used by the canonical templates (for example: `diet.py`, `ad_spend_allocation.py`, `factory_production.py`).
 3. Ensure the script still runs the same way and prints the same shape of output.
 
