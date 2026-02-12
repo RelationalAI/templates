@@ -30,7 +30,7 @@ The goal is to find the optimal product mix—how much of each product to make o
 
 > [!NOTE]
 > This template uses continuous decision variables (LP), so fractional quantities are allowed.
-> If you need integer production units, see the [production planning](../production_planning/README.md) template.
+> If you need integer production units, see the [production planning](https://private.relational.ai/early-access/pyrel/templates/production_planning) template.
 
 ## Who this is for
 
