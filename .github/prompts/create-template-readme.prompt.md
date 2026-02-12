@@ -24,6 +24,21 @@ You are an expert technical writer specializing in creating educational and enga
 6. Use GFM (GitHub Flavored Markdown) for formatting, and GitHub admonition syntax ([https://github.com/orgs/community/discussions/16925](https://github.com/orgs/community/discussions/16925)) where appropriate.
 7. Save your README to the ${input:version}/${input:templateName}/README.md file in the root of the repository. If a README.md file already exists, overwrite it with the new content you have generated.
 
+## Quickstart ZIP download requirement
+
+In the **Quickstart** section, the first numbered step MUST be a ZIP download/extract step using exactly the following commands and tip admonition (substitute the version/template name variables only):
+
+1. Download the ZIP file for this template and extract it:
+
+	```bash
+	curl -O https://private.relational.ai/templates/zips/${input:version}/${input:templateName}.zip
+	unzip ${input:templateName}.zip
+	cd ${input:templateName}
+	```
+
+	> [!TIP]
+	> You can also download the template ZIP using the "Download ZIP" button at the top of this page.
+
 ## How it works section formatting
 
 When you create the **How it works** section, match the formatting conventions used in the existing templates (for example, the Diet Optimization and Ad Spend Allocation READMEs):

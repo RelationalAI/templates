@@ -18,6 +18,21 @@ You are an expert technical writer specializing in creating educational and enga
 4. Changes should be as minimal as possible. Change only what is necessary to reflect the code changes. Do not rewrite sections that are still accurate and relevant, and do not change the overall structure or style of the README.
 5. Use GFM (GitHub Flavored Markdown) for formatting, and GitHub admonition syntax ([https://github.com/orgs/community/discussions/16925](https://github.com/orgs/community/discussions/16925)) where appropriate.
 
+## Quickstart ZIP download requirement
+
+When updating the **Quickstart** section, ensure it begins with a ZIP download/extract step using exactly the following commands and tip admonition (substitute the version/template name variables only). If the README does not already include this step, add it as step 1 and renumber subsequent steps as needed:
+
+1. Download the ZIP file for this template and extract it:
+
+	```bash
+	curl -O https://private.relational.ai/templates/zips/${input:version}/${input:templateName}.zip
+	unzip ${input:templateName}.zip
+	cd ${input:templateName}
+	```
+
+	> [!TIP]
+	> You can also download the template ZIP using the "Download ZIP" button at the top of this page.
+
 ## How it works section formatting
 
 When you update the **How it works** section, preserve the existing headings and narrative style and apply these rules for any code snippets you add or modify:

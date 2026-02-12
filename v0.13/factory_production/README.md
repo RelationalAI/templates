@@ -72,6 +72,9 @@ Follow these steps to run the template using the included sample data:
    cd factory_production
    ```
 
+   > [!TIP]
+   > You can also download the template ZIP using the "Download ZIP" button at the top of this page.
+
 2. Create and activate a virtual environment:
 
    ```bash

@@ -57,6 +57,17 @@ This template helps you choose which interconnection projects to approve and whi
 
 Follow these steps to run the template with the included sample data.
 
+1. Download the ZIP file for this template and extract it:
+
+   ```bash
+   curl -O https://private.relational.ai/templates/zips/v0.13/grid_interconnection.zip
+   unzip grid_interconnection.zip
+   cd grid_interconnection
+   ```
+
+   > [!TIP]
+   > You can also download the template ZIP using the "Download ZIP" button at the top of this page.
+
 1. **Create and activate a virtual environment**
 
    ```bash

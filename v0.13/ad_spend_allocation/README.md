@@ -63,7 +63,18 @@ Prescriptive reasoning helps you:
 Follow these steps to run the template with the included sample data.
 You can customize the data and model as needed after you have it running end-to-end.
 
-1. **Create and activate a virtual environment**
+1. Download the ZIP file for this template and extract it:
+
+   ```bash
+   curl -O https://private.relational.ai/templates/zips/v0.13/ad_spend_allocation.zip
+   unzip ad_spend_allocation.zip
+   cd ad_spend_allocation
+   ```
+
+   > [!TIP]
+   > You can also download the template ZIP using the "Download ZIP" button at the top of this page.
+
+2. **Create and activate a virtual environment**
 
    ```bash
    python -m venv .venv
@@ -71,7 +82,7 @@ You can customize the data and model as needed after you have it running end-to-
    python -m pip install -U pip
    ```
 
-2. **Install dependencies**
+3. **Install dependencies**
 
    From this folder:
 
@@ -79,19 +90,19 @@ You can customize the data and model as needed after you have it running end-to-
    python -m pip install .
    ```
 
-3. **Configure Snowflake connection and RAI profile**
+4. **Configure Snowflake connection and RAI profile**
 
    ```bash
    rai init
    ```
 
-4. **Run the template**
+5. **Run the template**
 
    ```bash
    python ad_spend_allocation.py
    ```
 
-5. **Expected output**
+6. **Expected output**
 
    The script solves three budget scenarios.
    The allocation table for each channel-campaign pair is printed for each scenario,
