@@ -4,7 +4,6 @@ description: "A minimal template that prints hello world."
 featured: false
 experience_level: beginner
 industry: "General"
-reasoning_types:
 tags:
   - Demo
   - Basics
