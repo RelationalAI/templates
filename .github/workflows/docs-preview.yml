@@ -36,6 +36,7 @@ jobs:
         env:
           PRIVATE: true
           RAI_TEMPLATES_REPO_TOKEN: ${{ secrets.DOCS_REPO_TOKEN }}
+          RAI_TEMPLATES_REPO_BRANCH: ${{ github.head_ref || github.ref_name }}
         run: |
           npm install
           npm run templates:sync
