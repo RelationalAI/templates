@@ -1,60 +1,95 @@
-# order fulfillment problem:
-# assign orders to fulfillment centers minimizing total cost
+"""Order Fulfillment (prescriptive optimization) template.
+
+This script demonstrates a mixed-integer linear optimization problem in RelationalAI:
+
+- Load fulfillment centers, orders, and shipping costs from CSV.
+- Choose shipment quantities for each fulfillment-center/order pair.
+- Enforce fulfillment and capacity constraints.
+- Pay a fixed cost for each fulfillment center that is used.
+- Minimize total cost (shipping + fixed costs).
+
+Run:
+    `python order_fulfillment.py`
+
+Output:
+    Prints the solver termination status, objective value, a table of non-trivial
+    assignments, and the active fulfillment centers.
+"""
 
 from pathlib import Path
 
-import pandas; pandas.options.future.infer_string = False
+import pandas
 from pandas import read_csv
 
 from relationalai.semantics import Model, data, define, require, select, sum, where
 from relationalai.semantics.reasoners.optimization import Solver, SolverModel
 
+# --------------------------------------------------
+# Configure inputs
+# --------------------------------------------------
+
+DATA_DIR = Path(__file__).parent / "data"
+
+# Disable pandas inference of string types. This ensures that string columns
+# in the CSVs are loaded as object dtype. This is only required when using
+# relationalai versions prior to v1.0.
+pandas.options.future.infer_string = False
+
+# --------------------------------------------------
+# Define semantic model & load data
+# --------------------------------------------------
+
+# Create a Semantics model container.
 model = Model("order_fulfillment", config=globals().get("config", None), use_lqp=False)
 
-# --------------------------------------------------
-# Define ontology & load data
-# --------------------------------------------------
-
-data_dir = Path(__file__).parent / "data"
-
-# Concept: fulfillment centers with capacity and fixed costs
+# FulfillmentCenter concept: fulfillment centers with capacity and fixed operating costs.
 FC = model.Concept("FulfillmentCenter")
 FC.id = model.Property("{FulfillmentCenter} has {id:int}")
 FC.name = model.Property("{FulfillmentCenter} has {name:string}")
 FC.capacity = model.Property("{FulfillmentCenter} has {capacity:int}")
 FC.fixed_cost = model.Property("{FulfillmentCenter} has {fixed_cost:float}")
-data(read_csv(data_dir / "fulfillment_centers.csv")).into(FC, keys=["id"])
 
-# Concept: orders with customer, quantity, and priority
+# Load fulfillment center data from CSV.
+data(read_csv(DATA_DIR / "fulfillment_centers.csv")).into(FC, keys=["id"])
+
+# Order concept: customer orders with required quantity and priority.
 Order = model.Concept("Order")
 Order.id = model.Property("{Order} has {id:int}")
 Order.customer = model.Property("{Order} for {customer:string}")
 Order.quantity = model.Property("{Order} has {quantity:int}")
 Order.priority = model.Property("{Order} has {priority:int}")
-data(read_csv(data_dir / "orders.csv")).into(Order, keys=["id"])
 
-# Relationship: shipping costs between FCs and orders
+# Load order data from CSV.
+data(read_csv(DATA_DIR / "orders.csv")).into(Order, keys=["id"])
+
+# ShippingCost concept: per-unit shipping cost for an FC/order pair.
 ShippingCost = model.Concept("ShippingCost")
 ShippingCost.fc = model.Property("{ShippingCost} from {fc:FulfillmentCenter}")
 ShippingCost.order = model.Property("{ShippingCost} for {order:Order}")
 ShippingCost.cost_per_unit = model.Property("{ShippingCost} has {cost_per_unit:float}")
 
-costs_data = data(read_csv(data_dir / "shipping_costs.csv"))
-where(FC.id(costs_data.fc_id), Order.id(costs_data.order_id)).define(
+# Load shipping cost data from CSV.
+costs_data = data(read_csv(DATA_DIR / "shipping_costs.csv"))
+
+# Define ShippingCost entities by joining FC and Order IDs from the CSV.
+where(
+    FC.id == costs_data.fc_id,
+    Order.id == costs_data.order_id,
+).define(
     ShippingCost.new(fc=FC, order=Order, cost_per_unit=costs_data.cost_per_unit)
 )
 
 # --------------------------------------------------
-# Model the problem
+# Model the decision problem
 # --------------------------------------------------
 
-# Decision concept: assignments of orders to fulfillment centers
+# Assignment decision concept: shipment quantity for each shipping-cost option.
 Assignment = model.Concept("Assignment")
 Assignment.shipping = model.Property("{Assignment} uses {shipping:ShippingCost}")
 Assignment.qty = model.Property("{Assignment} has {qty:float}")
 define(Assignment.new(shipping=ShippingCost))
 
-# Decision concept: track whether each FC is used (for fixed costs)
+# FCUsage decision concept: whether each fulfillment center is active (for fixed costs).
 FCUsage = model.Concept("FCUsage")
 FCUsage.fc = model.Property("{FCUsage} for {fc:FulfillmentCenter}")
 FCUsage.used = model.Property("{FCUsage} is {used:float}")
@@ -64,8 +99,12 @@ Asn = Assignment.ref()
 
 s = SolverModel(model, "cont")
 
-# Variable: assignment quantity and FC usage
-s.solve_for(Assignment.qty, name=["qty", Assignment.shipping.fc.name, Assignment.shipping.order.customer], lower=0)
+# Decision variables: assignment quantity and fulfillment-center usage.
+s.solve_for(
+    Assignment.qty,
+    name=["qty", Assignment.shipping.fc.name, Assignment.shipping.order.customer],
+    lower=0,
+)
 s.solve_for(FCUsage.used, type="bin", name=["fc_used", FCUsage.fc.name])
 
 # Constraint: FC capacity
