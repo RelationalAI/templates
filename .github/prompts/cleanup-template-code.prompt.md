@@ -56,7 +56,9 @@ Reformat the script to follow this high-level structure (use these headings verb
    - Define constants like:
      - `DATA_DIR = Path(__file__).parent / "data"`
    - Set pandas option (when applicable for v0.13 templates):
-     - `pandas.options.future.infer_string = False`
+     - Set the option on the imported pandas module name:
+       - If using `import pandas`: `pandas.options.future.infer_string = False`
+       - If using `import pandas as pd`: `pd.options.future.infer_string = False`
    - IMPORTANT: Do NOT instantiate `Model(...)` in this section.
 
 4. `# --------------------------------------------------`
@@ -106,6 +108,13 @@ Reformat the script to follow this high-level structure (use these headings verb
 
 - Use `DATA_DIR` (not `data_dir`) for the `data/` folder path.
 - Avoid one-line multi-statement imports (e.g., `import pandas; ...`).
+- Pandas imports and options:
+  - Do not import both `pandas` and `pandas as pd` in the same script.
+  - Prefer the canonical `import pandas` style unless the script already uses
+    `pd` broadly (e.g., `pd.isna`, `pd.Timestamp`), in which case keep
+    `import pandas as pd` and use `pd.options...` consistently.
+  - Keep `from pandas import ...` imports (e.g., `read_csv`, `DataFrame`) only
+    when they already exist; do not introduce additional aliases.
 - Prefer readable line wrapping for long expressions (Black-like style), but do not reformat unrelated code.
 - Comment and docstring formatting should match the canonical templates:
   - Module docstring:
@@ -127,6 +136,12 @@ Reformat the script to follow this high-level structure (use these headings verb
   than function-call predicate syntax.
 - When loading data from CSVs, add a brief explanatory comment directly above the
   `read_csv(...)` / `data(...)` line(s), consistent with `diet.py` and other canonical templates.
+- For long, dense, procedural sections (for example, synthetic data generation), it is
+  acceptable to replace extremely long one-line list comprehensions with equivalent
+  `for` loops for readability, as long as:
+  - The iteration order is preserved.
+  - The sequence of random draws stays the same (so results remain deterministic
+    for a fixed seed).
 - Keep terminology consistent with other templates:
   - “Concept”, “Property”, “Relationship”, “Decision variable”, “Constraint”, “Objective”
 - If a concept property is used as a binary variable, it can remain typed as `float` in v0.13 templates (do not change types).
@@ -146,3 +161,11 @@ After editing:
 ## Deliverable
 
 Return the updated script with only structural/comment cleanup changes, and a brief summary of what was reorganized.
+
+## Examples of Well-Formatted Templates
+
+- [ad_spend_allocation](../../v0.13/ad_spend_allocation/README.md)
+- [diet](../../v0.13/diet/README.md)
+- [factory_production](../../v0.13/factory_production/README.md)
+
+Follow their organization, formatting, and commenting style as closely as possible, while tailoring the content to fit the specific features and functionality of the `${input:templateName}` template.
