@@ -332,7 +332,6 @@ Here are some ideas for how to customize and extend this template to fit your sp
 <details>
   <summary>Why does authentication/configuration fail?</summary>
 
-
 - Run `rai init` to create/update `raiconfig.toml`.
 - If you have multiple profiles, set `RAI_PROFILE` or switch profiles in your config.
 
@@ -340,7 +339,6 @@ Here are some ideas for how to customize and extend this template to fit your sp
 
 <details>
   <summary>Why does the script fail to connect to the RAI Native App?</summary>
-
 
 - Verify the Snowflake account/role/warehouse and `rai_app_name` are correct in `raiconfig.toml`.
 - Ensure the RAI Native App is installed and you have access.
@@ -350,7 +348,6 @@ Here are some ideas for how to customize and extend this template to fit your sp
 <details>
   <summary>Why do I get <code>Status: INFEASIBLE</code>?</summary>
 
-
 - Check for impossible bounds (e.g., `min > max` for a nutrient).
 - Confirm that the foods collectively can meet each nutrient’s minimum without violating other maximums.
 
@@ -358,7 +355,6 @@ Here are some ideas for how to customize and extend this template to fit your sp
 
 <details>
   <summary>Why is the output diet empty?</summary>
-
 
 - The script filters foods with `Food.amount > 0.001`. If all values are tiny, inspect nutrient bounds and costs.
 - Confirm the CSVs were read correctly and contain rows.

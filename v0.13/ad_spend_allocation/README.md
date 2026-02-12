@@ -561,7 +561,6 @@ How to interpret results:
 <details>
   <summary>Why does authentication/configuration fail?</summary>
 
-
 - Run `rai init` to create/update `raiconfig.toml`.
 - If you have multiple profiles, set `RAI_PROFILE` or switch profiles in your config.
 
@@ -569,7 +568,6 @@ How to interpret results:
 
 <details>
   <summary>Why does the script fail to connect to the RAI Native App?</summary>
-
 
 - Verify the Snowflake account/role/warehouse and `rai_app_name` are correct in `raiconfig.toml`.
 - Ensure the RAI Native App is installed and you have access.
@@ -579,7 +577,6 @@ How to interpret results:
 <details>
   <summary>Why do I get <code>Status: INFEASIBLE</code>?</summary>
 
-
 - Check that each campaign budget is high enough to pay for at least one active channel's `min_spend`.
 - Check that channel `min_spend` values are not greater than `max_spend`.
 - Confirm conversion rates are present for each campaign (missing effectiveness rows reduce options).
@@ -588,7 +585,6 @@ How to interpret results:
 
 <details>
   <summary>Why is the spend allocation empty?</summary>
-
 
 - The script filters allocations with `Allocation.spend > 0.001`. If everything is near zero, inspect constraints and budgets.
 - Confirm input CSVs were read correctly and contain rows.
