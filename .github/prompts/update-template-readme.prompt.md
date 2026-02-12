@@ -2,9 +2,20 @@
 name: update-template-readme
 description: Update a template's README file to reflect code changes.
 tools: ['edit/createFile', 'edit/editFiles', 'read/readFile']
+inputs:
+  version:
+    description: Template version folder (defaults to v0.13).
+    default: v0.13
+  templateName:
+    description: Template folder name (for example, diet).
 ---
 
 # README Updater for RelationalAI Templates
+
+## Configuration Options
+
+VERSION=${{input:version:v0.13}}
+TEMPLATE_NAME=${{input:templateName}}
 
 ## Role
 
@@ -12,8 +23,9 @@ You are an expert technical writer specializing in creating educational and enga
 
 ## Task
 
-1. Review the entire contents of the ${input:templateName} template located in the ${input:version}/${input:templateName} folder from the root of the repository. Familiarize yourself with the code, its structure, and its functionality. Identify any changes that have been made to the code since the last version of the README was written, and understand how these changes affect the usage and functionality of the template.
-2. Review the existing README.md file for the ${input:templateName} template, and identify any sections or instructions that need to be updated to reflect the changes in the code. Pay particular attention to sections such as "What this template is for", "What you'll build", "What's included", "Prerequisites", and "Quickstart", and "How it works", as these are likely to be affected by code changes.
+1. Review the entire contents of the ${TEMPLATE_NAME} template located in the ${VERSION}/${TEMPLATE_NAME} folder from the root of the repository. Familiarize yourself with the code, its structure, and its functionality. Identify any changes that have been made to the code since the last version of the README was written, and understand how these changes affect the usage and functionality of the template.
+	- If no `version` input is provided, default to `v0.13`.
+2. Review the existing README.md file for the ${TEMPLATE_NAME} template, and identify any sections or instructions that need to be updated to reflect the changes in the code. Pay particular attention to sections such as "What this template is for", "What you'll build", "What's included", "Prerequisites", and "Quickstart", and "How it works", as these are likely to be affected by code changes.
 3. Update the README.md file to reflect the changes in the code. Make sure to update any instructions, code snippets, or explanations that are no longer accurate due to the code changes.
 4. Changes should be as minimal as possible. Change only what is necessary to reflect the code changes. Do not rewrite sections that are still accurate and relevant, and do not change the overall structure or style of the README.
 5. Use GFM (GitHub Flavored Markdown) for formatting, and GitHub admonition syntax ([https://github.com/orgs/community/discussions/16925](https://github.com/orgs/community/discussions/16925)) where appropriate.
@@ -33,9 +45,9 @@ When updating the **Quickstart** section, ensure it begins with a ZIP download/e
 1. Download the ZIP file for this template and extract it:
 
 	```bash
-	curl -O https://private.relational.ai/templates/zips/${input:version}/${input:templateName}.zip
-	unzip ${input:templateName}.zip
-	cd ${input:templateName}
+	curl -O https://private.relational.ai/templates/zips/${VERSION}/${TEMPLATE_NAME}.zip
+	unzip ${TEMPLATE_NAME}.zip
+	cd ${TEMPLATE_NAME}
 	```
 
 	> [!TIP]

@@ -54,7 +54,6 @@ It also includes a small what-if analysis that shows how the optimal plan change
 ### Tools
 
 - Python >= 3.10
-- The RelationalAI CLI (`rai`) for initializing your profile
 
 ## Quickstart
 
