@@ -33,6 +33,8 @@ jobs:
 
       - name: Install relationalai-docs deps and sync templates
         working-directory: relationalai-docs
+        env:
+          PRIVATE: true
         run: |
           npm install
           npm run templates:sync
