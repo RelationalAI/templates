@@ -2,23 +2,22 @@
 
 - Loads schema, constraints, and row-count targets from CSV.
 - Solves an LP to choose feasible table row counts close to targets.
-- Optionally generates synthetic records consistent with solved counts.
+- Generates synthetic records consistent with the solved row counts.
 
 Run:
-    python test_data_generation.py
+    `python test_data_generation.py`
 
 Output:
-    - Solver status and total weighted deviation.
-    - Optimal row counts per table.
-    - Sample generated rows per table.
+    Prints the solver status and objective value, the optimal row counts per
+    table, and a small sample of generated rows.
 """
 
 from __future__ import annotations
 
-from datetime import date, timedelta
 from pathlib import Path
 import random
 import string as string_module
+from datetime import date, timedelta
 from time import time_ns
 
 import pandas as pd
@@ -44,6 +43,7 @@ pd.options.future.infer_string = False
 # Define semantic model & load data
 # --------------------------------------------------
 
+# Create a Semantics model container.
 model = Model(
     f"test_data_generation_{time_ns()}",
     config=globals().get("config", None),
@@ -71,11 +71,13 @@ Table = model.Concept("Table")
 # Load table data from CSV.
 data(targets_df).into(Table, keys=["table_name"])
 
-# Decision variable properties
+# Table.actual_rows decision property: solver-chosen row count per table.
 Table.actual_rows = model.Property("{Table} has actual {actual_rows:float}")
+
+# Table.deviation decision property: absolute deviation from the target.
 Table.deviation = model.Property("{Table} has {deviation:float}")
 
-# Extract FK relationships from schema
+# Extract foreign key relationships from the schema.
 fk_df = schema_df[schema_df["is_foreign_key"] == True].copy()
 cardinality_constraints = constraints_df[
     constraints_df["constraint_type"].isin(
@@ -112,13 +114,15 @@ for _, fk_row in fk_df.iterrows():
     if len(coverage) > 0:
         coverage_pct = float(coverage.iloc[0]["percentage"]) / 100.0
 
-    fk_objs.append({
-        "child": child_table,
-        "parent": parent_table,
-        "min": min_per,
-        "max": max_per,
-        "coverage": coverage_pct,
-    })
+    fk_objs.append(
+        {
+            "child": child_table,
+            "parent": parent_table,
+            "min": min_per,
+            "max": max_per,
+            "coverage": coverage_pct,
+        }
+    )
 
 # --------------------------------------------------
 # Model the decision problem
@@ -145,20 +149,20 @@ s.solve_for(
 s.satisfy(require(Table.deviation >= Table.actual_rows - Table.target_rows))
 s.satisfy(require(Table.deviation >= Table.target_rows - Table.actual_rows))
 
-# Constraint: referential integrity - child rows bounded by parent capacity
-# These constraints link specific table pairs via their actual_rows variables
+# Constraint: referential integrity - child rows bounded by parent capacity.
+# These constraints link specific table pairs via their actual_rows variables.
 Table2 = Table.ref()
 for fk_info in fk_objs:
     child_name = fk_info["child"]
     parent_name = fk_info["parent"]
 
-    # Upper bound: can't have more children than max per parent
-    s.satisfy(where(
-        Table.table_name == child_name,
-        Table2.table_name == parent_name
-    ).require(
-        Table.actual_rows <= Table2.actual_rows * fk_info["max"]
-    ))
+    # Upper bound: can't have more children than max per parent.
+    s.satisfy(
+        where(
+            Table.table_name == child_name,
+            Table2.table_name == parent_name
+        ).require(Table.actual_rows <= Table2.actual_rows * fk_info["max"])
+    )
 
     # Lower bound for mandatory participation
     mandatory = constraints_df[
@@ -172,24 +176,24 @@ for fk_info in fk_objs:
             if not pd.isna(mandatory.iloc[0]["min_value"])
             else 1
         )
-        s.satisfy(where(
-            Table.table_name == child_name,
-            Table2.table_name == parent_name
-        ).require(
-            Table.actual_rows >= Table2.actual_rows * min_per
-        ))
+        s.satisfy(
+            where(
+                Table.table_name == child_name,
+                Table2.table_name == parent_name
+            ).require(Table.actual_rows >= Table2.actual_rows * min_per)
+        )
 
 # Constraint: coverage requirements
 for fk_info in fk_objs:
     if fk_info["coverage"] > 0:
         child_name = fk_info["child"]
         parent_name = fk_info["parent"]
-        s.satisfy(where(
-            Table.table_name == child_name,
-            Table2.table_name == parent_name
-        ).require(
-            Table.actual_rows >= fk_info["coverage"] * Table2.actual_rows
-        ))
+        s.satisfy(
+            where(
+                Table.table_name == child_name,
+                Table2.table_name == parent_name
+            ).require(Table.actual_rows >= fk_info["coverage"] * Table2.actual_rows)
+        )
 
 # Objective: minimize weighted deviation from targets
 # Weight by priority (higher priority = more important to match target)
@@ -210,14 +214,17 @@ print(f"Total weighted deviation: {s.objective_value:.2f}")
 row_counts = {}
 results_df = select(Table.table_name, Table.actual_rows, Table.target_rows).to_df()
 for _, row in results_df.iterrows():
-    actual = int(round(row['actual_rows']))
-    target = int(row['target_rows'])
-    row_counts[row['table_name']] = {'actual': actual, 'target': target}
+    actual = int(round(row["actual_rows"]))
+    target = int(row["target_rows"])
+    row_counts[row["table_name"]] = {"actual": actual, "target": target}
 
 print("\nOptimal row counts:")
 for table, counts in row_counts.items():
-    dev = abs(counts['actual'] - counts['target'])
-    print(f"  {table}: {counts['actual']} rows (target: {counts['target']}, deviation: {dev})")
+    dev = abs(counts["actual"] - counts["target"])
+    print(
+        f"  {table}: {counts['actual']} rows "
+        f"(target: {counts['target']}, deviation: {dev})"
+    )
 
 # --------------------------------------------------
 # Phase 2: Generate actual test data (optional)
@@ -225,7 +232,7 @@ for table, counts in row_counts.items():
 
 
 def generate_test_data(row_counts, seed=42):
-    """Generate actual test data records based on optimal row counts."""
+    """Generate synthetic records based on the solved row counts."""
     random.seed(seed)
 
     def random_email(i):
@@ -244,7 +251,7 @@ def generate_test_data(row_counts, seed=42):
 
     generated = {}
 
-    # Customer table
+    # Generate Customer table records.
     n_customers = row_counts.get("Customer", {}).get("actual", 100)
     regions = ["North", "South", "East", "West", "Central"]
     customers = []
@@ -259,7 +266,7 @@ def generate_test_data(row_counts, seed=42):
         )
     generated["Customer"] = DataFrame(customers)
 
-    # Product table
+    # Generate Product table records.
     n_products = row_counts.get("Product", {}).get("actual", 50)
     categories = ["Electronics", "Clothing", "Home", "Sports", "Books"]
     products = []
@@ -274,7 +281,7 @@ def generate_test_data(row_counts, seed=42):
         )
     generated["Product"] = DataFrame(products)
 
-    # Order table
+    # Generate Order table records.
     n_orders = row_counts.get("Order", {}).get("actual", 500)
     statuses = ["pending", "shipped", "delivered", "cancelled"]
     orders = []
@@ -289,7 +296,7 @@ def generate_test_data(row_counts, seed=42):
         )
     generated["Order"] = DataFrame(orders)
 
-    # OrderLine table
+    # Generate OrderLine table records.
     n_orderlines = row_counts.get("OrderLine", {}).get("actual", 1500)
     orderlines = []
     for i in range(1, n_orderlines + 1):
@@ -304,7 +311,7 @@ def generate_test_data(row_counts, seed=42):
         )
     generated["OrderLine"] = DataFrame(orderlines)
 
-    # Supplier table
+    # Generate Supplier table records.
     n_suppliers = row_counts.get("Supplier", {}).get("actual", 50)
     countries = ["USA", "China", "Germany", "Japan", "UK"]
     suppliers = []
@@ -319,7 +326,7 @@ def generate_test_data(row_counts, seed=42):
         )
     generated["Supplier"] = DataFrame(suppliers)
 
-    # SupplierProduct table
+    # Generate SupplierProduct table records.
     n_supplier_products = row_counts.get("SupplierProduct", {}).get("actual", 200)
     supplier_products = []
     for i in range(1, n_supplier_products + 1):
@@ -336,7 +343,7 @@ def generate_test_data(row_counts, seed=42):
 
     return generated
 
-# Generate data and show samples
+# Generate data and show samples.
 print("\n" + "=" * 50)
 print("GENERATED TEST DATA")
 print("=" * 50)
