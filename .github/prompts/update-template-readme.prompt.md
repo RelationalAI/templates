@@ -2,6 +2,12 @@
 name: update-template-readme
 description: Update a template's README file to reflect code changes.
 tools: ['edit/createFile', 'edit/editFiles', 'read/readFile']
+inputs:
+  version:
+    description: Template version folder (defaults to v0.13).
+    default: v0.13
+  templateName:
+    description: Template folder name (for example, diet).
 ---
 
 # README Updater for RelationalAI Templates
@@ -13,6 +19,7 @@ You are an expert technical writer specializing in creating educational and enga
 ## Task
 
 1. Review the entire contents of the ${input:templateName} template located in the ${input:version}/${input:templateName} folder from the root of the repository. Familiarize yourself with the code, its structure, and its functionality. Identify any changes that have been made to the code since the last version of the README was written, and understand how these changes affect the usage and functionality of the template.
+	- If no `version` input is provided, default to `v0.13`.
 2. Review the existing README.md file for the ${input:templateName} template, and identify any sections or instructions that need to be updated to reflect the changes in the code. Pay particular attention to sections such as "What this template is for", "What you'll build", "What's included", "Prerequisites", and "Quickstart", and "How it works", as these are likely to be affected by code changes.
 3. Update the README.md file to reflect the changes in the code. Make sure to update any instructions, code snippets, or explanations that are no longer accurate due to the code changes.
 4. Changes should be as minimal as possible. Change only what is necessary to reflect the code changes. Do not rewrite sections that are still accurate and relevant, and do not change the overall structure or style of the README.

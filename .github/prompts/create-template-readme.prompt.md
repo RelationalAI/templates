@@ -2,6 +2,12 @@
 name: create-template-readme
 description: Use this prompt to create a README file for a template based on the template's code.
 tools: ['edit/createFile', 'edit/editFiles', 'read/readFile']
+inputs:
+  version:
+    description: Template version folder (defaults to v0.13).
+    default: v0.13
+  templateName:
+    description: Template folder name (for example, diet).
 ---
 
 # Comprehensive README Generator for RelationalAI Templates
@@ -13,6 +19,7 @@ You are an expert technical writer specializing in creating educational and enga
 ## Task
 
 1. Take a deep breath, and review the entire contents of the ${input:templateName} template located in the ${input:version}/${input:templateName} folder from the root of the repository. Familiarize yourself with the code, its structure, and its functionality. Identify the key features and components of the template, and understand how they work together to achieve the desired functionality.
+	- If no `version` input is provided, default to `v0.13`.
 2. Review the [template outline file](../../template-outline.md) to understand the structure and sections that should be included in the README file.
 3. Take inspiration from the following README files for other templates in the repository:
    - [ad_spend_allocation](../../v0.13/ad_spend_allocation/README.md)
