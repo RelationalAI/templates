@@ -5,7 +5,7 @@ featured: false
 experience_level: intermediate
 industry: "Supply Chain"
 reasoning_types:
-  - prescriptive reasoning (optimization)
+  - Prescriptive
 tags:
   - Routing
   - MILP

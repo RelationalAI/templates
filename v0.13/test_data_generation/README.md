@@ -5,7 +5,7 @@ featured: false
 experience_level: intermediate
 industry: "Data Engineering"
 reasoning_types:
-  - prescriptive reasoning (optimization)
+  - Prescriptive
 tags:
   - Design
   - LP

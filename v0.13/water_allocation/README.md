@@ -5,7 +5,7 @@ featured: false
 experience_level: beginner
 industry: "Utilities"
 reasoning_types:
-  - prescriptive reasoning (optimization)
+  - Prescriptive
 tags:
   - Allocation
   - LP
