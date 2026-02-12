@@ -13,114 +13,352 @@ tags:
 
 # Portfolio Optimization
 
-## What is this problem?
+> [!WARNING]
+> This template uses the early access `relational.semantics` API in version `0.13` of the `relationalai` Python package.
 
-Investors must allocate capital across multiple assets to achieve target returns while managing risk. This template implements the classic Markowitz mean-variance optimization—finding stock allocations that minimize portfolio variance (risk) while achieving a minimum expected return.
+## What this template is for
 
-The key insight is that diversification reduces risk: a portfolio of assets that don't move perfectly together can have lower variance than any individual asset. The covariance matrix captures these relationships.
+Investors and portfolio managers often need to allocate capital across multiple assets while balancing expected return against risk.
+This template implements a classic Markowitz mean-variance model that chooses non-negative allocations to minimize portfolio variance subject to a minimum expected return target.
 
-## Why is optimization valuable?
+This template uses RelationalAI's **prescriptive reasoning (optimization)** capabilities to compute an optimal allocation under constraints, and to run a small scenario analysis that illustrates the risk/return trade-off.
 
-- **Better risk-adjusted returns**: Achieves target returns with mathematically minimal risk through optimal diversification
-- **Efficient frontier analysis**: Understand the full range of risk-return trade-offs available to make informed investment decisions
-- **Constraint handling**: Incorporate regulatory limits, sector caps, and investment policies into allocation decisions systematically
+Prescriptive reasoning helps you:
 
-## What are similar problems?
+- **Quantify trade-offs** between return targets and risk.
+- **Enforce constraints** like budgets and no-short-selling.
+- **Explore scenarios** by varying the minimum expected return.
 
-- **Pension fund allocation**: Distribute retirement assets across equities, bonds, real estate, and alternatives
-- **Insurance reserve investment**: Allocate reserves to match liability duration while meeting return targets
-- **Endowment management**: Balance growth objectives with spending needs and risk tolerance
-- **Personal retirement planning**: Allocate 401(k) across funds based on risk tolerance and time horizon
+## Who this is for
 
-## Problem Details
+- You want an end-to-end example of **prescriptive reasoning (optimization)** with quadratic objectives.
+- You’re comfortable with basic Python and optimization concepts (risk/return, covariance).
 
-### Model
+## What you’ll build
 
-**Concepts:**
-- `Stock`: Available investments with expected return and variance
-- `Covariance`: Pairwise risk correlation between stocks
-- `Allocation`: Decision entity for investment amount per stock
+- A semantic model for stocks, expected returns, and pairwise covariance.
+- A quadratic program that chooses non-negative allocations.
+- A minimum return constraint and a variance-minimization objective.
+- A scenario loop over different minimum return targets with a summary table.
 
-**Relationships:**
-- `Covariance` links pairs of `Stock` entities
+## What’s included
 
-### Decision Variables
+- **Model + solve script**: `portfolio_balancing.py`
+- **Sample data**: `data/returns.csv`, `data/covariance.csv`
+- **Outputs**: per-scenario solver status/objective, allocation table, and a scenario summary
 
-- `Stock.quantity` (continuous): Amount allocated to each stock (>= 0)
+## Prerequisites
 
-### Objective
+### Access
 
-Minimize portfolio risk (variance):
-```
-minimize sum(quantity_i * quantity_j * covariance_ij)
-```
+- A Snowflake account that has the RAI Native App installed.
+- A Snowflake user with permissions to access the RAI Native App.
 
-### Constraints
+### Tools
 
-1. **Budget**: Total quantity allocated cannot exceed budget
-2. **Minimum return**: Expected portfolio return must meet target
-3. **No shorting**: Quantities must be non-negative
+- Python >= 3.10
 
-## Data
+## Quickstart
 
-Data files are located in the `data/` subdirectory.
+Follow these steps to run the template with the included sample data.
 
-### returns.csv
+1. Download the ZIP file for this template and extract it:
 
-| Column | Description |
-|--------|-------------|
-| index | Stock identifier (1, 2, 3, ...) |
-| returns | Expected return for this stock (decimal, e.g., 0.05 = 5%) |
+   ```bash
+   curl -O https://private.relational.ai/templates/zips/v0.13/portfolio_balancing.zip
+   unzip portfolio_balancing.zip
+   cd portfolio_balancing
+   ```
 
-### covariance.csv
+   > [!TIP]
+   > You can also download the template ZIP using the "Download ZIP" button at the top of this page.
 
-| Column | Description |
-|--------|-------------|
-| i | First stock index |
-| j | Second stock index |
-| covar | Covariance between stocks i and j |
+2. **Create and activate a virtual environment**
 
-The covariance matrix is symmetric (covar_ij = covar_ji).
+   ```bash
+   python -m venv .venv
+   source .venv/bin/activate
+   python -m pip install -U pip
+   ```
 
-## Usage
+3. **Install dependencies**
 
-```bash
-python portfolio_balancing.py
-```
+   ```bash
+   python -m pip install .
+   ```
 
-## Expected Output
+4. **Configure Snowflake connection and RAI profile**
 
-The script solves three minimum-return scenarios. Decision variables shown for the baseline scenario (min_return = 20). The summary below shows objectives for all scenarios.
+   ```bash
+   rai init
+   ```
+
+5. **Run the template**
+
+   ```bash
+   python portfolio_balancing.py
+   ```
+
+6. **Expected output**
+
+   The script solves three scenarios for the minimum expected return target.
+
+   ```text
+   Running scenario: min_return = 10
+     Status: OPTIMAL, Objective: ...
+
+     Portfolio allocation:
+     name   value
+     ...
+
+   ==================================================
+   Scenario Analysis Summary
+   ==================================================
+     10: OPTIMAL, obj=...
+     20: OPTIMAL, obj=...
+     30: OPTIMAL, obj=...
+   ```
+
+## Template structure
 
 ```text
-Running scenario: min_return = 20
-  Status: OPTIMAL, Objective: 1462.6398441737488
-
-  Portfolio allocation:
- name      value
-qty_1  15.447778
-qty_2 411.690255
-qty_3  44.945648
-
-==================================================
-Scenario Analysis Summary
-==================================================
-  10: OPTIMAL, obj=365.65996104343725
-  20: OPTIMAL, obj=1462.6398441737488
-  30: OPTIMAL, obj=3290.939649390935
+.
+├─ README.md
+├─ pyproject.toml
+├─ portfolio_balancing.py    # main runner / entrypoint
+└─ data/                     # sample input data
+   ├─ returns.csv
+   └─ covariance.csv
 ```
 
-The optimal portfolio demonstrates diversification across all three assets:
-- **Stock 2** (medium risk-return) dominates as the efficient core holding
-- **Stock 3** (high return) provides growth potential despite higher risk
-- **Stock 1** (low risk) provides stability through low correlation with others
+**Start here**: `portfolio_balancing.py`
 
-## Scenario Analysis
+## Sample data
 
-This template includes **efficient frontier analysis** — how does the minimum return target affect portfolio risk?
+Data files are in `data/`.
 
-| Parameter | Type | Values | Description |
-|-----------|------|--------|-------------|
-| `min_return` | Numeric | `10`, `20`, `30` | Minimum portfolio return target |
+### `returns.csv`
 
-This is a classic Markowitz efficient frontier demonstration: higher return targets require accepting proportionally higher risk (+125% variance from min_return 20 to 30) through portfolio concentration.
+Defines one expected return value per stock.
+
+| Column | Meaning |
+| --- | --- |
+| `index` | Stock identifier |
+| `returns` | Expected return (decimal, e.g., `0.04` = 4%) |
+
+### `covariance.csv`
+
+Defines pairwise covariance values between stock pairs.
+
+| Column | Meaning |
+| --- | --- |
+| `i` | First stock index |
+| `j` | Second stock index |
+| `covar` | Covariance between stocks `i` and `j` |
+
+> [!NOTE]
+> The covariance matrix is symmetric in the sample data (`covar_ij == covar_ji`).
+
+## Model overview
+
+The semantic model uses a single concept (`Stock`) and a pairwise covariance property (`Stock.covar`). The decision variable is a continuous allocation per stock.
+
+### `Stock`
+
+Represents an investable asset.
+
+| Property | Type | Identifying? | Notes |
+| --- | --- | --- | --- |
+| `index` | int | Yes | Loaded from `data/returns.csv` |
+| `returns` | float | No | Expected return |
+| `covar` | float | No | Pairwise covariance with another `Stock` |
+| `quantity` | float | No | Decision variable (continuous, non-negative) |
+
+## How it works
+
+This section walks through the highlights in `portfolio_balancing.py`.
+
+### Import libraries and configure inputs
+
+First, the script imports the Semantics and optimization APIs, configures the data directory, and defines the key parameters:
+
+```python
+from pathlib import Path
+
+import pandas
+from pandas import read_csv
+
+from relationalai.semantics import Float, Model, data, require, select, sum, where
+from relationalai.semantics.reasoners.optimization import Solver, SolverModel
+
+# --------------------------------------------------
+# Configure inputs
+# --------------------------------------------------
+
+DATA_DIR = Path(__file__).parent / "data"
+
+# Disable pandas inference of string types. This ensures that string columns
+# in the CSVs are loaded as object dtype. This is only required when using
+# relationalai versions prior to v1.0.
+pandas.options.future.infer_string = False
+
+# Budget and minimum return parameters.
+BUDGET = 1000
+MIN_RETURN = 20
+```
+
+### Define concepts and load CSV data
+
+Next, it creates a `Model`, defines the `Stock` concept, and loads both CSVs. The covariance values are defined by joining stock indices using `where(...).define(...)`:
+
+```python
+# --------------------------------------------------
+# Define semantic model & load data
+# --------------------------------------------------
+
+# Create a Semantics model container.
+model = Model("portfolio", config=globals().get("config", None), use_lqp=False)
+
+# Stock concept: available investments with expected returns.
+Stock = model.Concept("Stock")
+Stock.returns = model.Property("{Stock} has {returns:float}")
+
+# Load expected return data from CSV.
+data(read_csv(DATA_DIR / "returns.csv")).into(Stock, keys=["index"])
+
+# Stock.covar property: covariance matrix between stock pairs.
+Stock.covar = model.Property("{Stock} and {stock2:Stock} have {covar:float}")
+Stock2 = Stock.ref()
+
+# Load covariance data from CSV.
+covar_csv = read_csv(DATA_DIR / "covariance.csv")
+pairs = data(covar_csv)
+where(
+    Stock.index == pairs.i,
+    Stock2.index == pairs.j
+).define(
+    Stock.covar(Stock, Stock2, pairs.covar)
+)
+```
+
+### Define decision variables, constraints, and objective
+
+Then it creates a decision variable `Stock.quantity` and registers constraints and the quadratic variance objective inside `build_formulation(...)`:
+
+```python
+# --------------------------------------------------
+# Model the decision problem
+# --------------------------------------------------
+
+# Stock.quantity decision variable: amount allocated to each stock.
+Stock.quantity = model.Property("{Stock} quantity is {x:float}")
+
+c = Float.ref()
+
+# Scenario parameter. This is updated inside the scenario loop.
+min_return = MIN_RETURN
+
+# Budget is fixed across scenarios.
+budget = BUDGET
+
+
+def build_formulation(s):
+    """Register variables, constraints, and objective on the solver model."""
+    # Decision variable: quantity of each stock.
+    s.solve_for(Stock.quantity, name=["qty", Stock.index])
+
+    # Constraint: no short selling.
+    bounds = require(Stock.quantity >= 0)
+    s.satisfy(bounds)
+
+    # Constraint: budget limit.
+    budget_constraint = require(sum(Stock.quantity) <= budget)
+    s.satisfy(budget_constraint)
+
+    # Constraint: minimum return target (scenario parameter).
+    return_constraint = require(sum(Stock.returns * Stock.quantity) >= min_return)
+    s.satisfy(return_constraint)
+
+    # Objective: minimize portfolio risk (variance)
+    risk = sum(c * Stock.quantity * Stock2.quantity).where(Stock.covar(Stock2, c))
+    s.minimize(risk)
+```
+
+### Solve and print results
+
+Finally, the script loops over multiple values of `min_return`, creates a fresh `SolverModel` for each scenario, and prints both the allocation and a summary:
+
+```python
+# --------------------------------------------------
+# Solve with Scenario Analysis (Numeric Parameter)
+# --------------------------------------------------
+
+SCENARIO_PARAM = "min_return"
+SCENARIO_VALUES = [10, 20, 30]
+
+scenario_results = []
+
+for scenario_value in SCENARIO_VALUES:
+    print(f"\nRunning scenario: {SCENARIO_PARAM} = {scenario_value}")
+
+    # Set scenario parameter value.
+    min_return = scenario_value
+
+    # Create a fresh SolverModel for each scenario.
+    s = SolverModel(model, "cont")
+    build_formulation(s)
+
+    solver = Solver("highs")
+    s.solve(solver, time_limit_sec=60)
+
+    scenario_results.append({
+        "scenario": scenario_value,
+        "status": str(s.termination_status),
+        "objective": s.objective_value,
+    })
+    print(f"  Status: {s.termination_status}, Objective: {s.objective_value}")
+
+    # Print portfolio allocation from solver results.
+    var_df = s.variable_values().to_df()
+    qty_df = var_df[
+        var_df["name"].str.startswith("qty") & (var_df["float"] > 0.001)
+    ].rename(columns={"float": "value"})
+    print(f"\n  Portfolio allocation:")
+    print(qty_df.to_string(index=False))
+
+# --------------------------------------------------
+# Solve and check solution
+# --------------------------------------------------
+
+# Print a scenario summary table.
+print("\n" + "=" * 50)
+print("Scenario Analysis Summary")
+print("=" * 50)
+for result in scenario_results:
+    print(f"  {result['scenario']}: {result['status']}, obj={result['objective']}")
+```
+
+## Troubleshooting
+
+<details>
+  <summary>I get <code>ModuleNotFoundError</code> when running the script</summary>
+
+  - Confirm you created and activated the virtual environment from the Quickstart.
+  - Reinstall dependencies with `python -m pip install .`.
+  - Verify you are running `python portfolio_balancing.py` from the `portfolio_balancing/` folder.
+</details>
+
+<details>
+  <summary>The script fails while reading a CSV from <code>data/</code></summary>
+
+  - Confirm `data/returns.csv` and `data/covariance.csv` exist.
+  - Verify headers match the expected columns (`index`, `returns`, `i`, `j`, `covar`).
+  - Check for missing values and non-numeric entries in return/covariance columns.
+</details>
+
+<details>
+  <summary>I see an unexpected termination status (not <code>OPTIMAL</code>)</summary>
+
+  - Try re-running; if you hit a time limit, consider increasing `time_limit_sec`.
+  - If you changed scenario parameters, confirm the minimum return target is feasible given the budget.
+</details>
