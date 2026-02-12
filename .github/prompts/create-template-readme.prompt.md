@@ -24,6 +24,13 @@ You are an expert technical writer specializing in creating educational and enga
 6. Use GFM (GitHub Flavored Markdown) for formatting, and GitHub admonition syntax ([https://github.com/orgs/community/discussions/16925](https://github.com/orgs/community/discussions/16925)) where appropriate.
 7. Save your README to the ${input:version}/${input:templateName}/README.md file in the root of the repository. If a README.md file already exists, overwrite it with the new content you have generated.
 
+## Reasoning type formatting requirement
+
+In the **What this template is for** section, include a sentence that explicitly identifies the template's reasoning type(s) in **bold**.
+
+- The bold text MUST match the template's declared reasoning type(s) in the README front matter (for example: **prescriptive reasoning (optimization)**).
+- Use the same phrasing style as the newer READMEs (for example: "This template uses RelationalAI's **prescriptive reasoning (optimization)** capabilities to ...").
+
 ## Quickstart ZIP download requirement
 
 In the **Quickstart** section, the first numbered step MUST be a ZIP download/extract step using exactly the following commands and tip admonition (substitute the version/template name variables only):
