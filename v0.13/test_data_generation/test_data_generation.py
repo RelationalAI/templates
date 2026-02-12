@@ -1,38 +1,67 @@
-# test data generation problem:
-# determine optimal row counts for test database tables satisfying schema constraints
+"""Test data generation (prescriptive optimization) template.
 
+- Loads schema, constraints, and row-count targets from CSV.
+- Solves an LP to choose feasible table row counts close to targets.
+- Optionally generates synthetic records consistent with solved counts.
+
+Run:
+    python test_data_generation.py
+
+Output:
+    - Solver status and total weighted deviation.
+    - Optimal row counts per table.
+    - Sample generated rows per table.
+"""
+
+from __future__ import annotations
+
+from datetime import date, timedelta
 from pathlib import Path
-from time import time_ns
 import random
 import string as string_module
-from datetime import date, timedelta
+from time import time_ns
 
-import pandas; pandas.options.future.infer_string = False
-from pandas import read_csv, DataFrame
 import pandas as pd
+from pandas import DataFrame, read_csv
 
-from relationalai.semantics import Model, data, define, require, select, sum as rai_sum, where
+from relationalai.semantics import Model, data, require, select, sum as rai_sum, where
 from relationalai.semantics.reasoners.optimization import Solver, SolverModel
 
-model = Model(f"test_data_generation_{time_ns()}", config=globals().get("config", None), use_lqp=False)
 
 # --------------------------------------------------
-# Define ontology & load data
+# Configure inputs
 # --------------------------------------------------
 
-data_dir = Path(__file__).parent / "data"
-scale_factor = 1.0
+DATA_DIR = Path(__file__).parent / "data"
+SCALE_FACTOR = 1.0
+
+# Disable pandas inference of string types. This ensures that string columns
+# in the CSVs are loaded as object dtype. This is only required when using
+# relationalai versions prior to v1.0.
+pandas.options.future.infer_string = False
+
+
+
+# --------------------------------------------------
+# Define semantic model & load data
+# --------------------------------------------------
+
+model = Model(
+    f"test_data_generation_{time_ns()}",
+    config=globals().get("config", None),
+    use_lqp=False,
+)
 
 # Load schema and constraint data
-schema_df = read_csv(data_dir / "testgen_schema.csv")
-constraints_df = read_csv(data_dir / "testgen_constraints.csv")
-targets_df = read_csv(data_dir / "testgen_targets.csv")
+schema_df = read_csv(DATA_DIR / "testgen_schema.csv")
+constraints_df = read_csv(DATA_DIR / "testgen_constraints.csv")
+targets_df = read_csv(DATA_DIR / "testgen_targets.csv")
 
 # Scale targets
 targets_df = targets_df.copy()
-targets_df['target_rows'] = (targets_df['target_rows'] * scale_factor).astype(int)
-targets_df['min_rows'] = (targets_df['min_rows'] * scale_factor).astype(int)
-targets_df['max_rows'] = (targets_df['max_rows'] * scale_factor).astype(int)
+targets_df["target_rows"] = (targets_df["target_rows"] * SCALE_FACTOR).astype(int)
+targets_df["min_rows"] = (targets_df["min_rows"] * SCALE_FACTOR).astype(int)
+targets_df["max_rows"] = (targets_df["max_rows"] * SCALE_FACTOR).astype(int)
 
 # Concept: database tables with row count targets
 Table = model.Concept("Table")
@@ -42,53 +71,49 @@ data(targets_df).into(Table, keys=["table_name"])
 Table.actual_rows = model.Property("{Table} has actual {actual_rows:float}")
 Table.deviation = model.Property("{Table} has {deviation:float}")
 
-# Build lookup for table objects by name
-table_objs = {}
-for _, row in targets_df.iterrows():
-    # Query the Table concept for this table_name
-    table_objs[row['table_name']] = row
-
 # Extract FK relationships from schema
-fk_df = schema_df[schema_df['is_foreign_key'] == True].copy()
+fk_df = schema_df[schema_df["is_foreign_key"] == True].copy()
 cardinality_constraints = constraints_df[
-    constraints_df['constraint_type'].isin(['cardinality_bound', 'mandatory_participation', 'frequency'])
+    constraints_df["constraint_type"].isin(
+        ["cardinality_bound", "mandatory_participation", "frequency"]
+    )
 ]
 
 fk_objs = []
 for _, fk_row in fk_df.iterrows():
-    child_table = fk_row['table_name']
-    parent_table = fk_row['references_table']
+    child_table = fk_row["table_name"]
+    parent_table = fk_row["references_table"]
 
     card = cardinality_constraints[
-        (cardinality_constraints['table_name'] == child_table) &
-        (cardinality_constraints['related_table'] == parent_table)
+        (cardinality_constraints["table_name"] == child_table)
+        & (cardinality_constraints["related_table"] == parent_table)
     ]
 
     min_per = 1
     max_per = 100
 
     for _, c in card.iterrows():
-        if c['constraint_type'] == 'cardinality_bound':
-            min_per = int(c['min_value']) if not pd.isna(c['min_value']) else 1
-            max_per = int(c['max_value']) if not pd.isna(c['max_value']) else 100
-        elif c['constraint_type'] == 'frequency':
-            max_per = int(c['max_value']) if not pd.isna(c['max_value']) else 100
+        if c["constraint_type"] == "cardinality_bound":
+            min_per = int(c["min_value"]) if not pd.isna(c["min_value"]) else 1
+            max_per = int(c["max_value"]) if not pd.isna(c["max_value"]) else 100
+        elif c["constraint_type"] == "frequency":
+            max_per = int(c["max_value"]) if not pd.isna(c["max_value"]) else 100
 
     coverage = constraints_df[
-        (constraints_df['constraint_type'] == 'coverage') &
-        (constraints_df['table_name'] == child_table) &
-        (constraints_df['related_table'] == parent_table)
+        (constraints_df["constraint_type"] == "coverage")
+        & (constraints_df["table_name"] == child_table)
+        & (constraints_df["related_table"] == parent_table)
     ]
     coverage_pct = 0.0
     if len(coverage) > 0:
-        coverage_pct = float(coverage.iloc[0]['percentage']) / 100.0
+        coverage_pct = float(coverage.iloc[0]["percentage"]) / 100.0
 
     fk_objs.append({
-        'child': child_table,
-        'parent': parent_table,
-        'min': min_per,
-        'max': max_per,
-        'coverage': coverage_pct
+        "child": child_table,
+        "parent": parent_table,
+        "min": min_per,
+        "max": max_per,
+        "coverage": coverage_pct,
     })
 
 # --------------------------------------------------
@@ -120,25 +145,29 @@ s.satisfy(require(Table.deviation >= Table.target_rows - Table.actual_rows))
 # These constraints link specific table pairs via their actual_rows variables
 Table2 = Table.ref()
 for fk_info in fk_objs:
-    child_name = fk_info['child']
-    parent_name = fk_info['parent']
+    child_name = fk_info["child"]
+    parent_name = fk_info["parent"]
 
     # Upper bound: can't have more children than max per parent
     s.satisfy(where(
         Table.table_name == child_name,
         Table2.table_name == parent_name
     ).require(
-        Table.actual_rows <= Table2.actual_rows * fk_info['max']
+        Table.actual_rows <= Table2.actual_rows * fk_info["max"]
     ))
 
     # Lower bound for mandatory participation
     mandatory = constraints_df[
-        (constraints_df['constraint_type'] == 'mandatory_participation') &
-        (constraints_df['table_name'] == child_name) &
-        (constraints_df['related_table'] == parent_name)
+        (constraints_df["constraint_type"] == "mandatory_participation")
+        & (constraints_df["table_name"] == child_name)
+        & (constraints_df["related_table"] == parent_name)
     ]
     if len(mandatory) > 0:
-        min_per = int(mandatory.iloc[0]['min_value']) if not pd.isna(mandatory.iloc[0]['min_value']) else 1
+        min_per = (
+            int(mandatory.iloc[0]["min_value"])
+            if not pd.isna(mandatory.iloc[0]["min_value"])
+            else 1
+        )
         s.satisfy(where(
             Table.table_name == child_name,
             Table2.table_name == parent_name
@@ -148,14 +177,14 @@ for fk_info in fk_objs:
 
 # Constraint: coverage requirements
 for fk_info in fk_objs:
-    if fk_info['coverage'] > 0:
-        child_name = fk_info['child']
-        parent_name = fk_info['parent']
+    if fk_info["coverage"] > 0:
+        child_name = fk_info["child"]
+        parent_name = fk_info["parent"]
         s.satisfy(where(
             Table.table_name == child_name,
             Table2.table_name == parent_name
         ).require(
-            Table.actual_rows >= fk_info['coverage'] * Table2.actual_rows
+            Table.actual_rows >= fk_info["coverage"] * Table2.actual_rows
         ))
 
 # Objective: minimize weighted deviation from targets
