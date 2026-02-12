@@ -28,7 +28,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: relationalai/relationalai-docs
-          ref: private
           token: ${{ secrets.DOCS_REPO_TOKEN }}
           path: relationalai-docs
 
