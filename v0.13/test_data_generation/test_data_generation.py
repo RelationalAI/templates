@@ -38,9 +38,7 @@ SCALE_FACTOR = 1.0
 # Disable pandas inference of string types. This ensures that string columns
 # in the CSVs are loaded as object dtype. This is only required when using
 # relationalai versions prior to v1.0.
-pandas.options.future.infer_string = False
-
-
+pd.options.future.infer_string = False
 
 # --------------------------------------------------
 # Define semantic model & load data
@@ -52,19 +50,25 @@ model = Model(
     use_lqp=False,
 )
 
-# Load schema and constraint data
+# Load schema data from CSV.
 schema_df = read_csv(DATA_DIR / "testgen_schema.csv")
+
+# Load constraint data from CSV.
 constraints_df = read_csv(DATA_DIR / "testgen_constraints.csv")
+
+# Load row-count targets from CSV.
 targets_df = read_csv(DATA_DIR / "testgen_targets.csv")
 
-# Scale targets
+# Scale row-count targets and bounds.
 targets_df = targets_df.copy()
 targets_df["target_rows"] = (targets_df["target_rows"] * SCALE_FACTOR).astype(int)
 targets_df["min_rows"] = (targets_df["min_rows"] * SCALE_FACTOR).astype(int)
 targets_df["max_rows"] = (targets_df["max_rows"] * SCALE_FACTOR).astype(int)
 
-# Concept: database tables with row count targets
+# Table concept: represents a table in the schema.
 Table = model.Concept("Table")
+
+# Load table data from CSV.
 data(targets_df).into(Table, keys=["table_name"])
 
 # Decision variable properties
@@ -117,7 +121,7 @@ for _, fk_row in fk_df.iterrows():
     })
 
 # --------------------------------------------------
-# Model the problem
+# Model the decision problem
 # --------------------------------------------------
 
 s = SolverModel(model, "cont", use_pb=True)
@@ -127,14 +131,14 @@ s.solve_for(
     Table.actual_rows,
     name=["n", Table.table_name],
     lower=Table.min_rows,
-    upper=Table.max_rows
+    upper=Table.max_rows,
 )
 
 # Variable: deviation from target (for objective)
 s.solve_for(
     Table.deviation,
     name=["dev", Table.table_name],
-    lower=0
+    lower=0,
 )
 
 # Constraint: deviation captures |actual - target| (linearized)
@@ -219,13 +223,15 @@ for table, counts in row_counts.items():
 # Phase 2: Generate actual test data (optional)
 # --------------------------------------------------
 
+
 def generate_test_data(row_counts, seed=42):
     """Generate actual test data records based on optimal row counts."""
     random.seed(seed)
 
     def random_email(i):
-        domains = ['gmail.com', 'yahoo.com', 'outlook.com', 'company.com']
-        return f"user{i}_{''.join(random.choices(string_module.ascii_lowercase, k=4))}@{random.choice(domains)}"
+        domains = ["gmail.com", "yahoo.com", "outlook.com", "company.com"]
+        suffix = "".join(random.choices(string_module.ascii_lowercase, k=4))
+        return f"user{i}_{suffix}@{random.choice(domains)}"
 
     def random_date(start_year=2020, end_year=2024):
         start = date(start_year, 1, 1)
@@ -239,38 +245,94 @@ def generate_test_data(row_counts, seed=42):
     generated = {}
 
     # Customer table
-    n_customers = row_counts.get('Customer', {}).get('actual', 100)
-    regions = ['North', 'South', 'East', 'West', 'Central']
-    customers = [{'customer_id': i, 'email': random_email(i), 'region': random.choice(regions), 'created_date': random_date(2018, 2023)} for i in range(1, n_customers + 1)]
-    generated['Customer'] = DataFrame(customers)
+    n_customers = row_counts.get("Customer", {}).get("actual", 100)
+    regions = ["North", "South", "East", "West", "Central"]
+    customers = []
+    for i in range(1, n_customers + 1):
+        customers.append(
+            {
+                "customer_id": i,
+                "email": random_email(i),
+                "region": random.choice(regions),
+                "created_date": random_date(2018, 2023),
+            }
+        )
+    generated["Customer"] = DataFrame(customers)
 
     # Product table
-    n_products = row_counts.get('Product', {}).get('actual', 50)
-    categories = ['Electronics', 'Clothing', 'Home', 'Sports', 'Books']
-    products = [{'product_id': i, 'name': f"{random.choice(categories)} Item {i}", 'category': random.choice(categories), 'price': random_float(0.99, 999.99)} for i in range(1, n_products + 1)]
-    generated['Product'] = DataFrame(products)
+    n_products = row_counts.get("Product", {}).get("actual", 50)
+    categories = ["Electronics", "Clothing", "Home", "Sports", "Books"]
+    products = []
+    for i in range(1, n_products + 1):
+        products.append(
+            {
+                "product_id": i,
+                "name": f"{random.choice(categories)} Item {i}",
+                "category": random.choice(categories),
+                "price": random_float(0.99, 999.99),
+            }
+        )
+    generated["Product"] = DataFrame(products)
 
     # Order table
-    n_orders = row_counts.get('Order', {}).get('actual', 500)
-    statuses = ['pending', 'shipped', 'delivered', 'cancelled']
-    orders = [{'order_id': i, 'customer_id': random.randint(1, max(1, n_customers)), 'order_date': random_date(2023, 2024), 'status': random.choice(statuses)} for i in range(1, n_orders + 1)]
-    generated['Order'] = DataFrame(orders)
+    n_orders = row_counts.get("Order", {}).get("actual", 500)
+    statuses = ["pending", "shipped", "delivered", "cancelled"]
+    orders = []
+    for i in range(1, n_orders + 1):
+        orders.append(
+            {
+                "order_id": i,
+                "customer_id": random.randint(1, max(1, n_customers)),
+                "order_date": random_date(2023, 2024),
+                "status": random.choice(statuses),
+            }
+        )
+    generated["Order"] = DataFrame(orders)
 
     # OrderLine table
-    n_orderlines = row_counts.get('OrderLine', {}).get('actual', 1500)
-    orderlines = [{'orderline_id': i, 'order_id': random.randint(1, max(1, n_orders)), 'product_id': random.randint(1, max(1, n_products)), 'quantity': random.randint(1, 10), 'unit_price': random_float(0.99, 999.99)} for i in range(1, n_orderlines + 1)]
-    generated['OrderLine'] = DataFrame(orderlines)
+    n_orderlines = row_counts.get("OrderLine", {}).get("actual", 1500)
+    orderlines = []
+    for i in range(1, n_orderlines + 1):
+        orderlines.append(
+            {
+                "orderline_id": i,
+                "order_id": random.randint(1, max(1, n_orders)),
+                "product_id": random.randint(1, max(1, n_products)),
+                "quantity": random.randint(1, 10),
+                "unit_price": random_float(0.99, 999.99),
+            }
+        )
+    generated["OrderLine"] = DataFrame(orderlines)
 
     # Supplier table
-    n_suppliers = row_counts.get('Supplier', {}).get('actual', 50)
-    countries = ['USA', 'China', 'Germany', 'Japan', 'UK']
-    suppliers = [{'supplier_id': i, 'name': f"Supplier_{i}", 'country': random.choice(countries), 'reliability_score': random_float(50.0, 100.0)} for i in range(1, n_suppliers + 1)]
-    generated['Supplier'] = DataFrame(suppliers)
+    n_suppliers = row_counts.get("Supplier", {}).get("actual", 50)
+    countries = ["USA", "China", "Germany", "Japan", "UK"]
+    suppliers = []
+    for i in range(1, n_suppliers + 1):
+        suppliers.append(
+            {
+                "supplier_id": i,
+                "name": f"Supplier_{i}",
+                "country": random.choice(countries),
+                "reliability_score": random_float(50.0, 100.0),
+            }
+        )
+    generated["Supplier"] = DataFrame(suppliers)
 
     # SupplierProduct table
-    n_supplier_products = row_counts.get('SupplierProduct', {}).get('actual', 200)
-    supplier_products = [{'supplierproduct_id': i, 'supplier_id': random.randint(1, max(1, n_suppliers)), 'product_id': random.randint(1, max(1, n_products)), 'lead_time_days': random.randint(1, 90), 'unit_cost': random_float(0.50, 500.0)} for i in range(1, n_supplier_products + 1)]
-    generated['SupplierProduct'] = DataFrame(supplier_products)
+    n_supplier_products = row_counts.get("SupplierProduct", {}).get("actual", 200)
+    supplier_products = []
+    for i in range(1, n_supplier_products + 1):
+        supplier_products.append(
+            {
+                "supplierproduct_id": i,
+                "supplier_id": random.randint(1, max(1, n_suppliers)),
+                "product_id": random.randint(1, max(1, n_products)),
+                "lead_time_days": random.randint(1, 90),
+                "unit_cost": random_float(0.50, 500.0),
+            }
+        )
+    generated["SupplierProduct"] = DataFrame(supplier_products)
 
     return generated
 
