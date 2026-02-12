@@ -35,6 +35,7 @@ jobs:
         working-directory: relationalai-docs
         env:
           PRIVATE: true
+          RAI_TEMPLATES_REPO_TOKEN: ${{ secrets.DOCS_REPO_TOKEN }}
         run: |
           npm install
           npm run templates:sync
