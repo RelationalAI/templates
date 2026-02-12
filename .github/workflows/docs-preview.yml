@@ -64,53 +64,66 @@ jobs:
             exit 1
           fi
 
-          # Convert dotenv-style lines into plain KEY=VALUE lines for GitHub Actions.
-          # GitHub Actions does NOT interpret quotes in $GITHUB_ENV, so a line like
-          # FOO="123" would set the literal value "123". Strip enclosing quotes.
-          normalized="$(
-            line=''
-            while :; do
-              IFS= read -r line || { [[ -n "$line" ]] || break; }
+          # IMPORTANT: `aldenquimby/deploy-to-vercel-action@v2` parses BUILD_ENV/ENV as an
+          # "array" input by splitting on newlines *and commas*. That means passing
+          # KEY=VALUE lines breaks whenever VALUE contains a comma (e.g. v1.0a5,v1.0a6).
+          #
+          # Workaround:
+          # - Export key/value pairs into $GITHUB_ENV so they exist in the runner env.
+          # - Pass only the variable *names* (keys) to the action, so Vercel CLI reads
+          #   values from the environment.
+
+          action_env_lines="$(
+            while IFS= read -r line || [[ -n "$line" ]]; do
               [[ "$line" =~ ^[[:space:]]*# ]] && continue
               [[ "$line" =~ ^[[:space:]]*$ ]] && continue
-
               # Optional leading export
               line="${line#export }"
-
-              key="${line%%=*}"
-              val="${line#*=}"
-
-              # Strip surrounding quotes (common in .env files)
-              if [[ ${#val} -ge 2 && "$val" == \"*\" ]]; then
-                val="${val:1:${#val}-2}"
-                val="${val//\\\"/\"}"
-                val="${val//\\\\/\\}"
-              elif [[ ${#val} -ge 2 && "$val" == \'*\' ]]; then
-                val="${val:1:${#val}-2}"
-              fi
-
-              printf '%s=%s\n' "$key" "$val"
+              printf '%s\n' "$line"
             done < "$env_file"
           )"
 
-          # Export to the job environment so subsequent steps (and the deploy action)
-          # can access expected variables.
-          echo "$normalized" >> "$GITHUB_ENV"
+          env_keys="$(
+            echo "$action_env_lines" \
+              | awk -F= 'NF>=2 {print $1}' \
+              | sed -E 's/[[:space:]]+$//' \
+              | sort -u
+          )"
+
+          # Parse dotenv into key/value for $GITHUB_ENV.
+          # Note: We intentionally *unquote* values here; GitHub won't interpret quotes.
+          while IFS= read -r line || [[ -n "$line" ]]; do
+            [[ "$line" =~ ^[[:space:]]*# ]] && continue
+            [[ "$line" =~ ^[[:space:]]*$ ]] && continue
+            line="${line#export }"
+
+            key="${line%%=*}"
+            val="${line#*=}"
+
+            if [[ ${#val} -ge 2 && "$val" == \"*\" ]]; then
+              val="${val:1:${#val}-2}"
+              val="${val//\\\"/\"}"
+              val="${val//\\\\/\\}"
+            elif [[ ${#val} -ge 2 && "$val" == \'*\' ]]; then
+              val="${val:1:${#val}-2}"
+            fi
+
+            {
+              echo "${key}<<__VercelEnvEOF__"
+              echo "${val}"
+              echo "__VercelEnvEOF__"
+            } >> "$GITHUB_ENV"
+          done < "$env_file"
 
           # CI-safe debug: print which keys were loaded (never values).
           echo "Loaded environment variables from $env_file:" >&2
-          echo "$normalized" \
-            | sed -E 's/^export[[:space:]]+//' \
-            | awk -F= 'NF>=2 {print $1}' \
-            | sed -E 's/[[:space:]]+$//' \
-            | sort -u \
-            | awk '{print "- " $0}' >&2
+          echo "$env_keys" | awk '{print "- " $0}' >&2
 
-          count="$(echo "$normalized" | awk -F= 'NF>=2 {print $1}' | wc -l | tr -d ' ')"
+          count="$(echo "$env_keys" | wc -l | tr -d ' ')"
           echo "Total vars loaded: $count" >&2
           {
-            echo "env<<EOF"
-            echo "$normalized"
+            echo "keys<<EOF"
+            echo "$env_keys"
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
@@ -118,6 +131,8 @@ jobs:
         uses: aldenquimby/deploy-to-vercel-action@v2
         id: vercel-deploy
         if: ${{ github.actor != 'dependabot[bot]' && github.event.pull_request.user.login != 'dependabot[bot]' }}
+        env:
+          RAI_TEMPLATES_REPO_BRANCH: ${{ github.head_ref || github.ref_name }}
         with:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
@@ -127,9 +142,11 @@ jobs:
           PRODUCTION: false
           WORKING_DIRECTORY: relationalai-docs
           BUILD_ENV: |
-            ${{ steps.vercel-pulled-env.outputs.env }}
-            RAI_TEMPLATES_REPO_BRANCH=${{ github.head_ref || github.ref_name }}
-          ENV: ${{ steps.vercel-pulled-env.outputs.env }}
+            ${{ steps.vercel-pulled-env.outputs.keys }}
+            RAI_TEMPLATES_REPO_BRANCH
+          ENV: |
+            ${{ steps.vercel-pulled-env.outputs.keys }}
+            RAI_TEMPLATES_REPO_BRANCH
       - uses: phulsechinmay/rewritable-pr-comment@v0.3.0
         if: ${{ steps.vercel-deploy.outputs.DEPLOYMENT_CREATED }}
         with:
@@ -139,7 +156,7 @@ jobs:
             <table>
               <tr>
                 <td><strong>✅ Preview:</strong></td>
-                <td><a href='${{ steps.vercel-deploy.outputs.PREVIEW_URL }}'>${{ steps.vercel-deploy.outputs.PREVIEW_URL }}</a></td>
+                <td><a href='${{ steps.vercel-deploy.outputs.PREVIEW_URL }}/early-access/pyrel/templates'>${{ steps.vercel-deploy.outputs.PREVIEW_URL }}/early-access/pyrel/templates</a></td>
               </tr>
               <tr>
                 <td><strong>🔍 Inspect:</strong></td>
