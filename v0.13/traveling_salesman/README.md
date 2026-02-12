@@ -60,14 +60,14 @@ Follow these steps to run the template with the included sample data.
 
 1. Download the ZIP file for this template and extract it:
 
-	```bash
-	curl -O https://private.relational.ai/templates/zips/v0.13/traveling_salesman.zip
-	unzip traveling_salesman.zip
-	cd traveling_salesman
-	```
+   ```bash
+   curl -O https://private.relational.ai/templates/zips/v0.13/traveling_salesman.zip
+   unzip traveling_salesman.zip
+   cd traveling_salesman
+   ```
 
-	> [!TIP]
-	> You can also download the template ZIP using the "Download ZIP" button at the top of this page.
+   > [!TIP]
+   > You can also download the template ZIP using the "Download ZIP" button at the top of this page.
 
 2. **Create and activate a virtual environment**
 
@@ -206,7 +206,7 @@ pandas.options.future.infer_string = False
 
 ### Define concepts and load CSV data
 
-Next, it defines an `Edge` concept keyed by `(i, j)`, loads `distances.csv` via `data(...).into(...)`, and derives the `Node` set from the edge endpoints:
+Next, it defines an `Edge` concept keyed by `(i, j)`, loads `distances.csv` via `data(...).into(...)`, and derives the `Node` set from edge start nodes:
 
 ```python
 # --------------------------------------------------
@@ -220,10 +220,11 @@ model = Model("tsp", config=globals().get("config", None), use_lqp=False)
 Edge = model.Concept("Edge")
 Edge.dist = model.Property("{Edge} has {dist:float}")
 
-# Load distance data from CSV.
-data(read_csv(DATA_DIR / "distances.csv")).into(Edge, keys=["i", "j"])
+# Load edge distance data from CSV.
+distances_csv = read_csv(DATA_DIR / "distances.csv")
+data(distances_csv).into(Edge, keys=["i", "j"])
 
-# Node concept: node identifiers derived from edge endpoints.
+# Node concept: node identifiers derived from edge start nodes.
 Node = model.Concept("Node")
 define(Node.new(v=Edge.i))
 ```
@@ -237,10 +238,12 @@ With the base entities in place, the template creates a `SolverModel` and regist
 # Model the decision problem
 # --------------------------------------------------
 
+# Pre-compute the number of nodes (used by the MTZ formulation).
+
 node_count = count(Node.ref())
 
-Ni = Node
-Nj = Node.ref()
+Node_i = Node
+Node_j = Node.ref()
 
 s = SolverModel(model, "cont")
 
@@ -272,10 +275,10 @@ s.satisfy(flow_balance)
 mtz = where(
     Edge.i > 1,
     Edge.j > 1,
-    Ni.v == Edge.i,
-    Nj.v == Edge.j
+  Node_i.v == Edge.i,
+  Node_j.v == Edge.j
 ).require(
-    Ni.u_node - Nj.u_node + node_count * Edge.x_edge <= node_count - 1
+  Node_i.u_node - Node_j.u_node + node_count * Edge.x_edge <= node_count - 1
 )
 s.satisfy(mtz)
 ```
@@ -312,6 +315,7 @@ print(tour.to_string(index=False))
 - Replace `data/distances.csv` with your own edge list.
 - Ensure the file includes columns `i`, `j`, and `dist`.
 - For an undirected graph, include both directions (both $(i, j)$ and $(j, i)$).
+- Make sure every node appears at least once in the `i` column. (In this template, nodes are derived from `Edge.i`.)
 
 ### Tune parameters
 
@@ -326,7 +330,7 @@ print(tour.to_string(index=False))
 ## Troubleshooting
 
 <details>
-  <summary>Why does authentication/configuration fail?</summary>
+<summary>Why does authentication/configuration fail?</summary>
 
 - Run `rai init` to create/update `raiconfig.toml`.
 - If you have multiple profiles, set `RAI_PROFILE` or switch profiles in your config.
@@ -334,7 +338,15 @@ print(tour.to_string(index=False))
 </details>
 
 <details>
-  <summary>Why do I get <code>ModuleNotFoundError</code>?</summary>
+<summary>Why does the script fail to connect to the RAI Native App?</summary>
+
+- Verify the Snowflake account/role/warehouse and `rai_app_name` are correct in `raiconfig.toml`.
+- Ensure the RAI Native App is installed and you have access.
+
+</details>
+
+<details>
+<summary>Why do I get <code>ModuleNotFoundError</code>?</summary>
 
 - Confirm your virtual environment is active (`source .venv/bin/activate`).
 - Reinstall dependencies from this folder: `python -m pip install .`.
@@ -343,7 +355,7 @@ print(tour.to_string(index=False))
 </details>
 
 <details>
-  <summary>Why does reading <code>data/distances.csv</code> fail?</summary>
+<summary>Why does reading <code>data/distances.csv</code> fail?</summary>
 
 - Confirm the file exists at `data/distances.csv`.
 - Verify the CSV has headers `i`, `j`, `dist`.
@@ -352,7 +364,7 @@ print(tour.to_string(index=False))
 </details>
 
 <details>
-  <summary>Why do I get <code>Status: INFEASIBLE</code> or no tour?</summary>
+<summary>Why do I get <code>Status: INFEASIBLE</code> or no tour?</summary>
 
 - Check that each node has at least one outgoing edge and at least one incoming edge in `distances.csv`.
 - For undirected instances, ensure you included both directions for each pair.
@@ -361,7 +373,7 @@ print(tour.to_string(index=False))
 </details>
 
 <details>
-  <summary>Why is the selected edge table empty?</summary>
+<summary>Why is the selected edge table empty?</summary>
 
 - The script prints edges with `Edge.x_edge > 0.5`. If the solve did not reach a feasible solution, the filter may remove everything.
 - Check the printed status and consider increasing `time_limit_sec`.

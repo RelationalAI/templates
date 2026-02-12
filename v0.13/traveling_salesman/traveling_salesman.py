@@ -53,10 +53,11 @@ model = Model("tsp", config=globals().get("config", None), use_lqp=False)
 Edge = model.Concept("Edge")
 Edge.dist = model.Property("{Edge} has {dist:float}")
 
-# Load distance data from CSV.
-data(read_csv(DATA_DIR / "distances.csv")).into(Edge, keys=["i", "j"])
+# Load edge distance data from CSV.
+distances_csv = read_csv(DATA_DIR / "distances.csv")
+data(distances_csv).into(Edge, keys=["i", "j"])
 
-# Node concept: node identifiers derived from edge endpoints.
+# Node concept: node identifiers derived from edge start nodes.
 Node = model.Concept("Node")
 define(Node.new(v=Edge.i))
 
@@ -64,10 +65,11 @@ define(Node.new(v=Edge.i))
 # Model the decision problem
 # --------------------------------------------------
 
+# Pre-compute the number of nodes (used by the MTZ formulation).
 node_count = count(Node.ref())
 
-Ni = Node
-Nj = Node.ref()
+Node_i = Node
+Node_j = Node.ref()
 
 s = SolverModel(model, "cont")
 
@@ -93,10 +95,10 @@ s.satisfy(flow_balance)
 mtz = where(
     Edge.i > 1,
     Edge.j > 1,
-    Ni.v == Edge.i,
-    Nj.v == Edge.j
+    Node_i.v == Edge.i,
+    Node_j.v == Edge.j
 ).require(
-    Ni.u_node - Nj.u_node + node_count * Edge.x_edge <= node_count - 1
+    Node_i.u_node - Node_j.u_node + node_count * Edge.x_edge <= node_count - 1
 )
 s.satisfy(mtz)
 
