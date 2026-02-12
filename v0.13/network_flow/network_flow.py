@@ -1,54 +1,89 @@
-# network flow problem:
-# find maximum flow through a capacitated network
+"""Network Flow (prescriptive optimization) template.
+
+This script demonstrates a classic maximum-flow linear optimization model in RelationalAI:
+
+- Load a capacitated directed network from CSV.
+- Choose a non-negative flow on each edge.
+- Enforce capacity bounds and flow conservation.
+- Maximize total flow out of the source node.
+
+Run:
+    `python network_flow.py`
+
+Output:
+    Prints the solver termination status, maximum flow value, and a table of
+    edges with non-trivial flow.
+"""
 
 from pathlib import Path
 
-import pandas; pandas.options.future.infer_string = False
+import pandas
 from pandas import read_csv
 
 from relationalai.semantics import Model, data, per, require, select, sum
 from relationalai.semantics.reasoners.optimization import Solver, SolverModel
 
+# --------------------------------------------------
+# Configure inputs
+# --------------------------------------------------
+
+DATA_DIR = Path(__file__).parent / "data"
+
+# Disable pandas inference of string types. This ensures that string columns
+# in the CSVs are loaded as object dtype. This is only required when using
+# relationalai versions prior to v1.0.
+pandas.options.future.infer_string = False
+
+# Source node for the max-flow objective.
+SOURCE_NODE = 1
+
+# --------------------------------------------------
+# Define semantic model & load data
+# --------------------------------------------------
+
+# Create a Semantics model container.
 model = Model("network_flow", config=globals().get("config", None), use_lqp=False)
 
-# --------------------------------------------------
-# Define ontology & load data
-# --------------------------------------------------
-
-data_dir = Path(__file__).parent / "data"
-
-# Concept: edges with source (i), target (j), and capacity (cap)
+# Edge concept: directed edges with endpoints (i, j) and capacity (cap).
 Edge = model.Concept("Edge")
-data(read_csv(data_dir / "edges.csv")).into(Edge, keys=["i", "j"])
+
+# Load edge data from CSV.
+edges_csv = read_csv(DATA_DIR / "edges.csv")
+data(edges_csv).into(Edge, keys=["i", "j"])
 
 # --------------------------------------------------
-# Model the problem
+# Model the decision problem
 # --------------------------------------------------
-
-# Parameters
-source_node = 1
 
 Ei = Edge
 Ej = Edge.ref()
 
+# Create a continuous optimization model.
 s = SolverModel(model, "cont")
 
-# Variable: flow on each edge
+# Edge.flow decision variable: flow on each edge.
 Edge.flow = model.Property("{Edge} has {flow:float}")
 s.solve_for(Edge.flow, name=["flow", Edge.i, Edge.j])
 
-# Constraint: flow between 0 and capacity
-bounds = require(Edge.flow >= 0, Edge.flow <= Edge.cap)
+# Constraint: flow must be non-negative and cannot exceed edge capacity.
+bounds = require(
+    Edge.flow >= 0,
+    Edge.flow <= Edge.cap
+)
 s.satisfy(bounds)
 
-# Constraint: flow conservation at intermediate nodes
+# Constraint: flow conservation at each node (inflow equals outflow).
 flow_out = per(Ei.i).sum(Ei.flow)
 flow_in = per(Ej.j).sum(Ej.flow)
-balance = require(flow_in == flow_out).where(Ei.i == Ej.j)
+balance = require(flow_in == flow_out).where(
+    Ei.i == Ej.j
+)
 s.satisfy(balance)
 
-# Objective: maximize total flow out of source node
-total_flow = sum(Edge.flow).where(Edge.i(source_node))
+# Objective: maximize total flow out of the source node.
+total_flow = sum(Edge.flow).where(
+    Edge.i == SOURCE_NODE
+)
 s.maximize(total_flow)
 
 # --------------------------------------------------
