@@ -30,7 +30,7 @@ This template uses RelationalAI's **prescriptive reasoning (optimization)** capa
 
 > [!NOTE]
 > This template uses integer decision variables (MILP), so production quantities are discrete.
-> If you want a continuous (LP) variant with machine operating costs in the objective, see the [factory production](https://private.relational.ai/early-access/pyrel/templates/v0.13/factory_production) template.
+> If you want a continuous (LP) variant with machine operating costs in the objective, see the [factory production](https://private.relational.ai/early-access/pyrel/templates/factory_production) template.
 
 ## Who this is for
 
@@ -424,7 +424,7 @@ How to interpret results:
 ## Troubleshooting
 
 <details>
-	<summary>Why does authentication/configuration fail?</summary>
+<summary>Why does authentication/configuration fail?</summary>
 
 - Run `rai init` to create/update `raiconfig.toml`.
 - If you have multiple profiles, set `RAI_PROFILE` or switch profiles in your config.
@@ -432,7 +432,7 @@ How to interpret results:
 </details>
 
 <details>
-	<summary>Why does the script fail to connect to the RAI Native App?</summary>
+<summary>Why does the script fail to connect to the RAI Native App?</summary>
 
 - Verify the Snowflake account/role/warehouse and `rai_app_name` are correct in `raiconfig.toml`.
 - Ensure the RAI Native App is installed and you have access.
@@ -440,7 +440,7 @@ How to interpret results:
 </details>
 
 <details>
-	<summary><code>ModuleNotFoundError</code> when running the script</summary>
+<summary><code>ModuleNotFoundError</code> when running the script</summary>
 
 - Confirm your virtual environment is activated.
 - Install the template dependencies from this folder: `python -m pip install .`
@@ -448,7 +448,7 @@ How to interpret results:
 </details>
 
 <details>
-	<summary>CSV loading fails (missing file or column)</summary>
+<summary>CSV loading fails (missing file or column)</summary>
 
 - Confirm the CSVs exist under `data/` and the filenames match.
 - Ensure the headers match the expected schema:
@@ -459,7 +459,7 @@ How to interpret results:
 </details>
 
 <details>
-	<summary>Why do I get <code>Status: INFEASIBLE</code>?</summary>
+<summary>Why do I get <code>Status: INFEASIBLE</code>?</summary>
 
 - Check that total machine hours are sufficient to meet demand: for each product, at least one route must exist in `production_rates.csv`.
 - If you increased `demand_multiplier`, try lowering it or increasing `hours_available`.
@@ -467,7 +467,7 @@ How to interpret results:
 </details>
 
 <details>
-	<summary>Why is the production plan empty?</summary>
+<summary>Why is the production plan empty?</summary>
 
 - The output filters on `float > 0.001` and only prints variables whose names start with `qty`.
 - If you suspect near-zero values, print `s.variable_values().to_df()` without filtering.
@@ -475,7 +475,7 @@ How to interpret results:
 </details>
 
 <details>
-	<summary>Solver fails or returns an unexpected termination status</summary>
+<summary>Solver fails or returns an unexpected termination status</summary>
 
 - Try re-running; transient connectivity issues can affect the solve step.
 - If the solve is slow, reduce problem size (fewer machines/products/routes) or increase `time_limit_sec` in `production_planning.py`.
