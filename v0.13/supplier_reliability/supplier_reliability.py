@@ -106,18 +106,18 @@ define(Order.new(option=SupplyOption))
 # Derived properties for direct access in constraints and objective.
 Order.supplier = model.Property("{Order} has {supplier:Supplier}")
 define(Order.supplier(Supplier)).where(
-    Order.option(SupplyOption),
-    SupplyOption.supplier(Supplier),
+    Order.option == SupplyOption,
+    SupplyOption.supplier == Supplier,
 )
 
 Order.product = model.Property("{Order} has {product:Product}")
 define(Order.product(Product)).where(
-    Order.option(SupplyOption),
-    SupplyOption.product(Product),
+    Order.option == SupplyOption,
+    SupplyOption.product == Product,
 )
 
 Order.cost_per_unit = model.Property("{Order} has {cost_per_unit:float}")
-define(Order.cost_per_unit(SupplyOption.cost_per_unit)).where(Order.option(SupplyOption))
+define(Order.cost_per_unit(SupplyOption.cost_per_unit)).where(Order.option == SupplyOption)
 
 
 def build_formulation(s):
