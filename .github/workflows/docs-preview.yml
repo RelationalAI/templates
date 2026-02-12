@@ -156,7 +156,7 @@ jobs:
             <table>
               <tr>
                 <td><strong>✅ Preview:</strong></td>
-                <td><a href='${{ steps.vercel-deploy.outputs.PREVIEW_URL }}'>${{ steps.vercel-deploy.outputs.PREVIEW_URL }}</a></td>
+                <td><a href='${{ steps.vercel-deploy.outputs.PREVIEW_URL }}/early-access/pyrel/templates'>${{ steps.vercel-deploy.outputs.PREVIEW_URL }}/early-access/pyrel/templates</a></td>
               </tr>
               <tr>
                 <td><strong>🔍 Inspect:</strong></td>
