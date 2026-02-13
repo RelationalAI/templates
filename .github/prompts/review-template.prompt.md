@@ -42,7 +42,6 @@ Identify any issues that would prevent someone from successfully running the tem
   - Prefer `${TEMPLATE_NAME}.py`.
   - If a different entrypoint is used, identify it and flag the mismatch.
 - `data/` directory exists when the script reads sample files from `DATA_DIR`.
-- `metadata.json` exists (if the version’s templates typically include it).
 
 ### 2) `pyproject.toml` correctness and reproducibility
 
