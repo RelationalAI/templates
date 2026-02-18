@@ -102,7 +102,6 @@ def main() -> None:
     print("  • Active collaboration on shared conservation goals")
     print("  • Geographic or species-based coordination")
     print("  • Opportunities for resource sharing within clusters")
-    print("  • Potential gaps in cross-community collaboration")
     print("\n" + "-" * 110)
 
     # Format the dataframe for display
