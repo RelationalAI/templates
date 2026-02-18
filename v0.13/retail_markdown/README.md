@@ -214,9 +214,9 @@ The solver creates decision variables using properties on `Product` indexed by w
 
 | Variable | Type | Meaning |
 | --- | --- | --- |
-| `Product.selected(t, d, selected)` | binary | 1 if discount `d` is chosen in week `t` |
-| `Product.sales(t, d, sales)` | continuous | units sold in week `t` at discount `d` |
-| `Product.cum_sales(t, cum_sales)` | continuous | cumulative units sold through week `t` |
+| `Product.x_selected(t, d, selected)` | binary | 1 if discount `d` is chosen in week `t` |
+| `Product.x_sales(t, d, sales)` | continuous | units sold in week `t` at discount `d` |
+| `Product.x_cum_sales(t, cum_sales)` | continuous | cumulative units sold through week `t` |
 
 ## How it works
 
@@ -305,32 +305,32 @@ With the inputs loaded, the script creates a `SolverModel` and registers three d
 # Create a continuous optimization model with a MILP formulation.
 s = SolverModel(model, "cont", use_pb=True)
 
-# Product.selected decision variable: select exactly one discount per product-week.
-Product.selected = model.Property("{Product} in week {t:int} at discount {d:Discount} is {selected:float}")
+# Product.x_selected decision variable: select exactly one discount per product-week.
+Product.x_selected = model.Property("{Product} in week {t:int} at discount {d:Discount} is {selected:float}")
 x_sel = Float.ref()
 s.solve_for(
-    Product.selected(t, d, x_sel),
+    Product.x_selected(t, d, x_sel),
     type="bin",
     name=["select", Product.name, t, d.discount_pct],
     where=[t == weeks],
 )
 
-# Product.sales decision variable: units sold at the chosen discount.
-Product.sales = model.Property("{Product} in week {t:int} at discount {d:Discount} has {sales:float}")
+# Product.x_sales decision variable: units sold at the chosen discount.
+Product.x_sales = model.Property("{Product} in week {t:int} at discount {d:Discount} has {sales:float}")
 x_sales = Float.ref()
 s.solve_for(
-    Product.sales(t, d, x_sales),
+    Product.x_sales(t, d, x_sales),
     type="cont",
     lower=0,
     name=["sales", Product.name, t, d.discount_pct],
     where=[t == weeks],
 )
 
-# Product.cum_sales decision variable: cumulative sales through each week.
-Product.cum_sales = model.Property("{Product} through week {t:int} has {cum_sales:float}")
+# Product.x_cum_sales decision variable: cumulative sales through each week.
+Product.x_cum_sales = model.Property("{Product} through week {t:int} has {cum_sales:float}")
 x_cum = Float.ref()
 s.solve_for(
-    Product.cum_sales(t, x_cum),
+    Product.x_cum_sales(t, x_cum),
     type="cont",
     lower=0,
     name=["cum", Product.name, t],
@@ -343,7 +343,7 @@ Then it enforces the core business rules with `where(...).require(...)` constrai
 ```python
 # Constraint: one discount level selected per product per week.
 one_discount_per_week = where(
-    Product.selected(t, d, x_sel)
+    Product.x_selected(t, d, x_sel)
 ).require(
     sum(x_sel).per(Product, t) == 1
 )
@@ -353,8 +353,8 @@ s.satisfy(one_discount_per_week)
 d1, d2 = Discount.ref(), Discount.ref()
 x_sel1, x_sel2 = Float.ref(), Float.ref()
 price_ladder = where(
-    Product.selected(t, d1, x_sel1),
-    Product.selected(t + 1, d2, x_sel2),
+    Product.x_selected(t, d1, x_sel1),
+    Product.x_selected(t + 1, d2, x_sel2),
     d2.level < d1.level,
     t >= week_start,
     t < week_end
@@ -371,14 +371,14 @@ Finally, it maximizes revenue from discounted sales plus salvage value at the en
 revenue = sum(
     x_sales * Product.initial_price * (1 - d.discount_pct / 100)
 ).where(
-    Product.sales(t, d, x_sales)
+    Product.x_sales(t, d, x_sales)
 )
 
 x_cum_final = Float.ref()
 salvage = sum(
     (Product.initial_inventory - x_cum_final) * Product.initial_price * Product.salvage_rate
 ).where(
-    Product.cum_sales(week_end, x_cum_final)
+    Product.x_cum_sales(week_end, x_cum_final)
 )
 
 s.maximize(revenue + salvage)

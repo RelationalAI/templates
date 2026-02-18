@@ -300,7 +300,7 @@ Nurse.skill_level = model.Property("{Nurse} has {skill_level:int}")
 Nurse.hourly_cost = model.Property("{Nurse} has {hourly_cost:float}")
 Nurse.regular_hours = model.Property("{Nurse} has {regular_hours:int}")
 Nurse.overtime_multiplier = model.Property("{Nurse} has {overtime_multiplier:float}")
-Nurse.overtime_hours = model.Property("{Nurse} has {overtime_hours:float}")
+Nurse.x_overtime_hours = model.Property("{Nurse} has {overtime_hours:float}")
 
 # Load nurse data from CSV and create Nurse entities.
 data(read_csv(DATA_DIR / "nurses.csv")).into(Nurse, keys=["id"])
@@ -315,8 +315,8 @@ Shift.min_nurses = model.Property("{Shift} has {min_nurses:int}")
 Shift.min_skill = model.Property("{Shift} has {min_skill:int}")
 Shift.patient_demand = model.Property("{Shift} has {patient_demand:int}")
 Shift.patients_per_nurse_hour = model.Property("{Shift} has {patients_per_nurse_hour:float}")
-Shift.patients_served = model.Property("{Shift} has {patients_served:float}")
-Shift.unmet_demand = model.Property("{Shift} has {unmet_demand:float}")
+Shift.x_patients_served = model.Property("{Shift} has {patients_served:float}")
+Shift.x_unmet_demand = model.Property("{Shift} has {unmet_demand:float}")
 
 # Load shift data from CSV and create Shift entities.
 data(read_csv(DATA_DIR / "shifts.csv")).into(Shift, keys=["id"])
@@ -354,7 +354,7 @@ An `Assignment` decision concept is created for every `Availability` row. The sc
 # indicates whether the nurse can work that shift.
 Assignment = model.Concept("Assignment")
 Assignment.availability = model.Property("{Assignment} uses {availability:Availability}")
-Assignment.assigned = model.Property("{Assignment} is {assigned:float}")
+Assignment.x_assigned = model.Property("{Assignment} is {assigned:float}")
 define(Assignment.new(availability=Availability))
 
 Asn = Assignment.ref()
@@ -363,7 +363,7 @@ s = SolverModel(model, "cont")
 
 # Variable: binary assignment (nurse to shift)
 s.solve_for(
-    Assignment.assigned,
+    Assignment.x_assigned,
     type="bin",
     name=[
         "x",
@@ -373,20 +373,20 @@ s.solve_for(
 )
 
 # Variable: overtime hours per nurse (continuous >= 0)
-s.solve_for(Nurse.overtime_hours, type="cont", name=["ot", Nurse.name], lower=0)
+s.solve_for(Nurse.x_overtime_hours, type="cont", name=["ot", Nurse.name], lower=0)
 
 # Variable: patients served per shift (continuous >= 0)
-s.solve_for(Shift.patients_served, type="cont", name=["pt", Shift.name], lower=0)
+s.solve_for(Shift.x_patients_served, type="cont", name=["pt", Shift.name], lower=0)
 
 # Variable: unmet patient demand per shift (continuous >= 0)
-s.solve_for(Shift.unmet_demand, type="cont", name=["ud", Shift.name], lower=0)
+s.solve_for(Shift.x_unmet_demand, type="cont", name=["ud", Shift.name], lower=0)
 ```
 
 Then it adds nine constraints using `require(...)` and `s.satisfy(...)`. The constraints enforce availability, minimum and maximum shifts per nurse, coverage and skill requirements, overtime accounting, demand and capacity caps, and the definition of unmet demand:
 
 ```python
 # Constraint: can only assign if available
-must_be_available = require(Assignment.assigned <= Assignment.availability.available)
+must_be_available = require(Assignment.x_assigned <= Assignment.availability.available)
 s.satisfy(must_be_available)
 
 # Constraint: every nurse works at least one shift
@@ -415,20 +415,20 @@ s.satisfy(min_skilled)
 total_hours_worked = sum(Asn.assigned * Asn.availability.shift.duration).where(
     Asn.availability.nurse == Nurse
 ).per(Nurse)
-overtime_def = require(Nurse.overtime_hours >= total_hours_worked - Nurse.regular_hours)
+overtime_def = require(Nurse.x_overtime_hours >= total_hours_worked - Nurse.regular_hours)
 s.satisfy(overtime_def)
 
 # Constraint: patients served <= patient demand per shift
-demand_cap = require(Shift.patients_served <= Shift.patient_demand)
+demand_cap = require(Shift.x_patients_served <= Shift.patient_demand)
 s.satisfy(demand_cap)
 
 # Constraint: patients served <= nursing capacity per shift
 shift_nursing_capacity = shift_staff_count * Shift.patients_per_nurse_hour * Shift.duration
-capacity_cap = require(Shift.patients_served <= shift_nursing_capacity)
+capacity_cap = require(Shift.x_patients_served <= shift_nursing_capacity)
 s.satisfy(capacity_cap)
 
 # Constraint: unmet demand >= patient demand - patients served
-unmet_def = require(Shift.unmet_demand >= Shift.patient_demand - Shift.patients_served)
+unmet_def = require(Shift.x_unmet_demand >= Shift.patient_demand - Shift.x_patients_served)
 s.satisfy(unmet_def)
 ```
 
@@ -439,8 +439,8 @@ With the feasible region defined, the objective minimizes overtime cost plus an 
 # overflow_penalty_per_patient represents the cost of failing to serve a patient
 # (missed care ratios, throughput shortfall, regulatory risk).
 overflow_penalty_per_patient = 20
-overtime_cost = sum(Nurse.overtime_hours * Nurse.hourly_cost * Nurse.overtime_multiplier)
-total_overflow_penalty = overflow_penalty_per_patient * sum(Shift.unmet_demand)
+overtime_cost = sum(Nurse.x_overtime_hours * Nurse.hourly_cost * Nurse.overtime_multiplier)
+total_overflow_penalty = overflow_penalty_per_patient * sum(Shift.x_unmet_demand)
 s.minimize(overtime_cost + total_overflow_penalty)
 ```
 
@@ -458,8 +458,8 @@ print(f"Total cost: ${s.objective_value:.2f}")
 # Overtime summary
 overtime = select(
     Nurse.name.alias("nurse"),
-    Nurse.overtime_hours.alias("overtime_hours"),
-).where(Nurse.overtime_hours > 0.5).to_df()
+    Nurse.x_overtime_hours.alias("overtime_hours"),
+).where(Nurse.x_overtime_hours > 0.5).to_df()
 
 if not overtime.empty:
     print("\nOvertime assignments:")
@@ -470,9 +470,9 @@ else:
 # Throughput and overflow summary
 throughput = select(
     Shift.name.alias("shift"),
-    Shift.patients_served.alias("patients_served"),
+    Shift.x_patients_served.alias("patients_served"),
     Shift.patient_demand.alias("patient_demand"),
-    Shift.unmet_demand.alias("unmet_demand"),
+    Shift.x_unmet_demand.alias("unmet_demand"),
 ).to_df()
 
 print("\nPatient throughput by shift:")
@@ -484,7 +484,7 @@ print(f"Total unmet demand: {throughput['unmet_demand'].sum():.0f} patients")
 assignments = select(
     Assignment.availability.nurse.name.alias("nurse"),
     Assignment.availability.shift.name.alias("shift"),
-).where(Assignment.assigned > 0.5).to_df()
+).where(Assignment.x_assigned > 0.5).to_df()
 
 print("\nStaff assignments:")
 print(assignments.to_string(index=False))
@@ -559,7 +559,7 @@ The `overflow_penalty_per_patient` parameter controls the trade-off between over
 <details>
   <summary>Why is the overtime summary empty?</summary>
 
-- The script filters nurses with `Nurse.overtime_hours > 0.5`. If no nurse works beyond their regular hours, the "No overtime assigned" message is printed instead.
+- The script filters nurses with `Nurse.x_overtime_hours > 0.5`. If no nurse works beyond their regular hours, the "No overtime assigned" message is printed instead.
 - This is expected when staffing requirements can be met without overtime.
 
 </details>
@@ -567,7 +567,7 @@ The `overflow_penalty_per_patient` parameter controls the trade-off between over
 <details>
   <summary>Why are staff assignments missing or incomplete?</summary>
 
-- The output filters on `Assignment.assigned > 0.5` (binary threshold). If values are near zero, inspect the availability data and constraints.
+- The output filters on `Assignment.x_assigned > 0.5` (binary threshold). If values are near zero, inspect the availability data and constraints.
 - Confirm `availability.csv` was read correctly and contains rows with `available = 1`.
 
 </details>

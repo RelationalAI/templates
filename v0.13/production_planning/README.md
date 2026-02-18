@@ -301,7 +301,7 @@ Then the script creates a `Production` decision concept (one row per `Production
 # Production decision concept: production quantity for each machine-product pair.
 Production = model.Concept("Production")
 Production.rate = model.Property("{Production} uses {rate:ProductionRate}")
-Production.quantity = model.Property("{Production} has {quantity:float}")
+Production.x_quantity = model.Property("{Production} has {quantity:float}")
 define(Production.new(rate=Rate))
 
 Prod = Production.ref()
@@ -314,7 +314,7 @@ def build_formulation(s):
     """Register variables, constraints, and objective on the solver model."""
     # Variable: production quantity (integer)
     s.solve_for(
-        Production.quantity,
+        Production.x_quantity,
         name=[
             "qty",
             Production.rate.machine.name,
@@ -339,7 +339,7 @@ def build_formulation(s):
     s.satisfy(meet_demand)
 
     # Objective: maximize total profit
-    total_profit = sum(Production.quantity * Production.rate.product.profit)
+    total_profit = sum(Production.x_quantity * Production.rate.product.profit)
     s.maximize(total_profit)
 ```
 

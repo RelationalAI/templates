@@ -152,10 +152,10 @@ def solve_with_snowflake(config=None, solver_name="highs"):
     snowflake("MY_DB.MY_SCHEMA.ITEMS").into(Item, keys=["id"])
 
     # Define and solve problem
-    Item.selected = model.Property("{Item} is {selected:int}")
+    Item.x_selected = model.Property("{Item} is {selected:int}")
     s = SolverModel(model, "int")
-    s.solve_for(Item.selected, type="bin", name=Item.id)
-    s.maximize(sum(Item.selected * Item.value))
+    s.solve_for(Item.x_selected, type="bin", name=Item.id)
+    s.maximize(sum(Item.x_selected * Item.value))
 
     solver = Solver(solver_name)
     s.solve(solver)

@@ -243,15 +243,15 @@ where(
 
 ### Define decision variables, constraints, and objective
 
-Then it creates a decision variable `Stock.quantity` and registers constraints and the quadratic variance objective inside `build_formulation(...)`:
+Then it creates a decision variable `Stock.x_quantity` and registers constraints and the quadratic variance objective inside `build_formulation(...)`:
 
 ```python
 # --------------------------------------------------
 # Model the decision problem
 # --------------------------------------------------
 
-# Stock.quantity decision variable: amount allocated to each stock.
-Stock.quantity = model.Property("{Stock} quantity is {x:float}")
+# Stock.x_quantity decision variable: amount allocated to each stock.
+Stock.x_quantity = model.Property("{Stock} quantity is {x:float}")
 
 c = Float.ref()
 
@@ -265,22 +265,22 @@ budget = BUDGET
 def build_formulation(s):
     """Register variables, constraints, and objective on the solver model."""
     # Decision variable: quantity of each stock.
-    s.solve_for(Stock.quantity, name=["qty", Stock.index])
+    s.solve_for(Stock.x_quantity, name=["qty", Stock.index])
 
     # Constraint: no short selling.
-    bounds = require(Stock.quantity >= 0)
+    bounds = require(Stock.x_quantity >= 0)
     s.satisfy(bounds)
 
     # Constraint: budget limit.
-    budget_constraint = require(sum(Stock.quantity) <= budget)
+    budget_constraint = require(sum(Stock.x_quantity) <= budget)
     s.satisfy(budget_constraint)
 
     # Constraint: minimum return target (scenario parameter).
-    return_constraint = require(sum(Stock.returns * Stock.quantity) >= min_return)
+    return_constraint = require(sum(Stock.returns * Stock.x_quantity) >= min_return)
     s.satisfy(return_constraint)
 
     # Objective: minimize portfolio risk (variance)
-    risk = sum(c * Stock.quantity * Stock2.quantity).where(Stock.covar(Stock2, c))
+    risk = sum(c * Stock.x_quantity * Stock2.quantity).where(Stock.covar(Stock2, c))
     s.minimize(risk)
 ```
 
