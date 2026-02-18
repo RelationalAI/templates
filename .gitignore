@@ -43,4 +43,3 @@ uv.lock
 raiconfig.toml
 debug.jsonl
 metadata.json
-*.jsonl
