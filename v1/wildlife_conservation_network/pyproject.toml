@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rai-template-wildlife-conservation-network"
+version = "0.0.0"
+description = "RelationalAI template: wildlife conservation network with Louvain community detection"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+  "relationalai>=1.0.0a6",
+  "pandas>=2.0.0",
+]
+
+[project.optional-dependencies]
+visualization = [
+  "streamlit>=1.30.0",
+  "plotly>=5.18.0",
+]
+
+[tool.setuptools]
+packages = []
