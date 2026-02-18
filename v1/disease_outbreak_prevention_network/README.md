@@ -115,65 +115,6 @@ You can customize the data and model as needed after you have it running end-to-
    - Detailed priority facility analysis
    - CSV export functionality
 
-6. **Expected output**
-
-   ```
-   ====================================================================================================
-   DISEASE OUTBREAK PREVENTION NETWORK - DEGREE CENTRALITY ANALYSIS
-   ====================================================================================================
-
-   Facilities ranked by degree centrality (most connected first):
-
-   Weighted Degree Centrality: Sum of risk-weighted connections (transfer_volume × contact_intensity)
-   Higher scores indicate greater cumulative risk and more critical facilities for outbreak response coordination
-
-   These facilities should receive priority for:
-   • Vaccine and medical supply deployment
-   • Testing station setup
-   • Emergency response team positioning
-
-   ----------------------------------------------------------------------------------------------------
-   rank                    name               type   region  degree_centrality  incoming_connections  outgoing_connections  total_connections
-      1        Central Hospital           Hospital Downtown                178.00                     0                     4                  4
-      2      Public Health Dept         Government Downtown                173.00                     2                     2                  4
-      3         Westside Clinic             Clinic     West                136.00                     2                     2                  4
-      4      Regional Testing Lab     Testing Center Downtown                130.00                     1                     2                  3
-      5   North Valley Hospital           Hospital    North                 93.00                     2                     1                  3
-      6 Community Health Center      Community Org    North                 85.00                     2                     1                  3
-      7 Emergency Response Hub Emergency Services Downtown                 83.00                     3                     0                  3
-      8        Eastside Medical             Clinic     East                 42.00                     1                     1                  2
-      9     Mobile Testing Unit     Testing Center     West                 41.00                     1                     1                  2
-      10  South Community Clinic             Clinic    South                 36.00                     1                     1                  2
-   ----------------------------------------------------------------------------------------------------
-
-   🎯 TOP 3 PRIORITY FACILITIES FOR IMMEDIATE RESOURCE DEPLOYMENT:
-
-   #1 - Central Hospital
-         Type: Hospital
-         Region: Downtown
-         Weighted Degree Centrality: 178.00
-         Total Connections: 4 (0 incoming, 4 outgoing)
-
-   #2 - Public Health Dept
-         Type: Government
-         Region: Downtown
-         Weighted Degree Centrality: 173.00
-         Total Connections: 4 (2 incoming, 2 outgoing)
-
-   #3 - Westside Clinic
-         Type: Clinic
-         Region: West
-         Weighted Degree Centrality: 136.00
-         Total Connections: 4 (2 incoming, 2 outgoing)
-
-      📊 NETWORK SUMMARY:
-      • Total facilities analyzed: 10
-      • Average degree centrality: 105.75
-      • Average connections per facility: 3.0
-      • Most connected facility: Central Hospital (4 connections)
-   ✅ Analysis complete!
-   ```
-
 ## Template structure
 
 ```text
@@ -205,7 +146,7 @@ The network is intentionally small (10 nodes, 15 edges) to make it easy to under
 
 This model represents a public health network as a directed graph where facilities are nodes and connections are edges weighted by transmission risk.
 
-- **Key entities**: `Facility` (healthcare facilities) with `FacilityConnection` relationships
+- **Key entities**: `Facility` (healthcare facilities) and `FacilityConnection` concept representing the connection between two facilities.
 - **Primary identifiers**: Facility ID (integer)
 - **Graph structure**: Directed, weighted graph using RelationalAI's Graph API, with edges weighted by risk factors
 
@@ -220,9 +161,9 @@ The `Facility` concept represents healthcare facilities, testing centers, and co
 | `type` | String | No | Category: Hospital, Clinic, Testing Center, Community Org, Government, Emergency Services |
 | `region` | String | No | Geographic region: Downtown, North, South, East, West |
 
-### Facility Connection Relationship
+### Facility Connection Concept
 
-The `FacilityConnection` relationship represents directed connections between facilities (patient referrals, data sharing, coordination partnerships) with transmission risk metrics.
+The `FacilityConnection` concept represents directed connections between facilities (patient referrals, data sharing, coordination partnerships) with transmission risk metrics.
 
 | Property | Type | Notes |
 |---|---|---|
@@ -230,7 +171,10 @@ The `FacilityConnection` relationship represents directed connections between fa
 | `to_facility` | Facility | Target facility in the connection |
 | `transfer_volume` | Float | Volume of patient transfers, samples, or resources (1-10 scale) |
 | `contact_intensity` | Float | Frequency/intensity of contacts between facilities (1-10 scale) |
-| `risk_weight` | Float | Calculated as transfer_volume × contact_intensity; used to weight edges in the graph |
+
+### Calculated Properties
+The `risk_weight` property of a connection that is used to weight edges in the graph
+| `risk_weight` | Float | Calculated as transfer_volume × contact_intensity|
 
 ### Graph Metrics
 
