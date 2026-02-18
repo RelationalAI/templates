@@ -41,7 +41,7 @@ PageRank simulates how aid flows through the network using iterative random walk
 - Generate actionable recommendations for resource deployment and network resilience
 - Compare multiple graph metrics to make informed strategic decisions
 
-This template uses **RelationalAI's advanced graph algorithms** including PageRank (an iterative algorithm requiring multiple passes over the network) and Weighted Degree Centrality (analyzing network connectivity patterns) — both fundamentally difficult to express in standard SQL.
+This template uses **RelationalAI's advanced graph algorithms** including PageRank (an iterative algorithm requiring multiple passes over the network) and Weighted Degree Centrality (analyzing network connectivity patterns).
 
 ## What's included
 
