@@ -9,7 +9,7 @@ description = "RelationalAI template: wildlife conservation network with Louvain
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [
-  "relationalai>=1.0.0a6",
+  "relationalai==1.0.0a6",
   "pandas>=2.0.0",
 ]
 
