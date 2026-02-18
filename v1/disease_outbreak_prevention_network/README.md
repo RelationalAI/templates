@@ -1,6 +1,6 @@
 ---
 title: "Disease Outbreak Prevention Network"
-description: "Use degree centrality to identify the most connected healthcare facilities in a public health network, helping prioritize resource deployment during disease outbreaks."
+description: "Use weighted degree centrality to identify the highest-risk healthcare facilities in a public health network, considering both connection volume and intensity, to prioritize resource deployment during disease outbreaks."
 experience_level: beginner
 industry: Healthcare
 reasoning_types:
@@ -13,31 +13,33 @@ tags:
 
 ## What this template is for
 
-During a disease outbreak, public health officials must quickly decide where to deploy limited resources like vaccines, testing equipment, and emergency response teams. This template demonstrates how to use **degree centrality** — a graph algorithm that measures how connected each node is in a network — to identify the most strategically important healthcare facilities.
+During a disease outbreak, public health officials must quickly decide where to deploy limited resources like vaccines, testing equipment, and emergency response teams. This template demonstrates how to use **weighted degree centrality** — a graph algorithm that combines connectivity with transmission risk metrics — to identify the most strategically important healthcare facilities.
 
-By analyzing a network of hospitals, clinics, testing centers, and community organizations, this template helps you prioritize facilities that are most connected to others. These highly connected facilities act as critical hubs in the health network, making them ideal locations for maximum resource reach and rapid information dissemination during an outbreak response.
+By analyzing a network of hospitals, clinics, testing centers, and community organizations with weighted connections based on patient transfer volumes and contact intensity, this template helps you prioritize facilities that pose the greatest cumulative risk. These high-risk facilities act as critical hubs in the health network, making them ideal locations for maximum resource reach and rapid outbreak containment during an outbreak response.
 
 ## Who this is for
-- **Beginners** who want to learn degree centrality with a real-world use case
+- **Beginners** who want to learn weighted degree centrality with a real-world epidemiological use case
 - **Data scientists** new to RelationalAI looking for a simple graph analytics example
 - **Public health analysts** planning outbreak response strategies
 - **Healthcare network planners** optimizing resource allocation
 
 ## What you'll build
 
-- Load a public health network with 10 facilities and 15 directed connections from CSV files
-- Use RelationalAI's Graph API to model the healthcare network
-- Calculate degree centrality for each facility (normalized connectivity score)
+- Load a public health network with 10 facilities and 15 directed connections with transfer volume and contact intensity metrics
+- Use RelationalAI's Graph API to model the healthcare network with weighted edges
+- Calculate risk-weighted degree centrality for each facility based on connection weights (transfer_volume × contact_intensity)
 - Track incoming and outgoing connections (indegree and outdegree)
-- Rank facilities by their centrality scores
+- Rank facilities by their cumulative risk (weighted degree centrality scores)
 - Identify top priority facilities for resource deployment
 - Generate a detailed prioritized list to guide outbreak response decisions
 
-This template uses **RelationalAI's graph modeling** capabilities with the Graph class to represent the network, and built-in graph algorithms to compute degree centrality, indegree, and outdegree efficiently.
+This template uses **RelationalAI's graph modeling** capabilities with the Graph class to represent the network, and built-in weighted graph algorithms to compute degree centrality that accounts for transmission risk factors.
 
 ## What's included
 
-- **Model + script**: `disease_outbreak_prevention_network.py`
+- **Shared model setup**: `model_setup.py` - Common model configuration and graph creation (used by both scripts)
+- **Command-line script**: `disease_outbreak_prevention_network.py` - CLI analysis script with detailed output
+- **Interactive app**: `app.py` - Streamlit web application with visualizations and interactive analysis
 - **Data**: `data/facilities.csv` and `data/connections.csv`
 
 ## Prerequisites
@@ -49,6 +51,7 @@ This template uses **RelationalAI's graph modeling** capabilities with the Graph
 ### Tools
 - Python >= 3.10
 - pandas library
+- streamlit and plotly (optional, for interactive web app)
 
 ## Quickstart
 
@@ -90,9 +93,27 @@ You can customize the data and model as needed after you have it running end-to-
 
 5. **Run the template**
 
+   **Option A: Command-line script**
+
    ```bash
    python disease_outbreak_prevention_network.py
    ```
+
+   **Option B: Interactive Streamlit app**
+
+   ```bash
+   # Install additional dependencies for visualization
+   python -m pip install .[visualization]
+
+   # Launch the interactive app
+   streamlit run app.py
+   ```
+
+   The Streamlit app provides:
+   - Interactive network visualization with directional arrows
+   - Filterable facility rankings table
+   - Detailed priority facility analysis
+   - CSV export functionality
 
 6. **Expected output**
 
@@ -103,8 +124,8 @@ You can customize the data and model as needed after you have it running end-to-
 
    Facilities ranked by degree centrality (most connected first):
 
-   Degree Centrality: Normalized score (0-1) indicating relative connectivity in the network
-   Higher scores indicate more critical facilities for outbreak response coordination
+   Weighted Degree Centrality: Sum of risk-weighted connections (transfer_volume × contact_intensity)
+   Higher scores indicate greater cumulative risk and more critical facilities for outbreak response coordination
 
    These facilities should receive priority for:
    • Vaccine and medical supply deployment
@@ -113,16 +134,16 @@ You can customize the data and model as needed after you have it running end-to-
 
    ----------------------------------------------------------------------------------------------------
    rank                    name               type   region  degree_centrality  incoming_connections  outgoing_connections  total_connections
-      1        Central Hospital           Hospital Downtown             0.4444                     0                     4                  4
-      2         Westside Clinic             Clinic     West             0.4444                     2                     2                  4
-      3      Public Health Dept         Government Downtown             0.4444                     2                     2                  4
-      4 Community Health Center      Community Org    North             0.3333                     2                     1                  3
-      5    Regional Testing Lab     Testing Center Downtown             0.3333                     1                     2                  3
-      6   North Valley Hospital           Hospital    North             0.3333                     2                     1                  3
-      7  Emergency Response Hub Emergency Services Downtown             0.3333                     3                     0                  3
-      8        Eastside Medical             Clinic     East             0.2222                     1                     1                  2
-      9     Mobile Testing Unit     Testing Center     West             0.2222                     1                     1                  2
-      10  South Community Clinic             Clinic    South             0.2222                     1                     1                  2
+      1        Central Hospital           Hospital Downtown                178.00                     0                     4                  4
+      2      Public Health Dept         Government Downtown                173.00                     2                     2                  4
+      3         Westside Clinic             Clinic     West                136.00                     2                     2                  4
+      4      Regional Testing Lab     Testing Center Downtown                130.00                     1                     2                  3
+      5   North Valley Hospital           Hospital    North                 93.00                     2                     1                  3
+      6 Community Health Center      Community Org    North                 85.00                     2                     1                  3
+      7 Emergency Response Hub Emergency Services Downtown                 83.00                     3                     0                  3
+      8        Eastside Medical             Clinic     East                 42.00                     1                     1                  2
+      9     Mobile Testing Unit     Testing Center     West                 41.00                     1                     1                  2
+      10  South Community Clinic             Clinic    South                 36.00                     1                     1                  2
    ----------------------------------------------------------------------------------------------------
 
    🎯 TOP 3 PRIORITY FACILITIES FOR IMMEDIATE RESOURCE DEPLOYMENT:
@@ -130,24 +151,24 @@ You can customize the data and model as needed after you have it running end-to-
    #1 - Central Hospital
          Type: Hospital
          Region: Downtown
-         Degree Centrality: 0.4444
+         Weighted Degree Centrality: 178.00
          Total Connections: 4 (0 incoming, 4 outgoing)
 
-   #2 - Westside Clinic
-         Type: Clinic
-         Region: West
-         Degree Centrality: 0.4444
-         Total Connections: 4 (2 incoming, 2 outgoing)
-
-   #3 - Public Health Dept
+   #2 - Public Health Dept
          Type: Government
          Region: Downtown
-         Degree Centrality: 0.4444
+         Weighted Degree Centrality: 173.00
+         Total Connections: 4 (2 incoming, 2 outgoing)
+
+   #3 - Westside Clinic
+         Type: Clinic
+         Region: West
+         Weighted Degree Centrality: 136.00
          Total Connections: 4 (2 incoming, 2 outgoing)
 
       📊 NETWORK SUMMARY:
       • Total facilities analyzed: 10
-      • Average degree centrality: 0.3333
+      • Average degree centrality: 105.75
       • Average connections per facility: 3.0
       • Most connected facility: Central Hospital (4 connections)
    ✅ Analysis complete!
@@ -159,30 +180,34 @@ You can customize the data and model as needed after you have it running end-to-
 .
 ├─ README.md                                        # this file
 ├─ pyproject.toml                                   # dependencies
-├─ disease_outbreak_prevention_network.py           # main script (run this!)
+├─ model_setup.py                                   # shared model configuration (used by both scripts)
+├─ disease_outbreak_prevention_network.py           # command-line analysis script
+├─ app.py                                           # interactive Streamlit web app
 └─ data/
    ├─ facilities.csv                                # 10 healthcare facilities
    └─ connections.csv                               # 15 network connections
 ```
 
-**Start here**: Run `python disease_outbreak_prevention_network.py` to see the complete analysis.
+**Start here**:
+- For command-line analysis: Run `python disease_outbreak_prevention_network.py`
+- For interactive web app: Run `streamlit run app.py`
 
 ## Sample data
 
 The sample data represents a simplified public health network in a metropolitan area:
 
 - **facilities.csv**: 10 facilities including hospitals, clinics, testing centers, community organizations, government agencies, and emergency services. Each has a unique ID, name, type, and geographic region.
-- **connections.csv**: 15 directed connections representing relationships like patient referral pathways, data sharing agreements, and coordination partnerships. Each connection has a source (from) and target (to) facility.
+- **connections.csv**: 15 directed connections representing relationships like patient referral pathways, data sharing agreements, and coordination partnerships. Each connection includes transfer volume (1-10 scale) and contact intensity (1-10 scale) metrics that are multiplied together to create the risk weight for each connection.
 
 The network is intentionally small (10 nodes, 15 edges) to make it easy to understand and verify the centrality calculations manually.
 
 ## Model overview
 
-This model represents a public health network as a directed graph where facilities are nodes and connections are edges.
+This model represents a public health network as a directed graph where facilities are nodes and connections are edges weighted by transmission risk.
 
-- **Key entities**: `Facility` (healthcare facilities) with a `connects_to` relationship
+- **Key entities**: `Facility` (healthcare facilities) with `FacilityConnection` relationships
 - **Primary identifiers**: Facility ID (integer)
-- **Graph structure**: Directed, unweighted graph using RelationalAI's Graph API
+- **Graph structure**: Directed, weighted graph using RelationalAI's Graph API, with edges weighted by risk factors
 
 ### Facility Concept
 
@@ -195,14 +220,17 @@ The `Facility` concept represents healthcare facilities, testing centers, and co
 | `type` | String | No | Category: Hospital, Clinic, Testing Center, Community Org, Government, Emergency Services |
 | `region` | String | No | Geographic region: Downtown, North, South, East, West |
 
-### Facility Relationship
+### Facility Connection Relationship
 
-The `connects_to` relationship represents directed connections between facilities (patient referrals, data sharing, coordination partnerships).
+The `FacilityConnection` relationship represents directed connections between facilities (patient referrals, data sharing, coordination partnerships) with transmission risk metrics.
 
 | Property | Type | Notes |
 |---|---|---|
 | `from_facility` | Facility | Source facility in the connection |
-| `connects_to` | Facility | Target facility in the connection |
+| `to_facility` | Facility | Target facility in the connection |
+| `transfer_volume` | Float | Volume of patient transfers, samples, or resources (1-10 scale) |
+| `contact_intensity` | Float | Frequency/intensity of contacts between facilities (1-10 scale) |
+| `risk_weight` | Float | Calculated as transfer_volume × contact_intensity; used to weight edges in the graph |
 
 ### Graph Metrics
 
@@ -210,7 +238,7 @@ The template calculates three key metrics using RelationalAI's Graph API:
 
 | Metric | Type | Description |
 |---|---|---|
-| `degree_centrality` | Float | Normalized score (0-1) indicating relative connectivity. Higher = more central |
+| `degree_centrality` | Float | Weighted degree centrality: sum of edge weights (risk_weight values) for all connections. Higher values indicate greater cumulative transmission risk |
 | `incoming_connections` | Integer | Indegree: number of facilities that connect TO this facility |
 | `outgoing_connections` | Integer | Outdegree: number of facilities this facility connects TO |
 
@@ -219,100 +247,53 @@ The template calculates three key metrics using RelationalAI's Graph API:
 The template follows this flow:
 
 ```text
-CSV files → Load network → Define graph → Calculate metrics → Rank facilities → Display results
+CSV files → model_setup.create_model() → Calculate metrics → Analyze strategic priorities → Display results
 ```
 
-### 1. Load facilities from CSV
+### 1. Shared Model Setup
+
+Both the CLI script and Streamlit app use the same model setup from `model_setup.py`:
 
 ```python
-from relationalai.semantics import Model, data
+from model_setup import create_model
 
-# Create a Semantics model container
-model = Model("disease_outbreak_prevention", config=globals().get("config", None))
-
-# Define Facility concept with properties
-Facility = model.Concept("Facility")
-Facility.id = model.Property(f"{Facility} has {Integer:id}")
-Facility.name = model.Property(f"{Facility} has {String:name}")
-Facility.type = model.Property(f"{Facility} has {String:type}")
-Facility.region = model.Property(f"{Facility} has {String:region}")
-
-# Load facilities from CSV
-facility_df = pd.read_csv(DATA_DIR / "facilities.csv")
-facility_data = data(facility_df)
-
-model.define(
-    Facility.new(
-        id=facility_data.id,
-        name=facility_data.name,
-        type=facility_data.type,
-        region=facility_data.region
-    )
-)
+# Create the model, concepts, relationships, and graph (all in one call)
+model, graph, Facility = create_model()
 ```
 
-### 2. Create directed connections
+The `create_model()` function handles:
+- Creating the RelationalAI model container
+- Defining the `Facility` concept with all properties
+- Loading facilities from CSV
+- Defining the `FacilityConnection` concept for edges with transfer_volume, contact_intensity, and risk_weight properties
+- Loading connections from CSV with their risk metrics
+- Calculating risk_weight as transfer_volume × contact_intensity for each connection
+- Creating the directed, weighted graph using risk_weight as edge weights
+- Returning all components for use in analysis
 
-Load connections from CSV and create the relationship:
+### 2. Calculate Graph Metrics
 
-```python
-from relationalai.semantics import define
-
-# Define the connects_to relationship
-Facility.connects_to = model.Relationship(
-    f"{Facility:from_facility} connects to {Facility:connects_to}"
-)
-
-# Load connections from CSV
-connections_data = data(pd.read_csv(DATA_DIR / "connections.csv"))
-
-# Create connections (directed edges from -> to)
-f_from, f_to = Facility.ref("f_from"), Facility.ref("f_to")
-
-define(Facility.connects_to(f_from, f_to)).where(
-    f_from.id == connections_data.from_facility_id,
-    f_to.id == connections_data.to_facility_id
-)
-```
-
-### 3. Define the graph and edges
-
-Use RelationalAI's Graph API to create a directed, unweighted graph:
+Use RelationalAI's Graph API to compute weighted centrality metrics:
 
 ```python
-from relationalai.semantics.reasoners.graph import Graph
-
-# Define directed graph with Facility nodes
-graph = Graph(model, directed=True, weighted=False, node_concept=Facility)
-
-# Define edges based on the connects_to relationship
-define(graph.Edge.new(
-    src=Facility,
-    dst=Facility.connects_to,
-))
-```
-
-### 4. Calculate graph metrics
-
-Use built-in graph algorithms to compute centrality metrics:
-
-```python
-# Calculate degree centrality (normalized connectivity score)
+# Calculate weighted degree centrality (sum of risk-weighted edge weights)
 degree_centrality = graph.degree_centrality()
 
-# Calculate incoming edges (indegree)
+# Calculate incoming edges (indegree count)
 incoming_edges = graph.indegree()
 
-# Calculate outgoing edges (outdegree)
+# Calculate outgoing edges (outdegree count)
 outgoing_edges = graph.outdegree()
 ```
 
-### 5. Query and rank facilities
+The weighted degree centrality incorporates the risk weights (transfer_volume × contact_intensity) from each edge, providing a measure of cumulative transmission risk rather than just connectivity count.
+
+### 3. Query and Rank Facilities
 
 Query the graph to retrieve all metrics and rank facilities:
 
 ```python
-from relationalai.semantics import where, select
+from relationalai.semantics import where, Float, Integer
 
 # Create variable references
 facility = graph.Node.ref("facility")
@@ -340,12 +321,32 @@ results = results.sort_values("degree_centrality", ascending=False)
 results.insert(0, "rank", range(1, len(results) + 1))
 ```
 
-### 6. Display formatted results
+### 4. CLI Script Analysis
 
-The script prints a comprehensive analysis including:
+The `disease_outbreak_prevention_network.py` script displays:
 - A ranked table of all facilities with their metrics
 - Detailed breakdown of the top 3 priority facilities
 - Network-wide summary statistics
+- Actionable recommendations for outbreak response
+
+### 5. Interactive Streamlit App
+
+The included `app.py` provides an interactive web interface using the same shared model:
+
+```python
+import streamlit as st
+from model_setup import create_model
+
+# Load the same model and query results
+model, graph, Facility = create_model()
+results = get_results(model, graph, Facility)
+```
+
+The Streamlit app features:
+- **Interactive network graph**: Directed edges with arrows, hover for facility details, region-based layout
+- **Filterable rankings table**: Filter by facility type and region, download as CSV
+- **Priority facility analysis**: Expandable sections with detailed metrics and role analysis
+- **Summary statistics**: Sidebar with key network metrics
 
 ## Customize this template
 
@@ -357,7 +358,10 @@ The script prints a comprehensive analysis including:
 
 ### Extend the model
 
-**Add weighted connections**: To weight edges by transfer volume or relationship strength. Don't forget to update the `weighted` property of the graph to `true` and to set the weight of the edges.
+**Add more risk factors**: The template already uses weighted connections (transfer_volume × contact_intensity). You could extend this by:
+- Adding additional risk metrics to connections (e.g., disease prevalence, facility bed capacity)
+- Creating a more sophisticated risk formula (e.g., weighted average of multiple factors)
+- Adding temporal aspects (e.g., seasonal variation in transmission rates)
 
 ## Troubleshooting
 

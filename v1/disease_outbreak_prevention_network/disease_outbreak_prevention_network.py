@@ -1,10 +1,10 @@
 """Disease Outbreak Prevention Network (graph analytics) template.
 
-This script demonstrates degree centrality analysis in a public health network using
+This script demonstrates weighted degree centrality analysis in a public health network using
 RelationalAI:
 
 - Load a network of healthcare facilities and their connections from CSV.
-- Calculate degree centrality for each facility (number of connections).
+- Calculate weighted degree centrality for each facility (considering connection weights).
 - Identify the most connected facilities for priority resource deployment.
 - Rank facilities by their centrality to optimize outbreak response.
 
@@ -17,80 +17,19 @@ Output:
     response teams.
 """
 
-from pathlib import Path
+from relationalai.semantics import where, Integer, Float
 
-import pandas as pd
-
-from relationalai.semantics import Model, data, define, per, select, where, String, Integer, Float
-from relationalai.semantics.reasoners.graph import Graph
+from model_setup import create_model
 
 # --------------------------------------------------
-# Configure inputs
+# Create model and calculate graph metrics
 # --------------------------------------------------
 
-DATA_DIR = Path(__file__).parent / "data"
+model, graph, Facility = create_model()
 
-# --------------------------------------------------
-# Define semantic model & load data
-# --------------------------------------------------
-
-# Create a Semantics model container.
-model = Model("disease_outbreak_prevention", config=globals().get("config", None))
-
-# Facility concept: healthcare facilities, testing centers, and community organizations.
-Facility = model.Concept("Facility")
-Facility.id = model.Property(f"{Facility} has {Integer:id}")
-Facility.name = model.Property(f"{Facility} has {String:name}")
-Facility.type = model.Property(f"{Facility} has {String:type}")
-Facility.region = model.Property(f"{Facility} has {String:region}")
-
-# Define the Concept from a CSV file
-# Read the CSV file into a pandas DataFrame (assume CSV has columns "id" and "name")
-facility_df = pd.read_csv(DATA_DIR / "facilities.csv")
-
-# Wrap the DataFrame with the data() function
-facility_data = data(facility_df)
-
-# Create Facility instances with id, name, type and region properties mapped
-# to values from each DataFrame row.
-model.define(
-    Facility.new(
-        id=facility_data.id,       # Maps to "id" column in DataFrame
-        name=facility_data.name,   # Maps to "name" column in DataFrame
-        type=facility_data.type,   # Maps to "type" column in DataFrame
-        region=facility_data.region # Maps to "region" column in DataFrame
-    )
-)
-
-Facility.connects_to = model.Relationship(f"{Facility:from_facility} connects to {Facility:connects_to}")
-
-# Load connection data from CSV.
-connections_data = data(pd.read_csv(DATA_DIR / "connections.csv"))
-
-# Create connections.
-f_from, f_to = Facility.ref("f_from"), Facility.ref("f_to")
-
-define(Facility.connects_to(f_from, f_to)).where(
-    f_from.id == connections_data.from_facility_id,
-    f_to.id == connections_data.to_facility_id
-)
-
-
-# Define unweighted graph with Facility nodes and Connection edges.
-graph = Graph(model, directed=True, weighted=False, node_concept=Facility)
-
-define(graph.Edge.new(
-    src=Facility,
-    dst=Facility.connects_to,
-    )
-)
-
-# --------------------------------------------------
-# Calculate graph metrics
-# --------------------------------------------------
-
-# Calculate degree centrality: measures how connected each facility is in the network.
-# Higher centrality = more connections = more critical for outbreak response coordination.
+# Calculate weighted degree centrality: measures how connected each facility is in the network,
+# considering the risk weight of each connection.
+# Higher centrality = more connections with higher risk = more critical for outbreak response coordination.
 degree_centrality = graph.degree_centrality()
 
 # Calculate incoming edges: number of facilities that connect TO this facility.
@@ -102,7 +41,10 @@ incoming_edges = graph.indegree()
 outgoing_edges = graph.outdegree()
 
 # Create variable references for use in queries.
-facility, centr_score, in_edges, out_edges = graph.Node.ref("facility"), Float.ref("d_score"), Integer.ref("in_edges"), Integer.ref("out_edges")
+facility = graph.Node.ref("facility")
+centr_score = Float.ref("d_score")
+in_edges = Integer.ref("in_edges")
+out_edges = Integer.ref("out_edges")
 
 
 # --------------------------------------------------
@@ -119,7 +61,7 @@ def main() -> None:
 
     # Query the graph to retrieve:
     # - Basic facility information (id, name, type, region)
-    # - Degree centrality score (normalized measure of connectivity)
+    # - Weighted degree centrality score (sum of edge weights for all connections)
     # - Incoming edges count (how many facilities connect TO this one)
     # - Outgoing edges count (how many facilities this one connects TO)
     results = where(
@@ -140,7 +82,7 @@ def main() -> None:
     results['incoming_connections'] = results['incoming_connections'].astype(int)
     results['outgoing_connections'] = results['outgoing_connections'].astype(int)
 
-    # Sort by degree centrality (descending) to rank most connected facilities first.
+    # Sort by weighted degree centrality (descending) to rank facilities by highest cumulative risk first.
     results = results.sort_values("degree_centrality", ascending=False)
     results.insert(0, "rank", range(1, len(results) + 1))
 
@@ -152,8 +94,8 @@ def main() -> None:
     print("DISEASE OUTBREAK PREVENTION NETWORK - DEGREE CENTRALITY ANALYSIS")
     print("=" * 100)
     print("\nFacilities ranked by degree centrality (most connected first):")
-    print("\nDegree Centrality: Normalized score (0-1) indicating relative connectivity in the network")
-    print("Higher scores indicate more critical facilities for outbreak response coordination")
+    print("\nWeighted Degree Centrality: Sum of risk-weighted connections (transfer_volume × contact_intensity)")
+    print("Higher scores indicate greater cumulative risk and more critical facilities for outbreak response coordination")
     print("\nThese facilities should receive priority for:")
     print("  • Vaccine and medical supply deployment")
     print("  • Testing station setup")
@@ -165,7 +107,7 @@ def main() -> None:
                           'incoming_connections', 'outgoing_connections', 'total_connections']].copy()
 
     # Round centrality scores for readability
-    display_df['degree_centrality'] = display_df['degree_centrality'].round(4)
+    display_df['degree_centrality'] = display_df['degree_centrality'].round(2)
 
     print(display_df.to_string(index=False))
     print("-" * 100)
@@ -178,7 +120,7 @@ def main() -> None:
         print(f"  #{int(row['rank'])} - {row['name']}")
         print(f"       Type: {row['type']}")
         print(f"       Region: {row['region']}")
-        print(f"       Degree Centrality: {row['degree_centrality']:.4f}")
+        print(f"       Weighted Degree Centrality: {row['degree_centrality']:.2f}")
         print(f"       Total Connections: {int(row['total_connections'])} "
               f"({int(row['incoming_connections'])} incoming, {int(row['outgoing_connections'])} outgoing)")
         print()
