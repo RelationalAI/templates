@@ -277,7 +277,7 @@ Project.substation = model.Property("{Project} connects to {substation:Substatio
 Project.capacity_needed = model.Property("{Project} needs {capacity_needed:int}")
 Project.revenue = model.Property("{Project} has {revenue:float}")
 Project.connection_cost = model.Property("{Project} has {connection_cost:float}")
-Project.approved = model.Property("{Project} is {approved:float}")
+Project.x_approved = model.Property("{Project} is {approved:float}")
 
 # Load projects from CSV.
 projects_data = data(read_csv(DATA_DIR / "projects.csv"))
@@ -300,7 +300,7 @@ Upgrade.id = model.Property("{Upgrade} has {id:int}")
 Upgrade.substation = model.Property("{Upgrade} for {substation:Substation}")
 Upgrade.capacity_added = model.Property("{Upgrade} adds {capacity_added:int}")
 Upgrade.upgrade_cost = model.Property("{Upgrade} has {upgrade_cost:float}")
-Upgrade.selected = model.Property("{Upgrade} is {selected:float}")
+Upgrade.x_selected = model.Property("{Upgrade} is {selected:float}")
 
 # Load upgrades from CSV.
 upgrades_data = data(read_csv(DATA_DIR / "upgrades.csv"))
@@ -327,12 +327,12 @@ Upg = Upgrade.ref()
 
 def build_formulation(solver_model):
     """Register variables, constraints, and objective on a solver model."""
-    # Project.approved decision property: binary approval decision for each project.
-    solver_model.solve_for(Project.approved, type="bin", name=Project.name)
+    # Project.x_approved decision property: binary approval decision for each project.
+    solver_model.solve_for(Project.x_approved, type="bin", name=Project.name)
 
-    # Upgrade.selected decision property: binary selection decision for each upgrade.
+    # Upgrade.x_selected decision property: binary selection decision for each upgrade.
     solver_model.solve_for(
-        Upgrade.selected,
+        Upgrade.x_selected,
         type="bin",
         name=["upg", Upgrade.substation.name, Upgrade.capacity_added],
     )
@@ -357,14 +357,14 @@ def build_formulation(solver_model):
     solver_model.satisfy(one_upgrade)
 
     # Constraint: budget
-    total_investment = sum(Project.approved * Project.connection_cost) + sum(
-        Upgrade.selected * Upgrade.upgrade_cost
+    total_investment = sum(Project.x_approved * Project.connection_cost) + sum(
+        Upgrade.x_selected * Upgrade.upgrade_cost
     )
     budget_ok = require(total_investment <= budget)
     solver_model.satisfy(budget_ok)
 
     # Objective: maximize net revenue
-    net_revenue = sum(Project.approved * (Project.revenue - Project.connection_cost))
+    net_revenue = sum(Project.x_approved * (Project.revenue - Project.connection_cost))
     solver_model.maximize(net_revenue)
 ```
 

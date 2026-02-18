@@ -61,14 +61,14 @@ Ej = Edge.ref()
 # Create a continuous optimization model.
 s = SolverModel(model, "cont")
 
-# Edge.flow decision variable: flow on each edge.
-Edge.flow = model.Property("{Edge} has {flow:float}")
-s.solve_for(Edge.flow, name=["flow", Edge.i, Edge.j])
+# Edge.x_flow decision variable: flow on each edge.
+Edge.x_flow = model.Property("{Edge} has {flow:float}")
+s.solve_for(Edge.x_flow, name=["flow", Edge.i, Edge.j])
 
 # Constraint: flow must be non-negative and cannot exceed edge capacity.
 bounds = require(
-    Edge.flow >= 0,
-    Edge.flow <= Edge.cap
+    Edge.x_flow >= 0,
+    Edge.x_flow <= Edge.cap
 )
 s.satisfy(bounds)
 
@@ -81,7 +81,7 @@ balance = require(flow_in == flow_out).where(
 s.satisfy(balance)
 
 # Objective: maximize total flow out of the source node.
-total_flow = sum(Edge.flow).where(
+total_flow = sum(Edge.x_flow).where(
     Edge.i == SOURCE_NODE
 )
 s.maximize(total_flow)
@@ -96,7 +96,7 @@ s.solve(solver, time_limit_sec=60)
 print(f"Status: {s.termination_status}")
 print(f"Maximum flow: {s.objective_value:.0f}")
 
-flows = select(Edge.i, Edge.j, Edge.flow).where(Edge.flow > 0.001).to_df()
+flows = select(Edge.i, Edge.j, Edge.x_flow).where(Edge.x_flow > 0.001).to_df()
 
 print("\nEdge flows:")
 print(flows.to_string(index=False))

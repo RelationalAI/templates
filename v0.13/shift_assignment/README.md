@@ -37,7 +37,7 @@ Because this is a feasibility / constraint satisfaction problem, there is no obj
 ## What you’ll build
 
 - A semantic model of workers, shifts, and worker–shift availability.
-- A binary decision variable `Assignment.assigned` for each available worker–shift pair.
+- A binary decision variable `Assignment.x_assigned` for each available worker–shift pair.
 - Constraints that enforce minimum shift coverage and per-worker assignment limits.
 - A solve step that uses the `minizinc` backend and prints an assignment table.
 
@@ -266,7 +266,7 @@ Then it defines an `Assignment` decision concept and uses `where(...).define(...
 Assignment = model.Concept("Assignment")
 Assignment.worker = model.Property("{Assignment} has {worker:Worker}")
 Assignment.shift = model.Property("{Assignment} has {shift:Shift}")
-Assignment.assigned = model.Property("{Assignment} assigned {assigned:int}")
+Assignment.x_assigned = model.Property("{Assignment} assigned {assigned:int}")
 
 # Load availability data from CSV.
 avail = data(read_csv(DATA_DIR / "availability.csv"))
@@ -299,7 +299,7 @@ s = SolverModel(model, "int")
 
 # Variable: binary assignment (0 or 1)
 s.solve_for(
-    Assignment.assigned,
+    Assignment.x_assigned,
     name=["x", Assignment.worker.name, Assignment.shift.name],
     type="bin",
 )
@@ -338,7 +338,7 @@ print(f"Status: {s.termination_status}")
 assignments = select(
     Assignment.worker.name.alias("worker"),
     Assignment.shift.name.alias("shift")
-).where(Assignment.assigned >= 1).to_df()
+).where(Assignment.x_assigned >= 1).to_df()
 
 print("\nAssignments:")
 print(assignments.to_string(index=False))

@@ -231,7 +231,7 @@ define(Node.new(v=Edge.i))
 
 ### Define decision variables
 
-With the base entities in place, the template creates a `SolverModel` and registers two decision variables: `Edge.x_edge` to choose edges in the tour, and `Node.u_node` as an MTZ ordering variable:
+With the base entities in place, the template creates a `SolverModel` and registers two decision variables: `Edge.x_edge` to choose edges in the tour, and `Node.x_u_node` as an MTZ ordering variable:
 
 ```python
 # --------------------------------------------------
@@ -251,9 +251,9 @@ s = SolverModel(model, "cont")
 Edge.x_edge = model.Property("{Edge} is selected if {x:float}")
 s.solve_for(Edge.x_edge, type="bin", name=["x", Edge.i, Edge.j])
 
-# Node.u_node decision variable: ordering variable used for MTZ subtour elimination.
-Node.u_node = model.Property("{Node} has auxiliary value {u:float}")
-s.solve_for(Node.u_node, type="int", name=["u", Node.v], lower=1, upper=node_count)
+# Node.x_u_node decision variable: ordering variable used for MTZ subtour elimination.
+Node.x_u_node = model.Property("{Node} has auxiliary value {u:float}")
+s.solve_for(Node.x_u_node, type="int", name=["u", Node.v], lower=1, upper=node_count)
 ```
 
 ### Add constraints (degree constraints + MTZ subtour elimination)
@@ -262,7 +262,7 @@ Then it adds the standard TSP constraints: (1) symmetry breaking by fixing the s
 
 ```python
 # Constraint: fix u=1 for node 1 (symmetry breaking).
-start_node = require(Node.u_node == 1).where(Node.v == 1)
+start_node = require(Node.x_u_node == 1).where(Node.v == 1)
 s.satisfy(start_node)
 
 # Constraint: exactly one incoming and one outgoing edge per node.

@@ -271,7 +271,7 @@ Connection.source = model.Property("{Connection} from {source:Source}")
 Connection.user = model.Property("{Connection} to {user:User}")
 Connection.max_flow = model.Property("{Connection} has {max_flow:float}")
 Connection.loss_rate = model.Property("{Connection} has {loss_rate:float}")
-Connection.flow = model.Property("{Connection} has {flow:float}")
+Connection.x_flow = model.Property("{Connection} has {flow:float}")
 
 # Load connection data from CSV.
 conn_data = data(read_csv(DATA_DIR / "connections.csv"))
@@ -292,7 +292,7 @@ where(
 
 ### Define decision variables, constraints, and objective
 
-With the network data in place, the script creates a continuous `SolverModel` and declares `Connection.flow` as a non-negative decision variable with an upper bound from `Connection.max_flow`:
+With the network data in place, the script creates a continuous `SolverModel` and declares `Connection.x_flow` as a non-negative decision variable with an upper bound from `Connection.max_flow`:
 
 ```python
 Conn = Connection.ref()
@@ -302,7 +302,7 @@ s = SolverModel(model, "cont")
 
 # Decision variable: flow on each connection (continuous, non-negative).
 s.solve_for(
-    Connection.flow,
+    Connection.x_flow,
     name=["flow", Connection.source.name, Connection.user.name],
     lower=0,
     upper=Connection.max_flow,
@@ -329,7 +329,7 @@ Finally, it minimizes total sourcing cost by summing flow times the per-unit cos
 
 ```python
 # Objective: minimize total cost.
-total_cost = sum(Connection.flow * Connection.source.cost_per_unit)
+total_cost = sum(Connection.x_flow * Connection.source.cost_per_unit)
 s.minimize(total_cost)
 ```
 
@@ -347,9 +347,9 @@ print(f"Total cost: ${s.objective_value:.2f}")
 allocations = select(
     Connection.source.name.alias("source"),
     Connection.user.name.alias("user"),
-    Connection.flow,
+    Connection.x_flow,
 ).where(
-    Connection.flow > 0.001
+    Connection.x_flow > 0.001
 ).to_df()
 
 print("\nFlow allocations:")
@@ -418,7 +418,7 @@ print(allocations.to_string(index=False))
 <details>
 <summary>Flow allocation table is empty</summary>
 
-- The output filters out very small flows with <code>Connection.flow &gt; 0.001</code>. If your solution uses tiny flows, lower the threshold.
+- The output filters out very small flows with <code>Connection.x_flow &gt; 0.001</code>. If your solution uses tiny flows, lower the threshold.
 - If the model is infeasible, no decision variables will have meaningful values; check the printed termination status first.
 
 </details>
