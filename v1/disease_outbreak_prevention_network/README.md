@@ -174,6 +174,8 @@ The `FacilityConnection` concept represents directed connections between facilit
 
 ### Calculated Properties
 The `risk_weight` property of a connection that is used to weight edges in the graph
+| Property | Type | Notes |
+|---|---|---|
 | `risk_weight` | Float | Calculated as transfer_volume × contact_intensity|
 
 ### Graph Metrics

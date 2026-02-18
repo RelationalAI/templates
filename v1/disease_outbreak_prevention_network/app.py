@@ -261,7 +261,7 @@ def main():
         st.markdown("Hover over nodes to see details. Node size and color represent weighted degree centrality (risk weight). Arrows show connection direction.")
 
         fig = create_network_graph(results, connections_df)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width='stretch')
 
         st.info("💡 **Tip:** Facilities grouped by region. Highly connected facilities (darker/larger) should receive priority resources.")
 
@@ -296,7 +296,7 @@ def main():
 
         st.dataframe(
             display_df,
-            use_container_width=True,
+            width='stretch',
             height=400
         )
 
