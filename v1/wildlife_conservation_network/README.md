@@ -316,7 +316,7 @@ The Streamlit app features:
 
 **Try different community detection algorithms**: RelationalAI supports multiple algorithms:
 - `graph.label_propagation()` - Faster but less accurate for small networks
-- `graph.weakly_connected_components()` - Finds completely disconnected groups
+- `graph.weakly_connected_component()` - Finds completely disconnected groups
 - Experiment to see which algorithm best reveals your network's structure
 
 **Add temporal analysis**: Include partnership start dates to analyze how communities evolve over time.
