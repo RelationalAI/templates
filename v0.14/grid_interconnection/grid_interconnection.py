@@ -103,8 +103,8 @@ where(Substation.id == upgrades_data.substation_id).define(
 # Model the decision problem
 # --------------------------------------------------
 
-Proj = Project.ref()
-Upg = Upgrade.ref()
+ProjectRef = Project.ref()
+UpgradeRef = Upgrade.ref()
 
 
 def build_formulation(solver_model):
@@ -121,20 +121,20 @@ def build_formulation(solver_model):
 
     # Constraint: capacity at substation must accommodate approved projects
     project_demand = (
-        sum(Proj.x_approved * Proj.capacity_needed)
-        .where(Proj.substation == Substation)
+        sum(ProjectRef.x_approved * ProjectRef.capacity_needed)
+        .where(ProjectRef.substation == Substation)
         .per(Substation)
     )
     upgrade_capacity = (
-        sum(Upg.x_selected * Upg.capacity_added)
-        .where(Upg.substation == Substation)
+        sum(UpgradeRef.x_selected * UpgradeRef.capacity_added)
+        .where(UpgradeRef.substation == Substation)
         .per(Substation)
     )
     capacity_ok = require(Substation.current_capacity + upgrade_capacity >= project_demand)
     solver_model.satisfy(capacity_ok)
 
     # Constraint: at most one upgrade per substation
-    upgrades_per_sub = sum(Upg.x_selected).where(Upg.substation == Substation).per(Substation)
+    upgrades_per_sub = sum(UpgradeRef.x_selected).where(UpgradeRef.substation == Substation).per(Substation)
     one_upgrade = require(upgrades_per_sub <= 1)
     solver_model.satisfy(one_upgrade)
 

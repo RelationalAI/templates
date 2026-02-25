@@ -84,7 +84,7 @@ where(
 min_coverage = 2
 max_shifts_per_worker = 1
 
-Asn = Assignment.ref()
+AssignmentRef = Assignment.ref()
 
 s = SolverModel(model, "int")
 
@@ -97,17 +97,17 @@ s.solve_for(
 
 # Constraint: each shift has minimum coverage
 shift_coverage = where(
-    Asn.shift == Shift
+    AssignmentRef.shift == Shift
 ).require(
-    sum(Asn.x_assigned).per(Shift) >= min_coverage
+    sum(AssignmentRef.x_assigned).per(Shift) >= min_coverage
 )
 s.satisfy(shift_coverage)
 
 # Constraint: each worker works at most max_shifts_per_worker shifts
 worker_capacity = where(
-    Asn.worker == Worker
+    AssignmentRef.worker == Worker
 ).require(
-    sum(Asn.x_assigned).per(Worker) <= max_shifts_per_worker
+    sum(AssignmentRef.x_assigned).per(Worker) <= max_shifts_per_worker
 )
 s.satisfy(worker_capacity)
 

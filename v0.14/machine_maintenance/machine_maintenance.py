@@ -71,12 +71,12 @@ Conflict.machine2 = model.Relationship("{Conflict} and {machine2:Machine}")
 
 # Load machine conflict pairs from CSV.
 conflicts_data = data(read_csv(DATA_DIR / "conflicts.csv"))
-M2 = Machine.ref()
+OtherMachine = Machine.ref()
 where(
     Machine.id == conflicts_data.machine1_id,
-    M2.id == conflicts_data.machine2_id
+    OtherMachine.id == conflicts_data.machine2_id
 ).define(
-    Conflict.new(machine1=Machine, machine2=M2)
+    Conflict.new(machine1=Machine, machine2=OtherMachine)
 )
 
 # --------------------------------------------------
@@ -91,9 +91,9 @@ Schedule.slot = model.Relationship("{Schedule} in {slot:TimeSlot}")
 Schedule.x_assigned = model.Property("{Schedule} is {assigned:float}")
 define(Schedule.new(machine=Machine, slot=TimeSlot))
 
-Sch = Schedule.ref()
-Sch1 = Schedule.ref()
-Sch2 = Schedule.ref()
+ScheduleRef = Schedule.ref()
+ScheduleA = Schedule.ref()
+ScheduleB = Schedule.ref()
 
 s = SolverModel(model, "cont")
 
@@ -101,20 +101,20 @@ s = SolverModel(model, "cont")
 s.solve_for(Schedule.x_assigned, type="bin", name=["x", Schedule.machine.name, Schedule.slot.day])
 
 # Constraint: each machine scheduled exactly once
-machine_scheduled = sum(Sch.x_assigned).where(Sch.machine == Machine).per(Machine)
+machine_scheduled = sum(ScheduleRef.x_assigned).where(ScheduleRef.machine == Machine).per(Machine)
 exactly_once = require(machine_scheduled == 1)
 s.satisfy(exactly_once)
 
 # Constraint: crew hours per slot not exceeded
-slot_hours = sum(Sch.x_assigned * Sch.machine.maintenance_hours).where(Sch.slot == TimeSlot).per(TimeSlot)
+slot_hours = sum(ScheduleRef.x_assigned * ScheduleRef.machine.maintenance_hours).where(ScheduleRef.slot == TimeSlot).per(TimeSlot)
 crew_limit = require(slot_hours <= TimeSlot.crew_hours)
 s.satisfy(crew_limit)
 
 # Constraint: conflicting machines cannot be scheduled in same slot
-no_conflicts = require(Sch1.x_assigned + Sch2.x_assigned <= 1).where(
-    Sch1.machine == Conflict.machine1,
-    Sch2.machine == Conflict.machine2,
-    Sch1.slot == Sch2.slot
+no_conflicts = require(ScheduleA.x_assigned + ScheduleB.x_assigned <= 1).where(
+    ScheduleA.machine == Conflict.machine1,
+    ScheduleB.machine == Conflict.machine2,
+    ScheduleA.slot == ScheduleB.slot
 )
 s.satisfy(no_conflicts)
 

@@ -74,7 +74,7 @@ data(read_csv(DATA_DIR / "trips.csv")).into(Trip, keys=["id"])
 # Model the problem
 # --------------------------------------------------
 
-# Assignment decision concept: assignment of vehicles to trips.
+# Assignment decision concept: AssignmentRef of vehicles to trips.
 Assignment = model.Concept("Assignment")
 Assignment.vehicle = model.Relationship("{Assignment} assigns {vehicle:Vehicle}")
 Assignment.trip = model.Relationship("{Assignment} to {trip:Trip}")
@@ -87,12 +87,12 @@ VehicleUsage.vehicle = model.Relationship("{VehicleUsage} for {vehicle:Vehicle}"
 VehicleUsage.x_used = model.Property("{VehicleUsage} is {used:float}")
 define(VehicleUsage.new(vehicle=Vehicle))
 
-assignment = Assignment.ref()
+AssignmentRef = Assignment.ref()
 
 # Create a continuous optimization model.
 s = SolverModel(model, "cont")
 
-# Decision variable: assignment (binary 0/1).
+# Decision variable: AssignmentRef (binary 0/1).
 s.solve_for(
     Assignment.x_assigned,
     type="bin",
@@ -107,22 +107,22 @@ s.solve_for(
 )
 
 # Constraint: each trip must be assigned to exactly one vehicle.
-trip_coverage = sum(assignment.x_assigned).where(
-    assignment.trip == Trip
+trip_coverage = sum(AssignmentRef.x_assigned).where(
+    AssignmentRef.trip == Trip
 ).per(Trip)
 one_vehicle = require(trip_coverage == 1)
 s.satisfy(one_vehicle)
 
 # Constraint: vehicle capacity.
-vehicle_load = sum(assignment.x_assigned * assignment.trip.load).where(
-    assignment.vehicle == Vehicle
+vehicle_load = sum(AssignmentRef.x_assigned * AssignmentRef.trip.load).where(
+    AssignmentRef.vehicle == Vehicle
 ).per(Vehicle)
 capacity_limit = require(vehicle_load <= Vehicle.capacity)
 s.satisfy(capacity_limit)
 
 # Constraint: link vehicle usage to assignments.
-vehicle_trips = sum(assignment.x_assigned).where(
-    assignment.vehicle == VehicleUsage.vehicle
+vehicle_trips = sum(AssignmentRef.x_assigned).where(
+    AssignmentRef.vehicle == VehicleUsage.vehicle
 ).per(VehicleUsage)
 usage_link = require(VehicleUsage.x_used * MAX_TRIPS_PER_VEHICLE >= vehicle_trips)
 s.satisfy(usage_link)

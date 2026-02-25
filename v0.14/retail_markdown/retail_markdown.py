@@ -85,7 +85,7 @@ week_end = 4
 weeks = std.range(week_start, week_end + 1)
 
 t = Integer.ref()
-d = Discount.ref()
+DiscountRef = Discount.ref()
 
 # Create a continuous optimization model with a MILP formulation.
 s = SolverModel(model, "cont")
@@ -94,9 +94,9 @@ s = SolverModel(model, "cont")
 Product.x_selected = model.Property("{Product} in week {t:int} at discount {d:Discount} is {selected:float}")
 x_sel = Float.ref()
 s.solve_for(
-    Product.x_selected(t, d, x_sel),
+    Product.x_selected(t, DiscountRef, x_sel),
     type="bin",
-    name=["select", Product.name, t, d.discount_pct],
+    name=["select", Product.name, t, DiscountRef.discount_pct],
     where=[t == weeks],
 )
 
@@ -104,10 +104,10 @@ s.solve_for(
 Product.x_sales = model.Property("{Product} in week {t:int} at discount {d:Discount} has {sales:float}")
 x_sales = Float.ref()
 s.solve_for(
-    Product.x_sales(t, d, x_sales),
+    Product.x_sales(t, DiscountRef, x_sales),
     type="cont",
     lower=0,
-    name=["sales", Product.name, t, d.discount_pct],
+    name=["sales", Product.name, t, DiscountRef.discount_pct],
     where=[t == weeks],
 )
 
@@ -124,19 +124,19 @@ s.solve_for(
 
 # Constraint: one discount level selected per product per week.
 one_discount_per_week = where(
-    Product.x_selected(t, d, x_sel)
+    Product.x_selected(t, DiscountRef, x_sel)
 ).require(
     sum(x_sel).per(Product, t) == 1
 )
 s.satisfy(one_discount_per_week)
 
 # Constraint: price ladder - discounts can only increase (prices can only decrease).
-d1, d2 = Discount.ref(), Discount.ref()
+CurrentDiscount, NextDiscount = Discount.ref(), Discount.ref()
 x_sel1, x_sel2 = Float.ref(), Float.ref()
 price_ladder = where(
-    Product.x_selected(t, d1, x_sel1),
-    Product.x_selected(t + 1, d2, x_sel2),
-    d2.level < d1.level,
+    Product.x_selected(t, CurrentDiscount, x_sel1),
+    Product.x_selected(t + 1, NextDiscount, x_sel2),
+    NextDiscount.level < CurrentDiscount.level,
     t >= week_start,
     t < week_end
 ).require(
@@ -147,17 +147,17 @@ s.satisfy(price_ladder)
 # Constraint: sales only occur at the selected discount level.
 for wk, dm in demand_multiplier.items():
     sales_limit = where(
-        Product.x_selected(wk, d, x_sel),
-        Product.x_sales(wk, d, x_sales)
+        Product.x_selected(wk, DiscountRef, x_sel),
+        Product.x_sales(wk, DiscountRef, x_sales)
     ).require(
-        x_sales <= Product.base_demand * d.demand_lift * dm * x_sel
+        x_sales <= Product.base_demand * DiscountRef.demand_lift * dm * x_sel
     )
     s.satisfy(sales_limit)
 
 # Constraint: cumulative sales tracking - week 1.
 x_sales_w1, x_cum_w1 = Float.ref(), Float.ref()
 cum_sales_week_1 = where(
-    Product.x_sales(week_start, d, x_sales_w1),
+    Product.x_sales(week_start, DiscountRef, x_sales_w1),
     Product.x_cum_sales(week_start, x_cum_w1)
 ).require(
     x_cum_w1 == sum(x_sales_w1).per(Product)
@@ -167,7 +167,7 @@ s.satisfy(cum_sales_week_1)
 # Constraint: cumulative sales tracking - weeks 2+.
 x_sales_t, x_cum_t, x_cum_prev = Float.ref(), Float.ref(), Float.ref()
 cum_sales_weeks_2_plus = where(
-    Product.x_sales(t, d, x_sales_t),
+    Product.x_sales(t, DiscountRef, x_sales_t),
     Product.x_cum_sales(t, x_cum_t),
     Product.x_cum_sales(t - 1, x_cum_prev),
     t > week_start,
@@ -187,9 +187,9 @@ s.satisfy(inventory_limit)
 
 # Objective: maximize revenue from sales plus salvage value of remaining inventory.
 revenue = sum(
-    x_sales * Product.initial_price * (1 - d.discount_pct / 100)
+    x_sales * Product.initial_price * (1 - DiscountRef.discount_pct / 100)
 ).where(
-    Product.x_sales(t, d, x_sales)
+    Product.x_sales(t, DiscountRef, x_sales)
 )
 
 x_cum_final = Float.ref()

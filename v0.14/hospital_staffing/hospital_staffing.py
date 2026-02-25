@@ -101,7 +101,7 @@ Assignment.availability = model.Relationship("{Assignment} uses {availability:Av
 Assignment.x_assigned = model.Property("{Assignment} is {assigned:float}")
 define(Assignment.new(availability=Availability))
 
-Asn = Assignment.ref()
+AssignmentRef = Assignment.ref()
 
 s = SolverModel(model, "cont")
 
@@ -130,7 +130,7 @@ must_be_available = require(Assignment.x_assigned <= Assignment.availability.ava
 s.satisfy(must_be_available)
 
 # Constraint: every nurse works at least one shift
-nurse_shift_count = sum(Asn.x_assigned).where(Asn.availability.nurse == Nurse).per(Nurse)
+nurse_shift_count = sum(AssignmentRef.x_assigned).where(AssignmentRef.availability.nurse == Nurse).per(Nurse)
 min_one_shift = require(nurse_shift_count >= 1)
 s.satisfy(min_one_shift)
 
@@ -139,21 +139,21 @@ max_two_shifts = require(nurse_shift_count <= 2)
 s.satisfy(max_two_shifts)
 
 # Constraint: minimum nurses per shift
-shift_staff_count = sum(Asn.x_assigned).where(Asn.availability.shift == Shift).per(Shift)
+shift_staff_count = sum(AssignmentRef.x_assigned).where(AssignmentRef.availability.shift == Shift).per(Shift)
 min_coverage = require(shift_staff_count >= Shift.min_nurses)
 s.satisfy(min_coverage)
 
 # Constraint: at least one nurse with required skill level per shift
-skilled_coverage = sum(Asn.x_assigned).where(
-    Asn.availability.shift == Shift,
-    Asn.availability.nurse.skill_level >= Shift.min_skill,
+skilled_coverage = sum(AssignmentRef.x_assigned).where(
+    AssignmentRef.availability.shift == Shift,
+    AssignmentRef.availability.nurse.skill_level >= Shift.min_skill,
 ).per(Shift)
 min_skilled = require(skilled_coverage >= 1)
 s.satisfy(min_skilled)
 
 # Constraint: overtime >= total hours worked - regular hours
-total_hours_worked = sum(Asn.x_assigned * Asn.availability.shift.duration).where(
-    Asn.availability.nurse == Nurse
+total_hours_worked = sum(AssignmentRef.x_assigned * AssignmentRef.availability.shift.duration).where(
+    AssignmentRef.availability.nurse == Nurse
 ).per(Nurse)
 overtime_def = require(Nurse.x_overtime_hours >= total_hours_worked - Nurse.regular_hours)
 s.satisfy(overtime_def)

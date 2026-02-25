@@ -114,7 +114,7 @@ Shipment.x_quantity = model.Property("{Shipment} has {quantity:float}")
 Shipment.x_selected = model.Property("{Shipment} is {selected:float}")
 define(Shipment.new(route=Route, mode=TransportMode))
 
-Sh = Shipment.ref()
+ShipmentRef = Shipment.ref()
 
 
 def build_formulation(s):
@@ -149,12 +149,12 @@ def build_formulation(s):
     s.satisfy(min_bound)
 
     # Constraint: total outbound from warehouse cannot exceed inventory.
-    outbound = sum(Sh.x_quantity).where(Sh.route.warehouse == Warehouse).per(Warehouse)
+    outbound = sum(ShipmentRef.x_quantity).where(ShipmentRef.route.warehouse == Warehouse).per(Warehouse)
     inventory_limit = require(outbound <= Warehouse.inventory)
     s.satisfy(inventory_limit)
 
     # Constraint: demand satisfaction for each customer.
-    inbound = sum(Sh.x_quantity).where(Sh.route.customer == Customer).per(Customer)
+    inbound = sum(ShipmentRef.x_quantity).where(ShipmentRef.route.customer == Customer).per(Customer)
     demand_met = require(inbound >= Customer.demand)
     s.satisfy(demand_met)
 

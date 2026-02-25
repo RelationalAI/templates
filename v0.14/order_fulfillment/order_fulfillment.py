@@ -95,7 +95,7 @@ FCUsage.fc = model.Relationship("{FCUsage} for {fc:FulfillmentCenter}")
 FCUsage.x_used = model.Property("{FCUsage} is {used:float}")
 define(FCUsage.new(fc=FC))
 
-Asn = Assignment.ref()
+AssignmentRef = Assignment.ref()
 
 s = SolverModel(model, "cont")
 
@@ -108,17 +108,17 @@ s.solve_for(
 s.solve_for(FCUsage.x_used, type="bin", name=["fc_used", FCUsage.fc.name])
 
 # Constraint: FC capacity
-fc_total_qty = sum(Asn.x_qty).where(Asn.shipping.fc == FC).per(FC)
+fc_total_qty = sum(AssignmentRef.x_qty).where(AssignmentRef.shipping.fc == FC).per(FC)
 capacity_limit = require(fc_total_qty <= FC.capacity)
 s.satisfy(capacity_limit)
 
 # Constraint: link FC usage to assignments
-fc_total_qty_for_usage = sum(Asn.x_qty).where(Asn.shipping.fc == FCUsage.fc).per(FCUsage)
+fc_total_qty_for_usage = sum(AssignmentRef.x_qty).where(AssignmentRef.shipping.fc == FCUsage.fc).per(FCUsage)
 usage_link = require(fc_total_qty_for_usage <= FCUsage.fc.capacity * FCUsage.x_used)
 s.satisfy(usage_link)
 
 # Constraint: each order must be fully fulfilled
-order_fulfilled = sum(Asn.x_qty).where(Asn.shipping.order == Order).per(Order)
+order_fulfilled = sum(AssignmentRef.x_qty).where(AssignmentRef.shipping.order == Order).per(Order)
 fulfill_all = require(order_fulfilled == Order.quantity)
 s.satisfy(fulfill_all)
 

@@ -60,15 +60,15 @@ Lane.capacity = model.Property("{Lane} has {capacity:int}")
 
 # Load lane data from CSV and create Lane entities.
 lanes_data = data(read_csv(DATA_DIR / "lanes.csv"))
-Dest = Site.ref()
+DestSite = Site.ref()
 where(
     Site.id == lanes_data.source_id,
-    Dest.id == lanes_data.dest_id
+    DestSite.id == lanes_data.dest_id
 ).define(
     Lane.new(
         id=lanes_data.id,
         source=Site,
-        dest=Dest,
+        dest=DestSite,
         cost_per_unit=lanes_data.cost_per_unit,
         capacity=lanes_data.capacity
     )
@@ -96,8 +96,8 @@ Transfer.lane = model.Relationship("{Transfer} uses {lane:Lane}")
 Transfer.x_quantity = model.Property("{Transfer} has {quantity:float}")
 define(Transfer.new(lane=Lane))
 
-Tr = Transfer.ref()
-Dm = Demand.ref()
+TransferRef = Transfer.ref()
+DemandRef = Demand.ref()
 
 s = SolverModel(model, "cont")
 
@@ -109,14 +109,14 @@ capacity_limit = require(Transfer.x_quantity <= Transfer.lane.capacity)
 s.satisfy(capacity_limit)
 
 # Constraint: total outbound from source cannot exceed source inventory
-outbound = sum(Tr.x_quantity).where(Tr.lane.source == Site).per(Site)
+outbound = sum(TransferRef.x_quantity).where(TransferRef.lane.source == Site).per(Site)
 inventory_limit = require(outbound <= Site.inventory)
 s.satisfy(inventory_limit)
 
 # Constraint: demand satisfaction at each destination site
-inbound = sum(Tr.x_quantity).where(Tr.lane.dest == Dm.site).per(Dm)
-local_inv = sum(Site.inventory).where(Site == Dm.site).per(Dm)
-demand_met = require(inbound + local_inv >= Dm.quantity)
+inbound = sum(TransferRef.x_quantity).where(TransferRef.lane.dest == DemandRef.site).per(DemandRef)
+local_inv = sum(Site.inventory).where(Site == DemandRef.site).per(DemandRef)
+demand_met = require(inbound + local_inv >= DemandRef.quantity)
 s.satisfy(demand_met)
 
 # Objective: minimize total transfer cost

@@ -92,7 +92,7 @@ where(
 # Model the decision problem
 # --------------------------------------------------
 
-Conn = Connection.ref()
+ConnectionRef = Connection.ref()
 
 # Create a continuous optimization model.
 s = SolverModel(model, "cont")
@@ -106,13 +106,13 @@ s.solve_for(
 )
 
 # Constraint: total outflow from each source must not exceed its capacity.
-outflow = sum(Conn.x_flow).where(Conn.source == Source).per(Source)
+outflow = sum(ConnectionRef.x_flow).where(ConnectionRef.source == Source).per(Source)
 source_limit = require(outflow <= Source.capacity)
 s.satisfy(source_limit)
 
 # Constraint: effective inflow to each user must meet demand (accounting for losses).
 effective_inflow = (
-    sum(Conn.x_flow * (1 - Conn.loss_rate)).where(Conn.user == User).per(User)
+    sum(ConnectionRef.x_flow * (1 - ConnectionRef.loss_rate)).where(ConnectionRef.user == User).per(User)
 )
 meet_demand = require(effective_inflow >= User.demand)
 s.satisfy(meet_demand)

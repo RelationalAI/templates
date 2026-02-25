@@ -91,7 +91,7 @@ Production.rate = model.Relationship("{Production} uses {rate:ProductionRate}")
 Production.x_quantity = model.Property("{Production} has {quantity:float}")
 define(Production.new(rate=Rate))
 
-Prod = Production.ref()
+ProductionRef = Production.ref()
 
 # Scenario parameter (overridden within the scenario loop).
 demand_multiplier = 1.0
@@ -113,15 +113,15 @@ def build_formulation(s):
 
     # Constraint: machine capacity
     machine_hours = (
-        sum(Prod.x_quantity * Prod.rate.hours_per_unit)
-        .where(Prod.rate.machine == Machine)
+        sum(ProductionRef.x_quantity * ProductionRef.rate.hours_per_unit)
+        .where(ProductionRef.rate.machine == Machine)
         .per(Machine)
     )
     capacity_limit = require(machine_hours <= Machine.hours_available)
     s.satisfy(capacity_limit)
 
     # Constraint: meet demand (scaled by demand_multiplier)
-    product_qty = sum(Prod.x_quantity).where(Prod.rate.product == Product).per(Product)
+    product_qty = sum(ProductionRef.x_quantity).where(ProductionRef.rate.product == Product).per(Product)
     meet_demand = require(product_qty >= Product.demand * demand_multiplier)
     s.satisfy(meet_demand)
 

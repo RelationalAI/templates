@@ -55,16 +55,16 @@ data(read_csv(DATA_DIR / "returns.csv")).into(Stock, keys=["index"])
 
 # Stock.covar property: covariance matrix between stock pairs.
 Stock.covar = model.Relationship("{Stock} and {stock2:Stock} have {covar:float}")
-Stock2 = Stock.ref()
+OtherStock = Stock.ref()
 
 # Load covariance data from CSV.
 covar_csv = read_csv(DATA_DIR / "covariance.csv")
 pairs = data(covar_csv)
 where(
     Stock.index == pairs.i,
-    Stock2.index == pairs.j
+    OtherStock.index == pairs.j
 ).define(
-    Stock.covar(Stock, Stock2, pairs.covar)
+    Stock.covar(Stock, OtherStock, pairs.covar)
 )
 
 # --------------------------------------------------
@@ -101,7 +101,7 @@ def build_formulation(s):
     s.satisfy(return_constraint)
 
     # Objective: minimize portfolio risk (variance)
-    risk = sum(c * Stock.x_quantity * Stock2.x_quantity).where(Stock.covar(Stock2, c))
+    risk = sum(c * Stock.x_quantity * OtherStock.x_quantity).where(Stock.covar(OtherStock, c))
     s.minimize(risk)
 
 # --------------------------------------------------

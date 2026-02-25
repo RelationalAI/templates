@@ -89,7 +89,7 @@ Production.x_quantity = model.Property("{Production} has {quantity:float}")
 # Define one Production entity per machine-product ProductionTime record.
 define(Production.new(prod_time=ProdTime))
 
-Prod = Production.ref()
+ProductionRef = Production.ref()
 
 s = SolverModel(model, "cont")
 
@@ -102,15 +102,15 @@ s.solve_for(
 
 # Constraint: total production hours per machine <= hours_available
 total_hours = sum(
-    Prod.x_quantity * Prod.prod_time.hours_per_unit
+    ProductionRef.x_quantity * ProductionRef.prod_time.hours_per_unit
 ).where(
-    Prod.prod_time.machine == Machine
+    ProductionRef.prod_time.machine == Machine
 ).per(Machine)
 machine_limit = require(total_hours <= Machine.hours_available)
 s.satisfy(machine_limit)
 
 # Constraint: total production per product >= min_production
-total_produced = sum(Prod.x_quantity).where(Prod.prod_time.product == Product).per(Product)
+total_produced = sum(ProductionRef.x_quantity).where(ProductionRef.prod_time.product == Product).per(Product)
 meet_minimum = require(total_produced >= Product.min_production)
 s.satisfy(meet_minimum)
 

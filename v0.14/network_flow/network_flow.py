@@ -55,8 +55,8 @@ data(edges_csv).into(Edge, keys=["i", "j"])
 # Model the decision problem
 # --------------------------------------------------
 
-Ei = Edge
-Ej = Edge.ref()
+EdgeSrc = Edge
+EdgeRef = Edge.ref()
 
 # Create a continuous optimization model.
 s = SolverModel(model, "cont")
@@ -73,10 +73,10 @@ bounds = require(
 s.satisfy(bounds)
 
 # Constraint: flow conservation at each node (inflow equals outflow).
-flow_out = per(Ei.i).sum(Ei.x_flow)
-flow_in = per(Ej.j).sum(Ej.x_flow)
+flow_out = per(EdgeSrc.i).sum(EdgeSrc.x_flow)
+flow_in = per(EdgeRef.j).sum(EdgeRef.x_flow)
 balance = require(flow_in == flow_out).where(
-    Ei.i == Ej.j
+    EdgeSrc.i == EdgeRef.j
 )
 s.satisfy(balance)
 

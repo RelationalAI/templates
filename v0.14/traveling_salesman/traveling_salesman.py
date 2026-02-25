@@ -68,8 +68,8 @@ define(Node.new(v=Edge.i))
 # Pre-compute the number of nodes (used by the MTZ formulation).
 node_count = count(Node.ref())
 
-Node_i = Node
-Node_j = Node.ref()
+NodeFrom = Node
+NodeTo = Node.ref()
 
 s = SolverModel(model, "cont")
 
@@ -95,10 +95,10 @@ s.satisfy(flow_balance)
 mtz = where(
     Edge.i > 1,
     Edge.j > 1,
-    Node_i.v == Edge.i,
-    Node_j.v == Edge.j
+    NodeFrom.v == Edge.i,
+    NodeTo.v == Edge.j
 ).require(
-    Node_i.x_u_node - Node_j.x_u_node + node_count * Edge.x_edge <= node_count - 1
+    NodeFrom.x_u_node - NodeTo.x_u_node + node_count * Edge.x_edge <= node_count - 1
 )
 s.satisfy(mtz)
 
