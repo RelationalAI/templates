@@ -217,7 +217,7 @@ Next, it creates a `Model`, defines the `Stock` concept, and loads both CSVs. Th
 # --------------------------------------------------
 
 # Create a Semantics model container.
-model = Model("portfolio", config=globals().get("config", None), use_lqp=False)
+model = Model("portfolio", config=globals().get("config", None))
 
 # Stock concept: available investments with expected returns.
 Stock = model.Concept("Stock")
@@ -321,8 +321,8 @@ for scenario_value in SCENARIO_VALUES:
     # Print portfolio allocation from solver results.
     var_df = s.variable_values().to_df()
     qty_df = var_df[
-        var_df["name"].str.startswith("qty") & (var_df["float"] > 0.001)
-    ].rename(columns={"float": "value"})
+        var_df["name"].str.startswith("qty") & (var_df["value"] > 0.001)
+    ]
     print(f"\n  Portfolio allocation:")
     print(qty_df.to_string(index=False))
 

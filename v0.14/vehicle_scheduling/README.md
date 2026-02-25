@@ -253,7 +253,7 @@ Next, it creates a model container with `Model(...)`, defines `Vehicle` and `Tri
 
 ```python
 # Create a Semantics model container.
-model = Model("vehicle_scheduling", config=globals().get("config", None), use_lqp=False)
+model = Model("vehicle_scheduling", config=globals().get("config", None))
 
 # Vehicle concept: vehicles with capacity and costs.
 Vehicle = model.Concept("Vehicle")
@@ -326,21 +326,21 @@ Then it enforces trip coverage and capacity with `require(...)` and `s.satisfy(.
 
 ```python
 # Constraint: each trip must be assigned to exactly one vehicle.
-trip_coverage = sum(assignment.assigned).where(
+trip_coverage = sum(assignment.x_assigned).where(
     assignment.trip == Trip
 ).per(Trip)
 one_vehicle = require(trip_coverage == 1)
 s.satisfy(one_vehicle)
 
 # Constraint: vehicle capacity.
-vehicle_load = sum(assignment.assigned * assignment.trip.load).where(
+vehicle_load = sum(assignment.x_assigned * assignment.trip.load).where(
     assignment.vehicle == Vehicle
 ).per(Vehicle)
 capacity_limit = require(vehicle_load <= Vehicle.capacity)
 s.satisfy(capacity_limit)
 
 # Constraint: link vehicle usage to assignments.
-vehicle_trips = sum(assignment.assigned).where(
+vehicle_trips = sum(assignment.x_assigned).where(
     assignment.vehicle == VehicleUsage.vehicle
 ).per(VehicleUsage)
 usage_link = require(VehicleUsage.x_used * MAX_TRIPS_PER_VEHICLE >= vehicle_trips)

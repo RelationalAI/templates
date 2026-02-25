@@ -239,7 +239,7 @@ pandas.options.future.infer_string = False
 First, declare a `Site` concept and load one entity per row in `sites.csv` using `data(...).into(...)`.
 
 ```python
-model = Model("inventory_rebalancing", config=globals().get("config", None), use_lqp=False)
+model = Model("inventory_rebalancing", config=globals().get("config", None))
 
 # Concept: sites with current inventory
 Site = model.Concept("Site")
@@ -323,12 +323,12 @@ capacity_limit = require(Transfer.x_quantity <= Transfer.lane.capacity)
 s.satisfy(capacity_limit)
 
 # Constraint: total outbound from source cannot exceed source inventory
-outbound = sum(Tr.quantity).where(Tr.lane.source == Site).per(Site)
+outbound = sum(Tr.x_quantity).where(Tr.lane.source == Site).per(Site)
 inventory_limit = require(outbound <= Site.inventory)
 s.satisfy(inventory_limit)
 
 # Constraint: demand satisfaction at each destination site
-inbound = sum(Tr.quantity).where(Tr.lane.dest == Dm.site).per(Dm)
+inbound = sum(Tr.x_quantity).where(Tr.lane.dest == Dm.site).per(Dm)
 local_inv = sum(Site.inventory).where(Site == Dm.site).per(Dm)
 demand_met = require(inbound + local_inv >= Dm.quantity)
 s.satisfy(demand_met)

@@ -256,7 +256,7 @@ First, define the semantic model and load the input tables from CSV. `data(...).
 # --------------------------------------------------
 
 # Create a Semantics model container.
-model = Model("grid", config=globals().get("config", None), use_lqp=False)
+model = Model("grid", config=globals().get("config", None))
 
 # Substation concept: substations with current and maximum capacity.
 Substation = model.Concept("Substation")
@@ -339,12 +339,12 @@ def build_formulation(solver_model):
 
     # Constraint: capacity at substation must accommodate approved projects
     project_demand = (
-        sum(Proj.approved * Proj.capacity_needed)
+        sum(Proj.x_approved * Proj.capacity_needed)
         .where(Proj.substation == Substation)
         .per(Substation)
     )
     upgrade_capacity = (
-        sum(Upg.selected * Upg.capacity_added)
+        sum(Upg.x_selected * Upg.capacity_added)
         .where(Upg.substation == Substation)
         .per(Substation)
     )
@@ -352,7 +352,7 @@ def build_formulation(solver_model):
     solver_model.satisfy(capacity_ok)
 
     # Constraint: at most one upgrade per substation
-    upgrades_per_sub = sum(Upg.selected).where(Upg.substation == Substation).per(Substation)
+    upgrades_per_sub = sum(Upg.x_selected).where(Upg.substation == Substation).per(Substation)
     one_upgrade = require(upgrades_per_sub <= 1)
     solver_model.satisfy(one_upgrade)
 
@@ -401,14 +401,14 @@ For each scenario, the script prints the objective and the selected decisions:
     var_df = solver_model.variable_values().to_df()
 
     approved_df = var_df[
-        ~var_df["name"].str.startswith("upg") & (var_df["float"] > 0.5)
-    ].rename(columns={"float": "value"})
+        ~var_df["name"].str.startswith("upg") & (var_df["value"] > 0.5)
+    ]
     print("\n  Approved projects:")
     print(approved_df.to_string(index=False))
 
     upgrades_df = var_df[
-        var_df["name"].str.startswith("upg") & (var_df["float"] > 0.5)
-    ].rename(columns={"float": "value"})
+        var_df["name"].str.startswith("upg") & (var_df["value"] > 0.5)
+    ]
     if not upgrades_df.empty:
         print("\n  Selected upgrades:")
         print(upgrades_df.to_string(index=False))

@@ -220,7 +220,6 @@ Next, it creates a Semantics `Model`, loads the three CSV inputs, and scales tar
 model = Model(
     f"test_data_generation_{time_ns()}",
     config=globals().get("config", None),
-    use_lqp=False,
 )
 
 # Load schema data from CSV.
@@ -315,7 +314,7 @@ for _, fk_row in fk_df.iterrows():
 With the feasible region defined at the table level, the script declares two variable families and linearizes the absolute deviation from each target:
 
 ```python
-s = SolverModel(model, "cont", use_pb=True)
+s = SolverModel(model, "cont")
 
 # Variable: actual row counts for each table
 s.solve_for(

@@ -288,7 +288,7 @@ Next, it declares concepts and loads the CSVs using `data(...).into(...)`:
 
 ```python
 # Create a Semantics model container.
-model = Model("supply_chain_transport", config=globals().get("config", None), use_lqp=False)
+model = Model("supply_chain_transport", config=globals().get("config", None))
 
 # Warehouse concept: warehouses with inventory.
 Warehouse = model.Concept("Warehouse")
@@ -369,12 +369,12 @@ def build_formulation(s):
     s.satisfy(min_bound)
 
     # Constraint: total outbound from warehouse cannot exceed inventory.
-    outbound = sum(Sh.quantity).where(Sh.route.warehouse == Warehouse).per(Warehouse)
+    outbound = sum(Sh.x_quantity).where(Sh.route.warehouse == Warehouse).per(Warehouse)
     inventory_limit = require(outbound <= Warehouse.inventory)
     s.satisfy(inventory_limit)
 
     # Constraint: demand satisfaction for each customer.
-    inbound = sum(Sh.quantity).where(Sh.route.customer == Customer).per(Customer)
+    inbound = sum(Sh.x_quantity).where(Sh.route.customer == Customer).per(Customer)
     demand_met = require(inbound >= Customer.demand)
     s.satisfy(demand_met)
 
@@ -428,8 +428,8 @@ for scenario_value in SCENARIO_VALUES:
     # Print shipment plan from solver results.
     var_df = s.variable_values().to_df()
     qty_df = var_df[
-        var_df["name"].str.startswith("qty") & (var_df["float"] > 0.001)
-    ].rename(columns={"float": "value"})
+        var_df["name"].str.startswith("qty") & (var_df["value"] > 0.001)
+    ]
     print("\n  Shipments:")
     print(qty_df.to_string(index=False))
 
@@ -455,7 +455,7 @@ Here are common ways to adapt the template once you’ve run it end-to-end.
 
 - Change the what-if analysis by editing `SCENARIO_VALUES`.
 - Increase `time_limit_sec` if you scale the problem up.
-- Adjust the output filter `var_df["float"] > 0.001` if you want to print smaller flows.
+- Adjust the output filter `var_df["value"] > 0.001` if you want to print smaller flows.
 - If your `distance` is in different units, update the objective scaling (`... * Shipment.route.distance / 100`).
 
 ### Extend the model
@@ -523,7 +523,7 @@ Here are common ways to adapt the template once you’ve run it end-to-end.
 <details>
   <summary>Why is the shipments table empty?</summary>
 
-- The script filters shipment variables with `var_df["float"] > 0.001`. Lower the threshold to see smaller quantities.
+- The script filters shipment variables with `var_df["value"] > 0.001`. Lower the threshold to see smaller quantities.
 - If the model is infeasible, there will be no meaningful shipment plan—check the status line printed above.
 
 </details>

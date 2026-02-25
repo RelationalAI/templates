@@ -248,7 +248,7 @@ pandas.options.future.infer_string = False
 # --------------------------------------------------
 
 # Create a Semantics model container.
-model = Model("production_planning", config=globals().get("config", None), use_lqp=False)
+model = Model("production_planning", config=globals().get("config", None))
 ```
 
 ### Define concepts and load CSV data
@@ -326,7 +326,7 @@ def build_formulation(s):
 
     # Constraint: machine capacity
     machine_hours = (
-        sum(Prod.quantity * Prod.rate.hours_per_unit)
+        sum(Prod.x_quantity * Prod.rate.hours_per_unit)
         .where(Prod.rate.machine == Machine)
         .per(Machine)
     )
@@ -334,7 +334,7 @@ def build_formulation(s):
     s.satisfy(capacity_limit)
 
     # Constraint: meet demand (scaled by demand_multiplier)
-    product_qty = sum(Prod.quantity).where(Prod.rate.product == Product).per(Product)
+    product_qty = sum(Prod.x_quantity).where(Prod.rate.product == Product).per(Product)
     meet_demand = require(product_qty >= Product.demand * demand_multiplier)
     s.satisfy(meet_demand)
 
@@ -378,8 +378,8 @@ for scenario_value in SCENARIO_VALUES:
     # Print production plan from solver results
     var_df = s.variable_values().to_df()
     qty_df = var_df[
-        var_df["name"].str.startswith("qty") & (var_df["float"] > 0.001)
-    ].rename(columns={"float": "value"})
+        var_df["name"].str.startswith("qty") & (var_df["value"] > 0.001)
+    ]
     print(f"\n  Production plan:")
     print(qty_df.to_string(index=False))
 
@@ -469,7 +469,7 @@ How to interpret results:
 <details>
 <summary>Why is the production plan empty?</summary>
 
-- The output filters on `float > 0.001` and only prints variables whose names start with `qty`.
+- The output filters on `value > 0.001` and only prints variables whose names start with `qty`.
 - If you suspect near-zero values, print `s.variable_values().to_df()` without filtering.
 
 </details>

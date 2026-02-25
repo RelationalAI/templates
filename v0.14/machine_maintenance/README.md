@@ -241,7 +241,7 @@ pandas.options.future.infer_string = False
 # --------------------------------------------------
 
 # Create a Semantics model container.
-model = Model("machine_maintenance", config=globals().get("config", None), use_lqp=False)
+model = Model("machine_maintenance", config=globals().get("config", None))
 ```
 
 ### Define concepts and load CSV data
@@ -317,12 +317,12 @@ Next, it adds three families of constraints using `require(...)` and `s.satisfy(
 
 ```python
 # Constraint: each machine scheduled exactly once
-machine_scheduled = sum(Sch.assigned).where(Sch.machine == Machine).per(Machine)
+machine_scheduled = sum(Sch.x_assigned).where(Sch.machine == Machine).per(Machine)
 exactly_once = require(machine_scheduled == 1)
 s.satisfy(exactly_once)
 
 # Constraint: crew hours per slot not exceeded
-slot_hours = sum(Sch.assigned * Sch.machine.maintenance_hours).where(Sch.slot == TimeSlot).per(TimeSlot)
+slot_hours = sum(Sch.x_assigned * Sch.machine.maintenance_hours).where(Sch.slot == TimeSlot).per(TimeSlot)
 crew_limit = require(slot_hours <= TimeSlot.crew_hours)
 s.satisfy(crew_limit)
 

@@ -261,7 +261,6 @@ Next, it creates a Semantics `Model` and loads `Product` and `Discount` from CSV
 model = Model(
     f"retail_markdown_{time_ns()}",
     config=globals().get("config", None),
-    use_lqp=False,
 )
 
 # Product concept: products with inventory, pricing, and demand parameters.
@@ -303,7 +302,7 @@ With the inputs loaded, the script creates a `SolverModel` and registers three d
 
 ```python
 # Create a continuous optimization model with a MILP formulation.
-s = SolverModel(model, "cont", use_pb=True)
+s = SolverModel(model, "cont")
 
 # Product.x_selected decision variable: select exactly one discount per product-week.
 Product.x_selected = model.Property("{Product} in week {t:int} at discount {d:Discount} is {selected:float}")
@@ -399,11 +398,11 @@ print(f"Total revenue (sales + salvage): ${s.objective_value:.2f}")
 df = s.variable_values().to_df()
 
 print("\n=== Selected Discounts by Product-Week ===")
-selected = df[df["name"].str.startswith("select") & (df["float"] > 0.5)]
+selected = df[df["name"].str.startswith("select") & (df["value"] > 0.5)]
 print(selected.to_string(index=False))
 
 print("\n=== Sales by Product-Week ===")
-sales = df[df["name"].str.startswith("sales") & (df["float"] > 0.01)]
+sales = df[df["name"].str.startswith("sales") & (df["value"] > 0.01)]
 print(sales.to_string(index=False))
 
 print("\n=== Cumulative Sales by Product-Week ===")
@@ -474,8 +473,8 @@ print(cum.to_string(index=False))
 	<summary>Why are the printed tables empty?</summary>
 
 - The script filters printed rows:
-  - selected discounts: `name` starts with `select` and `float > 0.5`
-  - sales: `name` starts with `sales` and `float > 0.01`
+  - selected discounts: `name` starts with `select` and `value > 0.5`
+  - sales: `name` starts with `sales` and `value > 0.01`
 - If your solution has very small values, lower the thresholds or print `df` without filtering.
 
 </details>

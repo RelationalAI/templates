@@ -237,7 +237,7 @@ Next, it declares `Source` and `User` concepts and loads `sources.csv` and `user
 
 ```python
 # Create a Semantics model container.
-model = Model("water_allocation", config=globals().get("config", None), use_lqp=False)
+model = Model("water_allocation", config=globals().get("config", None))
 
 # Source concept: water supply points with capacity and per-unit cost.
 Source = model.Concept("Source")
@@ -313,13 +313,13 @@ Next, it adds two constraints with `require(...)` and `s.satisfy(...)`: source c
 
 ```python
 # Constraint: total outflow from each source must not exceed its capacity.
-outflow = sum(Conn.flow).where(Conn.source == Source).per(Source)
+outflow = sum(Conn.x_flow).where(Conn.source == Source).per(Source)
 source_limit = require(outflow <= Source.capacity)
 s.satisfy(source_limit)
 
 # Constraint: effective inflow to each user must meet demand (accounting for losses).
 effective_inflow = (
-    sum(Conn.flow * (1 - Conn.loss_rate)).where(Conn.user == User).per(User)
+    sum(Conn.x_flow * (1 - Conn.loss_rate)).where(Conn.user == User).per(User)
 )
 meet_demand = require(effective_inflow >= User.demand)
 s.satisfy(meet_demand)

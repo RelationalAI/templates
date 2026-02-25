@@ -205,7 +205,7 @@ Next, it creates a `Model`, defines the `Edge` concept, and loads `data/edges.cs
 # --------------------------------------------------
 
 # Create a Semantics model container.
-model = Model("network_flow", config=globals().get("config", None), use_lqp=False)
+model = Model("network_flow", config=globals().get("config", None))
 
 # Edge concept: directed edges with endpoints (i, j) and capacity (cap).
 Edge = model.Concept("Edge")
@@ -242,8 +242,8 @@ bounds = require(
 s.satisfy(bounds)
 
 # Constraint: flow conservation at each node (inflow equals outflow).
-flow_out = per(Ei.i).sum(Ei.flow)
-flow_in = per(Ej.j).sum(Ej.flow)
+flow_out = per(Ei.i).sum(Ei.x_flow)
+flow_in = per(Ej.j).sum(Ej.x_flow)
 balance = require(flow_in == flow_out).where(
    Ei.i == Ej.j
 )

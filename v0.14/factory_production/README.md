@@ -227,7 +227,7 @@ pandas.options.future.infer_string = False
 # --------------------------------------------------
 
 # Create a Semantics model container.
-model = Model("factory", use_lqp=False)
+model = Model("factory")
 ```
 
 ### Define concepts and load CSV data
@@ -300,7 +300,7 @@ s.solve_for(
 
 # Constraint: total production hours per machine <= hours_available
 total_hours = sum(
-    Prod.quantity * Prod.prod_time.hours_per_unit
+    Prod.x_quantity * Prod.prod_time.hours_per_unit
 ).where(
     Prod.prod_time.machine == Machine
 ).per(Machine)
@@ -308,7 +308,7 @@ machine_limit = require(total_hours <= Machine.hours_available)
 s.satisfy(machine_limit)
 
 # Constraint: total production per product >= min_production
-total_produced = sum(Prod.quantity).where(Prod.prod_time.product == Product).per(Product)
+total_produced = sum(Prod.x_quantity).where(Prod.prod_time.product == Product).per(Product)
 meet_minimum = require(total_produced >= Product.min_production)
 s.satisfy(meet_minimum)
 

@@ -282,7 +282,7 @@ pandas.options.future.infer_string = False
 # --------------------------------------------------
 
 # Create a Semantics model container.
-model = Model("ad_spend", config=globals().get("config", None), use_lqp=False)
+model = Model("ad_spend", config=globals().get("config", None))
 ```
 
 ### Define concepts and load CSV data
@@ -464,8 +464,8 @@ for scenario_value in SCENARIO_VALUES:
     # Print spend allocation from solver results
     var_df = solver_model.variable_values().to_df()
     spend_df = var_df[
-      var_df["name"].str.startswith("spend") & (var_df["float"] > 0.001)
-    ].rename(columns={"float": "value"})
+      var_df["name"].str.startswith("spend") & (var_df["value"] > 0.001)
+    ]
     print(f"\n  Spend allocation:")
     print(spend_df.to_string(index=False))
 
@@ -502,8 +502,8 @@ The script prints the solver status, objective value, and a table of spend alloc
     # Print spend allocation from solver results
     var_df = solver_model.variable_values().to_df()
     spend_df = var_df[
-      var_df["name"].str.startswith("spend") & (var_df["float"] > 0.001)
-    ].rename(columns={"float": "value"})
+      var_df["name"].str.startswith("spend") & (var_df["value"] > 0.001)
+    ]
     print(f"\n  Spend allocation:")
     print(spend_df.to_string(index=False))
 ```

@@ -180,7 +180,7 @@ from pandas import read_csv
 from relationalai.semantics import Model, data, ...
 from relationalai.semantics.reasoners.optimization import Solver, SolverModel
 
-model = Model("name", config=globals().get("config", None), use_lqp=False)
+model = Model("name", config=globals().get("config", None))
 
 # --------------------------------------------------
 # Define ontology & load data

@@ -217,7 +217,7 @@ pandas.options.future.infer_string = False
 # --------------------------------------------------
 
 # Create a Semantics model container.
-model = Model("diet", config=globals().get("config", None), use_lqp=False)
+model = Model("diet", config=globals().get("config", None))
 ```
 
 ### Define concepts and load CSV data

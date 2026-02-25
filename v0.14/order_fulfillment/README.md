@@ -259,7 +259,7 @@ Next, it creates a `Model`, defines concepts for fulfillment centers and orders,
 # --------------------------------------------------
 
 # Create a Semantics model container.
-model = Model("order_fulfillment", config=globals().get("config", None), use_lqp=False)
+model = Model("order_fulfillment", config=globals().get("config", None))
 
 # FulfillmentCenter concept: fulfillment centers with capacity and fixed operating costs.
 FC = model.Concept("FulfillmentCenter")
@@ -333,17 +333,17 @@ s.solve_for(
 s.solve_for(FCUsage.x_used, type="bin", name=["fc_used", FCUsage.fc.name])
 
 # Constraint: FC capacity
-fc_total_qty = sum(Asn.qty).where(Asn.shipping.fc == FC).per(FC)
+fc_total_qty = sum(Asn.x_qty).where(Asn.shipping.fc == FC).per(FC)
 capacity_limit = require(fc_total_qty <= FC.capacity)
 s.satisfy(capacity_limit)
 
 # Constraint: link FC usage to assignments
-fc_total_qty_for_usage = sum(Asn.qty).where(Asn.shipping.fc == FCUsage.fc).per(FCUsage)
+fc_total_qty_for_usage = sum(Asn.x_qty).where(Asn.shipping.fc == FCUsage.fc).per(FCUsage)
 usage_link = require(fc_total_qty_for_usage <= FCUsage.fc.capacity * FCUsage.x_used)
 s.satisfy(usage_link)
 
 # Constraint: each order must be fully fulfilled
-order_fulfilled = sum(Asn.qty).where(Asn.shipping.order == Order).per(Order)
+order_fulfilled = sum(Asn.x_qty).where(Asn.shipping.order == Order).per(Order)
 fulfill_all = require(order_fulfilled == Order.quantity)
 s.satisfy(fulfill_all)
 

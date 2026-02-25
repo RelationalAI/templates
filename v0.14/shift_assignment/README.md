@@ -237,7 +237,7 @@ Next, it creates a `Model`, defines `Worker` and `Shift` concepts, and loads the
 # --------------------------------------------------
 
 # Create a Semantics model container.
-model = Model("shift_assignment", config=globals().get("config", None), use_lqp=False)
+model = Model("shift_assignment", config=globals().get("config", None))
 
 # Worker concept: employees available for scheduling.
 Worker = model.Concept("Worker")
@@ -308,7 +308,7 @@ s.solve_for(
 shift_coverage = where(
     Asn.shift == Shift
 ).require(
-    sum(Asn.assigned).per(Shift) >= min_coverage
+    sum(Asn.x_assigned).per(Shift) >= min_coverage
 )
 s.satisfy(shift_coverage)
 
@@ -316,7 +316,7 @@ s.satisfy(shift_coverage)
 worker_capacity = where(
     Asn.worker == Worker
 ).require(
-    sum(Asn.assigned).per(Worker) <= max_shifts_per_worker
+    sum(Asn.x_assigned).per(Worker) <= max_shifts_per_worker
 )
 s.satisfy(worker_capacity)
 ```
@@ -371,7 +371,7 @@ If you increase `min_coverage` or reduce availability, the problem may become in
 
 Common extensions include:
 
-- **Max coverage (capacity)**: If you want to enforce a maximum number of workers per shift, add a `Shift.capacity` property, load it from `shifts.csv`, and require `sum(Asn.assigned).per(Shift) <= Shift.capacity`.
+- **Max coverage (capacity)**: If you want to enforce a maximum number of workers per shift, add a `Shift.capacity` property, load it from `shifts.csv`, and require `sum(Asn.x_assigned).per(Shift) <= Shift.capacity`.
 - **Preferences or costs**: Add a weight per worker–shift pair and switch from pure feasibility to minimizing total cost.
 
 ## Troubleshooting

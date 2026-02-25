@@ -214,7 +214,7 @@ Next, it defines an `Edge` concept keyed by `(i, j)`, loads `distances.csv` via 
 # --------------------------------------------------
 
 # Create a Semantics model container.
-model = Model("tsp", config=globals().get("config", None), use_lqp=False)
+model = Model("tsp", config=globals().get("config", None))
 
 # Edge concept: directed edge (i -> j) with an associated distance.
 Edge = model.Concept("Edge")

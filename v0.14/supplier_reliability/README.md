@@ -269,7 +269,7 @@ Next, it creates a `Model`, defines `Supplier`, `Product`, and `SupplyOption`, a
 # --------------------------------------------------
 
 # Create a Semantics model container.
-model = Model("supplier_reliability", config=globals().get("config", None), use_lqp=False)
+model = Model("supplier_reliability", config=globals().get("config", None))
 
 # Supplier concept: suppliers with reliability scores and capacity.
 Supplier = model.Concept("Supplier")
@@ -382,7 +382,7 @@ def build_formulation(s):
 
 ### Solve and print results
 
-Finally, the template loops over scenarios, solves with HiGHS, and prints non-trivial order quantities (filtered with `float > 0.001`):
+Finally, the template loops over scenarios, solves with HiGHS, and prints non-trivial order quantities (filtered with `value > 0.001`):
 
 ```python
 # --------------------------------------------------
@@ -416,8 +416,8 @@ for scenario_value in SCENARIO_VALUES:
     # Print order plan from solver results.
     var_df = s.variable_values().to_df()
     qty_df = var_df[
-        var_df["name"].str.startswith("qty") & (var_df["float"] > 0.001)
-    ].rename(columns={"float": "value"})
+        var_df["name"].str.startswith("qty") & (var_df["value"] > 0.001)
+    ]
     print("\n  Orders:")
     print(qty_df.to_string(index=False))
 
