@@ -1,0 +1,4 @@
+id,name,capacity,cost_per_unit
+1,Reservoir_A,1000,0.5
+2,Reservoir_B,800,0.6
+3,Groundwater,500,0.8
