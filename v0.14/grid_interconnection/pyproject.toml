@@ -9,7 +9,7 @@ description = "RelationalAI template: grid_interconnection"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-  "relationalai>=0.14.2",
+  "relationalai==0.14.2",
   "pandas",
 ]
 
