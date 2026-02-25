@@ -74,7 +74,7 @@ where(
 # Stock.x_quantity decision variable: amount allocated to each stock.
 Stock.x_quantity = model.Property("{Stock} quantity is {x:float}")
 
-c = Float.ref()
+covar_val = Float.ref()
 
 # Scenario parameter. This is updated inside the scenario loop.
 min_return = MIN_RETURN
@@ -101,7 +101,7 @@ def build_formulation(s):
     s.satisfy(return_constraint)
 
     # Objective: minimize portfolio risk (variance)
-    risk = sum(c * Stock.x_quantity * OtherStock.x_quantity).where(Stock.covar(OtherStock, c))
+    risk = sum(covar_val * Stock.x_quantity * OtherStock.x_quantity).where(Stock.covar(OtherStock, covar_val))
     s.minimize(risk)
 
 # --------------------------------------------------

@@ -74,7 +74,7 @@ data(read_csv(DATA_DIR / "trips.csv")).into(Trip, keys=["id"])
 # Model the problem
 # --------------------------------------------------
 
-# Assignment decision concept: AssignmentRef of vehicles to trips.
+# Assignment decision concept: assignment of vehicles to trips.
 Assignment = model.Concept("Assignment")
 Assignment.vehicle = model.Relationship("{Assignment} assigns {vehicle:Vehicle}")
 Assignment.trip = model.Relationship("{Assignment} to {trip:Trip}")
@@ -92,7 +92,7 @@ AssignmentRef = Assignment.ref()
 # Create a continuous optimization model.
 s = SolverModel(model, "cont")
 
-# Decision variable: AssignmentRef (binary 0/1).
+# Decision variable: assignment (binary 0/1).
 s.solve_for(
     Assignment.x_assigned,
     type="bin",
