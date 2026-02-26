@@ -13,7 +13,7 @@ tags:
 ---
 
 > [!WARNING]
-> This template uses the early access `relationalai.semantics` API in version `0.13.3` of the `relationalai` Python package.
+> This template uses the early access `relationalai.semantics` API in version `0.14.2` of the `relationalai` Python package.
 
 ## What this template is for
 
@@ -62,7 +62,7 @@ Follow these steps to run the template with the included sample data.
 1. Download the ZIP file for this template and extract it:
 
    ```bash
-   curl -O https://private.relational.ai/templates/zips/v0.13/test_data_generation.zip
+   curl -O https://private.relational.ai/templates/zips/v0.14/test_data_generation.zip
    unzip test_data_generation.zip
    cd test_data_generation
    ```
@@ -351,7 +351,7 @@ for fk_info in fk_objs:
         where(
             Table.table_name == child_name,
             Table2.table_name == parent_name
-        ).require(Table.x_actual_rows <= Table2.actual_rows * fk_info["max"])
+        ).require(Table.x_actual_rows <= Table2.x_actual_rows * fk_info["max"])
     )
 
     # Lower bound for mandatory participation
@@ -370,7 +370,7 @@ for fk_info in fk_objs:
             where(
                 Table.table_name == child_name,
                 Table2.table_name == parent_name
-            ).require(Table.x_actual_rows >= Table2.actual_rows * min_per)
+            ).require(Table.x_actual_rows >= Table2.x_actual_rows * min_per)
         )
 
 # Constraint: coverage requirements
@@ -382,7 +382,7 @@ for fk_info in fk_objs:
             where(
                 Table.table_name == child_name,
                 Table2.table_name == parent_name
-            ).require(Table.x_actual_rows >= fk_info["coverage"] * Table2.actual_rows)
+            ).require(Table.x_actual_rows >= fk_info["coverage"] * Table2.x_actual_rows)
         )
 ```
 
