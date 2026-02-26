@@ -5,7 +5,7 @@ featured: false
 experience_level: intermediate
 industry: "Manufacturing"
 reasoning_types:
-  - Prescriptive
+  - prescriptive reasoning (optimization)
 tags:
   - Scheduling
   - MILP
@@ -14,7 +14,7 @@ tags:
 # Machine Maintenance
 
 > [!WARNING]
-> This template uses the early access `relational.semantics` API in version `0.13.3` of the `relationalai` Python package.
+> This template uses the early access `relationalai.semantics` API in version `0.14.2` of the `relationalai` Python package.
 
 ## What this template is for
 
@@ -60,9 +60,9 @@ Follow these steps to run the template with the included sample data.
 1. Download the ZIP file for this template and extract it:
 
    ```bash
-   curl -O https://private.relational.ai/templates/zips/v0.13/machine_maintenance.zip
-   unzip machine_maintenance.zip
-   cd machine_maintenance
+curl -O https://private.relational.ai/templates/zips/v0.14/machine_maintenance.zip
+unzip machine_maintenance.zip
+cd machine_maintenance
    ```
 
    > [!TIP]
@@ -222,7 +222,7 @@ from pathlib import Path
 import pandas
 from pandas import read_csv
 
-from relationalai.semantics import Model, data, define, require, select, sum, where
+from relationalai.semantics import Model, Relationship, data, define, require, select, sum, where
 from relationalai.semantics.reasoners.optimization import Solver, SolverModel
 
 # --------------------------------------------------
@@ -276,17 +276,17 @@ Then, it loads conflict pairs from `conflicts.csv` and resolves machine IDs into
 ```python
 # Conflict concept: represents conflicts between machines that cannot be maintained at the same time
 Conflict = model.Concept("Conflict")
-Conflict.machine1 = model.Property("{Conflict} between {machine1:Machine}")
-Conflict.machine2 = model.Property("{Conflict} and {machine2:Machine}")
+Conflict.machine1 = model.Relationship("{Conflict} between {machine1:Machine}")
+Conflict.machine2 = model.Relationship("{Conflict} and {machine2:Machine}")
 
 # Load machine conflict pairs from CSV.
 conflicts_data = data(read_csv(DATA_DIR / "conflicts.csv"))
-M2 = Machine.ref()
+OtherMachine = Machine.ref()
 where(
     Machine.id == conflicts_data.machine1_id,
-    M2.id == conflicts_data.machine2_id
+    OtherMachine.id == conflicts_data.machine2_id
 ).define(
-    Conflict.new(machine1=Machine, machine2=M2)
+    Conflict.new(machine1=Machine, machine2=OtherMachine)
 )
 ```
 
@@ -298,14 +298,14 @@ With the input concepts in place, the script creates a `Schedule` decision conce
 # Schedule decision concept: represents the assignment of machines to time slots.
 # The "assigned" property is a binary variable indicating whether a machine is scheduled in a slot.
 Schedule = model.Concept("Schedule")
-Schedule.machine = model.Property("{Schedule} for {machine:Machine}")
-Schedule.slot = model.Property("{Schedule} in {slot:TimeSlot}")
+Schedule.machine = model.Relationship("{Schedule} for {machine:Machine}")
+Schedule.slot = model.Relationship("{Schedule} in {slot:TimeSlot}")
 Schedule.x_assigned = model.Property("{Schedule} is {assigned:float}")
 define(Schedule.new(machine=Machine, slot=TimeSlot))
 
-Sch = Schedule.ref()
-Sch1 = Schedule.ref()
-Sch2 = Schedule.ref()
+ScheduleRef = Schedule.ref()
+ScheduleA = Schedule.ref()
+ScheduleB = Schedule.ref()
 
 s = SolverModel(model, "cont")
 
@@ -317,20 +317,20 @@ Next, it adds three families of constraints using `require(...)` and `s.satisfy(
 
 ```python
 # Constraint: each machine scheduled exactly once
-machine_scheduled = sum(Sch.x_assigned).where(Sch.machine == Machine).per(Machine)
+machine_scheduled = sum(ScheduleRef.x_assigned).where(ScheduleRef.machine == Machine).per(Machine)
 exactly_once = require(machine_scheduled == 1)
 s.satisfy(exactly_once)
 
 # Constraint: crew hours per slot not exceeded
-slot_hours = sum(Sch.x_assigned * Sch.machine.maintenance_hours).where(Sch.slot == TimeSlot).per(TimeSlot)
+slot_hours = sum(ScheduleRef.x_assigned * ScheduleRef.machine.maintenance_hours).where(ScheduleRef.slot == TimeSlot).per(TimeSlot)
 crew_limit = require(slot_hours <= TimeSlot.crew_hours)
 s.satisfy(crew_limit)
 
 # Constraint: conflicting machines cannot be scheduled in same slot
-no_conflicts = require(Sch1.assigned + Sch2.assigned <= 1).where(
-    Sch1.machine == Conflict.machine1,
-    Sch2.machine == Conflict.machine2,
-    Sch1.slot == Sch2.slot
+no_conflicts = require(ScheduleA.x_assigned + ScheduleB.x_assigned <= 1).where(
+    ScheduleA.machine == Conflict.machine1,
+    ScheduleB.machine == Conflict.machine2,
+    ScheduleA.slot == ScheduleB.slot
 )
 s.satisfy(no_conflicts)
 ```
