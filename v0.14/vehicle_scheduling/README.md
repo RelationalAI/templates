@@ -15,7 +15,7 @@ tags:
 # Vehicle Scheduling
 
 > [!WARNING]
-> This template uses the early access `relationalai.semantics` API in version `0.13.3` of the `relationalai` Python package.
+> This template uses the early access `relationalai.semantics` API in version `0.14.2` of the `relationalai` Python package.
 
 ## What this template is for
 
@@ -66,7 +66,7 @@ Follow these steps to run the template with the included sample data.
 1. Download the ZIP file for this template and extract it:
 
    ```bash
-   curl -O https://private.relational.ai/templates/zips/v0.13/vehicle_scheduling.zip
+   curl -O https://private.relational.ai/templates/zips/v0.14/vehicle_scheduling.zip
    unzip vehicle_scheduling.zip
    cd vehicle_scheduling
    ```
@@ -230,7 +230,7 @@ from pathlib import Path
 import pandas
 from pandas import read_csv
 
-from relationalai.semantics import Model, data, define, require, select, sum
+from relationalai.semantics import Model, Relationship, data, define, require, select, sum
 from relationalai.semantics.reasoners.optimization import Solver, SolverModel
 
 # --------------------------------------------------
@@ -289,18 +289,18 @@ With the entities in place, it defines two decision concepts.
 ```python
 # Assignment decision concept: assignment of vehicles to trips.
 Assignment = model.Concept("Assignment")
-Assignment.vehicle = model.Property("{Assignment} assigns {vehicle:Vehicle}")
-Assignment.trip = model.Property("{Assignment} to {trip:Trip}")
+Assignment.vehicle = model.Relationship("{Assignment} assigns {vehicle:Vehicle}")
+Assignment.trip = model.Relationship("{Assignment} to {trip:Trip}")
 Assignment.x_assigned = model.Property("{Assignment} is {assigned:float}")
 define(Assignment.new(vehicle=Vehicle, trip=Trip))
 
 # VehicleUsage decision concept: tracks whether a vehicle is used.
 VehicleUsage = model.Concept("VehicleUsage")
-VehicleUsage.vehicle = model.Property("{VehicleUsage} for {vehicle:Vehicle}")
+VehicleUsage.vehicle = model.Relationship("{VehicleUsage} for {vehicle:Vehicle}")
 VehicleUsage.x_used = model.Property("{VehicleUsage} is {used:float}")
 define(VehicleUsage.new(vehicle=Vehicle))
 
-assignment = Assignment.ref()
+AssignmentRef = Assignment.ref()
 
 # Create a continuous optimization model.
 s = SolverModel(model, "cont")
@@ -326,22 +326,22 @@ Then it enforces trip coverage and capacity with `require(...)` and `s.satisfy(.
 
 ```python
 # Constraint: each trip must be assigned to exactly one vehicle.
-trip_coverage = sum(assignment.x_assigned).where(
-    assignment.trip == Trip
+trip_coverage = sum(AssignmentRef.x_assigned).where(
+   AssignmentRef.trip == Trip
 ).per(Trip)
 one_vehicle = require(trip_coverage == 1)
 s.satisfy(one_vehicle)
 
 # Constraint: vehicle capacity.
-vehicle_load = sum(assignment.x_assigned * assignment.trip.load).where(
-    assignment.vehicle == Vehicle
+vehicle_load = sum(AssignmentRef.x_assigned * AssignmentRef.trip.load).where(
+   AssignmentRef.vehicle == Vehicle
 ).per(Vehicle)
 capacity_limit = require(vehicle_load <= Vehicle.capacity)
 s.satisfy(capacity_limit)
 
 # Constraint: link vehicle usage to assignments.
-vehicle_trips = sum(assignment.x_assigned).where(
-    assignment.vehicle == VehicleUsage.vehicle
+vehicle_trips = sum(AssignmentRef.x_assigned).where(
+   AssignmentRef.vehicle == VehicleUsage.vehicle
 ).per(VehicleUsage)
 usage_link = require(VehicleUsage.x_used * MAX_TRIPS_PER_VEHICLE >= vehicle_trips)
 s.satisfy(usage_link)

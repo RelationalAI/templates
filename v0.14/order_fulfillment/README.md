@@ -15,7 +15,7 @@ tags:
 # Order Fulfillment
 
 > [!WARNING]
-> This template uses the early access `relational.semantics` API in version `0.13` of the `relationalai` Python package.
+> This template uses the early access `relational.semantics` API in version `0.14` of the `relationalai` Python package.
 
 ## What this template is for
 
@@ -65,7 +65,7 @@ Follow these steps to run the template with the included sample data.
 1. Download the ZIP file for this template and extract it:
 
    ```bash
-   curl -O https://private.relational.ai/templates/zips/v0.13/order_fulfillment.zip
+   curl -O https://private.relational.ai/templates/zips/v0.14/order_fulfillment.zip
    unzip order_fulfillment.zip
    cd order_fulfillment
    ```
@@ -226,7 +226,7 @@ This section walks through the highlights in `order_fulfillment.py`.
 
 ### Import libraries and configure inputs
 
-First, the script imports the Semantics and optimization APIs, configures the data directory, and sets the pandas option used by v0.13 templates:
+First, the script imports the Semantics and optimization APIs, configures the data directory, and sets the pandas option used by templates that target relationalai versions prior to v1.0:
 
 ```python
 from pathlib import Path
@@ -234,7 +234,7 @@ from pathlib import Path
 import pandas
 from pandas import read_csv
 
-from relationalai.semantics import Model, data, define, require, select, sum, where
+from relationalai.semantics import Model, Relationship, data, define, require, select, sum, where
 from relationalai.semantics.reasoners.optimization import Solver, SolverModel
 
 # --------------------------------------------------
@@ -283,8 +283,8 @@ data(read_csv(DATA_DIR / "orders.csv")).into(Order, keys=["id"])
 
 # ShippingCost concept: per-unit shipping cost for an FC/order pair.
 ShippingCost = model.Concept("ShippingCost")
-ShippingCost.fc = model.Property("{ShippingCost} from {fc:FulfillmentCenter}")
-ShippingCost.order = model.Property("{ShippingCost} for {order:Order}")
+ShippingCost.fc = model.Relationship("{ShippingCost} from {fc:FulfillmentCenter}")
+ShippingCost.order = model.Relationship("{ShippingCost} for {order:Order}")
 ShippingCost.cost_per_unit = model.Property("{ShippingCost} has {cost_per_unit:float}")
 
 # Load shipping cost data from CSV.
@@ -310,17 +310,17 @@ Then it creates decision concepts, declares decision variables with `solve_for(.
 
 # Assignment decision concept: shipment quantity for each shipping-cost option.
 Assignment = model.Concept("Assignment")
-Assignment.shipping = model.Property("{Assignment} uses {shipping:ShippingCost}")
+Assignment.shipping = model.Relationship("{Assignment} uses {shipping:ShippingCost}")
 Assignment.x_qty = model.Property("{Assignment} has {qty:float}")
 define(Assignment.new(shipping=ShippingCost))
 
 # FCUsage decision concept: whether each fulfillment center is active (for fixed costs).
 FCUsage = model.Concept("FCUsage")
-FCUsage.fc = model.Property("{FCUsage} for {fc:FulfillmentCenter}")
+FCUsage.fc = model.Relationship("{FCUsage} for {fc:FulfillmentCenter}")
 FCUsage.x_used = model.Property("{FCUsage} is {used:float}")
 define(FCUsage.new(fc=FC))
 
-Asn = Assignment.ref()
+AssignmentRef = Assignment.ref()
 
 s = SolverModel(model, "cont")
 
@@ -333,17 +333,17 @@ s.solve_for(
 s.solve_for(FCUsage.x_used, type="bin", name=["fc_used", FCUsage.fc.name])
 
 # Constraint: FC capacity
-fc_total_qty = sum(Asn.x_qty).where(Asn.shipping.fc == FC).per(FC)
+fc_total_qty = sum(AssignmentRef.x_qty).where(AssignmentRef.shipping.fc == FC).per(FC)
 capacity_limit = require(fc_total_qty <= FC.capacity)
 s.satisfy(capacity_limit)
 
 # Constraint: link FC usage to assignments
-fc_total_qty_for_usage = sum(Asn.x_qty).where(Asn.shipping.fc == FCUsage.fc).per(FCUsage)
+fc_total_qty_for_usage = sum(AssignmentRef.x_qty).where(AssignmentRef.shipping.fc == FCUsage.fc).per(FCUsage)
 usage_link = require(fc_total_qty_for_usage <= FCUsage.fc.capacity * FCUsage.x_used)
 s.satisfy(usage_link)
 
 # Constraint: each order must be fully fulfilled
-order_fulfilled = sum(Asn.x_qty).where(Asn.shipping.order == Order).per(Order)
+order_fulfilled = sum(AssignmentRef.x_qty).where(AssignmentRef.shipping.order == Order).per(Order)
 fulfill_all = require(order_fulfilled == Order.quantity)
 s.satisfy(fulfill_all)
 

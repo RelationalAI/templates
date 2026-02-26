@@ -14,7 +14,7 @@ tags:
 # Traveling Salesman
 
 > [!WARNING]
-> This template uses the early access `relationalai.semantics` API in version `0.13.3` of the `relationalai` Python package.
+> This template uses the early access `relationalai.semantics` API in version `0.14.2` of the `relationalai` Python package.
 
 ## What this template is for
 
@@ -61,7 +61,7 @@ Follow these steps to run the template with the included sample data.
 1. Download the ZIP file for this template and extract it:
 
    ```bash
-   curl -O https://private.relational.ai/templates/zips/v0.13/traveling_salesman.zip
+   curl -O https://private.relational.ai/templates/zips/v0.14/traveling_salesman.zip
    unzip traveling_salesman.zip
    cd traveling_salesman
    ```
@@ -163,7 +163,7 @@ A node (city/location) derived from the edge endpoints, with an integer “order
 | Property | Type | Identifying? | Notes |
 | --- | --- | --- | --- |
 | `v` | int | Yes | Derived from `Edge.i` to create the node set |
-| `u_node` | float | No | Integer decision variable used to prevent subtours |
+| `x_u_node` | float | No | Integer decision variable used to prevent subtours |
 
 ## How it works
 
@@ -239,11 +239,10 @@ With the base entities in place, the template creates a `SolverModel` and regist
 # --------------------------------------------------
 
 # Pre-compute the number of nodes (used by the MTZ formulation).
-
 node_count = count(Node.ref())
 
-Node_i = Node
-Node_j = Node.ref()
+NodeFrom = Node
+NodeTo = Node.ref()
 
 s = SolverModel(model, "cont")
 
@@ -275,10 +274,10 @@ s.satisfy(flow_balance)
 mtz = where(
     Edge.i > 1,
     Edge.j > 1,
-  Node_i.v == Edge.i,
-  Node_j.v == Edge.j
+    NodeFrom.v == Edge.i,
+    NodeTo.v == Edge.j
 ).require(
-  Node_i.u_node - Node_j.u_node + node_count * Edge.x_edge <= node_count - 1
+    NodeFrom.x_u_node - NodeTo.x_u_node + node_count * Edge.x_edge <= node_count - 1
 )
 s.satisfy(mtz)
 ```

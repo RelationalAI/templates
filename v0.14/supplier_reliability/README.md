@@ -16,7 +16,7 @@ tags:
 # Supplier Reliability
 
 > [!WARNING]
-> This template uses the early access `relationalai.semantics` API in version `0.13.3` of the `relationalai` Python package.
+> This template uses the early access `relationalai.semantics` API in version `0.14.2` of the `relationalai` Python package.
 
 ## What this template is for
 
@@ -62,14 +62,14 @@ Follow these steps to run the template with the included sample data.
 
 1. Download the ZIP file for this template and extract it:
 
-   ```bash
-   curl -O https://private.relational.ai/templates/zips/v0.13/supplier_reliability.zip
-   unzip supplier_reliability.zip
-   cd supplier_reliability
-   ```
+	```bash
+	curl -O https://private.relational.ai/templates/zips/v0.14/supplier_reliability.zip
+	unzip supplier_reliability.zip
+	cd supplier_reliability
+	```
 
-   > [!TIP]
-   > You can also download the template ZIP using the "Download ZIP" button at the top of this page.
+	> [!TIP]
+	> You can also download the template ZIP using the "Download ZIP" button at the top of this page.
 
 2. **Create and activate a virtual environment**
 
@@ -235,7 +235,7 @@ from pathlib import Path
 import pandas
 from pandas import read_csv
 
-from relationalai.semantics import Model, data, define, require, sum, where
+from relationalai.semantics import Model, Relationship, data, define, require, sum, where
 from relationalai.semantics.reasoners.optimization import Solver, SolverModel
 
 # --------------------------------------------------
@@ -293,8 +293,8 @@ data(read_csv(DATA_DIR / "products.csv")).into(Product, keys=["id"])
 # SupplyOption concept: supplier–product supply options with a per-unit cost.
 SupplyOption = model.Concept("SupplyOption")
 SupplyOption.id = model.Property("{SupplyOption} has {id:int}")
-SupplyOption.supplier = model.Property("{SupplyOption} from {supplier:Supplier}")
-SupplyOption.product = model.Property("{SupplyOption} for {product:Product}")
+SupplyOption.supplier = model.Relationship("{SupplyOption} from {supplier:Supplier}")
+SupplyOption.product = model.Relationship("{SupplyOption} for {product:Product}")
 SupplyOption.cost_per_unit = model.Property("{SupplyOption} has {cost_per_unit:float}")
 
 # Load supply option data from CSV.
@@ -325,18 +325,18 @@ Then it declares an `Order` decision concept and builds a continuous optimizatio
 
 # Order decision concept: quantity ordered via each supply option.
 Order = model.Concept("Order")
-Order.option = model.Property("{Order} uses {option:SupplyOption}")
+Order.option = model.Relationship("{Order} uses {option:SupplyOption}")
 Order.x_quantity = model.Property("{Order} has {quantity:float}")
 define(Order.new(option=SupplyOption))
 
 # Derived properties for direct access in constraints and objective.
-Order.supplier = model.Property("{Order} has {supplier:Supplier}")
+Order.supplier = model.Relationship("{Order} has {supplier:Supplier}")
 define(Order.supplier(Supplier)).where(
     Order.option == SupplyOption,
     SupplyOption.supplier == Supplier,
 )
 
-Order.product = model.Property("{Order} has {product:Product}")
+Order.product = model.Relationship("{Order} has {product:Product}")
 define(Order.product(Product)).where(
     Order.option == SupplyOption,
     SupplyOption.product == Product,
