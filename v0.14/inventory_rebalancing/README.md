@@ -5,7 +5,7 @@ featured: false
 experience_level: beginner
 industry: "Supply Chain"
 reasoning_types:
-  - Prescriptive reasoning (optimization)
+  - Prescriptive
 tags:
   - Allocation
   - LP

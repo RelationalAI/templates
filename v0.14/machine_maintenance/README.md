@@ -5,7 +5,7 @@ featured: false
 experience_level: intermediate
 industry: "Manufacturing"
 reasoning_types:
-  - prescriptive reasoning (optimization)
+  - Prescriptive
 tags:
   - Scheduling
   - MILP
