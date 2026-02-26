@@ -14,7 +14,7 @@ tags:
 # Production Planning
 
 > [!WARNING]
-> This template uses the early access `relationalai.semantics` API in version `0.13.3` of the `relationalai` Python package.
+> This template uses the early access `relationalai.semantics` API in version `0.14.2` of the `relationalai` Python package.
 
 ## What this template is for
 
@@ -67,14 +67,14 @@ Follow these steps to run the template with the included sample data.
 
 1. Download the ZIP file for this template and extract it:
 
-	```bash
-	curl -O https://private.relational.ai/templates/zips/v0.13/production_planning.zip
-	unzip production_planning.zip
-	cd production_planning
-	```
+   ```bash
+   curl -O https://private.relational.ai/templates/zips/v0.14/production_planning.zip
+   unzip production_planning.zip
+   cd production_planning
+   ```
 
-	> [!TIP]
-	> You can also download the template ZIP using the "Download ZIP" button at the top of this page.
+   > [!TIP]
+   > You can also download the template ZIP using the "Download ZIP" button at the top of this page.
 
 2. **Create and activate a virtual environment**
 
@@ -229,7 +229,7 @@ from pathlib import Path
 import pandas
 from pandas import read_csv
 
-from relationalai.semantics import Model, data, define, require, sum, where
+from relationalai.semantics import Model, Relationship, data, define, require, sum, where
 from relationalai.semantics.reasoners.optimization import Solver, SolverModel
 
 # --------------------------------------------------
@@ -277,8 +277,8 @@ data(read_csv(DATA_DIR / "machines.csv")).into(Machine, keys=["id"])
 
 # ProductionRate concept: hours required per unit for each machine-product pair.
 Rate = model.Concept("ProductionRate")
-Rate.machine = model.Property("{ProductionRate} on {machine:Machine}")
-Rate.product = model.Property("{ProductionRate} for {product:Product}")
+Rate.machine = model.Relationship("{ProductionRate} on {machine:Machine}")
+Rate.product = model.Relationship("{ProductionRate} for {product:Product}")
 Rate.hours_per_unit = model.Property("{ProductionRate} has {hours_per_unit:float}")
 
 # Load production rate data from CSV.
@@ -300,11 +300,11 @@ Then the script creates a `Production` decision concept (one row per `Production
 ```python
 # Production decision concept: production quantity for each machine-product pair.
 Production = model.Concept("Production")
-Production.rate = model.Property("{Production} uses {rate:ProductionRate}")
+Production.rate = model.Relationship("{Production} uses {rate:ProductionRate}")
 Production.x_quantity = model.Property("{Production} has {quantity:float}")
 define(Production.new(rate=Rate))
 
-Prod = Production.ref()
+ProductionRef = Production.ref()
 
 # Scenario parameter (overridden within the scenario loop).
 demand_multiplier = 1.0
@@ -326,15 +326,15 @@ def build_formulation(s):
 
     # Constraint: machine capacity
     machine_hours = (
-        sum(Prod.x_quantity * Prod.rate.hours_per_unit)
-        .where(Prod.rate.machine == Machine)
+        sum(ProductionRef.x_quantity * ProductionRef.rate.hours_per_unit)
+        .where(ProductionRef.rate.machine == Machine)
         .per(Machine)
     )
     capacity_limit = require(machine_hours <= Machine.hours_available)
     s.satisfy(capacity_limit)
 
     # Constraint: meet demand (scaled by demand_multiplier)
-    product_qty = sum(Prod.x_quantity).where(Prod.rate.product == Product).per(Product)
+    product_qty = sum(ProductionRef.x_quantity).where(ProductionRef.rate.product == Product).per(Product)
     meet_demand = require(product_qty >= Product.demand * demand_multiplier)
     s.satisfy(meet_demand)
 
