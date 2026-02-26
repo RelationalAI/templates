@@ -14,7 +14,7 @@ tags:
 # Ad Spend Allocation
 
 > [!WARNING]
-> This template uses the early access `relationalai.semantics` API in version `0.13.3` of the `relationalai` Python package.
+> This template uses the early access `relationalai.semantics` API in version `0.14.2` of the `relationalai` Python package.
 
 ## What this template is for
 
@@ -22,7 +22,7 @@ Marketing teams must distribute limited advertising budgets across multiple chan
 This template models allocating spend across 5 channels and 3 campaigns, where each channel-campaign combination has different conversion effectiveness.
 
 The challenge is that each channel has minimum spend thresholds (you can't spend just $10 on a channel—there are setup costs) and maximum caps, while campaign budgets constrain total spend.
-This template uses RelationalAI's **prescriptive reasoner** to find the best allocation of spend across channel-campaign pairs to maximize total expected conversions, while respecting these constraints.
+This template uses RelationalAI's **Prescriptive** reasoning capabilities to find the best allocation of spend across channel-campaign pairs to maximize total expected conversions, while respecting these constraints.
 
 Prescriptive reasoning helps you:
 
@@ -66,9 +66,9 @@ You can customize the data and model as needed after you have it running end-to-
 1. Download the ZIP file for this template and extract it:
 
    ```bash
-   curl -O https://private.relational.ai/templates/zips/v0.13/ad_spend_allocation.zip
-   unzip ad_spend_allocation.zip
-   cd ad_spend_allocation
+curl -O https://private.relational.ai/templates/zips/v0.14/ad_spend_allocation.zip
+unzip ad_spend_allocation.zip
+cd ad_spend_allocation
    ```
 
    > [!TIP]
@@ -227,7 +227,7 @@ A marketing campaign with a budget constraint applied during optimization.
 | `id` | int | Yes | Loaded as the key from `data/campaigns.csv` |
 | `name` | string | No | Human-readable campaign name |
 | `budget` | float | No | Upper bound on total spend across all channels for the campaign |
-| `target_conversions` | float | No | Included in sample data; not enforced as a constraint in this template |
+| `target_conversions` | int | No | Included in sample data; not enforced as a constraint in this template |
 
 ### `Effectiveness`
 
@@ -235,8 +235,8 @@ A channel–campaign pair with an expected conversion rate used in the objective
 
 | Property | Type | Identifying? | Notes |
 | --- | --- | --- | --- |
-| `channel` | `Channel` | Part of compound key | Joined via `data/effectiveness.csv.channel_id` |
-| `campaign` | `Campaign` | Part of compound key | Joined via `data/effectiveness.csv.campaign_id` |
+| `channel` | `Channel` | Part of compound key | Relationship joined via `data/effectiveness.csv.channel_id` |
+| `campaign` | `Campaign` | Part of compound key | Relationship joined via `data/effectiveness.csv.campaign_id` |
 | `conversion_rate` | float | No | Expected conversions per $ spent |
 
 ### `Allocation`
@@ -245,7 +245,7 @@ A decision concept created for each `Effectiveness` row; the solver chooses `spe
 
 | Property | Type | Identifying? | Notes |
 | --- | --- | --- | --- |
-| `effectiveness` | `Effectiveness` | Yes | One allocation per channel–campaign pair |
+| `effectiveness` | `Effectiveness` | Yes | Relationship; one allocation per channel–campaign pair |
 | `spend` | float | No | Continuous decision variable ($\ge 0$) |
 | `active` | float | No | Binary decision variable (0/1) |
 
@@ -263,7 +263,7 @@ from pathlib import Path
 import pandas
 from pandas import read_csv
 
-from relationalai.semantics import Model, data, require, select, sum, where
+from relationalai.semantics import Model, Relationship, data, require, select, sum, where
 from relationalai.semantics.reasoners.optimization import Solver, SolverModel
 
 # --------------------------------------------------
@@ -325,8 +325,8 @@ data(campaign_csv).into(Campaign, keys=["id"])
 # the optimization problem. In a real-world scenario, this could be derived from
 # historical data or A/B tests rather than loaded from a CSV.
 Effectiveness = model.Concept("Effectiveness")
-Effectiveness.channel = model.Property("{Effectiveness} via {channel:Channel}")
-Effectiveness.campaign = model.Property("{Effectiveness} for {campaign:Campaign}")
+Effectiveness.channel = model.Relationship("{Effectiveness} via {channel:Channel}")
+Effectiveness.campaign = model.Relationship("{Effectiveness} for {campaign:Campaign}")
 Effectiveness.conversion_rate = model.Property("{Effectiveness} has {conversion_rate:float}")
 
 # Load channel-campaign effectiveness data from CSV.
@@ -353,7 +353,7 @@ The script defines a `build_formulation` helper that registers decision variable
 # provides the conversion rate for that channel-campaign pair. The `spend` and
 # `active` properties represent the decision variables that the solver will determine.
 Allocation = model.Concept("Allocation")
-Allocation.effectiveness = model.Property("{Allocation} uses {effectiveness:Effectiveness}")
+Allocation.effectiveness = model.Relationship("{Allocation} uses {effectiveness:Effectiveness}")
 Allocation.x_spend = model.Property("{Allocation} has {spend:float}")
 Allocation.x_active = model.Property("{Allocation} is {active:float}")
 
