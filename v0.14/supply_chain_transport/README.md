@@ -15,7 +15,7 @@ tags:
 # Supply Chain Transport
 
 > [!WARNING]
-> This template uses the early access `relationalai.semantics` API in version `0.13.3` of the `relationalai` Python package.
+> This template uses the early access `relationalai.semantics` API in version `0.14.2` of the `relationalai` Python package.
 
 ## What this template is for
 
@@ -62,7 +62,7 @@ Follow these steps to run the template using the included sample data.
 1. Download the ZIP file for this template and extract it:
 
    ```bash
-   curl -O https://private.relational.ai/templates/zips/v0.13/supply_chain_transport.zip
+   curl -O https://private.relational.ai/templates/zips/v0.14/supply_chain_transport.zip
    unzip supply_chain_transport.zip
    cd supply_chain_transport
    ```
@@ -259,7 +259,7 @@ from pathlib import Path
 import pandas
 from pandas import read_csv
 
-from relationalai.semantics import Model, data, define, require, sum, where
+from relationalai.semantics import Model, Relationship, data, define, require, sum, where
 from relationalai.semantics.reasoners.optimization import Solver, SolverModel
 
 # --------------------------------------------------
@@ -328,13 +328,13 @@ The constraints are expressed with `require(...)` and attached to the solver via
 ```python
 # Shipment decision concept: quantity shipped for each route–mode combination.
 Shipment = model.Concept("Shipment")
-Shipment.route = model.Property("{Shipment} on {route:Route}")
-Shipment.mode = model.Property("{Shipment} via {mode:TransportMode}")
+Shipment.route = model.Relationship("{Shipment} on {route:Route}")
+Shipment.mode = model.Relationship("{Shipment} via {mode:TransportMode}")
 Shipment.x_quantity = model.Property("{Shipment} has {quantity:float}")
 Shipment.x_selected = model.Property("{Shipment} is {selected:float}")
 define(Shipment.new(route=Route, mode=TransportMode))
 
-Sh = Shipment.ref()
+ShipmentRef = Shipment.ref()
 
 
 def build_formulation(s):
@@ -369,12 +369,12 @@ def build_formulation(s):
     s.satisfy(min_bound)
 
     # Constraint: total outbound from warehouse cannot exceed inventory.
-    outbound = sum(Sh.x_quantity).where(Sh.route.warehouse == Warehouse).per(Warehouse)
+    outbound = sum(ShipmentRef.x_quantity).where(ShipmentRef.route.warehouse == Warehouse).per(Warehouse)
     inventory_limit = require(outbound <= Warehouse.inventory)
     s.satisfy(inventory_limit)
 
     # Constraint: demand satisfaction for each customer.
-    inbound = sum(Sh.x_quantity).where(Sh.route.customer == Customer).per(Customer)
+    inbound = sum(ShipmentRef.x_quantity).where(ShipmentRef.route.customer == Customer).per(Customer)
     demand_met = require(inbound >= Customer.demand)
     s.satisfy(demand_met)
 
