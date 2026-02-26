@@ -15,7 +15,7 @@ tags:
 # Network Flow
 
 > [!WARNING]
-> This template uses the early access `relational.semantics` API in version `0.13` of the `relationalai` Python package.
+> This template uses the early access `relational.semantics` API in version `0.14.2` of the `relationalai` Python package.
 
 ## What this template is for
 
@@ -63,9 +63,9 @@ Follow these steps to run the template with the included sample data.
 1. Download the ZIP file for this template and extract it:
 
    ```bash
-   curl -O https://private.relational.ai/templates/zips/v0.13/network_flow.zip
-   unzip network_flow.zip
-   cd network_flow
+curl -O https://private.relational.ai/templates/zips/v0.14/network_flow.zip
+unzip network_flow.zip
+cd network_flow
    ```
 
   > [!TIP]
@@ -161,7 +161,7 @@ Represents a directed, capacitated edge.
 | `i` | int | Yes | Loaded from `data/edges.csv` |
 | `j` | int | Yes | Loaded from `data/edges.csv` |
 | `cap` | float | No | Capacity for the edge |
-| `flow` | float | No | Decision variable (continuous) |
+| `x_flow` | float | No | Decision variable (continuous) |
 
 ## How it works
 
@@ -224,8 +224,8 @@ Then it creates a `SolverModel`, declares `Edge.x_flow` and marks it as a decisi
 # Model the decision problem
 # --------------------------------------------------
 
-Ei = Edge
-Ej = Edge.ref()
+EdgeSrc = Edge
+EdgeRef = Edge.ref()
 
 # Create a continuous optimization model.
 s = SolverModel(model, "cont")
@@ -236,22 +236,22 @@ s.solve_for(Edge.x_flow, name=["flow", Edge.i, Edge.j])
 
 # Constraint: flow must be non-negative and cannot exceed edge capacity.
 bounds = require(
-   Edge.x_flow >= 0,
-   Edge.x_flow <= Edge.cap
+    Edge.x_flow >= 0,
+    Edge.x_flow <= Edge.cap
 )
 s.satisfy(bounds)
 
 # Constraint: flow conservation at each node (inflow equals outflow).
-flow_out = per(Ei.i).sum(Ei.x_flow)
-flow_in = per(Ej.j).sum(Ej.x_flow)
+flow_out = per(EdgeSrc.i).sum(EdgeSrc.x_flow)
+flow_in = per(EdgeRef.j).sum(EdgeRef.x_flow)
 balance = require(flow_in == flow_out).where(
-   Ei.i == Ej.j
+    EdgeSrc.i == EdgeRef.j
 )
 s.satisfy(balance)
 
 # Objective: maximize total flow out of the source node.
 total_flow = sum(Edge.x_flow).where(
-   Edge.i == SOURCE_NODE
+    Edge.i == SOURCE_NODE
 )
 s.maximize(total_flow)
 ```
