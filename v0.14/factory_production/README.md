@@ -15,7 +15,7 @@ tags:
 # Factory Production
 
 > [!WARNING]
-> This template uses the early access `relational.semantics` API in version `0.13` of the `relationalai` Python package.
+> This template uses the early access `relationalai.semantics` API in version `0.14.2` of the `relationalai` Python package.
 
 ## What this template is for
 
@@ -27,6 +27,8 @@ This template models a factory with multiple machines producing different produc
 - Different machines take different amounts of time to produce each product.
 
 The goal is to find the optimal product mix—how much of each product to make on each machine—to **maximize profit** (revenue minus machine operating costs) while respecting machine capacity and meeting minimum production targets.
+
+This template uses RelationalAI's **Prescriptive** reasoning capabilities (optimization) to compute a profit-maximizing production plan that meets minimum requirements while respecting machine capacity.
 
 > [!NOTE]
 > This template uses continuous decision variables (LP), so fractional quantities are allowed.
@@ -66,14 +68,14 @@ Follow these steps to run the template using the included sample data:
 
 1. Download the ZIP file for this template and extract it:
 
-   ```bash
-   curl -O https://private.relational.ai/templates/zips/v0.13/factory_production.zip
-   unzip factory_production.zip
-   cd factory_production
-   ```
+	```bash
+	curl -O https://private.relational.ai/templates/zips/v0.14/factory_production.zip
+	unzip factory_production.zip
+	cd factory_production
+	```
 
-   > [!TIP]
-   > You can also download the template ZIP using the "Download ZIP" button at the top of this page.
+	> [!TIP]
+	> You can also download the template ZIP using the "Download ZIP" button at the top of this page.
 
 2. Create and activate a virtual environment:
 
@@ -211,7 +213,7 @@ from pathlib import Path
 import pandas
 from pandas import read_csv
 
-from relationalai.semantics import Model, data, define, require, select, sum, where
+from relationalai.semantics import Model, Relationship, data, define, require, select, sum, where
 from relationalai.semantics.reasoners.optimization import Solver, SolverModel
 
 
@@ -257,8 +259,8 @@ data(read_csv(DATA_DIR / "products.csv")).into(Product, keys=["id"])
 
 # ProdTime concept: represents the time required to produce one unit of a product on a machine
 ProdTime = model.Concept("ProductionTime")
-ProdTime.machine = model.Property("{ProductionTime} on {machine:Machine}")
-ProdTime.product = model.Property("{ProductionTime} of {product:Product}")
+ProdTime.machine = model.Relationship("{ProductionTime} on {machine:Machine}")
+ProdTime.product = model.Relationship("{ProductionTime} of {product:Product}")
 ProdTime.hours_per_unit = model.Property("{ProductionTime} takes {hours_per_unit:float}")
 
 # Load production time data from CSV.
@@ -281,13 +283,13 @@ Then it creates one continuous, non-negative decision variable per machine–pro
 ```python
 # Decision concept: production quantities for each machine/product
 Production = model.Concept("Production")
-Production.prod_time = model.Property("{Production} uses {prod_time:ProductionTime}")
+Production.prod_time = model.Relationship("{Production} uses {prod_time:ProductionTime}")
 Production.x_quantity = model.Property("{Production} has {quantity:float}")
 
 # Define one Production entity per machine-product ProductionTime record.
 define(Production.new(prod_time=ProdTime))
 
-Prod = Production.ref()
+ProductionRef = Production.ref()
 
 s = SolverModel(model, "cont")
 
@@ -300,15 +302,15 @@ s.solve_for(
 
 # Constraint: total production hours per machine <= hours_available
 total_hours = sum(
-    Prod.x_quantity * Prod.prod_time.hours_per_unit
+    ProductionRef.x_quantity * ProductionRef.prod_time.hours_per_unit
 ).where(
-    Prod.prod_time.machine == Machine
+    ProductionRef.prod_time.machine == Machine
 ).per(Machine)
 machine_limit = require(total_hours <= Machine.hours_available)
 s.satisfy(machine_limit)
 
 # Constraint: total production per product >= min_production
-total_produced = sum(Prod.x_quantity).where(Prod.prod_time.product == Product).per(Product)
+total_produced = sum(ProductionRef.x_quantity).where(ProductionRef.prod_time.product == Product).per(Product)
 meet_minimum = require(total_produced >= Product.min_production)
 s.satisfy(meet_minimum)
 
