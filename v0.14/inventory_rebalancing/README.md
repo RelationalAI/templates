@@ -5,7 +5,7 @@ featured: false
 experience_level: beginner
 industry: "Supply Chain"
 reasoning_types:
-  - Prescriptive
+  - Prescriptive reasoning (optimization)
 tags:
   - Allocation
   - LP
@@ -14,7 +14,7 @@ tags:
 # Inventory Rebalancing
 
 > [!WARNING]
-> This template uses the early access `relational.semantics` API in version `0.13` of the `relationalai` Python package.
+> This template uses the early access `relational.semantics` API in version `0.14` of the `relationalai` Python package.
 
 ## What this template is for
 
@@ -59,7 +59,7 @@ Follow these steps to run the template with the included sample data.
 1. Download the ZIP file for this template and extract it:
 
    ```bash
-   curl -O https://private.relational.ai/templates/zips/v0.13/inventory_rebalancing.zip
+   curl -O https://private.relational.ai/templates/zips/v0.14/inventory_rebalancing.zip
    unzip inventory_rebalancing.zip
    cd inventory_rebalancing
    ```
@@ -219,7 +219,7 @@ from pathlib import Path
 import pandas
 from pandas import read_csv
 
-from relationalai.semantics import Model, data, define, require, select, sum, where
+from relationalai.semantics import Model, Relationship, data, define, require, select, sum, where
 from relationalai.semantics.reasoners.optimization import Solver, SolverModel
 
 # --------------------------------------------------
@@ -257,22 +257,22 @@ Next, declare a `Lane` concept for directed transfer options and use a `where(..
 # Relationship: lanes between sites with cost and capacity
 Lane = model.Concept("Lane")
 Lane.id = model.Property("{Lane} has {id:int}")
-Lane.source = model.Property("{Lane} from {source:Site}")
-Lane.dest = model.Property("{Lane} to {dest:Site}")
+Lane.source = model.Relationship("{Lane} from {source:Site}")
+Lane.dest = model.Relationship("{Lane} to {dest:Site}")
 Lane.cost_per_unit = model.Property("{Lane} has {cost_per_unit:float}")
 Lane.capacity = model.Property("{Lane} has {capacity:int}")
 
 # Load lane data from CSV and create Lane entities.
 lanes_data = data(read_csv(DATA_DIR / "lanes.csv"))
-Dest = Site.ref()
+DestSite = Site.ref()
 where(
     Site.id == lanes_data.source_id,
-    Dest.id == lanes_data.dest_id
+    DestSite.id == lanes_data.dest_id
 ).define(
     Lane.new(
         id=lanes_data.id,
         source=Site,
-        dest=Dest,
+        dest=DestSite,
         cost_per_unit=lanes_data.cost_per_unit,
         capacity=lanes_data.capacity
     )
@@ -285,7 +285,7 @@ where(
 # Concept: demand at each site
 Demand = model.Concept("Demand")
 Demand.id = model.Property("{Demand} has {id:int}")
-Demand.site = model.Property("{Demand} at {site:Site}")
+Demand.site = model.Relationship("{Demand} at {site:Site}")
 Demand.quantity = model.Property("{Demand} has {quantity:int}")
 
 # Load demand data from CSV and create Demand entities.
@@ -302,12 +302,12 @@ Create a `Transfer` decision concept and register one continuous, non-negative d
 ```python
 # Decision concept: transfers on each lane
 Transfer = model.Concept("Transfer")
-Transfer.lane = model.Property("{Transfer} uses {lane:Lane}")
+Transfer.lane = model.Relationship("{Transfer} uses {lane:Lane}")
 Transfer.x_quantity = model.Property("{Transfer} has {quantity:float}")
 define(Transfer.new(lane=Lane))
 
-Tr = Transfer.ref()
-Dm = Demand.ref()
+TransferRef = Transfer.ref()
+DemandRef = Demand.ref()
 
 s = SolverModel(model, "cont")
 
@@ -323,14 +323,14 @@ capacity_limit = require(Transfer.x_quantity <= Transfer.lane.capacity)
 s.satisfy(capacity_limit)
 
 # Constraint: total outbound from source cannot exceed source inventory
-outbound = sum(Tr.x_quantity).where(Tr.lane.source == Site).per(Site)
+outbound = sum(TransferRef.x_quantity).where(TransferRef.lane.source == Site).per(Site)
 inventory_limit = require(outbound <= Site.inventory)
 s.satisfy(inventory_limit)
 
 # Constraint: demand satisfaction at each destination site
-inbound = sum(Tr.x_quantity).where(Tr.lane.dest == Dm.site).per(Dm)
-local_inv = sum(Site.inventory).where(Site == Dm.site).per(Dm)
-demand_met = require(inbound + local_inv >= Dm.quantity)
+inbound = sum(TransferRef.x_quantity).where(TransferRef.lane.dest == DemandRef.site).per(DemandRef)
+local_inv = sum(Site.inventory).where(Site == DemandRef.site).per(DemandRef)
+demand_met = require(inbound + local_inv >= DemandRef.quantity)
 s.satisfy(demand_met)
 ```
 
@@ -372,7 +372,7 @@ print(transfers.to_string(index=False))
 - Make sure `demand.csv.site_id` only references valid site IDs.
 
 > [!TIP]
-> If you want demand to be met entirely by transfers (ignoring local inventory), remove `local_inv` from the demand constraint and require `inbound >= Dm.quantity`.
+> If you want demand to be met entirely by transfers (ignoring local inventory), remove `local_inv` from the demand constraint and require `inbound >= DemandRef.quantity`.
 
 ### Tune parameters
 

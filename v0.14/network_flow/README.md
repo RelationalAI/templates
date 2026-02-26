@@ -62,22 +62,22 @@ Follow these steps to run the template with the included sample data.
 
 1. Download the ZIP file for this template and extract it:
 
-  ```bash
-  curl -O https://private.relational.ai/templates/zips/v0.13/network_flow.zip
-  unzip network_flow.zip
-  cd network_flow
-  ```
+   ```bash
+   curl -O https://private.relational.ai/templates/zips/v0.13/network_flow.zip
+   unzip network_flow.zip
+   cd network_flow
+   ```
 
   > [!TIP]
   > You can also download the template ZIP using the "Download ZIP" button at the top of this page.
 
 2. **Create and activate a virtual environment**
 
-  ```bash
-  python -m venv .venv
-  source .venv/bin/activate
-  python -m pip install -U pip
-  ```
+   ```bash
+   python -m venv .venv
+   source .venv/bin/activate
+   python -m pip install -U pip
+   ```
 
 3. **Install dependencies**
 

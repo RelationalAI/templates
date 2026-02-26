@@ -34,7 +34,11 @@ You are an expert technical writer specializing in creating educational and enga
 
 When updating the **What this template is for** section, ensure it includes a sentence that explicitly identifies the template's reasoning type in **bold**.
 
-- The bold text MUST match the template's declared reasoning type(s) in the README front matter (for example: **prescriptive reasoning (optimization)**).
+- The bold text MUST match the template's declared reasoning type(s) in the README front matter.
+	- Treat this as a case-insensitive match when checking existing READMEs.
+	- When adding a new sentence, do **not** capitalize the reasoning type phrase unless it appears at the beginning of the sentence.
+		- Example (mid-sentence): "This template uses RelationalAI's **prescriptive reasoning (optimization)** capabilities to ..."
+		- Example (sentence-initial): "**Prescriptive reasoning (optimization)** helps you ..."
 - If the section already includes this formatting, preserve it.
 - If it is missing, add a single sentence in the same style as newer READMEs (for example: "This template uses RelationalAI's **prescriptive reasoning (optimization)** capabilities to ...").
 

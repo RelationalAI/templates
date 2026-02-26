@@ -66,9 +66,9 @@ You can customize the data and model as needed after you have it running end-to-
 1. Download the ZIP file for this template and extract it:
 
    ```bash
-curl -O https://private.relational.ai/templates/zips/v0.14/ad_spend_allocation.zip
-unzip ad_spend_allocation.zip
-cd ad_spend_allocation
+   curl -O https://private.relational.ai/templates/zips/v0.14/ad_spend_allocation.zip
+   unzip ad_spend_allocation.zip
+   cd ad_spend_allocation
    ```
 
    > [!TIP]

@@ -16,7 +16,7 @@ tags:
 # Hospital Staffing
 
 > [!WARNING]
-> This template uses the early access `relationalai.semantics` API in version `0.13.3` of the `relationalai` Python package.
+> This template uses the early access `relationalai.semantics` API in version `0.14.2` of the `relationalai` Python package.
 
 ## What this template is for
 
@@ -25,7 +25,8 @@ This template models assigning 6 nurses to 3 shifts (Morning, Afternoon, Night),
 
 Nurses can work extra shifts beyond their regular hours, but at a premium rate (1.5x).
 When staffing falls short and patient demand goes unmet, the hospital incurs an overflow penalty reflecting missed care ratios, throughput shortfalls, and regulatory risk.
-This template uses RelationalAI's **prescriptive reasoner** to find the assignment of nurses to shifts that minimizes the combined cost of overtime and overflow, while respecting availability, safety limits, and skill requirements.
+
+This template uses RelationalAI's **Prescriptive** reasoning capabilities to find the assignment of nurses to shifts that minimizes the combined cost of overtime and overflow, while respecting availability, safety limits, and skill requirements.
 
 Prescriptive reasoning helps you:
 
@@ -71,7 +72,7 @@ You can customize the data and model as needed after you have it running end-to-
 1. Download the ZIP file for this template and extract it:
 
    ```bash
-   curl -O https://private.relational.ai/templates/zips/v0.13/hospital_staffing.zip
+   curl -O https://private.relational.ai/templates/zips/v0.14/hospital_staffing.zip
    unzip hospital_staffing.zip
    cd hospital_staffing
    ```
@@ -258,7 +259,7 @@ This section walks through the highlights in `hospital_staffing.py`.
 
 ### Import libraries and configure inputs
 
-First, the script imports the Semantics APIs (`Model`, `data`, `define`, `where`, `require`, `sum`) and configures local inputs like `DATA_DIR`:
+First, the script imports the Semantics APIs (`Model`, `Relationship`, `data`, `define`, `where`, `require`, `sum`, `select`) and configures local inputs like `DATA_DIR`:
 
 ```python
 from pathlib import Path
@@ -266,7 +267,7 @@ from pathlib import Path
 import pandas
 from pandas import read_csv
 
-from relationalai.semantics import Model, data, define, require, select, sum, where
+from relationalai.semantics import Model, Relationship, data, define, require, select, sum, where
 from relationalai.semantics.reasoners.optimization import Solver, SolverModel
 
 # --------------------------------------------------
@@ -327,8 +328,8 @@ data(read_csv(DATA_DIR / "shifts.csv")).into(Shift, keys=["id"])
 ```python
 # Availability concept: links nurses to shifts they can work.
 Availability = model.Concept("Availability")
-Availability.nurse = model.Property("{Availability} for {nurse:Nurse}")
-Availability.shift = model.Property("{Availability} in {shift:Shift}")
+Availability.nurse = model.Relationship("{Availability} for {nurse:Nurse}")
+Availability.shift = model.Relationship("{Availability} in {shift:Shift}")
 Availability.available = model.Property("{Availability} is {available:int}")
 
 # Load availability data from CSV.
@@ -353,11 +354,11 @@ An `Assignment` decision concept is created for every `Availability` row. The sc
 # nurses to shifts. Each Assignment is linked to an Availability entity, which
 # indicates whether the nurse can work that shift.
 Assignment = model.Concept("Assignment")
-Assignment.availability = model.Property("{Assignment} uses {availability:Availability}")
+Assignment.availability = model.Relationship("{Assignment} uses {availability:Availability}")
 Assignment.x_assigned = model.Property("{Assignment} is {assigned:float}")
 define(Assignment.new(availability=Availability))
 
-Asn = Assignment.ref()
+AssignmentRef = Assignment.ref()
 
 s = SolverModel(model, "cont")
 
@@ -390,7 +391,7 @@ must_be_available = require(Assignment.x_assigned <= Assignment.availability.ava
 s.satisfy(must_be_available)
 
 # Constraint: every nurse works at least one shift
-nurse_shift_count = sum(Asn.x_assigned).where(Asn.availability.nurse == Nurse).per(Nurse)
+nurse_shift_count = sum(AssignmentRef.x_assigned).where(AssignmentRef.availability.nurse == Nurse).per(Nurse)
 min_one_shift = require(nurse_shift_count >= 1)
 s.satisfy(min_one_shift)
 
@@ -399,21 +400,21 @@ max_two_shifts = require(nurse_shift_count <= 2)
 s.satisfy(max_two_shifts)
 
 # Constraint: minimum nurses per shift
-shift_staff_count = sum(Asn.x_assigned).where(Asn.availability.shift == Shift).per(Shift)
+shift_staff_count = sum(AssignmentRef.x_assigned).where(AssignmentRef.availability.shift == Shift).per(Shift)
 min_coverage = require(shift_staff_count >= Shift.min_nurses)
 s.satisfy(min_coverage)
 
 # Constraint: at least one nurse with required skill level per shift
-skilled_coverage = sum(Asn.x_assigned).where(
-    Asn.availability.shift == Shift,
-    Asn.availability.nurse.skill_level >= Shift.min_skill,
+skilled_coverage = sum(AssignmentRef.x_assigned).where(
+    AssignmentRef.availability.shift == Shift,
+    AssignmentRef.availability.nurse.skill_level >= Shift.min_skill,
 ).per(Shift)
 min_skilled = require(skilled_coverage >= 1)
 s.satisfy(min_skilled)
 
 # Constraint: overtime >= total hours worked - regular hours
-total_hours_worked = sum(Asn.x_assigned * Asn.availability.shift.duration).where(
-    Asn.availability.nurse == Nurse
+total_hours_worked = sum(AssignmentRef.x_assigned * AssignmentRef.availability.shift.duration).where(
+    AssignmentRef.availability.nurse == Nurse
 ).per(Nurse)
 overtime_def = require(Nurse.x_overtime_hours >= total_hours_worked - Nurse.regular_hours)
 s.satisfy(overtime_def)

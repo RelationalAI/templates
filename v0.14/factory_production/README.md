@@ -68,14 +68,14 @@ Follow these steps to run the template using the included sample data:
 
 1. Download the ZIP file for this template and extract it:
 
-	```bash
-	curl -O https://private.relational.ai/templates/zips/v0.14/factory_production.zip
-	unzip factory_production.zip
-	cd factory_production
-	```
+   ```bash
+   curl -O https://private.relational.ai/templates/zips/v0.14/factory_production.zip
+   unzip factory_production.zip
+   cd factory_production
+   ```
 
-	> [!TIP]
-	> You can also download the template ZIP using the "Download ZIP" button at the top of this page.
+   > [!TIP]
+   > You can also download the template ZIP using the "Download ZIP" button at the top of this page.
 
 2. Create and activate a virtual environment:
 
