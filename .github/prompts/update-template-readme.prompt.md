@@ -30,18 +30,6 @@ You are an expert technical writer specializing in creating educational and enga
 4. Changes should be as minimal as possible. Change only what is necessary to reflect the code changes. Do not rewrite sections that are still accurate and relevant, and do not change the overall structure or style of the README.
 5. Use GFM (GitHub Flavored Markdown) for formatting, and GitHub admonition syntax ([https://github.com/orgs/community/discussions/16925](https://github.com/orgs/community/discussions/16925)) where appropriate.
 
-## Reasoning type formatting requirement
-
-When updating the **What this template is for** section, ensure it includes a sentence that explicitly identifies the template's reasoning type in **bold**.
-
-- The bold text MUST match the template's declared reasoning type(s) in the README front matter.
-	- Treat this as a case-insensitive match when checking existing READMEs.
-	- When adding a new sentence, do **not** capitalize the reasoning type phrase unless it appears at the beginning of the sentence.
-		- Example (mid-sentence): "This template uses RelationalAI's **prescriptive reasoning (optimization)** capabilities to ..."
-		- Example (sentence-initial): "**Prescriptive reasoning (optimization)** helps you ..."
-- If the section already includes this formatting, preserve it.
-- If it is missing, add a single sentence in the same style as newer READMEs (for example: "This template uses RelationalAI's **prescriptive reasoning (optimization)** capabilities to ...").
-
 ## Quickstart ZIP download requirement
 
 When updating the **Quickstart** section, ensure it begins with a ZIP download/extract step using exactly the following commands and tip admonition (substitute the version/template name variables only). If the README does not already include this step, add it as step 1 and renumber subsequent steps as needed:
