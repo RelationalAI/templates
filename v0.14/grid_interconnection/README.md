@@ -14,13 +14,13 @@ tags:
 # Grid Interconnection
 
 > [!WARNING]
-> This template uses the early access `relational.semantics` API in version `0.13` of the `relationalai` Python package.
+> This template uses the early access `relational.semantics` API in version `0.14.2` of the `relationalai` Python package.
 
 ## What this template is for
 
 Utilities are seeing a surge of data center interconnection requests. Each project requires substation capacity (MW) and capital investment to connect to the grid, and utilities can also invest in substation upgrades to expand capacity.
 
-This template helps you choose which interconnection projects to approve and which substation upgrades to build, subject to capacity and budget constraints, to maximize net revenue.
+This template uses RelationalAI's **Prescriptive** reasoning capabilities to help you choose which interconnection projects to approve and which substation upgrades to build, subject to capacity and budget constraints, to maximize net revenue.
 
 ## Who this is for
 
@@ -60,15 +60,15 @@ Follow these steps to run the template with the included sample data.
 1. Download the ZIP file for this template and extract it:
 
    ```bash
-   curl -O https://private.relational.ai/templates/zips/v0.13/grid_interconnection.zip
-   unzip grid_interconnection.zip
-   cd grid_interconnection
+curl -O https://private.relational.ai/templates/zips/v0.14/grid_interconnection.zip
+unzip grid_interconnection.zip
+cd grid_interconnection
    ```
 
    > [!TIP]
    > You can also download the template ZIP using the "Download ZIP" button at the top of this page.
 
-1. **Create and activate a virtual environment**
+2. **Create and activate a virtual environment**
 
    ```bash
    python -m venv .venv
@@ -76,7 +76,7 @@ Follow these steps to run the template with the included sample data.
    python -m pip install -U pip
    ```
 
-2. **Install dependencies**
+3. **Install dependencies**
 
    From this folder:
 
@@ -84,19 +84,19 @@ Follow these steps to run the template with the included sample data.
    python -m pip install .
    ```
 
-3. **Configure Snowflake connection and RAI profile**
+4. **Configure Snowflake connection and RAI profile**
 
    ```bash
    rai init
    ```
 
-4. **Run the template**
+5. **Run the template**
 
    ```bash
    python grid_interconnection.py
    ```
 
-5. **Expected output**
+6. **Expected output**
 
    Decision variables shown for the baseline scenario (budget = $2B). The summary below shows objectives for all scenarios.
 
@@ -231,7 +231,7 @@ from pathlib import Path
 import pandas
 from pandas import read_csv
 
-from relationalai.semantics import Model, data, require, sum, where
+from relationalai.semantics import Model, Relationship, data, require, sum, where
 from relationalai.semantics.reasoners.optimization import Solver, SolverModel
 
 # --------------------------------------------------
@@ -273,7 +273,7 @@ data(substation_csv).into(Substation, keys=["id"])
 Project = model.Concept("Project")
 Project.id = model.Property("{Project} has {id:int}")
 Project.name = model.Property("{Project} has {name:string}")
-Project.substation = model.Property("{Project} connects to {substation:Substation}")
+Project.substation = model.Relationship("{Project} connects to {substation:Substation}")
 Project.capacity_needed = model.Property("{Project} needs {capacity_needed:int}")
 Project.revenue = model.Property("{Project} has {revenue:float}")
 Project.connection_cost = model.Property("{Project} has {connection_cost:float}")
@@ -297,7 +297,7 @@ where(Substation.id == projects_data.substation_id).define(
 # Upgrade concept: candidate substation upgrades that add capacity.
 Upgrade = model.Concept("Upgrade")
 Upgrade.id = model.Property("{Upgrade} has {id:int}")
-Upgrade.substation = model.Property("{Upgrade} for {substation:Substation}")
+Upgrade.substation = model.Relationship("{Upgrade} for {substation:Substation}")
 Upgrade.capacity_added = model.Property("{Upgrade} adds {capacity_added:int}")
 Upgrade.upgrade_cost = model.Property("{Upgrade} has {upgrade_cost:float}")
 Upgrade.x_selected = model.Property("{Upgrade} is {selected:float}")
@@ -321,8 +321,8 @@ where(Substation.id == upgrades_data.substation_id).define(
 Next, the script defines a helper `build_formulation(...)` that uses `solve_for`, `require`, and `maximize` to register decision variables, constraints, and the objective:
 
 ```python
-Proj = Project.ref()
-Upg = Upgrade.ref()
+ProjectRef = Project.ref()
+UpgradeRef = Upgrade.ref()
 
 
 def build_formulation(solver_model):
@@ -339,20 +339,20 @@ def build_formulation(solver_model):
 
     # Constraint: capacity at substation must accommodate approved projects
     project_demand = (
-        sum(Proj.x_approved * Proj.capacity_needed)
-        .where(Proj.substation == Substation)
+        sum(ProjectRef.x_approved * ProjectRef.capacity_needed)
+        .where(ProjectRef.substation == Substation)
         .per(Substation)
     )
     upgrade_capacity = (
-        sum(Upg.x_selected * Upg.capacity_added)
-        .where(Upg.substation == Substation)
+        sum(UpgradeRef.x_selected * UpgradeRef.capacity_added)
+        .where(UpgradeRef.substation == Substation)
         .per(Substation)
     )
     capacity_ok = require(Substation.current_capacity + upgrade_capacity >= project_demand)
     solver_model.satisfy(capacity_ok)
 
     # Constraint: at most one upgrade per substation
-    upgrades_per_sub = sum(Upg.x_selected).where(Upg.substation == Substation).per(Substation)
+    upgrades_per_sub = sum(UpgradeRef.x_selected).where(UpgradeRef.substation == Substation).per(Substation)
     one_upgrade = require(upgrades_per_sub <= 1)
     solver_model.satisfy(one_upgrade)
 
