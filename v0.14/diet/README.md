@@ -15,7 +15,7 @@ tags:
 # Diet Optimization
 
 > [!WARNING]
-> This template uses the early access `relational.semantics` API in version `0.13` of the `relationalai` Python package.
+> This template uses the early access `relationalai.semantics` API in version `0.14.2` of the `relationalai` Python package.
 
 ## What this template is for
 
@@ -23,7 +23,7 @@ Meal planning services, hospitals, and institutional food services need to desig
 This template models selecting from a small set of foods to satisfy daily bounds on calories, protein, fat, and sodium at minimum cost.
 
 This is the classic “diet problem”, one of the earliest practical applications of linear programming originally formulated by economist George Stigler in 1945.
-This template uses RelationalAI's **prescriptive reasoning (optimization)** capabilities to find the optimal food combination that meets all nutritional constraints at the lowest cost.
+This template uses RelationalAI's **Prescriptive** reasoning capabilities to find the optimal food combination that meets all nutritional constraints at the lowest cost.
 
 Prescriptive reasoning helps you:
 
@@ -66,9 +66,9 @@ Follow these steps to run the template with the included sample data.
 1. Download the ZIP file for this template and extract it:
 
    ```bash
-   curl -O https://private.relational.ai/templates/zips/v0.13/diet.zip
-   unzip diet.zip
-   cd diet
+curl -O https://private.relational.ai/templates/zips/v0.14/diet.zip
+unzip diet.zip
+cd diet
    ```
 
    > [!TIP]
