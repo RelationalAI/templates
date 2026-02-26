@@ -14,7 +14,7 @@ tags:
 # Portfolio Optimization
 
 > [!WARNING]
-> This template uses the early access `relational.semantics` API in version `0.13` of the `relationalai` Python package.
+> This template uses the early access `relational.semantics` API in version `0.14.2` of the `relationalai` Python package.
 
 ## What this template is for
 
@@ -65,7 +65,7 @@ Follow these steps to run the template with the included sample data.
 1. Download the ZIP file for this template and extract it:
 
    ```bash
-   curl -O https://private.relational.ai/templates/zips/v0.13/portfolio_balancing.zip
+   curl -O https://private.relational.ai/templates/zips/v0.14/portfolio_balancing.zip
    unzip portfolio_balancing.zip
    cd portfolio_balancing
    ```
@@ -172,7 +172,7 @@ Represents an investable asset.
 | `index` | int | Yes | Loaded from `data/returns.csv` |
 | `returns` | float | No | Expected return |
 | `covar` | float | No | Pairwise covariance with another `Stock` |
-| `quantity` | float | No | Decision variable (continuous, non-negative) |
+| `x_quantity` | float | No | Decision variable (continuous, non-negative) |
 
 ## How it works
 
@@ -188,7 +188,7 @@ from pathlib import Path
 import pandas
 from pandas import read_csv
 
-from relationalai.semantics import Float, Model, data, require, select, sum, where
+from relationalai.semantics import Float, Model, Relationship, data, require, select, sum, where
 from relationalai.semantics.reasoners.optimization import Solver, SolverModel
 
 # --------------------------------------------------
@@ -227,17 +227,17 @@ Stock.returns = model.Property("{Stock} has {returns:float}")
 data(read_csv(DATA_DIR / "returns.csv")).into(Stock, keys=["index"])
 
 # Stock.covar property: covariance matrix between stock pairs.
-Stock.covar = model.Property("{Stock} and {stock2:Stock} have {covar:float}")
-Stock2 = Stock.ref()
+Stock.covar = model.Relationship("{Stock} and {stock2:Stock} have {covar:float}")
+OtherStock = Stock.ref()
 
 # Load covariance data from CSV.
 covar_csv = read_csv(DATA_DIR / "covariance.csv")
 pairs = data(covar_csv)
 where(
     Stock.index == pairs.i,
-    Stock2.index == pairs.j
+    OtherStock.index == pairs.j
 ).define(
-    Stock.covar(Stock, Stock2, pairs.covar)
+    Stock.covar(Stock, OtherStock, pairs.covar)
 )
 ```
 
@@ -253,7 +253,7 @@ Then it creates a decision variable `Stock.x_quantity` and registers constraints
 # Stock.x_quantity decision variable: amount allocated to each stock.
 Stock.x_quantity = model.Property("{Stock} quantity is {x:float}")
 
-c = Float.ref()
+covar_val = Float.ref()
 
 # Scenario parameter. This is updated inside the scenario loop.
 min_return = MIN_RETURN
@@ -280,7 +280,7 @@ def build_formulation(s):
     s.satisfy(return_constraint)
 
     # Objective: minimize portfolio risk (variance)
-    risk = sum(c * Stock.x_quantity * Stock2.quantity).where(Stock.covar(Stock2, c))
+    risk = sum(covar_val * Stock.x_quantity * OtherStock.x_quantity).where(Stock.covar(OtherStock, covar_val))
     s.minimize(risk)
 ```
 
