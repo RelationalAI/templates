@@ -15,7 +15,7 @@ tags:
 # Shift Assignment
 
 > [!WARNING]
-> This template uses the early access `relationalai.semantics` API in version `0.13.3` of the `relationalai` Python package.
+> This template uses the early access `relationalai.semantics` API in version `0.14.2` of the `relationalai` Python package.
 
 ## What this template is for
 
@@ -66,7 +66,7 @@ Follow these steps to run the template with the included sample data.
 1. Download the ZIP file for this template and extract it:
 
    ```bash
-   curl -O https://private.relational.ai/templates/zips/v0.13/shift_assignment.zip
+   curl -O https://private.relational.ai/templates/zips/v0.14/shift_assignment.zip
    unzip shift_assignment.zip
    cd shift_assignment
    ```
@@ -212,7 +212,7 @@ from pathlib import Path
 import pandas
 from pandas import read_csv
 
-from relationalai.semantics import Model, data, require, select, sum, where
+from relationalai.semantics import Model, Relationship, data, require, select, sum, where
 from relationalai.semantics.reasoners.optimization import Solver, SolverModel
 
 # --------------------------------------------------
@@ -264,8 +264,8 @@ Then it defines an `Assignment` decision concept and uses `where(...).define(...
 # Assignment decision concept: a worker-shift pair that can potentially be staffed.
 # The availability table determines which pairs exist.
 Assignment = model.Concept("Assignment")
-Assignment.worker = model.Property("{Assignment} has {worker:Worker}")
-Assignment.shift = model.Property("{Assignment} has {shift:Shift}")
+Assignment.worker = model.Relationship("{Assignment} has {worker:Worker}")
+Assignment.shift = model.Relationship("{Assignment} has {shift:Shift}")
 Assignment.x_assigned = model.Property("{Assignment} assigned {assigned:int}")
 
 # Load availability data from CSV.
@@ -293,7 +293,7 @@ With the feasible worker–shift pairs defined, the template creates a `SolverMo
 min_coverage = 2
 max_shifts_per_worker = 1
 
-Asn = Assignment.ref()
+AssignmentRef = Assignment.ref()
 
 s = SolverModel(model, "int")
 
@@ -306,17 +306,17 @@ s.solve_for(
 
 # Constraint: each shift has minimum coverage
 shift_coverage = where(
-    Asn.shift == Shift
+    AssignmentRef.shift == Shift
 ).require(
-    sum(Asn.x_assigned).per(Shift) >= min_coverage
+    sum(AssignmentRef.x_assigned).per(Shift) >= min_coverage
 )
 s.satisfy(shift_coverage)
 
 # Constraint: each worker works at most max_shifts_per_worker shifts
 worker_capacity = where(
-    Asn.worker == Worker
+    AssignmentRef.worker == Worker
 ).require(
-    sum(Asn.x_assigned).per(Worker) <= max_shifts_per_worker
+    sum(AssignmentRef.x_assigned).per(Worker) <= max_shifts_per_worker
 )
 s.satisfy(worker_capacity)
 ```
@@ -371,7 +371,7 @@ If you increase `min_coverage` or reduce availability, the problem may become in
 
 Common extensions include:
 
-- **Max coverage (capacity)**: If you want to enforce a maximum number of workers per shift, add a `Shift.capacity` property, load it from `shifts.csv`, and require `sum(Asn.x_assigned).per(Shift) <= Shift.capacity`.
+- **Max coverage (capacity)**: If you want to enforce a maximum number of workers per shift, add a `Shift.capacity` property, load it from `shifts.csv`, and require `sum(AssignmentRef.x_assigned).per(Shift) <= Shift.capacity`.
 - **Preferences or costs**: Add a weight per worker–shift pair and switch from pure feasibility to minimizing total cost.
 
 ## Troubleshooting
