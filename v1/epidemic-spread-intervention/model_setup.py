@@ -7,7 +7,7 @@ and data loading logic used by both the CLI script and Streamlit app.
 from pathlib import Path
 import pandas as pd
 
-from relationalai.semantics import Model, data, define, String, Integer, Float, sum
+from relationalai.semantics import Model, data, define, String, Integer, Float, sum, where
 from relationalai.semantics.reasoners.graph import Graph
 
 DATA_DIR = Path(__file__).parent / "data"
@@ -20,7 +20,7 @@ def create_model():
         tuple: (model, graph )
     """
     # Create a Semantics model container
-    model = Model("epidemic_spread_intervention_2", config=globals().get("config", None))
+    model = Model("epidemic_spread_intervention_n", config=globals().get("config", None))
 
 
     # Load people from CSV
@@ -28,7 +28,7 @@ def create_model():
     people_data = data(people_df)
 
     # Person concept to represent individuals in the population
-    Person = model.Concept("Person", identify_by={"person_id": Integer})
+    Person = model.Concept("Person", identify_by={"person_id": String})
     Person.vaccination_level = model.Property(f"{Person} has {Float:vaccination_level}")
     Person.comorbidity_score = model.Property(f"{Person} has {Float:comorbidity_score}")
 
@@ -118,97 +118,135 @@ def create_model():
     DirectContact.transmission_risk = model.Property(f"{DirectContact} has {Float:transmission_risk}")
     define(DirectContact.transmission_risk == DirectContact.frequency * (DirectContact.duration / 60))
 
-    # Derive indirect contacts and co-location transmission risk
-    # This connects people who never met but visited the same high-risk location.
-    p1, p2 = Person.ref("p1"), Person.ref("p2")
-    loc = Location.ref("loc")
-    visit_1, visit_2 = Visit.ref("visit_1"), Visit.ref("visit_2")
+    # graph based indirect contact
+    indirect_contact_graph = Graph(
+        model,
+        directed=False,
+        weighted=False)
+    Node, Edge = indirect_contact_graph.Node, indirect_contact_graph.Edge
 
-    CoLocationContact = model.Concept(
-        "CoLocationContact",
-        identify_by={"person_a": Person, "person_b": Person, "location": Location}
+    define(Node.new(id = Person.person_id))
+    define(Node.new(id = Location.id))
+
+    person, location = Person.ref("person"), Location.ref("location")
+    n_from, n_to = Node.ref("n_from"), Node.ref("n_to")
+
+    define(Edge.new(src = n_from, dst = n_to)).where(
+        Visit.person == person,
+        Visit.location == location,
+        n_from.id == person.person_id,
+        n_to.id == location.id
     )
 
-    CoLocationContact.visit_a = model.Relationship(f"{CoLocationContact} relates to {Visit:visit_a} from patient_a")
-    CoLocationContact.visit_b = model.Relationship(f"{CoLocationContact} relates to {Visit:visit_b} from patient_b")
-
-
-    define(CoLocationContact.new(
-        person_a = p1,
-        person_b = p2,
-        location = loc,
-        visit_a = visit_1,
-        visit_b = visit_2
-    )).where(
-       visit_1.person(p1),
-       visit_2.person(p2),
-       visit_1.location(loc),
-       visit_2.location(loc),
-       p1 != p2,
-       p1.person_id < p2.person_id  # Avoid duplicates (undirected)
-    )
-
-    CoLocationContact.transmission_risk = model.Property(f"{CoLocationContact} has {Float:transmission_risk}")
-
-    define(CoLocationContact.transmission_risk ==
-           CoLocationContact.visit_a.weekly_visits * CoLocationContact.visit_b.weekly_visits * CoLocationContact.location.density_score * (1 - CoLocationContact.location.ventilation_score)
-    )
-
-    IndirectContact = model.Concept(
-        "IndirectContact",
+    ColocationContact = model.Concept(
+        "ColocationContact",
         identify_by={"person_a": Person, "person_b": Person})
-    IndirectContact.transmission_risk = model.Property(f"{IndirectContact} has {Float:transmission_risk}")
 
-    # Create IndirectContact simply by projecting person pairs from CoLocationContact
-    # The magic of identify_by ensures we only get one per unique (person_a, person_b) pair
-    define(IndirectContact.new(
-        person_a=CoLocationContact.person_a,
-        person_b=CoLocationContact.person_b
-    ))
+    dist = indirect_contact_graph.distance(full=True)
 
-    # Compute aggregated risk per person pair using .per()
-    # This aggregates CoLocationContact.transmission_risk grouped by the person pair
-    indirect_agg_risk = sum(CoLocationContact.transmission_risk).per(
-        CoLocationContact.person_a,
-        CoLocationContact.person_b
+    # TODO : use from_ instead of full
+    # also add filter on person_a.id < person_b.id to avoid duplicates since the graph is undirected?
+    where(dist.length == 2).define(
+        ColocationContact.new(
+            person_a = Person.filter_by(person_id = n_from.id),
+            person_b = Person.filter_by(person_id = n_to.id)
+        )
     )
 
-    # Assign the aggregated risk to each IndirectContact
-    define(IndirectContact.transmission_risk == indirect_agg_risk).where(
-        IndirectContact.person_a == CoLocationContact.person_a,
-        IndirectContact.person_b == CoLocationContact.person_b
-    )
+#    define(Edge.new(src=Visit.person, dst=Visit.location))
+    # define(Edge.new(src=Visit.person, dst=Visit.location, weight=Visit.weekly_visits))
+
+    # # Derive indirect contacts and co-location transmission risk
+    # # This connects people who never met but visited the same high-risk location.
+    # p1, p2 = Person.ref("p1"), Person.ref("p2")
+    # loc = Location.ref("loc")
+    # visit_1, visit_2 = Visit.ref("visit_1"), Visit.ref("visit_2")
+
+    # CoLocationContact = model.Concept(
+    #     "CoLocationContact",
+    #     identify_by={"person_a": Person, "person_b": Person, "location": Location}
+    # )
+
+    # CoLocationContact.visit_a = model.Relationship(f"{CoLocationContact} relates to {Visit:visit_a} from patient_a")
+    # CoLocationContact.visit_b = model.Relationship(f"{CoLocationContact} relates to {Visit:visit_b} from patient_b")
 
 
-    Contact = model.Concept(
-        "Contact",
-        identify_by={"person_a": Person, "person_b": Person}
-    )
+    # define(CoLocationContact.new(
+    #     person_a = p1,
+    #     person_b = p2,
+    #     location = loc,
+    #     visit_a = visit_1,
+    #     visit_b = visit_2
+    # )).where(
+    #    visit_1.person(p1),
+    #    visit_2.person(p2),
+    #    visit_1.location(loc),
+    #    visit_2.location(loc),
+    #    p1 != p2,
+    #    p1.person_id < p2.person_id  # Avoid duplicates (undirected)
+    # )
 
-    Contact.transmission_risk = model.Property(f"{Contact} has {Float:transmission_risk}")
-    Contact.derived_from_direct = model.Property(f"{Contact} derived from {DirectContact}")
-    Contact.derived_from_indirect = model.Property(f"{Contact} derived from {IndirectContact}")
+    # CoLocationContact.transmission_risk = model.Property(f"{CoLocationContact} has {Float:transmission_risk}")
 
-    # Create contacts from direct contacts
-    define(Contact.new(
-        person_a = DirectContact.person_a,
-        person_b = DirectContact.person_b,
-        derived_from_direct = DirectContact
-    ))
+    # define(CoLocationContact.transmission_risk ==
+    #        CoLocationContact.visit_a.weekly_visits * CoLocationContact.visit_b.weekly_visits * CoLocationContact.location.density_score * (1 - CoLocationContact.location.ventilation_score)
+    # )
 
-    # Create contacts from indirect contacts
-    define(Contact.new(
-        person_a = IndirectContact.person_a,
-        person_b = IndirectContact.person_b,
-        derived_from_indirect = IndirectContact
-    ))
+    # IndirectContact = model.Concept(
+    #     "IndirectContact",
+    #     identify_by={"person_a": Person, "person_b": Person})
+    # IndirectContact.transmission_risk = model.Property(f"{IndirectContact} has {Float:transmission_risk}")
 
-    # Calculate transmission risk as sum of both types
-    # Use the | operator which should default to 0.0 when the property doesn't exist
-    define(Contact.transmission_risk ==
-           (Contact.derived_from_direct.transmission_risk | 0.0) +
-           (Contact.derived_from_indirect.transmission_risk | 0.0)
-    )
+    # # Create IndirectContact simply by projecting person pairs from CoLocationContact
+    # # The magic of identify_by ensures we only get one per unique (person_a, person_b) pair
+    # define(IndirectContact.new(
+    #     person_a=CoLocationContact.person_a,
+    #     person_b=CoLocationContact.person_b
+    # ))
+
+    # # Compute aggregated risk per person pair using .per()
+    # # This aggregates CoLocationContact.transmission_risk grouped by the person pair
+    # indirect_agg_risk = sum(CoLocationContact.transmission_risk).per(
+    #     CoLocationContact.person_a,
+    #     CoLocationContact.person_b
+    # )
+
+    # # Assign the aggregated risk to each IndirectContact
+    # define(IndirectContact.transmission_risk == indirect_agg_risk).where(
+    #     IndirectContact.person_a == CoLocationContact.person_a,
+    #     IndirectContact.person_b == CoLocationContact.person_b
+    # )
+
+
+    # Contact = model.Concept(
+    #     "Contact",
+    #     identify_by={"person_a": Person, "person_b": Person}
+    # )
+
+    # Contact.transmission_risk = model.Property(f"{Contact} has {Float:transmission_risk}")
+    # Contact.derived_from_direct = model.Property(f"{Contact} derived from {DirectContact}")
+    # Contact.derived_from_indirect = model.Property(f"{Contact} derived from {IndirectContact}")
+
+    # # Create contacts from direct contacts
+    # define(Contact.new(
+    #     person_a = DirectContact.person_a,
+    #     person_b = DirectContact.person_b,
+    #     derived_from_direct = DirectContact
+    # ))
+
+    # # Create contacts from indirect contacts
+    # define(Contact.new(
+    #     person_a = IndirectContact.person_a,
+    #     person_b = IndirectContact.person_b,
+    #     derived_from_indirect = IndirectContact
+    # ))
+
+    # # Calculate transmission risk as sum of both types
+    # # Use the | operator which should default to 0.0 when the property doesn't exist
+    # define(Contact.transmission_risk ==
+    #        (Contact.derived_from_direct.transmission_risk | 0.0) +
+    #        (Contact.derived_from_indirect.transmission_risk | 0.0)
+    # )
 
     # B. Co-Location Exposure (Layer 2 - The "SQL-Impossible" Part)
     # This connects people who never met but visited the same high-risk location.
@@ -217,4 +255,5 @@ def create_model():
     # Why it's advanced: This is a 2-hop projection ($Person \to Location \to Person$).
     # It treats locations as "transmission bridges."
 
-    return model, Person, Location, DirectContact, Visit, CoLocationContact, Contact, IndirectContact
+    return model, Person, Location, DirectContact, Visit, indirect_contact_graph, ColocationContact
+# CoLocationContact, Contact, IndirectContact,

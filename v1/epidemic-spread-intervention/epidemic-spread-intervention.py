@@ -17,8 +17,8 @@ from model_setup import create_model
 # Create model and calculate graph metrics
 # --------------------------------------------------
 
-model, Person, Location, DirectContact, Visit, CoLocationContact, Contact, IndirectContact= create_model()
-
+model, Person, Location, DirectContact, Visit, indirect_contact_graph, ColocationContact= create_model()
+# CoLocationContact, Contact, IndirectContact,
 
 # --------------------------------------------------
 # Query and display results
@@ -31,43 +31,19 @@ def main() -> None:
     """
 
     # Query the graph to retrieve:
-    p1, p2 = Person.ref("p1"), Person.ref("p2")
 
-    print("DirectContact:")
-    direct_results = select(
-        DirectContact.person_a.person_id,
-        DirectContact.person_b.person_id,
-        DirectContact.transmission_risk
-    ).to_df()
-    print(direct_results.head(10).to_string())
-    print(f"\nTotal direct contacts: {len(direct_results)}\n")
+    length = Integer.ref("length")
+    node = indirect_contact_graph.Node.ref("node")
+    edge = indirect_contact_graph.Edge.ref("edge")
 
-    print("IndirectContact:")
-    indirect_results = select(
-        IndirectContact.person_a.person_id,
-        IndirectContact.person_b.person_id,
-        IndirectContact.transmission_risk
-    ).to_df()
-    print(indirect_results.head(10).to_string())
-    print(f"\nTotal indirect contacts: {len(indirect_results)}\n")
-
-    print("Contact (Combined):")
-    results = select(
-        Contact.person_a.person_id,
-        Contact.person_b.person_id,
-        Contact.derived_from_direct.transmission_risk | 0.0,
-        Contact.derived_from_indirect.transmission_risk | 0.0
+    dist = indirect_contact_graph.distance(full=True)
+    new_results =  select(
+        ColocationContact
     ).to_df()
 
-    # Compute total risk in pandas
-    results.columns = ['person_a', 'person_b', 'direct_risk', 'indirect_risk']
-    results['transmission_risk'] = results['direct_risk'] + results['indirect_risk']
+    print(new_results.to_string())
 
-    print(results[['person_a', 'person_b', 'transmission_risk']].head(20).to_string())
-    print(f"\n{len(results)} total contacts")
-
-    print("\n✅ Analysis complete!")
-
+    print("\n✅ Analysis complete!\n")
 
 if __name__ == "__main__":
     main()
