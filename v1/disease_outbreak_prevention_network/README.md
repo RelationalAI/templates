@@ -219,16 +219,16 @@ The `create_model()` function handles:
 
 ### 2. Calculate Graph Metrics
 
-Use RelationalAI's Graph API to compute weighted centrality metrics:
+Use RelationalAI's Graph API to define weighted centrality metrics:
 
 ```python
-# Calculate weighted degree centrality (sum of risk-weighted edge weights)
+# Weighted degree centrality (sum of risk-weighted edge weights)
 degree_centrality = graph.degree_centrality()
 
-# Calculate incoming edges (indegree count)
+# Incoming edges (indegree count)
 incoming_edges = graph.indegree()
 
-# Calculate outgoing edges (outdegree count)
+# Outgoing edges (outdegree count)
 outgoing_edges = graph.outdegree()
 ```
 
@@ -243,7 +243,7 @@ from relationalai.semantics import where, Float, Integer
 
 # Create variable references
 facility = graph.Node.ref("facility")
-centr_score = Float.ref("d_score")
+centr_score = Float.ref("centr_score")
 in_edges = Integer.ref("in_edges")
 out_edges = Integer.ref("out_edges")
 

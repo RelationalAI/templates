@@ -46,7 +46,7 @@ def get_results(_model, _graph, _Facility):
 
     # Create variable references
     facility = _graph.Node.ref("facility")
-    centr_score = Float.ref("d_score")
+    centr_score = Float.ref("centr_score")
     in_edges = Integer.ref("in_edges")
     out_edges = Integer.ref("out_edges")
 
@@ -355,10 +355,10 @@ def main():
                 # Show connection analysis
                 if row['outgoing_connections'] > row['incoming_connections']:
                     st.info(f"📤 **Coordinator Role:** This facility connects to many others, making it ideal for distributing resources and information.")
-                elif row['incoming_connections'] > row['outgoing_connections']:
+                elif row['incoming_connections'] > row['outgoing_connections'] and row['incoming_connections'] >= 3:
                     st.info(f"📥 **Hub Role:** Many facilities connect to this one, making it a critical dependency for the network.")
                 else:
-                    st.info(f"🔄 **Balanced Role:** Equal incoming and outgoing connections indicate a well-balanced coordination role.")
+                    st.info(f"🔄 **Near-Balanced Role:** Similar incoming and outgoing connections indicate a well-balanced coordination role.")
 
     st.markdown("---")
     st.markdown("*Built with RelationalAI, Streamlit, and Plotly*")

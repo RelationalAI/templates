@@ -42,7 +42,7 @@ outgoing_edges = graph.outdegree()
 
 # Create variable references for use in queries.
 facility = graph.Node.ref("facility")
-centr_score = Float.ref("d_score")
+centr_score = Float.ref("centr_score")
 in_edges = Integer.ref("in_edges")
 out_edges = Integer.ref("out_edges")
 
