@@ -129,10 +129,10 @@ def main() -> None:
     # Identify strategic categories
     print("\n🎯 STRATEGIC ANALYSIS:\n")
 
-    # Category 1: Critical Coordination Hubs (High PageRank + High Degree Centrality)
     pr_threshold = results['pagerank'].quantile(0.70)
     dc_threshold = results['degree_centrality'].quantile(0.70)
 
+    # Category 1: Critical Coordination Hubs (High PageRank + High Degree Centrality)
     critical_hubs = results[
         (results['pagerank'] >= pr_threshold) &
         (results['degree_centrality'] >= dc_threshold)

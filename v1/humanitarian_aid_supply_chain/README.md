@@ -271,7 +271,7 @@ outdegree = graph.outdegree()  # Outgoing routes
 
 ### 4. Query and analyze strategic categories
 
-Query both metrics and categorize distribution points strategically:
+# Query both metrics and assign a strategic category to each distribution point.
 
 ```python
 from relationalai.semantics import where, select
@@ -302,7 +302,7 @@ results = where(
     out_routes.alias("outgoing_routes")
 ).to_df()
 
-# Categorize strategically based on both metrics
+# Assign a strategic category based on both metrics
 pr_threshold = results['pagerank'].quantile(0.70)
 dc_threshold = results['degree_centrality'].quantile(0.70)
 
