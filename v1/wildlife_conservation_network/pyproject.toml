@@ -7,7 +7,7 @@ name = "rai-template-wildlife-conservation-network"
 version = "0.0.0"
 description = "RelationalAI template: wildlife conservation network with Louvain community detection"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 dependencies = [
   "relationalai==1.0.0a6",
   "pandas>=2.0.0",

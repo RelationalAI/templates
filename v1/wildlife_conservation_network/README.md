@@ -146,9 +146,10 @@ The sample data represents a simplified wildlife conservation network across Afr
 - **organizations.csv**: 12 conservation organizations including NGOs, research stations, wildlife reserves, veterinary services, security units, and community programs. Each has a unique ID, name, type, geographic region, and species focus (elephants, rhinos, big cats, or multiple species).
 - **partnerships.csv**: 19 undirected partnerships representing active collaborations like joint research projects, resource sharing agreements, cross-training programs, and coordinated anti-poaching efforts. Each partnership connects two organizations.
 
-The network is intentionally small (12 nodes, 19 edges) to make it easy to understand and verify the community detection results. The Louvain algorithm naturally separates the network into:
-- **East African community**: Focused on elephants, big cats, and diverse species with research and community engagement
-- **Southern African community**: Focused on rhino conservation with security and reserve management
+The network is intentionally small (12 nodes, 19 edges) to make it easy to understand and verify the community detection results. The Louvain algorithm naturally separates the network into three communities:
+- **Community 1** (4 orgs): East African research cluster focused on elephants (Hub: Serengeti Wildlife Trust)
+- **Community 2** (5 orgs): Southern African rhino protection with reserve management and security (Hub: Rhino Conservation Alliance)
+- **Community 3** (3 orgs): East African community-based cluster for big cats (Hub: Big Cats Initiative)
 
 ## Model overview
 
