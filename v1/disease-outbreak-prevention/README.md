@@ -48,16 +48,9 @@ This template uses **RelationalAI's graph modeling** capabilities with the Graph
 
 ## Prerequisites
 
-### Access
-
+- Python >= 3.10
 - A Snowflake account that has the RAI Native App installed.
 - A Snowflake user with permissions to access the RAI Native App.
-
-### Tools
-
-- Python >= 3.10
-- pandas library
-- streamlit and plotly (optional, for interactive web app)
 
 ## Quickstart
 
@@ -120,79 +113,6 @@ You can customize the data and model as needed after you have it running end-to-
    - Filterable facility rankings table
    - Detailed priority facility analysis
    - CSV export functionality
-
-## Template structure
-
-```text
-.
-├─ README.md                                        # this file
-├─ pyproject.toml                                   # dependencies
-├─ model_setup.py                                   # shared model configuration (used by both scripts)
-├─ disease_outbreak_prevention_network.py           # command-line analysis script
-├─ app.py                                           # interactive Streamlit web app
-└─ data/
-   ├─ facilities.csv                                # 10 healthcare facilities
-   └─ connections.csv                               # 15 network connections
-```
-
-**Start here**:
-- For command-line analysis: Run `python disease_outbreak_prevention_network.py`
-- For interactive web app: Run `streamlit run app.py`
-
-## Sample data
-
-The sample data represents a simplified public health network in a metropolitan area:
-
-- **facilities.csv**: 10 facilities including hospitals, clinics, testing centers, community organizations, government agencies, and emergency services. Each has a unique ID, name, type, and geographic region.
-- **connections.csv**: 15 directed connections representing relationships like patient referral pathways, data sharing agreements, and coordination partnerships. Each connection includes transfer volume (1-10 scale) and contact intensity (1-10 scale) metrics that are multiplied together to create the risk weight for each connection.
-
-The network is intentionally small (10 nodes, 15 edges) to make it easy to understand and verify the centrality calculations manually.
-
-## Model overview
-
-This model represents a public health network as a directed graph where facilities are nodes and connections are edges weighted by transmission risk.
-
-- **Key entities**: `Facility` (healthcare facilities) and `FacilityConnection` concept representing the connection between two facilities.
-- **Primary identifiers**: Facility ID (integer)
-- **Graph structure**: Directed, weighted graph using RelationalAI's Graph API, with edges weighted by risk factors
-
-### Facility Concept
-
-The `Facility` concept represents healthcare facilities, testing centers, and community organizations in the network.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | Integer | Yes | Unique facility identifier from `data/facilities.csv` |
-| `name` | String | No | Facility name (e.g., "Central Hospital") |
-| `type` | String | No | Category: Hospital, Clinic, Testing Center, Community Org, Government, Emergency Services |
-| `region` | String | No | Geographic region: Downtown, North, South, East, West |
-
-### Facility Connection Concept
-
-The `FacilityConnection` concept represents directed connections between facilities (patient referrals, data sharing, coordination partnerships) with transmission risk metrics.
-
-| Property | Type | Notes |
-|---|---|---|
-| `from_facility` | Facility | Source facility in the connection |
-| `to_facility` | Facility | Target facility in the connection |
-| `transfer_volume` | Float | Volume of patient transfers, samples, or resources (1-10 scale) |
-| `contact_intensity` | Float | Frequency/intensity of contacts between facilities (1-10 scale) |
-
-### Calculated Properties
-The `risk_weight` property of a connection that is used to weight edges in the graph
-| Property | Type | Notes |
-|---|---|---|
-| `risk_weight` | Float | Calculated as transfer_volume × contact_intensity|
-
-### Graph Metrics
-
-The template calculates three key metrics using RelationalAI's Graph API:
-
-| Metric | Type | Description |
-|---|---|---|
-| `degree_centrality` | Float | Weighted degree centrality: sum of edge weights (risk_weight values) for all connections. Higher values indicate greater cumulative transmission risk |
-| `incoming_connections` | Integer | Indegree: number of facilities that connect TO this facility |
-| `outgoing_connections` | Integer | Outdegree: number of facilities this facility connects TO |
 
 ## How it works
 
@@ -302,13 +222,12 @@ The Streamlit app features:
 
 ## Customize this template
 
-### Use your own data
+**Use your own data:**
 
 - Replace the CSV files in the `data/` directory with your own network, keeping the same column names (or update the logic in disease_outbreak_prevention_network.py).
 - Make sure that the facilities in **connections.csv** only references valid facility IDs.
 
-
-### Extend the model
+**Extend the model:**
 
 **Add more risk factors**: The template already uses weighted connections (transfer_volume × contact_intensity). You could extend this by:
 - Adding additional risk metrics to connections (e.g., disease prevalence, facility bed capacity)
