@@ -1,6 +1,6 @@
 ---
 title: "Humanitarian Aid Supply Chain Network"
-description: "Use PageRank and Weighted Degree Centrality to identify influential distribution hubs and critical coordination nodes in humanitarian aid supply chains, optimizing emergency response and resource deployment."
+description: "Use graph reasoning to analyze a humanitarian aid supply chain network with PageRank and Weighted Degree Centrality to optimize resource distribution strategies."
 experience_level: intermediate
 industry: Humanitarian & Emergency Response
 reasoning_types:
