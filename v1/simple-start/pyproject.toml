@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rai-template-template"
+version = "0.0.0"
+description = "RelationalAI template: template"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "relationalai==1.0.0a8",
+  "jupyter"
+]
+
+[tool.setuptools]
+packages = []
