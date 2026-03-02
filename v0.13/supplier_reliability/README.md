@@ -34,7 +34,7 @@ You can optionally add a reliability penalty to quantify the trade-off between l
 ## What you’ll build
 
 - A semantic model of `Supplier`, `Product`, and supplier–product `SupplyOption` data.
-- A continuous decision variable (`Order.quantity`) for how much to buy through each supply option.
+- A continuous decision variable (`Order.x_quantity`) for how much to buy through each supply option.
 - Constraints that enforce supplier capacity and product demand satisfaction.
 - An objective that minimizes procurement cost, with an optional reliability penalty.
 - A small scenario analysis loop that re-solves the model after excluding a supplier.
@@ -316,7 +316,7 @@ where(
 
 ### Define decision variables, constraints, and objective
 
-Then it declares an `Order` decision concept and builds a continuous optimization model. The solver chooses `Order.quantity`, enforces capacity and demand with `require(...)`, and minimizes cost (optionally adding a reliability penalty):
+Then it declares an `Order` decision concept and builds a continuous optimization model. The solver chooses `Order.x_quantity`, enforces capacity and demand with `require(...)`, and minimizes cost (optionally adding a reliability penalty):
 
 ```python
 # --------------------------------------------------
@@ -326,7 +326,7 @@ Then it declares an `Order` decision concept and builds a continuous optimizatio
 # Order decision concept: quantity ordered via each supply option.
 Order = model.Concept("Order")
 Order.option = model.Property("{Order} uses {option:SupplyOption}")
-Order.quantity = model.Property("{Order} has {quantity:float}")
+Order.x_quantity = model.Property("{Order} has {quantity:float}")
 define(Order.new(option=SupplyOption))
 
 # Derived properties for direct access in constraints and objective.
@@ -349,30 +349,30 @@ define(Order.cost_per_unit(SupplyOption.cost_per_unit)).where(Order.option == Su
 def build_formulation(s):
     """Register variables, constraints, and objective on the solver model."""
     # Variable: order quantity
-    s.solve_for(Order.quantity, name=["qty", Order.supplier.name, Order.product.name], lower=0)
+    s.solve_for(Order.x_quantity, name=["qty", Order.supplier.name, Order.product.name], lower=0)
 
     # Constraint: total orders from supplier cannot exceed supplier capacity
     capacity_limit = require(
-        sum(Order.quantity).where(Order.supplier == Supplier).per(Supplier) <= Supplier.capacity
+        sum(Order.x_quantity).where(Order.supplier == Supplier).per(Supplier) <= Supplier.capacity
     )
     s.satisfy(capacity_limit)
 
     # Constraint: demand satisfaction for each product
     meet_demand = require(
-        sum(Order.quantity).where(Order.product == Product).per(Product) >= Product.demand
+        sum(Order.x_quantity).where(Order.product == Product).per(Product) >= Product.demand
     )
     s.satisfy(meet_demand)
 
     # Constraint: exclude supplier if specified
     if EXCLUDED_SUPPLIER is not None:
-        exclude = require(Order.quantity == 0).where(Order.supplier.name == EXCLUDED_SUPPLIER)
+        exclude = require(Order.x_quantity == 0).where(Order.supplier.name == EXCLUDED_SUPPLIER)
         s.satisfy(exclude)
 
     # Objective: minimize cost with optional reliability penalty
-    direct_cost = sum(Order.quantity * Order.cost_per_unit)
+    direct_cost = sum(Order.x_quantity * Order.cost_per_unit)
     if RELIABILITY_WEIGHT > 0:
         reliability_penalty = RELIABILITY_WEIGHT * sum(
-            Order.quantity * (1.0 - Order.supplier.reliability)
+            Order.x_quantity * (1.0 - Order.supplier.reliability)
         )
         total_cost = direct_cost + reliability_penalty
     else:

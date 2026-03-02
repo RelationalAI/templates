@@ -78,13 +78,13 @@ data(read_csv(DATA_DIR / "trips.csv")).into(Trip, keys=["id"])
 Assignment = model.Concept("Assignment")
 Assignment.vehicle = model.Property("{Assignment} assigns {vehicle:Vehicle}")
 Assignment.trip = model.Property("{Assignment} to {trip:Trip}")
-Assignment.assigned = model.Property("{Assignment} is {assigned:float}")
+Assignment.x_assigned = model.Property("{Assignment} is {assigned:float}")
 define(Assignment.new(vehicle=Vehicle, trip=Trip))
 
 # VehicleUsage decision concept: tracks whether a vehicle is used.
 VehicleUsage = model.Concept("VehicleUsage")
 VehicleUsage.vehicle = model.Property("{VehicleUsage} for {vehicle:Vehicle}")
-VehicleUsage.used = model.Property("{VehicleUsage} is {used:float}")
+VehicleUsage.x_used = model.Property("{VehicleUsage} is {used:float}")
 define(VehicleUsage.new(vehicle=Vehicle))
 
 assignment = Assignment.ref()
@@ -94,14 +94,14 @@ s = SolverModel(model, "cont")
 
 # Decision variable: assignment (binary 0/1).
 s.solve_for(
-    Assignment.assigned,
+    Assignment.x_assigned,
     type="bin",
     name=["x", Assignment.vehicle.name, Assignment.trip.name],
 )
 
 # Decision variable: vehicle usage (binary 0/1).
 s.solve_for(
-    VehicleUsage.used,
+    VehicleUsage.x_used,
     type="bin",
     name=["used", VehicleUsage.vehicle.name],
 )
@@ -124,12 +124,12 @@ s.satisfy(capacity_limit)
 vehicle_trips = sum(assignment.assigned).where(
     assignment.vehicle == VehicleUsage.vehicle
 ).per(VehicleUsage)
-usage_link = require(VehicleUsage.used * MAX_TRIPS_PER_VEHICLE >= vehicle_trips)
+usage_link = require(VehicleUsage.x_used * MAX_TRIPS_PER_VEHICLE >= vehicle_trips)
 s.satisfy(usage_link)
 
 # Objective: minimize total cost.
-variable_cost = sum(Assignment.assigned * Assignment.trip.distance * Assignment.vehicle.cost_per_mile)
-fixed_cost = sum(VehicleUsage.used * VehicleUsage.vehicle.fixed_cost)
+variable_cost = sum(Assignment.x_assigned * Assignment.trip.distance * Assignment.vehicle.cost_per_mile)
+fixed_cost = sum(VehicleUsage.x_used * VehicleUsage.vehicle.fixed_cost)
 total_cost = variable_cost + fixed_cost
 s.minimize(total_cost)
 
@@ -148,7 +148,7 @@ assignments = select(
     Assignment.trip.name.alias("trip"),
     Assignment.trip.origin.alias("from"),
     Assignment.trip.destination.alias("to")
-).where(Assignment.assigned > 0.5).to_df()
+).where(Assignment.x_assigned > 0.5).to_df()
 
 print("\nVehicle assignments:")
 print(assignments.to_string(index=False))

@@ -1,0 +1,9 @@
+id,customer,quantity,priority
+1,Cust_A,25,1
+2,Cust_B,30,2
+3,Cust_C,15,1
+4,Cust_D,40,3
+5,Cust_E,20,2
+6,Cust_F,35,1
+7,Cust_G,25,2
+8,Cust_H,30,3

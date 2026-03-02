@@ -190,8 +190,8 @@ The optimization model is built around a single concept (`Table`) populated from
 - **Key entity**: `Table`
 - **Inputs (loaded)**: `Table.table_name`, `Table.target_rows`, `Table.min_rows`, `Table.max_rows`, `Table.priority`
 - **Decision variables**:
-  - `Table.actual_rows` — solver-chosen row count (continuous)
-  - `Table.deviation` — auxiliary variable used to model $|\text{actual} - \text{target}|$
+  - `Table.x_actual_rows` — solver-chosen row count (continuous)
+  - `Table.x_deviation` — auxiliary variable used to model $|\text{actual} - \text{target}|$
 
 ## How it works
 
@@ -250,11 +250,11 @@ Table = model.Concept("Table")
 # Load table data from CSV.
 data(targets_df).into(Table, keys=["table_name"])
 
-# Table.actual_rows decision property: solver-chosen row count per table.
-Table.actual_rows = model.Property("{Table} has actual {actual_rows:float}")
+# Table.x_actual_rows decision property: solver-chosen row count per table.
+Table.x_actual_rows = model.Property("{Table} has actual {actual_rows:float}")
 
-# Table.deviation decision property: absolute deviation from the target.
-Table.deviation = model.Property("{Table} has {deviation:float}")
+# Table.x_deviation decision property: absolute deviation from the target.
+Table.x_deviation = model.Property("{Table} has {deviation:float}")
 ```
 
 ### Extract foreign keys and constraint metadata
@@ -319,7 +319,7 @@ s = SolverModel(model, "cont", use_pb=True)
 
 # Variable: actual row counts for each table
 s.solve_for(
-    Table.actual_rows,
+    Table.x_actual_rows,
     name=["n", Table.table_name],
     lower=Table.min_rows,
     upper=Table.max_rows,
@@ -327,14 +327,14 @@ s.solve_for(
 
 # Variable: deviation from target (for objective)
 s.solve_for(
-    Table.deviation,
+    Table.x_deviation,
     name=["dev", Table.table_name],
     lower=0,
 )
 
 # Constraint: deviation captures |actual - target| (linearized)
-s.satisfy(require(Table.deviation >= Table.actual_rows - Table.target_rows))
-s.satisfy(require(Table.deviation >= Table.target_rows - Table.actual_rows))
+s.satisfy(require(Table.x_deviation >= Table.x_actual_rows - Table.target_rows))
+s.satisfy(require(Table.x_deviation >= Table.target_rows - Table.x_actual_rows))
 ```
 
 Then it links child and parent table sizes using `where(...).require(...)` for each discovered foreign key pair (including optional mandatory participation and coverage constraints):
@@ -352,7 +352,7 @@ for fk_info in fk_objs:
         where(
             Table.table_name == child_name,
             Table2.table_name == parent_name
-        ).require(Table.actual_rows <= Table2.actual_rows * fk_info["max"])
+        ).require(Table.x_actual_rows <= Table2.actual_rows * fk_info["max"])
     )
 
     # Lower bound for mandatory participation
@@ -371,7 +371,7 @@ for fk_info in fk_objs:
             where(
                 Table.table_name == child_name,
                 Table2.table_name == parent_name
-            ).require(Table.actual_rows >= Table2.actual_rows * min_per)
+            ).require(Table.x_actual_rows >= Table2.actual_rows * min_per)
         )
 
 # Constraint: coverage requirements
@@ -383,7 +383,7 @@ for fk_info in fk_objs:
             where(
                 Table.table_name == child_name,
                 Table2.table_name == parent_name
-            ).require(Table.actual_rows >= fk_info["coverage"] * Table2.actual_rows)
+            ).require(Table.x_actual_rows >= fk_info["coverage"] * Table2.actual_rows)
         )
 ```
 
@@ -392,7 +392,7 @@ Finally, it minimizes a priority-weighted deviation (higher priority means a hig
 ```python
 # Objective: minimize weighted deviation from targets
 # Weight by priority (higher priority = more important to match target)
-total_deviation = rai_sum(Table.deviation * (11 - Table.priority))
+total_deviation = rai_sum(Table.x_deviation * (11 - Table.priority))
 s.minimize(total_deviation)
 ```
 
@@ -413,7 +413,7 @@ Then it rounds the continuous solution to integers for reporting and for driving
 ```python
 # Extract row counts
 row_counts = {}
-results_df = select(Table.table_name, Table.actual_rows, Table.target_rows).to_df()
+results_df = select(Table.table_name, Table.x_actual_rows, Table.target_rows).to_df()
 for _, row in results_df.iterrows():
     actual = int(round(row["actual_rows"]))
     target = int(row["target_rows"])
@@ -494,7 +494,7 @@ for table, df in generated_data.items():
 <summary>The row counts look “off by 1” versus my targets</summary>
 
 - The solver uses continuous variables and the script rounds to integers when printing and generating.
-- If you need exact integer row counts, consider switching to an integer model (MILP) for <code>Table.actual_rows</code>.
+- If you need exact integer row counts, consider switching to an integer model (MILP) for <code>Table.x_actual_rows</code>.
 
 </details>
 
