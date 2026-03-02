@@ -1,5 +1,5 @@
 ---
-title: "Fraud Detectio"
+title: "Fraud Detection"
 description: "Use graph reasoning to find suspicious users based on shared identifiers and uncommon sharing patterns."
 experience_level: beginner
 industry: "Financial Services"
