@@ -77,12 +77,12 @@ s = SolverModel(model, "cont")
 Edge.x_edge = model.Property("{Edge} is selected if {x:float}")
 s.solve_for(Edge.x_edge, type="bin", name=["x", Edge.i, Edge.j])
 
-# Node.u_node decision variable: ordering variable used for MTZ subtour elimination.
-Node.u_node = model.Property("{Node} has auxiliary value {u:float}")
-s.solve_for(Node.u_node, type="int", name=["u", Node.v], lower=1, upper=node_count)
+# Node.x_u_node decision variable: ordering variable used for MTZ subtour elimination.
+Node.x_u_node = model.Property("{Node} has auxiliary value {u:float}")
+s.solve_for(Node.x_u_node, type="int", name=["u", Node.v], lower=1, upper=node_count)
 
 # Constraint: fix u=1 for node 1 (symmetry breaking).
-start_node = require(Node.u_node == 1).where(Node.v == 1)
+start_node = require(Node.x_u_node == 1).where(Node.v == 1)
 s.satisfy(start_node)
 
 # Constraint: exactly one incoming and one outgoing edge per node.

@@ -63,7 +63,7 @@ data(read_csv(DATA_DIR / "shifts.csv")).into(Shift, keys=["id"])
 Assignment = model.Concept("Assignment")
 Assignment.worker = model.Property("{Assignment} has {worker:Worker}")
 Assignment.shift = model.Property("{Assignment} has {shift:Shift}")
-Assignment.assigned = model.Property("{Assignment} assigned {assigned:int}")
+Assignment.x_assigned = model.Property("{Assignment} assigned {assigned:int}")
 
 # Load availability data from CSV.
 avail = data(read_csv(DATA_DIR / "availability.csv"))
@@ -90,7 +90,7 @@ s = SolverModel(model, "int")
 
 # Variable: binary assignment (0 or 1)
 s.solve_for(
-    Assignment.assigned,
+    Assignment.x_assigned,
     name=["x", Assignment.worker.name, Assignment.shift.name],
     type="bin",
 )
@@ -123,7 +123,7 @@ print(f"Status: {s.termination_status}")
 assignments = select(
     Assignment.worker.name.alias("worker"),
     Assignment.shift.name.alias("shift")
-).where(Assignment.assigned >= 1).to_df()
+).where(Assignment.x_assigned >= 1).to_df()
 
 print("\nAssignments:")
 print(assignments.to_string(index=False))

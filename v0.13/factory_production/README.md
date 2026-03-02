@@ -282,7 +282,7 @@ Then it creates one continuous, non-negative decision variable per machine–pro
 # Decision concept: production quantities for each machine/product
 Production = model.Concept("Production")
 Production.prod_time = model.Property("{Production} uses {prod_time:ProductionTime}")
-Production.quantity = model.Property("{Production} has {quantity:float}")
+Production.x_quantity = model.Property("{Production} has {quantity:float}")
 
 # Define one Production entity per machine-product ProductionTime record.
 define(Production.new(prod_time=ProdTime))
@@ -293,7 +293,7 @@ s = SolverModel(model, "cont")
 
 # Variable: production quantity
 s.solve_for(
-    Production.quantity,
+    Production.x_quantity,
     name=["qty", Production.prod_time.machine.name, Production.prod_time.product.name],
     lower=0,
 )
@@ -313,9 +313,9 @@ meet_minimum = require(total_produced >= Product.min_production)
 s.satisfy(meet_minimum)
 
 # Objective: maximize profit (revenue - machine costs)
-revenue = sum(Production.quantity * Production.prod_time.product.price)
+revenue = sum(Production.x_quantity * Production.prod_time.product.price)
 machine_cost = sum(
-    Production.quantity * Production.prod_time.hours_per_unit * Production.prod_time.machine.hourly_cost
+    Production.x_quantity * Production.prod_time.hours_per_unit * Production.prod_time.machine.hourly_cost
 )
 profit = revenue - machine_cost
 s.maximize(profit)
@@ -323,7 +323,7 @@ s.maximize(profit)
 
 ### Solve and print results
 
-Finally, it solves using the HiGHS backend and prints only rows where `Production.quantity > 0`:
+Finally, it solves using the HiGHS backend and prints only rows where `Production.x_quantity > 0`:
 
 ```python
 solver = Solver("highs")
@@ -335,8 +335,8 @@ print(f"Total profit: ${s.objective_value:.2f}")
 plan = select(
     Production.prod_time.machine.name.alias("machine"),
     Production.prod_time.product.name.alias("product"),
-    Production.quantity
-).where(Production.quantity > 0).to_df()
+    Production.x_quantity
+).where(Production.x_quantity > 0).to_df()
 
 print("\nProduction plan:")
 print(plan.to_string(index=False))
@@ -395,7 +395,7 @@ print(plan.to_string(index=False))
 <details>
   <summary>No rows printed in the production plan</summary>
 
-- The output filters on `Production.quantity > 0`.
+- The output filters on `Production.x_quantity > 0`.
 - If quantities are extremely small, print the full variable set or relax the filter.
 
 </details>

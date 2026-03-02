@@ -303,7 +303,7 @@ Create a `Transfer` decision concept and register one continuous, non-negative d
 # Decision concept: transfers on each lane
 Transfer = model.Concept("Transfer")
 Transfer.lane = model.Property("{Transfer} uses {lane:Lane}")
-Transfer.quantity = model.Property("{Transfer} has {quantity:float}")
+Transfer.x_quantity = model.Property("{Transfer} has {quantity:float}")
 define(Transfer.new(lane=Lane))
 
 Tr = Transfer.ref()
@@ -312,14 +312,14 @@ Dm = Demand.ref()
 s = SolverModel(model, "cont")
 
 # Variable: transfer quantity
-s.solve_for(Transfer.quantity, name=["qty", Transfer.lane.source.name, Transfer.lane.dest.name], lower=0)
+s.solve_for(Transfer.x_quantity, name=["qty", Transfer.lane.source.name, Transfer.lane.dest.name], lower=0)
 ```
 
 Then add constraints to enforce lane capacities, limit total outbound shipments by source inventory, and meet destination demand (allowing local inventory to contribute):
 
 ```python
 # Constraint: transfer cannot exceed lane capacity
-capacity_limit = require(Transfer.quantity <= Transfer.lane.capacity)
+capacity_limit = require(Transfer.x_quantity <= Transfer.lane.capacity)
 s.satisfy(capacity_limit)
 
 # Constraint: total outbound from source cannot exceed source inventory
@@ -338,7 +338,7 @@ With the feasible region defined, minimize the total transfer cost (quantity tim
 
 ```python
 # Objective: minimize total transfer cost
-total_cost = sum(Transfer.quantity * Transfer.lane.cost_per_unit)
+total_cost = sum(Transfer.x_quantity * Transfer.lane.cost_per_unit)
 s.minimize(total_cost)
 ```
 
@@ -356,8 +356,8 @@ print(f"Total transfer cost: ${s.objective_value:.2f}")
 transfers = select(
     Transfer.lane.source.name.alias("from"),
     Transfer.lane.dest.name.alias("to"),
-    Transfer.quantity
-).where(Transfer.quantity > 0.001).to_df()
+    Transfer.x_quantity
+).where(Transfer.x_quantity > 0.001).to_df()
 
 print("\nTransfers:")
 print(transfers.to_string(index=False))
@@ -415,7 +415,7 @@ print(transfers.to_string(index=False))
   <summary>Why is the Transfers table empty?</summary>
 
 
-- The script filters transfers with `Transfer.quantity > 0.001`. If the optimal solution uses only local inventory (no transfers needed), the table will be empty.
+- The script filters transfers with `Transfer.x_quantity > 0.001`. If the optimal solution uses only local inventory (no transfers needed), the table will be empty.
 - Confirm `demand.csv.quantity` exceeds local inventory at some site if you expect transfers.
 
 </details>

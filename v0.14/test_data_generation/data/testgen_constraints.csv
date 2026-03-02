@@ -1,0 +1,12 @@
+constraint_id,constraint_type,table_name,column_name,related_table,related_column,min_value,max_value,percentage,description
+1,mandatory_participation,Order,customer_id,Customer,customer_id,1,,100,Every customer must have at least 1 order
+2,cardinality_bound,OrderLine,order_id,Order,order_id,1,3,,Each order has 1-3 order lines (TIGHT - creates tension: 800 orders * 3 max = 2400 max lines vs 5000 target)
+3,coverage,OrderLine,product_id,Product,product_id,,,90,90% of products must appear in order lines
+4,frequency,Order,customer_id,Customer,customer_id,10,15,,Each customer has 10-15 orders (TIGHT - 100 cust * 15 max = 1500 vs 800 target)
+5,value_domain,Product,category,,,,,,"Allowed values: Electronics,Clothing,Home,Sports,Books"
+6,value_domain,Customer,region,,,,,,"Allowed values: North,South,East,West,Central"
+7,value_domain,Order,status,,,,,,"Allowed values: pending,shipped,delivered,cancelled"
+8,mandatory_participation,SupplierProduct,supplier_id,Supplier,supplier_id,1,,100,Every supplier must supply at least 1 product
+9,cardinality_bound,SupplierProduct,supplier_id,Supplier,supplier_id,50,100,,Each supplier supplies 50-100 products (20 suppliers * 50 min = 1000 min)
+10,coverage,SupplierProduct,product_id,Product,product_id,,,80,80% of products must have a supplier
+11,frequency,SupplierProduct,product_id,Product,product_id,1,5,,Each product has 1-5 suppliers

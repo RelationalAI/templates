@@ -110,8 +110,8 @@ where(
 Shipment = model.Concept("Shipment")
 Shipment.route = model.Property("{Shipment} on {route:Route}")
 Shipment.mode = model.Property("{Shipment} via {mode:TransportMode}")
-Shipment.quantity = model.Property("{Shipment} has {quantity:float}")
-Shipment.selected = model.Property("{Shipment} is {selected:float}")
+Shipment.x_quantity = model.Property("{Shipment} has {quantity:float}")
+Shipment.x_selected = model.Property("{Shipment} is {selected:float}")
 define(Shipment.new(route=Route, mode=TransportMode))
 
 Sh = Shipment.ref()
@@ -121,7 +121,7 @@ def build_formulation(s):
     """Register variables, constraints, and objective on the solver model."""
     # Variable: shipment quantity and selection.
     s.solve_for(
-        Shipment.quantity,
+        Shipment.x_quantity,
         name=[
             "qty",
             Shipment.route.warehouse.name,
@@ -131,7 +131,7 @@ def build_formulation(s):
         lower=0,
     )
     s.solve_for(
-        Shipment.selected,
+        Shipment.x_selected,
         type="bin",
         name=[
             "sel",
@@ -142,10 +142,10 @@ def build_formulation(s):
     )
 
     # Constraint: shipment quantity bounded by mode capacity when selected.
-    capacity_bound = require(Shipment.quantity <= Shipment.mode.capacity * Shipment.selected)
+    capacity_bound = require(Shipment.x_quantity <= Shipment.mode.capacity * Shipment.x_selected)
     s.satisfy(capacity_bound)
 
-    min_bound = require(Shipment.quantity >= Shipment.selected)
+    min_bound = require(Shipment.x_quantity >= Shipment.x_selected)
     s.satisfy(min_bound)
 
     # Constraint: total outbound from warehouse cannot exceed inventory.
@@ -159,20 +159,20 @@ def build_formulation(s):
     s.satisfy(demand_met)
 
     # Constraint: on-time delivery (no shipments via modes that would be late)
-    on_time = require(Shipment.quantity == 0).where(
+    on_time = require(Shipment.x_quantity == 0).where(
         Shipment.mode.transit_days > Shipment.route.customer.due_day
     )
     s.satisfy(on_time)
 
     # Constraint: exclude warehouse if specified.
     if EXCLUDED_WAREHOUSE is not None:
-        exclude = require(Shipment.quantity == 0).where(
+        exclude = require(Shipment.x_quantity == 0).where(
             Shipment.route.warehouse.name == EXCLUDED_WAREHOUSE
         )
         s.satisfy(exclude)
 
     # Objective: minimize total transport cost (distance-weighted)
-    total_cost = sum(Shipment.quantity * Shipment.mode.cost_per_unit * Shipment.route.distance / 100)
+    total_cost = sum(Shipment.x_quantity * Shipment.mode.cost_per_unit * Shipment.route.distance / 100)
     s.minimize(total_cost)
 
 
