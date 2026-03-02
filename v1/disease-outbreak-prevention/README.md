@@ -47,10 +47,12 @@ This template uses **RelationalAI's graph modeling** capabilities with the Graph
 ## Prerequisites
 
 ### Access
+
 - A Snowflake account that has the RAI Native App installed.
 - A Snowflake user with permissions to access the RAI Native App.
 
 ### Tools
+
 - Python >= 3.10
 - pandas library
 - streamlit and plotly (optional, for interactive web app)
@@ -63,7 +65,7 @@ You can customize the data and model as needed after you have it running end-to-
 1. Download the ZIP file for this template and extract it:
 
    ```bash
-   curl -O https://private.relational.ai/templates/zips/v1/disease_outbreak_prevention_network.zip
+   curl -O https://private.relational.ai/templates/zips/v1/disease-outbreak-prevention.zip
    unzip disease_outbreak_prevention_network.zip
    cd disease_outbreak_prevention_network
    ```
