@@ -10,6 +10,8 @@ tags:
   - graph-analytics
   - degree-centrality
   - public-health
+sidebar:
+  order: 3
 ---
 
 ## What this template is for

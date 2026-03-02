@@ -10,6 +10,8 @@ tags:
   - getting-started
   - graphs
   - betweenness-centrality
+sidebar:
+  order: 1
 ---
 
 ## What this template is for
