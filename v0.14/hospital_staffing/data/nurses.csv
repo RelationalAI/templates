@@ -1,0 +1,7 @@
+id,name,skill_level,hourly_cost,regular_hours,overtime_multiplier
+1,Nurse_A,3,45,8,1.5
+2,Nurse_B,2,35,8,1.5
+3,Nurse_C,3,48,8,1.5
+4,Nurse_D,1,28,8,1.5
+5,Nurse_E,2,38,8,1.5
+6,Nurse_F,1,30,8,1.5

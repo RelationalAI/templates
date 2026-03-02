@@ -76,12 +76,12 @@ for nutrient_name in nutrient_csv.name:
 s = SolverModel(model, "cont")
 
 # Decision Variable: amount of each food (continuous, non-negative)
-Food.amount = model.Property("{Food} has {amount:float}")
-s.solve_for(Food.amount, name=Food.name, lower=0)
+Food.x_amount = model.Property("{Food} has {x_amount:float}")
+s.solve_for(Food.x_amount, name=Food.name, lower=0)
 
 # Calculate total quantity of each nutrient across all foods: sum(qty * amount) per nutrient.
 nutrient_total = sum(
-    Food.nutrients["qty"] * Food.amount
+    Food.nutrients["qty"] * Food.x_amount
 ).where(
     Food.nutrients == Nutrient
 ).per(Nutrient)
@@ -94,7 +94,7 @@ nutrient_bounds = require(
 s.satisfy(nutrient_bounds)
 
 # Objective: minimize total cost
-total_cost = sum(Food.cost * Food.amount)
+total_cost = sum(Food.cost * Food.x_amount)
 s.minimize(total_cost)
 
 # --------------------------------------------------
@@ -109,7 +109,7 @@ print(f"Status: {s.termination_status}")
 print(f"Minimum cost: ${s.objective_value:.2f}")
 
 # Select the foods with non-trivial amounts in the optimal solution.
-diet_plan = select(Food.name, Food.amount).where(Food.amount > 0.001).to_df()
+diet_plan = select(Food.name, Food.x_amount).where(Food.x_amount > 0.001).to_df()
 
 print("\nOptimal diet:")
 print(diet_plan.to_string(index=False))

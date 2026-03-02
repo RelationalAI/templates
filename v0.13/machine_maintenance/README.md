@@ -300,7 +300,7 @@ With the input concepts in place, the script creates a `Schedule` decision conce
 Schedule = model.Concept("Schedule")
 Schedule.machine = model.Property("{Schedule} for {machine:Machine}")
 Schedule.slot = model.Property("{Schedule} in {slot:TimeSlot}")
-Schedule.assigned = model.Property("{Schedule} is {assigned:float}")
+Schedule.x_assigned = model.Property("{Schedule} is {assigned:float}")
 define(Schedule.new(machine=Machine, slot=TimeSlot))
 
 Sch = Schedule.ref()
@@ -310,7 +310,7 @@ Sch2 = Schedule.ref()
 s = SolverModel(model, "cont")
 
 # Variable: binary assignment
-s.solve_for(Schedule.assigned, type="bin", name=["x", Schedule.machine.name, Schedule.slot.day])
+s.solve_for(Schedule.x_assigned, type="bin", name=["x", Schedule.machine.name, Schedule.slot.day])
 ```
 
 Next, it adds three families of constraints using `require(...)` and `s.satisfy(...)`: schedule each machine exactly once, enforce per-slot crew-hour capacity, and prevent conflicting pairs from being scheduled in the same slot:
@@ -339,13 +339,13 @@ Then, it minimizes total cost, computed as `failure_cost * cost_multiplier` for 
 
 ```python
 # Objective: minimize total maintenance cost (base cost * slot multiplier)
-total_cost = sum(Schedule.assigned * Schedule.machine.failure_cost * Schedule.slot.cost_multiplier)
+total_cost = sum(Schedule.x_assigned * Schedule.machine.failure_cost * Schedule.slot.cost_multiplier)
 s.minimize(total_cost)
 ```
 
 ### Solve and print results
 
-Finally, it solves using the HiGHS backend (with a 60s time limit), prints the status/objective, and selects only assignments with `Schedule.assigned > 0.5` for the output table:
+Finally, it solves using the HiGHS backend (with a 60s time limit), prints the status/objective, and selects only assignments with `Schedule.x_assigned > 0.5` for the output table:
 
 ```python
 solver = Solver("highs")
@@ -357,7 +357,7 @@ print(f"Total maintenance cost: ${s.objective_value:.2f}")
 schedule = select(
     Schedule.machine.name.alias("machine"),
     Schedule.slot.day.alias("day")
-).where(Schedule.assigned > 0.5).to_df()
+).where(Schedule.x_assigned > 0.5).to_df()
 
 print("\nMaintenance schedule:")
 print(schedule.to_string(index=False))
@@ -443,7 +443,7 @@ print(schedule.to_string(index=False))
   <summary>Why is the printed schedule empty?</summary>
 
 
-- The output filters on `Schedule.assigned > 0.5`. If the solve did not succeed, no assignments may satisfy that.
+- The output filters on `Schedule.x_assigned > 0.5`. If the solve did not succeed, no assignments may satisfy that.
 - Print `s.termination_status` and inspect whether the solve completed successfully.
 
 </details>
