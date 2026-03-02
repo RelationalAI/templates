@@ -7,9 +7,9 @@ featured: true
 reasoning_types:
   - Graph
 tags:
-  - Fraud Detection
-  - Graph
-  - Identity Resolution
+  - fraud-detection,
+  - graphs
+  - identity-resolution
 ---
 
 ## What this template is for

@@ -6,12 +6,10 @@ industry: Humanitarian & Emergency Response
 reasoning_types:
   - Graph
 tags:
-  - graph-analytics
+  - supply-chain
+  - weighted-graphs
   - pagerank
   - degree-centrality
-  - supply-chain
-  - humanitarian-aid
-  - weighted-graph
 ---
 
 ## What this template is for

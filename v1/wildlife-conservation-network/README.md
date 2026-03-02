@@ -6,11 +6,9 @@ industry: Environment & Sustainability
 reasoning_types:
   - Graph
 tags:
-  - graph-analytics
   - community-detection
   - louvain
-  - centrality-analysis
-  - wildlife-conservation
+  - centrality
 ---
 
 ## What this template is for
