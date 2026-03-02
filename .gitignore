@@ -41,6 +41,7 @@ uv.lock
 
 # RelationalAI local configuration / artifacts
 raiconfig.toml
+raiconfig.yaml
 debug.jsonl
 metadata.json
-*.jsonl
+spans.jsonl
