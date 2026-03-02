@@ -9,6 +9,8 @@ Output:
     critical network hubs, and make strategic resource allocation decisions.
 """
 
+from math import dist
+from tracemalloc import start
 from relationalai.semantics import select, where, Integer, Float, sum
 
 from model_setup import create_model
@@ -32,13 +34,21 @@ def main() -> None:
 
     # Query the graph to retrieve:
 
-    length = Integer.ref("length")
-    node = indirect_contact_graph.Node.ref("node")
-    edge = indirect_contact_graph.Edge.ref("edge")
+    # length = Integer.ref("length")
+    # start, end = indirect_contact_graph.Node.ref("start"), indirect_contact_graph.Node.ref("end")
 
-    dist = indirect_contact_graph.distance(full=True)
-    new_results =  select(
-        ColocationContact
+    # dist = indirect_contact_graph.distance(full=True)
+    # new_results =  where(
+    #     dist(start, end, length),
+    #     length == 2).select(
+    #     start.id,
+    #     end.id,
+    #     length
+    # ).to_df()
+
+    new_results = select(
+        ColocationContact.person_a,
+        ColocationContact.person_b
     ).to_df()
 
     print(new_results.to_string())

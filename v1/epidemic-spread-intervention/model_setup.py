@@ -123,30 +123,31 @@ def create_model():
         model,
         directed=False,
         weighted=False)
+
     Node, Edge = indirect_contact_graph.Node, indirect_contact_graph.Edge
 
-    define(Node.new(id = Person.person_id))
-    define(Node.new(id = Location.id))
+    define(
+        Node.new(id = Person.person_id),
+        Node.new(id = Location.id))
 
-    person, location = Person.ref("person"), Location.ref("location")
     n_from, n_to = Node.ref("n_from"), Node.ref("n_to")
 
     define(Edge.new(src = n_from, dst = n_to)).where(
-        Visit.person == person,
-        Visit.location == location,
-        n_from.id == person.person_id,
-        n_to.id == location.id
-    )
+        Visit.person.person_id == n_from.id,
+        Visit.location.id == n_to.id )
 
     ColocationContact = model.Concept(
         "ColocationContact",
         identify_by={"person_a": Person, "person_b": Person})
 
     dist = indirect_contact_graph.distance(full=True)
-
+    length = Integer.ref("length")
     # TODO : use from_ instead of full
     # also add filter on person_a.id < person_b.id to avoid duplicates since the graph is undirected?
-    where(dist.length == 2).define(
+    #
+    where(
+        dist(n_from, n_to, length),
+        length == 2).define(
         ColocationContact.new(
             person_a = Person.filter_by(person_id = n_from.id),
             person_b = Person.filter_by(person_id = n_to.id)
