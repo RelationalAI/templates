@@ -10,6 +10,8 @@ tags:
   - fraud-detection,
   - graphs
   - identity-resolution
+sidebar:
+  order: 2
 ---
 
 ## What this template is for
