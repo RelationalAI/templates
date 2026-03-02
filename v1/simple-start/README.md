@@ -1,204 +1,216 @@
 ---
-title: "<YOUR TEMPLATE TITLE>"
-description: "<YOUR TEMPLATE DESCRIPTION>"
-experience_level: <beginner|intermediate|advanced>
-industry: <YOUR TARGET INDUSTRY/SECTOR> (use "General" if broadly applicable)
+title: "Simple Start"
+description: "A minimal notebook to connect to Snowflake, model a small graph, and compute betweenness centrality with RelationalAI."
+experience_level: beginner
+industry: "General"
 featured: true
 reasoning_types:
-  - Prescriptive
-  - Predictive
   - Graph
 tags:
-  - <KEYWORD_1>
-  - <KEYWORD_2>
-  - <KEYWORD_3>
+  - getting-started
+  - graphs
+  - betweenness-centrality
 ---
 
 ## What this template is for
 
-Problem statement and motivation (1–2 paragraphs).
-Focus on the “why” and the value of RelationalAI, not on the technical details of the model or code.
-Use language that’s accessible to a broad audience.
-
-**NOTE:** You do not need to add a H1 title at the top of the README.
+This template is a minimal, runnable notebook designed to help you get up and running with RelationalAI against Snowflake.
+It walks through a tiny end-to-end example: create a simple Snowflake table, model it as a graph in RelationalAI, and compute a basic graph metric.
 
 ## Who this is for
 
-- Target audience
-- Assumed knowledge
+- Anyone new to RelationalAI who wants a short “first success” notebook
+- Users comfortable running Jupyter and making small edits
 
 ## What you’ll build
 
-- Bullet list of outcomes (3–6)
-- Mention the main RelationalAI features used (high level)
+- A working notebook that connects to Snowflake via your RelationalAI configuration
+- A small graph model built from a Snowflake `CONNECTIONS` table
+- A queryable graph representation (edge list)
+- Betweenness centrality scores for each station
 
 ## What’s included
 
-- **Model**: (what logic/relations are implemented)
-- **Runner**: (how to execute: Python script / CLI commands / notebook)
-- **Sample data**: (what it represents)
-- **Outputs**: (what results are produced and where)
+- **Model**: `Station` and `Connection` concepts, plus a derived graph edge relation
+- **Runner**: `simple-start.ipynb` (primary notebook)
+- **Sample data**: a small Snowflake table created by the notebook (`RAI_DEMO.SIMPLE_START.CONNECTIONS`)
+- **Outputs**: pandas DataFrames (table preview, edge list, and betweenness centrality)
 
 ## Prerequisites
 
 ### Access
 
-- RelationalAI account and access to an org/project
-- Permissions needed: (if relevant)
+- A Snowflake account with the RelationalAI Native App installed
+- A Snowflake user/role that can:
+  - create schemas/tables (or write into a schema you control)
+  - create/refresh a stream into the RelationalAI app (as prompted by the notebook)
 
 ### Tools
 
-- Runtime: (Python/Node/etc.) and versions
-- RelationalAI tooling used: (CLI / SDK)
-- OS notes: (if any)
+- Python >= 3.10
+- Jupyter Notebook/Lab
+
+This template installs:
+
+- `relationalai==1.0.0a8`
+- `jupyter`
 
 ## Quickstart
 
-This section should be copy/paste-friendly and get users to a successful run with minimal reading.
-
-1. **Download or clone**
-   - (ZIP instructions if you want, but keep it short)
-
-2. **Install dependencies**
+1. **Download the ZIP file for this template and extract it:**
 
    ```bash
-   # example
+   curl -L -O https://docs.relational.ai/templates/zips/v1/simple-start.zip
+   unzip simple-start.zip
+   cd simple-start
+   ```
+
+   > [!TIP]
+   > You can also download the template ZIP using the "Download ZIP" button at the top of this page.
+
+2. **Create and activate a virtual environment**
+
+   From the template folder (this is `v1/simple-start` if you cloned the full repository):
+
+   ```bash
    python -m venv .venv
    source .venv/bin/activate
-   pip install -r requirements.txt
+   python -m pip install -U pip
    ```
 
-3. **Configure credentials**
+3. **Install dependencies**
 
    ```bash
-   # example
-   export RAI_PROFILE=...
+   python -m pip install .
    ```
 
-4. **Create/select database + engine** (if applicable)
+4. **Configure credentials**
+
+   This notebook reads data from Snowflake and executes RelationalAI queries, so you need a working RelationalAI/Snowflake configuration.
+
+   If you use the RelationalAI CLI, run:
 
    ```bash
-   # example
-   rai db create ...
-   rai engine create ...
+   rai init
    ```
 
-5. **Load sample data**
+   If you have multiple profiles, set one explicitly:
 
    ```bash
-   # example
-   python load_data.py
+   export RAI_PROFILE=<your_profile>
+   ```
+
+5. **Start Jupyter**
+
+   ```bash
+   jupyter notebook
    ```
 
 6. **Run the template**
 
-   ```bash
-   # example
-   python run.py
-   ```
+   Open `simple-start.ipynb` and run the cells top-to-bottom (or "Run All").
 
 7. **Expected output**
 
-   Show a tiny snippet (a few lines) so users can confirm success.
+   You should see:
+
+   - A preview of the Snowflake `CONNECTIONS` table.
+   - An edge list DataFrame (one row per connection).
+   - A DataFrame of betweenness centrality values (sorted descending).
 
 ## Template structure
 
-Provide a short annotated tree. Keep it to the top level and the most important subfolders.
-
 ```text
 .
-├─ README.md                  # this file
-├─ pyproject.toml             # dependencies (if present)
-├─ <template>.py              # main runner / entrypoint
-├─ data/                      # sample input data
-└─ ...
+├─ README.md
+├─ pyproject.toml           # Python dependencies for running the notebook
+└─ simple-start.ipynb       # start here (main notebook)
 ```
 
-**Start here**: point to the one command/script that runs end-to-end.
+**Start here**: `simple-start.ipynb`
 
 ## Sample data
 
-Describe what the sample data represents, and any important notes about its structure or contents.
+The notebook creates a small Snowflake table:
+
+- `RAI_DEMO.SIMPLE_START.CONNECTIONS(station_1 int, station_2 int)`
+
+Each row represents a connection between two power station IDs.
 
 ## Model overview
 
-Describe the main entities and the most important relationships.
+The notebook models two core concepts and then builds a graph representation.
 
-- **Key entities**: (e.g., `product`, `warehouse`, `lane`)
-- **Primary identifiers**: what uniquely identifies each entity
-- **Important invariants**: (e.g., demand non-negative; capacity limits)
-
-Document the data model concept-by-concept.
-
-### Concepts (one table per concept)
-
-For each key concept/type:
-
-1. Write a brief sentence *outside the table* describing what the concept represents and how it’s used.
-2. Add a table with **one row per property**.
-
-Suggested table shape:
+The `Station` concept represents a power station:
 
 | Property | Type | Identifying? | Notes |
 |---|---|---|---|
-| `product_id` | int | Yes | Loaded from `data/products.csv` |
-| `name` | string | No | Human-readable name |
-| `category` | string | No | Used for grouping/filters |
+| `id` | integer | Yes | Station identifier from `station_1` / `station_2` |
 
-Repeat this table for each concept (e.g., `product`, `warehouse`, `lane`).
+The `Connection` concept represents a connection between two stations:
 
-### Relationships (only if there are non-property relations)
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `src` | relationship | Yes | Source `Station` |
+| `dst` | relationship | Yes | Destination `Station` |
 
-Only include a Relationships table if the model defines relations **beyond concept properties** (e.g., standalone predicates like `demand(product, date, units)` or recursive relations).
-
-| Relationship | Schema (reading string fields) | Notes |
-|---|---|---|
-| `demand(product, date, units)` | `product`, `date`, `units` | Units are weekly; non-negative |
-| `lane(source, destination, capacity)` | `source`, `destination`, `capacity` | Capacity is per day |
+The model also defines a station-to-station connectivity relationship (used to populate the graph edge relation).
 
 ## How it works
 
-Give a short, end-to-end walkthrough of the template, with relevant code examples. Example:
+At a high level, the notebook:
 
-- Ingest sample CSVs into relations
-- Derive intermediate relations (feature engineering / aggregations)
-- Apply constraints/objective (if optimization)
-- Compute outputs (recommended actions / assignments)
-- Export results to CSV / print summary
-
-If helpful, add a small diagram:
-
-```text
-CSV inputs → load → base relations → model logic → results → export
-```
+1. Creates and populates the `CONNECTIONS` table in Snowflake.
+2. Defines `Station` and `Connection` concepts and loads them from the Snowflake source table.
+3. Builds an undirected graph from the station connectivity relation.
+4. Lists the resulting edges as a table.
+5. Computes betweenness centrality and queries the scores into a pandas DataFrame.
 
 ## Customize this template
 
-Focus on the first changes most users will make.
-
 ### Use your own data
 
-- Where to put files / how to change inputs
-- Expected schema and example headers
-- Validation checks / common mistakes
-
-### Tune parameters
-
-- Where key parameters live
-- Suggested defaults and what they change
+- Replace `RAI_DEMO.SIMPLE_START.CONNECTIONS` with your own edge table.
+- Ensure your table has two columns that represent the endpoints of each edge.
 
 ### Extend the model
 
-- Where to add new relations/logic
-- How to add a new constraint/metric/output
-
-### Scale up / productionize
-
-- Engine sizing guidance (if applicable)
-- How to schedule runs / integrate into pipelines
-- Notes on reproducibility (pin dependencies, deterministic outputs)
+- Add node attributes (for example, station type, capacity, region) and join them to `Station`.
+- Add additional graph analytics supported by the `Graph` reasoner.
 
 ## Troubleshooting
+
+<details>
+  <summary>Jupyter can’t import <code>relationalai</code> (or uses the wrong environment)</summary>
+
+- Confirm your virtual environment is active: <code>which python</code> should point to <code>.venv</code>.
+- Reinstall dependencies: <code>python -m pip install .</code>.
+- In Jupyter/VS Code, select the kernel that points to the <code>.venv</code> interpreter.
+
+</details>
+
+<details>
+  <summary>Authentication/configuration fails when the notebook runs queries</summary>
+
+- Make sure your RelationalAI/Snowflake configuration is present and correct.
+- If you use the RelationalAI CLI, run <code>rai init</code> to create/update your config.
+- If you have multiple profiles, set <code>RAI_PROFILE</code> to the one you want.
+
+</details>
+
+<details>
+  <summary>The notebook can’t create the demo table/schema</summary>
+
+- Ensure your Snowflake role can create schemas/tables in the target database.
+- Alternatively, edit the notebook to write into a database/schema you control.
+
+</details>
+
+## Learn more
+
+- RelationalAI documentation: https://docs.relational.ai/build
+- Jupyter documentation: https://jupyter.org/documentation
+- Snowflake documentation: https://docs.snowflake.com/
 
 Include the top 5–8 failure modes with specific fixes.
 Here are some examples:
