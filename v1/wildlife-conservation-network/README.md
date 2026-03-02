@@ -65,7 +65,7 @@ You can customize the data and model as needed after you have it running end-to-
 1. Download the ZIP file for this template and extract it:
 
    ```bash
-   curl -O https://private.relational.ai/templates/zips/v1/wildlife_conservation_network.zip
+   curl -O https://private.relational.ai/templates/zips/v1/wildlife-conservation-network.zip
    unzip wildlife_conservation_network.zip
    cd wildlife_conservation_network
    ```
