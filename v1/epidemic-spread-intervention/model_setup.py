@@ -7,20 +7,25 @@ and data loading logic used by both the CLI script and Streamlit app.
 from pathlib import Path
 import pandas as pd
 
-from relationalai.semantics import Model, data, define, String, Integer, Float, sum, where
+import relationalai.semantics as rai
+from relationalai.semantics import Model, where, data, define, String, Integer, Float, sum
 from relationalai.semantics.reasoners.graph import Graph
 
 DATA_DIR = Path(__file__).parent / "data"
 
 
-def create_model():
+def create_model(config=None):
     """Create and configure the RelationalAI model with all concepts and relationships.
 
+    Args:
+        config: Optional RAI configuration object. Defaults to None (uses environment config).
+
     Returns:
-        tuple: (model, graph )
+        tuple: (model, Person, Location, DirectContact, Visit,
+                ColocationContact, ExposureEdge, exposure_graph)
     """
     # Create a Semantics model container
-    model = Model("epidemic_spread_intervention_n", config=globals().get("config", None))
+    model = Model("epidemic_spread_intervention_n", config=config)
 
 
     # Load people from CSV
@@ -69,13 +74,31 @@ def create_model():
     DirectContact.frequency = model.Property(f"{DirectContact} has {Integer:frequency}")
     DirectContact.duration = model.Property(f"{DirectContact} has {Integer:duration} in minutes")
 
-    # Create direct contact relationships (undirected edges in contact network)
+    # Create direct contact relationships with canonical ordering (person_a.person_id < person_b.person_id)
+    # to match ColocationContact and prevent duplicate/reversed edges in the exposure graph.
     person_a, person_b = Person.ref("person_a"), Person.ref("person_b")
 
-    define(
+    where(
+        person_a == Person.filter_by(person_id=contacts_data.person_a),
+        person_b == Person.filter_by(person_id=contacts_data.person_b),
+        person_a.person_id < person_b.person_id,
+    ).define(
         DirectContact.new(
-            person_a=person_a.filter_by(person_id=contacts_data.person_a),
-            person_b=person_b.filter_by(person_id=contacts_data.person_b),
+            person_a=person_a,
+            person_b=person_b,
+            frequency=contacts_data.weekly_frequency,
+            duration=contacts_data.duration_minutes
+        )
+    )
+    # Mirror case: swap when raw data has person_a > person_b to enforce canonical ordering.
+    where(
+        person_a == Person.filter_by(person_id=contacts_data.person_a),
+        person_b == Person.filter_by(person_id=contacts_data.person_b),
+        person_a.person_id > person_b.person_id,
+    ).define(
+        DirectContact.new(
+            person_a=person_b,
+            person_b=person_a,
             frequency=contacts_data.weekly_frequency,
             duration=contacts_data.duration_minutes
         )
@@ -102,159 +125,135 @@ def create_model():
     )
 
     # Derive Risk-Adjusted Susceptibility
-    # Before looking at connections, let's define how vulnerable an individual is.
-    # This creates a "node-level" weight that influences how much infection they "absorb" from the graph.
-    # Purpose: This scales the impact of every incoming edge. A person with a 0.0 susceptibility effectively acts as a "sink" that stops the spread.
+    # Captures how vulnerable an individual is before looking at connections.
+    # A fully vaccinated person (vaccination_level=1.0) has susceptibility 0 and cannot be infected;
+    # higher comorbidity amplifies susceptibility. This node-level weight scales every incoming edge.
     Person.base_susceptibility = model.Property(f"{Person} has {Float:base_susceptibility}")
 
-    define(Person.base_susceptibility ==(1 - Person.vaccination_level) * (1 + Person.comorbidity_score))
+    define(Person.base_susceptibility == (1 - Person.vaccination_level) * (1 + Person.comorbidity_score))
 
 
     # The Multi-Layer Edge Projection
     # People are connected in two ways: direct contact and co-location.
     # We need to merge these into a single "risk edge" that captures overall transmission potential.
 
-    # Transmission risk derived from direct contact (Layer 1)
+    # Transmission risk derived from direct contact (Layer 1).
+    # Formula: contact_intensity (hours/week) * susceptibility of the receiving person (person_b).
+    # This reflects that transmission probability depends on both exposure duration and how easily
+    # the recipient can be infected.
     DirectContact.transmission_risk = model.Property(f"{DirectContact} has {Float:transmission_risk}")
-    define(DirectContact.transmission_risk == DirectContact.frequency * (DirectContact.duration / 60))
-
-    # graph based indirect contact
-    indirect_contact_graph = Graph(
-        model,
-        directed=False,
-        weighted=False)
-
-    Node, Edge = indirect_contact_graph.Node, indirect_contact_graph.Edge
-
-    define(
-        Node.new(id = Person.person_id),
-        Node.new(id = Location.id))
-
-    n_from, n_to = Node.ref("n_from"), Node.ref("n_to")
-
-    define(Edge.new(src = n_from, dst = n_to)).where(
-        Visit.person.person_id == n_from.id,
-        Visit.location.id == n_to.id )
+    define(DirectContact.transmission_risk ==
+           DirectContact.frequency * (DirectContact.duration / 60) * DirectContact.person_b.base_susceptibility)
 
     ColocationContact = model.Concept(
         "ColocationContact",
         identify_by={"person_a": Person, "person_b": Person})
 
-    dist = indirect_contact_graph.distance(full=True)
-    length = Integer.ref("length")
-    # TODO : use from_ instead of full
-    # also add filter on person_a.id < person_b.id to avoid duplicates since the graph is undirected?
-    #
+    # Derive ColocationContact from shared Visit locations (2-hop: Person -> Location -> Person)
+    p1, p2 = Person.ref("p1"), Person.ref("p2")
+    v1_exists, v2_exists = Visit.ref("v1_exists"), Visit.ref("v2_exists")
+    loc_exists = Location.ref("loc_exists")
+
     where(
-        dist(n_from, n_to, length),
-        length == 2).define(
+        v1_exists.person(p1),
+        v2_exists.person(p2),
+        v1_exists.location(loc_exists),
+        v2_exists.location(loc_exists),
+        p1.person_id < p2.person_id  # Avoid duplicates (undirected)
+    ).define(
         ColocationContact.new(
-            person_a = Person.filter_by(person_id = n_from.id),
-            person_b = Person.filter_by(person_id = n_to.id)
+            person_a=p1,
+            person_b=p2
         )
     )
 
-#    define(Edge.new(src=Visit.person, dst=Visit.location))
-    # define(Edge.new(src=Visit.person, dst=Visit.location, weight=Visit.weekly_visits))
+    ColocationContact.transmission_risk = model.Property(f"{ColocationContact} has {Float:transmission_risk}")
 
-    # # Derive indirect contacts and co-location transmission risk
-    # # This connects people who never met but visited the same high-risk location.
-    # p1, p2 = Person.ref("p1"), Person.ref("p2")
-    # loc = Location.ref("loc")
-    # visit_1, visit_2 = Visit.ref("visit_1"), Visit.ref("visit_2")
+    # Transmission risk = sum over shared locations of:
+    #   weekly_visits[p1, loc] * weekly_visits[p2, loc] * location_risk[loc]
+    # where location_risk = density_score * (1 - ventilation_score)
+    cc = ColocationContact.ref("cc")
+    v1_risk, v2_risk = Visit.ref("v1_risk"), Visit.ref("v2_risk")
+    loc_risk = Location.ref("loc_risk")
 
-    # CoLocationContact = model.Concept(
-    #     "CoLocationContact",
-    #     identify_by={"person_a": Person, "person_b": Person, "location": Location}
-    # )
+    where(
+        v1_risk.person(cc.person_a),
+        v2_risk.person(cc.person_b),
+        v1_risk.location(loc_risk),
+        v2_risk.location(loc_risk),
+    ).define(
+        cc.transmission_risk(
+            sum(v1_risk.weekly_visits * v2_risk.weekly_visits
+                * loc_risk.density_score * (1 - loc_risk.ventilation_score)).per(cc)
+        )
+    )
 
-    # CoLocationContact.visit_a = model.Relationship(f"{CoLocationContact} relates to {Visit:visit_a} from patient_a")
-    # CoLocationContact.visit_b = model.Relationship(f"{CoLocationContact} relates to {Visit:visit_b} from patient_b")
+    # Combined Exposure Edge
+    # Merges direct contact and colocation contact into a single weighted edge.
+    # Formula: w = direct_weight + 0.6 * colocation_weight (defaulting to 0.0 if absent)
+    # The 0.6 factor discounts co-location risk relative to direct contact: indirect proximity
+    # (sharing a space) carries lower per-encounter transmission probability than face-to-face contact.
+    # Only edges with w > 0.0 are kept.
+    ExposureEdge = model.Concept(
+        "ExposureEdge",
+        identify_by={"person_a": Person, "person_b": Person}
+    )
+    ExposureEdge.weight = model.Property(f"{ExposureEdge} has {Float:weight}")
+
+    # Create ExposureEdge entities from both layers.
+    # Both DirectContact and ColocationContact enforce person_a.person_id < person_b.person_id,
+    # so ExposureEdge pairs are always canonically ordered — no duplicate/reversed graph edges.
+    model.define(ExposureEdge.new(
+        person_a=DirectContact.person_a,
+        person_b=DirectContact.person_b
+    ))
+    model.define(ExposureEdge.new(
+        person_a=ColocationContact.person_a,
+        person_b=ColocationContact.person_b
+    ))
+
+    # Compute weight using three mutually exclusive rules to avoid FD violations.
+    # Rule 1: Both direct and colocation exist -> w = d + 0.6 * c
+    ee1 = ExposureEdge.ref("ee1")
+    dc1 = DirectContact.ref("dc1")
+    cc_1 = ColocationContact.ref("cc_1")
+    where(
+        dc1.person_a == ee1.person_a, dc1.person_b == ee1.person_b,
+        cc_1.person_a == ee1.person_a, cc_1.person_b == ee1.person_b,
+    ).define(ee1.weight(dc1.transmission_risk + 0.6 * cc_1.transmission_risk))
+
+    # Rule 2: Direct only (no colocation) -> w = d
+    ee2 = ExposureEdge.ref("ee2")
+    dc2 = DirectContact.ref("dc2")
+    where(
+        dc2.person_a == ee2.person_a, dc2.person_b == ee2.person_b,
+        rai.not_(ColocationContact.filter_by(person_a=ee2.person_a, person_b=ee2.person_b)),
+    ).define(ee2.weight(dc2.transmission_risk))
+
+    # Rule 3: Colocation only (no direct) -> w = 0.6 * c
+    ee3 = ExposureEdge.ref("ee3")
+    cc3 = ColocationContact.ref("cc3")
+    where(
+        cc3.person_a == ee3.person_a, cc3.person_b == ee3.person_b,
+        rai.not_(DirectContact.filter_by(person_a=ee3.person_a, person_b=ee3.person_b)),
+    ).define(ee3.weight(0.6 * cc3.transmission_risk))
 
 
-    # define(CoLocationContact.new(
-    #     person_a = p1,
-    #     person_b = p2,
-    #     location = loc,
-    #     visit_a = visit_1,
-    #     visit_b = visit_2
-    # )).where(
-    #    visit_1.person(p1),
-    #    visit_2.person(p2),
-    #    visit_1.location(loc),
-    #    visit_2.location(loc),
-    #    p1 != p2,
-    #    p1.person_id < p2.person_id  # Avoid duplicates (undirected)
-    # )
+    # --------------------------------------------------
+    # Build weighted undirected exposure graph
+    # --------------------------------------------------
 
-    # CoLocationContact.transmission_risk = model.Property(f"{CoLocationContact} has {Float:transmission_risk}")
+    exposure_graph = Graph(model, directed=False, weighted=True, node_concept=Person)
 
-    # define(CoLocationContact.transmission_risk ==
-    #        CoLocationContact.visit_a.weekly_visits * CoLocationContact.visit_b.weekly_visits * CoLocationContact.location.density_score * (1 - CoLocationContact.location.ventilation_score)
-    # )
+    ee = ExposureEdge.ref("ee")
+    model.where(
+        ee.weight > 0.0
+    ).define(
+        exposure_graph.Edge.new(
+            src=ee.person_a,
+            dst=ee.person_b,
+            weight=ee.weight
+        )
+    )
 
-    # IndirectContact = model.Concept(
-    #     "IndirectContact",
-    #     identify_by={"person_a": Person, "person_b": Person})
-    # IndirectContact.transmission_risk = model.Property(f"{IndirectContact} has {Float:transmission_risk}")
-
-    # # Create IndirectContact simply by projecting person pairs from CoLocationContact
-    # # The magic of identify_by ensures we only get one per unique (person_a, person_b) pair
-    # define(IndirectContact.new(
-    #     person_a=CoLocationContact.person_a,
-    #     person_b=CoLocationContact.person_b
-    # ))
-
-    # # Compute aggregated risk per person pair using .per()
-    # # This aggregates CoLocationContact.transmission_risk grouped by the person pair
-    # indirect_agg_risk = sum(CoLocationContact.transmission_risk).per(
-    #     CoLocationContact.person_a,
-    #     CoLocationContact.person_b
-    # )
-
-    # # Assign the aggregated risk to each IndirectContact
-    # define(IndirectContact.transmission_risk == indirect_agg_risk).where(
-    #     IndirectContact.person_a == CoLocationContact.person_a,
-    #     IndirectContact.person_b == CoLocationContact.person_b
-    # )
-
-
-    # Contact = model.Concept(
-    #     "Contact",
-    #     identify_by={"person_a": Person, "person_b": Person}
-    # )
-
-    # Contact.transmission_risk = model.Property(f"{Contact} has {Float:transmission_risk}")
-    # Contact.derived_from_direct = model.Property(f"{Contact} derived from {DirectContact}")
-    # Contact.derived_from_indirect = model.Property(f"{Contact} derived from {IndirectContact}")
-
-    # # Create contacts from direct contacts
-    # define(Contact.new(
-    #     person_a = DirectContact.person_a,
-    #     person_b = DirectContact.person_b,
-    #     derived_from_direct = DirectContact
-    # ))
-
-    # # Create contacts from indirect contacts
-    # define(Contact.new(
-    #     person_a = IndirectContact.person_a,
-    #     person_b = IndirectContact.person_b,
-    #     derived_from_indirect = IndirectContact
-    # ))
-
-    # # Calculate transmission risk as sum of both types
-    # # Use the | operator which should default to 0.0 when the property doesn't exist
-    # define(Contact.transmission_risk ==
-    #        (Contact.derived_from_direct.transmission_risk | 0.0) +
-    #        (Contact.derived_from_indirect.transmission_risk | 0.0)
-    # )
-
-    # B. Co-Location Exposure (Layer 2 - The "SQL-Impossible" Part)
-    # This connects people who never met but visited the same high-risk location.
-    # Logic: If Person A and Person B both visited Location X, crrectContact.filter_by(person_a=p1, person_eate a derived edge between them.
-    # Formula: $\sum (\text{visits}_A \times \text{visits}_B \times \text{location\_risk})$
-    # Why it's advanced: This is a 2-hop projection ($Person \to Location \to Person$).
-    # It treats locations as "transmission bridges."
-
-    return model, Person, Location, DirectContact, Visit, indirect_contact_graph, ColocationContact
-# CoLocationContact, Contact, IndirectContact,
+    return model, Person, Location, DirectContact, Visit, ColocationContact, ExposureEdge, exposure_graph

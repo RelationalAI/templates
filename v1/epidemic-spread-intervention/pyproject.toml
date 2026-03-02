@@ -3,13 +3,13 @@ requires = ["setuptools>=64", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "rai-template-humanitarian-aid-supply-chain"
+name = "rai-template-epidemic-spread-intervention"
 version = "0.0.0"
 description = "RelationalAI template: Epidemic Spread Intervention"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 dependencies = [
-  "relationalai>=1.0.0a6",
+  "relationalai==1.0.0a8",
   "pandas>=2.0.0",
 ]
 
