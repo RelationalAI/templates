@@ -1,7 +1,7 @@
 ---
 title: "Disease Outbreak Prevention Network"
 description: "Use weighted degree centrality to identify the highest-risk healthcare facilities in a public health network, considering both connection volume and intensity, to prioritize resource deployment during disease outbreaks."
-experience_level: beginner
+experience_level: intermediate
 industry: Healthcare
 reasoning_types:
   - Graph
@@ -18,7 +18,8 @@ During a disease outbreak, public health officials must quickly decide where to 
 By analyzing a network of hospitals, clinics, testing centers, and community organizations with weighted connections based on patient transfer volumes and contact intensity, this template helps you prioritize facilities that pose the greatest cumulative risk. These high-risk facilities act as critical hubs in the health network, making them ideal locations for maximum resource reach and rapid outbreak containment during an outbreak response.
 
 ## Who this is for
-- **Beginners** who want to learn weighted degree centrality with a real-world epidemiological use case
+
+- **Intermediate users** who want to learn weighted degree centrality with a real-world epidemiological use case
 - **Data scientists** new to RelationalAI looking for a simple graph analytics example
 - **Public health analysts** planning outbreak response strategies
 - **Healthcare network planners** optimizing resource allocation
