@@ -1,6 +1,6 @@
 ---
-title: "Fraud Detection (Identity Graph)"
-description: "Notebook template that uses RelationalAI v1 PyRel + graph reasoning to find uncommon identifier-sharing patterns across users."
+title: "Fraud Detectio"
+description: "Use graph reasoning to find suspicious users based on shared identifiers and uncommon sharing patterns."
 experience_level: beginner
 industry: "Financial Services"
 featured: true
