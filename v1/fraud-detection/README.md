@@ -44,21 +44,10 @@ This template is a runnable notebook that shows how to:
 
 ## Prerequisites
 
-### Access
-
+- Python >= 3.10
 - A Snowflake account with the RelationalAI Native App installed
 - A Snowflake user/role that can run the RAI Native App
 - If you plan to run the export step: permissions to create/overwrite the destination table you choose
-
-### Tools
-
-- Python >= 3.10
-- Jupyter Notebook/Lab
-
-This template installs:
-
-- `relationalai==1.0.0`
-- `jupyter`
 
 ## Quickstart
 
@@ -131,50 +120,6 @@ This template installs:
 
    - If you run the export section: a Snowflake table created at the configured destination (defaults to `RAI_DEMO.FRAUD_DETECTION.SUSPICIOUS_USERS_V1` in the notebook).
 
-## Template structure
-
-```text
-.
-├─ README.md
-├─ pyproject.toml              # Python dependencies for running the notebook
-└─ fraud-detection.ipynb       # start here (main notebook)
-```
-
-**Start here**: `fraud-detection.ipynb`
-
-## Sample data
-
-The notebook uses in-memory sample data (Python lists of dicts) with two tables:
-
-- `users_data`: user profile attributes (`id`, `fullname`, `phone_number`, `email`, `address_id`, `credit_card_number`)
-- `addresses_data`: address attributes (`id`, `street_address`, `city`, `state`)
-
-The model links users to addresses using `address_id`.
-
-## Model overview
-
-The notebook models a small identity graph and then derives suspicious-user signals.
-
-The `Address` concept represents a physical location record:
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | integer | Yes | Joins from `users_data.address_id` |
-| `street_address` | string | No | Example: `"123 Fake St"` |
-| `city` | string | No | Example: `"Springfield"` |
-| `state` | string | No | Example: `"IL"` |
-
-The `User` concept represents a user/account profile:
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | integer | Yes | Primary key for users |
-| `fullname` | string | No | Display name |
-| `phone_number` | string | No | Used as an identifier for linking |
-| `email` | string | No | Used as an identifier for linking |
-| `credit_card_number` | string | No | Used as an identifier for linking |
-| `address` | relationship | No | Links a `User` to an `Address` |
-
 ## How it works
 
 At a high level, the notebook:
@@ -189,18 +134,18 @@ At a high level, the notebook:
 
 ## Customize this template
 
-### Use your own data
+**Use your own data:**
 
 - Replace the in-memory lists with Snowflake tables by using the pattern shown in the notebook:
   - `m.Table("MY_DB.MY_SCHEMA.MY_TABLE")` (as long as the schema matches)
 - Keep the same key structure (`users.id`, `addresses.id`, and `users.address_id`) so joins stay valid.
 
-### Tune parameters
+**Tune parameters:**
 
 - Change `LARGE_GROUP_SIZE` to control how aggressively you flag large communities.
 - Adjust the rule that defines suspicious users (for example, require multiple shared identifiers instead of one).
 
-### Extend the model
+**Extend the model:**
 
 - Add more identifiers (device ID, IP address, bank account, shipping address) and connect them into the identity graph.
 - Add additional graph analytics (for example, centrality or shortest-path checks) before applying rules.
@@ -240,9 +185,3 @@ At a high level, the notebook:
 - Make sure your virtual environment is active and that you installed the dependencies with `python -m pip install .`.
 
 </details>
-
-## Learn more
-
-- RelationalAI documentation: https://docs.relational.ai/build
-- Jupyter documentation: https://jupyter.org/documentation
-- Snowflake documentation: https://docs.snowflake.com/

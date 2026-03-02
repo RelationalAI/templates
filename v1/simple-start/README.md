@@ -40,22 +40,11 @@ It walks through a tiny end-to-end example: create a simple Snowflake table, mod
 
 ## Prerequisites
 
-### Access
-
+- Python >= 3.10
 - A Snowflake account with the RelationalAI Native App installed
 - A Snowflake user/role that can:
   - create schemas/tables (or write into a schema you control)
   - create/refresh a stream into the RelationalAI app (as prompted by the notebook)
-
-### Tools
-
-- Python >= 3.10
-- Jupyter Notebook/Lab
-
-This template installs:
-
-- `relationalai==1.0.0a8`
-- `jupyter`
 
 ## Quickstart
 
@@ -120,44 +109,6 @@ This template installs:
    - An edge list DataFrame (one row per connection).
    - A DataFrame of betweenness centrality values (sorted descending).
 
-## Template structure
-
-```text
-.
-├─ README.md
-├─ pyproject.toml           # Python dependencies for running the notebook
-└─ simple-start.ipynb       # start here (main notebook)
-```
-
-**Start here**: `simple-start.ipynb`
-
-## Sample data
-
-The notebook creates a small Snowflake table:
-
-- `RAI_DEMO.SIMPLE_START.CONNECTIONS(station_1 int, station_2 int)`
-
-Each row represents a connection between two power station IDs.
-
-## Model overview
-
-The notebook models two core concepts and then builds a graph representation.
-
-The `Station` concept represents a power station:
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | integer | Yes | Station identifier from `station_1` / `station_2` |
-
-The `Connection` concept represents a connection between two stations:
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `src` | relationship | Yes | Source `Station` |
-| `dst` | relationship | Yes | Destination `Station` |
-
-The model also defines a station-to-station connectivity relationship (used to populate the graph edge relation).
-
 ## How it works
 
 At a high level, the notebook:
@@ -170,12 +121,12 @@ At a high level, the notebook:
 
 ## Customize this template
 
-### Use your own data
+**Use your own data:**
 
 - Replace `RAI_DEMO.SIMPLE_START.CONNECTIONS` with your own edge table.
 - Ensure your table has two columns that represent the endpoints of each edge.
 
-### Extend the model
+**Extend the model:**
 
 - Add node attributes (for example, station type, capacity, region) and join them to `Station`.
 - Add additional graph analytics supported by the `Graph` reasoner.
@@ -207,65 +158,3 @@ At a high level, the notebook:
 - Alternatively, edit the notebook to write into a database/schema you control.
 
 </details>
-
-## Learn more
-
-- RelationalAI documentation: https://docs.relational.ai/build
-- Jupyter documentation: https://jupyter.org/documentation
-- Snowflake documentation: https://docs.snowflake.com/
-
-Include the top 5–8 failure modes with specific fixes.
-Here are some examples:
-
-<details>
-	<summary>Why did dependency installation fail?</summary>
-
-	- Confirm you’re using the recommended runtime version (Python/Node) for this template.
-	- Use a fresh virtual environment and re-install dependencies.
-	- On macOS/Linux, check for missing system libraries if you see compiler/build errors.
-</details>
-
-<details>
-	<summary>Why did data loading fail (schema/format issues)?</summary>
-
-	- Verify input files match the expected headers and types.
-	- Check delimiter/quoting/encoding (CSV UTF-8 is the safest default).
-	- Confirm required columns are present and not entirely null/empty.
-</details>
-
-<details>
-	<summary>Why are my results empty or unexpected?</summary>
-
-	- Sanity-check the input data (row counts, key coverage, date ranges).
-	- Check that join keys line up (IDs/codes match across files).
-	- Start from the smallest query/output and work forward through the pipeline.
-</details>
-
-## Learn more
-
-This section is the “map” into the RelationalAI docs. Keep it curated.
-
-Group links by purpose, and add a one-line description for each.
-
-### Core concepts
-
-- (Link) — What it teaches and how it relates to this template
-- (Link)
-
-### Language / modeling reference
-
-- (Link)
-- (Link)
-
-### CLI / SDK guides
-
-- (Link)
-- (Link)
-
-### Deeper dives (optional)
-
-- (Link) — “If you want to extend X, read this next”
-
-## Support
-
-- Where to ask questions / file issues

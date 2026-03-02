@@ -46,14 +46,9 @@ This template uses **RelationalAI's graph modeling** capabilities with the Graph
 
 ## Prerequisites
 
-### Access
+- Python >= 3.10
 - A Snowflake account that has the RAI Native App installed.
 - A Snowflake user with permissions to access the RAI Native App.
-
-### Tools
-- Python >= 3.10
-- pandas library
-- streamlit and plotly (optional, for interactive web app)
 
 ## Quickstart
 
@@ -117,78 +112,6 @@ You can customize the data and model as needed after you have it running end-to-
    - Geographic and species focus analysis
    - Cross-community connector identification
    - Summary statistics and key metrics
-
-
-## Template structure
-
-```text
-.
-├─ README.md                                        # this file
-├─ pyproject.toml                                   # dependencies
-├─ model_setup.py                                   # shared model configuration (used by both scripts)
-├─ wildlife_conservation_network.py                 # command-line analysis script
-├─ app.py                                           # interactive Streamlit web app
-└─ data/
-   ├─ organizations.csv                             # 12 conservation organizations
-   └─ partnerships.csv                              # 19 partnership connections
-```
-
-**Start here**:
-- For command-line analysis: Run `python wildlife_conservation_network.py`
-- For interactive web app: Run `streamlit run app.py`
-
-## Sample data
-
-The sample data represents a simplified wildlife conservation network across African regions:
-
-- **organizations.csv**: 12 conservation organizations including NGOs, research stations, wildlife reserves, veterinary services, security units, and community programs. Each has a unique ID, name, type, geographic region, and species focus (elephants, rhinos, big cats, or multiple species).
-- **partnerships.csv**: 19 undirected partnerships representing active collaborations like joint research projects, resource sharing agreements, cross-training programs, and coordinated anti-poaching efforts. Each partnership connects two organizations.
-
-The network is intentionally small (12 nodes, 19 edges) to make it easy to understand and verify the community detection results. The Louvain algorithm naturally separates the network into three communities:
-- **Community 1** (4 orgs): East African research cluster focused on elephants (Hub: Serengeti Wildlife Trust)
-- **Community 2** (5 orgs): Southern African rhino protection with reserve management and security (Hub: Rhino Conservation Alliance)
-- **Community 3** (3 orgs): East African community-based cluster for big cats (Hub: Big Cats Initiative)
-
-## Model overview
-
-This model represents a wildlife conservation network as an undirected graph where organizations are nodes and partnerships are edges.
-
-- **Key entities**: `Organization` (conservation orgs) with a `partners_with` relationship
-- **Primary identifiers**: Organization ID (integer)
-- **Graph structure**: Undirected, unweighted graph using RelationalAI's Graph API
-
-### Organization Concept
-
-The `Organization` concept represents conservation entities working to protect wildlife.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | Integer | Yes | Unique organization identifier from `data/organizations.csv` |
-| `name` | String | No | Organization name (e.g., "Serengeti Wildlife Trust") |
-| `type` | String | No | Category: NGO, Research, Reserve, Medical, Security, Community |
-| `region` | String | No | Geographic region: East Africa, Southern Africa |
-| `focus_species` | String | No | Primary conservation focus: Elephants, Rhinos, Lions & Leopards, Multiple Species |
-
-### Organization Relationship
-
-The `partners_with` relationship represents undirected partnerships between organizations (joint projects, resource sharing, coordination).
-
-| Property | Type | Notes |
-|---|---|---|
-| `org1` | Organization | One organization in the partnership |
-| `org2` | Organization | Other organization in the partnership |
-
-Since partnerships are bidirectional, the relationship is defined in both directions to create an undirected graph.
-
-### Graph Metrics
-
-The template calculates these key metrics using RelationalAI's Graph API:
-
-| Metric | Type | Description |
-|---|---|---|
-| `community` | Integer | Community ID assigned by Louvain algorithm. Organizations with the same ID belong to the same collaboration cluster |
-| `degree_centrality` | Float | Normalized connectivity score (0-1) indicating an organization's relative importance within the network. Higher values indicate hub organizations with more connections and greater influence on coordination efforts |
-| `partnerships` | Integer | Total number of partnership connections for each organization (raw count of collaborations) |
 
 ## How it works
 
@@ -303,24 +226,25 @@ The Streamlit app features:
 
 ## Customize this template
 
-### Use your own data
+**Use your own data:**
 
 - Replace the CSV files in the `data/` directory with your own conservation network, keeping the same column names (or update the logic in wildlife_conservation_network.py).
 - Make sure that organizations in **partnerships.csv** only reference valid organization IDs.
 - You can add additional properties to organizations (budget, staff size, years active) by adding columns to the CSV and corresponding properties to the model.
 
-### Extend the model
+**Extend the model:**
 
-**Add weighted partnerships**: Weight edges by collaboration intensity (number of joint projects, funding shared, frequency of interaction). Update `weighted=True` in the Graph definition and add weight values to edges.
+- **Add weighted partnerships**: Weight edges by collaboration intensity (number of joint projects, funding shared, frequency of interaction). Update `weighted=True` in the Graph definition and add weight values to edges.
 
-**Try different community detection algorithms**: RelationalAI supports multiple algorithms:
-- `graph.label_propagation()` - Faster but less accurate for small networks
-- `graph.weakly_connected_component()` - Finds completely disconnected groups
-- Experiment to see which algorithm best reveals your network's structure
+- **Try different community detection algorithms**: RelationalAI supports multiple algorithms:
 
-**Add temporal analysis**: Include partnership start dates to analyze how communities evolve over time.
+  - `graph.label_propagation()` - Faster but less accurate for small networks
+  - `graph.weakly_connected_component()` - Finds completely disconnected groups
+  - Experiment to see which algorithm best reveals your network's structure
 
-**Calculate modularity**: Measure how well the detected communities separate from each other (higher modularity = better community structure).
+- **Add temporal analysis**: Include partnership start dates to analyze how communities evolve over time.
+
+- **Calculate modularity**: Measure how well the detected communities separate from each other (higher modularity = better community structure).
 
 ## Troubleshooting
 
