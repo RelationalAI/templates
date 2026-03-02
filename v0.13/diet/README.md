@@ -255,19 +255,19 @@ for nutrient_name in nutrient_csv.name:
 
 ### Define decision variables, constraints, and objective
 
-Next, it creates one continuous, non-negative decision variable per food (`Food.amount`), enforces nutrient bounds with `require(...)`, and minimizes total cost:
+Next, it creates one continuous, non-negative decision variable per food (`Food.x_amount`), enforces nutrient bounds with `require(...)`, and minimizes total cost:
 
 ```python
 # Create a continuous optimization model.
 s = SolverModel(model, "cont")
 
 # Decision Variable: amount of each food (continuous, non-negative)
-Food.amount = model.Property("{Food} has {amount:float}")
-s.solve_for(Food.amount, name=Food.name, lower=0)
+Food.x_amount = model.Property("{Food} has {amount:float}")
+s.solve_for(Food.x_amount, name=Food.name, lower=0)
 
 # Calculate total quantity of each nutrient across all foods: sum(qty * amount) per nutrient.
 nutrient_total = sum(
-    Food.nutrients["qty"] * Food.amount
+    Food.nutrients["qty"] * Food.x_amount
 ).where(
     Food.nutrients == Nutrient
 ).per(Nutrient)
@@ -280,13 +280,13 @@ nutrient_bounds = require(
 s.satisfy(nutrient_bounds)
 
 # Objective: minimize total cost
-total_cost = sum(Food.cost * Food.amount)
+total_cost = sum(Food.cost * Food.x_amount)
 s.minimize(total_cost)
 ```
 
 ### Solve and print results
 
-Finally, it solves with the HiGHS backend and prints only foods with a non-trivial amount (`Food.amount > 0.001`):
+Finally, it solves with the HiGHS backend and prints only foods with a non-trivial amount (`Food.x_amount > 0.001`):
 
 ```python
 # Solve the model with a time limit of 60 seconds using the HiGHS solver.
@@ -297,7 +297,7 @@ print(f"Status: {s.termination_status}")
 print(f"Minimum cost: ${s.objective_value:.2f}")
 
 # Select the foods with non-trivial amounts in the optimal solution.
-diet_plan = select(Food.name, Food.amount).where(Food.amount > 0.001).to_df()
+diet_plan = select(Food.name, Food.x_amount).where(Food.x_amount > 0.001).to_df()
 
 print("\nOptimal diet:")
 print(diet_plan.to_string(index=False))
@@ -320,7 +320,7 @@ Here are some ideas for how to customize and extend this template to fit your sp
 ### Extend the model
 
 - Add constraints like maximum servings per food or food category requirements.
-- Add an “integer servings” variant by making `Food.amount` an integer variable (and adjusting the model type if needed).
+- Add an “integer servings” variant by making `Food.x_amount` an integer variable (and adjusting the model type if needed).
 
 ### Scale up and productionize
 
@@ -356,7 +356,7 @@ Here are some ideas for how to customize and extend this template to fit your sp
 <details>
   <summary>Why is the output diet empty?</summary>
 
-- The script filters foods with `Food.amount > 0.001`. If all values are tiny, inspect nutrient bounds and costs.
+- The script filters foods with `Food.x_amount > 0.001`. If all values are tiny, inspect nutrient bounds and costs.
 - Confirm the CSVs were read correctly and contain rows.
 
 </details>

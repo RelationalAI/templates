@@ -36,7 +36,7 @@ Prescriptive reasoning helps you:
 ## What you’ll build
 
 - A semantic model with an `Edge` concept loaded from CSV.
-- A continuous decision variable `Edge.flow` on each edge.
+- A continuous decision variable `Edge.x_flow` on each edge.
 - Capacity and conservation constraints defined with `require(...)`.
 - A max-flow objective solved with the **HiGHS** backend.
 
@@ -150,7 +150,7 @@ Each row represents a directed edge from node `i` to node `j` with capacity `cap
 
 ## Model overview
 
-The model defines one concept (`Edge`) and one decision variable (`Edge.flow`).
+The model defines one concept (`Edge`) and one decision variable (`Edge.x_flow`).
 
 ### `Edge`
 
@@ -217,7 +217,7 @@ data(edges_csv).into(Edge, keys=["i", "j"])
 
 ### Define decision variables, constraints, and objective
 
-Then it creates a `SolverModel`, declares `Edge.flow` and marks it as a decision variable with `solve_for(...)`, and models the bounds and conservation constraints with `require(...)`:
+Then it creates a `SolverModel`, declares `Edge.x_flow` and marks it as a decision variable with `solve_for(...)`, and models the bounds and conservation constraints with `require(...)`:
 
 ```python
 # --------------------------------------------------
@@ -230,14 +230,14 @@ Ej = Edge.ref()
 # Create a continuous optimization model.
 s = SolverModel(model, "cont")
 
-# Edge.flow decision variable: flow on each edge.
-Edge.flow = model.Property("{Edge} has {flow:float}")
-s.solve_for(Edge.flow, name=["flow", Edge.i, Edge.j])
+# Edge.x_flow decision variable: flow on each edge.
+Edge.x_flow = model.Property("{Edge} has {flow:float}")
+s.solve_for(Edge.x_flow, name=["flow", Edge.i, Edge.j])
 
 # Constraint: flow must be non-negative and cannot exceed edge capacity.
 bounds = require(
-   Edge.flow >= 0,
-   Edge.flow <= Edge.cap
+   Edge.x_flow >= 0,
+   Edge.x_flow <= Edge.cap
 )
 s.satisfy(bounds)
 
@@ -250,7 +250,7 @@ balance = require(flow_in == flow_out).where(
 s.satisfy(balance)
 
 # Objective: maximize total flow out of the source node.
-total_flow = sum(Edge.flow).where(
+total_flow = sum(Edge.x_flow).where(
    Edge.i == SOURCE_NODE
 )
 s.maximize(total_flow)
@@ -258,7 +258,7 @@ s.maximize(total_flow)
 
 ### Solve and print results
 
-Finally, it solves with `Solver("highs")` and prints the termination status, objective value, and a filtered flow table (only edges with `Edge.flow > 0.001`):
+Finally, it solves with `Solver("highs")` and prints the termination status, objective value, and a filtered flow table (only edges with `Edge.x_flow > 0.001`):
 
 ```python
 # --------------------------------------------------
@@ -271,7 +271,7 @@ s.solve(solver, time_limit_sec=60)
 print(f"Status: {s.termination_status}")
 print(f"Maximum flow: {s.objective_value:.0f}")
 
-flows = select(Edge.i, Edge.j, Edge.flow).where(Edge.flow > 0.001).to_df()
+flows = select(Edge.i, Edge.j, Edge.x_flow).where(Edge.x_flow > 0.001).to_df()
 
 print("\nEdge flows:")
 print(flows.to_string(index=False))
@@ -298,7 +298,7 @@ print(flows.to_string(index=False))
 <details>
   <summary>My <code>Edge flows</code> table is empty</summary>
 
-  - The output is filtered to `Edge.flow > 0.001`; small flows will not display.
+  - The output is filtered to `Edge.x_flow > 0.001`; small flows will not display.
   - If the maximum flow is 0, check that there are edges leaving `SOURCE_NODE = 1` and that their capacities are positive.
 </details>
 

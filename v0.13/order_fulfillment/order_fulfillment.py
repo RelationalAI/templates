@@ -86,13 +86,13 @@ where(
 # Assignment decision concept: shipment quantity for each shipping-cost option.
 Assignment = model.Concept("Assignment")
 Assignment.shipping = model.Property("{Assignment} uses {shipping:ShippingCost}")
-Assignment.qty = model.Property("{Assignment} has {qty:float}")
+Assignment.x_qty = model.Property("{Assignment} has {qty:float}")
 define(Assignment.new(shipping=ShippingCost))
 
 # FCUsage decision concept: whether each fulfillment center is active (for fixed costs).
 FCUsage = model.Concept("FCUsage")
 FCUsage.fc = model.Property("{FCUsage} for {fc:FulfillmentCenter}")
-FCUsage.used = model.Property("{FCUsage} is {used:float}")
+FCUsage.x_used = model.Property("{FCUsage} is {used:float}")
 define(FCUsage.new(fc=FC))
 
 Asn = Assignment.ref()
@@ -101,11 +101,11 @@ s = SolverModel(model, "cont")
 
 # Decision variables: assignment quantity and fulfillment-center usage.
 s.solve_for(
-    Assignment.qty,
+    Assignment.x_qty,
     name=["qty", Assignment.shipping.fc.name, Assignment.shipping.order.customer],
     lower=0,
 )
-s.solve_for(FCUsage.used, type="bin", name=["fc_used", FCUsage.fc.name])
+s.solve_for(FCUsage.x_used, type="bin", name=["fc_used", FCUsage.fc.name])
 
 # Constraint: FC capacity
 fc_total_qty = sum(Asn.qty).where(Asn.shipping.fc == FC).per(FC)
@@ -114,7 +114,7 @@ s.satisfy(capacity_limit)
 
 # Constraint: link FC usage to assignments
 fc_total_qty_for_usage = sum(Asn.qty).where(Asn.shipping.fc == FCUsage.fc).per(FCUsage)
-usage_link = require(fc_total_qty_for_usage <= FCUsage.fc.capacity * FCUsage.used)
+usage_link = require(fc_total_qty_for_usage <= FCUsage.fc.capacity * FCUsage.x_used)
 s.satisfy(usage_link)
 
 # Constraint: each order must be fully fulfilled
@@ -123,8 +123,8 @@ fulfill_all = require(order_fulfilled == Order.quantity)
 s.satisfy(fulfill_all)
 
 # Objective: minimize total cost (shipping + fixed FC costs)
-shipping_cost = sum(Assignment.qty * Assignment.shipping.cost_per_unit)
-fixed_cost = sum(FCUsage.used * FCUsage.fc.fixed_cost)
+shipping_cost = sum(Assignment.x_qty * Assignment.shipping.cost_per_unit)
+fixed_cost = sum(FCUsage.x_used * FCUsage.fc.fixed_cost)
 total_cost = shipping_cost + fixed_cost
 s.minimize(total_cost)
 
@@ -141,11 +141,11 @@ print(f"Total cost (shipping + fixed): ${s.objective_value:.2f}")
 assignments = select(
     Assignment.shipping.fc.name.alias("fulfillment_center"),
     Assignment.shipping.order.customer.alias("customer"),
-    Assignment.qty.alias("quantity")
-).where(Assignment.qty > 0.001).to_df()
+    Assignment.x_qty.alias("quantity")
+).where(Assignment.x_qty > 0.001).to_df()
 
 print("\nAssignments:")
 print(assignments.to_string(index=False))
 
-fc_used = select(FCUsage.fc.name.alias("fc")).where(FCUsage.used > 0.5).to_df()
+fc_used = select(FCUsage.fc.name.alias("fc")).where(FCUsage.x_used > 0.5).to_df()
 print(f"\nActive fulfillment centers: {', '.join(fc_used['fc'].tolist())}")

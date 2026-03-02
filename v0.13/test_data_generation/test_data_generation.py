@@ -71,11 +71,11 @@ Table = model.Concept("Table")
 # Load table data from CSV.
 data(targets_df).into(Table, keys=["table_name"])
 
-# Table.actual_rows decision property: solver-chosen row count per table.
-Table.actual_rows = model.Property("{Table} has actual {actual_rows:float}")
+# Table.x_actual_rows decision property: solver-chosen row count per table.
+Table.x_actual_rows = model.Property("{Table} has actual {actual_rows:float}")
 
-# Table.deviation decision property: absolute deviation from the target.
-Table.deviation = model.Property("{Table} has {deviation:float}")
+# Table.x_deviation decision property: absolute deviation from the target.
+Table.x_deviation = model.Property("{Table} has {deviation:float}")
 
 # Extract foreign key relationships from the schema.
 fk_df = schema_df[schema_df["is_foreign_key"] == True].copy()
@@ -132,7 +132,7 @@ s = SolverModel(model, "cont", use_pb=True)
 
 # Variable: actual row counts for each table
 s.solve_for(
-    Table.actual_rows,
+    Table.x_actual_rows,
     name=["n", Table.table_name],
     lower=Table.min_rows,
     upper=Table.max_rows,
@@ -140,14 +140,14 @@ s.solve_for(
 
 # Variable: deviation from target (for objective)
 s.solve_for(
-    Table.deviation,
+    Table.x_deviation,
     name=["dev", Table.table_name],
     lower=0,
 )
 
 # Constraint: deviation captures |actual - target| (linearized)
-s.satisfy(require(Table.deviation >= Table.actual_rows - Table.target_rows))
-s.satisfy(require(Table.deviation >= Table.target_rows - Table.actual_rows))
+s.satisfy(require(Table.x_deviation >= Table.x_actual_rows - Table.target_rows))
+s.satisfy(require(Table.x_deviation >= Table.target_rows - Table.x_actual_rows))
 
 # Constraint: referential integrity - child rows bounded by parent capacity.
 # These constraints link specific table pairs via their actual_rows variables.
@@ -161,7 +161,7 @@ for fk_info in fk_objs:
         where(
             Table.table_name == child_name,
             Table2.table_name == parent_name
-        ).require(Table.actual_rows <= Table2.actual_rows * fk_info["max"])
+        ).require(Table.x_actual_rows <= Table2.actual_rows * fk_info["max"])
     )
 
     # Lower bound for mandatory participation
@@ -180,7 +180,7 @@ for fk_info in fk_objs:
             where(
                 Table.table_name == child_name,
                 Table2.table_name == parent_name
-            ).require(Table.actual_rows >= Table2.actual_rows * min_per)
+            ).require(Table.x_actual_rows >= Table2.actual_rows * min_per)
         )
 
 # Constraint: coverage requirements
@@ -192,12 +192,12 @@ for fk_info in fk_objs:
             where(
                 Table.table_name == child_name,
                 Table2.table_name == parent_name
-            ).require(Table.actual_rows >= fk_info["coverage"] * Table2.actual_rows)
+            ).require(Table.x_actual_rows >= fk_info["coverage"] * Table2.actual_rows)
         )
 
 # Objective: minimize weighted deviation from targets
 # Weight by priority (higher priority = more important to match target)
-total_deviation = rai_sum(Table.deviation * (11 - Table.priority))
+total_deviation = rai_sum(Table.x_deviation * (11 - Table.priority))
 s.minimize(total_deviation)
 
 # --------------------------------------------------
@@ -212,7 +212,7 @@ print(f"Total weighted deviation: {s.objective_value:.2f}")
 
 # Extract row counts
 row_counts = {}
-results_df = select(Table.table_name, Table.actual_rows, Table.target_rows).to_df()
+results_df = select(Table.table_name, Table.x_actual_rows, Table.target_rows).to_df()
 for _, row in results_df.iterrows():
     actual = int(round(row["actual_rows"]))
     target = int(row["target_rows"])

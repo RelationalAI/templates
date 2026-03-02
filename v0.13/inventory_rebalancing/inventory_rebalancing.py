@@ -93,7 +93,7 @@ where(Site.id == demand_data.site_id).define(
 # Decision concept: transfers on each lane
 Transfer = model.Concept("Transfer")
 Transfer.lane = model.Property("{Transfer} uses {lane:Lane}")
-Transfer.quantity = model.Property("{Transfer} has {quantity:float}")
+Transfer.x_quantity = model.Property("{Transfer} has {quantity:float}")
 define(Transfer.new(lane=Lane))
 
 Tr = Transfer.ref()
@@ -102,10 +102,10 @@ Dm = Demand.ref()
 s = SolverModel(model, "cont")
 
 # Variable: transfer quantity
-s.solve_for(Transfer.quantity, name=["qty", Transfer.lane.source.name, Transfer.lane.dest.name], lower=0)
+s.solve_for(Transfer.x_quantity, name=["qty", Transfer.lane.source.name, Transfer.lane.dest.name], lower=0)
 
 # Constraint: transfer cannot exceed lane capacity
-capacity_limit = require(Transfer.quantity <= Transfer.lane.capacity)
+capacity_limit = require(Transfer.x_quantity <= Transfer.lane.capacity)
 s.satisfy(capacity_limit)
 
 # Constraint: total outbound from source cannot exceed source inventory
@@ -120,7 +120,7 @@ demand_met = require(inbound + local_inv >= Dm.quantity)
 s.satisfy(demand_met)
 
 # Objective: minimize total transfer cost
-total_cost = sum(Transfer.quantity * Transfer.lane.cost_per_unit)
+total_cost = sum(Transfer.x_quantity * Transfer.lane.cost_per_unit)
 s.minimize(total_cost)
 
 # --------------------------------------------------
@@ -136,8 +136,8 @@ print(f"Total transfer cost: ${s.objective_value:.2f}")
 transfers = select(
     Transfer.lane.source.name.alias("from"),
     Transfer.lane.dest.name.alias("to"),
-    Transfer.quantity
-).where(Transfer.quantity > 0.001).to_df()
+    Transfer.x_quantity
+).where(Transfer.x_quantity > 0.001).to_df()
 
 print("\nTransfers:")
 print(transfers.to_string(index=False))

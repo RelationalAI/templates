@@ -88,7 +88,7 @@ where(
 Schedule = model.Concept("Schedule")
 Schedule.machine = model.Property("{Schedule} for {machine:Machine}")
 Schedule.slot = model.Property("{Schedule} in {slot:TimeSlot}")
-Schedule.assigned = model.Property("{Schedule} is {assigned:float}")
+Schedule.x_assigned = model.Property("{Schedule} is {assigned:float}")
 define(Schedule.new(machine=Machine, slot=TimeSlot))
 
 Sch = Schedule.ref()
@@ -98,7 +98,7 @@ Sch2 = Schedule.ref()
 s = SolverModel(model, "cont")
 
 # Variable: binary assignment
-s.solve_for(Schedule.assigned, type="bin", name=["x", Schedule.machine.name, Schedule.slot.day])
+s.solve_for(Schedule.x_assigned, type="bin", name=["x", Schedule.machine.name, Schedule.slot.day])
 
 # Constraint: each machine scheduled exactly once
 machine_scheduled = sum(Sch.assigned).where(Sch.machine == Machine).per(Machine)
@@ -119,7 +119,7 @@ no_conflicts = require(Sch1.assigned + Sch2.assigned <= 1).where(
 s.satisfy(no_conflicts)
 
 # Objective: minimize total maintenance cost (base cost * slot multiplier)
-total_cost = sum(Schedule.assigned * Schedule.machine.failure_cost * Schedule.slot.cost_multiplier)
+total_cost = sum(Schedule.x_assigned * Schedule.machine.failure_cost * Schedule.slot.cost_multiplier)
 s.minimize(total_cost)
 
 # --------------------------------------------------
@@ -135,7 +135,7 @@ print(f"Total maintenance cost: ${s.objective_value:.2f}")
 schedule = select(
     Schedule.machine.name.alias("machine"),
     Schedule.slot.day.alias("day")
-).where(Schedule.assigned > 0.5).to_df()
+).where(Schedule.x_assigned > 0.5).to_df()
 
 print("\nMaintenance schedule:")
 print(schedule.to_string(index=False))

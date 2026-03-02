@@ -1,0 +1,6 @@
+id,name,maintenance_hours,failure_cost,importance
+1,CNC_Mill,4,5000,3
+2,Lathe,3,3000,2
+3,Press,5,8000,3
+4,Welder,2,2000,1
+5,Drill,2,1500,1

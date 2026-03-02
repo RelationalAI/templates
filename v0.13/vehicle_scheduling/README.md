@@ -180,7 +180,7 @@ A vehicle with capacity and cost parameters.
 | `name` | string | No | Used for variable naming and printed output |
 | `capacity` | int | No | Upper bound for the total assigned `Trip.load` |
 | `cost_per_mile` | float | No | Used in the variable cost term |
-| `fixed_cost` | float | No | Charged when `VehicleUsage.used = 1` |
+| `fixed_cost` | float | No | Charged when `VehicleUsage.x_used = 1` |
 
 ### `Trip`
 
@@ -291,13 +291,13 @@ With the entities in place, it defines two decision concepts.
 Assignment = model.Concept("Assignment")
 Assignment.vehicle = model.Property("{Assignment} assigns {vehicle:Vehicle}")
 Assignment.trip = model.Property("{Assignment} to {trip:Trip}")
-Assignment.assigned = model.Property("{Assignment} is {assigned:float}")
+Assignment.x_assigned = model.Property("{Assignment} is {assigned:float}")
 define(Assignment.new(vehicle=Vehicle, trip=Trip))
 
 # VehicleUsage decision concept: tracks whether a vehicle is used.
 VehicleUsage = model.Concept("VehicleUsage")
 VehicleUsage.vehicle = model.Property("{VehicleUsage} for {vehicle:Vehicle}")
-VehicleUsage.used = model.Property("{VehicleUsage} is {used:float}")
+VehicleUsage.x_used = model.Property("{VehicleUsage} is {used:float}")
 define(VehicleUsage.new(vehicle=Vehicle))
 
 assignment = Assignment.ref()
@@ -307,14 +307,14 @@ s = SolverModel(model, "cont")
 
 # Decision variable: assignment (binary 0/1).
 s.solve_for(
-    Assignment.assigned,
+    Assignment.x_assigned,
     type="bin",
     name=["x", Assignment.vehicle.name, Assignment.trip.name],
 )
 
 # Decision variable: vehicle usage (binary 0/1).
 s.solve_for(
-    VehicleUsage.used,
+    VehicleUsage.x_used,
     type="bin",
     name=["used", VehicleUsage.vehicle.name],
 )
@@ -322,7 +322,7 @@ s.solve_for(
 
 ### Add constraints and objective
 
-Then it enforces trip coverage and capacity with `require(...)` and `s.satisfy(...)`, links `VehicleUsage.used` to the number of assigned trips via a Big-M constraint, and minimizes variable + fixed cost:
+Then it enforces trip coverage and capacity with `require(...)` and `s.satisfy(...)`, links `VehicleUsage.x_used` to the number of assigned trips via a Big-M constraint, and minimizes variable + fixed cost:
 
 ```python
 # Constraint: each trip must be assigned to exactly one vehicle.
@@ -343,19 +343,19 @@ s.satisfy(capacity_limit)
 vehicle_trips = sum(assignment.assigned).where(
     assignment.vehicle == VehicleUsage.vehicle
 ).per(VehicleUsage)
-usage_link = require(VehicleUsage.used * MAX_TRIPS_PER_VEHICLE >= vehicle_trips)
+usage_link = require(VehicleUsage.x_used * MAX_TRIPS_PER_VEHICLE >= vehicle_trips)
 s.satisfy(usage_link)
 
 # Objective: minimize total cost.
-variable_cost = sum(Assignment.assigned * Assignment.trip.distance * Assignment.vehicle.cost_per_mile)
-fixed_cost = sum(VehicleUsage.used * VehicleUsage.vehicle.fixed_cost)
+variable_cost = sum(Assignment.x_assigned * Assignment.trip.distance * Assignment.vehicle.cost_per_mile)
+fixed_cost = sum(VehicleUsage.x_used * VehicleUsage.vehicle.fixed_cost)
 total_cost = variable_cost + fixed_cost
 s.minimize(total_cost)
 ```
 
 ### Solve and print results
 
-Finally, it solves the MILP with the HiGHS backend and prints assignments where `Assignment.assigned > 0.5`:
+Finally, it solves the MILP with the HiGHS backend and prints assignments where `Assignment.x_assigned > 0.5`:
 
 ```python
 solver = Solver("highs")
@@ -369,7 +369,7 @@ assignments = select(
     Assignment.trip.name.alias("trip"),
     Assignment.trip.origin.alias("from"),
     Assignment.trip.destination.alias("to")
-).where(Assignment.assigned > 0.5).to_df()
+).where(Assignment.x_assigned > 0.5).to_df()
 
 print("\nVehicle assignments:")
 print(assignments.to_string(index=False))
@@ -444,7 +444,7 @@ print(assignments.to_string(index=False))
 <details>
 <summary>My assignment table is empty</summary>
 
-- This template prints assignments filtered by <code>Assignment.assigned &gt; 0.5</code>.
+- This template prints assignments filtered by <code>Assignment.x_assigned &gt; 0.5</code>.
 - If the solver didn’t find a feasible solution, the decision variables may be unset.
 - Print the status line first and confirm it is <code>OPTIMAL</code> (or at least a feasible status) before inspecting assignments.
 

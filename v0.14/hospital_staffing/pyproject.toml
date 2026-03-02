@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rai-template-hospital-staffing"
+version = "0.0.0"
+description = "RelationalAI template: hospital_staffing"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "relationalai==0.14.2",
+  "pandas",
+]
+
+[tool.setuptools]
+packages = []

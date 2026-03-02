@@ -70,7 +70,7 @@ Connection.source = model.Property("{Connection} from {source:Source}")
 Connection.user = model.Property("{Connection} to {user:User}")
 Connection.max_flow = model.Property("{Connection} has {max_flow:float}")
 Connection.loss_rate = model.Property("{Connection} has {loss_rate:float}")
-Connection.flow = model.Property("{Connection} has {flow:float}")
+Connection.x_flow = model.Property("{Connection} has {flow:float}")
 
 # Load connection data from CSV.
 conn_data = data(read_csv(DATA_DIR / "connections.csv"))
@@ -99,7 +99,7 @@ s = SolverModel(model, "cont")
 
 # Decision variable: flow on each connection (continuous, non-negative).
 s.solve_for(
-    Connection.flow,
+    Connection.x_flow,
     name=["flow", Connection.source.name, Connection.user.name],
     lower=0,
     upper=Connection.max_flow,
@@ -118,7 +118,7 @@ meet_demand = require(effective_inflow >= User.demand)
 s.satisfy(meet_demand)
 
 # Objective: minimize total cost.
-total_cost = sum(Connection.flow * Connection.source.cost_per_unit)
+total_cost = sum(Connection.x_flow * Connection.source.cost_per_unit)
 s.minimize(total_cost)
 
 # --------------------------------------------------
@@ -134,9 +134,9 @@ print(f"Total cost: ${s.objective_value:.2f}")
 allocations = select(
     Connection.source.name.alias("source"),
     Connection.user.name.alias("user"),
-    Connection.flow,
+    Connection.x_flow,
 ).where(
-    Connection.flow > 0.001
+    Connection.x_flow > 0.001
 ).to_df()
 
 print("\nFlow allocations:")

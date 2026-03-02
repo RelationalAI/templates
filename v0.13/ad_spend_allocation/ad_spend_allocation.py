@@ -105,8 +105,8 @@ where(
 # `active` properties represent the decision variables that the solver will determine.
 Allocation = model.Concept("Allocation")
 Allocation.effectiveness = model.Property("{Allocation} uses {effectiveness:Effectiveness}")
-Allocation.spend = model.Property("{Allocation} has {spend:float}")
-Allocation.active = model.Property("{Allocation} is {active:float}")
+Allocation.x_spend = model.Property("{Allocation} has {spend:float}")
+Allocation.x_active = model.Property("{Allocation} is {active:float}")
 
 # Define Allocation entities.
 model.define(Allocation.new(effectiveness=Effectiveness))
@@ -119,7 +119,7 @@ def build_formulation(s):
     """Register variables, constraints, and objective on the solver model."""
     # Variable: spend (continuous, >= 0)
     s.solve_for(
-        Allocation.spend,
+        Allocation.x_spend,
         name=[
             "spend",
             Allocation.effectiveness.channel.name,
@@ -130,7 +130,7 @@ def build_formulation(s):
 
     # Variable: active (binary 0/1)
     s.solve_for(
-        Allocation.active,
+        Allocation.x_active,
         type="bin",
         name=[
             "active",
@@ -141,19 +141,19 @@ def build_formulation(s):
 
     # Constraint: minimum spend per channel when active
     min_spend_bound = require(
-        Allocation.spend >= Allocation.effectiveness.channel.min_spend * Allocation.active
+        Allocation.x_spend >= Allocation.effectiveness.channel.min_spend * Allocation.x_active
     )
     s.satisfy(min_spend_bound)
 
     # Constraint: maximum spend per channel when active
     max_spend_bound = require(
-        Allocation.spend <= Allocation.effectiveness.channel.max_spend * Allocation.active
+        Allocation.x_spend <= Allocation.effectiveness.channel.max_spend * Allocation.x_active
     )
     s.satisfy(max_spend_bound)
 
     # Constraint: per-campaign budget across all channels
     campaign_spend = (
-        sum(Allocation.spend)
+        sum(Allocation.x_spend)
         .where(Allocation.effectiveness.campaign == Campaign)
         .per(Campaign)
     )
@@ -162,7 +162,7 @@ def build_formulation(s):
 
     # Constraint: require at least one active channel per campaign
     campaign_channels = (
-        sum(Allocation.active)
+        sum(Allocation.x_active)
         .where(Allocation.effectiveness.campaign == Campaign)
         .per(Campaign)
     )
@@ -170,11 +170,11 @@ def build_formulation(s):
     s.satisfy(min_channels)
 
     # Constraint: total budget across all campaigns (scenario parameter)
-    total_budget_limit = require(sum(Allocation.spend) <= total_budget)
+    total_budget_limit = require(sum(Allocation.x_spend) <= total_budget)
     s.satisfy(total_budget_limit)
 
     # Objective: maximize total expected conversions
-    total_conversions = sum(Allocation.spend * Allocation.effectiveness.conversion_rate)
+    total_conversions = sum(Allocation.x_spend * Allocation.effectiveness.conversion_rate)
     s.maximize(total_conversions)
 
 # --------------------------------------------------
