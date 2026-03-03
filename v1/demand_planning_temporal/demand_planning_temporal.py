@@ -33,8 +33,6 @@
 from datetime import datetime, timedelta
 from pathlib import Path
 import itertools
-import tempfile
-import os
 
 import pandas as pd
 from pandas import read_csv
@@ -343,7 +341,3 @@ if unmet.empty:
     print("All demand fulfilled!")
 else:
     print(unmet.to_string(index=False))
-
-# Scenario parameters for what-if analysis
-SCENARIO_PARAM = "planning_end"
-SCENARIO_VALUES = ["2026-01-31", "2026-02-28", "2026-03-31"]

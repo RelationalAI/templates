@@ -9,7 +9,7 @@ description = "RelationalAI template: retail_markdown (PyRel v1)"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-  "pyrel==1.0",
+  "relationalai==1.0.0",
   "pandas",
 ]
 

@@ -3,9 +3,9 @@ requires = ["setuptools>=64", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "rai-template-portfolio-balancing"
+name = "rai-template-grid-interconnection"
 version = "0.0.0"
-description = "RelationalAI template: portfolio_balancing (PyRel v1)"
+description = "RelationalAI template: grid_interconnection (PyRel v1)"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [

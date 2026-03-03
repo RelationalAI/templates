@@ -179,10 +179,6 @@ s.minimize(
     sum(Assignment.x_assigned * (max_priority + 1 - Assignment.issue.priority) * Assignment.sprint.number)
 )
 
-# Scenarios (what-if: vary team capacity to see impact on sprint assignments)
-SCENARIO_PARAM = "capacity_multiplier"
-SCENARIO_VALUES = [0.5, 0.75, 1.0]
-
 # --------------------------------------------------
 # Solve and check solution
 # --------------------------------------------------
