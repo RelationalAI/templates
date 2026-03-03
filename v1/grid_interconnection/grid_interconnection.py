@@ -1,6 +1,22 @@
-# data center grid interconnection problem:
-# approve data center interconnection requests and substation upgrades
-# to maximize net revenue within capital budget
+"""Grid interconnection (prescriptive optimization) template.
+
+This script demonstrates a mixed-integer linear optimization (MILP) workflow in
+RelationalAI for planning data center interconnections:
+
+- Load sample CSVs describing substations, interconnection projects, and
+  candidate upgrades.
+- Decide which projects to approve (binary) and which upgrades to select (binary).
+- Enforce capacity feasibility at each substation and a total capital budget.
+- Maximize total net revenue.
+- Run scenario analysis over different capital budget levels.
+
+Run:
+    `python grid_interconnection.py`
+
+Output:
+    Prints the solver termination status, objective value, and tables of approved
+    projects and selected upgrades for each budget scenario.
+"""
 
 from pathlib import Path
 
@@ -13,7 +29,7 @@ model = Model("grid")
 Concept, Property = model.Concept, model.Property
 
 # --------------------------------------------------
-# Define ontology & load data
+# Define semantic model & load data
 # --------------------------------------------------
 
 data_dir = Path(__file__).parent / "data"
@@ -65,7 +81,7 @@ model.define(
 model.define(Upgrade.substation(Substation)).where(Upgrade.substation_id == Substation.id)
 
 # --------------------------------------------------
-# Model the problem
+# Model the decision problem
 # --------------------------------------------------
 
 # Parameters

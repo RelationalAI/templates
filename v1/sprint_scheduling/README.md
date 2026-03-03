@@ -60,7 +60,7 @@ Prescriptive reasoning is well suited here because the problem has combinatorial
 
 1. Download ZIP:
    ```bash
-   curl -L -O https://docs.relational.ai/templates/zips/v1/sprint_scheduling.zip
+   curl -O https://docs.relational.ai/templates/zips/v1/sprint_scheduling.zip
    unzip sprint_scheduling.zip
    cd sprint_scheduling
    ```

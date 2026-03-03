@@ -1,5 +1,21 @@
-# portfolio balancing:
-# minimize portfolio risk for a given return target (Markowitz mean-variance)
+"""Portfolio Balancing (prescriptive optimization) template.
+
+This script demonstrates a Markowitz mean-variance portfolio optimization model in RelationalAI:
+
+- Load expected returns and a covariance matrix from CSV.
+- Model stocks as *concepts* with typed properties and pairwise covariance.
+- Choose non-negative allocations across available stocks.
+- Enforce a budget constraint and a minimum expected return constraint.
+- Minimize portfolio variance (risk).
+- Solve multiple minimum-return scenarios to illustrate the efficient frontier.
+
+Run:
+    `python portfolio_balancing.py`
+
+Output:
+    Prints per-scenario termination status and risk (objective value), a non-trivial
+    allocation table for each scenario, and a summary of scenario results.
+"""
 
 from pathlib import Path
 
@@ -11,7 +27,7 @@ from relationalai.semantics.reasoners.prescriptive import Problem
 model = Model("portfolio")
 
 # --------------------------------------------------
-# Define ontology & load data
+# Define semantic model & load data
 # --------------------------------------------------
 
 data_dir = Path(__file__).parent / "data"
@@ -31,7 +47,7 @@ model.where(Stock.index(covar_data.i), Stock2.index(covar_data.j)).define(
 )
 
 # --------------------------------------------------
-# Model the problem
+# Model the decision problem
 # --------------------------------------------------
 
 # Parameters

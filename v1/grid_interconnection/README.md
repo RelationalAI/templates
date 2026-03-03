@@ -59,7 +59,7 @@ The template includes scenario analysis across three capital budget levels ($1B,
 
 1. Download ZIP:
    ```bash
-   curl -L -O https://docs.relational.ai/templates/zips/v1/grid_interconnection.zip
+   curl -O https://docs.relational.ai/templates/zips/v1/grid_interconnection.zip
    unzip grid_interconnection.zip
    cd grid_interconnection
    ```

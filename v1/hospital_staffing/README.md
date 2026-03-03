@@ -58,7 +58,7 @@ The model captures real-world complexity including per-nurse skill levels, shift
 
 1. Download ZIP:
    ```bash
-   curl -L -O https://docs.relational.ai/templates/zips/v1/hospital_staffing.zip
+   curl -O https://docs.relational.ai/templates/zips/v1/hospital_staffing.zip
    unzip hospital_staffing.zip
    cd hospital_staffing
    ```

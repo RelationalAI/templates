@@ -56,7 +56,7 @@ The model demonstrates several advanced techniques: multi-period inventory flow 
 
 1. Download ZIP:
    ```bash
-   curl -L -O https://docs.relational.ai/templates/zips/v1/supply_chain_transport.zip
+   curl -O https://docs.relational.ai/templates/zips/v1/supply_chain_transport.zip
    unzip supply_chain_transport.zip
    cd supply_chain_transport
    ```

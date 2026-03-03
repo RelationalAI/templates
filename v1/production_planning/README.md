@@ -58,7 +58,7 @@ The scenario analysis loop demonstrates a powerful pattern for what-if planning.
 
 1. Download ZIP:
    ```bash
-   curl -L -O https://docs.relational.ai/templates/zips/v1/production_planning.zip
+   curl -O https://docs.relational.ai/templates/zips/v1/production_planning.zip
    unzip production_planning.zip
    cd production_planning
    ```

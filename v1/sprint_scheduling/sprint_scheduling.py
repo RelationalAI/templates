@@ -1,28 +1,31 @@
-# sprint_scheduling
-# Assign backlog issues to developers across sprints, minimizing weighted completion
-# time while respecting capacity and skill constraints.
-#
-# DEMONSTRATES:
-# 1. Epoch filtering: convert date string to epoch, filter issues_df by created_at
-# 2. Epoch-to-categorical-period mapping: compare issue created_at against sprint start/end epochs
-# 3. Planning horizon as editable parameter with scenario analysis
-# 4. Assignment optimization with binary variables across time periods
-#
-# TEMPORAL FILTERING PATTERNS (epoch integers — Pattern B):
-#
-# Epoch integer timestamps are the dominant pattern in modeler exports.
-# Columns like created_at, updated_at, closed_at store Unix epoch seconds.
-#
-# To filter by date range:
-#   planning_start = "2025-10-01"
-#   start_epoch = int(datetime.strptime(planning_start, "%Y-%m-%d").timestamp())
-#   filtered_df = df[df["created_at"] >= start_epoch]
-#
-# To map epochs to categorical periods (e.g., sprints):
-#   for each issue, find the sprint where sprint.startdate <= issue.created_at < sprint.enddate
-#   assign target_sprint_number = sprint.number (or later)
-#
-# Compare with Pattern A (native date strings) in demand_planning_temporal template.
+"""Sprint Scheduling (prescriptive optimization) template.
+
+This script demonstrates a sprint assignment optimization in RelationalAI with
+epoch-based temporal filtering (Pattern B):
+
+- Load sample CSVs describing developers, sprints, issues, and developer-team skills.
+- Model those entities as *concepts* with typed properties.
+- Filter issues by epoch timestamp (created_at) to scope the planning horizon.
+- Map each issue's created_at epoch to a target sprint via epoch-to-period mapping.
+- Assign each issue to exactly one developer in one sprint (binary variables).
+- Enforce developer capacity per sprint and skill-matching constraints.
+- Minimize weighted completion time (high-priority issues penalized more for delay).
+
+Temporal filtering pattern (epoch integers -- Pattern B):
+- Convert date-range boundaries to Unix epoch seconds.
+- Filter event rows by epoch BEFORE loading into the model.
+- Map epochs to categorical periods (sprints) by comparing against sprint
+  start/end epochs.
+- Compare with Pattern A (native date strings) in the demand_planning_temporal
+  template.
+
+Run:
+    `python sprint_scheduling.py`
+
+Output:
+    Prints the solver termination status, objective value, planning horizon
+    summary, sprint assignments table, and sprint workload summary.
+"""
 
 from datetime import datetime
 from pathlib import Path
@@ -49,7 +52,7 @@ start_epoch = int(datetime.strptime(planning_start, "%Y-%m-%d").timestamp())
 end_epoch = int(datetime.strptime(planning_end, "%Y-%m-%d").timestamp())
 
 # --------------------------------------------------
-# Define ontology & load data
+# Define semantic model & load data
 # --------------------------------------------------
 
 data_dir = Path(__file__).parent / "data"
@@ -146,7 +149,7 @@ model.define(
 )
 
 # --------------------------------------------------
-# Model the problem
+# Model the decision problem
 # --------------------------------------------------
 
 s = Problem(model, Float)

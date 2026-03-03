@@ -56,7 +56,7 @@ After determining row counts, the script generates actual test data records with
 
 1. Download ZIP:
    ```bash
-   curl -L -O https://docs.relational.ai/templates/zips/v1/test_data_generation.zip
+   curl -O https://docs.relational.ai/templates/zips/v1/test_data_generation.zip
    unzip test_data_generation.zip
    cd test_data_generation
    ```

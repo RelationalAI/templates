@@ -1,5 +1,25 @@
-# ad spend allocation problem:
-# allocate budget across channels and campaigns to maximize conversions
+"""Ad spend allocation (prescriptive optimization) template.
+
+This script demonstrates a mixed-integer linear optimization (MILP) workflow
+in RelationalAI:
+
+- Load sample CSVs describing marketing channels, campaigns, and channel-campaign
+  effectiveness (conversion rate).
+- Model those entities as *concepts* with typed properties.
+- Create an `Allocation` decision concept with two decision variables per
+  channel-campaign pair: `spend` (continuous) and `active` (binary).
+- Add constraints for channel min/max spend (when active), per-campaign budget,
+  and "at least one channel per campaign" coverage.
+- Maximize total expected conversions: sum(spend * conversion_rate).
+- Run scenario analysis over different total budget levels.
+
+Run:
+    `python ad_spend_allocation.py`
+
+Output:
+    Prints the solver termination status, objective value, and a table of
+    non-trivial allocations for each budget scenario.
+"""
 
 from pathlib import Path
 
@@ -12,7 +32,7 @@ model = Model("ad_spend")
 Concept, Property = model.Concept, model.Property
 
 # --------------------------------------------------
-# Define ontology & load data
+# Define semantic model & load data
 # --------------------------------------------------
 
 data_dir = Path(__file__).parent / "data"
@@ -50,7 +70,7 @@ model.define(Effectiveness.channel(Channel)).where(Effectiveness.channel_id == C
 model.define(Effectiveness.campaign(Campaign)).where(Effectiveness.campaign_id == Campaign.id)
 
 # --------------------------------------------------
-# Model the problem
+# Model the decision problem
 # --------------------------------------------------
 
 # Decision concept: spend allocation per channel-campaign pair

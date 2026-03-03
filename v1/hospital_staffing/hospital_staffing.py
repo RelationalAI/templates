@@ -1,5 +1,21 @@
-# hospital staffing problem:
-# minimize overtime cost + overflow penalty for unmet patient demand
+"""Hospital staffing (prescriptive optimization) template.
+
+This script models assigning nurses to shifts while minimizing overtime costs
+and overflow penalties from unmet patient demand in RelationalAI:
+
+- Load sample CSVs describing nurses, shifts, and nurse-shift availability.
+- Create decision variables for nurse-shift assignments, overtime hours,
+  patients served, and unmet demand per shift.
+- Enforce availability, coverage, skill, overtime, and capacity constraints.
+- Minimize overtime cost + overflow penalty for unserved patients.
+
+Run:
+    `python hospital_staffing.py`
+
+Output:
+    Prints the solver termination status, objective value, overtime assignments,
+    patient throughput by shift, and staff assignments.
+"""
 
 from pathlib import Path
 
@@ -12,7 +28,7 @@ model = Model("hospital_staffing")
 Concept, Property = model.Concept, model.Property
 
 # --------------------------------------------------
-# Define ontology & load data
+# Define semantic model & load data
 # --------------------------------------------------
 
 data_dir = Path(__file__).parent / "data"
@@ -58,7 +74,7 @@ model.define(Availability.nurse(Nurse)).where(Availability.nurse_id == Nurse.id)
 model.define(Availability.shift(Shift)).where(Availability.shift_id == Shift.id)
 
 # --------------------------------------------------
-# Model the problem
+# Model the decision problem
 # --------------------------------------------------
 
 # Decision concept: assignments of nurses to shifts

@@ -60,7 +60,7 @@ Prescriptive reasoning makes this practical because the solver simultaneously ba
 
 1. Download ZIP:
    ```bash
-   curl -L -O https://docs.relational.ai/templates/zips/v1/demand_planning_temporal.zip
+   curl -O https://docs.relational.ai/templates/zips/v1/demand_planning_temporal.zip
    unzip demand_planning_temporal.zip
    cd demand_planning_temporal
    ```

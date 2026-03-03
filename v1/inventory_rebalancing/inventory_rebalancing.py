@@ -1,5 +1,20 @@
-# inventory rebalancing problem:
-# transfer inventory between sites to meet demand at minimum cost
+"""Inventory rebalancing (prescriptive optimization) template.
+
+This script demonstrates a linear optimization problem in RelationalAI:
+
+- Load sample CSVs describing sites, transfer lanes, and demand.
+- Model sites, lanes, and demand as *concepts* with typed properties.
+- Choose non-negative transfer quantities subject to capacity and inventory limits.
+- Satisfy demand at each destination site.
+- Minimize total transfer cost.
+
+Run:
+    `python inventory_rebalancing.py`
+
+Output:
+    Prints the solver termination status, total transfer cost, and a table of
+    non-trivial transfers.
+"""
 
 from pathlib import Path
 
@@ -12,7 +27,7 @@ model = Model("inventory_rebalancing")
 Concept, Property = model.Concept, model.Property
 
 # --------------------------------------------------
-# Define ontology & load data
+# Define semantic model & load data
 # --------------------------------------------------
 
 data_dir = Path(__file__).parent / "data"
@@ -60,7 +75,7 @@ model.define(
 model.define(Demand.site(Site)).where(Demand.site_id == Site.id)
 
 # --------------------------------------------------
-# Model the problem
+# Model the decision problem
 # --------------------------------------------------
 
 # Decision concept: transfers on each lane

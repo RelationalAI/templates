@@ -1,5 +1,22 @@
-# vehicle scheduling problem:
-# assign trips to vehicles minimizing total cost
+"""Vehicle Scheduling (prescriptive optimization) template.
+
+This script demonstrates a mixed-integer linear optimization (MILP) workflow
+in RelationalAI:
+
+- Load sample CSVs describing vehicles and trips.
+- Model vehicles and trips as *concepts* with typed properties.
+- Decide which vehicle is assigned to each trip (binary assignment variables).
+- Track vehicle usage with binary indicator variables.
+- Enforce trip coverage and vehicle capacity constraints.
+- Minimize total cost (variable distance cost plus fixed vehicle usage cost).
+
+Run:
+    `python vehicle_scheduling.py`
+
+Output:
+    Prints the solver termination status, objective value, and a table of
+    vehicle-trip assignments.
+"""
 
 from pathlib import Path
 
@@ -12,7 +29,7 @@ model = Model("vehicle_scheduling")
 Concept, Property = model.Concept, model.Property
 
 # --------------------------------------------------
-# Define ontology & load data
+# Define semantic model & load data
 # --------------------------------------------------
 
 data_dir = Path(__file__).parent / "data"
@@ -39,7 +56,7 @@ trip_csv = read_csv(data_dir / "trips.csv")
 model.define(Trip.new(model.data(trip_csv).to_schema()))
 
 # --------------------------------------------------
-# Model the problem
+# Model the decision problem
 # --------------------------------------------------
 
 # Decision concept: assignments of vehicles to trips

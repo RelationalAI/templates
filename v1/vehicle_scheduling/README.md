@@ -55,7 +55,7 @@ The approach generalizes to larger fleets and trip sets, making it a practical s
 
 1. Download ZIP:
    ```bash
-   curl -L -O https://docs.relational.ai/templates/zips/v1/vehicle_scheduling.zip
+   curl -O https://docs.relational.ai/templates/zips/v1/vehicle_scheduling.zip
    unzip vehicle_scheduling.zip
    cd vehicle_scheduling
    ```

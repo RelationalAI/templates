@@ -58,7 +58,7 @@ The template includes scenario analysis that sweeps over three total budget leve
 
 1. Download ZIP:
    ```bash
-   curl -L -O https://docs.relational.ai/templates/zips/v1/ad_spend_allocation.zip
+   curl -O https://docs.relational.ai/templates/zips/v1/ad_spend_allocation.zip
    unzip ad_spend_allocation.zip
    cd ad_spend_allocation
    ```

@@ -56,7 +56,7 @@ The formulation is a classic network flow linear program, making it an accessibl
 
 1. Download ZIP:
    ```bash
-   curl -L -O https://docs.relational.ai/templates/zips/v1/water_allocation.zip
+   curl -O https://docs.relational.ai/templates/zips/v1/water_allocation.zip
    unzip water_allocation.zip
    cd water_allocation
    ```

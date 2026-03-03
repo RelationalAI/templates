@@ -1,5 +1,21 @@
-# test data generation problem:
-# determine optimal row counts for test database tables satisfying schema constraints
+"""Test Data Generation (prescriptive optimization) template.
+
+This script demonstrates an LP-based test data sizing workflow in RelationalAI:
+
+- Load schema definitions, referential integrity constraints, and row-count targets
+  from CSV.
+- Model database tables as *concepts* with target, min, and max row counts.
+- Solve an LP to choose feasible table row counts close to targets, respecting
+  foreign key relationships, cardinality bounds, and coverage requirements.
+- Generate synthetic records consistent with the solved row counts.
+
+Run:
+    `python test_data_generation.py`
+
+Output:
+    Prints the solver status, total weighted deviation, optimal row counts per
+    table, and a small sample of generated rows for each table.
+"""
 
 from pathlib import Path
 import random
@@ -16,7 +32,7 @@ model = Model("test_data_generation")
 Concept, Property = model.Concept, model.Property
 
 # --------------------------------------------------
-# Define ontology & load data
+# Define semantic model & load data
 # --------------------------------------------------
 
 data_dir = Path(__file__).parent / "data"
@@ -101,7 +117,7 @@ for _, fk_row in fk_df.iterrows():
     })
 
 # --------------------------------------------------
-# Model the problem
+# Model the decision problem
 # --------------------------------------------------
 
 s = Problem(model, Float)

@@ -55,7 +55,7 @@ The template also demonstrates scenario analysis by scaling nutritional requirem
 
 1. Download ZIP:
    ```bash
-   curl -L -O https://docs.relational.ai/templates/zips/v1/diet.zip
+   curl -O https://docs.relational.ai/templates/zips/v1/diet.zip
    unzip diet.zip
    cd diet
    ```

@@ -55,7 +55,7 @@ The template uses a 6-node directed graph with 9 edges, where node 1 is the sour
 
 1. Download ZIP:
    ```bash
-   curl -L -O https://docs.relational.ai/templates/zips/v1/network_flow.zip
+   curl -O https://docs.relational.ai/templates/zips/v1/network_flow.zip
    unzip network_flow.zip
    cd network_flow
    ```

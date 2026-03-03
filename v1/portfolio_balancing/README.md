@@ -57,7 +57,7 @@ The template also demonstrates scenario analysis by solving across multiple retu
 
 1. Download ZIP:
    ```bash
-   curl -L -O https://docs.relational.ai/templates/zips/v1/portfolio_balancing.zip
+   curl -O https://docs.relational.ai/templates/zips/v1/portfolio_balancing.zip
    unzip portfolio_balancing.zip
    cd portfolio_balancing
    ```

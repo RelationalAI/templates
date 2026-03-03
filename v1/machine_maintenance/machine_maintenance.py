@@ -1,5 +1,21 @@
-# machine maintenance problem:
-# schedule preventive maintenance minimizing downtime cost
+"""Machine maintenance (prescriptive optimization) template.
+
+This script demonstrates a mixed-integer linear optimization (MILP) scheduling
+workflow in RelationalAI:
+
+- Load sample CSVs describing machines, time slots, and machine conflict pairs.
+- Create a binary decision variable for assigning each machine to a time slot.
+- Add constraints for exactly-once scheduling, per-slot crew-hour capacity, and
+  conflict exclusions.
+- Minimize total expected maintenance cost.
+
+Run:
+    `python machine_maintenance.py`
+
+Output:
+    Prints the solver termination status, objective value, and a table
+    describing the selected machine-to-day schedule.
+"""
 
 from pathlib import Path
 
@@ -12,7 +28,7 @@ model = Model("machine_maintenance")
 Concept, Property = model.Concept, model.Property
 
 # --------------------------------------------------
-# Define ontology & load data
+# Define semantic model & load data
 # --------------------------------------------------
 
 data_dir = Path(__file__).parent / "data"
@@ -47,7 +63,7 @@ model.define(Conflict.new(machine1=Machine, machine2=OtherMachine)).where(
 )
 
 # --------------------------------------------------
-# Model the problem
+# Model the decision problem
 # --------------------------------------------------
 
 # Decision concept: schedule assignments of machines to time slots

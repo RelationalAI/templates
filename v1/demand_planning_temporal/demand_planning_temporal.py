@@ -1,34 +1,31 @@
-# demand planning temporal problem:
-# plan weekly production and inventory across sites over a date-filtered planning horizon
-# to minimize total cost (production + holding) while meeting demand
-#
-# DEMONSTRATES:
-# 1. Date filtering: .where(due_date >= planning_start) to scope to planning horizon
-# 2. Date-to-period mapping: due_date -> week number for std.common.range() periods
-# 3. Multi-period optimization: inventory flow conservation inv[t] = inv[t-1] + produced[t] - demand[t]
-# 4. Initial/terminal conditions: starting inventory and end-of-horizon targets
-# 5. Planning horizon as editable parameter
-#
-# TEMPORAL FILTERING PATTERNS (two formats):
-#
-# Pattern A — Native date columns (used in this template):
-#   .where(DemandOrder.due_date >= '2025-11-01', DemandOrder.due_date <= '2026-02-28')
-#   Data has string/date columns like "due_date", "order_date", "ship_date"
-#
-# Pattern B — Epoch integer timestamps (common in modeler exports):
-#   .where(GitHubPullRequest.created_at >= 1759302000, GitHubPullRequest.created_at <= 1767254399)
-#   Data has integer columns like "created_at", "updated_at", "closed_at" storing Unix epoch seconds
-#   Convert date range to epochs: int(datetime.strptime("2025-10-01", "%Y-%m-%d").timestamp())
-#   Common epoch column names: created_at, updated_at, closed_at, merged_at, submitted_at,
-#     started_at, completed_at, finished_at, author_date, committer_date
-#
-# Both patterns scope event data to the planning horizon BEFORE entering the solver.
-# For epoch timestamps, apply the filter in .where() clauses on constraints:
-#   s.satisfy(model.require(
-#       sum(Task.x_assigned) <= Worker.capacity
-#   ).where(
-#       Task.created_at >= start_epoch, Task.created_at <= end_epoch
-#   ))
+"""Demand Planning Temporal (prescriptive optimization) template.
+
+This script demonstrates a multi-period production and inventory planning
+optimization in RelationalAI with temporal filtering:
+
+- Load sample CSVs describing sites, SKUs, demand orders, and production capacity.
+- Model those entities as *concepts* with typed properties.
+- Filter demand orders by a configurable date-range planning horizon (Pattern A:
+  native date columns) and map dates to integer week periods.
+- Solve a multi-period LP with inventory flow conservation:
+  inv[t] = inv[t-1] + production[t] - demand[t].
+- Enforce production capacity, service level, and initial inventory conditions.
+- Minimize total cost (production + holding + unmet demand penalty).
+
+Temporal filtering patterns demonstrated:
+- Pattern A (native date columns, used here): filter by due_date string comparisons,
+  then map dates to integer week numbers for std.common.range() periods.
+- Pattern B (epoch integer timestamps, shown in comments): filter by Unix epoch
+  seconds on columns like created_at, updated_at. See the sprint_scheduling
+  template for a working epoch example.
+
+Run:
+    `python demand_planning_temporal.py`
+
+Output:
+    Prints the solver termination status, total cost, planning horizon summary,
+    production plan, inventory levels, and unmet demand.
+"""
 
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -62,7 +59,7 @@ min_service_level = 0.95  # Must fulfill at least 95% of demand
 safety_stock_weeks = 1    # Maintain at least 1 week of average demand as safety stock
 
 # --------------------------------------------------
-# Define ontology & load data
+# Define semantic model & load data
 # --------------------------------------------------
 
 data_dir = Path(__file__).parent / "data"
@@ -179,7 +176,7 @@ weekly_demand = (
 )
 
 # --------------------------------------------------
-# Model the problem (multi-period with flow conservation)
+# Model the decision problem (multi-period with flow conservation)
 # --------------------------------------------------
 
 # Time periods via std.common.range() — integer weeks mapped from date range
@@ -311,7 +308,7 @@ unmet_cost = unmet_penalty * DemandOrder.x_unmet
 s.minimize(sum(model.union(prod_cost, hold_cost, unmet_cost)))
 
 # --------------------------------------------------
-# Solve and inspect results
+# Solve and check solution
 # --------------------------------------------------
 
 s.display()

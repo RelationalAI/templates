@@ -1,5 +1,23 @@
-# production planning problem:
-# schedule production on machines to meet demand and maximize profit
+"""Production Planning (prescriptive optimization) template.
+
+This script demonstrates a mixed-integer linear optimization (MILP) workflow
+in RelationalAI:
+
+- Load sample CSVs describing products, machines, and machine-product production rates.
+- Model those entities as *concepts* with typed properties.
+- Create a Production decision concept with an integer decision variable for each
+  machine-product pair.
+- Add constraints for machine hour capacity and product demand satisfaction.
+- Maximize total profit, with scenario analysis over demand multipliers.
+
+Run:
+    `python production_planning.py`
+
+Output:
+    Prints the solver termination status, objective value, and a table of
+    non-trivial production quantities for each scenario, followed by a scenario
+    summary table.
+"""
 
 from pathlib import Path
 
@@ -12,7 +30,7 @@ model = Model("production_planning")
 Concept, Property = model.Concept, model.Property
 
 # --------------------------------------------------
-# Define ontology & load data
+# Define semantic model & load data
 # --------------------------------------------------
 
 data_dir = Path(__file__).parent / "data"
@@ -45,7 +63,7 @@ model.define(
 ).where(Machine.id == rates_data.machine_id, Product.id == rates_data.product_id)
 
 # --------------------------------------------------
-# Model the problem
+# Model the decision problem
 # --------------------------------------------------
 
 # Decision concept: production quantities for each machine/product

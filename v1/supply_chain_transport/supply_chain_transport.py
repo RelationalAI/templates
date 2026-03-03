@@ -1,5 +1,22 @@
-# supply chain transport problem:
-# minimize inventory holding and transport costs with TL/LTL mode selection
+"""Supply Chain Transport (prescriptive optimization) template.
+
+This script demonstrates a multi-mode transportation optimization model in RelationalAI:
+
+- Load sample CSVs describing freight groups with inventory and transport time windows.
+- Model freight groups, transport types (TL/LTL), and LTL cost segments as *concepts*
+  with typed properties.
+- Choose shipment quantities, transport mode indicators, and arrival days per freight group.
+- Enforce inventory flow conservation, all-or-nothing shipment, capacity limits, and
+  piecewise-linear LTL cost structure.
+- Minimize total cost (inventory holding + TL fixed cost + LTL variable cost).
+
+Run:
+    `python supply_chain_transport.py`
+
+Output:
+    Prints the solver termination status, total cost, and tables showing inventory
+    levels, transport quantities, and arrival days.
+"""
 
 from pathlib import Path
 
@@ -12,7 +29,7 @@ model = Model("supply_chain_transport")
 Concept, Property = model.Concept, model.Property
 
 # --------------------------------------------------
-# Define ontology & load data
+# Define semantic model & load data
 # --------------------------------------------------
 
 data_dir = Path(__file__).parent / "data"
@@ -54,7 +71,7 @@ model.define(seg1, seg1.limit(6000.0), seg1.cost(0.18))
 model.define(seg2, seg2.limit(7000.0), seg2.cost(0.12))
 
 # --------------------------------------------------
-# Model the problem
+# Model the decision problem
 # --------------------------------------------------
 
 departure_days = std.common.range(dep_start, dep_end + 1)

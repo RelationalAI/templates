@@ -59,7 +59,7 @@ The objective maximizes total revenue from sales plus the salvage value of unsol
 
 1. Download ZIP:
    ```bash
-   curl -L -O https://docs.relational.ai/templates/zips/v1/retail_markdown.zip
+   curl -O https://docs.relational.ai/templates/zips/v1/retail_markdown.zip
    unzip retail_markdown.zip
    cd retail_markdown
    ```

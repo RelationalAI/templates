@@ -57,7 +57,7 @@ The template also demonstrates scenario analysis by sweeping over different mini
 
 1. Download ZIP:
    ```bash
-   curl -L -O https://docs.relational.ai/templates/zips/v1/shift_assignment.zip
+   curl -O https://docs.relational.ai/templates/zips/v1/shift_assignment.zip
    unzip shift_assignment.zip
    cd shift_assignment
    ```

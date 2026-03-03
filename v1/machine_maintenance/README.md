@@ -57,7 +57,7 @@ The model demonstrates a classic assignment problem with side constraints, makin
 
 1. Download ZIP:
    ```bash
-   curl -L -O https://docs.relational.ai/templates/zips/v1/machine_maintenance.zip
+   curl -O https://docs.relational.ai/templates/zips/v1/machine_maintenance.zip
    unzip machine_maintenance.zip
    cd machine_maintenance
    ```

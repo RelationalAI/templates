@@ -58,7 +58,7 @@ This is a facility location and allocation problem, a foundational pattern in lo
 
 1. Download ZIP:
    ```bash
-   curl -L -O https://docs.relational.ai/templates/zips/v1/order_fulfillment.zip
+   curl -O https://docs.relational.ai/templates/zips/v1/order_fulfillment.zip
    unzip order_fulfillment.zip
    cd order_fulfillment
    ```

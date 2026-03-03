@@ -1,5 +1,22 @@
-# supplier reliability problem:
-# select suppliers to meet demand balancing cost and reliability
+"""Supplier Reliability (prescriptive optimization) template.
+
+This script demonstrates a sourcing optimization model in RelationalAI that
+balances cost and supplier reliability:
+
+- Load sample CSVs describing suppliers, products, and supplier-product supply options.
+- Model those entities as *concepts* with typed properties.
+- Choose non-negative order quantities for each supply option.
+- Enforce supplier capacity limits and product demand satisfaction.
+- Minimize total cost, with scenario analysis that optionally excludes a supplier
+  as a disruption scenario.
+
+Run:
+    `python supplier_reliability.py`
+
+Output:
+    Prints the solver termination status and an order plan per scenario, then a
+    scenario summary table with termination status and objective value.
+"""
 
 from pathlib import Path
 
@@ -12,7 +29,7 @@ model = Model("supplier_reliability")
 Concept, Property = model.Concept, model.Property
 
 # --------------------------------------------------
-# Define ontology & load data
+# Define semantic model & load data
 # --------------------------------------------------
 
 data_dir = Path(__file__).parent / "data"
@@ -46,7 +63,7 @@ model.define(
 ).where(Supplier.id == options_data.supplier_id, Product.id == options_data.product_id)
 
 # --------------------------------------------------
-# Model the problem
+# Model the decision problem
 # --------------------------------------------------
 
 # Decision concept: orders placed via each supply option

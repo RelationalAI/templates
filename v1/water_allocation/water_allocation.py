@@ -1,5 +1,20 @@
-# water allocation problem:
-# minimize cost of distributing water from sources to users
+"""Water Allocation (prescriptive optimization) template.
+
+This script demonstrates a network flow optimization model in RelationalAI:
+
+- Load sample CSVs describing water sources, users (demand points), and connections.
+- Model those entities as *concepts* with typed properties.
+- Choose a non-negative flow on each connection to meet all user demands.
+- Enforce source capacity limits, connection flow limits, and transmission losses.
+- Minimize total sourcing cost.
+
+Run:
+    `python water_allocation.py`
+
+Output:
+    Prints the solver termination status, objective value, and a table of
+    non-trivial flow allocations.
+"""
 
 from pathlib import Path
 
@@ -12,7 +27,7 @@ model = Model("water_allocation")
 Concept, Property = model.Concept, model.Property
 
 # --------------------------------------------------
-# Define ontology & load data
+# Define semantic model & load data
 # --------------------------------------------------
 
 data_dir = Path(__file__).parent / "data"
@@ -48,7 +63,7 @@ model.define(
 ).where(Source.id == conn_data.source_id, User.id == conn_data.user_id)
 
 # --------------------------------------------------
-# Model the problem
+# Model the decision problem
 # --------------------------------------------------
 
 ConnectionRef = Connection.ref()

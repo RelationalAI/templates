@@ -1,5 +1,23 @@
-# retail markdown problem:
-# set discount levels across weeks to maximize revenue while clearing inventory
+"""Retail markdown (prescriptive optimization) template.
+
+This script demonstrates a retail markdown mixed-integer linear optimization (MILP)
+workflow in RelationalAI:
+
+- Load sample CSVs describing products, discount levels, and weekly demand multipliers.
+- Model products, discounts, and weeks as *concepts* with typed properties.
+- Choose exactly one discount level per product per week (binary selection).
+- Enforce a price ladder so discounts can only increase over time.
+- Bound weekly sales by demand (base demand x discount lift x weekly multiplier).
+- Track cumulative sales and ensure inventory is not exceeded.
+- Maximize total revenue from discounted sales plus salvage value of leftover inventory.
+
+Run:
+    `python retail_markdown.py`
+
+Output:
+    Prints the solver termination status, objective value (sales + salvage), and
+    three tables showing selected discounts, sales, and cumulative sales.
+"""
 
 from pathlib import Path
 
@@ -11,7 +29,7 @@ from relationalai.semantics.reasoners.prescriptive import Problem
 model = Model("retail_markdown")
 
 # --------------------------------------------------
-# Define ontology & load data
+# Define semantic model & load data
 # --------------------------------------------------
 
 data_dir = Path(__file__).parent / "data"
@@ -44,7 +62,7 @@ num_weeks = model.Relationship(f"{Integer}")
 model.define(num_weeks(count(Week)))
 
 # --------------------------------------------------
-# Model the problem
+# Model the decision problem
 # --------------------------------------------------
 
 # Helper refs

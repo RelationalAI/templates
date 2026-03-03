@@ -1,5 +1,21 @@
-# order fulfillment problem:
-# assign orders to fulfillment centers minimizing total cost
+"""Order fulfillment (prescriptive optimization) template.
+
+This script demonstrates a mixed-integer linear optimization problem in
+RelationalAI:
+
+- Load fulfillment centers, orders, and shipping costs from CSV.
+- Choose shipment quantities for each fulfillment-center/order pair.
+- Enforce fulfillment and capacity constraints.
+- Pay a fixed cost for each fulfillment center that is used.
+- Minimize total cost (shipping + fixed costs).
+
+Run:
+    `python order_fulfillment.py`
+
+Output:
+    Prints the solver termination status, objective value, a table of non-trivial
+    assignments, and the active fulfillment centers.
+"""
 
 from pathlib import Path
 
@@ -12,7 +28,7 @@ model = Model("order_fulfillment")
 Concept, Property = model.Concept, model.Property
 
 # --------------------------------------------------
-# Define ontology & load data
+# Define semantic model & load data
 # --------------------------------------------------
 
 data_dir = Path(__file__).parent / "data"
@@ -46,7 +62,7 @@ model.define(
 ).where(FC.id == costs_data.fc_id, Order.id == costs_data.order_id)
 
 # --------------------------------------------------
-# Model the problem
+# Model the decision problem
 # --------------------------------------------------
 
 # Decision concept: assignments of orders to fulfillment centers

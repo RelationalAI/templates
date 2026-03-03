@@ -1,5 +1,20 @@
-# network flow problem:
-# find maximum flow from source to sink in a capacitated network
+"""Network Flow (prescriptive optimization) template.
+
+This script demonstrates a classic maximum-flow linear optimization model in RelationalAI:
+
+- Load a capacitated directed network from CSV.
+- Model edges as *concepts* with integer node indices and capacity.
+- Choose a non-negative flow on each edge bounded by capacity.
+- Enforce flow conservation at interior nodes.
+- Maximize total flow out of the source node.
+
+Run:
+    `python network_flow.py`
+
+Output:
+    Prints the solver termination status, maximum flow value, and a table of
+    edges with non-trivial flow.
+"""
 
 from pathlib import Path
 
@@ -11,7 +26,7 @@ from relationalai.semantics.reasoners.prescriptive import Problem
 model = Model("network_flow")
 
 # --------------------------------------------------
-# Define ontology & load data
+# Define semantic model & load data
 # --------------------------------------------------
 
 data_dir = Path(__file__).parent / "data"
@@ -23,7 +38,7 @@ edge_csv = read_csv(data_dir / "edges.csv")
 model.define(Edge.new(model.data(edge_csv).to_schema()))
 
 # --------------------------------------------------
-# Model the problem
+# Model the decision problem
 # --------------------------------------------------
 
 s = Problem(model, Float)

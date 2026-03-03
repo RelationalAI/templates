@@ -1,5 +1,21 @@
-# shift assignment problem:
-# assign workers to shifts based on availability to meet coverage requirements
+"""Shift Assignment (prescriptive optimization) template.
+
+This script demonstrates a constraint satisfaction / feasibility problem in RelationalAI:
+
+- Load sample CSVs describing workers, shifts, and worker-shift availability.
+- Model workers and shifts as *concepts* with typed properties and an availability
+  relationship.
+- Choose a binary assignment variable for each available worker-shift pair.
+- Enforce minimum coverage per shift and a maximum number of shifts per worker.
+- Solve multiple minimum-coverage scenarios to illustrate what-if analysis.
+
+Run:
+    `python shift_assignment.py`
+
+Output:
+    Prints per-scenario termination status and a table of assignments, followed
+    by a scenario analysis summary.
+"""
 
 from pathlib import Path
 
@@ -11,7 +27,7 @@ from relationalai.semantics.reasoners.prescriptive import Problem
 model = Model("shift_assignment")
 
 # --------------------------------------------------
-# Define ontology & load data
+# Define semantic model & load data
 # --------------------------------------------------
 
 data_dir = Path(__file__).parent / "data"
@@ -39,7 +55,7 @@ model.define(Worker.available_for(Shift)).where(
 )
 
 # --------------------------------------------------
-# Model the problem
+# Model the decision problem
 # --------------------------------------------------
 
 # Parameters

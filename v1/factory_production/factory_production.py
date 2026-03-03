@@ -1,5 +1,20 @@
-# factory production problem:
-# maximize profit from production with limited resource availability per factory
+"""Factory production (prescriptive optimization) template.
+
+This script demonstrates a linear optimization problem in RelationalAI:
+
+- Load sample CSVs describing factories and products with production rates and profit.
+- Model factories and products as *concepts* with typed properties.
+- Choose non-negative production quantities for each product, bounded by demand.
+- Constrain total resource usage per factory by available capacity.
+- Maximize total profit per factory via scenario analysis.
+
+Run:
+    `python factory_production.py`
+
+Output:
+    Prints per-factory termination status, profit, and a production plan table,
+    followed by a factory production summary.
+"""
 
 from pathlib import Path
 
@@ -12,7 +27,7 @@ model = Model("factory_production")
 Concept, Property = model.Concept, model.Property
 
 # --------------------------------------------------
-# Define ontology & load data
+# Define semantic model & load data
 # --------------------------------------------------
 
 data_dir = Path(__file__).parent / "data"
@@ -43,7 +58,7 @@ model.define(Product.factory(Factory)).where(
 )
 
 # --------------------------------------------------
-# Model the problem
+# Model the decision problem
 # --------------------------------------------------
 
 # Variable: quantity[product] = amount produced (bounded by demand)

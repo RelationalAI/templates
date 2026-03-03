@@ -1,5 +1,20 @@
-# traveling salesman problem:
-# find shortest route visiting all cities exactly once (MTZ formulation)
+"""Traveling salesman (prescriptive optimization) template.
+
+This script demonstrates a mixed-integer linear optimization (MILP) problem
+in RelationalAI:
+
+- Load a directed distance matrix from CSV.
+- Model the traveling salesman problem (TSP) as a MILP using the MTZ subtour
+  elimination formulation.
+- Solve for the shortest Hamiltonian cycle and print the selected edges.
+
+Run:
+    `python traveling_salesman.py`
+
+Output:
+    Prints the solver termination status, objective value (shortest tour
+    distance), and a table of selected edges.
+"""
 
 from pathlib import Path
 
@@ -11,7 +26,7 @@ from relationalai.semantics.reasoners.prescriptive import Problem
 model = Model("tsp")
 
 # --------------------------------------------------
-# Define ontology & load data
+# Define semantic model & load data
 # --------------------------------------------------
 
 data_dir = Path(__file__).parent / "data"
@@ -33,7 +48,7 @@ node_count = model.Relationship(f"node count is {Integer}")
 model.define(node_count(count(Node)))
 
 # --------------------------------------------------
-# Model the problem
+# Model the decision problem
 # --------------------------------------------------
 
 s = Problem(model, Float)

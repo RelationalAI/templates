@@ -1,5 +1,20 @@
-# diet optimization problem:
-# select foods to satisfy nutritional requirements at minimum cost
+"""Diet optimization (prescriptive optimization) template.
+
+This script demonstrates a classic diet linear optimization problem in RelationalAI:
+
+- Load sample CSVs describing foods, nutrients, and per-food nutrient quantities.
+- Model foods and nutrients as *concepts* with typed properties.
+- Choose a non-negative amount of each food to satisfy nutrient bounds.
+- Minimize total cost.
+- Solve multiple scenarios scaling nutrient requirements to illustrate what-if analysis.
+
+Run:
+    `python diet.py`
+
+Output:
+    Prints per-scenario termination status, objective value, and a table of foods
+    with non-trivial amounts, followed by a scenario analysis summary.
+"""
 
 from pathlib import Path
 
@@ -11,7 +26,7 @@ from relationalai.semantics.reasoners.prescriptive import Problem
 model = Model("diet")
 
 # --------------------------------------------------
-# Define ontology & load data
+# Define semantic model & load data
 # --------------------------------------------------
 
 data_dir = Path(__file__).parent / "data"
@@ -36,7 +51,7 @@ for nutrient_name in nutrient_csv.name:
     )
 
 # --------------------------------------------------
-# Model the problem
+# Model the decision problem
 # --------------------------------------------------
 
 # Decision variable property (defined on model, solved per scenario)

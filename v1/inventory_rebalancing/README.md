@@ -57,7 +57,7 @@ The model is a classic network flow formulation that naturally scales to larger 
 
 1. Download ZIP:
    ```bash
-   curl -L -O https://docs.relational.ai/templates/zips/v1/inventory_rebalancing.zip
+   curl -O https://docs.relational.ai/templates/zips/v1/inventory_rebalancing.zip
    unzip inventory_rebalancing.zip
    cd inventory_rebalancing
    ```

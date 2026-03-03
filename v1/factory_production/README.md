@@ -57,7 +57,7 @@ The template solves the problem independently per factory, demonstrating a scena
 
 1. Download ZIP:
    ```bash
-   curl -L -O https://docs.relational.ai/templates/zips/v1/factory_production.zip
+   curl -O https://docs.relational.ai/templates/zips/v1/factory_production.zip
    unzip factory_production.zip
    cd factory_production
    ```

@@ -56,7 +56,7 @@ The MTZ formulation is compact and well-suited for small to medium instances. Fo
 
 1. Download ZIP:
    ```bash
-   curl -L -O https://docs.relational.ai/templates/zips/v1/traveling_salesman.zip
+   curl -O https://docs.relational.ai/templates/zips/v1/traveling_salesman.zip
    unzip traveling_salesman.zip
    cd traveling_salesman
    ```

@@ -56,7 +56,7 @@ The template also demonstrates scenario analysis by re-solving the problem with 
 
 1. Download ZIP:
    ```bash
-   curl -L -O https://docs.relational.ai/templates/zips/v1/supplier_reliability.zip
+   curl -O https://docs.relational.ai/templates/zips/v1/supplier_reliability.zip
    unzip supplier_reliability.zip
    cd supplier_reliability
    ```
