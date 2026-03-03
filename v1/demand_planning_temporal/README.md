@@ -92,21 +92,18 @@ Prescriptive reasoning makes this practical because the solver simultaneously ba
 6. Expected output:
    ```text
    Status: OPTIMAL
-   Total cost: $134,250.75
+   Total cost: $30,863.50
    Planning horizon: 2025-11-01 to 2026-02-28 (18 weeks)
    Demand orders in scope: 18 (of 25 total)
 
    === Production Plan (non-zero weeks) ===
-     name                  value
-     prod_1_1_1           400.0
-     prod_1_2_2           350.0
-     ...
 
    === Inventory Levels (selected weeks) ===
-     name                  value
-     inv_1_1_0           2000.0
-     inv_1_2_0           1500.0
-     ...
+         name  value
+    inv_1_1_0 2000.0
+    inv_1_1_1 1600.0
+   inv_1_1_10  750.0
+   ...
 
    === Unmet Demand ===
    All demand fulfilled!

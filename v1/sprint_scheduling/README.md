@@ -92,28 +92,29 @@ Prescriptive reasoning is well suited here because the problem has combinatorial
 6. Expected output:
    ```text
    Status: OPTIMAL
-   Objective (weighted completion time): 78.0
+   Objective (weighted completion time): 123.0
    Planning horizon: 2024-10-01 to 2024-11-26
    Issues in scope: 30 (of 30 total)
 
    === Sprint Assignments ===
-      issue                          summary  points  priority developer    sprint
-   PROJ-101       Migrate user auth to OAuth2       5         1     Alice  Sprint 1
-   PROJ-103      Add ETL pipeline for analytics     8         1       Eve  Sprint 1
-   PROJ-106  Implement search API endpoint          5         1       Bob  Sprint 1
-   PROJ-108  Create data quality dashboard          5         1     Frank  Sprint 1
-   PROJ-102  Fix dashboard rendering on mobile      3         2     Carol  Sprint 1
+      issue                           summary points priority developer   sprint
+   PROJ-106     Implement search API endpoint      5        1     Alice Sprint 1
+   PROJ-114        Build notification service      5        2     Alice Sprint 1
+   PROJ-104          Refactor payment service      5        2       Bob Sprint 1
+   PROJ-109      Add rate limiting middleware      3        2       Bob Sprint 1
    ...
 
    === Sprint Workload Summary ===
-       sprint developer  issues  total_points
-     Sprint 1     Alice       3          18.0
-     Sprint 1       Bob       3          16.0
-     Sprint 1     Carol       2          14.0
-     Sprint 1      Dave       2          12.0
-     Sprint 1       Eve       2          13.0
-     Sprint 1     Frank       2          13.0
-     ...
+     sprint developer  issues  total_points
+   Sprint 1     Alice       2          10.0
+   Sprint 1       Bob       2           8.0
+   Sprint 1     Carol       4          10.0
+   Sprint 1      Dave       1           3.0
+   Sprint 1       Eve       2          11.0
+   Sprint 1     Frank       1           8.0
+   Sprint 1     Grace       2          10.0
+   Sprint 1      Hank       1           5.0
+   ...
    ```
 
 ## Template structure
