@@ -1,0 +1,4 @@
+id,name,unit_cost,holding_cost_per_week
+1,Widget_A,12.50,0.25
+2,Widget_B,8.00,0.15
+3,Gadget_C,22.00,0.40

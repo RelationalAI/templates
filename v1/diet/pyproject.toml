@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rai-template-diet"
+version = "0.0.0"
+description = "RelationalAI template: diet (PyRel v1)"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "pyrel==1.0",
+  "pandas",
+]
+
+[tool.setuptools]
+packages = []
