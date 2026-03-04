@@ -51,7 +51,7 @@ It walks through a tiny end-to-end example: create a simple Snowflake table, mod
 1. **Download the ZIP file for this template and extract it:**
 
    ```bash
-   curl -L -O https://docs.relational.ai/templates/zips/v1/simple-start.zip
+   curl -O https://docs.relational.ai/templates/zips/v1/simple-start.zip
    unzip simple-start.zip
    cd simple-start
    ```

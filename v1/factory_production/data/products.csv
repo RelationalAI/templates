@@ -1,0 +1,5 @@
+factory_name,name,rate,profit,demand
+steel_factory,bands,200.0,25.0,6000
+steel_factory,coils,140.0,30.0,4000
+amazing_brewery,stouts,200.0,4.0,1000
+amazing_brewery,ales,100.0,2.0,2000

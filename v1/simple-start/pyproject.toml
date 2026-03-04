@@ -3,13 +3,13 @@ requires = ["setuptools>=64", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "rai-template-template"
+name = "rai-template-simple-start"
 version = "0.0.0"
-description = "RelationalAI template: template"
+description = "RelationalAI template: simple_start (PyRel v1)"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-  "relationalai==1.0.0a8",
+  "relationalai==1.0.0",
   "jupyter"
 ]
 

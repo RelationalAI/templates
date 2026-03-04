@@ -1,0 +1,6 @@
+id,name,min_spend,max_spend,roi_coefficient
+1,Search,1000,10000,0.15
+2,Social,500,8000,0.12
+3,Display,200,5000,0.08
+4,Video,1000,12000,0.18
+5,Email,100,2000,0.25

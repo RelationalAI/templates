@@ -54,7 +54,7 @@ This template is a runnable notebook that shows how to:
 1. **Download the ZIP file for this template and extract it:**
 
    ```bash
-   curl -L -O https://docs.relational.ai/templates/zips/v1/fraud-detection.zip
+   curl -O https://docs.relational.ai/templates/zips/v1/fraud-detection.zip
    unzip fraud-detection.zip
    cd fraud-detection
    ```

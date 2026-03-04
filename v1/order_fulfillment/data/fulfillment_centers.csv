@@ -1,0 +1,4 @@
+id,name,capacity,fixed_cost
+1,FC_East,100,500
+2,FC_West,120,450
+3,FC_Central,80,400

@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rai-template-demand-planning-temporal"
+version = "0.0.0"
+description = "RelationalAI template: demand_planning_temporal (PyRel v1)"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "relationalai==1.0.0",
+  "pandas",
+]
+
+[tool.setuptools]
+packages = []

@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rai-template-test-data-generation"
+version = "0.0.0"
+description = "RelationalAI template: test_data_generation (PyRel v1)"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "relationalai==1.0.0",
+  "pandas",
+]
+
+[tool.setuptools]
+packages = []

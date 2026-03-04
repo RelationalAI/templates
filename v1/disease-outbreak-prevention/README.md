@@ -60,7 +60,7 @@ You can customize the data and model as needed after you have it running end-to-
 1. Download the ZIP file for this template and extract it:
 
    ```bash
-   curl -O https://private.relational.ai/templates/zips/v1/disease-outbreak-prevention.zip
+   curl -O https://docs.relational.ai/templates/zips/v1/disease-outbreak-prevention.zip
    unzip disease_outbreak_prevention_network.zip
    cd disease_outbreak_prevention_network
    ```

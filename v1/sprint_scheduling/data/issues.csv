@@ -1,0 +1,31 @@
+id,key,summary,story_points,created_at,priority,team
+1,PROJ-101,Migrate user auth to OAuth2,5,1725519600,1,backend
+2,PROJ-102,Fix dashboard rendering on mobile,3,1726124400,2,frontend
+3,PROJ-103,Add ETL pipeline for analytics,8,1726642800,1,data
+4,PROJ-104,Refactor payment service,5,1726988400,2,backend
+5,PROJ-105,Update design system tokens,2,1727506800,3,frontend
+6,PROJ-106,Implement search API endpoint,5,1727852400,1,backend
+7,PROJ-107,Build user profile page,3,1727938800,2,frontend
+8,PROJ-108,Create data quality dashboard,5,1728025200,1,data
+9,PROJ-109,Add rate limiting middleware,3,1728111600,2,backend
+10,PROJ-110,Responsive navigation redesign,3,1728198000,3,frontend
+11,PROJ-111,Set up data warehouse schema,8,1728370800,1,data
+12,PROJ-112,Implement caching layer,5,1728457200,1,backend
+13,PROJ-113,Add form validation library,2,1728543600,3,frontend
+14,PROJ-114,Build notification service,5,1728716400,2,backend
+15,PROJ-115,Create analytics event tracker,3,1728802800,2,data
+16,PROJ-116,Implement dark mode toggle,2,1728975600,3,frontend
+17,PROJ-117,Add WebSocket support,8,1729062000,1,backend
+18,PROJ-118,Build data export feature,5,1729234800,2,data
+19,PROJ-119,Optimize database queries,3,1729321200,1,backend
+20,PROJ-120,Implement A/B testing framework,5,1729494000,2,frontend
+21,PROJ-121,Add logging infrastructure,3,1729666800,2,data
+22,PROJ-122,Build admin panel,8,1729839600,1,frontend
+23,PROJ-123,Implement retry logic for APIs,3,1730012400,2,backend
+24,PROJ-124,Create ML feature pipeline,8,1730185200,1,data
+25,PROJ-125,Add accessibility audit fixes,3,1730358000,2,frontend
+26,PROJ-126,Implement CI/CD pipeline,5,1730530800,1,backend
+27,PROJ-127,Build real-time data sync,5,1730703600,1,data
+28,PROJ-128,Performance monitoring dashboard,3,1730876400,2,frontend
+29,PROJ-129,Add GraphQL API layer,8,1731135600,1,backend
+30,PROJ-130,Implement data lineage tracker,5,1731308400,2,data

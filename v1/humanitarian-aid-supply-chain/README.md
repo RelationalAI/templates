@@ -62,7 +62,7 @@ You can customize the data and model as needed after you have it running end-to-
 1. Download the ZIP file for this template and extract it:
 
    ```bash
-   curl -O https://private.relational.ai/templates/zips/v1/humanitarian-aid-supply-chain.zip
+   curl -O https://docs.relational.ai/templates/zips/v1/humanitarian-aid-supply-chain.zip
    unzip humanitarian_aid_supply_chain.zip
    cd humanitarian_aid_supply_chain
    ```

@@ -9,7 +9,7 @@ description = "RelationalAI template: network_flow"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-  "relationalai==0.14.2",
+  "relationalai==0.14.4",
   "pandas",
 ]
 
