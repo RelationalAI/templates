@@ -40,10 +40,10 @@ model.define(Stock.new(model.data(returns_csv).to_schema()))
 
 # Relationship: covariance matrix between stock pairs (binary property)
 Stock.covar = model.Property(f"{Stock} and {Stock} have {Float:covar}")
-Stock2 = Stock.ref()
+PairedStock = Stock.ref()
 covar_data = model.data(read_csv(data_dir / "covar.csv"))
-model.where(Stock.index(covar_data.i), Stock2.index(covar_data.j)).define(
-    Stock.covar(Stock, Stock2, covar_data.covar)
+model.where(Stock.index(covar_data.i), PairedStock.index(covar_data.j)).define(
+    Stock.covar(Stock, PairedStock, covar_data.covar)
 )
 
 # --------------------------------------------------
@@ -58,8 +58,8 @@ min_return = 20
 Stock.x_quantity = model.Property(f"{Stock} quantity is {Float:x}")
 
 # Objective: minimize portfolio variance (quadratic via covariance matrix)
-c = Float.ref()
-risk = sum(c * Stock.x_quantity * Stock2.x_quantity).where(Stock.covar(Stock2, c))
+covar_value = Float.ref()
+risk = sum(covar_value * Stock.x_quantity * PairedStock.x_quantity).where(Stock.covar(PairedStock, covar_value))
 
 # Constraints: non-negative quantities and budget limit
 bounds = model.require(Stock.x_quantity >= 0)

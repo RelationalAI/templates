@@ -30,6 +30,8 @@ Output:
 from datetime import datetime, timedelta
 from pathlib import Path
 import itertools
+import tempfile
+import os
 
 import pandas as pd
 from pandas import read_csv
@@ -181,7 +183,7 @@ weekly_demand = (
 
 # Time periods via std.common.range() — integer weeks mapped from date range
 weeks = std.common.range(1, num_weeks + 1)
-t = Integer.ref()
+week_ref = Integer.ref()
 
 s = Problem(model, Float)
 
@@ -189,14 +191,14 @@ s = Problem(model, Float)
 ProdCapacity.x_production = Property(
     f"{ProdCapacity} in week {{t:int}} produces {{production:float}}"
 )
-x_prod = Float.ref()
+production_ref = Float.ref()
 s.solve_for(
-    ProdCapacity.x_production(t, x_prod),
+    ProdCapacity.x_production(week_ref, production_ref),
     type="cont",
     lower=0,
     upper=ProdCapacity.max_production_per_week,
-    name=["prod", ProdCapacity.site_id, ProdCapacity.sku_id, t],
-    where=[t == weeks]
+    name=["prod", ProdCapacity.site_id, ProdCapacity.sku_id, week_ref],
+    where=[week_ref == weeks]
 )
 
 # Variable: inventory level per site x SKU x week (multiarity: time-indexed)
@@ -204,13 +206,13 @@ s.solve_for(
 ProdCapacity.x_inventory = Property(
     f"{ProdCapacity} at end of week {{t:int}} has inventory {{inventory:float}}"
 )
-x_inv = Float.ref()
+inventory_ref = Float.ref()
 s.solve_for(
-    ProdCapacity.x_inventory(t, x_inv),
+    ProdCapacity.x_inventory(week_ref, inventory_ref),
     type="cont",
     lower=0,
-    name=["inv", ProdCapacity.site_id, ProdCapacity.sku_id, t],
-    where=[t == std.common.range(0, num_weeks + 1)]  # Week 0 = initial inventory
+    name=["inv", ProdCapacity.site_id, ProdCapacity.sku_id, week_ref],
+    where=[week_ref == std.common.range(0, num_weeks + 1)]  # Week 0 = initial inventory
 )
 
 # Variable: unmet demand (slack) per demand order
@@ -229,9 +231,9 @@ s.solve_for(
 
 # INITIAL CONDITION: inventory at week 0 equals starting inventory
 s.satisfy(model.where(
-    ProdCapacity.x_inventory(0, x_inv),
+    ProdCapacity.x_inventory(0, inventory_ref),
 ).require(
-    x_inv == ProdCapacity.initial_inventory
+    inventory_ref == ProdCapacity.initial_inventory
 ))
 
 # FLOW CONSERVATION: inv[t] = inv[t-1] + production[t] - weekly_demand
@@ -264,15 +266,15 @@ model.define(
 
 # Single declarative flow conservation: inv[t] = inv[t-1] + production[t] - demand[t]
 s.satisfy(model.where(
-    ProdCapacity.x_inventory(t, x_inv_curr),
-    ProdCapacity.x_inventory(t - 1, x_inv_prev),
-    ProdCapacity.x_production(t, x_prod),
+    ProdCapacity.x_inventory(week_ref, x_inv_curr),
+    ProdCapacity.x_inventory(week_ref - 1, x_inv_prev),
+    ProdCapacity.x_production(week_ref, production_ref),
     WeeklyDemand.wk_site_id == ProdCapacity.site_id,
     WeeklyDemand.wk_sku_id == ProdCapacity.sku_id,
-    WeeklyDemand.wk_week_num == t,
-    t >= 1,
+    WeeklyDemand.wk_week_num == week_ref,
+    week_ref >= 1,
 ).require(
-    x_inv_curr == x_inv_prev + x_prod - WeeklyDemand.wk_quantity
+    x_inv_curr == x_inv_prev + production_ref - WeeklyDemand.wk_quantity
 ))
 
 # Demand fulfillment: each order is either fulfilled or has unmet slack
@@ -291,13 +293,13 @@ s.satisfy(model.require(
 # --------------------------------------------------
 
 # Per-entity cost components (kept at concept level for model.union())
-prod_cost = ProdCapacity.production_cost * sum(x_prod).per(ProdCapacity).where(
-    ProdCapacity.x_production(t, x_prod)
+prod_cost = ProdCapacity.production_cost * sum(production_ref).per(ProdCapacity).where(
+    ProdCapacity.x_production(week_ref, production_ref)
 )
 
-hold_cost = ProdCapacity.holding_cost_per_week * sum(x_inv).per(ProdCapacity).where(
-    ProdCapacity.x_inventory(t, x_inv),
-    t >= 1  # Don't count initial inventory in holding cost
+hold_cost = ProdCapacity.holding_cost_per_week * sum(inventory_ref).per(ProdCapacity).where(
+    ProdCapacity.x_inventory(week_ref, inventory_ref),
+    week_ref >= 1  # Don't count initial inventory in holding cost
 )
 
 # Penalty for unmet demand (high cost to encourage fulfillment)
@@ -338,3 +340,7 @@ if unmet.empty:
     print("All demand fulfilled!")
 else:
     print(unmet.to_string(index=False))
+
+# Scenario parameters for what-if analysis
+SCENARIO_PARAM = "planning_end"
+SCENARIO_VALUES = ["2026-01-31", "2026-02-28", "2026-03-31"]

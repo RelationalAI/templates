@@ -75,8 +75,8 @@ model.define(seg2, seg2.limit(7000.0), seg2.cost(0.12))
 # --------------------------------------------------
 
 departure_days = std.common.range(dep_start, dep_end + 1)
-t = Integer.ref()
-fg = FreightGroup.ref()
+time_period_ref = Integer.ref()
+FreightGroup_ref = FreightGroup.ref()
 
 s = Problem(model, Float)
 
@@ -84,10 +84,10 @@ s = Problem(model, Float)
 FreightGroup.x_inv = Property(f"{FreightGroup} on day {Integer:t} has {Float:inv}")
 x_inv = Float.ref()
 s.solve_for(
-    FreightGroup.x_inv(t, x_inv),
+    FreightGroup.x_inv(time_period_ref, x_inv),
     lower=0,
-    name=["x_inv", FreightGroup.name, t],
-    where=[t == std.common.range(FreightGroup.inv_start_t, FreightGroup.inv_end_t + 1)]
+    name=["x_inv", FreightGroup.name, time_period_ref],
+    where=[time_period_ref == std.common.range(FreightGroup.inv_start_t, FreightGroup.inv_end_t + 1)]
 )
 
 # Variable: qty_tra/bin_tra = quantity shipped and binary indicator per (type, fg, day)
@@ -96,16 +96,16 @@ TransportType.y_bin_tra = Property(f"{TransportType} for {FreightGroup} on day {
 x_qty_tra = Float.ref()
 y_bin_tra = Float.ref()
 s.solve_for(
-    TransportType.x_qty_tra(fg, t, x_qty_tra),
+    TransportType.x_qty_tra(FreightGroup_ref, time_period_ref, x_qty_tra),
     lower=0,
-    name=["x_qty_tra", TransportType.name, fg.name, t],
-    where=[t == std.common.range(fg.tra_start_t, fg.tra_end_t + 1)],
+    name=["x_qty_tra", TransportType.name, FreightGroup_ref.name, time_period_ref],
+    where=[time_period_ref == std.common.range(FreightGroup_ref.tra_start_t, FreightGroup_ref.tra_end_t + 1)],
 )
 s.solve_for(
-    TransportType.y_bin_tra(fg, t, y_bin_tra),
+    TransportType.y_bin_tra(FreightGroup_ref, time_period_ref, y_bin_tra),
     type="bin",
-    name=["y_bin_tra", TransportType.name, fg.name, t],
-    where=[t == std.common.range(fg.tra_start_t, fg.tra_end_t + 1)],
+    name=["y_bin_tra", TransportType.name, FreightGroup_ref.name, time_period_ref],
+    where=[time_period_ref == std.common.range(FreightGroup_ref.tra_start_t, FreightGroup_ref.tra_end_t + 1)],
 )
 
 # Variable: arr_day[fg] = integer arrival day at destination
@@ -122,20 +122,20 @@ s.solve_for(
 TransportType.x_weight = Property(f"{TransportType} on departure day {Integer:t} has {Float:weight}")
 x_weight = Float.ref()
 s.solve_for(
-    TransportType.x_weight(t, x_weight),
+    TransportType.x_weight(time_period_ref, x_weight),
     lower=0,
-    name=["x_weight", TransportType.name, t],
-    where=[t == departure_days],
+    name=["x_weight", TransportType.name, time_period_ref],
+    where=[time_period_ref == departure_days],
 )
 
 # Variable: y_bin_tl[t] = 1 if TL is used on departure day t
 bin_tl = Property(f"departure day {Integer:t} has {Float:bin_tl}")
 y_bin_tl = Float.ref()
 s.solve_for(
-    bin_tl(t, y_bin_tl),
+    bin_tl(time_period_ref, y_bin_tl),
     type="bin",
-    name=["y_bin_tl", t],
-    where=[t == departure_days],
+    name=["y_bin_tl", time_period_ref],
+    where=[time_period_ref == departure_days],
 )
 
 # Variable: rem_ltl/bin_ltl = piecewise linear LTL cost segment variables
@@ -144,27 +144,27 @@ LTLSegment.y_bin_ltl = Property(f"{LTLSegment} on departure day {Integer:t} has 
 x_rem_ltl = Float.ref()
 y_bin_ltl = Float.ref()
 s.solve_for(
-    LTLSegment.x_rem_ltl(t, x_rem_ltl),
+    LTLSegment.x_rem_ltl(time_period_ref, x_rem_ltl),
     lower=0,
-    name=["x_rem_ltl", LTLSegment.seg, t],
-    where=[t == departure_days]
+    name=["x_rem_ltl", LTLSegment.seg, time_period_ref],
+    where=[time_period_ref == departure_days]
 )
 s.solve_for(
-    LTLSegment.y_bin_ltl(t, y_bin_ltl),
+    LTLSegment.y_bin_ltl(time_period_ref, y_bin_ltl),
     type="bin",
-    name=["y_bin_ltl", LTLSegment.seg, t],
-    where=[t == departure_days]
+    name=["y_bin_ltl", LTLSegment.seg, time_period_ref],
+    where=[time_period_ref == departure_days]
 )
 
 # Constraint: inventory flow conservation (inv[t] = inv[t+1] + shipped)
 s.satisfy(model.where(
-    x_inv1 := Float.ref(),
-    x_inv2 := Float.ref(),
-    FreightGroup.x_inv(t, x_inv1),
-    FreightGroup.x_inv(t + 1, x_inv2),
-    TransportType.x_qty_tra(FreightGroup, t, x_qty_tra),
+    x_inv_current := Float.ref(),
+    x_inv_next := Float.ref(),
+    FreightGroup.x_inv(time_period_ref, x_inv_current),
+    FreightGroup.x_inv(time_period_ref + 1, x_inv_next),
+    TransportType.x_qty_tra(FreightGroup, time_period_ref, x_qty_tra),
 ).require(
-    x_inv1 == x_inv2 + sum(x_qty_tra).per(FreightGroup, t)
+    x_inv_current == x_inv_next + sum(x_qty_tra).per(FreightGroup, time_period_ref)
 ))
 
 # Constraint: initial inventory equals starting position; final inventory is zero
@@ -179,21 +179,21 @@ s.satisfy(model.require(
 s.satisfy(model.require(
     x_qty_tra == FreightGroup.inv_start * y_bin_tra
 ).where(
-    TransportType.x_qty_tra(FreightGroup, t, x_qty_tra),
-    TransportType.y_bin_tra(FreightGroup, t, y_bin_tra),
+    TransportType.x_qty_tra(FreightGroup, time_period_ref, x_qty_tra),
+    TransportType.y_bin_tra(FreightGroup, time_period_ref, y_bin_tra),
 ))
 
 # Constraint: arrival day = departure day + transit time
 s.satisfy(model.require(
-    FreightGroup.z_arr_day == sum((t + TransportType.transit_time) * y_bin_tra).per(FreightGroup)
-).where(TransportType.y_bin_tra(FreightGroup, t, y_bin_tra)))
+    FreightGroup.z_arr_day == sum((time_period_ref + TransportType.transit_time) * y_bin_tra).per(FreightGroup)
+).where(TransportType.y_bin_tra(FreightGroup, time_period_ref, y_bin_tra)))
 
 # Constraint: weight[type,t] = sum of quantities shipped by that type on day t
 s.satisfy(model.require(
-    x_weight == sum(x_qty_tra).per(TransportType, t)
+    x_weight == sum(x_qty_tra).per(TransportType, time_period_ref)
 ).where(
-    TransportType.x_weight(t, x_weight),
-    TransportType.x_qty_tra(FreightGroup, t, x_qty_tra),
+    TransportType.x_weight(time_period_ref, x_weight),
+    TransportType.x_qty_tra(FreightGroup, time_period_ref, x_qty_tra),
 ))
 
 # Constraint: TL weight <= capacity if TL is used
@@ -201,49 +201,49 @@ s.satisfy(model.require(
     x_weight <= tl_cap * y_bin_tl
 ).where(
     TransportType.name("tl"),
-    TransportType.x_weight(t, x_weight),
-    bin_tl(t, y_bin_tl),
+    TransportType.x_weight(time_period_ref, x_weight),
+    bin_tl(time_period_ref, y_bin_tl),
 ))
 
 # Constraint: piecewise LTL cost — exactly one segment active, remainder within limit
 s.satisfy(model.require(
-    sum(y_bin_ltl).per(t) == 1,
+    sum(y_bin_ltl).per(time_period_ref) == 1,
     x_rem_ltl <= LTLSegment.limit * y_bin_ltl,
 ).where(
-    LTLSegment.x_rem_ltl(t, x_rem_ltl),
-    LTLSegment.y_bin_ltl(t, y_bin_ltl),
+    LTLSegment.x_rem_ltl(time_period_ref, x_rem_ltl),
+    LTLSegment.y_bin_ltl(time_period_ref, y_bin_ltl),
 ))
 
 # Constraint: LTL weight decomposition
-LTLSegment1 = LTLSegment.ref()
-LTLSegment2 = LTLSegment.ref()
+LTLSegment_outer = LTLSegment.ref()
+LTLSegment_inner = LTLSegment.ref()
 s.satisfy(model.where(
-    LTLSegment1 := LTLSegment.ref(),
-    LTLSegment2 := LTLSegment.ref(),
+    LTLSegment_outer := LTLSegment.ref(),
+    LTLSegment_inner := LTLSegment.ref(),
     TransportType.name("ltl"),
-    TransportType.x_weight(t, x_weight),
+    TransportType.x_weight(time_period_ref, x_weight),
 ).require(
     x_weight ==
-    sum(x_rem_ltl).where(LTLSegment.x_rem_ltl(t, x_rem_ltl)).per(t) +
-    sum(LTLSegment1.limit * y_bin_ltl).where(
-        LTLSegment2.y_bin_ltl(t, y_bin_ltl),
-        LTLSegment1.seg == LTLSegment2.seg - 1,
-    ).per(t)
+    sum(x_rem_ltl).where(LTLSegment.x_rem_ltl(time_period_ref, x_rem_ltl)).per(time_period_ref) +
+    sum(LTLSegment_outer.limit * y_bin_ltl).where(
+        LTLSegment_inner.y_bin_ltl(time_period_ref, y_bin_ltl),
+        LTLSegment_outer.seg == LTLSegment_inner.seg - 1,
+    ).per(time_period_ref)
 ))
 
 # Objective: minimize total cost (inventory holding + TL fixed + LTL variable)
 total_inv_cost = inv_cost * sum(x_inv).where(
-    FreightGroup.x_inv(t, x_inv), t > FreightGroup.inv_start_t
+    FreightGroup.x_inv(time_period_ref, x_inv), time_period_ref > FreightGroup.inv_start_t
 )
 total_tl_cost = tl_tra_cost * sum(y_bin_tl).where(bin_tl(Integer.ref(), y_bin_tl))
 total_ltl_rem_cost = LTLSegment.cost * sum(x_rem_ltl).per(LTLSegment).where(
     LTLSegment.x_rem_ltl(Integer.ref(), x_rem_ltl)
 )
-LTLSegment1 = LTLSegment.ref()
-LTLSegment2 = LTLSegment.ref()
-total_ltl_bin_cost = (LTLSegment1.cost * LTLSegment1.limit) * sum(y_bin_ltl).per(LTLSegment1).where(
-    LTLSegment2.y_bin_ltl(Integer.ref(), y_bin_ltl),
-    LTLSegment1.seg == LTLSegment2.seg - 1,
+LTLSegment_outer = LTLSegment.ref()
+LTLSegment_inner = LTLSegment.ref()
+total_ltl_bin_cost = (LTLSegment_outer.cost * LTLSegment_outer.limit) * sum(y_bin_ltl).per(LTLSegment_outer).where(
+    LTLSegment_inner.y_bin_ltl(Integer.ref(), y_bin_ltl),
+    LTLSegment_outer.seg == LTLSegment_inner.seg - 1,
 )
 total_cost = sum(model.union(total_inv_cost, total_tl_cost, total_ltl_rem_cost, total_ltl_bin_cost))
 s.minimize(total_cost)
@@ -262,17 +262,17 @@ print(f"Total cost: ${s.objective_value:.2f}")
 # Extract solution via model.select() — properties are populated after solve
 print("\n=== Inventory Levels ===")
 inv_df = model.select(
-    FreightGroup.name.alias("freight_group"), t.alias("day"),
+    FreightGroup.name.alias("freight_group"), time_period_ref.alias("day"),
     x_inv.alias("inventory"),
-).where(FreightGroup.x_inv(t, x_inv)).to_df()
+).where(FreightGroup.x_inv(time_period_ref, x_inv)).to_df()
 print(inv_df.to_string(index=False))
 
 print("\n=== Transport Quantities ===")
 qty_df = model.select(
-    TransportType.name.alias("type"), fg.name.alias("freight_group"),
-    t.alias("day"), x_qty_tra.alias("quantity"),
+    TransportType.name.alias("type"), FreightGroup_ref.name.alias("freight_group"),
+    time_period_ref.alias("day"), x_qty_tra.alias("quantity"),
 ).where(
-    TransportType.x_qty_tra(fg, t, x_qty_tra), x_qty_tra > 0.001
+    TransportType.x_qty_tra(FreightGroup_ref, time_period_ref, x_qty_tra), x_qty_tra > 0.001
 ).to_df()
 print(qty_df.to_string(index=False))
 

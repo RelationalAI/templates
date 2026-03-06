@@ -66,102 +66,102 @@ model.define(num_weeks(count(Week)))
 # --------------------------------------------------
 
 # Helper refs
-w = Week.ref()
-d = Discount.ref()
-x = Float.ref()
-y = Float.ref()
-z = Float.ref()
+Week_ref = Week.ref()
+Discount_ref = Discount.ref()
+selection_ref = Float.ref()
+sales_ref = Float.ref()
+cumulative_ref = Float.ref()
 
 s = Problem(model, Float)
 
 # Variable: select[product, week, discount] = 1 if that discount is active
 Product.x_select = model.Property(f"{Product} in {Week} has {Discount} if {Float:x}")
 s.solve_for(
-    Product.x_select(w, d, x),
+    Product.x_select(Week_ref, Discount_ref, selection_ref),
     type="bin",
-    name=["select", Product.name, w.num, d.discount_pct],
+    name=["select", Product.name, Week_ref.num, Discount_ref.discount_pct],
 )
 
 # Variable: sales[product, week, discount] = units sold at that discount level
 Product.x_sales = model.Property(f"{Product} in {Week} at {Discount} has {Float:y}")
 s.solve_for(
-    Product.x_sales(w, d, y),
+    Product.x_sales(Week_ref, Discount_ref, sales_ref),
     type="cont",
     lower=0,
-    name=["sales", Product.name, w.num, d.discount_pct],
+    name=["sales", Product.name, Week_ref.num, Discount_ref.discount_pct],
 )
 
 # Variable: cuml_sales[product, week] = cumulative units sold through that week
 Product.x_cuml_sales = model.Property(f"{Product} up to {Week} has {Float:z}")
 s.solve_for(
-    Product.x_cuml_sales(w, z),
+    Product.x_cuml_sales(Week_ref, cumulative_ref),
     type="cont",
     lower=0,
-    name=["cuml", Product.name, w.num],
+    name=["cuml", Product.name, Week_ref.num],
 )
 
 # Constraint: exactly one discount level per product-week (one-hot selection)
-s.satisfy(model.where(Product.x_select(w, d, x)).require(
-    sum(d, x).per(Product, w) == 1
+s.satisfy(model.where(Product.x_select(Week_ref, Discount_ref, selection_ref)).require(
+    sum(Discount_ref, selection_ref).per(Product, Week_ref) == 1
 ))
 
 # Constraint: price ladder — discounts can only increase week-over-week
-d2 = Discount.ref()
-w2 = Week.ref()
-x2 = Float.ref()
+Discount_inner = Discount.ref()
+Week_inner = Week.ref()
+selection_inner = Float.ref()
 s.satisfy(model.where(
-    Product.x_select(w, d, x),
-    Product.x_select(w2, d2, x2),
-    w2.num == w.num + 1,
-    d2.level < d.level,
+    Product.x_select(Week_ref, Discount_ref, selection_ref),
+    Product.x_select(Week_inner, Discount_inner, selection_inner),
+    Week_inner.num == Week_ref.num + 1,
+    Discount_inner.level < Discount_ref.level,
 ).require(
-    x + x2 <= 1
+    selection_ref + selection_inner <= 1
 ))
 
-# Constraint: sales bounded by demand × lift × multiplier × selection indicator
+# Constraint: sales bounded by demand x lift x multiplier x selection indicator
 s.satisfy(model.where(
-    Product.x_select(w, d, x),
-    Product.x_sales(w, d, y),
+    Product.x_select(Week_ref, Discount_ref, selection_ref),
+    Product.x_sales(Week_ref, Discount_ref, sales_ref),
 ).require(
-    y <= Product.base_demand * d.demand_lift * w.demand_multiplier * x
+    sales_ref <= Product.base_demand * Discount_ref.demand_lift * Week_ref.demand_multiplier * selection_ref
 ))
 
 # Constraint: cumulative sales — first week
 s.satisfy(model.where(
-    w.num == 1,
-    Product.x_cuml_sales(w, z),
-    Product.x_sales(w, d, y),
+    Week_ref.num == 1,
+    Product.x_cuml_sales(Week_ref, cumulative_ref),
+    Product.x_sales(Week_ref, Discount_ref, sales_ref),
 ).require(
-    z == sum(d, y).per(Product, w)
+    cumulative_ref == sum(Discount_ref, sales_ref).per(Product, Week_ref)
 ))
 
 # Constraint: cumulative sales — subsequent weeks
-w_prev = Week.ref()
-z_prev = Float.ref()
+Week_prev = Week.ref()
+cumulative_prev = Float.ref()
 s.satisfy(model.where(
-    w.num > 1,
-    w_prev.num == w.num - 1,
-    Product.x_cuml_sales(w, z),
-    Product.x_cuml_sales(w_prev, z_prev),
-    Product.x_sales(w, d, y),
+    Week_ref.num > 1,
+    Week_prev.num == Week_ref.num - 1,
+    Product.x_cuml_sales(Week_ref, cumulative_ref),
+    Product.x_cuml_sales(Week_prev, cumulative_prev),
+    Product.x_sales(Week_ref, Discount_ref, sales_ref),
 ).require(
-    z == z_prev + sum(d, y).per(Product, w)
+    cumulative_ref == cumulative_prev + sum(Discount_ref, sales_ref).per(Product, Week_ref)
 ))
 
 # Constraint: cumulative sales cannot exceed initial inventory
-s.satisfy(model.where(Product.x_cuml_sales(w, z)).require(
-    z <= Product.initial_inventory
+s.satisfy(model.where(Product.x_cuml_sales(Week_ref, cumulative_ref)).require(
+    cumulative_ref <= Product.initial_inventory
 ))
 
 # Objective: maximize revenue from sales plus salvage value of remaining inventory
 revenue = sum(
-    Product.initial_price * (1 - d.discount_pct / 100) * x
-).where(Product.x_sales(w, d, x))
+    Product.initial_price * (1 - Discount_ref.discount_pct / 100) * sales_ref
+).where(Product.x_sales(Week_ref, Discount_ref, sales_ref))
 salvage = sum(
-    Product.initial_price * Product.salvage_rate * (Product.initial_inventory - z)
+    Product.initial_price * Product.salvage_rate * (Product.initial_inventory - cumulative_ref)
 ).where(
-    Product.x_cuml_sales(w, z),
-    w.num == num_weeks
+    Product.x_cuml_sales(Week_ref, cumulative_ref),
+    Week_ref.num == num_weeks
 )
 s.maximize(revenue + salvage)
 
@@ -179,21 +179,21 @@ print(f"Total revenue (sales + salvage): ${s.objective_value:.2f}")
 # Extract solution via model.select() — properties are populated after solve
 print("\n=== Selected Discounts by Product-Week ===")
 selected_df = model.select(
-    Product.name.alias("product"), w.num.alias("week"),
-    d.discount_pct.alias("discount_pct"),
-).where(Product.x_select(w, d, x), x > 0.5).to_df()
+    Product.name.alias("product"), Week_ref.num.alias("week"),
+    Discount_ref.discount_pct.alias("discount_pct"),
+).where(Product.x_select(Week_ref, Discount_ref, selection_ref), selection_ref > 0.5).to_df()
 print(selected_df.to_string(index=False))
 
 print("\n=== Sales by Product-Week ===")
 sales_df = model.select(
-    Product.name.alias("product"), w.num.alias("week"),
-    d.discount_pct.alias("discount_pct"), y.alias("units_sold"),
-).where(Product.x_sales(w, d, y), y > 0.01).to_df()
+    Product.name.alias("product"), Week_ref.num.alias("week"),
+    Discount_ref.discount_pct.alias("discount_pct"), sales_ref.alias("units_sold"),
+).where(Product.x_sales(Week_ref, Discount_ref, sales_ref), sales_ref > 0.01).to_df()
 print(sales_df.to_string(index=False))
 
 print("\n=== Cumulative Sales by Product-Week ===")
 cuml_df = model.select(
-    Product.name.alias("product"), w.num.alias("week"),
-    z.alias("cumulative_sold"),
-).where(Product.x_cuml_sales(w, z)).to_df()
+    Product.name.alias("product"), Week_ref.num.alias("week"),
+    cumulative_ref.alias("cumulative_sold"),
+).where(Product.x_cuml_sales(Week_ref, cumulative_ref)).to_df()
 print(cuml_df.to_string(index=False))

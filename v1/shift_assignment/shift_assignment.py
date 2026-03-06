@@ -79,19 +79,19 @@ for scenario_value in SCENARIO_VALUES:
     min_coverage = scenario_value
 
     s = Problem(model, Integer)
-    x = Integer.ref()
+    assigned_ref = Integer.ref()
     s.solve_for(
-        Worker.x_assign(Shift, x),
+        Worker.x_assign(Shift, assigned_ref),
         type="bin",
         name=["x", Worker.name, Shift.name],
         where=[Worker.available_for(Shift)],
         populate=False,
     )
-    s.satisfy(model.where(Worker.x_assign(Shift, x)).require(
-        sum(Worker, x).per(Shift) >= min_coverage
+    s.satisfy(model.where(Worker.x_assign(Shift, assigned_ref)).require(
+        sum(Worker, assigned_ref).per(Shift) >= min_coverage
     ))
-    s.satisfy(model.where(Worker.x_assign(Shift, x)).require(
-        sum(Shift, x).per(Worker) <= max_shifts
+    s.satisfy(model.where(Worker.x_assign(Shift, assigned_ref)).require(
+        sum(Shift, assigned_ref).per(Worker) <= max_shifts
     ))
 
     s.display()

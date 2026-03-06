@@ -1,8 +1,8 @@
 ---
 title: "Machine Maintenance"
-description: "Schedule preventive maintenance for factory machines across time slots to minimize downtime cost."
+description: "Schedule preventive maintenance across a planning horizon, assigning technicians to machines, minimizing expected failure cost plus maintenance cost."
 featured: false
-experience_level: beginner
+experience_level: intermediate
 industry: "Manufacturing"
 reasoning_types:
   - Prescriptive
@@ -10,38 +10,39 @@ tags:
   - Scheduling
   - Maintenance
   - Manufacturing
+  - Assignment
 ---
 
 # Machine Maintenance
 
 ## What this template is for
 
-Manufacturing facilities must schedule preventive maintenance for their machines to avoid costly breakdowns. Each machine requires a specific number of crew hours, and maintenance crews have limited availability across the week. Some machines share resources or physical space and cannot be serviced at the same time.
+Manufacturing facilities must schedule preventive maintenance for machines with ML-predicted remaining useful life. Each machine either receives maintenance by a given period or remains vulnerable to failure. When maintenance is scheduled, exactly one technician must be assigned, subject to technician availability constraints and global capacity limits.
 
-This template uses prescriptive reasoning to assign each machine to exactly one maintenance time slot while respecting crew hour limits and machine conflict constraints. The objective minimizes total maintenance cost, which varies by time slot due to cost multipliers (such as premium rates for end-of-week scheduling).
+This template uses prescriptive reasoning to decide when each machine is maintained and which technician performs it, minimizing the combined cost of expected failures (for vulnerable machines) and maintenance actions.
 
-The model demonstrates a classic assignment problem with side constraints, making it a practical starting point for any scheduling scenario where items must be allocated to time periods with resource limits and mutual exclusions.
+The model demonstrates a multi-period scheduling problem with technician assignment, cumulative coverage constraints, and a risk-weighted objective -- a practical pattern for any maintenance planning scenario.
 
 ## Who this is for
 
 - Manufacturing and plant managers scheduling preventive maintenance
-- Operations researchers modeling assignment problems with conflict constraints
-- Developers learning binary optimization with RelationalAI
-- Anyone building maintenance planning or resource scheduling tools
+- Operations researchers modeling multi-period scheduling with assignment
+- Developers learning binary optimization with cross-product decision spaces in RelationalAI
 
 ## What you'll build
 
-- A machine-to-time-slot assignment model with binary decision variables
-- Crew hour capacity constraints per time slot
-- Conflict constraints preventing specific machine pairs from sharing a slot
-- A cost minimization objective with time-slot-dependent multipliers
+- Binary decision variables for maintenance timing, vulnerability tracking, and technician assignment
+- Cumulative coverage constraints (each machine maintained or vulnerable per period)
+- Assignment-maintenance linkage (exactly one technician per maintenance action)
+- Technician availability and global capacity constraints
+- A cost minimization objective balancing failure risk against maintenance cost
 
 ## What's included
 
 - `machine_maintenance.py` -- Main script that defines the model, solves it, and prints results
-- `data/machines.csv` -- Machines with maintenance hours, failure costs, and importance ratings
-- `data/time_slots.csv` -- Weekly time slots with crew hour budgets and cost multipliers
-- `data/conflicts.csv` -- Pairs of machines that cannot be maintained simultaneously
+- `data/machines.csv` -- 10 machines with remaining useful life, failure probability, criticality, and parts cost
+- `data/technicians.csv` -- 10 technicians with skill levels, certifications, hourly rates, and specializations
+- `data/availability.csv` -- Technician availability across the 4-period planning horizon
 - `pyproject.toml` -- Python project configuration with dependencies
 
 ## Prerequisites
@@ -89,15 +90,12 @@ The model demonstrates a classic assignment problem with side constraints, makin
 6. Expected output:
    ```text
    Status: OPTIMAL
-   Total maintenance cost: $19500.00
+   Objective value: 11.0
 
-   Maintenance schedule:
-     machine       day
-    CNC_Mill    Monday
-       Lathe   Tuesday
-       Press   Tuesday
-      Welder    Monday
-       Drill    Monday
+   Maintenance schedule (10 assignments):
+     Period 1: M005, M010
+     Period 2: M001, M004, M007
+     Period 3: M002, M003, M006, M008, M009
    ```
 
 ## Template structure
@@ -108,106 +106,103 @@ The model demonstrates a classic assignment problem with side constraints, makin
 ├── machine_maintenance.py
 └── data/
     ├── machines.csv
-    ├── time_slots.csv
-    └── conflicts.csv
+    ├── technicians.csv
+    └── availability.csv
 ```
 
 ## How it works
 
 ### 1. Define the ontology and load data
 
-The model defines three concepts: machines with maintenance requirements and failure costs, time slots with crew availability and cost multipliers, and conflict pairs indicating machines that cannot share a slot.
+The model defines six concepts: machines with ML-predicted remaining useful life, technicians with skills and certifications, discrete planning periods, and three cross-product concepts for the scheduling decision space.
 
 ```python
-Machine = Concept("Machine", identify_by={"id": Integer})
-Machine.name = Property(f"{Machine} has {String:name}")
-Machine.maintenance_hours = Property(f"{Machine} has {Integer:maintenance_hours}")
-Machine.failure_cost = Property(f"{Machine} has {Float:failure_cost}")
+Machine = model.Concept("Machine", identify_by={"machine_id": String})
+Machine.remaining_useful_life = model.Property(
+    f"{Machine} has remaining useful life {Float:remaining_useful_life}")
+Machine.failure_probability = model.Property(
+    f"{Machine} has failure probability {Float:failure_probability}")
 
-TimeSlot = Concept("TimeSlot", identify_by={"id": Integer})
-TimeSlot.day = Property(f"{TimeSlot} on {String:day}")
-TimeSlot.crew_hours = Property(f"{TimeSlot} has {Integer:crew_hours}")
-TimeSlot.cost_multiplier = Property(f"{TimeSlot} has {Float:cost_multiplier}")
+Technician = model.Concept("Technician", identify_by={"technician_id": String})
+Period = model.Concept("Period", identify_by={"pid": Integer})
+
+MachinePeriod = model.Concept("MachinePeriod",
+    identify_by={"machine": Machine, "period": Period})
+TechnicianMachinePeriod = model.Concept("TechnicianMachinePeriod",
+    identify_by={"technician": Technician, "machine": Machine, "period": Period})
 ```
 
 ### 2. Set up decision variables
 
-A binary variable for every machine-slot combination indicates whether a machine is scheduled in that slot.
+Three binary variables control the schedule: maintain a machine in a period, track vulnerability, and assign a technician.
 
 ```python
-Schedule = Concept("Schedule")
-Schedule.machine = Property(f"{Schedule} for {Machine}", short_name="machine")
-Schedule.slot = Property(f"{Schedule} in {TimeSlot}", short_name="slot")
-Schedule.x_assigned = Property(f"{Schedule} is {Float:assigned}")
-model.define(Schedule.new(machine=Machine, slot=TimeSlot))
-
-s.solve_for(Schedule.x_assigned, type="bin",
-    name=["sched", Schedule.machine.name, Schedule.slot.day])
+s.solve_for(MachinePeriod.x_maintain, type="bin")
+s.solve_for(MachinePeriod.x_vulnerable, type="bin")
+s.solve_for(TechnicianMachinePeriod.x_assigned, type="bin")
 ```
 
 ### 3. Add constraints
 
-Each machine must be scheduled exactly once, crew hours per slot must not be exceeded, and conflicting machines cannot share a slot.
+Cumulative coverage ensures each machine is either maintained by period tau or remains vulnerable. Assignment linkage requires exactly one technician per maintenance action. Technician capacity and global parts/space limits bound the schedule.
 
 ```python
-# Each machine scheduled exactly once
-machine_scheduled = sum(ScheduleRef.x_assigned).where(
-    ScheduleRef.machine == Machine).per(Machine)
-s.satisfy(model.require(machine_scheduled == 1))
+# C1: Cumulative maintenance coverage
+maintained_until_tau = sum(MachinePeriod_inner.x_maintain).where(
+    MachinePeriod_outer.machine(Machine_ref), MachinePeriod_outer.period(Period_outer),
+    MachinePeriod_inner.machine(Machine_ref), MachinePeriod_inner.period(Period_inner),
+    Period_inner.pid >= 1, Period_inner.pid <= Period_outer.pid
+).per(Machine_ref, Period_outer)
 
-# Crew hour limits
-slot_hours = sum(ScheduleRef.x_assigned * ScheduleRef.machine.maintenance_hours).where(
-    ScheduleRef.slot == TimeSlot).per(TimeSlot)
-s.satisfy(model.require(slot_hours <= TimeSlot.crew_hours))
-
-# No conflicts in same slot
-no_conflicts = model.require(ScheduleA.x_assigned + ScheduleB.x_assigned <= 1).where(
-    ScheduleA.machine == Conflict.machine1,
-    ScheduleB.machine == Conflict.machine2,
-    ScheduleA.slot == ScheduleB.slot,
+s.satisfy(
+    model.require(maintained_until_tau + MachinePeriod_outer.x_vulnerable == 1)
+    .where(MachinePeriod_outer.machine(Machine_ref), MachinePeriod_outer.period(Period_outer))
 )
-s.satisfy(no_conflicts)
 ```
 
-### 4. Minimize total cost
+### 4. Minimize expected total cost
 
-The objective minimizes the sum of each machine's failure cost weighted by the slot's cost multiplier.
+The objective balances failure risk (vulnerable machines weighted by failure probability) against maintenance cost.
 
 ```python
-total_cost = sum(Schedule.x_assigned * Schedule.machine.failure_cost * Schedule.slot.cost_multiplier)
-s.minimize(total_cost)
+expected_cost = sum(
+    MachinePeriod_outer.x_vulnerable * MachinePeriod_outer.fail_prob * FAILURE_TO_MAINTENANCE_RATIO
+    + MachinePeriod_outer.x_maintain
+).where(MachinePeriod_outer.machine(Machine_ref), MachinePeriod_outer.period(Period_outer))
+
+s.minimize(expected_cost)
 ```
 
 ## Customize this template
 
-- **Add more machines or time slots** by extending the CSV files to model a larger facility.
-- **Add machine priorities** to the objective so high-importance machines get preferred (cheaper) slots.
-- **Introduce maintenance windows** where certain machines can only be serviced on specific days.
-- **Model multi-day maintenance** for machines that require more hours than a single slot provides.
-- **Add crew skill requirements** so only qualified crews can service certain machines.
+- **Extend the planning horizon** by adding more periods to the availability data and increasing `PERIOD_HORIZON`. Full-scale data (50 machines, 40 technicians, 12 periods) is available in `data/full_scale/`.
+- **Add skill matching** so only certified technicians can service certain machine types.
+- **Weight by criticality** to prioritize high-criticality machines for earlier maintenance.
+- **Add travel costs** based on technician base location vs machine facility.
+- **Model multi-period maintenance** for machines requiring more than one period of work.
 
 ## Troubleshooting
 
 <details>
 <summary>Solver returns INFEASIBLE</summary>
 
-Check that the total crew hours across all slots can accommodate all machines. The current data has 5 machines requiring 4+3+5+2+2 = 16 hours, and 5 slots offering 8+8+6+8+6 = 36 hours. Also check that conflict constraints do not make it impossible to assign all machines.
+Check that technician availability across all periods can accommodate all machines. With 10 machines and 10 technicians over 4 periods, there is ample capacity. If you tighten constraints (e.g., reduce PARTS_CAPACITY_PER_PERIOD), infeasibility may occur.
 </details>
 
 <details>
-<summary>Machines not spreading across slots as expected</summary>
+<summary>All machines maintained in period 1</summary>
 
-The solver minimizes cost, so it will pack machines into the cheapest slots (lowest cost_multiplier) as long as crew hours allow. If you want to spread work more evenly, add a load-balancing term to the objective or tighten crew hour limits.
+The solver minimizes total cost. If capacity allows, it may schedule all maintenance early to avoid vulnerability costs. To spread maintenance, tighten PARTS_CAPACITY_PER_PERIOD or SPACE_CAPACITY_PER_PERIOD.
+</details>
+
+<details>
+<summary>Query fails with "input definition is too large"</summary>
+
+This occurs with large cross-products (e.g., 50 machines x 40 technicians x 12 periods = 24,000 entities). The solver handles these fine, but post-solve queries may exceed RAI's AST size limit. Reduce the data size or use the default 10x10x4 configuration.
 </details>
 
 <details>
 <summary>Connection or authentication errors</summary>
 
 Run `rai init` to configure your Snowflake connection. Verify that the RAI Native App is installed and your user has the required permissions.
-</details>
-
-<details>
-<summary>ModuleNotFoundError for relationalai</summary>
-
-Ensure you activated the virtual environment and ran `python -m pip install .` to install all dependencies listed in `pyproject.toml`.
 </details>

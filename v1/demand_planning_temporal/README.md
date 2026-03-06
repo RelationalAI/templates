@@ -170,14 +170,14 @@ Production and inventory variables are indexed by both concept (site x SKU) and 
 ProdCapacity.x_production = Property(
     f"{ProdCapacity} in week {{t:int}} produces {{production:float}}"
 )
-x_prod = Float.ref()
+production_ref = Float.ref()
 s.solve_for(
-    ProdCapacity.x_production(t, x_prod),
+    ProdCapacity.x_production(week_ref, production_ref),
     type="cont",
     lower=0,
     upper=ProdCapacity.max_production_per_week,
-    name=["prod", ProdCapacity.site_id, ProdCapacity.sku_id, t],
-    where=[t == weeks]
+    name=["prod", ProdCapacity.site_id, ProdCapacity.sku_id, week_ref],
+    where=[week_ref == weeks]
 )
 ```
 
@@ -189,15 +189,15 @@ The core multi-period pattern ties adjacent weeks together. Inventory at the end
 
 ```python
 s.satisfy(model.where(
-    ProdCapacity.x_inventory(t, x_inv_curr),
-    ProdCapacity.x_inventory(t - 1, x_inv_prev),
-    ProdCapacity.x_production(t, x_prod),
+    ProdCapacity.x_inventory(week_ref, x_inv_curr),
+    ProdCapacity.x_inventory(week_ref - 1, x_inv_prev),
+    ProdCapacity.x_production(week_ref, production_ref),
     WeeklyDemand.wk_site_id == ProdCapacity.site_id,
     WeeklyDemand.wk_sku_id == ProdCapacity.sku_id,
-    WeeklyDemand.wk_week_num == t,
-    t >= 1,
+    WeeklyDemand.wk_week_num == week_ref,
+    week_ref >= 1,
 ).require(
-    x_inv_curr == x_inv_prev + x_prod - WeeklyDemand.wk_quantity
+    x_inv_curr == x_inv_prev + production_ref - WeeklyDemand.wk_quantity
 ))
 ```
 
@@ -208,8 +208,8 @@ A `WeeklyDemand` concept pre-aggregates orders into weekly buckets (including ze
 The objective combines three cost components from different concepts using `model.union()`:
 
 ```python
-prod_cost = ProdCapacity.production_cost * sum(x_prod).per(ProdCapacity).where(...)
-hold_cost = ProdCapacity.holding_cost_per_week * sum(x_inv).per(ProdCapacity).where(...)
+prod_cost = ProdCapacity.production_cost * sum(production_ref).per(ProdCapacity).where(...)
+hold_cost = ProdCapacity.holding_cost_per_week * sum(inventory_ref).per(ProdCapacity).where(...)
 unmet_cost = unmet_penalty * DemandOrder.x_unmet
 
 s.minimize(sum(model.union(prod_cost, hold_cost, unmet_cost)))

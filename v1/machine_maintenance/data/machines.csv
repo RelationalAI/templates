@@ -1,6 +1,11 @@
-id,name,maintenance_hours,failure_cost,importance
-1,CNC_Mill,4,5000,3
-2,Lathe,3,3000,2
-3,Press,5,8000,3
-4,Welder,2,2000,1
-5,Drill,2,1500,1
+machine_id,machine_name,machine_type,facility,location,remaining_useful_life,failure_probability,criticality,maintenance_duration_hours,last_maintenance_date,parts_required,estimated_parts_cost
+M001,Turbine_Alpha_1,Turbine,Plant_A,Houston_TX,3.5,0.286,Critical,8,2024-09-15,Bearings|Seals,12500
+M002,Turbine_Alpha_2,Turbine,Plant_A,Houston_TX,6.2,0.161,Critical,8,2024-10-01,Bearings|Seals,12500
+M003,Compressor_Beta_1,Compressor,Plant_A,Houston_TX,8.0,0.125,High,6,2024-08-20,Valves|Filters,8200
+M004,Compressor_Beta_2,Compressor,Plant_A,Houston_TX,4.8,0.208,High,6,2024-09-25,Valves|Filters,8200
+M005,Pump_Gamma_1,Pump,Plant_A,Houston_TX,2.0,0.500,Critical,4,2024-11-01,Impeller|Seals,5800
+M006,Pump_Gamma_2,Pump,Plant_A,Houston_TX,5.5,0.182,High,4,2024-09-10,Impeller|Seals,5800
+M007,Pump_Gamma_3,Pump,Plant_B,Chicago_IL,3.2,0.313,High,4,2024-10-12,Impeller|Seals,5800
+M008,Generator_Delta_1,Generator,Plant_B,Chicago_IL,10.0,0.100,Critical,12,2024-07-15,Rotor|Stator,22000
+M009,Generator_Delta_2,Generator,Plant_B,Chicago_IL,7.8,0.128,Critical,12,2024-08-28,Rotor|Stator,22000
+M010,Motor_Epsilon_1,Motor,Plant_B,Chicago_IL,1.5,0.667,High,3,2024-11-05,Windings|Bearings,4200
