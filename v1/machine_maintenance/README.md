@@ -19,7 +19,7 @@ tags:
 
 Manufacturing facilities must schedule preventive maintenance for machines with ML-predicted failure probabilities. Each machine either receives maintenance by a given period or remains vulnerable to failure. When maintenance is scheduled, a qualified technician must be assigned, subject to hours-based capacity constraints and per-period parts/bay limits.
 
-This template uses prescriptive reasoning to decide when each machine is maintained and which technician performs it, minimizing the combined cost of expected failures (weighted by criticality and parts cost), technician labor (duration times hourly rate), and travel penalties for cross-location assignments.
+This template uses RelationalAI's **prescriptive reasoning (optimization)** capabilities to decide when each machine is maintained and which technician performs it, minimizing the combined cost of expected failures (weighted by criticality and parts cost), technician labor (duration times hourly rate), and travel penalties for cross-location assignments.
 
 The model demonstrates a multi-period scheduling problem with skill-based assignment, hours-based capacity, location-aware costing, and a multi-component objective -- a practical pattern for any maintenance planning scenario.
 
@@ -58,33 +58,39 @@ The model demonstrates a multi-period scheduling problem with skill-based assign
 
 ## Quickstart
 
-1. Download ZIP:
+1. Download the ZIP file for this template and extract it:
+
    ```bash
    curl -O https://docs.relational.ai/templates/zips/v1/machine_maintenance.zip
    unzip machine_maintenance.zip
    cd machine_maintenance
    ```
+
    > [!TIP]
    > You can also download the template ZIP using the "Download ZIP" button at the top of this page.
 
-2. Create venv:
+2. Create a virtual environment and activate it:
+
    ```bash
    python -m venv .venv
    source .venv/bin/activate
    python -m pip install --upgrade pip
    ```
 
-3. Install:
+3. Install dependencies:
+
    ```bash
    python -m pip install .
    ```
 
-4. Configure:
+4. Configure your RAI connection:
+
    ```bash
    rai init
    ```
 
-5. Run:
+5. Run the template:
+
    ```bash
    python machine_maintenance.py
    ```
@@ -132,9 +138,11 @@ The model demonstrates a multi-period scheduling problem with skill-based assign
 
 ## How it works
 
-### 1. Define the ontology and load data
+This section walks through the highlights in `machine_maintenance.py`.
 
-The model defines seven concepts: machines with ML-predicted failure probability and numeric criticality, technicians with skills and hourly rates, a qualification mapping linking technicians to machine types, discrete planning periods, and three cross-product concepts for the scheduling decision space.
+### Define concepts and load CSV data
+
+First, the model defines concepts for machines (with ML-predicted failure probability and numeric criticality), technicians (with skills and hourly rates), a qualification mapping linking technicians to machine types, and discrete planning periods. Data is loaded from CSV files using `model.data(...).to_schema()`:
 
 ```python
 Machine = model.Concept("Machine", identify_by={"machine_id": String})
@@ -151,18 +159,22 @@ Qualification = model.Concept("Qualification",
     identify_by={"technician_id": String, "machine_type": String})
 
 Period = model.Concept("Period", identify_by={"pid": Integer})
+```
 
+Next, three cross-product concepts define the scheduling decision space. `MachinePeriod` pairs each machine with each period. `TechnicianPeriod` tracks technician capacity per period. `TechnicianMachinePeriod` is restricted to qualified pairs only -- technicians can only be assigned to machine types they are certified for:
+
+```python
 MachinePeriod = model.Concept("MachinePeriod",
     identify_by={"machine": Machine, "period": Period})
 TechnicianMachinePeriod = model.Concept("TechnicianMachinePeriod",
     identify_by={"technician": Technician, "machine": Machine, "period": Period})
 ```
 
-The `TechnicianMachinePeriod` cross-product is restricted to qualified pairs only -- technicians can only be assigned to machine types they are certified for. A derived `same_location` flag tracks whether the technician is co-located with the machine.
+A derived `same_location` flag tracks whether the technician is co-located with the machine, used later in the travel cost component.
 
-### 2. Set up decision variables
+### Define decision variables, constraints, and objective
 
-Three binary variables control the schedule: maintain a machine in a period, track vulnerability, and assign a technician.
+Three binary decision variables control the schedule using `solve_for(...)`: whether to maintain a machine in a period, whether it remains vulnerable, and whether a technician is assigned:
 
 ```python
 s.solve_for(MachinePeriod.x_maintain, type="bin")
@@ -170,12 +182,9 @@ s.solve_for(MachinePeriod.x_vulnerable, type="bin")
 s.solve_for(TechnicianMachinePeriod.x_assigned, type="bin")
 ```
 
-### 3. Add constraints
-
-Cumulative coverage ensures each machine is either maintained by period tau or remains vulnerable. Assignment linkage requires exactly one qualified technician per maintenance action. Hours-based technician capacity accounts for maintenance duration (not just job count). Parts/bay limits cap concurrent maintenance per period.
+Then, four constraints are defined using `require(...)` and `satisfy(...)`. The cumulative coverage constraint ensures each machine is either maintained by period tau or remains vulnerable. The `sum(...).where(...).per(...)` pattern aggregates maintenance decisions across periods:
 
 ```python
-# C1: Cumulative maintenance coverage
 maintained_until_tau = sum(MachinePeriod_inner.x_maintain).where(
     MachinePeriod_outer.machine(Machine_ref), MachinePeriod_outer.period(Period_outer),
     MachinePeriod_inner.machine(Machine_ref), MachinePeriod_inner.period(Period_inner),
@@ -185,19 +194,23 @@ maintained_until_tau = sum(MachinePeriod_inner.x_maintain).where(
 coverage_constraint = model.require(
     maintained_until_tau + MachinePeriod_outer.x_vulnerable == 1
 ).where(MachinePeriod_outer.machine(Machine_ref), MachinePeriod_outer.period(Period_outer))
+```
 
-# C3: Technician hours capacity
+The hours-based technician capacity constraint accounts for maintenance duration (not just job count), ensuring assigned hours do not exceed available capacity:
+
+```python
 assigned_hours = sum(
     TechnicianMachinePeriod_ref.x_assigned
     * TechnicianMachinePeriod_ref.machine.maintenance_duration_hours
-).where(...).per(Technician_ref, Period_tc)
+).where(
+    TechnicianMachinePeriod_ref.technician(Technician_ref),
+    TechnicianMachinePeriod_ref.period(Period_tc)
+).per(Technician_ref, Period_tc)
 
 hours_constraint = model.require(assigned_hours <= avail_hours)
 ```
 
-### 4. Minimize expected total cost
-
-The objective has three components: failure risk for vulnerable machines (weighted by probability, parts cost, and criticality), labor cost for maintenance actions (duration times hourly rate), and a travel penalty when technicians work at a different location.
+Finally, the objective uses `minimize(...)` to minimize expected total cost across three components: failure risk for vulnerable machines (weighted by probability, parts cost, and criticality), labor cost for maintenance actions (duration times hourly rate), and a travel penalty when technicians work at a different location:
 
 ```python
 failure_cost = sum(
@@ -223,6 +236,25 @@ travel_cost = sum(
 s.minimize(failure_cost + labor_cost + travel_cost)
 ```
 
+### Solve and print results
+
+The model is solved using the HiGHS solver with a two-minute time limit. After solving, the script prints the termination status and objective value, then extracts and displays the maintenance schedule and technician assignments using `model.select(...)`:
+
+```python
+s.solve("highs", time_limit_sec=120, _server_side_import=False)
+
+print(f"\nStatus: {s.termination_status}")
+print(f"Objective value: {s.objective_value:.2f}")
+
+maint_df = model.select(
+    MachinePeriod.machine.machine_id.alias("machine_id"),
+    MachinePeriod.machine.machine_type.alias("type"),
+    MachinePeriod.machine.facility.alias("facility"),
+    MachinePeriod.machine.criticality.alias("criticality"),
+    MachinePeriod.period.pid.alias("period"),
+).where(MachinePeriod.x_maintain > 0.5).to_df()
+```
+
 ## Customize this template
 
 - **Extend the planning horizon** by adding more periods to the availability data and increasing `PERIOD_HORIZON`.
@@ -234,25 +266,37 @@ s.minimize(failure_cost + labor_cost + travel_cost)
 ## Troubleshooting
 
 <details>
-<summary>Solver returns INFEASIBLE</summary>
+<summary><code>Status: INFEASIBLE</code></summary>
 
-Check that technician hours capacity across all periods can accommodate all machines. With 30 machines and 10 technicians over 4 periods, capacity is tight. If you reduce `PARTS_CAPACITY_PER_PERIOD` below the minimum needed, infeasibility may occur.
+- Check that technician hours capacity across all periods can accommodate all machines.
+- With 30 machines and 10 technicians over 4 periods, capacity is tight.
+- If you reduce `PARTS_CAPACITY_PER_PERIOD` below the minimum needed, infeasibility may occur.
 </details>
 
 <details>
 <summary>All machines maintained in period 1</summary>
 
-The solver minimizes total cost. If capacity allows, it may schedule all maintenance early to avoid vulnerability costs. Tighten `PARTS_CAPACITY_PER_PERIOD` to spread maintenance across periods.
+- The solver minimizes total cost. If capacity allows, it may schedule all maintenance early to avoid vulnerability costs.
+- Tighten `PARTS_CAPACITY_PER_PERIOD` to spread maintenance across periods.
 </details>
 
 <details>
-<summary>Query fails with "input definition is too large"</summary>
+<summary><code>input definition is too large</code></summary>
 
-This occurs with large cross-products. The qualification-filtered assignment space (1,032 variables for 30 machines) avoids this issue. If you scale up significantly, consider reducing data size or using `variable_values()` instead of `model.select()`.
+- This occurs with large cross-products. The qualification-filtered assignment space (1,032 variables for 30 machines) avoids this issue.
+- If you scale up significantly, consider reducing data size or using `variable_values()` instead of `model.select()`.
+</details>
+
+<details>
+<summary><code>ModuleNotFoundError</code></summary>
+
+- Make sure you activated the virtual environment and ran `python -m pip install .` from the template directory.
+- The `pyproject.toml` declares the required dependencies.
 </details>
 
 <details>
 <summary>Connection or authentication errors</summary>
 
-Run `rai init` to configure your Snowflake connection. Verify that the RAI Native App is installed and your user has the required permissions.
+- Run `rai init` to configure your Snowflake connection.
+- Verify that the RAI Native App is installed and your user has the required permissions.
 </details>

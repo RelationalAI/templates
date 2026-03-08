@@ -34,9 +34,10 @@ from relationalai.semantics.reasoners.prescriptive import Problem
 model = Model("machine_maintenance")
 
 # --------------------------------------------------
-# Configuration
+# Configure inputs
 # --------------------------------------------------
 
+DATA_DIR = Path(__file__).parent / "data"
 PERIOD_HORIZON = 4              # number of discrete planning periods
 PARTS_CAPACITY_PER_PERIOD = 5   # max maintenance jobs per period (parts/bay limit)
 TRAVEL_COST_PER_HOUR = 50.0     # cost penalty when technician travels to another facility
@@ -45,12 +46,10 @@ TRAVEL_COST_PER_HOUR = 50.0     # cost penalty when technician travels to anothe
 # Define semantic model & load data
 # --------------------------------------------------
 
-data_dir = Path(__file__).parent / "data"
-
-machines_df = read_csv(data_dir / "machines.csv")
-technicians_df = read_csv(data_dir / "technicians.csv")
-availability_df = read_csv(data_dir / "availability.csv")
-qualifications_df = read_csv(data_dir / "qualifications.csv")
+machines_df = read_csv(DATA_DIR / "machines.csv")
+technicians_df = read_csv(DATA_DIR / "technicians.csv")
+availability_df = read_csv(DATA_DIR / "availability.csv")
+qualifications_df = read_csv(DATA_DIR / "qualifications.csv")
 
 # Concept: machines with ML-predicted failure probability, numeric
 # criticality (1-5), maintenance duration, and estimated parts cost.
