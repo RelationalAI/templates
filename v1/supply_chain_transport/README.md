@@ -148,19 +148,19 @@ model.define(seg1, seg1.limit(6000.0), seg1.cost(0.18))
 **3. Formulate decision variables.** The model solves for inventory levels, transport quantities, binary mode indicators, arrival days, and piecewise LTL segment variables:
 
 ```python
-s.solve_for(FreightGroup.x_inv(t, x_inv), lower=0,
-    name=["x_inv", FreightGroup.name, t],
-    where=[t == std.common.range(FreightGroup.inv_start_t, FreightGroup.inv_end_t + 1)])
+s.solve_for(FreightGroup.x_inv(time_period_ref, x_inv), lower=0,
+    name=["x_inv", FreightGroup.name, time_period_ref],
+    where=[time_period_ref == std.common.range(FreightGroup.inv_start_t, FreightGroup.inv_end_t + 1)])
 ```
 
 **4. Add inventory flow conservation.** Inventory on day t equals inventory on day t+1 plus what is shipped out:
 
 ```python
 s.satisfy(model.where(
-    FreightGroup.x_inv(t, x_inv1),
-    FreightGroup.x_inv(t + 1, x_inv2),
-    TransportType.x_qty_tra(FreightGroup, t, x_qty_tra),
-).require(x_inv1 == x_inv2 + sum(x_qty_tra).per(FreightGroup, t)))
+    FreightGroup.x_inv(time_period_ref, x_inv_current),
+    FreightGroup.x_inv(time_period_ref + 1, x_inv_next),
+    TransportType.x_qty_tra(FreightGroup, time_period_ref, x_qty_tra),
+).require(x_inv_current == x_inv_next + sum(x_qty_tra).per(FreightGroup, time_period_ref)))
 ```
 
 **5. Minimize total cost.** The objective combines inventory holding costs, TL fixed costs, and piecewise LTL variable costs.

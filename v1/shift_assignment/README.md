@@ -150,7 +150,7 @@ Worker.available_for = model.Relationship(f"{Worker} is available for {Shift}")
 ```python
 Worker.x_assign = model.Property(f"{Worker} has {Shift} if {Integer:assigned}")
 s.solve_for(
-    Worker.x_assign(Shift, x),
+    Worker.x_assign(Shift, assigned_ref),
     type="bin",
     name=["x", Worker.name, Shift.name],
     where=[Worker.available_for(Shift)],
@@ -161,11 +161,11 @@ s.solve_for(
 **3. Add constraints.** Each shift must meet the minimum coverage, and each worker works at most one shift:
 
 ```python
-s.satisfy(model.where(Worker.x_assign(Shift, x)).require(
-    sum(Worker, x).per(Shift) >= min_coverage
+s.satisfy(model.where(Worker.x_assign(Shift, assigned_ref)).require(
+    sum(Worker, assigned_ref).per(Shift) >= min_coverage
 ))
-s.satisfy(model.where(Worker.x_assign(Shift, x)).require(
-    sum(Shift, x).per(Worker) <= max_shifts
+s.satisfy(model.where(Worker.x_assign(Shift, assigned_ref)).require(
+    sum(Shift, assigned_ref).per(Worker) <= max_shifts
 ))
 ```
 

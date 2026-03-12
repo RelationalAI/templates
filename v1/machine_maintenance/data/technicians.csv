@@ -1,0 +1,11 @@
+technician_id,technician_name,skill_level,base_location,certifications,hourly_rate,max_weekly_hours,specialization
+T001,Alice_Johnson,Senior,Houston_TX,Turbine|Compressor|Generator,95,40,Rotating_Equipment
+T002,Bob_Martinez,Senior,Houston_TX,Pump|Valve|Hydraulics,90,40,Fluid_Systems
+T003,Charlie_Brown,Junior,Houston_TX,General|Electrical,65,40,General_Maintenance
+T004,Diana_Chen,Junior,Chicago_IL,General|Mechanical,62,40,General_Maintenance
+T005,Edward_Smith,Senior,Chicago_IL,Generator|Motor|Electrical,92,40,Electrical_Systems
+T006,Fiona_Garcia,Senior,Chicago_IL,Pump|Motor|Conveyor,88,40,Mechanical_Systems
+T007,George_Davis,Intermediate,Chicago_IL,Motor|Conveyor|General,75,40,General_Maintenance
+T008,Hannah_Wilson,Senior,Phoenix_AZ,Press|Hydraulics|Conveyor,91,40,Hydraulic_Systems
+T009,Ian_Taylor,Intermediate,Phoenix_AZ,Conveyor|General,72,40,Material_Handling
+T010,Julia_Anderson,Junior,Phoenix_AZ,General|Mechanical,60,40,General_Maintenance

@@ -160,8 +160,8 @@ s.solve_for(Food.x_amount, name=Food.name, lower=0, populate=False)
 Nutritional constraints ensure total intake from all foods falls within bounds for each nutrient. The objective minimizes total food cost:
 
 ```python
-qty = Float.ref()
-nutrient_total = sum(qty * Food.x_amount).where(Food.contains(Nutrient, qty)).per(Nutrient)
+nutrient_qty = Float.ref()
+nutrient_total = sum(nutrient_qty * Food.x_amount).where(Food.contains(Nutrient, nutrient_qty)).per(Nutrient)
 s.satisfy(model.require(
     nutrient_total >= Nutrient.min * scenario_value,
     nutrient_total <= Nutrient.max * scenario_value

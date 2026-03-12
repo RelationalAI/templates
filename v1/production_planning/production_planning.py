@@ -108,7 +108,7 @@ for demand_multiplier in SCENARIO_VALUES:
     s.maximize(total_profit)
 
     s.display()
-    s.solve("highs", time_limit_sec=60, _server_side_import=False)
+    s.solve("highs", time_limit_sec=60)
     s.display_solve_info()
 
     scenario_results.append({

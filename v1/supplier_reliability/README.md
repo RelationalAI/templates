@@ -184,7 +184,7 @@ for excluded_supplier in SCENARIO_VALUES:
             SupplyOrder.supplier.name == excluded_supplier
         )
         s.satisfy(exclude)
-    s.solve("highs", time_limit_sec=60, _server_side_import=False)
+    s.solve("highs", time_limit_sec=60)
 ```
 
 ## Customize this template

@@ -73,8 +73,8 @@ for scenario_value in SCENARIO_VALUES:
     # Create fresh Problem for each scenario
     s = Problem(model, Float)
     s.solve_for(Food.x_amount, name=Food.name, lower=0, populate=False)
-    qty = Float.ref()
-    nutrient_total = sum(qty * Food.x_amount).where(Food.contains(Nutrient, qty)).per(Nutrient)
+    nutrient_qty = Float.ref()
+    nutrient_total = sum(nutrient_qty * Food.x_amount).where(Food.contains(Nutrient, nutrient_qty)).per(Nutrient)
     s.satisfy(model.require(
         nutrient_total >= Nutrient.min * scenario_value,
         nutrient_total <= Nutrient.max * scenario_value
@@ -82,7 +82,7 @@ for scenario_value in SCENARIO_VALUES:
     s.minimize(sum(Food.cost * Food.x_amount))
 
     s.display()
-    s.solve("highs", time_limit_sec=60, _server_side_import=False)
+    s.solve("highs", time_limit_sec=60)
     s.display_solve_info()
 
     scenario_results.append({

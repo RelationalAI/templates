@@ -157,8 +157,8 @@ s.solve_for(Stock.x_quantity, name=["qty", Stock.index], populate=False)
 Portfolio risk is minimized using the covariance matrix. The quadratic term sums over all stock pairs:
 
 ```python
-c = Float.ref()
-risk = sum(c * Stock.x_quantity * Stock2.x_quantity).where(Stock.covar(Stock2, c))
+covar_value = Float.ref()
+risk = sum(covar_value * Stock.x_quantity * PairedStock.x_quantity).where(Stock.covar(PairedStock, covar_value))
 s.minimize(risk)
 ```
 

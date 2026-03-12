@@ -190,9 +190,9 @@ Week.demand_multiplier = model.Property(f"{Week} has {Float:demand_multiplier}")
 Three sets of variables model the decisions and state: binary selection of discount level per product-week, continuous sales per product-week-discount, and cumulative sales per product-week:
 
 ```python
-s.solve_for(Product.x_select(w, d, x), type="bin", ...)
-s.solve_for(Product.x_sales(w, d, y), type="cont", lower=0, ...)
-s.solve_for(Product.x_cuml_sales(w, z), type="cont", lower=0, ...)
+s.solve_for(Product.x_select(Week_ref, Discount_ref, selection_ref), type="bin", ...)
+s.solve_for(Product.x_sales(Week_ref, Discount_ref, sales_ref), type="cont", lower=0, ...)
+s.solve_for(Product.x_cuml_sales(Week_ref, cumulative_ref), type="cont", lower=0, ...)
 ```
 
 ### 3. Key constraints
@@ -201,17 +201,17 @@ The one-hot constraint ensures exactly one discount level is active per product-
 
 ```python
 # One discount per product-week
-s.satisfy(model.where(Product.x_select(w, d, x)).require(
-    sum(d, x).per(Product, w) == 1
+s.satisfy(model.where(Product.x_select(Week_ref, Discount_ref, selection_ref)).require(
+    sum(Discount_ref, selection_ref).per(Product, Week_ref) == 1
 ))
 
 # Discounts can only increase over time
 s.satisfy(model.where(
-    Product.x_select(w, d, x),
-    Product.x_select(w2, d2, x2),
-    w2.num == w.num + 1,
-    d2.level < d.level,
-).require(x + x2 <= 1))
+    Product.x_select(Week_ref, Discount_ref, selection_ref),
+    Product.x_select(Week_inner, Discount_inner, selection_inner),
+    Week_inner.num == Week_ref.num + 1,
+    Discount_inner.level < Discount_ref.level,
+).require(selection_ref + selection_inner <= 1))
 ```
 
 ### 4. Objective
@@ -220,11 +220,11 @@ Revenue combines sales revenue (price after discount times units sold) and salva
 
 ```python
 revenue = sum(
-    Product.initial_price * (1 - d.discount_pct / 100) * x
-).where(Product.x_sales(w, d, x))
+    Product.initial_price * (1 - Discount_ref.discount_pct / 100) * sales_ref
+).where(Product.x_sales(Week_ref, Discount_ref, sales_ref))
 salvage = sum(
-    Product.initial_price * Product.salvage_rate * (Product.initial_inventory - z)
-).where(Product.x_cuml_sales(w, z), w.num == num_weeks)
+    Product.initial_price * Product.salvage_rate * (Product.initial_inventory - cumulative_ref)
+).where(Product.x_cuml_sales(Week_ref, cumulative_ref), Week_ref.num == num_weeks)
 s.maximize(revenue + salvage)
 ```
 
