@@ -241,7 +241,7 @@ s.minimize(failure_cost + labor_cost + travel_cost)
 The model is solved using the HiGHS solver with a two-minute time limit. After solving, the script prints the termination status and objective value, then extracts and displays the maintenance schedule and technician assignments using `model.select(...)`:
 
 ```python
-s.solve("highs", time_limit_sec=120, _server_side_import=False)
+s.solve("highs", time_limit_sec=120)
 
 print(f"\nStatus: {s.termination_status}")
 print(f"Objective value: {s.objective_value:.2f}")

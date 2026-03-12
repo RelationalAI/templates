@@ -135,7 +135,7 @@ for scenario_value in SCENARIO_VALUES:
     build_formulation(s)
 
     s.display()
-    s.solve("highs", time_limit_sec=60, _server_side_import=False)
+    s.solve("highs", time_limit_sec=60)
     s.display_solve_info()
 
     scenario_results.append({

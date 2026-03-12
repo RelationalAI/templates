@@ -340,7 +340,7 @@ s.minimize(failure_cost + labor_cost + travel_cost)
 # --------------------------------------------------
 
 s.display()
-s.solve("highs", time_limit_sec=120, _server_side_import=False)
+s.solve("highs", time_limit_sec=120)
 s.display_solve_info()
 
 print(f"\nStatus: {s.termination_status}")

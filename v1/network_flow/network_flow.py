@@ -63,7 +63,7 @@ s.maximize(total_flow)
 # --------------------------------------------------
 
 s.display()
-s.solve("highs", time_limit_sec=60, _server_side_import=False)
+s.solve("highs", time_limit_sec=60)
 s.display_solve_info()
 
 print(f"Status: {s.termination_status}")

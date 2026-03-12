@@ -102,7 +102,7 @@ for factory_name in SCENARIO_VALUES:
     ).where(this_product, Factory.name(factory_name)))
 
     s.display()
-    s.solve("highs", time_limit_sec=60, _server_side_import=False)
+    s.solve("highs", time_limit_sec=60)
     s.display_solve_info()
 
     scenario_results.append({

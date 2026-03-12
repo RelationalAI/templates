@@ -95,7 +95,7 @@ for scenario_value in SCENARIO_VALUES:
     ))
 
     s.display()
-    s.solve("minizinc", time_limit_sec=60, _server_side_import=False)
+    s.solve("minizinc", time_limit_sec=60)
     s.display_solve_info()
 
     scenario_results.append({
