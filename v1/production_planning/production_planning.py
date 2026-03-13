@@ -98,17 +98,17 @@ x_qty = Float.ref()
 
 ProductionRef = Production.ref()
 
-s = Problem(model, Float)
+p = Problem(model, Float)
 
 # Variable: production quantity (integer, non-negative)
-s.solve_for(
+p.solve_for(
     Production.x_quantity(Scenario, x_qty),
     name=["qty", Scenario.name, Production.rate.machine.name, Production.rate.product.name],
     lower=0, type="int",
 )
 
 # Constraint: machine capacity (per machine, per scenario)
-s.satisfy(model.where(
+p.satisfy(model.where(
     Production.x_quantity(Scenario, x_qty),
     Production.rate.machine(Machine),
 ).require(
@@ -119,7 +119,7 @@ s.satisfy(model.where(
 ))
 
 # Constraint: meet demand scaled by multiplier (per product, per scenario)
-s.satisfy(model.where(
+p.satisfy(model.where(
     Production.x_quantity(Scenario, x_qty),
     Production.rate.product(Product),
 ).require(
@@ -130,7 +130,7 @@ s.satisfy(model.where(
 ))
 
 # Objective: maximize total profit
-s.maximize(
+p.maximize(
     sum(x_qty * Production.rate.product.profit)
     .where(Production.x_quantity(Scenario, x_qty))
 )
@@ -139,9 +139,9 @@ s.maximize(
 # Solve (single solve for all scenarios)
 # --------------------------------------------------
 
-s.display()
-s.solve("highs", time_limit_sec=60)
-s.display_solve_info()
+p.display()
+p.solve("highs", time_limit_sec=60)
+p.display_solve_info()
 
 # --------------------------------------------------
 # Extract results per scenario

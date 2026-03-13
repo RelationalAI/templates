@@ -104,51 +104,51 @@ Allocation.x_active = Property(f"{Allocation} in {Scenario} is {Float:active}")
 x_spend = Float.ref()
 x_active = Float.ref()
 
-s = Problem(model, Float)
+p = Problem(model, Float)
 
 # Variables
-s.solve_for(
+p.solve_for(
     Allocation.x_spend(Scenario, x_spend),
     name=["spend", Scenario.name, Allocation.effectiveness.channel.name, Allocation.effectiveness.campaign.name],
     lower=0,
 )
-s.solve_for(
+p.solve_for(
     Allocation.x_active(Scenario, x_active),
     type="bin",
     name=["active", Scenario.name, Allocation.effectiveness.channel.name, Allocation.effectiveness.campaign.name],
 )
 
 # Constraint: minimum spend per channel when active
-s.satisfy(model.where(
+p.satisfy(model.where(
     Allocation.x_spend(Scenario, x_spend),
     Allocation.x_active(Scenario, x_active),
 ).require(x_spend >= Allocation.effectiveness.channel.min_spend * x_active))
 
 # Constraint: maximum spend per channel when active
-s.satisfy(model.where(
+p.satisfy(model.where(
     Allocation.x_spend(Scenario, x_spend),
     Allocation.x_active(Scenario, x_active),
 ).require(x_spend <= Allocation.effectiveness.channel.max_spend * x_active))
 
 # Constraint: per-campaign budget across all channels (per scenario)
-s.satisfy(model.where(
+p.satisfy(model.where(
     Allocation.x_spend(Scenario, x_spend),
     Allocation.effectiveness.campaign(Campaign),
 ).require(sum(x_spend).where(Allocation.effectiveness.campaign == Campaign).per(Campaign, Scenario) <= Campaign.budget))
 
 # Constraint: require at least one active channel per campaign (per scenario)
-s.satisfy(model.where(
+p.satisfy(model.where(
     Allocation.x_active(Scenario, x_active),
     Allocation.effectiveness.campaign(Campaign),
 ).require(sum(x_active).where(Allocation.effectiveness.campaign == Campaign).per(Campaign, Scenario) >= 1))
 
 # Constraint: total budget across all campaigns (per scenario)
-s.satisfy(model.where(
+p.satisfy(model.where(
     Allocation.x_spend(Scenario, x_spend),
 ).require(sum(x_spend).per(Scenario) <= Scenario.total_budget))
 
 # Objective: maximize total expected conversions
-s.maximize(
+p.maximize(
     sum(x_spend * Allocation.effectiveness.conversion_rate)
     .where(Allocation.x_spend(Scenario, x_spend))
 )
@@ -157,9 +157,9 @@ s.maximize(
 # Solve (single solve for all scenarios)
 # --------------------------------------------------
 
-s.display()
-s.solve("highs", time_limit_sec=60)
-s.display_solve_info()
+p.display()
+p.solve("highs", time_limit_sec=60)
+p.display_solve_info()
 
 # --------------------------------------------------
 # Extract results per scenario

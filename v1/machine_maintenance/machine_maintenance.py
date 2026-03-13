@@ -197,7 +197,7 @@ model.where(
 # --------------------------------------------------
 
 # Initialize
-s = Problem(model, Float)
+p = Problem(model, Float)
 
 # References for aggregation
 MachinePeriod_outer = MachinePeriod.ref()
@@ -216,19 +216,19 @@ TechnicianPeriod_ref = TechnicianPeriod.ref()
 MachinePeriod.x_maintain = model.Property(
     f"{MachinePeriod} maintain decision {Float:x_maintain}"
 )
-s.solve_for(MachinePeriod.x_maintain, type="bin")
+p.solve_for(MachinePeriod.x_maintain, type="bin")
 
 # Variable: vulnerable
 MachinePeriod.x_vulnerable = model.Property(
     f"{MachinePeriod} vulnerable flag {Float:x_vulnerable}"
 )
-s.solve_for(MachinePeriod.x_vulnerable, type="bin")
+p.solve_for(MachinePeriod.x_vulnerable, type="bin")
 
 # Variable: assigned
 TechnicianMachinePeriod.x_assigned = model.Property(
     f"{TechnicianMachinePeriod} assigned flag {Float:x_assigned}"
 )
-s.solve_for(TechnicianMachinePeriod.x_assigned, type="bin")
+p.solve_for(TechnicianMachinePeriod.x_assigned, type="bin")
 
 # Constraint: cumulative maintenance coverage
 # For each (machine, tau): sum_{t=1..tau} x_maintain(m,t) + x_vulnerable(m,tau) = 1
@@ -245,7 +245,7 @@ maintained_until_tau = (
     )
     .per(Machine_ref, Period_outer)
 )
-s.satisfy(
+p.satisfy(
     model.require(maintained_until_tau + MachinePeriod_outer.x_vulnerable == 1).where(
         MachinePeriod_outer.machine(Machine_ref),
         MachinePeriod_outer.period(Period_outer),
@@ -262,7 +262,7 @@ assign_per_mp = (
     )
     .per(Machine_ref, Period_outer)
 )
-s.satisfy(
+p.satisfy(
     model.require(assign_per_mp == MachinePeriod_outer.x_maintain).where(
         MachinePeriod_outer.machine(Machine_ref),
         MachinePeriod_outer.period(Period_outer),
@@ -290,7 +290,7 @@ avail_hours = (
     )
     .per(Technician_ref, Period_tc)
 )
-s.satisfy(model.require(assigned_hours <= avail_hours))
+p.satisfy(model.require(assigned_hours <= avail_hours))
 
 # Constraint: parts/bay capacity per period
 # At most PARTS_CAPACITY_PER_PERIOD maintenance jobs in any single period.
@@ -299,7 +299,7 @@ maint_per_period = (
     .where(MachinePeriod_cap.period(Period_cap))
     .per(Period_cap)
 )
-s.satisfy(model.require(maint_per_period <= PARTS_CAPACITY_PER_PERIOD))
+p.satisfy(model.require(maint_per_period <= PARTS_CAPACITY_PER_PERIOD))
 
 # Objective: minimize expected total cost
 # 1. Failure risk: failure_probability * estimated_parts_cost * criticality
@@ -333,18 +333,18 @@ travel_cost = sum(
     TechnicianMachinePeriod_ref.machine(Machine_ref),
     TechnicianMachinePeriod_ref.period(Period_outer),
 )
-s.minimize(failure_cost + labor_cost + travel_cost)
+p.minimize(failure_cost + labor_cost + travel_cost)
 
 # --------------------------------------------------
 # Solve and check solution
 # --------------------------------------------------
 
-s.display()
-s.solve("highs", time_limit_sec=120)
-s.display_solve_info()
+p.display()
+p.solve("highs", time_limit_sec=120)
+p.display_solve_info()
 
-print(f"\nStatus: {s.termination_status}")
-print(f"Objective value: {s.objective_value:.2f}")
+print(f"\nStatus: {p.termination_status}")
+print(f"Objective value: {p.objective_value:.2f}")
 
 # Maintenance schedule
 maint_df = (

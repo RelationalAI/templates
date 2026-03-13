@@ -80,10 +80,10 @@ for factory_name in SCENARIO_VALUES:
     # Restrict to products of this factory
     this_product = Product.factory.name(factory_name)
 
-    s = Problem(model, Float)
+    p = Problem(model, Float)
 
     # Variable: production quantity per product, bounded by demand
-    s.solve_for(
+    p.solve_for(
         Product.x_quantity,
         lower=0,
         upper=Product.demand,
@@ -94,26 +94,26 @@ for factory_name in SCENARIO_VALUES:
 
     # Objective: maximize profit = sum(quantity * profit_per_unit)
     profit = sum(Product.profit * Product.x_quantity).where(this_product)
-    s.maximize(profit)
+    p.maximize(profit)
 
     # Constraint: total resource usage <= factory availability
-    s.satisfy(model.require(
+    p.satisfy(model.require(
         sum(Product.x_quantity / Product.rate) <= Factory.avail
     ).where(this_product, Factory.name(factory_name)))
 
-    s.display()
-    s.solve("highs", time_limit_sec=60)
-    s.display_solve_info()
+    p.display()
+    p.solve("highs", time_limit_sec=60)
+    p.display_solve_info()
 
     scenario_results.append({
         "factory": factory_name,
-        "status": str(s.termination_status),
-        "profit": s.objective_value,
+        "status": str(p.termination_status),
+        "profit": p.objective_value,
     })
-    print(f"  Status: {s.termination_status}, Profit: ${s.objective_value:.2f}")
+    print(f"  Status: {p.termination_status}, Profit: ${p.objective_value:.2f}")
 
     # Extract solution via variable_values() — populate=False avoids overwriting between scenarios
-    var_df = s.variable_values().to_df()
+    var_df = p.variable_values().to_df()
     produced = var_df[var_df["value"] > 0.001]
     print(f"  Production plan:\n{produced.to_string(index=False)}")
 

@@ -79,14 +79,14 @@ Food.x_amount = model.Property(f"{Food} in {Scenario} has {Float:amount}")
 # Ref for binding multi-arg variable in constraints
 x_amt = Float.ref()
 
-s = Problem(model, Float)
+p = Problem(model, Float)
 
 # Variable: amount of each food per scenario (non-negative)
-s.solve_for(Food.x_amount(Scenario, x_amt), name=["amt", Scenario.scenario_name, Food.name], lower=0)
+p.solve_for(Food.x_amount(Scenario, x_amt), name=["amt", Scenario.scenario_name, Food.name], lower=0)
 
 # Constraint: nutrient bounds scaled by scenario parameter (per nutrient, per scenario)
 nutrient_qty = Float.ref()
-s.satisfy(model.where(
+p.satisfy(model.where(
     Food.x_amount(Scenario, x_amt),
     Food.contains(Nutrient, nutrient_qty),
 ).require(
@@ -95,7 +95,7 @@ s.satisfy(model.where(
 ))
 
 # Objective: minimize total cost
-s.minimize(
+p.minimize(
     sum(Food.cost * x_amt)
     .where(Food.x_amount(Scenario, x_amt))
 )
@@ -104,9 +104,9 @@ s.minimize(
 # Solve (single solve for all scenarios)
 # --------------------------------------------------
 
-s.display()
-s.solve("highs", time_limit_sec=60)
-s.display_solve_info()
+p.display()
+p.solve("highs", time_limit_sec=60)
+p.display_solve_info()
 
 # --------------------------------------------------
 # Extract results per scenario

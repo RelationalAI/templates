@@ -78,30 +78,30 @@ Stock.x_quantity = model.Property(f"{Stock} in {Scenario} has {Float:quantity}")
 # Ref for binding multi-arg variable in constraints
 x_qty = Float.ref()
 
-s = Problem(model, Float)
+p = Problem(model, Float)
 
 # Variable: quantity of each stock per scenario
-s.solve_for(Stock.x_quantity(Scenario, x_qty), name=["qty", Scenario.name, Stock.index])
+p.solve_for(Stock.x_quantity(Scenario, x_qty), name=["qty", Scenario.name, Stock.index])
 
 # Constraint: no short selling (non-negative quantities)
-s.satisfy(model.where(
+p.satisfy(model.where(
     Stock.x_quantity(Scenario, x_qty),
 ).require(x_qty >= 0))
 
 # Constraint: budget limit per scenario
-s.satisfy(model.where(
+p.satisfy(model.where(
     Stock.x_quantity(Scenario, x_qty),
 ).require(sum(x_qty).per(Scenario) <= budget))
 
 # Constraint: minimum return target per scenario
-s.satisfy(model.where(
+p.satisfy(model.where(
     Stock.x_quantity(Scenario, x_qty),
 ).require(sum(Stock.returns * x_qty).per(Scenario) >= Scenario.min_return))
 
 # Objective: minimize portfolio risk (quadratic via covariance matrix)
 covar_value = Float.ref()
 x_qty_paired = Float.ref()
-s.minimize(
+p.minimize(
     sum(covar_value * x_qty * x_qty_paired)
     .where(Stock.covar(PairedStock, covar_value),
            Stock.x_quantity(Scenario, x_qty),
@@ -112,9 +112,9 @@ s.minimize(
 # Solve (single solve for all scenarios)
 # --------------------------------------------------
 
-s.display()
-s.solve("highs", time_limit_sec=60)
-s.display_solve_info()
+p.display()
+p.solve("highs", time_limit_sec=60)
+p.display_solve_info()
 
 # --------------------------------------------------
 # Extract results per scenario

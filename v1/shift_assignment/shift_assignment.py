@@ -86,10 +86,10 @@ Worker.x_assign = model.Property(f"{Worker} has {Shift} in {Scenario} if {Intege
 # Ref for binding multi-arg variable in constraints
 assigned_ref = Integer.ref()
 
-s = Problem(model, Integer)
+p = Problem(model, Integer)
 
 # Variable: binary assignment per available worker-shift-scenario
-s.solve_for(
+p.solve_for(
     Worker.x_assign(Shift, Scenario, assigned_ref),
     type="bin",
     name=["x", Scenario.name, Worker.name, Shift.name],
@@ -97,14 +97,14 @@ s.solve_for(
 )
 
 # Constraint: minimum coverage per shift (per scenario)
-s.satisfy(model.where(
+p.satisfy(model.where(
     Worker.x_assign(Shift, Scenario, assigned_ref),
 ).require(
     sum(Worker, assigned_ref).per(Shift, Scenario) >= Scenario.min_coverage
 ))
 
 # Constraint: max shifts per worker (per scenario)
-s.satisfy(model.where(
+p.satisfy(model.where(
     Worker.x_assign(Shift, Scenario, assigned_ref),
 ).require(
     sum(Shift, assigned_ref).per(Worker, Scenario) <= max_shifts
@@ -114,9 +114,9 @@ s.satisfy(model.where(
 # Solve (single solve for all scenarios)
 # --------------------------------------------------
 
-s.display()
-s.solve("minizinc", time_limit_sec=60)
-s.display_solve_info()
+p.display()
+p.solve("minizinc", time_limit_sec=60)
+p.display_solve_info()
 
 # --------------------------------------------------
 # Extract results per scenario

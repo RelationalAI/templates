@@ -77,43 +77,43 @@ max_trips_per_vehicle = 100
 
 AssignmentRef = Assignment.ref()
 
-s = Problem(model, Float)
+p = Problem(model, Float)
 
 # Variable: binary assignment and usage
-s.solve_for(Assignment.x_assigned, type="bin", name=["assigned", Assignment.vehicle.name, Assignment.trip.name])
-s.solve_for(VehicleUsage.x_used, type="bin", name=["used", VehicleUsage.vehicle.name])
+p.solve_for(Assignment.x_assigned, type="bin", name=["assigned", Assignment.vehicle.name, Assignment.trip.name])
+p.solve_for(VehicleUsage.x_used, type="bin", name=["used", VehicleUsage.vehicle.name])
 
 # Constraint: each trip assigned to exactly one vehicle
 trip_coverage = sum(AssignmentRef.x_assigned).where(AssignmentRef.trip == Trip).per(Trip)
 one_vehicle = model.require(trip_coverage == 1)
-s.satisfy(one_vehicle)
+p.satisfy(one_vehicle)
 
 # Constraint: vehicle capacity
 vehicle_load = sum(AssignmentRef.x_assigned * AssignmentRef.trip.load).where(AssignmentRef.vehicle == Vehicle).per(Vehicle)
 capacity_limit = model.require(vehicle_load <= Vehicle.capacity)
-s.satisfy(capacity_limit)
+p.satisfy(capacity_limit)
 
 # Constraint: link vehicle usage to assignments
 vehicle_trips = sum(AssignmentRef.x_assigned).where(AssignmentRef.vehicle == VehicleUsage.vehicle).per(VehicleUsage)
 usage_link = model.require(VehicleUsage.x_used * max_trips_per_vehicle >= vehicle_trips)
-s.satisfy(usage_link)
+p.satisfy(usage_link)
 
 # Objective: minimize total cost
 variable_cost = sum(Assignment.x_assigned * Assignment.trip.distance * Assignment.vehicle.cost_per_mile)
 fixed_cost = sum(VehicleUsage.x_used * VehicleUsage.vehicle.fixed_cost)
 total_cost = variable_cost + fixed_cost
-s.minimize(total_cost)
+p.minimize(total_cost)
 
 # --------------------------------------------------
 # Solve and check solution
 # --------------------------------------------------
 
-s.display()
-s.solve("highs", time_limit_sec=60)
-s.display_solve_info()
+p.display()
+p.solve("highs", time_limit_sec=60)
+p.display_solve_info()
 
-print(f"Status: {s.termination_status}")
-print(f"Total cost: ${s.objective_value:.2f}")
+print(f"Status: {p.termination_status}")
+print(f"Total cost: ${p.objective_value:.2f}")
 
 assignments = model.select(
     Assignment.vehicle.name.alias("vehicle"),

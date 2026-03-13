@@ -86,40 +86,40 @@ model.define(Transfer.new(lane=Lane))
 TransferRef = Transfer.ref()
 DemandRef = Demand.ref()
 
-s = Problem(model, Float)
+p = Problem(model, Float)
 
 # Variable: transfer quantity
-s.solve_for(Transfer.x_quantity, name=["qty", Transfer.lane.source.name, Transfer.lane.dest.name], lower=0)
+p.solve_for(Transfer.x_quantity, name=["qty", Transfer.lane.source.name, Transfer.lane.dest.name], lower=0)
 
 # Constraint: transfer cannot exceed lane capacity
 capacity_limit = model.require(Transfer.x_quantity <= Transfer.lane.capacity)
-s.satisfy(capacity_limit)
+p.satisfy(capacity_limit)
 
 # Constraint: total outbound from source cannot exceed source inventory
 outbound = sum(TransferRef.x_quantity).where(TransferRef.lane.source == Site).per(Site)
 inventory_limit = model.require(outbound <= Site.inventory)
-s.satisfy(inventory_limit)
+p.satisfy(inventory_limit)
 
 # Constraint: demand satisfaction at each destination site
 inbound = sum(TransferRef.x_quantity).where(TransferRef.lane.dest == DemandRef.site).per(DemandRef)
 local_inv = sum(Site.inventory).where(Site == DemandRef.site).per(DemandRef)
 demand_met = model.require(inbound + local_inv >= DemandRef.quantity)
-s.satisfy(demand_met)
+p.satisfy(demand_met)
 
 # Objective: minimize total transfer cost
 total_cost = sum(Transfer.x_quantity * Transfer.lane.cost_per_unit)
-s.minimize(total_cost)
+p.minimize(total_cost)
 
 # --------------------------------------------------
 # Solve and check solution
 # --------------------------------------------------
 
-s.display()
-s.solve("highs", time_limit_sec=60)
-s.display_solve_info()
+p.display()
+p.solve("highs", time_limit_sec=60)
+p.display_solve_info()
 
-print(f"Status: {s.termination_status}")
-print(f"Total transfer cost: ${s.objective_value:.2f}")
+print(f"Status: {p.termination_status}")
+print(f"Total transfer cost: ${p.objective_value:.2f}")
 
 transfers = model.select(
     Transfer.lane.source.name.alias("from"),

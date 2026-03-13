@@ -87,37 +87,37 @@ AssignmentRef = Assignment.ref()
 # Parameters
 overflow_penalty_per_patient = 20
 
-s = Problem(model, Float)
+p = Problem(model, Float)
 
 # Variable: binary assignment (nurse to shift)
-s.solve_for(Assignment.x_assigned, type="bin", name=["assigned", Assignment.availability.nurse.name, Assignment.availability.shift.name])
+p.solve_for(Assignment.x_assigned, type="bin", name=["assigned", Assignment.availability.nurse.name, Assignment.availability.shift.name])
 
 # Variable: overtime hours per nurse (continuous >= 0)
-s.solve_for(Nurse.x_overtime_hours, type="cont", name=["ot", Nurse.name], lower=0)
+p.solve_for(Nurse.x_overtime_hours, type="cont", name=["ot", Nurse.name], lower=0)
 
 # Variable: patients served per shift (continuous >= 0)
-s.solve_for(Shift.x_patients_served, type="cont", name=["pt", Shift.name], lower=0)
+p.solve_for(Shift.x_patients_served, type="cont", name=["pt", Shift.name], lower=0)
 
 # Variable: unmet patient demand per shift (continuous >= 0)
-s.solve_for(Shift.x_unmet_demand, type="cont", name=["ud", Shift.name], lower=0)
+p.solve_for(Shift.x_unmet_demand, type="cont", name=["ud", Shift.name], lower=0)
 
 # Constraint: can only assign if available
 must_be_available = model.require(Assignment.x_assigned <= Assignment.availability.available)
-s.satisfy(must_be_available)
+p.satisfy(must_be_available)
 
 # Constraint: every nurse works at least one shift
 nurse_shift_count = sum(AssignmentRef.x_assigned).where(AssignmentRef.availability.nurse == Nurse).per(Nurse)
 min_one_shift = model.require(nurse_shift_count >= 1)
-s.satisfy(min_one_shift)
+p.satisfy(min_one_shift)
 
 # Constraint: max 2 shifts per nurse (safety limit: 16 hours max)
 max_two_shifts = model.require(nurse_shift_count <= 2)
-s.satisfy(max_two_shifts)
+p.satisfy(max_two_shifts)
 
 # Constraint: minimum nurses per shift
 shift_staff_count = sum(AssignmentRef.x_assigned).where(AssignmentRef.availability.shift == Shift).per(Shift)
 min_coverage = model.require(shift_staff_count >= Shift.min_nurses)
-s.satisfy(min_coverage)
+p.satisfy(min_coverage)
 
 # Constraint: at least one nurse with required skill level per shift
 skilled_coverage = sum(AssignmentRef.x_assigned).where(
@@ -125,43 +125,43 @@ skilled_coverage = sum(AssignmentRef.x_assigned).where(
     AssignmentRef.availability.nurse.skill_level >= Shift.min_skill,
 ).per(Shift)
 min_skilled = model.require(skilled_coverage >= 1)
-s.satisfy(min_skilled)
+p.satisfy(min_skilled)
 
 # Constraint: overtime >= total hours worked - regular hours
 total_hours_worked = sum(AssignmentRef.x_assigned * AssignmentRef.availability.shift.duration).where(
     AssignmentRef.availability.nurse == Nurse
 ).per(Nurse)
 overtime_def = model.require(Nurse.x_overtime_hours >= total_hours_worked - Nurse.regular_hours)
-s.satisfy(overtime_def)
+p.satisfy(overtime_def)
 
 # Constraint: patients served <= patient demand per shift
 demand_cap = model.require(Shift.x_patients_served <= Shift.patient_demand)
-s.satisfy(demand_cap)
+p.satisfy(demand_cap)
 
 # Constraint: patients served <= nursing capacity per shift
 shift_nursing_capacity = shift_staff_count * Shift.patients_per_nurse_hour * Shift.duration
 capacity_cap = model.require(Shift.x_patients_served <= shift_nursing_capacity)
-s.satisfy(capacity_cap)
+p.satisfy(capacity_cap)
 
 # Constraint: unmet demand >= patient demand - patients served
 unmet_def = model.require(Shift.x_unmet_demand >= Shift.patient_demand - Shift.x_patients_served)
-s.satisfy(unmet_def)
+p.satisfy(unmet_def)
 
 # Objective: minimize overtime cost + overflow penalty for unmet patient demand
 overtime_cost = sum(Nurse.x_overtime_hours * Nurse.hourly_cost * Nurse.overtime_multiplier)
 total_overflow_penalty = overflow_penalty_per_patient * sum(Shift.x_unmet_demand)
-s.minimize(overtime_cost + total_overflow_penalty)
+p.minimize(overtime_cost + total_overflow_penalty)
 
 # --------------------------------------------------
 # Solve and check solution
 # --------------------------------------------------
 
-s.display()
-s.solve("highs", time_limit_sec=60)
-s.display_solve_info()
+p.display()
+p.solve("highs", time_limit_sec=60)
+p.display_solve_info()
 
-print(f"Status: {s.termination_status}")
-print(f"Objective value: ${s.objective_value:.2f}")
+print(f"Status: {p.termination_status}")
+print(f"Objective value: ${p.objective_value:.2f}")
 
 # Overtime summary
 overtime = model.select(

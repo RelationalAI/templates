@@ -99,46 +99,46 @@ for excluded in excluded_suppliers:
     label = "baseline" if excluded is None else f"without_{excluded}"
     print(f"\nRunning scenario: {label}")
 
-    s = Problem(model, Float)
+    p = Problem(model, Float)
 
     # Variable: order quantity — where= filter excludes supplier's orders
     if excluded is not None:
         active_orders = SupplyOrder.supplier.name != excluded
-        s.solve_for(SupplyOrder.x_quantity, name=["qty", SupplyOrder.supplier.name, SupplyOrder.product.name],
+        p.solve_for(SupplyOrder.x_quantity, name=["qty", SupplyOrder.supplier.name, SupplyOrder.product.name],
                     lower=0, where=[active_orders], populate=False)
     else:
-        s.solve_for(SupplyOrder.x_quantity, name=["qty", SupplyOrder.supplier.name, SupplyOrder.product.name],
+        p.solve_for(SupplyOrder.x_quantity, name=["qty", SupplyOrder.supplier.name, SupplyOrder.product.name],
                     lower=0, populate=False)
 
     # Constraint: total orders from supplier cannot exceed supplier capacity
     capacity_limit = model.require(
         sum(SupplyOrder.x_quantity).where(SupplyOrder.supplier == Supplier).per(Supplier) <= Supplier.capacity
     )
-    s.satisfy(capacity_limit)
+    p.satisfy(capacity_limit)
 
     # Constraint: demand satisfaction for each product
     meet_demand = model.require(
         sum(SupplyOrder.x_quantity).where(SupplyOrder.product == Product).per(Product) >= Product.demand
     )
-    s.satisfy(meet_demand)
+    p.satisfy(meet_demand)
 
     # Objective: minimize cost
     direct_cost = sum(SupplyOrder.x_quantity * SupplyOrder.cost_per_unit)
-    s.minimize(direct_cost)
+    p.minimize(direct_cost)
 
-    s.display()
-    s.solve("highs", time_limit_sec=60)
-    s.display_solve_info()
+    p.display()
+    p.solve("highs", time_limit_sec=60)
+    p.display_solve_info()
 
     scenario_results.append({
         "scenario": label,
-        "status": str(s.termination_status),
-        "objective": s.objective_value,
+        "status": str(p.termination_status),
+        "objective": p.objective_value,
     })
-    print(f"  Status: {s.termination_status}, Objective: {s.objective_value}")
+    print(f"  Status: {p.termination_status}, Objective: {p.objective_value}")
 
     # Print order plan from solver results
-    var_df = s.variable_values().to_df()
+    var_df = p.variable_values().to_df()
     qty_df = var_df[var_df["name"].str.startswith("qty") & (var_df["value"] > 0.001)]
     print(f"\n  Orders:")
     print(qty_df.to_string(index=False))

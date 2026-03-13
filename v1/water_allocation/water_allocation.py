@@ -68,10 +68,10 @@ model.define(
 
 ConnectionRef = Connection.ref()
 
-s = Problem(model, Float)
+p = Problem(model, Float)
 
 # Variable: flow on each connection
-s.solve_for(
+p.solve_for(
     Connection.x_flow,
     name=["flow", Connection.source.name, Connection.user.name],
     lower=0,
@@ -81,27 +81,27 @@ s.solve_for(
 # Constraint: total outflow from each source <= capacity
 outflow = sum(ConnectionRef.x_flow).where(ConnectionRef.source == Source).per(Source)
 source_limit = model.require(outflow <= Source.capacity)
-s.satisfy(source_limit)
+p.satisfy(source_limit)
 
 # Constraint: effective inflow to each user >= demand (accounting for losses)
 effective_inflow = sum(ConnectionRef.x_flow * (1 - ConnectionRef.loss_rate)).where(ConnectionRef.user == User).per(User)
 meet_demand = model.require(effective_inflow >= User.demand)
-s.satisfy(meet_demand)
+p.satisfy(meet_demand)
 
 # Objective: minimize total cost
 total_cost = sum(Connection.x_flow * Connection.source.cost_per_unit)
-s.minimize(total_cost)
+p.minimize(total_cost)
 
 # --------------------------------------------------
 # Solve and check solution
 # --------------------------------------------------
 
-s.display()
-s.solve("highs", time_limit_sec=60)
-s.display_solve_info()
+p.display()
+p.solve("highs", time_limit_sec=60)
+p.display_solve_info()
 
-print(f"Status: {s.termination_status}")
-print(f"Total cost: ${s.objective_value:.2f}")
+print(f"Status: {p.termination_status}")
+print(f"Total cost: ${p.objective_value:.2f}")
 
 allocations = model.select(
     Connection.source.name.alias("source"),
