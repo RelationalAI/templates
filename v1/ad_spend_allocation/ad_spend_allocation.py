@@ -11,7 +11,14 @@ in RelationalAI:
 - Add constraints for channel min/max spend (when active), per-campaign budget,
   and "at least one channel per campaign" coverage.
 - Maximize total expected conversions: sum(spend * conversion_rate).
-- Run scenario analysis over different total budget levels.
+- Run scenario analysis over different total budget levels using Scenario as a
+  first-class Concept (single solve, all scenarios simultaneously).
+
+Modeling approach:
+- Scenario is a Concept with a total_budget parameter property.
+- Decision variables are multi-argument Properties indexed by (Allocation, Scenario).
+- Constraints use ref() bindings + .per(Scenario) to scope per-scenario.
+- One solve handles all budget levels; results extracted via model.select().
 
 Run:
     `python ad_spend_allocation.py`
@@ -70,90 +77,100 @@ model.define(Effectiveness.channel(Channel)).where(Effectiveness.channel_id == C
 model.define(Effectiveness.campaign(Campaign)).where(Effectiveness.campaign_id == Campaign.id)
 
 # --------------------------------------------------
+# Scenario Concept — total_budget parameter variations
+# --------------------------------------------------
+
+Scenario = Concept("Scenario", identify_by={"name": String})
+Scenario.total_budget = Property(f"{Scenario} has {Float:total_budget}")
+scenario_data = model.data(
+    [("budget_35k", 35000), ("budget_45k", 45000), ("budget_55k", 55000)],
+    columns=["name", "total_budget"],
+)
+model.define(Scenario.new(scenario_data.to_schema()))
+
+# --------------------------------------------------
 # Model the decision problem
 # --------------------------------------------------
 
 # Decision concept: spend allocation per channel-campaign pair
 Allocation = Concept("Allocation", identify_by={"effectiveness": Effectiveness})
-Allocation.x_spend = Property(f"{Allocation} has {Float:spend}")
-Allocation.x_active = Property(f"{Allocation} is {Float:active}")
 model.define(Allocation.new(effectiveness=Effectiveness))
 
-# Parameters
-total_budget = 45000
+# Decision variables — indexed by Scenario (multi-argument Properties)
+Allocation.x_spend = Property(f"{Allocation} in {Scenario} has {Float:spend}")
+Allocation.x_active = Property(f"{Allocation} in {Scenario} is {Float:active}")
 
-def build_formulation(s):
-    """Register variables, constraints, and objective on the problem."""
-    # Variables
-    s.solve_for(Allocation.x_spend, name=["spend", Allocation.effectiveness.channel.name, Allocation.effectiveness.campaign.name], lower=0)
-    s.solve_for(Allocation.x_active, type="bin", name=["active", Allocation.effectiveness.channel.name, Allocation.effectiveness.campaign.name])
+# Refs for binding multi-arg variables in constraints
+x_spend = Float.ref()
+x_active = Float.ref()
 
-    # Constraint: minimum spend per channel when active
-    min_spend_bound = model.require(Allocation.x_spend >= Allocation.effectiveness.channel.min_spend * Allocation.x_active)
-    s.satisfy(min_spend_bound)
+s = Problem(model, Float)
 
-    # Constraint: maximum spend per channel when active
-    max_spend_bound = model.require(Allocation.x_spend <= Allocation.effectiveness.channel.max_spend * Allocation.x_active)
-    s.satisfy(max_spend_bound)
+# Variables
+s.solve_for(
+    Allocation.x_spend(Scenario, x_spend),
+    name=["spend", Scenario.name, Allocation.effectiveness.channel.name, Allocation.effectiveness.campaign.name],
+    lower=0,
+)
+s.solve_for(
+    Allocation.x_active(Scenario, x_active),
+    type="bin",
+    name=["active", Scenario.name, Allocation.effectiveness.channel.name, Allocation.effectiveness.campaign.name],
+)
 
-    # Constraint: per-campaign budget across all channels
-    campaign_spend = sum(Allocation.x_spend).where(Allocation.effectiveness.campaign == Campaign).per(Campaign)
-    budget_limit = model.require(campaign_spend <= Campaign.budget)
-    s.satisfy(budget_limit)
+# Constraint: minimum spend per channel when active
+s.satisfy(model.where(
+    Allocation.x_spend(Scenario, x_spend),
+    Allocation.x_active(Scenario, x_active),
+).require(x_spend >= Allocation.effectiveness.channel.min_spend * x_active))
 
-    # Constraint: require at least one active channel per campaign
-    campaign_channels = sum(Allocation.x_active).where(Allocation.effectiveness.campaign == Campaign).per(Campaign)
-    min_channels = model.require(campaign_channels >= 1)
-    s.satisfy(min_channels)
+# Constraint: maximum spend per channel when active
+s.satisfy(model.where(
+    Allocation.x_spend(Scenario, x_spend),
+    Allocation.x_active(Scenario, x_active),
+).require(x_spend <= Allocation.effectiveness.channel.max_spend * x_active))
 
-    # Constraint: total budget across all campaigns (scenario parameter)
-    total_budget_limit = model.require(sum(Allocation.x_spend) <= total_budget)
-    s.satisfy(total_budget_limit)
+# Constraint: per-campaign budget across all channels (per scenario)
+s.satisfy(model.where(
+    Allocation.x_spend(Scenario, x_spend),
+    Allocation.effectiveness.campaign(Campaign),
+).require(sum(x_spend).where(Allocation.effectiveness.campaign == Campaign).per(Campaign, Scenario) <= Campaign.budget))
 
-    # Objective: maximize total expected conversions
-    total_conversions = sum(Allocation.x_spend * Allocation.effectiveness.conversion_rate)
-    s.maximize(total_conversions)
+# Constraint: require at least one active channel per campaign (per scenario)
+s.satisfy(model.where(
+    Allocation.x_active(Scenario, x_active),
+    Allocation.effectiveness.campaign(Campaign),
+).require(sum(x_active).where(Allocation.effectiveness.campaign == Campaign).per(Campaign, Scenario) >= 1))
 
-# Scenarios (what-if analysis)
-SCENARIO_PARAM = "total_budget"
-SCENARIO_VALUES = [35000, 45000, 55000]
+# Constraint: total budget across all campaigns (per scenario)
+s.satisfy(model.where(
+    Allocation.x_spend(Scenario, x_spend),
+).require(sum(x_spend).per(Scenario) <= Scenario.total_budget))
+
+# Objective: maximize total expected conversions
+s.maximize(
+    sum(x_spend * Allocation.effectiveness.conversion_rate)
+    .where(Allocation.x_spend(Scenario, x_spend))
+)
 
 # --------------------------------------------------
-# Solve and check solution
+# Solve (single solve for all scenarios)
 # --------------------------------------------------
 
-scenario_results = []
+s.display()
+s.solve("highs", time_limit_sec=60)
+s.display_solve_info()
 
-for scenario_value in SCENARIO_VALUES:
-    print(f"\nRunning scenario: {SCENARIO_PARAM} = {scenario_value}")
+# --------------------------------------------------
+# Extract results per scenario
+# --------------------------------------------------
 
-    # Set scenario parameter value
-    total_budget = scenario_value
-
-    # Create fresh Problem for each scenario
-    s = Problem(model, Float)
-    build_formulation(s)
-
-    s.display()
-    s.solve("highs", time_limit_sec=60)
-    s.display_solve_info()
-
-    scenario_results.append({
-        "scenario": scenario_value,
-        "status": str(s.termination_status),
-        "objective": s.objective_value,
-    })
-    print(f"  Status: {s.termination_status}, Objective: {s.objective_value}")
-
-    # Print spend allocation from solver results
-    var_df = s.variable_values().to_df()
-    spend_df = var_df[var_df["name"].str.startswith("spend") & (var_df["value"] > 0.001)]
-    print(f"\n  Spend allocation:")
-    print(spend_df.to_string(index=False))
-
-# Summary
-print("\n" + "=" * 50)
-print("Scenario Analysis Summary")
-print("=" * 50)
-for result in scenario_results:
-    print(f"  {result['scenario']}: {result['status']}, obj={result['objective']}")
+print("\nSpend allocation per scenario:")
+model.select(
+    Scenario.name.alias("scenario"),
+    Allocation.effectiveness.channel.name.alias("channel"),
+    Allocation.effectiveness.campaign.name.alias("campaign"),
+    x_spend.alias("spend"),
+).where(
+    Allocation.x_spend(Scenario, x_spend), x_spend > 0.001
+).inspect()

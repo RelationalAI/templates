@@ -7,8 +7,14 @@ balances cost and supplier reliability:
 - Model those entities as *concepts* with typed properties.
 - Choose non-negative order quantities for each supply option.
 - Enforce supplier capacity limits and product demand satisfaction.
-- Minimize total cost, with scenario analysis that optionally excludes a supplier
-  as a disruption scenario.
+- Minimize total cost, with disruption scenario analysis that optionally excludes
+  a supplier using the loop + where= filter pattern.
+
+Modeling approach:
+- Each disruption scenario (baseline, exclude SupplierC, exclude SupplierB) is solved
+  as a separate Problem instance with a where= filter on solve_for.
+- Entity exclusion is handled cleanly via where= filter — no constraint injection needed.
+- Results collected per iteration and compared post-loop.
 
 Run:
     `python supplier_reliability.py`
@@ -82,40 +88,41 @@ model.define(SupplyOrder.product(Product)).where(SupplyOrder.option(SupplyOption
 SupplyOrder.cost_per_unit = Property(f"{SupplyOrder} has {Float:cost_per_unit}")
 model.define(SupplyOrder.cost_per_unit(SupplyOption.cost_per_unit)).where(SupplyOrder.option(SupplyOption))
 
-# Scenarios (what-if analysis)
-SCENARIO_PARAM = "excluded_supplier"
-SCENARIO_VALUES = [None, "SupplierC", "SupplierB"]
-SCENARIO_CONCEPT = "Supplier"  # Entity type for exclusion scenarios
-
 # --------------------------------------------------
-# Solve and check solution
+# Solve each disruption scenario (loop + where= filter)
 # --------------------------------------------------
 
+excluded_suppliers = [None, "SupplierC", "SupplierB"]
 scenario_results = []
 
-for excluded_supplier in SCENARIO_VALUES:
-    print(f"\nRunning scenario: {SCENARIO_PARAM} = {excluded_supplier}")
+for excluded in excluded_suppliers:
+    label = "baseline" if excluded is None else f"without_{excluded}"
+    print(f"\nRunning scenario: {label}")
 
-    # Create fresh Problem for each scenario
     s = Problem(model, Float)
 
-    # Variable: order quantity
-    s.solve_for(SupplyOrder.x_quantity, name=["qty", SupplyOrder.supplier.name, SupplyOrder.product.name], lower=0, populate=False)
+    # Variable: order quantity — where= filter excludes supplier's orders
+    if excluded is not None:
+        active_orders = SupplyOrder.supplier.name != excluded
+        s.solve_for(SupplyOrder.x_quantity, name=["qty", SupplyOrder.supplier.name, SupplyOrder.product.name],
+                    lower=0, where=[active_orders], populate=False)
+    else:
+        s.solve_for(SupplyOrder.x_quantity, name=["qty", SupplyOrder.supplier.name, SupplyOrder.product.name],
+                    lower=0, populate=False)
 
     # Constraint: total orders from supplier cannot exceed supplier capacity
-    capacity_limit = model.require(sum(SupplyOrder.x_quantity).where(SupplyOrder.supplier == Supplier).per(Supplier) <= Supplier.capacity)
+    capacity_limit = model.require(
+        sum(SupplyOrder.x_quantity).where(SupplyOrder.supplier == Supplier).per(Supplier) <= Supplier.capacity
+    )
     s.satisfy(capacity_limit)
 
     # Constraint: demand satisfaction for each product
-    meet_demand = model.require(sum(SupplyOrder.x_quantity).where(SupplyOrder.product == Product).per(Product) >= Product.demand)
+    meet_demand = model.require(
+        sum(SupplyOrder.x_quantity).where(SupplyOrder.product == Product).per(Product) >= Product.demand
+    )
     s.satisfy(meet_demand)
 
-    # Constraint: exclude supplier if specified
-    if excluded_supplier is not None:
-        exclude = model.require(SupplyOrder.x_quantity == 0).where(SupplyOrder.supplier.name == excluded_supplier)
-        s.satisfy(exclude)
-
-    # Objective: minimize cost (no reliability penalty for simplicity)
+    # Objective: minimize cost
     direct_cost = sum(SupplyOrder.x_quantity * SupplyOrder.cost_per_unit)
     s.minimize(direct_cost)
 
@@ -124,7 +131,7 @@ for excluded_supplier in SCENARIO_VALUES:
     s.display_solve_info()
 
     scenario_results.append({
-        "scenario": excluded_supplier,
+        "scenario": label,
         "status": str(s.termination_status),
         "objective": s.objective_value,
     })

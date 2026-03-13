@@ -6,7 +6,14 @@ This script demonstrates a classic diet linear optimization problem in Relationa
 - Model foods and nutrients as *concepts* with typed properties.
 - Choose a non-negative amount of each food to satisfy nutrient bounds.
 - Minimize total cost.
-- Solve multiple scenarios scaling nutrient requirements to illustrate what-if analysis.
+- Solve multiple scenarios scaling nutrient requirements using Scenario as a
+  first-class Concept (single solve, all scenarios simultaneously).
+
+Modeling approach:
+- Scenario is a Concept with a nutrient_scaling parameter property.
+- Decision variables are multi-argument Properties indexed by (Food, Scenario).
+- Constraints use ref() bindings + .per(Scenario) to scope per-scenario.
+- One solve handles all scaling levels; results extracted via model.select().
 
 Run:
     `python diet.py`
@@ -51,55 +58,66 @@ for nutrient_name in nutrient_csv.name:
     )
 
 # --------------------------------------------------
+# Scenario Concept — nutrient_scaling parameter variations
+# --------------------------------------------------
+
+Scenario = model.Concept("Scenario", identify_by={"scenario_name": String})
+Scenario.nutrient_scaling = model.Property(f"{Scenario} has {Float:nutrient_scaling}")
+scenario_data = model.data(
+    [("scaling_80pct", 0.8), ("baseline", 1.0), ("scaling_120pct", 1.2)],
+    columns=["scenario_name", "nutrient_scaling"],
+)
+model.define(Scenario.new(scenario_data.to_schema()))
+
+# --------------------------------------------------
 # Model the decision problem
 # --------------------------------------------------
 
-# Decision variable property (defined on model, solved per scenario)
-Food.x_amount = model.Property(f"{Food} has {Float:amount}")
+# Decision variable — indexed by Scenario (multi-argument Property)
+Food.x_amount = model.Property(f"{Food} in {Scenario} has {Float:amount}")
 
-# Scenarios (what-if analysis)
-SCENARIO_PARAM = "nutrient_scaling"
-SCENARIO_VALUES = [0.8, 1.0, 1.2]
+# Ref for binding multi-arg variable in constraints
+x_amt = Float.ref()
+
+s = Problem(model, Float)
+
+# Variable: amount of each food per scenario (non-negative)
+s.solve_for(Food.x_amount(Scenario, x_amt), name=["amt", Scenario.scenario_name, Food.name], lower=0)
+
+# Constraint: nutrient bounds scaled by scenario parameter (per nutrient, per scenario)
+nutrient_qty = Float.ref()
+s.satisfy(model.where(
+    Food.x_amount(Scenario, x_amt),
+    Food.contains(Nutrient, nutrient_qty),
+).require(
+    sum(nutrient_qty * x_amt).per(Nutrient, Scenario) >= Nutrient.min * Scenario.nutrient_scaling,
+    sum(nutrient_qty * x_amt).per(Nutrient, Scenario) <= Nutrient.max * Scenario.nutrient_scaling,
+))
+
+# Objective: minimize total cost
+s.minimize(
+    sum(Food.cost * x_amt)
+    .where(Food.x_amount(Scenario, x_amt))
+)
 
 # --------------------------------------------------
-# Solve and check solution
+# Solve (single solve for all scenarios)
 # --------------------------------------------------
 
-scenario_results = []
+s.display()
+s.solve("highs", time_limit_sec=60)
+s.display_solve_info()
 
-for scenario_value in SCENARIO_VALUES:
-    print(f"\nRunning scenario: {SCENARIO_PARAM} = {scenario_value}")
+# --------------------------------------------------
+# Extract results per scenario
+# --------------------------------------------------
 
-    # Create fresh Problem for each scenario
-    s = Problem(model, Float)
-    s.solve_for(Food.x_amount, name=Food.name, lower=0, populate=False)
-    nutrient_qty = Float.ref()
-    nutrient_total = sum(nutrient_qty * Food.x_amount).where(Food.contains(Nutrient, nutrient_qty)).per(Nutrient)
-    s.satisfy(model.require(
-        nutrient_total >= Nutrient.min * scenario_value,
-        nutrient_total <= Nutrient.max * scenario_value
-    ))
-    s.minimize(sum(Food.cost * Food.x_amount))
-
-    s.display()
-    s.solve("highs", time_limit_sec=60)
-    s.display_solve_info()
-
-    scenario_results.append({
-        "scenario": scenario_value,
-        "status": str(s.termination_status),
-        "objective": s.objective_value,
-    })
-    print(f"  Status: {s.termination_status}, Objective: ${s.objective_value:.2f}")
-
-    # Extract solution via variable_values() — populate=False avoids overwriting between scenarios
-    var_df = s.variable_values().to_df()
-    chosen = var_df[var_df["value"] > 0.001]
-    print(f"  Diet plan:\n{chosen.to_string(index=False)}")
-
-# Summary
-print("\n" + "=" * 50)
-print("Scenario Analysis Summary")
-print("=" * 50)
-for result in scenario_results:
-    print(f"  scaling={result['scenario']}: {result['status']}, cost=${result['objective']:.2f}")
+print("\nDiet plan per scenario:")
+model.select(
+    Scenario.scenario_name.alias("scenario"),
+    Food.name.alias("food"),
+    Food.cost,
+    x_amt.alias("amount"),
+).where(
+    Food.x_amount(Scenario, x_amt), x_amt > 0.001
+).inspect()

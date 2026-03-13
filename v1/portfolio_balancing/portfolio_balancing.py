@@ -7,7 +7,14 @@ This script demonstrates a Markowitz mean-variance portfolio optimization model 
 - Choose non-negative allocations across available stocks.
 - Enforce a budget constraint and a minimum expected return constraint.
 - Minimize portfolio variance (risk).
-- Solve multiple minimum-return scenarios to illustrate the efficient frontier.
+- Solve multiple minimum-return scenarios simultaneously using Scenario as a
+  first-class Concept (single solve, all scenarios at once).
+
+Modeling approach:
+- Scenario is a Concept with a min_return parameter property.
+- Decision variables are multi-argument Properties indexed by (Stock, Scenario).
+- Constraints use ref() bindings + .per(Scenario) to scope per-scenario.
+- One solve handles all min_return levels; results extracted via model.select().
 
 Run:
     `python portfolio_balancing.py`
@@ -21,7 +28,7 @@ from pathlib import Path
 
 from pandas import read_csv
 
-from relationalai.semantics import Float, Integer, Model, sum
+from relationalai.semantics import Float, Integer, Model, String, sum
 from relationalai.semantics.reasoners.prescriptive import Problem
 
 model = Model("portfolio")
@@ -47,78 +54,78 @@ model.where(Stock.index(covar_data.i), PairedStock.index(covar_data.j)).define(
 )
 
 # --------------------------------------------------
+# Scenario Concept — min_return parameter variations
+# --------------------------------------------------
+
+Scenario = model.Concept("Scenario", identify_by={"name": String})
+Scenario.min_return = model.Property(f"{Scenario} has {Float:min_return}")
+scenario_data = model.data(
+    [("return_10", 10), ("return_20", 20), ("return_30", 30)],
+    columns=["name", "min_return"],
+)
+model.define(Scenario.new(scenario_data.to_schema()))
+
+# --------------------------------------------------
 # Model the decision problem
 # --------------------------------------------------
 
 # Parameters
 budget = 1000
-min_return = 20
 
-# Variable: quantity of each stock (continuous, non-negative)
-Stock.x_quantity = model.Property(f"{Stock} quantity is {Float:x}")
+# Decision variable — indexed by Scenario (multi-argument Property)
+Stock.x_quantity = model.Property(f"{Stock} in {Scenario} has {Float:quantity}")
 
-# Objective: minimize portfolio variance (quadratic via covariance matrix)
+# Ref for binding multi-arg variable in constraints
+x_qty = Float.ref()
+
+s = Problem(model, Float)
+
+# Variable: quantity of each stock per scenario
+s.solve_for(Stock.x_quantity(Scenario, x_qty), name=["qty", Scenario.name, Stock.index])
+
+# Constraint: no short selling (non-negative quantities)
+s.satisfy(model.where(
+    Stock.x_quantity(Scenario, x_qty),
+).require(x_qty >= 0))
+
+# Constraint: budget limit per scenario
+s.satisfy(model.where(
+    Stock.x_quantity(Scenario, x_qty),
+).require(sum(x_qty).per(Scenario) <= budget))
+
+# Constraint: minimum return target per scenario
+s.satisfy(model.where(
+    Stock.x_quantity(Scenario, x_qty),
+).require(sum(Stock.returns * x_qty).per(Scenario) >= Scenario.min_return))
+
+# Objective: minimize portfolio risk (quadratic via covariance matrix)
 covar_value = Float.ref()
-risk = sum(covar_value * Stock.x_quantity * PairedStock.x_quantity).where(Stock.covar(PairedStock, covar_value))
-
-# Constraints: non-negative quantities and budget limit
-bounds = model.require(Stock.x_quantity >= 0)
-budget_constraint = model.require(sum(Stock.x_quantity) <= budget)
-
-def build_formulation(s, min_ret):
-    """Register variables, constraints, and objective on the solver model."""
-    # Variable: quantity of each stock
-    s.solve_for(Stock.x_quantity, name=["qty", Stock.index], populate=False)
-
-    # Constraint: no short selling
-    s.satisfy(bounds)
-
-    # Constraint: budget limit
-    s.satisfy(budget_constraint)
-
-    # Constraint: minimum return target (scenario parameter)
-    return_constraint = model.require(sum(Stock.returns * Stock.x_quantity) >= min_ret)
-    s.satisfy(return_constraint)
-
-    # Objective: minimize portfolio risk
-    s.minimize(risk)
-
-# Scenarios (what-if analysis)
-SCENARIO_PARAM = "min_return"
-SCENARIO_VALUES = [10, 20, 30]
+x_qty_paired = Float.ref()
+s.minimize(
+    sum(covar_value * x_qty * x_qty_paired)
+    .where(Stock.covar(PairedStock, covar_value),
+           Stock.x_quantity(Scenario, x_qty),
+           PairedStock.x_quantity(Scenario, x_qty_paired))
+)
 
 # --------------------------------------------------
-# Solve and check solution
+# Solve (single solve for all scenarios)
 # --------------------------------------------------
 
-scenario_results = []
+s.display()
+s.solve("highs", time_limit_sec=60)
+s.display_solve_info()
 
-for scenario_value in SCENARIO_VALUES:
-    print(f"\nRunning scenario: {SCENARIO_PARAM} = {scenario_value}")
+# --------------------------------------------------
+# Extract results per scenario
+# --------------------------------------------------
 
-    # Create fresh Problem for each scenario
-    s = Problem(model, Float)
-    build_formulation(s, min_ret=scenario_value)
-
-    s.display()
-    s.solve("highs", time_limit_sec=60)
-    s.display_solve_info()
-
-    scenario_results.append({
-        "scenario": scenario_value,
-        "status": str(s.termination_status),
-        "objective": s.objective_value,
-    })
-    print(f"  Status: {s.termination_status}, Risk: {s.objective_value:.6f}")
-
-    # Extract solution via variable_values() — populate=False avoids overwriting between scenarios
-    var_df = s.variable_values().to_df()
-    alloc = var_df[var_df["value"] > 0.001]
-    print(f"  Portfolio allocation:\n{alloc.to_string(index=False)}")
-
-# Summary
-print("\n" + "=" * 50)
-print("Scenario Analysis Summary")
-print("=" * 50)
-for result in scenario_results:
-    print(f"  min_return={result['scenario']}: {result['status']}, risk={result['objective']:.6f}")
+print("\nPortfolio allocation per scenario:")
+model.select(
+    Scenario.name.alias("scenario"),
+    Stock.index.alias("stock"),
+    Stock.returns,
+    x_qty.alias("quantity"),
+).where(
+    Stock.x_quantity(Scenario, x_qty), x_qty > 0.001
+).inspect()

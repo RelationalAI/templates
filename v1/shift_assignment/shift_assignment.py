@@ -7,7 +7,14 @@ This script demonstrates a constraint satisfaction / feasibility problem in Rela
   relationship.
 - Choose a binary assignment variable for each available worker-shift pair.
 - Enforce minimum coverage per shift and a maximum number of shifts per worker.
-- Solve multiple minimum-coverage scenarios to illustrate what-if analysis.
+- Solve multiple minimum-coverage scenarios simultaneously using Scenario as a
+  first-class Concept (single solve, all scenarios at once).
+
+Modeling approach:
+- Scenario is a Concept with a min_coverage parameter property.
+- Decision variables are triple-argument Properties: (Worker, Shift, Scenario).
+- Constraints use ref() bindings + .per(Scenario) to scope per-scenario.
+- One solve handles all coverage levels; results extracted via model.select().
 
 Run:
     `python shift_assignment.py`
@@ -55,64 +62,71 @@ model.define(Worker.available_for(Shift)).where(
 )
 
 # --------------------------------------------------
+# Scenario Concept — min_coverage parameter variations
+# --------------------------------------------------
+
+Scenario = model.Concept("Scenario", identify_by={"name": String})
+Scenario.min_coverage = model.Property(f"{Scenario} has {Integer:min_coverage}")
+scenario_data = model.data(
+    [("coverage_1", 1), ("coverage_2", 2), ("coverage_3", 3)],
+    columns=["name", "min_coverage"],
+)
+model.define(Scenario.new(scenario_data.to_schema()))
+
+# --------------------------------------------------
 # Model the decision problem
 # --------------------------------------------------
 
 # Parameters
-max_shifts = 1         # Maximum shifts per worker
+max_shifts = 1  # Maximum shifts per worker
 
-# Decision variable property (defined on model, solved per scenario)
-Worker.x_assign = model.Property(f"{Worker} has {Shift} if {Integer:assigned}")
+# Decision variable — triple-arg: Worker x Shift x Scenario
+Worker.x_assign = model.Property(f"{Worker} has {Shift} in {Scenario} if {Integer:assigned}")
 
-# Scenarios (what-if analysis)
-SCENARIO_PARAM = "min_coverage"
-SCENARIO_VALUES = [1, 2, 3]
+# Ref for binding multi-arg variable in constraints
+assigned_ref = Integer.ref()
+
+s = Problem(model, Integer)
+
+# Variable: binary assignment per available worker-shift-scenario
+s.solve_for(
+    Worker.x_assign(Shift, Scenario, assigned_ref),
+    type="bin",
+    name=["x", Scenario.name, Worker.name, Shift.name],
+    where=[Worker.available_for(Shift)],
+)
+
+# Constraint: minimum coverage per shift (per scenario)
+s.satisfy(model.where(
+    Worker.x_assign(Shift, Scenario, assigned_ref),
+).require(
+    sum(Worker, assigned_ref).per(Shift, Scenario) >= Scenario.min_coverage
+))
+
+# Constraint: max shifts per worker (per scenario)
+s.satisfy(model.where(
+    Worker.x_assign(Shift, Scenario, assigned_ref),
+).require(
+    sum(Shift, assigned_ref).per(Worker, Scenario) <= max_shifts
+))
 
 # --------------------------------------------------
-# Solve and check solution
+# Solve (single solve for all scenarios)
 # --------------------------------------------------
 
-scenario_results = []
+s.display()
+s.solve("minizinc", time_limit_sec=60)
+s.display_solve_info()
 
-for scenario_value in SCENARIO_VALUES:
-    print(f"\nRunning scenario: {SCENARIO_PARAM} = {scenario_value}")
-    min_coverage = scenario_value
+# --------------------------------------------------
+# Extract results per scenario
+# --------------------------------------------------
 
-    s = Problem(model, Integer)
-    assigned_ref = Integer.ref()
-    s.solve_for(
-        Worker.x_assign(Shift, assigned_ref),
-        type="bin",
-        name=["x", Worker.name, Shift.name],
-        where=[Worker.available_for(Shift)],
-        populate=False,
-    )
-    s.satisfy(model.where(Worker.x_assign(Shift, assigned_ref)).require(
-        sum(Worker, assigned_ref).per(Shift) >= min_coverage
-    ))
-    s.satisfy(model.where(Worker.x_assign(Shift, assigned_ref)).require(
-        sum(Shift, assigned_ref).per(Worker) <= max_shifts
-    ))
-
-    s.display()
-    s.solve("minizinc", time_limit_sec=60)
-    s.display_solve_info()
-
-    scenario_results.append({
-        "scenario": scenario_value,
-        "status": str(s.termination_status),
-    })
-    print(f"  Status: {s.termination_status}")
-
-    # Extract solution via variable_values() — populate=False avoids overwriting between scenarios
-    var_df = s.variable_values().to_df()
-    var_df["value"] = var_df["value"].astype(float)
-    assigned = var_df[var_df["value"] > 0.5]
-    print(f"  Assignments:\n{assigned.to_string(index=False)}")
-
-# Summary
-print("\n" + "=" * 50)
-print("Scenario Analysis Summary")
-print("=" * 50)
-for result in scenario_results:
-    print(f"  min_coverage={result['scenario']}: {result['status']}")
+print("\nAssignments per scenario:")
+model.select(
+    Scenario.name.alias("scenario"),
+    Worker.name.alias("worker"),
+    Shift.name.alias("shift"),
+).where(
+    Worker.x_assign(Shift, Scenario, assigned_ref), assigned_ref > 0
+).inspect()
