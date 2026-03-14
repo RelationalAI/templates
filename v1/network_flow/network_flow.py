@@ -41,33 +41,33 @@ model.define(Edge.new(model.data(edge_csv).to_schema()))
 # Model the decision problem
 # --------------------------------------------------
 
-s = Problem(model, Float)
+p = Problem(model, Float)
 
 # Variable: flow on each edge (continuous, bounded by capacity)
 Edge.x_flow = model.Property(f"{Edge} has {Float:flow}")
-s.solve_for(Edge.x_flow, name=["x", Edge.i, Edge.j], lower=0, upper=Edge.cap)
+p.solve_for(Edge.x_flow, name=["x", Edge.i, Edge.j], lower=0, upper=Edge.cap)
 
 # Constraint: flow conservation at interior nodes (inflow == outflow)
 Ei, Ej = Edge.ref(), Edge.ref()
 flow_out = per(Ei.i).sum(Ei.x_flow)
 flow_in = per(Ej.j).sum(Ej.x_flow)
 balance = model.require(flow_in == flow_out).where(Ei.i == Ej.j)
-s.satisfy(balance)
+p.satisfy(balance)
 
 # Objective: maximize total flow leaving source node (node 1)
 total_flow = sum(Edge.x_flow).where(Edge.i(1))
-s.maximize(total_flow)
+p.maximize(total_flow)
 
 # --------------------------------------------------
 # Solve and check solution
 # --------------------------------------------------
 
-s.display()
-s.solve("highs", time_limit_sec=60)
-s.display_solve_info()
+p.display()
+p.solve("highs", time_limit_sec=60)
+p.display_solve_info()
 
-print(f"Status: {s.termination_status}")
-print(f"Maximum flow: {s.objective_value:.2f}")
+print(f"Status: {p.termination_status}")
+print(f"Maximum flow: {p.objective_value:.2f}")
 
 # Extract solution via model.select() — properties are populated after solve
 flows = model.select(

@@ -133,7 +133,7 @@ model.define(DemandOrder.site(Site)).where(Site.id == order_data.site_id)
 #   ].copy()
 #
 #   # Or filter in .where() clauses on constraints
-#   s.satisfy(model.require(
+#   p.satisfy(model.require(
 #       sum(DemandOrder.x_unmet) <= (1 - min_service_level) * sum(DemandOrder.quantity)
 #   ).where(
 #       DemandOrder.created_at >= start_epoch, DemandOrder.created_at <= end_epoch
@@ -185,14 +185,14 @@ weekly_demand = (
 weeks = std.common.range(1, num_weeks + 1)
 week_ref = Integer.ref()
 
-s = Problem(model, Float)
+p = Problem(model, Float)
 
 # Variable: production quantity per site x SKU x week (multiarity: time-indexed)
 ProdCapacity.x_production = Property(
     f"{ProdCapacity} in week {{t:int}} produces {{production:float}}"
 )
 production_ref = Float.ref()
-s.solve_for(
+p.solve_for(
     ProdCapacity.x_production(week_ref, production_ref),
     type="cont",
     lower=0,
@@ -207,7 +207,7 @@ ProdCapacity.x_inventory = Property(
     f"{ProdCapacity} at end of week {{t:int}} has inventory {{inventory:float}}"
 )
 inventory_ref = Float.ref()
-s.solve_for(
+p.solve_for(
     ProdCapacity.x_inventory(week_ref, inventory_ref),
     type="cont",
     lower=0,
@@ -217,7 +217,7 @@ s.solve_for(
 
 # Variable: unmet demand (slack) per demand order
 DemandOrder.x_unmet = Property(f"{DemandOrder} has {Float:unmet}")
-s.solve_for(
+p.solve_for(
     DemandOrder.x_unmet,
     type="cont",
     lower=0,
@@ -230,7 +230,7 @@ s.solve_for(
 # --------------------------------------------------
 
 # INITIAL CONDITION: inventory at week 0 equals starting inventory
-s.satisfy(model.where(
+p.satisfy(model.where(
     ProdCapacity.x_inventory(0, inventory_ref),
 ).require(
     inventory_ref == ProdCapacity.initial_inventory
@@ -265,7 +265,7 @@ model.define(
 )
 
 # Single declarative flow conservation: inv[t] = inv[t-1] + production[t] - demand[t]
-s.satisfy(model.where(
+p.satisfy(model.where(
     ProdCapacity.x_inventory(week_ref, x_inv_curr),
     ProdCapacity.x_inventory(week_ref - 1, x_inv_prev),
     ProdCapacity.x_production(week_ref, production_ref),
@@ -279,12 +279,12 @@ s.satisfy(model.where(
 
 # Demand fulfillment: each order is either fulfilled or has unmet slack
 # DATE FILTERING IN CONSTRAINTS: .where() scopes to planning horizon orders
-s.satisfy(model.require(
+p.satisfy(model.require(
     DemandOrder.x_unmet <= DemandOrder.quantity
 ))
 
 # Global service level: at least 95% of total demand must be met
-s.satisfy(model.require(
+p.satisfy(model.require(
     sum(DemandOrder.x_unmet) <= (1 - min_service_level) * sum(DemandOrder.quantity)
 ))
 
@@ -307,22 +307,22 @@ unmet_penalty = 50.0  # $/unit penalty for unmet demand
 unmet_cost = unmet_penalty * DemandOrder.x_unmet
 
 # model.union() combines per-entity costs from different concepts, outer sum() aggregates
-s.minimize(sum(model.union(prod_cost, hold_cost, unmet_cost)))
+p.minimize(sum(model.union(prod_cost, hold_cost, unmet_cost)))
 
 # --------------------------------------------------
 # Solve and check solution
 # --------------------------------------------------
 
-s.display()
-s.solve("highs", time_limit_sec=60)
-s.display_solve_info()
+p.display()
+p.solve("highs", time_limit_sec=60)
+p.display_solve_info()
 
-print(f"Status: {s.termination_status}")
-print(f"Total cost: ${s.objective_value:,.2f}")
+print(f"Status: {p.termination_status}")
+print(f"Total cost: ${p.objective_value:,.2f}")
 print(f"Planning horizon: {planning_start} to {planning_end} ({num_weeks} weeks)")
 print(f"Demand orders in scope: {len(filtered_orders)} (of {len(orders_df)} total)")
 
-df = s.variable_values().to_df()
+df = p.variable_values().to_df()
 
 print("\n=== Production Plan (non-zero weeks) ===")
 prod = df[df["name"].str.startswith("prod") & (df["value"] > 0.01)]

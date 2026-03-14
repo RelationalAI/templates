@@ -51,26 +51,26 @@ model.define(node_count(count(Node)))
 # Model the decision problem
 # --------------------------------------------------
 
-s = Problem(model, Float)
+p = Problem(model, Float)
 
 # Variable: x[i,j] = 1 if edge (i,j) is in the tour, else 0
 Edge.x = model.Property(f"{Edge} is selected if {Float:x}")
-s.solve_for(Edge.x, type="bin", name=["x", Edge.i, Edge.j])
+p.solve_for(Edge.x, type="bin", name=["x", Edge.i, Edge.j])
 
 # Variable: u[v] = MTZ auxiliary ordering value for subtour elimination
 Node.u = model.Property(f"{Node} has auxiliary value {Float:u}")
-s.solve_for(Node.u, name=["u", Node.v], type="int", lower=1, upper=node_count)
+p.solve_for(Node.u, name=["u", Node.v], type="int", lower=1, upper=node_count)
 
 # Objective: minimize total tour distance
 total_dist = sum(Edge.dist * Edge.x)
-s.minimize(total_dist)
+p.minimize(total_dist)
 
 # Constraint: fix u[1] = 1 as symmetry-breaking anchor
-s.satisfy(model.require(Node.u == 1).where(Node.v(1)))
+p.satisfy(model.require(Node.u == 1).where(Node.v(1)))
 
 # Constraint: degree constraints (exactly one in-edge and one out-edge per node)
 node_flow = sum(Edge.x).per(Node)
-s.satisfy(model.require(
+p.satisfy(model.require(
     node_flow.where(Edge.j == Node.v) == 1,
     node_flow.where(Edge.i == Node.v) == 1
 ))
@@ -78,7 +78,7 @@ s.satisfy(model.require(
 # Constraint: MTZ subtour elimination
 # If edge (i,j) is in tour (x=1), then u[j] >= u[i]+1.
 # Big-M form: u[i] - u[j] + n*x <= n-1
-s.satisfy(model.where(
+p.satisfy(model.where(
     Ni := Node, Nj := Node.ref(),
     Edge.i > 1, Edge.j > 1,
     Ni.v(Edge.i), Nj.v(Edge.j),
@@ -90,12 +90,12 @@ s.satisfy(model.where(
 # Solve and check solution
 # --------------------------------------------------
 
-s.display()
-s.solve("highs", time_limit_sec=60)
-s.display_solve_info()
+p.display()
+p.solve("highs", time_limit_sec=60)
+p.display_solve_info()
 
-print(f"Status: {s.termination_status}")
-print(f"Tour distance: {s.objective_value:.2f}")
+print(f"Status: {p.termination_status}")
+print(f"Tour distance: {p.objective_value:.2f}")
 
 # Extract solution via model.select() — properties are populated after solve
 tour = model.select(

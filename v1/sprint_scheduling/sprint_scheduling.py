@@ -152,24 +152,24 @@ model.define(
 # Model the decision problem
 # --------------------------------------------------
 
-s = Problem(model, Float)
+p = Problem(model, Float)
 
 # Variable: binary assignment (1 if issue assigned to developer in sprint, 0 otherwise)
-s.solve_for(
+p.solve_for(
     Assignment.x_assigned,
     type="bin",
     name=["assign", Assignment.issue.key, Assignment.developer.name, Assignment.sprint.name],
 )
 
 # Constraint: each issue must be assigned exactly once (to one developer in one sprint)
-s.satisfy(model.require(
+p.satisfy(model.require(
     sum(Assignment.x_assigned).per(Issue) == 1
 ).where(Assignment.issue == Issue))
 
 # Constraint: developer capacity per sprint — total story points assigned <= scaled capacity
 # capacity_multiplier allows scenario analysis (e.g., what if teams are understaffed?)
 capacity_multiplier = 1.0
-s.satisfy(model.require(
+p.satisfy(model.require(
     sum(Assignment.x_assigned * Assignment.issue.story_points).per(Developer, Sprint)
     <= Developer.capacity_points_per_sprint * capacity_multiplier
 ).where(Assignment.developer == Developer, Assignment.sprint == Sprint))
@@ -178,7 +178,7 @@ s.satisfy(model.require(
 # Lower priority number = higher urgency, so priority 1 issues cost more in later sprints
 # Weight = (max_priority + 1 - priority) to make P1 issues most expensive to delay
 max_priority = 3
-s.minimize(
+p.minimize(
     sum(Assignment.x_assigned * (max_priority + 1 - Assignment.issue.priority) * Assignment.sprint.number)
 )
 
@@ -186,12 +186,12 @@ s.minimize(
 # Solve and check solution
 # --------------------------------------------------
 
-s.display()
-s.solve("highs", time_limit_sec=60)
-s.display_solve_info()
+p.display()
+p.solve("highs", time_limit_sec=60)
+p.display_solve_info()
 
-print(f"Status: {s.termination_status}")
-print(f"Objective (weighted completion time): {s.objective_value:.1f}")
+print(f"Status: {p.termination_status}")
+print(f"Objective (weighted completion time): {p.objective_value:.1f}")
 print(f"Planning horizon: {planning_start} to {planning_end}")
 print(f"Issues in scope: {len(filtered_issues)} (of {len(issues_df)} total)")
 

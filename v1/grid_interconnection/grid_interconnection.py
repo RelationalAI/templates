@@ -93,28 +93,28 @@ UpgradeRef = Upgrade.ref()
 def build_formulation(s):
     """Register variables, constraints, and objective on the problem."""
     # Variables
-    s.solve_for(Project.x_approved, type="bin", name=Project.name)
-    s.solve_for(Upgrade.x_selected, type="bin", name=["upg", Upgrade.substation.name, Upgrade.capacity_added])
+    p.solve_for(Project.x_approved, type="bin", name=Project.name)
+    p.solve_for(Upgrade.x_selected, type="bin", name=["upg", Upgrade.substation.name, Upgrade.capacity_added])
 
     # Constraint: capacity at substation must accommodate approved projects
     project_demand = sum(ProjectRef.x_approved * ProjectRef.capacity_needed).where(ProjectRef.substation == Substation).per(Substation)
     upgrade_capacity = sum(UpgradeRef.x_selected * UpgradeRef.capacity_added).where(UpgradeRef.substation == Substation).per(Substation)
     capacity_ok = model.require(Substation.current_capacity + upgrade_capacity >= project_demand)
-    s.satisfy(capacity_ok)
+    p.satisfy(capacity_ok)
 
     # Constraint: at most one upgrade per substation
     upgrades_per_sub = sum(UpgradeRef.x_selected).where(UpgradeRef.substation == Substation).per(Substation)
     one_upgrade = model.require(upgrades_per_sub <= 1)
-    s.satisfy(one_upgrade)
+    p.satisfy(one_upgrade)
 
     # Constraint: budget
     total_investment = sum(Project.x_approved * Project.connection_cost) + sum(Upgrade.x_selected * Upgrade.upgrade_cost)
     budget_ok = model.require(total_investment <= budget)
-    s.satisfy(budget_ok)
+    p.satisfy(budget_ok)
 
     # Objective: maximize net revenue
     net_revenue = sum(Project.x_approved * (Project.revenue - Project.connection_cost))
-    s.maximize(net_revenue)
+    p.maximize(net_revenue)
 
 # Scenarios (what-if analysis)
 SCENARIO_PARAM = "budget"
@@ -133,22 +133,22 @@ for scenario_value in SCENARIO_VALUES:
     budget = scenario_value
 
     # Create fresh Problem for each scenario
-    s = Problem(model, Float)
+    p = Problem(model, Float)
     build_formulation(s)
 
-    s.display()
-    s.solve("highs", time_limit_sec=60)
-    s.display_solve_info()
+    p.display()
+    p.solve("highs", time_limit_sec=60)
+    p.display_solve_info()
 
     scenario_results.append({
         "scenario": scenario_value,
-        "status": str(s.termination_status),
-        "objective": s.objective_value,
+        "status": str(p.termination_status),
+        "objective": p.objective_value,
     })
-    print(f"  Status: {s.termination_status}, Objective: {s.objective_value}")
+    print(f"  Status: {p.termination_status}, Objective: {p.objective_value}")
 
     # Print approved projects from solver results
-    var_df = s.variable_values().to_df()
+    var_df = p.variable_values().to_df()
     approved_df = var_df[~var_df["name"].str.startswith("upg") & (var_df["value"] > 0.5)]
     print(f"\n  Approved projects:")
     print(approved_df.to_string(index=False))

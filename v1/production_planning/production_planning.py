@@ -8,7 +8,14 @@ in RelationalAI:
 - Create a Production decision concept with an integer decision variable for each
   machine-product pair.
 - Add constraints for machine hour capacity and product demand satisfaction.
-- Maximize total profit, with scenario analysis over demand multipliers.
+- Maximize total profit, with scenario analysis over demand multipliers using
+  Scenario as a first-class Concept (single solve, all scenarios simultaneously).
+
+Modeling approach:
+- Scenario is a Concept with a demand_multiplier parameter property.
+- Decision variables are multi-argument Properties indexed by (Production, Scenario).
+- Constraints use ref() bindings + .per(Scenario) to scope per-scenario.
+- One solve handles all demand levels; results extracted via model.select().
 
 Run:
     `python production_planning.py`
@@ -63,70 +70,89 @@ model.define(
 ).where(Machine.id == rates_data.machine_id, Product.id == rates_data.product_id)
 
 # --------------------------------------------------
+# Scenario Concept — demand_multiplier parameter variations
+# --------------------------------------------------
+
+Scenario = Concept("Scenario", identify_by={"name": String})
+Scenario.demand_multiplier = Property(f"{Scenario} has {Float:demand_multiplier}")
+scenario_data = model.data(
+    [("low_demand", 0.8), ("baseline", 1.0), ("high_demand", 1.1)],
+    columns=["name", "demand_multiplier"],
+)
+model.define(Scenario.new(scenario_data.to_schema()))
+
+# --------------------------------------------------
 # Model the decision problem
 # --------------------------------------------------
 
 # Decision concept: production quantities for each machine/product
 Production = Concept("Production")
 Production.rate = Property(f"{Production} uses {Rate}", short_name="rate")
-Production.x_quantity = Property(f"{Production} has {Float:quantity}")
 model.define(Production.new(rate=Rate))
+
+# Decision variable — indexed by Scenario (multi-argument Property)
+Production.x_quantity = Property(f"{Production} in {Scenario} has {Float:quantity}")
+
+# Ref for binding multi-arg variable in constraints
+x_qty = Float.ref()
 
 ProductionRef = Production.ref()
 
-# Scenarios (what-if analysis)
-SCENARIO_PARAM = "demand_multiplier"
-SCENARIO_VALUES = [0.8, 1.0, 1.1]
+p = Problem(model, Float)
+
+# Variable: production quantity (integer, non-negative)
+p.solve_for(
+    Production.x_quantity(Scenario, x_qty),
+    name=["qty", Scenario.name, Production.rate.machine.name, Production.rate.product.name],
+    lower=0, type="int",
+)
+
+# Constraint: machine capacity (per machine, per scenario)
+p.satisfy(model.where(
+    Production.x_quantity(Scenario, x_qty),
+    Production.rate.machine(Machine),
+).require(
+    sum(x_qty * Production.rate.hours_per_unit)
+    .where(Production.rate.machine == Machine)
+    .per(Machine, Scenario)
+    <= Machine.hours_available
+))
+
+# Constraint: meet demand scaled by multiplier (per product, per scenario)
+p.satisfy(model.where(
+    Production.x_quantity(Scenario, x_qty),
+    Production.rate.product(Product),
+).require(
+    sum(x_qty)
+    .where(Production.rate.product == Product)
+    .per(Product, Scenario)
+    >= Product.demand * Scenario.demand_multiplier
+))
+
+# Objective: maximize total profit
+p.maximize(
+    sum(x_qty * Production.rate.product.profit)
+    .where(Production.x_quantity(Scenario, x_qty))
+)
 
 # --------------------------------------------------
-# Solve and check solution
+# Solve (single solve for all scenarios)
 # --------------------------------------------------
 
-scenario_results = []
+p.display()
+p.solve("highs", time_limit_sec=60)
+p.display_solve_info()
 
-for demand_multiplier in SCENARIO_VALUES:
-    print(f"\nRunning scenario: {SCENARIO_PARAM} = {demand_multiplier}")
+# --------------------------------------------------
+# Extract results per scenario
+# --------------------------------------------------
 
-    # Create fresh Problem for each scenario
-    s = Problem(model, Float)
-
-    # Variable: production quantity (integer)
-    s.solve_for(Production.x_quantity, name=["qty", Production.rate.machine.name, Production.rate.product.name], lower=0, type="int", populate=False)
-
-    # Constraint: machine capacity
-    machine_hours = sum(ProductionRef.x_quantity * ProductionRef.rate.hours_per_unit).where(ProductionRef.rate.machine == Machine).per(Machine)
-    capacity_limit = model.require(machine_hours <= Machine.hours_available)
-    s.satisfy(capacity_limit)
-
-    # Constraint: meet demand (scaled by demand_multiplier)
-    product_qty = sum(ProductionRef.x_quantity).where(ProductionRef.rate.product == Product).per(Product)
-    meet_demand = model.require(product_qty >= Product.demand * demand_multiplier)
-    s.satisfy(meet_demand)
-
-    # Objective: maximize total profit
-    total_profit = sum(Production.x_quantity * Production.rate.product.profit)
-    s.maximize(total_profit)
-
-    s.display()
-    s.solve("highs", time_limit_sec=60)
-    s.display_solve_info()
-
-    scenario_results.append({
-        "scenario": demand_multiplier,
-        "status": str(s.termination_status),
-        "objective": s.objective_value,
-    })
-    print(f"  Status: {s.termination_status}, Objective: {s.objective_value}")
-
-    # Print production plan from solver results
-    var_df = s.variable_values().to_df()
-    qty_df = var_df[var_df["name"].str.startswith("qty") & (var_df["value"] > 0.001)]
-    print(f"\n  Production plan:")
-    print(qty_df.to_string(index=False))
-
-# Summary
-print("\n" + "=" * 50)
-print("Scenario Analysis Summary")
-print("=" * 50)
-for result in scenario_results:
-    print(f"  {result['scenario']}: {result['status']}, obj={result['objective']}")
+print("\nProduction plan per scenario:")
+model.select(
+    Scenario.name.alias("scenario"),
+    Production.rate.machine.name.alias("machine"),
+    Production.rate.product.name.alias("product"),
+    x_qty.alias("quantity"),
+).where(
+    Production.x_quantity(Scenario, x_qty), x_qty > 0.001
+).inspect()

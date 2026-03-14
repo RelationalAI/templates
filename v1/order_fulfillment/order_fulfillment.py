@@ -79,43 +79,43 @@ model.define(FCUsage.new(fc=FC))
 
 AssignmentRef = Assignment.ref()
 
-s = Problem(model, Float)
+p = Problem(model, Float)
 
 # Variable: assignment quantity and FC usage
-s.solve_for(Assignment.x_qty, name=["qty", Assignment.shipping.fc.name, Assignment.shipping.order.customer], lower=0)
-s.solve_for(FCUsage.x_used, type="bin", name=["fc_used", FCUsage.fc.name])
+p.solve_for(Assignment.x_qty, name=["qty", Assignment.shipping.fc.name, Assignment.shipping.order.customer], lower=0)
+p.solve_for(FCUsage.x_used, type="bin", name=["fc_used", FCUsage.fc.name])
 
 # Constraint: FC capacity
 fc_total_qty = sum(AssignmentRef.x_qty).where(AssignmentRef.shipping.fc == FC).per(FC)
 capacity_limit = model.require(fc_total_qty <= FC.capacity)
-s.satisfy(capacity_limit)
+p.satisfy(capacity_limit)
 
 # Constraint: link FC usage to assignments
 fc_total_qty_for_usage = sum(AssignmentRef.x_qty).where(AssignmentRef.shipping.fc == FCUsage.fc).per(FCUsage)
 usage_link = model.require(fc_total_qty_for_usage <= FCUsage.fc.capacity * FCUsage.x_used)
-s.satisfy(usage_link)
+p.satisfy(usage_link)
 
 # Constraint: each order must be fully fulfilled
 order_fulfilled = sum(AssignmentRef.x_qty).where(AssignmentRef.shipping.order == Order).per(Order)
 fulfill_all = model.require(order_fulfilled == Order.quantity)
-s.satisfy(fulfill_all)
+p.satisfy(fulfill_all)
 
 # Objective: minimize total cost (shipping + fixed FC costs)
 shipping_cost = sum(Assignment.x_qty * Assignment.shipping.cost_per_unit)
 fixed_cost = sum(FCUsage.x_used * FCUsage.fc.fixed_cost)
 total_cost = shipping_cost + fixed_cost
-s.minimize(total_cost)
+p.minimize(total_cost)
 
 # --------------------------------------------------
 # Solve and check solution
 # --------------------------------------------------
 
-s.display()
-s.solve("highs", time_limit_sec=60)
-s.display_solve_info()
+p.display()
+p.solve("highs", time_limit_sec=60)
+p.display_solve_info()
 
-print(f"Status: {s.termination_status}")
-print(f"Total cost (shipping + fixed): ${s.objective_value:.2f}")
+print(f"Status: {p.termination_status}")
+print(f"Total cost (shipping + fixed): ${p.objective_value:.2f}")
 
 assignments = model.select(
     Assignment.shipping.fc.name.alias("fulfillment_center"),
