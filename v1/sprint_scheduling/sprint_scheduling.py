@@ -247,6 +247,8 @@ print("\n" + "=" * 50)
 print("Scenario Analysis Summary")
 print("=" * 50)
 for result in scenario_results:
+    obj = result["objective"]
+    obj_str = f"{obj}" if obj is not None else "N/A"
     print(
-        f"  capacity_multiplier={result['scenario']}: {result['status']}, obj={result['objective']}"
+        f"  capacity_multiplier={result['scenario']}: {result['status']}, obj={obj_str}"
     )

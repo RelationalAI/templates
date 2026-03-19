@@ -168,7 +168,7 @@ Production and inventory variables are indexed by both concept (site x SKU) and 
 
 ```python
 ProdCapacity.x_production = Property(
-    f"{ProdCapacity} in week {{t:int}} produces {{production:float}}"
+    f"{ProdCapacity} in week {Integer:t} produces {Float:production}"
 )
 production_ref = Float.ref()
 s.solve_for(

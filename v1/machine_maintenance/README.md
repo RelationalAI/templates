@@ -242,6 +242,7 @@ The model is solved using the HiGHS solver with a two-minute time limit. After s
 
 ```python
 s.solve("highs", time_limit_sec=120)
+model.require(s.termination_status() == "OPTIMAL")
 si = s.solve_info()
 si.display()
 
