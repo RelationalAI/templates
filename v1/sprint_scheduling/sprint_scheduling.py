@@ -218,16 +218,20 @@ for scenario_value in SCENARIO_VALUES:
 
     p.display()
     p.solve("highs", time_limit_sec=60)
-    p.display_solve_info()
+    si = p.solve_info()
+    si.display()
 
     scenario_results.append(
         {
             "scenario": scenario_value,
-            "status": str(p.termination_status),
-            "objective": p.objective_value,
+            "status": str(si.termination_status),
+            "objective": si.objective_value,
         }
     )
-    print(f"  Status: {p.termination_status}, Objective: {p.objective_value}")
+    if si.termination_status != "OPTIMAL":
+        print(f"  Status: {si.termination_status} — skipping results")
+        continue
+    print(f"  Status: {si.termination_status}, Objective: {si.objective_value}")
     print(f"  Planning horizon: {planning_start} to {planning_end}")
     print(f"  Issues in scope: {len(filtered_issues)} (of {len(issues_df)} total)")
 

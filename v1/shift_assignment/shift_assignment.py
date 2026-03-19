@@ -97,18 +97,16 @@ p.solve_for(
 )
 
 # Constraint: minimum coverage per shift (per scenario)
-p.satisfy(model.where(
+coverage_ic = model.where(
     Worker.x_assign(Shift, Scenario, assigned_ref),
-).require(
-    sum(Worker, assigned_ref).per(Shift, Scenario) >= Scenario.min_coverage
-))
+).require(sum(Worker, assigned_ref).per(Shift, Scenario) >= Scenario.min_coverage)
+p.satisfy(coverage_ic)
 
 # Constraint: max shifts per worker (per scenario)
-p.satisfy(model.where(
+workload_ic = model.where(
     Worker.x_assign(Shift, Scenario, assigned_ref),
-).require(
-    sum(Shift, assigned_ref).per(Worker, Scenario) <= max_shifts
-))
+).require(sum(Shift, assigned_ref).per(Worker, Scenario) <= max_shifts)
+p.satisfy(workload_ic)
 
 # --------------------------------------------------
 # Solve (single solve for all scenarios)
@@ -116,7 +114,11 @@ p.satisfy(model.where(
 
 p.display()
 p.solve("minizinc", time_limit_sec=60)
-p.display_solve_info()
+p.solve_info().display()
+
+# Verify constraints hold in the solver's solution — fires ICs without a separate query.
+p.verify(coverage_ic, workload_ic)
+model.require(p.termination_status() == "OPTIMAL")
 
 # --------------------------------------------------
 # Extract results per scenario

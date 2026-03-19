@@ -338,17 +338,21 @@ for scenario_value in SCENARIO_VALUES:
 
     p.display()
     p.solve("highs", time_limit_sec=60)
-    p.display_solve_info()
+    si = p.solve_info()
+    si.display()
 
     scenario_results.append(
         {
             "scenario": scenario_value,
-            "status": str(p.termination_status),
-            "objective": p.objective_value,
+            "status": str(si.termination_status),
+            "objective": si.objective_value,
         }
     )
-    print(f"  Status: {p.termination_status}")
-    print(f"  Total cost: ${p.objective_value:,.2f}")
+    if si.termination_status != "OPTIMAL":
+        print(f"  Status: {si.termination_status} — skipping results")
+        continue
+    print(f"  Status: {si.termination_status}")
+    print(f"  Total cost: ${si.objective_value:,.2f}")
     print(f"  Planning horizon: {planning_start} to {planning_end} ({num_weeks} weeks)")
     print(
         f"  Demand orders in scope: {len(filtered_orders)} (of {len(orders_df)} total)"
@@ -378,6 +382,6 @@ print("\n" + "=" * 50)
 print("Scenario Analysis Summary")
 print("=" * 50)
 for result in scenario_results:
-    print(
-        f"  planning_end={result['scenario']}: {result['status']}, cost=${result['objective']:,.2f}"
-    )
+    obj = result["objective"]
+    obj_str = f"${obj:,.2f}" if obj is not None else "N/A"
+    print(f"  planning_end={result['scenario']}: {result['status']}, cost={obj_str}")

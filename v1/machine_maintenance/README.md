@@ -242,9 +242,11 @@ The model is solved using the HiGHS solver with a two-minute time limit. After s
 
 ```python
 s.solve("highs", time_limit_sec=120)
+si = s.solve_info()
+si.display()
 
-print(f"\nStatus: {s.termination_status}")
-print(f"Objective value: {s.objective_value:.2f}")
+print(f"\nStatus: {si.termination_status}")
+print(f"Objective value: {si.objective_value:.2f}")
 
 maint_df = model.select(
     MachinePeriod.machine.machine_id.alias("machine_id"),

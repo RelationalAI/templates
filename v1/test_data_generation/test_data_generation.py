@@ -194,10 +194,12 @@ p.minimize(total_deviation)
 
 p.display()
 p.solve("highs", time_limit_sec=60)
-p.display_solve_info()
+model.require(p.termination_status() == "OPTIMAL")
+si = p.solve_info()
+si.display()
 
-print(f"Status: {p.termination_status}")
-print(f"Total weighted deviation: {p.objective_value:.2f}")
+print(f"Status: {si.termination_status}")
+print(f"Total weighted deviation: {si.objective_value:.2f}")
 
 # Extract row counts
 row_counts = {}

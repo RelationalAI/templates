@@ -341,10 +341,12 @@ p.minimize(failure_cost + labor_cost + travel_cost)
 
 p.display()
 p.solve("highs", time_limit_sec=120)
-p.display_solve_info()
+model.require(p.termination_status() == "OPTIMAL")
+si = p.solve_info()
+si.display()
 
-print(f"\nStatus: {p.termination_status}")
-print(f"Objective value: {p.objective_value:.2f}")
+print(f"\nStatus: {si.termination_status}")
+print(f"Objective value: {si.objective_value:.2f}")
 
 # Maintenance schedule
 maint_df = (

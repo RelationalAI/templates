@@ -103,14 +103,20 @@ for factory_name in SCENARIO_VALUES:
 
     p.display()
     p.solve("highs", time_limit_sec=60)
-    p.display_solve_info()
+    si = p.solve_info()
+    si.display()
 
-    scenario_results.append({
-        "factory": factory_name,
-        "status": str(p.termination_status),
-        "profit": p.objective_value,
-    })
-    print(f"  Status: {p.termination_status}, Profit: ${p.objective_value:.2f}")
+    scenario_results.append(
+        {
+            "factory": factory_name,
+            "status": str(si.termination_status),
+            "profit": si.objective_value,
+        }
+    )
+    if si.termination_status != "OPTIMAL":
+        print(f"  Status: {si.termination_status} — skipping results")
+        continue
+    print(f"  Status: {si.termination_status}, Profit: ${si.objective_value:.2f}")
 
     # Extract solution via variable_values() — populate=False avoids overwriting between scenarios
     var_df = p.variable_values().to_df()
@@ -122,4 +128,6 @@ print("\n" + "=" * 50)
 print("Factory Production Summary")
 print("=" * 50)
 for result in scenario_results:
-    print(f"  {result['factory']}: {result['status']}, profit=${result['profit']:.2f}")
+    profit = result["profit"]
+    profit_str = f"${profit:.2f}" if profit is not None else "N/A"
+    print(f"  {result['factory']}: {result['status']}, profit={profit_str}")
