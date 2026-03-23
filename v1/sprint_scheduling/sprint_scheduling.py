@@ -31,7 +31,6 @@ from datetime import datetime
 from pathlib import Path
 
 from pandas import read_csv
-
 from relationalai.semantics import Float, Integer, Model, String, sum
 from relationalai.semantics.reasoners.prescriptive import Problem
 
@@ -45,7 +44,7 @@ Concept, Property = model.Concept, model.Property
 # TEMPORAL PARAMETER: Planning horizon defined by date range
 # Users adjust these to change the optimization window
 planning_start = "2024-10-01"  # Start of planning horizon (Q4 2024)
-planning_end = "2024-11-26"    # End of planning horizon (end of Sprint 4)
+planning_end = "2024-11-26"  # End of planning horizon (end of Sprint 4)
 
 # Convert date strings to epoch integers for filtering
 start_epoch = int(datetime.strptime(planning_start, "%Y-%m-%d").timestamp())
@@ -61,7 +60,9 @@ data_dir = Path(__file__).parent / "data"
 Developer = Concept("Developer", identify_by={"id": Integer})
 Developer.name = Property(f"{Developer} has {String:name}")
 Developer.team = Property(f"{Developer} has {String:team}")
-Developer.capacity_points_per_sprint = Property(f"{Developer} has {Integer:capacity_points_per_sprint}")
+Developer.capacity_points_per_sprint = Property(
+    f"{Developer} has {Integer:capacity_points_per_sprint}"
+)
 dev_csv = read_csv(data_dir / "developers.csv")
 model.define(Developer.new(model.data(dev_csv).to_schema()))
 
@@ -83,7 +84,9 @@ Issue.story_points = Property(f"{Issue} has {Integer:story_points}")
 Issue.created_at = Property(f"{Issue} has {Integer:created_at}")
 Issue.priority = Property(f"{Issue} has {Integer:priority}")
 Issue.team = Property(f"{Issue} has {String:team}")
-Issue.target_sprint_number = Property(f"{Issue} has target sprint {Integer:target_sprint_number}")
+Issue.target_sprint_number = Property(
+    f"{Issue} has target sprint {Integer:target_sprint_number}"
+)
 
 issues_df = read_csv(data_dir / "issues.csv")
 
@@ -95,6 +98,7 @@ filtered_issues = issues_df[issues_df["created_at"] <= end_epoch].copy()
 # Issues created before planning_start are backlog -> assigned to Sprint 1
 # Issues created during a sprint -> assigned to that sprint (earliest eligible)
 sprints_df = read_csv(data_dir / "sprints.csv")
+
 
 def map_to_sprint(created_at_epoch):
     """Map an issue's created_at epoch to its target sprint number."""
@@ -108,7 +112,10 @@ def map_to_sprint(created_at_epoch):
     # Created after all sprints -> last sprint
     return int(sprints_df["number"].max())
 
-filtered_issues["target_sprint_number"] = filtered_issues["created_at"].apply(map_to_sprint)
+
+filtered_issues["target_sprint_number"] = filtered_issues["created_at"].apply(
+    map_to_sprint
+)
 
 issue_data = model.data(filtered_issues)
 model.define(
@@ -140,9 +147,7 @@ Assignment.x_assigned = Property(f"{Assignment} is {Float:assigned}")
 
 # Build assignment domain: developer can work on issue if they have the matching skill,
 # and the sprint is >= the issue's target sprint (can't assign to earlier sprints)
-model.define(
-    Assignment.new(developer=Developer, issue=Issue, sprint=Sprint)
-).where(
+model.define(Assignment.new(developer=Developer, issue=Issue, sprint=Sprint)).where(
     Skill.developer_id == Developer.id,
     Skill.team == Issue.team,
     Sprint.number >= Issue.target_sprint_number,
@@ -152,70 +157,92 @@ model.define(
 # Model the decision problem
 # --------------------------------------------------
 
-p = Problem(model, Float)
-
-# Variable: binary assignment (1 if issue assigned to developer in sprint, 0 otherwise)
-p.solve_for(
-    Assignment.x_assigned,
-    type="bin",
-    name=["assign", Assignment.issue.key, Assignment.developer.name, Assignment.sprint.name],
+# Static constraint expression: each issue assigned exactly once (no scenario param dependency)
+issue_once = model.require(sum(Assignment.x_assigned).per(Issue) == 1).where(
+    Assignment.issue == Issue
 )
 
-# Constraint: each issue must be assigned exactly once (to one developer in one sprint)
-p.satisfy(model.require(
-    sum(Assignment.x_assigned).per(Issue) == 1
-).where(Assignment.issue == Issue))
-
-# Constraint: developer capacity per sprint — total story points assigned <= scaled capacity
-# capacity_multiplier allows scenario analysis (e.g., what if teams are understaffed?)
-capacity_multiplier = 1.0
-p.satisfy(model.require(
-    sum(Assignment.x_assigned * Assignment.issue.story_points).per(Developer, Sprint)
-    <= Developer.capacity_points_per_sprint * capacity_multiplier
-).where(Assignment.developer == Developer, Assignment.sprint == Sprint))
-
-# Objective: minimize weighted completion time (priority * sprint number)
+# Static objective expression: minimize weighted completion time (no scenario param dependency)
 # Lower priority number = higher urgency, so priority 1 issues cost more in later sprints
 # Weight = (max_priority + 1 - priority) to make P1 issues most expensive to delay
 max_priority = 3
-p.minimize(
-    sum(Assignment.x_assigned * (max_priority + 1 - Assignment.issue.priority) * Assignment.sprint.number)
+weighted_completion = sum(
+    Assignment.x_assigned
+    * (max_priority + 1 - Assignment.issue.priority)
+    * Assignment.sprint.number
 )
+
+# Scenarios (what-if: vary team capacity to see impact on sprint assignments)
+SCENARIO_PARAM = "capacity_multiplier"
+SCENARIO_VALUES = [0.5, 0.75, 1.0]
 
 # --------------------------------------------------
 # Solve and check solution
 # --------------------------------------------------
 
-p.display()
-p.solve("highs", time_limit_sec=60)
-p.display_solve_info()
+scenario_results = []
 
-print(f"Status: {p.termination_status}")
-print(f"Objective (weighted completion time): {p.objective_value:.1f}")
-print(f"Planning horizon: {planning_start} to {planning_end}")
-print(f"Issues in scope: {len(filtered_issues)} (of {len(issues_df)} total)")
+for scenario_value in SCENARIO_VALUES:
+    print(f"\nRunning scenario: {SCENARIO_PARAM} = {scenario_value}")
+    capacity_multiplier = scenario_value
 
-# Assignment results
-assignments = model.select(
-    Assignment.issue.key.alias("issue"),
-    Assignment.issue.summary.alias("summary"),
-    Assignment.issue.story_points.alias("points"),
-    Assignment.issue.priority.alias("priority"),
-    Assignment.developer.name.alias("developer"),
-    Assignment.sprint.name.alias("sprint"),
-).where(Assignment.x_assigned >= 1).to_df()
+    p = Problem(model, Float)
 
-print("\n=== Sprint Assignments ===")
-if not assignments.empty:
-    assignments = assignments.sort_values(["sprint", "developer", "priority"])
-    print(assignments.to_string(index=False))
+    # Variable: binary assignment (1 if issue assigned to developer in sprint, 0 otherwise)
+    p.solve_for(
+        Assignment.x_assigned,
+        type="bin",
+        name=[
+            "assign",
+            Assignment.issue.key,
+            Assignment.developer.name,
+            Assignment.sprint.name,
+        ],
+    )
 
-# Sprint workload summary
-print("\n=== Sprint Workload Summary ===")
-if not assignments.empty:
-    assignments["points"] = assignments["points"].astype(float)
-    summary = assignments.groupby(["sprint", "developer"]).agg(
-        issues=("issue", "count"),
-        total_points=("points", "sum")
-    ).reset_index()
-    print(summary.to_string(index=False))
+    # Static constraint: each issue assigned exactly once
+    p.satisfy(issue_once)
+
+    # Parameterized constraint: developer capacity per sprint (references capacity_multiplier)
+    p.satisfy(
+        model.require(
+            sum(Assignment.x_assigned * Assignment.issue.story_points).per(
+                Developer, Sprint
+            )
+            <= Developer.capacity_points_per_sprint * capacity_multiplier
+        ).where(Assignment.developer == Developer, Assignment.sprint == Sprint)
+    )
+
+    # Static objective: minimize weighted completion time
+    p.minimize(weighted_completion)
+
+    p.display()
+    p.solve("highs", time_limit_sec=60)
+    p.display_solve_info()
+
+    scenario_results.append(
+        {
+            "scenario": scenario_value,
+            "status": str(p.termination_status),
+            "objective": p.objective_value,
+        }
+    )
+    print(f"  Status: {p.termination_status}, Objective: {p.objective_value}")
+    print(f"  Planning horizon: {planning_start} to {planning_end}")
+    print(f"  Issues in scope: {len(filtered_issues)} (of {len(issues_df)} total)")
+
+    # Assignment results
+    var_df = p.variable_values().to_df()
+    var_df["value"] = var_df["value"].astype(float)
+    assigned = var_df[var_df["name"].str.startswith("assign") & (var_df["value"] > 0.5)]
+    print(f"\n  Assignments:")
+    print(assigned.to_string(index=False))
+
+# Summary
+print("\n" + "=" * 50)
+print("Scenario Analysis Summary")
+print("=" * 50)
+for result in scenario_results:
+    print(
+        f"  capacity_multiplier={result['scenario']}: {result['status']}, obj={result['objective']}"
+    )
