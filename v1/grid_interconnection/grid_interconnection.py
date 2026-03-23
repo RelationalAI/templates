@@ -50,8 +50,6 @@ Project.substation = Property(f"{Project} connects to {Substation}")
 Project.capacity_needed = Property(f"{Project} needs {Integer:capacity_needed}")
 Project.revenue = Property(f"{Project} has {Float:revenue}")
 Project.connection_cost = Property(f"{Project} has {Float:connection_cost}")
-Project.x_approved = Property(f"{Project} is {Float:approved}")
-
 project_csv = read_csv(data_dir / "projects.csv")
 project_data = model.data(project_csv)
 model.define(
@@ -69,8 +67,6 @@ Upgrade.substation_id = Property(f"{Upgrade} has {Integer:substation_id}")
 Upgrade.substation = Property(f"{Upgrade} for {Substation}")
 Upgrade.capacity_added = Property(f"{Upgrade} adds {Integer:capacity_added}")
 Upgrade.upgrade_cost = Property(f"{Upgrade} has {Float:upgrade_cost}")
-Upgrade.x_selected = Property(f"{Upgrade} is {Float:selected}")
-
 upgrade_csv = read_csv(data_dir / "upgrades.csv")
 upgrade_data = model.data(upgrade_csv)
 model.define(
@@ -84,83 +80,101 @@ model.define(Upgrade.substation(Substation)).where(Upgrade.substation_id == Subs
 # Model the decision problem
 # --------------------------------------------------
 
-# Parameters
-budget = 2000000000
+# Scenario concept — budget parameter variations
+Scenario = Concept("Scenario", identify_by={"name": String})
+Scenario.budget = Property(f"{Scenario} has {Float:budget}")
+scenario_data = model.data(
+    [("budget_1B", 1000000000), ("budget_2B", 2000000000), ("budget_3B", 3000000000)],
+    columns=["name", "budget"],
+)
+model.define(Scenario.new(scenario_data.to_schema()))
+
+# Decision variables — indexed by Scenario (multi-argument Properties)
+Project.x_approved = Property(f"{Project} in {Scenario} is {Float:approved}")
+Upgrade.x_selected = Property(f"{Upgrade} in {Scenario} is {Float:selected}")
+
+# Refs for binding multi-arg variables in constraints
+x_approved = Float.ref()
+x_selected = Float.ref()
 
 ProjectRef = Project.ref()
 UpgradeRef = Upgrade.ref()
 
-def build_formulation(s):
-    """Register variables, constraints, and objective on the problem."""
-    # Variables
-    p.solve_for(Project.x_approved, type="bin", name=Project.name)
-    p.solve_for(Upgrade.x_selected, type="bin", name=["upg", Upgrade.substation.name, Upgrade.capacity_added])
+p = Problem(model, Float)
 
-    # Constraint: capacity at substation must accommodate approved projects
-    project_demand = sum(ProjectRef.x_approved * ProjectRef.capacity_needed).where(ProjectRef.substation == Substation).per(Substation)
-    upgrade_capacity = sum(UpgradeRef.x_selected * UpgradeRef.capacity_added).where(UpgradeRef.substation == Substation).per(Substation)
-    capacity_ok = model.require(Substation.current_capacity + upgrade_capacity >= project_demand)
-    p.satisfy(capacity_ok)
+# Variables
+p.solve_for(
+    Project.x_approved(Scenario, x_approved),
+    type="bin",
+    name=["proj", Scenario.name, Project.name],
+)
+p.solve_for(
+    Upgrade.x_selected(Scenario, x_selected),
+    type="bin",
+    name=["upg", Scenario.name, Upgrade.substation.name, Upgrade.capacity_added],
+)
 
-    # Constraint: at most one upgrade per substation
-    upgrades_per_sub = sum(UpgradeRef.x_selected).where(UpgradeRef.substation == Substation).per(Substation)
-    one_upgrade = model.require(upgrades_per_sub <= 1)
-    p.satisfy(one_upgrade)
+# Constraint: capacity at substation must accommodate approved projects (per scenario)
+x_approved_ref = Float.ref()
+x_selected_ref = Float.ref()
+p.satisfy(model.where(
+    Project.x_approved(Scenario, x_approved_ref),
+    Upgrade.x_selected(Scenario, x_selected_ref),
+    Project.substation(Substation),
+    Upgrade.substation(Substation),
+).require(
+    Substation.current_capacity
+    + sum(x_selected_ref * UpgradeRef.capacity_added).where(UpgradeRef.substation == Substation).per(Substation, Scenario)
+    >= sum(x_approved_ref * ProjectRef.capacity_needed).where(ProjectRef.substation == Substation).per(Substation, Scenario)
+))
 
-    # Constraint: budget
-    total_investment = sum(Project.x_approved * Project.connection_cost) + sum(Upgrade.x_selected * Upgrade.upgrade_cost)
-    budget_ok = model.require(total_investment <= budget)
-    p.satisfy(budget_ok)
+# Constraint: at most one upgrade per substation (per scenario)
+p.satisfy(model.where(
+    Upgrade.x_selected(Scenario, x_selected),
+).require(
+    sum(x_selected).where(Upgrade.substation == Substation).per(Substation, Scenario) <= 1
+))
 
-    # Objective: maximize net revenue
-    net_revenue = sum(Project.x_approved * (Project.revenue - Project.connection_cost))
-    p.maximize(net_revenue)
+# Constraint: budget limit (per scenario)
+p.satisfy(model.where(
+    Project.x_approved(Scenario, x_approved),
+    Upgrade.x_selected(Scenario, x_selected),
+).require(
+    sum(x_approved * Project.connection_cost).per(Scenario)
+    + sum(x_selected * Upgrade.upgrade_cost).per(Scenario)
+    <= Scenario.budget
+))
 
-# Scenarios (what-if analysis)
-SCENARIO_PARAM = "budget"
-SCENARIO_VALUES = [1000000000, 2000000000, 3000000000]
+# Objective: maximize net revenue
+p.maximize(
+    sum(x_approved * (Project.revenue - Project.connection_cost))
+    .where(Project.x_approved(Scenario, x_approved))
+)
 
 # --------------------------------------------------
 # Solve and check solution
 # --------------------------------------------------
 
-scenario_results = []
+p.display()
+p.solve("highs", time_limit_sec=60)
+p.display_solve_info()
 
-for scenario_value in SCENARIO_VALUES:
-    print(f"\nRunning scenario: {SCENARIO_PARAM} = {scenario_value}")
+print("\nApproved projects per scenario:")
+model.select(
+    Scenario.name.alias("scenario"),
+    Project.name.alias("project"),
+    Project.revenue,
+    Project.connection_cost,
+).where(
+    Project.x_approved(Scenario, x_approved), x_approved > 0.5
+).inspect()
 
-    # Set scenario parameter value
-    budget = scenario_value
-
-    # Create fresh Problem for each scenario
-    p = Problem(model, Float)
-    build_formulation(s)
-
-    p.display()
-    p.solve("highs", time_limit_sec=60)
-    p.display_solve_info()
-
-    scenario_results.append({
-        "scenario": scenario_value,
-        "status": str(p.termination_status),
-        "objective": p.objective_value,
-    })
-    print(f"  Status: {p.termination_status}, Objective: {p.objective_value}")
-
-    # Print approved projects from solver results
-    var_df = p.variable_values().to_df()
-    approved_df = var_df[~var_df["name"].str.startswith("upg") & (var_df["value"] > 0.5)]
-    print(f"\n  Approved projects:")
-    print(approved_df.to_string(index=False))
-
-    upgrades_df = var_df[var_df["name"].str.startswith("upg") & (var_df["value"] > 0.5)]
-    if not upgrades_df.empty:
-        print(f"\n  Selected upgrades:")
-        print(upgrades_df.to_string(index=False))
-
-# Summary
-print("\n" + "=" * 50)
-print("Scenario Analysis Summary")
-print("=" * 50)
-for result in scenario_results:
-    print(f"  {result['scenario']}: {result['status']}, obj={result['objective']}")
+print("\nSelected upgrades per scenario:")
+model.select(
+    Scenario.name.alias("scenario"),
+    Upgrade.substation.name.alias("substation"),
+    Upgrade.capacity_added,
+    Upgrade.upgrade_cost,
+).where(
+    Upgrade.x_selected(Scenario, x_selected), x_selected > 0.5
+).inspect()
