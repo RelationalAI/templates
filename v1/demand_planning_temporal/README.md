@@ -91,25 +91,26 @@ Prescriptive reasoning makes this practical because the solver simultaneously ba
 
 6. Expected output:
    ```text
-   Status: OPTIMAL
-   Total cost: $134,250.75
-   Planning horizon: 2025-11-01 to 2026-02-28 (18 weeks)
-   Demand orders in scope: 18 (of 25 total)
-
-   === Production Plan (non-zero weeks) ===
-     name                  value
-     prod_1_1_1           400.0
-     prod_1_2_2           350.0
+   Running scenario: planning_end = 2026-01-31
+     Status: OPTIMAL, Total cost: $...
+     Planning horizon: 2025-11-01 to 2026-01-31 (13 weeks)
+     Demand orders in scope: 14 (of 25 total)
      ...
 
-   === Inventory Levels (selected weeks) ===
-     name                  value
-     inv_1_1_0           2000.0
-     inv_1_2_0           1500.0
+   Running scenario: planning_end = 2026-02-28
+     Status: OPTIMAL, Total cost: $...
      ...
 
-   === Unmet Demand ===
-   All demand fulfilled!
+   Running scenario: planning_end = 2026-03-31
+     Status: OPTIMAL, Total cost: $...
+     ...
+
+   ==================================================
+   Scenario Analysis Summary
+   ==================================================
+     2026-01-31: OPTIMAL, cost=$...
+     2026-02-28: OPTIMAL, cost=$...
+     2026-03-31: OPTIMAL, cost=$...
    ```
 
 ## Template structure
@@ -129,38 +130,39 @@ Prescriptive reasoning makes this practical because the solver simultaneously ba
 
 ## How it works
 
-### 1. Date filtering -- scope demand to the planning horizon
+### 1. Scenario loop -- sweep planning horizons
 
-The demand orders CSV spans October 2025 through March 2026 (25 orders). The script filters to only the planning window before loading data into the model:
+The script sweeps over three `planning_end` dates to analyze how the planning horizon affects cost. Each iteration filters demand orders to the horizon, recomputes week mappings, and solves a fresh problem:
 
 ```python
 planning_start = "2025-11-01"
-planning_end = "2026-02-28"
+SCENARIO_VALUES = ["2026-01-31", "2026-02-28", "2026-03-31"]
 
-orders_df["due_date"] = pd.to_datetime(orders_df["due_date"])
-filtered_orders = orders_df[
-    (orders_df["due_date"] >= planning_start) &
-    (orders_df["due_date"] <= planning_end)
-].copy()
+for scenario_value in SCENARIO_VALUES:
+    planning_end = scenario_value
+    filtered_orders = orders_df[
+        (orders_df["due_date"] >= planning_start)
+        & (orders_df["due_date"] <= planning_end)
+    ].copy()
 ```
 
 This removes orders outside the horizon so the solver only sees relevant demand.
 
 ### 2. Date-to-period mapping -- convert dates to integer weeks
 
-`std.common.range()` requires integer periods. The script converts each order's due date into a week number relative to the planning start:
+`std.common.range()` requires integer periods. Inside each scenario iteration, the script computes the number of weeks and converts each order's due date into a week number relative to the planning start:
 
 ```python
-start_date = datetime.strptime(planning_start, "%Y-%m-%d")
-end_date = datetime.strptime(planning_end, "%Y-%m-%d")
-num_weeks = int((end_date - start_date).days / 7) + 1
+    start_date = datetime.strptime(planning_start, "%Y-%m-%d")
+    end_date = datetime.strptime(planning_end, "%Y-%m-%d")
+    num_weeks = int((end_date - start_date).days / 7) + 1
 
-filtered_orders["week_num"] = (
-    (filtered_orders["due_date"] - pd.Timestamp(planning_start)).dt.days // 7 + 1
-).astype(int)
+    filtered_orders["week_num"] = (
+        (filtered_orders["due_date"] - pd.Timestamp(planning_start)).dt.days // 7 + 1
+    ).astype(int)
 ```
 
-Week 1 is the first week of the horizon; week 18 is the last.
+The number of weeks varies by scenario (e.g. 13 weeks for January, 18 for February, 22 for March).
 
 ### 3. Multi-arity decision variables indexed by time
 
@@ -217,7 +219,7 @@ s.minimize(sum(model.union(prod_cost, hold_cost, unmet_cost)))
 
 ### Epoch timestamp alternative
 
-The script includes commented-out examples of Pattern B (epoch integer timestamps). If your data uses Unix epoch seconds instead of date strings, convert the planning horizon to epochs and filter identically:
+The script includes commented-out examples of Pattern B (epoch integer timestamps). If your data uses Unix epoch seconds instead of date strings, convert the planning horizon boundaries to epochs and filter identically:
 
 ```python
 start_epoch = int(datetime.strptime(planning_start, "%Y-%m-%d").timestamp())
@@ -230,7 +232,7 @@ filtered_orders = orders_df[
 
 ## Customize this template
 
-- **Change the planning horizon**: Edit `planning_start` and `planning_end` to shift the optimization window. The week count and date filter update automatically.
+- **Change the planning horizon**: Edit `planning_start` and the `SCENARIO_VALUES` list to shift the optimization window. The week count and date filter update automatically per scenario.
 - **Add more sites or SKUs**: Append rows to `sites.csv`, `skus.csv`, `production_capacity.csv`, and `initial_inventory.csv`. The model generalizes to any number of site-SKU combinations.
 - **Adjust service level**: Change `min_service_level` (default 0.95) to require higher or lower demand fulfillment.
 - **Add safety stock constraints**: Use the `safety_stock_weeks` parameter to require minimum inventory levels at each period.
@@ -258,7 +260,7 @@ The 95% service level constraint may be too strict for your data. Try lowering `
 <details>
 <summary>No demand orders in scope after filtering</summary>
 
-Verify that `planning_start` and `planning_end` overlap with the `due_date` values in `demand_orders.csv`. The default data covers October 2025 through March 2026; the default horizon is November 2025 through February 2026.
+Verify that `planning_start` and the `SCENARIO_VALUES` dates overlap with the `due_date` values in `demand_orders.csv`. The default data covers October 2025 through March 2026; the default scenarios span January through March 2026.
 </details>
 
 <details>

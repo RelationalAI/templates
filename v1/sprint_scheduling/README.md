@@ -39,7 +39,8 @@ Prescriptive reasoning is well suited here because the problem has combinatorial
 - Define binary decision variables for each valid (developer, issue, sprint) assignment
 - Enforce that each issue is assigned exactly once and developer capacity is not exceeded per sprint
 - Minimize weighted completion time so high-priority issues land in earlier sprints
-- Solve with HiGHS and display the assignment plan and workload summary
+- Run scenario analysis across capacity multiplier levels (0.5, 0.75, 1.0) to see the impact of reduced team capacity
+- Solve with HiGHS and display the assignment plan per scenario
 
 ## What's included
 
@@ -91,29 +92,31 @@ Prescriptive reasoning is well suited here because the problem has combinatorial
 
 6. Expected output:
    ```text
-   Status: OPTIMAL
-   Objective (weighted completion time): 78.0
-   Planning horizon: 2024-10-01 to 2024-11-26
-   Issues in scope: 30 (of 30 total)
+   Running scenario: capacity_multiplier = 1.0
+     Status: OPTIMAL, Objective: 78.0
+     Planning horizon: 2024-10-01 to 2024-11-26
+     Issues in scope: 30 (of 30 total)
 
-   === Sprint Assignments ===
-      issue                          summary  points  priority developer    sprint
-   PROJ-101       Migrate user auth to OAuth2       5         1     Alice  Sprint 1
-   PROJ-103      Add ETL pipeline for analytics     8         1       Eve  Sprint 1
-   PROJ-106  Implement search API endpoint          5         1       Bob  Sprint 1
-   PROJ-108  Create data quality dashboard          5         1     Frank  Sprint 1
-   PROJ-102  Fix dashboard rendering on mobile      3         2     Carol  Sprint 1
-   ...
-
-   === Sprint Workload Summary ===
-       sprint developer  issues  total_points
-     Sprint 1     Alice       3          18.0
-     Sprint 1       Bob       3          16.0
-     Sprint 1     Carol       2          14.0
-     Sprint 1      Dave       2          12.0
-     Sprint 1       Eve       2          13.0
-     Sprint 1     Frank       2          13.0
+     Assignments:
+                          name  value
+     assign_PROJ-101_Alice_Sprint 1    1.0
+     assign_PROJ-103_Eve_Sprint 1      1.0
      ...
+
+   Running scenario: capacity_multiplier = 0.75
+     Status: OPTIMAL, Objective: ...
+     ...
+
+   Running scenario: capacity_multiplier = 0.5
+     Status: OPTIMAL, Objective: ...
+     ...
+
+   ==================================================
+   Scenario Analysis Summary
+   ==================================================
+     capacity_multiplier=0.5: OPTIMAL, obj=...
+     capacity_multiplier=0.75: OPTIMAL, obj=...
+     capacity_multiplier=1.0: OPTIMAL, obj=...
    ```
 
 ## Template structure
@@ -189,26 +192,23 @@ This dramatically reduces the search space by only creating assignment variables
 
 ### 4. Binary assignment variables and constraints
 
-Each valid assignment gets a binary variable (1 = assigned, 0 = not assigned):
+Each valid assignment gets a binary variable (1 = assigned, 0 = not assigned). The "each issue assigned exactly once" constraint is defined once as a named expression, while the capacity constraint references a `capacity_multiplier` that varies per scenario:
 
 ```python
-s.solve_for(
+p.solve_for(
     Assignment.x_assigned,
     type="bin",
     name=["assign", Assignment.issue.key, Assignment.developer.name, Assignment.sprint.name],
 )
-```
 
-Two constraints ensure feasibility:
-
-```python
-# Each issue assigned exactly once
-s.satisfy(model.require(
+# Static constraint: each issue assigned exactly once
+issue_once = model.require(
     sum(Assignment.x_assigned).per(Issue) == 1
-).where(Assignment.issue == Issue))
+).where(Assignment.issue == Issue)
+p.satisfy(issue_once)
 
-# Developer capacity per sprint
-s.satisfy(model.require(
+# Parameterized constraint: developer capacity per sprint (references capacity_multiplier)
+p.satisfy(model.require(
     sum(Assignment.x_assigned * Assignment.issue.story_points).per(Developer, Sprint)
     <= Developer.capacity_points_per_sprint * capacity_multiplier
 ).where(Assignment.developer == Developer, Assignment.sprint == Sprint))
@@ -216,13 +216,16 @@ s.satisfy(model.require(
 
 ### 5. Weighted completion time objective
 
-The objective minimizes a weighted sum where high-priority issues (lower priority number) incur a higher cost when placed in later sprints:
+The objective minimizes a weighted sum where high-priority issues (lower priority number) incur a higher cost when placed in later sprints. It is defined once and reused across scenario iterations:
 
 ```python
 max_priority = 3
-s.minimize(
-    sum(Assignment.x_assigned * (max_priority + 1 - Assignment.issue.priority) * Assignment.sprint.number)
+weighted_completion = sum(
+    Assignment.x_assigned
+    * (max_priority + 1 - Assignment.issue.priority)
+    * Assignment.sprint.number
 )
+p.minimize(weighted_completion)
 ```
 
 A priority-1 issue in Sprint 4 costs `(4-1+1) * 4 = 12`, while a priority-3 issue in Sprint 4 costs `(4-3+1) * 4 = 8`. This pushes the most urgent work into the earliest sprints.
@@ -230,7 +233,7 @@ A priority-1 issue in Sprint 4 costs `(4-1+1) * 4 = 12`, while a priority-3 issu
 ## Customize this template
 
 - **Change the planning horizon**: Edit `planning_start` and `planning_end` to include more or fewer sprints. Add corresponding rows to `sprints.csv`.
-- **Adjust developer capacity**: Modify `capacity_points_per_sprint` in `developers.csv` or use `capacity_multiplier` in the script for scenario analysis (e.g., set to 0.8 to model 80% availability).
+- **Adjust developer capacity**: Modify `capacity_points_per_sprint` in `developers.csv` or edit `SCENARIO_VALUES` to sweep different `capacity_multiplier` levels (e.g., `[0.5, 0.75, 1.0]`).
 - **Add cross-team skills**: Append rows to `skills.csv` to let developers work on issues outside their primary team. Grace and Hank already have cross-team skills in the sample data.
 - **Change the priority scheme**: Adjust `max_priority` and the weight formula in the objective to match your team's priority scale.
 - **Add sprint-specific constraints**: For example, require that certain issues are completed by a specific sprint using additional `.where()` clauses.

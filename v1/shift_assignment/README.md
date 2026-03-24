@@ -38,7 +38,7 @@ The template also demonstrates scenario analysis by sweeping over different mini
 
 ## What's included
 
-- `shift_assignment.py` -- main script with ontology, constraints, and scenario loop
+- `shift_assignment.py` -- main script with ontology, constraints, and scenario analysis
 - `data/workers.csv` -- 10 workers with IDs and names
 - `data/shifts.csv` -- 3 shifts (Morning, Afternoon, Night) with capacity limits
 - `data/availability.csv` -- worker-to-shift availability mappings
@@ -88,34 +88,18 @@ The template also demonstrates scenario analysis by sweeping over different mini
 
 6. Expected output:
    ```text
-   Running scenario: min_coverage = 1
-     Status: OPTIMAL
-     Assignments:
-              name            value
-    x_Alice_Morning            1.0
-    x_Carlos_Afternoon         1.0
-    x_Bob_Night                1.0
-
-   Running scenario: min_coverage = 2
-     Status: OPTIMAL
-     Assignments:
-              name            value
-    x_Alice_Morning            1.0
-    x_Diana_Morning            1.0
-    x_Carlos_Afternoon         1.0
-    x_Grace_Afternoon          1.0
-    x_Bob_Night                1.0
-    x_Ethan_Night              1.0
-
-   Running scenario: min_coverage = 3
-     Status: INFEASIBLE
-
-   ==================================================
-   Scenario Analysis Summary
-   ==================================================
-     min_coverage=1: OPTIMAL
-     min_coverage=2: OPTIMAL
-     min_coverage=3: INFEASIBLE
+   Assignments per scenario:
+     scenario      worker          shift
+     coverage_1    Alice           Morning
+     coverage_1    Carlos          Afternoon
+     coverage_1    Bob             Night
+     coverage_2    Alice           Morning
+     coverage_2    Diana           Morning
+     coverage_2    Carlos          Afternoon
+     coverage_2    Grace           Afternoon
+     coverage_2    Bob             Night
+     coverage_2    Ethan           Night
+     ...
    ```
 
 ## Template structure
@@ -148,28 +132,30 @@ Worker.available_for = model.Relationship(f"{Worker} is available for {Shift}")
 **2. Define decision variables.** A binary variable `x_assign` indicates whether a worker is assigned to a given shift:
 
 ```python
-Worker.x_assign = model.Property(f"{Worker} has {Shift} if {Integer:assigned}")
-s.solve_for(
-    Worker.x_assign(Shift, assigned_ref),
+Worker.x_assign = model.Property(f"{Worker} has {Shift} in {Scenario} if {Integer:assigned}")
+p.solve_for(
+    Worker.x_assign(Shift, Scenario, assigned_ref),
     type="bin",
-    name=["x", Worker.name, Shift.name],
+    name=["x", Scenario.name, Worker.name, Shift.name],
     where=[Worker.available_for(Shift)],
-    populate=False,
 )
 ```
 
-**3. Add constraints.** Each shift must meet the minimum coverage, and each worker works at most one shift:
+**3. Add constraints.** Each shift must meet the minimum coverage per scenario, and each worker works at most one shift per scenario. Constraints are stored in named variables so they can be verified after solving:
 
 ```python
-s.satisfy(model.where(Worker.x_assign(Shift, assigned_ref)).require(
-    sum(Worker, assigned_ref).per(Shift) >= min_coverage
-))
-s.satisfy(model.where(Worker.x_assign(Shift, assigned_ref)).require(
-    sum(Shift, assigned_ref).per(Worker) <= max_shifts
-))
+coverage_ic = model.where(
+    Worker.x_assign(Shift, Scenario, assigned_ref),
+).require(sum(Worker, assigned_ref).per(Shift, Scenario) >= Scenario.min_coverage)
+p.satisfy(coverage_ic)
+
+workload_ic = model.where(
+    Worker.x_assign(Shift, Scenario, assigned_ref),
+).require(sum(Shift, assigned_ref).per(Worker, Scenario) <= max_shifts)
+p.satisfy(workload_ic)
 ```
 
-**4. Solve across scenarios.** The loop varies `min_coverage` from 1 to 3, creating a fresh Problem each iteration and reporting whether a feasible assignment exists.
+**4. Solve and verify.** A single solve handles all scenarios simultaneously. After solving, `p.verify()` fires the named constraints as integrity constraints to confirm the solution satisfies them:
 
 ## Customize this template
 
