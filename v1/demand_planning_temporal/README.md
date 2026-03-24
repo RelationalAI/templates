@@ -257,7 +257,7 @@ python -m pip install .
 <details>
 <summary>Solver returns INFEASIBLE</summary>
 
-The 95% service level constraint may be too strict for your data. Try lowering `min_service_level` to 0.90, or check that production capacities in `production_capacity.csv` are large enough to cover weekly demand. Also verify that `initial_inventory.csv` has entries for every site-SKU pair.
+The 95% service level constraint may be too strict for your data. Try lowering `min_service_level` to 0.90, or check that production capacities in `production_capacity.csv` are large enough to cover weekly demand. Also verify that `initial_inventory.csv` has entries for every site-SKU pair. If you increased `safety_stock_weeks`, try setting it to 0 to check whether the safety stock floor is causing infeasibility.
 </details>
 
 <details>

@@ -183,8 +183,8 @@ model.require(p.termination_status() == "OPTIMAL")
   <summary>Solver returns INFEASIBLE</summary>
 
 - With the single-solve approach, if any scenario's constraints are unsatisfiable, the entire problem is infeasible.
+- Verify that the `capacity` in `shifts.csv` is at least as large as the highest `min_coverage` scenario. If capacity < min_coverage for any shift, the problem is infeasible.
 - Check that `availability.csv` has enough worker-shift pairs to cover every shift at the highest `min_coverage` level.
-- Verify that the number of available workers per shift can satisfy the highest `min_coverage` level.
 - Ensure worker IDs and shift IDs in `availability.csv` match those in the other CSV files.
 
 </details>
