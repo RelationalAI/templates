@@ -97,7 +97,6 @@ filtered_issues = issues_df[
 ].copy()
 
 # EPOCH-TO-PERIOD MAPPING: Map each issue to its target sprint based on created_at epoch
-# Issues created before planning_start are backlog -> assigned to Sprint 1
 # Issues created during a sprint -> assigned to that sprint (earliest eligible)
 sprints_df = read_csv(data_dir / "sprints.csv")
 

@@ -169,7 +169,7 @@ def map_to_sprint(created_at_epoch):
 filtered_issues["target_sprint_number"] = filtered_issues["created_at"].apply(map_to_sprint)
 ```
 
-Issues created before Sprint 1 starts are backlog items eligible from Sprint 1. Issues created during Sprint 2 cannot be assigned to Sprint 1 (only Sprint 2 or later).
+Issues created during Sprint 2 cannot be assigned to Sprint 1 (only Sprint 2 or later). Issues created before `planning_start` are excluded by the epoch filter in step 1.
 
 ### 3. Assignment domain with skill constraints
 
