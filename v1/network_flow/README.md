@@ -132,7 +132,7 @@ Each edge gets a continuous flow variable bounded between 0 and the edge's capac
 
 ```python
 Edge.x_flow = model.Property(f"{Edge} has {Float:flow}")
-s.solve_for(Edge.x_flow, name=["x", Edge.i, Edge.j], lower=0, upper=Edge.cap)
+p.solve_for(Edge.x_flow, name=["x", Edge.i, Edge.j], lower=0, upper=Edge.cap)
 ```
 
 ### 3. Flow conservation constraints
@@ -144,7 +144,7 @@ Ei, Ej = Edge.ref(), Edge.ref()
 flow_out = per(Ei.i).sum(Ei.x_flow)
 flow_in = per(Ej.j).sum(Ej.x_flow)
 balance = model.require(flow_in == flow_out).where(Ei.i == Ej.j)
-s.satisfy(balance)
+p.satisfy(balance)
 ```
 
 ### 4. Objective and solution
@@ -153,7 +153,7 @@ The objective maximizes total flow leaving the source node (node 1). After solvi
 
 ```python
 total_flow = sum(Edge.x_flow).where(Edge.i(1))
-s.maximize(total_flow)
+p.maximize(total_flow)
 ```
 
 ## Customize this template

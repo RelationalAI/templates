@@ -124,17 +124,17 @@ model.define(Node.new(v=Edge.i))
 
 ```python
 Edge.x = model.Property(f"{Edge} is selected if {Float:x}")
-s.solve_for(Edge.x, type="bin", name=["x", Edge.i, Edge.j])
+p.solve_for(Edge.x, type="bin", name=["x", Edge.i, Edge.j])
 
 Node.u = model.Property(f"{Node} has auxiliary value {Float:u}")
-s.solve_for(Node.u, name=["u", Node.v], type="int", lower=1, upper=node_count)
+p.solve_for(Node.u, name=["u", Node.v], type="int", lower=1, upper=node_count)
 ```
 
 **3. Add degree constraints.** Every node must have exactly one incoming and one outgoing edge:
 
 ```python
 node_flow = sum(Edge.x).per(Node)
-s.satisfy(model.require(
+p.satisfy(model.require(
     node_flow.where(Edge.j == Node.v) == 1,
     node_flow.where(Edge.i == Node.v) == 1
 ))
@@ -143,7 +143,7 @@ s.satisfy(model.require(
 **4. Add MTZ subtour elimination.** If edge (i,j) is in the tour, then the ordering of j must be at least one more than i. This prevents disconnected subtours:
 
 ```python
-s.satisfy(model.where(
+p.satisfy(model.where(
     Ni := Node, Nj := Node.ref(),
     Edge.i > 1, Edge.j > 1,
     Ni.v(Edge.i), Nj.v(Edge.j),
@@ -156,7 +156,7 @@ s.satisfy(model.where(
 
 ```python
 total_dist = sum(Edge.dist * Edge.x)
-s.minimize(total_dist)
+p.minimize(total_dist)
 ```
 
 ## Customize this template

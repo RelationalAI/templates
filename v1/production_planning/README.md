@@ -175,7 +175,7 @@ SCENARIO_VALUES = [0.8, 1.0, 1.1]
 for demand_multiplier in SCENARIO_VALUES:
     s = Problem(model, Float)
 
-    s.solve_for(Production.x_quantity,
+    p.solve_for(Production.x_quantity,
         name=["qty", Production.rate.machine.name, Production.rate.product.name],
         lower=0, type="int", populate=False)
 ```
@@ -188,12 +188,12 @@ Machine capacity and demand satisfaction constraints are parameterized by the cu
 # Machine capacity: total production hours <= available hours
 machine_hours = sum(ProductionRef.x_quantity * ProductionRef.rate.hours_per_unit).where(
     ProductionRef.rate.machine == Machine).per(Machine)
-s.satisfy(model.require(machine_hours <= Machine.hours_available))
+p.satisfy(model.require(machine_hours <= Machine.hours_available))
 
 # Meet scaled demand
 product_qty = sum(ProductionRef.x_quantity).where(
     ProductionRef.rate.product == Product).per(Product)
-s.satisfy(model.require(product_qty >= Product.demand * demand_multiplier))
+p.satisfy(model.require(product_qty >= Product.demand * demand_multiplier))
 ```
 
 ### 4. Maximize profit
@@ -202,7 +202,7 @@ The objective maximizes total profit across all production assignments.
 
 ```python
 total_profit = sum(Production.x_quantity * Production.rate.product.profit)
-s.maximize(total_profit)
+p.maximize(total_profit)
 ```
 
 ## Customize this template

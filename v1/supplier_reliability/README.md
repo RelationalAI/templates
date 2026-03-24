@@ -162,13 +162,13 @@ model.define(SupplyOrder.new(option=SupplyOption))
 Capacity and demand constraints ensure feasibility, while the objective minimizes total procurement cost:
 
 ```python
-s.satisfy(model.require(
+p.satisfy(model.require(
     sum(SupplyOrder.x_quantity).where(SupplyOrder.supplier == Supplier).per(Supplier) <= Supplier.capacity
 ))
-s.satisfy(model.require(
+p.satisfy(model.require(
     sum(SupplyOrder.x_quantity).where(SupplyOrder.product == Product).per(Product) >= Product.demand
 ))
-s.minimize(sum(SupplyOrder.x_quantity * SupplyOrder.cost_per_unit))
+p.minimize(sum(SupplyOrder.x_quantity * SupplyOrder.cost_per_unit))
 ```
 
 ### 4. Scenario analysis
@@ -183,8 +183,8 @@ for excluded_supplier in SCENARIO_VALUES:
         exclude = model.require(SupplyOrder.x_quantity == 0).where(
             SupplyOrder.supplier.name == excluded_supplier
         )
-        s.satisfy(exclude)
-    s.solve("highs", time_limit_sec=60)
+        p.satisfy(exclude)
+    p.solve("highs", time_limit_sec=60)
 ```
 
 ## Customize this template

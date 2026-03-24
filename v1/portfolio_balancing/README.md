@@ -149,7 +149,7 @@ Each stock gets a continuous variable representing the quantity to hold:
 
 ```python
 Stock.x_quantity = model.Property(f"{Stock} quantity is {Float:x}")
-s.solve_for(Stock.x_quantity, name=["qty", Stock.index], populate=False)
+p.solve_for(Stock.x_quantity, name=["qty", Stock.index], populate=False)
 ```
 
 ### 3. Quadratic objective
@@ -159,7 +159,7 @@ Portfolio risk is minimized using the covariance matrix. The quadratic term sums
 ```python
 covar_value = Float.ref()
 risk = sum(covar_value * Stock.x_quantity * PairedStock.x_quantity).where(Stock.covar(PairedStock, covar_value))
-s.minimize(risk)
+p.minimize(risk)
 ```
 
 ### 4. Constraints
@@ -167,9 +167,9 @@ s.minimize(risk)
 The model enforces no short selling, a budget limit, and a minimum return target:
 
 ```python
-s.satisfy(model.require(Stock.x_quantity >= 0))
-s.satisfy(model.require(sum(Stock.x_quantity) <= budget))
-s.satisfy(model.require(sum(Stock.returns * Stock.x_quantity) >= min_ret))
+p.satisfy(model.require(Stock.x_quantity >= 0))
+p.satisfy(model.require(sum(Stock.x_quantity) <= budget))
+p.satisfy(model.require(sum(Stock.returns * Stock.x_quantity) >= min_ret))
 ```
 
 ### 5. Scenario analysis
