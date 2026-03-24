@@ -90,9 +90,11 @@ Issue.target_sprint_number = Property(
 
 issues_df = read_csv(data_dir / "issues.csv")
 
-# EPOCH FILTERING: Only load issues created within (or before) the planning horizon
+# EPOCH FILTERING: Only load issues created within the planning horizon
 # This is the key epoch pattern — filter event rows by epoch BEFORE they enter the model
-filtered_issues = issues_df[issues_df["created_at"] <= end_epoch].copy()
+filtered_issues = issues_df[
+    (issues_df["created_at"] >= start_epoch) & (issues_df["created_at"] <= end_epoch)
+].copy()
 
 # EPOCH-TO-PERIOD MAPPING: Map each issue to its target sprint based on created_at epoch
 # Issues created before planning_start are backlog -> assigned to Sprint 1

@@ -235,10 +235,10 @@ filtered_orders = orders_df[
 
 ## Customize this template
 
-- **Change the planning horizon**: Edit `planning_start` and the `SCENARIO_VALUES` list to shift the optimization window. The week count and date filter update automatically per scenario.
+- **Change the planning horizon**: Edit `planning_start` and the `SCENARIO_VALUES` list to shift the optimization window. Values must be in increasing date order (each scenario extends the previous horizon). The week count and date filter update automatically per scenario.
 - **Add more sites or SKUs**: Append rows to `sites.csv`, `skus.csv`, `production_capacity.csv`, and `initial_inventory.csv`. The model generalizes to any number of site-SKU combinations.
 - **Adjust service level**: Change `min_service_level` (default 0.95) to require higher or lower demand fulfillment.
-- **Add safety stock constraints**: Use the `safety_stock_weeks` parameter to require minimum inventory levels at each period.
+- **Add safety stock constraints**: The script defines a `safety_stock_weeks` parameter (default 1) that is not yet wired into constraints. To enforce safety stock, add a constraint requiring `inventory_ref >= average_weekly_demand * safety_stock_weeks` for each site-SKU pair.
 - **Switch to epoch timestamps**: Follow the commented Pattern B code to adapt the template for data with Unix epoch integer columns.
 
 ## Troubleshooting

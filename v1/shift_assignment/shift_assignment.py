@@ -45,10 +45,9 @@ Worker.name = model.Property(f"{Worker} has {String:name}")
 worker_csv = read_csv(data_dir / "workers.csv")
 model.define(Worker.new(model.data(worker_csv).to_schema()))
 
-# Concept: shifts with minimum coverage requirements
+# Concept: shifts
 Shift = model.Concept("Shift", identify_by={"id": Integer})
 Shift.name = model.Property(f"{Shift} has {String:name}")
-Shift.capacity = model.Property(f"{Shift} has {Integer:capacity}")
 shift_csv = read_csv(data_dir / "shifts.csv")
 model.define(Shift.new(model.data(shift_csv).to_schema()))
 

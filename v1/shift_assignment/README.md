@@ -32,7 +32,7 @@ The template also demonstrates scenario analysis by sweeping over different mini
 
 ## What you'll build
 
-- A constraint model that assigns workers to shifts respecting availability and capacity
+- A constraint model that assigns workers to shifts respecting availability constraints
 - Scenario analysis across multiple minimum-coverage levels (1, 2, 3 workers per shift)
 - Post-solve verification via `p.verify()` to confirm constraint satisfaction across all scenarios
 
@@ -40,7 +40,7 @@ The template also demonstrates scenario analysis by sweeping over different mini
 
 - `shift_assignment.py` -- main script with ontology, constraints, and scenario analysis
 - `data/workers.csv` -- 10 workers with IDs and names
-- `data/shifts.csv` -- 3 shifts (Morning, Afternoon, Night) with capacity limits
+- `data/shifts.csv` -- 3 shifts (Morning, Afternoon, Night)
 - `data/availability.csv` -- worker-to-shift availability mappings
 - `pyproject.toml` -- Python package configuration
 
@@ -179,7 +179,7 @@ model.require(p.termination_status() == "OPTIMAL")
 
 - With the single-solve approach, if any scenario's constraints are unsatisfiable, the entire problem is infeasible.
 - Check that `availability.csv` has enough worker-shift pairs to cover every shift at the highest `min_coverage` level.
-- Verify that `shifts.csv` capacity values are reasonable given the number of available workers.
+- Verify that the number of available workers per shift can satisfy the highest `min_coverage` level.
 - Ensure worker IDs and shift IDs in `availability.csv` match those in the other CSV files.
 
 </details>

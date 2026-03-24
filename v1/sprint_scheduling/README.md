@@ -146,10 +146,12 @@ planning_end = "2024-11-26"
 start_epoch = int(datetime.strptime(planning_start, "%Y-%m-%d").timestamp())
 end_epoch = int(datetime.strptime(planning_end, "%Y-%m-%d").timestamp())
 
-filtered_issues = issues_df[issues_df["created_at"] <= end_epoch].copy()
+filtered_issues = issues_df[
+    (issues_df["created_at"] >= start_epoch) & (issues_df["created_at"] <= end_epoch)
+].copy()
 ```
 
-This keeps only issues created on or before the planning horizon end date. Issues created after the horizon are excluded from scheduling.
+This keeps only issues created within the planning horizon. Issues created before or after are excluded from scheduling.
 
 ### 2. Epoch-to-categorical-period mapping -- assign target sprints
 

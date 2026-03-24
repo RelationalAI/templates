@@ -183,6 +183,8 @@ service_level_constraint = model.require(
 unmet_penalty = 50.0  # $/unit penalty for unmet demand
 
 # Scenarios (what-if analysis)
+# NOTE: Values must be in increasing order — each iteration adds demand data to the
+# shared model. Increasing dates ensure each scenario is a superset of the previous.
 SCENARIO_PARAM = "planning_end"
 SCENARIO_VALUES = ["2026-01-31", "2026-02-28", "2026-03-31"]
 
