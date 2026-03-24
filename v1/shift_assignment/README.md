@@ -34,7 +34,7 @@ The template also demonstrates scenario analysis by sweeping over different mini
 
 - A constraint model that assigns workers to shifts respecting availability and capacity
 - Scenario analysis across multiple minimum-coverage levels (1, 2, 3 workers per shift)
-- Feasibility checks that reveal when staffing targets become infeasible
+- Post-solve verification via `p.verify()` to confirm constraint satisfaction across all scenarios
 
 ## What's included
 
@@ -157,20 +157,28 @@ p.satisfy(workload_ic)
 
 **4. Solve and verify.** A single solve handles all scenarios simultaneously. After solving, `p.verify()` fires the named constraints as integrity constraints to confirm the solution satisfies them:
 
+```python
+p.solve("minizinc", time_limit_sec=60)
+p.solve_info().display()
+p.verify(coverage_ic, workload_ic)
+model.require(p.termination_status() == "OPTIMAL")
+```
+
 ## Customize this template
 
 - **Add more shifts or workers** by editing the CSV files. The model scales automatically.
 - **Change the max shifts per worker** by adjusting the `max_shifts` parameter.
 - **Add shift preferences** by introducing a preference score and converting from feasibility to optimization (minimize total dissatisfaction).
 - **Add skills or qualifications** by introducing a skill-matching relationship between workers and shifts.
-- **Switch to optimization** by adding an objective (e.g., maximize total coverage or minimize cost) with `s.minimize()` or `s.maximize()`.
+- **Switch to optimization** by adding an objective (e.g., maximize total coverage or minimize cost) with `p.minimize()` or `p.maximize()`.
 
 ## Troubleshooting
 
 <details>
-  <summary>Solver returns INFEASIBLE for all scenarios</summary>
+  <summary>Solver returns INFEASIBLE</summary>
 
-- Check that `availability.csv` has enough worker-shift pairs to cover every shift.
+- With the single-solve approach, if any scenario's constraints are unsatisfiable, the entire problem is infeasible.
+- Check that `availability.csv` has enough worker-shift pairs to cover every shift at the highest `min_coverage` level.
 - Verify that `shifts.csv` capacity values are reasonable given the number of available workers.
 - Ensure worker IDs and shift IDs in `availability.csv` match those in the other CSV files.
 
@@ -196,6 +204,6 @@ p.satisfy(workload_ic)
   <summary>MiniZinc solver not available</summary>
 
 - This template uses the MiniZinc constraint solver. Ensure the RAI Native App version supports MiniZinc.
-- As an alternative, you can try switching to `"highs"` in the `s.solve()` call, though HiGHS is designed for linear/MIP problems.
+- As an alternative, you can try switching to `"highs"` in the `p.solve()` call, though HiGHS is designed for linear/MIP problems.
 
 </details>

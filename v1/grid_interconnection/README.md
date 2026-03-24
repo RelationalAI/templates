@@ -189,7 +189,7 @@ p.satisfy(model.where(
 ))
 ```
 
-**5. Maximize net revenue:**
+**5. Maximize net revenue.** The objective sums net revenue (revenue minus connection cost) across all approved projects in all scenarios. Because the budget constraint is per-scenario, the solver independently optimizes each scenario's project selection:
 
 ```python
 p.maximize(
