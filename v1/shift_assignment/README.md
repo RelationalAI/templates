@@ -32,7 +32,7 @@ The template also demonstrates scenario analysis by sweeping over different mini
 
 ## What you'll build
 
-- A constraint model that assigns workers to shifts respecting availability constraints
+- A constraint model that assigns workers to shifts respecting availability and capacity limits
 - Scenario analysis across multiple minimum-coverage levels (1, 2, 3 workers per shift)
 - Post-solve verification via `p.verify()` to confirm constraint satisfaction across all scenarios
 
@@ -40,7 +40,7 @@ The template also demonstrates scenario analysis by sweeping over different mini
 
 - `shift_assignment.py` -- main script with ontology, constraints, and scenario analysis
 - `data/workers.csv` -- 10 workers with IDs and names
-- `data/shifts.csv` -- 3 shifts (Morning, Afternoon, Night)
+- `data/shifts.csv` -- 3 shifts (Morning, Afternoon, Night) with capacity limits
 - `data/availability.csv` -- worker-to-shift availability mappings
 - `pyproject.toml` -- Python package configuration
 
@@ -141,7 +141,7 @@ p.solve_for(
 )
 ```
 
-**3. Add constraints.** Each shift must meet the minimum coverage per scenario, and each worker works at most one shift per scenario. Constraints are stored in named variables so they can be verified after solving:
+**3. Add constraints.** Three constraints govern the assignment: minimum coverage, maximum shifts per worker, and shift capacity limits. Constraints are stored in named variables so they can be verified after solving:
 
 ```python
 coverage_ic = model.where(
@@ -153,6 +153,11 @@ workload_ic = model.where(
     Worker.x_assign(Shift, Scenario, assigned_ref),
 ).require(sum(Shift, assigned_ref).per(Worker, Scenario) <= max_shifts)
 p.satisfy(workload_ic)
+
+capacity_ic = model.where(
+    Worker.x_assign(Shift, Scenario, assigned_ref),
+).require(sum(Worker, assigned_ref).per(Shift, Scenario) <= Shift.capacity)
+p.satisfy(capacity_ic)
 ```
 
 **4. Solve and verify.** A single solve handles all scenarios simultaneously. After solving, `p.verify()` fires the named constraints as integrity constraints to confirm the solution satisfies them:
@@ -160,7 +165,7 @@ p.satisfy(workload_ic)
 ```python
 p.solve("minizinc", time_limit_sec=60)
 p.solve_info().display()
-p.verify(coverage_ic, workload_ic)
+p.verify(coverage_ic, workload_ic, capacity_ic)
 model.require(p.termination_status() == "OPTIMAL")
 ```
 

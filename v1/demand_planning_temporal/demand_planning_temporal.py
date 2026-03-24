@@ -328,6 +328,24 @@ for scenario_value in SCENARIO_VALUES:
     # Static constraint: global service level
     p.satisfy(service_level_constraint)
 
+    # Safety stock: inventory at end of each active week >= safety_stock_weeks × avg weekly demand
+    if safety_stock_weeks > 0:
+        avg_weekly_demand = (
+            sum(WeeklyDemand.wk_quantity)
+            .where(
+                WeeklyDemand.wk_site_id == ProdCapacity.site_id,
+                WeeklyDemand.wk_sku_id == ProdCapacity.sku_id,
+            )
+            .per(ProdCapacity)
+            / num_weeks
+        )
+        p.satisfy(
+            model.where(
+                ProdCapacity.x_inventory(week_ref, inventory_ref),
+                week_ref >= 1,
+            ).require(inventory_ref >= avg_weekly_demand * safety_stock_weeks)
+        )
+
     # Parameterized objective: minimize total cost (depends on week ranges via production/inventory refs)
     prod_cost = ProdCapacity.production_cost * sum(production_ref).per(
         ProdCapacity
