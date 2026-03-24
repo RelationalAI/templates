@@ -175,7 +175,7 @@ weighted_completion = sum(
 
 # Scenarios (what-if: vary team capacity to see impact on sprint assignments)
 SCENARIO_PARAM = "capacity_multiplier"
-SCENARIO_VALUES = [0.5, 0.75, 1.0]
+SCENARIO_VALUES = [0.35, 0.5, 1.0]
 
 # --------------------------------------------------
 # Solve and check solution
