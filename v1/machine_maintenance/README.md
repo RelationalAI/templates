@@ -177,9 +177,9 @@ A derived `same_location` flag tracks whether the technician is co-located with 
 Three binary decision variables control the schedule using `solve_for(...)`: whether to maintain a machine in a period, whether it remains vulnerable, and whether a technician is assigned:
 
 ```python
-s.solve_for(MachinePeriod.x_maintain, type="bin")
-s.solve_for(MachinePeriod.x_vulnerable, type="bin")
-s.solve_for(TechnicianMachinePeriod.x_assigned, type="bin")
+p.solve_for(MachinePeriod.x_maintain, type="bin")
+p.solve_for(MachinePeriod.x_vulnerable, type="bin")
+p.solve_for(TechnicianMachinePeriod.x_assigned, type="bin")
 ```
 
 Then, four constraints are defined using `require(...)` and `satisfy(...)`. The cumulative coverage constraint ensures each machine is either maintained by period tau or remains vulnerable. The `sum(...).where(...).per(...)` pattern aggregates maintenance decisions across periods:
@@ -233,7 +233,7 @@ travel_cost = sum(
     * TRAVEL_COST_PER_HOUR
 ).where(...)
 
-s.minimize(failure_cost + labor_cost + travel_cost)
+p.minimize(failure_cost + labor_cost + travel_cost)
 ```
 
 ### Solve and print results
