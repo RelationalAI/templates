@@ -1,14 +1,13 @@
 """Supplier Impact Analysis (graph analysis) template.
 
-Combines two hero-journey graph questions into one self-contained script:
+Answers:
+  "Which suppliers do high-value customers depend upon?"
+  -> Upstream reachability on directed BusinessGraph
 
-  Q5: "Which suppliers do high-value customers depend upon?"
-      -> Upstream reachability on directed BusinessGraph
+  "If WaferTech Taiwan goes offline, which customers/products are impacted?"
+  -> Downstream reachability from target supplier + SKU join for product impact
 
-  Q6: "If WaferTech Taiwan goes offline, which customers/products are impacted?"
-      -> Downstream reachability from target supplier + SKU join for product impact
-
-Data: hero-user-journey MVD2 supply chain (businesses + shipments).
+Data: supply chain (businesses + shipments).
 Graph: directed, unweighted. Business nodes, ships_to edges
   (derived from Shipment data: supplier_business -> customer_business).
 Derived concepts: is_high_value_customer, ships_to, receives_shipment.
@@ -78,7 +77,7 @@ where(Shipment.id == ship_data["ID"]).define(
 )
 
 # --------------------------------------------------
-# Derived relationships (matching hero-journey derived_model.py)
+# Derived relationships
 # --------------------------------------------------
 
 # ships_to: supplier -> customer (derived from Shipment data)
@@ -90,7 +89,7 @@ model.define(Business.ships_to(b_from, b_to)).where(
     Shipment.customer(b_to),
 )
 
-# receives_shipment: customer -> shipment (for Q6 product impact)
+# receives_shipment: customer -> shipment (for product impact)
 Business.receives_shipment = model.Relationship(f"{Business} receives {Shipment}")
 model.define(Business.receives_shipment(Business, Shipment)).where(
     Shipment.customer(Business),
@@ -105,7 +104,6 @@ model.define(Business.is_high_value_customer(Business)).where(
 
 # --------------------------------------------------
 # Build graph: directed, unweighted BusinessGraph
-# (matches hero-journey graphs.py _setup_business_relationship_graph)
 # --------------------------------------------------
 
 graph = Graph(
@@ -125,7 +123,7 @@ graph.num_nodes().inspect()
 graph.num_edges().inspect()
 
 # --------------------------------------------------
-# Q5: Which suppliers do high-value customers depend upon?
+# Upstream: Which suppliers do high-value customers depend upon?
 # --------------------------------------------------
 
 target_customer = model.Relationship(f"Target Customer: {Business}")
@@ -149,7 +147,7 @@ q5_df = (
     .to_df()
 )
 
-print("\n=== Q5: Supplier Dependencies of High-Value Customers ===")
+print("\n=== Supplier Dependencies of High-Value Customers ===")
 
 if q5_df.empty:
     print("No dependencies found.")
@@ -177,7 +175,7 @@ else:
         print(f"    High-value customers at risk: {', '.join(row['customer_name'])}")
 
 # --------------------------------------------------
-# Q6: If WaferTech Taiwan goes offline, who is impacted?
+# Downstream: If WaferTech Taiwan goes offline, who is impacted?
 # --------------------------------------------------
 
 TARGET_SUPPLIER = "WaferTech Taiwan"
@@ -215,7 +213,7 @@ q6_customers = (
     .to_df()
 )
 
-print(f"\n=== Q6: Impact if '{TARGET_SUPPLIER}' Goes Offline ===")
+print(f"\n=== Impact if '{TARGET_SUPPLIER}' Goes Offline ===")
 
 # Exclude the target itself
 q6_customers = q6_customers[q6_customers["customer_name"] != TARGET_SUPPLIER]

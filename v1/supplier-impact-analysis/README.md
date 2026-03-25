@@ -43,7 +43,7 @@ This template demonstrates two complementary reachability analyses on a directed
 
 ## What's included
 
-- **Self-contained script**: `supplier_impact.py` -- Runs Q5 (upstream) and Q6 (downstream) analyses end-to-end
+- **Self-contained script**: `supplier_impact.py` -- Runs upstream and downstream analyses end-to-end
 - **Data**: `data/businesses.csv` (31 businesses across 3 regions) and `data/shipments.csv` (262 shipments with SKU and quantity data)
 
 ## Prerequisites
@@ -94,7 +94,7 @@ This template demonstrates two complementary reachability analyses on a directed
 ## How it works
 
 ```text
-CSV files --> Define Business + Shipment concepts --> Derive ships_to edges --> Build directed graph --> Upstream reachability (Q5) --> Downstream impact (Q6) --> Betweenness centrality --> Display results
+CSV files --> Define Business + Shipment concepts --> Derive ships_to edges --> Build directed graph --> Upstream reachability --> Downstream impact --> Betweenness centrality --> Display results
 ```
 
 ### 1. Load Ontology and Derive Relationships
@@ -110,7 +110,7 @@ model.define(Business.ships_to(b_from, b_to)).where(
 )
 ```
 
-### 2. Parameterized Upstream Reachability (Q5)
+### 2. Parameterized Upstream Reachability
 
 Define a target set (high-value customers), then find all nodes that can reach them:
 
@@ -123,7 +123,7 @@ reachable_to = graph.reachable(to=target_customer)
 
 This answers: "Which suppliers are upstream of our most important customers?"
 
-### 3. Parameterized Downstream Reachability (Q6)
+### 3. Parameterized Downstream Reachability
 
 Define a target supplier, then find everything downstream:
 
@@ -149,8 +149,8 @@ where(
 
 ### 4. Interpret Results
 
-- **Q5 output**: Per high-value customer, the list of upstream suppliers with reliability scores. Suppliers appearing for multiple customers represent concentration risk.
-- **Q6 output**: Affected entities by tier (component manufacturers, manufacturers, warehouses, customers) plus product-level quantities at risk for end customers.
+- **Upstream output**: Per high-value customer, the list of upstream suppliers with reliability scores. Suppliers appearing for multiple customers represent concentration risk.
+- **Downstream output**: Affected entities by tier (component manufacturers, manufacturers, warehouses, customers) plus product-level quantities at risk for end customers.
 - **Betweenness centrality**: Businesses with high betweenness are structural bottlenecks in the supply network.
 
 ## Customize this template
@@ -178,7 +178,7 @@ where(
 </details>
 
 <details>
-  <summary>Why do I see "No dependencies found" for Q5?</summary>
+  <summary>Why do I see "No dependencies found" for upstream reachability?</summary>
 
 - Check that the `VALUE_TIER` column in businesses.csv has `HIGH` values for at least one `BUYER`-type business.
 - NaN values in optional columns are handled by loading them separately from the core data.

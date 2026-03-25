@@ -1,14 +1,13 @@
 """Site Network Criticality (graph analysis) template.
 
-Combines two hero-journey graph questions into one self-contained script:
+Answers:
+  "Which warehouses are bridges between supply chain clusters?"
+  -> Weakly Connected Components + Bridge detection
 
-  Q10: "Which warehouses are bridges between supply chain clusters?"
-       -> Weakly Connected Components + Bridge detection
+  "Which warehouses are most critical to supply chain resilience?"
+  -> Eigenvector Centrality on weighted site dependency graph
 
-  Q11: "Which warehouses are most critical to supply chain resilience?"
-       -> Eigenvector Centrality on weighted site dependency graph
-
-Data: hero-user-journey MVD2 supply chain (sites + operations).
+Data: supply chain (sites + operations).
 Graph: undirected, weighted by shipment count. Site nodes, SHIP operations as edges.
 Derived concepts: Region (from site data), Bridge (cross-region connectors).
 
@@ -68,7 +67,7 @@ where(Operation.id == op_data["ID"]).define(
 )
 
 # --------------------------------------------------
-# Derived concepts (matching hero-journey derived_model.py)
+# Derived concepts
 # --------------------------------------------------
 
 # Region: derived from unique site region_id values
@@ -119,7 +118,6 @@ model.define(Bridge.connects_region(Bridge, o_region)).where(
 
 # --------------------------------------------------
 # Build graph: undirected, weighted by shipment count
-# (matches hero-journey graphs.py _setup_site_dependency_graph)
 # --------------------------------------------------
 
 graph = Graph(model, directed=False, weighted=True, node_concept=Site)
@@ -138,7 +136,7 @@ graph.num_nodes().inspect()
 graph.num_edges().inspect()
 
 # --------------------------------------------------
-# Q10: Weakly Connected Components + Bridge detection
+# Weakly Connected Components + Bridge detection
 # --------------------------------------------------
 
 wcc = graph.weakly_connected_component()
@@ -160,7 +158,7 @@ wcc_df = (
 )
 
 num_components = wcc_df["component_id"].nunique()
-print(f"\n=== Connected Components (Q10) ===")
+print(f"\n=== Connected Components ===")
 print(f"Components found: {num_components}")
 if num_components == 1:
     print("UNIFIED NETWORK: All sites in a single connected component")
@@ -196,7 +194,7 @@ if len(bridge_df) > 0:
         print(f"  {name} ({home_region}) -> connects to: {connects}")
 
 # --------------------------------------------------
-# Q11: Eigenvector Centrality (most critical sites)
+# Eigenvector Centrality (most critical sites)
 # --------------------------------------------------
 
 eigenvector = graph.eigenvector_centrality()
@@ -223,7 +221,7 @@ eig_df = (
     .reset_index(drop=True)
 )
 
-print("\n=== Eigenvector Centrality (Q11) ===")
+print("\n=== Eigenvector Centrality ===")
 print(eig_df.to_string(index=False))
 
 print("\n--- Top 3 Most Critical Sites ---")

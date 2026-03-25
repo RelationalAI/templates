@@ -4,7 +4,7 @@ Answers:
   "What components does Product X transitively depend on?"
   "Which components are bottleneck dependencies across products?"
 
-Data: hero-user-journey MVD2 supply chain (SKUs + BillOfMaterials).
+Data: supply chain (SKUs + BillOfMaterials).
 Graph: directed, unweighted. SKU nodes, BOM rows as edges (output -> input).
   Edge direction: output_sku -> input_sku ("depends on").
 Algorithms: reachable(full=True) for transitive dependency tracing,
