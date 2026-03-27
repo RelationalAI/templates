@@ -14,18 +14,17 @@ Output:
 
 from __future__ import annotations
 
-from pathlib import Path
 import random
 import string as string_module
 from datetime import date, timedelta
+from pathlib import Path
 from time import time_ns
 
 import pandas as pd
 from pandas import DataFrame, read_csv
-
-from relationalai.semantics import Model, data, require, select, sum as rai_sum, where
+from relationalai.semantics import Model, data, require, select, where
+from relationalai.semantics import sum as rai_sum
 from relationalai.semantics.reasoners.optimization import Solver, SolverModel
-
 
 # --------------------------------------------------
 # Configure inputs
@@ -78,7 +77,7 @@ Table.x_actual_rows = model.Property("{Table} has actual {actual_rows:float}")
 Table.x_deviation = model.Property("{Table} has {deviation:float}")
 
 # Extract foreign key relationships from the schema.
-fk_df = schema_df[schema_df["is_foreign_key"] == True].copy()
+fk_df = schema_df[schema_df["is_foreign_key"]].copy()
 cardinality_constraints = constraints_df[
     constraints_df["constraint_type"].isin(
         ["cardinality_bound", "mandatory_participation", "frequency"]

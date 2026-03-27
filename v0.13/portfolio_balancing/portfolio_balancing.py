@@ -20,8 +20,7 @@ from pathlib import Path
 
 import pandas
 from pandas import read_csv
-
-from relationalai.semantics import Float, Model, data, require, select, sum, where
+from relationalai.semantics import Float, Model, data, require, sum, where
 from relationalai.semantics.reasoners.optimization import Solver, SolverModel
 
 # --------------------------------------------------
@@ -138,7 +137,7 @@ for scenario_value in SCENARIO_VALUES:
     qty_df = var_df[
         var_df["name"].str.startswith("qty") & (var_df["float"] > 0.001)
     ].rename(columns={"float": "value"})
-    print(f"\n  Portfolio allocation:")
+    print("\n  Portfolio allocation:")
     print(qty_df.to_string(index=False))
 
 # --------------------------------------------------

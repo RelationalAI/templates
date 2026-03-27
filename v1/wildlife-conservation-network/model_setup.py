@@ -10,9 +10,9 @@ The model uses RelationalAI's Graph API to:
 """
 
 from pathlib import Path
-import pandas as pd
 
-from relationalai.semantics import Model, data, define, String, Integer, Float
+import pandas as pd
+from relationalai.semantics import Integer, Model, String, data, define
 from relationalai.semantics.reasoners.graph import Graph
 
 DATA_DIR = Path(__file__).parent / "data"
