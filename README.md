@@ -69,4 +69,12 @@ To add or update a template:
 3. Replace the README placeholders with template-specific content.
 4. Review the result before opening a pull request.
 
+Repository-level linting for template Python code uses Ruff:
+
+```bash
+ruff check path/to/my/template
+```
+
+The same check runs in CI via `.github/workflows/lint.yml`.
+
 See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the full contribution workflow.
