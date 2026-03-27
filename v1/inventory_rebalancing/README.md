@@ -137,7 +137,7 @@ Transfer = Concept("Transfer", identify_by={"lane": Lane})
 Transfer.x_quantity = Property(f"{Transfer} has {Float:quantity}")
 model.define(Transfer.new(lane=Lane))
 
-s.solve_for(Transfer.x_quantity,
+p.solve_for(Transfer.x_quantity,
     name=["qty", Transfer.lane.source.name, Transfer.lane.dest.name], lower=0)
 ```
 
@@ -148,16 +148,16 @@ Three constraint families ensure feasibility: lane capacity limits, source inven
 ```python
 # Lane capacity
 capacity_limit = model.require(Transfer.x_quantity <= Transfer.lane.capacity)
-s.satisfy(capacity_limit)
+p.satisfy(capacity_limit)
 
 # Source inventory
 outbound = sum(TransferRef.x_quantity).where(TransferRef.lane.source == Site).per(Site)
-s.satisfy(model.require(outbound <= Site.inventory))
+p.satisfy(model.require(outbound <= Site.inventory))
 
 # Demand satisfaction (inbound transfers + local inventory >= demand)
 inbound = sum(TransferRef.x_quantity).where(TransferRef.lane.dest == DemandRef.site).per(DemandRef)
 local_inv = sum(Site.inventory).where(Site == DemandRef.site).per(DemandRef)
-s.satisfy(model.require(inbound + local_inv >= DemandRef.quantity))
+p.satisfy(model.require(inbound + local_inv >= DemandRef.quantity))
 ```
 
 ### 4. Minimize total cost
@@ -166,7 +166,7 @@ The objective sums shipping costs across all active transfers.
 
 ```python
 total_cost = sum(Transfer.x_quantity * Transfer.lane.cost_per_unit)
-s.minimize(total_cost)
+p.minimize(total_cost)
 ```
 
 ## Customize this template

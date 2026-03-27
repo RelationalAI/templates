@@ -19,7 +19,7 @@ Output:
 from pathlib import Path
 
 from pandas import read_csv
-from relationalai.semantics import Float, Integer, Model, per, sum
+from relationalai.semantics import Float, Integer, Model, count, per, sum
 from relationalai.semantics.reasoners.prescriptive import Problem
 
 model = Model("network_flow")
@@ -61,16 +61,20 @@ p.maximize(total_flow)
 # Solve and check solution
 # --------------------------------------------------
 
+# Check model structure — engine-side ICs avoid querying data to the client.
+model.require(p.num_variables() == count(Edge))
+model.require(p.num_max_objectives() == 1)
 p.display()
 p.solve("highs", time_limit_sec=60)
-p.display_solve_info()
+p.solve_info().display()
 
-print(f"Status: {p.termination_status}")
-print(f"Maximum flow: {p.objective_value:.2f}")
+# Check solution.
+model.require(p.termination_status() == "OPTIMAL")
+model.require(Edge.x_flow <= Edge.cap + 1e-6)
 
 # Extract solution via model.select() — properties are populated after solve
-flows = model.select(
+print("\nActive flows:")
+model.select(
     Edge.i.alias("from"), Edge.j.alias("to"),
     Edge.x_flow.alias("flow"), Edge.cap.alias("capacity"),
-).where(Edge.x_flow > 0.001).to_df()
-print(f"\nActive flows:\n{flows.to_string(index=False)}")
+).where(Edge.x_flow > 0.001).inspect()

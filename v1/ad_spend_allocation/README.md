@@ -152,26 +152,26 @@ Allocation = Concept("Allocation", identify_by={"effectiveness": Effectiveness})
 Allocation.x_spend = Property(f"{Allocation} has {Float:spend}")
 Allocation.x_active = Property(f"{Allocation} is {Float:active}")
 
-s.solve_for(Allocation.x_spend, name=[...], lower=0)
-s.solve_for(Allocation.x_active, type="bin", name=[...])
+p.solve_for(Allocation.x_spend, name=[...], lower=0)
+p.solve_for(Allocation.x_active, type="bin", name=[...])
 ```
 
 **3. Add constraints.** Minimum/maximum spend when active, per-campaign budget limits, at least one active channel per campaign, and a global budget cap:
 
 ```python
-s.satisfy(model.require(Allocation.x_spend >= Allocation.effectiveness.channel.min_spend * Allocation.x_active))
-s.satisfy(model.require(Allocation.x_spend <= Allocation.effectiveness.channel.max_spend * Allocation.x_active))
+p.satisfy(model.require(Allocation.x_spend >= Allocation.effectiveness.channel.min_spend * Allocation.x_active))
+p.satisfy(model.require(Allocation.x_spend <= Allocation.effectiveness.channel.max_spend * Allocation.x_active))
 
 campaign_spend = sum(Allocation.x_spend).where(Allocation.effectiveness.campaign == Campaign).per(Campaign)
-s.satisfy(model.require(campaign_spend <= Campaign.budget))
-s.satisfy(model.require(sum(Allocation.x_spend) <= total_budget))
+p.satisfy(model.require(campaign_spend <= Campaign.budget))
+p.satisfy(model.require(sum(Allocation.x_spend) <= total_budget))
 ```
 
 **4. Maximize conversions.** The objective sums spend times conversion rate across all active allocations:
 
 ```python
 total_conversions = sum(Allocation.x_spend * Allocation.effectiveness.conversion_rate)
-s.maximize(total_conversions)
+p.maximize(total_conversions)
 ```
 
 **5. Run scenarios.** The loop iterates over budget levels, building a fresh Problem for each and comparing results.

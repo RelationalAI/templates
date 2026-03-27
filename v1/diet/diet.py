@@ -105,7 +105,13 @@ p.minimize(
 
 p.display()
 p.solve("highs", time_limit_sec=60)
-p.display_solve_info()
+
+# Check solve status — engine-side IC avoids querying data to the client.
+model.require(p.termination_status() == "OPTIMAL")
+
+# Python-side solve info for formatted output.
+si = p.solve_info()
+si.display()
 
 # --------------------------------------------------
 # Extract results per scenario

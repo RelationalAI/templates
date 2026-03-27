@@ -89,15 +89,17 @@ p.satisfy(model.where(
 # Solve and check solution
 # --------------------------------------------------
 
+# Check model structure — engine-side ICs avoid querying data to the client.
+model.require(p.num_variables() == count(Edge) + count(Node))
+model.require(p.num_min_objectives() == 1)
 p.display()
 p.solve("highs", time_limit_sec=60)
-p.display_solve_info()
+p.solve_info().display()
 
-print(f"Status: {p.termination_status}")
-print(f"Tour distance: {p.objective_value:.2f}")
+# Check solution.
+model.require(p.termination_status() == "OPTIMAL")
+model.require(count(Edge).where(Edge.x > 0.5) == count(Node))
 
-# Extract solution via model.select() — properties are populated after solve
-tour = model.select(
-    Edge.i.alias("from"), Edge.j.alias("to"),
-).where(Edge.x > 0.5).to_df()
-print(f"\nTour edges:\n{tour.to_string(index=False)}")
+# Extract solution
+print("\nTour edges:")
+model.select(Edge.i.alias("from"), Edge.j.alias("to")).where(Edge.x > 0.5).inspect()

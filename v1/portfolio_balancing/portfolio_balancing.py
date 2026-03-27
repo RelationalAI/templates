@@ -113,7 +113,8 @@ p.minimize(
 
 p.display()
 p.solve("highs", time_limit_sec=60)
-p.display_solve_info()
+model.require(p.termination_status() == "OPTIMAL")
+p.solve_info().display()
 
 # --------------------------------------------------
 # Extract results per scenario
