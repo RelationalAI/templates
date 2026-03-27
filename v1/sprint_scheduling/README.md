@@ -39,7 +39,7 @@ Prescriptive reasoning is well suited here because the problem has combinatorial
 - Define binary decision variables for each valid (developer, issue, sprint) assignment
 - Enforce that each issue is assigned exactly once and developer capacity is not exceeded per sprint
 - Minimize weighted completion time so high-priority issues land in earlier sprints
-- Run scenario analysis across capacity multiplier levels (0.25, 0.5, 1.0) to see the impact of reduced team capacity
+- Run scenario analysis across capacity multiplier levels (0.35, 0.5, 1.0) to see the impact of reduced team capacity
 - Solve with HiGHS and display the assignment plan per scenario
 
 ## What's included
@@ -92,7 +92,7 @@ Prescriptive reasoning is well suited here because the problem has combinatorial
 
 6. Expected output:
    ```text
-   Running scenario: capacity_multiplier = 0.25
+   Running scenario: capacity_multiplier = 0.35
      Status: ...
      ...
 
@@ -114,7 +114,7 @@ Prescriptive reasoning is well suited here because the problem has combinatorial
    ==================================================
    Scenario Analysis Summary
    ==================================================
-     capacity_multiplier=0.25: ..., obj=...
+     capacity_multiplier=0.35: ..., obj=...
      capacity_multiplier=0.5: OPTIMAL, obj=...
      capacity_multiplier=1.0: OPTIMAL, obj=...
    ```
@@ -235,7 +235,7 @@ A priority-1 issue in Sprint 4 costs `(4-1+1) * 4 = 12`, while a priority-3 issu
 ## Customize this template
 
 - **Change the planning horizon**: Edit `planning_start` and `planning_end` to include more or fewer sprints. Add corresponding rows to `sprints.csv`.
-- **Adjust developer capacity**: Modify `capacity_points_per_sprint` in `developers.csv` or edit `SCENARIO_VALUES` to sweep different `capacity_multiplier` levels (e.g., `[0.25, 0.5, 1.0]`).
+- **Adjust developer capacity**: Modify `capacity_points_per_sprint` in `developers.csv` or edit `SCENARIO_VALUES` to sweep different `capacity_multiplier` levels (e.g., `[0.35, 0.5, 1.0]`).
 - **Add cross-team skills**: Append rows to `skills.csv` to let developers work on issues outside their primary team. Grace and Hank already have cross-team skills in the sample data.
 - **Change the priority scheme**: Adjust `max_priority` and the weight formula in the objective to match your team's priority scale.
 - **Add sprint-specific constraints**: For example, require that certain issues are completed by a specific sprint using additional `.where()` clauses.

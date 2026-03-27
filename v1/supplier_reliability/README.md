@@ -177,7 +177,7 @@ The script loops over supplier exclusion scenarios, setting excluded supplier qu
 
 ```python
 for excluded_supplier in SCENARIO_VALUES:
-    s = Problem(model, Float)
+    p = Problem(model, Float)
     # ... define variables and constraints ...
     if excluded_supplier is not None:
         exclude = model.require(SupplyOrder.x_quantity == 0).where(

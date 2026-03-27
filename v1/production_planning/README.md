@@ -165,35 +165,43 @@ Rate.product = Property(f"{Rate} for {Product}", short_name="product")
 Rate.hours_per_unit = Property(f"{Rate} has {Float:hours_per_unit}")
 ```
 
-### 2. Run scenario analysis
+### 2. Define decision variables and scenarios
 
-The script loops over demand multipliers, creating a fresh Problem for each scenario. This lets you compare optimal plans under different demand assumptions.
+Scenarios are modeled as a `Scenario` concept with a `demand_multiplier` property — all scenarios are solved in a single call, not a loop.
 
 ```python
-SCENARIO_VALUES = [0.8, 1.0, 1.1]
+Scenario = Concept("Scenario", identify_by={"name": String})
+Scenario.demand_multiplier = Property(f"{Scenario} has {Float:demand_multiplier}")
 
-for demand_multiplier in SCENARIO_VALUES:
-    s = Problem(model, Float)
+p = Problem(model, Float)
 
-    p.solve_for(Production.x_quantity,
-        name=["qty", Production.rate.machine.name, Production.rate.product.name],
-        lower=0, type="int", populate=False)
+# Variable indexed by Scenario — one quantity per production rate per scenario
+Production.x_quantity = Property(f"{Production} in {Scenario} has {Float:quantity}")
+p.solve_for(
+    Production.x_quantity(Scenario, x_qty),
+    name=["qty", Scenario.name, Production.rate.machine.name, Production.rate.product.name],
+    lower=0, type="int",
+)
 ```
 
 ### 3. Add constraints
 
-Machine capacity and demand satisfaction constraints are parameterized by the current demand multiplier.
+Machine capacity and demand satisfaction constraints are defined per scenario.
 
 ```python
-# Machine capacity: total production hours <= available hours
-machine_hours = sum(ProductionRef.x_quantity * ProductionRef.rate.hours_per_unit).where(
-    ProductionRef.rate.machine == Machine).per(Machine)
-p.satisfy(model.require(machine_hours <= Machine.hours_available))
+# Machine capacity: total production hours <= available hours (per machine, per scenario)
+p.satisfy(model.where(...).require(
+    sum(x_qty * Production.rate.hours_per_unit)
+    .where(Production.rate.machine == Machine)
+    .per(Machine, Scenario)
+    <= Machine.hours_available
+))
 
-# Meet scaled demand
-product_qty = sum(ProductionRef.x_quantity).where(
-    ProductionRef.rate.product == Product).per(Product)
-p.satisfy(model.require(product_qty >= Product.demand * demand_multiplier))
+# Meet scaled demand (per product, per scenario)
+p.satisfy(model.where(...).require(
+    sum(x_qty).where(Production.rate.product == Product).per(Product, Scenario)
+    >= Product.demand * Scenario.demand_multiplier
+))
 ```
 
 ### 4. Maximize profit
