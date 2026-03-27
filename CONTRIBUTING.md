@@ -115,9 +115,15 @@ Examples:
 Before opening a PR, make sure you can complete this checklist from a clean environment.
 
 1. Create a fresh virtual environment in the template folder.
-2. Install the template locally.
-3. Run the template end to end using the exact command documented in the README.
-4. Run repository hooks:
+1. Install the template locally.
+1. Run the template end to end using the exact command documented in the README.
+1. Lint template Python code from the repository root:
+
+  ```bash
+  ruff check sample-template v0.13 v0.14 v1
+  ```
+
+1. Run repository hooks:
 
   ```bash
   pre-commit run --all-files
