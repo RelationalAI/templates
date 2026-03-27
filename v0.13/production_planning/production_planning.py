@@ -23,7 +23,6 @@ from pathlib import Path
 
 import pandas
 from pandas import read_csv
-
 from relationalai.semantics import Model, data, define, require, sum, where
 from relationalai.semantics.reasoners.optimization import Solver, SolverModel
 
@@ -170,7 +169,7 @@ for scenario_value in SCENARIO_VALUES:
     qty_df = var_df[
         var_df["name"].str.startswith("qty") & (var_df["float"] > 0.001)
     ].rename(columns={"float": "value"})
-    print(f"\n  Production plan:")
+    print("\n  Production plan:")
     print(qty_df.to_string(index=False))
 
 # Summary

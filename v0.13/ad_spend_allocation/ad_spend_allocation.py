@@ -26,8 +26,7 @@ from pathlib import Path
 
 import pandas
 from pandas import read_csv
-
-from relationalai.semantics import Model, data, require, select, sum, where
+from relationalai.semantics import Model, data, require, sum, where
 from relationalai.semantics.reasoners.optimization import Solver, SolverModel
 
 # --------------------------------------------------
@@ -217,7 +216,7 @@ for scenario_value in SCENARIO_VALUES:
     spend_df = var_df[
         var_df["name"].str.startswith("spend") & (var_df["float"] > 0.001)
     ].rename(columns={"float": "value"})
-    print(f"\n  Spend allocation:")
+    print("\n  Spend allocation:")
     print(spend_df.to_string(index=False))
 
 # --------------------------------------------------

@@ -27,7 +27,6 @@ Output:
 from pathlib import Path
 
 from pandas import read_csv
-
 from relationalai.semantics import Float, Integer, Model, String, sum
 from relationalai.semantics.reasoners.prescriptive import Problem
 
@@ -140,7 +139,7 @@ for excluded in excluded_suppliers:
     # Print order plan from solver results
     var_df = p.variable_values().to_df()
     qty_df = var_df[var_df["name"].str.startswith("qty") & (var_df["value"] > 0.001)]
-    print(f"\n  Orders:")
+    print("\n  Orders:")
     print(qty_df.to_string(index=False))
 
 # Summary

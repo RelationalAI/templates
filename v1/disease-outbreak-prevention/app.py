@@ -8,14 +8,12 @@ Run:
     streamlit run app.py
 """
 
-import streamlit as st
+
 import pandas as pd
 import plotly.graph_objects as go
-from pathlib import Path
-
-from relationalai.semantics import where, Integer, Float
-
-from model_setup import create_model, DATA_DIR
+import streamlit as st
+from model_setup import DATA_DIR, create_model
+from relationalai.semantics import Float, Integer, where
 
 # --------------------------------------------------
 # Page configuration
@@ -354,11 +352,11 @@ def main():
 
                 # Show connection analysis
                 if row['outgoing_connections'] > row['incoming_connections']:
-                    st.info(f"📤 **Coordinator Role:** This facility connects to many others, making it ideal for distributing resources and information.")
+                    st.info("📤 **Coordinator Role:** This facility connects to many others, making it ideal for distributing resources and information.")
                 elif row['incoming_connections'] > row['outgoing_connections'] and row['incoming_connections'] >= 3:
-                    st.info(f"📥 **Hub Role:** Many facilities connect to this one, making it a critical dependency for the network.")
+                    st.info("📥 **Hub Role:** Many facilities connect to this one, making it a critical dependency for the network.")
                 else:
-                    st.info(f"🔄 **Near-Balanced Role:** Similar incoming and outgoing connections indicate a well-balanced coordination role.")
+                    st.info("🔄 **Near-Balanced Role:** Similar incoming and outgoing connections indicate a well-balanced coordination role.")
 
     st.markdown("---")
     st.markdown("*Built with RelationalAI, Streamlit, and Plotly*")

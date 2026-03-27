@@ -7,14 +7,12 @@ Run:
     streamlit run app.py
 """
 
-import streamlit as st
+import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
-import numpy as np
-
-from relationalai.semantics import where, Integer, Float
-
-from model_setup import create_model, DATA_DIR
+import streamlit as st
+from model_setup import DATA_DIR, create_model
+from relationalai.semantics import Float, Integer, where
 
 # --------------------------------------------------
 # Page configuration
@@ -112,7 +110,6 @@ def create_network_graph(results, partnerships_df):
         community_counts[comm] += 1
 
     # Create edges
-    org_id_to_name = dict(zip(results['id'], results['name']))
     edge_x = []
     edge_y = []
 

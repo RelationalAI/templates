@@ -34,6 +34,24 @@ pre-commit install
 
 Template runtime dependencies are managed separately inside each template folder.
 
+## Linting
+
+This repository uses Ruff to lint Python template code.
+
+- Local command from the repository root:
+
+  ```bash
+  ruff check sample-template v0.13 v0.14 v1
+  ```
+
+- Pre-commit hook (configured in `.pre-commit-config.yaml`):
+
+  ```bash
+  pre-commit run ruff-check --all-files
+  ```
+
+- CI workflow: `.github/workflows/lint.yml` runs the same Ruff check on pull requests and on pushes to `main`.
+
 ## Add a new template
 
 1. Copy `sample-template/` into the target version folder and rename it to your template name.
@@ -115,9 +133,15 @@ Examples:
 Before opening a PR, make sure you can complete this checklist from a clean environment.
 
 1. Create a fresh virtual environment in the template folder.
-2. Install the template locally.
-3. Run the template end to end using the exact command documented in the README.
-4. Run repository hooks:
+1. Install the template locally.
+1. Run the template end to end using the exact command documented in the README.
+1. Lint template Python code from the repository root:
+
+  ```bash
+  ruff check sample-template v0.13 v0.14 v1
+  ```
+
+1. Run repository hooks:
 
   ```bash
   pre-commit run --all-files
@@ -154,6 +178,8 @@ python scripts/generate_version_indexes.py --check
 ## Open a pull request
 
 Open a PR once the template is runnable, the README is accurate, and local validation passes.
+
+The lint workflow in `.github/workflows/lint.yml` runs on pull requests that touch template code or lint configuration and will fail the PR if Ruff checks fail.
 
 The docs preview workflow in `.github/workflows/docs-preview.yml` runs on pull requests and posts a Vercel preview URL in the PR comments.
 
