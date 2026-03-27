@@ -1,0 +1,23 @@
+name: Verify version indexes
+
+on:
+  pull_request:
+    paths:
+      - "v*/**/README.md"
+      - "scripts/generate_version_indexes.py"
+      - ".github/workflows/verify-version-indexes.yml"
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Check generated version indexes
+        run: python scripts/generate_version_indexes.py --check

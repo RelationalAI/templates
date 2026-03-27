@@ -59,3 +59,19 @@ Examples you can paste into Copilot Chat (adjust values as needed):
 Open a pull request with your changes. The **Docs preview** GitHub Action (`.github/workflows/docs-preview.yml`) runs on PRs and will post (or update) a comment on the PR with a Vercel preview URL.
 
 Use that preview to confirm your template renders correctly on the website before merging.
+
+## Keep version README indexes in sync
+
+Version-folder README files (`v0.13/README.md`, `v0.14/README.md`, `v1/README.md`) are generated from template README metadata (`description` in front matter).
+
+Regenerate them after adding or updating template descriptions:
+
+```bash
+python scripts/generate_version_indexes.py
+```
+
+Validate without writing changes:
+
+```bash
+python scripts/generate_version_indexes.py --check
+```
