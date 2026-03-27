@@ -19,7 +19,6 @@ Output:
 from pathlib import Path
 
 from pandas import read_csv
-
 from relationalai.semantics import Float, Integer, Model, count, per, sum
 from relationalai.semantics.reasoners.prescriptive import Problem
 
