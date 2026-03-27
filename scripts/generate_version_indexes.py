@@ -14,9 +14,10 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+import yaml
+
 
 VERSION_DIR_RE = re.compile(r"^v\d")
-DESCRIPTION_RE = re.compile(r"^description:\s*(.+)$")
 FRONT_MATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*(?:\n|$)", re.DOTALL)
 
 
@@ -38,23 +39,22 @@ def extract_description(readme_path: Path) -> str:
         raise ValueError("missing YAML front matter block")
 
     front_matter = front_matter_match.group(1)
-    for line in front_matter.splitlines():
-        desc_match = DESCRIPTION_RE.match(line.strip())
-        if not desc_match:
-            continue
+    try:
+        metadata = yaml.safe_load(front_matter) or {}
+    except yaml.YAMLError as exc:
+        raise ValueError(f"invalid YAML front matter: {exc}") from exc
 
-        value = desc_match.group(1).strip()
-        if (value.startswith('"') and value.endswith('"')) or (
-            value.startswith("'") and value.endswith("'")
-        ):
-            value = value[1:-1]
+    if not isinstance(metadata, dict):
+        raise ValueError("front matter must parse to a mapping")
 
-        value = escape_md_table_cell(value)
-        if not value:
-            raise ValueError("empty description value")
-        return value
+    value = metadata.get("description")
+    if not isinstance(value, str):
+        raise ValueError("description key not found in front matter")
 
-    raise ValueError("description key not found in front matter")
+    value = escape_md_table_cell(value)
+    if not value:
+        raise ValueError("empty description value")
+    return value
 
 
 def collect_templates(version_dir: Path) -> list[TemplateEntry]:

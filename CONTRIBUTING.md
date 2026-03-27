@@ -62,6 +62,18 @@ Use that preview to confirm your template renders correctly on the website befor
 
 ## Keep version README indexes in sync
 
+Install Python development dependencies first:
+
+```bash
+python -m pip install -r requirements-dev.txt
+```
+
+Install git hooks once per clone:
+
+```bash
+pre-commit install
+```
+
 Version-folder README files (`v0.13/README.md`, `v0.14/README.md`, `v1/README.md`) are generated from template README metadata (`description` in front matter).
 
 Regenerate them after adding or updating template descriptions:
