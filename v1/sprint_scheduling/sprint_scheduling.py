@@ -235,7 +235,7 @@ for scenario_value in SCENARIO_VALUES:
     var_df = p.variable_values().to_df()
     var_df["value"] = var_df["value"].astype(float)
     assigned = var_df[var_df["name"].str.startswith("assign") & (var_df["value"] > 0.5)]
-    print(f"\n  Assignments:")
+    print("\n  Assignments:")
     print(assigned.to_string(index=False))
 
 # Summary
