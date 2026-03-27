@@ -1,26 +1,82 @@
 # Contributing
 
-This repo contains versioned, runnable RelationalAI templates (for example under `v0.13/`).
+This repository contains versioned, runnable RelationalAI templates. Each template is a small, self-contained example with code, sample data, and documentation.
 
-## Contribute a new template
+This guide covers the expected workflow for adding a new template or updating an existing one.
 
-1. Start from the sample template
+## Choose the right version folder
 
-- Copy `sample-template/` into the version folder you’re targeting, and rename it to your template name.
-- Example:
+- Put new templates in `v1/` unless you are intentionally contributing to an older SDK generation.
+- Treat `v0.13/` and `v0.14/` as legacy branches for maintenance, fixes, and backports.
+- Keep the version folder aligned with the `relationalai` package version pinned in the template's `pyproject.toml`.
 
-  ```bash
-  cp -R sample-template v0.13/<your_template_name>
-  ```
+Examples:
 
-1. Implement your template
+```bash
+cp -R sample-template v1/<your_template_name>
+```
 
-- Update the runner script, sample data, and `pyproject.toml` as needed.
-- Update `README.md` by replacing placeholders (front matter + sections) and ensuring the Quickstart run command matches your entrypoint.
+```bash
+cp -R sample-template v0.13/<your_template_name>
+```
 
-  > [!TIP]
-  > Use the `create-template-readme` prompt in Copilot Chat to automatically generate a README draft based on your code, then review and edit it for accuracy and style.
-  > You can also use the `update-template-readme` prompt after making changes to your code to keep the README in sync.
+## Repository setup
+
+Use one environment for repository-level maintenance tasks such as hooks and generated indexes.
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install -U pip
+python -m pip install -r requirements-dev.txt
+pre-commit install
+```
+
+Template runtime dependencies are managed separately inside each template folder.
+
+## Add a new template
+
+1. Copy `sample-template/` into the target version folder and rename it to your template name.
+2. Rename the main runner, package metadata, and any placeholder identifiers so they match the folder name.
+3. Implement the template code, sample data, and outputs.
+4. Replace the README placeholders with template-specific content.
+5. Run the template from a fresh environment and verify that the README Quickstart works as written.
+
+The sample template is the source of truth for the expected file layout and README structure.
+
+At a minimum, make sure your template includes:
+
+- `README.md` with complete front matter and no placeholder text
+- `pyproject.toml` with a pinned `relationalai` dependency
+- a runnable entrypoint such as `<template_name>.py` or a notebook
+- `data/` when the template reads local sample files
+- sample data and output paths that match both the code and the README
+
+## Update an existing template
+
+When changing an existing template:
+
+- keep the README, code, and sample data in sync
+- keep dependency changes minimal and explicit
+- verify that any renamed files, commands, or outputs are reflected in the README
+- rerun any local validation steps that the change affects
+
+## README expectations
+
+An authentic template contribution is mostly about reproducibility. The README should let someone unfamiliar with the template run it successfully from scratch.
+
+Reviewers will expect the README to:
+
+- explain what the template is for and who it is for
+- include complete front matter metadata
+- provide a copy/paste-friendly Quickstart
+- use the correct entrypoint and install commands
+- describe the sample data and outputs accurately
+- match the current top-level file structure
+
+> [!TIP]
+> Use the `create-template-readme` prompt in Copilot Chat to draft a README from the template code, then edit it for accuracy and style.
+> After code changes, use `update-template-readme` to refresh the README and review the result manually.
 
 ## Use VS Code prompts to help development
 
@@ -28,34 +84,77 @@ This repo includes prompt files under `.github/prompts/` that you can run from V
 
 Useful prompts:
 
-- `create-template-readme` — generate a README from the template code.
-- `update-template-readme` — update an existing README after code changes.
-- `review-template` — review a template folder for common issues (pinned dependencies, missing data files, README placeholders, etc.).
+- `create-template-readme` - generate a README from the template code
+- `update-template-readme` - update an existing README after code changes
+- `review-template` - review a template folder for common issues such as pinned dependencies, missing data files, and README drift
 
 ### How to run a prompt in Copilot Chat
 
-In VS Code, open **Copilot Chat**, then run one of the repo prompts from `.github/prompts/` and provide its inputs.
+In VS Code, open Copilot Chat, then run one of the repo prompts from `.github/prompts/` and provide its inputs.
 
-These prompts all accept the same inputs:
+These prompts accept the same inputs:
 
-- `templateName` (required): the template folder name (for example, `ad_spend_allocation`).
-- `version` (optional): the version folder (defaults to `v0.13`).
+- `templateName` (required): the template folder name, for example `ad_spend_allocation`
+- `version` (optional): the version folder; for new templates, prefer `v1`
 
-Examples you can paste into Copilot Chat (adjust values as needed):
+Examples:
 
 ```text
-/review-template templateName=ad_spend_allocation/
+/review-template templateName=ad_spend_allocation version=v1
 
-/create-template-readme templateName=ad_spend_allocation/
+/create-template-readme templateName=ad_spend_allocation version=v1
 
-/update-template-readme templateName=ad_spend_allocation
+/update-template-readme templateName=ad_spend_allocation version=v1
 ```
 
 > [!NOTE]
 > `create-template-readme` overwrites `${version}/${templateName}/README.md`. Run `review-template` afterwards to sanity-check the result.
 
-## Preview your template on the docs site
+## Local validation before opening a pull request
 
-Open a pull request with your changes. The **Docs preview** GitHub Action (`.github/workflows/docs-preview.yml`) runs on PRs and will post (or update) a comment on the PR with a Vercel preview URL.
+Before opening a PR, make sure you can complete this checklist from a clean environment.
 
-Use that preview to confirm your template renders correctly on the website before merging.
+1. Create a fresh virtual environment in the template folder.
+2. Install the template locally.
+3. Run the template end to end using the exact command documented in the README.
+4. Run repository hooks:
+
+  ```bash
+  pre-commit run --all-files
+  ```
+
+1. If you changed template descriptions or added a template, regenerate the version indexes:
+
+  ```bash
+  python scripts/generate_version_indexes.py
+  ```
+
+1. Verify the generated indexes are clean:
+
+  ```bash
+  python scripts/generate_version_indexes.py --check
+  ```
+
+## Keep version README indexes in sync
+
+Version README files (`v0.13/README.md`, `v0.14/README.md`, `v1/README.md`) are generated from template README metadata, specifically the `description` field in front matter.
+
+If you add a template or update a template description, regenerate the version indexes and commit the resulting README changes.
+
+```bash
+python scripts/generate_version_indexes.py
+```
+
+To validate without writing changes:
+
+```bash
+python scripts/generate_version_indexes.py --check
+```
+
+## Open a pull request
+
+Open a PR once the template is runnable, the README is accurate, and local validation passes.
+
+The docs preview workflow in `.github/workflows/docs-preview.yml` runs on pull requests and posts a Vercel preview URL in the PR comments.
+
+Use that preview to confirm that your template renders correctly on the docs site before merging.
