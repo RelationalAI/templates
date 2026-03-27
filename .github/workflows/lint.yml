@@ -1,0 +1,41 @@
+name: Lint
+
+on:
+  pull_request:
+    paths:
+      - "sample-template/**"
+      - "v0.13/**"
+      - "v0.14/**"
+      - "v1/**"
+      - "ruff.toml"
+      - "requirements-dev.txt"
+      - ".github/workflows/lint.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "sample-template/**"
+      - "v0.13/**"
+      - "v0.14/**"
+      - "v1/**"
+      - "ruff.toml"
+      - "requirements-dev.txt"
+      - ".github/workflows/lint.yml"
+  workflow_dispatch:
+
+jobs:
+  ruff:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Python dependencies
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Run Ruff
+        run: ruff check sample-template v0.13 v0.14 v1

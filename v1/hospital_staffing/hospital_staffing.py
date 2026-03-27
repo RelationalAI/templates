@@ -20,7 +20,6 @@ Output:
 from pathlib import Path
 
 from pandas import read_csv
-
 from relationalai.semantics import Float, Integer, Model, String, sum
 from relationalai.semantics.reasoners.prescriptive import Problem
 
@@ -172,7 +171,7 @@ overtime = model.select(
 ).where(Nurse.x_overtime_hours > 0.5).to_df()
 
 if not overtime.empty:
-    print(f"\nOvertime assignments:")
+    print("\nOvertime assignments:")
     print(overtime.to_string(index=False))
 else:
     print("\nNo overtime assigned.")
@@ -185,7 +184,7 @@ throughput = model.select(
     Shift.x_unmet_demand.alias("unmet_demand"),
 ).to_df()
 
-print(f"\nPatient throughput by shift:")
+print("\nPatient throughput by shift:")
 print(throughput.to_string(index=False))
 print(f"Total patients served: {float(throughput['patients_served'].sum()):.0f} / {int(throughput['patient_demand'].astype(int).sum())}")
 print(f"Total unmet demand: {float(throughput['unmet_demand'].sum()):.0f} patients")
@@ -196,5 +195,5 @@ assignments = model.select(
     Assignment.availability.shift.name.alias("shift"),
 ).where(Assignment.x_assigned > 0.5).to_df()
 
-print(f"\nStaff assignments:")
+print("\nStaff assignments:")
 print(assignments.to_string(index=False))

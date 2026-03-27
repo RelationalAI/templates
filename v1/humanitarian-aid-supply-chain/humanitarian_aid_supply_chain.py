@@ -18,9 +18,8 @@ Output:
     critical network hubs, and make strategic resource allocation decisions.
 """
 
-from relationalai.semantics import where, Integer, Float
-
 from model_setup import create_model
+from relationalai.semantics import Float, Integer, where
 
 # --------------------------------------------------
 # Create model and calculate graph metrics
@@ -139,9 +138,9 @@ def main() -> None:
     ]
 
     if len(critical_hubs) > 0:
-        print(f"  1️⃣  CRITICAL COORDINATION HUBS (High Influence + High Connectivity)")
+        print("  1️⃣  CRITICAL COORDINATION HUBS (High Influence + High Connectivity)")
         print(f"      These {len(critical_hubs)} points are both influential AND highly connected:")
-        print(f"      ⚠️  PRIORITY: Maximize capacity, deploy redundancy, ensure resilience\n")
+        print("      ⚠️  PRIORITY: Maximize capacity, deploy redundancy, ensure resilience\n")
         for _, hub in critical_hubs.head(5).iterrows():
             print(f"      • {hub['name']} ({hub['type']})")
             print(f"        Region: {hub['region']} | PageRank: {hub['pagerank']:.4f} | Degree Centrality: {hub['degree_centrality']:.4f}")
@@ -155,9 +154,9 @@ def main() -> None:
     ]
 
     if len(influential_endpoints) > 0:
-        print(f"  2️⃣  INFLUENTIAL ENDPOINTS (High Influence + Lower Connectivity)")
+        print("  2️⃣  INFLUENTIAL ENDPOINTS (High Influence + Lower Connectivity)")
         print(f"      These {len(influential_endpoints)} points concentrate aid flow despite fewer connections:")
-        print(f"      ✅ PRIORITY: Optimize throughput, increase capacity, monitor closely\n")
+        print("      ✅ PRIORITY: Optimize throughput, increase capacity, monitor closely\n")
         for _, hub in influential_endpoints.head(3).iterrows():
             print(f"      • {hub['name']} ({hub['type']})")
             print(f"        Region: {hub['region']} | PageRank: {hub['pagerank']:.4f} | Degree Centrality: {hub['degree_centrality']:.4f}")
@@ -170,9 +169,9 @@ def main() -> None:
     ]
 
     if len(connectors) > 0:
-        print(f"  3️⃣  NETWORK CONNECTORS (Lower Influence + High Connectivity)")
+        print("  3️⃣  NETWORK CONNECTORS (Lower Influence + High Connectivity)")
         print(f"      These {len(connectors)} points provide critical network connectivity:")
-        print(f"      ⚠️  PRIORITY: Strengthen infrastructure, maintain reliability, prevent failures\n")
+        print("      ⚠️  PRIORITY: Strengthen infrastructure, maintain reliability, prevent failures\n")
         for _, hub in connectors.head(3).iterrows():
             print(f"      • {hub['name']} ({hub['type']})")
             print(f"        Region: {hub['region']} | PageRank: {hub['pagerank']:.4f} | Degree Centrality: {hub['degree_centrality']:.4f}")

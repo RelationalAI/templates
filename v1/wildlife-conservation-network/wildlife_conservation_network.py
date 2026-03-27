@@ -20,9 +20,8 @@ Output:
     roles.
 """
 
-from relationalai.semantics import where, Integer, Float
-
 from model_setup import create_model
+from relationalai.semantics import Float, Integer, where
 
 # --------------------------------------------------
 # Create model and calculate graph metrics

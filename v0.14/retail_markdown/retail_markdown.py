@@ -23,7 +23,6 @@ from time import time_ns
 
 import pandas
 from pandas import read_csv
-
 from relationalai.semantics import Float, Integer, Model, data, std, sum, where
 from relationalai.semantics.reasoners.optimization import Solver, SolverModel
 

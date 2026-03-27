@@ -19,7 +19,6 @@ from pathlib import Path
 
 import pandas
 from pandas import read_csv
-
 from relationalai.semantics import Model, data, define, require, sum, where
 from relationalai.semantics.reasoners.optimization import Solver, SolverModel
 
