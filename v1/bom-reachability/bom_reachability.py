@@ -17,8 +17,7 @@ Run:
 from pathlib import Path
 
 from pandas import read_csv
-
-from relationalai.semantics import Float, Integer, Model, String, where, define
+from relationalai.semantics import Float, Model, String, where
 from relationalai.semantics.reasoners.graph import Graph
 
 model = Model("bom_reachability")

@@ -18,11 +18,10 @@ Run:
 from pathlib import Path
 
 from pandas import read_csv
-
-from relationalai.semantics import Float, Integer, Model, String, where, define, select, distinct
+from relationalai.semantics import Float, Integer, Model, String, distinct, select, where
 from relationalai.semantics import count as rai_count
-from relationalai.semantics.std import aggregates as aggs
 from relationalai.semantics.reasoners.graph import Graph
+from relationalai.semantics.std import aggregates as aggs
 
 model = Model("site_centrality")
 
@@ -158,7 +157,7 @@ wcc_df = (
 )
 
 num_components = wcc_df["component_id"].nunique()
-print(f"\n=== Connected Components ===")
+print("\n=== Connected Components ===")
 print(f"Components found: {num_components}")
 if num_components == 1:
     print("UNIFIED NETWORK: All sites in a single connected component")

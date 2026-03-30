@@ -19,10 +19,9 @@ Run:
 from pathlib import Path
 
 from pandas import read_csv
-
-from relationalai.semantics import Float, Integer, Model, String, where, define, distinct
-from relationalai.semantics.std import aggregates as aggs
+from relationalai.semantics import Float, Integer, Model, String, define, distinct, where
 from relationalai.semantics.reasoners.graph import Graph
+from relationalai.semantics.std import aggregates as aggs
 
 model = Model("supplier_impact")
 
