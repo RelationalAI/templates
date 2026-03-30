@@ -32,13 +32,13 @@ The template also demonstrates scenario analysis by sweeping over different mini
 
 ## What you'll build
 
-- A constraint model that assigns workers to shifts respecting availability and capacity
+- A constraint model that assigns workers to shifts respecting availability and capacity limits
 - Scenario analysis across multiple minimum-coverage levels (1, 2, 3 workers per shift)
-- Feasibility checks that reveal when staffing targets become infeasible
+- Post-solve verification via `p.verify()` to confirm constraint satisfaction across all scenarios
 
 ## What's included
 
-- `shift_assignment.py` -- main script with ontology, constraints, and scenario loop
+- `shift_assignment.py` -- main script with ontology, constraints, and scenario analysis
 - `data/workers.csv` -- 10 workers with IDs and names
 - `data/shifts.csv` -- 3 shifts (Morning, Afternoon, Night) with capacity limits
 - `data/availability.csv` -- worker-to-shift availability mappings
@@ -88,34 +88,18 @@ The template also demonstrates scenario analysis by sweeping over different mini
 
 6. Expected output:
    ```text
-   Running scenario: min_coverage = 1
-     Status: OPTIMAL
-     Assignments:
-              name            value
-    x_Alice_Morning            1.0
-    x_Carlos_Afternoon         1.0
-    x_Bob_Night                1.0
-
-   Running scenario: min_coverage = 2
-     Status: OPTIMAL
-     Assignments:
-              name            value
-    x_Alice_Morning            1.0
-    x_Diana_Morning            1.0
-    x_Carlos_Afternoon         1.0
-    x_Grace_Afternoon          1.0
-    x_Bob_Night                1.0
-    x_Ethan_Night              1.0
-
-   Running scenario: min_coverage = 3
-     Status: INFEASIBLE
-
-   ==================================================
-   Scenario Analysis Summary
-   ==================================================
-     min_coverage=1: OPTIMAL
-     min_coverage=2: OPTIMAL
-     min_coverage=3: INFEASIBLE
+   Assignments per scenario:
+     scenario      worker          shift
+     coverage_1    Alice           Morning
+     coverage_1    Carlos          Afternoon
+     coverage_1    Bob             Night
+     coverage_2    Alice           Morning
+     coverage_2    Diana           Morning
+     coverage_2    Carlos          Afternoon
+     coverage_2    Grace           Afternoon
+     coverage_2    Bob             Night
+     coverage_2    Ethan           Night
+     ...
    ```
 
 ## Template structure
@@ -148,28 +132,42 @@ Worker.available_for = model.Relationship(f"{Worker} is available for {Shift}")
 **2. Define decision variables.** A binary variable `x_assign` indicates whether a worker is assigned to a given shift:
 
 ```python
-Worker.x_assign = model.Property(f"{Worker} has {Shift} if {Integer:assigned}")
-s.solve_for(
-    Worker.x_assign(Shift, assigned_ref),
+Worker.x_assign = model.Property(f"{Worker} has {Shift} in {Scenario} if {Integer:assigned}")
+p.solve_for(
+    Worker.x_assign(Shift, Scenario, assigned_ref),
     type="bin",
-    name=["x", Worker.name, Shift.name],
+    name=["x", Scenario.name, Worker.name, Shift.name],
     where=[Worker.available_for(Shift)],
-    populate=False,
 )
 ```
 
-**3. Add constraints.** Each shift must meet the minimum coverage, and each worker works at most one shift:
+**3. Add constraints.** Three constraints govern the assignment: minimum coverage, maximum shifts per worker, and shift capacity limits. Constraints are stored in named variables so they can be verified after solving:
 
 ```python
-s.satisfy(model.where(Worker.x_assign(Shift, assigned_ref)).require(
-    sum(Worker, assigned_ref).per(Shift) >= min_coverage
-))
-s.satisfy(model.where(Worker.x_assign(Shift, assigned_ref)).require(
-    sum(Shift, assigned_ref).per(Worker) <= max_shifts
-))
+coverage_ic = model.where(
+    Worker.x_assign(Shift, Scenario, assigned_ref),
+).require(sum(Worker, assigned_ref).per(Shift, Scenario) >= Scenario.min_coverage)
+p.satisfy(coverage_ic)
+
+workload_ic = model.where(
+    Worker.x_assign(Shift, Scenario, assigned_ref),
+).require(sum(Shift, assigned_ref).per(Worker, Scenario) <= max_shifts)
+p.satisfy(workload_ic)
+
+capacity_ic = model.where(
+    Worker.x_assign(Shift, Scenario, assigned_ref),
+).require(sum(Worker, assigned_ref).per(Shift, Scenario) <= Shift.capacity)
+p.satisfy(capacity_ic)
 ```
 
-**4. Solve across scenarios.** The loop varies `min_coverage` from 1 to 3, creating a fresh Problem each iteration and reporting whether a feasible assignment exists.
+**4. Solve and verify.** A single solve handles all scenarios simultaneously. After solving, `p.verify()` fires the named constraints as integrity constraints to confirm the solution satisfies them:
+
+```python
+p.solve("minizinc", time_limit_sec=60)
+p.solve_info().display()
+p.verify(coverage_ic, workload_ic, capacity_ic)
+model.require(p.termination_status() == "OPTIMAL")
+```
 
 ## Customize this template
 
@@ -177,15 +175,16 @@ s.satisfy(model.where(Worker.x_assign(Shift, assigned_ref)).require(
 - **Change the max shifts per worker** by adjusting the `max_shifts` parameter.
 - **Add shift preferences** by introducing a preference score and converting from feasibility to optimization (minimize total dissatisfaction).
 - **Add skills or qualifications** by introducing a skill-matching relationship between workers and shifts.
-- **Switch to optimization** by adding an objective (e.g., maximize total coverage or minimize cost) with `s.minimize()` or `s.maximize()`.
+- **Switch to optimization** by adding an objective (e.g., maximize total coverage or minimize cost) with `p.minimize()` or `p.maximize()`.
 
 ## Troubleshooting
 
 <details>
-  <summary>Solver returns INFEASIBLE for all scenarios</summary>
+  <summary>Solver returns INFEASIBLE</summary>
 
-- Check that `availability.csv` has enough worker-shift pairs to cover every shift.
-- Verify that `shifts.csv` capacity values are reasonable given the number of available workers.
+- With the single-solve approach, if any scenario's constraints are unsatisfiable, the entire problem is infeasible.
+- Verify that the `capacity` in `shifts.csv` is at least as large as the highest `min_coverage` scenario. If capacity < min_coverage for any shift, the problem is infeasible.
+- Check that `availability.csv` has enough worker-shift pairs to cover every shift at the highest `min_coverage` level.
 - Ensure worker IDs and shift IDs in `availability.csv` match those in the other CSV files.
 
 </details>
@@ -210,6 +209,6 @@ s.satisfy(model.where(Worker.x_assign(Shift, assigned_ref)).require(
   <summary>MiniZinc solver not available</summary>
 
 - This template uses the MiniZinc constraint solver. Ensure the RAI Native App version supports MiniZinc.
-- As an alternative, you can try switching to `"highs"` in the `s.solve()` call, though HiGHS is designed for linear/MIP problems.
+- As an alternative, you can try switching to `"highs"` in the `p.solve()` call, though HiGHS is designed for linear/MIP problems.
 
 </details>

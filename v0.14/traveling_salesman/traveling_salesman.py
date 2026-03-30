@@ -17,7 +17,6 @@ from pathlib import Path
 
 import pandas
 from pandas import read_csv
-
 from relationalai.semantics import (
     Model,
     count,
@@ -29,7 +28,6 @@ from relationalai.semantics import (
     where,
 )
 from relationalai.semantics.reasoners.optimization import Solver, SolverModel
-
 
 # --------------------------------------------------
 # Configure inputs

@@ -21,7 +21,6 @@ Output:
 from pathlib import Path
 
 from pandas import read_csv
-
 from relationalai.semantics import Float, Integer, Model, String, std, sum
 from relationalai.semantics.reasoners.prescriptive import Problem
 
@@ -254,31 +253,30 @@ p.minimize(total_cost)
 
 p.display()
 p.solve("highs", time_limit_sec=60)
-p.display_solve_info()
+model.require(p.termination_status() == "OPTIMAL")
+si = p.solve_info()
+si.display()
 
-print(f"Status: {p.termination_status}")
-print(f"Total cost: ${p.objective_value:.2f}")
+print(f"Status: {si.termination_status}")
+print(f"Total cost: ${si.objective_value:.2f}")
 
 # Extract solution via model.select() — properties are populated after solve
 print("\n=== Inventory Levels ===")
-inv_df = model.select(
+model.select(
     FreightGroup.name.alias("freight_group"), time_period_ref.alias("day"),
     x_inv.alias("inventory"),
-).where(FreightGroup.x_inv(time_period_ref, x_inv)).to_df()
-print(inv_df.to_string(index=False))
+).where(FreightGroup.x_inv(time_period_ref, x_inv)).inspect()
 
 print("\n=== Transport Quantities ===")
-qty_df = model.select(
+model.select(
     TransportType.name.alias("type"), FreightGroup_ref.name.alias("freight_group"),
     time_period_ref.alias("day"), x_qty_tra.alias("quantity"),
 ).where(
     TransportType.x_qty_tra(FreightGroup_ref, time_period_ref, x_qty_tra), x_qty_tra > 0.001
-).to_df()
-print(qty_df.to_string(index=False))
+).inspect()
 
 print("\n=== Arrival Days ===")
-arr_df = model.select(
+model.select(
     FreightGroup.name.alias("freight_group"),
     FreightGroup.z_arr_day.alias("arrival_day"),
-).to_df()
-print(arr_df.to_string(index=False))
+).inspect()

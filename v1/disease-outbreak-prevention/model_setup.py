@@ -5,9 +5,9 @@ and data loading logic used by both the CLI script and Streamlit app.
 """
 
 from pathlib import Path
-import pandas as pd
 
-from relationalai.semantics import Model, data, define, String, Integer, Float
+import pandas as pd
+from relationalai.semantics import Float, Integer, Model, String, data, define
 from relationalai.semantics.reasoners.graph import Graph
 
 DATA_DIR = Path(__file__).parent / "data"

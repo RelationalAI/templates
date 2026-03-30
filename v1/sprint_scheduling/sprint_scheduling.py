@@ -90,12 +90,13 @@ Issue.target_sprint_number = Property(
 
 issues_df = read_csv(data_dir / "issues.csv")
 
-# EPOCH FILTERING: Only load issues created within (or before) the planning horizon
+# EPOCH FILTERING: Only load issues created within the planning horizon
 # This is the key epoch pattern — filter event rows by epoch BEFORE they enter the model
-filtered_issues = issues_df[issues_df["created_at"] <= end_epoch].copy()
+filtered_issues = issues_df[
+    (issues_df["created_at"] >= start_epoch) & (issues_df["created_at"] <= end_epoch)
+].copy()
 
 # EPOCH-TO-PERIOD MAPPING: Map each issue to its target sprint based on created_at epoch
-# Issues created before planning_start are backlog -> assigned to Sprint 1
 # Issues created during a sprint -> assigned to that sprint (earliest eligible)
 sprints_df = read_csv(data_dir / "sprints.csv")
 
@@ -174,7 +175,7 @@ weighted_completion = sum(
 
 # Scenarios (what-if: vary team capacity to see impact on sprint assignments)
 SCENARIO_PARAM = "capacity_multiplier"
-SCENARIO_VALUES = [0.5, 0.75, 1.0]
+SCENARIO_VALUES = [0.35, 0.5, 1.0]
 
 # --------------------------------------------------
 # Solve and check solution
@@ -218,16 +219,20 @@ for scenario_value in SCENARIO_VALUES:
 
     p.display()
     p.solve("highs", time_limit_sec=60)
-    p.display_solve_info()
+    si = p.solve_info()
+    si.display()
 
     scenario_results.append(
         {
             "scenario": scenario_value,
-            "status": str(p.termination_status),
-            "objective": p.objective_value,
+            "status": str(si.termination_status),
+            "objective": si.objective_value,
         }
     )
-    print(f"  Status: {p.termination_status}, Objective: {p.objective_value}")
+    if si.termination_status != "OPTIMAL":
+        print(f"  Status: {si.termination_status} — skipping results")
+        continue
+    print(f"  Status: {si.termination_status}, Objective: {si.objective_value}")
     print(f"  Planning horizon: {planning_start} to {planning_end}")
     print(f"  Issues in scope: {len(filtered_issues)} (of {len(issues_df)} total)")
 
@@ -235,7 +240,7 @@ for scenario_value in SCENARIO_VALUES:
     var_df = p.variable_values().to_df()
     var_df["value"] = var_df["value"].astype(float)
     assigned = var_df[var_df["name"].str.startswith("assign") & (var_df["value"] > 0.5)]
-    print(f"\n  Assignments:")
+    print("\n  Assignments:")
     print(assigned.to_string(index=False))
 
 # Summary
@@ -243,6 +248,8 @@ print("\n" + "=" * 50)
 print("Scenario Analysis Summary")
 print("=" * 50)
 for result in scenario_results:
+    obj = result["objective"]
+    obj_str = f"{obj}" if obj is not None else "N/A"
     print(
-        f"  capacity_multiplier={result['scenario']}: {result['status']}, obj={result['objective']}"
+        f"  capacity_multiplier={result['scenario']}: {result['status']}, obj={obj_str}"
     )

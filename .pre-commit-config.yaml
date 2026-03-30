@@ -1,0 +1,25 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.13.1
+    hooks:
+      - id: ruff-check
+        name: Ruff lint (templates)
+        files: ^(sample-template|v0\.13|v0\.14|v1)/.*\.py$
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-merge-conflict
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: check-yaml
+
+  - repo: local
+    hooks:
+      - id: verify-version-indexes
+        name: Verify version README indexes
+        entry: python scripts/generate_version_indexes.py --check
+        language: python
+        additional_dependencies:
+          - PyYAML==6.0.2
+        files: ^(v\d.*/.*/README\.md|scripts/generate_version_indexes\.py)$

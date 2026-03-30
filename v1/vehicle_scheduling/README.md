@@ -134,8 +134,8 @@ Assignment.trip = Property(f"{Assignment} to {Trip}", short_name="trip")
 Assignment.x_assigned = Property(f"{Assignment} is {Float:assigned}")
 model.define(Assignment.new(vehicle=Vehicle, trip=Trip))
 
-s.solve_for(Assignment.x_assigned, type="bin", name=["assigned", Assignment.vehicle.name, Assignment.trip.name])
-s.solve_for(VehicleUsage.x_used, type="bin", name=["used", VehicleUsage.vehicle.name])
+p.solve_for(Assignment.x_assigned, type="bin", name=["assigned", Assignment.vehicle.name, Assignment.trip.name])
+p.solve_for(VehicleUsage.x_used, type="bin", name=["used", VehicleUsage.vehicle.name])
 ```
 
 ### 3. Add constraints
@@ -144,12 +144,12 @@ Every trip must be assigned to exactly one vehicle, and no vehicle can carry mor
 
 ```python
 trip_coverage = sum(AssignmentRef.x_assigned).where(AssignmentRef.trip == Trip).per(Trip)
-s.satisfy(model.require(trip_coverage == 1))
+p.satisfy(model.require(trip_coverage == 1))
 
 vehicle_load = sum(AssignmentRef.x_assigned * AssignmentRef.trip.load).where(
     AssignmentRef.vehicle == Vehicle
 ).per(Vehicle)
-s.satisfy(model.require(vehicle_load <= Vehicle.capacity))
+p.satisfy(model.require(vehicle_load <= Vehicle.capacity))
 ```
 
 ### 4. Minimize total cost
@@ -159,7 +159,7 @@ The objective combines variable cost (distance times per-mile rate) and fixed co
 ```python
 variable_cost = sum(Assignment.x_assigned * Assignment.trip.distance * Assignment.vehicle.cost_per_mile)
 fixed_cost = sum(VehicleUsage.x_used * VehicleUsage.vehicle.fixed_cost)
-s.minimize(variable_cost + fixed_cost)
+p.minimize(variable_cost + fixed_cost)
 ```
 
 ## Customize this template

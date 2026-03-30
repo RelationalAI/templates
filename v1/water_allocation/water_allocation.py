@@ -19,7 +19,6 @@ Output:
 from pathlib import Path
 
 from pandas import read_csv
-
 from relationalai.semantics import Float, Integer, Model, String, sum
 from relationalai.semantics.reasoners.prescriptive import Problem
 
@@ -98,16 +97,16 @@ p.minimize(total_cost)
 
 p.display()
 p.solve("highs", time_limit_sec=60)
-p.display_solve_info()
+model.require(p.termination_status() == "OPTIMAL")
+si = p.solve_info()
+si.display()
 
-print(f"Status: {p.termination_status}")
-print(f"Total cost: ${p.objective_value:.2f}")
+print(f"Status: {si.termination_status}")
+print(f"Total cost: ${si.objective_value:.2f}")
 
-allocations = model.select(
+print("\nFlow allocations:")
+model.select(
     Connection.source.name.alias("source"),
     Connection.user.name.alias("user"),
     Connection.x_flow
-).where(Connection.x_flow > 0.001).to_df()
-
-print("\nFlow allocations:")
-print(allocations.to_string(index=False))
+).where(Connection.x_flow > 0.001).inspect()

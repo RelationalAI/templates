@@ -190,9 +190,9 @@ Week.demand_multiplier = model.Property(f"{Week} has {Float:demand_multiplier}")
 Three sets of variables model the decisions and state: binary selection of discount level per product-week, continuous sales per product-week-discount, and cumulative sales per product-week:
 
 ```python
-s.solve_for(Product.x_select(Week_ref, Discount_ref, selection_ref), type="bin", ...)
-s.solve_for(Product.x_sales(Week_ref, Discount_ref, sales_ref), type="cont", lower=0, ...)
-s.solve_for(Product.x_cuml_sales(Week_ref, cumulative_ref), type="cont", lower=0, ...)
+p.solve_for(Product.x_select(Week_ref, Discount_ref, selection_ref), type="bin", ...)
+p.solve_for(Product.x_sales(Week_ref, Discount_ref, sales_ref), type="cont", lower=0, ...)
+p.solve_for(Product.x_cuml_sales(Week_ref, cumulative_ref), type="cont", lower=0, ...)
 ```
 
 ### 3. Key constraints
@@ -201,12 +201,12 @@ The one-hot constraint ensures exactly one discount level is active per product-
 
 ```python
 # One discount per product-week
-s.satisfy(model.where(Product.x_select(Week_ref, Discount_ref, selection_ref)).require(
+p.satisfy(model.where(Product.x_select(Week_ref, Discount_ref, selection_ref)).require(
     sum(Discount_ref, selection_ref).per(Product, Week_ref) == 1
 ))
 
 # Discounts can only increase over time
-s.satisfy(model.where(
+p.satisfy(model.where(
     Product.x_select(Week_ref, Discount_ref, selection_ref),
     Product.x_select(Week_inner, Discount_inner, selection_inner),
     Week_inner.num == Week_ref.num + 1,
@@ -225,7 +225,7 @@ revenue = sum(
 salvage = sum(
     Product.initial_price * Product.salvage_rate * (Product.initial_inventory - cumulative_ref)
 ).where(Product.x_cuml_sales(Week_ref, cumulative_ref), Week_ref.num == num_weeks)
-s.maximize(revenue + salvage)
+p.maximize(revenue + salvage)
 ```
 
 ## Customize this template

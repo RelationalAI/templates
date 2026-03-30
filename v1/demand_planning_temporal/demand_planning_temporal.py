@@ -28,9 +28,7 @@ Output:
 """
 
 import itertools
-import os
-import tempfile
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
@@ -183,6 +181,8 @@ service_level_constraint = model.require(
 unmet_penalty = 50.0  # $/unit penalty for unmet demand
 
 # Scenarios (what-if analysis)
+# NOTE: Values must be in increasing order — each iteration adds demand data to the
+# shared model. Increasing dates ensure each scenario is a superset of the previous.
 SCENARIO_PARAM = "planning_end"
 SCENARIO_VALUES = ["2026-01-31", "2026-02-28", "2026-03-31"]
 
@@ -326,6 +326,24 @@ for scenario_value in SCENARIO_VALUES:
     # Static constraint: global service level
     p.satisfy(service_level_constraint)
 
+    # Safety stock: inventory at end of each active week >= safety_stock_weeks × avg weekly demand
+    if safety_stock_weeks > 0:
+        avg_weekly_demand = (
+            sum(WeeklyDemand.wk_quantity)
+            .where(
+                WeeklyDemand.wk_site_id == ProdCapacity.site_id,
+                WeeklyDemand.wk_sku_id == ProdCapacity.sku_id,
+            )
+            .per(ProdCapacity)
+            / num_weeks
+        )
+        p.satisfy(
+            model.where(
+                ProdCapacity.x_inventory(week_ref, inventory_ref),
+                week_ref >= 1,
+            ).require(inventory_ref >= avg_weekly_demand * safety_stock_weeks)
+        )
+
     # Parameterized objective: minimize total cost (depends on week ranges via production/inventory refs)
     prod_cost = ProdCapacity.production_cost * sum(production_ref).per(
         ProdCapacity
@@ -338,17 +356,21 @@ for scenario_value in SCENARIO_VALUES:
 
     p.display()
     p.solve("highs", time_limit_sec=60)
-    p.display_solve_info()
+    si = p.solve_info()
+    si.display()
 
     scenario_results.append(
         {
             "scenario": scenario_value,
-            "status": str(p.termination_status),
-            "objective": p.objective_value,
+            "status": str(si.termination_status),
+            "objective": si.objective_value,
         }
     )
-    print(f"  Status: {p.termination_status}")
-    print(f"  Total cost: ${p.objective_value:,.2f}")
+    if si.termination_status != "OPTIMAL":
+        print(f"  Status: {si.termination_status} — skipping results")
+        continue
+    print(f"  Status: {si.termination_status}")
+    print(f"  Total cost: ${si.objective_value:,.2f}")
     print(f"  Planning horizon: {planning_start} to {planning_end} ({num_weeks} weeks)")
     print(
         f"  Demand orders in scope: {len(filtered_orders)} (of {len(orders_df)} total)"
@@ -378,6 +400,6 @@ print("\n" + "=" * 50)
 print("Scenario Analysis Summary")
 print("=" * 50)
 for result in scenario_results:
-    print(
-        f"  planning_end={result['scenario']}: {result['status']}, cost=${result['objective']:,.2f}"
-    )
+    obj = result["objective"]
+    obj_str = f"${obj:,.2f}" if obj is not None else "N/A"
+    print(f"  planning_end={result['scenario']}: {result['status']}, cost={obj_str}")

@@ -149,11 +149,11 @@ Shift.patient_demand = Property(f"{Shift} has {Integer:patient_demand}")
 The model uses four types of variables: binary assignment variables for nurse-shift pairings, continuous overtime hours per nurse, patients served per shift, and unmet demand per shift.
 
 ```python
-s.solve_for(Assignment.x_assigned, type="bin",
+p.solve_for(Assignment.x_assigned, type="bin",
     name=["assigned", Assignment.availability.nurse.name, Assignment.availability.shift.name])
-s.solve_for(Nurse.x_overtime_hours, type="cont", name=["ot", Nurse.name], lower=0)
-s.solve_for(Shift.x_patients_served, type="cont", name=["pt", Shift.name], lower=0)
-s.solve_for(Shift.x_unmet_demand, type="cont", name=["ud", Shift.name], lower=0)
+p.solve_for(Nurse.x_overtime_hours, type="cont", name=["ot", Nurse.name], lower=0)
+p.solve_for(Shift.x_patients_served, type="cont", name=["pt", Shift.name], lower=0)
+p.solve_for(Shift.x_unmet_demand, type="cont", name=["ud", Shift.name], lower=0)
 ```
 
 ### 3. Add constraints
@@ -164,13 +164,13 @@ Constraints enforce availability, minimum staffing, skill coverage, overtime tra
 # Each nurse works 1-2 shifts
 nurse_shift_count = sum(AssignmentRef.x_assigned).where(
     AssignmentRef.availability.nurse == Nurse).per(Nurse)
-s.satisfy(model.require(nurse_shift_count >= 1))
-s.satisfy(model.require(nurse_shift_count <= 2))
+p.satisfy(model.require(nurse_shift_count >= 1))
+p.satisfy(model.require(nurse_shift_count <= 2))
 
 # Minimum nurses per shift with skill requirements
 shift_staff_count = sum(AssignmentRef.x_assigned).where(
     AssignmentRef.availability.shift == Shift).per(Shift)
-s.satisfy(model.require(shift_staff_count >= Shift.min_nurses))
+p.satisfy(model.require(shift_staff_count >= Shift.min_nurses))
 ```
 
 ### 4. Minimize combined cost
@@ -180,7 +180,7 @@ The objective combines overtime labor costs with a penalty for each unmet patien
 ```python
 overtime_cost = sum(Nurse.x_overtime_hours * Nurse.hourly_cost * Nurse.overtime_multiplier)
 total_overflow_penalty = overflow_penalty_per_patient * sum(Shift.x_unmet_demand)
-s.minimize(overtime_cost + total_overflow_penalty)
+p.minimize(overtime_cost + total_overflow_penalty)
 ```
 
 ## Customize this template

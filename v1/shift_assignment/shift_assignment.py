@@ -27,7 +27,6 @@ Output:
 from pathlib import Path
 
 from pandas import read_csv
-
 from relationalai.semantics import Integer, Model, String, sum
 from relationalai.semantics.reasoners.prescriptive import Problem
 
@@ -45,7 +44,7 @@ Worker.name = model.Property(f"{Worker} has {String:name}")
 worker_csv = read_csv(data_dir / "workers.csv")
 model.define(Worker.new(model.data(worker_csv).to_schema()))
 
-# Concept: shifts with minimum coverage requirements
+# Concept: shifts with capacity limits
 Shift = model.Concept("Shift", identify_by={"id": Integer})
 Shift.name = model.Property(f"{Shift} has {String:name}")
 Shift.capacity = model.Property(f"{Shift} has {Integer:capacity}")
@@ -97,18 +96,22 @@ p.solve_for(
 )
 
 # Constraint: minimum coverage per shift (per scenario)
-p.satisfy(model.where(
+coverage_ic = model.where(
     Worker.x_assign(Shift, Scenario, assigned_ref),
-).require(
-    sum(Worker, assigned_ref).per(Shift, Scenario) >= Scenario.min_coverage
-))
+).require(sum(Worker, assigned_ref).per(Shift, Scenario) >= Scenario.min_coverage)
+p.satisfy(coverage_ic)
 
 # Constraint: max shifts per worker (per scenario)
-p.satisfy(model.where(
+workload_ic = model.where(
     Worker.x_assign(Shift, Scenario, assigned_ref),
-).require(
-    sum(Shift, assigned_ref).per(Worker, Scenario) <= max_shifts
-))
+).require(sum(Shift, assigned_ref).per(Worker, Scenario) <= max_shifts)
+p.satisfy(workload_ic)
+
+# Constraint: max workers per shift (capacity limit per scenario)
+capacity_ic = model.where(
+    Worker.x_assign(Shift, Scenario, assigned_ref),
+).require(sum(Worker, assigned_ref).per(Shift, Scenario) <= Shift.capacity)
+p.satisfy(capacity_ic)
 
 # --------------------------------------------------
 # Solve (single solve for all scenarios)
@@ -116,7 +119,11 @@ p.satisfy(model.where(
 
 p.display()
 p.solve("minizinc", time_limit_sec=60)
-p.display_solve_info()
+p.solve_info().display()
+
+# Verify constraints hold in the solver's solution — fires ICs without a separate query.
+p.verify(coverage_ic, workload_ic, capacity_ic)
+model.require(p.termination_status() == "OPTIMAL")
 
 # --------------------------------------------------
 # Extract results per scenario

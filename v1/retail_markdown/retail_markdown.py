@@ -22,7 +22,6 @@ Output:
 from pathlib import Path
 
 from pandas import read_csv
-
 from relationalai.semantics import Float, Integer, Model, String, count, sum
 from relationalai.semantics.reasoners.prescriptive import Problem
 
@@ -171,29 +170,30 @@ p.maximize(revenue + salvage)
 
 p.display()
 p.solve("highs", time_limit_sec=60)
-p.display_solve_info()
+model.require(p.termination_status() == "OPTIMAL")
+si = p.solve_info()
+si.display()
 
-print(f"Status: {p.termination_status}")
-print(f"Total revenue (sales + salvage): ${p.objective_value:.2f}")
+print(f"Status: {si.termination_status}")
+print(f"Total revenue (sales + salvage): ${si.objective_value:.2f}")
 
 # Extract solution via model.select() — properties are populated after solve
 print("\n=== Selected Discounts by Product-Week ===")
-selected_df = model.select(
+model.select(
     Product.name.alias("product"), Week_ref.num.alias("week"),
     Discount_ref.discount_pct.alias("discount_pct"),
-).where(Product.x_select(Week_ref, Discount_ref, selection_ref), selection_ref > 0.5).to_df()
-print(selected_df.to_string(index=False))
+).where(
+    Product.x_select(Week_ref, Discount_ref, selection_ref), selection_ref > 0.5
+).inspect()
 
 print("\n=== Sales by Product-Week ===")
-sales_df = model.select(
+model.select(
     Product.name.alias("product"), Week_ref.num.alias("week"),
     Discount_ref.discount_pct.alias("discount_pct"), sales_ref.alias("units_sold"),
-).where(Product.x_sales(Week_ref, Discount_ref, sales_ref), sales_ref > 0.01).to_df()
-print(sales_df.to_string(index=False))
+).where(Product.x_sales(Week_ref, Discount_ref, sales_ref), sales_ref > 0.01).inspect()
 
 print("\n=== Cumulative Sales by Product-Week ===")
-cuml_df = model.select(
+model.select(
     Product.name.alias("product"), Week_ref.num.alias("week"),
     cumulative_ref.alias("cumulative_sold"),
-).where(Product.x_cuml_sales(Week_ref, cumulative_ref)).to_df()
-print(cuml_df.to_string(index=False))
+).where(Product.x_cuml_sales(Week_ref, cumulative_ref)).inspect()

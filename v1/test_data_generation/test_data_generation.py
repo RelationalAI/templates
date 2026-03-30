@@ -17,15 +17,15 @@ Output:
     table, and a small sample of generated rows for each table.
 """
 
-from pathlib import Path
 import random
 import string as string_module
 from datetime import date, timedelta
+from pathlib import Path
 
-from pandas import read_csv, DataFrame
 import pandas as pd
-
-from relationalai.semantics import Float, Integer, Model, String, sum as rai_sum
+from pandas import DataFrame, read_csv
+from relationalai.semantics import Float, Integer, Model, String
+from relationalai.semantics import sum as rai_sum
 from relationalai.semantics.reasoners.prescriptive import Problem
 
 model = Model("test_data_generation")
@@ -74,7 +74,7 @@ for _, row in targets_df.iterrows():
     table_objs[row['table_name']] = row
 
 # Extract FK relationships from schema
-fk_df = schema_df[schema_df['is_foreign_key'] == True].copy()
+fk_df = schema_df[schema_df['is_foreign_key']].copy()
 cardinality_constraints = constraints_df[
     constraints_df['constraint_type'].isin(['cardinality_bound', 'mandatory_participation', 'frequency'])
 ]
@@ -194,10 +194,12 @@ p.minimize(total_deviation)
 
 p.display()
 p.solve("highs", time_limit_sec=60)
-p.display_solve_info()
+model.require(p.termination_status() == "OPTIMAL")
+si = p.solve_info()
+si.display()
 
-print(f"Status: {p.termination_status}")
-print(f"Total weighted deviation: {p.objective_value:.2f}")
+print(f"Status: {si.termination_status}")
+print(f"Total weighted deviation: {si.objective_value:.2f}")
 
 # Extract row counts
 row_counts = {}

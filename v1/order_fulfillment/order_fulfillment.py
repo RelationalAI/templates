@@ -20,7 +20,6 @@ Output:
 from pathlib import Path
 
 from pandas import read_csv
-
 from relationalai.semantics import Float, Integer, Model, String, sum
 from relationalai.semantics.reasoners.prescriptive import Problem
 
@@ -112,19 +111,19 @@ p.minimize(total_cost)
 
 p.display()
 p.solve("highs", time_limit_sec=60)
-p.display_solve_info()
+model.require(p.termination_status() == "OPTIMAL")
+si = p.solve_info()
+si.display()
 
-print(f"Status: {p.termination_status}")
-print(f"Total cost (shipping + fixed): ${p.objective_value:.2f}")
+print(f"Status: {si.termination_status}")
+print(f"Total cost (shipping + fixed): ${si.objective_value:.2f}")
 
-assignments = model.select(
+print("\nAssignments:")
+model.select(
     Assignment.shipping.fc.name.alias("fulfillment_center"),
     Assignment.shipping.order.customer.alias("customer"),
     Assignment.x_qty.alias("quantity")
-).where(Assignment.x_qty > 0.001).to_df()
-
-print("\nAssignments:")
-print(assignments.to_string(index=False))
+).where(Assignment.x_qty > 0.001).inspect()
 
 fc_used = model.select(FCUsage.fc.name.alias("fc")).where(FCUsage.x_used > 0.5).to_df()
 print(f"\nActive fulfillment centers: {', '.join(fc_used['fc'].tolist())}")

@@ -40,7 +40,7 @@ The template includes scenario analysis across three capital budget levels ($1B,
 
 ## What's included
 
-- `grid_interconnection.py` -- main script with ontology, formulation, and scenario loop
+- `grid_interconnection.py` -- main script with ontology, formulation, and scenario analysis
 - `data/substations.csv` -- 6 substations with current and maximum capacity
 - `data/projects.csv` -- 14 data center projects with capacity needs, revenue, and connection costs
 - `data/upgrades.csv` -- 12 upgrade options (2 per substation) with capacity additions and costs
@@ -90,33 +90,17 @@ The template includes scenario analysis across three capital budget levels ($1B,
 
 6. Expected output:
    ```text
-   Running scenario: budget = 1000000000
-     Status: OPTIMAL, Objective: 1876000000.0
-
-     Approved projects:
-                  name  value
-       Stargate_Phase2    1.0
-        HyperCloud_DFW    1.0
-        DataBank_Colo     1.0
-
-     Selected upgrades:
-                        name  value
-    upg_Abilene_350           1.0
-
-   Running scenario: budget = 2000000000
-     Status: OPTIMAL, Objective: 4560000000.0
+   Approved projects per scenario:
+     scenario    project          revenue  connection_cost
+     budget_1B   Stargate_Phase2  ...      ...
+     budget_1B   HyperCloud_DFW   ...      ...
+     budget_2B   Stargate_Phase2  ...      ...
      ...
 
-   Running scenario: budget = 3000000000
-     Status: OPTIMAL, Objective: 6230000000.0
+   Selected upgrades per scenario:
+     scenario    substation   capacity_added  upgrade_cost
+     budget_1B   Abilene      350             ...
      ...
-
-   ==================================================
-   Scenario Analysis Summary
-   ==================================================
-     1000000000: OPTIMAL, obj=1876000000.0
-     2000000000: OPTIMAL, obj=4560000000.0
-     3000000000: OPTIMAL, obj=6230000000.0
    ```
 
 ## Template structure
@@ -150,38 +134,68 @@ Upgrade.capacity_added = Property(f"{Upgrade} adds {Integer:capacity_added}")
 Upgrade.upgrade_cost = Property(f"{Upgrade} has {Float:upgrade_cost}")
 ```
 
-**2. Define decision variables.** Binary variables for project approval and upgrade selection:
+**2. Define scenario-indexed decision variables.** A `Scenario` concept holds the three budget levels. Binary variables are indexed by `Scenario` so all scenarios are solved simultaneously:
 
 ```python
-s.solve_for(Project.x_approved, type="bin", name=Project.name)
-s.solve_for(Upgrade.x_selected, type="bin", name=["upg", Upgrade.substation.name, Upgrade.capacity_added])
+Scenario = Concept("Scenario", identify_by={"name": String})
+Scenario.budget = Property(f"{Scenario} has {Float:budget}")
+
+Project.x_approved = Property(f"{Project} in {Scenario} is {Float:approved}")
+Upgrade.x_selected = Property(f"{Upgrade} in {Scenario} is {Float:selected}")
+
+p.solve_for(
+    Project.x_approved(Scenario, x_approved),
+    type="bin",
+    name=["proj", Scenario.name, Project.name],
+)
+p.solve_for(
+    Upgrade.x_selected(Scenario, x_selected),
+    type="bin",
+    name=["upg", Scenario.name, Upgrade.substation.name, Upgrade.capacity_added],
+)
 ```
 
-**3. Add capacity constraints.** At each substation, the total capacity demand from approved projects must not exceed current capacity plus any selected upgrade:
+**3. Add capacity constraints.** At each substation per scenario, the total capacity demand from approved projects must not exceed current capacity plus any selected upgrade:
 
 ```python
-project_demand = sum(ProjectRef.x_approved * ProjectRef.capacity_needed).where(
-    ProjectRef.substation == Substation).per(Substation)
-upgrade_capacity = sum(UpgradeRef.x_selected * UpgradeRef.capacity_added).where(
-    UpgradeRef.substation == Substation).per(Substation)
-s.satisfy(model.require(Substation.current_capacity + upgrade_capacity >= project_demand))
+p.satisfy(model.where(
+    Project.x_approved(Scenario, x_approved_ref),
+    Upgrade.x_selected(Scenario, x_selected_ref),
+    Project.substation(Substation),
+    Upgrade.substation(Substation),
+).require(
+    Substation.current_capacity
+    + sum(x_selected_ref * UpgradeRef.capacity_added).where(UpgradeRef.substation == Substation).per(Substation, Scenario)
+    >= sum(x_approved_ref * ProjectRef.capacity_needed).where(ProjectRef.substation == Substation).per(Substation, Scenario)
+))
 ```
 
-**4. Enforce budget and upgrade limits.** At most one upgrade per substation, and total investment within budget:
+**4. Enforce budget and upgrade limits.** At most one upgrade per substation per scenario, and total investment within each scenario's budget:
 
 ```python
-s.satisfy(model.require(sum(UpgradeRef.x_selected).where(
-    UpgradeRef.substation == Substation).per(Substation) <= 1))
+p.satisfy(model.where(
+    Upgrade.x_selected(Scenario, x_selected),
+).require(
+    sum(x_selected).where(Upgrade.substation == Substation).per(Substation, Scenario) <= 1
+))
 
-total_investment = sum(Project.x_approved * Project.connection_cost) + sum(Upgrade.x_selected * Upgrade.upgrade_cost)
-s.satisfy(model.require(total_investment <= budget))
+p.satisfy(model.where(
+    Project.x_approved(Scenario, x_approved),
+    Upgrade.x_selected(Scenario, x_selected),
+).require(
+    sum(x_approved * Project.connection_cost).per(Scenario)
+    + sum(x_selected * Upgrade.upgrade_cost).per(Scenario)
+    <= Scenario.budget
+))
 ```
 
-**5. Maximize net revenue:**
+**5. Maximize net revenue.** The objective sums net revenue (revenue minus connection cost) across all approved projects in all scenarios. Because the budget constraint is per-scenario, the solver independently optimizes each scenario's project selection:
 
 ```python
-net_revenue = sum(Project.x_approved * (Project.revenue - Project.connection_cost))
-s.maximize(net_revenue)
+p.maximize(
+    sum(x_approved * (Project.revenue - Project.connection_cost))
+    .where(Project.x_approved(Scenario, x_approved))
+)
 ```
 
 ## Customize this template

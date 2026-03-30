@@ -19,7 +19,6 @@ Output:
 from pathlib import Path
 
 from pandas import read_csv
-
 from relationalai.semantics import Float, Integer, Model, String, sum
 from relationalai.semantics.reasoners.prescriptive import Problem
 
@@ -51,9 +50,9 @@ Lane.capacity = Property(f"{Lane} has {Integer:capacity}")
 lane_csv = read_csv(data_dir / "lanes.csv")
 lane_data = model.data(lane_csv)
 model.define(
-    l := Lane.new(id=lane_data.id, source_id=lane_data.source_id, dest_id=lane_data.dest_id),
-    l.cost_per_unit(lane_data.cost_per_unit),
-    l.capacity(lane_data.capacity),
+    lane := Lane.new(id=lane_data.id, source_id=lane_data.source_id, dest_id=lane_data.dest_id),
+    lane.cost_per_unit(lane_data.cost_per_unit),
+    lane.capacity(lane_data.capacity),
 )
 SourceSite = Site.ref()
 DestSite = Site.ref()
@@ -116,16 +115,16 @@ p.minimize(total_cost)
 
 p.display()
 p.solve("highs", time_limit_sec=60)
-p.display_solve_info()
+model.require(p.termination_status() == "OPTIMAL")
+si = p.solve_info()
+si.display()
 
-print(f"Status: {p.termination_status}")
-print(f"Total transfer cost: ${p.objective_value:.2f}")
+print(f"Status: {si.termination_status}")
+print(f"Total transfer cost: ${si.objective_value:.2f}")
 
-transfers = model.select(
+print("\nTransfers:")
+model.select(
     Transfer.lane.source.name.alias("from"),
     Transfer.lane.dest.name.alias("to"),
     Transfer.x_quantity,
-).where(Transfer.x_quantity > 0.001).to_df()
-
-print("\nTransfers:")
-print(transfers.to_string(index=False))
+).where(Transfer.x_quantity > 0.001).inspect()

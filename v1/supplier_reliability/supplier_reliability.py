@@ -27,7 +27,6 @@ Output:
 from pathlib import Path
 
 from pandas import read_csv
-
 from relationalai.semantics import Float, Integer, Model, String, sum
 from relationalai.semantics.reasoners.prescriptive import Problem
 
@@ -128,19 +127,25 @@ for excluded in excluded_suppliers:
 
     p.display()
     p.solve("highs", time_limit_sec=60)
-    p.display_solve_info()
+    si = p.solve_info()
+    si.display()
 
-    scenario_results.append({
-        "scenario": label,
-        "status": str(p.termination_status),
-        "objective": p.objective_value,
-    })
-    print(f"  Status: {p.termination_status}, Objective: {p.objective_value}")
+    scenario_results.append(
+        {
+            "scenario": label,
+            "status": str(si.termination_status),
+            "objective": si.objective_value,
+        }
+    )
+    if si.termination_status != "OPTIMAL":
+        print(f"  Status: {si.termination_status} — skipping results")
+        continue
+    print(f"  Status: {si.termination_status}, Objective: {si.objective_value}")
 
     # Print order plan from solver results
     var_df = p.variable_values().to_df()
     qty_df = var_df[var_df["name"].str.startswith("qty") & (var_df["value"] > 0.001)]
-    print(f"\n  Orders:")
+    print("\n  Orders:")
     print(qty_df.to_string(index=False))
 
 # Summary
@@ -148,4 +153,6 @@ print("\n" + "=" * 50)
 print("Scenario Analysis Summary")
 print("=" * 50)
 for result in scenario_results:
-    print(f"  {result['scenario']}: {result['status']}, obj={result['objective']}")
+    obj = result["objective"]
+    obj_str = f"{obj:.2f}" if obj is not None else "N/A"
+    print(f"  {result['scenario']}: {result['status']}, obj={obj_str}")

@@ -21,7 +21,6 @@ Output:
 from pathlib import Path
 
 from pandas import read_csv
-
 from relationalai.semantics import Float, Integer, Model, String, sum
 from relationalai.semantics.reasoners.prescriptive import Problem
 
@@ -110,17 +109,17 @@ p.minimize(total_cost)
 
 p.display()
 p.solve("highs", time_limit_sec=60)
-p.display_solve_info()
+model.require(p.termination_status() == "OPTIMAL")
+si = p.solve_info()
+si.display()
 
-print(f"Status: {p.termination_status}")
-print(f"Total cost: ${p.objective_value:.2f}")
+print(f"Status: {si.termination_status}")
+print(f"Total cost: ${si.objective_value:.2f}")
 
-assignments = model.select(
+print("\nVehicle assignments:")
+model.select(
     Assignment.vehicle.name.alias("vehicle"),
     Assignment.trip.name.alias("trip"),
     Assignment.trip.origin.alias("from"),
     Assignment.trip.destination.alias("to")
-).where(Assignment.x_assigned > 0.5).to_df()
-
-print("\nVehicle assignments:")
-print(assignments.to_string(index=False))
+).where(Assignment.x_assigned > 0.5).inspect()
