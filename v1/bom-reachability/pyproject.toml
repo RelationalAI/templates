@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rai-template-bom-reachability"
+version = "0.0.0"
+description = "RelationalAI template: bill of materials dependency tracing with reachability and betweenness centrality"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "relationalai==1.0.8",
+  "pandas>=2.0.0",
+]
+
+[tool.setuptools]
+packages = []

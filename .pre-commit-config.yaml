@@ -20,6 +20,7 @@ repos:
         name: Verify version README indexes
         entry: python scripts/generate_version_indexes.py --check
         language: python
+        pass_filenames: false
         additional_dependencies:
           - PyYAML==6.0.2
         files: ^(v\d.*/.*/README\.md|scripts/generate_version_indexes\.py)$
