@@ -1,10 +1,11 @@
 """Inventory rebalancing (prescriptive optimization) template.
 
-This script demonstrates a linear optimization problem in RelationalAI:
+This script demonstrates a network flow optimization in RelationalAI:
 
 - Load sample CSVs describing sites, transfer lanes, and demand.
 - Model sites, lanes, and demand as *concepts* with typed properties.
 - Choose non-negative transfer quantities subject to capacity and inventory limits.
+- Enforce flow conservation at intermediate (transit) sites.
 - Satisfy demand at each destination site.
 - Minimize total transfer cost.
 
@@ -31,9 +32,10 @@ Concept, Property = model.Concept, model.Property
 
 data_dir = Path(__file__).parent / "data"
 
-# Concept: sites with current inventory
+# Concept: sites with current inventory and type (WAREHOUSE, TRANSIT, STORE)
 Site = Concept("Site", identify_by={"id": Integer})
 Site.name = Property(f"{Site} has {String:name}")
+Site.type = Property(f"{Site} has {String:type}")
 Site.inventory = Property(f"{Site} has {Integer:inventory}")
 site_csv = read_csv(data_dir / "sites.csv")
 model.define(Site.new(model.data(site_csv).to_schema()))
@@ -98,6 +100,15 @@ p.satisfy(capacity_limit)
 outbound = sum(TransferRef.x_quantity).where(TransferRef.lane.source == Site).per(Site)
 inventory_limit = model.require(outbound <= Site.inventory)
 p.satisfy(inventory_limit)
+
+# Constraint: flow conservation at transit sites (inflow == outflow)
+InRef = Transfer.ref()
+OutRef = Transfer.ref()
+TransitSite = Site.ref()
+inflow = sum(InRef.x_quantity).where(InRef.lane.dest == TransitSite).per(TransitSite)
+outflow = sum(OutRef.x_quantity).where(OutRef.lane.source == TransitSite).per(TransitSite)
+flow_balance = model.require(inflow == outflow).where(TransitSite.type("TRANSIT"))
+p.satisfy(flow_balance)
 
 # Constraint: demand satisfaction at each destination site
 inbound = sum(TransferRef.x_quantity).where(TransferRef.lane.dest == DemandRef.site).per(DemandRef)
