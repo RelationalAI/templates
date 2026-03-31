@@ -1,6 +1,7 @@
 ---
 title: "Manufacturing Compliance"
 description: "Define derived business rules for machine maintenance scheduling, parts reordering, risk assessment, and qualification expiry tracking."
+featured: false
 experience_level: beginner
 industry: Manufacturing
 reasoning_types:
@@ -16,6 +17,8 @@ tags:
 # Manufacturing Compliance
 
 ## What this template is for
+
+This template uses **rules-based reasoning** to define derived business rules for machine maintenance scheduling, parts reordering, risk assessment, and qualification expiry tracking.
 
 Manufacturing operations require continuous monitoring of machine health, parts stock, and technician certifications. Business rules help surface exceptions automatically: which machines are overdue for maintenance, which parts need reordering, which machines pose the highest risk, and which technician qualifications are about to expire.
 
@@ -61,7 +64,7 @@ The four rules demonstrate different rule patterns:
 
 1. Download ZIP:
    ```bash
-   curl -O https://docs.relational.ai/templates/zips/v1/manufacturing_compliance.zip
+   curl -O https://private.relational.ai/templates/zips/v1/manufacturing_compliance.zip
    unzip manufacturing_compliance.zip
    cd manufacturing_compliance
    ```
@@ -116,20 +119,20 @@ Each rule uses the `model.where(...).define(...)` pattern to create a boolean fl
 
 ```python
 # Simple comparison rule
-Machine.is_overdue_maintenance = model.Relationship(f"{Machine} is overdue maintenance")
+Machine.is_overdue_maintenance = Relationship(f"{Machine} is overdue maintenance")
 model.where(
     Machine.remaining_useful_life < Machine.maintenance_duration_hours,
 ).define(Machine.is_overdue_maintenance())
 
 # Multi-condition AND rule
-Machine.is_high_risk = model.Relationship(f"{Machine} is high risk")
+Machine.is_high_risk = Relationship(f"{Machine} is high risk")
 model.where(
     Machine.failure_probability > 0.3,
     Machine.criticality == "HIGH",
 ).define(Machine.is_high_risk())
 
 # Certification expiry rule
-Qualification.is_expiring = model.Relationship(f"{Qualification} is expiring")
+Qualification.is_expiring = Relationship(f"{Qualification} is expiring")
 model.where(Qualification.days_remaining < 30).define(Qualification.is_expiring())
 ```
 
@@ -142,3 +145,17 @@ Each rule is queried with `model.select(...).where(Concept.rule_flag())` to disp
 - **Add more rules**: Define additional Relationships for new business conditions (e.g., `Technician.is_overloaded` based on qualification count).
 - **Chain rules**: Reference one rule's output in another rule's definition (e.g., flag machines as critical if they are both overdue for maintenance AND high risk).
 - **Connect to optimization**: Use rule flags as constraint filters in a prescriptive formulation (e.g., prioritize high-risk machines in maintenance scheduling).
+
+## Troubleshooting
+
+<details>
+<summary><code>ModuleNotFoundError</code></summary>
+
+Make sure you activated the virtual environment and ran `python -m pip install .` to install all dependencies listed in `pyproject.toml`.
+</details>
+
+<details>
+<summary>Connection or authentication errors</summary>
+
+Run `rai init` to configure your Snowflake connection. Verify that the RAI Native App is installed and your user has the required permissions.
+</details>

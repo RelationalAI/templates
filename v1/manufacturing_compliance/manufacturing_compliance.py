@@ -16,8 +16,11 @@ Rules defined:
 
 No optimization solver is used. Rules are pure logic derivations.
 
-Run:
-    `python manufacturing_compliance.py`
+    Run:
+        `python manufacturing_compliance.py`
+
+    Output:
+        Prints which entities match each compliance rule.
 """
 
 from pathlib import Path
@@ -32,9 +35,9 @@ Concept, Property, Relationship = model.Concept, model.Property, model.Relations
 # Define semantic model & load data
 # --------------------------------------------------
 
-data_dir = Path(__file__).parent / "data"
+DATA_DIR = Path(__file__).parent / "data"
 
-# Concept: machines
+# Machine concept: manufacturing machines with maintenance and risk attributes.
 Machine = Concept("Machine", identify_by={"id": String})
 Machine.name = Property(f"{Machine} has {String:name}")
 Machine.machine_type = Property(f"{Machine} has type {String:machine_type}")
@@ -50,7 +53,7 @@ Machine.failure_probability = Property(
 )
 Machine.criticality = Property(f"{Machine} has criticality {String:criticality}")
 
-machine_data = model.data(read_csv(data_dir / "machines.csv"))
+machine_data = model.data(read_csv(DATA_DIR / "machines.csv"))
 model.define(
     m := Machine.new(id=machine_data.id),
     m.name(machine_data.name),
@@ -62,7 +65,7 @@ model.define(
     m.criticality(machine_data.criticality),
 )
 
-# Concept: parts inventory
+# PartsInventory concept: spare parts stock levels at each facility.
 PartsInventory = Concept("PartsInventory", identify_by={"id": String})
 PartsInventory.facility = Property(f"{PartsInventory} at {String:facility}")
 PartsInventory.part_name = Property(f"{PartsInventory} has {String:part_name}")
@@ -73,7 +76,7 @@ PartsInventory.min_order_qty = Property(
     f"{PartsInventory} minimum order {Integer:min_order_qty} units"
 )
 
-parts_data = model.data(read_csv(data_dir / "parts_inventory.csv"))
+parts_data = model.data(read_csv(DATA_DIR / "parts_inventory.csv"))
 model.define(
     p := PartsInventory.new(id=parts_data.id),
     p.facility(parts_data.facility),
@@ -82,19 +85,19 @@ model.define(
     p.min_order_qty(parts_data.min_order_qty),
 )
 
-# Concept: technicians
+# Technician concept: maintenance personnel with skill levels.
 Technician = Concept("Technician", identify_by={"id": String})
 Technician.name = Property(f"{Technician} has {String:name}")
 Technician.skill_level = Property(f"{Technician} has skill level {String:skill_level}")
 
-tech_data = model.data(read_csv(data_dir / "technicians.csv"))
+tech_data = model.data(read_csv(DATA_DIR / "technicians.csv"))
 model.define(
     t := Technician.new(id=tech_data.id),
     t.name(tech_data.name),
     t.skill_level(tech_data.skill_level),
 )
 
-# Concept: qualifications (technician-to-machine-type certifications)
+# Qualification concept: technician-to-machine-type certifications.
 Qualification = Concept(
     "Qualification", identify_by={"id": String}
 )
@@ -106,7 +109,7 @@ Qualification.days_remaining = Property(
     f"{Qualification} has {Integer:days_remaining} days remaining"
 )
 
-qual_data = model.data(read_csv(data_dir / "qualifications.csv"))
+qual_data = model.data(read_csv(DATA_DIR / "qualifications.csv"))
 model.define(
     q := Qualification.new(id=qual_data.id),
     q.technician(Technician.filter_by(id=qual_data.technician_id)),
@@ -122,7 +125,7 @@ model.define(
 
 Machine.is_overdue_maintenance = Relationship(f"{Machine} is overdue maintenance")
 model.where(
-    Machine.remaining_useful_life < Machine.maintenance_duration_hours,
+    Machine.remaining_useful_life < Machine.maintenance_duration_hours
 ).define(Machine.is_overdue_maintenance())
 
 # --------------------------------------------------
@@ -133,7 +136,7 @@ model.where(
 
 PartsInventory.needs_reorder = Relationship(f"{PartsInventory} needs reorder")
 model.where(
-    PartsInventory.stock_level <= PartsInventory.min_order_qty,
+    PartsInventory.stock_level <= PartsInventory.min_order_qty
 ).define(PartsInventory.needs_reorder())
 
 # --------------------------------------------------
@@ -156,7 +159,7 @@ model.where(
 
 Qualification.is_expiring = Relationship(f"{Qualification} is expiring")
 model.where(
-    Qualification.days_remaining < 30,
+    Qualification.days_remaining < 30
 ).define(Qualification.is_expiring())
 
 # --------------------------------------------------

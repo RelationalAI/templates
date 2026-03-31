@@ -17,6 +17,8 @@ tags:
 
 ## What this template is for
 
+This template uses **rules-based reasoning** to define derived business rules for shipment compliance, sourcing risk, and demand escalation.
+
 Supply chain operations generate large volumes of shipment, procurement, and demand data. Business rules help surface exceptions and risks automatically: which shipments are late, which inputs depend on a single supplier, which demands need urgent attention.
 
 This template uses RelationalAI's logic reasoner to define four derived rules as boolean flags on existing concepts. No optimization solver is involved -- rules are pure declarative logic evaluated over the data model.
@@ -63,7 +65,7 @@ The four rules demonstrate different rule patterns:
 
 1. Download ZIP:
    ```bash
-   curl -O https://docs.relational.ai/templates/zips/v1/shipment_compliance.zip
+   curl -O https://private.relational.ai/templates/zips/v1/shipment_compliance.zip
    unzip shipment_compliance.zip
    cd shipment_compliance
    ```
@@ -120,11 +122,11 @@ Each rule uses the `model.where(...).define(...)` pattern to create a boolean fl
 
 ```python
 # Simple threshold rule
-Shipment.is_late = model.Relationship(f"{Shipment} is late")
+Shipment.is_late = Relationship(f"{Shipment} is late")
 model.where(Shipment.delay_days > 0).define(Shipment.is_late())
 
 # Cross-entity rule (joins Shipment -> Supplier)
-Shipment.is_at_risk = model.Relationship(f"{Shipment} is at risk")
+Shipment.is_at_risk = Relationship(f"{Shipment} is at risk")
 model.where(
     Shipment.status != "DELIVERED",
     Shipment.supplier(SupplierRef),
@@ -149,3 +151,17 @@ Each rule is queried with `model.select(...).where(Concept.rule_flag())` to disp
 - **Add more rules**: Define additional Relationships for new business conditions (e.g., `Supplier.is_high_risk` based on reliability thresholds).
 - **Chain rules**: Reference one rule's output in another rule's definition (e.g., flag demands as critical if they are escalated AND depend on a single-sourced BOM input).
 - **Connect to optimization**: Use rule flags as constraint filters in a prescriptive formulation (e.g., exclude at-risk shipments from allocation).
+
+## Troubleshooting
+
+<details>
+<summary><code>ModuleNotFoundError</code></summary>
+
+Make sure you activated the virtual environment and ran `python -m pip install .` to install all dependencies listed in `pyproject.toml`.
+</details>
+
+<details>
+<summary>Connection or authentication errors</summary>
+
+Run `rai init` to configure your Snowflake connection. Verify that the RAI Native App is installed and your user has the required permissions.
+</details>

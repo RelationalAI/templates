@@ -1,6 +1,7 @@
 ---
 title: "Machine Dependencies"
 description: "Analyze machine dependency networks through shared technician qualifications to identify clusters and bottleneck machines."
+featured: false
 experience_level: intermediate
 industry: Manufacturing
 reasoning_types:
@@ -16,6 +17,8 @@ tags:
 # Machine Dependencies
 
 ## What this template is for
+
+This template uses **graph analysis** to analyze machine dependency networks through shared technician qualifications, identifying clusters and bottleneck machines.
 
 Manufacturing facilities rely on specialized technicians to maintain equipment. When the same technician is qualified for multiple machines, those machines share a maintenance dependency -- if the technician is unavailable, all dependent machines are affected. Understanding these hidden dependency chains is critical for risk management.
 
@@ -59,7 +62,7 @@ This template uses RelationalAI's graph reasoner to build an undirected dependen
 
 1. Download ZIP:
    ```bash
-   curl -O https://docs.relational.ai/templates/zips/v1/machine_dependencies.zip
+   curl -O https://private.relational.ai/templates/zips/v1/machine_dependencies.zip
    unzip machine_dependencies.zip
    cd machine_dependencies
    ```
@@ -102,6 +105,8 @@ This template uses RelationalAI's graph reasoner to build an undirected dependen
 ```
 
 ## How it works
+
+This section walks through the highlights in `machine_dependencies.py`.
 
 ```text
 CSV files --> Define Machine + Technician + Qualification concepts --> Build undirected graph --> WCC clusters --> Betweenness centrality --> Display results
@@ -150,3 +155,17 @@ model.where(
 - **Weight edges**: Use the number of shared technicians as edge weight for weighted graph analysis.
 - **Combine with rules**: Use the manufacturing_compliance template's rule flags (e.g., is_high_risk) to filter or annotate graph results.
 - **Use your own data**: Replace CSVs in `data/` with your own machine and qualification data, keeping the same column names.
+
+## Troubleshooting
+
+<details>
+<summary><code>ModuleNotFoundError</code></summary>
+
+Make sure you activated the virtual environment and ran `python -m pip install .` to install all dependencies listed in `pyproject.toml`.
+</details>
+
+<details>
+<summary>Connection or authentication errors</summary>
+
+Run `rai init` to configure your Snowflake connection. Verify that the RAI Native App is installed and your user has the required permissions.
+</details>

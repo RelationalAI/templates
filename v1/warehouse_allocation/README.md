@@ -18,6 +18,8 @@ tags:
 
 ## What this template is for
 
+This template chains **graph analysis** and **prescriptive reasoning (optimization)** to allocate inventory across a distribution network using centrality to prioritize critical hubs.
+
 Distribution networks have critical hub warehouses that connect many downstream sites. Identifying these hubs and ensuring they carry adequate inventory is essential for supply chain resilience.
 
 This template chains two reasoning stages:
@@ -60,7 +62,7 @@ The key pattern: the graph reasoner writes centrality scores as properties on th
 
 1. Download ZIP:
    ```bash
-   curl -O https://docs.relational.ai/templates/zips/v1/warehouse_allocation.zip
+   curl -O https://private.relational.ai/templates/zips/v1/warehouse_allocation.zip
    unzip warehouse_allocation.zip
    cd warehouse_allocation
    ```
@@ -104,6 +106,8 @@ The key pattern: the graph reasoner writes centrality scores as properties on th
 
 ## How it works
 
+This section walks through the highlights in `warehouse_allocation.py`.
+
 ### Stage 1: Graph centrality
 
 An undirected weighted graph is built from the route network, with route capacity as edge weight. Eigenvector centrality identifies sites whose connections make them structurally important:
@@ -134,3 +138,17 @@ The `Site.centrality` property was populated by Stage 1 and is referenced direct
 - **Change the centrality algorithm**: Replace `eigenvector_centrality()` with `pagerank()` or `betweenness_centrality()` for different notions of importance.
 - **Add a third stage**: Use rule-based reasoning to flag sites that are both high-centrality and under-stocked, feeding into an alerting workflow.
 - **Scenario analysis**: Loop over different budget levels or centrality thresholds to see how allocation shifts.
+
+## Troubleshooting
+
+<details>
+<summary><code>ModuleNotFoundError</code></summary>
+
+Make sure you activated the virtual environment and ran `python -m pip install .` to install all dependencies listed in `pyproject.toml`.
+</details>
+
+<details>
+<summary>Connection or authentication errors</summary>
+
+Run `rai init` to configure your Snowflake connection. Verify that the RAI Native App is installed and your user has the required permissions.
+</details>

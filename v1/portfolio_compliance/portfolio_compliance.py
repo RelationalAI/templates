@@ -13,8 +13,11 @@ Rules defined:
 
 No optimization solver is used. Rules are pure logic derivations.
 
-Run:
-    `python portfolio_compliance.py`
+    Run:
+        `python portfolio_compliance.py`
+
+    Output:
+        Prints which entities match each compliance rule.
 """
 
 from pathlib import Path
@@ -30,21 +33,21 @@ Concept, Property, Relationship = model.Concept, model.Property, model.Relations
 # Define semantic model & load data
 # --------------------------------------------------
 
-data_dir = Path(__file__).parent / "data"
+DATA_DIR = Path(__file__).parent / "data"
 
-# Concept: users
+# User concept: account holders with risk profiles.
 User = Concept("User", identify_by={"id": Integer})
 User.name = Property(f"{User} has {String:name}")
 User.risk_score = Property(f"{User} has {Float:risk_score}")
-model.define(User.new(model.data(read_csv(data_dir / "users.csv")).to_schema()))
+model.define(User.new(model.data(read_csv(DATA_DIR / "users.csv")).to_schema()))
 
-# Concept: accounts
+# Account concept: investment accounts owned by users.
 Account = Concept("Account", identify_by={"id": Integer})
 Account.account_type = Property(f"{Account} has {String:account_type}")
 Account.balance = Property(f"{Account} has {Float:balance}")
 Account.owner = Relationship(f"{Account} owned by {User}")
 
-acct_data = model.data(read_csv(data_dir / "accounts.csv"))
+acct_data = model.data(read_csv(DATA_DIR / "accounts.csv"))
 model.define(
     a := Account.new(
         id=acct_data.id,
@@ -54,21 +57,21 @@ model.define(
     a.balance(acct_data.balance),
 )
 
-# Concept: stocks
+# Stock concept: equities with sector and return attributes.
 Stock = Concept("Stock", identify_by={"id": Integer})
 Stock.ticker = Property(f"{Stock} has {String:ticker}")
 Stock.sector = Property(f"{Stock} has {String:sector}")
 Stock.expected_return = Property(f"{Stock} has {Float:expected_return}")
-model.define(Stock.new(model.data(read_csv(data_dir / "stocks.csv")).to_schema()))
+model.define(Stock.new(model.data(read_csv(DATA_DIR / "stocks.csv")).to_schema()))
 
-# Concept: holdings
+# Holding concept: stock positions within accounts.
 Holding = Concept("Holding", identify_by={"id": Integer})
 Holding.quantity = Property(f"{Holding} has {Float:quantity}")
 Holding.purchase_price = Property(f"{Holding} has {Float:purchase_price}")
 Holding.account = Relationship(f"{Holding} in {Account}")
 Holding.stock = Relationship(f"{Holding} of {Stock}")
 
-holding_data = model.data(read_csv(data_dir / "holdings.csv"))
+holding_data = model.data(read_csv(DATA_DIR / "holdings.csv"))
 model.define(
     h := Holding.new(
         id=holding_data.id,
@@ -79,14 +82,14 @@ model.define(
     h.purchase_price(holding_data.purchase_price),
 )
 
-# Concept: transactions
+# Transaction concept: financial transactions linked to users.
 Transaction = Concept("Transaction", identify_by={"id": Integer})
 Transaction.amount = Property(f"{Transaction} has {Float:amount}")
 Transaction.category = Property(f"{Transaction} has {String:category}")
 Transaction.is_flagged = Property(f"{Transaction} has {Boolean:is_flagged}")
 Transaction.user = Relationship(f"{Transaction} belongs to {User}")
 
-txn_data = model.data(read_csv(data_dir / "transactions.csv"))
+txn_data = model.data(read_csv(DATA_DIR / "transactions.csv"))
 model.define(
     t := Transaction.new(
         id=txn_data.id,

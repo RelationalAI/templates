@@ -14,8 +14,11 @@ Rules defined:
 
 No optimization solver is used. Rules are pure logic derivations.
 
-Run:
-    `python shipment_compliance.py`
+    Run:
+        `python shipment_compliance.py`
+
+    Output:
+        Prints which entities match each compliance rule.
 """
 
 from pathlib import Path
@@ -31,28 +34,28 @@ Concept, Property, Relationship = model.Concept, model.Property, model.Relations
 # Define semantic model & load data
 # --------------------------------------------------
 
-data_dir = Path(__file__).parent / "data"
+DATA_DIR = Path(__file__).parent / "data"
 
-# Concept: suppliers
+# Supplier concept: companies that supply parts.
 Supplier = Concept("Supplier", identify_by={"id": Integer})
 Supplier.name = Property(f"{Supplier} has {String:name}")
 Supplier.reliability_score = Property(f"{Supplier} has {Float:reliability_score}")
-model.define(Supplier.new(model.data(read_csv(data_dir / "suppliers.csv")).to_schema()))
+model.define(Supplier.new(model.data(read_csv(DATA_DIR / "suppliers.csv")).to_schema()))
 
-# Concept: stock keeping units
+# SKU concept: stock keeping units tracked in the supply chain.
 SKU = Concept("SKU", identify_by={"id": Integer})
 SKU.name = Property(f"{SKU} has {String:name}")
 SKU.product_type = Property(f"{SKU} has {String:product_type}")
-model.define(SKU.new(model.data(read_csv(data_dir / "skus.csv")).to_schema()))
+model.define(SKU.new(model.data(read_csv(DATA_DIR / "skus.csv")).to_schema()))
 
-# Concept: shipments
+# Shipment concept: deliveries of SKUs from suppliers.
 Shipment = Concept("Shipment", identify_by={"id": Integer})
 Shipment.sku = Relationship(f"{Shipment} carries {SKU}")
 Shipment.supplier = Relationship(f"{Shipment} from {Supplier}")
 Shipment.status = Property(f"{Shipment} has {String:status}")
 Shipment.delay_days = Property(f"{Shipment} has {Integer:delay_days}")
 
-shipment_data = model.data(read_csv(data_dir / "shipments.csv"))
+shipment_data = model.data(read_csv(DATA_DIR / "shipments.csv"))
 model.define(
     s := Shipment.new(
         id=shipment_data.id,
@@ -63,7 +66,7 @@ model.define(
     s.delay_days(shipment_data.delay_days),
 )
 
-# Concept: operations (production/shipping routes)
+# Operation concept: production or shipping routes that transform SKUs.
 Operation = Concept("Operation", identify_by={"id": Integer})
 Operation.type = Property(f"{Operation} has {String:type}")
 Operation.input_sku = Relationship(f"{Operation} consumes {SKU}", short_name="input_sku")
@@ -71,7 +74,7 @@ Operation.output_sku = Relationship(f"{Operation} produces {SKU}", short_name="o
 Operation.cost_per_unit = Property(f"{Operation} has {Float:cost_per_unit}")
 Operation.capacity_per_day = Property(f"{Operation} has {Integer:capacity_per_day}")
 
-op_data = model.data(read_csv(data_dir / "operations.csv"))
+op_data = model.data(read_csv(DATA_DIR / "operations.csv"))
 model.define(
     op := Operation.new(
         id=op_data.id,
@@ -83,13 +86,13 @@ model.define(
     op.capacity_per_day(op_data.capacity_per_day),
 )
 
-# Concept: bill of materials
+# BillOfMaterials concept: input SKU requirements for production.
 BOM = Concept("BillOfMaterials", identify_by={"id": Integer})
 BOM.input_sku = Relationship(f"{BOM} requires {SKU}", short_name="input_sku")
 BOM.site_id = Property(f"{BOM} has {Integer:site_id}")
 BOM.input_quantity = Property(f"{BOM} has {Integer:input_quantity}")
 
-bom_data = model.data(read_csv(data_dir / "bill_of_materials.csv"))
+bom_data = model.data(read_csv(DATA_DIR / "bill_of_materials.csv"))
 model.define(
     b := BOM.new(
         id=bom_data.id,
@@ -99,13 +102,13 @@ model.define(
     b.input_quantity(bom_data.input_quantity),
 )
 
-# Concept: demand
+# Demand concept: quantity requirements for specific SKUs.
 Demand = Concept("Demand", identify_by={"id": Integer})
 Demand.sku = Relationship(f"{Demand} for {SKU}")
 Demand.quantity = Property(f"{Demand} has {Integer:quantity}")
 Demand.priority = Property(f"{Demand} has {String:priority}")
 
-demand_data = model.data(read_csv(data_dir / "demands.csv"))
+demand_data = model.data(read_csv(DATA_DIR / "demands.csv"))
 model.define(
     d := Demand.new(
         id=demand_data.id,

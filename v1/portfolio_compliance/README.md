@@ -17,6 +17,8 @@ tags:
 
 ## What this template is for
 
+This template uses **rules-based reasoning** to define derived business rules for portfolio concentration limits, sector exposure, and high-risk trader detection.
+
 Financial services firms must monitor portfolio positions for regulatory concentration limits. Business rules help surface violations automatically: which holdings are overconcentrated, which accounts have excessive sector exposure, which traders exhibit high-risk behavior.
 
 This template uses RelationalAI's logic reasoner to define three derived rules as boolean flags on existing concepts. No optimization solver is involved -- rules are pure declarative logic evaluated over the data model.
@@ -61,7 +63,7 @@ The three rules demonstrate different rule patterns:
 
 1. Download ZIP:
    ```bash
-   curl -O https://docs.relational.ai/templates/zips/v1/portfolio_compliance.zip
+   curl -O https://private.relational.ai/templates/zips/v1/portfolio_compliance.zip
    unzip portfolio_compliance.zip
    cd portfolio_compliance
    ```
@@ -117,7 +119,7 @@ Each rule uses the `model.where(...).define(...)` pattern to create a boolean fl
 
 ```python
 # Cross-entity threshold rule (joins Holding -> Account)
-Holding.is_overconcentrated = model.Relationship(f"{Holding} is overconcentrated")
+Holding.is_overconcentrated = Relationship(f"{Holding} is overconcentrated")
 acct_ref = Account.ref()
 model.where(
     Holding.account(acct_ref),
@@ -153,3 +155,17 @@ Each rule is queried with `model.select(...).where(Concept.rule_flag())` to disp
 - **Add more rules**: Define additional Relationships for new business conditions (e.g., `Account.is_underperforming` based on expected returns).
 - **Chain rules**: Reference one rule's output in another rule's definition (e.g., flag accounts as critical if they have sector concentration AND the owner is a high-risk trader).
 - **Connect to optimization**: Use rule flags as constraint filters in a prescriptive formulation (e.g., rebalance portfolios to eliminate concentration violations).
+
+## Troubleshooting
+
+<details>
+<summary><code>ModuleNotFoundError</code></summary>
+
+Make sure you activated the virtual environment and ran `python -m pip install .` to install all dependencies listed in `pyproject.toml`.
+</details>
+
+<details>
+<summary>Connection or authentication errors</summary>
+
+Run `rai init` to configure your Snowflake connection. Verify that the RAI Native App is installed and your user has the required permissions.
+</details>

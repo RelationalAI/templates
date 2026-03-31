@@ -1,18 +1,20 @@
 """Machine Dependencies (graph analysis) template.
 
-Answers:
-  "Which machines share maintenance dependencies through common technicians?"
-  "Which machines are bottlenecks in the dependency network?"
+This script demonstrates graph analysis in RelationalAI:
 
-Data: machines, technicians, and qualifications loaded from CSV.
-Graph: undirected, unweighted. Machine nodes connected when they share
-  a qualified technician (self-join on qualifications).
-Algorithms:
-  - weakly_connected_component() for dependency clusters
-  - betweenness_centrality() for bottleneck machines
+- Load machines, technicians, and qualifications from CSV.
+- Build an undirected, unweighted graph where machine nodes are connected
+  when they share a qualified technician (self-join on qualifications).
+- Run weakly_connected_component() to identify dependency clusters.
+- Run betweenness_centrality() to find bottleneck machines.
+- Combine betweenness with failure probability to flag critical machines.
 
-Run:
-    `python machine_dependencies.py`
+    Run:
+        `python machine_dependencies.py`
+
+    Output:
+        Prints dependency clusters, betweenness centrality scores, and
+        critical bottleneck machines.
 """
 
 from pathlib import Path
@@ -28,9 +30,9 @@ model = Model("machine_dependencies")
 # Load data & define semantic model
 # --------------------------------------------------
 
-data_dir = Path(__file__).parent / "data"
+DATA_DIR = Path(__file__).parent / "data"
 
-# Concept: machines
+# Machine concept: manufacturing machines with maintenance and risk attributes.
 Machine = model.Concept("Machine", identify_by={"id": String})
 Machine.name = model.Property(f"{Machine} has {String:name}")
 Machine.machine_type = model.Property(f"{Machine} has type {String:machine_type}")
@@ -40,7 +42,7 @@ Machine.failure_probability = model.Property(
 )
 Machine.criticality = model.Property(f"{Machine} has criticality {String:criticality}")
 
-machine_data = model.data(read_csv(data_dir / "machines.csv"))
+machine_data = model.data(read_csv(DATA_DIR / "machines.csv"))
 model.define(
     m := Machine.new(id=machine_data.id),
     m.name(machine_data.name),
@@ -50,26 +52,26 @@ model.define(
     m.criticality(machine_data.criticality),
 )
 
-# Concept: technicians
+# Technician concept: maintenance personnel with skill levels.
 Technician = model.Concept("Technician", identify_by={"id": String})
 Technician.name = model.Property(f"{Technician} has {String:name}")
 Technician.skill_level = model.Property(f"{Technician} has skill level {String:skill_level}")
 
-tech_data = model.data(read_csv(data_dir / "technicians.csv"))
+tech_data = model.data(read_csv(DATA_DIR / "technicians.csv"))
 model.define(
     t := Technician.new(id=tech_data.id),
     t.name(tech_data.name),
     t.skill_level(tech_data.skill_level),
 )
 
-# Concept: qualifications (technician-to-machine links)
+# Qualification concept: technician-to-machine certification links.
 Qualification = model.Concept(
     "Qualification", identify_by={"id": String}
 )
 Qualification.technician = model.Relationship(f"{Qualification} for {Technician}")
 Qualification.machine = model.Relationship(f"{Qualification} covers {Machine}")
 
-qual_data = model.data(read_csv(data_dir / "qualifications.csv"))
+qual_data = model.data(read_csv(DATA_DIR / "qualifications.csv"))
 model.define(
     q := Qualification.new(id=qual_data.id),
     q.technician(Technician.filter_by(id=qual_data.technician_id)),
