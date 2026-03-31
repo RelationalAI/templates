@@ -58,7 +58,7 @@ Most templates are designed to be runnable and inspectable without additional re
 - **Code**: a small, focused implementation of the use case
 - **Sample data**: enough data to exercise the model end to end
 - **Documentation**: problem framing, prerequisites, quickstart, and customization notes
-- **Metadata**: template metadata used by the [RelationalAI Docs](https://docs.relational.ai/) site to surface the template in the [template gallery](https://docs.relational.ai/templates).
+- **Metadata**: template metadata used by the [RelationalAI Docs](https://docs.relational.ai/) site to surface the template in the [template gallery](https://docs.relational.ai/build/templates).
 
 ## Contributing
 
