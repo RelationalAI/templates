@@ -5,7 +5,7 @@ featured: false
 experience_level: beginner
 industry: Manufacturing
 reasoning_types:
-  - Rules
+   - Rules-based
 tags:
   - Derived Properties
   - Business Logic

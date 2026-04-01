@@ -5,7 +5,7 @@ featured: false
 experience_level: beginner
 industry: "Supply Chain & Logistics"
 reasoning_types:
-  - Rules
+   - Rules-based
 tags:
   - Derived Properties
   - Business Logic
