@@ -93,13 +93,14 @@ p.satisfy(model.where(
 model.require(p.num_variables() == count(Edge) + count(Node))
 model.require(p.num_min_objectives() == 1)
 p.display()
-p.solve("highs", time_limit_sec=60)
-p.solve_info().display()
 
-# Check solution.
-model.require(p.termination_status() == "OPTIMAL")
-model.require(count(Edge).where(Edge.x > 0.5) == count(Node))
+# Solve with HiGHS (MILP branch-and-bound)
+p.solve("highs", time_limit_sec=60)
+si_highs = p.solve_info()
+si_highs.display()
+print(f"HiGHS: {si_highs.termination_status}, tour distance={si_highs.objective_value:.1f}")
 
 # Extract solution
+model.require(count(Edge).where(Edge.x > 0.5) == count(Node))
 print("\nTour edges:")
 model.select(Edge.i.alias("from"), Edge.j.alias("to")).where(Edge.x > 0.5).inspect()

@@ -6,7 +6,7 @@ This script demonstrates a Markowitz mean-variance portfolio optimization model 
 - Model stocks as *concepts* with typed properties and pairwise covariance.
 - Choose non-negative allocations across available stocks.
 - Enforce a budget constraint and a minimum expected return constraint.
-- Minimize portfolio variance (risk).
+- Minimize portfolio variance (risk) using Ipopt (interior-point NLP solver).
 - Solve multiple minimum-return scenarios simultaneously using Scenario as a
   first-class Concept (single solve, all scenarios at once).
 
@@ -36,18 +36,18 @@ model = Model("portfolio")
 # Define semantic model & load data
 # --------------------------------------------------
 
-data_dir = Path(__file__).parent / "data"
+DATA_DIR = Path(__file__).parent / "data"
 
-# Concept: stocks with expected returns
+# Stock concept: equities with expected returns.
 Stock = model.Concept("Stock", identify_by={"index": Integer})
 Stock.returns = model.Property(f"{Stock} has {Float:returns}")
-returns_csv = read_csv(data_dir / "returns.csv")
+returns_csv = read_csv(DATA_DIR / "returns.csv")
 model.define(Stock.new(model.data(returns_csv).to_schema()))
 
-# Relationship: covariance matrix between stock pairs (binary property)
+# Covariance concept: pairwise covariance matrix between stocks.
 Stock.covar = model.Property(f"{Stock} and {Stock} have {Float:covar}")
 PairedStock = Stock.ref()
-covar_data = model.data(read_csv(data_dir / "covar.csv"))
+covar_data = model.data(read_csv(DATA_DIR / "covar.csv"))
 model.where(Stock.index(covar_data.i), PairedStock.index(covar_data.j)).define(
     Stock.covar(Stock, PairedStock, covar_data.covar)
 )
@@ -111,10 +111,15 @@ p.minimize(
 # Solve (single solve for all scenarios)
 # --------------------------------------------------
 
+# Solve with Ipopt (interior-point NLP solver).
+# The quadratic covariance objective makes this a QP problem.
+# Ipopt handles convex QP via interior-point methods and scales well
+# on large covariance matrices.
 p.display()
-p.solve("highs", time_limit_sec=60)
-model.require(p.termination_status() == "OPTIMAL")
-p.solve_info().display()
+p.solve("ipopt", time_limit_sec=60)
+si = p.solve_info()
+si.display()
+print(f"Status: {si.termination_status}, risk={si.objective_value:.4f}")
 
 # --------------------------------------------------
 # Extract results per scenario

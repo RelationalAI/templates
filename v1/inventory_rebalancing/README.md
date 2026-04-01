@@ -1,6 +1,6 @@
 ---
 title: "Inventory Rebalancing"
-description: "Transfer inventory between warehouse and store locations to meet demand at minimum shipping cost."
+description: "Transfer inventory through a warehouse-hub-store network to meet demand at minimum shipping cost, with flow conservation at transit nodes."
 featured: false
 experience_level: beginner
 industry: "Supply Chain"
@@ -18,9 +18,9 @@ tags:
 
 Retail and distribution networks often have inventory spread unevenly across warehouses and stores. Some locations hold excess stock while others face shortages. Manually deciding which transfers to make, from where, and in what quantities quickly becomes impractical as the network grows.
 
-This template uses prescriptive reasoning to determine the optimal set of inventory transfers across a network of sites. It minimizes total shipping cost while ensuring every demand point receives enough stock, respecting lane capacities and available inventory at each source.
+This template uses **prescriptive reasoning (optimization)** to determine the optimal set of inventory transfers across a network of warehouses, transit hubs, and stores. It minimizes total shipping cost while ensuring every demand point receives enough stock, respecting lane capacities, available inventory at each source, and flow conservation at transit sites.
 
-The model is a classic network flow formulation that naturally scales to larger networks. It handles multiple source warehouses, destination stores, and shipping lanes with heterogeneous costs and capacities.
+The model is a network flow formulation with three site types: warehouses (supply), transit hubs (flow-through only), and stores (demand). Flow conservation at transit sites ensures that everything flowing in must flow out -- a fundamental network optimization pattern.
 
 ## Who this is for
 
@@ -33,13 +33,14 @@ The model is a classic network flow formulation that naturally scales to larger 
 
 - A network flow model with continuous transfer quantity variables
 - Lane capacity and source inventory constraints
-- Demand satisfaction constraints at destination sites
+- Flow conservation at transit hub sites (inflow == outflow)
+- Demand satisfaction constraints at store sites
 - A minimum-cost objective over all shipping lanes
 
 ## What's included
 
 - `inventory_rebalancing.py` -- Main script that defines the model, solves it, and prints results
-- `data/sites.csv` -- Warehouse and store locations with current inventory levels
+- `data/sites.csv` -- Warehouse, transit hub, and store locations with type and inventory levels
 - `data/lanes.csv` -- Shipping lanes between sites with per-unit costs and capacities
 - `data/demand.csv` -- Demand quantities at destination sites
 - `pyproject.toml` -- Python project configuration with dependencies
@@ -89,13 +90,10 @@ The model is a classic network flow formulation that naturally scales to larger 
 6. Expected output:
    ```text
    Status: OPTIMAL
-   Total transfer cost: $1750.00
+   Total transfer cost: $XXXX.XX
 
    Transfers:
-           from        to  x_quantity
-    Warehouse_A   Store_1       200.0
-    Warehouse_B   Store_2       100.0
-    Warehouse_C   Store_2        70.0
+   (flows route through Hub_East and Hub_West transit sites to stores)
    ```
 
 ## Template structure
@@ -119,6 +117,7 @@ The model defines three concepts: sites with inventory levels, lanes connecting 
 ```python
 Site = Concept("Site", identify_by={"id": Integer})
 Site.name = Property(f"{Site} has {String:name}")
+Site.type = Property(f"{Site} has {String:type}")  # WAREHOUSE, TRANSIT, or STORE
 Site.inventory = Property(f"{Site} has {Integer:inventory}")
 
 Lane = Concept("Lane", identify_by={"id": Integer})
@@ -143,16 +142,20 @@ p.solve_for(Transfer.x_quantity,
 
 ### 3. Add constraints
 
-Three constraint families ensure feasibility: lane capacity limits, source inventory limits, and demand satisfaction at each destination.
+Four constraint families ensure feasibility: lane capacity limits, source inventory limits, flow conservation at transit sites, and demand satisfaction at stores.
 
 ```python
 # Lane capacity
-capacity_limit = model.require(Transfer.x_quantity <= Transfer.lane.capacity)
-p.satisfy(capacity_limit)
+p.satisfy(model.require(Transfer.x_quantity <= Transfer.lane.capacity))
 
 # Source inventory
 outbound = sum(TransferRef.x_quantity).where(TransferRef.lane.source == Site).per(Site)
 p.satisfy(model.require(outbound <= Site.inventory))
+
+# Flow conservation at transit sites (inflow == outflow)
+inflow = sum(InRef.x_quantity).where(InRef.lane.dest == TransitSite).per(TransitSite)
+outflow = sum(OutRef.x_quantity).where(OutRef.lane.source == TransitSite).per(TransitSite)
+p.satisfy(model.require(inflow == outflow).where(TransitSite.type("TRANSIT")))
 
 # Demand satisfaction (inbound transfers + local inventory >= demand)
 inbound = sum(TransferRef.x_quantity).where(TransferRef.lane.dest == DemandRef.site).per(DemandRef)
@@ -180,9 +183,9 @@ p.minimize(total_cost)
 ## Troubleshooting
 
 <details>
-<summary>Solver returns INFEASIBLE</summary>
+<summary><code>Status: INFEASIBLE</code></summary>
 
-Check that total available inventory across all sites is sufficient to meet total demand. With the current data, stores need 250 + 200 = 450 units while warehouses hold 500 + 300 + 200 = 1000 units, plus stores have 50 + 30 = 80 units locally. Also verify that lane capacities allow enough flow to each destination.
+Check that total available inventory across all warehouses is sufficient to meet total demand at stores. Transit hubs carry no inventory -- they only route flow through. Also verify that lane capacities allow enough flow between warehouses, hubs, and stores.
 </details>
 
 <details>
@@ -198,7 +201,7 @@ Run `rai init` to configure your Snowflake connection. Verify that the RAI Nativ
 </details>
 
 <details>
-<summary>ModuleNotFoundError for relationalai</summary>
+<summary><code>ModuleNotFoundError</code></summary>
 
 Ensure you activated the virtual environment and ran `python -m pip install .` to install all dependencies listed in `pyproject.toml`.
 </details>

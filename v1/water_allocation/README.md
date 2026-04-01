@@ -1,26 +1,29 @@
 ---
 title: "Water Allocation"
-description: "Minimize the cost of distributing water from sources to users while meeting demand and respecting capacity."
+description: "Minimize the cost of distributing water from sources to users with nonlinear transmission losses."
 featured: false
-experience_level: beginner
+experience_level: intermediate
 industry: "Utilities & Resources"
 reasoning_types:
   - Prescriptive
 tags:
   - Resource Allocation
   - Network Flow
-  - Linear Programming
+  - Nonlinear Programming
+  - Ipopt
 ---
 
 # Water Allocation
 
 ## What this template is for
 
+This template uses **prescriptive reasoning (optimization)** to minimize the cost of distributing water from sources to users with nonlinear transmission losses.
+
 Water utilities must distribute water from multiple sources (reservoirs, groundwater) to multiple user groups (municipal, industrial, agricultural). Each source has a limited capacity and a different extraction cost. Each connection in the distribution network has a maximum flow rate and a transmission loss rate that reduces the effective amount delivered.
 
-This template uses prescriptive reasoning to find the minimum-cost allocation that satisfies every user's demand. It models the distribution network as a flow problem with source capacity constraints, demand satisfaction constraints (accounting for transmission losses), and connection flow limits.
+This template uses prescriptive reasoning to find the minimum-cost allocation that satisfies every user's demand. It models the distribution network as a flow problem with source capacity constraints, demand satisfaction constraints with nonlinear transmission losses, and connection flow limits.
 
-The formulation is a classic network flow linear program, making it an accessible introduction to optimization with RelationalAI. The same pattern applies to any resource distribution problem with supply, demand, capacity, and loss.
+The key feature is nonlinear loss modeling: transmission losses increase with utilization (effective delivery = flow * (1 - loss_rate * flow / max_flow)), creating a quadratic constraint that requires the Ipopt nonlinear solver. This is more realistic than constant-rate losses -- at low flow the loss is small, but at capacity the full loss rate applies.
 
 ## Who this is for
 
@@ -30,9 +33,9 @@ The formulation is a classic network flow linear program, making it an accessibl
 
 ## What you'll build
 
-- A linear programming model for minimum-cost water distribution
+- A nonlinear optimization model for minimum-cost water distribution solved with Ipopt
 - Source capacity constraints limiting total outflow per source
-- Demand constraints accounting for transmission losses on each connection
+- Demand constraints with nonlinear (utilization-dependent) transmission losses
 - Flow upper bounds on individual connections
 
 ## What's included
@@ -56,7 +59,7 @@ The formulation is a classic network flow linear program, making it an accessibl
 
 1. Download ZIP:
    ```bash
-   curl -O https://docs.relational.ai/templates/zips/v1/water_allocation.zip
+   curl -O https://private.relational.ai/templates/zips/v1/water_allocation.zip
    unzip water_allocation.zip
    cd water_allocation
    ```
@@ -87,17 +90,11 @@ The formulation is a classic network flow linear program, making it an accessibl
 
 6. Expected output:
    ```text
-   Status: OPTIMAL
-   Total cost: $815.38
+   Status: LOCALLY_SOLVED
+   Total cost: $853.39
 
    Flow allocations:
-          source         user    flow
-     Reservoir_A    Municipal  400.00
-     Reservoir_A   Industrial  300.00
-     Reservoir_A  Agricultural  300.00
-     Reservoir_B    Municipal  232.46
-     Reservoir_B   Industrial  130.11
-      Groundwater  Agricultural  236.84
+   (exact values depend on Ipopt convergence)
    ```
 
 ## Template structure
@@ -148,17 +145,19 @@ p.solve_for(
 
 ### 3. Add capacity and demand constraints
 
-Source capacity limits total outflow. Demand constraints account for transmission losses -- if a connection loses 10% in transit, only 90% of the flow is effective:
+Source capacity limits total outflow. Demand constraints use nonlinear losses -- loss increases with utilization, so effective delivery per connection is `flow * (1 - loss_rate * flow / max_flow)`:
 
 ```python
 outflow = sum(ConnectionRef.x_flow).where(ConnectionRef.source == Source).per(Source)
 p.satisfy(model.require(outflow <= Source.capacity))
 
 effective_inflow = sum(
-    ConnectionRef.x_flow * (1 - ConnectionRef.loss_rate)
+    ConnectionRef.x_flow * (1 - ConnectionRef.loss_rate * ConnectionRef.x_flow / ConnectionRef.max_flow)
 ).where(ConnectionRef.user == User).per(User)
 p.satisfy(model.require(effective_inflow >= User.demand))
 ```
+
+This quadratic constraint makes the problem nonlinear, requiring the Ipopt solver.
 
 ### 4. Minimize cost
 
@@ -179,7 +178,7 @@ p.minimize(total_cost)
 ## Troubleshooting
 
 <details>
-<summary>Solver returns INFEASIBLE</summary>
+<summary><code>Status: INFEASIBLE</code></summary>
 
 Total source capacity (after losses) is insufficient to meet all user demands. Check that the sum of source capacities minus worst-case losses covers total demand. You can increase source capacity in `sources.csv`, reduce demands in `users.csv`, or add new connections in `connections.csv`.
 </details>
@@ -191,7 +190,7 @@ The solver avoids expensive routes when cheaper alternatives exist. If a source 
 </details>
 
 <details>
-<summary>ModuleNotFoundError: No module named 'relationalai'</summary>
+<summary><code>ModuleNotFoundError</code></summary>
 
 Make sure you activated the virtual environment and ran `python -m pip install .` to install all dependencies listed in `pyproject.toml`.
 </details>

@@ -11,11 +11,14 @@ tags:
   - Risk Minimization
   - Portfolio Optimization
   - Scenario Analysis
+  - Ipopt
 ---
 
 # Portfolio Balancing
 
 ## What this template is for
+
+This template uses **prescriptive reasoning (optimization)** to minimize portfolio risk for a given return target using Markowitz mean-variance optimization.
 
 Portfolio optimization is a cornerstone of quantitative finance. Given a set of stocks with expected returns and a covariance matrix describing how their returns co-move, the Markowitz mean-variance model finds the allocation that minimizes portfolio risk (variance) while achieving a target minimum return.
 
@@ -57,7 +60,7 @@ The template also demonstrates scenario analysis by solving across multiple retu
 
 1. Download ZIP:
    ```bash
-   curl -O https://docs.relational.ai/templates/zips/v1/portfolio_balancing.zip
+   curl -O https://private.relational.ai/templates/zips/v1/portfolio_balancing.zip
    unzip portfolio_balancing.zip
    cd portfolio_balancing
    ```
@@ -143,38 +146,66 @@ Stock.returns = model.Property(f"{Stock} has {Float:returns}")
 Stock.covar = model.Property(f"{Stock} and {Stock} have {Float:covar}")
 ```
 
-### 2. Decision variables
+### 2. Scenario concept
 
-Each stock gets a continuous variable representing the quantity to hold:
+Scenarios are modeled as a first-class Concept with a `min_return` parameter. Three return targets (10, 20, 30) are solved simultaneously in a single solve call:
 
 ```python
-Stock.x_quantity = model.Property(f"{Stock} quantity is {Float:x}")
-p.solve_for(Stock.x_quantity, name=["qty", Stock.index], populate=False)
+Scenario = model.Concept("Scenario", identify_by={"name": String})
+Scenario.min_return = model.Property(f"{Scenario} has {Float:min_return}")
+scenario_data = model.data(
+    [("return_10", 10), ("return_20", 20), ("return_30", 30)],
+    columns=["name", "min_return"],
+)
+model.define(Scenario.new(scenario_data.to_schema()))
 ```
 
-### 3. Quadratic objective
+### 3. Decision variables
 
-Portfolio risk is minimized using the covariance matrix. The quadratic term sums over all stock pairs:
+Each stock gets a continuous variable indexed by Scenario (multi-argument Property):
 
 ```python
-covar_value = Float.ref()
-risk = sum(covar_value * Stock.x_quantity * PairedStock.x_quantity).where(Stock.covar(PairedStock, covar_value))
-p.minimize(risk)
+Stock.x_quantity = model.Property(f"{Stock} in {Scenario} has {Float:quantity}")
+x_qty = Float.ref()
+p.solve_for(Stock.x_quantity(Scenario, x_qty), name=["qty", Scenario.name, Stock.index])
 ```
 
 ### 4. Constraints
 
-The model enforces no short selling, a budget limit, and a minimum return target:
+The model enforces no short selling, a budget limit, and a minimum return target -- all scoped per Scenario:
 
 ```python
-p.satisfy(model.require(Stock.x_quantity >= 0))
-p.satisfy(model.require(sum(Stock.x_quantity) <= budget))
-p.satisfy(model.require(sum(Stock.returns * Stock.x_quantity) >= min_ret))
+p.satisfy(model.where(
+    Stock.x_quantity(Scenario, x_qty),
+).require(x_qty >= 0))
+
+p.satisfy(model.where(
+    Stock.x_quantity(Scenario, x_qty),
+).require(sum(x_qty).per(Scenario) <= budget))
+
+p.satisfy(model.where(
+    Stock.x_quantity(Scenario, x_qty),
+).require(sum(Stock.returns * x_qty).per(Scenario) >= Scenario.min_return))
 ```
 
-### 5. Scenario analysis
+### 5. Quadratic objective
 
-The template solves for three minimum return targets (10, 20, 30), illustrating how increasing return requirements force the optimizer to accept higher risk -- the efficient frontier trade-off.
+Portfolio risk is minimized using the covariance matrix. The quadratic term sums over all stock pairs, scoped per Scenario:
+
+```python
+covar_value = Float.ref()
+x_qty_paired = Float.ref()
+p.minimize(
+    sum(covar_value * x_qty * x_qty_paired)
+    .where(Stock.covar(PairedStock, covar_value),
+           Stock.x_quantity(Scenario, x_qty),
+           PairedStock.x_quantity(Scenario, x_qty_paired))
+)
+```
+
+### 6. Solve and extract
+
+A single `p.solve("ipopt")` call solves all scenarios at once. As the minimum return requirement increases, the optimizer must accept more risk -- the efficient frontier trade-off.
 
 ## Customize this template
 
@@ -207,5 +238,5 @@ Make sure you activated the virtual environment and ran `python -m pip install .
 <details>
 <summary>Solver reports non-convex or numerical issues</summary>
 
-Ensure the covariance matrix is symmetric and positive semi-definite. Check that `covar.csv` contains entries for all (i, j) pairs and that covar(i,j) == covar(j,i). The HiGHS solver requires convexity for QP problems.
+Ensure the covariance matrix is symmetric and positive semi-definite. Check that `covar.csv` contains entries for all (i, j) pairs and that covar(i,j) == covar(j,i). The Ipopt solver finds locally optimal solutions for convex QP problems.
 </details>

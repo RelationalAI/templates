@@ -1,10 +1,11 @@
 """Inventory rebalancing (prescriptive optimization) template.
 
-This script demonstrates a linear optimization problem in RelationalAI:
+This script demonstrates a network flow optimization in RelationalAI:
 
 - Load sample CSVs describing sites, transfer lanes, and demand.
 - Model sites, lanes, and demand as *concepts* with typed properties.
 - Choose non-negative transfer quantities subject to capacity and inventory limits.
+- Enforce flow conservation at intermediate (transit) sites.
 - Satisfy demand at each destination site.
 - Minimize total transfer cost.
 
@@ -29,16 +30,17 @@ Concept, Property = model.Concept, model.Property
 # Define semantic model & load data
 # --------------------------------------------------
 
-data_dir = Path(__file__).parent / "data"
+DATA_DIR = Path(__file__).parent / "data"
 
-# Concept: sites with current inventory
+# Site concept: locations with current inventory and type (WAREHOUSE, TRANSIT, STORE).
 Site = Concept("Site", identify_by={"id": Integer})
 Site.name = Property(f"{Site} has {String:name}")
+Site.type = Property(f"{Site} has {String:type}")
 Site.inventory = Property(f"{Site} has {Integer:inventory}")
-site_csv = read_csv(data_dir / "sites.csv")
+site_csv = read_csv(DATA_DIR / "sites.csv")
 model.define(Site.new(model.data(site_csv).to_schema()))
 
-# Relationship: lanes between sites with cost and capacity
+# Lane concept: transfer routes between sites with cost and capacity.
 Lane = Concept("Lane", identify_by={"id": Integer})
 Lane.source_id = Property(f"{Lane} has {Integer:source_id}")
 Lane.dest_id = Property(f"{Lane} has {Integer:dest_id}")
@@ -47,7 +49,7 @@ Lane.dest = Property(f"{Lane} to {Site}", short_name="dest")
 Lane.cost_per_unit = Property(f"{Lane} has {Float:cost_per_unit}")
 Lane.capacity = Property(f"{Lane} has {Integer:capacity}")
 
-lane_csv = read_csv(data_dir / "lanes.csv")
+lane_csv = read_csv(DATA_DIR / "lanes.csv")
 lane_data = model.data(lane_csv)
 model.define(
     lane := Lane.new(id=lane_data.id, source_id=lane_data.source_id, dest_id=lane_data.dest_id),
@@ -59,13 +61,13 @@ DestSite = Site.ref()
 model.define(Lane.source(SourceSite)).where(Lane.source_id == SourceSite.id)
 model.define(Lane.dest(DestSite)).where(Lane.dest_id == DestSite.id)
 
-# Concept: demand at each site
+# Demand concept: quantity requirements at each destination site.
 Demand = Concept("Demand", identify_by={"id": Integer})
 Demand.site_id = Property(f"{Demand} has {Integer:site_id}")
 Demand.site = Property(f"{Demand} at {Site}")
 Demand.quantity = Property(f"{Demand} has {Integer:quantity}")
 
-demand_csv = read_csv(data_dir / "demand.csv")
+demand_csv = read_csv(DATA_DIR / "demand.csv")
 demand_data = model.data(demand_csv)
 model.define(
     d := Demand.new(id=demand_data.id, site_id=demand_data.site_id),
@@ -98,6 +100,15 @@ p.satisfy(capacity_limit)
 outbound = sum(TransferRef.x_quantity).where(TransferRef.lane.source == Site).per(Site)
 inventory_limit = model.require(outbound <= Site.inventory)
 p.satisfy(inventory_limit)
+
+# Constraint: flow conservation at transit sites (inflow == outflow)
+InRef = Transfer.ref()
+OutRef = Transfer.ref()
+TransitSite = Site.ref()
+inflow = sum(InRef.x_quantity).where(InRef.lane.dest == TransitSite).per(TransitSite)
+outflow = sum(OutRef.x_quantity).where(OutRef.lane.source == TransitSite).per(TransitSite)
+flow_balance = model.require(inflow == outflow).where(TransitSite.type("TRANSIT"))
+p.satisfy(flow_balance)
 
 # Constraint: demand satisfaction at each destination site
 inbound = sum(TransferRef.x_quantity).where(TransferRef.lane.dest == DemandRef.site).per(DemandRef)
