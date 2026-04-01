@@ -94,16 +94,16 @@ The template also demonstrates **Scenario Concept inside the epsilon loop**: bud
    ======================================================================
    ANCHOR SOLVE 1: Minimize risk (no return constraint)
    ======================================================================
-   Status: LOCALLY_SOLVED, total risk: ...
-     budget_500: return = ...
-     budget_1000: return = ...
-     budget_2000: return = ...
+   Status: LOCALLY_SOLVED
+     budget_500: return = ..., risk = ...
+     budget_1000: return = ..., risk = ...
+     budget_2000: return = ..., risk = ...
 
    ======================================================================
    EPSILON SWEEP: 5 interior points
    ======================================================================
-     Point 1 (rate=...): LOCALLY_SOLVED, risk=...
-     Point 2 (rate=...): LOCALLY_SOLVED, risk=...
+     Point 1 (rate=...): LOCALLY_SOLVED
+     Point 2 (rate=...): LOCALLY_SOLVED
      ...
 
    ======================================================================
@@ -177,10 +177,10 @@ Stock.x_quantity = model.Property(f"{Stock} in {Scenario} has {Float:quantity}")
 x_qty = Float.ref()
 ```
 
-The `solve_epsilon` helper defines the shared constraints and objective, with an optional return lower bound parameterized by `eps_value`. This is the core of the bi-objective transformation: in the original single-objective template, the return target was a fixed Scenario property (`Scenario.min_return`). In the bi-objective version, the return target becomes a parameter swept by the epsilon loop.
+The `solve_epsilon` helper defines the shared constraints and objective, with an optional return-rate lower bound parameterized by `eps_rate`. This is the core of the bi-objective transformation: in the original single-objective template, the return target was a fixed Scenario property (`Scenario.min_return`). In the bi-objective version, the return target becomes a rate parameter swept by the epsilon loop, scaled by each scenario's budget.
 
 ```python
-def solve_epsilon(eps_value=None):
+def solve_epsilon(eps_rate=None):
     p = Problem(model, Float)
 
     p.solve_for(
@@ -204,12 +204,12 @@ def solve_epsilon(eps_value=None):
         Stock.x_quantity(Scenario, x_qty),
     ).require(sum(x_qty).per(Scenario) >= Scenario.budget))
 
-    # EPSILON CONSTRAINT: return >= target per scenario
-    if eps_value is not None:
+    # EPSILON CONSTRAINT: return rate >= target rate (scaled by budget)
+    if eps_rate is not None:
         p.satisfy(model.where(
             Stock.x_quantity(Scenario, x_qty),
         ).require(
-            sum(Stock.returns * x_qty).per(Scenario) >= eps_value
+            sum(Stock.returns * x_qty).per(Scenario) >= eps_rate * Scenario.budget
         ))
 
     # Primary objective: minimize risk (quadratic via covariance matrix)
@@ -228,7 +228,7 @@ def solve_epsilon(eps_value=None):
 Two anchor solves establish the feasible return range. Anchor 1 minimizes risk with no return constraint (finding the minimum-risk portfolio). Anchor 2 maximizes return (finding the maximum achievable return).
 
 ```python
-result1 = solve_epsilon(eps_value=None)
+result1 = solve_epsilon(eps_rate=None)
 ```
 
 The epsilon sweep then traces interior points between the anchors. Each solve minimizes risk subject to a return-rate floor that scales with budget, so all budget scenarios are handled in a single solve call per epsilon value.
@@ -241,21 +241,8 @@ epsilon_rates = [
 ]
 
 for i, rate in enumerate(epsilon_rates):
-    p = Problem(model, Float)
-    # ... same constraints as solve_epsilon ...
-    # Epsilon constraint: return rate >= target rate (scaled by budget)
-    p.satisfy(model.where(
-        Stock.x_quantity(Scenario, x_qty),
-    ).require(
-        sum(Stock.returns * x_qty).per(Scenario) >= rate * Scenario.budget
-    ))
-    p.minimize(
-        sum(covar_value * x_qty * x_qty_paired)
-        .where(Stock.covar(PairedStock, covar_value),
-               Stock.x_quantity(Scenario, x_qty),
-               PairedStock.x_quantity(Scenario, x_qty_paired))
-    )
-    p.solve("ipopt", time_limit_sec=60)
+    result = solve_epsilon(eps_rate=rate)
+    # ... extract per-scenario risk and return from result ...
 ```
 
 ### Pareto analysis output
@@ -294,7 +281,7 @@ for sn in scenario_names:
 <details>
 <summary>Problem is infeasible</summary>
 
-The minimum return target may be too high for the available stocks and budget. Lower the `min_return` scenario values or increase the `budget` parameter.
+The return rate target may be too high for the available stocks and budget. Reduce `n_interior` to use fewer sweep points, or increase the budget values in the scenario data.
 </details>
 
 <details>

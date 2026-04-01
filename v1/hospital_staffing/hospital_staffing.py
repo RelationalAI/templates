@@ -31,7 +31,6 @@ Output:
     marginal analysis with knee detection, and allocation shifts.
 """
 
-import builtins
 from pathlib import Path
 
 from pandas import read_csv
@@ -98,9 +97,9 @@ AssignmentRef = Assignment.ref()
 def solve_staffing(objective="min_overtime", eps_unmet=None):
     """Solve the staffing problem with the given objective and optional epsilon constraint.
 
-    objective: "min_overtime" (primary) or "max_service" (anchor 2 — minimize unmet demand)
+    objective: "min_overtime" (primary) or "min_unmet" (anchor 2 -- minimize unmet demand)
     eps_unmet: if set, add constraint sum(unmet) <= eps_unmet
-    Returns (solve_info, overtime_cost_value, total_unmet_value) or None if infeasible.
+    Returns (solve_info, variable_values_df, overtime_cost_value, total_unmet_value) or None if infeasible.
     """
     p = Problem(model, Float)
 
@@ -178,14 +177,6 @@ def solve_staffing(objective="min_overtime", eps_unmet=None):
     # Extract secondary objective values from variable_values df
     df = p.variable_values().to_df()
 
-    # Compute overtime cost from df
-    ot_total = 0.0
-    for _, row in df.iterrows():
-        name = str(row.iloc[0])
-        val = float(row.iloc[1])
-        if name.startswith("ot_") and val > 1e-6:
-            ot_total += val  # This is hours; need cost. Approximate from objective.
-
     # Compute unmet demand from df
     unmet_total = 0.0
     for _, row in df.iterrows():
@@ -214,6 +205,8 @@ if __name__ == "__main__":
     print("ANCHOR SOLVE 1: Minimize overtime cost (no unmet demand constraint)")
     print("=" * 70)
     result1 = solve_staffing("min_overtime", eps_unmet=None)
+    if result1 is None:
+        raise SystemExit("Anchor solve 1 (min overtime) is infeasible — check data and constraints.")
     si1, df1, ot1, unmet1 = result1
     print(f"Status: {si1.termination_status}")
     print(f"Overtime cost: ${ot1:.2f}")
@@ -223,6 +216,8 @@ if __name__ == "__main__":
     print("ANCHOR SOLVE 2: Minimize unmet demand (no overtime cost objective)")
     print("=" * 70)
     result2 = solve_staffing("min_unmet", eps_unmet=None)
+    if result2 is None:
+        raise SystemExit("Anchor solve 2 (min unmet) is infeasible — check data and constraints.")
     si2, df2, _, unmet2 = result2
     print(f"Status: {si2.termination_status}")
     print(f"Min unmet demand: {unmet2:.1f} patients")
@@ -254,12 +249,13 @@ if __name__ == "__main__":
         "eps_unmet": unmet_max,
         "overtime_cost": ot1,
         "unmet_demand": unmet1,
+        "df": df1,
     })
 
     for i, eps in enumerate(epsilon_values):
         result = solve_staffing("min_overtime", eps_unmet=eps)
         if result is None:
-            print(f"  Point {i+1} (unmet<={eps:.1f}): INFEASIBLE — stopping")
+            print(f"  Point {i+1} (unmet<={eps:.1f}): INFEASIBLE -- stopping")
             break
 
         si, df, ot_val, unmet_val = result
@@ -268,6 +264,7 @@ if __name__ == "__main__":
             "eps_unmet": eps,
             "overtime_cost": ot_val,
             "unmet_demand": unmet_val,
+            "df": df,
         })
         print(f"  Point {i+1} (unmet<={eps:.1f}): overtime=${ot_val:.2f}, "
               f"actual_unmet={unmet_val:.1f}  [{si.termination_status}]")
@@ -275,12 +272,13 @@ if __name__ == "__main__":
     # Add best-service anchor
     result_best = solve_staffing("min_overtime", eps_unmet=unmet_min)
     if result_best is not None:
-        si_best, _, ot_best, unmet_best = result_best
+        si_best, df_best, ot_best, unmet_best = result_best
         pareto.append({
             "label": "best_service",
             "eps_unmet": unmet_min,
             "overtime_cost": ot_best,
             "unmet_demand": unmet_best,
+            "df": df_best,
         })
 
     # --------------------------------------------------
@@ -311,7 +309,9 @@ if __name__ == "__main__":
             else:
                 rates.append(0)
 
-        # Knee detection
+        # Knee detection: rates[j+1]/rates[j] finds where marginal cost
+        # per patient jumps most sharply (cost-per-patient is INCREASING
+        # along the frontier, so the biggest jump ratio marks the knee).
         if len(rates) >= 2:
             max_jump = 0
             knee_idx = 1
@@ -324,7 +324,26 @@ if __name__ == "__main__":
                     max_jump = jump
                     knee_idx = j + 1
             print(f"\n  Knee: Point {knee_idx + 1} ({pareto[knee_idx]['label']}) "
-                  f"— marginal cost jumps {max_jump:.1f}x beyond this point")
+                  f"-- marginal cost jumps {max_jump:.1f}x beyond this point")
             print(f"  Recommendation: Target {pareto[knee_idx]['unmet_demand']:.0f} unmet patients "
-                  f"at ${pareto[knee_idx]['overtime_cost']:.2f} overtime cost — "
+                  f"at ${pareto[knee_idx]['overtime_cost']:.2f} overtime cost -- "
                   f"further service improvement costs significantly more per patient.")
+
+            # Print nurse assignments at the knee point
+            knee_df = pareto[knee_idx]["df"]
+            assignments = []
+            for _, row in knee_df.iterrows():
+                vname = str(row.iloc[0])
+                val = float(row.iloc[1])
+                if vname.startswith("assigned_") and val > 0.5:
+                    parts = vname.replace("assigned_", "").split("_", 1)
+                    if len(parts) == 2:
+                        assignments.append((parts[0], parts[1]))
+            if assignments:
+                print(f"\n  Knee-point assignments:")
+                by_shift = {}
+                for nurse, shift in assignments:
+                    by_shift.setdefault(shift, []).append(nurse)
+                for shift in sorted(by_shift):
+                    nurses = ", ".join(sorted(by_shift[shift]))
+                    print(f"    {shift}: {nurses}")

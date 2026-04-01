@@ -30,7 +30,6 @@ Output:
     per budget scenario, marginal analysis with knee detection.
 """
 
-import builtins
 from pathlib import Path
 
 from pandas import read_csv
@@ -209,11 +208,14 @@ def solve_grid(objective="max_revenue", eps_cost=None):
 
 def extract_cost_from_df(df, scenario_name):
     """Extract total infrastructure cost for a scenario from variable_values df."""
-    # Read project and upgrade data for cost lookup
     proj_costs = dict(zip(project_csv["name"], project_csv["connection_cost"]))
+    # Key by (substation_name, capacity_added) to match variable naming
+    # which uses Upgrade.substation.name (e.g. "Permian_Basin"), not substation_id
+    sub_id_to_name = dict(zip(substation_csv["id"], substation_csv["name"]))
     upg_costs = {}
     for _, row in upgrade_csv.iterrows():
-        upg_costs[(str(row["substation_id"]), str(int(row["capacity_added"])))] = row["upgrade_cost"]
+        sub_name = sub_id_to_name[row["substation_id"]]
+        upg_costs[(sub_name, str(int(row["capacity_added"])))] = row["upgrade_cost"]
 
     total = 0.0
     for _, row in df.iterrows():
@@ -254,6 +256,8 @@ if __name__ == "__main__":
     print("ANCHOR SOLVE 1: Maximize revenue (no cost constraint)")
     print("=" * 70)
     result1 = solve_grid("max_revenue", eps_cost=None)
+    if result1 is None:
+        raise SystemExit("Anchor solve 1 (max revenue) is infeasible — check data and constraints.")
     si1, df1 = result1
     print(f"Status: {si1.termination_status}, total revenue: {si1.objective_value:,.0f}")
     for sn in scenario_names:
@@ -269,11 +273,13 @@ if __name__ == "__main__":
     print("ANCHOR SOLVE 2: Minimize infrastructure cost")
     print(f"{'=' * 70}")
     result2 = solve_grid("min_cost", eps_cost=None)
+    if result2 is None:
+        raise SystemExit("Anchor solve 2 (min cost) is infeasible — check data and constraints.")
     si2, df2 = result2
     print(f"Status: {si2.termination_status}, min cost: {si2.objective_value:,.0f}")
     anchor2_costs = {sn: extract_cost_from_df(df2, sn) for sn in scenario_names}
-    cost_min = si2.objective_value  # min total cost
-    # Per-scenario cost at min
+    # Use min per-scenario cost (not aggregate objective) since epsilon constraint is .per(Scenario)
+    cost_min = min(anchor2_costs.values())
     for sn in scenario_names:
         rev = extract_revenue_from_df(df2, sn)
         cost = extract_cost_from_df(df2, sn)
@@ -305,12 +311,13 @@ if __name__ == "__main__":
             "cost_cap": cost_min,
             "revenue": extract_revenue_from_df(df2, sn),
             "cost": extract_cost_from_df(df2, sn),
+            "df": df2,
         })
 
     for i, eps in enumerate(epsilon_values):
         result = solve_grid("max_revenue", eps_cost=eps)
         if result is None:
-            print(f"  Point {i+1} (cost<={eps:,.0f}): INFEASIBLE — stopping")
+            print(f"  Point {i+1} (cost<={eps:,.0f}): INFEASIBLE -- stopping")
             break
 
         si, df = result
@@ -321,6 +328,7 @@ if __name__ == "__main__":
                 "cost_cap": eps,
                 "revenue": extract_revenue_from_df(df, sn),
                 "cost": extract_cost_from_df(df, sn),
+                "df": df,
             })
 
     # Add anchor 1 (max revenue) as last point
@@ -330,6 +338,7 @@ if __name__ == "__main__":
             "cost_cap": cost_max,
             "revenue": extract_revenue_from_df(df1, sn),
             "cost": extract_cost_from_df(df1, sn),
+            "df": df1,
         })
 
     # --------------------------------------------------
@@ -366,6 +375,10 @@ if __name__ == "__main__":
                 else:
                     rates.append(0)
 
+            # Knee detection: rates[j]/rates[j+1] finds where marginal revenue
+            # per dollar of infra drops most sharply (ratio > 1 = diminishing returns).
+            # This is rates[j]/rates[j+1] because revenue-per-cost is DECREASING
+            # along the frontier, so the biggest drop ratio marks the knee.
             if len(rates) >= 2:
                 max_jump = 0
                 knee_idx = 1
@@ -378,4 +391,20 @@ if __name__ == "__main__":
                         max_jump = jump
                         knee_idx = j + 1
                 print(f"\n    Knee: Point {knee_idx + 1} ({pts[knee_idx]['label']}) "
-                      f"— diminishing returns beyond this investment level")
+                      f"-- diminishing returns beyond this investment level")
+
+                # Print approved projects at the knee point
+                knee_df = pts[knee_idx]["df"]
+                proj_names = dict(zip(project_csv["name"], project_csv["revenue"]))
+                prefix = f"proj_{sn}_"
+                approved = []
+                for _, row in knee_df.iterrows():
+                    vname = str(row.iloc[0])
+                    val = float(row.iloc[1])
+                    if val > 0.5 and vname.startswith(prefix):
+                        pname = vname.replace(prefix, "")
+                        approved.append((pname, proj_names.get(pname, 0)))
+                if approved:
+                    print(f"\n    Knee-point approved projects ({sn}):")
+                    for pname, rev in sorted(approved, key=lambda x: -x[1]):
+                        print(f"      {pname}: revenue={rev:,.0f}")

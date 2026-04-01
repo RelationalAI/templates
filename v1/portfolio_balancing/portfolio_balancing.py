@@ -31,7 +31,6 @@ Output:
     scenario, marginal analysis with knee detection, and allocation shifts.
 """
 
-import builtins
 from pathlib import Path
 
 from pandas import read_csv
@@ -80,29 +79,61 @@ x_qty = Float.ref()
 covar_value = Float.ref()
 x_qty_paired = Float.ref()
 
-# Stock returns for Python-side secondary objective evaluation
-# (RAI `sum` is imported; use builtins.sum for Python-side aggregation)
+# Lookup maps for Python-side objective evaluation
+# (RAI `sum` is imported; solver only reports the primary objective)
 stock_returns_map = dict(zip(returns_csv["index"], returns_csv["returns"]))
+covar_map = {(int(r["i"]), int(r["j"])): r["covar"]
+             for _, r in read_csv(data_dir / "covar.csv").iterrows()}
+
+# Budget lookup — avoids fragile float(name.split("_")[1]) parsing
+budget_map = {"budget_500": 500.0, "budget_1000": 1000.0, "budget_2000": 2000.0}
 
 
-def evaluate_return(var_df, scenario_name):
-    """Evaluate portfolio return from variable_values df for a given scenario.
-    Solver only reports the primary objective (risk). Must compute secondary
-    (return) from the solution variables on the Python side."""
-    total = 0.0
+def _extract_allocations(var_df, scenario_name):
+    """Extract {stock_index: quantity} for a scenario from variable_values df."""
+    allocs = {}
     prefix = f"qty_{scenario_name}_"
     for _, row in var_df.iterrows():
         name = str(row.iloc[0])
         val = float(row.iloc[1])
         if name.startswith(prefix) and val > 1e-6:
             stock_idx = int(name.replace(prefix, ""))
-            total += stock_returns_map.get(stock_idx, 0) * val
+            allocs[stock_idx] = val
+    return allocs
+
+
+def evaluate_return(var_df, scenario_name):
+    """Evaluate portfolio return for a given scenario from variable_values df."""
+    allocs = _extract_allocations(var_df, scenario_name)
+    total = 0.0
+    for idx, qty in allocs.items():
+        total += stock_returns_map.get(idx, 0) * qty
     return total
 
 
-def solve_epsilon(eps_value=None):
-    """Solve risk minimization with optional return >= eps constraint.
-    Returns (solve_info, variable_values_df) or None if infeasible."""
+def evaluate_risk(var_df, scenario_name):
+    """Evaluate portfolio risk (variance) for a given scenario from variable_values df.
+    The solver objective aggregates risk across ALL scenarios; this computes the
+    per-scenario quadratic form x' * Cov * x."""
+    allocs = _extract_allocations(var_df, scenario_name)
+    if not allocs:
+        return 0.0
+    risk = 0.0
+    for (i, j), cov in covar_map.items():
+        qi = allocs.get(i, 0.0)
+        qj = allocs.get(j, 0.0)
+        risk += cov * qi * qj
+    return risk
+
+
+def solve_epsilon(eps_rate=None):
+    """Solve risk minimization with optional return-rate constraint.
+
+    eps_rate: if set, constrains return >= eps_rate * Scenario.budget per scenario.
+              This scales the epsilon target with budget so all scenarios are
+              handled in a single solve.
+    Returns (solve_info, variable_values_df) or None if infeasible.
+    """
     p = Problem(model, Float)
 
     p.solve_for(
@@ -126,14 +157,14 @@ def solve_epsilon(eps_value=None):
         Stock.x_quantity(Scenario, x_qty),
     ).require(sum(x_qty).per(Scenario) >= Scenario.budget))
 
-    # EPSILON CONSTRAINT: return >= target per scenario
+    # EPSILON CONSTRAINT: return rate >= target rate (scaled by budget)
     # SINGLE-OBJECTIVE: this was a fixed threshold (Scenario.min_return)
     # BI-OBJECTIVE: this becomes a parameterized bound swept by the loop
-    if eps_value is not None:
+    if eps_rate is not None:
         p.satisfy(model.where(
             Stock.x_quantity(Scenario, x_qty),
         ).require(
-            sum(Stock.returns * x_qty).per(Scenario) >= eps_value
+            sum(Stock.returns * x_qty).per(Scenario) >= eps_rate * Scenario.budget
         ))
 
     # Primary objective: minimize risk (quadratic via covariance matrix)
@@ -163,58 +194,60 @@ if __name__ == "__main__":
     print("=" * 70)
     print("ANCHOR SOLVE 1: Minimize risk (no return constraint)")
     print("=" * 70)
-    result1 = solve_epsilon(eps_value=None)
+    result1 = solve_epsilon(eps_rate=None)
+    if result1 is None:
+        raise SystemExit("Anchor solve 1 (min risk) is infeasible — check data and constraints.")
     si1, df1 = result1
-    print(f"Status: {si1.termination_status}, total risk: {si1.objective_value:.6f}")
+    print(f"Status: {si1.termination_status}")
 
-    # Compute return at min-risk portfolio for each scenario
     anchor1_returns = {}
+    anchor1_risks = {}
     for sn in scenario_names:
         ret = evaluate_return(df1, sn)
+        risk = evaluate_risk(df1, sn)
         anchor1_returns[sn] = ret
-        print(f"  {sn}: return = {ret:.4f}")
+        anchor1_risks[sn] = risk
+        print(f"  {sn}: return = {ret:.4f}, risk = {risk:.6f}")
 
     print(f"\n{'=' * 70}")
     print("ANCHOR SOLVE 2: Maximize return (swap objective)")
     print("=" * 70)
-    # For anchor 2, we solve max return separately per scenario
-    # (can't mix minimize risk + maximize return in one Problem)
+    # One solve covers all scenarios — maximize aggregate return, then read per-scenario
+    p2 = Problem(model, Float)
+    p2.solve_for(
+        Stock.x_quantity(Scenario, x_qty),
+        name=["qty", Scenario.name, Stock.index],
+        populate=False,
+    )
+    p2.satisfy(model.where(
+        Stock.x_quantity(Scenario, x_qty),
+    ).require(x_qty >= 0))
+    p2.satisfy(model.where(
+        Stock.x_quantity(Scenario, x_qty),
+    ).require(sum(x_qty).per(Scenario) <= Scenario.budget))
+    p2.satisfy(model.where(
+        Stock.x_quantity(Scenario, x_qty),
+    ).require(sum(x_qty).per(Scenario) >= Scenario.budget))
+    p2.maximize(
+        sum(Stock.returns * x_qty).where(Stock.x_quantity(Scenario, x_qty))
+    )
+    p2.solve("ipopt", time_limit_sec=60)
+    si2 = p2.solve_info()
+    if si2.termination_status not in ("OPTIMAL", "LOCALLY_SOLVED"):
+        raise SystemExit("Anchor solve 2 (max return) is infeasible — check data and constraints.")
+    df2 = p2.variable_values().to_df()
     anchor2_returns = {}
     for sn in scenario_names:
-        p2 = Problem(model, Float)
-        p2.solve_for(
-            Stock.x_quantity(Scenario, x_qty),
-            name=["qty", Scenario.name, Stock.index],
-            populate=False,
-        )
-        p2.satisfy(model.where(
-            Stock.x_quantity(Scenario, x_qty),
-        ).require(x_qty >= 0))
-        p2.satisfy(model.where(
-            Stock.x_quantity(Scenario, x_qty),
-        ).require(sum(x_qty).per(Scenario) <= Scenario.budget))
-        p2.satisfy(model.where(
-            Stock.x_quantity(Scenario, x_qty),
-        ).require(sum(x_qty).per(Scenario) >= Scenario.budget))
-        p2.maximize(
-            sum(Stock.returns * x_qty).where(Stock.x_quantity(Scenario, x_qty))
-        )
-        p2.solve("ipopt", time_limit_sec=60)
-        si2 = p2.solve_info()
-        df2 = p2.variable_values().to_df()
-        for sn2 in scenario_names:
-            ret = evaluate_return(df2, sn2)
-            anchor2_returns[sn2] = ret
-        print(f"Status: {si2.termination_status}, max return: {si2.objective_value:.4f}")
-        for sn2 in scenario_names:
-            print(f"  {sn2}: return = {anchor2_returns[sn2]:.4f}")
-        break  # one solve covers all scenarios
+        ret = evaluate_return(df2, sn)
+        anchor2_returns[sn] = ret
+    print(f"Status: {si2.termination_status}")
+    for sn in scenario_names:
+        print(f"  {sn}: return = {anchor2_returns[sn]:.4f}")
 
-    # Return range: use the tightest across scenarios
-    # (min-risk return varies by budget; max return = budget * max_stock_return)
-    return_rate_min = min(anchor1_returns[sn] / float(sn.split("_")[1])
+    # Return range as rate (per unit invested) — tightest across scenarios
+    return_rate_min = min(anchor1_returns[sn] / budget_map[sn]
                          for sn in scenario_names)
-    return_rate_max = max(anchor2_returns[sn] / float(sn.split("_")[1])
+    return_rate_max = max(anchor2_returns[sn] / budget_map[sn]
                          for sn in scenario_names)
     print(f"\nReturn rate range: [{return_rate_min:.4f}, {return_rate_max:.4f}] per unit invested")
 
@@ -223,7 +256,6 @@ if __name__ == "__main__":
     # --------------------------------------------------
 
     n_interior = 5
-    # Sweep return RATE (per unit invested) so epsilon scales with budget
     epsilon_rates = [
         return_rate_min + i * (return_rate_max - return_rate_min) / (n_interior + 1)
         for i in range(1, n_interior + 1)
@@ -234,82 +266,40 @@ if __name__ == "__main__":
     print(f"Return rates: {[f'{r:.4f}' for r in epsilon_rates]}")
     print(f"{'=' * 70}")
 
-    # Collect all Pareto points per scenario
-    # pareto[scenario_name] = [{"return_target", "return_actual", "risk", "alloc"}, ...]
+    # pareto[scenario_name] = [{"label", "return_target", "return_actual", "risk", "df"}, ...]
     pareto = {sn: [] for sn in scenario_names}
 
     # Add anchor 1 (min risk)
     for sn in scenario_names:
-        budget = float(sn.split("_")[1])
         pareto[sn].append({
             "label": "min_risk",
             "return_target": anchor1_returns[sn],
             "return_actual": anchor1_returns[sn],
-            "risk": si1.objective_value,  # total across scenarios
+            "risk": anchor1_risks[sn],
+            "df": df1,
         })
 
     for i, rate in enumerate(epsilon_rates):
-        # Each scenario gets eps = rate * budget
-        # But epsilon constraint is per-Scenario, and we pass a single scalar.
-        # Since budgets differ, we use the rate * budget for the smallest budget
-        # as a common floor. Actually — the constraint is per-Scenario and
-        # sum(returns * x).per(Scenario) >= eps. With fully-invested constraint,
-        # return = sum(returns * x) = budget * weighted_avg_return.
-        # So eps = rate * Scenario.budget would need Scenario.budget in the expression.
-        # Simpler: just use the rate as eps and scale by budget in the constraint.
-        # Let's use a per-scenario epsilon via Scenario property.
+        result = solve_epsilon(eps_rate=rate)
 
-        # Actually, simplest: set eps as a return RATE and constrain:
-        # sum(returns * x).per(Scenario) >= rate * Scenario.budget
-        p = Problem(model, Float)
-        p.solve_for(
-            Stock.x_quantity(Scenario, x_qty),
-            name=["qty", Scenario.name, Stock.index],
-            populate=False,
-        )
-        p.satisfy(model.where(
-            Stock.x_quantity(Scenario, x_qty),
-        ).require(x_qty >= 0))
-        p.satisfy(model.where(
-            Stock.x_quantity(Scenario, x_qty),
-        ).require(sum(x_qty).per(Scenario) <= Scenario.budget))
-        p.satisfy(model.where(
-            Stock.x_quantity(Scenario, x_qty),
-        ).require(sum(x_qty).per(Scenario) >= Scenario.budget))
-
-        # Epsilon constraint: return rate >= target rate (scaled by budget)
-        p.satisfy(model.where(
-            Stock.x_quantity(Scenario, x_qty),
-        ).require(
-            sum(Stock.returns * x_qty).per(Scenario) >= rate * Scenario.budget
-        ))
-
-        p.minimize(
-            sum(covar_value * x_qty * x_qty_paired)
-            .where(Stock.covar(PairedStock, covar_value),
-                   Stock.x_quantity(Scenario, x_qty),
-                   PairedStock.x_quantity(Scenario, x_qty_paired))
-        )
-
-        p.solve("ipopt", time_limit_sec=60)
-        si = p.solve_info()
-
-        if si.termination_status not in ("OPTIMAL", "LOCALLY_SOLVED"):
+        if result is None:
             print(f"  Point {i+1} (rate={rate:.4f}): INFEASIBLE — stopping sweep")
             break
 
-        df = p.variable_values().to_df()
+        si, df = result
         for sn in scenario_names:
-            budget = float(sn.split("_")[1])
+            budget = budget_map[sn]
             ret = evaluate_return(df, sn)
+            risk = evaluate_risk(df, sn)
             pareto[sn].append({
                 "label": f"eps_{i+1}",
                 "return_target": rate * budget,
                 "return_actual": ret,
-                "risk": si.objective_value,
+                "risk": risk,
+                "df": df,
             })
 
-        print(f"  Point {i+1} (rate={rate:.4f}): {si.termination_status}, risk={si.objective_value:.4f}")
+        print(f"  Point {i+1} (rate={rate:.4f}): {si.termination_status}")
 
     # --------------------------------------------------
     # Pareto analysis — per scenario
@@ -323,7 +313,7 @@ if __name__ == "__main__":
         pts = pareto[sn]
         if len(pts) < 2:
             continue
-        budget = float(sn.split("_")[1])
+        budget = budget_map[sn]
         print(f"\n  {sn} (budget={budget:.0f}):")
         print(f"  {'#':>3} {'Label':>10} {'Return':>10} {'Risk':>12}")
         print(f"  {'-' * 38}")
@@ -340,13 +330,13 @@ if __name__ == "__main__":
                 if abs(dret) > 1e-6:
                     rate_val = dr / dret
                     rates.append(rate_val)
-                    print(f"    {pts[j]['label']:>10} → {pts[j+1]['label']:<10}: "
-                          f"Δrisk={dr:>+10.4f}, Δreturn={dret:>+8.4f}, "
+                    print(f"    {pts[j]['label']:>10} -> {pts[j+1]['label']:<10}: "
+                          f"delta_risk={dr:>+10.4f}, delta_return={dret:>+8.4f}, "
                           f"marginal={rate_val:>8.2f} risk/return")
                 else:
                     rates.append(0)
 
-            # Knee detection
+            # Knee detection: find where marginal cost jumps most
             if len(rates) >= 2:
                 max_jump = 0
                 knee_idx = 1
@@ -359,4 +349,13 @@ if __name__ == "__main__":
                         max_jump = jump
                         knee_idx = j + 1
                 print(f"\n    Knee: Point {knee_idx + 1} ({pts[knee_idx]['label']}) "
-                      f"— marginal cost jumps {max_jump:.1f}x beyond this point")
+                      f"-- marginal cost jumps {max_jump:.1f}x beyond this point")
+
+                # Print allocations at the knee point
+                knee_df = pts[knee_idx]["df"]
+                knee_allocs = _extract_allocations(knee_df, sn)
+                if knee_allocs:
+                    print(f"\n    Knee-point allocations ({sn}):")
+                    for idx in sorted(knee_allocs):
+                        print(f"      Stock {idx}: {knee_allocs[idx]:.2f} units "
+                              f"(return rate={stock_returns_map.get(idx, 0):.4f})")
