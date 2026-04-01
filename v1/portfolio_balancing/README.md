@@ -1,6 +1,6 @@
 ---
 title: "Portfolio Balancing"
-description: "Minimize portfolio risk for a given return target using Markowitz mean-variance optimization."
+description: "Explore the risk-return tradeoff using bi-objective Markowitz optimization with epsilon constraint."
 featured: false
 experience_level: intermediate
 industry: "Finance"
@@ -10,6 +10,7 @@ tags:
   - Quadratic Programming
   - Risk Minimization
   - Portfolio Optimization
+  - Multi-Objective
   - Scenario Analysis
   - Ipopt
 ---
@@ -18,13 +19,11 @@ tags:
 
 ## What this template is for
 
-This template uses **prescriptive reasoning (optimization)** to minimize portfolio risk for a given return target using Markowitz mean-variance optimization.
+This template uses **prescriptive reasoning (optimization)** to trace the efficient frontier between portfolio risk and expected return using bi-objective Markowitz mean-variance optimization.
 
-Portfolio optimization is a cornerstone of quantitative finance. Given a set of stocks with expected returns and a covariance matrix describing how their returns co-move, the Markowitz mean-variance model finds the allocation that minimizes portfolio risk (variance) while achieving a target minimum return.
+Portfolio optimization involves two competing objectives: minimizing risk (variance) and maximizing return. Rather than fixing a single return target, this template uses the **epsilon constraint method** to sweep return targets across the feasible range, producing the full tradeoff curve. Each point on the frontier is a valid portfolio — no point is strictly better than another.
 
-This template formulates the portfolio balancing problem as a quadratic program. The decision variables are the number of units to hold in each stock. The quadratic objective minimizes portfolio variance using the covariance matrix. Linear constraints enforce a budget limit, non-negative holdings (no short selling), and a minimum expected return.
-
-The template also demonstrates scenario analysis by solving across multiple return targets (10, 20, and 30). As the minimum return requirement increases, the optimizer must accept more risk, producing the efficient frontier trade-off between risk and return.
+The template also demonstrates **Scenario Concept inside the epsilon loop**: budget levels are modeled as scenarios, so each epsilon solve handles all budget scenarios simultaneously. This reveals how the risk-return frontier shifts with available capital.
 
 ## Who this is for
 
@@ -35,14 +34,15 @@ The template also demonstrates scenario analysis by solving across multiple retu
 
 ## What you'll build
 
-- A quadratic programming model that minimizes portfolio variance
-- Budget and no-short-selling constraints
-- Minimum return constraints parameterized by scenario
-- Scenario analysis across multiple return targets showing the risk-return trade-off
+- A quadratic programming model that minimizes portfolio variance (primary objective)
+- Budget and no-short-selling constraints across multiple budget scenarios
+- Epsilon constraint method sweeping return targets to trace the efficient frontier
+- Anchor solves to establish the feasible return range
+- Pareto analysis with marginal cost and knee detection
 
 ## What's included
 
-- `portfolio_balancing.py` -- Main script defining the QP model, constraints, and scenario analysis
+- `portfolio_balancing.py` -- Main script defining the QP model, epsilon constraint sweep, and Pareto analysis
 - `data/returns.csv` -- Expected returns for each stock
 - `data/covar.csv` -- Covariance matrix entries (i, j, covariance value)
 - `pyproject.toml` -- Python package configuration with dependencies
@@ -91,35 +91,35 @@ The template also demonstrates scenario analysis by solving across multiple retu
 
 6. Expected output:
    ```text
-   Running scenario: min_return = 10
-     Status: OPTIMAL, Risk: 2.820947
-     Portfolio allocation:
-       name    value
-     qty_1   265.38
-     qty_2   134.62
+   ======================================================================
+   ANCHOR SOLVE 1: Minimize risk (no return constraint)
+   ======================================================================
+   Status: LOCALLY_SOLVED, total risk: ...
+     budget_500: return = ...
+     budget_1000: return = ...
+     budget_2000: return = ...
 
-   Running scenario: min_return = 20
-     Status: OPTIMAL, Risk: 5.198884
-     Portfolio allocation:
-       name    value
-     qty_1   380.77
-     qty_2   269.23
-     qty_3   350.00
+   ======================================================================
+   EPSILON SWEEP: 5 interior points
+   ======================================================================
+     Point 1 (rate=...): LOCALLY_SOLVED, risk=...
+     Point 2 (rate=...): LOCALLY_SOLVED, risk=...
+     ...
 
-   Running scenario: min_return = 30
-     Status: OPTIMAL, Risk: 13.609802
-     Portfolio allocation:
-       name    value
-     qty_1   196.15
-     qty_2   403.85
-     qty_3   400.00
+   ======================================================================
+   EFFICIENT FRONTIER: Risk vs Return (per budget scenario)
+   ======================================================================
 
-   ==================================================
-   Scenario Analysis Summary
-   ==================================================
-     min_return=10: OPTIMAL, risk=2.820947
-     min_return=20: OPTIMAL, risk=5.198884
-     min_return=30: OPTIMAL, risk=13.609802
+     budget_500 (budget=500):
+       #      Label     Return         Risk
+       ----------------------------------------
+       1   min_risk      ...         ...
+       2      eps_1      ...         ...
+       ...
+
+     Marginal analysis:
+       ...
+       Knee: Point N (...) -- marginal cost jumps Nx beyond this point
    ```
 
 ## Template structure
@@ -136,82 +136,156 @@ The template also demonstrates scenario analysis by solving across multiple retu
 
 ## How it works
 
-### 1. Define concepts and load data
+This section walks through the highlights in `portfolio_balancing.py`.
 
-The model defines a `Stock` concept with expected returns. The covariance matrix is loaded as a binary property relating pairs of stocks:
+### Define concepts and load CSV data
+
+The model defines a `Stock` concept with expected returns. The covariance matrix is loaded as a binary property relating pairs of stocks.
 
 ```python
 Stock = model.Concept("Stock", identify_by={"index": Integer})
 Stock.returns = model.Property(f"{Stock} has {Float:returns}")
+returns_csv = read_csv(data_dir / "returns.csv")
+model.define(Stock.new(model.data(returns_csv).to_schema()))
+
 Stock.covar = model.Property(f"{Stock} and {Stock} have {Float:covar}")
+PairedStock = Stock.ref()
+covar_data = model.data(read_csv(data_dir / "covar.csv"))
+model.where(Stock.index(covar_data.i), PairedStock.index(covar_data.j)).define(
+    Stock.covar(Stock, PairedStock, covar_data.covar)
+)
 ```
 
-### 2. Scenario concept
-
-Scenarios are modeled as a first-class Concept with a `min_return` parameter. Three return targets (10, 20, 30) are solved simultaneously in a single solve call:
+Budget levels are modeled as a Scenario Concept so each epsilon solve handles all budget scenarios simultaneously.
 
 ```python
 Scenario = model.Concept("Scenario", identify_by={"name": String})
-Scenario.min_return = model.Property(f"{Scenario} has {Float:min_return}")
+Scenario.budget = model.Property(f"{Scenario} has {Float:budget}")
 scenario_data = model.data(
-    [("return_10", 10), ("return_20", 20), ("return_30", 30)],
-    columns=["name", "min_return"],
+    [("budget_500", 500), ("budget_1000", 1000), ("budget_2000", 2000)],
+    columns=["name", "budget"],
 )
 model.define(Scenario.new(scenario_data.to_schema()))
 ```
 
-### 3. Decision variables
+### Define decision variables, constraints, and objective
 
-Each stock gets a continuous variable indexed by Scenario (multi-argument Property):
+Each stock gets a continuous quantity variable indexed by Scenario (multi-argument Property).
 
 ```python
 Stock.x_quantity = model.Property(f"{Stock} in {Scenario} has {Float:quantity}")
 x_qty = Float.ref()
-p.solve_for(Stock.x_quantity(Scenario, x_qty), name=["qty", Scenario.name, Stock.index])
 ```
 
-### 4. Constraints
-
-The model enforces no short selling, a budget limit, and a minimum return target -- all scoped per Scenario:
+The `solve_epsilon` helper defines the shared constraints and objective, with an optional return lower bound parameterized by `eps_value`. This is the core of the bi-objective transformation: in the original single-objective template, the return target was a fixed Scenario property (`Scenario.min_return`). In the bi-objective version, the return target becomes a parameter swept by the epsilon loop.
 
 ```python
-p.satisfy(model.where(
-    Stock.x_quantity(Scenario, x_qty),
-).require(x_qty >= 0))
+def solve_epsilon(eps_value=None):
+    p = Problem(model, Float)
 
-p.satisfy(model.where(
-    Stock.x_quantity(Scenario, x_qty),
-).require(sum(x_qty).per(Scenario) <= budget))
+    p.solve_for(
+        Stock.x_quantity(Scenario, x_qty),
+        name=["qty", Scenario.name, Stock.index],
+        populate=False,
+    )
 
-p.satisfy(model.where(
-    Stock.x_quantity(Scenario, x_qty),
-).require(sum(Stock.returns * x_qty).per(Scenario) >= Scenario.min_return))
+    # Non-negative
+    p.satisfy(model.where(
+        Stock.x_quantity(Scenario, x_qty),
+    ).require(x_qty >= 0))
+
+    # Budget per scenario
+    p.satisfy(model.where(
+        Stock.x_quantity(Scenario, x_qty),
+    ).require(sum(x_qty).per(Scenario) <= Scenario.budget))
+
+    # Fully invested per scenario
+    p.satisfy(model.where(
+        Stock.x_quantity(Scenario, x_qty),
+    ).require(sum(x_qty).per(Scenario) >= Scenario.budget))
+
+    # EPSILON CONSTRAINT: return >= target per scenario
+    if eps_value is not None:
+        p.satisfy(model.where(
+            Stock.x_quantity(Scenario, x_qty),
+        ).require(
+            sum(Stock.returns * x_qty).per(Scenario) >= eps_value
+        ))
+
+    # Primary objective: minimize risk (quadratic via covariance matrix)
+    p.minimize(
+        sum(covar_value * x_qty * x_qty_paired)
+        .where(Stock.covar(PairedStock, covar_value),
+               Stock.x_quantity(Scenario, x_qty),
+               PairedStock.x_quantity(Scenario, x_qty_paired))
+    )
+
+    p.solve("ipopt", time_limit_sec=60)
 ```
 
-### 5. Quadratic objective
+### Solve anchor points and run the epsilon sweep
 
-Portfolio risk is minimized using the covariance matrix. The quadratic term sums over all stock pairs, scoped per Scenario:
+Two anchor solves establish the feasible return range. Anchor 1 minimizes risk with no return constraint (finding the minimum-risk portfolio). Anchor 2 maximizes return (finding the maximum achievable return).
 
 ```python
-covar_value = Float.ref()
-x_qty_paired = Float.ref()
-p.minimize(
-    sum(covar_value * x_qty * x_qty_paired)
-    .where(Stock.covar(PairedStock, covar_value),
-           Stock.x_quantity(Scenario, x_qty),
-           PairedStock.x_quantity(Scenario, x_qty_paired))
-)
+result1 = solve_epsilon(eps_value=None)
 ```
 
-### 6. Solve and extract
+The epsilon sweep then traces interior points between the anchors. Each solve minimizes risk subject to a return-rate floor that scales with budget, so all budget scenarios are handled in a single solve call per epsilon value.
 
-A single `p.solve("ipopt")` call solves all scenarios at once. As the minimum return requirement increases, the optimizer must accept more risk -- the efficient frontier trade-off.
+```python
+n_interior = 5
+epsilon_rates = [
+    return_rate_min + i * (return_rate_max - return_rate_min) / (n_interior + 1)
+    for i in range(1, n_interior + 1)
+]
+
+for i, rate in enumerate(epsilon_rates):
+    p = Problem(model, Float)
+    # ... same constraints as solve_epsilon ...
+    # Epsilon constraint: return rate >= target rate (scaled by budget)
+    p.satisfy(model.where(
+        Stock.x_quantity(Scenario, x_qty),
+    ).require(
+        sum(Stock.returns * x_qty).per(Scenario) >= rate * Scenario.budget
+    ))
+    p.minimize(
+        sum(covar_value * x_qty * x_qty_paired)
+        .where(Stock.covar(PairedStock, covar_value),
+               Stock.x_quantity(Scenario, x_qty),
+               PairedStock.x_quantity(Scenario, x_qty_paired))
+    )
+    p.solve("ipopt", time_limit_sec=60)
+```
+
+### Pareto analysis output
+
+The script prints the efficient frontier for each budget scenario, showing how risk increases as the return target rises. Marginal analysis computes the incremental risk per unit of additional return, and a knee detector identifies the point where the marginal cost of return jumps sharply.
+
+```python
+for sn in scenario_names:
+    pts = pareto[sn]
+    # ...
+    # Marginal analysis
+    for j in range(len(pts) - 1):
+        dr = pts[j+1]['risk'] - pts[j]['risk']
+        dret = pts[j+1]['return_actual'] - pts[j]['return_actual']
+        if abs(dret) > 1e-6:
+            rate_val = dr / dret
+            # ...
+    # Knee detection
+    if len(rates) >= 2:
+        # ...
+        print(f"\n    Knee: Point {knee_idx + 1} ({pts[knee_idx]['label']}) "
+              f"— marginal cost jumps {max_jump:.1f}x beyond this point")
+```
 
 ## Customize this template
 
 - **Add more stocks**: Extend `returns.csv` and `covar.csv` with additional assets and their covariance entries.
 - **Allow short selling**: Remove the non-negativity constraint to allow negative holdings.
 - **Add sector constraints**: Group stocks by sector and limit total allocation per sector.
+- **Adjust frontier resolution**: Increase `n_interior` for a finer-grained efficient frontier.
 - **Maximize return for given risk**: Flip the formulation to maximize expected return subject to a risk budget.
 - **Transaction costs**: Add a linear or quadratic penalty term for rebalancing from an existing portfolio.
 

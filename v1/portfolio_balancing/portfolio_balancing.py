@@ -1,29 +1,37 @@
 """Portfolio Balancing (prescriptive optimization) template.
 
-This script demonstrates a Markowitz mean-variance portfolio optimization model in RelationalAI:
+This template demonstrates **multi-objective optimization** via epsilon constraint
+in RelationalAI. The portfolio has two competing objectives:
 
-- Load expected returns and a covariance matrix from CSV.
-- Model stocks as *concepts* with typed properties and pairwise covariance.
-- Choose non-negative allocations across available stocks.
-- Enforce a budget constraint and a minimum expected return constraint.
-- Minimize portfolio variance (risk) using Ipopt (interior-point NLP solver).
-- Solve multiple minimum-return scenarios simultaneously using Scenario as a
-  first-class Concept (single solve, all scenarios at once).
+- **Primary**: Minimize portfolio risk (variance via covariance matrix)
+- **Secondary**: Maximize expected return
 
-Modeling approach:
-- Scenario is a Concept with a min_return parameter property.
-- Decision variables are multi-argument Properties indexed by (Stock, Scenario).
-- Constraints use ref() bindings + .per(Scenario) to scope per-scenario.
-- One solve handles all min_return levels; results extracted via model.select().
+Instead of fixing a single return target, the epsilon constraint method sweeps
+return targets across the feasible range, producing the **efficient frontier** —
+the full tradeoff curve between risk and return. Each point on the frontier is a
+valid portfolio; no point is strictly better than another.
+
+The template also demonstrates **Scenario Concept inside the epsilon loop**:
+budget levels are modeled as a Scenario Concept, so each epsilon solve handles
+all budget scenarios simultaneously (N epsilon solves, not N × M).
+
+TRANSFORMATION FROM SINGLE-OBJECTIVE:
+  The original template had return as a constraint (>= threshold) with a fixed
+  Scenario Concept sweeping return targets. The bi-objective version:
+  1. Moves the return target from Scenario Concept to epsilon loop parameter
+  2. Adds budget levels as the new Scenario Concept dimension
+  3. Each epsilon solve: minimize risk .per(Scenario) s.t. return >= eps .per(Scenario)
+  This exposes the full risk-return frontier at each budget level.
 
 Run:
     `python portfolio_balancing.py`
 
 Output:
-    Prints per-scenario termination status and risk (objective value), a non-trivial
-    allocation table for each scenario, and a summary of scenario results.
+    Prints anchor solve results, per-epsilon-point Pareto frontier for each budget
+    scenario, marginal analysis with knee detection, and allocation shifts.
 """
 
+import builtins
 from pathlib import Path
 
 from pandas import read_csv
@@ -36,101 +44,319 @@ model = Model("portfolio")
 # Define semantic model & load data
 # --------------------------------------------------
 
-DATA_DIR = Path(__file__).parent / "data"
+data_dir = Path(__file__).parent / "data"
 
-# Stock concept: equities with expected returns.
 Stock = model.Concept("Stock", identify_by={"index": Integer})
 Stock.returns = model.Property(f"{Stock} has {Float:returns}")
-returns_csv = read_csv(DATA_DIR / "returns.csv")
+returns_csv = read_csv(data_dir / "returns.csv")
 model.define(Stock.new(model.data(returns_csv).to_schema()))
 
-# Covariance concept: pairwise covariance matrix between stocks.
 Stock.covar = model.Property(f"{Stock} and {Stock} have {Float:covar}")
 PairedStock = Stock.ref()
-covar_data = model.data(read_csv(DATA_DIR / "covar.csv"))
+covar_data = model.data(read_csv(data_dir / "covar.csv"))
 model.where(Stock.index(covar_data.i), PairedStock.index(covar_data.j)).define(
     Stock.covar(Stock, PairedStock, covar_data.covar)
 )
 
 # --------------------------------------------------
-# Scenario Concept — min_return parameter variations
+# Scenario Concept — budget parameter variations
+# (Scenarios handle parameter variations; epsilon loop handles the tradeoff)
 # --------------------------------------------------
 
 Scenario = model.Concept("Scenario", identify_by={"name": String})
-Scenario.min_return = model.Property(f"{Scenario} has {Float:min_return}")
+Scenario.budget = model.Property(f"{Scenario} has {Float:budget}")
 scenario_data = model.data(
-    [("return_10", 10), ("return_20", 20), ("return_30", 30)],
-    columns=["name", "min_return"],
+    [("budget_500", 500), ("budget_1000", 1000), ("budget_2000", 2000)],
+    columns=["name", "budget"],
 )
 model.define(Scenario.new(scenario_data.to_schema()))
 
 # --------------------------------------------------
-# Model the decision problem
+# Decision variable — indexed by Scenario
 # --------------------------------------------------
 
-# Parameters
-budget = 1000
-
-# Decision variable — indexed by Scenario (multi-argument Property)
 Stock.x_quantity = model.Property(f"{Stock} in {Scenario} has {Float:quantity}")
-
-# Ref for binding multi-arg variable in constraints
 x_qty = Float.ref()
-
-p = Problem(model, Float)
-
-# Variable: quantity of each stock per scenario
-p.solve_for(Stock.x_quantity(Scenario, x_qty), name=["qty", Scenario.name, Stock.index])
-
-# Constraint: no short selling (non-negative quantities)
-p.satisfy(model.where(
-    Stock.x_quantity(Scenario, x_qty),
-).require(x_qty >= 0))
-
-# Constraint: budget limit per scenario
-p.satisfy(model.where(
-    Stock.x_quantity(Scenario, x_qty),
-).require(sum(x_qty).per(Scenario) <= budget))
-
-# Constraint: minimum return target per scenario
-p.satisfy(model.where(
-    Stock.x_quantity(Scenario, x_qty),
-).require(sum(Stock.returns * x_qty).per(Scenario) >= Scenario.min_return))
-
-# Objective: minimize portfolio risk (quadratic via covariance matrix)
 covar_value = Float.ref()
 x_qty_paired = Float.ref()
-p.minimize(
-    sum(covar_value * x_qty * x_qty_paired)
-    .where(Stock.covar(PairedStock, covar_value),
-           Stock.x_quantity(Scenario, x_qty),
-           PairedStock.x_quantity(Scenario, x_qty_paired))
-)
+
+# Stock returns for Python-side secondary objective evaluation
+# (RAI `sum` is imported; use builtins.sum for Python-side aggregation)
+stock_returns_map = dict(zip(returns_csv["index"], returns_csv["returns"]))
+
+
+def evaluate_return(var_df, scenario_name):
+    """Evaluate portfolio return from variable_values df for a given scenario.
+    Solver only reports the primary objective (risk). Must compute secondary
+    (return) from the solution variables on the Python side."""
+    total = 0.0
+    prefix = f"qty_{scenario_name}_"
+    for _, row in var_df.iterrows():
+        name = str(row.iloc[0])
+        val = float(row.iloc[1])
+        if name.startswith(prefix) and val > 1e-6:
+            stock_idx = int(name.replace(prefix, ""))
+            total += stock_returns_map.get(stock_idx, 0) * val
+    return total
+
+
+def solve_epsilon(eps_value=None):
+    """Solve risk minimization with optional return >= eps constraint.
+    Returns (solve_info, variable_values_df) or None if infeasible."""
+    p = Problem(model, Float)
+
+    p.solve_for(
+        Stock.x_quantity(Scenario, x_qty),
+        name=["qty", Scenario.name, Stock.index],
+        populate=False,
+    )
+
+    # Non-negative
+    p.satisfy(model.where(
+        Stock.x_quantity(Scenario, x_qty),
+    ).require(x_qty >= 0))
+
+    # Budget per scenario
+    p.satisfy(model.where(
+        Stock.x_quantity(Scenario, x_qty),
+    ).require(sum(x_qty).per(Scenario) <= Scenario.budget))
+
+    # Fully invested per scenario
+    p.satisfy(model.where(
+        Stock.x_quantity(Scenario, x_qty),
+    ).require(sum(x_qty).per(Scenario) >= Scenario.budget))
+
+    # EPSILON CONSTRAINT: return >= target per scenario
+    # SINGLE-OBJECTIVE: this was a fixed threshold (Scenario.min_return)
+    # BI-OBJECTIVE: this becomes a parameterized bound swept by the loop
+    if eps_value is not None:
+        p.satisfy(model.where(
+            Stock.x_quantity(Scenario, x_qty),
+        ).require(
+            sum(Stock.returns * x_qty).per(Scenario) >= eps_value
+        ))
+
+    # Primary objective: minimize risk (quadratic via covariance matrix)
+    p.minimize(
+        sum(covar_value * x_qty * x_qty_paired)
+        .where(Stock.covar(PairedStock, covar_value),
+               Stock.x_quantity(Scenario, x_qty),
+               PairedStock.x_quantity(Scenario, x_qty_paired))
+    )
+
+    p.solve("ipopt", time_limit_sec=60)
+    si = p.solve_info()
+
+    if si.termination_status not in ("OPTIMAL", "LOCALLY_SOLVED"):
+        return None
+
+    return si, p.variable_values().to_df()
+
 
 # --------------------------------------------------
-# Solve (single solve for all scenarios)
+# Anchor solves — establish feasible return range
 # --------------------------------------------------
 
-# Solve with Ipopt (interior-point NLP solver).
-# The quadratic covariance objective makes this a QP problem.
-# Ipopt handles convex QP via interior-point methods and scales well
-# on large covariance matrices.
-p.display()
-p.solve("ipopt", time_limit_sec=60)
-si = p.solve_info()
-si.display()
-print(f"Status: {si.termination_status}, risk={si.objective_value:.4f}")
+if __name__ == "__main__":
+    scenario_names = ["budget_500", "budget_1000", "budget_2000"]
 
-# --------------------------------------------------
-# Extract results per scenario
-# --------------------------------------------------
+    print("=" * 70)
+    print("ANCHOR SOLVE 1: Minimize risk (no return constraint)")
+    print("=" * 70)
+    result1 = solve_epsilon(eps_value=None)
+    si1, df1 = result1
+    print(f"Status: {si1.termination_status}, total risk: {si1.objective_value:.6f}")
 
-print("\nPortfolio allocation per scenario:")
-model.select(
-    Scenario.name.alias("scenario"),
-    Stock.index.alias("stock"),
-    Stock.returns,
-    x_qty.alias("quantity"),
-).where(
-    Stock.x_quantity(Scenario, x_qty), x_qty > 0.001
-).inspect()
+    # Compute return at min-risk portfolio for each scenario
+    anchor1_returns = {}
+    for sn in scenario_names:
+        ret = evaluate_return(df1, sn)
+        anchor1_returns[sn] = ret
+        print(f"  {sn}: return = {ret:.4f}")
+
+    print(f"\n{'=' * 70}")
+    print("ANCHOR SOLVE 2: Maximize return (swap objective)")
+    print("=" * 70)
+    # For anchor 2, we solve max return separately per scenario
+    # (can't mix minimize risk + maximize return in one Problem)
+    anchor2_returns = {}
+    for sn in scenario_names:
+        p2 = Problem(model, Float)
+        p2.solve_for(
+            Stock.x_quantity(Scenario, x_qty),
+            name=["qty", Scenario.name, Stock.index],
+            populate=False,
+        )
+        p2.satisfy(model.where(
+            Stock.x_quantity(Scenario, x_qty),
+        ).require(x_qty >= 0))
+        p2.satisfy(model.where(
+            Stock.x_quantity(Scenario, x_qty),
+        ).require(sum(x_qty).per(Scenario) <= Scenario.budget))
+        p2.satisfy(model.where(
+            Stock.x_quantity(Scenario, x_qty),
+        ).require(sum(x_qty).per(Scenario) >= Scenario.budget))
+        p2.maximize(
+            sum(Stock.returns * x_qty).where(Stock.x_quantity(Scenario, x_qty))
+        )
+        p2.solve("ipopt", time_limit_sec=60)
+        si2 = p2.solve_info()
+        df2 = p2.variable_values().to_df()
+        for sn2 in scenario_names:
+            ret = evaluate_return(df2, sn2)
+            anchor2_returns[sn2] = ret
+        print(f"Status: {si2.termination_status}, max return: {si2.objective_value:.4f}")
+        for sn2 in scenario_names:
+            print(f"  {sn2}: return = {anchor2_returns[sn2]:.4f}")
+        break  # one solve covers all scenarios
+
+    # Return range: use the tightest across scenarios
+    # (min-risk return varies by budget; max return = budget * max_stock_return)
+    return_rate_min = min(anchor1_returns[sn] / float(sn.split("_")[1])
+                         for sn in scenario_names)
+    return_rate_max = max(anchor2_returns[sn] / float(sn.split("_")[1])
+                         for sn in scenario_names)
+    print(f"\nReturn rate range: [{return_rate_min:.4f}, {return_rate_max:.4f}] per unit invested")
+
+    # --------------------------------------------------
+    # Epsilon sweep — trace the efficient frontier
+    # --------------------------------------------------
+
+    n_interior = 5
+    # Sweep return RATE (per unit invested) so epsilon scales with budget
+    epsilon_rates = [
+        return_rate_min + i * (return_rate_max - return_rate_min) / (n_interior + 1)
+        for i in range(1, n_interior + 1)
+    ]
+
+    print(f"\n{'=' * 70}")
+    print(f"EPSILON SWEEP: {n_interior} interior points")
+    print(f"Return rates: {[f'{r:.4f}' for r in epsilon_rates]}")
+    print(f"{'=' * 70}")
+
+    # Collect all Pareto points per scenario
+    # pareto[scenario_name] = [{"return_target", "return_actual", "risk", "alloc"}, ...]
+    pareto = {sn: [] for sn in scenario_names}
+
+    # Add anchor 1 (min risk)
+    for sn in scenario_names:
+        budget = float(sn.split("_")[1])
+        pareto[sn].append({
+            "label": "min_risk",
+            "return_target": anchor1_returns[sn],
+            "return_actual": anchor1_returns[sn],
+            "risk": si1.objective_value,  # total across scenarios
+        })
+
+    for i, rate in enumerate(epsilon_rates):
+        # Each scenario gets eps = rate * budget
+        # But epsilon constraint is per-Scenario, and we pass a single scalar.
+        # Since budgets differ, we use the rate * budget for the smallest budget
+        # as a common floor. Actually — the constraint is per-Scenario and
+        # sum(returns * x).per(Scenario) >= eps. With fully-invested constraint,
+        # return = sum(returns * x) = budget * weighted_avg_return.
+        # So eps = rate * Scenario.budget would need Scenario.budget in the expression.
+        # Simpler: just use the rate as eps and scale by budget in the constraint.
+        # Let's use a per-scenario epsilon via Scenario property.
+
+        # Actually, simplest: set eps as a return RATE and constrain:
+        # sum(returns * x).per(Scenario) >= rate * Scenario.budget
+        p = Problem(model, Float)
+        p.solve_for(
+            Stock.x_quantity(Scenario, x_qty),
+            name=["qty", Scenario.name, Stock.index],
+            populate=False,
+        )
+        p.satisfy(model.where(
+            Stock.x_quantity(Scenario, x_qty),
+        ).require(x_qty >= 0))
+        p.satisfy(model.where(
+            Stock.x_quantity(Scenario, x_qty),
+        ).require(sum(x_qty).per(Scenario) <= Scenario.budget))
+        p.satisfy(model.where(
+            Stock.x_quantity(Scenario, x_qty),
+        ).require(sum(x_qty).per(Scenario) >= Scenario.budget))
+
+        # Epsilon constraint: return rate >= target rate (scaled by budget)
+        p.satisfy(model.where(
+            Stock.x_quantity(Scenario, x_qty),
+        ).require(
+            sum(Stock.returns * x_qty).per(Scenario) >= rate * Scenario.budget
+        ))
+
+        p.minimize(
+            sum(covar_value * x_qty * x_qty_paired)
+            .where(Stock.covar(PairedStock, covar_value),
+                   Stock.x_quantity(Scenario, x_qty),
+                   PairedStock.x_quantity(Scenario, x_qty_paired))
+        )
+
+        p.solve("ipopt", time_limit_sec=60)
+        si = p.solve_info()
+
+        if si.termination_status not in ("OPTIMAL", "LOCALLY_SOLVED"):
+            print(f"  Point {i+1} (rate={rate:.4f}): INFEASIBLE — stopping sweep")
+            break
+
+        df = p.variable_values().to_df()
+        for sn in scenario_names:
+            budget = float(sn.split("_")[1])
+            ret = evaluate_return(df, sn)
+            pareto[sn].append({
+                "label": f"eps_{i+1}",
+                "return_target": rate * budget,
+                "return_actual": ret,
+                "risk": si.objective_value,
+            })
+
+        print(f"  Point {i+1} (rate={rate:.4f}): {si.termination_status}, risk={si.objective_value:.4f}")
+
+    # --------------------------------------------------
+    # Pareto analysis — per scenario
+    # --------------------------------------------------
+
+    print(f"\n{'=' * 70}")
+    print("EFFICIENT FRONTIER: Risk vs Return (per budget scenario)")
+    print(f"{'=' * 70}")
+
+    for sn in scenario_names:
+        pts = pareto[sn]
+        if len(pts) < 2:
+            continue
+        budget = float(sn.split("_")[1])
+        print(f"\n  {sn} (budget={budget:.0f}):")
+        print(f"  {'#':>3} {'Label':>10} {'Return':>10} {'Risk':>12}")
+        print(f"  {'-' * 38}")
+        for j, pt in enumerate(pts):
+            print(f"  {j+1:>3} {pt['label']:>10} {pt['return_actual']:>10.2f} {pt['risk']:>12.4f}")
+
+        # Marginal analysis
+        if len(pts) >= 3:
+            print(f"\n  Marginal analysis:")
+            rates = []
+            for j in range(len(pts) - 1):
+                dr = pts[j+1]['risk'] - pts[j]['risk']
+                dret = pts[j+1]['return_actual'] - pts[j]['return_actual']
+                if abs(dret) > 1e-6:
+                    rate_val = dr / dret
+                    rates.append(rate_val)
+                    print(f"    {pts[j]['label']:>10} → {pts[j+1]['label']:<10}: "
+                          f"Δrisk={dr:>+10.4f}, Δreturn={dret:>+8.4f}, "
+                          f"marginal={rate_val:>8.2f} risk/return")
+                else:
+                    rates.append(0)
+
+            # Knee detection
+            if len(rates) >= 2:
+                max_jump = 0
+                knee_idx = 1
+                for j in range(len(rates) - 1):
+                    if rates[j] > 1e-6:
+                        jump = rates[j+1] / rates[j]
+                    else:
+                        jump = rates[j+1] if rates[j+1] > 0 else 0
+                    if jump > max_jump:
+                        max_jump = jump
+                        knee_idx = j + 1
+                print(f"\n    Knee: Point {knee_idx + 1} ({pts[knee_idx]['label']}) "
+                      f"— marginal cost jumps {max_jump:.1f}x beyond this point")
