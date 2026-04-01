@@ -20,9 +20,9 @@ This script demonstrates graph analysis in RelationalAI:
 from pathlib import Path
 
 from pandas import read_csv
-from relationalai.semantics import Float, Integer, Model, String, where, select
-from relationalai.semantics.std import aggregates as aggs
+from relationalai.semantics import Float, Model, String, where
 from relationalai.semantics.reasoners.graph import Graph
+from relationalai.semantics.std import aggregates as aggs
 
 model = Model("machine_dependencies")
 
@@ -128,7 +128,7 @@ wcc_df = (
 )
 
 num_clusters = wcc_df["component_id"].nunique()
-print(f"\n=== Dependency Clusters ===")
+print("\n=== Dependency Clusters ===")
 print(f"Clusters found: {num_clusters}")
 
 for comp_id in sorted(wcc_df["component_id"].unique()):
