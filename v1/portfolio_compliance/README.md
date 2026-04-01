@@ -5,7 +5,7 @@ featured: false
 experience_level: beginner
 industry: "Financial Services"
 reasoning_types:
-  - Rules
+    - Rules-based
 tags:
   - Derived Properties
   - Business Logic
