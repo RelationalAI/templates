@@ -3,14 +3,14 @@ requires = ["setuptools>=64", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "rai-template-grid-interconnection"
+name = "rai-template-supply-chain-resilience"
 version = "0.0.0"
-description = "RelationalAI template: grid_interconnection (PyRel v1)"
+description = "RelationalAI template: supply_chain_resilience (PyRel v1)"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
   "relationalai==1.0.3",
-  "pandas",
+  "pandas>=2.0",
 ]
 
 [tool.setuptools]

@@ -89,18 +89,40 @@ The template also demonstrates scenario analysis by sweeping over different mini
 6. Expected output:
    ```text
    Assignments per scenario:
-     scenario      worker          shift
-     coverage_1    Alice           Morning
-     coverage_1    Carlos          Afternoon
-     coverage_1    Bob             Night
-     coverage_2    Alice           Morning
-     coverage_2    Diana           Morning
-     coverage_2    Carlos          Afternoon
-     coverage_2    Grace           Afternoon
-     coverage_2    Bob             Night
-     coverage_2    Ethan           Night
-     ...
+       scenario  worker      shift
+     coverage_1   Alice    Morning
+     coverage_1     Bob      Night
+     coverage_1  Carlos  Afternoon
+     coverage_1   Diana    Morning
+     coverage_1   Ethan  Afternoon
+     coverage_1   Frank  Afternoon
+     coverage_1   Grace  Afternoon
+     coverage_1   Henry      Night
+     coverage_1   Irene      Night
+     coverage_2   Alice  Afternoon
+     coverage_2     Bob    Morning
+     coverage_2   Diana  Afternoon
+     coverage_2   Ethan      Night
+     coverage_2   Frank  Afternoon
+     coverage_2   Grace      Night
+     coverage_2   Henry    Morning
+     coverage_2   Irene      Night
+     coverage_2    Jack  Afternoon
+     coverage_3   Alice    Morning
+     coverage_3     Bob    Morning
+     coverage_3  Carlos  Afternoon
+     coverage_3   Diana      Night
+     coverage_3   Ethan      Night
+     coverage_3   Frank    Morning
+     coverage_3   Grace  Afternoon
+     coverage_3   Irene      Night
+     coverage_3    Jack  Afternoon
    ```
+
+   Coverage_1 (min_coverage=1) uses 9 workers with one per shift minimum.
+   Coverage_2 (min_coverage=2) uses 9 workers with two per shift, dropping
+   Carlos and adding Jack. Coverage_3 (min_coverage=3) requires 9 workers
+   with three per shift, adding more Morning assignments.
 
 ## Template structure
 ```text

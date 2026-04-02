@@ -17,12 +17,9 @@ This directory contains the templates for v1. Each template folder includes its 
 | [hospital_staffing](./hospital_staffing/) | Optimize nurse-to-shift assignments to minimize overtime costs and unmet patient demand. |
 | [humanitarian-aid-supply-chain](./humanitarian-aid-supply-chain/) | Use graph reasoning to analyze a humanitarian aid supply chain network with PageRank and Weighted Degree Centrality to optimize resource distribution strategies. |
 | [inventory_rebalancing](./inventory_rebalancing/) | Transfer inventory through a warehouse-hub-store network to meet demand at minimum shipping cost, with flow conservation at transit nodes. |
-| [machine_dependencies](./machine_dependencies/) | Analyze machine dependency networks through shared technician qualifications to identify clusters and bottleneck machines. |
-| [machine_maintenance](./machine_maintenance/) | Schedule preventive maintenance across a planning horizon, assigning qualified technicians to machines, minimizing expected failure cost plus labor and travel costs. |
-| [manufacturing_compliance](./manufacturing_compliance/) | Define derived business rules for machine maintenance scheduling, parts reordering, risk assessment, and qualification expiry tracking. |
+| [machine_maintenance](./machine_maintenance/) | Chain graph analysis, rules-based classification, and prescriptive optimization to schedule preventive maintenance across machines and technicians. |
 | [order_fulfillment](./order_fulfillment/) | Assign customer orders to fulfillment centers to minimize total shipping and fixed operating costs. |
-| [portfolio_balancing](./portfolio_balancing/) | Minimize portfolio risk for a given return target using Markowitz mean-variance optimization. |
-| [portfolio_compliance](./portfolio_compliance/) | Define derived business rules for portfolio concentration limits, sector exposure, and high-risk trader detection. |
+| [portfolio_balancing](./portfolio_balancing/) | Chain compliance analysis with bi-objective Markowitz optimization and budget scenario analysis. |
 | [production_planning](./production_planning/) | Schedule production across machines to meet demand and maximize profit with scenario analysis. |
 | [retail_markdown](./retail_markdown/) | Set discount levels across weeks to maximize revenue while clearing inventory. |
 | [shift_assignment](./shift_assignment/) | Assign workers to shifts based on availability to meet coverage requirements. |
@@ -32,6 +29,7 @@ This directory contains the templates for v1. Each template folder includes its 
 | [sprint_scheduling](./sprint_scheduling/) | Assign backlog issues to developers across sprints, minimizing weighted completion time while respecting capacity and skill constraints. |
 | [supplier-impact-analysis](./supplier-impact-analysis/) | Trace multi-hop supply chain dependencies to identify which suppliers high-value customers depend on and assess the blast radius of a supplier disruption, including affected customers and products at risk. |
 | [supplier_reliability](./supplier_reliability/) | Select suppliers to meet product demand while balancing cost and reliability. |
+| [supply_chain_resilience](./supply_chain_resilience/) | Chain graph analysis, supplier risk classification, and network flow optimization to build resilient supply chains with scenario analysis. |
 | [supply_chain_transport](./supply_chain_transport/) | Minimize inventory holding and transport costs with TL/LTL mode selection. |
 | [test_data_generation](./test_data_generation/) | Determine optimal row counts for test database tables satisfying schema and referential integrity constraints. |
 | [traveling_salesman](./traveling_salesman/) | Find the shortest route visiting all cities exactly once using the MTZ formulation. |

@@ -293,6 +293,36 @@ if __name__ == "__main__":
     for j, pt in enumerate(pareto):
         print(f"{j+1:>3} {pt['label']:>14} {pt['unmet_demand']:>14.1f} ${pt['overtime_cost']:>13.2f}")
 
+    # ASCII Pareto plot: Overtime Cost (y) vs Unmet Demand (x)
+    if len(pareto) >= 2:
+        plot_h, plot_w = 12, 50
+        unmets = [pt['unmet_demand'] for pt in pareto]
+        costs = [pt['overtime_cost'] for pt in pareto]
+        u_min, u_max = min(unmets), max(unmets)
+        c_min, c_max = min(costs), max(costs)
+        u_range = u_max - u_min if u_max > u_min else 1
+        c_range = c_max - c_min if c_max > c_min else 1
+        grid = [[" "] * plot_w for _ in range(plot_h)]
+        for k, pt in enumerate(pareto):
+            col = int((pt['unmet_demand'] - u_min) / u_range * (plot_w - 1))
+            row = int((pt['overtime_cost'] - c_min) / c_range * (plot_h - 1))
+            row = plot_h - 1 - row
+            col = max(0, min(plot_w - 1, col))
+            row = max(0, min(plot_h - 1, row))
+            grid[row][col] = str(k + 1)
+        print(f"\nOvertime Cost")
+        for i, row in enumerate(grid):
+            if i == 0:
+                label = f"${c_max:>9,.2f}"
+            elif i == plot_h - 1:
+                label = f"${c_min:>9,.2f}"
+            else:
+                label = " " * 10
+            print(f"{label} |{''.join(row)}|")
+        print(f"{' ' * 10} +{'-' * plot_w}+")
+        print(f"{' ' * 10}  {u_min:<.0f}{u_max:>{plot_w - len(f'{u_min:.0f}')},.0f} patients")
+        print(f"{' ' * 10}  {'Unmet Demand':^{plot_w}}")
+
     # Marginal analysis
     if len(pareto) >= 3:
         print(f"\nMarginal analysis (cost of reducing unmet demand by 1 patient):")

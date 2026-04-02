@@ -3,14 +3,14 @@ requires = ["setuptools>=64", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "rai-template-machine-dependencies"
+name = "rai-template-cicd-runner-allocation"
 version = "0.0.0"
-description = "RelationalAI template: machine dependency graph analysis via shared technician qualifications"
+description = "RelationalAI template: cicd_runner_allocation (PyRel v1)"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
   "relationalai==1.0.3",
-  "pandas",
+  "pandas>=2.0",
 ]
 
 [tool.setuptools]

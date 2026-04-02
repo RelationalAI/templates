@@ -87,28 +87,45 @@ The template also demonstrates scenario analysis by re-solving the problem with 
 
 6. Expected output:
    ```text
-   Running scenario: excluded_supplier = None
-     Status: OPTIMAL, Objective: 5350.0
+   Running scenario: baseline
+     Status: OPTIMAL, Objective: 4850.0
 
      Orders:
-          name          name  value
-    qty_SupplierA_Gadget  250.0
-    qty_SupplierB_Widget  300.0
-    qty_SupplierC_Component  200.0
+        qty_SupplierB_Gadget  150.0
+     qty_SupplierC_Component  200.0
+        qty_SupplierC_Gadget  100.0
+        qty_SupplierC_Widget  300.0
 
-   Running scenario: excluded_supplier = SupplierC
-     Status: OPTIMAL, Objective: 6050.0
+   Running scenario: without_SupplierC
+     Status: OPTIMAL, Objective: 6750.0
 
-   Running scenario: excluded_supplier = SupplierB
-     Status: OPTIMAL, Objective: 5700.0
+     Orders:
+     qty_SupplierB_Component  100.0
+        qty_SupplierB_Widget  300.0
+     qty_SupplierD_Component  100.0
+        qty_SupplierD_Gadget  250.0
+
+   Running scenario: without_SupplierB
+     Status: OPTIMAL, Objective: 5150.0
+
+     Orders:
+        qty_SupplierA_Widget  150.0
+     qty_SupplierC_Component  200.0
+        qty_SupplierC_Gadget  250.0
+        qty_SupplierC_Widget  150.0
 
    ==================================================
    Scenario Analysis Summary
    ==================================================
-     None: OPTIMAL, obj=5350.0
-     SupplierC: OPTIMAL, obj=6050.0
-     SupplierB: OPTIMAL, obj=5700.0
+     baseline: OPTIMAL, obj=4850.00
+     without_SupplierC: OPTIMAL, obj=6750.00
+     without_SupplierB: OPTIMAL, obj=5150.00
    ```
+
+   The baseline relies heavily on SupplierC (cheapest). Removing SupplierC
+   increases cost by 39% ($4,850 to $6,750) as demand shifts to more expensive
+   SupplierB and SupplierD. Removing SupplierB has less impact (+6%) since
+   SupplierC absorbs most of the displaced volume.
 
 ## Template structure
 ```text

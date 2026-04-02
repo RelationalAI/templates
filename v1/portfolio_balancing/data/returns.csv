@@ -1,4 +1,9 @@
-index,returns
-1,0.025
-2,0.040
-3,0.070
+index,ticker,sector,returns
+1,AAPL,Technology,0.08
+2,MSFT,Technology,0.07
+3,GOOGL,Technology,0.09
+4,JNJ,Healthcare,0.05
+5,PFE,Healthcare,0.06
+6,JPM,Financials,0.07
+7,XOM,Energy,0.10
+8,PG,Consumer Staples,0.04

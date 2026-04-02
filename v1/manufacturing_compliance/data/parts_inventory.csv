@@ -1,7 +1,0 @@
-id,facility,part_name,stock_level,min_order_qty
-P001,Plant-A,Spindle Bearings,25,50
-P002,Plant-A,Cutting Inserts,200,30
-P003,Plant-B,Hydraulic Seals,15,15
-P004,Plant-B,Nozzle Tips,8,20
-P005,Plant-C,Brake Pads,100,40
-P006,Plant-C,Weld Wire Spools,5,10
