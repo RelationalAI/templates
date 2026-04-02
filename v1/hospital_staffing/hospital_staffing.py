@@ -1,20 +1,34 @@
-"""Hospital staffing (prescriptive optimization) template.
+"""Hospital Staffing (prescriptive optimization) template.
 
-This script models assigning nurses to shifts while minimizing overtime costs
-and overflow penalties from unmet patient demand in RelationalAI:
+This template demonstrates **multi-objective optimization** via epsilon constraint
+for a nurse scheduling problem with two competing objectives:
 
-- Load sample CSVs describing nurses, shifts, and nurse-shift availability.
-- Create decision variables for nurse-shift assignments, overtime hours,
-  patients served, and unmet demand per shift.
-- Enforce availability, coverage, skill, overtime, and capacity constraints.
-- Minimize overtime cost + overflow penalty for unserved patients.
+- **Primary**: Minimize overtime cost
+- **Secondary**: Minimize unmet patient demand (service level)
+
+Instead of bundling both into a single weighted objective
+(overtime_cost + penalty × unmet_demand), the epsilon constraint method unbundles
+them — sweeping the maximum allowed unmet demand from zero to the worst case.
+This produces the **efficient frontier** showing exactly how much overtime cost
+each level of patient service requires.
+
+TRANSFORMATION FROM SINGLE-OBJECTIVE:
+  The original template bundled two concerns into one objective:
+    p.minimize(overtime_cost + PENALTY * sum(Shift.x_unmet_demand))
+  The bi-objective version splits them:
+    Primary:    p.minimize(overtime_cost)
+    Secondary → constraint: p.satisfy(require(sum(Shift.x_unmet_demand) <= eps))
+  This eliminates the arbitrary penalty weight and reveals the true tradeoff.
+  The same "unbundle the penalty" pattern applies to any template that combines
+  a primary cost with a penalty term (machine_maintenance, demand_planning,
+  supply_chain_transport, supplier_reliability).
 
 Run:
     `python hospital_staffing.py`
 
 Output:
-    Prints the solver termination status, objective value, overtime assignments,
-    patient throughput by shift, and staff assignments.
+    Prints anchor solve results, Pareto frontier (cost vs service level),
+    marginal analysis with knee detection, and allocation shifts.
 """
 
 from pathlib import Path
@@ -32,7 +46,6 @@ Concept, Property = model.Concept, model.Property
 
 data_dir = Path(__file__).parent / "data"
 
-# Concept: nurses with skill level, cost, and overtime parameters
 Nurse = Concept("Nurse", identify_by={"id": Integer})
 Nurse.name = Property(f"{Nurse} has {String:name}")
 Nurse.skill_level = Property(f"{Nurse} has {Integer:skill_level}")
@@ -43,7 +56,6 @@ Nurse.x_overtime_hours = Property(f"{Nurse} has {Float:overtime_hours}")
 nurse_csv = read_csv(data_dir / "nurses.csv")
 model.define(Nurse.new(model.data(nurse_csv).to_schema()))
 
-# Concept: shifts with coverage requirements and patient demand
 Shift = Concept("Shift", identify_by={"id": Integer})
 Shift.name = Property(f"{Shift} has {String:name}")
 Shift.start_hour = Property(f"{Shift} has {Integer:start_hour}")
@@ -57,7 +69,6 @@ Shift.x_unmet_demand = Property(f"{Shift} has {Float:unmet_demand}")
 shift_csv = read_csv(data_dir / "shifts.csv")
 model.define(Shift.new(model.data(shift_csv).to_schema()))
 
-# Relationship: availability linking nurses to shifts
 Availability = Concept("Availability", identify_by={"nurse_id": Integer, "shift_id": Integer})
 Availability.nurse = Property(f"{Availability} for {Nurse}")
 Availability.shift = Property(f"{Availability} in {Shift}")
@@ -72,128 +83,267 @@ model.define(
 model.define(Availability.nurse(Nurse)).where(Availability.nurse_id == Nurse.id)
 model.define(Availability.shift(Shift)).where(Availability.shift_id == Shift.id)
 
-# --------------------------------------------------
-# Model the decision problem
-# --------------------------------------------------
-
-# Decision concept: assignments of nurses to shifts
 Assignment = Concept("Assignment", identify_by={"availability": Availability})
 Assignment.x_assigned = Property(f"{Assignment} is {Float:assigned}")
 model.define(Assignment.new(availability=Availability))
 
 AssignmentRef = Assignment.ref()
 
-# Parameters
-overflow_penalty_per_patient = 20
-
-p = Problem(model, Float)
-
-# Variable: binary assignment (nurse to shift)
-p.solve_for(Assignment.x_assigned, type="bin", name=["assigned", Assignment.availability.nurse.name, Assignment.availability.shift.name])
-
-# Variable: overtime hours per nurse (continuous >= 0)
-p.solve_for(Nurse.x_overtime_hours, type="cont", name=["ot", Nurse.name], lower=0)
-
-# Variable: patients served per shift (continuous >= 0)
-p.solve_for(Shift.x_patients_served, type="cont", name=["pt", Shift.name], lower=0)
-
-# Variable: unmet patient demand per shift (continuous >= 0)
-p.solve_for(Shift.x_unmet_demand, type="cont", name=["ud", Shift.name], lower=0)
-
-# Constraint: can only assign if available
-must_be_available = model.require(Assignment.x_assigned <= Assignment.availability.available)
-p.satisfy(must_be_available)
-
-# Constraint: every nurse works at least one shift
-nurse_shift_count = sum(AssignmentRef.x_assigned).where(AssignmentRef.availability.nurse == Nurse).per(Nurse)
-min_one_shift = model.require(nurse_shift_count >= 1)
-p.satisfy(min_one_shift)
-
-# Constraint: max 2 shifts per nurse (safety limit: 16 hours max)
-max_two_shifts = model.require(nurse_shift_count <= 2)
-p.satisfy(max_two_shifts)
-
-# Constraint: minimum nurses per shift
-shift_staff_count = sum(AssignmentRef.x_assigned).where(AssignmentRef.availability.shift == Shift).per(Shift)
-min_coverage = model.require(shift_staff_count >= Shift.min_nurses)
-p.satisfy(min_coverage)
-
-# Constraint: at least one nurse with required skill level per shift
-skilled_coverage = sum(AssignmentRef.x_assigned).where(
-    AssignmentRef.availability.shift == Shift,
-    AssignmentRef.availability.nurse.skill_level >= Shift.min_skill,
-).per(Shift)
-min_skilled = model.require(skilled_coverage >= 1)
-p.satisfy(min_skilled)
-
-# Constraint: overtime >= total hours worked - regular hours
-total_hours_worked = sum(AssignmentRef.x_assigned * AssignmentRef.availability.shift.duration).where(
-    AssignmentRef.availability.nurse == Nurse
-).per(Nurse)
-overtime_def = model.require(Nurse.x_overtime_hours >= total_hours_worked - Nurse.regular_hours)
-p.satisfy(overtime_def)
-
-# Constraint: patients served <= patient demand per shift
-demand_cap = model.require(Shift.x_patients_served <= Shift.patient_demand)
-p.satisfy(demand_cap)
-
-# Constraint: patients served <= nursing capacity per shift
-shift_nursing_capacity = shift_staff_count * Shift.patients_per_nurse_hour * Shift.duration
-capacity_cap = model.require(Shift.x_patients_served <= shift_nursing_capacity)
-p.satisfy(capacity_cap)
-
-# Constraint: unmet demand >= patient demand - patients served
-unmet_def = model.require(Shift.x_unmet_demand >= Shift.patient_demand - Shift.x_patients_served)
-p.satisfy(unmet_def)
-
-# Objective: minimize overtime cost + overflow penalty for unmet patient demand
-overtime_cost = sum(Nurse.x_overtime_hours * Nurse.hourly_cost * Nurse.overtime_multiplier)
-total_overflow_penalty = overflow_penalty_per_patient * sum(Shift.x_unmet_demand)
-p.minimize(overtime_cost + total_overflow_penalty)
 
 # --------------------------------------------------
-# Solve and check solution
+# Solve helper — shared constraints, parameterized objective
 # --------------------------------------------------
 
-p.display()
-p.solve("highs", time_limit_sec=60)
-model.require(p.termination_status() == "OPTIMAL")
-si = p.solve_info()
-si.display()
+def solve_staffing(objective="min_overtime", eps_unmet=None):
+    """Solve the staffing problem with the given objective and optional epsilon constraint.
 
-print(f"Status: {si.termination_status}")
-print(f"Objective value: ${si.objective_value:.2f}")
+    objective: "min_overtime" (primary) or "min_unmet" (anchor 2 -- minimize unmet demand)
+    eps_unmet: if set, add constraint sum(unmet) <= eps_unmet
+    Returns (solve_info, variable_values_df, overtime_cost_value, total_unmet_value) or None if infeasible.
+    """
+    p = Problem(model, Float)
 
-# Overtime summary
-overtime = model.select(
-    Nurse.name.alias("nurse"),
-    Nurse.x_overtime_hours.alias("overtime_hours"),
-).where(Nurse.x_overtime_hours > 0.5).to_df()
+    p.solve_for(Assignment.x_assigned, type="bin", populate=False,
+                name=["assigned", Assignment.availability.nurse.name,
+                      Assignment.availability.shift.name])
+    p.solve_for(Nurse.x_overtime_hours, type="cont", populate=False,
+                name=["ot", Nurse.name], lower=0)
+    p.solve_for(Shift.x_patients_served, type="cont", populate=False,
+                name=["pt", Shift.name], lower=0)
+    p.solve_for(Shift.x_unmet_demand, type="cont", populate=False,
+                name=["ud", Shift.name], lower=0)
 
-if not overtime.empty:
-    print("\nOvertime assignments:")
-    print(overtime.to_string(index=False))
-else:
-    print("\nNo overtime assigned.")
+    # --- Constraints (same as original template) ---
 
-# Throughput and overflow summary
-throughput = model.select(
-    Shift.name.alias("shift"),
-    Shift.x_patients_served.alias("patients_served"),
-    Shift.patient_demand.alias("patient_demand"),
-    Shift.x_unmet_demand.alias("unmet_demand"),
-).to_df()
+    # Can only assign if available
+    p.satisfy(model.require(Assignment.x_assigned <= Assignment.availability.available))
 
-print("\nPatient throughput by shift:")
-print(throughput.to_string(index=False))
-print(f"Total patients served: {float(throughput['patients_served'].sum()):.0f} / {int(throughput['patient_demand'].astype(int).sum())}")
-print(f"Total unmet demand: {float(throughput['unmet_demand'].sum()):.0f} patients")
+    # Every nurse works at least one shift
+    nurse_shift_count = sum(AssignmentRef.x_assigned).where(
+        AssignmentRef.availability.nurse == Nurse).per(Nurse)
+    p.satisfy(model.require(nurse_shift_count >= 1))
 
-# Staff assignments
-assignments = model.select(
-    Assignment.availability.nurse.name.alias("nurse"),
-    Assignment.availability.shift.name.alias("shift"),
-).where(Assignment.x_assigned > 0.5).to_df()
+    # Max 2 shifts per nurse
+    p.satisfy(model.require(nurse_shift_count <= 2))
 
-print("\nStaff assignments:")
-print(assignments.to_string(index=False))
+    # Minimum nurses per shift
+    shift_staff_count = sum(AssignmentRef.x_assigned).where(
+        AssignmentRef.availability.shift == Shift).per(Shift)
+    p.satisfy(model.require(shift_staff_count >= Shift.min_nurses))
+
+    # At least one nurse with required skill level per shift
+    skilled_coverage = sum(AssignmentRef.x_assigned).where(
+        AssignmentRef.availability.shift == Shift,
+        AssignmentRef.availability.nurse.skill_level >= Shift.min_skill,
+    ).per(Shift)
+    p.satisfy(model.require(skilled_coverage >= 1))
+
+    # Overtime >= total hours worked - regular hours
+    total_hours_worked = sum(
+        AssignmentRef.x_assigned * AssignmentRef.availability.shift.duration
+    ).where(AssignmentRef.availability.nurse == Nurse).per(Nurse)
+    p.satisfy(model.require(Nurse.x_overtime_hours >= total_hours_worked - Nurse.regular_hours))
+
+    # Patients served <= demand per shift
+    p.satisfy(model.require(Shift.x_patients_served <= Shift.patient_demand))
+
+    # Patients served <= nursing capacity per shift
+    shift_nursing_capacity = shift_staff_count * Shift.patients_per_nurse_hour * Shift.duration
+    p.satisfy(model.require(Shift.x_patients_served <= shift_nursing_capacity))
+
+    # Unmet demand >= patient demand - patients served
+    p.satisfy(model.require(Shift.x_unmet_demand >= Shift.patient_demand - Shift.x_patients_served))
+
+    # --- Epsilon constraint (if sweeping) ---
+    # SINGLE-OBJECTIVE: unmet demand was penalized in the objective
+    # BI-OBJECTIVE: unmet demand is bounded by epsilon
+    if eps_unmet is not None:
+        p.satisfy(model.require(sum(Shift.x_unmet_demand) <= eps_unmet))
+
+    # --- Objective ---
+    overtime_cost = sum(Nurse.x_overtime_hours * Nurse.hourly_cost * Nurse.overtime_multiplier)
+
+    if objective == "min_overtime":
+        p.minimize(overtime_cost)
+    elif objective == "min_unmet":
+        p.minimize(sum(Shift.x_unmet_demand))
+
+    p.solve("highs", time_limit_sec=60)
+    si = p.solve_info()
+
+    if si.termination_status != "OPTIMAL":
+        return None
+
+    # Extract secondary objective values from variable_values df
+    df = p.variable_values().to_df()
+
+    # Compute unmet demand from df
+    unmet_total = 0.0
+    for _, row in df.iterrows():
+        name = str(row.iloc[0])
+        val = float(row.iloc[1])
+        if name.startswith("ud_") and val > 1e-6:
+            unmet_total += val
+
+    if objective == "min_overtime":
+        ot_cost_val = si.objective_value
+        unmet_val = unmet_total
+    else:
+        ot_cost_val = None  # Not the objective; would need separate evaluation
+        unmet_val = si.objective_value
+
+    return si, df, ot_cost_val, unmet_val
+
+
+# --------------------------------------------------
+# Bi-objective: anchor solves + epsilon sweep
+# --------------------------------------------------
+
+if __name__ == "__main__":
+
+    print("=" * 70)
+    print("ANCHOR SOLVE 1: Minimize overtime cost (no unmet demand constraint)")
+    print("=" * 70)
+    result1 = solve_staffing("min_overtime", eps_unmet=None)
+    if result1 is None:
+        raise SystemExit("Anchor solve 1 (min overtime) is infeasible — check data and constraints.")
+    si1, df1, ot1, unmet1 = result1
+    print(f"Status: {si1.termination_status}")
+    print(f"Overtime cost: ${ot1:.2f}")
+    print(f"Unmet demand: {unmet1:.1f} patients")
+
+    print(f"\n{'=' * 70}")
+    print("ANCHOR SOLVE 2: Minimize unmet demand (no overtime cost objective)")
+    print("=" * 70)
+    result2 = solve_staffing("min_unmet", eps_unmet=None)
+    if result2 is None:
+        raise SystemExit("Anchor solve 2 (min unmet) is infeasible — check data and constraints.")
+    si2, df2, _, unmet2 = result2
+    print(f"Status: {si2.termination_status}")
+    print(f"Min unmet demand: {unmet2:.1f} patients")
+
+    # Feasible range: unmet demand goes from unmet2 (best service) to unmet1 (cheapest)
+    unmet_min = unmet2  # best achievable service
+    unmet_max = unmet1  # cheapest (most unmet demand)
+    print(f"\nFeasible unmet demand range: [{unmet_min:.1f}, {unmet_max:.1f}]")
+
+    # --------------------------------------------------
+    # Epsilon sweep: minimize overtime s.t. unmet <= eps
+    # --------------------------------------------------
+
+    n_interior = 5
+    epsilon_values = [
+        unmet_max - i * (unmet_max - unmet_min) / (n_interior + 1)
+        for i in range(1, n_interior + 1)
+    ]
+    # Sorted from most unmet (cheapest) to least unmet (most expensive)
+
+    print(f"\n{'=' * 70}")
+    print(f"EPSILON SWEEP: {n_interior} interior points")
+    print(f"Unmet demand targets: {[f'{e:.1f}' for e in epsilon_values]}")
+    print(f"{'=' * 70}")
+
+    pareto = []
+    pareto.append({
+        "label": "cheapest",
+        "eps_unmet": unmet_max,
+        "overtime_cost": ot1,
+        "unmet_demand": unmet1,
+        "df": df1,
+    })
+
+    for i, eps in enumerate(epsilon_values):
+        result = solve_staffing("min_overtime", eps_unmet=eps)
+        if result is None:
+            print(f"  Point {i+1} (unmet<={eps:.1f}): INFEASIBLE -- stopping")
+            break
+
+        si, df, ot_val, unmet_val = result
+        pareto.append({
+            "label": f"eps_{i+1}",
+            "eps_unmet": eps,
+            "overtime_cost": ot_val,
+            "unmet_demand": unmet_val,
+            "df": df,
+        })
+        print(f"  Point {i+1} (unmet<={eps:.1f}): overtime=${ot_val:.2f}, "
+              f"actual_unmet={unmet_val:.1f}  [{si.termination_status}]")
+
+    # Add best-service anchor
+    result_best = solve_staffing("min_overtime", eps_unmet=unmet_min)
+    if result_best is not None:
+        si_best, df_best, ot_best, unmet_best = result_best
+        pareto.append({
+            "label": "best_service",
+            "eps_unmet": unmet_min,
+            "overtime_cost": ot_best,
+            "unmet_demand": unmet_best,
+            "df": df_best,
+        })
+
+    # --------------------------------------------------
+    # Pareto analysis
+    # --------------------------------------------------
+
+    print(f"\n{'=' * 70}")
+    print("EFFICIENT FRONTIER: Overtime Cost vs Patient Service")
+    print(f"{'=' * 70}")
+    print(f"{'#':>3} {'Label':>14} {'Unmet Demand':>14} {'Overtime Cost':>14}")
+    print("-" * 48)
+    for j, pt in enumerate(pareto):
+        print(f"{j+1:>3} {pt['label']:>14} {pt['unmet_demand']:>14.1f} ${pt['overtime_cost']:>13.2f}")
+
+    # Marginal analysis
+    if len(pareto) >= 3:
+        print("\nMarginal analysis (cost of reducing unmet demand by 1 patient):")
+        rates = []
+        for j in range(len(pareto) - 1):
+            d_cost = pareto[j+1]['overtime_cost'] - pareto[j]['overtime_cost']
+            d_unmet = pareto[j]['unmet_demand'] - pareto[j+1]['unmet_demand']
+            if abs(d_unmet) > 1e-6:
+                rate = d_cost / d_unmet
+                rates.append(rate)
+                print(f"  {pareto[j]['label']:>14} → {pareto[j+1]['label']:<14}: "
+                      f"Δcost=${d_cost:>+10.2f}, Δunmet={-d_unmet:>+6.1f}, "
+                      f"marginal=${rate:>8.2f}/patient")
+            else:
+                rates.append(0)
+
+        # Knee detection: rates[j+1]/rates[j] finds where marginal cost
+        # per patient jumps most sharply (cost-per-patient is INCREASING
+        # along the frontier, so the biggest jump ratio marks the knee).
+        if len(rates) >= 2:
+            max_jump = 0
+            knee_idx = 1
+            for j in range(len(rates) - 1):
+                if rates[j] > 1e-6:
+                    jump = rates[j+1] / rates[j]
+                else:
+                    jump = rates[j+1] if rates[j+1] > 0 else 0
+                if jump > max_jump:
+                    max_jump = jump
+                    knee_idx = j + 1
+            print(f"\n  Knee: Point {knee_idx + 1} ({pareto[knee_idx]['label']}) "
+                  f"-- marginal cost jumps {max_jump:.1f}x beyond this point")
+            print(f"  Recommendation: Target {pareto[knee_idx]['unmet_demand']:.0f} unmet patients "
+                  f"at ${pareto[knee_idx]['overtime_cost']:.2f} overtime cost -- "
+                  f"further service improvement costs significantly more per patient.")
+
+            # Print nurse assignments at the knee point
+            knee_df = pareto[knee_idx]["df"]
+            assignments = []
+            for _, row in knee_df.iterrows():
+                vname = str(row.iloc[0])
+                val = float(row.iloc[1])
+                if vname.startswith("assigned_") and val > 0.5:
+                    parts = vname.replace("assigned_", "").rsplit("_", 1)
+                    if len(parts) == 2:
+                        assignments.append((parts[0], parts[1]))
+            if assignments:
+                print("\n  Knee-point assignments:")
+                by_shift = {}
+                for nurse, shift in assignments:
+                    by_shift.setdefault(shift, []).append(nurse)
+                for shift in sorted(by_shift):
+                    nurses = ", ".join(sorted(by_shift[shift]))
+                    print(f"    {shift}: {nurses}")
