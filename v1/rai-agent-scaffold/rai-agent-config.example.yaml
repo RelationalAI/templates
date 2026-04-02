@@ -1,0 +1,12 @@
+# Copy this file to rai-agent-config.yaml and fill in your values.
+# rai-agent-config.yaml is gitignored — this file is the public template.
+
+agent:
+  name: MY_AGENT_NAME               # Name shown in Snowflake Cortex Agents UI
+  database: MY_DATABASE             # Snowflake database to deploy into
+  schema: MY_SCHEMA                 # Schema to deploy into (must already exist)
+  warehouse: MY_WAREHOUSE           # Warehouse for sproc execution
+  model_name: MY_MODEL_NAME         # RAI Model name used internally in each sproc
+
+model:
+  source_table: MY_DB.MY_SCHEMA.MY_TABLE  # Fully-qualified source table

@@ -1,0 +1,17 @@
+# Your filled-in implementation files — gitignored so credentials and
+# proprietary model logic stay local.
+rai-agent-config.yaml
+raiconfig.yaml
+ontology.py
+queries.py
+test_queries.py
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Build/runtime artifacts
+build/
+spans.jsonl
+debug.jsonl
+metadata.json
