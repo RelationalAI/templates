@@ -4,7 +4,7 @@ description: "Scaffold for packaging a RelationalAI semantic model as a Snowflak
 experience_level: intermediate
 industry: General
 reasoning_types:
-  - Descriptive
+  - Graph
 tags:
   - cortex-agent
   - snowflake-intelligence
