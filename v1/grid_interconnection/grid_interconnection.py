@@ -361,7 +361,7 @@ if __name__ == "__main__":
 
         # Marginal analysis
         if len(pts) >= 3:
-            print(f"\n  Marginal analysis (revenue per $ of infrastructure):")
+            print("\n  Marginal analysis (revenue per $ of infrastructure):")
             rates = []
             for j in range(len(pts) - 1):
                 d_rev = pts[j+1]['revenue'] - pts[j]['revenue']
