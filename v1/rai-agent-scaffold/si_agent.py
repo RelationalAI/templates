@@ -12,15 +12,14 @@ import argparse
 import os
 
 import yaml
-from snowflake import snowpark
-
-from relationalai.semantics import Model
-from relationalai.config import create_config, SnowflakeConnection
 from relationalai.agent.cortex import (
     CortexAgentManager,
     DeploymentConfig,
     ToolRegistry,
 )
+from relationalai.config import SnowflakeConnection, create_config
+from relationalai.semantics import Model
+from snowflake import snowpark
 
 _AGENT_DIR = os.path.dirname(os.path.abspath(__file__))
 _CONFIG_PATH = os.path.join(_AGENT_DIR, "rai-agent-config.yaml")
@@ -65,8 +64,9 @@ def _build_manager() -> CortexAgentManager:
 # ---------------------------------------------------------------------------
 def init_tools(model: Model) -> ToolRegistry:
     # Workaround for v1.0.x: redirect schema cache to /tmp (UDF sandbox restriction)
-    import relationalai.util.schema as _schema_mod
     from pathlib import Path
+
+    import relationalai.util.schema as _schema_mod
     _schema_mod.CACHE_PATH = Path("/tmp/rai_cache/schemas.json")
 
     from queries import build_tool_registry

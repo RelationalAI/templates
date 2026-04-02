@@ -11,14 +11,13 @@ Each query function must:
 import functools
 
 import relationalai.semantics as rai
-from relationalai.semantics import Model
-from relationalai.agent.cortex import (
-    ToolRegistry,
-    SourceCodeVerbalizer,
-    QueryCatalog,
-)
-
 from ontology import initialize
+from relationalai.agent.cortex import (
+    QueryCatalog,
+    SourceCodeVerbalizer,
+    ToolRegistry,
+)
+from relationalai.semantics import Model
 
 
 def count_by_category(model: Model, Node, Edge) -> rai.Fragment:

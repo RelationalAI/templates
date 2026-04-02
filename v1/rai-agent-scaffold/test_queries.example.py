@@ -6,9 +6,8 @@ queries.py, then run:
     RAI_CONFIG_FILE_PATH=raiconfig.yaml python test_queries.py
 """
 import relationalai.semantics as rai
-from relationalai.config import create_config, SnowflakeConnection
-
 from ontology import initialize
+from relationalai.config import SnowflakeConnection, create_config
 
 print("Connecting to Snowflake...")
 session = create_config().get_session(SnowflakeConnection)

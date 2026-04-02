@@ -24,6 +24,7 @@ This directory contains the templates for v1. Each template folder includes its 
 | [portfolio_balancing](./portfolio_balancing/) | Minimize portfolio risk for a given return target using Markowitz mean-variance optimization. |
 | [portfolio_compliance](./portfolio_compliance/) | Define derived business rules for portfolio concentration limits, sector exposure, and high-risk trader detection. |
 | [production_planning](./production_planning/) | Schedule production across machines to meet demand and maximize profit with scenario analysis. |
+| [rai-agent-scaffold](./rai-agent-scaffold/) | Scaffold for packaging a RelationalAI semantic model as a Snowflake Cortex agent and exposing it through Snowflake Intelligence. |
 | [retail_markdown](./retail_markdown/) | Set discount levels across weeks to maximize revenue while clearing inventory. |
 | [shift_assignment](./shift_assignment/) | Assign workers to shifts based on availability to meet coverage requirements. |
 | [shipment_compliance](./shipment_compliance/) | Define derived business rules for shipment compliance, sourcing risk, and demand escalation. |
