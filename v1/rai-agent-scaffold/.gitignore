@@ -6,6 +6,11 @@ ontology.py
 queries.py
 test_queries.py
 
+# Allow the checked-in example files despite the rules above.
+!example/ontology.py
+!example/queries.py
+!example/test_queries.py
+
 # Python cache
 __pycache__/
 *.pyc
