@@ -39,6 +39,7 @@ The scaffold provides the full lifecycle tooling: define your model, test querie
 - **Runner** (`si_agent.py`): CLI for deploy / update / status / chat / teardown
 - **Config template** (`rai-agent-config.example.yaml`): All instance-specific values in one place
 - **Local smoke test** (`test_queries.example.py`): Runs both queries directly against Snowflake before deploying
+- **Working example** (`example/`): End-to-end employee directory implementation you can run immediately with the included sample data — useful as a reference before building your own model
 
 ## Prerequisites
 
@@ -58,6 +59,11 @@ The scaffold provides the full lifecycle tooling: define your model, test querie
 - `relationalai>=1.0.12`, `httpx`, `pyyaml` (see `pyproject.toml`)
 
 ## Quickstart
+
+> **New to this scaffold?** The `example/` directory contains a fully-wired employee
+> directory implementation with sample data you can deploy immediately. Follow the
+> [example README](example/README.md) to get your first agent running, then come back
+> here to build your own model.
 
 1. **Install dependencies**
 
@@ -124,7 +130,14 @@ The scaffold provides the full lifecycle tooling: define your model, test querie
 ├── rai-agent-config.example.yaml    # config template → copy to rai-agent-config.yaml
 ├── ontology.example.py              # model template → copy to ontology.py
 ├── queries.example.py               # query template → copy to queries.py
-└── test_queries.example.py          # local smoke test → copy to test_queries.py
+├── test_queries.example.py          # local smoke test → copy to test_queries.py
+└── example/                         # working employee directory example — try this first
+    ├── README.md                    # quickstart for the example
+    ├── data/employees.csv           # 12-row sample dataset
+    ├── ontology.py                  # Employee + ReportsTo concepts
+    ├── queries.py                   # headcount_by_department + direct_reports
+    ├── test_queries.py              # local smoke test
+    └── rai-agent-config.example.yaml
 ```
 
 **Start here**: `python si_agent.py deploy`
