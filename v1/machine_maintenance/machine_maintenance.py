@@ -271,24 +271,49 @@ model.where(
 # Stage 1: Graph -- dependency clusters & centrality
 # --------------------------------------------------
 
-# Build an undirected graph where machine nodes are connected when they share
-# a qualified technician (via machine_type). Two machines share an edge if any
-# technician is qualified for both their machine types.
-dep_graph = Graph(
-    model, directed=False, weighted=False, node_concept=Machine, aggregator="sum"
+# Separate model for graph analysis. Post-solve queries via p.variable_values()
+# conflict with recursive graph definitions on the same model, so the graph
+# runs on its own model with results written back via model.data().
+#
+# Pre-compute edges in pandas: two machines share an edge if any technician is
+# qualified for both their machine types.
+qual_machines = qualifications_df.merge(
+    machines_df[["machine_id", "machine_type"]], on="machine_type"
+)
+edge_pairs = qual_machines.merge(
+    qual_machines, on="technician_id", suffixes=("_src", "_dst")
+)
+edges_df = (
+    edge_pairs[edge_pairs["machine_id_src"] < edge_pairs["machine_id_dst"]]
+    [["machine_id_src", "machine_id_dst"]]
+    .drop_duplicates()
+    .reset_index(drop=True)
 )
 
-m1, m2 = Machine.ref(), Machine.ref()
-q1, q2 = Qualification.ref(), Qualification.ref()
-tech = Technician.ref()
+graph_model = Model("machine_maintenance_graph")
+GMachine = graph_model.Concept("Machine", identify_by={"machine_id": String})
+GMachine.machine_name = graph_model.Property(f"{GMachine} has {String:machine_name}")
+GMachine.machine_type = graph_model.Property(f"{GMachine} has type {String:machine_type}")
+GMachine.facility = graph_model.Property(f"{GMachine} at {String:facility}")
+GMachine.failure_probability = graph_model.Property(
+    f"{GMachine} has failure probability {Float:failure_probability}"
+)
+graph_model.define(GMachine.new(
+    graph_model.data(machines_df[["machine_id", "machine_name", "machine_type",
+                                  "facility", "failure_probability"]]).to_schema()
+))
 
-model.where(
-    q1.technician(tech),
-    q2.technician(tech),
-    q1.machine_type_str == m1.machine_type,
-    q2.machine_type_str == m2.machine_type,
-    m1.machine_id < m2.machine_id,
-).define(dep_graph.Edge.new(src=m1, dst=m2))
+dep_graph = Graph(
+    graph_model, directed=False, weighted=False, node_concept=GMachine, aggregator="sum"
+)
+
+edge_data = graph_model.data(edges_df)
+gm1 = GMachine.ref("gm1")
+gm2 = GMachine.ref("gm2")
+graph_model.where(
+    gm1.machine_id == edge_data["machine_id_src"],
+    gm2.machine_id == edge_data["machine_id_dst"],
+).define(dep_graph.Edge.new(src=gm1, dst=gm2))
 
 print("=" * 70)
 print("STAGE 1: Graph Analysis -- Dependency Clusters & Centrality")
@@ -304,7 +329,7 @@ node_ref = dep_graph.Node.ref("n")
 comp_ref = dep_graph.Node.ref("comp")
 
 wcc_df = (
-    where(wcc(node_ref, comp_ref))
+    graph_model.where(wcc(node_ref, comp_ref))
     .select(
         node_ref.machine_id.alias("machine_id"),
         node_ref.machine_name.alias("machine_name"),
@@ -336,7 +361,7 @@ node_b = dep_graph.Node.ref("nb")
 btwn_score = Float.ref("btwn")
 
 betweenness_df = (
-    where(betweenness(node_b, btwn_score))
+    graph_model.where(betweenness(node_b, btwn_score))
     .select(
         node_b.machine_id.alias("machine_id"),
         node_b.machine_name.alias("machine_name"),
@@ -696,8 +721,7 @@ print(f"\nStatus: {si.termination_status}")
 print(f"Objective value: {si.objective_value:.2f}")
 assert si.termination_status == "OPTIMAL", f"Expected OPTIMAL, got {si.termination_status}"
 
-# Extract results via variable_values() to avoid UnsupportedRecursionError
-# when querying the model after prescriptive solve (SDK 1.0.12 regression).
+# Extract results via variable_values() as a DataFrame for parsing.
 vars_df = p.variable_values().to_df()
 
 # Parse maintain decisions: name format "maintain_<machine_id>_<pid>"
