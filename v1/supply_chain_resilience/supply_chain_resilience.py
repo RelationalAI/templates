@@ -29,7 +29,7 @@ Output:
 from pathlib import Path
 
 from pandas import read_csv
-from relationalai.semantics import Float, Integer, Model, String, select, sum, where
+from relationalai.semantics import Float, Integer, Model, String, sum, where
 from relationalai.semantics.reasoners.graph import Graph
 from relationalai.semantics.reasoners.prescriptive import Problem
 from relationalai.semantics.std import aggregates as aggs
@@ -543,7 +543,7 @@ def solve_flow(label, exclude_site_id=None, block_business_ids=None):
         if total_unmet > 0:
             print(f"  Unmet demand: {total_unmet:,.0f} units across {n_unmet} orders")
         else:
-            print(f"  All demand satisfied")
+            print("  All demand satisfied")
 
     return {"label": label, "status": status, "objective": obj, "unmet": total_unmet}
 
@@ -576,7 +576,7 @@ results.append(
 # Scenario 2: Downgrade all "watch" suppliers to "avoid" — block any
 # supplier that is unreliable OR has high delay risk.
 watch_and_avoid_ids = unreliable_ids | high_delay_ids
-print(f"\nScenario: All 'watch' suppliers downgraded to 'avoid'")
+print("\nScenario: All 'watch' suppliers downgraded to 'avoid'")
 print(f"  Blocked businesses: {sorted(watch_and_avoid_ids)}")
 results.append(
     solve_flow("Watch->Avoid", block_business_ids=watch_and_avoid_ids)

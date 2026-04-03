@@ -36,8 +36,7 @@ from pathlib import Path
 
 import pandas as pd
 from pandas import read_csv
-
-from relationalai.semantics import Boolean, Float, Integer, Model, String, sum, where
+from relationalai.semantics import Boolean, Float, Integer, Model, String, sum
 from relationalai.semantics.reasoners.graph import Graph
 from relationalai.semantics.reasoners.prescriptive import Problem
 from relationalai.semantics.std import aggregates as aggs
@@ -451,7 +450,7 @@ if len(forecast_df) > 0:
     )
 
     at_risk = sub_forecast[sub_forecast["breach_months"] < 999].sort_values("breach_months")
-    print(f"\n  Substations at risk of capacity breach:")
+    print("\n  Substations at risk of capacity breach:")
     print(
         f"  {'Substation':<25} {'Current':>10} {'Predicted':>10} {'Max Cap':>10} {'Breach Mo':>10} {'Growth':>8}"
     )
@@ -465,7 +464,7 @@ if len(forecast_df) > 0:
     if len(at_risk) == 0:
         print("  (none predicted within forecast horizon)")
 
-    print(f"\n  All substation forecasts:")
+    print("\n  All substation forecasts:")
     for _, r in sub_forecast.sort_values("predicted_load", ascending=False).iterrows():
         breach_str = f"{r['breach_months']}mo" if r["breach_months"] < 999 else "safe"
         print(
@@ -648,7 +647,7 @@ for i, (_, row) in enumerate(centrality_df.head(CRITICAL_THRESHOLD).iterrows(), 
         f"deg={row['degree_centrality']:.4f}, eig={row['eigenvector_centrality']:.4f}) [CRITICAL]"
     )
 
-print(f"\n  All substations by centrality:")
+print("\n  All substations by centrality:")
 for i, (_, row) in enumerate(centrality_df.iterrows(), 1):
     flag = " [CRITICAL]" if row["substation_id"] in critical_sub_ids else ""
     print(
@@ -702,14 +701,14 @@ if len(dc_sub_df) > 0 and len(centrality_df) > 0:
     dc_at_bottleneck = dc_sub_df[dc_sub_df["sub_id"].isin(critical_sub_ids)]
     if len(dc_at_bottleneck) > 0:
         print(
-            f"\n  KEY INSIGHT: DC requests targeting structurally critical substations:"
+            "\n  KEY INSIGHT: DC requests targeting structurally critical substations:"
         )
         for _, row in dc_at_bottleneck.iterrows():
             print(
                 f"    {row['dc_name']} ({row['requested_mw']} MW) -> {row['sub_name']} [CRITICAL]"
             )
     else:
-        print(f"\n  No DC requests target structurally critical substations.")
+        print("\n  No DC requests target structurally critical substations.")
 
 # --------------------------------------------------
 # Stage 3: Rules -- Interconnection Queue Compliance
@@ -926,7 +925,7 @@ p.maximize(
 )
 
 # Solve
-print(f"\n  Solving across 5 investment levels ($200M-$600M)...")
+print("\n  Solving across 5 investment levels ($200M-$600M)...")
 p.solve("highs", time_limit_sec=120)
 si = p.solve_info()
 print(f"  Status: {si.termination_status}")
@@ -1069,7 +1068,7 @@ for pt in pareto_rows:
 
 # Marginal analysis + knee detection
 if len(pareto_rows) >= 3:
-    print(f"\n  MARGINAL ANALYSIS (value gained per additional $M budget):")
+    print("\n  MARGINAL ANALYSIS (value gained per additional $M budget):")
     rates = []
     for j in range(len(pareto_rows) - 1):
         d_val = pareto_rows[j + 1]["net_value"] - pareto_rows[j]["net_value"]
@@ -1104,7 +1103,7 @@ if len(pareto_rows) >= 3:
             f"${knee['net_value']:,.0f} net value, {knee['n_approved']} DCs, "
             f"{knee['total_mw']:,.0f} MW"
         )
-        print(f"  Diminishing returns beyond this investment level.")
+        print("  Diminishing returns beyond this investment level.")
 
 # --------------------------------------------------
 # Final Summary

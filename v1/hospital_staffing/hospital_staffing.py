@@ -310,7 +310,7 @@ if __name__ == "__main__":
             col = max(0, min(plot_w - 1, col))
             row = max(0, min(plot_h - 1, row))
             grid[row][col] = str(k + 1)
-        print(f"\nOvertime Cost")
+        print("\nOvertime Cost")
         for i, row in enumerate(grid):
             if i == 0:
                 label = f"${c_max:>9,.2f}"

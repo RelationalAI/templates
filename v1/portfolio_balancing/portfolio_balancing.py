@@ -484,7 +484,7 @@ if __name__ == "__main__":
     print("STAGE 2: BI-OBJECTIVE OPTIMIZATION (with compliance constraints)")
     print("=" * 70)
 
-    print(f"\nANCHOR SOLVE 1: Minimize risk (no return constraint)")
+    print("\nANCHOR SOLVE 1: Minimize risk (no return constraint)")
     print("-" * 50)
     result1 = solve_epsilon(eps_rate=None)
     if result1 is None:
@@ -501,7 +501,7 @@ if __name__ == "__main__":
         anchor1_risks[sn] = risk
         print(f"  {sn}: return = {ret:.4f}, risk = {risk:.6f}")
 
-    print(f"\nANCHOR SOLVE 2: Maximize return (swap objective)")
+    print("\nANCHOR SOLVE 2: Maximize return (swap objective)")
     print("-" * 50)
     # One solve covers all scenarios — maximize aggregate return, then read per-scenario
     p2 = Problem(model, Float)
@@ -632,7 +632,7 @@ if __name__ == "__main__":
                 col = max(0, min(plot_w - 1, col))
                 row = max(0, min(plot_h - 1, row))
                 grid[row][col] = str(k + 1)
-            print(f"\n  Risk")
+            print("\n  Risk")
             for i, row in enumerate(grid):
                 if i == 0:
                     label = f"{rsk_max:>10.1f}"
