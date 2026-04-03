@@ -89,33 +89,35 @@ The template includes scenario analysis that sweeps over three total budget leve
 
 6. Expected output:
    ```text
-   Running scenario: total_budget = 35000
-     Status: OPTIMAL, Objective: 2765.0
-
-     Spend allocation:
-                        name    value
-    spend_Search_Seasonal_Sale  10000.0
-    spend_Social_Seasonal_Sale   8000.0
-    spend_Video_Product_Launch  12000.0
-     spend_Email_Seasonal_Sale   2000.0
-      spend_Email_Brand_Awareness 1000.0
-      spend_Search_Product_Launch 2000.0
-
-   Running scenario: total_budget = 45000
-     Status: OPTIMAL, Objective: 3575.0
-     ...
-
-   Running scenario: total_budget = 55000
-     Status: OPTIMAL, Objective: 4205.0
-     ...
-
-   ==================================================
-   Scenario Analysis Summary
-   ==================================================
-     35000: OPTIMAL, obj=2765.0
-     45000: OPTIMAL, obj=3575.0
-     55000: OPTIMAL, obj=4205.0
+   Spend allocation per scenario:
+       scenario channel         campaign    spend
+     budget_35k   Email  Brand_Awareness   2000.0
+     budget_35k   Email    Seasonal_Sale   2000.0
+     budget_35k  Search   Product_Launch  10000.0
+     budget_35k  Search    Seasonal_Sale   8000.0
+     budget_35k  Social  Brand_Awareness   3000.0
+     budget_35k   Video   Product_Launch  10000.0
+     budget_45k   Email  Brand_Awareness   2000.0
+     budget_45k   Email    Seasonal_Sale   2000.0
+     budget_45k  Search  Brand_Awareness   5000.0
+     budget_45k  Search   Product_Launch  10000.0
+     budget_45k  Search    Seasonal_Sale   8000.0
+     budget_45k  Social  Brand_Awareness   8000.0
+     budget_45k   Video   Product_Launch  10000.0
+     budget_55k   Email  Brand_Awareness   2000.0
+     budget_55k   Email    Seasonal_Sale   2000.0
+     budget_55k  Search  Brand_Awareness   5000.0
+     budget_55k  Search   Product_Launch  10000.0
+     budget_55k  Search    Seasonal_Sale   8000.0
+     budget_55k  Social  Brand_Awareness   8000.0
+     budget_55k   Video   Product_Launch  10000.0
    ```
+
+   All three budgets invest heavily in Search and Video (highest ROI channels).
+   The $35K budget activates 6 channel-campaign pairs. The $45K and $55K
+   budgets add Search Brand_Awareness ($5K) and increase Social Brand_Awareness
+   to $8K -- diminishing returns mean the extra $10K from $45K to $55K produces
+   no new activations.
 
 ## Template structure
 ```text

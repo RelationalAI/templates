@@ -1,0 +1,6 @@
+ID,ASSET_TYPE,ASSET_ID,START_PERIOD,END_PERIOD,IS_PLANNED
+MW-001,generator,GEN-012,6,10,true
+MW-002,generator,GEN-013,14,16,true
+MW-003,transmission_line,TL-013,8,12,true
+MW-004,generator,GEN-004,20,22,false
+MW-005,transmission_line,TL-007,2,5,true

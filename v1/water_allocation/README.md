@@ -94,8 +94,18 @@ The key feature is nonlinear loss modeling: transmission losses increase with ut
    Total cost: $853.39
 
    Flow allocations:
-   (exact values depend on Ipopt convergence)
+     Reservoir_A  Agricultural  352.77
+     Reservoir_A    Industrial  247.23
+     Reservoir_A     Municipal  400.00
+     Reservoir_B  Agricultural  182.06
+     Reservoir_B    Industrial  177.93
+     Reservoir_B     Municipal  228.99
    ```
+
+   Groundwater is not used — the solver routes all flow through the cheaper
+   reservoirs. Reservoir A supplies its full municipal capacity (400 units) while
+   splitting the remainder between agricultural and industrial users. Reservoir B
+   covers the remaining demand.
 
 ## Template structure
 ```text

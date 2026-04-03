@@ -92,37 +92,73 @@ The result is a Pareto frontier that reveals exactly how much overtime cost each
    ======================================================================
    ANCHOR SOLVE 1: Minimize overtime cost (no unmet demand constraint)
    ======================================================================
-   Status: OPTIMAL
-   Overtime cost: $...
-   Unmet demand: ... patients
+   Overtime cost: $0.00
+   Unmet demand: 130.0 patients
 
    ======================================================================
    ANCHOR SOLVE 2: Minimize unmet demand (no overtime cost objective)
    ======================================================================
-   Status: OPTIMAL
-   Min unmet demand: ... patients
+   Min unmet demand: 0.0 patients
+
+   Feasible unmet demand range: [0.0, 130.0]
 
    ======================================================================
    EPSILON SWEEP: 5 interior points
+   Unmet demand targets: ['108.3', '86.7', '65.0', '43.3', '21.7']
    ======================================================================
-     Point 1 (unmet<=...): overtime=$..., actual_unmet=...  [OPTIMAL]
-     Point 2 (unmet<=...): overtime=$..., actual_unmet=...  [OPTIMAL]
-     ...
 
    ======================================================================
    EFFICIENT FRONTIER: Overtime Cost vs Patient Service
    ======================================================================
-     #          Label  Unmet Demand  Overtime Cost
-   -------------------------------------------------
-     1       cheapest          ...          $...
-     2          eps_1          ...          $...
-     ...
+     #          Label   Unmet Demand  Overtime Cost
+   ------------------------------------------------
+     1       cheapest          130.0 $         0.00
+     2          eps_1          108.3 $         0.00
+     3          eps_2           86.7 $         0.00
+     4          eps_3           65.0 $         0.00
+     5          eps_4           43.3 $         0.00
+     6          eps_5           21.7 $       336.00
+     7   best_service            0.0 $      1116.00
+
+   Overtime Cost
+   $ 1,116.00 |7                                                 |
+              |                                                  |
+              |                                                  |
+              |                                                  |
+              |                                                  |
+              |                                                  |
+              |                                                  |
+              |                                                  |
+              |        6                                         |
+              |                                                  |
+              |                                                  |
+   $     0.00 |                5       4       3       2        1|
+              +--------------------------------------------------+
+               0                                              130 patients
+                                  Unmet Demand
 
    Marginal analysis (cost of reducing unmet demand by 1 patient):
-     ...
-     Knee: Point N (...) -- marginal cost jumps Nx beyond this point
-     Recommendation: Target ... unmet patients at $... overtime cost
+       cheapest -> eps_4         : $0.00/patient (free capacity available)
+          eps_4 -> eps_5         : $15.51/patient
+          eps_5 -> best_service  : $36.00/patient
+
+     Knee: Point 5 (eps_4) -- marginal cost jumps 15.5x beyond this point
+     Recommendation: Target 43 unmet patients at $0.00 overtime cost --
+     further service improvement costs significantly more per patient.
+
+     Knee-point assignments:
+       A_Afternoon: Nurse
+       B_Night: Nurse
+       C_Afternoon: Nurse
+       D_Morning: Nurse
+       E_Morning: Nurse
+       F_Night: Nurse
    ```
+
+   The Pareto frontier reveals a sharp knee at point 5: the first 67% of
+   demand reduction (130 to 43 patients) is free, but reducing the last 43
+   patients costs $1,116 in overtime -- the marginal cost jumps from $0 to
+   $15.51 then $36.00 per patient.
 
 ## Template structure
 ```text

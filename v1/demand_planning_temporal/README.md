@@ -93,28 +93,41 @@ Prescriptive reasoning makes this practical because the solver simultaneously ba
    ```text
    Running scenario: planning_end = 2026-01-31
      Status: OPTIMAL
-     Total cost: $...
-     Planning horizon: 2025-11-01 to 2026-01-31 (13 weeks)
+     Total cost: $26,137.50
+     Planning horizon: 2025-11-01 to 2026-01-31 (14 weeks)
      Demand orders in scope: 14 (of 25 total)
-     ...
+     === Production Plan (non-zero weeks) ===
+     === Inventory Levels (selected weeks) ===
+     === Unmet Demand ===
+     All demand fulfilled!
 
    Running scenario: planning_end = 2026-02-28
      Status: OPTIMAL
-     Total cost: $...
+     Total cost: $30,863.50
+     Planning horizon: 2025-11-01 to 2026-02-28 (18 weeks)
+     Demand orders in scope: 18 (of 25 total)
      ...
+     All demand fulfilled!
 
    Running scenario: planning_end = 2026-03-31
      Status: OPTIMAL
-     Total cost: $...
+     Total cost: $34,768.00
+     Planning horizon: 2025-11-01 to 2026-03-31 (22 weeks)
+     Demand orders in scope: 20 (of 25 total)
      ...
+     All demand fulfilled!
 
    ==================================================
    Scenario Analysis Summary
    ==================================================
-     planning_end=2026-01-31: OPTIMAL, cost=$...
-     planning_end=2026-02-28: OPTIMAL, cost=$...
-     planning_end=2026-03-31: OPTIMAL, cost=$...
+     planning_end=2026-01-31: OPTIMAL, cost=$26,137.50
+     planning_end=2026-02-28: OPTIMAL, cost=$30,863.50
+     planning_end=2026-03-31: OPTIMAL, cost=$34,768.00
    ```
+
+   Extending the planning horizon from January to March increases cost from
+   $26,138 to $34,768 as more demand orders come into scope (14 to 20).
+   All demand is fulfilled in every scenario -- no unmet demand penalties.
 
 ## Template structure
 

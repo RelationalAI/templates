@@ -93,31 +93,51 @@ Prescriptive reasoning is well suited here because the problem has combinatorial
 6. Expected output:
    ```text
    Running scenario: capacity_multiplier = 0.35
-     Status: ...
-     ...
+     Status: INFEASIBLE -- skipping results
 
    Running scenario: capacity_multiplier = 0.5
-     Status: OPTIMAL, Objective: ...
+     Status: OPTIMAL, Objective: 112.0
+     Planning horizon: 2024-10-01 to 2024-11-26
+     Issues in scope: 25 (of 30 total)
+
+     Assignments:
+     assign_PROJ-106_Alice_Sprint 1    1.0
+     assign_PROJ-107_Carol_Sprint 1    1.0
+     assign_PROJ-108_Frank_Sprint 1    1.0
+       assign_PROJ-109_Bob_Sprint 1    1.0
+      assign_PROJ-110_Dave_Sprint 1    1.0
+      assign_PROJ-111_Hank_Sprint 1    1.0
+     assign_PROJ-112_Grace_Sprint 1    1.0
+      assign_PROJ-113_Dave_Sprint 1    1.0
+       assign_PROJ-114_Bob_Sprint 1    1.0
+       assign_PROJ-115_Eve_Sprint 1    1.0
+      assign_PROJ-116_Dave_Sprint 2    1.0
+     assign_PROJ-117_Alice_Sprint 2    1.0
      ...
 
    Running scenario: capacity_multiplier = 1.0
-     Status: OPTIMAL, Objective: ...
+     Status: OPTIMAL, Objective: 112.0
      Planning horizon: 2024-10-01 to 2024-11-26
-     Issues in scope: 30 (of 30 total)
+     Issues in scope: 25 (of 30 total)
 
      Assignments:
-                          name  value
-     assign_PROJ-101_Alice_Sprint 1    1.0
-     assign_PROJ-103_Eve_Sprint 1      1.0
+     assign_PROJ-106_Alice_Sprint 1    1.0
+     assign_PROJ-107_Carol_Sprint 1    1.0
      ...
 
    ==================================================
    Scenario Analysis Summary
    ==================================================
-     capacity_multiplier=0.35: ..., obj=...
-     capacity_multiplier=0.5: OPTIMAL, obj=...
-     capacity_multiplier=1.0: OPTIMAL, obj=...
+     capacity_multiplier=0.35: INFEASIBLE, obj=N/A
+     capacity_multiplier=0.5: OPTIMAL, obj=112.0
+     capacity_multiplier=1.0: OPTIMAL, obj=112.0
    ```
+
+   At 35% capacity the problem is infeasible -- not enough hours to schedule
+   all in-scope issues. At 50% and 100% capacity the solver finds the same
+   optimal objective (112.0), meaning half capacity is sufficient to schedule
+   all 25 issues within the 4-sprint horizon. The assignments front-load
+   10 issues into Sprint 1 and distribute the rest across Sprints 2-3.
 
 ## Template structure
 

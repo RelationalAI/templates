@@ -97,8 +97,12 @@ capacity_limit = model.require(Transfer.x_quantity <= Transfer.lane.capacity)
 p.satisfy(capacity_limit)
 
 # Constraint: total outbound from source cannot exceed source inventory
-outbound = sum(TransferRef.x_quantity).where(TransferRef.lane.source == Site).per(Site)
-inventory_limit = model.require(outbound <= Site.inventory)
+# (applies only to non-transit sites; transit sites have flow conservation instead)
+SourceRef = Site.ref()
+outbound = sum(TransferRef.x_quantity).where(TransferRef.lane.source == SourceRef).per(SourceRef)
+inventory_limit = model.require(outbound <= SourceRef.inventory).where(
+    SourceRef.type != "TRANSIT"
+)
 p.satisfy(inventory_limit)
 
 # Constraint: flow conservation at transit sites (inflow == outflow)

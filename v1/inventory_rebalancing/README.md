@@ -90,11 +90,22 @@ The model is a network flow formulation with three site types: warehouses (suppl
 6. Expected output:
    ```text
    Status: OPTIMAL
-   Total transfer cost: $XXXX.XX
+   Total transfer cost: $2730.00
 
    Transfers:
-   (flows route through Hub_East and Hub_West transit sites to stores)
+       Hub_East   Store_1     200.0
+       Hub_East   Store_2      90.0
+       Hub_East   Store_3      10.0
+       Hub_West   Store_2      80.0
+       Hub_West   Store_3     120.0
+     Warehouse_A  Hub_East     300.0
+     Warehouse_B  Hub_West     200.0
    ```
+
+   Warehouse A ships 300 units through Hub East, which distributes to all three
+   stores. Warehouse B ships 200 units through Hub West, which covers the
+   remaining demand at Store 2 and Store 3. Warehouse C is not used -- the
+   solver avoids it due to its higher transfer costs.
 
 ## Template structure
 ```text

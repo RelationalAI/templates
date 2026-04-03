@@ -91,6 +91,52 @@ The key pattern: the graph reasoner writes centrality scores as properties on th
    python warehouse_allocation.py
    ```
 
+6. Expected output:
+   ```text
+   ==================================================
+   Stage 1: Network Centrality Ranking
+   ==================================================
+
+               site       type   region  centrality
+      Atlanta_DC  WAREHOUSE    SOUTH    0.321427
+     Chicago_Hub  WAREHOUSE  MIDWEST    0.631380
+      Dallas_Hub  WAREHOUSE    SOUTH    0.350735
+       Denver_DC  WAREHOUSE     WEST    0.212727
+      Detroit_DC  WAREHOUSE  MIDWEST    0.511638
+        LA_Store      STORE     WEST    0.057216
+     Miami_Store      STORE    SOUTH    0.139914
+       NYC_Store      STORE     EAST    0.184369
+   Phoenix_Store      STORE     WEST    0.093792
+   Seattle_Store      STORE     WEST    0.048634
+
+   ==================================================
+   Stage 2: Inventory Allocation
+   ==================================================
+
+   Status: OPTIMAL
+   Total holding cost: $13713.29
+
+   Allocation plan:
+               site       type  centrality   allocated  unit_cost
+      Atlanta_DC  WAREHOUSE    0.321427   70.000000        9.0
+     Chicago_Hub  WAREHOUSE    0.631380  126.275907       12.0
+      Dallas_Hub  WAREHOUSE    0.350735   70.146993       11.0
+       Denver_DC  WAREHOUSE    0.212727   42.545325       13.0
+      Detroit_DC  WAREHOUSE    0.511638  102.327586       10.0
+        LA_Store      STORE    0.057216  120.000000       18.0
+     Miami_Store      STORE    0.139914  100.000000       16.0
+       NYC_Store      STORE    0.184369  150.000000       20.0
+   Phoenix_Store      STORE    0.093792   90.000000       14.0
+   Seattle_Store      STORE    0.048634   80.000000       15.0
+   ```
+
+   The graph analysis identifies Chicago_Hub (0.63) and Detroit_DC (0.51) as
+   the most central network nodes. The optimizer allocates more inventory to
+   these high-centrality warehouses -- Chicago gets 126 units and Detroit 102 --
+   while stores receive exactly their minimum demand. The centrality floor
+   constraint ensures critical hubs carry buffer stock proportional to their
+   network importance.
+
 ## Template structure
 
 ```text

@@ -1,9 +1,0 @@
-id,name,machine_type,facility,remaining_useful_life,maintenance_duration_hours,failure_probability,criticality
-M001,CNC Lathe Alpha,CNC,Plant-A,120,80,0.15,MEDIUM
-M002,CNC Lathe Beta,CNC,Plant-A,40,60,0.45,HIGH
-M003,Injection Molder 1,INJECTION,Plant-B,200,150,0.08,LOW
-M004,Injection Molder 2,INJECTION,Plant-B,30,50,0.52,HIGH
-M005,Welding Robot A,WELDING,Plant-A,90,100,0.35,HIGH
-M006,Assembly Line 1,ASSEMBLY,Plant-C,300,40,0.05,MEDIUM
-M007,Press Brake X,PRESS,Plant-C,10,25,0.62,HIGH
-M008,Laser Cutter Z,LASER,Plant-B,180,60,0.12,LOW
