@@ -8,23 +8,32 @@ prescriptive optimization on a single shared ontology:
   (or fall back to the demand_forecasts CSV). Enriches each Substation with a
   predicted_load property consumed by downstream stages.
 - Stage 2 -- Graph: build the transmission grid topology in a separate graph
-  model, compute weakly connected components, betweenness/degree/eigenvector
-  centrality, detect bridges and articulation points via NetworkX, and run N-1
-  contingency screening. Results are written back to the main ontology.
+  model, compute weakly connected components, Louvain community detection,
+  betweenness/degree/eigenvector centrality, and identify structurally critical
+  substations. Results are written back to the main ontology.
 - Stage 3 -- Rules: declarative interconnection queue compliance checks
-  (capacity, N-1 reliability, renewable mandate) that consume Stage 1 and 2
-  enrichments.
+  (capacity, structural criticality, low-carbon mandate) that consume Stage 1
+  and 2 enrichments.
 - Stage 4 -- Prescriptive: joint DC approval + grid upgrade optimization using
   InvestmentLevel as a Scenario Concept. One solve across 5 budget levels
   produces a Pareto frontier with results queryable directly from the ontology.
 
 Run:
     /opt/homebrew/bin/python3.11 energy_grid_planning.py
+
+Output:
+    Prints a four-stage pipeline summary:
+    - Stage 1: substation load forecasts with growth rates and breach detection
+    - Stage 2: grid connectivity (WCC), community structure (Louvain), centrality
+      ranking, and structurally critical substations
+    - Stage 3: compliance table (10 DC requests vs 3 rules: capacity, low-carbon,
+      structural risk)
+    - Stage 4: Pareto frontier across 5 investment levels ($200M-$600M) with
+      per-level DC approvals, upgrade selections, marginal analysis, and knee point
 """
 
 from pathlib import Path
 
-import networkx as nx
 import pandas as pd
 from pandas import read_csv
 
@@ -39,9 +48,10 @@ from relationalai.semantics.std import aggregates as aggs
 
 DATA_DIR = Path(__file__).parent / "data"
 
-RENEWABLE_TARGET = 0.30  # 30% of generation must be renewable
+LOW_CARBON_TARGET = 0.30  # 30% of generation must be low-carbon (renewable + nuclear)
 EMISSIONS_CAP = 50000  # tons
 AMORTIZATION_YEARS = 20  # upgrade cost spread over 20 years
+CRITICAL_THRESHOLD = 3  # top-N substations by combined centrality rank are "structurally critical"
 
 
 # --------------------------------------------------
@@ -172,8 +182,8 @@ DataCenterRequest.is_ai_workload = model.Property(
     f"{DataCenterRequest} is AI workload {Boolean:is_ai_workload}")
 DataCenterRequest.cooling_type = model.Property(
     f"{DataCenterRequest} has cooling type {String:cooling_type}")
-DataCenterRequest.renewable_requirement_pct = model.Property(
-    f"{DataCenterRequest} has renewable requirement {Float:renewable_requirement_pct} percent")
+DataCenterRequest.low_carbon_requirement_pct = model.Property(
+    f"{DataCenterRequest} has low-carbon requirement {Float:low_carbon_requirement_pct} percent")
 DataCenterRequest.queue_position = model.Property(
     f"{DataCenterRequest} has queue position {Integer:queue_position}")
 DataCenterRequest.status = model.Property(f"{DataCenterRequest} has status {String:status}")
@@ -187,8 +197,8 @@ SubstationUpgrade.cost_million = model.Property(
     f"{SubstationUpgrade} costs {Float:cost_million} million dollars")
 SubstationUpgrade.lead_time_months = model.Property(
     f"{SubstationUpgrade} has lead time {Integer:lead_time_months} months")
-SubstationUpgrade.enables_renewable = model.Property(
-    f"{SubstationUpgrade} enables renewable connection {Boolean:enables_renewable}")
+SubstationUpgrade.enables_low_carbon = model.Property(
+    f"{SubstationUpgrade} enables low-carbon connection {Boolean:enables_low_carbon}")
 
 # DemandForecast
 DemandForecast = model.Concept("DemandForecast", identify_by={"id": String})
@@ -222,6 +232,7 @@ DCAnnouncement.substation = model.Relationship(f"{DCAnnouncement} targets {Subst
 # Load CSV data into ontology
 # --------------------------------------------------
 
+# Load substation data from CSV.
 src = model.data(substations_df)
 model.define(Substation.new(
     id=src.ID, name=src.NAME, voltage_kv=src.VOLTAGE_KV,
@@ -229,6 +240,7 @@ model.define(Substation.new(
     latitude=src.LATITUDE, longitude=src.LONGITUDE,
 ))
 
+# Load generator data from CSV.
 src = model.data(generators_df)
 model.define(Generator.new(
     id=src.ID, name=src.NAME, gen_type=src.GEN_TYPE,
@@ -240,6 +252,7 @@ model.define(Generator.new(
     substation=Substation.filter_by(id=src.SUBSTATION_ID),
 ))
 
+# Load transmission line data from CSV.
 src = model.data(transmission_lines_df)
 model.define(TransmissionLine.new(
     id=src.ID,
@@ -250,24 +263,28 @@ model.define(TransmissionLine.new(
     maintenance_priority=src.MAINTENANCE_PRIORITY,
 ))
 
+# Load load zone data from CSV.
 src = model.data(load_zones_df)
 model.define(LoadZone.new(
     id=src.ID, name=src.NAME,
     peak_demand_mw=src.PEAK_DEMAND_MW, base_demand_mw=src.BASE_DEMAND_MW,
 ))
 
+# Load demand period data from CSV.
 src = model.data(demand_periods_df)
 model.define(DemandPeriod.new(
     id=src.ID, load_zone=LoadZone.filter_by(id=src.LOAD_ZONE_ID),
     period=src.PERIOD, demand_mw=src.DEMAND_MW, price_per_mwh=src.PRICE_PER_MWH,
 ))
 
+# Load renewable profile data from CSV.
 src = model.data(renewable_profiles_df)
 model.define(RenewableProfile.new(
     id=src.ID, generator=Generator.filter_by(id=src.GENERATOR_ID),
     period=src.PERIOD, capacity_factor=src.CAPACITY_FACTOR,
 ))
 
+# Load maintenance window data from CSV.
 src = model.data(maintenance_windows_df)
 model.define(MaintenanceWindow.new(
     id=src.ID, asset_type=src.ASSET_TYPE, asset_id=src.ASSET_ID,
@@ -275,6 +292,7 @@ model.define(MaintenanceWindow.new(
     is_planned=src.IS_PLANNED,
 ))
 
+# Load customer data from CSV.
 src = model.data(customers_df)
 model.define(Customer.new(
     id=src.ID, name=src.NAME, load_zone=LoadZone.filter_by(id=src.LOAD_ZONE_ID),
@@ -282,6 +300,7 @@ model.define(Customer.new(
     curtailment_cost_per_mwh=src.CURTAILMENT_COST_PER_MWH,
 ))
 
+# Load data center request data from CSV.
 src = model.data(data_center_requests_df)
 model.define(DataCenterRequest.new(
     id=src.ID, name=src.NAME, hyperscaler=src.HYPERSCALER,
@@ -290,17 +309,19 @@ model.define(DataCenterRequest.new(
     annual_revenue_per_mw=src.ANNUAL_REVENUE_PER_MW,
     pue=src.PUE, is_ai_workload=src.IS_AI_WORKLOAD,
     cooling_type=src.COOLING_TYPE,
-    renewable_requirement_pct=src.RENEWABLE_REQUIREMENT_PCT,
+    low_carbon_requirement_pct=src.LOW_CARBON_REQUIREMENT_PCT,
     queue_position=src.QUEUE_POSITION, status=src.STATUS,
 ))
 
+# Load substation upgrade data from CSV.
 src = model.data(substation_upgrades_df)
 model.define(SubstationUpgrade.new(
     id=src.ID, substation=Substation.filter_by(id=src.SUBSTATION_ID),
     capacity_increase_mw=src.CAPACITY_INCREASE_MW, cost_million=src.COST_MILLION,
-    lead_time_months=src.LEAD_TIME_MONTHS, enables_renewable=src.ENABLES_RENEWABLE,
+    lead_time_months=src.LEAD_TIME_MONTHS, enables_low_carbon=src.ENABLES_LOW_CARBON,
 ))
 
+# Load demand forecast data from CSV.
 src = model.data(demand_forecasts_df)
 model.define(DemandForecast.new(
     id=src.ID, substation=Substation.filter_by(id=src.SUBSTATION_ID),
@@ -308,8 +329,8 @@ model.define(DemandForecast.new(
     confidence=src.CONFIDENCE, includes_dc_growth=src.INCLUDES_DC_GROWTH,
 ))
 
-# LoadHistory CSV uses lowercase column names
-load_history_df.columns = [c.upper() for c in load_history_df.columns]
+# Load history data from CSV.
+load_history_df["IS_PEAK_SEASON"] = load_history_df["IS_PEAK_SEASON"].astype(bool)
 load_history_df["READING_ID"] = load_history_df["READING_ID"].astype(str)
 src = model.data(load_history_df)
 model.define(LoadHistory.new(
@@ -318,8 +339,7 @@ model.define(LoadHistory.new(
     substation=Substation.filter_by(id=src.SUBSTATION_ID),
 ))
 
-# DCAnnouncement CSV uses lowercase column names
-dc_announcements_df.columns = [c.upper() for c in dc_announcements_df.columns]
+# Load DC announcement data from CSV.
 src = model.data(dc_announcements_df)
 model.define(DCAnnouncement.new(
     id=src.ANNOUNCEMENT_ID, hyperscaler=src.HYPERSCALER,
@@ -370,7 +390,9 @@ except Exception as e:
         f"  GNN model not available ({type(e).__name__}), falling back to DEMAND_FORECASTS table"
     )
 
-# Prediction enrichment: max predicted load across forecast horizons per substation.
+# ── Ontology enrichment: write predicted load back to Substation ──────────────
+# This is the first link in the accretive chain: Stage 3 rules and Stage 4
+# optimization both consume predicted_load instead of static current_load.
 Substation.predicted_load = model.Property(f"{Substation} has {Float:predicted_load}")
 model.define(
     Substation.predicted_load(
@@ -533,117 +555,29 @@ if num_components == 1:
 else:
     print(f"  FRAGMENTED: {num_components} isolated grid segments detected!")
 
-# b) Bridge & Articulation Point Detection (NetworkX)
-gline_ref = GLine.ref()
-gfs, gts = GSub.ref(), GSub.ref()
+# b) Community Detection (Louvain)
+community = grid_graph.louvain()
+node_c = grid_graph.Node.ref("nc")
+comm_label = Integer.ref("comm")
 
-edge_df = (
-    graph_model.where(
-        gline_ref.from_substation(gfs),
-        gline_ref.to_substation(gts),
-        gline_ref.is_active == True,
-    )
+community_df = (
+    graph_model.where(community(node_c, comm_label))
     .select(
-        gline_ref.id.alias("line_id"),
-        gfs.id.alias("from_id"),
-        gts.id.alias("to_id"),
-        gline_ref.capacity_mw.alias("capacity_mw"),
+        node_c.id.alias("substation_id"),
+        node_c.name.alias("name"),
+        comm_label.alias("community"),
     )
     .to_df()
 )
+community_df["community"] = community_df["community"].astype(int)
 
-G = nx.Graph()
-for _, row in wcc_df.iterrows():
-    G.add_node(
-        row["substation_id"],
-        name=row["substation_name"],
-        load_mw=float(row["current_load_mw"]),
-        voltage_kv=float(row["voltage_kv"]),
-    )
-for _, row in edge_df.iterrows():
-    G.add_edge(
-        row["from_id"],
-        row["to_id"],
-        line_id=row["line_id"],
-        capacity_mw=float(row["capacity_mw"]),
-    )
+num_communities = community_df["community"].nunique()
+print(f"\n  Grid community structure (Louvain): {num_communities} region(s)")
+for comm_id, group in community_df.groupby("community"):
+    members = ", ".join(group["name"].tolist())
+    print(f"    Region {comm_id}: {members}")
 
-bridges = list(nx.bridges(G))
-articulation_pts = list(nx.articulation_points(G))
-
-print(f"\n  Structural vulnerability:")
-print(f"    Bridge lines (removal disconnects grid): {len(bridges)}")
-print(f"    Articulation substations: {len(articulation_pts)}")
-
-if bridges:
-    print(f"\n  Bridge lines:")
-    for u, v in bridges:
-        edge_data = G.edges[u, v]
-        print(
-            f"    {edge_data['line_id']}: {G.nodes[u]['name']} <-> {G.nodes[v]['name']} ({edge_data['capacity_mw']:.0f} MW)"
-        )
-
-if articulation_pts:
-    print(f"\n  Articulation substations:")
-    for ap in sorted(articulation_pts):
-        node = G.nodes[ap]
-        print(
-            f"    {node['name']} ({node['voltage_kv']:.0f} kV, {node['load_mw']:.1f} MW)"
-        )
-
-# c) N-1 Contingency Screening
-print(f"\n  N-1 contingency screening...")
-contingency_results = []
-baseline_components = nx.number_connected_components(G)
-
-for _, row in edge_df.iterrows():
-    line_id = row["line_id"]
-    u, v = row["from_id"], row["to_id"]
-
-    G_temp = G.copy()
-    if G_temp.has_edge(u, v):
-        G_temp.remove_edge(u, v)
-
-    new_components = nx.number_connected_components(G_temp)
-    causes_split = new_components > baseline_components
-
-    load_at_risk = 0.0
-    if causes_split:
-        components = list(nx.connected_components(G_temp))
-        largest = max(components, key=len)
-        for comp in components:
-            if comp != largest:
-                for node_id in comp:
-                    load_at_risk += G.nodes[node_id].get("load_mw", 0.0)
-
-    contingency_results.append(
-        {
-            "line_id": line_id,
-            "from_name": G.nodes[u]["name"],
-            "to_name": G.nodes[v]["name"],
-            "causes_split": causes_split,
-            "load_at_risk_mw": load_at_risk,
-        }
-    )
-
-contingency_df = (
-    pd.DataFrame(contingency_results)
-    .sort_values("load_at_risk_mw", ascending=False)
-    .reset_index(drop=True)
-)
-
-split_df = contingency_df[contingency_df["causes_split"]]
-if len(split_df) > 0:
-    print(f"    CRITICAL: {len(split_df)} line(s) cause grid fragmentation if removed:")
-    for _, row in split_df.iterrows():
-        print(
-            f"      {row['line_id']}: {row['from_name']} <-> {row['to_name']} "
-            f"(load at risk: {row['load_at_risk_mw']:.1f} MW)"
-        )
-else:
-    print("    Grid is N-1 secure -- no single line removal causes fragmentation.")
-
-# d) Centrality Analysis via RAI Graph Reasoner
+# c) Centrality Analysis (betweenness, degree, eigenvector)
 betweenness = grid_graph.betweenness_centrality()
 node_b = grid_graph.Node.ref("nb")
 btwn_score = Float.ref("btwn")
@@ -702,55 +636,55 @@ centrality_df["combined_rank"] = (
 )
 centrality_df = centrality_df.sort_values("combined_rank").reset_index(drop=True)
 
-print(f"\n  Top 5 critical substations (centrality):")
-for i, (_, row) in enumerate(centrality_df.head(5).iterrows(), 1):
-    is_ap = row["substation_id"] in articulation_pts
-    ap_flag = " [ARTICULATION POINT]" if is_ap else ""
+# Top-N by combined centrality rank are "structurally critical"
+critical_sub_ids = set(
+    centrality_df.head(CRITICAL_THRESHOLD)["substation_id"].tolist()
+)
+
+print(f"\n  Top {CRITICAL_THRESHOLD} structurally critical substations:")
+for i, (_, row) in enumerate(centrality_df.head(CRITICAL_THRESHOLD).iterrows(), 1):
     print(
         f"    #{i}: {row['name']} (betw={row['betweenness']:.4f}, "
-        f"deg={row['degree_centrality']:.4f}, eig={row['eigenvector_centrality']:.4f}){ap_flag}"
+        f"deg={row['degree_centrality']:.4f}, eig={row['eigenvector_centrality']:.4f}) [CRITICAL]"
     )
 
-# e) Line utilization (congestion proxy)
-congestion_results = []
-for _, row in edge_df.iterrows():
-    from_load = G.nodes[row["from_id"]].get("load_mw", 0.0)
-    to_load = G.nodes[row["to_id"]].get("load_mw", 0.0)
-    estimated_flow = (from_load + to_load) / 2.0
-    capacity = float(row["capacity_mw"])
-    utilization = estimated_flow / capacity if capacity > 0 else 0.0
-
-    is_bridge = any(
-        (row["from_id"] == u and row["to_id"] == v)
-        or (row["from_id"] == v and row["to_id"] == u)
-        for u, v in bridges
+print(f"\n  All substations by centrality:")
+for i, (_, row) in enumerate(centrality_df.iterrows(), 1):
+    flag = " [CRITICAL]" if row["substation_id"] in critical_sub_ids else ""
+    print(
+        f"    #{i}: {row['name']} (betw={row['betweenness']:.4f}, "
+        f"deg={row['degree_centrality']:.4f}, eig={row['eigenvector_centrality']:.4f}){flag}"
     )
 
-    congestion_results.append(
-        {
-            "line_id": row["line_id"],
-            "utilization_pct": utilization * 100,
-            "is_bridge": is_bridge,
-        }
-    )
+# ── Ontology enrichment: write graph results back to the main model ───────────
+# This is the accretive pattern: graph analysis runs on graph_model, but results
+# are written to the shared ontology so Stage 3 rules and Stage 4 optimization
+# can consume them. Each stage builds on the previous — the ontology grows.
 
-congestion_df = pd.DataFrame(congestion_results)
-
-# Enrich main ontology with Stage 2 results
 Substation.betweenness = model.Property(f"{Substation} has {Float:betweenness}")
-Substation.is_articulation_point = model.Relationship(f"{Substation} is articulation point")
+Substation.grid_community = model.Property(f"{Substation} in grid community {Integer:grid_community}")
+Substation.is_structurally_critical = model.Relationship(f"{Substation} is structurally critical")
 
+# Write betweenness centrality
 cent_data = model.data(centrality_df[["substation_id", "betweenness"]])
 model.define(
     Substation.filter_by(id=cent_data.substation_id).betweenness(cent_data.betweenness)
 )
 
-if articulation_pts:
-    ap_df = pd.DataFrame({"substation_id": list(articulation_pts)})
-    ap_data = model.data(ap_df)
-    model.where(Substation.id == ap_data.substation_id).define(Substation.is_articulation_point())
+# Write Louvain community labels
+comm_data = model.data(community_df[["substation_id", "community"]])
+model.define(
+    Substation.filter_by(id=comm_data.substation_id).grid_community(comm_data.community)
+)
 
-# Cross-reference: DC-targeted substations that are ALSO bottlenecks
+# Write structurally critical flag (top-N by combined centrality)
+critical_df = pd.DataFrame({"substation_id": list(critical_sub_ids)})
+crit_data = model.data(critical_df)
+model.where(Substation.id == crit_data.substation_id).define(
+    Substation.is_structurally_critical()
+)
+
+# Cross-reference: DC-targeted substations that are ALSO critical bottlenecks
 DCRef = DataCenterRequest.ref()
 SubRef2 = Substation.ref()
 dc_sub_df = (
@@ -765,32 +699,32 @@ dc_sub_df = (
 )
 
 if len(dc_sub_df) > 0 and len(centrality_df) > 0:
-    bottleneck_subs = set(
-        centrality_df[centrality_df.index < 3]["substation_id"].tolist()
-    )
-    bottleneck_subs.update(articulation_pts)
-
-    dc_at_bottleneck = dc_sub_df[dc_sub_df["sub_id"].isin(bottleneck_subs)]
+    dc_at_bottleneck = dc_sub_df[dc_sub_df["sub_id"].isin(critical_sub_ids)]
     if len(dc_at_bottleneck) > 0:
         print(
-            f"\n  KEY INSIGHT: DC requests targeting structural bottleneck substations:"
+            f"\n  KEY INSIGHT: DC requests targeting structurally critical substations:"
         )
         for _, row in dc_at_bottleneck.iterrows():
             print(
-                f"    {row['dc_name']} ({row['requested_mw']} MW) -> {row['sub_name']} [BOTTLENECK]"
+                f"    {row['dc_name']} ({row['requested_mw']} MW) -> {row['sub_name']} [CRITICAL]"
             )
     else:
-        print(f"\n  No DC requests target structural bottleneck substations.")
+        print(f"\n  No DC requests target structurally critical substations.")
 
 # --------------------------------------------------
 # Stage 3: Rules -- Interconnection Queue Compliance
 # --------------------------------------------------
+# Accretive chain: each rule consumes ontology enrichments from earlier stages.
+# Rule 1 reads Substation.predicted_load (Stage 1).
+# Rule 2 reads Substation.is_structurally_critical (Stage 2).
+# Rule 3 reads Generator.emissions_rate (base data) to derive low-carbon capacity.
+# All flags are written back as Relationships — queryable and consumable downstream.
 
 print(f"\n{'=' * 60}")
 print("STAGE 3: RULES -- Interconnection Queue Compliance")
 print("=" * 60)
 
-# Rule 1: Capacity check -- uses predicted_load from Stage 1
+# Rule 1: Capacity check -- consumes predicted_load from Stage 1
 DataCenterRequest.fails_capacity = model.Relationship(f"{DataCenterRequest} fails capacity check")
 SubRef_rule = Substation.ref()
 effective_load_rule = SubRef_rule.predicted_load | SubRef_rule.current_load_mw
@@ -799,21 +733,22 @@ model.where(
     DataCenterRequest.requested_mw + effective_load_rule > SubRef_rule.max_capacity_mw,
 ).define(DataCenterRequest.fails_capacity())
 
-# Rule 2: N-1 reliability -- uses articulation points from Stage 2
-DataCenterRequest.fails_n1 = model.Relationship(f"{DataCenterRequest} fails N-1 check")
-SubRef_n1 = Substation.ref()
+# Rule 2: Structural risk -- uses centrality-based criticality from Stage 2
+DataCenterRequest.fails_structural = model.Relationship(f"{DataCenterRequest} fails structural risk check")
+SubRef_sr = Substation.ref()
 model.where(
-    DataCenterRequest.substation(SubRef_n1),
-    SubRef_n1.is_articulation_point(),
-).define(DataCenterRequest.fails_n1())
+    DataCenterRequest.substation(SubRef_sr),
+    SubRef_sr.is_structurally_critical(),
+).define(DataCenterRequest.fails_structural())
 
-# Rule 3: Renewable mandate -- check if DC's renewable requirement can be met
-Substation.renewable_gen_mw = model.Property(f"{Substation} has {Float:renewable_gen_mw}")
+# Rule 3: Low-carbon mandate -- check if DC's low-carbon requirement can be met
+# Low-carbon = zero-emission generation (renewable + nuclear), keyed on emissions_rate == 0
+Substation.low_carbon_gen_mw = model.Property(f"{Substation} has {Float:low_carbon_gen_mw}")
 Substation.total_gen_mw = model.Property(f"{Substation} has {Float:total_gen_mw}")
 model.define(
-    Substation.renewable_gen_mw(
+    Substation.low_carbon_gen_mw(
         aggs.sum(Generator.capacity_mw)
-        .where(Generator.substation(Substation), Generator.is_renewable == True)
+        .where(Generator.substation(Substation), Generator.emissions_rate == 0.0)
         .per(Substation)
     )
 )
@@ -825,19 +760,19 @@ model.define(
     )
 )
 
-DataCenterRequest.fails_renewable = model.Relationship(f"{DataCenterRequest} fails renewable mandate")
-SubRef_ren = Substation.ref()
+DataCenterRequest.fails_low_carbon = model.Relationship(f"{DataCenterRequest} fails low-carbon mandate")
+SubRef_lc = Substation.ref()
 model.where(
-    DataCenterRequest.substation(SubRef_ren),
-    (SubRef_ren.renewable_gen_mw | 0.0) * 100 < DataCenterRequest.renewable_requirement_pct * (SubRef_ren.total_gen_mw | 0.001),
-).define(DataCenterRequest.fails_renewable())
+    DataCenterRequest.substation(SubRef_lc),
+    (SubRef_lc.low_carbon_gen_mw | 0.0) * 100 < DataCenterRequest.low_carbon_requirement_pct * (SubRef_lc.total_gen_mw | 0.001),
+).define(DataCenterRequest.fails_low_carbon())
 
 # Composite: compliant if none of the checks fail
 DataCenterRequest.is_compliant = model.Relationship(f"{DataCenterRequest} is compliant")
 model.where(
     model.not_(DataCenterRequest.fails_capacity()),
-    model.not_(DataCenterRequest.fails_n1()),
-    model.not_(DataCenterRequest.fails_renewable()),
+    model.not_(DataCenterRequest.fails_structural()),
+    model.not_(DataCenterRequest.fails_low_carbon()),
 ).define(DataCenterRequest.is_compliant())
 
 # Query rule outputs for compliance summary
@@ -866,8 +801,8 @@ def _query_flag(relationship, flag_name):
 
 
 cap_fail_df = _query_flag(DataCenterRequest.fails_capacity, "capacity_flag")
-n1_fail_df = _query_flag(DataCenterRequest.fails_n1, "n1_flag")
-ren_fail_df = _query_flag(DataCenterRequest.fails_renewable, "renewable_flag")
+struct_fail_df = _query_flag(DataCenterRequest.fails_structural, "structural_flag")
+lc_fail_df = _query_flag(DataCenterRequest.fails_low_carbon, "low_carbon_flag")
 
 compliant_ids_df = model.where(DataCenterRequest.is_compliant()).select(
     DataCenterRequest.id.alias("dc_id"),
@@ -879,10 +814,10 @@ else:
 
 compliance_df = compliance_df.merge(cap_fail_df, on="dc_id", how="left")
 compliance_df["capacity_flag"] = compliance_df["capacity_flag"].fillna("PASS")
-compliance_df = compliance_df.merge(n1_fail_df, on="dc_id", how="left")
-compliance_df["n1_flag"] = compliance_df["n1_flag"].fillna("PASS")
-compliance_df = compliance_df.merge(ren_fail_df, on="dc_id", how="left")
-compliance_df["renewable_flag"] = compliance_df["renewable_flag"].fillna("PASS")
+compliance_df = compliance_df.merge(struct_fail_df, on="dc_id", how="left")
+compliance_df["structural_flag"] = compliance_df["structural_flag"].fillna("PASS")
+compliance_df = compliance_df.merge(lc_fail_df, on="dc_id", how="left")
+compliance_df["low_carbon_flag"] = compliance_df["low_carbon_flag"].fillna("PASS")
 compliance_df = compliance_df.merge(compliant_ids_df, on="dc_id", how="left")
 compliance_df["is_compliant"] = compliance_df["is_compliant"].fillna("N")
 
@@ -891,14 +826,14 @@ print(f"\n  Evaluating {num_dc} DC requests against 3 declarative compliance rul
 
 print(
     f"\n  {'DC Request':<25} {'Hyper':<12} {'Q#':>3} {'MW':>6} "
-    f"{'Cap':>5} {'Renew':>5} {'N-1':>5} {'OK?':>4}"
+    f"{'Cap':>5} {'LowC':>5} {'Crit':>5} {'OK?':>4}"
 )
 print(f"  {'-' * 70}")
 for _, r in compliance_df.iterrows():
     print(
         f"  {r['dc_name']:<25} {r['hyperscaler']:<12} {r['queue_pos']:>3} {float(r['requested_mw']):>6.0f} "
-        f"{r['capacity_flag']:>5} {r['renewable_flag']:>5} "
-        f"{r['n1_flag']:>5} {r['is_compliant']:>4}"
+        f"{r['capacity_flag']:>5} {r['low_carbon_flag']:>5} "
+        f"{r['structural_flag']:>5} {r['is_compliant']:>4}"
     )
 
 compliant_count = len(compliance_df[compliance_df["is_compliant"] == "Y"])
@@ -909,8 +844,11 @@ print(
 
 # --------------------------------------------------
 # Stage 4: Optimize -- Joint DC Approval + Grid Upgrade
-#   Uses InvestmentLevel Scenario Concept: one solve produces the
-#   entire Pareto frontier with results queryable in the ontology.
+#   Accretive chain: the capacity constraint uses predicted_load from Stage 1
+#   (via the | fallback pattern), matching the rules engine. All solve results
+#   (x_approve, x_upgrade per InvestmentLevel) are written to the ontology —
+#   queryable via model.select(), not parsed from solver output.
+#   One solve across 5 InvestmentLevel scenarios produces the Pareto frontier.
 # --------------------------------------------------
 
 print(f"\n{'=' * 60}")
@@ -955,9 +893,10 @@ p.solve_for(SubstationUpgrade.x_upgrade(InvestmentLevel, x_u), type="bin",
             name=["upgrade", InvestmentLevel.name, SubstationUpgrade.id])
 
 # C1: Substation capacity per investment level
-# Pattern: model.where(bindings).require(expr)
+# Uses predicted_load from Stage 1 (with current_load fallback) — the accretive chain.
 x_a_c = Float.ref("xa_c")
 x_u_c = Float.ref("xu_c")
+effective_load = Substation.predicted_load | Substation.current_load_mw
 
 p.satisfy(model.where(
     DataCenterRequest.x_approve(InvestmentLevel, x_a_c),
@@ -965,7 +904,7 @@ p.satisfy(model.where(
     DataCenterRequest.substation(Substation),
     SubstationUpgrade.substation(Substation),
 ).require(
-    Substation.max_capacity_mw - Substation.current_load_mw
+    Substation.max_capacity_mw - effective_load
     + sum(x_u_c * UpgRef.capacity_increase_mw).where(
         UpgRef.substation == Substation).per(Substation, InvestmentLevel)
     >= sum(x_a_c * DCRef.requested_mw).where(

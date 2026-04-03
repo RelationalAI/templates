@@ -1,16 +1,16 @@
 ID,NAME,GEN_TYPE,CAPACITY_MW,MIN_OUTPUT_MW,RAMP_RATE_MW_PER_HR,STARTUP_COST,MARGINAL_COST,MIN_UP_TIME_HRS,MIN_DOWN_TIME_HRS,EMISSIONS_RATE,IS_RENEWABLE,SUBSTATION_ID
-GEN-001,Permian Basin CC,gas,620,180,250,35000,48.0,4,2,0.42,false,SUB-001
-GEN-002,Gulf Coast Peaker,gas,350,50,350,18000,65.0,1,1,0.55,false,SUB-002
-GEN-003,Midwest Gas Turbine,gas,480,140,280,28000,52.0,3,2,0.45,false,SUB-009
-GEN-004,Prairie Coal Station,coal,750,350,80,50000,32.0,8,6,0.95,false,SUB-005
-GEN-005,Southern Coal Plant,coal,600,280,70,45000,35.0,8,6,0.88,false,SUB-006
-GEN-006,Palo Verde Nuclear,nuclear,1100,1000,20,120000,10.0,24,24,0.0,false,SUB-003
-GEN-007,Mojave Solar Farm,solar,300,0,300,0,0.0,0,0,0.0,true,SUB-008
-GEN-008,Texas Solar Array,solar,250,0,250,0,0.0,0,0,0.0,true,SUB-012
-GEN-009,Desert Sun PV,solar,200,0,200,0,0.0,0,0,0.0,true,SUB-003
-GEN-010,Panhandle Wind,wind,400,0,400,0,0.0,0,0,0.0,true,SUB-001
-GEN-011,Great Plains Wind,wind,350,0,350,0,0.0,0,0,0.0,true,SUB-010
-GEN-012,Columbia Gorge Wind,wind,280,0,280,0,0.0,0,0,0.0,true,SUB-007
-GEN-013,Snake River Hydro,hydro,450,100,180,5000,5.0,2,1,0.0,true,SUB-011
-GEN-014,Rockies Hydro Dam,hydro,320,80,160,4000,6.0,2,1,0.0,true,SUB-004
-GEN-015,Metro Battery Storage,battery,200,-200,400,500,8.0,0,0,0.0,true,SUB-005
+GEN-001,South Texas Project,nuclear,1350,1200,20,120000,10.0,24,24,0.0,false,SUB-007
+GEN-002,Comanche Peak,nuclear,1210,1100,18,115000,9.5,24,24,0.0,false,SUB-011
+GEN-003,Permian Basin CC,gas,720,200,300,38000,42.0,4,2,0.42,false,SUB-005
+GEN-004,Houston Ship Channel Peaker,gas,340,50,340,15000,68.0,1,1,0.55,false,SUB-001
+GEN-005,San Antonio Gas Turbine,gas,580,160,260,32000,48.0,3,2,0.45,false,SUB-003
+GEN-006,Abilene Power CC,gas,650,180,280,35000,44.0,4,2,0.43,false,SUB-010
+GEN-007,Midland Wind Farm,wind,450,0,450,0,0.0,0,0,0.0,true,SUB-005
+GEN-008,Lubbock Prairie Wind,wind,380,0,380,0,0.0,0,0,0.0,true,SUB-006
+GEN-009,Amarillo Panhandle Wind,wind,420,0,420,0,0.0,0,0,0.0,true,SUB-009
+GEN-010,Permian Solar Park,solar,350,0,350,0,0.0,0,0,0.0,true,SUB-005
+GEN-011,South Texas Solar,solar,280,0,280,0,0.0,0,0,0.0,true,SUB-007
+GEN-012,Limestone Coal Station,coal,540,250,75,48000,34.0,8,6,0.92,false,SUB-011
+GEN-013,Martin Lake Coal,coal,480,220,70,44000,36.0,8,6,0.88,false,SUB-002
+GEN-014,Sam Rayburn Hydro,hydro,85,20,60,3000,5.0,2,1,0.0,true,SUB-001
+GEN-015,Houston Battery Storage,battery,300,-300,600,500,8.0,0,0,0.0,true,SUB-001
