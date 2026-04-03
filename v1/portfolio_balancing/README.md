@@ -6,7 +6,7 @@ experience_level: intermediate
 industry: "Finance"
 reasoning_types:
   - Prescriptive
-  - Rules
+    - Rules-based
 tags:
   - Quadratic Programming
   - Risk Minimization

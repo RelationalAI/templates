@@ -7,7 +7,7 @@ industry: "Energy & Utilities"
 reasoning_types:
   - Predictive
   - Graph
-  - Rules
+  - Rules-based
   - Prescriptive
 tags:
   - Multi-Reasoner

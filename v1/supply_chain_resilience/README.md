@@ -6,7 +6,7 @@ experience_level: intermediate
 industry: "Supply Chain & Logistics"
 reasoning_types:
   - Graph
-  - Rules
+    - Rules-based
   - Prescriptive
 tags:
   - Multi-Reasoner

@@ -6,7 +6,7 @@ experience_level: intermediate
 industry: "Manufacturing"
 reasoning_types:
   - Graph
-  - Rules
+  - Rules-based
   - Prescriptive
 tags:
   - Multi-Reasoner
