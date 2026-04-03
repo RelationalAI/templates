@@ -278,13 +278,13 @@ Then run `python si_agent.py update`.
 
 ### Core concepts
 
-- [RelationalAI Concepts & Properties](https://docs.relational.ai) — How `model.Concept`, `model.Property`, and `model.define()` work
+- [Build a semantic model](https://docs.relational.ai/build/guides/modeling/]) — How `model.Concept`, `model.Property`, and `model.define()` work
 - [Cortex Agents overview](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-agents) — Snowflake's agent framework
 
 ### Language / modeling reference
 
-- [PyRel v1 documentation](https://docs.relational.ai) — Full language reference for `relationalai.semantics`
-- [ToolRegistry & QueryCatalog API](https://docs.relational.ai) — How to register queries for agent use
+- [PyRel documentation](https://docs.relational.ai/build) — Tutorials and guides
+- [PyRel API documentation](https://docs.relational.ai/api/python/latest/) — Full language reference for `relationalaiai`
 
 ### Deeper dives
 
@@ -292,5 +292,4 @@ Then run `python si_agent.py update`.
 
 ## Support
 
-- File issues or ask questions at [RelationalAI Community](https://relational.ai/community)
-- For template bugs, open an issue in this repository
+- [https://support.relational.ai](https://support.relational.ai)
