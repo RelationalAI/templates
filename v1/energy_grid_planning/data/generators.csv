@@ -1,0 +1,16 @@
+ID,NAME,GEN_TYPE,CAPACITY_MW,MIN_OUTPUT_MW,RAMP_RATE_MW_PER_HR,STARTUP_COST,MARGINAL_COST,MIN_UP_TIME_HRS,MIN_DOWN_TIME_HRS,EMISSIONS_RATE,IS_RENEWABLE,SUBSTATION_ID
+GEN-001,Permian Basin CC,gas,620,180,250,35000,48.0,4,2,0.42,false,SUB-001
+GEN-002,Gulf Coast Peaker,gas,350,50,350,18000,65.0,1,1,0.55,false,SUB-002
+GEN-003,Midwest Gas Turbine,gas,480,140,280,28000,52.0,3,2,0.45,false,SUB-009
+GEN-004,Prairie Coal Station,coal,750,350,80,50000,32.0,8,6,0.95,false,SUB-005
+GEN-005,Southern Coal Plant,coal,600,280,70,45000,35.0,8,6,0.88,false,SUB-006
+GEN-006,Palo Verde Nuclear,nuclear,1100,1000,20,120000,10.0,24,24,0.0,false,SUB-003
+GEN-007,Mojave Solar Farm,solar,300,0,300,0,0.0,0,0,0.0,true,SUB-008
+GEN-008,Texas Solar Array,solar,250,0,250,0,0.0,0,0,0.0,true,SUB-012
+GEN-009,Desert Sun PV,solar,200,0,200,0,0.0,0,0,0.0,true,SUB-003
+GEN-010,Panhandle Wind,wind,400,0,400,0,0.0,0,0,0.0,true,SUB-001
+GEN-011,Great Plains Wind,wind,350,0,350,0,0.0,0,0,0.0,true,SUB-010
+GEN-012,Columbia Gorge Wind,wind,280,0,280,0,0.0,0,0,0.0,true,SUB-007
+GEN-013,Snake River Hydro,hydro,450,100,180,5000,5.0,2,1,0.0,true,SUB-011
+GEN-014,Rockies Hydro Dam,hydro,320,80,160,4000,6.0,2,1,0.0,true,SUB-004
+GEN-015,Metro Battery Storage,battery,200,-200,400,500,8.0,0,0,0.0,true,SUB-005

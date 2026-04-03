@@ -1,0 +1,9 @@
+announcement_id,substation_id,hyperscaler,announced_date,announced_mw
+ANN-001,SUB-007,Amazon,2024-01-15,400
+ANN-002,SUB-007,Oracle,2024-02-20,150
+ANN-003,SUB-003,Microsoft,2024-03-10,300
+ANN-004,SUB-003,Meta,2024-04-05,350
+ANN-005,SUB-005,Google,2024-05-18,250
+ANN-006,SUB-005,xAI,2024-06-22,500
+ANN-007,SUB-002,Apple,2024-07-30,180
+ANN-008,SUB-003,CoreWeave,2024-09-12,280

@@ -1,0 +1,6 @@
+ID,NAME,PEAK_DEMAND_MW,BASE_DEMAND_MW
+ZONE-001,Texas Interconnect,3200,1800
+ZONE-002,Midwest Central,2800,1500
+ZONE-003,Mountain West,1600,900
+ZONE-004,Southeast Grid,2200,1200
+ZONE-005,Pacific Northwest,1400,750

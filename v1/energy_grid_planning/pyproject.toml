@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rai-template-energy-grid-planning"
+version = "0.0.0"
+description = "RelationalAI template: energy_grid_planning (PyRel v1)"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "relationalai==1.0.3",
+  "pandas>=2.0",
+  "networkx>=3.0",
+]
+
+[tool.setuptools]
+packages = []
