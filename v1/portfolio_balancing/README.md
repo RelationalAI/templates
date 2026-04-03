@@ -5,7 +5,7 @@ featured: false
 experience_level: intermediate
 industry: "Finance"
 reasoning_types:
-  - Prescriptive
+    - Prescriptive
     - Rules-based
 tags:
   - Quadratic Programming
