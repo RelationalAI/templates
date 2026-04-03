@@ -13,8 +13,8 @@ This directory contains the templates for v1. Each template folder includes its 
 | [disease-outbreak-prevention](./disease-outbreak-prevention/) | Use weighted degree centrality to identify the highest-risk healthcare facilities in a public health network, considering both connection volume and intensity, to prioritize resource deployment during disease outbreaks. |
 | [factory_production](./factory_production/) | Maximize profit from production with limited resource availability per factory. |
 | [fraud-detection](./fraud-detection/) | Use graph reasoning to find suspicious users based on shared identifiers and uncommon sharing patterns. |
-| [grid_interconnection](./grid_interconnection/) | Approve data center interconnection requests and substation upgrades to maximize net revenue within a capital budget. |
-| [hospital_staffing](./hospital_staffing/) | Optimize nurse-to-shift assignments to minimize overtime costs and unmet patient demand. |
+| [energy_grid_planning](./energy_grid_planning/) | Chain demand forecasting, graph analysis, rules-based compliance, and prescriptive optimization to plan AI data center interconnections on the ERCOT grid. |
+| [hospital_staffing](./hospital_staffing/) | Explore the tradeoff between overtime cost and patient service level using bi-objective optimization with epsilon constraint. |
 | [humanitarian-aid-supply-chain](./humanitarian-aid-supply-chain/) | Use graph reasoning to analyze a humanitarian aid supply chain network with PageRank and Weighted Degree Centrality to optimize resource distribution strategies. |
 | [inventory_rebalancing](./inventory_rebalancing/) | Transfer inventory through a warehouse-hub-store network to meet demand at minimum shipping cost, with flow conservation at transit nodes. |
 | [machine_maintenance](./machine_maintenance/) | Chain graph analysis, rules-based classification, and prescriptive optimization to schedule preventive maintenance across machines and technicians. |

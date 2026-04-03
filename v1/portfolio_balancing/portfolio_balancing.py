@@ -647,7 +647,7 @@ if __name__ == "__main__":
 
         # Marginal analysis
         if len(pts) >= 3:
-            print(f"\n  Marginal analysis:")
+            print("\n  Marginal analysis:")
             rates = []
             for j in range(len(pts) - 1):
                 dr = pts[j+1]['risk'] - pts[j]['risk']

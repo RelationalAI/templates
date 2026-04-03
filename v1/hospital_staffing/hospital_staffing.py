@@ -325,7 +325,7 @@ if __name__ == "__main__":
 
     # Marginal analysis
     if len(pareto) >= 3:
-        print(f"\nMarginal analysis (cost of reducing unmet demand by 1 patient):")
+        print("\nMarginal analysis (cost of reducing unmet demand by 1 patient):")
         rates = []
         for j in range(len(pareto) - 1):
             d_cost = pareto[j+1]['overtime_cost'] - pareto[j]['overtime_cost']
@@ -366,11 +366,11 @@ if __name__ == "__main__":
                 vname = str(row.iloc[0])
                 val = float(row.iloc[1])
                 if vname.startswith("assigned_") and val > 0.5:
-                    parts = vname.replace("assigned_", "").split("_", 1)
+                    parts = vname.replace("assigned_", "").rsplit("_", 1)
                     if len(parts) == 2:
                         assignments.append((parts[0], parts[1]))
             if assignments:
-                print(f"\n  Knee-point assignments:")
+                print("\n  Knee-point assignments:")
                 by_shift = {}
                 for nurse, shift in assignments:
                     by_shift.setdefault(shift, []).append(nurse)
