@@ -330,7 +330,7 @@ Ensure your Snowflake credentials are configured correctly and that the RAI Nati
 ## Learn more
 
 ### Core concepts
-
+TO-DO: Missing correct links here. 
 - [Models and Concepts](https://docs.relational.ai/preview/pyrel/concepts) -- How to define semantic models
 - [Predictive Reasoner (GNN)](https://docs.relational.ai/preview/pyrel/gnn) -- Training graph neural networks in RelationalAI
 - [Prescriptive Reasoner](https://docs.relational.ai/preview/pyrel/prescriptive) -- Formulating and solving optimization problems
