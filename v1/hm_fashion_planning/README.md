@@ -342,5 +342,4 @@ Ensure your Snowflake credentials are configured correctly and that the RAI Nati
 
 ## Support
 
-- [RelationalAI Community](https://community.relational.ai/)
 - [GitHub Issues](https://github.com/RelationalAI/templates/issues)
