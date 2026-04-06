@@ -1,0 +1,13 @@
+article_id,name,initial_price,cost,initial_inventory,salvage_rate
+100,Rib Top,29.99,12.00,500,0.15
+5000,Jersey Dress,49.99,20.00,300,0.20
+10000,Slim Fit Jeans,39.99,16.00,400,0.12
+18000,Cotton T-Shirt,14.99,6.00,800,0.10
+25000,Knit Sweater,59.99,24.00,250,0.18
+35000,Denim Jacket,79.99,32.00,200,0.22
+45000,Casual Shorts,24.99,10.00,600,0.10
+55000,Wool Coat,129.99,52.00,150,0.25
+65000,Linen Blouse,34.99,14.00,350,0.14
+75000,Cargo Pants,44.99,18.00,450,0.12
+85000,Sport Hoodie,54.99,22.00,280,0.16
+95000,Silk Scarf,19.99,8.00,700,0.08
