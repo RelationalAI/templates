@@ -1,7 +1,7 @@
-"""H&M Fashion Planning — predict-then-optimize template.
+"""Retail Planning -- predict-then-optimize template.
 
-This script demonstrates a multi-reasoner pipeline on the H&M retail dataset
-(RelBench) in RelationalAI:
+This script demonstrates a multi-reasoner pipeline on a retail dataset
+(H&M via RelBench) in RelationalAI:
 
 - Train three GNN models (item-sales regression, user-churn classification,
   user-item purchase link prediction) using the predictive reasoner.
@@ -11,12 +11,12 @@ This script demonstrates a multi-reasoner pipeline on the H&M retail dataset
 - Solve a demand/inventory planning (LP) to decide production quantities that
   minimize total cost given predicted demand.
 
-The key idea: GNN-predicted sales and churn risk replace static demand
-parameters in both optimization problems, creating a predict-then-optimize
-pipeline.
+The key idea: GNN-predicted sales, churn risk, and purchase propensity replace
+static demand parameters in both optimization problems, creating a
+predict-then-optimize pipeline.
 
 Run:
-    `python hm_fashion_planning.py`
+    `python retail_planning.py`
 
 Output:
     GNN evaluation metrics, optimal discount schedules, production plans,
@@ -31,7 +31,9 @@ from relationalai.semantics.reasoners.graph import Graph
 from relationalai.semantics.reasoners.predictive import GNN, PropertyTransformer
 from relationalai.semantics.reasoners.prescriptive import Problem
 
-# ── Configuration ──────────────────────────────────────────────────────────────
+# --------------------------------------------------
+# Configuration
+# --------------------------------------------------
 # Snowflake location for H&M data. Adjust to match your environment.
 DATABASE = "HM_PYREL"
 SCHEMA = "HM_SCHEMA"
@@ -48,17 +50,19 @@ GNN_EXP_SCHEMA = "MODEL_DATA"
 # Churn-adjustment weight: how much churn risk reduces demand (0 = ignore, 1 = full)
 CHURN_DISCOUNT_WEIGHT = 0.3
 
+# Purchase-propensity weight: how much predicted purchase demand uplifts demand
+PURCHASE_PROPENSITY_WEIGHT = 0.1
+
 # Unmet-demand penalty for demand planning
 UNMET_PENALTY = 50.0
 
-#data_dir = Path(__file__).parent / "data"
-data_dir = Path("/Users/ilias/GitHub/templates/v1/hm_fashion_planning/data")
+DATA_DIR = Path(__file__).parent / "data"
 
-# ══════════════════════════════════════════════════════════════════════════════
+# --------------------------------------------------
 # Phase 1: Shared Model & Data
-# ══════════════════════════════════════════════════════════════════════════════
+# --------------------------------------------------
 
-model = Model("hm_fashion_planning")
+model = Model("retail_planning")
 Concept, Table, Relationship = model.Concept, model.Table, model.Relationship
 
 # Core entity concepts (shared across all GNN tasks)
@@ -76,8 +80,8 @@ model.define(Article.new(articles_table.to_schema()))
 transactions_table = Table(f"{DATABASE}.{SCHEMA}.TRANSACTIONS")
 model.define(Transaction.new(transactions_table.to_schema()))
 
-# Shared knowledge graph — all three GNN tasks use the same Customer-Transaction-Article
-# graph structure. Only the PropertyTransformer and task relationships differgraph = Graph(model, directed=True, weighted=False, aggregator="sum")
+# Shared knowledge graph -- all three GNN tasks use the same Customer-Transaction-Article
+# graph structure. Only the PropertyTransformer and task relationships differ.
 graph = Graph(model, directed=True, weighted=False)
 Edge = graph.Edge
 model.define(Edge.new(src=Transaction, dst=Customer)).where(
@@ -99,9 +103,9 @@ pt = PropertyTransformer(
     time_col=[Transaction.t_dat],
 )
 
-# ══════════════════════════════════════════════════════════════════════════════
+# --------------------------------------------------
 # Phase 2: Predictive — Item Sales (regression)
-# ══════════════════════════════════════════════════════════════════════════════
+# --------------------------------------------------
 # Predict total sales (sum of transaction prices) per article for the next
 # 7-day window. Output feeds the prescriptive optimizers as demand forecasts.
 
@@ -147,15 +151,22 @@ sales_gnn = GNN(
 sales_gnn.fit()
 Article.sales_predictions = sales_gnn.predictions(domain=SalesTest)
 
+# Sanity check: warn if predictions are NaN or negative
+_sales_df = select(
+    Article.article_id, Article.sales_predictions.predicted_value,
+).where(Article.sales_predictions).to_df()
+if _sales_df["predicted_value"].isna().any() or (_sales_df["predicted_value"] < 0).any():
+    print("WARNING: Sales predictions contain NaN or negative values")
+
 print("=== Item Sales Predictions (sample) ===")
 select(
     Article.article_id,
     Article.sales_predictions.predicted_value,
 ).where(Article.sales_predictions).inspect()
 
-# ══════════════════════════════════════════════════════════════════════════════
+# --------------------------------------------------
 # Phase 3: Predictive — User Churn (binary classification)
-# ══════════════════════════════════════════════════════════════════════════════
+# --------------------------------------------------
 # Predict whether a customer will churn (no transactions) in the next 7 days.
 # Output is aggregated per article to create a churn-adjusted demand factor.
 
@@ -200,6 +211,13 @@ churn_gnn = GNN(
 churn_gnn.fit()
 Customer.churn_predictions = churn_gnn.predictions(domain=ChurnTest)
 
+# Sanity check: warn if churn probabilities are outside [0, 1]
+_churn_df = select(
+    Customer.customer_id, Customer.churn_predictions.probs,
+).where(Customer.churn_predictions).to_df()
+if _churn_df["probs"].isna().any() or (_churn_df["probs"] < 0).any() or (_churn_df["probs"] > 1).any():
+    print("WARNING: Churn predictions contain NaN or out-of-range probabilities")
+
 print("\n=== User Churn Predictions (sample) ===")
 select(
     Customer.customer_id,
@@ -207,11 +225,11 @@ select(
     Customer.churn_predictions.probs,
 ).where(Customer.churn_predictions).inspect()
 
-# ══════════════════════════════════════════════════════════════════════════════
+# --------------------------------------------------
 # Phase 4: Predictive — User-Item Purchase (link prediction)
-# ══════════════════════════════════════════════════════════════════════════════
+# --------------------------------------------------
 # Predict which articles each customer will purchase in the next 7 days.
-# Standalone showcase — does not feed the prescriptive optimizers.
+# Aggregated per article in Phase 5 as a demand uplift signal.
 
 PurchaseTrainTable = Concept("PurchaseTrainTable")
 PurchaseValTable = Concept("PurchaseValTable")
@@ -261,6 +279,13 @@ purchase_gnn = GNN(
 purchase_gnn.fit()
 Customer.purchase_predictions = purchase_gnn.predictions(domain=PurchaseTest)
 
+# Sanity check: warn if purchase scores are NaN
+_purchase_df = select(
+    Customer.customer_id, Customer.purchase_predictions.scores,
+).where(Customer.purchase_predictions).to_df()
+if _purchase_df["scores"].isna().any():
+    print("WARNING: Purchase predictions contain NaN scores")
+
 print("\n=== User-Item Purchase Predictions (sample) ===")
 select(
     Customer.customer_id,
@@ -269,20 +294,22 @@ select(
     Customer.purchase_predictions.scores,
 ).where(Customer.purchase_predictions).inspect()
 
-# ══════════════════════════════════════════════════════════════════════════════
+# --------------------------------------------------
 # Phase 5: Bridge — Aggregate Predictions for Prescriptive Use
-# ══════════════════════════════════════════════════════════════════════════════
-# Combine item-sales and user-churn predictions into a churn-adjusted demand
-# estimate per article. This is the key linkage: GNN output → optimizer input.
+# --------------------------------------------------
+# Combine all three GNN outputs into an adjusted demand estimate per article.
+# This is the key linkage: GNN output -> optimizer input.
 #
 # For each article in the optimizer's subset:
-#   adjusted_demand = predicted_sales * (1 - CHURN_DISCOUNT_WEIGHT * avg_buyer_churn)
+#   adjusted_demand = predicted_sales
+#                     * (1 - CHURN_DISCOUNT_WEIGHT * avg_buyer_churn)
+#                     * (1 + PURCHASE_PROPENSITY_WEIGHT * avg_purchase_score)
 #
 # Articles whose recent buyers have high churn risk get reduced demand estimates,
-# reflecting the expectation that those buyers may not return.
+# while articles with high purchase propensity get an uplift.
 
 # Load article subset for optimization (fabricated pricing/inventory data)
-inv_csv = read_csv(data_dir / "articles_inventory.csv", dtype={"article_id": int})
+inv_csv = read_csv(DATA_DIR / "articles_inventory.csv", dtype={"article_id": int})
 
 # Concept: articles in the optimizer's scope, with pricing and inventory
 OptArticle = Concept("OptArticle", identify_by={"opt_article_id": Integer})
@@ -328,25 +355,39 @@ model.define(OptArticle.avg_buyer_churn(
     Customer.churn_predictions,
 )
 
-# Churn-adjusted demand: reduce predicted sales by buyer churn risk
+# Purchase propensity: average prediction score across customers predicted to buy
+OptArticle.avg_purchase_score = model.Property(
+    f"{OptArticle} has {Float:avg_purchase_score}")
+model.define(OptArticle.avg_purchase_score(
+    sum(Customer.purchase_predictions.scores).per(OptArticle)
+    / count(Customer).per(OptArticle)
+)).where(
+    OptArticle.article(Article),
+    Customer.purchase_predictions.predicted_article == Article,
+)
+
+# Adjusted demand: combine all three GNN signals
 OptArticle.adjusted_demand = model.Property(
     f"{OptArticle} has {Float:adjusted_demand}")
 model.define(OptArticle.adjusted_demand(
-    OptArticle.predicted_sales * (1 - CHURN_DISCOUNT_WEIGHT * OptArticle.avg_buyer_churn)
+    OptArticle.predicted_sales
+    * (1 - CHURN_DISCOUNT_WEIGHT * OptArticle.avg_buyer_churn)
+    * (1 + PURCHASE_PROPENSITY_WEIGHT * OptArticle.avg_purchase_score)
 ))
 
-print("\n=== Churn-Adjusted Demand per Article ===")
+print("\n=== Adjusted Demand per Article ===")
 model.select(
     OptArticle.opt_article_id.alias("article_id"),
     OptArticle.name,
     OptArticle.predicted_sales,
     OptArticle.avg_buyer_churn,
+    OptArticle.avg_purchase_score,
     OptArticle.adjusted_demand,
 ).inspect()
 
-# ══════════════════════════════════════════════════════════════════════════════
+# --------------------------------------------------
 # Phase 6: Prescriptive A — Markdown Optimization (maximize revenue)
-# ══════════════════════════════════════════════════════════════════════════════
+# --------------------------------------------------
 # Given GNN-predicted demand, choose a weekly discount schedule per article to
 # maximize total revenue (sales + salvage) while clearing inventory.
 # Adapted from the retail_markdown template.
@@ -355,16 +396,17 @@ print("\n" + "=" * 60)
 print("PRESCRIPTIVE A: Markdown Optimization")
 print("=" * 60)
 
-# Load discount levels and planning weeks
+# Discount concept: markdown tiers with demand response.
 Discount = Concept("Discount", identify_by={"level": Integer})
 Discount.discount_pct = model.Property(f"{Discount} has {Float:discount_pct}")
 Discount.demand_lift = model.Property(f"{Discount} has {Float:demand_lift}")
-discount_csv = read_csv(data_dir / "discounts.csv")
+discount_csv = read_csv(DATA_DIR / "discounts.csv")
 model.define(Discount.new(model.data(discount_csv).to_schema()))
 
+# Week concept: planning periods with seasonal demand multipliers.
 Week = Concept("Week", identify_by={"num": Integer})
 Week.demand_multiplier = model.Property(f"{Week} has {Float:demand_multiplier}")
-week_csv = read_csv(data_dir / "weeks.csv")
+week_csv = read_csv(DATA_DIR / "weeks.csv")
 model.define(Week.new(model.data(week_csv).to_schema()))
 
 num_weeks = model.Relationship(f"{Integer}")
@@ -519,9 +561,9 @@ model.select(
     cumulative_ref.alias("cumulative_sold"),
 ).where(OptArticle.x_cuml_sales(Week_ref, cumulative_ref)).inspect()
 
-# ══════════════════════════════════════════════════════════════════════════════
+# --------------------------------------------------
 # Phase 7: Prescriptive B — Demand/Inventory Planning (minimize cost)
-# ══════════════════════════════════════════════════════════════════════════════
+# --------------------------------------------------
 # Given GNN-predicted demand, decide how much to produce per article per week
 # to minimize total cost (production + holding + unmet demand penalty).
 # Adapted from the demand_planning_temporal template.
@@ -530,8 +572,8 @@ print("\n" + "=" * 60)
 print("PRESCRIPTIVE B: Demand / Inventory Planning")
 print("=" * 60)
 
-# Load production capacity data
-prod_csv = read_csv(data_dir / "production_capacity.csv", dtype={"article_id": int})
+# ProdCapacity concept: per-article production parameters for demand planning.
+prod_csv = read_csv(DATA_DIR / "production_capacity.csv", dtype={"article_id": int})
 
 ProdCapacity = Concept(
     "ProdCapacity", identify_by={"pc_article_id": Integer})
@@ -575,6 +617,7 @@ dp.solve_for(
     type="cont", lower=0,
     upper=ProdCapacity.max_production_per_week,
     name=["prod", ProdCapacity.pc_article_id, dp_week_ref.num],
+    where=[dp_week_ref.num == std.common.range(1, num_plan_weeks + 1)],
 )
 
 # Variable: inventory[article, week] — stock at end of week (week 0 = initial)
@@ -596,6 +639,7 @@ dp.solve_for(
     ProdCapacity.x_unmet(dp_week_ref, unmet_ref),
     type="cont", lower=0,
     name=["unmet", ProdCapacity.pc_article_id, dp_week_ref.num],
+    where=[dp_week_ref.num == std.common.range(1, num_plan_weeks + 1)],
 )
 
 # Constraint: initial inventory (week 0)
@@ -652,9 +696,9 @@ print(f"\nDemand Planning Status: {si_dp.termination_status}")
 if si_dp.objective_value is not None:
     print(f"Total cost (production + holding + unmet penalty): ${si_dp.objective_value:.2f}")
 
-# ══════════════════════════════════════════════════════════════════════════════
+# --------------------------------------------------
 # Phase 8: Results Display
-# ══════════════════════════════════════════════════════════════════════════════
+# --------------------------------------------------
 
 df_dp = dp.variable_values().to_df()
 

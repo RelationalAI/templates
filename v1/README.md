@@ -23,6 +23,7 @@ This directory contains the templates for v1. Each template folder includes its 
 | [portfolio_balancing](./portfolio_balancing/) | Multi-reasoner template: rules-based compliance analysis chained with bi-objective Markowitz optimization. |
 | [production_planning](./production_planning/) | Schedule production across machines to meet demand and maximize profit with scenario analysis. |
 | [retail_markdown](./retail_markdown/) | Set discount levels across weeks to maximize revenue while clearing inventory. |
+| [retail_planning](./retail_planning/) | Predict article sales and customer churn with GNNs, then optimize markdown pricing and inventory planning to maximize revenue and minimize costs. |
 | [shift_assignment](./shift_assignment/) | Assign workers to shifts based on availability to meet coverage requirements. |
 | [shipment_compliance](./shipment_compliance/) | Define derived business rules for shipment compliance, sourcing risk, and demand escalation. |
 | [simple-start](./simple-start/) | A minimal notebook to connect to Snowflake, model a small graph, and compute betweenness centrality with RelationalAI. |
