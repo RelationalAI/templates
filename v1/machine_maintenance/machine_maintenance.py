@@ -1321,7 +1321,7 @@ for mtype in machine_types:
 
 # 4c. Impact analysis for concentrated types.
 if concentrated_types:
-    print(f"\nConcentration risk detail:")
+    print("\nConcentration risk detail:")
     for mtype, conc_loc, tech_count in concentrated_types:
         type_machines = machines_df[machines_df["machine_type"] == mtype]
         remote_machines = type_machines[type_machines["location"] != conc_loc]
@@ -1387,7 +1387,7 @@ if concentrated_types:
               f"Duration: {int(best['training_weeks'])} weeks")
 
         if len(candidates) > 1:
-            print(f"    All candidates:")
+            print("    All candidates:")
             for _, cand in candidates.iterrows():
                 local_tag = " (same location)" if cand["base_location"] == conc_loc else ""
                 print(f"      {cand['technician_id']} ({cand['technician_name']}, "
