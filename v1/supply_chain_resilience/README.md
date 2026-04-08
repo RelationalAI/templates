@@ -30,7 +30,34 @@ This template uses RelationalAI's **graph analysis**, **rules-based classificati
 3. **Prescriptive optimization** solves a minimum-cost network flow that routes supply to meet demand. Graph centrality feeds a bottleneck penalty in the objective, and supplier risk flags feed hard constraints (no flow from "avoid" suppliers) and surcharges (extra cost for "watch" suppliers).
 4. **Scenario analysis** re-solves with disruptions -- taking a critical site offline (+23.4% cost) and downgrading watch suppliers to avoid (+13.4% cost) -- to quantify resilience costs.
 
-This demonstrates how multiple reasoning types compose naturally in a single RelationalAI model, where each stage enriches the shared ontology and downstream stages consume those enrichments.
+Each stage enriches the shared ontology, and downstream stages consume those enrichments -- this is the **accretive ontology enrichment** pattern:
+
+- **Stage 1 writes** `Site.centrality` (normalized eigenvector centrality) -- consumed by Stage 3's bottleneck penalty in the objective. High-centrality sites incur a `CENTRALITY_WEIGHT` surcharge per unit of flow.
+- **Stage 2 writes** `Business.is_unreliable`, `Business.has_high_delay_risk`, `Business.is_watch_level` -- consumed by Stage 3 as hard constraints (avoid suppliers get zero flow) and cost surcharges (watch suppliers get `RISK_SURCHARGE` per unit of flow).
+- **Stage 3 writes** `Operation.x_flow` and `Demand.x_unmet` decision variables, re-solved per scenario with modified constraints.
+
+### Reasoner overview
+
+| Stage | Reasoner | Reads from ontology | Writes to ontology | Role |
+|-------|----------|---------------------|--------------------|------|
+| 1 | Graph | Site, Operation (SHIP edges) | Site.centrality (normalized eigenvector) | 2 connected components. Top hubs: S004 TechAssembly (0.50), S006 West Coast DC (0.39), S003 PowerCell (0.37). Centrality feeds the bottleneck penalty in Stage 3. |
+| 2 | Rules | Business.reliability_score, DelayPrediction | Business.is_unreliable, Business.has_high_delay_risk, Business.is_watch_level, Demand.is_escalated | 37 of 262 shipments late (14%). B003 classified as watch (reliability=0.81). 9 escalated demands. Watch/avoid flags feed constraints and surcharges in Stage 3. |
+| 3 | Prescriptive | Site.centrality (Stage 1), Business.is_watch_level (Stage 2), Operation capacity/cost | Operation.x_flow, Demand.x_unmet | Baseline: $1,865 optimal cost, 8 active flows, all demand satisfied. |
+| 3+ | Scenario Analysis | Same + exclude_site_id / block_business_ids | Re-solved x_flow, x_unmet per scenario | S004 offline: +88.5% cost ($3,515). Watch→Avoid: +0.0% ($1,865 -- watch suppliers were not on optimal routes). |
+
+## Why this problem matters
+
+Supply chain routing decisions are typically made with cost and capacity data alone. But cost-optimal routes can concentrate flow through a small number of critical hubs, creating fragility invisible to cost-minimization alone. When a critical warehouse goes offline -- due to weather, labor disruption, or infrastructure failure -- the network must absorb the disruption through costlier alternatives or unmet demand.
+
+The multi-reasoner approach is necessary because structural risk (graph), supplier reliability (rules), and routing cost (optimization) are interdependent signals. A cost-optimal route through a high-centrality hub served by a watch-level supplier compounds risk in a way no single analysis reveals. Scenario analysis then quantifies the cost of disruption: taking the highest-centrality site offline increases total cost by 88.5%, while downgrading watch suppliers to avoid has no impact -- because the optimizer already routed around them. This asymmetry is the key insight.
+
+### Key design patterns demonstrated
+
+- **Accretive ontology enrichment** -- Stage 1's `Site.centrality` feeds Stage 3's objective; Stage 2's risk flags feed Stage 3's constraints and surcharges
+- **Single model composition** -- all three reasoners (Graph, Rules, Prescriptive) attach to one `Model` instance, unlike templates that require a separate graph model
+- **Reusable solve function** -- `solve_flow(label, exclude_site_id, block_business_ids)` encapsulates the full formulation, enabling scenario analysis by re-solving with modified constraints
+- **Derived relationship for business-to-operation linkage** -- `Operation.source_business` is derived by matching `source_site` to `Business.site`, avoiding an explicit join table
+- **Scenario analysis via re-solve** -- disruptions are modeled as constraint modifications (site offline = zero flow, supplier downgrade = block), not separate models
 
 ## Who this is for
 

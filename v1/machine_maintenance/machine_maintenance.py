@@ -1,27 +1,33 @@
 """Machine maintenance (multi-reasoner) template.
 
 This script demonstrates a chained multi-reasoner workflow in RelationalAI,
-combining graph analysis, rules-based classification, and prescriptive
+combining querying, graph analysis, rules-based classification, and prescriptive
 optimization in a single template:
 
+- Stage 0 -- Querying: compute OEE by facility, surface sensor anomalies, and
+  identify machines with the steepest failure degradation trajectories.
 - Stage 1 -- Graph: build a machine dependency graph from shared-technician
   qualifications, compute weakly connected components (dependency clusters)
   and betweenness centrality (bottleneck machines).
 - Stage 2 -- Rules: derive compliance flags for overdue maintenance, high-risk
-  machines, parts reorder triggers, and expiring certifications.
+  machines, sensor anomalies, chronic downtime, parts reorder, and expiring
+  certifications. Chain individual flags into a composite risk tier
+  (Critical / Elevated / Standard).
 - Stage 3 -- Prescriptive: schedule preventive maintenance across a multi-period
   horizon, assigning qualified technicians to machines. The optimization
-  consumes graph and rules outputs: betweenness centrality weights the failure
-  cost term, and overdue-maintenance flags add hard scheduling constraints.
+  consumes outputs from all earlier stages: per-period failure predictions
+  from Stage 0, betweenness centrality from Stage 1, and overdue-maintenance
+  flags from Stage 2.
+- Stage 4 -- Resilience: analyze the optimal schedule for single-point-of-failure
+  technicians and recommend cross-training to eliminate concentration risk.
 
 Run:
     `python machine_maintenance.py`
 
 Output:
-    Prints graph analysis results (dependency clusters, centrality scores),
-    compliance flags (overdue machines, parts reorder, expiring certs), and
-    the optimized maintenance schedule with technician assignments and cost
-    breakdown.
+    Prints OEE and anomaly analysis, graph clusters and centrality, compliance
+    flags with composite risk tier, optimized maintenance schedule, and
+    resilience analysis with cross-training recommendations.
 """
 
 from pathlib import Path
@@ -33,8 +39,6 @@ from relationalai.semantics.reasoners.prescriptive import Problem
 from relationalai.semantics.std import aggregates as aggs
 from relationalai.semantics.std import floats
 
-model = Model("machine_maintenance")
-
 # --------------------------------------------------
 # Configure inputs
 # --------------------------------------------------
@@ -45,18 +49,35 @@ PARTS_CAPACITY_PER_PERIOD = 5  # max maintenance jobs per period (parts/bay limi
 TRAVEL_COST_PER_HOUR = 50.0  # cost penalty when technician travels to another facility
 CENTRALITY_WEIGHT = 2.0  # multiplier for betweenness centrality in failure cost
 OVERDUE_DEADLINE = 2  # overdue machines must be maintained by this period
+CHRONIC_DOWNTIME_THRESHOLD = 8  # event count above which a machine is chronic
 
 # --------------------------------------------------
-# Define semantic model & load data
+# Load CSV data
 # --------------------------------------------------
 
-# Load machine data from CSV.
+# Equipment and maintenance data.
 machines_df = read_csv(DATA_DIR / "machines.csv")
 technicians_df = read_csv(DATA_DIR / "technicians.csv")
 availability_df = read_csv(DATA_DIR / "availability.csv")
 qualifications_df = read_csv(DATA_DIR / "qualifications.csv")
 parts_df = read_csv(DATA_DIR / "parts_inventory.csv")
 cert_df = read_csv(DATA_DIR / "certification_expiry.csv")
+
+# Sensor and prediction data.
+sensors_df = read_csv(DATA_DIR / "sensors.csv")
+sensor_readings_df = read_csv(DATA_DIR / "sensor_readings.csv")
+failure_pred_df = read_csv(DATA_DIR / "failure_predictions.csv")
+
+# Operational data.
+downtime_df = read_csv(DATA_DIR / "downtime_events.csv")
+production_df = read_csv(DATA_DIR / "production_runs.csv")
+training_df = read_csv(DATA_DIR / "training_options.csv")
+
+# --------------------------------------------------
+# Define semantic model & load data
+# --------------------------------------------------
+
+model = Model("machine_maintenance")
 
 # Machine concept: manufacturing machines with ML-predicted failure probability,
 # numeric criticality (1-5), maintenance duration, and estimated parts cost.
@@ -173,8 +194,183 @@ Period = model.Concept("Period", identify_by={"pid": Integer})
 period_data = model.data([{"pid": t} for t in range(1, PERIOD_HORIZON + 1)])
 model.define(Period.new(pid=period_data["pid"]))
 
-# MachinePeriod concept: (machine, period) pairs -- the scheduling decision space.
-# Use string/integer keys to avoid entity-valued identify_by recursion (SDK 1.0.12).
+# --------------------------------------------------
+# New concepts: sensors, predictions, downtime, production
+# --------------------------------------------------
+
+# Sensor concept: physical sensors attached to machines with thresholds.
+Sensor = model.Concept("Sensor", identify_by={"sensor_id": String})
+Sensor.machine_id_str = model.Property(f"{Sensor} for machine {String:machine_id_str}")
+Sensor.sensor_type = model.Property(f"{Sensor} measures {String:sensor_type}")
+Sensor.unit = model.Property(f"{Sensor} in {String:unit}")
+Sensor.warning_threshold = model.Property(
+    f"{Sensor} has warning threshold {Float:warning_threshold}"
+)
+Sensor.critical_threshold = model.Property(
+    f"{Sensor} has critical threshold {Float:critical_threshold}"
+)
+Sensor.machine = model.Property(f"{Sensor} attached to {Machine}")
+
+sensor_src = model.data(sensors_df)
+model.define(
+    s := Sensor.new(sensor_id=sensor_src["sensor_id"]),
+    s.machine_id_str(sensor_src["machine_id"]),
+    s.sensor_type(sensor_src["sensor_type"]),
+    s.unit(sensor_src["unit"]),
+    s.warning_threshold(sensor_src["warning_threshold"]),
+    s.critical_threshold(sensor_src["critical_threshold"]),
+)
+model.define(Sensor.machine(Machine)).where(
+    Sensor.machine_id_str == Machine.machine_id
+)
+
+# SensorReading concept: periodic sensor measurements with anomaly flags.
+SensorReading = model.Concept(
+    "SensorReading",
+    identify_by={"sensor_id": String, "machine_id": String, "pid": Integer},
+)
+SensorReading.value = model.Property(f"{SensorReading} has value {Float:value}")
+SensorReading.is_anomaly = model.Property(
+    f"{SensorReading} anomaly flag {Integer:is_anomaly}"
+)
+SensorReading.sensor = model.Property(f"{SensorReading} from {Sensor}")
+SensorReading.machine = model.Property(f"{SensorReading} on {Machine}")
+SensorReading.period = model.Property(f"{SensorReading} in {Period}")
+
+sr_src = model.data(sensor_readings_df)
+model.define(
+    sr := SensorReading.new(
+        sensor_id=sr_src["sensor_id"],
+        machine_id=sr_src["machine_id"],
+        pid=sr_src["period"],
+    ),
+    sr.value(sr_src["value"]),
+    sr.is_anomaly(sr_src["is_anomaly"]),
+)
+SRSensor = Sensor.ref()
+SRMachine = Machine.ref()
+SRPeriod = Period.ref()
+model.define(SensorReading.sensor(SRSensor)).where(
+    SensorReading.sensor_id == SRSensor.sensor_id
+)
+model.define(SensorReading.machine(SRMachine)).where(
+    SensorReading.machine_id == SRMachine.machine_id
+)
+model.define(SensorReading.period(SRPeriod)).where(
+    SensorReading.pid == SRPeriod.pid
+)
+
+# FailurePrediction concept: ML-predicted per-period failure probabilities.
+# These replace the static Machine.failure_probability in the optimization
+# objective, giving period-specific degradation curves.
+FailurePrediction = model.Concept(
+    "FailurePrediction", identify_by={"prediction_id": String}
+)
+FailurePrediction.machine_id_str = model.Property(
+    f"{FailurePrediction} for machine {String:machine_id_str}"
+)
+FailurePrediction.period_int = model.Property(
+    f"{FailurePrediction} in period {Integer:period_int}"
+)
+FailurePrediction.failure_probability = model.Property(
+    f"{FailurePrediction} has failure probability {Float:failure_probability}"
+)
+FailurePrediction.predicted_failure_mode = model.Property(
+    f"{FailurePrediction} predicts mode {String:predicted_failure_mode}"
+)
+FailurePrediction.confidence = model.Property(
+    f"{FailurePrediction} has confidence {Float:confidence}"
+)
+FailurePrediction.machine = model.Property(f"{FailurePrediction} for {Machine}")
+FailurePrediction.period = model.Property(f"{FailurePrediction} in {Period}")
+
+fp_src = model.data(failure_pred_df)
+model.define(
+    fp := FailurePrediction.new(prediction_id=fp_src["prediction_id"]),
+    fp.machine_id_str(fp_src["machine_id"]),
+    fp.period_int(fp_src["period"]),
+    fp.failure_probability(fp_src["failure_probability"]),
+    fp.predicted_failure_mode(fp_src["predicted_failure_mode"]),
+    fp.confidence(fp_src["confidence"]),
+)
+FPMachineInit = Machine.ref()
+FPPeriodInit = Period.ref()
+model.define(FailurePrediction.machine(FPMachineInit)).where(
+    FailurePrediction.machine_id_str == FPMachineInit.machine_id
+)
+model.define(FailurePrediction.period(FPPeriodInit)).where(
+    FailurePrediction.period_int == FPPeriodInit.pid
+)
+
+# DowntimeEvent concept: unplanned and planned downtime events per machine.
+DowntimeEvent = model.Concept("DowntimeEvent", identify_by={"event_id": String})
+DowntimeEvent.machine_id_str = model.Property(
+    f"{DowntimeEvent} for machine {String:machine_id_str}"
+)
+DowntimeEvent.period_int = model.Property(
+    f"{DowntimeEvent} in period {Integer:period_int}"
+)
+DowntimeEvent.fault_category = model.Property(
+    f"{DowntimeEvent} fault category {String:fault_category}"
+)
+DowntimeEvent.duration_minutes = model.Property(
+    f"{DowntimeEvent} lasted {Integer:duration_minutes} minutes"
+)
+DowntimeEvent.is_planned = model.Property(
+    f"{DowntimeEvent} planned flag {Integer:is_planned}"
+)
+DowntimeEvent.machine = model.Property(f"{DowntimeEvent} on {Machine}")
+
+dt_src = model.data(downtime_df)
+model.define(
+    dt := DowntimeEvent.new(event_id=dt_src["event_id"]),
+    dt.machine_id_str(dt_src["machine_id"]),
+    dt.period_int(dt_src["period"]),
+    dt.fault_category(dt_src["fault_category"]),
+    dt.duration_minutes(dt_src["duration_minutes"]),
+    dt.is_planned(dt_src["is_planned"]),
+)
+model.define(DowntimeEvent.machine(Machine)).where(
+    DowntimeEvent.machine_id_str == Machine.machine_id
+)
+
+# ProductionRun concept: production output per machine per period.
+ProductionRun = model.Concept("ProductionRun", identify_by={"run_id": String})
+ProductionRun.machine_id_str = model.Property(
+    f"{ProductionRun} for machine {String:machine_id_str}"
+)
+ProductionRun.period_int = model.Property(
+    f"{ProductionRun} in period {Integer:period_int}"
+)
+ProductionRun.planned_quantity = model.Property(
+    f"{ProductionRun} planned {Integer:planned_quantity} units"
+)
+ProductionRun.actual_quantity = model.Property(
+    f"{ProductionRun} produced {Integer:actual_quantity} units"
+)
+ProductionRun.good_quantity = model.Property(
+    f"{ProductionRun} good output {Integer:good_quantity} units"
+)
+ProductionRun.machine = model.Property(f"{ProductionRun} on {Machine}")
+
+pr_src = model.data(production_df)
+model.define(
+    pr := ProductionRun.new(run_id=pr_src["run_id"]),
+    pr.machine_id_str(pr_src["machine_id"]),
+    pr.period_int(pr_src["period"]),
+    pr.planned_quantity(pr_src["planned_quantity"]),
+    pr.actual_quantity(pr_src["actual_quantity"]),
+    pr.good_quantity(pr_src["good_quantity"]),
+)
+model.define(ProductionRun.machine(Machine)).where(
+    ProductionRun.machine_id_str == Machine.machine_id
+)
+
+# --------------------------------------------------
+# Cross-product concepts (scheduling decision space)
+# --------------------------------------------------
+
+# MachinePeriod concept: (machine, period) pairs.
 MachinePeriod = model.Concept(
     "MachinePeriod", identify_by={"machine_id": String, "pid": Integer}
 )
@@ -188,8 +384,17 @@ model.define(
     mp.period(MpInitP),
 )
 
-# TechnicianPeriod concept: technician capacity per period in hours
-# (availability fraction * max_weekly_hours).
+# Store per-period failure prediction on MachinePeriod for the objective.
+MachinePeriod.predicted_fp = model.Property(
+    f"{MachinePeriod} has predicted failure probability {Float:predicted_fp}"
+)
+FPJoin = FailurePrediction.ref()
+model.where(
+    MachinePeriod.machine_id == FPJoin.machine_id_str,
+    MachinePeriod.pid == FPJoin.period_int,
+).define(MachinePeriod.predicted_fp(FPJoin.failure_probability))
+
+# TechnicianPeriod concept: technician capacity per period in hours.
 TechnicianPeriod = model.Concept(
     "TechnicianPeriod", identify_by={"technician_id": String, "pid": Integer}
 )
@@ -215,8 +420,8 @@ model.define(
     PrInit.pid == avail_data["period"],
 )
 
-# TechnicianMachinePeriod concept: (technician, machine, period) triples --
-# the assignment decision space, restricted to qualified pairs only.
+# TechnicianMachinePeriod concept: (technician, machine, period) triples,
+# restricted to qualified pairs only.
 TechnicianMachinePeriod = model.Concept(
     "TechnicianMachinePeriod",
     identify_by={"technician_id": String, "machine_id": String, "pid": Integer},
@@ -268,6 +473,178 @@ model.where(
 ).define(TmpRef.same_location(0))
 
 # --------------------------------------------------
+# Machine-level derived aggregates (for querying & rules)
+# --------------------------------------------------
+
+# Production aggregates: total planned, actual, and good quantities.
+Machine.total_planned_qty = model.Property(
+    f"{Machine} has total planned qty {Float:total_planned_qty}"
+)
+Machine.total_actual_qty = model.Property(
+    f"{Machine} has total actual qty {Float:total_actual_qty}"
+)
+Machine.total_good_qty = model.Property(
+    f"{Machine} has total good qty {Float:total_good_qty}"
+)
+model.define(Machine.total_planned_qty(
+    aggs.sum(ProductionRun.planned_quantity).per(Machine)
+    .where(ProductionRun.machine(Machine)) | 0
+))
+model.define(Machine.total_actual_qty(
+    aggs.sum(ProductionRun.actual_quantity).per(Machine)
+    .where(ProductionRun.machine(Machine)) | 0
+))
+model.define(Machine.total_good_qty(
+    aggs.sum(ProductionRun.good_quantity).per(Machine)
+    .where(ProductionRun.machine(Machine)) | 0
+))
+
+# Performance ratio (actual / planned) and quality ratio (good / actual).
+Machine.performance_ratio = model.Property(
+    f"{Machine} has performance ratio {Float:performance_ratio}"
+)
+Machine.quality_ratio = model.Property(
+    f"{Machine} has quality ratio {Float:quality_ratio}"
+)
+model.where(Machine.total_planned_qty > 0).define(
+    Machine.performance_ratio(
+        floats.float(Machine.total_actual_qty)
+        / floats.float(Machine.total_planned_qty)
+    )
+)
+model.where(Machine.total_actual_qty > 0).define(
+    Machine.quality_ratio(
+        floats.float(Machine.total_good_qty)
+        / floats.float(Machine.total_actual_qty)
+    )
+)
+
+# Downtime aggregates: total downtime minutes and event count.
+Machine.total_downtime_minutes = model.Property(
+    f"{Machine} has total downtime {Float:total_downtime_minutes} minutes"
+)
+Machine.downtime_event_count = model.Property(
+    f"{Machine} has downtime event count {Float:downtime_event_count}"
+)
+model.define(Machine.total_downtime_minutes(
+    aggs.sum(DowntimeEvent.duration_minutes).per(Machine)
+    .where(DowntimeEvent.machine(Machine)) | 0
+))
+model.define(Machine.downtime_event_count(
+    aggs.count(DowntimeEvent).per(Machine)
+    .where(DowntimeEvent.machine(Machine)) | 0
+))
+
+# Sensor anomaly count across all periods.
+Machine.anomaly_count = model.Property(
+    f"{Machine} has anomaly count {Float:anomaly_count}"
+)
+model.define(Machine.anomaly_count(
+    aggs.count(SensorReading).per(Machine).where(
+        SensorReading.machine(Machine),
+        SensorReading.is_anomaly == 1,
+    ) | 0
+))
+
+# --------------------------------------------------
+# Stage 0: Querying -- Operational Intelligence
+# --------------------------------------------------
+
+print("=" * 70)
+print("STAGE 0: Querying -- Operational Intelligence")
+print("=" * 70)
+
+# 0a. OEE proxy by facility (Performance x Quality).
+# Quality is uniformly high (~98%); the differentiator is Performance.
+oee_df = (
+    model.select(
+        Machine.machine_id.alias("machine_id"),
+        Machine.facility.alias("facility"),
+        Machine.performance_ratio.alias("performance"),
+        Machine.quality_ratio.alias("quality"),
+    )
+    .to_df()
+)
+oee_by_fac = (
+    oee_df.groupby("facility")
+    .agg(avg_perf=("performance", "mean"), avg_qual=("quality", "mean"))
+    .reset_index()
+)
+oee_by_fac["oee_proxy"] = oee_by_fac["avg_perf"] * oee_by_fac["avg_qual"]
+oee_by_fac = oee_by_fac.sort_values("oee_proxy", ascending=False)
+
+print("\nOEE proxy by facility (Performance x Quality):")
+for _, row in oee_by_fac.iterrows():
+    print(
+        f"  {row['facility']}: "
+        f"Perf={row['avg_perf']:.1%}, Qual={row['avg_qual']:.1%}, "
+        f"OEE={row['oee_proxy']:.1%}"
+    )
+
+# 0b. Sensor anomalies: machines with above-threshold readings.
+SensorQ = Sensor.ref()
+anomaly_detail_df = (
+    model.select(
+        SensorReading.machine_id.alias("machine_id"),
+        SensorReading.pid.alias("period"),
+        SensorReading.value.alias("value"),
+        SensorQ.sensor_type.alias("sensor_type"),
+        SensorQ.warning_threshold.alias("warning"),
+        SensorQ.critical_threshold.alias("critical"),
+    )
+    .where(
+        SensorReading.is_anomaly == 1,
+        SensorReading.sensor(SensorQ),
+    )
+    .to_df()
+    .sort_values(["machine_id", "period"])
+)
+anomaly_counts = anomaly_detail_df.groupby("machine_id").size().reset_index(name="count")
+anomaly_counts = anomaly_counts.merge(
+    machines_df[["machine_id", "machine_type", "facility"]], on="machine_id"
+).sort_values("count", ascending=False)
+
+print(f"\nSensor anomalies ({len(anomaly_detail_df)} readings across "
+      f"{len(anomaly_counts)} machines):")
+for _, row in anomaly_counts.iterrows():
+    print(f"  {row['machine_id']} ({row['machine_type']}, {row['facility']}): "
+          f"{row['count']} anomalies")
+
+by_fac = anomaly_counts.groupby("facility")["count"].sum()
+print(f"  By facility: {dict(by_fac.sort_values(ascending=False))}")
+
+# 0c. Failure trajectories: identify machines with steepest degradation.
+FPMachQ = Machine.ref()
+fp_query_df = (
+    model.select(
+        FailurePrediction.machine_id_str.alias("machine_id"),
+        FPMachQ.machine_type.alias("machine_type"),
+        FPMachQ.facility.alias("facility"),
+        FailurePrediction.period_int.alias("period"),
+        FailurePrediction.failure_probability.alias("failure_probability"),
+        FailurePrediction.predicted_failure_mode.alias("failure_mode"),
+    )
+    .where(FailurePrediction.machine(FPMachQ))
+    .to_df()
+)
+
+pivot = fp_query_df.pivot_table(
+    index=["machine_id", "machine_type", "facility", "failure_mode"],
+    columns="period",
+    values="failure_probability",
+).reset_index()
+pivot["delta"] = pivot[PERIOD_HORIZON] - pivot[1]
+pivot = pivot.sort_values("delta", ascending=False)
+
+print(f"\nSteepest failure trajectories (period 1 -> {PERIOD_HORIZON}):")
+for _, row in pivot.head(6).iterrows():
+    print(
+        f"  {row['machine_id']} ({row['machine_type']}, {row['facility']}): "
+        f"{row[1]:.3f} -> {row[PERIOD_HORIZON]:.3f} "
+        f"(+{row['delta']:.3f}) [{row['failure_mode']}]"
+    )
+
+# --------------------------------------------------
 # Stage 1: Graph -- dependency clusters & centrality
 # --------------------------------------------------
 
@@ -315,7 +692,7 @@ graph_model.where(
     gm2.machine_id == edge_data["machine_id_dst"],
 ).define(dep_graph.Edge.new(src=gm1, dst=gm2))
 
-print("=" * 70)
+print(f"\n{'=' * 70}")
 print("STAGE 1: Graph Analysis -- Dependency Clusters & Centrality")
 print("=" * 70)
 
@@ -353,8 +730,7 @@ for comp_id in sorted(wcc_df["component_id"].unique()):
     if cluster_size > 5:
         print(f"    ... and {cluster_size - 5} more")
 
-# Betweenness centrality: find bottleneck machines whose maintenance blocks
-# the most technician scheduling options.
+# Betweenness centrality: find bottleneck machines.
 betweenness = dep_graph.betweenness_centrality()
 
 node_b = dep_graph.Node.ref("nb")
@@ -399,11 +775,11 @@ model.where(Machine.machine_id == btwn_data["machine_id"]).define(
 )
 
 # --------------------------------------------------
-# Stage 2: Rules -- compliance flags
+# Stage 2: Rules -- compliance flags & composite risk tier
 # --------------------------------------------------
 
 print(f"\n{'=' * 70}")
-print("STAGE 2: Rules -- Compliance Flags")
+print("STAGE 2: Rules -- Compliance Flags & Composite Risk Tier")
 print("=" * 70)
 
 # Rule 1: Machine is overdue for maintenance when remaining useful life
@@ -435,7 +811,7 @@ for _, row in overdue_df.iterrows():
     )
 
 # Rule 2: Machine is high risk when failure probability > 0.3 AND
-# criticality >= 4 (on a 1-5 scale).
+# criticality >= 4.
 Machine.is_high_risk = model.Relationship(f"{Machine} is high risk")
 model.where(
     Machine.failure_probability > 0.3,
@@ -459,8 +835,123 @@ for _, row in high_risk_df.iterrows():
         f"prob={row['failure_probability']:.3f}, crit={int(row['criticality'])}"
     )
 
-# Rule 3: Parts inventory needs reorder when stock has dropped to or below
-# the minimum order quantity.
+# Rule 3: Machine has sensor anomalies.
+Machine.is_anomalous = model.Relationship(f"{Machine} has sensor anomalies")
+model.where(Machine.anomaly_count > 0).define(Machine.is_anomalous())
+
+anomalous_df = (
+    model.select(
+        Machine.machine_id.alias("machine_id"),
+        Machine.machine_name.alias("machine_name"),
+        Machine.facility.alias("facility"),
+        Machine.anomaly_count.alias("anomaly_count"),
+    )
+    .where(Machine.is_anomalous())
+    .to_df()
+    .sort_values("anomaly_count", ascending=False)
+)
+print(f"\nAnomalous machines ({len(anomalous_df)}):")
+for _, row in anomalous_df.iterrows():
+    print(
+        f"  {row['machine_id']} ({row['machine_name']}, {row['facility']}): "
+        f"{int(row['anomaly_count'])} anomalies"
+    )
+
+# Rule 4: Machine has chronic downtime (event count > threshold).
+Machine.is_chronic_downtime = model.Relationship(f"{Machine} has chronic downtime")
+model.where(
+    Machine.downtime_event_count > CHRONIC_DOWNTIME_THRESHOLD
+).define(Machine.is_chronic_downtime())
+
+chronic_df = (
+    model.select(
+        Machine.machine_id.alias("machine_id"),
+        Machine.machine_name.alias("machine_name"),
+        Machine.facility.alias("facility"),
+        Machine.downtime_event_count.alias("event_count"),
+        Machine.total_downtime_minutes.alias("total_minutes"),
+    )
+    .where(Machine.is_chronic_downtime())
+    .to_df()
+    .sort_values("event_count", ascending=False)
+)
+print(f"\nChronic downtime machines (>{CHRONIC_DOWNTIME_THRESHOLD} events, "
+      f"{len(chronic_df)} machines):")
+for _, row in chronic_df.iterrows():
+    print(
+        f"  {row['machine_id']} ({row['machine_name']}, {row['facility']}): "
+        f"{int(row['event_count'])} events, "
+        f"{int(row['total_minutes'])} min total downtime"
+    )
+
+# Rule 5: Composite risk tier -- chains overdue, high-risk, and chronic
+# downtime flags into a single classification.
+Machine.risk_tier = model.Property(f"{Machine} has risk tier {String:risk_tier}")
+
+# Critical: all 3 flags.
+model.where(
+    Machine.is_chronic_downtime(),
+    Machine.is_high_risk(),
+    Machine.is_overdue_maintenance(),
+).define(Machine.risk_tier("Critical"))
+
+# Elevated: exactly 2 of 3 flags (enumerate pairs, negate the third).
+model.where(
+    Machine.is_chronic_downtime(),
+    Machine.is_high_risk(),
+    model.not_(Machine.is_overdue_maintenance()),
+).define(Machine.risk_tier("Elevated"))
+model.where(
+    Machine.is_chronic_downtime(),
+    model.not_(Machine.is_high_risk()),
+    Machine.is_overdue_maintenance(),
+).define(Machine.risk_tier("Elevated"))
+model.where(
+    model.not_(Machine.is_chronic_downtime()),
+    Machine.is_high_risk(),
+    Machine.is_overdue_maintenance(),
+).define(Machine.risk_tier("Elevated"))
+
+# Standard: 0 or 1 flag.
+model.where(
+    model.not_(Machine.is_chronic_downtime()),
+    model.not_(Machine.is_high_risk()),
+    model.not_(Machine.is_overdue_maintenance()),
+).define(Machine.risk_tier("Standard"))
+model.where(
+    Machine.is_chronic_downtime(),
+    model.not_(Machine.is_high_risk()),
+    model.not_(Machine.is_overdue_maintenance()),
+).define(Machine.risk_tier("Standard"))
+model.where(
+    model.not_(Machine.is_chronic_downtime()),
+    Machine.is_high_risk(),
+    model.not_(Machine.is_overdue_maintenance()),
+).define(Machine.risk_tier("Standard"))
+model.where(
+    model.not_(Machine.is_chronic_downtime()),
+    model.not_(Machine.is_high_risk()),
+    Machine.is_overdue_maintenance(),
+).define(Machine.risk_tier("Standard"))
+
+risk_tier_df = (
+    model.select(
+        Machine.machine_id.alias("machine_id"),
+        Machine.machine_name.alias("machine_name"),
+        Machine.machine_type.alias("machine_type"),
+        Machine.facility.alias("facility"),
+        Machine.risk_tier.alias("risk_tier"),
+    )
+    .to_df()
+    .sort_values("risk_tier")
+)
+print("\nComposite risk tier:")
+for tier in ["Critical", "Elevated", "Standard"]:
+    tier_machines = risk_tier_df[risk_tier_df["risk_tier"] == tier]
+    ids = ", ".join(tier_machines["machine_id"].tolist())
+    print(f"  {tier} ({len(tier_machines)}): {ids}")
+
+# Rule 6: Parts inventory needs reorder.
 PartsInventory.needs_reorder = model.Relationship(
     f"{PartsInventory} needs reorder"
 )
@@ -486,7 +977,7 @@ for _, row in reorder_df.iterrows():
         f"stock={int(row['stock_level'])} <= min_order={int(row['min_order_qty'])}"
     )
 
-# Rule 4: Certification is expiring when fewer than 30 days remain.
+# Rule 7: Certification is expiring when fewer than 30 days remain.
 CertificationExpiry.is_expiring = model.Relationship(
     f"{CertificationExpiry} is expiring"
 )
@@ -577,7 +1068,6 @@ p.solve_for(
 
 # Constraint: cumulative maintenance coverage.
 # For each (machine, tau): sum_{t=1..tau} x_maintain(m,t) + x_vulnerable(m,tau) = 1.
-# A machine is either maintained by period tau or remains vulnerable.
 maintained_until_tau = (
     sum(MachinePeriod_inner.x_maintain)
     .where(
@@ -598,7 +1088,6 @@ p.satisfy(
 )
 
 # Constraint: assignment-maintenance linkage.
-# If a machine is maintained in period t, exactly one technician must be assigned.
 assign_per_mp = (
     sum(TechnicianMachinePeriod_ref.x_assigned)
     .where(
@@ -615,7 +1104,6 @@ p.satisfy(
 )
 
 # Constraint: technician hours capacity.
-# Total assigned maintenance hours per technician per period <= available hours.
 Machine_hrs = Machine.ref()
 assigned_hours = (
     sum(
@@ -640,7 +1128,6 @@ avail_hours = (
 p.satisfy(model.require(assigned_hours <= avail_hours))
 
 # Constraint: parts/bay capacity per period.
-# At most PARTS_CAPACITY_PER_PERIOD maintenance jobs in any single period.
 maint_per_period = (
     sum(MachinePeriod_cap.x_maintain)
     .where(MachinePeriod_cap.period(Period_cap))
@@ -649,7 +1136,6 @@ maint_per_period = (
 p.satisfy(model.require(maint_per_period <= PARTS_CAPACITY_PER_PERIOD))
 
 # Constraint (from rules): overdue machines must be maintained by OVERDUE_DEADLINE.
-# Machines flagged by Stage 2 as overdue get a hard scheduling requirement.
 MachinePeriod_overdue = MachinePeriod.ref()
 Machine_overdue = Machine.ref()
 Period_overdue = Period.ref()
@@ -669,19 +1155,17 @@ p.satisfy(
 )
 
 # Objective: minimize expected total cost.
-# 1. Failure risk: failure_probability * estimated_parts_cost * criticality
-#    * (1 + CENTRALITY_WEIGHT * betweenness) for each vulnerable machine-period.
-#    Betweenness centrality from Stage 1 amplifies cost for bottleneck machines.
-# 2. Labor cost: maintenance_duration_hours * technician hourly_rate.
-# 3. Travel cost: TRAVEL_COST_PER_HOUR * duration when technician is not
-#    co-located with the machine.
+# 1. Failure risk: per-period failure prediction (from Stage 0) * parts cost
+#    * criticality * (1 + centrality_weight * betweenness from Stage 1).
+# 2. Labor cost: maintenance_duration * technician hourly_rate.
+# 3. Travel cost: flat rate * duration when technician is not co-located.
 Machine_obj = Machine.ref()
 Technician_obj = Technician.ref()
 Machine_labor = Machine.ref()
 Machine_travel = Machine.ref()
 failure_cost = sum(
     MachinePeriod_outer.x_vulnerable
-    * Machine_obj.failure_probability
+    * MachinePeriod_outer.predicted_fp
     * Machine_obj.estimated_parts_cost
     * Machine_obj.criticality
     * (1 + CENTRALITY_WEIGHT * Machine_obj.betweenness)
@@ -709,7 +1193,7 @@ travel_cost = sum(
 p.minimize(failure_cost + labor_cost + travel_cost)
 
 # --------------------------------------------------
-# Solve and check solution
+# Solve and extract results
 # --------------------------------------------------
 
 p.display()
@@ -732,7 +1216,6 @@ maintain_vars[["_prefix", "machine_id", "period"]] = maintain_vars["name"].str.s
 maintain_vars["period"] = maintain_vars["period"].astype(int)
 maintain_vars = maintain_vars[maintain_vars["value"] > 0.5]
 
-# Join with machine data for display.
 maint_df = maintain_vars.merge(machines_df, on="machine_id", how="left")
 maint_df = maint_df.sort_values(["period", "machine_id"])
 print(f"\nMaintenance schedule ({len(maint_df)} jobs):")
@@ -752,7 +1235,6 @@ assign_vars[["_prefix", "technician_id", "machine_id", "period"]] = assign_vars[
 assign_vars["period"] = assign_vars["period"].astype(int)
 assign_vars = assign_vars[assign_vars["value"] > 0.5]
 
-# Join with machine and technician data for display.
 assign_df = assign_vars.merge(
     machines_df[["machine_id", "location", "maintenance_duration_hours"]],
     on="machine_id",
@@ -772,5 +1254,145 @@ for period, g in assign_df.groupby("period"):
         cost = float(row["maintenance_duration_hours"]) * float(row["hourly_rate"])
         print(
             f"    {row['machine_id']}: {row['technician_id']} "
-            f"({int(row['maintenance_duration_hours'])}h x ${float(row['hourly_rate']):.0f}/h = ${cost:.0f}){travel}"
+            f"({int(row['maintenance_duration_hours'])}h x "
+            f"${float(row['hourly_rate']):.0f}/h = ${cost:.0f}){travel}"
         )
+
+# --------------------------------------------------
+# Stage 4: Resilience -- concentration risk & cross-training
+# --------------------------------------------------
+
+print(f"\n{'=' * 70}")
+print("STAGE 4: Resilience -- Concentration Risk Analysis")
+print("=" * 70)
+
+# 4a. Technician utilization from the optimal schedule.
+tech_assignments = (
+    assign_df.groupby("technician_id")
+    .agg(
+        assignment_count=("machine_id", "count"),
+        machines=("machine_id", list),
+    )
+    .reset_index()
+    .sort_values("assignment_count", ascending=False)
+)
+tech_assignments = tech_assignments.merge(
+    technicians_df[["technician_id", "technician_name", "base_location", "skill_level"]],
+    on="technician_id",
+)
+
+print("\nTechnician utilization in optimal schedule:")
+total_assignments = len(assign_df)
+for _, row in tech_assignments.iterrows():
+    pct = row["assignment_count"] / total_assignments * 100
+    print(
+        f"  {row['technician_id']} ({row['technician_name']}, "
+        f"{row['skill_level']}, {row['base_location']}): "
+        f"{row['assignment_count']} assignments ({pct:.0f}%)"
+    )
+
+# 4b. Geographic concentration analysis by machine type.
+# For each machine type, check if all qualified technicians are in one location.
+# This reveals structural fragility invisible in the per-assignment view.
+print("\nQualification coverage by machine type:")
+concentrated_types = []
+machine_types = sorted(qualifications_df["machine_type"].unique())
+for mtype in machine_types:
+    qual_techs = qualifications_df[
+        qualifications_df["machine_type"] == mtype
+    ]["technician_id"].tolist()
+    tech_info = technicians_df[technicians_df["technician_id"].isin(qual_techs)]
+    locations = tech_info["base_location"].unique().tolist()
+    tech_count = len(qual_techs)
+
+    # Machines of this type and their locations.
+    type_machines = machines_df[machines_df["machine_type"] == mtype]
+    machine_locations = type_machines["location"].unique().tolist()
+    uncovered_locs = [loc for loc in machine_locations if loc not in locations]
+
+    status = "OK"
+    if len(locations) == 1:
+        concentrated_types.append((mtype, locations[0], tech_count))
+        status = f"CONCENTRATED -- all {tech_count} techs in {locations[0]}"
+    elif uncovered_locs:
+        status = f"gaps at {', '.join(uncovered_locs)}"
+
+    print(f"  {mtype}: {tech_count} techs in {', '.join(sorted(locations))} -- {status}")
+
+# 4c. Impact analysis for concentrated types.
+if concentrated_types:
+    print(f"\nConcentration risk detail:")
+    for mtype, conc_loc, tech_count in concentrated_types:
+        type_machines = machines_df[machines_df["machine_type"] == mtype]
+        remote_machines = type_machines[type_machines["location"] != conc_loc]
+        local_machines = type_machines[type_machines["location"] == conc_loc]
+
+        # How many scheduled assignments for this type required travel?
+        type_assign = assign_df.merge(
+            machines_df[["machine_id", "machine_type"]], on="machine_id"
+        )
+        type_assign = type_assign[type_assign["machine_type"] == mtype]
+        travel_assign = type_assign[type_assign["base_location"] != type_assign["location"]]
+
+        print(f"\n  {mtype}: {len(type_machines)} machines across "
+              f"{len(type_machines['facility'].unique())} facilities, "
+              f"all {tech_count} qualified techs in {conc_loc}")
+        print(f"    Local machines ({conc_loc}): {len(local_machines)}")
+        print(f"    Remote machines (require travel): {len(remote_machines)}")
+        if not remote_machines.empty:
+            for _, m in remote_machines.iterrows():
+                print(f"      {m['machine_id']} ({m['facility']}, {m['location']})")
+        if not type_assign.empty:
+            print(f"    Scheduled {mtype} jobs: {len(type_assign)}, "
+                  f"of which {len(travel_assign)} require travel "
+                  f"({len(travel_assign)/len(type_assign)*100:.0f}%)")
+
+        # Show qualified techs.
+        qual_techs = qualifications_df[
+            qualifications_df["machine_type"] == mtype
+        ]["technician_id"].tolist()
+        tech_detail = technicians_df[technicians_df["technician_id"].isin(qual_techs)]
+        print(f"    Qualified techs (all {conc_loc}):")
+        for _, t in tech_detail.iterrows():
+            print(f"      {t['technician_id']} ({t['technician_name']}, "
+                  f"{t['skill_level']})")
+
+    # 4d. Cross-training recommendation.
+    print(f"\n{'=' * 70}")
+    print("RECOMMENDATION: Cross-Training to Eliminate Concentration Risk")
+    print("=" * 70)
+
+    for mtype, conc_loc, _ in concentrated_types:
+        candidates = training_df[training_df["machine_type"] == mtype].merge(
+            technicians_df[["technician_id", "technician_name", "base_location",
+                            "skill_level"]],
+            on="technician_id",
+        ).sort_values("training_cost")
+
+        # Prefer candidates NOT in the concentrated location.
+        non_local = candidates[candidates["base_location"] != conc_loc]
+        if not non_local.empty:
+            best = non_local.iloc[0]
+        elif not candidates.empty:
+            best = candidates.iloc[0]
+        else:
+            print(f"\n  No {mtype} cross-training options available.")
+            continue
+
+        print(f"\n  {mtype} -- add coverage outside {conc_loc}:")
+        print(f"    Best candidate: {best['technician_id']} "
+              f"({best['technician_name']}, {best['skill_level']}, "
+              f"{best['base_location']})")
+        print(f"    Cost: ${int(best['training_cost']):,}, "
+              f"Duration: {int(best['training_weeks'])} weeks")
+
+        if len(candidates) > 1:
+            print(f"    All candidates:")
+            for _, cand in candidates.iterrows():
+                local_tag = " (same location)" if cand["base_location"] == conc_loc else ""
+                print(f"      {cand['technician_id']} ({cand['technician_name']}, "
+                      f"{cand['base_location']}): "
+                      f"${int(cand['training_cost']):,}, "
+                      f"{int(cand['training_weeks'])} weeks{local_tag}")
+else:
+    print("\nNo geographic concentration risk detected.")
