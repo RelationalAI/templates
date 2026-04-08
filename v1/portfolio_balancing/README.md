@@ -31,7 +31,28 @@ This template chains two reasoning stages to build compliant, risk-optimized por
 
 The template also demonstrates **Scenario Concept inside the epsilon loop**: budget levels are modeled as scenarios, so each epsilon solve handles all budget scenarios simultaneously. This reveals how the risk-return frontier shifts with available capital.
 
-Both stages share a single RAI model, with rules-based compliance flags feeding into the optimization constraints.
+Both stages share a single RAI model. The compliance thresholds (`POSITION_LIMIT = 0.15`, `SECTOR_LIMIT = 0.30`) are defined once and enforced in both stages: Stage 1 flags existing violations as derived Relationships, and Stage 2 applies the same limits as hard constraints in the optimizer via `_add_compliance_constraints()`.
+
+### Reasoner overview
+
+| Stage | Reasoner | Reads from ontology | Writes to ontology | Role |
+|-------|----------|---------------------|--------------------|------|
+| 1 | Rules | Holding, Account, User, Transaction, Stock | Holding.is_overconcentrated, Holding.is_sector_concentrated, User.is_high_risk_trader | 4 overconcentrated holdings (AAPL 18%, MSFT 16%, JNJ 16%, PFE 16.2%). 2 sector concentrations (Technology 34%, Healthcare 32.2%). 2 high-risk traders (Alice Chen 0.85, Eve Taylor 0.92). |
+| 2 | Prescriptive (QP) | Stock.returns, Stock.covar, Scenario.budget, POSITION_LIMIT, SECTOR_LIMIT | Stock.x_quantity indexed by Scenario | Min-risk return rate: 0.0666/unit. Max return rate: 0.0715/unit. Epsilon sweep traces 5 interior points. Knee at eps_1: marginal cost jumps 2.9x (13.01 → 37.41 risk/return). |
+
+## Why this problem matters
+
+Portfolio managers must balance competing objectives -- maximize expected return while minimizing variance -- subject to regulatory and internal compliance limits. A naive mean-variance optimization ignores position and sector concentration limits, producing portfolios that violate compliance. Conversely, compliance screening alone identifies violations but cannot propose a rebalanced portfolio that satisfies all constraints simultaneously.
+
+The two-stage approach is necessary because compliance rules and optimization constraints share the same thresholds but serve different purposes. Stage 1 surfaces existing violations in the current portfolio (diagnostic). Stage 2 constructs new portfolios that satisfy those same limits by construction (prescriptive). The epsilon constraint method then traces the full efficient frontier -- revealing that the knee point at eps_1 is where marginal risk per unit of return jumps 2.9x, from 13.01 to 37.41 risk/return. Beyond this point, each additional unit of expected return costs substantially more portfolio variance.
+
+### Key design patterns demonstrated
+
+- **Shared compliance thresholds** -- `POSITION_LIMIT` and `SECTOR_LIMIT` are defined once and enforced in both rules (Stage 1 flags) and optimization (Stage 2 constraints), ensuring consistency
+- **Scenario Concept for budget levels** -- `Scenario` entities ($500, $1,000, $2,000) parameterize the optimization so each epsilon solve handles all budget scenarios simultaneously in one call
+- **Epsilon constraint method** -- `solve_epsilon(eps_rate)` sweeps return targets across the feasible range, producing the full Pareto frontier without manually fixing return values
+- **Quadratic programming via Ipopt** -- the risk objective is quadratic (`x' * Cov * x`), solved with Ipopt's nonlinear optimizer rather than a linear MIP solver
+- **Anchor solves establish feasible range** -- Anchor 1 (minimize risk, no return constraint) and Anchor 2 (maximize return) determine the return rate range before the epsilon sweep
 
 ## Who this is for
 

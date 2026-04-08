@@ -220,7 +220,7 @@ This is not a single-reasoner problem. Approving a data center at a structurally
 
 ## Template structure
 
-```
+```text
 energy_grid_planning/
   energy_grid_planning.py    # Main script (4 chained reasoning stages)
   data/

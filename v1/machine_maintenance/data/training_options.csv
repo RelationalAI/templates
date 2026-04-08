@@ -1,0 +1,14 @@
+technician_id,machine_type,training_cost,training_weeks
+T005,Turbine,3500,6
+T006,Turbine,3200,5
+T008,Turbine,3800,6
+T009,Turbine,4200,8
+T004,Turbine,5500,10
+T003,Pump,2800,4
+T003,Generator,3100,5
+T004,Generator,3400,6
+T007,Pump,2600,4
+T007,Compressor,3000,5
+T009,Pump,2900,5
+T010,Compressor,3300,6
+T010,Motor,2500,4

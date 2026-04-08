@@ -34,8 +34,6 @@ from relationalai.semantics.reasoners.graph import Graph
 from relationalai.semantics.reasoners.prescriptive import Problem
 from relationalai.semantics.std import aggregates as aggs
 
-model = Model("supply_chain_resilience")
-
 # --------------------------------------------------
 # Configure inputs
 # --------------------------------------------------
@@ -51,6 +49,8 @@ PREDICTION_QUARTER = "Q1-2025"  # which quarter's predictions to use
 # --------------------------------------------------
 # Define semantic model & load data
 # --------------------------------------------------
+
+model = Model("supply_chain_resilience")
 
 # Site concept: factories, distribution centers, offices, stores.
 Site = model.Concept("Site", identify_by={"id": String})
