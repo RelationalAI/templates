@@ -330,12 +330,3 @@ dp.minimize(prod_cost_total + hold_cost_total + unmet_cost_total)
 
 Ensure your Snowflake credentials are configured correctly and that the RAI Native App is installed on your account. Run `rai init` again and verify the connection settings.
 </details>
-
-### Related templates
-
-- [Retail Markdown](../retail_markdown/) -- Standalone markdown optimization (prescriptive only)
-- [Demand Planning Temporal](../demand_planning_temporal/) -- Multi-period inventory planning with scenario analysis
-
-## Support
-
-- [GitHub Issues](https://github.com/RelationalAI/templates/issues)
