@@ -331,16 +331,6 @@ dp.minimize(prod_cost_total + hold_cost_total + unmet_cost_total)
 Ensure your Snowflake credentials are configured correctly and that the RAI Native App is installed on your account. Run `rai init` again and verify the connection settings.
 </details>
 
-## Learn more
-
-<!-- TODO: PM to confirm correct documentation URLs -->
-
-### Core concepts
-TO-DO: Missing correct links here. 
-- [Models and Concepts](https://docs.relational.ai/preview/pyrel/concepts) -- How to define semantic models
-- [Predictive Reasoner (GNN)](https://docs.relational.ai/preview/pyrel/gnn) -- Training graph neural networks in RelationalAI
-- [Prescriptive Reasoner](https://docs.relational.ai/preview/pyrel/prescriptive) -- Formulating and solving optimization problems
-
 ### Related templates
 
 - [Retail Markdown](../retail_markdown/) -- Standalone markdown optimization (prescriptive only)
