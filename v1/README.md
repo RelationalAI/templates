@@ -18,7 +18,7 @@ This directory contains the templates for v1. Each template folder includes its 
 | [hospital_staffing](./hospital_staffing/) | Explore the tradeoff between overtime cost and patient service level using bi-objective optimization with epsilon constraint. |
 | [humanitarian-aid-supply-chain](./humanitarian-aid-supply-chain/) | Use graph reasoning to analyze a humanitarian aid supply chain network with PageRank and Weighted Degree Centrality to optimize resource distribution strategies. |
 | [inventory_rebalancing](./inventory_rebalancing/) | Transfer inventory through a warehouse-hub-store network to meet demand at minimum shipping cost, with flow conservation at transit nodes. |
-| [machine_maintenance](./machine_maintenance/) | A multi-reasoner template that chains graph analysis, rules-based classification, and prescriptive optimization to schedule preventive maintenance across machines and technicians. |
+| [machine_maintenance](./machine_maintenance/) | A multi-reasoner template that chains querying, graph analysis, rules-based classification, and prescriptive optimization to schedule preventive maintenance, surface hidden operational risk, and recommend cross-training to eliminate concentration vulnerabilities. |
 | [order_fulfillment](./order_fulfillment/) | Assign customer orders to fulfillment centers to minimize total shipping and fixed operating costs. |
 | [portfolio_balancing](./portfolio_balancing/) | Multi-reasoner template: rules-based compliance analysis chained with bi-objective Markowitz optimization. |
 | [production_planning](./production_planning/) | Schedule production across machines to meet demand and maximize profit with scenario analysis. |
