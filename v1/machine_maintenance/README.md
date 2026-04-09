@@ -46,7 +46,7 @@ Each stage enriches the shared ontology, and downstream stages consume those enr
 | Stage | Reasoner | Reads from ontology | Writes to ontology | Role |
 |-------|----------|---------------------|--------------------|------|
 | 0 | Querying | ProductionRun, SensorReading, FailurePrediction | Machine.performance_ratio, Machine.quality_ratio, Machine.anomaly_count, MachinePeriod.predicted_fp | Plant_C leads at 79.8% OEE; Plant_A mid at 68.2% but has 7 of 9 sensor anomalies and the 3 steepest failure trajectories (M001 +0.230, M013 +0.228, M016 +0.219). |
-| 1 | Graph | Qualification, Machine | Machine.betweenness (normalized centrality) | All 30 machines form 1 connected cluster. Pump-type machines are the top bottlenecks (betweenness=24.0). Centrality scores feed the failure cost multiplier in Stage 3. |
+| 1 | Graph | Qualification, Machine (as `node_concept`) | Machine.betweenness (normalized centrality) | All 30 machines form 1 connected cluster. Pump-type machines are the top bottlenecks (betweenness=24.0). Centrality scores feed the failure cost multiplier in Stage 3. |
 | 2 | Rules | Machine (all derived properties from Stages 0-1) | Machine.is_overdue_maintenance, Machine.is_high_risk, Machine.is_chronic_downtime, Machine.risk_tier | 6 overdue, 1 high-risk, 3 chronic downtime. Composite tier: M013 is Critical (all 3 flags), M016 is Elevated (2 of 3). Overdue flag becomes a hard constraint in Stage 3. |
 | 3 | Prescriptive | MachinePeriod.predicted_fp, Machine.betweenness, Machine.is_overdue_maintenance | x_maintain, x_vulnerable, x_assigned (decision variables) | 20 jobs across 4 periods at $605K total cost. Per-period failure predictions (not static probability) weight the objective. Overdue machines scheduled by period 2. |
 | 4 | Analysis | Solution variables, Qualification, TrainingOption | (terminal -- prints recommendations) | All 3 Turbine techs in Houston_TX -- 67% of Turbine jobs require travel. Best cross-training: T006 (Chicago_IL, Senior) at $3,200 / 5 weeks. |
@@ -61,7 +61,7 @@ The multi-reasoner approach is necessary because no single analytical technique 
 
 - **Accretive ontology enrichment** -- each stage writes derived properties (betweenness, risk_tier, predicted_fp) that downstream stages consume, building a progressively richer model
 - **Rules chaining** -- three boolean flags (is_chronic_downtime, is_high_risk, is_overdue_maintenance) are composed into a single risk_tier property using exhaustive enumeration with `model.not_()`
-- **Graph-only concept for dependencies** -- a `GraphMachine` concept mirrors Machine nodes for the Graph reasoner, with betweenness centrality normalized and enriched back to the main ontology via rules
+- **Graph directly on domain concept** -- the Graph reasoner uses `Machine` directly as `node_concept`, so centrality scores are stored as Machine properties without a mirror concept
 - **Per-period failure predictions** -- the optimization objective uses `MachinePeriod.predicted_fp` (period-specific) rather than static `Machine.failure_probability`, giving the solver time-varying cost information
 - **Post-solve resilience analysis** -- Stage 4 inspects the solution and qualification structure to identify concentration risk, producing actionable cross-training recommendations without re-solving
 
@@ -386,25 +386,27 @@ oee_df = (
 
 ### Stage 1: Graph -- dependency clusters and centrality
 
-A `GraphMachine` concept mirrors Machine nodes for graph analysis. Edges connect machines when at least one technician is qualified for both machine types. The graph runs in the main model, so results can be enriched back via rules without a pandas round-trip:
+The Graph reasoner uses `Machine` directly as `node_concept` -- no mirror concept needed. Edges connect machines when at least one technician is qualified for both machine types:
 
 ```python
 dep_graph = Graph(
-    model, directed=False, weighted=False, node_concept=GMachine, aggregator="sum"
+    model, directed=False, weighted=False, node_concept=Machine, aggregator="sum"
 )
 ```
 
-Weakly connected components identify dependency clusters (groups of machines that compete for the same technicians). Betweenness centrality scores bottleneck machines -- those whose maintenance blocks the most scheduling options. The scores are normalized in-model and enriched onto `Machine`:
+Weakly connected components identify dependency clusters (groups of machines that compete for the same technicians). Betweenness centrality scores bottleneck machines -- those whose maintenance blocks the most scheduling options. The scores are normalized and stored directly on `Machine`:
 
 ```python
+Machine.betweenness_raw = model.Property(
+    f"{Machine} has raw betweenness centrality {Float:betweenness_raw}")
+m_btwn = Machine.ref("m_btwn")
+model.define(m_btwn.betweenness_raw(btwn_score)).where(betweenness(m_btwn, btwn_score))
+max_betweenness = max(Machine.betweenness_raw)
 Machine.betweenness = model.Property(
     f"{Machine} has betweenness centrality {Float:betweenness}")
-max_betweenness = max(GMachine.betweenness_raw)
-model.where(
-    Machine.machine_id == gm_norm.machine_id,
-    max_betweenness > 0,
-).define(
-    Machine.betweenness(gm_norm.betweenness_raw / max_betweenness)
+m_norm = Machine.ref("m_norm")
+model.where(max_betweenness > 0).define(
+    m_norm.betweenness(m_norm.betweenness_raw / max_betweenness)
 )
 ```
 

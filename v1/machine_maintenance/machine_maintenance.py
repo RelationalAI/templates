@@ -648,37 +648,20 @@ for _, row in pivot.head(6).iterrows():
 # Stage 1: Graph -- dependency clusters & centrality
 # --------------------------------------------------
 
-# Stage 1 lives in the main model using a graph-only concept, so graph outputs
-# can be joined back by rules without querying to pandas and re-uploading.
-GMachine = model.Concept("GraphMachine", identify_by={"machine_id": String})
-GMachine.machine_name = model.Property(f"{GMachine} has {String:machine_name}")
-GMachine.machine_type = model.Property(f"{GMachine} has type {String:machine_type}")
-GMachine.facility = model.Property(f"{GMachine} at {String:facility}")
-GMachine.failure_probability = model.Property(
-    f"{GMachine} has failure probability {Float:failure_probability}"
-)
-graph_machine_init = Machine.ref("graph_machine_init")
-model.define(
-    gm := GMachine.new(machine_id=graph_machine_init.machine_id),
-    gm.machine_name(graph_machine_init.machine_name),
-    gm.machine_type(graph_machine_init.machine_type),
-    gm.facility(graph_machine_init.facility),
-    gm.failure_probability(graph_machine_init.failure_probability),
-).where(graph_machine_init)
+# Graph directly on Machine — no mirror concept needed.
+dep_graph = Graph(model, directed=False, weighted=False, node_concept=Machine, aggregator="sum")
 
-dep_graph = Graph(model, directed=False, weighted=False, node_concept=GMachine, aggregator="sum")
-
-gm1 = GMachine.ref("gm1")
-gm2 = GMachine.ref("gm2")
+m1 = Machine.ref("m1")
+m2 = Machine.ref("m2")
 q1 = Qualification.ref("q1")
 q2 = Qualification.ref("q2")
 # Two machines are adjacent in the dependency graph when at least one
 # technician is qualified to service both machine types.
-model.define(dep_graph.Edge.new(src=gm1, dst=gm2)).where(
-    gm1.machine_type == q1.machine_type_str,
-    gm2.machine_type == q2.machine_type_str,
+model.define(dep_graph.Edge.new(src=m1, dst=m2)).where(
+    m1.machine_type == q1.machine_type_str,
+    m2.machine_type == q2.machine_type_str,
     q1.technician_id == q2.technician_id,
-    gm1.machine_id < gm2.machine_id,
+    m1.machine_id < m2.machine_id,
 )
 
 print(f"\n{'=' * 70}")
@@ -748,26 +731,21 @@ for _, row in betweenness_df.head(10).iterrows():
         f"failure_prob={row['failure_probability']:.3f}"
     )
 
-# Store normalized betweenness as a property on Machine for use in the
-# optimization objective.
-GMachine.betweenness_raw = model.Property(
-    f"{GMachine} has raw betweenness centrality {Float:betweenness_raw}"
+# Store normalized betweenness directly on Machine.
+Machine.betweenness_raw = model.Property(
+    f"{Machine} has raw betweenness centrality {Float:betweenness_raw}"
 )
-gm_btwn = GMachine.ref("gm_btwn")
-model.define(gm_btwn.betweenness_raw(btwn_score)).where(betweenness(gm_btwn, btwn_score))
-max_betweenness = max(GMachine.betweenness_raw)
+m_btwn = Machine.ref("m_btwn")
+model.define(m_btwn.betweenness_raw(btwn_score)).where(betweenness(m_btwn, btwn_score))
+max_betweenness = max(Machine.betweenness_raw)
 Machine.betweenness = model.Property(
     f"{Machine} has betweenness centrality {Float:betweenness}"
 )
-gm_norm = GMachine.ref("gm_norm")
-model.where(
-    Machine.machine_id == gm_norm.machine_id,
-    max_betweenness == 0,
-).define(Machine.betweenness(0.0))
-model.where(
-    Machine.machine_id == gm_norm.machine_id,
-    max_betweenness > 0,
-).define(Machine.betweenness(gm_norm.betweenness_raw / max_betweenness))
+m_norm = Machine.ref("m_norm")
+model.where(max_betweenness == 0).define(m_norm.betweenness(0.0))
+model.where(max_betweenness > 0).define(
+    m_norm.betweenness(m_norm.betweenness_raw / max_betweenness)
+)
 
 # --------------------------------------------------
 # Stage 2: Rules -- compliance flags & composite risk tier
