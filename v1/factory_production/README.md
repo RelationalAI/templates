@@ -52,6 +52,7 @@ The template solves the problem independently per factory, demonstrating a scena
 
 ### Tools
 - Python >= 3.10
+- RelationalAI Python SDK (`relationalai`) >= 1.0.13
 
 ## Quickstart
 

@@ -484,46 +484,38 @@ print(f"\n{'=' * 60}")
 print("STAGE 2: GRAPH -- Grid Topology & Structural Vulnerability")
 print("=" * 60)
 
-# Separate model for graph analysis (avoids UnsupportedRecursionError
-# when Graph + Prescriptive share the same model in SDK 1.0.12).
-graph_model = Model("energy_grid_graph")
-GSub = graph_model.Concept("Substation", identify_by={"id": String})
-GSub.name = graph_model.Property(f"{GSub} has {String:name}")
-GSub.voltage_kv = graph_model.Property(f"{GSub} has {Float:voltage_kv}")
-GSub.current_load_mw = graph_model.Property(f"{GSub} has {Float:current_load_mw}")
+# Graph-only substation concept used for topology analysis and downstream
+# enrichment.
+GSub = model.Concept("GraphSubstation", identify_by={"id": String})
+GSub.name = model.Property(f"{GSub} has {String:name}")
 
-GLine = graph_model.Concept("TransmissionLine", identify_by={"id": String})
-GLine.from_substation = graph_model.Relationship(f"{GLine} from {GSub}")
-GLine.to_substation = graph_model.Relationship(f"{GLine} to {GSub}")
-GLine.is_active = graph_model.Property(f"{GLine} is {Boolean:is_active}")
-GLine.capacity_mw = graph_model.Property(f"{GLine} has {Float:capacity_mw}")
-
-gsub_src = graph_model.data(substations_df)
-graph_model.define(GSub.new(
-    id=gsub_src.ID, name=gsub_src.NAME,
-    voltage_kv=gsub_src.VOLTAGE_KV,
-    current_load_mw=gsub_src.CURRENT_LOAD_MW,
-))
-gline_src = graph_model.data(transmission_lines_df)
-graph_model.define(GLine.new(
-    id=gline_src.ID,
-    from_substation=GSub.filter_by(id=gline_src.FROM_SUBSTATION_ID),
-    to_substation=GSub.filter_by(id=gline_src.TO_SUBSTATION_ID),
-    is_active=gline_src.IS_ACTIVE,
-    capacity_mw=gline_src.CAPACITY_MW,
-))
+gsub_init = Substation.ref("gsub_init")
+model.define(
+    gsub := GSub.new(id=gsub_init.id),
+    gsub.name(gsub_init.name),
+).where(gsub_init)
 
 grid_graph = Graph(
-    graph_model, directed=False, weighted=False, node_concept=GSub, aggregator="sum"
+    model,
+    directed=False,
+    weighted=False,
+    node_concept=GSub,
+    aggregator="sum",
 )
 
-gline = GLine.ref()
-gs1, gs2 = GSub.ref(), GSub.ref()
-graph_model.where(
-    gline.from_substation(gs1),
-    gline.to_substation(gs2),
-    gline.is_active == True,
-).define(grid_graph.Edge.new(src=gs1, dst=gs2))
+line_ref = TransmissionLine.ref("line_ref")
+from_sub = Substation.ref("from_sub")
+to_sub = Substation.ref("to_sub")
+gs1 = GSub.ref("gs1")
+gs2 = GSub.ref("gs2")
+
+model.define(grid_graph.Edge.new(src=gs1, dst=gs2)).where(
+    line_ref.from_substation(from_sub),
+    line_ref.to_substation(to_sub),
+    line_ref.is_active == True,
+    gs1.id == from_sub.id,
+    gs2.id == to_sub.id,
+)
 
 # a) Weakly Connected Components
 wcc = grid_graph.weakly_connected_component()
@@ -532,12 +524,10 @@ node_ref = grid_graph.Node.ref("n")
 comp_ref = grid_graph.Node.ref("comp")
 
 wcc_df = (
-    graph_model.where(wcc(node_ref, comp_ref))
+    model.where(wcc(node_ref, comp_ref))
     .select(
         node_ref.id.alias("substation_id"),
         node_ref.name.alias("substation_name"),
-        node_ref.voltage_kv.alias("voltage_kv"),
-        node_ref.current_load_mw.alias("current_load_mw"),
         comp_ref.id.alias("component_id"),
         aggs.count(node_ref).per(comp_ref).alias("component_size"),
     )
@@ -556,18 +546,53 @@ else:
 
 # b) Community Detection (Louvain)
 community = grid_graph.louvain()
-node_c = grid_graph.Node.ref("nc")
 comm_label = Integer.ref("comm")
 
-community_df = (
-    graph_model.where(community(node_c, comm_label))
-    .select(
-        node_c.id.alias("substation_id"),
-        node_c.name.alias("name"),
-        comm_label.alias("community"),
-    )
-    .to_df()
+# c) Centrality Analysis (betweenness, degree, eigenvector)
+betweenness = grid_graph.betweenness_centrality()
+btwn_score = Float.ref("btwn")
+
+degree = grid_graph.degree_centrality()
+deg_score = Float.ref("deg")
+
+eigenvector = grid_graph.eigenvector_centrality()
+eig_score = Float.ref("eig")
+
+# Raw scores from graph algorithms.
+GSub.grid_community_label = model.Property(
+    f"{GSub} in grid community {Integer:grid_community_label}"
 )
+GSub.betweenness_raw = model.Property(f"{GSub} has {Float:betweenness_raw}")
+GSub.degree_centrality_raw = model.Property(f"{GSub} has {Float:degree_centrality_raw}")
+GSub.eigenvector_centrality_raw = model.Property(f"{GSub} has {Float:eigenvector_centrality_raw}")
+
+# Per-metric ranks and composite critical rank.
+GSub.betweenness_rank = model.Property(f"{GSub} has {Integer:betweenness_rank}")
+GSub.degree_rank = model.Property(f"{GSub} has {Integer:degree_rank}")
+GSub.eigenvector_rank = model.Property(f"{GSub} has {Integer:eigenvector_rank}")
+GSub.combined_rank = model.Property(f"{GSub} has {Integer:combined_rank}")
+GSub.critical_rank = model.Property(f"{GSub} has {Integer:critical_rank}")
+
+gsub_ref = GSub.ref()
+
+# Populate raw scores from graph algorithms.
+model.define(gsub_ref.grid_community_label(comm_label)).where(community(gsub_ref, comm_label))
+model.define(gsub_ref.betweenness_raw(btwn_score)).where(betweenness(gsub_ref, btwn_score))
+model.define(gsub_ref.degree_centrality_raw(deg_score)).where(degree(gsub_ref, deg_score))
+model.define(gsub_ref.eigenvector_centrality_raw(eig_score)).where(eigenvector(gsub_ref, eig_score))
+
+# Rank per metric (descending), then combine into a single critical rank.
+model.define(GSub.betweenness_rank(aggs.rank(aggs.desc(GSub.betweenness_raw, GSub.id))))
+model.define(GSub.degree_rank(aggs.rank(aggs.desc(GSub.degree_centrality_raw, GSub.id))))
+model.define(GSub.eigenvector_rank(aggs.rank(aggs.desc(GSub.eigenvector_centrality_raw, GSub.id))))
+model.define(GSub.combined_rank(GSub.betweenness_rank + GSub.degree_rank + GSub.eigenvector_rank))
+model.define(GSub.critical_rank(aggs.rank(GSub.combined_rank, GSub.id)))
+
+community_df = model.select(
+    GSub.id.alias("substation_id"),
+    GSub.name.alias("name"),
+    GSub.grid_community_label.alias("community"),
+).to_df()
 community_df["community"] = community_df["community"].astype(int)
 
 num_communities = community_df["community"].nunique()
@@ -576,112 +601,45 @@ for comm_id, group in community_df.groupby("community"):
     members = ", ".join(group["name"].tolist())
     print(f"    Region {comm_id}: {members}")
 
-# c) Centrality Analysis (betweenness, degree, eigenvector)
-betweenness = grid_graph.betweenness_centrality()
-node_b = grid_graph.Node.ref("nb")
-btwn_score = Float.ref("btwn")
-
-betweenness_df = (
-    graph_model.where(betweenness(node_b, btwn_score))
-    .select(
-        node_b.id.alias("substation_id"),
-        node_b.name.alias("name"),
-        node_b.voltage_kv.alias("voltage_kv"),
-        node_b.current_load_mw.alias("current_load_mw"),
-        btwn_score.alias("betweenness"),
+centrality_df = (
+    model.select(
+        GSub.id.alias("substation_id"),
+        GSub.name.alias("name"),
+        GSub.betweenness_raw.alias("betweenness"),
+        GSub.degree_centrality_raw.alias("degree_centrality"),
+        GSub.eigenvector_centrality_raw.alias("eigenvector_centrality"),
+        GSub.critical_rank.alias("critical_rank"),
     )
     .to_df()
-    .sort_values("betweenness", ascending=False)
+    .sort_values("critical_rank")
     .reset_index(drop=True)
 )
+centrality_df["critical_rank"] = centrality_df["critical_rank"].astype(int)
 
-degree = grid_graph.degree_centrality()
-node_d = grid_graph.Node.ref("nd")
-deg_score = Float.ref("deg")
+# ── Ontology enrichment: graph results are available on the shared ontology
+# for Stage 3 rules and Stage 4 optimization.
 
-degree_df = (
-    graph_model.where(degree(node_d, deg_score))
-    .select(
-        node_d.id.alias("substation_id"),
-        deg_score.alias("degree_centrality"),
-    )
-    .to_df()
+Substation.betweenness = model.Property(f"{Substation} has {Float:betweenness}")
+Substation.grid_community = model.Property(
+    f"{Substation} in grid community {Integer:grid_community}"
+)
+Substation.is_structurally_critical = model.Relationship(f"{Substation} is structurally critical")
+
+sub_ref = Substation.ref()
+
+model.where(sub_ref.id == gsub_ref.id).define(sub_ref.betweenness(gsub_ref.betweenness_raw))
+model.where(sub_ref.id == gsub_ref.id).define(sub_ref.grid_community(gsub_ref.grid_community_label))
+model.where(sub_ref.id == gsub_ref.id, gsub_ref.critical_rank <= CRITICAL_THRESHOLD).define(
+    sub_ref.is_structurally_critical()
 )
 
-eigenvector = grid_graph.eigenvector_centrality()
-node_e = grid_graph.Node.ref("ne")
-eig_score = Float.ref("eig")
-
-eigenvector_df = (
-    graph_model.where(eigenvector(node_e, eig_score))
-    .select(
-        node_e.id.alias("substation_id"),
-        eig_score.alias("eigenvector_centrality"),
-    )
-    .to_df()
-)
-
-centrality_df = betweenness_df.merge(
-    degree_df,
-    on="substation_id",
-).merge(
-    eigenvector_df,
-    on="substation_id",
-)
-centrality_df["combined_rank"] = (
-    centrality_df["betweenness"].rank(ascending=False)
-    + centrality_df["degree_centrality"].rank(ascending=False)
-    + centrality_df["eigenvector_centrality"].rank(ascending=False)
-)
-centrality_df = centrality_df.sort_values("combined_rank").reset_index(drop=True)
-
-# Top-N by combined centrality rank are "structurally critical"
-critical_sub_ids = set(
-    centrality_df.head(CRITICAL_THRESHOLD)["substation_id"].tolist()
-)
-
-print(f"\n  Top {CRITICAL_THRESHOLD} structurally critical substations:")
-for i, (_, row) in enumerate(centrality_df.head(CRITICAL_THRESHOLD).iterrows(), 1):
-    print(
-        f"    #{i}: {row['name']} (betw={row['betweenness']:.4f}, "
-        f"deg={row['degree_centrality']:.4f}, eig={row['eigenvector_centrality']:.4f}) [CRITICAL]"
-    )
-
-print("\n  All substations by centrality:")
+print(f"\n  All substations by centrality (top {CRITICAL_THRESHOLD} marked CRITICAL):")
 for i, (_, row) in enumerate(centrality_df.iterrows(), 1):
-    flag = " [CRITICAL]" if row["substation_id"] in critical_sub_ids else ""
+    flag = " [CRITICAL]" if row["critical_rank"] <= CRITICAL_THRESHOLD else ""
     print(
         f"    #{i}: {row['name']} (betw={row['betweenness']:.4f}, "
         f"deg={row['degree_centrality']:.4f}, eig={row['eigenvector_centrality']:.4f}){flag}"
     )
-
-# ── Ontology enrichment: write graph results back to the main model ───────────
-# This is the accretive pattern: graph analysis runs on graph_model, but results
-# are written to the shared ontology so Stage 3 rules and Stage 4 optimization
-# can consume them. Each stage builds on the previous — the ontology grows.
-
-Substation.betweenness = model.Property(f"{Substation} has {Float:betweenness}")
-Substation.grid_community = model.Property(f"{Substation} in grid community {Integer:grid_community}")
-Substation.is_structurally_critical = model.Relationship(f"{Substation} is structurally critical")
-
-# Write betweenness centrality
-cent_data = model.data(centrality_df[["substation_id", "betweenness"]])
-model.define(
-    Substation.filter_by(id=cent_data.substation_id).betweenness(cent_data.betweenness)
-)
-
-# Write Louvain community labels
-comm_data = model.data(community_df[["substation_id", "community"]])
-model.define(
-    Substation.filter_by(id=comm_data.substation_id).grid_community(comm_data.community)
-)
-
-# Write structurally critical flag (top-N by combined centrality)
-critical_df = pd.DataFrame({"substation_id": list(critical_sub_ids)})
-crit_data = model.data(critical_df)
-model.where(Substation.id == crit_data.substation_id).define(
-    Substation.is_structurally_critical()
-)
 
 # Cross-reference: DC-targeted substations that are ALSO critical bottlenecks
 DCRef = DataCenterRequest.ref()
@@ -698,7 +656,10 @@ dc_sub_df = (
 )
 
 if len(dc_sub_df) > 0 and len(centrality_df) > 0:
-    dc_at_bottleneck = dc_sub_df[dc_sub_df["sub_id"].isin(critical_sub_ids)]
+    critical_ids = centrality_df.loc[
+        centrality_df["critical_rank"] <= CRITICAL_THRESHOLD, "substation_id"
+    ]
+    dc_at_bottleneck = dc_sub_df[dc_sub_df["sub_id"].isin(critical_ids)]
     if len(dc_at_bottleneck) > 0:
         print(
             "\n  KEY INSIGHT: DC requests targeting structurally critical substations:"

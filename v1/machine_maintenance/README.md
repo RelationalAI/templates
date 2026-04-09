@@ -61,7 +61,7 @@ The multi-reasoner approach is necessary because no single analytical technique 
 
 - **Accretive ontology enrichment** -- each stage writes derived properties (betweenness, risk_tier, predicted_fp) that downstream stages consume, building a progressively richer model
 - **Rules chaining** -- three boolean flags (is_chronic_downtime, is_high_risk, is_overdue_maintenance) are composed into a single risk_tier property using exhaustive enumeration with `model.not_()`
-- **Separate graph model** -- Graph and Prescriptive reasoners use independent `Model` instances to avoid SDK recursion conflicts, with centrality results transferred back via `model.data()`
+- **Graph-only concept for dependencies** -- a `GraphMachine` concept mirrors Machine nodes for the Graph reasoner, with betweenness centrality normalized and enriched back to the main ontology via rules
 - **Per-period failure predictions** -- the optimization objective uses `MachinePeriod.predicted_fp` (period-specific) rather than static `Machine.failure_probability`, giving the solver time-varying cost information
 - **Post-solve resilience analysis** -- Stage 4 inspects the solution and qualification structure to identify concentration risk, producing actionable cross-training recommendations without re-solving
 
@@ -106,6 +106,7 @@ The multi-reasoner approach is necessary because no single analytical technique 
 
 ### Tools
 - Python >= 3.10
+- RelationalAI Python SDK (`relationalai`) >= 1.0.13
 
 ## Quickstart
 
@@ -385,24 +386,25 @@ oee_df = (
 
 ### Stage 1: Graph -- dependency clusters and centrality
 
-A separate `graph_model` is used for graph analysis because recursive graph definitions conflict with prescriptive `variable_values()` queries on the same model. An undirected graph is built where machine nodes are connected when they share a qualified technician:
+A `GraphMachine` concept mirrors Machine nodes for graph analysis. Edges connect machines when at least one technician is qualified for both machine types. The graph runs in the main model, so results can be enriched back via rules without a pandas round-trip:
 
 ```python
-graph_model = Model("machine_maintenance_graph")
 dep_graph = Graph(
-    graph_model, directed=False, weighted=False, node_concept=GMachine, aggregator="sum"
+    model, directed=False, weighted=False, node_concept=GMachine, aggregator="sum"
 )
 ```
 
-Weakly connected components identify dependency clusters (groups of machines that compete for the same technicians). Betweenness centrality scores bottleneck machines -- those whose maintenance blocks the most scheduling options. The scores are normalized and transferred back to the main model via `model.data()`:
+Weakly connected components identify dependency clusters (groups of machines that compete for the same technicians). Betweenness centrality scores bottleneck machines -- those whose maintenance blocks the most scheduling options. The scores are normalized in-model and enriched onto `Machine`:
 
 ```python
 Machine.betweenness = model.Property(
     f"{Machine} has betweenness centrality {Float:betweenness}")
-betweenness_df["normalized"] = betweenness_df["betweenness"] / max_betweenness
-btwn_data = model.data(betweenness_df[["machine_id", "normalized"]])
-model.where(Machine.machine_id == btwn_data["machine_id"]).define(
-    Machine.betweenness(btwn_data["normalized"])
+max_betweenness = max(GMachine.betweenness_raw)
+model.where(
+    Machine.machine_id == gm_norm.machine_id,
+    max_betweenness > 0,
+).define(
+    Machine.betweenness(gm_norm.betweenness_raw / max_betweenness)
 )
 ```
 
@@ -545,7 +547,9 @@ For concentrated types, the script queries `training_options.csv` to recommend t
 <summary><code>input definition is too large</code></summary>
 
 - This occurs with large cross-products. The qualification-filtered assignment space avoids this issue for the default 30-machine dataset.
-- If you scale up significantly, consider reducing data size or using `variable_values()` instead of `model.select()`.
+- If you scale up significantly, consider reducing data size or querying solver
+  results via `Variable.values(...)` instead of broad `model.select(...)`
+  patterns.
 </details>
 
 <details>

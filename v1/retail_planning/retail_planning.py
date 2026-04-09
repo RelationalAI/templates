@@ -263,8 +263,6 @@ PurchaseTest = Relationship(f"{Customer} at {Any:timestamp}")
 model.define(
     PurchaseTest(Customer, PurchaseTestTable.timestamp)
 ).where(Customer.customer_id == PurchaseTestTable.customer_id)
-
-
 # Train and predict
 purchase_gnn = GNN(
     database=GNN_DATABASE, schema=GNN_SCHEMA,
@@ -700,22 +698,54 @@ if si_dp.objective_value is not None:
 # Phase 8: Results Display
 # --------------------------------------------------
 
-df_dp = dp.variable_values().to_df()
+week_ref = Week.ref()
+int_ref = Integer.ref()
+value_ref = Float.ref()
 
 print("\n=== Demand Planning: Production Plan (non-zero) ===")
-prod_rows = df_dp[df_dp["name"].str.startswith("prod") & (df_dp["value"] > 0.01)]
+prod_rows = (
+    model.select(
+        ProdCapacity.pc_article_id.alias("article_id"),
+        week_ref.num.alias("week"),
+        value_ref.alias("production"),
+    )
+    .where(
+        ProdCapacity.x_production(week_ref, value_ref),
+        value_ref > 0.01,
+    )
+    .to_df()
+)
 if not prod_rows.empty:
     print(prod_rows.to_string(index=False))
 else:
     print("  No production needed.")
 
 print("\n=== Demand Planning: Inventory Levels ===")
-inv_rows = df_dp[df_dp["name"].str.startswith("inv")]
+inv_rows = (
+    model.select(
+        ProdCapacity.pc_article_id.alias("article_id"),
+        int_ref.alias("week"),
+        value_ref.alias("inventory"),
+    )
+    .where(ProdCapacity.x_inventory(int_ref, value_ref))
+    .to_df()
+)
 if not inv_rows.empty:
     print(inv_rows.to_string(index=False))
 
 print("\n=== Demand Planning: Unmet Demand ===")
-unmet_rows = df_dp[df_dp["name"].str.startswith("unmet") & (df_dp["value"] > 0.01)]
+unmet_rows = (
+    model.select(
+        ProdCapacity.pc_article_id.alias("article_id"),
+        week_ref.num.alias("week"),
+        value_ref.alias("unmet"),
+    )
+    .where(
+        ProdCapacity.x_unmet(week_ref, value_ref),
+        value_ref > 0.01,
+    )
+    .to_df()
+)
 if unmet_rows.empty:
     print("  All demand fulfilled!")
 else:

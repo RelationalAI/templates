@@ -65,7 +65,7 @@ This is not a single-reasoner problem. Approving a data center at a structurally
 - **Accretive ontology enrichment** -- each stage writes derived properties that downstream stages consume as first-class ontology attributes. Stage 1's `predicted_load` flows into both Stage 3 rules and Stage 4 optimization constraints, ensuring consistent capacity signals across the pipeline.
 - **Multi-scenario / multi-objective via Scenario Concept** -- `InvestmentLevel` is a Scenario Concept: 5 budget entities ($200M-$600M) that parameterize the optimization. One MIP solve produces the entire Pareto frontier simultaneously (not a re-solve loop). Decision variables `x_approve` and `x_upgrade` are indexed per InvestmentLevel, and results are queryable ontology properties -- not parsed from solver output.
 - **Ontology as shared state** -- each stage writes derived properties/relationships that downstream stages read; no Python dicts or DataFrames carry state between stages
-- **Separate graph model** -- Graph and Prescriptive reasoners use independent `Model` instances to avoid SDK recursion, with results transferred via `model.data()` + `filter_by()`
+- **Graph-only concept for topology** -- a `GraphSubstation` concept mirrors Substation nodes for the Graph reasoner, with centrality and community results enriched back to the main ontology via rules
 - **Marginal analysis from ontology queries** -- the per-level DC approvals, upgrade selections, and net value are all queried from the ontology via `model.select(...).where(x_approve > 0.5)` per InvestmentLevel, enabling marginal return analysis across the frontier
 
 ## Who this is for
@@ -111,6 +111,7 @@ This is not a single-reasoner problem. Approving a data center at a structurally
 
 ### Tools
 - Python >= 3.10
+- RelationalAI Python SDK (`relationalai`) >= 1.0.13
 
 ## Quickstart
 
@@ -265,28 +266,26 @@ model.define(
 
 ### Stage 2: Graph -- Grid Topology & Structural Vulnerability
 
-Uses a **separate `graph_model`** (to avoid SDK 1.0.12 recursion with prescriptive) to build a substation-transmission line graph across the ERCOT grid. Computes:
+A `GraphSubstation` concept mirrors the main `Substation` nodes for graph analysis. Edges connect substations that share an active transmission line. The graph runs in the main model, and centrality/community results are enriched back to `Substation` via rules. Computes:
 - Weakly connected components (grid connectivity -- confirms all 12 substations are reachable)
 - Louvain community detection (3 ERCOT regions: North Texas, West Texas, Gulf Coast)
-- Betweenness centrality (DFW=31.67, Houston=15.83, San Antonio=4.33 are the top structural bottlenecks)
+- Betweenness, degree, and eigenvector centrality combined into a critical rank
 - 7 of 10 DC requests target structurally critical substations -- a key input to the rules engine
-
-Results are loaded back into the main model via `model.data()` + `filter_by()`.
-
-The graph is constructed from substations and active transmission lines, then analyzed with Louvain and betweenness centrality:
 
 ```python
 grid_graph = Graph(
-    graph_model, directed=False, weighted=False, node_concept=GSub, aggregator="sum"
+    model, directed=False, weighted=False, node_concept=GSub, aggregator="sum"
 )
 
-gline = GLine.ref()
-gs1, gs2 = GSub.ref(), GSub.ref()
-graph_model.where(
-    gline.from_substation(gs1),
-    gline.to_substation(gs2),
-    gline.is_active == True,
-).define(grid_graph.Edge.new(src=gs1, dst=gs2))
+model.define(
+    grid_graph.Edge.new(src=gs1, dst=gs2)
+).where(
+    line_ref.from_substation(from_sub),
+    line_ref.to_substation(to_sub),
+    line_ref.is_active == True,
+    gs1.id == from_sub.id,
+    gs2.id == to_sub.id,
+)
 
 community = grid_graph.louvain()
 betweenness = grid_graph.betweenness_centrality()
@@ -370,8 +369,8 @@ p.satisfy(model.where(
 <details>
 <summary>Stage 2 graph queries work but Stage 4 fails with <code>UnsupportedRecursionError</code></summary>
 
-- The Graph reasoner's recursive definitions conflict with prescriptive `variable_values()` in SDK 1.0.12.
-- The template uses a separate `graph_model` for Stage 2 to avoid this.
+- SDK versions before 1.0.13 could hit this when recursive graph rules and
+  prescriptive result queries shared one model. Upgrade to >= 1.0.13.
 
 </details>
 

@@ -89,6 +89,7 @@ The two-stage approach is necessary because compliance rules and optimization co
 
 ### Tools
 - Python >= 3.10
+- RelationalAI Python SDK (`relationalai`) >= 1.0.13
 
 ## Quickstart
 

@@ -121,15 +121,16 @@ model.define(
 def solve_allocation(concurrency_multiplier):
     """Solve runner assignment with a given concurrency cap multiplier.
 
-    Returns (solve_info, variable_values_df) or None if infeasible.
+    Returns (solve_info, assignment_df) or None if infeasible.
     """
     p = Problem(model, Float)
 
     # Decision variable: binary assignment of workflow to runner.
-    p.solve_for(
+    assign_var = p.solve_for(
         Assignment.x_assigned,
         type="bin",
         name=["assign", Assignment.workflow.name, Assignment.runner.name],
+        populate=False,
     )
 
     AssignRef = Assignment.ref()
@@ -163,7 +164,13 @@ def solve_allocation(concurrency_multiplier):
     if si.termination_status not in ("OPTIMAL", "LOCALLY_SOLVED"):
         return None
 
-    return si, p.variable_values().to_df()
+    value_ref = Float.ref()
+    assign_df = model.select(
+        assign_var.assignment.workflow.name.alias("workflow"),
+        assign_var.assignment.runner.name.alias("runner"),
+    ).where(assign_var.values(0, value_ref), value_ref > 0.5).to_df()
+
+    return si, assign_df
 
 
 # --------------------------------------------------
@@ -189,18 +196,9 @@ if __name__ == "__main__":
             })
             continue
 
-        si, var_df = result
+        si, assign_df = result
         print(f"  Status: {si.termination_status}")
         print(f"  Total pipeline cost: ${si.objective_value:.2f}")
-
-        # Extract assignments.
-        assign_df = var_df[
-            var_df["name"].str.startswith("assign_")
-            & (var_df["value"] > 0.5)
-        ].copy()
-        assign_df[["_", "workflow", "runner"]] = (
-            assign_df["name"].str.split("_", n=2, expand=True)
-        )
 
         # Print assignments grouped by runner.
         print("\n  Assignments:")

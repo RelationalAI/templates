@@ -56,6 +56,7 @@ Prescriptive reasoning is well suited here because the problem has combinatorial
 
 ### Tools
 - Python >= 3.10
+- RelationalAI Python SDK (`relationalai`) >= 1.0.13
 
 ## Quickstart
 

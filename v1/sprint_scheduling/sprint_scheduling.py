@@ -190,7 +190,7 @@ for scenario_value in SCENARIO_VALUES:
     p = Problem(model, Float)
 
     # Variable: binary assignment (1 if issue assigned to developer in sprint, 0 otherwise)
-    p.solve_for(
+    assign_var = p.solve_for(
         Assignment.x_assigned,
         type="bin",
         name=[
@@ -199,6 +199,7 @@ for scenario_value in SCENARIO_VALUES:
             Assignment.developer.name,
             Assignment.sprint.name,
         ],
+        populate=False,
     )
 
     # Static constraint: each issue assigned exactly once
@@ -237,9 +238,12 @@ for scenario_value in SCENARIO_VALUES:
     print(f"  Issues in scope: {len(filtered_issues)} (of {len(issues_df)} total)")
 
     # Assignment results
-    var_df = p.variable_values().to_df()
-    var_df["value"] = var_df["value"].astype(float)
-    assigned = var_df[var_df["name"].str.startswith("assign") & (var_df["value"] > 0.5)]
+    value_ref = Float.ref()
+    assigned = model.select(
+        assign_var.assignment.issue.key.alias("issue"),
+        assign_var.assignment.developer.name.alias("developer"),
+        assign_var.assignment.sprint.name.alias("sprint"),
+    ).where(assign_var.values(0, value_ref), value_ref > 0.5).to_df()
     print("\n  Assignments:")
     print(assigned.to_string(index=False))
 

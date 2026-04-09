@@ -272,31 +272,34 @@ for scenario_value in SCENARIO_VALUES:
     p = Problem(model, Float)
 
     # Variable: production quantity per site x SKU x week
-    p.solve_for(
+    production_var = p.solve_for(
         ProdCapacity.x_production(week_ref, production_ref),
         type="cont",
         lower=0,
         upper=ProdCapacity.max_production_per_week,
         name=["prod", ProdCapacity.site_id, ProdCapacity.sku_id, week_ref],
         where=[week_ref == weeks],
+        populate=False,
     )
 
     # Variable: inventory level per site x SKU x week (week 0 = initial)
-    p.solve_for(
+    inventory_var = p.solve_for(
         ProdCapacity.x_inventory(week_ref, inventory_ref),
         type="cont",
         lower=0,
         name=["inv", ProdCapacity.site_id, ProdCapacity.sku_id, week_ref],
         where=[week_ref == std.common.range(0, num_weeks + 1)],
+        populate=False,
     )
 
     # Variable: unmet demand per order
-    p.solve_for(
+    unmet_var = p.solve_for(
         DemandOrder.x_unmet,
         type="cont",
         lower=0,
         upper=DemandOrder.quantity,
         name=["unmet", DemandOrder.id],
+        populate=False,
     )
 
     # Parameterized constraint: initial condition (inventory at week 0)
@@ -376,20 +379,33 @@ for scenario_value in SCENARIO_VALUES:
         f"  Demand orders in scope: {len(filtered_orders)} (of {len(orders_df)} total)"
     )
 
-    df = p.variable_values().to_df()
+    value_ref = Float.ref()
+    prod = model.select(
+        production_var.prodcapacity.site_id.alias("site_id"),
+        production_var.prodcapacity.sku_id.alias("sku_id"),
+        production_var.t.alias("week"),
+        value_ref.alias("production"),
+    ).where(production_var.values(0, value_ref), value_ref > 0.01).to_df()
+    inv = model.select(
+        inventory_var.prodcapacity.site_id.alias("site_id"),
+        inventory_var.prodcapacity.sku_id.alias("sku_id"),
+        inventory_var.t.alias("week"),
+        value_ref.alias("inventory"),
+    ).where(inventory_var.values(0, value_ref)).to_df()
+    unmet = model.select(
+        unmet_var.demandorder.id.alias("order_id"),
+        value_ref.alias("unmet"),
+    ).where(unmet_var.values(0, value_ref), value_ref > 0.01).to_df()
 
     print("\n  === Production Plan (non-zero weeks) ===")
-    prod = df[df["name"].str.startswith("prod") & (df["value"] > 0.01)]
     if not prod.empty:
         print(prod.to_string(index=False))
 
     print("\n  === Inventory Levels (selected weeks) ===")
-    inv = df[df["name"].str.startswith("inv")]
     if not inv.empty:
         print(inv.head(20).to_string(index=False))
 
     print("\n  === Unmet Demand ===")
-    unmet = df[df["name"].str.startswith("unmet") & (df["value"] > 0.01)]
     if unmet.empty:
         print("  All demand fulfilled!")
     else:

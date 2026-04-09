@@ -82,7 +82,7 @@ for factory_name in SCENARIO_VALUES:
     p = Problem(model, Float)
 
     # Variable: production quantity per product, bounded by demand
-    p.solve_for(
+    quantity_var = p.solve_for(
         Product.x_quantity,
         lower=0,
         upper=Product.demand,
@@ -117,9 +117,12 @@ for factory_name in SCENARIO_VALUES:
         continue
     print(f"  Status: {si.termination_status}, Profit: ${si.objective_value:.2f}")
 
-    # Extract solution via variable_values() — populate=False avoids overwriting between scenarios
-    var_df = p.variable_values().to_df()
-    produced = var_df[var_df["value"] > 0.001]
+    # Extract solution via Variable.values() — populate=False avoids overwriting between scenarios.
+    value_ref = Float.ref()
+    produced = model.select(
+        quantity_var.product.name.alias("product"),
+        value_ref.alias("quantity"),
+    ).where(quantity_var.values(0, value_ref), value_ref > 0.001).to_df()
     print(f"  Production plan:\n{produced.to_string(index=False)}")
 
 # Summary

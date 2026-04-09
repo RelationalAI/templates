@@ -55,6 +55,7 @@ Prescriptive reasoning makes this practical because the solver simultaneously ba
 
 ### Tools
 - Python >= 3.10
+- RelationalAI Python SDK (`relationalai`) >= 1.0.13
 
 ## Quickstart
 

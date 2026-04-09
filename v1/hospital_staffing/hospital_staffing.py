@@ -99,21 +99,43 @@ def solve_staffing(objective="min_overtime", eps_unmet=None):
 
     objective: "min_overtime" (primary) or "min_unmet" (anchor 2 -- minimize unmet demand)
     eps_unmet: if set, add constraint sum(unmet) <= eps_unmet
-    Returns (solve_info, variable_values_df, overtime_cost_value, total_unmet_value) or None if infeasible.
+    Returns (solve_info, assignment_df, overtime_cost_value, total_unmet_value) or None
+    if infeasible.
     """
     p = Problem(model, Float)
 
-    p.solve_for(Assignment.x_assigned, type="bin", populate=False,
-                name=["assigned", Assignment.availability.nurse.name,
-                      Assignment.availability.shift.name])
-    p.solve_for(Nurse.x_overtime_hours, type="cont", populate=False,
-                name=["ot", Nurse.name], lower=0)
-    p.solve_for(Shift.x_patients_served, type="cont", populate=False,
-                name=["pt", Shift.name], lower=0)
-    p.solve_for(Shift.x_unmet_demand, type="cont", populate=False,
-                name=["ud", Shift.name], lower=0)
+    assign_var = p.solve_for(
+        Assignment.x_assigned,
+        type="bin",
+        populate=False,
+        name=["assigned", Assignment.availability.nurse.name, Assignment.availability.shift.name],
+    )
 
-    # --- Constraints (same as original template) ---
+    overtime_var = p.solve_for(
+        Nurse.x_overtime_hours,
+        type="cont",
+        populate=False,
+        name=["ot", Nurse.name],
+        lower=0,
+    )
+
+    p.solve_for(
+        Shift.x_patients_served,
+        type="cont",
+        populate=False,
+        name=["pt", Shift.name],
+        lower=0,
+    )
+
+    unmet_var = p.solve_for(
+        Shift.x_unmet_demand,
+        type="cont",
+        populate=False,
+        name=["ud", Shift.name],
+        lower=0,
+    )
+
+    # Constraints
 
     # Can only assign if available
     p.satisfy(model.require(Assignment.x_assigned <= Assignment.availability.available))
@@ -174,25 +196,55 @@ def solve_staffing(objective="min_overtime", eps_unmet=None):
     if si.termination_status != "OPTIMAL":
         return None
 
-    # Extract secondary objective values from variable_values df
-    df = p.variable_values().to_df()
+    # populate=False — query Variable.values() instead of populated properties.
+    value_ref = Float.ref()
 
-    # Compute unmet demand from df
-    unmet_total = 0.0
-    for _, row in df.iterrows():
-        name = str(row.iloc[0])
-        val = float(row.iloc[1])
-        if name.startswith("ud_") and val > 1e-6:
-            unmet_total += val
+    assignment_df = (
+        model.select(
+            assign_var.assignment.availability.nurse.name.alias("nurse"),
+            assign_var.assignment.availability.shift.name.alias("shift"),
+        )
+        .where(
+            assign_var.values(0, value_ref),
+            value_ref > 0.5,
+        )
+        .to_df()
+    )
 
+    # Use si.objective_value for the optimized metric; compute the other from
+    # variable values.
     if objective == "min_overtime":
         ot_cost_val = si.objective_value
-        unmet_val = unmet_total
+        unmet_df = (
+            model.select(
+                unmet_var.shift.name.alias("shift"),
+                value_ref.alias("unmet_demand"),
+            )
+            .where(unmet_var.values(0, value_ref), value_ref > 1e-6)
+            .to_df()
+        )
+        unmet_total = unmet_df["unmet_demand"].sum() if not unmet_df.empty else 0.0
     else:
-        ot_cost_val = None  # Not the objective; would need separate evaluation
-        unmet_val = si.objective_value
+        unmet_total = si.objective_value
+        overtime_df = (
+            model.select(
+                overtime_var.nurse.hourly_cost.alias("hourly_cost"),
+                overtime_var.nurse.overtime_multiplier.alias("overtime_multiplier"),
+                value_ref.alias("overtime_hours"),
+            )
+            .where(overtime_var.values(0, value_ref), value_ref > 1e-6)
+            .to_df()
+        )
+        if overtime_df.empty:
+            ot_cost_val = 0.0
+        else:
+            ot_cost_val = (
+                overtime_df["overtime_hours"]
+                * overtime_df["hourly_cost"]
+                * overtime_df["overtime_multiplier"]
+            ).sum()
 
-    return si, df, ot_cost_val, unmet_val
+    return si, assignment_df, ot_cost_val, unmet_total
 
 
 # --------------------------------------------------
@@ -206,8 +258,12 @@ if __name__ == "__main__":
     print("=" * 70)
     result1 = solve_staffing("min_overtime", eps_unmet=None)
     if result1 is None:
-        raise SystemExit("Anchor solve 1 (min overtime) is infeasible — check data and constraints.")
-    si1, df1, ot1, unmet1 = result1
+        raise SystemExit(
+            "Anchor solve 1 (min overtime) is infeasible — check data and constraints."
+        )
+
+    si1, assign_df1, ot1, unmet1 = result1
+
     print(f"Status: {si1.termination_status}")
     print(f"Overtime cost: ${ot1:.2f}")
     print(f"Unmet demand: {unmet1:.1f} patients")
@@ -218,13 +274,16 @@ if __name__ == "__main__":
     result2 = solve_staffing("min_unmet", eps_unmet=None)
     if result2 is None:
         raise SystemExit("Anchor solve 2 (min unmet) is infeasible — check data and constraints.")
-    si2, df2, _, unmet2 = result2
+
+    si2, assign_df2, ot2, unmet2 = result2
+
     print(f"Status: {si2.termination_status}")
     print(f"Min unmet demand: {unmet2:.1f} patients")
+    print(f"Overtime cost at best service: ${ot2:.2f}")
 
     # Feasible range: unmet demand goes from unmet2 (best service) to unmet1 (cheapest)
-    unmet_min = unmet2  # best achievable service
-    unmet_max = unmet1  # cheapest (most unmet demand)
+    unmet_min = float(unmet2)  # best achievable service
+    unmet_max = float(unmet1)  # cheapest (most unmet demand)
     print(f"\nFeasible unmet demand range: [{unmet_min:.1f}, {unmet_max:.1f}]")
 
     # --------------------------------------------------
@@ -244,13 +303,15 @@ if __name__ == "__main__":
     print(f"{'=' * 70}")
 
     pareto = []
-    pareto.append({
-        "label": "cheapest",
-        "eps_unmet": unmet_max,
-        "overtime_cost": ot1,
-        "unmet_demand": unmet1,
-        "df": df1,
-    })
+    pareto.append(
+        {
+            "label": "cheapest",
+            "eps_unmet": unmet_max,
+            "overtime_cost": ot1,
+            "unmet_demand": unmet1,
+            "assignment_df": assign_df1,
+        }
+    )
 
     for i, eps in enumerate(epsilon_values):
         result = solve_staffing("min_overtime", eps_unmet=eps)
@@ -258,28 +319,31 @@ if __name__ == "__main__":
             print(f"  Point {i+1} (unmet<={eps:.1f}): INFEASIBLE -- stopping")
             break
 
-        si, df, ot_val, unmet_val = result
-        pareto.append({
-            "label": f"eps_{i+1}",
-            "eps_unmet": eps,
-            "overtime_cost": ot_val,
-            "unmet_demand": unmet_val,
-            "df": df,
-        })
-        print(f"  Point {i+1} (unmet<={eps:.1f}): overtime=${ot_val:.2f}, "
-              f"actual_unmet={unmet_val:.1f}  [{si.termination_status}]")
+        si, assignment_df, ot_val, unmet_val = result
+        pareto.append(
+            {
+                "label": f"eps_{i + 1}",
+                "eps_unmet": eps,
+                "overtime_cost": ot_val,
+                "unmet_demand": unmet_val,
+                "assignment_df": assignment_df,
+            }
+        )
 
-    # Add best-service anchor
-    result_best = solve_staffing("min_overtime", eps_unmet=unmet_min)
-    if result_best is not None:
-        si_best, df_best, ot_best, unmet_best = result_best
-        pareto.append({
+        print(
+            f"  Point {i + 1} (unmet<={eps:.1f}): overtime=${ot_val:.2f}, "
+            f"actual_unmet={unmet_val:.1f}  [{si.termination_status}]"
+        )
+
+    pareto.append(
+        {
             "label": "best_service",
             "eps_unmet": unmet_min,
-            "overtime_cost": ot_best,
-            "unmet_demand": unmet_best,
-            "df": df_best,
-        })
+            "overtime_cost": ot2,
+            "unmet_demand": unmet2,
+            "assignment_df": assign_df2,
+        }
+    )
 
     # --------------------------------------------------
     # Pareto analysis
@@ -360,20 +424,11 @@ if __name__ == "__main__":
                   f"further service improvement costs significantly more per patient.")
 
             # Print nurse assignments at the knee point
-            knee_df = pareto[knee_idx]["df"]
-            assignments = []
-            for _, row in knee_df.iterrows():
-                vname = str(row.iloc[0])
-                val = float(row.iloc[1])
-                if vname.startswith("assigned_") and val > 0.5:
-                    parts = vname.replace("assigned_", "").rsplit("_", 1)
-                    if len(parts) == 2:
-                        assignments.append((parts[0], parts[1]))
-            if assignments:
+            knee_assignments = pareto[knee_idx]["assignment_df"]
+            if not knee_assignments.empty:
                 print("\n  Knee-point assignments:")
-                by_shift = {}
-                for nurse, shift in assignments:
-                    by_shift.setdefault(shift, []).append(nurse)
-                for shift in sorted(by_shift):
-                    nurses = ", ".join(sorted(by_shift[shift]))
+                by_shift = knee_assignments.groupby("shift")["nurse"]
+
+                for shift, nurses in by_shift:
+                    nurses = ", ".join(sorted(nurses))
                     print(f"    {shift}: {nurses}")
