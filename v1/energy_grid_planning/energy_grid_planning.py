@@ -7,10 +7,10 @@ prescriptive optimization on a single shared ontology:
 - Stage 1 -- Predict: load a pre-trained GNN for substation demand forecasting
   (or fall back to the demand_forecasts CSV). Enriches each Substation with a
   predicted_load property consumed by downstream stages.
-- Stage 2 -- Graph: build the transmission grid topology in a separate graph
-  model, compute weakly connected components, Louvain community detection,
-  betweenness/degree/eigenvector centrality, and identify structurally critical
-  substations. Results are written back to the main ontology.
+- Stage 2 -- Graph: compute weakly connected components, Louvain community
+  detection, and multi-metric centrality (betweenness, degree, eigenvector) on
+  the transmission grid topology. Results are stored directly as Substation
+  properties on the shared ontology.
 - Stage 3 -- Rules: declarative interconnection queue compliance checks
   (capacity, structural criticality, low-carbon mandate) that consume Stage 1
   and 2 enrichments.
