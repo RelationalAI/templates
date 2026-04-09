@@ -65,7 +65,7 @@ This is not a single-reasoner problem. Approving a data center at a structurally
 - **Accretive ontology enrichment** -- each stage writes derived properties that downstream stages consume as first-class ontology attributes. Stage 1's `predicted_load` flows into both Stage 3 rules and Stage 4 optimization constraints, ensuring consistent capacity signals across the pipeline.
 - **Multi-scenario / multi-objective via Scenario Concept** -- `InvestmentLevel` is a Scenario Concept: 5 budget entities ($200M-$600M) that parameterize the optimization. One MIP solve produces the entire Pareto frontier simultaneously (not a re-solve loop). Decision variables `x_approve` and `x_upgrade` are indexed per InvestmentLevel, and results are queryable ontology properties -- not parsed from solver output.
 - **Ontology as shared state** -- each stage writes derived properties/relationships that downstream stages read; no Python dicts or DataFrames carry state between stages
-- **Graph-only concept for topology** -- a `GraphSubstation` concept mirrors Substation nodes for the Graph reasoner, with centrality and community results enriched back to the main ontology via rules
+- **Graph directly on domain concept** -- the Graph reasoner uses `Substation` as its node concept, so centrality and community results are stored as native Substation properties with no mirror concept or enrichment rules
 - **Marginal analysis from ontology queries** -- the per-level DC approvals, upgrade selections, and net value are all queried from the ontology via `model.select(...).where(x_approve > 0.5)` per InvestmentLevel, enabling marginal return analysis across the frontier
 
 ## Who this is for
@@ -266,7 +266,7 @@ model.define(
 
 ### Stage 2: Graph -- Grid Topology & Structural Vulnerability
 
-A `GraphSubstation` concept mirrors the main `Substation` nodes for graph analysis. Edges connect substations that share an active transmission line. The graph runs in the main model, and centrality/community results are enriched back to `Substation` via rules. Computes:
+The Graph reasoner uses `Substation` directly as its node concept — no mirror concept needed. Edges connect substations that share an active transmission line. Centrality and community results are stored as native Substation properties. Computes:
 - Weakly connected components (grid connectivity -- confirms all 12 substations are reachable)
 - Louvain community detection (3 ERCOT regions: North Texas, West Texas, Gulf Coast)
 - Betweenness, degree, and eigenvector centrality combined into a critical rank
@@ -274,18 +274,13 @@ A `GraphSubstation` concept mirrors the main `Substation` nodes for graph analys
 
 ```python
 grid_graph = Graph(
-    model, directed=False, weighted=False, node_concept=GSub, aggregator="sum"
+    model, directed=False, weighted=False, node_concept=Substation, aggregator="sum"
 )
 
+line_ref = TransmissionLine.ref()
 model.define(
-    grid_graph.Edge.new(src=gs1, dst=gs2)
-).where(
-    line_ref.from_substation(from_sub),
-    line_ref.to_substation(to_sub),
-    line_ref.is_active == True,
-    gs1.id == from_sub.id,
-    gs2.id == to_sub.id,
-)
+    grid_graph.Edge.new(src=line_ref.from_substation, dst=line_ref.to_substation)
+).where(line_ref.is_active == True)
 
 community = grid_graph.louvain()
 betweenness = grid_graph.betweenness_centrality()
