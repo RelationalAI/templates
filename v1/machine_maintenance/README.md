@@ -405,6 +405,7 @@ max_betweenness = max(Machine.betweenness_raw)
 Machine.betweenness = model.Property(
     f"{Machine} has betweenness centrality {Float:betweenness}")
 m_norm = Machine.ref("m_norm")
+model.where(max_betweenness == 0).define(m_norm.betweenness(0.0))
 model.where(max_betweenness > 0).define(
     m_norm.betweenness(m_norm.betweenness_raw / max_betweenness)
 )
