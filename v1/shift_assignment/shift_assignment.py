@@ -122,7 +122,7 @@ problem.solve("minizinc", time_limit_sec=60)
 problem.solve_info().display()
 
 # Verify constraints hold in the solver's solution — fires ICs without a separate query.
-p.verify(coverage_ic, workload_ic, capacity_ic)
+problem.verify(coverage_ic, workload_ic, capacity_ic)
 model.require(problem.termination_status() == "OPTIMAL")
 
 # --------------------------------------------------

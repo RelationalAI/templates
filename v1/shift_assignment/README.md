@@ -34,7 +34,7 @@ The template also demonstrates scenario analysis by sweeping over different mini
 
 - A constraint model that assigns workers to shifts respecting availability and capacity limits
 - Scenario analysis across multiple minimum-coverage levels (1, 2, 3 workers per shift)
-- Post-solve verification via `p.verify()` to confirm constraint satisfaction across all scenarios
+- Post-solve verification via `problem.verify()` to confirm constraint satisfaction across all scenarios
 
 ## What's included
 
@@ -182,12 +182,12 @@ capacity_ic = model.where(
 problem.satisfy(capacity_ic)
 ```
 
-**4. Solve and verify.** A single solve handles all scenarios simultaneously. After solving, `p.verify()` fires the named constraints as integrity constraints to confirm the solution satisfies them:
+**4. Solve and verify.** A single solve handles all scenarios simultaneously. After solving, `problem.verify()` fires the named constraints as integrity constraints to confirm the solution satisfies them:
 
 ```python
 problem.solve("minizinc", time_limit_sec=60)
 problem.solve_info().display()
-p.verify(coverage_ic, workload_ic, capacity_ic)
+problem.verify(coverage_ic, workload_ic, capacity_ic)
 model.require(problem.termination_status() == "OPTIMAL")
 ```
 
