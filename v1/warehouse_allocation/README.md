@@ -171,7 +171,7 @@ The optimization allocates inventory across sites to minimize holding cost, subj
 - **Centrality-based minimum**: warehouses must hold stock proportional to their centrality score
 
 ```python
-p.satisfy(model.require(
+problem.satisfy(model.require(
     Site.x_inventory >= Site.centrality * MIN_CENTRALITY_FACTOR
 ).where(Site.type("WAREHOUSE")))
 ```

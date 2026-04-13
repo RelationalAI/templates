@@ -155,7 +155,7 @@ Worker.available_for = model.Relationship(f"{Worker} is available for {Shift}")
 
 ```python
 Worker.x_assign = model.Property(f"{Worker} has {Shift} in {Scenario} if {Integer:assigned}")
-p.solve_for(
+problem.solve_for(
     Worker.x_assign(Shift, Scenario, assigned_ref),
     type="bin",
     name=["x", Scenario.name, Worker.name, Shift.name],
@@ -169,26 +169,26 @@ p.solve_for(
 coverage_ic = model.where(
     Worker.x_assign(Shift, Scenario, assigned_ref),
 ).require(sum(Worker, assigned_ref).per(Shift, Scenario) >= Scenario.min_coverage)
-p.satisfy(coverage_ic)
+problem.satisfy(coverage_ic)
 
 workload_ic = model.where(
     Worker.x_assign(Shift, Scenario, assigned_ref),
 ).require(sum(Shift, assigned_ref).per(Worker, Scenario) <= max_shifts)
-p.satisfy(workload_ic)
+problem.satisfy(workload_ic)
 
 capacity_ic = model.where(
     Worker.x_assign(Shift, Scenario, assigned_ref),
 ).require(sum(Worker, assigned_ref).per(Shift, Scenario) <= Shift.capacity)
-p.satisfy(capacity_ic)
+problem.satisfy(capacity_ic)
 ```
 
 **4. Solve and verify.** A single solve handles all scenarios simultaneously. After solving, `p.verify()` fires the named constraints as integrity constraints to confirm the solution satisfies them:
 
 ```python
-p.solve("minizinc", time_limit_sec=60)
-p.solve_info().display()
+problem.solve("minizinc", time_limit_sec=60)
+problem.solve_info().display()
 p.verify(coverage_ic, workload_ic, capacity_ic)
-model.require(p.termination_status() == "OPTIMAL")
+model.require(problem.termination_status() == "OPTIMAL")
 ```
 
 ## Customize this template
@@ -197,7 +197,7 @@ model.require(p.termination_status() == "OPTIMAL")
 - **Change the max shifts per worker** by adjusting the `max_shifts` parameter.
 - **Add shift preferences** by introducing a preference score and converting from feasibility to optimization (minimize total dissatisfaction).
 - **Add skills or qualifications** by introducing a skill-matching relationship between workers and shifts.
-- **Switch to optimization** by adding an objective (e.g., maximize total coverage or minimize cost) with `p.minimize()` or `p.maximize()`.
+- **Switch to optimization** by adding an objective (e.g., maximize total coverage or minimize cost) with `problem.minimize()` or `problem.maximize()`.
 
 ## Troubleshooting
 
@@ -231,6 +231,6 @@ model.require(p.termination_status() == "OPTIMAL")
   <summary>MiniZinc solver not available</summary>
 
 - This template uses the MiniZinc constraint solver. Ensure the RAI Native App version supports MiniZinc.
-- As an alternative, you can try switching to `"highs"` in the `p.solve()` call, though HiGHS is designed for linear/MIP problems.
+- As an alternative, you can try switching to `"highs"` in the `problem.solve()` call, though HiGHS is designed for linear/MIP problems.
 
 </details>

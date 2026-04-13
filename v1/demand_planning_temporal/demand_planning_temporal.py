@@ -98,7 +98,7 @@ orders_df["due_date"] = pd.to_datetime(orders_df["due_date"])
 #   ].copy()
 #
 #   # Or filter in .where() clauses on constraints
-#   p.satisfy(model.require(
+#   problem.satisfy(model.require(
 #       sum(DemandOrder.x_unmet) <= (1 - min_service_level) * sum(DemandOrder.quantity)
 #   ).where(
 #       DemandOrder.created_at >= start_epoch, DemandOrder.created_at <= end_epoch
@@ -269,10 +269,10 @@ for scenario_value in SCENARIO_VALUES:
     weeks = std.common.range(1, num_weeks + 1)
 
     # Create fresh Problem for each scenario
-    p = Problem(model, Float)
+    problem = Problem(model, Float)
 
     # Variable: production quantity per site x SKU x week
-    production_var = p.solve_for(
+    production_var = problem.solve_for(
         ProdCapacity.x_production(week_ref, production_ref),
         type="cont",
         lower=0,
@@ -283,7 +283,7 @@ for scenario_value in SCENARIO_VALUES:
     )
 
     # Variable: inventory level per site x SKU x week (week 0 = initial)
-    inventory_var = p.solve_for(
+    inventory_var = problem.solve_for(
         ProdCapacity.x_inventory(week_ref, inventory_ref),
         type="cont",
         lower=0,
@@ -293,7 +293,7 @@ for scenario_value in SCENARIO_VALUES:
     )
 
     # Variable: unmet demand per order
-    unmet_var = p.solve_for(
+    unmet_var = problem.solve_for(
         DemandOrder.x_unmet,
         type="cont",
         lower=0,
@@ -303,7 +303,7 @@ for scenario_value in SCENARIO_VALUES:
     )
 
     # Parameterized constraint: initial condition (inventory at week 0)
-    p.satisfy(
+    problem.satisfy(
         model.where(
             ProdCapacity.x_inventory(0, inventory_ref),
         ).require(inventory_ref == ProdCapacity.initial_inventory)
@@ -311,7 +311,7 @@ for scenario_value in SCENARIO_VALUES:
 
     # Parameterized constraint: flow conservation inv[t] = inv[t-1] + production[t] - demand[t]
     # (depends on num_weeks via WeeklyDemand data and week ranges)
-    p.satisfy(
+    problem.satisfy(
         model.where(
             ProdCapacity.x_inventory(week_ref, x_inv_curr),
             ProdCapacity.x_inventory(week_ref - 1, x_inv_prev),
@@ -324,10 +324,10 @@ for scenario_value in SCENARIO_VALUES:
     )
 
     # Static constraint: demand fulfillment bound
-    p.satisfy(demand_bound)
+    problem.satisfy(demand_bound)
 
     # Static constraint: global service level
-    p.satisfy(service_level_constraint)
+    problem.satisfy(service_level_constraint)
 
     # Safety stock: inventory at end of each active week >= safety_stock_weeks × avg weekly demand
     if safety_stock_weeks > 0:
@@ -340,7 +340,7 @@ for scenario_value in SCENARIO_VALUES:
             .per(ProdCapacity)
             / num_weeks
         )
-        p.satisfy(
+        problem.satisfy(
             model.where(
                 ProdCapacity.x_inventory(week_ref, inventory_ref),
                 week_ref >= 1,
@@ -355,11 +355,11 @@ for scenario_value in SCENARIO_VALUES:
         ProdCapacity
     ).where(ProdCapacity.x_inventory(week_ref, inventory_ref), week_ref >= 1)
     unmet_cost = unmet_penalty * DemandOrder.x_unmet
-    p.minimize(sum(model.union(prod_cost, hold_cost, unmet_cost)))
+    problem.minimize(sum(model.union(prod_cost, hold_cost, unmet_cost)))
 
-    p.display()
-    p.solve("highs", time_limit_sec=60)
-    si = p.solve_info()
+    problem.display()
+    problem.solve("highs", time_limit_sec=60)
+    si = problem.solve_info()
     si.display()
 
     scenario_results.append(

@@ -50,26 +50,26 @@ model.define(node_count(count(Node)))
 # Model the decision problem
 # --------------------------------------------------
 
-p = Problem(model, Float)
+problem = Problem(model, Float)
 
 # Variable: x[i,j] = 1 if edge (i,j) is in the tour, else 0
 Edge.x = model.Property(f"{Edge} is selected if {Float:x}")
-p.solve_for(Edge.x, type="bin", name=["x", Edge.i, Edge.j])
+problem.solve_for(Edge.x, type="bin", name=["x", Edge.i, Edge.j])
 
 # Variable: u[v] = MTZ auxiliary ordering value for subtour elimination
 Node.u = model.Property(f"{Node} has auxiliary value {Float:u}")
-p.solve_for(Node.u, name=["u", Node.v], type="int", lower=1, upper=node_count)
+problem.solve_for(Node.u, name=["u", Node.v], type="int", lower=1, upper=node_count)
 
 # Objective: minimize total tour distance
 total_dist = sum(Edge.dist * Edge.x)
-p.minimize(total_dist)
+problem.minimize(total_dist)
 
 # Constraint: fix u[1] = 1 as symmetry-breaking anchor
-p.satisfy(model.require(Node.u == 1).where(Node.v(1)))
+problem.satisfy(model.require(Node.u == 1).where(Node.v(1)))
 
 # Constraint: degree constraints (exactly one in-edge and one out-edge per node)
 node_flow = sum(Edge.x).per(Node)
-p.satisfy(model.require(
+problem.satisfy(model.require(
     node_flow.where(Edge.j == Node.v) == 1,
     node_flow.where(Edge.i == Node.v) == 1
 ))
@@ -77,7 +77,7 @@ p.satisfy(model.require(
 # Constraint: MTZ subtour elimination
 # If edge (i,j) is in tour (x=1), then u[j] >= u[i]+1.
 # Big-M form: u[i] - u[j] + n*x <= n-1
-p.satisfy(model.where(
+problem.satisfy(model.where(
     Ni := Node, Nj := Node.ref(),
     Edge.i > 1, Edge.j > 1,
     Ni.v(Edge.i), Nj.v(Edge.j),
@@ -90,13 +90,13 @@ p.satisfy(model.where(
 # --------------------------------------------------
 
 # Check model structure — engine-side ICs avoid querying data to the client.
-model.require(p.num_variables() == count(Edge) + count(Node))
-model.require(p.num_min_objectives() == 1)
-p.display()
+model.require(problem.num_variables() == count(Edge) + count(Node))
+model.require(problem.num_min_objectives() == 1)
+problem.display()
 
 # Solve with HiGHS (MILP branch-and-bound)
-p.solve("highs", time_limit_sec=60)
-si_highs = p.solve_info()
+problem.solve("highs", time_limit_sec=60)
+si_highs = problem.solve_info()
 si_highs.display()
 print(f"HiGHS: {si_highs.termination_status}, tour distance={si_highs.objective_value:.1f}")
 

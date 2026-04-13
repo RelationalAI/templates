@@ -85,10 +85,10 @@ Worker.x_assign = model.Property(f"{Worker} has {Shift} in {Scenario} if {Intege
 # Ref for binding multi-arg variable in constraints
 assigned_ref = Integer.ref()
 
-p = Problem(model, Integer)
+problem = Problem(model, Integer)
 
 # Variable: binary assignment per available worker-shift-scenario
-p.solve_for(
+problem.solve_for(
     Worker.x_assign(Shift, Scenario, assigned_ref),
     type="bin",
     name=["x", Scenario.name, Worker.name, Shift.name],
@@ -99,31 +99,31 @@ p.solve_for(
 coverage_ic = model.where(
     Worker.x_assign(Shift, Scenario, assigned_ref),
 ).require(sum(Worker, assigned_ref).per(Shift, Scenario) >= Scenario.min_coverage)
-p.satisfy(coverage_ic)
+problem.satisfy(coverage_ic)
 
 # Constraint: max shifts per worker (per scenario)
 workload_ic = model.where(
     Worker.x_assign(Shift, Scenario, assigned_ref),
 ).require(sum(Shift, assigned_ref).per(Worker, Scenario) <= max_shifts)
-p.satisfy(workload_ic)
+problem.satisfy(workload_ic)
 
 # Constraint: max workers per shift (capacity limit per scenario)
 capacity_ic = model.where(
     Worker.x_assign(Shift, Scenario, assigned_ref),
 ).require(sum(Worker, assigned_ref).per(Shift, Scenario) <= Shift.capacity)
-p.satisfy(capacity_ic)
+problem.satisfy(capacity_ic)
 
 # --------------------------------------------------
 # Solve (single solve for all scenarios)
 # --------------------------------------------------
 
-p.display()
-p.solve("minizinc", time_limit_sec=60)
-p.solve_info().display()
+problem.display()
+problem.solve("minizinc", time_limit_sec=60)
+problem.solve_info().display()
 
 # Verify constraints hold in the solver's solution — fires ICs without a separate query.
 p.verify(coverage_ic, workload_ic, capacity_ic)
-model.require(p.termination_status() == "OPTIMAL")
+model.require(problem.termination_status() == "OPTIMAL")
 
 # --------------------------------------------------
 # Extract results per scenario

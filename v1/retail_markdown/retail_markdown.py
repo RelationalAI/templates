@@ -71,11 +71,11 @@ selection_ref = Float.ref()
 sales_ref = Float.ref()
 cumulative_ref = Float.ref()
 
-p = Problem(model, Float)
+problem = Problem(model, Float)
 
 # Variable: select[product, week, discount] = 1 if that discount is active
 Product.x_select = model.Property(f"{Product} in {Week} has {Discount} if {Float:x}")
-p.solve_for(
+problem.solve_for(
     Product.x_select(Week_ref, Discount_ref, selection_ref),
     type="bin",
     name=["select", Product.name, Week_ref.num, Discount_ref.discount_pct],
@@ -83,7 +83,7 @@ p.solve_for(
 
 # Variable: sales[product, week, discount] = units sold at that discount level
 Product.x_sales = model.Property(f"{Product} in {Week} at {Discount} has {Float:y}")
-p.solve_for(
+problem.solve_for(
     Product.x_sales(Week_ref, Discount_ref, sales_ref),
     type="cont",
     lower=0,
@@ -92,7 +92,7 @@ p.solve_for(
 
 # Variable: cuml_sales[product, week] = cumulative units sold through that week
 Product.x_cuml_sales = model.Property(f"{Product} up to {Week} has {Float:z}")
-p.solve_for(
+problem.solve_for(
     Product.x_cuml_sales(Week_ref, cumulative_ref),
     type="cont",
     lower=0,
@@ -100,7 +100,7 @@ p.solve_for(
 )
 
 # Constraint: exactly one discount level per product-week (one-hot selection)
-p.satisfy(model.where(Product.x_select(Week_ref, Discount_ref, selection_ref)).require(
+problem.satisfy(model.where(Product.x_select(Week_ref, Discount_ref, selection_ref)).require(
     sum(Discount_ref, selection_ref).per(Product, Week_ref) == 1
 ))
 
@@ -108,7 +108,7 @@ p.satisfy(model.where(Product.x_select(Week_ref, Discount_ref, selection_ref)).r
 Discount_inner = Discount.ref()
 Week_inner = Week.ref()
 selection_inner = Float.ref()
-p.satisfy(model.where(
+problem.satisfy(model.where(
     Product.x_select(Week_ref, Discount_ref, selection_ref),
     Product.x_select(Week_inner, Discount_inner, selection_inner),
     Week_inner.num == Week_ref.num + 1,
@@ -118,7 +118,7 @@ p.satisfy(model.where(
 ))
 
 # Constraint: sales bounded by demand x lift x multiplier x selection indicator
-p.satisfy(model.where(
+problem.satisfy(model.where(
     Product.x_select(Week_ref, Discount_ref, selection_ref),
     Product.x_sales(Week_ref, Discount_ref, sales_ref),
 ).require(
@@ -126,7 +126,7 @@ p.satisfy(model.where(
 ))
 
 # Constraint: cumulative sales — first week
-p.satisfy(model.where(
+problem.satisfy(model.where(
     Week_ref.num == 1,
     Product.x_cuml_sales(Week_ref, cumulative_ref),
     Product.x_sales(Week_ref, Discount_ref, sales_ref),
@@ -137,7 +137,7 @@ p.satisfy(model.where(
 # Constraint: cumulative sales — subsequent weeks
 Week_prev = Week.ref()
 cumulative_prev = Float.ref()
-p.satisfy(model.where(
+problem.satisfy(model.where(
     Week_ref.num > 1,
     Week_prev.num == Week_ref.num - 1,
     Product.x_cuml_sales(Week_ref, cumulative_ref),
@@ -148,7 +148,7 @@ p.satisfy(model.where(
 ))
 
 # Constraint: cumulative sales cannot exceed initial inventory
-p.satisfy(model.where(Product.x_cuml_sales(Week_ref, cumulative_ref)).require(
+problem.satisfy(model.where(Product.x_cuml_sales(Week_ref, cumulative_ref)).require(
     cumulative_ref <= Product.initial_inventory
 ))
 
@@ -162,16 +162,16 @@ salvage = sum(
     Product.x_cuml_sales(Week_ref, cumulative_ref),
     Week_ref.num == num_weeks
 )
-p.maximize(revenue + salvage)
+problem.maximize(revenue + salvage)
 
 # --------------------------------------------------
 # Solve and check solution
 # --------------------------------------------------
 
-p.display()
-p.solve("highs", time_limit_sec=60)
-model.require(p.termination_status() == "OPTIMAL")
-si = p.solve_info()
+problem.display()
+problem.solve("highs", time_limit_sec=60)
+model.require(problem.termination_status() == "OPTIMAL")
+si = problem.solve_info()
 si.display()
 
 print(f"Status: {si.termination_status}")

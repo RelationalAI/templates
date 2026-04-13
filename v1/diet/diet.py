@@ -78,14 +78,14 @@ Food.x_amount = model.Property(f"{Food} in {Scenario} has {Float:amount}")
 # Ref for binding multi-arg variable in constraints
 x_amt = Float.ref()
 
-p = Problem(model, Float)
+problem = Problem(model, Float)
 
 # Variable: amount of each food per scenario (non-negative)
-p.solve_for(Food.x_amount(Scenario, x_amt), name=["amt", Scenario.scenario_name, Food.name], lower=0)
+problem.solve_for(Food.x_amount(Scenario, x_amt), name=["amt", Scenario.scenario_name, Food.name], lower=0)
 
 # Constraint: nutrient bounds scaled by scenario parameter (per nutrient, per scenario)
 nutrient_qty = Float.ref()
-p.satisfy(model.where(
+problem.satisfy(model.where(
     Food.x_amount(Scenario, x_amt),
     Food.contains(Nutrient, nutrient_qty),
 ).require(
@@ -94,7 +94,7 @@ p.satisfy(model.where(
 ))
 
 # Objective: minimize total cost
-p.minimize(
+problem.minimize(
     sum(Food.cost * x_amt)
     .where(Food.x_amount(Scenario, x_amt))
 )
@@ -103,14 +103,14 @@ p.minimize(
 # Solve (single solve for all scenarios)
 # --------------------------------------------------
 
-p.display()
-p.solve("highs", time_limit_sec=60)
+problem.display()
+problem.solve("highs", time_limit_sec=60)
 
 # Check solve status — engine-side IC avoids querying data to the client.
-model.require(p.termination_status() == "OPTIMAL")
+model.require(problem.termination_status() == "OPTIMAL")
 
 # Python-side solve info for formatted output.
-si = p.solve_info()
+si = problem.solve_info()
 si.display()
 
 # --------------------------------------------------

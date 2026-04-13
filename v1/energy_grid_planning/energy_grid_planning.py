@@ -824,11 +824,11 @@ DCRef = DataCenterRequest.ref()
 UpgRef = SubstationUpgrade.ref()
 
 # Problem formulation
-p = Problem(model, Float)
+problem = Problem(model, Float)
 
-p.solve_for(DataCenterRequest.x_approve(InvestmentLevel, x_a), type="bin",
+problem.solve_for(DataCenterRequest.x_approve(InvestmentLevel, x_a), type="bin",
             name=["approve", InvestmentLevel.name, DataCenterRequest.id])
-p.solve_for(SubstationUpgrade.x_upgrade(InvestmentLevel, x_u), type="bin",
+problem.solve_for(SubstationUpgrade.x_upgrade(InvestmentLevel, x_u), type="bin",
             name=["upgrade", InvestmentLevel.name, SubstationUpgrade.id])
 
 # C1: Substation capacity per investment level
@@ -837,7 +837,7 @@ x_a_c = Float.ref("xa_c")
 x_u_c = Float.ref("xu_c")
 effective_load = Substation.predicted_load | Substation.current_load_mw
 
-p.satisfy(model.where(
+problem.satisfy(model.where(
     DataCenterRequest.x_approve(InvestmentLevel, x_a_c),
     SubstationUpgrade.x_upgrade(InvestmentLevel, x_u_c),
     DataCenterRequest.substation(Substation),
@@ -851,14 +851,14 @@ p.satisfy(model.where(
 ))
 
 # C2: Budget per investment level
-p.satisfy(model.where(
+problem.satisfy(model.where(
     SubstationUpgrade.x_upgrade(InvestmentLevel, x_u),
 ).require(
     sum(x_u * SubstationUpgrade.cost_million).per(InvestmentLevel) <= InvestmentLevel.budget_cap
 ))
 
 # Objective: maximize total DC revenue across all levels
-p.maximize(
+problem.maximize(
     sum(x_a * DataCenterRequest.annual_revenue_per_mw * DataCenterRequest.requested_mw).where(
         DataCenterRequest.x_approve(InvestmentLevel, x_a)
     )
@@ -866,8 +866,8 @@ p.maximize(
 
 # Solve
 print("\n  Solving across 5 investment levels ($200M-$600M)...")
-p.solve("highs", time_limit_sec=120)
-si = p.solve_info()
+problem.solve("highs", time_limit_sec=120)
+si = problem.solve_info()
 print(f"  Status: {si.termination_status}")
 print(f"  Objective: {float(si.objective_value):,.2f}")
 

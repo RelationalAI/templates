@@ -987,7 +987,7 @@ print(f"\n{'=' * 70}")
 print("STAGE 3: Prescriptive -- Maintenance Scheduling")
 print("=" * 70)
 
-p = Problem(model, Float)
+problem = Problem(model, Float)
 
 # References for aggregation.
 MachinePeriod_outer = MachinePeriod.ref()
@@ -1006,7 +1006,7 @@ TechnicianPeriod_ref = TechnicianPeriod.ref()
 MachinePeriod.x_maintain = model.Property(
     f"{MachinePeriod} maintain decision {Float:x_maintain}"
 )
-p.solve_for(
+problem.solve_for(
     MachinePeriod.x_maintain,
     type="bin",
     name=["maintain", MachinePeriod.machine_id, MachinePeriod.pid],
@@ -1017,7 +1017,7 @@ p.solve_for(
 MachinePeriod.x_vulnerable = model.Property(
     f"{MachinePeriod} vulnerable flag {Float:x_vulnerable}"
 )
-p.solve_for(
+problem.solve_for(
     MachinePeriod.x_vulnerable,
     type="bin",
     name=["vulnerable", MachinePeriod.machine_id, MachinePeriod.pid],
@@ -1028,7 +1028,7 @@ p.solve_for(
 TechnicianMachinePeriod.x_assigned = model.Property(
     f"{TechnicianMachinePeriod} assigned flag {Float:x_assigned}"
 )
-p.solve_for(
+problem.solve_for(
     TechnicianMachinePeriod.x_assigned,
     type="bin",
     name=[
@@ -1053,7 +1053,7 @@ maintained_until_tau = (
     )
     .per(Machine_ref, Period_outer)
 )
-p.satisfy(
+problem.satisfy(
     model.require(maintained_until_tau + MachinePeriod_outer.x_vulnerable == 1).where(
         MachinePeriod_outer.machine(Machine_ref),
         MachinePeriod_outer.period(Period_outer),
@@ -1069,7 +1069,7 @@ assign_per_mp = (
     )
     .per(Machine_ref, Period_outer)
 )
-p.satisfy(
+problem.satisfy(
     model.require(assign_per_mp == MachinePeriod_outer.x_maintain).where(
         MachinePeriod_outer.machine(Machine_ref),
         MachinePeriod_outer.period(Period_outer),
@@ -1098,7 +1098,7 @@ avail_hours = (
     )
     .per(Technician_ref, Period_tc)
 )
-p.satisfy(model.require(assigned_hours <= avail_hours))
+problem.satisfy(model.require(assigned_hours <= avail_hours))
 
 # Constraint: parts/bay capacity per period.
 maint_per_period = (
@@ -1106,7 +1106,7 @@ maint_per_period = (
     .where(MachinePeriod_cap.period(Period_cap))
     .per(Period_cap)
 )
-p.satisfy(model.require(maint_per_period <= PARTS_CAPACITY_PER_PERIOD))
+problem.satisfy(model.require(maint_per_period <= PARTS_CAPACITY_PER_PERIOD))
 
 # Constraint (from rules): overdue machines must be maintained by OVERDUE_DEADLINE.
 MachinePeriod_overdue = MachinePeriod.ref()
@@ -1121,7 +1121,7 @@ maintained_by_deadline = (
     )
     .per(Machine_overdue)
 )
-p.satisfy(
+problem.satisfy(
     model.require(maintained_by_deadline >= 1).where(
         Machine_overdue.is_overdue_maintenance()
     )
@@ -1163,14 +1163,14 @@ travel_cost = sum(
     TechnicianMachinePeriod_ref.machine(Machine_travel),
     TechnicianMachinePeriod_ref.period(Period_outer),
 )
-p.minimize(failure_cost + labor_cost + travel_cost)
+problem.minimize(failure_cost + labor_cost + travel_cost)
 
 # --------------------------------------------------
 # Solve and extract results
 # --------------------------------------------------
 
-p.solve("highs", time_limit_sec=120)
-si = p.solve_info()
+problem.solve("highs", time_limit_sec=120)
+si = problem.solve_info()
 si.display()
 
 print(f"\nStatus: {si.termination_status}")

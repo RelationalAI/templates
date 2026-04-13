@@ -173,11 +173,11 @@ Scenarios are modeled as a `Scenario` concept with a `demand_multiplier` propert
 Scenario = Concept("Scenario", identify_by={"name": String})
 Scenario.demand_multiplier = Property(f"{Scenario} has {Float:demand_multiplier}")
 
-p = Problem(model, Float)
+problem = Problem(model, Float)
 
 # Variable indexed by Scenario — one quantity per production rate per scenario
 Production.x_quantity = Property(f"{Production} in {Scenario} has {Float:quantity}")
-p.solve_for(
+problem.solve_for(
     Production.x_quantity(Scenario, x_qty),
     name=["qty", Scenario.name, Production.rate.machine.name, Production.rate.product.name],
     lower=0, type="int",
@@ -190,7 +190,7 @@ Machine capacity and demand satisfaction constraints are defined per scenario.
 
 ```python
 # Machine capacity: total production hours <= available hours (per machine, per scenario)
-p.satisfy(model.where(...).require(
+problem.satisfy(model.where(...).require(
     sum(x_qty * Production.rate.hours_per_unit)
     .where(Production.rate.machine == Machine)
     .per(Machine, Scenario)
@@ -198,7 +198,7 @@ p.satisfy(model.where(...).require(
 ))
 
 # Meet scaled demand (per product, per scenario)
-p.satisfy(model.where(...).require(
+problem.satisfy(model.where(...).require(
     sum(x_qty).where(Production.rate.product == Product).per(Product, Scenario)
     >= Product.demand * Scenario.demand_multiplier
 ))
@@ -210,7 +210,7 @@ The objective maximizes total profit across all production assignments.
 
 ```python
 total_profit = sum(Production.x_quantity * Production.rate.product.profit)
-p.maximize(total_profit)
+problem.maximize(total_profit)
 ```
 
 ## Customize this template

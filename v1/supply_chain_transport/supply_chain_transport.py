@@ -77,12 +77,12 @@ departure_days = std.common.range(dep_start, dep_end + 1)
 time_period_ref = Integer.ref()
 FreightGroup_ref = FreightGroup.ref()
 
-p = Problem(model, Float)
+problem = Problem(model, Float)
 
 # Variable: inv[fg, t] = vendor inventory for freight group fg on day t
 FreightGroup.x_inv = Property(f"{FreightGroup} on day {Integer:t} has {Float:inv}")
 x_inv = Float.ref()
-p.solve_for(
+problem.solve_for(
     FreightGroup.x_inv(time_period_ref, x_inv),
     lower=0,
     name=["x_inv", FreightGroup.name, time_period_ref],
@@ -94,13 +94,13 @@ TransportType.x_qty_tra = Property(f"{TransportType} for {FreightGroup} on day {
 TransportType.y_bin_tra = Property(f"{TransportType} for {FreightGroup} on day {Integer:t} has {Float:bin_tra}")
 x_qty_tra = Float.ref()
 y_bin_tra = Float.ref()
-p.solve_for(
+problem.solve_for(
     TransportType.x_qty_tra(FreightGroup_ref, time_period_ref, x_qty_tra),
     lower=0,
     name=["x_qty_tra", TransportType.name, FreightGroup_ref.name, time_period_ref],
     where=[time_period_ref == std.common.range(FreightGroup_ref.tra_start_t, FreightGroup_ref.tra_end_t + 1)],
 )
-p.solve_for(
+problem.solve_for(
     TransportType.y_bin_tra(FreightGroup_ref, time_period_ref, y_bin_tra),
     type="bin",
     name=["y_bin_tra", TransportType.name, FreightGroup_ref.name, time_period_ref],
@@ -109,7 +109,7 @@ p.solve_for(
 
 # Variable: arr_day[fg] = integer arrival day at destination
 FreightGroup.z_arr_day = Property(f"{FreightGroup} has {Float:arr_day}")
-p.solve_for(
+problem.solve_for(
     FreightGroup.z_arr_day,
     type="int",
     lower=FreightGroup.arr_start_t,
@@ -120,7 +120,7 @@ p.solve_for(
 # Variable: weight[type, t] = total weight on transport type on day t
 TransportType.x_weight = Property(f"{TransportType} on departure day {Integer:t} has {Float:weight}")
 x_weight = Float.ref()
-p.solve_for(
+problem.solve_for(
     TransportType.x_weight(time_period_ref, x_weight),
     lower=0,
     name=["x_weight", TransportType.name, time_period_ref],
@@ -130,7 +130,7 @@ p.solve_for(
 # Variable: y_bin_tl[t] = 1 if TL is used on departure day t
 bin_tl = Property(f"departure day {Integer:t} has {Float:bin_tl}")
 y_bin_tl = Float.ref()
-p.solve_for(
+problem.solve_for(
     bin_tl(time_period_ref, y_bin_tl),
     type="bin",
     name=["y_bin_tl", time_period_ref],
@@ -142,13 +142,13 @@ LTLSegment.x_rem_ltl = Property(f"{LTLSegment} on departure day {Integer:t} has 
 LTLSegment.y_bin_ltl = Property(f"{LTLSegment} on departure day {Integer:t} has {Float:bin_ltl}")
 x_rem_ltl = Float.ref()
 y_bin_ltl = Float.ref()
-p.solve_for(
+problem.solve_for(
     LTLSegment.x_rem_ltl(time_period_ref, x_rem_ltl),
     lower=0,
     name=["x_rem_ltl", LTLSegment.seg, time_period_ref],
     where=[time_period_ref == departure_days]
 )
-p.solve_for(
+problem.solve_for(
     LTLSegment.y_bin_ltl(time_period_ref, y_bin_ltl),
     type="bin",
     name=["y_bin_ltl", LTLSegment.seg, time_period_ref],
@@ -156,7 +156,7 @@ p.solve_for(
 )
 
 # Constraint: inventory flow conservation (inv[t] = inv[t+1] + shipped)
-p.satisfy(model.where(
+problem.satisfy(model.where(
     x_inv_current := Float.ref(),
     x_inv_next := Float.ref(),
     FreightGroup.x_inv(time_period_ref, x_inv_current),
@@ -167,15 +167,15 @@ p.satisfy(model.where(
 ))
 
 # Constraint: initial inventory equals starting position; final inventory is zero
-p.satisfy(model.require(
+problem.satisfy(model.require(
     x_inv == FreightGroup.inv_start
 ).where(FreightGroup.x_inv(FreightGroup.inv_start_t, x_inv)))
-p.satisfy(model.require(
+problem.satisfy(model.require(
     x_inv == 0
 ).where(FreightGroup.x_inv(FreightGroup.inv_end_t, x_inv)))
 
 # Constraint: freight groups ship all-or-nothing
-p.satisfy(model.require(
+problem.satisfy(model.require(
     x_qty_tra == FreightGroup.inv_start * y_bin_tra
 ).where(
     TransportType.x_qty_tra(FreightGroup, time_period_ref, x_qty_tra),
@@ -183,12 +183,12 @@ p.satisfy(model.require(
 ))
 
 # Constraint: arrival day = departure day + transit time
-p.satisfy(model.require(
+problem.satisfy(model.require(
     FreightGroup.z_arr_day == sum((time_period_ref + TransportType.transit_time) * y_bin_tra).per(FreightGroup)
 ).where(TransportType.y_bin_tra(FreightGroup, time_period_ref, y_bin_tra)))
 
 # Constraint: weight[type,t] = sum of quantities shipped by that type on day t
-p.satisfy(model.require(
+problem.satisfy(model.require(
     x_weight == sum(x_qty_tra).per(TransportType, time_period_ref)
 ).where(
     TransportType.x_weight(time_period_ref, x_weight),
@@ -196,7 +196,7 @@ p.satisfy(model.require(
 ))
 
 # Constraint: TL weight <= capacity if TL is used
-p.satisfy(model.require(
+problem.satisfy(model.require(
     x_weight <= tl_cap * y_bin_tl
 ).where(
     TransportType.name("tl"),
@@ -205,7 +205,7 @@ p.satisfy(model.require(
 ))
 
 # Constraint: piecewise LTL cost — exactly one segment active, remainder within limit
-p.satisfy(model.require(
+problem.satisfy(model.require(
     sum(y_bin_ltl).per(time_period_ref) == 1,
     x_rem_ltl <= LTLSegment.limit * y_bin_ltl,
 ).where(
@@ -216,7 +216,7 @@ p.satisfy(model.require(
 # Constraint: LTL weight decomposition
 LTLSegment_outer = LTLSegment.ref()
 LTLSegment_inner = LTLSegment.ref()
-p.satisfy(model.where(
+problem.satisfy(model.where(
     LTLSegment_outer := LTLSegment.ref(),
     LTLSegment_inner := LTLSegment.ref(),
     TransportType.name("ltl"),
@@ -245,16 +245,16 @@ total_ltl_bin_cost = (LTLSegment_outer.cost * LTLSegment_outer.limit) * sum(y_bi
     LTLSegment_outer.seg == LTLSegment_inner.seg - 1,
 )
 total_cost = sum(model.union(total_inv_cost, total_tl_cost, total_ltl_rem_cost, total_ltl_bin_cost))
-p.minimize(total_cost)
+problem.minimize(total_cost)
 
 # --------------------------------------------------
 # Solve and check solution
 # --------------------------------------------------
 
-p.display()
-p.solve("highs", time_limit_sec=60)
-model.require(p.termination_status() == "OPTIMAL")
-si = p.solve_info()
+problem.display()
+problem.solve("highs", time_limit_sec=60)
+model.require(problem.termination_status() == "OPTIMAL")
+si = problem.solve_info()
 si.display()
 
 print(f"Status: {si.termination_status}")

@@ -14,10 +14,10 @@ each level of patient service requires.
 
 TRANSFORMATION FROM SINGLE-OBJECTIVE:
   The original template bundled two concerns into one objective:
-    p.minimize(overtime_cost + PENALTY * sum(Shift.x_unmet_demand))
+    problem.minimize(overtime_cost + PENALTY * sum(Shift.x_unmet_demand))
   The bi-objective version splits them:
-    Primary:    p.minimize(overtime_cost)
-    Secondary → constraint: p.satisfy(require(sum(Shift.x_unmet_demand) <= eps))
+    Primary:    problem.minimize(overtime_cost)
+    Secondary → constraint: problem.satisfy(require(sum(Shift.x_unmet_demand) <= eps))
   This eliminates the arbitrary penalty weight and reveals the true tradeoff.
   The same "unbundle the penalty" pattern applies to any template that combines
   a primary cost with a penalty term (machine_maintenance, demand_planning,
@@ -102,16 +102,16 @@ def solve_staffing(objective="min_overtime", eps_unmet=None):
     Returns (solve_info, assignment_df, overtime_cost_value, total_unmet_value) or None
     if infeasible.
     """
-    p = Problem(model, Float)
+    problem = Problem(model, Float)
 
-    assign_var = p.solve_for(
+    assign_var = problem.solve_for(
         Assignment.x_assigned,
         type="bin",
         populate=False,
         name=["assigned", Assignment.availability.nurse.name, Assignment.availability.shift.name],
     )
 
-    overtime_var = p.solve_for(
+    overtime_var = problem.solve_for(
         Nurse.x_overtime_hours,
         type="cont",
         populate=False,
@@ -119,7 +119,7 @@ def solve_staffing(objective="min_overtime", eps_unmet=None):
         lower=0,
     )
 
-    p.solve_for(
+    problem.solve_for(
         Shift.x_patients_served,
         type="cont",
         populate=False,
@@ -127,7 +127,7 @@ def solve_staffing(objective="min_overtime", eps_unmet=None):
         lower=0,
     )
 
-    unmet_var = p.solve_for(
+    unmet_var = problem.solve_for(
         Shift.x_unmet_demand,
         type="cont",
         populate=False,
@@ -138,60 +138,60 @@ def solve_staffing(objective="min_overtime", eps_unmet=None):
     # Constraints
 
     # Can only assign if available
-    p.satisfy(model.require(Assignment.x_assigned <= Assignment.availability.available))
+    problem.satisfy(model.require(Assignment.x_assigned <= Assignment.availability.available))
 
     # Every nurse works at least one shift
     nurse_shift_count = sum(AssignmentRef.x_assigned).where(
         AssignmentRef.availability.nurse == Nurse).per(Nurse)
-    p.satisfy(model.require(nurse_shift_count >= 1))
+    problem.satisfy(model.require(nurse_shift_count >= 1))
 
     # Max 2 shifts per nurse
-    p.satisfy(model.require(nurse_shift_count <= 2))
+    problem.satisfy(model.require(nurse_shift_count <= 2))
 
     # Minimum nurses per shift
     shift_staff_count = sum(AssignmentRef.x_assigned).where(
         AssignmentRef.availability.shift == Shift).per(Shift)
-    p.satisfy(model.require(shift_staff_count >= Shift.min_nurses))
+    problem.satisfy(model.require(shift_staff_count >= Shift.min_nurses))
 
     # At least one nurse with required skill level per shift
     skilled_coverage = sum(AssignmentRef.x_assigned).where(
         AssignmentRef.availability.shift == Shift,
         AssignmentRef.availability.nurse.skill_level >= Shift.min_skill,
     ).per(Shift)
-    p.satisfy(model.require(skilled_coverage >= 1))
+    problem.satisfy(model.require(skilled_coverage >= 1))
 
     # Overtime >= total hours worked - regular hours
     total_hours_worked = sum(
         AssignmentRef.x_assigned * AssignmentRef.availability.shift.duration
     ).where(AssignmentRef.availability.nurse == Nurse).per(Nurse)
-    p.satisfy(model.require(Nurse.x_overtime_hours >= total_hours_worked - Nurse.regular_hours))
+    problem.satisfy(model.require(Nurse.x_overtime_hours >= total_hours_worked - Nurse.regular_hours))
 
     # Patients served <= demand per shift
-    p.satisfy(model.require(Shift.x_patients_served <= Shift.patient_demand))
+    problem.satisfy(model.require(Shift.x_patients_served <= Shift.patient_demand))
 
     # Patients served <= nursing capacity per shift
     shift_nursing_capacity = shift_staff_count * Shift.patients_per_nurse_hour * Shift.duration
-    p.satisfy(model.require(Shift.x_patients_served <= shift_nursing_capacity))
+    problem.satisfy(model.require(Shift.x_patients_served <= shift_nursing_capacity))
 
     # Unmet demand >= patient demand - patients served
-    p.satisfy(model.require(Shift.x_unmet_demand >= Shift.patient_demand - Shift.x_patients_served))
+    problem.satisfy(model.require(Shift.x_unmet_demand >= Shift.patient_demand - Shift.x_patients_served))
 
     # --- Epsilon constraint (if sweeping) ---
     # SINGLE-OBJECTIVE: unmet demand was penalized in the objective
     # BI-OBJECTIVE: unmet demand is bounded by epsilon
     if eps_unmet is not None:
-        p.satisfy(model.require(sum(Shift.x_unmet_demand) <= eps_unmet))
+        problem.satisfy(model.require(sum(Shift.x_unmet_demand) <= eps_unmet))
 
     # --- Objective ---
     overtime_cost = sum(Nurse.x_overtime_hours * Nurse.hourly_cost * Nurse.overtime_multiplier)
 
     if objective == "min_overtime":
-        p.minimize(overtime_cost)
+        problem.minimize(overtime_cost)
     elif objective == "min_unmet":
-        p.minimize(sum(Shift.x_unmet_demand))
+        problem.minimize(sum(Shift.x_unmet_demand))
 
-    p.solve("highs", time_limit_sec=60)
-    si = p.solve_info()
+    problem.solve("highs", time_limit_sec=60)
+    si = problem.solve_info()
 
     if si.termination_status != "OPTIMAL":
         return None

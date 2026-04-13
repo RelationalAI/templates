@@ -417,12 +417,12 @@ selection_ref = Float.ref()
 sales_ref = Float.ref()
 cumulative_ref = Float.ref()
 
-p = Problem(model, Float)
+problem = Problem(model, Float)
 
 # Variable: select[article, week, discount] — binary: is this discount active?
 OptArticle.x_select = model.Property(
     f"{OptArticle} in {Week} has {Discount} if {Float:x}")
-p.solve_for(
+problem.solve_for(
     OptArticle.x_select(Week_ref, Discount_ref, selection_ref),
     type="bin",
     name=["select", OptArticle.opt_article_id, Week_ref.num, Discount_ref.discount_pct],
@@ -431,7 +431,7 @@ p.solve_for(
 # Variable: sales[article, week, discount] — continuous: units sold
 OptArticle.x_sales = model.Property(
     f"{OptArticle} in {Week} at {Discount} has {Float:y}")
-p.solve_for(
+problem.solve_for(
     OptArticle.x_sales(Week_ref, Discount_ref, sales_ref),
     type="cont", lower=0,
     name=["sales", OptArticle.opt_article_id, Week_ref.num, Discount_ref.discount_pct],
@@ -440,14 +440,14 @@ p.solve_for(
 # Variable: cumulative sales[article, week] — continuous: total sold through week
 OptArticle.x_cuml_sales = model.Property(
     f"{OptArticle} up to {Week} has {Float:z}")
-p.solve_for(
+problem.solve_for(
     OptArticle.x_cuml_sales(Week_ref, cumulative_ref),
     type="cont", lower=0,
     name=["cuml", OptArticle.opt_article_id, Week_ref.num],
 )
 
 # Constraint: exactly one discount level per article-week
-p.satisfy(model.where(
+problem.satisfy(model.where(
     OptArticle.x_select(Week_ref, Discount_ref, selection_ref)
 ).require(
     sum(Discount_ref, selection_ref).per(OptArticle, Week_ref) == 1
@@ -457,7 +457,7 @@ p.satisfy(model.where(
 Discount_inner = Discount.ref()
 Week_inner = Week.ref()
 selection_inner = Float.ref()
-p.satisfy(model.where(
+problem.satisfy(model.where(
     OptArticle.x_select(Week_ref, Discount_ref, selection_ref),
     OptArticle.x_select(Week_inner, Discount_inner, selection_inner),
     Week_inner.num == Week_ref.num + 1,
@@ -468,7 +468,7 @@ p.satisfy(model.where(
 
 # Constraint: sales bounded by adjusted demand * lift * weekly multiplier * selection
 # Key difference from retail_markdown: base demand is GNN-predicted, not static CSV
-p.satisfy(model.where(
+problem.satisfy(model.where(
     OptArticle.x_select(Week_ref, Discount_ref, selection_ref),
     OptArticle.x_sales(Week_ref, Discount_ref, sales_ref),
 ).require(
@@ -477,7 +477,7 @@ p.satisfy(model.where(
 ))
 
 # Constraint: cumulative sales — first week
-p.satisfy(model.where(
+problem.satisfy(model.where(
     Week_ref.num == 1,
     OptArticle.x_cuml_sales(Week_ref, cumulative_ref),
     OptArticle.x_sales(Week_ref, Discount_ref, sales_ref),
@@ -488,7 +488,7 @@ p.satisfy(model.where(
 # Constraint: cumulative sales — subsequent weeks
 Week_prev = Week.ref()
 cumulative_prev = Float.ref()
-p.satisfy(model.where(
+problem.satisfy(model.where(
     Week_ref.num > 1,
     Week_prev.num == Week_ref.num - 1,
     OptArticle.x_cuml_sales(Week_ref, cumulative_ref),
@@ -500,7 +500,7 @@ p.satisfy(model.where(
 ))
 
 # Constraint: cumulative sales cannot exceed initial inventory
-p.satisfy(model.where(
+problem.satisfy(model.where(
     OptArticle.x_cuml_sales(Week_ref, cumulative_ref)
 ).require(
     cumulative_ref <= OptArticle.initial_inventory
@@ -519,13 +519,13 @@ salvage = sum(
     Week_ref.num == num_weeks,
 )
 
-p.maximize(revenue + salvage)
+problem.maximize(revenue + salvage)
 
 # Solve
-p.display()
-p.solve("highs", time_limit_sec=120)
-model.require(p.termination_status() == "OPTIMAL")
-si = p.solve_info()
+problem.display()
+problem.solve("highs", time_limit_sec=120)
+model.require(problem.termination_status() == "OPTIMAL")
+si = problem.solve_info()
 si.display()
 
 print(f"\nMarkdown Status: {si.termination_status}")

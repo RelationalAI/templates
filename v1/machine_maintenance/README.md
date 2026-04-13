@@ -462,7 +462,7 @@ maintained_by_deadline = (
     )
     .per(Machine_overdue)
 )
-p.satisfy(
+problem.satisfy(
     model.require(maintained_by_deadline >= 1).where(
         Machine_overdue.is_overdue_maintenance()
     )
@@ -488,8 +488,8 @@ failure_cost = sum(
 The model is solved using the HiGHS solver with a two-minute time limit. Assignment decisions are parsed from the solution to build the maintenance schedule:
 
 ```python
-p.solve("highs", time_limit_sec=120)
-si = p.solve_info()
+problem.solve("highs", time_limit_sec=120)
+si = problem.solve_info()
 assert si.termination_status == "OPTIMAL"
 ```
 

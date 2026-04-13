@@ -284,10 +284,10 @@ def evaluate_risk(var_df, scenario_name):
     return risk
 
 
-def _add_compliance_constraints(p):
+def _add_compliance_constraints(problem):
     """Add position limit and sector limit constraints to a Problem."""
     # Position limit: each stock allocation <= POSITION_LIMIT * budget
-    p.satisfy(model.where(
+    problem.satisfy(model.where(
         Stock.x_quantity(Scenario, x_qty),
     ).require(x_qty <= POSITION_LIMIT * Scenario.budget))
 
@@ -296,7 +296,7 @@ def _add_compliance_constraints(p):
         Stock.x_quantity(Scenario, x_qty),
         Stock.sector == s_sector_ref.sector,
     ).per(Scenario, s_sector_ref.sector)
-    p.satisfy(model.where(
+    problem.satisfy(model.where(
         Stock.x_quantity(Scenario, x_qty),
     ).require(sector_alloc <= SECTOR_LIMIT * Scenario.budget))
 
@@ -309,50 +309,50 @@ def solve_epsilon(eps_rate=None):
               handled in a single solve.
     Returns (solve_info, allocation_df) or None if infeasible.
     """
-    p = Problem(model, Float)
+    problem = Problem(model, Float)
 
-    quantity_var = p.solve_for(
+    quantity_var = problem.solve_for(
         Stock.x_quantity(Scenario, x_qty),
         name=["qty", Scenario.name, Stock.index],
         populate=False,
     )
 
     # Non-negative
-    p.satisfy(model.where(
+    problem.satisfy(model.where(
         Stock.x_quantity(Scenario, x_qty),
     ).require(x_qty >= 0))
 
     # Budget per scenario
-    p.satisfy(model.where(
+    problem.satisfy(model.where(
         Stock.x_quantity(Scenario, x_qty),
     ).require(sum(x_qty).per(Scenario) <= Scenario.budget))
 
     # Fully invested per scenario
-    p.satisfy(model.where(
+    problem.satisfy(model.where(
         Stock.x_quantity(Scenario, x_qty),
     ).require(sum(x_qty).per(Scenario) >= Scenario.budget))
 
     # Compliance constraints (position + sector limits)
-    _add_compliance_constraints(p)
+    _add_compliance_constraints(problem)
 
     # EPSILON CONSTRAINT: return rate >= target rate (scaled by budget)
     if eps_rate is not None:
-        p.satisfy(model.where(
+        problem.satisfy(model.where(
             Stock.x_quantity(Scenario, x_qty),
         ).require(
             sum(Stock.returns * x_qty).per(Scenario) >= eps_rate * Scenario.budget
         ))
 
     # Primary objective: minimize risk (quadratic via covariance matrix)
-    p.minimize(
+    problem.minimize(
         sum(covar_value * x_qty * x_qty_paired)
         .where(Stock.covar(PairedStock, covar_value),
                Stock.x_quantity(Scenario, x_qty),
                PairedStock.x_quantity(Scenario, x_qty_paired))
     )
 
-    p.solve("ipopt", time_limit_sec=60)
-    si = p.solve_info()
+    problem.solve("ipopt", time_limit_sec=60)
+    si = problem.solve_info()
 
     if si.termination_status not in ("OPTIMAL", "LOCALLY_SOLVED"):
         return None

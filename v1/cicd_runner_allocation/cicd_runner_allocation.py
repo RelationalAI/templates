@@ -123,10 +123,10 @@ def solve_allocation(concurrency_multiplier):
 
     Returns (solve_info, assignment_df) or None if infeasible.
     """
-    p = Problem(model, Float)
+    problem = Problem(model, Float)
 
     # Decision variable: binary assignment of workflow to runner.
-    assign_var = p.solve_for(
+    assign_var = problem.solve_for(
         Assignment.x_assigned,
         type="bin",
         name=["assign", Assignment.workflow.name, Assignment.runner.name],
@@ -136,21 +136,21 @@ def solve_allocation(concurrency_multiplier):
     AssignRef = Assignment.ref()
 
     # Constraint: each workflow assigned to exactly one runner.
-    p.satisfy(model.require(
+    problem.satisfy(model.require(
         sum(AssignRef.x_assigned)
         .where(AssignRef.workflow == Workflow)
         .per(Workflow) == 1
     ))
 
     # Constraint: per-runner concurrency limit (scaled by scenario multiplier).
-    p.satisfy(model.require(
+    problem.satisfy(model.require(
         sum(AssignRef.x_assigned)
         .where(AssignRef.runner == Runner)
         .per(Runner) <= concurrency_multiplier * Runner.max_concurrent
     ))
 
     # Objective: minimize total pipeline cost.
-    p.minimize(
+    problem.minimize(
         sum(
             Assignment.x_assigned
             * Assignment.runner.cost_per_minute
@@ -158,8 +158,8 @@ def solve_allocation(concurrency_multiplier):
         )
     )
 
-    p.solve("highs", time_limit_sec=60)
-    si = p.solve_info()
+    problem.solve("highs", time_limit_sec=60)
+    si = problem.solve_info()
 
     if si.termination_status not in ("OPTIMAL", "LOCALLY_SOLVED"):
         return None

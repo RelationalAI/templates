@@ -74,10 +74,10 @@ model.define(
 
 ConnectionRef = Connection.ref()
 
-p = Problem(model, Float)
+problem = Problem(model, Float)
 
 # Variable: flow on each connection
-p.solve_for(
+problem.solve_for(
     Connection.x_flow,
     name=["flow", Connection.source.name, Connection.user.name],
     lower=0,
@@ -87,7 +87,7 @@ p.solve_for(
 # Constraint: total outflow from each source <= capacity
 outflow = sum(ConnectionRef.x_flow).where(ConnectionRef.source == Source).per(Source)
 source_limit = model.require(outflow <= Source.capacity)
-p.satisfy(source_limit)
+problem.satisfy(source_limit)
 
 # Constraint: effective inflow to each user >= demand (nonlinear losses)
 # Transmission loss increases with utilization: effective delivery per connection
@@ -99,19 +99,19 @@ effective_inflow = (
     .per(User)
 )
 meet_demand = model.require(effective_inflow >= User.demand)
-p.satisfy(meet_demand)
+problem.satisfy(meet_demand)
 
 # Objective: minimize total cost
 total_cost = sum(Connection.x_flow * Connection.source.cost_per_unit)
-p.minimize(total_cost)
+problem.minimize(total_cost)
 
 # --------------------------------------------------
 # Solve and check solution
 # --------------------------------------------------
 
-p.display()
-p.solve("ipopt", time_limit_sec=60)
-si = p.solve_info()
+problem.display()
+problem.solve("ipopt", time_limit_sec=60)
+si = problem.solve_info()
 si.display()
 
 print(f"Status: {si.termination_status}")  # Ipopt returns LOCALLY_SOLVED

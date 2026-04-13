@@ -187,10 +187,10 @@ for scenario_value in SCENARIO_VALUES:
     print(f"\nRunning scenario: {SCENARIO_PARAM} = {scenario_value}")
     capacity_multiplier = scenario_value
 
-    p = Problem(model, Float)
+    problem = Problem(model, Float)
 
     # Variable: binary assignment (1 if issue assigned to developer in sprint, 0 otherwise)
-    assign_var = p.solve_for(
+    assign_var = problem.solve_for(
         Assignment.x_assigned,
         type="bin",
         name=[
@@ -203,10 +203,10 @@ for scenario_value in SCENARIO_VALUES:
     )
 
     # Static constraint: each issue assigned exactly once
-    p.satisfy(issue_once)
+    problem.satisfy(issue_once)
 
     # Parameterized constraint: developer capacity per sprint (references capacity_multiplier)
-    p.satisfy(
+    problem.satisfy(
         model.require(
             sum(Assignment.x_assigned * Assignment.issue.story_points).per(
                 Developer, Sprint
@@ -216,11 +216,11 @@ for scenario_value in SCENARIO_VALUES:
     )
 
     # Static objective: minimize weighted completion time
-    p.minimize(weighted_completion)
+    problem.minimize(weighted_completion)
 
-    p.display()
-    p.solve("highs", time_limit_sec=60)
-    si = p.solve_info()
+    problem.display()
+    problem.solve("highs", time_limit_sec=60)
+    si = problem.solve_info()
     si.display()
 
     scenario_results.append(

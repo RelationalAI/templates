@@ -323,11 +323,11 @@ Uses the **InvestmentLevel Scenario Concept** pattern:
 The `Problem` setup defines the InvestmentLevel Scenario Concept with binary decision variables, and the capacity constraint uses `predicted_load` from Stage 1:
 
 ```python
-p = Problem(model, Float)
+problem = Problem(model, Float)
 
-p.solve_for(DataCenterRequest.x_approve(InvestmentLevel, x_a), type="bin",
+problem.solve_for(DataCenterRequest.x_approve(InvestmentLevel, x_a), type="bin",
             name=["approve", InvestmentLevel.name, DataCenterRequest.id])
-p.solve_for(SubstationUpgrade.x_upgrade(InvestmentLevel, x_u), type="bin",
+problem.solve_for(SubstationUpgrade.x_upgrade(InvestmentLevel, x_u), type="bin",
             name=["upgrade", InvestmentLevel.name, SubstationUpgrade.id])
 
 # C1: Substation capacity per investment level
@@ -336,7 +336,7 @@ x_a_c = Float.ref("xa_c")
 x_u_c = Float.ref("xu_c")
 effective_load = Substation.predicted_load | Substation.current_load_mw
 
-p.satisfy(model.where(
+problem.satisfy(model.where(
     DataCenterRequest.x_approve(InvestmentLevel, x_a_c),
     SubstationUpgrade.x_upgrade(InvestmentLevel, x_u_c),
     DataCenterRequest.substation(Substation),

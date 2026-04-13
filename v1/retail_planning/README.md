@@ -249,11 +249,11 @@ Articles bought primarily by high-churn-risk customers get reduced demand, while
 A mixed-integer program selects one discount level per article per week. Constraints enforce a price ladder (discounts only increase) and inventory limits. The demand bound uses GNN-predicted demand instead of static estimates:
 
 ```python
-p.satisfy(model.where(...).require(
+problem.satisfy(model.where(...).require(
     sales_ref <= OptArticle.adjusted_demand
     * Discount_ref.demand_lift * Week_ref.demand_multiplier * selection_ref
 ))
-p.maximize(revenue + salvage)
+problem.maximize(revenue + salvage)
 ```
 
 ### 4. Demand/inventory planning (minimize cost)
