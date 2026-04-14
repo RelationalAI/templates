@@ -56,6 +56,7 @@ Prescriptive reasoning is well suited here because the problem has combinatorial
 
 ### Tools
 - Python >= 3.10
+- RelationalAI Python SDK (`relationalai`) >= 1.0.13
 
 ## Quickstart
 
@@ -217,7 +218,7 @@ This dramatically reduces the search space by only creating assignment variables
 Each valid assignment gets a binary variable (1 = assigned, 0 = not assigned). The "each issue assigned exactly once" constraint is defined once as a named expression, while the capacity constraint references a `capacity_multiplier` that varies per scenario:
 
 ```python
-p.solve_for(
+problem.solve_for(
     Assignment.x_assigned,
     type="bin",
     name=["assign", Assignment.issue.key, Assignment.developer.name, Assignment.sprint.name],
@@ -227,10 +228,10 @@ p.solve_for(
 issue_once = model.require(
     sum(Assignment.x_assigned).per(Issue) == 1
 ).where(Assignment.issue == Issue)
-p.satisfy(issue_once)
+problem.satisfy(issue_once)
 
 # Parameterized constraint: developer capacity per sprint (references capacity_multiplier)
-p.satisfy(model.require(
+problem.satisfy(model.require(
     sum(Assignment.x_assigned * Assignment.issue.story_points).per(Developer, Sprint)
     <= Developer.capacity_points_per_sprint * capacity_multiplier
 ).where(Assignment.developer == Developer, Assignment.sprint == Sprint))
@@ -247,7 +248,7 @@ weighted_completion = sum(
     * (max_priority + 1 - Assignment.issue.priority)
     * Assignment.sprint.number
 )
-p.minimize(weighted_completion)
+problem.minimize(weighted_completion)
 ```
 
 A priority-1 issue in Sprint 4 costs `(4-1+1) * 4 = 12`, while a priority-3 issue in Sprint 4 costs `(4-3+1) * 4 = 8`. This pushes the most urgent work into the earliest sprints.

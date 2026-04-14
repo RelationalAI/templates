@@ -120,10 +120,10 @@ for _, fk_row in fk_df.iterrows():
 # Model the decision problem
 # --------------------------------------------------
 
-p = Problem(model, Float)
+problem = Problem(model, Float)
 
 # Variable: actual row counts for each table
-p.solve_for(
+problem.solve_for(
     Table.x_actual_rows,
     name=["n", Table.table_name],
     lower=Table.min_rows,
@@ -131,15 +131,15 @@ p.solve_for(
 )
 
 # Variable: deviation from target (for objective)
-p.solve_for(
+problem.solve_for(
     Table.x_deviation,
     name=["dev", Table.table_name],
     lower=0
 )
 
 # Constraint: deviation captures |actual - target| (linearized)
-p.satisfy(model.require(Table.x_deviation >= Table.x_actual_rows - Table.target_rows))
-p.satisfy(model.require(Table.x_deviation >= Table.target_rows - Table.x_actual_rows))
+problem.satisfy(model.require(Table.x_deviation >= Table.x_actual_rows - Table.target_rows))
+problem.satisfy(model.require(Table.x_deviation >= Table.target_rows - Table.x_actual_rows))
 
 # Constraint: referential integrity - child rows bounded by parent capacity
 # These constraints link specific table pairs via their actual_rows variables
@@ -149,7 +149,7 @@ for fk_info in fk_objs:
     parent_name = fk_info['parent']
 
     # Upper bound: can't have more children than max per parent
-    p.satisfy(model.require(
+    problem.satisfy(model.require(
         Table.x_actual_rows <= ParentTable.x_actual_rows * fk_info['max']
     ).where(
         Table.table_name == child_name,
@@ -164,7 +164,7 @@ for fk_info in fk_objs:
     ]
     if len(mandatory) > 0:
         min_per = int(mandatory.iloc[0]['min_value']) if not pd.isna(mandatory.iloc[0]['min_value']) else 1
-        p.satisfy(model.require(
+        problem.satisfy(model.require(
             Table.x_actual_rows >= ParentTable.x_actual_rows * min_per
         ).where(
             Table.table_name == child_name,
@@ -176,7 +176,7 @@ for fk_info in fk_objs:
     if fk_info['coverage'] > 0:
         child_name = fk_info['child']
         parent_name = fk_info['parent']
-        p.satisfy(model.require(
+        problem.satisfy(model.require(
             Table.x_actual_rows >= fk_info['coverage'] * ParentTable.x_actual_rows
         ).where(
             Table.table_name == child_name,
@@ -186,16 +186,16 @@ for fk_info in fk_objs:
 # Objective: minimize weighted deviation from targets
 # Weight by priority (higher priority = more important to match target)
 total_deviation = rai_sum(Table.x_deviation * (11 - Table.priority))
-p.minimize(total_deviation)
+problem.minimize(total_deviation)
 
 # --------------------------------------------------
 # Solve and check solution
 # --------------------------------------------------
 
-p.display()
-p.solve("highs", time_limit_sec=60)
-model.require(p.termination_status() == "OPTIMAL")
-si = p.solve_info()
+problem.display()
+problem.solve("highs", time_limit_sec=60)
+model.require(problem.termination_status() == "OPTIMAL")
+si = problem.solve_info()
 si.display()
 
 print(f"Status: {si.termination_status}")

@@ -87,14 +87,14 @@ model.define(Transfer.new(lane=Lane))
 TransferRef = Transfer.ref()
 DemandRef = Demand.ref()
 
-p = Problem(model, Float)
+problem = Problem(model, Float)
 
 # Variable: transfer quantity
-p.solve_for(Transfer.x_quantity, name=["qty", Transfer.lane.source.name, Transfer.lane.dest.name], lower=0)
+problem.solve_for(Transfer.x_quantity, name=["qty", Transfer.lane.source.name, Transfer.lane.dest.name], lower=0)
 
 # Constraint: transfer cannot exceed lane capacity
 capacity_limit = model.require(Transfer.x_quantity <= Transfer.lane.capacity)
-p.satisfy(capacity_limit)
+problem.satisfy(capacity_limit)
 
 # Constraint: total outbound from source cannot exceed source inventory
 # (applies only to non-transit sites; transit sites have flow conservation instead)
@@ -103,7 +103,7 @@ outbound = sum(TransferRef.x_quantity).where(TransferRef.lane.source == SourceRe
 inventory_limit = model.require(outbound <= SourceRef.inventory).where(
     SourceRef.type != "TRANSIT"
 )
-p.satisfy(inventory_limit)
+problem.satisfy(inventory_limit)
 
 # Constraint: flow conservation at transit sites (inflow == outflow)
 InRef = Transfer.ref()
@@ -112,26 +112,26 @@ TransitSite = Site.ref()
 inflow = sum(InRef.x_quantity).where(InRef.lane.dest == TransitSite).per(TransitSite)
 outflow = sum(OutRef.x_quantity).where(OutRef.lane.source == TransitSite).per(TransitSite)
 flow_balance = model.require(inflow == outflow).where(TransitSite.type("TRANSIT"))
-p.satisfy(flow_balance)
+problem.satisfy(flow_balance)
 
 # Constraint: demand satisfaction at each destination site
 inbound = sum(TransferRef.x_quantity).where(TransferRef.lane.dest == DemandRef.site).per(DemandRef)
 local_inv = sum(Site.inventory).where(Site == DemandRef.site).per(DemandRef)
 demand_met = model.require(inbound + local_inv >= DemandRef.quantity)
-p.satisfy(demand_met)
+problem.satisfy(demand_met)
 
 # Objective: minimize total transfer cost
 total_cost = sum(Transfer.x_quantity * Transfer.lane.cost_per_unit)
-p.minimize(total_cost)
+problem.minimize(total_cost)
 
 # --------------------------------------------------
 # Solve and check solution
 # --------------------------------------------------
 
-p.display()
-p.solve("highs", time_limit_sec=60)
-model.require(p.termination_status() == "OPTIMAL")
-si = p.solve_info()
+problem.display()
+problem.solve("highs", time_limit_sec=60)
+model.require(problem.termination_status() == "OPTIMAL")
+si = problem.solve_info()
 si.display()
 
 print(f"Status: {si.termination_status}")

@@ -46,7 +46,7 @@ Each stage enriches the shared ontology, and downstream stages consume those enr
 | Stage | Reasoner | Reads from ontology | Writes to ontology | Role |
 |-------|----------|---------------------|--------------------|------|
 | 0 | Querying | ProductionRun, SensorReading, FailurePrediction | Machine.performance_ratio, Machine.quality_ratio, Machine.anomaly_count, MachinePeriod.predicted_fp | Plant_C leads at 79.8% OEE; Plant_A mid at 68.2% but has 7 of 9 sensor anomalies and the 3 steepest failure trajectories (M001 +0.230, M013 +0.228, M016 +0.219). |
-| 1 | Graph | Qualification, Machine | Machine.betweenness (normalized centrality) | All 30 machines form 1 connected cluster. Pump-type machines are the top bottlenecks (betweenness=24.0). Centrality scores feed the failure cost multiplier in Stage 3. |
+| 1 | Graph | Qualification, Machine (as `node_concept`) | Machine.betweenness (normalized centrality) | All 30 machines form 1 connected cluster. Pump-type machines are the top bottlenecks (betweenness=24.0). Centrality scores feed the failure cost multiplier in Stage 3. |
 | 2 | Rules | Machine (all derived properties from Stages 0-1) | Machine.is_overdue_maintenance, Machine.is_high_risk, Machine.is_chronic_downtime, Machine.risk_tier | 6 overdue, 1 high-risk, 3 chronic downtime. Composite tier: M013 is Critical (all 3 flags), M016 is Elevated (2 of 3). Overdue flag becomes a hard constraint in Stage 3. |
 | 3 | Prescriptive | MachinePeriod.predicted_fp, Machine.betweenness, Machine.is_overdue_maintenance | x_maintain, x_vulnerable, x_assigned (decision variables) | 20 jobs across 4 periods at $605K total cost. Per-period failure predictions (not static probability) weight the objective. Overdue machines scheduled by period 2. |
 | 4 | Analysis | Solution variables, Qualification, TrainingOption | (terminal -- prints recommendations) | All 3 Turbine techs in Houston_TX -- 67% of Turbine jobs require travel. Best cross-training: T006 (Chicago_IL, Senior) at $3,200 / 5 weeks. |
@@ -61,7 +61,7 @@ The multi-reasoner approach is necessary because no single analytical technique 
 
 - **Accretive ontology enrichment** -- each stage writes derived properties (betweenness, risk_tier, predicted_fp) that downstream stages consume, building a progressively richer model
 - **Rules chaining** -- three boolean flags (is_chronic_downtime, is_high_risk, is_overdue_maintenance) are composed into a single risk_tier property using exhaustive enumeration with `model.not_()`
-- **Separate graph model** -- Graph and Prescriptive reasoners use independent `Model` instances to avoid SDK recursion conflicts, with centrality results transferred back via `model.data()`
+- **Graph directly on domain concept** -- the Graph reasoner uses `Machine` directly as `node_concept`, so centrality scores are stored as Machine properties without a mirror concept
 - **Per-period failure predictions** -- the optimization objective uses `MachinePeriod.predicted_fp` (period-specific) rather than static `Machine.failure_probability`, giving the solver time-varying cost information
 - **Post-solve resilience analysis** -- Stage 4 inspects the solution and qualification structure to identify concentration risk, producing actionable cross-training recommendations without re-solving
 
@@ -106,6 +106,7 @@ The multi-reasoner approach is necessary because no single analytical technique 
 
 ### Tools
 - Python >= 3.10
+- RelationalAI Python SDK (`relationalai`) >= 1.0.13
 
 ## Quickstart
 
@@ -385,24 +386,28 @@ oee_df = (
 
 ### Stage 1: Graph -- dependency clusters and centrality
 
-A separate `graph_model` is used for graph analysis because recursive graph definitions conflict with prescriptive `variable_values()` queries on the same model. An undirected graph is built where machine nodes are connected when they share a qualified technician:
+The Graph reasoner uses `Machine` directly as `node_concept` -- no mirror concept needed. Edges connect machines when at least one technician is qualified for both machine types:
 
 ```python
-graph_model = Model("machine_maintenance_graph")
 dep_graph = Graph(
-    graph_model, directed=False, weighted=False, node_concept=GMachine, aggregator="sum"
+    model, directed=False, weighted=False, node_concept=Machine, aggregator="sum"
 )
 ```
 
-Weakly connected components identify dependency clusters (groups of machines that compete for the same technicians). Betweenness centrality scores bottleneck machines -- those whose maintenance blocks the most scheduling options. The scores are normalized and transferred back to the main model via `model.data()`:
+Weakly connected components identify dependency clusters (groups of machines that compete for the same technicians). Betweenness centrality scores bottleneck machines -- those whose maintenance blocks the most scheduling options. The scores are normalized and stored directly on `Machine`:
 
 ```python
+Machine.betweenness_raw = model.Property(
+    f"{Machine} has raw betweenness centrality {Float:betweenness_raw}")
+m_btwn = Machine.ref("m_btwn")
+model.define(m_btwn.betweenness_raw(btwn_score)).where(betweenness(m_btwn, btwn_score))
+max_betweenness = max(Machine.betweenness_raw)
 Machine.betweenness = model.Property(
     f"{Machine} has betweenness centrality {Float:betweenness}")
-betweenness_df["normalized"] = betweenness_df["betweenness"] / max_betweenness
-btwn_data = model.data(betweenness_df[["machine_id", "normalized"]])
-model.where(Machine.machine_id == btwn_data["machine_id"]).define(
-    Machine.betweenness(btwn_data["normalized"])
+m_norm = Machine.ref("m_norm")
+model.where(max_betweenness == 0).define(m_norm.betweenness(0.0))
+model.where(max_betweenness > 0).define(
+    m_norm.betweenness(m_norm.betweenness_raw / max_betweenness)
 )
 ```
 
@@ -457,7 +462,7 @@ maintained_by_deadline = (
     )
     .per(Machine_overdue)
 )
-p.satisfy(
+problem.satisfy(
     model.require(maintained_by_deadline >= 1).where(
         Machine_overdue.is_overdue_maintenance()
     )
@@ -483,8 +488,8 @@ failure_cost = sum(
 The model is solved using the HiGHS solver with a two-minute time limit. Assignment decisions are parsed from the solution to build the maintenance schedule:
 
 ```python
-p.solve("highs", time_limit_sec=120)
-si = p.solve_info()
+problem.solve("highs", time_limit_sec=120)
+si = problem.solve_info()
 assert si.termination_status == "OPTIMAL"
 ```
 
@@ -545,7 +550,9 @@ For concentrated types, the script queries `training_options.csv` to recommend t
 <summary><code>input definition is too large</code></summary>
 
 - This occurs with large cross-products. The qualification-filtered assignment space avoids this issue for the default 30-machine dataset.
-- If you scale up significantly, consider reducing data size or using `variable_values()` instead of `model.select()`.
+- If you scale up significantly, consider reducing data size or querying solver
+  results via `Variable.values(...)` instead of broad `model.select(...)`
+  patterns.
 </details>
 
 <details>

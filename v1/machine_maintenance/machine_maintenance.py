@@ -33,7 +33,7 @@ Output:
 from pathlib import Path
 
 from pandas import read_csv
-from relationalai.semantics import Float, Integer, Model, String, sum
+from relationalai.semantics import Float, Integer, Model, String, max, sum
 from relationalai.semantics.reasoners.graph import Graph
 from relationalai.semantics.reasoners.prescriptive import Problem
 from relationalai.semantics.std import aggregates as aggs
@@ -648,49 +648,21 @@ for _, row in pivot.head(6).iterrows():
 # Stage 1: Graph -- dependency clusters & centrality
 # --------------------------------------------------
 
-# Separate model for graph analysis. Post-solve queries via p.variable_values()
-# conflict with recursive graph definitions on the same model, so the graph
-# runs on its own model with results written back via model.data().
-#
-# Pre-compute edges in pandas: two machines share an edge if any technician is
-# qualified for both their machine types.
-qual_machines = qualifications_df.merge(
-    machines_df[["machine_id", "machine_type"]], on="machine_type"
-)
-edge_pairs = qual_machines.merge(
-    qual_machines, on="technician_id", suffixes=("_src", "_dst")
-)
-edges_df = (
-    edge_pairs[edge_pairs["machine_id_src"] < edge_pairs["machine_id_dst"]]
-    [["machine_id_src", "machine_id_dst"]]
-    .drop_duplicates()
-    .reset_index(drop=True)
-)
+# Graph directly on Machine — no mirror concept needed.
+dep_graph = Graph(model, directed=False, weighted=False, node_concept=Machine, aggregator="sum")
 
-graph_model = Model("machine_maintenance_graph")
-GMachine = graph_model.Concept("Machine", identify_by={"machine_id": String})
-GMachine.machine_name = graph_model.Property(f"{GMachine} has {String:machine_name}")
-GMachine.machine_type = graph_model.Property(f"{GMachine} has type {String:machine_type}")
-GMachine.facility = graph_model.Property(f"{GMachine} at {String:facility}")
-GMachine.failure_probability = graph_model.Property(
-    f"{GMachine} has failure probability {Float:failure_probability}"
+m1 = Machine.ref("m1")
+m2 = Machine.ref("m2")
+q1 = Qualification.ref("q1")
+q2 = Qualification.ref("q2")
+# Two machines are adjacent in the dependency graph when at least one
+# technician is qualified to service both machine types.
+model.define(dep_graph.Edge.new(src=m1, dst=m2)).where(
+    m1.machine_type == q1.machine_type_str,
+    m2.machine_type == q2.machine_type_str,
+    q1.technician_id == q2.technician_id,
+    m1.machine_id < m2.machine_id,
 )
-graph_model.define(GMachine.new(
-    graph_model.data(machines_df[["machine_id", "machine_name", "machine_type",
-                                  "facility", "failure_probability"]]).to_schema()
-))
-
-dep_graph = Graph(
-    graph_model, directed=False, weighted=False, node_concept=GMachine, aggregator="sum"
-)
-
-edge_data = graph_model.data(edges_df)
-gm1 = GMachine.ref("gm1")
-gm2 = GMachine.ref("gm2")
-graph_model.where(
-    gm1.machine_id == edge_data["machine_id_src"],
-    gm2.machine_id == edge_data["machine_id_dst"],
-).define(dep_graph.Edge.new(src=gm1, dst=gm2))
 
 print(f"\n{'=' * 70}")
 print("STAGE 1: Graph Analysis -- Dependency Clusters & Centrality")
@@ -706,7 +678,7 @@ node_ref = dep_graph.Node.ref("n")
 comp_ref = dep_graph.Node.ref("comp")
 
 wcc_df = (
-    graph_model.where(wcc(node_ref, comp_ref))
+    model.where(wcc(node_ref, comp_ref))
     .select(
         node_ref.machine_id.alias("machine_id"),
         node_ref.machine_name.alias("machine_name"),
@@ -737,7 +709,7 @@ node_b = dep_graph.Node.ref("nb")
 btwn_score = Float.ref("btwn")
 
 betweenness_df = (
-    graph_model.where(betweenness(node_b, btwn_score))
+    model.where(betweenness(node_b, btwn_score))
     .select(
         node_b.machine_id.alias("machine_id"),
         node_b.machine_name.alias("machine_name"),
@@ -759,19 +731,20 @@ for _, row in betweenness_df.head(10).iterrows():
         f"failure_prob={row['failure_probability']:.3f}"
     )
 
-# Store betweenness as a property on Machine for use in the optimization objective.
-# Normalize to [0, 1] range so the centrality weight is interpretable.
-max_betweenness = betweenness_df["betweenness"].max()
-if max_betweenness == 0:
-    max_betweenness = 1.0  # avoid division by zero
-
+# Store normalized betweenness directly on Machine.
+Machine.betweenness_raw = model.Property(
+    f"{Machine} has raw betweenness centrality {Float:betweenness_raw}"
+)
+m_btwn = Machine.ref("m_btwn")
+model.define(m_btwn.betweenness_raw(btwn_score)).where(betweenness(m_btwn, btwn_score))
+max_betweenness = max(Machine.betweenness_raw)
 Machine.betweenness = model.Property(
     f"{Machine} has betweenness centrality {Float:betweenness}"
 )
-betweenness_df["normalized"] = betweenness_df["betweenness"] / max_betweenness
-btwn_data = model.data(betweenness_df[["machine_id", "normalized"]])
-model.where(Machine.machine_id == btwn_data["machine_id"]).define(
-    Machine.betweenness(btwn_data["normalized"])
+m_norm = Machine.ref("m_norm")
+model.where(max_betweenness == 0).define(m_norm.betweenness(0.0))
+model.where(max_betweenness > 0).define(
+    m_norm.betweenness(m_norm.betweenness_raw / max_betweenness)
 )
 
 # --------------------------------------------------
@@ -1014,7 +987,7 @@ print(f"\n{'=' * 70}")
 print("STAGE 3: Prescriptive -- Maintenance Scheduling")
 print("=" * 70)
 
-p = Problem(model, Float)
+problem = Problem(model, Float)
 
 # References for aggregation.
 MachinePeriod_outer = MachinePeriod.ref()
@@ -1033,7 +1006,7 @@ TechnicianPeriod_ref = TechnicianPeriod.ref()
 MachinePeriod.x_maintain = model.Property(
     f"{MachinePeriod} maintain decision {Float:x_maintain}"
 )
-p.solve_for(
+problem.solve_for(
     MachinePeriod.x_maintain,
     type="bin",
     name=["maintain", MachinePeriod.machine_id, MachinePeriod.pid],
@@ -1044,7 +1017,7 @@ p.solve_for(
 MachinePeriod.x_vulnerable = model.Property(
     f"{MachinePeriod} vulnerable flag {Float:x_vulnerable}"
 )
-p.solve_for(
+problem.solve_for(
     MachinePeriod.x_vulnerable,
     type="bin",
     name=["vulnerable", MachinePeriod.machine_id, MachinePeriod.pid],
@@ -1055,7 +1028,7 @@ p.solve_for(
 TechnicianMachinePeriod.x_assigned = model.Property(
     f"{TechnicianMachinePeriod} assigned flag {Float:x_assigned}"
 )
-p.solve_for(
+problem.solve_for(
     TechnicianMachinePeriod.x_assigned,
     type="bin",
     name=[
@@ -1080,7 +1053,7 @@ maintained_until_tau = (
     )
     .per(Machine_ref, Period_outer)
 )
-p.satisfy(
+problem.satisfy(
     model.require(maintained_until_tau + MachinePeriod_outer.x_vulnerable == 1).where(
         MachinePeriod_outer.machine(Machine_ref),
         MachinePeriod_outer.period(Period_outer),
@@ -1096,7 +1069,7 @@ assign_per_mp = (
     )
     .per(Machine_ref, Period_outer)
 )
-p.satisfy(
+problem.satisfy(
     model.require(assign_per_mp == MachinePeriod_outer.x_maintain).where(
         MachinePeriod_outer.machine(Machine_ref),
         MachinePeriod_outer.period(Period_outer),
@@ -1125,7 +1098,7 @@ avail_hours = (
     )
     .per(Technician_ref, Period_tc)
 )
-p.satisfy(model.require(assigned_hours <= avail_hours))
+problem.satisfy(model.require(assigned_hours <= avail_hours))
 
 # Constraint: parts/bay capacity per period.
 maint_per_period = (
@@ -1133,7 +1106,7 @@ maint_per_period = (
     .where(MachinePeriod_cap.period(Period_cap))
     .per(Period_cap)
 )
-p.satisfy(model.require(maint_per_period <= PARTS_CAPACITY_PER_PERIOD))
+problem.satisfy(model.require(maint_per_period <= PARTS_CAPACITY_PER_PERIOD))
 
 # Constraint (from rules): overdue machines must be maintained by OVERDUE_DEADLINE.
 MachinePeriod_overdue = MachinePeriod.ref()
@@ -1148,7 +1121,7 @@ maintained_by_deadline = (
     )
     .per(Machine_overdue)
 )
-p.satisfy(
+problem.satisfy(
     model.require(maintained_by_deadline >= 1).where(
         Machine_overdue.is_overdue_maintenance()
     )
@@ -1190,33 +1163,38 @@ travel_cost = sum(
     TechnicianMachinePeriod_ref.machine(Machine_travel),
     TechnicianMachinePeriod_ref.period(Period_outer),
 )
-p.minimize(failure_cost + labor_cost + travel_cost)
+problem.minimize(failure_cost + labor_cost + travel_cost)
 
 # --------------------------------------------------
 # Solve and extract results
 # --------------------------------------------------
 
-p.display()
-p.solve("highs", time_limit_sec=120)
-si = p.solve_info()
+problem.solve("highs", time_limit_sec=120)
+si = problem.solve_info()
 si.display()
 
 print(f"\nStatus: {si.termination_status}")
 print(f"Objective value: {si.objective_value:.2f}")
 assert si.termination_status == "OPTIMAL", f"Expected OPTIMAL, got {si.termination_status}"
 
-# Extract results via variable_values() as a DataFrame for parsing.
-vars_df = p.variable_values().to_df()
-
-# Parse maintain decisions: name format "maintain_<machine_id>_<pid>"
-maintain_vars = vars_df[vars_df["name"].str.startswith("maintain_")].copy()
-maintain_vars[["_prefix", "machine_id", "period"]] = maintain_vars["name"].str.split(
-    "_", n=2, expand=True
+# Single solve — query populated properties directly.
+value_ref = Float.ref()
+maint_machine = Machine.ref("maint_machine")
+maint_df = (
+    model.select(
+        MachinePeriod.machine_id.alias("machine_id"),
+        MachinePeriod.pid.alias("period"),
+        maint_machine.machine_type.alias("machine_type"),
+        maint_machine.facility.alias("facility"),
+        maint_machine.criticality.alias("criticality"),
+    )
+    .where(
+        MachinePeriod.machine(maint_machine),
+        MachinePeriod.x_maintain(value_ref),
+        value_ref > 0.5,
+    )
+    .to_df()
 )
-maintain_vars["period"] = maintain_vars["period"].astype(int)
-maintain_vars = maintain_vars[maintain_vars["value"] > 0.5]
-
-maint_df = maintain_vars.merge(machines_df, on="machine_id", how="left")
 maint_df = maint_df.sort_values(["period", "machine_id"])
 print(f"\nMaintenance schedule ({len(maint_df)} jobs):")
 for period, g in maint_df.groupby("period"):
@@ -1227,23 +1205,29 @@ for period, g in maint_df.groupby("period"):
             f"crit={int(row['criticality'])})"
         )
 
-# Parse assignment decisions: name format "assigned_<tech_id>_<machine_id>_<pid>"
-assign_vars = vars_df[vars_df["name"].str.startswith("assigned_")].copy()
-assign_vars[["_prefix", "technician_id", "machine_id", "period"]] = assign_vars[
-    "name"
-].str.split("_", n=3, expand=True)
-assign_vars["period"] = assign_vars["period"].astype(int)
-assign_vars = assign_vars[assign_vars["value"] > 0.5]
-
-assign_df = assign_vars.merge(
-    machines_df[["machine_id", "location", "maintenance_duration_hours"]],
-    on="machine_id",
-    how="left",
-)
-assign_df = assign_df.merge(
-    technicians_df[["technician_id", "base_location", "hourly_rate"]],
-    on="technician_id",
-    how="left",
+# Query populated assignment properties directly.
+assign_machine = Machine.ref("assign_machine")
+assign_tech = Technician.ref("assign_tech")
+assign_df = (
+    model.select(
+        TechnicianMachinePeriod.technician_id.alias("technician_id"),
+        TechnicianMachinePeriod.machine_id.alias("machine_id"),
+        TechnicianMachinePeriod.pid.alias("period"),
+        assign_machine.machine_type.alias("machine_type"),
+        assign_machine.location.alias("location"),
+        assign_machine.maintenance_duration_hours.alias("maintenance_duration_hours"),
+        assign_tech.technician_name.alias("technician_name"),
+        assign_tech.base_location.alias("base_location"),
+        assign_tech.skill_level.alias("skill_level"),
+        assign_tech.hourly_rate.alias("hourly_rate"),
+    )
+    .where(
+        TechnicianMachinePeriod.machine(assign_machine),
+        TechnicianMachinePeriod.technician(assign_tech),
+        TechnicianMachinePeriod.x_assigned(value_ref),
+        value_ref > 0.5,
+    )
+    .to_df()
 )
 assign_df = assign_df.sort_values(["period", "machine_id"])
 print(f"\nTechnician assignments ({len(assign_df)}):")
@@ -1251,11 +1235,11 @@ for period, g in assign_df.groupby("period"):
     print(f"  Period {int(period)}:")
     for _, row in g.iterrows():
         travel = "" if row["base_location"] == row["location"] else " [TRAVEL]"
-        cost = float(row["maintenance_duration_hours"]) * float(row["hourly_rate"])
+        cost = row["maintenance_duration_hours"] * row["hourly_rate"]
         print(
             f"    {row['machine_id']}: {row['technician_id']} "
             f"({int(row['maintenance_duration_hours'])}h x "
-            f"${float(row['hourly_rate']):.0f}/h = ${cost:.0f}){travel}"
+            f"${row['hourly_rate']:.0f}/h = ${cost:.0f}){travel}"
         )
 
 # --------------------------------------------------
@@ -1268,17 +1252,15 @@ print("=" * 70)
 
 # 4a. Technician utilization from the optimal schedule.
 tech_assignments = (
-    assign_df.groupby("technician_id")
+    assign_df.groupby(
+        ["technician_id", "technician_name", "base_location", "skill_level"],
+        as_index=False,
+    )
     .agg(
         assignment_count=("machine_id", "count"),
         machines=("machine_id", list),
     )
-    .reset_index()
     .sort_values("assignment_count", ascending=False)
-)
-tech_assignments = tech_assignments.merge(
-    technicians_df[["technician_id", "technician_name", "base_location", "skill_level"]],
-    on="technician_id",
 )
 
 print("\nTechnician utilization in optimal schedule:")
@@ -1328,10 +1310,7 @@ if concentrated_types:
         local_machines = type_machines[type_machines["location"] == conc_loc]
 
         # How many scheduled assignments for this type required travel?
-        type_assign = assign_df.merge(
-            machines_df[["machine_id", "machine_type"]], on="machine_id"
-        )
-        type_assign = type_assign[type_assign["machine_type"] == mtype]
+        type_assign = assign_df[assign_df["machine_type"] == mtype]
         travel_assign = type_assign[type_assign["base_location"] != type_assign["location"]]
 
         print(f"\n  {mtype}: {len(type_machines)} machines across "

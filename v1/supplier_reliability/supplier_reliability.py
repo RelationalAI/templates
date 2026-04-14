@@ -98,36 +98,37 @@ for excluded in excluded_suppliers:
     label = "baseline" if excluded is None else f"without_{excluded}"
     print(f"\nRunning scenario: {label}")
 
-    p = Problem(model, Float)
+    problem = Problem(model, Float)
 
-    # Variable: order quantity — where= filter excludes supplier's orders
-    if excluded is not None:
-        active_orders = SupplyOrder.supplier.name != excluded
-        p.solve_for(SupplyOrder.x_quantity, name=["qty", SupplyOrder.supplier.name, SupplyOrder.product.name],
-                    lower=0, where=[active_orders], populate=False)
-    else:
-        p.solve_for(SupplyOrder.x_quantity, name=["qty", SupplyOrder.supplier.name, SupplyOrder.product.name],
-                    lower=0, populate=False)
+    # Variable: order quantity — optionally exclude one supplier via where=
+    where_clause = [SupplyOrder.supplier.name != excluded] if excluded is not None else None
+    qty_var = problem.solve_for(
+        SupplyOrder.x_quantity,
+        name=["qty", SupplyOrder.supplier.name, SupplyOrder.product.name],
+        lower=0,
+        where=where_clause,
+        populate=False,
+    )
 
     # Constraint: total orders from supplier cannot exceed supplier capacity
     capacity_limit = model.require(
         sum(SupplyOrder.x_quantity).where(SupplyOrder.supplier == Supplier).per(Supplier) <= Supplier.capacity
     )
-    p.satisfy(capacity_limit)
+    problem.satisfy(capacity_limit)
 
     # Constraint: demand satisfaction for each product
     meet_demand = model.require(
         sum(SupplyOrder.x_quantity).where(SupplyOrder.product == Product).per(Product) >= Product.demand
     )
-    p.satisfy(meet_demand)
+    problem.satisfy(meet_demand)
 
     # Objective: minimize cost
     direct_cost = sum(SupplyOrder.x_quantity * SupplyOrder.cost_per_unit)
-    p.minimize(direct_cost)
+    problem.minimize(direct_cost)
 
-    p.display()
-    p.solve("highs", time_limit_sec=60)
-    si = p.solve_info()
+    problem.display()
+    problem.solve("highs", time_limit_sec=60)
+    si = problem.solve_info()
     si.display()
 
     scenario_results.append(
@@ -143,8 +144,12 @@ for excluded in excluded_suppliers:
     print(f"  Status: {si.termination_status}, Objective: {si.objective_value}")
 
     # Print order plan from solver results
-    var_df = p.variable_values().to_df()
-    qty_df = var_df[var_df["name"].str.startswith("qty") & (var_df["value"] > 0.001)]
+    value_ref = Float.ref()
+    qty_df = model.select(
+        qty_var.supplyorder.supplier.name.alias("supplier"),
+        qty_var.supplyorder.product.name.alias("product"),
+        value_ref.alias("quantity"),
+    ).where(qty_var.values(0, value_ref), value_ref > 0.001).to_df()
     print("\n  Orders:")
     print(qty_df.to_string(index=False))
 

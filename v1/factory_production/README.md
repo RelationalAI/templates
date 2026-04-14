@@ -52,6 +52,7 @@ The template solves the problem independently per factory, demonstrating a scena
 
 ### Tools
 - Python >= 3.10
+- RelationalAI Python SDK (`relationalai`) >= 1.0.13
 
 ## Quickstart
 
@@ -143,7 +144,7 @@ Product.demand = Property(f"{Product} has {Integer:demand}")
 Each product gets a continuous variable bounded between 0 and its demand cap:
 
 ```python
-p.solve_for(
+problem.solve_for(
     Product.x_quantity,
     lower=0,
     upper=Product.demand,
@@ -159,9 +160,9 @@ Resource usage at each factory must not exceed availability. The objective maxim
 
 ```python
 profit = sum(Product.profit * Product.x_quantity).where(this_product)
-p.maximize(profit)
+problem.maximize(profit)
 
-p.satisfy(model.require(
+problem.satisfy(model.require(
     sum(Product.x_quantity / Product.rate) <= Factory.avail
 ).where(this_product, Factory.name(factory_name)))
 ```

@@ -94,6 +94,7 @@ The multi-reasoner approach is necessary because structural risk (graph), suppli
 
 ### Tools
 - Python >= 3.10
+- RelationalAI Python SDK (`relationalai`) >= 1.0.13
 
 ## Quickstart
 
@@ -344,22 +345,22 @@ model.where(Demand.priority == "HIGH").define(Demand.is_escalated())
 Two continuous decision variables control the network flow: `x_flow` is the flow on each operation (bounded by capacity), and `x_unmet` is unmet demand slack per order:
 
 ```python
-p = Problem(model, Float)
+problem = Problem(model, Float)
 
-p.solve_for(
+problem.solve_for(
     Operation.x_flow,
     name=["x_flow", Operation.id],
     lower=0,
     upper=Operation.capacity_per_day,
 )
 
-p.solve_for(Demand.x_unmet, name=["x_unmet", Demand.id], lower=0, populate=False)
+problem.solve_for(Demand.x_unmet, name=["x_unmet", Demand.id], lower=0, populate=False)
 ```
 
 The demand satisfaction constraint requires that inbound flow at each customer's site for the demanded SKU, plus unmet slack, covers the order quantity:
 
 ```python
-p.satisfy(
+problem.satisfy(
     model.require(
         sum(Op.x_flow).per(D) + D.x_unmet >= D.quantity
     ).where(
@@ -392,7 +393,7 @@ centrality_cost = CENTRALITY_WEIGHT * sum(
 
 unmet_cost = UNMET_PENALTY * sum(Demand.x_unmet)
 
-p.minimize(
+problem.minimize(
     sum(model.union(transport_cost, risk_cost, centrality_cost, unmet_cost))
 )
 ```
@@ -402,7 +403,7 @@ p.minimize(
 The model is solved using the HiGHS solver with a two-minute time limit. The `solve_flow` function encapsulates the full formulation and accepts optional parameters to disable a site or block additional suppliers:
 
 ```python
-p.solve("highs", time_limit_sec=120)
+problem.solve("highs", time_limit_sec=120)
 ```
 
 After the baseline solve, two disruption scenarios are evaluated by re-solving with modified constraints: taking the highest-centrality site offline, and downgrading all "watch" suppliers to "avoid". The cost increase across scenarios quantifies the network's resilience to each type of disruption.

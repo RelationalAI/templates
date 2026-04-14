@@ -117,29 +117,29 @@ model.select(
 
 Site.x_inventory = Property(f"{Site} has inventory allocation {Float:x}")
 
-p = Problem(model, Float)
-p.solve_for(Site.x_inventory, lower=0, name=["alloc", Site.name])
+problem = Problem(model, Float)
+problem.solve_for(Site.x_inventory, lower=0, name=["alloc", Site.name])
 
 TOTAL_BUDGET = 2000  # total units to allocate
 
 # Constraint: total allocation within budget
-p.satisfy(model.require(sum(Site.x_inventory) <= TOTAL_BUDGET))
+problem.satisfy(model.require(sum(Site.x_inventory) <= TOTAL_BUDGET))
 
 # Constraint: demand satisfaction at each site
 DemandRef = Demand.ref()
 site_alloc = sum(Site.x_inventory).where(Site == DemandRef.site).per(DemandRef)
-p.satisfy(model.require(site_alloc >= DemandRef.quantity))
+problem.satisfy(model.require(site_alloc >= DemandRef.quantity))
 
 # Constraint: critical hubs get minimum allocation proportional to centrality
 # Sites with higher centrality are more important to the network and should
 # carry proportionally more inventory.
 MIN_CENTRALITY_FACTOR = 200
-p.satisfy(model.require(
+problem.satisfy(model.require(
     Site.x_inventory >= Site.centrality * MIN_CENTRALITY_FACTOR
 ).where(Site.type("WAREHOUSE")))
 
 # Objective: minimize total holding cost
-p.minimize(sum(Site.x_inventory * Site.holding_cost))
+problem.minimize(sum(Site.x_inventory * Site.holding_cost))
 
 # --------------------------------------------------
 # Solve
@@ -149,9 +149,9 @@ print("\n" + "=" * 50)
 print("Stage 2: Inventory Allocation")
 print("=" * 50)
 
-p.display()
-p.solve("highs", time_limit_sec=60)
-si = p.solve_info()
+problem.display()
+problem.solve("highs", time_limit_sec=60)
+si = problem.solve_info()
 si.display()
 
 print(f"\nStatus: {si.termination_status}")

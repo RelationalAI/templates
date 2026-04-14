@@ -53,6 +53,7 @@ The result is a Pareto frontier that reveals exactly how much overtime cost each
 
 ### Tools
 - Python >= 3.10
+- RelationalAI Python SDK (`relationalai`) >= 1.0.13
 
 ## Quickstart
 
@@ -196,20 +197,20 @@ Shift.patient_demand = Property(f"{Shift} has {Integer:patient_demand}")
 
 The `solve_staffing` helper encapsulates the full formulation. It registers four variable types and applies all constraints, then switches between objectives and an optional epsilon bound on unmet demand.
 
-The original single-objective template bundled overtime cost and unmet demand into one weighted penalty sum (`p.minimize(overtime_cost + PENALTY * sum(Shift.x_unmet_demand))`). The bi-objective version splits them: the primary objective minimizes overtime cost, while unmet demand is bounded by an epsilon constraint. This eliminates the arbitrary penalty weight and reveals the true tradeoff.
+The original single-objective template bundled overtime cost and unmet demand into one weighted penalty sum (`problem.minimize(overtime_cost + PENALTY * sum(Shift.x_unmet_demand))`). The bi-objective version splits them: the primary objective minimizes overtime cost, while unmet demand is bounded by an epsilon constraint. This eliminates the arbitrary penalty weight and reveals the true tradeoff.
 
 ```python
 def solve_staffing(objective="min_overtime", eps_unmet=None):
-    p = Problem(model, Float)
+    problem = Problem(model, Float)
 
-    p.solve_for(Assignment.x_assigned, type="bin", populate=False,
+    problem.solve_for(Assignment.x_assigned, type="bin", populate=False,
                 name=["assigned", Assignment.availability.nurse.name,
                       Assignment.availability.shift.name])
-    p.solve_for(Nurse.x_overtime_hours, type="cont", populate=False,
+    problem.solve_for(Nurse.x_overtime_hours, type="cont", populate=False,
                 name=["ot", Nurse.name], lower=0)
-    p.solve_for(Shift.x_patients_served, type="cont", populate=False,
+    problem.solve_for(Shift.x_patients_served, type="cont", populate=False,
                 name=["pt", Shift.name], lower=0)
-    p.solve_for(Shift.x_unmet_demand, type="cont", populate=False,
+    problem.solve_for(Shift.x_unmet_demand, type="cont", populate=False,
                 name=["ud", Shift.name], lower=0)
 ```
 
@@ -219,20 +220,20 @@ Constraints enforce availability, minimum staffing, skill coverage, overtime tra
     # Each nurse works 1-2 shifts
     nurse_shift_count = sum(AssignmentRef.x_assigned).where(
         AssignmentRef.availability.nurse == Nurse).per(Nurse)
-    p.satisfy(model.require(nurse_shift_count >= 1))
-    p.satisfy(model.require(nurse_shift_count <= 2))
+    problem.satisfy(model.require(nurse_shift_count >= 1))
+    problem.satisfy(model.require(nurse_shift_count <= 2))
 
     # Minimum nurses per shift with skill requirements
     shift_staff_count = sum(AssignmentRef.x_assigned).where(
         AssignmentRef.availability.shift == Shift).per(Shift)
-    p.satisfy(model.require(shift_staff_count >= Shift.min_nurses))
+    problem.satisfy(model.require(shift_staff_count >= Shift.min_nurses))
 ```
 
 When `eps_unmet` is provided, a constraint caps total unmet demand across all shifts.
 
 ```python
     if eps_unmet is not None:
-        p.satisfy(model.require(sum(Shift.x_unmet_demand) <= eps_unmet))
+        problem.satisfy(model.require(sum(Shift.x_unmet_demand) <= eps_unmet))
 ```
 
 The objective switches between minimizing overtime cost (primary) and minimizing unmet demand (used for anchor solve 2).
@@ -241,11 +242,11 @@ The objective switches between minimizing overtime cost (primary) and minimizing
     overtime_cost = sum(Nurse.x_overtime_hours * Nurse.hourly_cost * Nurse.overtime_multiplier)
 
     if objective == "min_overtime":
-        p.minimize(overtime_cost)
+        problem.minimize(overtime_cost)
     elif objective == "min_unmet":
-        p.minimize(sum(Shift.x_unmet_demand))
+        problem.minimize(sum(Shift.x_unmet_demand))
 
-    p.solve("highs", time_limit_sec=60)
+    problem.solve("highs", time_limit_sec=60)
 ```
 
 ### Solve anchor points and run the epsilon sweep

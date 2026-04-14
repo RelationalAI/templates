@@ -152,7 +152,7 @@ Each food gets a continuous decision variable representing the amount to include
 
 ```python
 Food.x_amount = model.Property(f"{Food} has {Float:amount}")
-p.solve_for(Food.x_amount, name=Food.name, lower=0, populate=False)
+problem.solve_for(Food.x_amount, name=Food.name, lower=0, populate=False)
 ```
 
 ### 3. Constraints and objective
@@ -162,11 +162,11 @@ Nutritional constraints ensure total intake from all foods falls within bounds f
 ```python
 nutrient_qty = Float.ref()
 nutrient_total = sum(nutrient_qty * Food.x_amount).where(Food.contains(Nutrient, nutrient_qty)).per(Nutrient)
-p.satisfy(model.require(
+problem.satisfy(model.require(
     nutrient_total >= Nutrient.min * scenario_value,
     nutrient_total <= Nutrient.max * scenario_value
 ))
-p.minimize(sum(Food.cost * Food.x_amount))
+problem.minimize(sum(Food.cost * Food.x_amount))
 ```
 
 ### 4. Scenario analysis

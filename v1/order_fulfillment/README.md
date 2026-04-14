@@ -146,9 +146,9 @@ ShippingCost.cost_per_unit = Property(f"{ShippingCost} has {Float:cost_per_unit}
 Two types of variables: continuous assignment quantities for how much each center ships per order, and binary usage flags for whether each center is active.
 
 ```python
-p.solve_for(Assignment.x_qty,
+problem.solve_for(Assignment.x_qty,
     name=["qty", Assignment.shipping.fc.name, Assignment.shipping.order.customer], lower=0)
-p.solve_for(FCUsage.x_used, type="bin", name=["fc_used", FCUsage.fc.name])
+problem.solve_for(FCUsage.x_used, type="bin", name=["fc_used", FCUsage.fc.name])
 ```
 
 ### 3. Add constraints
@@ -158,17 +158,17 @@ Capacity limits at each center, linkage between usage flags and assignment quant
 ```python
 # FC capacity
 fc_total_qty = sum(AssignmentRef.x_qty).where(AssignmentRef.shipping.fc == FC).per(FC)
-p.satisfy(model.require(fc_total_qty <= FC.capacity))
+problem.satisfy(model.require(fc_total_qty <= FC.capacity))
 
 # Link usage flag to assignments
 fc_total_qty_for_usage = sum(AssignmentRef.x_qty).where(
     AssignmentRef.shipping.fc == FCUsage.fc).per(FCUsage)
-p.satisfy(model.require(fc_total_qty_for_usage <= FCUsage.fc.capacity * FCUsage.x_used))
+problem.satisfy(model.require(fc_total_qty_for_usage <= FCUsage.fc.capacity * FCUsage.x_used))
 
 # Every order fully fulfilled
 order_fulfilled = sum(AssignmentRef.x_qty).where(
     AssignmentRef.shipping.order == Order).per(Order)
-p.satisfy(model.require(order_fulfilled == Order.quantity))
+problem.satisfy(model.require(order_fulfilled == Order.quantity))
 ```
 
 ### 4. Minimize total cost
@@ -178,7 +178,7 @@ The objective combines variable shipping costs with fixed facility activation co
 ```python
 shipping_cost = sum(Assignment.x_qty * Assignment.shipping.cost_per_unit)
 fixed_cost = sum(FCUsage.x_used * FCUsage.fc.fixed_cost)
-p.minimize(shipping_cost + fixed_cost)
+problem.minimize(shipping_cost + fixed_cost)
 ```
 
 ## Customize this template

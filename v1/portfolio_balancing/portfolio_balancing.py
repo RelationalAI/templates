@@ -252,20 +252,16 @@ budget_map = {"budget_500": 500.0, "budget_1000": 1000.0, "budget_2000": 2000.0}
 
 
 def _extract_allocations(var_df, scenario_name):
-    """Extract {stock_index: quantity} for a scenario from variable_values df."""
+    """Extract {stock_index: quantity} for a scenario from a structured allocation df."""
     allocs = {}
-    prefix = f"qty_{scenario_name}_"
-    for _, row in var_df.iterrows():
-        name = str(row.iloc[0])
-        val = float(row.iloc[1])
-        if name.startswith(prefix) and val > 1e-6:
-            stock_idx = int(name.replace(prefix, ""))
-            allocs[stock_idx] = val
+    rows = var_df[(var_df["scenario"] == scenario_name) & (var_df["quantity"] > 1e-6)]
+    for _, row in rows.iterrows():
+        allocs[int(row["stock_index"])] = row["quantity"]
     return allocs
 
 
 def evaluate_return(var_df, scenario_name):
-    """Evaluate portfolio return for a given scenario from variable_values df."""
+    """Evaluate portfolio return for a given scenario from a structured allocation df."""
     allocs = _extract_allocations(var_df, scenario_name)
     total = 0.0
     for idx, qty in allocs.items():
@@ -274,7 +270,7 @@ def evaluate_return(var_df, scenario_name):
 
 
 def evaluate_risk(var_df, scenario_name):
-    """Evaluate portfolio risk (variance) for a given scenario from variable_values df.
+    """Evaluate portfolio risk (variance) for a given scenario from a structured allocation df.
     The solver objective aggregates risk across ALL scenarios; this computes the
     per-scenario quadratic form x' * Cov * x."""
     allocs = _extract_allocations(var_df, scenario_name)
@@ -288,10 +284,10 @@ def evaluate_risk(var_df, scenario_name):
     return risk
 
 
-def _add_compliance_constraints(p):
+def _add_compliance_constraints(problem):
     """Add position limit and sector limit constraints to a Problem."""
     # Position limit: each stock allocation <= POSITION_LIMIT * budget
-    p.satisfy(model.where(
+    problem.satisfy(model.where(
         Stock.x_quantity(Scenario, x_qty),
     ).require(x_qty <= POSITION_LIMIT * Scenario.budget))
 
@@ -300,7 +296,7 @@ def _add_compliance_constraints(p):
         Stock.x_quantity(Scenario, x_qty),
         Stock.sector == s_sector_ref.sector,
     ).per(Scenario, s_sector_ref.sector)
-    p.satisfy(model.where(
+    problem.satisfy(model.where(
         Stock.x_quantity(Scenario, x_qty),
     ).require(sector_alloc <= SECTOR_LIMIT * Scenario.budget))
 
@@ -311,57 +307,64 @@ def solve_epsilon(eps_rate=None):
     eps_rate: if set, constrains return >= eps_rate * Scenario.budget per scenario.
               This scales the epsilon target with budget so all scenarios are
               handled in a single solve.
-    Returns (solve_info, variable_values_df) or None if infeasible.
+    Returns (solve_info, allocation_df) or None if infeasible.
     """
-    p = Problem(model, Float)
+    problem = Problem(model, Float)
 
-    p.solve_for(
+    quantity_var = problem.solve_for(
         Stock.x_quantity(Scenario, x_qty),
         name=["qty", Scenario.name, Stock.index],
         populate=False,
     )
 
     # Non-negative
-    p.satisfy(model.where(
+    problem.satisfy(model.where(
         Stock.x_quantity(Scenario, x_qty),
     ).require(x_qty >= 0))
 
     # Budget per scenario
-    p.satisfy(model.where(
+    problem.satisfy(model.where(
         Stock.x_quantity(Scenario, x_qty),
     ).require(sum(x_qty).per(Scenario) <= Scenario.budget))
 
     # Fully invested per scenario
-    p.satisfy(model.where(
+    problem.satisfy(model.where(
         Stock.x_quantity(Scenario, x_qty),
     ).require(sum(x_qty).per(Scenario) >= Scenario.budget))
 
     # Compliance constraints (position + sector limits)
-    _add_compliance_constraints(p)
+    _add_compliance_constraints(problem)
 
     # EPSILON CONSTRAINT: return rate >= target rate (scaled by budget)
     if eps_rate is not None:
-        p.satisfy(model.where(
+        problem.satisfy(model.where(
             Stock.x_quantity(Scenario, x_qty),
         ).require(
             sum(Stock.returns * x_qty).per(Scenario) >= eps_rate * Scenario.budget
         ))
 
     # Primary objective: minimize risk (quadratic via covariance matrix)
-    p.minimize(
+    problem.minimize(
         sum(covar_value * x_qty * x_qty_paired)
         .where(Stock.covar(PairedStock, covar_value),
                Stock.x_quantity(Scenario, x_qty),
                PairedStock.x_quantity(Scenario, x_qty_paired))
     )
 
-    p.solve("ipopt", time_limit_sec=60)
-    si = p.solve_info()
+    problem.solve("ipopt", time_limit_sec=60)
+    si = problem.solve_info()
 
     if si.termination_status not in ("OPTIMAL", "LOCALLY_SOLVED"):
         return None
 
-    return si, p.variable_values().to_df()
+    value_ref = Float.ref()
+    var_df = model.select(
+        quantity_var.scenario.name.alias("scenario"),
+        quantity_var.stock.index.alias("stock_index"),
+        value_ref.alias("quantity"),
+    ).where(quantity_var.values(0, value_ref)).to_df()
+
+    return si, var_df
 
 
 # --------------------------------------------------
@@ -505,7 +508,7 @@ if __name__ == "__main__":
     print("-" * 50)
     # One solve covers all scenarios — maximize aggregate return, then read per-scenario
     p2 = Problem(model, Float)
-    p2.solve_for(
+    quantity_var2 = p2.solve_for(
         Stock.x_quantity(Scenario, x_qty),
         name=["qty", Scenario.name, Stock.index],
         populate=False,
@@ -530,7 +533,12 @@ if __name__ == "__main__":
     si2 = p2.solve_info()
     if si2.termination_status not in ("OPTIMAL", "LOCALLY_SOLVED"):
         raise SystemExit("Anchor solve 2 (max return) is infeasible — check data and constraints.")
-    df2 = p2.variable_values().to_df()
+    value_ref = Float.ref()
+    df2 = model.select(
+        quantity_var2.scenario.name.alias("scenario"),
+        quantity_var2.stock.index.alias("stock_index"),
+        value_ref.alias("quantity"),
+    ).where(quantity_var2.values(0, value_ref)).to_df()
     anchor2_returns = {}
     for sn in scenario_names:
         ret = evaluate_return(df2, sn)

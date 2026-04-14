@@ -65,7 +65,7 @@ This is not a single-reasoner problem. Approving a data center at a structurally
 - **Accretive ontology enrichment** -- each stage writes derived properties that downstream stages consume as first-class ontology attributes. Stage 1's `predicted_load` flows into both Stage 3 rules and Stage 4 optimization constraints, ensuring consistent capacity signals across the pipeline.
 - **Multi-scenario / multi-objective via Scenario Concept** -- `InvestmentLevel` is a Scenario Concept: 5 budget entities ($200M-$600M) that parameterize the optimization. One MIP solve produces the entire Pareto frontier simultaneously (not a re-solve loop). Decision variables `x_approve` and `x_upgrade` are indexed per InvestmentLevel, and results are queryable ontology properties -- not parsed from solver output.
 - **Ontology as shared state** -- each stage writes derived properties/relationships that downstream stages read; no Python dicts or DataFrames carry state between stages
-- **Separate graph model** -- Graph and Prescriptive reasoners use independent `Model` instances to avoid SDK recursion, with results transferred via `model.data()` + `filter_by()`
+- **Graph directly on domain concept** -- the Graph reasoner uses `Substation` as its node concept, so centrality and community results are stored as native Substation properties with no mirror concept or enrichment rules
 - **Marginal analysis from ontology queries** -- the per-level DC approvals, upgrade selections, and net value are all queried from the ontology via `model.select(...).where(x_approve > 0.5)` per InvestmentLevel, enabling marginal return analysis across the frontier
 
 ## Who this is for
@@ -111,6 +111,7 @@ This is not a single-reasoner problem. Approving a data center at a structurally
 
 ### Tools
 - Python >= 3.10
+- RelationalAI Python SDK (`relationalai`) >= 1.0.13
 
 ## Quickstart
 
@@ -265,28 +266,21 @@ model.define(
 
 ### Stage 2: Graph -- Grid Topology & Structural Vulnerability
 
-Uses a **separate `graph_model`** (to avoid SDK 1.0.12 recursion with prescriptive) to build a substation-transmission line graph across the ERCOT grid. Computes:
+The Graph reasoner uses `Substation` directly as its node concept — no mirror concept needed. Edges connect substations that share an active transmission line. Centrality and community results are stored as native Substation properties. Computes:
 - Weakly connected components (grid connectivity -- confirms all 12 substations are reachable)
 - Louvain community detection (3 ERCOT regions: North Texas, West Texas, Gulf Coast)
-- Betweenness centrality (DFW=31.67, Houston=15.83, San Antonio=4.33 are the top structural bottlenecks)
+- Betweenness, degree, and eigenvector centrality combined into a critical rank
 - 7 of 10 DC requests target structurally critical substations -- a key input to the rules engine
-
-Results are loaded back into the main model via `model.data()` + `filter_by()`.
-
-The graph is constructed from substations and active transmission lines, then analyzed with Louvain and betweenness centrality:
 
 ```python
 grid_graph = Graph(
-    graph_model, directed=False, weighted=False, node_concept=GSub, aggregator="sum"
+    model, directed=False, weighted=False, node_concept=Substation, aggregator="sum"
 )
 
-gline = GLine.ref()
-gs1, gs2 = GSub.ref(), GSub.ref()
-graph_model.where(
-    gline.from_substation(gs1),
-    gline.to_substation(gs2),
-    gline.is_active == True,
-).define(grid_graph.Edge.new(src=gs1, dst=gs2))
+line_ref = TransmissionLine.ref()
+model.define(
+    grid_graph.Edge.new(src=line_ref.from_substation, dst=line_ref.to_substation)
+).where(line_ref.is_active == True)
 
 community = grid_graph.louvain()
 betweenness = grid_graph.betweenness_centrality()
@@ -329,11 +323,11 @@ Uses the **InvestmentLevel Scenario Concept** pattern:
 The `Problem` setup defines the InvestmentLevel Scenario Concept with binary decision variables, and the capacity constraint uses `predicted_load` from Stage 1:
 
 ```python
-p = Problem(model, Float)
+problem = Problem(model, Float)
 
-p.solve_for(DataCenterRequest.x_approve(InvestmentLevel, x_a), type="bin",
+problem.solve_for(DataCenterRequest.x_approve(InvestmentLevel, x_a), type="bin",
             name=["approve", InvestmentLevel.name, DataCenterRequest.id])
-p.solve_for(SubstationUpgrade.x_upgrade(InvestmentLevel, x_u), type="bin",
+problem.solve_for(SubstationUpgrade.x_upgrade(InvestmentLevel, x_u), type="bin",
             name=["upgrade", InvestmentLevel.name, SubstationUpgrade.id])
 
 # C1: Substation capacity per investment level
@@ -342,7 +336,7 @@ x_a_c = Float.ref("xa_c")
 x_u_c = Float.ref("xu_c")
 effective_load = Substation.predicted_load | Substation.current_load_mw
 
-p.satisfy(model.where(
+problem.satisfy(model.where(
     DataCenterRequest.x_approve(InvestmentLevel, x_a_c),
     SubstationUpgrade.x_upgrade(InvestmentLevel, x_u_c),
     DataCenterRequest.substation(Substation),
@@ -370,8 +364,8 @@ p.satisfy(model.where(
 <details>
 <summary>Stage 2 graph queries work but Stage 4 fails with <code>UnsupportedRecursionError</code></summary>
 
-- The Graph reasoner's recursive definitions conflict with prescriptive `variable_values()` in SDK 1.0.12.
-- The template uses a separate `graph_model` for Stage 2 to avoid this.
+- SDK versions before 1.0.13 could hit this when recursive graph rules and
+  prescriptive result queries shared one model. Upgrade to >= 1.0.13.
 
 </details>
 

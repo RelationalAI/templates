@@ -147,8 +147,8 @@ Each table gets two decision variables -- actual row count and deviation from ta
 Table.x_actual_rows = Property(f"{Table} has actual {Float:actual_rows}")
 Table.x_deviation = Property(f"{Table} has {Float:deviation}")
 
-p.solve_for(Table.x_actual_rows, name=["n", Table.table_name], lower=Table.min_rows, upper=Table.max_rows)
-p.solve_for(Table.x_deviation, name=["dev", Table.table_name], lower=0)
+problem.solve_for(Table.x_actual_rows, name=["n", Table.table_name], lower=Table.min_rows, upper=Table.max_rows)
+problem.solve_for(Table.x_deviation, name=["dev", Table.table_name], lower=0)
 ```
 
 ### 3. Encode referential integrity constraints
@@ -157,7 +157,7 @@ Foreign key relationships impose bounds linking child and parent row counts. For
 
 ```python
 ParentTable = Table.ref()
-p.satisfy(model.require(
+problem.satisfy(model.require(
     Table.x_actual_rows <= ParentTable.x_actual_rows * fk_info['max']
 ).where(
     Table.table_name == child_name,
@@ -171,7 +171,7 @@ The objective minimizes deviation from targets, weighted by priority so that cri
 
 ```python
 total_deviation = rai_sum(Table.x_deviation * (11 - Table.priority))
-p.minimize(total_deviation)
+problem.minimize(total_deviation)
 ```
 
 ### 5. Generate test records

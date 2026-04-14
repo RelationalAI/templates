@@ -55,6 +55,7 @@ Prescriptive reasoning makes this practical because the solver simultaneously ba
 
 ### Tools
 - Python >= 3.10
+- RelationalAI Python SDK (`relationalai`) >= 1.0.13
 
 ## Quickstart
 
@@ -189,7 +190,7 @@ ProdCapacity.x_production = Property(
     f"{ProdCapacity} in week {Integer:t} produces {Float:production}"
 )
 production_ref = Float.ref()
-p.solve_for(
+problem.solve_for(
     ProdCapacity.x_production(week_ref, production_ref),
     type="cont",
     lower=0,
@@ -206,7 +207,7 @@ This creates one continuous variable per (site, SKU, week) combination.
 The core multi-period pattern ties adjacent weeks together. Inventory at the end of week `t` must equal inventory at the end of week `t-1` plus production in week `t` minus demand in week `t`:
 
 ```python
-p.satisfy(model.where(
+problem.satisfy(model.where(
     ProdCapacity.x_inventory(week_ref, x_inv_curr),
     ProdCapacity.x_inventory(week_ref - 1, x_inv_prev),
     ProdCapacity.x_production(week_ref, production_ref),
@@ -230,7 +231,7 @@ prod_cost = ProdCapacity.production_cost * sum(production_ref).per(ProdCapacity)
 hold_cost = ProdCapacity.holding_cost_per_week * sum(inventory_ref).per(ProdCapacity).where(...)
 unmet_cost = unmet_penalty * DemandOrder.x_unmet
 
-p.minimize(sum(model.union(prod_cost, hold_cost, unmet_cost)))
+problem.minimize(sum(model.union(prod_cost, hold_cost, unmet_cost)))
 ```
 
 ### Epoch timestamp alternative

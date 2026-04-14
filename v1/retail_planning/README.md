@@ -59,7 +59,7 @@ Assumes familiarity with Python, basic ML concepts (classification, regression, 
 ### Tools
 
 - Python >= 3.10
-- RelationalAI SDK (`relationalai>=1.0`)
+- RelationalAI Python SDK (`relationalai`) >= 1.0.13
 
 ## Quickstart
 
@@ -249,11 +249,11 @@ Articles bought primarily by high-churn-risk customers get reduced demand, while
 A mixed-integer program selects one discount level per article per week. Constraints enforce a price ladder (discounts only increase) and inventory limits. The demand bound uses GNN-predicted demand instead of static estimates:
 
 ```python
-p.satisfy(model.where(...).require(
+problem.satisfy(model.where(...).require(
     sales_ref <= OptArticle.adjusted_demand
     * Discount_ref.demand_lift * Week_ref.demand_multiplier * selection_ref
 ))
-p.maximize(revenue + salvage)
+problem.maximize(revenue + salvage)
 ```
 
 ### 4. Demand/inventory planning (minimize cost)

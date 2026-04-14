@@ -145,7 +145,7 @@ Connection.loss_rate = Property(f"{Connection} has {Float:loss_rate}")
 Each connection gets a continuous flow variable bounded between zero and its maximum flow:
 
 ```python
-p.solve_for(
+problem.solve_for(
     Connection.x_flow,
     name=["flow", Connection.source.name, Connection.user.name],
     lower=0,
@@ -159,12 +159,12 @@ Source capacity limits total outflow. Demand constraints use nonlinear losses --
 
 ```python
 outflow = sum(ConnectionRef.x_flow).where(ConnectionRef.source == Source).per(Source)
-p.satisfy(model.require(outflow <= Source.capacity))
+problem.satisfy(model.require(outflow <= Source.capacity))
 
 effective_inflow = sum(
     ConnectionRef.x_flow * (1 - ConnectionRef.loss_rate * ConnectionRef.x_flow / ConnectionRef.max_flow)
 ).where(ConnectionRef.user == User).per(User)
-p.satisfy(model.require(effective_inflow >= User.demand))
+problem.satisfy(model.require(effective_inflow >= User.demand))
 ```
 
 This quadratic constraint makes the problem nonlinear, requiring the Ipopt solver.
@@ -175,7 +175,7 @@ The objective minimizes total extraction cost across all active flows:
 
 ```python
 total_cost = sum(Connection.x_flow * Connection.source.cost_per_unit)
-p.minimize(total_cost)
+problem.minimize(total_cost)
 ```
 
 ## Customize this template

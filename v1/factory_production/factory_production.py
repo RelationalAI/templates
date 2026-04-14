@@ -79,10 +79,10 @@ for factory_name in SCENARIO_VALUES:
     # Restrict to products of this factory
     this_product = Product.factory.name(factory_name)
 
-    p = Problem(model, Float)
+    problem = Problem(model, Float)
 
     # Variable: production quantity per product, bounded by demand
-    p.solve_for(
+    quantity_var = problem.solve_for(
         Product.x_quantity,
         lower=0,
         upper=Product.demand,
@@ -93,16 +93,16 @@ for factory_name in SCENARIO_VALUES:
 
     # Objective: maximize profit = sum(quantity * profit_per_unit)
     profit = sum(Product.profit * Product.x_quantity).where(this_product)
-    p.maximize(profit)
+    problem.maximize(profit)
 
     # Constraint: total resource usage <= factory availability
-    p.satisfy(model.require(
+    problem.satisfy(model.require(
         sum(Product.x_quantity / Product.rate) <= Factory.avail
     ).where(this_product, Factory.name(factory_name)))
 
-    p.display()
-    p.solve("highs", time_limit_sec=60)
-    si = p.solve_info()
+    problem.display()
+    problem.solve("highs", time_limit_sec=60)
+    si = problem.solve_info()
     si.display()
 
     scenario_results.append(
@@ -117,9 +117,12 @@ for factory_name in SCENARIO_VALUES:
         continue
     print(f"  Status: {si.termination_status}, Profit: ${si.objective_value:.2f}")
 
-    # Extract solution via variable_values() — populate=False avoids overwriting between scenarios
-    var_df = p.variable_values().to_df()
-    produced = var_df[var_df["value"] > 0.001]
+    # Extract solution via Variable.values() — populate=False avoids overwriting between scenarios.
+    value_ref = Float.ref()
+    produced = model.select(
+        quantity_var.product.name.alias("product"),
+        value_ref.alias("quantity"),
+    ).where(quantity_var.values(0, value_ref), value_ref > 0.001).to_df()
     print(f"  Production plan:\n{produced.to_string(index=False)}")
 
 # Summary

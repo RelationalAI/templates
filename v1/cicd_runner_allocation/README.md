@@ -52,6 +52,7 @@ The template also demonstrates **scenario analysis** by sweeping concurrency mul
 
 ### Tools
 - Python >= 3.10
+- RelationalAI Python SDK (`relationalai`) >= 1.0.13
 
 ## Quickstart
 
@@ -204,7 +205,7 @@ model.define(
 Each assignment is a binary variable -- assign this workflow to this runner or not:
 
 ```python
-p.solve_for(
+problem.solve_for(
     Assignment.x_assigned,
     type="bin",
     name=["assign", Assignment.workflow.name, Assignment.runner.name],
@@ -214,7 +215,7 @@ p.solve_for(
 Two constraints enforce feasibility. First, each workflow must be assigned to exactly one runner:
 
 ```python
-p.satisfy(model.require(
+problem.satisfy(model.require(
     sum(AssignRef.x_assigned)
     .where(AssignRef.workflow == Workflow)
     .per(Workflow) == 1
@@ -224,7 +225,7 @@ p.satisfy(model.require(
 Second, the number of workflows assigned to each runner cannot exceed its concurrency limit, scaled by the scenario multiplier:
 
 ```python
-p.satisfy(model.require(
+problem.satisfy(model.require(
     sum(AssignRef.x_assigned)
     .where(AssignRef.runner == Runner)
     .per(Runner) <= concurrency_multiplier * Runner.max_concurrent
@@ -234,7 +235,7 @@ p.satisfy(model.require(
 The objective minimizes total pipeline cost -- the sum of (runner cost per minute * job duration) across all assignments:
 
 ```python
-p.minimize(
+problem.minimize(
     sum(
         Assignment.x_assigned
         * Assignment.runner.cost_per_minute

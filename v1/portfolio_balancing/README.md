@@ -89,6 +89,7 @@ The two-stage approach is necessary because compliance rules and optimization co
 
 ### Tools
 - Python >= 3.10
+- RelationalAI Python SDK (`relationalai`) >= 1.0.13
 
 ## Quickstart
 
@@ -339,7 +340,7 @@ Position limit and sector limit constraints (matching the Stage 1 compliance thr
 ```python
 def _add_compliance_constraints(p):
     # Position limit: each stock allocation <= POSITION_LIMIT * budget
-    p.satisfy(model.where(
+    problem.satisfy(model.where(
         Stock.x_quantity(Scenario, x_qty),
     ).require(x_qty <= POSITION_LIMIT * Scenario.budget))
 
@@ -348,7 +349,7 @@ def _add_compliance_constraints(p):
         Stock.x_quantity(Scenario, x_qty),
         Stock.sector == s_sector_ref.sector,
     ).per(Scenario, s_sector_ref.sector)
-    p.satisfy(model.where(
+    problem.satisfy(model.where(
         Stock.x_quantity(Scenario, x_qty),
     ).require(sector_alloc <= SECTOR_LIMIT * Scenario.budget))
 ```
@@ -357,26 +358,26 @@ The `solve_epsilon` function builds the full problem -- non-negativity, budget, 
 
 ```python
 def solve_epsilon(eps_rate=None):
-    p = Problem(model, Float)
+    problem = Problem(model, Float)
 
-    p.solve_for(
+    problem.solve_for(
         Stock.x_quantity(Scenario, x_qty),
         name=["qty", Scenario.name, Stock.index],
         populate=False,
     )
 
     # Non-negative
-    p.satisfy(model.where(
+    problem.satisfy(model.where(
         Stock.x_quantity(Scenario, x_qty),
     ).require(x_qty >= 0))
 
     # Budget per scenario
-    p.satisfy(model.where(
+    problem.satisfy(model.where(
         Stock.x_quantity(Scenario, x_qty),
     ).require(sum(x_qty).per(Scenario) <= Scenario.budget))
 
     # Fully invested per scenario
-    p.satisfy(model.where(
+    problem.satisfy(model.where(
         Stock.x_quantity(Scenario, x_qty),
     ).require(sum(x_qty).per(Scenario) >= Scenario.budget))
 
@@ -385,21 +386,21 @@ def solve_epsilon(eps_rate=None):
 
     # EPSILON CONSTRAINT: return rate >= target rate (scaled by budget)
     if eps_rate is not None:
-        p.satisfy(model.where(
+        problem.satisfy(model.where(
             Stock.x_quantity(Scenario, x_qty),
         ).require(
             sum(Stock.returns * x_qty).per(Scenario) >= eps_rate * Scenario.budget
         ))
 
     # Primary objective: minimize risk (quadratic via covariance matrix)
-    p.minimize(
+    problem.minimize(
         sum(covar_value * x_qty * x_qty_paired)
         .where(Stock.covar(PairedStock, covar_value),
                Stock.x_quantity(Scenario, x_qty),
                PairedStock.x_quantity(Scenario, x_qty_paired))
     )
 
-    p.solve("ipopt", time_limit_sec=60)
+    problem.solve("ipopt", time_limit_sec=60)
 ```
 
 #### Solve anchor points and run the epsilon sweep

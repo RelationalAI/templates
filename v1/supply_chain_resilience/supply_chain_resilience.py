@@ -427,18 +427,24 @@ def solve_flow(label, exclude_site_id=None, block_business_ids=None):
     if block_business_ids is None:
         block_business_ids = set()
 
-    p = Problem(model, Float)
+    problem = Problem(model, Float)
 
     # Decision variable: flow on each operation.
-    p.solve_for(
+    flow_var = problem.solve_for(
         Operation.x_flow,
         name=["x_flow", Operation.id],
         lower=0,
         upper=Operation.capacity_per_day,
+        populate=False,
     )
 
     # Slack variable: unmet demand per demand order.
-    p.solve_for(Demand.x_unmet, name=["x_unmet", Demand.id], lower=0, populate=False)
+    unmet_var = problem.solve_for(
+        Demand.x_unmet,
+        name=["x_unmet", Demand.id],
+        lower=0,
+        populate=False,
+    )
 
     # Constraint: demand satisfaction.
     # For each demand, inbound flow at the customer's site for the demanded
@@ -446,7 +452,7 @@ def solve_flow(label, exclude_site_id=None, block_business_ids=None):
     D = Demand.ref()
     Op = Operation.ref()
     B = Business.ref()
-    p.satisfy(
+    problem.satisfy(
         model.require(
             sum(Op.x_flow).per(D) + D.x_unmet >= D.quantity
         ).where(
@@ -463,7 +469,7 @@ def solve_flow(label, exclude_site_id=None, block_business_ids=None):
     for biz_id in sorted(block_business_ids):
         biz_block = Business.ref()
         op_block = Operation.ref()
-        p.satisfy(
+        problem.satisfy(
             model.require(op_block.x_flow == 0).where(
                 op_block.source_business(biz_block),
                 biz_block.id == biz_id,
@@ -475,7 +481,7 @@ def solve_flow(label, exclude_site_id=None, block_business_ids=None):
     if exclude_site_id:
         excl_site = Site.ref()
         op_excl = Operation.ref()
-        p.satisfy(
+        problem.satisfy(
             model.require(op_excl.x_flow == 0).where(
                 op_excl.source_site(excl_site),
                 excl_site.id == exclude_site_id,
@@ -509,12 +515,12 @@ def solve_flow(label, exclude_site_id=None, block_business_ids=None):
 
     unmet_cost = UNMET_PENALTY * sum(Demand.x_unmet)
 
-    p.minimize(
+    problem.minimize(
         sum(model.union(transport_cost, risk_cost, centrality_cost, unmet_cost))
     )
 
-    p.solve("highs", time_limit_sec=120)
-    si = p.solve_info()
+    problem.solve("highs", time_limit_sec=120)
+    si = problem.solve_info()
     si.display()
 
     status = si.termination_status
@@ -522,16 +528,26 @@ def solve_flow(label, exclude_site_id=None, block_business_ids=None):
 
     # Extract active flows.
     if obj is not None:
-        var_df = p.variable_values().to_df()
-        flow_df = var_df[
-            var_df["name"].str.startswith("x_flow") & (var_df["value"] > 0.001)
-        ]
-        unmet_df = var_df[
-            var_df["name"].str.startswith("x_unmet") & (var_df["value"] > 0.001)
-        ]
+        value_ref = Float.ref()
+        flow_df = (
+            model.select(
+                flow_var.operation.id.alias("operation_id"),
+                value_ref.alias("flow"),
+            )
+            .where(flow_var.values(0, value_ref), value_ref > 0.001)
+            .to_df()
+        )
+        unmet_df = (
+            model.select(
+                unmet_var.demand.id.alias("demand_id"),
+                value_ref.alias("unmet"),
+            )
+            .where(unmet_var.values(0, value_ref), value_ref > 0.001)
+            .to_df()
+        )
         n_active = len(flow_df)
         n_unmet = len(unmet_df)
-        total_unmet = unmet_df["value"].sum() if len(unmet_df) > 0 else 0
+        total_unmet = unmet_df["unmet"].sum() if len(unmet_df) > 0 else 0.0
     else:
         n_active, n_unmet, total_unmet = 0, 0, 0
 

@@ -147,7 +147,7 @@ Transfer = Concept("Transfer", identify_by={"lane": Lane})
 Transfer.x_quantity = Property(f"{Transfer} has {Float:quantity}")
 model.define(Transfer.new(lane=Lane))
 
-p.solve_for(Transfer.x_quantity,
+problem.solve_for(Transfer.x_quantity,
     name=["qty", Transfer.lane.source.name, Transfer.lane.dest.name], lower=0)
 ```
 
@@ -157,21 +157,21 @@ Four constraint families ensure feasibility: lane capacity limits, source invent
 
 ```python
 # Lane capacity
-p.satisfy(model.require(Transfer.x_quantity <= Transfer.lane.capacity))
+problem.satisfy(model.require(Transfer.x_quantity <= Transfer.lane.capacity))
 
 # Source inventory
 outbound = sum(TransferRef.x_quantity).where(TransferRef.lane.source == Site).per(Site)
-p.satisfy(model.require(outbound <= Site.inventory))
+problem.satisfy(model.require(outbound <= Site.inventory))
 
 # Flow conservation at transit sites (inflow == outflow)
 inflow = sum(InRef.x_quantity).where(InRef.lane.dest == TransitSite).per(TransitSite)
 outflow = sum(OutRef.x_quantity).where(OutRef.lane.source == TransitSite).per(TransitSite)
-p.satisfy(model.require(inflow == outflow).where(TransitSite.type("TRANSIT")))
+problem.satisfy(model.require(inflow == outflow).where(TransitSite.type("TRANSIT")))
 
 # Demand satisfaction (inbound transfers + local inventory >= demand)
 inbound = sum(TransferRef.x_quantity).where(TransferRef.lane.dest == DemandRef.site).per(DemandRef)
 local_inv = sum(Site.inventory).where(Site == DemandRef.site).per(DemandRef)
-p.satisfy(model.require(inbound + local_inv >= DemandRef.quantity))
+problem.satisfy(model.require(inbound + local_inv >= DemandRef.quantity))
 ```
 
 ### 4. Minimize total cost
@@ -180,7 +180,7 @@ The objective sums shipping costs across all active transfers.
 
 ```python
 total_cost = sum(Transfer.x_quantity * Transfer.lane.cost_per_unit)
-p.minimize(total_cost)
+problem.minimize(total_cost)
 ```
 
 ## Customize this template

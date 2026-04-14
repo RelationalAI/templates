@@ -98,7 +98,7 @@ orders_df["due_date"] = pd.to_datetime(orders_df["due_date"])
 #   ].copy()
 #
 #   # Or filter in .where() clauses on constraints
-#   p.satisfy(model.require(
+#   problem.satisfy(model.require(
 #       sum(DemandOrder.x_unmet) <= (1 - min_service_level) * sum(DemandOrder.quantity)
 #   ).where(
 #       DemandOrder.created_at >= start_epoch, DemandOrder.created_at <= end_epoch
@@ -269,38 +269,41 @@ for scenario_value in SCENARIO_VALUES:
     weeks = std.common.range(1, num_weeks + 1)
 
     # Create fresh Problem for each scenario
-    p = Problem(model, Float)
+    problem = Problem(model, Float)
 
     # Variable: production quantity per site x SKU x week
-    p.solve_for(
+    production_var = problem.solve_for(
         ProdCapacity.x_production(week_ref, production_ref),
         type="cont",
         lower=0,
         upper=ProdCapacity.max_production_per_week,
         name=["prod", ProdCapacity.site_id, ProdCapacity.sku_id, week_ref],
         where=[week_ref == weeks],
+        populate=False,
     )
 
     # Variable: inventory level per site x SKU x week (week 0 = initial)
-    p.solve_for(
+    inventory_var = problem.solve_for(
         ProdCapacity.x_inventory(week_ref, inventory_ref),
         type="cont",
         lower=0,
         name=["inv", ProdCapacity.site_id, ProdCapacity.sku_id, week_ref],
         where=[week_ref == std.common.range(0, num_weeks + 1)],
+        populate=False,
     )
 
     # Variable: unmet demand per order
-    p.solve_for(
+    unmet_var = problem.solve_for(
         DemandOrder.x_unmet,
         type="cont",
         lower=0,
         upper=DemandOrder.quantity,
         name=["unmet", DemandOrder.id],
+        populate=False,
     )
 
     # Parameterized constraint: initial condition (inventory at week 0)
-    p.satisfy(
+    problem.satisfy(
         model.where(
             ProdCapacity.x_inventory(0, inventory_ref),
         ).require(inventory_ref == ProdCapacity.initial_inventory)
@@ -308,7 +311,7 @@ for scenario_value in SCENARIO_VALUES:
 
     # Parameterized constraint: flow conservation inv[t] = inv[t-1] + production[t] - demand[t]
     # (depends on num_weeks via WeeklyDemand data and week ranges)
-    p.satisfy(
+    problem.satisfy(
         model.where(
             ProdCapacity.x_inventory(week_ref, x_inv_curr),
             ProdCapacity.x_inventory(week_ref - 1, x_inv_prev),
@@ -321,10 +324,10 @@ for scenario_value in SCENARIO_VALUES:
     )
 
     # Static constraint: demand fulfillment bound
-    p.satisfy(demand_bound)
+    problem.satisfy(demand_bound)
 
     # Static constraint: global service level
-    p.satisfy(service_level_constraint)
+    problem.satisfy(service_level_constraint)
 
     # Safety stock: inventory at end of each active week >= safety_stock_weeks × avg weekly demand
     if safety_stock_weeks > 0:
@@ -337,7 +340,7 @@ for scenario_value in SCENARIO_VALUES:
             .per(ProdCapacity)
             / num_weeks
         )
-        p.satisfy(
+        problem.satisfy(
             model.where(
                 ProdCapacity.x_inventory(week_ref, inventory_ref),
                 week_ref >= 1,
@@ -352,11 +355,11 @@ for scenario_value in SCENARIO_VALUES:
         ProdCapacity
     ).where(ProdCapacity.x_inventory(week_ref, inventory_ref), week_ref >= 1)
     unmet_cost = unmet_penalty * DemandOrder.x_unmet
-    p.minimize(sum(model.union(prod_cost, hold_cost, unmet_cost)))
+    problem.minimize(sum(model.union(prod_cost, hold_cost, unmet_cost)))
 
-    p.display()
-    p.solve("highs", time_limit_sec=60)
-    si = p.solve_info()
+    problem.display()
+    problem.solve("highs", time_limit_sec=60)
+    si = problem.solve_info()
     si.display()
 
     scenario_results.append(
@@ -376,20 +379,33 @@ for scenario_value in SCENARIO_VALUES:
         f"  Demand orders in scope: {len(filtered_orders)} (of {len(orders_df)} total)"
     )
 
-    df = p.variable_values().to_df()
+    value_ref = Float.ref()
+    prod = model.select(
+        production_var.prodcapacity.site_id.alias("site_id"),
+        production_var.prodcapacity.sku_id.alias("sku_id"),
+        production_var.t.alias("week"),
+        value_ref.alias("production"),
+    ).where(production_var.values(0, value_ref), value_ref > 0.01).to_df()
+    inv = model.select(
+        inventory_var.prodcapacity.site_id.alias("site_id"),
+        inventory_var.prodcapacity.sku_id.alias("sku_id"),
+        inventory_var.t.alias("week"),
+        value_ref.alias("inventory"),
+    ).where(inventory_var.values(0, value_ref)).to_df()
+    unmet = model.select(
+        unmet_var.demandorder.id.alias("order_id"),
+        value_ref.alias("unmet"),
+    ).where(unmet_var.values(0, value_ref), value_ref > 0.01).to_df()
 
     print("\n  === Production Plan (non-zero weeks) ===")
-    prod = df[df["name"].str.startswith("prod") & (df["value"] > 0.01)]
     if not prod.empty:
         print(prod.to_string(index=False))
 
     print("\n  === Inventory Levels (selected weeks) ===")
-    inv = df[df["name"].str.startswith("inv")]
     if not inv.empty:
         print(inv.head(20).to_string(index=False))
 
     print("\n  === Unmet Demand ===")
-    unmet = df[df["name"].str.startswith("unmet") & (df["value"] > 0.01)]
     if unmet.empty:
         print("  All demand fulfilled!")
     else:

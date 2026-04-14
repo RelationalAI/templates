@@ -78,41 +78,41 @@ model.define(FCUsage.new(fc=FC))
 
 AssignmentRef = Assignment.ref()
 
-p = Problem(model, Float)
+problem = Problem(model, Float)
 
 # Variable: assignment quantity and FC usage
-p.solve_for(Assignment.x_qty, name=["qty", Assignment.shipping.fc.name, Assignment.shipping.order.customer], lower=0)
-p.solve_for(FCUsage.x_used, type="bin", name=["fc_used", FCUsage.fc.name])
+problem.solve_for(Assignment.x_qty, name=["qty", Assignment.shipping.fc.name, Assignment.shipping.order.customer], lower=0)
+problem.solve_for(FCUsage.x_used, type="bin", name=["fc_used", FCUsage.fc.name])
 
 # Constraint: FC capacity
 fc_total_qty = sum(AssignmentRef.x_qty).where(AssignmentRef.shipping.fc == FC).per(FC)
 capacity_limit = model.require(fc_total_qty <= FC.capacity)
-p.satisfy(capacity_limit)
+problem.satisfy(capacity_limit)
 
 # Constraint: link FC usage to assignments
 fc_total_qty_for_usage = sum(AssignmentRef.x_qty).where(AssignmentRef.shipping.fc == FCUsage.fc).per(FCUsage)
 usage_link = model.require(fc_total_qty_for_usage <= FCUsage.fc.capacity * FCUsage.x_used)
-p.satisfy(usage_link)
+problem.satisfy(usage_link)
 
 # Constraint: each order must be fully fulfilled
 order_fulfilled = sum(AssignmentRef.x_qty).where(AssignmentRef.shipping.order == Order).per(Order)
 fulfill_all = model.require(order_fulfilled == Order.quantity)
-p.satisfy(fulfill_all)
+problem.satisfy(fulfill_all)
 
 # Objective: minimize total cost (shipping + fixed FC costs)
 shipping_cost = sum(Assignment.x_qty * Assignment.shipping.cost_per_unit)
 fixed_cost = sum(FCUsage.x_used * FCUsage.fc.fixed_cost)
 total_cost = shipping_cost + fixed_cost
-p.minimize(total_cost)
+problem.minimize(total_cost)
 
 # --------------------------------------------------
 # Solve and check solution
 # --------------------------------------------------
 
-p.display()
-p.solve("highs", time_limit_sec=60)
-model.require(p.termination_status() == "OPTIMAL")
-si = p.solve_info()
+problem.display()
+problem.solve("highs", time_limit_sec=60)
+model.require(problem.termination_status() == "OPTIMAL")
+si = problem.solve_info()
 si.display()
 
 print(f"Status: {si.termination_status}")
