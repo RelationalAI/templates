@@ -173,6 +173,46 @@ problem.minimize(sum(Food.cost * Food.x_amount))
 
 The template solves three scenarios by scaling nutritional requirements to 80%, 100%, and 120% of their base values, demonstrating how tighter or looser requirements affect total cost.
 
+### 5. Inspect the model schema
+
+`relationalai.semantics.inspect` (available in `relationalai>=1.0.14`) surfaces a typed view of the registered concepts, properties, relationships, and data sources. It is handy for sanity-checking a model before handing it to the solver:
+
+```python
+from relationalai.semantics import inspect
+
+print(inspect.schema(model))
+```
+
+Excerpt of what you see for this model:
+
+```text
+Model: diet
+===========
+
+  Nutrient
+    Identity:
+      name: String
+    Properties:
+      min: Float
+      max: Float
+
+  Food
+    Identity:
+      name: String
+    Properties:
+      cost: Float
+      contains(Nutrient) -> Float
+      x_amount(Scenario) -> Float
+
+  Scenario
+    Identity:
+      scenario_name: String
+    Properties:
+      nutrient_scaling: Float
+```
+
+Notice that the prescriptive decision variable (`Food.x_amount(Scenario) -> Float`) appears alongside the source-data properties — the schema is a unified view of everything the model knows, including variables added by `solve_for()`.
+
 ## Customize this template
 
 - **Add more foods or nutrients**: Extend the CSV files with additional rows and columns. The model automatically picks up new data.

@@ -368,6 +368,29 @@ model.where(
 ).define(MachinePeriod.predicted_fp(FPJoin.failure_probability))
 ```
 
+### Inspect the model schema
+
+Templates that combine multiple reasoners over a rich ontology benefit from a quick schema dump. `relationalai.semantics.inspect` (available in `relationalai>=1.0.14`) returns a typed view of every registered concept, property, and relationship — handy for confirming that decision variables, derived aggregates, and cross-product concepts all registered correctly before running the four-stage pipeline.
+
+After calling `Problem(...)` plus `solve_for` / `satisfy` / `minimize` / `maximize`, the prescriptive reasoner registers `Variable`, `Expression`, `Constraint`, `Objective`, plus per-solve `Variable_<id>` / `Constraint_<id>` / `Objective_<id>` subconcepts on the shared model. These are noise for user-facing introspection, so filter them out by exact name and reasoner-name prefix — an underscore check won't catch them since the names don't start with `_`:
+
+```python
+from relationalai.semantics import inspect
+
+schema = inspect.schema(model)
+reasoner_names = {"Variable", "Expression", "Constraint", "Objective"}
+user_concepts = [
+    c for c in schema.concepts
+    if c.name not in reasoner_names
+    and not any(c.name.startswith(p + "_") for p in reasoner_names)
+]
+print(f"User concepts: {len(user_concepts)}")
+for c in user_concepts:
+    print(f"  {c.name}: {len(c.properties)} properties, {len(c.relationships)} relationships")
+```
+
+Inspect first to see the actual names registered in your model (the Graph reasoner also adds its own, varying by algorithm), then extend the filter list as needed.
+
 ### Stage 0: Querying -- operational intelligence
 
 The querying stage computes OEE proxy (Performance x Quality) by facility, surfaces machines with above-threshold sensor readings, and identifies the steepest failure degradation trajectories. All queries use `model.select` with derived properties:

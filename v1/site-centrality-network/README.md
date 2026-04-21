@@ -147,6 +147,51 @@ eigenvector = graph.eigenvector_centrality()
 - **Bridge sites** = removing them could partition the network across regions
 - **High eigenvector centrality** = connected to other important sites (hub effect)
 
+### 5. Inspect the model schema
+
+`relationalai.semantics.inspect` (available in `relationalai>=1.0.14`) returns a typed view of the model. For graph templates it is useful for confirming that subconcepts like `Bridge` extend the right parent and that derived relationships (shipment counts, region links) landed on the intended concept:
+
+```python
+from relationalai.semantics import inspect
+
+print(inspect.schema(model))
+```
+
+Excerpt showing the inheritance and derived relationships:
+
+```text
+Model: site_centrality
+======================
+
+  Site
+    Identity:
+      id: String
+    Properties:
+      name: String
+      site_type: String
+      region_id: String
+      country: String
+    Relationships:
+      Site is in Region
+      Site has count of incoming shipments Integer:count_is_destination
+      Site has count of outgoing shipments Integer:count_is_source
+
+  Region
+    Properties:
+      id: Any
+
+  Bridge (extends Site)
+    Identity:
+      id: String
+    ...
+    Relationships:
+      Bridge connects with Region
+      Site is in Region
+      ...
+```
+
+`Bridge (extends Site)` confirms the subconcept inheritance; the reused `Site is in Region` relationship appears on both — the same behavior a graph query would see.
+
 ## Customize this template
 
 **Use your own data:**

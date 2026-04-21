@@ -119,6 +119,70 @@ At a high level, the notebook:
 4. Lists the resulting edges as a table.
 5. Computes betweenness centrality and queries the scores into a pandas DataFrame.
 
+## Inspect the model schema
+
+`relationalai.semantics.inspect` (available in `relationalai>=1.0.14`) gives you a public, typed view of what has actually been registered on the model — concepts, properties with real types, relationships, and data sources. This is the recommended way to sanity-check a model before querying, especially after edits or across long sessions.
+
+Import it once:
+
+```python
+from relationalai.semantics import inspect
+```
+
+### `inspect.schema(model)` — full schema
+
+Call `inspect.schema(model)` to see every concept, its identity fields, properties, relationships, and bound data sources. Add this cell after the model definition:
+
+```python
+print(inspect.schema(model))
+```
+
+Expected output for this template:
+
+```text
+Model: SimpleStart
+==================
+
+  Station
+    Identity:
+      id: Integer
+    Relationships:
+      Station is connected to Station:other_station
+
+  Connection
+    Identity:
+      src: Station
+      dst: Station
+
+  Data Sources:
+    RAI_DEMO.SIMPLE_START.CONNECTIONS [station_1: Any, station_2: Any]
+```
+
+`schema(model)` returns a frozen `ModelSchema` dataclass with dict-style lookup and JSON serialization:
+
+```python
+schema = inspect.schema(model)
+schema["Station"]             # one concept by name
+schema.to_dict()              # JSON-safe full view
+```
+
+### `inspect.fields(rel)` — select every field of a relationship
+
+`inspect.fields()` returns a tuple of selectable field references that can be splat directly into `select()`. This avoids hard-coding field names and handles inheritance correctly:
+
+```python
+model.select(*inspect.fields(Station.connections)).to_df()
+```
+
+### `inspect.to_concept(obj)` — resolve a DSL handle to its underlying Concept
+
+`inspect.to_concept()` accepts any DSL handle — a Concept, a chain like `Station.connections`, a reference, or an expression — and returns the underlying `Concept`. Useful when writing helpers that should accept any shape:
+
+```python
+inspect.to_concept(Station.connections)   # -> Station
+inspect.to_concept(Station.connections, default=None)   # defensive variant
+```
+
 ## Customize this template
 
 **Use your own data:**
