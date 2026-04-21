@@ -1,59 +1,66 @@
-"""Portfolio Balancing — multi-reasoner (rules + prescriptive) template.
+"""Portfolio Balancing -- multi-reasoner (rules + graph + prescriptive) template.
 
-This template demonstrates two reasoning stages chained in a single RAI model:
+Four-stage pipeline on a single shared ontology:
+- Stage 1 -- Rules: derived flags on existing portfolio data (overconcentrated
+  holdings, sector concentration, high-risk traders).
+- Stage 2 -- Graph: correlation graph over stocks + Louvain clustering,
+  then per-cluster representative selection by highest Sharpe. Collapses
+  redundant bets before the optimizer sees them.
+- Stage 3 -- Prescriptive: bi-objective QP via epsilon constraint on the
+  representative-only universe. Position and sector limits apply; non-reps
+  are forced to zero. Budget x regime as Scenario Concept so all
+  combinations solve in one call.
+- Stage 4 -- Crisis stress: compare base vs crisis frontiers. Crisis
+  covariance via PSD-preserving correlation shrinkage, derived in PyRel.
 
-STAGE 1 — RULES-BASED COMPLIANCE ANALYSIS:
-  Define compliance flags on existing portfolio data using derived properties
-  and Relationships:
-  - Overconcentrated holdings: position value > 15% of account balance
-  - Sector concentration: sector exposure > 30% of account balance
-  - High-risk traders: risk_score > 0.8 AND >5 flagged transactions
-
-STAGE 2 — PRESCRIPTIVE (bi-objective optimization via epsilon constraint):
-  Build new portfolios that minimize risk while maximizing return, subject to
-  concentration constraints (position limit and sector limit). The epsilon
-  constraint method sweeps return targets across the feasible range, producing
-  the **efficient frontier** (full tradeoff curve between risk and return).
-
-  The template also demonstrates **Scenario Concept inside the epsilon loop**:
-  budget levels are modeled as a Scenario Concept, so each epsilon solve handles
-  all budget scenarios simultaneously (N epsilon solves, not N x M).
+Volatility, correlation, and regime covariance are all PyRel derived
+properties on Stock -- no numpy precomputation -- so the ontology is the
+single source of truth for every solver input.
 
 Run:
-    `python portfolio_balancing.py`
+    python portfolio_balancing.py
 
 Output:
-    Stage 1: prints compliance violations from rules analysis
-    Stage 2: anchor solve results, per-epsilon-point Pareto frontier for each
-    budget scenario, marginal analysis with knee detection, and allocation shifts.
+    Stage 1: compliance violations.
+    Stage 2: cluster count/sizes, intra- vs inter-cluster avg correlation.
+    Stage 3: anchor solves, epsilon sweep, marginal analysis + knee.
+    Stage 4: base-vs-crisis vol table per (budget, lambda).
 """
 
 from pathlib import Path
 
 from pandas import read_csv
 from relationalai.semantics import Float, Integer, Model, String, sum
+from relationalai.semantics.reasoners.graph import Graph
 from relationalai.semantics.reasoners.prescriptive import Problem
 from relationalai.semantics.std import aggregates as aggs
+from relationalai.semantics.std.math import abs as math_abs
+from relationalai.semantics.std.math import sqrt
 
 # --------------------------------------------------
-# Config constants
+# Configure inputs
 # --------------------------------------------------
 
-POSITION_LIMIT = 0.15   # max fraction of budget per stock
-SECTOR_LIMIT = 0.30     # max fraction of budget per sector
+POSITION_LIMIT = 0.15        # max fraction per stock in Stage 1 compliance rules
+REP_POSITION_LIMIT = 0.30    # max fraction per representative in Stage 3 optimization
+                             # (reps carry combined cluster exposure, so cap is higher;
+                             # also required for feasibility: 5 reps x 0.20 = 1.00)
+SECTOR_LIMIT = 0.30          # max fraction of budget per sector (both stages)
+CORR_THRESHOLD = 0.3         # |correlation| >= threshold to create a graph edge (Stage 2)
+CRISIS_ALPHA = 0.7           # shrinkage weight for base correlation in crisis regime (Stage 4)
 
 DATA_DIR = Path(__file__).parent / "data"
 returns_csv = read_csv(DATA_DIR / "returns.csv")
 covar_csv = read_csv(DATA_DIR / "covar.csv")
 
-# ==================================================================
-# RAI Model — shared by rules (Stage 1) and optimization (Stage 2)
-# ==================================================================
+# --------------------------------------------------
+# Define semantic model & load data
+# --------------------------------------------------
 
 model = Model("portfolio")
 
 # --------------------------------------------------
-# Stock concept (used by both stages)
+# Stock concept (used by all stages)
 # --------------------------------------------------
 
 Stock = model.Concept("Stock", identify_by={"index": Integer})
@@ -69,7 +76,7 @@ model.where(Stock.index(covar_data.i), PairedStock.index(covar_data.j)).define(
     Stock.covar(Stock, PairedStock, covar_data.covar)
 )
 
-# Sector concept — derived from Stock sectors for aggregation in rules.
+# Sector concept -- derived from Stock sectors for aggregation in rules.
 Sector = model.Concept("Sector", identify_by={"sector_name": String})
 model.define(Sector.new(sector_name=Stock.sector))
 Stock.sector_ref = model.Property(f"{Stock} in {Sector}")
@@ -167,14 +174,14 @@ model.define(
 model.define(Transaction.user(User)).where(Transaction.user_id == User.user_id)
 
 # --------------------------------------------------
-# Stage 1: Rules — compliance flags
+# Stage 1: Rules -- compliance flags
 # --------------------------------------------------
 
 # Derived property: holding value = quantity * purchase_price.
 Holding.value = model.Property(f"{Holding} has value {Float:holding_value}")
 model.define(Holding.value(Holding.quantity * Holding.purchase_price))
 
-# Rule 1: Overconcentrated holdings — position value > POSITION_LIMIT of balance.
+# Rule 1: Overconcentrated holdings -- position value > POSITION_LIMIT of balance.
 Holding.is_overconcentrated = model.Relationship(f"{Holding} is overconcentrated")
 AccountR1 = Account.ref()
 model.where(
@@ -182,7 +189,7 @@ model.where(
     Holding.value > POSITION_LIMIT * AccountR1.balance,
 ).define(Holding.is_overconcentrated())
 
-# Rule 2: Sector concentration — total sector exposure > SECTOR_LIMIT of balance.
+# Rule 2: Sector concentration -- total sector exposure > SECTOR_LIMIT of balance.
 Holding.is_sector_concentrated = model.Relationship(
     f"{Holding} is in a concentrated sector position"
 )
@@ -205,7 +212,7 @@ model.where(
     sector_exposure > SECTOR_LIMIT * AccountSC.balance,
 ).define(Holding.is_sector_concentrated())
 
-# Rule 3: High-risk traders — risk_score > 0.8 AND >5 flagged transactions.
+# Rule 3: High-risk traders -- risk_score > 0.8 AND >5 flagged transactions.
 User.is_high_risk_trader = model.Relationship(f"{User} is high risk trader")
 TransactionHR = Transaction.ref()
 flagged_count = sum(TransactionHR.is_flagged_val).where(
@@ -217,38 +224,444 @@ model.where(
     flagged_count > 5,
 ).define(User.is_high_risk_trader())
 
+
+# ==================================================
+# STAGE 1: Rules -- Compliance Analysis
+# ==================================================
+
+print("=" * 70)
+print("STAGE 1: COMPLIANCE ANALYSIS (rules)")
+print("=" * 70)
+
+# ---- Rule 1: Overconcentrated Holdings ----
+StockQ1 = Stock.ref()
+AccountQ1 = Account.ref()
+overconc_df = (
+    model.select(
+        Holding.holding_id.alias("holding_id"),
+        StockQ1.ticker.alias("ticker"),
+        AccountQ1.account_id.alias("account_id"),
+        Holding.value.alias("value"),
+        AccountQ1.balance.alias("balance"),
+    )
+    .where(
+        Holding.is_overconcentrated(),
+        Holding.stock(StockQ1),
+        Holding.account(AccountQ1),
+    )
+    .to_df()
+)
+
+print(
+    f"\n--- Rule 1: Overconcentrated Holdings "
+    f"(position > {POSITION_LIMIT:.0%} of balance) ---\n"
+)
+if overconc_df.empty:
+    print("  No overconcentrated holdings found.")
+else:
+    for _, row in overconc_df.iterrows():
+        print(
+            f"  holding_id={int(row['holding_id'])}, ticker={row['ticker']}, "
+            f"account_id={int(row['account_id'])}, "
+            f"value={row['value']:.2f}, balance={row['balance']:.2f}, "
+            f"pct={row['value'] / row['balance']:.1%}"
+        )
+
+# ---- Rule 2: Sector Concentration ----
+StockQ2 = Stock.ref()
+AccountQ2 = Account.ref()
+SectorQ2 = Sector.ref()
+HoldingQ2 = Holding.ref()
+
+sector_df = (
+    model.select(
+        AccountQ2.account_id.alias("account_id"),
+        SectorQ2.sector_name.alias("sector"),
+        aggs.sum(HoldingQ2.value).per(AccountQ2, SectorQ2).alias("sector_value"),
+        AccountQ2.balance.alias("balance"),
+    )
+    .where(
+        HoldingQ2.is_sector_concentrated(),
+        HoldingQ2.account(AccountQ2),
+        HoldingQ2.stock(StockQ2),
+        StockQ2.sector_ref(SectorQ2),
+    )
+    .to_df()
+    .drop_duplicates(subset=["account_id", "sector"])
+)
+
+print(
+    f"\n--- Rule 2: Sector Concentration "
+    f"(sector > {SECTOR_LIMIT:.0%} of balance) ---\n"
+)
+if sector_df.empty:
+    print("  No sector concentration violations found.")
+else:
+    for _, row in sector_df.iterrows():
+        print(
+            f"  account_id={int(row['account_id'])}, sector={row['sector']}, "
+            f"sector_value={row['sector_value']:.2f}, "
+            f"balance={row['balance']:.2f}, "
+            f"pct={row['sector_value'] / row['balance']:.1%}"
+        )
+
+# ---- Rule 3: High-Risk Traders ----
+high_risk_df = (
+    model.select(
+        User.user_id.alias("user_id"),
+        User.user_name.alias("name"),
+        User.risk_score.alias("risk_score"),
+    )
+    .where(User.is_high_risk_trader())
+    .to_df()
+)
+
+print(
+    "\n--- Rule 3: High Risk Traders "
+    "(risk_score > 0.8 AND >5 flagged txns) ---\n"
+)
+if high_risk_df.empty:
+    print("  No high-risk traders found.")
+else:
+    for _, row in high_risk_df.iterrows():
+        print(
+            f"  user_id={int(row['user_id'])}, name={row['name']}, "
+            f"risk_score={row['risk_score']:.2f}"
+        )
+
+
 # --------------------------------------------------
-# Scenario Concept — budget parameter variations
-# (Scenarios handle parameter variations; epsilon loop handles the tradeoff)
+# Stage 2: Graph -- covariance clustering
 # --------------------------------------------------
+
+# Derived per-stock variance (covar diagonal, i == j).
+Stock.variance = model.Property(f"{Stock} has {Float:stock_variance}")
+PairedStockVar = Stock.ref()
+var_ref = Float.ref()
+model.where(
+    Stock.covar(PairedStockVar, var_ref),
+    Stock.index == PairedStockVar.index,
+).define(Stock.variance(var_ref))
+
+# Derived per-stock volatility (sqrt of variance). Used downstream to derive
+# correlation and the crisis regime covariance -- no numpy, no precompute.
+Stock.volatility = model.Property(f"{Stock} has {Float:stock_volatility}")
+model.define(Stock.volatility(sqrt(Stock.variance)))
+
+# Derived pairwise correlation: corr(i, j) = covar(i, j) / (vol_i * vol_j).
+# Stored as a two-argument property on Stock (keyed by the paired Stock).
+Stock.correlation = model.Property(
+    f"{Stock} and {Stock} have correlation {Float:stock_correlation}"
+)
+PairedStockCorr = Stock.ref()
+cov_ij_ref = Float.ref()
+model.where(
+    Stock.covar(PairedStockCorr, cov_ij_ref),
+).define(
+    Stock.correlation(
+        PairedStockCorr,
+        cov_ij_ref / (Stock.volatility * PairedStockCorr.volatility),
+    )
+)
+
+# Build the undirected correlation graph. Nodes are Stocks; edges link stocks
+# with |correlation| >= CORR_THRESHOLD. Correlations are filtered in PyRel
+# against the derived Stock.correlation property.
+corr_graph = Graph(
+    model,
+    directed=False,
+    weighted=False,
+    node_concept=Stock,
+    aggregator="sum",
+)
+
+stock_i_ref = Stock.ref()
+stock_j_ref = Stock.ref()
+corr_ref = Float.ref()
+model.define(corr_graph.Edge.new(src=stock_i_ref, dst=stock_j_ref)).where(
+    stock_i_ref.correlation(stock_j_ref, corr_ref),
+    stock_i_ref.index < stock_j_ref.index,
+    math_abs(corr_ref) >= CORR_THRESHOLD,
+)
+
+# Louvain community detection -- stored as Stock.cluster (integer id).
+community = corr_graph.louvain()
+cluster_label = Integer.ref("cluster_label")
+Stock.cluster = model.Property(f"{Stock} in cluster {Integer:cluster_id}")
+stock_clust_ref = Stock.ref()
+model.define(stock_clust_ref.cluster(cluster_label)).where(
+    community(stock_clust_ref, cluster_label)
+)
+
+# Representative selection: for each cluster, the single stock with the
+# highest Sharpe (return / volatility) is the cluster representative. If
+# several stocks co-move strongly they carry near-identical exposure --
+# prefer the best risk-adjusted one and drop the rest from the investable
+# universe. This collapses redundant bets instead of merely capping them.
+Stock.sharpe = model.Property(f"{Stock} has Sharpe {Float:stock_sharpe}")
+model.define(Stock.sharpe(Stock.returns / Stock.volatility))
+
+# Per-cluster maximum Sharpe, written back onto each Stock.
+peer_for_max = Stock.ref()
+Stock.cluster_max_sharpe = model.Property(
+    f"{Stock} has cluster max Sharpe {Float:cluster_max_sharpe}"
+)
+model.define(
+    Stock.cluster_max_sharpe(
+        aggs.max(peer_for_max.sharpe)
+        .where(peer_for_max.cluster == Stock.cluster)
+        .per(Stock)
+    )
+)
+
+# Representative Relationship: stock whose Sharpe equals its cluster's max.
+Stock.is_representative = model.Relationship(f"{Stock} is cluster representative")
+model.where(Stock.sharpe == Stock.cluster_max_sharpe).define(
+    Stock.is_representative()
+)
+
+# Complementary Relationship used positively in solver constraints
+# (the prescriptive rewriter doesn't accept `model.not_(...)` in a .where()).
+Stock.is_non_representative = model.Relationship(f"{Stock} is not cluster representative")
+model.where(Stock.sharpe < Stock.cluster_max_sharpe).define(
+    Stock.is_non_representative()
+)
+
+
+# ==================================================
+# STAGE 2: Graph -- Covariance Clustering
+# ==================================================
+
+print(f"\n{'=' * 70}")
+print("STAGE 2: GRAPH -- Covariance Clustering (Louvain)")
+print("=" * 70)
+
+StockQ3 = Stock.ref()
+cluster_df = (
+    model.select(
+        StockQ3.index.alias("stock_index"),
+        StockQ3.ticker.alias("ticker"),
+        StockQ3.sector.alias("sector"),
+        StockQ3.cluster.alias("cluster_id"),
+    )
+    .to_df()
+)
+cluster_df["cluster_id"] = cluster_df["cluster_id"].astype(int)
+num_clusters = cluster_df["cluster_id"].nunique()
+
+# Query the derived correlation property for stats and edge count.
+StockCQ = Stock.ref()
+PairedCQ = Stock.ref()
+corr_q_ref = Float.ref()
+corr_df = (
+    model.select(
+        StockCQ.index.alias("i"),
+        PairedCQ.index.alias("j"),
+        corr_q_ref.alias("correlation"),
+    )
+    .where(StockCQ.correlation(PairedCQ, corr_q_ref))
+    .to_df()
+)
+corr_df["i"] = corr_df["i"].astype(int)
+corr_df["j"] = corr_df["j"].astype(int)
+corr_df["correlation"] = corr_df["correlation"].astype(float)
+# Upper triangle only (i < j) -- correlation is symmetric.
+upper_corr = corr_df[corr_df["i"] < corr_df["j"]].copy()
+num_edges = int((upper_corr["correlation"].abs() >= CORR_THRESHOLD).sum())
+
+print(
+    f"\n  Correlation graph: {num_edges} edges "
+    f"(|correlation| >= {CORR_THRESHOLD})"
+)
+print(f"  Louvain communities: {num_clusters} cluster(s)")
+for cid, group in cluster_df.sort_values("cluster_id").groupby("cluster_id"):
+    members = ", ".join(
+        f"{row['ticker']} ({row['sector']})"
+        for _, row in group.iterrows()
+    )
+    print(f"    Cluster {cid} (size {len(group)}): {members}")
+
+# Intra- vs inter-cluster average correlation (from the derived property).
+# Built with pandas because `sum` is shadowed by the PyRel aggregator import.
+cluster_map = dict(zip(cluster_df["stock_index"], cluster_df["cluster_id"]))
+is_intra = upper_corr.apply(
+    lambda r: cluster_map.get(int(r["i"])) == cluster_map.get(int(r["j"])), axis=1
+)
+intra_series = upper_corr.loc[is_intra, "correlation"]
+inter_series = upper_corr.loc[~is_intra, "correlation"]
+intra_avg = float(intra_series.mean()) if len(intra_series) else 0.0
+inter_avg = float(inter_series.mean()) if len(inter_series) else 0.0
+print(
+    f"\n  Avg correlation: intra-cluster = {intra_avg:+.3f}, "
+    f"inter-cluster = {inter_avg:+.3f}"
+)
+
+# Cluster representatives -- the investable universe after redundancy removal.
+RepStock = Stock.ref()
+rep_df = (
+    model.select(
+        RepStock.cluster.alias("cluster_id"),
+        RepStock.ticker.alias("ticker"),
+        RepStock.sector.alias("sector"),
+        RepStock.sharpe.alias("sharpe"),
+    )
+    .where(RepStock.is_representative())
+    .to_df()
+    .sort_values("cluster_id")
+)
+print(
+    f"\n  Cluster representatives ({len(rep_df)} of {len(cluster_df)} stocks, "
+    f"picked by highest Sharpe):"
+)
+for _, row in rep_df.iterrows():
+    print(
+        f"    Cluster {int(row['cluster_id'])}: {row['ticker']} "
+        f"({row['sector']}) -- Sharpe = {float(row['sharpe']):.3f}"
+    )
+
+
+# --------------------------------------------------
+# Stage 3: Prescriptive -- bi-objective QP with epsilon constraint
+# (Scenarios encode budget x regime; epsilon loop traces the frontier.
+# Stage 4's crisis regime reuses this stage's solver via the crisis_* scenarios.)
+# --------------------------------------------------
+
+# Regime concept -- two instances ("base", "crisis") feed regime-conditioned covariance.
+Regime = model.Concept("Regime", identify_by={"regime_name": String})
+model.define(Regime.new(regime_name="base"))
+model.define(Regime.new(regime_name="crisis"))
 
 Scenario = model.Concept("Scenario", identify_by={"name": String})
 Scenario.budget = model.Property(f"{Scenario} has {Float:budget}")
+Scenario.regime = model.Property(f"{Scenario} in {Regime}")
 scenario_data = model.data(
-    [("budget_500", 500), ("budget_1000", 1000), ("budget_2000", 2000)],
-    columns=["name", "budget"],
+    [
+        ("base_500", 500, "base"),
+        ("base_1000", 1000, "base"),
+        ("base_2000", 2000, "base"),
+        ("crisis_500", 500, "crisis"),
+        ("crisis_1000", 1000, "crisis"),
+        ("crisis_2000", 2000, "crisis"),
+    ],
+    columns=["name", "budget", "regime"],
 )
-model.define(Scenario.new(scenario_data.to_schema()))
+model.define(
+    s := Scenario.new(name=scenario_data["name"]),
+    s.budget(scenario_data["budget"]),
+)
+# Link Scenario to Regime by matching the regime name from the data.
+scenario_link_ref = Scenario.ref()
+regime_link_ref = Regime.ref()
+model.where(
+    scenario_link_ref.name == scenario_data["name"],
+    regime_link_ref.regime_name == scenario_data["regime"],
+).define(scenario_link_ref.regime(regime_link_ref))
+
+# Regime-conditioned covariance is derived in PyRel from the base covariance
+# and the derived volatilities:
+#   base:   Sigma(i, j)
+#   crisis: alpha * Sigma(i, j) + (1 - alpha) * vol_i * vol_j
+# The crisis formula is equivalent to correlation shrinkage toward all-ones
+# (rho_crisis = alpha * rho + (1 - alpha) * J) re-expressed in covariance
+# units. PSD is preserved because the construction is a convex combination of
+# PSD matrices.
+Stock.regime_covar = model.Property(
+    f"{Stock} and {Stock} in {Regime} have {Float:regime_covar}"
+)
+
+# Base regime: covariance unchanged.
+PairedStockBase = Stock.ref()
+base_cov_ref = Float.ref()
+base_regime_ref = Regime.ref()
+model.where(
+    Stock.covar(PairedStockBase, base_cov_ref),
+    base_regime_ref.regime_name == "base",
+).define(Stock.regime_covar(PairedStockBase, base_regime_ref, base_cov_ref))
+
+# Crisis regime: convex combination of base covariance and vol_i * vol_j.
+PairedStockCrisis = Stock.ref()
+crisis_cov_ref = Float.ref()
+crisis_regime_ref = Regime.ref()
+model.where(
+    Stock.covar(PairedStockCrisis, crisis_cov_ref),
+    crisis_regime_ref.regime_name == "crisis",
+).define(
+    Stock.regime_covar(
+        PairedStockCrisis,
+        crisis_regime_ref,
+        CRISIS_ALPHA * crisis_cov_ref
+        + (1 - CRISIS_ALPHA) * Stock.volatility * PairedStockCrisis.volatility,
+    )
+)
 
 # --------------------------------------------------
-# Decision variable — indexed by Scenario
+# Decision variable -- indexed by Scenario
 # --------------------------------------------------
 
 Stock.x_quantity = model.Property(f"{Stock} in {Scenario} has {Float:quantity}")
 x_qty = Float.ref()
-covar_value = Float.ref()
 x_qty_paired = Float.ref()
+regime_cov_val = Float.ref()
 
-# Sector constraint ref — defined at module level (outside solve_epsilon)
+# Sector constraint ref -- defined at module level.
 s_sector_ref = Stock.ref()
 
-# Lookup maps for Python-side objective evaluation
+# Python-side lookup maps for per-scenario evaluation (post-solve analysis).
+# stock_returns_map is fine to build from the returns CSV since it's the raw
+# data. covar_map and scenario_meta are hydrated from the ontology (so the
+# derived crisis covariance comes from PyRel, not numpy).
 stock_returns_map = dict(zip(returns_csv["index"], returns_csv["returns"]))
-covar_map = {(int(r["i"]), int(r["j"])): r["covar"]
-             for _, r in covar_csv.iterrows()}
+_covar_map_cache: dict | None = None
+_scenario_meta_cache: dict | None = None
 
-# Budget lookup
-budget_map = {"budget_500": 500.0, "budget_1000": 1000.0, "budget_2000": 2000.0}
+
+def _load_covar_map():
+    """Query the ontology for Stock.regime_covar and cache as a dict."""
+    global _covar_map_cache
+    if _covar_map_cache is not None:
+        return _covar_map_cache
+    s_i = Stock.ref()
+    s_j = Stock.ref()
+    reg = Regime.ref()
+    cov = Float.ref()
+    df = (
+        model.select(
+            reg.regime_name.alias("regime"),
+            s_i.index.alias("i"),
+            s_j.index.alias("j"),
+            cov.alias("regime_covar"),
+        )
+        .where(s_i.regime_covar(s_j, reg, cov))
+        .to_df()
+    )
+    _covar_map_cache = {
+        (row["regime"], int(row["i"]), int(row["j"])): float(row["regime_covar"])
+        for _, row in df.iterrows()
+    }
+    return _covar_map_cache
+
+
+def _load_scenario_meta():
+    """Query the ontology for Scenario budget and regime and cache as a dict."""
+    global _scenario_meta_cache
+    if _scenario_meta_cache is not None:
+        return _scenario_meta_cache
+    sc = Scenario.ref()
+    rg = Regime.ref()
+    df = (
+        model.select(
+            sc.name.alias("name"),
+            sc.budget.alias("budget"),
+            rg.regime_name.alias("regime"),
+        )
+        .where(sc.regime(rg))
+        .to_df()
+    )
+    _scenario_meta_cache = {
+        row["name"]: {"budget": float(row["budget"]), "regime": row["regime"]}
+        for _, row in df.iterrows()
+    }
+    return _scenario_meta_cache
 
 
 def _extract_allocations(var_df, scenario_name):
@@ -270,14 +683,17 @@ def evaluate_return(var_df, scenario_name):
 
 
 def evaluate_risk(var_df, scenario_name):
-    """Evaluate portfolio risk (variance) for a given scenario from a structured allocation df.
-    The solver objective aggregates risk across ALL scenarios; this computes the
-    per-scenario quadratic form x' * Cov * x."""
+    """Evaluate portfolio risk (variance) under the scenario's regime covariance."""
     allocs = _extract_allocations(var_df, scenario_name)
     if not allocs:
         return 0.0
+    meta = _load_scenario_meta()
+    covar_map = _load_covar_map()
+    regime = meta[scenario_name]["regime"]
     risk = 0.0
-    for (i, j), cov in covar_map.items():
+    for (reg, i, j), cov in covar_map.items():
+        if reg != regime:
+            continue
         qi = allocs.get(i, 0.0)
         qj = allocs.get(j, 0.0)
         risk += cov * qi * qj
@@ -285,13 +701,16 @@ def evaluate_risk(var_df, scenario_name):
 
 
 def _add_compliance_constraints(problem):
-    """Add position limit and sector limit constraints to a Problem."""
-    # Position limit: each stock allocation <= POSITION_LIMIT * budget
+    """Add position, sector, and representative-only constraints to a Problem."""
+    # Position limit: each representative allocation <= REP_POSITION_LIMIT * budget.
+    # This is higher than Stage 1's POSITION_LIMIT because a representative
+    # carries its whole cluster's exposure (the cluster's other members are
+    # forced to zero below).
     problem.satisfy(model.where(
         Stock.x_quantity(Scenario, x_qty),
-    ).require(x_qty <= POSITION_LIMIT * Scenario.budget))
+    ).require(x_qty <= REP_POSITION_LIMIT * Scenario.budget))
 
-    # Sector limit: total allocation to stocks in same sector <= SECTOR_LIMIT * budget
+    # Sector limit: total allocation to stocks in same sector <= SECTOR_LIMIT * budget.
     sector_alloc = sum(x_qty).where(
         Stock.x_quantity(Scenario, x_qty),
         Stock.sector == s_sector_ref.sector,
@@ -299,6 +718,15 @@ def _add_compliance_constraints(problem):
     problem.satisfy(model.where(
         Stock.x_quantity(Scenario, x_qty),
     ).require(sector_alloc <= SECTOR_LIMIT * Scenario.budget))
+
+    # Representative-only: non-representative stocks are forced to zero.
+    # The cluster's representative (highest Sharpe, picked in Stage 2) is
+    # the sole carrier of its exposure in the portfolio. This collapses
+    # redundant bets rather than capping within a redundant set.
+    problem.satisfy(model.where(
+        Stock.x_quantity(Scenario, x_qty),
+        Stock.is_non_representative(),
+    ).require(x_qty == 0))
 
 
 def solve_epsilon(eps_rate=None):
@@ -332,7 +760,7 @@ def solve_epsilon(eps_rate=None):
         Stock.x_quantity(Scenario, x_qty),
     ).require(sum(x_qty).per(Scenario) >= Scenario.budget))
 
-    # Compliance constraints (position + sector limits)
+    # Compliance constraints (position + sector limits; non-reps forced to 0)
     _add_compliance_constraints(problem)
 
     # EPSILON CONSTRAINT: return rate >= target rate (scaled by budget)
@@ -343,12 +771,16 @@ def solve_epsilon(eps_rate=None):
             sum(Stock.returns * x_qty).per(Scenario) >= eps_rate * Scenario.budget
         ))
 
-    # Primary objective: minimize risk (quadratic via covariance matrix)
+    # Primary objective: minimize risk (quadratic via regime-conditioned covariance).
+    # Each Scenario picks its matching regime covariance, so base and crisis
+    # scenarios solve against different covariances in the same call.
     problem.minimize(
-        sum(covar_value * x_qty * x_qty_paired)
-        .where(Stock.covar(PairedStock, covar_value),
-               Stock.x_quantity(Scenario, x_qty),
-               PairedStock.x_quantity(Scenario, x_qty_paired))
+        sum(regime_cov_val * x_qty * x_qty_paired)
+        .where(
+            Stock.regime_covar(PairedStock, Scenario.regime, regime_cov_val),
+            Stock.x_quantity(Scenario, x_qty),
+            PairedStock.x_quantity(Scenario, x_qty_paired),
+        )
     )
 
     problem.solve("ipopt", time_limit_sec=60)
@@ -367,328 +799,247 @@ def solve_epsilon(eps_rate=None):
     return si, var_df
 
 
+# Hydrate scenario metadata from the ontology for post-solve evaluation.
+scenario_meta = _load_scenario_meta()
+
+# ==================================================
+# STAGE 3: Bi-Objective Optimization (base + crisis)
+# ==================================================
+
+scenario_names = [
+    "base_500", "base_1000", "base_2000",
+    "crisis_500", "crisis_1000", "crisis_2000",
+]
+budgets = [500, 1000, 2000]
+
+print(f"\n{'=' * 70}")
+print("STAGE 3: BI-OBJECTIVE OPTIMIZATION")
+print("(position + sector limits on representative universe; base & crisis regimes)")
+print("=" * 70)
+
+print("\nANCHOR SOLVE 1: Minimize risk (no return constraint)")
+print("-" * 50)
+result1 = solve_epsilon(eps_rate=None)
+if result1 is None:
+    raise SystemExit(
+        "Anchor solve 1 (min risk) is infeasible -- check data and constraints."
+    )
+si1, df1 = result1
+print(f"Status: {si1.termination_status}")
+
+anchor1_returns = {}
+anchor1_risks = {}
+for sn in scenario_names:
+    ret = evaluate_return(df1, sn)
+    risk = evaluate_risk(df1, sn)
+    anchor1_returns[sn] = ret
+    anchor1_risks[sn] = risk
+    print(f"  {sn}: return = {ret:.4f}, risk = {risk:.6f}")
+
+print("\nANCHOR SOLVE 2: Maximize return (swap objective)")
+print("-" * 50)
+# One solve covers all scenarios -- maximize aggregate return, then read per-scenario.
+p2 = Problem(model, Float)
+quantity_var2 = p2.solve_for(
+    Stock.x_quantity(Scenario, x_qty),
+    name=["qty", Scenario.name, Stock.index],
+    populate=False,
+)
+p2.satisfy(model.where(
+    Stock.x_quantity(Scenario, x_qty),
+).require(x_qty >= 0))
+p2.satisfy(model.where(
+    Stock.x_quantity(Scenario, x_qty),
+).require(sum(x_qty).per(Scenario) <= Scenario.budget))
+p2.satisfy(model.where(
+    Stock.x_quantity(Scenario, x_qty),
+).require(sum(x_qty).per(Scenario) >= Scenario.budget))
+
+_add_compliance_constraints(p2)
+
+p2.maximize(
+    sum(Stock.returns * x_qty).where(Stock.x_quantity(Scenario, x_qty))
+)
+p2.solve("ipopt", time_limit_sec=60)
+si2 = p2.solve_info()
+if si2.termination_status not in ("OPTIMAL", "LOCALLY_SOLVED"):
+    raise SystemExit(
+        "Anchor solve 2 (max return) is infeasible -- check data and constraints."
+    )
+value_ref = Float.ref()
+df2 = model.select(
+    quantity_var2.scenario.name.alias("scenario"),
+    quantity_var2.stock.index.alias("stock_index"),
+    value_ref.alias("quantity"),
+).where(quantity_var2.values(0, value_ref)).to_df()
+anchor2_returns = {}
+for sn in scenario_names:
+    ret = evaluate_return(df2, sn)
+    anchor2_returns[sn] = ret
+print(f"Status: {si2.termination_status}")
+for sn in scenario_names:
+    print(f"  {sn}: return = {anchor2_returns[sn]:.4f}")
+
+# Return range as rate (per unit invested) -- tightest across scenarios.
+# Return rates don't depend on regime (Stock.returns is regime-independent),
+# so base and crisis scenarios at the same budget yield identical rates.
+return_rate_min = min(
+    anchor1_returns[sn] / scenario_meta[sn]["budget"] for sn in scenario_names
+)
+return_rate_max = max(
+    anchor2_returns[sn] / scenario_meta[sn]["budget"] for sn in scenario_names
+)
+print(
+    f"\nReturn rate range: [{return_rate_min:.4f}, {return_rate_max:.4f}] "
+    "per unit invested"
+)
+
 # --------------------------------------------------
-# Main execution
+# Epsilon sweep -- trace the efficient frontier
 # --------------------------------------------------
 
-if __name__ == "__main__":
+n_interior = 5
+epsilon_rates = [
+    return_rate_min + i * (return_rate_max - return_rate_min) / (n_interior + 1)
+    for i in range(1, n_interior + 1)
+]
 
-    # ==================================================
-    # STAGE 1: Rules — Compliance Analysis
-    # ==================================================
+print(f"\n{'=' * 70}")
+print(f"EPSILON SWEEP: {n_interior} interior points")
+print(f"Return rates: {[f'{r:.4f}' for r in epsilon_rates]}")
+print(f"{'=' * 70}")
 
-    print("=" * 70)
-    print("STAGE 1: COMPLIANCE ANALYSIS (rules)")
-    print("=" * 70)
+pareto = {sn: [] for sn in scenario_names}
 
-    # ---- Rule 1: Overconcentrated Holdings ----
-    StockQ1 = Stock.ref()
-    AccountQ1 = Account.ref()
-    overconc_df = (
-        model.select(
-            Holding.holding_id.alias("holding_id"),
-            StockQ1.ticker.alias("ticker"),
-            AccountQ1.account_id.alias("account_id"),
-            Holding.value.alias("value"),
-            AccountQ1.balance.alias("balance"),
-        )
-        .where(
-            Holding.is_overconcentrated(),
-            Holding.stock(StockQ1),
-            Holding.account(AccountQ1),
-        )
-        .to_df()
-    )
+for sn in scenario_names:
+    pareto[sn].append({
+        "label": "min_risk",
+        "return_target": anchor1_returns[sn],
+        "return_actual": anchor1_returns[sn],
+        "risk": anchor1_risks[sn],
+        "df": df1,
+    })
 
-    print(
-        f"\n--- Rule 1: Overconcentrated Holdings "
-        f"(position > {POSITION_LIMIT:.0%} of balance) ---\n"
-    )
-    if overconc_df.empty:
-        print("  No overconcentrated holdings found.")
-    else:
-        for _, row in overconc_df.iterrows():
-            print(
-                f"  holding_id={int(row['holding_id'])}, ticker={row['ticker']}, "
-                f"account_id={int(row['account_id'])}, "
-                f"value={row['value']:.2f}, balance={row['balance']:.2f}, "
-                f"pct={row['value'] / row['balance']:.1%}"
-            )
-
-    # ---- Rule 2: Sector Concentration ----
-    StockQ2 = Stock.ref()
-    AccountQ2 = Account.ref()
-    SectorQ2 = Sector.ref()
-    HoldingQ2 = Holding.ref()
-
-    sector_df = (
-        model.select(
-            AccountQ2.account_id.alias("account_id"),
-            SectorQ2.sector_name.alias("sector"),
-            aggs.sum(HoldingQ2.value).per(AccountQ2, SectorQ2).alias("sector_value"),
-            AccountQ2.balance.alias("balance"),
-        )
-        .where(
-            HoldingQ2.is_sector_concentrated(),
-            HoldingQ2.account(AccountQ2),
-            HoldingQ2.stock(StockQ2),
-            StockQ2.sector_ref(SectorQ2),
-        )
-        .to_df()
-        .drop_duplicates(subset=["account_id", "sector"])
-    )
-
-    print(
-        f"\n--- Rule 2: Sector Concentration "
-        f"(sector > {SECTOR_LIMIT:.0%} of balance) ---\n"
-    )
-    if sector_df.empty:
-        print("  No sector concentration violations found.")
-    else:
-        for _, row in sector_df.iterrows():
-            print(
-                f"  account_id={int(row['account_id'])}, sector={row['sector']}, "
-                f"sector_value={row['sector_value']:.2f}, "
-                f"balance={row['balance']:.2f}, "
-                f"pct={row['sector_value'] / row['balance']:.1%}"
-            )
-
-    # ---- Rule 3: High-Risk Traders ----
-    high_risk_df = (
-        model.select(
-            User.user_id.alias("user_id"),
-            User.user_name.alias("name"),
-            User.risk_score.alias("risk_score"),
-        )
-        .where(User.is_high_risk_trader())
-        .to_df()
-    )
-
-    print(
-        "\n--- Rule 3: High Risk Traders "
-        "(risk_score > 0.8 AND >5 flagged txns) ---\n"
-    )
-    if high_risk_df.empty:
-        print("  No high-risk traders found.")
-    else:
-        for _, row in high_risk_df.iterrows():
-            print(
-                f"  user_id={int(row['user_id'])}, name={row['name']}, "
-                f"risk_score={row['risk_score']:.2f}"
-            )
-
-    # ==================================================
-    # STAGE 2: Bi-Objective Optimization
-    # ==================================================
-
-    scenario_names = ["budget_500", "budget_1000", "budget_2000"]
-
-    print(f"\n{'=' * 70}")
-    print("STAGE 2: BI-OBJECTIVE OPTIMIZATION (with compliance constraints)")
-    print("=" * 70)
-
-    print("\nANCHOR SOLVE 1: Minimize risk (no return constraint)")
-    print("-" * 50)
-    result1 = solve_epsilon(eps_rate=None)
-    if result1 is None:
-        raise SystemExit("Anchor solve 1 (min risk) is infeasible — check data and constraints.")
-    si1, df1 = result1
-    print(f"Status: {si1.termination_status}")
-
-    anchor1_returns = {}
-    anchor1_risks = {}
+for i, rate in enumerate(epsilon_rates):
+    result = solve_epsilon(eps_rate=rate)
+    if result is None:
+        print(f"  Point {i+1} (rate={rate:.4f}): INFEASIBLE -- stopping sweep")
+        break
+    si, df = result
     for sn in scenario_names:
-        ret = evaluate_return(df1, sn)
-        risk = evaluate_risk(df1, sn)
-        anchor1_returns[sn] = ret
-        anchor1_risks[sn] = risk
-        print(f"  {sn}: return = {ret:.4f}, risk = {risk:.6f}")
-
-    print("\nANCHOR SOLVE 2: Maximize return (swap objective)")
-    print("-" * 50)
-    # One solve covers all scenarios — maximize aggregate return, then read per-scenario
-    p2 = Problem(model, Float)
-    quantity_var2 = p2.solve_for(
-        Stock.x_quantity(Scenario, x_qty),
-        name=["qty", Scenario.name, Stock.index],
-        populate=False,
-    )
-    p2.satisfy(model.where(
-        Stock.x_quantity(Scenario, x_qty),
-    ).require(x_qty >= 0))
-    p2.satisfy(model.where(
-        Stock.x_quantity(Scenario, x_qty),
-    ).require(sum(x_qty).per(Scenario) <= Scenario.budget))
-    p2.satisfy(model.where(
-        Stock.x_quantity(Scenario, x_qty),
-    ).require(sum(x_qty).per(Scenario) >= Scenario.budget))
-
-    # Compliance constraints on anchor solve 2
-    _add_compliance_constraints(p2)
-
-    p2.maximize(
-        sum(Stock.returns * x_qty).where(Stock.x_quantity(Scenario, x_qty))
-    )
-    p2.solve("ipopt", time_limit_sec=60)
-    si2 = p2.solve_info()
-    if si2.termination_status not in ("OPTIMAL", "LOCALLY_SOLVED"):
-        raise SystemExit("Anchor solve 2 (max return) is infeasible — check data and constraints.")
-    value_ref = Float.ref()
-    df2 = model.select(
-        quantity_var2.scenario.name.alias("scenario"),
-        quantity_var2.stock.index.alias("stock_index"),
-        value_ref.alias("quantity"),
-    ).where(quantity_var2.values(0, value_ref)).to_df()
-    anchor2_returns = {}
-    for sn in scenario_names:
-        ret = evaluate_return(df2, sn)
-        anchor2_returns[sn] = ret
-    print(f"Status: {si2.termination_status}")
-    for sn in scenario_names:
-        print(f"  {sn}: return = {anchor2_returns[sn]:.4f}")
-
-    # Return range as rate (per unit invested) — tightest across scenarios
-    return_rate_min = min(anchor1_returns[sn] / budget_map[sn]
-                         for sn in scenario_names)
-    return_rate_max = max(anchor2_returns[sn] / budget_map[sn]
-                         for sn in scenario_names)
-    print(f"\nReturn rate range: [{return_rate_min:.4f}, {return_rate_max:.4f}] per unit invested")
-
-    # --------------------------------------------------
-    # Epsilon sweep — trace the efficient frontier
-    # --------------------------------------------------
-
-    n_interior = 5
-    epsilon_rates = [
-        return_rate_min + i * (return_rate_max - return_rate_min) / (n_interior + 1)
-        for i in range(1, n_interior + 1)
-    ]
-
-    print(f"\n{'=' * 70}")
-    print(f"EPSILON SWEEP: {n_interior} interior points")
-    print(f"Return rates: {[f'{r:.4f}' for r in epsilon_rates]}")
-    print(f"{'=' * 70}")
-
-    # pareto[scenario_name] = [{"label", "return_target", "return_actual", "risk", "df"}, ...]
-    pareto = {sn: [] for sn in scenario_names}
-
-    # Add anchor 1 (min risk)
-    for sn in scenario_names:
+        budget = scenario_meta[sn]["budget"]
+        ret = evaluate_return(df, sn)
+        risk = evaluate_risk(df, sn)
         pareto[sn].append({
-            "label": "min_risk",
-            "return_target": anchor1_returns[sn],
-            "return_actual": anchor1_returns[sn],
-            "risk": anchor1_risks[sn],
-            "df": df1,
+            "label": f"eps_{i+1}",
+            "return_target": rate * budget,
+            "return_actual": ret,
+            "risk": risk,
+            "df": df,
         })
+    print(f"  Point {i+1} (rate={rate:.4f}): {si.termination_status}")
 
-    for i, rate in enumerate(epsilon_rates):
-        result = solve_epsilon(eps_rate=rate)
+# --------------------------------------------------
+# Pareto analysis -- per scenario
+# --------------------------------------------------
 
-        if result is None:
-            print(f"  Point {i+1} (rate={rate:.4f}): INFEASIBLE — stopping sweep")
-            break
+print(f"\n{'=' * 70}")
+print("EFFICIENT FRONTIER: Risk vs Return (per scenario)")
+print(f"{'=' * 70}")
 
-        si, df = result
-        for sn in scenario_names:
-            budget = budget_map[sn]
-            ret = evaluate_return(df, sn)
-            risk = evaluate_risk(df, sn)
-            pareto[sn].append({
-                "label": f"eps_{i+1}",
-                "return_target": rate * budget,
-                "return_actual": ret,
-                "risk": risk,
-                "df": df,
-            })
+for sn in scenario_names:
+    pts = pareto[sn]
+    if len(pts) < 2:
+        continue
+    meta = scenario_meta[sn]
+    print(f"\n  {sn} (budget={meta['budget']:.0f}, regime={meta['regime']}):")
+    print(f"  {'#':>3} {'Label':>10} {'Return':>10} {'Risk':>12}")
+    print(f"  {'-' * 38}")
+    for j, pt in enumerate(pts):
+        print(
+            f"  {j+1:>3} {pt['label']:>10} "
+            f"{pt['return_actual']:>10.2f} {pt['risk']:>12.4f}"
+        )
 
-        print(f"  Point {i+1} (rate={rate:.4f}): {si.termination_status}")
+    # Marginal analysis
+    if len(pts) >= 3:
+        print("\n  Marginal analysis:")
+        rates = []
+        for j in range(len(pts) - 1):
+            dr = pts[j+1]['risk'] - pts[j]['risk']
+            dret = pts[j+1]['return_actual'] - pts[j]['return_actual']
+            if abs(dret) > 1e-6:
+                rate_val = dr / dret
+                rates.append(rate_val)
+                print(
+                    f"    {pts[j]['label']:>10} -> {pts[j+1]['label']:<10}: "
+                    f"delta_risk={dr:>+10.4f}, delta_return={dret:>+8.4f}, "
+                    f"marginal={rate_val:>8.2f} risk/return"
+                )
+            else:
+                rates.append(0)
 
-    # --------------------------------------------------
-    # Pareto analysis — per scenario
-    # --------------------------------------------------
-
-    print(f"\n{'=' * 70}")
-    print("EFFICIENT FRONTIER: Risk vs Return (per budget scenario)")
-    print(f"{'=' * 70}")
-
-    for sn in scenario_names:
-        pts = pareto[sn]
-        if len(pts) < 2:
-            continue
-        budget = budget_map[sn]
-        print(f"\n  {sn} (budget={budget:.0f}):")
-        print(f"  {'#':>3} {'Label':>10} {'Return':>10} {'Risk':>12}")
-        print(f"  {'-' * 38}")
-        for j, pt in enumerate(pts):
-            print(f"  {j+1:>3} {pt['label']:>10} {pt['return_actual']:>10.2f} {pt['risk']:>12.4f}")
-
-        # ASCII Pareto plot: Risk (y) vs Return (x)
-        if len(pts) >= 2:
-            plot_h, plot_w = 12, 50
-            rets = [pt['return_actual'] for pt in pts]
-            risks = [pt['risk'] for pt in pts]
-            ret_min, ret_max = min(rets), max(rets)
-            rsk_min, rsk_max = min(risks), max(risks)
-            ret_range = ret_max - ret_min if ret_max > ret_min else 1
-            rsk_range = rsk_max - rsk_min if rsk_max > rsk_min else 1
-            grid = [[" "] * plot_w for _ in range(plot_h)]
-            for k, pt in enumerate(pts):
-                col = int((pt['return_actual'] - ret_min) / ret_range * (plot_w - 1))
-                row = int((pt['risk'] - rsk_min) / rsk_range * (plot_h - 1))
-                row = plot_h - 1 - row
-                col = max(0, min(plot_w - 1, col))
-                row = max(0, min(plot_h - 1, row))
-                grid[row][col] = str(k + 1)
-            print("\n  Risk")
-            for i, row in enumerate(grid):
-                if i == 0:
-                    label = f"{rsk_max:>10.1f}"
-                elif i == plot_h - 1:
-                    label = f"{rsk_min:>10.1f}"
+        # Knee detection: where marginal cost jumps most.
+        if len(rates) >= 2:
+            max_jump = 0
+            knee_idx = 1
+            for j in range(len(rates) - 1):
+                if rates[j] > 1e-6:
+                    jump = rates[j+1] / rates[j]
                 else:
-                    label = " " * 10
-                print(f"  {label} |{''.join(row)}|")
-            print(f"  {' ' * 10} +{'-' * plot_w}+")
-            print(f"  {' ' * 10}  {ret_min:<.2f}{ret_max:>{plot_w - len(f'{ret_min:.2f}')}.2f}")
-            print(f"  {' ' * 10}  {'Return':^{plot_w}}")
+                    jump = rates[j+1] if rates[j+1] > 0 else 0
+                if jump > max_jump:
+                    max_jump = jump
+                    knee_idx = j + 1
+            print(
+                f"\n    Knee: Point {knee_idx + 1} ({pts[knee_idx]['label']}) "
+                f"-- marginal cost jumps {max_jump:.1f}x beyond this point"
+            )
 
-        # Marginal analysis
-        if len(pts) >= 3:
-            print("\n  Marginal analysis:")
-            rates = []
-            for j in range(len(pts) - 1):
-                dr = pts[j+1]['risk'] - pts[j]['risk']
-                dret = pts[j+1]['return_actual'] - pts[j]['return_actual']
-                if abs(dret) > 1e-6:
-                    rate_val = dr / dret
-                    rates.append(rate_val)
-                    print(f"    {pts[j]['label']:>10} -> {pts[j+1]['label']:<10}: "
-                          f"delta_risk={dr:>+10.4f}, delta_return={dret:>+8.4f}, "
-                          f"marginal={rate_val:>8.2f} risk/return")
-                else:
-                    rates.append(0)
 
-            # Knee detection: find where marginal cost jumps most
-            if len(rates) >= 2:
-                max_jump = 0
-                knee_idx = 1
-                for j in range(len(rates) - 1):
-                    if rates[j] > 1e-6:
-                        jump = rates[j+1] / rates[j]
-                    else:
-                        jump = rates[j+1] if rates[j+1] > 0 else 0
-                    if jump > max_jump:
-                        max_jump = jump
-                        knee_idx = j + 1
-                print(f"\n    Knee: Point {knee_idx + 1} ({pts[knee_idx]['label']}) "
-                      f"-- marginal cost jumps {max_jump:.1f}x beyond this point")
+# --------------------------------------------------
+# Stage 4: Crisis regime stress test
+# (Reuses Stage 3's pareto results; compares base vs crisis vol.)
+# --------------------------------------------------
 
-                # Print allocations at the knee point
-                knee_df = pts[knee_idx]["df"]
-                knee_allocs = _extract_allocations(knee_df, sn)
-                if knee_allocs:
-                    print(f"\n    Knee-point allocations ({sn}):")
-                    for idx in sorted(knee_allocs):
-                        print(f"      Stock {idx}: {knee_allocs[idx]:.2f} units "
-                              f"(return rate={stock_returns_map.get(idx, 0):.4f})")
+# ==================================================
+# STAGE 4: Crisis Regime Stress Test
+# ==================================================
+
+print(f"\n{'=' * 70}")
+print("STAGE 4: CRISIS REGIME STRESS TEST")
+print(f"(PSD-preserving correlation shrinkage, alpha = {CRISIS_ALPHA})")
+print("=" * 70)
+
+# Side-by-side vol (sqrt variance) by budget x lambda.
+print("\n  Volatility comparison (sqrt risk) -- base vs crisis at each lambda:")
+for budget in budgets:
+    base_sn = f"base_{budget}"
+    crisis_sn = f"crisis_{budget}"
+    if len(pareto[base_sn]) < 2 or len(pareto[crisis_sn]) < 2:
+        continue
+    print(f"\n  Budget {budget}:")
+    print(
+        f"  {'Label':>10} {'vol_base':>12} {'vol_crisis':>12} "
+        f"{'gap':>10} {'gap_%':>8}"
+    )
+    print(f"  {'-' * 56}")
+    for j in range(min(len(pareto[base_sn]), len(pareto[crisis_sn]))):
+        b_pt = pareto[base_sn][j]
+        c_pt = pareto[crisis_sn][j]
+        vol_b = b_pt["risk"] ** 0.5
+        vol_c = c_pt["risk"] ** 0.5
+        gap = vol_c - vol_b
+        gap_pct = (gap / vol_b * 100.0) if vol_b > 1e-9 else 0.0
+        print(
+            f"  {b_pt['label']:>10} {vol_b:>12.4f} {vol_c:>12.4f} "
+            f"{gap:>+10.4f} {gap_pct:>+7.1f}%"
+        )
+
+print(
+    "\n  Expected pattern: crisis vol > base vol at every lambda; "
+    "the gap widens\n  toward the concentrated (high-return) end of the "
+    "frontier. Because the investable\n  universe was already deduplicated "
+    "in Stage 2, the gap reflects genuine\n  co-movement in distinct bets, "
+    "not near-duplicate holdings stacking."
+)
