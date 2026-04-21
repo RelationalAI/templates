@@ -33,7 +33,7 @@ This template chains four reasoning stages to build compliant, risk-optimized po
 
 **Stage 2 -- Graph reasoning (covariance clustering + representative selection)** builds a correlation graph over the stock universe (edges where `|correlation| >= 0.3`) and runs Louvain community detection. For each cluster, the single stock with the highest Sharpe (return / volatility) is selected as the cluster **representative**. If two investments co-move strongly they carry near-identical exposure -- prefer the best risk-adjusted one and drop the rest from the investable universe. The graph stage collapses redundant bets rather than asking the optimizer to juggle near-duplicates.
 
-**Stage 3 -- Prescriptive reasoning (optimization)** uses bi-objective Markowitz mean-variance optimization to trace the efficient frontier between portfolio risk and expected return. Rather than fixing a single return target, the **epsilon constraint method** sweeps return targets across the feasible range, producing the full tradeoff curve. Two concentration limits are enforced on a representative-only universe: position limit (15%) and sector limit (30%). Non-representative stocks are forced to zero allocation via `model.not_(Stock.is_representative())` in `_add_compliance_constraints`.
+**Stage 3 -- Prescriptive reasoning (optimization)** uses bi-objective Markowitz mean-variance optimization to trace the efficient frontier between portfolio risk and expected return. Rather than fixing a single return target, the **epsilon constraint method** sweeps return targets across the feasible range, producing the full tradeoff curve. Two concentration limits are enforced on a representative-only universe: per-representative cap (30%) and sector limit (30%). Non-representative stocks are forced to zero allocation via `Stock.is_non_representative()` in `_add_compliance_constraints` (the complement relation is defined positively because the prescriptive rewriter can't accept `model.not_(...)` inside a solver `.where()`).
 
 The template also demonstrates **Scenario Concept inside the epsilon loop**: budget levels and regimes are modeled as scenarios, so each epsilon solve handles all (budget, regime) combinations simultaneously. This reveals how the risk-return frontier shifts with both available capital and market regime.
 
@@ -417,7 +417,7 @@ model.where(Stock.sharpe == Stock.cluster_max_sharpe).define(
 
 #### Scenario concept and decision variables
 
-The `Stock` concept (defined earlier for all stages) carries ticker, sector, expected returns, and the base covariance matrix. Stage 2 added `Stock.cluster` on top. Stage 3 adds budget-and-regime scenarios, regime-conditioned covariance, and decision variables.
+The `Stock` concept (defined earlier for all stages) carries ticker, sector, expected returns, and the base covariance matrix. Stage 2 added `Stock.variance`, `Stock.volatility`, `Stock.correlation`, `Stock.cluster`, `Stock.sharpe`, `Stock.cluster_max_sharpe`, `Stock.is_representative`, and `Stock.is_non_representative` on top. Stage 3 consumes the representative flag via its compliance constraints, and adds budget-and-regime scenarios, regime-conditioned covariance, and decision variables.
 
 Scenarios combine budget and regime so each epsilon solve handles all six (budget, regime) combinations simultaneously:
 
@@ -556,7 +556,7 @@ model.where(
 
 Both regimes live on the same `Stock.regime_covar` property, keyed by the `Regime` concept, so Stage 3's objective can select the right covariance per scenario without branching:
 
-After the Stage 3 sweep finishes, Stage 4 emits a side-by-side comparison of base and crisis volatility (`sqrt(risk)`) at each epsilon point, grouped by budget. Crisis volatility is consistently higher than base at every lambda. The gap widens modestly toward the concentrated (high-return) end of the frontier. Because the investable universe is already deduplicated by the graph stage, the crisis gap reflects genuine co-movement in distinct bets rather than near-duplicate holdings amplifying each other.
+After the Stage 3 sweep finishes, Stage 4 emits a side-by-side comparison of base and crisis volatility (`sqrt(risk)`) at each epsilon point, grouped by budget. Crisis volatility is consistently 25-30% higher than base at every lambda. The gap peaks in the middle of the frontier (eps_1..eps_3) and narrows toward both ends. That shape is the payoff of the representative-only universe: at the concentrated end the optimizer is picking the highest-Sharpe distinct bet per cluster (Energy and Consumer Staples in this dataset), which happen to have lower crisis correlations than the middle of the frontier. Without the representative collapse, the concentrated end would stack near-duplicates and the crisis gap would grow instead of shrink.
 
 ## Customize this template
 
