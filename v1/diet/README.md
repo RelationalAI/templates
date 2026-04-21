@@ -175,7 +175,7 @@ The template solves three scenarios by scaling nutritional requirements to 80%, 
 
 ### 5. Inspect the model schema
 
-`relationalai.semantics.inspect` (available in `relationalai>=1.0.14`) surfaces a typed view of the registered concepts, properties, relationships, and data sources. It is handy for sanity-checking a model before handing it to the solver:
+`relationalai.semantics.inspect` (available in `relationalai>=1.0.14`) surfaces a typed view of the registered concepts, properties, relationships, and data sources. It's handy for sanity-checking a model before handing it to the solver:
 
 ```python
 from relationalai.semantics import inspect
@@ -183,7 +183,7 @@ from relationalai.semantics import inspect
 print(inspect.schema(model))
 ```
 
-Excerpt of what you see for this model:
+Excerpt of the user-declared part of the output:
 
 ```text
 Model: diet
@@ -211,7 +211,9 @@ Model: diet
       nutrient_scaling: Float
 ```
 
-Notice that the prescriptive decision variable (`Food.x_amount(Scenario) -> Float`) appears alongside the source-data properties — the schema is a unified view of everything the model knows, including variables added by `solve_for()`.
+Notice that the prescriptive decision variable (`Food.x_amount(Scenario) -> Float`) appears alongside the source-data properties -- the schema is a unified view of everything the model knows, including variables added by `solve_for()`.
+
+After calling `Problem(...)` and `problem.solve_for / satisfy / minimize`, the prescriptive reasoner also registers root concepts named `Variable`, `Expression`, `Constraint`, and `Objective` (plus per-solve `Variable_<id>` subconcepts). They appear below the user-declared concepts in the full output; filter them out with a list-based check if you want a user-facing view (see the `machine_maintenance` template for the recipe).
 
 ## Customize this template
 

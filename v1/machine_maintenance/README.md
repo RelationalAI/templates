@@ -106,7 +106,7 @@ The multi-reasoner approach is necessary because no single analytical technique 
 
 ### Tools
 - Python >= 3.10
-- RelationalAI Python SDK (`relationalai`) >= 1.0.13
+- RelationalAI Python SDK (`relationalai`) >= 1.0.14
 
 ## Quickstart
 
@@ -368,29 +368,6 @@ model.where(
 ).define(MachinePeriod.predicted_fp(FPJoin.failure_probability))
 ```
 
-### Inspect the model schema
-
-Templates that combine multiple reasoners over a rich ontology benefit from a quick schema dump. `relationalai.semantics.inspect` (available in `relationalai>=1.0.14`) returns a typed view of every registered concept, property, and relationship — handy for confirming that decision variables, derived aggregates, and cross-product concepts all registered correctly before running the four-stage pipeline.
-
-After calling `Problem(...)` plus `solve_for` / `satisfy` / `minimize` / `maximize`, the prescriptive reasoner registers `Variable`, `Expression`, `Constraint`, `Objective`, plus per-solve `Variable_<id>` / `Constraint_<id>` / `Objective_<id>` subconcepts on the shared model. These are noise for user-facing introspection, so filter them out by exact name and reasoner-name prefix — an underscore check won't catch them since the names don't start with `_`:
-
-```python
-from relationalai.semantics import inspect
-
-schema = inspect.schema(model)
-reasoner_names = {"Variable", "Expression", "Constraint", "Objective"}
-user_concepts = [
-    c for c in schema.concepts
-    if c.name not in reasoner_names
-    and not any(c.name.startswith(p + "_") for p in reasoner_names)
-]
-print(f"User concepts: {len(user_concepts)}")
-for c in user_concepts:
-    print(f"  {c.name}: {len(c.properties)} properties, {len(c.relationships)} relationships")
-```
-
-Inspect first to see the actual names registered in your model (the Graph reasoner also adds its own, varying by algorithm), then extend the filter list as needed.
-
 ### Stage 0: Querying -- operational intelligence
 
 The querying stage computes OEE proxy (Performance x Quality) by facility, surfaces machines with above-threshold sensor readings, and identifies the steepest failure degradation trajectories. All queries use `model.select` with derived properties:
@@ -532,6 +509,30 @@ for mtype in machine_types:
 ```
 
 For concentrated types, the script queries `training_options.csv` to recommend the cheapest candidate at a different location, producing a specific, costed action item (e.g., "Cross-train T006 for Turbine at $3,200 / 5 weeks").
+
+### Stage 5: Inspect the model schema (post-pipeline)
+
+Templates that chain multiple reasoners over a rich ontology benefit from a quick schema dump once the pipeline has run. `relationalai.semantics.inspect` (available in `relationalai>=1.0.14`) returns a typed view of every registered concept, property, and relationship -- handy for confirming that decision variables, derived aggregates, and cross-product concepts all registered correctly across the five-stage pipeline.
+
+Once `Problem(...)` plus `solve_for` / `satisfy` / `minimize` / `maximize` have run in Stage 3, the prescriptive reasoner registers root concepts named `Variable`, `Expression`, `Constraint`, and `Objective` (plus per-solve `Variable_<id>` / `Constraint_<id>` / `Objective_<id>` subconcepts) on the shared model. Graph(model, node_concept=Machine) from Stage 1 also registers an edge concept (e.g. `graph<id>_Edge`). These are noise for user-facing introspection, so filter them out by exact name and reasoner-name prefix -- an underscore check won't catch them since the names don't start with `_`:
+
+```python
+from relationalai.semantics import inspect
+
+schema = inspect.schema(model)
+reasoner_names = {"Variable", "Expression", "Constraint", "Objective"}
+user_concepts = [
+    c for c in schema.concepts
+    if c.name not in reasoner_names
+    and not any(c.name.startswith(p + "_") for p in reasoner_names)
+    and not c.name.startswith("graph")  # Graph reasoner registers e.g. graph<id>_Edge
+]
+print(f"User concepts: {len(user_concepts)}")
+for c in user_concepts:
+    print(f"  {c.name}: {len(c.properties)} properties, {len(c.relationships)} relationships")
+```
+
+Print `inspect.schema(model)` first to see the actual names registered in your model, then extend the filter list if other reasoner-owned concepts appear.
 
 ## Customize this template
 

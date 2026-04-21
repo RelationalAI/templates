@@ -56,7 +56,7 @@ The scaffold provides the full lifecycle tooling: define your model, test querie
 ### Tools
 
 - Python 3.10+
-- `relationalai>=1.0.12`, `httpx`, `pyyaml` (see `pyproject.toml`)
+- `relationalai>=1.0.14`, `httpx`, `pyyaml` (see `pyproject.toml`)
 
 ## Quickstart
 

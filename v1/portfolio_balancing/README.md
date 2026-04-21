@@ -123,7 +123,7 @@ The four stages compose through the shared ontology. Each one writes derived pro
 
 ### Tools
 - Python >= 3.10
-- RelationalAI Python SDK (`relationalai`) == 1.0.13
+- RelationalAI Python SDK (`relationalai`) >= 1.0.14
 
 ## Quickstart
 
