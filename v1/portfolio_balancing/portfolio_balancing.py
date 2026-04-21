@@ -3,10 +3,12 @@
 Four-stage pipeline on a single shared ontology:
 - Stage 1 -- Rules: derived flags on existing portfolio data (overconcentrated
   holdings, sector concentration, high-risk traders).
-- Stage 2 -- Graph: correlation graph over stocks + Louvain clustering.
-  Persists cluster ids on Stock for use as an optimization constraint.
-- Stage 3 -- Prescriptive: bi-objective QP via epsilon constraint. Position,
-  sector, and cluster limits. Budget x regime as Scenario Concept so all
+- Stage 2 -- Graph: correlation graph over stocks + Louvain clustering,
+  then per-cluster representative selection by highest Sharpe. Collapses
+  redundant bets before the optimizer sees them.
+- Stage 3 -- Prescriptive: bi-objective QP via epsilon constraint on the
+  representative-only universe. Position and sector limits apply; non-reps
+  are forced to zero. Budget x regime as Scenario Concept so all
   combinations solve in one call.
 - Stage 4 -- Crisis stress: compare base vs crisis frontiers. Crisis
   covariance via PSD-preserving correlation shrinkage, derived in PyRel.
@@ -39,11 +41,13 @@ from relationalai.semantics.std.math import sqrt
 # Configure inputs
 # --------------------------------------------------
 
-POSITION_LIMIT = 0.15    # max fraction of budget per stock
-SECTOR_LIMIT = 0.30      # max fraction of budget per sector
-CLUSTER_LIMIT = 0.30     # max fraction of budget per covariance cluster (Stage 3)
-CORR_THRESHOLD = 0.3     # |correlation| >= threshold to create a graph edge (Stage 2)
-CRISIS_ALPHA = 0.7       # shrinkage weight for base correlation in crisis regime (Stage 4)
+POSITION_LIMIT = 0.15        # max fraction per stock in Stage 1 compliance rules
+REP_POSITION_LIMIT = 0.30    # max fraction per representative in Stage 3 optimization
+                             # (reps carry combined cluster exposure, so cap is higher;
+                             # also required for feasibility: 5 reps x 0.20 = 1.00)
+SECTOR_LIMIT = 0.30          # max fraction of budget per sector (both stages)
+CORR_THRESHOLD = 0.3         # |correlation| >= threshold to create a graph edge (Stage 2)
+CRISIS_ALPHA = 0.7           # shrinkage weight for base correlation in crisis regime (Stage 4)
 
 DATA_DIR = Path(__file__).parent / "data"
 returns_csv = read_csv(DATA_DIR / "returns.csv")
@@ -389,6 +393,40 @@ model.define(stock_clust_ref.cluster(cluster_label)).where(
     community(stock_clust_ref, cluster_label)
 )
 
+# Representative selection: for each cluster, the single stock with the
+# highest Sharpe (return / volatility) is the cluster representative. If
+# several stocks co-move strongly they carry near-identical exposure --
+# prefer the best risk-adjusted one and drop the rest from the investable
+# universe. This collapses redundant bets instead of merely capping them.
+Stock.sharpe = model.Property(f"{Stock} has Sharpe {Float:stock_sharpe}")
+model.define(Stock.sharpe(Stock.returns / Stock.volatility))
+
+# Per-cluster maximum Sharpe, written back onto each Stock.
+peer_for_max = Stock.ref()
+Stock.cluster_max_sharpe = model.Property(
+    f"{Stock} has cluster max Sharpe {Float:cluster_max_sharpe}"
+)
+model.define(
+    Stock.cluster_max_sharpe(
+        aggs.max(peer_for_max.sharpe)
+        .where(peer_for_max.cluster == Stock.cluster)
+        .per(Stock)
+    )
+)
+
+# Representative Relationship: stock whose Sharpe equals its cluster's max.
+Stock.is_representative = model.Relationship(f"{Stock} is cluster representative")
+model.where(Stock.sharpe == Stock.cluster_max_sharpe).define(
+    Stock.is_representative()
+)
+
+# Complementary Relationship used positively in solver constraints
+# (the prescriptive rewriter doesn't accept `model.not_(...)` in a .where()).
+Stock.is_non_representative = model.Relationship(f"{Stock} is not cluster representative")
+model.where(Stock.sharpe < Stock.cluster_max_sharpe).define(
+    Stock.is_non_representative()
+)
+
 
 # ==================================================
 # STAGE 2: Graph -- Covariance Clustering
@@ -457,6 +495,29 @@ print(
     f"\n  Avg correlation: intra-cluster = {intra_avg:+.3f}, "
     f"inter-cluster = {inter_avg:+.3f}"
 )
+
+# Cluster representatives -- the investable universe after redundancy removal.
+RepStock = Stock.ref()
+rep_df = (
+    model.select(
+        RepStock.cluster.alias("cluster_id"),
+        RepStock.ticker.alias("ticker"),
+        RepStock.sector.alias("sector"),
+        RepStock.sharpe.alias("sharpe"),
+    )
+    .where(RepStock.is_representative())
+    .to_df()
+    .sort_values("cluster_id")
+)
+print(
+    f"\n  Cluster representatives ({len(rep_df)} of {len(cluster_df)} stocks, "
+    f"picked by highest Sharpe):"
+)
+for _, row in rep_df.iterrows():
+    print(
+        f"    Cluster {int(row['cluster_id'])}: {row['ticker']} "
+        f"({row['sector']}) -- Sharpe = {float(row['sharpe']):.3f}"
+    )
 
 
 # --------------------------------------------------
@@ -542,9 +603,8 @@ x_qty = Float.ref()
 x_qty_paired = Float.ref()
 regime_cov_val = Float.ref()
 
-# Sector and cluster constraint refs -- defined at module level.
+# Sector constraint ref -- defined at module level.
 s_sector_ref = Stock.ref()
-s_cluster_ref = Stock.ref()
 
 # Python-side lookup maps for per-scenario evaluation (post-solve analysis).
 # stock_returns_map is fine to build from the returns CSV since it's the raw
@@ -641,11 +701,14 @@ def evaluate_risk(var_df, scenario_name):
 
 
 def _add_compliance_constraints(problem):
-    """Add position, sector, and cluster limit constraints to a Problem."""
-    # Position limit: each stock allocation <= POSITION_LIMIT * budget.
+    """Add position, sector, and representative-only constraints to a Problem."""
+    # Position limit: each representative allocation <= REP_POSITION_LIMIT * budget.
+    # This is higher than Stage 1's POSITION_LIMIT because a representative
+    # carries its whole cluster's exposure (the cluster's other members are
+    # forced to zero below).
     problem.satisfy(model.where(
         Stock.x_quantity(Scenario, x_qty),
-    ).require(x_qty <= POSITION_LIMIT * Scenario.budget))
+    ).require(x_qty <= REP_POSITION_LIMIT * Scenario.budget))
 
     # Sector limit: total allocation to stocks in same sector <= SECTOR_LIMIT * budget.
     sector_alloc = sum(x_qty).where(
@@ -656,15 +719,14 @@ def _add_compliance_constraints(problem):
         Stock.x_quantity(Scenario, x_qty),
     ).require(sector_alloc <= SECTOR_LIMIT * Scenario.budget))
 
-    # Cluster limit: total allocation to stocks in same covariance cluster
-    # <= CLUSTER_LIMIT * budget. Clusters come from Stage 2 Louvain.
-    cluster_alloc = sum(x_qty).where(
-        Stock.x_quantity(Scenario, x_qty),
-        Stock.cluster == s_cluster_ref.cluster,
-    ).per(Scenario, s_cluster_ref.cluster)
+    # Representative-only: non-representative stocks are forced to zero.
+    # The cluster's representative (highest Sharpe, picked in Stage 2) is
+    # the sole carrier of its exposure in the portfolio. This collapses
+    # redundant bets rather than capping within a redundant set.
     problem.satisfy(model.where(
         Stock.x_quantity(Scenario, x_qty),
-    ).require(cluster_alloc <= CLUSTER_LIMIT * Scenario.budget))
+        Stock.is_non_representative(),
+    ).require(x_qty == 0))
 
 
 def solve_epsilon(eps_rate=None):
@@ -698,7 +760,7 @@ def solve_epsilon(eps_rate=None):
         Stock.x_quantity(Scenario, x_qty),
     ).require(sum(x_qty).per(Scenario) >= Scenario.budget))
 
-    # Compliance constraints (position + sector + cluster limits)
+    # Compliance constraints (position + sector limits; non-reps forced to 0)
     _add_compliance_constraints(problem)
 
     # EPSILON CONSTRAINT: return rate >= target rate (scaled by budget)
@@ -752,7 +814,7 @@ budgets = [500, 1000, 2000]
 
 print(f"\n{'=' * 70}")
 print("STAGE 3: BI-OBJECTIVE OPTIMIZATION")
-print("(position + sector + cluster limits; base & crisis regimes)")
+print("(position + sector limits on representative universe; base & crisis regimes)")
 print("=" * 70)
 
 print("\nANCHOR SOLVE 1: Minimize risk (no return constraint)")
@@ -977,5 +1039,7 @@ for budget in budgets:
 print(
     "\n  Expected pattern: crisis vol > base vol at every lambda; "
     "the gap widens\n  toward the concentrated (high-return) end of the "
-    "frontier, which is exactly\n  where the cluster cap earns its keep."
+    "frontier. Because the investable\n  universe was already deduplicated "
+    "in Stage 2, the gap reflects genuine\n  co-movement in distinct bets, "
+    "not near-duplicate holdings stacking."
 )

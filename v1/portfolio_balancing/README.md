@@ -31,35 +31,36 @@ This template chains four reasoning stages to build compliant, risk-optimized po
 
 **Stage 1 -- Rules-based compliance analysis** uses RAI derived properties and Relationships to scan existing portfolio data (users, accounts, holdings, transactions) and flag violations: overconcentrated holdings (position value > 15% of account balance), sector concentration (sector exposure > 30% of account balance), and high-risk traders (risk score > 0.8 with more than 5 flagged transactions).
 
-**Stage 2 -- Graph reasoning (covariance clustering)** builds a correlation graph over the stock universe (edges where `|correlation| >= 0.3`) and runs Louvain community detection. Cluster ids are persisted as a `Stock.cluster` property and consumed by the optimizer in Stage 3. Clustering surfaces latent risk groupings that sector labels may miss -- stocks from different sectors can still co-move enough to belong in the same cluster.
+**Stage 2 -- Graph reasoning (covariance clustering + representative selection)** builds a correlation graph over the stock universe (edges where `|correlation| >= 0.3`) and runs Louvain community detection. For each cluster, the single stock with the highest Sharpe (return / volatility) is selected as the cluster **representative**. If two investments co-move strongly they carry near-identical exposure -- prefer the best risk-adjusted one and drop the rest from the investable universe. The graph stage collapses redundant bets rather than asking the optimizer to juggle near-duplicates.
 
-**Stage 3 -- Prescriptive reasoning (optimization)** uses bi-objective Markowitz mean-variance optimization to trace the efficient frontier between portfolio risk and expected return. Rather than fixing a single return target, the **epsilon constraint method** sweeps return targets across the feasible range, producing the full tradeoff curve. Three concentration limits are enforced: position limit (15%), sector limit (30%), and **cluster limit (30% per covariance cluster)** derived from Stage 2.
+**Stage 3 -- Prescriptive reasoning (optimization)** uses bi-objective Markowitz mean-variance optimization to trace the efficient frontier between portfolio risk and expected return. Rather than fixing a single return target, the **epsilon constraint method** sweeps return targets across the feasible range, producing the full tradeoff curve. Two concentration limits are enforced on a representative-only universe: position limit (15%) and sector limit (30%). Non-representative stocks are forced to zero allocation via `model.not_(Stock.is_representative())` in `_add_compliance_constraints`.
 
 The template also demonstrates **Scenario Concept inside the epsilon loop**: budget levels and regimes are modeled as scenarios, so each epsilon solve handles all (budget, regime) combinations simultaneously. This reveals how the risk-return frontier shifts with both available capital and market regime.
 
-**Stage 4 -- Crisis regime stress test** re-solves the frontier under a crisis covariance built via **PSD-preserving correlation shrinkage** (`rho_crisis = alpha * rho + (1 - alpha) * J`). Naively scaling off-diagonal covariance frequently breaks positive semidefiniteness and crashes the convex QP; the shrinkage construction is safe by construction (convex combination of PSD matrices). The output compares base vs crisis volatility at each lambda -- the cluster cap earns its keep when correlations spike.
+**Stage 4 -- Crisis regime stress test** re-solves the frontier under a crisis covariance built via **PSD-preserving correlation shrinkage** (`rho_crisis = alpha * rho + (1 - alpha) * J`). Naively scaling off-diagonal covariance frequently breaks positive semidefiniteness and crashes the convex QP; the shrinkage construction is safe by construction (convex combination of PSD matrices). The output compares base vs crisis volatility at each lambda.
 
-All four stages share a single RAI model. Compliance thresholds (`POSITION_LIMIT = 0.15`, `SECTOR_LIMIT = 0.30`, `CLUSTER_LIMIT = 0.30`) are defined once and enforced consistently: Stage 1 flags existing violations as derived Relationships, and Stage 3 applies the same limits as hard constraints in the optimizer via `_add_compliance_constraints()`.
+All four stages share a single RAI model. Compliance thresholds are defined once at the top of the script. Stage 1 uses `POSITION_LIMIT = 0.15` and `SECTOR_LIMIT = 0.30` to flag existing violations as derived Relationships. Stage 3 re-uses `SECTOR_LIMIT` but applies `REP_POSITION_LIMIT = 0.30` to the decision variable: after representative collapse each cluster has exactly one carrier, so its cap is legitimately higher than a per-stock compliance cap.
 
 ### Reasoner overview
 
 | Stage | Reasoner | Reads from ontology | Writes to ontology | Role |
 |-------|----------|---------------------|--------------------|------|
 | 1 | Rules | Holding, Account, User, Transaction, Stock | Holding.is_overconcentrated, Holding.is_sector_concentrated, User.is_high_risk_trader | 4 overconcentrated holdings (AAPL 18%, MSFT 16%, JNJ 16%, PFE 16.2%). 2 sector concentrations (Technology 34%, Healthcare 32.2%). 2 high-risk traders (Alice Chen 0.85, Eve Taylor 0.92). |
-| 2 | Graph (Louvain) | Stock.covar (diagonal for variance), derived Stock.correlation filtered at threshold 0.3 | Stock.variance, Stock.volatility, Stock.correlation, Stock.cluster | 4 edges retained after thresholding. Louvain yields 5 clusters: {AAPL, MSFT, GOOGL}, {JNJ, PFE}, {JPM}, {XOM}, {PG}. Intra-cluster avg correlation +0.68 vs inter-cluster +0.13 (~5x separation). |
-| 3 | Prescriptive (QP) | Stock.returns, Stock.regime_covar, Stock.cluster, Scenario.budget, Scenario.regime | Stock.x_quantity indexed by Scenario | Min-risk return rate: 0.0666/unit (base). Max return rate: 0.0715/unit. Epsilon sweep traces 5 interior points per (budget, regime). Knee at eps_1 (min-risk to min-risk marginal rate; cost jumps ~14x at budget 500 base). |
+| 2 | Graph (Louvain) | Stock.covar (diagonal for variance), derived Stock.correlation filtered at threshold 0.3 | Stock.variance, Stock.volatility, Stock.correlation, Stock.cluster, Stock.sharpe, Stock.cluster_max_sharpe, Stock.is_representative | 4 edges retained after thresholding. Louvain yields 5 clusters; 5 representatives picked by highest Sharpe (one per cluster). Collapses 8 stocks to 5 distinct bets. |
+| 3 | Prescriptive (QP) | Stock.returns, Stock.regime_covar, Stock.is_representative, Scenario.budget, Scenario.regime | Stock.x_quantity indexed by Scenario (non-reps forced to 0) | Min-risk and max-return anchors bracket the frontier. Epsilon sweep traces 5 interior points per (budget, regime). Programmatic knee detection at eps_1. |
 | 4 | Prescriptive (stress) | Stock.regime_covar under "crisis" regime | (shares Stock.x_quantity with Stage 3) | Crisis volatility ~30% higher than base at every lambda; gap widens toward the concentrated end of the frontier. |
 
 ## Why this problem matters
 
-Portfolio managers must balance competing objectives -- maximize expected return while minimizing variance -- subject to regulatory and internal compliance limits. Sector labels alone miss latent co-movement: tech and discretionary names can cluster together by returns behavior even when labeled differently. And base-case optimization is optimistic; under crisis regimes (correlations spike toward 1), concentrated portfolios bleed additional volatility.
+Portfolio managers don't want to pay twice for the same exposure. If two funds track nearly the same benchmark, allocating $4k to one and $5k to the other is functionally a single $9k bet with worse bookkeeping. Sector labels alone miss this: two tech ETFs can share a Technology label and still be near-duplicates, or two instruments from different sectors can co-move strongly enough that owning both is redundant. And base-case optimization is optimistic -- under crisis regimes (correlations spike toward 1), everything that hasn't been deduplicated hurts twice.
 
-The four-stage approach addresses each gap in turn. Stage 1 surfaces existing violations in the current book (diagnostic). Stage 2 discovers the covariance clusters -- a richer grouping than sector metadata. Stage 3 constructs new portfolios satisfying position, sector, AND cluster concentration limits simultaneously. Stage 4 re-solves under a PSD-preserving crisis covariance to quantify how much the cluster cap buys you when correlations spike.
+The four-stage approach addresses each gap. Stage 1 surfaces existing violations in the current book (diagnostic). Stage 2 clusters by return covariance and picks the highest-Sharpe representative per cluster, collapsing redundant bets. Stage 3 optimizes over the representative-only universe under position and sector limits. Stage 4 re-solves under a PSD-preserving crisis covariance to stress the resulting portfolio.
 
 ### Key design patterns demonstrated
 
-- **Shared compliance thresholds** -- `POSITION_LIMIT` and `SECTOR_LIMIT` are defined once and enforced in both rules (Stage 1 flags) and optimization (Stage 3 constraints), ensuring consistency
-- **Graph results feed optimization** -- Louvain cluster ids persist on `Stock.cluster` and are consumed as a grouping key in the Stage 3 cluster-limit constraint
+- **Shared compliance thresholds** -- `SECTOR_LIMIT` is defined once and enforced in both stages. `POSITION_LIMIT` (Stage 1 per-stock compliance) and `REP_POSITION_LIMIT` (Stage 3 per-representative cap) are deliberately different: a representative carries its cluster's combined exposure, so the construction-side cap is higher than the holdings-side compliance cap
+- **Graph results feed optimization** -- Louvain cluster ids and per-cluster argmax (highest Sharpe) both persist on `Stock`, and the optimizer's `model.not_(Stock.is_representative())` constraint forces non-reps to zero
+- **Collapse, don't cap** -- the graph stage reduces the investable universe to distinct bets rather than allowing all N stocks and capping within redundant groups
 - **Scenario Concept for parameter sweeps** -- `Scenario` entities combine budget ($500, $1,000, $2,000) and regime (base, crisis) so each epsilon solve handles all six combinations in one call
 - **Epsilon constraint method** -- `solve_epsilon(eps_rate)` sweeps return targets across the feasible range, producing the full Pareto frontier without manually fixing return values
 - **PSD-preserving stress covariance** -- correlation shrinkage toward all-ones keeps the QP convex at every lambda, unlike naive off-diagonal scaling
@@ -76,8 +77,8 @@ The four-stage approach addresses each gap in turn. Stage 1 surfaces existing vi
 ## What you'll build
 
 - A rules-based compliance pipeline using RAI derived properties and Relationships to flag overconcentrated holdings, sector concentration violations, and high-risk traders
-- A correlation graph over stocks with Louvain community detection to discover latent risk clusters
-- A quadratic programming model that minimizes portfolio variance subject to position, sector, and cluster concentration limits
+- A correlation graph over stocks with Louvain community detection, plus per-cluster representative selection by highest Sharpe
+- A quadratic programming model that minimizes portfolio variance subject to position and sector limits on a representative-only universe (non-reps forced to zero)
 - Budget and no-short-selling constraints across multiple (budget, regime) scenarios
 - Epsilon constraint method sweeping return targets to trace the efficient frontier
 - Anchor solves to establish the feasible return range
@@ -167,9 +168,16 @@ The four-stage approach addresses each gap in turn. Stage 1 surfaces existing vi
 
      Avg correlation: intra-cluster = +0.683, inter-cluster = +0.131
 
+     Cluster representatives (5 of 8 stocks, picked by highest Sharpe):
+       Cluster 1: PFE (Healthcare) -- Sharpe = ...
+       Cluster 2: GOOGL (Technology) -- Sharpe = ...
+       Cluster 3: JPM (Financials) -- Sharpe = ...
+       Cluster 4: PG (Consumer Staples) -- Sharpe = ...
+       Cluster 5: XOM (Energy) -- Sharpe = ...
+
    ======================================================================
    STAGE 3: BI-OBJECTIVE OPTIMIZATION
-   (position + sector + cluster limits; base & crisis regimes)
+   (position + sector limits on representative universe; base & crisis regimes)
    ======================================================================
 
    ANCHOR SOLVE 1: Minimize risk (no return constraint)
@@ -228,7 +236,7 @@ The four-stage approach addresses each gap in turn. Stage 1 surfaces existing vi
      (similar tables for Budget 1000 and Budget 2000)
    ```
 
-   Crisis volatility is ~30% higher than base at every lambda, and the gap widens modestly toward the concentrated (high-return) end of the frontier. That is exactly where the cluster cap pays off: without it, the optimizer would concentrate further and the crisis gap would widen more sharply.
+   Crisis volatility is ~30% higher than base at every lambda, and the gap widens modestly toward the concentrated (high-return) end of the frontier. Working on a representative-only universe keeps the concentrated end from containing near-duplicate bets that would amplify the crisis gap.
 
 ## Template structure
 
@@ -361,6 +369,30 @@ model.define(stock_clust_ref.cluster(cluster_label)).where(
 
 The script reports cluster sizes and intra- vs inter-cluster average correlation as a sanity check that the clustering separates co-moving stocks from independent ones.
 
+After clustering, Stage 2 picks one representative per cluster -- the stock with the highest Sharpe ratio -- using per-group argmax in PyRel. Only the representatives will be eligible for allocation in Stage 3:
+
+```python
+Stock.sharpe = model.Property(f"{Stock} has Sharpe {Float:stock_sharpe}")
+model.define(Stock.sharpe(Stock.returns / Stock.volatility))
+
+peer_for_max = Stock.ref()
+Stock.cluster_max_sharpe = model.Property(
+    f"{Stock} has cluster max Sharpe {Float:cluster_max_sharpe}"
+)
+model.define(
+    Stock.cluster_max_sharpe(
+        aggs.max(peer_for_max.sharpe)
+        .where(peer_for_max.cluster == Stock.cluster)
+        .per(Stock)
+    )
+)
+
+Stock.is_representative = model.Relationship(f"{Stock} is cluster representative")
+model.where(Stock.sharpe == Stock.cluster_max_sharpe).define(
+    Stock.is_representative()
+)
+```
+
 ### Stage 3: Bi-objective optimization
 
 #### Scenario concept and decision variables
@@ -410,14 +442,14 @@ Stock.x_quantity = model.Property(f"{Stock} in {Scenario} has {Float:quantity}")
 x_qty = Float.ref()
 ```
 
-Three concentration limits are added via `_add_compliance_constraints` -- position (per stock), sector (from stock metadata), and cluster (from Stage 2 Louvain):
+Two concentration limits plus a representative-only filter are added via `_add_compliance_constraints`. Position and sector caps behave as before; the `Stock.is_non_representative()` relation forces every non-representative stock to zero allocation, which is how the graph stage's redundancy removal shows up at solve time. The complement is defined positively because the prescriptive rewriter can't accept `model.not_(...)` inside a solver constraint:
 
 ```python
 def _add_compliance_constraints(problem):
-    # Position limit: each stock allocation <= POSITION_LIMIT * budget.
+    # Position limit: each representative <= REP_POSITION_LIMIT * budget.
     problem.satisfy(model.where(
         Stock.x_quantity(Scenario, x_qty),
-    ).require(x_qty <= POSITION_LIMIT * Scenario.budget))
+    ).require(x_qty <= REP_POSITION_LIMIT * Scenario.budget))
 
     # Sector limit: total allocation to stocks in same sector <= SECTOR_LIMIT * budget.
     sector_alloc = sum(x_qty).where(
@@ -428,15 +460,11 @@ def _add_compliance_constraints(problem):
         Stock.x_quantity(Scenario, x_qty),
     ).require(sector_alloc <= SECTOR_LIMIT * Scenario.budget))
 
-    # Cluster limit: total allocation to stocks in same covariance cluster
-    # <= CLUSTER_LIMIT * budget. Clusters come from Stage 2 Louvain.
-    cluster_alloc = sum(x_qty).where(
-        Stock.x_quantity(Scenario, x_qty),
-        Stock.cluster == s_cluster_ref.cluster,
-    ).per(Scenario, s_cluster_ref.cluster)
+    # Representative-only: non-representative stocks forced to zero.
     problem.satisfy(model.where(
         Stock.x_quantity(Scenario, x_qty),
-    ).require(cluster_alloc <= CLUSTER_LIMIT * Scenario.budget))
+        Stock.is_non_representative(),
+    ).require(x_qty == 0))
 ```
 
 The risk objective is quadratic in the decision variables and uses the regime-conditioned covariance: each Scenario picks its matching regime's covariance, so base and crisis scenarios solve against different covariances in the same call.
@@ -508,13 +536,13 @@ model.where(
 
 Both regimes live on the same `Stock.regime_covar` property, keyed by the `Regime` concept, so Stage 3's objective can select the right covariance per scenario without branching:
 
-After the Stage 3 sweep finishes, Stage 4 emits a side-by-side comparison of base and crisis volatility (`sqrt(risk)`) at each epsilon point, grouped by budget. Crisis volatility is consistently higher than base at every lambda. The gap widens modestly toward the concentrated (high-return) end of the frontier, which is exactly where the cluster cap is most valuable -- without it, the optimizer would concentrate further and the crisis gap would widen much more sharply.
+After the Stage 3 sweep finishes, Stage 4 emits a side-by-side comparison of base and crisis volatility (`sqrt(risk)`) at each epsilon point, grouped by budget. Crisis volatility is consistently higher than base at every lambda. The gap widens modestly toward the concentrated (high-return) end of the frontier. Because the investable universe is already deduplicated by the graph stage, the crisis gap reflects genuine co-movement in distinct bets rather than near-duplicate holdings amplifying each other.
 
 ## Customize this template
 
-- **Adjust compliance thresholds**: Change `POSITION_LIMIT` (default 0.15) and `SECTOR_LIMIT` (default 0.30) at the top of the script to tighten or relax concentration rules. These are applied in both the rules compliance stage and the optimization constraints.
+- **Adjust compliance thresholds**: `POSITION_LIMIT` (default 0.15) applies in Stage 1 compliance rules (per-stock holdings). `REP_POSITION_LIMIT` (default 0.30) applies in Stage 3 optimization (per-representative allocation, which carries its cluster's combined exposure). `SECTOR_LIMIT` (default 0.30) applies to both. Note that `REP_POSITION_LIMIT` must satisfy `REP_POSITION_LIMIT * num_representatives >= 1.0` or the fully-invested constraint becomes infeasible.
 - **Tune the correlation graph**: Raise or lower `CORR_THRESHOLD` (default 0.3) to control graph sparsity. Higher thresholds produce fewer edges and more singleton clusters; lower thresholds produce a denser graph and fewer, larger clusters.
-- **Set the cluster cap**: `CLUSTER_LIMIT` (default 0.30) bounds the allocation to any Louvain cluster. Tuning logic: with K clusters, the cap must satisfy `cap * K_non_singleton + (K_singleton * POSITION_LIMIT) >= 1.0` or the fully-invested constraint becomes infeasible. For this 8-stock dataset at threshold 0.3 (5 clusters: 2 multi-member + 3 singleton), the minimum feasible cap is 0.30. A practical rule: `CLUSTER_LIMIT = max(0.30, round(1.1 / num_clusters, 2))`.
+- **Change the representative picking rule**: Stage 2 picks the highest-Sharpe stock per cluster. To pick differently, change the `Stock.cluster_max_sharpe` derivation -- e.g., replace `Stock.sharpe` with `Stock.returns` (highest return), `-Stock.volatility` (lowest vol), or a weighted blend. Singletons are always their own representative regardless of rule.
 - **Adjust crisis severity**: Lower `CRISIS_ALPHA` (default 0.7) shrinks correlations harder toward all-ones (more severe crisis). `alpha = 1.0` is no crisis (base); `alpha = 0.0` is maximum crisis (all correlations = 1). Values between 0.5 and 0.9 give interesting comparisons while keeping the QP well-conditioned.
 - **Add more stocks**: Extend `returns.csv` and `covar.csv` with additional assets and their covariance entries.
 - **Add compliance rules**: Define additional Relationships in the rules stage (e.g., minimum holding period, transaction velocity limits).
