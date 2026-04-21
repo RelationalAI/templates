@@ -48,7 +48,7 @@ All four stages share a single RAI model. Compliance thresholds are defined once
 | 1 | Rules | Holding, Account, User, Transaction, Stock | Holding.is_overconcentrated, Holding.is_sector_concentrated, User.is_high_risk_trader | 4 overconcentrated holdings (AAPL 18%, MSFT 16%, JNJ 16%, PFE 16.2%). 2 sector concentrations (Technology 34%, Healthcare 32.2%). 2 high-risk traders (Alice Chen 0.85, Eve Taylor 0.92). |
 | 2 | Graph (Louvain) | Stock.covar (diagonal for variance), derived Stock.correlation filtered at threshold 0.3 | Stock.variance, Stock.volatility, Stock.correlation, Stock.cluster, Stock.sharpe, Stock.cluster_max_sharpe, Stock.is_representative | 4 edges retained after thresholding. Louvain yields 5 clusters; 5 representatives picked by highest Sharpe (one per cluster). Collapses 8 stocks to 5 distinct bets. |
 | 3 | Prescriptive (QP) | Stock.returns, Stock.regime_covar, Stock.is_representative, Scenario.budget, Scenario.regime | Stock.x_quantity indexed by Scenario (non-reps forced to 0) | Min-risk and max-return anchors bracket the frontier. Epsilon sweep traces 5 interior points per (budget, regime). Programmatic knee detection at eps_1. |
-| 4 | Prescriptive (stress) | Stock.regime_covar under "crisis" regime | (shares Stock.x_quantity with Stage 3) | Crisis volatility ~30% higher than base at every lambda; gap widens toward the concentrated end of the frontier. |
+| 4 | Prescriptive (stress) | Stock.regime_covar under "crisis" regime | (shares Stock.x_quantity with Stage 3) | Crisis volatility 25-30% higher than base at every lambda; gap peaks at the middle of the frontier (eps_1..eps_3) and narrows toward both ends. The representative-only universe keeps the concentrated end from stacking near-duplicate bets that would otherwise amplify crisis vol. |
 
 ## Why this problem matters
 
@@ -56,10 +56,29 @@ Portfolio managers don't want to pay twice for the same exposure. If two funds t
 
 The four-stage approach addresses each gap. Stage 1 surfaces existing violations in the current book (diagnostic). Stage 2 clusters by return covariance and picks the highest-Sharpe representative per cluster, collapsing redundant bets. Stage 3 optimizes over the representative-only universe under position and sector limits. Stage 4 re-solves under a PSD-preserving crisis covariance to stress the resulting portfolio.
 
+### How the reasoners chain
+
+The four stages compose through the shared ontology. Each one writes derived properties the next reads directly -- no external files, no dataframes handed across stage boundaries, no branch of the pipeline has to re-implement what a prior branch did.
+
+**Stage 1 (Rules) diagnoses why a rebalance is needed.** Running derived Relationships over the current book surfaces `Holding.is_overconcentrated`, `Holding.is_sector_concentrated`, and `User.is_high_risk_trader`. These flags answer "what is wrong with the portfolio today?" and motivate the rebuild. They also name the thresholds (`POSITION_LIMIT`, `SECTOR_LIMIT`) that Stage 3 will enforce as hard constraints, so the compliance standard is defined once and shared across reasoners.
+
+**Stage 2 (Graph) reshapes the investable universe.** The Louvain reasoner runs on the correlation graph derived from `Stock.covar`, and the cluster ids are persisted back onto `Stock`. A per-cluster argmax over `Stock.sharpe` selects the representative per cluster and writes `Stock.is_representative` (and its complement `Stock.is_non_representative`). What used to be an 8-stock universe is now a 5-distinct-bet universe, expressed as a relation the next reasoner can read.
+
+**Stage 3 (Prescriptive) consumes both.** The QP's `_add_compliance_constraints` applies `POSITION_LIMIT` / `SECTOR_LIMIT` (the same thresholds Stage 1 flagged against) and uses `Stock.is_non_representative()` in its `.where()` to force non-reps to zero. The decision space is shaped by rules-reasoner thresholds **and** graph-reasoner output, without Stage 3 needing to know anything about Louvain or Sharpe ratios -- only that a boolean relation exists on `Stock`.
+
+**Stage 4 (stress test) is the same solver call, different regime.** The crisis scenario isn't a separate pipeline: `Stock.regime_covar(PairedStock, Scenario.regime, ...)` is a single property keyed by the `Regime` concept, and every `Scenario` row carries a `regime` attribute. One `solve_epsilon` invocation computes optimal allocations for all six `(budget, regime)` combinations against the matching covariance. Stage 4 is just a different view on Stage 3's solve -- the vol comparison reads from the same `Stock.x_quantity` output and the same `Stock.regime_covar` input under the "crisis" key. No separate stress model, no re-formulation.
+
+### Multi-scenario Pareto frontier in one pipeline
+
+`Scenario` combines three budgets and two regimes -- six tuples. Each `solve_epsilon(eps_rate)` call returns one optimal allocation per tuple; the epsilon sweep repeats across return-rate targets. Six scenarios × seven points (two anchors + five interior) = 42 optimal portfolios, all from seven solver invocations. Two consequences:
+
+1. Base and crisis are comparable at equal budget and equal lambda: the vol gap is a pure regime effect, not a re-fitting artifact.
+2. Adding a fourth regime or a fifth budget is a data edit in `scenario_data`, not a code change in `solve_epsilon`. Scenarios are data.
+
 ### Key design patterns demonstrated
 
 - **Shared compliance thresholds** -- `SECTOR_LIMIT` is defined once and enforced in both stages. `POSITION_LIMIT` (Stage 1 per-stock compliance) and `REP_POSITION_LIMIT` (Stage 3 per-representative cap) are deliberately different: a representative carries its cluster's combined exposure, so the construction-side cap is higher than the holdings-side compliance cap
-- **Graph results feed optimization** -- Louvain cluster ids and per-cluster argmax (highest Sharpe) both persist on `Stock`, and the optimizer's `model.not_(Stock.is_representative())` constraint forces non-reps to zero
+- **Graph results feed optimization** -- Louvain cluster ids and per-cluster argmax (highest Sharpe) both persist on `Stock`, and the optimizer's `Stock.is_non_representative()` constraint forces non-reps to zero (complement defined positively because the prescriptive rewriter doesn't accept `model.not_()` in a solver `.where()`)
 - **Collapse, don't cap** -- the graph stage reduces the investable universe to distinct bets rather than allowing all N stocks and capping within redundant groups
 - **Scenario Concept for parameter sweeps** -- `Scenario` entities combine budget ($500, $1,000, $2,000) and regime (base, crisis) so each epsilon solve handles all six combinations in one call
 - **Epsilon constraint method** -- `solve_epsilon(eps_rate)` sweeps return targets across the feasible range, producing the full Pareto frontier without manually fixing return values
@@ -169,11 +188,11 @@ The four-stage approach addresses each gap. Stage 1 surfaces existing violations
      Avg correlation: intra-cluster = +0.683, inter-cluster = +0.131
 
      Cluster representatives (5 of 8 stocks, picked by highest Sharpe):
-       Cluster 1: PFE (Healthcare) -- Sharpe = ...
-       Cluster 2: GOOGL (Technology) -- Sharpe = ...
-       Cluster 3: JPM (Financials) -- Sharpe = ...
-       Cluster 4: PG (Consumer Staples) -- Sharpe = ...
-       Cluster 5: XOM (Energy) -- Sharpe = ...
+       Cluster 1: PFE (Healthcare) -- Sharpe = 0.530
+       Cluster 2: GOOGL (Technology) -- Sharpe = 0.605
+       Cluster 3: JPM (Financials) -- Sharpe = 0.500
+       Cluster 4: PG (Consumer Staples) -- Sharpe = 0.444
+       Cluster 5: XOM (Energy) -- Sharpe = 0.588
 
    ======================================================================
    STAGE 3: BI-OBJECTIVE OPTIMIZATION
@@ -182,23 +201,22 @@ The four-stage approach addresses each gap. Stage 1 surfaces existing violations
 
    ANCHOR SOLVE 1: Minimize risk (no return constraint)
    Status: LOCALLY_SOLVED
-     base_500:    return = 33.2993, risk =   1146.1192
-     base_1000:   return = 66.5986, risk =   4584.4766
-     base_2000:   return = 133.1971, risk =  18337.9066
-     crisis_500:  return = 32.7500, risk =   1944.1496
-     crisis_1000: return = 65.5000, risk =   7776.5984
-     crisis_2000: return = 131.0000, risk =  31106.3936
+     base_500:    return = 32.4335, risk =   1160.3926
+     base_1000:   return = 64.8673, risk =   4641.5704
+     base_2000:   return = 129.7346, risk =  18566.2815
+     crisis_500:  return = 31.6873, risk =   1913.5995
+     crisis_1000: return = 63.3745, risk =   7654.3979
+     crisis_2000: return = 126.7490, risk =  30617.5917
 
    ANCHOR SOLVE 2: Maximize return
    Status: LOCALLY_SOLVED
-     base_500/crisis_500:   return = 35.7500
-     base_1000/crisis_1000: return = 71.5000
-     base_2000/crisis_2000: return = 143.0000
+     base_500/crisis_500:   return = 42.0000
+     base_1000/crisis_1000: return = 84.0000
+     base_2000/crisis_2000: return = 168.0000
 
-   Return rate range: [0.0655, 0.0715] per unit invested
+   Return rate range: [0.0634, 0.0840] per unit invested
 
    EPSILON SWEEP: 5 interior points
-   Return rates: ['0.0665', '0.0675', '0.0685', '0.0695', '0.0705']
      Point 1 .. Point 5: all LOCALLY_SOLVED
 
    EFFICIENT FRONTIER: Risk vs Return (per scenario)
@@ -206,13 +224,15 @@ The four-stage approach addresses each gap. Stage 1 surfaces existing violations
      base_500 (budget=500, regime=base):
        #      Label     Return         Risk
        --------------------------------------
-       1   min_risk      33.30    1146.1192
-       2      eps_1      33.30    1146.1192
-       ...
-       6      eps_5      35.25    1242.9150
+       1   min_risk      32.43    1160.3926
+       2      eps_1      33.41    1176.7790
+       3      eps_2      35.12    1262.6111
+       4      eps_3      36.84    1385.8901
+       5      eps_4      38.56    1545.7909
+       6      eps_5      40.28    1742.4712
 
-     Marginal analysis: marginal rate climbs from 14.25 to 80.00 risk/return.
-     Knee: Point 2 (eps_1) -- marginal cost jumps 14.3x beyond this point
+     Marginal analysis: rate climbs 16.85 -> 49.94 -> 71.72 -> 93.03 -> 114.43 risk/return.
+     Knee: Point 2 (eps_1) -- marginal cost jumps 3.0x beyond this point.
 
    (similar tables for base_1000, base_2000, crisis_500, crisis_1000, crisis_2000)
 
@@ -226,17 +246,17 @@ The four-stage approach addresses each gap. Stage 1 surfaces existing violations
      Budget 500:
          Label     vol_base   vol_crisis        gap    gap_%
      --------------------------------------------------------
-      min_risk      33.8544      44.0925   +10.2381   +30.2%
-         eps_1      33.8544      44.2173   +10.3629   +30.6%
-         eps_2      33.9491      44.4774   +10.5282   +31.0%
-         eps_3      34.2535      44.8848   +10.6313   +31.0%
-         eps_4      34.6831      45.4188   +10.7357   +31.0%
-         eps_5      35.2550      46.0555   +10.8005   +30.6%
+      min_risk      34.0645      43.7447    +9.6802   +28.4%
+         eps_1      34.3042      44.5398   +10.2356   +29.8%
+         eps_2      35.5332      46.1119   +10.5787   +29.8%
+         eps_3      37.2275      47.9433   +10.7158   +28.8%
+         eps_4      39.3165      49.9933   +10.6768   +27.2%
+         eps_5      41.7429      52.2694   +10.5265   +25.2%
 
-     (similar tables for Budget 1000 and Budget 2000)
+     (similar tables for Budget 1000 and Budget 2000, identical gap_% pattern)
    ```
 
-   Crisis volatility is ~30% higher than base at every lambda, and the gap widens modestly toward the concentrated (high-return) end of the frontier. Working on a representative-only universe keeps the concentrated end from containing near-duplicate bets that would amplify the crisis gap.
+   Crisis volatility sits 25-30% above base at every lambda and the gap peaks in the middle of the frontier (eps_1..eps_2 at +29.8%), not at the concentrated end (eps_5 at +25.2%). That inversion is the payoff of the representative-only universe: at the concentrated end the optimizer is picking the highest-Sharpe distinct bet per cluster, which incidentally sits in sectors with lower crisis correlations (Energy, Consumer Staples). Without the representative collapse, the concentrated end would stack near-duplicates and see the crisis gap grow, not shrink.
 
 ## Template structure
 
