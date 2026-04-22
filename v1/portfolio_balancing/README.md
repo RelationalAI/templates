@@ -27,53 +27,22 @@ tags:
 
 ## What this template is for
 
-This template chains four reasoning stages to build compliant, risk-optimized portfolios across an 8-stock universe and stress-test them under a crisis regime.
+Portfolio managers don't want to pay twice for the same exposure -- if two funds track nearly the same benchmark, owning both is one bet with worse bookkeeping. This template chains four reasoning stages on a single shared ontology to build compliant, risk-optimized portfolios across an 8-stock universe and stress-test them under a crisis regime.
 
-**Stage 1 -- Rules-based compliance analysis** uses RAI derived properties and Relationships to scan existing portfolio data (users, accounts, holdings, transactions) and flag violations: overconcentrated holdings (position value > 15% of account balance), sector concentration (sector exposure > 30% of account balance), and high-risk traders (risk score > 0.8 with more than 5 flagged transactions).
+It uses RelationalAI's **rules**, **graph**, and **prescriptive** reasoners in a chained workflow:
 
-**Stage 2 -- Graph reasoning (covariance clustering + representative selection)** builds a correlation graph over the stock universe (edges where `|correlation| >= 0.3`) and runs Louvain community detection. For each cluster, the single stock with the highest Sharpe (return / volatility) is selected as the cluster **representative**. If two investments co-move strongly they carry near-identical exposure -- prefer the best risk-adjusted one and drop the rest from the investable universe. The graph stage collapses redundant bets rather than asking the optimizer to juggle near-duplicates.
+1. **Rules** scan the current book for compliance violations -- overconcentrated holdings (> 15% of balance), sector concentration (> 30%), and high-risk traders -- as derived Relationships.
+2. **Graph** builds a correlation graph from the covariance matrix, runs Louvain clustering, and picks the highest-Sharpe stock per cluster as the cluster's **representative**. 8 stocks collapse to 5 distinct bets; near-duplicates are dropped from the investable universe rather than capped within it.
+3. **Prescriptive optimization** solves a bi-objective Markowitz QP on the representative-only universe under position and sector caps, tracing the efficient frontier via the epsilon constraint method across a `Scenario` Concept that combines three budgets and two regimes.
+4. **Crisis stress test** is the same `solve_epsilon` call -- no separate model -- but `Scenario.regime` picks a PSD-preserving shrinkage covariance, so base and crisis frontiers come out of one pipeline.
 
-**Stage 3 -- Prescriptive reasoning (optimization)** uses bi-objective Markowitz mean-variance optimization to trace the efficient frontier between portfolio risk and expected return. Rather than fixing a single return target, the **epsilon constraint method** sweeps return targets across the feasible range, producing the full tradeoff curve. Two concentration limits are enforced on a representative-only universe: per-representative cap (30%) and sector limit (30%). Non-representative stocks are forced to zero allocation via `Stock.is_non_representative()` in `_add_compliance_constraints` (the complement relation is defined positively because the prescriptive rewriter can't accept `model.not_(...)` inside a solver `.where()`).
-
-The template also demonstrates **Scenario Concept inside the epsilon loop**: budget levels and regimes are modeled as scenarios, so each epsilon solve handles all (budget, regime) combinations simultaneously. This reveals how the risk-return frontier shifts with both available capital and market regime.
-
-**Stage 4 -- Crisis regime stress test** re-solves the frontier under a crisis covariance built via **PSD-preserving correlation shrinkage** (`rho_crisis = alpha * rho + (1 - alpha) * J`). Naively scaling off-diagonal covariance frequently breaks positive semidefiniteness and crashes the convex QP; the shrinkage construction is safe by construction (convex combination of PSD matrices). The output compares base vs crisis volatility at each lambda.
-
-All four stages share a single RAI model. Compliance thresholds are defined once at the top of the script. Stage 1 uses `POSITION_LIMIT = 0.15` and `SECTOR_LIMIT = 0.30` to flag existing violations as derived Relationships. Stage 3 re-uses `SECTOR_LIMIT` but applies `REP_POSITION_LIMIT = 0.30` to the decision variable: after representative collapse each cluster has exactly one carrier, so its cap is legitimately higher than a per-stock compliance cap.
-
-### Reasoner overview
-
-| Stage | Reasoner | Reads from ontology | Writes to ontology | Role |
-|-------|----------|---------------------|--------------------|------|
-| 1 | Rules | Holding, Account, User, Transaction, Stock | Holding.is_overconcentrated, Holding.is_sector_concentrated, User.is_high_risk_trader | 4 overconcentrated holdings (AAPL 18%, MSFT 16%, JNJ 16%, PFE 16.2%). 2 sector concentrations (Technology 34%, Healthcare 32.2%). 2 high-risk traders (Alice Chen 0.85, Eve Taylor 0.92). |
-| 2 | Graph (Louvain) | Stock.covar (diagonal for variance), derived Stock.correlation filtered at threshold 0.3 | Stock.variance, Stock.volatility, Stock.correlation, Stock.cluster, Stock.sharpe, Stock.cluster_max_sharpe, Stock.is_representative | 4 edges retained after thresholding. Louvain yields 5 clusters; 5 representatives picked by highest Sharpe (one per cluster). Collapses 8 stocks to 5 distinct bets. |
-| 3 | Prescriptive (QP) | Stock.returns, Stock.regime_covar, Stock.is_representative, Scenario.budget, Scenario.regime | Stock.x_quantity indexed by Scenario (non-reps forced to 0) | Min-risk and max-return anchors bracket the frontier. Epsilon sweep traces 5 interior points per (budget, regime). Programmatic knee detection at eps_1. |
-| 4 | Prescriptive (stress) | Stock.regime_covar under "crisis" regime | (shares Stock.x_quantity with Stage 3) | Crisis volatility 25-30% higher than base at every lambda; gap peaks at the middle of the frontier (eps_1..eps_3) and narrows toward both ends. The representative-only universe keeps the concentrated end from stacking near-duplicate bets that would otherwise amplify crisis vol. |
+Each stage writes derived properties the next reads directly: Rules define the thresholds Stage 3 enforces as constraints, Stage 2's `Stock.is_representative` shapes the decision space, and the stress test reads `Stock.regime_covar` keyed by `Scenario.regime`. See "How it works" for the full data flow.
 
 ## Why this problem matters
 
 Portfolio managers don't want to pay twice for the same exposure. If two funds track nearly the same benchmark, allocating $4k to one and $5k to the other is functionally a single $9k bet with worse bookkeeping. Sector labels alone miss this: two tech ETFs can share a Technology label and still be near-duplicates, or two instruments from different sectors can co-move strongly enough that owning both is redundant. And base-case optimization is optimistic -- under crisis regimes (correlations spike toward 1), everything that hasn't been deduplicated hurts twice.
 
 The four-stage approach addresses each gap. Stage 1 surfaces existing violations in the current book (diagnostic). Stage 2 clusters by return covariance and picks the highest-Sharpe representative per cluster, collapsing redundant bets. Stage 3 optimizes over the representative-only universe under position and sector limits. Stage 4 re-solves under a PSD-preserving crisis covariance to stress the resulting portfolio.
-
-### How the reasoners chain
-
-The four stages compose through the shared ontology. Each one writes derived properties the next reads directly -- no external files, no dataframes handed across stage boundaries, no branch of the pipeline has to re-implement what a prior branch did.
-
-**Stage 1 (Rules) diagnoses why a rebalance is needed.** Running derived Relationships over the current book surfaces `Holding.is_overconcentrated`, `Holding.is_sector_concentrated`, and `User.is_high_risk_trader`. These flags answer "what is wrong with the portfolio today?" and motivate the rebuild. They also name the thresholds (`POSITION_LIMIT`, `SECTOR_LIMIT`) that Stage 3 will enforce as hard constraints, so the compliance standard is defined once and shared across reasoners.
-
-**Stage 2 (Graph) reshapes the investable universe.** The Louvain reasoner runs on the correlation graph derived from `Stock.covar`, and the cluster ids are persisted back onto `Stock`. A per-cluster argmax over `Stock.sharpe` selects the representative per cluster and writes `Stock.is_representative` (and its complement `Stock.is_non_representative`). What used to be an 8-stock universe is now a 5-distinct-bet universe, expressed as a relation the next reasoner can read.
-
-**Stage 3 (Prescriptive) consumes both.** The QP's `_add_compliance_constraints` applies `POSITION_LIMIT` / `SECTOR_LIMIT` (the same thresholds Stage 1 flagged against) and uses `Stock.is_non_representative()` in its `.where()` to force non-reps to zero. The decision space is shaped by rules-reasoner thresholds **and** graph-reasoner output, without Stage 3 needing to know anything about Louvain or Sharpe ratios -- only that a boolean relation exists on `Stock`.
-
-**Stage 4 (stress test) is the same solver call, different regime.** The crisis scenario isn't a separate pipeline: `Stock.regime_covar(PairedStock, Scenario.regime, ...)` is a single property keyed by the `Regime` concept, and every `Scenario` row carries a `regime` attribute. One `solve_epsilon` invocation computes optimal allocations for all six `(budget, regime)` combinations against the matching covariance. Stage 4 is just a different view on Stage 3's solve -- the vol comparison reads from the same `Stock.x_quantity` output and the same `Stock.regime_covar` input under the "crisis" key. No separate stress model, no re-formulation.
-
-### Multi-scenario Pareto frontier in one pipeline
-
-`Scenario` combines three budgets and two regimes -- six tuples. Each `solve_epsilon(eps_rate)` call returns one optimal allocation per tuple; the epsilon sweep repeats across return-rate targets. Six scenarios × seven points (two anchors + five interior) = 42 optimal portfolios, all from seven solver invocations. Two consequences:
-
-1. Base and crisis are comparable at equal budget and equal lambda: the vol gap is a pure regime effect, not a re-fitting artifact.
-2. Adding a fourth regime or a fifth budget is a data edit in `scenario_data`, not a code change in `solve_epsilon`. Scenarios are data.
 
 ### Key design patterns demonstrated
 
@@ -123,7 +92,7 @@ The four stages compose through the shared ontology. Each one writes derived pro
 
 ### Tools
 - Python >= 3.10
-- RelationalAI Python SDK (`relationalai`) >= 1.0.14
+- RelationalAI Python SDK (`relationalai`) == 1.0.14
 
 ## Quickstart
 
@@ -277,6 +246,28 @@ The four stages compose through the shared ontology. Each one writes derived pro
 ## How it works
 
 This section walks through the highlights in `portfolio_balancing.py`.
+
+### Reasoner overview
+
+| Stage | Reasoner | Reads from ontology | Writes to ontology | Role |
+|-------|----------|---------------------|--------------------|------|
+| 1 | Rules | Holding, Account, User, Transaction, Stock | Holding.is_overconcentrated, Holding.is_sector_concentrated, User.is_high_risk_trader | 4 overconcentrated holdings (AAPL 18%, MSFT 16%, JNJ 16%, PFE 16.2%). 2 sector concentrations (Technology 34%, Healthcare 32.2%). 2 high-risk traders (Alice Chen 0.85, Eve Taylor 0.92). |
+| 2 | Graph (Louvain) | Stock.covar (diagonal for variance), derived Stock.correlation filtered at threshold 0.3 | Stock.variance, Stock.volatility, Stock.correlation, Stock.cluster, Stock.sharpe, Stock.cluster_max_sharpe, Stock.is_representative | 4 edges retained after thresholding. Louvain yields 5 clusters; 5 representatives picked by highest Sharpe (one per cluster). Collapses 8 stocks to 5 distinct bets. |
+| 3 | Prescriptive (QP) | Stock.returns, Stock.regime_covar, Stock.is_representative, Scenario.budget, Scenario.regime | Stock.x_quantity indexed by Scenario (non-reps forced to 0) | Min-risk and max-return anchors bracket the frontier. Epsilon sweep traces 5 interior points per (budget, regime). Programmatic knee detection at eps_1. |
+| 4 | Prescriptive (stress) | Stock.regime_covar under "crisis" regime | (shares Stock.x_quantity with Stage 3) | Crisis volatility 25-30% higher than base at every lambda; gap peaks at the middle of the frontier (eps_1..eps_3) and narrows toward both ends. The representative-only universe keeps the concentrated end from stacking near-duplicate bets that would otherwise amplify crisis vol. |
+
+All four stages share a single RAI model. Compliance thresholds are defined once at the top of the script. Stage 1 uses `POSITION_LIMIT = 0.15` and `SECTOR_LIMIT = 0.30` to flag existing violations as derived Relationships. Stage 3 re-uses `SECTOR_LIMIT` but applies `REP_POSITION_LIMIT = 0.30` to the decision variable: after representative collapse each cluster has exactly one carrier, so its cap is legitimately higher than a per-stock compliance cap.
+
+### How the reasoners chain
+
+Each stage writes derived properties the next reads directly. Stage 1's thresholds (`POSITION_LIMIT`, `SECTOR_LIMIT`) become Stage 3 constraints. Stage 2's `Stock.is_representative` and `Stock.is_non_representative` shape Stage 3's decision space (non-reps forced to zero). Stage 4 uses the same `solve_epsilon` call as Stage 3 -- the `Regime` concept keyed into `Stock.regime_covar` makes base vs crisis a scenario view on the same solve, not a separate model. The Reasoner overview table above names each property that crosses a stage boundary.
+
+### Multi-scenario Pareto frontier in one pipeline
+
+`Scenario` combines three budgets and two regimes -- six tuples. Each `solve_epsilon(eps_rate)` call returns one optimal allocation per tuple; the epsilon sweep repeats across return-rate targets. Six scenarios × seven points (two anchors + five interior) = 42 optimal portfolios, all from seven solver invocations. Two consequences:
+
+1. Base and crisis are comparable at equal budget and equal lambda: the vol gap is a pure regime effect, not a re-fitting artifact.
+2. Adding a fourth regime or a fifth budget is a data edit in `scenario_data`, not a code change in `solve_epsilon`. Scenarios are data.
 
 ### Stage 1: Rules-based compliance analysis
 
