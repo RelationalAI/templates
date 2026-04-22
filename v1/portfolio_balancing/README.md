@@ -27,9 +27,16 @@ tags:
 
 ## What this template is for
 
-This template chains four reasoning stages to build compliant, risk-optimized portfolios across an 8-stock universe and stress-test them under a crisis regime. It combines **rules** (compliance flags on existing holdings), **graph** (Louvain clustering plus highest-Sharpe representative per cluster), and **prescriptive optimization** (bi-objective Markowitz mean-variance QP on the representative-only universe, re-solved under a PSD-preserving crisis covariance).
+Portfolio managers don't want to pay twice for the same exposure -- if two funds track nearly the same benchmark, owning both is one bet with worse bookkeeping. This template chains four reasoning stages on a single shared ontology to build compliant, risk-optimized portfolios across an 8-stock universe and stress-test them under a crisis regime.
 
-The key pattern is that each stage writes derived properties the next reads directly from the shared ontology -- no external files, no dataframes handed across stage boundaries. Rules define the compliance thresholds Stage 3 enforces as constraints; the graph stage's `Stock.is_representative` shapes the optimizer's decision space; and the crisis stress test is just a different regime-keyed view of the same solve. The "How it works" section walks through the full data flow, and the "How the reasoners chain" subsection there names each property that crosses a stage boundary.
+It uses RelationalAI's **rules**, **graph**, and **prescriptive** reasoners in a chained workflow:
+
+1. **Rules** scan the current book for compliance violations -- overconcentrated holdings (> 15% of balance), sector concentration (> 30%), and high-risk traders -- as derived Relationships.
+2. **Graph** builds a correlation graph from the covariance matrix, runs Louvain clustering, and picks the highest-Sharpe stock per cluster as the cluster's **representative**. 8 stocks collapse to 5 distinct bets; near-duplicates are dropped from the investable universe rather than capped within it.
+3. **Prescriptive optimization** solves a bi-objective Markowitz QP on the representative-only universe under position and sector caps, tracing the efficient frontier via the epsilon constraint method across a `Scenario` Concept that combines three budgets and two regimes.
+4. **Crisis stress test** is the same `solve_epsilon` call -- no separate model -- but `Scenario.regime` picks a PSD-preserving shrinkage covariance, so base and crisis frontiers come out of one pipeline.
+
+Each stage writes derived properties the next reads directly: Rules define the thresholds Stage 3 enforces as constraints, Stage 2's `Stock.is_representative` shapes the decision space, and the stress test reads `Stock.regime_covar` keyed by `Scenario.regime`. No external files, no dataframes between stages. See "How it works" for the full data flow.
 
 ## Why this problem matters
 
@@ -253,15 +260,7 @@ All four stages share a single RAI model. Compliance thresholds are defined once
 
 ### How the reasoners chain
 
-The four stages compose through the shared ontology. Each one writes derived properties the next reads directly -- no external files, no dataframes handed across stage boundaries, no branch of the pipeline has to re-implement what a prior branch did.
-
-**Stage 1 (Rules) diagnoses why a rebalance is needed.** Running derived Relationships over the current book surfaces `Holding.is_overconcentrated`, `Holding.is_sector_concentrated`, and `User.is_high_risk_trader`. These flags answer "what is wrong with the portfolio today?" and motivate the rebuild. They also name the thresholds (`POSITION_LIMIT`, `SECTOR_LIMIT`) that Stage 3 will enforce as hard constraints, so the compliance standard is defined once and shared across reasoners.
-
-**Stage 2 (Graph) reshapes the investable universe.** The Louvain reasoner runs on the correlation graph derived from `Stock.covar`, and the cluster ids are persisted back onto `Stock`. A per-cluster argmax over `Stock.sharpe` selects the representative per cluster and writes `Stock.is_representative` (and its complement `Stock.is_non_representative`). What used to be an 8-stock universe is now a 5-distinct-bet universe, expressed as a relation the next reasoner can read.
-
-**Stage 3 (Prescriptive) consumes both.** The QP's `_add_compliance_constraints` applies `POSITION_LIMIT` / `SECTOR_LIMIT` (the same thresholds Stage 1 flagged against) and uses `Stock.is_non_representative()` in its `.where()` to force non-reps to zero. The decision space is shaped by rules-reasoner thresholds **and** graph-reasoner output, without Stage 3 needing to know anything about Louvain or Sharpe ratios -- only that a boolean relation exists on `Stock`.
-
-**Stage 4 (stress test) is the same solver call, different regime.** The crisis scenario isn't a separate pipeline: `Stock.regime_covar(PairedStock, Scenario.regime, ...)` is a single property keyed by the `Regime` concept, and every `Scenario` row carries a `regime` attribute. One `solve_epsilon` invocation computes optimal allocations for all six `(budget, regime)` combinations against the matching covariance. Stage 4 is just a different view on Stage 3's solve -- the vol comparison reads from the same `Stock.x_quantity` output and the same `Stock.regime_covar` input under the "crisis" key. No separate stress model, no re-formulation.
+Each stage writes derived properties the next reads directly -- no external files, no dataframes between stages. Stage 1's thresholds (`POSITION_LIMIT`, `SECTOR_LIMIT`) become Stage 3 constraints. Stage 2's `Stock.is_representative` and `Stock.is_non_representative` shape Stage 3's decision space (non-reps forced to zero). Stage 4 uses the same `solve_epsilon` call as Stage 3 -- the `Regime` concept keyed into `Stock.regime_covar` makes base vs crisis a scenario view on the same solve, not a separate model. The Reasoner overview table above names each property that crosses a stage boundary.
 
 ### Multi-scenario Pareto frontier in one pipeline
 
