@@ -36,7 +36,7 @@ It uses RelationalAI's **rules**, **graph**, and **prescriptive** reasoners in a
 3. **Prescriptive optimization** solves a bi-objective Markowitz QP on the representative-only universe under position and sector caps, tracing the efficient frontier via the epsilon constraint method across a `Scenario` Concept that combines three budgets and two regimes.
 4. **Crisis stress test** is the same `solve_epsilon` call -- no separate model -- but `Scenario.regime` picks a PSD-preserving shrinkage covariance, so base and crisis frontiers come out of one pipeline.
 
-Each stage writes derived properties the next reads directly: Rules define the thresholds Stage 3 enforces as constraints, Stage 2's `Stock.is_representative` shapes the decision space, and the stress test reads `Stock.regime_covar` keyed by `Scenario.regime`. No external files, no dataframes between stages. See "How it works" for the full data flow.
+Each stage writes derived properties the next reads directly: Rules define the thresholds Stage 3 enforces as constraints, Stage 2's `Stock.is_representative` shapes the decision space, and the stress test reads `Stock.regime_covar` keyed by `Scenario.regime`. See "How it works" for the full data flow.
 
 ## Why this problem matters
 
@@ -260,7 +260,7 @@ All four stages share a single RAI model. Compliance thresholds are defined once
 
 ### How the reasoners chain
 
-Each stage writes derived properties the next reads directly -- no external files, no dataframes between stages. Stage 1's thresholds (`POSITION_LIMIT`, `SECTOR_LIMIT`) become Stage 3 constraints. Stage 2's `Stock.is_representative` and `Stock.is_non_representative` shape Stage 3's decision space (non-reps forced to zero). Stage 4 uses the same `solve_epsilon` call as Stage 3 -- the `Regime` concept keyed into `Stock.regime_covar` makes base vs crisis a scenario view on the same solve, not a separate model. The Reasoner overview table above names each property that crosses a stage boundary.
+Each stage writes derived properties the next reads directly. Stage 1's thresholds (`POSITION_LIMIT`, `SECTOR_LIMIT`) become Stage 3 constraints. Stage 2's `Stock.is_representative` and `Stock.is_non_representative` shape Stage 3's decision space (non-reps forced to zero). Stage 4 uses the same `solve_epsilon` call as Stage 3 -- the `Regime` concept keyed into `Stock.regime_covar` makes base vs crisis a scenario view on the same solve, not a separate model. The Reasoner overview table above names each property that crosses a stage boundary.
 
 ### Multi-scenario Pareto frontier in one pipeline
 
