@@ -9,7 +9,7 @@ description = "RelationalAI template: supplier disruption impact analysis with m
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-  "relationalai==1.0.8",
+  "relationalai==1.0.14",
   "pandas>=2.0.0",
 ]
 

@@ -51,7 +51,7 @@ The template also demonstrates scenario analysis by re-solving the problem with 
 
 ### Tools
 - Python >= 3.10
-- RelationalAI Python SDK (`relationalai`) >= 1.0.13
+- RelationalAI Python SDK (`relationalai`) >= 1.0.14
 
 ## Quickstart
 

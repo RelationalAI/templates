@@ -119,6 +119,87 @@ At a high level, the notebook:
 4. Lists the resulting edges as a table.
 5. Computes betweenness centrality and queries the scores into a pandas DataFrame.
 
+> [!TIP]
+> At any point after step 2 you can run `inspect.schema(model)` to see exactly what's registered. See [Inspect the model schema](#inspect-the-model-schema) below.
+
+## Inspect the model schema
+
+`relationalai.semantics.inspect` (available in `relationalai>=1.0.14`) gives you a public, typed view of what has actually been registered on the model: concepts, properties (with type metadata enriched from the backing `TableSchema` where available), relationships, and data sources. It's the recommended way to sanity-check a model before querying, especially after edits or across long sessions.
+
+Import it once:
+
+```python
+from relationalai.semantics import inspect
+```
+
+### `inspect.schema(model)` -- full schema
+
+Call `inspect.schema(model)` to see every concept, its identity fields, properties, relationships, and bound data sources. Add a new cell to the notebook immediately after the cell that defines `Station.connections` (so the relationship is already registered):
+
+```python
+print(inspect.schema(model))
+```
+
+Expected output for this template:
+
+```text
+Model: SimpleStart
+==================
+
+  Station
+    Identity:
+      id: Integer
+    Relationships:
+      Station is connected to Station:other_station
+
+  Connection
+    Identity:
+      src: Station
+      dst: Station
+
+  Data Sources:
+    RAI_DEMO.SIMPLE_START.CONNECTIONS [station_1: Any, station_2: Any]
+```
+
+`ModelSchema.__str__` also prints a trailing `Defines: (N rules)` section listing the registered rules once at least one `model.define(...)` has been executed. It's omitted above for brevity.
+
+`schema(model)` returns a frozen `ModelSchema` dataclass with dict-style lookup and JSON serialization:
+
+```python
+schema = inspect.schema(model)
+# Dict-style access: fetch one concept by name.
+schema["Station"]
+# JSON-safe full view.
+schema.to_dict()
+```
+
+### `inspect.fields(rel)` -- select every field of a relationship
+
+`inspect.fields()` returns a tuple of `FieldRef` objects for a relationship, directly splattable into `select()`. The benefit is that you don't hard-code field names, and inherited properties are handled automatically. Compare:
+
+```python
+# Hand-coded: you have to know the field names, and keep this line in sync if the
+# relationship signature changes.
+model.select(Station.connections["other_station"]).to_df()
+
+# With inspect.fields: expands to every selectable field of the relationship.
+model.select(*inspect.fields(Station.connections)).to_df()
+```
+
+### `inspect.to_concept(obj)` -- resolve a DSL handle to its underlying Concept
+
+`inspect.to_concept()` accepts any DSL handle (a `Concept`, a chain like `Station.connections`, a reference, or an expression) and returns the underlying `Concept`. Useful when writing helpers that should work uniformly across handle shapes:
+
+```python
+# Accepts any DSL handle, returns the Concept it resolves to.
+concept = inspect.to_concept(Station.connections)
+
+# Defensive variant: pass default= to get that value back instead of raising when
+# the handle can't be resolved to a single Concept. Handy for helpers that accept
+# unknown-shape inputs.
+concept_or_none = inspect.to_concept(some_handle, default=None)
+```
+
 ## Customize this template
 
 **Use your own data:**

@@ -9,7 +9,7 @@ description = "RelationalAI template: rai-agent-scaffold (PyRel v1)"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-  "relationalai==1.0.12",
+  "relationalai==1.0.14",
   "httpx",
   "pyyaml",
 ]

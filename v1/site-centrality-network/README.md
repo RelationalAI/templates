@@ -147,6 +147,53 @@ eigenvector = graph.eigenvector_centrality()
 - **Bridge sites** = removing them could partition the network across regions
 - **High eigenvector centrality** = connected to other important sites (hub effect)
 
+### 5. Inspect the model schema
+
+`relationalai.semantics.inspect` (available in `relationalai>=1.0.14`) returns a typed view of the model. For graph templates it's useful for confirming that subconcepts like `Bridge` extend the right parent and that derived relationships (shipment counts, region links) landed on the intended concept:
+
+```python
+from relationalai.semantics import inspect
+
+print(inspect.schema(model))
+```
+
+Excerpt of the user-declared part, showing the inheritance and derived relationships (inherited fields and other entries omitted for brevity):
+
+```text
+Model: site_centrality
+======================
+
+  Site
+    Identity:
+      id: String
+    Properties:
+      name: String
+      site_type: String
+      region_id: String
+      country: String
+    Relationships:
+      Site is in Region
+      Site has count of incoming shipments Integer:count_is_destination
+      Site has count of outgoing shipments Integer:count_is_source
+
+  Region
+    Properties:
+      id: Any
+
+  Bridge (extends Site)
+    Identity:
+      id: String
+    [... inherited Site properties elided ...]
+    Relationships:
+      Bridge connects with Region
+      Site is in Region
+      [... inherited Site relationships elided ...]
+```
+
+`Bridge (extends Site)` confirms the subconcept inheritance; the reused `Site is in Region` relationship appears on both -- the same behavior a graph query would see.
+
+The Graph reasoner also registers an edge concept on the shared model (e.g. `graph<id>_Edge`) once `Graph(model, ..., node_concept=Site)` is constructed. It appears alongside the user concepts in the full output; filter by name if you want a user-facing view.
+
 ## Customize this template
 
 **Use your own data:**

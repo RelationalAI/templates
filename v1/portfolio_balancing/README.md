@@ -92,7 +92,7 @@ The four-stage approach addresses each gap. Stage 1 surfaces existing violations
 
 ### Tools
 - Python >= 3.10
-- RelationalAI Python SDK (`relationalai`) == 1.0.13
+- RelationalAI Python SDK (`relationalai`) == 1.0.14
 
 ## Quickstart
 

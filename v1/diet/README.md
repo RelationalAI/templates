@@ -173,6 +173,48 @@ problem.minimize(sum(Food.cost * Food.x_amount))
 
 The template solves three scenarios by scaling nutritional requirements to 80%, 100%, and 120% of their base values, demonstrating how tighter or looser requirements affect total cost.
 
+### 5. Inspect the model schema
+
+`relationalai.semantics.inspect` (available in `relationalai>=1.0.14`) surfaces a typed view of the registered concepts, properties, relationships, and data sources. It's handy for sanity-checking a model before handing it to the solver:
+
+```python
+from relationalai.semantics import inspect
+
+print(inspect.schema(model))
+```
+
+Excerpt of the user-declared part of the output:
+
+```text
+Model: diet
+===========
+
+  Nutrient
+    Identity:
+      name: String
+    Properties:
+      min: Float
+      max: Float
+
+  Food
+    Identity:
+      name: String
+    Properties:
+      cost: Float
+      contains(Nutrient) -> Float
+      x_amount(Scenario) -> Float
+
+  Scenario
+    Identity:
+      scenario_name: String
+    Properties:
+      nutrient_scaling: Float
+```
+
+Notice that the prescriptive decision variable (`Food.x_amount(Scenario) -> Float`) appears alongside the source-data properties -- the schema is a unified view of everything the model knows, including variables added by `solve_for()`.
+
+After calling `Problem(...)` and `problem.solve_for / satisfy / minimize`, the prescriptive reasoner also registers root concepts named `Variable`, `Expression`, `Constraint`, and `Objective` (plus per-solve `Variable_<id>` subconcepts). They appear below the user-declared concepts in the full output; filter them out with a list-based check if you want a user-facing view (see the `machine_maintenance` template for the recipe).
+
 ## Customize this template
 
 - **Add more foods or nutrients**: Extend the CSV files with additional rows and columns. The model automatically picks up new data.
