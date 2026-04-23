@@ -41,11 +41,38 @@ TASK_CHURN_SCHEMA = "TASK_CHURN"
 TASK_SALES_SCHEMA = "TASK_SALES"
 TASK_PURCHASE_SCHEMA = "TASK_PURCHASE"
 
-# GNN infrastructure
-GNN_DATABASE = "HM_PYREL"
-GNN_SCHEMA = "MODEL_DATA"
+# Snowflake location for GNN experiment artifacts. The RAI native app
+# must have USAGE on the database and ALL on this schema:
+#   GRANT USAGE ON DATABASE <db> TO APPLICATION RELATIONALAI;
+#   GRANT ALL ON SCHEMA <db>.<schema> TO APPLICATION RELATIONALAI;
 GNN_EXP_DATABASE = "HM_PYREL"
 GNN_EXP_SCHEMA = "MODEL_DATA"
+
+# GNN determinism and log-stream behavior.
+SEED = 42
+STREAM_LOGS = False  # True for TTY; False avoids spinner flood in non-TTY logs
+
+# Observability: print the engine-side data config after each fit(). Useful for
+# spotting PropertyTransformer or edge misconfig early. Set True if debugging.
+VERBOSE_DATASET = False
+
+
+def _report(gnn, label):
+    """After gnn.fit(), dump the engine-side data config (and optionally a
+    schema PNG) to help diagnose feature-type or edge misconfig."""
+    if not VERBOSE_DATASET:
+        return
+    print(f"\n--- {label}: engine-side data config ---")
+    try:
+        gnn.dataset.print_data_config()
+    except Exception as e:  # best-effort debug, never block training
+        print(f"  print_data_config unavailable: {e}")
+    try:
+        viz = gnn.visualize_dataset(show_dtypes=True)
+        viz.write_png(f"{label}_schema.png")
+        print(f"  wrote {label}_schema.png")
+    except Exception as e:
+        print(f"  visualize_dataset unavailable (install pydot?): {e}")
 
 # Churn-adjustment weight: how much churn risk reduces demand (0 = ignore, 1 = full)
 CHURN_DISCOUNT_WEIGHT = 0.3
@@ -89,7 +116,22 @@ model.define(Edge.new(src=Transaction, dst=Customer)).where(
 model.define(Edge.new(src=Transaction, dst=Article)).where(
     Transaction.article_id == Article.article_id)
 
+# Graph-derived features — the pattern from rai-graph-analysis for feeding
+# computed graph metrics into GNN features. Article popularity = incoming
+# transaction degree; Customer activity = outgoing transaction degree. These
+# give the GNN explicit signal beyond raw graph structure.
+Article.popularity_count = model.Property(
+    f"{Article} has {Integer:popularity_count}")
+model.define(Article.popularity_count(count(Transaction).per(Article))).where(
+    Transaction.article_id == Article.article_id)
+
+Customer.activity_count = model.Property(
+    f"{Customer} has {Integer:activity_count}")
+model.define(Customer.activity_count(count(Transaction).per(Customer))).where(
+    Transaction.customer_id == Customer.customer_id)
+
 # Shared property transformer — same feature configuration for all three GNN tasks.
+# Graph structure already encodes PKs/FKs; drop them so they don't pollute features.
 pt = PropertyTransformer(
     category=[
         Article.product_code,
@@ -97,8 +139,13 @@ pt = PropertyTransformer(
         Customer.club_member_status, Customer.fashion_news_frequency,
     ],
     text=[Article.prod_name],
-    drop=[Article.graphical_appearance_name, Article.colour_group_code],
+    drop=[
+        Article.article_id, Customer.customer_id,
+        Transaction.customer_id, Transaction.article_id,
+        Article.graphical_appearance_name, Article.colour_group_code,
+    ],
     continuous=[Customer.age, Transaction.price],
+    integer=[Article.popularity_count, Customer.activity_count],
     datetime=[Transaction.t_dat],
     time_col=[Transaction.t_dat],
 )
@@ -137,18 +184,29 @@ model.define(
     SalesTest(Article, SalesTestTable.timestamp)
 ).where(Article.article_id == SalesTestTable.article_id)
 
+# Profile the sales target distribution on the train split. Val-RMSE below
+# this stddev means the GNN is learning signal; at or above means the model
+# has collapsed to the mean. See rai-predictive-training evaluation-debugging.
+_sales_target_df = select(SalesTrainTable.sales.alias("sales")).to_df()
+if len(_sales_target_df):
+    _s = _sales_target_df["sales"]
+    print("\n=== Sales target profile (train split) ===")
+    print(f"  n={len(_s)}  min={_s.min():.4g}  max={_s.max():.4g}  "
+          f"mean={_s.mean():.4g}  stddev={_s.std():.4g}")
+    print(f"  Baseline RMSE (predict-the-mean) ~= stddev = {_s.std():.4g}")
+
 # Train and predict
 sales_gnn = GNN(
-    database=GNN_DATABASE, schema=GNN_SCHEMA,
     exp_database=GNN_EXP_DATABASE, exp_schema=GNN_EXP_SCHEMA,
-    graph=graph, pt=pt,
+    graph=graph, property_transformer=pt,
     train=SalesTrain, validation=SalesVal,
     task_type="regression", eval_metric="rmse",
-    has_time_column=True,
-    device="cuda", n_epochs=5, train_batch_size=256, lr=0.005, head_layers=2,
-    max_iters=500,
+    has_time_column=True, stream_logs=STREAM_LOGS, seed=SEED,
+    device="cuda", n_epochs=20, train_batch_size=256, lr=0.005, head_layers=2,
+    temporal_strategy="last", max_iters=500,
 )
 sales_gnn.fit()
+_report(sales_gnn, "sales_gnn")
 Article.sales_predictions = sales_gnn.predictions(domain=SalesTest)
 
 # Sanity check: warn if predictions are NaN or negative
@@ -199,16 +257,16 @@ model.define(
 
 # Train and predict
 churn_gnn = GNN(
-    database=GNN_DATABASE, schema=GNN_SCHEMA,
     exp_database=GNN_EXP_DATABASE, exp_schema=GNN_EXP_SCHEMA,
-    graph=graph, pt=pt,
+    graph=graph, property_transformer=pt,
     train=ChurnTrain, validation=ChurnVal,
     task_type="binary_classification", eval_metric="roc_auc",
-    has_time_column=True,
+    has_time_column=True, stream_logs=STREAM_LOGS, seed=SEED,
     device="cuda", n_epochs=5, train_batch_size=256, lr=0.005, head_layers=2,
-    max_iters=500,
+    temporal_strategy="last", max_iters=500,
 )
 churn_gnn.fit()
+_report(churn_gnn, "churn_gnn")
 Customer.churn_predictions = churn_gnn.predictions(domain=ChurnTest)
 
 # Sanity check: warn if churn probabilities are outside [0, 1]
@@ -265,16 +323,16 @@ model.define(
 ).where(Customer.customer_id == PurchaseTestTable.customer_id)
 # Train and predict
 purchase_gnn = GNN(
-    database=GNN_DATABASE, schema=GNN_SCHEMA,
     exp_database=GNN_EXP_DATABASE, exp_schema=GNN_EXP_SCHEMA,
-    graph=graph, pt=pt,
+    graph=graph, property_transformer=pt,
     train=PurchaseTrain, validation=PurchaseVal,
     task_type="repeated_link_prediction", eval_metric="link_prediction_map@12",
-    has_time_column=True,
+    has_time_column=True, stream_logs=STREAM_LOGS, seed=SEED,
     device="cuda", n_epochs=5, train_batch_size=16, lr=0.0001,
     temporal_strategy="last", max_iters=500,
 )
 purchase_gnn.fit()
+_report(purchase_gnn, "purchase_gnn")
 Customer.purchase_predictions = purchase_gnn.predictions(domain=PurchaseTest)
 
 # Sanity check: warn if purchase scores are NaN

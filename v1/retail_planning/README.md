@@ -98,10 +98,19 @@ Assumes familiarity with Python, basic ML concepts (classification, regression, 
    TASK_PURCHASE_SCHEMA = "HM_PURCHASE"
    ```
 
-6. Run:
+6. Run (choose one):
    ```bash
+   # All-in-one: trains GNNs and runs both optimizers in a single session
    python retail_planning.py
+
+   # Split workflow: train once, optimize many times with different knobs
+   python retail_train.py       # trains and registers 3 GNNs (expensive)
+   python retail_optimize.py    # loads models from registry, runs optimizers
    ```
+
+   The split workflow is useful when iterating on `CHURN_DISCOUNT_WEIGHT`,
+   `UNMET_PENALTY`, or the CSV inputs -- the trained GNNs stay in the Snowflake
+   model registry, so `retail_optimize.py` skips retraining on each run.
 
 7. Expected output (abbreviated):
    ```text
@@ -129,7 +138,10 @@ Assumes familiarity with Python, basic ML concepts (classification, regression, 
 .
 ├── README.md                    # this file
 ├── pyproject.toml               # dependencies
-├── retail_planning.py           # main runner (full pipeline)
+├── retail_planning.py           # all-in-one runner (full pipeline)
+├── retail_train.py              # split workflow: train + register GNNs
+├── retail_optimize.py           # split workflow: load + run optimizers
+├── _retail_setup.py             # shared setup used by retail_train/optimize
 └── data/
     ├── discounts.csv            # discount levels with demand lifts
     ├── weeks.csv                # planning weeks with seasonal multipliers
@@ -137,7 +149,9 @@ Assumes familiarity with Python, basic ML concepts (classification, regression, 
     └── production_capacity.csv  # production caps/costs for demand planning
 ```
 
-**Start here**: `retail_planning.py` runs end-to-end.
+**Start here**: `retail_planning.py` runs end-to-end. Use the
+`retail_train.py` + `retail_optimize.py` split when you want to retune
+optimizer knobs without paying the GNN training cost again.
 
 ## Sample data
 
@@ -323,6 +337,48 @@ dp.minimize(prod_cost_total + hold_cost_total + unmet_cost_total)
 - Ensure the GNN training completed successfully (check for fit() errors).
 - Verify that the test set tables contain rows and that foreign keys link correctly to the core entity tables.
 - Try increasing `n_epochs` -- very few epochs may not converge.
+- For regression (sales): the rai-predictive-training skill flags that 5 epochs
+  is a smoke test; regression usually needs 20–50 epochs. If val-RMSE is at or
+  above `stddev(target)`, the model collapsed to the mean — increase `n_epochs`
+  or reduce text features.
+</details>
+
+<details>
+<summary><code>has_time_column=True</code> fails validation</summary>
+
+Known limitation flagged in the rai-predictive-training skill: when the concept
+carrying `time_col` (here, `Transaction`) is used only as an edge intermediary,
+validation can fail with "no time column defined in data tables." Workaround:
+set `has_time_column=False` on the affected GNN and remove the `"at"` clause
+from its Relationship templates until the GNN team resolves this.
+</details>
+
+<details>
+<summary>Sales regression R² is low or negative</summary>
+
+R² < 0 early in training is normal — it means the model is doing worse than
+predicting the target mean. See the "Sales target profile (train split)" block
+printed before training: if val-RMSE prints below the target's stddev, the
+GNN is learning signal. If it plateaus at or above the stddev, increase
+`n_epochs` or re-check the PropertyTransformer.
+</details>
+
+<details>
+<summary>Spinner floods the log when running in CI / non-TTY</summary>
+
+Set `STREAM_LOGS = False` at the top of the script (the default). The GNN
+continues training server-side; only the client-side log stream is suppressed.
+</details>
+
+<details>
+<summary><code>retail_optimize.py</code> fails to load registered models</summary>
+
+- Confirm `retail_train.py` completed and printed "Registered: …" lines.
+- `MODEL_REGISTRY_DATABASE` and `MODEL_REGISTRY_SCHEMA` in `_retail_setup.py`
+  must match between training and loading.
+- The RAI native app needs access to the model registry schema:
+  `GRANT USAGE ON DATABASE <db> TO APPLICATION RELATIONALAI;
+   GRANT ALL ON SCHEMA <db>.<schema> TO APPLICATION RELATIONALAI;`
 </details>
 
 <details>
