@@ -18,9 +18,11 @@ tags:
 
 ## What this template is for
 
-Retailers face interconnected decisions: which items will sell, which customers are at risk of leaving, what discounts to offer, and how much inventory to stock. Traditionally these are solved in isolation -- demand forecasting in one silo, pricing optimization in another, supply planning in a third. This template shows how to unify them in a single predict-then-optimize pipeline using RelationalAI.
+Retailers face interconnected decisions: which items will sell, which customers are at risk of leaving, what discounts to offer, and how much inventory to stock. Traditionally these are solved in isolation -- demand forecasting in one silo, pricing optimization in another, supply planning in a third. This template shows how to unify them in a single **predict-then-optimize** pipeline using RelationalAI.
 
-Three GNN models learn directly from the H&M transaction graph: one predicts article-level sales, another predicts customer churn, and a third predicts which articles each customer will purchase. All three predictions are aggregated into adjusted demand estimates -- churn risk discounts demand while purchase propensity uplifts it -- that feed two downstream optimization problems: a markdown optimizer that chooses weekly discount schedules to maximize revenue, and a demand planner that sets production quantities to minimize cost. The entire pipeline runs on one semantic model, with GNN outputs flowing seamlessly into prescriptive constraints and objectives.
+**Start with `retail_planning_local.py`** -- it trains a real sales-regression GNN on a bundled H&M subset (CPU, no external data), aggregates predictions per article, and runs both optimizers. A few minutes end-to-end. It's the quickest way to see the whole pattern working.
+
+**Then adapt the pattern to your own Snowflake data** using `retail_planning.py` as a reference. It trains three GNNs (sales regression, customer-churn classification, user-article link prediction) against the full Kaggle H&M dataset in Snowflake, aggregates all three signals into an adjusted demand estimate, and feeds that into the same two optimizers. The H&M pipeline is the worked example -- the structure (graph concepts → GNN tasks → aggregation bridge → prescriptive constraints) is what carries over to your own retail, pricing, or demand-planning data.
 
 ## Who this is for
 
@@ -41,31 +43,34 @@ Assumes familiarity with Python, basic ML concepts (classification, regression, 
 
 ## What's included
 
+- **Runners**:
+  - `retail_planning_local.py` -- **primary, runnable out of the box.** Trains a sales-regression GNN on the bundled HM_MINI subset and solves both optimizers.
+  - `retail_planning.py` -- **reference pattern** for adapting the same pipeline to your own Snowflake data. Trains three GNNs (sales, churn, purchase) against a full H&M dataset in Snowflake.
 - **Model**: Three GNN tasks on the H&M knowledge graph (Customer, Article, Transaction), two prescriptive problems consuming their output
-- **Runners**: `retail_planning_local.py` (zero-setup demo on bundled HM_MINI CSVs) and `retail_planning.py` (full pipeline against HM_PYREL in Snowflake)
-- **Sample data**: optimizer-parameter CSVs (discounts, weeks, article inventory, production capacity), plus `data/hm_mini/` — a bundled H&M subset (~10K customers / 5K articles / 9.6K transactions) with sales task splits so the local runner can train a real GNN
+- **Sample data**:
+  - `data/hm_mini/` -- bundled H&M subset (~10K customers / 5K articles / 9.6K transactions) with sales task splits. This is what the local runner trains on.
+  - `data/*.csv` -- optimizer parameters: discounts, weeks, article inventory, production capacity.
 - **Outputs**: GNN evaluation metrics, optimal discount schedules, production plans, cost/revenue summaries
 
 ## Prerequisites
 
 ### Access
 
-**For the local runner (`retail_planning_local.py`):** any Snowflake account
-with the RAI Native App -- no H&M Snowflake data required, no GPU required.
-The bundled `data/hm_mini/` CSVs are loaded via `model.data()`, and the
-sales-regression GNN trains on CPU in a few minutes. Start here.
+**To run the local demo (`retail_planning_local.py`)** you need any Snowflake
+account with the RAI Native App. No H&M Snowflake data, no GPU. The bundled
+`data/hm_mini/` CSVs ship with the template; the sales-regression GNN trains
+on CPU in a few minutes.
 
-**For the full pipeline (`retail_planning.py`):**
+**To adapt to your own Snowflake pipeline (`retail_planning.py` as reference)**
+you'll additionally need:
 
-- A Snowflake account with the RAI Native App installed
-- The H&M Personalized Fashion Recommendations dataset
-  ([Kaggle](https://www.kaggle.com/competitions/h-and-m-personalized-fashion-recommendations/data))
-  loaded into Snowflake, plus RelBench-style task splits
-  ([rel-hm](https://relbench.stanford.edu/datasets/rel-hm/)):
-  - Core tables: `CUSTOMERS`, `ARTICLES`, `TRANSACTIONS`
-  - Task tables: churn (`TRAIN`, `VAL`, `TEST`), sales (`TRAIN`, `VAL`, `TEST`),
-    purchase (`TRAIN_EXPLODED`, `VALIDATION_EXPLODED`, `TEST_EXPLODED`)
-- A GPU-enabled engine for GNN training
+- A dataset in Snowflake analogous to the H&M schema -- customer, item, and
+  transaction tables, plus pre-built train/val/test split tables for whatever
+  predictive tasks you need. The Kaggle [H&M Personalized Fashion
+  Recommendations](https://www.kaggle.com/competitions/h-and-m-personalized-fashion-recommendations/data)
+  dataset (with [RelBench rel-hm](https://relbench.stanford.edu/datasets/rel-hm/)
+  task splits) is the one `retail_planning.py` targets as-shipped.
+- A GPU-enabled RAI engine for GNN training at scale.
 
 ### Tools
 
@@ -100,50 +105,51 @@ sales-regression GNN trains on CPU in a few minutes. Start here.
    rai init
    ```
 
-5. (Option B only) Update Snowflake settings in `retail_planning.py` to point at
-   your loaded H&M database. Skip this step if you're running
-   `retail_planning_local.py` on the bundled CSVs.
-   ```python
-   DATABASE = "HM_DB"           # your Snowflake database
-   SCHEMA = "HM_SCHEMA"         # schema with core H&M tables
-   TASK_CHURN_SCHEMA = "HM_CHURN"
-   TASK_SALES_SCHEMA = "HM_SALES"
-   TASK_PURCHASE_SCHEMA = "HM_PURCHASE"
+5. Run the local demo on the bundled H&M subset (CPU, a few minutes):
+   ```bash
+   python retail_planning_local.py
    ```
 
-6. Run:
-   ```bash
-   # Option A: local demo. Trains a real sales-regression GNN on the bundled
-   # HM_MINI CSV subset (CPU, ~5-10 min), then runs both optimizers. No
-   # external data or GPU required.
-   python retail_planning_local.py
+### Adapting to your own Snowflake data
 
-   # Option B: full pipeline. Trains all 3 GNNs (sales, churn, purchase) on
-   # the full Kaggle H&M + RelBench data in Snowflake, then runs both
-   # optimizers. Requires HM_PYREL loaded in Snowflake and a GPU-enabled
-   # RAI engine.
+`retail_planning.py` is a reference for wiring this pattern against a real
+Snowflake dataset (customers, items, transactions + train/val/test task splits
+for the tasks you care about). To adapt it:
+
+1. Point the table references at your data:
+   ```python
+   DATABASE = "YOUR_DB"
+   SCHEMA = "YOUR_SCHEMA"        # schema with core tables (Customer / Item / Transaction)
+   TASK_SALES_SCHEMA = "..."     # schema with sales train/val/test tables
+   TASK_CHURN_SCHEMA = "..."
+   TASK_PURCHASE_SCHEMA = "..."
+   ```
+2. Adjust the PropertyTransformer to match your columns and drop your PKs/FKs.
+3. Run against a GPU-enabled RAI engine:
+   ```bash
    python retail_planning.py
    ```
+The as-shipped `retail_planning.py` targets the Kaggle H&M dataset + RelBench
+task splits (see Prerequisites).
 
-7. Expected output (abbreviated):
-   ```text
-   === Item Sales Predictions (sample) ===
-    article_id  predicted_value
-           100            12.45
-          5000             8.73
-    ...
+### Expected output (local run, abbreviated)
 
-   === Markdown: Selected Discounts by Article-Week ===
-    article  week  discount_pct
-    Rib Top     1           0.0
-    Rib Top     2          10.0
-    ...
+```text
+=== Sales target profile (train split) ===
+  n=7648  min=0.0004237  max=0.5915  mean=0.0286  stddev=0.02121
 
-   Pipeline Complete
-   Predictive: 3 GNN models trained (item-sales, user-churn, user-item-purchase)
-   Prescriptive A (Markdown): discount schedule optimized for revenue
-   Prescriptive B (Demand Planning): production plan optimized for cost
-   ```
+=== Adjusted Demand per Article (from sales GNN, aggregated) ===
+  article_id                      name  adjusted_demand
+          74          3p Sneaker Socks        21.95
+       53892  Jade HW Skinny Denim TRS       147.64
+       ...
+
+Markdown Status: OPTIMAL
+Total revenue (sales + salvage): $62,096.89
+
+Demand Planning Status: OPTIMAL
+Total cost (production + holding + unmet penalty): $8,985.53
+```
 
 ## Template structure
 
@@ -151,8 +157,8 @@ sales-regression GNN trains on CPU in a few minutes. Start here.
 .
 ├── README.md                    # this file
 ├── pyproject.toml               # dependencies
-├── retail_planning.py           # full pipeline (needs HM_PYREL in Snowflake + GPU)
-├── retail_planning_local.py     # local demo: real GNN on HM_MINI CSVs + optimizers
+├── retail_planning_local.py     # primary: real GNN on bundled HM_MINI CSVs + both optimizers
+├── retail_planning.py           # reference pattern: same pipeline against full H&M in Snowflake
 └── data/
     ├── discounts.csv            # discount levels with demand lifts
     ├── weeks.csv                # planning weeks with seasonal multipliers
@@ -169,8 +175,9 @@ sales-regression GNN trains on CPU in a few minutes. Start here.
         └── production_capacity.csv    # matching production params
 ```
 
-**Start here**: `retail_planning_local.py` for a zero-setup demo (CPU only),
-or `retail_planning.py` for the full pipeline against HM_PYREL.
+**Start here**: `retail_planning_local.py` (CPU, no external setup). Use
+`retail_planning.py` as the adaptation reference when you wire this pattern
+into your own Snowflake data.
 
 ## Sample data
 
