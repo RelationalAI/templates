@@ -1,4 +1,4 @@
-"""Retail Planning -- local CSV-only runner.
+"""Retail Planning -- local CSV-only runner for the predict-then-optimize template.
 
 Runs the full predict-then-optimize pipeline on a small bundled subset of the
 H&M dataset (HM_MINI, ~10K customers / 5K articles / 9.6K transactions).

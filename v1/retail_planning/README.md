@@ -42,8 +42,8 @@ Assumes familiarity with Python, basic ML concepts (classification, regression, 
 ## What's included
 
 - **Model**: Three GNN tasks on the H&M knowledge graph (Customer, Article, Transaction), two prescriptive problems consuming their output
-- **Runner**: `retail_planning.py` -- single script executing the full pipeline
-- **Sample data**: CSV files for optimization parameters (discounts, weeks, article inventory, production capacity)
+- **Runners**: `retail_planning_local.py` (zero-setup demo on bundled HM_MINI CSVs) and `retail_planning.py` (full pipeline against HM_PYREL in Snowflake)
+- **Sample data**: optimizer-parameter CSVs (discounts, weeks, article inventory, production capacity), plus `data/hm_mini/` — a bundled H&M subset (~10K customers / 5K articles / 9.6K transactions) with sales task splits so the local runner can train a real GNN
 - **Outputs**: GNN evaluation metrics, optimal discount schedules, production plans, cost/revenue summaries
 
 ## Prerequisites
@@ -55,8 +55,7 @@ with the RAI Native App -- no H&M Snowflake data required, no GPU required.
 The bundled `data/hm_mini/` CSVs are loaded via `model.data()`, and the
 sales-regression GNN trains on CPU in a few minutes. Start here.
 
-**For the full pipeline (`retail_planning.py`, `retail_train.py`,
-`retail_optimize.py`):**
+**For the full pipeline (`retail_planning.py`):**
 
 - A Snowflake account with the RAI Native App installed
 - The H&M Personalized Fashion Recommendations dataset
@@ -101,7 +100,9 @@ sales-regression GNN trains on CPU in a few minutes. Start here.
    rai init
    ```
 
-5. Update Snowflake settings in `retail_planning.py`:
+5. (Option B only) Update Snowflake settings in `retail_planning.py` to point at
+   your loaded H&M database. Skip this step if you're running
+   `retail_planning_local.py` on the bundled CSVs.
    ```python
    DATABASE = "HM_DB"           # your Snowflake database
    SCHEMA = "HM_SCHEMA"         # schema with core H&M tables
@@ -110,27 +111,19 @@ sales-regression GNN trains on CPU in a few minutes. Start here.
    TASK_PURCHASE_SCHEMA = "HM_PURCHASE"
    ```
 
-6. Run (choose one):
+6. Run:
    ```bash
-   # Local demo: trains a real sales-regression GNN on the bundled HM_MINI
-   # CSV subset (CPU, ~5-10 min), then runs both optimizers. No external data
-   # or GPU required. Start here.
+   # Option A: local demo. Trains a real sales-regression GNN on the bundled
+   # HM_MINI CSV subset (CPU, ~5-10 min), then runs both optimizers. No
+   # external data or GPU required.
    python retail_planning_local.py
 
-   # Full pipeline: trains all 3 GNNs (sales, churn, purchase) on the full
-   # H&M + RelBench data in Snowflake, then runs both optimizers. Needs the
-   # Kaggle H&M dataset loaded into Snowflake and a GPU-enabled RAI engine.
+   # Option B: full pipeline. Trains all 3 GNNs (sales, churn, purchase) on
+   # the full Kaggle H&M + RelBench data in Snowflake, then runs both
+   # optimizers. Requires HM_PYREL loaded in Snowflake and a GPU-enabled
+   # RAI engine.
    python retail_planning.py
-
-   # Split workflow: train once, optimize many times with different knobs.
-   python retail_train.py       # trains and registers 3 GNNs (expensive)
-   python retail_optimize.py    # loads models from registry, runs optimizers
    ```
-
-   The split workflow is useful when iterating on `CHURN_DISCOUNT_WEIGHT`,
-   `UNMET_PENALTY`, or the CSV inputs -- the trained GNNs stay in the
-   Snowflake model registry, so `retail_optimize.py` skips retraining on
-   each run.
 
 7. Expected output (abbreviated):
    ```text
@@ -158,11 +151,8 @@ sales-regression GNN trains on CPU in a few minutes. Start here.
 .
 ├── README.md                    # this file
 ├── pyproject.toml               # dependencies
-├── retail_planning.py           # all-in-one runner (full pipeline, needs Snowflake)
-├── retail_planning_local.py     # CSV-only demo: real GNN on HM_MINI subset + optimizers
-├── retail_train.py              # split workflow: train + register GNNs
-├── retail_optimize.py           # split workflow: load + run optimizers
-├── _retail_setup.py             # shared setup used by retail_train/optimize
+├── retail_planning.py           # full pipeline (needs HM_PYREL in Snowflake + GPU)
+├── retail_planning_local.py     # local demo: real GNN on HM_MINI CSVs + optimizers
 └── data/
     ├── discounts.csv            # discount levels with demand lifts
     ├── weeks.csv                # planning weeks with seasonal multipliers
@@ -179,9 +169,8 @@ sales-regression GNN trains on CPU in a few minutes. Start here.
         └── production_capacity.csv    # matching production params
 ```
 
-**Start here**: `retail_planning.py` runs end-to-end. Use the
-`retail_train.py` + `retail_optimize.py` split when you want to retune
-optimizer knobs without paying the GNN training cost again.
+**Start here**: `retail_planning_local.py` for a zero-setup demo (CPU only),
+or `retail_planning.py` for the full pipeline against HM_PYREL.
 
 ## Sample data
 
@@ -203,14 +192,19 @@ The H&M core data (customers, articles, transactions) comes from Snowflake, sour
 ### Pipeline stages
 
 ```text
-Snowflake tables
+Customer / Article / Transaction data (Snowflake tables or bundled CSVs)
   → GNN item-sales (regression on Article)
-  → GNN user-churn (classification on Customer)
-  → GNN user-item-purchase (link prediction Customer→Article)
-  → Bridge: adjusted demand per article (churn + purchase propensity)
+  → GNN user-churn (classification on Customer)     [full pipeline only]
+  → GNN user-item-purchase (link prediction)        [full pipeline only]
+  → Bridge: adjusted demand per article
   → Markdown optimization (MILP, maximize revenue)
   → Demand/inventory planning (LP, minimize cost)
 ```
+
+`retail_planning_local.py` trains only the sales GNN (the most demonstrative
+task) on the bundled HM_MINI CSVs — HM_MINI does not ship churn or purchase
+splits. Churn and purchase are omitted from the local aggregation step.
+`retail_planning.py` runs all three GNNs against the full HM_PYREL data.
 
 ### Concepts
 
@@ -258,15 +252,19 @@ Snowflake tables
 
 ### 1. Train GNN models on the H&M knowledge graph
 
-Three separate GNN models are trained using the Graph/Relationship/PropertyTransformer API:
+Three separate GNN models are trained using the Graph / Relationship / PropertyTransformer API. All three share the same graph and feature configuration; only the task relationships and task-type differ:
 
 ```python
 # Item-sales regression
-SalesTrain = Relationship(f"{Article} at {Any:timestamp} has {Any:target}")
+SalesTrain = Relationship(f"{Article} at {Any:timestamp} has {Any:sales}")
 sales_gnn = GNN(
-    graph=sales_graph, pt=sales_pt,
+    exp_database=GNN_EXP_DATABASE, exp_schema=GNN_EXP_SCHEMA,
+    graph=graph, property_transformer=pt,
     train=SalesTrain, validation=SalesVal,
-    task_type="regression", eval_metric="rmse", ...
+    task_type="regression", eval_metric="rmse",
+    has_time_column=True, stream_logs=STREAM_LOGS, seed=SEED,
+    device="cuda", n_epochs=20, train_batch_size=256, lr=0.005, head_layers=2,
+    temporal_strategy="last", max_iters=500,
 )
 sales_gnn.fit()
 Article.sales_predictions = sales_gnn.predictions(domain=SalesTest)
@@ -400,16 +398,6 @@ Set `STREAM_LOGS = False` at the top of the script (the default). The GNN
 continues training server-side; only the client-side log stream is suppressed.
 </details>
 
-<details>
-<summary><code>retail_optimize.py</code> fails to load registered models</summary>
-
-- Confirm `retail_train.py` completed and printed "Registered: …" lines.
-- `MODEL_REGISTRY_DATABASE` and `MODEL_REGISTRY_SCHEMA` in `_retail_setup.py`
-  must match between training and loading.
-- The RAI native app needs access to the model registry schema:
-  `GRANT USAGE ON DATABASE <db> TO APPLICATION RELATIONALAI;
-   GRANT ALL ON SCHEMA <db>.<schema> TO APPLICATION RELATIONALAI;`
-</details>
 
 <details>
 <summary>rai init fails or connection errors</summary>
