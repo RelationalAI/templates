@@ -100,17 +100,24 @@ Assumes familiarity with Python, basic ML concepts (classification, regression, 
 
 6. Run (choose one):
    ```bash
-   # All-in-one: trains GNNs and runs both optimizers in a single session
+   # Local demo: optimizers only, with pre-computed predictions from CSV.
+   # No H&M Snowflake data or GPU engine required. Good for a quick tour.
+   python retail_planning_local.py
+
+   # Full pipeline: trains GNNs on H&M and runs both optimizers (needs
+   # HM_PYREL in Snowflake and a GPU-enabled engine).
    python retail_planning.py
 
-   # Split workflow: train once, optimize many times with different knobs
+   # Split workflow: train once, optimize many times with different knobs.
    python retail_train.py       # trains and registers 3 GNNs (expensive)
    python retail_optimize.py    # loads models from registry, runs optimizers
    ```
 
-   The split workflow is useful when iterating on `CHURN_DISCOUNT_WEIGHT`,
-   `UNMET_PENALTY`, or the CSV inputs -- the trained GNNs stay in the Snowflake
-   model registry, so `retail_optimize.py` skips retraining on each run.
+   The local demo is the fastest way to see the prescriptive models working
+   end-to-end. The split workflow is useful when iterating on
+   `CHURN_DISCOUNT_WEIGHT`, `UNMET_PENALTY`, or the CSV inputs -- the trained
+   GNNs stay in the Snowflake model registry, so `retail_optimize.py` skips
+   retraining on each run.
 
 7. Expected output (abbreviated):
    ```text
@@ -138,7 +145,8 @@ Assumes familiarity with Python, basic ML concepts (classification, regression, 
 .
 ├── README.md                    # this file
 ├── pyproject.toml               # dependencies
-├── retail_planning.py           # all-in-one runner (full pipeline)
+├── retail_planning.py           # all-in-one runner (full pipeline, needs Snowflake)
+├── retail_planning_local.py     # CSV-only demo (optimizers with stub predictions)
 ├── retail_train.py              # split workflow: train + register GNNs
 ├── retail_optimize.py           # split workflow: load + run optimizers
 ├── _retail_setup.py             # shared setup used by retail_train/optimize
@@ -146,7 +154,8 @@ Assumes familiarity with Python, basic ML concepts (classification, regression, 
     ├── discounts.csv            # discount levels with demand lifts
     ├── weeks.csv                # planning weeks with seasonal multipliers
     ├── articles_inventory.csv   # article pricing/inventory for markdown
-    └── production_capacity.csv  # production caps/costs for demand planning
+    ├── production_capacity.csv  # production caps/costs for demand planning
+    └── predictions_sample.csv   # stub per-article GNN predictions for local demo
 ```
 
 **Start here**: `retail_planning.py` runs end-to-end. Use the
