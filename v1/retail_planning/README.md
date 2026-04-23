@@ -50,10 +50,22 @@ Assumes familiarity with Python, basic ML concepts (classification, regression, 
 
 ### Access
 
+**For the local runner (`retail_planning_local.py`):** any Snowflake account
+with the RAI Native App -- no H&M Snowflake data required, no GPU required.
+The bundled `data/hm_mini/` CSVs are loaded via `model.data()`, and the
+sales-regression GNN trains on CPU in a few minutes. Start here.
+
+**For the full pipeline (`retail_planning.py`, `retail_train.py`,
+`retail_optimize.py`):**
+
 - A Snowflake account with the RAI Native App installed
-- H&M dataset loaded in Snowflake (from [RelBench](https://relbench.stanford.edu/datasets/rel-hm/)):
+- The H&M Personalized Fashion Recommendations dataset
+  ([Kaggle](https://www.kaggle.com/competitions/h-and-m-personalized-fashion-recommendations/data))
+  loaded into Snowflake, plus RelBench-style task splits
+  ([rel-hm](https://relbench.stanford.edu/datasets/rel-hm/)):
   - Core tables: `CUSTOMERS`, `ARTICLES`, `TRANSACTIONS`
-  - Task tables: churn (`TRAIN`, `VAL`, `TEST`), sales (`TRAIN`, `VAL`, `TEST`), purchase (`TRAIN_EXPLODED`, `VALIDATION_EXPLODED`, `TEST_EXPLODED`)
+  - Task tables: churn (`TRAIN`, `VAL`, `TEST`), sales (`TRAIN`, `VAL`, `TEST`),
+    purchase (`TRAIN_EXPLODED`, `VALIDATION_EXPLODED`, `TEST_EXPLODED`)
 - A GPU-enabled engine for GNN training
 
 ### Tools
@@ -100,12 +112,14 @@ Assumes familiarity with Python, basic ML concepts (classification, regression, 
 
 6. Run (choose one):
    ```bash
-   # Local demo: optimizers only, with pre-computed predictions from CSV.
-   # No H&M Snowflake data or GPU engine required. Good for a quick tour.
+   # Local demo: trains a real sales-regression GNN on the bundled HM_MINI
+   # CSV subset (CPU, ~5-10 min), then runs both optimizers. No external data
+   # or GPU required. Start here.
    python retail_planning_local.py
 
-   # Full pipeline: trains GNNs on H&M and runs both optimizers (needs
-   # HM_PYREL in Snowflake and a GPU-enabled engine).
+   # Full pipeline: trains all 3 GNNs (sales, churn, purchase) on the full
+   # H&M + RelBench data in Snowflake, then runs both optimizers. Needs the
+   # Kaggle H&M dataset loaded into Snowflake and a GPU-enabled RAI engine.
    python retail_planning.py
 
    # Split workflow: train once, optimize many times with different knobs.
@@ -113,11 +127,10 @@ Assumes familiarity with Python, basic ML concepts (classification, regression, 
    python retail_optimize.py    # loads models from registry, runs optimizers
    ```
 
-   The local demo is the fastest way to see the prescriptive models working
-   end-to-end. The split workflow is useful when iterating on
-   `CHURN_DISCOUNT_WEIGHT`, `UNMET_PENALTY`, or the CSV inputs -- the trained
-   GNNs stay in the Snowflake model registry, so `retail_optimize.py` skips
-   retraining on each run.
+   The split workflow is useful when iterating on `CHURN_DISCOUNT_WEIGHT`,
+   `UNMET_PENALTY`, or the CSV inputs -- the trained GNNs stay in the
+   Snowflake model registry, so `retail_optimize.py` skips retraining on
+   each run.
 
 7. Expected output (abbreviated):
    ```text
@@ -146,16 +159,24 @@ Assumes familiarity with Python, basic ML concepts (classification, regression, 
 ├── README.md                    # this file
 ├── pyproject.toml               # dependencies
 ├── retail_planning.py           # all-in-one runner (full pipeline, needs Snowflake)
-├── retail_planning_local.py     # CSV-only demo (optimizers with stub predictions)
+├── retail_planning_local.py     # CSV-only demo: real GNN on HM_MINI subset + optimizers
 ├── retail_train.py              # split workflow: train + register GNNs
 ├── retail_optimize.py           # split workflow: load + run optimizers
 ├── _retail_setup.py             # shared setup used by retail_train/optimize
 └── data/
     ├── discounts.csv            # discount levels with demand lifts
     ├── weeks.csv                # planning weeks with seasonal multipliers
-    ├── articles_inventory.csv   # article pricing/inventory for markdown
-    ├── production_capacity.csv  # production caps/costs for demand planning
-    └── predictions_sample.csv   # stub per-article GNN predictions for local demo
+    ├── articles_inventory.csv   # article pricing/inventory (full-pipeline scope)
+    ├── production_capacity.csv  # production caps/costs (full-pipeline scope)
+    └── hm_mini/                 # HM_MINI subset used by retail_planning_local.py
+        ├── customers.csv        #   10K customers from H&M Kaggle
+        ├── articles.csv         #   5K articles
+        ├── transactions.csv     #   9.6K transactions
+        ├── train_sales.csv      #   RelBench sales task: 7.6K train rows
+        ├── val_sales.csv        #   1.1K val rows
+        ├── test_sales.csv       #   806 test rows
+        ├── articles_inventory.csv     # 12-article optimizer scope (real HM_MINI IDs)
+        └── production_capacity.csv    # matching production params
 ```
 
 **Start here**: `retail_planning.py` runs end-to-end. Use the

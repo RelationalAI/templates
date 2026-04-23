@@ -1,14 +1,19 @@
 """Retail Planning -- local CSV-only runner.
 
-Runs only the prescriptive phases (markdown + demand planning) using
-pre-computed predictions from `data/predictions_sample.csv`. Useful for:
+Runs the full predict-then-optimize pipeline on a small bundled subset of the
+H&M dataset (HM_MINI, ~10K customers / 5K articles / 9.6K transactions).
+Everything loads from CSVs in `data/hm_mini/` via `model.data()` -- no
+Snowflake data loading, no GPU required (CPU GNN training on this slice is
+tractable).
 
-- Quickly demoing the optimizer logic without Snowflake / GPU / H&M data
-- Regression-testing the prescriptive models after changes
-
-The full predict-then-optimize pipeline (with real GNN training on H&M) is
-`retail_planning.py`. This local runner substitutes `predictions_sample.csv`
-for the GNN outputs so the optimizers have inputs; numbers are illustrative.
+Differences from the full `retail_planning.py`:
+- Trains only the sales-regression GNN (transaction-level price prediction).
+  Churn and purchase GNNs are omitted for simplicity; in the aggregation
+  step we use sales predictions alone and skip the churn-discount and
+  purchase-propensity adjustments.
+- Predicts per-transaction price, then aggregates to per-article sum to get
+  article-level demand for the optimizers. The full template aggregates
+  article-level targets before training.
 
 Run:
     python retail_planning_local.py
@@ -17,25 +22,144 @@ Run:
 from pathlib import Path
 
 from pandas import read_csv
-from relationalai.semantics import Float, Integer, String, count, select, std, sum
+from relationalai.semantics import Any, Float, Integer, String, count, select, std, sum
 from relationalai.semantics import Model
+from relationalai.semantics.reasoners.graph import Graph
+from relationalai.semantics.reasoners.predictive import GNN, PropertyTransformer
 from relationalai.semantics.reasoners.prescriptive import Problem
 
-CHURN_DISCOUNT_WEIGHT = 0.3
-PURCHASE_PROPENSITY_WEIGHT = 0.1
+# Optimizer tuning knobs -- edit without retraining the GNN.
 UNMET_PENALTY = 50.0
 
+# Scale factor applied when aggregating normalized GNN predictions into
+# optimizer demand. HM_MINI prices are [0, ~0.6]-normalized; multiplying
+# makes per-article demand comparable to the inventory scale.
+DEMAND_SCALE = 200.0
+
 DATA_DIR = Path(__file__).parent / "data"
+HM_DIR = DATA_DIR / "hm_mini"
 
 model = Model("retail_planning_local")
-Concept = model.Concept
+Concept, Relationship = model.Concept, model.Relationship
 
 # --------------------------------------------------
-# OptArticle -- pricing, inventory, and stubbed GNN predictions
+# Phase 1: Core entity concepts + graph
 # --------------------------------------------------
-inv_csv = read_csv(DATA_DIR / "articles_inventory.csv", dtype={"article_id": int})
-pred_csv = read_csv(DATA_DIR / "predictions_sample.csv", dtype={"article_id": int})
-combined = inv_csv.merge(pred_csv, on="article_id", how="inner")
+Customer = Concept("Customer", identify_by={"c_customer_id": Integer})
+Article = Concept("Article", identify_by={"a_article_id": Integer})
+Transaction = Concept("Transaction", identify_by={"transaction_id": Integer})
+
+customers_df = read_csv(HM_DIR / "customers.csv")
+articles_df = read_csv(HM_DIR / "articles.csv")
+transactions_df = read_csv(HM_DIR / "transactions.csv")
+
+model.define(Customer.new(model.data(customers_df).to_schema()))
+model.define(Article.new(model.data(articles_df).to_schema()))
+model.define(Transaction.new(model.data(transactions_df).to_schema()))
+
+gnn_graph = Graph(model, directed=True, weighted=False)
+Edge = gnn_graph.Edge
+model.define(Edge.new(src=Transaction, dst=Customer)).where(
+    Transaction.t_customer_id == Customer.c_customer_id)
+model.define(Edge.new(src=Transaction, dst=Article)).where(
+    Transaction.t_article_id == Article.a_article_id)
+
+# PropertyTransformer -- lean set following the rai-predictive-modeling skill.
+pt = PropertyTransformer(
+    category=[
+        Customer.fn, Customer.active, Customer.club_member_status,
+        Customer.fashion_news_frequency,
+        Article.product_group_name, Article.colour_group_name,
+        Article.index_group_name, Article.garment_group_name,
+        Transaction.sales_channel_id,
+    ],
+    text=[Article.prod_name],
+    continuous=[Customer.age],
+    drop=[
+        Customer.c_customer_id, Article.a_article_id,
+        Transaction.transaction_id,
+        Transaction.t_customer_id, Transaction.t_article_id,
+        Customer.postal_code,  # high-cardinality hash, not informative
+    ],
+    datetime=[Transaction.t_dat],
+    time_col=[Transaction.t_dat],
+)
+
+# --------------------------------------------------
+# Phase 2: Sales regression task (transaction-level)
+# --------------------------------------------------
+TrainTable = Concept("TrainTable")
+ValTable = Concept("ValTable")
+TestTable = Concept("TestTable")
+
+train_df = read_csv(HM_DIR / "train_sales.csv")
+val_df = read_csv(HM_DIR / "val_sales.csv")
+test_df = read_csv(HM_DIR / "test_sales.csv")
+
+model.define(TrainTable.new(model.data(train_df).to_schema()))
+model.define(ValTable.new(model.data(val_df).to_schema()))
+model.define(TestTable.new(model.data(test_df).to_schema()))
+
+Train = Relationship(f"{Transaction} at {Any:timestamp} has {Any:value}")
+model.define(
+    Train(Transaction, TrainTable.timestamp, TrainTable.value)
+).where(Transaction.transaction_id == TrainTable.transaction_id)
+
+Val = Relationship(f"{Transaction} at {Any:timestamp} has {Any:value}")
+model.define(
+    Val(Transaction, ValTable.timestamp, ValTable.value)
+).where(Transaction.transaction_id == ValTable.transaction_id)
+
+Test = Relationship(f"{Transaction} at {Any:timestamp}")
+model.define(
+    Test(Transaction, TestTable.timestamp)
+).where(Transaction.transaction_id == TestTable.transaction_id)
+
+# Target profile -- helps interpret val-RMSE vs predict-the-mean baseline.
+_target_df = select(TrainTable.value.alias("value")).to_df()
+if len(_target_df):
+    _s = _target_df["value"]
+    print("\n=== Sales target profile (train split) ===")
+    print(f"  n={len(_s)}  min={_s.min():.4g}  max={_s.max():.4g}  "
+          f"mean={_s.mean():.4g}  stddev={_s.std():.4g}")
+    print(f"  Baseline RMSE (predict-the-mean) ~= stddev = {_s.std():.4g}")
+
+# --------------------------------------------------
+# Phase 3: Train GNN (CPU) + predict on test
+# --------------------------------------------------
+print("\n" + "=" * 60)
+print("PREDICTIVE: Sales regression GNN (CPU, HM_MINI)")
+print("=" * 60)
+
+gnn = GNN(
+    exp_database="HM_MINI", exp_schema="EXPERIMENTS",
+    graph=gnn_graph, property_transformer=pt,
+    train=Train, validation=Val,
+    task_type="regression", eval_metric="rmse",
+    has_time_column=True, stream_logs=False, seed=42,
+    device="cpu", n_epochs=20, lr=0.005,
+)
+gnn.fit()
+Transaction.predictions = gnn.predictions(domain=Test)
+
+# --------------------------------------------------
+# Phase 4: Bridge -- aggregate per-transaction predictions to per-article demand
+# --------------------------------------------------
+# Sum predicted_value across all test-period transactions for each article,
+# scaled by DEMAND_SCALE so the number is comparable to inventory units.
+Article.predicted_demand = model.Property(
+    f"{Article} has {Float:predicted_demand}")
+model.define(Article.predicted_demand(
+    sum(Transaction.predictions.predicted_value).per(Article) * DEMAND_SCALE
+)).where(
+    Transaction.predictions,
+    Transaction.t_article_id == Article.a_article_id,
+)
+
+# --------------------------------------------------
+# Phase 5: OptArticle (optimizer scope) with pricing/inventory
+# --------------------------------------------------
+inv_csv = read_csv(HM_DIR / "articles_inventory.csv", dtype={"article_id": int})
 
 OptArticle = Concept("OptArticle", identify_by={"opt_article_id": Integer})
 OptArticle.name = model.Property(f"{OptArticle} has {String:name}")
@@ -44,46 +168,34 @@ OptArticle.cost = model.Property(f"{OptArticle} has {Float:cost}")
 OptArticle.initial_inventory = model.Property(
     f"{OptArticle} has {Integer:initial_inventory}")
 OptArticle.salvage_rate = model.Property(f"{OptArticle} has {Float:salvage_rate}")
-OptArticle.predicted_sales = model.Property(
-    f"{OptArticle} has {Float:predicted_sales}")
-OptArticle.avg_buyer_churn = model.Property(
-    f"{OptArticle} has {Float:avg_buyer_churn}")
-OptArticle.avg_purchase_score = model.Property(
-    f"{OptArticle} has {Float:avg_purchase_score}")
-OptArticle.adjusted_demand = model.Property(
-    f"{OptArticle} has {Float:adjusted_demand}")
 
-d = model.data(combined)
+inv_data = model.data(inv_csv)
 model.define(
-    oa := OptArticle.new(opt_article_id=d.article_id),
-    oa.name(d.name),
-    oa.initial_price(d.initial_price),
-    oa.cost(d.cost),
-    oa.initial_inventory(d.initial_inventory),
-    oa.salvage_rate(d.salvage_rate),
-    oa.predicted_sales(d.predicted_sales),
-    oa.avg_buyer_churn(d.avg_buyer_churn),
-    oa.avg_purchase_score(d.avg_purchase_score),
+    oa := OptArticle.new(opt_article_id=inv_data.article_id),
+    oa.name(inv_data.name),
+    oa.initial_price(inv_data.initial_price),
+    oa.cost(inv_data.cost),
+    oa.initial_inventory(inv_data.initial_inventory),
+    oa.salvage_rate(inv_data.salvage_rate),
 )
 
-model.define(OptArticle.adjusted_demand(
-    OptArticle.predicted_sales
-    * (1 - CHURN_DISCOUNT_WEIGHT * OptArticle.avg_buyer_churn)
-    * (1 + PURCHASE_PROPENSITY_WEIGHT * OptArticle.avg_purchase_score)
-))
+model.define(OptArticle.article(Article)).where(
+    OptArticle.opt_article_id == Article.a_article_id)
 
-print("\n=== Adjusted Demand per Article (from predictions_sample.csv) ===")
+OptArticle.adjusted_demand = model.Property(
+    f"{OptArticle} has {Float:adjusted_demand}")
+model.define(OptArticle.adjusted_demand(Article.predicted_demand)).where(
+    OptArticle.article(Article), Article.predicted_demand)
+
+print("\n=== Adjusted Demand per Article (from sales GNN, aggregated) ===")
 model.select(
     OptArticle.opt_article_id.alias("article_id"),
     OptArticle.name,
-    OptArticle.predicted_sales,
-    OptArticle.avg_buyer_churn,
-    OptArticle.avg_purchase_score,
     OptArticle.adjusted_demand,
 ).inspect()
 
 # --------------------------------------------------
-# Prescriptive A: Markdown Optimization (maximize revenue)
+# Phase 6: Markdown optimization (MILP, maximize revenue)
 # --------------------------------------------------
 print("\n" + "=" * 60)
 print("PRESCRIPTIVE A: Markdown Optimization")
@@ -202,14 +314,12 @@ salvage = sum(
 
 problem.maximize(revenue + salvage)
 
-problem.display()
 problem.solve("highs", time_limit_sec=120)
-model.require(problem.termination_status() == "OPTIMAL")
 si = problem.solve_info()
-si.display()
 
 print(f"\nMarkdown Status: {si.termination_status}")
-print(f"Total revenue (sales + salvage): ${si.objective_value:.2f}")
+if si.objective_value is not None:
+    print(f"Total revenue (sales + salvage): ${si.objective_value:.2f}")
 
 print("\n=== Markdown: Selected Discounts by Article-Week ===")
 model.select(
@@ -221,25 +331,14 @@ model.select(
     selection_ref > 0.5,
 ).inspect()
 
-print("\n=== Markdown: Sales by Article-Week ===")
-model.select(
-    OptArticle.name.alias("article"),
-    Week_ref.num.alias("week"),
-    Discount_ref.discount_pct.alias("discount_pct"),
-    sales_ref.alias("units_sold"),
-).where(
-    OptArticle.x_sales(Week_ref, Discount_ref, sales_ref),
-    sales_ref > 0.01,
-).inspect()
-
 # --------------------------------------------------
-# Prescriptive B: Demand / Inventory Planning
+# Phase 7: Demand/Inventory Planning (LP, minimize cost)
 # --------------------------------------------------
 print("\n" + "=" * 60)
 print("PRESCRIPTIVE B: Demand / Inventory Planning")
 print("=" * 60)
 
-prod_csv = read_csv(DATA_DIR / "production_capacity.csv", dtype={"article_id": int})
+prod_csv = read_csv(HM_DIR / "production_capacity.csv", dtype={"article_id": int})
 
 ProdCapacity = Concept("ProdCapacity", identify_by={"pc_article_id": Integer})
 ProdCapacity.max_production_per_week = model.Property(
@@ -341,71 +440,13 @@ unmet_cost_total = sum(
 
 dp.minimize(prod_cost_total + hold_cost_total + unmet_cost_total)
 
-dp.display()
 dp.solve("highs", time_limit_sec=120)
 si_dp = dp.solve_info()
-si_dp.display()
 
 print(f"\nDemand Planning Status: {si_dp.termination_status}")
 if si_dp.objective_value is not None:
     print(f"Total cost (production + holding + unmet penalty): ${si_dp.objective_value:.2f}")
 
-# --------------------------------------------------
-# Results
-# --------------------------------------------------
-week_ref = Week.ref()
-int_ref = Integer.ref()
-value_ref = Float.ref()
-
-print("\n=== Demand Planning: Production Plan (non-zero) ===")
-prod_rows = (
-    model.select(
-        ProdCapacity.pc_article_id.alias("article_id"),
-        week_ref.num.alias("week"),
-        value_ref.alias("production"),
-    )
-    .where(
-        ProdCapacity.x_production(week_ref, value_ref),
-        value_ref > 0.01,
-    )
-    .to_df()
-)
-if not prod_rows.empty:
-    print(prod_rows.to_string(index=False))
-else:
-    print("  No production needed.")
-
-print("\n=== Demand Planning: Inventory Levels ===")
-inv_rows = (
-    model.select(
-        ProdCapacity.pc_article_id.alias("article_id"),
-        int_ref.alias("week"),
-        value_ref.alias("inventory"),
-    )
-    .where(ProdCapacity.x_inventory(int_ref, value_ref))
-    .to_df()
-)
-if not inv_rows.empty:
-    print(inv_rows.to_string(index=False))
-
-print("\n=== Demand Planning: Unmet Demand ===")
-unmet_rows = (
-    model.select(
-        ProdCapacity.pc_article_id.alias("article_id"),
-        week_ref.num.alias("week"),
-        value_ref.alias("unmet"),
-    )
-    .where(
-        ProdCapacity.x_unmet(week_ref, value_ref),
-        value_ref > 0.01,
-    )
-    .to_df()
-)
-if unmet_rows.empty:
-    print("  All demand fulfilled!")
-else:
-    print(unmet_rows.to_string(index=False))
-
 print("\n" + "=" * 60)
-print("Local CSV-only run complete. Full pipeline: retail_planning.py")
+print("Local run complete. Full pipeline (all 3 GNNs): retail_planning.py")
 print("=" * 60)
