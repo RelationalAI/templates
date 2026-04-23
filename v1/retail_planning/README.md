@@ -176,8 +176,8 @@ Total cost (production + holding + unmet penalty): $8,985.53
 ```
 
 **Start here**: `retail_planning_local.py` (CPU, no external setup). Use
-`retail_planning.py` as the adaptation reference when you wire this pattern
-into your own Snowflake data.
+`retail_planning.py` (requires GPU) as the adaptation reference when you wire
+this pattern into your own Snowflake data.
 
 ## Sample data
 
