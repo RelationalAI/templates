@@ -24,6 +24,10 @@ Prerequisites:
 
 Run:
     python fraud_detection.py
+
+Output:
+    Class-balance profile, GNN ROC-AUC, knapsack MILP objective ($ expected
+    loss averted), and a naive-sort baseline for comparison.
 """
 
 from pathlib import Path

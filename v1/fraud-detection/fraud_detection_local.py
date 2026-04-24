@@ -22,6 +22,10 @@ The rule-based identity-graph intro remains in fraud_detection_rules.ipynb.
 
 Run:
     python fraud_detection_local.py
+
+Output:
+    Class-balance profile, GNN ROC-AUC, top-20 alert queue, knapsack MILP
+    objective ($ expected loss averted), and a naive-sort baseline for comparison.
 """
 
 from pathlib import Path

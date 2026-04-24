@@ -11,6 +11,7 @@ requires-python = ">=3.10"
 dependencies = [
   "relationalai==1.0.14",
   "pandas>=2.0",
+  "numpy",
   "jupyter",
 ]
 
