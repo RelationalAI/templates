@@ -6,12 +6,16 @@ adaptation reference when wiring the pattern into your own Snowflake data
 (customer / transaction / counterparty tables + train/val/test split tables).
 
 Stages (identical to the local runner):
-  1. Graph -- PageRank centrality on the Account-Transaction graph.
-  2. Rules -- activity-based high-volume account flags.
-  3. Predictive -- GNN binary classification (Account-Transaction graph).
-  4. Bridge -- alert score combining GNN probability with is_flagged_fraud.
-  5. Prescriptive -- knapsack MILP: maximize alert_score x amount subject to
-     a fixed-hours audit budget plus a per-receiver cap.
+  1. Graph -- PageRank on an Account-Account funds-flow graph, bound to
+     `Account.pagerank` and fed to the GNN as a continuous feature.
+  2. Rules -- `Account.activity_count` (Property) + `Account.is_high_volume`
+     (Relationship) capturing sender-side transaction volume.
+  3. Predictive -- GNN binary classification on the Transaction-to-Account
+     bipartite graph.
+  4. Bridge -- `alert_score` blends the GNN probability with the dataset's
+     `is_flagged_fraud` heuristic.
+  5. Prescriptive -- knapsack MILP: maximize `alert_score * amount` subject
+     to a fixed-hours audit budget plus a per-receiver cap.
 
 Prerequisites:
   - PaySim loaded in Snowflake as FRAUD_DB.PAYSIM.{TRANSACTIONS, ACCOUNTS, TRAIN, VAL, TEST}
