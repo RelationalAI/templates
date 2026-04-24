@@ -22,8 +22,7 @@ Run:
 from pathlib import Path
 
 from pandas import read_csv
-from relationalai.semantics import Any, Float, Integer, String, count, select, std, sum
-from relationalai.semantics import Model
+from relationalai.semantics import Any, Float, Integer, Model, String, count, select, std, sum
 from relationalai.semantics.reasoners.graph import Graph
 from relationalai.semantics.reasoners.predictive import GNN, PropertyTransformer
 from relationalai.semantics.reasoners.prescriptive import Problem

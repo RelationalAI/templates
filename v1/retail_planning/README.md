@@ -328,7 +328,6 @@ dp.minimize(prod_cost_total + hold_cost_total + unmet_cost_total)
 
 ### Tune parameters
 
-- **GNN hyperparameters**: `n_epochs`, `lr`, `train_batch_size`, `head_layers` in each GNN constructor. More epochs improve accuracy but increase training time.
 - **Churn discount weight** (`CHURN_DISCOUNT_WEIGHT`): controls how much churn risk reduces demand. 0 = ignore churn, 1 = full reduction.
 - **Purchase propensity weight** (`PURCHASE_PROPENSITY_WEIGHT`): controls how much predicted purchase demand uplifts demand. 0 = ignore, higher = stronger uplift.
 - **Unmet demand penalty** (`UNMET_PENALTY`): higher values force the demand planner to fulfill more demand at the cost of higher production.
@@ -347,7 +346,6 @@ dp.minimize(prod_cost_total + hold_cost_total + unmet_cost_total)
 <summary>GNN training fails or is very slow</summary>
 
 - Ensure a GPU-enabled engine is available. GNN training on CPU is significantly slower.
-- Reduce `n_epochs` or `train_batch_size` for faster iteration during development.
 - Check that the task tables (TRAIN, VAL, TEST) are populated and the foreign keys match the core tables.
 </details>
 
@@ -371,11 +369,8 @@ dp.minimize(prod_cost_total + hold_cost_total + unmet_cost_total)
 
 - Ensure the GNN training completed successfully (check for fit() errors).
 - Verify that the test set tables contain rows and that foreign keys link correctly to the core entity tables.
-- Try increasing `n_epochs` -- very few epochs may not converge.
-- For regression (sales): the rai-predictive-training skill flags that 5 epochs
-  is a smoke test; regression usually needs 20–50 epochs. If val-RMSE is at or
-  above `stddev(target)`, the model collapsed to the mean — increase `n_epochs`
-  or reduce text features.
+- If val-RMSE is at or above `stddev(target)`, the regression model has
+  collapsed to the mean — revisit the PropertyTransformer and task setup.
 </details>
 
 <details>
@@ -394,8 +389,8 @@ from its Relationship templates until the GNN team resolves this.
 R² < 0 early in training is normal — it means the model is doing worse than
 predicting the target mean. See the "Sales target profile (train split)" block
 printed before training: if val-RMSE prints below the target's stddev, the
-GNN is learning signal. If it plateaus at or above the stddev, increase
-`n_epochs` or re-check the PropertyTransformer.
+GNN is learning signal. If it plateaus at or above the stddev, re-check the
+PropertyTransformer and task setup.
 </details>
 
 <details>
