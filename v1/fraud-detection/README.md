@@ -159,28 +159,49 @@ CREATE OR REPLACE TABLE FRAUD_DB.PAYSIM.TEST AS
 
 ### Expected output (local run, abbreviated)
 
+Real numbers from a verified end-to-end run on the bundled subset (CPU, no
+external data, no GPU). Exact scores shift a little with numerical noise
+between CPU and GPU runs, but the structure and magnitude are consistent.
+
 ```text
 === Fraud class balance (train split) ===
-  n=11498  fraud=5749  fraud_rate=50.0%
+  n=11498  fraud=4339  fraud_rate=37.7%
   Baseline ROC_AUC = 0.5
 
-=== PREDICTIVE: Fraud binary-classification GNN ===
-  Best Validation Performance: 0.9X (ROC AUC)
+============================================================
+PREDICTIVE: Fraud binary-classification GNN (CPU, PaySim mini)
+============================================================
+=== Start GNN Training ===
+  ✓ Step 1 completed (~30s)   # prepare dataset + GNN tables
+  ✓ Step 2 completed (~2s)    # trainer config
+  ✓ Step 3 completed (~5s)    # submit training job
+=== Start GNN Prediction ===
+  ✓ GNN Prediction Complete (~110s)
 
 === Top-20 alert-scored transactions ===
-  transaction_id  trans_type     amount       receiver  alert_score
+  transaction_id  trans_type     amount    receiver     alert_score
+  6205440         TRANSFER       353874    C1770418982  0.999406
+  6266414         TRANSFER       2542664   C661958277   0.999319
   ...
 
 MILP Status: OPTIMAL
-Captured expected loss (optimal within budget): $X,XXX,XXX
-  MILP (cost-aware + per-receiver cap) -> $X,XXX,XXX
-  Naive top-by-alert-score (budget only) -> $Y,YYY,YYY (N audits)
-  MILP uplift over naive sort: $+Z,ZZZ
+Captured expected loss (optimal within budget): $111,901,446
+  MILP (cost-aware + per-receiver cap) -> $111,901,446 captured across the audit queue
+  Naive top-by-alert-score (budget only, same hours) -> $40,682,083 captured across 17 audits
+  MILP uplift over naive sort: $+71,219,363
 
 === Selected audit queue ===
-  N audits scheduled; H/80 investigator hours used
-  ...
+  16 audits scheduled; 80.0/80 investigator hours used
+  By trans_type:
+    CASH_OUT    12
+    TRANSFER     4
 ```
+
+The MILP picks 16 large ($10M) transactions at 0.699 alert over the 0.999-alert
+smaller transfers because expected loss per audit-hour is higher. Natural
+diversity falls out without any per-type cap: 12 CASH_OUT + 4 TRANSFER. A
+naive sort by alert-score alone would spend the same 80 hours for only 40% of
+the captured value.
 
 ## Template structure
 
