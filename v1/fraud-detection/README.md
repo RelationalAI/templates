@@ -6,7 +6,7 @@ experience_level: advanced
 industry: "Financial Services"
 reasoning_types:
   - Graph
-  - Rules
+  - Rules-based
   - Predictive
   - Prescriptive
 tags:
