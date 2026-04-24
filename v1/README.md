@@ -14,7 +14,7 @@ This directory contains the templates for v1. Each template folder includes its 
 | [disease-outbreak-prevention](./disease-outbreak-prevention/) | Use weighted degree centrality to identify the highest-risk healthcare facilities in a public health network, considering both connection volume and intensity, to prioritize resource deployment during disease outbreaks. |
 | [energy_grid_planning](./energy_grid_planning/) | Multi-reasoner template: demand forecasting, grid vulnerability analysis, compliance rules, and multi-objective optimization for AI data center interconnection planning on the ERCOT (Texas) grid. |
 | [factory_production](./factory_production/) | Maximize profit from production with limited resource availability per factory. |
-| [fraud-detection](./fraud-detection/) | Use graph reasoning to find suspicious users based on shared identifiers and uncommon sharing patterns. |
+| [fraud-detection](./fraud-detection/) | Rule-based identity-graph discovery plus a GNN predict-then-optimize pipeline: train a binary classifier on a bundled PaySim subset, blend its score with rule flags, then allocate a finite investigator-audit budget via MILP. |
 | [hospital_staffing](./hospital_staffing/) | Explore the tradeoff between overtime cost and patient service level using bi-objective optimization with epsilon constraint. |
 | [humanitarian-aid-supply-chain](./humanitarian-aid-supply-chain/) | Use graph reasoning to analyze a humanitarian aid supply chain network with PageRank and Weighted Degree Centrality to optimize resource distribution strategies. |
 | [inventory_rebalancing](./inventory_rebalancing/) | Transfer inventory through a warehouse-hub-store network to meet demand at minimum shipping cost, with flow conservation at transit nodes. |
