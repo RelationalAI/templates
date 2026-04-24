@@ -1,187 +1,366 @@
 ---
 title: "Fraud Detection"
-description: "Use graph reasoning to find suspicious users based on shared identifiers and uncommon sharing patterns."
-experience_level: beginner
-industry: "Financial Services"
+description: "Rule-based identity-graph discovery plus a GNN predict-then-optimize pipeline: train a binary classifier on a bundled PaySim subset, blend its score with rule flags, then allocate a finite investigator-audit budget via MILP."
 featured: true
+experience_level: advanced
+industry: "Financial Services"
 reasoning_types:
   - Graph
+  - Predictive
+  - Prescriptive
 tags:
-  - fraud-detection,
-  - graphs
-  - identity-resolution
+  - GNN
+  - Fraud
+  - Predict-then-Optimize
+  - Classification
+  - MILP
+  - Multi-Reasoner
 sidebar:
   order: 2
 ---
 
 ## What this template is for
 
-Fraud and risk teams often need to investigate **identity graphs**: networks where users may be connected by shared identifiers like email, phone number, address, or payment instrument.
-This template is a runnable notebook that shows how to:
+Fraud and risk teams face three interconnected problems: discovering suspicious identity patterns in the first place, scoring transactions as they come in, and deciding which alerts to actually investigate given finite human capacity. Traditionally these live in separate tools. This template shows all three working together on one semantic model in RelationalAI.
 
-- Model user-profile attributes in RelationalAI
-- Build an identity graph and find connected communities
-- Add simple rules to flag **uncommon sharing patterns** that merit investigation
+**Start with `fraud_detection_local.py`** -- it trains a real GNN binary classifier on a bundled PaySim subset (CPU, no external data), blends its probability with PaySim's built-in heuristic flag, and runs a small investigator-budget MILP. A few minutes end-to-end. It's the quickest way to see the full predict-then-optimize loop.
+
+**Then adapt the pattern to your own Snowflake data** using `fraud_detection.py` as a reference. It trains the same GNN against the full PaySim dataset (or your own customer/transaction data) in Snowflake and allocates a larger investigator budget.
+
+**For the original rule-based identity-graph approach** (no ML), see `fraud_detection_rules.ipynb` -- a standalone Jupyter notebook that uses Weakly Connected Components on shared-identifier edges to flag suspicious users. It's a useful intro to graph-based fraud signals without any predictive modeling.
+
+> [!IMPORTANT]
+> The RelationalAI **predictive reasoner (GNN)** used in this template is in
+> early access. The API surface (`GNN`, `PropertyTransformer`, task
+> relationships) may still change between releases; check the
+> `rai-predictive-modeling` and `rai-predictive-training` skills for the
+> current guidance before adapting to production data.
 
 ## Who this is for
 
-- Analysts and engineers who want a concrete starting point for graph-based fraud signals
-- Users who are comfortable running a Jupyter notebook and making small edits
+- Data scientists building end-to-end ML-to-optimization pipelines on transaction graphs
+- Fraud analysts combining heuristic flags with learned signals to prioritize audits
+- ML engineers exploring GNN-based prediction on relational/graph data
+- Operations researchers interested in predict-then-optimize patterns
 
-## What you’ll build
+Assumes familiarity with Python, basic ML concepts (binary classification, ROC AUC), and mixed-integer programming.
 
-- A notebook that loads a small example dataset and models it with the RelationalAI v1 PyRel semantics API
-- Community detection using Weakly Connected Components on an identity graph
-- A simple, explainable suspicious-user rule set (size-based filtering + sharing patterns)
-- (Optional) Export of suspicious users to a Snowflake table
+## What you'll build
 
-## What’s included
+- A GNN binary classifier on the Account-Transaction graph, predicting `isFraud` per transaction
+- A bridge layer combining GNN probabilities with a rule-based flag into a per-transaction alert score
+- An investigator-budget MILP that selects which transactions to audit under slot, type-diversity, and per-receiver caps
+- The same pipeline running against either a bundled CSV subset (local demo) or a full Snowflake dataset (reference path)
 
-- **Model**: `User` and `Address` concepts, plus derived types for flagged users
-- **Runner**: `fraud-detection.ipynb` (primary notebook)
-- **Sample data**: in-notebook in-memory lists for users and addresses (no CSVs)
-- **Outputs**: a pandas DataFrame of suspicious users; optionally a Snowflake table written via `into(...).exec()`
+## What's included
+
+- **Runners**:
+  - `fraud_detection_local.py` -- **primary, runnable out of the box.** Trains a real GNN on bundled PaySim CSVs and solves the investigator MILP.
+  - `fraud_detection.py` -- **reference pattern** for adapting the pipeline to your own Snowflake data. Same structure, GPU-trained.
+  - `fraud_detection_rules.ipynb` -- original rule-based identity-graph notebook, kept as a complementary intro.
+- **Model**: `Account`, `Transaction`, `Edge` (Transaction-to-Account in both sender and receiver roles), plus rule and alert-score derived properties
+- **Sample data**:
+  - `data/paysim_mini/` -- ~16K transactions from PaySim (class-balanced ~50% fraud for CPU training), plus train/val/test splits. Redistributed under CC BY-SA 4.0 (see `LICENSE.txt` in that directory).
+  - `data/investigator_budget.csv` -- per-transaction-type audit caps for the MILP.
+- **Outputs**: class-balance profile, GNN ROC-AUC, top-K alert queue, optimal audit schedule
 
 ## Prerequisites
 
+### Access
+
+**To run the local demo (`fraud_detection_local.py`)** you need any Snowflake
+account with the RAI Native App. No PaySim Snowflake data, no GPU. The bundled
+`data/paysim_mini/` CSVs ship with the template; the GNN trains on CPU in a
+few minutes.
+
+**To adapt to your own Snowflake pipeline (`fraud_detection.py` as reference)**
+you'll additionally need:
+
+- A dataset in Snowflake with a schema analogous to PaySim -- an accounts
+  table plus a transactions table that references accounts as sender and
+  receiver, and pre-built train/val/test split tables. The as-shipped
+  `fraud_detection.py` targets PaySim loaded at
+  `FRAUD_DB.PAYSIM.{ACCOUNTS, TRANSACTIONS, TRAIN, VAL, TEST}`; the full
+  dataset is available at [Kaggle: ealaxi/paysim1](https://www.kaggle.com/datasets/ealaxi/paysim1).
+- A GPU-enabled RAI engine for GNN training at scale (~6M row full PaySim).
+
+### Tools
+
 - Python >= 3.10
-- A Snowflake account with the RelationalAI Native App installed
-- A Snowflake user/role that can run the RAI Native App
-- If you plan to run the export step: permissions to create/overwrite the destination table you choose
+- RelationalAI Python SDK (`relationalai`) >= 1.0.14
+- For the rule-based notebook only: `jupyter`
 
 ## Quickstart
 
-1. **Download the ZIP file for this template and extract it:**
-
+1. Download ZIP:
    ```bash
    curl -O https://docs.relational.ai/templates/zips/v1/fraud-detection.zip
    unzip fraud-detection.zip
    cd fraud-detection
    ```
-
    > [!TIP]
    > You can also download the template ZIP using the "Download ZIP" button at the top of this page.
 
-2. **Create and activate a virtual environment**
-
-  From the template folder (this is `v1/fraud-detection` if you cloned the full repository):
-
+2. Create venv:
    ```bash
    python -m venv .venv
    source .venv/bin/activate
-   python -m pip install -U pip
+   python -m pip install --upgrade pip
    ```
 
-3. **Install dependencies**
-
+3. Install:
    ```bash
    python -m pip install .
    ```
 
-4. **Configure credentials**
-
-   This notebook executes RelationalAI queries and (optionally) writes results back to Snowflake, so you need a working RelationalAI/Snowflake configuration.
-
-   If you use the RelationalAI CLI, run:
-
+4. Configure:
    ```bash
    rai init
    ```
 
-   If you have multiple profiles, set one explicitly:
-
+5. Run the local demo on the bundled PaySim subset (CPU, a few minutes):
    ```bash
-   export RAI_PROFILE=<your_profile>
+   python fraud_detection_local.py
    ```
 
-5. **Start Jupyter**
+### Adapting to your own Snowflake data
 
+`fraud_detection.py` is the reference for wiring this pattern against a real
+Snowflake dataset (accounts + transactions + train/val/test task tables):
+
+1. Point the table references at your data:
+   ```python
+   DATABASE = "YOUR_DB"
+   SCHEMA = "YOUR_SCHEMA"   # schema with ACCOUNTS, TRANSACTIONS, TRAIN, VAL, TEST
+   ```
+2. Adjust the `PropertyTransformer` to match your columns -- drop your PKs/FKs
+   explicitly, annotate categoricals and continuous fields, set `time_col` on
+   your timestamp column.
+3. If your task tables use different column names, update the `Relationship`
+   templates (and any `TrainTable.<column>` accesses) to match.
+4. Run against a GPU-enabled RAI engine:
    ```bash
-   jupyter notebook
+   python fraud_detection.py
    ```
 
-6. **Run the template**
+If you're using PaySim as-is, build the train/val/test tables from the main
+transaction table by `step` cutoff:
 
-   Open `fraud-detection.ipynb` and run the cells top-to-bottom (or "Run All").
+```sql
+CREATE OR REPLACE TABLE FRAUD_DB.PAYSIM.TRAIN AS
+  SELECT transaction_id, step_ts, is_fraud FROM FRAUD_DB.PAYSIM.TRANSACTIONS
+  WHERE step <= 520;
+CREATE OR REPLACE TABLE FRAUD_DB.PAYSIM.VAL AS
+  SELECT transaction_id, step_ts, is_fraud FROM FRAUD_DB.PAYSIM.TRANSACTIONS
+  WHERE step BETWEEN 521 AND 631;
+CREATE OR REPLACE TABLE FRAUD_DB.PAYSIM.TEST AS
+  SELECT transaction_id, step_ts FROM FRAUD_DB.PAYSIM.TRANSACTIONS
+  WHERE step > 631;
+```
 
-7. **Expected output**
+### Expected output (local run, abbreviated)
 
-   You should see:
+```text
+=== Fraud class balance (train split) ===
+  n=11498  fraud=5749  fraud_rate=50.0%
+  Baseline ROC_AUC = 0.5
 
-   - Printed community summaries, for example:
+=== PREDICTIVE: Fraud binary-classification GNN ===
+  Best Validation Performance: 0.9X (ROC AUC)
 
-     ```text
-     Group 1 with 5 connected users: ['David Evans', 'Eva Green', 'Hannah Lee', 'Jane Smith', 'John Doe']
-     ```
+=== Top-20 alert-scored transactions ===
+  transaction_id  trans_type     amount       receiver  alert_score
+  ...
 
-     (Group numbering may differ.)
+MILP Status: OPTIMAL
+Captured alert score (top-50 audits): XX.XX
 
-   - A DataFrame listing suspicious users and linked attributes.
+=== Selected audit queue ===
+  50 audits scheduled, by trans_type:
+    CASH_OUT    25
+    TRANSFER    25
+```
 
-   - If you run the export section: a Snowflake table created at the configured destination (defaults to `RAI_DEMO.FRAUD_DETECTION.SUSPICIOUS_USERS_V1` in the notebook).
+## Template structure
+
+```text
+.
+├── README.md                       # this file
+├── pyproject.toml                  # dependencies
+├── fraud_detection_local.py        # primary: real GNN on bundled PaySim CSVs + MILP
+├── fraud_detection.py              # reference pattern: same pipeline in Snowflake (GPU)
+├── fraud_detection_rules.ipynb     # rule-based identity-graph intro (no ML)
+└── data/
+    ├── investigator_budget.csv     # per-trans_type audit caps for the MILP
+    └── paysim_mini/
+        ├── transactions.csv        # ~16K sampled transactions (class-balanced)
+        ├── accounts.csv            # derived unique accounts from nameOrig ∪ nameDest
+        ├── train.csv               # 70% temporal split with is_fraud label
+        ├── val.csv                 # 15%
+        ├── test.csv                # 15%, no label
+        ├── sample.py               # one-time sampler from a local PaySim dump
+        └── LICENSE.txt             # CC BY-SA 4.0 + PaySim attribution
+```
+
+**Start here**: `fraud_detection_local.py` (CPU, no external setup). Use
+`fraud_detection.py` (requires GPU) as the adaptation reference when you wire
+this pattern into your own Snowflake data. Explore
+`fraud_detection_rules.ipynb` for a rule-based-only take on identity graphs.
+
+## Sample data
+
+The bundled mini dataset is sampled from the [PaySim synthetic mobile-money
+transactions dataset](https://www.kaggle.com/datasets/ealaxi/paysim1) by
+Edgar Lopez-Rojas, released under
+[CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).
+
+- **16K transactions** sampled with class balance inflated from PaySim's native
+  0.13% fraud up to 50% so the GNN has enough positive signal to learn from on
+  CPU. Real-world fraud-detection runs should preserve native imbalance and
+  use class weighting.
+- **Fraud is confined to `CASH_OUT` and `TRANSFER` transaction types** -- this
+  is a documented PaySim quirk. The GNN's job is to distinguish *fraudulent*
+  CASH_OUT/TRANSFER from *normal* CASH_OUT/TRANSFER via graph context, not to
+  rediscover the type filter.
+- See `data/paysim_mini/LICENSE.txt` for full attribution and citation.
+
+## Model overview
+
+### Key entities
+
+- **Account** (`account_id`): a PaySim participant, either customer (ID prefix `C`) or merchant (prefix `M`). Appears as either sender (`name_orig`) or receiver (`name_dest`) on transactions.
+- **Transaction**: one mobile-money transfer with amount, sender balance delta, receiver balance delta, transaction type (`PAYMENT` / `CASH_IN` / `CASH_OUT` / `TRANSFER` / `DEBIT`), and PaySim's own `is_flagged_fraud` heuristic.
+
+### Pipeline stages
+
+```text
+Accounts + Transactions (Snowflake tables or bundled CSVs)
+  → GNN binary classification (Transaction.predictions.probs)
+  → Alert-score bridge (blend with is_flagged_fraud)
+  → MILP investigator allocation (K audit slots, per-type + per-receiver caps)
+```
 
 ## How it works
 
-At a high level, the notebook:
+### 1. Build the graph
 
-1. Creates example `users_data` and `addresses_data`.
-2. Defines `User` and `Address` concepts and loads the data into the model.
-3. Builds an identity graph and assigns each user to a community using Weakly Connected Components.
-4. Marks users in large communities (default: 4+ users).
-5. Flags suspicious users based on sharing email/phone while having different addresses, then propagates suspicion via shared address.
-6. Queries results into a pandas DataFrame.
-7. (Optional) Exports results to a Snowflake table using `into(...).exec()`.
+`Account` and `Transaction` concepts are populated from CSVs (local) or Snowflake
+(full). A directed `Graph` links each `Transaction` to its sender and receiver
+accounts:
+
+```python
+gnn_graph = Graph(model, directed=True, weighted=False)
+Edge = gnn_graph.Edge
+model.define(Edge.new(src=Transaction, dst=Account)).where(
+    Transaction.name_orig == Account.account_id)
+model.define(Edge.new(src=Transaction, dst=Account)).where(
+    Transaction.name_dest == Account.account_id)
+```
+
+### 2. Train a GNN binary classifier
+
+Task relationships encode the `isFraud` label on train/val and omit it on test:
+
+```python
+Train = Relationship(f"{Transaction} at {Any:step_ts} has {Any:label}")
+model.define(Train(Transaction, TrainTable.step_ts, TrainTable.is_fraud))
+    .where(Transaction.transaction_id == TrainTable.transaction_id)
+
+gnn = GNN(
+    exp_database=..., exp_schema=...,
+    graph=gnn_graph, property_transformer=pt,
+    train=Train, validation=Val,
+    task_type="binary_classification", eval_metric="roc_auc",
+    has_time_column=True, stream_logs=False, seed=42,
+    device="cpu", n_epochs=10, lr=0.005, temporal_strategy="last",
+)
+gnn.fit()
+Transaction.predictions = gnn.predictions(domain=Test)
+```
+
+### 3. Blend GNN probability with heuristic flag
+
+PaySim ships an `isFlaggedFraud` heuristic (large TRANSFER > 200K). Combine it
+with the GNN probability:
+
+```python
+model.define(Transaction.alert_score(
+    ALPHA_FLAG * Transaction.is_flagged_fraud
+    + (1 - ALPHA_FLAG) * Transaction.predictions.probs
+)).where(Transaction.predictions)
+```
+
+### 4. Allocate investigator audit slots (MILP)
+
+With K slots and per-type/per-receiver caps, maximize captured alert score:
+
+```python
+problem.satisfy(...).require(sum(Txn_ref, select_ref) <= TOTAL_AUDIT_SLOTS)
+# per-type caps from investigator_budget.csv
+# per-receiver cap: at most 1 audit per destination account
+problem.maximize(sum(alert_score * x))
+```
 
 ## Customize this template
 
 **Use your own data:**
 
-- Replace the in-memory lists with Snowflake tables by using the pattern shown in the notebook:
-  - `m.Table("MY_DB.MY_SCHEMA.MY_TABLE")` (as long as the schema matches)
-- Keep the same key structure (`users.id`, `addresses.id`, and `users.address_id`) so joins stay valid.
+- Replace the PaySim CSVs (or Snowflake tables) with your own accounts /
+  transactions. Keep `customer_id`-style string PKs and a stable transaction
+  PK.
+- The PropertyTransformer is the main place to localize: drop your PKs/FKs,
+  list your categorical vs continuous fields.
 
-**Tune parameters:**
+**Tune knobs:**
 
-- Change `LARGE_GROUP_SIZE` to control how aggressively you flag large communities.
-- Adjust the rule that defines suspicious users (for example, require multiple shared identifiers instead of one).
+- `ALPHA_FLAG` (0..1) -- weight on the rule-based flag vs the GNN prob.
+- `TOTAL_AUDIT_SLOTS` / `PER_ACCOUNT_CAP` -- investigator budget.
+- `investigator_budget.csv` -- per-trans_type caps. Zero a cap to exclude a
+  type; raise it to let one type dominate the queue.
+- GNN hyperparameters (`n_epochs`, `lr`, `train_batch_size`, ...) -- see the
+  `rai-predictive-training` skill for tuning guidance.
 
 **Extend the model:**
 
-- Add more identifiers (device ID, IP address, bank account, shipping address) and connect them into the identity graph.
-- Add additional graph analytics (for example, centrality or shortest-path checks) before applying rules.
-- Expand the export schema to include more investigation context.
+- Add a rule-based Phase-1 filter (e.g. account-level community detection) and
+  blend its output into `alert_score`.
+- Add additional graph-analysis features (account degree, centrality) via
+  derived properties and include them in the `PropertyTransformer` as
+  `integer` or `continuous`.
 
 ## Troubleshooting
 
 <details>
-  <summary>Jupyter can’t import <code>relationalai</code> (or uses the wrong environment)</summary>
+<summary>GNN training fails or is very slow</summary>
 
-- Confirm your virtual environment is active: `which python` should point to `.venv`.
-- Reinstall dependencies: `python -m pip install .`.
-- In Jupyter/VS Code, select the kernel that points to the `.venv` interpreter.
-
+- For the full-scale `fraud_detection.py` path, a GPU-enabled engine is required -- PaySim's 6M rows are too large for CPU.
+- For the local path, the bundled 16K-row subset fits comfortably on CPU (~2-5 min).
+- Check that the task-table columns in your Relationship templates actually exist on the CSVs (`transaction_id`, `step_ts`, `is_fraud`).
 </details>
 
 <details>
-  <summary>Authentication/configuration fails when the notebook runs queries</summary>
+<summary>Predictions are all near 0 or all near 1</summary>
 
-- Make sure your RelationalAI/Snowflake configuration is present and correct.
-- If you use the RelationalAI CLI, run `rai init` to create/update your config.
-- If you have multiple profiles, set `RAI_PROFILE` to the one you want.
-
+- Re-check class balance on the train split (printed before training). If it's extremely imbalanced, either raise the positive sample rate or add class weighting.
+- Inspect the PropertyTransformer with `VERBOSE_DATASET = True` -- misconfigured feature types dilute signal.
+- Try more epochs; classification may need 10-20 epochs even on balanced data.
 </details>
 
 <details>
-  <summary>The Snowflake export step fails</summary>
+<summary>MILP infeasible or degenerate</summary>
 
-- Ensure the destination table name is valid and you have permission to create/write it.
-- Edit the `destination = m.Table("...")` line in the notebook to write into a schema you control.
-
+- Infeasible: the per-type caps or per-receiver cap is too tight relative to `TOTAL_AUDIT_SLOTS`. Widen a cap or raise the total.
+- Degenerate (selects 0 transactions): no transactions have an alert_score. Confirm `Transaction.predictions` was populated (test split present + GNN fit succeeded).
 </details>
 
 <details>
-  <summary>I don’t have the <code>rai</code> command</summary>
+<summary><code>has_time_column=True</code> fails validation</summary>
 
-- Make sure your virtual environment is active and that you installed the dependencies with `python -m pip install .`.
+Known limitation in the rai-predictive-training skill: when the concept carrying `time_col` (here, `Transaction`) is used only as an edge intermediary, validation can fail with "no time column defined in data tables." Workaround: set `has_time_column=False` and remove the `"at"` clause from your Relationship templates until resolved.
+</details>
 
+<details>
+<summary>Spinner floods the log when running in CI / non-TTY</summary>
+
+Set `STREAM_LOGS = False` at the top of the script (the default). The GNN continues training server-side; only the client-side log stream is suppressed.
 </details>
