@@ -49,7 +49,7 @@ Assumes familiarity with Python, basic ML concepts (binary classification, ROC A
 
 - A GNN binary classifier on the Account-Transaction graph, predicting `isFraud` per transaction
 - A bridge layer combining GNN probabilities with a rule-based flag into a per-transaction alert score
-- An investigator-budget MILP that selects which transactions to audit under slot, type-diversity, and per-receiver caps
+- A knapsack-style investigator-budget MILP that maximizes expected loss averted (`alert_score × transaction_amount`) subject to a fixed-hours audit budget (audit cost scales with transaction size) plus a per-receiver cap
 - The same pipeline running against either a bundled CSV subset (local demo) or a full Snowflake dataset (reference path)
 
 ## What's included
@@ -61,7 +61,6 @@ Assumes familiarity with Python, basic ML concepts (binary classification, ROC A
 - **Model**: `Account`, `Transaction`, `Edge` (Transaction-to-Account in both sender and receiver roles), plus rule and alert-score derived properties
 - **Sample data**:
   - `data/paysim_mini/` -- ~16K transactions from PaySim (class-balanced ~50% fraud for CPU training), plus train/val/test splits. Redistributed under CC BY-SA 4.0 (see `LICENSE.txt` in that directory).
-  - `data/investigator_budget.csv` -- per-transaction-type audit caps for the MILP.
 - **Outputs**: class-balance profile, GNN ROC-AUC, top-K alert queue, optimal audit schedule
 
 ## Prerequisites
@@ -173,12 +172,14 @@ CREATE OR REPLACE TABLE FRAUD_DB.PAYSIM.TEST AS
   ...
 
 MILP Status: OPTIMAL
-Captured alert score (top-50 audits): XX.XX
+Captured expected loss (optimal within budget): $X,XXX,XXX
+  MILP (cost-aware + per-receiver cap) -> $X,XXX,XXX
+  Naive top-by-alert-score (budget only) -> $Y,YYY,YYY (N audits)
+  MILP uplift over naive sort: $+Z,ZZZ
 
 === Selected audit queue ===
-  50 audits scheduled, by trans_type:
-    CASH_OUT    25
-    TRANSFER    25
+  N audits scheduled; H/80 investigator hours used
+  ...
 ```
 
 ## Template structure
@@ -191,7 +192,6 @@ Captured alert score (top-50 audits): XX.XX
 ├── fraud_detection.py              # reference pattern: same pipeline in Snowflake (GPU)
 ├── fraud_detection_rules.ipynb     # rule-based identity-graph intro (no ML)
 └── data/
-    ├── investigator_budget.csv     # per-trans_type audit caps for the MILP
     └── paysim_mini/
         ├── transactions.csv        # ~16K sampled transactions (class-balanced)
         ├── accounts.csv            # derived unique accounts from nameOrig ∪ nameDest
@@ -237,7 +237,7 @@ Edgar Lopez-Rojas, released under
 Accounts + Transactions (Snowflake tables or bundled CSVs)
   → GNN binary classification (Transaction.predictions.probs)
   → Alert-score bridge (blend with is_flagged_fraud)
-  → MILP investigator allocation (K audit slots, per-type + per-receiver caps)
+  → Knapsack MILP allocation (hours budget + per-receiver cap)
 ```
 
 ## How it works
@@ -290,16 +290,27 @@ model.define(Transaction.alert_score(
 )).where(Transaction.predictions)
 ```
 
-### 4. Allocate investigator audit slots (MILP)
+### 4. Allocate investigator audit budget (knapsack MILP)
 
-With K slots and per-type/per-receiver caps, maximize captured alert score:
+An auditor's time is the scarce resource: the total investigation budget is
+fixed in hours, and the time to audit a transaction grows with its size.
+Maximize expected loss averted (score × amount) subject to that budget, plus
+a per-receiver cap to prevent flooding one account.
 
 ```python
-problem.satisfy(...).require(sum(Txn_ref, select_ref) <= TOTAL_AUDIT_SLOTS)
-# per-type caps from investigator_budget.csv
+problem.satisfy(...).require(
+    sum(Txn_ref, Txn_ref.audit_cost * select_ref) <= AUDIT_BUDGET_HOURS
+)
 # per-receiver cap: at most 1 audit per destination account
-problem.maximize(sum(alert_score * x))
+problem.maximize(sum(Txn_obj.alert_score * Txn_obj.amount * sel_obj))
 ```
+
+Because cost and value both scale with transaction size, ranking by
+`alert_score` alone is provably suboptimal -- a high-score $5M transfer
+consumes 5 hours but may yield less value per hour than three medium-score
+$500K transfers at 1 hour each. The MILP trades them off correctly; the
+output prints both the MILP objective and a naive sort-and-take baseline so
+the tradeoff is visible.
 
 ## Customize this template
 
@@ -315,8 +326,11 @@ problem.maximize(sum(alert_score * x))
 
 - `ALPHA_FLAG` (0..1) -- weight on the rule-based flag vs the GNN prob.
 - `TOTAL_AUDIT_SLOTS` / `PER_ACCOUNT_CAP` -- investigator budget.
-- `investigator_budget.csv` -- per-trans_type caps. Zero a cap to exclude a
-  type; raise it to let one type dominate the queue.
+- `AUDIT_BUDGET_HOURS` -- total investigator hours available. Raise to audit
+  more transactions; lower to stress-test prioritization.
+- `LARGE_AMOUNT_THRESHOLD` / `SMALL_AUDIT_COST_HOURS` / `LARGE_AUDIT_COST_HOURS`
+  -- the audit-cost curve. Make the jump steeper to reward the MILP's
+  knapsack-style tradeoffs more aggressively.
 - GNN hyperparameters (`n_epochs`, `lr`, `train_batch_size`, ...) -- see the
   `rai-predictive-training` skill for tuning guidance.
 
@@ -349,7 +363,7 @@ problem.maximize(sum(alert_score * x))
 <details>
 <summary>MILP infeasible or degenerate</summary>
 
-- Infeasible: the per-type caps or per-receiver cap is too tight relative to `TOTAL_AUDIT_SLOTS`. Widen a cap or raise the total.
+- Infeasible: `AUDIT_BUDGET_HOURS` is tighter than the cheapest feasible audit, or the per-receiver cap is already saturated. Widen the budget or the per-receiver cap.
 - Degenerate (selects 0 transactions): no transactions have an alert_score. Confirm `Transaction.predictions` was populated (test split present + GNN fit succeeded).
 </details>
 

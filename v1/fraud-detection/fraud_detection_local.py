@@ -10,9 +10,12 @@ Phases:
      (Customer-Transaction-Merchant graph -> isFraud probability).
   2. Alert-score bridge combining the GNN probability with PaySim's
      built-in `isFlaggedFraud` heuristic.
-  3. Prescriptive investigator-budget allocation (MILP): choose which
-     transactions to audit, subject to a total slot cap, per-transaction-type
-     caps, and a per-receiver-account cap.
+  3. Prescriptive investigator-budget allocation (knapsack MILP):
+     maximize expected loss averted (alert_score x transaction_amount)
+     subject to a fixed-hours audit budget -- each audit consumes
+     hours proportional to transaction size -- plus a per-receiver cap.
+     Ranking by score alone is suboptimal here: the optimizer has to
+     balance catch value against audit cost.
 
 For the full pipeline against PaySim-in-Snowflake + GPU, see fraud_detection.py.
 The rule-based identity-graph intro remains in fraud_detection_rules.ipynb.
@@ -23,6 +26,7 @@ Run:
 
 from pathlib import Path
 
+import numpy as np
 from pandas import read_csv
 from relationalai.semantics import Any, Float, Integer, Model, String, select, sum
 from relationalai.semantics.reasoners.graph import Graph
@@ -39,9 +43,15 @@ VERBOSE_DATASET = False
 # Alert-score mixing weights: final score = ALPHA * is_flagged_fraud + (1-ALPHA) * GNN prob
 ALPHA_FLAG = 0.3
 
-# Prescriptive phase: investigator budget knobs
-TOTAL_AUDIT_SLOTS = 50        # K audit slots across all flagged transactions
-PER_ACCOUNT_CAP = 1           # at most 1 audit per receiver account (avoids flooding)
+# Prescriptive phase: investigator-hours budget + per-audit cost model.
+# Each audit consumes hours proportional to transaction size (big transfers
+# take deeper forensic work). This makes the MILP a real knapsack problem:
+# a ranker sorting by alert_score alone ignores the cost side and over-spends.
+AUDIT_BUDGET_HOURS = 80.0         # total investigator hours available
+LARGE_AMOUNT_THRESHOLD = 1_000_000.0
+SMALL_AUDIT_COST_HOURS = 1.0      # audit of a transaction <= $1M
+LARGE_AUDIT_COST_HOURS = 5.0      # audit of a transaction > $1M
+PER_ACCOUNT_CAP = 1               # at most 1 audit per receiver account (avoid flooding)
 
 DATA_DIR = Path(__file__).parent / "data"
 PAYSIM_DIR = DATA_DIR / "paysim_mini"
@@ -77,6 +87,14 @@ Transaction = Concept("Transaction", identify_by={"transaction_id": Integer})
 accounts_df = read_csv(PAYSIM_DIR / "accounts.csv")
 transactions_df = read_csv(PAYSIM_DIR / "transactions.csv", parse_dates=["step_ts"])
 
+# Derive per-audit cost (hours) from transaction size -- kept as a data field
+# rather than a GNN feature so it flows into the MILP as a parameter, not a
+# predictor. (We drop it from the PropertyTransformer below.)
+transactions_df["audit_cost"] = np.where(
+    transactions_df["amount"] > LARGE_AMOUNT_THRESHOLD,
+    LARGE_AUDIT_COST_HOURS, SMALL_AUDIT_COST_HOURS,
+)
+
 model.define(Account.new(model.data(accounts_df).to_schema()))
 model.define(Transaction.new(model.data(transactions_df).to_schema()))
 
@@ -94,6 +112,7 @@ pt = PropertyTransformer(
     drop=[
         Account.account_id,
         Transaction.transaction_id, Transaction.name_orig, Transaction.name_dest,
+        Transaction.audit_cost,  # operational parameter for the MILP, not a GNN feature
     ],
     category=[Account.account_type_prefix, Transaction.trans_type],
     continuous=[
@@ -199,13 +218,6 @@ print("\n" + "=" * 60)
 print("PRESCRIPTIVE: Investigator-budget allocation")
 print("=" * 60)
 
-# Per-transaction-type caps (forces audit breadth across types, not just the
-# top two fraud-native types)
-TypeCap = Concept("TypeCap", identify_by={"trans_type": String})
-TypeCap.type_cap = model.Property(f"{TypeCap} has {Integer:type_cap}")
-budget_csv = read_csv(DATA_DIR / "investigator_budget.csv")
-model.define(TypeCap.new(model.data(budget_csv).to_schema()))
-
 Txn_ref = Transaction.ref()
 select_ref = Float.ref()
 alert_bind = Float.ref()
@@ -225,22 +237,12 @@ problem.solve_for(
     where=[Transaction.alert_score(alert_bind)],
 )
 
-# Constraint: total audit slots
+# Constraint: total investigator hours <= budget
+#   sum over audited transactions of audit_cost <= AUDIT_BUDGET_HOURS
 problem.satisfy(model.where(
     Txn_ref.x_audit(select_ref),
 ).require(
-    sum(Txn_ref, select_ref) <= TOTAL_AUDIT_SLOTS
-))
-
-# Constraint: per-trans_type cap (diversity across PAYMENT/CASH_OUT/TRANSFER/...)
-Type_inner = TypeCap.ref()
-Txn_inner = Transaction.ref()
-select_inner = Float.ref()
-problem.satisfy(model.where(
-    Txn_inner.x_audit(select_inner),
-    Txn_inner.trans_type == Type_inner.trans_type,
-).require(
-    sum(Txn_inner, select_inner).per(Type_inner) <= Type_inner.type_cap
+    sum(Txn_ref, Txn_ref.audit_cost * select_ref) <= AUDIT_BUDGET_HOURS
 ))
 
 # Constraint: per-receiver-account cap (at most PER_ACCOUNT_CAP audits per receiver)
@@ -254,36 +256,54 @@ problem.satisfy(model.where(
     sum(Txn_rc, select_rc).per(Acct_ref) <= PER_ACCOUNT_CAP
 ))
 
-# Objective: maximize captured alert score
-score_obj = Float.ref()
+# Objective: maximize expected loss averted
+#   E[loss averted | audit] = alert_score * transaction_amount
+# Ranking by alert_score alone is suboptimal here: a high-score $5M transfer
+# consumes 5 hours but yields less $/hour than two medium-score $500K at 1hr.
 sel_obj = Float.ref()
 Txn_obj = Transaction.ref()
-problem.maximize(sum(score_obj * sel_obj).where(
-    Txn_obj.x_audit(sel_obj),
-    Txn_obj.alert_score(score_obj),
-))
+problem.maximize(sum(
+    Txn_obj.alert_score * Txn_obj.amount * sel_obj
+).where(Txn_obj.x_audit(sel_obj)))
 
 problem.solve("highs", time_limit_sec=120)
 si = problem.solve_info()
 print(f"\nMILP Status: {si.termination_status}")
 if si.objective_value is not None:
-    # Compare with a naive top-K by alert_score (no per-type or per-receiver caps)
-    _full_alert_df = (
+    # Compare against a naive sort-and-take baseline: pick top transactions by
+    # alert_score, ignoring audit-cost and per-receiver caps, consuming hours
+    # until the budget is spent.
+    _full_df = (
         model.select(
+            Txn_ref.transaction_id.alias("transaction_id"),
             Txn_ref.trans_type.alias("trans_type"),
+            Txn_ref.amount.alias("amount"),
+            Txn_ref.name_dest.alias("receiver"),
             score_ref.alias("alert_score"),
         )
         .where(Txn_ref.alert_score(score_ref))
         .to_df()
     )
-    _greedy = _full_alert_df.nlargest(TOTAL_AUDIT_SLOTS, "alert_score")
-    _greedy_obj = float(_greedy["alert_score"].sum())
-    _greedy_types = dict(_greedy["trans_type"].value_counts())
-    print(f"Captured alert score (top-{TOTAL_AUDIT_SLOTS} audits): {si.objective_value:.4f}")
-    print(f"  MILP w/ caps   -> {si.objective_value:.2f} captured; diversified by type + receiver")
-    print(f"  Naive top-{TOTAL_AUDIT_SLOTS}   -> {_greedy_obj:.2f} captured; by type: {_greedy_types}")
-    print(f"  Tradeoff: MILP gives up {_greedy_obj - si.objective_value:.2f} score "
-          f"for a balanced queue that covers both attack vectors")
+    _full_df["amount"] = _full_df["amount"].astype("float64")
+    _full_df["alert_score"] = _full_df["alert_score"].astype("float64")
+    _full_df["audit_cost"] = np.where(
+        _full_df["amount"] > LARGE_AMOUNT_THRESHOLD,
+        LARGE_AUDIT_COST_HOURS, SMALL_AUDIT_COST_HOURS,
+    )
+    _full_df["expected_loss"] = _full_df["alert_score"] * _full_df["amount"]
+    _naive = _full_df.sort_values("alert_score", ascending=False).copy()
+    _naive["cumulative_hours"] = _naive["audit_cost"].cumsum()
+    _naive_fit = _naive[_naive["cumulative_hours"] <= AUDIT_BUDGET_HOURS]
+    _naive_obj = float(_naive_fit["expected_loss"].sum())
+    _naive_types = dict(_naive_fit["trans_type"].value_counts())
+    print(f"Captured expected loss (optimal within budget): ${si.objective_value:,.0f}")
+    print(f"  MILP (cost-aware + per-receiver cap) -> ${si.objective_value:,.0f} "
+          f"captured across the audit queue")
+    print(f"  Naive top-by-alert-score (budget only, same hours) -> "
+          f"${_naive_obj:,.0f} captured across {len(_naive_fit)} audits "
+          f"(by type: {_naive_types})")
+    uplift = si.objective_value - _naive_obj
+    print(f"  MILP uplift over naive sort: ${uplift:+,.0f}")
 
 # Report the selected audit queue
 print("\n=== Selected audit queue ===")
@@ -307,7 +327,14 @@ audit_df = (
 if audit_df.empty:
     print("  No transactions selected (MILP degenerate).")
 else:
-    print(f"  {len(audit_df)} audits scheduled:")
+    audit_df["amount"] = audit_df["amount"].astype("float64")
+    audit_df["audit_cost"] = np.where(
+        audit_df["amount"] > LARGE_AMOUNT_THRESHOLD,
+        LARGE_AUDIT_COST_HOURS, SMALL_AUDIT_COST_HOURS,
+    )
+    hours_used = float(audit_df["audit_cost"].sum())
+    print(f"  {len(audit_df)} audits scheduled; "
+          f"{hours_used:.1f}/{AUDIT_BUDGET_HOURS:.0f} investigator hours used")
     print(audit_df.to_string(index=False))
     print("\n  By trans_type:")
     print(audit_df["trans_type"].value_counts().to_string())
