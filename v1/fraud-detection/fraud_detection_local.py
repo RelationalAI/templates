@@ -1,23 +1,29 @@
 """Fraud Detection -- local CPU runner for the predict-then-optimize template.
 
-Runs the full pipeline on a bundled class-balanced subset of the PaySim
-synthetic mobile-money dataset (~16K transactions, 50% fraud). Everything
-loads from CSVs in `data/paysim_mini/` via `model.data()` -- no Snowflake
-data loading, no GPU required.
+Runs the full five-stage multi-reasoner pipeline on a small bundled demo
+dataset (~16K transactions, ~50% fraud -- class-balanced to give the GNN
+enough positive signal on CPU). Everything loads from CSVs via
+`model.data()`; no Snowflake data loading, no GPU required.
 
-Phases:
-  1. GNN binary classification of fraudulent transactions
-     (Customer-Transaction-Merchant graph -> isFraud probability).
-  2. Alert-score bridge combining the GNN probability with PaySim's
-     built-in `isFlaggedFraud` heuristic.
-  3. Prescriptive investigator-budget allocation (knapsack MILP):
-     maximize expected loss averted (alert_score x transaction_amount)
-     subject to a fixed-hours audit budget -- each audit consumes
-     hours proportional to transaction size -- plus a per-receiver cap.
-     Ranking by score alone is suboptimal here: the optimizer has to
-     balance catch value against audit cost.
+Stages:
+  1. Graph       -- PageRank on an Account-Account funds-flow graph, bound
+                    to `Account.pagerank` and fed to the GNN as a continuous
+                    node feature.
+  2. Rules       -- derived `Account.activity_count` (Property) and
+                    `Account.is_high_volume` (Relationship) capturing
+                    sender-side transaction volume; activity count feeds
+                    the GNN as an integer feature.
+  3. Predictive  -- GNN binary classification of fraudulent transactions
+                    on the Transaction-to-Account bipartite graph.
+  4. Bridge      -- alert score combining the GNN probability with the
+                    dataset's pre-existing `is_flagged_fraud` heuristic.
+  5. Prescriptive-- investigator-budget allocation (knapsack MILP):
+                    maximize expected loss averted (alert_score * amount)
+                    subject to a fixed-hours audit budget plus a per-
+                    receiver cap. Ranking by score alone is suboptimal
+                    because audit cost scales with transaction size.
 
-For the full pipeline against PaySim-in-Snowflake + GPU, see fraud_detection.py.
+For the full-scale pipeline (Snowflake + GPU), see fraud_detection.py.
 The rule-based identity-graph intro remains in fraud_detection_rules.ipynb.
 
 Run:
@@ -32,7 +38,7 @@ from pathlib import Path
 
 import numpy as np
 from pandas import read_csv
-from relationalai.semantics import Any, Float, Integer, Model, String, select, sum
+from relationalai.semantics import Any, Float, Integer, Model, String, count, select, sum
 from relationalai.semantics.reasoners.graph import Graph
 from relationalai.semantics.reasoners.predictive import GNN, PropertyTransformer
 from relationalai.semantics.reasoners.prescriptive import Problem
@@ -46,6 +52,10 @@ VERBOSE_DATASET = False
 
 # Alert-score mixing weights: final score = ALPHA * is_flagged_fraud + (1-ALPHA) * GNN prob
 ALPHA_FLAG = 0.3
+
+# Stage 2 rule threshold: accounts with more transactions than this get
+# flagged as high-volume (fed to the GNN as a binary feature).
+HIGH_VOLUME_THRESHOLD = 20
 
 # Prescriptive phase: investigator-hours budget + per-audit cost model.
 # Each audit consumes hours proportional to transaction size (big transfers
@@ -83,7 +93,7 @@ model = Model("fraud_detection_local")
 Concept, Relationship = model.Concept, model.Relationship
 
 # --------------------------------------------------
-# Phase 1: Core entity concepts + graph
+# Setup: concepts, data, and graph structures
 # --------------------------------------------------
 Account = Concept("Account", identify_by={"account_id": String})
 Transaction = Concept("Transaction", identify_by={"transaction_id": Integer})
@@ -102,16 +112,68 @@ transactions_df["audit_cost"] = np.where(
 model.define(Account.new(model.data(accounts_df).to_schema()))
 model.define(Transaction.new(model.data(transactions_df).to_schema()))
 
+# Directed Transaction->Account bipartite graph: used by the GNN for
+# sender/receiver message-passing.
 gnn_graph = Graph(model, directed=True, weighted=False)
 Edge = gnn_graph.Edge
-# Sender edge: transaction -> origin account
 model.define(Edge.new(src=Transaction, dst=Account)).where(
     Transaction.name_orig == Account.account_id)
-# Receiver edge: transaction -> destination account
 model.define(Edge.new(src=Transaction, dst=Account)).where(
     Transaction.name_dest == Account.account_id)
 
-# PropertyTransformer -- drop PK/FK string IDs, keep typed behavioural fields.
+# Account->Account funds-flow graph: one edge per transaction from sender
+# to receiver. `node_concept=Account` means `acct_graph.Node IS Account`,
+# so graph-algorithm results attach directly to Account without a
+# DataFrame round-trip. `aggregator="sum"` collapses multi-edges that
+# arise when the same pair of accounts trades more than once.
+acct_graph = Graph(
+    model, directed=True, weighted=False,
+    node_concept=Account, aggregator="sum",
+)
+_sender = Account.ref()
+_receiver = Account.ref()
+_txn_ref = Transaction.ref()
+model.define(acct_graph.Edge.new(src=_sender, dst=_receiver)).where(
+    _txn_ref.name_orig == _sender.account_id,
+    _txn_ref.name_dest == _receiver.account_id,
+)
+
+# --------------------------------------------------
+# Stage 1: Graph -- account centrality via PageRank
+# --------------------------------------------------
+# PageRank returns a binary Relationship (account, score). Bind it to an
+# explicit Account.pagerank Property so the GNN table materialiser sees a
+# named column. (See machine_maintenance.py for the same pattern.)
+pagerank_rel = acct_graph.pagerank()
+Account.pagerank = model.Property(f"{Account} has {Float:pagerank}")
+_a_pr = Account.ref()
+_score_pr = Float.ref()
+model.define(_a_pr.pagerank(_score_pr)).where(pagerank_rel(_a_pr, _score_pr))
+
+# --------------------------------------------------
+# Stage 2: Rules -- account activity + high-volume flag
+# --------------------------------------------------
+# Two rules, each using the canonical PyRel form:
+#   - Account.activity_count : Property (derivation rule) -- aggregated
+#     transaction count, fed to the GNN as an integer feature.
+#   - Account.is_high_volume : Relationship (alerting rule) -- boolean flag
+#     for human-interpretable reporting; used in Stage 5 output only.
+# Sender-side count is a reasonable proxy for activity in a mule-style
+# pattern; a symmetric sender-or-receiver count would need an OR-join the
+# PyRel aggregation surface doesn't expose directly.
+
+Account.activity_count = model.Property(
+    f"{Account} has {Integer:activity_count}")
+model.define(Account.activity_count(
+    count(Transaction).per(Account)
+)).where(Transaction.name_orig == Account.account_id)
+
+Account.is_high_volume = model.Relationship(f"{Account} is high volume")
+model.where(Account.activity_count > HIGH_VOLUME_THRESHOLD).define(
+    Account.is_high_volume())
+
+# PropertyTransformer -- drop PK/FK string IDs, keep typed behavioural
+# fields plus the Stage-1 graph output and Stage-2 rule flags.
 pt = PropertyTransformer(
     drop=[
         Account.account_id,
@@ -123,14 +185,18 @@ pt = PropertyTransformer(
         Transaction.amount,
         Transaction.old_balance_orig, Transaction.new_balance_orig,
         Transaction.old_balance_dest, Transaction.new_balance_dest,
+        Account.pagerank,  # graph-reasoner feature (Stage 1)
     ],
-    integer=[Transaction.is_flagged_fraud],
+    integer=[
+        Transaction.is_flagged_fraud,
+        Account.activity_count,  # rule-derived feature (Stage 2)
+    ],
     datetime=[Transaction.step_ts],
     time_col=[Transaction.step_ts],
 )
 
 # --------------------------------------------------
-# Phase 2: Binary-classification task setup + GNN training
+# Stage 3: Predictive -- GNN binary classification
 # --------------------------------------------------
 TrainTable = Concept("TrainTable")
 ValTable = Concept("ValTable")
@@ -170,7 +236,7 @@ if len(_label_df):
     print("  Baseline ROC_AUC = 0.5")
 
 print("\n" + "=" * 60)
-print("PREDICTIVE: Fraud binary-classification GNN (CPU, PaySim mini)")
+print("Stage 3: Predictive -- fraud binary-classification GNN (CPU)")
 print("=" * 60)
 
 gnn = GNN(
@@ -187,7 +253,7 @@ _report(gnn, "fraud_gnn")
 Transaction.predictions = gnn.predictions(domain=Test)
 
 # --------------------------------------------------
-# Phase 3: Alert score (bridge)
+# Stage 4: Bridge -- alert score
 # --------------------------------------------------
 # Combine PaySim's built-in isFlaggedFraud heuristic with GNN probability.
 Transaction.alert_score = model.Property(
@@ -216,10 +282,10 @@ _alert_df = (
 print(_alert_df.to_string(index=False))
 
 # --------------------------------------------------
-# Phase 4: Prescriptive investigator-budget allocation (MILP)
+# Stage 5: Prescriptive -- knapsack MILP investigator-budget allocation
 # --------------------------------------------------
 print("\n" + "=" * 60)
-print("PRESCRIPTIVE: Investigator-budget allocation")
+print("Stage 5: Prescriptive -- investigator-budget allocation")
 print("=" * 60)
 
 Txn_ref = Transaction.ref()

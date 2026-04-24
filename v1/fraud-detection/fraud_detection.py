@@ -1,18 +1,17 @@
 """Fraud Detection -- full-pipeline runner for the predict-then-optimize template.
 
-Reference implementation of the same 3-phase pipeline as fraud_detection_local.py,
-but loading from a full PaySim dataset in Snowflake and training on GPU. Use this
-as an adaptation reference when wiring the pattern into your own Snowflake data
+Reference implementation of the same 5-stage pipeline as fraud_detection_local.py,
+but loading from a Snowflake dataset and training on GPU. Use this as an
+adaptation reference when wiring the pattern into your own Snowflake data
 (customer / transaction / counterparty tables + train/val/test split tables).
 
-Phases (identical to the local runner):
-  1. GNN binary classification of fraudulent transactions
-     (Account-Transaction graph -> isFraud probability).
-  2. Alert-score bridge combining the GNN probability with a rule-based flag.
-  3. Prescriptive investigator-budget allocation (knapsack MILP):
-     maximize expected loss averted (alert_score x transaction_amount)
-     subject to a fixed-hours audit budget (cost proportional to size)
-     plus a per-receiver cap. Ranking by score alone is suboptimal.
+Stages (identical to the local runner):
+  1. Graph -- PageRank centrality on the Account-Transaction graph.
+  2. Rules -- activity-based high-volume account flags.
+  3. Predictive -- GNN binary classification (Account-Transaction graph).
+  4. Bridge -- alert score combining GNN probability with is_flagged_fraud.
+  5. Prescriptive -- knapsack MILP: maximize alert_score x amount subject to
+     a fixed-hours audit budget plus a per-receiver cap.
 
 Prerequisites:
   - PaySim loaded in Snowflake as FRAUD_DB.PAYSIM.{TRANSACTIONS, ACCOUNTS, TRAIN, VAL, TEST}
@@ -33,7 +32,7 @@ Output:
 from pathlib import Path
 
 import numpy as np
-from relationalai.semantics import Any, Float, Integer, Model, String, select, sum
+from relationalai.semantics import Any, Float, Integer, Model, String, count, select, sum
 from relationalai.semantics.reasoners.graph import Graph
 from relationalai.semantics.reasoners.predictive import GNN, PropertyTransformer
 from relationalai.semantics.reasoners.prescriptive import Problem
@@ -55,6 +54,10 @@ STREAM_LOGS = False
 VERBOSE_DATASET = False
 
 ALPHA_FLAG = 0.3
+
+# Stage 2 rule threshold: accounts above this transaction count get flagged
+# as high-volume (fed to the GNN as a binary feature).
+HIGH_VOLUME_THRESHOLD = 50
 
 # Prescriptive phase: investigator-hours budget + per-audit cost model.
 AUDIT_BUDGET_HOURS = 2000.0       # scale up from the local subset's 80h
@@ -85,7 +88,7 @@ model = Model("fraud_detection")
 Concept, Table, Relationship = model.Concept, model.Table, model.Relationship
 
 # --------------------------------------------------
-# Phase 1: Core entity concepts + graph (loaded from Snowflake)
+# Setup: concepts, data, and graph structures (loaded from Snowflake)
 # --------------------------------------------------
 Account = Concept("Account", identify_by={"account_id": String})
 Transaction = Concept("Transaction", identify_by={"transaction_id": Integer})
@@ -100,12 +103,56 @@ model.define(Transaction.new(Table(f"{DATABASE}.{SCHEMA}.TRANSACTIONS").to_schem
 #     FROM RAW_TRANSACTIONS;
 # The PropertyTransformer drops audit_cost below so it's not a GNN feature.
 
+# Directed graph -- used by the GNN for sender/receiver message-passing.
+# Directed Transaction->Account bipartite graph for the GNN.
 gnn_graph = Graph(model, directed=True, weighted=False)
 Edge = gnn_graph.Edge
 model.define(Edge.new(src=Transaction, dst=Account)).where(
     Transaction.name_orig == Account.account_id)
 model.define(Edge.new(src=Transaction, dst=Account)).where(
     Transaction.name_dest == Account.account_id)
+
+# Account-Account funds-flow graph for Stage 1 PageRank.
+# `node_concept=Account` means `acct_graph.Node IS Account`, so the
+# pagerank score attaches directly to Account without a DataFrame
+# round-trip. `aggregator="sum"` collapses multi-edges that arise when
+# two accounts trade more than once.
+acct_graph = Graph(
+    model, directed=True, weighted=False,
+    node_concept=Account, aggregator="sum",
+)
+_sender = Account.ref()
+_receiver = Account.ref()
+_txn_ref = Transaction.ref()
+model.define(acct_graph.Edge.new(src=_sender, dst=_receiver)).where(
+    _txn_ref.name_orig == _sender.account_id,
+    _txn_ref.name_dest == _receiver.account_id,
+)
+
+# --------------------------------------------------
+# Stage 1: Graph -- account centrality via PageRank
+# --------------------------------------------------
+# PageRank returns a binary Relationship (account, score). Bind it to an
+# explicit Account.pagerank Property so the GNN table materialiser sees a
+# named column. (Canonical three-step assign->declare->bind pattern.)
+pagerank_rel = acct_graph.pagerank()
+Account.pagerank = model.Property(f"{Account} has {Float:pagerank}")
+_a_pr = Account.ref()
+_score_pr = Float.ref()
+model.define(_a_pr.pagerank(_score_pr)).where(pagerank_rel(_a_pr, _score_pr))
+
+# --------------------------------------------------
+# Stage 2: Rules -- high-activity account flags
+# --------------------------------------------------
+Account.activity_count = model.Property(
+    f"{Account} has {Integer:activity_count}")
+model.define(Account.activity_count(
+    count(Transaction).per(Account)
+)).where(Transaction.name_orig == Account.account_id)
+
+Account.is_high_volume = model.Relationship(f"{Account} is high volume")
+model.where(Account.activity_count > HIGH_VOLUME_THRESHOLD).define(
+    Account.is_high_volume())
 
 pt = PropertyTransformer(
     drop=[
@@ -118,14 +165,18 @@ pt = PropertyTransformer(
         Transaction.amount,
         Transaction.old_balance_orig, Transaction.new_balance_orig,
         Transaction.old_balance_dest, Transaction.new_balance_dest,
+        Account.pagerank,  # graph-reasoner feature (Stage 1)
     ],
-    integer=[Transaction.is_flagged_fraud],
+    integer=[
+        Transaction.is_flagged_fraud,
+        Account.activity_count,  # rule-derived feature (Stage 2)
+    ],
     datetime=[Transaction.step_ts],
     time_col=[Transaction.step_ts],
 )
 
 # --------------------------------------------------
-# Phase 2: Binary-classification task setup + GNN training
+# Stage 3: Predictive -- GNN binary classification
 # --------------------------------------------------
 TrainTable = Concept("TrainTable")
 ValTable = Concept("ValTable")
@@ -159,7 +210,7 @@ if len(_label_df):
     print("  Baseline ROC_AUC = 0.5")
 
 print("\n" + "=" * 60)
-print("PREDICTIVE: Fraud binary-classification GNN (GPU, full PaySim)")
+print("Stage 3: Predictive -- fraud binary-classification GNN (GPU)")
 print("=" * 60)
 
 gnn = GNN(
@@ -176,7 +227,7 @@ _report(gnn, "fraud_gnn")
 Transaction.predictions = gnn.predictions(domain=Test)
 
 # --------------------------------------------------
-# Phase 3: Alert score (bridge)
+# Stage 4: Bridge -- alert score
 # --------------------------------------------------
 Transaction.alert_score = model.Property(
     f"{Transaction} has {Float:alert_score}")
@@ -186,10 +237,10 @@ model.define(Transaction.alert_score(
 )).where(Transaction.predictions)
 
 # --------------------------------------------------
-# Phase 4: Prescriptive investigator-budget allocation (knapsack MILP)
+# Stage 5: Prescriptive -- knapsack MILP investigator-budget allocation
 # --------------------------------------------------
 print("\n" + "=" * 60)
-print("PRESCRIPTIVE: Investigator-budget allocation")
+print("Stage 5: Prescriptive -- investigator-budget allocation")
 print("=" * 60)
 
 Txn_ref = Transaction.ref()
