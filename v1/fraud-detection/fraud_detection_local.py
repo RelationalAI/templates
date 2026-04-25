@@ -9,10 +9,9 @@ Stages:
   1. Graph       -- PageRank on an Account-Account funds-flow graph, bound
                     to `Account.pagerank` and fed to the GNN as a continuous
                     node feature.
-  2. Rules       -- derived `Account.activity_count` (Property) and
-                    `Account.is_high_volume` (Relationship) capturing
-                    sender-side transaction volume; activity count feeds
-                    the GNN as an integer feature.
+  2. Rules       -- derived `Account.activity_count` Property capturing
+                    sender-side transaction volume; fed to the GNN as an
+                    integer feature alongside the raw transaction fields.
   3. Predictive  -- GNN binary classification of fraudulent transactions
                     on the Transaction-to-Account bipartite graph.
   4. Bridge      -- alert score combining the GNN probability with the
@@ -53,9 +52,6 @@ VERBOSE_DATASET = False
 # Alert-score mixing weights: final score = ALPHA * is_flagged_fraud + (1-ALPHA) * GNN prob
 ALPHA_FLAG = 0.3
 
-# Stage 2 rule threshold: accounts with more transactions than this get
-# flagged as high-volume (fed to the GNN as a binary feature).
-HIGH_VOLUME_THRESHOLD = 20
 
 # Prescriptive phase: investigator-hours budget + per-audit cost model.
 # Each audit consumes hours proportional to transaction size (big transfers
@@ -151,26 +147,19 @@ _score_pr = Float.ref()
 model.define(_a_pr.pagerank(_score_pr)).where(pagerank_rel(_a_pr, _score_pr))
 
 # --------------------------------------------------
-# Stage 2: Rules -- account activity + high-volume flag
+# Stage 2: Rules -- account activity (derivation rule)
 # --------------------------------------------------
-# Two rules, each using the canonical PyRel form:
-#   - Account.activity_count : Property (derivation rule) -- aggregated
-#     transaction count, fed to the GNN as an integer feature.
-#   - Account.is_high_volume : Relationship (alerting rule) -- boolean flag
-#     for human-interpretable reporting; used in Stage 5 output only.
-# Sender-side count is a reasonable proxy for activity in a mule-style
-# pattern; a symmetric sender-or-receiver count would need an OR-join the
-# PyRel aggregation surface doesn't expose directly.
+# Canonical PyRel rule pattern: a derivation Property whose value is computed
+# by aggregation. Sender-side count is a reasonable proxy for activity in a
+# mule-style pattern; a symmetric sender-or-receiver count would need an
+# OR-join the PyRel aggregation surface doesn't expose directly. The output
+# feeds the GNN as an integer feature via the PropertyTransformer below.
 
 Account.activity_count = model.Property(
     f"{Account} has {Integer:activity_count}")
 model.define(Account.activity_count(
     count(Transaction).per(Account)
 )).where(Transaction.name_orig == Account.account_id)
-
-Account.is_high_volume = model.Relationship(f"{Account} is high volume")
-model.where(Account.activity_count > HIGH_VOLUME_THRESHOLD).define(
-    Account.is_high_volume())
 
 # PropertyTransformer -- drop PK/FK string IDs, keep typed behavioural
 # fields plus the Stage-1 graph output and Stage-2 rule flags.

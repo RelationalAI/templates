@@ -16,8 +16,9 @@ Usage (from a shell with pandas + pyarrow available):
         "https://huggingface.co/api/datasets/kohdified/synthetic-financial-data/parquet/default/train/1.parquet"
     python sample.py --source /tmp/paysim
 
-Defaults produce ~10K transactions: all fraud rows (~8K) plus random non-fraud
-rows in a roughly 1:1 ratio, temporally split 70/15/15 by the `step` column.
+Defaults produce ~16K transactions: all fraud rows (~8K) plus an equal number
+of random non-fraud rows (~8K) in a 1:1 ratio, temporally split 70/15/15 by
+the `step` column.
 """
 
 import argparse
@@ -124,9 +125,14 @@ def main() -> None:
     args.out.mkdir(parents=True, exist_ok=True)
     transactions.to_csv(args.out / "transactions.csv", index=False)
     accounts.to_csv(args.out / "accounts.csv", index=False)
-    for name, split_df in [("train", train), ("val", val), ("test", test)]:
+    # Train and val carry the label; test omits it so the GNN sees test as
+    # held-out (matches the README's Snowflake SQL block where TEST is built
+    # from `transaction_id` and `step_ts` only).
+    for name, split_df in [("train", train), ("val", val)]:
         split_df[["transaction_id", "step", "step_ts", "is_fraud"]].to_csv(
             args.out / f"{name}.csv", index=False)
+    test[["transaction_id", "step", "step_ts"]].to_csv(
+        args.out / "test.csv", index=False)
 
     print(f"Wrote CSVs to {args.out}:")
     for p in sorted(args.out.glob("*.csv")):

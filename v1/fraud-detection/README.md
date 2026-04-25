@@ -49,7 +49,7 @@ Assumes familiarity with Python, basic ML concepts (binary classification, ROC A
 ## What you'll build
 
 - **Graph**: PageRank on an Account-Account funds-flow graph, exposing account centrality as a GNN feature
-- **Rules**: derived `activity_count` property and `is_high_volume` boolean flag per account, fed to both the GNN and the output
+- **Rules**: derived `activity_count` property per account, fed to the GNN as an integer feature alongside the raw transaction fields
 - **Predictive**: a GNN binary classifier on the Account-Transaction graph, predicting `isFraud` per transaction
 - **Bridge**: a layer combining GNN probabilities with a rule-based heuristic flag into a per-transaction `alert_score`
 - **Prescriptive**: a knapsack-style investigator-budget MILP that maximizes expected loss averted (`alert_score × transaction_amount`) subject to a fixed-hours audit budget (audit cost scales with transaction size) plus a per-receiver cap
@@ -88,7 +88,7 @@ you'll additionally need:
 ### Tools
 
 - Python >= 3.10
-- RelationalAI Python SDK (`relationalai`) >= 1.0.14
+- RelationalAI Python SDK (`relationalai`) `==1.0.14`
 - For the rule-based notebook only: `jupyter`
 
 ## Quickstart
@@ -135,8 +135,10 @@ Snowflake dataset (accounts + transactions + train/val/test task tables):
    SCHEMA = "YOUR_SCHEMA"   # schema with ACCOUNTS, TRANSACTIONS, TRAIN, VAL, TEST
    ```
 2. Adjust the `PropertyTransformer` to match your columns -- drop your PKs/FKs
-   explicitly, annotate categoricals and continuous fields, set `time_col` on
-   your timestamp column.
+   explicitly, annotate categoricals and continuous fields, and -- if your
+   data is small enough that the GNN's datetime pipeline doesn't choke on it
+   -- set `time_col` on your timestamp column. (See the "has_time_column"
+   troubleshooting note below for the workaround at scale.)
 3. If your task tables use different column names, update the `Relationship`
    templates (and any `TrainTable.<column>` accesses) to match.
 4. Run against a GPU-enabled RAI engine:
@@ -144,8 +146,18 @@ Snowflake dataset (accounts + transactions + train/val/test task tables):
    python fraud_detection.py
    ```
 
-If you're using PaySim as-is, build the train/val/test tables from the main
-transaction table by `step` cutoff:
+Your TRANSACTIONS table must carry an `audit_cost` column (hours per audit) --
+the MILP knapsack constraint reads it directly. Materialize it via a SQL
+`CASE` expression so the cost model lives in Snowflake, not Python:
+
+```sql
+CREATE OR REPLACE TABLE FRAUD_DB.PAYSIM.TRANSACTIONS AS
+  SELECT *, CASE WHEN amount > 1000000 THEN 5.0 ELSE 1.0 END AS audit_cost
+  FROM FRAUD_DB.PAYSIM.RAW_TRANSACTIONS;
+```
+
+Build the train/val/test tables from the main transaction table by `step`
+cutoff:
 
 ```sql
 CREATE OR REPLACE TABLE FRAUD_DB.PAYSIM.TRAIN AS
@@ -248,7 +260,7 @@ Edgar Lopez-Rojas, released under
 
 ### Key entities
 
-- **Account** (`account_id`): one participant in the transaction network -- customer (ID prefix `C`) or merchant (prefix `M`) in the demo dataset. Appears as either sender (`name_orig`) or receiver (`name_dest`) on transactions. Enriched at pipeline time with `pagerank` (from Stage 1) and `activity_count` + `is_high_volume` (from Stage 2).
+- **Account** (`account_id`): one participant in the transaction network -- customer (ID prefix `C`) or merchant (prefix `M`) in the demo dataset. Appears as either sender (`name_orig`) or receiver (`name_dest`) on transactions. Enriched at pipeline time with `pagerank` (from Stage 1) and `activity_count` (from Stage 2).
 - **Transaction**: one transfer with amount, sender balance delta, receiver balance delta, transaction type, and a pre-existing rule-based flag `is_flagged_fraud` used as the heuristic comparator.
 
 ### Pipeline stages
@@ -256,7 +268,7 @@ Edgar Lopez-Rojas, released under
 ```text
 Accounts + Transactions (Snowflake tables or bundled CSVs)
   → Stage 1 -- Graph:       PageRank on Account-Account funds-flow graph
-  → Stage 2 -- Rules:       Account.activity_count + is_high_volume flag
+  → Stage 2 -- Rules:       Account.activity_count (per-sender derivation)
   → Stage 3 -- Predictive:  GNN binary classification (Transaction.predictions.probs)
   → Stage 4 -- Bridge:      alert_score blends GNN prob with is_flagged_fraud
   → Stage 5 -- Prescriptive: knapsack MILP (hours budget + per-receiver cap)
@@ -307,23 +319,18 @@ a, score = Account.ref(), Float.ref()
 model.define(a.pagerank(score)).where(pagerank_rel(a, score))
 ```
 
-### 3. Stage 2 -- Rules reasoner: account activity + flags
+### 3. Stage 2 -- Rules reasoner: account activity
 
-Two canonical rule patterns -- a derivation (`Property`) and an alert flag
-(`Relationship`):
+Canonical PyRel derivation rule -- a `Property` whose value comes from an
+aggregation over related instances:
 
 ```python
-# Derivation: aggregate transaction count per sending account
+# Aggregate transaction count per sending account
 Account.activity_count = model.Property(
     f"{Account} has {Integer:activity_count}")
 model.define(Account.activity_count(
     count(Transaction).per(Account)
 )).where(Transaction.name_orig == Account.account_id)
-
-# Alerting: boolean flag for accounts above a volume threshold
-Account.is_high_volume = model.Relationship(f"{Account} is high volume")
-model.where(Account.activity_count > HIGH_VOLUME_THRESHOLD).define(
-    Account.is_high_volume())
 ```
 
 Both `Account.pagerank` (continuous) and `Account.activity_count` (integer)
@@ -332,7 +339,12 @@ alongside the raw transaction fields.
 
 ### 4. Stage 3 -- Predictive: GNN binary classifier
 
-Task relationships encode the `isFraud` label on train/val and omit it on test:
+Task relationships encode the `isFraud` label on train/val and omit it on
+test. Both the local and Snowflake reference scripts use temporal
+Relationships (`at {Any:step_ts}`) and `has_time_column=True`. At
+multi-million-row scale the GNN's datetime pipeline can hit a server-side
+`ValidationError` -- if you encounter that adapting to your own data, see
+the troubleshooting block below for the workaround (drop temporal handling).
 
 ```python
 Train = Relationship(f"{Transaction} at {Any:step_ts} has {Any:label}")
@@ -398,9 +410,9 @@ the tradeoff is visible.
 **Tune knobs:**
 
 - `ALPHA_FLAG` (0..1) -- weight on the rule-based flag vs the GNN prob.
-- `TOTAL_AUDIT_SLOTS` / `PER_ACCOUNT_CAP` -- investigator budget.
-- `AUDIT_BUDGET_HOURS` -- total investigator hours available. Raise to audit
-  more transactions; lower to stress-test prioritization.
+- `AUDIT_BUDGET_HOURS` / `PER_ACCOUNT_CAP` -- investigator budget knobs.
+  Raise the budget to audit more transactions; tighten the cap to spread
+  audits across more receivers.
 - `LARGE_AMOUNT_THRESHOLD` / `SMALL_AUDIT_COST_HOURS` / `LARGE_AUDIT_COST_HOURS`
   -- the audit-cost curve. Make the jump steeper to reward the MILP's
   knapsack-style tradeoffs more aggressively.
@@ -443,9 +455,14 @@ the tradeoff is visible.
 </details>
 
 <details>
-<summary><code>has_time_column=True</code> fails validation</summary>
+<summary><code>has_time_column=True</code> fails validation (two known triggers)</summary>
 
-Known limitation in the rai-predictive-training skill: when the concept carrying `time_col` (here, `Transaction`) is used only as an edge intermediary, validation can fail with "no time column defined in data tables." Workaround: set `has_time_column=False` and remove the `"at"` clause from your Relationship templates until resolved.
+Known limitation in the predictive reasoner — the GNN's datetime feature pipeline can fail in two distinct cases:
+
+1. **Edge-intermediary case** (small-data trigger, documented in `rai-predictive-training`): when the concept carrying `time_col` is used only as an edge intermediary (not a node), validation fails with *"no time column defined in data tables"*.
+2. **Large-data trigger** (encountered while scaling this template's full Snowflake path): with a Snowflake `VARCHAR` ISO-8601 timestamp column loaded via `Table().to_schema()`, training fails server-side with *"ValidationError: Error processing datetime column 'step_ts'"* — even when the column is a node property, format is correct, and there are no NULLs. The bundled local CSV path (which uses `model.data(df).to_schema()` after `parse_dates=...`) does not hit this.
+
+**Workaround for both:** set `has_time_column=False` in the `GNN(...)` constructor, drop `temporal_strategy=...`, strip the `at {Any:step_ts}` clauses from your Train/Val/Test relationship templates, and comment out `datetime=` and `time_col=` from your `PropertyTransformer`. Build the train/val/test split tables by `step` cutoff in SQL (the temporal split is preserved in the data even if the GNN can't use the timestamp as a feature).
 </details>
 
 <details>

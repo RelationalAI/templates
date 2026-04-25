@@ -8,8 +8,8 @@ adaptation reference when wiring the pattern into your own Snowflake data
 Stages (identical to the local runner):
   1. Graph -- PageRank on an Account-Account funds-flow graph, bound to
      `Account.pagerank` and fed to the GNN as a continuous feature.
-  2. Rules -- `Account.activity_count` (Property) + `Account.is_high_volume`
-     (Relationship) capturing sender-side transaction volume.
+  2. Rules -- `Account.activity_count` (Property) capturing sender-side
+     transaction volume; fed to the GNN as an integer feature.
   3. Predictive -- GNN binary classification on the Transaction-to-Account
      bipartite graph.
   4. Bridge -- `alert_score` blends the GNN probability with the dataset's
@@ -35,7 +35,6 @@ Output:
 
 from pathlib import Path
 
-import numpy as np
 from relationalai.semantics import Any, Float, Integer, Model, String, count, select, sum
 from relationalai.semantics.reasoners.graph import Graph
 from relationalai.semantics.reasoners.predictive import GNN, PropertyTransformer
@@ -59,15 +58,11 @@ VERBOSE_DATASET = False
 
 ALPHA_FLAG = 0.3
 
-# Stage 2 rule threshold: accounts above this transaction count get flagged
-# as high-volume (fed to the GNN as a binary feature).
-HIGH_VOLUME_THRESHOLD = 50
-
-# Prescriptive phase: investigator-hours budget + per-audit cost model.
+# Prescriptive phase: investigator-hours budget. Per-audit cost (the
+# `audit_cost` column on TRANSACTIONS) is derived in Snowflake -- see the SQL
+# CASE example in the docstring above. Both the MILP constraint and the
+# naive-baseline comparator read it from the same source, so they cannot drift.
 AUDIT_BUDGET_HOURS = 2000.0       # scale up from the local subset's 80h
-LARGE_AMOUNT_THRESHOLD = 1_000_000.0
-SMALL_AUDIT_COST_HOURS = 1.0
-LARGE_AUDIT_COST_HOURS = 5.0
 PER_ACCOUNT_CAP = 1
 
 DATA_DIR = Path(__file__).parent / "data"
@@ -146,17 +141,15 @@ _score_pr = Float.ref()
 model.define(_a_pr.pagerank(_score_pr)).where(pagerank_rel(_a_pr, _score_pr))
 
 # --------------------------------------------------
-# Stage 2: Rules -- high-activity account flags
+# Stage 2: Rules -- account activity (derivation rule)
 # --------------------------------------------------
+# Aggregated transaction count per sender; fed to the GNN as an integer
+# feature alongside the raw transaction fields.
 Account.activity_count = model.Property(
     f"{Account} has {Integer:activity_count}")
 model.define(Account.activity_count(
     count(Transaction).per(Account)
 )).where(Transaction.name_orig == Account.account_id)
-
-Account.is_high_volume = model.Relationship(f"{Account} is high volume")
-model.where(Account.activity_count > HIGH_VOLUME_THRESHOLD).define(
-    Account.is_high_volume())
 
 pt = PropertyTransformer(
     drop=[
@@ -292,26 +285,30 @@ print(f"\nMILP Status: {si.termination_status}")
 if si.objective_value is not None:
     # Compare against a naive sort-and-take-until-budget-exhausted baseline
     score_ref = Float.ref()
+    # Pull audit_cost straight from Snowflake so the naive baseline reads the
+    # same per-transaction cost as the MILP constraint at line 261. (If we
+    # recomputed it from Python constants, the comparison could drift when
+    # users adapt the SQL CASE thresholds without updating the Python code.)
     amount_ref = Float.ref()
+    cost_ref = Float.ref()
     _full_df = (
         model.select(
             Txn_ref.transaction_id.alias("transaction_id"),
             Txn_ref.trans_type.alias("trans_type"),
             amount_ref.alias("amount"),
+            cost_ref.alias("audit_cost"),
             score_ref.alias("alert_score"),
         )
         .where(
             Txn_ref.alert_score(score_ref),
             Txn_ref.amount == amount_ref,
+            Txn_ref.audit_cost == cost_ref,
         )
         .to_df()
     )
     _full_df["amount"] = _full_df["amount"].astype("float64")
     _full_df["alert_score"] = _full_df["alert_score"].astype("float64")
-    _full_df["audit_cost"] = np.where(
-        _full_df["amount"] > LARGE_AMOUNT_THRESHOLD,
-        LARGE_AUDIT_COST_HOURS, SMALL_AUDIT_COST_HOURS,
-    )
+    _full_df["audit_cost"] = _full_df["audit_cost"].astype("float64")
     _full_df["expected_loss"] = _full_df["alert_score"] * _full_df["amount"]
     _naive = _full_df.sort_values("alert_score", ascending=False).copy()
     _naive["cumulative_hours"] = _naive["audit_cost"].cumsum()
