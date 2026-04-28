@@ -11,6 +11,7 @@ This directory contains the templates for v1. Each template folder includes its 
 | [campaign_roi](./campaign_roi/) | Reallocate marketing campaign budgets across regions to maximize conversions, with per-campaign floor and cap constraints and a regional cap on a paused region. |
 | [cicd_runner_allocation](./cicd_runner_allocation/) | Assign CI/CD workflow jobs to the cheapest compatible runner type, subject to concurrency limits, with scenario analysis across capacity levels. |
 | [commercial_underwriting](./commercial_underwriting/) | Run rules-based eligibility checks and risk-tier classification across a four-level commercial property/casualty hierarchy (insured entity, policy, location, coverage). |
+| [demand_forecasting](./demand_forecasting/) | Forecast next-period unit sales per store-item with a regression GNN over a retail knowledge graph (store, item, family hierarchy, sales transactions). |
 | [demand_planning_temporal](./demand_planning_temporal/) | Plan weekly production and inventory across sites over a date-filtered planning horizon to minimize total cost while meeting demand. |
 | [diet](./diet/) | Select foods to satisfy nutritional requirements at minimum cost. |
 | [disease-outbreak-prevention](./disease-outbreak-prevention/) | Use weighted degree centrality to identify the highest-risk healthcare facilities in a public health network, considering both connection volume and intensity, to prioritize resource deployment during disease outbreaks. |
@@ -30,6 +31,7 @@ This directory contains the templates for v1. Each template folder includes its 
 | [shipment_compliance](./shipment_compliance/) | Define derived business rules for shipment compliance, sourcing risk, and demand escalation. |
 | [simple-start](./simple-start/) | A minimal notebook to connect to Snowflake, model a small graph, and compute betweenness centrality with RelationalAI. |
 | [sprint_scheduling](./sprint_scheduling/) | Assign backlog issues to developers across sprints, minimizing weighted completion time while respecting capacity and skill constraints. |
+| [subscriber_retention](./subscriber_retention/) | Predict per-subscriber churn risk using a node-classification GNN over a directed call-pattern graph, then surface the highest-risk subscribers per region for targeted retention campaigns. |
 | [supplier_reliability](./supplier_reliability/) | Select suppliers to meet product demand while balancing cost and reliability. |
 | [supply_chain_resilience](./supply_chain_resilience/) | A multi-reasoner template that chains blast-radius reachability, graph analysis, rules-based classification, and prescriptive optimization to build a risk-adjusted minimum-cost network flow for supply chain routing. |
 | [supply_chain_transport](./supply_chain_transport/) | Minimize inventory holding and transport costs with TL/LTL mode selection. |
