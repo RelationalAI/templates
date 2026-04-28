@@ -32,28 +32,32 @@ from pandas import read_csv
 from relationalai.semantics import Float, Integer, Model, String, sum
 from relationalai.semantics.reasoners.prescriptive import Problem
 
-model = Model("production_planning")
-Concept, Property = model.Concept, model.Property
+# --------------------------------------------------
+# Configure inputs
+# --------------------------------------------------
+
+DATA_DIR = Path(__file__).parent / "data"
 
 # --------------------------------------------------
 # Define semantic model & load data
 # --------------------------------------------------
 
-data_dir = Path(__file__).parent / "data"
+model = Model("production_planning")
+Concept, Property = model.Concept, model.Property
 
 # Concept: products with demand and profit margin
 Product = Concept("Product", identify_by={"id": Integer})
 Product.name = Property(f"{Product} has {String:name}")
 Product.demand = Property(f"{Product} has {Integer:demand}")
 Product.profit = Property(f"{Product} has {Float:profit}")
-product_csv = read_csv(data_dir / "products.csv")
+product_csv = read_csv(DATA_DIR / "products.csv")
 model.define(Product.new(model.data(product_csv).to_schema()))
 
 # Concept: machines with available hours
 Machine = Concept("Machine", identify_by={"id": Integer})
 Machine.name = Property(f"{Machine} has {String:name}")
 Machine.hours_available = Property(f"{Machine} has {Float:hours_available}")
-machine_csv = read_csv(data_dir / "machines.csv")
+machine_csv = read_csv(DATA_DIR / "machines.csv")
 model.define(Machine.new(model.data(machine_csv).to_schema()))
 
 # Relationship: production rates for each machine/product combination
@@ -62,7 +66,7 @@ Rate.machine = Property(f"{Rate} on {Machine}", short_name="machine")
 Rate.product = Property(f"{Rate} for {Product}", short_name="product")
 Rate.hours_per_unit = Property(f"{Rate} has {Float:hours_per_unit}")
 
-rates_csv = read_csv(data_dir / "production_rates.csv")
+rates_csv = read_csv(DATA_DIR / "production_rates.csv")
 rates_data = model.data(rates_csv)
 model.define(
     r := Rate.new(machine=Machine, product=Product, hours_per_unit=rates_data.hours_per_unit)

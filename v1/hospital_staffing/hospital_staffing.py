@@ -37,14 +37,18 @@ from pandas import read_csv
 from relationalai.semantics import Float, Integer, Model, String, sum
 from relationalai.semantics.reasoners.prescriptive import Problem
 
-model = Model("hospital_staffing")
-Concept, Property = model.Concept, model.Property
+# --------------------------------------------------
+# Configure inputs
+# --------------------------------------------------
+
+DATA_DIR = Path(__file__).parent / "data"
 
 # --------------------------------------------------
 # Define semantic model & load data
 # --------------------------------------------------
 
-data_dir = Path(__file__).parent / "data"
+model = Model("hospital_staffing")
+Concept, Property = model.Concept, model.Property
 
 Nurse = Concept("Nurse", identify_by={"id": Integer})
 Nurse.name = Property(f"{Nurse} has {String:name}")
@@ -53,7 +57,7 @@ Nurse.hourly_cost = Property(f"{Nurse} has {Float:hourly_cost}")
 Nurse.regular_hours = Property(f"{Nurse} has {Integer:regular_hours}")
 Nurse.overtime_multiplier = Property(f"{Nurse} has {Float:overtime_multiplier}")
 Nurse.x_overtime_hours = Property(f"{Nurse} has {Float:overtime_hours}")
-nurse_csv = read_csv(data_dir / "nurses.csv")
+nurse_csv = read_csv(DATA_DIR / "nurses.csv")
 model.define(Nurse.new(model.data(nurse_csv).to_schema()))
 
 Shift = Concept("Shift", identify_by={"id": Integer})
@@ -66,7 +70,7 @@ Shift.patient_demand = Property(f"{Shift} has {Integer:patient_demand}")
 Shift.patients_per_nurse_hour = Property(f"{Shift} has {Float:patients_per_nurse_hour}")
 Shift.x_patients_served = Property(f"{Shift} has {Float:patients_served}")
 Shift.x_unmet_demand = Property(f"{Shift} has {Float:unmet_demand}")
-shift_csv = read_csv(data_dir / "shifts.csv")
+shift_csv = read_csv(DATA_DIR / "shifts.csv")
 model.define(Shift.new(model.data(shift_csv).to_schema()))
 
 Availability = Concept("Availability", identify_by={"nurse_id": Integer, "shift_id": Integer})
@@ -74,7 +78,7 @@ Availability.nurse = Property(f"{Availability} for {Nurse}")
 Availability.shift = Property(f"{Availability} in {Shift}")
 Availability.available = Property(f"{Availability} is {Integer:available}")
 
-avail_csv = read_csv(data_dir / "availability.csv")
+avail_csv = read_csv(DATA_DIR / "availability.csv")
 avail_data = model.data(avail_csv)
 model.define(
     a := Availability.new(nurse_id=avail_data.nurse_id, shift_id=avail_data.shift_id),

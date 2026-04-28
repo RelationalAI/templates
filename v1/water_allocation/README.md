@@ -17,7 +17,7 @@ tags:
 
 ## What this template is for
 
-This template uses **prescriptive reasoning (optimization)** to minimize the cost of distributing water from sources to users with nonlinear transmission losses.
+This template uses **Prescriptive** reasoning (nonlinear optimization) to minimize the cost of distributing water from sources to users with nonlinear transmission losses.
 
 Water utilities must distribute water from multiple sources (reservoirs, groundwater) to multiple user groups (municipal, industrial, agricultural). Each source has a limited capacity and a different extraction cost. Each connection in the distribution network has a maximum flow rate and a transmission loss rate that reduces the effective amount delivered.
 
@@ -59,7 +59,7 @@ The key feature is nonlinear loss modeling: transmission losses increase with ut
 
 1. Download ZIP:
    ```bash
-   curl -O https://private.relational.ai/templates/zips/v1/water_allocation.zip
+   curl -O https://docs.relational.ai/templates/zips/v1/water_allocation.zip
    unzip water_allocation.zip
    cd water_allocation
    ```

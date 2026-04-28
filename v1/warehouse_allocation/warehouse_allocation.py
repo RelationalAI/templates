@@ -17,12 +17,12 @@ The key pattern: the graph reasoner enriches the ontology with derived
 properties that the prescriptive reasoner references directly -- no manual
 data transfer between stages.
 
-    Run:
-        `python warehouse_allocation.py`
+Run:
+    `python warehouse_allocation.py`
 
-    Output:
-        Prints centrality ranking, solver status, total holding cost, and
-        the inventory allocation plan.
+Output:
+    Prints centrality ranking, solver status, total holding cost, and
+    the inventory allocation plan.
 """
 
 from pathlib import Path
@@ -32,14 +32,18 @@ from relationalai.semantics import Float, Integer, Model, String, sum
 from relationalai.semantics.reasoners.graph import Graph
 from relationalai.semantics.reasoners.prescriptive import Problem
 
-model = Model("warehouse_allocation")
-Concept, Property, Relationship = model.Concept, model.Property, model.Relationship
+# --------------------------------------------------
+# Configure inputs
+# --------------------------------------------------
+
+DATA_DIR = Path(__file__).parent / "data"
 
 # --------------------------------------------------
 # Define semantic model & load data
 # --------------------------------------------------
 
-DATA_DIR = Path(__file__).parent / "data"
+model = Model("warehouse_allocation")
+Concept, Property, Relationship = model.Concept, model.Property, model.Relationship
 
 # Site concept: distribution sites such as warehouses and stores.
 Site = Concept("Site", identify_by={"id": Integer})

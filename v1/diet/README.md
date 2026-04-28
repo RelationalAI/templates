@@ -18,7 +18,7 @@ tags:
 
 Choosing a balanced diet that meets nutritional requirements while staying within a budget is a classic optimization problem. Given a set of foods with known costs and nutrient contents, and a set of nutrients with minimum and maximum daily intake bounds, the goal is to find the cheapest combination of foods that satisfies all nutritional constraints.
 
-This template uses prescriptive reasoning to formulate and solve the diet problem as a linear program. Each food has a continuous decision variable representing how much of it to include. Constraints enforce that the total nutrient intake from the selected foods falls within the required bounds for every nutrient.
+This template uses **Prescriptive** reasoning to formulate and solve the diet problem as a linear program. Each food has a continuous decision variable representing how much of it to include. Constraints enforce that the total nutrient intake from the selected foods falls within the required bounds for every nutrient.
 
 The template also demonstrates scenario analysis by scaling nutritional requirements up and down (0.8x, 1.0x, 1.2x) and solving independently for each scenario. This lets you compare how dietary cost changes as requirements become more or less restrictive.
 

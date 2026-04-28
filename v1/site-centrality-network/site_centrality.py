@@ -13,6 +13,10 @@ Derived concepts: Region (from site data), Bridge (cross-region connectors).
 
 Run:
     `python site_centrality.py`
+
+Output:
+    Prints connected-component summary, bridge edges between regions, and an
+    eigenvector centrality ranking of the most critical sites.
 """
 
 from pathlib import Path

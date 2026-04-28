@@ -18,7 +18,7 @@ tags:
 
 ## What this template is for
 
-This template chains **graph analysis** and **prescriptive reasoning (optimization)** to allocate inventory across a distribution network using centrality to prioritize critical hubs.
+This template chains **Graph** analysis and **Prescriptive** optimization to allocate inventory across a distribution network using centrality to prioritize critical hubs.
 
 Distribution networks have critical hub warehouses that connect many downstream sites. Identifying these hubs and ensuring they carry adequate inventory is essential for supply chain resilience.
 
@@ -62,7 +62,7 @@ The key pattern: the graph reasoner writes centrality scores as properties on th
 
 1. Download ZIP:
    ```bash
-   curl -O https://private.relational.ai/templates/zips/v1/warehouse_allocation.zip
+   curl -O https://docs.relational.ai/templates/zips/v1/warehouse_allocation.zip
    unzip warehouse_allocation.zip
    cd warehouse_allocation
    ```

@@ -14,6 +14,10 @@ Derived concepts: is_high_value_customer, ships_to, receives_shipment.
 
 Run:
     `python supplier_impact.py`
+
+Output:
+    Prints upstream supplier dependencies for high-value customers and the
+    downstream blast-radius (customers and SKUs) of a target supplier outage.
 """
 
 from pathlib import Path

@@ -23,21 +23,25 @@ from pandas import read_csv
 from relationalai.semantics import Float, Integer, Model, String, sum
 from relationalai.semantics.reasoners.prescriptive import Problem
 
-model = Model("order_fulfillment")
-Concept, Property = model.Concept, model.Property
+# --------------------------------------------------
+# Configure inputs
+# --------------------------------------------------
+
+DATA_DIR = Path(__file__).parent / "data"
 
 # --------------------------------------------------
 # Define semantic model & load data
 # --------------------------------------------------
 
-data_dir = Path(__file__).parent / "data"
+model = Model("order_fulfillment")
+Concept, Property = model.Concept, model.Property
 
 # Concept: fulfillment centers with capacity and fixed costs
 FC = Concept("FulfillmentCenter", identify_by={"id": Integer})
 FC.name = Property(f"{FC} has {String:name}")
 FC.capacity = Property(f"{FC} has {Integer:capacity}")
 FC.fixed_cost = Property(f"{FC} has {Float:fixed_cost}")
-fc_csv = read_csv(data_dir / "fulfillment_centers.csv")
+fc_csv = read_csv(DATA_DIR / "fulfillment_centers.csv")
 model.define(FC.new(model.data(fc_csv).to_schema()))
 
 # Concept: orders with customer, quantity, and priority
@@ -45,7 +49,7 @@ Order = Concept("Order", identify_by={"id": Integer})
 Order.customer = Property(f"{Order} for {String:customer}")
 Order.quantity = Property(f"{Order} has {Integer:quantity}")
 Order.priority = Property(f"{Order} has {Integer:priority}")
-order_csv = read_csv(data_dir / "orders.csv")
+order_csv = read_csv(DATA_DIR / "orders.csv")
 model.define(Order.new(model.data(order_csv).to_schema()))
 
 # Relationship: shipping costs between FCs and orders
@@ -54,7 +58,7 @@ ShippingCost.fc = Property(f"{ShippingCost} from {FC}", short_name="fc")
 ShippingCost.order = Property(f"{ShippingCost} for {Order}", short_name="order")
 ShippingCost.cost_per_unit = Property(f"{ShippingCost} has {Float:cost_per_unit}")
 
-costs_csv = read_csv(data_dir / "shipping_costs.csv")
+costs_csv = read_csv(DATA_DIR / "shipping_costs.csv")
 costs_data = model.data(costs_csv)
 model.define(
     sc := ShippingCost.new(fc=FC, order=Order, cost_per_unit=costs_data.cost_per_unit)

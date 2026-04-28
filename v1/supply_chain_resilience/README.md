@@ -101,7 +101,7 @@ The multi-reasoner approach is necessary because structural risk (graph), suppli
 1. Download the ZIP file for this template and extract it:
 
    ```bash
-   curl -O https://private.relational.ai/templates/zips/v1/supply_chain_resilience.zip
+   curl -O https://docs.relational.ai/templates/zips/v1/supply_chain_resilience.zip
    unzip supply_chain_resilience.zip
    cd supply_chain_resilience
    ```

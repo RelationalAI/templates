@@ -18,7 +18,7 @@ tags:
 
 Procurement teams must choose which suppliers to source from when multiple options exist for each product. Each supplier has different pricing, capacity limits, and reliability scores. The challenge is to meet all product demand at minimum cost without exceeding any supplier's capacity.
 
-This template uses prescriptive reasoning to formulate the supplier selection problem as a linear program. It determines the optimal order quantities across supply options, ensuring that every product's demand is met and no supplier is overloaded. The solver finds the cost-minimizing allocation automatically.
+This template uses **Prescriptive** reasoning to formulate the supplier selection problem as a linear program. It determines the optimal order quantities across supply options, ensuring that every product's demand is met and no supplier is overloaded. The solver finds the cost-minimizing allocation automatically.
 
 The template also demonstrates scenario analysis by re-solving the problem with specific suppliers excluded. This lets you evaluate supply chain resilience -- what happens to cost and feasibility if a key supplier becomes unavailable?
 
