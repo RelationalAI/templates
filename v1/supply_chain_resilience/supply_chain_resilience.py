@@ -87,8 +87,8 @@ biz_csv = read_csv(DATA_DIR / "business.csv")
 # Only pass needed columns to model.data() — extra columns with NaN
 # values cause data loading issues.
 biz_cols = ["ID", "NAME", "TYPE", "SITE_ID", "RELIABILITY_SCORE"]
-biz_with_rel = biz_csv.dropna(subset=["RELIABILITY_SCORE"])[biz_cols]
-biz_no_rel = biz_csv[biz_csv["RELIABILITY_SCORE"].isna()][biz_cols[:4]]
+biz_with_rel = biz_csv.dropna(subset=["RELIABILITY_SCORE"])[biz_cols].reset_index(drop=True)
+biz_no_rel = biz_csv[biz_csv["RELIABILITY_SCORE"].isna()][biz_cols[:4]].reset_index(drop=True)
 
 # Batch 1: businesses WITH reliability (suppliers, manufacturers).
 d1 = model.data(biz_with_rel)
