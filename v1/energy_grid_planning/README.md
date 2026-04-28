@@ -5,7 +5,6 @@ featured: true
 experience_level: intermediate
 industry: "Energy & Utilities"
 reasoning_types:
-  - Predictive
   - Graph
   - Rules-based
   - Prescriptive
