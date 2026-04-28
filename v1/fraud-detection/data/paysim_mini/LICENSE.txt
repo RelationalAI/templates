@@ -1,0 +1,16 @@
+The bundled CSV files in this directory are a sampled subset of the PaySim
+Synthetic Financial Datasets For Fraud Detection.
+
+Source: https://www.kaggle.com/datasets/ealaxi/paysim1
+Author: Edgar Lopez-Rojas
+License: Creative Commons Attribution-ShareAlike 4.0 International (CC BY-SA 4.0)
+  https://creativecommons.org/licenses/by-sa/4.0/
+
+This subset was produced by `sample.py` from a PaySim Kaggle dump and is
+redistributed here under the same CC BY-SA 4.0 license.
+
+Cite:
+  Lopez-Rojas, Edgar Alonso; Elmir, Ahmad; Axelsson, Stefan.
+  "PaySim: A financial mobile money simulator for fraud detection."
+  28th European Modeling and Simulation Symposium-EMSS, Larnaca, Cyprus.
+  2016.
