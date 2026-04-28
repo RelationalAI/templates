@@ -23,8 +23,9 @@ tags:
 
 Supply chain networks must route goods from suppliers through factories and distribution centers to customers -- but not all routes carry equal risk. Unreliable suppliers, ML-predicted delays, and over-reliance on bottleneck sites can all disrupt fulfillment. This template shows how to combine multiple analytical signals into a single routing decision.
 
-This template uses RelationalAI's **graph analysis**, **rules-based classification**, and **prescriptive reasoning (optimization)** capabilities in a chained multi-reasoner workflow:
+This template uses RelationalAI's **Graph** analysis, **Rules-based** classification, and **Prescriptive** optimization capabilities in a chained multi-reasoner workflow:
 
+0. **Blast-radius pre-analysis** builds a directed Business graph from shipment data and traces every supplier each high-priority demand customer transitively depends on -- making the exposure footprint explicit before any optimization runs.
 1. **Graph analysis** builds a site dependency graph from shipping operations and computes eigenvector centrality to identify critical warehouses and bridges between supply chain regions.
 2. **Rules** classify suppliers by risk level (avoid / watch / reliable) using reliability scores and ML delay predictions, and flag escalated demand orders.
 3. **Prescriptive optimization** solves a minimum-cost network flow that routes supply to meet demand. Graph centrality feeds a bottleneck penalty in the objective, and supplier risk flags feed hard constraints (no flow from "avoid" suppliers) and surcharges (extra cost for "watch" suppliers).

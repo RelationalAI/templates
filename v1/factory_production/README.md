@@ -17,11 +17,18 @@ tags:
 
 ## What this template is for
 
+This template uses **Prescriptive** reasoning to maximize factory production profit under resource constraints. It is the recommended starting point for prescriptive optimization in this portfolio — the simplest end-to-end LP template before moving on to multi-machine scheduling and multi-period planning.
+
 Manufacturing operations must decide how much of each product to produce at each factory to maximize profit, given limited resources and bounded demand. Each product has a production rate (units per hour of resource), a profit per unit, and a maximum demand. Each factory has a fixed number of available resource-hours.
 
 This template formulates the problem as a linear program. Decision variables represent the quantity of each product to produce. Constraints ensure that total resource usage at each factory does not exceed availability and that production does not exceed demand. The objective maximizes total profit.
 
-The template solves the problem independently per factory, demonstrating a scenario-based approach where each factory is treated as a separate optimization. This pattern is useful when factories operate autonomously or when you want to analyze each facility's optimal production mix in isolation.
+The template solves the problem independently per factory, demonstrating a scenario-based approach where each factory is treated as a separate optimization.
+
+> **Production-planning learning ladder**
+> 1. **Factory Production** *(this template)* — single-period LP, profit max, scenario-per-factory.
+> 2. [`production_planning`](../production_planning/) — multi-machine assignment with integer decisions and demand multipliers.
+> 3. [`demand_planning_temporal`](../demand_planning_temporal/) — multi-period production + inventory across sites with date-filtered planning horizon.
 
 ## Who this is for
 

@@ -28,14 +28,14 @@ This directory contains the templates for v1. Each template folder includes its 
 | [shift_assignment](./shift_assignment/) | Assign workers to shifts based on availability to meet coverage requirements. |
 | [shipment_compliance](./shipment_compliance/) | Define derived business rules for shipment compliance, sourcing risk, and demand escalation. |
 | [simple-start](./simple-start/) | A minimal notebook to connect to Snowflake, model a small graph, and compute betweenness centrality with RelationalAI. |
-| [site-centrality-network](./site-centrality-network/) | Identify the most critical sites in a supply chain network using weakly connected components, bridge detection, and eigenvector centrality to assess resilience and detect single points of failure. |
+| ~~[site-centrality-network](./site-centrality-network/)~~ | Moved — patterns folded into [`warehouse_allocation`](./warehouse_allocation/) Stage 1 (eigenvector centrality + WCC + bridge detection). |
 | [sprint_scheduling](./sprint_scheduling/) | Assign backlog issues to developers across sprints, minimizing weighted completion time while respecting capacity and skill constraints. |
-| [supplier-impact-analysis](./supplier-impact-analysis/) | Trace multi-hop supply chain dependencies to identify which suppliers high-value customers depend on and assess the blast radius of a supplier disruption, including affected customers and products at risk. |
+| ~~[supplier-impact-analysis](./supplier-impact-analysis/)~~ | Moved — blast-radius reachability is now Stage 0 of [`supply_chain_resilience`](./supply_chain_resilience/). |
 | [supplier_reliability](./supplier_reliability/) | Select suppliers to meet product demand while balancing cost and reliability. |
-| [supply_chain_resilience](./supply_chain_resilience/) | A multi-reasoner template that chains graph analysis, rules-based classification, and prescriptive optimization to build a risk-adjusted minimum-cost network flow for supply chain routing. |
+| [supply_chain_resilience](./supply_chain_resilience/) | A multi-reasoner template that chains blast-radius reachability, graph analysis, rules-based classification, and prescriptive optimization to build a risk-adjusted minimum-cost network flow for supply chain routing. |
 | [supply_chain_transport](./supply_chain_transport/) | Minimize inventory holding and transport costs with TL/LTL mode selection. |
 | [test_data_generation](./test_data_generation/) | Determine optimal row counts for test database tables satisfying schema and referential integrity constraints. |
 | [traveling_salesman](./traveling_salesman/) | Find the shortest route visiting all cities exactly once using the MTZ formulation. |
-| [warehouse_allocation](./warehouse_allocation/) | Allocate inventory across a distribution network using graph centrality to prioritize critical hubs. |
+| [warehouse_allocation](./warehouse_allocation/) | Allocate inventory across a distribution network using graph centrality, weakly-connected-components, and bridge detection to prioritize critical hubs. |
 | [water_allocation](./water_allocation/) | Minimize the cost of distributing water from sources to users with nonlinear transmission losses. |
 | [wildlife-conservation-network](./wildlife-conservation-network/) | Use the Louvain community detection algorithm and degree centrality analysis to identify collaboration clusters among wildlife conservation organizations, helping optimize resource sharing and identify key coordination hubs. |

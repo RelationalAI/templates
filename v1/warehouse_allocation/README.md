@@ -10,6 +10,8 @@ reasoning_types:
 tags:
   - Chained Reasoning
   - Eigenvector Centrality
+  - Weakly Connected Components
+  - Bridge Detection
   - Network Flow
   - Inventory Optimization
 ---
@@ -24,8 +26,11 @@ Distribution networks have critical hub warehouses that connect many downstream 
 
 This template chains two reasoning stages:
 
-1. **Graph analysis** identifies which warehouses are most critical to the network using eigenvector centrality on the route topology.
-2. **Prescriptive optimization** allocates a limited inventory budget across sites, using the centrality scores from Stage 1 to enforce minimum stock levels at critical hubs.
+1. **Graph analysis** characterizes the route topology three ways:
+   - **Stage 1a — Eigenvector centrality** ranks sites by network influence.
+   - **Stage 1b — Weakly connected components** flags fragmentation.
+   - **Stage 1c — Bridge detection** surfaces cross-region routes whose loss would split the network.
+2. **Prescriptive optimization** allocates a limited inventory budget across sites, using the centrality scores from Stage 1a to enforce minimum stock levels at critical hubs.
 
 The key pattern: the graph reasoner writes centrality scores as properties on the Site concept, and the prescriptive reasoner references those properties directly in its constraints. No manual data transfer between stages -- the ontology carries enrichment forward.
 
@@ -37,7 +42,7 @@ The key pattern: the graph reasoner writes centrality scores as properties on th
 
 ## What you'll build
 
-- A distribution network graph with eigenvector centrality analysis
+- A distribution network graph with eigenvector centrality, weakly-connected-components, and bridge-detection analyses
 - An inventory allocation model that uses centrality as a constraint input
 - A two-stage pipeline where graph results feed optimization
 
