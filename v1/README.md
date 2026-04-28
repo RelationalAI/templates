@@ -9,6 +9,7 @@ This directory contains the templates for v1. Each template folder includes its 
 | [ad_spend_allocation](./ad_spend_allocation/) | Allocate marketing budget across channels and campaigns to maximize conversions. |
 | [bom-reachability](./bom-reachability/) | Trace transitive dependencies through a bill of materials to identify which raw materials each finished product depends on and which components are structural bottlenecks. |
 | [campaign_roi](./campaign_roi/) | Reallocate marketing campaign budgets across regions to maximize conversions, with per-campaign floor and cap constraints and a regional cap on a paused region. |
+| [commercial_underwriting](./commercial_underwriting/) | Run rules-based eligibility checks and risk-tier classification across a four-level commercial property/casualty hierarchy (insured entity, policy, location, coverage). |
 | [cicd_runner_allocation](./cicd_runner_allocation/) | Assign CI/CD workflow jobs to the cheapest compatible runner type, subject to concurrency limits, with scenario analysis across capacity levels. |
 | [demand_planning_temporal](./demand_planning_temporal/) | Plan weekly production and inventory across sites over a date-filtered planning horizon to minimize total cost while meeting demand. |
 | [diet](./diet/) | Select foods to satisfy nutritional requirements at minimum cost. |
