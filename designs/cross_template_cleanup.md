@@ -97,12 +97,9 @@ Goal: fewer templates, same set of unique patterns. Triage:
 
 Net effect: 11 supply chain → 8; 17 prescriptive → 15. No unique pattern lost; multi-reasoner story strengthened.
 
-### Index restructuring
+### Index restructuring — DROPPED
 
-Replace alphabetical `v1/README.md` table with a navigation matrix:
-- Group by reasoner family (Querying / Graph / Rules / Predictive / Prescriptive / Multi-reasoner)
-- Within each group, mark beginner / intermediate / advanced
-- Add "Where do I start?" table: customer question → recommended template
+Current alphabetical `v1/README.md` table is consumed by the docs website, which provides search and filtering via front-matter `tags` and `industry`. A grouped/tiered table in this README would duplicate work the website already does. Keep the alphabetical table; rely on per-template front-matter for discoverability.
 
 ---
 
@@ -169,10 +166,10 @@ Not committed yet — flag for future portfolio review:
 3. Wave 3 (pyproject) — 2-3 templates touched
 4. Wave 4 (minor) — 1 template
 5. Consolidation: retire `site-centrality-network`, `supplier-impact-analysis`; merge `inventory_rebalancing` + `order_fulfillment`; reposition `factory_production`
-6. Index restructuring (`v1/README.md`)
-7. Net-new predictive templates: `telco_churn` first (smallest), `predictive_maintenance_rul` second, `demand_forecasting_favorita` third (largest data wrangling)
-8. Net-new rules template: `insurance_underwriting_rules`
-9. Net-new telco prescriptive + multi-reasoner: `telco_campaign_budget`, `telco_multi_reasoner`
+6. ~~Index restructuring~~ — dropped, see § 2.
+7. Net-new predictive templates (per Q6 — one tabular + one graph): `subscriber_retention` (graph features GNN, telco), `demand_forecasting` (tabular, Favorita)
+8. Net-new rules template: `commercial_underwriting` or `auto_underwriting` (pending Q7)
+9. Net-new telco prescriptive: `campaign_roi`
 
 Each phase is a separate logical commit; user handles git merges/pushes per global conventions.
 
