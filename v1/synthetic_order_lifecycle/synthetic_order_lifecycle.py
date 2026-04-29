@@ -186,8 +186,7 @@ B = OrderEvent.ref()
 # PLACE-first: if A is a PLACE event, A.ts_ms < B.ts_ms for every other
 # event B in the same order.
 place_first_ic = model.where(
-    A.order(Order),
-    B.order(Order),
+    A.order == B.order,
     A.event_id != B.event_id,
 ).require(implies(A.is_place == 1, A.ts_ms < B.ts_ms))
 problem.satisfy(place_first_ic)
@@ -195,8 +194,7 @@ problem.satisfy(place_first_ic)
 # Nothing-after-CANCEL: if A is a CANCEL event, A.ts_ms > B.ts_ms for every
 # other event B in the same order.
 no_after_cancel_ic = model.where(
-    A.order(Order),
-    B.order(Order),
+    A.order == B.order,
     A.event_id != B.event_id,
 ).require(implies(A.is_cancel == 1, A.ts_ms > B.ts_ms))
 problem.satisfy(no_after_cancel_ic)
