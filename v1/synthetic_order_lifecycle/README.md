@@ -42,11 +42,11 @@ The same pattern applies to any test-data-generation problem where rows have to 
 ## What's included
 
 - `synthetic_order_lifecycle.py` -- main script with ontology, decisions, constraints, and solver call
-- `data/symbols.csv` -- 3 tradable symbols (AAPL, MSFT, GOOG)
-- `data/venues.csv` -- 3 trading venues (NYSE, NASDAQ, ARCA)
-- `data/symbol_venues.csv` -- per-symbol venue eligibility
-- `data/orders.csv` -- 3 orders, each with `symbol_id`, `original_qty`, and `original_tick_price` (in integer ticks of 1c)
-- `data/events.csv` -- 9 pre-allocated event slots (3 per order)
+- `data/symbols.csv` -- 5 tradable symbols (AAPL, MSFT, GOOG, NVDA, TSLA)
+- `data/venues.csv` -- 5 trading venues (NYSE, NASDAQ, ARCA, BATS, IEX)
+- `data/symbol_venues.csv` -- 13 (symbol, venue) eligible pairs out of 25 possible (sparser than full coverage so venue eligibility visibly binds)
+- `data/orders.csv` -- 6 orders, each with `symbol_id`, `original_qty`, and `original_tick_price` (in integer ticks of 1c)
+- `data/events.csv` -- 36 pre-allocated event slots (6 per order)
 - `pyproject.toml` -- Python package configuration
 
 ## Prerequisites
@@ -91,28 +91,31 @@ The same pattern applies to any test-data-generation problem where rows have to 
    python synthetic_order_lifecycle.py
    ```
 
-6. Expected output (the solver returns one feasible trace; the exact event types, timestamps, and quantities will vary across runs and with different solver versions):
+6. Expected output (the solver returns one feasible trace; exact event types, timestamps, quantities, prices, and venues vary across runs and with different solver versions):
    ```text
-   Generated event trace (one row per slot):
-     order_id symbol  event_id  ts_ms  is_place  is_modify  is_cancel  is_fill  qty  tick_price   venue
-            1   AAPL         1    999         0          1          0        0  100           1  NASDAQ
-            1   AAPL         2   1000         0          0          0        1  100           1  NASDAQ
-            1   AAPL         3    998         1          0          0        0  100           1  NASDAQ
-            2   MSFT         4   1000         0          1          0        0   50           1    ARCA
-            2   MSFT         5    998         1          0          0        0   50           1    ARCA
-            2   MSFT         6    999         0          0          0        1   50           1    ARCA
-            3   GOOG         7    998         1          0          0        0   75           1  NASDAQ
-            3   GOOG         8   1000         0          0          0        1   75           1  NASDAQ
-            3   GOOG         9    999         0          1          0        0   75           1  NASDAQ
+   Generated event trace (one row per slot — 36 events across 6 orders, abbreviated to the first order):
+       order_id symbol  event_id  ts_ms  is_place  is_modify  is_cancel  is_fill  qty  tick_price  venue
+   0          1   AAPL         1   1000         0          1          0        0  100           1   ARCA
+   1          1   AAPL         2    997         0          1          0        0  100           1   ARCA
+   2          1   AAPL         3    995         1          0          0        0  100           1   ARCA
+   3          1   AAPL         4    996         0          1          0        0  100           1   ARCA
+   4          1   AAPL         5    999         0          0          0        1  100           1   ARCA
+   5          1   AAPL         6    998         0          1          0        0  100           1   ARCA
+   ...
+   30         6   AAPL        31    997         0          1          0        0   60           1   ARCA
+   ... (rows 6-35 omitted)
 
    Filled quantity per order (cannot exceed Order.original_qty):
-     order_id  original_qty  filled_qty
-            1           100         100
-            2            50          50
-            3            75          75
+      order_id  original_qty  filled_qty
+   0         1           100         100
+   1         2            50          50
+   2         3            80          80
+   3         4           200         200
+   4         5           120         120
+   5         6            60          60
    ```
 
-   Each order has exactly one PLACE event (the one with the smallest `ts_ms`), one FILL event, and one MODIFY event. Total filled quantity equals each order's `original_qty`.
+   Each order has exactly one PLACE event (the one with the smallest `ts_ms`), at least one FILL event, and the remaining slots are MODIFYs. Total filled quantity equals each order's `original_qty`. Venues are constrained to the eligible (symbol, venue) pairs from `symbol_venues.csv`.
 
 ## Template structure
 ```text
