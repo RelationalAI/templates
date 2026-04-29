@@ -1,4 +1,4 @@
-"""Attack-path hardening (Graph paths + Rules + MIP set cover) template.
+"""Attack-path hardening (Graph paths + Rules + CSP set cover) template.
 
 This script demonstrates a three-pillar pipeline in RelationalAI:
 
@@ -12,24 +12,26 @@ This script demonstrates a three-pillar pipeline in RelationalAI:
   with a dollar cost. They must pick the smallest-cost subset of
   mitigations such that every attack path from any entry point to
   any crown jewel is broken (i.e., at least one of its edges is
-  covered by a deployed mitigation).
+  covered by a deployed mitigation), subject to per-kind operational
+  caps and per-segment change-budget envelopes.
 - The encoding is split across three pillars: the **Rules** pillar
   defines which directed attack steps exist and what their risk
   weight is; the **Paths** library enumerates concrete attack paths
   from entry points to crown jewels with bounded depth; the
-  **Prescriptive** reasoner (MIP, HiGHS) selects the minimum-cost
-  set-cover of mitigations.
+  **Prescriptive** reasoner (CSP, MiniZinc/Chuffed) selects the
+  minimum-cost set-cover of mitigations under cardinality and
+  cost-aggregation integrity constraints.
 
 Modeling approach:
 - Attack steps are entified: ``AttackStep`` is a Concept whose
-  identity is the (src_host, dst_host, kind) tuple. The traversal
-  edge ``Host.attack_step_to`` is a 3-arity relationship with the
-  ``AttackStep`` entity in the middle slot. When the paths library
-  walks ``Host.attack_step_to.repeat(1, MAX_HOPS)``, the resulting
-  ``PathTraversal`` exposes hosts at even path indices and the
-  ``AttackStep`` entities at odd indices -- so we can recover the
-  edge entities along each path by casting the path's nodes back to
-  ``AttackStep``.
+  identity is the integer id of the (src, dst, kind) row. The
+  traversal edge ``Host.attack_step_to`` is a 3-arity relationship
+  with the ``AttackStep`` entity in the middle slot. The paths
+  library walks ``Host.attack_step_to.repeat(1, MAX_HOPS)`` and
+  returns ``PathTraversal`` entities; ``p.nodes`` exposes only the
+  Host endpoints of each hop -- the middle ``AttackStep`` entities
+  are recovered separately via a consecutive-host-pair join back
+  through ``attack_step_to``.
 - Mitigations cover individual ``AttackStep`` entities through a
   ``MitigationCovers`` relation. A path is "broken by" a mitigation
   if the mitigation covers at least one of the path's attack steps.
@@ -39,17 +41,20 @@ Modeling approach:
   the sum of ``Mitigation.deploy`` over the mitigations in
   ``PathMitigator(p, _)`` is at least 1.
 - Decision variables: ``Mitigation.deploy`` is a binary per-mitigation
-  property. The objective minimises the total dollar cost of deployed
-  mitigations. Backend is HiGHS (MIP) -- 0-1 set cover with weights is
-  the canonical mixed-integer shape.
+  property. The objective minimises the total deployment cost (in $K).
+  Two additional CSP-natural ICs over decision variables:
+  ``sum(deploy).per(kind) <= MAX_PER_KIND`` (cardinality cap per kind)
+  and ``sum(cost * deploy).per(target_segment) <= cap_kdollars``
+  (per-zone budget envelope). Backend is MiniZinc/Chuffed: cardinality
+  + weighted-sum constraints lift natively without big-M.
 
 Run:
     `python attack_path_hardening.py`
 
 Output:
     Prints the formulation, the enumerated attack paths, the chosen
-    mitigation portfolio, the per-path break attribution, and post-solve
-    constraint verification.
+    mitigation portfolio, per-kind counts, per-segment spend, and the
+    per-path break attribution, plus post-solve constraint verification.
 """
 
 from pathlib import Path
@@ -297,7 +302,7 @@ model.define(PathMitigator(ap2, mit2)).where(
 )
 
 # --------------------------------------------------
-# Prescriptive pillar: minimum-cost set cover (MIP).
+# Prescriptive pillar: minimum-cost set cover (CSP, MiniZinc/Chuffed).
 # --------------------------------------------------
 
 Mitigation.deploy = model.Property(f"{Mitigation} is deployed if {Integer:d}")
