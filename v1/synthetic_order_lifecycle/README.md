@@ -20,7 +20,7 @@ tags:
 
 Banking compliance and market-surveillance teams test their alert engines against synthetic order-event traces -- sequences of `PLACE`, `MODIFY`, `CANCEL`, and `FILL` events that real trading desks generate. Producing realistic traces by hand is hard: the events have to honour temporal precedence (a fill cannot happen before the placement), status-transition validity (no events after a cancel), venue eligibility (the symbol has to be tradable on that venue), and quantity conservation (filled shares cannot exceed the order size).
 
-This template formulates the trace-generation problem as a constraint satisfaction model using RelationalAI's prescriptive reasoning. A pre-allocated pool of empty event slots is given to the solver; it picks each slot's type, timestamp, venue, quantity, and tick price so that every MiFID II / RegNMS-flavour rule holds. The solver (MiniZinc) returns one feasible trace that satisfies every constraint at once.
+This template formulates the trace-generation problem as a constraint satisfaction model using RelationalAI's prescriptive reasoning. A pre-allocated pool of empty event slots is given to the solver; it picks each slot's type, timestamp, venue, quantity, and tick price so that every sequencing rule holds (the rules are drawn from [ESMA RTS 24](https://www.esma.europa.eu/sites/default/files/library/2015/11/2015-esma-1464_annex_i_-_draft_rts_and_its_on_mifid_ii_and_mifir.pdf) for MiFID II and [SEC Rule 613](https://www.sec.gov/rules/final/2012/34-67457.pdf) for Reg NMS / Consolidated Audit Trail). The solver (MiniZinc) returns one feasible trace that satisfies every constraint at once.
 
 The same pattern applies to any test-data-generation problem where rows have to satisfy referential integrity, temporal precedence, and cross-row aggregate rules: claim adjudication regression suites, eligibility records, audit logs, IoT event streams.
 
@@ -181,16 +181,6 @@ model.require(problem.termination_status() == "OPTIMAL")
 - **Add the inverse rule "no MODIFY after FILL"** by adding `B.is_fill == 1` to the `where` clause and writing `require(implies(A.is_modify == 1, A.ts_ms < B.ts_ms))`. Same shape as `no_after_cancel_ic`.
 - **Generate a "smallest violating trace" instead of a positive trace** by negating one of the rules (e.g. drop `no_after_cancel_ic` and add `model.require(sum(A.is_cancel + B.is_fill - 1).per(Order) >= 0)` plus a temporal predicate) and minimising the number of events. The model is already in optimisation-ready shape -- the termination-status gate stays at `"OPTIMAL"`.
 - **Replace the synthetic time horizon** by reading `ts_ms` bounds from your real session schedule (market open / market close) and updating `TS_MIN` / `TS_MAX`.
-
-## Learn more
-
-**Domain rule sources** (where the order-event sequencing rules come from):
-- ESMA, [*RTS 24 -- Maintenance of relevant data relating to orders in financial instruments*](https://www.esma.europa.eu/sites/default/files/library/2015/11/2015-esma-1464_annex_i_-_draft_rts_and_its_on_mifid_ii_and_mifir.pdf) (MiFID II).
-- SEC, [*Rule 613 -- Consolidated Audit Trail*](https://www.sec.gov/rules/final/2012/34-67457.pdf) (Reg NMS).
-
-**Constrained-generation technique** (the academic backbone for "synthesise a database instance that satisfies these rules"):
-- Boyapati, Khurshid & Marinov, [*Korat: automated testing based on Java predicates*](https://dl.acm.org/doi/10.1145/566172.566186), ISSTA 2002.
-- Jackson, [*Software Abstractions: Logic, Language, and Analysis*](https://softwareabstractions.org/) (Alloy), MIT Press, 2nd ed. (2012).
 
 ## Troubleshooting
 

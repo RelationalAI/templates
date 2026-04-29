@@ -2,24 +2,17 @@
 
 This script demonstrates synthesised banking-event traces in RelationalAI:
 
-- Pre-allocate fixed (order, event-slot) rows; the solver decides each event's
-  type (PLACE / MODIFY / CANCEL / FILL), timestamp, venue, quantity, and tick
-  price.
+- Pre-allocate fixed (order, event-slot) rows; the solver decides each
+  event's type (PLACE / MODIFY / CANCEL / FILL), timestamp, venue, quantity,
+  and tick price.
 - Enforce MiFID II / RegNMS-flavour sequencing rules: PLACE first, nothing
   after CANCEL, exactly one PLACE per order, fill-quantity conservation
   across the FILL events, venue eligibility per symbol.
 - Solve as constraint satisfaction (MiniZinc / Chuffed) and inspect the
   generated trace.
 
-Modeling approach:
-- Status types are encoded as four binary indicators per event
-  (is_place / is_modify / is_cancel / is_fill) whose sum is 1.
-- All decisions are integer; prices are integer ticks (1c), times are
-  integer milliseconds, quantities are integer shares.
-- Conditional rules (PLACE-first, nothing-after-CANCEL, PLACE-qty matches
-  the original order qty, FILL channelling) are written with `implies`,
-  so each rule reads as 'if premise then consequent' rather than as a
-  hand-derived big-M reformulation.
+All decisions are integer: prices are integer ticks (1c), times are integer
+milliseconds, quantities are integer shares.
 
 Run:
     `python synthetic_order_lifecycle.py`
@@ -62,12 +55,9 @@ Venue.name = model.Property(f"{Venue} has {String:name}")
 venues_csv = read_csv(data_dir / "venues.csv")
 model.define(Venue.new(model.data(venues_csv).to_schema()))
 
-# Concept: disallowed (symbol, venue) pairs.
-# We derive this from the allowed list in symbol_venues.csv. The CSP encoding
-# below requires `event.venue_id != disallowed_venue_id` for every disallowed
-# pair whose symbol matches the event's order. This is the dual of "venue is
-# allowed for symbol" and keeps the constraint inside the supported arithmetic
-# (!=, *, +, -, ...).
+# Concept: disallowed (symbol, venue) pairs -- derived from the allowed list
+# in symbol_venues.csv. The CSP uses the disallowed dual so the constraint
+# stays inside the supported arithmetic (!=, *, +, -, ...).
 sv_csv = read_csv(data_dir / "symbol_venues.csv")
 all_pairs = [(int(s), int(v)) for s in symbols_csv["id"] for v in venues_csv["id"]]
 allowed_pairs = {(int(r.symbol_id), int(r.venue_id)) for r in sv_csv.itertuples()}
@@ -209,11 +199,9 @@ place_qty_match_ic = model.require(
 )
 problem.satisfy(place_qty_match_ic)
 
-# Venue eligibility: the chosen venue_id must not match any disallowed
-# (symbol, venue) pair for the order's symbol. The chain
-# `OrderEvent.order.symbol.id` walks through the OrderEvent's order, then
-# its symbol, then the symbol's id -- and matches the disallowed pair's
-# symbol_id, so we only get pairs that share the order's symbol.
+# Venue eligibility: chosen venue must not match any disallowed pair for the
+# order's symbol. The chain `OrderEvent.order.symbol.id` walks event -> order
+# -> symbol and joins on the disallowed pair's symbol_id.
 NA = NotAllowedSymbolVenue.ref()
 venue_ok_ic = model.where(
     OrderEvent.order.symbol.id(NA.symbol_id),
@@ -244,13 +232,9 @@ problem.display()
 problem.solve("minizinc", time_limit_sec=60)
 problem.solve_info().display()
 
-# Confirm constraints hold in the solver's solution.
-# Solver-only constraints are omitted: `all_different` (distinct_ts_ic) and
-# `implies` (place_first_ic, no_after_cancel_ic, place_qty_match_ic,
-# fill_qty_match_on_ic, fill_qty_zero_off_ic) are wire-format relations
-# evaluated by MiniZinc; the relational engine cannot re-evaluate them, so
-# verify() would silently pass without actually checking. The remaining ICs
-# are plain relational arithmetic and ARE re-evaluated by verify().
+# Re-check the relational arithmetic ICs in the returned solution. The
+# all_different- and implies-bodied ICs are solver-only and omitted (the
+# relational engine cannot re-evaluate wire-format constraint relations).
 problem.verify(
     type_sum_ic,
     exactly_one_place_ic,
