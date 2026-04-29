@@ -199,6 +199,16 @@ place_qty_match_ic = model.require(
 )
 problem.satisfy(place_qty_match_ic)
 
+# PLACE event's tick_price matches the order's original_tick_price (so the
+# generated trace stays internally consistent with the order's price).
+place_price_match_ic = model.require(
+    implies(
+        OrderEvent.is_place == 1,
+        OrderEvent.tick_price == OrderEvent.order.original_tick_price,
+    )
+)
+problem.satisfy(place_price_match_ic)
+
 # Venue eligibility: chosen venue must not match any disallowed pair for the
 # order's symbol. The chain `OrderEvent.order.symbol.id` walks event -> order
 # -> symbol and joins on the disallowed pair's symbol_id.

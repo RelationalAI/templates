@@ -95,12 +95,12 @@ The same pattern applies to any test-data-generation problem where rows have to 
    ```text
    Generated event trace (one row per slot — 36 events across 6 orders, first order shown; the other 5 orders follow the same shape):
        order_id symbol  event_id  ts_ms  is_place  is_modify  is_cancel  is_fill  qty  tick_price  venue
-   0          1   AAPL         1   1000         0          1          0        0  100           1   ARCA
-   1          1   AAPL         2    997         0          1          0        0  100           1   ARCA
-   2          1   AAPL         3    995         1          0          0        0  100           1   ARCA
-   3          1   AAPL         4    996         0          1          0        0  100           1   ARCA
-   4          1   AAPL         5    999         0          0          0        1  100           1   ARCA
-   5          1   AAPL         6    998         0          1          0        0  100           1   ARCA
+   0          1   AAPL         1   1000         0          1          0        0  100       17501   ARCA
+   1          1   AAPL         2    997         0          1          0        0  100       17501   ARCA
+   2          1   AAPL         3    996         0          1          0        0  100       17501   ARCA
+   3          1   AAPL         4    998         0          1          0        0  100       17501   ARCA
+   4          1   AAPL         5    999         0          0          0        1  100       17501   ARCA
+   5          1   AAPL         6    995         1          0          0        0  100       17500   ARCA
    ... (rows 6-35 omitted)
 
    Filled quantity per order (cannot exceed Order.original_qty):
@@ -113,7 +113,7 @@ The same pattern applies to any test-data-generation problem where rows have to 
    5         6            60          60
    ```
 
-   Each order has exactly one PLACE event (the one with the smallest `ts_ms`); the remaining slots are filled with MODIFY, FILL, or CANCEL events as the constraints allow. Total filled quantity is bounded by each order's `original_qty` (the conservation IC is `sum(fill_qty) <= original_qty`); the run above happens to fill exactly `original_qty` per order, but other feasible traces with lower fill totals are also valid. Venues are constrained to the eligible (symbol, venue) pairs from `symbol_venues.csv`.
+   Each order has exactly one PLACE event (the one with the smallest `ts_ms`); the remaining slots are filled with MODIFY, FILL, or CANCEL events as the constraints allow. The PLACE event's `qty` and `tick_price` are pinned to the order's `original_qty` and `original_tick_price` (so AAPL order 1 above shows tick_price `17500` on the PLACE event and `17501` on the others, with all events constrained to AAPL's eligible venue set `{NYSE, NASDAQ, ARCA}`). Total filled quantity is bounded by each order's `original_qty` (the conservation IC is `sum(fill_qty) <= original_qty`); the run above happens to fill exactly `original_qty` per order, but other feasible traces with lower fill totals are also valid.
 
 ## Template structure
 ```text
