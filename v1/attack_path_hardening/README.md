@@ -101,35 +101,42 @@ The output is a deployable mitigation portfolio plus per-path attribution showin
    ```text
    Solve result:
    • status: OPTIMAL
-   • objective: 139
+   • objective: 22
    • solve time: 0.09s
    • num_points: 1
    • solver: MiniZinc_nothing
 
    Deployed mitigation portfolio (minimum-cost set cover):
-     mitigation_id                 mitigation_name  ... target_segment cost_kdollars
-   0            19  fileserver-jumpbox-trust-break  ...       dmz-vlan             7
-   1            20       disable-dc-delegation-fin  ...        dc-vlan            18
-   2            21      disable-dc-delegation-mail  ...        dc-vlan            18
-   3            22        disable-dc-delegation-hr  ...        dc-vlan            18
-   4            23       broad-credential-rotation  ...        dc-vlan            28
-   5            24             broad-vuln-patching  ...    server-vlan            38
-   6            25                   broad-dmz-mfa  ...       dmz-vlan            12
+     mitigation_id          mitigation_name  ... target_segment cost_kdollars
+   0             1     patch-smb-fileserver  ...    server-vlan             8
+   1            11               mfa-citrix  ...       dmz-vlan             5
+   2            13  revoke-jumpbox-app-cred  ...    server-vlan             3
+   3            15   revoke-jumpbox-dc-cred  ...        dc-vlan             3
+   4            18    revoke-backup-dc-cred  ...        dc-vlan             3
 
    Per-segment-class spend (capped per SEGMENT_BUDGET_KDOLLARS):
         segment cap_kdollars spend_kdollars
    0  backup-vlan           15              0
-   1      dc-vlan           90             82
-   2     dmz-vlan           25             19
-   3  server-vlan           40             38
+   1      dc-vlan           90              6
+   2     dmz-vlan           25              5
+   3  server-vlan           40             11
    4    user-vlan           30              0
    ```
 
-   The optimal portfolio costs $139K and deploys 7 mitigations: 1 trust-break,
-   3 delegation disablements per crown jewel, plus three "broad" mitigations
-   (credential rotation, vulnerability patching, DMZ MFA) that each cover
-   many attack steps simultaneously. The dc-vlan budget binds tightest
-   ($82K of $90K), since the crown jewels live there.
+   The optimal portfolio costs $22K and deploys 5 mitigations across three
+   different kinds (patch_vuln, mfa_gate, revoke_credential). Each
+   mitigation breaks a critical chokepoint near the start of the attack
+   chain: patching the SMB fileserver vulnerability cuts off `workstation
+   -> fileserver` lateral movement, MFA on Citrix gates DMZ ingress, and
+   revoking jumpbox / backup-server credentials severs the path to the
+   domain controller. Per-path break attribution (also printed) shows
+   exactly which deployed mitigation breaks each of the 106 enumerated
+   attack chains.
+
+   The bundled per-kind cap (`MAX_PER_KIND=4`) and per-segment-class
+   budgets (`SEGMENT_BUDGET_KDOLLARS`) are loose at this scale -- they
+   demonstrate the IC syntax but don't bind. Tighten them to see the
+   optimizer trade off (see "Customize this template" below).
 
 ## Template structure
 ```text
@@ -228,8 +235,8 @@ model.require(problem.termination_status() == "OPTIMAL")
 
 ## Customize this template
 
-- **Tighten or loosen segment budgets** by editing `SEGMENT_BUDGET_KDOLLARS`. The dc-vlan cap binds tightest in the bundled scenario; lower it to force the optimizer onto narrower-and-many alternatives.
-- **Change the per-kind cap** by adjusting `MAX_PER_KIND`. With `MAX_PER_KIND=1` the problem may become infeasible; with very large values, the per-kind IC becomes inactive.
+- **Tighten the per-kind cap** by lowering `MAX_PER_KIND` (default 4). At `MAX_PER_KIND=2` the bundled scenario forces the optimizer to drop one of its three `revoke_credential` deployments and pick a more diverse portfolio (e.g. add a delegation-disablement). At `MAX_PER_KIND=1` the problem may become infeasible if no single mitigation per kind breaks every chain.
+- **Tighten segment budgets** by editing `SEGMENT_BUDGET_KDOLLARS`. The bundled caps are loose at the cost-optimal portfolio. Lowering `dc-vlan` below ~$5K, for example, forces the optimizer off `revoke-jumpbox-dc-cred` + `revoke-backup-dc-cred` (both dc-vlan, $3K each) onto a different mix.
 - **Raise the risk-weight threshold** (`MIN_EDGE_RISK_WEIGHT`) to prune low-risk attack steps from the path enumeration. This shrinks the candidate path set and the resulting set-cover.
 - **Add coverage edges** by appending to `mitigation_covers.csv`. A new "broad" mitigation that covers many steps cheaply often dominates several narrow per-edge mitigations.
 - **Switch to maximum-coverage** by replacing the cost objective with `problem.maximize(sum(...n_paths_broken...))` under a hard total-cost cap -- the dual framing of set cover.
@@ -240,8 +247,8 @@ model.require(problem.termination_status() == "OPTIMAL")
 <details>
   <summary>Solver returns INFEASIBLE</summary>
 
-- The bundled segment caps are loose enough to admit the cost-optimal portfolio. If you tighten `SEGMENT_BUDGET_KDOLLARS["dc-vlan"]` below ~$80K, no portfolio can break every dc-vlan-bound chain within budget -- the problem becomes infeasible.
-- Likewise, `MAX_PER_KIND=1` only allows one mitigation per kind. For kinds with many narrow per-target mitigations (e.g. the three `disable-dc-delegation-{fin,mail,hr}` mitigations), this can force the optimizer onto upstream broad mitigations to break crown-jewel-bound paths; if no upstream broad coverage exists for a given path, the problem becomes infeasible.
+- Tightening `SEGMENT_BUDGET_KDOLLARS` below the spend the optimizer needs in any one zone causes infeasibility. The bundled scenario spends $11K in server-vlan, $6K in dc-vlan, and $5K in dmz-vlan; lowering any of these caps below the corresponding spend at the new optimum (which shifts as you tighten) produces INFEASIBLE.
+- `MAX_PER_KIND=1` only allows one mitigation per kind. For kinds with many narrow per-target mitigations, this can force the optimizer onto kinds it would otherwise avoid; if no portfolio of one-per-kind picks covers every chain, INFEASIBLE.
 - Verify the `mitigation_covers.csv` rows actually map to existing `mitigation_id` and `attack_step_id` values.
 
 </details>

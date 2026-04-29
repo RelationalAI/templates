@@ -197,11 +197,14 @@ all_paths_bare = model.path(
 
 # Persist matching paths as AttackPath: paths whose first node is an
 # EntryPoint and whose last node (at index path.length) is a
-# CrownJewel. p.nodes(i, host) is the relational form of "path p has
-# host at index i" -- length == hop count, indexed 0..length over the
-# Host endpoints of each hop (the AttackStep middle entities are NOT
-# in p.nodes; they're recovered separately via the attack_step_to
-# join below).
+# CrownJewel. NOTE: in v1.1.0 paths, sub-concept extension over
+# `PathTraversal` does NOT auto-scope inherited property access by
+# sub-concept membership -- `AttackPath.nodes(i, x)` reads through
+# the parent's full relation. The filter atoms below are correct in
+# spirit, but downstream rules that use `.nodes` should NOT rely on
+# AttackPath membership alone for path-shape filtering. The
+# PathContainsStep rule below puts the EP/CJ filter inline so it
+# joins correctly with `attack_step_to` at rule-evaluation time.
 AttackPath = model.Concept("AttackPath", extends=[PathTraversal])
 ap_pre = PathTraversal.ref()
 ep, cj = Host.ref(), Host.ref()
@@ -219,7 +222,9 @@ model.define(AttackPath(ap_pre)).where(
 # live in the middle slot of `Host.attack_step_to(src, step, dst)`
 # and are not exposed via p.nodes. We recover them by iterating
 # consecutive Host pairs at indices (i, i+1) along each path and
-# joining back to attack_step_to.
+# joining back to attack_step_to. Crucially, we re-apply the
+# EP/CJ filter inline (rather than trusting AttackPath membership
+# to do it) -- see the comment on AttackPath above for why.
 # --------------------------------------------------
 
 ap_ref = AttackPath.ref()
@@ -227,11 +232,17 @@ idx = Integer.ref()
 src_h_along = Host.ref()
 dst_h_along = Host.ref()
 step_along = AttackStep.ref()
+ep_filt = Host.ref()
+cj_filt = Host.ref()
 PathContainsStep = model.Relationship(
     f"{AttackPath:path} contains {AttackStep:step}",
     short_name="path_contains_step",
 )
 model.define(PathContainsStep(ap_ref, step_along)).where(
+    ap_ref.nodes(0, ep_filt),
+    ap_ref.nodes(ap_ref.length, cj_filt),
+    EntryPoint(ep_filt),
+    CrownJewel(cj_filt),
     ap_ref.nodes(idx, src_h_along),
     ap_ref.nodes(idx + 1, dst_h_along),
     Host.attack_step_to(src_h_along, step_along, dst_h_along),
@@ -399,11 +410,26 @@ model.select(
 print(
     f"\nEnumerated attack paths (length 1 to {MAX_HOPS}, edge risk >= {MIN_EDGE_RISK_WEIGHT}):"
 )
+# Re-apply the EP/CJ filter inline at the query layer for the display.
+# In v1.1.0 paths, sub-concept membership on PathTraversal does not
+# propagate to inherited `.nodes` access, so the filter must be
+# expressed in the where-clause every time we walk path nodes.
+ap_disp = AttackPath.ref()
+idx_disp = Integer.ref()
+host_disp = Host.ref()
+ep_disp = Host.ref()
+cj_disp = Host.ref()
 model.select(
-    AttackPath.alias("path"),
-    AttackPath.length.alias("hops"),
-    AttackPath.nodes["index"].alias("step_index"),
-    Host(AttackPath.nodes).name.alias("host"),
+    ap_disp.alias("path"),
+    ap_disp.length.alias("hops"),
+    idx_disp.alias("step_index"),
+    host_disp.name.alias("host"),
+).where(
+    ap_disp.nodes(0, ep_disp),
+    ap_disp.nodes(ap_disp.length, cj_disp),
+    EntryPoint(ep_disp),
+    CrownJewel(cj_disp),
+    ap_disp.nodes(idx_disp, host_disp),
 ).inspect()
 
 print("\nDeployed mitigation portfolio (minimum-cost set cover):")
