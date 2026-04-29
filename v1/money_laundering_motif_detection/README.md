@@ -42,8 +42,8 @@ The same pattern applies to other graph motif-detection problems where the signa
 ## What's included
 
 - `money_laundering_motif_detection.py` -- main script with ontology, decisions, constraints, and solver call
-- `data/accounts.csv` -- 15 accounts spanning eight beneficial-owner clusters, including two viable hub clusters and one cluster that matches by ownership but fails conservation
-- `data/transactions.csv` -- 25 directed transactions: two complete butterflies (against different destinations and in different bo clusters) plus over-threshold, mismatched-owner, conservation-failing, and wrong-direction decoys
+- `data/accounts.csv` -- 40 accounts spanning ~15 beneficial-owner clusters, including two viable hub clusters (bo=100, bo=200) and several alt-hub candidates that match by ownership but fail conservation
+- `data/transactions.csv` -- 60 directed transactions: two complete butterflies (against different destinations and in different bo clusters) plus a mix of decoys -- alt-cluster paths that fail conservation, over-threshold transactions, mismatched-owner pairs, wrong-direction edges, and unrelated cross-cluster traffic
 - `pyproject.toml` -- Python package configuration
 
 ## Prerequisites
@@ -114,7 +114,7 @@ The same pattern applies to other graph motif-detection problems where the signa
           4  HubAccA3       9500        9420
    ```
 
-   `SourceShellCorp` routes three under-threshold deposits through three hub accounts (all sharing beneficial owner `100`) to `WireRecipientCorp`. Each hub absorbs a small "fee" residual ($20, $25, $80) -- well within the $100 tolerance -- before forwarding the balance. The dataset's near-misses make the constraints visibly do work: `Acc 13` (bo `100`, would pass `same_bo_ic`) fails conservation by routing $4000 in / $9500 out; transactions over $10,000 are forced out of the motif by `amount_threshold_ic`; the alternative path through `Acc 11` (bo `300`) fails `same_bo_ic` against the cluster.
+   `SourceShellCorp` routes three under-threshold deposits through three hub accounts (all sharing beneficial owner `100`) to `WireRecipientCorp`. Each hub absorbs a small "fee" residual ($20, $25, $80) -- well within the $100 tolerance -- before forwarding the balance. The dataset's near-misses make the constraints visibly do work: alt-cluster-100 candidates `AltCluster100A` and `AltCluster100B` (bo `100`, would pass `same_bo_ic`) fail conservation with residuals over $500; `NearMissAcc` (bo `100`) fails conservation routing $4000 in / $9500 out; transactions over $10,000 are forced out of the motif by `amount_threshold_ic`; the alternative path through `IndividualX` (bo `300`) fails `same_bo_ic` against the cluster.
 
 ## Template structure
 ```text
