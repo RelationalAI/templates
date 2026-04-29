@@ -151,10 +151,10 @@ problem.satisfy(shelf_capacity_ic)
 # Active iff facings >= 1: half-reified `implies` pair couples the indicator
 # to the facings decision so per-category cardinality can be expressed as
 # `sum(Sku.active).per(Category)`.
-active_on_ic = model.require(implies(Sku.active == 1, Sku.facings >= 1))
-active_off_ic = model.require(implies(Sku.facings >= 1, Sku.active == 1))
-problem.satisfy(active_on_ic)
-problem.satisfy(active_off_ic)
+active_implies_facings_ic = model.require(implies(Sku.active == 1, Sku.facings >= 1))
+facings_implies_active_ic = model.require(implies(Sku.facings >= 1, Sku.active == 1))
+problem.satisfy(active_implies_facings_ic)
+problem.satisfy(facings_implies_active_ic)
 
 # Category cardinality bounds.
 category_min_ic = model.where(Sku.category == Category.name).require(
@@ -177,7 +177,7 @@ problem.solve("minizinc", time_limit_sec=60)
 problem.solve_info().display()
 
 # Re-check the relational arithmetic ICs in the returned solution. The
-# implies-bodied ICs (demand_lookup_ic, active_on_ic, active_off_ic) are
+# implies-bodied ICs (demand_lookup_ic, active_implies_facings_ic, facings_implies_active_ic) are
 # solver-only -- the relational engine cannot re-evaluate wire-format
 # constraint relations -- so they are omitted; the table data plus the
 # capacity / cardinality bounds together pin the lookup and the indicator.

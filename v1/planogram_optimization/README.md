@@ -1,6 +1,6 @@
 ---
 title: "Planogram Optimization"
-description: "Decide integer facing counts per SKU to maximise predicted weekly demand under shelf capacity and category cardinality limits, where per-(SKU, facing_count) demand comes from a regression model and the CSP hand-off is an element-style decision-indexed table lookup."
+description: "Decide integer facing counts per SKU to maximize predicted weekly demand under shelf capacity and category cardinality limits, where per-(SKU, facing_count) demand comes from a regression model and the CSP hand-off is an element-style decision-indexed table lookup."
 featured: false
 experience_level: intermediate
 industry: "Retail"
@@ -174,8 +174,8 @@ The natural relational form -- `where(PredictedDemand.facings_count == Sku.facin
 **Active iff facings is a half-reified `implies` pair.** Boolean is not a valid `solve_for` type, so `Sku.active` is a 0/1 integer coupled to `Sku.facings` via two implies:
 
 ```python
-active_on_ic = model.require(implies(Sku.active == 1, Sku.facings >= 1))
-active_off_ic = model.require(implies(Sku.facings >= 1, Sku.active == 1))
+active_implies_facings_ic = model.require(implies(Sku.active == 1, Sku.facings >= 1))
+facings_implies_active_ic = model.require(implies(Sku.facings >= 1, Sku.active == 1))
 ```
 
 Once `active` is bound, the per-category cardinality reads as a plain relational sum:
@@ -198,7 +198,7 @@ model.require(problem.termination_status() == "OPTIMAL")
 
 - **Wire in a live GNN regressor.** In production, `PredictedDemand` is the output of a sales-regression GNN trained on historical `(sku, week, facings_count, units_sold)` rows, where the GNN learns the per-SKU demand-vs-facings curve from observed shelf configurations. The H&M-style sales-regression pipeline already proven in the [`retail_planning`](../retail_planning/retail_planning_local.py) template is the recommended starting point; the structural difference is that the planogram regressor includes `facings_count` as a feature (or trains a per-tier head) so the same model can be queried at every k. At inference time, for each SKU and each k in `{0..max_facings}`, call `gnn.predictions(...)`, quantise, and aggregate into `PredictedDemand`. The CSP shape below is unchanged.
 - **Use your own data** by replacing the four CSV files with your SKUs, shelves, categories, and predicted demand table. The constraint structure does not change. The data invariant: `predicted_demand_table.csv` MUST contain a row for every `(sku_id, k)` for `k in {0, 1, ..., sku.max_facings}` -- if a row is missing, the implies cascade leaves `Sku.realized_demand` unconstrained for that combination and the solver may pick an arbitrary value.
-- **Per-SKU minimum facings** by adding `implies(Sku.active == 1, Sku.facings >= Sku.min_facings)` -- same shape as the existing `active_on_ic` -- or by removing disallowed `(sku, k)` pairs from `PredictedDemand`.
+- **Per-SKU minimum facings** by adding `implies(Sku.active == 1, Sku.facings >= Sku.min_facings)` -- same shape as the existing `active_implies_facings_ic` -- or by removing disallowed `(sku, k)` pairs from `PredictedDemand`.
 - **Eye-level priority** by marking a "premium" SKU subset and adding `model.require(implies(Sku.is_premium == 1, Sku.shelf == eye_level_shelf))`.
 - **Multi-shelf reassignment** by promoting `Sku.shelf` to a decision variable (a relationship-valued solve_for) and adding per-SKU eligibility constraints.
 - **Brand-block contiguity** -- same-brand SKUs must occupy adjacent facings on the shelf -- by encoding a per-shelf SKU position decision variable with adjacency constraints (more involved; the basic facing-count CSP above is unchanged but augmented).
