@@ -1,11 +1,13 @@
 """Attack-path hardening (Graph paths + Rules + CSP set cover) template.
 
 Three-pillar pipeline: Rules lift CSV rows to attack-step edges; the
-v1.1.0 paths library enumerates entry-point -> crown-jewel chains
-with bounded depth; the prescriptive CSP layer (MiniZinc/Chuffed)
-picks the minimum-cost subset of mitigations such that every attack
-path is broken, subject to per-kind operational caps and per-segment
-change-budget envelopes. See README for the full story and data.
+v1.1.0 paths library enumerates bounded-depth chains over the
+attack-step graph, then a sub-concept rule restricts them to
+entry-point -> crown-jewel chains; the prescriptive CSP layer
+(MiniZinc/Chuffed) picks the minimum-cost subset of mitigations such
+that every attack path is broken, subject to per-kind operational
+caps and per-segment change-budget envelopes. See README for the full
+story and data.
 
 Run: `python attack_path_hardening.py`
 """

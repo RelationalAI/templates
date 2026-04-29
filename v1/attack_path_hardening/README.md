@@ -20,7 +20,7 @@ tags:
 
 ## What this template is for
 
-A security team has a model of their enterprise IT graph (workstations, jumpboxes, application servers, domain controllers, databases, backup systems). They know which hosts attackers can reach from outside ("entry points") and which hosts hold the crown-jewel data they must protect (finance database, executive mailbox, HR database). They have a budget of candidate mitigations -- patch a vulnerability, segment a VLAN, break a domain trust, gate a host with MFA, revoke a credential -- each with a deployment cost in $K and an operational kind. The question is: which subset of mitigations should we deploy so that every attack chain from an entry point to a crown jewel is broken, while staying within per-zone change budgets and per-kind operational caps?
+A security team has a model of their enterprise IT graph (workstations, jumpboxes, application servers, domain controllers, databases, backup systems). They know which hosts attackers can reach from outside ("entry points") and which hosts hold the crown-jewel data they must protect (finance database, executive mailbox, HR database). They have a budget of candidate mitigations -- patch a vulnerability, segment a VLAN, break a domain trust, gate a host with MFA, revoke a credential, disable Kerberos delegation -- each with a deployment cost in $K and an operational kind. The question is: which subset of mitigations should we deploy so that every attack chain from an entry point to a crown jewel is broken, while staying within per-zone change budgets and per-kind operational caps?
 
 This template formulates the problem as a three-pillar pipeline:
 
@@ -178,24 +178,29 @@ all_paths_bare = model.path(
 ).all_paths()
 
 AttackPath = model.Concept("AttackPath", extends=[PathTraversal])
-ap_pre = PathTraversal.ref()
 ep, cj = Host.ref(), Host.ref()
-model.define(AttackPath(ap_pre)).where(
-    all_paths_bare(ap_pre),
-    ap_pre.nodes(0, ep),
-    ap_pre.nodes(ap_pre.length, cj),
+model.define(AttackPath(PathTraversal)).where(
+    all_paths_bare(PathTraversal),
+    PathTraversal.nodes(0, ep),
+    PathTraversal.nodes(PathTraversal.length, cj),
     EntryPoint(ep),
     CrownJewel(cj),
 )
 ```
 
-**3. Recover the attack steps along each path.** `p.nodes(i, host)` exposes only the Host endpoints of each hop -- the middle `AttackStep` entities are not in `p.nodes`. We recover them by joining consecutive Host pairs back through `attack_step_to`:
+> **v1.1.0 quirk**: sub-concept extension over `PathTraversal` does NOT auto-scope inherited `.nodes` access by sub-concept membership. Every downstream rule that walks `AttackPath.nodes` must re-apply the EP/CJ filter inline -- see step 3.
+
+**3. Recover the attack steps along each path.** `p.nodes(i, host)` exposes only the Host endpoints of each hop -- the middle `AttackStep` entities are not in `p.nodes`. We recover them by joining consecutive Host pairs back through `attack_step_to`, while also re-applying the EP/CJ filter (per the quirk above):
 
 ```python
-model.define(PathContainsStep(ap_ref, step_along)).where(
-    ap_ref.nodes(idx, src_h_along),
-    ap_ref.nodes(idx + 1, dst_h_along),
-    Host.attack_step_to(src_h_along, step_along, dst_h_along),
+model.define(PathContainsStep(AttackPath, AttackStep)).where(
+    AttackPath.nodes(0, ep_filt),
+    AttackPath.nodes(AttackPath.length, cj_filt),
+    EntryPoint(ep_filt),
+    CrownJewel(cj_filt),
+    AttackPath.nodes(idx, src_h_along),
+    AttackPath.nodes(idx + 1, dst_h_along),
+    Host.attack_step_to(src_h_along, AttackStep, dst_h_along),
 )
 ```
 
@@ -206,8 +211,8 @@ model.define(PathContainsStep(ap_ref, step_along)).where(
 ```python
 # Coverage: every enumerated attack path must be broken by at least one
 # deployed mitigation.
-coverage_ic = model.where(PathMitigator(ap3, Mitigation)).require(
-    sum(Mitigation.deploy).per(ap3) >= 1
+coverage_ic = model.where(PathMitigator(AttackPath, Mitigation)).require(
+    sum(Mitigation.deploy).per(AttackPath) >= 1
 )
 
 # Per-kind operational limit: at most MAX_PER_KIND mitigations of any one kind.
@@ -218,10 +223,10 @@ per_kind_limit_ic = model.require(
 # Per-segment-class budget envelope: each zone has its own change-control
 # spend authority, expressed as a cost-weighted aggregation IC.
 per_segment_budget_ic = model.where(
-    seg_ref.segment == Mitigation.target_segment,
+    SegmentBudget.segment == Mitigation.target_segment,
 ).require(
-    sum(Mitigation.cost_kdollars * Mitigation.deploy).per(seg_ref)
-    <= seg_ref.cap_kdollars
+    sum(Mitigation.cost_kdollars * Mitigation.deploy).per(SegmentBudget)
+    <= SegmentBudget.cap_kdollars
 )
 ```
 
@@ -236,7 +241,7 @@ model.require(problem.termination_status() == "OPTIMAL")
 ## Customize this template
 
 - **Tighten the per-kind cap** by lowering `MAX_PER_KIND` (default 4). At `MAX_PER_KIND=2` the bundled scenario forces the optimizer to drop one of its three `revoke_credential` deployments and pick a more diverse portfolio (e.g. add a delegation-disablement). At `MAX_PER_KIND=1` the problem may become infeasible if no single mitigation per kind breaks every chain.
-- **Tighten segment budgets** by editing `SEGMENT_BUDGET_KDOLLARS`. The bundled caps are loose at the cost-optimal portfolio. Lowering `dc-vlan` below ~$5K, for example, forces the optimizer off `revoke-jumpbox-dc-cred` + `revoke-backup-dc-cred` (both dc-vlan, $3K each) onto a different mix.
+- **Tighten segment budgets** by editing `SEGMENT_BUDGET_KDOLLARS`. The bundled caps are loose at the cost-optimal portfolio. Lowering `dc-vlan` below $6K (the optimum spend), for example, forces the optimizer off `revoke-jumpbox-dc-cred` + `revoke-backup-dc-cred` (both dc-vlan, $3K each) onto a different mix.
 - **Raise the risk-weight threshold** (`MIN_EDGE_RISK_WEIGHT`) to prune low-risk attack steps from the path enumeration. This shrinks the candidate path set and the resulting set-cover.
 - **Add coverage edges** by appending to `mitigation_covers.csv`. A new "broad" mitigation that covers many steps cheaply often dominates several narrow per-edge mitigations.
 - **Switch to maximum-coverage** by replacing the cost objective with `problem.maximize(sum(...n_paths_broken...))` under a hard total-cost cap -- the dual framing of set cover.
