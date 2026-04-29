@@ -35,7 +35,7 @@ from pandas import read_csv
 from relationalai.semantics import Integer, Model, String, sum
 from relationalai.semantics.reasoners.prescriptive import Problem, implies
 
-DATA_DIR = Path(__file__).parent / "data"
+data_dir = Path(__file__).parent / "data"
 
 model = Model("planogram_optimization")
 
@@ -51,7 +51,7 @@ Sku.brand = model.Property(f"{Sku} has {String:brand}")
 Sku.width_cm = model.Property(f"{Sku} has {Integer:width_cm}")
 Sku.max_facings = model.Property(f"{Sku} has {Integer:max_facings}")
 
-# Concept: shelf
+# Concept: Shelf
 Shelf = model.Concept("Shelf", identify_by={"id": Integer})
 Shelf.name = model.Property(f"{Shelf} has {String:name}")
 Shelf.length_cm = model.Property(f"{Shelf} has {Integer:length_cm}")
@@ -76,10 +76,10 @@ PredictedDemand.demand_units = model.Property(
     f"{PredictedDemand} has {Integer:demand_units}"
 )
 
-sku_data = model.data(read_csv(DATA_DIR / "skus.csv"))
-shelf_data = model.data(read_csv(DATA_DIR / "shelves.csv"))
-category_data = model.data(read_csv(DATA_DIR / "categories.csv"))
-demand_data = model.data(read_csv(DATA_DIR / "predicted_demand_table.csv"))
+sku_data = model.data(read_csv(data_dir / "skus.csv"))
+shelf_data = model.data(read_csv(data_dir / "shelves.csv"))
+category_data = model.data(read_csv(data_dir / "categories.csv"))
+demand_data = model.data(read_csv(data_dir / "predicted_demand_table.csv"))
 
 model.define(
     Sku.new(
@@ -105,6 +105,10 @@ model.define(
         max_skus_active=category_data.max_skus_active,
     )
 )
+# Schema form works here because predicted_demand_table.csv columns
+# (sku_id, facings_count, demand_units) match PredictedDemand's identify_by +
+# property names exactly. The Sku/Shelf/Category concepts use the per-field
+# form because their CSVs use different column names (e.g. sku_id vs id).
 model.define(PredictedDemand.new(demand_data.to_schema()))
 
 model.define(Sku.shelf(Shelf)).where(
@@ -118,8 +122,11 @@ model.define(Sku.shelf(Shelf)).where(
 
 Sku.facings = model.Property(f"{Sku} has {Integer:facings}")
 Sku.realized_demand = model.Property(f"{Sku} has {Integer:realized_demand}")
-# 0/1 indicator coupled to facings via half-reified `implies` (see below).
-# Boolean is not a valid `solve_for` type, so we use an integer 0/1.
+# 0/1 indicator that EXISTS so the per-category cardinality can be written as
+# `sum(Sku.active).per(Category)`. Without it, the natural form
+# `sum(Sku.facings >= 1).per(Category)` is not a valid relational sum.
+# Boolean is not a valid `solve_for` type, so the indicator is encoded as an
+# Integer 0/1, coupled to facings via the half-reified `implies` pair below.
 Sku.active = model.Property(f"{Sku} has {Integer:active}")
 
 problem = Problem(model, Integer)
@@ -176,11 +183,11 @@ problem.display()
 problem.solve("minizinc", time_limit_sec=60)
 problem.solve_info().display()
 
-# Re-check the relational arithmetic ICs in the returned solution. The
-# implies-bodied ICs (demand_lookup_ic, active_implies_facings_ic, facings_implies_active_ic) are
-# solver-only -- the relational engine cannot re-evaluate wire-format
-# constraint relations -- so they are omitted; the table data plus the
-# capacity / cardinality bounds together pin the lookup and the indicator.
+# Re-check the relational arithmetic ICs in the returned solution. Never pass
+# implies-bodied ICs (demand_lookup_ic, active_implies_facings_ic,
+# facings_implies_active_ic) to verify() -- the relational engine cannot
+# re-evaluate wire-format constraint relations and would return silently-OK
+# regardless of whether the constraint actually holds.
 problem.verify(shelf_capacity_ic, category_min_ic, category_max_ic)
 model.require(problem.termination_status() == "OPTIMAL")
 
