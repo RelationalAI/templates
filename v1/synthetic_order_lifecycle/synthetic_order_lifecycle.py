@@ -5,11 +5,10 @@ This script demonstrates synthesised banking-event traces in RelationalAI:
 - Pre-allocate fixed (order, event-slot) rows; the solver decides each
   event's type (PLACE / MODIFY / CANCEL / FILL), timestamp, venue, quantity,
   and tick price.
-- Enforce MiFID II / RegNMS-flavour sequencing rules: PLACE first, nothing
+- Enforce MiFID II / Reg NMS-flavour sequencing rules: PLACE first, nothing
   after CANCEL, exactly one PLACE per order, fill-quantity conservation
   across the FILL events, venue eligibility per symbol.
-- Solve as constraint satisfaction (MiniZinc / Chuffed) and inspect the
-  generated trace.
+- Solve as constraint satisfaction (MiniZinc) and inspect the generated trace.
 
 All decisions are integer: prices are integer ticks (1c), times are integer
 milliseconds, quantities are integer shares.
@@ -243,8 +242,10 @@ problem.solve("minizinc", time_limit_sec=60)
 problem.solve_info().display()
 
 # Re-check the relational arithmetic ICs in the returned solution. The
-# all_different- and implies-bodied ICs are solver-only and omitted (the
-# relational engine cannot re-evaluate wire-format constraint relations).
+# all_different- and implies-bodied ICs are solver-only -- never pass them to
+# verify(). The relational engine cannot re-evaluate wire-format constraint
+# relations and would return silently-OK regardless of whether the constraint
+# actually holds in the solution.
 problem.verify(
     type_sum_ic,
     exactly_one_place_ic,
