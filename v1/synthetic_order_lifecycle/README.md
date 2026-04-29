@@ -93,7 +93,7 @@ The same pattern applies to any test-data-generation problem where rows have to 
 
 6. Expected output (the solver returns one feasible trace; exact event types, timestamps, quantities, prices, and venues vary across runs and with different solver versions):
    ```text
-   Generated event trace (one row per slot — 36 events across 6 orders, abbreviated to the first order):
+   Generated event trace (one row per slot — 36 events across 6 orders, first order shown; the other 5 orders follow the same shape):
        order_id symbol  event_id  ts_ms  is_place  is_modify  is_cancel  is_fill  qty  tick_price  venue
    0          1   AAPL         1   1000         0          1          0        0  100           1   ARCA
    1          1   AAPL         2    997         0          1          0        0  100           1   ARCA
@@ -101,8 +101,6 @@ The same pattern applies to any test-data-generation problem where rows have to 
    3          1   AAPL         4    996         0          1          0        0  100           1   ARCA
    4          1   AAPL         5    999         0          0          0        1  100           1   ARCA
    5          1   AAPL         6    998         0          1          0        0  100           1   ARCA
-   ...
-   30         6   AAPL        31    997         0          1          0        0   60           1   ARCA
    ... (rows 6-35 omitted)
 
    Filled quantity per order (cannot exceed Order.original_qty):
@@ -115,7 +113,7 @@ The same pattern applies to any test-data-generation problem where rows have to 
    5         6            60          60
    ```
 
-   Each order has exactly one PLACE event (the one with the smallest `ts_ms`), at least one FILL event, and the remaining slots are MODIFYs. Total filled quantity equals each order's `original_qty`. Venues are constrained to the eligible (symbol, venue) pairs from `symbol_venues.csv`.
+   Each order has exactly one PLACE event (the one with the smallest `ts_ms`); the remaining slots are filled with MODIFY, FILL, or CANCEL events as the constraints allow. Total filled quantity is bounded by each order's `original_qty` (the conservation IC is `sum(fill_qty) <= original_qty`); the run above happens to fill exactly `original_qty` per order, but other feasible traces with lower fill totals are also valid. Venues are constrained to the eligible (symbol, venue) pairs from `symbol_venues.csv`.
 
 ## Template structure
 ```text
@@ -179,7 +177,7 @@ model.require(problem.termination_status() == "OPTIMAL")
 
 ## Customize this template
 
-- **Use your own pool** by replacing the five CSV files with your symbols, venues, allowed (symbol, venue) pairs, orders, and event slots. The constraint structure does not change. Add more events per order to allow longer traces; the model adapts to the number of rows in `events.csv`.
+- **Use your own pool** by replacing the five CSV files with your symbols, venues, allowed (symbol, venue) pairs, orders, and event slots. The constraint structure does not change. Add more events per order to allow longer traces; the model adapts to the number of rows in `events.csv`. Two assumptions on your data: (a) `venues.csv` ids should be contiguous `1..N` (the `venue_id` decision domain is derived as `[1, max(venue_id)]`, so non-contiguous ids would let the solver pick venue ids that don't exist); (b) at least one disallowed `(symbol, venue)` pair must exist (if your `symbol_venues.csv` covers every symbol×venue combination, the empty disallowed list breaks `model.data(...).to_schema()` -- in that case drop the `venue_ok_ic` constraint).
 - **Force a CANCEL on every order** by changing `at_most_one_cancel_ic` from `<= 1` to `== 1`, then bumping the per-order event count so the order has room for a `PLACE` plus other events before the `CANCEL`.
 - **Add the inverse rule "no MODIFY after FILL"** by adding `B.is_fill == 1` to the `where` clause and writing `require(implies(A.is_modify == 1, A.ts_ms < B.ts_ms))`. Same shape as `no_after_cancel_ic`.
 - **Generate a "smallest violating trace" instead of a positive trace** by negating one of the rules (e.g. drop `no_after_cancel_ic` and add `model.require(sum(A.is_cancel + B.is_fill - 1).per(Order) >= 0)` plus a temporal predicate) and minimising the number of events. The model is already in optimisation-ready shape -- the termination-status gate stays at `"OPTIMAL"`.
