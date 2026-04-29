@@ -131,6 +131,23 @@ in_flow_ic = model.where(Transaction.dst == Account).require(
 )
 problem.satisfy(in_flow_ic)
 
+# Layer constraints: forbid a motif edge from going directly source -> dest
+# (skipping the hub layer), and forbid a motif edge from going hub -> hub
+# (chaining through hubs). Without these, the per-account count flow ICs
+# alone admit non-butterfly shapes when the graph has the right inter-role
+# edges. Expressed as `sum of three binaries <= 2` (equivalent to "the three
+# binaries are not all 1 simultaneously") so the constraint stays in plain
+# relational arithmetic and `verify()` can re-evaluate it.
+no_direct_src_to_dst_ic = model.require(
+    Transaction.is_motif + Transaction.src.is_source + Transaction.dst.is_dest <= 2
+)
+problem.satisfy(no_direct_src_to_dst_ic)
+
+no_hub_to_hub_ic = model.require(
+    Transaction.is_motif + Transaction.src.is_hub + Transaction.dst.is_hub <= 2
+)
+problem.satisfy(no_hub_to_hub_ic)
+
 # Per-hub flow conservation in amount (the butterfly's signature). For each
 # hub, |amount_in - amount_out| <= CONSERVATION_TOLERANCE_DOLLARS, expressed
 # as two one-sided inequalities (CSP backends don't handle abs directly).
@@ -193,6 +210,8 @@ problem.verify(
     one_dest_ic,
     out_flow_ic,
     in_flow_ic,
+    no_direct_src_to_dst_ic,
+    no_hub_to_hub_ic,
     amount_threshold_ic,
     same_bo_ic,
 )
