@@ -12,6 +12,10 @@ Algorithms: reachable(full=True) for transitive dependency tracing,
 
 Run:
     `python bom_reachability.py`
+
+Output:
+    Prints transitive dependency lists per finished product and a betweenness
+    centrality ranking that flags structural bottleneck components.
 """
 
 from pathlib import Path

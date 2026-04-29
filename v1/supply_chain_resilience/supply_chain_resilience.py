@@ -4,6 +4,10 @@ This script demonstrates a chained multi-reasoner workflow in RelationalAI,
 combining graph analysis, rules-based classification, and prescriptive
 optimization for supply chain risk management:
 
+- Stage 0 -- Blast-radius pre-analysis: build a directed Business graph from
+  shipment data, run upstream reachability from high-priority demand customers
+  to surface every supplier they transitively depend upon. This shows the
+  exposure footprint before any optimization runs.
 - Stage 1 -- Graph: build a site dependency graph from shipping operations,
   compute eigenvector centrality to identify critical warehouses and bridges
   between supply chain regions.
@@ -83,8 +87,8 @@ biz_csv = read_csv(DATA_DIR / "business.csv")
 # Only pass needed columns to model.data() — extra columns with NaN
 # values cause data loading issues.
 biz_cols = ["ID", "NAME", "TYPE", "SITE_ID", "RELIABILITY_SCORE"]
-biz_with_rel = biz_csv.dropna(subset=["RELIABILITY_SCORE"])[biz_cols]
-biz_no_rel = biz_csv[biz_csv["RELIABILITY_SCORE"].isna()][biz_cols[:4]]
+biz_with_rel = biz_csv.dropna(subset=["RELIABILITY_SCORE"])[biz_cols].reset_index(drop=True)
+biz_no_rel = biz_csv[biz_csv["RELIABILITY_SCORE"].isna()][biz_cols[:4]].reset_index(drop=True)
 
 # Batch 1: businesses WITH reliability (suppliers, manufacturers).
 d1 = model.data(biz_with_rel)
@@ -180,10 +184,45 @@ model.define(
     d.sku(SKU.filter_by(id=dem_data["SKU_ID"])),
 )
 
-# Shipment data: loaded as pandas DataFrame for historical analysis.
-# Not loaded as a RAI Concept to keep the model size manageable for the
-# graph reasoner. Late shipment stats are computed in pandas.
+# Shipment data: loaded BOTH as pandas DataFrame (for late-shipment stats)
+# AND as a RAI Concept (so Stage 0 can run reachability on a directed
+# Business graph derived from supplier->customer edges).
 shipments_df = read_csv(DATA_DIR / "shipment.csv")
+
+Shipment = model.Concept("Shipment", identify_by={"id": String})
+Shipment.supplier = model.Relationship(f"{Shipment} from {Business}", short_name="supplier")
+Shipment.customer = model.Relationship(f"{Shipment} to {Business}", short_name="customer")
+Shipment.sku_id = model.Property(f"{Shipment} has sku {String:sku_id}")
+Shipment.quantity = model.Property(f"{Shipment} has {Integer:quantity}")
+
+ship_data = model.data(shipments_df[["ID", "SUPPLIER_BUSINESS_ID", "CUSTOMER_BUSINESS_ID", "SKU_ID", "QUANTITY"]])
+model.define(
+    sh := Shipment.new(id=ship_data["ID"]),
+    sh.supplier(Business.filter_by(id=ship_data["SUPPLIER_BUSINESS_ID"])),
+    sh.customer(Business.filter_by(id=ship_data["CUSTOMER_BUSINESS_ID"])),
+    sh.sku_id(ship_data["SKU_ID"]),
+    sh.quantity(ship_data["QUANTITY"]),
+)
+
+# Derived ships_to: supplier -> customer (collapses many shipments into edges).
+Business.ships_to = model.Relationship(
+    f"{Business:supplier} ships to {Business:customer}"
+)
+b_from, b_to = Business.ref(), Business.ref()
+model.define(Business.ships_to(b_from, b_to)).where(
+    Shipment.supplier(b_from),
+    Shipment.customer(b_to),
+)
+
+# Flag businesses that hold at least one HIGH-priority demand — they are
+# the customers whose blast-radius we care about most.
+Business.is_high_priority_customer = model.Relationship(
+    f"{Business} is a high-priority customer"
+)
+model.where(
+    Demand.business(Business),
+    Demand.priority == "HIGH",
+).define(Business.is_high_priority_customer())
 
 # DelayPrediction concept: ML-predicted delay probabilities per supplier.
 DelayPrediction = model.Concept("DelayPrediction", identify_by={"id": String})
@@ -210,10 +249,63 @@ model.define(
 )
 
 # --------------------------------------------------
+# Stage 0: Blast-radius pre-analysis (directed Business graph)
+# --------------------------------------------------
+# Trace every supplier each high-priority customer transitively depends on.
+# This surfaces the exposure footprint BEFORE the MILP runs, so the
+# scenario analysis in Stage 3 can be read in context: "if supplier X is
+# downgraded, the optimizer is rerouting around the demands listed here."
+
+print("=" * 70)
+print("STAGE 0: Blast-Radius Pre-Analysis (directed Business graph)")
+print("=" * 70)
+
+biz_graph = Graph(model, directed=True, weighted=False, node_concept=Business)
+b_src, b_dst = Business.ref(), Business.ref()
+model.where(Business.ships_to(b_src, b_dst)).define(
+    biz_graph.Edge.new(src=b_src, dst=b_dst)
+)
+
+biz_graph.num_nodes().inspect()
+biz_graph.num_edges().inspect()
+
+# Upstream reachability: which suppliers do high-priority customers depend on?
+target_customer = model.Relationship(f"target customer {Business}")
+model.where(Business.is_high_priority_customer()).define(target_customer(Business))
+
+reachable_to = biz_graph.reachable(to=target_customer)
+supplier_node = biz_graph.Node.ref()
+blast_df = (
+    where(
+        reachable_to(supplier_node, target_customer),
+        supplier_node.business_type == "SUPPLIER",
+    )
+    .select(
+        target_customer.name.alias("customer"),
+        supplier_node.id.alias("supplier_id"),
+        supplier_node.name.alias("supplier"),
+        supplier_node.reliability_score.alias("supplier_reliability"),
+    )
+    .to_df()
+)
+
+print("\nUpstream supplier dependencies for high-priority customers:")
+if blast_df.empty:
+    print("  (no high-priority demands or no SUPPLIER-typed upstream)")
+else:
+    for cust in sorted(blast_df["customer"].unique()):
+        cust_rows = blast_df[blast_df["customer"] == cust]
+        print(f"\n  {cust} depends on {len(cust_rows)} supplier(s):")
+        for _, row in cust_rows.sort_values("supplier").iterrows():
+            rel = row["supplier_reliability"]
+            rel_str = f"{rel:.0%}" if rel == rel else "N/A"  # NaN check
+            print(f"    - {row['supplier']} (reliability: {rel_str})")
+
+# --------------------------------------------------
 # Stage 1: Graph -- network criticality
 # --------------------------------------------------
 
-print("=" * 70)
+print("\n" + "=" * 70)
 print("STAGE 1: Graph -- Network Criticality")
 print("=" * 70)
 
