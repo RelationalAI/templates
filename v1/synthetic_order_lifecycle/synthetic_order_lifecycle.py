@@ -202,26 +202,23 @@ no_after_cancel_ic = model.where(
 problem.satisfy(no_after_cancel_ic)
 
 # Quantity bound: every event's qty <= the order's original_qty.
-qty_upper_ic = model.where(
-    OrderEvent.order(Order),
-).require(OrderEvent.qty <= Order.original_qty)
+qty_upper_ic = model.require(OrderEvent.qty <= OrderEvent.order.original_qty)
 problem.satisfy(qty_upper_ic)
 
 # PLACE event's qty matches the order's original_qty.
-place_qty_match_ic = model.where(
-    OrderEvent.order(Order),
-).require(implies(OrderEvent.is_place == 1, OrderEvent.qty == Order.original_qty))
+place_qty_match_ic = model.require(
+    implies(OrderEvent.is_place == 1, OrderEvent.qty == OrderEvent.order.original_qty)
+)
 problem.satisfy(place_qty_match_ic)
 
 # Venue eligibility: the chosen venue_id must not match any disallowed
-# (symbol, venue) pair for the order's symbol. Encoded as a !=  inequality
-# over each disallowed pair; the join through Symbol.id picks only pairs
-# that share the order's symbol.
+# (symbol, venue) pair for the order's symbol. The chain
+# `OrderEvent.order.symbol.id` walks through the OrderEvent's order, then
+# its symbol, then the symbol's id -- and matches the disallowed pair's
+# symbol_id, so we only get pairs that share the order's symbol.
 NA = NotAllowedSymbolVenue.ref()
 venue_ok_ic = model.where(
-    OrderEvent.order(Order),
-    Order.symbol(Symbol),
-    Symbol.id(NA.symbol_id),
+    OrderEvent.order.symbol.id(NA.symbol_id),
 ).require(NA.venue_id != OrderEvent.venue_id)
 problem.satisfy(venue_ok_ic)
 
@@ -236,9 +233,9 @@ problem.satisfy(fill_qty_zero_off_ic)
 
 # Quantity conservation: total filled quantity across an order's FILL events
 # cannot exceed the original_qty. Linear in fill_qty.
-fill_sum_ic = model.where(
-    OrderEvent.order(Order),
-).require(sum(OrderEvent.fill_qty).per(OrderEvent.order) <= Order.original_qty)
+fill_sum_ic = model.require(
+    sum(OrderEvent.fill_qty).per(OrderEvent.order) <= OrderEvent.order.original_qty
+)
 problem.satisfy(fill_sum_ic)
 
 # --------------------------------------------------
@@ -250,19 +247,18 @@ problem.solve("minizinc", time_limit_sec=60)
 problem.solve_info().display()
 
 # Confirm constraints hold in the solver's solution.
-# distinct_ts_ic is omitted: all_different is a solver-only constraint and
-# is not supported by problem.verify().
+# Solver-only constraints are omitted: `all_different` (distinct_ts_ic) and
+# `implies` (place_first_ic, no_after_cancel_ic, place_qty_match_ic,
+# fill_qty_match_on_ic, fill_qty_zero_off_ic) are wire-format relations
+# evaluated by MiniZinc; the relational engine cannot re-evaluate them, so
+# verify() would silently pass without actually checking. The remaining ICs
+# are plain relational arithmetic and ARE re-evaluated by verify().
 problem.verify(
     type_sum_ic,
     exactly_one_place_ic,
     at_most_one_cancel_ic,
-    place_first_ic,
-    no_after_cancel_ic,
     qty_upper_ic,
-    place_qty_match_ic,
     venue_ok_ic,
-    fill_qty_match_on_ic,
-    fill_qty_zero_off_ic,
     fill_sum_ic,
 )
 model.require(problem.termination_status() == "OPTIMAL")
@@ -273,8 +269,8 @@ model.require(problem.termination_status() == "OPTIMAL")
 
 print("\nGenerated event trace (one row per slot):")
 model.select(
-    Order.id.alias("order_id"),
-    Symbol.name.alias("symbol"),
+    OrderEvent.order.id.alias("order_id"),
+    OrderEvent.order.symbol.name.alias("symbol"),
     OrderEvent.event_id.alias("event_id"),
     OrderEvent.ts_ms.alias("ts_ms"),
     OrderEvent.is_place.alias("is_place"),
@@ -284,17 +280,11 @@ model.select(
     OrderEvent.qty.alias("qty"),
     OrderEvent.tick_price.alias("tick_price"),
     Venue.name.alias("venue"),
-).where(
-    OrderEvent.order(Order),
-    Order.symbol(Symbol),
-    Venue.id(OrderEvent.venue_id),
-).inspect()
+).where(Venue.id(OrderEvent.venue_id)).inspect()
 
 print("\nFilled quantity per order (cannot exceed Order.original_qty):")
 model.select(
     Order.id.alias("order_id"),
     Order.original_qty.alias("original_qty"),
     sum(OrderEvent.fill_qty).per(Order).alias("filled_qty"),
-).where(
-    OrderEvent.order(Order),
-).inspect()
+).where(OrderEvent.order(Order)).inspect()
