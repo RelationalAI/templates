@@ -22,7 +22,7 @@ tags:
 
 Clinical research and pharma R&D teams build patient cohorts to power studies. A typical ask: *"find patients with a mutation in some gene from the kinase pathway who received a therapy and developed an adverse event within 90 days, and pick K of them so the cohort spans enough distinct genes, therapies, and toxicity profiles for the analysis to generalise."* The pieces are recognisable across healthcare data: a gene ontology with `is_a` edges defines the pathway, a patient knowledge graph carries mutations / therapies / adverse events with timestamps, and the cohort itself is a small set of patients chosen against multiple coverage criteria.
 
-This template encodes that ask as a three-pillar pipeline. The **Graph** reasoner runs a single `reachable(full=True)` call to close `is_a` over the gene ontology, returning every gene in the kinase-pathway sub-ontology in one step. Pure relational **Rules** then lift the closure to per-patient eligibility (`has_kinase_mutation` and `has_qualifying_pair`) and to per-(patient, gene), per-(patient, therapy), and per-(patient, adverse-event) coverage facts. The **Prescriptive** reasoner (CSP, MiniZinc / Chuffed) selects the cohort: binary `is_in_cohort` decisions on eligible patients, plus `is_covered` indicators on the three coverage axes that the upper-bound ICs link back to the patient decisions.
+This template encodes that ask as a three-pillar pipeline. The **Graph** reasoner runs a single `reachable(full=True)` call to close `is_a` over the gene ontology, returning every gene in the kinase-pathway sub-ontology in one step. Pure relational **Rules** then lift the closure to per-patient eligibility -- represented as a sub-concept `EligiblePatient extends Patient` whose membership is the eligibility conjunction -- and to per-(patient, gene), per-(patient, therapy), and per-(patient, adverse-event) coverage facts. The **Prescriptive** reasoner (CSP, MiniZinc / Chuffed) selects the cohort: binary `is_in_cohort` decisions are scoped to `EligiblePatient` rows only, plus `is_covered` indicators on three sub-concepts (`CoverableGene`, `CoverableTherapy`, `CoverableAdverseEvent`) that the upper-bound ICs link back to the patient decisions.
 
 The same pattern applies to other knowledge-graph cohort / set-cover problems where eligibility is a relational predicate over a labelled subgraph and the chosen set must witness a minimum spread on several attributes: insurance claim audits (find K members spanning N procedures and M comorbidities), grant-applicant diversification (find K applicants spanning institutions, fields, and career stages), security alert triage (find K alerts spanning attack categories and asset classes).
 
@@ -36,11 +36,11 @@ The same pattern applies to other knowledge-graph cohort / set-cover problems wh
 ## What you'll build
 
 - A gene ontology + patient knowledge graph: `Gene`, `GeneIsA`, `Patient`, `MutationEvent`, `TherapyEvent`, `AdverseEventOcc`, `Therapy`, `AdverseEvent`
-- A Graph-reasoner closure of the kinase-pathway sub-ontology via `graph.reachable(full=True)`, producing the `Gene.is_kinase_member` set
-- Pure-relational rules that derive `Patient.has_kinase_mutation`, `Patient.has_qualifying_pair`, `Patient.is_eligible`, plus per-axis coverage relations (`Patient.covers_kinase_gene`, `Patient.covers_therapy`, `Patient.covers_ae`) and coverable markers
-- A constraint model with four binary decision streams: `Patient.is_in_cohort` (eligible patients only), `Gene.is_covered` (kinase genes the cohort can mutate), `Therapy.is_covered`, and `AdverseEvent.is_covered`
+- A Graph-reasoner closure of the kinase-pathway sub-ontology via `graph.reachable(full=True)`, producing a `KinaseGene extends Gene` sub-concept
+- Pure-relational rules that derive sub-concepts `KinaseMutationCarrier`, `QualifyingPairPatient`, and the eligibility conjunction `EligiblePatient extends Patient`, plus per-axis coverage relations (`Patient.covers_kinase_gene`, `Patient.covers_therapy`, `Patient.covers_ae`) and the coverable sub-concepts `CoverableGene`, `CoverableTherapy`, `CoverableAdverseEvent`
+- A constraint model with four binary decision streams scoped via `where=[Sub(Parent)]`: `Patient.is_in_cohort` (eligible only), `Gene.is_covered` (coverable kinase genes only), `Therapy.is_covered`, and `AdverseEvent.is_covered`
 - Per-axis coverage upper-bound ICs that link `is_covered` to in-cohort patient decisions (`is_covered <= sum(is_in_cohort).per(...)`), and lower-bound ICs (`sum(is_covered) >= MIN_*`) that force the cohort to span enough distinct values
-- Post-solve verification via `problem.verify()` confirming every IC holds in the returned solution
+- Post-solve verification via `problem.verify()` confirming every IC holds in the returned solution, plus a `termination_status() == "OPTIMAL"` assertion
 
 ## What's included
 
@@ -109,23 +109,16 @@ The same pattern applies to other knowledge-graph cohort / set-cover problems wh
            6                   BRAF
            7                   MEK1
 
-   Per-patient eligibility (1 = both kinase mutation and qualifying pair):
-      patient_id patient_name kinase_mutation qualifying_pair eligible
-               1      P_Alpha               1               1        1
-               2      P_Bravo               1               1        1
-               3    P_Charlie               1               1        1
-               4      P_Delta               1               1        1
-               5       P_Echo               1               1        1
-               6    P_Foxtrot            <NA>            <NA>     <NA>
-               7       P_Golf               1               1        1
-               8      P_Hotel               1               1        1
-               9      P_India               1               1        1
-              10     P_Juliet               1            <NA>     <NA>
-              11       P_Kilo            <NA>            <NA>     <NA>
-              12       P_Lima               1            <NA>     <NA>
-              13       P_Mike            <NA>            <NA>     <NA>
-              14   P_November               1            <NA>     <NA>
-              15      P_Oscar               1            <NA>     <NA>
+   Eligible patients (carry a kinase mutation and have a qualifying pair):
+      patient_id patient_name
+               1      P_Alpha
+               2      P_Bravo
+               3    P_Charlie
+               4      P_Delta
+               5       P_Echo
+               7       P_Golf
+               8      P_Hotel
+               9      P_India
 
    Selected cohort:
      patient_id patient_name age_years
@@ -154,7 +147,7 @@ The same pattern applies to other knowledge-graph cohort / set-cover problems wh
          3  Cardiomyopathy
    ```
 
-   Eight of the 15 patients are eligible. The kinase-pathway closure transitively covers the root, the two sub-roots, and all four leaves. The four-patient cohort spans all four leaf kinase genes, three of the three "real" kinase therapies, and three of three AE terms tied to those therapies, comfortably clearing the `MIN_GENES = 3 / MIN_THERAPIES = 2 / MIN_AES = 2` floors. `Statin` and `GLP1_Agonist` (therapies 4 and 5) and `Myalgia` (AE 4) appear in the data but are unreachable for any cohort because no eligible patient has a qualifying-pair on them -- the coverable markers correctly exclude them from the count.
+   Eight of the 15 patients are eligible (the seven excluded patients each fail at least one of: kinase-mutation, qualifying-pair within the 90-day window). The kinase-pathway closure transitively covers the root, the two sub-roots, and all four leaves. The four-patient cohort spans all four leaf kinase genes, three of the three "real" kinase therapies, and three of three AE terms tied to those therapies, comfortably clearing the `MIN_GENES_COVERED = 3` / `MIN_THERAPIES_COVERED = 2` / `MIN_AES_COVERED = 2` floors. `Statin` and `GLP1_Agonist` (therapies 4 and 5) and `Myalgia` (AE 4) appear in the data but are unreachable for any cohort because no eligible patient has a qualifying-pair on them -- the `Coverable*` sub-concepts correctly exclude them from the count.
 
 ## Template structure
 ```text
@@ -177,52 +170,59 @@ The same pattern applies to other knowledge-graph cohort / set-cover problems wh
 
 The pipeline runs three pillars in order: Graph closes the ontology, Rules lift the closure to patient-level facts, and the CSP solver selects the cohort.
 
-**Graph reasoner: one call to close the ontology.** The `is_a` CSV is in OMOP / SNOMED convention (child -> parent), but the `Graph` constructor takes the same edge concept with `src_relationship=GeneIsA.parent` and `dst_relationship=GeneIsA.child` -- so reachability from a root flows downwards through the subclass tree onto every member. `reachable(full=True)` then returns every (ancestor, descendant) pair, which is the full transitive closure:
+**Graph reasoner: one call to close the ontology.** The `is_a` CSV is in OMOP / SNOMED convention (child -> parent), but the `Graph` constructor takes the same edge concept with `src_relationship=GeneIsA.parent` and `dst_relationship=GeneIsA.child` -- so reachability from a root flows downwards through the subclass tree onto every member. `reachable(full=True)` returns every (ancestor, descendant) pair, the full transitive closure. The closure is then materialised as a sub-concept `KinaseGene extends Gene`:
 
 ```python
-ontology_graph = Graph(
+gene_reachable = Graph(
     model, directed=True, weighted=False, node_concept=Gene,
     edge_concept=GeneIsA,
     edge_src_relationship=GeneIsA.parent,
     edge_dst_relationship=GeneIsA.child,
-)
-gene_reachable = ontology_graph.reachable(full=True)
+).reachable(full=True)
 
-Gene.is_kinase_member = model.Property(f"{Gene} kinase member if {Integer:k}")
-KineRootGene = Gene.ref()
-model.define(Gene.is_kinase_member(1)).where(
-    KineRootGene.id == KINASE_ROOT_GENE_ID,
-    gene_reachable(KineRootGene, Gene),
+KinaseGene = model.Concept("KinaseGene", extends=[Gene])
+KinaseRootGene = Gene.ref()
+model.define(KinaseGene(Gene)).where(
+    KinaseRootGene.id == KINASE_ROOT_GENE_ID,
+    gene_reachable(KinaseRootGene, Gene),
 )
 ```
 
-**Rules pillar: lift the closure to patient-level eligibility and per-axis coverage facts.** Pure relational arithmetic, no decisions. A patient has a kinase mutation if any mutation event hits a kinase-pathway-member gene; has a qualifying pair if a therapy and an AE share that patient with `0 <= ae.t_days - therapy.t_days <= 90`; is eligible if both. The per-axis coverage relations (`Patient.covers_kinase_gene`, `Patient.covers_therapy`, `Patient.covers_ae`) are joined the same way, with the therapy/AE coverage requiring participation in at least one qualifying pair so a therapy with no within-window AE doesn't count:
+**Rules pillar: lift the closure to patient-level sub-concepts.** Pure relational arithmetic, no decisions. Predicates are encoded as sub-concepts -- their *membership* is the predicate -- so downstream rules and the CSP just check `Sub(Parent)` to test the predicate (cheaper and clearer than Boolean indicator properties). The per-axis coverage relations (`Patient.covers_kinase_gene`, `Patient.covers_therapy`, `Patient.covers_ae`) are joined separately, with the therapy/AE coverage requiring participation in at least one qualifying pair so a therapy with no within-window AE doesn't count:
 
 ```python
-model.define(Patient.has_qualifying_pair(1)).where(
-    TE_pair.patient == Patient,
-    AE_pair.patient == Patient,
-    AE_pair.t_days - TE_pair.t_days >= 0,
-    AE_pair.t_days - TE_pair.t_days <= MAX_THERAPY_TO_AE_DAYS,
+KinaseMutationCarrier = model.Concept("KinaseMutationCarrier", extends=[Patient])
+model.define(KinaseMutationCarrier(Patient)).where(
+    MutationEvent.patient == Patient,
+    KinaseGene(MutationEvent.gene),
 )
 
-model.define(Patient.is_eligible(1)).where(
-    Patient.has_kinase_mutation == 1,
-    Patient.has_qualifying_pair == 1,
+QualifyingPairPatient = model.Concept("QualifyingPairPatient", extends=[Patient])
+model.define(QualifyingPairPatient(Patient)).where(
+    TherapyEvent.patient == Patient,
+    AdverseEventOcc.patient == Patient,
+    AdverseEventOcc.t_days - TherapyEvent.t_days >= 0,
+    AdverseEventOcc.t_days - TherapyEvent.t_days <= MAX_THERAPY_TO_AE_DAYS,
+)
+
+EligiblePatient = model.Concept("EligiblePatient", extends=[Patient])
+model.define(EligiblePatient(Patient)).where(
+    KinaseMutationCarrier(Patient),
+    QualifyingPairPatient(Patient),
 )
 ```
 
-**Prescriptive pillar: cohort selection as a CSP.** Decisions are scoped to the rows the rules established as meaningful: `is_in_cohort` only on `Patient.is_eligible == 1`, and each `is_covered` only on Y values that are *coverable* (some eligible patient covers them). Without the coverable scoping, `is_covered` decisions on never-covered Ys have no upper-bound IC -- the per-pair `where` in the upper-bound IC yields no rows there, the IC isn't asserted, and the variable floats free, letting the solver mark it covered to satisfy the lower bound trivially.
+**Prescriptive pillar: cohort selection as a CSP.** Decisions are scoped to the rows the rules established as meaningful: `is_in_cohort` only on `EligiblePatient`, and each `is_covered` only on the matching `Coverable*` sub-concept. Without the coverable scoping, `is_covered` decisions on never-covered Ys have no upper-bound IC -- the per-pair `where` in the upper-bound IC yields no rows there, the IC isn't asserted, and the variable floats free, letting the solver mark it covered to satisfy the lower bound trivially.
 
 ```python
 problem.solve_for(
     Patient.is_in_cohort, type="bin",
-    where=[Patient.is_eligible == 1],
+    where=[EligiblePatient(Patient)],
     name=["is_in_cohort", Patient.id],
 )
 problem.solve_for(
     Therapy.is_covered, type="bin",
-    where=[Therapy.is_coverable == 1],
+    where=[CoverableTherapy(Therapy)],
     name=["therapy_covered", Therapy.id],
 )
 ```
@@ -240,11 +240,11 @@ All seven ICs are pure relational arithmetic, so `problem.verify()` re-evaluates
 
 ## Customize this template
 
-- **Use your own data** by replacing the eight CSV files with your gene ontology and patient knowledge graph. The constraint structure does not change. If your ontology already stores `is_a` parent -> child, drop the `parent` / `child` flip in the `Graph` constructor. If you don't have ontology data, define `Gene.is_kinase_member(1)` directly on the genes you care about and skip the Graph step.
-- **Change the cohort target** by adjusting `COHORT_SIZE` and the three `MIN_*` floors at the top. Tightening any one of them shrinks the feasible region; setting `MIN_GENES = COHORT_SIZE` forces every patient in the cohort to cover a distinct gene (rules out two patients with identical mutation patterns).
+- **Use your own data** by replacing the eight CSV files with your gene ontology and patient knowledge graph. The constraint structure does not change. If your ontology already stores `is_a` parent -> child, drop the `parent` / `child` flip in the `Graph` constructor. If you don't have ontology data, define `KinaseGene` membership directly on the genes you care about and skip the Graph step.
+- **Change the cohort target** by adjusting `COHORT_SIZE` and the three `MIN_*_COVERED` floors at the top. Tightening any one of them shrinks the feasible region; setting `MIN_GENES_COVERED = COHORT_SIZE` forces every patient in the cohort to cover a distinct gene (rules out two patients with identical mutation patterns).
 - **Move from feasibility to optimisation.** This template is a satisfaction model -- any cohort that hits the floors is correct. To rank, swap `problem.solve(...)` for `problem.maximize(sum(Gene.is_covered) + sum(Therapy.is_covered) + sum(AdverseEvent.is_covered))` to find the cohort with the broadest joint span, or `problem.minimize(sum(Patient.is_in_cohort * Patient.age_years))` for a younger cohort. MiniZinc / Chuffed handles both.
 - **Tighten the qualifying window** by editing `MAX_THERAPY_TO_AE_DAYS`. The 90-day window is a common attribution choice for treatment-emergent AEs in oncology trials; some indications use 28 days for acute toxicity, others 180 days for late-onset events.
-- **Add patient-level eligibility rules** -- minimum age, treatment-naive status, organ-function thresholds -- by adding more conjuncts to the `Patient.is_eligible` definition. Each extra rule narrows the eligible set; the CSP automatically drops decisions for newly-ineligible patients.
+- **Add patient-level eligibility rules** -- minimum age, treatment-naive status, organ-function thresholds -- by adding more conjuncts to the `EligiblePatient` definition (or by introducing further `extends=[Patient]` sub-concepts). Each extra rule narrows the eligible set; the CSP automatically drops decisions for newly-ineligible patients.
 - **Add cohort-level fairness rules.** A balanced-cohort study might require a minimum count from each of two demographic strata. Add a stratum concept (`Patient.stratum`) and an IC `sum(Patient.is_in_cohort).per(Patient.stratum) >= MIN_PER_STRATUM` to enforce minimum representation per stratum.
 - **Anchor on a different ontology root** by changing `KINASE_ROOT_GENE_ID`. Multi-pathway studies can run several queries with different roots and union the results.
 
@@ -268,8 +268,8 @@ All seven ICs are pure relational arithmetic, so `problem.verify()` re-evaluates
   <summary>Solver returns INFEASIBLE</summary>
 
 - The data may not contain a feasible cohort under the current floors. Loosen one constraint at a time -- drop `MIN_GENES_COVERED`, drop `MIN_THERAPIES_COVERED`, lower `COHORT_SIZE` -- to confirm whether the data or a specific floor is the bottleneck.
-- The kinase-pathway closure may be empty: if `KINASE_ROOT_GENE_ID` doesn't appear in the gene table, `Gene.is_kinase_member` is empty and no patient can be eligible. Print the closure (`Gene.is_kinase_member == 1`) before the solve to confirm.
-- The eligible-patient set may be smaller than `COHORT_SIZE`. Print eligibility before the solve; if fewer than `COHORT_SIZE` patients are eligible, lower the floor or relax the qualifying-pair window.
+- The kinase-pathway closure may be empty: if `KINASE_ROOT_GENE_ID` doesn't appear in the gene table, `KinaseGene` is empty and no patient can be eligible. Print the closure (`select KinaseGene.id`) before the solve to confirm.
+- The eligible-patient set may be smaller than `COHORT_SIZE`. Print `EligiblePatient.id` before the solve; if fewer than `COHORT_SIZE` patients are eligible, lower the floor or relax the qualifying-pair window.
 - Coverage floors may be unsatisfiable in principle: if the eligible patients only cover two distinct therapies, `MIN_THERAPIES_COVERED >= 3` is infeasible. Inspect the `Patient.covers_therapy` / `Patient.covers_kinase_gene` / `Patient.covers_ae` relations to see what's actually reachable.
 
 </details>
@@ -286,7 +286,7 @@ All seven ICs are pure relational arithmetic, so `problem.verify()` re-evaluates
 <details>
   <summary>A coverable Y still appears as <code>is_covered = 1</code> with no in-cohort patient covering it</summary>
 
-- This was the central encoding pitfall during development: with a per-pair `where` in the upper-bound IC, rows that no patient covers have *no* IC asserted (the where yields no rows there) and the `is_covered` variable floats free. The `is_coverable` markers and the `where=[Y.is_coverable == 1]` scoping on `solve_for` are the fix -- they remove the unbounded decision entirely. If you re-introduce a row by hand or skip the scoping, the symptom comes back; restore the scoping.
+- This was the central encoding pitfall during development: with a per-pair `where` in the upper-bound IC, rows that no patient covers have *no* IC asserted (the where yields no rows there) and the `is_covered` variable floats free. The `Coverable*` sub-concepts and the `where=[Coverable*(Y)]` scoping on `solve_for` are the fix -- they remove the unbounded decision entirely. If you re-introduce a row by hand or skip the scoping, the symptom comes back; restore the scoping.
 
 </details>
 

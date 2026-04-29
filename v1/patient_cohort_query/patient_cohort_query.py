@@ -2,15 +2,17 @@
 
 This script demonstrates a three-pillar pipeline in RelationalAI:
 
-- A clinical-research team needs to enrol K patients in a kinase-pathway
-  study. Eligible patients carry a mutation in some gene that is a member
-  of the kinase-pathway sub-ontology (transitive subclass closure of
-  ``is_a``), received some therapy, and developed an adverse event within
-  90 days *after* that therapy. The cohort, taken as a whole, must cover
-  at least ``MIN_GENES`` distinct kinase-pathway genes, ``MIN_THERAPIES``
-  distinct therapies, and ``MIN_AES`` distinct adverse-event terms, so a
-  later study generalises across pathway nodes, treatment arms, and
-  toxicity profiles.
+- A clinical-research team needs to enrol ``COHORT_SIZE`` patients in a
+  kinase-pathway study. Eligible patients carry a mutation in some gene
+  that is a member of the kinase-pathway sub-ontology (transitive
+  subclass closure of ``is_a``), received some therapy, and developed
+  an adverse event within ``MAX_THERAPY_TO_AE_DAYS`` *after* that
+  therapy. The cohort, taken as a whole, must cover at least
+  ``MIN_GENES_COVERED`` distinct kinase-pathway genes,
+  ``MIN_THERAPIES_COVERED`` distinct therapies, and
+  ``MIN_AES_COVERED`` distinct adverse-event terms, so a later study
+  generalises across pathway nodes, treatment arms, and toxicity
+  profiles.
 - The encoding is split across three pillars: the **Graph** reasoner
   closes ``is_a`` over the gene ontology (one call to
   ``graph.reachable``), pure relational **Rules** lift that closure to
@@ -20,27 +22,34 @@ This script demonstrates a three-pillar pipeline in RelationalAI:
   the cohort and proves the coverage thresholds are reachable.
 
 Modeling approach:
-- Four binary decision streams: ``Patient.is_in_cohort`` (which eligible
-  patients to enrol), ``Gene.is_covered``, ``Therapy.is_covered``, and
-  ``AdverseEvent.is_covered`` (which kinase genes / therapies / AEs the
-  cohort, taken together, witnesses).
-- Eligibility framing: ``Patient.is_eligible`` is defined (via Rules)
-  only on patients with both a kinase-pathway mutation and a qualifying
-  therapy/AE pair, and ``problem.solve_for`` is scoped with
-  ``where=[Patient.is_eligible == 1]`` so a binary decision is only
-  created for eligible patients. Ineligible patients are implicitly out
-  of the cohort -- no big-M, no exclusion IC.
-- Cohort size: ``sum(Patient.is_in_cohort) == K``.
+- Four binary decision streams: ``Patient.is_in_cohort`` (which
+  eligible patients to enrol), ``Gene.is_covered``,
+  ``Therapy.is_covered``, and ``AdverseEvent.is_covered`` (which
+  kinase genes / therapies / AEs the cohort, taken together,
+  witnesses).
+- Predicate markers as sub-concepts. ``EligiblePatient`` is a
+  sub-concept of ``Patient`` whose membership is the eligibility
+  conjunction; ``CoverableGene`` / ``CoverableTherapy`` /
+  ``CoverableAdverseEvent`` are sub-concepts whose membership is "some
+  patient covers this Y". Each ``solve_for`` is then scoped with
+  ``where=[Sub(Parent)]`` so a binary decision is only created for
+  rows the rules established as meaningful -- ineligible patients and
+  never-covered Ys never get a decision, and the upper-bound ICs
+  cleanly bind on the rows that do. Sub-concepts are cheaper, more
+  readable, and avoid the Boolean-property-as-marker pattern entirely.
+- Cohort size: ``sum(Patient.is_in_cohort) == COHORT_SIZE``.
 - Coverage upper bounds (one IC per coverage axis): per kinase gene
   ``g``, ``g.is_covered`` is bounded above by the number of in-cohort
   patients whose mutations cover ``g``. The reverse direction is free,
   so the solver sets ``is_covered`` to 1 wherever the bound permits --
-  exactly when at least one chosen patient covers that gene. Same shape
-  for therapies and adverse events.
-- Coverage lower bounds: ``sum(Gene.is_covered) >= MIN_GENES`` (and
-  similarly for therapies and AEs). Together with the upper bounds, the
-  solver must pick patients whose joint coverage spans at least
-  ``MIN_GENES`` / ``MIN_THERAPIES`` / ``MIN_AES`` distinct values.
+  exactly when at least one chosen patient covers that gene. Same
+  shape for therapies and adverse events.
+- Coverage lower bounds:
+  ``sum(Gene.is_covered) >= MIN_GENES_COVERED`` (and similarly for
+  therapies and AEs). Together with the upper bounds, the solver must
+  pick patients whose joint coverage spans at least
+  ``MIN_GENES_COVERED`` / ``MIN_THERAPIES_COVERED`` /
+  ``MIN_AES_COVERED`` distinct values.
 - All of these constraints are pure relational arithmetic, so
   ``problem.verify()`` re-evaluates every IC in the returned solution.
 
@@ -48,9 +57,9 @@ Run:
     `python patient_cohort_query.py`
 
 Output:
-    Prints the formulation, the kinase-pathway gene closure, per-patient
-    eligibility, the chosen cohort, the per-axis coverage tally, and
-    post-solve constraint verification.
+    Prints the formulation, the kinase-pathway gene closure, the
+    eligible patient set, the chosen cohort, the per-axis coverage
+    tally, and post-solve constraint verification.
 """
 
 from pathlib import Path
@@ -93,7 +102,7 @@ data_dir = Path(__file__).parent / "data"
 Gene = model.Concept("Gene", identify_by={"id": Integer})
 Gene.name = model.Property(f"{Gene} has {String:name}")
 genes_csv = read_csv(data_dir / "genes.csv")
-model.define(Gene.new(genes_csv_data := model.data(genes_csv).to_schema()))
+model.define(Gene.new(model.data(genes_csv).to_schema()))
 
 # Concept: gene-ontology `is_a` edge. The CSV stores child -> parent
 # (standard OMOP / SNOMED convention), but we expose the edge to the
@@ -137,17 +146,14 @@ MutationEvent.gene = model.Relationship(f"{MutationEvent} hits {Gene:gene}")
 MutationEvent.t_days = model.Property(f"{MutationEvent} at {Integer:t_days}")
 mut_csv = read_csv(data_dir / "mutation_events.csv")
 mut_data = model.data(mut_csv)
-model.define(
-    me := MutationEvent.new(id=mut_data.id),
-    me.t_days(mut_data.t_days),
-)
+model.define(MutationEvent.new(id=mut_data.id, t_days=mut_data.t_days))
 model.define(MutationEvent.patient(Patient)).where(
-    MutationEvent.id == mut_data.id,
-    Patient.id == mut_data.patient_id,
+    MutationEvent.id(mut_data.id),
+    Patient.id(mut_data.patient_id),
 )
 model.define(MutationEvent.gene(Gene)).where(
-    MutationEvent.id == mut_data.id,
-    Gene.id == mut_data.gene_id,
+    MutationEvent.id(mut_data.id),
+    Gene.id(mut_data.gene_id),
 )
 
 # Concept: therapy event (treatment received by a patient at a time).
@@ -157,17 +163,14 @@ TherapyEvent.therapy = model.Relationship(f"{TherapyEvent} uses {Therapy:therapy
 TherapyEvent.t_days = model.Property(f"{TherapyEvent} at {Integer:t_days}")
 th_csv = read_csv(data_dir / "therapy_events.csv")
 th_data = model.data(th_csv)
-model.define(
-    te := TherapyEvent.new(id=th_data.id),
-    te.t_days(th_data.t_days),
-)
+model.define(TherapyEvent.new(id=th_data.id, t_days=th_data.t_days))
 model.define(TherapyEvent.patient(Patient)).where(
-    TherapyEvent.id == th_data.id,
-    Patient.id == th_data.patient_id,
+    TherapyEvent.id(th_data.id),
+    Patient.id(th_data.patient_id),
 )
 model.define(TherapyEvent.therapy(Therapy)).where(
-    TherapyEvent.id == th_data.id,
-    Therapy.id == th_data.therapy_id,
+    TherapyEvent.id(th_data.id),
+    Therapy.id(th_data.therapy_id),
 )
 
 # Concept: adverse-event occurrence (AE observed in a patient at a time).
@@ -179,17 +182,14 @@ AdverseEventOcc.term = model.Relationship(f"{AdverseEventOcc} is {AdverseEvent:t
 AdverseEventOcc.t_days = model.Property(f"{AdverseEventOcc} at {Integer:t_days}")
 ae_csv = read_csv(data_dir / "adverse_events.csv")
 ae_data = model.data(ae_csv)
-model.define(
-    aeo := AdverseEventOcc.new(id=ae_data.id),
-    aeo.t_days(ae_data.t_days),
-)
+model.define(AdverseEventOcc.new(id=ae_data.id, t_days=ae_data.t_days))
 model.define(AdverseEventOcc.patient(Patient)).where(
-    AdverseEventOcc.id == ae_data.id,
-    Patient.id == ae_data.patient_id,
+    AdverseEventOcc.id(ae_data.id),
+    Patient.id(ae_data.patient_id),
 )
 model.define(AdverseEventOcc.term(AdverseEvent)).where(
-    AdverseEventOcc.id == ae_data.id,
-    AdverseEvent.id == ae_data.ae_term_id,
+    AdverseEventOcc.id(ae_data.id),
+    AdverseEvent.id(ae_data.ae_term_id),
 )
 
 # --------------------------------------------------
@@ -197,11 +197,10 @@ model.define(AdverseEventOcc.term(AdverseEvent)).where(
 # --------------------------------------------------
 # Build a directed graph over the gene ontology with edges parent ->
 # child (the reverse of how `is_a` is conventionally stored, so that
-# reachability from a root flows outwards onto all descendants). One
-# call to `graph.reachable(full=True)` returns every (ancestor,
-# descendant) pair, which is the transitive closure we need.
-
-ontology_graph = Graph(
+# reachability from a root flows outwards onto all descendants), then
+# pull out the (ancestor, descendant) closure relation. One call --
+# the rest of the file just consumes the relation.
+gene_reachable = Graph(
     model,
     directed=True,
     weighted=False,
@@ -209,16 +208,19 @@ ontology_graph = Graph(
     edge_concept=GeneIsA,
     edge_src_relationship=GeneIsA.parent,
     edge_dst_relationship=GeneIsA.child,
-)
-gene_reachable = ontology_graph.reachable(full=True)
+).reachable(full=True)
 
-# A gene is a kinase-pathway member if the kinase root reaches it (or
-# it *is* the root -- `reachable` is reflexive on connected nodes).
-Gene.is_kinase_member = model.Property(f"{Gene} kinase member if {Integer:k}")
-KineRootGene = Gene.ref()
-model.define(Gene.is_kinase_member(1)).where(
-    KineRootGene.id == KINASE_ROOT_GENE_ID,
-    gene_reachable(KineRootGene, Gene),
+# A `KinaseGene` is a Gene reachable from the kinase-pathway root via
+# `is_a` edges (`reachable` is reflexive, so the root itself is
+# included). Defining `KinaseGene` as a sub-concept of `Gene` avoids a
+# Boolean indicator property: membership of `KinaseGene` *is* the
+# predicate, and downstream rules just say `KinaseGene(Gene)` to test
+# it.
+KinaseGene = model.Concept("KinaseGene", extends=[Gene])
+KinaseRootGene = Gene.ref()
+model.define(KinaseGene(Gene)).where(
+    KinaseRootGene.id == KINASE_ROOT_GENE_ID,
+    gene_reachable(KinaseRootGene, Gene),
 )
 
 # --------------------------------------------------
@@ -226,52 +228,42 @@ model.define(Gene.is_kinase_member(1)).where(
 # per-axis coverage facts. Pure relational arithmetic; no decisions.
 # --------------------------------------------------
 
-# A patient has a "kinase mutation" if any of their mutation events
-# hits a kinase-pathway-member gene.
-Patient.has_kinase_mutation = model.Property(
-    f"{Patient} has kinase mutation if {Integer:k}"
-)
-model.define(Patient.has_kinase_mutation(1)).where(
+# A patient is eligible if they carry a kinase-pathway mutation *and*
+# have a qualifying therapy/AE pair (an AE that follows a therapy
+# within `MAX_THERAPY_TO_AE_DAYS`). The two halves are split into
+# their own sub-concepts so the eligibility rule reads as a plain
+# conjunction and so the inspection step can show both halves
+# independently.
+KinaseMutationCarrier = model.Concept("KinaseMutationCarrier", extends=[Patient])
+model.define(KinaseMutationCarrier(Patient)).where(
     MutationEvent.patient == Patient,
-    MutationEvent.gene == Gene,
-    Gene.is_kinase_member == 1,
+    KinaseGene(MutationEvent.gene),
 )
 
-# A patient has a "qualifying pair" if some therapy event T and some
-# adverse-event occurrence E share that patient and
-# 0 <= E.t_days - T.t_days <= MAX_THERAPY_TO_AE_DAYS (the AE follows
-# the therapy and lies inside the attribution window).
-Patient.has_qualifying_pair = model.Property(
-    f"{Patient} has qualifying pair if {Integer:q}"
-)
-TE_pair = TherapyEvent.ref()
-AE_pair = AdverseEventOcc.ref()
-model.define(Patient.has_qualifying_pair(1)).where(
-    TE_pair.patient == Patient,
-    AE_pair.patient == Patient,
-    AE_pair.t_days - TE_pair.t_days >= 0,
-    AE_pair.t_days - TE_pair.t_days <= MAX_THERAPY_TO_AE_DAYS,
+QualifyingPairPatient = model.Concept("QualifyingPairPatient", extends=[Patient])
+model.define(QualifyingPairPatient(Patient)).where(
+    TherapyEvent.patient == Patient,
+    AdverseEventOcc.patient == Patient,
+    AdverseEventOcc.t_days - TherapyEvent.t_days >= 0,
+    AdverseEventOcc.t_days - TherapyEvent.t_days <= MAX_THERAPY_TO_AE_DAYS,
 )
 
-# An eligible patient has both. `is_eligible` is undefined for
-# ineligible patients -- the CSP scopes its decision over
-# `Patient.is_eligible == 1`, so no exclusion IC is needed.
-Patient.is_eligible = model.Property(f"{Patient} is eligible if {Integer:e}")
-model.define(Patient.is_eligible(1)).where(
-    Patient.has_kinase_mutation == 1,
-    Patient.has_qualifying_pair == 1,
+EligiblePatient = model.Concept("EligiblePatient", extends=[Patient])
+model.define(EligiblePatient(Patient)).where(
+    KinaseMutationCarrier(Patient),
+    QualifyingPairPatient(Patient),
 )
 
-# Per-axis coverage facts. `Patient.covers_kinase_gene(Gene)` holds for
-# every (patient, kinase-pathway gene) pair where the patient has a
-# mutation in that gene. The CSP aggregates `Patient.is_in_cohort` over
-# this relation grouped by Gene to derive how many in-cohort patients
-# cover each gene.
+# Per-axis coverage relationships. `Patient.covers_kinase_gene(Gene)`
+# holds for every (patient, kinase-pathway gene) pair where the
+# patient has a mutation in that gene. The CSP aggregates
+# `Patient.is_in_cohort` over this relation grouped by Gene to derive
+# how many in-cohort patients cover each gene.
 Patient.covers_kinase_gene = model.Relationship(f"{Patient} covers kinase {Gene:gene}")
 model.define(Patient.covers_kinase_gene(Gene)).where(
     MutationEvent.patient == Patient,
     MutationEvent.gene == Gene,
-    Gene.is_kinase_member == 1,
+    KinaseGene(Gene),
 )
 
 # `Patient.covers_therapy(Therapy)` and `Patient.covers_ae(AdverseEvent)`
@@ -281,43 +273,37 @@ model.define(Patient.covers_kinase_gene(Gene)).where(
 # therapies and AEs the cohort can demonstrate a qualifying response
 # pattern for.
 Patient.covers_therapy = model.Relationship(f"{Patient} covers {Therapy:therapy}")
-TE_cov = TherapyEvent.ref()
-AE_cov = AdverseEventOcc.ref()
 model.define(Patient.covers_therapy(Therapy)).where(
-    TE_cov.patient == Patient,
-    TE_cov.therapy == Therapy,
-    AE_cov.patient == Patient,
-    AE_cov.t_days - TE_cov.t_days >= 0,
-    AE_cov.t_days - TE_cov.t_days <= MAX_THERAPY_TO_AE_DAYS,
+    TherapyEvent.patient == Patient,
+    TherapyEvent.therapy == Therapy,
+    AdverseEventOcc.patient == Patient,
+    AdverseEventOcc.t_days - TherapyEvent.t_days >= 0,
+    AdverseEventOcc.t_days - TherapyEvent.t_days <= MAX_THERAPY_TO_AE_DAYS,
 )
 
 Patient.covers_ae = model.Relationship(f"{Patient} covers {AdverseEvent:ae}")
-TE_cov2 = TherapyEvent.ref()
-AE_cov2 = AdverseEventOcc.ref()
 model.define(Patient.covers_ae(AdverseEvent)).where(
-    AE_cov2.patient == Patient,
-    AE_cov2.term == AdverseEvent,
-    TE_cov2.patient == Patient,
-    AE_cov2.t_days - TE_cov2.t_days >= 0,
-    AE_cov2.t_days - TE_cov2.t_days <= MAX_THERAPY_TO_AE_DAYS,
+    AdverseEventOcc.patient == Patient,
+    AdverseEventOcc.term == AdverseEvent,
+    TherapyEvent.patient == Patient,
+    AdverseEventOcc.t_days - TherapyEvent.t_days >= 0,
+    AdverseEventOcc.t_days - TherapyEvent.t_days <= MAX_THERAPY_TO_AE_DAYS,
 )
 
-# Coverable markers: `Y.is_coverable` holds for genes / therapies / AEs
-# that *some* eligible patient covers. Without these, the per-axis
-# `is_covered` decisions on rows with no covering patients have no
-# upper-bound IC (the per-pair `where` yields no rows there) and float
-# free, letting the solver mark them covered to satisfy the lower
-# bound trivially. Scoping `solve_for` to `is_coverable == 1` skips
-# those rows so the lower-bound count only includes Ys with a real
-# upper bound.
-Gene.is_coverable = model.Property(f"{Gene} is coverable if {Integer:gv}")
-model.define(Gene.is_coverable(1)).where(Patient.covers_kinase_gene(Gene))
-Therapy.is_coverable = model.Property(f"{Therapy} is coverable if {Integer:tv}")
-model.define(Therapy.is_coverable(1)).where(Patient.covers_therapy(Therapy))
-AdverseEvent.is_coverable = model.Property(
-    f"{AdverseEvent} is coverable if {Integer:av}"
-)
-model.define(AdverseEvent.is_coverable(1)).where(Patient.covers_ae(AdverseEvent))
+# Coverable sub-concepts: a Gene / Therapy / AdverseEvent is
+# `Coverable*` if *some* patient covers it. Without these, the
+# per-axis `is_covered` decisions on rows with no covering patients
+# have no upper-bound IC (the per-pair `where` yields no rows there)
+# and float free, letting the solver mark them covered to satisfy the
+# lower bound trivially. Scoping `solve_for` to the coverable
+# sub-concept skips those rows so the lower-bound count only includes
+# Ys with a real upper bound.
+CoverableGene = model.Concept("CoverableGene", extends=[Gene])
+model.define(CoverableGene(Gene)).where(Patient.covers_kinase_gene(Gene))
+CoverableTherapy = model.Concept("CoverableTherapy", extends=[Therapy])
+model.define(CoverableTherapy(Therapy)).where(Patient.covers_therapy(Therapy))
+CoverableAdverseEvent = model.Concept("CoverableAdverseEvent", extends=[AdverseEvent])
+model.define(CoverableAdverseEvent(AdverseEvent)).where(Patient.covers_ae(AdverseEvent))
 
 # --------------------------------------------------
 # Prescriptive pillar: cohort-selection CSP.
@@ -339,25 +325,25 @@ problem = Problem(model, Integer)
 problem.solve_for(
     Patient.is_in_cohort,
     type="bin",
-    where=[Patient.is_eligible == 1],
+    where=[EligiblePatient(Patient)],
     name=["is_in_cohort", Patient.id],
 )
 problem.solve_for(
     Gene.is_covered,
     type="bin",
-    where=[Gene.is_coverable == 1],
+    where=[CoverableGene(Gene)],
     name=["gene_covered", Gene.id],
 )
 problem.solve_for(
     Therapy.is_covered,
     type="bin",
-    where=[Therapy.is_coverable == 1],
+    where=[CoverableTherapy(Therapy)],
     name=["therapy_covered", Therapy.id],
 )
 problem.solve_for(
     AdverseEvent.is_covered,
     type="bin",
-    where=[AdverseEvent.is_coverable == 1],
+    where=[CoverableAdverseEvent(AdverseEvent)],
     name=["ae_covered", AdverseEvent.id],
 )
 
@@ -417,6 +403,7 @@ problem.verify(
     therapy_min_ic,
     ae_min_ic,
 )
+model.require(problem.termination_status() == "OPTIMAL")
 
 # --------------------------------------------------
 # Inspect results
@@ -424,17 +411,14 @@ problem.verify(
 
 print("\nKinase-pathway gene closure (reachable from KINASE_ROOT_GENE_ID):")
 model.select(
-    Gene.id.alias("gene_id"),
-    Gene.name.alias("gene_name"),
-).where(Gene.is_kinase_member == 1).inspect()
+    KinaseGene.id.alias("gene_id"),
+    KinaseGene.name.alias("gene_name"),
+).inspect()
 
-print("\nPer-patient eligibility (1 = both kinase mutation and qualifying pair):")
+print("\nEligible patients (carry a kinase mutation and have a qualifying pair):")
 model.select(
-    Patient.id.alias("patient_id"),
-    Patient.name.alias("patient_name"),
-    Patient.has_kinase_mutation.alias("kinase_mutation"),
-    Patient.has_qualifying_pair.alias("qualifying_pair"),
-    Patient.is_eligible.alias("eligible"),
+    EligiblePatient.id.alias("patient_id"),
+    EligiblePatient.name.alias("patient_name"),
 ).inspect()
 
 print("\nSelected cohort:")
