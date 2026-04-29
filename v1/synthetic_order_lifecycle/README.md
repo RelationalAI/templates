@@ -130,58 +130,21 @@ The same pattern applies to any test-data-generation problem where rows have to 
 
 ## How it works
 
-**1. Define symbols, venues, orders, and a pool of event slots.** Each `OrderEvent` is a pre-allocated row tied to one `Order`; the solver decides what kind of event it is and when it happens:
+The solver decides every event's type, timestamp, venue, and quantity. The headline patterns:
 
-```python
-Order = model.Concept("Order", identify_by={"id": Integer})
-Order.original_qty = model.Property(f"{Order} has {Integer:original_qty}")
-Order.original_tick_price = model.Property(f"{Order} has {Integer:original_tick_price}")
-Order.symbol = model.Relationship(f"{Order} is for {Symbol}")
-
-OrderEvent = model.Concept("OrderEvent", identify_by={"event_id": Integer})
-OrderEvent.order = model.Relationship(f"{OrderEvent} belongs to {Order}")
-```
-
-The `Symbol.allows(venue_id)` relationship is loaded from `symbol_venues.csv` and used later as a table-style lookup against the event's chosen venue.
-
-**2. Declare the decision-valued properties.** Four binary indicators (one per event type) plus four bounded integers per event:
-
-```python
-OrderEvent.is_place = model.Property(f"{OrderEvent} is place if {Integer:is_place}")
-OrderEvent.is_modify = model.Property(f"{OrderEvent} is modify if {Integer:is_modify}")
-OrderEvent.is_cancel = model.Property(f"{OrderEvent} is cancel if {Integer:is_cancel}")
-OrderEvent.is_fill = model.Property(f"{OrderEvent} is fill if {Integer:is_fill}")
-OrderEvent.ts_ms = model.Property(f"{OrderEvent} occurs at {Integer:ts_ms}")
-OrderEvent.venue_id = model.Property(f"{OrderEvent} on venue {Integer:venue_id}")
-OrderEvent.qty = model.Property(f"{OrderEvent} has qty {Integer:qty}")
-OrderEvent.tick_price = model.Property(f"{OrderEvent} has tick price {Integer:tick_price}")
-
-problem.solve_for(OrderEvent.is_place, type="bin", name=["is_place", OrderEvent.event_id])
-# ...one solve_for per binary, plus bounded solve_for for each integer.
-```
-
-The four binary indicators are constrained to sum to 1 per event, so each slot picks exactly one type.
-
-**3. Encode the temporal regular-language rules.** Two pairwise rules over the same `OrderEvent` concept handle PLACE-first and nothing-after-CANCEL. `implies` from `relationalai.semantics.reasoners.prescriptive` keeps each rule readable: `if premise then consequent`:
+**Conditional rules read as 'if premise then consequent'.** PLACE-first and nothing-after-CANCEL are pairwise rules over two refs into the same concept; `A.order == B.order` asserts same-order without a free `Order` var:
 
 ```python
 A = OrderEvent.ref()
 B = OrderEvent.ref()
 
 place_first_ic = model.where(
-    A.order(Order),
-    B.order(Order),
+    A.order == B.order,
     A.event_id != B.event_id,
 ).require(implies(A.is_place == 1, A.ts_ms < B.ts_ms))
-
-no_after_cancel_ic = model.where(
-    A.order(Order),
-    B.order(Order),
-    A.event_id != B.event_id,
-).require(implies(A.is_cancel == 1, A.ts_ms > B.ts_ms))
 ```
 
-A `distinct_ts_ic` constraint requires every event in an order to land at its own moment, written with the `all_different` global constraint grouped per order:
+**Distinctness within a group is one global constraint, not pairwise `!=`.** `all_different.per(...)` lowers to MiniZinc's native alldifferent propagator:
 
 ```python
 distinct_ts_ic = model.require(
@@ -189,42 +152,21 @@ distinct_ts_ic = model.require(
 )
 ```
 
-**4. Tie PLACE events back to the order's original size.** Combined with a global `qty <= original_qty` bound, `implies` pins PLACE events to the order's `original_qty`. The `OrderEvent.order.original_qty` chain reads the order's property in line, no separate `Order` ref needed:
+**Walk relationships in line — no intermediate refs.** Reading the order's `original_qty` from an event, or matching disallowed venue pairs through the order's symbol:
 
 ```python
 qty_upper_ic = model.require(OrderEvent.qty <= OrderEvent.order.original_qty)
 
-place_qty_match_ic = model.require(
-    implies(OrderEvent.is_place == 1, OrderEvent.qty == OrderEvent.order.original_qty)
-)
-```
-
-**5. Constrain venue eligibility and total fill conservation.** Venue eligibility is encoded as a "disallowed pairs" Concept derived from the allowed list: every event must differ from each disallowed `(symbol_id, venue_id)` pair joined on the order's symbol. Chaining `OrderEvent.order.symbol.id` walks event → order → symbol → id without binding any intermediate refs. An auxiliary `fill_qty` decision is channelled to either `qty` (when `is_fill == 1`) or `0` (when `is_fill == 0`) with two `implies` rules, so the per-order conservation aggregate stays linear in `fill_qty`:
-
-```python
 NA = NotAllowedSymbolVenue.ref()
 venue_ok_ic = model.where(
     OrderEvent.order.symbol.id(NA.symbol_id),
 ).require(NA.venue_id != OrderEvent.venue_id)
-
-fill_qty_match_on_ic = model.require(
-    implies(OrderEvent.is_fill == 1, OrderEvent.fill_qty == OrderEvent.qty)
-)
-
-fill_qty_zero_off_ic = model.require(
-    implies(OrderEvent.is_fill == 0, OrderEvent.fill_qty == 0)
-)
-
-fill_sum_ic = model.require(
-    sum(OrderEvent.fill_qty).per(OrderEvent.order) <= OrderEvent.order.original_qty
-)
 ```
 
-**6. Solve and verify.** A single solve returns one feasible trace. `problem.verify()` re-evaluates only the constraints written in plain relational arithmetic; `implies` and `all_different` are solver-only wire-format relations evaluated by MiniZinc, so they are passed to `satisfy()` but omitted from `verify()`. The termination-status gate asserts the solver reported `OPTIMAL` (MiniZinc returns `OPTIMAL` for any feasible solution under a pure satisfaction model):
+**`implies` and `all_different` are solver-only.** They go to `satisfy()` but are omitted from `verify()` -- the relational engine cannot re-evaluate wire-format constraint relations, so verify would silently pass. The remaining ICs are plain relational arithmetic and ARE re-evaluated by `verify()`:
 
 ```python
 problem.solve("minizinc", time_limit_sec=60)
-problem.solve_info().display()
 problem.verify(
     type_sum_ic, exactly_one_place_ic, at_most_one_cancel_ic,
     qty_upper_ic, venue_ok_ic, fill_sum_ic,
