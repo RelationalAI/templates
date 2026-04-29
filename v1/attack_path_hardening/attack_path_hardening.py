@@ -146,11 +146,13 @@ model.define(
 )
 
 # 3-arity traversal relationship: Host.attack_step_to(src, step, dst).
-# The middle slot is the entified AttackStep so its risk_weight and
-# kind survive the path traversal -- when paths walks this edge,
-# `p.nodes` alternates Host, AttackStep, Host, AttackStep, ... and
-# the prescriptive layer recovers the AttackSteps along each path
-# by casting odd-indexed path nodes back to AttackStep.
+# The middle slot is the entified AttackStep, so step properties
+# (kind, risk_weight) survive into derived rules. When paths walks
+# this edge, `p.nodes` exposes ONLY the Host endpoints of each hop
+# -- the middle AttackStep entities are not in p.nodes. The
+# prescriptive layer recovers them separately by joining consecutive
+# Host pairs back through attack_step_to (see the `# Bridge:` block
+# below).
 Host.attack_step_to = model.Relationship(
     f"{Host:src} via {AttackStep:step} reaches {Host:dst}",
     short_name="attack_step_to",
@@ -236,8 +238,9 @@ model.define(PathContainsStep(ap_ref, step_along)).where(
 )
 
 # Concept: Mitigation -- a candidate countermeasure. Each mitigation
-# has a `kind` (patch / segment / mfa / revoke / disable_delegation
-# / trust_break), a `target_segment` indicating which network zone
+# has a `kind` (patch_vuln / network_segment / mfa_gate /
+# revoke_credential / disable_delegation / trust_break), a
+# `target_segment` indicating which network zone
 # it primarily protects (used for per-zone change-budget envelopes),
 # and a `cost_kdollars` deployment cost in thousands of dollars.
 # Mitigation-to-attack-step coverage is a separate many-to-many

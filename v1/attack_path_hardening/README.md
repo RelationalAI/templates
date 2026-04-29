@@ -50,7 +50,7 @@ The output is a deployable mitigation portfolio plus per-path attribution showin
 - `data/hosts.csv` -- 20 hosts across 5 segments (user-vlan, dmz-vlan, server-vlan, dc-vlan, backup-vlan)
 - `data/entry_points.csv` -- 4 attacker-reachable hosts (workstations + dev station)
 - `data/crown_jewels.csv` -- 3 high-value assets (finance-db, executive-mailbox, hr-db)
-- `data/attack_steps.csv` -- 30 directed attack steps with kinds (credential_reuse, phish, trust_traversal, vuln_exploit_*, delegation) and risk weights
+- `data/attack_steps.csv` -- 30 directed attack steps with kinds (credential_reuse, phish_*, trust_traversal, vuln_exploit_*, delegation) and risk weights
 - `data/mitigations.csv` -- 25 candidate mitigations with kind, target segment, and cost in $K
 - `data/mitigation_covers.csv` -- 56 mitigation-to-attack-step coverage edges (broad mitigations cover many edges)
 - `pyproject.toml` -- Python package configuration
@@ -233,7 +233,7 @@ model.require(problem.termination_status() == "OPTIMAL")
 - **Raise the risk-weight threshold** (`MIN_EDGE_RISK_WEIGHT`) to prune low-risk attack steps from the path enumeration. This shrinks the candidate path set and the resulting set-cover.
 - **Add coverage edges** by appending to `mitigation_covers.csv`. A new "broad" mitigation that covers many steps cheaply often dominates several narrow per-edge mitigations.
 - **Switch to maximum-coverage** by replacing the cost objective with `problem.maximize(sum(...n_paths_broken...))` under a hard total-cost cap -- the dual framing of set cover.
-- **Add severity-weighted coverage** by attaching a `Path.severity` property and requiring `sum(Mitigation.deploy).per(path) >= path.severity` for high-severity chains.
+- **Add severity-weighted coverage** by attaching an `AttackPath.severity` property and requiring `sum(Mitigation.deploy).per(AttackPath) >= AttackPath.severity` for high-severity chains.
 
 ## Troubleshooting
 
@@ -241,7 +241,7 @@ model.require(problem.termination_status() == "OPTIMAL")
   <summary>Solver returns INFEASIBLE</summary>
 
 - The bundled segment caps are loose enough to admit the cost-optimal portfolio. If you tighten `SEGMENT_BUDGET_KDOLLARS["dc-vlan"]` below ~$80K, no portfolio can break every dc-vlan-bound chain within budget -- the problem becomes infeasible.
-- Likewise, `MAX_PER_KIND=1` forces a single delegation-disablement, which cannot break all three crown-jewel-specific delegation chains simultaneously.
+- Likewise, `MAX_PER_KIND=1` only allows one mitigation per kind. For kinds with many narrow per-target mitigations (e.g. the three `disable-dc-delegation-{fin,mail,hr}` mitigations), this can force the optimizer onto upstream broad mitigations to break crown-jewel-bound paths; if no upstream broad coverage exists for a given path, the problem becomes infeasible.
 - Verify the `mitigation_covers.csv` rows actually map to existing `mitigation_id` and `attack_step_id` values.
 
 </details>
@@ -282,6 +282,6 @@ model.require(problem.termination_status() == "OPTIMAL")
   <summary>MiniZinc solver not available</summary>
 
 - This template uses the MiniZinc constraint solver. Ensure the RAI Native App version supports MiniZinc.
-- HiGHS is a viable alternative for set-cover with weighted-sum constraints, but the bundled formulation is shaped for MiniZinc/Chuffed (cardinality + cost aggregation lift natively).
+- HiGHS targets linear/MIP problems; switching backends would require reformulating the cardinality and cost-aggregation ICs into a 0-1 integer program.
 
 </details>
