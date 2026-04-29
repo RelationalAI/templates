@@ -161,23 +161,17 @@ problem.solve_for(
 # --------------------------------------------------
 
 # Each event has exactly one type.
-type_sum_ic = model.where(
-    OrderEvent.order(Order),
-).require(
+type_sum_ic = model.require(
     OrderEvent.is_place + OrderEvent.is_modify + OrderEvent.is_cancel + OrderEvent.is_fill == 1
 )
 problem.satisfy(type_sum_ic)
 
 # Exactly one PLACE event per order.
-exactly_one_place_ic = model.where(
-    OrderEvent.order(Order),
-).require(sum(OrderEvent.is_place).per(Order) == 1)
+exactly_one_place_ic = model.require(sum(OrderEvent.is_place).per(OrderEvent.order) == 1)
 problem.satisfy(exactly_one_place_ic)
 
 # At most one CANCEL event per order.
-at_most_one_cancel_ic = model.where(
-    OrderEvent.order(Order),
-).require(sum(OrderEvent.is_cancel).per(Order) <= 1)
+at_most_one_cancel_ic = model.require(sum(OrderEvent.is_cancel).per(OrderEvent.order) <= 1)
 problem.satisfy(at_most_one_cancel_ic)
 
 # Distinct ts_ms within an order (every event has its own moment).
@@ -232,21 +226,19 @@ venue_ok_ic = model.where(
 problem.satisfy(venue_ok_ic)
 
 # Channel fill_qty to (qty when is_fill else 0).
-fill_qty_match_on_ic = model.where(
-    OrderEvent.order(Order),
-).require(implies(OrderEvent.is_fill == 1, OrderEvent.fill_qty == OrderEvent.qty))
+fill_qty_match_on_ic = model.require(
+    implies(OrderEvent.is_fill == 1, OrderEvent.fill_qty == OrderEvent.qty)
+)
 problem.satisfy(fill_qty_match_on_ic)
 
-fill_qty_zero_off_ic = model.where(
-    OrderEvent.order(Order),
-).require(implies(OrderEvent.is_fill == 0, OrderEvent.fill_qty == 0))
+fill_qty_zero_off_ic = model.require(implies(OrderEvent.is_fill == 0, OrderEvent.fill_qty == 0))
 problem.satisfy(fill_qty_zero_off_ic)
 
 # Quantity conservation: total filled quantity across an order's FILL events
 # cannot exceed the original_qty. Linear in fill_qty.
 fill_sum_ic = model.where(
     OrderEvent.order(Order),
-).require(sum(OrderEvent.fill_qty).per(Order) <= Order.original_qty)
+).require(sum(OrderEvent.fill_qty).per(OrderEvent.order) <= Order.original_qty)
 problem.satisfy(fill_sum_ic)
 
 # --------------------------------------------------
