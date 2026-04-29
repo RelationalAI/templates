@@ -5,7 +5,7 @@ featured: false
 experience_level: intermediate
 industry: "Banking"
 reasoning_types:
-  - Rules
+  - Rules-based
   - Prescriptive
 tags:
   - constraint-programming
@@ -45,7 +45,7 @@ The same pattern applies to any test-data-generation problem where rows have to 
 - `data/symbols.csv` -- 3 tradable symbols (AAPL, MSFT, GOOG)
 - `data/venues.csv` -- 3 trading venues (NYSE, NASDAQ, ARCA)
 - `data/symbol_venues.csv` -- per-symbol venue eligibility
-- `data/orders.csv` -- 3 orders, each with `original_qty` and `original_tick_price`
+- `data/orders.csv` -- 3 orders, each with `symbol_id`, `original_qty`, and `original_tick_price` (in integer ticks of 1c)
 - `data/events.csv` -- 9 pre-allocated event slots (3 per order)
 - `pyproject.toml` -- Python package configuration
 
@@ -99,14 +99,16 @@ The same pattern applies to any test-data-generation problem where rows have to 
             1   AAPL         2     42         0          0          0        1   60       17500         2
             1   AAPL         3     87         0          0          0        1   40       17500         2
             2   MSFT         4      1         1          0          0        0   50       35000         3
-            2   MSFT         5     30         0          0          1        0    1       35000         3
+            2   MSFT         5     30         0          1          0        0    1       35000         3
+            2   MSFT         6     12         0          0          0        1   25       35000         2
             3   GOOG         7      1         1          0          0        0   75       14000         2
             3   GOOG         8     50         0          0          0        1   30       14000         2
+            3   GOOG         9     71         0          0          1        0    1       14000         2
 
    Filled quantity per order (cannot exceed Order.original_qty):
      order_id  original_qty  filled_qty
             1           100         100
-            2            50           0
+            2            50          25
             3            75          30
    ```
 
@@ -193,7 +195,7 @@ place_qty_match_ic = model.where(
 )
 ```
 
-**5. Constrain venue eligibility and total fill conservation.** The venue rule reads the relationship `Symbol.allows(int)` with a decision-variable argument; PyRel turns this into a table-style constraint over the event's `venue_id`. The fill-conservation rule sums fill quantities across each order:
+**5. Constrain venue eligibility and total fill conservation.** The venue rule reads the relationship `Symbol.allows(int)` with a decision-variable argument; PyRel turns this into a table-style constraint over the event's `venue_id`. An auxiliary `fill_qty` decision is channelled to either `qty` (when `is_fill == 1`) or `0` (when `is_fill == 0`) by three big-M bounds, so the per-order conservation aggregate stays linear:
 
 ```python
 venue_ok_ic = model.where(
@@ -201,14 +203,20 @@ venue_ok_ic = model.where(
     Order.symbol(Symbol),
 ).require(Symbol.allows(OrderEvent.venue_id))
 
+fill_qty_le_qty_ic = model.where(...).require(OrderEvent.fill_qty <= OrderEvent.qty)
+fill_qty_zero_off_ic = model.where(...).require(
+    OrderEvent.fill_qty <= BIG_M_QTY * OrderEvent.is_fill
+)
+fill_qty_match_on_ic = model.where(...).require(
+    OrderEvent.qty - OrderEvent.fill_qty <= BIG_M_QTY * (1 - OrderEvent.is_fill)
+)
+
 fill_sum_ic = model.where(
     OrderEvent.order(Order),
-).require(
-    sum(OrderEvent.qty * OrderEvent.is_fill).per(Order) <= Order.original_qty
-)
+).require(sum(OrderEvent.fill_qty).per(Order) <= Order.original_qty)
 ```
 
-**6. Solve and verify.** A single solve returns one feasible trace. After solving, `problem.verify()` fires the named constraints to confirm the trace satisfies every rule:
+**6. Solve and verify.** A single solve returns one feasible trace. After solving, `problem.verify()` fires the named constraints to confirm the trace satisfies every rule, and the termination-status gate asserts the solver reported `OPTIMAL` (MiniZinc returns `OPTIMAL` for any feasible solution under a pure satisfaction model):
 
 ```python
 problem.solve("minizinc", time_limit_sec=60)
@@ -216,8 +224,10 @@ problem.solve_info().display()
 problem.verify(
     type_sum_ic, exactly_one_place_ic, at_most_one_cancel_ic, distinct_ts_ic,
     place_first_ic, no_after_cancel_ic, qty_upper_ic, place_qty_match_ic,
-    venue_ok_ic, fill_sum_ic,
+    venue_ok_ic, fill_qty_le_qty_ic, fill_qty_zero_off_ic, fill_qty_match_on_ic,
+    fill_sum_ic,
 )
+model.require(problem.termination_status() == "OPTIMAL")
 ```
 
 ## Customize this template
@@ -225,7 +235,7 @@ problem.verify(
 - **Use your own pool** by replacing the five CSV files with your symbols, venues, allowed (symbol, venue) pairs, orders, and event slots. The constraint structure does not change. Add more events per order to allow longer traces; the model adapts to the number of rows in `events.csv`.
 - **Force a CANCEL on every order** by changing `at_most_one_cancel_ic` from `<= 1` to `== 1`, then bumping the per-order event count so the order has room for a `PLACE` plus other events before the `CANCEL`.
 - **Add the inverse rule "no MODIFY after FILL"** with another pairwise big-M constraint mirroring `no_after_cancel_ic` (require `A.ts_ms - B.ts_ms >= 1 - BIG_M_TS * (1 - A.is_modify)` whenever `B` is a fill -- i.e. wedge a `B.is_fill == 1` filter into the `where` clause and keep the same indicator-style implication on the modify side).
-- **Generate a "smallest violating trace" instead of a positive trace** by negating one of the rules (e.g. drop `no_after_cancel_ic` and add `model.require(sum(A.is_cancel + B.is_fill - 1).per(Order) >= 0)` plus a temporal predicate) and minimising the number of events. This becomes an optimisation problem; switch the termination-status gate from `"FEASIBLE"` to `"OPTIMAL"`.
+- **Generate a "smallest violating trace" instead of a positive trace** by negating one of the rules (e.g. drop `no_after_cancel_ic` and add `model.require(sum(A.is_cancel + B.is_fill - 1).per(Order) >= 0)` plus a temporal predicate) and minimising the number of events. The model is already in optimisation-ready shape -- the termination-status gate stays at `"OPTIMAL"`.
 - **Replace the synthetic time horizon** by reading `ts_ms` bounds from your real session schedule (market open / market close) and updating `TS_MIN` / `TS_MAX`.
 
 ## Troubleshooting

@@ -18,14 +18,17 @@ Modeling approach:
   integer milliseconds, quantities are integer shares.
 - Conditional rules (PLACE-first, nothing-after-CANCEL, PLACE-qty matches the
   original order qty) are encoded with a bounded big-M so the model stays
-  linear and CSP-portable.
+  linear. Fill-quantity conservation uses an auxiliary `fill_qty` integer
+  variable channelled to (qty when is_fill else 0) by three big-M bounds,
+  keeping the cross-table aggregate linear too.
 
 Run:
     `python synthetic_order_lifecycle.py`
 
 Output:
-    Prints the formulation, the generated event trace ordered by order and
-    timestamp, and post-solve constraint verification.
+    Prints the formulation, the generated event trace (one row per slot),
+    the per-order filled-quantity totals, and post-solve constraint
+    verification.
 """
 
 from pathlib import Path
@@ -51,7 +54,6 @@ data_dir = Path(__file__).parent / "data"
 # Concept: tradable symbol
 Symbol = model.Concept("Symbol", identify_by={"id": Integer})
 Symbol.name = model.Property(f"{Symbol} has {String:name}")
-Symbol.tick_size_cents = model.Property(f"{Symbol} has {Integer:tick_size_cents}")
 symbols_csv = read_csv(data_dir / "symbols.csv")
 model.define(Symbol.new(model.data(symbols_csv).to_schema()))
 
@@ -72,7 +74,6 @@ model.define(Symbol.allows(sv_data.venue_id)).where(
 
 # Concept: orders (the surveillance subjects)
 Order = model.Concept("Order", identify_by={"id": Integer})
-Order.side = model.Property(f"{Order} has {String:side}")
 Order.original_qty = model.Property(f"{Order} has {Integer:original_qty}")
 Order.original_tick_price = model.Property(f"{Order} has {Integer:original_tick_price}")
 Order.symbol = model.Relationship(f"{Order} is for {Symbol}")
@@ -80,7 +81,6 @@ orders_csv = read_csv(data_dir / "orders.csv")
 orders_data = model.data(orders_csv)
 model.define(
     o := Order.new(id=orders_data.id),
-    o.side(orders_data.side),
     o.original_qty(orders_data.original_qty),
     o.original_tick_price(orders_data.original_tick_price),
 )
@@ -113,6 +113,9 @@ OrderEvent.ts_ms = model.Property(f"{OrderEvent} occurs at {Integer:ts_ms}")
 OrderEvent.venue_id = model.Property(f"{OrderEvent} on venue {Integer:venue_id}")
 OrderEvent.qty = model.Property(f"{OrderEvent} has qty {Integer:qty}")
 OrderEvent.tick_price = model.Property(f"{OrderEvent} has tick price {Integer:tick_price}")
+# Auxiliary integer: equals qty when is_fill == 1 and 0 when is_fill == 0.
+# Lets the per-order fill-conservation aggregate stay purely linear.
+OrderEvent.fill_qty = model.Property(f"{OrderEvent} has fill qty {Integer:fill_qty}")
 
 # Domain bounds derived from data so the model adapts to the CSV pool.
 qty_max = int(orders_csv["original_qty"].max())
@@ -135,6 +138,9 @@ problem.solve_for(
     name=["price", OrderEvent.event_id],
     lower=1,
     upper=price_max,
+)
+problem.solve_for(
+    OrderEvent.fill_qty, name=["fill_qty", OrderEvent.event_id], lower=0, upper=qty_max
 )
 
 # Big-M for reified ts_ms ordering rules (any feasible time difference fits).
@@ -219,11 +225,28 @@ venue_ok_ic = model.where(
 ).require(Symbol.allows(OrderEvent.venue_id))
 problem.satisfy(venue_ok_ic)
 
+# Channel fill_qty to (qty when is_fill else 0) via three big-M bounds.
+# Together they pin fill_qty == qty when is_fill == 1 and fill_qty == 0 otherwise.
+fill_qty_le_qty_ic = model.where(
+    OrderEvent.order(Order),
+).require(OrderEvent.fill_qty <= OrderEvent.qty)
+problem.satisfy(fill_qty_le_qty_ic)
+
+fill_qty_zero_off_ic = model.where(
+    OrderEvent.order(Order),
+).require(OrderEvent.fill_qty <= BIG_M_QTY * OrderEvent.is_fill)
+problem.satisfy(fill_qty_zero_off_ic)
+
+fill_qty_match_on_ic = model.where(
+    OrderEvent.order(Order),
+).require(OrderEvent.qty - OrderEvent.fill_qty <= BIG_M_QTY * (1 - OrderEvent.is_fill))
+problem.satisfy(fill_qty_match_on_ic)
+
 # Quantity conservation: total filled quantity across an order's FILL events
-# cannot exceed the original_qty.
+# cannot exceed the original_qty. Linear in fill_qty.
 fill_sum_ic = model.where(
     OrderEvent.order(Order),
-).require(sum(OrderEvent.qty * OrderEvent.is_fill).per(Order) <= Order.original_qty)
+).require(sum(OrderEvent.fill_qty).per(Order) <= Order.original_qty)
 problem.satisfy(fill_sum_ic)
 
 # --------------------------------------------------
@@ -245,13 +268,12 @@ problem.verify(
     qty_upper_ic,
     place_qty_match_ic,
     venue_ok_ic,
+    fill_qty_le_qty_ic,
+    fill_qty_zero_off_ic,
+    fill_qty_match_on_ic,
     fill_sum_ic,
 )
-
-# Note on termination-status gating: this is a pure satisfaction problem, so
-# MiniZinc/Chuffed returns a feasibility status rather than "OPTIMAL". After
-# confirming the exact status string from solve_info().display() above, add
-# e.g. model.require(problem.termination_status() == "FEASIBLE") to gate.
+model.require(problem.termination_status() == "OPTIMAL")
 
 # --------------------------------------------------
 # Inspect the generated trace
@@ -279,7 +301,7 @@ print("\nFilled quantity per order (cannot exceed Order.original_qty):")
 model.select(
     Order.id.alias("order_id"),
     Order.original_qty.alias("original_qty"),
-    sum(OrderEvent.qty * OrderEvent.is_fill).per(Order).alias("filled_qty"),
+    sum(OrderEvent.fill_qty).per(Order).alias("filled_qty"),
 ).where(
     OrderEvent.order(Order),
 ).inspect()
