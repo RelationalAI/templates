@@ -37,7 +37,7 @@ The same pattern applies to other graph motif-detection problems where the signa
 - Per-account flow conservation in *count* over the directed transaction graph (source has out-degree K, each hub has in-degree 1 and out-degree 1, destination has in-degree K)
 - Per-hub flow conservation in *dollar amount*: each hub forwards what it receives, within `CONSERVATION_TOLERANCE_DOLLARS`. Written with `implies` so the constraint activates only on accounts the solver picks as hubs -- no big-M coefficient
 - Filter-style threshold and same-beneficial-owner predicates encoded as `where`-filtered linear constraints
-- Post-solve verification via `problem.verify()` confirming every relational constraint holds in the returned solution
+- Post-solve verification via `problem.verify()` re-evaluating the relational arithmetic constraints in the returned solution (the implies-bodied conservation ICs are solver-only and omitted)
 
 ## What's included
 
@@ -114,7 +114,7 @@ The same pattern applies to other graph motif-detection problems where the signa
           4  HubAccA3       9500        9420
    ```
 
-   `SourceShellCorp` routes three under-threshold deposits through three hub accounts (all sharing beneficial owner `100`) to `WireRecipientCorp`. Each hub absorbs a small "fee" residual ($20, $25, $80) -- well within the $100 tolerance -- before forwarding the balance. The dataset's near-misses make the constraints visibly do work: alt-cluster-100 candidates `AltCluster100A` and `AltCluster100B` (bo `100`, would pass `same_bo_ic`) fail conservation with residuals over $500; `NearMissAcc` (bo `100`) fails conservation routing $4000 in / $9500 out; transactions over $10,000 are forced out of the motif by `amount_threshold_ic`; the alternative path through `IndividualX` (bo `300`) fails `same_bo_ic` against the cluster.
+   The detected motif is a source account routing three under-threshold deposits through three hub accounts (all sharing one beneficial owner) to a single destination. Each hub absorbs a small "fee" residual within the `CONSERVATION_TOLERANCE_DOLLARS` ($100) bound before forwarding the balance. The dataset's near-misses make the constraints visibly do work: alt-cluster-100 candidates `AltCluster100A` and `AltCluster100B` (bo `100`, would pass `same_bo_ic`) fail conservation with residuals over $500; `NearMissAcc` (bo `100`) fails conservation routing $4000 in against $9500 out; transactions over $10,000 are forced out of the motif by `amount_threshold_ic`; the alternative path through `IndividualX` (bo `300`) fails `same_bo_ic` against the cluster.
 
 ## Template structure
 ```text
@@ -169,10 +169,10 @@ amount_threshold_ic = model.where(
 
 - **Use your own data** by replacing the two CSV files with your accounts and transactions. The constraint structure does not change. `bo_id` should reflect your beneficial-ownership data; if you don't have it, set every row's `bo_id` to a single placeholder and drop `same_bo_ic`. Hub candidates need at least one incoming and one outgoing transaction in your graph (the source needs K outgoing, the destination K incoming) -- the count flow ICs only bind on accounts that appear on both sides of the transaction edges.
 - **Change the hub count** by adjusting `K` at the top of the script. K = 3 is the smallest count that's clearly a fan-out-then-fan-in pattern; real layering schemes often involve 5--20 hubs.
-- **Tune the threshold and conservation tolerance** by editing `AMOUNT_THRESHOLD_DOLLARS` and `CONSERVATION_TOLERANCE_DOLLARS`. The FinCEN CTR threshold is $10,000; the conservation tolerance should reflect the per-hop fee size in your scheme (real-world layering typically takes 1--3% per hop, so $100 on $9,000 is on the low end).
+- **Tune the threshold and conservation tolerance** by editing `AMOUNT_THRESHOLD_DOLLARS` and `CONSERVATION_TOLERANCE_DOLLARS`. The FinCEN CTR threshold is $10,000. The default $100 tolerance is sized for this template's synthetic demo (residuals 20/25/80 fit comfortably) and for schemes with very small per-hop fees. Real-world layering often takes 1-3% per hop, so on $9,000 transactions you may want to widen the tolerance toward $200-300; tighten it if you're hunting near-perfect pass-through.
 - **Drop conservation to recover a smurfing fan-in motif** -- the simpler "K under-threshold deposits converge on one destination" pattern. Remove the source role and the conservation IC, set per-account out-flow to `Account.is_smurf` (no source K-fan), and you get the smurfing detector with no source-side modelling.
 - **Adapt to the K-cycle motif** (round-robin laundering: K accounts cycle money through a closed loop) by swapping the role binaries for a single `Account.is_in_cycle` binary and changing the per-account flow conservation in count to `out_count == in_count == is_in_cycle`. Per-hub conservation in amount carries over per-cycle-node.
-- **Add a time-window filter** by adding a pairwise constraint over motif transactions: `model.where(T1.ts_minutes + WINDOW < T2.ts_minutes).require(T1.is_motif + T2.is_motif <= 1)`. Useful when your scheme runs on a known cadence (minutes for high-frequency layering; days or weeks for slower schemes).
+- **Add a time-window filter** by adding a pairwise constraint over motif transactions. Declare two refs first (`T1 = Transaction.ref()`, `T2 = Transaction.ref()`), then: `model.where(T1.ts_minutes + WINDOW < T2.ts_minutes).require(T1.is_motif + T2.is_motif <= 1)`. Useful when your scheme runs on a known cadence (minutes for high-frequency layering; days or weeks for slower schemes).
 
 ## Troubleshooting
 
@@ -188,9 +188,9 @@ amount_threshold_ic = model.where(
 <details>
   <summary>Multiple feasible motifs exist; which one does the solver return?</summary>
 
-- This is constraint satisfaction, not optimisation. Any valid motif is a correct answer; the solver is free to return different ones across runs.
+- This is constraint satisfaction, not optimization. Any valid motif is a correct answer; the solver is free to return different ones across runs.
 - To enumerate all motifs (e.g., for an investigator queue), pass `solution_limit=N` to `problem.solve(...)` and iterate over `problem.num_points()` solutions.
-- To pin a single answer, switch to optimisation -- e.g. `problem.minimize(sum(Transaction.is_motif * Transaction.amount_dollars))` returns the motif with the smallest total laundered amount; or maximise to surface the largest scheme.
+- To pin a single answer, switch to optimization -- e.g. `problem.minimize(sum(Transaction.is_motif * Transaction.amount_dollars))` returns the motif with the smallest total laundered amount; or maximize to surface the largest scheme.
 
 </details>
 

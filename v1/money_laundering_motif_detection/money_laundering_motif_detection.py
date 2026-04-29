@@ -15,8 +15,8 @@ RelationalAI:
   requires the solver to balance the chosen edges' values against each
   other, which is the CSP arithmetic a graph-pattern / paths library
   cannot express.
-- Solve as constraint satisfaction (MiniZinc / Chuffed) and inspect the
-  detected motif.
+- Solve as constraint satisfaction (MiniZinc) and inspect the detected
+  motif.
 
 Run:
     `python money_laundering_motif_detection.py`
@@ -226,15 +226,15 @@ model.select(
 print(
     "\nPer-hub conservation residuals (in_amount - out_amount, must be in [-tolerance, +tolerance]):"
 )
-In = Transaction.ref()
-Out = Transaction.ref()
+T_in = Transaction.ref()
+T_out = Transaction.ref()
 model.select(
     Account.id.alias("hub_id"),
     Account.name.alias("hub_name"),
-    sum(In.amount_dollars * In.is_motif).per(In.dst).alias("in_amount"),
-    sum(Out.amount_dollars * Out.is_motif).per(Out.src).alias("out_amount"),
+    sum(T_in.amount_dollars * T_in.is_motif).per(T_in.dst).alias("in_amount"),
+    sum(T_out.amount_dollars * T_out.is_motif).per(T_out.src).alias("out_amount"),
 ).where(
-    In.dst == Account,
-    Out.src == Account,
+    T_in.dst == Account,
+    T_out.src == Account,
     Account.is_hub == 1,
 ).inspect()
