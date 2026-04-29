@@ -91,26 +91,28 @@ The same pattern applies to any test-data-generation problem where rows have to 
    python synthetic_order_lifecycle.py
    ```
 
-6. Expected output (the solver returns one feasible trace; the exact event types, timestamps, and quantities will vary):
+6. Expected output (the solver returns one feasible trace; the exact event types, timestamps, and quantities will vary across runs and with different solver versions):
    ```text
    Generated event trace (one row per slot):
-     order_id  symbol  event_id  ts_ms  is_place  is_modify  is_cancel  is_fill  qty  tick_price  venue_id
-            1   AAPL         1      1         1          0          0        0  100       17500         2
-            1   AAPL         2     42         0          0          0        1   60       17500         2
-            1   AAPL         3     87         0          0          0        1   40       17500         2
-            2   MSFT         4      1         1          0          0        0   50       35000         3
-            2   MSFT         5     30         0          1          0        0    1       35000         3
-            2   MSFT         6     12         0          0          0        1   25       35000         2
-            3   GOOG         7      1         1          0          0        0   75       14000         2
-            3   GOOG         8     50         0          0          0        1   30       14000         2
-            3   GOOG         9     71         0          0          1        0    1       14000         2
+     order_id symbol  event_id  ts_ms  is_place  is_modify  is_cancel  is_fill  qty  tick_price   venue
+            1   AAPL         1    999         0          1          0        0  100           1  NASDAQ
+            1   AAPL         2   1000         0          0          0        1  100           1  NASDAQ
+            1   AAPL         3    998         1          0          0        0  100           1  NASDAQ
+            2   MSFT         4   1000         0          1          0        0   50           1    ARCA
+            2   MSFT         5    998         1          0          0        0   50           1    ARCA
+            2   MSFT         6    999         0          0          0        1   50           1    ARCA
+            3   GOOG         7    998         1          0          0        0   75           1  NASDAQ
+            3   GOOG         8   1000         0          0          0        1   75           1  NASDAQ
+            3   GOOG         9    999         0          1          0        0   75           1  NASDAQ
 
    Filled quantity per order (cannot exceed Order.original_qty):
      order_id  original_qty  filled_qty
             1           100         100
-            2            50          25
-            3            75          30
+            2            50          50
+            3            75          75
    ```
+
+   Each order has exactly one PLACE event (the one with the smallest `ts_ms`), one FILL event, and one MODIFY event. Total filled quantity equals each order's `original_qty`.
 
 ## Template structure
 ```text
@@ -160,7 +162,7 @@ problem.solve_for(OrderEvent.is_place, type="bin", name=["is_place", OrderEvent.
 
 The four binary indicators are constrained to sum to 1 per event, so each slot picks exactly one type.
 
-**3. Encode the temporal regular-language rules.** Two pairwise rules over the same `OrderEvent` concept handle PLACE-first and nothing-after-CANCEL. A bounded big-M makes each rule vacuous whenever the indicator that activates it is 0:
+**3. Encode the temporal regular-language rules.** Two pairwise rules over the same `OrderEvent` concept handle PLACE-first and nothing-after-CANCEL. `implies` from `relationalai.semantics.reasoners.prescriptive` keeps each rule readable: `if premise then consequent`:
 
 ```python
 A = OrderEvent.ref()
@@ -170,18 +172,18 @@ place_first_ic = model.where(
     A.order(Order),
     B.order(Order),
     A.event_id != B.event_id,
-).require(B.ts_ms - A.ts_ms >= 1 - BIG_M_TS * (1 - A.is_place))
+).require(implies(A.is_place == 1, A.ts_ms < B.ts_ms))
 
 no_after_cancel_ic = model.where(
     A.order(Order),
     B.order(Order),
     A.event_id != B.event_id,
-).require(A.ts_ms - B.ts_ms >= 1 - BIG_M_TS * (1 - A.is_cancel))
+).require(implies(A.is_cancel == 1, A.ts_ms > B.ts_ms))
 ```
 
-Read each rule as: `if A is the activating event (place / cancel), the time-ordering inequality holds; otherwise the rule is vacuously satisfied`. A `distinct_ts_ic` constraint requires every event in an order to land at its own moment.
+A `distinct_ts_ic` constraint requires every event in an order to land at its own moment.
 
-**4. Tie PLACE events back to the order's original size and price.** Combined with a global `qty <= original_qty` bound, the big-M form pins PLACE events to the order's `original_qty`:
+**4. Tie PLACE events back to the order's original size.** Combined with a global `qty <= original_qty` bound, `implies` pins PLACE events to the order's `original_qty`:
 
 ```python
 qty_upper_ic = model.where(
@@ -190,26 +192,26 @@ qty_upper_ic = model.where(
 
 place_qty_match_ic = model.where(
     OrderEvent.order(Order),
-).require(
-    Order.original_qty - OrderEvent.qty <= BIG_M_QTY * (1 - OrderEvent.is_place)
-)
+).require(implies(OrderEvent.is_place == 1, OrderEvent.qty == Order.original_qty))
 ```
 
-**5. Constrain venue eligibility and total fill conservation.** The venue rule reads the relationship `Symbol.allows(int)` with a decision-variable argument; PyRel turns this into a table-style constraint over the event's `venue_id`. An auxiliary `fill_qty` decision is channelled to either `qty` (when `is_fill == 1`) or `0` (when `is_fill == 0`) by three big-M bounds, so the per-order conservation aggregate stays linear:
+**5. Constrain venue eligibility and total fill conservation.** Venue eligibility is encoded as a "disallowed pairs" Concept derived from the allowed list: every event must differ from each disallowed `(symbol_id, venue_id)` pair joined on the order's symbol. An auxiliary `fill_qty` decision is channelled to either `qty` (when `is_fill == 1`) or `0` (when `is_fill == 0`) with two `implies` rules, so the per-order conservation aggregate stays linear in `fill_qty`:
 
 ```python
+NA = NotAllowedSymbolVenue.ref()
 venue_ok_ic = model.where(
     OrderEvent.order(Order),
     Order.symbol(Symbol),
-).require(Symbol.allows(OrderEvent.venue_id))
+    Symbol.id(NA.symbol_id),
+).require(NA.venue_id != OrderEvent.venue_id)
 
-fill_qty_le_qty_ic = model.where(...).require(OrderEvent.fill_qty <= OrderEvent.qty)
-fill_qty_zero_off_ic = model.where(...).require(
-    OrderEvent.fill_qty <= BIG_M_QTY * OrderEvent.is_fill
-)
-fill_qty_match_on_ic = model.where(...).require(
-    OrderEvent.qty - OrderEvent.fill_qty <= BIG_M_QTY * (1 - OrderEvent.is_fill)
-)
+fill_qty_match_on_ic = model.where(
+    OrderEvent.order(Order),
+).require(implies(OrderEvent.is_fill == 1, OrderEvent.fill_qty == OrderEvent.qty))
+
+fill_qty_zero_off_ic = model.where(
+    OrderEvent.order(Order),
+).require(implies(OrderEvent.is_fill == 0, OrderEvent.fill_qty == 0))
 
 fill_sum_ic = model.where(
     OrderEvent.order(Order),
@@ -224,8 +226,7 @@ problem.solve_info().display()
 problem.verify(
     type_sum_ic, exactly_one_place_ic, at_most_one_cancel_ic, distinct_ts_ic,
     place_first_ic, no_after_cancel_ic, qty_upper_ic, place_qty_match_ic,
-    venue_ok_ic, fill_qty_le_qty_ic, fill_qty_zero_off_ic, fill_qty_match_on_ic,
-    fill_sum_ic,
+    venue_ok_ic, fill_qty_match_on_ic, fill_qty_zero_off_ic, fill_sum_ic,
 )
 model.require(problem.termination_status() == "OPTIMAL")
 ```
@@ -234,7 +235,7 @@ model.require(problem.termination_status() == "OPTIMAL")
 
 - **Use your own pool** by replacing the five CSV files with your symbols, venues, allowed (symbol, venue) pairs, orders, and event slots. The constraint structure does not change. Add more events per order to allow longer traces; the model adapts to the number of rows in `events.csv`.
 - **Force a CANCEL on every order** by changing `at_most_one_cancel_ic` from `<= 1` to `== 1`, then bumping the per-order event count so the order has room for a `PLACE` plus other events before the `CANCEL`.
-- **Add the inverse rule "no MODIFY after FILL"** with another pairwise big-M constraint mirroring `no_after_cancel_ic` (require `A.ts_ms - B.ts_ms >= 1 - BIG_M_TS * (1 - A.is_modify)` whenever `B` is a fill -- i.e. wedge a `B.is_fill == 1` filter into the `where` clause and keep the same indicator-style implication on the modify side).
+- **Add the inverse rule "no MODIFY after FILL"** by adding `B.is_fill == 1` to the `where` clause and writing `require(implies(A.is_modify == 1, A.ts_ms < B.ts_ms))`. Same shape as `no_after_cancel_ic`.
 - **Generate a "smallest violating trace" instead of a positive trace** by negating one of the rules (e.g. drop `no_after_cancel_ic` and add `model.require(sum(A.is_cancel + B.is_fill - 1).per(Order) >= 0)` plus a temporal predicate) and minimising the number of events. The model is already in optimisation-ready shape -- the termination-status gate stays at `"OPTIMAL"`.
 - **Replace the synthetic time horizon** by reading `ts_ms` bounds from your real session schedule (market open / market close) and updating `TS_MIN` / `TS_MAX`.
 
