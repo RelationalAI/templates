@@ -1,9 +1,9 @@
 id,name,bo_id
-1,WireRecipientCorp,500
-2,ShellAccA,100
-3,ShellAccB,100
-4,ShellAccC,100
-5,ShellAccD,100
+1,SourceShellCorp,600
+2,HubAccA,100
+3,HubAccB,100
+4,HubAccC,100
+5,WireRecipientCorp,700
 6,IndividualX,200
 7,IndividualY,300
 8,LegitBusinessZ,400

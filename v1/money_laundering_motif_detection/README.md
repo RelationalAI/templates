@@ -1,6 +1,6 @@
 ---
 title: "Money-Laundering Motif Detection"
-description: "Detect smurfing fan-in patterns in a transaction graph using a CSP solver: K under-threshold transactions from a single beneficial-owner cluster into one destination, all within a tight time window."
+description: "Detect layering 'butterfly' patterns in a transaction graph using a CSP solver: a source routing under-threshold amounts through K beneficial-owner-clustered hubs to a single destination, with per-hub flow conservation in dollar amounts."
 featured: false
 experience_level: intermediate
 industry: "Banking"
@@ -18,26 +18,26 @@ tags:
 
 ## What this template is for
 
-Banking compliance and financial-crime teams hunt for "smurfing" -- a money-laundering pattern where a single recipient receives many small deposits from a cluster of intermediary accounts, each transaction kept under the FinCEN reporting threshold ($10,000) so it never triggers a currency-transaction report (CTR). The intermediaries -- "smurfs" -- typically share a beneficial owner: a single human or shell entity behind multiple accounts. The signal is structural: K accounts in the same owner cluster fan into one destination inside a tight time window, and every transaction sits just under the threshold.
+Banking compliance and financial-crime teams hunt for "layering" -- a money-laundering pattern where a launderer routes funds from one source account through a cluster of intermediary accounts to a single destination, splitting each leg under the FinCEN reporting threshold ($10,000) so no transaction triggers a currency-transaction report (CTR). The intermediaries -- "hubs" -- share a beneficial owner: a single human or shell entity behind multiple accounts, who absorbs a small fee at each hop and forwards the rest. The signal is structural and arithmetic: K hubs receive from the source and forward to a destination, where each hub's incoming dollar amount equals its outgoing amount within a tight tolerance.
 
-This template encodes the smurfing motif as a constraint satisfaction model. The solver decides which transactions are part of the motif and which accounts play which role (`is_smurf`, `is_dest`); flow-conservation constraints over the directed transaction graph couple edge-selection to role-assignment, so any returned solution is a structurally valid motif. Threshold and time-window predicates filter at relational time, so amounts never need to be aggregated across decision variables -- the model stays CSP-pure.
+This template encodes the layering motif as a constraint satisfaction model. The solver decides which transactions are part of the motif and which accounts play which role (`is_source`, `is_hub`, `is_dest`); per-account flow conservation in count couples edge-selection to role-assignment, while per-hub flow conservation in *dollar amounts* pulls the model beyond pure pattern-matching -- the solver must balance the chosen edges' values against each other, which is the CSP arithmetic that a graph-pattern / paths library cannot express.
 
-The same pattern applies to other graph motif-detection problems: collusion rings in marketplace fraud, ration-card sharing patterns in welfare fraud, recurring-billing abuse in subscription services -- any case where the signal is "K accounts in the same cluster forming a fixed shape against a single hub".
+The same pattern applies to other graph motif-detection problems where the signal is "K accounts in the same cluster forming a fixed shape with arithmetic balance across decision-selected edges": collusion rings in marketplace fraud, ration-card sharing in welfare fraud, recurring-billing abuse with fee splitting in subscription services.
 
 ## Who this is for
 
 - Bank financial-crime / AML compliance teams investigating layering patterns
 - Fintech risk engineers building structuring-detection alert pipelines
 - Bank IT teams building investigative tools that surface candidate cases for human review
-- Operations researchers learning subgraph motif enumeration as a CSP problem
+- Operations researchers learning subgraph motif enumeration with flow conservation as a CSP problem
 
 ## What you'll build
 
-- A constraint model with three binary decision streams: `Transaction.is_motif` (which transactions are part of the motif), `Account.is_smurf` and `Account.is_dest` (which accounts play which role)
-- Per-account flow-conservation constraints over the directed transaction graph (each smurf has out-degree 1 in the motif; the destination has in-degree K)
-- Filter-style threshold and time-window predicates encoded as `where`-filtered linear sums (no aggregation across decision variables)
-- Same-beneficial-owner clustering encoded as a pairwise constraint
-- Post-solve verification via `problem.verify()` confirming every named constraint holds in the returned solution
+- A constraint model with four binary decision streams: `Transaction.is_motif` (which transactions are part of the motif) and `Account.is_source` / `Account.is_hub` / `Account.is_dest` (which accounts play which role)
+- Per-account flow conservation in *count* over the directed transaction graph (source has out-degree K, each hub has in-degree 1 and out-degree 1, destination has in-degree K)
+- Per-hub flow conservation in *dollar amount*: each hub forwards what it receives, within `CONSERVATION_TOLERANCE_DOLLARS`. Written with `implies` so the constraint activates only on accounts the solver picks as hubs -- no big-M coefficient
+- Filter-style threshold and same-beneficial-owner predicates encoded as `where`-filtered linear constraints
+- Post-solve verification via `problem.verify()` confirming every relational constraint holds in the returned solution
 
 ## What's included
 
@@ -88,23 +88,33 @@ The same pattern applies to other graph motif-detection problems: collusion ring
    python money_laundering_motif_detection.py
    ```
 
-6. Expected output (the solver returns one feasible motif; the exact selection of smurfs may vary across runs and with different solver versions, since several account combinations satisfy the structural and ownership constraints):
+6. Expected output (one feasible motif; the exact account selection may vary across runs and solver versions):
    ```text
-   Detected smurfing motif (one row per motif transaction):
-     tx_id  src_account_id    src_name  dst_account_id           dst_name  amount  ts_min
-         2               3   ShellAccB               1  WireRecipientCorp    9500      15
-         3               4   ShellAccC               1  WireRecipientCorp    8500      12
-         4               5   ShellAccD               1  WireRecipientCorp    7800      20
+   Detected layering motif (one row per motif transaction):
+     tx_id  src_account_id          src_name  dst_account_id           dst_name  amount  ts_min
+         1               1   SourceShellCorp               2            HubAccA    9000       5
+         2               1   SourceShellCorp               3            HubAccB    8500       7
+         3               1   SourceShellCorp               4            HubAccC    9500       9
+         4               2           HubAccA               5  WireRecipientCorp    8980      15
+         5               3           HubAccB               5  WireRecipientCorp    8475      17
+         6               4           HubAccC               5  WireRecipientCorp    9420      19
 
    Motif accounts (roles and beneficial owner):
-     account_id               name  bo_id  is_dest  is_smurf
-              1  WireRecipientCorp    500        1         0
-              3          ShellAccB    100        0         1
-              4          ShellAccC    100        0         1
-              5          ShellAccD    100        0         1
+     account_id               name  bo_id  is_source  is_hub  is_dest
+              1    SourceShellCorp    600          1       0        0
+              2            HubAccA    100          0       1        0
+              3            HubAccB    100          0       1        0
+              4            HubAccC    100          0       1        0
+              5  WireRecipientCorp    700          0       0        1
+
+   Per-hub conservation residuals (in_amount - out_amount, must be in [-tolerance, +tolerance]):
+     hub_id  hub_name  in_amount  out_amount
+          2   HubAccA       9000        8980
+          3   HubAccB       8500        8475
+          4   HubAccC       9500        9420
    ```
 
-   The destination `WireRecipientCorp` receives three under-threshold deposits from three smurf accounts, all sharing beneficial owner `100`, all within an 8-minute span.
+   `SourceShellCorp` routes three under-threshold deposits through three hub accounts (all sharing beneficial owner `100`) to `WireRecipientCorp`. Each hub absorbs a small "fee" residual ($20, $25, $80) -- well within the $100 tolerance -- before forwarding the balance.
 
 ## Template structure
 ```text
@@ -121,18 +131,33 @@ The same pattern applies to other graph motif-detection problems: collusion ring
 
 The solver decides which transactions are in the motif and which accounts play which role. The headline patterns:
 
-**Per-account flow conservation couples edge selection to role assignment.** Summing `Transaction.is_motif` per source account and joining the result against `Account.is_smurf` is one constraint; the same shape against `Transaction.dst` and `K * Account.is_dest` is the other. These two ICs alone force the solver into a valid smurfing structure -- non-smurf accounts have zero outgoing motif edges, and only the destination receives the full K incoming edges:
+**Per-account flow conservation in *count* couples edge selection to role assignment.** Summing `Transaction.is_motif` per source account against `K * is_source + is_hub`, and per destination account against `is_hub + K * is_dest`, forces the solver into a structurally valid butterfly: source has out-degree K, each hub has out-degree 1 and in-degree 1, destination has in-degree K:
 
 ```python
 out_flow_ic = model.where(Transaction.src == Account).require(
-    sum(Transaction.is_motif).per(Transaction.src) == Account.is_smurf
+    sum(Transaction.is_motif).per(Transaction.src) == K * Account.is_source + Account.is_hub
 )
 in_flow_ic = model.where(Transaction.dst == Account).require(
-    sum(Transaction.is_motif).per(Transaction.dst) == K * Account.is_dest
+    sum(Transaction.is_motif).per(Transaction.dst) == Account.is_hub + K * Account.is_dest
 )
 ```
 
-**Filter framing keeps the model CSP-pure -- the threshold is a per-transaction predicate, never an aggregate over decisions.** The `where` clause filters at relational time to over-threshold rows; the constraint then forces those transactions out of the motif:
+**Per-hub flow conservation in *amount* is the CSP signature -- this is the constraint a paths library cannot express.** For every account the solver assigns as a hub, the dollar amount it receives via motif edges must equal what it forwards, within `CONSERVATION_TOLERANCE_DOLLARS`. The `implies` form is the natural CSP encoding (a half-reified linear constraint) and reads as "if A is a hub, balance":
+
+```python
+T_in = Transaction.ref()
+T_out = Transaction.ref()
+conservation_pos_ic = model.where(T_in.dst == Account, T_out.src == Account).require(
+    implies(
+        Account.is_hub == 1,
+        sum(T_in.amount_dollars * T_in.is_motif).per(T_in.dst)
+        - sum(T_out.amount_dollars * T_out.is_motif).per(T_out.src)
+        <= CONSERVATION_TOLERANCE_DOLLARS,
+    )
+)
+```
+
+**Filter framing keeps amount thresholds out of the decision aggregate.** The `where` clause filters at relational time to over-threshold rows; the constraint then forces those transactions out of the motif. Same shape for the same-beneficial-owner cluster filter on hub pairs:
 
 ```python
 amount_threshold_ic = model.where(
@@ -140,23 +165,14 @@ amount_threshold_ic = model.where(
 ).require(Transaction.is_motif == 0)
 ```
 
-**Pairwise constraints with `where`-side data filters are the cleanest way to express "for any two rows that violate condition X, at most one can be selected".** Time-window and same-beneficial-owner both follow this shape -- the data-side filter makes the constraint a small set of pure-arithmetic bounds, all re-evaluable by `problem.verify()`:
-
-```python
-T1 = Transaction.ref()
-T2 = Transaction.ref()
-time_window_ic = model.where(
-    T1.ts_minutes + TIME_WINDOW_MINUTES < T2.ts_minutes,
-).require(T1.is_motif + T2.is_motif <= 1)
-```
-
 ## Customize this template
 
-- **Use your own data** by replacing the two CSV files with your accounts and transactions. The constraint structure does not change. `bo_id` should reflect your beneficial-ownership data; if you don't have it, set every row's `bo_id` to a single placeholder and drop `same_bo_ic`.
-- **Change the smurf count** by adjusting `K` at the top of the script. K = 3 is the smallest fan-in that's clearly a pattern; real cases often involve 5--20 smurfs.
-- **Tune the threshold and window** by editing `AMOUNT_THRESHOLD_DOLLARS` and `TIME_WINDOW_MINUTES`. The FinCEN CTR threshold is $10,000; some banks set internal flagging thresholds lower. The window depends on the laundering tempo you're modelling -- minutes for high-frequency layering, days or weeks for slower schemes.
-- **Adapt to the K-cycle motif** (round-robin laundering: K accounts cycle money through a closed loop) by swapping the role binaries (`is_smurf`, `is_dest`) for a single `Account.is_in_cycle` binary and changing the per-account flow conservation to `out_count == in_count == is_in_cycle`. Pairwise edge-existence is unchanged.
-- **Adapt to the butterfly-cluster motif** (one source fans out to K hubs, each hub fans out to M leaves) by adding a third role binary (`is_hub`) and a second flow-conservation pair driving hub-to-leaf edges.
+- **Use your own data** by replacing the two CSV files with your accounts and transactions. The constraint structure does not change. `bo_id` should reflect your beneficial-ownership data; if you don't have it, set every row's `bo_id` to a single placeholder and drop `same_bo_ic`. Hub candidates need at least one incoming and one outgoing transaction in your graph (the source needs K outgoing, the destination K incoming) -- the count flow ICs only bind on accounts that appear on both sides of the transaction edges.
+- **Change the hub count** by adjusting `K` at the top of the script. K = 3 is the smallest count that's clearly a fan-out-then-fan-in pattern; real layering schemes often involve 5--20 hubs.
+- **Tune the threshold and conservation tolerance** by editing `AMOUNT_THRESHOLD_DOLLARS` and `CONSERVATION_TOLERANCE_DOLLARS`. The FinCEN CTR threshold is $10,000; the conservation tolerance should reflect the per-hop fee size in your scheme (real-world layering typically takes 1--3% per hop, so $100 on $9,000 is on the low end).
+- **Drop conservation to recover a smurfing fan-in motif** -- the simpler "K under-threshold deposits converge on one destination" pattern. Remove the source role and the conservation IC, set per-account out-flow to `Account.is_smurf` (no source K-fan), and you get the smurfing detector with no source-side modelling.
+- **Adapt to the K-cycle motif** (round-robin laundering: K accounts cycle money through a closed loop) by swapping the role binaries for a single `Account.is_in_cycle` binary and changing the per-account flow conservation in count to `out_count == in_count == is_in_cycle`. Per-hub conservation in amount carries over per-cycle-node.
+- **Add a time-window filter** by adding a pairwise constraint over motif transactions: `model.where(T1.ts_minutes + WINDOW < T2.ts_minutes).require(T1.is_motif + T2.is_motif <= 1)`. Useful when your scheme runs on a known cadence (minutes for high-frequency layering; days or weeks for slower schemes).
 
 ## Learn more
 
@@ -166,15 +182,15 @@ time_window_ic = model.where(
 
 **Motif-detection technique** (the academic backbone for "find a small fixed subgraph in a large transaction graph"):
 - Starnini et al., [*Smurf-Based Anti-Money-Laundering in Time-Evolving Transaction Networks*](https://www.isi.it/wp-content/uploads/2024/01/smurf-based-anti-money-laundering-in-time-evolving-transaction-networks_Starnini2021_Chapter_Smurf-BasedAnti-moneyLaunderin.pdf). The structural definition of smurfing in temporal transaction graphs.
-- Pareja et al., [*The Shape of Money Laundering: Subgraph Representation Learning on the Blockchain*](https://arxiv.org/pdf/2404.19109). Subgraph patterns in laundering schemes.
+- Pareja et al., [*The Shape of Money Laundering: Subgraph Representation Learning on the Blockchain*](https://arxiv.org/pdf/2404.19109). Subgraph patterns in laundering schemes (including butterfly clusters).
 
 ## Troubleshooting
 
 <details>
   <summary>Solver returns INFEASIBLE</summary>
 
-- The data may not contain a structurally valid motif. With `K = 3`, you need at least one account that receives three under-threshold transactions from three distinct accounts that share a beneficial owner, all within `TIME_WINDOW_MINUTES`. Loosen the constraints (raise `AMOUNT_THRESHOLD_DOLLARS`, raise `TIME_WINDOW_MINUTES`, drop `K`) to confirm whether the data or the constraints are too tight.
-- Beneficial-ownership data inconsistencies: if every account has a unique `bo_id`, no pair of accounts can be smurfs together (the `same_bo_ic` constraint forbids it). Confirm at least one cluster of K accounts shares a `bo_id`.
+- The data may not contain a structurally valid butterfly. With `K = 3`, you need at least one account that fans out to three distinct accounts (under threshold each) which then converge on a single destination (under threshold each), where each hub's incoming amount matches its outgoing amount within `CONSERVATION_TOLERANCE_DOLLARS`. Relax constraints one at a time -- raise `CONSERVATION_TOLERANCE_DOLLARS`, raise `AMOUNT_THRESHOLD_DOLLARS`, drop `K` -- to confirm whether the data or a specific constraint is the bottleneck.
+- Beneficial-ownership data inconsistencies: if every account has a unique `bo_id`, no pair of accounts can be hubs together (the `same_bo_ic` constraint forbids it). Confirm at least one cluster of K accounts shares a `bo_id`.
 - All under-threshold transactions go to different destinations: the destination is forced to receive K motif transactions, so K under-threshold transactions must converge on the same recipient.
 
 </details>
@@ -184,7 +200,7 @@ time_window_ic = model.where(
 
 - This is constraint satisfaction, not optimisation. Any valid motif is a correct answer; the solver is free to return different ones across runs.
 - To enumerate all motifs (e.g., for an investigator queue), pass `solution_limit=N` to `problem.solve(...)` and iterate over `problem.num_points()` solutions.
-- To pin a single answer, switch to optimisation -- e.g. `problem.minimize(sum(Transaction.is_motif * Transaction.amount_dollars))` returns the motif with the smallest total laundered amount.
+- To pin a single answer, switch to optimisation -- e.g. `problem.minimize(sum(Transaction.is_motif * Transaction.amount_dollars))` returns the motif with the smallest total laundered amount; or maximise to surface the largest scheme.
 
 </details>
 
@@ -208,6 +224,6 @@ time_window_ic = model.where(
   <summary>MiniZinc solver not available</summary>
 
 - This template uses the MiniZinc constraint solver. Ensure the RAI Native App version supports MiniZinc.
-- HiGHS is not appropriate here -- this is a discrete satisfaction model with categorical decisions, not LP/MILP.
+- HiGHS is not appropriate here -- this is a discrete satisfaction model with categorical decisions and structural propagation, not LP/MILP.
 
 </details>
