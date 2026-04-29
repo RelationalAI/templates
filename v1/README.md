@@ -21,6 +21,7 @@ This directory contains the templates for v1. Each template folder includes its 
 | [machine_maintenance](./machine_maintenance/) | A multi-reasoner template that chains querying, graph analysis, rules-based classification, and prescriptive optimization to schedule preventive maintenance, surface hidden operational risk, and recommend cross-training to eliminate concentration vulnerabilities. |
 | [order_fulfillment](./order_fulfillment/) | Assign customer orders to fulfillment centers to minimize total shipping and fixed operating costs. |
 | [portfolio_balancing](./portfolio_balancing/) | Multi-reasoner template: rules-based compliance, covariance clustering, and bi-objective Markowitz optimization with a crisis-regime stress test. |
+| [product_configurator](./product_configurator/) | Pick options per slot to assemble a buildable product subject to feature-model rules, regional regulations, and a price ceiling. |
 | [production_planning](./production_planning/) | Schedule production across machines to meet demand and maximize profit with scenario analysis. |
 | [rai-agent-scaffold](./rai-agent-scaffold/) | Scaffold for packaging a RelationalAI semantic model as a Snowflake Cortex agent and exposing it through Snowflake Intelligence. |
 | [retail_markdown](./retail_markdown/) | Set discount levels across weeks to maximize revenue while clearing inventory. |
