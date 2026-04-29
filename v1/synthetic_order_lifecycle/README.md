@@ -189,52 +189,46 @@ distinct_ts_ic = model.require(
 )
 ```
 
-**4. Tie PLACE events back to the order's original size.** Combined with a global `qty <= original_qty` bound, `implies` pins PLACE events to the order's `original_qty`:
+**4. Tie PLACE events back to the order's original size.** Combined with a global `qty <= original_qty` bound, `implies` pins PLACE events to the order's `original_qty`. The `OrderEvent.order.original_qty` chain reads the order's property in line, no separate `Order` ref needed:
 
 ```python
-qty_upper_ic = model.where(
-    OrderEvent.order(Order),
-).require(OrderEvent.qty <= Order.original_qty)
+qty_upper_ic = model.require(OrderEvent.qty <= OrderEvent.order.original_qty)
 
-place_qty_match_ic = model.where(
-    OrderEvent.order(Order),
-).require(implies(OrderEvent.is_place == 1, OrderEvent.qty == Order.original_qty))
+place_qty_match_ic = model.require(
+    implies(OrderEvent.is_place == 1, OrderEvent.qty == OrderEvent.order.original_qty)
+)
 ```
 
-**5. Constrain venue eligibility and total fill conservation.** Venue eligibility is encoded as a "disallowed pairs" Concept derived from the allowed list: every event must differ from each disallowed `(symbol_id, venue_id)` pair joined on the order's symbol. An auxiliary `fill_qty` decision is channelled to either `qty` (when `is_fill == 1`) or `0` (when `is_fill == 0`) with two `implies` rules, so the per-order conservation aggregate stays linear in `fill_qty`:
+**5. Constrain venue eligibility and total fill conservation.** Venue eligibility is encoded as a "disallowed pairs" Concept derived from the allowed list: every event must differ from each disallowed `(symbol_id, venue_id)` pair joined on the order's symbol. Chaining `OrderEvent.order.symbol.id` walks event → order → symbol → id without binding any intermediate refs. An auxiliary `fill_qty` decision is channelled to either `qty` (when `is_fill == 1`) or `0` (when `is_fill == 0`) with two `implies` rules, so the per-order conservation aggregate stays linear in `fill_qty`:
 
 ```python
 NA = NotAllowedSymbolVenue.ref()
 venue_ok_ic = model.where(
-    OrderEvent.order(Order),
-    Order.symbol(Symbol),
-    Symbol.id(NA.symbol_id),
+    OrderEvent.order.symbol.id(NA.symbol_id),
 ).require(NA.venue_id != OrderEvent.venue_id)
 
-fill_qty_match_on_ic = model.where(
-    OrderEvent.order(Order),
-).require(implies(OrderEvent.is_fill == 1, OrderEvent.fill_qty == OrderEvent.qty))
+fill_qty_match_on_ic = model.require(
+    implies(OrderEvent.is_fill == 1, OrderEvent.fill_qty == OrderEvent.qty)
+)
 
-fill_qty_zero_off_ic = model.where(
-    OrderEvent.order(Order),
-).require(implies(OrderEvent.is_fill == 0, OrderEvent.fill_qty == 0))
+fill_qty_zero_off_ic = model.require(
+    implies(OrderEvent.is_fill == 0, OrderEvent.fill_qty == 0)
+)
 
-fill_sum_ic = model.where(
-    OrderEvent.order(Order),
-).require(sum(OrderEvent.fill_qty).per(Order) <= Order.original_qty)
+fill_sum_ic = model.require(
+    sum(OrderEvent.fill_qty).per(OrderEvent.order) <= OrderEvent.order.original_qty
+)
 ```
 
-**6. Solve and verify.** A single solve returns one feasible trace. After solving, `problem.verify()` fires the named constraints to confirm the trace satisfies every rule, and the termination-status gate asserts the solver reported `OPTIMAL` (MiniZinc returns `OPTIMAL` for any feasible solution under a pure satisfaction model):
+**6. Solve and verify.** A single solve returns one feasible trace. `problem.verify()` re-evaluates only the constraints written in plain relational arithmetic; `implies` and `all_different` are solver-only wire-format relations evaluated by MiniZinc, so they are passed to `satisfy()` but omitted from `verify()`. The termination-status gate asserts the solver reported `OPTIMAL` (MiniZinc returns `OPTIMAL` for any feasible solution under a pure satisfaction model):
 
 ```python
 problem.solve("minizinc", time_limit_sec=60)
 problem.solve_info().display()
 problem.verify(
     type_sum_ic, exactly_one_place_ic, at_most_one_cancel_ic,
-    place_first_ic, no_after_cancel_ic, qty_upper_ic, place_qty_match_ic,
-    venue_ok_ic, fill_qty_match_on_ic, fill_qty_zero_off_ic, fill_sum_ic,
+    qty_upper_ic, venue_ok_ic, fill_sum_ic,
 )
-# distinct_ts_ic is omitted -- all_different is solver-only, not in verify().
 model.require(problem.termination_status() == "OPTIMAL")
 ```
 
