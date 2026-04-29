@@ -16,11 +16,10 @@ Modeling approach:
   (is_place / is_modify / is_cancel / is_fill) whose sum is 1.
 - All decisions are integer; prices are integer ticks (1c), times are
   integer milliseconds, quantities are integer shares.
-- Conditional rules (PLACE-first, nothing-after-CANCEL, PLACE-qty matches the
-  original order qty) are encoded with a bounded big-M so the model stays
-  linear. Fill-quantity conservation uses an auxiliary `fill_qty` integer
-  variable channelled to (qty when is_fill else 0) by three big-M bounds,
-  keeping the cross-table aggregate linear too.
+- Conditional rules (PLACE-first, nothing-after-CANCEL, PLACE-qty matches
+  the original order qty, FILL channelling) are written with `implies`,
+  so each rule reads as 'if premise then consequent' rather than as a
+  hand-derived big-M reformulation.
 
 Run:
     `python synthetic_order_lifecycle.py`
@@ -33,9 +32,9 @@ Output:
 
 from pathlib import Path
 
-from pandas import read_csv
+from pandas import DataFrame, read_csv
 from relationalai.semantics import Integer, Model, String, sum
-from relationalai.semantics.reasoners.prescriptive import Problem
+from relationalai.semantics.reasoners.prescriptive import Problem, implies
 
 # Runner-level parameters.
 # One solve = one synthetic trace over the fixed (order, event-slot) pool.
@@ -63,14 +62,28 @@ Venue.name = model.Property(f"{Venue} has {String:name}")
 venues_csv = read_csv(data_dir / "venues.csv")
 model.define(Venue.new(model.data(venues_csv).to_schema()))
 
-# Relationship: which venue ids each symbol allows
-# Used as a table-style constraint over the event's venue_id decision variable.
-Symbol.allows = model.Relationship(f"{Symbol} allows venue {Integer:venue_id}")
+# Concept: disallowed (symbol, venue) pairs.
+# We derive this from the allowed list in symbol_venues.csv. The CSP encoding
+# below requires `event.venue_id != disallowed_venue_id` for every disallowed
+# pair whose symbol matches the event's order. This is the dual of "venue is
+# allowed for symbol" and keeps the constraint inside the supported arithmetic
+# (!=, *, +, -, ...).
 sv_csv = read_csv(data_dir / "symbol_venues.csv")
-sv_data = model.data(sv_csv)
-model.define(Symbol.allows(sv_data.venue_id)).where(
-    Symbol.id(sv_data.symbol_id),
+all_pairs = [(int(s), int(v)) for s in symbols_csv["id"] for v in venues_csv["id"]]
+allowed_pairs = {(int(r.symbol_id), int(r.venue_id)) for r in sv_csv.itertuples()}
+disallowed_csv = DataFrame(
+    [
+        {"symbol_id": s, "venue_id": v}
+        for (s, v) in all_pairs
+        if (s, v) not in allowed_pairs
+    ]
 )
+
+NotAllowedSymbolVenue = model.Concept(
+    "NotAllowedSymbolVenue",
+    identify_by={"symbol_id": Integer, "venue_id": Integer},
+)
+model.define(NotAllowedSymbolVenue.new(model.data(disallowed_csv).to_schema()))
 
 # Concept: orders (the surveillance subjects)
 Order = model.Concept("Order", identify_by={"id": Integer})
@@ -143,11 +156,6 @@ problem.solve_for(
     OrderEvent.fill_qty, name=["fill_qty", OrderEvent.event_id], lower=0, upper=qty_max
 )
 
-# Big-M for reified ts_ms ordering rules (any feasible time difference fits).
-BIG_M_TS = TS_MAX - TS_MIN + 1
-# Big-M for reified PLACE-qty equality (qty domain is [1, qty_max]).
-BIG_M_QTY = qty_max
-
 # --------------------------------------------------
 # Constraints
 # --------------------------------------------------
@@ -184,23 +192,22 @@ distinct_ts_ic = model.where(
 ).require(A.ts_ms != B.ts_ms)
 problem.satisfy(distinct_ts_ic)
 
-# PLACE-first: if A is the PLACE event in an order, A.ts_ms < B.ts_ms for every
-# other event B in the same order. Reified via big-M so the rule is vacuous
-# whenever A.is_place == 0.
+# PLACE-first: if A is a PLACE event, A.ts_ms < B.ts_ms for every other
+# event B in the same order.
 place_first_ic = model.where(
     A.order(Order),
     B.order(Order),
     A.event_id != B.event_id,
-).require(B.ts_ms - A.ts_ms >= 1 - BIG_M_TS * (1 - A.is_place))
+).require(implies(A.is_place == 1, A.ts_ms < B.ts_ms))
 problem.satisfy(place_first_ic)
 
 # Nothing-after-CANCEL: if A is a CANCEL event, A.ts_ms > B.ts_ms for every
-# other event B in the same order. Same big-M reification.
+# other event B in the same order.
 no_after_cancel_ic = model.where(
     A.order(Order),
     B.order(Order),
     A.event_id != B.event_id,
-).require(A.ts_ms - B.ts_ms >= 1 - BIG_M_TS * (1 - A.is_cancel))
+).require(implies(A.is_cancel == 1, A.ts_ms > B.ts_ms))
 problem.satisfy(no_after_cancel_ic)
 
 # Quantity bound: every event's qty <= the order's original_qty.
@@ -209,38 +216,34 @@ qty_upper_ic = model.where(
 ).require(OrderEvent.qty <= Order.original_qty)
 problem.satisfy(qty_upper_ic)
 
-# PLACE event's qty equals the order's original_qty. Combined with qty_upper_ic
-# above, this enforces equality only when is_place == 1.
+# PLACE event's qty matches the order's original_qty.
 place_qty_match_ic = model.where(
     OrderEvent.order(Order),
-).require(Order.original_qty - OrderEvent.qty <= BIG_M_QTY * (1 - OrderEvent.is_place))
+).require(implies(OrderEvent.is_place == 1, OrderEvent.qty == Order.original_qty))
 problem.satisfy(place_qty_match_ic)
 
-# Venue eligibility: the chosen venue_id must be one the symbol allows.
-# Symbol.allows is a relationship populated from data; the .require checks the
-# decision variable against this relation as a table-style constraint.
+# Venue eligibility: the chosen venue_id must not match any disallowed
+# (symbol, venue) pair for the order's symbol. Encoded as a !=  inequality
+# over each disallowed pair; the join through Symbol.id picks only pairs
+# that share the order's symbol.
+NA = NotAllowedSymbolVenue.ref()
 venue_ok_ic = model.where(
     OrderEvent.order(Order),
     Order.symbol(Symbol),
-).require(Symbol.allows(OrderEvent.venue_id))
+    Symbol.id(NA.symbol_id),
+).require(NA.venue_id != OrderEvent.venue_id)
 problem.satisfy(venue_ok_ic)
 
-# Channel fill_qty to (qty when is_fill else 0) via three big-M bounds.
-# Together they pin fill_qty == qty when is_fill == 1 and fill_qty == 0 otherwise.
-fill_qty_le_qty_ic = model.where(
+# Channel fill_qty to (qty when is_fill else 0).
+fill_qty_match_on_ic = model.where(
     OrderEvent.order(Order),
-).require(OrderEvent.fill_qty <= OrderEvent.qty)
-problem.satisfy(fill_qty_le_qty_ic)
+).require(implies(OrderEvent.is_fill == 1, OrderEvent.fill_qty == OrderEvent.qty))
+problem.satisfy(fill_qty_match_on_ic)
 
 fill_qty_zero_off_ic = model.where(
     OrderEvent.order(Order),
-).require(OrderEvent.fill_qty <= BIG_M_QTY * OrderEvent.is_fill)
+).require(implies(OrderEvent.is_fill == 0, OrderEvent.fill_qty == 0))
 problem.satisfy(fill_qty_zero_off_ic)
-
-fill_qty_match_on_ic = model.where(
-    OrderEvent.order(Order),
-).require(OrderEvent.qty - OrderEvent.fill_qty <= BIG_M_QTY * (1 - OrderEvent.is_fill))
-problem.satisfy(fill_qty_match_on_ic)
 
 # Quantity conservation: total filled quantity across an order's FILL events
 # cannot exceed the original_qty. Linear in fill_qty.
@@ -268,9 +271,8 @@ problem.verify(
     qty_upper_ic,
     place_qty_match_ic,
     venue_ok_ic,
-    fill_qty_le_qty_ic,
-    fill_qty_zero_off_ic,
     fill_qty_match_on_ic,
+    fill_qty_zero_off_ic,
     fill_sum_ic,
 )
 model.require(problem.termination_status() == "OPTIMAL")
@@ -291,10 +293,11 @@ model.select(
     OrderEvent.is_fill.alias("is_fill"),
     OrderEvent.qty.alias("qty"),
     OrderEvent.tick_price.alias("tick_price"),
-    OrderEvent.venue_id.alias("venue_id"),
+    Venue.name.alias("venue"),
 ).where(
     OrderEvent.order(Order),
     Order.symbol(Symbol),
+    Venue.id(OrderEvent.venue_id),
 ).inspect()
 
 print("\nFilled quantity per order (cannot exceed Order.original_qty):")
