@@ -238,6 +238,16 @@ model.require(problem.termination_status() == "OPTIMAL")
 - **Generate a "smallest violating trace" instead of a positive trace** by negating one of the rules (e.g. drop `no_after_cancel_ic` and add `model.require(sum(A.is_cancel + B.is_fill - 1).per(Order) >= 0)` plus a temporal predicate) and minimising the number of events. The model is already in optimisation-ready shape -- the termination-status gate stays at `"OPTIMAL"`.
 - **Replace the synthetic time horizon** by reading `ts_ms` bounds from your real session schedule (market open / market close) and updating `TS_MIN` / `TS_MAX`.
 
+## Learn more
+
+**Domain rule sources** (where the order-event sequencing rules come from):
+- ESMA, [*RTS 24 -- Maintenance of relevant data relating to orders in financial instruments*](https://www.esma.europa.eu/sites/default/files/library/2015/11/2015-esma-1464_annex_i_-_draft_rts_and_its_on_mifid_ii_and_mifir.pdf) (MiFID II).
+- SEC, [*Rule 613 -- Consolidated Audit Trail*](https://www.sec.gov/rules/final/2012/34-67457.pdf) (Reg NMS).
+
+**Constrained-generation technique** (the academic backbone for "synthesise a database instance that satisfies these rules"):
+- Boyapati, Khurshid & Marinov, [*Korat: automated testing based on Java predicates*](https://dl.acm.org/doi/10.1145/566172.566186), ISSTA 2002.
+- Jackson, [*Software Abstractions: Logic, Language, and Analysis*](https://softwareabstractions.org/) (Alloy), MIT Press, 2nd ed. (2012).
+
 ## Troubleshooting
 
 <details>
