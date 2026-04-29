@@ -18,7 +18,7 @@ tags:
 
 ## What this template is for
 
-Banking compliance and financial-crime teams hunt for "layering" -- a money-laundering pattern where a launderer routes funds from one source account through a cluster of intermediary accounts to a single destination, splitting each leg under the FinCEN reporting threshold ($10,000) so no transaction triggers a currency-transaction report (CTR). The intermediaries -- "hubs" -- share a beneficial owner: a single human or shell entity behind multiple accounts, who absorbs a small fee at each hop and forwards the rest. The signal is structural and arithmetic: K hubs receive from the source and forward to a destination, where each hub's incoming dollar amount equals its outgoing amount within a tight tolerance.
+Banking compliance and financial-crime teams hunt for "layering" -- a money-laundering pattern where a launderer routes funds from one source account through a cluster of intermediary accounts to a single destination, splitting each leg under the [FinCEN currency-transaction-report threshold](https://www.ecfr.gov/current/title-31/subtitle-B/chapter-X/part-1010/subpart-C/section-1010.311) of $10,000 so no transaction triggers a CTR filing. The intermediaries -- "hubs" -- share a beneficial owner: a single human or shell entity behind multiple accounts, who absorbs a small fee at each hop and forwards the rest. The signal is structural and arithmetic: K hubs receive from the source and forward to a destination, where each hub's incoming dollar amount equals its outgoing amount within a tight tolerance.
 
 This template encodes the layering motif as a constraint satisfaction model. The solver decides which transactions are part of the motif and which accounts play which role (`is_source`, `is_hub`, `is_dest`); per-account flow conservation in count couples edge-selection to role-assignment, while per-hub flow conservation in *dollar amounts* pulls the model beyond pure pattern-matching -- the solver must balance the chosen edges' values against each other, which is the CSP arithmetic that a graph-pattern / paths library cannot express.
 
@@ -173,16 +173,6 @@ amount_threshold_ic = model.where(
 - **Drop conservation to recover a smurfing fan-in motif** -- the simpler "K under-threshold deposits converge on one destination" pattern. Remove the source role and the conservation IC, set per-account out-flow to `Account.is_smurf` (no source K-fan), and you get the smurfing detector with no source-side modelling.
 - **Adapt to the K-cycle motif** (round-robin laundering: K accounts cycle money through a closed loop) by swapping the role binaries for a single `Account.is_in_cycle` binary and changing the per-account flow conservation in count to `out_count == in_count == is_in_cycle`. Per-hub conservation in amount carries over per-cycle-node.
 - **Add a time-window filter** by adding a pairwise constraint over motif transactions: `model.where(T1.ts_minutes + WINDOW < T2.ts_minutes).require(T1.is_motif + T2.is_motif <= 1)`. Useful when your scheme runs on a known cadence (minutes for high-frequency layering; days or weeks for slower schemes).
-
-## Learn more
-
-**Domain rule sources** (where the motif structure and threshold come from):
-- FinCEN, [*Currency Transaction Report (CTR) requirements -- 31 CFR § 1010.311*](https://www.ecfr.gov/current/title-31/subtitle-B/chapter-X/part-1010/subpart-C/section-1010.311). The $10,000 threshold and structuring framing.
-- Treasury / FinCEN, [*Structuring guidance*](https://www.fincen.gov/sites/default/files/shared/Final_Structuring_Brochure_-_For_Customers.pdf).
-
-**Motif-detection technique** (the academic backbone for "find a small fixed subgraph in a large transaction graph"):
-- Starnini et al., [*Smurf-Based Anti-Money-Laundering in Time-Evolving Transaction Networks*](https://www.isi.it/wp-content/uploads/2024/01/smurf-based-anti-money-laundering-in-time-evolving-transaction-networks_Starnini2021_Chapter_Smurf-BasedAnti-moneyLaunderin.pdf). The structural definition of smurfing in temporal transaction graphs.
-- Pareja et al., [*The Shape of Money Laundering: Subgraph Representation Learning on the Blockchain*](https://arxiv.org/pdf/2404.19109). Subgraph patterns in laundering schemes (including butterfly clusters).
 
 ## Troubleshooting
 
