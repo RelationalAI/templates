@@ -42,8 +42,8 @@ The same pattern applies to other graph motif-detection problems where the signa
 ## What's included
 
 - `money_laundering_motif_detection.py` -- main script with ontology, decisions, constraints, and solver call
-- `data/accounts.csv` -- 8 accounts spanning four beneficial-owner clusters
-- `data/transactions.csv` -- 10 directed transactions with amount and timestamp data
+- `data/accounts.csv` -- 15 accounts spanning eight beneficial-owner clusters, including two viable hub clusters and one cluster that matches by ownership but fails conservation
+- `data/transactions.csv` -- 25 directed transactions: two complete butterflies (against different destinations and in different bo clusters) plus over-threshold, mismatched-owner, conservation-failing, and wrong-direction decoys
 - `pyproject.toml` -- Python package configuration
 
 ## Prerequisites
@@ -88,33 +88,33 @@ The same pattern applies to other graph motif-detection problems where the signa
    python money_laundering_motif_detection.py
    ```
 
-6. Expected output (one feasible motif; the exact account selection may vary across runs and solver versions):
+6. Expected output (the dataset contains two complete butterflies -- one in beneficial-owner cluster `100` against `WireRecipientCorp`, and one in cluster `200` against `OffshoreLLC`; the solver returns one of them, so the exact selection may vary across runs and solver versions):
    ```text
    Detected layering motif (one row per motif transaction):
      tx_id  src_account_id          src_name  dst_account_id           dst_name  amount  ts_min
-         1               1   SourceShellCorp               2            HubAccA    9000       5
-         2               1   SourceShellCorp               3            HubAccB    8500       7
-         3               1   SourceShellCorp               4            HubAccC    9500       9
-         4               2           HubAccA               5  WireRecipientCorp    8980      15
-         5               3           HubAccB               5  WireRecipientCorp    8475      17
-         6               4           HubAccC               5  WireRecipientCorp    9420      19
+         1               1   SourceShellCorp               2           HubAccA1    9000       5
+         2               1   SourceShellCorp               3           HubAccA2    8500       7
+         3               1   SourceShellCorp               4           HubAccA3    9500       9
+         4               2          HubAccA1               5  WireRecipientCorp    8980      15
+         5               3          HubAccA2               5  WireRecipientCorp    8475      17
+         6               4          HubAccA3               5  WireRecipientCorp    9420      19
 
    Motif accounts (roles and beneficial owner):
      account_id               name  bo_id  is_source  is_hub  is_dest
               1    SourceShellCorp    600          1       0        0
-              2            HubAccA    100          0       1        0
-              3            HubAccB    100          0       1        0
-              4            HubAccC    100          0       1        0
+              2           HubAccA1    100          0       1        0
+              3           HubAccA2    100          0       1        0
+              4           HubAccA3    100          0       1        0
               5  WireRecipientCorp    700          0       0        1
 
    Per-hub conservation residuals (in_amount - out_amount, must be in [-tolerance, +tolerance]):
      hub_id  hub_name  in_amount  out_amount
-          2   HubAccA       9000        8980
-          3   HubAccB       8500        8475
-          4   HubAccC       9500        9420
+          2  HubAccA1       9000        8980
+          3  HubAccA2       8500        8475
+          4  HubAccA3       9500        9420
    ```
 
-   `SourceShellCorp` routes three under-threshold deposits through three hub accounts (all sharing beneficial owner `100`) to `WireRecipientCorp`. Each hub absorbs a small "fee" residual ($20, $25, $80) -- well within the $100 tolerance -- before forwarding the balance.
+   `SourceShellCorp` routes three under-threshold deposits through three hub accounts (all sharing beneficial owner `100`) to `WireRecipientCorp`. Each hub absorbs a small "fee" residual ($20, $25, $80) -- well within the $100 tolerance -- before forwarding the balance. The dataset's near-misses make the constraints visibly do work: `Acc 13` (bo `100`, would pass `same_bo_ic`) fails conservation by routing $4000 in / $9500 out; transactions over $10,000 are forced out of the motif by `amount_threshold_ic`; the alternative path through `Acc 11` (bo `300`) fails `same_bo_ic` against the cluster.
 
 ## Template structure
 ```text
