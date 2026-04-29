@@ -181,7 +181,13 @@ no_after_cancel_ic = model.where(
 ).require(implies(A.is_cancel == 1, A.ts_ms > B.ts_ms))
 ```
 
-A `distinct_ts_ic` constraint requires every event in an order to land at its own moment.
+A `distinct_ts_ic` constraint requires every event in an order to land at its own moment, written with the `all_different` global constraint grouped per order:
+
+```python
+distinct_ts_ic = model.require(
+    all_different(OrderEvent.ts_ms).per(OrderEvent.order)
+)
+```
 
 **4. Tie PLACE events back to the order's original size.** Combined with a global `qty <= original_qty` bound, `implies` pins PLACE events to the order's `original_qty`:
 
@@ -224,10 +230,11 @@ fill_sum_ic = model.where(
 problem.solve("minizinc", time_limit_sec=60)
 problem.solve_info().display()
 problem.verify(
-    type_sum_ic, exactly_one_place_ic, at_most_one_cancel_ic, distinct_ts_ic,
+    type_sum_ic, exactly_one_place_ic, at_most_one_cancel_ic,
     place_first_ic, no_after_cancel_ic, qty_upper_ic, place_qty_match_ic,
     venue_ok_ic, fill_qty_match_on_ic, fill_qty_zero_off_ic, fill_sum_ic,
 )
+# distinct_ts_ic is omitted -- all_different is solver-only, not in verify().
 model.require(problem.termination_status() == "OPTIMAL")
 ```
 

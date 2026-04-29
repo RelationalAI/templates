@@ -34,7 +34,7 @@ from pathlib import Path
 
 from pandas import DataFrame, read_csv
 from relationalai.semantics import Integer, Model, String, sum
-from relationalai.semantics.reasoners.prescriptive import Problem, implies
+from relationalai.semantics.reasoners.prescriptive import Problem, all_different, implies
 
 # Runner-level parameters.
 # One solve = one synthetic trace over the fixed (order, event-slot) pool.
@@ -180,17 +180,14 @@ at_most_one_cancel_ic = model.where(
 ).require(sum(OrderEvent.is_cancel).per(Order) <= 1)
 problem.satisfy(at_most_one_cancel_ic)
 
+# Distinct ts_ms within an order (every event has its own moment).
+# Lowers to MiniZinc's native alldifferent propagator.
+distinct_ts_ic = model.require(all_different(OrderEvent.ts_ms).per(OrderEvent.order))
+problem.satisfy(distinct_ts_ic)
+
 # Pairwise temporal rules use two refs into OrderEvent.
 A = OrderEvent.ref()
 B = OrderEvent.ref()
-
-# Distinct ts_ms within an order (every event has its own moment).
-distinct_ts_ic = model.where(
-    A.order(Order),
-    B.order(Order),
-    A.event_id < B.event_id,
-).require(A.ts_ms != B.ts_ms)
-problem.satisfy(distinct_ts_ic)
 
 # PLACE-first: if A is a PLACE event, A.ts_ms < B.ts_ms for every other
 # event B in the same order.
@@ -261,11 +258,12 @@ problem.solve("minizinc", time_limit_sec=60)
 problem.solve_info().display()
 
 # Confirm constraints hold in the solver's solution.
+# distinct_ts_ic is omitted: all_different is a solver-only constraint and
+# is not supported by problem.verify().
 problem.verify(
     type_sum_ic,
     exactly_one_place_ic,
     at_most_one_cancel_ic,
-    distinct_ts_ic,
     place_first_ic,
     no_after_cancel_ic,
     qty_upper_ic,
