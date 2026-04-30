@@ -24,13 +24,13 @@ tags:
 
 Index funds and separately managed accounts often need to track a broad benchmark without holding every constituent. This template builds a sparse replication basket: from 50 S&P 500-like stocks, select exactly 20 names and their weights so the portfolio follows the benchmark's historical returns as closely as possible.
 
-The model uses RelationalAI's **prescriptive** reasoner to optimize both selection and sizing in one mixed-integer program. It includes practical portfolio constraints: long-only weights, max position size, liquidity eligibility, sector neutrality, and per-name ADV participation limits.
+The model uses RelationalAI's **prescriptive** reasoner to optimize both selection and sizing in one mixed-integer program. It includes practical portfolio constraints: long-only weights, max position size, sector neutrality, and per-name ADV participation limits.
 
 ## Why this problem matters
 
 Holding every index constituent can be operationally expensive, especially for smaller accounts, tax-aware portfolios, or products with custody and trading constraints. A sparse replicating basket gives most of the benchmark exposure while reducing the number of positions to trade and maintain.
 
-The hard part is that name selection and weight optimization interact. The best 20 names are not simply the largest constituents or the highest-correlated stocks; they need to work together as a portfolio while respecting sector and liquidity rules.
+The hard part is that name selection and weight optimization interact. The best 20 names are not simply the largest constituents or the highest-correlated stocks; they need to work together as a portfolio while respecting sector and per-name trading-capacity rules.
 
 ### Key design patterns demonstrated
 
@@ -38,10 +38,9 @@ The hard part is that name selection and weight optimization interact. The best 
 - **Linked binary and continuous decisions** -- a stock can carry weight only if selected.
 - **Tracking objective** -- the solver minimizes absolute tracking residuals while the script reports realized RMS tracking error after solving.
 - **Sector neutrality** -- replicated sector exposure must stay within a fixed active band around benchmark sector weights.
-- **Liquidity screen** -- illiquid names are excluded from selection.
-- **ADV participation control** -- each stock's buy or sell amount is capped as a fraction of average daily dollar volume.
+- **ADV participation control** -- ADV stands for average daily dollar volume; each stock's buy or sell amount is capped as a fraction of ADV.
 - **Full-history evaluation** -- optimize across the entire return history and report realized tracking quality.
-- **Baseline comparison** -- compare against equal-weight top-20 liquid stocks by full-history correlation.
+- **Baseline comparison** -- compare against equal-weight top-20 stocks by full-history correlation.
 
 ## Who this is for
 
@@ -55,7 +54,7 @@ The hard part is that name selection and weight optimization interact. The best 
 - A semantic model for stocks, sectors, benchmark returns, and stock returns
 - A mixed-integer optimization model with 20-name cardinality
 - Long-only portfolio weights with max position constraints
-- Liquidity, sector-neutrality, and ADV participation constraints
+- Sector-neutrality and ADV participation constraints
 - A tracking residual objective over historical returns
 - Full-history tracking error reports and a simple baseline comparison
 
@@ -121,7 +120,6 @@ The hard part is that name selection and weight optimization interact. The best 
    Selected names: exactly 20
    Max position: 10%
    Sector active band: +/- 4%
-   Liquidity floor: $100M average dollar volume
    Portfolio value: $10,000,000
    Max ADV participation per name: 5%
 
@@ -143,8 +141,10 @@ The hard part is that name selection and weight optimization interact. The best 
    Implied turnover: ...
 
    === Baseline Comparison ===
-   Baseline: equal-weight top-20 liquid stocks by full-history correlation
+   Baseline: equal-weight top-20 stocks by full-history correlation
    Baseline annualized tracking error: ...
+
+   Wrote benchmark-vs-replica returns to: data/replica_returns.csv
    ```
 
 ## How It Works
@@ -199,6 +199,8 @@ minimize sum_t pos_error[t] + neg_error[t]
 
 This keeps the solver problem linear and mixed-integer. After solving, the script computes the standard RMS tracking error across the full history.
 
+This template uses an L1 tracking objective because absolute residuals keep the model linear with binary selection variables. A classic L2 objective, minimizing squared residuals, is also a natural tracking-error formulation if the selected solver supports the resulting mixed-integer quadratic problem.
+
 ### 4. Add portfolio realism
 
 The template includes constraints practitioners expect:
@@ -207,9 +209,8 @@ The template includes constraints practitioners expect:
 - weights sum to 100%
 - no shorting
 - max 10% per selected stock
-- minimum average dollar volume
 - sector weights within +/- 4% of benchmark sector weights
-- per-name buy and sell amounts no more than 5% of average daily dollar volume
+- per-name buy and sell amounts no more than 5% of average daily dollar volume (ADV)
 
 ### 5. Evaluate the portfolio
 
@@ -221,11 +222,14 @@ After solving, the script reports:
 - mean absolute residual
 - implied turnover
 - comparison to a simple top-correlation baseline
+- `data/replica_returns.csv` with `date`, `index_return`, and `replica_return`
+
+You can use `data/replica_returns.csv` to plot the original benchmark return series against the optimized replica return series.
 
 ## Customize
 
 - Change `N_REPLICATION_NAMES` to select more or fewer names.
+- Change `MAX_WEIGHT` to tighten or relax the largest allowed position size.
 - Tighten `SECTOR_ACTIVE_BAND` for stricter sector neutrality.
-- Raise `MIN_AVG_DOLLAR_VOLUME` to enforce more liquid baskets.
 - Lower `MAX_ADV_PARTICIPATION` for stricter per-name trading capacity.
 - Replace the synthetic CSVs with real benchmark and constituent returns if your data license allows it.

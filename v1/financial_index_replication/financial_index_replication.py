@@ -5,8 +5,8 @@ This script demonstrates sparse index replication in RelationalAI:
 - Load sample monthly returns for an S&P 500-like benchmark and 50 stocks.
 - Choose exactly 20 names and their portfolio weights.
 - Minimize full-history tracking residuals versus the benchmark.
-- Enforce long-only weights, max position size, liquidity eligibility,
-  sector neutrality, and per-name ADV participation limits.
+- Enforce long-only weights, max position size, sector neutrality, and
+  per-name ADV participation limits.
 - Report full-history tracking error and compare against a simple correlation
   baseline.
 
@@ -31,7 +31,6 @@ from relationalai.semantics.reasoners.prescriptive import Problem
 N_REPLICATION_NAMES = 20
 MAX_WEIGHT = 0.10
 SECTOR_ACTIVE_BAND = 0.04
-MIN_AVG_DOLLAR_VOLUME = 100_000_000
 PORTFOLIO_VALUE = 10_000_000
 MAX_ADV_PARTICIPATION = 0.05
 MONTHS_PER_YEAR = 12
@@ -155,14 +154,6 @@ problem.satisfy(
     ).require(weight <= MAX_WEIGHT * selected)
 )
 
-# Exclude stocks below the liquidity floor.
-problem.satisfy(
-    model.where(
-        Stock.x_selected(selected),
-        Stock.avg_dollar_volume < MIN_AVG_DOLLAR_VOLUME,
-    ).require(selected == 0)
-)
-
 # Keep sector exposures close to benchmark sector weights.
 problem.satisfy(
     model.where(
@@ -233,11 +224,10 @@ print(f"Universe: {len(stocks_csv)} stocks")
 print(f"Selected names: exactly {N_REPLICATION_NAMES}")
 print(f"Max position: {MAX_WEIGHT:.0%}")
 print(f"Sector active band: +/- {SECTOR_ACTIVE_BAND:.0%}")
-print(f"Liquidity floor: ${MIN_AVG_DOLLAR_VOLUME / 1_000_000:.0f}M average dollar volume")
 print(f"Portfolio value: ${PORTFOLIO_VALUE:,.0f}")
 print(f"Max ADV participation per name: {MAX_ADV_PARTICIPATION:.0%}")
 
-problem.display()
+# problem.display()
 problem.solve("highs", time_limit_sec=120)
 si = problem.solve_info()
 si.display()
@@ -342,12 +332,9 @@ print(f"Annualized tracking error: {annualized_tracking_error():.2%}")
 print(f"Mean abs monthly residual: {mean_abs_tracking():.4%}")
 print(f"Implied turnover: {turnover:.2%}")
 
-# Simple benchmark: equal-weight the 20 most correlated liquid stocks.
-eligible_ids = stocks_csv.loc[
-    stocks_csv["avg_dollar_volume"] >= MIN_AVG_DOLLAR_VOLUME, "ticker"
-]
+# Simple benchmark: equal-weight the 20 most correlated stocks.
 top_corr_ids = (
-    returns_wide[eligible_ids]
+    returns_wide
     .corrwith(index_series["index_return"])
     .abs()
     .sort_values(ascending=False)
@@ -369,6 +356,6 @@ pd.DataFrame({
 }).to_csv(replica_returns_csv, index=False)
 
 print("\n=== Baseline Comparison ===")
-print("Baseline: equal-weight top-20 liquid stocks by full-history correlation")
+print("Baseline: equal-weight top-20 stocks by full-history correlation")
 print(f"Baseline annualized tracking error: {baseline_tracking_error:.2%}")
 print(f"\nWrote benchmark-vs-replica returns to: {replica_returns_csv}")
