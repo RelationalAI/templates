@@ -19,7 +19,7 @@ tags:
 
 Workforce scheduling is a common operational challenge: given a set of workers, each with their own availability windows, you need to assign them to shifts so that every shift meets its minimum staffing requirements. Doing this manually becomes impractical as the number of workers, shifts, and constraints grows.
 
-This template formulates the shift assignment problem as a constraint satisfaction model using RelationalAI's prescriptive reasoning. Workers are assigned to shifts they are available for, subject to minimum coverage requirements per shift and a limit on how many shifts each worker can take. The solver (MiniZinc) finds feasible assignments that satisfy all constraints simultaneously.
+This template uses **Prescriptive** reasoning to formulate the shift assignment problem as a constraint satisfaction model. Workers are assigned to shifts they are available for, subject to minimum coverage requirements per shift and a limit on how many shifts each worker can take. The solver (MiniZinc) finds feasible assignments that satisfy all constraints simultaneously.
 
 The template also demonstrates scenario analysis by sweeping over different minimum coverage levels. This lets you quickly see which staffing targets are achievable with your current workforce and availability data, and where you might need to hire or adjust schedules.
 

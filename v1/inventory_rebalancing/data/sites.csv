@@ -1,9 +1,0 @@
-id,name,type,inventory
-1,Warehouse_A,WAREHOUSE,500
-2,Warehouse_B,WAREHOUSE,300
-3,Warehouse_C,WAREHOUSE,200
-4,Hub_East,TRANSIT,0
-5,Hub_West,TRANSIT,0
-6,Store_1,STORE,50
-7,Store_2,STORE,30
-8,Store_3,STORE,20
