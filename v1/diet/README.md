@@ -132,7 +132,7 @@ The template also demonstrates scenario analysis by scaling nutritional requirem
 
 ## How it works
 
-### 1. Define concepts and load data
+### 1. Define concepts and map data
 
 The model defines two concepts: `Nutrient` (with min/max bounds) and `Food` (with cost and nutrient content). A ternary property links each food to its nutrient quantities:
 

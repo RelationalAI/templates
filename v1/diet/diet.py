@@ -2,7 +2,7 @@
 
 This script demonstrates a classic diet linear optimization problem in RelationalAI:
 
-- Load sample CSVs describing foods, nutrients, and per-food nutrient quantities.
+- Map sample data from CSVs describing foods, nutrients, and per-food nutrient quantities.
 - Model foods and nutrients as *concepts* with typed properties.
 - Choose a non-negative amount of each food to satisfy nutrient bounds.
 - Minimize total cost.
@@ -36,7 +36,7 @@ from relationalai.semantics.reasoners.prescriptive import Problem
 DATA_DIR = Path(__file__).parent / "data"
 
 # --------------------------------------------------
-# Define semantic model & load data
+# Define semantic model & map data
 # --------------------------------------------------
 
 model = Model("diet")
@@ -46,7 +46,7 @@ Nutrient = model.Concept("Nutrient", identify_by={"name": String})
 Nutrient.min = model.Property(f"{Nutrient} has {Float:min}")
 Nutrient.max = model.Property(f"{Nutrient} has {Float:max}")
 
-# Load nutrients from CSV.
+# Map nutrients data from CSV.
 nutrient_csv = read_csv(DATA_DIR / "nutrients.csv")
 model.define(Nutrient.new(model.data(nutrient_csv).to_schema()))
 
@@ -55,7 +55,7 @@ Food = model.Concept("Food", identify_by={"name": String})
 Food.cost = model.Property(f"{Food} has {Float:cost}")
 Food.contains = model.Property(f"{Food} contains {Nutrient} in {Float:qty}")
 
-# Load foods from CSV (one column per nutrient name).
+# Map foods data from CSV (one column per nutrient name).
 food_csv = read_csv(DATA_DIR / "foods.csv")
 food_data = model.data(food_csv)
 model.define(food := Food.new(name=food_data.name), food.cost(food_data.cost))
