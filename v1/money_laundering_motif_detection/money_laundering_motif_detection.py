@@ -101,14 +101,26 @@ Account.is_hub = model.Property(f"{Account} is hub if {Integer:is_hub}")
 Account.is_dest = model.Property(f"{Account} is dest if {Integer:is_dest}")
 
 problem = Problem(model, Integer)
-# Capture the variable subconcepts so we can query their per-solution
-# values with `Variable.values(solution_index, value)` after the solve.
+# Every output goes through `Variable.values(solution_index, value)` against
+# the captured ProblemVariable handles, so the populated property path is
+# unused. `populate=False` skips the first-solution write-back -- avoiding
+# wasted work and the latent FDError that `populate=True` invites when
+# MiniZinc returns multiple solutions via `solution_limit`.
 is_motif_var = problem.solve_for(
-    Transaction.is_motif, type="bin", name=["is_motif", Transaction.tx_id]
+    Transaction.is_motif,
+    type="bin",
+    name=["is_motif", Transaction.tx_id],
+    populate=False,
 )
-is_source_var = problem.solve_for(Account.is_source, type="bin", name=["is_source", Account.id])
-is_hub_var = problem.solve_for(Account.is_hub, type="bin", name=["is_hub", Account.id])
-is_dest_var = problem.solve_for(Account.is_dest, type="bin", name=["is_dest", Account.id])
+is_source_var = problem.solve_for(
+    Account.is_source, type="bin", name=["is_source", Account.id], populate=False
+)
+is_hub_var = problem.solve_for(
+    Account.is_hub, type="bin", name=["is_hub", Account.id], populate=False
+)
+is_dest_var = problem.solve_for(
+    Account.is_dest, type="bin", name=["is_dest", Account.id], populate=False
+)
 
 # --------------------------------------------------
 # Constraints
