@@ -78,7 +78,7 @@ model.define(NotAllowedSymbolVenue.new(model.data(disallowed_csv).to_schema()))
 Order = model.Concept("Order", identify_by={"id": Integer})
 Order.original_qty = model.Property(f"{Order} has {Integer:original_qty}")
 Order.original_tick_price = model.Property(f"{Order} has {Integer:original_tick_price}")
-Order.symbol = model.Relationship(f"{Order} is for {Symbol}")
+Order.symbol = model.Property(f"{Order} is for {Symbol:symbol}")
 orders_csv = read_csv(data_dir / "orders.csv")
 orders_data = model.data(orders_csv)
 model.define(
@@ -94,7 +94,7 @@ model.define(Order.symbol(Symbol)).where(
 # Concept: pre-allocated event slots (each tied to one order)
 # The solver decides each slot's type, timestamp, venue, quantity, tick price.
 OrderEvent = model.Concept("OrderEvent", identify_by={"event_id": Integer})
-OrderEvent.order = model.Relationship(f"{OrderEvent} belongs to {Order}")
+OrderEvent.order = model.Property(f"{OrderEvent} belongs to {Order:order}")
 events_csv = read_csv(data_dir / "events.csv")
 events_data = model.data(events_csv)
 model.define(OrderEvent.new(event_id=events_data.event_id))
