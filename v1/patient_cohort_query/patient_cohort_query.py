@@ -141,8 +141,8 @@ model.define(Patient.new(model.data(patients_csv).to_schema()))
 
 # Concept: mutation event (observed mutation in a patient at a time).
 MutationEvent = model.Concept("MutationEvent", identify_by={"id": Integer})
-MutationEvent.patient = model.Relationship(f"{MutationEvent} from {Patient:patient}")
-MutationEvent.gene = model.Relationship(f"{MutationEvent} hits {Gene:gene}")
+MutationEvent.patient = model.Property(f"{MutationEvent} from {Patient:patient}")
+MutationEvent.gene = model.Property(f"{MutationEvent} hits {Gene:gene}")
 MutationEvent.t_days = model.Property(f"{MutationEvent} at {Integer:t_days}")
 mut_csv = read_csv(data_dir / "mutation_events.csv")
 mut_data = model.data(mut_csv)
@@ -158,8 +158,8 @@ model.define(MutationEvent.gene(Gene)).where(
 
 # Concept: therapy event (treatment received by a patient at a time).
 TherapyEvent = model.Concept("TherapyEvent", identify_by={"id": Integer})
-TherapyEvent.patient = model.Relationship(f"{TherapyEvent} from {Patient:patient}")
-TherapyEvent.therapy = model.Relationship(f"{TherapyEvent} uses {Therapy:therapy}")
+TherapyEvent.patient = model.Property(f"{TherapyEvent} from {Patient:patient}")
+TherapyEvent.therapy = model.Property(f"{TherapyEvent} uses {Therapy:therapy}")
 TherapyEvent.t_days = model.Property(f"{TherapyEvent} at {Integer:t_days}")
 th_csv = read_csv(data_dir / "therapy_events.csv")
 th_data = model.data(th_csv)
@@ -175,10 +175,8 @@ model.define(TherapyEvent.therapy(Therapy)).where(
 
 # Concept: adverse-event occurrence (AE observed in a patient at a time).
 AdverseEventOcc = model.Concept("AdverseEventOcc", identify_by={"id": Integer})
-AdverseEventOcc.patient = model.Relationship(
-    f"{AdverseEventOcc} from {Patient:patient}"
-)
-AdverseEventOcc.term = model.Relationship(f"{AdverseEventOcc} is {AdverseEvent:term}")
+AdverseEventOcc.patient = model.Property(f"{AdverseEventOcc} from {Patient:patient}")
+AdverseEventOcc.term = model.Property(f"{AdverseEventOcc} is {AdverseEvent:term}")
 AdverseEventOcc.t_days = model.Property(f"{AdverseEventOcc} at {Integer:t_days}")
 ae_csv = read_csv(data_dir / "adverse_events.csv")
 ae_data = model.data(ae_csv)
