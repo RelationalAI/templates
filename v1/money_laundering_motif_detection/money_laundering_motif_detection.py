@@ -1,30 +1,33 @@
 """Money-laundering layering motif detection (constrained subgraph match
-with flow conservation) template.
+with flow conservation, multi-solution) template.
 
 This script demonstrates anti-money-laundering motif detection in
 RelationalAI:
 
-- Given an account-and-transaction graph, find a layering "butterfly"
-  pattern: one source account routes funds through K intermediary "hub"
-  accounts to a single destination, where every per-leg amount sits
-  under the FinCEN currency-transaction-report threshold ($10,000) and
-  every hub shares a beneficial owner.
+- Given an account-and-transaction graph, find every layering
+  "butterfly" pattern in the data: one source account routes funds
+  through K intermediary "hub" accounts to a single destination, where
+  every per-leg amount sits under the FinCEN currency-transaction-report
+  threshold ($10,000) and every hub shares a beneficial owner.
 - The motif is encoded as binary indicators on transactions and on
   accounts. Per-account flow-conservation in *count* couples edge
   selection to role assignment; per-hub flow-conservation in *amount*
   requires the solver to balance the chosen edges' values against each
   other, which is the CSP arithmetic a graph-pattern / paths library
   cannot express.
-- Solve as constraint satisfaction (MiniZinc) and inspect the detected
-  motif.
+- Solve as constraint satisfaction with `solution_limit=MAX_MOTIFS`
+  (MiniZinc) and enumerate every feasible motif via
+  `Variable.values(solution_index, value)`. AML triage is plural by
+  definition -- the analyst inbox should surface every layering
+  pattern in the ledger, not just the first one the solver returns.
 
 Run:
     `python money_laundering_motif_detection.py`
 
 Output:
-    Prints the formulation, the detected motif transactions, the role
-    assignment, the per-hub conservation residuals, and post-solve
-    constraint verification.
+    Prints the formulation, every detected motif (one row per motif
+    transaction per solution), per-solution motif hubs with shared
+    beneficial owner, and post-solve constraint verification.
 """
 
 from pathlib import Path
@@ -46,6 +49,10 @@ AMOUNT_THRESHOLD_DOLLARS = 10_000
 # several legitimate-looking residuals while still rejecting hops that
 # pocket significant amounts.
 CONSERVATION_TOLERANCE_DOLLARS = 100
+# Solver solution-limit: cap how many distinct motifs to enumerate per
+# run. Sized generous enough to cover the bundled data's two motifs and
+# leave headroom for additional ones if you swap in your own ledger.
+MAX_MOTIFS = 10
 
 model = Model("money_laundering_motif_detection")
 
@@ -94,10 +101,14 @@ Account.is_hub = model.Property(f"{Account} is hub if {Integer:is_hub}")
 Account.is_dest = model.Property(f"{Account} is dest if {Integer:is_dest}")
 
 problem = Problem(model, Integer)
-problem.solve_for(Transaction.is_motif, type="bin", name=["is_motif", Transaction.tx_id])
-problem.solve_for(Account.is_source, type="bin", name=["is_source", Account.id])
-problem.solve_for(Account.is_hub, type="bin", name=["is_hub", Account.id])
-problem.solve_for(Account.is_dest, type="bin", name=["is_dest", Account.id])
+# Capture the variable subconcepts so we can query their per-solution
+# values with `Variable.values(solution_index, value)` after the solve.
+is_motif_var = problem.solve_for(
+    Transaction.is_motif, type="bin", name=["is_motif", Transaction.tx_id]
+)
+is_source_var = problem.solve_for(Account.is_source, type="bin", name=["is_source", Account.id])
+is_hub_var = problem.solve_for(Account.is_hub, type="bin", name=["is_hub", Account.id])
+is_dest_var = problem.solve_for(Account.is_dest, type="bin", name=["is_dest", Account.id])
 
 # --------------------------------------------------
 # Constraints
@@ -197,12 +208,17 @@ problem.satisfy(same_bo_ic)
 # --------------------------------------------------
 
 problem.display()
-problem.solve("minizinc", time_limit_sec=60)
+# `solution_limit=MAX_MOTIFS` asks the solver to enumerate up to that
+# many distinct motifs; query each one via `Variable.values(idx, val)`.
+# Without it, MiniZinc returns just the first feasible motif and stops.
+problem.solve("minizinc", time_limit_sec=60, solution_limit=MAX_MOTIFS)
 problem.solve_info().display()
 
 # Re-check the relational ICs in the returned solution. The implies-bodied
 # conservation ICs are solver-only and omitted; the count-side flow ICs plus
-# data-fixed amounts already pin the conservation residuals tightly.
+# data-fixed amounts already pin the conservation residuals tightly. Verify
+# inspects only the first solution (the populated property), but the
+# constraint structure is shared across every solution the solver returns.
 problem.verify(
     role_exclusive_ic,
     one_source_ic,
@@ -215,45 +231,62 @@ problem.verify(
     amount_threshold_ic,
     same_bo_ic,
 )
-model.require(problem.termination_status() == "OPTIMAL")
+# At least one motif must have been found. We do not gate on
+# `termination_status == "OPTIMAL"` here: with `solution_limit`, the
+# solver typically reports OPTIMAL only when search has exhausted the
+# space within the time limit; partial enumeration is the expected
+# mode for large ledgers.
+model.require(problem.num_points() >= 1)
 
 # --------------------------------------------------
-# Inspect the detected motif
+# Inspect every detected motif
 # --------------------------------------------------
 
-print("\nDetected layering motif (one row per motif transaction):")
-model.select(
-    Transaction.tx_id.alias("tx_id"),
-    Transaction.src.id.alias("src_account_id"),
-    Transaction.src.name.alias("src_name"),
-    Transaction.dst.id.alias("dst_account_id"),
-    Transaction.dst.name.alias("dst_name"),
-    Transaction.amount_dollars.alias("amount"),
-    Transaction.ts_minutes.alias("ts_min"),
-).where(Transaction.is_motif == 1).inspect()
+# `Variable.values(solution_index, value)` indexes the solver's outputs
+# across every returned solution. Filtering on `value == 1` surfaces the
+# rows the solver picked into each motif. The populated properties
+# (e.g. `Transaction.is_motif`) reflect ONLY the first solution; for
+# multi-solution output we always go through `.values(...)`.
 
-print("\nMotif accounts (roles and beneficial owner):")
+print("\nCandidate motif transactions (one row per motif edge per solution):")
+sol_idx = Integer.ref()
+val = Integer.ref()
 model.select(
-    Account.id.alias("account_id"),
-    Account.name.alias("name"),
-    Account.bo_id.alias("bo_id"),
-    Account.is_source.alias("is_source"),
-    Account.is_hub.alias("is_hub"),
-    Account.is_dest.alias("is_dest"),
-).where(Account.is_source + Account.is_hub + Account.is_dest >= 1).inspect()
+    sol_idx.alias("solution"),
+    is_motif_var.transaction.tx_id.alias("tx_id"),
+    is_motif_var.transaction.src.id.alias("src_account_id"),
+    is_motif_var.transaction.src.name.alias("src_name"),
+    is_motif_var.transaction.dst.id.alias("dst_account_id"),
+    is_motif_var.transaction.dst.name.alias("dst_name"),
+    is_motif_var.transaction.amount_dollars.alias("amount"),
+    is_motif_var.transaction.ts_minutes.alias("ts_min"),
+).where(is_motif_var.values(sol_idx, val), val == 1).inspect()
 
-print(
-    "\nPer-hub conservation residuals (in_amount - out_amount, must be in [-tolerance, +tolerance]):"
-)
-T_in = Transaction.ref()
-T_out = Transaction.ref()
+print("\nCandidate motif hubs per solution (with shared beneficial owner):")
+sol_idx = Integer.ref()
+val = Integer.ref()
 model.select(
-    Account.id.alias("hub_id"),
-    Account.name.alias("hub_name"),
-    sum(T_in.amount_dollars * T_in.is_motif).per(T_in.dst).alias("in_amount"),
-    sum(T_out.amount_dollars * T_out.is_motif).per(T_out.src).alias("out_amount"),
+    sol_idx.alias("solution"),
+    is_hub_var.account.id.alias("hub_id"),
+    is_hub_var.account.name.alias("hub_name"),
+    is_hub_var.account.bo_id.alias("bo_id"),
+).where(is_hub_var.values(sol_idx, val), val == 1).inspect()
+
+print("\nCandidate motif source and destination per solution:")
+src_sol = Integer.ref()
+src_val = Integer.ref()
+dst_sol = Integer.ref()
+dst_val = Integer.ref()
+model.select(
+    src_sol.alias("solution"),
+    is_source_var.account.id.alias("source_id"),
+    is_source_var.account.name.alias("source_name"),
+    is_dest_var.account.id.alias("dest_id"),
+    is_dest_var.account.name.alias("dest_name"),
 ).where(
-    T_in.dst == Account,
-    T_out.src == Account,
-    Account.is_hub == 1,
+    is_source_var.values(src_sol, src_val),
+    src_val == 1,
+    is_dest_var.values(dst_sol, dst_val),
+    dst_val == 1,
+    src_sol == dst_sol,
 ).inspect()
