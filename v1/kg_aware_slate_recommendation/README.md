@@ -24,19 +24,22 @@ Every consumer-facing platform with a "row of K things" surface --
 streaming homepages, e-commerce cross-sell carousels, news feeds,
 learning-platform course slates -- has the same problem: pick K items
 per user that are *individually* relevant, *collectively* diverse, and
-*explainable* enough to satisfy the platform's business rules and (for
-EU and finance / healthcare-regulated platforms) regulatory mandates
-on automated-decision transparency.
+*explainable* enough to meet the platform's business rules and (for
+EU and finance / healthcare-regulated platforms) support transparency
+obligations on automated decisions.
 
 This template solves that problem in one declarative model:
 
 - **Graph (PageRank)** computes a structural-popularity prior over the
   book-similarity graph -- the same primitive that powers
   Pinterest's Pixie recommender at production scale.
-- **Paths** enumerate bounded knowledge-graph walks
-  (`User -> read -> Book -> shares author / subject / similar ->
-  candidate`) and produce per-`(user, candidate)` explanation
-  features the prescriptive layer reads as data.
+- **Paths** combine two reach signals: a bounded walker
+  (`User -> read_Book` length 1, `User -> read_Book -> similar_Book`
+  length 2) plus direct shared-entity joins
+  (`User -> read_Book -> Author <- candidate`,
+  `User -> read_Book -> Subject <- candidate`). Together these produce
+  per-`(user, candidate)` typed-evidence counts the prescriptive
+  layer reads as data.
 - **Prescriptive (MIP, HiGHS)** picks K items per user under subject
   diversity, author uniqueness, freshness, originals exposure,
   cold-start, and explanation-path-floor constraints, while
@@ -77,8 +80,9 @@ declarative model with the upstream graph and paths signals.
 
 ### Regulatory drivers
 
-KG-path explanations are not just nice-to-have -- they are required
-for any recsys subject to:
+KG-grounded explanations can support transparency obligations that
+recsys deployments increasingly face. Regulations to weigh against
+your own legal review:
 
 - **EU GDPR Article 22 + Articles 13/14** -- meaningful information
   about the logic in automated decisions.
@@ -92,9 +96,12 @@ for any recsys subject to:
   China PIPL Article 24, Brazil LGPD Article 20, Quebec Act,
   Nigeria DPR.
 
-The path PyRel walks for each picked item is the
-counterfactual-style explanation those regulations call for, in a
-form trade-secret-respecting (it exposes facts, not model weights).
+The per-typed counts the runner emits per picked item
+(`paths_via_author`, `paths_via_subject`, `paths_via_kg_walk`) are a
+KG-grounded, decomposable justification that can feed transparency
+workflows -- exposing facts about the catalogue rather than model
+weights. Whether that is sufficient for any particular legal regime
+is a determination for your compliance team.
 
 ## Quickstart
 
@@ -279,11 +286,15 @@ The first changes most users will make:
 - **Predictive-pillar variant.** Replace `Book.pagerank_score` with
   a learned GNN affinity score from PyRel's predictive reasoner.
   Same MIP, different scoring source.
-- **LLM-grounded explanation surfacing.** Pipe the top explanation
-  path per picked item into an LLM call to render natural-language
-  explanations from the KG-grounded path data, eliminating
-  hallucination -- the 2025 LLM+KG hybrid pattern (ItemRAG,
-  Think-on-Graph, K-RagRec).
+- **LLM-grounded explanation surfacing.** Pipe each picked item's
+  per-typed counts -- and, if extended, the top-N enumerated paths
+  the walker found -- into an LLM call to render natural-language
+  explanations grounded in KG facts, eliminating hallucination -- the
+  2025 LLM+KG hybrid pattern (ItemRAG, Think-on-Graph, K-RagRec).
+  Materialising the actual top paths (rather than just counts) is a
+  small extension of the runner's final `inspect()`: select on
+  `kg_paths(p_s)` joined to picked candidates and emit
+  `p_s.nodes(...)` for the top few by `path_count_via_kg_walk`.
 - **A/B candidate slate enumeration.**
   `solve("highs", solution_limit=K_alt)` returns K alternative slates
   for downstream A/B exposure or human-in-the-loop curation -- the

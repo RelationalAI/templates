@@ -16,10 +16,14 @@ Three-pillar pipeline modelling a content-row / homepage slate:
   evidence aggregation), not path walks themselves. The walk-count
   (``path_count_via_kg_walk``) is the actual paths-pillar count. All
   three integer features feed ``where`` / ``require`` clauses on the
-  MIP and are blended into the objective via ``path_count_total``;
-  the top-aggregate-relevance path is the human-readable explanation
-  for each picked item (GDPR Art. 22 / EU AI Act Art. 86
-  explainability artefact).
+  MIP and are blended into the objective via ``path_count_total``.
+  The per-typed counts that the runner prints alongside each picked
+  item (``paths_via_author`` / ``paths_via_subject`` /
+  ``paths_via_kg_walk``) are the explanation-surface artefact -- a
+  decomposable, KG-grounded justification customers can render in
+  the UI or feed to downstream transparency workflows. Returning the
+  enumerated paths themselves (rather than just the counts) is a
+  straightforward extension; see "Customise" in the README.
 - Prescriptive: float-coefficient binary IP on HiGHS picks K items per
   user under subject diversity, author uniqueness, freshness floor,
   originals-exposure floor, cold-start cap, and explanation-path
@@ -209,9 +213,14 @@ model.define(Book.similar_to(src_b, dst_b)).where(
 # the path walker traverses. Populate it from each typed edge so a
 # bounded walk can chain User -> Book -> Author -> Book -> ...
 # Each define() below contributes one direction of one typed edge to
-# the union; the walker treats them all as the same generic hop and
-# we recover the per-hop type by joining each consecutive (src, dst)
-# back against the typed edges when computing explanation features.
+# the union; the walker treats them all as the same generic hop. The
+# typed-evidence properties below (``path_count_via_author`` /
+# ``_via_subject``) do *not* introspect the walker's path edges -- they
+# join the candidate Book directly against the user's read history via
+# ``Book.written_by`` / ``Book.about``. Recovering per-hop type from
+# the walker's enumerated paths is possible (re-join each consecutive
+# (src, dst) back against the typed edges) but is not what this
+# template ships -- the typed counts here are simpler and faster.
 Item.connected_to = model.Relationship(
     f"{Item:src} connected to {Item:dst}",
     short_name="connected_to",
@@ -328,10 +337,10 @@ model.define(Candidate.new(user_id=u_cand.id, book_id=b_cand.id)).where(
 # keys and deduplicates on projected values, so
 # ``sum(model.union(X.v, X.v)) == 10`` (not 20) -- a sum-of-union
 # formulation silently undercounts whenever two of the three typed
-# counts share a value for the same Candidate. ``experiments/
-# count_variants.py`` empirically reproduces the divergence (variant F:
-# pick_5_12 coefficient = 6 vs A's 7). Bag arithmetic on the densified
-# per-typed counts is the right surface here.
+# counts share a value for the same Candidate. The
+# ``experiments/count_variants.py`` harness reproduces the divergence
+# across six formulations of this pattern; bag arithmetic on the
+# densified per-typed counts is the right surface here.
 Candidate.path_count_via_author = model.Property(
     f"{Candidate} has author connections {Integer:n}"
 )
@@ -611,8 +620,10 @@ model.select(
 # wired into the lead runner):
 # - Replace pagerank_score with a learned GNN affinity (Predictive
 #   pillar variant).
-# - Pipe top-explanation-path into an LLM call to render
-#   natural-language explanations (KG-grounded, hallucination-free).
+# - Pipe per-typed counts (and, optionally, materialised top-N paths
+#   from a small extension of the inspect() above) into an LLM call to
+#   render natural-language, KG-grounded, hallucination-free
+#   explanations.
 # - solve(..., solution_limit=K_alt) returns K alternative slates for
 #   A/B exposure or human-in-the-loop curation.
 # - Customize the typed edges to retarget the template at e-commerce

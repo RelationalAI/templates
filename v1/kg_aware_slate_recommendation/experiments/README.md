@@ -1,8 +1,10 @@
 # Experiments
 
-Local probes used while developing the lead template. Not shipped to
-customers; not imported by the lead runner. Kept in-tree because the
-findings inform the production form.
+Engineering notes on PyRel rule semantics that pinned down the
+production form of the lead template's per-(user, candidate)
+typed-evidence counts. Not imported by the runner; safe to skip on
+first read. Advanced customers writing similar count-and-blend rules
+may find the comparison table useful.
 
 ## `count_variants.py`
 

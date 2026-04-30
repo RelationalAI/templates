@@ -39,7 +39,6 @@ import json
 import random
 import re
 import time
-from datetime import date
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote
@@ -51,6 +50,13 @@ OPEN_LIBRARY_BASE = "https://openlibrary.org"
 USER_AGENT = "kg-aware-slate-recommendation-template/1.0 (RelationalAI)"
 
 SEED = 20260430
+
+# Reference year for ``age_days`` computation. Frozen (not
+# ``date.today().year``) so the bundled CSVs and customer reruns are
+# byte-deterministic across calendar years -- a rerun in 2030 from
+# the same Open Library cache produces identical books.csv as a rerun
+# today. Bump when refreshing the bundled snapshot.
+REFERENCE_YEAR = 2026
 
 # Curated subject seeds. These are stable Open Library subject slugs
 # that return well-populated work lists; chosen for KG overlap (some
@@ -250,6 +256,21 @@ def build_slice(
             year = None
         work_publish_year[key] = year
 
+    # Drop works with no authors (the runner's MAX_PER_AUTHOR cap and
+    # the typed-evidence join silently exempt author-less books, which
+    # produces surprising slate behaviour). Author-less works in Open
+    # Library are typically incomplete records; safer to omit than
+    # propagate.
+    keys_with_authors = [k for k in work_keys if work_authors[k]]
+    n_dropped_no_authors = len(work_keys) - len(keys_with_authors)
+    if n_dropped_no_authors:
+        print(
+            f"  WARNING: dropping {n_dropped_no_authors} work(s) "
+            "with no resolvable authors."
+        )
+        work_keys = keys_with_authors
+        work_id_by_key = {key: i + 1 for i, key in enumerate(work_keys)}
+
     # Resolve author names for keys we pulled from /works payloads.
     author_keys_to_resolve = sorted(
         {k for keys in work_authors.values() for k in keys if k not in authors_by_key}
@@ -316,7 +337,7 @@ def emit_csvs(slice_data: dict, profile: dict, data_dir: Path) -> None:
     in_house_target = max(1, int(round(n_books * IN_HOUSE_FRACTION)))
     in_house_ids = set(rng.sample(range(1, n_books + 1), in_house_target))
 
-    current_year = date.today().year
+    current_year = REFERENCE_YEAR
     book_rows = []
     for key in work_keys:
         bid = work_id_by_key[key]
