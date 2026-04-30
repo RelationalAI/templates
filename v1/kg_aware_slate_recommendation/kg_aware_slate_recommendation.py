@@ -6,13 +6,20 @@ Three-pillar pipeline modelling a content-row / homepage slate:
   authors and shared subjects. Provides each candidate book with a
   structural-popularity signal that the prescriptive layer reads as
   data.
-- Paths: bounded-depth knowledge-graph walks
-  (``User -> read -> Book -> shares author / subject / similar ->
-  candidate``) produce per-(user, candidate) explanation features.
-  Path counts by type become integer features the MIP reads in
-  ``where`` and ``require`` clauses; the top-aggregate-relevance
-  path is surfaced as the human-readable explanation for each picked
-  item (GDPR Art. 22 / EU AI Act Art. 86 explainability artefact).
+- Paths: bounded-depth walks (``MAX_HOPS = 2``) over the unified
+  ``Item.connected_to`` edge enumerate ``User -> read_Book`` (length 1;
+  pruned by the already-read exclusion) and ``User -> read_Book ->
+  similar_Book`` (length 2) -- the path-pillar's actual reach with a
+  Book endpoint at 2 hops. The per-(user, candidate) typed counts
+  (``path_count_via_author`` / ``_via_subject``) are *direct shared-
+  entity joins* against the user's read history (KPRN-style typed
+  evidence aggregation), not path walks themselves. The walk-count
+  (``path_count_via_kg_walk``) is the actual paths-pillar count. All
+  three integer features feed ``where`` / ``require`` clauses on the
+  MIP and are blended into the objective via ``path_count_total``;
+  the top-aggregate-relevance path is the human-readable explanation
+  for each picked item (GDPR Art. 22 / EU AI Act Art. 86
+  explainability artefact).
 - Prescriptive: float-coefficient binary IP on HiGHS picks K items per
   user under subject diversity, author uniqueness, freshness floor,
   originals-exposure floor, cold-start cap, and explanation-path
@@ -27,7 +34,7 @@ LinkedIn Career Explorer navigates the Skills Graph by paths. This
 template composes the same primitives declaratively in PyRel.
 
 Lead dataset: Open Library (CC0). The bundled ``data/`` directory
-carries a small slice (~60 books, ~30-40 authors, ~12 subjects) pulled
+carries a small slice (~60 books, ~58 authors, 12 subjects) pulled
 by ``data/fetch_open_library_slice.py``. Customers fetch larger slices
 by re-running that script with ``--size md`` / ``--size lg``. The
 domain is plain bibliographic catalogue, so no licensing exposure --
@@ -49,21 +56,27 @@ from relationalai.semantics import (
 )
 from relationalai.semantics.reasoners.graph import Graph
 from relationalai.semantics.reasoners.prescriptive import Problem
+from relationalai.semantics.std import aggregates as aggs
 from relationalai.semantics.std.paths import PathTraversal
 
 # --- Configuration --------------------------------------------------
 
-# Slate size: the K of "row of K things". 8 is a typical streaming-row
-# size; tune to taste.
+# Slate size: the K of "row of K things". Streaming rows are
+# typically 5-10; this template uses 3 to keep the bundled-data
+# instance small. Tune to taste.
 SLATE_SIZE_K = 3
 
-# Bounded path depth for the KG walk. 2 hops means each path is
-# (User -> middle -> Book); ``middle`` can be a Book reached via
-# ``read`` (then a similar_to edge lands on the candidate), or an
-# Author / Subject node shared between a read anchor and the
-# candidate. 3+ hops over a heterogeneous KG saturates quickly
-# (every user reaches every book via a subject or author hub), so 2
-# is the sweet spot for both differentiation and runtime.
+# Bounded path depth for the KG walk. With a Book endpoint and
+# MAX_HOPS = 2, the walker enumerates ``User -> read_Book`` (length 1)
+# and ``User -> read_Book -> similar_Book`` (length 2) -- the
+# similarity-walk reach over books the user has already engaged with.
+# Author / Subject hubs participate in candidate generation only via
+# the ``Book.similar_to`` edges that the data pipeline derives from
+# shared author/subject (and that are also re-used directly by the
+# typed-evidence joins below). Bumping to 3+ hops would let the walker
+# traverse Author/Subject hubs explicitly, but the heterogeneous KG
+# saturates fast (most users would reach most books) -- so 2 is the
+# sweet spot for differentiation and runtime.
 MAX_HOPS = 2
 
 # Multi-axis diversity caps inside each user's slate.
@@ -72,13 +85,23 @@ MAX_PER_AUTHOR = 1
 
 # Freshness / exposure / cold-start dials. All integer counts.
 FRESHNESS_FLOOR = 1  # at least N items released within FRESH_WINDOW_DAYS
-FRESH_WINDOW_DAYS = 365 * 30  # 30 years -- catalogue mix
+# 30 years is a *catalogue-framing* default tuned to the bibliographic
+# Open Library slice (publication dates back centuries; a tighter
+# window would mark almost everything stale). Streaming / news / e-
+# commerce platforms typically want 365 * 2 (2 years) or less so the
+# freshness floor visibly constrains.
+FRESH_WINDOW_DAYS = 365 * 30
 ORIGINALS_FLOOR = 1  # at least N in-house items per slate
 COLD_START_CAP = 2  # at most N items with weak path support
 
 # Explanation-floor: each user's slate must carry enough cumulative
 # KG-path evidence (author + subject overlap, plus walks) aggregated
 # over picked items. Sum-bound on path_count_total over picked items.
+# Tuned for the bundled ``--size sm`` slice (path_count_total ranges
+# 2-12 there); customers running ``--size md`` / ``--size lg`` should
+# re-tune EXPLANATION_FLOOR / WEAK_EXPLANATION_THRESHOLD to the new
+# distribution (inspect via the "Candidate set per user" print at the
+# end of the runner).
 EXPLANATION_FLOOR = 4
 
 # Cold-start path-count threshold. An item with total path count
@@ -100,8 +123,9 @@ data_dir = Path(__file__).parent / "data"
 # 2-arity edge relationship across the whole KG. This is the
 # documented v1.1.0 workaround for the "multiple edges in a single
 # path()" gap (paths-lib README: "encode the multi-edge traversal as
-# a single N-arity relationship"); design epic RAI-44166 tracks
-# first-class composite-edge support.
+# a single N-arity relationship"). First-class composite-edge support
+# is on the PyRel roadmap; once it lands, the unified-edge layer
+# below can be deleted.
 Item = model.Concept("Item")
 
 User = model.Concept("User", extends=[Item], identify_by={"id": Integer})
@@ -240,7 +264,7 @@ model.define(sim_graph.Edge.new(src=src_g, dst=dst_g)).where(
 
 # PageRank: structural-popularity prior. Stored as Float (the native
 # pagerank() output type). HiGHS handles float coefficients on binary
-# decisions natively; the same pattern is used by supply_chain.
+# decisions natively, so no quantisation step is needed.
 Book.pagerank_score = model.Property(
     f"{Book} has structural score {Float:pagerank_score}"
 )
@@ -251,13 +275,14 @@ model.define(b_pr.pagerank_score(score_pr)).where(
     pagerank_rel(b_pr, score_pr),
 )
 
-# --- Pillar 2: Paths -- bounded heterogeneous KG walk ---------------
+# --- Pillar 2: Paths -- bounded similarity walk ---------------------
 #
 # Walk the unified ``Item.connected_to`` edge from each User up to
-# MAX_HOPS hops. Each walk traces a real heterogeneous KG path
-# (User -> Book -> Author -> Book, User -> Book -> Subject -> Book,
-# User -> Book -> Book via similar_to, ...). The path-walker bounds
-# enumeration to MAX_HOPS, so the candidate set is the bounded
+# MAX_HOPS hops. With a Book endpoint at length 2, the walker
+# enumerates ``User -> read_Book`` (length 1; the user's own read
+# books, pruned downstream by ``exclude_read_ic``) and
+# ``User -> read_Book -> similar_Book`` (length 2). The path-walker
+# bounds enumeration to MAX_HOPS, so the candidate set is the bounded
 # reachable set under the KG -- the same primitive Pixie / KPRN /
 # LinkedIn Career Explorer compose at production scale.
 kg_paths = model.path(
@@ -265,10 +290,10 @@ kg_paths = model.path(
 ).all_paths()
 
 # Candidate set: any (user, book) reached by a User-anchored bounded
-# KG walk ending at a Book node. v1.1.0 does not yet support ``not``
-# (paths-lib README §"Currently unsupported patterns" and
-# compliance_rule_audit's documented gap), so the already-read filter
-# lands as a ``pick == 0`` IC at the prescriptive layer instead.
+# KG walk ending at a Book node. PyRel v1.1.0 does not yet support
+# ``not`` in rules (paths-lib README §"Currently unsupported
+# patterns"), so the already-read filter lands as a ``pick == 0`` IC
+# at the prescriptive layer instead.
 Candidate = model.Concept(
     "Candidate",
     identify_by={"user_id": Integer, "book_id": Integer},
@@ -299,10 +324,9 @@ model.define(Candidate.new(user_id=u_cand.id, book_id=b_cand.id)).where(
 # is forced to pick=0 by ``exclude_read_ic``.
 #
 # Composition style: arithmetic ``a + s + w`` (not ``sum(model.union(a,
-# s, w))``). PyRel's union strips keys and deduplicates on projected
-# values (pinned by
-# ``test_e2e_rewriter_semantic_equivalence_highs::u_same_prop`` —
-# ``sum(model.union(X.v, X.v)) == 10`` not 20), so a sum-of-union
+# s, w))``). PyRel's ``model.union`` inside an aggregate body strips
+# keys and deduplicates on projected values, so
+# ``sum(model.union(X.v, X.v)) == 10`` (not 20) -- a sum-of-union
 # formulation silently undercounts whenever two of the three typed
 # counts share a value for the same Candidate. ``experiments/
 # count_variants.py`` empirically reproduces the divergence (variant F:
@@ -391,8 +415,8 @@ model.define(Candidate.path_count_total(c, n)).where(
 # --- Personalized utility -------------------------------------------
 # Blend structural prior (float PageRank) with per-user path signal
 # (integer path counts) into a single Float utility. HiGHS handles
-# float coefficients on binary decisions natively (supply_chain uses
-# the same pattern).
+# float coefficients on binary decisions natively, so the blend
+# stores directly as Float without a quantisation step.
 Candidate.utility = model.Property(f"{Candidate} has utility {Float:utility}")
 b_u = Book.ref()
 util = Float.ref()
@@ -400,8 +424,7 @@ model.define(Candidate.utility(c, util)).where(
     Candidate(c),
     c.book_id == b_u.id,
     util
-    == PAGERANK_WEIGHT * b_u.pagerank_score
-    + PATH_SIGNAL_WEIGHT * (2 * c.path_count_via_author + c.path_count_via_subject),
+    == PAGERANK_WEIGHT * b_u.pagerank_score + PATH_SIGNAL_WEIGHT * c.path_count_total,
 )
 
 # --- Pillar 3: Prescriptive -- MIP slate selection ------------------
@@ -415,6 +438,25 @@ problem.solve_for(
     name=["pick", Candidate.user_id, Candidate.book_id],
 )
 
+# Data preconditions for OPTIMAL on customer slices:
+#  (1) every user must have at least ``SLATE_SIZE_K`` candidates in
+#      their 2-hop reach AFTER the already-read exclusion (else
+#      ``slate_size_ic`` ∧ ``exclude_read_ic`` are jointly
+#      infeasible).
+#  (2) for every user, the 2-hop reach must contain at least
+#      ``FRESHNESS_FLOOR`` books with ``age_days <= FRESH_WINDOW_DAYS``
+#      and at least ``ORIGINALS_FLOOR`` books with ``in_house == 1``
+#      (else the corresponding floor IC is infeasible for that user).
+#  (3) every Book picked must have at least one ``Book.about(Subject)``
+#      and one ``Book.written_by(Author)`` row, else the diversity /
+#      uniqueness caps silently exempt that Book (the IC's join
+#      filters it out). The bundled fetcher guarantees both; customer
+#      data should be checked.
+# Violations surface as ``INFEASIBLE`` from HiGHS plus the
+# ``model.require(termination_status() == "OPTIMAL")`` failure at
+# script tail. The ``Candidate set per user`` inspection (later) is a
+# pre-solve diagnostic for (1).
+
 # Cardinality: each user gets exactly K picks.
 slate_size_ic = model.require(
     sum(Candidate.pick).per(Candidate.user_id) == SLATE_SIZE_K
@@ -422,10 +464,11 @@ slate_size_ic = model.require(
 problem.satisfy(slate_size_ic)
 
 # Already-read exclusion: any (user, book) where the user has already
-# read the book must have pick == 0. v1.1.0 lacks ``not`` in rules
-# (paths-lib README + compliance_rule_audit's documented gap), so
-# the exclusion lands here at the prescriptive layer rather than as
-# a ``~User.read(...)`` filter on the candidate derivation.
+# read the book must have pick == 0. PyRel v1.1.0 does not yet support
+# ``not`` in rules (paths-lib README §"Currently unsupported
+# patterns"), so the exclusion lands here at the prescriptive layer
+# rather than as a ``~User.read(...)`` filter on the candidate
+# derivation.
 u_excl, b_excl = User.ref(), Book.ref()
 rating_excl_ic = Integer.ref()
 exclude_read_ic = model.where(
@@ -539,14 +582,16 @@ model.select(
 ).where(Candidate.pick == 1).inspect()
 
 print("\nSubject distribution per user's slate (cap = MAX_PER_SUBJECT):")
+u_disp = User.ref()
 b_disp = Book.ref()
 s_disp = Subject.ref()
 model.select(
-    Candidate.user_id.alias("user_id"),
+    u_disp.id.alias("user_id"),
     s_disp.name.alias("subject"),
-    sum(Candidate.pick)
-    .per(Candidate.user_id, s_disp)
+    aggs.sum(Candidate.pick)
+    .per(u_disp, s_disp)
     .where(
+        Candidate.user_id == u_disp.id,
         Candidate.book_id == b_disp.id,
         Book.about(b_disp, s_disp),
     )

@@ -1,10 +1,19 @@
 ---
 title: "KG-aware slate recommendation"
 description: "Three-pillar Graph + Paths + Prescriptive (MIP) template that picks K items per user under business rules, with KG-path explanations."
-experience_level: advanced
-industry: media
-tags: [graph, paths, prescriptive, mip, recommendation, slate, explainability]
 featured: false
+experience_level: advanced
+industry: "Media"
+reasoning_types:
+  - Graph
+  - Paths
+  - Prescriptive
+tags:
+  - Multi-Reasoner
+  - Recommendation
+  - Slate
+  - Mixed-Integer Programming
+  - Explainability
 ---
 
 # KG-aware slate recommendation
@@ -116,11 +125,12 @@ cd kg_aware_slate_recommendation
    python kg_aware_slate_recommendation.py
    ```
 
-The bundled `data/` directory carries a small slice (~60 books, ~30-40
-authors, ~12 subjects) of the Open Library catalogue (CC0; bibliographic
-metadata only). The synthetic users / read events / similar_to edges are
-generated on top so the template runs against your RAI account in seconds
-without any data-licensing exposure. To pull a larger slice for a more
+The bundled `data/` directory carries a small slice (~60 books, ~58
+authors, 12 subjects) of the Open Library catalogue (CC0; bibliographic
+metadata only). Synthetic users and read events are generated on top,
+and similar_to edges are derived deterministically from shared-author /
+shared-subject overlap in the OL data, so the template runs against
+your RAI account in seconds without any data-licensing exposure. To pull a larger slice for a more
 realistic instance:
 
 ```bash
@@ -147,9 +157,9 @@ are reproducible and offline-friendly after the first pull.
 - Unified KG edge: `Item.connected_to(Item, Item)` populated as the
   symmetric union of the typed edges. Workaround for the v1.1.0
   paths-lib gap on multi-edge `path()` (see paths-lib README,
-  "Currently unsupported patterns" §1) — design epic RAI-44166
-  tracks first-class composite-edge support, after which this
-  unified-edge layer can be deleted.
+  "Currently unsupported patterns" §1). First-class composite-edge
+  support is on the PyRel roadmap; once it lands, this unified-edge
+  layer can be deleted.
 
 ### Pipeline
 
@@ -159,20 +169,36 @@ are reproducible and offline-friendly after the first pull.
    per-item popularity prior the prescriptive layer uses, the same
    shape Pinterest's Pixie applies at production scale.
 
-2. **Paths: bounded heterogeneous KG walks.** The path walker
-   traverses `Item.connected_to` (the symmetric union of
-   `read | written_by | about | similar_to`) anchored at each
-   `User` up to `MAX_HOPS = 2` hops. Each path traces a real
-   heterogeneous chain
-   (`User -> Book -> Author -> Book`,
-   `User -> Book -> Subject -> Book`,
-   `User -> Book -> Book via similar_to`, ...). For every
-   `(user, candidate)` pair the walker contributes a
-   `path_count_via_kg_walk` feature; the per-typed-share counts
-   (`path_count_via_author`, `_via_subject`) are recovered as
-   direct shared-entity joins between the candidate and the user's
-   read history -- the KPRN-style typed-path aggregation production
-   KG-recsys uses.
+2. **Paths: bounded similarity walks + typed evidence joins.**
+   The path walker traverses `Item.connected_to` (the symmetric
+   union of `read | written_by | about | similar_to`) anchored at
+   each `User` up to `MAX_HOPS = 2` hops. With a Book endpoint at
+   length 2, the candidate set is the union of
+   `User -> read_Book` (length 1; pruned by the already-read
+   exclusion) and `User -> read_Book -> similar_Book` (length 2).
+   Author / Subject hubs participate via the `similar_to` edges
+   the data pipeline derives from shared author/subject (see
+   `book_similar.csv`); 3-hop walks
+   (`User -> read_Book -> Author -> candidate_Book`) are not
+   enumerated because the heterogeneous KG saturates fast at that
+   depth and `MAX_HOPS = 2` is the runtime sweet spot. The
+   per-`(user, candidate)` typed-evidence counts
+   (`path_count_via_author`, `_via_subject`) are *direct shared-
+   entity joins* between the candidate and the user's read history
+   (KPRN-style typed aggregation) rather than walks themselves;
+   `path_count_via_kg_walk` is the actual count of
+   walker-enumerated paths. The composite `path_count_total` feeds
+   both the explanation-floor IC and the objective, so all three
+   signals contribute to picks.
+
+   The book-similarity input (`data/book_similar.csv`) is the
+   *retrieval* artefact in production-recsys terms: the data
+   pipeline ships one CC0-derived recipe (shared-author-OR-shared-
+   subject), but customers swap it for any retrieval source -- a
+   learned embedding's k-NN, a behavioural co-engagement matrix, a
+   third-party recommendation API. The model treats it as input
+   data; the upstream choice is independent of the slate-stage
+   logic this template encodes.
 
 3. **Prescriptive: MIP slate selection.** Decisions:
    `Candidate.pick in {0, 1}`. Constraints:
@@ -224,8 +250,8 @@ kg_aware_slate_recommendation/
 
 Bibliographic data is sourced from Open Library
 (<https://openlibrary.org/dev/docs/api>), released under CC0 (public
-domain). Synthetic users / read events / similar_to edges are
-generated deterministically by the fetch script.
+domain). Synthetic users and read events, plus the derived similar_to
+edges, are generated deterministically by the fetch script.
 
 ## Customise this template
 
@@ -235,6 +261,13 @@ The first changes most users will make:
   `python data/fetch_open_library_slice.py --size md|lg` to pull a
   larger CC0 slice (~250 / ~600 books). The fetch script is
   idempotent and caches API responses under `data/_cache/`.
+  Two things to retune at larger sizes: (1) the
+  `EXPLANATION_FLOOR` / `WEAK_EXPLANATION_THRESHOLD` constants in the
+  runner are tuned for `sm`'s `path_count_total` distribution
+  (range 2-12); larger slices produce much higher walk counts and
+  these thresholds become trivially satisfied unless rescaled.
+  (2) HiGHS `time_limit_sec=60` is comfortable at `sm` (~1k binary
+  decisions); raise it for `lg` (~120k decisions × 8 ICs).
 - **Retarget to e-commerce.** Replace `Book` with `Product`,
   `read` with `purchased`, `similar_to` with co-purchase. The
   template runs as a "frequently bought together" slate composer

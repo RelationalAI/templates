@@ -6,17 +6,15 @@ The known pitfall: ``count(x).per(c).where(P)`` returns no row for
 ``c``-groups with no matches. Downstream composite properties (e.g.
 ``path_count_total = via_a + via_s + via_walk``) and prescriptive
 sum-floor ICs (e.g. ``sum(path_count_total * pick).per(user) >= K``)
-then silently drop those candidates -- which is what produced the
-INFEASIBLE we observed before applying ``| 0`` defaults.
+then silently drop those candidates -- the INFEASIBLE that arises
+when ``| 0`` defaults are missing.
 
-The PyRel docstring on ``Variable.__or__`` (base.py L827) and the
-canonical end2end test ``aggregate_defaults_and_regroup.py`` confirm
-``| 0`` is the documented fallback/default idiom. The prescriptive
-rewriter (rewriter.py L624-L629) explicitly states it matches PyRel
-rule semantics ("empty sum = empty relation") and supports Match-form
-defaults end-to-end via ``_rewrite_match``.
+``| 0`` is the documented PyRel fallback/default idiom for this
+shape. The prescriptive reasoner's rewriter preserves PyRel rule
+semantics ("empty sum = empty relation") and supports the Match-form
+default end-to-end.
 
-This harness probes five variants and uses ``problem.display()`` to
+This harness probes six variants and uses ``problem.display()`` to
 inspect the grounded MIP rather than running E2E solves.
 
 Variants
@@ -28,12 +26,15 @@ B: three counts each via an intermediate typed-evidence relationship
 C: single ``Candidate.union_evidence`` relation populated by three
    define rules (PyRel rule-union semantics), then a single count
    over it -- still ``| 0`` because count-empty drops.
-D: regression -- three counts, NO ``| 0``. Expected to break the
-   explanation_ic ground (sparse path_count_total).
+D: regression -- three counts, no ``| 0``. Reproduces the empty-
+   group cascade-drop that breaks explanation_ic grounding.
 E: ``model.union`` *inside* the count-where body; one count over the
-   set-style union. Note this is the form the prescriptive rewriter
-   documents at L519-L526 ("aggregate over Union flows through
-   _rewrite_match preserving set-style semantics"). Still ``| 0``.
+   set-style union. Aggregates over a body Union flow through PyRel's
+   Match-rewrite preserving set-style dedup semantics. Still ``| 0``.
+F: sum the union of the three per-typed counts. Demonstrates the
+   user-facing footgun: ``sum(model.union(propA, propB, propC))``
+   silently undercounts whenever two operands share a value for the
+   same Candidate (set-style projected-value dedup).
 
 For each variant we:
 - count Candidates and Candidates with path_count_total defined,
@@ -50,7 +51,6 @@ from contextlib import redirect_stdout
 from pathlib import Path
 
 from pandas import read_csv
-
 from relationalai.semantics import (
     Float,
     Integer,
@@ -354,23 +354,23 @@ def add_v_C(model, Item, User, Book, Author, Subject, Candidate, kg_paths):
 
     # Per-type sub-counts for inspections.
     cc, n = Candidate.ref(), Integer.ref()
-    kk, key2 = Integer.ref(), Integer.ref()
+    key2 = Integer.ref()
     model.define(Candidate.path_count_via_author(cc, n)).where(
         Candidate(cc),
         n == count(key2).per(cc).where(Candidate.union_evidence(cc, 1, key2)) | 0,
     )
-    kk2, key3 = Integer.ref(), Integer.ref()
+    key3 = Integer.ref()
     model.define(Candidate.path_count_via_subject(cc, n)).where(
         Candidate(cc),
         n == count(key3).per(cc).where(Candidate.union_evidence(cc, 2, key3)) | 0,
     )
-    kk3, key4 = Integer.ref(), Integer.ref()
+    key4 = Integer.ref()
     model.define(Candidate.path_count_via_kg_walk(cc, n)).where(
         Candidate(cc),
         n == count(key4).per(cc).where(Candidate.union_evidence(cc, 3, key4)) | 0,
     )
 
-    # Single count over union_evidence — the headline test for variant C.
+    # Single count over union_evidence -- the headline test for variant C.
     cc2 = Candidate.ref()
     n2 = Integer.ref()
     kkx, kxk = Integer.ref(), Integer.ref()
@@ -439,11 +439,10 @@ def add_v_D(model, Item, User, Book, Author, Subject, Candidate, kg_paths):
 def add_v_E(model, Item, User, Book, Author, Subject, Candidate, kg_paths):
     """Variant E: ``model.union`` inside count.where; one count over set-style union.
 
-    Per the prescriptive rewriter docstring (rewriter.py L519-L526),
-    a Union inside an aggregate body flows through ``_rewrite_match``
-    and the aggregate sees a single Union as its body, preserving
-    PyRel's set-style union semantics. We test this with a single
-    count over a 3-branch union of typed-evidence fragments.
+    A Union inside an aggregate body flows through PyRel's
+    Match-rewrite, and the aggregate sees a single Union as its body
+    -- preserving set-style dedup semantics. We probe this with a
+    single count over a 3-branch union of typed-evidence fragments.
 
     Each branch's projected key has a uniform ``(kind, key)`` shape
     so the union is well-typed.
@@ -499,12 +498,10 @@ def add_v_E(model, Item, User, Book, Author, Subject, Candidate, kg_paths):
     )
 
     # Variant-E composite: one count over model.union of three
-    # branches, using the canonical unpacking form
-    # (cf tests/end2end/unified/tests/aggregate.py L95-L102):
+    # branches, using the canonical PyRel union-unpacking idiom:
     # ``ec, ekind, ekey = m.union(branch1, branch2, branch3)`` makes
     # the union's columns first-class refs we can group on.
     c_total = Candidate.ref()
-    n_total = Integer.ref()
     uc2, bc2 = User.ref(), Book.ref()
     bra2, ar2 = Book.ref(), Author.ref()
     a_branch = model.where(
@@ -609,7 +606,7 @@ def add_v_F(model, Item, User, Book, Author, Subject, Candidate, kg_paths):
     )
 
     # Sum the union of the three count values, grouped per Candidate,
-    # using the canonical unpacking form (cf aggregate.py:95).
+    # using the canonical PyRel union-unpacking idiom.
     cc_F = Candidate.ref()
     a_branch = model.select(cc_F, cc_F.path_count_via_author)
     s_branch = model.select(cc_F, cc_F.path_count_via_subject)
@@ -701,12 +698,9 @@ def run_variant(label):
 
 
 def _is_na(v):
-    try:
-        import pandas as pd
+    import pandas as pd
 
-        return bool(pd.isna(v))
-    except Exception:
-        return False
+    return bool(pd.isna(v))
 
 
 def main():

@@ -1,10 +1,14 @@
 """Open Library (CC0) slice fetcher for kg_aware_slate_recommendation.
 
 Pulls a deterministic small slice of Open Library data (~60 books,
-~30-40 authors, ~12 subjects) and emits the 10-CSV bundle the runner
-ingests. Synthetic users / read events / similar_to edges are generated
-on top so the template is fully self-contained without depending on
-user-reading data (which Open Library does not publish).
+~58 authors, 12 subjects) and emits the 8-CSV bundle the runner
+ingests (books, authors, subjects, book_author, book_subject,
+book_similar, users, read). Synthetic users and read events are
+generated on top, and ``book_similar.csv`` is derived deterministi-
+cally from shared-author / shared-subject overlap in the Open
+Library data -- so the template is fully self-contained without
+depending on user-reading data (which Open Library does not
+publish).
 
 Why Open Library: bibliographic catalogue, 100% CC0
 (<https://openlibrary.org/dev/docs/api>), explicitly safe for public
@@ -17,10 +21,11 @@ Usage
 -----
 ::
 
-    python data/fetch_open_library_slice.py            # default slice
-    python data/fetch_open_library_slice.py --size lg  # ~200 books
+    python data/fetch_open_library_slice.py            # default slice (~60 books)
+    python data/fetch_open_library_slice.py --size md  # ~250 books
+    python data/fetch_open_library_slice.py --size lg  # ~600 books
 
-The script writes 10 CSVs into ``data/`` and is idempotent: re-runs
+The script writes 8 CSVs into ``data/`` and is idempotent: re-runs
 that hit the cache (``data/_cache/``) produce identical CSVs without
 re-querying the API. Customers wanting larger instances bump
 ``--size`` and re-run; the same script scales.
@@ -34,6 +39,7 @@ import json
 import random
 import re
 import time
+from datetime import date
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote
@@ -123,7 +129,10 @@ def _http_get_json(url: str, cache_dir: Path) -> dict:
         except (HTTPError, URLError, TimeoutError) as exc:
             last_err = exc
             time.sleep(1.0 * (attempt + 1))
-    raise RuntimeError(f"Open Library fetch failed after retries: {url}") from last_err
+    raise RuntimeError(
+        f"Open Library fetch failed after 3 retries: {url} "
+        f"({type(last_err).__name__}: {last_err})"
+    ) from last_err
 
 
 def fetch_subject(subject: str, limit: int, cache_dir: Path) -> list[dict]:
@@ -246,6 +255,7 @@ def build_slice(
         {k for keys in work_authors.values() for k in keys if k not in authors_by_key}
     )
     print(f"Resolving {len(author_keys_to_resolve)} authors ...")
+    n_author_resolve_failures = 0
     for akey in author_keys_to_resolve:
         if akey.startswith("/authors/_inline_"):
             continue
@@ -253,7 +263,27 @@ def build_slice(
             payload = _http_get_json(f"{OPEN_LIBRARY_BASE}{akey}.json", cache_dir)
             authors_by_key[akey] = (payload.get("name") or akey).strip()
         except RuntimeError:
+            # Fall back to the OL key tail (e.g. "OL12345A") so the
+            # author still appears in the output. The slice will mix
+            # real names with opaque tails for these rows.
             authors_by_key[akey] = akey.split("/")[-1]
+            n_author_resolve_failures += 1
+    if n_author_resolve_failures:
+        print(
+            f"  WARNING: {n_author_resolve_failures} author name(s) "
+            "fell back to the Open Library key (HTTP fetch failed)."
+        )
+
+    n_year_synthesized = 0
+    for key in work_keys:
+        if work_publish_year.get(key) is None:
+            n_year_synthesized += 1
+    if n_year_synthesized:
+        print(
+            f"  WARNING: {n_year_synthesized} book(s) had no publishable "
+            "year in Open Library; emit_csvs() will synthesise one in "
+            "the 1900-current range so age_days is defined."
+        )
 
     return {
         "work_keys": work_keys,
@@ -286,7 +316,7 @@ def emit_csvs(slice_data: dict, profile: dict, data_dir: Path) -> None:
     in_house_target = max(1, int(round(n_books * IN_HOUSE_FRACTION)))
     in_house_ids = set(rng.sample(range(1, n_books + 1), in_house_target))
 
-    current_year = 2026
+    current_year = date.today().year
     book_rows = []
     for key in work_keys:
         bid = work_id_by_key[key]
@@ -371,9 +401,9 @@ def emit_csvs(slice_data: dict, profile: dict, data_dir: Path) -> None:
     )
 
     # Similar_to: derived from shared author OR shared subject. Two
-    # books are "similar" if they share at least one author, or two+
-    # subjects. This produces a sparse, locally-dense graph (the
-    # property KG-walk path counts need to differentiate users).
+    # books are "similar" if they share at least one author, or at
+    # least one subject. This produces a sparse, locally-dense graph
+    # (the property KG-walk path counts need to differentiate users).
     book_authors_idx: dict[int, set[int]] = {}
     book_subjects_idx: dict[int, set[int]] = {}
     for r in book_author_rows:
@@ -389,7 +419,7 @@ def emit_csvs(slice_data: dict, profile: dict, data_dir: Path) -> None:
                 b, set()
             )
             # Include any pair that shares an author or at least one
-            # subject — keeps the similarity graph dense enough that
+            # subject -- keeps the similarity graph dense enough that
             # every user's 2-hop reach covers a reasonable slice of
             # the catalogue (otherwise users whose reads cluster in a
             # corner can have no fresh / in-house candidates).
