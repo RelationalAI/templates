@@ -297,6 +297,17 @@ model.define(Candidate.new(user_id=u_cand.id, book_id=b_cand.id)).where(
 # ``sum(path_count_total * pick).per(user_id) >= floor`` is
 # vacuously infeasible whenever a user's only-with-total candidate
 # is forced to pick=0 by ``exclude_read_ic``.
+#
+# Composition style: arithmetic ``a + s + w`` (not ``sum(model.union(a,
+# s, w))``). PyRel's union strips keys and deduplicates on projected
+# values (pinned by
+# ``test_e2e_rewriter_semantic_equivalence_highs::u_same_prop`` —
+# ``sum(model.union(X.v, X.v)) == 10`` not 20), so a sum-of-union
+# formulation silently undercounts whenever two of the three typed
+# counts share a value for the same Candidate. ``experiments/
+# count_variants.py`` empirically reproduces the divergence (variant F:
+# pick_5_12 coefficient = 6 vs A's 7). Bag arithmetic on the densified
+# per-typed counts is the right surface here.
 Candidate.path_count_via_author = model.Property(
     f"{Candidate} has author connections {Integer:n}"
 )
