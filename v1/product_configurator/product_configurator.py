@@ -103,6 +103,57 @@ excludes_csv = read_csv(data_dir / "excludes.csv")
 model.define(Excludes.new(model.data(excludes_csv).to_schema()))
 
 # --------------------------------------------------
+# Validate the regional catalogue against TARGET_REGION
+# --------------------------------------------------
+
+# The constraint families below are scoped via `model.where(Option.allowed_in(TARGET_REGION), ...)`,
+# which silently drops any IC whose options are not all region-allowed. Two
+# failure modes follow that can let a "feasible" build slip through that
+# is not actually well-formed:
+#
+# 1. A slot with zero region-allowed options gets no exactly-one IC, so
+#    the model returns a build missing that slot entirely.
+# 2. A requires rule (A -> B) where A is region-allowed but B is not gets
+#    no IC, so A can be selected even though its required B does not exist
+#    in this region.
+#
+# Validate up front so the user gets a clear catalogue error instead of a
+# silently incomplete or rule-violating build.
+target_allowed_option_ids = set(
+    int(r["option_id"]) for _, r in regional_csv.iterrows() if r["region"] == TARGET_REGION
+)
+slot_to_allowed_options: dict[int, list[int]] = {}
+for _, r in options_csv.iterrows():
+    if int(r["id"]) in target_allowed_option_ids:
+        slot_to_allowed_options.setdefault(int(r["slot_id"]), []).append(int(r["id"]))
+slots_missing_options = [
+    int(r["id"]) for _, r in slots_csv.iterrows() if int(r["id"]) not in slot_to_allowed_options
+]
+if slots_missing_options:
+    slot_names = {int(r["id"]): r["name"] for _, r in slots_csv.iterrows()}
+    missing_names = [slot_names[s] for s in slots_missing_options]
+    raise ValueError(
+        f"No options are allowed in region {TARGET_REGION!r} for slot(s) "
+        f"{missing_names}. The exactly-one IC will not bind on those slots; "
+        "every slot must have at least one region-allowed option."
+    )
+
+dangling_requires = []
+for _, r in requires_csv.iterrows():
+    a_id, b_id = int(r["option_a_id"]), int(r["option_b_id"])
+    if a_id in target_allowed_option_ids and b_id not in target_allowed_option_ids:
+        dangling_requires.append((a_id, b_id))
+if dangling_requires:
+    option_names = {int(r["id"]): r["name"] for _, r in options_csv.iterrows()}
+    rendered = ", ".join(f"{option_names[a]} -> {option_names[b]}" for a, b in dangling_requires)
+    raise ValueError(
+        f"Region {TARGET_REGION!r} has requires rules whose target option is "
+        f"not allowed in the region: {rendered}. The requires IC will not bind "
+        "on these rules; ban the requiring option in the region or allow the "
+        "required option."
+    )
+
+# --------------------------------------------------
 # Model the decision problem
 # --------------------------------------------------
 
@@ -165,17 +216,23 @@ problem.display()
 # `Variable.values(idx, val)`. Without it, MiniZinc returns just the
 # first feasible build and stops.
 problem.solve("minizinc", time_limit_sec=60, solution_limit=MAX_CONFIGURATIONS)
-problem.solve_info().display()
+si = problem.solve_info()
+si.display()
 
-# Confirm constraints hold in the returned solution. `verify` inspects
-# only the first solution (the populated property), but the constraint
-# structure is shared across every solution the solver returns.
+# Confirm the pure-arithmetic ICs hold in the first returned solution.
+# `verify` only inspects the populated property (the first solution), so
+# this is a sanity check against that one build, not a re-proof across
+# every configuration. The model itself enforces the ICs across every
+# build returned by enumeration.
 problem.verify(exactly_one_ic, requires_ic, excludes_ic, price_ic)
-# At least one feasible build must have been found. We do not gate on
-# `termination_status`: with `solution_limit`, MiniZinc reports OPTIMAL
-# only when search has exhausted the space within the time limit, so
-# partial enumeration is the expected mode for large catalogues.
-model.require(problem.num_points() >= 1)
+
+if si.num_points is None or si.num_points == 0:
+    print(
+        f"\nNo feasible build for region {TARGET_REGION!r} under the encoded "
+        "constraints. Check the troubleshooting section in the README for "
+        "likely causes (price ceiling too low, region rules removing every "
+        "option for a slot, or conflicting requires/excludes rules)."
+    )
 
 # --------------------------------------------------
 # Inspect every feasible configuration

@@ -5,6 +5,7 @@ featured: false
 experience_level: intermediate
 industry: "Manufacturing"
 reasoning_types:
+  - Rules-based
   - Prescriptive
 tags:
   - configuration
@@ -37,8 +38,9 @@ The configurator scenario here is automotive trim, drawn from the public Renault
 
 - A constraint model with binary `Option.selected` decisions and four constraint families: per-slot exactly-one, requires, excludes, and price ceiling
 - A region-filtered decision domain so options not allowed in the target region simply don't appear as decisions
+- A pre-solve catalogue validation pass that fails fast on two pathologies the region filter can hide: a slot with zero region-allowed options (the exactly-one IC would not bind), and a requires rule whose required option is not allowed in the region (the requires IC would not bind)
 - **Multi-solution enumeration as the primary code path**: `problem.solve(..., solution_limit=MAX_CONFIGURATIONS)` runs the search in enumeration mode; `Variable.values(solution_index, value)` then surfaces every distinct feasible build, with per-solution totals computed by `sum(...).per(solution_index)`
-- Post-solve verification via `problem.verify()` confirming every named constraint holds in the returned configuration (`verify` inspects only the first solution, but the constraint structure is shared across every solution the solver returns)
+- Post-solve sanity check via `problem.verify()` confirming the named constraints hold against the first returned configuration (`verify` re-evaluates against the populated property only -- the first solution -- not across every enumerated build)
 
 ## What's included
 
@@ -277,7 +279,7 @@ model.select(
 - **Raise the solution limit on a real catalogue.** The bundled `MAX_CONFIGURATIONS = 5` is sized for the demo. On a production catalogue you may want `MAX_CONFIGURATIONS = 50` or higher so the buyer-facing UI surfaces a meaningful spread; `time_limit_sec` is your safety net -- enumeration stops when either the limit or the budget is reached.
 - **Add a new region** by adding rows to `regional_rules.csv` for the new region and changing `TARGET_REGION` in the runner.
 - **Tighten the price ceiling** by lowering `PRICE_CEILING_CENTS` to force the solver toward cheaper builds. If the ceiling drops below the cheapest feasible build, the solver returns INFEASIBLE.
-- **Switch from "all feasible" to "best K"** by adding `problem.minimize(sum(Option.price_cents * Option.selected))`. Under multi-solution mode this returns the K *cheapest* feasible builds in lex order rather than an arbitrary 5; pair with `MAX_CONFIGURATIONS = 5` to surface a top-of-funnel "cheapest options" view, or with `maximize(...)` over a desirability score for a "best-value" view.
+- **Switch from "all feasible" to "the cheapest build"** by adding `problem.minimize(sum(Option.price_cents * Option.selected))` and setting `MAX_CONFIGURATIONS = 1`. The solver returns one optimum. Top-K *optimal* enumeration (the K cheapest distinct builds, ranked) is not provided as a single solver call; for that, run an iterative exclusion-cut loop -- after each optimal solve, add a constraint forbidding the just-returned build's exact option set, then re-solve -- or sort the enumerated multi-solution set in post-processing if the feasible set is small enough to fit in memory.
 - **Add cardinality rules** like "at least one of {A, B, C} must be selected" with `count` over a filter on `Option.id`.
 - **Apply this to enterprise software bundling** by mapping slots to product modules, options to feature tiers, requires/excludes to module dependencies, and price_cents to seat-licence cost. The constraint families and multi-solution shape carry over unchanged.
 
@@ -287,8 +289,23 @@ model.select(
   <summary>Solver returns INFEASIBLE</summary>
 
 - Lower the price ceiling far enough and no feasible build exists. Raise `PRICE_CEILING_CENTS` until the solver returns a configuration.
-- A regional rule may have stripped every option from a slot, leaving the per-slot exactly-one constraint unsatisfiable. Check `data/regional_rules.csv` to confirm at least one option per slot is allowed in `TARGET_REGION`.
 - Conflicting requires / excludes rules can render the model infeasible. For example, "A requires B" together with "A excludes B" makes A unselectable.
+
+</details>
+
+<details>
+  <summary>ValueError: No options are allowed in region X for slot(s) [...]</summary>
+
+- The pre-solve catalogue check found a slot with zero region-allowed options. The exactly-one IC is scoped via `model.where(Option.allowed_in(TARGET_REGION), Option.slot(Slot))`, so it would not bind on the empty slot and the solver could return a "build" that is missing that slot entirely.
+- Allow at least one option per slot for `TARGET_REGION` in `data/regional_rules.csv`, or remove the slot from `data/slots.csv` if the slot really does not exist in this market.
+
+</details>
+
+<details>
+  <summary>ValueError: requires rules whose target option is not allowed in the region</summary>
+
+- The pre-solve catalogue check found a requires rule (A -> B) where the requiring option A is allowed in the region but the required option B is not. The requires IC filters both A and B to `TARGET_REGION`, so the IC would not bind for this rule and A could be selected even though its required B does not exist in the region.
+- Either ban A in this region (drop the row for `(option_id=A, region=TARGET_REGION)` from `data/regional_rules.csv`), or allow B in this region (add `(option_id=B, region=TARGET_REGION)`).
 
 </details>
 
@@ -319,7 +336,7 @@ model.select(
 <details>
   <summary>How many configurations will the solver return?</summary>
 
-- Up to `MAX_CONFIGURATIONS` (5 by default) or however many feasible builds exist in the catalogue, whichever is smaller. `problem.num_points()` reports the actual count; `solve_info()` reports `status: SOLUTION_LIMIT` when the limit was hit (more builds available) and `status: OPTIMAL` when the search has been exhausted.
+- Up to `MAX_CONFIGURATIONS` (5 by default) or however many feasible builds exist in the catalogue, whichever is smaller. `solve_info().num_points` reports the actual count; `solve_info().status` reports `SOLUTION_LIMIT` when the limit was hit (more builds available) and `OPTIMAL` when the search has been exhausted.
 - Solution ordering is not guaranteed across runs or solver versions; the *set* of returned builds for a given limit may also shift if MiniZinc's branching heuristics see new ties. Treat the `solution` column as a label, not a ranking.
 - The K returned builds are guaranteed to be *distinct* (each differs on at least one option) but not maximally diverse -- you may see two builds that share five of six slots and only differ on the cheapest. For broad spread, layer optimisation passes or apply your own diversity filters in post-processing.
 - To pin a single answer (e.g. surface the cheapest build first), set `MAX_CONFIGURATIONS = 1` and add `problem.minimize(sum(Option.price_cents * Option.selected))`.
