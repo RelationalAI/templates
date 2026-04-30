@@ -64,7 +64,7 @@ model.define(Slot.new(model.data(slots_csv).to_schema()))
 Option = model.Concept("Option", identify_by={"id": Integer})
 Option.name = model.Property(f"{Option} has {String:name}")
 Option.price_cents = model.Property(f"{Option} has {Integer:price_cents}")
-Option.slot = model.Relationship(f"{Option} is in {Slot}")
+Option.slot = model.Property(f"{Option} is in {Slot:slot}")
 Option.allowed_in = model.Relationship(f"{Option} is allowed in {String:region}")
 
 options_csv = read_csv(data_dir / "options.csv")
