@@ -117,14 +117,18 @@ Member.plan_id = model.Property(f"{Member} on plan {Integer:plan_id}")
 Member.provider_id = model.Property(f"{Member} sees provider {Integer:provider_id}")
 
 problem = Problem(model, Integer)
-# Capture the variable subconcepts so we can query their per-solution
-# values via `Variable.values(solution_index, value)` after the solve.
+# Every output goes through `Variable.values(solution_index, value)` against
+# the captured ProblemVariable handles, so the populated property path is
+# unused. `populate=False` skips the first-solution write-back -- avoiding
+# wasted work and the latent FDError that `populate=True` invites when
+# MiniZinc returns multiple solutions via `solution_limit`.
 age_bucket_var = problem.solve_for(
     Member.age_bucket_id,
     type="int",
     name=["age_bucket", Member.id],
     lower=int(age_buckets_csv["id"].min()),
     upper=int(age_buckets_csv["id"].max()),
+    populate=False,
 )
 plan_id_var = problem.solve_for(
     Member.plan_id,
@@ -132,6 +136,7 @@ plan_id_var = problem.solve_for(
     name=["plan_id", Member.id],
     lower=int(plans_csv["id"].min()),
     upper=int(plans_csv["id"].max()),
+    populate=False,
 )
 provider_id_var = problem.solve_for(
     Member.provider_id,
@@ -139,6 +144,7 @@ provider_id_var = problem.solve_for(
     name=["provider_id", Member.id],
     lower=int(providers_csv["id"].min()),
     upper=int(providers_csv["id"].max()),
+    populate=False,
 )
 
 # --------------------------------------------------
