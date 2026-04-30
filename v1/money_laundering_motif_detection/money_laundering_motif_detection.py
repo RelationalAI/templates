@@ -114,6 +114,34 @@ is_dest_var = problem.solve_for(Account.is_dest, type="bin", name=["is_dest", Ac
 # Constraints
 # --------------------------------------------------
 
+# Role-eligibility pre-pass. The per-account flow ICs below are scoped via
+# `model.where(Transaction.src == Account)` / `Transaction.dst == Account`,
+# which means the IC is only instantiated for accounts that appear as a
+# source / destination in the transaction edges. An account with no outgoing
+# transactions would otherwise be selectable as `is_source` or `is_hub`
+# without the K-fan / 1-out constraint binding -- and similarly for accounts
+# with no incoming transactions and `is_hub` / `is_dest`. Force the role
+# bits to 0 for accounts that cannot satisfy the required incident degree.
+all_account_ids = {int(a) for a in accounts_csv["id"].tolist()}
+src_account_ids = {int(s) for s in tx_csv["src_id"].tolist()}
+dst_account_ids = {int(d) for d in tx_csv["dst_id"].tolist()}
+ineligible_outgoing = sorted(all_account_ids - src_account_ids)
+ineligible_incoming = sorted(all_account_ids - dst_account_ids)
+for aid in ineligible_outgoing:
+    AC = Account.ref()
+    no_src_ic = model.where(AC.id == aid).require(AC.is_source == 0)
+    problem.satisfy(no_src_ic)
+    AC = Account.ref()
+    no_outhub_ic = model.where(AC.id == aid).require(AC.is_hub == 0)
+    problem.satisfy(no_outhub_ic)
+for aid in ineligible_incoming:
+    AC = Account.ref()
+    no_dst_ic = model.where(AC.id == aid).require(AC.is_dest == 0)
+    problem.satisfy(no_dst_ic)
+    AC = Account.ref()
+    no_inhub_ic = model.where(AC.id == aid).require(AC.is_hub == 0)
+    problem.satisfy(no_inhub_ic)
+
 # An account plays at most one motif role.
 role_exclusive_ic = model.require(Account.is_source + Account.is_hub + Account.is_dest <= 1)
 problem.satisfy(role_exclusive_ic)
@@ -212,13 +240,16 @@ problem.display()
 # many distinct motifs; query each one via `Variable.values(idx, val)`.
 # Without it, MiniZinc returns just the first feasible motif and stops.
 problem.solve("minizinc", time_limit_sec=60, solution_limit=MAX_MOTIFS)
-problem.solve_info().display()
+si = problem.solve_info()
+si.display()
 
 # Re-check the relational ICs in the returned solution. The implies-bodied
 # conservation ICs are solver-only and omitted; the count-side flow ICs plus
 # data-fixed amounts already pin the conservation residuals tightly. Verify
-# inspects only the first solution (the populated property), but the
-# constraint structure is shared across every solution the solver returns.
+# inspects only the first solution (the populated property), so it is a
+# sanity check on the pure-arithmetic ICs in the first witness -- not a
+# re-proof across every motif. The per-hub residual output below makes the
+# conservation arithmetic directly inspectable for every returned solution.
 problem.verify(
     role_exclusive_ic,
     one_source_ic,
@@ -231,12 +262,12 @@ problem.verify(
     amount_threshold_ic,
     same_bo_ic,
 )
-# At least one motif must have been found. We do not gate on
-# `termination_status == "OPTIMAL"` here: with `solution_limit`, the
-# solver typically reports OPTIMAL only when search has exhausted the
-# space within the time limit; partial enumeration is the expected
-# mode for large ledgers.
-model.require(problem.num_points() >= 1)
+
+if si.num_points is None or si.num_points == 0:
+    print(
+        "\nNo layering motifs found under the encoded constraints. "
+        "Check the troubleshooting section in the README for likely causes."
+    )
 
 # --------------------------------------------------
 # Inspect every detected motif

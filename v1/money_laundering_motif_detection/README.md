@@ -5,7 +5,8 @@ featured: false
 experience_level: intermediate
 industry: "Banking"
 reasoning_types:
-  - Rules
+  - Graph
+  - Rules-based
   - Prescriptive
 tags:
   - constraint-programming
@@ -21,7 +22,7 @@ tags:
 
 Banking compliance and financial-crime teams hunt for "layering" -- a money-laundering pattern where a launderer routes funds from one source account through a cluster of intermediary accounts to a single destination, splitting each leg under the [FinCEN currency-transaction-report threshold](https://www.ecfr.gov/current/title-31/subtitle-B/chapter-X/part-1010/subpart-C/section-1010.311) of $10,000 so no transaction triggers a CTR filing. The intermediaries -- "hubs" -- share a beneficial owner: a single human or shell entity behind multiple accounts, who absorbs a small fee at each hop and forwards the rest. The signal is structural and arithmetic: K hubs receive from the source and forward to a destination, where each hub's incoming dollar amount equals its outgoing amount within a tight tolerance.
 
-AML triage is plural by definition. An analyst opening their queue wants to see *every* layering pattern in the ledger, ranked and reviewable -- not the first one a solver happened to enumerate. This template encodes the layering motif as a constraint satisfaction model and runs the solver in multi-solution mode: pass `solution_limit=K` to `problem.solve(...)`, then enumerate each candidate motif via `Variable.values(solution_index, value)`. The output is one row per motif edge per solution, ready to drop straight into a case-management view.
+AML triage is plural by definition. An analyst opening their queue wants to see *every* layering pattern in the ledger -- not the first one a solver happened to enumerate. This template encodes the layering motif as a constraint satisfaction model and runs the solver in multi-solution mode: pass `solution_limit=K` to `problem.solve(...)`, then enumerate each candidate motif via `Variable.values(solution_index, value)`. The output is one row per motif edge per solution, ready to drop straight into a case-management view. The solver returns up to K *distinct* feasible motifs; ordering is not a ranking -- to rank by laundered dollars or scheme severity, swap to an objective and a one-at-a-time enumeration loop, or sort the enumerated motifs in post-processing.
 
 The model decides which transactions are part of each motif and which accounts play which role (`is_source`, `is_hub`, `is_dest`); per-account flow conservation in count couples edge-selection to role-assignment, while per-hub flow conservation in *dollar amounts* pulls the model beyond pure pattern-matching -- the solver must balance the chosen edges' values against each other, which is the CSP arithmetic that a graph-pattern / paths library cannot express.
 
@@ -37,11 +38,13 @@ The same pattern applies to other graph motif-detection problems where the signa
 ## What you'll build
 
 - A constraint model with four binary decision streams: `Transaction.is_motif` (which transactions are part of the motif) and `Account.is_source` / `Account.is_hub` / `Account.is_dest` (which accounts play which role)
+- A role-eligibility pre-pass that forces the role bits to 0 on accounts that have no outgoing transactions (cannot be source or hub) or no incoming transactions (cannot be hub or destination), so the per-account flow ICs bind correctly even on customized ledgers with isolated accounts
 - Per-account flow conservation in *count* over the directed transaction graph (source has out-degree K, each hub has in-degree 1 and out-degree 1, destination has in-degree K)
-- Per-hub flow conservation in *dollar amount*: each hub forwards what it receives, within `CONSERVATION_TOLERANCE_DOLLARS`. Written with `implies` so the constraint activates only on accounts the solver picks as hubs -- no big-M coefficient
+- Per-hub flow conservation in *dollar amount*: each hub forwards what it receives, within `CONSERVATION_TOLERANCE_DOLLARS`. Written with `implies` so the constraint activates only on accounts the solver picks as hubs -- no big-M coefficient. Per-hub residuals are visible in the motif-transactions inspection table; an analyst can confirm per hub that `sum(motif inflow) - sum(motif outflow)` is within tolerance.
 - Filter-style threshold and same-beneficial-owner predicates encoded as `where`-filtered linear constraints
+- Transaction timestamps (`ts_minutes`) are loaded and printed for analyst review but are **not** part of the constraint set -- the model is a structural motif detector. Add a temporal-ordering IC in the customization section if your scheme requires hubs to receive before they forward.
 - **Multi-solution enumeration as the primary code path**: `problem.solve(..., solution_limit=MAX_MOTIFS)` runs the search in enumeration mode; `Variable.values(solution_index, value)` then surfaces every candidate motif so an analyst can review them as a batch
-- Post-solve verification via `problem.verify()` re-evaluating the relational arithmetic constraints in the returned solution (the implies-bodied conservation ICs are solver-only and omitted; `verify()` inspects only the first solution, but the constraint structure is shared across every solution the solver returns)
+- Post-solve sanity check via `problem.verify()` re-evaluating the pure-arithmetic ICs against the first returned solution (the implies-bodied conservation ICs are solver-only and omitted). `verify()` checks the first solution only; rely on the model itself, not `verify()`, to enforce the constraint across every motif.
 
 ## What's included
 
@@ -228,9 +231,9 @@ The variable subconcept exposes a back-pointer field named after the entity in i
 <details>
   <summary>How many motifs will the solver return?</summary>
 
-- Up to `MAX_MOTIFS` (10 by default) or however many feasible motifs exist in the data, whichever is smaller. `problem.num_points()` reports the actual count after the solve.
-- Solution ordering is not guaranteed across runs or solver versions; the *set* of motifs is, but solution index 0 may swap with solution index 1 between runs. Treat the `solution` column as a label, not a ranking.
-- To pin a single answer (e.g. surface the largest scheme first), switch to optimisation -- `problem.maximize(sum(Transaction.is_motif * Transaction.amount_dollars))` returns the motif with the largest total laundered amount under `solution_limit=1`; reverse with `minimize` for the smallest.
+- Up to `MAX_MOTIFS` (10 by default) or however many feasible motifs exist in the data, whichever is smaller. `solve_info().num_points` reports the actual count after the solve.
+- Solution ordering is not guaranteed across runs or solver versions; the *set* of motifs is, but solution index 0 may swap with solution index 1 between runs. The K returned motifs are pairwise distinct on at least one decision but not maximally diverse and not ranked by laundered amount or any other severity score. Treat the `solution` column as a label, not a ranking.
+- To get a ranked answer (e.g. surface the largest scheme first), switch to optimisation -- `problem.maximize(sum(Transaction.is_motif * Transaction.amount_dollars))` returns the motif with the largest total laundered amount under `solution_limit=1`; reverse with `minimize` for the smallest. For a top-K ranked list, run an iterative exclusion-cut loop (re-solve after forbidding each previous motif's edge set) or sort the enumerated motifs by total laundered amount in post-processing.
 
 </details>
 
