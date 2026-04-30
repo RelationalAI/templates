@@ -162,13 +162,17 @@ Option.selected = model.Property(f"{Option} is selected if {Integer:selected}")
 
 problem = Problem(model, Integer)
 
-# Capture the variable subconcept so we can query per-solution values
-# via `Variable.values(solution_index, value)` after the solve.
+# Every output goes through `Variable.values(solution_index, value)` against
+# the captured ProblemVariable handle, so the populated property path is
+# unused. `populate=False` skips the first-solution write-back -- avoiding
+# wasted work and the latent FDError that `populate=True` invites when
+# MiniZinc returns multiple solutions via `solution_limit`.
 selected_var = problem.solve_for(
     Option.selected,
     type="bin",
     name=["selected", Option.name],
     where=[Option.allowed_in(TARGET_REGION)],
+    populate=False,
 )
 
 # Constraint: exactly one option per slot, over the region-filtered domain.
