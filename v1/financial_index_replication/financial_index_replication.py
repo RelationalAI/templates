@@ -15,6 +15,12 @@ absolute tracking residuals.
 
 Run:
     python financial_index_replication.py
+
+Output:
+    Prints the selected 20-stock basket, sector exposures, tracking quality
+    metrics, and a top-correlation baseline comparison. Writes
+    data/replica_returns.csv with date, index_return, and replica_return
+    columns for downstream plotting.
 """
 
 from math import sqrt
@@ -37,16 +43,19 @@ MONTHS_PER_YEAR = 12
 
 DATA_DIR = Path(__file__).parent / "data"
 
+# --------------------------------------------------
+# Define semantic model and load data
+# --------------------------------------------------
+
+# Load the stock universe, benchmark returns, and per-stock returns.
 stocks_csv = pd.read_csv(DATA_DIR / "stocks.csv")
 index_returns_csv = pd.read_csv(DATA_DIR / "index_returns.csv")
 stock_returns_csv = pd.read_csv(DATA_DIR / "stock_returns.csv")
 
 model = Model("financial_index_replication")
 
-# --------------------------------------------------
-# Define semantic model and load data
-# --------------------------------------------------
-
+# Stock concept: a constituent in the investable universe with sector,
+# benchmark weight, ADV, and the prior-period portfolio weight.
 Stock = model.Concept("Stock", identify_by={"ticker": String})
 Stock.name = model.Property(f"{Stock} has name {String:name}")
 Stock.sector = model.Property(f"{Stock} has sector {String:sector}")
@@ -61,6 +70,8 @@ Stock.previous_weight = model.Property(
 )
 model.define(Stock.new(model.data(stocks_csv).to_schema()))
 
+# Sector concept: GICS-style grouping derived from Stock.sector, used for
+# benchmark-aggregate weights and the sector-neutrality constraint.
 Sector = model.Concept("Sector", identify_by={"sector_name": String})
 model.define(Sector.new(sector_name=Stock.sector))
 Stock.sector_ref = model.Property(f"{Stock} belongs to {Sector}")
@@ -75,6 +86,8 @@ model.define(
     )
 )
 
+# ReturnDate concept: a month in the historical return panel; carries the
+# benchmark's index return and joins to per-stock returns.
 ReturnDate = model.Concept("ReturnDate", identify_by={"date": String})
 ReturnDate.index_return = model.Property(
     f"{ReturnDate} has index return {Float:index_return}"

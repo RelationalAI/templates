@@ -66,6 +66,22 @@ The hard part is that name selection and weight optimization interact. The best 
 - `data/stock_returns.csv` -- Monthly historical returns by stock
 - `pyproject.toml` -- Python package configuration with dependencies
 
+## Template structure
+
+```text
+.
+├─ README.md                            # this file
+├─ pyproject.toml                       # dependencies
+├─ financial_index_replication.py      # main entrypoint: model, solve, report
+└─ data/
+   ├─ stocks.csv                        # 50-stock universe
+   ├─ index_returns.csv                 # benchmark monthly returns
+   ├─ stock_returns.csv                 # per-stock monthly returns
+   └─ replica_returns.csv               # written by the script after solving
+```
+
+**Start here**: run `python financial_index_replication.py`.
+
 ## Prerequisites
 
 ### Access
@@ -233,3 +249,37 @@ You can use `data/replica_returns.csv` to plot the original benchmark return ser
 - Tighten `SECTOR_ACTIVE_BAND` for stricter sector neutrality.
 - Lower `MAX_ADV_PARTICIPATION` for stricter per-name trading capacity.
 - Replace the synthetic CSVs with real benchmark and constituent returns if your data license allows it.
+
+## Troubleshooting
+
+<details>
+    <summary>Why is the solver returning <code>INFEASIBLE</code>?</summary>
+
+    - The combination of `N_REPLICATION_NAMES`, `SECTOR_ACTIVE_BAND`, and `MAX_ADV_PARTICIPATION` may be over-constrained for the universe. Loosen the sector band first (e.g., 0.04 -> 0.06) and re-run.
+    - `MAX_ADV_PARTICIPATION` interacts with `PORTFOLIO_VALUE` and `previous_weight`. A large portfolio rebalancing into low-ADV names can be infeasible -- raise the ADV cap, lower portfolio value, or expand the universe.
+    - Check that `MAX_WEIGHT * N_REPLICATION_NAMES >= 1.0` so the full-investment constraint is reachable.
+</details>
+
+<details>
+    <summary>Why does <code>rai init</code> fail or hang?</summary>
+
+    - Confirm the RAI Native App is installed in your Snowflake account and your user has access.
+    - Check that your active Snowflake profile points to the right account/role; re-run `rai init` to refresh credentials.
+    - Network proxies and corporate firewalls can block the auth handshake -- try from an unrestricted network.
+</details>
+
+<details>
+    <summary>Why are my tracking-error numbers worse than the baseline?</summary>
+
+    - Verify that all three CSVs cover the same date range. A mismatch causes the script to silently drop months from the join.
+    - Confirm `index_returns.csv` and `stock_returns.csv` use the same return convention (simple vs log) -- mixing them inflates residuals.
+    - Inspect the selected basket's sector exposure: a tight `SECTOR_ACTIVE_BAND` can push the optimizer away from the highest-correlation names.
+</details>
+
+<details>
+    <summary>Why did <code>pd.read_csv</code> fail on one of the data files?</summary>
+
+    - Confirm the file exists under `data/` and matches the expected headers (`ticker`, `sector`, `benchmark_weight`, `avg_dollar_volume`, `previous_weight` for stocks; `date,index_return` for index; `date,ticker,return` for stock returns).
+    - Re-extract the template ZIP if any file looks truncated.
+    - On Windows, ensure files are UTF-8 encoded with no BOM.
+</details>
