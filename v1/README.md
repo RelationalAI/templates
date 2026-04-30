@@ -36,6 +36,7 @@ This directory contains the templates for v1. Each template folder includes its 
 | [supply_chain_transport](./supply_chain_transport/) | Minimize inventory holding and transport costs with TL/LTL mode selection. |
 | [test_data_generation](./test_data_generation/) | Determine optimal row counts for test database tables satisfying schema and referential integrity constraints. |
 | [traveling_salesman](./traveling_salesman/) | Find the shortest route visiting all cities exactly once using the MTZ formulation. |
+| [underwriting_audit](./underwriting_audit/) | Audit an underwriting ruleset by enumerating K diverse counterexample applicants who falsify a stated property: each witness shows a distinct way the rules let an unintended applicant through. CSP solver in multi-solution mode. |
 | [warehouse_allocation](./warehouse_allocation/) | Allocate inventory across a distribution network using graph centrality to prioritize critical hubs. |
 | [water_allocation](./water_allocation/) | Minimize the cost of distributing water from sources to users with nonlinear transmission losses. |
 | [wildlife-conservation-network](./wildlife-conservation-network/) | Use the Louvain community detection algorithm and degree centrality analysis to identify collaboration clusters among wildlife conservation organizations, helping optimize resource sharing and identify key coordination hubs. |
