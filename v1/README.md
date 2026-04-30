@@ -37,6 +37,7 @@ This directory contains the templates for v1. Each template folder includes its 
 | [shift_assignment](./shift_assignment/) | Assign workers to shifts based on availability to meet coverage requirements. |
 | [shipment_compliance](./shipment_compliance/) | Define derived business rules for shipment compliance, sourcing risk, and demand escalation. |
 | [simple-start](./simple-start/) | A minimal notebook to connect to Snowflake, model a small graph, and compute betweenness centrality with RelationalAI. |
+| [smoker_status_prediction](./smoker_status_prediction/) | Predict whether a person is a smoker from demographic and medical attributes plus a network of social connections, using a Graph Neural Network. |
 | [sprint_scheduling](./sprint_scheduling/) | Assign backlog issues to developers across sprints, minimizing weighted completion time while respecting capacity and skill constraints. |
 | [subscriber_retention](./subscriber_retention/) | Telco churn-risk scoring: PageRank over a Subscriber→Subscriber call graph (Graph) plus aggregate-derived call-volume features feed a regression GNN (Predictive) that scores per-subscriber churn risk, then surfaces the highest-risk subscribers per segment for retention campaigns. |
 | [supplier_reliability](./supplier_reliability/) | Select suppliers to meet product demand while balancing cost and reliability. |
