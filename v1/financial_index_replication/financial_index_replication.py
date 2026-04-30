@@ -52,6 +52,19 @@ stocks_csv = pd.read_csv(DATA_DIR / "stocks.csv")
 index_returns_csv = pd.read_csv(DATA_DIR / "index_returns.csv")
 stock_returns_csv = pd.read_csv(DATA_DIR / "stock_returns.csv")
 
+# Basic feasibility checks before building and solving the optimization model.
+eligible_stock_count = len(stocks_csv)
+if eligible_stock_count < N_REPLICATION_NAMES:
+    raise ValueError(
+        f"N_REPLICATION_NAMES={N_REPLICATION_NAMES} requires at least that many "
+        f"eligible stocks, but only {eligible_stock_count} are available."
+    )
+if N_REPLICATION_NAMES * MAX_WEIGHT < 1.0:
+    raise ValueError(
+        f"N_REPLICATION_NAMES * MAX_WEIGHT must be at least 1.0 for full "
+        f"investment, got {N_REPLICATION_NAMES * MAX_WEIGHT:.2f}."
+    )
+
 model = Model("financial_index_replication")
 
 # Stock concept: a constituent in the investable universe with sector,
@@ -240,11 +253,12 @@ print(f"Sector active band: +/- {SECTOR_ACTIVE_BAND:.0%}")
 print(f"Portfolio value: ${PORTFOLIO_VALUE:,.0f}")
 print(f"Max ADV participation per name: {MAX_ADV_PARTICIPATION:.0%}")
 
+# Uncomment to print the formulated problem for debugging.
 # problem.display()
-problem.solve("highs", time_limit_sec=120)
+problem.solve("highs", time_limit_sec=240)
 si = problem.solve_info()
 si.display()
-model.require(problem.termination_status() == "OPTIMAL")
+assert si.termination_status == "OPTIMAL" or si.termination_status == "TIME_LIMIT", "Solver did not find an optimal solution."
 
 print(f"\nStatus: {si.termination_status}")
 print(f"Objective: total absolute residual = {si.objective_value:.6f}")
