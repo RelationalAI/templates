@@ -271,10 +271,38 @@ problem.verify(
     same_bo_ic,
 )
 
-if si.num_points is None or si.num_points == 0:
+# Four outcomes for an AML enumeration run:
+# - INFEASIBLE: the solver proved no motifs exist under the encoded
+#   constraints. The ledger is clean against this motif definition.
+# - OPTIMAL: the solver enumerated motifs and exhausted the search space;
+#   `motif_count` is the *complete* count, not a sample.
+# - SOLUTION_LIMIT: the solver hit MAX_MOTIFS first and stopped; more may
+#   exist. Raise MAX_MOTIFS (and ideally time_limit_sec) to enumerate
+#   further.
+# - Anything else (TIME_LIMIT, error, ...): inconclusive -- the search did
+#   not finish. Surface explicitly rather than treating it as a clean run.
+status = si.termination_status
+motif_count = si.num_points or 0
+if status == "INFEASIBLE":
     print(
-        "\nNo layering motifs found under the encoded constraints. "
-        "Check the troubleshooting section in the README for likely causes."
+        "\nResult: no layering motifs exist under the encoded constraints. "
+        "The search space was exhausted with zero feasible motifs."
+    )
+elif status == "OPTIMAL":
+    print(
+        f"\nResult: {motif_count} motif(s) found and search exhausted "
+        "(no further motifs exist under the encoded constraints)."
+    )
+elif status == "SOLUTION_LIMIT":
+    print(
+        f"\nResult: {motif_count} motif(s) found; hit MAX_MOTIFS={MAX_MOTIFS}. "
+        "More may exist -- raise MAX_MOTIFS to enumerate further."
+    )
+else:
+    print(
+        f"\nResult: search returned status={status} with {motif_count} motif(s); "
+        "did not finish. Raise time_limit_sec, narrow the search, "
+        "or check the troubleshooting section in the README."
     )
 
 # --------------------------------------------------
