@@ -112,8 +112,8 @@ model.define(Gene.new(model.data(genes_csv).to_schema()))
 GeneIsA = model.Concept(
     "GeneIsA", identify_by={"child_id": Integer, "parent_id": Integer}
 )
-GeneIsA.parent = model.Relationship(f"{GeneIsA} has parent {Gene:parent}")
-GeneIsA.child = model.Relationship(f"{GeneIsA} has child {Gene:child}")
+GeneIsA.parent = model.Property(f"{GeneIsA} has parent {Gene:parent}")
+GeneIsA.child = model.Property(f"{GeneIsA} has child {Gene:child}")
 isa_csv = read_csv(data_dir / "gene_is_a.csv")
 isa_data = model.data(isa_csv)
 model.define(GeneIsA.new(child_id=isa_data.child_id, parent_id=isa_data.parent_id))
