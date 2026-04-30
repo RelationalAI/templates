@@ -1,11 +1,11 @@
 ---
 title: "Underwriting Audit"
-description: "Audit an underwriting ruleset by enumerating K diverse counterexample applicants who falsify a stated property: each witness shows a distinct way the rules let an unintended applicant through. CSP solver in multi-solution mode."
+description: "Audit an underwriting ruleset by enumerating K distinct counterexample applicants who falsify a stated property: each witness shows a way the rules let an unintended applicant through. CSP solver in multi-solution mode."
 featured: false
 experience_level: advanced
 industry: "Insurance"
 reasoning_types:
-  - Rules
+  - Rules-based
   - Prescriptive
 tags:
   - constraint-programming
@@ -22,7 +22,7 @@ tags:
 
 Insurance actuaries, RegTech audit teams, and Model Risk Management (MRM) reviewers periodically audit underwriting rulesets to verify that the rules enforce stated properties: "no high-risk applicant is auto-approved", "every frail applicant goes through manual review", "no policy exceeds the regulatory ceiling without two-signoff". Hand-checking a ruleset of even a few dozen rules against a property is intractable; sampled fixtures only catch the failures that happen to be in the sample. The right answer is verification: declare the ruleset and the property as a constraint model, ask the solver if any feasible applicant falsifies the property, and if so, return the *witness*.
 
-Audit / counterexample surfacing is plural by definition. One witness tells the actuary that a property fails; K diverse witnesses show *types* of failure -- distinct age buckets, condition profiles, coverage bands the buggy rule misses. A single counterexample is unhelpful for triage because the actuary then has to manually probe variations to understand the failure shape. K diverse witnesses surface the failure shape automatically. This template encodes the ruleset + property + witness condition as a constraint satisfaction model and runs the solver in multi-solution mode: pass `solution_limit=K` to `problem.solve(...)`, then enumerate each witness via `Variable.values(solution_index, value)`. The output is one row per witness applicant.
+Audit / counterexample surfacing is plural by definition. One witness tells the actuary that a property fails; K distinct witnesses surface concrete failure cases across age buckets, condition profiles, and coverage bands the buggy rule misses. A single counterexample is unhelpful for triage because the actuary then has to manually probe variations to understand the failure shape. K distinct witnesses surface the failure shape automatically. The solver guarantees pairwise distinctness, not maximal diversity -- to exhaust the failure space, raise `MAX_WITNESSES` past the size of the feasible set. This template encodes the ruleset + property + witness condition as a constraint satisfaction model and runs the solver in multi-solution mode: pass `solution_limit=K` to `problem.solve(...)`, then enumerate each witness via `Variable.values(solution_index, value)`. The output is one row per witness applicant.
 
 The bundled ruleset has a deliberate bug: `is_manual_review` is defined as "senior", but `is_frail` is defined as "senior OR has chronic condition". The audit asks "is every frail applicant in manual review?" and turns up the witnesses that prove it is not -- chronic-condition applicants under 70 who slip past the buggy rule. The same template structure -- decision-valued applicant attributes, derived rule indicators via OR-arithmetic equivalences, a counterexample IC asserting "property fails", multi-solution enumeration -- applies to any rule-based regulated domain: bank AML rules, healthcare prior-auth, manufacturing segregation-of-duties, SaaS retention policy.
 
@@ -41,7 +41,9 @@ The bundled ruleset has a deliberate bug: `is_manual_review` is defined as "seni
 - A buggy `is_manual_review = is_senior` definition encoded as a binary equality (the audit will surface its missing chronic-condition arm)
 - A counterexample IC pair asserting the property failure: `is_frail == 1 AND is_manual_review == 0`
 - **Multi-solution enumeration as the primary code path**: `problem.solve(..., solution_limit=MAX_WITNESSES)` runs the search in enumeration mode; `Variable.values(solution_index, value)` joins the decision variables on a shared solution index to reconstruct each witness
-- Post-solve verification via `problem.verify()` re-evaluating the pure-arithmetic ICs (the OR-arithmetic equivalence on `is_frail`, the equality on `is_manual_review`, the counterexample assertions). The `implies`-bodied senior-definition ICs are solver-only and are NOT passed to `verify()` -- the relational engine cannot re-evaluate wire-format constraint relations and would return silently-OK regardless of whether the constraint actually held in the solution.
+- A pre-solve check that reference IDs are dense and contiguous, so `lower=min(id), upper=max(id)` decision bounds line up with the reference rows the relational-time `implies` rules iterate over (sparse IDs would let the solver pick a value with no matching row, leaving the rule indicators unconstrained for that solution)
+- An explicit PASS/FAIL audit verdict driven by `solve_info().num_points`: zero witnesses prints PASS (property holds under the encoded ruleset), one or more prints FAIL with the witness count and the witness table
+- Post-solve sanity check via `problem.verify()` re-evaluating the pure-arithmetic ICs against the first returned solution (the OR-arithmetic equivalence on `is_frail`, the equality on `is_manual_review`, the counterexample assertions). The `implies`-bodied senior-definition ICs are solver-only and are NOT passed to `verify()` -- the relational engine cannot re-evaluate wire-format constraint relations and would return silently-OK regardless of whether the constraint actually held. `verify()` checks the first solution only; rely on the model itself, not `verify()`, to enforce the constraint across every witness.
 
 ## What's included
 
@@ -100,6 +102,8 @@ The bundled ruleset has a deliberate bug: `is_manual_review` is defined as "seni
    • solve time: 0.08s
    • num_points: 8
    • solver: MiniZinc_nothing
+
+   Audit result: FAIL -- 8 counterexample applicant(s) found. The property does not hold under the encoded ruleset; witnesses below.
 
    Counterexample witnesses (up to 8 per run):
       solution  age_years  has_chronic  coverage_dollars  is_senior  is_frail  is_manual_review
@@ -217,7 +221,7 @@ model.select(
 
 ## Customize this template
 
-- **Audit a corrected ruleset** by changing `is_manual_review` to track `is_frail` instead of `is_senior`. The model becomes INFEASIBLE -- `solve_info().status` reports `UNSATISFIABLE` and `num_points()` is 0. That is the audit's pass signal: no counterexample exists, so the property holds. The runtime gate `model.require(problem.num_points() >= 1)` should be removed (or relaxed to `>= 0`) to allow the no-witness pass case.
+- **Audit a corrected ruleset** by changing `is_manual_review` to track `is_frail` instead of `is_senior`. The model becomes INFEASIBLE -- `solve_info().status` reports `UNSATISFIABLE` and `solve_info().num_points` is 0. The script prints `Audit result: PASS -- no counterexample applicants found.` That is the audit's pass signal: no counterexample exists, so the property holds.
 - **Audit a different property** by changing the `counterexample_*` ICs. To audit "no senior is in the cheapest coverage band", switch them to `Applicant.is_senior == 1` and `Applicant.coverage_band_id == 1` (assuming band 1 is the cheapest). Witnesses then show seniors who slipped into the lowest band.
 - **Add more rule indicators** by introducing additional decisions and OR/AND-arithmetic ICs. Conjunction `y = a AND b` is encoded as `y <= a, y <= b, y >= a + b - 1` -- the dual of the OR pattern.
 - **Raise the witness count on a real ruleset** by increasing `MAX_WITNESSES`. Production audits typically want 50--500 witnesses to cover a rule pack's failure modes.
@@ -229,18 +233,27 @@ model.select(
 <details>
   <summary>Solver returns INFEASIBLE / num_points = 0</summary>
 
-- The audited property holds: no feasible applicant falsifies it under the bundled ruleset. This is the audit's *pass* signal. Confirm by checking `solve_info().status` -- `UNSATISFIABLE` (or the equivalent string for your MiniZinc build) means no counterexample exists.
+- The audited property holds: no feasible applicant falsifies it under the bundled ruleset. This is the audit's *pass* signal -- the script prints `Audit result: PASS`. Confirm by checking `solve_info().status` -- `UNSATISFIABLE` (or the equivalent string for your MiniZinc build) means no counterexample exists.
 - If you expected a witness and got none, double-check the counterexample IC: did you assert `is_frail == 1 AND is_manual_review == 0`, or did you accidentally assert `is_frail == 0`? The IC must point at the *negation* of the property.
 - Empty reference data: confirm `data/age_buckets.csv` has at least one bucket on each side of `SENIOR_THRESHOLD_YEARS`. If every bucket is below the threshold, `is_senior` can never be 1; if every bucket is above, the buggy rule's gap (chronic + non-senior) cannot be reached.
 
 </details>
 
 <details>
+  <summary>ValueError: <code>id</code> column must be dense and contiguous</summary>
+
+- The pre-solve check ran on `age_buckets.csv` or `coverage_bands.csv` and found gaps in the `id` column. The solver bounds the corresponding decision by `lower=min(id), upper=max(id)`; without dense IDs it can pick a value with no matching reference row, and the relational-time `implies` rules gated on the matching row will not fire -- leaving the rule indicator unconstrained for that solution.
+- Renumber the rows so IDs run consecutively from the minimum to the maximum (e.g., 1, 2, 3, ... or 10, 11, 12, ...). Trailing or leading gaps are fine to delete; mid-table gaps are the problem.
+- Alternatively, replace the bound-only `solve_for(..., lower=, upper=)` with explicit ID-membership ICs (one `model.where(AB.id == decision_id).require(...)` per slot) and remove the dense-ID assertion.
+
+</details>
+
+<details>
   <summary>How many witnesses will the solver return?</summary>
 
-- Up to `MAX_WITNESSES` (8 by default) or however many feasible witnesses exist, whichever is smaller. `problem.num_points()` reports the actual count after the solve; `solve_info()` reports `status: SOLUTION_LIMIT` when the limit was hit and `status: OPTIMAL` when the search has been exhausted.
+- Up to `MAX_WITNESSES` (8 by default) or however many feasible witnesses exist, whichever is smaller. `solve_info().num_points` reports the actual count after the solve; `solve_info().status` reports `SOLUTION_LIMIT` when the limit was hit and `OPTIMAL` when the search has been exhausted.
 - Solution ordering is not guaranteed across runs or solver versions; the *set* of witnesses is, but solution index 0 may swap with solution index 1 between runs. Treat the `solution` column as a label, not a ranking.
-- The K returned witnesses are guaranteed to be *distinct* on at least one decision (age, chronic flag, coverage, or any indicator) but not maximally diverse. For systematic spread across the failure-mode space, raise `MAX_WITNESSES` past the size of the feasible set so the solver exhausts every distinct case.
+- The K returned witnesses are guaranteed to be pairwise *distinct* on at least one decision (age, chronic flag, coverage, or any indicator) but not maximally diverse, and they are not ranked by severity or any objective. For systematic spread across the failure-mode space, raise `MAX_WITNESSES` past the size of the feasible set so the solver exhausts every distinct case; for ranking, add `problem.minimize(...)` over a severity score and post-process.
 
 </details>
 

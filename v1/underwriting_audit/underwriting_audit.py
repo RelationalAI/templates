@@ -13,9 +13,12 @@ ruleset:
 - Solve as constraint satisfaction with `solution_limit=K` (MiniZinc) and
   enumerate every distinct witness via `Variable.values(solution_index, value)`.
   Audit / conflict surfacing is plural by definition: one witness tells the
-  actuary that the property fails; K diverse witnesses show the *types* of
-  failure modes -- distinct age buckets, coverage bands, condition profiles
-  the buggy rule misses. Multi-solution is the right return shape.
+  actuary that the property fails; K distinct witnesses surface concrete
+  failure cases across age buckets, coverage bands, and condition profiles
+  the buggy rule misses. The solver guarantees the witnesses are pairwise
+  distinct, not maximally diverse -- raise `MAX_WITNESSES` past the
+  feasible-set size to exhaust the failure space. Multi-solution is the
+  right return shape.
 
 The bundled ruleset has a deliberate bug: `is_manual_review` is defined as
 "senior", but `is_frail` is defined as "senior OR has chronic condition".
@@ -34,7 +37,8 @@ Output:
 
 from pathlib import Path
 
-from pandas import read_csv, set_option as pd_set_option
+from pandas import read_csv
+from pandas import set_option as pd_set_option
 from relationalai.semantics import Integer, Model
 from relationalai.semantics.reasoners.prescriptive import Problem, implies
 
@@ -64,16 +68,35 @@ model = Model("underwriting_audit")
 
 data_dir = Path(__file__).parent / "data"
 
+
+# Reference-data contract: integer IDs must be dense and contiguous so the
+# solver's `lower=min(id), upper=max(id)` decision bounds line up exactly
+# with the reference rows. Sparse IDs would let the solver pick a missing
+# value: the relational-time `implies(...) ` ICs gated on the matching
+# reference row would never fire, leaving the indicator decisions
+# unconstrained for that solution. Validate up front rather than letting
+# bad customizations silently degrade audit coverage.
+def _assert_dense_ids(df, name):
+    ids = sorted(int(v) for v in df["id"].tolist())
+    expected = list(range(ids[0], ids[-1] + 1))
+    if ids != expected:
+        raise ValueError(
+            f"{name} `id` column must be dense and contiguous; got {ids}. "
+            "Renumber the rows or add explicit ID-membership ICs before solving."
+        )
+
+
 # Concept: representative age bucket. Each row maps an integer bucket id
 # to a representative age (in years) used to drive the senior indicator.
 # Categorical age (rather than per-year integer) keeps the decision
 # domain compact and similar in size to coverage band, which is what
-# makes the multi-solution enumeration produce structurally diverse
+# makes the multi-solution enumeration produce structurally varied
 # witnesses across age and coverage rather than shifting one year at a
 # time.
 AgeBucket = model.Concept("AgeBucket", identify_by={"id": Integer})
 AgeBucket.age_years = model.Property(f"{AgeBucket} has {Integer:age_years}")
 age_buckets_csv = read_csv(data_dir / "age_buckets.csv")
+_assert_dense_ids(age_buckets_csv, "age_buckets.csv")
 model.define(AgeBucket.new(model.data(age_buckets_csv).to_schema()))
 
 # Concept: representative coverage band. Used purely as a categorical
@@ -85,6 +108,7 @@ model.define(AgeBucket.new(model.data(age_buckets_csv).to_schema()))
 CoverageBand = model.Concept("CoverageBand", identify_by={"id": Integer})
 CoverageBand.coverage_dollars = model.Property(f"{CoverageBand} has {Integer:coverage_dollars}")
 coverage_bands_csv = read_csv(data_dir / "coverage_bands.csv")
+_assert_dense_ids(coverage_bands_csv, "coverage_bands.csv")
 model.define(CoverageBand.new(model.data(coverage_bands_csv).to_schema()))
 
 # Concept: synthesised applicant. The CSV holds a single placeholder row;
@@ -205,14 +229,17 @@ problem.display()
 # many distinct witnesses; query each one via `Variable.values(idx, val)`.
 # Without it, MiniZinc returns just the first witness and stops.
 problem.solve("minizinc", time_limit_sec=60, solution_limit=MAX_WITNESSES)
-problem.solve_info().display()
+si = problem.solve_info()
+si.display()
 
 # Re-check the relational arithmetic ICs in the returned solution. The
 # senior-definition ICs (`senior_def_pos_ic`, `senior_def_neg_ic`) are
 # `implies`-bodied and solver-only; pass only the pure-arithmetic ICs
 # to `verify()`. The OR-arithmetic constraints on `is_frail` and the
 # equality constraints on `is_manual_review` ARE pure relational
-# arithmetic and round-trip cleanly.
+# arithmetic and round-trip cleanly. `verify()` only re-evaluates the
+# first returned solution, so it is a per-solution sanity check on the
+# arithmetic ICs -- not a re-proof across every witness or every IC.
 problem.verify(
     frail_lb_senior_ic,
     frail_lb_chronic_ic,
@@ -222,11 +249,29 @@ problem.verify(
     counterexample_frail_ic,
     counterexample_no_review_ic,
 )
-# At least one witness must have been found (the audit succeeded:
-# the property fails and the bug is exposed). If `num_points()` is 0,
-# the property *holds* under the bundled ruleset -- a useful signal in
-# its own right when auditing a corrected rule.
-model.require(problem.num_points() >= 1)
+
+# --------------------------------------------------
+# Audit verdict
+# --------------------------------------------------
+
+# Two outcomes for the audit:
+# - num_points >= 1: at least one feasible counterexample applicant exists,
+#   so the property does NOT hold under the encoded ruleset. Each witness
+#   is a concrete failure mode for triage.
+# - num_points == 0: no feasible counterexample, so the property HOLDS
+#   under the encoded ruleset. This is the audit's pass signal -- expected
+#   after a rule fix lands. Soundness is bounded by encoding fidelity:
+#   missing rule arms can produce a silent pass.
+if si.num_points is None or si.num_points == 0:
+    print(
+        "\nAudit result: PASS -- no counterexample applicants found. "
+        "The property holds under the encoded ruleset."
+    )
+else:
+    print(
+        f"\nAudit result: FAIL -- {si.num_points} counterexample applicant(s) found. "
+        "The property does not hold under the encoded ruleset; witnesses below."
+    )
 
 # --------------------------------------------------
 # Inspect every counterexample witness
