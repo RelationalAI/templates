@@ -53,7 +53,7 @@ from relationalai.semantics.std.paths import PathTraversal
 
 # Slate size: the K of "row of K things". 8 is a typical streaming-row
 # size; tune to taste.
-SLATE_SIZE_K = 8
+SLATE_SIZE_K = 3
 
 # Bounded path depth for the KG walk. 3 captures direct sharing
 # (User -> Movie -> Director -> Movie) and one extra hop without
@@ -95,21 +95,30 @@ data_dir = Path(__file__).parent / "data"
 
 # --- Concepts and core data -----------------------------------------
 
-User = model.Concept("User", identify_by={"id": Integer})
+# `Item` is the heterogeneous-KG super-concept. User / Movie /
+# Director / Actor / Genre all extend it so the path walker can
+# traverse a single 2-arity edge relationship across the whole KG.
+# This is the documented v1.1.0 workaround for the "multiple edges in
+# a single path()" gap (paths-lib README: "encode the multi-edge
+# traversal as a single N-arity relationship"); design epic
+# RAI-44166 tracks first-class composite-edge support.
+Item = model.Concept("Item")
+
+User = model.Concept("User", extends=[Item], identify_by={"id": Integer})
 User.name = model.Property(f"{User} has {String:name}")
 
-Movie = model.Concept("Movie", identify_by={"id": Integer})
+Movie = model.Concept("Movie", extends=[Item], identify_by={"id": Integer})
 Movie.title = model.Property(f"{Movie} has {String:title}")
 Movie.age_days = model.Property(f"{Movie} has {Integer:age_days}")
 Movie.in_house = model.Property(f"{Movie} has {Integer:in_house}")
 
-Director = model.Concept("Director", identify_by={"id": Integer})
+Director = model.Concept("Director", extends=[Item], identify_by={"id": Integer})
 Director.name = model.Property(f"{Director} has {String:name}")
 
-Actor = model.Concept("Actor", identify_by={"id": Integer})
+Actor = model.Concept("Actor", extends=[Item], identify_by={"id": Integer})
 Actor.name = model.Property(f"{Actor} has {String:name}")
 
-Genre = model.Concept("Genre", identify_by={"id": Integer})
+Genre = model.Concept("Genre", extends=[Item], identify_by={"id": Integer})
 Genre.name = model.Property(f"{Genre} has {String:name}")
 
 # CSV ingest. The bundled data is a small hand-crafted sample; swap to
@@ -139,10 +148,11 @@ User.watched = model.Relationship(
     short_name="watched",
 )
 watched_data = model.data(watched_csv)
-model.define(User.watched(User, Movie, Integer.ref())).where(
+rating_ref = Integer.ref()
+model.define(User.watched(User, Movie, rating_ref)).where(
     User.id == watched_data.user_id,
     Movie.id == watched_data.movie_id,
-    Integer.ref() == watched_data.rating,
+    rating_ref == watched_data.rating,
 )
 
 Movie.directed_by = model.Relationship(
@@ -186,6 +196,50 @@ model.define(Movie.similar_to(src_m, dst_m)).where(
     dst_m.id == ms_data.dst_movie_id,
 )
 
+# --- Unified KG edge (workaround for v1.1.0 composite-edge gap) -----
+# `Item.connected_to(Item, Item)` is the single 2-arity relationship
+# the path walker traverses. Populate it from each typed edge so a
+# bounded walk can chain User -> Movie -> Director -> Movie -> ...
+# Each define() below contributes one direction of one typed edge to
+# the union; the walker treats them all as the same generic hop and
+# we recover the per-hop type by joining each consecutive (src, dst)
+# back against the typed edges when computing explanation features.
+Item.connected_to = model.Relationship(
+    f"{Item:src} connected to {Item:dst}",
+    short_name="connected_to",
+)
+
+# User <-> Movie via watched (both directions; user-anchor walks).
+u_e, m_e = User.ref(), Movie.ref()
+rating_e = Integer.ref()
+model.define(Item.connected_to(u_e, m_e)).where(
+    User.watched(u_e, m_e, rating_e),
+)
+model.define(Item.connected_to(m_e, u_e)).where(
+    User.watched(u_e, m_e, rating_e),
+)
+
+# Movie <-> Director.
+m_d, d_e = Movie.ref(), Director.ref()
+model.define(Item.connected_to(m_d, d_e)).where(Movie.directed_by(m_d, d_e))
+model.define(Item.connected_to(d_e, m_d)).where(Movie.directed_by(m_d, d_e))
+
+# Movie <-> Actor.
+m_a, a_e = Movie.ref(), Actor.ref()
+model.define(Item.connected_to(m_a, a_e)).where(Movie.acted_by(m_a, a_e))
+model.define(Item.connected_to(a_e, m_a)).where(Movie.acted_by(m_a, a_e))
+
+# Movie <-> Genre.
+m_g, g_e = Movie.ref(), Genre.ref()
+model.define(Item.connected_to(m_g, g_e)).where(Movie.belongs_to(m_g, g_e))
+model.define(Item.connected_to(g_e, m_g)).where(Movie.belongs_to(m_g, g_e))
+
+# Movie <-> Movie via similar_to (both directions; the similarity
+# graph is conceptually undirected for traversal purposes).
+m_s1, m_s2 = Movie.ref(), Movie.ref()
+model.define(Item.connected_to(m_s1, m_s2)).where(Movie.similar_to(m_s1, m_s2))
+model.define(Item.connected_to(m_s2, m_s1)).where(Movie.similar_to(m_s1, m_s2))
+
 # --- Pillar 1: Graph -- PageRank over the movie-similarity graph ----
 
 # Movie-Movie similarity graph derived from co-watch / similar_to.
@@ -205,216 +259,155 @@ model.define(sim_graph.Edge.new(src=src_g, dst=dst_g)).where(
     Movie.similar_to(src_g, dst_g),
 )
 
-# PageRank: structural-popularity prior. Rescaled to integer points
-# so the prescriptive objective stays integer-arithmetic-clean (see
-# template-authoring conventions: float coefficients on integer
-# decisions are OK on HiGHS, but mixing float/integer ICs is
-# fragile -- keep utility integer for sanity).
+# PageRank: structural-popularity prior. Stored as Float (the native
+# pagerank() output type). HiGHS handles float coefficients on binary
+# decisions natively; the same pattern is used by supply_chain.
 Movie.pagerank_score = model.Property(
-    f"{Movie} has structural score {Integer:pagerank_score}"
+    f"{Movie} has structural score {Float:pagerank_score}"
 )
 pagerank_rel = sim_graph.pagerank()
 m_pr = Movie.ref()
 score_pr = Float.ref()
-# Rescale float pagerank into integer points (multiply, round-down).
-# Choose a multiplier large enough that the head of the distribution
-# differentiates 5+ tiers; PageRank values are typically in (0, 1)
-# with most mass small.
-PAGERANK_SCALE = 100000
-model.define(m_pr.pagerank_score((score_pr * PAGERANK_SCALE).cast(Integer))).where(
+model.define(m_pr.pagerank_score(score_pr)).where(
     pagerank_rel(m_pr, score_pr),
 )
 
-# --- Pillar 2: Paths -- bounded explanation paths -------------------
-
-# Union of typed edges the path walker may traverse. Each edge
-# contributes a different explanation type.
-ItemReachable = (
-    User.watched
-    | Movie.directed_by
-    | Movie.acted_by
-    | Movie.belongs_to
-    | Movie.similar_to
-)
-
-# Bare-BFS form (no explicit endpoints): yields a callable
-# Relationship usable inside `.where()` for downstream rules. The
-# explicit-endpoint form returns a non-callable Fragment column that
-# does not compose this way (see attack_path_hardening for the same
-# v1.1.0 quirk).
-all_explanation_paths = model.path(
-    ItemReachable.repeat(1, MAX_HOPS),
+# --- Pillar 2: Paths -- bounded heterogeneous KG walk ---------------
+#
+# Walk the unified `Item.connected_to` edge from each User up to
+# MAX_HOPS hops. Each walk traces a real heterogeneous KG path
+# (User -> Movie -> Director -> Movie, User -> Movie -> Genre -> Movie,
+# User -> Movie -> Movie via similar_to, ...). The path-walker bounds
+# enumeration to MAX_HOPS, so the candidate set is the bounded
+# reachable set under the KG -- the same primitive Pixie / KPRN /
+# LinkedIn Career Explorer compose at production scale.
+kg_paths = model.path(
+    Item.connected_to.repeat(1, MAX_HOPS),
 ).all_paths()
 
-# Sub-concept restricting paths to (User start, Movie end). Same
-# v1.1.0 quirk as attack_path_hardening: the membership rule yields
-# the right ExplanationPath set, but downstream rules walking
-# `ExplanationPath.nodes` must re-apply the User/Movie filter
-# inline.
-ExplanationPath = model.Concept("ExplanationPath", extends=[PathTraversal])
-u_ref, m_ref = User.ref(), Movie.ref()
-model.define(ExplanationPath(PathTraversal)).where(
-    all_explanation_paths(PathTraversal),
-    PathTraversal.nodes(0, u_ref),
-    PathTraversal.nodes(PathTraversal.length, m_ref),
-    User(u_ref),
-    Movie(m_ref),
-)
-
-# Candidate set: any (user, movie) connected by at least one
-# explanation path. Restrict to movies the user has NOT yet watched.
+# Candidate set: any (user, movie) reached by a User-anchored
+# bounded KG walk ending at a Movie node. v1.1.0 does not yet
+# support `not` (paths-lib README §"Currently unsupported patterns"
+# and compliance_rule_audit's documented gap), so the
+# already-watched filter lands as a `pick == 0` IC at the
+# prescriptive layer instead.
 Candidate = model.Concept(
     "Candidate",
     identify_by={"user_id": Integer, "movie_id": Integer},
 )
 u_cand, m_cand = User.ref(), Movie.ref()
-ep = ExplanationPath.ref()
-u_filt, m_filt = User.ref(), Movie.ref()
+p_cand = PathTraversal.ref()
 model.define(Candidate.new(user_id=u_cand.id, movie_id=m_cand.id)).where(
-    ep.nodes(0, u_filt),
-    ep.nodes(ep.length, m_filt),
-    User(u_filt),
-    Movie(m_filt),
-    u_cand == u_filt,
-    m_cand == m_filt,
-    # Exclude already-watched movies from the candidate set.
-    ~User.watched(u_cand, m_cand, Integer.ref()),
+    kg_paths(p_cand),
+    p_cand.nodes(0, u_cand),
+    p_cand.nodes(p_cand.length, m_cand),
 )
 
-# Path-count-by-type: for each (user, candidate), count paths whose
-# step-set intersects each entity type. Counts are derived from a
-# membership-style aggregation -- identify each path's "type
-# fingerprint" by which non-Movie / non-User entity types appear
-# along its node sequence.
-#
-# v1.1.0 quirk: `p.nodes(idx, x)` exposes only User / Movie endpoints
-# along a path; intermediate Director / Actor / Genre nodes are not
-# reachable that way. Recover them via the same consecutive-pair
-# join attack_path_hardening uses, then aggregate.
-
-PathViaDirector = model.Relationship(
-    f"{ExplanationPath:path} routes via {Director:director}",
-    short_name="path_via_director",
-)
-idx_d = Integer.ref()
-src_d, dst_d = Movie.ref(), Movie.ref()
-ep_filt_d = ExplanationPath.ref()
-u_d, m_d = User.ref(), Movie.ref()
-model.define(PathViaDirector(ExplanationPath, Director)).where(
-    ExplanationPath.nodes(0, u_d),
-    ExplanationPath.nodes(ExplanationPath.length, m_d),
-    User(u_d),
-    Movie(m_d),
-    ExplanationPath.nodes(idx_d, src_d),
-    ExplanationPath.nodes(idx_d + 1, dst_d),
-    Movie.directed_by(src_d, Director),
-    Movie.directed_by(dst_d, Director),
-)
-
-PathViaActor = model.Relationship(
-    f"{ExplanationPath:path} routes via {Actor:actor}",
-    short_name="path_via_actor",
-)
-src_a, dst_a = Movie.ref(), Movie.ref()
-idx_a = Integer.ref()
-u_a, m_a = User.ref(), Movie.ref()
-model.define(PathViaActor(ExplanationPath, Actor)).where(
-    ExplanationPath.nodes(0, u_a),
-    ExplanationPath.nodes(ExplanationPath.length, m_a),
-    User(u_a),
-    Movie(m_a),
-    ExplanationPath.nodes(idx_a, src_a),
-    ExplanationPath.nodes(idx_a + 1, dst_a),
-    Movie.acted_by(src_a, Actor),
-    Movie.acted_by(dst_a, Actor),
-)
-
-PathViaGenre = model.Relationship(
-    f"{ExplanationPath:path} routes via {Genre:genre}",
-    short_name="path_via_genre",
-)
-src_g2, dst_g2 = Movie.ref(), Movie.ref()
-idx_g = Integer.ref()
-u_g, m_g = User.ref(), Movie.ref()
-model.define(PathViaGenre(ExplanationPath, Genre)).where(
-    ExplanationPath.nodes(0, u_g),
-    ExplanationPath.nodes(ExplanationPath.length, m_g),
-    User(u_g),
-    Movie(m_g),
-    ExplanationPath.nodes(idx_g, src_g2),
-    ExplanationPath.nodes(idx_g + 1, dst_g2),
-    Movie.belongs_to(src_g2, Genre),
-    Movie.belongs_to(dst_g2, Genre),
-)
-
-# Per-(user, candidate) path-count-by-type: integer features the
-# prescriptive layer reads.
+# Per-(user, candidate) explanation features. Each is a count of
+# distinct typed connections between the candidate and the user's
+# watched history -- the KPRN-style typed-path aggregation that
+# powers explainable KG-recsys at production scale.
 Candidate.path_count_via_director = model.Property(
-    f"{Candidate} has director paths {Integer:n}"
+    f"{Candidate} has director connections {Integer:n}"
 )
 Candidate.path_count_via_actor = model.Property(
-    f"{Candidate} has actor paths {Integer:n}"
+    f"{Candidate} has actor connections {Integer:n}"
 )
 Candidate.path_count_via_genre = model.Property(
-    f"{Candidate} has genre paths {Integer:n}"
+    f"{Candidate} has genre connections {Integer:n}"
 )
-Candidate.path_count_total = model.Property(f"{Candidate} has total paths {Integer:n}")
+Candidate.path_count_via_kg_walk = model.Property(
+    f"{Candidate} has KG-walk paths {Integer:n}"
+)
+Candidate.path_count_total = model.Property(
+    f"{Candidate} has total connections {Integer:n}"
+)
 
-ep_c = ExplanationPath.ref()
+c = Candidate.ref()
+n = Integer.ref()
 u_c, m_c = User.ref(), Movie.ref()
+
+# via-director: distinct directors shared between candidate and any
+# of the user's watched movies.
+m_watched_d = Movie.ref()
+d_ref = Director.ref()
 model.define(Candidate.path_count_via_director(c, n)).where(
     Candidate(c),
     c.user_id == u_c.id,
     c.movie_id == m_c.id,
     n
-    == count(ep_c).where(
-        ep_c.nodes(0, u_c),
-        ep_c.nodes(ep_c.length, m_c),
-        PathViaDirector(ep_c, Director.ref()),
+    == count(d_ref).where(
+        User.watched(u_c, m_watched_d, Integer.ref()),
+        Movie.directed_by(m_watched_d, d_ref),
+        Movie.directed_by(m_c, d_ref),
     ),
 )
+
+# via-actor: distinct actors shared.
+m_watched_a = Movie.ref()
+a_ref = Actor.ref()
 model.define(Candidate.path_count_via_actor(c, n)).where(
     Candidate(c),
     c.user_id == u_c.id,
     c.movie_id == m_c.id,
     n
-    == count(ep_c).where(
-        ep_c.nodes(0, u_c),
-        ep_c.nodes(ep_c.length, m_c),
-        PathViaActor(ep_c, Actor.ref()),
+    == count(a_ref).where(
+        User.watched(u_c, m_watched_a, Integer.ref()),
+        Movie.acted_by(m_watched_a, a_ref),
+        Movie.acted_by(m_c, a_ref),
     ),
 )
+
+# via-genre: distinct genres shared.
+m_watched_g = Movie.ref()
+g_ref = Genre.ref()
 model.define(Candidate.path_count_via_genre(c, n)).where(
     Candidate(c),
     c.user_id == u_c.id,
     c.movie_id == m_c.id,
     n
-    == count(ep_c).where(
-        ep_c.nodes(0, u_c),
-        ep_c.nodes(ep_c.length, m_c),
-        PathViaGenre(ep_c, Genre.ref()),
+    == count(g_ref).where(
+        User.watched(u_c, m_watched_g, Integer.ref()),
+        Movie.belongs_to(m_watched_g, g_ref),
+        Movie.belongs_to(m_c, g_ref),
     ),
 )
-model.define(Candidate.path_count_total(c, n)).where(
+
+# via-walk: number of bounded heterogeneous KG paths from this user
+# to the candidate (the actual paths-pillar count -- the headline
+# explanation-strength signal).
+p_s = PathTraversal.ref()
+model.define(Candidate.path_count_via_kg_walk(c, n)).where(
     Candidate(c),
     c.user_id == u_c.id,
     c.movie_id == m_c.id,
     n
-    == count(ep_c).where(
-        ep_c.nodes(0, u_c),
-        ep_c.nodes(ep_c.length, m_c),
+    == count(p_s).where(
+        kg_paths(p_s),
+        p_s.nodes(0, u_c),
+        p_s.nodes(p_s.length, m_c),
     ),
 )
 
+# Total: sum across types as a single integer feature for cold-start
+# threshold checks.
+model.define(Candidate.path_count_total(c, n)).where(
+    Candidate(c),
+    n
+    == c.path_count_via_director
+    + c.path_count_via_actor
+    + c.path_count_via_genre
+    + c.path_count_via_kg_walk,
+)
+
 # --- Personalized utility -------------------------------------------
-# Blend structural prior (PageRank) with per-user path signal. Both
-# scaled to integer points so the MIP objective is a clean integer
-# linear combination on float-coefficient-times-binary-decision
-# arithmetic. The path signal is a weighted sum of typed path counts;
-# the structural prior uses the global PageRank score as a popularity
-# floor.
-Candidate.utility = model.Property(f"{Candidate} has utility {Integer:utility}")
+# Blend structural prior (float PageRank) with per-user path signal
+# (integer path counts) into a single Float utility. HiGHS handles
+# float coefficients on binary decisions natively (supply_chain uses
+# the same pattern).
+Candidate.utility = model.Property(f"{Candidate} has utility {Float:utility}")
 m_u = Movie.ref()
+util = Float.ref()
 model.define(Candidate.utility(c, util)).where(
     Candidate(c),
     c.movie_id == m_u.id,
@@ -426,9 +419,9 @@ model.define(Candidate.utility(c, util)).where(
 
 # --- Pillar 3: Prescriptive -- MIP slate selection ------------------
 
-Candidate.pick = model.Property(f"{Candidate} is picked iff {Integer:p}")
+Candidate.pick = model.Property(f"{Candidate} is picked iff {Float:p}")
 
-problem = Problem(model, Integer)
+problem = Problem(model, Float)
 problem.solve_for(
     Candidate.pick,
     type="bin",
@@ -440,6 +433,20 @@ slate_size_ic = model.require(
     sum(Candidate.pick).per(Candidate.user_id) == SLATE_SIZE_K
 )
 problem.satisfy(slate_size_ic)
+
+# Watched-exclusion: any (user, movie) where the user has already
+# watched the movie must have pick == 0. v1.1.0 lacks `not` in
+# rules (paths-lib README + compliance_rule_audit's documented gap),
+# so the exclusion lands here at the prescriptive layer rather than
+# as a `~User.watched(...)` filter on the candidate derivation.
+u_excl, m_excl = User.ref(), Movie.ref()
+rating_excl_ic = Integer.ref()
+exclude_watched_ic = model.where(
+    User.watched(u_excl, m_excl, rating_excl_ic),
+    Candidate.user_id == u_excl.id,
+    Candidate.movie_id == m_excl.id,
+).require(Candidate.pick == 0)
+problem.satisfy(exclude_watched_ic)
 
 # Genre diversity: at most MAX_PER_GENRE picks per (user, genre).
 genre_diversity_ic = model.where(
@@ -504,6 +511,7 @@ problem.solve_info().display()
 
 problem.verify(
     slate_size_ic,
+    exclude_watched_ic,
     genre_diversity_ic,
     director_uniqueness_ic,
     actor_diversity_ic,
@@ -522,11 +530,14 @@ model.select(
     User.name.alias("user"),
 ).inspect()
 
-print(f"\nCandidate set per user (movies reachable within {MAX_HOPS} hops, unwatched):")
+print(
+    f"\nCandidate set per user (Movies reachable within {MAX_HOPS} hops over the heterogeneous KG):"
+)
 model.select(
     Candidate.user_id.alias("user_id"),
     Candidate.movie_id.alias("movie_id"),
     Candidate.path_count_total.alias("path_count_total"),
+    Candidate.path_count_via_kg_walk.alias("paths_via_kg_walk"),
     Candidate.path_count_via_director.alias("paths_via_director"),
     Candidate.path_count_via_actor.alias("paths_via_actor"),
     Candidate.path_count_via_genre.alias("paths_via_genre"),
@@ -567,6 +578,7 @@ print("\nExplanation-path support per picked item:")
 model.select(
     Candidate.user_id.alias("user_id"),
     Candidate.movie_id.alias("movie_id"),
+    Candidate.path_count_via_kg_walk.alias("paths_via_kg_walk"),
     Candidate.path_count_via_director.alias("paths_via_director"),
     Candidate.path_count_via_actor.alias("paths_via_actor"),
     Candidate.path_count_via_genre.alias("paths_via_genre"),

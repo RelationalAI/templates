@@ -125,12 +125,21 @@ distribution, see "Customise this template" below).
 
 ### Schema
 
+- `Item` super-concept; `User`, `Movie`, `Director`, `Actor`, `Genre`
+  all `extends=[Item]` so the path walker can chain across the whole
+  heterogeneous KG via a single 2-arity edge.
 - `User(id, name)`
 - `Movie(id, title, age_days, in_house)`
 - `Director(id, name)`, `Actor(id, name)`, `Genre(id, name)`
-- Edges: `User.watched(Movie, rating)`,
+- Typed edges: `User.watched(Movie, rating)`,
   `Movie.directed_by(Director)`, `Movie.acted_by(Actor)`,
-  `Movie.belongs_to(Genre)`, `Movie.similar_to(Movie)`
+  `Movie.belongs_to(Genre)`, `Movie.similar_to(Movie)`.
+- Unified KG edge: `Item.connected_to(Item, Item)` populated as the
+  symmetric union of the typed edges. Workaround for the v1.1.0
+  paths-lib gap on multi-edge `path()` (see paths-lib README,
+  "Currently unsupported patterns" §1) — design epic RAI-44166
+  tracks first-class composite-edge support, after which this
+  unified-edge layer can be deleted.
 
 ### Pipeline
 
@@ -141,12 +150,20 @@ distribution, see "Customise this template" below).
    prescriptive layer uses, the same shape Pinterest's Pixie applies
    at production scale.
 
-2. **Paths: bounded explanation paths.** The path walker traverses the
-   union of typed edges (`watched | directed_by | acted_by |
-   belongs_to | similar_to`) up to `MAX_HOPS = 3`. Each
-   `(user, candidate)` pair gets path-counts-by-type
-   (`path_count_via_director`, `_via_actor`, `_via_genre`) and a
-   `path_count_total`. These are integer features the MIP reads.
+2. **Paths: bounded heterogeneous KG walks.** The path walker
+   traverses `Item.connected_to` (the symmetric union of
+   `watched | directed_by | acted_by | belongs_to | similar_to`)
+   anchored at each `User` up to `MAX_HOPS = 3` hops. Each path
+   traces a real heterogeneous chain
+   (`User -> Movie -> Director -> Movie`,
+   `User -> Movie -> Genre -> Movie`,
+   `User -> Movie -> Movie via similar_to`, ...). For every
+   `(user, candidate)` pair the walker contributes a
+   `path_count_via_kg_walk` feature; the per-typed-share counts
+   (`path_count_via_director`, `_via_actor`, `_via_genre`) are
+   recovered as direct shared-entity joins between the candidate
+   and the user's watched history -- the KPRN-style typed-path
+   aggregation production KG-recsys uses.
 
 3. **Prescriptive: MIP slate selection.** Decisions:
    `Candidate.pick in {0, 1}`. Constraints:
