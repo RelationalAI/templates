@@ -1,12 +1,16 @@
-"""Product Configurator (constraint satisfaction) template.
+"""Product Configurator (constraint satisfaction, multi-solution) template.
 
 This script demonstrates a feature-model configuration problem in RelationalAI:
 
 - Load slots, options, requires/excludes rules, and regional availability from CSV.
-- For one target region, decide which option to select in each slot.
-- Enforce: exactly one option per slot, requires/excludes rules,
-  region-allowed options only, and a total-price ceiling.
-- Solve as constraint satisfaction (MiniZinc / Chuffed) and inspect the chosen build.
+- For one target region, enumerate every feasible build: which option to
+  select in each slot under requires/excludes rules, region-allowed
+  options only, and a total-price ceiling.
+- Solve as constraint satisfaction with `solution_limit=MAX_CONFIGURATIONS`
+  (MiniZinc/Chuffed) and surface every distinct build via
+  `Variable.values(solution_index, value)`. A configurator UI rarely
+  wants a single build -- a buyer's quote, a sales playbook, and a
+  trade-off slider all need the population of feasible configurations.
 
 Modeling approach:
 - Option.selected is a binary decision variable, one per option (region-filtered).
@@ -19,8 +23,9 @@ Run:
     `python product_configurator.py`
 
 Output:
-    Prints the configurator's solver info, the chosen option per slot,
-    the total price in cents, and post-solve constraint verification.
+    Prints the configurator's solver info, every feasible build (one
+    row per selected option per solution) with per-solution total
+    price, and post-solve constraint verification.
 """
 
 from pathlib import Path
@@ -30,10 +35,16 @@ from relationalai.semantics import Integer, Model, String, sum
 from relationalai.semantics.reasoners.prescriptive import Problem
 
 # Runner-level parameters.
-# One solve = one configuration for one region. Change TARGET_REGION and re-run
-# to configure for a different market.
+# One solve enumerates up to MAX_CONFIGURATIONS feasible builds for one
+# region. Change TARGET_REGION and re-run to configure for a different
+# market.
 TARGET_REGION = "EU"
 PRICE_CEILING_CENTS = 2_000_000  # USD 20,000
+# Solver solution-limit: cap how many distinct feasible builds to
+# enumerate per run. The bundled demo intentionally has a small feasible
+# set so the output is readable; production catalogues can be enormous,
+# so size accordingly.
+MAX_CONFIGURATIONS = 5
 
 model = Model("product_configurator")
 
@@ -100,7 +111,9 @@ Option.selected = model.Property(f"{Option} is selected if {Integer:selected}")
 
 problem = Problem(model, Integer)
 
-problem.solve_for(
+# Capture the variable subconcept so we can query per-solution values
+# via `Variable.values(solution_index, value)` after the solve.
+selected_var = problem.solve_for(
     Option.selected,
     type="bin",
     name=["selected", Option.name],
@@ -147,37 +160,50 @@ problem.satisfy(price_ic)
 # --------------------------------------------------
 
 problem.display()
-problem.solve("minizinc", time_limit_sec=60)
+# `solution_limit=MAX_CONFIGURATIONS` asks the solver to enumerate up to
+# that many distinct feasible builds; query each one via
+# `Variable.values(idx, val)`. Without it, MiniZinc returns just the
+# first feasible build and stops.
+problem.solve("minizinc", time_limit_sec=60, solution_limit=MAX_CONFIGURATIONS)
 problem.solve_info().display()
 
-# Confirm constraints hold in the solver's solution.
+# Confirm constraints hold in the returned solution. `verify` inspects
+# only the first solution (the populated property), but the constraint
+# structure is shared across every solution the solver returns.
 problem.verify(exactly_one_ic, requires_ic, excludes_ic, price_ic)
-
-# Note on termination-status gating: this is a pure satisfaction problem,
-# so MiniZinc/Chuffed returns a feasibility status rather than "OPTIMAL".
-# After confirming the exact status string from solve_info().display() above,
-# add e.g. model.require(problem.termination_status() == "FEASIBLE") to gate.
+# At least one feasible build must have been found. We do not gate on
+# `termination_status`: with `solution_limit`, MiniZinc reports OPTIMAL
+# only when search has exhausted the space within the time limit, so
+# partial enumeration is the expected mode for large catalogues.
+model.require(problem.num_points() >= 1)
 
 # --------------------------------------------------
-# Inspect the chosen configuration
+# Inspect every feasible configuration
 # --------------------------------------------------
+
+# `Variable.values(solution_index, value)` indexes the solver's outputs
+# across every returned solution. Filtering on `value == 1` surfaces just
+# the options the solver picked into each build. The populated property
+# (`Option.selected`) reflects only the first solution; for multi-solution
+# output we always go through `.values(...)`.
 
 print(
-    f"\nSelected configuration for region {TARGET_REGION!r} "
-    f"(ceiling ${PRICE_CEILING_CENTS // 100:,}):"
+    f"\nFeasible configurations for region {TARGET_REGION!r} "
+    f"(ceiling ${PRICE_CEILING_CENTS // 100:,}, up to {MAX_CONFIGURATIONS} per run):"
 )
-sel = Integer.ref()
+sol_idx = Integer.ref()
+val = Integer.ref()
 model.select(
-    Slot.name.alias("slot"),
-    Option.name.alias("option"),
-    Option.price_cents.alias("price_cents"),
-).where(
-    Option.selected(sel),
-    sel == 1,
-    Option.slot(Slot),
-).inspect()
+    sol_idx.alias("solution"),
+    selected_var.option.slot.name.alias("slot"),
+    selected_var.option.name.alias("option"),
+    selected_var.option.price_cents.alias("price_cents"),
+).where(selected_var.values(sol_idx, val), val == 1).inspect()
 
-print("\nTotal price (cents):")
+print("\nTotal price per configuration (cents):")
+sol_idx = Integer.ref()
+val = Integer.ref()
 model.select(
-    sum(Option.price_cents * Option.selected).alias("total_cents"),
-).inspect()
+    sol_idx.alias("solution"),
+    sum(selected_var.option.price_cents * val).per(sol_idx).alias("total_cents"),
+).where(selected_var.values(sol_idx, val)).inspect()
