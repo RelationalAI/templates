@@ -22,14 +22,14 @@ on automated-decision transparency.
 This template solves that problem in one declarative model:
 
 - **Graph (PageRank)** computes a structural-popularity prior over the
-  movie-similarity graph -- the same primitive that powers
+  book-similarity graph -- the same primitive that powers
   Pinterest's Pixie recommender at production scale.
 - **Paths** enumerate bounded knowledge-graph walks
-  (`User -> watched -> Movie -> shares director / actor / genre /
-  similar -> candidate`) and produce per-`(user, candidate)`
-  explanation features the prescriptive layer reads as data.
-- **Prescriptive (MIP, HiGHS)** picks K items per user under genre
-  diversity, director uniqueness, freshness, originals exposure,
+  (`User -> read -> Book -> shares author / subject / similar ->
+  candidate`) and produce per-`(user, candidate)` explanation
+  features the prescriptive layer reads as data.
+- **Prescriptive (MIP, HiGHS)** picks K items per user under subject
+  diversity, author uniqueness, freshness, originals exposure,
   cold-start, and explanation-path-floor constraints, while
   maximising the personalised utility blended from the graph and
   paths signals.
@@ -116,24 +116,34 @@ cd kg_aware_slate_recommendation
    python kg_aware_slate_recommendation.py
    ```
 
-The bundled `data/` directory carries a small hand-crafted sample
-that lets the runner execute end-to-end against your RAI account in
-seconds. For the realistic instance, swap in MovieLens-1M-KG (KGAT
-distribution, see "Customise this template" below).
+The bundled `data/` directory carries a small slice (~60 books, ~30-40
+authors, ~12 subjects) of the Open Library catalogue (CC0; bibliographic
+metadata only). The synthetic users / read events / similar_to edges are
+generated on top so the template runs against your RAI account in seconds
+without any data-licensing exposure. To pull a larger slice for a more
+realistic instance:
+
+```bash
+python data/fetch_open_library_slice.py --size md   # ~250 books
+python data/fetch_open_library_slice.py --size lg   # ~600 books
+```
+
+The fetch script caches API responses under `data/_cache/`, so reruns
+are reproducible and offline-friendly after the first pull.
 
 ## How it works
 
 ### Schema
 
-- `Item` super-concept; `User`, `Movie`, `Director`, `Actor`, `Genre`
-  all `extends=[Item]` so the path walker can chain across the whole
+- `Item` super-concept; `User`, `Book`, `Author`, `Subject` all
+  `extends=[Item]` so the path walker can chain across the whole
   heterogeneous KG via a single 2-arity edge.
 - `User(id, name)`
-- `Movie(id, title, age_days, in_house)`
-- `Director(id, name)`, `Actor(id, name)`, `Genre(id, name)`
-- Typed edges: `User.watched(Movie, rating)`,
-  `Movie.directed_by(Director)`, `Movie.acted_by(Actor)`,
-  `Movie.belongs_to(Genre)`, `Movie.similar_to(Movie)`.
+- `Book(id, title, age_days, in_house)`
+- `Author(id, name)`, `Subject(id, name)`
+- Typed edges: `User.read(Book, rating)`,
+  `Book.written_by(Author)`, `Book.about(Subject)`,
+  `Book.similar_to(Book)`.
 - Unified KG edge: `Item.connected_to(Item, Item)` populated as the
   symmetric union of the typed edges. Workaround for the v1.1.0
   paths-lib gap on multi-edge `path()` (see paths-lib README,
@@ -143,37 +153,34 @@ distribution, see "Customise this template" below).
 
 ### Pipeline
 
-1. **Graph: PageRank over movie-similarity.** A `Graph` is built from
-   `Movie.similar_to`; `pagerank()` returns the per-movie structural
-   importance, which is integer-rescaled and stored as
-   `Movie.pagerank_score`. This is the per-item popularity prior the
-   prescriptive layer uses, the same shape Pinterest's Pixie applies
-   at production scale.
+1. **Graph: PageRank over book-similarity.** A `Graph` is built from
+   `Book.similar_to`; `pagerank()` returns the per-book structural
+   importance, stored as `Book.pagerank_score` (Float). This is the
+   per-item popularity prior the prescriptive layer uses, the same
+   shape Pinterest's Pixie applies at production scale.
 
 2. **Paths: bounded heterogeneous KG walks.** The path walker
    traverses `Item.connected_to` (the symmetric union of
-   `watched | directed_by | acted_by | belongs_to | similar_to`)
-   anchored at each `User` up to `MAX_HOPS = 3` hops. Each path
-   traces a real heterogeneous chain
-   (`User -> Movie -> Director -> Movie`,
-   `User -> Movie -> Genre -> Movie`,
-   `User -> Movie -> Movie via similar_to`, ...). For every
+   `read | written_by | about | similar_to`) anchored at each
+   `User` up to `MAX_HOPS = 2` hops. Each path traces a real
+   heterogeneous chain
+   (`User -> Book -> Author -> Book`,
+   `User -> Book -> Subject -> Book`,
+   `User -> Book -> Book via similar_to`, ...). For every
    `(user, candidate)` pair the walker contributes a
    `path_count_via_kg_walk` feature; the per-typed-share counts
-   (`path_count_via_director`, `_via_actor`, `_via_genre`) are
-   recovered as direct shared-entity joins between the candidate
-   and the user's watched history -- the KPRN-style typed-path
-   aggregation production KG-recsys uses.
+   (`path_count_via_author`, `_via_subject`) are recovered as
+   direct shared-entity joins between the candidate and the user's
+   read history -- the KPRN-style typed-path aggregation production
+   KG-recsys uses.
 
 3. **Prescriptive: MIP slate selection.** Decisions:
    `Candidate.pick in {0, 1}`. Constraints:
    - Cardinality: `count(pick) per user == K`.
-   - Genre diversity: at most `MAX_PER_GENRE` picks per
-     `(user, genre)`.
-   - Director uniqueness: at most `MAX_PER_DIRECTOR` per
-     `(user, director)`.
-   - Actor diversity: at most `MAX_PER_ACTOR` per
-     `(user, actor)`.
+   - Subject diversity: at most `MAX_PER_SUBJECT` picks per
+     `(user, subject)`.
+   - Author uniqueness: at most `MAX_PER_AUTHOR` per
+     `(user, author)`.
    - Freshness floor: at least `FRESHNESS_FLOOR` items with
      `age_days <= FRESH_WINDOW_DAYS`.
    - Originals exposure floor: at least `ORIGINALS_FLOOR` in-house
@@ -181,8 +188,8 @@ distribution, see "Customise this template" below).
    - Cold-start cap: at most `COLD_START_CAP` weakly-explained items
      (those with `path_count_total < WEAK_EXPLANATION_THRESHOLD`).
    - Explanation-path floor: total
-     `path_count_via_director` over the slate must be at least
-     `EXPLANATION_FLOOR`.
+     `path_count_total` (author + subject + KG-walk evidence) over
+     the slate must be at least `EXPLANATION_FLOOR`.
    Objective: maximise `sum(utility * pick)`, where `utility` blends
    `pagerank_score` and a weighted sum of path-counts-by-type.
 
@@ -201,39 +208,42 @@ candidate-set sizes typical for slate composition.
 ```
 kg_aware_slate_recommendation/
 ├── data/
+│   ├── fetch_open_library_slice.py    # CC0 slice fetcher
 │   ├── users.csv
-│   ├── movies.csv
-│   ├── directors.csv
-│   ├── actors.csv
-│   ├── genres.csv
-│   ├── watched.csv
-│   ├── movie_director.csv
-│   ├── movie_actor.csv
-│   ├── movie_genre.csv
-│   └── movie_similar.csv
+│   ├── books.csv
+│   ├── authors.csv
+│   ├── subjects.csv
+│   ├── read.csv
+│   ├── book_author.csv
+│   ├── book_subject.csv
+│   └── book_similar.csv
 ├── kg_aware_slate_recommendation.py
 ├── pyproject.toml
 └── README.md
 ```
 
+Bibliographic data is sourced from Open Library
+(<https://openlibrary.org/dev/docs/api>), released under CC0 (public
+domain). Synthetic users / read events / similar_to edges are
+generated deterministically by the fetch script.
+
 ## Customise this template
 
 The first changes most users will make:
 
-- **Swap to MovieLens-1M-KG (KGAT distribution).** The realistic
-  instance build runs against the public KGAT-processed
-  MovieLens-1M-KG distribution
-  (`github.com/xiangwang1223/knowledge_graph_attention_network`).
-  Drop the `data/` CSVs in place; the schema matches.
-- **Retarget to e-commerce.** Replace `Movie` with `Product`,
-  `watched` with `purchased`, `similar_to` with co-purchase. The
+- **Scale the Open Library slice.** Re-run
+  `python data/fetch_open_library_slice.py --size md|lg` to pull a
+  larger CC0 slice (~250 / ~600 books). The fetch script is
+  idempotent and caches API responses under `data/_cache/`.
+- **Retarget to e-commerce.** Replace `Book` with `Product`,
+  `read` with `purchased`, `similar_to` with co-purchase. The
   template runs as a "frequently bought together" slate composer
   with category coverage, brand exclusivity, and price-tier mix.
-- **Retarget to course slates / career paths.** Replace `Movie` with
+- **Retarget to course slates / career paths.** Replace `Book` with
   `Course`, add prerequisite edges, run the LinkedIn-style
   Career-Explorer pattern with prerequisite respect and
   credit-hour caps.
-- **Predictive-pillar variant.** Replace `Movie.pagerank_score` with
+- **Predictive-pillar variant.** Replace `Book.pagerank_score` with
   a learned GNN affinity score from PyRel's predictive reasoner.
   Same MIP, different scoring source.
 - **LLM-grounded explanation surfacing.** Pipe the top explanation
@@ -246,9 +256,9 @@ The first changes most users will make:
   for downstream A/B exposure or human-in-the-loop curation -- the
   production-deployed shape for editorial-review platforms (kids
   content, regulated regions).
-- **Tighten or relax the constraint dials.** `MAX_PER_GENRE`,
-  `FRESHNESS_FLOOR`, `ORIGINALS_FLOOR`, `COLD_START_CAP`,
-  `EXPLANATION_FLOOR` are top-of-file constants.
+- **Tighten or relax the constraint dials.** `MAX_PER_SUBJECT`,
+  `MAX_PER_AUTHOR`, `FRESHNESS_FLOOR`, `ORIGINALS_FLOOR`,
+  `COLD_START_CAP`, `EXPLANATION_FLOOR` are top-of-file constants.
 
 ## References
 
@@ -258,9 +268,8 @@ The first changes most users will make:
   <https://cs.stanford.edu/people/jure/pubs/pixie-www18.pdf>.
 - Wang, He, Cao, Liu & Chua, *KGAT: Knowledge Graph Attention Network
   for Recommendation*, KDD 2019 --
-  <https://dl.acm.org/doi/10.1145/3292500.3330989>. Source of the
-  MovieLens-1M-KG / Amazon-Book / Yelp-KG datasets used as the
-  realistic-instance build.
+  <https://dl.acm.org/doi/10.1145/3292500.3330989>. Reference for
+  MovieLens / Amazon-Book / Yelp-KG-style heterogeneous-KG recsys.
 - Wang, Wang, Xu, He, Cao & Chua, *Explainable Reasoning over
   Knowledge Graphs for Recommendation (KPRN)*, AAAI 2019 --
   <https://cdn.aaai.org/ojs/4470/4470-13-7509-1-10-20190706.pdf>.
@@ -279,5 +288,7 @@ The first changes most users will make:
   <https://www.linkedin.com/blog/engineering/skills-graph/building-linkedin-s-skills-graph-to-power-a-skills-first-world>.
 - Alibaba Cloud, *Taobao Recommendation Architecture (iGraph)* --
   <https://www.alibabacloud.com/blog/596205>.
-- *MovieLens datasets* (GroupLens) --
-  <https://grouplens.org/datasets/movielens/>.
+- *Open Library Developer API* (CC0) --
+  <https://openlibrary.org/dev/docs/api>. Bibliographic catalogue
+  used by the bundled slice; `data/fetch_open_library_slice.py`
+  pulls deterministic cuts.

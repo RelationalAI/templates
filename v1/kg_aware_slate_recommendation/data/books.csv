@@ -1,0 +1,61 @@
+id,title,age_days,in_house
+1,Candide,102331,1
+2,Le petit prince,20413,0
+3,The Prince,24509,0
+4,Jane Eyre,11026,0
+5,The Scarlet Pimpernel,46224,0
+6,Alice's Adventures in Wonderland,57373,0
+7,Through the Looking-Glass,56331,0
+8,Alice's Adventures in Wonderland / Through the Looking Glass,21509,0
+9,Преступление и наказание,51857,0
+10,Bible,18683,0
+11,The Wonderful Wizard of Oz,46192,0
+12,Gulliver's Travels,22075,1
+13,The Red Badge of Courage,62571,1
+14,Записки изъ подполья,9765,0
+15,Wuthering Heights,9595,0
+16,Treasure Island,42512,0
+17,The Art of War,42544,0
+18,Glinda of Oz,19508,1
+19,The Adventures of Sherlock Holmes [12 stories],7879,1
+20,His Last Bow [8 stories],7763,0
+21,The Hound of the Baskervilles,16616,0
+22,The Lost World,7705,1
+23,Memoirs of Sherlock Holmes [11 stories],17456,0
+24,The Return of Sherlock Holmes,7965,1
+25,A Study in Scarlet,7870,0
+26,"The Complete Sherlock Holmes [4 novels, 56 stories]",35279,0
+27,Анна Каренина,10828,0
+28,War and Peace,20627,0
+29,The Turn of the Screw,8568,1
+30,Herland,9191,0
+31,The Importance of Being Earnest,48844,0
+32,Carmilla,20239,0
+33,Julius Caesar,125142,0
+34,Le Comte de Monte Cristo,9269,0
+35,Frankenstein or The Modern Prometheus,7431,0
+36,Robinson Crusoe,124290,0
+37,The Great Gatsby,38962,0
+38,The Murder of Roger Ackroyd,36611,0
+39,The Maltese Falcon,35634,0
+40,The Mysterious Affair at Styles,38996,0
+41,Don Quijote de la Mancha,47578,0
+42,The War of the Worlds,45015,1
+43,The Time Machine,47883,0
+44,The Adventures of Tom Sawyer,76461,0
+45,Walden,63104,1
+46,Ἰλιάς,190344,0
+47,A history of New York,74982,0
+48,Brave New World,8102,0
+49,Emma,77329,0
+50,Mansfield Park,77605,0
+51,Sense and Sensibility,78745,0
+52,The Man Who Was Thursday,43329,0
+53,Greenmantle,40685,0
+54,The Mayor of Casterbridge,82563,0
+55,Oliver Twist,82730,0
+56,The Jewel of Seven Stars,45309,0
+57,Dracula,47322,1
+58,The mystery of Edwin Drood,9611,1
+59,Hamlet,27816,0
+60,La Divina Commedia,6957,0
