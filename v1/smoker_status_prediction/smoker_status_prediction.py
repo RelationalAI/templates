@@ -74,6 +74,7 @@ model.define(TestTable.new(Table(f"{DATABASE}.{TASK_SCHEMA}.TEST").to_schema()))
 # --------------------------------------------------
 # Phase 3: Build the graph
 # --------------------------------------------------
+# Self-referential edge: People -> People via the Related bridge.
 # Each row of `Related` connects two People (person1 -> person2). Use a
 # self-referential Edge to express it: same concept on both ends, so the
 # destination is `People.ref()`.
@@ -151,7 +152,7 @@ gnn = GNN(
     task_type="binary_classification",
     eval_metric="roc_auc",
     has_time_column=False,
-    device="cuda",
+    device="cuda",  # change to "cpu" if your RAI engine is CPU-only
     n_epochs=5,
     lr=0.005,
     train_batch_size=256,

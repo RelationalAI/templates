@@ -25,9 +25,11 @@ The pipeline is intentionally minimal:
 
 The GNN learns from both per-person features and how those features propagate across the graph: two connected people who share many similar attributes nudge the model's prediction for both.
 
-**Start with `smoker_status_prediction_local.py`** -- it loads the bundled CSV data via `model.data()`, trains on CPU, and runs end-to-end without external Snowflake setup beyond the RelationalAI Native App.
+**Start with `smoker_status_prediction_local.py`** -- it loads the bundled CSV data via `model.data()` and runs end-to-end without external Snowflake setup beyond the RelationalAI Native App.
 
-**Then adapt `smoker_status_prediction.py`** -- the same pipeline pointed at Snowflake-hosted tables, with the GNN configured for `cuda` training.
+**Then adapt `smoker_status_prediction.py`** -- the same pipeline pointed at Snowflake-hosted tables.
+
+Both runners train the GNN through the same RelationalAI Native App; the only difference is whether the source data is loaded from local CSVs or from Snowflake tables. The default `device="cuda"` works on a GPU-enabled RAI engine -- change it to `"cpu"` at the top of either runner if your engine is CPU-only.
 
 > [!IMPORTANT]
 > The RelationalAI **predictive reasoner (GNN)** used in this template is in
@@ -52,8 +54,8 @@ Assumes familiarity with Python and basic ML concepts (binary classification, tr
 ## What's included
 
 - **Runners**:
-  - `smoker_status_prediction_local.py` -- **primary, runnable out of the box.** Loads CSVs from `data/` via `model.data()` and trains on CPU.
-  - `smoker_status_prediction.py` -- **reference pattern** for adapting the same pipeline to Snowflake-hosted tables (GPU recommended).
+  - `smoker_status_prediction_local.py` -- **primary, runnable out of the box.** Loads CSVs from `data/` via `model.data()`.
+  - `smoker_status_prediction.py` -- **reference pattern** for adapting the same pipeline to Snowflake-hosted tables.
 - **Sample data** (`data/`):
   - `people.csv` -- 38,985 individuals with demographic and medical features.
   - `related.csv` -- 58,355 connection pairs between people.
@@ -63,12 +65,12 @@ Assumes familiarity with Python and basic ML concepts (binary classification, tr
 
 ### Access
 
-**To run the local demo (`smoker_status_prediction_local.py`)** you need a Snowflake account with the RelationalAI Native App. The bundled CSVs in `data/` ship with the template; the GNN trains on CPU in a few minutes. Experiment artifacts are still written to a Snowflake schema, so the native app needs USAGE + CREATE EXPERIMENT / CREATE MODEL grants on that schema.
+**To run the local demo (`smoker_status_prediction_local.py`)** you need a Snowflake account with the RelationalAI Native App. The bundled CSVs in `data/` ship with the template; GNN training runs on the RelationalAI engine, so the native app needs USAGE + CREATE EXPERIMENT / CREATE MODEL grants on the experiment schema (see the SQL block in step 5 of the Quickstart).
 
 **To adapt to your own Snowflake pipeline (`smoker_status_prediction.py` as reference)** you'll additionally need:
 
 - The CSVs uploaded to Snowflake tables (or your own schema-equivalent dataset). Quote column names when creating the tables so spaces and parentheses are preserved (e.g. `"height(cm)"`, `"fasting blood sugar"`).
-- A GPU-enabled RAI engine for faster GNN training.
+- A GPU-enabled RAI engine for the default `device="cuda"` (or change to `"cpu"` if your engine is CPU-only).
 
 ### Tools
 
@@ -111,7 +113,7 @@ Assumes familiarity with Python and basic ML concepts (binary classification, tr
    GRANT CREATE MODEL ON SCHEMA SMOKER_STATUS_PREDICTION.EXPERIMENTS TO APPLICATION RELATIONALAI;
    ```
 
-6. Run the local demo on the bundled CSVs (CPU, a few minutes):
+6. Run the local demo on the bundled CSVs:
    ```bash
    python smoker_status_prediction_local.py
    ```
@@ -147,7 +149,7 @@ Assumes familiarity with Python and basic ML concepts (binary classification, tr
 .
 ├── README.md                               # this file
 ├── pyproject.toml                          # dependencies
-├── smoker_status_prediction_local.py       # primary: CSV-based, CPU runner
+├── smoker_status_prediction_local.py       # primary: CSV-based runner
 ├── smoker_status_prediction.py             # reference: Snowflake pipeline
 └── data/
     ├── people.csv          # 38,985 rows, 17 columns
@@ -157,7 +159,7 @@ Assumes familiarity with Python and basic ML concepts (binary classification, tr
     └── test.csv            # 3,899 rows
 ```
 
-**Start here**: `smoker_status_prediction_local.py` (CPU, no external setup beyond Snowflake grants). Use `smoker_status_prediction.py` as the adaptation reference when you wire this pattern into your own Snowflake data.
+**Start here**: `smoker_status_prediction_local.py` (no external setup beyond Snowflake grants). Use `smoker_status_prediction.py` as the adaptation reference when you wire this pattern into your own Snowflake data.
 
 ## Sample data
 
@@ -292,8 +294,7 @@ Check the class balance in `train.csv` -- if it's heavily skewed, consider re-sa
 <details>
 <summary>GNN training fails or is very slow</summary>
 
-- For the Snowflake runner, ensure a GPU-enabled engine is available; CPU training on the full dataset is significantly slower.
-- For the local runner, the bundled CSVs are sized for CPU runs (a few minutes on modern hardware). If it hangs, check that `device="cpu"` is set.
+GNN training runs on the RelationalAI engine you've provisioned. The `device` flag in the runner picks which engine flavor to use -- `"cuda"` for GPU-enabled engines (default; significantly faster), `"cpu"` for CPU-only engines. If training is slow with `device="cuda"`, your engine may not actually have GPU; check the engine type or fall back to `"cpu"`.
 </details>
 
 <details>

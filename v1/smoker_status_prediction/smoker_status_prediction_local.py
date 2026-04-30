@@ -22,6 +22,21 @@ from relationalai.semantics import Any, Integer, Model, select
 from relationalai.semantics.reasoners.graph import Graph
 from relationalai.semantics.reasoners.predictive import GNN, PropertyTransformer
 
+# --------------------------------------------------
+# Configuration -- edit to match your Snowflake account
+# --------------------------------------------------
+# Snowflake location for GNN experiment artifacts. The RelationalAI native
+# app must have USAGE on the database and CREATE EXPERIMENT / CREATE MODEL
+# on this schema:
+#   GRANT USAGE ON DATABASE <db> TO APPLICATION RELATIONALAI;
+#   GRANT USAGE ON SCHEMA <db>.<schema> TO APPLICATION RELATIONALAI;
+#   GRANT CREATE EXPERIMENT ON SCHEMA <db>.<schema> TO APPLICATION RELATIONALAI;
+#   GRANT CREATE MODEL ON SCHEMA <db>.<schema> TO APPLICATION RELATIONALAI;
+GNN_EXP_DATABASE = "SMOKER_STATUS_PREDICTION"
+GNN_EXP_SCHEMA = "EXPERIMENTS"
+
+SEED = 42
+
 DATA_DIR = Path(__file__).parent / "data"
 
 # --------------------------------------------------
@@ -57,6 +72,7 @@ model.define(TestTable.new(model.data(test_df).to_schema()))
 # --------------------------------------------------
 # Phase 3: Build the graph
 # --------------------------------------------------
+# Self-referential edge: People -> People via the Related bridge.
 # Each row of `Related` connects two People (person1 -> person2). Use a
 # self-referential Edge to express it: same concept on both ends, so the
 # destination is `People.ref()`.
@@ -125,8 +141,8 @@ print("PREDICTIVE: Smoker status binary classification (CPU)")
 print("=" * 60)
 
 gnn = GNN(
-    exp_database="SMOKER_STATUS_PREDICTION",
-    exp_schema="EXPERIMENTS",
+    exp_database=GNN_EXP_DATABASE,
+    exp_schema=GNN_EXP_SCHEMA,
     graph=gnn_graph,
     property_transformer=pt,
     train=Train,
@@ -134,11 +150,11 @@ gnn = GNN(
     task_type="binary_classification",
     eval_metric="roc_auc",
     has_time_column=False,
-    device="cpu",
+    device="cuda",  # change to "cpu" if your RAI engine is CPU-only
     n_epochs=5,
     lr=0.005,
     train_batch_size=256,
-    seed=42,
+    seed=SEED,
 )
 gnn.fit()
 
@@ -165,10 +181,13 @@ print("=" * 60)
 # Registry, then load it in a fresh GNN instance and predict without
 # retraining. The native app must have CREATE MODEL on the registry schema.
 #
+# MODEL_DATABASE = GNN_EXP_DATABASE
+# MODEL_SCHEMA = "MODEL_REGISTRY"
+#
 # # Register the model just trained.
 # gnn.register_model(
-#     model_database="SMOKER_STATUS_PREDICTION",
-#     model_schema="MODEL_REGISTRY",
+#     model_database=MODEL_DATABASE,
+#     model_schema=MODEL_SCHEMA,
 #     model_name="smoker_status_predictor",
 #     version_name="v1",
 #     comment="Initial smoker classification baseline",
@@ -177,14 +196,14 @@ print("=" * 60)
 # # Load it back. All structural arguments (graph, property_transformer,
 # # source_concept, task_type) must match what was used at training time.
 # loaded_gnn = GNN(
-#     exp_database="SMOKER_STATUS_PREDICTION",
-#     exp_schema="EXPERIMENTS",
+#     exp_database=GNN_EXP_DATABASE,
+#     exp_schema=GNN_EXP_SCHEMA,
 #     graph=gnn_graph,
 #     property_transformer=pt,
 #     source_concept=People,
 #     task_type="binary_classification",
-#     model_database="SMOKER_STATUS_PREDICTION",
-#     model_schema="MODEL_REGISTRY",
+#     model_database=MODEL_DATABASE,
+#     model_schema=MODEL_SCHEMA,
 #     model_name="smoker_status_predictor",
 #     version_name="v1",
 # )
