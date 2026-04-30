@@ -24,9 +24,10 @@ Run:
     `python synthetic_eligibility_records.py`
 
 Output:
-    Prints the formulation, every generated member record (one row per
-    solution) with chosen age bucket, plan, provider, and post-solve
-    constraint verification.
+    Prints the formulation, the solver's status block, and every generated
+    member record (one row per solution) with chosen age bucket, plan, and
+    provider. Prints a no-records diagnostic when the reference data is
+    over-constrained.
 """
 
 from pathlib import Path
@@ -52,12 +53,30 @@ model = Model("synthetic_eligibility_records")
 
 data_dir = Path(__file__).parent / "data"
 
+
+# Reference-data contract: integer IDs must be dense and contiguous so the
+# solver's `lower=min(id), upper=max(id)` decision bounds line up exactly
+# with the reference rows. Sparse IDs would let the solver pick a value
+# with no matching reference row -- the relational-time `implies(...)` ICs
+# gated on the matching row would never fire, and the post-solve display
+# join would silently drop the record. Validate up front.
+def _assert_dense_ids(df, name):
+    ids = sorted(int(v) for v in df["id"].tolist())
+    expected = list(range(ids[0], ids[-1] + 1))
+    if ids != expected:
+        raise ValueError(
+            f"{name} `id` column must be dense and contiguous; got {ids}. "
+            "Renumber the rows or add explicit ID-membership ICs before solving."
+        )
+
+
 # Concept: insurance plan (reference data; one row per plan offering).
 # Network determines which providers are in-network.
 Plan = model.Concept("Plan", identify_by={"id": Integer})
 Plan.plan_type = model.Property(f"{Plan} has {String:plan_type}")
 Plan.network_id = model.Property(f"{Plan} has {Integer:network_id}")
 plans_csv = read_csv(data_dir / "plans.csv")
+_assert_dense_ids(plans_csv, "plans.csv")
 model.define(Plan.new(model.data(plans_csv).to_schema()))
 
 # Concept: primary care provider (reference data; one row per provider).
@@ -66,6 +85,7 @@ Provider = model.Concept("Provider", identify_by={"id": Integer})
 Provider.name = model.Property(f"{Provider} has {String:name}")
 Provider.network_id = model.Property(f"{Provider} has {Integer:network_id}")
 providers_csv = read_csv(data_dir / "providers.csv")
+_assert_dense_ids(providers_csv, "providers.csv")
 model.define(Provider.new(model.data(providers_csv).to_schema()))
 
 # Concept: representative age bucket. Each row maps an integer bucket id
@@ -78,6 +98,7 @@ model.define(Provider.new(model.data(providers_csv).to_schema()))
 AgeBucket = model.Concept("AgeBucket", identify_by={"id": Integer})
 AgeBucket.age_years = model.Property(f"{AgeBucket} has {Integer:age_years}")
 age_buckets_csv = read_csv(data_dir / "age_buckets.csv")
+_assert_dense_ids(age_buckets_csv, "age_buckets.csv")
 model.define(AgeBucket.new(model.data(age_buckets_csv).to_schema()))
 
 # Concept: synthesised member. The CSV holds a single placeholder row;
@@ -179,21 +200,23 @@ problem.display()
 # `Variable.values(idx, val)`. Without it, MiniZinc returns just the
 # first feasible record and stops.
 problem.solve("minizinc", time_limit_sec=60, solution_limit=MAX_RECORDS)
-problem.solve_info().display()
+si = problem.solve_info()
+si.display()
 
-# Re-check the relational arithmetic ICs in the returned solution. Every
-# IC in this model is `implies`-bodied (the two CFDs and the
+# Every IC in this model is `implies`-bodied (the two CFDs and the
 # network-attribution forbidden-pair encoding) -- these are solver-only
-# and would silently report OK from `verify()` regardless of whether
-# the constraint actually held. So `verify()` is called with no
-# arguments; it confirms the relational engine has nothing left to
-# check.
-problem.verify()
-# At least one record must have been generated. We do not gate on
-# `termination_status == "OPTIMAL"`: with `solution_limit`, MiniZinc
-# typically reports OPTIMAL only when search has exhausted the space
-# within the time limit; partial enumeration is the expected mode.
-model.require(problem.num_points() >= 1)
+# and the relational engine cannot re-evaluate them. `problem.verify()`
+# is omitted because it would have nothing to check. The CFD and
+# network-attribution invariants are visible directly in the inspection
+# output below: every record's age_years vs plan_type and every record's
+# plan.network_id vs provider.network_id are printed side-by-side.
+if si.num_points is None or si.num_points == 0:
+    print(
+        "\nNo feasible eligibility records under the encoded rules. "
+        "Check the troubleshooting section in the README for likely causes "
+        "(over-constrained reference data, mismatched plan/provider networks, "
+        "or all age buckets on one side of the senior threshold)."
+    )
 
 # --------------------------------------------------
 # Inspect every generated member record

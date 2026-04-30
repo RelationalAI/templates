@@ -5,7 +5,7 @@ featured: false
 experience_level: intermediate
 industry: "Healthcare"
 reasoning_types:
-  - Rules
+  - Rules-based
   - Prescriptive
 tags:
   - constraint-programming
@@ -36,11 +36,12 @@ The rule structure here is drawn from the public [CMS Medicare](https://www.cms.
 ## What you'll build
 
 - A constraint model with three integer decision properties on a singleton `Member`: `age_bucket_id`, `plan_id`, `provider_id` -- each solution returns one feasible filling of those three slots
-- A small reference table of representative ages (`AgeBucket`) so age is a categorical decision rather than a per-year integer; this keeps every decision domain compact and similar in size, which is what makes the multi-solution enumeration produce structurally diverse records across age, plan, and network
+- A small reference table of representative ages (`AgeBucket`) so age is a categorical decision rather than a per-year integer; this keeps every decision domain compact and similar in size, which is what makes the multi-solution enumeration produce structurally varied records across age, plan, and network
 - A pair of CFD ICs encoding the two arms of the age-by-plan rule using the forbidden-pair `implies(Member.plan_id != P.id, ...)` idiom -- safe under the CSP rewriter
 - A PCP-network attribution IC iterating over reference-data `(Plan, Provider)` tuples in different networks and forbidding the cross-network combination
+- A pre-solve dense-ID check on `plans.csv`, `providers.csv`, and `age_buckets.csv` so the solver's integer decision bounds line up with the reference rows the CFDs iterate over (sparse IDs would let the solver pick a value with no matching row, leaving the rules unconstrained for that record and silently dropping it from the post-solve display join)
 - **Multi-solution enumeration as the primary code path**: `problem.solve(..., solution_limit=MAX_RECORDS)` runs the search in enumeration mode; `Variable.values(solution_index, value)` joins the three decision variables on a shared solution index to reconstruct each record
-- Post-solve verification via `problem.verify()` (note: every IC in this model is `implies`-bodied -- they are all solver-only -- so `verify()` is called with no arguments to confirm the relational engine has nothing left to check)
+- An empty-result branch driven by `solve_info().num_points`: when no feasible record exists, the script prints a diagnostic instead of hard-failing, which is the right shape for a reusable generator. (No `problem.verify()` call: every IC is `implies`-bodied and solver-only, so `verify()` would have nothing to recheck. The CFD and network-attribution invariants are directly visible in the inspection output below.)
 
 ## What's included
 
@@ -136,7 +137,7 @@ The rule structure here is drawn from the public [CMS Medicare](https://www.cms.
 
 The solver decides three integer attributes of a singleton `Member` -- age bucket, plan, provider -- subject to the eligibility rules. Each solution returned by the solver is one feasible filling of those three slots; multi-solution mode enumerates K of them per solve.
 
-**Categorical age via a small reference table.** Age is *not* a per-year integer decision: instead, the `AgeBucket` reference table holds five representative ages, and `Member.age_bucket_id` picks one. The CFDs walk through `AgeBucket.age_years` to compare against the seniority threshold. This keeps the age decision domain at the same order of magnitude as the plan and provider domains, which is what makes the solver's enumeration produce structurally diverse records across all three dimensions:
+**Categorical age via a small reference table.** Age is *not* a per-year integer decision: instead, the `AgeBucket` reference table holds four representative ages, and `Member.age_bucket_id` picks one. The CFDs walk through `AgeBucket.age_years` to compare against the seniority threshold. This keeps the age decision domain at the same order of magnitude as the plan and provider domains, which is what makes the solver's enumeration produce structurally varied records across all three dimensions:
 
 ```python
 AgeBucket = model.Concept("AgeBucket", identify_by={"id": Integer})
@@ -203,31 +204,39 @@ The variable subconcept exposes a back-pointer named after the entity in its pro
 
 ## Customize this template
 
-- **Use your own plans and providers** by replacing the two CSV files. The constraint structure does not change; the integer ID columns stay required (the script uses them for the `Member.plan_id` / `Member.provider_id` decision domains).
+- **Use your own plans and providers** by replacing the two CSV files. The constraint structure does not change; the integer ID columns stay required (the script uses them for the `Member.plan_id` / `Member.provider_id` decision domains) and IDs must remain dense and contiguous (the pre-solve check enforces this).
 - **Raise the solution limit on a real catalogue.** The bundled `MAX_RECORDS = 8` is sized for the demo. Production test suites typically want 100--10,000 records per solve. `time_limit_sec` is your safety net -- enumeration stops when either the limit or the budget is reached.
-- **Change the target year** by adjusting `TARGET_YEAR`. The senior threshold (`SENIOR_THRESHOLD_YEARS = 65`) is read from the CMS Medicare regulation; widen or narrow the seniority gate by changing it.
-- **Add coverage-period interval containment** by introducing two more decisions (`coverage_start_days` and `coverage_end_days` as integer days from a notional epoch) and an IC asserting `start <= TARGET_DATE_DAYS <= end` together with a minimum coverage duration. This adds the temporal-interval-containment shape over decision-side bounds, which is useful for fuzzing claim-adjudication date logic.
-- **Add a coverage-period-non-overlap-per-(member, plan) IC** by introducing pairwise refs over coverage periods (cf. the `synthetic_order_lifecycle` template's pairwise temporal ICs) and asserting `(start_a > end_b) + (start_b > end_a) >= 1` for each (member, plan) pair.
+- **Adjust the seniority gate** by changing `SENIOR_THRESHOLD_YEARS` (currently 65, the CMS Medicare threshold). Both arms of the age-by-plan CFD read this constant directly.
+- **Add a dependent-count decision** by introducing a `Member.num_dependents` integer decision bounded by 0 and the per-plan `max_dependents` cap. The `plans.csv` `max_dependents` column is included in the bundled data as a hook for this extension. Encode the cap with the same forbidden-pair idiom: `model.where(P.max_dependents >= 0).require(implies(Member.plan_id == P.id, Member.num_dependents <= P.max_dependents))`.
+- **Add a coverage-period decision pair** by introducing `coverage_start_days` and `coverage_end_days` as integer days from a notional epoch and an IC asserting `start <= TARGET_DATE_DAYS <= end` together with a minimum coverage duration. This adds the temporal-interval-containment shape over decision-side bounds, which is useful for fuzzing claim-adjudication date logic.
 - **Switch from "all feasible" to "smallest violating instance"** by adding `problem.minimize(...)` over a violation count, dropping a positive IC, and using `solution_limit=1`. This is the negative-mode use case from the constrained-generative-models literature -- handy for finding the cheapest counter-example to a candidate rule.
-- **Adapt to a different regulatory regime** by editing the CFD predicates and the network-attribution IC. The shape is identical for KYC member records (banking AML), tenant lease attributes (proptech), shipment manifests (logistics customs) -- declare the rules as forbidden-pair iterations, ask the solver for K diverse records.
+- **Adapt to a different regulatory regime** by editing the CFD predicates and the network-attribution IC. The shape is identical for KYC member records (banking AML), tenant lease attributes (proptech), shipment manifests (logistics customs) -- declare the rules as forbidden-pair iterations, ask the solver for K records.
 
 ## Troubleshooting
 
 <details>
-  <summary>Solver returns INFEASIBLE</summary>
+  <summary>Solver returns INFEASIBLE / no feasible eligibility records</summary>
 
-- The reference data may not admit any feasible record. Confirm at least one plan has `max_dependents >= 0`, at least one provider exists in each plan's network, and the senior-arm of the CFD is satisfiable (a Medicare-Advantage plan must exist if any age >= 65 will be selected).
+- The reference data may not admit any feasible record. The script prints "No feasible eligibility records under the encoded rules." in this case rather than hard-failing. Confirm at least one provider exists in each plan's network, and that both arms of the age-by-plan CFD are satisfiable (a Medicare-Advantage plan must exist if any age bucket has `age_years >= SENIOR_THRESHOLD_YEARS`; a non-Medicare plan must exist if any age bucket has `age_years < SENIOR_THRESHOLD_YEARS`).
 - Mismatched networks: if `plans.csv` and `providers.csv` reference network IDs that don't intersect, the PCP-network attribution IC has no satisfying assignment. Confirm every `Plan.network_id` value appears in at least one `Provider.network_id` row.
-- Out-of-range bounds: tightening `AGE_MIN_YEARS` or `AGE_MAX_YEARS` past the senior threshold can make one arm of the CFD unsatisfiable. If `AGE_MAX_YEARS < 65`, the senior arm has no satisfying birth year, so all picked plans must be non-Medicare; if your data has only Medicare plans, this turns infeasible.
+- All age buckets on one side of the senior threshold: if every row in `age_buckets.csv` has `age_years >= SENIOR_THRESHOLD_YEARS`, the non-senior arm of the CFD forces every chosen plan to be non-Medicare *and* every chosen age to be senior, which has no satisfying assignment unless the plans table has both Medicare-Advantage and non-Medicare entries. The mirror failure mode applies when every bucket is non-senior.
+
+</details>
+
+<details>
+  <summary>ValueError: <code>id</code> column must be dense and contiguous</summary>
+
+- The pre-solve check ran on `plans.csv`, `providers.csv`, or `age_buckets.csv` and found gaps in the `id` column. The solver bounds each decision by `lower=min(id), upper=max(id)`; without dense IDs it can pick a value with no matching reference row, the relational-time `implies` rules gated on the matching row will not fire, and the post-solve display join will silently drop the record.
+- Renumber the rows so IDs run consecutively from the minimum to the maximum (e.g., 1, 2, 3, ... or 10, 11, 12, ...).
 
 </details>
 
 <details>
   <summary>How many records will the solver return?</summary>
 
-- Up to `MAX_RECORDS` (8 by default) or however many feasible records exist in the reference data, whichever is smaller. `problem.num_points()` reports the actual count after the solve; `solve_info()` reports `status: SOLUTION_LIMIT` when the limit was hit (more records available) and `status: OPTIMAL` when the search has been exhausted.
+- Up to `MAX_RECORDS` (8 by default) or however many feasible records exist in the reference data, whichever is smaller. `solve_info().num_points` reports the actual count after the solve; `solve_info().status` reports `SOLUTION_LIMIT` when the limit was hit (more records available) and `OPTIMAL` when the search has been exhausted.
 - Solution ordering is not guaranteed across runs or solver versions; the *set* of returned records may also shift if MiniZinc's branching heuristics see new ties. Treat the `solution` column as a label, not a ranking.
-- The K returned records are guaranteed to be *distinct* on at least one decision (birth year, plan, provider, or dependent count) but not maximally diverse: you may see two records that share three of four slots and only differ on birth year by one. For broader spread, restrict birth-year domain to a smaller set of stratified buckets, or add a desirability score and switch to optimisation.
+- The K returned records are guaranteed to be pairwise *distinct* on at least one decision (age bucket, plan, or provider) but not maximally diverse and not ranked. For broader spread, raise `MAX_RECORDS` past the size of the feasible set so the solver exhausts every distinct case, or add stratification buckets and re-solve per stratum.
 
 </details>
 
