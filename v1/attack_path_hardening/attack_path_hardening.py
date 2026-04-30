@@ -14,7 +14,7 @@ Run: `python attack_path_hardening.py`
 
 from pathlib import Path
 
-from pandas import read_csv
+from pandas import DataFrame, read_csv
 from relationalai.semantics import Integer, Model, String, sum
 from relationalai.semantics.reasoners.prescriptive import Problem
 from relationalai.semantics.std.paths import PathTraversal
@@ -113,11 +113,9 @@ model.define(MitigationCovers(Mitigation, AttackStep)).where(
 # Lift the per-segment budget table into a Concept so the per-segment
 # IC stays declarative as a single multi-axis aggregation.
 SegmentBudget = model.Concept("SegmentBudget", identify_by={"segment": String})
-SegmentBudget.cap_kdollars = model.Property(
-    f"{SegmentBudget} has cap {Integer:cap_kdollars}"
-)
-for seg, cap in SEGMENT_BUDGET_KDOLLARS.items():
-    model.define(SegmentBudget.new(segment=seg, cap_kdollars=cap))
+SegmentBudget.cap_kdollars = model.Property(f"{SegmentBudget} has cap {Integer:cap_kdollars}")
+segment_budget_df = DataFrame(SEGMENT_BUDGET_KDOLLARS.items(), columns=["segment", "cap_kdollars"])
+model.define(SegmentBudget.new(model.data(segment_budget_df).to_schema()))
 
 # --- Rules: lift CSV rows to attack-step edges (pre-filtered) -------
 
