@@ -138,17 +138,21 @@ Applicant.is_frail = model.Property(f"{Applicant} has {Integer:is_frail}")
 Applicant.is_manual_review = model.Property(f"{Applicant} has {Integer:is_manual_review}")
 
 problem = Problem(model, Integer)
-# Capture the variable subconcepts so we can query their per-solution
-# values via `Variable.values(solution_index, value)` after the solve.
+# Every output goes through `Variable.values(solution_index, value)` against
+# the captured ProblemVariable handles, so the populated property path is
+# unused. `populate=False` skips the first-solution write-back -- avoiding
+# wasted work and the latent FDError that `populate=True` invites if the
+# template is ever wrapped in a re-solve loop.
 age_bucket_var = problem.solve_for(
     Applicant.age_bucket_id,
     type="int",
     name=["age_bucket", Applicant.id],
     lower=int(age_buckets_csv["id"].min()),
     upper=int(age_buckets_csv["id"].max()),
+    populate=False,
 )
 chronic_var = problem.solve_for(
-    Applicant.has_chronic, type="bin", name=["has_chronic", Applicant.id]
+    Applicant.has_chronic, type="bin", name=["has_chronic", Applicant.id], populate=False
 )
 coverage_band_var = problem.solve_for(
     Applicant.coverage_band_id,
@@ -156,11 +160,19 @@ coverage_band_var = problem.solve_for(
     name=["coverage_band", Applicant.id],
     lower=int(coverage_bands_csv["id"].min()),
     upper=int(coverage_bands_csv["id"].max()),
+    populate=False,
 )
-senior_var = problem.solve_for(Applicant.is_senior, type="bin", name=["is_senior", Applicant.id])
-frail_var = problem.solve_for(Applicant.is_frail, type="bin", name=["is_frail", Applicant.id])
+senior_var = problem.solve_for(
+    Applicant.is_senior, type="bin", name=["is_senior", Applicant.id], populate=False
+)
+frail_var = problem.solve_for(
+    Applicant.is_frail, type="bin", name=["is_frail", Applicant.id], populate=False
+)
 manual_review_var = problem.solve_for(
-    Applicant.is_manual_review, type="bin", name=["is_manual_review", Applicant.id]
+    Applicant.is_manual_review,
+    type="bin",
+    name=["is_manual_review", Applicant.id],
+    populate=False,
 )
 
 # --------------------------------------------------
@@ -254,23 +266,35 @@ problem.verify(
 # Audit verdict
 # --------------------------------------------------
 
-# Two outcomes for the audit:
-# - num_points >= 1: at least one feasible counterexample applicant exists,
-#   so the property does NOT hold under the encoded ruleset. Each witness
-#   is a concrete failure mode for triage.
-# - num_points == 0: no feasible counterexample, so the property HOLDS
-#   under the encoded ruleset. This is the audit's pass signal -- expected
-#   after a rule fix lands. Soundness is bounded by encoding fidelity:
-#   missing rule arms can produce a silent pass.
-if si.num_points is None or si.num_points == 0:
+# Three outcomes for the audit:
+# - INFEASIBLE: the solver proved no feasible counterexample exists, so the
+#   property HOLDS under the encoded ruleset. This is the audit's pass
+#   signal -- expected after a rule fix lands. Soundness is bounded by
+#   encoding fidelity: missing rule arms can produce a silent pass.
+# - OPTIMAL or SOLUTION_LIMIT with num_points >= 1: at least one feasible
+#   counterexample applicant exists, so the property does NOT hold. Each
+#   witness is a concrete failure mode for triage.
+# - Anything else (TIME_LIMIT, error, num_points == 0 without INFEASIBLE):
+#   inconclusive -- the audit did not finish. Surface explicitly rather
+#   than treating it as a pass.
+status = si.termination_status
+witnesses = si.num_points or 0
+if status == "INFEASIBLE":
     print(
-        "\nAudit result: PASS -- no counterexample applicants found. "
+        "\nAudit result: PASS -- proven no counterexample applicants exist. "
         "The property holds under the encoded ruleset."
+    )
+elif status in ("OPTIMAL", "SOLUTION_LIMIT") and witnesses >= 1:
+    print(
+        f"\nAudit result: FAIL -- {witnesses} counterexample applicant(s) found "
+        f"(status: {status}). The property does not hold under the encoded "
+        "ruleset; witnesses below."
     )
 else:
     print(
-        f"\nAudit result: FAIL -- {si.num_points} counterexample applicant(s) found. "
-        "The property does not hold under the encoded ruleset; witnesses below."
+        f"\nAudit result: INCONCLUSIVE -- solver returned status={status} "
+        f"with {witnesses} witness(es). The audit did not finish. Raise "
+        "`time_limit_sec`, narrow the search, or inspect the formulation."
     )
 
 # --------------------------------------------------
