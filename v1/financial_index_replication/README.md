@@ -6,6 +6,7 @@ experience_level: intermediate
 industry: "Finance"
 reasoning_types:
     - Prescriptive
+    - Rules-based
 tags:
   - Mixed-Integer Programming
   - Portfolio Optimization
