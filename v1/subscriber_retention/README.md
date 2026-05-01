@@ -115,7 +115,7 @@ Splits: train=837  val=179  test=184  (stratified by SEGMENT)
 CHURN_RISK_SCORE: min=0.05  mean=0.24  max=0.89
 
 ============================================================
-Stage 3: Predictive -- subscriber churn-risk regression GNN (CPU)
+Predictive: subscriber churn-risk regression GNN (CPU)
 ============================================================
 === Start GNN Training ===
   ✓ Step 1 completed (~30s)   # prepare dataset + GNN tables
@@ -246,7 +246,7 @@ Categorical, continuous, and integer feature types are declared explicitly. PKs 
 
 ```python
 pt = PropertyTransformer(
-    drop=[Subscriber.sub_id, Subscriber.postal_code],
+    drop=[Subscriber.sub_id, Subscriber.postal_code, Subscriber.churn_risk_score],
     category=[Subscriber.subscriber_type, Subscriber.segment, Subscriber.status,
               Subscriber.plan_type, Subscriber.auto_renew],
     continuous=[Subscriber.lifetime_value_usd, Subscriber.monthly_rate_usd,
@@ -308,7 +308,25 @@ results_df = (
 
 - **Switch to binary churn classification** — change `task_type="regression"` → `"binary_classification"` and set the train/val target to a Boolean churn outcome instead of a continuous risk score. The graph + rules stages stay identical.
 - **Add weights to the call graph** — set `weighted=True` on the `Graph(...)` call and add an aggregated edge-weight property (e.g. total call-duration or call-count per pair). The PageRank scores will reflect call intensity, not just topology.
-- **Bring more features in** — the bundled `billing_events.csv` is not used by default. Wire it in as a `BillingEvent` concept and add e.g. `Subscriber.late_payments` via the same rule-based count pattern, then add it to the integer features in `PropertyTransformer`.
+- **Bring more features in** — the bundled `billing_events.csv` is not used by the default pipeline. To wire it in as a billing-driven feature, add a `BillingEvent` concept and derive a `Subscriber.late_payment_count` rule from `PAYMENT_STATUS = "OVERDUE"`, then add it to the integer features in `PropertyTransformer`:
+
+  ```python
+  billing_df = pd.read_csv(DATA_DIR / "billing_events.csv")
+  BillingEvent = Concept("BillingEvent", identify_by={"billing_id": String})
+  model.define(BillingEvent.new(model.data(billing_df).to_schema()))
+
+  Subscriber.late_payment_count = model.Property(
+      f"{Subscriber} has {Integer:late_payment_count}"
+  )
+  model.define(
+      Subscriber.late_payment_count(count(BillingEvent).per(Subscriber))
+  ).where(
+      BillingEvent.sub_id == Subscriber.sub_id,
+      BillingEvent.payment_status == "OVERDUE",
+  )
+
+  # then add Subscriber.late_payment_count to PropertyTransformer(integer=[...])
+  ```
 - **Adjust the segment stratification** — the default split stratifies by `SEGMENT`. For very imbalanced churn outcomes, stratify by the target instead (or in addition).
 - **Repoint to your own subscriber data** — replace the CSVs under `data/telco_mini/` with your real subscriber/plan/CDR exports (same column names) and re-run.
 

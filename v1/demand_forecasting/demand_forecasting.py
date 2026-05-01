@@ -1,19 +1,24 @@
 """Demand Forecasting -- predict per-(store, item, date) unit sales with a GNN.
 
-Runs an end-to-end regression GNN pipeline on a bundled synthetic Favorita-
-shaped dataset (3 stores x 25 items x 365 days = ~27K daily sales rows).
-All data loads from CSVs via `model.data()`; no Snowflake data loading,
-no GPU required.
+Runs an end-to-end regression GNN pipeline on a bundled Favorita-shaped
+dataset (3 stores x 25 items x 365 days = ~27K daily sales rows). All
+source data loads from CSVs via `model.data()` -- no Snowflake source-data
+loading and no GPU required. The GNN reasoner still uses Snowflake for
+experiment artifacts (see README "Prerequisites" for the one-time
+schema-permission DDL).
 
 Pipeline:
   1. Load store / item / sale data and derive ItemFamily from Item.family.
   2. Build a heterogeneous Sale -> Store, Sale -> Item, Item -> ItemFamily
      graph so the GNN can propagate signal through the store and item
      hierarchies.
-  3. Train a regression GNN with a time column on Sale.date predicting
-     unit_sales.
+  3. Train a regression GNN predicting Sale.unit_sales. Sale.date is fed
+     as a plain datetime feature, not as a temporal index -- see the
+     `has_time_column=False` NOTE inline for the SDK workaround and the
+     README "Customize this template" for re-enabling temporal indexing.
   4. Generate per-Sale predictions on a forward-looking 60-day test window
-     and aggregate to weekly per-(store, family) forecasts.
+     (temporal split done in pandas before the task tables are built) and
+     aggregate to weekly per-(store, family) forecasts.
 
 The bundled CSVs were generated synthetically by
 data/generate_favorita_mini.py — promotional flags, weekday/weekend
@@ -61,7 +66,7 @@ EXP_SCHEMA = "EXPERIMENTS"
 # Define semantic model & load data
 # --------------------------------------------------
 
-model = Model("demand_forecasting_local")
+model = Model("demand_forecasting_local_v1")
 Concept, Relationship = model.Concept, model.Relationship
 
 stores_df = pd.read_csv(DATA_DIR / "stores.csv")

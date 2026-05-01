@@ -1,8 +1,10 @@
 """Subscriber Retention -- predict per-subscriber churn risk with a GNN.
 
 Runs an end-to-end predictive pipeline on a small bundled telco dataset
-(~1.2K subscribers, ~6K call-detail records). All data loads from CSVs via
-`model.data()`; no Snowflake data loading, no GPU required.
+(~1.2K subscribers, ~6K call-detail records). All source data loads from
+CSVs via `model.data()` -- no Snowflake source-data loading and no GPU
+required. The GNN reasoner still uses Snowflake for experiment artifacts
+(see README "Prerequisites" for the one-time schema-permission DDL).
 
 Stages:
   1. Graph      -- PageRank on a directed Subscriber -> Subscriber call graph,
@@ -27,7 +29,7 @@ Run:
 
 Output:
     Subscriber-count summary, GNN training metrics (RMSE on validation),
-    top-15 highest-predicted-risk subscribers per segment.
+    top-N highest-predicted-risk subscribers per segment (N = TOP_N_PER_SEGMENT).
 """
 
 from pathlib import Path
@@ -64,7 +66,7 @@ EXP_SCHEMA = "EXPERIMENTS"
 # Define semantic model & load data
 # --------------------------------------------------
 
-model = Model("subscriber_retention_local")
+model = Model("subscriber_retention_local_v1")
 Concept, Relationship = model.Concept, model.Relationship
 
 # Load and denormalize source data into a single Subscriber feature table.
@@ -160,6 +162,7 @@ pt = PropertyTransformer(
     drop=[
         Subscriber.sub_id,  # PK -- graph carries identity
         Subscriber.postal_code,  # high-cardinality int ID; noise as a feature
+        Subscriber.churn_risk_score,  # target -- never a feature
     ],
     category=[
         Subscriber.subscriber_type,
