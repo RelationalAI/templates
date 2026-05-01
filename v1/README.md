@@ -23,6 +23,7 @@ This directory contains the templates for v1. Each template folder includes its 
 | [machine_maintenance](./machine_maintenance/) | A multi-reasoner template that chains querying, graph analysis, rules-based classification, and prescriptive optimization to schedule preventive maintenance, surface hidden operational risk, and recommend cross-training to eliminate concentration vulnerabilities. |
 | [network_flow_planning](./network_flow_planning/) | Plan a multi-tier distribution flow that decides which fulfillment centers to open and how much to ship on every lane to satisfy customer demand at minimum cost. |
 | [portfolio_balancing](./portfolio_balancing/) | Multi-reasoner template: rules-based compliance, covariance clustering, and bi-objective Markowitz optimization with a crisis-regime stress test. |
+| [product_configurator](./product_configurator/) | Enumerate every feasible build of a configurable product using a CSP solver in multi-solution mode: one option per slot subject to feature-model rules, regional regulations, and a price ceiling. |
 | [production_planning](./production_planning/) | Schedule production across machines to meet demand and maximize profit with scenario analysis. |
 | [rai-agent-scaffold](./rai-agent-scaffold/) | Scaffold for packaging a RelationalAI semantic model as a Snowflake Cortex agent and exposing it through Snowflake Intelligence. |
 | [retail_markdown](./retail_markdown/) | Set discount levels across weeks to maximize revenue while clearing inventory. |
@@ -35,6 +36,7 @@ This directory contains the templates for v1. Each template folder includes its 
 | [supply_chain_resilience](./supply_chain_resilience/) | A multi-reasoner template that chains blast-radius reachability, graph analysis, rules-based classification, and prescriptive optimization to build a risk-adjusted minimum-cost network flow for supply chain routing. |
 | [supply_chain_transport](./supply_chain_transport/) | Minimize inventory holding and transport costs with TL/LTL mode selection. |
 | [synthetic_eligibility_records](./synthetic_eligibility_records/) | Generate K distinct, internally consistent member eligibility records per solve using a CSP solver in multi-solution mode: each record satisfies CMS Medicare-eligibility, age-by-plan-type CFDs, and PCP-network attribution. |
+| [synthetic_order_lifecycle](./synthetic_order_lifecycle/) | Generate synthetic order-lifecycle event traces (PLACE / MODIFY / CANCEL / FILL) that satisfy MiFID II / Reg NMS-flavour sequencing rules using a CSP solver. |
 | [test_data_generation](./test_data_generation/) | Determine optimal row counts for test database tables satisfying schema and referential integrity constraints. |
 | [traveling_salesman](./traveling_salesman/) | Find the shortest route visiting all cities exactly once using the MTZ formulation. |
 | [warehouse_allocation](./warehouse_allocation/) | Allocate inventory across a distribution network using graph centrality, weakly-connected-components, and bridge-route detection to prioritize critical hubs. |
