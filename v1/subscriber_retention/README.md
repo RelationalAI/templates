@@ -313,6 +313,26 @@ results_df = (
 - **Adjust the segment stratification** — the default split stratifies by `SEGMENT`. For very imbalanced churn outcomes, stratify by the target instead (or in addition).
 - **Repoint to your own subscriber data** — replace the CSVs under `data/telco_mini/` with your real subscriber/plan/CDR exports (same column names) and re-run.
 
+### Run on your own Snowflake data
+
+The bundled CSVs are loaded via `model.data(df)` for a no-setup local demo. To run against full data living in Snowflake instead:
+
+1. Replace the three `pd.read_csv(...)` calls at the top of the script with Snowpark queries (or use `model.Table("<DB>.<SCHEMA>.<TABLE>")` directly per the `rai-pyrel-coding` skill's data-loading guidance):
+   ```python
+   from relationalai.config import SnowflakeConnection, create_config
+   from snowflake import snowpark
+   session: snowpark.Session = create_config().get_session(SnowflakeConnection)
+
+   sub_df = session.sql("SELECT * FROM YOUR_DB.RAW.SUBSCRIBERS").to_pandas()
+   plan_df = session.sql("SELECT * FROM YOUR_DB.RAW.PLANS_CONTRACTS").to_pandas()
+   calls_df = session.sql("SELECT * FROM YOUR_DB.RAW.CALL_DETAIL_RECORDS").to_pandas()
+   ```
+2. Drop the PII / unused columns the same way (`FIRST_NAME`, etc.) — or omit them at the SQL level.
+3. Bump the GNN's compute (`device="cuda"` and a GPU-backed RAI engine) if the call graph has more than ~50K subscribers; CPU works for ~1-10K subscribers.
+
+> [!NOTE]
+> There is no widely-known public telco churn dataset that includes a caller→callee call graph. The IBM Telco Customer Churn dataset (popular benchmark) is tabular only — no calls, no graph — so this template's GNN regression head doesn't add value over a tabular model on that benchmark. To exercise the graph path you need real CDR data or a synthetic call-graph generator.
+
 ## Troubleshooting
 
 <details>

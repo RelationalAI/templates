@@ -291,6 +291,27 @@ results_df = (
 - **Bring more hierarchy in** — the bundled data has Item → ItemFamily. Real Favorita data has Item → Class → Family → Department. Define a `Class` and `Department` concept the same way `ItemFamily` is defined, add `Class → Family` and `Family → Department` edges, and the GNN propagates through deeper product hierarchies.
 - **Repoint to your own retail data** — replace the CSVs under `data/favorita_mini/` with your real store / item / sales exports (matching column names) and re-run.
 
+### Run on the full public Favorita dataset
+
+The bundled `favorita_mini` is intentionally tiny so the template runs in minutes on CPU. To run on the full Kaggle Favorita corpus (~125M sales rows across 54 stores × 4,100 items × ~5 years):
+
+1. Download the dataset from [Kaggle: Corporación Favorita Grocery Sales Forecasting](https://www.kaggle.com/c/favorita-grocery-sales-forecasting). License is "Subject to Competition Rules" — review before redistributing.
+2. Load the CSVs into Snowflake (`stores.csv`, `items.csv`, `train.csv` is the sales table). Rename `train.csv → sales.csv` to match the template.
+3. Replace the `pd.read_csv(...)` calls at the top of the script with Snowpark queries against your loaded tables (or use `model.Table("<DB>.<SCHEMA>.<TABLE>")` per `rai-pyrel-coding` skill's data-loading guidance):
+   ```python
+   from relationalai.config import SnowflakeConnection, create_config
+   from snowflake import snowpark
+   session = create_config().get_session(SnowflakeConnection)
+   stores_df = session.sql("SELECT * FROM YOUR_DB.FAVORITA.STORES").to_pandas()
+   items_df = session.sql("SELECT * FROM YOUR_DB.FAVORITA.ITEMS").to_pandas()
+   sales_df = session.sql(
+       "SELECT * FROM YOUR_DB.FAVORITA.SALES WHERE date >= '2017-01-01'"
+   ).to_pandas(parse_dates=["date"])
+   ```
+4. Switch `device="cpu"` to `device="cuda"` and a GPU-backed RAI engine — full Favorita on CPU will take many hours.
+5. Trim the date window in the SQL `WHERE` clause if you don't need the full 5 years; the template's `TEST_DAYS` / `VAL_DAYS` parameters control the temporal split inside that window.
+6. Real Favorita has additional tables (`oil.csv`, `holidays_events.csv`, `transactions.csv`) you may want to fold in as features — see [Customize this template](#customize-this-template) above for the pattern.
+
 ## Troubleshooting
 
 <details>
