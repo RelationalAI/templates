@@ -3,7 +3,7 @@ requires = ["setuptools>=64", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "rai-template-disease-outbreak-prevention-network"
+name = "rai-template-disease-outbreak-prevention"
 version = "0.0.0"
 description = "RelationalAI template: disease outbreak prevention network with degree centrality"
 readme = "README.md"
@@ -17,6 +17,7 @@ dependencies = [
 visualization = [
   "streamlit>=1.30.0",
   "plotly>=5.18.0",
+  "numpy",
 ]
 
 [tool.setuptools]

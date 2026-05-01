@@ -14,7 +14,7 @@ tags:
 
 ## What this template is for
 
-During humanitarian crises—natural disasters, conflicts, or disease outbreaks—emergency response teams must rapidly deploy aid through complex supply chain networks. This template demonstrates how to use **PageRank** and **Weighted Degree Centrality** — two complementary graph algorithms that reveal different dimensions of network importance — to optimize aid distribution strategies.
+During humanitarian crises—natural disasters, conflicts, or disease outbreaks—emergency response teams must rapidly deploy aid through complex supply chain networks. This template uses **Graph** reasoning — specifically PageRank and Weighted Degree Centrality, two complementary algorithms that reveal different dimensions of network importance — to optimize aid distribution strategies.
 
 By analyzing a network of distribution points (airports, warehouses, border crossings, relief camps) and supply routes, this template helps you:
 - **Identify influential hubs** where aid naturally concentrates (PageRank)
@@ -80,6 +80,43 @@ You can customize the data and model as needed after you have it running end-to-
 
 3. **Install dependencies**
 
+   From this folder:
+
+   ```bash
+   python -m pip install .
+   ```
+
+4. **Configure Snowflake connection and RAI profile**
+
+   ```bash
+   rai init
+   ```
+
+5. **Run the template**
+
+   **Option A: Command-line script**
+
+   ```bash
+   python humanitarian_aid_supply_chain.py
+   ```
+
+   **Option B: Interactive Streamlit app**
+
+   ```bash
+   # Install additional dependencies for visualization
+   python -m pip install .[visualization]
+
+   # Launch the interactive app
+   streamlit run app.py
+   ```
+
+   The Streamlit app provides:
+   - Interactive network visualization with directional arrows
+   - Filterable distribution-point rankings table
+   - Detailed strategic-category analysis
+   - CSV export functionality
+
+## Model overview
 
 The `SupplyRoute` concept represents directed supply routes between distribution points with weighted attributes.
 

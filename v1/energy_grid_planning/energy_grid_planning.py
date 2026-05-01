@@ -35,7 +35,6 @@ Output:
 from pathlib import Path
 
 import pandas as pd
-from pandas import read_csv
 from relationalai.semantics import Boolean, Float, Integer, Model, String, sum
 from relationalai.semantics.reasoners.graph import Graph
 from relationalai.semantics.reasoners.prescriptive import Problem
@@ -58,7 +57,7 @@ CRITICAL_THRESHOLD = 3  # top-N substations by combined centrality rank are "str
 # --------------------------------------------------
 
 def load_csv(filename):
-    df = read_csv(DATA_DIR / filename)
+    df = pd.read_csv(DATA_DIR / filename)
     for col in df.columns:
         if df[col].dtype == object and set(df[col].dropna().unique()).issubset({"true", "false"}):
             df[col] = df[col].map({"true": True, "false": False})

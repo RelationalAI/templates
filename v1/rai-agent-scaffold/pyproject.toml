@@ -12,6 +12,7 @@ dependencies = [
   "relationalai==1.0.14",
   "httpx",
   "pyyaml",
+  "snowflake-snowpark-python",
 ]
 
 [tool.setuptools]
