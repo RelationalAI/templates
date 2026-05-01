@@ -15,7 +15,7 @@ tags:
 
 ## What this template is for
 
-RelationalAI lets you map Snowflake tables into a semantic layer — concepts, properties, and relationships — that executes directly inside Snowflake. This template wires that semantic layer into a Snowflake Cortex agent so users can ask natural-language questions about their data from anywhere in Snowflake Intelligence.
+This template uses **Graph** reasoning over a RelationalAI semantic layer to power natural-language Q&A. RelationalAI lets you map Snowflake tables into a semantic layer — concepts, properties, and relationships — that executes directly inside Snowflake. This template wires that semantic layer into a Snowflake Cortex agent so users can ask natural-language questions about their data from anywhere in Snowflake Intelligence.
 
 The scaffold provides the full lifecycle tooling: define your model, test queries locally, deploy stored procedures and the agent, push updates, and tear everything down — all from a single CLI script.
 
@@ -115,7 +115,7 @@ The scaffold provides the full lifecycle tooling: define your model, test querie
 
 8. **Expected output**
 
-   ```
+   ```text
    Deploying 'MY_AGENT_NAME' to MY_DATABASE.MY_SCHEMA ...
    Agent MY_AGENT_NAME: ACTIVE (2 tools registered)
    ```

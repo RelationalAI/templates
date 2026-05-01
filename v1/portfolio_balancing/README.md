@@ -5,9 +5,9 @@ featured: false
 experience_level: intermediate
 industry: "Finance"
 reasoning_types:
-    - Prescriptive
-    - Rules-based
-    - Graph
+  - Prescriptive
+  - Rules-based
+  - Graph
 tags:
   - Quadratic Programming
   - Risk Minimization
@@ -98,7 +98,7 @@ The four-stage approach addresses each gap. Stage 1 surfaces existing violations
 
 1. Download ZIP:
    ```bash
-   curl -O https://private.relational.ai/templates/zips/v1/portfolio_balancing.zip
+   curl -O https://docs.relational.ai/templates/zips/v1/portfolio_balancing.zip
    unzip portfolio_balancing.zip
    cd portfolio_balancing
    ```

@@ -22,28 +22,36 @@ from pandas import read_csv
 from relationalai.semantics import Float, Integer, Model, String, sum
 from relationalai.semantics.reasoners.prescriptive import Problem
 
-model = Model("factory_production")
-Concept, Property = model.Concept, model.Property
+# --------------------------------------------------
+# Configure inputs
+# --------------------------------------------------
+
+DATA_DIR = Path(__file__).parent / "data"
 
 # --------------------------------------------------
 # Define semantic model & load data
 # --------------------------------------------------
 
-data_dir = Path(__file__).parent / "data"
+model = Model("factory_production")
+Concept, Property = model.Concept, model.Property
 
-# Concept: factories with total resource availability
+# Factory concept: factories with total resource availability.
 Factory = Concept("Factory", identify_by={"name": String})
 Factory.avail = Property(f"{Factory} has {Float:avail}")
-factory_csv = read_csv(data_dir / "factories.csv")
+
+# Load factories from CSV.
+factory_csv = read_csv(DATA_DIR / "factories.csv")
 model.define(Factory.new(model.data(factory_csv).to_schema()))
 
-# Concept: products with production rate, profit, and demand cap
+# Product concept: products with production rate, profit, demand cap, and parent factory.
 Product = Concept("Product", identify_by={"name": String, "factory_name": String})
 Product.factory = Property(f"{Product} is produced by {Factory}")
 Product.rate = Property(f"{Product} has {Float:rate}")
 Product.profit = Property(f"{Product} has {Float:profit}")
 Product.demand = Property(f"{Product} has {Integer:demand}")
-product_csv = read_csv(data_dir / "products.csv")
+
+# Load products from CSV and link each product to its factory.
+product_csv = read_csv(DATA_DIR / "products.csv")
 product_data = model.data(product_csv)
 model.define(
     p := Product.new(name=product_data.name, factory_name=product_data.factory_name),
