@@ -34,7 +34,7 @@ This directory contains the templates for v1. Each template folder includes its 
 | [supplier_reliability](./supplier_reliability/) | Select suppliers to meet product demand while balancing cost and reliability. |
 | [supply_chain_resilience](./supply_chain_resilience/) | A multi-reasoner template that chains blast-radius reachability, graph analysis, rules-based classification, and prescriptive optimization to build a risk-adjusted minimum-cost network flow for supply chain routing. |
 | [supply_chain_transport](./supply_chain_transport/) | Minimize inventory holding and transport costs with TL/LTL mode selection. |
-| [synthetic_order_lifecycle](./synthetic_order_lifecycle/) | Generate synthetic banking-event traces (PLACE / MODIFY / CANCEL / FILL) that satisfy MiFID II / RegNMS-flavour sequencing rules using a CSP solver. |
+| [synthetic_order_lifecycle](./synthetic_order_lifecycle/) | Generate synthetic order-lifecycle event traces (PLACE / MODIFY / CANCEL / FILL) that satisfy MiFID II / Reg NMS-flavour sequencing rules using a CSP solver. |
 | [test_data_generation](./test_data_generation/) | Determine optimal row counts for test database tables satisfying schema and referential integrity constraints. |
 | [traveling_salesman](./traveling_salesman/) | Find the shortest route visiting all cities exactly once using the MTZ formulation. |
 | [warehouse_allocation](./warehouse_allocation/) | Allocate inventory across a distribution network using graph centrality, weakly-connected-components, and bridge-route detection to prioritize critical hubs. |

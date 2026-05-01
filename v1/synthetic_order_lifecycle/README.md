@@ -5,7 +5,7 @@ featured: false
 experience_level: intermediate
 industry: "Banking"
 reasoning_types:
-  - Rules
+  - Rules-based
   - Prescriptive
 tags:
   - constraint-programming
@@ -41,7 +41,7 @@ The same pattern applies to any test-data-generation problem where rows have to 
 - An auxiliary `fill_qty` decision channeled to `qty when is_fill else 0` via two `implies` so the per-order fill-conservation aggregate stays linear
 - Value-pinning: PLACE event's `qty` and `tick_price` pinned to the order's `original_qty` and `original_tick_price` via `implies`
 - Venue eligibility encoded as a relationship lookup against the event's chosen `venue_id`
-- Post-solve verification via `problem.verify()` confirming every named constraint holds in the returned trace
+- Post-solve verification via `problem.verify()` confirming every re-evaluable constraint in the returned trace (`implies`-bodied and `all_different`-bodied ICs are solver-side only and intentionally excluded — see step 5)
 
 ## What's included
 
@@ -142,9 +142,19 @@ The same pattern applies to any test-data-generation problem where rows have to 
 
 ## How it works
 
-The solver decides every event's type, timestamp, venue, and quantity. The script consists of these patterns:
+The solver decides every event's type, timestamp, venue, and quantity. The script proceeds in five steps.
 
-**Conditional rules read as 'if premise then consequent'.** PLACE-first and nothing-after-CANCEL are pairwise rules over two refs into the same concept; `A.order == B.order` asserts same-order without a free `Order` var:
+### 1. Define the ontology and load data
+
+`Symbol`, `Venue`, `Order`, and `OrderEvent` concepts are declared with their identifying properties; `SymbolVenue` and a derived `NotAllowedSymbolVenue` capture the eligible (and dual disallowed) symbol/venue pairs. CSV rows from `data/` populate every concept and relationship.
+
+### 2. Declare decision variables
+
+Each event slot gets binary type indicators (`is_place`, `is_modify`, `is_cancel`, `is_fill`) and integer decisions (`ts_ms`, `qty`, `tick_price`, `venue_id`). An auxiliary `fill_qty` decision channels `qty when is_fill else 0` so the per-order fill-conservation aggregate stays linear.
+
+### 3. Add sequencing rules as pairwise temporal constraints
+
+Conditional rules read as 'if premise then consequent'. PLACE-first and nothing-after-CANCEL are pairwise rules over two refs into the same concept; `A.order == B.order` asserts same-order without a free `Order` variable:
 
 ```python
 A = OrderEvent.ref()
@@ -156,7 +166,7 @@ place_first_ic = model.where(
 ).require(implies(A.is_place == 1, A.ts_ms < B.ts_ms))
 ```
 
-**Distinctness within a group is one global constraint, not pairwise `!=`.** `all_different.per(...)` lowers to MiniZinc's native alldifferent propagator:
+Distinctness within a group is one global constraint, not pairwise `!=`. `all_different.per(...)` lowers to MiniZinc's native alldifferent propagator:
 
 ```python
 distinct_ts_ic = model.require(
@@ -164,7 +174,9 @@ distinct_ts_ic = model.require(
 )
 ```
 
-**Walk relationships in line -- no intermediate refs.** Reading the order's `original_qty` from an event, or matching disallowed venue pairs through the order's symbol:
+### 4. Walk relationships in line for cross-table rules
+
+Reading the order's `original_qty` from an event, or matching disallowed venue pairs through the order's symbol — no intermediate refs needed:
 
 ```python
 qty_upper_ic = model.require(OrderEvent.qty <= OrderEvent.order.original_qty)
@@ -175,7 +187,7 @@ venue_ok_ic = model.where(
 ).require(NA.venue_id != OrderEvent.venue_id)
 ```
 
-**Value-pinning couples a decision variable to a data property via `implies`.** The PLACE event's `qty` and `tick_price` are pinned to the order's `original_qty` and `original_tick_price` so the generated trace stays internally consistent with the order's stated price and size:
+Value-pinning couples a decision variable to a data property via `implies`. The PLACE event's `qty` and `tick_price` are pinned to the order's `original_qty` and `original_tick_price` so the generated trace stays internally consistent with the order's stated price and size:
 
 ```python
 place_qty_match_ic = model.require(
@@ -189,7 +201,9 @@ place_price_match_ic = model.require(
 )
 ```
 
-**`implies` and `all_different` are solver-only.** They go to `satisfy()` but must NOT be passed to `verify()` -- the relational engine cannot re-evaluate wire-format constraint relations and would return silently-OK regardless of whether the constraint actually holds. The remaining ICs are plain relational arithmetic and ARE re-evaluated by `verify()`:
+### 5. Solve and verify
+
+`implies` and `all_different` are solver-only. They go to `satisfy()` but must NOT be passed to `verify()` — the relational engine cannot re-evaluate wire-format constraint relations and would return silently-OK regardless of whether the constraint actually holds. The remaining ICs are plain relational arithmetic and ARE re-evaluated by `verify()`:
 
 ```python
 problem.solve("minizinc", time_limit_sec=60)
@@ -206,15 +220,16 @@ model.require(problem.termination_status() == "OPTIMAL")
   - `venues.csv` ids should be contiguous `1..N` -- the `venue_id` decision domain is `[1, max(venue_id)]`, so non-contiguous ids would let the solver pick venue ids that don't exist.
   - At least one disallowed `(symbol, venue)` pair must exist -- if your `symbol_venues.csv` covers every symbol×venue combination, the empty disallowed list breaks `model.data(...).to_schema()`. In that case drop `venue_ok_ic`.
 - **Force a CANCEL on every order** by changing `at_most_one_cancel_ic` from `<= 1` to `== 1`, then bumping the per-order event count so the order has room for a `PLACE` plus other events before the `CANCEL`.
-- **Add the inverse rule "no MODIFY after FILL"** with the same shape as `place_first_ic`, but filtering `B` to fills:
+- **Add the inverse rule "no MODIFY after FILL"** with the same shape as `place_first_ic`, but filtering `B` to fills. `A` and `B` are the two `OrderEvent.ref()` aliases declared earlier in the script alongside `place_first_ic`:
   ```python
+  # A = OrderEvent.ref(); B = OrderEvent.ref()  # already declared earlier
   no_modify_after_fill_ic = model.where(
       A.order == B.order,
       A.event_id != B.event_id,
       B.is_fill == 1,
   ).require(implies(A.is_modify == 1, A.ts_ms < B.ts_ms))
   ```
-- **Generate a "smallest violating trace" instead of a positive trace** by negating one of the rules (e.g. drop `no_after_cancel_ic` and add `model.require(sum(A.is_cancel + B.is_fill - 1).per(Order) >= 0)` plus a temporal predicate) and minimising the number of events. The model is already in optimisation-ready shape -- the termination-status gate stays at `"OPTIMAL"`.
+- **Generate a "smallest violating trace" instead of a positive trace** by negating one of the rules (e.g. drop `no_after_cancel_ic` and add `model.require(sum(A.is_cancel + B.is_fill - 1).per(Order) >= 0)` plus a temporal predicate) and minimizing the number of events. The model is already in optimization-ready shape -- the termination-status gate stays at `"OPTIMAL"`.
 - **Replace the synthetic time horizon** by reading `ts_ms` bounds from your real session schedule (market open / market close) and updating `TS_MIN` / `TS_MAX`.
 
 ## Troubleshooting
@@ -224,6 +239,7 @@ model.require(problem.termination_status() == "OPTIMAL")
 
 - The pool may be too small. If you reduce `events.csv` below the per-order slot count required by your constraints (e.g. one `PLACE` plus a forced `CANCEL` with no room for fills), no trace can satisfy all the rules. Add more rows to `events.csv` for that order.
 - A symbol with zero allowed venues in `symbol_venues.csv` will block the `venue_ok_ic` constraint -- every event has to land on an allowed venue. Confirm at least one (symbol, venue) row exists per symbol used in `orders.csv`.
+- Every order in `orders.csv` must have `original_qty >= 1` and `original_tick_price >= 1`. The `qty` and `tick_price` decision domains start at `1`, and the PLACE-event pinning ICs equate them to the order's stated values; a row with zero in either column produces an empty domain and immediate INFEASIBLE.
 
 </details>
 
@@ -239,8 +255,8 @@ model.require(problem.termination_status() == "OPTIMAL")
   <summary>Import error or AttributeError on <code>relationalai</code></summary>
 
 - Confirm your virtual environment is active: `which python` should point to `.venv`.
-- Reinstall dependencies: `python -m pip install .`. The pinned version (`relationalai==1.0.14`) ships the `solve_info()`, `verify()`, and chained-`where().require()` APIs this template uses; older versions lack them and produce attribute errors.
-- If you share a venv across templates, run `python -m pip install --upgrade --force-reinstall relationalai==1.0.14`.
+- Reinstall dependencies: `python -m pip install .`. The pinned version (`relationalai==1.1.0`) ships the `solve_info()`, `verify()`, and chained-`where().require()` APIs this template uses; older versions lack them and produce attribute errors.
+- If you share a venv across templates, run `python -m pip install --upgrade --force-reinstall relationalai==1.1.0`.
 
 </details>
 
@@ -270,7 +286,7 @@ model.require(problem.termination_status() == "OPTIMAL")
 <details>
   <summary>The generated trace differs between runs</summary>
 
-- This is constraint satisfaction, not optimisation. Any feasible trace is a valid answer; the solver is free to return different ones across runs.
-- To pin a single answer, switch to optimisation -- e.g. `problem.minimize(sum(OrderEvent.ts_ms))` returns the trace with the earliest event timestamps overall.
+- This is constraint satisfaction, not optimization. Any feasible trace is a valid answer; the solver is free to return different ones across runs.
+- To pin a single answer, switch to optimization -- e.g. `problem.minimize(sum(OrderEvent.ts_ms))` returns the trace with the earliest event timestamps overall.
 
 </details>
