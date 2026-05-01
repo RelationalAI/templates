@@ -41,13 +41,14 @@ The rule structure here is drawn from the public [CMS Medicare](https://www.cms.
 - A PCP-network attribution IC iterating over reference-data `(Plan, Provider)` tuples in different networks and forbidding the cross-network combination
 - A pre-solve dense-ID check on `plans.csv`, `providers.csv`, and `age_buckets.csv` so the solver's integer decision bounds line up with the reference rows the CFDs iterate over (sparse IDs would let the solver pick a value with no matching row, leaving the rules unconstrained for that record and silently dropping it from the post-solve display join)
 - **Multi-solution enumeration as the primary code path**: `problem.solve(..., solution_limit=MAX_RECORDS)` runs the search in enumeration mode; `Variable.values(solution_index, value)` joins the three decision variables on a shared solution index to reconstruct each record
-- An empty-result branch driven by `solve_info().num_points`: when no feasible record exists, the script prints a diagnostic instead of hard-failing, which is the right shape for a reusable generator. (No `problem.verify()` call: every IC uses `implies`, which is solver-only -- passing implies-bodied ICs to `verify()` returns silently-OK without actually evaluating them, so the convention is that they must NOT be passed. The CFD and network-attribution invariants are directly visible in the expected-output block in the Quickstart: every record's `age_years` vs `plan_type` and every record's `network` vs `provider` are printed side-by-side.)
+- An empty-result branch driven by `solve_info().num_points`: when no feasible record exists, the script prints a diagnostic instead of hard-failing, which is the right shape for a reusable generator
+- No `problem.verify()` call: every IC uses `implies`, which is solver-only -- passing implies-bodied ICs to `verify()` returns silently-OK without actually evaluating them, so the convention is that they must NOT be passed. The CFD and network-attribution invariants are directly visible in the expected-output block in the Quickstart: every record's `age_years` vs `plan_type` and every record's `network` vs `provider` are printed side-by-side
 
 ## What's included
 
 - `synthetic_eligibility_records.py` -- main script with ontology, decisions, constraints, and solver call
 - `data/age_buckets.csv` -- 4 representative ages spanning the adult/senior split (2 under 65, 2 at or above)
-- `data/plans.csv` -- 3 plans (PPO, HMO, MedicareAdvantage) each on its own network; the unused `max_dependents` column is retained as a hook for the dependent-cap extension described in *Customize this template*
+- `data/plans.csv` -- 3 plans (PPO, HMO, MedicareAdvantage) each on its own network
 - `data/providers.csv` -- 4 primary-care providers (1 PPO, 1 HMO, 2 Medicare) so each plan-network has at least one in-network PCP and the bundled K=8 enumeration spans all three plans
 - `pyproject.toml` -- Python package configuration
 
@@ -167,6 +168,8 @@ network_match_ic = model.where(Plan.network_id != Provider.network_id).require(
 
 ```python
 problem.solve("minizinc", time_limit_sec=60, solution_limit=MAX_RECORDS)
+si = problem.solve_info()
+si.display()
 
 sol_idx = Integer.ref()
 records_df = (
@@ -187,6 +190,7 @@ records_df = (
     .sort_values("solution")
     .reset_index(drop=True)
 )
+print(f"\nGenerated member records (up to {MAX_RECORDS} per run):")
 print(records_df.to_string(index=False))
 ```
 
@@ -197,10 +201,11 @@ The variable subconcept exposes a back-pointer named after the entity in its pro
 - **Use your own plans and providers** by replacing the two CSV files. The constraint structure does not change; the integer ID columns stay required (the script uses them for the `Member.plan_id` / `Member.provider_id` decision domains) and IDs must remain dense and contiguous (the pre-solve check enforces this).
 - **Raise the solution limit on a real catalog.** The bundled `MAX_RECORDS = 16` is sized so the solver exhausts the small demo feasible set; production test suites typically want 100--10,000 records per solve. `time_limit_sec` is your safety net -- enumeration stops when either the limit or the budget is reached.
 - **Adjust the seniority gate** by changing `SENIOR_THRESHOLD_YEARS` (currently 65, the CMS Medicare threshold). Both arms of the age-by-plan CFD read this constant directly.
-- **Add a dependent-count decision** by introducing a `Member.num_dependents` integer decision bounded by 0 and the per-plan `max_dependents` cap. The `plans.csv` `max_dependents` column is loaded by the script and `Plan.max_dependents` is declared as a Property hook for this extension. Add `Member.num_dependents = model.Property(...)` and a `problem.solve_for(Member.num_dependents, ...)` call, then encode the cap with the same forbidden-pair idiom: `model.where(Plan.max_dependents >= 0).require(implies(Member.plan_id == Plan.id, Member.num_dependents <= Plan.max_dependents))`.
+- **Add a dependent-count decision** by introducing a `Member.num_dependents` integer decision bounded by 0 and a per-plan `max_dependents` cap. Extend `plans.csv` with a `max_dependents` column, declare `Plan.max_dependents = model.Property(f"{{Plan}} has {{Integer:max_dependents}}")`, add `Member.num_dependents = model.Property(...)` and a `problem.solve_for(Member.num_dependents, ...)` call, then encode the cap with the same forbidden-pair idiom: `model.where(Plan.max_dependents >= 0).require(implies(Member.plan_id == Plan.id, Member.num_dependents <= Plan.max_dependents))`.
 - **Add a coverage-period decision pair** by introducing `coverage_start_days` and `coverage_end_days` as integer day decisions (counted from a notional epoch) bounded around a target date. The temporal-interval-containment shape needs two ICs: one requiring `Member.coverage_start_days <= TARGET_DATE_DAYS` and one requiring `TARGET_DATE_DAYS <= Member.coverage_end_days`, plus a minimum-duration IC `Member.coverage_end_days - Member.coverage_start_days >= MIN_DAYS`. This is useful for fuzzing claim-adjudication date logic.
 - **Switch from "all feasible" to "smallest violating instance"** by adding `problem.minimize(...)` over a violation count, dropping a positive IC, and using `solution_limit=1`. This is the negative-mode use case from the constrained-generative-models literature -- handy for finding the cheapest counter-example to a candidate rule.
 - **Adapt to a different regulatory regime** by editing the CFD predicates and the network-attribution IC. The shape is identical for KYC member records (banking AML), tenant lease attributes (proptech), shipment manifests (logistics customs) -- declare the rules as forbidden-pair iterations, ask the solver for K records.
+- **Watch the cross-product cost on real catalogs.** `where(Plan.network_id != Provider.network_id)` materializes the full Plan × Provider product at relational time -- trivial here (3 × 4 = 12 pairs), but a 1,000-plan × 10,000-provider catalog gives 10M pairs before filtering. For production-scale catalogs, partition the IC by region or pre-filter the relational walk to plans and providers that share at least one common region tag.
 
 ## Troubleshooting
 

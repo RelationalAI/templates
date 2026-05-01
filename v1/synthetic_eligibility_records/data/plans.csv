@@ -1,4 +1,4 @@
-id,plan_type,network_id,max_dependents
-1,PPO,1,4
-2,HMO,2,4
-3,MedicareAdvantage,3,0
+id,plan_type,network_id
+1,PPO,1
+2,HMO,2
+3,MedicareAdvantage,3

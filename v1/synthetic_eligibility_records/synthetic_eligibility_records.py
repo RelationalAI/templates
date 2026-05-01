@@ -65,31 +65,9 @@ def _assert_dense_ids(df, name):
         )
 
 
-# Plan concept: an insurance plan offering. `max_dependents` is an optional
-# extension hook -- the bundled rules don't use it, but declaring it here
-# lets the dependent-count extension in `## Customize this template`
-# reference `Plan.max_dependents` directly.
-Plan = model.Concept("Plan", identify_by={"id": Integer})
-Plan.plan_type = model.Property(f"{Plan} has {String:plan_type}")
-Plan.network_id = model.Property(f"{Plan} has {Integer:network_id}")
-Plan.max_dependents = model.Property(f"{Plan} has {Integer:max_dependents}")
-plans_csv = read_csv(DATA_DIR / "plans.csv")
-_assert_dense_ids(plans_csv, "plans.csv")
-model.define(Plan.new(model.data(plans_csv).to_schema()))
-
-# Provider concept: a primary-care provider in exactly one network.
-Provider = model.Concept("Provider", identify_by={"id": Integer})
-Provider.name = model.Property(f"{Provider} has {String:name}")
-Provider.network_id = model.Property(f"{Provider} has {Integer:network_id}")
-providers_csv = read_csv(DATA_DIR / "providers.csv")
-_assert_dense_ids(providers_csv, "providers.csv")
-model.define(Provider.new(model.data(providers_csv).to_schema()))
-
 # Pre-solve coverage warnings: a plan whose network has zero providers
 # (or a provider whose network has zero plans) is locally unreachable but
 # leaves the model globally feasible, so warn rather than raise.
-
-
 def _warn_orphan_networks(plans_csv, providers_csv):
     plan_networks = {int(v) for v in plans_csv["network_id"].tolist()}
     provider_networks = {int(v) for v in providers_csv["network_id"].tolist()}
@@ -108,6 +86,22 @@ def _warn_orphan_networks(plans_csv, providers_csv):
             "never appear in generated records."
         )
 
+
+# Plan concept: an insurance plan offering.
+Plan = model.Concept("Plan", identify_by={"id": Integer})
+Plan.plan_type = model.Property(f"{Plan} has {String:plan_type}")
+Plan.network_id = model.Property(f"{Plan} has {Integer:network_id}")
+plans_csv = read_csv(DATA_DIR / "plans.csv")
+_assert_dense_ids(plans_csv, "plans.csv")
+model.define(Plan.new(model.data(plans_csv).to_schema()))
+
+# Provider concept: a primary-care provider in exactly one network.
+Provider = model.Concept("Provider", identify_by={"id": Integer})
+Provider.name = model.Property(f"{Provider} has {String:name}")
+Provider.network_id = model.Property(f"{Provider} has {Integer:network_id}")
+providers_csv = read_csv(DATA_DIR / "providers.csv")
+_assert_dense_ids(providers_csv, "providers.csv")
+model.define(Provider.new(model.data(providers_csv).to_schema()))
 
 _warn_orphan_networks(plans_csv, providers_csv)
 
@@ -165,10 +159,6 @@ provider_id_var = problem.solve_for(
     upper=int(providers_csv["id"].max()),
     populate=False,
 )
-
-# --------------------------------------------------
-# Constraints
-# --------------------------------------------------
 
 # PCP-network attribution. The chosen provider's network must equal the
 # chosen plan's network. Encoded as a forbidden-pair iteration: for every
