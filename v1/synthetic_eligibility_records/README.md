@@ -22,7 +22,7 @@ tags:
 
 Healthcare payer engineering teams, RegTech rule-certification harnesses, and claim-engine fuzzers all need *batches* of internally consistent member eligibility records to test against. Real beneficiary data is gated behind PII rules; sampled production data carries cohort biases; hand-crafted fixtures drift out of sync with the regulations they are meant to exercise. The right alternative is a constrained generative model: declare the eligibility rules once, ask the solver for K records that satisfy every rule simultaneously.
 
-Synthetic-data tooling consumers want a *batch* of K diverse records per solve, not one. A single record can't expose a CFD cascade or a network-attribution corner case; K records spread across age bands, plan types, and provider networks can. This template encodes member eligibility as a constraint satisfaction model and runs the solver in multi-solution mode: pass `solution_limit=K` to `problem.solve(...)`, then enumerate each generated record via `Variable.values(solution_index, value)`. The output is one row per generated member -- ready to drop into a test fixture, a fuzzing oracle, or a coverage matrix.
+Synthetic-data tooling consumers want a *batch* of K diverse records per solve, not one. A single record can't expose a CFD cascade or a network-attribution corner case; K records spread across age bands, plan types, and provider networks can. This template encodes member eligibility as a **constraint satisfaction** model using RelationalAI's **prescriptive** reasoning and runs the solver in multi-solution mode: pass `solution_limit=K` to `problem.solve(...)`, then enumerate each generated record via `Variable.values(solution_index, value)`. The output is one row per generated member -- ready to drop into a test fixture, a fuzzing oracle, or a coverage matrix.
 
 The rule structure here is drawn from the public [CMS Medicare](https://www.cms.gov/Medicare/Medicare) and [NCQA](https://www.ncqa.org/) regulatory shape: age-by-plan-type CFDs (over-65 must be on Medicare-Advantage; under-65 must not) and PCP-network attribution (the chosen primary-care provider must be in-network for the chosen plan). The same template structure -- decision-valued tuple per record, reference-data lookups via composition, multi-solution enumeration -- applies to any rule-driven synthetic-data domain: KYC member records (banking), tenant lease attributes (proptech), shipment manifests (logistics).
 
@@ -114,12 +114,7 @@ The rule structure here is drawn from the public [CMS Medicare](https://www.cms.
           7        28               PPO            1                1 Dr_North_PPO
    ```
 
-   Each solution row is one full member: a representative age, a plan type, a primary-care provider in the plan's network. The bundled data admits exactly 8 feasible records, so the K=16 cap is more than enough -- the solver returns the full feasible set and `status: OPTIMAL` reports the search is exhausted.
-
-   - The age-by-plan CFD is visible: every record with `age_years >= 65` is on `MedicareAdvantage`; every record with `age_years < 65` is on a non-Medicare plan (PPO or HMO).
-   - The PCP-network attribution is visible: every record's `plan_network` equals its `provider_network` -- Senior providers on network 3 with Medicare, `Dr_East_HMO` on network 2 with HMO, `Dr_North_PPO` on network 1 with PPO.
-
-   On a real catalog the feasible set is typically much larger than `MAX_RECORDS`; the solver then returns `status: SOLUTION_LIMIT` once the K cap is hit, and `num_points` reports how many records came back.
+   Each row is one full member. The constraint encoding is visible by eye: `age_years >= 65` always pairs with `MedicareAdvantage`, and `plan_network` always equals `provider_network`. On a real catalog the feasible set typically exceeds `MAX_RECORDS`; the solver returns status `SOLUTION_LIMIT` once the cap is hit.
 
 ## Template structure
 ```text

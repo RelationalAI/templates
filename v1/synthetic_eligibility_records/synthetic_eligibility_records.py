@@ -1,33 +1,22 @@
-"""Synthetic Eligibility Records (constrained generative model, multi-solution) template.
+"""Synthetic Eligibility Records (constrained generation, multi-solution) template.
 
-This script demonstrates synthetic-data generation for healthcare payer / RegTech:
-
-- Generate K distinct, internally consistent member eligibility records per
-  solve. Each record is a tuple of three categorical decisions (age bucket,
-  plan, primary care provider) that satisfies CMS Medicare-eligibility,
-  age-by-plan-type cascading functional dependencies, and PCP-network
-  attribution.
-- Solve as constraint satisfaction with `solution_limit=K` (MiniZinc) and
-  enumerate every feasible record via `Variable.values(solution_index, value)`.
-  Synthetic-data tooling consumers (test-data generation, claim-engine
-  fuzzing, RegTech rules certification) want a *batch* of records per solve,
-  not one -- multi-solution is the right return shape.
-- Age is encoded as a categorical decision (`age_bucket_id`) over a small
-  reference table of representative ages rather than a per-year integer.
-  Categorical age (combined with categorical plan and provider) keeps every
-  decision domain compact and similar in size, so MiniZinc's search produces
-  structurally diverse records across age, plan, and network -- a per-year
-  age decision would let the solver enumerate K solutions that shift birth
-  year by one and pin plan and provider, defeating batch diversity.
+Generate K distinct, internally consistent member eligibility records per
+solve. Each record is a tuple of three categorical decisions (age bucket,
+plan, primary care provider) that satisfies CMS Medicare-eligibility,
+age-by-plan-type cascading functional dependencies, and PCP-network
+attribution. Solve as constraint satisfaction with `solution_limit=K`
+(MiniZinc) and enumerate every feasible record via
+`Variable.values(solution_index, value)` -- synthetic-data tooling consumers
+(test-data generation, claim-engine fuzzing, RegTech rules certification)
+want a batch of records per solve, not one.
 
 Run:
     `python synthetic_eligibility_records.py`
 
 Output:
     Prints the formulation, the solver's status block, and every generated
-    member record (one row per solution) with chosen age bucket, plan, and
-    provider. Prints a no-records diagnostic when the reference data is
-    over-constrained.
+    member record (one row per solution). Prints a no-records diagnostic
+    when the reference data is over-constrained.
 """
 
 from pathlib import Path
@@ -36,33 +25,31 @@ from pandas import read_csv
 from relationalai.semantics import Integer, Model, String
 from relationalai.semantics.reasoners.prescriptive import Problem, implies
 
-# Runner-level parameters.
+# --------------------------------------------------
+# Configure inputs
+# --------------------------------------------------
+
 # Senior status (age >= 65) drives the Medicare-Advantage CFD.
 SENIOR_THRESHOLD_YEARS = 65
 # Solver solution-limit: how many distinct feasible member records to
 # enumerate per solve. The bundled reference data admits exactly 8
-# feasible records under the encoded rules, so a cap above that lets the
-# solver exhaust the search space and return status OPTIMAL with a
-# stable set across runs. Production catalogs are much larger; size this
-# down to the K records your downstream test fixture wants per solve and
-# the solver returns SOLUTION_LIMIT once the cap is hit.
+# feasible records, so a cap above that lets the solver exhaust the search
+# and return status OPTIMAL. Production catalogs are larger -- size this
+# to the K records your downstream test fixture wants per solve.
 MAX_RECORDS = 16
 
-model = Model("synthetic_eligibility_records")
+DATA_DIR = Path(__file__).parent / "data"
 
 # --------------------------------------------------
 # Define semantic model & load data
 # --------------------------------------------------
 
-data_dir = Path(__file__).parent / "data"
+model = Model("synthetic_eligibility_records")
 
 
-# Reference-data contract: integer IDs must be dense and contiguous so the
-# solver's `lower=min(id), upper=max(id)` decision bounds line up exactly
-# with the reference rows. Sparse IDs would let the solver pick a value
-# with no matching reference row -- the relational-time `implies(...)` ICs
-# gated on the matching row would never fire, and the post-solve display
-# join would silently drop the record. Validate up front.
+# Reference-data IDs must be dense and contiguous so the solver's
+# `lower=min(id), upper=max(id)` decision bounds line up with the rows
+# the implies ICs iterate over. See the README troubleshooting block.
 def _assert_dense_ids(df, name):
     ids = sorted(int(v) for v in df["id"].tolist())
     if not ids:
@@ -78,36 +65,28 @@ def _assert_dense_ids(df, name):
         )
 
 
-# Concept: insurance plan (reference data; one row per plan offering).
-# Network determines which providers are in-network. `max_dependents` is
-# loaded from the CSV but unused by the bundled rules -- declared here as
-# a hook so the dependent-count extension shown in `## Customize` can
-# reference `Plan.max_dependents` directly.
+# Plan concept: an insurance plan offering. `max_dependents` is unused by
+# the bundled rules -- declared as a hook so the dependent-count extension
+# in `## Customize this template` can reference `Plan.max_dependents` directly.
 Plan = model.Concept("Plan", identify_by={"id": Integer})
 Plan.plan_type = model.Property(f"{Plan} has {String:plan_type}")
 Plan.network_id = model.Property(f"{Plan} has {Integer:network_id}")
 Plan.max_dependents = model.Property(f"{Plan} has {Integer:max_dependents}")
-plans_csv = read_csv(data_dir / "plans.csv")
+plans_csv = read_csv(DATA_DIR / "plans.csv")
 _assert_dense_ids(plans_csv, "plans.csv")
 model.define(Plan.new(model.data(plans_csv).to_schema()))
 
-# Concept: primary care provider (reference data; one row per provider).
-# Each provider belongs to exactly one network.
+# Provider concept: a primary-care provider in exactly one network.
 Provider = model.Concept("Provider", identify_by={"id": Integer})
 Provider.name = model.Property(f"{Provider} has {String:name}")
 Provider.network_id = model.Property(f"{Provider} has {Integer:network_id}")
-providers_csv = read_csv(data_dir / "providers.csv")
+providers_csv = read_csv(DATA_DIR / "providers.csv")
 _assert_dense_ids(providers_csv, "providers.csv")
 model.define(Provider.new(model.data(providers_csv).to_schema()))
 
-# Pre-solve coverage warnings. The PCP-network-attribution IC forbids
-# cross-network (plan, provider) combinations, so a plan whose network has
-# zero providers can never appear in a feasible record (the IC forbids
-# every provider for it), and a provider whose network has zero plans is
-# also unreachable. Neither case makes the model globally infeasible --
-# other plans/providers on covered networks still admit feasible records --
-# so warn rather than raise, and let the solver surface a 0-record result
-# only if every plan ends up unreachable.
+# Pre-solve coverage warnings: a plan whose network has zero providers
+# (or a provider whose network has zero plans) is locally unreachable but
+# leaves the model globally feasible, so warn rather than raise.
 plan_networks = set(int(v) for v in plans_csv["network_id"].tolist())
 provider_networks = set(int(v) for v in providers_csv["network_id"].tolist())
 orphan_plan_networks = sorted(plan_networks - provider_networks)
@@ -125,29 +104,26 @@ if orphan_provider_networks:
         "never appear in generated records."
     )
 
-# Concept: representative age bucket. Each row maps an integer bucket id
-# to a representative age (in years) used to drive the CFDs and to
-# annotate the generated record. Four buckets span the adult/senior
-# split: two under 65, two at or above. Solver enumeration over a
-# small categorical age domain produces structurally diverse records;
-# a per-year age decision would let the solver shift birth year by one
+# AgeBucket concept: representative age (years) keyed by integer bucket id.
+# Four buckets span the adult/senior split (two under 65, two at or above).
+# Categorical age keeps every decision domain compact and similar in size,
+# so solver enumeration produces structurally diverse records across all
+# three slots; a per-year age would let the solver shift birth year by one
 # across solutions and defeat batch diversity.
 AgeBucket = model.Concept("AgeBucket", identify_by={"id": Integer})
 AgeBucket.age_years = model.Property(f"{AgeBucket} has {Integer:age_years}")
-age_buckets_csv = read_csv(data_dir / "age_buckets.csv")
+age_buckets_csv = read_csv(DATA_DIR / "age_buckets.csv")
 _assert_dense_ids(age_buckets_csv, "age_buckets.csv")
 model.define(AgeBucket.new(model.data(age_buckets_csv).to_schema()))
 
-# Concept: synthesized member. There is no member CSV -- the ontology
-# defines a single placeholder member directly via `Member.new(id=1)`.
-# Every decision-valued property below describes that one slot, and each
-# solution returned by the solver is a different feasible filling of it
-# -- which is what gives us K records per solve.
+# Member concept: a single placeholder member. Every decision-valued
+# property below fills its slots; each solution is a different feasible
+# filling, which is what gives us K records per solve.
 Member = model.Concept("Member", identify_by={"id": Integer})
 model.define(Member.new(id=1))
 
 # --------------------------------------------------
-# Decision-valued properties on Member
+# Model the decision problem
 # --------------------------------------------------
 
 Member.age_bucket_id = model.Property(f"{Member} in age bucket {Integer:age_bucket_id}")
@@ -155,11 +131,9 @@ Member.plan_id = model.Property(f"{Member} on plan {Integer:plan_id}")
 Member.provider_id = model.Property(f"{Member} sees provider {Integer:provider_id}")
 
 problem = Problem(model, Integer)
-# Every output goes through `Variable.values(solution_index, value)` against
-# the captured ProblemVariable handles, so the populated property path is
-# unused. `populate=False` skips the first-solution write-back -- avoiding
-# wasted work and the latent FDError that `populate=True` invites when
-# MiniZinc returns multiple solutions via `solution_limit`.
+# All output goes through `Variable.values(sol_idx, value)`, so the
+# populated property is unused. `populate=False` skips the first-solution
+# write-back to avoid the latent FDError it invites under `solution_limit`.
 age_bucket_var = problem.solve_for(
     Member.age_bucket_id,
     type="int",
@@ -229,27 +203,21 @@ non_senior_no_medicare_ic = model.where(
 problem.satisfy(non_senior_no_medicare_ic)
 
 # --------------------------------------------------
-# Solve and verify
+# Solve and check solution
 # --------------------------------------------------
 
 problem.display()
 # `solution_limit=MAX_RECORDS` asks the solver to enumerate up to that
-# many distinct feasible records; query each one via
-# `Variable.values(idx, val)`. Without it, MiniZinc returns just the
-# first feasible record and stops.
+# many distinct feasible records; query each one via `.values(idx, val)`.
 problem.solve("minizinc", time_limit_sec=60, solution_limit=MAX_RECORDS)
 si = problem.solve_info()
 si.display()
 
-# Every IC in this model is `implies`-bodied (the two CFDs and the
-# network-attribution forbidden-pair encoding) -- these are solver-only.
-# The relational engine cannot re-evaluate them: passing implies-bodied
-# ICs to `problem.verify()` returns silently-OK without actually
-# checking them, so the convention is that they must NOT be passed.
-# The CFD and network-attribution invariants are visible directly in
-# the inspection output below: every record prints `age_years` next to
-# `plan_type` (CFD check) and `plan_network` next to `provider_network`
-# (network-attribution check) so a reader can verify by eye.
+# All ICs here are implies-bodied, which is solver-only -- they are NOT
+# passed to `problem.verify()` (it returns silently-OK without checking).
+# The invariants are instead visible by eye in the table below: every row
+# prints `age_years` next to `plan_type` (CFD check) and `plan_network`
+# next to `provider_network` (network-attribution check).
 if si.num_points is None or si.num_points == 0:
     print(
         "\nThe solver returned no eligibility records. See the printed solve status "
@@ -262,11 +230,9 @@ if si.num_points is None or si.num_points == 0:
 # Inspect every generated member record
 # --------------------------------------------------
 
-# `Variable.values(solution_index, value)` indexes the solver's outputs
-# across every returned solution. Binding the value slot to a reference
-# Concept's `.id` walks the chosen ID back to that record's columns for
-# display, in one step. The populated property reflects only the first
-# solution; for multi-solution output we always go through `.values(...)`.
+# `Variable.values(sol_idx, value)` indexes the solver's outputs across
+# every returned solution; binding the value slot to a reference Concept's
+# `.id` walks the chosen ID back to that record's columns in one step.
 
 sol_idx = Integer.ref()
 records_df = (
