@@ -189,12 +189,14 @@ provider_id_var = problem.solve_for(
 # Constraints
 # --------------------------------------------------
 
+P = Plan.ref()
+PR = Provider.ref()
+AB = AgeBucket.ref()
+
 # PCP-network attribution. The chosen provider's network must equal the
 # chosen plan's network. Encoded as a forbidden-pair iteration: for every
 # (Plan, Provider) pair in *different* networks, if the member picks that
 # plan, then the member must not pick that provider.
-P = Plan.ref()
-PR = Provider.ref()
 network_match_ic = model.where(P.network_id != PR.network_id).require(
     implies(Member.plan_id == P.id, Member.provider_id != PR.id)
 )
@@ -204,8 +206,6 @@ problem.satisfy(network_match_ic)
 # a senior (age_years >= 65), the chosen plan must be Medicare-Advantage.
 # Encoded as: for every (senior bucket, non-Medicare plan) pair in
 # reference data, forbid the (member age_bucket, member plan) combination.
-P = Plan.ref()
-AB = AgeBucket.ref()
 senior_must_medicare_ic = model.where(
     P.plan_type != "MedicareAdvantage",
     AB.age_years >= SENIOR_THRESHOLD_YEARS,
@@ -221,8 +221,6 @@ problem.satisfy(senior_must_medicare_ic)
 # represents a non-senior (age_years < 65), the chosen plan must NOT be
 # Medicare-Advantage. Encoded as: for every (non-senior bucket, Medicare
 # plan) pair, forbid the combination.
-P = Plan.ref()
-AB = AgeBucket.ref()
 non_senior_no_medicare_ic = model.where(
     P.plan_type == "MedicareAdvantage",
     AB.age_years < SENIOR_THRESHOLD_YEARS,
