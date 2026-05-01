@@ -240,6 +240,14 @@ The variable subconcept exposes a back-pointer named after the entity in its pro
 </details>
 
 <details>
+  <summary>Warning: provider network(s) [...] have no plans in plans.csv</summary>
+
+- The script's symmetric coverage check found a `network_id` value in `providers.csv` that does not appear in any `plans.csv` row. The PCP-network-attribution IC forbids cross-network `(plan, provider)` combinations, so providers in those networks can never be matched to any plan and will never appear in a generated record. The model is still solvable -- this is a warning, not an error.
+- Add a plan on the listed network(s) to make those providers reachable, or remove the dead provider rows from `providers.csv`.
+
+</details>
+
+<details>
   <summary>How many records will the solver return?</summary>
 
 - Up to `MAX_RECORDS` (16 by default) or however many feasible records exist in the reference data, whichever is smaller. `solve_info().num_points` reports the actual count after the solve; `solve_info().status` reports `SOLUTION_LIMIT` when the limit was hit (more records available) and `OPTIMAL` when the search has been exhausted.
