@@ -108,12 +108,23 @@ model.define(Provider.new(model.data(providers_csv).to_schema()))
 # instead of an empty-result diagnostic at solve time.
 plan_networks = set(int(v) for v in plans_csv["network_id"].tolist())
 provider_networks = set(int(v) for v in providers_csv["network_id"].tolist())
-orphan_networks = sorted(plan_networks - provider_networks)
-if orphan_networks:
+orphan_plan_networks = sorted(plan_networks - provider_networks)
+if orphan_plan_networks:
     raise ValueError(
-        f"Plan network(s) {orphan_networks} have no providers in providers.csv; "
+        f"Plan network(s) {orphan_plan_networks} have no providers in providers.csv; "
         "every plan's network must have at least one in-network provider for "
         "the PCP-network-attribution IC to admit a feasible record."
+    )
+# Inverse direction: a provider whose network has no plans is unreachable
+# (every plan is on a different network, so the IC forbids it for every
+# plan). The model is still solvable -- those providers simply never
+# appear in any generated record -- so warn rather than raise.
+orphan_provider_networks = sorted(provider_networks - plan_networks)
+if orphan_provider_networks:
+    print(
+        f"Warning: provider network(s) {orphan_provider_networks} have no plans "
+        "in plans.csv; providers in those networks are unreachable and will "
+        "never appear in generated records."
     )
 
 # Concept: representative age bucket. Each row maps an integer bucket id

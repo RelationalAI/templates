@@ -41,7 +41,7 @@ The rule structure here is drawn from the public [CMS Medicare](https://www.cms.
 - A PCP-network attribution IC iterating over reference-data `(Plan, Provider)` tuples in different networks and forbidding the cross-network combination
 - A pre-solve dense-ID check on `plans.csv`, `providers.csv`, and `age_buckets.csv` so the solver's integer decision bounds line up with the reference rows the CFDs iterate over (sparse IDs would let the solver pick a value with no matching row, leaving the rules unconstrained for that record and silently dropping it from the post-solve display join)
 - **Multi-solution enumeration as the primary code path**: `problem.solve(..., solution_limit=MAX_RECORDS)` runs the search in enumeration mode; `Variable.values(solution_index, value)` joins the three decision variables on a shared solution index to reconstruct each record
-- An empty-result branch driven by `solve_info().num_points`: when no feasible record exists, the script prints a diagnostic instead of hard-failing, which is the right shape for a reusable generator. (No `problem.verify()` call: every IC uses `implies`, which is solver-only -- passing implies-bodied ICs to `verify()` returns silently-OK without actually evaluating them, so the convention is that they must NOT be passed. The CFD and network-attribution invariants are directly visible in the inspection output below.)
+- An empty-result branch driven by `solve_info().num_points`: when no feasible record exists, the script prints a diagnostic instead of hard-failing, which is the right shape for a reusable generator. (No `problem.verify()` call: every IC uses `implies`, which is solver-only -- passing implies-bodied ICs to `verify()` returns silently-OK without actually evaluating them, so the convention is that they must NOT be passed. The CFD and network-attribution invariants are directly visible in the expected-output block in the Quickstart: every record's `age_years` vs `plan_type` and every record's `network` vs `provider` are printed side-by-side.)
 
 ## What's included
 
@@ -200,7 +200,7 @@ model.select(
 ).inspect()
 ```
 
-The variable subconcept exposes a back-pointer named after the entity in its property: `age_bucket_var.member` walks back to the `Member` instance; on a singleton-`Member` model that is uninteresting, but the same shape carries over to multi-member templates where each row of `.values(...)` is one (Member, solution) pair.
+The variable subconcept exposes a back-pointer named after the entity in its property: `age_bucket_var.member` walks back to the `Member` instance (not exercised in this single-member template; useful for multi-member variants where each row of `.values(...)` is one `(Member, solution)` pair).
 
 ## Customize this template
 
