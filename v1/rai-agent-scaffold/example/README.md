@@ -55,7 +55,7 @@ RAI_CONFIG_FILE_PATH=raiconfig.yaml python test_queries.py
 
 Expected output:
 
-```
+```text
 QUERY 1: headcount_by_department
    department  headcount
   Engineering          4
@@ -87,7 +87,7 @@ The source table has one row per employee. The model derives two concepts:
   reporting relationship. Employees with a null `MANAGER_ID` (department heads)
   have no `ReportsTo` edge and are treated as root nodes.
 
-```
+```text
 EMPLOYEES table
     EMPLOYEE_ID  NAME          DEPARTMENT   TITLE               MANAGER_ID
     E001         Sarah Chen    Engineering  VP of Engineering    (null)

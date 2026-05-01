@@ -24,21 +24,24 @@ from pandas import read_csv
 from relationalai.semantics import Float, Integer, Model, String, std, sum
 from relationalai.semantics.reasoners.prescriptive import Problem
 
-model = Model("supply_chain_transport")
-Concept, Property = model.Concept, model.Property
-
 # --------------------------------------------------
-# Define semantic model & load data
+# Configure inputs
 # --------------------------------------------------
 
-data_dir = Path(__file__).parent / "data"
+DATA_DIR = Path(__file__).parent / "data"
 
-# Parameters
 dep_start = 1
 dep_end = 4
 inv_cost = 0.1 / 100       # Inventory holding cost rate
 tl_tra_cost = 2000.0       # Fixed cost per TL truck
 tl_cap = 24000.0           # TL weight capacity
+
+# --------------------------------------------------
+# Define semantic model & load data
+# --------------------------------------------------
+
+model = Model("supply_chain_transport")
+Concept, Property = model.Concept, model.Property
 
 # Concept: freight groups with inventory and transport time windows
 FreightGroup = Concept("FreightGroup", identify_by={"name": String})
@@ -49,7 +52,7 @@ FreightGroup.tra_end_t = Property(f"{FreightGroup} has {Integer:tra_end_t}")
 FreightGroup.arr_start_t = Property(f"{FreightGroup} has {Integer:arr_start_t}")
 FreightGroup.arr_end_t = Property(f"{FreightGroup} has {Integer:arr_end_t}")
 FreightGroup.inv_start = Property(f"{FreightGroup} has {Float:inv_start}")
-fg_data = model.data(read_csv(data_dir / "freight_groups.csv"))
+fg_data = model.data(read_csv(DATA_DIR / "freight_groups.csv"))
 model.define(FreightGroup.new(fg_data.to_schema()))
 
 # Concept: transport types (TL and LTL) with transit times

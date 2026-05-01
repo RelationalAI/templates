@@ -18,7 +18,7 @@ tags:
 
 Generating realistic test databases requires careful coordination of row counts across tables. Foreign key relationships, cardinality bounds, and coverage requirements create complex interdependencies -- for example, if each order must have 1-3 line items, then 800 orders can have at most 2,400 order lines. Manually choosing row counts that satisfy all these constraints while staying close to target sizes is tedious and error-prone.
 
-This template uses prescriptive reasoning to find optimal row counts for each table in a test database. It encodes referential integrity constraints, cardinality bounds, mandatory participation rules, and coverage requirements as a linear program, then minimizes weighted deviation from target row counts. Higher-priority tables stay closer to their targets.
+This template uses **Prescriptive** reasoning to find optimal row counts for each table in a test database. It encodes referential integrity constraints, cardinality bounds, mandatory participation rules, and coverage requirements as a linear program, then minimizes weighted deviation from target row counts. Higher-priority tables stay closer to their targets.
 
 After determining row counts, the script generates actual test data records with realistic values -- emails, dates, prices, and proper foreign key references -- giving you a complete, constraint-consistent test dataset.
 

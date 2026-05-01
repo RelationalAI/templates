@@ -30,28 +30,32 @@ from pandas import read_csv
 from relationalai.semantics import Float, Integer, Model, String, sum
 from relationalai.semantics.reasoners.prescriptive import Problem
 
-model = Model("supplier_reliability")
-Concept, Property = model.Concept, model.Property
+# --------------------------------------------------
+# Configure inputs
+# --------------------------------------------------
+
+DATA_DIR = Path(__file__).parent / "data"
 
 # --------------------------------------------------
 # Define semantic model & load data
 # --------------------------------------------------
 
-data_dir = Path(__file__).parent / "data"
+model = Model("supplier_reliability")
+Concept, Property = model.Concept, model.Property
 
 # Concept: suppliers with reliability scores and capacity
 Supplier = Concept("Supplier", identify_by={"id": Integer})
 Supplier.name = Property(f"{Supplier} has {String:name}")
 Supplier.reliability = Property(f"{Supplier} has {Float:reliability}")
 Supplier.capacity = Property(f"{Supplier} has {Integer:capacity}")
-supplier_csv = read_csv(data_dir / "suppliers.csv")
+supplier_csv = read_csv(DATA_DIR / "suppliers.csv")
 model.define(Supplier.new(model.data(supplier_csv).to_schema()))
 
 # Concept: products with demand requirements
 Product = Concept("Product", identify_by={"id": Integer})
 Product.name = Property(f"{Product} has {String:name}")
 Product.demand = Property(f"{Product} has {Integer:demand}")
-product_csv = read_csv(data_dir / "products.csv")
+product_csv = read_csv(DATA_DIR / "products.csv")
 model.define(Product.new(model.data(product_csv).to_schema()))
 
 # Relationship: supply options linking suppliers to products
@@ -60,7 +64,7 @@ SupplyOption.supplier = Property(f"{SupplyOption} from {Supplier}", short_name="
 SupplyOption.product = Property(f"{SupplyOption} for {Product}", short_name="product")
 SupplyOption.cost_per_unit = Property(f"{SupplyOption} has {Float:cost_per_unit}")
 
-options_csv = read_csv(data_dir / "supply_options.csv")
+options_csv = read_csv(DATA_DIR / "supply_options.csv")
 options_data = model.data(options_csv)
 model.define(
     so := SupplyOption.new(id=options_data.id, supplier=Supplier, product=Product,
