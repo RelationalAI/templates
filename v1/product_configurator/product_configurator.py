@@ -250,10 +250,10 @@ if si.num_points is None or si.num_points == 0:
 # --------------------------------------------------
 
 # `Variable.values(solution_index, value)` indexes the solver's outputs
-# across every returned solution. Filtering on `value == 1` surfaces just
-# the options the solver picked into each build. The populated property
-# (`Option.selected`) reflects only the first solution; for multi-solution
-# output we always go through `.values(...)`.
+# across every returned solution. Binding the value slot directly to the
+# literal `1` surfaces just the options the solver picked into each build.
+# The populated property (`Option.selected`) reflects only the first
+# solution; for multi-solution output we always go through `.values(...)`.
 #
 # Pivot to one row per build (slot columns + total dollars) -- a buyer
 # scans across rows to compare builds. Sorted ascending by total price so
@@ -261,7 +261,6 @@ if si.num_points is None or si.num_points == 0:
 # solver-returned `solution` index so the row aligns with `Variable.values`.
 
 sol_idx = Integer.ref()
-val = Integer.ref()
 selections_df = (
     model.select(
         sol_idx.alias("solution"),
@@ -269,7 +268,7 @@ selections_df = (
         selected_var.option.name.alias("option"),
         selected_var.option.price_cents.alias("price_cents"),
     )
-    .where(selected_var.values(sol_idx, val), val == 1)
+    .where(selected_var.values(sol_idx, 1))
     .to_df()
     .astype({"solution": "int64", "price_cents": "int64"})
 )

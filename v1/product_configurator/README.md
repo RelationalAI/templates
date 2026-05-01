@@ -226,11 +226,10 @@ problem.solve_info().display()
 problem.verify(exactly_one_ic, implies_ic, excludes_ic, price_ic)
 ```
 
-**6. Inspect every feasible build with `Variable.values`.** Capturing the variable subconcept from `solve_for(...)` exposes a `.values(solution_index, value)` relationship that indexes the per-solution outputs; filtering on `value == 1` surfaces just the options the solver picked into each build. The variable subconcept exposes a back-pointer field named after the entity in its property: `selected_var.option` walks back to the `Option` instance for each row, so `selected_var.option.slot.name` and `selected_var.option.price_cents` resolve naturally. A post-solve `pandas.pivot` collapses the per-option rows into one row per build for buyer-facing display:
+**6. Inspect every feasible build with `Variable.values`.** Capturing the variable subconcept from `solve_for(...)` exposes a `.values(solution_index, value)` relationship that indexes the per-solution outputs; binding the value slot directly to the literal `1` surfaces just the options the solver picked into each build. The variable subconcept exposes a back-pointer field named after the entity in its property: `selected_var.option` walks back to the `Option` instance for each row, so `selected_var.option.slot.name` and `selected_var.option.price_cents` resolve naturally. A post-solve `pandas.pivot` collapses the per-option rows into one row per build for buyer-facing display:
 
 ```python
 sol_idx = Integer.ref()
-val = Integer.ref()
 selections_df = (
     model.select(
         sol_idx.alias("solution"),
@@ -238,7 +237,7 @@ selections_df = (
         selected_var.option.name.alias("option"),
         selected_var.option.price_cents.alias("price_cents"),
     )
-    .where(selected_var.values(sol_idx, val), val == 1)
+    .where(selected_var.values(sol_idx, 1))
     .to_df()
     .astype({"solution": "int64", "price_cents": "int64"})
 )
