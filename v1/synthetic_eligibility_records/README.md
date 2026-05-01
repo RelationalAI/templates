@@ -178,9 +178,6 @@ network_match_ic = model.where(P.network_id != PR.network_id).require(
 problem.solve("minizinc", time_limit_sec=60, solution_limit=MAX_RECORDS)
 
 sol_idx = Integer.ref()
-ab_v = Integer.ref()
-pid_v = Integer.ref()
-prv_v = Integer.ref()
 bucket_ref = AgeBucket.ref()
 plan_ref = Plan.ref()
 provider_ref = Provider.ref()
@@ -194,12 +191,9 @@ records_df = (
         provider_ref.name.alias("provider"),
     )
     .where(
-        age_bucket_var.values(sol_idx, ab_v),
-        plan_id_var.values(sol_idx, pid_v),
-        provider_id_var.values(sol_idx, prv_v),
-        bucket_ref.id == ab_v,
-        plan_ref.id == pid_v,
-        provider_ref.id == prv_v,
+        age_bucket_var.values(sol_idx, bucket_ref.id),
+        plan_id_var.values(sol_idx, plan_ref.id),
+        provider_id_var.values(sol_idx, provider_ref.id),
     )
     .to_df()
     .sort_values("solution")

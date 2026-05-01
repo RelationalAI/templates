@@ -277,9 +277,6 @@ if si.num_points is None or si.num_points == 0:
 # go through `.values(...)`.
 
 sol_idx = Integer.ref()
-ab_v = Integer.ref()
-pid_v = Integer.ref()
-prv_v = Integer.ref()
 bucket_ref = AgeBucket.ref()
 plan_ref = Plan.ref()
 provider_ref = Provider.ref()
@@ -293,12 +290,9 @@ records_df = (
         provider_ref.name.alias("provider"),
     )
     .where(
-        age_bucket_var.values(sol_idx, ab_v),
-        plan_id_var.values(sol_idx, pid_v),
-        provider_id_var.values(sol_idx, prv_v),
-        bucket_ref.id == ab_v,
-        plan_ref.id == pid_v,
-        provider_ref.id == prv_v,
+        age_bucket_var.values(sol_idx, bucket_ref.id),
+        plan_id_var.values(sol_idx, plan_ref.id),
+        provider_id_var.values(sol_idx, provider_ref.id),
     )
     .to_df()
     .sort_values("solution")
