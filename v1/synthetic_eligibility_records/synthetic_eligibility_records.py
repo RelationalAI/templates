@@ -82,7 +82,7 @@ def _assert_dense_ids(df, name):
 # Network determines which providers are in-network. `max_dependents` is
 # loaded from the CSV but unused by the bundled rules -- declared here as
 # a hook so the dependent-count extension shown in `## Customize` can
-# reference `Plan.max_dependents` directly via a ref.
+# reference `Plan.max_dependents` directly.
 Plan = model.Concept("Plan", identify_by={"id": Integer})
 Plan.plan_type = model.Property(f"{Plan} has {String:plan_type}")
 Plan.network_id = model.Property(f"{Plan} has {Integer:network_id}")
