@@ -21,7 +21,7 @@ tags:
 
 Configurable products -- cars, industrial equipment, enterprise software, network gear -- come with hundreds or thousands of options grouped into slots (engine, transmission, trim, sound, wheels, and so on). Picking a buildable combination by hand is hard: options require or exclude other options, regional regulations remove some choices entirely, and the total price has to stay under a target.
 
-A configurator UI rarely wants a *single* feasible build. A buyer's quote, a sales playbook, and a "show me my options under this ceiling" trade-off slider all need the *population* of feasible configurations -- the cheap-but-basic build, the loaded build at the price-ceiling boundary, the build that drops a low-utility option to free up budget elsewhere. This template formulates the configuration problem as a constraint satisfaction model using RelationalAI's prescriptive reasoning and runs the solver in multi-solution mode: pass `solution_limit=MAX_CONFIGURATIONS` to `problem.solve(...)`, then enumerate each feasible build via `Variable.values(solution_index, value)`. The output is one row per selected option per solution, with per-solution totals -- ready to drop straight into a buyer-facing UI.
+A configurator UI rarely wants a *single* feasible build. A buyer's quote, a sales playbook, and a "show me my options under this ceiling" trade-off slider all need the *population* of feasible configurations -- the cheap-but-basic build, the loaded build at the price-ceiling boundary, the build that drops a low-utility option to free up budget elsewhere. This template formulates the configuration problem as a constraint satisfaction model using RelationalAI's prescriptive reasoning and runs the solver in multi-solution mode: pass `solution_limit=MAX_CONFIGURATIONS` to `problem.solve(...)`, then enumerate each feasible build via `Variable.values(solution_index, value)`. The output is pivoted to one row per build (one column per slot, plus a total in dollars, sorted ascending by price) -- ready to drop straight into a buyer-facing UI.
 
 For one target region, every returned build picks exactly one option per slot so that all feature-model rules are satisfied (implies / excludes), only region-allowed options appear, and the total price stays within a ceiling. Solver enumeration guarantees each returned build is *distinct* (differs on at least one option). When `solution_limit` is large enough to exhaust the search, the solver returns the full feasible set and reports status `OPTIMAL`; when the limit is tighter than the feasible set, the solver returns the first K it finds (status `SOLUTION_LIMIT`) and the specific subset depends on solver heuristics, so plan accordingly.
 
@@ -39,15 +39,15 @@ The configurator scenario here is automotive trim, drawn from the public Renault
 - A constraint model with binary `Option.selected` decisions and four constraint families: per-slot exactly-one, implies, excludes, and price ceiling
 - A region-filtered decision domain so options not allowed in the target region simply don't appear as decisions
 - A pre-solve catalog validation pass that fails fast on two pathologies the region filter can hide: a slot with zero region-allowed options (the exactly-one IC would not bind), and an implies rule whose tail option is not allowed in the region (the implies IC would not bind)
-- **Multi-solution enumeration as the primary code path**: `problem.solve(..., solution_limit=MAX_CONFIGURATIONS)` runs the search in enumeration mode and `Variable.values(solution_index, value)` surfaces every distinct feasible build; the bundled demo's `MAX_CONFIGURATIONS = 100` is set above the feasible-set size so the solver exhausts the search (status `OPTIMAL`), and a post-solve `pandas.pivot` collapses the per-option rows into one row per build for buyer-facing display
-- Post-solve sanity check via `problem.verify()` confirming every re-evaluable constraint holds against the first returned configuration (`verify` only inspects the populated property -- the first solution -- not across every enumerated build, but the model itself enforces the constraints across every solution the solver returns)
+- **Multi-solution enumeration as the primary code path**: `problem.solve(..., solution_limit=MAX_CONFIGURATIONS)` runs the search in enumeration mode and `Variable.values(solution_index, value)` surfaces every distinct feasible build; the bundled demo's `MAX_CONFIGURATIONS = 100` is set above the feasible-set size so the solver exhausts the search (status `OPTIMAL`), and a post-solve `pandas.pivot` collapses the per-option rows into one row per build (one column per slot, sorted ascending by total price) for buyer-facing display
+- Post-solve sanity check via `problem.verify()` confirming every re-evaluable constraint holds against the first returned configuration (`verify` re-evaluates each named IC against the populated property -- the first solution -- not across every enumerated build, but the model itself enforces the constraints across every solution the solver returns)
 
 ## What's included
 
 - `product_configurator.py` -- main script with ontology, decisions, constraints, and solver call
 - `data/slots.csv` -- 6 slots (Engine, Transmission, Trim, Sound, Wheels, Roof)
 - `data/options.csv` -- 16 options across the 6 slots, each with a price in integer cents
-- `data/implies.csv` -- option-to-option implies rules (e.g. Premium Audio requires Premium Trim)
+- `data/implies.csv` -- option-to-option implies rules (e.g. Premium Audio implies Premium Trim)
 - `data/excludes.csv` -- option-to-option excludes rules (e.g. V6 excludes Manual)
 - `data/regional_rules.csv` -- which options are allowed in which region (US, EU)
 - `pyproject.toml` -- Python package configuration
@@ -60,6 +60,7 @@ The configurator scenario here is automotive trim, drawn from the public Renault
 
 ### Tools
 - Python >= 3.10
+- RelationalAI Python SDK (`relationalai`) >= 1.1.0
 
 ## Quickstart
 
@@ -94,7 +95,7 @@ The configurator scenario here is automotive trim, drawn from the public Renault
    python product_configurator.py
    ```
 
-6. Expected output. With `MAX_CONFIGURATIONS = 100` (above the bundled catalog's feasible-set size) and `TARGET_REGION = "EU"`, the solver exhausts the search and returns every distinct feasible build (status `OPTIMAL`). Builds are pivoted to one row per configuration with a column per slot and a total in dollars, sorted ascending so the cheapest build appears first. Exact wall times will vary; the *set* of returned builds is deterministic for a given catalog because search has been exhausted (under solver-heuristic-dependent ordering, but ordering is re-imposed by the post-solve sort):
+6. Expected output. With `MAX_CONFIGURATIONS = 100` (above the bundled catalog's feasible-set size) and `TARGET_REGION = "EU"`, the solver exhausts the search and returns every distinct feasible build (status `OPTIMAL`). Builds are pivoted to one row per configuration with a column per slot and a total in dollars, sorted ascending so the cheapest build appears first. The script prints all 63 builds; the block below is **abridged for brevity** (8 cheapest + 8 most-expensive). Exact wall times will vary; the `solution` column is the solver's internal index, not a sequential ranking; and the `solver` field reports MiniZinc's self-identifying name (`MiniZinc_unknown` here, may vary across RAI Native App versions). The set of returned builds is deterministic for a given catalog because search has been exhausted, and ordering is re-imposed by the post-solve sort. `objective: 0` is reported by convention -- this is a pure constraint satisfaction model with no minimize / maximize call:
    ```text
    Solve result:
    • status: OPTIMAL
@@ -105,23 +106,23 @@ The configurator scenario here is automotive trim, drawn from the public Renault
 
    Feasible builds for region 'EU' (ceiling $20,000, up to 100 per run):
     solution        Engine            Roof          Sound Transmission         Trim              Wheels  total_$
-          20 1.6L Inline-4      Steel Roof Standard Sound       Manual    Base Trim       16-inch Alloy     1500
-           8 1.6L Inline-4      Steel Roof Standard Sound       Manual    Base Trim       18-inch Sport     2700
-          62 1.6L Inline-4      Steel Roof Standard Sound    Automatic    Base Trim       16-inch Alloy     3500
-          24    2.0L Turbo      Steel Roof Standard Sound       Manual    Base Trim       16-inch Alloy     3500
-           4 1.6L Inline-4      Steel Roof Standard Sound       Manual   Sport Trim       16-inch Alloy     4000
-          59 1.6L Inline-4      Steel Roof Standard Sound    Automatic    Base Trim       18-inch Sport     4700
-          14    2.0L Turbo      Steel Roof Standard Sound       Manual    Base Trim       18-inch Sport     4700
-           1 1.6L Inline-4      Steel Roof Standard Sound       Manual   Sport Trim       18-inch Sport     5200
-           ... 47 more builds omitted ...
-          54    2.0L Turbo Panoramic Glass Standard Sound    Automatic Premium Trim       18-inch Sport    14700
-          25    2.0L Turbo Panoramic Glass  Premium Audio    Automatic Premium Trim       16-inch Alloy    15000
-          36    2.0L Turbo      Steel Roof  Premium Audio          DCT Premium Trim       18-inch Sport    15200
-          45    2.0L Turbo Panoramic Glass Standard Sound          DCT Premium Trim       16-inch Alloy    15500
-          29    2.0L Turbo Panoramic Glass  Premium Audio    Automatic Premium Trim       18-inch Sport    16200
-          40    2.0L Turbo Panoramic Glass Standard Sound          DCT Premium Trim       18-inch Sport    16700
-          26    2.0L Turbo Panoramic Glass  Premium Audio          DCT Premium Trim       16-inch Alloy    17000
-          28    2.0L Turbo Panoramic Glass  Premium Audio          DCT Premium Trim       18-inch Sport    18200
+          60 1.6L Inline-4      Steel Roof Standard Sound       Manual    Base Trim       16-inch Alloy     1500
+          59 1.6L Inline-4      Steel Roof Standard Sound       Manual    Base Trim       18-inch Sport     2700
+          39 1.6L Inline-4      Steel Roof Standard Sound    Automatic    Base Trim       16-inch Alloy     3500
+          50    2.0L Turbo      Steel Roof Standard Sound       Manual    Base Trim       16-inch Alloy     3500
+          56 1.6L Inline-4      Steel Roof Standard Sound       Manual   Sport Trim       16-inch Alloy     4000
+          51    2.0L Turbo      Steel Roof Standard Sound       Manual    Base Trim       18-inch Sport     4700
+          38 1.6L Inline-4      Steel Roof Standard Sound    Automatic    Base Trim       18-inch Sport     4700
+          57 1.6L Inline-4      Steel Roof Standard Sound       Manual   Sport Trim       18-inch Sport     5200
+           ... 47 more builds omitted (script prints all 63) ...
+           5    2.0L Turbo Panoramic Glass Standard Sound    Automatic Premium Trim       18-inch Sport    14700
+           7    2.0L Turbo Panoramic Glass  Premium Audio    Automatic Premium Trim       16-inch Alloy    15000
+          27    2.0L Turbo      Steel Roof  Premium Audio          DCT Premium Trim       18-inch Sport    15200
+          10    2.0L Turbo Panoramic Glass Standard Sound          DCT Premium Trim       16-inch Alloy    15500
+           1    2.0L Turbo Panoramic Glass  Premium Audio    Automatic Premium Trim       18-inch Sport    16200
+           4    2.0L Turbo Panoramic Glass Standard Sound          DCT Premium Trim       18-inch Sport    16700
+          11    2.0L Turbo Panoramic Glass  Premium Audio          DCT Premium Trim       16-inch Alloy    17000
+           2    2.0L Turbo Panoramic Glass  Premium Audio          DCT Premium Trim       18-inch Sport    18200
    ```
 
    With `TARGET_REGION = "EU"`, the V6 engine is unavailable. Constraints rule out combinations like 1.6L + 19-inch Performance wheels, V6 + Manual transmission, DCT + non-2.0L engine, Premium Audio without Premium Trim, and Panoramic Glass with Sport Trim. The 63 returned builds span a $1,500-$18,200 spread, exhaust every legal Engine / Transmission / Trim / Sound / Wheels / Roof combination, and obey every implies/excludes rule -- exactly the kind of "show me my options" surface a buyer-facing UI wants. Lower `MAX_CONFIGURATIONS` to cap how many the solver returns (status flips to `SOLUTION_LIMIT` once the cap is hit).
@@ -151,7 +152,7 @@ Slot.name = model.Property(f"{Slot} has {String:name}")
 Option = model.Concept("Option", identify_by={"id": Integer})
 Option.name = model.Property(f"{Option} has {String:name}")
 Option.price_cents = model.Property(f"{Option} has {Integer:price_cents}")
-Option.slot = model.Relationship(f"{Option} is in {Slot}")
+Option.slot = model.Property(f"{Option} is in {Slot:slot}")
 Option.allowed_in = model.Relationship(f"{Option} is allowed in {String:region}")
 ```
 
@@ -168,11 +169,11 @@ Excludes = model.Concept(
 )
 ```
 
-**3. Define the binary decision variable.** `Option.selected` is 0/1 and only exists for options allowed in the target region. Options banned in the region simply do not get a decision variable:
+**3. Define the binary decision variable.** `Option.selected` is 0/1 and only exists for options allowed in the target region. Options banned in the region simply do not get a decision variable. Capture the returned `selected_var` handle -- step 6 indexes per-solution outputs through it via `.values(solution_index, value)`:
 
 ```python
 Option.selected = model.Property(f"{Option} is selected if {Integer:selected}")
-problem.solve_for(
+selected_var = problem.solve_for(
     Option.selected,
     type="bin",
     name=["selected", Option.name],
@@ -180,13 +181,14 @@ problem.solve_for(
 )
 ```
 
-**4. Add the four constraint families.** Each constraint is stored in a named variable so it can be verified after solving:
+**4. Add the four constraint families and register each with the problem.** Each constraint is stored in a named variable so it can be re-checked by `problem.verify(...)` after solving; `problem.satisfy(ic)` is what actually pushes each constraint into the solver:
 
 ```python
 exactly_one_ic = model.where(
     Option.allowed_in(TARGET_REGION),
     Option.slot(Slot),
 ).require(sum(Option.selected).per(Slot) == 1)
+problem.satisfy(exactly_one_ic)
 
 A = Option.ref()
 B = Option.ref()
@@ -197,6 +199,7 @@ implies_ic = model.where(
     A.allowed_in(TARGET_REGION),
     B.allowed_in(TARGET_REGION),
 ).require(A.selected <= B.selected)
+problem.satisfy(implies_ic)
 
 excludes_ic = model.where(
     E := Excludes,
@@ -205,10 +208,12 @@ excludes_ic = model.where(
     A.allowed_in(TARGET_REGION),
     B.allowed_in(TARGET_REGION),
 ).require(A.selected + B.selected <= 1)
+problem.satisfy(excludes_ic)
 
 price_ic = model.where(
     Option.allowed_in(TARGET_REGION),
 ).require(sum(Option.price_cents * Option.selected) <= PRICE_CEILING_CENTS)
+problem.satisfy(price_ic)
 ```
 
 The implies constraint reads as "if A (head) is selected (selected[A] = 1), then B (tail) must be selected too (selected[B] = 1), so selected[A] <= selected[B]". The excludes constraint reads as "at most one of A and B may be selected".

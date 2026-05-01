@@ -23,9 +23,9 @@ Run:
     `python product_configurator.py`
 
 Output:
-    Prints the configurator's solver info, every feasible build (one
-    row per selected option per solution) with per-solution total
-    price, and post-solve constraint verification.
+    Prints the configurator's solver info, every feasible build as a
+    pivot table (one row per build, one column per slot, sorted ascending
+    by total price), and post-solve constraint verification.
 """
 
 from pathlib import Path
@@ -170,17 +170,17 @@ Option.selected = model.Property(f"{Option} is selected if {Integer:selected}")
 
 problem = Problem(model, Integer)
 
-# Every output goes through `Variable.values(solution_index, value)` against
-# the captured ProblemVariable handle, so the populated property path is
-# unused. `populate=False` skips the first-solution write-back -- avoiding
-# wasted work and the latent FDError that `populate=True` invites when
-# MiniZinc returns multiple solutions via `solution_limit`.
+# Every multi-solution output goes through
+# `Variable.values(solution_index, value)` against the captured
+# `selected_var` handle. `populate=True` (the default) additionally writes
+# the first solution back into `Option.selected`; `problem.verify(...)`
+# then re-evaluates each named IC against that populated property, so we
+# leave it on.
 selected_var = problem.solve_for(
     Option.selected,
     type="bin",
     name=["selected", Option.name],
     where=[Option.allowed_in(TARGET_REGION)],
-    populate=False,
 )
 
 # Constraint: exactly one option per slot, over the region-filtered domain.
@@ -231,11 +231,10 @@ problem.solve("minizinc", time_limit_sec=60, solution_limit=MAX_CONFIGURATIONS)
 si = problem.solve_info()
 si.display()
 
-# Confirm the pure-arithmetic ICs hold in the first returned solution.
-# `verify` only inspects the populated property (the first solution), so
-# this is a sanity check against that one build, not a re-proof across
-# every configuration. The model itself enforces the ICs across every
-# build returned by enumeration.
+# `verify` reinstalls each named IC and re-evaluates it against the
+# populated property -- here, the first solution. Sanity check on that one
+# build, not a re-proof across every configuration; the model itself
+# enforces the ICs across every build returned by enumeration.
 problem.verify(exactly_one_ic, implies_ic, excludes_ic, price_ic)
 
 if si.num_points is None or si.num_points == 0:
