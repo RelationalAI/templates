@@ -211,10 +211,9 @@ problem.satisfy(place_price_match_ic)
 # Venue eligibility: chosen venue must not match any disallowed pair for the
 # order's symbol. The chain `OrderEvent.order.symbol.id` walks event -> order
 # -> symbol and joins on the disallowed pair's symbol_id.
-NA = NotAllowedSymbolVenue.ref()
 venue_ok_ic = model.where(
-    OrderEvent.order.symbol.id(NA.symbol_id),
-).require(NA.venue_id != OrderEvent.venue_id)
+    OrderEvent.order.symbol.id(NotAllowedSymbolVenue.symbol_id),
+).require(NotAllowedSymbolVenue.venue_id != OrderEvent.venue_id)
 problem.satisfy(venue_ok_ic)
 
 # Channel fill_qty to (qty when is_fill else 0).

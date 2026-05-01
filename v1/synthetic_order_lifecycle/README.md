@@ -181,10 +181,9 @@ Reading the order's `original_qty` from an event, or matching disallowed venue p
 ```python
 qty_upper_ic = model.require(OrderEvent.qty <= OrderEvent.order.original_qty)
 
-NA = NotAllowedSymbolVenue.ref()
 venue_ok_ic = model.where(
-    OrderEvent.order.symbol.id(NA.symbol_id),
-).require(NA.venue_id != OrderEvent.venue_id)
+    OrderEvent.order.symbol.id(NotAllowedSymbolVenue.symbol_id),
+).require(NotAllowedSymbolVenue.venue_id != OrderEvent.venue_id)
 ```
 
 Value-pinning couples a decision variable to a data property via `implies`. The PLACE event's `qty` and `tick_price` are pinned to the order's `original_qty` and `original_tick_price` so the generated trace stays internally consistent with the order's stated price and size:
