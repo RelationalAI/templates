@@ -5,16 +5,15 @@ Runs an end-to-end predictive pipeline on a small bundled telco dataset
 `model.data()`; no Snowflake data loading, no GPU required.
 
 Stages:
-  1. Graph    -- PageRank on a directed Subscriber -> Subscriber call graph,
-                 bound to `Subscriber.pagerank` and fed to the GNN as a
-                 continuous node feature.
-  2. Rules    -- derived `Subscriber.outgoing_calls` and `incoming_calls`
-                 Properties capturing call-volume signal, fed as integer
-                 features.
-  3. Predictive -- GNN regression on `Subscriber.churn_risk_score` over
+  1. Graph      -- PageRank on a directed Subscriber -> Subscriber call graph,
+                   bound to `Subscriber.pagerank` and fed to the GNN as a
+                   continuous node feature. Count-based rules derive
+                   `Subscriber.outgoing_calls` / `incoming_calls` alongside,
+                   fed as integer features.
+  2. Predictive -- GNN regression on `Subscriber.churn_risk_score` over
                    demographic + plan + call-graph features.
-  4. Reporting -- top-N at-risk subscribers per segment for retention
-                  targeting.
+  3. Reporting  -- top-N at-risk subscribers per segment for retention
+                   targeting.
 
 The CHURN_RISK_SCORE target is a continuous 0-1 risk score representing an
 analyst-facing churn-risk estimate per subscriber. Customers adapting this
@@ -107,7 +106,7 @@ Call = Concept("Call")
 model.define(Call.new(model.data(calls_df).to_schema()))
 
 # --------------------------------------------------
-# Stage 1: Graph -- PageRank on the call graph
+# Graph: PageRank on the call graph
 # --------------------------------------------------
 # Build a directed weighted Subscriber -> Subscriber graph with one edge per
 # call. PageRank scores act as a "social influence" continuous feature.
@@ -134,11 +133,10 @@ score_pr = Float.ref()
 model.define(sub_pr.pagerank(score_pr)).where(pagerank_rel(sub_pr, score_pr))
 
 # --------------------------------------------------
-# Stage 2: Rules -- call-volume features per subscriber
+# Call-volume features (count-based rules)
 # --------------------------------------------------
-# Outgoing-call count is a derivation rule (count aggregate per subscriber).
-# Mirror pattern from fraud_detection_local: explicit Property bound via
-# count(...).per(Subscriber).where(...).
+# count(Call).per(Subscriber) aggregates derive integer features alongside
+# the PageRank score. Mirror pattern from fraud_detection_local.
 
 Subscriber.outgoing_calls = model.Property(
     f"{Subscriber} has {Integer:outgoing_calls}"
@@ -174,20 +172,20 @@ pt = PropertyTransformer(
         Subscriber.lifetime_value_usd,
         Subscriber.monthly_rate_usd,
         Subscriber.early_termination_fee_usd,
-        Subscriber.pagerank,  # graph-reasoner feature (Stage 1)
+        Subscriber.pagerank,  # graph-reasoner feature
     ],
     integer=[
         Subscriber.nps_score,
         Subscriber.data_limit_gb,
         Subscriber.term_months,
-        Subscriber.outgoing_calls,  # rule-derived feature (Stage 2)
-        Subscriber.incoming_calls,  # rule-derived feature (Stage 2)
+        Subscriber.outgoing_calls,  # rule-derived feature
+        Subscriber.incoming_calls,  # rule-derived feature
     ],
     datetime=[Subscriber.signup_date],
 )
 
 # --------------------------------------------------
-# Stage 3: Predictive -- GNN regression on CHURN_RISK_SCORE
+# Predictive: GNN regression on CHURN_RISK_SCORE
 # --------------------------------------------------
 
 # Build train/val/test splits in pandas. Stratified by segment so each split
@@ -241,7 +239,7 @@ Test = Relationship(f"{Subscriber}")
 model.define(Test(Subscriber)).where(Subscriber.sub_id == TestTable.sub_id)
 
 print("\n" + "=" * 60)
-print("Stage 3: Predictive -- subscriber churn-risk regression GNN (CPU)")
+print("Predictive: subscriber churn-risk regression GNN (CPU)")
 print("=" * 60)
 
 gnn = GNN(
@@ -264,7 +262,7 @@ gnn.fit()
 Subscriber.predictions = gnn.predictions(domain=Test)
 
 # --------------------------------------------------
-# Stage 4: Reporting -- highest-predicted-risk subscribers per segment
+# Reporting: highest-predicted-risk subscribers per segment
 # --------------------------------------------------
 
 print("\n" + "=" * 60)

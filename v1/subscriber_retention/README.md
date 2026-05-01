@@ -1,12 +1,11 @@
 ---
 title: "Subscriber Retention"
-description: "Multi-reasoner telco-churn pipeline: subscriber call PageRank (Graph) + outgoing/incoming call counts (Rules) feed a regression GNN (Predictive) that scores per-subscriber churn risk, then surfaces the highest-risk subscribers per segment for retention campaigns."
+description: "Telco churn-risk scoring: PageRank over a Subscriber→Subscriber call graph (Graph) plus aggregate-derived call-volume features feed a regression GNN (Predictive) that scores per-subscriber churn risk, then surfaces the highest-risk subscribers per segment for retention campaigns."
 featured: false
 experience_level: advanced
 industry: "Telecommunications"
 reasoning_types:
   - Graph
-  - Rules-based
   - Predictive
 tags:
   - GNN
@@ -21,7 +20,7 @@ tags:
 
 ## What this template is for
 
-Telco retention teams need to score every active subscriber for churn risk so they can target proactive offers at the right people before contracts roll over. Traditional churn models lean on plan attributes (rate, term, auto-renew) and demographics; they ignore the network around each subscriber. This template wires a call-graph signal into the model: who you call, who calls you, and how central you sit in the call network all become features, and the **Predictive** reasoner trains a GNN regression head over them. The graph features come from RelationalAI's **Graph** reasoner (PageRank); the call-volume features come from declarative **Rules** (count aggregates).
+Telco retention teams need to score every active subscriber for churn risk so they can target proactive offers at the right people before contracts roll over. Traditional churn models lean on plan attributes (rate, term, auto-renew) and demographics; they ignore the network around each subscriber. This template wires a call-graph signal into the model: who you call, who calls you, and how central you sit in the call network all become features, and the **Predictive** reasoner trains a GNN regression head over them. The graph features come from the **Graph** reasoner (PageRank on the Subscriber→Subscriber call graph); aggregate-derived `outgoing_calls` / `incoming_calls` properties round out the per-subscriber feature row.
 
 > [!IMPORTANT]
 > The RelationalAI **predictive reasoner (GNN)** used in this template is in early access. The API surface (`GNN`, `PropertyTransformer`, task relationships) may still change between releases; check the `rai-predictive-modeling` and `rai-predictive-training` skills for current guidance before adapting to production data.
@@ -38,14 +37,13 @@ Assumes familiarity with Python, basic ML concepts (regression, RMSE), and graph
 ## What you'll build
 
 - **Graph**: PageRank on a directed Subscriber→Subscriber call graph, exposing each subscriber's "social influence" as a continuous GNN feature
-- **Rules**: derived `outgoing_calls` / `incoming_calls` count properties per subscriber, fed as integer features
-- **Predictive**: a regression GNN on the call graph predicting `churn_risk_score` per subscriber from demographics + plan attributes + call-graph features
+- **Predictive**: a regression GNN on the call graph predicting `churn_risk_score` per subscriber from demographics + plan attributes + the PageRank feature + aggregate-derived `outgoing_calls` / `incoming_calls` properties
 - **Reporting**: top-N highest-predicted-risk subscribers per segment, ready to drop into a retention campaign queue
 - The whole pipeline runs end-to-end on a small bundled telco dataset (~1,200 subscribers, ~6,000 calls); no Snowflake source data setup, no GPU
 
 ## What's included
 
-- **Runner**: `subscriber_retention.py` — runs all three reasoning stages plus reporting on the bundled CSVs
+- **Runner**: `subscriber_retention.py` — runs the full Graph-feature + GNN-regression pipeline plus reporting on the bundled CSVs
 - **Model**: `Subscriber` (with denormalized plan attributes), `Call` (edge-intermediary for the call graph), and three task-table concepts (`TrainTable`, `ValTable`, `TestTable`) carrying the churn-risk labels
 - **Sample data**: small telco subset (subscribers + plans + call detail records); see [Sample data](#sample-data) below
 - **Outputs**: subscriber/call counts, churn-risk distribution, GNN training/prediction metrics, top-5 highest-risk subscribers per segment, test-set RMSE
@@ -178,19 +176,17 @@ About the bundled mini set:
 
 ### Key entities
 
-- **Subscriber** (`sub_id`): one customer with denormalized plan attributes (`plan_type`, `monthly_rate_usd`, `data_limit_gb`, `term_months`, `auto_renew`, etc.) plus demographic fields (`segment`, `subscriber_type`, `lifetime_value_usd`, `nps_score`, `signup_date`). Enriched at pipeline time with `pagerank` (Stage 1) and `outgoing_calls` / `incoming_calls` (Stage 2).
-- **Call**: one call record between two subscribers; serves only as the edge intermediary for the PageRank graph and the call-volume rules. Has no identity property — only the edges matter downstream.
+- **Subscriber** (`sub_id`): one customer with denormalized plan attributes (`plan_type`, `monthly_rate_usd`, `data_limit_gb`, `term_months`, `auto_renew`, etc.) plus demographic fields (`segment`, `subscriber_type`, `lifetime_value_usd`, `nps_score`, `signup_date`). Enriched at pipeline time with `pagerank` and `outgoing_calls` / `incoming_calls`.
+- **Call**: one call record between two subscribers; serves only as the edge intermediary for the PageRank graph and the call-volume aggregates. Has no identity property — only the edges matter downstream.
 
 ### Pipeline stages
 
 ```text
 Subscribers + Plans + Call records (bundled CSVs, denormalized to Subscriber)
-  → Stage 1 -- Graph:       PageRank on the Subscriber→Subscriber call graph
-  → Stage 2 -- Rules:       Subscriber.outgoing_calls / .incoming_calls
-                            (count aggregates per subscriber)
-  → Stage 3 -- Predictive:  GNN regression on Subscriber.churn_risk_score
-                            (continuous 0-1)
-  → Stage 4 -- Reporting:   top-N highest-predicted-risk subscribers per segment
+  → Graph:       PageRank on the Subscriber→Subscriber call graph
+                 + aggregate-derived outgoing_calls / incoming_calls
+  → Predictive:  GNN regression on Subscriber.churn_risk_score (continuous 0-1)
+  → Reporting:   top-N highest-predicted-risk subscribers per segment
 ```
 
 ## How it works
@@ -226,7 +222,7 @@ score_pr = Float.ref()
 model.define(sub_pr.pagerank(score_pr)).where(pagerank_rel(sub_pr, score_pr))
 ```
 
-### 2. Derive call-volume features (Rules)
+### 2. Derive call-volume features
 
 Two count-based rules derive `outgoing_calls` and `incoming_calls` per subscriber. Each is a Property bound via a `count(Call).per(Subscriber)` aggregate:
 
