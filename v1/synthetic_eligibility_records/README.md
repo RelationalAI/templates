@@ -103,21 +103,21 @@ The rule structure here is drawn from the public [CMS Medicare](https://www.cms.
    • solver: MiniZinc_unknown
 
    Generated member records (up to 16 per run):
-      solution  age_years          plan_type  network      provider
-   0         0         78  MedicareAdvantage        3   Dr_Senior_B
-   1         1         78  MedicareAdvantage        3   Dr_Senior_A
-   2         2         68  MedicareAdvantage        3   Dr_Senior_B
-   3         3         68  MedicareAdvantage        3   Dr_Senior_A
-   4         4         28                HMO        2   Dr_East_HMO
-   5         5         50                HMO        2   Dr_East_HMO
-   6         6         50                PPO        1  Dr_North_PPO
-   7         7         28                PPO        1  Dr_North_PPO
+   solution age_years         plan_type plan_network provider_network     provider
+          0        78 MedicareAdvantage            3                3  Dr_Senior_B
+          1        68 MedicareAdvantage            3                3  Dr_Senior_B
+          2        78 MedicareAdvantage            3                3  Dr_Senior_A
+          3        68 MedicareAdvantage            3                3  Dr_Senior_A
+          4        28               HMO            2                2  Dr_East_HMO
+          5        50               HMO            2                2  Dr_East_HMO
+          6        50               PPO            1                1 Dr_North_PPO
+          7        28               PPO            1                1 Dr_North_PPO
    ```
 
    Each solution row is one full member: a representative age, a plan type, a primary-care provider in the plan's network. The bundled data admits exactly 8 feasible records, so the K=16 cap is more than enough -- the solver returns the full feasible set and `status: OPTIMAL` reports the search is exhausted.
 
    - The age-by-plan CFD is visible: every record with `age_years >= 65` is on `MedicareAdvantage`; every record with `age_years < 65` is on a non-Medicare plan (PPO or HMO).
-   - The PCP-network attribution is visible: every `provider` row is in the network of its `plan` row -- Senior providers on network 3 with Medicare, `Dr_East_HMO` on network 2 with HMO, `Dr_North_PPO` on network 1 with PPO.
+   - The PCP-network attribution is visible: every record's `plan_network` equals its `provider_network` -- Senior providers on network 3 with Medicare, `Dr_East_HMO` on network 2 with HMO, `Dr_North_PPO` on network 1 with PPO.
 
    On a real catalog the feasible set is typically much larger than `MAX_RECORDS`; the solver then returns `status: SOLUTION_LIMIT` once the K cap is hit, and `num_points` reports how many records came back.
 
@@ -217,9 +217,8 @@ The variable subconcept exposes a back-pointer named after the entity in its pro
 <details>
   <summary>Solver returns INFEASIBLE / no feasible eligibility records</summary>
 
-- The reference data may not admit any feasible record. The script prints "No feasible eligibility records under the encoded rules." in this case rather than hard-failing. Confirm at least one provider exists in each plan's network, and that both arms of the age-by-plan CFD are satisfiable (a Medicare-Advantage plan must exist if any age bucket has `age_years >= SENIOR_THRESHOLD_YEARS`; a non-Medicare plan must exist if any age bucket has `age_years < SENIOR_THRESHOLD_YEARS`).
-- Mismatched networks: if `plans.csv` and `providers.csv` reference network IDs that don't intersect, the PCP-network attribution IC has no satisfying assignment. Confirm every `Plan.network_id` value appears in at least one `Provider.network_id` row.
-- All age buckets on one side of the senior threshold: if every row in `age_buckets.csv` has `age_years >= SENIOR_THRESHOLD_YEARS`, the non-senior arm of the CFD forces every chosen plan to be non-Medicare *and* every chosen age to be senior, which has no satisfying assignment unless the plans table has both Medicare-Advantage and non-Medicare entries. The mirror failure mode applies when every bucket is non-senior.
+- The reference data may not admit any feasible record. The script prints "No feasible eligibility records under the encoded rules." in this case rather than hard-failing. Confirm at least one provider exists in each plan's network, and that the age-by-plan CFD arms are satisfiable: if any age bucket has `age_years >= SENIOR_THRESHOLD_YEARS`, a Medicare-Advantage plan must exist; if any bucket has `age_years < SENIOR_THRESHOLD_YEARS`, a non-Medicare plan must exist.
+- Mismatched networks: if every `Plan.network_id` value is missing from `providers.csv` (or vice versa), no `(plan, provider)` pair is feasible and the model is infeasible. The pre-solve coverage check now warns on either-direction asymmetry rather than hard-failing; check the warnings printed at startup before assuming the data is sound.
 
 </details>
 
@@ -232,9 +231,9 @@ The variable subconcept exposes a back-pointer named after the entity in its pro
 </details>
 
 <details>
-  <summary>ValueError: Plan network(s) [...] have no providers in providers.csv</summary>
+  <summary>Warning: plan network(s) [...] have no providers in providers.csv</summary>
 
-- The pre-solve coverage check found a `network_id` value in `plans.csv` that does not appear in any `providers.csv` row. The PCP-network-attribution IC forbids cross-network `(plan, provider)` combinations; if a plan's network has zero providers, every provider is forbidden for that plan and the model would be silently infeasible for any record that picks that plan.
+- The pre-solve coverage check found a `network_id` value in `plans.csv` that does not appear in any `providers.csv` row. The PCP-network-attribution IC forbids cross-network `(plan, provider)` combinations, so any record that picks one of the listed plans has no satisfying provider and that plan can never appear in a generated record. The model is still solvable from the records that pick the other plans -- this is a warning, not an error.
 - Add at least one provider for the listed network(s), or remove the affected plan rows from `plans.csv`.
 
 </details>

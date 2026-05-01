@@ -100,25 +100,23 @@ providers_csv = read_csv(data_dir / "providers.csv")
 _assert_dense_ids(providers_csv, "providers.csv")
 model.define(Provider.new(model.data(providers_csv).to_schema()))
 
-# Pre-solve precondition: every plan's network must have at least one
-# in-network provider. The PCP-network-attribution IC forbids cross-network
-# (plan, provider) combinations; if a plan's network has zero providers,
-# every provider is forbidden for that plan and the model is silently
-# infeasible for any record that picks that plan. Surface as a clear error
-# instead of an empty-result diagnostic at solve time.
+# Pre-solve coverage warnings. The PCP-network-attribution IC forbids
+# cross-network (plan, provider) combinations, so a plan whose network has
+# zero providers can never appear in a feasible record (the IC forbids
+# every provider for it), and a provider whose network has zero plans is
+# also unreachable. Neither case makes the model globally infeasible --
+# other plans/providers on covered networks still admit feasible records --
+# so warn rather than raise, and let the solver surface a 0-record result
+# only if every plan ends up unreachable.
 plan_networks = set(int(v) for v in plans_csv["network_id"].tolist())
 provider_networks = set(int(v) for v in providers_csv["network_id"].tolist())
 orphan_plan_networks = sorted(plan_networks - provider_networks)
 if orphan_plan_networks:
-    raise ValueError(
-        f"Plan network(s) {orphan_plan_networks} have no providers in providers.csv; "
-        "every plan's network must have at least one in-network provider for "
-        "the PCP-network-attribution IC to admit a feasible record."
+    print(
+        f"Warning: plan network(s) {orphan_plan_networks} have no providers "
+        "in providers.csv; plans on those networks are unreachable and will "
+        "never appear in generated records."
     )
-# Inverse direction: a provider whose network has no plans is unreachable
-# (every plan is on a different network, so the IC forbids it for every
-# plan). The model is still solvable -- those providers simply never
-# appear in any generated record -- so warn rather than raise.
 orphan_provider_networks = sorted(provider_networks - plan_networks)
 if orphan_provider_networks:
     print(
@@ -140,10 +138,11 @@ age_buckets_csv = read_csv(data_dir / "age_buckets.csv")
 _assert_dense_ids(age_buckets_csv, "age_buckets.csv")
 model.define(AgeBucket.new(model.data(age_buckets_csv).to_schema()))
 
-# Concept: synthesized member. The CSV holds a single placeholder row;
-# every decision-valued property below describes that one slot. Each
-# solution returned by the solver is a different feasible filling of
-# that slot -- which is what gives us K records per solve.
+# Concept: synthesized member. There is no member CSV -- the ontology
+# defines a single placeholder member directly via `Member.new(id=1)`.
+# Every decision-valued property below describes that one slot, and each
+# solution returned by the solver is a different feasible filling of it
+# -- which is what gives us K records per solve.
 Member = model.Concept("Member", identify_by={"id": Integer})
 model.define(Member.new(id=1))
 
@@ -254,9 +253,9 @@ si.display()
 # ICs to `problem.verify()` returns silently-OK without actually
 # checking them, so the convention is that they must NOT be passed.
 # The CFD and network-attribution invariants are visible directly in
-# the inspection output below: every record's age_years vs plan_type
-# and every record's plan.network_id vs provider.network_id are printed
-# side-by-side.
+# the inspection output below: every record prints `age_years` next to
+# `plan_type` (CFD check) and `plan_network` next to `provider_network`
+# (network-attribution check) so a reader can verify by eye.
 if si.num_points is None or si.num_points == 0:
     print(
         "\nNo feasible eligibility records under the encoded rules. "
@@ -277,7 +276,6 @@ if si.num_points is None or si.num_points == 0:
 # reflects only the first solution; for multi-solution output we always
 # go through `.values(...)`.
 
-print(f"\nGenerated member records (up to {MAX_RECORDS} per run):")
 sol_idx = Integer.ref()
 ab_v = Integer.ref()
 pid_v = Integer.ref()
@@ -285,17 +283,26 @@ prv_v = Integer.ref()
 bucket_ref = AgeBucket.ref()
 plan_ref = Plan.ref()
 provider_ref = Provider.ref()
-model.select(
-    sol_idx.alias("solution"),
-    bucket_ref.age_years.alias("age_years"),
-    plan_ref.plan_type.alias("plan_type"),
-    plan_ref.network_id.alias("network"),
-    provider_ref.name.alias("provider"),
-).where(
-    age_bucket_var.values(sol_idx, ab_v),
-    plan_id_var.values(sol_idx, pid_v),
-    provider_id_var.values(sol_idx, prv_v),
-    bucket_ref.id == ab_v,
-    plan_ref.id == pid_v,
-    provider_ref.id == prv_v,
-).inspect()
+records_df = (
+    model.select(
+        sol_idx.alias("solution"),
+        bucket_ref.age_years.alias("age_years"),
+        plan_ref.plan_type.alias("plan_type"),
+        plan_ref.network_id.alias("plan_network"),
+        provider_ref.network_id.alias("provider_network"),
+        provider_ref.name.alias("provider"),
+    )
+    .where(
+        age_bucket_var.values(sol_idx, ab_v),
+        plan_id_var.values(sol_idx, pid_v),
+        provider_id_var.values(sol_idx, prv_v),
+        bucket_ref.id == ab_v,
+        plan_ref.id == pid_v,
+        provider_ref.id == prv_v,
+    )
+    .to_df()
+    .sort_values("solution")
+    .reset_index(drop=True)
+)
+print(f"\nGenerated member records (up to {MAX_RECORDS} per run):")
+print(records_df.to_string(index=False))
