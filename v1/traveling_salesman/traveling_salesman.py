@@ -22,21 +22,27 @@ from pandas import read_csv
 from relationalai.semantics import Float, Integer, Model, count, sum
 from relationalai.semantics.reasoners.prescriptive import Problem
 
-model = Model("tsp")
+# --------------------------------------------------
+# Configure inputs
+# --------------------------------------------------
+
+DATA_DIR = Path(__file__).parent / "data"
 
 # --------------------------------------------------
 # Define semantic model & load data
 # --------------------------------------------------
 
-data_dir = Path(__file__).parent / "data"
+model = Model("tsp")
 
-# Concept: directed edges with distances between nodes
+# Edge concept: directed edges with distances between nodes.
 Edge = model.Concept("Edge", identify_by={"i": Integer, "j": Integer})
 Edge.dist = model.Property(f"{Edge} has {Float:dist}")
-edge_csv = read_csv(data_dir / "edges.csv")
+
+# Load edges from CSV.
+edge_csv = read_csv(DATA_DIR / "edges.csv")
 model.define(Edge.new(model.data(edge_csv).to_schema()))
 
-# Rule: nodes derived from edge endpoints
+# Node concept: derived from edge endpoints.
 Node = model.Concept("Node", identify_by={"v": Integer})
 model.define(Node.new(v=Edge.i))
 
