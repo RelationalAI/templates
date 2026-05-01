@@ -165,7 +165,7 @@ Test-set RMSE: 0.1386
 
 Two ways to feed this template:
 
-1. **Bundled (light)** — `data/telco_mini/` ships with the template ZIP. ~1,200 subscribers + ~6,000 calls + 1,200 plans. Synthetic, derived from RelationalAI's internal `DEMO_TELCO.RAW` demo schema with PII columns (`FIRST_NAME`, `LAST_NAME`, `EMAIL`, `PHONE`) dropped. No external setup. **Quickstart uses this.**
+1. **Bundled (light)** — `data/telco_mini/` ships with the template ZIP. ~1,200 subscribers + ~6,000 calls + 1,200 plans. Demo data. The four identifier columns (`FIRST_NAME`, `LAST_NAME`, `EMAIL`, `PHONE`) are dropped at load time as unused features. No external setup. **Quickstart uses this.**
 2. **Bring-your-own** — replace the four CSVs under `data/telco_mini/` with your own subscriber / plan / CDR exports (same column names) and re-run. There is no widely-known public telco churn dataset that includes a caller→callee call graph (the popular [IBM Telco Customer Churn](https://www.kaggle.com/datasets/blastchar/telco-customer-churn) benchmark is tabular only — no calls, no graph), so the GNN graph path requires real CDR data or a synthetic call-graph generator. See [Run on your own Snowflake data](#run-on-your-own-snowflake-data) for the loading pattern.
 
 About the bundled mini set:
@@ -330,7 +330,7 @@ The bundled CSVs are loaded via `model.data(df)` for a no-setup local demo. To r
    plan_df = session.sql("SELECT * FROM YOUR_DB.RAW.PLANS_CONTRACTS").to_pandas()
    calls_df = session.sql("SELECT * FROM YOUR_DB.RAW.CALL_DETAIL_RECORDS").to_pandas()
    ```
-2. Drop the PII / unused columns the same way (`FIRST_NAME`, etc.) — or omit them at the SQL level.
+2. Drop unused identifier columns the same way (`FIRST_NAME`, etc.) — or omit them at the SQL level. If your real source has actual PII, drop it at the SQL level before loading.
 3. Bump the GNN's compute (`device="cuda"` and a GPU-backed RAI engine) if the call graph has more than ~50K subscribers; CPU works for ~1-10K subscribers.
 
 > [!NOTE]

@@ -16,12 +16,12 @@ Stages:
   4. Reporting -- top-N at-risk subscribers per segment for retention
                   targeting.
 
-The CHURN_RISK_SCORE target is a continuous 0-1 risk score sourced from the
-existing analyst-facing risk model in DEMO_TELCO.RAW.SUBSCRIBERS. Customers
-adapting this template would replace it with their own labelled churn
-ground-truth (binary outcome) -- the regression scaffold transfers directly
-to a binary_classification task by switching `task_type` and the target
-type. See README "Customize this template" for the swap.
+The CHURN_RISK_SCORE target is a continuous 0-1 risk score representing an
+analyst-facing churn-risk estimate per subscriber. Customers adapting this
+template would replace it with their own labelled churn ground-truth (binary
+outcome) -- the regression scaffold transfers directly to a
+binary_classification task by switching `task_type` and the target type.
+See README "Customize this template" for the swap.
 
 Run:
     python subscriber_retention.py
@@ -78,8 +78,7 @@ calls_df = pd.read_csv(
     DATA_DIR / "call_detail_records.csv", parse_dates=["CALL_START_TIME"]
 )
 
-# Drop PII columns before bundling into the feature table -- not useful as
-# features, and we don't want them exposed in template-bundled CSVs.
+# Drop unused identifier columns -- not useful as features.
 sub_df = sub_df.drop(columns=["FIRST_NAME", "LAST_NAME", "EMAIL", "PHONE"])
 
 # Each subscriber has exactly one active contract; left-join plan attrs onto
