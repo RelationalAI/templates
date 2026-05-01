@@ -257,15 +257,21 @@ si.display()
 # `plan_type` (CFD check) and `plan_network` next to `provider_network`
 # (network-attribution check) so a reader can verify by eye.
 if si.num_points is None or si.num_points == 0:
-    print(
-        "\nThe solver returned no eligibility records. If the solve status above is "
-        "INFEASIBLE the reference data is over-constrained -- check the troubleshooting "
-        "section in the README for likely causes (mismatched plan/provider networks, "
-        "or no plan/provider pair on the side of the senior threshold that contains "
-        "every age bucket). If the status is UNKNOWN or TIME_LIMIT the search budget "
-        "expired before a record was found -- raise `time_limit_sec` or shrink the "
-        "decision domains and rerun."
-    )
+    status = (si.termination_status or "").upper()
+    if status == "INFEASIBLE":
+        print(
+            "\nThe reference data is over-constrained: no eligibility record satisfies "
+            "every IC. Check the troubleshooting section in the README for likely causes "
+            "(mismatched plan/provider networks, or no plan/provider pair on the side of "
+            "the senior threshold that contains every age bucket)."
+        )
+    else:
+        print(
+            f"\nThe solver returned no records but did not prove infeasibility "
+            f"(termination_status={status or 'unknown'!s}). The search budget likely "
+            "expired before a record was found -- raise `time_limit_sec` or shrink the "
+            "decision domains and rerun."
+        )
 
 # --------------------------------------------------
 # Inspect every generated member record
