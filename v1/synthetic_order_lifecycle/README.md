@@ -99,9 +99,10 @@ The same pattern applies to any test-data-generation problem where rows have to 
    ```text
    Solve result:
    • status: OPTIMAL
-   • solve time: 0.18s
+   • objective: 0
+   • solve time: 1.11s
    • num_points: 1
-   • solver: MiniZinc_nothing
+   • solver: MiniZinc_unknown
 
    Generated event trace (one row per slot):
        order_id symbol  event_id  ts_ms  is_place  is_modify  is_cancel  is_fill  qty  tick_price  venue
