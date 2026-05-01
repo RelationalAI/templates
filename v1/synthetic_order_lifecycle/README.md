@@ -41,7 +41,7 @@ The same pattern applies to any test-data-generation problem where rows have to 
 - An auxiliary `fill_qty` decision channeled to `qty when is_fill else 0` via two `implies` so the per-order fill-conservation aggregate stays linear
 - Value-pinning: PLACE event's `qty` and `tick_price` pinned to the order's `original_qty` and `original_tick_price` via `implies`
 - Venue eligibility encoded as a relationship lookup against the event's chosen `venue_id`
-- Post-solve verification via `problem.verify()` confirming every re-evaluable constraint in the returned trace (`implies`-bodied and `all_different`-bodied ICs are solver-side only and intentionally excluded — see step 5)
+- Post-solve verification via `problem.verify()` confirming every re-evaluable constraint in the returned trace (`implies`-bodied and `all_different`-bodied ICs are solver-side only and intentionally excluded -- see step 5)
 
 ## What's included
 
@@ -163,12 +163,10 @@ place_first_ic = model.where(
 Distinctness within a group is one global constraint, not pairwise `!=`. `all_different.per(...)` lowers to MiniZinc's native alldifferent propagator:
 
 ```python
-distinct_ts_ic = model.require(
-    all_different(OrderEvent.ts_ms).per(OrderEvent.order)
-)
+distinct_ts_ic = model.require(all_different(OrderEvent.ts_ms).per(OrderEvent.order))
 ```
 
-**4. Walk relationships in line for cross-table rules.** Reading the order's `original_qty` from an event, or matching disallowed venue pairs through the order's symbol — no intermediate refs needed:
+**4. Walk relationships in line for cross-table rules.** Reading the order's `original_qty` from an event, or matching disallowed venue pairs through the order's symbol -- no intermediate refs needed:
 
 ```python
 qty_upper_ic = model.require(OrderEvent.qty <= OrderEvent.order.original_qty)
@@ -192,13 +190,19 @@ place_price_match_ic = model.require(
 )
 ```
 
-**5. Solve and verify.** `implies` and `all_different` are solver-only. They go to `satisfy()` but must NOT be passed to `verify()` — the relational engine cannot re-evaluate wire-format constraint relations and would return silently-OK regardless of whether the constraint actually holds. The remaining ICs are plain relational arithmetic and ARE re-evaluated by `verify()`:
+**5. Solve and verify.** `implies` and `all_different` are solver-only. They go to `satisfy()` but must NOT be passed to `verify()` -- the relational engine cannot re-evaluate wire-format constraint relations and would return silently-OK regardless of whether the constraint actually holds. The remaining ICs are plain relational arithmetic and ARE re-evaluated by `verify()`:
 
 ```python
 problem.solve("minizinc", time_limit_sec=60)
+problem.solve_info().display()
+
 problem.verify(
-    type_sum_ic, exactly_one_place_ic, at_most_one_cancel_ic,
-    qty_upper_ic, venue_ok_ic, fill_sum_ic,
+    type_sum_ic,
+    exactly_one_place_ic,
+    at_most_one_cancel_ic,
+    qty_upper_ic,
+    venue_ok_ic,
+    fill_sum_ic,
 )
 model.require(problem.termination_status() == "OPTIMAL")
 ```

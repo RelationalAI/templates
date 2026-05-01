@@ -1,13 +1,14 @@
 """Synthetic Order Lifecycle (constrained generation) template.
 
-Pre-allocate fixed (order, event-slot) rows; the solver decides each event's
-type (PLACE / MODIFY / CANCEL / FILL), timestamp, venue, quantity, and tick
-price under MiFID II / Reg NMS-flavour sequencing rules: PLACE first, nothing
-after CANCEL, exactly one PLACE per order, fill-quantity conservation across
-the FILL events, venue eligibility per symbol. Solve as constraint
-satisfaction (MiniZinc) and inspect the generated trace. All decisions are
-integer: prices are integer ticks (1c, so 17500 reads as $175.00), times are
-integer milliseconds, quantities are integer shares.
+This script demonstrates a CSP-based synthetic order-lifecycle trace generator in RelationalAI:
+
+- Pre-allocate (order, event-slot) rows and load order, symbol, and venue reference data from CSV.
+- Model each event slot as a decision over type (PLACE / MODIFY / CANCEL / FILL), timestamp, venue, quantity, and tick price.
+- Encode MiFID II / Reg NMS-flavour sequencing rules: PLACE first, nothing after CANCEL, exactly one PLACE per order, fill-quantity conservation, venue eligibility per symbol.
+- Solve as constraint satisfaction (MiniZinc) and verify the relational arithmetic ICs against the returned trace.
+
+All decisions are integer: prices are integer ticks (1c, so 17500 reads as
+$175.00), times are integer milliseconds, quantities are integer shares.
 
 Run:
     `python synthetic_order_lifecycle.py`
@@ -20,7 +21,8 @@ Output:
 from pathlib import Path
 
 from pandas import DataFrame, read_csv
-from relationalai.semantics import Integer, Model, String, sum
+from relationalai.semantics import Integer, Model, String
+from relationalai.semantics import sum as rai_sum
 from relationalai.semantics.reasoners.prescriptive import Problem, all_different, implies
 
 # --------------------------------------------------
@@ -153,11 +155,11 @@ type_sum_ic = model.require(
 problem.satisfy(type_sum_ic)
 
 # Exactly one PLACE event per order.
-exactly_one_place_ic = model.require(sum(OrderEvent.is_place).per(OrderEvent.order) == 1)
+exactly_one_place_ic = model.require(rai_sum(OrderEvent.is_place).per(OrderEvent.order) == 1)
 problem.satisfy(exactly_one_place_ic)
 
 # At most one CANCEL event per order.
-at_most_one_cancel_ic = model.require(sum(OrderEvent.is_cancel).per(OrderEvent.order) <= 1)
+at_most_one_cancel_ic = model.require(rai_sum(OrderEvent.is_cancel).per(OrderEvent.order) <= 1)
 problem.satisfy(at_most_one_cancel_ic)
 
 # Distinct ts_ms within an order (every event has its own moment).
@@ -171,18 +173,16 @@ B = OrderEvent.ref()
 
 # PLACE-first: if A is a PLACE event, A.ts_ms < B.ts_ms for every other
 # event B in the same order.
-place_first_ic = model.where(
-    A.order == B.order,
-    A.event_id != B.event_id,
-).require(implies(A.is_place == 1, A.ts_ms < B.ts_ms))
+place_first_ic = model.where(A.order == B.order, A.event_id != B.event_id).require(
+    implies(A.is_place == 1, A.ts_ms < B.ts_ms)
+)
 problem.satisfy(place_first_ic)
 
 # Nothing-after-CANCEL: if A is a CANCEL event, A.ts_ms > B.ts_ms for every
 # other event B in the same order.
-no_after_cancel_ic = model.where(
-    A.order == B.order,
-    A.event_id != B.event_id,
-).require(implies(A.is_cancel == 1, A.ts_ms > B.ts_ms))
+no_after_cancel_ic = model.where(A.order == B.order, A.event_id != B.event_id).require(
+    implies(A.is_cancel == 1, A.ts_ms > B.ts_ms)
+)
 problem.satisfy(no_after_cancel_ic)
 
 # Quantity bound: every event's qty <= the order's original_qty.
@@ -208,9 +208,9 @@ problem.satisfy(place_price_match_ic)
 # Venue eligibility: chosen venue must not match any disallowed pair for the
 # order's symbol. The chain `OrderEvent.order.symbol.id` walks event -> order
 # -> symbol and joins on the disallowed pair's symbol_id.
-venue_ok_ic = model.where(
-    OrderEvent.order.symbol.id(NotAllowedSymbolVenue.symbol_id),
-).require(NotAllowedSymbolVenue.venue_id != OrderEvent.venue_id)
+venue_ok_ic = model.where(OrderEvent.order.symbol.id(NotAllowedSymbolVenue.symbol_id)).require(
+    NotAllowedSymbolVenue.venue_id != OrderEvent.venue_id
+)
 problem.satisfy(venue_ok_ic)
 
 # Channel fill_qty to (qty when is_fill else 0).
@@ -225,7 +225,7 @@ problem.satisfy(fill_qty_zero_off_ic)
 # Quantity conservation: total filled quantity across an order's FILL events
 # cannot exceed the original_qty. Linear in fill_qty.
 fill_sum_ic = model.require(
-    sum(OrderEvent.fill_qty).per(OrderEvent.order) <= OrderEvent.order.original_qty
+    rai_sum(OrderEvent.fill_qty).per(OrderEvent.order) <= OrderEvent.order.original_qty
 )
 problem.satisfy(fill_sum_ic)
 
@@ -296,5 +296,5 @@ print("\nFilled quantity per order (cannot exceed Order.original_qty):")
 model.select(
     Order.id.alias("order_id"),
     Order.original_qty.alias("original_qty"),
-    sum(OrderEvent.fill_qty).per(Order).alias("filled_qty"),
+    rai_sum(OrderEvent.fill_qty).per(Order).alias("filled_qty"),
 ).where(OrderEvent.order(Order)).inspect()
