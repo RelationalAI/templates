@@ -144,56 +144,49 @@ AgeBucket = model.Concept("AgeBucket", identify_by={"id": Integer})
 AgeBucket.age_years = model.Property(f"{AgeBucket} has {Integer:age_years}")
 ```
 
-**2. Forbidden-pair encoding for CFDs.** The Medicare-Advantage CFD has two arms: senior implies Medicare, non-senior implies non-Medicare. Each arm is encoded as a *forbidden pair* iteration. The where clause filters reference-data tuples at relational time (here, all `(Plan, AgeBucket)` pairs that violate the arm); the implies inside the require gates on the decision-valued match. This sidesteps the rewriter's restriction on decision variables in `where` clauses (`where(P.id == Member.plan_id)` would not parse; iteration over P and AB happens at relational time, the decision check goes inside `implies`):
+**2. Forbidden-pair encoding for CFDs.** The Medicare-Advantage CFD has two arms: senior implies Medicare, non-senior implies non-Medicare. Each arm is encoded as a *forbidden pair* iteration. The where clause filters reference-data tuples at relational time (here, all `(Plan, AgeBucket)` pairs that violate the arm); the implies inside the require gates on the decision-valued match. This sidesteps the rewriter's restriction on decision variables in `where` clauses (`where(Plan.id == Member.plan_id)` would not parse; iteration over `Plan` and `AgeBucket` happens at relational time, the decision check goes inside `implies`):
 
 ```python
-P = Plan.ref()
-AB = AgeBucket.ref()
 senior_must_medicare_ic = model.where(
-    P.plan_type != "MedicareAdvantage",
-    AB.age_years >= SENIOR_THRESHOLD_YEARS,
+    Plan.plan_type != "MedicareAdvantage",
+    AgeBucket.age_years >= SENIOR_THRESHOLD_YEARS,
 ).require(
     implies(
-        Member.age_bucket_id == AB.id,
-        Member.plan_id != P.id,
+        Member.age_bucket_id == AgeBucket.id,
+        Member.plan_id != Plan.id,
     )
 )
 ```
 
-The non-senior arm uses the same shape with `P.plan_type == "MedicareAdvantage"` and `AB.age_years < SENIOR_THRESHOLD_YEARS` in the where.
+The non-senior arm uses the same shape with `Plan.plan_type == "MedicareAdvantage"` and `AgeBucket.age_years < SENIOR_THRESHOLD_YEARS` in the where.
 
 **3. PCP-network attribution as forbidden cross-network pairs.** The chosen provider's network must equal the chosen plan's network. Same forbidden-pair shape: iterate over `(Plan, Provider)` tuples in *different* networks at relational time, and forbid that combination if the member picks both:
 
 ```python
-P = Plan.ref()
-PR = Provider.ref()
-network_match_ic = model.where(P.network_id != PR.network_id).require(
-    implies(Member.plan_id == P.id, Member.provider_id != PR.id)
+network_match_ic = model.where(Plan.network_id != Provider.network_id).require(
+    implies(Member.plan_id == Plan.id, Member.provider_id != Provider.id)
 )
 ```
 
-**4. Multi-solution enumeration via `Variable.values(solution_index, value)`.** Capturing the variable subconcept from `solve_for(...)` exposes a `.values(sol_idx, val)` relationship that indexes the per-solution outputs. Joining the three decision variables on a shared `sol_idx` reconstructs each record; reference-data lookups (`bucket_ref.age_years`, `plan_ref.plan_type`, `provider_ref.name`) follow naturally:
+**4. Multi-solution enumeration via `Variable.values(solution_index, value)`.** Capturing the variable subconcept from `solve_for(...)` exposes a `.values(sol_idx, val)` relationship that indexes the per-solution outputs. Binding the value slot directly to a reference Concept's `.id` walks the chosen ID back to that record's columns in one step:
 
 ```python
 problem.solve("minizinc", time_limit_sec=60, solution_limit=MAX_RECORDS)
 
 sol_idx = Integer.ref()
-bucket_ref = AgeBucket.ref()
-plan_ref = Plan.ref()
-provider_ref = Provider.ref()
 records_df = (
     model.select(
         sol_idx.alias("solution"),
-        bucket_ref.age_years.alias("age_years"),
-        plan_ref.plan_type.alias("plan_type"),
-        plan_ref.network_id.alias("plan_network"),
-        provider_ref.network_id.alias("provider_network"),
-        provider_ref.name.alias("provider"),
+        AgeBucket.age_years.alias("age_years"),
+        Plan.plan_type.alias("plan_type"),
+        Plan.network_id.alias("plan_network"),
+        Provider.network_id.alias("provider_network"),
+        Provider.name.alias("provider"),
     )
     .where(
-        age_bucket_var.values(sol_idx, bucket_ref.id),
-        plan_id_var.values(sol_idx, plan_ref.id),
-        provider_id_var.values(sol_idx, provider_ref.id),
+        age_bucket_var.values(sol_idx, AgeBucket.id),
+        plan_id_var.values(sol_idx, Plan.id),
+        provider_id_var.values(sol_idx, Provider.id),
     )
     .to_df()
     .sort_values("solution")

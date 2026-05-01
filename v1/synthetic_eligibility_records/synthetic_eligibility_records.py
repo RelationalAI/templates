@@ -189,16 +189,12 @@ provider_id_var = problem.solve_for(
 # Constraints
 # --------------------------------------------------
 
-P = Plan.ref()
-PR = Provider.ref()
-AB = AgeBucket.ref()
-
 # PCP-network attribution. The chosen provider's network must equal the
 # chosen plan's network. Encoded as a forbidden-pair iteration: for every
 # (Plan, Provider) pair in *different* networks, if the member picks that
 # plan, then the member must not pick that provider.
-network_match_ic = model.where(P.network_id != PR.network_id).require(
-    implies(Member.plan_id == P.id, Member.provider_id != PR.id)
+network_match_ic = model.where(Plan.network_id != Provider.network_id).require(
+    implies(Member.plan_id == Plan.id, Member.provider_id != Provider.id)
 )
 problem.satisfy(network_match_ic)
 
@@ -207,12 +203,12 @@ problem.satisfy(network_match_ic)
 # Encoded as: for every (senior bucket, non-Medicare plan) pair in
 # reference data, forbid the (member age_bucket, member plan) combination.
 senior_must_medicare_ic = model.where(
-    P.plan_type != "MedicareAdvantage",
-    AB.age_years >= SENIOR_THRESHOLD_YEARS,
+    Plan.plan_type != "MedicareAdvantage",
+    AgeBucket.age_years >= SENIOR_THRESHOLD_YEARS,
 ).require(
     implies(
-        Member.age_bucket_id == AB.id,
-        Member.plan_id != P.id,
+        Member.age_bucket_id == AgeBucket.id,
+        Member.plan_id != Plan.id,
     )
 )
 problem.satisfy(senior_must_medicare_ic)
@@ -222,12 +218,12 @@ problem.satisfy(senior_must_medicare_ic)
 # Medicare-Advantage. Encoded as: for every (non-senior bucket, Medicare
 # plan) pair, forbid the combination.
 non_senior_no_medicare_ic = model.where(
-    P.plan_type == "MedicareAdvantage",
-    AB.age_years < SENIOR_THRESHOLD_YEARS,
+    Plan.plan_type == "MedicareAdvantage",
+    AgeBucket.age_years < SENIOR_THRESHOLD_YEARS,
 ).require(
     implies(
-        Member.age_bucket_id == AB.id,
-        Member.plan_id != P.id,
+        Member.age_bucket_id == AgeBucket.id,
+        Member.plan_id != Plan.id,
     )
 )
 problem.satisfy(non_senior_no_medicare_ic)
@@ -267,30 +263,25 @@ if si.num_points is None or si.num_points == 0:
 # --------------------------------------------------
 
 # `Variable.values(solution_index, value)` indexes the solver's outputs
-# across every returned solution. Joining the three decision variables
-# on a shared solution index reconstructs each record. Reference-data
-# refs (`bucket_ref`, `plan_ref`, `provider_ref`) walk the chosen IDs
-# back to their reference rows for display. The populated property
-# reflects only the first solution; for multi-solution output we always
-# go through `.values(...)`.
+# across every returned solution. Binding the value slot to a reference
+# Concept's `.id` walks the chosen ID back to that record's columns for
+# display, in one step. The populated property reflects only the first
+# solution; for multi-solution output we always go through `.values(...)`.
 
 sol_idx = Integer.ref()
-bucket_ref = AgeBucket.ref()
-plan_ref = Plan.ref()
-provider_ref = Provider.ref()
 records_df = (
     model.select(
         sol_idx.alias("solution"),
-        bucket_ref.age_years.alias("age_years"),
-        plan_ref.plan_type.alias("plan_type"),
-        plan_ref.network_id.alias("plan_network"),
-        provider_ref.network_id.alias("provider_network"),
-        provider_ref.name.alias("provider"),
+        AgeBucket.age_years.alias("age_years"),
+        Plan.plan_type.alias("plan_type"),
+        Plan.network_id.alias("plan_network"),
+        Provider.network_id.alias("provider_network"),
+        Provider.name.alias("provider"),
     )
     .where(
-        age_bucket_var.values(sol_idx, bucket_ref.id),
-        plan_id_var.values(sol_idx, plan_ref.id),
-        provider_id_var.values(sol_idx, provider_ref.id),
+        age_bucket_var.values(sol_idx, AgeBucket.id),
+        plan_id_var.values(sol_idx, Plan.id),
+        provider_id_var.values(sol_idx, Provider.id),
     )
     .to_df()
     .sort_values("solution")
