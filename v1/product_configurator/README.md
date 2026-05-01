@@ -85,7 +85,7 @@ The configurator scenario here is automotive trim, drawn from the public Renault
    python -m pip install .
    ```
 
-4. Configure:
+4. Configure (prompts for Snowflake account, role, and profile name):
    ```bash
    rai init
    ```
@@ -95,7 +95,7 @@ The configurator scenario here is automotive trim, drawn from the public Renault
    python product_configurator.py
    ```
 
-6. Expected output. With `MAX_CONFIGURATIONS = 100` and `TARGET_REGION = "EU"`, the solver exhausts the search and returns every distinct feasible build (status `OPTIMAL`, 63 builds). Builds are pivoted to one row per configuration, sorted ascending by total dollars. The block below is **abridged for brevity** (8 cheapest + 8 most-expensive). The `solution` column is the solver's internal index, not a sequential ranking, and `objective: 0` is reported by convention because this is pure constraint satisfaction with no minimize/maximize call. Exact wall times and the solver build string vary across RAI Native App versions:
+6. Expected output. With `MAX_CONFIGURATIONS = 100` and `TARGET_REGION = "EU"`, the solver exhausts the search and returns every distinct feasible build (status `OPTIMAL`, 63 builds). The script prints all 63 rows, pivoted to one row per configuration, sorted ascending by total dollars; the block below is **abridged** to the 8 cheapest and 8 most-expensive. The `solution` column is the solver's internal index, not a sequential ranking, and `objective: 0` is reported by convention because this is pure constraint satisfaction with no minimize/maximize call. Exact wall times and the solver build string vary across RAI Native App versions:
    ```text
    Solve result:
    • status: OPTIMAL
@@ -156,7 +156,7 @@ Option.slot = model.Property(f"{Option} is in {Slot:slot}")
 Option.allowed_in = model.Relationship(f"{Option} is allowed in {String:region}")
 ```
 
-**2. Define the implies and excludes rule tables.** Each rule is a concept identified by the pair of option IDs it links. `Implies` is directional (`head_id` -> `tail_id`) -- named to stay distinct from `model.require(...)`, which is the constraint method, not the rule data. `Excludes` is symmetric (`left_id`, `right_id`). The keys are deliberately dissimilar: PyRel emits a "potential relationship typo" warning when two compound-key names differ in a single character (e.g. `option_a_id` / `option_b_id`):
+**2. Define the implies and excludes rule tables.** Each rule is a concept identified by the pair of option IDs it links. `Implies` is directional (`head_id` -> `tail_id`) -- holding the rule *data*; the constraint *method* `model.require(...)` enforces them. `Excludes` is symmetric (`left_id`, `right_id`). The keys are deliberately dissimilar: PyRel emits a "potential relationship typo" warning when two compound-key names differ in a single character (e.g. `option_a_id` / `option_b_id`):
 
 ```python
 Implies = model.Concept(
@@ -260,30 +260,6 @@ print(build_view.to_string(index=False))
 ## Troubleshooting
 
 <details>
-  <summary>Solver returns INFEASIBLE</summary>
-
-- Lower the price ceiling far enough and no feasible build exists. Raise `PRICE_CEILING_CENTS` until the solver returns a configuration.
-- Conflicting implies / excludes rules can render the model infeasible. For example, "A implies B" together with "A excludes B" makes A unselectable.
-
-</details>
-
-<details>
-  <summary>ValueError: No options are allowed in region X for slot(s) [...]</summary>
-
-- The pre-solve catalog check found a slot with zero region-allowed options. The exactly-one IC is scoped via `model.where(Option.allowed_in(TARGET_REGION), Option.slot(Slot))`, so it would not bind on the empty slot and the solver could return a "build" that is missing that slot entirely.
-- Allow at least one option per slot for `TARGET_REGION` in `data/regional_rules.csv`, or remove the slot from `data/slots.csv` if the slot really does not exist in this market.
-
-</details>
-
-<details>
-  <summary>ValueError: implies rules whose target option is not allowed in the region</summary>
-
-- The pre-solve catalog check found an implies rule (A -> B) where the head option A is allowed in the region but the tail option B is not. The implies IC filters both A and B to `TARGET_REGION`, so the IC would not bind for this rule and A could be selected even though its tail B does not exist in the region.
-- Either ban A in this region (drop the row for `(option_id=A, region=TARGET_REGION)` from `data/regional_rules.csv`), or allow B in this region (add `(option_id=B, region=TARGET_REGION)`).
-
-</details>
-
-<details>
   <summary>Import error for <code>relationalai</code></summary>
 
 - Confirm your virtual environment is active: `which python` should point to `.venv`.
@@ -304,6 +280,30 @@ print(build_view.to_string(index=False))
 
 - This template uses the MiniZinc constraint solver. Ensure the RAI Native App version supports MiniZinc.
 - HiGHS is not appropriate here -- the model is integer feature-model configuration, not LP/MILP.
+
+</details>
+
+<details>
+  <summary>Solver returns INFEASIBLE</summary>
+
+- Lower the price ceiling far enough and no feasible build exists. Raise `PRICE_CEILING_CENTS` until the solver returns a configuration.
+- Conflicting implies / excludes rules can render the model infeasible. For example, "A implies B" together with "A excludes B" makes A unselectable.
+
+</details>
+
+<details>
+  <summary>ValueError: No options are allowed in region X for slot(s) [...]</summary>
+
+- The pre-solve catalog check found a slot with zero region-allowed options. The exactly-one IC is scoped via `model.where(Option.allowed_in(TARGET_REGION), Option.slot(Slot))`, so it would not bind on the empty slot and the solver could return a "build" that is missing that slot entirely.
+- Allow at least one option per slot for `TARGET_REGION` in `data/regional_rules.csv`, or remove the slot from `data/slots.csv` if the slot really does not exist in this market.
+
+</details>
+
+<details>
+  <summary>ValueError: implies rules whose target option is not allowed in the region</summary>
+
+- The pre-solve catalog check found an implies rule (A -> B) where the head option A is allowed in the region but the tail option B is not. The implies IC filters both A and B to `TARGET_REGION`, so the IC would not bind for this rule and A could be selected even though its tail B does not exist in the region.
+- Either ban A in this region (drop the row for `(option_id=A, region=TARGET_REGION)` from `data/regional_rules.csv`), or allow B in this region (add `(option_id=B, region=TARGET_REGION)`).
 
 </details>
 
