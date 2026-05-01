@@ -260,8 +260,8 @@ if si.num_points is None or si.num_points == 0:
     print(
         "\nNo feasible eligibility records under the encoded rules. "
         "Check the troubleshooting section in the README for likely causes "
-        "(over-constrained reference data, mismatched plan/provider networks, "
-        "or all age buckets on one side of the senior threshold)."
+        "(over-constrained reference data, or no plan/provider pair matches "
+        "any age bucket once the CFD and network-attribution rules are applied)."
     )
 
 # --------------------------------------------------
