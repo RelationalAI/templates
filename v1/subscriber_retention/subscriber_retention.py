@@ -53,6 +53,14 @@ VAL_FRAC = 0.15
 
 TOP_N_PER_SEGMENT = 5
 
+# RelationalAI's predictive reasoner writes GNN experiment artifacts to a
+# Snowflake schema that the RELATIONALAI native app must have write access
+# to. Set EXP_DATABASE to a database you own; the schema EXPERIMENTS will
+# be created on first run. See README "Prerequisites" for the one-time
+# setup DDL.
+EXP_DATABASE = "TELCO_ENRICHMENT"
+EXP_SCHEMA = "EXPERIMENTS"
+
 # --------------------------------------------------
 # Define semantic model & load data
 # --------------------------------------------------
@@ -238,8 +246,8 @@ print("Stage 3: Predictive -- subscriber churn-risk regression GNN (CPU)")
 print("=" * 60)
 
 gnn = GNN(
-    exp_database="DEMO_TELCO",
-    exp_schema="EXPERIMENTS",
+    exp_database=EXP_DATABASE,
+    exp_schema=EXP_SCHEMA,
     graph=call_graph,
     property_transformer=pt,
     train=Train,

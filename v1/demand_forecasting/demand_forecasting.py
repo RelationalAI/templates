@@ -49,6 +49,14 @@ DATA_DIR = Path(__file__).parent / "data" / "favorita_mini"
 TEST_DAYS = 60   # last 60 days as test window
 VAL_DAYS = 60    # 60 days before test as validation
 
+# RelationalAI's predictive reasoner writes GNN experiment artifacts to a
+# Snowflake schema that the RELATIONALAI native app must have write access
+# to. Set EXP_DATABASE to a database you own; the schema EXPERIMENTS will
+# be created on first run. See README "Prerequisites" for the one-time
+# setup DDL.
+EXP_DATABASE = "FAVORITA_MINI"
+EXP_SCHEMA = "EXPERIMENTS"
+
 # --------------------------------------------------
 # Define semantic model & load data
 # --------------------------------------------------
@@ -118,7 +126,13 @@ pt = PropertyTransformer(
     continuous=[Store.cluster],
     integer=[Item.item_class],
     datetime=[Sale.date],
-    time_col=[Sale.date],
+    # NOTE: time_col disabled. The PyRel 1.0.x predictive backend has a known
+    # DateTime/VString signature mismatch when has_time_column=True is used
+    # with a date column at scale; the workaround is to keep the date as a
+    # plain datetime feature (above) and disable temporal indexing. The
+    # split is still temporal — see the train_mask / val_mask / test_mask
+    # assignments below — so we still train on the past and evaluate on
+    # the future, just without temporal-strategy aggregation in the GNN.
 )
 
 # --------------------------------------------------
@@ -135,9 +149,9 @@ train_mask = sales_df["date"] < val_start
 val_mask = (sales_df["date"] >= val_start) & (sales_df["date"] < test_start)
 test_mask = sales_df["date"] >= test_start
 
-train_df = sales_df.loc[train_mask, ["sale_id", "date", "unit_sales"]].reset_index(drop=True)
-val_df = sales_df.loc[val_mask, ["sale_id", "date", "unit_sales"]].reset_index(drop=True)
-test_df = sales_df.loc[test_mask, ["sale_id", "date"]].reset_index(drop=True)
+train_df = sales_df.loc[train_mask, ["sale_id", "unit_sales"]].reset_index(drop=True)
+val_df = sales_df.loc[val_mask, ["sale_id", "unit_sales"]].reset_index(drop=True)
+test_df = sales_df.loc[test_mask, ["sale_id"]].reset_index(drop=True)
 
 print(
     f"Stores: {len(stores_df)}  Items: {len(items_df)}  Sales: {len(sales_df):,}"
@@ -161,19 +175,21 @@ model.define(TrainTable.new(model.data(train_df).to_schema()))
 model.define(ValTable.new(model.data(val_df).to_schema()))
 model.define(TestTable.new(model.data(test_df).to_schema()))
 
-# Regression-with-time task relationships per the rai-predictive-modeling
-# skill. Sale is the prediction unit; date is the time column; unit_sales is
-# the target.
-Train = Relationship(f"{Sale} at {Any:date} has {Any:value}")
-model.define(Train(Sale, TrainTable.date, TrainTable.unit_sales)).where(
+# Regression task relationships. The split was already done temporally in
+# pandas above (train < val_start, val < test_start, test >= test_start), so
+# the GNN trains on the past and evaluates on the future; we just don't pass
+# the time column into the GNN itself due to the SDK limitation noted at
+# `time_col=` above.
+Train = Relationship(f"{Sale} has {Any:value}")
+model.define(Train(Sale, TrainTable.unit_sales)).where(
     Sale.sale_id == TrainTable.sale_id,
 )
-Val = Relationship(f"{Sale} at {Any:date} has {Any:value}")
-model.define(Val(Sale, ValTable.date, ValTable.unit_sales)).where(
+Val = Relationship(f"{Sale} has {Any:value}")
+model.define(Val(Sale, ValTable.unit_sales)).where(
     Sale.sale_id == ValTable.sale_id,
 )
-Test = Relationship(f"{Sale} at {Any:date}")
-model.define(Test(Sale, TestTable.date)).where(
+Test = Relationship(f"{Sale}")
+model.define(Test(Sale)).where(
     Sale.sale_id == TestTable.sale_id,
 )
 
@@ -186,21 +202,20 @@ print("Predictive: demand-forecasting regression GNN (CPU)")
 print("=" * 60)
 
 gnn = GNN(
-    exp_database="FAVORITA_MINI",
-    exp_schema="EXPERIMENTS",
+    exp_database=EXP_DATABASE,
+    exp_schema=EXP_SCHEMA,
     graph=gnn_graph,
     property_transformer=pt,
     train=Train,
     validation=Val,
     task_type="regression",
     eval_metric="rmse",
-    has_time_column=True,
+    has_time_column=False,
     stream_logs=STREAM_LOGS,
     seed=SEED,
     device="cpu",
     n_epochs=20,
     lr=0.005,
-    temporal_strategy="last",
 )
 gnn.fit()
 Sale.predictions = gnn.predictions(domain=Test)
