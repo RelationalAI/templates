@@ -29,14 +29,18 @@ from pandas import read_csv
 from relationalai.semantics import Float, Integer, Model, String, sum
 from relationalai.semantics.reasoners.prescriptive import Problem
 
-model = Model("water_allocation")
-Concept, Property = model.Concept, model.Property
+# --------------------------------------------------
+# Configure inputs
+# --------------------------------------------------
+
+DATA_DIR = Path(__file__).parent / "data"
 
 # --------------------------------------------------
 # Define semantic model & load data
 # --------------------------------------------------
 
-DATA_DIR = Path(__file__).parent / "data"
+model = Model("water_allocation")
+Concept, Property = model.Concept, model.Property
 
 # Source concept: water sources with capacity and cost.
 Source = Concept("Source", identify_by={"id": Integer})

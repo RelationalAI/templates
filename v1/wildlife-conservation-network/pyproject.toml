@@ -17,6 +17,7 @@ dependencies = [
 visualization = [
   "streamlit>=1.30.0",
   "plotly>=5.18.0",
+  "numpy",
 ]
 
 [tool.setuptools]

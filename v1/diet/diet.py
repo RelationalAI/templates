@@ -2,7 +2,7 @@
 
 This script demonstrates a classic diet linear optimization problem in RelationalAI:
 
-- Load sample CSVs describing foods, nutrients, and per-food nutrient quantities.
+- Map sample data from CSVs describing foods, nutrients, and per-food nutrient quantities.
 - Model foods and nutrients as *concepts* with typed properties.
 - Choose a non-negative amount of each food to satisfy nutrient bounds.
 - Minimize total cost.
@@ -29,26 +29,34 @@ from pandas import read_csv
 from relationalai.semantics import Float, Model, String, sum
 from relationalai.semantics.reasoners.prescriptive import Problem
 
+# --------------------------------------------------
+# Configure inputs
+# --------------------------------------------------
+
+DATA_DIR = Path(__file__).parent / "data"
+
+# --------------------------------------------------
+# Define semantic model & map data
+# --------------------------------------------------
+
 model = Model("diet")
 
-# --------------------------------------------------
-# Define semantic model & load data
-# --------------------------------------------------
-
-data_dir = Path(__file__).parent / "data"
-
-# Concept: nutrients with min/max bounds
+# Nutrient concept: nutritional requirements with min/max bounds.
 Nutrient = model.Concept("Nutrient", identify_by={"name": String})
 Nutrient.min = model.Property(f"{Nutrient} has {Float:min}")
 Nutrient.max = model.Property(f"{Nutrient} has {Float:max}")
-nutrient_csv = read_csv(data_dir / "nutrients.csv")
+
+# Map nutrients data from CSV.
+nutrient_csv = read_csv(DATA_DIR / "nutrients.csv")
 model.define(Nutrient.new(model.data(nutrient_csv).to_schema()))
 
-# Concept: foods with cost and nutrient content (ternary property)
+# Food concept: foods with cost and per-nutrient content (ternary property).
 Food = model.Concept("Food", identify_by={"name": String})
 Food.cost = model.Property(f"{Food} has {Float:cost}")
 Food.contains = model.Property(f"{Food} contains {Nutrient} in {Float:qty}")
-food_csv = read_csv(data_dir / "foods.csv")
+
+# Map foods data from CSV (one column per nutrient name).
+food_csv = read_csv(DATA_DIR / "foods.csv")
 food_data = model.data(food_csv)
 model.define(food := Food.new(name=food_data.name), food.cost(food_data.cost))
 for nutrient_name in nutrient_csv.name:

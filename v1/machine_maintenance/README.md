@@ -113,7 +113,7 @@ The multi-reasoner approach is necessary because no single analytical technique 
 1. Download the ZIP file for this template and extract it:
 
    ```bash
-   curl -O https://private.relational.ai/templates/zips/v1/machine_maintenance.zip
+   curl -O https://docs.relational.ai/templates/zips/v1/machine_maintenance.zip
    unzip machine_maintenance.zip
    cd machine_maintenance
    ```
