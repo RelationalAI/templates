@@ -95,7 +95,7 @@ The same pattern applies to any test-data-generation problem where rows have to 
    python synthetic_order_lifecycle.py
    ```
 
-6. Expected output (the solver returns one feasible trace; exact event types, timestamps, quantities, prices, and venues vary across runs and with different solver versions). The script first prints the formulation (~30 lines, omitted here for brevity), then the solve-result block, then the trace and per-order fill totals:
+6. Expected output (the solver returns one feasible trace; exact event types, timestamps, quantities, prices, and venues vary across runs and with different solver versions). The script first prints the formulation (~30 lines, omitted here for brevity), then the solve-result block, then the trace (rows are sorted by `(order_id, ts_ms)` for readability — the four binary type indicators are collapsed into a single `type` column on the display side), then per-order fill totals:
    ```text
    Solve result:
    • status: OPTIMAL
@@ -104,27 +104,27 @@ The same pattern applies to any test-data-generation problem where rows have to 
    • num_points: 1
    • solver: MiniZinc_unknown
 
-   Generated event trace (one row per slot):
-       order_id symbol  event_id  ts_ms  is_place  is_modify  is_cancel  is_fill  qty  tick_price  venue
-   0          1   AAPL         1   1000         0          1          0        0  100       17501   ARCA
-   1          1   AAPL         2    997         0          1          0        0  100       17501   ARCA
-   2          1   AAPL         3    996         0          1          0        0  100       17501   ARCA
-   3          1   AAPL         4    998         0          1          0        0  100       17501   ARCA
-   4          1   AAPL         5    999         0          0          0        1  100       17501   ARCA
-   5          1   AAPL         6    995         1          0          0        0  100       17500   ARCA
-   ...           [rows 6-35 truncated for brevity in this README; the script prints all 36 rows]
+   Generated event trace (one row per slot, sorted by order then timestamp):
+    order_id symbol  event_id  ts_ms   type  qty  tick_price venue
+           1   AAPL         3    995  PLACE  100       17500  ARCA
+           1   AAPL         5    996 MODIFY  100       17501  ARCA
+           1   AAPL         6    997 MODIFY  100       17501  ARCA
+           1   AAPL         1    998 MODIFY   81       17501  ARCA
+           1   AAPL         4    999 MODIFY  100       17501  ARCA
+           1   AAPL         2   1000   FILL  100       17501  ARCA
+    ...    [rows for orders 2-6 truncated for brevity in this README; the script prints all 36 rows]
 
    Filled quantity per order (cannot exceed Order.original_qty):
-      order_id  original_qty  filled_qty
-   0         1           100         100
-   1         2            50          50
-   2         3            80          80
-   3         4           200         200
-   4         5           120         120
-   5         6            60          60
+      order_id original_qty filled_qty
+   0         1          100        100
+   1         2           50         50
+   2         3           80         80
+   3         4          200        200
+   4         5          120        120
+   5         6           60         60
    ```
 
-   The trace covers 36 events across 6 orders; the AAPL block above is one representative order, the other 5 follow the same shape. Each order has exactly one PLACE event (the one with the smallest `ts_ms`); the remaining slots are filled with MODIFY, FILL, or CANCEL events as the constraints allow. The PLACE event's `qty` and `tick_price` are pinned to the order's `original_qty` and `original_tick_price` (so AAPL order 1 above shows tick_price `17500` on the PLACE event and `17501` on the others, with all events constrained to AAPL's eligible venue set `{NYSE, NASDAQ, ARCA}`). Total filled quantity is bounded by each order's `original_qty` (the conservation IC is `sum(fill_qty) <= original_qty`); the run above happens to fill exactly `original_qty` per order, but other feasible traces with lower fill totals are also valid.
+   The AAPL block above is one of six orders; the others follow the same shape. Each order has exactly one PLACE event with the smallest `ts_ms` (event_id 3 in the AAPL block; the script sorts by `ts_ms` so PLACE always shows first). PLACE's `qty` and `tick_price` are pinned to the order's `original_qty=100` and `original_tick_price=17500`; the remaining slots are MODIFY / FILL / CANCEL with non-PLACE prices and venues constrained to AAPL's eligible set `{NYSE, NASDAQ, ARCA}`. Total filled quantity is bounded by `original_qty` (the conservation IC is `sum(fill_qty) <= original_qty`); the run above happens to fill exactly `original_qty` per order, but other feasible traces with lower fill totals are also valid.
 
 ## Template structure
 ```text

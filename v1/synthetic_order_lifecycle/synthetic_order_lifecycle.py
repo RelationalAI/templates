@@ -260,20 +260,45 @@ model.require(problem.termination_status() == "OPTIMAL")
 # Inspect the generated trace
 # --------------------------------------------------
 
-print("\nGenerated event trace (one row per slot):")
-model.select(
-    OrderEvent.order.id.alias("order_id"),
-    OrderEvent.order.symbol.name.alias("symbol"),
-    OrderEvent.event_id.alias("event_id"),
-    OrderEvent.ts_ms.alias("ts_ms"),
-    OrderEvent.is_place.alias("is_place"),
-    OrderEvent.is_modify.alias("is_modify"),
-    OrderEvent.is_cancel.alias("is_cancel"),
-    OrderEvent.is_fill.alias("is_fill"),
-    OrderEvent.qty.alias("qty"),
-    OrderEvent.tick_price.alias("tick_price"),
-    Venue.name.alias("venue"),
-).where(Venue.id(OrderEvent.venue_id)).inspect()
+print("\nGenerated event trace (one row per slot, sorted by order then timestamp):")
+trace_df = (
+    model.select(
+        OrderEvent.order.id.alias("order_id"),
+        OrderEvent.order.symbol.name.alias("symbol"),
+        OrderEvent.event_id.alias("event_id"),
+        OrderEvent.ts_ms.alias("ts_ms"),
+        OrderEvent.is_place.alias("is_place"),
+        OrderEvent.is_modify.alias("is_modify"),
+        OrderEvent.is_cancel.alias("is_cancel"),
+        OrderEvent.is_fill.alias("is_fill"),
+        OrderEvent.qty.alias("qty"),
+        OrderEvent.tick_price.alias("tick_price"),
+        Venue.name.alias("venue"),
+    )
+    .where(Venue.id(OrderEvent.venue_id))
+    .to_df()
+)
+# Display-side: collapse the four binary indicators into one human-readable label
+# and sort by (order, ts) so each order's events appear in temporal order.
+type_map = {"is_place": "PLACE", "is_modify": "MODIFY", "is_cancel": "CANCEL", "is_fill": "FILL"}
+trace_df["type"] = trace_df[list(type_map)].astype("int64").idxmax(axis=1).map(type_map)
+trace_df = (
+    trace_df.drop(columns=list(type_map))
+    .astype(
+        {
+            "order_id": "int64",
+            "event_id": "int64",
+            "ts_ms": "int64",
+            "qty": "int64",
+            "tick_price": "int64",
+        }
+    )
+    .sort_values(["order_id", "ts_ms"])
+    .reset_index(drop=True)[
+        ["order_id", "symbol", "event_id", "ts_ms", "type", "qty", "tick_price", "venue"]
+    ]
+)
+print(trace_df.to_string(index=False))
 
 print("\nFilled quantity per order (cannot exceed Order.original_qty):")
 model.select(
