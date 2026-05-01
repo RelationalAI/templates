@@ -258,10 +258,13 @@ si.display()
 # (network-attribution check) so a reader can verify by eye.
 if si.num_points is None or si.num_points == 0:
     print(
-        "\nNo feasible eligibility records under the encoded rules. "
-        "Check the troubleshooting section in the README for likely causes "
-        "(over-constrained reference data, or no plan/provider pair matches "
-        "any age bucket once the CFD and network-attribution rules are applied)."
+        "\nThe solver returned no eligibility records. If the solve status above is "
+        "INFEASIBLE the reference data is over-constrained -- check the troubleshooting "
+        "section in the README for likely causes (mismatched plan/provider networks, "
+        "or no plan/provider pair on the side of the senior threshold that contains "
+        "every age bucket). If the status is UNKNOWN or TIME_LIMIT the search budget "
+        "expired before a record was found -- raise `time_limit_sec` or shrink the "
+        "decision domains and rerun."
     )
 
 # --------------------------------------------------
