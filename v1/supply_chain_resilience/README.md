@@ -1,6 +1,6 @@
 ---
 title: "Supply Chain Resilience"
-description: "A multi-reasoner template that chains graph analysis, rules-based classification, and prescriptive optimization to build a risk-adjusted minimum-cost network flow for supply chain routing."
+description: "A multi-reasoner template that chains blast-radius reachability, graph analysis, rules-based classification, and prescriptive optimization to build a risk-adjusted minimum-cost network flow for supply chain routing."
 featured: false
 experience_level: intermediate
 industry: "Supply Chain & Logistics"
@@ -23,8 +23,9 @@ tags:
 
 Supply chain networks must route goods from suppliers through factories and distribution centers to customers -- but not all routes carry equal risk. Unreliable suppliers, ML-predicted delays, and over-reliance on bottleneck sites can all disrupt fulfillment. This template shows how to combine multiple analytical signals into a single routing decision.
 
-This template uses RelationalAI's **graph analysis**, **rules-based classification**, and **prescriptive reasoning (optimization)** capabilities in a chained multi-reasoner workflow:
+This template uses RelationalAI's **Graph** analysis, **Rules-based** classification, and **Prescriptive** optimization capabilities in a chained multi-reasoner workflow:
 
+0. **Blast-radius pre-analysis** builds a directed Business graph from shipment data and traces every supplier each high-priority demand customer transitively depends on -- making the exposure footprint explicit before any optimization runs.
 1. **Graph analysis** builds a site dependency graph from shipping operations and computes eigenvector centrality to identify critical warehouses and bridges between supply chain regions.
 2. **Rules** classify suppliers by risk level (avoid / watch / reliable) using reliability scores and ML delay predictions, and flag escalated demand orders.
 3. **Prescriptive optimization** solves a minimum-cost network flow that routes supply to meet demand. Graph centrality feeds a bottleneck penalty in the objective, and supplier risk flags feed hard constraints (no flow from "avoid" suppliers) and surcharges (extra cost for "watch" suppliers).
@@ -101,7 +102,7 @@ The multi-reasoner approach is necessary because structural risk (graph), suppli
 1. Download the ZIP file for this template and extract it:
 
    ```bash
-   curl -O https://private.relational.ai/templates/zips/v1/supply_chain_resilience.zip
+   curl -O https://docs.relational.ai/templates/zips/v1/supply_chain_resilience.zip
    unzip supply_chain_resilience.zip
    cd supply_chain_resilience
    ```

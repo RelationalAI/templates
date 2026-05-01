@@ -32,16 +32,14 @@ from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
-from pandas import read_csv
 from relationalai.semantics import Float, Integer, Model, String, std, sum
 from relationalai.semantics.reasoners.prescriptive import Problem
 
-model = Model("demand_planning")
-Concept, Property = model.Concept, model.Property
+# --------------------------------------------------
+# Configure inputs
+# --------------------------------------------------
 
-# --------------------------------------------------
-# Parameters (editable planning horizon)
-# --------------------------------------------------
+DATA_DIR = Path(__file__).parent / "data"
 
 # TEMPORAL PARAMETER: Planning horizon defined by date range
 # Users adjust these to change the optimization window
@@ -55,14 +53,15 @@ safety_stock_weeks = 1  # Maintain at least 1 week of average demand as safety s
 # Define semantic model & load data
 # --------------------------------------------------
 
-data_dir = Path(__file__).parent / "data"
+model = Model("demand_planning")
+Concept, Property = model.Concept, model.Property
 
 # Concept: warehouse/distribution center sites
 Site = Concept("Site", identify_by={"id": Integer})
 Site.name = Property(f"{Site} has {String:name}")
 Site.site_type = Property(f"{Site} has {String:site_type}")
 Site.capacity_per_week = Property(f"{Site} has {Integer:capacity_per_week}")
-site_csv = read_csv(data_dir / "sites.csv")
+site_csv = pd.read_csv(DATA_DIR / "sites.csv")
 model.define(Site.new(model.data(site_csv).to_schema()))
 
 # Concept: products (SKUs)
@@ -70,7 +69,7 @@ SKU = Concept("SKU", identify_by={"id": Integer})
 SKU.name = Property(f"{SKU} has {String:name}")
 SKU.unit_cost = Property(f"{SKU} has {Float:unit_cost}")
 SKU.holding_cost_per_week = Property(f"{SKU} has {Float:holding_cost_per_week}")
-sku_csv = read_csv(data_dir / "skus.csv")
+sku_csv = pd.read_csv(DATA_DIR / "skus.csv")
 model.define(SKU.new(model.data(sku_csv).to_schema()))
 
 # Concept: demand orders (EVENT TABLE - has date column, needs filtering)
@@ -80,7 +79,7 @@ DemandOrder.quantity = Property(f"{DemandOrder} has {Integer:quantity}")
 DemandOrder.due_date = Property(f"{DemandOrder} has {String:due_date}")
 DemandOrder.week_num = Property(f"{DemandOrder} falls in week {Integer:week_num}")
 
-orders_df = read_csv(data_dir / "demand_orders.csv")
+orders_df = pd.read_csv(DATA_DIR / "demand_orders.csv")
 orders_df["due_date"] = pd.to_datetime(orders_df["due_date"])
 
 # --------------------------------------------------
@@ -116,9 +115,9 @@ ProdCapacity.max_production_per_week = Property(
 )
 ProdCapacity.production_cost = Property(f"{ProdCapacity} has {Float:production_cost}")
 
-pc_df = read_csv(data_dir / "production_capacity.csv")
-inv_df = read_csv(data_dir / "initial_inventory.csv")
-sku_df = read_csv(data_dir / "skus.csv")
+pc_df = pd.read_csv(DATA_DIR / "production_capacity.csv")
+inv_df = pd.read_csv(DATA_DIR / "initial_inventory.csv")
+sku_df = pd.read_csv(DATA_DIR / "skus.csv")
 
 # Pre-join: merge initial inventory and SKU holding cost into ProdCapacity
 # This avoids relationship traversal FD issues in solver expressions

@@ -3,14 +3,14 @@ requires = ["setuptools>=64", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "rai-template-supplier-impact-analysis"
+name = "rai-template-financial-index-replication"
 version = "0.0.0"
-description = "RelationalAI template: supplier disruption impact analysis with multi-hop reachability on business networks"
+description = "RelationalAI template: financial_index_replication (PyRel v1)"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
   "relationalai==1.0.14",
-  "pandas>=2.0.0",
+  "pandas>=2.0",
 ]
 
 [tool.setuptools]
