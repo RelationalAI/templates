@@ -20,7 +20,7 @@ tags:
 
 Banking compliance and market-surveillance teams test their alert engines against synthetic order-event traces -- sequences of `PLACE`, `MODIFY`, `CANCEL`, and `FILL` events that real trading desks generate. Producing realistic traces by hand is hard: the events have to honour temporal precedence (a fill cannot happen before the placement), status-transition validity (no events after a cancel), venue eligibility (the symbol has to be tradable on that venue), and quantity conservation (filled shares cannot exceed the order size).
 
-This template formulates the trace-generation problem as a constraint satisfaction model using RelationalAI's prescriptive reasoning. A pre-allocated pool of empty event slots is given to the solver; it picks each slot's type, timestamp, venue, quantity, and tick price so that every sequencing rule holds (the rules are drawn from [ESMA RTS 24](https://www.esma.europa.eu/sites/default/files/library/2015/11/2015-esma-1464_annex_i_-_draft_rts_and_its_on_mifid_ii_and_mifir.pdf) for MiFID II and [SEC Rule 613](https://www.sec.gov/rules/final/2012/34-67457.pdf) for Reg NMS / Consolidated Audit Trail). The solver (MiniZinc) returns one feasible trace that satisfies every constraint at once.
+This template formulates the trace-generation problem as a **constraint satisfaction** model using RelationalAI's **prescriptive** reasoning. A pre-allocated pool of empty event slots is given to the solver; it picks each slot's type, timestamp, venue, quantity, and tick price so that every sequencing rule holds (the rules are drawn from [ESMA RTS 24](https://www.esma.europa.eu/sites/default/files/library/2015/11/2015-esma-1464_annex_i_-_draft_rts_and_its_on_mifid_ii_and_mifir.pdf) for MiFID II and [SEC Rule 613](https://www.sec.gov/rules/final/2012/34-67457.pdf) for Reg NMS / Consolidated Audit Trail). The solver (MiniZinc) returns one feasible trace that satisfies every constraint at once.
 
 This template constrains *type distribution and ordering*. The semantics of MODIFY (how it differs from the prior state) are not enforced -- a MODIFY event simply consumes a non-PLACE / non-CANCEL / non-FILL slot. See "Customize this template" below for how to add MODIFY-meaningful constraints (e.g. forbidding `MODIFY` after `FILL`, or pinning a `tick_price`/`qty` delta).
 
@@ -49,7 +49,7 @@ The same pattern applies to any test-data-generation problem where rows have to 
 - `data/symbols.csv` -- 5 tradable symbols (AAPL, MSFT, GOOG, NVDA, TSLA)
 - `data/venues.csv` -- 5 trading venues (NYSE, NASDAQ, ARCA, BATS, IEX)
 - `data/symbol_venues.csv` -- 13 (symbol, venue) eligible pairs out of 25 possible (sparser than full coverage so venue eligibility visibly binds)
-- `data/orders.csv` -- 6 orders, each with `symbol_id`, `original_qty`, and `original_tick_price` (in integer ticks of 1c)
+- `data/orders.csv` -- 6 orders, each with `symbol_id`, `original_qty`, and `original_tick_price` (in integer ticks of 1c, so `17500` reads as $175.00)
 - `data/events.csv` -- 36 pre-allocated event slots (6 per order)
 - `pyproject.toml` -- Python package configuration
 
@@ -112,7 +112,7 @@ The same pattern applies to any test-data-generation problem where rows have to 
            1   AAPL         1    998 MODIFY   81       17501  ARCA
            1   AAPL         4    999 MODIFY  100       17501  ARCA
            1   AAPL         2   1000   FILL  100       17501  ARCA
-    ...    [rows for orders 2-6 truncated for brevity in this README; the script prints all 36 rows]
+    ...    [rows for orders 2-6 omitted for brevity; the script prints all 36 rows -- 6 events per order across orders 1-6]
 
    Filled quantity per order (cannot exceed Order.original_qty):
       order_id original_qty filled_qty
@@ -124,7 +124,7 @@ The same pattern applies to any test-data-generation problem where rows have to 
    5         6           60         60
    ```
 
-   The AAPL block above is one of six orders; the others follow the same shape. Each order has exactly one PLACE event with the smallest `ts_ms` (event_id 3 in the AAPL block; the script sorts by `ts_ms` so PLACE always shows first). PLACE's `qty` and `tick_price` are pinned to the order's `original_qty=100` and `original_tick_price=17500`; the remaining slots are MODIFY / FILL / CANCEL with non-PLACE prices and venues constrained to AAPL's eligible set `{NYSE, NASDAQ, ARCA}`. Total filled quantity is bounded by `original_qty` (the conservation IC is `sum(fill_qty) <= original_qty`); the run above happens to fill exactly `original_qty` per order, but other feasible traces with lower fill totals are also valid.
+   The AAPL block above is one of six orders; the others follow the same shape. PLACE has the smallest `ts_ms` per order with `qty` / `tick_price` pinned to the order row, and venues are constrained to the symbol's eligible set (here `{NYSE, NASDAQ, ARCA}` for AAPL). The conservation IC is `sum(fill_qty) <= original_qty`; the run above happens to fill exactly `original_qty` per order, but feasible traces with lower fill totals are also valid.
 
 ## Template structure
 ```text
@@ -262,7 +262,7 @@ model.require(problem.termination_status() == "OPTIMAL")
 <details>
   <summary>Empty disallowed pairs (full venue coverage)</summary>
 
-- If you replace `symbol_venues.csv` with a list that covers every (symbol, venue) combination, the derived `disallowed_csv` is empty and `model.data(...).to_schema()` raises a cryptic error. Drop the `venue_ok_ic` constraint when full coverage is intentional.
+- If you replace `symbol_venues.csv` with a list that covers every (symbol, venue) combination, the derived `disallowed_csv` is empty and `model.data(...).to_schema()` raises `ValueError: empty data` (or a similar zero-row schema error from pandas). Drop the `venue_ok_ic` constraint when full coverage is intentional.
 
 </details>
 

@@ -1,25 +1,20 @@
 """Synthetic Order Lifecycle (constrained generation) template.
 
-This script demonstrates synthesised banking-event traces in RelationalAI:
-
-- Pre-allocate fixed (order, event-slot) rows; the solver decides each
-  event's type (PLACE / MODIFY / CANCEL / FILL), timestamp, venue, quantity,
-  and tick price.
-- Enforce MiFID II / Reg NMS-flavour sequencing rules: PLACE first, nothing
-  after CANCEL, exactly one PLACE per order, fill-quantity conservation
-  across the FILL events, venue eligibility per symbol.
-- Solve as constraint satisfaction (MiniZinc) and inspect the generated trace.
-
-All decisions are integer: prices are integer ticks (1c), times are integer
-milliseconds, quantities are integer shares.
+Pre-allocate fixed (order, event-slot) rows; the solver decides each event's
+type (PLACE / MODIFY / CANCEL / FILL), timestamp, venue, quantity, and tick
+price under MiFID II / Reg NMS-flavour sequencing rules: PLACE first, nothing
+after CANCEL, exactly one PLACE per order, fill-quantity conservation across
+the FILL events, venue eligibility per symbol. Solve as constraint
+satisfaction (MiniZinc) and inspect the generated trace. All decisions are
+integer: prices are integer ticks (1c, so 17500 reads as $175.00), times are
+integer milliseconds, quantities are integer shares.
 
 Run:
     `python synthetic_order_lifecycle.py`
 
 Output:
     Prints the formulation, the generated event trace (one row per slot),
-    the per-order filled-quantity totals, and post-solve constraint
-    verification.
+    the per-order filled-quantity totals, and post-solve verification.
 """
 
 from pathlib import Path
@@ -28,36 +23,41 @@ from pandas import DataFrame, read_csv
 from relationalai.semantics import Integer, Model, String, sum
 from relationalai.semantics.reasoners.prescriptive import Problem, all_different, implies
 
-# Runner-level parameters.
+# --------------------------------------------------
+# Configure inputs
+# --------------------------------------------------
+
 # One solve = one synthetic trace over the fixed (order, event-slot) pool.
-# Bounded ms horizon keeps the search space small for the demo.
+# TS_MAX is kept tight (1s horizon) so MiniZinc finishes the demo in <2s;
+# bump it to a realistic session window (e.g. 23_400_000 ms = 6.5h) on
+# real-shaped data.
 TS_MIN = 1
 TS_MAX = 1_000
 
-model = Model("synthetic_order_lifecycle")
+DATA_DIR = Path(__file__).parent / "data"
 
 # --------------------------------------------------
 # Define semantic model & load data
 # --------------------------------------------------
 
-data_dir = Path(__file__).parent / "data"
+model = Model("synthetic_order_lifecycle")
 
-# Concept: tradable symbol
+# Symbol concept: a tradable instrument.
 Symbol = model.Concept("Symbol", identify_by={"id": Integer})
 Symbol.name = model.Property(f"{Symbol} has {String:name}")
-symbols_csv = read_csv(data_dir / "symbols.csv")
+symbols_csv = read_csv(DATA_DIR / "symbols.csv")
 model.define(Symbol.new(model.data(symbols_csv).to_schema()))
 
-# Concept: trading venue
+# Venue concept: a trading venue.
 Venue = model.Concept("Venue", identify_by={"id": Integer})
 Venue.name = model.Property(f"{Venue} has {String:name}")
-venues_csv = read_csv(data_dir / "venues.csv")
+venues_csv = read_csv(DATA_DIR / "venues.csv")
 model.define(Venue.new(model.data(venues_csv).to_schema()))
 
-# Concept: disallowed (symbol, venue) pairs -- derived from the allowed list
-# in symbol_venues.csv. The CSP uses the disallowed dual so the constraint
-# stays inside the supported arithmetic (!=, *, +, -, ...).
-sv_csv = read_csv(data_dir / "symbol_venues.csv")
+# NotAllowedSymbolVenue concept: the disallowed dual of the allowed
+# (symbol, venue) pairs in symbol_venues.csv. The CSP uses the disallowed
+# form so the constraint stays inside the supported arithmetic (!=, *, +, -).
+sv_csv = read_csv(DATA_DIR / "symbol_venues.csv")
 all_pairs = [(int(s), int(v)) for s in symbols_csv["id"] for v in venues_csv["id"]]
 allowed_pairs = {(int(r.symbol_id), int(r.venue_id)) for r in sv_csv.itertuples()}
 disallowed_csv = DataFrame(
@@ -74,12 +74,12 @@ NotAllowedSymbolVenue = model.Concept(
 )
 model.define(NotAllowedSymbolVenue.new(model.data(disallowed_csv).to_schema()))
 
-# Concept: orders (the surveillance subjects)
+# Order concept: the surveillance subject.
 Order = model.Concept("Order", identify_by={"id": Integer})
 Order.original_qty = model.Property(f"{Order} has {Integer:original_qty}")
 Order.original_tick_price = model.Property(f"{Order} has {Integer:original_tick_price}")
 Order.symbol = model.Property(f"{Order} is for {Symbol:symbol}")
-orders_csv = read_csv(data_dir / "orders.csv")
+orders_csv = read_csv(DATA_DIR / "orders.csv")
 orders_data = model.data(orders_csv)
 model.define(
     o := Order.new(id=orders_data.id),
@@ -91,11 +91,11 @@ model.define(Order.symbol(Symbol)).where(
     Symbol.id(orders_data.symbol_id),
 )
 
-# Concept: pre-allocated event slots (each tied to one order)
-# The solver decides each slot's type, timestamp, venue, quantity, tick price.
+# OrderEvent concept: a pre-allocated event slot tied to one order. The
+# solver decides each slot's type, timestamp, venue, quantity, tick price.
 OrderEvent = model.Concept("OrderEvent", identify_by={"event_id": Integer})
 OrderEvent.order = model.Property(f"{OrderEvent} belongs to {Order:order}")
-events_csv = read_csv(data_dir / "events.csv")
+events_csv = read_csv(DATA_DIR / "events.csv")
 events_data = model.data(events_csv)
 model.define(OrderEvent.new(event_id=events_data.event_id))
 model.define(OrderEvent.order(Order)).where(
@@ -104,7 +104,7 @@ model.define(OrderEvent.order(Order)).where(
 )
 
 # --------------------------------------------------
-# Decision-valued properties on OrderEvent
+# Model the decision problem
 # --------------------------------------------------
 
 OrderEvent.is_place = model.Property(f"{OrderEvent} is place if {Integer:is_place}")
@@ -145,9 +145,7 @@ problem.solve_for(
     OrderEvent.fill_qty, name=["fill_qty", OrderEvent.event_id], lower=0, upper=qty_max
 )
 
-# --------------------------------------------------
-# Constraints
-# --------------------------------------------------
+# Constraints follow.
 
 # Each event has exactly one type.
 type_sum_ic = model.require(
@@ -233,7 +231,7 @@ fill_sum_ic = model.require(
 problem.satisfy(fill_sum_ic)
 
 # --------------------------------------------------
-# Solve and verify
+# Solve and check solution
 # --------------------------------------------------
 
 problem.display()
@@ -241,10 +239,8 @@ problem.solve("minizinc", time_limit_sec=60)
 problem.solve_info().display()
 
 # Re-check the relational arithmetic ICs in the returned solution. The
-# all_different- and implies-bodied ICs are solver-only -- never pass them to
-# verify(). The relational engine cannot re-evaluate wire-format constraint
-# relations and would return silently-OK regardless of whether the constraint
-# actually holds in the solution.
+# all_different- and implies-bodied ICs are solver-only and are NOT passed
+# here -- verify() returns silently-OK on them without actually checking.
 problem.verify(
     type_sum_ic,
     exactly_one_place_ic,
@@ -255,9 +251,7 @@ problem.verify(
 )
 model.require(problem.termination_status() == "OPTIMAL")
 
-# --------------------------------------------------
-# Inspect the generated trace
-# --------------------------------------------------
+# Inspect the generated trace.
 
 print("\nGenerated event trace (one row per slot, sorted by order then timestamp):")
 trace_df = (
