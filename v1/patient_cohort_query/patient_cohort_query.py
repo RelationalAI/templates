@@ -22,32 +22,34 @@ This script demonstrates a three-pillar pipeline in RelationalAI:
   the cohort and proves the coverage thresholds are reachable.
 
 Modeling approach:
-- Four binary decision streams: ``Patient.is_in_cohort`` (which
-  eligible patients to enrol), ``Gene.is_covered``,
-  ``Therapy.is_covered``, and ``AdverseEvent.is_covered`` (which
-  kinase genes / therapies / AEs the cohort, taken together,
-  witnesses).
+- Four binary decision streams: ``EligiblePatient.is_in_cohort``
+  (which eligible patients to enrol), ``CoverableGene.is_covered``,
+  ``CoverableTherapy.is_covered``, and
+  ``CoverableAdverseEvent.is_covered`` (which kinase genes / therapies
+  / AEs the cohort, taken together, witnesses).
 - Predicate markers as sub-concepts. ``EligiblePatient`` is a
   sub-concept of ``Patient`` whose membership is the eligibility
   conjunction; ``CoverableGene`` / ``CoverableTherapy`` /
   ``CoverableAdverseEvent`` are sub-concepts whose membership is "some
-  patient covers this Y". Each ``solve_for`` is then scoped with
-  ``where=[Sub(Parent)]`` so a binary decision is only created for
-  rows the rules established as meaningful -- ineligible patients and
-  never-covered Ys never get a decision, and the upper-bound ICs
-  cleanly bind on the rows that do. Sub-concepts are cheaper, more
-  readable, and avoid the Boolean-property-as-marker pattern entirely.
-- Cohort size: ``sum(Patient.is_in_cohort) == COHORT_SIZE``.
-- Coverage upper bounds (one IC per coverage axis): per kinase gene
-  ``g``, ``g.is_covered`` is bounded above by the number of in-cohort
-  patients whose mutations cover ``g``. The reverse direction is free,
-  so the solver sets ``is_covered`` to 1 wherever the bound permits --
-  exactly when at least one chosen patient covers that gene. Same
-  shape for therapies and adverse events.
+  patient covers this Y". Each ``solve_for`` then targets the
+  sub-concept directly (``EligiblePatient.is_in_cohort``,
+  ``CoverableGene.is_covered``, ...), so a binary decision is only
+  created for rows the rules established as meaningful -- ineligible
+  patients and never-covered Ys never get a decision, and the
+  upper-bound ICs cleanly bind on the rows that do. Sub-concepts are
+  cheaper, more readable, and avoid the Boolean-property-as-marker
+  pattern entirely.
+- Cohort size: ``sum(EligiblePatient.is_in_cohort) == COHORT_SIZE``.
+- Coverage upper bounds (one IC per coverage axis): per coverable
+  kinase gene ``g``, ``g.is_covered`` is bounded above by the number
+  of in-cohort patients whose mutations cover ``g``. The reverse
+  direction is free, so the solver sets ``is_covered`` to 1 wherever
+  the bound permits -- exactly when at least one chosen patient covers
+  that gene. Same shape for therapies and adverse events.
 - Coverage lower bounds:
-  ``sum(Gene.is_covered) >= MIN_GENES_COVERED`` (and similarly for
-  therapies and AEs). Together with the upper bounds, the solver must
-  pick patients whose joint coverage spans at least
+  ``sum(CoverableGene.is_covered) >= MIN_GENES_COVERED`` (and
+  similarly for therapies and AEs). Together with the upper bounds,
+  the solver must pick patients whose joint coverage spans at least
   ``MIN_GENES_COVERED`` / ``MIN_THERAPIES_COVERED`` /
   ``MIN_AES_COVERED`` distinct values.
 - All of these constraints are pure relational arithmetic, so
@@ -316,70 +318,78 @@ problem = Problem(model, Integer)
 
 # Decisions are scoped to the rows the relational rules established as
 # meaningful: `is_in_cohort` only on eligible patients, and each
-# `is_covered` only on Y values the cohort could *actually* cover. The
-# coverable scoping is structural, not cosmetic: it is what makes the
-# upper-bound ICs below force `is_covered = 0` on non-supported rows
-# instead of letting them float.
+# `is_covered` only on Y values the cohort could *actually* cover.
+# Targeting the sub-concept directly (`EligiblePatient.is_in_cohort`,
+# `CoverableGene.is_covered`, ...) creates one binary variable per
+# sub-concept row -- the scoping is structural, not cosmetic: it is
+# what makes the upper-bound ICs below force `is_covered = 0` on
+# non-supported rows instead of letting them float.
 problem.solve_for(
-    Patient.is_in_cohort,
+    EligiblePatient.is_in_cohort,
     type="bin",
-    where=[EligiblePatient(Patient)],
-    name=["is_in_cohort", Patient.id],
+    name=["is_in_cohort", EligiblePatient.id],
 )
 problem.solve_for(
-    Gene.is_covered,
+    CoverableGene.is_covered,
     type="bin",
-    where=[CoverableGene(Gene)],
-    name=["gene_covered", Gene.id],
+    name=["gene_covered", CoverableGene.id],
 )
 problem.solve_for(
-    Therapy.is_covered,
+    CoverableTherapy.is_covered,
     type="bin",
-    where=[CoverableTherapy(Therapy)],
-    name=["therapy_covered", Therapy.id],
+    name=["therapy_covered", CoverableTherapy.id],
 )
 problem.solve_for(
-    AdverseEvent.is_covered,
+    CoverableAdverseEvent.is_covered,
     type="bin",
-    where=[CoverableAdverseEvent(AdverseEvent)],
-    name=["ae_covered", AdverseEvent.id],
+    name=["ae_covered", CoverableAdverseEvent.id],
 )
 
 # --------------------------------------------------
 # Constraints
 # --------------------------------------------------
 
+# All ICs reference the sub-concept where the decision was created
+# (`solve_for(Sub.prop)` keys variables by the sub-concept), so the
+# aggregates and per-row binds resolve cleanly.
+
 # Cohort size = K.
-cohort_size_ic = model.require(sum(Patient.is_in_cohort) == COHORT_SIZE)
+cohort_size_ic = model.require(sum(EligiblePatient.is_in_cohort) == COHORT_SIZE)
 problem.satisfy(cohort_size_ic)
 
 # Per-gene coverage upper bound: a kinase gene can only be marked
 # covered if at least one in-cohort patient mutates it. The reverse
 # direction is free and will be saturated by the lower-bound IC below.
-gene_cover_ic = model.where(Patient.covers_kinase_gene(Gene)).require(
-    Gene.is_covered <= sum(Patient.is_in_cohort).per(Gene)
+gene_cover_ic = model.where(EligiblePatient.covers_kinase_gene(CoverableGene)).require(
+    CoverableGene.is_covered <= sum(EligiblePatient.is_in_cohort).per(CoverableGene)
 )
 problem.satisfy(gene_cover_ic)
 
 # Per-therapy coverage upper bound.
-therapy_cover_ic = model.where(Patient.covers_therapy(Therapy)).require(
-    Therapy.is_covered <= sum(Patient.is_in_cohort).per(Therapy)
+therapy_cover_ic = model.where(
+    EligiblePatient.covers_therapy(CoverableTherapy)
+).require(
+    CoverableTherapy.is_covered
+    <= sum(EligiblePatient.is_in_cohort).per(CoverableTherapy)
 )
 problem.satisfy(therapy_cover_ic)
 
 # Per-AE coverage upper bound.
-ae_cover_ic = model.where(Patient.covers_ae(AdverseEvent)).require(
-    AdverseEvent.is_covered <= sum(Patient.is_in_cohort).per(AdverseEvent)
+ae_cover_ic = model.where(EligiblePatient.covers_ae(CoverableAdverseEvent)).require(
+    CoverableAdverseEvent.is_covered
+    <= sum(EligiblePatient.is_in_cohort).per(CoverableAdverseEvent)
 )
 problem.satisfy(ae_cover_ic)
 
 # Coverage lower bounds: the cohort must witness MIN_* distinct values
 # along each axis.
-gene_min_ic = model.require(sum(Gene.is_covered) >= MIN_GENES_COVERED)
+gene_min_ic = model.require(sum(CoverableGene.is_covered) >= MIN_GENES_COVERED)
 problem.satisfy(gene_min_ic)
-therapy_min_ic = model.require(sum(Therapy.is_covered) >= MIN_THERAPIES_COVERED)
+therapy_min_ic = model.require(
+    sum(CoverableTherapy.is_covered) >= MIN_THERAPIES_COVERED
+)
 problem.satisfy(therapy_min_ic)
-ae_min_ic = model.require(sum(AdverseEvent.is_covered) >= MIN_AES_COVERED)
+ae_min_ic = model.require(sum(CoverableAdverseEvent.is_covered) >= MIN_AES_COVERED)
 problem.satisfy(ae_min_ic)
 
 # --------------------------------------------------
@@ -421,25 +431,25 @@ model.select(
 
 print("\nSelected cohort:")
 model.select(
-    Patient.id.alias("patient_id"),
-    Patient.name.alias("patient_name"),
-    Patient.age_years.alias("age_years"),
-).where(Patient.is_in_cohort == 1).inspect()
+    EligiblePatient.id.alias("patient_id"),
+    EligiblePatient.name.alias("patient_name"),
+    EligiblePatient.age_years.alias("age_years"),
+).where(EligiblePatient.is_in_cohort == 1).inspect()
 
 print("\nKinase-pathway genes covered by the cohort:")
 model.select(
-    Gene.id.alias("gene_id"),
-    Gene.name.alias("gene_name"),
-).where(Gene.is_covered == 1).inspect()
+    CoverableGene.id.alias("gene_id"),
+    CoverableGene.name.alias("gene_name"),
+).where(CoverableGene.is_covered == 1).inspect()
 
 print("\nTherapies covered by the cohort:")
 model.select(
-    Therapy.id.alias("therapy_id"),
-    Therapy.name.alias("therapy_name"),
-).where(Therapy.is_covered == 1).inspect()
+    CoverableTherapy.id.alias("therapy_id"),
+    CoverableTherapy.name.alias("therapy_name"),
+).where(CoverableTherapy.is_covered == 1).inspect()
 
 print("\nAdverse events covered by the cohort:")
 model.select(
-    AdverseEvent.id.alias("ae_id"),
-    AdverseEvent.term.alias("ae_term"),
-).where(AdverseEvent.is_covered == 1).inspect()
+    CoverableAdverseEvent.id.alias("ae_id"),
+    CoverableAdverseEvent.term.alias("ae_term"),
+).where(CoverableAdverseEvent.is_covered == 1).inspect()

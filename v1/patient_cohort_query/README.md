@@ -38,8 +38,8 @@ The same pattern applies to other knowledge-graph cohort / set-cover problems wh
 - A gene ontology + patient knowledge graph: `Gene`, `GeneIsA`, `Patient`, `MutationEvent`, `TherapyEvent`, `AdverseEventOcc`, `Therapy`, `AdverseEvent`
 - A Graph-reasoner closure of the kinase-pathway sub-ontology via `graph.reachable(full=True)`, producing a `KinaseGene extends Gene` sub-concept
 - Pure-relational rules that derive sub-concepts `KinaseMutationCarrier`, `QualifyingPairPatient`, and the eligibility conjunction `EligiblePatient extends Patient`, plus per-axis coverage relations (`Patient.covers_kinase_gene`, `Patient.covers_therapy`, `Patient.covers_ae`) and the coverable sub-concepts `CoverableGene`, `CoverableTherapy`, `CoverableAdverseEvent`
-- A constraint model with four binary decision streams scoped via `where=[Sub(Parent)]`: `Patient.is_in_cohort` (eligible only), `Gene.is_covered` (coverable kinase genes only), `Therapy.is_covered`, and `AdverseEvent.is_covered`
-- Per-axis coverage upper-bound ICs that link `is_covered` to in-cohort patient decisions (`is_covered <= sum(is_in_cohort).per(...)`), and lower-bound ICs (`sum(is_covered) >= MIN_*`) that force the cohort to span enough distinct values
+- A constraint model with four binary decision streams targeting sub-concepts directly: `EligiblePatient.is_in_cohort` (eligible patients only), `CoverableGene.is_covered` (coverable kinase genes only), `CoverableTherapy.is_covered`, and `CoverableAdverseEvent.is_covered`
+- Per-axis coverage upper-bound ICs that link `is_covered` to in-cohort patient decisions (`Sub.is_covered <= sum(EligiblePatient.is_in_cohort).per(Sub)`), and lower-bound ICs (`sum(Sub.is_covered) >= MIN_*`) that force the cohort to span enough distinct values
 - Post-solve verification via `problem.verify()` confirming every IC holds in the returned solution, plus a `termination_status() == "OPTIMAL"` assertion
 
 ## What's included
@@ -122,10 +122,10 @@ The same pattern applies to other knowledge-graph cohort / set-cover problems wh
 
    Selected cohort:
      patient_id patient_name age_years
-              1      P_Alpha        52
-              3    P_Charlie        47
-              4      P_Delta        58
-              5       P_Echo        69
+              2      P_Bravo        61
+              7       P_Golf        63
+              8      P_Hotel        49
+              9      P_India        57
 
    Kinase-pathway genes covered by the cohort:
      gene_id gene_name
@@ -212,28 +212,26 @@ model.define(EligiblePatient(Patient)).where(
 )
 ```
 
-**Prescriptive pillar: cohort selection as a CSP.** Decisions are scoped to the rows the rules established as meaningful: `is_in_cohort` only on `EligiblePatient`, and each `is_covered` only on the matching `Coverable*` sub-concept. Without the coverable scoping, `is_covered` decisions on never-covered Ys have no upper-bound IC -- the per-pair `where` in the upper-bound IC yields no rows there, the IC isn't asserted, and the variable floats free, letting the solver mark it covered to satisfy the lower bound trivially.
+**Prescriptive pillar: cohort selection as a CSP.** Decisions target the sub-concept directly (`EligiblePatient.is_in_cohort`, `CoverableTherapy.is_covered`, ...), which creates one binary variable per sub-concept row. Without that scoping, `is_covered` decisions on never-covered Ys would have no upper-bound IC -- the per-pair `where` in the upper-bound IC yields no rows there, the IC isn't asserted, and the variable would float free, letting the solver mark it covered to satisfy the lower bound trivially.
 
 ```python
 problem.solve_for(
-    Patient.is_in_cohort, type="bin",
-    where=[EligiblePatient(Patient)],
-    name=["is_in_cohort", Patient.id],
+    EligiblePatient.is_in_cohort, type="bin",
+    name=["is_in_cohort", EligiblePatient.id],
 )
 problem.solve_for(
-    Therapy.is_covered, type="bin",
-    where=[CoverableTherapy(Therapy)],
-    name=["therapy_covered", Therapy.id],
+    CoverableTherapy.is_covered, type="bin",
+    name=["therapy_covered", CoverableTherapy.id],
 )
 ```
 
 **Coverage upper bound + lower bound is the CSP signature.** For each coverable Y, `Y.is_covered` is bounded above by the number of in-cohort patients that cover it; the lower bound says at least `MIN_*` Ys must be covered. Together they force the solver to pick patients whose joint coverage spans enough distinct values. The per-axis pattern reads cleanly:
 
 ```python
-gene_cover_ic = model.where(Patient.covers_kinase_gene(Gene)).require(
-    Gene.is_covered <= sum(Patient.is_in_cohort).per(Gene)
+gene_cover_ic = model.where(EligiblePatient.covers_kinase_gene(CoverableGene)).require(
+    CoverableGene.is_covered <= sum(EligiblePatient.is_in_cohort).per(CoverableGene)
 )
-gene_min_ic = model.require(sum(Gene.is_covered) >= MIN_GENES_COVERED)
+gene_min_ic = model.require(sum(CoverableGene.is_covered) >= MIN_GENES_COVERED)
 ```
 
 All seven ICs are pure relational arithmetic, so `problem.verify()` re-evaluates every one in the returned solution -- no constraint is solver-only.
@@ -286,7 +284,7 @@ All seven ICs are pure relational arithmetic, so `problem.verify()` re-evaluates
 <details>
   <summary>A coverable Y still appears as <code>is_covered = 1</code> with no in-cohort patient covering it</summary>
 
-- This was the central encoding pitfall during development: with a per-pair `where` in the upper-bound IC, rows that no patient covers have *no* IC asserted (the where yields no rows there) and the `is_covered` variable floats free. The `Coverable*` sub-concepts and the `where=[Coverable*(Y)]` scoping on `solve_for` are the fix -- they remove the unbounded decision entirely. If you re-introduce a row by hand or skip the scoping, the symptom comes back; restore the scoping.
+- This was the central encoding pitfall during development: with a per-pair `where` in the upper-bound IC, rows that no patient covers have *no* IC asserted (the where yields no rows there) and the `is_covered` variable floats free. Targeting the sub-concept directly (`solve_for(CoverableGene.is_covered, ...)`) is the fix -- it removes the unbounded decision entirely by only creating variables for sub-concept rows. If you target the parent property without the sub-concept scoping (e.g. `solve_for(Gene.is_covered, ...)`), the symptom comes back; restore the sub-concept target.
 
 </details>
 
