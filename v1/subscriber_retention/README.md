@@ -163,9 +163,12 @@ Test-set RMSE: 0.1386
 
 ## Sample data
 
-The bundled telco dataset is a small synthetic subset extracted from the
-`DEMO_TELCO.RAW` schema (a multi-tenant demo dataset). PII columns
-(`FIRST_NAME`, `LAST_NAME`, `EMAIL`, `PHONE`) are dropped before bundling.
+Two ways to feed this template:
+
+1. **Bundled (light)** — `data/telco_mini/` ships with the template ZIP. ~1,200 subscribers + ~6,000 calls + 1,200 plans. Synthetic, derived from RelationalAI's internal `DEMO_TELCO.RAW` demo schema with PII columns (`FIRST_NAME`, `LAST_NAME`, `EMAIL`, `PHONE`) dropped. No external setup. **Quickstart uses this.**
+2. **Bring-your-own** — replace the four CSVs under `data/telco_mini/` with your own subscriber / plan / CDR exports (same column names) and re-run. There is no widely-known public telco churn dataset that includes a caller→callee call graph (the popular [IBM Telco Customer Churn](https://www.kaggle.com/datasets/blastchar/telco-customer-churn) benchmark is tabular only — no calls, no graph), so the GNN graph path requires real CDR data or a synthetic call-graph generator. See [Run on your own Snowflake data](#run-on-your-own-snowflake-data) for the loading pattern.
+
+About the bundled mini set:
 
 - **~1,200 subscribers** across five segments: `BUDGET`, `ENTERPRISE_PREMIUM`, `HIGH_VALUE_INFLUENCER`, `PREMIUM`, `STANDARD`
 - **~6,000 call records** wired as Subscriber→Subscriber edges for the PageRank graph
