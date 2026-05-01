@@ -40,10 +40,13 @@ from relationalai.semantics.reasoners.prescriptive import Problem, implies
 # Senior status (age >= 65) drives the Medicare-Advantage CFD.
 SENIOR_THRESHOLD_YEARS = 65
 # Solver solution-limit: how many distinct feasible member records to
-# enumerate per solve. The bundled reference data admits a wide spread
-# of age buckets, plans, providers, and dependent counts; raise the
-# limit on real catalogues to surface a richer batch.
-MAX_RECORDS = 8
+# enumerate per solve. The bundled reference data admits exactly 8
+# feasible records under the encoded rules, so a cap above that lets the
+# solver exhaust the search space and return status OPTIMAL with a
+# stable set across runs. Production catalogs are much larger; size this
+# down to the K records your downstream test fixture wants per solve and
+# the solver returns SOLUTION_LIMIT once the cap is hit.
+MAX_RECORDS = 16
 
 model = Model("synthetic_eligibility_records")
 
@@ -101,7 +104,7 @@ age_buckets_csv = read_csv(data_dir / "age_buckets.csv")
 _assert_dense_ids(age_buckets_csv, "age_buckets.csv")
 model.define(AgeBucket.new(model.data(age_buckets_csv).to_schema()))
 
-# Concept: synthesised member. The CSV holds a single placeholder row;
+# Concept: synthesized member. The CSV holds a single placeholder row;
 # every decision-valued property below describes that one slot. Each
 # solution returned by the solver is a different feasible filling of
 # that slot -- which is what gives us K records per solve.

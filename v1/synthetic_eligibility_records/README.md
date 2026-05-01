@@ -93,33 +93,33 @@ The rule structure here is drawn from the public [CMS Medicare](https://www.cms.
    python synthetic_eligibility_records.py
    ```
 
-6. Expected output. With `MAX_RECORDS = 8` the solver enumerates up to 8 distinct feasible member records and each row carries its `solution` index. Solver build strings, exact wall times, and per-solution ordering will vary; the structure of the output and the *set* of returned records is stable:
+6. Expected output. With `MAX_RECORDS = 16` and a bundled feasible set of 8 records, the solver exhausts the search space and returns status `OPTIMAL` with all 8 records. Each row carries its `solution` index. Solver build strings, exact wall times, and per-solution ordering will vary; the structure of the output and the *set* of returned records is stable:
    ```text
    Solve result:
-   • status: SOLUTION_LIMIT
+   • status: OPTIMAL
    • objective: 0
-   • solve time: 0.08s
+   • solve time: 0.12s
    • num_points: 8
-   • solver: MiniZinc_nothing
+   • solver: MiniZinc_unknown
 
-   Generated member records (up to 8 per run):
+   Generated member records (up to 16 per run):
       solution  age_years          plan_type  network      provider
    0         0         78  MedicareAdvantage        3   Dr_Senior_B
    1         1         78  MedicareAdvantage        3   Dr_Senior_A
    2         2         68  MedicareAdvantage        3   Dr_Senior_B
    3         3         68  MedicareAdvantage        3   Dr_Senior_A
-   4         4         50                HMO        2   Dr_East_HMO
-   5         5         28                HMO        2   Dr_East_HMO
+   4         4         28                HMO        2   Dr_East_HMO
+   5         5         50                HMO        2   Dr_East_HMO
    6         6         50                PPO        1  Dr_North_PPO
    7         7         28                PPO        1  Dr_North_PPO
    ```
 
-   Each solution row is one full member: a representative age, a plan type, a primary-care provider in the plan's network. The bundled data admits exactly 8 feasible records, so the K=8 batch surfaces all three plans and all four age buckets:
+   Each solution row is one full member: a representative age, a plan type, a primary-care provider in the plan's network. The bundled data admits exactly 8 feasible records, so the K=16 cap is more than enough -- the solver returns the full feasible set and `status: OPTIMAL` reports the search is exhausted.
 
    - The age-by-plan CFD is visible: every record with `age_years >= 65` is on `MedicareAdvantage`; every record with `age_years < 65` is on a non-Medicare plan (PPO or HMO).
    - The PCP-network attribution is visible: every `provider` row is in the network of its `plan` row -- Senior providers on network 3 with Medicare, `Dr_East_HMO` on network 2 with HMO, `Dr_North_PPO` on network 1 with PPO.
 
-   The `status: SOLUTION_LIMIT` line means the solver hit `MAX_RECORDS = 8` before exhausting the search space; for the bundled data the entire feasible set happens to be exactly 8 records, so raising `MAX_RECORDS` to 9 or higher will flip the status to `OPTIMAL` without surfacing additional records.
+   On a real catalog the feasible set is typically much larger than `MAX_RECORDS`; the solver then returns `status: SOLUTION_LIMIT` once the K cap is hit, and `num_points` reports how many records came back.
 
 ## Template structure
 ```text
@@ -205,7 +205,7 @@ The variable subconcept exposes a back-pointer named after the entity in its pro
 ## Customize this template
 
 - **Use your own plans and providers** by replacing the two CSV files. The constraint structure does not change; the integer ID columns stay required (the script uses them for the `Member.plan_id` / `Member.provider_id` decision domains) and IDs must remain dense and contiguous (the pre-solve check enforces this).
-- **Raise the solution limit on a real catalogue.** The bundled `MAX_RECORDS = 8` is sized for the demo. Production test suites typically want 100--10,000 records per solve. `time_limit_sec` is your safety net -- enumeration stops when either the limit or the budget is reached.
+- **Raise the solution limit on a real catalog.** The bundled `MAX_RECORDS = 16` is sized so the solver exhausts the small demo feasible set; production test suites typically want 100--10,000 records per solve. `time_limit_sec` is your safety net -- enumeration stops when either the limit or the budget is reached.
 - **Adjust the seniority gate** by changing `SENIOR_THRESHOLD_YEARS` (currently 65, the CMS Medicare threshold). Both arms of the age-by-plan CFD read this constant directly.
 - **Add a dependent-count decision** by introducing a `Member.num_dependents` integer decision bounded by 0 and the per-plan `max_dependents` cap. The `plans.csv` `max_dependents` column is included in the bundled data as a hook for this extension. Encode the cap with the same forbidden-pair idiom: `model.where(P.max_dependents >= 0).require(implies(Member.plan_id == P.id, Member.num_dependents <= P.max_dependents))`.
 - **Add a coverage-period decision pair** by introducing `coverage_start_days` and `coverage_end_days` as integer days from a notional epoch and an IC asserting `start <= TARGET_DATE_DAYS <= end` together with a minimum coverage duration. This adds the temporal-interval-containment shape over decision-side bounds, which is useful for fuzzing claim-adjudication date logic.
@@ -234,7 +234,7 @@ The variable subconcept exposes a back-pointer named after the entity in its pro
 <details>
   <summary>How many records will the solver return?</summary>
 
-- Up to `MAX_RECORDS` (8 by default) or however many feasible records exist in the reference data, whichever is smaller. `solve_info().num_points` reports the actual count after the solve; `solve_info().status` reports `SOLUTION_LIMIT` when the limit was hit (more records available) and `OPTIMAL` when the search has been exhausted.
+- Up to `MAX_RECORDS` (16 by default) or however many feasible records exist in the reference data, whichever is smaller. `solve_info().num_points` reports the actual count after the solve; `solve_info().status` reports `SOLUTION_LIMIT` when the limit was hit (more records available) and `OPTIMAL` when the search has been exhausted.
 - Solution ordering is not guaranteed across runs or solver versions; the *set* of returned records may also shift if MiniZinc's branching heuristics see new ties. Treat the `solution` column as a label, not a ranking.
 - The K returned records are guaranteed to be pairwise *distinct* on at least one decision (age bucket, plan, or provider) but not maximally diverse and not ranked. For broader spread, raise `MAX_RECORDS` past the size of the feasible set so the solver exhausts every distinct case, or add stratification buckets and re-solve per stratum.
 
