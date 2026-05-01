@@ -54,9 +54,10 @@ Venue.name = model.Property(f"{Venue} has {String:name}")
 venues_csv = read_csv(DATA_DIR / "venues.csv")
 model.define(Venue.new(model.data(venues_csv).to_schema()))
 
-# NotAllowedSymbolVenue concept: the disallowed dual of the allowed
-# (symbol, venue) pairs in symbol_venues.csv. The CSP uses the disallowed
-# form so the constraint stays inside the supported arithmetic (!=, *, +, -).
+# NotAllowedSymbolVenue (encoding artifact, not a domain concept): the
+# disallowed dual of the allowed (symbol, venue) pairs in symbol_venues.csv.
+# The CSP supports only the arithmetic operators !=, *, +, -, so the rule
+# is encoded as "forbid these pairs" rather than "require an allowed pair".
 sv_csv = read_csv(DATA_DIR / "symbol_venues.csv")
 all_pairs = [(int(s), int(v)) for s in symbols_csv["id"] for v in venues_csv["id"]]
 allowed_pairs = {(int(r.symbol_id), int(r.venue_id)) for r in sv_csv.itertuples()}
@@ -144,8 +145,6 @@ problem.solve_for(
 problem.solve_for(
     OrderEvent.fill_qty, name=["fill_qty", OrderEvent.event_id], lower=0, upper=qty_max
 )
-
-# Constraints follow.
 
 # Each event has exactly one type.
 type_sum_ic = model.require(

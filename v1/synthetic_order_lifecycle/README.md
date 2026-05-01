@@ -85,7 +85,7 @@ The same pattern applies to any test-data-generation problem where rows have to 
    python -m pip install .
    ```
 
-4. Configure:
+4. Configure (prompts for Snowflake account, role, and profile name):
    ```bash
    rai init
    ```
@@ -95,7 +95,7 @@ The same pattern applies to any test-data-generation problem where rows have to 
    python synthetic_order_lifecycle.py
    ```
 
-6. Expected output (the solver returns one feasible trace; exact event types, timestamps, quantities, prices, and venues vary across runs and with different solver versions). The script first prints the formulation (~30 lines, omitted here for brevity), then the solve-result block, then the trace (rows are sorted by `(order_id, ts_ms)` for readability — the four binary type indicators are collapsed into a single `type` column on the display side), then per-order fill totals:
+6. Expected output. The script prints the formulation (~30 lines, omitted here), the solve-result block, the full event trace (all 36 rows; abridged below to the AAPL block), and per-order fill totals. Rows are sorted by `(order_id, ts_ms)`; the four binary `is_place`/`is_modify`/`is_cancel`/`is_fill` indicators are collapsed into a single `type` column on the display side. Exact event types, timestamps, quantities, prices, and venues vary across runs and solver versions:
    ```text
    Solve result:
    • status: OPTIMAL
@@ -144,17 +144,11 @@ The same pattern applies to any test-data-generation problem where rows have to 
 
 The solver decides every event's type, timestamp, venue, and quantity. The script proceeds in five steps.
 
-### 1. Define the ontology and load data
+**1. Define the ontology and load data.** `Symbol`, `Venue`, `Order`, and `OrderEvent` concepts are declared with their identifying properties; `SymbolVenue` and a derived `NotAllowedSymbolVenue` capture the eligible (and dual disallowed) symbol/venue pairs. CSV rows from `data/` populate every concept and relationship. `NotAllowedSymbolVenue` is an encoding artifact, not a domain concept: the CSP arithmetic supports only `!=, *, +, -`, so the rule is encoded as "forbid these pairs" rather than the more natural "require an allowed pair".
 
-`Symbol`, `Venue`, `Order`, and `OrderEvent` concepts are declared with their identifying properties; `SymbolVenue` and a derived `NotAllowedSymbolVenue` capture the eligible (and dual disallowed) symbol/venue pairs. CSV rows from `data/` populate every concept and relationship.
+**2. Declare decision variables.** Each event slot gets binary type indicators (`is_place`, `is_modify`, `is_cancel`, `is_fill`) and integer decisions (`ts_ms`, `qty`, `tick_price`, `venue_id`). An auxiliary `fill_qty` decision channels `qty when is_fill else 0` so the per-order fill-conservation aggregate stays linear.
 
-### 2. Declare decision variables
-
-Each event slot gets binary type indicators (`is_place`, `is_modify`, `is_cancel`, `is_fill`) and integer decisions (`ts_ms`, `qty`, `tick_price`, `venue_id`). An auxiliary `fill_qty` decision channels `qty when is_fill else 0` so the per-order fill-conservation aggregate stays linear.
-
-### 3. Add sequencing rules as pairwise temporal constraints
-
-Conditional rules read as 'if premise then consequent'. PLACE-first and nothing-after-CANCEL are pairwise rules over two refs into the same concept; `A.order == B.order` asserts same-order without a free `Order` variable:
+**3. Add sequencing rules as pairwise temporal constraints.** Conditional rules read as 'if premise then consequent'. PLACE-first and nothing-after-CANCEL are pairwise rules over two refs into the same concept; `A.order == B.order` asserts same-order without a free `Order` variable:
 
 ```python
 A = OrderEvent.ref()
@@ -174,9 +168,7 @@ distinct_ts_ic = model.require(
 )
 ```
 
-### 4. Walk relationships in line for cross-table rules
-
-Reading the order's `original_qty` from an event, or matching disallowed venue pairs through the order's symbol — no intermediate refs needed:
+**4. Walk relationships in line for cross-table rules.** Reading the order's `original_qty` from an event, or matching disallowed venue pairs through the order's symbol — no intermediate refs needed:
 
 ```python
 qty_upper_ic = model.require(OrderEvent.qty <= OrderEvent.order.original_qty)
@@ -200,9 +192,7 @@ place_price_match_ic = model.require(
 )
 ```
 
-### 5. Solve and verify
-
-`implies` and `all_different` are solver-only. They go to `satisfy()` but must NOT be passed to `verify()` — the relational engine cannot re-evaluate wire-format constraint relations and would return silently-OK regardless of whether the constraint actually holds. The remaining ICs are plain relational arithmetic and ARE re-evaluated by `verify()`:
+**5. Solve and verify.** `implies` and `all_different` are solver-only. They go to `satisfy()` but must NOT be passed to `verify()` — the relational engine cannot re-evaluate wire-format constraint relations and would return silently-OK regardless of whether the constraint actually holds. The remaining ICs are plain relational arithmetic and ARE re-evaluated by `verify()`:
 
 ```python
 problem.solve("minizinc", time_limit_sec=60)
@@ -234,23 +224,6 @@ model.require(problem.termination_status() == "OPTIMAL")
 ## Troubleshooting
 
 <details>
-  <summary>Solver returns INFEASIBLE</summary>
-
-- The pool may be too small. If you reduce `events.csv` below the per-order slot count required by your constraints (e.g. one `PLACE` plus a forced `CANCEL` with no room for fills), no trace can satisfy all the rules. Add more rows to `events.csv` for that order.
-- A symbol with zero allowed venues in `symbol_venues.csv` will block the `venue_ok_ic` constraint -- every event has to land on an allowed venue. Confirm at least one (symbol, venue) row exists per symbol used in `orders.csv`.
-- Every order in `orders.csv` must have `original_qty >= 1` and `original_tick_price >= 1`. The `qty` and `tick_price` decision domains start at `1`, and the PLACE-event pinning ICs equate them to the order's stated values; a row with zero in either column produces an empty domain and immediate INFEASIBLE.
-
-</details>
-
-<details>
-  <summary>FileNotFoundError on a CSV</summary>
-
-- The script resolves data paths as `Path(__file__).parent / "data"`. Run `python synthetic_order_lifecycle.py` from the unzipped template root, not from a parent directory.
-- Confirm `data/` contains `symbols.csv`, `venues.csv`, `symbol_venues.csv`, `orders.csv`, and `events.csv`.
-
-</details>
-
-<details>
   <summary>Import error or AttributeError on <code>relationalai</code></summary>
 
 - Confirm your virtual environment is active: `which python` should point to `.venv`.
@@ -260,9 +233,10 @@ model.require(problem.termination_status() == "OPTIMAL")
 </details>
 
 <details>
-  <summary>Empty disallowed pairs (full venue coverage)</summary>
+  <summary>FileNotFoundError on a CSV</summary>
 
-- If you replace `symbol_venues.csv` with a list that covers every (symbol, venue) combination, the derived `disallowed_csv` is empty and `model.data(...).to_schema()` raises `ValueError: empty data` (or a similar zero-row schema error from pandas). Drop the `venue_ok_ic` constraint when full coverage is intentional.
+- The script resolves data paths as `Path(__file__).parent / "data"`. Run `python synthetic_order_lifecycle.py` from the unzipped template root, not from a parent directory.
+- Confirm `data/` contains `symbols.csv`, `venues.csv`, `symbol_venues.csv`, `orders.csv`, and `events.csv`.
 
 </details>
 
@@ -279,6 +253,22 @@ model.require(problem.termination_status() == "OPTIMAL")
 
 - This template uses the MiniZinc constraint solver. Ensure the RAI Native App version supports MiniZinc.
 - HiGHS is not appropriate here -- this is a discrete satisfaction model with categorical decisions, not LP/MILP.
+
+</details>
+
+<details>
+  <summary>Solver returns INFEASIBLE</summary>
+
+- The pool may be too small. If you reduce `events.csv` below the per-order slot count required by your constraints (e.g. one `PLACE` plus a forced `CANCEL` with no room for fills), no trace can satisfy all the rules. Add more rows to `events.csv` for that order.
+- A symbol with zero allowed venues in `symbol_venues.csv` will block the `venue_ok_ic` constraint -- every event has to land on an allowed venue. Confirm at least one (symbol, venue) row exists per symbol used in `orders.csv`.
+- Every order in `orders.csv` must have `original_qty >= 1` and `original_tick_price >= 1`. The `qty` and `tick_price` decision domains start at `1`, and the PLACE-event pinning ICs equate them to the order's stated values; a row with zero in either column produces an empty domain and immediate INFEASIBLE.
+
+</details>
+
+<details>
+  <summary>Empty disallowed pairs (full venue coverage)</summary>
+
+- If you replace `symbol_venues.csv` with a list that covers every (symbol, venue) combination, the derived `disallowed_csv` is empty and `model.data(...).to_schema()` raises `ValueError: empty data` (or a similar zero-row schema error from pandas). Drop the `venue_ok_ic` constraint when full coverage is intentional.
 
 </details>
 
