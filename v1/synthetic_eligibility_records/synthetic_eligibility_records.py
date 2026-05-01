@@ -65,6 +65,11 @@ data_dir = Path(__file__).parent / "data"
 # join would silently drop the record. Validate up front.
 def _assert_dense_ids(df, name):
     ids = sorted(int(v) for v in df["id"].tolist())
+    if not ids:
+        raise ValueError(
+            f"{name} has no rows; at least one row is required to set the "
+            "decision-variable bounds (`lower=min(id), upper=max(id)`)."
+        )
     expected = list(range(ids[0], ids[-1] + 1))
     if ids != expected:
         raise ValueError(
@@ -74,10 +79,14 @@ def _assert_dense_ids(df, name):
 
 
 # Concept: insurance plan (reference data; one row per plan offering).
-# Network determines which providers are in-network.
+# Network determines which providers are in-network. `max_dependents` is
+# loaded from the CSV but unused by the bundled rules -- declared here as
+# a hook so the dependent-count extension shown in `## Customize` can
+# reference `Plan.max_dependents` directly via a ref.
 Plan = model.Concept("Plan", identify_by={"id": Integer})
 Plan.plan_type = model.Property(f"{Plan} has {String:plan_type}")
 Plan.network_id = model.Property(f"{Plan} has {Integer:network_id}")
+Plan.max_dependents = model.Property(f"{Plan} has {Integer:max_dependents}")
 plans_csv = read_csv(data_dir / "plans.csv")
 _assert_dense_ids(plans_csv, "plans.csv")
 model.define(Plan.new(model.data(plans_csv).to_schema()))
@@ -90,6 +99,22 @@ Provider.network_id = model.Property(f"{Provider} has {Integer:network_id}")
 providers_csv = read_csv(data_dir / "providers.csv")
 _assert_dense_ids(providers_csv, "providers.csv")
 model.define(Provider.new(model.data(providers_csv).to_schema()))
+
+# Pre-solve precondition: every plan's network must have at least one
+# in-network provider. The PCP-network-attribution IC forbids cross-network
+# (plan, provider) combinations; if a plan's network has zero providers,
+# every provider is forbidden for that plan and the model is silently
+# infeasible for any record that picks that plan. Surface as a clear error
+# instead of an empty-result diagnostic at solve time.
+plan_networks = set(int(v) for v in plans_csv["network_id"].tolist())
+provider_networks = set(int(v) for v in providers_csv["network_id"].tolist())
+orphan_networks = sorted(plan_networks - provider_networks)
+if orphan_networks:
+    raise ValueError(
+        f"Plan network(s) {orphan_networks} have no providers in providers.csv; "
+        "every plan's network must have at least one in-network provider for "
+        "the PCP-network-attribution IC to admit a feasible record."
+    )
 
 # Concept: representative age bucket. Each row maps an integer bucket id
 # to a representative age (in years) used to drive the CFDs and to
@@ -213,12 +238,14 @@ si = problem.solve_info()
 si.display()
 
 # Every IC in this model is `implies`-bodied (the two CFDs and the
-# network-attribution forbidden-pair encoding) -- these are solver-only
-# and the relational engine cannot re-evaluate them. `problem.verify()`
-# is omitted because it would have nothing to check. The CFD and
-# network-attribution invariants are visible directly in the inspection
-# output below: every record's age_years vs plan_type and every record's
-# plan.network_id vs provider.network_id are printed side-by-side.
+# network-attribution forbidden-pair encoding) -- these are solver-only.
+# The relational engine cannot re-evaluate them: passing implies-bodied
+# ICs to `problem.verify()` returns silently-OK without actually
+# checking them, so the convention is that they must NOT be passed.
+# The CFD and network-attribution invariants are visible directly in
+# the inspection output below: every record's age_years vs plan_type
+# and every record's plan.network_id vs provider.network_id are printed
+# side-by-side.
 if si.num_points is None or si.num_points == 0:
     print(
         "\nNo feasible eligibility records under the encoded rules. "
