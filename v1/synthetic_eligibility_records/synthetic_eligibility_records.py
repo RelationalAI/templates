@@ -65,9 +65,10 @@ def _assert_dense_ids(df, name):
         )
 
 
-# Plan concept: an insurance plan offering. `max_dependents` is unused by
-# the bundled rules -- declared as a hook so the dependent-count extension
-# in `## Customize this template` can reference `Plan.max_dependents` directly.
+# Plan concept: an insurance plan offering. `max_dependents` is an optional
+# extension hook -- the bundled rules don't use it, but declaring it here
+# lets the dependent-count extension in `## Customize this template`
+# reference `Plan.max_dependents` directly.
 Plan = model.Concept("Plan", identify_by={"id": Integer})
 Plan.plan_type = model.Property(f"{Plan} has {String:plan_type}")
 Plan.network_id = model.Property(f"{Plan} has {Integer:network_id}")
@@ -87,22 +88,28 @@ model.define(Provider.new(model.data(providers_csv).to_schema()))
 # Pre-solve coverage warnings: a plan whose network has zero providers
 # (or a provider whose network has zero plans) is locally unreachable but
 # leaves the model globally feasible, so warn rather than raise.
-plan_networks = set(int(v) for v in plans_csv["network_id"].tolist())
-provider_networks = set(int(v) for v in providers_csv["network_id"].tolist())
-orphan_plan_networks = sorted(plan_networks - provider_networks)
-if orphan_plan_networks:
-    print(
-        f"Warning: plan network(s) {orphan_plan_networks} have no providers "
-        "in providers.csv; plans on those networks are unreachable and will "
-        "never appear in generated records."
-    )
-orphan_provider_networks = sorted(provider_networks - plan_networks)
-if orphan_provider_networks:
-    print(
-        f"Warning: provider network(s) {orphan_provider_networks} have no plans "
-        "in plans.csv; providers in those networks are unreachable and will "
-        "never appear in generated records."
-    )
+
+
+def _warn_orphan_networks(plans_csv, providers_csv):
+    plan_networks = {int(v) for v in plans_csv["network_id"].tolist()}
+    provider_networks = {int(v) for v in providers_csv["network_id"].tolist()}
+    orphan_plans = sorted(plan_networks - provider_networks)
+    if orphan_plans:
+        print(
+            f"Warning: plan network(s) {orphan_plans} have no providers in "
+            "providers.csv; plans on those networks are unreachable and will "
+            "never appear in generated records."
+        )
+    orphan_providers = sorted(provider_networks - plan_networks)
+    if orphan_providers:
+        print(
+            f"Warning: provider network(s) {orphan_providers} have no plans in "
+            "plans.csv; providers in those networks are unreachable and will "
+            "never appear in generated records."
+        )
+
+
+_warn_orphan_networks(plans_csv, providers_csv)
 
 # AgeBucket concept: representative age (years) keyed by integer bucket id.
 # Four buckets span the adult/senior split (two under 65, two at or above).
@@ -116,9 +123,9 @@ age_buckets_csv = read_csv(DATA_DIR / "age_buckets.csv")
 _assert_dense_ids(age_buckets_csv, "age_buckets.csv")
 model.define(AgeBucket.new(model.data(age_buckets_csv).to_schema()))
 
-# Member concept: a single placeholder member. Every decision-valued
-# property below fills its slots; each solution is a different feasible
-# filling, which is what gives us K records per solve.
+# Member concept: one singleton placeholder. The solver enumerates K
+# feasible fillings of this member's three decision slots (age bucket,
+# plan, provider); each filling = one synthetic record.
 Member = model.Concept("Member", identify_by={"id": Integer})
 model.define(Member.new(id=1))
 
@@ -213,11 +220,11 @@ problem.solve("minizinc", time_limit_sec=60, solution_limit=MAX_RECORDS)
 si = problem.solve_info()
 si.display()
 
-# All ICs here are implies-bodied, which is solver-only -- they are NOT
-# passed to `problem.verify()` (it returns silently-OK without checking).
-# The invariants are instead visible by eye in the table below: every row
-# prints `age_years` next to `plan_type` (CFD check) and `plan_network`
-# next to `provider_network` (network-attribution check).
+# No `problem.verify(...)` call: every IC here is implies-bodied, which is
+# solver-only -- verify() would return silently-OK without re-evaluating.
+# The invariants are visible by eye in the table below: every row prints
+# `age_years` next to `plan_type` (CFD check) and `plan_network` next to
+# `provider_network` (network-attribution check).
 if si.num_points is None or si.num_points == 0:
     print(
         "\nThe solver returned no eligibility records. See the printed solve status "

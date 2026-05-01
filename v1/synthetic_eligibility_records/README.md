@@ -83,7 +83,7 @@ The rule structure here is drawn from the public [CMS Medicare](https://www.cms.
    python -m pip install .
    ```
 
-4. Configure:
+4. Configure (prompts for Snowflake account, role, and profile name):
    ```bash
    rai init
    ```
@@ -205,6 +205,30 @@ The variable subconcept exposes a back-pointer named after the entity in its pro
 ## Troubleshooting
 
 <details>
+  <summary>Import error for <code>relationalai</code></summary>
+
+- Confirm your virtual environment is active: `which python` should point to `.venv`.
+- Reinstall dependencies: `python -m pip install .`.
+
+</details>
+
+<details>
+  <summary>Authentication or configuration errors</summary>
+
+- Run `rai init` to create or update your RelationalAI/Snowflake configuration.
+- If you have multiple profiles, set `export RAI_PROFILE=<your_profile>`.
+
+</details>
+
+<details>
+  <summary>MiniZinc solver not available</summary>
+
+- This template uses the MiniZinc constraint solver. Ensure the RAI Native App version supports MiniZinc.
+- HiGHS is not appropriate here -- this is a discrete satisfaction model with categorical decisions and structural propagation, not LP/MILP.
+
+</details>
+
+<details>
   <summary>Solver returns INFEASIBLE / no feasible eligibility records</summary>
 
 - Check the solve status the script prints. `INFEASIBLE` means the reference data admits no record; `UNKNOWN` or `TIME_LIMIT` means the budget expired before a record was found (raise `time_limit_sec` or shrink the decision domains).
@@ -251,29 +275,5 @@ The variable subconcept exposes a back-pointer named after the entity in its pro
 - `model.where(...)` filters at relational time only -- decision variables are not legal inside it. The rewriter raises this error when it encounters a decision-valued comparison in a `where` clause.
 - Move the decision condition into `implies` and use a tautological relational filter (or a real one) to scope any reference-data Concepts the IC needs. For example, replace `model.where(Plan.id == Member.plan_id).require(Member.num_dependents <= Plan.max_dependents)` with `model.where(Plan.max_dependents >= 0).require(implies(Member.plan_id == Plan.id, Member.num_dependents <= Plan.max_dependents))`.
 - See the three constraint definitions in `synthetic_eligibility_records.py` (`network_match_ic`, `senior_must_medicare_ic`, `non_senior_no_medicare_ic`) for the canonical idiom.
-
-</details>
-
-<details>
-  <summary>Import error for <code>relationalai</code></summary>
-
-- Confirm your virtual environment is active: `which python` should point to `.venv`.
-- Reinstall dependencies: `python -m pip install .`.
-
-</details>
-
-<details>
-  <summary>Authentication or configuration errors</summary>
-
-- Run `rai init` to create or update your RelationalAI/Snowflake configuration.
-- If you have multiple profiles, set `export RAI_PROFILE=<your_profile>`.
-
-</details>
-
-<details>
-  <summary>MiniZinc solver not available</summary>
-
-- This template uses the MiniZinc constraint solver. Ensure the RAI Native App version supports MiniZinc.
-- HiGHS is not appropriate here -- this is a discrete satisfaction model with categorical decisions and structural propagation, not LP/MILP.
 
 </details>
