@@ -19,7 +19,7 @@ tags:
 
 Retailers often face the challenge of clearing seasonal inventory before it loses value. Markdown optimization determines the best discount schedule across a planning horizon to maximize total revenue -- including both sales revenue and the salvage value of any remaining stock. Discounts stimulate demand but reduce per-unit revenue, so the trade-off must be carefully balanced.
 
-This template models the markdown problem as a mixed-integer program. Binary decision variables select which discount level to apply to each product in each week. Continuous variables track units sold and cumulative sales. Constraints enforce that exactly one discount is chosen per product-week, that discounts can only increase over time (a price ladder), and that cumulative sales never exceed initial inventory. Demand depends on a base rate, a discount-specific demand lift, and a weekly seasonal multiplier.
+This template uses **Prescriptive** reasoning to model the markdown problem as a mixed-integer program. Binary decision variables select which discount level to apply to each product in each week. Continuous variables track units sold and cumulative sales. Constraints enforce that exactly one discount is chosen per product-week, that discounts can only increase over time (a price ladder), and that cumulative sales never exceed initial inventory. Demand depends on a base rate, a discount-specific demand lift, and a weekly seasonal multiplier.
 
 The objective maximizes total revenue from sales plus the salvage value of unsold inventory at the end of the planning horizon. This captures the full trade-off between aggressive discounting to drive volume and preserving margin on high-value items.
 
