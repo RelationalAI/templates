@@ -225,8 +225,8 @@ The variable subconcept exposes a back-pointer named after the entity in its pro
 <details>
   <summary>Solver returns INFEASIBLE / no feasible eligibility records</summary>
 
-- The reference data may not admit any feasible record. The script prints "No feasible eligibility records under the encoded rules." in this case rather than hard-failing. Each solution picks one age bucket, so the model is infeasible only when *every* bucket lands on a side of the senior threshold that has no compatible plan-and-provider combination. To rule this out: confirm there is at least one Medicare-Advantage plan whose network has a provider iff any age bucket has `age_years >= SENIOR_THRESHOLD_YEARS`, and at least one non-Medicare plan whose network has a provider iff any bucket has `age_years < SENIOR_THRESHOLD_YEARS`.
-- Mismatched networks: even if a plan exists for the right side of the threshold, the PCP-network-attribution IC also needs a provider on that plan's network. The pre-solve coverage check warns on either-direction asymmetry between `plans.csv` and `providers.csv` rather than hard-failing; read the startup warnings before assuming the data is sound.
+- Check the solve status the script prints. `INFEASIBLE` means the reference data admits no record; `UNKNOWN` or `TIME_LIMIT` means the budget expired before a record was found (raise `time_limit_sec` or shrink the decision domains).
+- For genuine infeasibility: each solution picks one age bucket, so the model is infeasible only when *every* bucket lands on a side of the senior threshold that has no compatible plan-and-provider combination. Confirm there is at least one Medicare-Advantage plan whose network has a provider iff any age bucket has `age_years >= SENIOR_THRESHOLD_YEARS`, and at least one non-Medicare plan whose network has a provider iff any bucket has `age_years < SENIOR_THRESHOLD_YEARS`. The pre-solve coverage check also warns on either-direction asymmetry between `plans.csv` and `providers.csv`; read the startup warnings before assuming the data is sound.
 
 </details>
 
