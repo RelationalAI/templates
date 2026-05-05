@@ -1,449 +1,184 @@
-# Runbook: Telco WEST Recovery — Multi-Reasoner Walkthrough
+# Runbook: (Re)creating this template with the RAI agent skills
 
-Walk-through of the chained-reasoner pattern this template is built on. One realistic business thread — **WEST region recovery** — traced across all five RAI reasoner families, each stage writing properties back to the same ontology that downstream stages consume.
+This runbook is a recipe for the practitioner who wants to reproduce — or build a new variant of — this four-reasoner chain on top of the bundled demo data. It walks through the same stage-by-stage build the agent followed when authoring `telco_network_recovery.py`, calling out which RAI agent skill governs each step and what each skill adds to the model.
 
-The template's combined script (`telco_network_recovery.py`) implements stages 2–5 directly; this runbook expands the surrounding narrative including the descriptive Stage 1 diagnosis and the Stage 6 interpretation, so a non-OR reader can follow the full reasoning thread end-to-end.
-
----
-
-## TL;DR — the chain in one screen
-
-```
-WEST is bleeding $791K/quarter from a network operations crisis.
-The chain produces a $5M plan that recovers 122 Gbps capacity
-across all 15 critical towers, prioritized by social blast radius.
-
-  ─────────────────────────────────────────────────────────────────
-  STAGE 1  Descriptive  ──►  WEST: Q3-Q4 revenue −22% to −26%,
-                              avail 94.6 vs 99.5, 15 of 81 DEGRADED.
-                              Retention angle? No — 0 high-risk
-                              subs; this is operational.
-  ─────────────────────────────────────────────────────────────────
-  STAGE 2  Rules        ──►  CellTower.is_critical_restore  (15)
-                              4 derived health metrics + a compound
-                              flag: WEST + DEGRADED + health < 0.85.
-  ─────────────────────────────────────────────────────────────────
-  STAGE 3  Graph        ──►  Subscriber.influence_score  (PageRank)
-                              CellTower.weighted_impact  (15)
-                              404 distinct subs (33% of base) route
-                              calls through a critical tower.
-  ─────────────────────────────────────────────────────────────────
-  STAGE 4  Predictive   ──►  CellTower.projected_demand_growth (15)
-                 (GNN)        WEST: 0.993×  ── shrinking ~0.7%/yr
-                              while 8 other regions sit at +0.59 to +0.75%/day.
-  ─────────────────────────────────────────────────────────────────
-  STAGE 5  Prescriptive ──►  TowerUpgradeOption.selected  (15)
-                              OPTIMAL · 12 GOLD · 2 SILVER · 1 BRONZE
-                              $4.96M of $5M (binding) · 122 Gbps
-                              164 of 200 install-weeks (slack)
-  ─────────────────────────────────────────────────────────────────
-```
-
-A single-reasoner approach can't answer this. Descriptive alone tells the story but no plan. Rules alone identifies broken towers but not which matter most. Graph alone ranks subscribers but doesn't decide. Predictive alone forecasts but doesn't act. Prescriptive alone has no way to weigh "important" without rules + graph upstream.
+The goal: by the end you should be able to point the same workflow at a different domain (e.g. fleet maintenance, retail demand, energy) and have the agent build a parallel four-stage chain on the same shared-ontology principle.
 
 ---
 
-## Setup
+## Inputs you start from
 
-See the template's main `README.md` for installation, RAI connection setup, and how to run the script. The narrative below follows the actual stage outputs of `telco_network_recovery.py`.
-
----
-
-## Stage 1 — Descriptive: diagnose WEST
-
-
-```
-Q4 2024 — Daily KPIs by region
-
-                avg avail %       avg churn rate     avg daily revenue
-              ──────────────     ────────────────    ──────────────────
-  WEST          94.60  ███       0.0256  █████████   $72,558  ███████
-  CENTRAL       99.52  ████████  0.0046  █              $101,517  ██████████
-  SOUTH         99.53  ████████  0.0049  █              $102,030  ██████████
-  EAST          99.55  ████████  0.0049  █              $103,840  ██████████
-  NORTH         99.56  ████████  0.0050  █              $103,810  ██████████
-  NORTHEAST     99.56  ████████  0.0050  █               $99,569  ██████████
-  SOUTHEAST     99.58  ████████  0.0050  █              $100,429  ██████████
-  NORTHWEST     99.54  ████████  0.0049  █              $100,995  ██████████
-  SOUTHWEST     99.55  ████████  0.0049  █              $101,716  ██████████
-                                                      ▲
-  WEST is 5× worse on availability AND churn,         │
-  ~30% lower on daily revenue.                        │
-                                                      │
-  Q3-Q4 monthly revenue gaps stack to $791K:    ──────┘
-
-   Sep 2024   forecast $1.40M  →  actual $1.04M  ── −25.9%  (−$362K)
-   Oct 2024   forecast $0.94M  →  actual $0.70M  ── −25.1%  (−$236K)
-   Nov 2024   forecast $0.88M  →  actual $0.68M  ── −22.0%  (−$193K)
-
-  WEST tower fleet (81 towers)
-
-       ACTIVE        ████████████████████████  49
-       DEGRADED      ███████                   15   ← 15 critical_restore
-       MAINTENANCE   ████████                  17
-
-  Top performance offenders (NetworkPerformance, all WEST DEGRADED):
-       TWR-0015 ── 8.87% loss  190ms  (424 measurements)
-       TWR-0014 ── 8.75% loss  189ms  (273 measurements)
-       TWR-0010 ── 8.73% loss  188ms  (429 measurements)
-       (… all 15 cluster 8.1-8.9% loss / 185-200ms latency)
-       ────────────────────────────────────────
-       Healthy WEST towers sit at <1% loss / ~30ms latency.
-
-  Retention angle? Zero subs in collections, zero with churn_risk ≥ 0.5.
-  High-risk subscribers concentrate in SOUTH/NORTH/CENTRAL, not WEST.
-  This is a NETWORK-side crisis, not subscriber retention.
-```
-
-Subscriber.churn_risk_score is a static feature that hasn't caught up to WEST's empirical churn (TimeSeriesMetric.churn_rate of 2.6% is 5x other regions). The thread focuses on infrastructure recovery.
+- **Demo data** in `../data/`: 8 CSVs covering 250 cell towers, 1,200 subscribers, 6,000 call-detail records, ~5,000 per-tower performance measurements, 544 equipment / health records, 360 upgrade options, and 3,285 daily-KPI rows × 9 regions. Treat these as a stand-in for the customer's own Snowflake schema.
+- **A business question** that no single reasoner answers — here, *"WEST region missed revenue targets and operations look broken; what's the optimal tower-upgrade plan?"*
+- **A loaded set of RAI agent skills**: `rai-discovery`, `rai-pyrel-coding`, `rai-rules-authoring`, `rai-graph-analysis`, `rai-prescriptive-problem-formulation`, `rai-prescriptive-results-interpretation`, `rai-ontology-design`.
 
 ---
 
-## Stage 2 — Rules: flag critical_restore towers
+## Step 0 — Scope the question with `rai-discovery`
 
+Before any code, use **`rai-discovery`** to translate the business framing into reasoner choices. The skill classifies the question by reasoner family and tells you which downstream skills to load.
 
-**Properties added to the ontology** (via `model.define(...)`):
-- `CellTower.avg_packet_loss` (Float) — `aggs.avg(NetworkPerformance.packet_loss_pct).per(CellTower)`
-- `CellTower.avg_latency_ms` (Float)
-- `CellTower.avg_error_rate` (Float)
-- `CellTower.avg_health_score` (Float) — across attached equipment via two-hop join
+In this case the answer is *all four families plus a descriptive setup query*:
 
-**Rule** — `CellTower.is_critical_restore` (unary `Relationship`):
+| Sub-question | Reasoner | Why |
+|---|---|---|
+| "How bad is WEST and is this churn vs. ops?" | Descriptive (queries) | Establishes the situation; no model enrichment needed. |
+| "Which towers should we restore?" | Rules | Compound classification on derived per-tower averages. |
+| "Whose service breaks if those towers fail?" | Graph | Subscriber-to-subscriber call graph, PageRank for influence, blast-radius aggregation per critical tower. |
+| "Is regional demand growing or contracting?" | Predictive (GNN) | Time-series regression on per-region daily KPIs with same-region temporal edges. |
+| "What's the optimal upgrade plan?" | Prescriptive (MIP) | Binary tier selection per critical tower, three-factor objective, cost + crew-week constraints. |
+
+Discovery's output is a *plan*, not code: which skill comes next, what each will read from the ontology, and what each will write back. Everything that follows materializes that plan.
+
+---
+
+## Step 1 — Ground the ontology with `rai-ontology-design` and `rai-pyrel-coding`
+
+The chain only needs a focused subset of the broader telco model — 7 concepts, not 18. Drop everything not consumed downstream.
+
+Concepts the chain needs:
+
+- `CellTower` — physical radio site (`region`, `status`, `capacity_gbps`).
+- `NetworkPerformance`, `NetworkEquipment`, `EquipmentHealth` — feeds Stage 2 derived averages.
+- `Subscriber` + `CallDetailRecord` — feeds Stage 3 PageRank graph.
+- `TowerUpgradeOption` — junction with composite identity `(tower_id, tier)` for Stage 4 decision variable.
+- `RegionMetric` — composite-key `(metric_date, region)` time-series concept for Stage 1 GNN target.
+- `TemporalEdge` — same-region 1-day-lag pairs that drive GNN message passing along time.
+
+Use **`rai-pyrel-coding`** (specifically the data-loading and references sections) to hand each CSV directly into a `Concept.new(...)` call with kwargs for both identity and properties:
 
 ```python
-# Branch 1: WEST + DEGRADED + degraded equipment health
-m.where(
-    CellTower.region == "WEST",
-    CellTower.status == "DEGRADED",
-    CellTower.avg_health_score < 0.85,   # health is 0-1 scale
-).define(CellTower.is_critical_restore())
-
-# Branch 2: WEST + poor performance + degraded health (catches ACTIVE-but-failing)
-m.where(
-    CellTower.region == "WEST",
-    CellTower.avg_packet_loss > 5.0,
-    CellTower.avg_health_score < 0.85,
-).define(CellTower.is_critical_restore())
+src = model.data(cell_towers_df)
+model.define(CellTower.new(
+    id=src.TOWER_ID,
+    name=src.TOWER_NAME,
+    capacity_gbps=src.CAPACITY_GBPS,
+    status=src.STATUS,
+    region=src.REGION,
+))
 ```
 
-```
-RULE FIRES → 15 towers flagged is_critical_restore  (all WEST DEGRADED)
-
-  TWR-0010 ── health 0.48  loss 8.73%  cap_gbps 18  ███
-  TWR-0015 ── health 0.60  loss 8.87%  cap_gbps 60  ██████
-  TWR-0009 ── health 0.62  loss 8.49%  cap_gbps 17  ███
-  TWR-0012 ── health 0.63  loss 8.59%  cap_gbps 84  █████████
-  TWR-0008 ── health 0.64  loss 8.51%  cap_gbps 71  ████████
-  TWR-0014 ── health 0.66  loss 8.75%  cap_gbps 36  █████
-  TWR-0002 ── health 0.66  loss 8.56%  cap_gbps 17  ███
-  TWR-0001 ── health 0.66  loss 8.56%  cap_gbps 31  █████
-  TWR-0011 ── health 0.66  loss 8.68%  cap_gbps 61  ███████
-  TWR-0005 ── health 0.68  loss 8.12%  cap_gbps 94  ██████████
-  TWR-0003 ── health 0.69  loss 8.45%  cap_gbps 43  █████
-  TWR-0007 ── health 0.72  loss 8.54%  cap_gbps 17  ███
-  TWR-0013 ── health 0.77  loss 8.62%  cap_gbps 94  ██████████
-  TWR-0006 ── health 0.78  loss 8.51%  cap_gbps 37  █████
-  TWR-0004 ── health 0.81  loss 8.54%  cap_gbps 64  ███████
-
-✓ is_critical_restore written back to CellTower (15 rows)
-✓ avg_packet_loss / avg_latency_ms / avg_error_rate / avg_health_score
-  written back to all CellTowers (250 rows)
-```
-
-Branch 2 didn't fire — none of WEST's ACTIVE towers fall below health 0.85. The 15 flagged are exactly the WEST DEGRADED set, all with packet loss 8.1–8.9% and latency 185–200ms — sharp gap from the rest of WEST.
+For composite-key concepts (`TowerUpgradeOption`, `RegionMetric`, `TemporalEdge`), the same pattern applies — both keys go into `.new()`. The skill's "free-variable scoping" section is essential before you write any aggregations: bare `Concept` symbols inside the same `where(...).require(...)` chain refer to one shared free variable, and FK Properties introduce *separate* anonymous variables unless an outer predicate ties them together. Stage 4's three-factor objective depends on this.
 
 ---
 
-## Stage 3 — Graph: subscriber influence + tower blast radius
+## Step 2 — Stage 1, Predictive: GNN regression on `RegionMetric`
 
+No dedicated agent skill in the bundled set covers the predictive reasoner, so this stage follows the working examples in `v1/subscriber_retention/` and `v1/demand_forecasting/` rather than a skill recipe. The shape:
 
-**Construction** — Pattern 3 (`edge_concept`):
-- Node concept: `Subscriber` (1,200 nodes)
-- Edge concept: `CallDetailRecord`, with `caller`→`callee` (directed)
-- Aggregator: `"sum"` (collapse parallel calls between the same pair)
+1. Compute lag features in pandas before loading: `prev_day_growth`, `prev_week_growth`, `growth_7d_mean` per region.
+2. Compute same-region 1-day-lag pairs as `TemporalEdge` rows.
+3. Build `Graph(model, directed=True, weighted=False)` and define `Edge.new(src=src_rm, dst=dst_rm)` joined to `TemporalEdge`.
+4. Configure `PropertyTransformer(drop=[date, target], category=[region], continuous=[...12 KPIs + 3 lags...], integer=[counts])`.
+5. Train/val/test split temporally (train < Nov 2024, val Nov, test Dec) and load each as a small `*Table` concept tied to `RegionMetric` by composite key.
+6. `gnn.fit()` with `task_type="regression"`, `n_epochs=80`, `lr=0.002`, `device="cpu"`.
+7. Pull predictions, group by region, compute mean predicted growth → small `RegionGrowth` concept that joins to `CellTower.projected_demand_growth` via region.
 
-**Algorithm:** `pagerank()` (default for directed graphs).
-
-```
-PageRank — top 10 social influencers (of 1,200 subscribers)
-
-  SUB-CON-00900   CONSUMER     $3,793 LTV   ████████████  0.002963
-  SUB-CON-00723   CONSUMER     $3,049 LTV   ████████████  0.002956
-  SUB-CON-00262   CONSUMER     $3,764 LTV   ███████████   0.002790
-  SUB-CON-00274   CONSUMER     $2,850 LTV   ███████████   0.002695
-  SUB-ENT-0038    ENTERPRISE  $283,233 LTV  ██████████    0.002637  ★
-  SUB-CON-00705   CONSUMER       $765 LTV   ██████████    0.002599
-  SUB-CON-00393   CONSUMER     $3,219 LTV   ██████████    0.002581
-  SUB-ENT-0001    ENTERPRISE  $393,340 LTV  ██████████    0.002575  ★
-  SUB-CON-01066   CONSUMER     $1,146 LTV   ██████████    0.002570
-  SUB-CON-00762   CONSUMER       $307 LTV   ██████████    0.002525
-
-  ★ Top enterprise accounts also rank — heavy inbound call traffic.
-    PageRank captures structural influence independent of LTV.
-
-Per-critical-tower blast radius (sorted by weighted_impact)
-
-  TWR-0014  61 subs  ████████████  0.0502   ← largest social footprint
-  TWR-0008  56 subs  ██████████    0.0430
-  TWR-0011  48 subs  ██████████    0.0428
-  TWR-0012  50 subs  █████████     0.0394
-  TWR-0003  43 subs  █████████     0.0393
-  TWR-0013  46 subs  █████████     0.0379
-  TWR-0004  46 subs  █████████     0.0378
-  TWR-0010  48 subs  █████████     0.0375
-  TWR-0015  45 subs  ████████      0.0361
-  TWR-0002  46 subs  ████████      0.0331
-  TWR-0007  44 subs  ████████      0.0330
-  TWR-0005  45 subs  ████████      0.0330
-  TWR-0009  44 subs  ████████      0.0330
-  TWR-0001  41 subs  ████████      0.0322
-  TWR-0006  41 subs  ████████      0.0316
-
-  ──────────────────────────────────────────────────────────────────
-  404 distinct subscribers (33% of the 1,200-sub base) route at least
-  one call through a critical WEST tower. TWR-0014's failure ripples
-  to 61 subs whose combined social influence is highest.
-  ──────────────────────────────────────────────────────────────────
-
-✓ Subscriber.influence_score written back to all 1,200 subscribers
-✓ CellTower.impact_count + weighted_impact written back to CellTower
-```
+The GNN reasoner needs an `EXP_DATABASE` schema where the RAI native app can write training artifacts — see the main README's prerequisites for the one-time DDL.
 
 ---
 
-## Stage 4 — Predictive: forecast WEST capacity demand
+## Step 3 — Stage 2, Rules: derived averages + `is_critical_restore`
 
+Switch to **`rai-rules-authoring`**. The skill's classification table maps each rule to a pattern:
 
-**Method:** GNN node regression on `TimeSeriesMetric` (composite key `metric_date` + `region`). Target: `subscriber_growth_rate`. Features: the other 12 daily KPIs + 3 lag features (`prev_day_growth`, `prev_week_growth`, `growth_7d_mean`) + `region` as a category. Graph: same-region 1-day-lag temporal edges. Train < 2024-11-01 (includes the Sep–Oct WEST decline onset); validate on Nov 2024; test on Dec 2024.
-
-```
-Per-region GNN-predicted subscriber-growth-rate (Dec 2024 test horizon)
-
-  CENTRAL    ─────  +0.0075  ████████  ▲
-  EAST       ─────  +0.0073  ████████  │
-  NORTH      ─────  +0.0071  ████████  │  8 regions cluster
-  NORTHEAST  ─────  +0.0070  ████████  │  +0.59 to +0.75%/day
-  NORTHWEST  ─────  +0.0067  ████████  │  (mean predicted growth)
-  SOUTH      ─────  +0.0065  ████████  │
-  SOUTHEAST  ─────  +0.0063  ███████   │
-  SOUTHWEST  ─────  +0.0059  ███████   ▼
-                            ▲
-                            │
-  WEST       ───── −0.0071                      ← anomaly: contracting
-                                                 multiplier 0.993×
-
-  ──────────────────────────────────────────────────────────────────
-  WEST projection: 0.7% demand decline over the test horizon.
-  Stage 5 picks up this multiplier as the 3rd objective coefficient.
-  ──────────────────────────────────────────────────────────────────
-
-✓ CellTower.projected_demand_growth written back to all 15 critical towers
-  (uniform 0.992871 — regional, not per-tower)
-```
-
-**Stage 5 objective with the predictive term:**
-
-```
-objective = sum( selected[t,tier] *
-                 capacity_increase_gbps[t,tier] *
-                 weighted_impact[t] *
-                 projected_demand_growth[t] )    # ← Stage 4 contribution
-```
-
-**Snowflake setup for the GNN:** the template's main script computes lag features (prev-day, prev-week, 7-day mean) and same-region 1-day-lag temporal edges in pandas before loading, so no extra Snowflake DDL is required. To run on your own Snowflake schema instead of the bundled CSV, the equivalent SQL would be a typed copy of the time-series table plus per-region `LAG()` window functions.
-
-**Caveats:**
-- The GNN was tuned for a single 80-epoch run with seed-42 reproducibility; production deployment would expand to a multi-seed average + a held-out holdout window.
-- The WEST projection partially encodes the same network-degradation pattern Stages 2/3 flagged ("things have gotten worse and we expect them to keep getting worse if we don't act"). For an independent baseline, train on a pre-degradation slice (H1 2024 only) and compare.
-
----
-
-## Stage 5 — Prescriptive: tower upgrade selection MIP
-
-
-```
-FORMULATION
-
-  Decision variable
-    TowerUpgradeOption.selected  (binary)
-      45 binaries = 15 critical-restore towers × {BRONZE, SILVER, GOLD}
-
-  Constraints
-    1. At-most-one tier per tower      sum(selected).per(CellTower) ≤ 1
-    2. Total cost                      Σ selected · cost ≤ $5,000,000
-    3. Total install_weeks             Σ selected · install_weeks ≤ 200
-
-  Objective (maximize)
-    Σ selected · capacity_increase_gbps · weighted_impact · projected_demand_growth
-                  └────── Step 2 (rules) ─────┘└── Stage 3 ──┘└── Stage 4 ──┘
-
-──────────────────────────────────────────────────────────────────────
-SOLVE  (Gurobi)   →   OPTIMAL    15 active flows    122 Gbps    $4,956,843
-──────────────────────────────────────────────────────────────────────
-
-Tower-tier assignment (sorted by weighted_impact)
-
-  TWR-0014  ── GOLD     +6 Gbps   $350,864   wgt 0.0502  ████████████
-  TWR-0008  ── GOLD    +10 Gbps   $416,455   wgt 0.0430  ██████████
-  TWR-0011  ── GOLD     +9 Gbps   $481,914   wgt 0.0428  ██████████
-  TWR-0012  ── GOLD     +8 Gbps   $445,825   wgt 0.0394  █████████
-  TWR-0003  ── GOLD    +11 Gbps   $360,785   wgt 0.0393  █████████
-  TWR-0013  ── GOLD     +9 Gbps   $273,831   wgt 0.0379  █████████
-  TWR-0004  ── GOLD     +9 Gbps   $275,353   wgt 0.0378  █████████
-  TWR-0010  ── GOLD    +12 Gbps   $332,694   wgt 0.0375  █████████
-  TWR-0015  ── GOLD    +11 Gbps   $438,932   wgt 0.0361  ████████
-  TWR-0002  ── GOLD    +11 Gbps   $420,363   wgt 0.0331  ████████
-  TWR-0007  ── GOLD     +9 Gbps   $416,640   wgt 0.0330  ████████
-  TWR-0005  ── SILVER   +3 Gbps   $220,435   wgt 0.0330  ████████  ⚐
-  TWR-0009  ── BRONZE   +3 Gbps    $97,784   wgt 0.0330  ████████  ⚐
-  TWR-0001  ── GOLD     +6 Gbps   $274,561   wgt 0.0322  ████████
-  TWR-0006  ── SILVER   +5 Gbps   $150,407   wgt 0.0316  ████████  ⚐
-
-  ⚐ Lowest weighted_impact towers — solver buys cheaper tiers
-    to free budget for the higher-impact GOLDs.
-
-Budget gauge
-  Cost          ████████████████████████████████████████  $4,956,843 / $5,000,000  ── BINDING
-  Install-wks   █████████████████████████████████          164 / 200            (slack: 36)
-
-Headline metrics
-  Capacity restored:   122 Gbps
-  Tier mix:            12 GOLD · 2 SILVER · 1 BRONZE
-  Towers covered:      15 of 15 (no triage tradeoff)
-  Subs serviced:       404 distinct (33% of all 1,200)
-  Objective without Stage 4 (Σ capacity × weighted_impact):    4.6024
-  Objective with Stage 4 (× 0.992871 uniform multiplier):      4.5696
-
-✓ TowerUpgradeOption.selected written back — the optimization output
-  is now a queryable property of the model.
-```
-
-(Full decision matrix: `outputs/stage5_solution.csv`.)
-
-### Reading the solve
-
-- **GOLD dominates** (12/15) — for towers with high social blast radius, GOLD's 6–12 Gbps uplift outweighs its higher cost.
-- **Budget is binding** ($4.96M / $5M) — relaxing to $6M would let TWR-0009 jump from BRONZE to GOLD ($481K → +9 Gbps) and lift the objective meaningfully.
-- **Install-weeks are not binding** (164/200) — schedule is the looser constraint; budget holds back the plan.
-- **Stage 4's uniform multiplier doesn't shift tiers** — the forecast says WEST is contracting (-0.7%), so every upgrade is slightly less valuable in absolute terms, but relative tower priority is unchanged. **A non-uniform forecast would be the more revealing test of the chain's value** — if some WEST towers sat in growth pockets and others in decline, the tier mix would shift accordingly.
-
----
-
-## Stage 6 — Interpretation
-
-
-```
-THE PLAN, IN BUSINESS TERMS
-
-  • 122 Gbps of network capacity restored across all 15 critical towers
-    within the $5M capex budget.
-  • Every WEST DEGRADED tower gets an upgrade — no triage tradeoff.
-  • Service-affected subscribers drop from 404 to ~0 over the install
-    schedule (164 crew-weeks; 4-month rollout at 2 crews of 5).
-  • Budget binding — if CFO can flex to $6M, promote TWR-0009 to GOLD
-    for +9 Gbps marginal lift.
-
-ONTOLOGY ENRICHMENT — what each stage contributed back
-
-  Stage 2 (rules)         CellTower.is_critical_restore           [15]
-                          CellTower.avg_packet_loss               [250]
-                          CellTower.avg_latency_ms                [250]
-                          CellTower.avg_error_rate                [250]
-                          CellTower.avg_health_score              [250]
-
-  Stage 3 (graph)         Subscriber.influence_score              [1,200]
-                          CellTower.impact_count                  [120]
-                          CellTower.weighted_impact               [120]
-
-  Stage 4 (predictive)    CellTower.projected_demand_growth       [15]
-
-  Stage 5 (prescriptive)  TowerUpgradeOption.selected             [45]
-
-  ──────────────────────────────────────────────────────────────────
-  Each stage reads what the previous stage wrote.
-  Re-running any downstream stage automatically picks up enrichments.
-  No glue code, no DataFrame round-trip — same ontology throughout.
-  ──────────────────────────────────────────────────────────────────
-```
-
----
-
-## The chain — accretive ontology enrichment
-
-```
-THE WEST RECOVERY CHAIN
-
-  STAGE 1  DESCRIPTIVE
-  "Where is the bleed coming from?"
-  reads:   RevenueForecast, TimeSeriesMetric, NetworkPerformance, CellTower
-  writes:  (situational summary — no ontology mutation)
-                         │
-                         ▼
-  STAGE 2  RULES
-  "Which towers are critical to restore?"
-  reads:   NetworkPerformance, EquipmentHealth, NetworkEquipment, CellTower
-  writes:  CellTower.is_critical_restore        ── 15 towers flagged
-           CellTower.avg_packet_loss / latency_ms / error_rate / health_score
-                         │
-                         ▼
-  STAGE 3  GRAPH (PageRank)
-  "Whose service depends on these towers — and who is socially central?"
-  reads:   CallDetailRecord (caller→callee), CDR.routed_through(CellTower)
-  writes:  Subscriber.influence_score           ── per subscriber
-           CellTower.impact_count               ── distinct subs served
-           CellTower.weighted_impact            ── Σ subscriber influence
-                         │
-                         ▼
-  STAGE 4  PREDICTIVE (GNN node regression)
-  "What does the forecast say about future demand?"
-  reads:   TimeSeriesMetric.subscriber_growth_rate × 365d × 9 regions
-           + 12 daily KPIs + 3 lag features + same-region temporal edges
-  writes:  CellTower.projected_demand_growth    ── per critical tower
-                         │
-                         ▼
-  STAGE 5  PRESCRIPTIVE (gurobi MIP)
-  "What's the optimal $5M tier-selection plan?"
-  reads:   CellTower.is_critical_restore        ──►  decision-variable scope
-           CellTower.weighted_impact            ──►  objective coefficient
-           CellTower.projected_demand_growth    ──►  objective coefficient
-           TowerUpgradeOption.cost / capacity_increase / install_weeks
-  writes:  TowerUpgradeOption.selected          ── 15 upgrades chosen
-                         │
-                         ▼
-                   Actionable plan,
-                   grounded end-to-end in the same ontology.
-
-  ──────────────────────────────────────────────────────────────────
-  No glue. No DataFrame ping-pong. No re-derivation per-reasoner.
-  Five reasoners, one ontology, one accretive thread.
-  ──────────────────────────────────────────────────────────────────
-```
-
----
-
-## Why the chain matters (vs. any single stage)
-
-| Stage alone | What it tells you | What it doesn't |
+| NL rule | Type | Pattern |
 |---|---|---|
-| Descriptive | "WEST is broken" | Which towers, how to fix |
-| Rules alone | "These 15 towers are critical" | Which matter most; what to do |
-| Graph alone | "These subscribers are influential" | Which towers serve them |
-| Predictive alone | "WEST demand is contracting" | Where to spend the recovery budget |
-| Prescriptive alone | (won't run — no flagged set, no impact weights, no forecast) | Whole pipeline misses |
+| "Average packet loss / latency / error rate per tower" | **Derivation** | `Property` materialized via `aggs.avg(...).where(...).per(CellTower)` |
+| "Average equipment health per tower" | **Derivation** | Same pattern, two-hop join `EquipmentHealth → NetworkEquipment → CellTower` |
+| "Flag towers needing critical restoration" | **Alerting** | Unary `Relationship` with two `where(...).define(...)` branches (OR semantics via separate calls) |
 
-| Combined | Output |
-|---|---|
-| Descriptive → Rules | Crisis scoped + critical-tower set flagged |
-| + Graph | Each flagged tower scored by social blast radius |
-| + Predictive | Forward-looking demand multiplier per tower |
-| + Prescriptive | $5M plan, 122 Gbps, all 15 covered, prioritized by social impact |
+Two key skill rules apply:
+- "Boolean flags must be `Relationship`, not `Property`" → `is_critical_restore` is a unary Relationship.
+- "Multi-branch rules accumulate (set-union)" → both branches (DEGRADED + low health, AND high packet loss + low health) call `define(CellTower.is_critical_restore())` separately.
 
-**Multi-reasoner chaining grounded in (and contributing to) the ontology.**
+Threshold values are example-specific — `< 0.85` health and `> 5.0` packet loss reflect the demo data's distribution, not a generic rule. The skill's "data exploration before threshold selection" step says to confirm thresholds against the actual range; for this demo the critical-tower equipment averages are 0.45–0.81, so `< 0.85` discriminates cleanly.
 
 ---
 
-## Data Reference
+## Step 4 — Stage 3, Graph: PageRank + blast radius
 
-- **Source data**: bundled CSVs in `../data/` (the main template ships ~1.2 MB of synthetic-but-realistic telco data — 250 cell towers, 1,200 subscribers, 6,000 CDRs, 3,285 daily KPI rows across 9 regions). To run against your own Snowflake tables instead, see `telco_full_ontology.py` for a `model.Table(...)`-based variant of the ontology.
-- **Ontology**: `telco_full_ontology.py` documents the full 18-concept reference ontology. The template's main script uses a focused 7-concept subset that's sufficient for the four-stage chain.
-- **Stages**: implemented in `../telco_network_recovery.py` as a single combined script with stage banners.
+Switch to **`rai-graph-analysis`**. The skill's question-to-algorithm table puts you in the right place:
+
+- Question "who is most influential in the call network?" + directed graph → `pagerank()`
+- Construction Pattern 3 (`edge_concept`) — `CallDetailRecord` *is* the edge concept; `caller`/`callee` are the source/destination Relationships.
+
+Two non-obvious points the skill makes explicit:
+- `edge_src_relationship` / `edge_dst_relationship` accept only `Relationship` or `Chain`, not `Property` — the call graph would silently produce 0 edges if you used Properties. Verify with `graph.num_edges().inspect()`.
+- `aggregator="sum"` is justified here because parallel calls between the same caller/callee pair are real multi-edges. Omit it when you don't expect parallel edges (the warning surfaces real bugs).
+
+PageRank result lands directly on `Subscriber.influence_score` because `node_concept=Subscriber`. The blast-radius aggregation per critical tower is then a derived Property:
+
+```python
+model.define(
+    CellTower.weighted_impact(
+        aggs.sum(Subscriber.influence_score)
+        .where(
+            CallDetailRecord.routed_through(CellTower),
+            CallDetailRecord.caller(Subscriber),
+        )
+        .per(CellTower)
+    )
+)
+```
+
+The free-variable scoping rule from `rai-pyrel-coding` matters here: bare `CellTower` and bare `Subscriber` are tied together by the inner `.where(...)` predicates, so the aggregation correctly groups by tower with the right caller-set per tower.
+
+---
+
+## Step 5 — Stage 4, Prescriptive: tower-upgrade MIP
+
+Switch to **`rai-prescriptive-problem-formulation`**. The skill's workflow is:
+
+1. **Variables** — binary `TowerUpgradeOption.selected`, scoped via `where=[TowerUpgradeOption.for_tower(CellTower), CellTower.is_critical_restore()]`. The scope predicates use Stage 2's flag, so the decision space is exactly the (critical tower × tier) cross-product.
+2. **Constraints** — three from this problem's structure:
+   - At-most-one tier per tower: `aggs.sum(selected).per(CellTower) <= 1`
+   - Cost cap: `aggs.sum(selected * cost) <= BUDGET_USD`
+   - Install crew-weeks cap: `aggs.sum(selected * install_weeks) <= INSTALL_WEEKS_BUDGET`
+3. **Objective** — three-factor product where each factor comes from a different reasoner upstream:
+
+   ```python
+   problem.maximize(
+       aggs.sum(
+           TowerUpgradeOption.selected
+           * TowerUpgradeOption.capacity_increase_gbps
+           * CellTower.weighted_impact            # Stage 3 (graph)
+           * CellTower.projected_demand_growth   # Stage 1 (GNN)
+       ).where(
+           TowerUpgradeOption.for_tower(CellTower),
+           CellTower.is_critical_restore(),       # Stage 2 (rules)
+       )
+   )
+   ```
+
+The skill's pre-solver audit gates apply:
+- **Trivial-solution gate** — what if every variable is 0? All constraints satisfied, but objective = 0 (worst for `maximize`), so the solver pushes off the floor. Safe.
+- **Feasibility precheck** — at least one BRONZE option per critical tower fits within $5M; verify by aggregating the cheapest tier across critical towers in pandas before solving.
+- **Coefficient presence** — every objective coefficient (`capacity_increase_gbps`, `weighted_impact`, `projected_demand_growth`) must be populated. If any are unbound, the solver returns OPTIMAL with a vacuous objective. Spot-check with `model.select(coef_prop).to_df()` before solve.
+
+`problem.solve(solver="gurobi")` returns OPTIMAL: `$4,956,843` plan, 122 Gbps restored, 12 GOLD + 2 SILVER + 1 BRONZE, all 15 critical WEST towers covered, install crew-weeks = 164 of 200 (slack).
+
+---
+
+## Step 6 — Interpret with `rai-prescriptive-results-interpretation`
+
+After the solve, use the interpretation skill to extract the practitioner-facing summary:
+
+- **Status check** — OPTIMAL, not boundary or infeasible. No surprises.
+- **Binding constraints** — cost is binding ($4.96M of $5M); install weeks slack 36. The plan is *budget-bound, not crew-bound* — expanding crews wouldn't help; raising budget would.
+- **Sensitivity** — relaxing budget to $6M would let TWR-0009 jump BRONZE → GOLD for ~$380K marginal cost. Worth flagging if the customer might flex capex.
+- **Why this tier mix** — GOLD dominates (12/15) because high-blast-radius towers have capacity-uplift coefficients large enough that GOLD beats SILVER even at 4× cost. SILVER/BRONZE land on the lowest-influence towers where the optimizer buys cheaper tiers to free budget for the GOLDs.
+
+---
+
+## Adapting this recipe to a new domain
+
+The chain pattern transfers cleanly. To rebuild for a different problem:
+
+1. Re-run `rai-discovery` on the new business question — does it actually need all four reasoner families, or is one or two sufficient?
+2. Strip the demo ontology to the concepts the new chain needs (lean is better for type inference and solver compile time).
+3. Stage 1 (GNN) is optional — if there's no time series, skip it and let the prescriptive objective use static coefficients.
+4. Stages 2–4 are the load-bearing chain: Rules narrows the decision scope, Graph weights it, Prescriptive picks. The objective's job is to combine the upstream signals with `*` — each factor is a different reasoner's enrichment.
+5. Keep the validation checks at every stage: assert flagged-set size, assert PageRank top-N looks plausible, assert the trivial-solution gate, assert objective is not zero.
+
+The shape this template demonstrates — *each reasoner writes a property the next reasoner reads* — is what makes the chain accretive rather than serial. The agent skills are how you reliably author each link.
