@@ -216,8 +216,6 @@ telco_network_recovery/
     call_detail_records.csv   # 6,000 directed CDRs
     tower_upgrade_options.csv # 360 (tower, tier) options
     time_series_metrics.csv   # 3,285 daily KPI rows (365 x 9 regions)
-  references/
-    runbook.md                # multi-reasoner walkthrough with per-stage narrative
   README.md                   # this file
   pyproject.toml              # dependencies
 ```
@@ -378,10 +376,6 @@ problem.maximize(
 - Inspect `CellTower.avg_health_score` and `CellTower.avg_packet_loss` for individual towers to debug threshold behavior.
 
 </details>
-
-## Further reading
-
-- **[`references/runbook.md`](./references/runbook.md)** — recipe for (re)creating this template using the RAI agent skills (`rai-discovery`, `rai-rules-authoring`, `rai-graph-analysis`, `rai-prescriptive-problem-formulation`) on the bundled demo data. Walks through the stage-by-stage build of a four-reasoner chain so a practitioner can reproduce the pattern on their own data.
 
 ## Learn more
 
