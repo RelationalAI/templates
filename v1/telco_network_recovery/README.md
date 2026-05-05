@@ -216,6 +216,9 @@ telco_network_recovery/
     call_detail_records.csv   # 6,000 directed CDRs
     tower_upgrade_options.csv # 360 (tower, tier) options
     time_series_metrics.csv   # 3,285 daily KPI rows (365 x 9 regions)
+  references/
+    runbook.md                # multi-reasoner walkthrough with per-stage narrative
+    telco_full_ontology.py    # broader 18-concept reference ontology (Snowflake-source variant)
   README.md                   # this file
   pyproject.toml              # dependencies
 ```
@@ -376,6 +379,13 @@ problem.maximize(
 - Inspect `CellTower.avg_health_score` and `CellTower.avg_packet_loss` for individual towers to debug threshold behavior.
 
 </details>
+
+## Further reading
+
+Two reference files in `references/` expand the picture beyond what the main script covers:
+
+- **[`references/runbook.md`](./references/runbook.md)** — full multi-reasoner walkthrough with per-stage narrative, expected console output, and ASCII visualizations of the 5-stage chain (descriptive diagnosis → rules → graph → predictive → prescriptive → interpretation). Useful for explaining the chain to non-technical stakeholders.
+- **[`references/telco_full_ontology.py`](./references/telco_full_ontology.py)** — the broader 18-concept telco ontology this template's 7-concept subset is drawn from. It uses `model.Table(...)` against a Snowflake schema and adds concepts (BillingEvent, SupportTicket, PromotionRedemption, RevenueForecast, ...) the four-stage chain doesn't need. Adapt by replacing `<YOUR_DB>.<YOUR_SCHEMA>` with your own Snowflake schema and removing concepts you don't need.
 
 ## Learn more
 
