@@ -73,6 +73,11 @@ $300M unlocks 5 DCs (1,500 MW, $264M net value) including xAI Colossus.
 - Prompt: `/rai-prescriptive-results-interpretation Which data centers get approved, which upgrades are selected, and where's the biggest return on investment at each budget level?`
 - Response: Pareto frontier with knee at $300M (5 DCs, 1,500 MW, $264M net); marginal $995K/$M at knee, declining to $400K/$M by $600M; Google + Lambda never approved (DFW full).
 
+### 8. Persist the chain into the ontology
+
+- Prompt: `/rai-ontology-design Promote the per-stage enrichments to first-class ontology state: substation predicted load, centrality, grid community, structural-criticality flag, the three per-DC compliance flags. Add an `InvestmentPortfolio` concept indexed by `InvestmentLevel` so the approval + upgrade decision per budget scenario persists as queryable ontology.`
+- Response: Ontology now carries `Substation.predicted_load`, `.betweenness`, `.grid_community`, `.is_structurally_critical`, `DataCenterRequest.fails_capacity / fails_structural / fails_low_carbon / is_compliant`, plus an `InvestmentPortfolio(InvestmentLevel)` concept holding the approved-DC set and selected-upgrade set per scenario.
+
 ## Data
 
 Bundled CSVs in `data/`: 12 substations, 15 generators, 18 transmission lines, 10 DC requests (2,930 MW), 10 substation upgrades ($630M total), plus historical load and forecast tables. Full chain implemented in `energy_grid_planning.py`.

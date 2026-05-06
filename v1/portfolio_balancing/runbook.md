@@ -73,6 +73,11 @@ base at every lambda — without the cluster collapse, the gap would grow.
 - Prompt: `/rai-prescriptive-solver-management + /rai-prescriptive-results-interpretation Stress-test the frontier under crisis: shrink correlations toward all-ones with weight 0.7 on base covariance + 0.3 on outer-product. How much volatility expansion at each frontier point?`
 - Response: Crisis vol 25-30% above base across the frontier (budget 500: min_risk 34.06 -> 43.74 at +28.4%, eps_1 34.30 -> 44.54 at +29.8% peak). Gap peaks mid-frontier (eps_1..eps_2 at +29.8%), narrows to +25.2% at eps_5 — the cluster-collapse payoff.
 
+### 8. Persist the chain into the ontology
+
+- Prompt: `/rai-ontology-design Promote the per-stage enrichments to first-class ontology state: compliance flags, cluster id + representative flag, per-`(Scenario, eps_point)` holdings, base-vs-crisis vol gap. Add a `FrontierPoint` concept indexed by `(Scenario, eps_index)` so each Pareto point becomes a first-class entity, not stage-local Python state.`
+- Response: Ontology now carries `Holding.is_overconcentrated / is_sector_concentrated`, `User.is_high_risk_trader`, `Stock.cluster / is_representative`, plus a `FrontierPoint` concept materializing the 42 (6 scenarios × 7-point frontier) Pareto points with `vol_base`, `vol_crisis`, and `vol_gap_pct`.
+
 ## Data
 
 Bundled CSVs in `data/`: `returns.csv` (8 stocks across 5 sectors), `covar.csv` (64 symmetric covariance entries), plus `users.csv` (6), `accounts.csv` (4), `holdings.csv` (15), `transactions.csv` (21). All four stages run in `portfolio_balancing.py`.

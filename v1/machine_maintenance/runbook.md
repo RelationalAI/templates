@@ -76,6 +76,11 @@ all 3 Turbine techs sit in one city, a $3,200 fix away from resolved.
 - Prompt: `/rai-prescriptive-solver-management + /rai-prescriptive-results-interpretation For each machine type, check whether all qualified technicians sit in one location and recommend the cheapest cross-training fix.`
 - Response: OPTIMAL · 20 jobs · $605,241; Turbine concentrated in Houston_TX (67% of jobs travel); cross-train T006 (Chicago_IL, Senior) for $3,200 / 5 weeks.
 
+### 8. Persist the chain into the ontology
+
+- Prompt: `/rai-ontology-design Promote the per-stage enrichments to first-class ontology state: OEE-proxy properties, betweenness, the seven per-machine risk flags, the composite risk tier. Add a `MaintenancePlan` concept (one row per maintained `(machine, period, technician)` triple) and a `CrossTrainingRecommendation` concept so the optimizer's outputs persist as ontology.`
+- Response: Ontology now carries `Machine.performance_ratio / quality_ratio / anomaly_count / betweenness / is_overdue_maintenance / is_high_risk / is_chronic_downtime / risk_tier`, plus a `MaintenancePlan` concept holding the 20 scheduled jobs and a `CrossTrainingRecommendation` concept for T006 / Chicago_IL / $3,200 / 5 weeks.
+
 ## Data
 
 Bundled CSVs in `data/`: 30 machines (3 plants × 5 types), 10 technicians (3 cities), 16 qualifications, 4 periods, 60 sensors / 240 readings, 120 failure predictions, 129 downtime events, 120 production runs, 13 training options. All five stages run in `machine_maintenance.py`.

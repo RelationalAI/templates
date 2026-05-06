@@ -70,6 +70,11 @@ watch->avoid downgrade = +0.0% (optimizer already routed around it).
 - Prompt: `/rai-prescriptive-solver-management + /rai-prescriptive-results-interpretation Re-solve with the highest-centrality site offline, and again with watch-level suppliers downgraded to avoid. What's the cost delta in each, and why are they asymmetric?`
 - Response: Baseline OPTIMAL $1,865 / 8 flows / 0 unmet; S004 offline +88.5%; watch->avoid +0.0% (B003 already off optimal lanes).
 
+### 8. Persist the chain into the ontology
+
+- Prompt: `/rai-ontology-design Promote the per-stage enrichments to first-class ontology state: HIGH-priority customer flag, site centrality, supplier reliability flags, demand escalation flag. Add a `SupplyPlan` concept holding the optimal per-operation flow + per-demand unmet quantity so the routing decision is queryable as ontology, not DataFrame.`
+- Response: Ontology now carries `Business.is_high_priority_customer`, `Site.centrality`, `Business.is_unreliable / has_high_delay_risk / is_watch_level`, `Demand.is_escalated`, plus a new `SupplyPlan` concept materializing the 8 active flows and unmet quantities for the baseline solve.
+
 ## Data
 
 Bundled CSVs in `data/`: 31 sites (APAC/AMERICAS/EMEA), 31 businesses, 9 SKUs, 70 operations, 20 demand orders, 262 shipments (37 late), 36 quarterly delay predictions. Combined script with stage banners: `supply_chain_resilience.py`.
