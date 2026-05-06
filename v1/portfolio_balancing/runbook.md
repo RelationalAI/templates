@@ -78,7 +78,7 @@ base at every lambda — without the cluster collapse, the gap would grow.
 - Prompt: `/rai-prescriptive-solver-management + /rai-prescriptive-results-interpretation Stress-test the frontier under crisis: shrink correlations toward all-ones with weight 0.7 on base covariance + 0.3 on outer-product. How much volatility expansion at each frontier point?`
 - Response: Crisis vol 25-30% above base across the frontier (budget 500: min_risk 34.06 -> 43.74 at +28.4%, eps_1 34.30 -> 44.54 at +29.8% peak). Gap peaks mid-frontier (eps_1..eps_2 at +29.8%), narrows to +25.2% at eps_5 — the cluster-collapse payoff.
 
-### 9. Persist post-solve aggregates into the ontology
+### 9. Persist solution concepts into the ontology
 
 - Prompt: `/rai-ontology-design The chain already writes the compliance flags, cluster id + representative flag, Stock.x_quantity(Scenario), and Stock.regime_covar. What's still only in pandas/stdout: per-(scenario, frontier-point) metadata (return, risk, marginal risk/return, knee flag) and the base-vs-crisis volatility comparison. Add a FrontierPoint(Scenario, eps_label) Concept holding all post-solve frontier metadata.`
 - Response: Ontology gains a `FrontierPoint(Scenario, eps_label)` Concept (36 rows = 6 scenarios x 6 points) with `return`, `risk`, `marginal_risk_per_return`, `is_knee`, `vol_base`, `vol_crisis`, `vol_gap`, `vol_gap_pct`. The frontier shape (32.43->40.28 / 1160->1742 in base_500), knee at eps_1, and crisis vol gap (+28.4% min_risk -> +29.8% peak -> +25.2% eps_5) are now queryable as ontology rather than stdout.
