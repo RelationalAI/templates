@@ -58,8 +58,7 @@ This runbook serves two audiences:
 
 ## Step 0 — Scope the question with `rai-discovery`
 
-> **Skill:** `rai-discovery` ·
-> **Prompt:** "We need to schedule preventive maintenance for 30 machines across 3 plants. Where does OEE alone mislead us, and what structural risks won't a pure optimizer surface?"
+> `/rai-discovery` "We need to schedule preventive maintenance for 30 machines across 3 plants. Where does OEE alone mislead us, and what structural risks won't a pure optimizer surface?"
 
 Discovery classifies the question by reasoner family and tells you which downstream skills to load:
 
@@ -112,36 +111,31 @@ The runbook walks the same chain stage-by-stage, prompt-by-prompt, in agent-skil
 
 ## Stage 0 — Querying: operational intelligence
 
-> **Skill:** `rai-querying` ·
-> **Prompt:** "What's the OEE by plant? Which machines have the most sensor anomalies, and which are most likely to fail by the end of the planning horizon?"
+> `/rai-querying` "What's the OEE by plant? Which machines have the most sensor anomalies, and which are most likely to fail by the end of the planning horizon?"
 
 This stage establishes the operational baseline. Plant_C leads at 79.8% OEE; Plant_B trails at 61.4%. But Plant_A — middle of the OEE pack at 68.2% — owns 7 of 9 sensor anomalies and the three steepest failure trajectories (M001, M013, M016). The querying stage writes nine derived properties on `Machine` plus `MachinePeriod.predicted_fp` (120 rows), and Stage 3 reads `predicted_fp` directly into the failure-cost objective term.
 
 ## Stage 1 — Graph: dependency clusters and bottleneck centrality
 
-> **Skill:** `rai-graph-analysis` ·
-> **Prompt:** "Which machines share qualified technicians, and which are bottlenecks in the qualification network? Compute centrality and write it back to each machine so the optimizer can weight critical machines."
+> `/rai-graph-analysis` "Which machines share qualified technicians, and which are bottlenecks in the qualification network? Compute centrality and write it back to each machine so the optimizer can weight critical machines."
 
 The 30 machines form a single connected component — every machine is reachable through shared qualifications. Pump-type machines tie at the top of betweenness (raw 24.0, normalized 1.0): M003 (Plant_C), M008 (Plant_B), M013 (Plant_A). The normalized centrality is consumed by Stage 3's failure-cost multiplier `(1 + 2.0 × betweenness)`, so leaving a bottleneck Pump vulnerable is markedly more expensive than leaving a peripheral Motor vulnerable.
 
 ## Stage 2 — Rules: compliance flags and composite risk tier
 
-> **Skill:** `rai-rules-authoring` ·
-> **Prompt:** "Rate each machine's risk: chronic if >8 downtime events, high-risk if failure prob >0.3 AND criticality 4+, plus overdue for maintenance. All three flags = Critical, two = Elevated, otherwise Standard."
+> `/rai-rules-authoring` "Rate each machine's risk: chronic if >8 downtime events, high-risk if failure prob >0.3 AND criticality 4+, plus overdue for maintenance. All three flags = Critical, two = Elevated, otherwise Standard."
 
 Six machines overdue, one high-risk (M013), three chronic-downtime, four parts-reorder, five expiring certs. The composite tier surfaces a single Critical machine — M013 (Pump, Plant_A) — and a single Elevated machine — M016 (Turbine, Plant_A). The overdue flag is consumed by Stage 3 as a hard constraint: every overdue machine must be scheduled by period 2.
 
 ## Stage 3 — Prescriptive: maintenance schedule
 
-> **Skill:** `rai-prescriptive-problem-formulation` ·
-> **Prompt:** "Schedule preventive maintenance for all 30 machines across 4 periods, capped at 5 jobs per period. Every overdue machine gets maintained by period 2, and Turbines need an on-site qualified technician. Minimize expected failure cost weighted by criticality and centrality, plus labor and travel."
+> `/rai-prescriptive-problem-formulation` "Schedule preventive maintenance for all 30 machines across 4 periods, capped at 5 jobs per period. Every overdue machine gets maintained by period 2, and Turbines need an on-site qualified technician. Minimize expected failure cost weighted by criticality and centrality, plus labor and travel."
 
 The solver returns OPTIMAL with objective $605,240.61 and 20 maintenance jobs across the four periods (capacity-binding at 5 jobs/period). M013 and M016 — Plant_A's Critical and Elevated machines — are both scheduled by period 1, satisfying the overdue deadline. Several Turbine assignments require travel because all three Turbine-qualified techs are based in Houston_TX while four of six Turbines sit at Plant_A and Plant_C. The optimizer pays the travel cost; it cannot restructure the qualification pool.
 
 ## Stage 4 — Resilience: concentration sweep and cross-training
 
-> **Skill:** `rai-prescriptive-solver-management` + `rai-prescriptive-results-interpretation` ·
-> **Prompt:** "For each machine type, are all qualified technicians concentrated in one location? How many scheduled jobs required travel, and what's the cheapest cross-training option to eliminate the single-point-of-failure?"
+> `/rai-prescriptive-solver-management` + `/rai-prescriptive-results-interpretation` "For each machine type, are all qualified technicians concentrated in one location? How many scheduled jobs required travel, and what's the cheapest cross-training option to eliminate the single-point-of-failure?"
 
 Turbine is the concentrated type — all three qualified techs (T001, T002, T003) sit in Houston_TX, and 67% of scheduled Turbine jobs already require travel. The recommended fix: cross-train T006 (Senior, Chicago_IL) for $3,200 over 5 weeks. That single addition eliminates the Houston single-point-of-failure for Turbine work at Plant_B and Plant_C, and pays back the first time a weather event, illness, or expiring cert would have idled a Turbine job that the optimizer would otherwise have left uncovered.
 

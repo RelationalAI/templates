@@ -60,8 +60,7 @@ This runbook serves two audiences:
 
 ## Step 0 — Scope the question with `rai-discovery`
 
-> **Skill:** `rai-discovery` ·
-> **Prompt:** "We have 10 hyperscaler interconnection requests against a 12-substation grid. Which to approve, which substation upgrades to fund, at what budget level?"
+> `/rai-discovery` "We have 10 hyperscaler interconnection requests against a 12-substation grid. Which to approve, which substation upgrades to fund, at what budget level?"
 
 Discovery classifies the question by reasoner family and tells you which
 downstream skills to load:
@@ -113,8 +112,7 @@ Steps are sequential — each depends on prior steps. Steps without a skill are 
 
 ## Stage 1 — Predictive: substation load forecasting
 
-> **Skill:** `rai-predictive-modeling` + `rai-predictive-training` ·
-> **Prompt:** "Can we forecast substation load growth over the next 36 months based on historical demand, planned generator additions, and the data center request pipeline? Bind each substation's predicted peak load back to the ontology so the rules engine and optimizer can read it."
+> `/rai-predictive-modeling` + `/rai-predictive-training` "Can we forecast substation load growth over the next 36 months based on historical demand, planned generator additions, and the data center request pipeline? Bind each substation's predicted peak load back to the ontology so the rules engine and optimizer can read it."
 
 **Method:** load max forecasted load per substation as `Substation.predicted_load`. The template aggregates `DemandForecast.predicted_load_mw` over forecast horizons (6/12/18/24 months) and writes the max back to the substation. A pre-trained GNN can replace the table lookup; the script falls back gracefully when the GNN model registry is unavailable.
 
@@ -159,8 +157,7 @@ effective_load = Substation.predicted_load | Substation.current_load_mw
 
 ## Stage 2 — Graph: grid topology & structural vulnerability
 
-> **Skill:** `rai-graph-analysis` ·
-> **Prompt:** "Which substations are most critical to power flow based on grid topology? Use centrality on the transmission graph, then flag the top 3 as structurally critical and persist the scores back to the ontology."
+> `/rai-graph-analysis` "Which substations are most critical to power flow based on grid topology? Use centrality on the transmission graph, then flag the top 3 as structurally critical and persist the scores back to the ontology."
 
 **Construction** — `Substation` as the node concept directly (no mirror concept):
 - Node concept: `Substation` (12 nodes)
@@ -210,8 +207,7 @@ Centrality (top-3 marked is_structurally_critical)
 
 ## Stage 3 — Rules: interconnection queue compliance
 
-> **Skill:** `rai-rules-authoring` ·
-> **Prompt:** "Screen each data center request against three criteria: (1) substation must have enough capacity after predicted load, (2) if 100% low-carbon required, region must have 25%+ renewable, (3) substation shouldn't be most structurally critical. Which requests pass all three?"
+> `/rai-rules-authoring` "Screen each data center request against three criteria: (1) substation must have enough capacity after predicted load, (2) if 100% low-carbon required, region must have 25%+ renewable, (3) substation shouldn't be most structurally critical. Which requests pass all three?"
 
 Three declarative `Relationship` rules consume Stages 1–2 enrichments. Each is written as a `model.where(...).define(...)` block; a composite `is_compliant` fires only when none of the three failure flags fire.
 
@@ -275,8 +271,7 @@ Every request passes low-carbon — ERCOT's nuclear (STP, Comanche Peak) plus it
 
 ## Stage 4 — Prescriptive: joint DC approval + upgrade MIP
 
-> **Skill:** `rai-prescriptive-problem-formulation` ·
-> **Prompt:** "Decide which data center requests to approve and which substation upgrades to fund at $200M, $300M, $400M, $500M, and $600M investment levels. Maximize annual revenue. A request can only be approved if its substation has enough capacity after upgrades."
+> `/rai-prescriptive-problem-formulation` "Decide which data center requests to approve and which substation upgrades to fund at $200M, $300M, $400M, $500M, and $600M investment levels. Maximize annual revenue. A request can only be approved if its substation has enough capacity after upgrades."
 
 ```
 FORMULATION
@@ -352,8 +347,7 @@ PARETO FRONTIER (queried directly from ontology)
 
 ## Stage 5 — Interpretation
 
-> **Skill:** `rai-prescriptive-results-interpretation` ·
-> **Prompt:** "Which data centers get approved, which upgrades are selected, and where's the biggest return on investment at each budget level?"
+> `/rai-prescriptive-results-interpretation` "Which data centers get approved, which upgrades are selected, and where's the biggest return on investment at each budget level?"
 
 ```
 THE PLAN, IN BUSINESS TERMS

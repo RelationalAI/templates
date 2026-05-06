@@ -54,8 +54,7 @@ This runbook serves two audiences:
 
 ## Step 0 — Scope the question with `rai-discovery`
 
-> **Skill:** `rai-discovery` ·
-> **Prompt:** "Our 8-stock book breaks compliance and concentrates risk. Rebuild it under Markowitz mean-variance with caps, deduplicate redundant bets via correlation clustering, and stress-test under crisis. What questions does each reasoner family handle?"
+> `/rai-discovery` "Our 8-stock book breaks compliance and concentrates risk. Rebuild it under Markowitz mean-variance with caps, deduplicate redundant bets via correlation clustering, and stress-test under crisis. What questions does each reasoner family handle?"
 
 Discovery classifies the question by reasoner family and tells you which downstream skills to load:
 
@@ -106,8 +105,7 @@ The runbook walks the same chain stage-by-stage, prompt-by-prompt, in agent-skil
 
 ## Stage 1 — Rules: compliance scan
 
-> **Skill:** `rai-rules-authoring` ·
-> **Prompt:** "Flag any holding worth more than 15% of its account, any sector worth more than 30% of the account, and any user with a risk score above 0.8 and more than five flagged transactions."
+> `/rai-rules-authoring` "Flag any holding worth more than 15% of its account, any sector worth more than 30% of the account, and any user with a risk score above 0.8 and more than five flagged transactions."
 
 ```
 COMPLIANCE VIOLATIONS — current book (4 accounts, 15 holdings, 6 users)
@@ -147,8 +145,7 @@ COMPLIANCE VIOLATIONS — current book (4 accounts, 15 holdings, 6 users)
 
 ## Stage 2 — Graph: covariance clustering + cluster representatives
 
-> **Skill:** `rai-graph-analysis` ·
-> **Prompt:** "Cluster stocks by correlation — anything above 0.3 absolute is a redundant bet. Pick one representative per cluster (highest Sharpe ratio) and force the rest to zero in optimization."
+> `/rai-graph-analysis` "Cluster stocks by correlation — anything above 0.3 absolute is a redundant bet. Pick one representative per cluster (highest Sharpe ratio) and force the rest to zero in optimization."
 
 **Construction** — undirected, unweighted graph:
 - Node concept: `Stock` (8 nodes)
@@ -218,8 +215,7 @@ REPRESENTATIVE = HIGHEST SHARPE PER CLUSTER  (returns / volatility)
 
 ## Stage 3 — Prescriptive: bi-objective QP with epsilon constraint
 
-> **Skill:** `rai-prescriptive-problem-formulation` ·
-> **Prompt:** "Build a Markowitz mean-variance frontier across 6 scenarios = 3 budgets × 2 regimes. Position cap 30% of budget, sector cap 30%, non-representatives forced to zero. Anchor with min-risk and max-return, then sweep 5 epsilon points across the return range."
+> `/rai-prescriptive-problem-formulation` "Build a Markowitz mean-variance frontier across 6 scenarios = 3 budgets × 2 regimes. Position cap 30% of budget, sector cap 30%, non-representatives forced to zero. Anchor with min-risk and max-return, then sweep 5 epsilon points across the return range."
 
 ```
 FORMULATION
@@ -276,8 +272,7 @@ Epsilon sweep      5 interior points evenly spaced across the range
 
 ## Stage 3 — Reading the frontier (per scenario)
 
-> **Skill:** `rai-prescriptive-results-interpretation` ·
-> **Prompt:** "For each scenario, list the seven-point Pareto frontier and find the knee — where does the marginal risk per unit return jump the most? Is the rate-form frontier shape consistent across budgets?"
+> `/rai-prescriptive-results-interpretation` "For each scenario, list the seven-point Pareto frontier and find the knee — where does the marginal risk per unit return jump the most? Is the rate-form frontier shape consistent across budgets?"
 
 ```
 EFFICIENT FRONTIER — base_500  (budget = 500, regime = base)
@@ -312,8 +307,7 @@ EFFICIENT FRONTIER — base_500  (budget = 500, regime = base)
 
 ## Stage 4 — Crisis stress test
 
-> **Skill:** `rai-prescriptive-solver-management` + `rai-prescriptive-results-interpretation` ·
-> **Prompt:** "Stress-test the frontier under crisis: shrink correlations toward all-ones with weight 0.7 on base covariance + 0.3 on outer-product. How much volatility expansion at each frontier point — does the gap peak mid-frontier or at the concentrated end?"
+> `/rai-prescriptive-solver-management` + `/rai-prescriptive-results-interpretation` "Stress-test the frontier under crisis: shrink correlations toward all-ones with weight 0.7 on base covariance + 0.3 on outer-product. How much volatility expansion at each frontier point — does the gap peak mid-frontier or at the concentrated end?"
 
 Same `solve_epsilon` call, no separate model — `Scenario.regime` selects between two `Stock.regime_covar` definitions:
 
