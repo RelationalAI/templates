@@ -40,7 +40,7 @@ base at every lambda — without the cluster collapse, the gap would grow.
 
 ### 1. Build ontology
 
-- Prompt: `/rai-build-starter-ontology Build a portfolio ontology from the CSVs in ../data/ covering stocks, sectors, the covariance matrix, accounts, holdings, users, and transactions.`
+- Prompt: `/rai-build-starter-ontology Build a portfolio ontology from the CSVs in data/ covering stocks, sectors, the covariance matrix, accounts, holdings, users, and transactions.`
 - Response: Concepts: `Stock` (with binary `Stock.covar(Stock, Stock)` property carrying covariance), `Sector`, `User`, `Account`, `Holding`, `Transaction` — bound to the bundled CSVs (8 stocks, 64 covariance entries). Stage 3 adds the `Regime` and `Scenario` Concepts (2 regimes x 3 budgets = 6 scenarios).
 
 ### 2. Discover reasoner questions
@@ -75,4 +75,4 @@ base at every lambda — without the cluster collapse, the gap would grow.
 
 ## Data
 
-Bundled CSVs in `../data/`: `returns.csv` (8 stocks across 5 sectors), `covar.csv` (64 symmetric covariance entries), plus `users.csv` (6), `accounts.csv` (4), `holdings.csv` (15), `transactions.csv` (21). All four stages run in `../portfolio_balancing.py`.
+Bundled CSVs in `data/`: `returns.csv` (8 stocks across 5 sectors), `covar.csv` (64 symmetric covariance entries), plus `users.csv` (6), `accounts.csv` (4), `holdings.csv` (15), `transactions.csv` (21). All four stages run in `portfolio_balancing.py`.

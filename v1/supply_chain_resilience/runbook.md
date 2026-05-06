@@ -37,7 +37,7 @@ watch->avoid downgrade = +0.0% (optimizer already routed around it).
 
 ### 1. Build ontology
 
-- Prompt: `/rai-build-starter-ontology Build a supply chain ontology from the CSVs in ../data/ covering sites, businesses, SKUs, shipping operations, demand orders, historical shipments, and quarterly delay predictions.`
+- Prompt: `/rai-build-starter-ontology Build a supply chain ontology from the CSVs in data/ covering sites, businesses, SKUs, shipping operations, demand orders, historical shipments, and quarterly delay predictions.`
 - Response: Concepts: `Site`, `Business`, `SKU`, `Operation`, `Demand`, `Shipment`, `DelayPrediction` — bound to the bundled CSVs (31 sites, 31 businesses, 9 SKUs, 70 operations, 20 demands, 262 shipments, 36 delay predictions).
 
 ### 2. Discover reasoner questions
@@ -72,4 +72,4 @@ watch->avoid downgrade = +0.0% (optimizer already routed around it).
 
 ## Data
 
-Bundled CSVs in `../data/`: 31 sites (APAC/AMERICAS/EMEA), 31 businesses, 9 SKUs, 70 operations, 20 demand orders, 262 shipments (37 late), 36 quarterly delay predictions. Combined script with stage banners: `../supply_chain_resilience.py`.
+Bundled CSVs in `data/`: 31 sites (APAC/AMERICAS/EMEA), 31 businesses, 9 SKUs, 70 operations, 20 demand orders, 262 shipments (37 late), 36 quarterly delay predictions. Combined script with stage banners: `supply_chain_resilience.py`.

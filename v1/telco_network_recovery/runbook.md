@@ -39,7 +39,7 @@ across all 15 critical towers, prioritized by social blast radius.
 
 ### 1. Build ontology
 
-- Prompt: `/rai-build-starter-ontology Build a telco network ontology from the eight CSVs in ../data/: cell_towers, network_equipment, equipment_health, network_performance, subscribers, call_detail_records, tower_upgrade_options, time_series_metrics. The time-series file has one row per (date, region) — model that as a composite-key concept and add a same-region 1-day-lag edge concept to support temporal GNN message passing downstream.`
+- Prompt: `/rai-build-starter-ontology Build a telco network ontology from the eight CSVs in data/: cell_towers, network_equipment, equipment_health, network_performance, subscribers, call_detail_records, tower_upgrade_options, time_series_metrics. The time-series file has one row per (date, region) — model that as a composite-key concept and add a same-region 1-day-lag edge concept to support temporal GNN message passing downstream.`
 - Response: Concepts: `CellTower`, `NetworkEquipment`, `EquipmentHealth`, `NetworkPerformance`, `Subscriber`, `CallDetailRecord` (edge concept: caller → callee, routed_through tower), `TowerUpgradeOption` (composite key tower_id+tier), `RegionMetric` (composite key metric_date+region), `TemporalEdge` (composite key src_date+src_region+dst_date+dst_region) — all bound to the bundled CSVs.
 
 ### 2. Discover reasoner questions
@@ -79,4 +79,4 @@ across all 15 critical towers, prioritized by social blast radius.
 
 ## Data
 
-Bundled CSVs in `../data/`: 250 cell towers (15 WEST DEGRADED), 1,200 subscribers, 6,000 directed CDRs, ~5,000 NetworkPerformance measurements, 544 NetworkEquipment + EquipmentHealth rows, 360 TowerUpgradeOptions (3 tiers × 120 in-scope towers), 3,285 daily KPI rows (365 days × 9 regions). All stages run end-to-end via `../telco_network_recovery.py`.
+Bundled CSVs in `data/`: 250 cell towers (15 WEST DEGRADED), 1,200 subscribers, 6,000 directed CDRs, ~5,000 NetworkPerformance measurements, 544 NetworkEquipment + EquipmentHealth rows, 360 TowerUpgradeOptions (3 tiers × 120 in-scope towers), 3,285 daily KPI rows (365 days × 9 regions). All stages run end-to-end via `telco_network_recovery.py`.

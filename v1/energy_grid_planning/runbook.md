@@ -40,7 +40,7 @@ $300M unlocks 5 DCs (1,500 MW, $264M net value) including xAI Colossus.
 
 ### 1. Build ontology
 
-- Prompt: `/rai-build-starter-ontology Build an ontology for grid infrastructure planning from the CSVs in ../data/ covering substations, generators, transmission lines, demand forecasts, data center requests, and substation upgrades.`
+- Prompt: `/rai-build-starter-ontology Build an ontology for grid infrastructure planning from the CSVs in data/ covering substations, generators, transmission lines, demand forecasts, data center requests, and substation upgrades.`
 - Response: Concepts: `Substation`, `Generator`, `TransmissionLine`, `LoadZone`, `DemandPeriod`, `RenewableProfile`, `MaintenanceWindow`, `Customer`, `DataCenterRequest`, `SubstationUpgrade`, `DemandForecast`, `LoadHistory`, `DCAnnouncement` — bound to the bundled CSVs (12 substations, 10 DC requests, 18 transmission lines).
 
 ### 2. Discover reasoner questions
@@ -75,4 +75,4 @@ $300M unlocks 5 DCs (1,500 MW, $264M net value) including xAI Colossus.
 
 ## Data
 
-Bundled CSVs in `../data/`: 12 substations, 15 generators, 18 transmission lines, 10 DC requests (2,930 MW), 10 substation upgrades ($630M total), plus historical load and forecast tables. Full chain implemented in `../energy_grid_planning.py`.
+Bundled CSVs in `data/`: 12 substations, 15 generators, 18 transmission lines, 10 DC requests (2,930 MW), 10 substation upgrades ($630M total), plus historical load and forecast tables. Full chain implemented in `energy_grid_planning.py`.

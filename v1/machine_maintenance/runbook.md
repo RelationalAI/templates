@@ -43,7 +43,7 @@ all 3 Turbine techs sit in one city, a $3,200 fix away from resolved.
 
 ### 1. Build ontology
 
-- Prompt: `/rai-build-starter-ontology Build a manufacturing maintenance ontology from the CSVs in ../data/ covering machines, technicians, qualifications, periods, sensor readings, failure predictions, downtime events, production runs, parts inventory, and certification expiry.`
+- Prompt: `/rai-build-starter-ontology Build a manufacturing maintenance ontology from the CSVs in data/ covering machines, technicians, qualifications, periods, sensor readings, failure predictions, downtime events, production runs, parts inventory, and certification expiry.`
 - Response: Concepts: `Machine`, `Technician`, `Qualification`, `Period`, `MachinePeriod`, `TechnicianPeriod`, `TechnicianMachinePeriod`, `Sensor`, `SensorReading`, `FailurePrediction`, `DowntimeEvent`, `ProductionRun`, `PartsInventory`, `CertificationExpiry` — bound to the bundled CSVs (30 machines × 3 plants, 10 technicians, 4 periods). `training_options.csv` is loaded as a DataFrame (read in Stage 4), not modeled as a concept.
 
 ### 2. Discover reasoner questions
@@ -78,4 +78,4 @@ all 3 Turbine techs sit in one city, a $3,200 fix away from resolved.
 
 ## Data
 
-Bundled CSVs in `../data/`: 30 machines (3 plants × 5 types), 10 technicians (3 cities), 16 qualifications, 4 periods, 60 sensors / 240 readings, 120 failure predictions, 129 downtime events, 120 production runs, 13 training options. All five stages run in `../machine_maintenance.py`.
+Bundled CSVs in `data/`: 30 machines (3 plants × 5 types), 10 technicians (3 cities), 16 qualifications, 4 periods, 60 sensors / 240 readings, 120 failure predictions, 129 downtime events, 120 production runs, 13 training options. All five stages run in `machine_maintenance.py`.
