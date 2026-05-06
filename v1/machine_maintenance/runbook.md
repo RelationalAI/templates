@@ -64,7 +64,7 @@ all 3 Turbine techs sit in one city, a $3,200 fix away from resolved.
 ### 5. Find scheduling bottlenecks
 
 - Prompt: `/rai-graph-analysis Which machines share qualified technicians? Score each machine by how central it is in the qualification network so the optimizer can prioritize the bottlenecks.`
-- Response: 30 machines → 1 connected component; Pumps tie at top betweenness (24.0 raw, 1.0 normalized); `Machine.betweenness` stored.
+- Response: 30 machines → 1 connected component; Pumps tie at top centrality (normalized to 1.0); `Machine.betweenness` stored.
 
 ### 6. Classify machine risk
 
@@ -74,7 +74,7 @@ all 3 Turbine techs sit in one city, a $3,200 fix away from resolved.
 ### 7. Schedule maintenance
 
 - Prompt: `/rai-prescriptive-problem-formulation Schedule preventive maintenance across the 30 machines and 4 periods. Each machine in each period is either maintained or left exposed to failure risk for that period. Cap maintenance at 5 jobs per period (parts/bay limit). Every overdue machine must be maintained by period 2. Each maintained machine needs a qualified technician assigned, and technicians can't exceed their available hours per period. Minimize expected failure cost on machines left exposed (weighted by criticality and centrality) plus technician labor and travel.`
-- Response: 120 `x_maintain` + 120 `x_vulnerable` + 384 `x_assigned` binaries (96 qualified tech×machine pairs × 4 periods); 5 constraint families (cumulative coverage, assignment-maintenance linkage, technician hours, parts/bay capacity, overdue deadline); failure cost uses `x_vulnerable × predicted_fp × parts_cost × criticality × (1 + 2.0 × betweenness)`.
+- Response: Decision variables for maintain / vulnerable / technician-assignment over the 30 machines × 4 periods (assignment restricted to qualified tech-machine pairs); 5 constraint families: cumulative coverage, assignment-maintenance linkage, technician hours, parts/bay capacity, and the overdue-by-period-2 deadline carried over from Stage 2.
 
 ### 8. Stress-test concentration
 

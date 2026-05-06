@@ -60,7 +60,7 @@ base at every lambda — without the cluster collapse, the gap would grow.
 
 ### 5. Cluster correlated bets
 
-- Prompt: `/rai-graph-analysis Cluster stocks by correlation — anything above 0.3 absolute is a redundant bet. Pick one representative per cluster (highest Sharpe ratio) and only invest in those.`
+- Prompt: `/rai-graph-analysis Cluster stocks where absolute return correlation is at least 0.3 — those are redundant bets. Pick one representative per cluster by highest Sharpe ratio and flag the rest as non-representatives so downstream optimization can exclude them.`
 - Response: 4 edges (|rho| >= 0.3), 5 Louvain clusters, intra +0.683 vs inter +0.131. 5 representatives picked: PFE, GOOGL, JPM, PG, XOM. AAPL/MSFT/JNJ flagged `is_non_representative`.
 
 ### 6. Solve mean-variance frontier
@@ -75,7 +75,7 @@ base at every lambda — without the cluster collapse, the gap would grow.
 
 ### 8. Stress under crisis
 
-- Prompt: `/rai-prescriptive-solver-management + /rai-prescriptive-results-interpretation Stress-test the frontier under a crisis regime that shrinks correlations 30% of the way toward all-ones (PSD-preserving). Re-solve the same frontier under crisis covariance and report how much volatility expands at each frontier point versus the baseline regime.`
+- Prompt: `/rai-pyrel-coding + /rai-prescriptive-results-interpretation Add a regime-conditioned covariance to the ontology so the base regime keeps the original covariance and the crisis regime shrinks correlations 30% of the way toward all-ones (PSD-preserving). Re-solve the same frontier under crisis covariance and report how much volatility expands at each frontier point versus the base regime.`
 - Response: Crisis vol 25-30% above base across the frontier (budget 500: min_risk 34.06 -> 43.74 at +28.4%, eps_1 34.30 -> 44.54 at +29.8% peak). Gap peaks mid-frontier (eps_1..eps_2 at +29.8%), narrows to +25.2% at eps_5 — the cluster-collapse payoff.
 
 ### 9. Persist solution concepts into the ontology
