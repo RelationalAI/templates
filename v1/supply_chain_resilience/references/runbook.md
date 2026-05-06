@@ -38,17 +38,17 @@ watch->avoid downgrade = +0.0% (optimizer already routed around it).
 ### 1. Build ontology
 
 - Prompt: `/rai-build-starter-ontology Build a supply chain ontology from the CSVs in ../data/ covering sites, businesses, SKUs, shipping operations, demand orders, historical shipments, and quarterly delay predictions.`
-- Response: Concepts: `Site`, `Business`, `StockKeepingUnit`, `Operation`, `Demand`, `Shipment`, `Inventory`, `BillOfMaterial`, `DelayPrediction` — bound to the bundled CSVs (31 sites, 31 businesses, 9 SKUs, 262 shipments).
+- Response: Concepts: `Site`, `Business`, `SKU`, `Operation`, `Demand`, `Shipment`, `DelayPrediction` — bound to the bundled CSVs (31 sites, 31 businesses, 9 SKUs, 70 operations, 20 demands, 262 shipments, 36 delay predictions).
 
-### 2. Discovery
+### 2. Discover reasoner questions
 
-- Prompt: `/rai-discovery We need a risk-adjusted routing plan. What's our exposure to each supplier, which sites are bottlenecks, which suppliers are unreliable, and what does the minimum-cost flow look like once those risks are priced in?`
-- Response: Reasoner-routing plan covering Stages 0–3 (graph, rules, prescriptive).
+- Prompt: `/rai-discovery We need a risk-adjusted routing plan. What's our exposure to each supplier, which sites are bottlenecks, which suppliers are unreliable, what does the minimum-cost flow look like once those risks are priced in, and how robust is that plan to disruptions?`
+- Response: Reasoner-routing plan: (1) Graph reachability for upstream supplier exposure, (2) Graph centrality for hub identification, (3) Rules for supplier reliability classification, (4) Prescriptive MILP for risk-adjusted flow, (5) Scenario re-solves for disruption quantification.
 
 ### 3. Map upstream supplier exposure
 
 - Prompt: `/rai-graph-analysis If a key supplier goes offline, which downstream buyers and finished products are at risk? For each HIGH-priority customer, list the suppliers it transitively depends on through the shipment graph, with their reliability scores.`
-- Response: `Business.is_high_priority_customer` (2 buyers: B008, B009); shared 6-supplier upstream cone.
+- Response: `Business.is_high_priority_customer` (2 buyers: B008 MegaCorp Enterprise, B009 TechGiant Inc); each transitively depends on the same 6 SUPPLIER-typed upstream nodes (B015, B016, B017, B018, B019, B020).
 
 ### 4. Rank network hubs
 

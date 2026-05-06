@@ -43,10 +43,10 @@ all 3 Turbine techs sit in one city, a $3,200 fix away from resolved.
 
 ### 1. Build ontology
 
-- Prompt: `/rai-build-starter-ontology Build a manufacturing maintenance ontology from the CSVs in ../data/ covering machines, technicians, qualifications, periods, sensor readings, failure predictions, downtime events, and production runs.`
-- Response: Concepts: `Machine`, `Technician`, `Qualification`, `Period`, `MachinePeriod`, `TechnicianPeriod`, `TechnicianMachinePeriod`, `Sensor`, `SensorReading`, `FailurePrediction`, `DowntimeEvent`, `ProductionRun`, `PartsInventory`, `TrainingOption` — bound to the bundled CSVs (30 machines × 3 plants, 10 technicians, 4 periods).
+- Prompt: `/rai-build-starter-ontology Build a manufacturing maintenance ontology from the CSVs in ../data/ covering machines, technicians, qualifications, periods, sensor readings, failure predictions, downtime events, production runs, parts inventory, and certification expiry.`
+- Response: Concepts: `Machine`, `Technician`, `Qualification`, `Period`, `MachinePeriod`, `TechnicianPeriod`, `TechnicianMachinePeriod`, `Sensor`, `SensorReading`, `FailurePrediction`, `DowntimeEvent`, `ProductionRun`, `PartsInventory`, `CertificationExpiry` — bound to the bundled CSVs (30 machines × 3 plants, 10 technicians, 4 periods). `training_options.csv` is loaded as a DataFrame (read in Stage 4), not modeled as a concept.
 
-### 2. Discovery
+### 2. Discover reasoner questions
 
 - Prompt: `/rai-discovery We need to schedule preventive maintenance for 30 machines across 3 plants. Where does OEE alone mislead us, and what structural risks won't a pure optimizer surface?`
 - Response: Plan routing sub-questions to querying, graph, rules, prescriptive, and resilience skills.
@@ -69,7 +69,7 @@ all 3 Turbine techs sit in one city, a $3,200 fix away from resolved.
 ### 6. Schedule maintenance
 
 - Prompt: `/rai-prescriptive-problem-formulation Schedule preventive maintenance for all 30 machines across 4 periods, capped at 5 jobs per period. Every overdue machine gets maintained by period 2, and each maintained machine needs a qualified technician. Minimize expected failure cost (weighted by criticality and centrality) plus labor and travel.`
-- Response: 120 `x_maintain` + 120 `x_vulnerable` + ~250 `x_assigned` binaries; 5 constraint families; failure cost uses `predicted_fp × parts_cost × criticality × (1 + 2.0 × betweenness)`.
+- Response: 120 `x_maintain` + 120 `x_vulnerable` + 384 `x_assigned` binaries (96 qualified tech×machine pairs × 4 periods); 5 constraint families (cumulative coverage, assignment-maintenance linkage, technician hours, parts/bay capacity, overdue deadline); failure cost uses `x_vulnerable × predicted_fp × parts_cost × criticality × (1 + 2.0 × betweenness)`.
 
 ### 7. Stress-test concentration
 

@@ -6,7 +6,7 @@ ERCOT processes 10 hyperscaler interconnection requests (2,930 MW) against a 12-
 
 ```
 ERCOT has 10 hyperscaler interconnection requests totalling 2,930 MW
-on a 12-substation grid with one structurally constrained bottleneck (DFW).
+on a 12-substation grid where DFW is the binding capacity bottleneck.
 The chain produces a Pareto frontier across 5 budget levels — the knee at
 $300M unlocks 5 DCs (1,500 MW, $264M net value) including xAI Colossus.
 
@@ -43,7 +43,7 @@ $300M unlocks 5 DCs (1,500 MW, $264M net value) including xAI Colossus.
 - Prompt: `/rai-build-starter-ontology Build an ontology for grid infrastructure planning from the CSVs in ../data/ covering substations, generators, transmission lines, demand forecasts, data center requests, and substation upgrades.`
 - Response: Concepts: `Substation`, `Generator`, `TransmissionLine`, `LoadZone`, `DemandPeriod`, `RenewableProfile`, `MaintenanceWindow`, `Customer`, `DataCenterRequest`, `SubstationUpgrade`, `DemandForecast`, `LoadHistory`, `DCAnnouncement` — bound to the bundled CSVs (12 substations, 10 DC requests, 18 transmission lines).
 
-### 2. Discovery
+### 2. Discover reasoner questions
 
 - Prompt: `/rai-discovery We have 10 hyperscaler interconnection requests against a 12-substation grid. Which to approve, which substation upgrades to fund, at what budget level?`
 - Response: Plan routing sub-questions to predictive, graph, rules, and prescriptive reasoners.
@@ -55,8 +55,8 @@ $300M unlocks 5 DCs (1,500 MW, $264M net value) including xAI Colossus.
 
 ### 4. Find structural bottlenecks
 
-- Prompt: `/rai-graph-analysis Which substations are most critical to power flow based on grid topology? Use centrality on the transmission graph, then flag the top 3 as structurally critical and persist the scores back to the ontology.`
-- Response: 1 component, 3 Louvain communities; DFW, Houston, San Antonio flagged `is_structurally_critical`; 7 of 10 DC requests on critical nodes.
+- Prompt: `/rai-graph-analysis Which substations are most critical to power flow based on grid topology? Check connectivity (WCC), regional structure (Louvain communities), and centrality (betweenness/degree/eigenvector); then flag the top 3 by combined centrality rank as structurally critical and persist the scores back to the ontology.`
+- Response: 1 connected component, 3 Louvain communities (North Texas, West Texas, Gulf Coast); DFW, Houston, San Antonio flagged `is_structurally_critical`; 7 of 10 DC requests target critical nodes.
 
 ### 5. Screen DC requests
 

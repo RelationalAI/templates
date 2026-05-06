@@ -41,9 +41,9 @@ base at every lambda — without the cluster collapse, the gap would grow.
 ### 1. Build ontology
 
 - Prompt: `/rai-build-starter-ontology Build a portfolio ontology from the CSVs in ../data/ covering stocks, sectors, the covariance matrix, accounts, holdings, users, and transactions.`
-- Response: Concepts: `Stock`, `Sector`, `StockPair` (compound id on stock_i / stock_j with covariance), `User`, `Account`, `Holding`, `Transaction`, plus the `Scenario` Concept used by Stage 3 — bound to the bundled CSVs (8 stocks, 64 covariance entries, 6 scenarios).
+- Response: Concepts: `Stock` (with binary `Stock.covar(Stock, Stock)` property carrying covariance), `Sector`, `User`, `Account`, `Holding`, `Transaction` — bound to the bundled CSVs (8 stocks, 64 covariance entries). Stage 3 adds the `Regime` and `Scenario` Concepts (2 regimes x 3 budgets = 6 scenarios).
 
-### 2. Discovery
+### 2. Discover reasoner questions
 
 - Prompt: `/rai-discovery Our 8-stock book breaks compliance and concentrates risk. Rebuild it under Markowitz mean-variance with caps, deduplicate redundant bets via correlation clustering, and stress-test under crisis. What questions does each reasoner family handle?`
 - Response: Plan: rules for compliance flags, graph for correlation clustering + representatives, prescriptive QP indexed by Scenario, stress as regime-swap re-solve.
@@ -61,7 +61,7 @@ base at every lambda — without the cluster collapse, the gap would grow.
 ### 5. Solve mean-variance frontier
 
 - Prompt: `/rai-prescriptive-problem-formulation Build a Markowitz mean-variance frontier across 6 scenarios = 3 budgets x 2 regimes. Position cap 30% of budget, sector cap 30%, only invest in cluster representatives. Show 7 points per frontier.`
-- Response: 48 decision vars (8 stocks x 6 scenarios), 5 constraint families. Return-rate range [0.0634, 0.0840]. 7 solves x 6 scenarios = 42 `LOCALLY_SOLVED` portfolios via Ipopt.
+- Response: 48 decision vars (`Stock.x_quantity`, 8 stocks x 6 scenarios; non-reps forced to 0). Constraint families: non-negativity, budget equality (sum = budget per scenario), position cap (30%), sector cap (30%), non-representative = 0, plus epsilon return-rate floor on sweep solves. Return-rate range [0.0634, 0.0840]. 7 solves x 6 scenarios = 42 `LOCALLY_SOLVED` portfolios via Ipopt.
 
 ### 6. Read the frontier
 
