@@ -57,7 +57,7 @@ watch->avoid downgrade = +0.0% (optimizer already routed around it).
 
 ### 4. Solve risk-adjusted flow
 
-- Prompt: `/rai-prescriptive-problem-formulation Solve a minimum-cost flow that fulfills all open demand orders at minimum total transport cost. Hard-block 'avoid' suppliers, surcharge 'watch' suppliers $5/unit, weight bottleneck sites by their centrality, and penalize unmet demand at $100/unit.`
+- Prompt: `/rai-prescriptive-problem-formulation Find the minimum-cost shipping plan that fulfills all open demand. Don't ship from 'avoid' suppliers at all, add a $5/unit surcharge for 'watch' suppliers, prefer non-bottleneck sites, and charge $100/unit for any unmet demand.`
 - Response: MILP on `Operation.x_flow` + `Demand.x_unmet`; objective = transport + risk surcharge + centrality weight + unmet penalty.
 
 ### 5. Quantify disruption scenarios

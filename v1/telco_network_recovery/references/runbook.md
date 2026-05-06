@@ -64,7 +64,7 @@ across all 15 critical towers, prioritized by social blast radius.
 
 ### 5. Optimize tier selection
 
-- Prompt: `/rai-prescriptive-problem-formulation Recover WEST capacity within $5M and 200 install-weeks, prioritizing towers by social blast radius and forward-looking demand. From TowerUpgradeOption, pick at most one upgrade tier (BRONZE/SILVER/GOLD) per critical-restore tower, maximizing Σ capacity_increase × weighted_impact × projected_demand_growth.`
+- Prompt: `/rai-prescriptive-problem-formulation Recover WEST capacity within $5M and 200 install-weeks. For each critical-restore tower, pick at most one upgrade tier (BRONZE, SILVER, or GOLD) to maximize capacity restored, weighted by each tower's blast radius and the regional demand forecast.`
 - Response: OPTIMAL · 12 GOLD / 2 SILVER / 1 BRONZE · 122 Gbps restored · $4.96M of $5M (binding) · 164 of 200 install-weeks (slack) · all 15 towers covered.
 
 ### 6. Interpret the plan

@@ -50,12 +50,12 @@ base at every lambda — without the cluster collapse, the gap would grow.
 
 ### 2. Cluster correlated bets
 
-- Prompt: `/rai-graph-analysis Cluster stocks by correlation — anything above 0.3 absolute is a redundant bet. Pick one representative per cluster (highest Sharpe ratio) and force the rest to zero in optimization.`
+- Prompt: `/rai-graph-analysis Cluster stocks by correlation — anything above 0.3 absolute is a redundant bet. Pick one representative per cluster (highest Sharpe ratio) and only invest in those.`
 - Response: 4 edges (|rho| >= 0.3), 5 Louvain clusters, intra +0.683 vs inter +0.131. 5 representatives picked: PFE, GOOGL, JPM, PG, XOM. AAPL/MSFT/JNJ flagged `is_non_representative`.
 
 ### 3. Solve mean-variance frontier
 
-- Prompt: `/rai-prescriptive-problem-formulation Build a Markowitz mean-variance frontier across 6 scenarios = 3 budgets x 2 regimes. Position cap 30% of budget, sector cap 30%, non-representatives forced to zero. Anchor with min-risk and max-return, then sweep 5 epsilon points across the return range.`
+- Prompt: `/rai-prescriptive-problem-formulation Build a Markowitz mean-variance frontier across 6 scenarios = 3 budgets x 2 regimes. Position cap 30% of budget, sector cap 30%, only invest in cluster representatives. Show 7 points per frontier.`
 - Response: 48 decision vars (8 stocks x 6 scenarios), 5 constraint families. Return-rate range [0.0634, 0.0840]. 7 solves x 6 scenarios = 42 `LOCALLY_SOLVED` portfolios via Ipopt.
 
 ### 4. Read the frontier
