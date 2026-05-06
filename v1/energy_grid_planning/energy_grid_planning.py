@@ -935,7 +935,7 @@ upgrade_result_df = (
 investment_levels_df = model.select(
     InvestmentLevel.name.alias("level"),
     InvestmentLevel.budget_cap.alias("budget"),
-).to_df().sort_values("budget")
+).to_df().sort_values("budget").reset_index(drop=True)
 
 pareto_rows = []
 for _, lvl in investment_levels_df.iterrows():
@@ -968,18 +968,132 @@ for _, lvl in investment_levels_df.iterrows():
         "net_value": net_value,
     })
 
-# Print Pareto frontier
+# --------------------------------------------------
+# Materialize InvestmentPortfolio(InvestmentLevel) Concept
+#   One row per InvestmentLevel scenario. Marginal & knee detection are
+#   inter-row computations, so they're computed in pandas and bound back.
+#   The Pareto frontier is then queried from the ontology, not pareto_rows.
+# --------------------------------------------------
+
+InvestmentPortfolio = model.Concept(
+    "InvestmentPortfolio", identify_by={"investment_level_name": String}
+)
+InvestmentPortfolio.investment_level = model.Relationship(
+    f"{InvestmentPortfolio} for {InvestmentLevel}"
+)
+InvestmentPortfolio.dc_count = model.Property(f"{InvestmentPortfolio} has {Integer:dc_count}")
+InvestmentPortfolio.total_mw = model.Property(f"{InvestmentPortfolio} has {Float:total_mw}")
+InvestmentPortfolio.annual_revenue = model.Property(
+    f"{InvestmentPortfolio} has {Float:annual_revenue}"
+)
+InvestmentPortfolio.upgrade_cost = model.Property(
+    f"{InvestmentPortfolio} has {Float:upgrade_cost}"
+)
+InvestmentPortfolio.net_value = model.Property(f"{InvestmentPortfolio} has {Float:net_value}")
+InvestmentPortfolio.marginal_per_m_to_next_level = model.Property(
+    f"{InvestmentPortfolio} has {Float:marginal_per_m_to_next_level}"
+)
+InvestmentPortfolio.is_knee_point = model.Property(
+    f"{InvestmentPortfolio} has {Boolean:is_knee_point}"
+)
+
+# Build the dataframe with marginal & knee — inter-row computation in pandas.
+portfolio_df = pd.DataFrame(pareto_rows).sort_values("budget").reset_index(drop=True)
+# Note: upgrade_cost is dollars (cost_million * 1e6), to match revenue scale and net_value definition.
+portfolio_df["upgrade_cost_dollars"] = portfolio_df["upgrade_cost_m"].astype(float) * 1e6
+
+# marginal_per_m_to_next_level: ($net_value_next - $net_value_this) / ($M_next - $M_this); null at last
+marginal = []
+for j in range(len(portfolio_df)):
+    if j == len(portfolio_df) - 1:
+        marginal.append(None)
+    else:
+        d_val = portfolio_df.loc[j + 1, "net_value"] - portfolio_df.loc[j, "net_value"]
+        d_budget = portfolio_df.loc[j + 1, "budget"] - portfolio_df.loc[j, "budget"]
+        marginal.append(d_val / d_budget if abs(d_budget) > 1e-6 else None)
+portfolio_df["marginal_per_m_to_next_level"] = marginal
+
+# is_knee_point: row whose marginal-rate represents the largest jump from the prior row's rate.
+# We measure the "jump" at row j as |rate[j-1]| / |rate[j]| (steepest drop from a high marginal
+# to a lower one, i.e. diminishing-returns inflection). The knee is the row where this ratio peaks.
+is_knee = [False] * len(portfolio_df)
+rates = [r for r in marginal if r is not None]
+if len(rates) >= 2:
+    max_jump, knee_idx = 0.0, 1
+    for j in range(len(rates) - 1):
+        prev_rate, next_rate = rates[j], rates[j + 1]
+        if abs(next_rate) > 1e-6:
+            jump = abs(prev_rate / next_rate)
+        elif abs(prev_rate) > 1e-6:
+            jump = float("inf")
+        else:
+            jump = 0.0
+        if jump > max_jump:
+            max_jump = jump
+            knee_idx = j + 1
+    is_knee[knee_idx] = True
+portfolio_df["is_knee_point"] = is_knee
+
+# Bind portfolio rows back as ontology instances.
+portfolio_src = model.data(portfolio_df.rename(columns={
+    "level": "investment_level_name",
+    "n_approved": "dc_count",
+    "total_mw": "total_mw",
+    "revenue": "annual_revenue",
+    "upgrade_cost_dollars": "upgrade_cost",
+    "net_value": "net_value",
+    "marginal_per_m_to_next_level": "marginal_per_m_to_next_level",
+    "is_knee_point": "is_knee_point",
+}))
+
+model.define(InvestmentPortfolio.new(
+    investment_level_name=portfolio_src.INVESTMENT_LEVEL_NAME,
+    investment_level=InvestmentLevel.filter_by(name=portfolio_src.INVESTMENT_LEVEL_NAME),
+    dc_count=portfolio_src.DC_COUNT,
+    total_mw=portfolio_src.TOTAL_MW,
+    annual_revenue=portfolio_src.ANNUAL_REVENUE,
+    upgrade_cost=portfolio_src.UPGRADE_COST,
+    net_value=portfolio_src.NET_VALUE,
+    marginal_per_m_to_next_level=portfolio_src.MARGINAL_PER_M_TO_NEXT_LEVEL,
+    is_knee_point=portfolio_src.IS_KNEE_POINT,
+))
+
+# Query InvestmentPortfolio rows from the ontology for rendering.
+InvLvlRef = InvestmentLevel.ref()
+PortRef = InvestmentPortfolio.ref()
+portfolio_query_df = (
+    model.where(PortRef.investment_level(InvLvlRef))
+    .select(
+        PortRef.investment_level_name.alias("level"),
+        InvLvlRef.budget_cap.alias("budget"),
+        PortRef.dc_count.alias("dc_count"),
+        PortRef.total_mw.alias("total_mw"),
+        PortRef.annual_revenue.alias("annual_revenue"),
+        PortRef.upgrade_cost.alias("upgrade_cost"),
+        PortRef.net_value.alias("net_value"),
+        PortRef.marginal_per_m_to_next_level.alias("marginal"),
+        PortRef.is_knee_point.alias("is_knee"),
+    )
+    .to_df()
+    .sort_values("budget")
+    .reset_index(drop=True)
+)
+portfolio_query_df["budget"] = portfolio_query_df["budget"].astype(float)
+portfolio_query_df["dc_count"] = portfolio_query_df["dc_count"].astype(int)
+
+# Print Pareto frontier (read from ontology, not pareto_rows)
 print(
     f"\n  {'#':>3} {'Level':>8} {'Budget $M':>10} {'DCs':>5} {'DC MW':>8} "
-    f"{'Revenue $/yr':>14} {'Upg $M':>8} {'Upg MW':>8} {'Net Value':>14}"
+    f"{'Revenue $/yr':>14} {'Upg $M':>8} {'Net Value':>14} {'Knee':>5}"
 )
 print(f"  {'-' * 85}")
-for j, pt in enumerate(pareto_rows):
+for j, row in portfolio_query_df.iterrows():
+    knee_flag = " *" if bool(row["is_knee"]) else ""
     print(
-        f"  {j + 1:>3} {pt['level']:>8} {pt['budget']:>10,.0f} "
-        f"{pt['n_approved']:>5} {pt['total_mw']:>8,.0f} "
-        f"{pt['revenue']:>14,.0f} {pt['upgrade_cost_m']:>8,.1f} "
-        f"{pt['upgrade_mw']:>8,.1f} {pt['net_value']:>14,.0f}"
+        f"  {j + 1:>3} {row['level']:>8} {float(row['budget']):>10,.0f} "
+        f"{int(row['dc_count']):>5} {float(row['total_mw']):>8,.0f} "
+        f"{float(row['annual_revenue']):>14,.0f} {float(row['upgrade_cost']) / 1e6:>8,.1f} "
+        f"{float(row['net_value']):>14,.0f} {knee_flag:>5}"
     )
 
 # Detailed results per investment level
@@ -1005,42 +1119,31 @@ for pt in pareto_rows:
         for _, row in level_upg.iterrows():
             print(f"    {row['upgrade_id']}: +{float(row['capacity_mw']):.0f} MW, ${float(row['cost_m']):.1f}M")
 
-# Marginal analysis + knee detection
-if len(pareto_rows) >= 3:
+# Marginal analysis + knee detection (read from ontology)
+if len(portfolio_query_df) >= 3:
     print("\n  MARGINAL ANALYSIS (value gained per additional $M budget):")
-    rates = []
-    for j in range(len(pareto_rows) - 1):
-        d_val = pareto_rows[j + 1]["net_value"] - pareto_rows[j]["net_value"]
-        d_budget = pareto_rows[j + 1]["budget"] - pareto_rows[j]["budget"]
-        rate = d_val / d_budget if abs(d_budget) > 1e-6 else 0
-        rates.append(rate)
-        d_mw = pareto_rows[j + 1]["total_mw"] - pareto_rows[j]["total_mw"]
-        d_dcs = pareto_rows[j + 1]["n_approved"] - pareto_rows[j]["n_approved"]
+    for j in range(len(portfolio_query_df) - 1):
+        cur = portfolio_query_df.iloc[j]
+        nxt = portfolio_query_df.iloc[j + 1]
+        d_val = float(nxt["net_value"]) - float(cur["net_value"])
+        d_budget = float(nxt["budget"]) - float(cur["budget"])
+        d_mw = float(nxt["total_mw"]) - float(cur["total_mw"])
+        d_dcs = int(nxt["dc_count"]) - int(cur["dc_count"])
+        rate = float(cur["marginal"]) if pd.notna(cur["marginal"]) else 0.0
         print(
-            f"    {pareto_rows[j]['level']:>6} -> {pareto_rows[j+1]['level']:<6}: "
+            f"    {cur['level']:>6} -> {nxt['level']:<6}: "
             f"dValue={d_val:>+14,.0f}, dBudget={d_budget:>+6,.0f}$M, "
             f"dMW={d_mw:>+8,.0f}, dDCs={d_dcs:>+3}, "
             f"marginal={rate:>+12,.0f}$/M$"
         )
 
-    if len(rates) >= 2:
-        max_jump, knee_idx = 0, 1
-        for j in range(len(rates) - 1):
-            if abs(rates[j + 1]) > 1e-6:
-                jump = abs(rates[j] / rates[j + 1])
-            elif abs(rates[j]) > 1e-6:
-                jump = float("inf")
-            else:
-                jump = 0
-            if jump > max_jump:
-                max_jump = jump
-                knee_idx = j + 1
-
-        knee = pareto_rows[knee_idx]
+    knee_rows = portfolio_query_df[portfolio_query_df["is_knee"].astype(bool)]
+    if len(knee_rows) > 0:
+        knee = knee_rows.iloc[0]
         print(
-            f"\n  KNEE POINT: {knee['level']} -- ${knee['budget']:,.0f}M budget, "
-            f"${knee['net_value']:,.0f} net value, {knee['n_approved']} DCs, "
-            f"{knee['total_mw']:,.0f} MW"
+            f"\n  KNEE POINT: {knee['level']} -- ${float(knee['budget']):,.0f}M budget, "
+            f"${float(knee['net_value']):,.0f} net value, {int(knee['dc_count'])} DCs, "
+            f"{float(knee['total_mw']):,.0f} MW"
         )
         print("  Diminishing returns beyond this investment level.")
 

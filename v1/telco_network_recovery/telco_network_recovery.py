@@ -674,6 +674,131 @@ print(f"  Capacity restored:        {selected['cap_gbps'].astype(int).sum()} Gbp
 print(f"  Tier mix:                 {selected['tier'].value_counts().to_dict()}")
 print(f"  Towers covered:           {len(selected)} of {plan_df['tower_id'].nunique()} critical")
 
+# --------------------------------------------------
+# Stage 5: Persist solution concepts into the ontology
+# --------------------------------------------------
+
+print(f"\n{'=' * 60}")
+print("STAGE 5: ONTOLOGY -- materialize RestorePlan + SelectedUpgrade")
+print("=" * 60)
+
+# SelectedUpgrade view-concept: unary relationship narrowing
+# TowerUpgradeOption to the 15 chosen rows (selected == 1).
+TowerUpgradeOption.is_selected_upgrade = model.Relationship(
+    f"{TowerUpgradeOption} is selected upgrade"
+)
+model.where(TowerUpgradeOption.selected == 1).define(
+    TowerUpgradeOption.is_selected_upgrade()
+)
+
+# RestorePlan singleton: one row keyed by key=1 holding the plan summary.
+RestorePlan = model.Concept("RestorePlan", identify_by={"key": Integer})
+RestorePlan.total_cost = model.Property(f"{RestorePlan} has {Float:total_cost}")
+RestorePlan.total_install_weeks = model.Property(
+    f"{RestorePlan} has {Integer:total_install_weeks}"
+)
+RestorePlan.capacity_restored_gbps = model.Property(
+    f"{RestorePlan} has {Integer:capacity_restored_gbps}"
+)
+RestorePlan.gold_count = model.Property(f"{RestorePlan} has {Integer:gold_count}")
+RestorePlan.silver_count = model.Property(f"{RestorePlan} has {Integer:silver_count}")
+RestorePlan.bronze_count = model.Property(f"{RestorePlan} has {Integer:bronze_count}")
+RestorePlan.towers_covered = model.Property(f"{RestorePlan} has {Integer:towers_covered}")
+RestorePlan.binding_constraint = model.Property(
+    f"{RestorePlan} has {String:binding_constraint}"
+)
+
+model.define(RestorePlan.new(key=1))
+
+# Bind aggregations off the SelectedUpgrade view back onto the singleton.
+rp = RestorePlan.ref()
+model.define(
+    rp.total_cost(
+        aggs.sum(TowerUpgradeOption.cost).where(
+            TowerUpgradeOption.is_selected_upgrade()
+        )
+    )
+)
+model.define(
+    rp.total_install_weeks(
+        aggs.sum(TowerUpgradeOption.install_weeks).where(
+            TowerUpgradeOption.is_selected_upgrade()
+        )
+    )
+)
+model.define(
+    rp.capacity_restored_gbps(
+        aggs.sum(TowerUpgradeOption.capacity_increase_gbps).where(
+            TowerUpgradeOption.is_selected_upgrade()
+        )
+    )
+)
+model.define(
+    rp.gold_count(
+        aggs.count(TowerUpgradeOption).where(
+            TowerUpgradeOption.is_selected_upgrade(),
+            TowerUpgradeOption.tier == "GOLD",
+        )
+    )
+)
+model.define(
+    rp.silver_count(
+        aggs.count(TowerUpgradeOption).where(
+            TowerUpgradeOption.is_selected_upgrade(),
+            TowerUpgradeOption.tier == "SILVER",
+        )
+    )
+)
+model.define(
+    rp.bronze_count(
+        aggs.count(TowerUpgradeOption).where(
+            TowerUpgradeOption.is_selected_upgrade(),
+            TowerUpgradeOption.tier == "BRONZE",
+        )
+    )
+)
+model.define(
+    rp.towers_covered(
+        aggs.count(distinct(CellTower)).where(
+            TowerUpgradeOption.for_tower(CellTower),
+            TowerUpgradeOption.is_selected_upgrade(),
+        )
+    )
+)
+
+# Binding-constraint classification:
+#   "budget" if total_cost is within $50k of $5M
+#   else "install_weeks" if total_install_weeks is within 5 of 200
+#   else "neither"
+model.where(
+    rp.total_cost >= BUDGET_USD - 50_000,
+).define(rp.binding_constraint("budget"))
+model.where(
+    rp.total_cost < BUDGET_USD - 50_000,
+    rp.total_install_weeks >= INSTALL_WEEKS_BUDGET - 5,
+).define(rp.binding_constraint("install_weeks"))
+model.where(
+    rp.total_cost < BUDGET_USD - 50_000,
+    rp.total_install_weeks < INSTALL_WEEKS_BUDGET - 5,
+).define(rp.binding_constraint("neither"))
+
+# Read the singleton back from the ontology and surface it.
+plan_summary_df = (
+    model.select(
+        RestorePlan.total_cost.alias("total_cost"),
+        RestorePlan.total_install_weeks.alias("total_install_weeks"),
+        RestorePlan.capacity_restored_gbps.alias("capacity_restored_gbps"),
+        RestorePlan.gold_count.alias("gold_count"),
+        RestorePlan.silver_count.alias("silver_count"),
+        RestorePlan.bronze_count.alias("bronze_count"),
+        RestorePlan.towers_covered.alias("towers_covered"),
+        RestorePlan.binding_constraint.alias("binding_constraint"),
+    )
+    .to_df()
+)
+print("\n  RestorePlan (queried from ontology):")
+print(plan_summary_df.to_string(index=False))
+
 print(f"\n{'=' * 60}")
 print("PIPELINE COMPLETE: 4 stages executed on the shared Telco ontology")
 print("=" * 60)

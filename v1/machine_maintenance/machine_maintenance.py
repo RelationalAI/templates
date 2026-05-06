@@ -33,7 +33,16 @@ Output:
 from pathlib import Path
 
 from pandas import read_csv
-from relationalai.semantics import Float, Integer, Model, String, max, sum
+from relationalai.semantics import (
+    Boolean,
+    Float,
+    Integer,
+    Model,
+    String,
+    distinct,
+    max,
+    sum,
+)
 from relationalai.semantics.reasoners.graph import Graph
 from relationalai.semantics.reasoners.prescriptive import Problem
 from relationalai.semantics.std import aggregates as aggs
@@ -187,6 +196,33 @@ model.define(
 )
 model.define(CertificationExpiry.technician(Technician)).where(
     CertificationExpiry.technician_id == Technician.technician_id
+)
+
+# TrainingOption concept: cross-training options per (technician, machine_type).
+# Used by Stage 4 resilience analysis to recommend the cheapest non-local
+# cross-training candidate for each concentrated machine type.
+TrainingOption = model.Concept(
+    "TrainingOption",
+    identify_by={"technician_id": String, "machine_type": String},
+)
+TrainingOption.training_cost = model.Property(
+    f"{TrainingOption} costs {Float:training_cost}"
+)
+TrainingOption.training_weeks = model.Property(
+    f"{TrainingOption} takes {Integer:training_weeks} weeks"
+)
+TrainingOption.technician = model.Property(f"{TrainingOption} for {Technician}")
+training_data = model.data(training_df)
+model.define(
+    to_ := TrainingOption.new(
+        technician_id=training_data["technician_id"],
+        machine_type=training_data["machine_type"],
+    ),
+    to_.training_cost(training_data["training_cost"]),
+    to_.training_weeks(training_data["training_weeks"]),
+)
+model.define(TrainingOption.technician(Technician)).where(
+    TrainingOption.technician_id == Technician.technician_id
 )
 
 # Period concept: discrete planning periods (1..PERIOD_HORIZON).
@@ -1250,6 +1286,313 @@ print(f"\n{'=' * 70}")
 print("STAGE 4: Resilience -- Concentration Risk Analysis")
 print("=" * 70)
 
+# --------------------------------------------------
+# Materialize prescriptive output as ontology concepts.
+# These bindings turn the post-solve x_maintain / x_assigned / x_vulnerable
+# property values into queryable ontology rather than ad-hoc pandas frames.
+# --------------------------------------------------
+
+# MaintenancePlan: singleton capturing the optimizer's cost breakdown.
+MaintenancePlan = model.Concept(
+    "MaintenancePlan", identify_by={"key": Integer}
+)
+MaintenancePlan.objective = model.Property(
+    f"{MaintenancePlan} has objective {Float:objective}"
+)
+MaintenancePlan.failure_cost = model.Property(
+    f"{MaintenancePlan} has failure cost {Float:failure_cost}"
+)
+MaintenancePlan.labor_cost = model.Property(
+    f"{MaintenancePlan} has labor cost {Float:labor_cost}"
+)
+MaintenancePlan.travel_cost = model.Property(
+    f"{MaintenancePlan} has travel cost {Float:travel_cost}"
+)
+MaintenancePlan.total_jobs = model.Property(
+    f"{MaintenancePlan} has total jobs {Integer:total_jobs}"
+)
+
+# Seed the singleton and bind the optimizer's reported objective onto it.
+plan_data = model.data([{"key": 1, "obj_val": float(si.objective_value)}])
+model.define(
+    plan_seed := MaintenancePlan.new(key=plan_data["key"]),
+    plan_seed.objective(plan_data["obj_val"]),
+)
+
+# Aggregate the cost components and job count off the post-solve properties.
+plan_ref = MaintenancePlan.ref()
+mp_fc = MachinePeriod.ref()
+m_fc = Machine.ref()
+model.define(
+    plan_ref.failure_cost(
+        aggs.sum(
+            mp_fc.x_vulnerable
+            * mp_fc.predicted_fp
+            * m_fc.estimated_parts_cost
+            * m_fc.criticality
+            * (1 + CENTRALITY_WEIGHT * m_fc.betweenness)
+        ).where(mp_fc.machine(m_fc))
+    )
+)
+
+tmp_lc = TechnicianMachinePeriod.ref()
+m_lc = Machine.ref()
+t_lc = Technician.ref()
+model.define(
+    plan_ref.labor_cost(
+        aggs.sum(
+            tmp_lc.x_assigned
+            * m_lc.maintenance_duration_hours
+            * t_lc.hourly_rate
+        ).where(
+            tmp_lc.machine(m_lc),
+            tmp_lc.technician(t_lc),
+        )
+    )
+)
+
+tmp_tc = TechnicianMachinePeriod.ref()
+m_tc = Machine.ref()
+model.define(
+    plan_ref.travel_cost(
+        aggs.sum(
+            tmp_tc.x_assigned
+            * (1 - tmp_tc.same_location)
+            * m_tc.maintenance_duration_hours
+            * TRAVEL_COST_PER_HOUR
+        ).where(tmp_tc.machine(m_tc))
+    )
+)
+
+mp_jobs = MachinePeriod.ref()
+model.define(
+    plan_ref.total_jobs(
+        aggs.count(mp_jobs).where(mp_jobs.x_maintain > 0.5)
+    )
+)
+
+# TypeConcentration: per-machine-type concentration analysis.
+TypeConcentration = model.Concept(
+    "TypeConcentration", identify_by={"machine_type": String}
+)
+TypeConcentration.qualified_tech_count = model.Property(
+    f"{TypeConcentration} has {Integer:qualified_tech_count} qualified techs"
+)
+TypeConcentration.qualified_tech_locations = model.Property(
+    f"{TypeConcentration} has tech locations {String:qualified_tech_locations}"
+)
+TypeConcentration.is_concentrated = model.Property(
+    f"{TypeConcentration} concentration flag {Boolean:is_concentrated}"
+)
+TypeConcentration.scheduled_jobs_total = model.Property(
+    f"{TypeConcentration} has {Integer:scheduled_jobs_total} scheduled jobs"
+)
+TypeConcentration.scheduled_jobs_traveling = model.Property(
+    f"{TypeConcentration} has {Integer:scheduled_jobs_traveling} traveling jobs"
+)
+TypeConcentration.travel_pct = model.Property(
+    f"{TypeConcentration} has travel pct {Float:travel_pct}"
+)
+
+# Seed: one TypeConcentration per distinct machine_type appearing in
+# Qualification (the population of types we have any tech for).
+qref_seed = Qualification.ref()
+model.define(
+    TypeConcentration.new(machine_type=qref_seed.machine_type_str)
+)
+
+# qualified_tech_count: distinct techs qualified for this machine_type.
+tc_qc = TypeConcentration.ref()
+qref_qc = Qualification.ref()
+tref_qc = Technician.ref()
+model.define(
+    tc_qc.qualified_tech_count(
+        aggs.count(distinct(tref_qc))
+        .where(
+            qref_qc.machine_type_str == tc_qc.machine_type,
+            qref_qc.technician(tref_qc),
+        )
+        .per(tc_qc)
+    )
+)
+
+# Helper concept: distinct (machine_type, location) pairs derived from the
+# qualified-technician join. Compound identity gives one entity per unique
+# pair; used downstream by distinct_loc_count.
+TypeLocation = model.Concept(
+    "TypeLocation",
+    identify_by={"machine_type": String, "location": String},
+)
+qref_tl = Qualification.ref()
+tref_tl = Technician.ref()
+model.define(
+    TypeLocation.new(
+        machine_type=qref_tl.machine_type_str,
+        location=tref_tl.base_location,
+    )
+).where(qref_tl.technician(tref_tl))
+
+# qualified_tech_locations: comma-joined distinct base_locations of
+# qualified techs. Built in pandas because string_join is not yet supported
+# by the LQP backend; bound onto TypeConcentration via model.data.
+_loc_pairs = (
+    qualifications_df.merge(
+        technicians_df[["technician_id", "base_location"]], on="technician_id"
+    )[["machine_type", "base_location"]]
+    .drop_duplicates()
+    .sort_values(["machine_type", "base_location"])
+)
+_loc_str_rows = [
+    {"mtype": mt, "loc_str": ", ".join(sorted(g["base_location"].unique()))}
+    for mt, g in _loc_pairs.groupby("machine_type")
+]
+loc_str_data = model.data(_loc_str_rows)
+tc_locs = TypeConcentration.ref()
+model.define(tc_locs.qualified_tech_locations(loc_str_data["loc_str"])).where(
+    tc_locs.machine_type == loc_str_data["mtype"]
+)
+
+# distinct_loc_count: helper to drive the is_concentrated flag, computed
+# off the TypeLocation pairs (one entity per distinct location).
+TypeConcentration.distinct_loc_count = model.Property(
+    f"{TypeConcentration} has {Integer:distinct_loc_count} distinct tech locations"
+)
+tc_dlc = TypeConcentration.ref()
+tl_dlc = TypeLocation.ref()
+model.define(
+    tc_dlc.distinct_loc_count(
+        aggs.count(tl_dlc)
+        .where(tl_dlc.machine_type == tc_dlc.machine_type)
+        .per(tc_dlc)
+    )
+)
+
+# is_concentrated: True iff all qualified techs share a single base_location.
+model.where(TypeConcentration.distinct_loc_count == 1).define(
+    TypeConcentration.is_concentrated(True)
+)
+model.where(TypeConcentration.distinct_loc_count > 1).define(
+    TypeConcentration.is_concentrated(False)
+)
+
+# scheduled_jobs_total: count of scheduled (machine, period) jobs for this type.
+tc_sjt = TypeConcentration.ref()
+mp_sjt = MachinePeriod.ref()
+m_sjt = Machine.ref()
+model.define(
+    tc_sjt.scheduled_jobs_total(
+        aggs.count(mp_sjt)
+        .where(
+            mp_sjt.machine(m_sjt),
+            m_sjt.machine_type == tc_sjt.machine_type,
+            mp_sjt.x_maintain > 0.5,
+        )
+        .per(tc_sjt)
+        | 0
+    )
+)
+
+# scheduled_jobs_traveling: count of scheduled assignments where the
+# assigned technician's base_location differs from the machine's location.
+tc_sjr = TypeConcentration.ref()
+tmp_sjr = TechnicianMachinePeriod.ref()
+m_sjr = Machine.ref()
+model.define(
+    tc_sjr.scheduled_jobs_traveling(
+        aggs.count(tmp_sjr)
+        .where(
+            tmp_sjr.machine(m_sjr),
+            m_sjr.machine_type == tc_sjr.machine_type,
+            tmp_sjr.x_assigned > 0.5,
+            tmp_sjr.same_location == 0,
+        )
+        .per(tc_sjr)
+        | 0
+    )
+)
+
+# travel_pct: 100 * traveling / total (only when total > 0).
+model.where(TypeConcentration.scheduled_jobs_total > 0).define(
+    TypeConcentration.travel_pct(
+        floats.float(TypeConcentration.scheduled_jobs_traveling)
+        / floats.float(TypeConcentration.scheduled_jobs_total)
+        * 100.0
+    )
+)
+
+# CrossTrainingRecommendation: cheapest non-local cross-training candidate
+# per concentrated machine type. One row per concentrated machine_type.
+CrossTrainingRecommendation = model.Concept(
+    "CrossTrainingRecommendation", identify_by={"machine_type": String}
+)
+CrossTrainingRecommendation.tech_id = model.Property(
+    f"{CrossTrainingRecommendation} has {String:tech_id}"
+)
+CrossTrainingRecommendation.tech_name = model.Property(
+    f"{CrossTrainingRecommendation} has {String:tech_name}"
+)
+CrossTrainingRecommendation.cost = model.Property(
+    f"{CrossTrainingRecommendation} has {Float:cost}"
+)
+CrossTrainingRecommendation.duration_weeks = model.Property(
+    f"{CrossTrainingRecommendation} has {Integer:duration_weeks} weeks"
+)
+CrossTrainingRecommendation.is_best_candidate = model.Property(
+    f"{CrossTrainingRecommendation} best flag {Boolean:is_best_candidate}"
+)
+
+# A TrainingOption is "non-local" for a concentrated machine type when the
+# candidate technician's base_location is NOT one of the locations where the
+# qualified techs already sit. For singly-concentrated types that simplifies
+# to: candidate.base_location != the (single) qualified-tech location string.
+# Pre-compute the cheapest non-local cost per concentrated type as a derived
+# property on TypeConcentration so the recommendation seeding stays simple.
+TypeConcentration.min_nonlocal_cost = model.Property(
+    f"{TypeConcentration} has {Float:min_nonlocal_cost} cheapest non-local training cost"
+)
+tc_min = TypeConcentration.ref()
+to_min = TrainingOption.ref()
+t_min = Technician.ref()
+model.where(tc_min.is_concentrated == True).define(
+    tc_min.min_nonlocal_cost(
+        aggs.min(to_min.training_cost)
+        .where(
+            to_min.machine_type == tc_min.machine_type,
+            to_min.technician(t_min),
+            t_min.base_location != tc_min.qualified_tech_locations,
+        )
+        .per(tc_min)
+    )
+)
+
+# Seed CrossTrainingRecommendation: one row per concentrated type that has
+# at least one non-local candidate (min_nonlocal_cost is populated).
+tc_seed_ctr = TypeConcentration.ref()
+model.where(tc_seed_ctr.min_nonlocal_cost).define(
+    CrossTrainingRecommendation.new(machine_type=tc_seed_ctr.machine_type)
+)
+
+# Bind cheapest-candidate attributes onto each recommendation by joining the
+# TrainingOption whose cost matches the pre-computed min_nonlocal_cost AND
+# whose tech sits outside the concentrated location.
+ctr_bind = CrossTrainingRecommendation.ref()
+tc_bind = TypeConcentration.ref()
+to_bind = TrainingOption.ref()
+t_bind = Technician.ref()
+model.where(
+    ctr_bind.machine_type == tc_bind.machine_type,
+    to_bind.machine_type == ctr_bind.machine_type,
+    to_bind.technician(t_bind),
+    t_bind.base_location != tc_bind.qualified_tech_locations,
+    to_bind.training_cost == tc_bind.min_nonlocal_cost,
+).define(
+    ctr_bind.tech_id(t_bind.technician_id),
+    ctr_bind.tech_name(t_bind.technician_name),
+    ctr_bind.cost(to_bind.training_cost),
+    ctr_bind.duration_weeks(to_bind.training_weeks),
+    ctr_bind.is_best_candidate(True),
+)
+
 # 4a. Technician utilization from the optimal schedule.
 tech_assignments = (
     assign_df.groupby(
@@ -1273,105 +1616,102 @@ for _, row in tech_assignments.iterrows():
         f"{row['assignment_count']} assignments ({pct:.0f}%)"
     )
 
-# 4b. Geographic concentration analysis by machine type.
-# For each machine type, check if all qualified technicians are in one location.
-# This reveals structural fragility invisible in the per-assignment view.
+# 4b. MaintenancePlan singleton: cost breakdown from the optimizer.
+plan_df = (
+    model.select(
+        MaintenancePlan.objective.alias("objective"),
+        MaintenancePlan.failure_cost.alias("failure_cost"),
+        MaintenancePlan.labor_cost.alias("labor_cost"),
+        MaintenancePlan.travel_cost.alias("travel_cost"),
+        MaintenancePlan.total_jobs.alias("total_jobs"),
+    )
+    .to_df()
+)
+plan_row = plan_df.iloc[0]
+print("\nMaintenancePlan (cost breakdown):")
+print(f"  Objective:    ${plan_row['objective']:.2f}")
+print(f"  Failure cost: ${plan_row['failure_cost']:.2f}")
+print(f"  Labor cost:   ${plan_row['labor_cost']:.2f}")
+print(f"  Travel cost:  ${plan_row['travel_cost']:.2f}")
+print(f"  Total jobs:   {int(plan_row['total_jobs'])}")
+
+# 4c. TypeConcentration: per-machine-type concentration analysis.
+type_conc_df = (
+    model.select(
+        TypeConcentration.machine_type.alias("machine_type"),
+        TypeConcentration.qualified_tech_count.alias("qualified_tech_count"),
+        TypeConcentration.qualified_tech_locations.alias("qualified_tech_locations"),
+        TypeConcentration.is_concentrated.alias("is_concentrated"),
+        TypeConcentration.scheduled_jobs_total.alias("scheduled_jobs_total"),
+        TypeConcentration.scheduled_jobs_traveling.alias("scheduled_jobs_traveling"),
+        TypeConcentration.travel_pct.alias("travel_pct"),
+    )
+    .to_df()
+    .sort_values("machine_type")
+)
+
 print("\nQualification coverage by machine type:")
-concentrated_types = []
-machine_types = sorted(qualifications_df["machine_type"].unique())
-for mtype in machine_types:
-    qual_techs = qualifications_df[
-        qualifications_df["machine_type"] == mtype
-    ]["technician_id"].tolist()
-    tech_info = technicians_df[technicians_df["technician_id"].isin(qual_techs)]
-    locations = tech_info["base_location"].unique().tolist()
-    tech_count = len(qual_techs)
+for _, row in type_conc_df.iterrows():
+    tag = (
+        f"CONCENTRATED -- all {int(row['qualified_tech_count'])} techs in "
+        f"{row['qualified_tech_locations']}"
+        if row["is_concentrated"]
+        else "OK"
+    )
+    print(
+        f"  {row['machine_type']}: {int(row['qualified_tech_count'])} techs "
+        f"in {row['qualified_tech_locations']} -- {tag}"
+    )
 
-    # Machines of this type and their locations.
-    type_machines = machines_df[machines_df["machine_type"] == mtype]
-    machine_locations = type_machines["location"].unique().tolist()
-    uncovered_locs = [loc for loc in machine_locations if loc not in locations]
-
-    status = "OK"
-    if len(locations) == 1:
-        concentrated_types.append((mtype, locations[0], tech_count))
-        status = f"CONCENTRATED -- all {tech_count} techs in {locations[0]}"
-    elif uncovered_locs:
-        status = f"gaps at {', '.join(uncovered_locs)}"
-
-    print(f"  {mtype}: {tech_count} techs in {', '.join(sorted(locations))} -- {status}")
-
-# 4c. Impact analysis for concentrated types.
-if concentrated_types:
+concentrated_df = type_conc_df[type_conc_df["is_concentrated"]]
+if not concentrated_df.empty:
     print("\nConcentration risk detail:")
-    for mtype, conc_loc, tech_count in concentrated_types:
-        type_machines = machines_df[machines_df["machine_type"] == mtype]
-        remote_machines = type_machines[type_machines["location"] != conc_loc]
-        local_machines = type_machines[type_machines["location"] == conc_loc]
+    for _, row in concentrated_df.iterrows():
+        total_jobs = int(row["scheduled_jobs_total"]) if row["scheduled_jobs_total"] else 0
+        travel_jobs = (
+            int(row["scheduled_jobs_traveling"]) if row["scheduled_jobs_traveling"] else 0
+        )
+        pct = float(row["travel_pct"]) if total_jobs else 0.0
+        print(
+            f"\n  {row['machine_type']}: all {int(row['qualified_tech_count'])} "
+            f"qualified techs in {row['qualified_tech_locations']}"
+        )
+        if total_jobs:
+            print(
+                f"    Scheduled {row['machine_type']} jobs: {total_jobs}, "
+                f"of which {travel_jobs} require travel ({pct:.0f}%)"
+            )
+        else:
+            print(f"    Scheduled {row['machine_type']} jobs: 0")
 
-        # How many scheduled assignments for this type required travel?
-        type_assign = assign_df[assign_df["machine_type"] == mtype]
-        travel_assign = type_assign[type_assign["base_location"] != type_assign["location"]]
-
-        print(f"\n  {mtype}: {len(type_machines)} machines across "
-              f"{len(type_machines['facility'].unique())} facilities, "
-              f"all {tech_count} qualified techs in {conc_loc}")
-        print(f"    Local machines ({conc_loc}): {len(local_machines)}")
-        print(f"    Remote machines (require travel): {len(remote_machines)}")
-        if not remote_machines.empty:
-            for _, m in remote_machines.iterrows():
-                print(f"      {m['machine_id']} ({m['facility']}, {m['location']})")
-        if not type_assign.empty:
-            print(f"    Scheduled {mtype} jobs: {len(type_assign)}, "
-                  f"of which {len(travel_assign)} require travel "
-                  f"({len(travel_assign)/len(type_assign)*100:.0f}%)")
-
-        # Show qualified techs.
-        qual_techs = qualifications_df[
-            qualifications_df["machine_type"] == mtype
-        ]["technician_id"].tolist()
-        tech_detail = technicians_df[technicians_df["technician_id"].isin(qual_techs)]
-        print(f"    Qualified techs (all {conc_loc}):")
-        for _, t in tech_detail.iterrows():
-            print(f"      {t['technician_id']} ({t['technician_name']}, "
-                  f"{t['skill_level']})")
-
-    # 4d. Cross-training recommendation.
+    # 4d. CrossTrainingRecommendation: cheapest non-local candidate per type.
     print(f"\n{'=' * 70}")
     print("RECOMMENDATION: Cross-Training to Eliminate Concentration Risk")
     print("=" * 70)
 
-    for mtype, conc_loc, _ in concentrated_types:
-        candidates = training_df[training_df["machine_type"] == mtype].merge(
-            technicians_df[["technician_id", "technician_name", "base_location",
-                            "skill_level"]],
-            on="technician_id",
-        ).sort_values("training_cost")
+    rec_df = (
+        model.select(
+            CrossTrainingRecommendation.machine_type.alias("machine_type"),
+            CrossTrainingRecommendation.tech_id.alias("tech_id"),
+            CrossTrainingRecommendation.tech_name.alias("tech_name"),
+            CrossTrainingRecommendation.cost.alias("cost"),
+            CrossTrainingRecommendation.duration_weeks.alias("duration_weeks"),
+            CrossTrainingRecommendation.is_best_candidate.alias("is_best_candidate"),
+        )
+        .to_df()
+        .sort_values("machine_type")
+    )
 
-        # Prefer candidates NOT in the concentrated location.
-        non_local = candidates[candidates["base_location"] != conc_loc]
-        if not non_local.empty:
-            best = non_local.iloc[0]
-        elif not candidates.empty:
-            best = candidates.iloc[0]
-        else:
-            print(f"\n  No {mtype} cross-training options available.")
-            continue
-
-        print(f"\n  {mtype} -- add coverage outside {conc_loc}:")
-        print(f"    Best candidate: {best['technician_id']} "
-              f"({best['technician_name']}, {best['skill_level']}, "
-              f"{best['base_location']})")
-        print(f"    Cost: ${int(best['training_cost']):,}, "
-              f"Duration: {int(best['training_weeks'])} weeks")
-
-        if len(candidates) > 1:
-            print("    All candidates:")
-            for _, cand in candidates.iterrows():
-                local_tag = " (same location)" if cand["base_location"] == conc_loc else ""
-                print(f"      {cand['technician_id']} ({cand['technician_name']}, "
-                      f"{cand['base_location']}): "
-                      f"${int(cand['training_cost']):,}, "
-                      f"{int(cand['training_weeks'])} weeks{local_tag}")
+    if rec_df.empty:
+        print("\n  No non-local cross-training options available.")
+    for _, row in rec_df.iterrows():
+        conc_loc = concentrated_df[
+            concentrated_df["machine_type"] == row["machine_type"]
+        ]["qualified_tech_locations"].iloc[0]
+        print(f"\n  {row['machine_type']} -- add coverage outside {conc_loc}:")
+        print(
+            f"    Best candidate: {row['tech_id']} ({row['tech_name']}): "
+            f"${int(row['cost']):,}, {int(row['duration_weeks'])} weeks"
+        )
 else:
     print("\nNo geographic concentration risk detected.")
