@@ -39,6 +39,7 @@ This directory contains the templates for v1. Each template folder includes its 
 | [supply_chain_transport](./supply_chain_transport/) | Minimize inventory holding and transport costs with TL/LTL mode selection. |
 | [synthetic_eligibility_records](./synthetic_eligibility_records/) | Generate K distinct, internally consistent member eligibility records per solve using a CSP solver in multi-solution mode: each record satisfies CMS Medicare-eligibility, age-by-plan-type CFDs, and PCP-network attribution. |
 | [synthetic_order_lifecycle](./synthetic_order_lifecycle/) | Generate synthetic order-lifecycle event traces (PLACE / MODIFY / CANCEL / FILL) that satisfy MiFID II / Reg NMS-flavour sequencing rules using a CSP solver. |
+| [telco_network_recovery](./telco_network_recovery/) | Multi-reasoner template: GNN demand forecasting, declarative critical-tower rules, call-graph blast radius, and tower-upgrade optimization on a shared telco ontology. |
 | [test_data_generation](./test_data_generation/) | Determine optimal row counts for test database tables satisfying schema and referential integrity constraints. |
 | [traveling_salesman](./traveling_salesman/) | Find the shortest route visiting all cities exactly once using the MTZ formulation. |
 | [warehouse_allocation](./warehouse_allocation/) | Allocate inventory across a distribution network using graph centrality, weakly-connected-components, and bridge-route detection to prioritize critical hubs. |
