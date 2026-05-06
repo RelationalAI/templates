@@ -47,6 +47,34 @@ A single-reasoner approach can't surface this. OEE alone says Plant_B is the pro
 
 ---
 
+## How to read this runbook
+
+This runbook serves two audiences:
+
+- **Reading top-to-bottom**: the narrative + ASCII visualizations show what the chain produces stage-by-stage, with the same business framing the stakeholder would see.
+- **Per-stage skill blocks**: the boxed `Skill / Prompt` callout at the start of each stage is the recipe — load that RAI agent skill, give it that prompt against the bundled demo data, and the agent will reproduce the stage.
+
+---
+
+## Step 0 — Scope the question with `rai-discovery`
+
+> **Skill:** `rai-discovery` ·
+> **Prompt:** "We need to schedule preventive maintenance for a multi-plant operation: 30 machines across 3 plants, 10 technicians across 3 cities, a 4-period horizon. Classify the sub-questions we must answer, map each to the right reasoner family, and tell us which downstream skills to load. Where does OEE alone mislead us, and what structural risks (qualifications, technician concentration) won't a pure optimizer surface?"
+
+Discovery classifies the question by reasoner family and tells you which downstream skills to load:
+
+| Sub-question | Reasoner | Skill |
+|---|---|---|
+| Where does the operation actually hurt — OEE, anomalies, failure trajectories? | Querying / Descriptive | `rai-querying` |
+| Which machines are scheduling bottlenecks given shared technician pools? | Graph | `rai-graph-analysis` |
+| Which machines are overdue, high-risk, chronic, or composite-Critical? | Rules | `rai-rules-authoring` |
+| What's the optimal maintain-and-assign plan across 4 periods? | Prescriptive | `rai-prescriptive-problem-formulation` |
+| Where is the schedule structurally fragile, and what cross-training fixes it? | Prescriptive (re-solve / interpretation) | `rai-prescriptive-solver-management` + `rai-prescriptive-results-interpretation` |
+
+Discovery's output is a *plan*, not code. Everything that follows materializes that plan.
+
+---
+
 ## Setup
 
 See the template's main `README.md` for installation, RAI connection setup, and how to run the script. The narrative below follows the actual stage outputs of `machine_maintenance.py`.
@@ -79,6 +107,43 @@ The runbook walks the same chain stage-by-stage, prompt-by-prompt, in agent-skil
 | 12 | Stage 3 — Schedule readout | `/rai-prescriptive-results-interpretation` | "Show the period-by-period schedule and technician assignments. Flag any travel (`base_location != machine.location`)." | Period 1 includes M002 (Plant_B), M006 (Plant_C), M013 (Plant_A), M016 (Plant_A) — high-priority overdue/critical machines. Periods 2–4 cover the remaining 16 jobs. Multiple Turbine assignments require travel because all 3 Turbine-qualified techs (T001, T002, T003) are based in Houston_TX while Turbines exist at all 3 plants. Travel cost is paid at $50/hr × duration. |
 | 13 | Stage 4 — Concentration analysis | `/rai-graph-analysis`, `/rai-querying` | "From the qualification table, find machine types whose qualified technicians are all in one location. For each concentrated type, count how many scheduled jobs require travel." | Compressor: techs in Chicago_IL, Houston_TX (gap: Phoenix_AZ). Generator: Chicago_IL, Phoenix_AZ (gap: Houston_TX). Motor: Chicago_IL, Phoenix_AZ (gap: Houston_TX). Pump: Chicago_IL, Phoenix_AZ (gap: Houston_TX). **Turbine: all 3 techs in Houston_TX — CONCENTRATED.** Of 3 scheduled Turbine jobs, 2 require travel (67%). 4 of 6 Turbines are at remote plants. The optimizer found the cheapest plan but cannot fix the structural fragility — losing T001's Compressor cert (22 days remaining) doesn't break Turbines, but losing any of T001/T002/T003 from Houston shrinks Turbine coverage by a third. |
 | 14 | Stage 4 — Cross-training recommendation | `/rai-prescriptive-results-interpretation` | "From `training_options.csv`, find the cheapest Turbine-cross-training candidate based outside Houston_TX." | Best candidate: **T006 (Fiona_Garcia, Senior, Chicago_IL) — $3,200 / 5 weeks.** Other non-Houston options: T005 ($3,500/6w, Chicago), T008 ($3,800/6w, Phoenix), T009 ($4,200/8w, Phoenix), T004 ($5,500/10w, Chicago). Training T006 adds the first non-Houston Turbine tech, eliminates the single-point-of-failure for Plant_B and Plant_C Turbines, and pays back the first time travel or a cert lapse would have idled a Turbine job. The prescriptive reasoner produced the schedule; the resilience layer produced the structural action item. |
+
+---
+
+## Stage 0 — Querying: operational intelligence
+
+> **Skill:** `rai-querying` ·
+> **Prompt:** "From the loaded production runs, sensor readings, and per-period failure predictions, compute an OEE proxy by facility (Performance × Quality), list machines with above-threshold sensor anomalies grouped by facility, and identify the six machines with the steepest failure-probability rise from period 1 to period 4. Write the per-period failure prediction back as a `MachinePeriod` property so downstream stages can read it."
+
+This stage establishes the operational baseline. Plant_C leads at 79.8% OEE; Plant_B trails at 61.4%. But Plant_A — middle of the OEE pack at 68.2% — owns 7 of 9 sensor anomalies and the three steepest failure trajectories (M001, M013, M016). The querying stage writes nine derived properties on `Machine` plus `MachinePeriod.predicted_fp` (120 rows), and Stage 3 reads `predicted_fp` directly into the failure-cost objective term.
+
+## Stage 1 — Graph: dependency clusters and bottleneck centrality
+
+> **Skill:** `rai-graph-analysis` ·
+> **Prompt:** "Build an undirected graph using `Machine` directly as the node concept. Two machines are adjacent when at least one technician is qualified for both of their machine types. Run weakly connected components to find dependency clusters, then compute betweenness centrality, normalize it to 0..1 against the max, and store both raw and normalized scores back on the machine."
+
+The 30 machines form a single connected component — every machine is reachable through shared qualifications. Pump-type machines tie at the top of betweenness (raw 24.0, normalized 1.0): M003 (Plant_C), M008 (Plant_B), M013 (Plant_A). The normalized centrality is consumed by Stage 3's failure-cost multiplier `(1 + 2.0 × betweenness)`, so leaving a bottleneck Pump vulnerable is markedly more expensive than leaving a peripheral Motor vulnerable.
+
+## Stage 2 — Rules: compliance flags and composite risk tier
+
+> **Skill:** `rai-rules-authoring` ·
+> **Prompt:** "Author seven derived flags on the existing concepts: overdue (remaining useful life below required maintenance hours), high-risk (failure probability above 0.3 and criticality at least 4), anomalous (any sensor anomaly), chronic-downtime (more than 8 events), parts-reorder (stock at or below minimum order), and certification-expiring (under 30 days remaining). Then chain three of those flags — chronic, high-risk, overdue — into a `risk_tier` property of Critical / Elevated / Standard, exhaustively enumerating all eight three-flag combinations using negation."
+
+Six machines overdue, one high-risk (M013), three chronic-downtime, four parts-reorder, five expiring certs. The composite tier surfaces a single Critical machine — M013 (Pump, Plant_A) — and a single Elevated machine — M016 (Turbine, Plant_A). The overdue flag is consumed by Stage 3 as a hard constraint: every overdue machine must be scheduled by period 2.
+
+## Stage 3 — Prescriptive: maintenance schedule
+
+> **Skill:** `rai-prescriptive-problem-formulation` ·
+> **Prompt:** "Schedule preventive maintenance over 4 periods. Decide for each machine and period whether to maintain it, whether it remains vulnerable, and which qualified technician services it. Enforce cumulative coverage (each machine is either maintained or vulnerable through every period), assignment-maintenance linkage (one tech per maintained job), per-tech hour capacity, a 5-jobs-per-period parts/bay limit, and the hard rule that every overdue machine from Stage 2 is maintained by period 2. Minimize failure cost (period-specific failure probability × parts cost × criticality, scaled up by `(1 + 2.0 × betweenness)`) plus labor cost (duration × hourly rate) plus travel cost ($50/hour for non-co-located assignments)."
+
+The solver returns OPTIMAL with objective $605,240.61 and 20 maintenance jobs across the four periods (capacity-binding at 5 jobs/period). M013 and M016 — Plant_A's Critical and Elevated machines — are both scheduled by period 1, satisfying the overdue deadline. Several Turbine assignments require travel because all three Turbine-qualified techs are based in Houston_TX while four of six Turbines sit at Plant_A and Plant_C. The optimizer pays the travel cost; it cannot restructure the qualification pool.
+
+## Stage 4 — Resilience: concentration sweep and cross-training
+
+> **Skill:** `rai-prescriptive-solver-management` + `rai-prescriptive-results-interpretation` ·
+> **Prompt:** "Take the optimal schedule and stress-test the qualification structure underneath it. For each machine type, identify whether all qualified technicians are concentrated in one location, count the scheduled jobs of that type that required travel, and surface the geographic single-point-of-failure. Then re-rank the cross-training options for the concentrated type by cost, prefer non-local candidates, and recommend the cheapest one with its training cost and duration. This is a follow-up sensitivity sweep over the existing solve, not a new formulation."
+
+Turbine is the concentrated type — all three qualified techs (T001, T002, T003) sit in Houston_TX, and 67% of scheduled Turbine jobs already require travel. The recommended fix: cross-train T006 (Senior, Chicago_IL) for $3,200 over 5 weeks. That single addition eliminates the Houston single-point-of-failure for Turbine work at Plant_B and Plant_C, and pays back the first time a weather event, illness, or expiring cert would have idled a Turbine job that the optimizer would otherwise have left uncovered.
 
 ---
 
@@ -199,6 +264,20 @@ THE MACHINE-MAINTENANCE CHAIN
 | + Resilience | Cross-train T006 for $3,200 → eliminates Houston Turbine concentration |
 
 **Multi-reasoner chaining grounded in (and contributing to) the ontology.**
+
+---
+
+## Adapting this recipe to a new domain
+
+The chain pattern transfers cleanly. To rebuild for a different scheduling-with-resilience problem:
+
+1. Re-run `rai-discovery` on the new business question — does it actually need all five reasoner families, or is one or two sufficient? A pure dispatch problem may only need querying + prescriptive; a pure compliance problem may only need rules.
+2. Strip the demo ontology to the concepts the new chain needs (lean is better for type inference and solver compile time). Keep the cross-product concept (`MachinePeriod`-equivalent) — it's where most decision variables and per-period derived properties live.
+3. Stage 1 (querying) is required scaffolding: the optimization objective leans on derived per-period signals, not raw inputs.
+4. Stages 2–5 are the load-bearing chain: graph centrality writes a multiplier the cost objective consumes; rules write a hard deadline the optimizer must satisfy; the optimizer writes solution variables the resilience sweep reads; the resilience layer doesn't re-solve a new problem — it stress-tests the structure underneath the existing solve and recommends a structural fix.
+5. Keep the validation checks at every stage: assert flagged-set size, betweenness top-N looks plausible, the OPTIMAL gate, the objective is not zero, and the resilience pass surfaces at least one actionable recommendation when concentration exists.
+
+The shape this template demonstrates — *each reasoner writes a property the next reasoner reads* — is what makes the chain accretive rather than serial. The agent skills are how you reliably author each link.
 
 ---
 

@@ -41,6 +41,35 @@ A single-reasoner approach can't answer this. Reachability alone names the suppl
 
 ---
 
+## How to read this runbook
+
+This runbook serves two audiences:
+
+- **Reading top-to-bottom**: the narrative + ASCII visualizations show what the chain produces stage-by-stage, with the same business framing the stakeholder would see.
+- **Per-stage skill blocks**: the boxed `Skill / Prompt` callout at the start of each stage is the recipe — load that RAI agent skill, give it that prompt against the bundled demo data in `../data/`, and the agent will reproduce the stage.
+
+The two views share one ontology: each stage writes properties back to the model that the next stage reads. The skill blocks are how an engineer rebuilds the chain link-by-link; the narrative is how a stakeholder reads what the chain produced.
+
+---
+
+## Step 0 — Scope the question with `rai-discovery`
+
+> **Skill:** `rai-discovery` ·
+> **Prompt:** "Given a supply-chain ontology with sites, businesses (suppliers / manufacturers / warehouses / buyers), shipping operations, SKUs, demand orders, historical shipments, and per-supplier quarterly delay predictions, what questions can each reasoner family answer for a risk-adjusted routing problem? I need to know which high-priority customers are exposed to which suppliers, which sites are bottlenecks, which suppliers are unreliable, and what the minimum-cost flow looks like once those risks are priced in."
+
+Discovery classifies the question by reasoner family and tells you which downstream skills to load:
+
+| Sub-question | Reasoner | Skill |
+|---|---|---|
+| "Which suppliers do my high-priority customers transitively depend on?" | Graph (reachability) | `rai-graph-analysis` |
+| "Which sites are network bottlenecks?" | Graph (centrality, components) | `rai-graph-analysis` |
+| "Which suppliers are risky? Which demands are escalated?" | Rules | `rai-rules-authoring` |
+| "What's the minimum-cost flow plan that respects all of the above, and how much do disruptions cost?" | Prescriptive | `rai-prescriptive-problem-formulation`, `rai-prescriptive-solver-management`, `rai-prescriptive-results-interpretation` |
+
+Discovery's output is a *plan*, not code. Everything that follows materializes that plan.
+
+---
+
 ## Setup
 
 See the template's main `README.md` for installation, RAI connection setup, and how to run the script. The narrative below follows the actual stage outputs of `supply_chain_resilience.py` against the bundled CSVs in `../data/`.
@@ -49,6 +78,8 @@ See the template's main `README.md` for installation, RAI connection setup, and 
 
 ## Stage 0 — Reachability: blast-radius pre-analysis
 
+> **Skill:** `rai-graph-analysis` ·
+> **Prompt:** "Build a **directed** business graph from shipment records, with edges going from each shipment's supplier to its customer. Then run upstream reachability **into** every business that holds at least one HIGH-priority demand, and filter the reachable set to nodes whose business type is SUPPLIER. The directed-not-undirected choice matters here: we want the suppliers that feed each high-priority customer's upstream cone, not the symmetric neighborhood. List, per high-priority customer, the suppliers it transitively depends on and their reliability scores."
 
 **Construction** — directed `Business` graph, edges from `Business.ships_to` (derived from `Shipment.supplier` -> `Shipment.customer`).
 
@@ -84,6 +115,8 @@ The point of running reachability before the MILP: when the scenario in Stage 3 
 
 ## Stage 1 — Graph: site centrality + connected components
 
+> **Skill:** `rai-graph-analysis` ·
+> **Prompt:** "Build an **undirected, unweighted** site graph using SHIP-type operations as edges between source and output sites, with a sum aggregator to collapse parallel ship lanes. Compute weakly-connected components to surface fragmentation, then eigenvector centrality to rank hubs — restrict the centrality output to FACTORY and DC sites (drop STORE / OFFICE). Normalize the centrality scores to [0, 1] and write them back to the ontology as a per-site property so downstream stages can use them as a bottleneck weight."
 
 **Construction:**
 - Node concept: `Site` (31 sites)
@@ -124,6 +157,8 @@ Top critical sites — eigenvector centrality (FACTORY/DC only)
 
 ## Stage 2 — Rules: supplier risk classification
 
+> **Skill:** `rai-rules-authoring` ·
+> **Prompt:** "Add three derived flags to Business and one to Demand. A business is unreliable when its reliability score is below 0.80. A business has high delay risk when at least one Q1-2025 delay prediction for that supplier exceeds 0.15. A business is watch-level when either of those holds. A demand is escalated when its priority is HIGH. Chain the rules so watch-level fires from either underlying flag. Downstream, suppliers with **both** flags are the avoid set (hard-blocked in routing) and suppliers with **either** flag are the watch set (surcharged)."
 
 **Late-shipment context** (computed in pandas, not RAI):
 
@@ -197,6 +232,8 @@ Stage 3 reads `is_watch_level` for the surcharge term and `is_unreliable AND has
 
 ## Stage 3 — Prescriptive: risk-adjusted minimum-cost flow
 
+> **Skill:** `rai-prescriptive-problem-formulation` ·
+> **Prompt:** "Formulate a continuous minimum-cost network flow over the operations. The decision variable is per-operation flow, bounded by each operation's daily capacity, with a non-negative unmet-demand slack per demand order. Constraint: for each demand, inbound flow at the customer's site for the demanded SKU plus its slack must cover the order quantity. Hard-block any operation whose source business is in the avoid set (both Stage-2 flags fire). The objective minimizes transport cost plus a $5/unit surcharge on flow through watch-level suppliers, plus a centrality-weighted penalty on flow into bottleneck sites (using the normalized score from Stage 1, weight 2.0), plus a $100/unit unmet-demand penalty."
 
 ```
 FORMULATION
@@ -241,6 +278,8 @@ The baseline buys: enough finished-goods flow on the shortest cost-weighted lane
 
 ## Scenario analysis — quantify disruption
 
+> **Skill:** `rai-prescriptive-solver-management` + `rai-prescriptive-results-interpretation` ·
+> **Prompt:** "Re-solve the same formulation under two disruptions and compare them to the baseline. Scenario A: take the highest-centrality site offline by adding a zero-flow constraint on every operation sourced from that site. Scenario B: downgrade every watch-level supplier to avoid by adding zero-flow blocks for every supplier in the union of the two Stage-2 flags. Report status, objective, active flow count, and unmet demand for each. Then explain *why* the cost deltas are asymmetric — the structural-vs-behavioural distinction is the punchline."
 
 The same `solve_flow(...)` function re-runs with modified constraints. Two scenarios surface different aspects of the chain's value:
 
@@ -357,3 +396,17 @@ Each row is a single agent prompt. Skills are loaded in order; each writes prope
 - **Source data**: bundled CSVs in `../data/` — 31 sites across APAC / AMERICAS / EMEA, 31 businesses (6 suppliers, 6 component manufacturers, 2 manufacturers, 8 warehouses, 9 buyers), 9 SKUs (raw materials -> components -> finished goods ProPhone X1 / ProTab T1), 70 operations (SHIP + TRANSFER), 20 demand orders (9 HIGH, 5 MEDIUM, 6 LOW), 262 historical shipments (37 late), 36 quarterly delay predictions (4 quarters × 9 suppliers). To run against your own Snowflake schema instead, swap `read_csv(...)` for typed `model.Table(...)` loads against the equivalent table set.
 - **Ontology**: defined inline in `../supply_chain_resilience.py` (lines 57–250) — 7 concepts plus the derived `Business.ships_to` and `Operation.source_business` relationships.
 - **Stages**: implemented in `../supply_chain_resilience.py` as a single combined script with stage banners (`STAGE 0` through `STAGE 3` plus `SCENARIO ANALYSIS`).
+
+---
+
+## Adapting this recipe to a new domain
+
+The chain pattern transfers cleanly. To rebuild for a different problem:
+
+1. Re-run `rai-discovery` on the new business question — does it actually need all four reasoner families, or is one or two sufficient? Reachability + prescriptive alone is a viable shortcut if you don't need a centrality-based bottleneck weight or a per-entity risk classifier.
+2. Strip the demo ontology to the concepts the new chain needs (lean is better for type inference and solver compile time). The load-bearing concepts here are the node concept of each graph (`Business`, `Site`), the entity that carries risk flags (`Business`), and the entity that carries decision variables (`Operation`, `Demand`).
+3. Stage 0 (reachability) is *optional context* — it scopes the conversation around the disruption table without changing any constraint. Keep it when stakeholders need to see the dependency cone; drop it when the optimizer's hard blocks already make exposure obvious.
+4. Stages 1–3 are the load-bearing chain: graph centrality writes a per-site bottleneck weight, rules write per-supplier risk flags, and prescriptive consumes both — centrality as an objective coefficient, the avoid set as a hard block, the watch set as a surcharge. The scenario re-solves are cheap once the formulation exists.
+5. Keep the validation checks at every stage: assert the source-business derivation populates, the centrality top-N looks plausible, the avoid/watch sets are non-empty (or non-empty by design), the baseline objective is not zero, and the disruption deltas have the sign you expected.
+
+The shape this template demonstrates — *each reasoner writes a property the next reasoner reads* — is what makes the chain accretive rather than serial. The agent skills are how you reliably author each link.

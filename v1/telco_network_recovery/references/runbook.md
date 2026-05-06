@@ -2,7 +2,16 @@
 
 Walk-through of the chained-reasoner pattern this template is built on. One realistic business thread — **WEST region recovery** — traced across all five RAI reasoner families, each stage writing properties back to the same ontology that downstream stages consume.
 
-The template's combined script (`telco_network_recovery.py`) implements stages 2–5 directly; this runbook expands the surrounding narrative including the descriptive Stage 1 diagnosis and the Stage 6 interpretation, so a non-OR reader can follow the full reasoning thread end-to-end.
+The template's combined script (`telco_network_recovery.py`) implements the predictive, rules, graph, and prescriptive stages directly; this runbook frames them with a descriptive Stage 1 diagnosis and a Stage 6 interpretation, so a non-OR reader can follow the full reasoning thread end-to-end.
+
+---
+
+## How to read this runbook
+
+This runbook serves two audiences:
+
+- **Reading top-to-bottom**: the narrative + ASCII visualizations show what the chain produces stage-by-stage, with the same business framing the stakeholder would see.
+- **Per-stage skill blocks**: the boxed `Skill / Prompt` callout at the start of each stage is the recipe — load that RAI agent skill, give it that prompt against the bundled demo data in `../data/`, and the agent will reproduce the stage.
 
 ---
 
@@ -43,6 +52,26 @@ A single-reasoner approach can't answer this. Descriptive alone tells the story 
 
 ---
 
+## Step 0 — Scope the question with `rai-discovery`
+
+> **Skill:** `rai-discovery` ·
+> **Prompt:** "WEST is missing revenue targets while every other region grows. Diagnose whether this is a subscriber-retention problem or a network-operations problem, then produce a defensible tower-upgrade plan inside a $5M capex cap and a 200 install-crew-week schedule that prioritizes towers by both who depends on them and where regional demand is heading."
+
+Discovery classifies the question by reasoner family and tells you which downstream skills to load:
+
+| Sub-question | Reasoner | Skill |
+|---|---|---|
+| Where is the revenue bleed coming from, and is it retention or operational? | Descriptive | `rai-querying` |
+| Which WEST towers are technically broken enough to be in scope for upgrade? | Rules | `rai-rules-authoring` |
+| Whose service depends on each broken tower — what is the social blast radius? | Graph (PageRank) | `rai-graph-analysis` |
+| Is regional demand growing or contracting at those sites over the forward horizon? | Predictive (GNN) | _no public skill yet — see `v1/subscriber_retention/` and `v1/demand_forecasting/` as worked-example references_ |
+| Given the cost cap and install-crew budget, which tier should each critical tower receive? | Prescriptive (MIP) | `rai-prescriptive-problem-formulation` |
+| Which constraint is binding, and what would change if we relaxed it? | Prescriptive (post-solve) | `rai-prescriptive-results-interpretation` |
+
+Discovery's output is a *plan*, not code. Everything that follows materializes that plan.
+
+---
+
 ## Setup
 
 See the template's main `README.md` for installation, RAI connection setup, and how to run the script. The narrative below follows the actual stage outputs of `telco_network_recovery.py`.
@@ -51,6 +80,8 @@ See the template's main `README.md` for installation, RAI connection setup, and 
 
 ## Stage 1 — Descriptive: diagnose WEST
 
+> **Skill:** `rai-querying` ·
+> **Prompt:** "Run a regional triage on the daily KPIs and tower fleet for Q3–Q4 2024. Compare WEST against the other eight regions on network availability, churn rate, daily revenue, and the revenue-forecast vs. actual gap, and break down the WEST tower fleet by status. Identify the top performance offenders by per-tower packet loss and latency, and check whether any WEST subscribers carry elevated churn risk. Conclude whether this looks like a retention problem or an operational one."
 
 ```
 Q4 2024 — Daily KPIs by region
@@ -101,6 +132,8 @@ Subscriber.churn_risk_score is a static feature that hasn't caught up to WEST's 
 
 ## Stage 2 — Rules: flag critical_restore towers
 
+> **Skill:** `rai-rules-authoring` ·
+> **Prompt:** "Define per-tower derived averages for packet loss, latency, and error rate from the network-performance measurements, plus an average equipment-health score from the two-hop join through network equipment to equipment-health snapshots. Then add a unary critical-restore flag on the tower that fires when the tower is in WEST and either DEGRADED with average health below 0.85, or shows average packet loss above 5% with the same health threshold (so an ACTIVE-but-failing tower is still caught)."
 
 **Properties added to the ontology** (via `model.define(...)`):
 - `CellTower.avg_packet_loss` (Float) — `aggs.avg(NetworkPerformance.packet_loss_pct).per(CellTower)`
@@ -156,6 +189,8 @@ Branch 2 didn't fire — none of WEST's ACTIVE towers fall below health 0.85. Th
 
 ## Stage 3 — Graph: subscriber influence + tower blast radius
 
+> **Skill:** `rai-graph-analysis` ·
+> **Prompt:** "Build a directed subscriber-to-subscriber call graph from the call-detail records, with caller pointing to callee and parallel calls between the same pair summed into a single edge. Score each subscriber with PageRank and write that influence back to the subscriber. Then per critical-restore tower, aggregate the distinct subscribers whose calls route through it and the sum of their PageRank — that's the social blast radius if the tower fails."
 
 **Construction** — Pattern 3 (`edge_concept`):
 - Node concept: `Subscriber` (1,200 nodes)
@@ -213,6 +248,8 @@ Per-critical-tower blast radius (sorted by weighted_impact)
 
 ## Stage 4 — Predictive: forecast WEST capacity demand
 
+> **Skill:** _no public skill yet — see `v1/subscriber_retention/` and `v1/demand_forecasting/` as worked-example references_ ·
+> **Prompt:** "Train a regression GNN on per-region daily KPIs predicting subscriber growth rate. Use same-region 1-day-lag temporal edges, region as a category feature, and three lag features (previous-day growth, previous-week growth, and a 7-day rolling mean) computed before load. Train on rows before November 2024, validate on November, test on December, then bind each region's mean predicted growth back to every cell tower in that region as a per-tower demand multiplier."
 
 **Method:** GNN node regression on `TimeSeriesMetric` (composite key `metric_date` + `region`). Target: `subscriber_growth_rate`. Features: the other 12 daily KPIs + 3 lag features (`prev_day_growth`, `prev_week_growth`, `growth_7d_mean`) + `region` as a category. Graph: same-region 1-day-lag temporal edges. Train < 2024-11-01 (includes the Sep–Oct WEST decline onset); validate on Nov 2024; test on Dec 2024.
 
@@ -260,6 +297,8 @@ objective = sum( selected[t,tier] *
 
 ## Stage 5 — Prescriptive: tower upgrade selection MIP
 
+> **Skill:** `rai-prescriptive-problem-formulation` ·
+> **Prompt:** "Pick at most one upgrade tier (BRONZE, SILVER, or GOLD) per critical-restore tower using a binary decision variable on the tower-upgrade-option junction. Stay within a $5M total cost cap and 200 total install crew-weeks. Maximize the sum across selected options of capacity-increase × tower weighted-impact × tower projected-demand-growth, so the optimizer favors towers that are both broken and high-blast-radius, scaled by the regional demand forecast. Solve with Gurobi."
 
 ```
 FORMULATION
@@ -331,6 +370,8 @@ Headline metrics
 
 ## Stage 6 — Interpretation
 
+> **Skill:** `rai-prescriptive-results-interpretation` ·
+> **Prompt:** "Summarize the optimal plan in business terms: total cost vs. budget, capacity restored, tier mix, towers covered, and how many subscribers stop being served by a critical tower over the install schedule. Identify which constraint is binding and what would change if it were relaxed by 10–20% (which tower would jump tiers, what the marginal capacity lift would be). List the per-stage ontology enrichments so the reader can see what each reasoner contributed back."
 
 ```
 THE PLAN, IN BUSINESS TERMS
@@ -439,6 +480,20 @@ THE WEST RECOVERY CHAIN
 | + Prescriptive | $5M plan, 122 Gbps, all 15 covered, prioritized by social impact |
 
 **Multi-reasoner chaining grounded in (and contributing to) the ontology.**
+
+---
+
+## Adapting this recipe to a new domain
+
+The chain pattern transfers cleanly. To rebuild for a different problem:
+
+1. Re-run `rai-discovery` on the new business question — does it actually need all 5 reasoner families, or is one or two sufficient?
+2. Strip the demo ontology to the concepts the new chain needs (lean is better for type inference and solver compile time).
+3. Stage 1 (descriptive triage) is *optional but high-leverage*: it scopes the problem and rules out a misdiagnosis (e.g., is this a retention crisis or a network crisis?) before any rule, graph, GNN, or solver runs.
+4. Stages 2–5 are the load-bearing chain: rules write the flag that scopes graph aggregations and the solver's decision variables; graph writes the per-entity impact weight that becomes a solver objective coefficient; predictive writes the forward-looking multiplier that becomes the second objective coefficient; prescriptive composes both upstream signals into the final plan.
+5. Keep the validation checks at every stage: assert flagged-set size, PageRank top-N looks plausible, the GNN forecast separates the anomalous segment from the rest, the solve status is OPTIMAL, the objective is not zero, and at least one constraint is binding (otherwise you're under-constrained).
+
+The shape this template demonstrates — *each reasoner writes a property the next reasoner reads* — is what makes the chain accretive rather than serial. The agent skills are how you reliably author each link.
 
 ---
 
