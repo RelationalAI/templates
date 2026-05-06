@@ -78,10 +78,10 @@ $300M unlocks 5 DCs (1,500 MW, $264M net value) including xAI Colossus.
 - Prompt: `/rai-prescriptive-results-interpretation Which data centers get approved, which upgrades are selected, and where's the biggest return on investment at each budget level?`
 - Response: Pareto frontier with knee at $300M (5 DCs, 1,500 MW, $264M net); marginal $995K/$M at knee, declining to $400K/$M by $600M; Google + Lambda never approved (DFW full).
 
-### 9. Persist the chain into the ontology
+### 9. Persist post-solve aggregates into the ontology
 
-- Prompt: `/rai-ontology-design Promote the per-stage enrichments to first-class ontology state: substation predicted load, centrality, grid community, structural-criticality flag, the three per-DC compliance flags. Add an `InvestmentPortfolio` concept indexed by `InvestmentLevel` so the approval + upgrade decision per budget scenario persists as queryable ontology.`
-- Response: Ontology now carries `Substation.predicted_load`, `.betweenness`, `.grid_community`, `.is_structurally_critical`, `DataCenterRequest.fails_capacity / fails_structural / fails_low_carbon / is_compliant`, plus an `InvestmentPortfolio(InvestmentLevel)` concept holding the approved-DC set and selected-upgrade set per scenario.
+- Prompt: `/rai-ontology-design The chain already writes substation predicted_load / centrality / community / structural-criticality, the three per-DC compliance flags, and the per-InvestmentLevel x_approve and x_upgrade decisions. What's still only in pandas/stdout: per-scenario totals (approved-DC count, total MW, annual revenue, amortized upgrade cost, net value) and the marginal-per-$M analysis with the knee point. Add an InvestmentPortfolio(InvestmentLevel) Concept holding those aggregates plus a knee flag.`
+- Response: Ontology gains an `InvestmentPortfolio(InvestmentLevel)` Concept (5 rows, one per budget) with `dc_count`, `total_mw`, `annual_revenue`, `upgrade_cost`, `net_value`, `marginal_per_m_to_next_level`, `is_knee_point`. All five frontier rows — $200M ($165M net) → $300M ($264M net, knee) → $600M ($395M net) — are queryable as ontology rather than stdout.
 
 ## Data
 

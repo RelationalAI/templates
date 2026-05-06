@@ -81,10 +81,10 @@ all 3 Turbine techs sit in one city, a $3,200 fix away from resolved.
 - Prompt: `/rai-prescriptive-solver-management + /rai-prescriptive-results-interpretation For each machine type, check whether all qualified technicians sit in one location and recommend the cheapest cross-training fix.`
 - Response: OPTIMAL · 20 jobs · $605,241; Turbine concentrated in Houston_TX (67% of jobs travel); cross-train T006 (Chicago_IL, Senior) for $3,200 / 5 weeks.
 
-### 9. Persist the chain into the ontology
+### 9. Persist post-solve aggregates into the ontology
 
-- Prompt: `/rai-ontology-design Promote the per-stage enrichments to first-class ontology state: OEE-proxy properties, betweenness, the seven per-machine risk flags, the composite risk tier. Add a `MaintenancePlan` concept (one row per maintained `(machine, period, technician)` triple) and a `CrossTrainingRecommendation` concept so the optimizer's outputs persist as ontology.`
-- Response: Ontology now carries `Machine.performance_ratio / quality_ratio / anomaly_count / betweenness / is_overdue_maintenance / is_high_risk / is_chronic_downtime / risk_tier`, plus a `MaintenancePlan` concept holding the 20 scheduled jobs and a `CrossTrainingRecommendation` concept for T006 / Chicago_IL / $3,200 / 5 weeks.
+- Prompt: `/rai-ontology-design The chain already writes the OEE-proxy properties, betweenness, the per-machine risk flags, the composite risk_tier, and x_maintain / x_vulnerable / x_assigned. What's still only in pandas/stdout: the plan cost breakdown (failure / labor / travel), per-technician utilization, per-machine-type concentration analysis, and the cross-training recommendation ranked by cost. Add MaintenancePlan, TypeConcentration(machine_type), and CrossTrainingRecommendation Concepts.`
+- Response: Ontology gains: `MaintenancePlan` (singleton, with `objective`, `failure_cost`, `labor_cost`, `travel_cost`, `total_jobs`); `TypeConcentration(machine_type)` (5 rows, with `qualified_tech_count`, `qualified_tech_locations`, `is_concentrated`, `scheduled_jobs_total`, `scheduled_jobs_traveling`, `travel_pct`); `CrossTrainingRecommendation` (one row per concentrated type, ranked candidates with `tech_id`, `cost`, `duration_weeks`, `is_best_candidate`). The Turbine-in-Houston concentration and T006 / Chicago_IL / $3,200 / 5w recommendation are now queryable as ontology rather than stdout.
 
 ## Data
 

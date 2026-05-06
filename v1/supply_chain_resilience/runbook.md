@@ -75,10 +75,10 @@ watch->avoid downgrade = +0.0% (optimizer already routed around it).
 - Prompt: `/rai-prescriptive-solver-management + /rai-prescriptive-results-interpretation Re-solve with the highest-centrality site offline, and again with watch-level suppliers downgraded to avoid. What's the cost delta in each, and why are they asymmetric?`
 - Response: Baseline OPTIMAL $1,865 / 8 flows / 0 unmet; S004 offline +88.5%; watch->avoid +0.0% (B003 already off optimal lanes).
 
-### 9. Persist the chain into the ontology
+### 9. Persist post-solve aggregates into the ontology
 
-- Prompt: `/rai-ontology-design Promote the per-stage enrichments to first-class ontology state: HIGH-priority customer flag, site centrality, supplier reliability flags, demand escalation flag. Add a `SupplyPlan` concept holding the optimal per-operation flow + per-demand unmet quantity so the routing decision is queryable as ontology, not DataFrame.`
-- Response: Ontology now carries `Business.is_high_priority_customer`, `Site.centrality`, `Business.is_unreliable / has_high_delay_risk / is_watch_level`, `Demand.is_escalated`, plus a new `SupplyPlan` concept materializing the 8 active flows and unmet quantities for the baseline solve.
+- Prompt: `/rai-ontology-design The chain already writes site centrality, the business reliability flags, demand escalation, blast-radius reachability, and baseline Operation.x_flow + Demand.x_unmet. What's still only in pandas/stdout: the scenario re-solves (Baseline, S004-offline, Watch->Avoid) with their status, total cost, % delta vs baseline, active flow count, and unmet count. Add a RoutingScenario Concept materializing each scenario as queryable ontology.`
+- Response: Ontology gains a `RoutingScenario` Concept (3 rows: Baseline, S004-offline, Watch-Avoid) with `status`, `total_cost`, `cost_delta_pct`, `active_flow_count`, `unmet_total`, `blocked_businesses`. The disruption deltas — Baseline $1,865 / 8 flows / 0 unmet, S004-offline +88.5%, Watch->Avoid +0.0% — are queryable as ontology rather than scenario-comparison stdout.
 
 ## Data
 

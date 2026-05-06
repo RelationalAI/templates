@@ -82,10 +82,10 @@ across all 15 critical towers, prioritized by social blast radius.
 - Prompt: `/rai-prescriptive-results-interpretation Summarize the plan: total cost, capacity restored, tier mix, towers covered. Which constraint is binding, and what would relaxing it by 10-20% unlock?`
 - Response: Budget binds at $4.96M/$5M (only $43K of headroom); flexing the budget to $6M unlocks the TWR-0009 BRONZE→GOLD swap (+5 Gbps for ~$395K incremental cost). Install-weeks have 36 weeks of slack (164/200) so crew capacity is not the bottleneck. All 15 critical towers are covered, so the 404 service-affected subscribers identified by the graph stage are addressed within the rollout window.
 
-### 10. Persist the chain into the ontology
+### 10. Persist post-solve aggregates into the ontology
 
-- Prompt: `/rai-ontology-design Promote the per-stage enrichments to first-class ontology state: critical-restore flag, derived health metrics, subscriber influence, per-tower blast radius, predicted demand growth. Add a `SelectedUpgrade` concept (one row per chosen tower-tier) so the optimizer's plan is queryable as ontology, not stage-local state.`
-- Response: Ontology now carries `CellTower.is_critical_restore`, the four `avg_*` health metrics, `Subscriber.influence_score`, `CellTower.weighted_impact`, `CellTower.projected_demand_growth`, plus a new `SelectedUpgrade` concept materializing the 15 chosen tower-tier rows. Future queries against the model see the chain's output without re-running it.
+- Prompt: `/rai-ontology-design The chain already writes critical-restore flag, derived health, subscriber influence, weighted_impact, projected_demand_growth, and TowerUpgradeOption.selected. What's still only in pandas/stdout: the plan summary (total cost, install-weeks, capacity restored, tier-mix counts, towers-covered count) and the binding-constraint analysis. Add a RestorePlan Concept holding those aggregates and a narrowed SelectedUpgrade view-concept restricted to the 15 chosen tower-tier rows.`
+- Response: Ontology gains a singleton `RestorePlan` Concept with `total_cost`, `total_install_weeks`, `capacity_restored_gbps`, `gold_count`, `silver_count`, `bronze_count`, `towers_covered`, `binding_constraint`; plus `SelectedUpgrade` (a view-concept over the 15 chosen rows from `TowerUpgradeOption`). All headline plan numbers — $4,956,843 / 164 weeks / 122 Gbps / 12 GOLD / 2 SILVER / 1 BRONZE / 15 covered — are now queryable as ontology, not stdout.
 
 ## Data
 
