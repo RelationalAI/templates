@@ -40,7 +40,7 @@ across all 15 critical towers, prioritized by social blast radius.
 ### 1. Build ontology
 
 - Prompt: `/rai-build-starter-ontology Build a telco network ontology from the eight CSVs in data/: cell_towers, network_equipment, equipment_health, network_performance, subscribers, call_detail_records, tower_upgrade_options, time_series_metrics. The time-series file has one row per (date, region); make sure that's modelled as a composite-key concept since we'll want to forecast region-level trends later.`
-- Response: Concepts: `CellTower`, `NetworkEquipment`, `EquipmentHealth`, `NetworkPerformance`, `Subscriber`, `CallDetailRecord` (edge concept: caller → callee, routed_through tower), `TowerUpgradeOption` (composite key tower_id+tier), `RegionMetric` (composite key metric_date+region), `TemporalEdge` (composite key src_date+src_region+dst_date+dst_region) — all bound to the bundled CSVs.
+- Response: Concepts: `CellTower`, `NetworkEquipment`, `EquipmentHealth`, `NetworkPerformance`, `Subscriber`, `CallDetailRecord` (edge concept: caller → callee, routed_through tower), `TowerUpgradeOption` (composite key tower_id+tier), `RegionMetric` (composite key metric_date+region) — all bound to the bundled CSVs. Step 7 (predictive) introduces a same-region 1-day-lag `TemporalEdge` concept derived from `RegionMetric` for GNN message passing.
 
 ### 2. Examine ontology
 
@@ -80,7 +80,7 @@ across all 15 critical towers, prioritized by social blast radius.
 ### 9. Interpret the plan
 
 - Prompt: `/rai-prescriptive-results-interpretation Summarize the plan: total cost, capacity restored, tier mix, towers covered. Which constraint is binding, and what would relaxing it by 10-20% unlock?`
-- Response: Budget binds at $4.96M/$5M (only $43K of headroom); flexing the budget to $6M unlocks the TWR-0009 BRONZE→GOLD swap (+5 Gbps for ~$395K incremental cost). Install-weeks have 36 weeks of slack (164/200) so crew capacity is not the bottleneck. All 15 critical towers are covered, so the 404 service-affected subscribers identified by the graph stage are addressed within the rollout window.
+- Response: Budget is binding at $4.96M/$5M (only $43K of headroom); a re-solve at higher budget would quantify which BRONZE/SILVER swaps unlock — TWR-0009 BRONZE → GOLD is the next-cheapest tier upgrade in the candidate set. Install-weeks have 36 weeks of slack (164/200) so crew capacity is not the bottleneck. All 15 critical towers are covered, so the 404 service-affected subscribers identified by the graph stage are addressed within the rollout window.
 
 ### 10. Persist solution concepts into the ontology
 

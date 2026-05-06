@@ -55,7 +55,7 @@ $300M unlocks 5 DCs (1,500 MW, $264M net value) including xAI Colossus.
 
 ### 4. Forecast substation load
 
-- Prompt: `/rai-predictive-modeling + /rai-predictive-training Can we forecast substation load growth over the next 24 months based on historical demand, planned generator additions, and the data center request pipeline? Bind each substation's predicted peak load back to the ontology so the rules engine and optimizer can read it.`
+- Prompt: `/rai-predictive-modeling + /rai-predictive-training Forecast substation load growth over the next 24 months from historical demand, planned generator additions, and the DC request pipeline. Use the pre-trained model from the bundled DemandForecast table if available, or train fresh. Bind each substation's predicted peak load back to the ontology so the rules engine and optimizer can read it.`
 - Response: `Substation.predicted_load` for all 12; DFW breaches at 1,700 MW vs 1,600 MW cap at 24 months (+54.6%).
 
 ### 5. Find structural bottlenecks
