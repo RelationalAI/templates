@@ -60,7 +60,7 @@ $300M unlocks 5 DCs (1,500 MW, $264M net value) including xAI Colossus.
 
 ### 5. Find structural bottlenecks
 
-- Prompt: `/rai-graph-analysis Which substations are most critical to power flow based on grid topology? Check connectivity (WCC), regional structure (Louvain communities), and centrality (betweenness/degree/eigenvector); then flag the top 3 by combined centrality rank as structurally critical and persist the scores back to the ontology.`
+- Prompt: `/rai-graph-analysis Which substations are most critical to power flow based on grid topology? Flag the top 3 most structurally critical, surface any regional clustering, and persist the structural-criticality scores back to the ontology.`
 - Response: 1 connected component, 3 Louvain communities (North Texas, West Texas, Gulf Coast); DFW, Houston, San Antonio flagged `is_structurally_critical`; 7 of 10 DC requests target critical nodes.
 
 ### 6. Screen DC requests

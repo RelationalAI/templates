@@ -63,7 +63,7 @@ all 3 Turbine techs sit in one city, a $3,200 fix away from resolved.
 
 ### 5. Find scheduling bottlenecks
 
-- Prompt: `/rai-graph-analysis Which machines share qualified technicians, and which are bottlenecks in the qualification network? Compute centrality and write it back to each machine so the optimizer can weight critical machines.`
+- Prompt: `/rai-graph-analysis Which machines share qualified technicians? Score each machine by how central it is in the qualification network so the optimizer can prioritize the bottlenecks.`
 - Response: 30 machines → 1 connected component; Pumps tie at top betweenness (24.0 raw, 1.0 normalized); `Machine.betweenness` stored.
 
 ### 6. Classify machine risk

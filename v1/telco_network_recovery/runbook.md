@@ -54,27 +54,27 @@ across all 15 critical towers, prioritized by social blast radius.
 
 ### 4. Diagnose WEST
 
-- Prompt: `/rai-querying Compare quarterly DAILY_REVENUE_USD by region. Which region has the worst Q4 2024 network availability? Show the WEST cell tower fleet broken down by status, and the average packet loss for the DEGRADED ones.`
+- Prompt: `/rai-querying Where are we missing revenue targets, and which region has the worst Q4 2024 network availability? For the worst region, show the cell tower fleet by status and how bad the degraded towers look on packet loss.`
 - Response: WEST Q4 avail 94.6% vs 99.5% in every other region; WEST Q4 revenue $6.6M vs ~$9.0–9.5M everywhere else (≈$2.7M Q4 deficit, −29% vs WEST's own H1 baseline); 81 WEST towers split into 49 ACTIVE / 17 MAINTENANCE / 15 DEGRADED, with the 15 DEGRADED towers averaging 7.6–10.3% packet loss (median ~8.2%). Subscriber-churn signals stay flat — this is an operational network failure, not retention.
 
 ### 5. Flag critical-restore towers
 
-- Prompt: `/rai-rules-authoring First derive per-tower averages for packet loss, latency, error rate (from NetworkPerformance) and average equipment health (via NetworkEquipment → EquipmentHealth). Then flag CellTower.is_critical_restore on either of two branches: (1) region == WEST AND status == DEGRADED AND avg_health_score < 0.85, OR (2) region == WEST AND avg_packet_loss > 5% AND avg_health_score < 0.85 (catches ACTIVE-but-failing).`
+- Prompt: `/rai-rules-authoring Flag towers as critical-restore if they're in WEST and either (a) DEGRADED with poor average equipment health (below 0.85), or (b) showing high average packet loss (above 5%) with poor health — the second branch catches ACTIVE-but-failing towers.`
 - Response: 4 derived health properties (`avg_packet_loss`, `avg_latency_ms`, `avg_error_rate`, `avg_health_score`) computed for all 250 towers via `aggs.avg(...).per(CellTower)`. The two-branch `CellTower.is_critical_restore` relationship fires on 15 towers — all 15 are WEST + DEGRADED + health < 0.85, so Branch 1 alone produces the same set, but Branch 2 is kept as a guard against ACTIVE-but-failing failure modes.
 
 ### 6. Score subscriber blast radius
 
-- Prompt: `/rai-graph-analysis Who are our most socially influential subscribers based on call patterns? For each critical-restore tower, count the distinct subscribers whose calls route through it and rank by total PageRank influence — that's the blast radius if it fails.`
+- Prompt: `/rai-graph-analysis Who are our most socially influential subscribers based on call patterns? For each critical-restore tower, score its blast radius — how many distinct subscribers route calls through it, weighted by their influence.`
 - Response: `Subscriber.influence_score` (PageRank) on all 1,200 subs; `CellTower.weighted_impact` on 15 critical towers; 404 distinct subs (33% of base) route through a critical tower; TWR-0014 has the largest footprint (61 subs, 0.0502).
 
 ### 7. Forecast regional demand
 
-- Prompt: `/rai-predictive-modeling + /rai-predictive-training Train a regression GNN on RegionMetric (one row per date+region) to predict next-quarter SUBSCRIBER_GROWTH_RATE per region. Use TemporalEdge (same-region 1-day lag) for message passing, region as a category feature, and lag features (prev-day, prev-week, 7-day mean) as continuous inputs. Train < 2024-11-01, validate on Nov, test on Dec. Mean each region's Dec predictions, convert to 1+x multiplier, and bind back to CellTower.projected_demand_growth via region.`
+- Prompt: `/rai-predictive-modeling + /rai-predictive-training Predict next-quarter subscriber growth per region from the daily KPI history (train on data through October, validate Nov, test Dec). Bind each region's forecast back to its towers as a demand multiplier.`
 - Response: GNN node regression on 365d × 9 regions with same-region 1-day-lag temporal edges; per-region mean of the Dec test predictions yields WEST multiplier ≈0.9998× (flat/slightly contracting) while the 8 other regions sit at +0.45% to +0.91%/day. The multiplier is loaded into a `RegionGrowth` concept and joined to `CellTower.projected_demand_growth` via region — populating all 250 towers (CellTower covers 5 regions; the other 4 RegionMetric regions are forecast but have no towers to bind to).
 
 ### 8. Optimize tier selection
 
-- Prompt: `/rai-prescriptive-problem-formulation Build a tower-upgrade MIP scoped to options where TowerUpgradeOption.for_tower(CellTower) AND CellTower.is_critical_restore(). Decision variable TowerUpgradeOption.selected is binary, keyed by (tower_id, tier). Constraints: at most one tier per tower, total cost ≤ $5M, total install_weeks ≤ 200. Maximize sum(selected · capacity_increase_gbps · CellTower.weighted_impact · CellTower.projected_demand_growth) — three coefficients, one from each upstream stage.`
+- Prompt: `/rai-prescriptive-problem-formulation Recover WEST capacity within $5M and 200 install-weeks. For each critical-restore tower, pick at most one upgrade tier (BRONZE, SILVER, or GOLD) that maximizes capacity restored, weighted by each tower's blast radius and the regional demand forecast.`
 - Response: Status OPTIMAL with all 15 critical towers covered (one tier each). Tier mix: 12 GOLD / 2 SILVER / 1 BRONZE. Total capacity restored 122 Gbps. Total cost $4,956,843 of the $5M budget (binding). Total install crew-weeks 164 of 200 (slack). The tier mix skews toward GOLD because the per-Gbps cost on GOLD is competitive once it is multiplied by `weighted_impact` and `projected_demand_growth` in the objective.
 
 ### 9. Interpret the plan
