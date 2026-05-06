@@ -80,7 +80,7 @@ base at every lambda — without the cluster collapse, the gap would grow.
 
 ### 9. Persist solution concepts into the ontology
 
-- Prompt: `/rai-ontology-design The chain already writes the compliance flags, cluster id + representative flag, Stock.x_quantity(Scenario), and Stock.regime_covar. What's still only in pandas/stdout: per-(scenario, frontier-point) metadata (return, risk, marginal risk/return, knee flag) and the base-vs-crisis volatility comparison. Add a FrontierPoint(Scenario, eps_label) Concept holding all post-solve frontier metadata.`
+- Prompt: `/rai-ontology-design Add a FrontierPoint concept indexed by (Scenario, eps_label) that materializes each Pareto point's metadata: return, risk, marginal risk-per-return, knee flag, base-regime volatility, crisis-regime volatility, and the percentage gap between them.`
 - Response: Ontology gains a `FrontierPoint(Scenario, eps_label)` Concept (36 rows = 6 scenarios x 6 points) with `return`, `risk`, `marginal_risk_per_return`, `is_knee`, `vol_base`, `vol_crisis`, `vol_gap`, `vol_gap_pct`. The frontier shape (32.43->40.28 / 1160->1742 in base_500), knee at eps_1, and crisis vol gap (+28.4% min_risk -> +29.8% peak -> +25.2% eps_5) are now queryable as ontology rather than stdout.
 
 ## Data

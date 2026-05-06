@@ -80,7 +80,7 @@ $300M unlocks 5 DCs (1,500 MW, $264M net value) including xAI Colossus.
 
 ### 9. Persist solution concepts into the ontology
 
-- Prompt: `/rai-ontology-design The chain already writes substation predicted_load / centrality / community / structural-criticality, the three per-DC compliance flags, and the per-InvestmentLevel x_approve and x_upgrade decisions. What's still only in pandas/stdout: per-scenario totals (approved-DC count, total MW, annual revenue, amortized upgrade cost, net value) and the marginal-per-$M analysis with the knee point. Add an InvestmentPortfolio(InvestmentLevel) Concept holding those aggregates plus a knee flag.`
+- Prompt: `/rai-ontology-design Add an InvestmentPortfolio concept indexed by InvestmentLevel that materializes the per-budget aggregates (approved-DC count, total MW, annual revenue, upgrade cost, net value, marginal value per added $M) and flags the knee point.`
 - Response: Ontology gains an `InvestmentPortfolio(InvestmentLevel)` Concept (5 rows, one per budget) with `dc_count`, `total_mw`, `annual_revenue`, `upgrade_cost`, `net_value`, `marginal_per_m_to_next_level`, `is_knee_point`. All five frontier rows — $200M ($165M net) → $300M ($264M net, knee) → $600M ($395M net) — are queryable as ontology rather than stdout.
 
 ## Data

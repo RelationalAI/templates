@@ -83,7 +83,7 @@ all 3 Turbine techs sit in one city, a $3,200 fix away from resolved.
 
 ### 9. Persist solution concepts into the ontology
 
-- Prompt: `/rai-ontology-design The chain already writes the OEE-proxy properties, betweenness, the per-machine risk flags, the composite risk_tier, and x_maintain / x_vulnerable / x_assigned. What's still only in pandas/stdout: the plan cost breakdown (failure / labor / travel), per-technician utilization, per-machine-type concentration analysis, and the cross-training recommendation ranked by cost. Add MaintenancePlan, TypeConcentration(machine_type), and CrossTrainingRecommendation Concepts.`
+- Prompt: `/rai-ontology-design Materialize the prescriptive output as ontology. Add a MaintenancePlan concept with the cost breakdown (failure / labor / travel) and total job count; a TypeConcentration concept per machine type capturing where the qualified techs sit and how much travel that forces; and a CrossTrainingRecommendation concept ranking candidates by cost so the cheapest fix is queryable.`
 - Response: Ontology gains: `MaintenancePlan` (singleton, with `objective`, `failure_cost`, `labor_cost`, `travel_cost`, `total_jobs`); `TypeConcentration(machine_type)` (5 rows, with `qualified_tech_count`, `qualified_tech_locations`, `is_concentrated`, `scheduled_jobs_total`, `scheduled_jobs_traveling`, `travel_pct`); `CrossTrainingRecommendation` (one row per concentrated type, ranked candidates with `tech_id`, `cost`, `duration_weeks`, `is_best_candidate`). The Turbine-in-Houston concentration and T006 / Chicago_IL / $3,200 / 5w recommendation are now queryable as ontology rather than stdout.
 
 ## Data

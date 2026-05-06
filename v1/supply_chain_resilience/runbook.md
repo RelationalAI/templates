@@ -77,7 +77,7 @@ watch->avoid downgrade = +0.0% (optimizer already routed around it).
 
 ### 9. Persist solution concepts into the ontology
 
-- Prompt: `/rai-ontology-design The chain already writes site centrality, the business reliability flags, demand escalation, blast-radius reachability, and baseline Operation.x_flow + Demand.x_unmet. What's still only in pandas/stdout: the scenario re-solves (Baseline, S004-offline, Watch->Avoid) with their status, total cost, % delta vs baseline, active flow count, and unmet count. Add a RoutingScenario Concept materializing each scenario as queryable ontology.`
+- Prompt: `/rai-ontology-design Add a RoutingScenario concept that materializes each scenario solve (Baseline, S004-offline, Watch->Avoid) with its status, total cost, cost delta versus baseline, active flow count, unmet total, and any blocked businesses.`
 - Response: Ontology gains a `RoutingScenario` Concept (3 rows: Baseline, S004-offline, Watch-Avoid) with `status`, `total_cost`, `cost_delta_pct`, `active_flow_count`, `unmet_total`, `blocked_businesses`. The disruption deltas — Baseline $1,865 / 8 flows / 0 unmet, S004-offline +88.5%, Watch->Avoid +0.0% — are queryable as ontology rather than scenario-comparison stdout.
 
 ## Data

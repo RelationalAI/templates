@@ -39,7 +39,7 @@ across all 15 critical towers, prioritized by social blast radius.
 
 ### 1. Build ontology
 
-- Prompt: `/rai-build-starter-ontology Build a telco network ontology from the eight CSVs in data/: cell_towers, network_equipment, equipment_health, network_performance, subscribers, call_detail_records, tower_upgrade_options, time_series_metrics. The time-series file has one row per (date, region) — model that as a composite-key concept and add a same-region 1-day-lag edge concept to support temporal GNN message passing downstream.`
+- Prompt: `/rai-build-starter-ontology Build a telco network ontology from the eight CSVs in data/: cell_towers, network_equipment, equipment_health, network_performance, subscribers, call_detail_records, tower_upgrade_options, time_series_metrics. The time-series file has one row per (date, region); make sure that's modelled as a composite-key concept since we'll want to forecast region-level trends later.`
 - Response: Concepts: `CellTower`, `NetworkEquipment`, `EquipmentHealth`, `NetworkPerformance`, `Subscriber`, `CallDetailRecord` (edge concept: caller → callee, routed_through tower), `TowerUpgradeOption` (composite key tower_id+tier), `RegionMetric` (composite key metric_date+region), `TemporalEdge` (composite key src_date+src_region+dst_date+dst_region) — all bound to the bundled CSVs.
 
 ### 2. Examine ontology
@@ -84,8 +84,8 @@ across all 15 critical towers, prioritized by social blast radius.
 
 ### 10. Persist solution concepts into the ontology
 
-- Prompt: `/rai-ontology-design The chain already writes critical-restore flag, derived health, subscriber influence, weighted_impact, projected_demand_growth, and TowerUpgradeOption.selected. What's still only in pandas/stdout: the plan summary (total cost, install-weeks, capacity restored, tier-mix counts, towers-covered count) and the binding-constraint analysis. Add a RestorePlan Concept holding those aggregates and a narrowed SelectedUpgrade view-concept restricted to the 15 chosen tower-tier rows.`
-- Response: Ontology gains a singleton `RestorePlan` Concept with `total_cost`, `total_install_weeks`, `capacity_restored_gbps`, `gold_count`, `silver_count`, `bronze_count`, `towers_covered`, `binding_constraint`; plus `SelectedUpgrade` (a view-concept over the 15 chosen rows from `TowerUpgradeOption`). All headline plan numbers — $4,956,843 / 164 weeks / 122 Gbps / 12 GOLD / 2 SILVER / 1 BRONZE / 15 covered — are now queryable as ontology, not stdout.
+- Prompt: `/rai-ontology-design Materialize the optimal plan and the 15 selected upgrades as queryable ontology. Add a RestorePlan concept holding the plan summary (total cost, install-weeks, capacity restored, tier-mix counts, towers covered, binding constraint) and a SelectedUpgrade view restricted to the chosen tower-tier rows.`
+- Response: Ontology gains a singleton `RestorePlan` Concept with `total_cost`, `total_install_weeks`, `capacity_restored_gbps`, `gold_count`, `silver_count`, `bronze_count`, `towers_covered`, `binding_constraint`; plus `SelectedUpgrade` (a view over the 15 chosen rows of `TowerUpgradeOption`). All headline plan numbers — $4,956,843 / 164 weeks / 122 Gbps / 12 GOLD / 2 SILVER / 1 BRONZE / 15 covered — are now queryable as ontology, not stdout.
 
 ## Data
 
