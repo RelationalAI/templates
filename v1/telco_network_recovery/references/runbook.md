@@ -37,37 +37,42 @@ across all 15 critical towers, prioritized by social blast radius.
 
 ## Workflow
 
-### 0. Discovery
+### 1. Build ontology
+
+- Prompt: `/rai-build-starter-ontology Build a telco network ontology from the CSVs in ../data/ covering cell towers, subscribers, call records, equipment health, network performance, time-series KPIs, and tower upgrade options.`
+- Response: Concepts: `CellTower`, `Subscriber`, `Contract`, `BillingEvent`, `CallDetailRecord`, `NetworkEquipment`, `EquipmentHealth`, `NetworkEvent`, `NetworkPerformance`, `TimeSeriesMetric`, `RevenueForecast`, `TowerUpgradeOption`, `Part`, `SupplierOrder`, `PostalArea`, `Campaign`, `PromotionRedemption` — bound to the bundled CSVs.
+
+### 2. Discovery
 
 - Prompt: `/rai-discovery WEST is missing revenue while every other region grows. What questions do we need to answer to figure out where to spend $5M to fix it?`
 - Response: Routes sub-questions to descriptive (revenue diagnosis), rules (critical-tower flag), graph (PageRank blast radius), predictive (demand forecast), prescriptive (tier-selection MIP + post-solve interpretation).
 
-### 1. Diagnose WEST
+### 3. Diagnose WEST
 
 - Prompt: `/rai-querying Where are we missing revenue targets? Which 10 cell towers have the worst average packet loss over 2024, and which region has the worst Q4 network availability?`
 - Response: WEST avail 94.6 vs 99.5 elsewhere; Q3-Q4 revenue −22% to −26% ($791K gap); 15 of 81 WEST towers DEGRADED at 8.1–8.9% packet loss; zero high-risk subs — operational, not retention.
 
-### 2. Flag critical-restore towers
+### 4. Flag critical-restore towers
 
 - Prompt: `/rai-rules-authoring Flag CellTowers as 'critical-restore' if region is WEST AND status is DEGRADED AND avg equipment health is below 0.85, OR if avg packet loss > 5% with health below 0.85.`
 - Response: `CellTower.is_critical_restore` fires on 15 WEST DEGRADED towers; 4 derived health metrics (`avg_packet_loss`, `avg_latency_ms`, `avg_error_rate`, `avg_health_score`) written to all 250 towers.
 
-### 3. Score subscriber blast radius
+### 5. Score subscriber blast radius
 
 - Prompt: `/rai-graph-analysis Who are our most socially influential subscribers based on call patterns? For each critical-restore tower, count the distinct subscribers whose calls route through it and rank by total PageRank influence — that's the blast radius if it fails.`
 - Response: `Subscriber.influence_score` (PageRank) on all 1,200 subs; `CellTower.weighted_impact` on 15 critical towers; 404 distinct subs (33% of base) route through a critical tower; TWR-0014 has the largest footprint (61 subs, 0.0502).
 
-### 4. Forecast regional demand
+### 6. Forecast regional demand
 
 - Prompt: `/rai-predictive-modeling + /rai-predictive-training Predict next-quarter subscriber-growth-rate per region using TimeSeriesMetric history. Bind each region's forecast back to its towers as a demand multiplier.`
 - Response: GNN node regression on 365d × 9 regions with 1-day-lag temporal edges; WEST multiplier 0.9998× (flat/slightly contracting); 8 other regions +0.45 to +0.91%/day; written to `CellTower.projected_demand_growth` for all 250 towers via region join.
 
-### 5. Optimize tier selection
+### 7. Optimize tier selection
 
 - Prompt: `/rai-prescriptive-problem-formulation Recover WEST capacity within $5M and 200 install-weeks. For each critical-restore tower, pick at most one upgrade tier (BRONZE, SILVER, or GOLD) to maximize capacity restored, weighted by each tower's blast radius and the regional demand forecast.`
 - Response: OPTIMAL · 12 GOLD / 2 SILVER / 1 BRONZE · 122 Gbps restored · $4.96M of $5M (binding) · 164 of 200 install-weeks (slack) · all 15 towers covered.
 
-### 6. Interpret the plan
+### 8. Interpret the plan
 
 - Prompt: `/rai-prescriptive-results-interpretation Summarize the plan: total cost, capacity restored, tier mix, towers covered. Which constraint is binding, and what would relaxing it by 10-20% unlock?`
 - Response: Budget binds at $4.96M/$5M; flexing to $6M would promote TWR-0009 BRONZE→GOLD (+9 Gbps); install-weeks have 36-week slack; 404 service-affected subs drop to ~0 over the 4-month rollout.

@@ -38,32 +38,37 @@ $300M unlocks 5 DCs (1,500 MW, $264M net value) including xAI Colossus.
 
 ## Workflow
 
-### 0. Discovery
+### 1. Build ontology
+
+- Prompt: `/rai-build-starter-ontology Build an ontology for grid infrastructure planning from the CSVs in ../data/ covering substations, generators, transmission lines, demand forecasts, data center requests, and substation upgrades.`
+- Response: Concepts: `Substation`, `Generator`, `TransmissionLine`, `LoadZone`, `DemandPeriod`, `RenewableProfile`, `MaintenanceWindow`, `Customer`, `DataCenterRequest`, `SubstationUpgrade`, `DemandForecast`, `LoadHistory`, `DCAnnouncement` — bound to the bundled CSVs (12 substations, 10 DC requests, 18 transmission lines).
+
+### 2. Discovery
 
 - Prompt: `/rai-discovery We have 10 hyperscaler interconnection requests against a 12-substation grid. Which to approve, which substation upgrades to fund, at what budget level?`
 - Response: Plan routing sub-questions to predictive, graph, rules, and prescriptive reasoners.
 
-### 1. Forecast substation load
+### 3. Forecast substation load
 
 - Prompt: `/rai-predictive-modeling + /rai-predictive-training Can we forecast substation load growth over the next 24 months based on historical demand, planned generator additions, and the data center request pipeline? Bind each substation's predicted peak load back to the ontology so the rules engine and optimizer can read it.`
 - Response: `Substation.predicted_load` for all 12; DFW breaches at 1,700 MW vs 1,600 MW cap at 24 months (+54.6%).
 
-### 2. Find structural bottlenecks
+### 4. Find structural bottlenecks
 
 - Prompt: `/rai-graph-analysis Which substations are most critical to power flow based on grid topology? Use centrality on the transmission graph, then flag the top 3 as structurally critical and persist the scores back to the ontology.`
 - Response: 1 component, 3 Louvain communities; DFW, Houston, San Antonio flagged `is_structurally_critical`; 7 of 10 DC requests on critical nodes.
 
-### 3. Screen DC requests
+### 5. Screen DC requests
 
 - Prompt: `/rai-rules-authoring Screen each data center request against three criteria: (1) substation must have enough capacity after predicted load, (2) substation's low-carbon (renewable + nuclear) generation share must meet the DC's low-carbon requirement, (3) substation shouldn't be one of the top-3 structurally critical. Which requests pass all three?`
 - Response: `fails_capacity` / `fails_structural` / `fails_low_carbon` + `is_compliant`; 2 pass (Crusoe, Oracle), 8 flagged.
 
-### 4. Approve DCs and fund upgrades
+### 6. Approve DCs and fund upgrades
 
 - Prompt: `/rai-prescriptive-problem-formulation Decide which data center requests to approve and which substation upgrades to fund at $200M, $300M, $400M, $500M, and $600M investment levels. Maximize annual revenue. A request can only be approved if its substation has enough capacity after upgrades.`
 - Response: OPTIMAL MIP across 5 `InvestmentLevel` values in one solve; `x_approve` and `x_upgrade` written back per level.
 
-### 5. Read the frontier
+### 7. Read the frontier
 
 - Prompt: `/rai-prescriptive-results-interpretation Which data centers get approved, which upgrades are selected, and where's the biggest return on investment at each budget level?`
 - Response: Pareto frontier with knee at $300M (5 DCs, 1,500 MW, $264M net); marginal $995K/$M at knee, declining to $400K/$M by $600M; Google + Lambda never approved (DFW full).
