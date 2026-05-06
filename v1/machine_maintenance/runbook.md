@@ -73,7 +73,7 @@ all 3 Turbine techs sit in one city, a $3,200 fix away from resolved.
 
 ### 7. Schedule maintenance
 
-- Prompt: `/rai-prescriptive-problem-formulation Schedule preventive maintenance for all 30 machines across 4 periods, capped at 5 jobs per period. Every overdue machine gets maintained by period 2, and each maintained machine needs a qualified technician. Minimize expected failure cost (weighted by criticality and centrality) plus labor and travel.`
+- Prompt: `/rai-prescriptive-problem-formulation Schedule preventive maintenance across the 30 machines and 4 periods. Each machine in each period is either maintained or left exposed to failure risk for that period. Cap maintenance at 5 jobs per period (parts/bay limit). Every overdue machine must be maintained by period 2. Each maintained machine needs a qualified technician assigned, and technicians can't exceed their available hours per period. Minimize expected failure cost on machines left exposed (weighted by criticality and centrality) plus technician labor and travel.`
 - Response: 120 `x_maintain` + 120 `x_vulnerable` + 384 `x_assigned` binaries (96 qualified tech×machine pairs × 4 periods); 5 constraint families (cumulative coverage, assignment-maintenance linkage, technician hours, parts/bay capacity, overdue deadline); failure cost uses `x_vulnerable × predicted_fp × parts_cost × criticality × (1 + 2.0 × betweenness)`.
 
 ### 8. Stress-test concentration

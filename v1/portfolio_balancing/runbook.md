@@ -65,7 +65,7 @@ base at every lambda — without the cluster collapse, the gap would grow.
 
 ### 6. Solve mean-variance frontier
 
-- Prompt: `/rai-prescriptive-problem-formulation Build a Markowitz mean-variance frontier across 6 scenarios = 3 budgets x 2 regimes. Position cap 30% of budget, sector cap 30%, only invest in cluster representatives. Show 6 frontier points per scenario from min-risk through high-return.`
+- Prompt: `/rai-prescriptive-problem-formulation Build a Markowitz mean-variance frontier across 6 scenarios = 3 budgets (500, 1000, 2000) x 2 regimes (base, crisis). Each scenario must be fully invested; cap any single position at 30% of budget and any sector at 30%. Only invest in cluster representatives. Show 6 frontier points per scenario from min-risk through high-return.`
 - Response: 48 decision vars (`Stock.x_quantity`, 8 stocks x 6 scenarios; non-reps forced to 0). Constraint families: non-negativity, budget equality (sum = budget per scenario), position cap (30%), sector cap (30%), non-representative = 0, plus epsilon return-rate floor on sweep solves. Return-rate range [0.0634, 0.0840]. 6-point frontier per scenario (min-risk anchor + 5 epsilon points); 7 solves per scenario x 6 scenarios = 42 `LOCALLY_SOLVED` portfolios via Ipopt.
 
 ### 7. Read the frontier
@@ -75,7 +75,7 @@ base at every lambda — without the cluster collapse, the gap would grow.
 
 ### 8. Stress under crisis
 
-- Prompt: `/rai-prescriptive-solver-management + /rai-prescriptive-results-interpretation Stress-test the frontier under a crisis regime that pushes correlations 70% of the way toward all-ones. How much does volatility expand at each frontier point versus the baseline regime?`
+- Prompt: `/rai-prescriptive-solver-management + /rai-prescriptive-results-interpretation Stress-test the frontier under a crisis regime that shrinks correlations 30% of the way toward all-ones (PSD-preserving). Re-solve the same frontier under crisis covariance and report how much volatility expands at each frontier point versus the baseline regime.`
 - Response: Crisis vol 25-30% above base across the frontier (budget 500: min_risk 34.06 -> 43.74 at +28.4%, eps_1 34.30 -> 44.54 at +29.8% peak). Gap peaks mid-frontier (eps_1..eps_2 at +29.8%), narrows to +25.2% at eps_5 — the cluster-collapse payoff.
 
 ### 9. Persist solution concepts into the ontology

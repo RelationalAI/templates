@@ -70,7 +70,7 @@ $300M unlocks 5 DCs (1,500 MW, $264M net value) including xAI Colossus.
 
 ### 7. Approve DCs and fund upgrades
 
-- Prompt: `/rai-prescriptive-problem-formulation Decide which data center requests to approve and which substation upgrades to fund at $200M, $300M, $400M, $500M, and $600M investment levels. Maximize annual revenue. A request can only be approved if its substation has enough capacity after upgrades.`
+- Prompt: `/rai-prescriptive-problem-formulation Decide which data center requests to approve and which substation upgrades to fund at $200M, $300M, $400M, $500M, and $600M investment levels. Maximize annual revenue across all five levels in a single solve. A request can only be approved if its substation has enough capacity after upgrades, and total upgrade spend at each level must stay within that level's budget. Consider all 10 requests — the Stage 3 compliance flags are informational, not hard filters.`
 - Response: OPTIMAL MIP across 5 `InvestmentLevel` values in one solve; `x_approve` and `x_upgrade` written back per level.
 
 ### 8. Read the frontier

@@ -62,7 +62,7 @@ watch->avoid downgrade = +0.0% (optimizer already routed around it).
 
 ### 6. Classify supplier reliability
 
-- Prompt: `/rai-rules-authoring Rate each supplier's delivery reliability. Flag any with reliability score below 0.80 as unreliable, and any with a Q1 delay prediction above 0.15 as high-delay-risk. Classify suppliers as 'avoid' (both flags fire), 'watch' (either flag fires), or 'reliable' (neither).`
+- Prompt: `/rai-rules-authoring Rate each supplier's delivery reliability. Flag any with reliability score below 0.80 as unreliable, and any with a Q1 delay prediction above 0.15 as high-delay-risk. Classify suppliers as 'avoid' (both flags fire), 'watch' (either flag fires), or 'reliable' (neither). Also flag HIGH-priority demand orders as escalated so downstream solves can prioritize them.`
 - Response: `is_unreliable` (1: B017), `has_high_delay_risk` (2: B003, B017), `is_watch_level` (2), `Demand.is_escalated` (9).
 
 ### 7. Solve risk-adjusted flow
