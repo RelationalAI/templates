@@ -61,7 +61,7 @@ This runbook serves two audiences:
 ## Step 0 — Scope the question with `rai-discovery`
 
 > **Skill:** `rai-discovery` ·
-> **Prompt:** "We have 10 hyperscaler interconnection requests totalling 2,930 MW queued against a 12-substation ERCOT-style Texas grid. Classify the sub-questions we need to answer to decide which to approve, which substation upgrades to fund, and at what budget level — map each sub-question to the reasoner family that should handle it."
+> **Prompt:** "We have 10 hyperscaler interconnection requests against a 12-substation grid. Which to approve, which substation upgrades to fund, at what budget level?"
 
 Discovery classifies the question by reasoner family and tells you which
 downstream skills to load:
@@ -113,8 +113,8 @@ Steps are sequential — each depends on prior steps. Steps without a skill are 
 
 ## Stage 1 — Predictive: substation load forecasting
 
-> **Skill:** _no public skill yet — see `v1/subscriber_retention/` and `v1/demand_forecasting/` as worked-example references_ ·
-> **Prompt:** "Forecast each substation's future peak load by aggregating the maximum predicted load across the 6/12/18/24-month forecast horizons in the demand-forecast table, and write the result back to every substation as a derived load-projection property. The downstream rules engine and optimizer both need to read this same forecasted headroom — fall back to the substation's current load only when no forecast row exists. Flag substations whose predicted load exceeds their nameplate capacity within the horizon and report which one breaches first."
+> **Skill:** `rai-predictive-modeling` + `rai-predictive-training` ·
+> **Prompt:** "Can we forecast substation load growth over the next 36 months based on historical demand, planned generator additions, and the data center request pipeline? Bind each substation's predicted peak load back to the ontology so the rules engine and optimizer can read it."
 
 **Method:** load max forecasted load per substation as `Substation.predicted_load`. The template aggregates `DemandForecast.predicted_load_mw` over forecast horizons (6/12/18/24 months) and writes the max back to the substation. A pre-trained GNN can replace the table lookup; the script falls back gracefully when the GNN model registry is unavailable.
 
@@ -160,7 +160,7 @@ effective_load = Substation.predicted_load | Substation.current_load_mw
 ## Stage 2 — Graph: grid topology & structural vulnerability
 
 > **Skill:** `rai-graph-analysis` ·
-> **Prompt:** "Build an undirected, unweighted graph using `Substation` directly as the node concept and active transmission lines as edges. Run weakly connected components to confirm grid connectivity, Louvain community detection to surface ERCOT regional clusters, and the betweenness/degree/eigenvector centrality trio. Combine the three centrality ranks into a composite rank and flag the top 3 substations as structurally critical, writing the centrality scores, community label, and criticality flag back to each substation."
+> **Prompt:** "Which substations are most critical to power flow based on grid topology? Use centrality on the transmission graph, then flag the top 3 as structurally critical and persist the scores back to the ontology."
 
 **Construction** — `Substation` as the node concept directly (no mirror concept):
 - Node concept: `Substation` (12 nodes)
@@ -211,7 +211,7 @@ Centrality (top-3 marked is_structurally_critical)
 ## Stage 3 — Rules: interconnection queue compliance
 
 > **Skill:** `rai-rules-authoring` ·
-> **Prompt:** "Author three declarative compliance rules per data-center request, each consuming an upstream enrichment. Rule 1 fails capacity when the request's MW plus the substation's forecasted load (with current load as fallback) exceeds the substation's nameplate capacity. Rule 2 fails structural risk when the target substation is flagged structurally critical from Stage 2. Rule 3 fails the low-carbon mandate when the substation's zero-emission generation share is below the request's required percentage; sum capacity for generators with emissions rate of zero. Add a composite `is_compliant` flag that fires only when none of the three failure flags fire."
+> **Prompt:** "Screen each data center request against three criteria: (1) substation must have enough capacity after predicted load, (2) if 100% low-carbon required, region must have 25%+ renewable, (3) substation shouldn't be most structurally critical. Which requests pass all three?"
 
 Three declarative `Relationship` rules consume Stages 1–2 enrichments. Each is written as a `model.where(...).define(...)` block; a composite `is_compliant` fires only when none of the three failure flags fire.
 
@@ -276,7 +276,7 @@ Every request passes low-carbon — ERCOT's nuclear (STP, Comanche Peak) plus it
 ## Stage 4 — Prescriptive: joint DC approval + upgrade MIP
 
 > **Skill:** `rai-prescriptive-problem-formulation` ·
-> **Prompt:** "Formulate a single MIP that picks DC approvals and substation upgrades jointly across five budget scenarios at $200M, $300M, $400M, $500M, and $600M. Model the budget as an `InvestmentLevel` Scenario Concept and index both the binary approve and binary upgrade decision variables by it, so one solve produces the full Pareto frontier — no per-budget re-solve loop. Constrain per substation per scenario that approved DC load fits within nameplate capacity minus forecasted load plus selected upgrade headroom, and per scenario that selected upgrade costs stay within the scenario's budget cap. Maximize total annual interconnection revenue summed across all scenarios."
+> **Prompt:** "Decide which data center requests to approve and which substation upgrades to fund at $200M, $300M, $400M, $500M, and $600M investment levels. Maximize annual revenue. A request can only be approved if its substation has enough capacity after upgrades."
 
 ```
 FORMULATION
@@ -353,7 +353,7 @@ PARETO FRONTIER (queried directly from ontology)
 ## Stage 5 — Interpretation
 
 > **Skill:** `rai-prescriptive-results-interpretation` ·
-> **Prompt:** "Read the per-scenario decision-variable properties straight from the ontology — approved DCs, selected upgrades, total MW, revenue, and amortized upgrade cost — and present the Pareto frontier across the five investment levels. Compute marginal value per added budget dollar between adjacent levels and call out the knee where the marginal jump is largest. Translate the result into business language: which DCs unlock at the knee, which substation is the binding bottleneck, and which requests are infeasible at every budget level."
+> **Prompt:** "Which data centers get approved, which upgrades are selected, and where's the biggest return on investment at each budget level?"
 
 ```
 THE PLAN, IN BUSINESS TERMS

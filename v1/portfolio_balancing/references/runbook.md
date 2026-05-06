@@ -55,7 +55,7 @@ This runbook serves two audiences:
 ## Step 0 — Scope the question with `rai-discovery`
 
 > **Skill:** `rai-discovery` ·
-> **Prompt:** "We have an 8-stock portfolio book that breaks compliance on 4 holdings and 2 sectors. We want to rebuild the book under a Markowitz mean-variance objective with position and sector caps, deduplicate redundant bets via correlation clustering, and stress-test the resulting frontier under a crisis regime where correlations spike. Classify the sub-questions by reasoner family and tell us which RAI skills to load."
+> **Prompt:** "Our 8-stock book breaks compliance and concentrates risk. Rebuild it under Markowitz mean-variance with caps, deduplicate redundant bets via correlation clustering, and stress-test under crisis. What questions does each reasoner family handle?"
 
 Discovery classifies the question by reasoner family and tells you which downstream skills to load:
 
@@ -107,7 +107,7 @@ The runbook walks the same chain stage-by-stage, prompt-by-prompt, in agent-skil
 ## Stage 1 — Rules: compliance scan
 
 > **Skill:** `rai-rules-authoring` ·
-> **Prompt:** "Add a derived `Holding.value` from `quantity * purchase_price`, then author three compliance flags as Relationships on the existing book. Flag a holding as overconcentrated when its value exceeds 15% of the parent account's balance. Flag it as sector-concentrated when the per-account, per-sector total of holding values exceeds 30% of balance. Flag a user as a high-risk trader when their risk score is above 0.8 and they have more than five flagged transactions."
+> **Prompt:** "Flag any holding worth more than 15% of its account, any sector worth more than 30% of the account, and any user with a risk score above 0.8 and more than five flagged transactions."
 
 ```
 COMPLIANCE VIOLATIONS — current book (4 accounts, 15 holdings, 6 users)
@@ -148,7 +148,7 @@ COMPLIANCE VIOLATIONS — current book (4 accounts, 15 holdings, 6 users)
 ## Stage 2 — Graph: covariance clustering + cluster representatives
 
 > **Skill:** `rai-graph-analysis` ·
-> **Prompt:** "Derive per-stock variance from the covariance diagonal, volatility as the square root of variance, and pairwise correlation as covariance over the product of volatilities — all in PyRel, no numpy precompute. Build an undirected stock graph with an edge wherever the absolute correlation is at least 0.3 and the index pair is deduplicated. Run Louvain community detection and persist the cluster id back onto each stock. Then derive a Sharpe ratio per stock (returns over volatility), and flag the stock whose Sharpe equals the cluster maximum as the cluster representative; flag the others as non-representative so the optimizer can force them to zero."
+> **Prompt:** "Cluster stocks by correlation — anything above 0.3 absolute is a redundant bet. Pick one representative per cluster (highest Sharpe ratio) and force the rest to zero in optimization."
 
 **Construction** — undirected, unweighted graph:
 - Node concept: `Stock` (8 nodes)
@@ -219,7 +219,7 @@ REPRESENTATIVE = HIGHEST SHARPE PER CLUSTER  (returns / volatility)
 ## Stage 3 — Prescriptive: bi-objective QP with epsilon constraint
 
 > **Skill:** `rai-prescriptive-problem-formulation` ·
-> **Prompt:** "Formulate a Markowitz mean-variance QP with a continuous decision variable `Stock.x_quantity` indexed by a `Scenario` Concept that combines budget and regime — load the six scenarios for budgets {500, 1000, 2000} crossed with regimes {base, crisis}. Add five constraint families per scenario: non-negativity, fully invested at the scenario budget, per-representative position cap at 30% of budget, per-sector cap at 30% of budget, and a hard zero on every non-representative stock. Anchor the frontier with a min-risk solve and a max-return solve, then sweep five interior epsilon-rate points uniformly across the resulting return-rate range, each one re-solving min-risk subject to a per-scenario return floor that scales with budget. Use Ipopt with a 60-second time limit."
+> **Prompt:** "Build a Markowitz mean-variance frontier across 6 scenarios = 3 budgets × 2 regimes. Position cap 30% of budget, sector cap 30%, non-representatives forced to zero. Anchor with min-risk and max-return, then sweep 5 epsilon points across the return range."
 
 ```
 FORMULATION
@@ -277,7 +277,7 @@ Epsilon sweep      5 interior points evenly spaced across the range
 ## Stage 3 — Reading the frontier (per scenario)
 
 > **Skill:** `rai-prescriptive-results-interpretation` ·
-> **Prompt:** "For each of the six scenarios, list the seven-point Pareto frontier (return, risk) from the anchors and epsilon points. Compute the marginal `delta_risk / delta_return` between adjacent points and identify the knee — the point where the marginal cost jumps the most relative to the previous step. Confirm the rate-form frontier shape is consistent across budgets (risk scales as budget squared because the QP is quadratic in x, but the rate-form curve and knee location are budget-independent)."
+> **Prompt:** "For each scenario, list the seven-point Pareto frontier and find the knee — where does the marginal risk per unit return jump the most? Is the rate-form frontier shape consistent across budgets?"
 
 ```
 EFFICIENT FRONTIER — base_500  (budget = 500, regime = base)
@@ -313,7 +313,7 @@ EFFICIENT FRONTIER — base_500  (budget = 500, regime = base)
 ## Stage 4 — Crisis stress test
 
 > **Skill:** `rai-prescriptive-solver-management` + `rai-prescriptive-results-interpretation` ·
-> **Prompt:** "Define a regime-conditioned covariance `Stock.regime_covar(i, j, Regime)` derived in PyRel: for the base regime use the input covariance unchanged, and for the crisis regime use a PSD-preserving correlation shrinkage toward all-ones with weight 0.7 on the base covariance plus 0.3 on the outer product of volatilities. The Stage 3 solver call is unchanged — `Scenario.regime` selects the matching `regime_covar` per scenario, so all six base and crisis scenarios solve in one call. After the sweep, emit a side-by-side `vol_base` versus `vol_crisis` table per (budget, epsilon point) where `vol = sqrt(risk)`, with the absolute and percentage gap, and explain whether the gap peaks mid-frontier or at the concentrated end."
+> **Prompt:** "Stress-test the frontier under crisis: shrink correlations toward all-ones with weight 0.7 on base covariance + 0.3 on outer-product. How much volatility expansion at each frontier point — does the gap peak mid-frontier or at the concentrated end?"
 
 Same `solve_epsilon` call, no separate model — `Scenario.regime` selects between two `Stock.regime_covar` definitions:
 

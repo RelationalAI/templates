@@ -55,7 +55,7 @@ A single-reasoner approach can't answer this. Descriptive alone tells the story 
 ## Step 0 — Scope the question with `rai-discovery`
 
 > **Skill:** `rai-discovery` ·
-> **Prompt:** "WEST is missing revenue targets while every other region grows. Diagnose whether this is a subscriber-retention problem or a network-operations problem, then produce a defensible tower-upgrade plan inside a $5M capex cap and a 200 install-crew-week schedule that prioritizes towers by both who depends on them and where regional demand is heading."
+> **Prompt:** "WEST is missing revenue while every other region grows. What questions do we need to answer to figure out where to spend $5M to fix it?"
 
 Discovery classifies the question by reasoner family and tells you which downstream skills to load:
 
@@ -81,7 +81,7 @@ See the template's main `README.md` for installation, RAI connection setup, and 
 ## Stage 1 — Descriptive: diagnose WEST
 
 > **Skill:** `rai-querying` ·
-> **Prompt:** "Run a regional triage on the daily KPIs and tower fleet for Q3–Q4 2024. Compare WEST against the other eight regions on network availability, churn rate, daily revenue, and the revenue-forecast vs. actual gap, and break down the WEST tower fleet by status. Identify the top performance offenders by per-tower packet loss and latency, and check whether any WEST subscribers carry elevated churn risk. Conclude whether this looks like a retention problem or an operational one."
+> **Prompt:** "Where are we missing revenue targets? Which 10 cell towers have the worst average packet loss over 2024, and which region has the worst Q4 network availability?"
 
 ```
 Q4 2024 — Daily KPIs by region
@@ -133,7 +133,7 @@ Subscriber.churn_risk_score is a static feature that hasn't caught up to WEST's 
 ## Stage 2 — Rules: flag critical_restore towers
 
 > **Skill:** `rai-rules-authoring` ·
-> **Prompt:** "Define per-tower derived averages for packet loss, latency, and error rate from the network-performance measurements, plus an average equipment-health score from the two-hop join through network equipment to equipment-health snapshots. Then add a unary critical-restore flag on the tower that fires when the tower is in WEST and either DEGRADED with average health below 0.85, or shows average packet loss above 5% with the same health threshold (so an ACTIVE-but-failing tower is still caught)."
+> **Prompt:** "Flag CellTowers as 'critical-restore' if region is WEST AND status is DEGRADED AND avg equipment health is below 0.85, OR if avg packet loss > 5% with health below 0.85."
 
 **Properties added to the ontology** (via `model.define(...)`):
 - `CellTower.avg_packet_loss` (Float) — `aggs.avg(NetworkPerformance.packet_loss_pct).per(CellTower)`
@@ -190,7 +190,7 @@ Branch 2 didn't fire — none of WEST's ACTIVE towers fall below health 0.85. Th
 ## Stage 3 — Graph: subscriber influence + tower blast radius
 
 > **Skill:** `rai-graph-analysis` ·
-> **Prompt:** "Build a directed subscriber-to-subscriber call graph from the call-detail records, with caller pointing to callee and parallel calls between the same pair summed into a single edge. Score each subscriber with PageRank and write that influence back to the subscriber. Then per critical-restore tower, aggregate the distinct subscribers whose calls route through it and the sum of their PageRank — that's the social blast radius if the tower fails."
+> **Prompt:** "Who are our most socially influential subscribers based on call patterns? For each critical-restore tower, count the distinct subscribers whose calls route through it and rank by total PageRank influence — that's the blast radius if it fails."
 
 **Construction** — Pattern 3 (`edge_concept`):
 - Node concept: `Subscriber` (1,200 nodes)
@@ -248,8 +248,8 @@ Per-critical-tower blast radius (sorted by weighted_impact)
 
 ## Stage 4 — Predictive: forecast WEST capacity demand
 
-> **Skill:** _no public skill yet — see `v1/subscriber_retention/` and `v1/demand_forecasting/` as worked-example references_ ·
-> **Prompt:** "Train a regression GNN on per-region daily KPIs predicting subscriber growth rate. Use same-region 1-day-lag temporal edges, region as a category feature, and three lag features (previous-day growth, previous-week growth, and a 7-day rolling mean) computed before load. Train on rows before November 2024, validate on November, test on December, then bind each region's mean predicted growth back to every cell tower in that region as a per-tower demand multiplier."
+> **Skill:** `rai-predictive-modeling` + `rai-predictive-training` ·
+> **Prompt:** "Predict next-quarter subscriber-growth-rate per region using TimeSeriesMetric history (subscriber_growth_rate, churn_rate, marketing_spend, network_availability_pct, total_calls). Bind each region's forecast back to its towers as a demand multiplier."
 
 **Method:** GNN node regression on `TimeSeriesMetric` (composite key `metric_date` + `region`). Target: `subscriber_growth_rate`. Features: the other 12 daily KPIs + 3 lag features (`prev_day_growth`, `prev_week_growth`, `growth_7d_mean`) + `region` as a category. Graph: same-region 1-day-lag temporal edges. Train < 2024-11-01 (includes the Sep–Oct WEST decline onset); validate on Nov 2024; test on Dec 2024.
 
@@ -298,7 +298,7 @@ objective = sum( selected[t,tier] *
 ## Stage 5 — Prescriptive: tower upgrade selection MIP
 
 > **Skill:** `rai-prescriptive-problem-formulation` ·
-> **Prompt:** "Pick at most one upgrade tier (BRONZE, SILVER, or GOLD) per critical-restore tower using a binary decision variable on the tower-upgrade-option junction. Stay within a $5M total cost cap and 200 total install crew-weeks. Maximize the sum across selected options of capacity-increase × tower weighted-impact × tower projected-demand-growth, so the optimizer favors towers that are both broken and high-blast-radius, scaled by the regional demand forecast. Solve with Gurobi."
+> **Prompt:** "Recover WEST capacity within $5M and 200 install-weeks, prioritizing towers by social blast radius and forward-looking demand. From TowerUpgradeOption, pick at most one upgrade tier (BRONZE/SILVER/GOLD) per critical-restore tower, maximizing Σ capacity_increase × weighted_impact × projected_demand_growth."
 
 ```
 FORMULATION
@@ -371,7 +371,7 @@ Headline metrics
 ## Stage 6 — Interpretation
 
 > **Skill:** `rai-prescriptive-results-interpretation` ·
-> **Prompt:** "Summarize the optimal plan in business terms: total cost vs. budget, capacity restored, tier mix, towers covered, and how many subscribers stop being served by a critical tower over the install schedule. Identify which constraint is binding and what would change if it were relaxed by 10–20% (which tower would jump tiers, what the marginal capacity lift would be). List the per-stage ontology enrichments so the reader can see what each reasoner contributed back."
+> **Prompt:** "Summarize the plan: total cost, capacity restored, tier mix, towers covered. Which constraint is binding, and what would relaxing it by 10-20% unlock?"
 
 ```
 THE PLAN, IN BUSINESS TERMS

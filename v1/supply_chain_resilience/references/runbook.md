@@ -55,7 +55,7 @@ The two views share one ontology: each stage writes properties back to the model
 ## Step 0 — Scope the question with `rai-discovery`
 
 > **Skill:** `rai-discovery` ·
-> **Prompt:** "Given a supply-chain ontology with sites, businesses (suppliers / manufacturers / warehouses / buyers), shipping operations, SKUs, demand orders, historical shipments, and per-supplier quarterly delay predictions, what questions can each reasoner family answer for a risk-adjusted routing problem? I need to know which high-priority customers are exposed to which suppliers, which sites are bottlenecks, which suppliers are unreliable, and what the minimum-cost flow looks like once those risks are priced in."
+> **Prompt:** "We need a risk-adjusted routing plan. What's our exposure to each supplier, which sites are bottlenecks, which suppliers are unreliable, and what does the minimum-cost flow look like once those risks are priced in?"
 
 Discovery classifies the question by reasoner family and tells you which downstream skills to load:
 
@@ -79,7 +79,7 @@ See the template's main `README.md` for installation, RAI connection setup, and 
 ## Stage 0 — Reachability: blast-radius pre-analysis
 
 > **Skill:** `rai-graph-analysis` ·
-> **Prompt:** "Build a **directed** business graph from shipment records, with edges going from each shipment's supplier to its customer. Then run upstream reachability **into** every business that holds at least one HIGH-priority demand, and filter the reachable set to nodes whose business type is SUPPLIER. The directed-not-undirected choice matters here: we want the suppliers that feed each high-priority customer's upstream cone, not the symmetric neighborhood. List, per high-priority customer, the suppliers it transitively depends on and their reliability scores."
+> **Prompt:** "If a key supplier goes offline, which downstream buyers and finished products are at risk? For each HIGH-priority customer, list the suppliers it transitively depends on through the shipment graph, with their reliability scores."
 
 **Construction** — directed `Business` graph, edges from `Business.ships_to` (derived from `Shipment.supplier` -> `Shipment.customer`).
 
@@ -116,7 +116,7 @@ The point of running reachability before the MILP: when the scenario in Stage 3 
 ## Stage 1 — Graph: site centrality + connected components
 
 > **Skill:** `rai-graph-analysis` ·
-> **Prompt:** "Build an **undirected, unweighted** site graph using SHIP-type operations as edges between source and output sites, with a sum aggregator to collapse parallel ship lanes. Compute weakly-connected components to surface fragmentation, then eigenvector centrality to rank hubs — restrict the centrality output to FACTORY and DC sites (drop STORE / OFFICE). Normalize the centrality scores to [0, 1] and write them back to the ontology as a per-site property so downstream stages can use them as a bottleneck weight."
+> **Prompt:** "Which sites are the most influential hubs in the supply network — sites that connect to other influential sites, not just sites with many direct connections? Persist the centrality score back to each site so the optimizer can use it as a bottleneck weight."
 
 **Construction:**
 - Node concept: `Site` (31 sites)
@@ -158,7 +158,7 @@ Top critical sites — eigenvector centrality (FACTORY/DC only)
 ## Stage 2 — Rules: supplier risk classification
 
 > **Skill:** `rai-rules-authoring` ·
-> **Prompt:** "Add three derived flags to Business and one to Demand. A business is unreliable when its reliability score is below 0.80. A business has high delay risk when at least one Q1-2025 delay prediction for that supplier exceeds 0.15. A business is watch-level when either of those holds. A demand is escalated when its priority is HIGH. Chain the rules so watch-level fires from either underlying flag. Downstream, suppliers with **both** flags are the avoid set (hard-blocked in routing) and suppliers with **either** flag are the watch set (surcharged)."
+> **Prompt:** "Rate each supplier's delivery reliability. Flag any with reliability score below 0.80 as unreliable, any with a Q1 delay prediction above 0.15 as high-delay-risk, and call them 'watch-level' if either fires. Suppliers with **both** flags are 'avoid' (hard-blocked downstream); suppliers with **either** flag are 'watch' (surcharged)."
 
 **Late-shipment context** (computed in pandas, not RAI):
 
@@ -233,7 +233,7 @@ Stage 3 reads `is_watch_level` for the surcharge term and `is_unreliable AND has
 ## Stage 3 — Prescriptive: risk-adjusted minimum-cost flow
 
 > **Skill:** `rai-prescriptive-problem-formulation` ·
-> **Prompt:** "Formulate a continuous minimum-cost network flow over the operations. The decision variable is per-operation flow, bounded by each operation's daily capacity, with a non-negative unmet-demand slack per demand order. Constraint: for each demand, inbound flow at the customer's site for the demanded SKU plus its slack must cover the order quantity. Hard-block any operation whose source business is in the avoid set (both Stage-2 flags fire). The objective minimizes transport cost plus a $5/unit surcharge on flow through watch-level suppliers, plus a centrality-weighted penalty on flow into bottleneck sites (using the normalized score from Stage 1, weight 2.0), plus a $100/unit unmet-demand penalty."
+> **Prompt:** "Solve a minimum-cost flow that fulfills all open demand orders at minimum total transport cost. Hard-block 'avoid' suppliers, surcharge 'watch' suppliers $5/unit, weight bottleneck sites by their centrality, and penalize unmet demand at $100/unit."
 
 ```
 FORMULATION
@@ -279,7 +279,7 @@ The baseline buys: enough finished-goods flow on the shortest cost-weighted lane
 ## Scenario analysis — quantify disruption
 
 > **Skill:** `rai-prescriptive-solver-management` + `rai-prescriptive-results-interpretation` ·
-> **Prompt:** "Re-solve the same formulation under two disruptions and compare them to the baseline. Scenario A: take the highest-centrality site offline by adding a zero-flow constraint on every operation sourced from that site. Scenario B: downgrade every watch-level supplier to avoid by adding zero-flow blocks for every supplier in the union of the two Stage-2 flags. Report status, objective, active flow count, and unmet demand for each. Then explain *why* the cost deltas are asymmetric — the structural-vs-behavioural distinction is the punchline."
+> **Prompt:** "Re-solve with the highest-centrality site offline, and again with watch-level suppliers downgraded to avoid. What's the cost delta in each, and why are they asymmetric?"
 
 The same `solve_flow(...)` function re-runs with modified constraints. Two scenarios surface different aspects of the chain's value:
 
