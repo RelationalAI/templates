@@ -46,37 +46,42 @@ all 3 Turbine techs sit in one city, a $3,200 fix away from resolved.
 - Prompt: `/rai-build-starter-ontology Build a manufacturing maintenance ontology from the CSVs in data/ covering machines, technicians, qualifications, periods, sensor readings, failure predictions, downtime events, production runs, parts inventory, and certification expiry.`
 - Response: Concepts: `Machine`, `Technician`, `Qualification`, `Period`, `MachinePeriod`, `TechnicianPeriod`, `TechnicianMachinePeriod`, `Sensor`, `SensorReading`, `FailurePrediction`, `DowntimeEvent`, `ProductionRun`, `PartsInventory`, `CertificationExpiry` — bound to the bundled CSVs (30 machines × 3 plants, 10 technicians, 4 periods). `training_options.csv` is loaded as a DataFrame (read in Stage 4), not modeled as a concept.
 
-### 2. Discover reasoner questions
+### 2. Examine ontology
+
+- Prompt: `/rai-querying Show the ontology as a concept-relationship diagram and report row counts per concept.`
+- Response: Concepts wired to the bundled CSVs: 30 `Machine` (3 plants × 5 types), 10 `Technician` (3 cities), 16 `Qualification`, 4 `Period`, 120 `MachinePeriod`, 60 `Sensor` and 240 `SensorReading`, 120 `FailurePrediction`, 129 `DowntimeEvent`, 120 `ProductionRun`, plus parts inventory and certification-expiry rows.
+
+### 3. Discover reasoner questions
 
 - Prompt: `/rai-discovery We need to schedule preventive maintenance for 30 machines across 3 plants. Where does OEE alone mislead us, and what structural risks won't a pure optimizer surface?`
 - Response: Plan routing sub-questions to querying, graph, rules, prescriptive, and resilience skills.
 
-### 3. Diagnose plant operations
+### 4. Diagnose plant operations
 
 - Prompt: `/rai-querying What's the OEE by plant? Which machines have the most sensor anomalies, and which are most likely to fail by the end of the planning horizon?`
 - Response: Plant_C 79.8% > Plant_A 68.2% > Plant_B 61.4%; 7 of 9 anomalies at Plant_A; `MachinePeriod.predicted_fp` written for 120 rows.
 
-### 4. Find scheduling bottlenecks
+### 5. Find scheduling bottlenecks
 
 - Prompt: `/rai-graph-analysis Which machines share qualified technicians, and which are bottlenecks in the qualification network? Compute centrality and write it back to each machine so the optimizer can weight critical machines.`
 - Response: 30 machines → 1 connected component; Pumps tie at top betweenness (24.0 raw, 1.0 normalized); `Machine.betweenness` stored.
 
-### 5. Classify machine risk
+### 6. Classify machine risk
 
 - Prompt: `/rai-rules-authoring Rate each machine's risk: chronic if >8 downtime events, high-risk if failure prob >0.3 AND criticality 4+, plus overdue for maintenance. All three flags = Critical, two = Elevated, otherwise Standard.`
 - Response: 6 overdue, 1 high-risk, 3 chronic; M013 (Pump, Plant_A) = Critical; M016 (Turbine, Plant_A) = Elevated.
 
-### 6. Schedule maintenance
+### 7. Schedule maintenance
 
 - Prompt: `/rai-prescriptive-problem-formulation Schedule preventive maintenance for all 30 machines across 4 periods, capped at 5 jobs per period. Every overdue machine gets maintained by period 2, and each maintained machine needs a qualified technician. Minimize expected failure cost (weighted by criticality and centrality) plus labor and travel.`
 - Response: 120 `x_maintain` + 120 `x_vulnerable` + 384 `x_assigned` binaries (96 qualified tech×machine pairs × 4 periods); 5 constraint families (cumulative coverage, assignment-maintenance linkage, technician hours, parts/bay capacity, overdue deadline); failure cost uses `x_vulnerable × predicted_fp × parts_cost × criticality × (1 + 2.0 × betweenness)`.
 
-### 7. Stress-test concentration
+### 8. Stress-test concentration
 
 - Prompt: `/rai-prescriptive-solver-management + /rai-prescriptive-results-interpretation For each machine type, check whether all qualified technicians sit in one location and recommend the cheapest cross-training fix.`
 - Response: OPTIMAL · 20 jobs · $605,241; Turbine concentrated in Houston_TX (67% of jobs travel); cross-train T006 (Chicago_IL, Senior) for $3,200 / 5 weeks.
 
-### 8. Persist the chain into the ontology
+### 9. Persist the chain into the ontology
 
 - Prompt: `/rai-ontology-design Promote the per-stage enrichments to first-class ontology state: OEE-proxy properties, betweenness, the seven per-machine risk flags, the composite risk tier. Add a `MaintenancePlan` concept (one row per maintained `(machine, period, technician)` triple) and a `CrossTrainingRecommendation` concept so the optimizer's outputs persist as ontology.`
 - Response: Ontology now carries `Machine.performance_ratio / quality_ratio / anomaly_count / betweenness / is_overdue_maintenance / is_high_risk / is_chronic_downtime / risk_tier`, plus a `MaintenancePlan` concept holding the 20 scheduled jobs and a `CrossTrainingRecommendation` concept for T006 / Chicago_IL / $3,200 / 5 weeks.

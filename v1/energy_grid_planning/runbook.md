@@ -43,37 +43,42 @@ $300M unlocks 5 DCs (1,500 MW, $264M net value) including xAI Colossus.
 - Prompt: `/rai-build-starter-ontology Build an ontology for grid infrastructure planning from the CSVs in data/ covering substations, generators, transmission lines, demand forecasts, data center requests, and substation upgrades.`
 - Response: Concepts: `Substation`, `Generator`, `TransmissionLine`, `LoadZone`, `DemandPeriod`, `RenewableProfile`, `MaintenanceWindow`, `Customer`, `DataCenterRequest`, `SubstationUpgrade`, `DemandForecast`, `LoadHistory`, `DCAnnouncement` — bound to the bundled CSVs (12 substations, 10 DC requests, 18 transmission lines).
 
-### 2. Discover reasoner questions
+### 2. Examine ontology
+
+- Prompt: `/rai-querying Show the ontology as a concept-relationship diagram and report row counts per concept.`
+- Response: 13 concepts: 12 `Substation`, 15 `Generator`, 18 `TransmissionLine`, 8 `LoadZone`, 24 `DemandPeriod`, 12 `RenewableProfile`, 8 `MaintenanceWindow`, 100 `Customer`, 10 `DataCenterRequest` (2,930 MW total), 10 `SubstationUpgrade` ($630M total), historical `LoadHistory` and forward `DemandForecast` rows backing the predictive stage.
+
+### 3. Discover reasoner questions
 
 - Prompt: `/rai-discovery We have 10 hyperscaler interconnection requests against a 12-substation grid. Which to approve, which substation upgrades to fund, at what budget level?`
 - Response: Plan routing sub-questions to predictive, graph, rules, and prescriptive reasoners.
 
-### 3. Forecast substation load
+### 4. Forecast substation load
 
 - Prompt: `/rai-predictive-modeling + /rai-predictive-training Can we forecast substation load growth over the next 24 months based on historical demand, planned generator additions, and the data center request pipeline? Bind each substation's predicted peak load back to the ontology so the rules engine and optimizer can read it.`
 - Response: `Substation.predicted_load` for all 12; DFW breaches at 1,700 MW vs 1,600 MW cap at 24 months (+54.6%).
 
-### 4. Find structural bottlenecks
+### 5. Find structural bottlenecks
 
 - Prompt: `/rai-graph-analysis Which substations are most critical to power flow based on grid topology? Check connectivity (WCC), regional structure (Louvain communities), and centrality (betweenness/degree/eigenvector); then flag the top 3 by combined centrality rank as structurally critical and persist the scores back to the ontology.`
 - Response: 1 connected component, 3 Louvain communities (North Texas, West Texas, Gulf Coast); DFW, Houston, San Antonio flagged `is_structurally_critical`; 7 of 10 DC requests target critical nodes.
 
-### 5. Screen DC requests
+### 6. Screen DC requests
 
 - Prompt: `/rai-rules-authoring Screen each data center request against three criteria: (1) substation must have enough capacity after predicted load, (2) substation's low-carbon (renewable + nuclear) generation share must meet the DC's low-carbon requirement, (3) substation shouldn't be one of the top-3 structurally critical. Which requests pass all three?`
 - Response: `fails_capacity` / `fails_structural` / `fails_low_carbon` + `is_compliant`; 2 pass (Crusoe, Oracle), 8 flagged.
 
-### 6. Approve DCs and fund upgrades
+### 7. Approve DCs and fund upgrades
 
 - Prompt: `/rai-prescriptive-problem-formulation Decide which data center requests to approve and which substation upgrades to fund at $200M, $300M, $400M, $500M, and $600M investment levels. Maximize annual revenue. A request can only be approved if its substation has enough capacity after upgrades.`
 - Response: OPTIMAL MIP across 5 `InvestmentLevel` values in one solve; `x_approve` and `x_upgrade` written back per level.
 
-### 7. Read the frontier
+### 8. Read the frontier
 
 - Prompt: `/rai-prescriptive-results-interpretation Which data centers get approved, which upgrades are selected, and where's the biggest return on investment at each budget level?`
 - Response: Pareto frontier with knee at $300M (5 DCs, 1,500 MW, $264M net); marginal $995K/$M at knee, declining to $400K/$M by $600M; Google + Lambda never approved (DFW full).
 
-### 8. Persist the chain into the ontology
+### 9. Persist the chain into the ontology
 
 - Prompt: `/rai-ontology-design Promote the per-stage enrichments to first-class ontology state: substation predicted load, centrality, grid community, structural-criticality flag, the three per-DC compliance flags. Add an `InvestmentPortfolio` concept indexed by `InvestmentLevel` so the approval + upgrade decision per budget scenario persists as queryable ontology.`
 - Response: Ontology now carries `Substation.predicted_load`, `.betweenness`, `.grid_community`, `.is_structurally_critical`, `DataCenterRequest.fails_capacity / fails_structural / fails_low_carbon / is_compliant`, plus an `InvestmentPortfolio(InvestmentLevel)` concept holding the approved-DC set and selected-upgrade set per scenario.
