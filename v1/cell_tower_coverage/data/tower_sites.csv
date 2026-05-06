@@ -1,0 +1,7 @@
+site_id,name,site_type,region,build_cost,capacity
+T01,Midtown Rooftop,Macro,Central,260000,42000
+T02,North Water Tank,Macro,North,180000,36000
+T03,East Utility Pole,Small Cell,East,160000,23000
+T04,Campus Microcell Cluster,Small Cell,Central,220000,28000
+T05,West Ridge Macro,Macro,West,240000,26000
+T06,Airport Perimeter,Macro,South,210000,30000
