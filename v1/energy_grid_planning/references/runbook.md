@@ -45,7 +45,7 @@ $300M unlocks 5 DCs (1,500 MW, $264M net value) including xAI Colossus.
 
 ### 1. Forecast substation load
 
-- Prompt: `/rai-predictive-modeling + /rai-predictive-training Can we forecast substation load growth over the next 36 months based on historical demand, planned generator additions, and the data center request pipeline? Bind each substation's predicted peak load back to the ontology so the rules engine and optimizer can read it.`
+- Prompt: `/rai-predictive-modeling + /rai-predictive-training Can we forecast substation load growth over the next 24 months based on historical demand, planned generator additions, and the data center request pipeline? Bind each substation's predicted peak load back to the ontology so the rules engine and optimizer can read it.`
 - Response: `Substation.predicted_load` for all 12; DFW breaches at 1,700 MW vs 1,600 MW cap at 24 months (+54.6%).
 
 ### 2. Find structural bottlenecks
@@ -55,7 +55,7 @@ $300M unlocks 5 DCs (1,500 MW, $264M net value) including xAI Colossus.
 
 ### 3. Screen DC requests
 
-- Prompt: `/rai-rules-authoring Screen each data center request against three criteria: (1) substation must have enough capacity after predicted load, (2) if 100% low-carbon required, region must have 25%+ renewable, (3) substation shouldn't be most structurally critical. Which requests pass all three?`
+- Prompt: `/rai-rules-authoring Screen each data center request against three criteria: (1) substation must have enough capacity after predicted load, (2) substation's low-carbon (renewable + nuclear) generation share must meet the DC's low-carbon requirement, (3) substation shouldn't be one of the top-3 structurally critical. Which requests pass all three?`
 - Response: `fails_capacity` / `fails_structural` / `fails_low_carbon` + `is_compliant`; 2 pass (Crusoe, Oracle), 8 flagged.
 
 ### 4. Approve DCs and fund upgrades

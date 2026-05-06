@@ -29,9 +29,10 @@ base at every lambda — without the cluster collapse, the gap would grow.
                               frontier per scenario. Knee at eps_1.
   ─────────────────────────────────────────────────────────────────
   STAGE 4  Stress       ──►  Stock.regime_covar (PSD-preserving)
-                              Crisis vol 25-30% above base at every
-                              lambda. Gap peaks mid-frontier, narrows
-                              toward the concentrated end.
+                              Crisis vol 25-30% above base across
+                              the frontier. Gap peaks mid-frontier
+                              (eps_1..eps_2 at +29.8%), narrows
+                              toward the concentrated end (+25.2%).
   ─────────────────────────────────────────────────────────────────
 ```
 
@@ -65,7 +66,7 @@ base at every lambda — without the cluster collapse, the gap would grow.
 ### 5. Stress under crisis
 
 - Prompt: `/rai-prescriptive-solver-management + /rai-prescriptive-results-interpretation Stress-test the frontier under crisis: shrink correlations toward all-ones with weight 0.7 on base covariance + 0.3 on outer-product. How much volatility expansion at each frontier point?`
-- Response: Crisis vol +28-30% above base at every lambda (budget 500: min_risk 34.06 -> 43.74, eps_1 34.30 -> 44.54 peak). Gap peaks mid-frontier, narrows to +25.2% at eps_5 — the cluster-collapse payoff.
+- Response: Crisis vol 25-30% above base across the frontier (budget 500: min_risk 34.06 -> 43.74 at +28.4%, eps_1 34.30 -> 44.54 at +29.8% peak). Gap peaks mid-frontier (eps_1..eps_2 at +29.8%), narrows to +25.2% at eps_5 — the cluster-collapse payoff.
 
 ## Data
 

@@ -63,8 +63,8 @@ all 3 Turbine techs sit in one city, a $3,200 fix away from resolved.
 
 ### 4. Schedule maintenance
 
-- Prompt: `/rai-prescriptive-problem-formulation Schedule preventive maintenance for all 30 machines across 4 periods, capped at 5 jobs per period. Every overdue machine gets maintained by period 2, and Turbines need an on-site qualified technician. Minimize expected failure cost weighted by criticality and centrality, plus labor and travel.`
-- Response: 120 `x_maintain` + 120 `x_vulnerable` + ~250 `x_assigned` binaries; 5 constraint families; failure cost uses `predicted_fp × criticality × (1 + 2.0 × betweenness)`.
+- Prompt: `/rai-prescriptive-problem-formulation Schedule preventive maintenance for all 30 machines across 4 periods, capped at 5 jobs per period. Every overdue machine gets maintained by period 2, and each maintained machine needs exactly one qualified technician. Minimize expected failure cost weighted by criticality and centrality, plus labor and travel (penalized when the technician is not co-located).`
+- Response: 120 `x_maintain` + 120 `x_vulnerable` + ~250 `x_assigned` binaries; 5 constraint families; failure cost uses `predicted_fp × parts_cost × criticality × (1 + 2.0 × betweenness)`.
 
 ### 5. Stress-test concentration
 

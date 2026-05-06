@@ -1,6 +1,6 @@
 # Runbook: Telco WEST Recovery — Multi-Reasoner Walkthrough
 
-A regional telco is bleeding $791K/quarter from WEST while every other region grows. No single reasoner can answer where to spend a $5M recovery budget: descriptive scopes the crisis, rules flag broken towers, graph weights them by social blast radius, predictive forecasts forward demand, and prescriptive composes all three signals into the upgrade plan. Each stage writes derived properties back to the same ontology that downstream stages consume.
+A regional telco is bleeding $791K/quarter from WEST while every other region grows. No single reasoner can answer where to spend a $5M recovery budget: descriptive scopes the crisis, rules flag broken towers, graph weights them by social blast radius, predictive forecasts forward demand, and prescriptive composes all four signals into the upgrade plan. Each stage writes derived properties back to the same ontology that downstream stages consume.
 
 ## The chain
 
@@ -24,9 +24,9 @@ across all 15 critical towers, prioritized by social blast radius.
                               404 distinct subs (33% of base) route
                               calls through a critical tower.
   ─────────────────────────────────────────────────────────────────
-  STAGE 4  Predictive   ──►  CellTower.projected_demand_growth (15)
-                 (GNN)        WEST: 0.993×  ── shrinking ~0.7%/yr
-                              while 8 other regions sit at +0.59 to +0.75%/day.
+  STAGE 4  Predictive   ──►  CellTower.projected_demand_growth (250)
+                 (GNN)        WEST: 0.9998×  ── flat/slightly contracting
+                              while 8 other regions sit at +0.45 to +0.91%/day.
   ─────────────────────────────────────────────────────────────────
   STAGE 5  Prescriptive ──►  TowerUpgradeOption.selected  (15)
                               OPTIMAL · 12 GOLD · 2 SILVER · 1 BRONZE
@@ -60,7 +60,7 @@ across all 15 critical towers, prioritized by social blast radius.
 ### 4. Forecast regional demand
 
 - Prompt: `/rai-predictive-modeling + /rai-predictive-training Predict next-quarter subscriber-growth-rate per region using TimeSeriesMetric history. Bind each region's forecast back to its towers as a demand multiplier.`
-- Response: GNN node regression on 365d × 9 regions with 1-day-lag temporal edges; WEST multiplier 0.993× (contracting ~0.7%); 8 other regions +0.59 to +0.75%/day; written to `CellTower.projected_demand_growth` for 15 critical towers.
+- Response: GNN node regression on 365d × 9 regions with 1-day-lag temporal edges; WEST multiplier 0.9998× (flat/slightly contracting); 8 other regions +0.45 to +0.91%/day; written to `CellTower.projected_demand_growth` for all 250 towers via region join.
 
 ### 5. Optimize tier selection
 
