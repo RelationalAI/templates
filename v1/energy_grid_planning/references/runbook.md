@@ -38,14 +38,30 @@ $300M unlocks 5 DCs (1,500 MW, $264M net value) including xAI Colossus.
 
 ## Workflow
 
-| # | Skill + prompt | Expected output |
-|---|----------------|-----------------|
-| 0 | `/rai-discovery` "We have 10 hyperscaler interconnection requests against a 12-substation grid. Which to approve, which substation upgrades to fund, at what budget level?" | Plan routing sub-questions to predictive, graph, rules, and prescriptive reasoners. |
-| 1 | `/rai-predictive-modeling` + `/rai-predictive-training` "Can we forecast substation load growth over the next 36 months based on historical demand, planned generator additions, and the data center request pipeline? Bind each substation's predicted peak load back to the ontology so the rules engine and optimizer can read it." | `Substation.predicted_load` for all 12; DFW breaches at 1,700 MW vs 1,600 MW cap at 24 months (+54.6%). |
-| 2 | `/rai-graph-analysis` "Which substations are most critical to power flow based on grid topology? Use centrality on the transmission graph, then flag the top 3 as structurally critical and persist the scores back to the ontology." | 1 component, 3 Louvain communities; DFW, Houston, San Antonio flagged `is_structurally_critical`; 7 of 10 DC requests on critical nodes. |
-| 3 | `/rai-rules-authoring` "Screen each data center request against three criteria: (1) substation must have enough capacity after predicted load, (2) if 100% low-carbon required, region must have 25%+ renewable, (3) substation shouldn't be most structurally critical. Which requests pass all three?" | `fails_capacity` / `fails_structural` / `fails_low_carbon` + `is_compliant`; 2 pass (Crusoe, Oracle), 8 flagged. |
-| 4 | `/rai-prescriptive-problem-formulation` "Decide which data center requests to approve and which substation upgrades to fund at $200M, $300M, $400M, $500M, and $600M investment levels. Maximize annual revenue. A request can only be approved if its substation has enough capacity after upgrades." | OPTIMAL MIP across 5 `InvestmentLevel` values in one solve; `x_approve` and `x_upgrade` written back per level. |
-| 5 | `/rai-prescriptive-results-interpretation` "Which data centers get approved, which upgrades are selected, and where's the biggest return on investment at each budget level?" | Pareto frontier with knee at $300M (5 DCs, 1,500 MW, $264M net); marginal $995K/$M at knee, declining to $400K/$M by $600M; Google + Lambda never approved (DFW full). |
+- `/rai-discovery` "We have 10 hyperscaler interconnection requests against a 12-substation grid. Which to approve, which substation upgrades to fund, at what budget level?"
+
+  Plan routing sub-questions to predictive, graph, rules, and prescriptive reasoners.
+
+- `/rai-predictive-modeling` + `/rai-predictive-training` "Can we forecast substation load growth over the next 36 months based on historical demand, planned generator additions, and the data center request pipeline? Bind each substation's predicted peak load back to the ontology so the rules engine and optimizer can read it."
+
+  `Substation.predicted_load` for all 12; DFW breaches at 1,700 MW vs 1,600 MW cap at 24 months (+54.6%).
+
+- `/rai-graph-analysis` "Which substations are most critical to power flow based on grid topology? Use centrality on the transmission graph, then flag the top 3 as structurally critical and persist the scores back to the ontology."
+
+  1 component, 3 Louvain communities; DFW, Houston, San Antonio flagged `is_structurally_critical`; 7 of 10 DC requests on critical nodes.
+
+- `/rai-rules-authoring` "Screen each data center request against three criteria: (1) substation must have enough capacity after predicted load, (2) if 100% low-carbon required, region must have 25%+ renewable, (3) substation shouldn't be most structurally critical. Which requests pass all three?"
+
+  `fails_capacity` / `fails_structural` / `fails_low_carbon` + `is_compliant`; 2 pass (Crusoe, Oracle), 8 flagged.
+
+- `/rai-prescriptive-problem-formulation` "Decide which data center requests to approve and which substation upgrades to fund at $200M, $300M, $400M, $500M, and $600M investment levels. Maximize annual revenue. A request can only be approved if its substation has enough capacity after upgrades."
+
+  OPTIMAL MIP across 5 `InvestmentLevel` values in one solve; `x_approve` and `x_upgrade` written back per level.
+
+- `/rai-prescriptive-results-interpretation` "Which data centers get approved, which upgrades are selected, and where's the biggest return on investment at each budget level?"
+
+  Pareto frontier with knee at $300M (5 DCs, 1,500 MW, $264M net); marginal $995K/$M at knee, declining to $400K/$M by $600M; Google + Lambda never approved (DFW full).
+
 
 ## Data
 

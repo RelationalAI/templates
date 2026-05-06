@@ -37,14 +37,30 @@ base at every lambda — without the cluster collapse, the gap would grow.
 
 ## Workflow
 
-| # | Skill + prompt | Expected output |
-|---|----------------|-----------------|
-| 0 | `/rai-discovery` "Our 8-stock book breaks compliance and concentrates risk. Rebuild it under Markowitz mean-variance with caps, deduplicate redundant bets via correlation clustering, and stress-test under crisis. What questions does each reasoner family handle?" | Plan: rules for compliance flags, graph for correlation clustering + representatives, prescriptive QP indexed by Scenario, stress as regime-swap re-solve. |
-| 1 | `/rai-rules-authoring` "Flag any holding worth more than 15% of its account, any sector worth more than 30% of the account, and any user with a risk score above 0.8 and more than five flagged transactions." | 4 holdings flagged (AAPL/MSFT on Account 1, JNJ/PFE on Account 4); 2 (account, sector) pairs flagged (Account 1 Tech 34.0%, Account 4 Healthcare 32.2%); 2 users flagged (Alice Chen 0.85, Eve Taylor 0.92). |
-| 2 | `/rai-graph-analysis` "Cluster stocks by correlation — anything above 0.3 absolute is a redundant bet. Pick one representative per cluster (highest Sharpe ratio) and force the rest to zero in optimization." | 4 edges (|rho| >= 0.3), 5 Louvain clusters, intra +0.683 vs inter +0.131. 5 representatives picked: PFE, GOOGL, JPM, PG, XOM. AAPL/MSFT/JNJ flagged `is_non_representative`. |
-| 3 | `/rai-prescriptive-problem-formulation` "Build a Markowitz mean-variance frontier across 6 scenarios = 3 budgets x 2 regimes. Position cap 30% of budget, sector cap 30%, non-representatives forced to zero. Anchor with min-risk and max-return, then sweep 5 epsilon points across the return range." | 48 decision vars (8 stocks x 6 scenarios), 5 constraint families. Return-rate range [0.0634, 0.0840]. 7 solves x 6 scenarios = 42 `LOCALLY_SOLVED` portfolios via Ipopt. |
-| 4 | `/rai-prescriptive-results-interpretation` "For each scenario, list the seven-point Pareto frontier and find the knee — where does the marginal risk per unit return jump the most?" | base_500 frontier: returns 32.43 -> 40.28, risk 1160 -> 1742. Marginal `delta_risk/delta_return` jumps ~3x at eps_1 (knee). Same shape across all 6 scenarios — risk scales as budget^2, rate-form frontier is budget-independent. |
-| 5 | `/rai-prescriptive-solver-management` + `/rai-prescriptive-results-interpretation` "Stress-test the frontier under crisis: shrink correlations toward all-ones with weight 0.7 on base covariance + 0.3 on outer-product. How much volatility expansion at each frontier point?" | Crisis vol +28-30% above base at every lambda (budget 500: min_risk 34.06 -> 43.74, eps_1 34.30 -> 44.54 peak). Gap peaks mid-frontier, narrows to +25.2% at eps_5 — the cluster-collapse payoff. |
+- `/rai-discovery` "Our 8-stock book breaks compliance and concentrates risk. Rebuild it under Markowitz mean-variance with caps, deduplicate redundant bets via correlation clustering, and stress-test under crisis. What questions does each reasoner family handle?"
+
+  Plan: rules for compliance flags, graph for correlation clustering + representatives, prescriptive QP indexed by Scenario, stress as regime-swap re-solve.
+
+- `/rai-rules-authoring` "Flag any holding worth more than 15% of its account, any sector worth more than 30% of the account, and any user with a risk score above 0.8 and more than five flagged transactions."
+
+  4 holdings flagged (AAPL/MSFT on Account 1, JNJ/PFE on Account 4); 2 (account, sector) pairs flagged (Account 1 Tech 34.0%, Account 4 Healthcare 32.2%); 2 users flagged (Alice Chen 0.85, Eve Taylor 0.92).
+
+- `/rai-graph-analysis` "Cluster stocks by correlation — anything above 0.3 absolute is a redundant bet. Pick one representative per cluster (highest Sharpe ratio) and force the rest to zero in optimization."
+
+  4 edges (|rho| >= 0.3), 5 Louvain clusters, intra +0.683 vs inter +0.131. 5 representatives picked: PFE, GOOGL, JPM, PG, XOM. AAPL/MSFT/JNJ flagged `is_non_representative`.
+
+- `/rai-prescriptive-problem-formulation` "Build a Markowitz mean-variance frontier across 6 scenarios = 3 budgets x 2 regimes. Position cap 30% of budget, sector cap 30%, non-representatives forced to zero. Anchor with min-risk and max-return, then sweep 5 epsilon points across the return range."
+
+  48 decision vars (8 stocks x 6 scenarios), 5 constraint families. Return-rate range [0.0634, 0.0840]. 7 solves x 6 scenarios = 42 `LOCALLY_SOLVED` portfolios via Ipopt.
+
+- `/rai-prescriptive-results-interpretation` "For each scenario, list the seven-point Pareto frontier and find the knee — where does the marginal risk per unit return jump the most?"
+
+  base_500 frontier: returns 32.43 -> 40.28, risk 1160 -> 1742. Marginal `delta_risk/delta_return` jumps ~3x at eps_1 (knee). Same shape across all 6 scenarios — risk scales as budget^2, rate-form frontier is budget-independent.
+
+- `/rai-prescriptive-solver-management` + `/rai-prescriptive-results-interpretation` "Stress-test the frontier under crisis: shrink correlations toward all-ones with weight 0.7 on base covariance + 0.3 on outer-product. How much volatility expansion at each frontier point?"
+
+  Crisis vol +28-30% above base at every lambda (budget 500: min_risk 34.06 -> 43.74, eps_1 34.30 -> 44.54 peak). Gap peaks mid-frontier, narrows to +25.2% at eps_5 — the cluster-collapse payoff.
+
 
 ## Data
 
