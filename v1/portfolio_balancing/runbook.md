@@ -25,7 +25,7 @@ base at every lambda — without the cluster collapse, the gap would grow.
   ─────────────────────────────────────────────────────────────────
   STAGE 3  Prescriptive ──►  Stock.x_quantity (per Scenario)
                  (QP)         6 scenarios = 3 budgets x 2 regimes.
-                              Anchors + 5 epsilon points = 7-point
+                              Min-risk anchor + 5 epsilon points = 6-point
                               frontier per scenario. Knee at eps_1.
   ─────────────────────────────────────────────────────────────────
   STAGE 4  Stress       ──►  Stock.regime_covar (PSD-preserving)
@@ -65,12 +65,12 @@ base at every lambda — without the cluster collapse, the gap would grow.
 
 ### 6. Solve mean-variance frontier
 
-- Prompt: `/rai-prescriptive-problem-formulation Build a Markowitz mean-variance frontier across 6 scenarios = 3 budgets x 2 regimes. Position cap 30% of budget, sector cap 30%, only invest in cluster representatives. Show 7 points per frontier.`
-- Response: 48 decision vars (`Stock.x_quantity`, 8 stocks x 6 scenarios; non-reps forced to 0). Constraint families: non-negativity, budget equality (sum = budget per scenario), position cap (30%), sector cap (30%), non-representative = 0, plus epsilon return-rate floor on sweep solves. Return-rate range [0.0634, 0.0840]. 7 solves x 6 scenarios = 42 `LOCALLY_SOLVED` portfolios via Ipopt.
+- Prompt: `/rai-prescriptive-problem-formulation Build a Markowitz mean-variance frontier across 6 scenarios = 3 budgets x 2 regimes. Position cap 30% of budget, sector cap 30%, only invest in cluster representatives. Anchor at min-risk and max-return, then sweep 5 epsilon points across the return range.`
+- Response: 48 decision vars (`Stock.x_quantity`, 8 stocks x 6 scenarios; non-reps forced to 0). Constraint families: non-negativity, budget equality (sum = budget per scenario), position cap (30%), sector cap (30%), non-representative = 0, plus epsilon return-rate floor on sweep solves. Return-rate range [0.0634, 0.0840]. 6-point frontier per scenario (min-risk anchor + 5 epsilon points); 7 solves per scenario x 6 scenarios = 42 `LOCALLY_SOLVED` portfolios via Ipopt.
 
 ### 7. Read the frontier
 
-- Prompt: `/rai-prescriptive-results-interpretation For each scenario, list the seven-point Pareto frontier and find the knee — where does the marginal risk per unit return jump the most?`
+- Prompt: `/rai-prescriptive-results-interpretation For each scenario, list the six-point Pareto frontier and find the knee — where does the marginal risk per unit return jump the most?`
 - Response: base_500 frontier: returns 32.43 -> 40.28, risk 1160 -> 1742. Marginal `delta_risk/delta_return` jumps ~3x at eps_1 (knee). Same shape across all 6 scenarios — risk scales as budget^2, rate-form frontier is budget-independent.
 
 ### 8. Stress under crisis
@@ -81,7 +81,7 @@ base at every lambda — without the cluster collapse, the gap would grow.
 ### 9. Persist the chain into the ontology
 
 - Prompt: `/rai-ontology-design Promote the per-stage enrichments to first-class ontology state: compliance flags, cluster id + representative flag, per-`(Scenario, eps_point)` holdings, base-vs-crisis vol gap. Add a `FrontierPoint` concept indexed by `(Scenario, eps_index)` so each Pareto point becomes a first-class entity, not stage-local Python state.`
-- Response: Ontology now carries `Holding.is_overconcentrated / is_sector_concentrated`, `User.is_high_risk_trader`, `Stock.cluster / is_representative`, plus a `FrontierPoint` concept materializing the 42 (6 scenarios × 7-point frontier) Pareto points with `vol_base`, `vol_crisis`, and `vol_gap_pct`.
+- Response: Ontology now carries `Holding.is_overconcentrated / is_sector_concentrated`, `User.is_high_risk_trader`, `Stock.cluster / is_representative`, plus a `FrontierPoint` concept materializing the 36 (6 scenarios × 6-point frontier) Pareto points with `vol_base`, `vol_crisis`, and `vol_gap_pct`.
 
 ## Data
 
