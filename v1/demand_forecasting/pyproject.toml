@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rai-template-demand-forecasting"
+version = "0.0.0"
+description = "RelationalAI template: demand_forecasting (PyRel v1)"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "relationalai==1.0.14",
+  "pandas",
+  "numpy",
+]
+
+[tool.setuptools]
+packages = []
