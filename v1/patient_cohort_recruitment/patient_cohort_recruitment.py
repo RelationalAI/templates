@@ -1,4 +1,4 @@
-"""Patient cohort query (Graph reachability + Rules + CSP) template.
+"""Patient cohort recruitment (Graph reachability + Rules + CSP) template.
 
 This script demonstrates a three-pillar pipeline in RelationalAI:
 
@@ -56,7 +56,7 @@ Modeling approach:
   ``problem.verify()`` re-evaluates every IC in the returned solution.
 
 Run:
-    `python patient_cohort_query.py`
+    `python patient_cohort_recruitment.py`
 
 Output:
     Prints the formulation, the kinase-pathway gene closure, the
@@ -92,7 +92,7 @@ MIN_GENES_COVERED = 3
 MIN_THERAPIES_COVERED = 2
 MIN_AES_COVERED = 2
 
-model = Model("patient_cohort_query")
+model = Model("patient_cohort_recruitment")
 
 # --------------------------------------------------
 # Define semantic model & load data
@@ -111,9 +111,7 @@ model.define(Gene.new(model.data(genes_csv).to_schema()))
 # Graph reasoner with src=parent, dst=child, so reachability from the
 # kinase root *follows the subclass tree downwards* and lands on every
 # member of the pathway.
-GeneIsA = model.Concept(
-    "GeneIsA", identify_by={"child_id": Integer, "parent_id": Integer}
-)
+GeneIsA = model.Concept("GeneIsA", identify_by={"child_id": Integer, "parent_id": Integer})
 GeneIsA.parent = model.Property(f"{GeneIsA} has parent {Gene:parent}")
 GeneIsA.child = model.Property(f"{GeneIsA} has child {Gene:child}")
 isa_csv = read_csv(data_dir / "gene_is_a.csv")
@@ -366,18 +364,14 @@ gene_cover_ic = model.where(EligiblePatient.covers_kinase_gene(CoverableGene)).r
 problem.satisfy(gene_cover_ic)
 
 # Per-therapy coverage upper bound.
-therapy_cover_ic = model.where(
-    EligiblePatient.covers_therapy(CoverableTherapy)
-).require(
-    CoverableTherapy.is_covered
-    <= sum(EligiblePatient.is_in_cohort).per(CoverableTherapy)
+therapy_cover_ic = model.where(EligiblePatient.covers_therapy(CoverableTherapy)).require(
+    CoverableTherapy.is_covered <= sum(EligiblePatient.is_in_cohort).per(CoverableTherapy)
 )
 problem.satisfy(therapy_cover_ic)
 
 # Per-AE coverage upper bound.
 ae_cover_ic = model.where(EligiblePatient.covers_ae(CoverableAdverseEvent)).require(
-    CoverableAdverseEvent.is_covered
-    <= sum(EligiblePatient.is_in_cohort).per(CoverableAdverseEvent)
+    CoverableAdverseEvent.is_covered <= sum(EligiblePatient.is_in_cohort).per(CoverableAdverseEvent)
 )
 problem.satisfy(ae_cover_ic)
 
@@ -385,9 +379,7 @@ problem.satisfy(ae_cover_ic)
 # along each axis.
 gene_min_ic = model.require(sum(CoverableGene.is_covered) >= MIN_GENES_COVERED)
 problem.satisfy(gene_min_ic)
-therapy_min_ic = model.require(
-    sum(CoverableTherapy.is_covered) >= MIN_THERAPIES_COVERED
-)
+therapy_min_ic = model.require(sum(CoverableTherapy.is_covered) >= MIN_THERAPIES_COVERED)
 problem.satisfy(therapy_min_ic)
 ae_min_ic = model.require(sum(CoverableAdverseEvent.is_covered) >= MIN_AES_COVERED)
 problem.satisfy(ae_min_ic)

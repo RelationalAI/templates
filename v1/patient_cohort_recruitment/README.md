@@ -1,5 +1,5 @@
 ---
-title: "Patient Cohort Query"
+title: "Patient Cohort Recruitment"
 description: "Build a clinical-research cohort over a patient knowledge graph using three reasoners: the Graph reasoner closes a kinase-pathway sub-ontology, relational rules lift the closure to per-patient eligibility and per-axis coverage facts, and a CSP solver picks K patients that jointly cover at least MIN_GENES distinct kinase genes, MIN_THERAPIES distinct therapies, and MIN_AES distinct adverse events."
 featured: false
 experience_level: intermediate
@@ -16,7 +16,7 @@ tags:
   - clinical-research
 ---
 
-# Patient Cohort Query
+# Patient Cohort Recruitment
 
 ## What this template is for
 
@@ -44,7 +44,7 @@ The same pattern applies to other knowledge-graph cohort / set-cover problems wh
 
 ## What's included
 
-- `patient_cohort_query.py` -- main script with concepts, the Graph closure, the rules, the decisions and constraints, and the solver call
+- `patient_cohort_recruitment.py` -- main script with concepts, the Graph closure, the rules, the decisions and constraints, and the solver call
 - `data/genes.csv` -- 10 genes: 7 in the kinase pathway sub-ontology (a root plus two intermediate sub-roots and four leaves) and 3 unrelated metabolism genes
 - `data/gene_is_a.csv` -- 8 `is_a` edges that lay out the kinase-pathway tree and a parallel unrelated tree
 - `data/patients.csv` -- 15 patients with names and ages
@@ -68,9 +68,9 @@ The same pattern applies to other knowledge-graph cohort / set-cover problems wh
 
 1. Download ZIP:
    ```bash
-   curl -O https://docs.relational.ai/templates/zips/v1/patient_cohort_query.zip
-   unzip patient_cohort_query.zip
-   cd patient_cohort_query
+   curl -O https://docs.relational.ai/templates/zips/v1/patient_cohort_recruitment.zip
+   unzip patient_cohort_recruitment.zip
+   cd patient_cohort_recruitment
    ```
    > [!TIP]
    > You can also download the template ZIP using the "Download ZIP" button at the top of this page.
@@ -94,7 +94,7 @@ The same pattern applies to other knowledge-graph cohort / set-cover problems wh
 
 5. Run:
    ```bash
-   python patient_cohort_query.py
+   python patient_cohort_recruitment.py
    ```
 
 6. Expected output (the bundled data has eight eligible patients and several feasible cohorts that hit the coverage floors -- the exact choice may vary across solver versions):
@@ -154,7 +154,7 @@ The same pattern applies to other knowledge-graph cohort / set-cover problems wh
 .
 ├── README.md
 ├── pyproject.toml
-├── patient_cohort_query.py
+├── patient_cohort_recruitment.py
 └── data/
     ├── genes.csv
     ├── gene_is_a.csv
