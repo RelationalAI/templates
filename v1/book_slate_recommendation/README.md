@@ -1,6 +1,6 @@
 ---
-title: "KG-aware slate recommendation"
-description: "Three-pillar Graph + Paths + Prescriptive (MIP) template that picks K items per user under business rules, with KG-path explanations."
+title: "Book Slate Recommendation"
+description: "Three-pillar Graph + Paths + Prescriptive (MIP) template that picks K books per reader under business rules, with KG-path explanations."
 featured: false
 experience_level: advanced
 industry: "Media"
@@ -16,7 +16,7 @@ tags:
   - Explainability
 ---
 
-# KG-aware slate recommendation
+# Book Slate Recommendation
 
 ## What this template is for
 
@@ -110,9 +110,9 @@ is a determination for your compliance team.
 > standalone project, or pull from the docs site:
 
 ```bash
-curl -O https://docs.relational.ai/templates/zips/v1/kg_aware_slate_recommendation.zip
-unzip kg_aware_slate_recommendation.zip
-cd kg_aware_slate_recommendation
+curl -O https://docs.relational.ai/templates/zips/v1/book_slate_recommendation.zip
+unzip book_slate_recommendation.zip
+cd book_slate_recommendation
 ```
 
 1. Install Python 3.10+ if you don't have it.
@@ -129,7 +129,7 @@ cd kg_aware_slate_recommendation
 4. Run:
 
    ```bash
-   python kg_aware_slate_recommendation.py
+   python book_slate_recommendation.py
    ```
 
 The bundled `data/` directory carries a small slice (~60 books, ~58
@@ -239,7 +239,7 @@ candidate-set sizes typical for slate composition.
 ## Template structure
 
 ```
-kg_aware_slate_recommendation/
+book_slate_recommendation/
 ├── data/
 │   ├── fetch_open_library_slice.py    # CC0 slice fetcher
 │   ├── users.csv
@@ -250,7 +250,7 @@ kg_aware_slate_recommendation/
 │   ├── book_author.csv
 │   ├── book_subject.csv
 │   └── book_similar.csv
-├── kg_aware_slate_recommendation.py
+├── book_slate_recommendation.py
 ├── pyproject.toml
 └── README.md
 ```

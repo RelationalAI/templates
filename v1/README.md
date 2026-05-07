@@ -8,6 +8,7 @@ This directory contains the templates for v1. Each template folder includes its 
 | --- | --- |
 | [ad_spend_allocation](./ad_spend_allocation/) | Allocate marketing budget across channels and campaigns to maximize conversions. |
 | [bom-reachability](./bom-reachability/) | Trace transitive dependencies through a bill of materials to identify which raw materials each finished product depends on and which components are structural bottlenecks. |
+| [book_slate_recommendation](./book_slate_recommendation/) | Three-pillar Graph + Paths + Prescriptive (MIP) template that picks K books per reader under business rules, with KG-path explanations. |
 | [campaign_roi](./campaign_roi/) | Reallocate marketing campaign budgets across regions to maximize conversions, with per-campaign floor and cap constraints and a regional cap on a paused region. |
 | [cicd_runner_allocation](./cicd_runner_allocation/) | Assign CI/CD workflow jobs to the cheapest compatible runner type, subject to concurrency limits, with scenario analysis across capacity levels. |
 | [commercial_underwriting](./commercial_underwriting/) | Run rules-based eligibility checks and risk-tier classification across a four-level commercial property/casualty hierarchy (insured entity, policy, location, coverage). |
@@ -21,7 +22,6 @@ This directory contains the templates for v1. Each template folder includes its 
 | [fraud-detection](./fraud-detection/) | Multi-reasoner transaction-fraud pipeline: account PageRank (Graph) + high-volume account flags (Rules) feed a GNN binary classifier (Predictive) whose per-transaction scores drive a knapsack investigator-budget MILP (Prescriptive). |
 | [hospital_staffing](./hospital_staffing/) | Explore the tradeoff between overtime cost and patient service level using bi-objective optimization with epsilon constraint. |
 | [humanitarian-aid-supply-chain](./humanitarian-aid-supply-chain/) | Use graph reasoning to analyze a humanitarian aid supply chain network with PageRank and Weighted Degree Centrality to optimize resource distribution strategies. |
-| [kg_aware_slate_recommendation](./kg_aware_slate_recommendation/) | Three-pillar Graph + Paths + Prescriptive (MIP) template that picks K items per user under business rules, with KG-path explanations. |
 | [machine_maintenance](./machine_maintenance/) | A multi-reasoner template that chains querying, graph analysis, rules-based classification, and prescriptive optimization to schedule preventive maintenance, surface hidden operational risk, and recommend cross-training to eliminate concentration vulnerabilities. |
 | [network_flow_planning](./network_flow_planning/) | Plan a multi-tier distribution flow that decides which fulfillment centers to open and how much to ship on every lane to satisfy customer demand at minimum cost. |
 | [portfolio_balancing](./portfolio_balancing/) | Multi-reasoner template: rules-based compliance, covariance clustering, and bi-objective Markowitz optimization with a crisis-regime stress test. |

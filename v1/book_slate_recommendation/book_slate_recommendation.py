@@ -1,4 +1,4 @@
-"""KG-aware slate recommendation (Graph + Paths + Prescriptive MIP) template.
+"""Book slate recommendation (Graph + Paths + Prescriptive MIP) template.
 
 Three-pillar pipeline modelling a content-row / homepage slate:
 
@@ -44,7 +44,7 @@ by re-running that script with ``--size md`` / ``--size lg``. The
 domain is plain bibliographic catalogue, so no licensing exposure --
 the template ships in full.
 
-Run: ``python kg_aware_slate_recommendation.py``
+Run: ``python book_slate_recommendation.py``
 """
 
 from pathlib import Path
@@ -117,7 +117,7 @@ WEAK_EXPLANATION_THRESHOLD = 2
 PAGERANK_WEIGHT = 100.0
 PATH_SIGNAL_WEIGHT = 30.0
 
-model = Model("kg_aware_slate_recommendation")
+model = Model("book_slate_recommendation")
 data_dir = Path(__file__).parent / "data"
 
 # --- Concepts and core data -----------------------------------------
@@ -274,9 +274,7 @@ model.define(sim_graph.Edge.new(src=src_g, dst=dst_g)).where(
 # PageRank: structural-popularity prior. Stored as Float (the native
 # pagerank() output type). HiGHS handles float coefficients on binary
 # decisions natively, so no quantisation step is needed.
-Book.pagerank_score = model.Property(
-    f"{Book} has structural score {Float:pagerank_score}"
-)
+Book.pagerank_score = model.Property(f"{Book} has structural score {Float:pagerank_score}")
 pagerank_rel = sim_graph.pagerank()
 b_pr = Book.ref()
 score_pr = Float.ref()
@@ -341,18 +339,12 @@ model.define(Candidate.new(user_id=u_cand.id, book_id=b_cand.id)).where(
 # ``experiments/count_variants.py`` harness reproduces the divergence
 # across six formulations of this pattern; bag arithmetic on the
 # densified per-typed counts is the right surface here.
-Candidate.path_count_via_author = model.Property(
-    f"{Candidate} has author connections {Integer:n}"
-)
+Candidate.path_count_via_author = model.Property(f"{Candidate} has author connections {Integer:n}")
 Candidate.path_count_via_subject = model.Property(
     f"{Candidate} has subject connections {Integer:n}"
 )
-Candidate.path_count_via_kg_walk = model.Property(
-    f"{Candidate} has KG-walk paths {Integer:n}"
-)
-Candidate.path_count_total = model.Property(
-    f"{Candidate} has total connections {Integer:n}"
-)
+Candidate.path_count_via_kg_walk = model.Property(f"{Candidate} has KG-walk paths {Integer:n}")
+Candidate.path_count_total = model.Property(f"{Candidate} has total connections {Integer:n}")
 
 c = Candidate.ref()
 n = Integer.ref()
@@ -432,8 +424,7 @@ util = Float.ref()
 model.define(Candidate.utility(c, util)).where(
     Candidate(c),
     c.book_id == b_u.id,
-    util
-    == PAGERANK_WEIGHT * b_u.pagerank_score + PATH_SIGNAL_WEIGHT * c.path_count_total,
+    util == PAGERANK_WEIGHT * b_u.pagerank_score + PATH_SIGNAL_WEIGHT * c.path_count_total,
 )
 
 # --- Pillar 3: Prescriptive -- MIP slate selection ------------------
@@ -467,9 +458,7 @@ problem.solve_for(
 # pre-solve diagnostic for (1).
 
 # Cardinality: each user gets exactly K picks.
-slate_size_ic = model.require(
-    sum(Candidate.pick).per(Candidate.user_id) == SLATE_SIZE_K
-)
+slate_size_ic = model.require(sum(Candidate.pick).per(Candidate.user_id) == SLATE_SIZE_K)
 problem.satisfy(slate_size_ic)
 
 # Already-read exclusion: any (user, book) where the user has already
@@ -528,8 +517,7 @@ problem.satisfy(cold_start_ic)
 # over picked items. A sum-bound on the decision-multiplied integer
 # feature.
 explanation_ic = model.require(
-    sum(Candidate.path_count_total * Candidate.pick).per(Candidate.user_id)
-    >= EXPLANATION_FLOOR
+    sum(Candidate.path_count_total * Candidate.pick).per(Candidate.user_id) >= EXPLANATION_FLOOR
 )
 problem.satisfy(explanation_ic)
 

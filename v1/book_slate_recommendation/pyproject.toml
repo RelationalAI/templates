@@ -3,9 +3,9 @@ requires = ["setuptools>=64", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "rai-template-kg-aware-slate-recommendation"
+name = "rai-template-book-slate-recommendation"
 version = "0.0.0"
-description = "RelationalAI template: kg_aware_slate_recommendation (PyRel v1)"
+description = "RelationalAI template: book_slate_recommendation (PyRel v1)"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
