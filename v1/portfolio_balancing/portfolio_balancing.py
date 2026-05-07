@@ -29,8 +29,8 @@ Output:
 
 from pathlib import Path
 
-from pandas import read_csv
-from relationalai.semantics import Float, Integer, Model, String, sum
+from pandas import DataFrame, read_csv
+from relationalai.semantics import Boolean, Float, Integer, Model, String, sum
 from relationalai.semantics.reasoners.graph import Graph
 from relationalai.semantics.reasoners.prescriptive import Problem
 from relationalai.semantics.std import aggregates as aggs
@@ -1011,12 +1011,175 @@ print("STAGE 4: CRISIS REGIME STRESS TEST")
 print(f"(PSD-preserving correlation shrinkage, alpha = {CRISIS_ALPHA})")
 print("=" * 70)
 
-# Side-by-side vol (sqrt variance) by budget x lambda.
+# Build the per-(scenario, eps_label) frontier table and materialize it as
+# the `FrontierPoint` Concept. Each Pareto point's metadata -- return, risk,
+# inter-row marginals, the knee flag, and the base/crisis vol comparison --
+# becomes ontology data instead of stdout.
+fp_rows = []
+for sn in scenario_names:
+    pts = pareto[sn]
+    if not pts:
+        continue
+    rates = []
+    for j, pt in enumerate(pts):
+        if j == 0:
+            marginal = None
+        else:
+            dr = pt["risk"] - pts[j - 1]["risk"]
+            dret = pt["return_actual"] - pts[j - 1]["return_actual"]
+            marginal = (dr / dret) if abs(dret) > 1e-6 else 0.0
+        rates.append(marginal)
+        fp_rows.append({
+            "scenario_label": sn,
+            "eps_label": pt["label"],
+            "return": pt["return_actual"],
+            "risk": pt["risk"],
+            "marginal_risk_per_return": marginal,
+            "is_knee": False,
+        })
+
+    # Knee = the eps point with the largest jump in marginal vs the prior
+    # point (per scenario). rates[0] is None (min_risk has no marginal),
+    # so we start scanning from index 2 against rates[1..].
+    knee_idx = None
+    max_jump = 0.0
+    for j in range(2, len(rates)):
+        prev = rates[j - 1]
+        curr = rates[j]
+        if prev is None or curr is None:
+            continue
+        if abs(prev) > 1e-6:
+            jump = curr / prev
+        else:
+            jump = curr if curr and curr > 0 else 0.0
+        if jump > max_jump:
+            max_jump = jump
+            knee_idx = j
+    if knee_idx is not None:
+        # fp_rows for this scenario starts at len(fp_rows) - len(pts).
+        scenario_start = len(fp_rows) - len(pts)
+        fp_rows[scenario_start + knee_idx]["is_knee"] = True
+
+# Pair base and crisis rows by (budget, eps_label) so vol_base / vol_crisis
+# carry on BOTH the base-regime row and its matching crisis-regime row.
+risk_by_key = {
+    (r["scenario_label"], r["eps_label"]): r["risk"] for r in fp_rows
+}
+for r in fp_rows:
+    sn = r["scenario_label"]
+    eps = r["eps_label"]
+    # Strip "base_" / "crisis_" prefix to get the budget suffix.
+    budget_suffix = sn.split("_", 1)[1]
+    base_risk = risk_by_key.get((f"base_{budget_suffix}", eps))
+    crisis_risk = risk_by_key.get((f"crisis_{budget_suffix}", eps))
+    vol_base = base_risk ** 0.5 if base_risk is not None else 0.0
+    vol_crisis = crisis_risk ** 0.5 if crisis_risk is not None else 0.0
+    vol_gap = vol_crisis - vol_base
+    vol_gap_pct = (vol_gap / vol_base * 100.0) if vol_base > 1e-9 else 0.0
+    r["vol_base"] = vol_base
+    r["vol_crisis"] = vol_crisis
+    r["vol_gap"] = vol_gap
+    r["vol_gap_pct"] = vol_gap_pct
+
+fp_df = DataFrame(fp_rows)
+
+# FrontierPoint Concept -- one row per (Scenario, eps_label).
+FrontierPoint = model.Concept(
+    "FrontierPoint",
+    identify_by={"scenario_label": String, "eps_label": String},
+)
+FrontierPoint.scenario = model.Property(f"{FrontierPoint} for {Scenario}")
+FrontierPoint.return_value = model.Property(
+    f"{FrontierPoint} has return {Float:fp_return}"
+)
+FrontierPoint.risk = model.Property(f"{FrontierPoint} has risk {Float:fp_risk}")
+FrontierPoint.marginal_risk_per_return = model.Property(
+    f"{FrontierPoint} has marginal {Float:fp_marginal}"
+)
+FrontierPoint.is_knee = model.Property(
+    f"{FrontierPoint} is knee {Boolean:fp_is_knee}"
+)
+FrontierPoint.vol_base = model.Property(
+    f"{FrontierPoint} has vol_base {Float:fp_vol_base}"
+)
+FrontierPoint.vol_crisis = model.Property(
+    f"{FrontierPoint} has vol_crisis {Float:fp_vol_crisis}"
+)
+FrontierPoint.vol_gap = model.Property(
+    f"{FrontierPoint} has vol_gap {Float:fp_vol_gap}"
+)
+FrontierPoint.vol_gap_pct = model.Property(
+    f"{FrontierPoint} has vol_gap_pct {Float:fp_vol_gap_pct}"
+)
+
+# Two-pass load: marginal_risk_per_return is null at min_risk, so it
+# can't sit on the same model.data() frame as the all-rows columns
+# (NaN breaks model.data()).
+fp_main_df = fp_df[[
+    "scenario_label", "eps_label", "return", "risk", "is_knee",
+    "vol_base", "vol_crisis", "vol_gap", "vol_gap_pct",
+]].reset_index(drop=True)
+fp_data = model.data(fp_main_df)
+model.define(
+    fp := FrontierPoint.new(
+        scenario_label=fp_data["scenario_label"],
+        eps_label=fp_data["eps_label"],
+    ),
+    fp.return_value(fp_data["return"]),
+    fp.risk(fp_data["risk"]),
+    fp.is_knee(fp_data["is_knee"]),
+    fp.vol_base(fp_data["vol_base"]),
+    fp.vol_crisis(fp_data["vol_crisis"]),
+    fp.vol_gap(fp_data["vol_gap"]),
+    fp.vol_gap_pct(fp_data["vol_gap_pct"]),
+)
+
+# Link FrontierPoint to its Scenario by matching scenario_label == Scenario.name.
+fp_link_ref = FrontierPoint.ref()
+sc_link_ref = Scenario.ref()
+model.where(
+    fp_link_ref.scenario_label == sc_link_ref.name,
+).define(fp_link_ref.scenario(sc_link_ref))
+
+# Second pass: marginal_risk_per_return (only the 30 non-min_risk rows).
+fp_marg_df = (
+    fp_df[fp_df["marginal_risk_per_return"].notna()][
+        ["scenario_label", "eps_label", "marginal_risk_per_return"]
+    ]
+    .reset_index(drop=True)
+)
+fp_marg_data = model.data(fp_marg_df)
+fp_marg_ref = FrontierPoint.ref()
+model.where(
+    fp_marg_ref.scenario_label == fp_marg_data["scenario_label"],
+    fp_marg_ref.eps_label == fp_marg_data["eps_label"],
+).define(
+    fp_marg_ref.marginal_risk_per_return(fp_marg_data["marginal_risk_per_return"])
+)
+
+# Side-by-side vol (sqrt variance) by budget x lambda -- now sourced from
+# the FrontierPoint Concept rather than the in-memory pareto dict.
 print("\n  Volatility comparison (sqrt risk) -- base vs crisis at each lambda:")
+fp_q = FrontierPoint.ref()
+fp_query_df = (
+    model.select(
+        fp_q.scenario_label.alias("scenario_label"),
+        fp_q.eps_label.alias("eps_label"),
+        fp_q.vol_base.alias("vol_base"),
+        fp_q.vol_crisis.alias("vol_crisis"),
+        fp_q.vol_gap.alias("vol_gap"),
+        fp_q.vol_gap_pct.alias("vol_gap_pct"),
+    )
+    .to_df()
+)
+
+eps_order = ["min_risk", "eps_1", "eps_2", "eps_3", "eps_4", "eps_5"]
 for budget in budgets:
     base_sn = f"base_{budget}"
     crisis_sn = f"crisis_{budget}"
-    if len(pareto[base_sn]) < 2 or len(pareto[crisis_sn]) < 2:
+    base_rows = fp_query_df[fp_query_df["scenario_label"] == base_sn]
+    crisis_rows = fp_query_df[fp_query_df["scenario_label"] == crisis_sn]
+    if base_rows.empty or crisis_rows.empty:
         continue
     print(f"\n  Budget {budget}:")
     print(
@@ -1024,16 +1187,16 @@ for budget in budgets:
         f"{'gap':>10} {'gap_%':>8}"
     )
     print(f"  {'-' * 56}")
-    for j in range(min(len(pareto[base_sn]), len(pareto[crisis_sn]))):
-        b_pt = pareto[base_sn][j]
-        c_pt = pareto[crisis_sn][j]
-        vol_b = b_pt["risk"] ** 0.5
-        vol_c = c_pt["risk"] ** 0.5
-        gap = vol_c - vol_b
-        gap_pct = (gap / vol_b * 100.0) if vol_b > 1e-9 else 0.0
+    base_by_eps = {row["eps_label"]: row for _, row in base_rows.iterrows()}
+    for eps in eps_order:
+        if eps not in base_by_eps:
+            continue
+        row = base_by_eps[eps]
         print(
-            f"  {b_pt['label']:>10} {vol_b:>12.4f} {vol_c:>12.4f} "
-            f"{gap:>+10.4f} {gap_pct:>+7.1f}%"
+            f"  {eps:>10} {float(row['vol_base']):>12.4f} "
+            f"{float(row['vol_crisis']):>12.4f} "
+            f"{float(row['vol_gap']):>+10.4f} "
+            f"{float(row['vol_gap_pct']):>+7.1f}%"
         )
 
 print(
