@@ -286,13 +286,7 @@ _SUBJECT_STRIP_RES = [
 
 # Explicit raw -> canonical merge map. Each key is the lowercased OL
 # string after _SUBJECT_STRIP_RES; the value is the concept the runner
-# should treat as identical. Kept narrow on purpose -- empirically
-# (smoke-tested 2026-05-08) aggressive genre-merging that folds the
-# many OL variants of "mystery & detective", "fantasy", "science
-# fiction", etc. into a single seed concept makes the shared-subject
-# similarity graph dense enough that the MiniZinc CSP can no longer
-# reach OPTIMAL within the runner's time budget on the bundled slice.
-# Add entries conservatively and re-smoke before shipping.
+# should treat as identical.
 _SUBJECT_CANONICAL_MAP = {
     "action & adventure": "adventure",
     "adventure and adventurers": "adventure",
