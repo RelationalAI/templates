@@ -362,7 +362,7 @@ Six common variations:
   paths the walker found -- into an LLM call to render natural-
   language explanations grounded in KG facts, eliminating
   hallucination -- the 2025 LLM+KG hybrid pattern (K-RagRec,
-  Think-on-Graph, K-RagRec). Materializing the actual top paths
+  Think-on-Graph, GraphRAG). Materializing the actual top paths
   (rather than just counts) is a small extension of the runner's
   final `inspect()`: select on `kg_paths(p_s)` joined to picked
   candidates and emit `p_s.nodes(...)` for the top few by

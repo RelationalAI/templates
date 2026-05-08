@@ -608,17 +608,43 @@ problem.maximize(sum(Candidate.utility * Candidate.pick))
 
 problem.display()
 
-# Pre-solve diagnostic: count Candidate rows per user. Users absent
-# from this table have zero candidates after the walk + exclude-read
-# pipeline and will be silently skipped by the per-user floor ICs
-# (see slate_size_ic comment above). Customers should treat per-user
-# counts < SLATE_SIZE_K as a sparse-data warning regardless of solve
-# status.
-print("\nCandidate count per user (pre-solve diagnostic):")
-model.select(
+# Pre-solve assertion: per-user floor ICs (slate_size_ic,
+# freshness_ic, originals_ic, explanation_ic) anchor on Candidate
+# rows, so a user with no Candidate left after exclude_read is
+# silently skipped instead of being flagged as infeasible. Compute
+# the un-read candidate set per user explicitly and refuse to solve
+# if any user has fewer than SLATE_SIZE_K, so customer data with
+# sparse reach hits a clear Python-level error rather than a quiet
+# missing-row contract violation. The runner's bundled --size sm
+# slice satisfies this trivially; --size md/lg also do, and customer
+# data flagged here should be re-fetched with denser similar_to
+# edges before re-running.
+candidate_df = model.select(
     Candidate.user_id.alias("user_id"),
-    count(Candidate).per(Candidate.user_id).alias("n_candidates"),
-).inspect()
+    Candidate.book_id.alias("book_id"),
+).to_df()
+unread = candidate_df.merge(
+    read_csv_data[["user_id", "book_id"]],
+    on=["user_id", "book_id"],
+    how="left",
+    indicator=True,
+)
+unread = unread[unread["_merge"] == "left_only"]
+unread_counts = unread.groupby("user_id").size()
+all_users = set(users_csv["id"])
+missing_users = sorted(all_users - set(unread_counts.index))
+short_users = sorted(unread_counts[unread_counts < SLATE_SIZE_K].index.tolist())
+if missing_users or short_users:
+    raise ValueError(
+        "Per-user candidate floor violated: "
+        f"missing users (no candidates at all): {missing_users}; "
+        f"users with < SLATE_SIZE_K={SLATE_SIZE_K} unread candidates: "
+        f"{short_users}. Densify Book.similar_to (the data pipeline "
+        "input) or relax SLATE_SIZE_K before re-running."
+    )
+
+print("\nUnread candidate count per user (pre-solve diagnostic):")
+print(unread_counts.sort_index().to_string())
 
 problem.solve("highs", time_limit_sec=60)
 problem.solve_info().display()

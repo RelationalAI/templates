@@ -150,7 +150,11 @@ def _http_get_json(url: str, cache_dir: Path) -> dict:
             with urlopen(req, timeout=20) as resp:
                 payload = json.loads(resp.read().decode("utf-8"))
             cache_dir.mkdir(parents=True, exist_ok=True)
-            tmp_file = cache_file.with_suffix(cache_file.suffix + ".tmp")
+            # Per-process temp suffix so concurrent fetchers don't
+            # race on the same .tmp path.
+            import os as _os
+
+            tmp_file = cache_file.with_suffix(cache_file.suffix + f".tmp.{_os.getpid()}")
             tmp_file.write_text(json.dumps(payload))
             tmp_file.replace(cache_file)
             time.sleep(REQUEST_SLEEP_S)
