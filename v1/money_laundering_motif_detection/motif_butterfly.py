@@ -1,4 +1,4 @@
-"""Butterfly / scatter-gather motif with per-hub flow conservation (variant 1).
+"""Butterfly / scatter-gather motif with per-hub flow conservation.
 
 CSP technique demonstrated: per-vertex equality of two aggregates over a
 decision-selected edge subset. For every account the solver picks as a
@@ -17,6 +17,9 @@ currency-transaction-report threshold so no leg triggers a CTR filing.
 Run:  python motif_butterfly.py
 """
 
+from pathlib import Path
+
+import pandas as pd
 from model_setup import AMOUNT_THRESHOLD_DOLLARS, create_model
 from relationalai.semantics import Integer, sum
 from relationalai.semantics.reasoners.prescriptive import Problem
@@ -33,9 +36,25 @@ CONSERVATION_TOLERANCE_DOLLARS = 100
 # your own ledger.
 MAX_BUTTERFLY_MOTIFS = 10
 
-model, Account, Transaction, _, _, CONSERVATION_BIG_M = create_model()
+model, Account, Transaction = create_model()
 
-# Decision-valued properties for the butterfly variant.
+# Tightest big-M coefficient for the per-hub conservation IC below. The big-M
+# form makes that IC active when `is_hub == 1` and vacuous when `is_hub == 0`;
+# M needs to bound |sum_in - sum_out| over decision-selected motif edges,
+# which is at most the per-account total of incoming or outgoing amounts.
+# Compute that from the data and add a small buffer.
+_tx_csv = pd.read_csv(Path(__file__).parent / "data" / "transactions.csv")
+CONSERVATION_BIG_M = (
+    int(
+        max(
+            _tx_csv.groupby("dst_id")["amount_dollars"].sum().max(),
+            _tx_csv.groupby("src_id")["amount_dollars"].sum().max(),
+        )
+    )
+    + AMOUNT_THRESHOLD_DOLLARS
+)
+
+# Decision-valued properties for the butterfly motif.
 Transaction.is_motif = model.Property(f"{Transaction} is in motif if {Integer:is_motif}")
 Account.is_source = model.Property(f"{Account} is source if {Integer:is_source}")
 Account.is_hub = model.Property(f"{Account} is hub if {Integer:is_hub}")
@@ -43,9 +62,9 @@ Account.is_dest = model.Property(f"{Account} is dest if {Integer:is_dest}")
 
 problem = Problem(model, Integer)
 
-# Each role decision spans the full Account scope. Scoping role decisions to
-# HasOutgoing / HasIncoming sub-concepts at solve_for time would leave them
-# undefined for accounts in the *other* eligibility set, and constraints that
+# Each role decision spans the full Account scope -- not narrowed via
+# `where=[...]` on the `solve_for(...)` call. Tighter scoping leaves the
+# variable undefined for accounts outside that scope, and constraints that
 # reference both an undefined role variable and a defined one are silently
 # dropped from the per-account flow ICs -- letting the solver place motif
 # edges into accounts that aren't actually hubs or destinations. Full-scope
@@ -126,15 +145,12 @@ problem.satisfy(no_hub_to_hub_ic)
 #   in - out + M * is_hub <= TOL + M
 # When is_hub == 1: in - out <= TOL  (active conservation)
 # When is_hub == 0: in - out <= TOL + M  (vacuous if M big enough)
-# CONSERVATION_BIG_M is computed from the data in `model_setup.create_model()`
-# as the per-account max of (sum of incoming, sum of outgoing) amounts plus a
-# threshold buffer -- the tightest bound that still guarantees vacuous
-# behaviour for non-hub accounts. We prefer this big-M form to a half-reified
-# `implies(is_hub == 1, ...)` because the half-reified form introduces a free
-# Boolean auxiliary per non-hub account that MiniZinc treats as part of the
-# search space, returning thousands of trivially-distinct solutions for the
-# same role/motif assignment. The big-M form has no auxiliary -- enumeration
-# stays clean and the solver exhausts after the data's actual motifs.
+# We prefer big-M to a half-reified `implies(is_hub == 1, ...)` because
+# half-reification introduces a free Boolean auxiliary per non-hub account
+# that MiniZinc treats as part of the search space, returning thousands of
+# trivially-distinct solutions for the same role/motif assignment. The big-M
+# form has no auxiliary -- enumeration stays clean and the solver exhausts
+# after the data's actual motifs.
 T_in = Transaction.ref()
 T_out = Transaction.ref()
 conservation_pos_ic = model.where(T_in.dst == Account, T_out.src == Account).require(

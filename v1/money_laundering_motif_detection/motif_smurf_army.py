@@ -1,4 +1,4 @@
-"""Smurf-army motif with pairwise distinct beneficial owners (variant 2).
+"""Smurf-army motif with pairwise distinct beneficial owners.
 
 CSP technique demonstrated: pairwise constraints over a decision-selected
 vertex subset, plus all-different on a vertex property. The solver picks
@@ -46,20 +46,20 @@ N_SMURFS = 5
 # Solver solution-limit: enumerate up to this many distinct smurf cohorts.
 MAX_SMURF_MOTIFS = 5
 
-model, Account, Transaction, _, _, _ = create_model()
+model, Account, Transaction = create_model()
 
-# Decision-valued properties for the smurf-army variant.
+# Decision-valued properties for the smurf-army motif.
 Account.is_smurf = model.Property(f"{Account} is smurf if {Integer:is_smurf}")
 Transaction.is_smurf_tx = model.Property(f"{Transaction} is smurf tx if {Integer:is_smurf_tx}")
 
 problem = Problem(model, Integer)
 
-# Full-Account scope for is_smurf and full-Transaction scope for is_smurf_tx.
-# Tight where-scoping at solve_for time leaves the variable undefined for
-# accounts/transactions outside that scope, and constraints referencing it
-# get silently dropped from the per-account flow ICs (see motif_butterfly.py
-# for the same pattern). Full-scope decisions are forced to 0 by the
-# constraints below for ineligible accounts and non-target transactions.
+# Full-Account scope for is_smurf and full-Transaction scope for is_smurf_tx
+# -- not narrowed via `where=[...]` on the `solve_for(...)` call. Tight scoping
+# leaves the variable undefined for accounts/transactions outside that scope,
+# and constraints referencing it get silently dropped from the per-account
+# flow ICs. Full-scope decisions are forced to 0 by the constraints below
+# for ineligible accounts and non-target transactions.
 is_smurf_var = problem.solve_for(
     Account.is_smurf,
     type="bin",

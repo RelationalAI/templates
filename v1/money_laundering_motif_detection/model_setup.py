@@ -1,16 +1,10 @@
 """Shared model setup for the three money-laundering motif-detection runners.
 
-This module owns the ontology and data load that all three motif variants
-share -- accounts, transactions, beneficial-owner clusters, KYC tier,
-jurisdiction, plus the role-eligibility sub-concepts. Each variant
-runner (`motif_butterfly.py`, `motif_smurf_army.py`, `motif_kyc_burst.py`)
-imports `create_model()` from here and then adds its own decision
-properties + constraints + solve.
-
-Splitting like this matches the pattern in `humanitarian-aid-supply-chain`
-and `wildlife-conservation-network`: a single `model_setup.py` shared
-across multiple runners. Each variant is a clean single-Problem template
-that demonstrates a different CSP technique class on the same ledger.
+This module owns the ontology and data load that all three motifs share --
+accounts, transactions, beneficial-owner clusters, KYC tier, jurisdiction.
+Each motif runner (`motif_butterfly.py`, `motif_smurf_army.py`,
+`motif_kyc_burst.py`) imports `create_model()` from here and then adds its
+own decision properties + constraints + solve.
 """
 
 from pathlib import Path
@@ -27,7 +21,7 @@ AMOUNT_THRESHOLD_DOLLARS = 10_000
 
 
 def create_model():
-    """Build the shared semantic model: accounts, transactions, eligibility.
+    """Build the shared semantic model: accounts and transactions.
 
     Returns
     -------
@@ -37,15 +31,6 @@ def create_model():
         Account concept with name, bo_id, kyc_tier, jurisdiction properties.
     Transaction : Concept
         Transaction concept with src, dst, amount_dollars, ts_minutes.
-    HasOutgoing, HasIncoming : Concept
-        Eligibility sub-concepts marking accounts that have at least one
-        outgoing or incoming transaction. Used by the variant runners
-        (e.g., butterfly's source/dest scoping).
-    conservation_big_m : int
-        Tightest big-M coefficient for any conservation constraint
-        across the loaded data, computed as the per-account maximum
-        of (sum of incoming amounts, sum of outgoing amounts). Used by
-        the butterfly variant's per-hub flow-conservation IC.
     """
     model = Model("money_laundering_motif_detection")
 
@@ -80,25 +65,4 @@ def create_model():
         Account.id(tx_data.dst_id),
     )
 
-    # Eligibility sub-concepts: accounts that have at least one outgoing
-    # or incoming transaction. Variant runners use these for analyst-output
-    # filtering and for per-account flow constraint scope.
-    HasOutgoing = model.Concept("HasOutgoing", extends=[Account])
-    HasIncoming = model.Concept("HasIncoming", extends=[Account])
-    model.define(HasOutgoing(Account)).where(Transaction.src(Account))
-    model.define(HasIncoming(Account)).where(Transaction.dst(Account))
-
-    # Tightest big-M coefficient. The butterfly's conservation IC is
-    # written in big-M form so the constraint is active when is_hub == 1
-    # and vacuous when is_hub == 0; the auxiliary-free formulation gives
-    # the solver clean enumeration (the half-reified `implies` form
-    # introduces a free Boolean per non-hub account that MiniZinc treats
-    # as part of the search space). M needs to bound the maximum possible
-    # value of |sum_in - sum_out| over decision-selected motif edges,
-    # which is at most the per-account total of incoming or outgoing
-    # amounts. We compute that from the data and add a small buffer.
-    in_per_acct = tx_csv.groupby("dst_id")["amount_dollars"].sum().max()
-    out_per_acct = tx_csv.groupby("src_id")["amount_dollars"].sum().max()
-    conservation_big_m = int(max(in_per_acct, out_per_acct)) + AMOUNT_THRESHOLD_DOLLARS
-
-    return model, Account, Transaction, HasOutgoing, HasIncoming, conservation_big_m
+    return model, Account, Transaction

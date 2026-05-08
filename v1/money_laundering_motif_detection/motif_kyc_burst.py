@@ -1,4 +1,4 @@
-"""KYC-burst motif with cardinality / distribution constraints (variant 3).
+"""KYC-burst motif with cardinality / distribution constraints.
 
 CSP technique demonstrated: cardinality and distribution constraints over
 a decision-selected vertex subset. The solver picks N source accounts
@@ -43,16 +43,16 @@ BUSINESS_CAP = 1
 # Solver solution-limit: enumerate up to this many distinct burst cohorts.
 MAX_BURST_MOTIFS = 5
 
-model, Account, Transaction, _, _, _ = create_model()
+model, Account, Transaction = create_model()
 
-# Decision-valued properties for the KYC-burst variant.
+# Decision-valued properties for the KYC-burst motif.
 Account.is_burst = model.Property(f"{Account} is burst if {Integer:is_burst}")
 Transaction.is_burst_tx = model.Property(f"{Transaction} is burst tx if {Integer:is_burst_tx}")
 
 problem = Problem(model, Integer)
 
-# Full-Account scope for is_burst and full-Transaction scope for is_burst_tx.
-# See motif_butterfly.py for the rationale -- tight where-scoping at solve_for
+# Full-Account scope for is_burst and full-Transaction scope for is_burst_tx
+# -- not narrowed via `where=[...]` on the `solve_for(...)` call. Tight scoping
 # leaves the variable undefined for outside accounts and the per-account flow
 # constraints get silently dropped, letting the solver place burst-tx into
 # accounts that aren't actually in the burst cohort.
