@@ -180,17 +180,15 @@ manual_review_var = problem.solve_for(
 # --------------------------------------------------
 
 # Rule: `is_senior` is 1 iff the applicant's age bucket has age >= 70.
-# Encoded as a forbidden-pair iteration over AgeBucket: for each senior
+# Encoded as a per-bucket iteration over AgeBucket: for each senior
 # bucket, if the applicant picks it, is_senior must be 1; for each
 # non-senior bucket, if the applicant picks it, is_senior must be 0.
-AB = AgeBucket.ref()
-senior_def_pos_ic = model.where(AB.age_years >= SENIOR_THRESHOLD_YEARS).require(
-    implies(Applicant.age_bucket_id == AB.id, Applicant.is_senior == 1)
+senior_def_pos_ic = model.where(AgeBucket.age_years >= SENIOR_THRESHOLD_YEARS).require(
+    implies(Applicant.age_bucket_id == AgeBucket.id, Applicant.is_senior == 1)
 )
 problem.satisfy(senior_def_pos_ic)
-AB = AgeBucket.ref()
-senior_def_neg_ic = model.where(AB.age_years < SENIOR_THRESHOLD_YEARS).require(
-    implies(Applicant.age_bucket_id == AB.id, Applicant.is_senior == 0)
+senior_def_neg_ic = model.where(AgeBucket.age_years < SENIOR_THRESHOLD_YEARS).require(
+    implies(Applicant.age_bucket_id == AgeBucket.id, Applicant.is_senior == 0)
 )
 problem.satisfy(senior_def_neg_ic)
 
@@ -302,35 +300,30 @@ else:
 # --------------------------------------------------
 
 # `Variable.values(solution_index, value)` indexes the solver's outputs
-# across every returned solution. Joining the decision variables on a
-# shared solution index reconstructs each witness; reference-data refs
-# walk chosen IDs back to their reference rows for display.
+# across every returned solution. Binding the value slot directly to a
+# reference Concept's `.id` walks the chosen ID back to that row's columns
+# in one step; for the binary indicators an Integer placeholder receives
+# the 0/1 value for display.
 
 print(f"\nCounterexample witnesses (up to {MAX_WITNESSES} per run):")
 sol_idx = Integer.ref()
-ab_v = Integer.ref()
 chr_v = Integer.ref()
-cb_v = Integer.ref()
 sen_v = Integer.ref()
 frl_v = Integer.ref()
 mr_v = Integer.ref()
-bucket_ref = AgeBucket.ref()
-band_ref = CoverageBand.ref()
 model.select(
     sol_idx.alias("solution"),
-    bucket_ref.age_years.alias("age_years"),
+    AgeBucket.age_years.alias("age_years"),
     chr_v.alias("has_chronic"),
-    band_ref.coverage_dollars.alias("coverage_dollars"),
+    CoverageBand.coverage_dollars.alias("coverage_dollars"),
     sen_v.alias("is_senior"),
     frl_v.alias("is_frail"),
     mr_v.alias("is_manual_review"),
 ).where(
-    age_bucket_var.values(sol_idx, ab_v),
+    age_bucket_var.values(sol_idx, AgeBucket.id),
     chronic_var.values(sol_idx, chr_v),
-    coverage_band_var.values(sol_idx, cb_v),
+    coverage_band_var.values(sol_idx, CoverageBand.id),
     senior_var.values(sol_idx, sen_v),
     frail_var.values(sol_idx, frl_v),
     manual_review_var.values(sol_idx, mr_v),
-    bucket_ref.id == ab_v,
-    band_ref.id == cb_v,
 ).inspect()

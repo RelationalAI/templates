@@ -5,7 +5,7 @@ featured: false
 experience_level: advanced
 industry: "Insurance"
 reasoning_types:
-  - Rules-based
+  - Rules
   - Prescriptive
 tags:
   - constraint-programming
@@ -99,22 +99,22 @@ The bundled ruleset has a deliberate bug: `is_manual_review` is defined as "seni
    Solve result:
    • status: SOLUTION_LIMIT
    • objective: 0
-   • solve time: 0.08s
+   • solve time: 1.30s
    • num_points: 8
-   • solver: MiniZinc_nothing
+   • solver: MiniZinc_unknown
 
-   Audit result: FAIL -- 8 counterexample applicant(s) found. The property does not hold under the encoded ruleset; witnesses below.
+   Audit result: FAIL -- 8 counterexample applicant(s) found (status: SOLUTION_LIMIT). The property does not hold under the encoded ruleset; witnesses below.
 
    Counterexample witnesses (up to 8 per run):
       solution  age_years  has_chronic  coverage_dollars  is_senior  is_frail  is_manual_review
    0         0         55            1           1000000          0         1                 0
-   1         1         55            1            500000          0         1                 0
-   2         2         55            1            250000          0         1                 0
-   3         3         55            1            100000          0         1                 0
-   4         4         28            1            250000          0         1                 0
-   5         5         45            1            250000          0         1                 0
-   6         6         28            1            500000          0         1                 0
-   7         7         28            1           1000000          0         1                 0
+   1         1         45            1           1000000          0         1                 0
+   2         2         28            1           1000000          0         1                 0
+   3         3         45            1            100000          0         1                 0
+   4         4         45            1            250000          0         1                 0
+   5         5         45            1            500000          0         1                 0
+   6         6         55            1            250000          0         1                 0
+   7         7         28            1            250000          0         1                 0
    ```
 
    Each witness row is one applicant who falsifies the property "every frail applicant goes through manual review": `is_frail == 1` (because `has_chronic == 1` -- chronic-condition applicants are frail by the rule book) and `is_manual_review == 0` (because the buggy rule only flags seniors and these applicants are below the 70 threshold). The audit demonstrates the bug by showing K such applicants spread across three of the four non-senior age buckets and all four coverage bands -- enough variation for the actuary to confirm the failure mode is structural, not specific to one age or coverage value. Raising `MAX_WITNESSES` past the size of the feasible set (3 non-senior ages × 4 coverage bands = 12 witnesses with the bundled data) flips `status` to `OPTIMAL` and surfaces the entire failure shape.
@@ -132,7 +132,7 @@ The bundled ruleset has a deliberate bug: `is_manual_review` is defined as "seni
 
 ## How it works
 
-The template encodes an underwriting ruleset, a property to audit, and a counterexample IC; multi-solution enumeration surfaces K distinct witnesses showing where the property fails. The headline patterns:
+The template encodes an underwriting ruleset, a property to audit, and a counterexample IC; multi-solution enumeration surfaces K distinct witnesses showing where the property fails. The script consists of these patterns:
 
 **Free decisions describe what an applicant looks like.** Three integer/binary decisions on a singleton `Applicant`: which age bucket they fall into, whether they have a chronic condition, which coverage band they sit in. The solver picks values for these on every solution.
 
@@ -150,16 +150,14 @@ Applicant.is_frail = model.Property(f"{Applicant} has {Integer:is_frail}")
 Applicant.is_manual_review = model.Property(f"{Applicant} has {Integer:is_manual_review}")
 ```
 
-**Senior indicator via forbidden-pair lookup.** `is_senior` is 1 iff the applicant's age bucket has age >= 70. Encoded as the same idiom the sister templates use for plan-network attribution: iterate over `AgeBucket` reference rows at relational time, gate on the decision-valued `Applicant.age_bucket_id == AB.id` inside `implies`. Two ICs cover both directions of the equivalence:
+**Senior indicator via per-bucket iteration.** `is_senior` is 1 iff the applicant's age bucket has age >= 70. Encoded as the same idiom the sister templates use for plan-network attribution: iterate over `AgeBucket` reference rows at relational time, gate on the decision-valued `Applicant.age_bucket_id == AgeBucket.id` inside `implies`. Two ICs cover both directions of the equivalence:
 
 ```python
-AB = AgeBucket.ref()
-senior_def_pos_ic = model.where(AB.age_years >= SENIOR_THRESHOLD_YEARS).require(
-    implies(Applicant.age_bucket_id == AB.id, Applicant.is_senior == 1)
+senior_def_pos_ic = model.where(AgeBucket.age_years >= SENIOR_THRESHOLD_YEARS).require(
+    implies(Applicant.age_bucket_id == AgeBucket.id, Applicant.is_senior == 1)
 )
-AB = AgeBucket.ref()
-senior_def_neg_ic = model.where(AB.age_years < SENIOR_THRESHOLD_YEARS).require(
-    implies(Applicant.age_bucket_id == AB.id, Applicant.is_senior == 0)
+senior_def_neg_ic = model.where(AgeBucket.age_years < SENIOR_THRESHOLD_YEARS).require(
+    implies(Applicant.age_bucket_id == AgeBucket.id, Applicant.is_senior == 0)
 )
 ```
 
@@ -185,37 +183,31 @@ counterexample_frail_ic = model.require(Applicant.is_frail == 1)
 counterexample_no_review_ic = model.require(Applicant.is_manual_review == 0)
 ```
 
-**Multi-solution enumeration via `Variable.values(solution_index, value)`.** Capturing the variable subconcept from `solve_for(...)` exposes a `.values(sol_idx, val)` relationship that indexes per-solution outputs. Joining the six decision variables on a shared `sol_idx` reconstructs each witness; reference-data lookups walk chosen IDs back to their reference rows for display:
+**Multi-solution enumeration via `Variable.values(solution_index, value)`.** Capturing the variable subconcept from `solve_for(...)` exposes a `.values(sol_idx, val)` relationship that indexes per-solution outputs. Binding the value slot directly to a reference Concept's `.id` walks the chosen ID back to that row's columns in one step; the binary indicator decisions read out into Integer placeholders for display:
 
 ```python
 problem.solve("minizinc", time_limit_sec=60, solution_limit=MAX_WITNESSES)
 
 sol_idx = Integer.ref()
-ab_v = Integer.ref()
 chr_v = Integer.ref()
-cb_v = Integer.ref()
 sen_v = Integer.ref()
 frl_v = Integer.ref()
 mr_v = Integer.ref()
-bucket_ref = AgeBucket.ref()
-band_ref = CoverageBand.ref()
 model.select(
     sol_idx.alias("solution"),
-    bucket_ref.age_years.alias("age_years"),
+    AgeBucket.age_years.alias("age_years"),
     chr_v.alias("has_chronic"),
-    band_ref.coverage_dollars.alias("coverage_dollars"),
+    CoverageBand.coverage_dollars.alias("coverage_dollars"),
     sen_v.alias("is_senior"),
     frl_v.alias("is_frail"),
     mr_v.alias("is_manual_review"),
 ).where(
-    age_bucket_var.values(sol_idx, ab_v),
+    age_bucket_var.values(sol_idx, AgeBucket.id),
     chronic_var.values(sol_idx, chr_v),
-    coverage_band_var.values(sol_idx, cb_v),
+    coverage_band_var.values(sol_idx, CoverageBand.id),
     senior_var.values(sol_idx, sen_v),
     frail_var.values(sol_idx, frl_v),
     manual_review_var.values(sol_idx, mr_v),
-    bucket_ref.id == ab_v,
-    band_ref.id == cb_v,
 ).inspect()
 ```
 
