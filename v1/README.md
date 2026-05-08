@@ -8,7 +8,7 @@ This directory contains the templates for v1. Each template folder includes its 
 | --- | --- |
 | [ad_spend_allocation](./ad_spend_allocation/) | Allocate marketing budget across channels and campaigns to maximize conversions. |
 | [bom-reachability](./bom-reachability/) | Trace transitive dependencies through a bill of materials to identify which raw materials each finished product depends on and which components are structural bottlenecks. |
-| [book_slate_recommendation](./book_slate_recommendation/) | Multi-reasoner Graph + Prescriptive (MIP) template that picks K books per reader under business rules, with KG-walk and shared-entity explanations blended into the objective. |
+| [book_slate_recommendation](./book_slate_recommendation/) | Three-pillar Graph + Paths + Prescriptive (MIP) template that picks K books per reader. Bounded KG-path walks generate the candidate set and the explanation evidence; per-book triangle counts on the similarity graph drive a structural-embeddedness floor IC. |
 | [campaign_roi](./campaign_roi/) | Reallocate marketing campaign budgets across regions to maximize conversions, with per-campaign floor and cap constraints and a regional cap on a paused region. |
 | [cicd_runner_allocation](./cicd_runner_allocation/) | Assign CI/CD workflow jobs to the cheapest compatible runner type, subject to concurrency limits, with scenario analysis across capacity levels. |
 | [commercial_underwriting](./commercial_underwriting/) | Run rules-based eligibility checks and risk-tier classification across a four-level commercial property/casualty hierarchy (insured entity, policy, location, coverage). |

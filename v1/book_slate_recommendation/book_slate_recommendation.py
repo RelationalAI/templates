@@ -1,25 +1,36 @@
-"""Book slate recommendation (Graph + Prescriptive MIP) template.
+"""Book slate recommendation (Graph + Paths + Prescriptive MIP) template.
 
-Multi-reasoner pipeline that picks K books per reader under business
-rules, blending a structural-popularity prior, bounded-walk path
-evidence, and per-typed shared-entity joins into a personalized
-utility:
+Path-driven multi-reasoner pipeline that picks K books per reader
+under business rules. The Paths pillar is the architectural
+centerpiece: bounded heterogeneous-KG walks generate the candidate
+set AND the per-(user, candidate) explanation evidence. The Graph
+pillar contributes a structural-embeddedness floor (per-book triangle
+count over `Book.similar_to`) that the path walker alone cannot
+enforce. Removing Paths collapses the template (no Candidate concept,
+no MIP decisions); removing the Graph contribution drops the
+embeddedness floor IC, weakening structural diversity:
 
-- Graph (PageRank): PageRank over a book-similarity graph
-  (`Book.similar_to`) produces each candidate's `pagerank_score`.
-- Graph (bounded KG walks): bounded
+- Paths (central): bounded
   `Item.connected_to.repeat(1, 2).all_paths()` walks enumerate
   `User -> read_Book` (length 1; pruned downstream by the
   already-read exclusion) and `User -> read_Book -> similar_Book`
-  (length 2). The per-(user, candidate) typed counts
-  (`path_count_via_author`, `_via_subject`, `_via_kg_walk`) feed both
-  IC clauses and the objective, and surface as the per-pick
-  explanation block.
-- Prescriptive: float-coefficient binary IP on HiGHS picks K items
-  per user under cardinality, already-read exclusion, subject
-  diversity, author uniqueness, freshness, originals-exposure,
-  cold-start, and explanation-path floor constraints; objective
-  maximizes total `utility = w1 * pagerank + w2 * path_total`.
+  (length 2). Each walker-reachable (user, book) becomes a
+  `Candidate`. The per-(user, candidate) typed counts
+  (`path_count_via_author`, `_via_subject`, `_via_kg_walk`) feed
+  both IC clauses (cold-start, explanation-floor) and the objective,
+  and surface as the per-pick explanation block.
+- Graph (structural embeddedness): triangle count over
+  `Book.similar_to` per Book. Drives `embeddedness_ic` -- a per-user
+  floor on picks whose Book is densely embedded in the similarity
+  graph. Distinct from any per-book popularity scalar: triangle
+  count is a topological measure of where the Book sits in the
+  similarity neighborhood, not how heavily it's been engaged with.
+- Prescriptive: integer linear program on HiGHS picks K items per
+  user under cardinality, already-read exclusion, subject diversity,
+  author uniqueness, freshness, originals-exposure, cold-start,
+  explanation-path floor, and structural-embeddedness floor
+  constraints; objective maximizes total `path_count_total` over
+  the picked slate.
 
 Bundled data: a deterministic Open Library (CC0) slice (~60 books,
 ~58 authors, 12 subjects) pulled by `data/fetch_open_library_slice.py`.
@@ -83,12 +94,17 @@ EXPLANATION_FLOOR = 4
 # this counts as "weakly explained" for the cold-start cap.
 WEAK_EXPLANATION_THRESHOLD = 2
 
-# Utility blend weights. Demo-grade values tuned for the bundled slice;
-# production deployments should min-max-normalize both signals to
-# [0, 1] before applying these weights so the constants represent
-# business preference rather than scale correction.
-PAGERANK_WEIGHT = 100.0
-PATH_SIGNAL_WEIGHT = 30.0
+# Structural-embeddedness floor: at least EMBEDDEDNESS_FLOOR picks per
+# user must come from books that are well-embedded in the similarity
+# graph -- specifically, books whose triangle count (number of
+# similar-to triangles they participate in) meets EMBEDDEDNESS_THRESHOLD.
+# This is the Graph pillar's hold on the slate: a structural-density
+# constraint that the path walker alone cannot enforce. Tuned for the
+# bundled slice where per-book triangle counts range 0-107 with two
+# isolates; threshold of 4 keeps the truly-isolated books from saturating
+# a slate. Retune to the data's distribution after rescaling.
+EMBEDDEDNESS_THRESHOLD = 4
+EMBEDDEDNESS_FLOOR = 1
 
 DATA_DIR = Path(__file__).parent / "data"
 
@@ -309,39 +325,12 @@ model.define(Item.connected_to(b_s1, b_s2)).where(Book.similar_to(b_s1, b_s2))
 model.define(Item.connected_to(b_s2, b_s1)).where(Book.similar_to(b_s1, b_s2))
 
 # --------------------------------------------------
-# Pillar 1: Graph -- PageRank over the book-similarity graph
-# --------------------------------------------------
-
-# Book-Book similarity graph derived from shared authors / subjects.
-# ``node_concept=Book`` makes graph-algorithm output bind directly to
-# Book without DataFrame round-trips. Aggregator "sum" collapses
-# multi-edges so two paths of similarity between the same pair count
-# once.
-sim_graph = Graph(
-    model,
-    directed=False,
-    weighted=False,
-    node_concept=Book,
-    aggregator="sum",
-)
-src_g, dst_g = Book.ref(), Book.ref()
-model.define(sim_graph.Edge.new(src=src_g, dst=dst_g)).where(
-    Book.similar_to(src_g, dst_g),
-)
-
-# PageRank: structural-popularity prior. Stored as Float (the native
-# pagerank() output type). HiGHS handles float coefficients on binary
-# decisions natively, so no quantization step is needed.
-Book.pagerank_score = model.Property(f"{Book} has structural score {Float:pagerank_score}")
-pagerank_rel = sim_graph.pagerank()
-b_pr = Book.ref()
-score_pr = Float.ref()
-model.define(b_pr.pagerank_score(score_pr)).where(
-    pagerank_rel(b_pr, score_pr),
-)
-
-# --------------------------------------------------
-# Pillar 2: Graph -- bounded KG walks
+# Pillar 1: Paths -- bounded KG walk (architectural centerpiece)
+#
+# This is the load-bearing pillar. The Candidate concept is derived
+# from the path walker; without paths there are no candidates and no
+# MIP variables. The per-typed counts produced here are reused by
+# the explanation-floor IC, the cold-start cap, and the objective.
 # --------------------------------------------------
 
 # Walk the unified ``Item.connected_to`` edge from each User up to
@@ -458,17 +447,48 @@ model.define(Candidate.path_count_total(c, n)).where(
     n == c.path_count_via_author + c.path_count_via_subject + c.path_count_via_kg_walk,
 )
 
-# Personalized utility: blend structural prior (float PageRank) with per-user path signal
-# (integer path counts) into a single Float utility. HiGHS handles
-# float coefficients on binary decisions natively, so the blend
-# stores directly as Float without a quantization step.
-Candidate.utility = model.Property(f"{Candidate} has utility {Float:utility}")
-b_u = Book.ref()
-util = Float.ref()
-model.define(Candidate.utility(c, util)).where(
-    Candidate(c),
-    c.book_id == b_u.id,
-    util == PAGERANK_WEIGHT * b_u.pagerank_score + PATH_SIGNAL_WEIGHT * c.path_count_total,
+# --------------------------------------------------
+# Pillar 2: Graph -- structural embeddedness over book-similarity
+#
+# Supporting pillar: per-Book triangle count over the similarity
+# graph, used by ``embeddedness_ic`` to floor the slate's well-
+# connected picks. The triangle-count signal is graph-derived (it
+# depends on the similarity-graph topology), so unlike a per-Book
+# popularity scalar, it cannot be supplied externally without
+# reconstructing the graph -- which is what makes this contribution
+# Graph-pillar work, not just a data-layer input.
+# --------------------------------------------------
+
+# Book-Book similarity graph derived from shared authors / subjects.
+# ``node_concept=Book`` makes graph-algorithm output bind directly to
+# Book without DataFrame round-trips. Aggregator "sum" collapses
+# multi-edges so two paths of similarity between the same pair count
+# once.
+sim_graph = Graph(
+    model,
+    directed=False,
+    weighted=False,
+    node_concept=Book,
+    aggregator="sum",
+)
+src_g, dst_g = Book.ref(), Book.ref()
+model.define(sim_graph.Edge.new(src=src_g, dst=dst_g)).where(
+    Book.similar_to(src_g, dst_g),
+)
+
+# Triangle count: per-Book count of similar_to triangles the book
+# participates in -- a structural-embeddedness measure. Used by
+# ``embeddedness_ic`` below to floor the slate's well-connected picks,
+# distinguishing books central to dense neighborhoods from books that
+# sit on isolated edges of the similarity graph. Triangle count is
+# graph-derived: it depends on the topology of ``Book.similar_to``,
+# not on a per-book scalar that could be supplied externally.
+Book.triangle_count = model.Property(f"{Book} has structural embeddedness {Integer:triangle_count}")
+triangle_rel = sim_graph.triangle_count()
+b_tc = Book.ref()
+tc = Integer.ref()
+model.define(b_tc.triangle_count(tc)).where(
+    triangle_rel(b_tc, tc),
 )
 
 # --------------------------------------------------
@@ -555,8 +575,22 @@ explanation_ic = model.require(
 )
 problem.satisfy(explanation_ic)
 
-# Objective: maximize total per-user utility, summed across users.
-problem.maximize(sum(Candidate.utility * Candidate.pick))
+# Embeddedness floor: each user's slate must carry at least
+# EMBEDDEDNESS_FLOOR picks whose Book has triangle_count >=
+# EMBEDDEDNESS_THRESHOLD. The Graph pillar's structural contribution
+# to the slate -- without this, the path walker's reach can drop the
+# entire slate onto sparsely-embedded books in the similarity graph.
+embeddedness_ic = model.where(
+    Book.id == Candidate.book_id,
+    Book.triangle_count >= EMBEDDEDNESS_THRESHOLD,
+).require(sum(Candidate.pick).per(Candidate.user_id) >= EMBEDDEDNESS_FLOOR)
+problem.satisfy(embeddedness_ic)
+
+# Objective: maximize total per-user path support, summed across users.
+# Pure path-driven: the slate that aggregates the most KG-path evidence
+# wins, subject to the diversity / freshness / originals / embeddedness
+# constraints above.
+problem.maximize(sum(Candidate.path_count_total * Candidate.pick))
 
 # --------------------------------------------------
 # Solve and check solution
@@ -630,6 +664,7 @@ problem.verify(
     originals_ic,
     cold_start_ic,
     explanation_ic,
+    embeddedness_ic,
 )
 model.require(problem.termination_status() == "OPTIMAL")
 
@@ -645,12 +680,18 @@ model.select(
 
 # Headline output: the chosen slate per user.
 print(f"\nFinal slate per user (K = {SLATE_SIZE_K}):")
+b_pick = Book.ref()
+tc_pick = Integer.ref()
 model.select(
     Candidate.user_id.alias("user_id"),
     Candidate.book_id.alias("book_id"),
-    Candidate.utility.alias("utility"),
     Candidate.path_count_total.alias("path_count_total"),
-).where(Candidate.pick == 1).inspect()
+    tc_pick.alias("triangle_count"),
+).where(
+    Candidate.pick == 1,
+    b_pick.id == Candidate.book_id,
+    b_pick.triangle_count == tc_pick,
+).inspect()
 
 print("\nSubject distribution per user's slate (cap = MAX_PER_SUBJECT):")
 u_disp = User.ref()
@@ -678,7 +719,7 @@ model.select(
     Candidate.path_count_via_subject.alias("paths_via_subject"),
 ).where(Candidate.pick == 1).inspect()
 
-# Diagnostics: candidate set sizing and structural prior.
+# Diagnostics: candidate set sizing and structural-embeddedness map.
 
 print(
     f"\nCandidate set per user (Books reachable within {MAX_HOPS} hops over the heterogeneous KG):"
@@ -690,12 +731,11 @@ model.select(
     Candidate.path_count_via_kg_walk.alias("paths_via_kg_walk"),
     Candidate.path_count_via_author.alias("paths_via_author"),
     Candidate.path_count_via_subject.alias("paths_via_subject"),
-    Candidate.utility.alias("utility"),
 ).inspect()
 
-print("\nBook structural-popularity prior (PageRank):")
+print("\nBook structural embeddedness (similar_to triangle counts):")
 model.select(
     Book.id.alias("book_id"),
     Book.title.alias("title"),
-    Book.pagerank_score.alias("structural_score"),
+    Book.triangle_count.alias("triangle_count"),
 ).inspect()
