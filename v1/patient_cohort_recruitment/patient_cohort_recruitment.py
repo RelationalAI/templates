@@ -417,8 +417,8 @@ model.define(Patient.covers_kinase_gene(Gene)).where(
 
 # `Patient.covers_therapy` / `Patient.covers_ae` project from
 # `qualifying_pair` -- a therapy with no within-window AE doesn't
-# count, and vice versa. Only therapies and AEs the cohort can
-# demonstrate a qualifying response pattern for are counted.
+# count, and vice versa. Only therapies and AEs with a within-window
+# qualifying pair are counted.
 Patient.covers_therapy = model.Relationship(f"{Patient} covers {Therapy:therapy}")
 model.define(Patient.covers_therapy(Therapy)).where(
     Patient.qualifying_pair(TherapyEvent, AdverseEventOcc),
