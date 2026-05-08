@@ -1,0 +1,4 @@
+store_id,city,state,store_type,cluster
+1,Quito,Pichincha,A,13
+2,Guayaquil,Guayas,B,8
+3,Cuenca,Azuay,C,4
