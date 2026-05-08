@@ -38,6 +38,10 @@ from pandas import read_csv
 from relationalai.semantics import Integer, Model, String, sum
 from relationalai.semantics.reasoners.prescriptive import Problem, implies
 
+# --------------------------------------------------
+# Configure inputs
+# --------------------------------------------------
+
 DATA_DIR = Path(__file__).parent / "data"
 
 # --------------------------------------------------
