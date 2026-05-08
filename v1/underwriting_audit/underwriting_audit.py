@@ -143,21 +143,19 @@ Applicant.is_frail = model.Property(f"{Applicant} has {Integer:is_frail}")
 Applicant.is_manual_review = model.Property(f"{Applicant} has {Integer:is_manual_review}")
 
 problem = Problem(model, Integer)
-# Every output goes through `Variable.values(solution_index, value)` against
-# the captured ProblemVariable handles, so the populated property path is
-# unused. `populate=False` skips the first-solution write-back -- avoiding
-# wasted work and the latent FDError that `populate=True` invites if the
-# template is ever wrapped in a re-solve loop.
+# `populate=True` (default) writes the first solution back into the
+# `Applicant.*` properties so `problem.verify(...)` can re-evaluate the
+# pure-arithmetic ICs against it. Multi-solution output below still goes
+# through `Variable.values(solution_index, value)` for every witness.
 age_bucket_var = problem.solve_for(
     Applicant.age_bucket_id,
     type="int",
     name=["age_bucket", Applicant.id],
     lower=int(age_buckets_csv["id"].min()),
     upper=int(age_buckets_csv["id"].max()),
-    populate=False,
 )
 chronic_var = problem.solve_for(
-    Applicant.has_chronic, type="bin", name=["has_chronic", Applicant.id], populate=False
+    Applicant.has_chronic, type="bin", name=["has_chronic", Applicant.id]
 )
 coverage_band_var = problem.solve_for(
     Applicant.coverage_band_id,
@@ -165,19 +163,13 @@ coverage_band_var = problem.solve_for(
     name=["coverage_band", Applicant.id],
     lower=int(coverage_bands_csv["id"].min()),
     upper=int(coverage_bands_csv["id"].max()),
-    populate=False,
 )
-senior_var = problem.solve_for(
-    Applicant.is_senior, type="bin", name=["is_senior", Applicant.id], populate=False
-)
-frail_var = problem.solve_for(
-    Applicant.is_frail, type="bin", name=["is_frail", Applicant.id], populate=False
-)
+senior_var = problem.solve_for(Applicant.is_senior, type="bin", name=["is_senior", Applicant.id])
+frail_var = problem.solve_for(Applicant.is_frail, type="bin", name=["is_frail", Applicant.id])
 manual_review_var = problem.solve_for(
     Applicant.is_manual_review,
     type="bin",
     name=["is_manual_review", Applicant.id],
-    populate=False,
 )
 
 # --------------------------------------------------
@@ -286,18 +278,18 @@ if status == "INFEASIBLE":
         "\nAudit result: PASS -- proven no counterexample applicants exist. "
         "The property holds under the encoded ruleset."
     )
-elif status in ("OPTIMAL", "SOLUTION_LIMIT") and si.num_points is not None and si.num_points >= 1:
+elif si.num_points is not None and si.num_points >= 1:
     print(
         f"\nAudit result: FAIL -- {si.num_points} counterexample applicant(s) found "
-        f"(status: {status}). The property does not hold under the encoded "
-        "ruleset; witnesses below."
+        f"(status: {status}). Any returned witness disproves the property "
+        "even if the solver stopped before exhausting the search; witnesses below."
     )
 else:
     n = si.num_points if si.num_points is not None else "(unavailable)"
     print(
         f"\nAudit result: INCONCLUSIVE -- solver returned status={status} "
-        f"with num_points={n}. The audit did not finish. Raise "
-        "`time_limit_sec`, narrow the search, or inspect the formulation."
+        f"with num_points={n}. The audit did not finish and no witness was "
+        "returned. Raise `time_limit_sec`, narrow the search, or inspect the formulation."
     )
 
 # --------------------------------------------------
