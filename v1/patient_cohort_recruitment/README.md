@@ -37,9 +37,11 @@ The same pattern applies to other knowledge-graph cohort / set-cover problems wh
 
 - A gene ontology + patient knowledge graph: `Gene`, `GeneIsA`, `Patient`, `MutationEvent`, `TherapyEvent`, `AdverseEventOcc`, `Therapy`, `AdverseEvent`
 - A Graph-reasoner closure of the kinase-pathway sub-ontology via `graph.reachable(full=True)`, producing a `KinaseGene extends Gene` sub-concept
-- Pure-relational rules that derive sub-concepts `KinaseMutationCarrier`, `QualifyingPairPatient`, and the eligibility conjunction `EligiblePatient extends Patient`, plus per-axis coverage relations (`Patient.covers_kinase_gene`, `Patient.covers_therapy`, `Patient.covers_ae`) and the coverable sub-concepts `CoverableGene`, `CoverableTherapy`, `CoverableAdverseEvent`
+- A 3-arity `Patient.qualifying_pair` relationship over `(Patient, TherapyEvent, AdverseEventOcc)` triples where the AE follows the therapy within `MAX_THERAPY_TO_AE_DAYS`, single-sourcing the AE-window predicate
+- Pure-relational rules that derive sub-concepts `KinaseMutationCarrier`, `QualifyingPairPatient`, and the eligibility conjunction `EligiblePatient extends Patient`, plus per-axis coverage relations (`Patient.covers_kinase_gene`, `Patient.covers_therapy`, `Patient.covers_ae`) projected from `qualifying_pair`, and the coverable sub-concepts `CoverableGene`, `CoverableTherapy`, `CoverableAdverseEvent` scoped to eligible-patient coverage
 - A constraint model with four binary decision streams targeting sub-concepts directly: `EligiblePatient.is_in_cohort` (eligible patients only), `CoverableGene.is_covered` (coverable kinase genes only), `CoverableTherapy.is_covered`, and `CoverableAdverseEvent.is_covered`
 - Per-axis coverage upper-bound ICs that link `is_covered` to in-cohort patient decisions (`Sub.is_covered <= sum(EligiblePatient.is_in_cohort).per(Sub)`), and lower-bound ICs (`sum(Sub.is_covered) >= MIN_*`) that force the cohort to span enough distinct values
+- Pre-solve Python invariants that catch silent-failure modes (duplicate keys, dangling foreign keys, missing kinase root, negative timestamps) before the solver runs
 - Post-solve verification via `problem.verify()` confirming every IC holds in the returned solution, plus a `termination_status() == "OPTIMAL"` assertion
 
 ## What's included
@@ -102,7 +104,7 @@ The same pattern applies to other knowledge-graph cohort / set-cover problems wh
    Solve result:
    • status: OPTIMAL
    • objective: 0
-   • solve time: 0.10s
+   • solve time: ~1s
    • num_points: 1
    • solver: MiniZinc_unknown
 
@@ -195,7 +197,7 @@ model.define(KinaseGene(Gene)).where(
 )
 ```
 
-**Rules pillar: lift the closure to patient-level sub-concepts.** Pure relational arithmetic, no decisions. Predicates are encoded as sub-concepts -- their *membership* is the predicate -- so downstream rules and the CSP just check `Sub(Parent)` to test the predicate (cheaper and clearer than Boolean indicator properties). The per-axis coverage relations (`Patient.covers_kinase_gene`, `Patient.covers_therapy`, `Patient.covers_ae`) are joined separately, with the therapy/AE coverage requiring participation in at least one qualifying pair so a therapy with no within-window AE doesn't count:
+**Rules pillar: lift the closure to patient-level sub-concepts.** Pure relational arithmetic, no decisions. Predicates are encoded as sub-concepts -- their *membership* is the predicate -- so downstream rules and the CSP just check `Sub(Parent)` to test the predicate (cheaper and clearer than Boolean indicator properties). The qualifying-pair AE-window predicate is lifted into a 3-arity `Patient.qualifying_pair(TherapyEvent, AdverseEventOcc)` relationship and the three downstream rules (eligibility, therapy coverage, AE coverage) all project from it -- changing the qualifying-pair definition (severity matching, treatment duration, multi-event sequencing) is then an edit to one rule rather than three:
 
 ```python
 KinaseMutationCarrier = model.Concept("KinaseMutationCarrier", extends=[Patient])
@@ -204,12 +206,19 @@ model.define(KinaseMutationCarrier(Patient)).where(
     KinaseGene(MutationEvent.gene),
 )
 
-QualifyingPairPatient = model.Concept("QualifyingPairPatient", extends=[Patient])
-model.define(QualifyingPairPatient(Patient)).where(
+Patient.qualifying_pair = model.Relationship(
+    f"{Patient} qualifies on {TherapyEvent:therapy_event} and {AdverseEventOcc:ae_occ}"
+)
+model.define(Patient.qualifying_pair(TherapyEvent, AdverseEventOcc)).where(
     TherapyEvent.patient == Patient,
     AdverseEventOcc.patient == Patient,
     AdverseEventOcc.t_days - TherapyEvent.t_days >= 0,
     AdverseEventOcc.t_days - TherapyEvent.t_days <= MAX_THERAPY_TO_AE_DAYS,
+)
+
+QualifyingPairPatient = model.Concept("QualifyingPairPatient", extends=[Patient])
+model.define(QualifyingPairPatient(Patient)).where(
+    Patient.qualifying_pair(TherapyEvent, AdverseEventOcc),
 )
 
 EligiblePatient = model.Concept("EligiblePatient", extends=[Patient])
@@ -217,9 +226,16 @@ model.define(EligiblePatient(Patient)).where(
     KinaseMutationCarrier(Patient),
     QualifyingPairPatient(Patient),
 )
+
+# Per-axis coverage projects from `qualifying_pair`:
+Patient.covers_therapy = model.Relationship(f"{Patient} covers {Therapy:therapy}")
+model.define(Patient.covers_therapy(Therapy)).where(
+    Patient.qualifying_pair(TherapyEvent, AdverseEventOcc),
+    TherapyEvent.therapy == Therapy,
+)
 ```
 
-**Prescriptive pillar: cohort selection as a CSP.** Decisions target the sub-concept directly (`EligiblePatient.is_in_cohort`, `CoverableTherapy.is_covered`, ...), which creates one binary variable per sub-concept row. Without that scoping, `is_covered` decisions on never-covered Ys would have no upper-bound IC -- the per-pair `where` in the upper-bound IC yields no rows there, the IC isn't asserted, and the variable would float free, letting the solver mark it covered to satisfy the lower bound trivially.
+**Prescriptive pillar: cohort selection as a CSP.** Decisions target the sub-concept directly (`EligiblePatient.is_in_cohort`, `CoverableTherapy.is_covered`, ...), which creates one binary variable per sub-concept row. The `Coverable*` sub-concepts are themselves scoped to *eligible-patient* coverage, not any-patient coverage: a Y covered only by ineligible patients would otherwise sit in `Coverable*` with no upper-bound IC binding (the per-pair `where` body has no eligible-patient row for it), and the solver would mark it covered to satisfy the lower bound trivially. Scoping `Coverable*` to `EligiblePatient.covers_*` closes that gap; scoping `solve_for` to `Coverable*` then ensures every `is_covered` decision has a real upper bound.
 
 ```python
 problem.solve_for(
@@ -291,7 +307,7 @@ All seven ICs are pure relational arithmetic, so `problem.verify()` re-evaluates
 <details>
   <summary>A coverable Y still appears as <code>is_covered = 1</code> with no in-cohort patient covering it</summary>
 
-- This was the central encoding pitfall during development: with a per-pair `where` in the upper-bound IC, rows that no patient covers have *no* IC asserted (the where yields no rows there) and the `is_covered` variable floats free. Targeting the sub-concept directly (`solve_for(CoverableGene.is_covered, ...)`) is the fix -- it removes the unbounded decision entirely by only creating variables for sub-concept rows. If you target the parent property without the sub-concept scoping (e.g. `solve_for(Gene.is_covered, ...)`), the symptom comes back; restore the sub-concept target.
+- Two complementary encoding pitfalls produce this symptom. (1) The upper-bound IC uses a per-pair `where`; rows that no patient covers have no IC asserted (the where yields no rows there) and `is_covered` floats free. The fix is to target the sub-concept directly in `solve_for(CoverableGene.is_covered, ...)` so unbounded decisions never get created -- restoring the sub-concept target if you accidentally drop it (`solve_for(Gene.is_covered, ...)`) brings the symptom back. (2) The sub-concept itself must be scoped to *eligible-patient* coverage: `model.define(CoverableGene(Gene)).where(EligiblePatient.covers_kinase_gene(Gene))`. If you scope to any-patient coverage (`Patient.covers_kinase_gene`), a kinase gene mutated only by patients with no qualifying therapy/AE pair sits in `Coverable*` but has no eligible covering patient in the IC's where body, so its decision floats free again -- swap the sub-concept's where back to `EligiblePatient.covers_*`.
 
 </details>
 

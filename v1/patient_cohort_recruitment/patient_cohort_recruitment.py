@@ -31,14 +31,29 @@ Modeling approach:
   sub-concept of ``Patient`` whose membership is the eligibility
   conjunction; ``CoverableGene`` / ``CoverableTherapy`` /
   ``CoverableAdverseEvent`` are sub-concepts whose membership is "some
-  patient covers this Y". Each ``solve_for`` then targets the
-  sub-concept directly (``EligiblePatient.is_in_cohort``,
+  *eligible* patient covers this Y". Scoping ``Coverable*`` to
+  eligible coverage (rather than any-patient coverage) is structural,
+  not cosmetic: a Y covered only by ineligible patients would
+  otherwise sit in ``Coverable*`` with no upper-bound IC binding (the
+  per-pair ``where`` body has no eligible-patient row for it), and
+  the solver would mark it covered for free. Each ``solve_for`` then
+  targets the sub-concept directly (``EligiblePatient.is_in_cohort``,
   ``CoverableGene.is_covered``, ...), so a binary decision is only
   created for rows the rules established as meaningful -- ineligible
   patients and never-covered Ys never get a decision, and the
   upper-bound ICs cleanly bind on the rows that do. Sub-concepts are
   cheaper, more readable, and avoid the Boolean-property-as-marker
   pattern entirely.
+- Single-sourced qualifying-pair predicate.
+  ``Patient.qualifying_pair`` is a 3-arity relationship over
+  ``(Patient, TherapyEvent, AdverseEventOcc)`` triples where the AE
+  follows the therapy within ``MAX_THERAPY_TO_AE_DAYS`` for the same
+  patient. ``QualifyingPairPatient``, ``Patient.covers_therapy``, and
+  ``Patient.covers_ae`` are then one-line projections from this
+  relation, so the AE-window predicate lives in exactly one place.
+  Refining the qualifying-pair definition (severity matching,
+  treatment duration, multi-event sequencing) is an edit to one rule
+  rather than three.
 - Cohort size: ``sum(EligiblePatient.is_in_cohort) == COHORT_SIZE``.
 - Coverage upper bounds (one IC per coverage axis): per coverable
   kinase gene ``g``, ``g.is_covered`` is bounded above by the number
@@ -92,18 +107,119 @@ MIN_GENES_COVERED = 3
 MIN_THERAPIES_COVERED = 2
 MIN_AES_COVERED = 2
 
-model = Model("patient_cohort_recruitment")
-
-# --------------------------------------------------
-# Define semantic model & load data
-# --------------------------------------------------
-
 DATA_DIR = Path(__file__).parent / "data"
+
+# --------------------------------------------------
+# Load all CSVs upfront so pre-solve invariants can validate the data
+# integrity before any model.define rules are installed.
+# --------------------------------------------------
+
+genes_csv = read_csv(DATA_DIR / "genes.csv")
+isa_csv = read_csv(DATA_DIR / "gene_is_a.csv")
+therapies_csv = read_csv(DATA_DIR / "therapies.csv")
+ae_terms_csv = read_csv(DATA_DIR / "ae_terms.csv")
+patients_csv = read_csv(DATA_DIR / "patients.csv")
+mut_csv = read_csv(DATA_DIR / "mutation_events.csv")
+th_csv = read_csv(DATA_DIR / "therapy_events.csv")
+ae_csv = read_csv(DATA_DIR / "adverse_events.csv")
+
+# --------------------------------------------------
+# Pre-solve invariants
+#
+# Catch the most common silent-failure modes before the solver runs:
+# duplicate keys (would collapse rows), dangling FKs (would silently
+# drop joins), a missing kinase-pathway root (would empty the closure
+# and produce zero eligible patients), and negative timestamps (would
+# break the AE-window predicate). Each helper raises a focused
+# ValueError with the offending rows; replace the bundled CSVs with
+# your own data and these guards become your first-pass data-quality
+# check.
+# --------------------------------------------------
+
+
+def _assert_unique_keys(df, key, source):
+    cols = key if isinstance(key, list) else [key]
+    dupe_rows = df[df.duplicated(subset=cols, keep=False)]
+    if not dupe_rows.empty:
+        duplicates = sorted({tuple(row) for row in dupe_rows[cols].itertuples(index=False)})
+        raise ValueError(
+            f"{source} has duplicate {tuple(cols) if len(cols) > 1 else cols[0]}"
+            f"={duplicates}. Each key must be unique; remove or merge the conflicting rows."
+        )
+
+
+def _assert_root_gene_exists(genes_csv, root_id):
+    if root_id not in set(int(g) for g in genes_csv["id"].tolist()):
+        raise ValueError(
+            f"KINASE_ROOT_GENE_ID={root_id} is not in genes.csv. The pathway "
+            f"closure starts from this gene; supply a valid gene id or pick "
+            f"one from genes.csv."
+        )
+
+
+def _assert_no_dangling_fks(child_df, child_col, parent_df, parent_col, source, parent_source):
+    parent_ids = set(int(v) for v in parent_df[parent_col].unique())
+    dangling = sorted({int(v) for v in child_df[child_col].unique() if int(v) not in parent_ids})
+    if dangling:
+        raise ValueError(
+            f"{source}.{child_col} references unknown {parent_col}={dangling} "
+            f"that does not appear in {parent_source}.{parent_col}. Every "
+            f"foreign key must resolve."
+        )
+
+
+def _assert_nonneg_t_days(df, source):
+    bad = sorted({int(v) for v in df["t_days"].tolist() if int(v) < 0})
+    if bad:
+        raise ValueError(
+            f"{source} has negative t_days={bad}. t_days must be >= 0 (days "
+            f"since the patient's enrolment / index date)."
+        )
+
+
+_assert_unique_keys(genes_csv, "id", "genes.csv")
+_assert_unique_keys(isa_csv, ["child_id", "parent_id"], "gene_is_a.csv")
+_assert_unique_keys(therapies_csv, "id", "therapies.csv")
+_assert_unique_keys(ae_terms_csv, "id", "ae_terms.csv")
+_assert_unique_keys(patients_csv, "id", "patients.csv")
+_assert_unique_keys(mut_csv, "id", "mutation_events.csv")
+_assert_unique_keys(th_csv, "id", "therapy_events.csv")
+_assert_unique_keys(ae_csv, "id", "adverse_events.csv")
+
+_assert_root_gene_exists(genes_csv, KINASE_ROOT_GENE_ID)
+
+_assert_no_dangling_fks(isa_csv, "child_id", genes_csv, "id", "gene_is_a.csv", "genes.csv")
+_assert_no_dangling_fks(isa_csv, "parent_id", genes_csv, "id", "gene_is_a.csv", "genes.csv")
+_assert_no_dangling_fks(
+    mut_csv, "patient_id", patients_csv, "id", "mutation_events.csv", "patients.csv"
+)
+_assert_no_dangling_fks(mut_csv, "gene_id", genes_csv, "id", "mutation_events.csv", "genes.csv")
+_assert_no_dangling_fks(
+    th_csv, "patient_id", patients_csv, "id", "therapy_events.csv", "patients.csv"
+)
+_assert_no_dangling_fks(
+    th_csv, "therapy_id", therapies_csv, "id", "therapy_events.csv", "therapies.csv"
+)
+_assert_no_dangling_fks(
+    ae_csv, "patient_id", patients_csv, "id", "adverse_events.csv", "patients.csv"
+)
+_assert_no_dangling_fks(
+    ae_csv, "ae_term_id", ae_terms_csv, "id", "adverse_events.csv", "ae_terms.csv"
+)
+
+_assert_nonneg_t_days(mut_csv, "mutation_events.csv")
+_assert_nonneg_t_days(th_csv, "therapy_events.csv")
+_assert_nonneg_t_days(ae_csv, "adverse_events.csv")
+
+# --------------------------------------------------
+# Define semantic model
+# --------------------------------------------------
+
+model = Model("patient_cohort_recruitment")
 
 # Concept: gene (an ontology node).
 Gene = model.Concept("Gene", identify_by={"id": Integer})
 Gene.name = model.Property(f"{Gene} has {String:name}")
-genes_csv = read_csv(DATA_DIR / "genes.csv")
 model.define(Gene.new(model.data(genes_csv).to_schema()))
 
 # Concept: gene-ontology `is_a` edge. The CSV stores child -> parent
@@ -114,7 +230,6 @@ model.define(Gene.new(model.data(genes_csv).to_schema()))
 GeneIsA = model.Concept("GeneIsA", identify_by={"child_id": Integer, "parent_id": Integer})
 GeneIsA.parent = model.Property(f"{GeneIsA} has parent {Gene:parent}")
 GeneIsA.child = model.Property(f"{GeneIsA} has child {Gene:child}")
-isa_csv = read_csv(DATA_DIR / "gene_is_a.csv")
 isa_data = model.data(isa_csv)
 model.define(GeneIsA.new(child_id=isa_data.child_id, parent_id=isa_data.parent_id))
 model.define(GeneIsA.parent(Gene)).where(GeneIsA.parent_id == Gene.id)
@@ -123,20 +238,17 @@ model.define(GeneIsA.child(Gene)).where(GeneIsA.child_id == Gene.id)
 # Concept: therapy (drug arm).
 Therapy = model.Concept("Therapy", identify_by={"id": Integer})
 Therapy.name = model.Property(f"{Therapy} has {String:name}")
-therapies_csv = read_csv(DATA_DIR / "therapies.csv")
 model.define(Therapy.new(model.data(therapies_csv).to_schema()))
 
 # Concept: adverse-event term (toxicity dictionary entry).
 AdverseEvent = model.Concept("AdverseEvent", identify_by={"id": Integer})
 AdverseEvent.term = model.Property(f"{AdverseEvent} has {String:term}")
-ae_terms_csv = read_csv(DATA_DIR / "ae_terms.csv")
 model.define(AdverseEvent.new(model.data(ae_terms_csv).to_schema()))
 
 # Concept: patient.
 Patient = model.Concept("Patient", identify_by={"id": Integer})
 Patient.name = model.Property(f"{Patient} has {String:name}")
 Patient.age_years = model.Property(f"{Patient} has {Integer:age_years}")
-patients_csv = read_csv(DATA_DIR / "patients.csv")
 model.define(Patient.new(model.data(patients_csv).to_schema()))
 
 # Concept: mutation event (observed mutation in a patient at a time).
@@ -144,7 +256,6 @@ MutationEvent = model.Concept("MutationEvent", identify_by={"id": Integer})
 MutationEvent.patient = model.Property(f"{MutationEvent} from {Patient:patient}")
 MutationEvent.gene = model.Property(f"{MutationEvent} hits {Gene:gene}")
 MutationEvent.t_days = model.Property(f"{MutationEvent} at {Integer:t_days}")
-mut_csv = read_csv(DATA_DIR / "mutation_events.csv")
 mut_data = model.data(mut_csv)
 model.define(MutationEvent.new(id=mut_data.id, t_days=mut_data.t_days))
 model.define(MutationEvent.patient(Patient)).where(
@@ -161,7 +272,6 @@ TherapyEvent = model.Concept("TherapyEvent", identify_by={"id": Integer})
 TherapyEvent.patient = model.Property(f"{TherapyEvent} from {Patient:patient}")
 TherapyEvent.therapy = model.Property(f"{TherapyEvent} uses {Therapy:therapy}")
 TherapyEvent.t_days = model.Property(f"{TherapyEvent} at {Integer:t_days}")
-th_csv = read_csv(DATA_DIR / "therapy_events.csv")
 th_data = model.data(th_csv)
 model.define(TherapyEvent.new(id=th_data.id, t_days=th_data.t_days))
 model.define(TherapyEvent.patient(Patient)).where(
@@ -178,7 +288,6 @@ AdverseEventOcc = model.Concept("AdverseEventOcc", identify_by={"id": Integer})
 AdverseEventOcc.patient = model.Property(f"{AdverseEventOcc} from {Patient:patient}")
 AdverseEventOcc.term = model.Property(f"{AdverseEventOcc} is {AdverseEvent:term}")
 AdverseEventOcc.t_days = model.Property(f"{AdverseEventOcc} at {Integer:t_days}")
-ae_csv = read_csv(DATA_DIR / "adverse_events.csv")
 ae_data = model.data(ae_csv)
 model.define(AdverseEventOcc.new(id=ae_data.id, t_days=ae_data.t_days))
 model.define(AdverseEventOcc.patient(Patient)).where(
@@ -238,12 +347,28 @@ model.define(KinaseMutationCarrier(Patient)).where(
     KinaseGene(MutationEvent.gene),
 )
 
-QualifyingPairPatient = model.Concept("QualifyingPairPatient", extends=[Patient])
-model.define(QualifyingPairPatient(Patient)).where(
+# `Patient.qualifying_pair` is a 3-arity relationship over
+# `(Patient, TherapyEvent, AdverseEventOcc)` triples where the AE
+# follows the therapy within `MAX_THERAPY_TO_AE_DAYS` for the same
+# patient. Lifting the AE-window predicate as a first-class relation
+# single-sources it: `QualifyingPairPatient` and the per-axis
+# coverage relations below are all one-line projections from
+# `qualifying_pair`. If the qualifying-pair definition needs
+# refinement (severity matching, treatment duration, multi-event
+# sequencing), the change lives in this rule only.
+Patient.qualifying_pair = model.Relationship(
+    f"{Patient} qualifies on {TherapyEvent:therapy_event} and {AdverseEventOcc:ae_occ}"
+)
+model.define(Patient.qualifying_pair(TherapyEvent, AdverseEventOcc)).where(
     TherapyEvent.patient == Patient,
     AdverseEventOcc.patient == Patient,
     AdverseEventOcc.t_days - TherapyEvent.t_days >= 0,
     AdverseEventOcc.t_days - TherapyEvent.t_days <= MAX_THERAPY_TO_AE_DAYS,
+)
+
+QualifyingPairPatient = model.Concept("QualifyingPairPatient", extends=[Patient])
+model.define(QualifyingPairPatient(Patient)).where(
+    Patient.qualifying_pair(TherapyEvent, AdverseEventOcc),
 )
 
 EligiblePatient = model.Concept("EligiblePatient", extends=[Patient])
@@ -252,11 +377,10 @@ model.define(EligiblePatient(Patient)).where(
     QualifyingPairPatient(Patient),
 )
 
-# Per-axis coverage relationships. `Patient.covers_kinase_gene(Gene)`
-# holds for every (patient, kinase-pathway gene) pair where the
-# patient has a mutation in that gene. The CSP aggregates
-# `Patient.is_in_cohort` over this relation grouped by Gene to derive
-# how many in-cohort patients cover each gene.
+# Per-axis coverage relationships. Gene coverage is independent of
+# the AE window -- a patient covers a kinase gene iff they have a
+# mutation in it -- so `Patient.covers_kinase_gene(Gene)` is a direct
+# join over MutationEvent.
 Patient.covers_kinase_gene = model.Relationship(f"{Patient} covers kinase {Gene:gene}")
 model.define(Patient.covers_kinase_gene(Gene)).where(
     MutationEvent.patient == Patient,
@@ -264,44 +388,38 @@ model.define(Patient.covers_kinase_gene(Gene)).where(
     KinaseGene(Gene),
 )
 
-# `Patient.covers_therapy(Therapy)` and `Patient.covers_ae(AdverseEvent)`
-# are restricted to (patient, therapy / AE) pairs that *participate in
-# at least one qualifying pair*. A therapy that the patient received
-# but whose AE-window neighbour is missing does not count -- only
-# therapies and AEs the cohort can demonstrate a qualifying response
-# pattern for.
+# `Patient.covers_therapy` / `Patient.covers_ae` project from
+# `qualifying_pair` -- a therapy with no within-window AE doesn't
+# count, and vice versa. Only therapies and AEs the cohort can
+# demonstrate a qualifying response pattern for are counted.
 Patient.covers_therapy = model.Relationship(f"{Patient} covers {Therapy:therapy}")
 model.define(Patient.covers_therapy(Therapy)).where(
-    TherapyEvent.patient == Patient,
+    Patient.qualifying_pair(TherapyEvent, AdverseEventOcc),
     TherapyEvent.therapy == Therapy,
-    AdverseEventOcc.patient == Patient,
-    AdverseEventOcc.t_days - TherapyEvent.t_days >= 0,
-    AdverseEventOcc.t_days - TherapyEvent.t_days <= MAX_THERAPY_TO_AE_DAYS,
 )
 
 Patient.covers_ae = model.Relationship(f"{Patient} covers {AdverseEvent:ae}")
 model.define(Patient.covers_ae(AdverseEvent)).where(
-    AdverseEventOcc.patient == Patient,
+    Patient.qualifying_pair(TherapyEvent, AdverseEventOcc),
     AdverseEventOcc.term == AdverseEvent,
-    TherapyEvent.patient == Patient,
-    AdverseEventOcc.t_days - TherapyEvent.t_days >= 0,
-    AdverseEventOcc.t_days - TherapyEvent.t_days <= MAX_THERAPY_TO_AE_DAYS,
 )
 
 # Coverable sub-concepts: a Gene / Therapy / AdverseEvent is
-# `Coverable*` if *some* patient covers it. Without these, the
-# per-axis `is_covered` decisions on rows with no covering patients
-# have no upper-bound IC (the per-pair `where` yields no rows there)
-# and float free, letting the solver mark them covered to satisfy the
-# lower bound trivially. Scoping `solve_for` to the coverable
-# sub-concept skips those rows so the lower-bound count only includes
-# Ys with a real upper bound.
+# `Coverable*` if *some eligible patient* covers it. The eligible
+# scoping is structural, not cosmetic: a Y covered only by ineligible
+# patients (e.g. a kinase gene mutated only by patients with no
+# qualifying therapy/AE pair) would otherwise sit in `Coverable*`
+# with no upper-bound IC binding -- the per-pair `where` body has no
+# eligible-patient row for it -- and the solver would mark it
+# covered for free. Scoping `Coverable*` to eligible coverage closes
+# this gap, and scoping `solve_for` to `Coverable*` then ensures
+# every `is_covered` decision has a real upper bound.
 CoverableGene = model.Concept("CoverableGene", extends=[Gene])
-model.define(CoverableGene(Gene)).where(Patient.covers_kinase_gene(Gene))
+model.define(CoverableGene(Gene)).where(EligiblePatient.covers_kinase_gene(Gene))
 CoverableTherapy = model.Concept("CoverableTherapy", extends=[Therapy])
-model.define(CoverableTherapy(Therapy)).where(Patient.covers_therapy(Therapy))
+model.define(CoverableTherapy(Therapy)).where(EligiblePatient.covers_therapy(Therapy))
 CoverableAdverseEvent = model.Concept("CoverableAdverseEvent", extends=[AdverseEvent])
-model.define(CoverableAdverseEvent(AdverseEvent)).where(Patient.covers_ae(AdverseEvent))
+model.define(CoverableAdverseEvent(AdverseEvent)).where(EligiblePatient.covers_ae(AdverseEvent))
 
 # --------------------------------------------------
 # Prescriptive pillar: cohort-selection CSP.
