@@ -126,10 +126,10 @@ users_csv = read_csv(DATA_DIR / "users.csv")
 books_csv = read_csv(DATA_DIR / "books.csv")
 authors_csv = read_csv(DATA_DIR / "authors.csv")
 subjects_csv = read_csv(DATA_DIR / "subjects.csv")
-read_csv_data = read_csv(DATA_DIR / "read.csv")
-ba_csv = read_csv(DATA_DIR / "book_author.csv")
-bs_csv = read_csv(DATA_DIR / "book_subject.csv")
-bsim_csv = read_csv(DATA_DIR / "book_similar.csv")
+reads_csv = read_csv(DATA_DIR / "read.csv")
+book_authors_csv = read_csv(DATA_DIR / "book_author.csv")
+book_subjects_csv = read_csv(DATA_DIR / "book_subject.csv")
+book_similarities_csv = read_csv(DATA_DIR / "book_similar.csv")
 
 # Slot positions 1..K. The Slot concept exists so the slot-uniqueness
 # IC counts distinct slot Concept values (the social_golfer idiom)
@@ -210,21 +210,21 @@ for _df, _key, _src in [
 
 # Similarity edges must be unique on (src, dst) -- duplicate edges
 # would inflate triangle counts and skew hero-pin eligibility.
-_assert_unique_keys(bsim_csv, ["src_book_id", "dst_book_id"], "book_similar.csv")
+_assert_unique_keys(book_similarities_csv, ["src_book_id", "dst_book_id"], "book_similar.csv")
 
 # Foreign-key edges in the schema. Each row says "<source>.<col>
 # references <parent_source>.<parent_col>". Update this table when you
 # add a new edge table or rewire a FK; the loop below validates every
 # edge in one place.
 _FK_EDGES = [
-    (read_csv_data, "user_id", users_csv, "id", "read.csv", "users.csv"),
-    (read_csv_data, "book_id", books_csv, "id", "read.csv", "books.csv"),
-    (ba_csv, "book_id", books_csv, "id", "book_author.csv", "books.csv"),
-    (ba_csv, "author_id", authors_csv, "id", "book_author.csv", "authors.csv"),
-    (bs_csv, "book_id", books_csv, "id", "book_subject.csv", "books.csv"),
-    (bs_csv, "subject_id", subjects_csv, "id", "book_subject.csv", "subjects.csv"),
-    (bsim_csv, "src_book_id", books_csv, "id", "book_similar.csv", "books.csv"),
-    (bsim_csv, "dst_book_id", books_csv, "id", "book_similar.csv", "books.csv"),
+    (reads_csv, "user_id", users_csv, "id", "read.csv", "users.csv"),
+    (reads_csv, "book_id", books_csv, "id", "read.csv", "books.csv"),
+    (book_authors_csv, "book_id", books_csv, "id", "book_author.csv", "books.csv"),
+    (book_authors_csv, "author_id", authors_csv, "id", "book_author.csv", "authors.csv"),
+    (book_subjects_csv, "book_id", books_csv, "id", "book_subject.csv", "books.csv"),
+    (book_subjects_csv, "subject_id", subjects_csv, "id", "book_subject.csv", "subjects.csv"),
+    (book_similarities_csv, "src_book_id", books_csv, "id", "book_similar.csv", "books.csv"),
+    (book_similarities_csv, "dst_book_id", books_csv, "id", "book_similar.csv", "books.csv"),
 ]
 for _cdf, _ccol, _pdf, _pcol, _csrc, _psrc in _FK_EDGES:
     _assert_no_dangling_fks(_cdf, _ccol, _pdf, _pcol, _csrc, _psrc)
@@ -285,7 +285,7 @@ User.read = model.Relationship(
     f"{User:user} read {Book:book} with rating {Integer:rating}",
     short_name="read",
 )
-read_data = model.data(read_csv_data)
+read_data = model.data(reads_csv)
 rating_ref = Integer.ref()
 model.define(User.read(User, Book, rating_ref)).where(
     User.id == read_data.user_id,
@@ -297,7 +297,7 @@ Book.written_by = model.Relationship(
     f"{Book:book} written by {Author:author}",
     short_name="written_by",
 )
-ba_data = model.data(ba_csv)
+ba_data = model.data(book_authors_csv)
 model.define(Book.written_by(Book, Author)).where(
     Book.id == ba_data.book_id,
     Author.id == ba_data.author_id,
@@ -307,7 +307,7 @@ Book.about = model.Relationship(
     f"{Book:book} about subject {Subject:subject}",
     short_name="about",
 )
-bs_data = model.data(bs_csv)
+bs_data = model.data(book_subjects_csv)
 model.define(Book.about(Book, Subject)).where(
     Book.id == bs_data.book_id,
     Subject.id == bs_data.subject_id,
@@ -317,7 +317,7 @@ Book.similar_to = model.Relationship(
     f"{Book:book} similar to {Book:other}",
     short_name="similar_to",
 )
-bsim_data = model.data(bsim_csv)
+bsim_data = model.data(book_similarities_csv)
 src_b, dst_b = Book.ref(), Book.ref()
 model.define(Book.similar_to(src_b, dst_b)).where(
     src_b.id == bsim_data.src_book_id,
@@ -705,7 +705,7 @@ candidate_df = model.select(
 ).to_df()
 candidate_df["path_count_total"] = candidate_df["path_count_total"].astype(int)
 unread = candidate_df.merge(
-    read_csv_data[["user_id", "book_id"]],
+    reads_csv[["user_id", "book_id"]],
     on=["user_id", "book_id"],
     how="left",
     indicator=True,
@@ -728,12 +728,12 @@ unread_with_book = unread.merge(
     how="left",
 ).merge(triangle_df, on="book_id", how="left")
 unread_authors = unread.merge(
-    ba_csv[["book_id", "author_id"]],
+    book_authors_csv[["book_id", "author_id"]],
     on="book_id",
     how="left",
 )
 unread_subjects = unread.merge(
-    bs_csv[["book_id", "subject_id"]],
+    book_subjects_csv[["book_id", "subject_id"]],
     on="book_id",
     how="left",
 )

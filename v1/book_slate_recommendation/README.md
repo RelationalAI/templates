@@ -1,6 +1,6 @@
 ---
 title: "Book Slate Recommendation"
-description: "Graph + Prescriptive (CSP) recsys template that picks K books per reader AND orders them by slate position. Bounded knowledge-graph walks via the paths library generate the candidate set and the explanation evidence; per-book triangle counts on the similarity graph pin the hero slot (slot 1) to a structurally-central pick; MiniZinc solves the pure-integer slot-assignment CSP under a position-weighted engagement-decay objective."
+description: "Compose K-item slates per reader under diversity, freshness, and explainability rules: KG paths + Graph triangles + MiniZinc CSP."
 featured: false
 private: true
 experience_level: advanced
@@ -149,7 +149,7 @@ under topic / source / recency caps.
    ```
 
 6. Expected output. The bundled `data/` directory carries a
-   deterministic Open Library (CC0) slice (~60 books, ~58 authors,
+   deterministic Open Library (CC0) slice (~60 books, ~52 authors,
    12 subjects); synthetic users and read events are layered on
    top, and `similar_to` edges are derived from shared-author /
    shared-subject overlap. The runner prints the formulation, the
@@ -180,18 +180,8 @@ under topic / source / recency caps.
    ...
    ```
 
-   To pull a larger Open Library slice for a more realistic instance:
-   ```bash
-   python data/fetch_open_library_slice.py --size md   # ~250 books
-   python data/fetch_open_library_slice.py --size lg   # ~600 books
-   ```
-   The fetch script caches API responses under `data/_cache/`, so
-   reruns are reproducible and offline-friendly after the first
-   pull. After bumping size, retune `EXPLANATION_FLOOR` and
-   `WEAK_EXPLANATION_THRESHOLD` to the new path-count distribution,
-   then re-run `python book_slate_recommendation.py`. The bundled
-   `sm` slice has `path_count_total` in the 2-12 range; larger
-   slices push that higher.
+   To pull a larger Open Library slice, see "Scaling the bundled
+   data" below.
 
 ## Template structure
 
@@ -420,10 +410,16 @@ Six common variations:
 
 ### Scaling the bundled data
 
-Re-run `python data/fetch_open_library_slice.py --size md|lg` to
-pull a larger CC0 slice (~250 / ~600 books). The fetch script is
-idempotent and caches API responses under `data/_cache/`. Two
-things to retune at larger sizes: (1) the `EXPLANATION_FLOOR` /
+To pull a larger Open Library slice for a more realistic instance:
+```bash
+python data/fetch_open_library_slice.py --size md   # ~250 books
+python data/fetch_open_library_slice.py --size lg   # ~600 books
+```
+The fetch script is idempotent and caches API responses under
+`data/_cache/`, so reruns are reproducible and offline-friendly
+after the first pull. After bumping size, re-run
+`python book_slate_recommendation.py`. Two things to retune at
+larger sizes: (1) the `EXPLANATION_FLOOR` /
 `WEAK_EXPLANATION_THRESHOLD` constants in the runner are tuned
 for `sm`'s `path_count_total` distribution (range 2-12); larger
 slices produce much higher walk counts and these thresholds

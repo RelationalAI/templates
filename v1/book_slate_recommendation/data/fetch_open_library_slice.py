@@ -188,6 +188,117 @@ def _slugify(name: str) -> str:
     return re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
 
 
+# Publisher / imprint tokens that surface in Open Library's author table
+# because OL conflates "responsible party" with "person". A name whose
+# (case-insensitive) tokens overlap with this set is treated as a
+# publisher / corporate entity and dropped from the authors slice. These
+# are word-boundary tokens, not substrings -- so "Press" matches the
+# publisher "Penguin Press" but does not match the author surname
+# "Pressfield".
+PUBLISHER_TOKENS = frozenset(
+    {
+        "press",
+        "publishing",
+        "publishers",
+        "publications",
+        "books",
+        "verlag",
+        "editions",
+        "éditions",
+        "edition",
+        "édition",
+        "booking",
+        "library",
+        "society",
+        "company",
+        "ltd",
+        "inc",
+        "limited",
+    }
+)
+
+# Curated denylist for real-looking names that Open Library returns as
+# "authors" but which are catalog noise (cataloguing artefacts, single-
+# word non-person entries, or scraped responsibility statements). Kept
+# small and explicit so the slice stays reproducible; broaden via
+# heuristic where possible before adding here.
+AUTHOR_DENYLIST = frozenset(
+    {
+        "Bible",
+        "Aurora Irvine",
+        "Alex Goody",
+    }
+)
+
+
+def _is_publisher_or_noise_author(name: str) -> bool:
+    """Return True if ``name`` looks like a publisher / imprint / noise
+    rather than an authored-by-a-person record.
+
+    Filter cascade:
+    - drop names <3 characters (e.g. "TC")
+    - drop names whose tokens overlap PUBLISHER_TOKENS
+      (e.g. "Les éditions du Rey", "Penguin Books", "Booking")
+    - drop names in AUTHOR_DENYLIST (curated residual noise)
+    """
+    n = (name or "").strip()
+    if len(n) < 3:
+        return True
+    if n in AUTHOR_DENYLIST:
+        return True
+    # Token-level publisher match (case-insensitive). Splitting on
+    # non-letters keeps multi-word names intact while letting "éditions"
+    # etc. catch on word boundaries.
+    tokens = {t.lower() for t in re.split(r"[^A-Za-zÀ-ÿ]+", n) if t}
+    if tokens & PUBLISHER_TOKENS:
+        return True
+    return False
+
+
+# Dewey Decimal codes leak in via Open Library's subjects field
+# (e.g. "823/.8" for English fiction). They aren't human-readable
+# subjects so they're stripped from the subjects slice.
+_DEWEY_RE = re.compile(r"^\d{1,3}(\.\d+)?(/[\d.]+)?$")
+
+
+def _normalize_subject(name: str) -> str | None:
+    """Canonicalize a subject string for dedup; return None to drop.
+
+    - lowercases + strips
+    - drops empty strings and Dewey Decimal codes ("823/.8", "813.54")
+    - collapses near-duplicate variants of "adventure" by stripping
+      trailing 'fiction' / 'stories' / ', fiction' clauses, so
+      ``adventure``, ``adventure stories``, ``adventure and adventurers``,
+      and ``adventure and adventurers, fiction`` all canonicalize to
+      ``adventure``. (Choice: canonicalize rather than drop -- the
+      runner's subject-diversity dial cares about the *concept* count,
+      not the variant count, and OL returns the same idea under several
+      labels.)
+    """
+    s = (name or "").strip().lower()
+    if not s:
+        return None
+    if _DEWEY_RE.match(s):
+        return None
+    # Strip trailing ", fiction" / " fiction" / " stories" suffixes so
+    # 'adventure stories' and 'adventure, fiction' fold to 'adventure'.
+    # Iterated because OL chains multiple suffixes.
+    prev = None
+    while prev != s:
+        prev = s
+        s = re.sub(r",\s*fiction$", "", s)
+        s = re.sub(r"\s+fiction$", "", s)
+        s = re.sub(r"\s+stories$", "", s)
+        s = s.strip().rstrip(",").strip()
+    # Collapse "X and X-ers" / "X and X-er" patterns
+    # ("adventure and adventurers" -> "adventure"). Conservative:
+    # only collapse when the second clause shares the first word.
+    m = re.match(r"^(\w+)\s+and\s+(\w+)$", s)
+    if m and m.group(2).startswith(m.group(1)):
+        s = m.group(1)
+    return s or None
+
+
 def build_slice(
     subjects: list[str],
     works_per_subject: int,
@@ -267,10 +378,10 @@ def build_slice(
         for s in subj_list:
             if not isinstance(s, str):
                 continue
-            s2 = s.strip()
-            if not s2:
+            canon = _normalize_subject(s)
+            if canon is None:
                 continue
-            norm.append(s2.lower())
+            norm.append(canon)
         work_subjects[key] = sorted(set(norm))[:8]
 
         year = record.get("first_publish_date") or raw_works.get(key, {}).get(
@@ -321,6 +432,37 @@ def build_slice(
             f"  WARNING: {n_author_resolve_failures} author name(s) "
             "fell back to the Open Library key (HTTP fetch failed)."
         )
+
+    # Filter publisher / imprint / noise "authors" out of the slice.
+    # OL conflates responsibility-statement entities (Bible, Booking,
+    # Les éditions du Rey, ...) with authored-by-a-person records;
+    # without this filter they leak into authors.csv and the
+    # author-uniqueness IC treats them as legitimate authors. Done
+    # *after* name resolution so the heuristic has the human-readable
+    # name to inspect.
+    filtered_author_keys = {
+        akey for akey, name in authors_by_key.items() if _is_publisher_or_noise_author(name)
+    }
+    if filtered_author_keys:
+        # Strip filtered authors from each work's author list.
+        for k in list(work_authors.keys()):
+            work_authors[k] = [a for a in work_authors[k] if a not in filtered_author_keys]
+        # Drop works whose entire author list was filtered (no
+        # remaining attributable author) -- the runner's author
+        # joins would silently exempt them otherwise.
+        keys_after_filter = [k for k in work_keys if work_authors[k]]
+        n_dropped_filter = len(work_keys) - len(keys_after_filter)
+        print(
+            f"  Filtered {len(filtered_author_keys)} publisher/noise "
+            f"author(s); dropped {n_dropped_filter} work(s) whose sole "
+            "author was filtered."
+        )
+        work_keys = keys_after_filter
+        work_id_by_key = {key: i + 1 for i, key in enumerate(work_keys)}
+        # Drop the filtered author entries entirely so they cannot
+        # leak via any later lookup.
+        for akey in filtered_author_keys:
+            authors_by_key.pop(akey, None)
 
     n_year_synthesized = 0
     for key in work_keys:

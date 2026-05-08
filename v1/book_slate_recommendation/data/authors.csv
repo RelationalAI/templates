@@ -2,58 +2,52 @@ id,name
 1,Eva Kumar
 2,Samuel Luke Fildes
 3,Evelynn D. Smith
-4,Les éditions du Rey
-5,TC
-6,Charlotte Brontë
-7,John Cuming Walters
-8,Emma Orczy
-9,H. G. Wells
-10,Onésimo Colavidas
-11,Aurora Irvine
-12,Chavdar Georgiev
-13,Arthur Conan Doyle
-14,Alexandre Dumas
-15,Thomas Hardy
-16,Daniel Defoe
-17,Mark Twain
-18,Όμηρος
-19,Gilbert Keith Chesterton
-20,John Buchan
-21,Henry David Thoreau
-22,Washington Irving
-23,Aldous Huxley
-24,Oscar Wilde
-25,Henry James
-26,Jane Austen
-27,Lewis Carroll
-28,Фёдор Михайлович Достоевский
-29,Niccolò Machiavelli
-30,L. Frank Baum
-31,Jonathan Swift
-32,Stephen Crane
-33,Emily Brontë
-34,Charles Dickens
-35,Charles Bernard Derosne
-36,Mary Shelley
-37,Robert Louis Stevenson
-38,Лев Толстой
-39,Lionel Giles
-40,F. Scott Fitzgerald
-41,Bible
-42,Agatha Christie
-43,Stephen F. Kaufman
-44,Dashiell Hammett
-45,Dante Alighieri
-46,孙武 (Sun Tzu)
-47,Bram Stoker
-48,Antoine de Saint-Exupéry
-49,Voltaire
-50,Alex Goody
-51,Charlotte Perkins Gilman
-52,J. J. Grandville
-53,Petrus Borel
-54,Sheridan Le Fanu
-55,N. C. Wyeth
-56,Miguel de Cervantes Saavedra
-57,William Shakespeare
-58,Booking
+4,Charlotte Brontë
+5,John Cuming Walters
+6,Emma Orczy
+7,H. G. Wells
+8,Onésimo Colavidas
+9,Chavdar Georgiev
+10,Arthur Conan Doyle
+11,Alexandre Dumas
+12,Thomas Hardy
+13,Daniel Defoe
+14,Mark Twain
+15,Όμηρος
+16,Gilbert Keith Chesterton
+17,John Buchan
+18,Henry David Thoreau
+19,Washington Irving
+20,Aldous Huxley
+21,Oscar Wilde
+22,Henry James
+23,Jane Austen
+24,Lewis Carroll
+25,Фёдор Михайлович Достоевский
+26,Niccolò Machiavelli
+27,L. Frank Baum
+28,Jonathan Swift
+29,Stephen Crane
+30,Emily Brontë
+31,Charles Dickens
+32,Charles Bernard Derosne
+33,Mary Shelley
+34,Robert Louis Stevenson
+35,Лев Толстой
+36,Lionel Giles
+37,F. Scott Fitzgerald
+38,Agatha Christie
+39,Stephen F. Kaufman
+40,Dashiell Hammett
+41,Dante Alighieri
+42,孙武 (Sun Tzu)
+43,Bram Stoker
+44,Antoine de Saint-Exupéry
+45,Voltaire
+46,Charlotte Perkins Gilman
+47,J. J. Grandville
+48,Petrus Borel
+49,Sheridan Le Fanu
+50,N. C. Wyeth
+51,Miguel de Cervantes Saavedra
+52,William Shakespeare
