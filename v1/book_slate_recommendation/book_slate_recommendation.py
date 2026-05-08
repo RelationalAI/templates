@@ -1,14 +1,15 @@
-"""Book slate recommendation (Graph + Paths + Prescriptive MIP) template.
+"""Book slate recommendation (Graph + Prescriptive MIP) template.
 
-Three-pillar pipeline that picks K books per reader under business
+Multi-reasoner pipeline that picks K books per reader under business
 rules, blending a structural-popularity prior, bounded-walk path
 evidence, and per-typed shared-entity joins into a personalized
 utility:
 
-- Graph: PageRank over a book-similarity graph (`Book.similar_to`)
-  produces each candidate's `pagerank_score`.
-- Paths: bounded `Item.connected_to.repeat(1, 2).all_paths()` walks
-  enumerate `User -> read_Book` (length 1; pruned downstream by the
+- Graph (PageRank): PageRank over a book-similarity graph
+  (`Book.similar_to`) produces each candidate's `pagerank_score`.
+- Graph (bounded KG walks): bounded
+  `Item.connected_to.repeat(1, 2).all_paths()` walks enumerate
+  `User -> read_Book` (length 1; pruned downstream by the
   already-read exclusion) and `User -> read_Book -> similar_Book`
   (length 2). The per-(user, candidate) typed counts
   (`path_count_via_author`, `_via_subject`, `_via_kg_walk`) feed both
@@ -340,7 +341,7 @@ model.define(b_pr.pagerank_score(score_pr)).where(
 )
 
 # --------------------------------------------------
-# Pillar 2: Paths -- bounded similarity walk
+# Pillar 2: Graph -- bounded KG walks
 # --------------------------------------------------
 
 # Walk the unified ``Item.connected_to`` edge from each User up to

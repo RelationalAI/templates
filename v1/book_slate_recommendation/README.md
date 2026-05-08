@@ -75,7 +75,7 @@ under topic / source / recency caps.
 ## What's included
 
 - `book_slate_recommendation.py` -- main script with the full
-  Graph + Paths + Prescriptive pipeline
+  Graph + Prescriptive pipeline
 - `data/fetch_open_library_slice.py` -- Open Library (CC0) slice
   fetcher with caching under `data/_cache/`; supports
   `--size sm|md|lg`
@@ -227,7 +227,7 @@ the fetch script.
    from `Book.similar_to`; `pagerank()` returns the per-book
    structural importance, stored as `Book.pagerank_score` (Float).
 
-2. **Paths: bounded similarity walks + typed evidence joins.**
+2. **Graph: bounded KG walks + typed evidence joins.**
    The path walker traverses `Item.connected_to` (the symmetric
    union of `read | written_by | about | similar_to`) anchored at
    each `User` up to `MAX_HOPS = 2` hops. With a Book endpoint at
