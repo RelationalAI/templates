@@ -99,6 +99,13 @@ The same pattern applies to other knowledge-graph cohort / set-cover problems wh
 
 6. Expected output (the bundled data has eight eligible patients and several feasible cohorts that hit the coverage floors -- the exact choice may vary across solver versions):
    ```text
+   Solve result:
+   • status: OPTIMAL
+   • objective: 0
+   • solve time: 0.10s
+   • num_points: 1
+   • solver: MiniZinc_unknown
+
    Kinase-pathway gene closure (reachable from KINASE_ROOT_GENE_ID):
      gene_id              gene_name
            1      KinasePathwayRoot
@@ -240,10 +247,10 @@ All seven ICs are pure relational arithmetic, so `problem.verify()` re-evaluates
 
 - **Use your own data** by replacing the eight CSV files with your gene ontology and patient knowledge graph. The constraint structure does not change. If your ontology already stores `is_a` parent -> child, drop the `parent` / `child` flip in the `Graph` constructor. If you don't have ontology data, define `KinaseGene` membership directly on the genes you care about and skip the Graph step.
 - **Change the cohort target** by adjusting `COHORT_SIZE` and the three `MIN_*_COVERED` floors at the top. Tightening any one of them shrinks the feasible region; setting `MIN_GENES_COVERED = COHORT_SIZE` forces every patient in the cohort to cover a distinct gene (rules out two patients with identical mutation patterns).
-- **Move from feasibility to optimisation.** This template is a satisfaction model -- any cohort that hits the floors is correct. To rank, swap `problem.solve(...)` for `problem.maximize(sum(Gene.is_covered) + sum(Therapy.is_covered) + sum(AdverseEvent.is_covered))` to find the cohort with the broadest joint span, or `problem.minimize(sum(Patient.is_in_cohort * Patient.age_years))` for a younger cohort. MiniZinc / Chuffed handles both.
+- **Move from feasibility to optimisation.** This template is a satisfaction model -- any cohort that hits the floors is correct. To rank, swap `problem.solve(...)` for `problem.maximize(sum(CoverableGene.is_covered) + sum(CoverableTherapy.is_covered) + sum(CoverableAdverseEvent.is_covered))` to find the cohort with the broadest joint span, or `problem.minimize(sum(EligiblePatient.is_in_cohort * EligiblePatient.age_years))` for a younger cohort. MiniZinc / Chuffed handles both. (Aggregations over the decision must reference the sub-concept the decision was scoped to -- mixing parent and sub-concept references in a single aggregate triggers a TypeError.)
 - **Tighten the qualifying window** by editing `MAX_THERAPY_TO_AE_DAYS`. The 90-day window is a common attribution choice for treatment-emergent AEs in oncology trials; some indications use 28 days for acute toxicity, others 180 days for late-onset events.
 - **Add patient-level eligibility rules** -- minimum age, treatment-naive status, organ-function thresholds -- by adding more conjuncts to the `EligiblePatient` definition (or by introducing further `extends=[Patient]` sub-concepts). Each extra rule narrows the eligible set; the CSP automatically drops decisions for newly-ineligible patients.
-- **Add cohort-level fairness rules.** A balanced-cohort study might require a minimum count from each of two demographic strata. Add a stratum concept (`Patient.stratum`) and an IC `sum(Patient.is_in_cohort).per(Patient.stratum) >= MIN_PER_STRATUM` to enforce minimum representation per stratum.
+- **Add cohort-level fairness rules.** A balanced-cohort study might require a minimum count from each of two demographic strata. Add a stratum property (`Patient.stratum`) and an IC `sum(EligiblePatient.is_in_cohort).per(EligiblePatient.stratum) >= MIN_PER_STRATUM` to enforce minimum representation per stratum. The decision-side aggregate must key on the sub-concept (`EligiblePatient`), not the parent (`Patient`).
 - **Anchor on a different ontology root** by changing `KINASE_ROOT_GENE_ID`. Multi-pathway studies can run several queries with different roots and union the results.
 
 ## Learn more
@@ -266,7 +273,7 @@ All seven ICs are pure relational arithmetic, so `problem.verify()` re-evaluates
   <summary>Solver returns INFEASIBLE</summary>
 
 - The data may not contain a feasible cohort under the current floors. Loosen one constraint at a time -- drop `MIN_GENES_COVERED`, drop `MIN_THERAPIES_COVERED`, lower `COHORT_SIZE` -- to confirm whether the data or a specific floor is the bottleneck.
-- The kinase-pathway closure may be empty: if `KINASE_ROOT_GENE_ID` doesn't appear in the gene table, `KinaseGene` is empty and no patient can be eligible. Print the closure (`select KinaseGene.id`) before the solve to confirm.
+- The kinase-pathway closure may be empty: if `KINASE_ROOT_GENE_ID` doesn't appear in the gene table, `KinaseGene` is empty and no patient can be eligible. Print the closure (`model.select(KinaseGene.id).inspect()`) before the solve to confirm.
 - The eligible-patient set may be smaller than `COHORT_SIZE`. Print `EligiblePatient.id` before the solve; if fewer than `COHORT_SIZE` patients are eligible, lower the floor or relax the qualifying-pair window.
 - Coverage floors may be unsatisfiable in principle: if the eligible patients only cover two distinct therapies, `MIN_THERAPIES_COVERED >= 3` is infeasible. Inspect the `Patient.covers_therapy` / `Patient.covers_kinase_gene` / `Patient.covers_ae` relations to see what's actually reachable.
 
@@ -277,7 +284,7 @@ All seven ICs are pure relational arithmetic, so `problem.verify()` re-evaluates
 
 - This is constraint satisfaction, not optimisation. Any cohort that hits the floors is a correct answer; the solver is free to return different ones across runs.
 - To enumerate cohorts (e.g., for clinical-team review), pass `solution_limit=N` to `problem.solve(...)` and iterate over `problem.num_points()` solutions.
-- To pin a single answer, switch to optimisation -- e.g. `problem.maximize(sum(Gene.is_covered) + sum(Therapy.is_covered) + sum(AdverseEvent.is_covered))` returns the cohort with the broadest joint span.
+- To pin a single answer, switch to optimisation -- e.g. `problem.maximize(sum(CoverableGene.is_covered) + sum(CoverableTherapy.is_covered) + sum(CoverableAdverseEvent.is_covered))` returns the cohort with the broadest joint span.
 
 </details>
 

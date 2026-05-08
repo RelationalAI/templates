@@ -98,12 +98,12 @@ model = Model("patient_cohort_recruitment")
 # Define semantic model & load data
 # --------------------------------------------------
 
-data_dir = Path(__file__).parent / "data"
+DATA_DIR = Path(__file__).parent / "data"
 
 # Concept: gene (an ontology node).
 Gene = model.Concept("Gene", identify_by={"id": Integer})
 Gene.name = model.Property(f"{Gene} has {String:name}")
-genes_csv = read_csv(data_dir / "genes.csv")
+genes_csv = read_csv(DATA_DIR / "genes.csv")
 model.define(Gene.new(model.data(genes_csv).to_schema()))
 
 # Concept: gene-ontology `is_a` edge. The CSV stores child -> parent
@@ -114,7 +114,7 @@ model.define(Gene.new(model.data(genes_csv).to_schema()))
 GeneIsA = model.Concept("GeneIsA", identify_by={"child_id": Integer, "parent_id": Integer})
 GeneIsA.parent = model.Property(f"{GeneIsA} has parent {Gene:parent}")
 GeneIsA.child = model.Property(f"{GeneIsA} has child {Gene:child}")
-isa_csv = read_csv(data_dir / "gene_is_a.csv")
+isa_csv = read_csv(DATA_DIR / "gene_is_a.csv")
 isa_data = model.data(isa_csv)
 model.define(GeneIsA.new(child_id=isa_data.child_id, parent_id=isa_data.parent_id))
 model.define(GeneIsA.parent(Gene)).where(GeneIsA.parent_id == Gene.id)
@@ -123,20 +123,20 @@ model.define(GeneIsA.child(Gene)).where(GeneIsA.child_id == Gene.id)
 # Concept: therapy (drug arm).
 Therapy = model.Concept("Therapy", identify_by={"id": Integer})
 Therapy.name = model.Property(f"{Therapy} has {String:name}")
-therapies_csv = read_csv(data_dir / "therapies.csv")
+therapies_csv = read_csv(DATA_DIR / "therapies.csv")
 model.define(Therapy.new(model.data(therapies_csv).to_schema()))
 
 # Concept: adverse-event term (toxicity dictionary entry).
 AdverseEvent = model.Concept("AdverseEvent", identify_by={"id": Integer})
 AdverseEvent.term = model.Property(f"{AdverseEvent} has {String:term}")
-ae_terms_csv = read_csv(data_dir / "ae_terms.csv")
+ae_terms_csv = read_csv(DATA_DIR / "ae_terms.csv")
 model.define(AdverseEvent.new(model.data(ae_terms_csv).to_schema()))
 
 # Concept: patient.
 Patient = model.Concept("Patient", identify_by={"id": Integer})
 Patient.name = model.Property(f"{Patient} has {String:name}")
 Patient.age_years = model.Property(f"{Patient} has {Integer:age_years}")
-patients_csv = read_csv(data_dir / "patients.csv")
+patients_csv = read_csv(DATA_DIR / "patients.csv")
 model.define(Patient.new(model.data(patients_csv).to_schema()))
 
 # Concept: mutation event (observed mutation in a patient at a time).
@@ -144,7 +144,7 @@ MutationEvent = model.Concept("MutationEvent", identify_by={"id": Integer})
 MutationEvent.patient = model.Property(f"{MutationEvent} from {Patient:patient}")
 MutationEvent.gene = model.Property(f"{MutationEvent} hits {Gene:gene}")
 MutationEvent.t_days = model.Property(f"{MutationEvent} at {Integer:t_days}")
-mut_csv = read_csv(data_dir / "mutation_events.csv")
+mut_csv = read_csv(DATA_DIR / "mutation_events.csv")
 mut_data = model.data(mut_csv)
 model.define(MutationEvent.new(id=mut_data.id, t_days=mut_data.t_days))
 model.define(MutationEvent.patient(Patient)).where(
@@ -161,7 +161,7 @@ TherapyEvent = model.Concept("TherapyEvent", identify_by={"id": Integer})
 TherapyEvent.patient = model.Property(f"{TherapyEvent} from {Patient:patient}")
 TherapyEvent.therapy = model.Property(f"{TherapyEvent} uses {Therapy:therapy}")
 TherapyEvent.t_days = model.Property(f"{TherapyEvent} at {Integer:t_days}")
-th_csv = read_csv(data_dir / "therapy_events.csv")
+th_csv = read_csv(DATA_DIR / "therapy_events.csv")
 th_data = model.data(th_csv)
 model.define(TherapyEvent.new(id=th_data.id, t_days=th_data.t_days))
 model.define(TherapyEvent.patient(Patient)).where(
@@ -178,7 +178,7 @@ AdverseEventOcc = model.Concept("AdverseEventOcc", identify_by={"id": Integer})
 AdverseEventOcc.patient = model.Property(f"{AdverseEventOcc} from {Patient:patient}")
 AdverseEventOcc.term = model.Property(f"{AdverseEventOcc} is {AdverseEvent:term}")
 AdverseEventOcc.t_days = model.Property(f"{AdverseEventOcc} at {Integer:t_days}")
-ae_csv = read_csv(data_dir / "adverse_events.csv")
+ae_csv = read_csv(DATA_DIR / "adverse_events.csv")
 ae_data = model.data(ae_csv)
 model.define(AdverseEventOcc.new(id=ae_data.id, t_days=ae_data.t_days))
 model.define(AdverseEventOcc.patient(Patient)).where(
