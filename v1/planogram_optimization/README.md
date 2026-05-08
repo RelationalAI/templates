@@ -1,6 +1,6 @@
 ---
 title: "Planogram Optimization"
-description: "Decide integer facing counts per SKU to maximise predicted weekly demand under shelf capacity and category cardinality limits, where per-(SKU, facing_count) demand comes from a regression model and the CSP hand-off is an element-style decision-indexed table lookup."
+description: "Decide integer facing counts per SKU to maximize predicted weekly demand under shelf capacity and category cardinality limits, where per-(SKU, facing_count) demand comes from a regression model and the CSP hand-off is an element-style decision-indexed table lookup."
 featured: false
 experience_level: intermediate
 industry: "Retail"
@@ -26,22 +26,22 @@ This template solves the per-shelf facing-count allocation as a constraint satis
 The same pattern applies to any predict-then-optimize problem where the prediction is a per-decision-value lookup table: workforce demand by staffing level, conversion rate by ad-spend bucket, throughput by line speed.
 
 > [!IMPORTANT]
-> The bundled runner ships with a vendored `predicted_demand_table.csv` -- a stand-in for live GNN regression output -- so the predict->CSP hand-off pattern can be inspected and run without the GNN dependency. The GNN training arm is documented under "Customize this template"; the CSP shape is unchanged.
+> The bundled runner ships with a vendored `predicted_demand_table.csv` -- a stand-in for the output of any per-(SKU, k) demand regressor -- so the predict->CSP hand-off pattern can be inspected and run without a training arm. Wiring in a real regressor is documented under "Customize this template"; the CSP shape is unchanged.
 
 ## Who this is for
 
 - Retail and CPG analysts allocating shelf space across SKUs and categories
 - Operations researchers exploring the predict-then-optimize pattern with decision-indexed table lookups
-- Data scientists wiring regression-based demand prediction into integer optimisation
+- Data scientists wiring regression-based demand prediction into integer optimization
 - Software developers seeking a clean canonical example of predictive output as a decision-indexed lookup
 
 ## What you'll build
 
-- A constraint model with one integer decision per SKU (`facings` in `[0, max_facings]`) plus two derived integer variables pinned by ICs (`realized_demand` via the lookup, `active` via the implies pair)
+- A constraint model with one integer decision per SKU (`facings` in `[0, max_facings]`) plus two derived integer variables pinned by ICs (`realized_demand` via the lookup, `active` via a linear-inequality coupling)
 - An element-style decision-indexed table lookup binding `realized_demand` to the matching `PredictedDemand` row via an `implies` cascade
 - Shelf-length capacity (`sum(Sku.facings * Sku.width_cm).per(Shelf) <= Shelf.length_cm`) and per-category cardinality (`sum(Sku.active).per(Category)` in `[min_skus_active, max_skus_active]`)
-- A linear `sum(realized_demand)` objective the CSP maximises
-- Post-solve verification via `problem.verify()` confirming the relational arithmetic constraints hold in the returned solution
+- A linear `sum(realized_demand)` objective the CSP maximizes
+- Post-solve verification via `problem.verify()` for the capacity, cardinality, and active-coupling ICs, plus a pandas anti-join confirming `(sku_id, facings) -> demand_units` matches the input table
 
 ## What's included
 
@@ -94,7 +94,7 @@ The same pattern applies to any predict-then-optimize problem where the predicti
    python planogram_optimization.py
    ```
 
-6. Expected output (the solver maximises total predicted weekly demand; the exact selection may vary across solver versions if multiple allocations achieve the same optimal objective). The script first prints the formulation (~30 lines, omitted here for brevity), then the solve-result block, then the per-SKU allocation, shelf utilisation, and category active counts:
+6. Expected output (the solver maximizes total predicted weekly demand; the exact selection may vary across solver versions if multiple allocations achieve the same optimal objective). The script first prints the formulation (~30 lines, omitted here for brevity), then the solve-result block, then the per-SKU allocation, shelf utilization, and category active counts:
    ```text
    Solve result:
    • status: OPTIMAL
@@ -124,7 +124,7 @@ The same pattern applies to any predict-then-optimize problem where the predicti
    16  17  Facial Tissue Box  household_paper         Bottom Shelf        2               58
    17  18      Napkins 200ct  household_paper         Bottom Shelf        2               50
 
-   Shelf utilisation:
+   Shelf utilization:
       id                 name  used_cm  length_cm
    0   1  Top Eye-Level Shelf       98        100
    1   2   Upper-Middle Shelf       79         80
@@ -171,12 +171,14 @@ demand_lookup_ic = model.where(PredictedDemand.sku_id == Sku.id).require(
 
 The natural relational form -- `where(PredictedDemand.facings_count == Sku.facings).require(Sku.realized_demand == PredictedDemand.demand_units)` -- equates a data property with a decision variable inside a `where` binding, which the prescriptive rewriter doesn't lower today. Pushing the decision-vs-data equality into the predicate of an `implies` lets the rewriter expand into the canonical per-`k` form.
 
-**Active iff facings is a half-reified `implies` pair.** Boolean is not a valid `solve_for` type, so `Sku.active` is a 0/1 integer coupled to `Sku.facings` via two implies:
+**Active iff facings is a pair of linear inequalities.** Boolean is not a valid `solve_for` type, so `Sku.active` is a 0/1 integer coupled to `Sku.facings` by two linear constraints:
 
 ```python
-active_implies_facings_ic = model.require(implies(Sku.active == 1, Sku.facings >= 1))
-facings_implies_active_ic = model.require(implies(Sku.facings >= 1, Sku.active == 1))
+active_lower_ic = model.require(Sku.facings >= Sku.active)
+active_upper_ic = model.require(Sku.facings <= Sku.max_facings * Sku.active)
 ```
+
+`Sku.facings >= Sku.active` forces `facings >= 1` when `active == 1`; `Sku.facings <= Sku.max_facings * Sku.active` forces `facings == 0` when `active == 0`. Together they pin `active = 1` whenever `facings >= 1` and `active = 0` otherwise. Both ICs are pure relational arithmetic, so they get re-evaluated by `problem.verify()` below.
 
 Once `active` is bound, the per-category cardinality reads as a plain relational sum:
 
@@ -186,19 +188,26 @@ category_min_ic = model.where(Sku.category == Category.name).require(
 )
 ```
 
-**`implies` is solver-only.** It goes to `satisfy()` but must NOT be passed to `verify()` -- the relational engine cannot re-evaluate wire-format constraint relations and would return silently-OK regardless of whether the constraint actually holds in the solution. Shelf capacity and category cardinality are pure relational arithmetic and ARE re-evaluated by `verify()`:
+**The `implies`-bodied table lookup is solver-only.** It goes to `satisfy()` but must NOT be passed to `verify()` -- the relational engine cannot re-evaluate wire-format constraint relations and would return silently-OK regardless of whether the constraint actually holds in the solution. The relational-arithmetic ICs (capacity, cardinality, active coupling) ARE re-evaluated by `verify()`, and a post-solve pandas anti-join re-checks the table lookup against the input CSV:
 
 ```python
 problem.solve("minizinc", time_limit_sec=60)
-problem.verify(shelf_capacity_ic, category_min_ic, category_max_ic)
+problem.verify(
+    shelf_capacity_ic,
+    category_min_ic,
+    category_max_ic,
+    active_lower_ic,
+    active_upper_ic,
+)
 model.require(problem.termination_status() == "OPTIMAL")
+# ... post-solve pandas anti-join verifies (sku_id, facings) -> demand_units ...
 ```
 
 ## Customize this template
 
-- **Wire in a live GNN regressor.** In production, `PredictedDemand` is the output of a sales-regression GNN trained on historical `(sku, week, facings_count, units_sold)` rows, where the GNN learns the per-SKU demand-vs-facings curve from observed shelf configurations. The H&M-style sales-regression pipeline already proven in the [`retail_planning`](../retail_planning/retail_planning_local.py) template is the recommended starting point; the structural difference is that the planogram regressor includes `facings_count` as a feature (or trains a per-tier head) so the same model can be queried at every k. At inference time, for each SKU and each k in `{0..max_facings}`, call `gnn.predictions(...)`, quantise, and aggregate into `PredictedDemand`. The CSP shape below is unchanged.
+- **Replace the vendored table with your own per-(SKU, k) demand model.** In production, `PredictedDemand` is the output of any model that predicts weekly demand at each candidate facings count -- linear or GBM regression over engineered features, a per-tier head, or a graph-aware regressor over `(sku, week, facings_count, units_sold)` history. The structural requirement is that `facings_count` is a feature (or there is a head per tier) so the model can be queried at every `k`. At inference time, for each SKU and each `k in {0..max_facings}`, call the model, quantize, and aggregate the result into `PredictedDemand`. The CSP shape below is unchanged.
 - **Use your own data** by replacing the four CSV files with your SKUs, shelves, categories, and predicted demand table. The constraint structure does not change. The data invariant: `predicted_demand_table.csv` MUST contain a row for every `(sku_id, k)` for `k in {0, 1, ..., sku.max_facings}` -- if a row is missing, the implies cascade leaves `Sku.realized_demand` unconstrained for that combination and the solver may pick an arbitrary value.
-- **Per-SKU minimum facings** by adding `implies(Sku.active == 1, Sku.facings >= Sku.min_facings)` -- same shape as the existing `active_implies_facings_ic` -- or by removing disallowed `(sku, k)` pairs from `PredictedDemand`.
+- **Per-SKU minimum facings** by tightening the lower-coupling IC to `model.require(Sku.facings >= Sku.min_facings * Sku.active)` (after adding a `Sku.min_facings` data property), or by removing disallowed `(sku, k)` pairs from `PredictedDemand`.
 - **Eye-level priority** by adding a boolean property and pinning premium SKUs to the eye-level shelf id:
   ```python
   Sku.is_premium = model.Property(f"{Sku} has {Integer:is_premium}")
@@ -224,8 +233,8 @@ model.require(problem.termination_status() == "OPTIMAL")
   <summary>Import error or AttributeError on <code>relationalai</code></summary>
 
 - Confirm your virtual environment is active: `which python` should point to `.venv`.
-- Reinstall dependencies: `python -m pip install .`. The pinned version (`relationalai==1.0.14`) ships the `solve_info()`, `verify()`, and `where().require()` APIs this template uses; older versions lack them and produce attribute errors.
-- If you share a venv across templates, run `python -m pip install --upgrade --force-reinstall relationalai==1.0.14`.
+- Reinstall dependencies: `python -m pip install .`. The pinned version (`relationalai==1.1.0`) ships the `solve_info()`, `verify()`, and `where().require()` APIs this template uses; older versions lack them and produce attribute errors.
+- If you share a venv across templates, run `python -m pip install --upgrade --force-reinstall relationalai==1.1.0`.
 
 </details>
 
@@ -249,7 +258,7 @@ model.require(problem.termination_status() == "OPTIMAL")
   <summary>MiniZinc solver not available</summary>
 
 - This template uses the MiniZinc constraint solver. Ensure the RAI Native App version supports MiniZinc.
-- HiGHS is not appropriate here -- the implies cascade lowers to half-reified linear equalities the constraint backend handles natively, while HiGHS would face Integer-domain extraction issues on the table lookup.
+- MiniZinc is the right backend for the current PyRel formulation: the `implies`-bodied table lookup lowers to half-reified linear equalities the constraint backend handles natively. A reformulation that one-hot encodes `(sku_id, k)` and writes the lookup as a linear sum could run on HiGHS, but it adds O(N * max_facings) auxiliary binaries and loses the pure-CSP "no big-M, no SOS2" framing this template is meant to demonstrate.
 
 </details>
 
