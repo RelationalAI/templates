@@ -189,7 +189,7 @@ category_min_ic = model.where(Sku.category == Category.name).require(
 )
 ```
 
-**The `implies`-bodied table lookup is solver-only.** It goes to `satisfy()` but must NOT be passed to `verify()` -- the relational engine cannot re-evaluate wire-format constraint relations and would return silently-OK regardless of whether the constraint actually holds in the solution. The relational-arithmetic ICs (capacity, cardinality, active coupling) ARE re-evaluated by `verify()`, and a post-solve Python dict lookup re-checks the table lookup against the input CSV:
+**The `implies`-bodied table lookup is solver-only.** It goes to `satisfy()` but must NOT be passed to `verify()` -- implies-bodied ICs are solver-only and `verify()` returns silently-OK without actually evaluating them. The relational-arithmetic ICs (capacity, cardinality, active coupling) ARE re-evaluated by `verify()`, and a post-solve Python dict lookup re-checks the table lookup against the input CSV:
 
 ```python
 problem.solve("minizinc", time_limit_sec=60)

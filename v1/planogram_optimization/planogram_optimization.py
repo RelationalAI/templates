@@ -298,11 +298,11 @@ problem.display()
 problem.solve("minizinc", time_limit_sec=60)
 problem.solve_info().display()
 
-# Re-check the relational arithmetic ICs in the returned solution. Never pass
-# the implies-bodied table lookup (demand_lookup_ic) to verify() -- the
-# relational engine cannot re-evaluate wire-format constraint relations and
-# would return silently-OK regardless of whether the constraint actually
-# holds. The lookup is verified post-solve via a Python dict lookup below.
+# Re-check the relational arithmetic ICs in the returned solution. Never
+# pass the implies-bodied table lookup (demand_lookup_ic) to verify() --
+# implies-bodied ICs are solver-only and verify() returns silently-OK
+# without actually evaluating them. The lookup is verified post-solve via
+# a Python dict lookup below.
 problem.verify(
     shelf_capacity_ic,
     category_min_ic,
