@@ -102,9 +102,6 @@ under topic / source / recency caps.
   `--size sm|md|lg`
 - `data/*.csv` -- bundled `sm` slice (~60 books, ~58 authors,
   12 subjects, 25 synthetic users with read events)
-- `experiments/count_variants.py` -- in-tree harness documenting
-  the empty-aggregate-densification idiom (`count(...) | 0`) used
-  for `path_count_via_*`
 - `pyproject.toml` -- Python package configuration
 
 ## Prerequisites
@@ -164,7 +161,7 @@ under topic / source / recency caps.
    ```text
    Solve result:
    • status: OPTIMAL
-   • solve time: ~1 minute on the bundled slice
+   • solve time: a few seconds on the bundled slice
    • num_points: 1
    • solver: MiniZinc
 
@@ -189,9 +186,10 @@ under topic / source / recency caps.
    The fetch script caches API responses under `data/_cache/`, so
    reruns are reproducible and offline-friendly after the first
    pull. After bumping size, retune `EXPLANATION_FLOOR` and
-   `WEAK_EXPLANATION_THRESHOLD` to the new path-count distribution
-   -- the bundled `sm` slice has `path_count_total` in the 2-12
-   range; larger slices push that higher.
+   `WEAK_EXPLANATION_THRESHOLD` to the new path-count distribution,
+   then re-run `python book_slate_recommendation.py`. The bundled
+   `sm` slice has `path_count_total` in the 2-12 range; larger
+   slices push that higher.
 
 ## Template structure
 
@@ -207,7 +205,6 @@ book_slate_recommendation/
 │   ├── book_author.csv
 │   ├── book_subject.csv
 │   └── book_similar.csv
-├── experiments/                       # author notes; safe to skip
 ├── book_slate_recommendation.py
 ├── pyproject.toml
 └── README.md
@@ -235,11 +232,11 @@ the fetch script.
   `Book.written_by(Author)`, `Book.about(Subject)`,
   `Book.similar_to(Book)`.
 - Unified KG edge: `Item.connected_to(Item, Item)` populated as the
-  symmetric union of the typed edges. Workaround for the v1.1.0
-  paths-lib gap on multi-edge `path()` (see paths-lib README,
-  "Currently unsupported patterns" §1). First-class composite-edge
-  support is on the PyRel roadmap; once it lands, this unified-edge
-  layer can be deleted.
+  symmetric union of the typed edges. Workaround for the current
+  paths-lib limitation that a `path()` call walks one 2-arity
+  relationship at a time. First-class composite-edge support is on
+  the PyRel roadmap; once it lands, this unified-edge layer can be
+  deleted.
 
 ### Pipeline
 
@@ -320,8 +317,9 @@ the fetch script.
 
    Objective: maximize `sum((K + 1 - slot) * path_count_total)`.
    The position weight is the canonical engagement-decay model --
-   higher path-support items gravitate to lower slots (top of row)
-   because that maximizes the weighted sum.
+   higher path-support items gravitate toward slot 1 (top of row,
+   the hero position) because the weight is largest there, which
+   maximizes the weighted sum.
 
 ### Why CSP (MiniZinc), not MIP
 
@@ -336,6 +334,24 @@ for the hero pin) and the conditional domain rule
 prescriptive layer would run HiGHS if a future customer layers in
 a float-coefficient scalar (see "Custom scoring signal" in
 Customize) -- the formulation extends without restructure.
+
+### How this template differs from other CSP templates
+
+Sibling CSP templates (`product_configurator`,
+`synthetic_order_lifecycle`, `synthetic_eligibility_records`) encode
+unordered selection. This is the first *ordered* slate; three
+choices follow from that:
+
+- **Unified `Item.connected_to` super-edge** so the path walker
+  (one 2-arity relationship at a time) can traverse the
+  heterogeneous KG. Other CSP templates don't use paths.
+- **Integer slot in `{1..K+1}` with K+1 = unpicked**, so the
+  position weight `(K+1-slot)` is 0 at unpicked and no auxiliary
+  picked-indicator is needed.
+- **Per-pair count caps (GCC idiom)** for slot / author / subject
+  uniqueness, plus a per-user existential count for the hero pin
+  (`count(picked at slot 1 from eligible Books) per user >= 1`).
+  `all_different` would conflict with the shared K+1 sentinel.
 
 ### A note on count idioms
 
@@ -475,9 +491,13 @@ anti-joins against `User.read`, and raises `ValueError` if any
 user has fewer than `SLATE_SIZE_K` unread candidates, fewer than
 `FRESHNESS_FLOOR` unread fresh candidates, fewer than
 `ORIGINALS_FLOOR` unread in-house candidates, fewer than
-`SLATE_SIZE_K` distinct unread authors, or zero unread
-hero-eligible candidates. The assertion's error message lists
-the affected users for each shortfall. The runner also prints
+`SLATE_SIZE_K` distinct unread authors, fewer than
+`ceil(K/MAX_PER_SUBJECT)` distinct unread subjects, fewer than
+`K - COLD_START_CAP` strongly-explained candidates, a max
+achievable position-weighted explanation score below
+`EXPLANATION_FLOOR`, or zero unread hero-eligible candidates. The
+assertion's error message lists the affected users per shortfall
+and a strategy block keyed by which condition fired. The runner also prints
 an "Unread candidate count per user" table just before solving,
 so dense reach can be inspected even when the assert passes. For post-solve diagnostics
 on a non-OPTIMAL run: `problem.verify(...)` already prints

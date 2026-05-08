@@ -31,11 +31,11 @@ visible position:
 - Prescriptive: pure-integer CSP on MiniZinc decides each
   Candidate's slot in {1, ..., K, K+1}, where slot K+1 means
   unpicked. Constraints: cardinality, slot uniqueness, already-read
-  exclusion, distinct-author/subject diversity, freshness,
-  originals-exposure, cold-start, hero pin, and explanation-path
-  floor. Objective maximizes total position-weighted path support
-  ``sum((K + 1 - slot) * path_count_total)`` -- top slots dominate,
-  unpicked candidates contribute zero.
+  exclusion, author uniqueness, subject concentration cap,
+  freshness, originals-exposure, cold-start, hero pin, and
+  explanation-path floor. Objective maximizes total position-
+  weighted path support ``sum((K + 1 - slot) * path_count_total)``
+  -- top slots dominate, unpicked candidates contribute zero.
 
 Bundled data: a deterministic Open Library (CC0) slice (~60 books,
 ~58 authors, 12 subjects) pulled by ``data/fetch_open_library_slice.py``.
@@ -45,10 +45,10 @@ Run:
     `python book_slate_recommendation.py`
 
 Output:
-    Prints the formulation, the solve-result block, the per-user
-    candidate set, the chosen slate ordered by slot (1..K), the
-    per-user subject distribution, and the per-pick explanation-path
-    support.
+    Prints the formulation, the solve-result block, the chosen slate
+    ordered by slot (1..K), the per-user subject distribution, the
+    per-pick explanation-path support, and a verbose diagnostic
+    block (candidate set + structural-embeddedness map) at the end.
 """
 
 from pathlib import Path
@@ -189,6 +189,17 @@ def _assert_nonneg_column(df, col, source):
         raise ValueError(f"{source} has negative {col}={bad}. {col} must be >= 0.")
 
 
+def _assert_in_set(df, col, allowed, source):
+    _assert_no_nulls(df, col, source)
+    bad = sorted({int(v) for v in df[col].tolist() if int(v) not in allowed})
+    if bad:
+        raise ValueError(
+            f"{source} has {col}={bad} outside the allowed set {sorted(allowed)}. "
+            f"{col} is a {sorted(allowed)} flag; values outside this set will silently "
+            f"miscompare in IC predicates."
+        )
+
+
 for _df, _key, _src in [
     (users_csv, "id", "users.csv"),
     (books_csv, "id", "books.csv"),
@@ -196,6 +207,10 @@ for _df, _key, _src in [
     (subjects_csv, "id", "subjects.csv"),
 ]:
     _assert_unique_keys(_df, _key, _src)
+
+# Similarity edges must be unique on (src, dst) -- duplicate edges
+# would inflate triangle counts and skew hero-pin eligibility.
+_assert_unique_keys(bsim_csv, ["src_book_id", "dst_book_id"], "book_similar.csv")
 
 # Foreign-key edges in the schema. Each row says "<source>.<col>
 # references <parent_source>.<parent_col>". Update this table when you
@@ -215,6 +230,7 @@ for _cdf, _ccol, _pdf, _pcol, _csrc, _psrc in _FK_EDGES:
     _assert_no_dangling_fks(_cdf, _ccol, _pdf, _pcol, _csrc, _psrc)
 
 _assert_nonneg_column(books_csv, "age_days", "books.csv")
+_assert_in_set(books_csv, "in_house", {0, 1}, "books.csv")
 
 # --------------------------------------------------
 # Define semantic model & load data
@@ -225,10 +241,10 @@ model = Model("book_slate_recommendation")
 # Item super-concept: heterogeneous-KG node base for User/Book/Author/
 # Subject. The path walker traverses a single 2-arity edge relationship
 # (Item.connected_to, defined below) across the whole KG -- the
-# documented v1.1.0 workaround for the "multiple edges in a single
-# path()" gap (paths-lib README §"Currently unsupported patterns").
-# First-class composite-edge support is on the PyRel roadmap; once
-# it lands, the unified-edge layer below can be deleted.
+# documented workaround for the current paths-lib limitation that a
+# path() call walks one 2-arity relationship at a time. First-class
+# composite-edge support is on the PyRel roadmap; once it lands, the
+# unified-edge layer below can be deleted.
 Item = model.Concept("Item")
 
 # User concept: a reader.
@@ -310,7 +326,7 @@ model.define(Book.similar_to(src_b, dst_b)).where(
 )
 
 # Unified KG edge: a single 2-arity Item.connected_to relationship
-# the path walker traverses. Workaround for the v1.1.0 paths-lib
+# the path walker traverses. Workaround for the current paths-lib
 # composite-edge gap (see Item-concept comment above). Each define()
 # below contributes one direction of one typed edge to the union; the
 # walker treats them all as the same generic hop. The typed-evidence
@@ -396,8 +412,7 @@ model.define(Candidate.new(user_id=u_cand.id, book_id=b_cand.id)).where(
 # Arithmetic ``a + s + w`` (not ``sum(model.union(a, s, w))``) --
 # union inside an aggregate body strips keys and deduplicates on
 # projected values, undercounting whenever two of the three typed
-# counts share a value. See ``experiments/count_variants.py`` for
-# the divergence across formulations.
+# counts share a value.
 Candidate.path_count_via_author = model.Property(f"{Candidate} has author connections {Integer:n}")
 Candidate.path_count_via_subject = model.Property(
     f"{Candidate} has subject connections {Integer:n}"
@@ -409,8 +424,12 @@ c = Candidate.ref()
 n = Integer.ref()
 u_c, b_c = User.ref(), Book.ref()
 
-# via-author: distinct authors shared between candidate and any of
-# the user's read books.
+# via-author: shared-author connections between the candidate and
+# the user's read books. Bag count -- one match per
+# (read_book, shared_author) pair, so the same author appearing on
+# multiple read books contributes more weight (intentional: a user
+# who read three books by Author A reveals more affinity than a
+# user who read one).
 b_read_a = Book.ref()
 a_ref = Author.ref()
 model.define(Candidate.path_count_via_author(c, n)).where(
@@ -428,7 +447,8 @@ model.define(Candidate.path_count_via_author(c, n)).where(
     | 0,
 )
 
-# via-subject: distinct subjects shared.
+# via-subject: shared-subject connections, bag count -- same shape
+# as via-author (read books and candidates can be multi-subject).
 b_read_s = Book.ref()
 s_ref = Subject.ref()
 model.define(Candidate.path_count_via_subject(c, n)).where(
@@ -659,11 +679,11 @@ explanation_ic = model.require(
 problem.satisfy(explanation_ic)
 
 # Position-weighted objective: maximize total engagement-weighted
-# path support. ``(K + 1 - slot)`` decays with position; unpicked
-# (slot K+1) contributes 0. The solver places highest-path-support
-# Candidates at the lowest slot indices (top of row) because that
-# maximizes the weighted sum, matching the canonical recsys
-# position-decay engagement model.
+# path support. ``(K + 1 - slot)`` is K at slot 1 (hero), 1 at slot
+# K (bottom), 0 at slot K+1 (unpicked). The solver places highest-
+# path-support Candidates at slot 1 because the weight is largest
+# there, matching the canonical recsys position-decay engagement
+# model.
 problem.maximize(sum((SLATE_SIZE_K + 1 - Candidate.slot) * Candidate.path_count_total))
 
 # --------------------------------------------------
@@ -676,21 +696,22 @@ problem.display()
 # rows, so a user with no candidates left after exclude_read is
 # silently skipped instead of flagged as infeasible. Compute the
 # unread candidate set per user explicitly and refuse to solve if
-# any user falls below SLATE_SIZE_K, FRESHNESS_FLOOR, ORIGINALS_FLOOR,
-# K distinct authors, or 1 hero-eligible candidate -- sparse customer
-# reach hits a clear Python-level error rather than a quiet
-# missing-row contract violation.
+# any user fails any of the per-IC feasibility necessary conditions
+# below -- sparse customer reach hits a clear Python-level error
+# rather than a quiet INFEASIBLE solve.
 candidate_df = model.select(
     Candidate.user_id.alias("user_id"),
     Candidate.book_id.alias("book_id"),
+    Candidate.path_count_total.alias("path_count_total"),
 ).to_df()
+candidate_df["path_count_total"] = candidate_df["path_count_total"].astype(int)
 unread = candidate_df.merge(
     read_csv_data[["user_id", "book_id"]],
     on=["user_id", "book_id"],
     how="left",
     indicator=True,
 )
-unread = unread[unread["_merge"] == "left_only"][["user_id", "book_id"]]
+unread = unread[unread["_merge"] == "left_only"][["user_id", "book_id", "path_count_total"]]
 # Pull triangle counts so the hero-eligible feasibility check can
 # count books meeting HERO_EMBEDDEDNESS_THRESHOLD per user.
 triangle_df = model.select(
@@ -712,6 +733,11 @@ unread_authors = unread.merge(
     on="book_id",
     how="left",
 )
+unread_subjects = unread.merge(
+    bs_csv[["book_id", "subject_id"]],
+    on="book_id",
+    how="left",
+)
 unread_counts = unread_with_book.groupby("user_id").size()
 fresh_counts = (
     unread_with_book[unread_with_book["age_days"] <= FRESH_WINDOW_DAYS].groupby("user_id").size()
@@ -723,6 +749,33 @@ hero_counts = (
     .size()
 )
 distinct_author_counts = unread_authors.groupby("user_id")["author_id"].nunique()
+distinct_subject_counts = unread_subjects.groupby("user_id")["subject_id"].nunique()
+# cold_start_ic caps weakly-explained picks at COLD_START_CAP per user;
+# the slate must be filled with K - COLD_START_CAP strongly-explained
+# (path_count_total >= WEAK_EXPLANATION_THRESHOLD) candidates at minimum.
+strong_counts = (
+    unread[unread["path_count_total"] >= WEAK_EXPLANATION_THRESHOLD].groupby("user_id").size()
+)
+
+
+# explanation_ic requires sum((K+1-slot)*path_count_total) >= EXPLANATION_FLOOR.
+# The maximum achievable score per user is obtained by sorting their unread
+# candidates by path_count_total descending, taking the top K, and weighting
+# them with K, K-1, ..., 1. If that upper bound is below the floor, the IC
+# cannot be satisfied regardless of the solver's choices.
+def _max_explanation_score(group):
+    top_k = group.nlargest(SLATE_SIZE_K).tolist()
+    weights = list(range(SLATE_SIZE_K, SLATE_SIZE_K - len(top_k), -1))
+    # Python's builtin sum is shadowed by the RAI aggregate `sum` imported
+    # at the top of this file; loop accumulator avoids the conflict.
+    total = 0
+    for w, v in zip(weights, top_k):
+        total += w * v
+    return int(total)
+
+
+max_explanation = unread.groupby("user_id")["path_count_total"].apply(_max_explanation_score)
+
 all_users = set(users_csv["id"])
 absent_from_unread = sorted(all_users - set(unread_counts.index))
 short_total = sorted(unread_counts[unread_counts < SLATE_SIZE_K].index.tolist())
@@ -734,6 +787,24 @@ short_hero = sorted(list(all_users - set(hero_counts[hero_counts >= 1].index)))
 short_authors = sorted(
     list(all_users - set(distinct_author_counts[distinct_author_counts >= SLATE_SIZE_K].index))
 )
+# Subject-span feasibility: with K picks and MAX_PER_SUBJECT cap, the user's
+# pool must span at least ceil(K / MAX_PER_SUBJECT) distinct subjects.
+min_subjects = -(-SLATE_SIZE_K // MAX_PER_SUBJECT)  # ceil division
+short_subjects = sorted(
+    list(all_users - set(distinct_subject_counts[distinct_subject_counts >= min_subjects].index))
+)
+# Cold-start feasibility: at least K - COLD_START_CAP strongly-explained picks
+# are required. If a user has fewer strong candidates, cold_start_ic forces
+# infeasibility.
+min_strong = max(0, SLATE_SIZE_K - COLD_START_CAP)
+short_strong = (
+    sorted(list(all_users - set(strong_counts[strong_counts >= min_strong].index)))
+    if min_strong > 0
+    else []
+)
+short_explanation = sorted(
+    list(all_users - set(max_explanation[max_explanation >= EXPLANATION_FLOOR].index))
+)
 if (
     absent_from_unread
     or short_total
@@ -741,6 +812,9 @@ if (
     or short_in_house
     or short_hero
     or short_authors
+    or short_subjects
+    or short_strong
+    or short_explanation
 ):
     raise ValueError(
         "Per-user candidate floor violated:\n"
@@ -753,8 +827,23 @@ if (
         f"  users with no unread hero-eligible (triangle_count >= "
         f"{HERO_EMBEDDEDNESS_THRESHOLD}) candidates: {short_hero}\n"
         f"  users with < SLATE_SIZE_K={SLATE_SIZE_K} distinct unread authors: {short_authors}\n"
-        "Densify Book.similar_to or refresh the data slice with denser "
-        "fresh / in-house / hero coverage before re-running."
+        f"  users with < ceil(K/MAX_PER_SUBJECT)={min_subjects} distinct unread "
+        f"subjects: {short_subjects}\n"
+        f"  users with < K-COLD_START_CAP={min_strong} strongly-explained "
+        f"(path_count_total >= {WEAK_EXPLANATION_THRESHOLD}) unread candidates: "
+        f"{short_strong}\n"
+        f"  users whose max achievable position-weighted explanation score < "
+        f"EXPLANATION_FLOOR={EXPLANATION_FLOOR}: {short_explanation}\n"
+        "Pick a strategy by which condition fired:\n"
+        "  reach (absent_from_unread, short_total): densify Book.similar_to or "
+        "the read history.\n"
+        "  per-IC floor (short_fresh, short_in_house, short_hero, short_subjects, "
+        "short_strong): lower the corresponding constant, or refresh the data slice "
+        "with denser coverage in that dimension.\n"
+        "  short_authors: lower SLATE_SIZE_K or use a corpus with more distinct "
+        "authors per user reach.\n"
+        "  short_explanation: lower EXPLANATION_FLOOR, or expand the candidate pool "
+        "so per-user path_count_total distributions reach the threshold."
     )
 
 print("\nUnread candidate count per user (pre-solve diagnostic):")

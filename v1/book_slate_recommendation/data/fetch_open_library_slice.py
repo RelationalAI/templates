@@ -283,7 +283,7 @@ def build_slice(
             year = None
         work_publish_year[key] = year
 
-    # Drop works with no authors (the runner's MAX_PER_AUTHOR cap and
+    # Drop works with no authors (the runner's author-uniqueness IC and
     # the typed-evidence join silently exempt author-less books, which
     # produces surprising slate behavior). Author-less works in Open
     # Library are typically incomplete records; safer to omit than
