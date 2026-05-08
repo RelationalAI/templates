@@ -1,12 +1,11 @@
 ---
 title: "Book Slate Recommendation"
-description: "Three-pillar Graph + Paths + Prescriptive (MIP) template that picks K books per reader under business rules, with KG-path explanations."
+description: "Multi-reasoner Graph + Prescriptive (MIP) template that picks K books per reader under business rules, with KG-walk and shared-entity explanations blended into the objective."
 featured: false
 experience_level: advanced
 industry: "Media"
 reasoning_types:
   - Graph
-  - Paths
   - Prescriptive
 tags:
   - Multi-Reasoner
@@ -28,16 +27,16 @@ and *explainable* enough to meet platform business rules.
 
 This template solves that problem in one declarative model:
 
-- **Graph (PageRank)** computes a structural-popularity prior over
-  the book-similarity graph.
-- **Paths** combine a bounded walker (`User -> read_Book ->
-  similar_Book`) with direct shared-author / shared-subject joins to
-  produce per-`(user, candidate)` typed-evidence counts.
+- **Graph (PageRank + bounded KG walks)** computes a structural-
+  popularity prior over the book-similarity graph and enumerates
+  `User -> read_Book -> similar_Book` walks plus direct
+  shared-author / shared-subject joins to produce
+  per-`(user, candidate)` typed-evidence counts.
 - **Prescriptive (MIP, HiGHS)** picks K items per user under subject
   diversity, author uniqueness, freshness, originals-exposure,
   cold-start, and explanation-path-floor constraints, while
-  maximizing the personalized utility blended from the graph and
-  paths signals.
+  maximizing the personalized utility blended from PageRank and the
+  KG-evidence signals.
 
 The same shape ports to e-commerce ("frequently bought together"
 with category coverage), course slates (career-navigation over a
@@ -293,50 +292,18 @@ the distribution. Float-coefficient binary IP is the natural form
 when per-item utility is float-valued and decisions are 0/1 picks;
 HiGHS handles this directly without quantization.
 
-## Background and precedent
+## Where this fits in production recsys
 
-Production recsys runs a multi-stage funnel: *catalog (10^6+) ->
-retrieval (10^3) -> pre-ranking (10^2) -> ranking (float utility)
--> slate optimization (final K)*. The slate stage is where business
-rules, diversity, exposure floors, and explainability constraints
-land -- the place production teams burn months on hand-rolled
-re-rankers that violate diversity invariants nondeterministically.
-PyRel's prescriptive pillar fits this stage directly, in one
-declarative model with the upstream graph and paths signals.
-
-Public KG-recsys precedents the same primitives compose toward:
-
-- **Pinterest Pixie** (Eksombatchai et al., WWW 2018) -- random-
-  walk path-based recsys at 3B nodes, 17B edges, reported 60 ms
-  p99 latency and >50% Pin engagement share at publication.
-- **Alibaba iGraph** -- distributed graph database powering Taobao
-  recommendation traversals (separate from AliCoCo, the
-  e-commerce concept net presented at KDD 2020).
-- **KPRN** (Wang et al., NUS / eBay / USTC, AAAI 2019) --
-  knowledge-graph-aware path-recurrent network for explainable
-  recommendation.
-- **PGPR** (Xian et al., SIGIR 2019) -- policy-guided KG path
-  reasoning for explainable recommendation.
-- **PinSage** (Ying et al., KDD 2018) -- web-scale GCN over the
-  Pinterest pin-board bipartite graph.
-- **LinkedIn Skills Graph** -- skills-and-occupations graph
-  (~39K skills) underlying career-navigation tools at LinkedIn.
-
-KG-grounded explanations can support transparency obligations that
-recsys deployments increasingly face. Regulations to weigh against
-your own legal review include EU GDPR Article 22 + Articles 13/14,
-EU AI Act Article 13 + Article 86, ECJ Case C-203/22 (February
-2025, recognizing right-to-explanation under GDPR), financial-
-services explainability guidance (BIS-FSI, FINRA), and state-level
-laws like NYC Local Law 144, Illinois AIVIA, China PIPL Article
-24, Brazil LGPD Article 20, the Quebec Act, and Nigeria DPR. The
-per-typed counts the runner emits per picked item
-(`paths_via_author`, `paths_via_subject`, `paths_via_kg_walk`)
-are a KG-grounded, decomposable justification that can feed
-transparency workflows -- exposing facts about the catalog
-rather than model weights. Whether that is sufficient for any
-particular legal regime is a determination for your compliance
-team.
+Production recommender systems run a multi-stage funnel: *catalog
+(10^6+) -> retrieval (10^3) -> pre-ranking (10^2) -> ranking (float
+utility) -> slate optimization (final K)*. The slate stage is where
+business rules, diversity, exposure floors, and explainability
+constraints land. PyRel's prescriptive pillar fits this stage
+directly, with the upstream graph and KG-walk signals in the same
+declarative model. The per-typed evidence counts the runner emits
+per picked item (`paths_via_author`, `paths_via_subject`,
+`paths_via_kg_walk`) are a KG-grounded, decomposable justification
+suitable for transparency workflows.
 
 ## Customize this template
 
@@ -358,15 +325,10 @@ Six common variations:
   curation -- the production-deployed shape for editorial-review
   platforms (kids content, regulated regions).
 - **LLM-grounded explanation surfacing.** Pipe each picked item's
-  per-typed counts -- and, if extended, the top-N enumerated
-  paths the walker found -- into an LLM call to render natural-
-  language explanations grounded in KG facts, eliminating
-  hallucination -- the 2025 LLM+KG hybrid pattern (K-RagRec,
-  Think-on-Graph, GraphRAG). Materializing the actual top paths
-  (rather than just counts) is a small extension of the runner's
-  final `inspect()`: select on `kg_paths(p_s)` joined to picked
-  candidates and emit `p_s.nodes(...)` for the top few by
-  `path_count_via_kg_walk`.
+  per-typed counts (and, optionally, materialized top-N paths via
+  a small extension of the final `inspect()` selecting on
+  `kg_paths(p_s)`) into an LLM call to render natural-language
+  explanations grounded in KG facts.
 - **Retarget to e-commerce.** Replace `Book` with `Product`,
   `read` with `purchased`, `similar_to` with co-purchase. The
   template runs as a "frequently bought together" slate composer
@@ -477,31 +439,7 @@ download.
 
 ## References
 
-- Eksombatchai, Jindal, Liu, Liu, Sharma, Sugnet, Ulrich &
-  Leskovec, *Pixie: A System for Recommending 3+ Billion Items
-  to 200+ Million Users in Real-Time*, WWW 2018 --
-  <https://cs.stanford.edu/people/jure/pubs/pixie-www18.pdf>.
-- Wang, He, Cao, Liu & Chua, *KGAT: Knowledge Graph Attention
-  Network for Recommendation*, KDD 2019 --
-  <https://dl.acm.org/doi/10.1145/3292500.3330989>.
-- Wang, Wang, Xu, He, Cao & Chua, *Explainable Reasoning over
-  Knowledge Graphs for Recommendation (KPRN)*, AAAI 2019 --
-  <https://cdn.aaai.org/ojs/4470/4470-13-7509-1-10-20190706.pdf>.
-- Xian, Fu, Muthukrishnan, de Melo & Zhang, *Reinforcement
-  Knowledge Graph Reasoning for Explainable Recommendation
-  (PGPR)*, SIGIR 2019 --
-  <http://gerard.demelo.org/papers/kg-recommendations.pdf>.
-- Sun, Han, Yan, Yu & Wu, *PathSim: Meta Path-Based Top-K
-  Similarity Search in Heterogeneous Information Networks*, VLDB
-  2011 -- <https://www.vldb.org/pvldb/vol4/p992-sun.pdf>.
-- Ying, He, Chen, Eksombatchai, Hamilton & Leskovec, *Graph
-  Convolutional Neural Networks for Web-Scale Recommender
-  Systems (PinSage)*, KDD 2018 --
-  <https://arxiv.org/abs/1806.01973>.
-- Wang et al., *Knowledge Graph Retrieval-Augmented Generation
-  for LLM-based Recommendation (K-RagRec)*, ACL 2025 --
-  <https://aclanthology.org/2025.acl-long.1317.pdf>.
 - *Open Library Developer API* (CC0) --
-  <https://openlibrary.org/dev/docs/api>. Bibliographic
-  catalog used by the bundled slice;
-  `data/fetch_open_library_slice.py` pulls deterministic cuts.
+  <https://openlibrary.org/dev/docs/api>. Bibliographic catalog
+  used by the bundled slice; `data/fetch_open_library_slice.py`
+  pulls deterministic cuts.

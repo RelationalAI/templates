@@ -52,22 +52,13 @@ from relationalai.semantics.std.paths import PathTraversal
 # Configure inputs
 # --------------------------------------------------
 
-# Slate size: the K of "row of K things". Streaming rows are
-# typically 5-10; this template uses 3 to keep the bundled-data
-# instance small. Tune to taste.
+# Slate size: the K of "row of K things". Tune to taste.
 SLATE_SIZE_K = 3
 
-# Bounded path depth for the KG walk. With a Book endpoint and
-# MAX_HOPS = 2, the walker enumerates ``User -> read_Book`` (length 1)
-# and ``User -> read_Book -> similar_Book`` (length 2) -- the
-# similarity-walk reach over books the user has already engaged with.
-# Author / Subject hubs participate in candidate generation only via
-# the ``Book.similar_to`` edges that the data pipeline derives from
-# shared author/subject (and that are also re-used directly by the
-# typed-evidence joins below). Bumping to 3+ hops would let the walker
-# traverse Author/Subject hubs explicitly, but the heterogeneous KG
-# saturates fast (most users would reach most books) -- so 2 is the
-# sweet spot for differentiation and runtime.
+# Bounded path depth for the KG walk. MAX_HOPS = 2 enumerates
+# ``User -> read_Book`` (length 1, pruned by exclude_read_ic) and
+# ``User -> read_Book -> similar_Book`` (length 2). Bumping to 3+
+# saturates fast on a heterogeneous KG (most users reach most books).
 MAX_HOPS = 2
 
 # Multi-axis diversity caps inside each user's slate.
@@ -76,47 +67,121 @@ MAX_PER_AUTHOR = 1
 
 # Freshness / exposure / cold-start dials. All integer counts.
 FRESHNESS_FLOOR = 1  # at least N items released within FRESH_WINDOW_DAYS
-# 30 years is a *catalog-framing* default tuned to the bibliographic
-# Open Library slice (publication dates back centuries; a tighter
-# window would mark almost everything stale). Streaming / news / e-
-# commerce platforms typically want 365 * 2 (2 years) or less so the
-# freshness floor visibly constrains.
+# 30-year window is tuned to the bundled bibliographic slice; streaming
+# or news platforms typically want 365 * 2 or less.
 FRESH_WINDOW_DAYS = 365 * 30
 ORIGINALS_FLOOR = 1  # at least N in-house items per slate
 COLD_START_CAP = 2  # at most N items with weak path support
 
-# Explanation-floor: each user's slate must carry enough cumulative
-# KG-path evidence (author + subject overlap, plus walks) aggregated
-# over picked items. Sum-bound on path_count_total over picked items.
-# Tuned for the bundled ``--size sm`` slice (path_count_total ranges
-# 2-12 there); customers running ``--size md`` / ``--size lg`` should
-# re-tune EXPLANATION_FLOOR / WEAK_EXPLANATION_THRESHOLD to the new
-# distribution (inspect via the "Candidate set per user" print at the
-# end of the runner).
+# Each user's slate must carry sum(path_count_total) >= EXPLANATION_FLOOR
+# over picked items. Tuned for the bundled ``--size sm`` slice
+# (path_count_total range 2-12); retune for ``--size md|lg``.
 EXPLANATION_FLOOR = 4
 
-# Cold-start path-count threshold. An item with total path count
-# strictly below this counts as "weakly explained" for the cold-start
-# cap.
+# Cold-start threshold: an item with path_count_total strictly below
+# this counts as "weakly explained" for the cold-start cap.
 WEAK_EXPLANATION_THRESHOLD = 2
 
-# Utility blend: structural prior (PageRank) vs per-user path signal.
-# Demo-grade defaults tuned for the bundled ``--size sm`` slice. With
-# PageRank ~ 1e-3 to 3e-2 and path counts ~ 2-12, the unscaled
-# contributions per item are PageRank ~ 0.1-3 and path-signal ~ 60-360;
-# the path signal dominates and PageRank effectively serves as a
-# tie-breaker when path-signal ties between candidates. This is fine
-# for the demo (the slate is path-driven anyway), but production
-# deployments wanting a meaningful blend should: (a) min-max-
-# normalize both signals to [0, 1] before applying these weights so
-# the constants represent *business preference* rather than *scale
-# correction*; (b) calibrate to held-out click / read data; (c) keep
-# a sensitivity table per slice size (the bundled ``experiments/``
-# folder has the harness for this).
+# Utility blend weights. Demo-grade values tuned for the bundled slice;
+# production deployments should min-max-normalize both signals to
+# [0, 1] before applying these weights so the constants represent
+# business preference rather than scale correction.
 PAGERANK_WEIGHT = 100.0
 PATH_SIGNAL_WEIGHT = 30.0
 
 DATA_DIR = Path(__file__).parent / "data"
+
+# --------------------------------------------------
+# Load all CSVs upfront so pre-solve invariants can validate the data
+# integrity before any model.define rules are installed.
+# --------------------------------------------------
+
+users_csv = read_csv(DATA_DIR / "users.csv")
+books_csv = read_csv(DATA_DIR / "books.csv")
+authors_csv = read_csv(DATA_DIR / "authors.csv")
+subjects_csv = read_csv(DATA_DIR / "subjects.csv")
+read_csv_data = read_csv(DATA_DIR / "read.csv")
+ba_csv = read_csv(DATA_DIR / "book_author.csv")
+bs_csv = read_csv(DATA_DIR / "book_subject.csv")
+bsim_csv = read_csv(DATA_DIR / "book_similar.csv")
+
+# --------------------------------------------------
+# Pre-solve invariants
+#
+# Catch the common silent-failure modes before the solver runs:
+# duplicate keys (would collapse rows), dangling FKs (would silently
+# drop joins), and negative ages (would break the freshness predicate).
+# Each helper raises a focused ValueError naming the offending rows.
+# --------------------------------------------------
+
+
+def _assert_no_nulls(df, cols, source):
+    cols = cols if isinstance(cols, list) else [cols]
+    null_cols = [c for c in cols if df[c].isna().any()]
+    if null_cols:
+        raise ValueError(
+            f"{source} has null/NaN values in column(s) {null_cols}. Required "
+            f"columns must be fully populated; drop or impute the offending rows."
+        )
+
+
+def _assert_unique_keys(df, key, source):
+    cols = key if isinstance(key, list) else [key]
+    _assert_no_nulls(df, cols, source)
+    dupe_rows = df[df.duplicated(subset=cols, keep=False)]
+    if not dupe_rows.empty:
+        duplicates = sorted({tuple(row) for row in dupe_rows[cols].itertuples(index=False)})
+        raise ValueError(
+            f"{source} has duplicate ({', '.join(cols)})={duplicates}. "
+            f"Each key must be unique; remove or merge the conflicting rows."
+        )
+
+
+def _assert_no_dangling_fks(child_df, child_col, parent_df, parent_col, source, parent_source):
+    _assert_no_nulls(child_df, child_col, source)
+    parent_ids = set(int(v) for v in parent_df[parent_col].unique())
+    dangling = sorted({int(v) for v in child_df[child_col].unique() if int(v) not in parent_ids})
+    if dangling:
+        raise ValueError(
+            f"{source}.{child_col} references unknown {parent_col}={dangling} "
+            f"that does not appear in {parent_source}.{parent_col}. Every "
+            f"foreign key must resolve."
+        )
+
+
+def _assert_nonneg_column(df, col, source):
+    _assert_no_nulls(df, col, source)
+    bad = sorted({int(v) for v in df[col].tolist() if int(v) < 0})
+    if bad:
+        raise ValueError(f"{source} has negative {col}={bad}. {col} must be >= 0.")
+
+
+for _df, _key, _src in [
+    (users_csv, "id", "users.csv"),
+    (books_csv, "id", "books.csv"),
+    (authors_csv, "id", "authors.csv"),
+    (subjects_csv, "id", "subjects.csv"),
+]:
+    _assert_unique_keys(_df, _key, _src)
+
+# Foreign-key edges in the schema. Each row says "<source>.<col>
+# references <parent_source>.<parent_col>". Update this table when you
+# add a new edge table or rewire a FK; the loop below validates every
+# edge in one place.
+_FK_EDGES = [
+    (read_csv_data, "user_id", users_csv, "id", "read.csv", "users.csv"),
+    (read_csv_data, "book_id", books_csv, "id", "read.csv", "books.csv"),
+    (ba_csv, "book_id", books_csv, "id", "book_author.csv", "books.csv"),
+    (ba_csv, "author_id", authors_csv, "id", "book_author.csv", "authors.csv"),
+    (bs_csv, "book_id", books_csv, "id", "book_subject.csv", "books.csv"),
+    (bs_csv, "subject_id", subjects_csv, "id", "book_subject.csv", "subjects.csv"),
+    (bsim_csv, "src_book_id", books_csv, "id", "book_similar.csv", "books.csv"),
+    (bsim_csv, "dst_book_id", books_csv, "id", "book_similar.csv", "books.csv"),
+]
+for _cdf, _ccol, _pdf, _pcol, _csrc, _psrc in _FK_EDGES:
+    _assert_no_dangling_fks(_cdf, _ccol, _pdf, _pcol, _csrc, _psrc)
+
+_assert_nonneg_column(books_csv, "age_days", "books.csv")
 
 # --------------------------------------------------
 # Define semantic model & load data
@@ -151,27 +216,6 @@ Author.name = model.Property(f"{Author} has {String:name}")
 # Subject concept: a topical category attached to books.
 Subject = model.Concept("Subject", extends=[Item], identify_by={"id": Integer})
 Subject.name = model.Property(f"{Subject} has {String:name}")
-
-# Bundled CSVs are a deterministic Open Library (CC0) slice;
-# regenerate or scale with ``data/fetch_open_library_slice.py --size
-# sm|md|lg``.
-
-# Load user data from CSV.
-users_csv = read_csv(DATA_DIR / "users.csv")
-# Load book data from CSV.
-books_csv = read_csv(DATA_DIR / "books.csv")
-# Load author data from CSV.
-authors_csv = read_csv(DATA_DIR / "authors.csv")
-# Load subject data from CSV.
-subjects_csv = read_csv(DATA_DIR / "subjects.csv")
-# Load read-event data from CSV.
-read_csv_data = read_csv(DATA_DIR / "read.csv")
-# Load book-author edge data from CSV.
-ba_csv = read_csv(DATA_DIR / "book_author.csv")
-# Load book-subject edge data from CSV.
-bs_csv = read_csv(DATA_DIR / "book_subject.csv")
-# Load book-similarity edge data from CSV.
-bsim_csv = read_csv(DATA_DIR / "book_similar.csv")
 
 model.define(User.new(model.data(users_csv).to_schema()))
 model.define(Book.new(model.data(books_csv).to_schema()))
@@ -226,19 +270,12 @@ model.define(Book.similar_to(src_b, dst_b)).where(
 
 # Unified KG edge: a single 2-arity Item.connected_to relationship
 # the path walker traverses. Workaround for the v1.1.0 paths-lib
-# composite-edge gap (see Item-concept comment above).
-# ``Item.connected_to(Item, Item)`` is the single 2-arity relationship
-# the path walker traverses. Populate it from each typed edge so a
-# bounded walk can chain User -> Book -> Author -> Book -> ...
-# Each define() below contributes one direction of one typed edge to
-# the union; the walker treats them all as the same generic hop. The
-# typed-evidence properties below (``path_count_via_author`` /
-# ``_via_subject``) do *not* introspect the walker's path edges -- they
-# join the candidate Book directly against the user's read history via
-# ``Book.written_by`` / ``Book.about``. Recovering per-hop type from
-# the walker's enumerated paths is possible (re-join each consecutive
-# (src, dst) back against the typed edges) but is not what this
-# template ships -- the typed counts here are simpler and faster.
+# composite-edge gap (see Item-concept comment above). Each define()
+# below contributes one direction of one typed edge to the union; the
+# walker treats them all as the same generic hop. The typed-evidence
+# properties below join candidate books directly against the user's
+# read history via Book.written_by / Book.about rather than
+# introspecting walker paths -- simpler and faster.
 Item.connected_to = model.Relationship(
     f"{Item:src} connected to {Item:dst}",
     short_name="connected_to",
@@ -307,27 +344,18 @@ model.define(b_pr.pagerank_score(score_pr)).where(
 # --------------------------------------------------
 
 # Walk the unified ``Item.connected_to`` edge from each User up to
-# MAX_HOPS hops. With a Book endpoint at length 2, the walker
-# enumerates ``User -> read_Book`` (length 1; the user's own read
-# books, pruned downstream by ``exclude_read_ic``) and
-# ``User -> read_Book -> similar_Book`` (length 2). The path-walker
-# bounds enumeration to MAX_HOPS, so the candidate set is the bounded
-# reachable set under the KG -- the same primitive Pixie / KPRN /
-# LinkedIn's skills-graph career navigation compose at production scale.
+# MAX_HOPS hops. The path-walker bounds enumeration to MAX_HOPS, so
+# the candidate set is the bounded reachable set under the KG.
 kg_paths = model.path(
     Item.connected_to.repeat(1, MAX_HOPS),
 ).all_paths()
 
 # Candidate set: any (user, book) reached by a User-anchored bounded
 # KG walk ending at a Book node. The already-read exclusion lands as
-# a ``pick == 0`` IC at the prescriptive layer (see
-# ``exclude_read_ic`` below) rather than as a pre-pruning filter on
-# this rule -- this avoids needing a positive complement of
-# ``User.read`` (a Cartesian-minus-existing-tuples relation, with no
-# scalar comparator analogous to the ``<`` form in
-# ``Stock.is_non_representative`` in ``v1/portfolio_balancing/portfolio_balancing.py``) and keeps
-# the candidate-derivation rule a pure positive join over the path
-# walker.
+# a ``pick == 0`` IC (``exclude_read_ic`` below) rather than as a
+# pre-pruning filter on this rule -- which keeps the candidate-
+# derivation rule a pure positive join over the path walker, at the
+# minor MIP cost of a few wasted binary variables forced to 0.
 Candidate = model.Concept(
     "Candidate",
     identify_by={"user_id": Integer, "book_id": Integer},
@@ -340,32 +368,21 @@ model.define(Candidate.new(user_id=u_cand.id, book_id=b_cand.id)).where(
     p_cand.nodes(p_cand.length, b_cand),
 )
 
-# Per-(user, candidate) explanation features. Each is a count of
-# distinct typed connections between the candidate and the user's
-# read history -- the KPRN-style typed-path aggregation that
-# powers explainable KG-recsys at production scale.
+# Per-(user, candidate) explanation features: counts of distinct
+# typed connections between the candidate and the user's read
+# history.
 #
-# count() is scoped per-Candidate via ``.per(c)``. Each ``count``
-# expression is followed by ``| 0`` so the property is defined for
-# *every* Candidate (not only those with at least one match): PyRel
-# aggregates over an empty group produce no row, and downstream
-# composite properties / sum-floor MIP constraints silently drop
-# Candidates whose property is undefined. The ``| 0`` default keeps
-# ``path_count_via_author``, ``_via_subject``, ``_via_kg_walk``, and
-# the composite ``path_count_total`` dense-coverage; without it,
-# ``sum(path_count_total * pick).per(user_id) >= floor`` is
-# vacuously infeasible whenever a user's only-with-total candidate
-# is forced to pick=0 by ``exclude_read_ic``.
+# Each ``count`` expression is followed by ``| 0`` so the property is
+# defined for *every* Candidate (not only those with at least one
+# match). PyRel aggregates over an empty group produce no row, and
+# the sum-floor IC ``sum(path_count_total * pick) >= EXPLANATION_FLOOR``
+# would silently drop Candidates whose property is undefined.
 #
-# Composition style: arithmetic ``a + s + w`` (not ``sum(model.union(a,
-# s, w))``). PyRel's ``model.union`` inside an aggregate body strips
-# keys and deduplicates on projected values, so
-# ``sum(model.union(X.v, X.v)) == 10`` (not 20) -- a sum-of-union
-# formulation silently undercounts whenever two of the three typed
-# counts share a value for the same Candidate. The
-# ``experiments/count_variants.py`` harness reproduces the divergence
-# across six formulations of this pattern; bag arithmetic on the
-# densified per-typed counts is the right surface here.
+# Arithmetic ``a + s + w`` (not ``sum(model.union(a, s, w))``) --
+# union inside an aggregate body strips keys and deduplicates on
+# projected values, undercounting whenever two of the three typed
+# counts share a value. See ``experiments/count_variants.py`` for
+# the divergence across formulations.
 Candidate.path_count_via_author = model.Property(f"{Candidate} has author connections {Integer:n}")
 Candidate.path_count_via_subject = model.Property(
     f"{Candidate} has subject connections {Integer:n}"
@@ -466,85 +483,23 @@ problem.solve_for(
     name=["pick", Candidate.user_id, Candidate.book_id],
 )
 
-# Data preconditions for OPTIMAL on customer slices:
-#  (1) every user must have at least ``SLATE_SIZE_K`` candidates in
-#      their 2-hop reach AFTER the already-read exclusion (else
-#      ``slate_size_ic`` ∧ ``exclude_read_ic`` are jointly infeasible).
-#      Note that exclude_read_ic prunes aggressively: every length-1
-#      walk ``User -> read_Book`` lands a read book in Candidate,
-#      and these are all forced to ``pick == 0``. The recommendable
-#      candidates come from length-2 ``read_Book -> similar_Book``
-#      walks, so a user whose reads have no ``similar_to`` neighbors
-#      (sparse customer data) will be infeasible without obvious
-#      signal.
-#  (2) for every user, the 2-hop reach must contain at least
-#      ``FRESHNESS_FLOOR`` books with ``age_days <= FRESH_WINDOW_DAYS``
-#      and at least ``ORIGINALS_FLOOR`` books with ``in_house == 1``
-#      (else the corresponding floor IC is infeasible for that user).
-#      These are independent floors -- a user with no candidate that
-#      is BOTH fresh and in-house must spend ``FRESHNESS_FLOOR +
-#      ORIGINALS_FLOOR`` distinct picks on the disjoint pools, not
-#      ``max(FRESHNESS_FLOOR, ORIGINALS_FLOOR)``.
-#  (3) author_uniqueness_ic (``MAX_PER_AUTHOR=1``) requires at least
-#      ``SLATE_SIZE_K`` distinct authors in the user's reach;
-#      subject_diversity_ic similarly bounds per-subject picks. A
-#      user whose reach concentrates in fewer than K authors is
-#      infeasible even when total candidate count is large.
-#  (4) cold_start_ic (≤ ``COLD_START_CAP`` weak picks) and
-#      explanation_ic (>= ``EXPLANATION_FLOOR`` total path evidence)
-#      together imply at least ``K - COLD_START_CAP`` candidates
-#      per user with ``path_count_total >= WEAK_EXPLANATION_THRESHOLD``,
-#      and a strong-candidate path-count sum that meets
-#      ``EXPLANATION_FLOOR - COLD_START_CAP * (WEAK_EXPLANATION_THRESHOLD - 1)``.
-#      Customers retuning these dials (especially raising
-#      ``EXPLANATION_FLOOR``) need to inspect the per-user
-#      path-count distribution and ensure both bounds remain
-#      satisfiable.
-#  (5) every Book picked must have at least one
-#      ``Book.about(Subject)`` and one ``Book.written_by(Author)``
-#      row, else the diversity / uniqueness caps silently exempt
-#      that Book (the IC's join filters it out). The bundled
-#      fetcher guarantees both; customer data should be checked.
-# Violations surface as ``INFEASIBLE`` from HiGHS plus the
-# ``model.require(termination_status() == "OPTIMAL")`` failure at
-# script tail. To diagnose, comment out the OPTIMAL require, re-run,
-# and inspect the ``Candidate set per user`` print (which fires only
-# on a successful solve under the current order). For pre-solve
-# inspection of candidate sets, run a separate quick session that
-# stops before ``problem.solve(...)``.
-
-# Cardinality: each user gets exactly K picks.
-#
-# IC-anchoring caveat: this IC is anchored on ``Candidate.user_id``,
-# so it generates one constraint row per user that has at least one
-# Candidate. Users with **zero** candidates after the path-walker /
-# exclude-read pipeline (e.g., a customer importing data where some
-# users' reads have no ``similar_to`` neighbours) are silently
-# skipped: the IC does not fire for them, and they receive no slate.
-# The pre-solve diagnostic below ("Candidate count per user") flags
-# such users; downstream tooling should treat absence from the
-# Final-slate output as a per-user infeasibility signal. Same
-# anchoring caveat applies to ``freshness_ic``, ``originals_ic``, and
-# ``explanation_ic`` below -- a user with candidates but none
-# matching the ``where`` filter passes vacuously rather than
-# becoming infeasible. The bundled ``--size sm`` slice avoids the
-# sharp edges by guaranteeing dense per-user reach; customers
-# bringing sparse data should add a pre-solve assert on per-user
-# candidate counts before relying on the floor ICs.
+# Cardinality: each user gets exactly K picks. Anchored on
+# ``Candidate.user_id``, so users with zero candidates after the
+# path-walker / exclude-read pipeline are silently skipped (they
+# receive no slate); the pre-solve assertion below flags such users.
+# Same anchoring caveat applies to ``freshness_ic``, ``originals_ic``,
+# and ``explanation_ic`` -- joint feasibility relations are spelled
+# out in the README "Troubleshooting" section.
 slate_size_ic = model.require(sum(Candidate.pick).per(Candidate.user_id) == SLATE_SIZE_K)
 problem.satisfy(slate_size_ic)
 
 # Already-read exclusion: any (user, book) where the user has already
 # read the book must have pick == 0. Lands at the prescriptive layer
-# rather than as a pre-pruning filter on Candidate derivation -- the
-# alternative would need a positive complement of ``User.read`` (the
-# Cartesian-minus-existing-tuples relation), and unlike the
-# ordered-comparator workaround used in
-# ``Stock.is_non_representative`` in ``v1/portfolio_balancing/portfolio_balancing.py`` ("non-
-# representative stocks") there is no scalar comparator separating
-# "read" from "not read" here. The ``pick == 0`` IC keeps the rule
-# pipeline pure-positive at minor MIP cost (a few wasted binary
-# variables forced to 0).
+# rather than as a pre-pruning filter on Candidate derivation; the
+# alternative would need a positive complement of ``User.read`` (a
+# Cartesian-minus-existing-tuples relation with no scalar comparator
+# to lean on). The ``pick == 0`` IC keeps the rule pipeline pure-
+# positive at minor MIP cost (a few wasted binary variables).
 u_excl, b_excl = User.ref(), Book.ref()
 rating_excl_ic = Integer.ref()
 exclude_read_ic = model.where(
@@ -608,17 +563,13 @@ problem.maximize(sum(Candidate.utility * Candidate.pick))
 
 problem.display()
 
-# Pre-solve assertion: per-user floor ICs (slate_size_ic,
-# freshness_ic, originals_ic, explanation_ic) anchor on Candidate
-# rows, so a user with no Candidate left after exclude_read is
-# silently skipped instead of being flagged as infeasible. Compute
-# the un-read candidate set per user explicitly and refuse to solve
-# if any user has fewer than SLATE_SIZE_K, so customer data with
-# sparse reach hits a clear Python-level error rather than a quiet
-# missing-row contract violation. The runner's bundled --size sm
-# slice satisfies this trivially; --size md/lg also do, and customer
-# data flagged here should be re-fetched with denser similar_to
-# edges before re-running.
+# Pre-solve floor assertion: per-user floor ICs anchor on Candidate
+# rows, so a user with no candidates left after exclude_read is
+# silently skipped instead of flagged as infeasible. Compute the
+# unread candidate set per user explicitly and refuse to solve if
+# any user falls below SLATE_SIZE_K, FRESHNESS_FLOOR, or
+# ORIGINALS_FLOOR -- sparse customer reach hits a clear Python-level
+# error rather than a quiet missing-row contract violation.
 candidate_df = model.select(
     Candidate.user_id.alias("user_id"),
     Candidate.book_id.alias("book_id"),
@@ -726,9 +677,7 @@ model.select(
     Candidate.path_count_via_subject.alias("paths_via_subject"),
 ).where(Candidate.pick == 1).inspect()
 
-# Diagnostics (verbose; useful for sizing the candidate set and
-# inspecting the structural prior, can be commented out for cleaner
-# customer-facing output).
+# Diagnostics: candidate set sizing and structural prior.
 
 print(
     f"\nCandidate set per user (Books reachable within {MAX_HOPS} hops over the heterogeneous KG):"
@@ -749,19 +698,3 @@ model.select(
     Book.title.alias("title"),
     Book.pagerank_score.alias("structural_score"),
 ).inspect()
-
-# --- Customize-section variants (documented for the README, not
-# wired into the lead runner):
-# - Replace ``Book.pagerank_score`` with any custom per-book scoring
-#   signal (collaborative-filtering co-occurrence, learned-embedding
-#   k-NN affinity, third-party scoring API). Same MIP, different
-#   prior.
-# - Pipe per-typed counts (and, optionally, materialized top-N paths
-#   from a small extension of the inspect() above) into an LLM call to
-#   render natural-language, KG-grounded, hallucination-free
-#   explanations.
-# - solve(..., solution_limit=K_alt) returns K alternative slates for
-#   A/B exposure or human-in-the-loop curation.
-# - Customize the typed edges to retarget the template at e-commerce
-#   (Open Library -> Open Food Facts / Amazon-Book), course slates
-#   (LinkedIn-style career navigation), or news (MIND).
