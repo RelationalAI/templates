@@ -2,6 +2,7 @@
 title: "Book Slate Recommendation"
 description: "Graph + Prescriptive (CSP) recsys template that picks K books per reader AND orders them by slate position. Bounded knowledge-graph walks via the paths library generate the candidate set and the explanation evidence; per-book triangle counts on the similarity graph pin the hero slot (slot 1) to a structurally-central pick; MiniZinc solves the pure-integer slot-assignment CSP under a position-weighted engagement-decay objective."
 featured: false
+private: true
 experience_level: advanced
 industry: "Media"
 reasoning_types:
