@@ -1,6 +1,6 @@
 ---
 title: "Money-Laundering Motif Detection"
-description: "Detect layering motifs whose signature is constraint-arithmetic: a source routes under-threshold amounts through K beneficial-owner-clustered hubs, where each hub's incoming dollars must equal its outgoing dollars. The constraint a graph-pattern or paths library can't enforce."
+description: "Detect three classes of layering motif on the same transaction ledger, each demonstrating a different CSP technique that rules / paths / graph reasoning alone cannot enforce: per-vertex aggregate equality (butterfly), pairwise distinctness over a chosen subset (smurf army), and cardinality / distribution over a chosen subset (KYC-mix burst)."
 featured: false
 experience_level: intermediate
 industry: "Banking"
@@ -19,39 +19,76 @@ tags:
 
 ## What this template is for
 
-Banking compliance and financial-crime teams hunt for "layering" -- a money-laundering pattern where a launderer routes funds from one source account through a cluster of intermediary accounts to a single destination, splitting each leg under the [FinCEN currency-transaction-report threshold](https://www.ecfr.gov/current/title-31/subtitle-B/chapter-X/part-1010/subpart-C/section-1010.311) of $10,000 so no transaction triggers a CTR filing. The intermediaries -- "hubs" -- share a beneficial owner: a single human or shell entity behind multiple accounts, who absorbs a small fee at each hop and forwards the rest.
+Banking compliance and financial-crime teams hunt for "layering" -- the obfuscation phase of money laundering, where a launderer routes funds across a coordinated cohort of intermediary accounts so no single transaction triggers a [FinCEN currency-transaction-report](https://www.ecfr.gov/current/title-31/subtitle-B/chapter-X/part-1010/subpart-C/section-1010.311) (CTR) filing. The structural shape -- a fan-out from a source through K hubs to a destination, or a fan-in from K coordinated sources to a single merchant -- is what graph-pattern matchers and paths libraries handle well, and it's exactly what a launderer hides behind by adding decoy edges and lookalike clusters.
 
-The signal is not just structural. The structural pattern (one source fanning out to K hubs that converge on one destination) is what a graph-pattern matcher or a paths library handles well -- and what a launderer can hide behind by adding decoy edges and lookalike clusters. The signal that *separates* a layering motif from its lookalikes is **arithmetic across the chosen edges**: each hub's incoming dollar amount must equal its outgoing amount, within a tight tolerance. That balance condition has to hold *jointly* across whichever subset of transactions the detector picks, which is precisely the constraint a graph-pattern or paths library cannot enforce -- they see one edge or one walk at a time, not "this set of K edges, taken together, conserves flow at every hub." This template encodes that joint condition as a CSP and uses the solver to enumerate the motifs in the data that satisfy it.
+The signal that *separates* a layering motif from its lookalikes is **a constraint that has to hold jointly across whichever subset of accounts and edges the detector picks** -- arithmetic across the chosen edges, pairwise distinctness across the chosen accounts, or a count distribution over the chosen subset. None of those are expressible in a graph pattern or a path query: those see one edge or one walk at a time, never "this set of K elements, taken together, satisfies the joint condition." This template is the cart's clearest demonstration of where CSP earns its keep on a graph problem.
 
-The model decides which transactions are part of the motif and which accounts play which role (`is_source`, `is_hub`, `is_dest`). Per-account flow conservation in *count* couples edge-selection to role-assignment (graph reasoning can express this in isolation, but not while binding it to the arithmetic constraint below). Per-hub flow conservation in *dollar amounts* is the load-bearing CSP piece -- the solver must balance the chosen edges' values against each other, which a graph-pattern or paths library cannot express. Multi-solution enumeration (`solution_limit=K`) is available for batch analyst-triage workflows but is not the headline: the headline is the joint-arithmetic constraint.
+The template ships **three motifs**, each picking out a different layering shape on the same synthetic transaction ledger and each anchoring a *distinct* CSP technique class. They share an ontology (`model_setup.py`) and run as three independent scripts:
 
-The same pattern applies to other graph motif-detection problems where the signal is "K accounts in the same cluster forming a fixed shape with arithmetic balance across decision-selected edges": collusion rings in marketplace fraud, ration-card sharing in welfare fraud, recurring-billing abuse with fee splitting in subscription services. In every case, what makes the motif identifiable -- as opposed to "here are some accounts that look connected" -- is the constraint arithmetic.
+| Motif | CSP technique class | Topology | Runner |
+|---|---|---|---|
+| **Butterfly** with per-hub flow conservation | Per-vertex equality of two aggregates over a decision-selected edge subset | Scatter-gather (one source -> K hubs -> one destination), per-hub conservation in dollar amount | `motif_butterfly.py` |
+| **Smurf army** with pairwise distinct beneficial owners | Pairwise constraints over decision-selected vertices + sum-equals-target | Fan-in (K sources -> one destination) with pairwise-distinct `bo_id`, sum-to-target, tight time window | `motif_smurf_army.py` |
+| **KYC-mix burst** with cardinality distribution | Cardinality / distribution constraints over decision-selected vertex subsets | Fan-in with KYC-tier mix (>= 4 retail, <= 1 business) within a tight time window | `motif_kyc_burst.py` |
+
+The three motifs are deliberately diverse: equality of per-vertex aggregates (butterfly), pairwise constraints + all-different on the chosen subset (smurf army), and cardinality / distribution over the chosen subset (KYC-mix burst). Each is grounded in a documented AML topology -- the eight-pattern taxonomy from [IBM AMLworld](https://arxiv.org/abs/2306.16424) (Altman et al., NeurIPS 2023) and the structuring / smurf-army typology from FATF and FinCEN (31 CFR § 1010.311).
+
+The same patterns apply outside banking. Per-vertex aggregate equality detects collusion rings in marketplace fraud and recurring-billing abuse with fee splitting. Pairwise distinctness over a chosen subset detects ration-card sharing in welfare fraud and identity-cohort scams in subscription services. Cardinality distribution over a chosen subset detects compliance-mix violations in regulatory audits and KYC-cohort coordination in any structuring-style scheme.
 
 ## Who this is for
 
 - Bank financial-crime / AML compliance teams investigating layering patterns
 - Fintech risk engineers building structuring-detection alert pipelines
 - Bank IT teams building investigative tools that surface candidate cases for human review
-- Operations researchers learning subgraph motif enumeration with flow conservation as a CSP problem
+- Operations researchers learning multi-motif subgraph detection where each motif demonstrates a distinct CSP technique class
 
 ## What you'll build
 
-- A constraint model with four binary decision streams: `Transaction.is_motif` (which transactions are part of the motif) and `Account.is_source` / `Account.is_hub` / `Account.is_dest` (which accounts play which role)
-- A role-eligibility pre-pass that forces the role bits to 0 on accounts that have no outgoing transactions (cannot be source or hub) or no incoming transactions (cannot be hub or destination), so the per-account flow ICs bind correctly even on customized ledgers with isolated accounts
-- Per-account flow conservation in *count* over the directed transaction graph (source has out-degree K, each hub has in-degree 1 and out-degree 1, destination has in-degree K)
-- **Per-hub flow conservation in *dollar amount* -- the load-bearing CSP IC.** Each hub forwards what it receives, within `CONSERVATION_TOLERANCE_DOLLARS`. Written with `implies` so the constraint activates only on accounts the solver picks as hubs -- no big-M coefficient. Per-hub residuals are visible in the motif-transactions inspection table; an analyst can confirm per hub that `sum(motif inflow) - sum(motif outflow)` is within tolerance.
-- Same-beneficial-owner constraint over chosen hub pairs -- a pairwise constraint on the *selected* hub set, not just an edge filter
-- Threshold predicate forcing each motif edge below the FinCEN $10K reporting line
-- Transaction timestamps (`ts_minutes`) are loaded and printed for analyst review but are **not** part of the constraint set -- the model is a structural-and-arithmetic motif detector. Add a temporal-ordering IC in the customization section if your scheme requires hubs to receive before they forward.
-- Multi-solution enumeration: `problem.solve(..., solution_limit=MAX_MOTIFS)` enumerates up to that many distinct feasible motifs; `Variable.values(solution_index, value)` surfaces every candidate. Useful for batch analyst-triage workflows on real ledgers.
-- Post-solve sanity check via `problem.verify()` re-evaluating the pure-arithmetic ICs against the first returned solution (the implies-bodied conservation ICs are solver-only and omitted). `verify()` checks the first solution only; rely on the model itself, not `verify()`, to enforce the constraint across every motif.
+A shared ontology in `model_setup.py` and three independent CSP runners, each adding its own decision properties and constraints to the same `Account` / `Transaction` model. Every runner solves a separate `Problem` and prints the analyst-facing motif tables.
+
+Common scaffolding (shared by all three):
+
+- `Account` concept with `bo_id` (beneficial owner cluster), `kyc_tier`, and `jurisdiction` properties
+- `Transaction` concept with `src`, `dst`, `amount_dollars`, `ts_minutes`
+- `HasOutgoing` / `HasIncoming` eligibility sub-concepts
+- A computed-from-data `conservation_big_m` that lets the butterfly's per-hub conservation IC be expressed as a single linear constraint, with no half-reified `implies` auxiliaries that would otherwise blow up MiniZinc enumeration
+
+Variant-specific decisions and constraints:
+
+- **Butterfly** (`motif_butterfly.py`):
+  - Decisions: `Transaction.is_motif`, `Account.is_source` / `is_hub` / `is_dest`
+  - Per-account flow conservation in *count* (source out-degree K, hub in/out-degree 1, dest in-degree K)
+  - **Per-hub flow conservation in *dollar amount*** -- the load-bearing CSP IC. Each chosen hub's incoming dollars equal its outgoing dollars within `CONSERVATION_TOLERANCE_DOLLARS`. Written in big-M form (active when `is_hub == 1`, vacuous otherwise) with the M coefficient computed from the data.
+  - Same-beneficial-owner pairwise filter over chosen hub pairs (a constraint on the selected subset, not a pre-filter)
+  - Layer constraints (no source-to-dest direct, no hub-to-hub) and sub-threshold amount filter
+
+- **Smurf army** (`motif_smurf_army.py`):
+  - Decisions: `Account.is_smurf`, `Transaction.is_smurf_tx`
+  - Exactly N smurfs sending to a single target merchant
+  - **Pairwise distinct beneficial owners** across chosen smurfs -- the load-bearing CSP IC for this variant
+  - Sum-equals-target on chosen smurf-tx amounts within tolerance
+  - All chosen smurf-tx within `SMURF_WINDOW_MINUTES` of each other
+  - Sub-threshold amount filter
+
+- **KYC-mix burst** (`motif_kyc_burst.py`):
+  - Decisions: `Account.is_burst`, `Transaction.is_burst_tx`
+  - Exactly N accounts in a coordinated burst to a single target merchant
+  - **`>= RETAIL_FLOOR` retail-tier accounts and `<= BUSINESS_CAP` business-tier accounts among chosen** -- the load-bearing CSP IC for this variant; the cardinality is over the *selected* subset
+  - All chosen burst-tx within `BURST_WINDOW_MINUTES` of each other
+  - Sub-threshold amount filter
+
+Multi-solution enumeration via `problem.solve(..., solution_limit=K)` is available on every runner for batch analyst-triage workflows; the bundled data is small enough that each runner exhausts to `OPTIMAL` rather than hitting the limit.
 
 ## What's included
 
-- `money_laundering_motif_detection.py` -- main script with ontology, decisions, constraints, and solver call
-- `data/accounts.csv` -- 40 accounts spanning ~15 beneficial-owner clusters, including two viable hub clusters (bo=100, bo=200) and several alt-hub candidates that match by ownership but fail conservation
-- `data/transactions.csv` -- 60 directed transactions: two complete butterflies (against different destinations and in different bo clusters) plus a mix of decoys -- alt-cluster paths that fail conservation, over-threshold transactions, mismatched-owner pairs, wrong-direction edges, and unrelated cross-cluster traffic
-- `pyproject.toml` -- Python package configuration
+- `model_setup.py` -- shared ontology (`Account`, `Transaction`, eligibility sub-concepts) + CSV load + computed big-M for the butterfly's conservation IC. Every runner imports `create_model()`. Following the multi-runner shared-setup pattern from `humanitarian-aid-supply-chain` and `wildlife-conservation-network`.
+- `motif_butterfly.py` -- variant 1 runner. Lead motif with per-hub flow conservation.
+- `motif_smurf_army.py` -- variant 2 runner. Pairwise distinct BOs + sum-target + window.
+- `motif_kyc_burst.py` -- variant 3 runner. Cardinality on chosen subset + window.
+- `data/accounts.csv` -- 140 accounts across ~30 beneficial-owner clusters, including two butterfly-cluster hubs (`bo_id=100`, `bo_id=200`), a five-account smurf cohort with pairwise-distinct BOs (`bo_id=1701..1705`), a five-account KYC-mix burst cohort (4 retail + 1 business across 4 jurisdictions), plus dup-BO / out-of-window / over-amount decoys for each motif and ~80 unrelated noise accounts.
+- `data/transactions.csv` -- 358 directed transactions: 12 butterfly motif edges, 5 smurf motif edges, 5 KYC-burst motif edges, ~50 named decoys / cross-cluster traffic, and ~280 noise transactions deterministically generated via `data/generate.py`.
+- `data/generate.py` -- the deterministic generator that produced the bundled CSVs. Re-run only if you change the planted-motif design or want to regenerate at a different size; the template ships its outputs so users don't need to run it.
+- `pyproject.toml` -- Python package configuration.
 
 ## Prerequisites
 
@@ -90,225 +127,184 @@ The same pattern applies to other graph motif-detection problems where the signa
    rai init
    ```
 
-5. Run:
+5. Run any of the three motif detectors. They share the bundled data and run independently:
    ```bash
-   python money_laundering_motif_detection.py
+   python motif_butterfly.py
+   python motif_smurf_army.py
+   python motif_kyc_burst.py
    ```
 
-6. Expected output. The bundled dataset contains two complete butterflies (cluster `100` against `WireRecipientCorp`, cluster `200` against `OffshoreLLC`) plus a mix of decoys; with `solution_limit=10` the solver enumerates both and the inspect blocks tag each row with its `solution` index. Solver build strings and exact wall times will vary; the structure of the output is stable:
+6. Expected output. The bundled dataset plants exactly the motifs each detector targets, plus dup-BO / out-of-window / over-amount decoys for each. Every detector exhausts to `OPTIMAL` (search complete; no further motifs exist under the encoded constraints). Solver build strings and exact wall times will vary; the structure of the output is stable.
+
+   `motif_butterfly.py` finds the two planted scatter-gathers (cluster `100` -> `WireRecipientCorp`, cluster `200` -> `OffshoreLLC`):
    ```text
    Solve result:
    • status: OPTIMAL
-   • objective: 0
-   • solve time: 0.53s
    • num_points: 2
-   • solver: MiniZinc_nothing
 
-   Candidate motif transactions (one row per motif edge per solution):
+   Result: 2 butterfly motif(s) found and search exhausted.
+
+   Butterfly: candidate motif transactions (one row per motif edge per solution):
        solution  tx_id  src_account_id         src_name  dst_account_id           dst_name  amount  ts_min
    0          0      1               1  SourceShellCorp               2           HubAccA1    9000       5
-   1          0      2               1  SourceShellCorp               3           HubAccA2    8500       7
-   2          0      3               1  SourceShellCorp               4           HubAccA3    9500       9
-   3          0      4               2         HubAccA1               5  WireRecipientCorp    8980      15
-   4          0      5               3         HubAccA2               5  WireRecipientCorp    8475      17
-   5          0      6               4         HubAccA3               5  WireRecipientCorp    9420      19
-   6          1      7               6  SecondShellCorp               7           HubAccB1    7000      30
-   7          1      8               6  SecondShellCorp               8           HubAccB2    7500      32
-   8          1      9               6  SecondShellCorp               9           HubAccB3    7800      34
-   9          1     10               7         HubAccB1              10        OffshoreLLC    6950      40
-   10         1     11               8         HubAccB2              10        OffshoreLLC    7480      42
+   ...
    11         1     12               9         HubAccB3              10        OffshoreLLC    7780      44
-
-   Candidate motif hubs per solution (with shared beneficial owner):
-      solution  hub_id  hub_name  bo_id
-   0         0       2  HubAccA1    100
-   1         0       3  HubAccA2    100
-   2         0       4  HubAccA3    100
-   3         1       7  HubAccB1    200
-   4         1       8  HubAccB2    200
-   5         1       9  HubAccB3    200
-
-   Candidate motif source and destination per solution:
-      solution  source_id      source_name  dest_id          dest_name
-   0         0          1  SourceShellCorp        5  WireRecipientCorp
-   1         1          6  SecondShellCorp       10        OffshoreLLC
    ```
 
-   Each solution row is one full butterfly: a source routing three under-threshold deposits through three same-beneficial-owner hubs to a single destination, each hub absorbing a small "fee" within `CONSERVATION_TOLERANCE_DOLLARS` ($100) before forwarding the balance. The dataset's near-misses make the constraints visibly do work: alt-cluster-100 candidates `AltCluster100A` and `AltCluster100B` (bo `100`, would pass `same_bo_ic`) fail conservation with residuals over $500; `NearMissAcc` (bo `100`) fails conservation routing $4000 in against $9500 out; transactions over $10,000 are forced out of the motif by `amount_threshold_ic`; the alternative path through `IndividualX` (bo `300`) fails `same_bo_ic` against the cluster -- so they never appear in any solution.
+   `motif_smurf_army.py` finds the planted five-smurf cohort with distinct BOs (Adrian Park / Mira Volkov / Dimitri Solanki / Sofia Reyes / Tomas Hellman -> Pacific Receivables Inc, sum = $27,000, window = 18 min):
+   ```text
+   Solve result:
+   • status: OPTIMAL
+   • num_points: 1
+
+   Smurf army: chosen smurf accounts per solution (with distinct BOs and jurisdictions):
+      solution  smurf_id        smurf_name  bo_id  kyc_tier  jurisdiction
+   0         0        42       Adrian Park   1701    retail            US
+   1         0        43       Mira Volkov   1702    retail            UK
+   2         0        44   Dimitri Solanki   1703   private        Cayman
+   3         0        45       Sofia Reyes   1704    retail     Singapore
+   4         0        46     Tomas Hellman   1705    retail       Germany
+   ```
+
+   `motif_kyc_burst.py` finds two valid 5-account cohorts that satisfy the KYC mix (4 retail + 1 business, all within 60 min) -- the planted cohort plus an alternative-business swap (Newland Capital Inc replaces Brookline Industries):
+   ```text
+   Solve result:
+   • status: OPTIMAL
+   • num_points: 2
+
+   KYC-burst: chosen burst accounts per solution (with KYC tier and jurisdiction):
+      solution  burst_id            burst_name  kyc_tier  jurisdiction  bo_id
+   0         0        52           Trent Hayes    retail            US   2201
+   1         0        53      Samira Choudhury    retail            UK   2202
+   2         0        54           Diego Ramos    retail        Cayman   2203
+   3         0        55            Nikhil Tan    retail     Singapore   2204
+   4         0        56  Brookline Industries  business            US   2205
+   5         1        52           Trent Hayes    retail            US   2201
+   6         1        53      Samira Choudhury    retail            UK   2202
+   7         1        54           Diego Ramos    retail        Cayman   2203
+   8         1        55            Nikhil Tan    retail     Singapore   2204
+   9         1        57   Newland Capital Inc  business       Germany   2206
+   ```
 
 ## Template structure
 ```text
 .
 ├── README.md
 ├── pyproject.toml
-├── money_laundering_motif_detection.py
+├── model_setup.py             # shared ontology + data load + computed big-M
+├── motif_butterfly.py         # variant 1: per-hub flow conservation
+├── motif_smurf_army.py        # variant 2: pairwise distinct BOs + sum-target
+├── motif_kyc_burst.py         # variant 3: cardinality on chosen subset
 └── data/
     ├── accounts.csv
-    └── transactions.csv
+    ├── transactions.csv
+    └── generate.py            # deterministic generator (one-time, not runtime)
 ```
 
 ## How it works
 
-The solver decides which transactions are in the motif and which accounts play which role. The model has three patterns -- one structural, one arithmetic, one pairwise -- and the arithmetic one is the reason this template uses CSP rather than graph reasoning.
+The three motifs share an `Account` / `Transaction` ontology defined in `model_setup.py`. Each runner adds its own decision-valued properties, builds its own `Problem`, and constrains it with a different *class* of CSP technique. The "What you'll build" section above lists every constraint per motif; below is the load-bearing CSP IC for each, with the part that rules / paths / graph reasoning cannot express called out explicitly.
 
-**Pattern 1 -- per-account flow conservation in *count* couples edge selection to role assignment.** Summing `Transaction.is_motif` per source account against `K * is_source + is_hub`, and per destination account against `is_hub + K * is_dest`, forces the solver into a structurally valid butterfly: source has out-degree K, each hub has out-degree 1 and in-degree 1, destination has in-degree K. A graph-pattern matcher could express each side in isolation; a CSP binds the count-balance to the role assignment in a single declarative step.
+### Butterfly: per-vertex aggregate equality over a decision-selected edge subset
 
-```python
-out_flow_ic = model.where(Transaction.src == Account).require(
-    sum(Transaction.is_motif).per(Transaction.src) == K * Account.is_source + Account.is_hub
-)
-in_flow_ic = model.where(Transaction.dst == Account).require(
-    sum(Transaction.is_motif).per(Transaction.dst) == Account.is_hub + K * Account.is_dest
-)
-```
-
-**Pattern 2 -- per-hub flow conservation in *dollar amount*. This is the constraint a paths library cannot express.** For every account the solver assigns as a hub, the dollar amount it receives via motif edges must equal what it forwards, within `CONSERVATION_TOLERANCE_DOLLARS`. The constraint is arithmetic over a *decision-selected subset* of edges -- it cannot be evaluated until the solver has chosen which transactions are in the motif and which accounts are hubs. A path enumeration sees one walk at a time and never the joint condition; a rules-only encoding can sum-per-hub but cannot bind that sum to "and only over the chosen subset of edges, where the chosen accounts are hubs." The `implies` form below is the natural CSP encoding (a half-reified linear constraint) and reads as "if A is a hub, balance":
+For every account the solver picks as a hub, the dollar amount it receives via motif edges must equal what it forwards, within `CONSERVATION_TOLERANCE_DOLLARS`. The constraint is arithmetic over a *decision-selected subset* of edges -- it cannot be evaluated until the solver has chosen which transactions are in the motif and which accounts are hubs. Written in big-M form so the constraint is active when `is_hub == 1` and vacuous when `is_hub == 0`, with the M coefficient computed from the data:
 
 ```python
-T_in = Transaction.ref()
-T_out = Transaction.ref()
 conservation_pos_ic = model.where(T_in.dst == Account, T_out.src == Account).require(
-    implies(
-        Account.is_hub == 1,
-        sum(T_in.amount_dollars * T_in.is_motif).per(T_in.dst)
-        - sum(T_out.amount_dollars * T_out.is_motif).per(T_out.src)
-        <= CONSERVATION_TOLERANCE_DOLLARS,
-    )
+    sum(T_in.amount_dollars * T_in.is_motif).per(T_in.dst)
+    - sum(T_out.amount_dollars * T_out.is_motif).per(T_out.src)
+    + CONSERVATION_BIG_M * Account.is_hub
+    <= CONSERVATION_TOLERANCE_DOLLARS + CONSERVATION_BIG_M
 )
 ```
 
-**Pattern 3 -- pairwise constraint on the *chosen* hub set.** The same-beneficial-owner constraint forbids any pair of accounts with different `bo_id`s from both being hubs in the same motif. This is a constraint over the *selected* subset, not an edge filter: an account is allowed to exist in a different `bo_id` cluster, but cannot be a hub *in this motif*. Two `Account.ref()` handles let the constraint range over ordered pairs, with `H1.id < H2.id` to avoid double-counting:
+A path enumeration sees one walk at a time and never the joint condition; a rules-only encoding can sum-per-vertex but cannot bind that sum to "the chosen subset of edges, where the chosen accounts are hubs."
+
+> The earlier draft of this template used a half-reified `implies(Account.is_hub == 1, ...)` instead of big-M. That form introduces a free Boolean auxiliary per non-hub account that MiniZinc treats as part of the search space, returning thousands of trivially-distinct solutions for the same role/motif assignment. Big-M with a data-computed bound has no auxiliary; enumeration stays clean and the solver exhausts after the data's actual motifs.
+
+### Smurf army: pairwise constraints over a decision-selected vertex subset
+
+Among the N chosen smurfs, no two may share a beneficial owner. The constraint is over the *selected* subset, not an edge filter: an account is allowed to exist in the same `bo_id` cluster as another, but cannot be a smurf *in the same cohort*. Two `Account.ref()` handles let the constraint range over ordered pairs, with `S1.id < S2.id` to avoid double-counting:
 
 ```python
-H1 = Account.ref()
-H2 = Account.ref()
-same_bo_ic = model.where(H1.id < H2.id, H1.bo_id != H2.bo_id).require(
-    H1.is_hub + H2.is_hub <= 1
+S1 = Account.ref()
+S2 = Account.ref()
+distinct_bo_ic = model.where(S1.id < S2.id, S1.bo_id == S2.bo_id).require(
+    S1.is_smurf + S2.is_smurf <= 1
 )
 ```
 
-**Solver call and enumeration.** `problem.solve(..., solution_limit=MAX_MOTIFS)` enumerates up to MAX_MOTIFS distinct feasible motifs. The variable subconcept returned by `solve_for(...)` exposes a `.values(solution_index, value)` relationship that indexes per-solution outputs; filtering on `value == 1` surfaces the rows the solver picked into each motif. The populated property (e.g. `Transaction.is_motif`) reflects only the first solution, so for multi-solution output the inspect blocks always go through `.values(...)`:
+Pre-filtered pair tables can't bind to "the K-subset the solver itself picks." Combined with sum-equals-target on the chosen smurf-tx amounts and a tight pairwise time window, this gives the second CSP-only piece of this variant: the *sum* must hit a known launder target while the *pairwise distinctness* holds on the same chosen set.
+
+### KYC-mix burst: cardinality / distribution over a decision-selected vertex subset
+
+Among the N chosen burst accounts, at least `RETAIL_FLOOR` must be retail-tier and at most `BUSINESS_CAP` business-tier. Rules can label each account's tier; only CSP enforces the count distribution *over the selected subset*:
 
 ```python
-problem.solve("minizinc", time_limit_sec=60, solution_limit=MAX_MOTIFS)
-
-sol_idx = Integer.ref()
-val = Integer.ref()
-model.select(
-    sol_idx.alias("solution"),
-    is_motif_var.transaction.tx_id.alias("tx_id"),
-    is_motif_var.transaction.src.name.alias("src_name"),
-    is_motif_var.transaction.dst.name.alias("dst_name"),
-    is_motif_var.transaction.amount_dollars.alias("amount"),
-).where(is_motif_var.values(sol_idx, val), val == 1).inspect()
+retail_floor_ic = model.require(
+    sum(Account.is_burst).where(Account.kyc_tier == "retail") >= RETAIL_FLOOR
+)
+business_cap_ic = model.require(
+    sum(Account.is_burst).where(Account.kyc_tier == "business") <= BUSINESS_CAP
+)
 ```
 
-The variable subconcept exposes a back-pointer field named after the entity in its property: `is_motif_var.transaction` walks back to the `Transaction` instance for each row. Same shape for `is_hub_var.account`, `is_source_var.account`, `is_dest_var.account`.
+The launder-grade burst signature is "K accounts of mixed KYC tier transacting together in a tight window." A graph-pattern matcher can find the time-window cluster but has no way to express "and the count distribution by tier matches a target."
+
+### Full-Account scope on role / cohort decision variables
+
+All three runners declare their role / cohort decision properties (`Account.is_source` etc., `Account.is_smurf`, `Account.is_burst`) at full Account scope, with no `where=[HasOutgoing]` / `where=[HasIncoming]` on the `solve_for(...)` call. Tighter scoping leaves the variable undefined for accounts in the *other* eligibility set, and constraints that reference both an undefined role variable and a defined one are silently dropped from the per-account flow ICs -- letting the solver place motif edges into accounts that aren't actually hubs or burst members. Full-scope decisions are forced to 0 by the role-count and per-account flow ICs (and, on the variant runners, an explicit `flow_consistency_ic` that ties total cohort size to total cohort-tx count). This is a deliberate scope choice; the per-runner code comments it explicitly.
+
+### Solver call and enumeration
+
+Every runner calls `problem.solve("minizinc", time_limit_sec=60, solution_limit=...)`. The variable subconcept returned by `solve_for(...)` exposes a `.values(solution_index, value)` relationship that indexes per-solution outputs; filtering on `value == 1` surfaces the rows the solver picked. The populated property reflects only the first solution, so for multi-solution output the inspect blocks always go through `.values(...)`.
 
 ## Customize this template
 
-- **Use your own data** by replacing the two CSV files with your accounts and transactions. The constraint structure does not change. `bo_id` should reflect your beneficial-ownership data; if you don't have it, set every row's `bo_id` to a single placeholder and drop `same_bo_ic`. Hub candidates need at least one incoming and one outgoing transaction in your graph (the source needs K outgoing, the destination K incoming) -- the count flow ICs only bind on accounts that appear on both sides of the transaction edges.
-- **Raise the solution limit on a real ledger.** The bundled `MAX_MOTIFS = 10` is sized for the demo. On a production ledger with thousands of accounts you may want `MAX_MOTIFS = 100` (or higher) so the analyst inbox surfaces the full population of candidates. The `time_limit_sec` argument to `problem.solve` is your safety net -- enumeration stops when either the limit or the budget is reached.
-- **Change the hub count** by adjusting `K` at the top of the script. K = 3 is the smallest count that's clearly a fan-out-then-fan-in pattern; real layering schemes often involve 5--20 hubs.
-- **Tune the threshold and conservation tolerance** by editing `AMOUNT_THRESHOLD_DOLLARS` and `CONSERVATION_TOLERANCE_DOLLARS`. The FinCEN CTR threshold is $10,000. The default $100 tolerance is sized for this template's synthetic demo (residuals 20/25/80 fit comfortably) and for schemes with very small per-hop fees. Real-world layering often takes 1-3% per hop, so on $9,000 transactions you may want to widen the tolerance toward $200-300; tighten it if you're hunting near-perfect pass-through.
-- **Add a time-window filter** by adding a pairwise constraint over motif transactions. Declare two refs first (`T1 = Transaction.ref()`, `T2 = Transaction.ref()`), then: `model.where(T1.ts_minutes + WINDOW < T2.ts_minutes).require(T1.is_motif + T2.is_motif <= 1)`. Useful when your scheme runs on a known cadence (minutes for high-frequency layering; days or weeks for slower schemes).
-
-### Variant motifs (different CSP techniques)
-
-The butterfly above is the canonical scatter-gather pattern from the IBM AMLworld taxonomy ([Altman et al., NeurIPS 2023](https://arxiv.org/abs/2306.16424)). Two other layering shapes sit naturally in the same CSP framework but anchor *different* CSP techniques -- not just different topologies. Each variant lists the technique class explicitly so you can pick the one matching your investigation. Both are sketches, not full implementations.
-
-| Motif | CSP technique | Why graph-pattern / paths / rules fall short |
-|---|---|---|
-| **Butterfly with per-hub conservation** (the runner above) | Per-vertex equality of two aggregates over decision-selected edge subsets | Paths see one walk; rules can sum-per-hub but cannot bind the equality to "the chosen subset of edges, where the chosen accounts are hubs" |
-| **Smurf army with pairwise distinctness** (variant 1 below) | Pairwise constraints over decision-selected vertices, plus `all_different` on a vertex property | Paths/rules can filter pairs; only CSP enforces the pairwise property *over the K-subset the solver itself picks* |
-| **Temporal burst with KYC-mix distribution** (variant 2 below) | Cardinality / distribution constraints over decision-selected vertex subsets | Rules can label each account's KYC tier; only CSP enforces the count distribution *over the selected subset* |
-
-- **Variant 1 -- smurf army with pairwise distinctness on the selected set.** A known launder-target $T$ is moved into a destination via N source deposits, each below the FinCEN reporting threshold, summing to $T$ within tolerance. The K source accounts must have *pairwise-distinct beneficial owners* (no two are owned by the same human or shell entity -- the launderer recruits separate identities) and must *all* transact within a tight time window of each other (the burst signature). The decisions select which N source accounts the motif uses; the constraints bind only on the chosen accounts:
-
-  ```python
-  TARGET_DOLLARS = 27000  # known destination receipt
-  TOLERANCE = 100
-  WINDOW_MINUTES = 60
-  Account.is_smurf = model.Property(f"{Account} is smurf if {Integer:is_smurf}")
-
-  # Sum-equals-target over chosen smurfs
-  sum_target_ic = model.where(Transaction.src.is_smurf == 1, Transaction.dst == DESTINATION).require(
-      sum(Transaction.amount_dollars * Transaction.is_motif) >= TARGET_DOLLARS - TOLERANCE,
-      sum(Transaction.amount_dollars * Transaction.is_motif) <= TARGET_DOLLARS + TOLERANCE,
-  )
-
-  # Pairwise: no two chosen smurfs share a beneficial owner (load-bearing CSP)
-  S1 = Account.ref()
-  S2 = Account.ref()
-  pairwise_distinct_bo_ic = model.where(S1.id < S2.id, S1.bo_id == S2.bo_id).require(
-      S1.is_smurf + S2.is_smurf <= 1
-  )
-
-  # Pairwise: chosen smurfs all transact within WINDOW_MINUTES of each other
-  T1 = Transaction.ref()
-  T2 = Transaction.ref()
-  burst_window_ic = model.where(
-      T1.src.is_smurf == 1, T2.src.is_smurf == 1,
-      T1.tx_id < T2.tx_id,
-      T2.ts_minutes - T1.ts_minutes > WINDOW_MINUTES,
-  ).require(T1.is_motif + T2.is_motif <= 1)
-  ```
-
-  This is the structuring / smurf-army typology from FATF and FinCEN guidance. The pairwise constraints over the *chosen* subset are the CSP-required piece -- pre-filtered pair tables don't bind to "the K accounts the solver decides on."
-
-- **Variant 2 -- temporal burst with KYC-mix distribution constraint.** N accounts transact within a short window AND within a tight amount band, with the *distribution* of selected accounts matching a target -- e.g., at least 4 retail-tier accounts, at most 1 business-tier, at least 3 distinct jurisdictions. The count-and-distribution constraints over the decision-selected subset are the CSP-required piece (a different technique from variant 1's pairwise constraints):
-
-  ```python
-  Account.kyc_tier = model.Property(f"{Account} has {String:kyc_tier}")
-  Account.jurisdiction = model.Property(f"{Account} has {String:jurisdiction}")
-
-  # Count distribution over the chosen subset
-  retail_floor_ic = model.where(Account.kyc_tier == "retail").require(
-      sum(Account.is_in_burst) >= 4
-  )
-  business_cap_ic = model.where(Account.kyc_tier == "business").require(
-      sum(Account.is_in_burst) <= 1
-  )
-  # Plus: at least 3 distinct jurisdictions among chosen accounts (count over distinct values)
-  ```
-
-  This matches the "smurf army" KYC-tier-diverse profile and the temporal-coordination signal flagged in AML practitioner literature ([Tookitaki AML guidance](https://www.tookitaki.com/compliance-hub/smurfing-structuring-aml-detection-reporting)). Rules can mark a tier; only CSP enforces the *distribution* over the chosen subset.
-
-These two variants are not in the runner -- the butterfly above demonstrates per-vertex aggregate equality, and adding two more motifs to one script would push it past the cart's "short and linear" convention. Use them as starting points for related collusion-ring / fee-splitting / coordinated-action detectors.
+- **Use your own data** by replacing the two CSV files with your accounts and transactions; every runner picks them up automatically. The shared ontology in `model_setup.py` reads columns by name (`id`, `name`, `bo_id`, `kyc_tier`, `jurisdiction`, `tx_id`, `src_id`, `dst_id`, `amount_dollars`, `ts_minutes`). Drop a column you don't have by deleting the corresponding `Account.<name> = model.Property(...)` line and any constraint that references it.
+- **Test against real public data.** The bundled CSVs are synthetic and tuned to make the three motifs visible. For production-style validation, point the runners at a slice of [IBM AMLworld HI-Small / LI-Small](https://github.com/IBM/AML-Data) (CDLA-Sharing-1.0; the dataset paper is Altman et al., NeurIPS 2023). AMLworld natively labels the eight-pattern taxonomy used in this template's lead motif (scatter-gather), and a ~500-2000 transaction slice will solve in seconds. KYC tiers and jurisdictions are not in AMLworld natively; the smurf-army and KYC-burst runners would need either synthetic augmentation columns or a different vertex category mapped from AMLworld's `Bank` / `Payment Format` columns.
+- **Raise the solution limit on a real ledger.** Each runner's `MAX_*_MOTIFS` is sized for the demo. On a production ledger with thousands of accounts you may want 100+ so the analyst inbox surfaces the full population of candidates. The `time_limit_sec` argument to `problem.solve` is your safety net.
+- **Tune the thresholds** by editing the per-runner constants. The FinCEN CTR threshold (`AMOUNT_THRESHOLD_DOLLARS = 10_000`) lives in `model_setup.py`. Per-hub conservation tolerance, smurf target dollars, smurf window, burst window, retail floor, and business cap are at the top of each variant's runner.
+- **Add a temporal-ordering IC to the butterfly** (so hubs must receive before they forward) by declaring two `Transaction.ref()` handles and a pairwise time constraint on hub-incoming vs hub-outgoing motif edges. Useful when your scheme runs on a known cadence.
+- **Sweep the smurf target** by parameterizing `SMURF_TARGET_DOLLARS` and re-running; alternatively, replace the equality with a *minimum* cumulative deposit constraint (`>= SMURF_TARGET_DOLLARS - tol`) if your watchlist tracks "at least $X laundered through this merchant" rather than a known exact total.
+- **Add a jurisdiction-diversity floor to the KYC-mix burst** with a per-jurisdiction sum + a global count: declare an auxiliary `Account.is_burst_in_<j>` per jurisdiction `j` reified as `is_burst * (jurisdiction == j)`, then constrain the count of jurisdictions with at least one chosen account to be `>= 3`. The bundled data already plants four distinct jurisdictions in the burst cohort; this would make that distribution a hard constraint.
 
 ## References
 
-- [Altman et al., *Realistic Synthetic Financial Transactions for Anti-Money Laundering Models*, NeurIPS 2023](https://arxiv.org/abs/2306.16424). The IBM AMLworld paper. Defines the canonical eight-pattern AML topology taxonomy (fan-in, fan-out, scatter-gather, gather-scatter, cycle, bipartite, stack, random) and explicitly notes "total in equals total out" for the conservation patterns -- the property the butterfly motif here encodes.
+- [Altman et al., *Realistic Synthetic Financial Transactions for Anti-Money Laundering Models*, NeurIPS 2023](https://arxiv.org/abs/2306.16424). The IBM AMLworld paper. Defines the canonical eight-pattern AML topology taxonomy (fan-in, fan-out, scatter-gather, gather-scatter, cycle, bipartite, stack, random) and explicitly notes "total in equals total out" for the conservation patterns -- the property the butterfly motif here encodes. Public dataset releases at [IBM/AML-Data](https://github.com/IBM/AML-Data) under CDLA-Sharing-1.0.
 - [Starnini et al., *Smurf-Based Anti-Money Laundering in Time-Evolving Transaction Networks*, ECML PKDD 2021](https://link.springer.com/chapter/10.1007/978-3-030-86514-6_11). Time-window plus flow-balance signal in real-world transaction graphs (>180M transactions, >31M bank accounts).
 - [Pareja et al., *The Shape of Money Laundering: Subgraph Representation*, arXiv:2404.19109](https://arxiv.org/pdf/2404.19109). Subgraph-classification benchmark on Elliptic2; multi-leg / multi-account topologies.
-- [FATF (Financial Action Task Force) Typologies Reports](https://www.fatf-gafi.org/en/publications/Methodsandtrends.html) -- canonical typology source for placement / layering / integration stages, including the structuring and smurf-army patterns the variants above encode.
+- [FATF (Financial Action Task Force) Typologies Reports](https://www.fatf-gafi.org/en/publications/Methodsandtrends.html) -- canonical typology source for placement / layering / integration stages, including the structuring and smurf-army patterns the variant runners encode.
 - [FinCEN Currency Transaction Report (CTR) regulation, 31 CFR § 1010.311](https://www.ecfr.gov/current/title-31/subtitle-B/chapter-X/part-1010/subpart-C/section-1010.311) -- the $10K reporting threshold whose evasion drives the structuring typology.
+- [Tookitaki, *Smurfing and Structuring: AML Detection and Reporting*](https://www.tookitaki.com/compliance-hub/smurfing-structuring-aml-detection-reporting). Practitioner guidance on the KYC-tier-diverse smurf-army profile that the KYC-mix burst variant encodes.
 
 ## Troubleshooting
 
 <details>
   <summary>Solver returns INFEASIBLE</summary>
 
-- The data may not contain a structurally valid butterfly. With `K = 3`, you need at least one account that fans out to three distinct accounts (under threshold each) which then converge on a single destination (under threshold each), where each hub's incoming amount matches its outgoing amount within `CONSERVATION_TOLERANCE_DOLLARS`. Relax constraints one at a time -- raise `CONSERVATION_TOLERANCE_DOLLARS`, raise `AMOUNT_THRESHOLD_DOLLARS`, drop `K` -- to confirm whether the data or a specific constraint is the bottleneck.
-- Beneficial-ownership data inconsistencies: if every account has a unique `bo_id`, no pair of accounts can be hubs together (the `same_bo_ic` constraint forbids it). Confirm at least one cluster of K accounts shares a `bo_id`.
-- All under-threshold transactions go to different destinations: the destination is forced to receive K motif transactions, so K under-threshold transactions must converge on the same recipient.
+- The data may not contain a structurally valid instance of the motif you ran. For the butterfly, you need at least one account that fans out to K distinct accounts (under threshold each) which then converge on a single destination, where each hub's incoming amount matches its outgoing within `CONSERVATION_TOLERANCE_DOLLARS`. For the smurf army, you need N source accounts with pairwise-distinct BOs whose deposits to a single target sum to `SMURF_TARGET_DOLLARS` within tolerance and all fall within `SMURF_WINDOW_MINUTES`. For the KYC-mix burst, you need N accounts to a single target whose tier mix satisfies the floor / cap constraints and all fall within `BURST_WINDOW_MINUTES`.
+- Relax constraints one at a time (raise tolerance / window, drop K, raise the threshold) to confirm whether the data or a specific constraint is the bottleneck.
+- Beneficial-ownership data inconsistencies: for the butterfly, if every account has a unique `bo_id` no pair can be hubs together; for the smurf army the opposite -- with too many accounts sharing a `bo_id` you may not get N pairwise-distinct candidates.
+- KYC-mix burst data inconsistencies: if no four candidate accounts to the target are retail-tier, the retail floor is unreachable.
 
 </details>
 
 <details>
-  <summary>How many motifs will the solver return?</summary>
+  <summary>How many motifs / cohorts will each runner return?</summary>
 
-- Up to `MAX_MOTIFS` (10 by default) or however many feasible motifs exist in the data, whichever is smaller. `solve_info().num_points` reports the actual count after the solve.
-- Solution ordering is not guaranteed across runs or solver versions; the *set* of motifs is, but solution index 0 may swap with solution index 1 between runs. The K returned motifs are pairwise distinct on at least one decision but not maximally diverse and not ranked by laundered amount or any other severity score. Treat the `solution` column as a label, not a ranking.
-- To get a ranked answer (e.g. surface the largest scheme first), switch to optimisation -- `problem.maximize(sum(Transaction.is_motif * Transaction.amount_dollars))` returns the motif with the largest total laundered amount under `solution_limit=1`; reverse with `minimize` for the smallest. For a top-K ranked list, run an iterative exclusion-cut loop (re-solve after forbidding each previous motif's edge set) or sort the enumerated motifs by total laundered amount in post-processing.
+- Up to `MAX_*_MOTIFS` (10/5/5 by default for butterfly/smurf/burst) or however many feasible motifs exist in the data, whichever is smaller. `solve_info().num_points` reports the actual count after the solve. The bundled data exhausts each runner well below its limit.
+- Solution ordering is not guaranteed across runs or solver versions; the *set* of motifs is, but solution index 0 may swap with solution index 1 between runs. Treat the `solution` column as a label, not a ranking.
+- To get a ranked answer (e.g. surface the largest scheme first), switch to optimisation -- `problem.maximize(sum(Transaction.is_motif * Transaction.amount_dollars))` returns the motif with the largest total laundered amount under `solution_limit=1`. For a top-K ranked list, run an iterative exclusion-cut loop (re-solve after forbidding each previous motif's edge set) or sort the enumerated motifs in post-processing.
 
 </details>
 
 <details>
-  <summary>Import error for <code>relationalai</code></summary>
+  <summary>Import error for <code>relationalai</code> or <code>model_setup</code></summary>
 
 - Confirm your virtual environment is active: `which python` should point to `.venv`.
 - Reinstall dependencies: `python -m pip install .`.
+- The variant runners import from `model_setup` as a sibling module. Run them from inside the template directory (so the directory is on Python's path) or `python -m motif_butterfly` from the parent.
 
 </details>
 

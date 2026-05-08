@@ -1,41 +1,91 @@
-id,name,bo_id
-1,SourceShellCorp,600
-2,HubAccA1,100
-3,HubAccA2,100
-4,HubAccA3,100
-5,WireRecipientCorp,700
-6,SecondShellCorp,800
-7,HubAccB1,200
-8,HubAccB2,200
-9,HubAccB3,200
-10,OffshoreLLC,900
-11,IndividualX,300
-12,LegitBusiness,400
-13,NearMissAcc,100
-14,PassthroughCorp,500
-15,IndividualY,400
-16,AltCluster100A,100
-17,AltCluster100B,100
-18,AltCluster200A,200
-19,NoiseAccA1,1000
-20,NoiseAccA2,1000
-21,NoiseAccB1,1100
-22,NoiseAccB2,1100
-23,SmallBizA,1200
-24,SmallBizB,1200
-25,SmallBizC,1200
-26,IntermedA,1300
-27,IntermedB,1300
-28,HighVolA,1400
-29,HighVolB,1400
-30,SingleAcc1,1500
-31,AnotherLegit,400
-32,ThirdLegit,400
-33,NoiseAccC1,1600
-34,NoiseAccC2,1600
-35,NoiseAccD1,1700
-36,NoiseAccD2,1700
-37,NoiseAccE1,1800
-38,NoiseAccE2,1800
-39,NoiseAccF1,1900
-40,NoiseAccG1,2000
+id,name,bo_id,kyc_tier,jurisdiction
+1,SourceShellCorp,600,business,US
+2,HubAccA1,100,retail,US
+3,HubAccA2,100,retail,US
+4,HubAccA3,100,retail,US
+5,WireRecipientCorp,700,business,US
+6,SecondShellCorp,800,business,Cayman
+7,HubAccB1,200,retail,Cayman
+8,HubAccB2,200,retail,Cayman
+9,HubAccB3,200,retail,Cayman
+10,OffshoreLLC,900,business,Cayman
+11,IndividualX,300,retail,US
+12,LegitBusiness,400,business,US
+13,NearMissAcc,100,retail,US
+14,PassthroughCorp,500,business,US
+15,IndividualY,400,retail,US
+16,AltCluster100A,100,retail,US
+17,AltCluster100B,100,retail,US
+18,AltCluster200A,200,retail,Cayman
+19,NoiseAccA1,1000,retail,US
+20,NoiseAccA2,1000,retail,US
+21,NoiseAccB1,1100,retail,UK
+22,NoiseAccB2,1100,retail,UK
+23,SmallBizA,1200,business,US
+24,SmallBizB,1200,business,US
+25,SmallBizC,1200,business,US
+26,IntermedA,1300,retail,US
+27,IntermedB,1300,retail,US
+28,HighVolA,1400,business,US
+29,HighVolB,1400,business,US
+30,SingleAcc1,1500,retail,UK
+31,AnotherLegit,400,business,US
+32,ThirdLegit,400,business,US
+33,NoiseAccC1,1600,retail,Singapore
+34,NoiseAccC2,1600,retail,Singapore
+35,NoiseAccD1,1700,retail,Germany
+36,NoiseAccD2,1700,retail,Germany
+37,NoiseAccE1,1800,retail,UK
+38,NoiseAccE2,1800,retail,UK
+39,NoiseAccF1,1900,retail,US
+40,NoiseAccG1,2000,retail,US
+41,Pacific Receivables Inc,2100,business,US
+42,Adrian Park,1701,retail,US
+43,Mira Volkov,1702,retail,UK
+44,Dimitri Solanki,1703,private,Cayman
+45,Sofia Reyes,1704,retail,Singapore
+46,Tomas Hellman,1705,retail,Germany
+47,Lewis Holdings A,1706,retail,US
+48,Lewis Holdings B,1706,retail,UK
+49,Yara Costa,1707,retail,US
+50,Helena Vargas,1708,retail,US
+51,Continental Settlements LLC,2200,business,US
+52,Trent Hayes,2201,retail,US
+53,Samira Choudhury,2202,retail,UK
+54,Diego Ramos,2203,retail,Cayman
+55,Nikhil Tan,2204,retail,Singapore
+56,Brookline Industries,2205,business,US
+57,Newland Capital Inc,2206,business,Germany
+58,Kira Stojanov,2207,retail,Cayman
+59,Ravi Mehta,2208,retail,US
+60,Emil Larson,2209,retail,UK
+61,NoiseAcct061,3000,private,US
+62,NoiseAcct062,3001,retail,Switzerland
+63,NoiseAcct063,3002,business,UK
+64,NoiseAcct064,3003,retail,UK
+65,NoiseAcct065,3004,private,US
+66,NoiseAcct066,3005,private,Switzerland
+67,NoiseAcct067,3006,private,US
+68,NoiseAcct068,3007,private,Singapore
+69,NoiseAcct069,3008,retail,US
+70,NoiseAcct070,3009,retail,UK
+71,NoiseAcct071,3010,retail,Germany
+72,NoiseAcct072,3011,private,US
+73,NoiseAcct073,3012,private,UK
+74,NoiseAcct074,3013,private,Switzerland
+75,NoiseAcct075,3014,private,Germany
+76,NoiseAcct076,3015,business,UK
+77,NoiseAcct077,3016,business,Germany
+78,NoiseAcct078,3017,business,Hong Kong
+79,NoiseAcct079,3018,retail,Hong Kong
+80,NoiseAcct080,3019,retail,Switzerland
+81,NoiseAcct081,3020,business,Cayman
+82,NoiseAcct082,3021,business,UK
+83,NoiseAcct083,3022,retail,Hong Kong
+84,NoiseAcct084,3023,business,US
+85,NoiseAcct085,3024,retail,Singapore
+86,NoiseAcct086,3025,retail,Cayman
+87,NoiseAcct087,3026,business,Germany
+88,NoiseAcct088,3027,business,Hong Kong
+89,NoiseAcct089,3028,retail,Switzerland
+90,NoiseAcct090,3029,business,Germany
