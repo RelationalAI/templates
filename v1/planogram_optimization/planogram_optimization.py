@@ -45,22 +45,27 @@ DATA_DIR = Path(__file__).parent / "data"
 # --------------------------------------------------
 
 
-# `sku_id` keys an Sku entity in `Sku.new(...)`; duplicate rows would
-# silently merge into the same entity with conflicting properties.
+# Each entity-keyed CSV must have unique key rows; duplicates would silently
+# merge into the same entity with conflicting property values.
 def _assert_unique_keys(df, key, source):
-    duplicates = sorted(df[df.duplicated(subset=key, keep=False)][key].unique().tolist())
-    if duplicates:
+    cols = key if isinstance(key, list) else [key]
+    dupe_rows = df[df.duplicated(subset=cols, keep=False)]
+    if not dupe_rows.empty:
+        duplicates = sorted({tuple(row) for row in dupe_rows[cols].itertuples(index=False)})
         raise ValueError(
-            f"{source} has duplicate {key}={duplicates}. Each {key} must be "
-            "unique; remove or merge the conflicting rows."
+            f"{source} has duplicate {tuple(cols) if len(cols) > 1 else cols[0]}"
+            f"={duplicates}. Each key must be unique; remove or merge the "
+            "conflicting rows."
         )
 
 
 # The element-style table lookup binds Sku.realized_demand to the
 # PredictedDemand row whose facings_count matches the chosen Sku.facings.
 # If a row is missing for some (sku_id, k) with k in {0..max_facings}, the
-# implies cascade leaves realized_demand unconstrained for that pair and the
-# solver may pick an arbitrary value. Fail loudly before solve.
+# implies cascade leaves realized_demand unconstrained for that pair and
+# the solver may pick an arbitrary value. The k=0 row must carry
+# demand_units=0 so an inactive SKU (facings=0) cannot collect demand
+# without consuming shelf capacity. Fail loudly before solve.
 def _assert_demand_table_complete(skus_csv, demand_csv):
     expected = {
         (int(row.sku_id), k)
@@ -78,6 +83,18 @@ def _assert_demand_table_complete(skus_csv, demand_csv):
             f"{' ...' if len(missing) > 10 else ''}. The table must contain a "
             "row for every (sku_id, k) with k in {0..max_facings} so the "
             "decision-indexed lookup is total over the decision domain."
+        )
+    nonzero_at_zero = sorted(
+        int(row.sku_id)
+        for row in demand_csv.itertuples(index=False)
+        if int(row.facings_count) == 0 and int(row.demand_units) != 0
+    )
+    if nonzero_at_zero:
+        raise ValueError(
+            f"predicted_demand_table.csv has rows with facings_count=0 and "
+            f"demand_units != 0 for sku_id {nonzero_at_zero}. The k=0 row "
+            "must always carry demand_units=0 so the objective cannot pull "
+            "demand from inactive SKUs that consume no shelf capacity."
         )
 
 
@@ -132,6 +149,7 @@ demand_csv = read_csv(DATA_DIR / "predicted_demand_table.csv")
 _assert_unique_keys(skus_csv, "sku_id", "skus.csv")
 _assert_unique_keys(shelves_csv, "shelf_id", "shelves.csv")
 _assert_unique_keys(categories_csv, "category", "categories.csv")
+_assert_unique_keys(demand_csv, ["sku_id", "facings_count"], "predicted_demand_table.csv")
 _assert_demand_table_complete(skus_csv, demand_csv)
 _assert_categories_match_skus(skus_csv, categories_csv)
 _assert_shelves_cover_skus(skus_csv, shelves_csv)
