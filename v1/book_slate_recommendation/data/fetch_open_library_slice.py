@@ -1,4 +1,4 @@
-"""Open Library (CC0) slice fetcher for kg_aware_slate_recommendation.
+"""Open Library (CC0) slice fetcher for book_slate_recommendation.
 
 Pulls a deterministic small slice of Open Library data (~60 books,
 ~58 authors, 12 subjects) and emits the 8-CSV bundle the runner
@@ -47,7 +47,7 @@ from urllib.request import Request, urlopen
 # --- Configuration --------------------------------------------------
 
 OPEN_LIBRARY_BASE = "https://openlibrary.org"
-USER_AGENT = "kg-aware-slate-recommendation-template/1.0 (RelationalAI)"
+USER_AGENT = "book-slate-recommendation-template/1.0 (RelationalAI)"
 
 SEED = 20260430
 

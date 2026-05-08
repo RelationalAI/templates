@@ -105,48 +105,67 @@ is a determination for your compliance team.
 
 ## Quickstart
 
-> [!TIP]
-> Click the **Download ZIP** button above to grab this template as a
-> standalone project, or pull from the docs site:
+1. Download ZIP:
+   ```bash
+   curl -O https://docs.relational.ai/templates/zips/v1/book_slate_recommendation.zip
+   unzip book_slate_recommendation.zip
+   cd book_slate_recommendation
+   ```
+   > [!TIP]
+   > You can also download the template ZIP using the "Download ZIP" button at the top of this page.
 
-```bash
-curl -O https://docs.relational.ai/templates/zips/v1/book_slate_recommendation.zip
-unzip book_slate_recommendation.zip
-cd book_slate_recommendation
-```
-
-1. Install Python 3.10+ if you don't have it.
-2. Install dependencies in a fresh virtual environment:
-
+2. Create venv:
    ```bash
    python -m venv .venv
    source .venv/bin/activate
-   pip install -e .
+   python -m pip install --upgrade pip
    ```
 
-3. Configure your RAI authentication (see RAI docs for the standard
-   setup).
-4. Run:
+3. Install:
+   ```bash
+   python -m pip install .
+   ```
 
+4. Configure (prompts for Snowflake account, role, and profile name):
+   ```bash
+   rai init
+   ```
+
+5. Run:
    ```bash
    python book_slate_recommendation.py
    ```
 
-The bundled `data/` directory carries a small slice (~60 books, ~58
-authors, 12 subjects) of the Open Library catalogue (CC0; bibliographic
-metadata only). Synthetic users and read events are generated on top,
-and similar_to edges are derived deterministically from shared-author /
-shared-subject overlap in the OL data, so the template runs against
-your RAI account in seconds without any data-licensing exposure. To pull a larger slice for a more
-realistic instance:
+6. Expected output. The bundled `data/` directory carries a deterministic Open Library (CC0) slice (~60 books, ~58 authors, 12 subjects); synthetic users and read events are layered on top, and `similar_to` edges are derived from shared-author / shared-subject overlap. The runner prints the formulation, then the solve-result block, then per-user candidate sets, the chosen slate, subject distribution, and per-item explanation-path counts. Solver build strings and exact wall times will vary; objectives are stable at this slice size:
+   ```text
+   Solve result:
+   • status: OPTIMAL
+   • objective: 15618.781415528
+   • solve time: 0.6s
+   • num_points: 1
+   • solver: HiGHS_1.13.1
 
-```bash
-python data/fetch_open_library_slice.py --size md   # ~250 books
-python data/fetch_open_library_slice.py --size lg   # ~600 books
-```
+   Final slate per user (K = 3):
+      user_id book_id     utility path_count_total
+   0        1      18  181.715774                6
+   1        1      20  183.444363                6
+   2        1      55  182.227725                6
+   ...
 
-The fetch script caches API responses under `data/_cache/`, so reruns
-are reproducible and offline-friendly after the first pull.
+   Explanation-path support per picked item:
+      user_id book_id paths_via_kg_walk paths_via_author paths_via_subject
+   0        1      18                 2                1                 3
+   1        1      20                 3                1                 2
+   2        1      55                 3                0                 3
+   ...
+   ```
+
+   To pull a larger Open Library slice for a more realistic instance:
+   ```bash
+   python data/fetch_open_library_slice.py --size md   # ~250 books
+   python data/fetch_open_library_slice.py --size lg   # ~600 books
+   ```
+   The fetch script caches API responses under `data/_cache/`, so reruns are reproducible and offline-friendly after the first pull. After bumping size, retune `EXPLANATION_FLOOR` and `WEAK_EXPLANATION_THRESHOLD` to the new path-count distribution -- the bundled `sm` slice has `path_count_total` in the 2-12 range; larger slices push that higher.
 
 ## How it works
 
@@ -250,6 +269,7 @@ book_slate_recommendation/
 │   ├── book_author.csv
 │   ├── book_subject.csv
 │   └── book_similar.csv
+├── experiments/                       # author notes; safe to skip
 ├── book_slate_recommendation.py
 ├── pyproject.toml
 └── README.md

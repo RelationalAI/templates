@@ -1,6 +1,6 @@
 """Experimental harness comparing alternative formulations of
 ``count(...).per(c).where(...)`` for the per-(user, candidate) typed
-path-count features in ``kg_aware_slate_recommendation``.
+path-count features in ``book_slate_recommendation``.
 
 The known pitfall: ``count(x).per(c).where(P)`` returns no row for
 ``c``-groups with no matches. Downstream composite properties (e.g.

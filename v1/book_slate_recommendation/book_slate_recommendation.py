@@ -118,7 +118,7 @@ PAGERANK_WEIGHT = 100.0
 PATH_SIGNAL_WEIGHT = 30.0
 
 model = Model("book_slate_recommendation")
-data_dir = Path(__file__).parent / "data"
+DATA_DIR = Path(__file__).parent / "data"
 
 # --- Concepts and core data -----------------------------------------
 
@@ -149,14 +149,14 @@ Subject.name = model.Property(f"{Subject} has {String:name}")
 # CSV ingest. The bundled data is a deterministic slice of Open
 # Library (CC0); regenerate or scale with
 # ``data/fetch_open_library_slice.py --size sm|md|lg``.
-users_csv = read_csv(data_dir / "users.csv")
-books_csv = read_csv(data_dir / "books.csv")
-authors_csv = read_csv(data_dir / "authors.csv")
-subjects_csv = read_csv(data_dir / "subjects.csv")
-read_csv_data = read_csv(data_dir / "read.csv")
-ba_csv = read_csv(data_dir / "book_author.csv")
-bs_csv = read_csv(data_dir / "book_subject.csv")
-bsim_csv = read_csv(data_dir / "book_similar.csv")
+users_csv = read_csv(DATA_DIR / "users.csv")
+books_csv = read_csv(DATA_DIR / "books.csv")
+authors_csv = read_csv(DATA_DIR / "authors.csv")
+subjects_csv = read_csv(DATA_DIR / "subjects.csv")
+read_csv_data = read_csv(DATA_DIR / "read.csv")
+ba_csv = read_csv(DATA_DIR / "book_author.csv")
+bs_csv = read_csv(DATA_DIR / "book_subject.csv")
+bsim_csv = read_csv(DATA_DIR / "book_similar.csv")
 
 model.define(User.new(model.data(users_csv).to_schema()))
 model.define(Book.new(model.data(books_csv).to_schema()))
