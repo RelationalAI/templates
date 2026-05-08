@@ -1,6 +1,6 @@
 ---
 title: "Book Slate Recommendation"
-description: "Three-pillar Graph + Paths + Prescriptive (CSP) template that picks K books per reader. Bounded KG-path walks generate the candidate set and the explanation evidence; per-book triangle counts on the similarity graph drive a structural-embeddedness floor IC; MiniZinc solves the pure-integer slate-composition CSP."
+description: "Three-pillar Graph + Paths + Prescriptive (CSP) template that picks K books per reader AND orders them by slate position. Bounded KG-path walks generate the candidate set and the explanation evidence; per-book triangle counts on the similarity graph pin the hero slot (slot 1) to a structurally-central pick; MiniZinc solves the pure-integer slot-assignment CSP under a position-weighted engagement-decay objective."
 featured: false
 experience_level: advanced
 industry: "Media"
@@ -34,19 +34,26 @@ This template solves that problem in one declarative model:
   to produce the candidate set and the per-`(user, candidate)`
   typed-evidence counts. Removing this pillar collapses the
   template -- the candidate concept itself is path-derived.
-- **Graph (structural embeddedness)** computes per-Book triangle
-  counts over the similarity graph, used as a topological
-  density measure that feeds a structural-embeddedness floor IC.
-  Distinct from a per-book popularity scalar: it depends on the
-  graph topology, not on a value that can be substituted from
-  retrieval.
-- **Prescriptive (CSP, MiniZinc)** picks K items per user under
-  subject diversity, author uniqueness, freshness,
-  originals-exposure, cold-start, embeddedness floor, and
-  explanation-path-floor constraints, maximizing total path support
-  over the slate. Pure-integer model -- all decisions are binary,
-  all coefficients integer, no float blend; lowers cleanly to
-  MiniZinc's CSP/CP-SAT propagators.
+- **Graph (hero pin)** computes per-Book triangle counts over the
+  similarity graph and pins slot 1 (the top-of-row position with the
+  most engagement) to a Book whose triangle count clears
+  `HERO_EMBEDDEDNESS_THRESHOLD`. Distinct from a per-book popularity
+  scalar: it depends on the graph topology, not on a value that can
+  be substituted from retrieval. Tying the metric to the hero slot
+  (rather than a "somewhere in the slate" floor) concentrates the
+  Graph contribution at the highest-impression position.
+- **Prescriptive (CSP, MiniZinc)** decides each Candidate's slot in
+  `{1, 2, ..., K, K+1}` -- slot 1..K are slate positions (1 = hero),
+  slot K+1 is the unpicked sentinel. Constraints: cardinality, slot
+  uniqueness, already-read exclusion, author uniqueness, subject-
+  concentration cap, freshness, originals-exposure, cold-start, hero
+  pin, and explanation-path floor. Objective maximizes
+  `sum((K+1-slot) * path_count_total)` -- the canonical position-
+  decay engagement model. Pure-integer model -- multi-valued integer
+  decisions, integer coefficients, no float blend; lowers cleanly to
+  MiniZinc's CSP / CP-SAT propagators (in particular the GCC-style
+  per-pair cardinality constraints used for slot, author, and
+  subject uniqueness).
 
 The same shape ports to e-commerce ("frequently bought together"
 with category coverage), course slates (career-navigation over a
@@ -76,14 +83,15 @@ under topic / source / recency caps.
   `path_count_via_kg_walk`, summed into `path_count_total`
 - `Book.triangle_count` derived from
   `Graph(Book.similar_to).triangle_count()` -- a structural-
-  embeddedness measure used by the floor IC
-- A binary CSP on MiniZinc with nine ICs (cardinality, already-read
-  exclusion, subject diversity, author uniqueness, freshness floor,
-  originals-exposure floor, cold-start cap, explanation-path floor,
-  structural-embeddedness floor) and an objective that maximizes
-  total path support over the picked slate
-- Customer-readable result tables: chosen slate, per-user subject
-  distribution, per-pick explanation-path support
+  embeddedness measure used by the hero-pin IC
+- An integer-decision CSP on MiniZinc with ten ICs (cardinality, slot
+  uniqueness, already-read exclusion, author uniqueness, subject-
+  concentration cap, freshness floor, originals-exposure floor,
+  cold-start cap, hero pin, explanation-path floor) and a position-
+  weighted engagement-decay objective `sum((K+1-slot) *
+  path_count_total)`
+- Customer-readable result tables: chosen slate (ordered by slot),
+  per-user subject distribution, per-pick explanation-path support
 
 ## What's included
 
@@ -156,18 +164,20 @@ under topic / source / recency caps.
    ```text
    Solve result:
    • status: OPTIMAL
-   • solve time: under a second
+   • solve time: ~1 minute on the bundled slice
    • num_points: 1
    • solver: MiniZinc
 
-   Final slate per user (K = 3):
-      user_id book_id  path_count_total  triangle_count
-   0        1     ...               ...             ...
+   Final slate per user (K = 3, slot 1 = top of row):
+   user_id slot book_id  path_count_total  triangle_count
+         1    1     ...               ...             ...
+         1    2     ...               ...             ...
+         1    3     ...               ...             ...
    ...
 
-   Explanation-path support per picked item:
-      user_id book_id paths_via_kg_walk paths_via_author paths_via_subject
-   0        1     ...               ...              ...               ...
+   Explanation-path support per picked item (ordered by slot):
+   user_id slot book_id paths_via_kg_walk paths_via_author paths_via_subject
+         1    1     ...               ...              ...               ...
    ...
    ```
 
@@ -263,56 +273,83 @@ the fetch script.
    data; the upstream choice is independent of the slate-stage
    logic this template encodes.
 
-2. **Graph: structural embeddedness via triangle count.** A `Graph`
-   is built from `Book.similar_to`; `triangle_count()` returns the
-   per-Book count of similar-to triangles each book participates in,
-   stored as `Book.triangle_count` (Integer). The signal feeds the
-   `embeddedness_ic` IC -- a per-user floor on picks whose Book
-   meets `EMBEDDEDNESS_THRESHOLD`. Triangle count is graph-derived:
-   it depends on the topology of the similarity graph, not on a
-   value the customer can supply externally. That's what makes it
-   an irreducible Graph contribution rather than a swappable
-   per-Book scalar.
+2. **Graph: hero-slot pin via triangle count.** A `Graph` is built
+   from `Book.similar_to`; `triangle_count()` returns the per-Book
+   count of similar-to triangles each book participates in, stored
+   as `Book.triangle_count` (Integer). The signal feeds the
+   `hero_pin_ic` IC -- the slot-1 (hero) pick must come from a Book
+   whose triangle count clears `HERO_EMBEDDEDNESS_THRESHOLD`. Tying
+   the metric to the hero slot rather than a "somewhere in the
+   slate" floor concentrates the Graph contribution at the
+   highest-impression position, which is where structural quality
+   matters most for engagement. Triangle count is graph-derived: it
+   depends on the topology of the similarity graph, not on a value
+   the customer can supply externally. That's what makes it an
+   irreducible Graph contribution rather than a swappable per-Book
+   scalar.
 
-3. **Prescriptive: CSP slate selection.** Decisions:
-   `Candidate.pick in {0, 1}` (`type="bin"` on
-   `Property[Integer]`). Constraints:
-   - Cardinality: `count(pick) per user == K`.
-   - Already-read exclusion: `User.read(user, book)` ⇒ `pick == 0`.
-   - Subject diversity: at most `MAX_PER_SUBJECT` picks per
-     `(user, subject)`.
-   - Author uniqueness: at most `MAX_PER_AUTHOR` per
-     `(user, author)`.
-   - Freshness floor: at least `FRESHNESS_FLOOR` items with
+3. **Prescriptive: CSP slot assignment.** Decisions:
+   `Candidate.slot in {1, 2, ..., K, K+1}` (`type="int"`, `lower=1`,
+   `upper=K+1`). Slot 1..K are slate positions (1 = hero, K = bottom
+   of row); slot K+1 is the unpicked sentinel. Constraints:
+   - Cardinality: `count(Candidate, slot <= K) per user == K`
+     (exactly K picks).
+   - Slot uniqueness:
+     `count(Candidate, slot == Slot.pos) per (user, Slot) <= 1`
+     (no two picks share a position).
+   - Already-read exclusion: `User.read(user, book) => slot == K+1`.
+   - Author uniqueness: at most 1 picked per `(user, Author)`
+     (per-pair count cap).
+   - Subject-concentration cap: at most `MAX_PER_SUBJECT` picked per
+     `(user, Subject)` (per-pair count cap).
+   - Freshness floor: at least `FRESHNESS_FLOOR` picked items with
      `age_days <= FRESH_WINDOW_DAYS`.
-   - Originals exposure floor: at least `ORIGINALS_FLOOR`
-     in-house items (`Book.in_house == 1`).
+   - Originals exposure floor: at least `ORIGINALS_FLOOR` in-house
+     picked items (`Book.in_house == 1`).
    - Cold-start cap: at most `COLD_START_CAP` weakly-explained
-     items (those with
+     picks (those with
      `path_count_total < WEAK_EXPLANATION_THRESHOLD`).
-   - Explanation-path floor: total `path_count_total`
-     (author + subject + KG-walk evidence) over the slate must be
-     at least `EXPLANATION_FLOOR`.
-   - Structural-embeddedness floor: at least `EMBEDDEDNESS_FLOOR`
-     picks per user must come from books with
-     `triangle_count >= EMBEDDEDNESS_THRESHOLD`.
+   - Hero pin: the slot-1 pick must come from a Book with
+     `triangle_count >= HERO_EMBEDDEDNESS_THRESHOLD`.
+   - Explanation-path floor:
+     `sum((K+1-slot) * path_count_total) per user >=
+     EXPLANATION_FLOOR`. The position weight `(K+1-slot)` is
+     `K..1` at slots `1..K` and `0` at slot `K+1` (unpicked) -- so
+     the sum naturally ignores unpicked Candidates without an
+     auxiliary indicator.
 
-   Objective: maximize
-   `sum(path_count_total * pick) per user, summed across users`.
-   Pure path-driven -- the slate that aggregates the most KG-path
-   evidence wins, subject to the diversity / freshness / originals /
-   embeddedness constraints above.
+   Objective: maximize `sum((K + 1 - slot) * path_count_total)`.
+   The position weight is the canonical engagement-decay model --
+   higher path-support items gravitate to lower slots (top of row)
+   because that maximizes the weighted sum.
 
 ### Why CSP (MiniZinc), not MIP
 
-The model is pure integer: binary decisions, integer coefficients,
-no float blend. MiniZinc's CSP/CP-SAT propagators handle this shape
-natively without LP relaxation overhead, and the per-user
-counting-cap-and-floor structure of the ICs maps directly to
-constraint-propagation idioms. The same prescriptive layer that
-runs MiniZinc here would also run HiGHS if a future customer layers
-in a float-coefficient scalar (see "Custom scoring signal" in
+The model is pure integer with multi-valued integer decision
+variables. MiniZinc's CSP / CP-SAT propagators handle this shape
+natively without LP relaxation overhead, and the per-pair count
+caps used for slot, author, and subject uniqueness map directly
+to MiniZinc's GCC (global cardinality constraint) propagators.
+Slot-equality reification (`slot == 1` inside a count predicate
+for the hero pin) and the conditional domain rule
+(`User.read => slot == K+1`) are also CSP-native. The same
+prescriptive layer would run HiGHS if a future customer layers in
+a float-coefficient scalar (see "Custom scoring signal" in
 Customize) -- the formulation extends without restructure.
+
+### A note on count idioms
+
+PyRel's prescriptive rewriter does *not* currently support distinct
+aggregates in IC compilation (`count(model.distinct(X), ...)`
+raises `NotImplementedError: Distinct aggregates not yet supported`
+when passed to `problem.satisfy`). Distinct counting in ICs is
+therefore expressed indirectly via per-pair count caps: instead of
+`count(distinct Author) per user == K`, we use
+`count(Candidate, slot <= K) per (user, Author) <= 1` (no Author
+repeats) and lean on `slate_size_ic` to fix the pick count. Both
+encode the same constraint; the per-pair cap form is what compiles
+today and is also what MiniZinc consumes most efficiently
+(GCC-style propagation).
 
 ## Where this fits in production recsys
 
@@ -332,23 +369,22 @@ suitable for transparency workflows.
 Six common variations:
 
 - **Tighten or relax the constraint dials.** `MAX_PER_SUBJECT`,
-  `MAX_PER_AUTHOR`, `FRESHNESS_FLOOR`, `ORIGINALS_FLOOR`,
-  `COLD_START_CAP`, `EXPLANATION_FLOOR`,
-  `WEAK_EXPLANATION_THRESHOLD`, `EMBEDDEDNESS_THRESHOLD`,
-  `EMBEDDEDNESS_FLOOR` are top-of-file constants. See
+  `FRESHNESS_FLOOR`, `ORIGINALS_FLOOR`, `COLD_START_CAP`,
+  `EXPLANATION_FLOOR`, `WEAK_EXPLANATION_THRESHOLD`,
+  `HERO_EMBEDDEDNESS_THRESHOLD` are top-of-file constants. See
   Troubleshooting for joint-feasibility relations between them.
 - **Add a per-Book popularity scalar to the objective.** Layer in
   a per-book Float (collaborative-filtering co-occurrence, learned-
   embedding k-NN affinity, third-party recommendation API score) by
   declaring `Book.cf_score`, populating it from your retrieval
   stage, and rewriting the objective as
-  `sum((PATH_WEIGHT * path_count_total + CF_WEIGHT * cf_score) * pick)`.
+  `sum((K+1-slot) * (PATH_WEIGHT * path_count_total + CF_WEIGHT * cf_score))`.
   HiGHS handles the float-coefficient blend natively; the rest of
-  the pipeline (path-derived candidates, embeddedness floor) is
-  unchanged. Note that this signal is *additive* to the path
-  evidence -- the structural Graph contribution
-  (`Book.triangle_count`, `embeddedness_ic`) stays in regardless,
-  since it constrains the slate rather than scoring it.
+  the pipeline (path-derived candidates, hero pin, position-decay
+  weighting) is unchanged. Note that this signal is *additive* to
+  the path evidence -- the structural Graph contribution
+  (`Book.triangle_count`, `hero_pin_ic`) stays in regardless, since
+  it constrains the slate rather than scoring it.
 - **A/B candidate slate enumeration.**
   `solve("minizinc", solution_limit=K_alt)` returns K alternative
   slates for downstream A/B exposure or human-in-the-loop
@@ -377,15 +413,16 @@ things to retune at larger sizes: (1) the `EXPLANATION_FLOOR` /
 for `sm`'s `path_count_total` distribution (range 2-12); larger
 slices produce much higher walk counts and these thresholds
 become trivially satisfied unless rescaled. (2) MiniZinc
-`time_limit_sec=60` is comfortable at `sm` (~1k binary
-decisions); raise it for `lg` (~120k decisions × 9 ICs).
+`time_limit_sec=60` is comfortable at `sm` (~1k integer
+decisions, each with K+1=4 values); raise it for `lg` (~120k
+decisions × 10 ICs).
 
 ## Troubleshooting
 
 <details>
 <summary>Solve returns INFEASIBLE / Final slate is empty</summary>
 
-The runner enforces nine ICs and an `OPTIMAL` post-solve
+The runner enforces ten ICs and an `OPTIMAL` post-solve
 requirement. If your data is too sparse or too clustered, the
 joint constraints can be jointly infeasible. The dominant causes
 on customer slices are:
@@ -394,7 +431,7 @@ on customer slices are:
    at least `SLATE_SIZE_K` candidates in their 2-hop reach AFTER
    the already-read exclusion. The exclude prunes aggressively:
    every length-1 walk `User -> read_Book` lands a read book in
-   `Candidate`, and these are all forced to `pick == 0`. The
+   `Candidate`, and these are all forced to `slot == K+1`. The
    recommendable candidates come from length-2
    `read_Book -> similar_Book` walks, so a user whose reads have
    no `similar_to` neighbors will be infeasible. Inspect the
@@ -405,41 +442,44 @@ on customer slices are:
    AND in-house must spend `FRESHNESS_FLOOR + ORIGINALS_FLOOR`
    distinct picks on the disjoint pools, not
    `max(FRESHNESS_FLOOR, ORIGINALS_FLOOR)`.
-3. **Author-uniqueness vs slate size.** With `MAX_PER_AUTHOR=1`
-   and `SLATE_SIZE_K=3`, each user needs at least 3 distinct
-   authors in their reach. A user whose reach concentrates in
-   fewer authors is infeasible even when total candidate count
-   is large.
-4. **Cold-start cap × explanation floor.** `EXPLANATION_FLOOR`
-   must be reachable given at most `COLD_START_CAP` weakly-
-   explained picks (each contributing at most
-   `WEAK_EXPLANATION_THRESHOLD - 1`) plus the rest from strong
-   candidates. Customers raising `EXPLANATION_FLOOR` should
-   inspect the per-user path-count distribution first.
+3. **Author-uniqueness vs slate size.** Author uniqueness is
+   hardcoded to "at most 1 per (user, Author)", so each user
+   needs at least `SLATE_SIZE_K` distinct authors in their reach.
+   A user whose reach concentrates in fewer authors is infeasible
+   even when total candidate count is large.
+4. **Cold-start cap × explanation floor.** `EXPLANATION_FLOOR` is
+   position-weighted (weights `K..1` at slots `1..K`); a slate
+   with three picks of `path_count_total=2` at slots 1, 2, 3
+   contributes `2*3 + 2*2 + 2*1 = 12`. With at most
+   `COLD_START_CAP` weakly-explained picks (each contributing at
+   most `(WEAK_EXPLANATION_THRESHOLD - 1) * (K+1-slot)`), the
+   floor must be reachable. Customers raising `EXPLANATION_FLOOR`
+   should inspect the per-user path-count distribution first.
 5. **Missing edges.** Every Book picked must have at least one
    `Book.about(Subject)` and one `Book.written_by(Author)` row,
    else the diversity / uniqueness caps silently exempt that
    Book.
-6. **Embeddedness floor.** Each user needs at least
-   `EMBEDDEDNESS_FLOOR` candidates whose Book has
-   `triangle_count >= EMBEDDEDNESS_THRESHOLD`. A user whose 2-hop
-   reach lands only on isolated similarity-graph regions (low or
-   zero triangle counts) is infeasible. Inspect the "Book
-   structural embeddedness" diagnostic table at the end of the
-   runner, and either drop `EMBEDDEDNESS_THRESHOLD` or densify
-   the similarity input.
+6. **Hero pin.** Each user needs at least one candidate whose
+   Book has `triangle_count >= HERO_EMBEDDEDNESS_THRESHOLD`. A
+   user whose 2-hop reach lands only on isolated similarity-
+   graph regions (low or zero triangle counts) is infeasible
+   because there's no eligible book for slot 1. Inspect the
+   "Book structural embeddedness" diagnostic table at the end of
+   the runner, and either drop `HERO_EMBEDDEDNESS_THRESHOLD` or
+   densify the similarity input.
 
 The runner runs a Python-level pre-solve assertion (in
 `book_slate_recommendation.py` immediately before
 `problem.solve(...)`) that materialises the Candidate set,
 anti-joins against `User.read`, and raises `ValueError` if any
 user has fewer than `SLATE_SIZE_K` unread candidates, fewer than
-`FRESHNESS_FLOOR` unread fresh candidates, or fewer than
-`ORIGINALS_FLOOR` unread in-house candidates. The assertion's
-error message lists the affected users for each shortfall. The
-runner also prints an "Unread candidate count per user" table
-just before solving, so dense reach can be inspected even when
-the assert passes. For post-solve diagnostics
+`FRESHNESS_FLOOR` unread fresh candidates, fewer than
+`ORIGINALS_FLOOR` unread in-house candidates, fewer than
+`SLATE_SIZE_K` distinct unread authors, or zero unread
+hero-eligible candidates. The assertion's error message lists
+the affected users for each shortfall. The runner also prints
+an "Unread candidate count per user" table just before solving,
+so dense reach can be inspected even when the assert passes. For post-solve diagnostics
 on a non-OPTIMAL run: `problem.verify(...)` already prints
 per-IC violation messages on the failing constraints; if the
 script then exits at the `model.require(... == "OPTIMAL")` line
@@ -454,10 +494,11 @@ at the end mirrors the pre-solve one).
 <summary>Slow or timing out at <code>--size lg</code></summary>
 
 The default `time_limit_sec=60` is sized for the bundled `sm`
-slice. At `lg` (~600 books, ~120k binary decisions × 9 ICs),
-raise it to 600 and watch the MiniZinc propagation progress in the
-solver log. If the solve still times out, drop `SLATE_SIZE_K` or
-relax `EXPLANATION_FLOOR` so propagation can prune harder.
+slice. At `lg` (~600 books, ~120k integer-domain decisions × 10
+ICs), raise it to 600 and watch the MiniZinc propagation progress
+in the solver log. If the solve still times out, drop
+`SLATE_SIZE_K` or relax `EXPLANATION_FLOOR` so propagation can
+prune harder.
 
 </details>
 
