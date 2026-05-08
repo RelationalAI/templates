@@ -233,11 +233,10 @@ the fetch script.
   `Book.written_by(Author)`, `Book.about(Subject)`,
   `Book.similar_to(Book)`.
 - Unified KG edge: `Item.connected_to(Item, Item)` populated as the
-  symmetric union of the typed edges. Workaround for the current
-  paths-lib limitation that a `path()` call walks one 2-arity
-  relationship at a time. First-class composite-edge support is on
-  the PyRel roadmap; once it lands, this unified-edge layer can be
-  deleted.
+  symmetric union of the typed edges. The unified-edge layer is
+  needed because a `path()` call walks one 2-arity relationship at a
+  time, so the symmetric union of typed edges is pre-materialised
+  onto `Item.connected_to`.
 
 ### Pipeline
 
@@ -336,16 +335,14 @@ prescriptive layer would run HiGHS if a future customer layers in
 a float-coefficient scalar (see "Custom scoring signal" in
 Customize) -- the formulation extends without restructure.
 
-### How this template differs from other CSP templates
+### Encoding choices for an ordered slate
 
-Sibling CSP templates (`product_configurator`,
-`synthetic_order_lifecycle`, `synthetic_eligibility_records`) encode
-unordered selection. This template encodes an *ordered* slate;
-three choices follow from that:
+This template encodes an *ordered* slate; three choices follow from
+that:
 
 - **Unified `Item.connected_to` super-edge** so the path walker
   (one 2-arity relationship at a time) can traverse the
-  heterogeneous KG. Other CSP templates don't use paths.
+  heterogeneous KG.
 - **Integer slot in `{1..K+1}` with K+1 = unpicked**, so the
   position weight `(K+1-slot)` is 0 at unpicked and no auxiliary
   picked-indicator is needed.
@@ -374,7 +371,7 @@ Production recommender systems run a multi-stage funnel: *catalog
 (10^6+) -> retrieval (10^3) -> pre-ranking (10^2) -> ranking (float
 utility) -> slate optimization (final K)*. The slate stage is where
 business rules, diversity, exposure floors, and explainability
-constraints land. PyRel's prescriptive pillar fits this stage
+constraints land. PyRel's prescriptive reasoner fits this stage
 directly, with the upstream graph and KG-walk signals in the same
 declarative model. The per-typed evidence counts the runner emits
 per picked item (`paths_via_author`, `paths_via_subject`,

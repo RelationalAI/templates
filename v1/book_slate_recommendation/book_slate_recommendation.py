@@ -7,8 +7,8 @@ much as the selection. The architectural centerpiece is bounded
 heterogeneous-KG walks via the PyRel paths library
 (``relationalai.semantics.std.paths``): the walks generate the
 Candidate concept and the per-(user, candidate) explanation
-evidence that feed both the Graph reasoner pillar and the
-Prescriptive reasoner pillar. The Graph reasoner contributes per-
+evidence that feed both the Graph reasoner and the
+Prescriptive reasoner. The Graph reasoner contributes per-
 Book ``triangle_count`` over the similarity graph, which the
 hero-pin IC ties to slot 1 so the highest-engagement position
 carries graph-derived structural quality:
@@ -107,7 +107,7 @@ WEAK_EXPLANATION_THRESHOLD = 2
 
 # Hero pin: slot 1 (top of row) must come from a Book whose
 # triangle count over the similarity graph meets this threshold.
-# This is the Graph pillar's hold on the slate -- pinning a graph-
+# This is the Graph reasoner's hold on the slate -- pinning a graph-
 # derived structural-density measure to the highest-engagement
 # position. Tuned for the bundled slice where per-book triangle
 # counts range 0-107 with two isolates; threshold of 4 keeps the
@@ -240,11 +240,10 @@ model = Model("book_slate_recommendation")
 
 # Item super-concept: heterogeneous-KG node base for User/Book/Author/
 # Subject. The path walker traverses a single 2-arity edge relationship
-# (Item.connected_to, defined below) across the whole KG -- the
-# documented workaround for the current paths-lib limitation that a
-# path() call walks one 2-arity relationship at a time. First-class
-# composite-edge support is on the PyRel roadmap; once it lands, the
-# unified-edge layer below can be deleted.
+# (Item.connected_to, defined below) across the whole KG. The
+# unified-edge layer is needed because a path() call walks one 2-arity
+# relationship at a time, so the symmetric union of typed edges is
+# pre-materialised onto Item.connected_to.
 Item = model.Concept("Item")
 
 # User concept: a reader.
@@ -367,7 +366,7 @@ model.define(Item.connected_to(b_s2, b_s1)).where(Book.similar_to(b_s1, b_s2))
 # --------------------------------------------------
 # Bounded KG walks via the paths library (architectural centerpiece)
 #
-# This is the load-bearing pillar. The Candidate concept is derived
+# This is the load-bearing stage. The Candidate concept is derived
 # from the path walker; without paths there are no candidates and no
 # CSP variables. The per-typed counts produced here feed the
 # engagement-weighted explanation floor, the cold-start cap, and the
@@ -467,7 +466,7 @@ model.define(Candidate.path_count_via_subject(c, n)).where(
 )
 
 # via-walk: number of bounded heterogeneous KG paths from this user
-# to the candidate (the actual paths-pillar count -- the headline
+# to the candidate (the actual paths-walk count -- the headline
 # explanation-strength signal).
 p_s = PathTraversal.ref()
 model.define(Candidate.path_count_via_kg_walk(c, n)).where(
@@ -493,16 +492,16 @@ model.define(Candidate.path_count_total(c, n)).where(
 )
 
 # --------------------------------------------------
-# Pillar 1: Graph reasoner -- structural embeddedness over book-similarity
+# Stage 1: Graph reasoner -- structural embeddedness over book-similarity
 #
-# Supporting pillar: per-Book triangle count over the similarity
-# graph, used by ``hero_pin_ic`` to pin slot 1 (the highest-
-# engagement position) to a structurally-central pick. The triangle-
-# count signal is graph-derived (it depends on the similarity-graph
-# topology), so unlike a per-Book popularity scalar, it cannot be
-# supplied externally without reconstructing the graph -- which is
-# what makes this contribution Graph-pillar work, not just a
-# data-layer input.
+# Per-Book triangle count over the similarity graph, used by
+# ``hero_pin_ic`` to pin slot 1 (the highest-engagement position) to
+# a structurally-central pick. The triangle-count signal is graph-
+# derived (it depends on the similarity-graph topology), so unlike a
+# per-Book popularity scalar, it cannot be supplied externally
+# without reconstructing the graph -- which is what makes this an
+# irreducible Graph-reasoner contribution, not just a data-layer
+# input.
 # --------------------------------------------------
 
 # Book-Book similarity graph derived from shared authors / subjects.
@@ -539,7 +538,7 @@ model.define(b_tc.triangle_count(tc)).where(
 )
 
 # --------------------------------------------------
-# Pillar 2: Prescriptive reasoner -- CSP slate selection (MiniZinc)
+# Stage 2: Prescriptive reasoner -- CSP slate selection (MiniZinc)
 #
 # Decision: ``Candidate.slot`` ∈ {1, 2, ..., K, K+1}. Slot 1..K are
 # slate positions (1 = top of row); slot K+1 is the unpicked sentinel.
@@ -657,7 +656,7 @@ problem.satisfy(cold_start_ic)
 # eligible-and-at-slot-1 Candidates per user; combined with
 # slot_uniqueness_ic (exactly one Candidate at slot 1 per user),
 # >= 1 forces the slot-1 Candidate to be eligible. This is the
-# Graph pillar's hold on the slate, tied to the highest-engagement
+# Graph reasoner's hold on the slate, tied to the highest-engagement
 # position rather than a "somewhere in the slate" floor.
 hero_pin_ic = model.where(
     Book.id == Candidate.book_id,
