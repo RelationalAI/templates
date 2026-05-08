@@ -43,7 +43,7 @@ $300M unlocks 5 DCs (1,500 MW, $264M net value) including xAI Colossus.
 **Prompt**
 
 ```
-/rai-build-starter-ontology Build an ontology for grid infrastructure planning from the CSVs in data/ covering substations, generators, transmission lines, demand forecasts, data center requests, and substation upgrades.
+/rai-build-starter-ontology Build an ontology for grid infrastructure planning from the CSVs in data/.
 ```
 
 **Response**

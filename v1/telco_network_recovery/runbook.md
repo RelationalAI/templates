@@ -42,7 +42,7 @@ across all 15 critical towers, prioritized by social blast radius.
 **Prompt**
 
 ```
-/rai-build-starter-ontology Build a telco network ontology from the eight CSVs in data/: cell_towers, network_equipment, equipment_health, network_performance, subscribers, call_detail_records, tower_upgrade_options, time_series_metrics. The time-series file has one row per (date, region); make sure that's modelled as a composite-key concept since we'll want to forecast region-level trends later.
+/rai-build-starter-ontology Build a telco network ontology from the CSVs in data/. The time-series file has one row per (date, region) — model it as a composite-key concept so we can forecast regional trends later.
 ```
 
 **Response**

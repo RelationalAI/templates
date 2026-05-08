@@ -43,7 +43,7 @@ base at every lambda — without the cluster collapse, the gap would grow.
 **Prompt**
 
 ```
-/rai-build-starter-ontology Build a portfolio ontology from the CSVs in data/ covering stocks, sectors, the covariance matrix, accounts, holdings, users, and transactions.
+/rai-build-starter-ontology Build a portfolio ontology from the CSVs in data/. The covariance file is in long form (stock_i, stock_j, value) — model it as a binary property on Stock rather than a separate Concept. Promote sector to its own Concept so downstream rules can aggregate exposure per sector.
 ```
 
 **Response**
