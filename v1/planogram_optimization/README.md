@@ -101,7 +101,7 @@ The same pattern applies to any predict-then-optimize problem where the predicti
    • objective: 1656
    • solve time: 0.24s
    • num_points: 1
-   • solver: MiniZinc_nothing
+   • solver: MiniZinc_unknown
 
    Optimal facings per SKU:
        id               name         category                shelf  facings  realized_demand

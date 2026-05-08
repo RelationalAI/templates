@@ -35,7 +35,7 @@ from pandas import read_csv
 from relationalai.semantics import Integer, Model, String, sum
 from relationalai.semantics.reasoners.prescriptive import Problem, implies
 
-data_dir = Path(__file__).parent / "data"
+DATA_DIR = Path(__file__).parent / "data"
 
 model = Model("planogram_optimization")
 
@@ -76,10 +76,10 @@ PredictedDemand.demand_units = model.Property(
     f"{PredictedDemand} has {Integer:demand_units}"
 )
 
-sku_data = model.data(read_csv(data_dir / "skus.csv"))
-shelf_data = model.data(read_csv(data_dir / "shelves.csv"))
-category_data = model.data(read_csv(data_dir / "categories.csv"))
-demand_data = model.data(read_csv(data_dir / "predicted_demand_table.csv"))
+sku_data = model.data(read_csv(DATA_DIR / "skus.csv"))
+shelf_data = model.data(read_csv(DATA_DIR / "shelves.csv"))
+category_data = model.data(read_csv(DATA_DIR / "categories.csv"))
+demand_data = model.data(read_csv(DATA_DIR / "predicted_demand_table.csv"))
 
 model.define(
     Sku.new(
