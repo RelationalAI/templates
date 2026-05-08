@@ -1,6 +1,6 @@
 """Patient cohort recruitment (Graph reachability + Rules + CSP) template.
 
-This script demonstrates a three-pillar pipeline in RelationalAI:
+This script demonstrates a three-reasoner pipeline in RelationalAI:
 
 - A clinical-research team needs to enroll ``COHORT_SIZE`` patients in a
   kinase-pathway study. Eligible patients carry a mutation in some gene
@@ -13,7 +13,7 @@ This script demonstrates a three-pillar pipeline in RelationalAI:
   ``MIN_AES_COVERED`` distinct adverse-event terms, so a later study
   generalizes across pathway nodes, treatment arms, and toxicity
   profiles.
-- The encoding is split across three pillars: the **Graph** reasoner
+- The encoding is split across three reasoners: the **Graph** reasoner
   closes ``is_a`` over the gene ontology (one call to
   ``graph.reachable``), pure relational **Rules** lift that closure to
   per-patient eligibility and per-(patient, kinase-gene),
@@ -327,7 +327,7 @@ model.define(AdverseEventOcc.term(AdverseEvent)).where(
 )
 
 # --------------------------------------------------
-# Graph pillar: ontology closure via `graph.reachable`
+# Graph reasoner: ontology closure via `graph.reachable`
 # --------------------------------------------------
 # Build a directed graph over the gene ontology with edges parent ->
 # child (the reverse of how `is_a` is conventionally stored, so that
@@ -358,7 +358,7 @@ model.define(KinaseGene(Gene)).where(
 )
 
 # --------------------------------------------------
-# Rules pillar: lift the closure to patient-level eligibility and
+# Rules: lift the closure to patient-level eligibility and
 # per-axis coverage facts. Pure relational arithmetic; no decisions.
 # --------------------------------------------------
 
@@ -449,7 +449,7 @@ CoverableAdverseEvent = model.Concept("CoverableAdverseEvent", extends=[AdverseE
 model.define(CoverableAdverseEvent(AdverseEvent)).where(EligiblePatient.covers_ae(AdverseEvent))
 
 # --------------------------------------------------
-# Prescriptive pillar: cohort-selection CSP.
+# Prescriptive reasoner: cohort-selection CSP.
 # --------------------------------------------------
 
 Patient.is_in_cohort = model.Property(f"{Patient} is in cohort if {Integer:c}")

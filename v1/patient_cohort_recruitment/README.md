@@ -22,7 +22,7 @@ tags:
 
 Clinical research and pharma R&D teams build patient cohorts to power studies. A typical ask: *"find patients with a mutation in some gene from the kinase pathway who received a therapy and developed an adverse event within 90 days, and pick K of them so the cohort spans enough distinct genes, therapies, and toxicity profiles for the analysis to generalize."* The pieces are recognizable across healthcare data: a gene ontology with `is_a` edges defines the pathway, a patient knowledge graph carries mutations / therapies / adverse events with timestamps, and the cohort itself is a small set of patients chosen against multiple coverage criteria.
 
-This template encodes that ask as a three-pillar pipeline. The **Graph** reasoner runs a single `reachable(full=True)` call to close `is_a` over the gene ontology, returning every gene in the kinase-pathway sub-ontology in one step. Pure relational **Rules** then lift the closure to per-patient eligibility -- represented as a sub-concept `EligiblePatient extends Patient` whose membership is the eligibility conjunction -- and to per-(patient, gene), per-(patient, therapy), and per-(patient, adverse-event) coverage facts. The **Prescriptive** reasoner (CSP, MiniZinc / Chuffed) selects the cohort: binary `is_in_cohort` decisions are scoped to `EligiblePatient` rows only, plus `is_covered` indicators on three sub-concepts (`CoverableGene`, `CoverableTherapy`, `CoverableAdverseEvent`) that the upper-bound ICs link back to the patient decisions.
+This template encodes that ask as a three-reasoner pipeline. The **Graph** reasoner runs a single `reachable(full=True)` call to close `is_a` over the gene ontology, returning every gene in the kinase-pathway sub-ontology in one step. Pure relational **Rules** then lift the closure to per-patient eligibility -- represented as a sub-concept `EligiblePatient extends Patient` whose membership is the eligibility conjunction -- and to per-(patient, gene), per-(patient, therapy), and per-(patient, adverse-event) coverage facts. The **Prescriptive** reasoner (CSP, MiniZinc / Chuffed) selects the cohort: binary `is_in_cohort` decisions are scoped to `EligiblePatient` rows only, plus `is_covered` indicators on three sub-concepts (`CoverableGene`, `CoverableTherapy`, `CoverableAdverseEvent`) that the upper-bound ICs link back to the patient decisions.
 
 The same pattern applies to other knowledge-graph cohort / set-cover problems where eligibility is a relational predicate over a labelled subgraph and the chosen set must witness a minimum spread on several attributes: insurance claim audits (find K members spanning N procedures and M comorbidities), grant-applicant diversification (find K applicants spanning institutions, fields, and career stages), security alert triage (find K alerts spanning attack categories and asset classes).
 
@@ -31,7 +31,7 @@ The same pattern applies to other knowledge-graph cohort / set-cover problems wh
 - Clinical research teams enrolling cohorts for pathway-targeted studies
 - Pharma R&D teams running biomarker-driven feasibility analyses
 - Healthcare data engineers building cohort-discovery pipelines on top of patient knowledge graphs
-- Operations researchers learning multi-pillar (Graph + Rules + CSP) composition over an OMOP / FHIR-class ontology
+- Operations researchers learning multi-reasoner (Graph + Rules + CSP) composition over an OMOP / FHIR-class ontology
 
 ## What you'll build
 
@@ -177,7 +177,7 @@ The same pattern applies to other knowledge-graph cohort / set-cover problems wh
 
 ## How it works
 
-The pipeline runs three pillars in order: Graph closes the ontology, Rules lift the closure to patient-level facts, and the CSP solver selects the cohort.
+The pipeline runs three stages in order: Graph closes the ontology, Rules lift the closure to patient-level facts, and the CSP solver selects the cohort.
 
 **Graph reasoner: one call to close the ontology.** The `is_a` CSV is in OMOP / SNOMED convention (child -> parent), but the `Graph` constructor takes the same edge concept with `edge_src_relationship=GeneIsA.parent` and `edge_dst_relationship=GeneIsA.child` -- so reachability from a root flows downwards through the subclass tree onto every member. `reachable(full=True)` returns every (ancestor, descendant) pair, the full transitive closure. The closure is then materialized as a sub-concept `KinaseGene extends Gene`:
 
@@ -197,7 +197,7 @@ model.define(KinaseGene(Gene)).where(
 )
 ```
 
-**Rules pillar: lift the closure to patient-level sub-concepts.** Pure relational arithmetic, no decisions. Predicates are encoded as sub-concepts -- their *membership* is the predicate -- so downstream rules and the CSP just check `Sub(Parent)` to test the predicate (cheaper and clearer than Boolean indicator properties). The qualifying-pair AE-window predicate is lifted into a 3-arity `Patient.qualifying_pair(TherapyEvent, AdverseEventOcc)` relationship and the three downstream rules (eligibility, therapy coverage, AE coverage) all project from it -- changing the qualifying-pair definition (severity matching, treatment duration, multi-event sequencing) is then an edit to one rule rather than three:
+**Rules: lift the closure to patient-level sub-concepts.** Pure relational arithmetic, no decisions. Predicates are encoded as sub-concepts -- their *membership* is the predicate -- so downstream rules and the CSP just check `Sub(Parent)` to test the predicate (cheaper and clearer than Boolean indicator properties). The qualifying-pair AE-window predicate is lifted into a 3-arity `Patient.qualifying_pair(TherapyEvent, AdverseEventOcc)` relationship and the three downstream rules (eligibility, therapy coverage, AE coverage) all project from it -- changing the qualifying-pair definition (severity matching, treatment duration, multi-event sequencing) is then an edit to one rule rather than three:
 
 ```python
 KinaseMutationCarrier = model.Concept("KinaseMutationCarrier", extends=[Patient])
@@ -235,7 +235,7 @@ model.define(Patient.covers_therapy(Therapy)).where(
 )
 ```
 
-**Prescriptive pillar: cohort selection as a CSP.** Decisions target the sub-concept directly (`EligiblePatient.is_in_cohort`, `CoverableTherapy.is_covered`, ...), which creates one binary variable per sub-concept row. The `Coverable*` sub-concepts are themselves scoped to *eligible-patient* coverage, not any-patient coverage: a Y covered only by ineligible patients would otherwise sit in `Coverable*` with no upper-bound IC binding (the per-pair `where` body has no eligible-patient row for it), and the solver would mark it covered to satisfy the lower bound trivially. Scoping `Coverable*` to `EligiblePatient.covers_*` closes that gap; scoping `solve_for` to `Coverable*` then ensures every `is_covered` decision has a real upper bound.
+**Prescriptive reasoner: cohort selection as a CSP.** Decisions target the sub-concept directly (`EligiblePatient.is_in_cohort`, `CoverableTherapy.is_covered`, ...), which creates one binary variable per sub-concept row. The `Coverable*` sub-concepts are themselves scoped to *eligible-patient* coverage, not any-patient coverage: a Y covered only by ineligible patients would otherwise sit in `Coverable*` with no upper-bound IC binding (the per-pair `where` body has no eligible-patient row for it), and the solver would mark it covered to satisfy the lower bound trivially. Scoping `Coverable*` to `EligiblePatient.covers_*` closes that gap; scoping `solve_for` to `Coverable*` then ensures every `is_covered` decision has a real upper bound.
 
 ```python
 problem.solve_for(
