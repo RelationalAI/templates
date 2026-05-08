@@ -2,6 +2,7 @@
 title: "Planogram Optimization"
 description: "Decide integer facing counts per SKU to maximize predicted weekly demand under shelf capacity and category cardinality limits, where per-(SKU, facing_count) demand comes from a regression model."
 featured: false
+private: true
 experience_level: intermediate
 industry: "Retail"
 reasoning_types:
