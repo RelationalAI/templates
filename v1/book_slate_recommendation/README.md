@@ -1,6 +1,6 @@
 ---
 title: "Book Slate Recommendation"
-description: "Compose K-item slates per reader under diversity, freshness, and explainability rules: KG paths + Graph triangles + MiniZinc CSP."
+description: "Recommend K books per reader and order them by slot, under diversity, freshness, and explainability constraints."
 featured: false
 private: true
 experience_level: advanced
@@ -102,7 +102,7 @@ under topic / source / recency caps.
 - `data/fetch_open_library_slice.py` -- Open Library (CC0) slice
   fetcher with caching under `data/_cache/`; supports
   `--size sm|md|lg`
-- `data/*.csv` -- bundled `sm` slice (~60 books, ~58 authors,
+- `data/*.csv` -- bundled `sm` slice (~59 books, ~52 authors,
   12 subjects, 25 synthetic users with read events)
 - `pyproject.toml` -- Python package configuration
 
@@ -149,7 +149,7 @@ under topic / source / recency caps.
    ```
 
 6. Expected output. The bundled `data/` directory carries a
-   deterministic Open Library (CC0) slice (~60 books, ~52 authors,
+   deterministic Open Library (CC0) slice (~59 books, ~52 authors,
    12 subjects); synthetic users and read events are layered on
    top, and `similar_to` edges are derived from shared-author /
    shared-subject overlap. The runner prints the formulation, the

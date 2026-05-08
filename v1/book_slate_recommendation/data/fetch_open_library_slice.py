@@ -159,7 +159,7 @@ def _http_get_json(url: str, cache_dir: Path) -> dict:
             tmp_file.replace(cache_file)
             time.sleep(REQUEST_SLEEP_S)
             return payload
-        except (HTTPError, URLError, TimeoutError) as exc:
+        except (HTTPError, URLError, TimeoutError, json.JSONDecodeError) as exc:
             last_err = exc
             time.sleep(1.0 * (attempt + 1))
     raise RuntimeError(
@@ -255,48 +255,76 @@ def _is_publisher_or_noise_author(name: str) -> bool:
     return False
 
 
-# Dewey Decimal codes leak in via Open Library's subjects field
-# (e.g. "823/.8" for English fiction). They aren't human-readable
-# subjects so they're stripped from the subjects slice.
-_DEWEY_RE = re.compile(r"^\d{1,3}(\.\d+)?(/[\d.]+)?$")
+# Subject normalization uses a small explicit canonical-tag map keyed
+# on observed Open Library duplicates from the bundled `sm` slice. The
+# rationale (vs. an open-ended regex chain): the candidate vocabulary
+# is bounded by SUBJECT_SEEDS_DEFAULT and the top-12 frequency cut, so
+# enumerating the merges is tractable, deterministic, and readable.
+# When `--size md|lg` regen surfaces a new near-duplicate of an
+# existing canonical concept, extend _SUBJECT_CANONICAL_MAP rather
+# than reaching for new regex heuristics.
+
+# Drop these subjects entirely. Dewey Decimal codes ("823/.8") aren't
+# human-readable concepts, OL "(fictitious character ...)" tags name
+# characters not concepts, and "(fictitious place ...)" tags name
+# settings not concepts -- none belong in the runner's subject
+# vocabulary.
+_SUBJECT_DROP_RES = [
+    re.compile(r"^\d{1,3}(\.\d+)?(/[\d.]+)?$"),
+    re.compile(r"\(fictitious character"),
+    re.compile(r"\(fictitious place"),
+]
+
+# Strip these trailing OL "literary form" qualifiers so different
+# regions don't ship as 3 distinct rows that all really mean
+# "<region> fiction". Iterated because OL chains them.
+_SUBJECT_STRIP_RES = [
+    re.compile(r"\s*\(fictional works by one author\)\s*$"),
+    re.compile(r"\s*\(fictional works by several authors\)\s*$"),
+    re.compile(r",\s*fiction$"),
+    re.compile(r"\s+stories$"),
+]
+
+# Explicit raw -> canonical merge map. Each key is the lowercased OL
+# string after _SUBJECT_STRIP_RES; the value is the concept the runner
+# should treat as identical. Keep small; resist mapping concepts that
+# might be distinct (e.g. "humor" vs "comedy") without prior consensus.
+_SUBJECT_CANONICAL_MAP = {
+    "action & adventure": "adventure",
+    "adventure and adventurers": "adventure",
+}
 
 
 def _normalize_subject(name: str) -> str | None:
     """Canonicalize a subject string for dedup; return None to drop.
 
-    - lowercases + strips
-    - drops empty strings and Dewey Decimal codes ("823/.8", "813.54")
-    - collapses near-duplicate variants of "adventure" by stripping
-      trailing 'fiction' / 'stories' / ', fiction' clauses, so
-      ``adventure``, ``adventure stories``, ``adventure and adventurers``,
-      and ``adventure and adventurers, fiction`` all canonicalize to
-      ``adventure``. (Choice: canonicalize rather than drop -- the
-      runner's subject-diversity dial cares about the *concept* count,
-      not the variant count, and OL returns the same idea under several
-      labels.)
+    Pipeline:
+    1. Lower-case + strip.
+    2. Drop empty / Dewey / character / place tags (_SUBJECT_DROP_RES).
+    3. Strip OL "literary form" trailing qualifiers
+       (_SUBJECT_STRIP_RES) so e.g.
+       ``american fiction (fictional works by one author)`` folds to
+       ``american fiction``.
+    4. Apply explicit raw -> canonical merges (_SUBJECT_CANONICAL_MAP)
+       so e.g. ``action & adventure`` and ``adventure and adventurers``
+       both fold to ``adventure``.
+
+    Returns None for any string that survives steps 1-2 as empty.
     """
-    s = (name or "").strip().lower()
+    s = re.sub(r"\s+", " ", (name or "").strip().lower())
     if not s:
         return None
-    if _DEWEY_RE.match(s):
-        return None
-    # Strip trailing ", fiction" / " fiction" / " stories" suffixes so
-    # 'adventure stories' and 'adventure, fiction' fold to 'adventure'.
-    # Iterated because OL chains multiple suffixes.
+    for pat in _SUBJECT_DROP_RES:
+        if pat.search(s):
+            return None
     prev = None
     while prev != s:
         prev = s
-        s = re.sub(r",\s*fiction$", "", s)
-        s = re.sub(r"\s+fiction$", "", s)
-        s = re.sub(r"\s+stories$", "", s)
-        s = s.strip().rstrip(",").strip()
-    # Collapse "X and X-ers" / "X and X-er" patterns
-    # ("adventure and adventurers" -> "adventure"). Conservative:
-    # only collapse when the second clause shares the first word.
-    m = re.match(r"^(\w+)\s+and\s+(\w+)$", s)
-    if m and m.group(2).startswith(m.group(1)):
-        s = m.group(1)
-    return s or None
+        for pat in _SUBJECT_STRIP_RES:
+            s = pat.sub("", s).strip().rstrip(",").strip()
+    if not s:
+        return None
+    return _SUBJECT_CANONICAL_MAP.get(s, s)
 
 
 def build_slice(
