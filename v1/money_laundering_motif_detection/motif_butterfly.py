@@ -17,10 +17,8 @@ currency-transaction-report threshold so no leg triggers a CTR filing.
 Run:  python motif_butterfly.py
 """
 
-from pathlib import Path
-
 import pandas as pd
-from model_setup import AMOUNT_THRESHOLD_DOLLARS, create_model
+from model_setup import AMOUNT_THRESHOLD_DOLLARS, DATA_DIR, create_model
 from relationalai.semantics import Integer, sum
 from relationalai.semantics.reasoners.prescriptive import Problem
 
@@ -42,8 +40,10 @@ model, Account, Transaction = create_model()
 # form makes that IC active when `is_hub == 1` and vacuous when `is_hub == 0`;
 # M needs to bound |sum_in - sum_out| over decision-selected motif edges,
 # which is at most the per-account total of incoming or outgoing amounts.
-# Compute that from the data and add a small buffer.
-_tx_csv = pd.read_csv(Path(__file__).parent / "data" / "transactions.csv")
+# Compute that from the data and add a small buffer. (We re-read the CSV here
+# rather than wire it through `create_model()`'s return -- only butterfly
+# needs the post-load aggregation, and the bundled file is small.)
+_tx_csv = pd.read_csv(DATA_DIR / "transactions.csv")
 CONSERVATION_BIG_M = (
     int(
         max(
