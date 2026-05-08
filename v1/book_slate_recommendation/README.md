@@ -429,13 +429,17 @@ on customer slices are:
    else the diversity / uniqueness caps silently exempt that
    Book.
 
-For pre-solve diagnostics: every run prints a "Candidate count
-per user" table immediately before `problem.solve(...)` -- check
-that block first to see whether each user has at least
-`SLATE_SIZE_K` candidates after the path-walker / exclude-read
-pipeline. Users absent from that table have zero candidates and
-will be silently skipped by the per-user floor ICs (sparse-data
-warning regardless of solve status). For post-solve diagnostics
+The runner runs a Python-level pre-solve assertion (in
+`book_slate_recommendation.py` immediately before
+`problem.solve(...)`) that materialises the Candidate set,
+anti-joins against `User.read`, and raises `ValueError` if any
+user has fewer than `SLATE_SIZE_K` unread candidates, fewer than
+`FRESHNESS_FLOOR` unread fresh candidates, or fewer than
+`ORIGINALS_FLOOR` unread in-house candidates. The assertion's
+error message lists the affected users for each shortfall. The
+runner also prints an "Unread candidate count per user" table
+just before solving, so dense reach can be inspected even when
+the assert passes. For post-solve diagnostics
 on a non-OPTIMAL run: `problem.verify(...)` already prints
 per-IC violation messages on the failing constraints; if the
 script then exits at the `model.require(... == "OPTIMAL")` line

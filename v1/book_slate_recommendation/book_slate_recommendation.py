@@ -629,18 +629,38 @@ unread = candidate_df.merge(
     how="left",
     indicator=True,
 )
-unread = unread[unread["_merge"] == "left_only"]
-unread_counts = unread.groupby("user_id").size()
+unread = unread[unread["_merge"] == "left_only"][["user_id", "book_id"]]
+# Join unread candidates with Book attributes so the assertion can
+# also validate the per-user fresh and in-house pools that
+# freshness_ic and originals_ic implicitly require.
+unread_with_book = unread.merge(
+    books_csv[["id", "age_days", "in_house"]].rename(columns={"id": "book_id"}),
+    on="book_id",
+    how="left",
+)
+unread_counts = unread_with_book.groupby("user_id").size()
+fresh_counts = (
+    unread_with_book[unread_with_book["age_days"] <= FRESH_WINDOW_DAYS].groupby("user_id").size()
+)
+in_house_counts = unread_with_book[unread_with_book["in_house"] == 1].groupby("user_id").size()
 all_users = set(users_csv["id"])
-missing_users = sorted(all_users - set(unread_counts.index))
-short_users = sorted(unread_counts[unread_counts < SLATE_SIZE_K].index.tolist())
-if missing_users or short_users:
+absent_from_unread = sorted(all_users - set(unread_counts.index))
+short_total = sorted(unread_counts[unread_counts < SLATE_SIZE_K].index.tolist())
+short_fresh = sorted(list(all_users - set(fresh_counts[fresh_counts >= FRESHNESS_FLOOR].index)))
+short_in_house = sorted(
+    list(all_users - set(in_house_counts[in_house_counts >= ORIGINALS_FLOOR].index))
+)
+if absent_from_unread or short_total or short_fresh or short_in_house:
     raise ValueError(
-        "Per-user candidate floor violated: "
-        f"missing users (no candidates at all): {missing_users}; "
-        f"users with < SLATE_SIZE_K={SLATE_SIZE_K} unread candidates: "
-        f"{short_users}. Densify Book.similar_to (the data pipeline "
-        "input) or relax SLATE_SIZE_K before re-running."
+        "Per-user candidate floor violated:\n"
+        f"  users absent from unread candidate table: {absent_from_unread}\n"
+        f"  users with < SLATE_SIZE_K={SLATE_SIZE_K} unread candidates: {short_total}\n"
+        f"  users with < FRESHNESS_FLOOR={FRESHNESS_FLOOR} unread fresh "
+        f"(age_days <= {FRESH_WINDOW_DAYS}) candidates: {short_fresh}\n"
+        f"  users with < ORIGINALS_FLOOR={ORIGINALS_FLOOR} unread in-house "
+        f"candidates: {short_in_house}\n"
+        "Densify Book.similar_to or refresh the data slice with denser "
+        "fresh / in-house coverage before re-running."
     )
 
 print("\nUnread candidate count per user (pre-solve diagnostic):")
