@@ -21,7 +21,7 @@ Usage
 -----
 ::
 
-    python data/fetch_open_library_slice.py            # default slice (~60 books)
+    python data/fetch_open_library_slice.py            # default slice (~59 books)
     python data/fetch_open_library_slice.py --size md  # ~250 books
     python data/fetch_open_library_slice.py --size lg  # ~600 books
 

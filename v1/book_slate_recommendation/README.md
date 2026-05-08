@@ -424,7 +424,7 @@ larger sizes: (1) the `EXPLANATION_FLOOR` /
 for `sm`'s `path_count_total` distribution (range 2-12); larger
 slices produce much higher walk counts and these thresholds
 become trivially satisfied unless rescaled. (2) MiniZinc
-`time_limit_sec=60` is comfortable at `sm` (~1k integer
+`time_limit_sec=180` is comfortable at `sm` (~1k integer
 decisions, each with K+1=4 values); raise it for `lg` (~120k
 decisions × 10 ICs).
 
@@ -508,7 +508,7 @@ at the end mirrors the pre-solve one).
 <details>
 <summary>Slow or timing out at <code>--size lg</code></summary>
 
-The default `time_limit_sec=60` is sized for the bundled `sm`
+The default `time_limit_sec=180` is sized for the bundled `sm`
 slice. At `lg` (~600 books, ~120k integer-domain decisions × 10
 ICs), raise it to 600 and watch the MiniZinc propagation progress
 in the solver log. If the solve still times out, drop
