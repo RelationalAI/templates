@@ -439,6 +439,13 @@ Business.is_watch_level = model.Relationship(f"{Business} is watch level")
 model.where(Business.is_unreliable()).define(Business.is_watch_level())
 model.where(Business.has_high_delay_risk()).define(Business.is_watch_level())
 
+# Rule: Business is avoid when BOTH unreliable AND high delay risk fire.
+Business.is_avoid = model.Relationship(f"{Business} is avoid")
+model.define(Business.is_avoid()).where(
+    Business.is_unreliable(),
+    Business.has_high_delay_risk(),
+)
+
 # Derive risk classification in Python from RAI flags.
 # The optimization uses is_unreliable() and has_high_delay_risk() directly.
 unreliable_df = (
@@ -465,14 +472,12 @@ all_biz_df = (
 )
 
 print("\nSupplier risk classification:")
-avoid_ids = set()
 for _, row in all_biz_df.sort_values("reliability").iterrows():
     biz_id = row["id"]
     is_unrel = biz_id in unreliable_ids
     is_delay = biz_id in high_delay_ids
     if is_unrel and is_delay:
         rc, marker = "avoid", "[X]"
-        avoid_ids.add(biz_id)
     elif is_unrel or is_delay:
         rc, marker = "watch", "[!]"
     else:
@@ -481,6 +486,15 @@ for _, row in all_biz_df.sort_values("reliability").iterrows():
         f"  {marker} {biz_id} {row['name']}: "
         f"reliability={row['reliability']:.2f}, class={rc}"
     )
+
+# Pull avoid ids from the Relationship for the Watch->Avoid scenario set math
+# and for printing/per-scenario blocked-businesses bookkeeping.
+avoid_df = (
+    model.select(Business.id.alias("id"))
+    .where(Business.is_avoid())
+    .to_df()
+)
+avoid_ids = set(avoid_df["id"]) if len(avoid_df) > 0 else set()
 
 # Rule 4: Demand is escalated when priority is HIGH.
 Demand.is_escalated = model.Relationship(f"{Demand} is escalated")
@@ -508,13 +522,19 @@ Operation.x_flow = model.Property(f"{Operation} has {Float:flow}")
 Demand.x_unmet = model.Property(f"{Demand} has {Float:unmet}")
 
 
-def solve_flow(label, exclude_site_id=None, block_business_ids=None):
+def solve_flow(label, exclude_site_id=None, block_business_ids=None, use_avoid_relationship=True):
     """Solve the network flow, optionally disabling a site or blocking suppliers.
 
     Args:
         label: Display name for this scenario.
         exclude_site_id: Site ID string to take offline (all ops from this site get zero flow).
         block_business_ids: Set of Business ID strings whose source operations get zero flow.
+            Used for scenario-specific extras (e.g., downgrade watch->avoid). Combined with
+            the ontology Business.is_avoid() block when use_avoid_relationship=True.
+        use_avoid_relationship: If True, hard-block all Business.is_avoid() suppliers via a
+            single ontology-driven constraint. The baseline and Site-offline scenarios use
+            this; the Watch->Avoid scenario sets it False because its block_business_ids set
+            already supersedes the ontology avoid set.
     """
     if block_business_ids is None:
         block_business_ids = set()
@@ -555,9 +575,22 @@ def solve_flow(label, exclude_site_id=None, block_business_ids=None):
         name=["demand_sat", D.id],
     )
 
-    # Constraint: block operations sourced from blocked businesses.
-    # Uses explicit Python-side business IDs passed per scenario, so the
-    # constraint is guaranteed to differ across scenarios.
+    # Constraint: block operations sourced from "avoid" businesses, read
+    # directly from the ontology Business.is_avoid() Relationship.
+    if use_avoid_relationship:
+        biz_avoid = Business.ref()
+        op_avoid = Operation.ref()
+        problem.satisfy(
+            model.require(op_avoid.x_flow == 0).where(
+                op_avoid.source_business(biz_avoid),
+                biz_avoid.is_avoid(),
+            ),
+            name=["block_avoid", op_avoid.id],
+        )
+
+    # Scenario-specific extras: block additional businesses from a Python set
+    # (e.g., the Watch->Avoid scenario blocks the union of unreliable and
+    # high-delay-risk suppliers, a strict superset of the avoid Relationship).
     for biz_id in sorted(block_business_ids):
         biz_block = Business.ref()
         op_block = Operation.ref()
@@ -653,12 +686,20 @@ def solve_flow(label, exclude_site_id=None, block_business_ids=None):
         else:
             print("  All demand satisfied")
 
-    return {"label": label, "status": status, "objective": obj, "unmet": total_unmet}
+    return {
+        "label": label,
+        "status": status,
+        "objective": obj,
+        "unmet": total_unmet,
+        "active_flows": n_active,
+        "blocked": sorted(block_business_ids),
+    }
 
 
-# Baseline solve: block only "avoid" suppliers (both unreliable AND high delay).
+# Baseline solve: block only "avoid" suppliers (both unreliable AND high delay)
+# via the Business.is_avoid() Relationship from the ontology.
 results = []
-results.append(solve_flow("Baseline", block_business_ids=avoid_ids))
+results.append(solve_flow("Baseline"))
 print(f"  Blocked businesses (avoid): {sorted(avoid_ids) if avoid_ids else 'none'}")
 
 # --------------------------------------------------
@@ -677,7 +718,6 @@ results.append(
     solve_flow(
         f"Site {top_site_id} offline",
         exclude_site_id=top_site_id,
-        block_business_ids=avoid_ids,
     )
 )
 
@@ -687,23 +727,82 @@ watch_and_avoid_ids = unreliable_ids | high_delay_ids
 print("\nScenario: All 'watch' suppliers downgraded to 'avoid'")
 print(f"  Blocked businesses: {sorted(watch_and_avoid_ids)}")
 results.append(
-    solve_flow("Watch->Avoid", block_business_ids=watch_and_avoid_ids)
+    solve_flow(
+        "Watch->Avoid",
+        block_business_ids=watch_and_avoid_ids,
+        use_avoid_relationship=False,
+    )
 )
 
-# Summary table.
+# --------------------------------------------------
+# Persist scenario solves into the ontology (RoutingScenario Concept)
+# --------------------------------------------------
+# Per /rai-prescriptive-problem-formulation/scenario-analysis.md "Scenario
+# Concept" pattern: load scenario rows via model.data(list_of_tuples,
+# columns=[...]) and bind via Concept.new(...).to_schema().
+
+canonical_names = {
+    "Baseline": "Baseline",
+    f"Site {top_site_id} offline": f"{top_site_id}-offline",
+    "Watch->Avoid": "Watch-Avoid",
+}
+
+RoutingScenario = model.Concept("RoutingScenario", identify_by={"name": String})
+RoutingScenario.status = model.Property(f"{RoutingScenario} has {String:status}")
+RoutingScenario.total_cost = model.Property(f"{RoutingScenario} has {Float:total_cost}")
+RoutingScenario.cost_delta_pct = model.Property(f"{RoutingScenario} has {Float:cost_delta_pct}")
+RoutingScenario.active_flow_count = model.Property(f"{RoutingScenario} has {Integer:active_flow_count}")
+RoutingScenario.unmet_total = model.Property(f"{RoutingScenario} has {Float:unmet_total}")
+RoutingScenario.blocked_businesses = model.Property(f"{RoutingScenario} has {String:blocked_businesses}")
+
+# Materialize per-scenario results as RoutingScenario instances. Pre-create
+# the three instances by name, then bind each property via filter_by — this
+# avoids the row-collapse seen with model.data() multi-row binding here.
+baseline_obj = results[0]["objective"]
+for r in results:
+    name = canonical_names.get(r["label"], r["label"])
+    obj = float(r["objective"]) if r["objective"] is not None else 0.0
+    delta_pct = 0.0
+    if r["label"] != "Baseline" and baseline_obj and r["objective"] is not None:
+        delta_pct = (r["objective"] - baseline_obj) / baseline_obj * 100
+    blocked_str = ",".join(r["blocked"]) if r["blocked"] else ""
+    unmet_val = float(r["unmet"]) if r["unmet"] else 0.0
+
+    model.define(RoutingScenario.new(name=name))
+    rs = RoutingScenario.filter_by(name=name)
+    model.define(rs.status(r["status"] or "UNKNOWN"))
+    model.define(rs.total_cost(obj))
+    model.define(rs.cost_delta_pct(float(delta_pct)))
+    model.define(rs.active_flow_count(int(r["active_flows"])))
+    model.define(rs.unmet_total(unmet_val))
+    model.define(rs.blocked_businesses(blocked_str))
+
+# Summary table — query the RoutingScenario Concept rather than Python state.
 print(f"\n{'=' * 70}")
 print("SCENARIO COMPARISON")
 print(f"{'=' * 70}")
 print(f"  {'Scenario':<25} {'Status':<18} {'Cost':>12} {'Unmet':>10}")
 print(f"  {'-' * 65}")
-baseline_obj = results[0]["objective"]
-for r in results:
-    cost_str = f"{r['objective']:,.2f}" if r["objective"] else "N/A"
-    unmet_str = f"{r['unmet']:,.0f}" if r["unmet"] else "0"
+
+rs_df = (
+    model.select(
+        RoutingScenario.name.alias("name"),
+        RoutingScenario.status.alias("status"),
+        RoutingScenario.total_cost.alias("total_cost"),
+        RoutingScenario.cost_delta_pct.alias("cost_delta_pct"),
+        RoutingScenario.unmet_total.alias("unmet_total"),
+    )
+    .to_df()
+)
+order = [canonical_names[r["label"]] for r in results]
+rs_df = rs_df.set_index("name").loc[order].reset_index()
+for _, row in rs_df.iterrows():
+    cost_str = f"{row['total_cost']:,.2f}"
+    unmet_str = f"{row['unmet_total']:,.0f}" if row["unmet_total"] else "0"
     delta = ""
-    if r["objective"] and baseline_obj and r["label"] != "Baseline":
-        pct = (r["objective"] - baseline_obj) / baseline_obj * 100
+    if row["name"] != "Baseline":
+        pct = row["cost_delta_pct"]
         delta = f" (+{pct:.1f}%)" if pct > 0 else f" ({pct:.1f}%)"
     print(
-        f"  {r['label']:<25} {r['status']:<18} {cost_str:>12}{delta} {unmet_str:>10}"
+        f"  {row['name']:<25} {row['status']:<18} {cost_str:>12}{delta} {unmet_str:>10}"
     )

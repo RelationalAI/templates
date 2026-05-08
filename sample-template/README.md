@@ -1,6 +1,7 @@
 ---
 title: "<YOUR TEMPLATE TITLE>"
 description: "<YOUR TEMPLATE DESCRIPTION>"
+private: false
 experience_level: <beginner|intermediate|advanced>
 industry: <YOUR TARGET INDUSTRY/SECTOR> (use "General" if broadly applicable)
 reasoning_types:
