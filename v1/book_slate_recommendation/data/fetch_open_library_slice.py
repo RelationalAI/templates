@@ -10,7 +10,7 @@ Library data -- so the template is fully self-contained without
 depending on user-reading data (which Open Library does not
 publish).
 
-Why Open Library: bibliographic catalogue, 100% CC0
+Why Open Library: bibliographic catalog, 100% CC0
 (<https://openlibrary.org/dev/docs/api>), explicitly safe for public
 templates. MovieLens / Goodreads / Amazon-Book carry non-commercial
 clauses incompatible with shippable customer templates. DBLP and
@@ -169,7 +169,7 @@ def build_slice(
 ) -> dict:
     """Pull works/authors/subjects from Open Library and dedupe.
 
-    Returns a dict with normalised lists keyed on integer ids assigned
+    Returns a dict with normalized lists keyed on integer ids assigned
     deterministically here (Open Library keys are stable strings, but
     the runner uses integers for ``identify_by`` ergonomics).
     """
@@ -258,7 +258,7 @@ def build_slice(
 
     # Drop works with no authors (the runner's MAX_PER_AUTHOR cap and
     # the typed-evidence join silently exempt author-less books, which
-    # produces surprising slate behaviour). Author-less works in Open
+    # produces surprising slate behavior). Author-less works in Open
     # Library are typically incomplete records; safer to omit than
     # propagate.
     keys_with_authors = [k for k in work_keys if work_authors[k]]
@@ -442,7 +442,7 @@ def emit_csvs(slice_data: dict, profile: dict, data_dir: Path) -> None:
             # Include any pair that shares an author or at least one
             # subject -- keeps the similarity graph dense enough that
             # every user's 2-hop reach covers a reasonable slice of
-            # the catalogue (otherwise users whose reads cluster in a
+            # the catalog (otherwise users whose reads cluster in a
             # corner can have no fresh / in-house candidates).
             if shared_authors or shared_subjects:
                 sim_edges.add((a, b))
@@ -490,7 +490,7 @@ def emit_csvs(slice_data: dict, profile: dict, data_dir: Path) -> None:
         # 2-hop reach has a chance of containing in-house / fresh
         # candidates (the data-side analogue of pre-warming the slate-
         # composer's reach distribution -- without it, users whose
-        # reads cluster in an old-only corner of the catalogue have
+        # reads cluster in an old-only corner of the catalog have
         # zero feasible slates).
         if in_house_pool:
             picks.append(rng_r.choice(in_house_pool))

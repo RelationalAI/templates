@@ -40,4 +40,4 @@ Key takeaways:
 3. The prescriptive reasoner's rewriter preserves PyRel rule
    semantics end-to-end for these patterns (Match-form defaults,
    scope isolation across sibling aggregates, set-style union body
-   dedup). Behaviour is the spec, not a bug.
+   dedup). Behavior is the spec, not a bug.

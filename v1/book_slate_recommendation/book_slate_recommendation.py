@@ -1,50 +1,36 @@
 """Book slate recommendation (Graph + Paths + Prescriptive MIP) template.
 
-Three-pillar pipeline modelling a content-row / homepage slate:
+Three-pillar pipeline that picks K books per reader under business
+rules, blending a structural-popularity prior, bounded-walk path
+evidence, and per-typed shared-entity joins into a personalized
+utility:
 
-- Graph: PageRank over a book-similarity graph derived from shared
-  authors and shared subjects. Provides each candidate book with a
-  structural-popularity signal that the prescriptive layer reads as
-  data.
-- Paths: bounded-depth walks (``MAX_HOPS = 2``) over the unified
-  ``Item.connected_to`` edge enumerate ``User -> read_Book`` (length 1;
-  pruned by the already-read exclusion) and ``User -> read_Book ->
-  similar_Book`` (length 2) -- the path-pillar's actual reach with a
-  Book endpoint at 2 hops. The per-(user, candidate) typed counts
-  (``path_count_via_author`` / ``_via_subject``) are *direct shared-
-  entity joins* against the user's read history (KPRN-style typed
-  evidence aggregation), not path walks themselves. The walk-count
-  (``path_count_via_kg_walk``) is the actual paths-pillar count. All
-  three integer features feed ``where`` / ``require`` clauses on the
-  MIP and are blended into the objective via ``path_count_total``.
-  The per-typed counts that the runner prints alongside each picked
-  item (``paths_via_author`` / ``paths_via_subject`` /
-  ``paths_via_kg_walk``) are the explanation-surface artefact -- a
-  decomposable, KG-grounded justification customers can render in
-  the UI or feed to downstream transparency workflows. Returning the
-  enumerated paths themselves (rather than just the counts) is a
-  straightforward extension; see "Customise" in the README.
-- Prescriptive: float-coefficient binary IP on HiGHS picks K items per
-  user under subject diversity, author uniqueness, freshness floor,
-  originals-exposure floor, cold-start cap, and explanation-path
-  floor constraints. Objective combines structural prior (PageRank)
-  with per-user path signal into a single utility.
+- Graph: PageRank over a book-similarity graph (`Book.similar_to`)
+  produces each candidate's `pagerank_score`.
+- Paths: bounded `Item.connected_to.repeat(1, 2).all_paths()` walks
+  enumerate `User -> read_Book` (length 1; pruned downstream by the
+  already-read exclusion) and `User -> read_Book -> similar_Book`
+  (length 2). The per-(user, candidate) typed counts
+  (`path_count_via_author`, `_via_subject`, `_via_kg_walk`) feed both
+  IC clauses and the objective, and surface as the per-pick
+  explanation block.
+- Prescriptive: float-coefficient binary IP on HiGHS picks K items
+  per user under cardinality, already-read exclusion, subject
+  diversity, author uniqueness, freshness, originals-exposure,
+  cold-start, and explanation-path floor constraints; objective
+  maximizes total `utility = w1 * pagerank + w2 * path_total`.
 
-Production precedent: Pinterest's Pixie (Eksombatchai et al., WWW 2018)
-runs personalized random walks for recommendations at >50% of Pin
-engagement scale; eBay's KPRN (AAAI 2019) and policy-guided KG path
-reasoning (PGPR, SIGIR 2019) use KG paths for explainable recsys;
-LinkedIn Career Explorer navigates the Skills Graph by paths. This
-template composes the same primitives declaratively in PyRel.
+Bundled data: a deterministic Open Library (CC0) slice (~60 books,
+~58 authors, 12 subjects) pulled by `data/fetch_open_library_slice.py`.
+Customers fetch larger slices by re-running with `--size md`/`--size lg`.
 
-Lead dataset: Open Library (CC0). The bundled ``data/`` directory
-carries a small slice (~60 books, ~58 authors, 12 subjects) pulled
-by ``data/fetch_open_library_slice.py``. Customers fetch larger slices
-by re-running that script with ``--size md`` / ``--size lg``. The
-domain is plain bibliographic catalogue, so no licensing exposure --
-the template ships in full.
+Run:
+    `python book_slate_recommendation.py`
 
-Run: ``python book_slate_recommendation.py``
+Output:
+    Prints the formulation, the solve-result block, the per-user
+    candidate set, the chosen slate (K books per user), the per-user
+    subject distribution, and the per-pick explanation-path support.
 """
 
 from pathlib import Path
@@ -60,10 +46,11 @@ from relationalai.semantics import (
 )
 from relationalai.semantics.reasoners.graph import Graph
 from relationalai.semantics.reasoners.prescriptive import Problem
-from relationalai.semantics.std import aggregates as aggs
 from relationalai.semantics.std.paths import PathTraversal
 
-# --- Configuration --------------------------------------------------
+# --------------------------------------------------
+# Configure inputs
+# --------------------------------------------------
 
 # Slate size: the K of "row of K things". Streaming rows are
 # typically 5-10; this template uses 3 to keep the bundled-data
@@ -89,7 +76,7 @@ MAX_PER_AUTHOR = 1
 
 # Freshness / exposure / cold-start dials. All integer counts.
 FRESHNESS_FLOOR = 1  # at least N items released within FRESH_WINDOW_DAYS
-# 30 years is a *catalogue-framing* default tuned to the bibliographic
+# 30 years is a *catalog-framing* default tuned to the bibliographic
 # Open Library slice (publication dates back centuries; a tighter
 # window would mark almost everything stale). Streaming / news / e-
 # commerce platforms typically want 365 * 2 (2 years) or less so the
@@ -114,48 +101,75 @@ EXPLANATION_FLOOR = 4
 WEAK_EXPLANATION_THRESHOLD = 2
 
 # Utility blend: structural prior (PageRank) vs per-user path signal.
+# Demo-grade defaults tuned for the bundled ``--size sm`` slice:
+# PageRank scores live on roughly the 1e-3 to 3e-2 range; path counts
+# on roughly 2-12. The weights make both signals visible in HiGHS at
+# similar order of magnitude (PageRank's float head pulls high-
+# popularity items in, path-count delta breaks ties under
+# diversity caps). Production tuning options: (a) min-max-normalize
+# both signals to [0, 1] before blending so the constants represent
+# *business preference* rather than *scale correction*; (b) calibrate
+# to held-out click / read data; (c) keep a sensitivity table per
+# slice size (the bundled ``experiments/`` folder has the harness for
+# this).
 PAGERANK_WEIGHT = 100.0
 PATH_SIGNAL_WEIGHT = 30.0
 
-model = Model("book_slate_recommendation")
 DATA_DIR = Path(__file__).parent / "data"
 
-# --- Concepts and core data -----------------------------------------
+# --------------------------------------------------
+# Define semantic model & load data
+# --------------------------------------------------
 
-# ``Item`` is the heterogeneous-KG super-concept. User / Book / Author
-# / Subject all extend it so the path walker can traverse a single
-# 2-arity edge relationship across the whole KG. This is the
+model = Model("book_slate_recommendation")
+
+# Item super-concept: heterogeneous-KG node base for User/Book/Author/
+# Subject. The path walker traverses a single 2-arity edge relationship
+# (Item.connected_to, defined below) across the whole KG -- the
 # documented v1.1.0 workaround for the "multiple edges in a single
-# path()" gap (paths-lib README: "encode the multi-edge traversal as
-# a single N-arity relationship"). First-class composite-edge support
-# is on the PyRel roadmap; once it lands, the unified-edge layer
-# below can be deleted.
+# path()" gap (paths-lib README §"Currently unsupported patterns").
+# First-class composite-edge support is on the PyRel roadmap; once
+# it lands, the unified-edge layer below can be deleted.
 Item = model.Concept("Item")
 
+# User concept: a reader.
 User = model.Concept("User", extends=[Item], identify_by={"id": Integer})
 User.name = model.Property(f"{User} has {String:name}")
 
+# Book concept: a catalog item with bibliographic and freshness/
+# in-house attributes. ``in_house`` is an Integer 0/1 flag.
 Book = model.Concept("Book", extends=[Item], identify_by={"id": Integer})
 Book.title = model.Property(f"{Book} has {String:title}")
 Book.age_days = model.Property(f"{Book} has {Integer:age_days}")
 Book.in_house = model.Property(f"{Book} has {Integer:in_house}")
 
+# Author concept: a book's writer.
 Author = model.Concept("Author", extends=[Item], identify_by={"id": Integer})
 Author.name = model.Property(f"{Author} has {String:name}")
 
+# Subject concept: a topical category attached to books.
 Subject = model.Concept("Subject", extends=[Item], identify_by={"id": Integer})
 Subject.name = model.Property(f"{Subject} has {String:name}")
 
-# CSV ingest. The bundled data is a deterministic slice of Open
-# Library (CC0); regenerate or scale with
-# ``data/fetch_open_library_slice.py --size sm|md|lg``.
+# Bundled CSVs are a deterministic Open Library (CC0) slice;
+# regenerate or scale with ``data/fetch_open_library_slice.py --size
+# sm|md|lg``.
+
+# Load user data from CSV.
 users_csv = read_csv(DATA_DIR / "users.csv")
+# Load book data from CSV.
 books_csv = read_csv(DATA_DIR / "books.csv")
+# Load author data from CSV.
 authors_csv = read_csv(DATA_DIR / "authors.csv")
+# Load subject data from CSV.
 subjects_csv = read_csv(DATA_DIR / "subjects.csv")
+# Load read-event data from CSV.
 read_csv_data = read_csv(DATA_DIR / "read.csv")
+# Load book-author edge data from CSV.
 ba_csv = read_csv(DATA_DIR / "book_author.csv")
+# Load book-subject edge data from CSV.
 bs_csv = read_csv(DATA_DIR / "book_subject.csv")
+# Load book-similarity edge data from CSV.
 bsim_csv = read_csv(DATA_DIR / "book_similar.csv")
 
 model.define(User.new(model.data(users_csv).to_schema()))
@@ -163,7 +177,8 @@ model.define(Book.new(model.data(books_csv).to_schema()))
 model.define(Author.new(model.data(authors_csv).to_schema()))
 model.define(Subject.new(model.data(subjects_csv).to_schema()))
 
-# --- Edges (typed Relationships) ------------------------------------
+# Typed edges between concepts: read events, authorship, subject
+# attachment, and the book-similarity input.
 
 User.read = model.Relationship(
     f"{User:user} read {Book:book} with rating {Integer:rating}",
@@ -208,7 +223,9 @@ model.define(Book.similar_to(src_b, dst_b)).where(
     dst_b.id == bsim_data.dst_book_id,
 )
 
-# --- Unified KG edge (workaround for v1.1.0 composite-edge gap) -----
+# Unified KG edge: a single 2-arity Item.connected_to relationship
+# the path walker traverses. Workaround for the v1.1.0 paths-lib
+# composite-edge gap (see Item-concept comment above).
 # ``Item.connected_to(Item, Item)`` is the single 2-arity relationship
 # the path walker traverses. Populate it from each typed edge so a
 # bounded walk can chain User -> Book -> Author -> Book -> ...
@@ -252,7 +269,9 @@ b_s1, b_s2 = Book.ref(), Book.ref()
 model.define(Item.connected_to(b_s1, b_s2)).where(Book.similar_to(b_s1, b_s2))
 model.define(Item.connected_to(b_s2, b_s1)).where(Book.similar_to(b_s1, b_s2))
 
-# --- Pillar 1: Graph -- PageRank over the book-similarity graph -----
+# --------------------------------------------------
+# Pillar 1: Graph -- PageRank over the book-similarity graph
+# --------------------------------------------------
 
 # Book-Book similarity graph derived from shared authors / subjects.
 # ``node_concept=Book`` makes graph-algorithm output bind directly to
@@ -273,7 +292,7 @@ model.define(sim_graph.Edge.new(src=src_g, dst=dst_g)).where(
 
 # PageRank: structural-popularity prior. Stored as Float (the native
 # pagerank() output type). HiGHS handles float coefficients on binary
-# decisions natively, so no quantisation step is needed.
+# decisions natively, so no quantization step is needed.
 Book.pagerank_score = model.Property(f"{Book} has structural score {Float:pagerank_score}")
 pagerank_rel = sim_graph.pagerank()
 b_pr = Book.ref()
@@ -282,8 +301,10 @@ model.define(b_pr.pagerank_score(score_pr)).where(
     pagerank_rel(b_pr, score_pr),
 )
 
-# --- Pillar 2: Paths -- bounded similarity walk ---------------------
-#
+# --------------------------------------------------
+# Pillar 2: Paths -- bounded similarity walk
+# --------------------------------------------------
+
 # Walk the unified ``Item.connected_to`` edge from each User up to
 # MAX_HOPS hops. With a Book endpoint at length 2, the walker
 # enumerates ``User -> read_Book`` (length 1; the user's own read
@@ -291,16 +312,21 @@ model.define(b_pr.pagerank_score(score_pr)).where(
 # ``User -> read_Book -> similar_Book`` (length 2). The path-walker
 # bounds enumeration to MAX_HOPS, so the candidate set is the bounded
 # reachable set under the KG -- the same primitive Pixie / KPRN /
-# LinkedIn Career Explorer compose at production scale.
+# LinkedIn's skills-graph career navigation compose at production scale.
 kg_paths = model.path(
     Item.connected_to.repeat(1, MAX_HOPS),
 ).all_paths()
 
 # Candidate set: any (user, book) reached by a User-anchored bounded
-# KG walk ending at a Book node. PyRel v1.1.0 does not yet support
-# ``not`` in rules (paths-lib README §"Currently unsupported
-# patterns"), so the already-read filter lands as a ``pick == 0`` IC
-# at the prescriptive layer instead.
+# KG walk ending at a Book node. The already-read exclusion lands as
+# a ``pick == 0`` IC at the prescriptive layer (see
+# ``exclude_read_ic`` below) rather than as a pre-pruning filter on
+# this rule -- this avoids needing a positive complement of
+# ``User.read`` (a Cartesian-minus-existing-tuples relation, with no
+# scalar comparator analogous to the ``<`` form in
+# ``Stock.is_non_representative`` in ``v1/portfolio_balancing/portfolio_balancing.py``) and keeps
+# the candidate-derivation rule a pure positive join over the path
+# walker.
 Candidate = model.Concept(
     "Candidate",
     identify_by={"user_id": Integer, "book_id": Integer},
@@ -413,11 +439,10 @@ model.define(Candidate.path_count_total(c, n)).where(
     n == c.path_count_via_author + c.path_count_via_subject + c.path_count_via_kg_walk,
 )
 
-# --- Personalized utility -------------------------------------------
-# Blend structural prior (float PageRank) with per-user path signal
+# Personalized utility: blend structural prior (float PageRank) with per-user path signal
 # (integer path counts) into a single Float utility. HiGHS handles
 # float coefficients on binary decisions natively, so the blend
-# stores directly as Float without a quantisation step.
+# stores directly as Float without a quantization step.
 Candidate.utility = model.Property(f"{Candidate} has utility {Float:utility}")
 b_u = Book.ref()
 util = Float.ref()
@@ -427,7 +452,9 @@ model.define(Candidate.utility(c, util)).where(
     util == PAGERANK_WEIGHT * b_u.pagerank_score + PATH_SIGNAL_WEIGHT * c.path_count_total,
 )
 
-# --- Pillar 3: Prescriptive -- MIP slate selection ------------------
+# --------------------------------------------------
+# Pillar 3: Prescriptive -- MIP slate selection
+# --------------------------------------------------
 
 Candidate.pick = model.Property(f"{Candidate} is picked iff {Float:p}")
 
@@ -441,32 +468,65 @@ problem.solve_for(
 # Data preconditions for OPTIMAL on customer slices:
 #  (1) every user must have at least ``SLATE_SIZE_K`` candidates in
 #      their 2-hop reach AFTER the already-read exclusion (else
-#      ``slate_size_ic`` ∧ ``exclude_read_ic`` are jointly
-#      infeasible).
+#      ``slate_size_ic`` ∧ ``exclude_read_ic`` are jointly infeasible).
+#      Note that exclude_read_ic prunes aggressively: every length-1
+#      walk ``User -> read_Book`` lands a read book in Candidate,
+#      and these are all forced to ``pick == 0``. The recommendable
+#      candidates come from length-2 ``read_Book -> similar_Book``
+#      walks, so a user whose reads have no ``similar_to`` neighbors
+#      (sparse customer data) will be infeasible without obvious
+#      signal.
 #  (2) for every user, the 2-hop reach must contain at least
 #      ``FRESHNESS_FLOOR`` books with ``age_days <= FRESH_WINDOW_DAYS``
 #      and at least ``ORIGINALS_FLOOR`` books with ``in_house == 1``
 #      (else the corresponding floor IC is infeasible for that user).
-#  (3) every Book picked must have at least one ``Book.about(Subject)``
-#      and one ``Book.written_by(Author)`` row, else the diversity /
-#      uniqueness caps silently exempt that Book (the IC's join
-#      filters it out). The bundled fetcher guarantees both; customer
-#      data should be checked.
+#      These are independent floors -- a user with no candidate that
+#      is BOTH fresh and in-house must spend ``FRESHNESS_FLOOR +
+#      ORIGINALS_FLOOR`` distinct picks on the disjoint pools, not
+#      ``max(FRESHNESS_FLOOR, ORIGINALS_FLOOR)``.
+#  (3) author_uniqueness_ic (``MAX_PER_AUTHOR=1``) requires at least
+#      ``SLATE_SIZE_K`` distinct authors in the user's reach;
+#      subject_diversity_ic similarly bounds per-subject picks. A
+#      user whose reach concentrates in fewer than K authors is
+#      infeasible even when total candidate count is large.
+#  (4) cold_start_ic (≤ ``COLD_START_CAP`` weak picks) and
+#      explanation_ic (>= ``EXPLANATION_FLOOR`` total path evidence)
+#      together imply at least ``K - COLD_START_CAP`` candidates
+#      per user with ``path_count_total >= WEAK_EXPLANATION_THRESHOLD``,
+#      and a strong-candidate path-count sum that meets
+#      ``EXPLANATION_FLOOR - COLD_START_CAP * (WEAK_EXPLANATION_THRESHOLD - 1)``.
+#      Customers retuning these dials (especially raising
+#      ``EXPLANATION_FLOOR``) need to inspect the per-user
+#      path-count distribution and ensure both bounds remain
+#      satisfiable.
+#  (5) every Book picked must have at least one
+#      ``Book.about(Subject)`` and one ``Book.written_by(Author)``
+#      row, else the diversity / uniqueness caps silently exempt
+#      that Book (the IC's join filters it out). The bundled
+#      fetcher guarantees both; customer data should be checked.
 # Violations surface as ``INFEASIBLE`` from HiGHS plus the
 # ``model.require(termination_status() == "OPTIMAL")`` failure at
-# script tail. The ``Candidate set per user`` inspection (later) is a
-# pre-solve diagnostic for (1).
+# script tail. To diagnose, comment out the OPTIMAL require, re-run,
+# and inspect the ``Candidate set per user`` print (which fires only
+# on a successful solve under the current order). For pre-solve
+# inspection of candidate sets, run a separate quick session that
+# stops before ``problem.solve(...)``.
 
 # Cardinality: each user gets exactly K picks.
 slate_size_ic = model.require(sum(Candidate.pick).per(Candidate.user_id) == SLATE_SIZE_K)
 problem.satisfy(slate_size_ic)
 
 # Already-read exclusion: any (user, book) where the user has already
-# read the book must have pick == 0. PyRel v1.1.0 does not yet support
-# ``not`` in rules (paths-lib README §"Currently unsupported
-# patterns"), so the exclusion lands here at the prescriptive layer
-# rather than as a ``~User.read(...)`` filter on the candidate
-# derivation.
+# read the book must have pick == 0. Lands at the prescriptive layer
+# rather than as a pre-pruning filter on Candidate derivation -- the
+# alternative would need a positive complement of ``User.read`` (the
+# Cartesian-minus-existing-tuples relation), and unlike the
+# ordered-comparator workaround used in
+# ``Stock.is_non_representative`` in ``v1/portfolio_balancing/portfolio_balancing.py`` ("non-
+# representative stocks") there is no scalar comparator separating
+# "read" from "not read" here. The ``pick == 0`` IC keeps the rule
+# pipeline pure-positive at minor MIP cost (a few wasted binary
+# variables forced to 0).
 u_excl, b_excl = User.ref(), Book.ref()
 rating_excl_ic = Integer.ref()
 exclude_read_ic = model.where(
@@ -521,10 +581,12 @@ explanation_ic = model.require(
 )
 problem.satisfy(explanation_ic)
 
-# Objective: maximise total per-user utility, summed across users.
+# Objective: maximize total per-user utility, summed across users.
 problem.maximize(sum(Candidate.utility * Candidate.pick))
 
-# --- Solve and verify -----------------------------------------------
+# --------------------------------------------------
+# Solve and check solution
+# --------------------------------------------------
 
 problem.display()
 problem.solve("highs", time_limit_sec=60)
@@ -542,13 +604,54 @@ problem.verify(
 )
 model.require(problem.termination_status() == "OPTIMAL")
 
-# --- Inspect results ------------------------------------------------
+# --------------------------------------------------
+# Inspect results
+# --------------------------------------------------
 
 print("\nUsers in this run:")
 model.select(
     User.id.alias("user_id"),
     User.name.alias("user"),
 ).inspect()
+
+# Headline output: the chosen slate per user.
+print(f"\nFinal slate per user (K = {SLATE_SIZE_K}):")
+model.select(
+    Candidate.user_id.alias("user_id"),
+    Candidate.book_id.alias("book_id"),
+    Candidate.utility.alias("utility"),
+    Candidate.path_count_total.alias("path_count_total"),
+).where(Candidate.pick == 1).inspect()
+
+print("\nSubject distribution per user's slate (cap = MAX_PER_SUBJECT):")
+u_disp = User.ref()
+b_disp = Book.ref()
+s_disp = Subject.ref()
+model.select(
+    u_disp.id.alias("user_id"),
+    s_disp.name.alias("subject"),
+    sum(Candidate.pick)
+    .per(u_disp, s_disp)
+    .where(
+        Candidate.user_id == u_disp.id,
+        Candidate.book_id == b_disp.id,
+        Book.about(b_disp, s_disp),
+    )
+    .alias("n_picked"),
+).inspect()
+
+print("\nExplanation-path support per picked item:")
+model.select(
+    Candidate.user_id.alias("user_id"),
+    Candidate.book_id.alias("book_id"),
+    Candidate.path_count_via_kg_walk.alias("paths_via_kg_walk"),
+    Candidate.path_count_via_author.alias("paths_via_author"),
+    Candidate.path_count_via_subject.alias("paths_via_subject"),
+).where(Candidate.pick == 1).inspect()
+
+# Diagnostics (verbose; useful for sizing the candidate set and
+# inspecting the structural prior, can be commented out for cleaner
+# customer-facing output).
 
 print(
     f"\nCandidate set per user (Books reachable within {MAX_HOPS} hops over the heterogeneous KG):"
@@ -570,45 +673,13 @@ model.select(
     Book.pagerank_score.alias("structural_score"),
 ).inspect()
 
-print(f"\nFinal slate per user (K = {SLATE_SIZE_K}):")
-model.select(
-    Candidate.user_id.alias("user_id"),
-    Candidate.book_id.alias("book_id"),
-    Candidate.utility.alias("utility"),
-    Candidate.path_count_total.alias("path_count_total"),
-).where(Candidate.pick == 1).inspect()
-
-print("\nSubject distribution per user's slate (cap = MAX_PER_SUBJECT):")
-u_disp = User.ref()
-b_disp = Book.ref()
-s_disp = Subject.ref()
-model.select(
-    u_disp.id.alias("user_id"),
-    s_disp.name.alias("subject"),
-    aggs.sum(Candidate.pick)
-    .per(u_disp, s_disp)
-    .where(
-        Candidate.user_id == u_disp.id,
-        Candidate.book_id == b_disp.id,
-        Book.about(b_disp, s_disp),
-    )
-    .alias("n_picked"),
-).inspect()
-
-print("\nExplanation-path support per picked item:")
-model.select(
-    Candidate.user_id.alias("user_id"),
-    Candidate.book_id.alias("book_id"),
-    Candidate.path_count_via_kg_walk.alias("paths_via_kg_walk"),
-    Candidate.path_count_via_author.alias("paths_via_author"),
-    Candidate.path_count_via_subject.alias("paths_via_subject"),
-).where(Candidate.pick == 1).inspect()
-
 # --- Customize-section variants (documented for the README, not
 # wired into the lead runner):
-# - Replace pagerank_score with a learned GNN affinity (Predictive
-#   pillar variant).
-# - Pipe per-typed counts (and, optionally, materialised top-N paths
+# - Replace ``Book.pagerank_score`` with any custom per-book scoring
+#   signal (collaborative-filtering co-occurrence, learned-embedding
+#   k-NN affinity, third-party scoring API). Same MIP, different
+#   prior.
+# - Pipe per-typed counts (and, optionally, materialized top-N paths
 #   from a small extension of the inspect() above) into an LLM call to
 #   render natural-language, KG-grounded, hallucination-free
 #   explanations.
