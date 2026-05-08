@@ -5,7 +5,7 @@ featured: false
 experience_level: advanced
 industry: "Insurance"
 reasoning_types:
-  - Rules
+  - Rules-based
   - Prescriptive
 tags:
   - constraint-programming
