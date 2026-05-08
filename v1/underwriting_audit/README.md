@@ -42,8 +42,8 @@ The bundled ruleset has a deliberate bug: `is_manual_review` is defined as "seni
 - A counterexample IC pair asserting the property failure: `is_frail == 1 AND is_manual_review == 0`
 - **Multi-solution enumeration as the primary code path**: `problem.solve(..., solution_limit=MAX_WITNESSES)` runs the search in enumeration mode; `Variable.values(solution_index, value)` joins the decision variables on a shared solution index to reconstruct each witness
 - A pre-solve check that reference IDs are dense and contiguous, so `lower=min(id), upper=max(id)` decision bounds line up with the reference rows the relational-time `implies` rules iterate over (sparse IDs would let the solver pick a value with no matching row, leaving the rule indicators unconstrained for that solution)
-- An explicit PASS/FAIL audit verdict driven by `solve_info().num_points`: zero witnesses prints PASS (property holds under the encoded ruleset), one or more prints FAIL with the witness count and the witness table
-- Post-solve sanity check via `problem.verify()` re-evaluating the pure-arithmetic ICs against the first returned solution (the OR-arithmetic equivalence on `is_frail`, the equality on `is_manual_review`, the counterexample assertions). The `implies`-bodied senior-definition ICs are solver-only and are NOT passed to `verify()` -- the relational engine cannot re-evaluate wire-format constraint relations and would return silently-OK regardless of whether the constraint actually held. `verify()` checks the first solution only; rely on the model itself, not `verify()`, to enforce the constraint across every witness.
+- An explicit PASS/FAIL audit verdict driven by `solve_info().termination_status`: `INFEASIBLE` prints PASS (property holds under the encoded ruleset), `OPTIMAL` or `SOLUTION_LIMIT` with one or more witnesses prints FAIL with the witness count and the witness table, anything else prints INCONCLUSIVE
+- Post-solve IC spot-check via `problem.verify()` re-evaluating the pure-arithmetic ICs against the first returned solution (the OR-arithmetic equivalence on `is_frail`, the equality on `is_manual_review`, the counterexample assertions). The `implies`-bodied senior-definition ICs are solver-only and are NOT passed to `verify()` -- the relational engine cannot re-evaluate wire-format constraint relations and would return silently-OK regardless of whether the constraint actually held. `verify()` checks the first solution only; rely on the model itself, not `verify()`, to enforce the constraint across every witness.
 
 ## What's included
 
@@ -150,7 +150,7 @@ Applicant.is_frail = model.Property(f"{Applicant} has {Integer:is_frail}")
 Applicant.is_manual_review = model.Property(f"{Applicant} has {Integer:is_manual_review}")
 ```
 
-**Senior indicator via per-bucket iteration.** `is_senior` is 1 iff the applicant's age bucket has age >= 70. Encoded as the same idiom the sister templates use for plan-network attribution: iterate over `AgeBucket` reference rows at relational time, gate on the decision-valued `Applicant.age_bucket_id == AgeBucket.id` inside `implies`. Two ICs cover both directions of the equivalence:
+**Senior indicator via per-bucket iteration.** `is_senior` is 1 iff the applicant's age bucket has age >= 70. Iterate over `AgeBucket` reference rows at relational time and gate on the decision-valued `Applicant.age_bucket_id == AgeBucket.id` inside `implies`. Two ICs cover both directions of the equivalence:
 
 ```python
 senior_def_pos_ic = model.where(AgeBucket.age_years >= SENIOR_THRESHOLD_YEARS).require(
@@ -176,7 +176,7 @@ manual_review_eq_lb_ic = model.require(Applicant.is_manual_review >= Applicant.i
 manual_review_eq_ub_ic = model.require(Applicant.is_manual_review <= Applicant.is_senior)
 ```
 
-**Counterexample IC asserts property failure.** The property "every frail applicant goes through manual review" is `is_frail <= is_manual_review`. The audit asks for *applicants where the property fails* -- `is_frail == 1 AND is_manual_review == 0` -- so we add that as a hard IC. If any feasible applicant satisfies it, the property does not hold; if the model is INFEASIBLE the property holds:
+**Counterexample IC asserts property failure.** The property "every frail applicant goes through manual review" is `is_frail <= is_manual_review`. The audit asks for *applicants where the property fails* -- `is_frail == 1 AND is_manual_review == 0` -- encoded as a hard IC below. If any feasible applicant satisfies it, the property does not hold; if the model is INFEASIBLE the property holds:
 
 ```python
 counterexample_frail_ic = model.require(Applicant.is_frail == 1)
@@ -213,7 +213,7 @@ model.select(
 
 ## Customize this template
 
-- **Audit a corrected ruleset** by changing `is_manual_review` to track `is_frail` instead of `is_senior`. The model becomes INFEASIBLE -- `solve_info().status` reports `UNSATISFIABLE` and `solve_info().num_points` is 0. The script prints `Audit result: PASS -- no counterexample applicants found.` That is the audit's pass signal: no counterexample exists, so the property holds.
+- **Audit a corrected ruleset** by changing `is_manual_review` to track `is_frail` instead of `is_senior`. The model becomes infeasible -- `solve_info().termination_status` reports `INFEASIBLE` and `solve_info().num_points` is 0. The script prints `Audit result: PASS -- proven no counterexample applicants exist.` That is the audit's pass signal: no counterexample exists, so the property holds.
 - **Audit a different property** by changing the `counterexample_*` ICs. To audit "no senior is in the cheapest coverage band", switch them to `Applicant.is_senior == 1` and `Applicant.coverage_band_id == 1` (assuming band 1 is the cheapest). Witnesses then show seniors who slipped into the lowest band.
 - **Add more rule indicators** by introducing additional decisions and OR/AND-arithmetic ICs. Conjunction `y = a AND b` is encoded as `y <= a, y <= b, y >= a + b - 1` -- the dual of the OR pattern.
 - **Raise the witness count on a real ruleset** by increasing `MAX_WITNESSES`. Production audits typically want 50--500 witnesses to cover a rule pack's failure modes.
@@ -225,7 +225,7 @@ model.select(
 <details>
   <summary>Solver returns INFEASIBLE / num_points = 0</summary>
 
-- The audited property holds: no feasible applicant falsifies it under the bundled ruleset. This is the audit's *pass* signal -- the script prints `Audit result: PASS`. Confirm by checking `solve_info().status` -- `UNSATISFIABLE` (or the equivalent string for your MiniZinc build) means no counterexample exists.
+- The audited property holds: no feasible applicant falsifies it under the bundled ruleset. This is the audit's *pass* signal -- the script prints `Audit result: PASS`. Confirm by checking `solve_info().termination_status` -- the string `INFEASIBLE` means no counterexample exists.
 - If you expected a witness and got none, double-check the counterexample IC: did you assert `is_frail == 1 AND is_manual_review == 0`, or did you accidentally assert `is_frail == 0`? The IC must point at the *negation* of the property.
 - Empty reference data: confirm `data/age_buckets.csv` has at least one bucket on each side of `SENIOR_THRESHOLD_YEARS`. If every bucket is below the threshold, `is_senior` can never be 1; if every bucket is above, the buggy rule's gap (chronic + non-senior) cannot be reached.
 
@@ -243,7 +243,7 @@ model.select(
 <details>
   <summary>How many witnesses will the solver return?</summary>
 
-- Up to `MAX_WITNESSES` (8 by default) or however many feasible witnesses exist, whichever is smaller. `solve_info().num_points` reports the actual count after the solve; `solve_info().status` reports `SOLUTION_LIMIT` when the limit was hit and `OPTIMAL` when the search has been exhausted.
+- Up to `MAX_WITNESSES` (8 by default) or however many feasible witnesses exist, whichever is smaller. `solve_info().num_points` reports the actual count after the solve; `solve_info().termination_status` reports `SOLUTION_LIMIT` when the limit was hit and `OPTIMAL` when the search has been exhausted.
 - Solution ordering is not guaranteed across runs or solver versions; the *set* of witnesses is, but solution index 0 may swap with solution index 1 between runs. Treat the `solution` column as a label, not a ranking.
 - The K returned witnesses are guaranteed to be pairwise *distinct* on at least one decision (age, chronic flag, coverage, or any indicator) but not maximally diverse, and they are not ranked by severity or any objective. For systematic spread across the failure-mode space, raise `MAX_WITNESSES` past the size of the feasible set so the solver exhausts every distinct case; for ranking, add `problem.minimize(...)` over a severity score and post-process.
 
@@ -253,7 +253,7 @@ model.select(
   <summary>"Property holds" -- how do I know the audit was sound?</summary>
 
 - A pass result (no witness) means the solver could not find a feasible applicant satisfying the counterexample IC under the modelled ruleset. This is sound *for the ruleset as encoded* -- if your encoding misses a rule arm, the audit will silently pass on the unencoded gap. Always cross-check the encoding against the source rule pack: for every rule arm, there should be a corresponding `model.require(...)` or `implies(...)`.
-- Bounded model-checking caveat: this template enumerates K witnesses up to a `MAX_WITNESSES` limit. That is a search-space cap, not a soundness cap -- the solver still proves UNSAT (or returns the full feasible set) when the search exhausts within the time limit. Watch for `status: SOLUTION_LIMIT`: that means more witnesses may exist beyond the K reported.
+- Bounded model-checking caveat: this template enumerates K witnesses up to a `MAX_WITNESSES` limit. That is a search-space cap, not a soundness cap -- the solver still proves INFEASIBLE (or returns the full feasible set) when the search exhausts within the time limit. Watch for `status: SOLUTION_LIMIT`: that means more witnesses may exist beyond the K reported.
 
 </details>
 

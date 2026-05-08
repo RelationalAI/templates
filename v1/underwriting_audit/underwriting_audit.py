@@ -78,6 +78,11 @@ data_dir = Path(__file__).parent / "data"
 # bad customizations silently degrade audit coverage.
 def _assert_dense_ids(df, name):
     ids = sorted(int(v) for v in df["id"].tolist())
+    if not ids:
+        raise ValueError(
+            f"{name} has no rows; at least one row is required to set the "
+            "decision-variable bounds (`lower=min(id), upper=max(id)`)."
+        )
     expected = list(range(ids[0], ids[-1] + 1))
     if ids != expected:
         raise ValueError(
@@ -248,7 +253,7 @@ si.display()
 # to `verify()`. The OR-arithmetic constraints on `is_frail` and the
 # equality constraints on `is_manual_review` ARE pure relational
 # arithmetic and round-trip cleanly. `verify()` only re-evaluates the
-# first returned solution, so it is a per-solution sanity check on the
+# first returned solution, so it is a per-solution spot-check on the
 # arithmetic ICs -- not a re-proof across every witness or every IC.
 problem.verify(
     frail_lb_senior_ic,
@@ -276,22 +281,22 @@ problem.verify(
 #   inconclusive -- the audit did not finish. Surface explicitly rather
 #   than treating it as a pass.
 status = si.termination_status
-witnesses = si.num_points or 0
 if status == "INFEASIBLE":
     print(
         "\nAudit result: PASS -- proven no counterexample applicants exist. "
         "The property holds under the encoded ruleset."
     )
-elif status in ("OPTIMAL", "SOLUTION_LIMIT") and witnesses >= 1:
+elif status in ("OPTIMAL", "SOLUTION_LIMIT") and si.num_points is not None and si.num_points >= 1:
     print(
-        f"\nAudit result: FAIL -- {witnesses} counterexample applicant(s) found "
+        f"\nAudit result: FAIL -- {si.num_points} counterexample applicant(s) found "
         f"(status: {status}). The property does not hold under the encoded "
         "ruleset; witnesses below."
     )
 else:
+    n = si.num_points if si.num_points is not None else "(unavailable)"
     print(
         f"\nAudit result: INCONCLUSIVE -- solver returned status={status} "
-        f"with {witnesses} witness(es). The audit did not finish. Raise "
+        f"with num_points={n}. The audit did not finish. Raise "
         "`time_limit_sec`, narrow the search, or inspect the formulation."
     )
 
@@ -304,26 +309,30 @@ else:
 # reference Concept's `.id` walks the chosen ID back to that row's columns
 # in one step; for the binary indicators an Integer placeholder receives
 # the 0/1 value for display.
+#
+# Skipped on the PASS path: `INFEASIBLE` means there are no witnesses to
+# enumerate, so printing the header would dangle under a clean PASS line.
 
-print(f"\nCounterexample witnesses (up to {MAX_WITNESSES} per run):")
-sol_idx = Integer.ref()
-chr_v = Integer.ref()
-sen_v = Integer.ref()
-frl_v = Integer.ref()
-mr_v = Integer.ref()
-model.select(
-    sol_idx.alias("solution"),
-    AgeBucket.age_years.alias("age_years"),
-    chr_v.alias("has_chronic"),
-    CoverageBand.coverage_dollars.alias("coverage_dollars"),
-    sen_v.alias("is_senior"),
-    frl_v.alias("is_frail"),
-    mr_v.alias("is_manual_review"),
-).where(
-    age_bucket_var.values(sol_idx, AgeBucket.id),
-    chronic_var.values(sol_idx, chr_v),
-    coverage_band_var.values(sol_idx, CoverageBand.id),
-    senior_var.values(sol_idx, sen_v),
-    frail_var.values(sol_idx, frl_v),
-    manual_review_var.values(sol_idx, mr_v),
-).inspect()
+if si.num_points is not None and si.num_points >= 1:
+    print(f"\nCounterexample witnesses (up to {MAX_WITNESSES} per run):")
+    sol_idx = Integer.ref()
+    chr_v = Integer.ref()
+    sen_v = Integer.ref()
+    frl_v = Integer.ref()
+    mr_v = Integer.ref()
+    model.select(
+        sol_idx.alias("solution"),
+        AgeBucket.age_years.alias("age_years"),
+        chr_v.alias("has_chronic"),
+        CoverageBand.coverage_dollars.alias("coverage_dollars"),
+        sen_v.alias("is_senior"),
+        frl_v.alias("is_frail"),
+        mr_v.alias("is_manual_review"),
+    ).where(
+        age_bucket_var.values(sol_idx, AgeBucket.id),
+        chronic_var.values(sol_idx, chr_v),
+        coverage_band_var.values(sol_idx, CoverageBand.id),
+        senior_var.values(sol_idx, sen_v),
+        frail_var.values(sol_idx, frl_v),
+        manual_review_var.values(sol_idx, mr_v),
+    ).inspect()
