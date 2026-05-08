@@ -1,19 +1,19 @@
-"""Book slate recommendation (Graph + Paths + Prescriptive CSP) template.
+"""Book slate recommendation (Graph + Path + Prescriptive CSP) template.
 
 Path-driven multi-reasoner pipeline that picks K books per reader
 AND orders them by slate position. Slot 1 is hero (top of row);
 position-decay engagement is the canonical recsys model, so the
-order matters as much as the selection. The Paths pillar is the
+order matters as much as the selection. The Path pillar is the
 architectural centerpiece: bounded heterogeneous-KG walks generate
 the candidate set and the per-(user, candidate) explanation evidence.
 The Graph pillar pins slot 1 to a structurally-central pick via
 ``triangle_count``, anchoring the highest-engagement position to a
-graph-derived measure. Removing Paths collapses the template (no
+graph-derived measure. Removing Path collapses the template (no
 Candidate concept, no CSP decisions); removing the Graph contribution
 drops the hero pin, weakening the structural quality of the most
 visible position:
 
-- Paths (central): bounded
+- Path (central): bounded
   ``Item.connected_to.repeat(1, 2).all_paths()`` walks enumerate
   ``User -> read_Book`` (length 1; pruned downstream by the
   already-read exclusion) and ``User -> read_Book -> similar_Book``
@@ -365,7 +365,7 @@ model.define(Item.connected_to(b_s1, b_s2)).where(Book.similar_to(b_s1, b_s2))
 model.define(Item.connected_to(b_s2, b_s1)).where(Book.similar_to(b_s1, b_s2))
 
 # --------------------------------------------------
-# Pillar 1: Paths -- bounded KG walk (architectural centerpiece)
+# Pillar 1: Path -- bounded KG walk (architectural centerpiece)
 #
 # This is the load-bearing pillar. The Candidate concept is derived
 # from the path walker; without paths there are no candidates and no

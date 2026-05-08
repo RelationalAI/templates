@@ -1,12 +1,12 @@
 ---
 title: "Book Slate Recommendation"
-description: "Three-pillar Graph + Paths + Prescriptive (CSP) template that picks K books per reader AND orders them by slate position. Bounded KG-path walks generate the candidate set and the explanation evidence; per-book triangle counts on the similarity graph pin the hero slot (slot 1) to a structurally-central pick; MiniZinc solves the pure-integer slot-assignment CSP under a position-weighted engagement-decay objective."
+description: "Three-pillar Graph + Path + Prescriptive (CSP) template that picks K books per reader AND orders them by slate position. Bounded KG-path walks generate the candidate set and the explanation evidence; per-book triangle counts on the similarity graph pin the hero slot (slot 1) to a structurally-central pick; MiniZinc solves the pure-integer slot-assignment CSP under a position-weighted engagement-decay objective."
 featured: false
 experience_level: advanced
 industry: "Media"
 reasoning_types:
   - Graph
-  - Paths
+  - Path
   - Prescriptive
 tags:
   - Multi-Reasoner
@@ -29,7 +29,7 @@ and *explainable* enough to meet platform business rules.
 
 This template solves that problem in one declarative model:
 
-- **Paths (central)** combine a bounded walker (`User -> read_Book
+- **Path (central)** combines a bounded walker (`User -> read_Book
   -> similar_Book`) with direct shared-author / shared-subject joins
   to produce the candidate set and the per-`(user, candidate)`
   typed-evidence counts. Removing this pillar collapses the
@@ -96,7 +96,7 @@ under topic / source / recency caps.
 ## What's included
 
 - `book_slate_recommendation.py` -- main script with the full
-  Graph + Paths + Prescriptive pipeline
+  Graph + Path + Prescriptive pipeline
 - `data/fetch_open_library_slice.py` -- Open Library (CC0) slice
   fetcher with caching under `data/_cache/`; supports
   `--size sm|md|lg`
@@ -240,7 +240,7 @@ the fetch script.
 
 ### Pipeline
 
-1. **Paths: bounded KG walks + typed evidence joins (architectural
+1. **Path: bounded KG walks + typed evidence joins (architectural
    centerpiece).** The path walker traverses `Item.connected_to`
    (the symmetric union of `read | written_by | about | similar_to`)
    anchored at each `User` up to `MAX_HOPS = 2` hops. With a Book
