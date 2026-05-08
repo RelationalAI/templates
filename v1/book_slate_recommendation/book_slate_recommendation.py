@@ -1,19 +1,21 @@
-"""Book slate recommendation (Graph + Path + Prescriptive CSP) template.
+"""Book slate recommendation (Graph + Prescriptive CSP) template.
 
-Path-driven multi-reasoner pipeline that picks K books per reader
-AND orders them by slate position. Slot 1 is hero (top of row);
-position-decay engagement is the canonical recsys model, so the
-order matters as much as the selection. The Path pillar is the
-architectural centerpiece: bounded heterogeneous-KG walks generate
-the candidate set and the per-(user, candidate) explanation evidence.
-The Graph pillar pins slot 1 to a structurally-central pick via
-``triangle_count``, anchoring the highest-engagement position to a
-graph-derived measure. Removing Path collapses the template (no
-Candidate concept, no CSP decisions); removing the Graph contribution
-drops the hero pin, weakening the structural quality of the most
-visible position:
+Multi-reasoner pipeline that picks K books per reader AND orders
+them by slate position. Slot 1 is hero (top of row); position-decay
+engagement is the canonical recsys model, so the order matters as
+much as the selection. The architectural centerpiece is bounded
+heterogeneous-KG walks via the PyRel paths library
+(``relationalai.semantics.std.paths``): the walks generate the
+candidate set and the per-(user, candidate) explanation evidence
+that feeds both the Graph reasoner pillar and the Prescriptive
+reasoner pillar. The Graph reasoner pins slot 1 to a structurally-
+central pick via ``triangle_count``, anchoring the highest-
+engagement position to a graph-derived measure. Removing the path
+walks collapses the template (no Candidate concept, no CSP
+decisions); removing the Graph contribution drops the hero pin,
+weakening the structural quality of the most visible position:
 
-- Path (central): bounded
+- Bounded KG walks (paths library, central):
   ``Item.connected_to.repeat(1, 2).all_paths()`` walks enumerate
   ``User -> read_Book`` (length 1; pruned downstream by the
   already-read exclusion) and ``User -> read_Book -> similar_Book``
@@ -22,13 +24,13 @@ visible position:
   (``path_count_via_author``, ``_via_subject``, ``_via_kg_walk``)
   feed the engagement-weighted explanation floor and objective, and
   surface as the per-pick explanation block.
-- Graph (hero pin): triangle count over ``Book.similar_to`` per
-  Book. Drives ``hero_pin_ic`` -- slot 1 (top of row) must come from
-  the densely-embedded subset, so the most-impressed position
+- Graph reasoner (hero pin): triangle count over ``Book.similar_to``
+  per Book. Drives ``hero_pin_ic`` -- slot 1 (top of row) must come
+  from the densely-embedded subset, so the most-impressed position
   carries graph-derived structural quality. Stronger than a "floor
-  somewhere in the slate": it concentrates the Graph pillar's signal
-  at the slot that matters most for engagement.
-- Prescriptive: pure-integer CSP on MiniZinc decides each
+  somewhere in the slate": it concentrates the Graph signal at the
+  slot that matters most for engagement.
+- Prescriptive reasoner: pure-integer CSP on MiniZinc decides each
   Candidate's slot in {1, ..., K, K+1}, where slot K+1 means
   unpicked. Constraints: cardinality, slot uniqueness, already-read
   exclusion, author uniqueness, subject concentration cap,
@@ -365,7 +367,7 @@ model.define(Item.connected_to(b_s1, b_s2)).where(Book.similar_to(b_s1, b_s2))
 model.define(Item.connected_to(b_s2, b_s1)).where(Book.similar_to(b_s1, b_s2))
 
 # --------------------------------------------------
-# Pillar 1: Path -- bounded KG walk (architectural centerpiece)
+# Bounded KG walks via the paths library (architectural centerpiece)
 #
 # This is the load-bearing pillar. The Candidate concept is derived
 # from the path walker; without paths there are no candidates and no
@@ -493,7 +495,7 @@ model.define(Candidate.path_count_total(c, n)).where(
 )
 
 # --------------------------------------------------
-# Pillar 2: Graph -- structural embeddedness over book-similarity
+# Pillar 1: Graph reasoner -- structural embeddedness over book-similarity
 #
 # Supporting pillar: per-Book triangle count over the similarity
 # graph, used by ``hero_pin_ic`` to pin slot 1 (the highest-
@@ -539,7 +541,7 @@ model.define(b_tc.triangle_count(tc)).where(
 )
 
 # --------------------------------------------------
-# Pillar 3: Prescriptive -- CSP slate selection (MiniZinc)
+# Pillar 2: Prescriptive reasoner -- CSP slate selection (MiniZinc)
 #
 # Decision: ``Candidate.slot`` ∈ {1, 2, ..., K, K+1}. Slot 1..K are
 # slate positions (1 = top of row); slot K+1 is the unpicked sentinel.

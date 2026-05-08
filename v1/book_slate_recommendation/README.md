@@ -1,12 +1,11 @@
 ---
 title: "Book Slate Recommendation"
-description: "Three-pillar Graph + Path + Prescriptive (CSP) template that picks K books per reader AND orders them by slate position. Bounded KG-path walks generate the candidate set and the explanation evidence; per-book triangle counts on the similarity graph pin the hero slot (slot 1) to a structurally-central pick; MiniZinc solves the pure-integer slot-assignment CSP under a position-weighted engagement-decay objective."
+description: "Graph + Prescriptive (CSP) recsys template that picks K books per reader AND orders them by slate position. Bounded knowledge-graph walks via the paths library generate the candidate set and the explanation evidence; per-book triangle counts on the similarity graph pin the hero slot (slot 1) to a structurally-central pick; MiniZinc solves the pure-integer slot-assignment CSP under a position-weighted engagement-decay objective."
 featured: false
 experience_level: advanced
 industry: "Media"
 reasoning_types:
   - Graph
-  - Path
   - Prescriptive
 tags:
   - Multi-Reasoner
@@ -29,20 +28,24 @@ and *explainable* enough to meet platform business rules.
 
 This template solves that problem in one declarative model:
 
-- **Path (central)** combines a bounded walker (`User -> read_Book
-  -> similar_Book`) with direct shared-author / shared-subject joins
-  to produce the candidate set and the per-`(user, candidate)`
-  typed-evidence counts. Removing this pillar collapses the
-  template -- the candidate concept itself is path-derived.
-- **Graph (hero pin)** computes per-Book triangle counts over the
-  similarity graph and pins slot 1 (the top-of-row position with the
-  most engagement) to a Book whose triangle count clears
-  `HERO_EMBEDDEDNESS_THRESHOLD`. Distinct from a per-book popularity
-  scalar: it depends on the graph topology, not on a value that can
-  be substituted from retrieval. Tying the metric to the hero slot
-  (rather than a "somewhere in the slate" floor) concentrates the
-  Graph contribution at the highest-impression position.
-- **Prescriptive (CSP, MiniZinc)** decides each Candidate's slot in
+- **Bounded KG walks via the paths library (architectural
+  centerpiece)** — `Item.connected_to.repeat(1, 2).all_paths()`
+  combined with direct shared-author / shared-subject joins
+  produces the candidate set and the per-`(user, candidate)`
+  typed-evidence counts. The paths library is in PyRel `std`, not a
+  separate reasoner; this template doubles as a showcase for
+  bounded-walk candidate generation. Remove it and the template
+  collapses — the Candidate concept itself is path-derived.
+- **Graph reasoner (hero pin)** computes per-Book triangle counts
+  over the similarity graph and pins slot 1 (the top-of-row
+  position with the most engagement) to a Book whose triangle count
+  clears `HERO_EMBEDDEDNESS_THRESHOLD`. Distinct from a per-book
+  popularity scalar: it depends on the graph topology, not on a
+  value that can be substituted from retrieval. Tying the metric to
+  the hero slot (rather than a "somewhere in the slate" floor)
+  concentrates the Graph contribution at the highest-impression
+  position.
+- **Prescriptive reasoner (CSP, MiniZinc)** decides each Candidate's slot in
   `{1, 2, ..., K, K+1}` -- slot 1..K are slate positions (1 = hero),
   slot K+1 is the unpicked sentinel. Constraints: cardinality, slot
   uniqueness, already-read exclusion, author uniqueness, subject-
@@ -96,7 +99,7 @@ under topic / source / recency caps.
 ## What's included
 
 - `book_slate_recommendation.py` -- main script with the full
-  Graph + Path + Prescriptive pipeline
+  paths-walk + Graph + Prescriptive pipeline
 - `data/fetch_open_library_slice.py` -- Open Library (CC0) slice
   fetcher with caching under `data/_cache/`; supports
   `--size sm|md|lg`
@@ -240,8 +243,8 @@ the fetch script.
 
 ### Pipeline
 
-1. **Path: bounded KG walks + typed evidence joins (architectural
-   centerpiece).** The path walker traverses `Item.connected_to`
+1. **Bounded KG walks via the paths library + typed evidence joins
+   (architectural centerpiece).** The path walker traverses `Item.connected_to`
    (the symmetric union of `read | written_by | about | similar_to`)
    anchored at each `User` up to `MAX_HOPS = 2` hops. With a Book
    endpoint at length 2, the candidate set is the union of
