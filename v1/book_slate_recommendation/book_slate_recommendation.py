@@ -1,4 +1,4 @@
-"""Book slate recommendation (Graph + Paths + Prescriptive MIP) template.
+"""Book slate recommendation (Graph + Paths + Prescriptive CSP) template.
 
 Path-driven multi-reasoner pipeline that picks K books per reader
 under business rules. The Paths pillar is the architectural
@@ -7,7 +7,7 @@ set AND the per-(user, candidate) explanation evidence. The Graph
 pillar contributes a structural-embeddedness floor (per-book triangle
 count over `Book.similar_to`) that the path walker alone cannot
 enforce. Removing Paths collapses the template (no Candidate concept,
-no MIP decisions); removing the Graph contribution drops the
+no CSP decisions); removing the Graph contribution drops the
 embeddedness floor IC, weakening structural diversity:
 
 - Paths (central): bounded
@@ -25,8 +25,8 @@ embeddedness floor IC, weakening structural diversity:
   graph. Distinct from any per-book popularity scalar: triangle
   count is a topological measure of where the Book sits in the
   similarity neighborhood, not how heavily it's been engaged with.
-- Prescriptive: integer linear program on HiGHS picks K items per
-  user under cardinality, already-read exclusion, subject diversity,
+- Prescriptive: pure-integer CSP on MiniZinc picks K items per user
+  under cardinality, already-read exclusion, subject diversity,
   author uniqueness, freshness, originals-exposure, cold-start,
   explanation-path floor, and structural-embeddedness floor
   constraints; objective maximizes total `path_count_total` over
@@ -49,7 +49,6 @@ from pathlib import Path
 
 from pandas import read_csv
 from relationalai.semantics import (
-    Float,
     Integer,
     Model,
     String,
@@ -73,9 +72,16 @@ SLATE_SIZE_K = 3
 # saturates fast on a heterogeneous KG (most users reach most books).
 MAX_HOPS = 2
 
-# Multi-axis diversity caps inside each user's slate.
-MAX_PER_SUBJECT = 3
+# Per-author cap: at most this many picks per (user, author).
 MAX_PER_AUTHOR = 1
+
+# Topic-span floor: each user's slate must touch at least this many
+# distinct subjects. With K=3 picks across 12 subjects, =2 leaves room
+# for two-of-a-kind plus one different; raise to K to force every pick
+# on a distinct subject. Expressed via ``count(Subject, ...)`` over
+# distinct picked-book subjects -- a CSP idiom that doesn't reduce to
+# ``sum`` of indicators.
+MIN_DISTINCT_SUBJECTS = 2
 
 # Freshness / exposure / cold-start dials. All integer counts.
 FRESHNESS_FLOOR = 1  # at least N items released within FRESH_WINDOW_DAYS
@@ -105,6 +111,24 @@ WEAK_EXPLANATION_THRESHOLD = 2
 # a slate. Retune to the data's distribution after rescaling.
 EMBEDDEDNESS_THRESHOLD = 4
 EMBEDDEDNESS_FLOOR = 1
+
+# Strong-walker floor: at least ``MIN_STRONG_WALKERS`` picks per user
+# must have ``path_count_via_kg_walk >= STRONG_WALKER_THRESHOLD``.
+# Walker count is the headline output of the Paths pillar; this IC
+# anchors at least one pick to it directly so the slate doesn't lean
+# entirely on the cheaper shared-author / shared-subject joins.
+STRONG_WALKER_THRESHOLD = 3
+MIN_STRONG_WALKERS = 1
+
+# Path-evidence diversity floor: each user's slate must touch at
+# least this many distinct *primary path-evidence types*, where each
+# Candidate's primary type is the argmax of its three typed counts
+# (author, subject, walker). Forces the slate to span the
+# heterogeneous KG's evidence channels rather than leaning on one.
+# Uses ``count(Integer.ref() over distinct primary_evidence values,
+# pick == 1)`` -- distinct-value counting that ``sum(pick)`` cannot
+# express.
+MIN_EVIDENCE_TYPES = 2
 
 DATA_DIR = Path(__file__).parent / "data"
 
@@ -329,7 +353,7 @@ model.define(Item.connected_to(b_s2, b_s1)).where(Book.similar_to(b_s1, b_s2))
 #
 # This is the load-bearing pillar. The Candidate concept is derived
 # from the path walker; without paths there are no candidates and no
-# MIP variables. The per-typed counts produced here are reused by
+# CSP variables. The per-typed counts produced here are reused by
 # the explanation-floor IC, the cold-start cap, and the objective.
 # --------------------------------------------------
 
@@ -345,7 +369,7 @@ kg_paths = model.path(
 # a ``pick == 0`` IC (``exclude_read_ic`` below) rather than as a
 # pre-pruning filter on this rule -- which keeps the candidate-
 # derivation rule a pure positive join over the path walker, at the
-# minor MIP cost of a few wasted binary variables forced to 0.
+# minor CSP cost of a few wasted binary variables forced to 0.
 Candidate = model.Concept(
     "Candidate",
     identify_by={"user_id": Integer, "book_id": Integer},
@@ -447,6 +471,34 @@ model.define(Candidate.path_count_total(c, n)).where(
     n == c.path_count_via_author + c.path_count_via_subject + c.path_count_via_kg_walk,
 )
 
+# Primary path-evidence type: argmax of the three typed counts,
+# encoded as Integer ∈ {1=author-shared, 2=subject-shared, 3=KG-walker}.
+# Each rule's where clauses are mutually exclusive across the three
+# tie cases, so exactly one rule fires per Candidate. This Integer-
+# valued property -- not a binary indicator -- is what makes
+# ``count(Integer.ref(), condition).per(...)`` over distinct values
+# meaningful in ``path_evidence_diversity_ic`` below: the multi-valued
+# property carries information no binary indicator could.
+Candidate.primary_evidence = model.Property(f"{Candidate} has primary evidence type {Integer:src}")
+# 1 = author-shared (a strictly the max)
+model.define(Candidate.primary_evidence(c, 1)).where(
+    Candidate(c),
+    c.path_count_via_author > c.path_count_via_subject,
+    c.path_count_via_author > c.path_count_via_kg_walk,
+)
+# 2 = subject-shared (s >= a, s strictly > w)
+model.define(Candidate.primary_evidence(c, 2)).where(
+    Candidate(c),
+    c.path_count_via_subject >= c.path_count_via_author,
+    c.path_count_via_subject > c.path_count_via_kg_walk,
+)
+# 3 = KG-walker (w >= a and w >= s) -- catches walker-max and ties
+model.define(Candidate.primary_evidence(c, 3)).where(
+    Candidate(c),
+    c.path_count_via_kg_walk >= c.path_count_via_author,
+    c.path_count_via_kg_walk >= c.path_count_via_subject,
+)
+
 # --------------------------------------------------
 # Pillar 2: Graph -- structural embeddedness over book-similarity
 #
@@ -492,12 +544,12 @@ model.define(b_tc.triangle_count(tc)).where(
 )
 
 # --------------------------------------------------
-# Pillar 3: Prescriptive -- MIP slate selection
+# Pillar 3: Prescriptive -- CSP slate selection (MiniZinc)
 # --------------------------------------------------
 
-Candidate.pick = model.Property(f"{Candidate} is picked iff {Float:p}")
+Candidate.pick = model.Property(f"{Candidate} is picked iff {Integer:p}")
 
-problem = Problem(model, Float)
+problem = Problem(model, Integer)
 problem.solve_for(
     Candidate.pick,
     type="bin",
@@ -508,9 +560,7 @@ problem.solve_for(
 # ``Candidate.user_id``, so users with zero candidates after the
 # path-walker / exclude-read pipeline are silently skipped (they
 # receive no slate); the pre-solve assertion below flags such users.
-# Same anchoring caveat applies to ``freshness_ic``, ``originals_ic``,
-# and ``explanation_ic`` -- joint feasibility relations are spelled
-# out in the README "Troubleshooting" section.
+# Same anchoring caveat applies to the floor ICs below.
 slate_size_ic = model.require(sum(Candidate.pick).per(Candidate.user_id) == SLATE_SIZE_K)
 problem.satisfy(slate_size_ic)
 
@@ -520,7 +570,7 @@ problem.satisfy(slate_size_ic)
 # alternative would need a positive complement of ``User.read`` (a
 # Cartesian-minus-existing-tuples relation with no scalar comparator
 # to lean on). The ``pick == 0`` IC keeps the rule pipeline pure-
-# positive at minor MIP cost (a few wasted binary variables).
+# positive at minor CSP cost (a few wasted binary variables).
 u_excl, b_excl = User.ref(), Book.ref()
 rating_excl_ic = Integer.ref()
 exclude_read_ic = model.where(
@@ -530,13 +580,6 @@ exclude_read_ic = model.where(
 ).require(Candidate.pick == 0)
 problem.satisfy(exclude_read_ic)
 
-# Subject diversity: at most MAX_PER_SUBJECT picks per (user, subject).
-subject_diversity_ic = model.where(
-    Book.id == Candidate.book_id,
-    Book.about(Book, Subject),
-).require(sum(Candidate.pick).per(Candidate.user_id, Subject) <= MAX_PER_SUBJECT)
-problem.satisfy(subject_diversity_ic)
-
 # Author uniqueness: no user gets more than MAX_PER_AUTHOR picks from
 # the same author.
 author_uniqueness_ic = model.where(
@@ -544,6 +587,23 @@ author_uniqueness_ic = model.where(
     Book.written_by(Book, Author),
 ).require(sum(Candidate.pick).per(Candidate.user_id, Author) <= MAX_PER_AUTHOR)
 problem.satisfy(author_uniqueness_ic)
+
+# Subject span floor: each user's slate must touch at least
+# ``MIN_DISTINCT_SUBJECTS`` distinct subjects. Uses ``count(Subject, ...)``
+# rather than ``sum(indicator)`` because we need *distinct-value*
+# counting -- "how many different subjects the picked books cover" --
+# which a sum of binary picks cannot express directly. CSP-native idiom
+# (see PyRel ``social_golfer.py`` for the canonical
+# ``count(Entity, condition).per(...)`` form). Combined with the
+# rank-uniqueness ICs (one Candidate per rank-slot per user), this
+# also bounds per-subject repetition: with K picks, MIN_DISTINCT_SUBJECTS
+# distinct subjects, and the slot uniqueness, no subject can capture
+# more than ``K - MIN_DISTINCT_SUBJECTS + 1`` picks.
+subject_span_ic = model.where(
+    Book.id == Candidate.book_id,
+    Book.about(Book, Subject),
+).require(count(Subject, Candidate.pick == 1).per(Candidate.user_id) >= MIN_DISTINCT_SUBJECTS)
+problem.satisfy(subject_span_ic)
 
 # Freshness floor: at least FRESHNESS_FLOOR picks within the
 # FRESH_WINDOW_DAYS recency window.
@@ -568,8 +628,8 @@ problem.satisfy(cold_start_ic)
 
 # Explanation floor: each user's slate must carry enough cumulative
 # KG-path evidence (author + subject overlap, plus walks) aggregated
-# over picked items. A sum-bound on the decision-multiplied integer
-# feature.
+# over picked items. ``path_count_total * pick`` zeroes the
+# contribution of unpicked candidates (pick is 0/1 binary).
 explanation_ic = model.require(
     sum(Candidate.path_count_total * Candidate.pick).per(Candidate.user_id) >= EXPLANATION_FLOOR
 )
@@ -586,10 +646,33 @@ embeddedness_ic = model.where(
 ).require(sum(Candidate.pick).per(Candidate.user_id) >= EMBEDDEDNESS_FLOOR)
 problem.satisfy(embeddedness_ic)
 
-# Objective: maximize total per-user path support, summed across users.
-# Pure path-driven: the slate that aggregates the most KG-path evidence
-# wins, subject to the diversity / freshness / originals / embeddedness
-# constraints above.
+# Walker-evidence floor: each user's slate must include at least
+# ``MIN_STRONG_WALKERS`` picks whose ``path_count_via_kg_walk`` clears
+# ``STRONG_WALKER_THRESHOLD``. The walker count is the headline output
+# of the Paths pillar (the ``Item.connected_to.repeat(1, MAX_HOPS)``
+# traversal); insisting that at least one pick stand on it directly
+# anchors the slate to the pillar's distinctive signal, separate from
+# the cheaper shared-author / shared-subject joins.
+strong_walker_ic = model.where(
+    Candidate.path_count_via_kg_walk >= STRONG_WALKER_THRESHOLD,
+).require(sum(Candidate.pick).per(Candidate.user_id) >= MIN_STRONG_WALKERS)
+problem.satisfy(strong_walker_ic)
+
+# Path-evidence diversity: each user's slate must touch at least
+# ``MIN_EVIDENCE_TYPES`` distinct primary-evidence types (author,
+# subject, walker). Forces the slate to span the heterogeneous KG's
+# evidence channels rather than leaning on one. Uses
+# ``count(Integer.ref() distinct primary_evidence values, condition)``
+# -- the social_golfer pattern -- because the multi-valued
+# ``Candidate.primary_evidence`` carries information that no binary
+# pick indicator could encode.
+src_ref = Integer.ref()
+path_evidence_diversity_ic = model.where(
+    Candidate.primary_evidence == src_ref,
+).require(count(src_ref, Candidate.pick == 1).per(Candidate.user_id) >= MIN_EVIDENCE_TYPES)
+problem.satisfy(path_evidence_diversity_ic)
+
+# Position-weighted objective: total rank-decay-weighted path support.
 problem.maximize(sum(Candidate.path_count_total * Candidate.pick))
 
 # --------------------------------------------------
@@ -652,19 +735,21 @@ if absent_from_unread or short_total or short_fresh or short_in_house:
 print("\nUnread candidate count per user (pre-solve diagnostic):")
 print(unread_counts.sort_index().to_string())
 
-problem.solve("highs", time_limit_sec=60)
+problem.solve("minizinc", time_limit_sec=60)
 problem.solve_info().display()
 
 problem.verify(
     slate_size_ic,
     exclude_read_ic,
-    subject_diversity_ic,
     author_uniqueness_ic,
+    subject_span_ic,
     freshness_ic,
     originals_ic,
     cold_start_ic,
     explanation_ic,
     embeddedness_ic,
+    strong_walker_ic,
+    path_evidence_diversity_ic,
 )
 model.require(problem.termination_status() == "OPTIMAL")
 
@@ -678,12 +763,13 @@ model.select(
     User.name.alias("user"),
 ).inspect()
 
-# Headline output: the chosen slate per user.
-print(f"\nFinal slate per user (K = {SLATE_SIZE_K}):")
+# Headline output: the chosen slate per user, sorted by rank.
+print(f"\nFinal slate per user (K = {SLATE_SIZE_K}, ordered by rank):")
 b_pick = Book.ref()
 tc_pick = Integer.ref()
 model.select(
     Candidate.user_id.alias("user_id"),
+    Candidate.pick.alias("pick"),
     Candidate.book_id.alias("book_id"),
     Candidate.path_count_total.alias("path_count_total"),
     tc_pick.alias("triangle_count"),
@@ -693,7 +779,7 @@ model.select(
     b_pick.triangle_count == tc_pick,
 ).inspect()
 
-print("\nSubject distribution per user's slate (cap = MAX_PER_SUBJECT):")
+print("\nSubject distribution per user's slate:")
 u_disp = User.ref()
 b_disp = Book.ref()
 s_disp = Subject.ref()
@@ -710,10 +796,14 @@ model.select(
     .alias("n_picked"),
 ).inspect()
 
-print("\nExplanation-path support per picked item:")
+print(
+    "\nExplanation-path support per picked item (with primary-evidence type 1=author, 2=subject, 3=walker):"
+)
 model.select(
     Candidate.user_id.alias("user_id"),
+    Candidate.pick.alias("pick"),
     Candidate.book_id.alias("book_id"),
+    Candidate.primary_evidence.alias("primary_evidence"),
     Candidate.path_count_via_kg_walk.alias("paths_via_kg_walk"),
     Candidate.path_count_via_author.alias("paths_via_author"),
     Candidate.path_count_via_subject.alias("paths_via_subject"),

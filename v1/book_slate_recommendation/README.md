@@ -1,6 +1,6 @@
 ---
 title: "Book Slate Recommendation"
-description: "Three-pillar Graph + Paths + Prescriptive (MIP) template that picks K books per reader. Bounded KG-path walks generate the candidate set and the explanation evidence; per-book triangle counts on the similarity graph drive a structural-embeddedness floor IC."
+description: "Three-pillar Graph + Paths + Prescriptive (CSP) template that picks K books per reader. Bounded KG-path walks generate the candidate set and the explanation evidence; per-book triangle counts on the similarity graph drive a structural-embeddedness floor IC; MiniZinc solves the pure-integer slate-composition CSP."
 featured: false
 experience_level: advanced
 industry: "Media"
@@ -12,7 +12,7 @@ tags:
   - Multi-Reasoner
   - Recommendation
   - Slate
-  - Mixed-Integer Programming
+  - constraint-programming
   - Explainability
   - KG-Paths
 ---
@@ -40,10 +40,13 @@ This template solves that problem in one declarative model:
   Distinct from a per-book popularity scalar: it depends on the
   graph topology, not on a value that can be substituted from
   retrieval.
-- **Prescriptive (MIP, HiGHS)** picks K items per user under subject
-  diversity, author uniqueness, freshness, originals-exposure,
-  cold-start, embeddedness floor, and explanation-path-floor
-  constraints, maximizing total path support over the slate.
+- **Prescriptive (CSP, MiniZinc)** picks K items per user under
+  subject diversity, author uniqueness, freshness,
+  originals-exposure, cold-start, embeddedness floor, and
+  explanation-path-floor constraints, maximizing total path support
+  over the slate. Pure-integer model -- all decisions are binary,
+  all coefficients integer, no float blend; lowers cleanly to
+  MiniZinc's CSP/CP-SAT propagators.
 
 The same shape ports to e-commerce ("frequently bought together"
 with category coverage), course slates (career-navigation over a
@@ -74,7 +77,7 @@ under topic / source / recency caps.
 - `Book.triangle_count` derived from
   `Graph(Book.similar_to).triangle_count()` -- a structural-
   embeddedness measure used by the floor IC
-- A binary IP on HiGHS with nine ICs (cardinality, already-read
+- A binary CSP on MiniZinc with nine ICs (cardinality, already-read
   exclusion, subject diversity, author uniqueness, freshness floor,
   originals-exposure floor, cold-start cap, explanation-path floor,
   structural-embeddedness floor) and an objective that maximizes
@@ -155,7 +158,7 @@ under topic / source / recency caps.
    • status: OPTIMAL
    • solve time: under a second
    • num_points: 1
-   • solver: HiGHS
+   • solver: MiniZinc
 
    Final slate per user (K = 3):
       user_id book_id  path_count_total  triangle_count
@@ -249,7 +252,7 @@ the fetch script.
    rather than walks themselves; `path_count_via_kg_walk` is the
    actual count of walker-enumerated paths. The composite
    `path_count_total` feeds the cold-start cap, the explanation
-   floor, and the MIP objective.
+   floor, and the CSP objective.
 
    The book-similarity input (`data/book_similar.csv`) is the
    *retrieval* artifact in production-recsys terms: the data
@@ -271,8 +274,9 @@ the fetch script.
    an irreducible Graph contribution rather than a swappable
    per-Book scalar.
 
-3. **Prescriptive: MIP slate selection.** Decisions:
-   `Candidate.pick in {0, 1}`. Constraints:
+3. **Prescriptive: CSP slate selection.** Decisions:
+   `Candidate.pick in {0, 1}` (`type="bin"` on
+   `Property[Integer]`). Constraints:
    - Cardinality: `count(pick) per user == K`.
    - Already-read exclusion: `User.read(user, book)` ⇒ `pick == 0`.
    - Subject diversity: at most `MAX_PER_SUBJECT` picks per
@@ -299,16 +303,16 @@ the fetch script.
    evidence wins, subject to the diversity / freshness / originals /
    embeddedness constraints above.
 
-### Why MIP, not CSP
+### Why CSP (MiniZinc), not MIP
 
-The objective adds genuine optimization structure beyond
-feasibility: among the many feasible slates a customer's data
-admits, the template picks the one that maximizes total path
-support. Linear-objective integer programming on HiGHS handles this
-shape natively, and the formulation extends cleanly to a future
-float-coefficient utility if a customer wants to layer in a
-collaborative-filtering or learned-embedding scalar (see the
-"Custom scoring signal" customization below).
+The model is pure integer: binary decisions, integer coefficients,
+no float blend. MiniZinc's CSP/CP-SAT propagators handle this shape
+natively without LP relaxation overhead, and the per-user
+counting-cap-and-floor structure of the ICs maps directly to
+constraint-propagation idioms. The same prescriptive layer that
+runs MiniZinc here would also run HiGHS if a future customer layers
+in a float-coefficient scalar (see "Custom scoring signal" in
+Customize) -- the formulation extends without restructure.
 
 ## Where this fits in production recsys
 
@@ -346,7 +350,7 @@ Six common variations:
   (`Book.triangle_count`, `embeddedness_ic`) stays in regardless,
   since it constrains the slate rather than scoring it.
 - **A/B candidate slate enumeration.**
-  `solve("highs", solution_limit=K_alt)` returns K alternative
+  `solve("minizinc", solution_limit=K_alt)` returns K alternative
   slates for downstream A/B exposure or human-in-the-loop
   curation -- the production-deployed shape for editorial-review
   platforms (kids content, regulated regions).
@@ -372,7 +376,7 @@ things to retune at larger sizes: (1) the `EXPLANATION_FLOOR` /
 `WEAK_EXPLANATION_THRESHOLD` constants in the runner are tuned
 for `sm`'s `path_count_total` distribution (range 2-12); larger
 slices produce much higher walk counts and these thresholds
-become trivially satisfied unless rescaled. (2) HiGHS
+become trivially satisfied unless rescaled. (2) MiniZinc
 `time_limit_sec=60` is comfortable at `sm` (~1k binary
 decisions); raise it for `lg` (~120k decisions × 9 ICs).
 
@@ -451,10 +455,9 @@ at the end mirrors the pre-solve one).
 
 The default `time_limit_sec=60` is sized for the bundled `sm`
 slice. At `lg` (~600 books, ~120k binary decisions × 9 ICs),
-raise it to 600 and watch the HiGHS branch-and-bound progress in
-the solver log. If the solve still times out, drop
-`SLATE_SIZE_K` or relax `EXPLANATION_FLOOR` to make the LP
-relaxation prune harder.
+raise it to 600 and watch the MiniZinc propagation progress in the
+solver log. If the solve still times out, drop `SLATE_SIZE_K` or
+relax `EXPLANATION_FLOOR` so propagation can prune harder.
 
 </details>
 
