@@ -1,7 +1,7 @@
 """Open Library (CC0) slice fetcher for book_slate_recommendation.
 
-Pulls a deterministic small slice of Open Library data (~60 books,
-~58 authors, 12 subjects) and emits the 8-CSV bundle the runner
+Pulls a deterministic small slice of Open Library data (~59 books,
+~52 authors, 12 subjects) and emits the 8-CSV bundle the runner
 ingests (books, authors, subjects, book_author, book_subject,
 book_similar, users, read). Synthetic users and read events are
 generated on top, and ``book_similar.csv`` is derived deterministi-
@@ -237,9 +237,9 @@ def _is_publisher_or_noise_author(name: str) -> bool:
 
     Filter cascade:
     - drop names <3 characters (e.g. "TC")
+    - drop names in AUTHOR_DENYLIST (curated residual noise)
     - drop names whose tokens overlap PUBLISHER_TOKENS
       (e.g. "Les éditions du Rey", "Penguin Books", "Booking")
-    - drop names in AUTHOR_DENYLIST (curated residual noise)
     """
     n = (name or "").strip()
     if len(n) < 3:
@@ -264,11 +264,10 @@ def _is_publisher_or_noise_author(name: str) -> bool:
 # existing canonical concept, extend _SUBJECT_CANONICAL_MAP rather
 # than reaching for new regex heuristics.
 
-# Drop these subjects entirely. Dewey Decimal codes ("823/.8") aren't
-# human-readable concepts, OL "(fictitious character ...)" tags name
-# characters not concepts, and "(fictitious place ...)" tags name
-# settings not concepts -- none belong in the runner's subject
-# vocabulary.
+# Drop subjects matching any of these regexes. Dewey Decimal codes
+# ("823/.8") aren't human-readable concepts; "(fictitious character ...)"
+# tags name characters not concepts; "(fictitious place ...)" tags name
+# settings not concepts.
 _SUBJECT_DROP_RES = [
     re.compile(r"^\d{1,3}(\.\d+)?(/[\d.]+)?$"),
     re.compile(r"\(fictitious character"),
@@ -287,8 +286,13 @@ _SUBJECT_STRIP_RES = [
 
 # Explicit raw -> canonical merge map. Each key is the lowercased OL
 # string after _SUBJECT_STRIP_RES; the value is the concept the runner
-# should treat as identical. Keep small; resist mapping concepts that
-# might be distinct (e.g. "humor" vs "comedy") without prior consensus.
+# should treat as identical. Kept narrow on purpose -- empirically
+# (smoke-tested 2026-05-08) aggressive genre-merging that folds the
+# many OL variants of "mystery & detective", "fantasy", "science
+# fiction", etc. into a single seed concept makes the shared-subject
+# similarity graph dense enough that the MiniZinc CSP can no longer
+# reach OPTIMAL within the runner's time budget on the bundled slice.
+# Add entries conservatively and re-smoke before shipping.
 _SUBJECT_CANONICAL_MAP = {
     "action & adventure": "adventure",
     "adventure and adventurers": "adventure",

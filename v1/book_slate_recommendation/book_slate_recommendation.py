@@ -7,11 +7,11 @@ much as the selection. The architectural centerpiece is bounded
 heterogeneous-KG walks via the PyRel paths library
 (``relationalai.semantics.std.paths``): the walks generate the
 Candidate concept and the per-(user, candidate) explanation
-evidence that feed both the Graph reasoner and the
-Prescriptive reasoner. The Graph reasoner contributes per-
-Book ``triangle_count`` over the similarity graph, which the
-hero-pin IC ties to slot 1 so the highest-engagement position
-carries graph-derived structural quality:
+evidence that feeds the Prescriptive reasoner. The Graph
+reasoner separately contributes per-Book ``triangle_count``
+over the similarity graph, which the hero-pin IC ties to slot
+1 so the highest-engagement position carries graph-derived
+structural quality:
 
 - Bounded KG walks (paths library, central):
   ``Item.connected_to.repeat(1, 2).all_paths()`` walks enumerate
@@ -37,8 +37,8 @@ carries graph-derived structural quality:
   weighted path support ``sum((K + 1 - slot) * path_count_total)``
   -- top slots dominate, unpicked candidates contribute zero.
 
-Bundled data: a deterministic Open Library (CC0) slice (~60 books,
-~58 authors, 12 subjects) pulled by ``data/fetch_open_library_slice.py``.
+Bundled data: a deterministic Open Library (CC0) slice (~59 books,
+~52 authors, 12 subjects) pulled by ``data/fetch_open_library_slice.py``.
 Customers fetch larger slices by re-running with ``--size md``/``--size lg``.
 
 Run:
@@ -848,7 +848,7 @@ if (
 print("\nUnread candidate count per user (pre-solve diagnostic):")
 print(unread_counts.sort_index().to_string())
 
-problem.solve("minizinc", time_limit_sec=60)
+problem.solve("minizinc", time_limit_sec=180)
 problem.solve_info().display()
 
 problem.verify(
