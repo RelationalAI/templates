@@ -1,6 +1,6 @@
 ---
 title: "Planogram Optimization"
-description: "Decide integer facing counts per SKU to maximize predicted weekly demand under shelf capacity and category cardinality limits, where per-(SKU, facing_count) demand comes from a regression model and the CSP hand-off is an element-style decision-indexed table lookup."
+description: "Decide integer facing counts per SKU to maximize predicted weekly demand under shelf capacity and category cardinality limits, where per-(SKU, facing_count) demand comes from a regression model."
 featured: false
 experience_level: intermediate
 industry: "Retail"
@@ -99,7 +99,7 @@ The same pattern applies to any predict-then-optimize problem where the predicti
    Solve result:
    • status: OPTIMAL
    • objective: 1656
-   • solve time: 0.24s
+   • solve time: 1.4s
    • num_points: 1
    • solver: MiniZinc_unknown
 
@@ -139,7 +139,7 @@ The same pattern applies to any predict-then-optimize problem where the predicti
    3           snacks            5                3                5
    ```
 
-   Total weekly demand of `1656` units, 16 of 18 SKUs active. Two SKUs go inactive because the candy and household_paper categories each have 4 SKUs but `max_skus_active=3`: Mint Roll loses the candy cap (lowest predicted demand at every k), Paper Towels 6pk loses the household_paper cap (lowest predicted demand-per-cm). The bottom shelf is fully binding (90/90cm); the other three are within 1-3cm of capacity.
+   `MiniZinc_unknown` is the version string MiniZinc reports for itself today; the underlying solver binary is selected by the RAI Native App. Total weekly demand of `1656` units, 16 of 18 SKUs active. Two SKUs go inactive because the candy and household_paper categories each have 4 SKUs but `max_skus_active=3`: Mint Roll loses the candy cap (lowest predicted demand at every k), Paper Towels 6pk loses the household_paper cap (lowest predicted demand-per-cm). The bottom shelf is fully binding (90/90cm); the other three are within 1-3cm of capacity.
 
 ## Template structure
 ```text
@@ -171,7 +171,7 @@ demand_lookup_ic = model.where(PredictedDemand.sku_id == Sku.id).require(
 
 The natural relational form -- `where(PredictedDemand.facings_count == Sku.facings).require(Sku.realized_demand == PredictedDemand.demand_units)` -- equates a data property with a decision variable inside a `where` binding, which the prescriptive rewriter doesn't lower today. Pushing the decision-vs-data equality into the predicate of an `implies` lets the rewriter expand into the canonical per-`k` form.
 
-**Active iff facings is a pair of linear inequalities.** Boolean is not a valid `solve_for` type, so `Sku.active` is a 0/1 integer coupled to `Sku.facings` by two linear constraints:
+**Active iff facings is a pair of linear inequalities.** `Sku.active` is a 0/1 integer (declared as `solve_for(..., type="bin")`) because the per-category cardinality is written as `sum(Sku.active).per(Category)`, and a relational sum over a Boolean expression like `Sku.facings >= 1` is not a valid form. Two linear constraints couple the indicator to `Sku.facings`:
 
 ```python
 active_lower_ic = model.require(Sku.facings >= Sku.active)
@@ -205,7 +205,7 @@ model.require(problem.termination_status() == "OPTIMAL")
 
 ## Customize this template
 
-- **Replace the vendored table with your own per-(SKU, k) demand model.** In production, `PredictedDemand` is the output of any model that predicts weekly demand at each candidate facings count -- linear or GBM regression over engineered features, a per-tier head, or a graph-aware regressor over `(sku, week, facings_count, units_sold)` history. The structural requirement is that `facings_count` is a feature (or there is a head per tier) so the model can be queried at every `k`. At inference time, for each SKU and each `k in {0..max_facings}`, call the model, quantize, and aggregate the result into `PredictedDemand`. The CSP shape below is unchanged.
+- **Replace the vendored table with your own per-(SKU, k) demand model.** In production, `PredictedDemand` is the output of any model that predicts weekly demand at each candidate facings count -- linear or GBM regression over engineered features, a per-tier head, or a graph-aware regressor over `(sku, week, facings_count, units_sold)` history. The structural requirement is that `facings_count` is a feature (or there is a head per tier) so the model can be queried at every `k`. The path of least friction is to produce `data/predicted_demand_table.csv` in the format `sku_id,facings_count,demand_units` (integer demand) from your inference pipeline and drop it in -- the script picks it up unchanged. To call inference inline, replace the `read_csv(DATA_DIR / "predicted_demand_table.csv")` line with code that returns a DataFrame with those three columns. The CSP shape below is unchanged.
 - **Use your own data** by replacing the four CSV files with your SKUs, shelves, categories, and predicted demand table. The constraint structure does not change. The data invariant: `predicted_demand_table.csv` MUST contain a row for every `(sku_id, k)` for `k in {0, 1, ..., sku.max_facings}` -- if a row is missing, the implies cascade leaves `Sku.realized_demand` unconstrained for that combination and the solver may pick an arbitrary value.
 - **Per-SKU minimum facings** by tightening the lower-coupling IC to `model.require(Sku.facings >= Sku.min_facings * Sku.active)` (after adding a `Sku.min_facings` data property), or by removing disallowed `(sku, k)` pairs from `PredictedDemand`.
 - **Eye-level priority** by adding a boolean property and pinning premium SKUs to the eye-level shelf id:
