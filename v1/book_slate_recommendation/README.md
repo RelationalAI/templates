@@ -31,11 +31,9 @@ This template solves that problem in one declarative model:
 - **Bounded KG walks via the paths library (architectural
   centerpiece)** — `Item.connected_to.repeat(1, 2).all_paths()`
   combined with direct shared-author / shared-subject joins
-  produces the candidate set and the per-`(user, candidate)`
-  typed-evidence counts. The paths library is in PyRel `std`, not a
-  separate reasoner; this template doubles as a showcase for
-  bounded-walk candidate generation. Remove it and the template
-  collapses — the Candidate concept itself is path-derived.
+  produces the Candidate concept and its per-`(user, candidate)`
+  typed-evidence counts. The paths library lives in PyRel `std`,
+  not a separate reasoner.
 - **Graph reasoner (hero pin)** computes per-Book triangle counts
   over the similarity graph and pins slot 1 (the top-of-row
   position with the most engagement) to a Book whose triangle count
@@ -342,8 +340,8 @@ Customize) -- the formulation extends without restructure.
 
 Sibling CSP templates (`product_configurator`,
 `synthetic_order_lifecycle`, `synthetic_eligibility_records`) encode
-unordered selection. This is the first *ordered* slate; three
-choices follow from that:
+unordered selection. This template encodes an *ordered* slate;
+three choices follow from that:
 
 - **Unified `Item.connected_to` super-edge** so the path walker
   (one 2-arity relationship at a time) can traverse the

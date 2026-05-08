@@ -6,14 +6,12 @@ engagement is the canonical recsys model, so the order matters as
 much as the selection. The architectural centerpiece is bounded
 heterogeneous-KG walks via the PyRel paths library
 (``relationalai.semantics.std.paths``): the walks generate the
-candidate set and the per-(user, candidate) explanation evidence
-that feeds both the Graph reasoner pillar and the Prescriptive
-reasoner pillar. The Graph reasoner pins slot 1 to a structurally-
-central pick via ``triangle_count``, anchoring the highest-
-engagement position to a graph-derived measure. Removing the path
-walks collapses the template (no Candidate concept, no CSP
-decisions); removing the Graph contribution drops the hero pin,
-weakening the structural quality of the most visible position:
+Candidate concept and the per-(user, candidate) explanation
+evidence that feed both the Graph reasoner pillar and the
+Prescriptive reasoner pillar. The Graph reasoner contributes per-
+Book ``triangle_count`` over the similarity graph, which the
+hero-pin IC ties to slot 1 so the highest-engagement position
+carries graph-derived structural quality:
 
 - Bounded KG walks (paths library, central):
   ``Item.connected_to.repeat(1, 2).all_paths()`` walks enumerate
