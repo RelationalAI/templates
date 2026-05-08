@@ -2,7 +2,7 @@
 
 This script demonstrates a three-pillar pipeline in RelationalAI:
 
-- A clinical-research team needs to enrol ``COHORT_SIZE`` patients in a
+- A clinical-research team needs to enroll ``COHORT_SIZE`` patients in a
   kinase-pathway study. Eligible patients carry a mutation in some gene
   that is a member of the kinase-pathway sub-ontology (transitive
   subclass closure of ``is_a``), received some therapy, and developed
@@ -11,7 +11,7 @@ This script demonstrates a three-pillar pipeline in RelationalAI:
   ``MIN_GENES_COVERED`` distinct kinase-pathway genes,
   ``MIN_THERAPIES_COVERED`` distinct therapies, and
   ``MIN_AES_COVERED`` distinct adverse-event terms, so a later study
-  generalises across pathway nodes, treatment arms, and toxicity
+  generalizes across pathway nodes, treatment arms, and toxicity
   profiles.
 - The encoding is split across three pillars: the **Graph** reasoner
   closes ``is_a`` over the gene ontology (one call to
@@ -23,7 +23,7 @@ This script demonstrates a three-pillar pipeline in RelationalAI:
 
 Modeling approach:
 - Four binary decision streams: ``EligiblePatient.is_in_cohort``
-  (which eligible patients to enrol), ``CoverableGene.is_covered``,
+  (which eligible patients to enroll), ``CoverableGene.is_covered``,
   ``CoverableTherapy.is_covered``, and
   ``CoverableAdverseEvent.is_covered`` (which kinase genes / therapies
   / AEs the cohort, taken together, witnesses).
@@ -137,18 +137,30 @@ ae_csv = read_csv(DATA_DIR / "adverse_events.csv")
 # --------------------------------------------------
 
 
+def _assert_no_nulls(df, cols, source):
+    cols = cols if isinstance(cols, list) else [cols]
+    null_cols = [c for c in cols if df[c].isna().any()]
+    if null_cols:
+        raise ValueError(
+            f"{source} has null/NaN values in column(s) {null_cols}. Required "
+            f"columns must be fully populated; drop or impute the offending rows."
+        )
+
+
 def _assert_unique_keys(df, key, source):
     cols = key if isinstance(key, list) else [key]
+    _assert_no_nulls(df, cols, source)
     dupe_rows = df[df.duplicated(subset=cols, keep=False)]
     if not dupe_rows.empty:
         duplicates = sorted({tuple(row) for row in dupe_rows[cols].itertuples(index=False)})
         raise ValueError(
-            f"{source} has duplicate {tuple(cols) if len(cols) > 1 else cols[0]}"
-            f"={duplicates}. Each key must be unique; remove or merge the conflicting rows."
+            f"{source} has duplicate ({', '.join(cols)})={duplicates}. "
+            f"Each key must be unique; remove or merge the conflicting rows."
         )
 
 
 def _assert_root_gene_exists(genes_csv, root_id):
+    _assert_no_nulls(genes_csv, "id", "genes.csv")
     if root_id not in set(int(g) for g in genes_csv["id"].tolist()):
         raise ValueError(
             f"KINASE_ROOT_GENE_ID={root_id} is not in genes.csv. The pathway "
@@ -158,6 +170,7 @@ def _assert_root_gene_exists(genes_csv, root_id):
 
 
 def _assert_no_dangling_fks(child_df, child_col, parent_df, parent_col, source, parent_source):
+    _assert_no_nulls(child_df, child_col, source)
     parent_ids = set(int(v) for v in parent_df[parent_col].unique())
     dangling = sorted({int(v) for v in child_df[child_col].unique() if int(v) not in parent_ids})
     if dangling:
@@ -168,48 +181,55 @@ def _assert_no_dangling_fks(child_df, child_col, parent_df, parent_col, source, 
         )
 
 
-def _assert_nonneg_t_days(df, source):
-    bad = sorted({int(v) for v in df["t_days"].tolist() if int(v) < 0})
+def _assert_nonneg_column(df, col, source):
+    _assert_no_nulls(df, col, source)
+    bad = sorted({int(v) for v in df[col].tolist() if int(v) < 0})
     if bad:
         raise ValueError(
-            f"{source} has negative t_days={bad}. t_days must be >= 0 (days "
-            f"since the patient's enrolment / index date)."
+            f"{source} has negative {col}={bad}. {col} must be >= 0 (days "
+            f"since the patient's enrollment / index date)."
         )
 
 
-_assert_unique_keys(genes_csv, "id", "genes.csv")
-_assert_unique_keys(isa_csv, ["child_id", "parent_id"], "gene_is_a.csv")
-_assert_unique_keys(therapies_csv, "id", "therapies.csv")
-_assert_unique_keys(ae_terms_csv, "id", "ae_terms.csv")
-_assert_unique_keys(patients_csv, "id", "patients.csv")
-_assert_unique_keys(mut_csv, "id", "mutation_events.csv")
-_assert_unique_keys(th_csv, "id", "therapy_events.csv")
-_assert_unique_keys(ae_csv, "id", "adverse_events.csv")
+# Validate primary-key uniqueness on every table.
+for _df, _key, _src in [
+    (genes_csv, "id", "genes.csv"),
+    (isa_csv, ["child_id", "parent_id"], "gene_is_a.csv"),
+    (therapies_csv, "id", "therapies.csv"),
+    (ae_terms_csv, "id", "ae_terms.csv"),
+    (patients_csv, "id", "patients.csv"),
+    (mut_csv, "id", "mutation_events.csv"),
+    (th_csv, "id", "therapy_events.csv"),
+    (ae_csv, "id", "adverse_events.csv"),
+]:
+    _assert_unique_keys(_df, _key, _src)
 
 _assert_root_gene_exists(genes_csv, KINASE_ROOT_GENE_ID)
 
-_assert_no_dangling_fks(isa_csv, "child_id", genes_csv, "id", "gene_is_a.csv", "genes.csv")
-_assert_no_dangling_fks(isa_csv, "parent_id", genes_csv, "id", "gene_is_a.csv", "genes.csv")
-_assert_no_dangling_fks(
-    mut_csv, "patient_id", patients_csv, "id", "mutation_events.csv", "patients.csv"
-)
-_assert_no_dangling_fks(mut_csv, "gene_id", genes_csv, "id", "mutation_events.csv", "genes.csv")
-_assert_no_dangling_fks(
-    th_csv, "patient_id", patients_csv, "id", "therapy_events.csv", "patients.csv"
-)
-_assert_no_dangling_fks(
-    th_csv, "therapy_id", therapies_csv, "id", "therapy_events.csv", "therapies.csv"
-)
-_assert_no_dangling_fks(
-    ae_csv, "patient_id", patients_csv, "id", "adverse_events.csv", "patients.csv"
-)
-_assert_no_dangling_fks(
-    ae_csv, "ae_term_id", ae_terms_csv, "id", "adverse_events.csv", "ae_terms.csv"
-)
+# Foreign-key edges in the schema. Each row says "<source>.<col>
+# references <parent_source>.<parent_col>". Update this table when
+# you add a new event table or rewire a FK; the loop below validates
+# every edge in one place.
+_FK_EDGES = [
+    (isa_csv, "child_id", genes_csv, "id", "gene_is_a.csv", "genes.csv"),
+    (isa_csv, "parent_id", genes_csv, "id", "gene_is_a.csv", "genes.csv"),
+    (mut_csv, "patient_id", patients_csv, "id", "mutation_events.csv", "patients.csv"),
+    (mut_csv, "gene_id", genes_csv, "id", "mutation_events.csv", "genes.csv"),
+    (th_csv, "patient_id", patients_csv, "id", "therapy_events.csv", "patients.csv"),
+    (th_csv, "therapy_id", therapies_csv, "id", "therapy_events.csv", "therapies.csv"),
+    (ae_csv, "patient_id", patients_csv, "id", "adverse_events.csv", "patients.csv"),
+    (ae_csv, "ae_term_id", ae_terms_csv, "id", "adverse_events.csv", "ae_terms.csv"),
+]
+for _cdf, _ccol, _pdf, _pcol, _csrc, _psrc in _FK_EDGES:
+    _assert_no_dangling_fks(_cdf, _ccol, _pdf, _pcol, _csrc, _psrc)
 
-_assert_nonneg_t_days(mut_csv, "mutation_events.csv")
-_assert_nonneg_t_days(th_csv, "therapy_events.csv")
-_assert_nonneg_t_days(ae_csv, "adverse_events.csv")
+# Non-negativity check on event timestamps.
+for _df, _col, _src in [
+    (mut_csv, "t_days", "mutation_events.csv"),
+    (th_csv, "t_days", "therapy_events.csv"),
+    (ae_csv, "t_days", "adverse_events.csv"),
+]:
+    _assert_nonneg_column(_df, _col, _src)
 
 # --------------------------------------------------
 # Define semantic model
