@@ -47,7 +47,21 @@ from urllib.request import Request, urlopen
 # --- Configuration --------------------------------------------------
 
 OPEN_LIBRARY_BASE = "https://openlibrary.org"
-USER_AGENT = "book-slate-recommendation-template/1.0 (RelationalAI)"
+
+# Open Library asks API consumers to include a contact in the
+# User-Agent (https://openlibrary.org/developers/api). Customers
+# running ``--size md`` or ``--size lg`` should swap this stub for
+# a real contact -- without it the unidentified rate limit (1 req/s)
+# applies and high-volume runs will be throttled.
+USER_AGENT = (
+    "book-slate-recommendation-template/1.0 (RelationalAI; "
+    "set CONTACT in fetch_open_library_slice.py before running --size md/lg)"
+)
+
+# Per-request sleep after a successful API call. 1.0s honours
+# Open Library's documented unidentified rate limit; identified
+# clients can drop this to ~0.35s.
+REQUEST_SLEEP_S = 1.0
 
 SEED = 20260430
 
@@ -115,12 +129,19 @@ def _http_get_json(url: str, cache_dir: Path) -> dict:
 
     The cache key is the URL path; reruns never re-query the API. This
     keeps the bundled CSVs reproducible and makes the script polite to
-    the public Open Library service.
+    the public Open Library service. A cache file that fails to parse
+    (interrupted write, stale HTML error body) is treated as a cache
+    miss and re-fetched; cache writes are atomic via temp-file rename
+    so an interrupted write never poisons the cache.
     """
     cache_key = re.sub(r"[^a-zA-Z0-9._-]+", "_", url) + ".json"
     cache_file = cache_dir / cache_key
     if cache_file.exists():
-        return json.loads(cache_file.read_text())
+        try:
+            return json.loads(cache_file.read_text())
+        except json.JSONDecodeError:
+            # Corrupt cache entry: drop it and re-fetch.
+            cache_file.unlink(missing_ok=True)
 
     req = Request(url, headers={"User-Agent": USER_AGENT, "Accept": "application/json"})
     last_err: Exception | None = None
@@ -129,8 +150,10 @@ def _http_get_json(url: str, cache_dir: Path) -> dict:
             with urlopen(req, timeout=20) as resp:
                 payload = json.loads(resp.read().decode("utf-8"))
             cache_dir.mkdir(parents=True, exist_ok=True)
-            cache_file.write_text(json.dumps(payload))
-            time.sleep(0.2)
+            tmp_file = cache_file.with_suffix(cache_file.suffix + ".tmp")
+            tmp_file.write_text(json.dumps(payload))
+            tmp_file.replace(cache_file)
+            time.sleep(REQUEST_SLEEP_S)
             return payload
         except (HTTPError, URLError, TimeoutError) as exc:
             last_err = exc

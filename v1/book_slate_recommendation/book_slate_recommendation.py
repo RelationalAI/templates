@@ -101,17 +101,18 @@ EXPLANATION_FLOOR = 4
 WEAK_EXPLANATION_THRESHOLD = 2
 
 # Utility blend: structural prior (PageRank) vs per-user path signal.
-# Demo-grade defaults tuned for the bundled ``--size sm`` slice:
-# PageRank scores live on roughly the 1e-3 to 3e-2 range; path counts
-# on roughly 2-12. The weights make both signals visible in HiGHS at
-# similar order of magnitude (PageRank's float head pulls high-
-# popularity items in, path-count delta breaks ties under
-# diversity caps). Production tuning options: (a) min-max-normalize
-# both signals to [0, 1] before blending so the constants represent
-# *business preference* rather than *scale correction*; (b) calibrate
-# to held-out click / read data; (c) keep a sensitivity table per
-# slice size (the bundled ``experiments/`` folder has the harness for
-# this).
+# Demo-grade defaults tuned for the bundled ``--size sm`` slice. With
+# PageRank ~ 1e-3 to 3e-2 and path counts ~ 2-12, the unscaled
+# contributions per item are PageRank ~ 0.1-3 and path-signal ~ 60-360;
+# the path signal dominates and PageRank effectively serves as a
+# tie-breaker when path-signal ties between candidates. This is fine
+# for the demo (the slate is path-driven anyway), but production
+# deployments wanting a meaningful blend should: (a) min-max-
+# normalize both signals to [0, 1] before applying these weights so
+# the constants represent *business preference* rather than *scale
+# correction*; (b) calibrate to held-out click / read data; (c) keep
+# a sensitivity table per slice size (the bundled ``experiments/``
+# folder has the harness for this).
 PAGERANK_WEIGHT = 100.0
 PATH_SIGNAL_WEIGHT = 30.0
 
@@ -513,6 +514,23 @@ problem.solve_for(
 # stops before ``problem.solve(...)``.
 
 # Cardinality: each user gets exactly K picks.
+#
+# IC-anchoring caveat: this IC is anchored on ``Candidate.user_id``,
+# so it generates one constraint row per user that has at least one
+# Candidate. Users with **zero** candidates after the path-walker /
+# exclude-read pipeline (e.g., a customer importing data where some
+# users' reads have no ``similar_to`` neighbours) are silently
+# skipped: the IC does not fire for them, and they receive no slate.
+# The pre-solve diagnostic below ("Candidate count per user") flags
+# such users; downstream tooling should treat absence from the
+# Final-slate output as a per-user infeasibility signal. Same
+# anchoring caveat applies to ``freshness_ic``, ``originals_ic``, and
+# ``explanation_ic`` below -- a user with candidates but none
+# matching the ``where`` filter passes vacuously rather than
+# becoming infeasible. The bundled ``--size sm`` slice avoids the
+# sharp edges by guaranteeing dense per-user reach; customers
+# bringing sparse data should add a pre-solve assert on per-user
+# candidate counts before relying on the floor ICs.
 slate_size_ic = model.require(sum(Candidate.pick).per(Candidate.user_id) == SLATE_SIZE_K)
 problem.satisfy(slate_size_ic)
 
@@ -589,6 +607,19 @@ problem.maximize(sum(Candidate.utility * Candidate.pick))
 # --------------------------------------------------
 
 problem.display()
+
+# Pre-solve diagnostic: count Candidate rows per user. Users absent
+# from this table have zero candidates after the walk + exclude-read
+# pipeline and will be silently skipped by the per-user floor ICs
+# (see slate_size_ic comment above). Customers should treat per-user
+# counts < SLATE_SIZE_K as a sparse-data warning regardless of solve
+# status.
+print("\nCandidate count per user (pre-solve diagnostic):")
+model.select(
+    Candidate.user_id.alias("user_id"),
+    count(Candidate).per(Candidate.user_id).alias("n_candidates"),
+).inspect()
+
 problem.solve("highs", time_limit_sec=60)
 problem.solve_info().display()
 

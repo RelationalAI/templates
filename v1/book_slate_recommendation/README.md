@@ -361,7 +361,7 @@ Six common variations:
   per-typed counts -- and, if extended, the top-N enumerated
   paths the walker found -- into an LLM call to render natural-
   language explanations grounded in KG facts, eliminating
-  hallucination -- the 2025 LLM+KG hybrid pattern (ItemRAG,
+  hallucination -- the 2025 LLM+KG hybrid pattern (K-RagRec,
   Think-on-Graph, K-RagRec). Materializing the actual top paths
   (rather than just counts) is a small extension of the runner's
   final `inspect()`: select on `kg_paths(p_s)` joined to picked
@@ -429,11 +429,20 @@ on customer slices are:
    else the diversity / uniqueness caps silently exempt that
    Book.
 
-To diagnose interactively, comment out the
-`model.require(problem.termination_status() == "OPTIMAL")` line
-and re-run; the diagnostic inspect blocks at the bottom of the
-runner will then fire and show what the candidate set looks like
-per user.
+For pre-solve diagnostics: every run prints a "Candidate count
+per user" table immediately before `problem.solve(...)` -- check
+that block first to see whether each user has at least
+`SLATE_SIZE_K` candidates after the path-walker / exclude-read
+pipeline. Users absent from that table have zero candidates and
+will be silently skipped by the per-user floor ICs (sparse-data
+warning regardless of solve status). For post-solve diagnostics
+on a non-OPTIMAL run: `problem.verify(...)` already prints
+per-IC violation messages on the failing constraints; if the
+script then exits at the `model.require(... == "OPTIMAL")` line
+you can comment that line out to let the post-solve inspect
+blocks fire (note: with no successful solve, the "Final slate
+per user" table will be empty and the candidate-set diagnostic
+at the end mirrors the pre-solve one).
 
 </details>
 
@@ -485,8 +494,9 @@ download.
   Convolutional Neural Networks for Web-Scale Recommender
   Systems (PinSage)*, KDD 2018 --
   <https://arxiv.org/abs/1806.01973>.
-- Kim et al., *ItemRAG: KG-RAG for LLM-Based Recommendation*,
-  ACL 2025 -- <https://aclanthology.org/2025.acl-long.1317.pdf>.
+- Wang et al., *Knowledge Graph Retrieval-Augmented Generation
+  for LLM-based Recommendation (K-RagRec)*, ACL 2025 --
+  <https://aclanthology.org/2025.acl-long.1317.pdf>.
 - *Open Library Developer API* (CC0) --
   <https://openlibrary.org/dev/docs/api>. Bibliographic
   catalog used by the bundled slice;
