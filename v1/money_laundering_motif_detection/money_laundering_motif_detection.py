@@ -1,25 +1,46 @@
 """Money-laundering layering motif detection (constrained subgraph match
-with flow conservation, multi-solution) template.
+with per-vertex flow conservation) template.
 
 This script demonstrates anti-money-laundering motif detection in
 RelationalAI:
 
-- Given an account-and-transaction graph, find every layering
-  "butterfly" pattern in the data: one source account routes funds
+- Given an account-and-transaction graph, find every "butterfly" /
+  scatter-gather pattern in the data: one source account routes funds
   through K intermediary "hub" accounts to a single destination, where
   every per-leg amount sits under the FinCEN currency-transaction-report
   threshold ($10,000) and every hub shares a beneficial owner.
 - The motif is encoded as binary indicators on transactions and on
   accounts. Per-account flow-conservation in *count* couples edge
   selection to role assignment; per-hub flow-conservation in *amount*
-  requires the solver to balance the chosen edges' values against each
-  other, which is the CSP arithmetic a graph-pattern / paths library
-  cannot express.
-- Solve as constraint satisfaction with `solution_limit=MAX_MOTIFS`
-  (MiniZinc) and enumerate every feasible motif via
-  `Variable.values(solution_index, value)`. AML triage is plural by
-  definition -- the analyst inbox should surface every layering
-  pattern in the ledger, not just the first one the solver returns.
+  is the load-bearing CSP IC -- the solver must balance the chosen
+  edges' values against each other, which a graph-pattern or paths
+  library cannot express.
+
+The arithmetic constraint is what separates this template from a
+graph-pattern matcher. A paths library can match the butterfly
+topology and a rules layer can sum amounts per vertex, but neither can
+bind those sums to "the K-subset of edges the solver picks, where the
+K accounts the solver assigns as hubs each individually conserve flow."
+That joint-decision-arithmetic shape is the CSP technique demonstrated
+here -- per-vertex equality of two aggregates over a decision-selected
+edge subset.
+
+The README's Customize section sketches two variant motifs that anchor
+*different* CSP techniques (pairwise constraints on the chosen subset;
+cardinality / distribution constraints over the chosen vertex set)
+without re-using the same conservation shape -- diverse CSP techniques,
+each grounded in a documented AML typology.
+
+Pattern taxonomy reference: Altman et al., *Realistic Synthetic
+Financial Transactions for Anti-Money Laundering Models*, NeurIPS 2023
+(IBM AMLworld). The butterfly here is the scatter-gather pattern from
+that paper's eight-pattern taxonomy, with per-hub conservation made
+explicit as a CSP constraint.
+
+Multi-solution enumeration via `solve(..., solution_limit=K)` +
+`Variable.values(solution_index, value)` lets a single solve return
+every feasible motif in the data; useful for batch analyst-triage
+workflows on real ledgers.
 
 Run:
     `python money_laundering_motif_detection.py`
