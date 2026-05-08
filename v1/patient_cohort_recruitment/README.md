@@ -248,16 +248,19 @@ problem.solve_for(
 )
 ```
 
-**Coverage upper bound + lower bound is the CSP signature.** For each coverable Y, `Y.is_covered` is bounded above by the number of in-cohort patients that cover it; the lower bound says at least `MIN_*` Ys must be covered. Together they force the solver to pick patients whose joint coverage spans enough distinct values. The per-axis pattern reads cleanly:
+**Coverage upper bound + per-pair lower bound + floor is the CSP signature.** For each coverable Y, `Y.is_covered` is bounded above by the number of in-cohort patients that cover it (so an unsupported Y cannot be marked covered) AND bounded below per pair by `EligiblePatient.is_in_cohort` (so any in-cohort patient covering Y forces `is_covered` to saturate to 1). The two bounds together pin `is_covered` to the actual coverage. The floor IC `sum(is_covered) >= MIN_*` then constrains the cohort to span at least `MIN_*` distinct values. Without the per-pair lower bound the solver could leave indicators at 0 even when the cohort actually covers them, making the inspect() output underreport.
 
 ```python
-gene_cover_ic = model.where(EligiblePatient.covers_kinase_gene(CoverableGene)).require(
+gene_cover_ub_ic = model.where(EligiblePatient.covers_kinase_gene(CoverableGene)).require(
     CoverableGene.is_covered <= sum(EligiblePatient.is_in_cohort).per(CoverableGene)
+)
+gene_cover_lb_ic = model.where(EligiblePatient.covers_kinase_gene(CoverableGene)).require(
+    CoverableGene.is_covered >= EligiblePatient.is_in_cohort
 )
 gene_min_ic = model.require(sum(CoverableGene.is_covered) >= MIN_GENES_COVERED)
 ```
 
-All seven ICs are pure relational arithmetic, so `problem.verify()` re-evaluates every one in the returned solution -- no constraint is solver-only.
+All ten ICs are pure relational arithmetic, so `problem.verify()` re-evaluates every one in the returned solution -- no constraint is solver-only.
 
 ## Customize this template
 

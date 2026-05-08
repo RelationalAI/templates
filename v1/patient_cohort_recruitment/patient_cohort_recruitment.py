@@ -55,20 +55,27 @@ Modeling approach:
   treatment duration, multi-event sequencing) is an edit to one rule
   rather than three.
 - Cohort size: ``sum(EligiblePatient.is_in_cohort) == COHORT_SIZE``.
-- Coverage upper bounds (one IC per coverage axis): per coverable
-  kinase gene ``g``, ``g.is_covered`` is bounded above by the number
-  of in-cohort patients whose mutations cover ``g``. The reverse
-  direction is free, so the solver sets ``is_covered`` to 1 wherever
-  the bound permits -- exactly when at least one chosen patient covers
-  that gene. Same shape for therapies and adverse events.
-- Coverage lower bounds:
+- Per-axis coverage upper bound: ``Y.is_covered <= sum(in_cohort).per(Y)``
+  -- a Y can only be marked covered if at least one in-cohort
+  eligible patient covers it.
+- Per-axis coverage lower bound (per pair):
+  ``Y.is_covered >= EligiblePatient.is_in_cohort`` for each
+  ``(EligiblePatient, Y)`` pair where the eligible patient covers Y
+  -- if any in-cohort eligible patient covers Y, then ``is_covered``
+  must saturate to 1. Without this, the satisfaction solver is free
+  to leave indicators at 0 even when the cohort actually covers
+  them, which would make the inspect() output underreport. The
+  per-pair form forces ``is_covered`` to equal the actual coverage.
+- Coverage floors:
   ``sum(CoverableGene.is_covered) >= MIN_GENES_COVERED`` (and
-  similarly for therapies and AEs). Together with the upper bounds,
-  the solver must pick patients whose joint coverage spans at least
+  similarly for therapies and AEs). Combined with the upper and
+  lower bounds, ``sum(Y.is_covered)`` is the actual coverage count,
+  so the floor constrains the cohort to span at least
   ``MIN_GENES_COVERED`` / ``MIN_THERAPIES_COVERED`` /
   ``MIN_AES_COVERED`` distinct values.
-- All of these constraints are pure relational arithmetic, so
-  ``problem.verify()`` re-evaluates every IC in the returned solution.
+- All ten ICs (cohort size + 3 upper + 3 lower + 3 floor) are pure
+  relational arithmetic, so ``problem.verify()`` re-evaluates every
+  one in the returned solution.
 
 Run:
     `python patient_cohort_recruitment.py`
@@ -493,28 +500,51 @@ problem.solve_for(
 cohort_size_ic = model.require(sum(EligiblePatient.is_in_cohort) == COHORT_SIZE)
 problem.satisfy(cohort_size_ic)
 
-# Per-gene coverage upper bound: a kinase gene can only be marked
-# covered if at least one in-cohort patient mutates it. The reverse
-# direction is free and will be saturated by the lower-bound IC below.
-gene_cover_ic = model.where(EligiblePatient.covers_kinase_gene(CoverableGene)).require(
+# Per-axis coverage upper bound: a Y can only be marked covered if at
+# least one in-cohort eligible patient covers it.
+gene_cover_ub_ic = model.where(EligiblePatient.covers_kinase_gene(CoverableGene)).require(
     CoverableGene.is_covered <= sum(EligiblePatient.is_in_cohort).per(CoverableGene)
 )
-problem.satisfy(gene_cover_ic)
+problem.satisfy(gene_cover_ub_ic)
 
-# Per-therapy coverage upper bound.
-therapy_cover_ic = model.where(EligiblePatient.covers_therapy(CoverableTherapy)).require(
+therapy_cover_ub_ic = model.where(EligiblePatient.covers_therapy(CoverableTherapy)).require(
     CoverableTherapy.is_covered <= sum(EligiblePatient.is_in_cohort).per(CoverableTherapy)
 )
-problem.satisfy(therapy_cover_ic)
+problem.satisfy(therapy_cover_ub_ic)
 
-# Per-AE coverage upper bound.
-ae_cover_ic = model.where(EligiblePatient.covers_ae(CoverableAdverseEvent)).require(
+ae_cover_ub_ic = model.where(EligiblePatient.covers_ae(CoverableAdverseEvent)).require(
     CoverableAdverseEvent.is_covered <= sum(EligiblePatient.is_in_cohort).per(CoverableAdverseEvent)
 )
-problem.satisfy(ae_cover_ic)
+problem.satisfy(ae_cover_ub_ic)
 
-# Coverage lower bounds: the cohort must witness MIN_* distinct values
-# along each axis.
+# Per-axis coverage lower bound (per pair): if any in-cohort eligible
+# patient covers Y, then `Y.is_covered` must be 1. Without these,
+# `is_covered` is only upper-bounded by the count of covering
+# in-cohort patients, so the solver is free to leave indicators at 0
+# even when the cohort actually covers them -- the floor IC below
+# would still be satisfied by any sufficient subset of the truly
+# covered Ys, but the inspect() output would underreport. The
+# per-pair `is_covered >= is_in_cohort` form forces saturation.
+gene_cover_lb_ic = model.where(EligiblePatient.covers_kinase_gene(CoverableGene)).require(
+    CoverableGene.is_covered >= EligiblePatient.is_in_cohort
+)
+problem.satisfy(gene_cover_lb_ic)
+
+therapy_cover_lb_ic = model.where(EligiblePatient.covers_therapy(CoverableTherapy)).require(
+    CoverableTherapy.is_covered >= EligiblePatient.is_in_cohort
+)
+problem.satisfy(therapy_cover_lb_ic)
+
+ae_cover_lb_ic = model.where(EligiblePatient.covers_ae(CoverableAdverseEvent)).require(
+    CoverableAdverseEvent.is_covered >= EligiblePatient.is_in_cohort
+)
+problem.satisfy(ae_cover_lb_ic)
+
+# Coverage floors: the cohort must witness MIN_* distinct values
+# along each axis. With the per-pair upper and lower bounds above,
+# `sum(Y.is_covered)` equals the cohort's actual coverage count, so
+# this constraint is on the true coverage, not on a free-floating
+# indicator subset.
 gene_min_ic = model.require(sum(CoverableGene.is_covered) >= MIN_GENES_COVERED)
 problem.satisfy(gene_min_ic)
 therapy_min_ic = model.require(sum(CoverableTherapy.is_covered) >= MIN_THERAPIES_COVERED)
@@ -530,13 +560,16 @@ problem.display()
 problem.solve("minizinc", time_limit_sec=60)
 problem.solve_info().display()
 
-# All seven ICs are pure relational arithmetic, so `verify` re-evaluates
+# All ten ICs are pure relational arithmetic, so `verify` re-evaluates
 # every one in the returned solution.
 problem.verify(
     cohort_size_ic,
-    gene_cover_ic,
-    therapy_cover_ic,
-    ae_cover_ic,
+    gene_cover_ub_ic,
+    therapy_cover_ub_ic,
+    ae_cover_ub_ic,
+    gene_cover_lb_ic,
+    therapy_cover_lb_ic,
+    ae_cover_lb_ic,
     gene_min_ic,
     therapy_min_ic,
     ae_min_ic,
