@@ -610,7 +610,7 @@ flagged_df = (
     .sort_values("failure_intensity", ascending=False)
 )
 print(f"\n  Flagged critical_restore towers: {len(flagged_df)}")
-print(f"  Breakdown by region:")
+print("  Breakdown by region:")
 print(flagged_df["region"].value_counts().to_string())
 
 # Per-branch contribution. Each branch is independently evaluable

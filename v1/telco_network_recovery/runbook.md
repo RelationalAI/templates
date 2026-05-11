@@ -50,7 +50,7 @@ than a rules-only plan on the same data).
 **Prompt**
 
 ```
-/rai-build-starter-ontology Build a telco network ontology from the CSVs in data/. Include a ModelAdvisory concept keyed by MODEL so manufacturer recall/defect/EOL/firmware notices can be linked to every equipment item of the affected model -- the predictive stage will message-pass advisory severity through that edge.
+/rai-build-starter-ontology Build a telco network ontology from the CSVs in data/. Include a ModelAdvisory concept so manufacturer recall/defect/EOL/firmware notices can be linked to every equipment item of the affected model.
 ```
 
 **Response**

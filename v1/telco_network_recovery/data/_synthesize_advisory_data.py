@@ -1,13 +1,13 @@
 """Synthesize the augmented equipment-failure data for the telco template.
 
-Generates four CSVs end-to-end with reproducible seed:
+Generates four CSVs end-to-end with reproducible seed=42:
 
-- network_equipment.csv     -- ~1,500 items across 250 towers, MODEL from
-                               20-value catalog
+- network_equipment.csv     -- 1,500 items across 250 towers, MODEL
+                               drawn from a 18-value catalog
 - equipment_health.csv      -- 1:1 with equipment, rebalanced HEALTH_SCORE
-- model_advisories.csv      -- 8 recall/defect/EOL/firmware/security
-                               advisories on 7 of the 20 models, severity
-                               0.50-0.95
+- model_advisories.csv      -- 8 recall / defect / EOL / firmware /
+                               security advisories covering 7 of the 18
+                               models, severity 0.50-0.95
 - tower_upgrade_options.csv -- 250 towers x 3 tiers = 750 rows so every
                                tower is upgradeable
 
@@ -50,10 +50,11 @@ interaction -- three layers of ontology awareness the GNN learns from
 training data automatically.
 """
 
+from datetime import datetime, timedelta
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
-from pathlib import Path
-from datetime import datetime, timedelta
 
 SEED = 42
 DATA_DIR = Path(__file__).parent
@@ -364,7 +365,7 @@ def report(eq_df: pd.DataFrame, hl_df: pd.DataFrame, adv_df: pd.DataFrame, upgra
     print(f"  Advisories:      {len(adv_df):>5}")
     print(f"  Upgrade options: {len(upgrade_df):>5} ({upgrade_df['TOWER_ID'].nunique()} towers x 3 tiers)")
 
-    print(f"\n  STATUS distribution:")
+    print("\n  STATUS distribution:")
     print(eq_df["STATUS"].value_counts().to_string())
     print(f"  AT_RISK rate: {eq_df['AT_RISK'].mean():.1%}")
 
@@ -374,7 +375,7 @@ def report(eq_df: pd.DataFrame, hl_df: pd.DataFrame, adv_df: pd.DataFrame, upgra
     # Compute correlations using eq_df for HEALTH_SCORE (the eq + health
     # tables share that column; using eq_df sidesteps the suffix
     # collision after merge). Other health columns come from hl_df.
-    print(f"\n  Feature -> AT_RISK correlations (target: HEALTH_SCORE r ~ -0.4):")
+    print("\n  Feature -> AT_RISK correlations (target: HEALTH_SCORE r ~ -0.4):")
     r = eq_df[["HEALTH_SCORE", "AT_RISK"]].corr().iloc[0, 1]
     print(f"    corr(HEALTH_SCORE, AT_RISK) = {r:+.3f}")
     hl_join = hl_df.merge(eq_df[["EQUIPMENT_ID", "AT_RISK"]], on="EQUIPMENT_ID")
@@ -382,7 +383,7 @@ def report(eq_df: pd.DataFrame, hl_df: pd.DataFrame, adv_df: pd.DataFrame, upgra
         r = hl_join[[col, "AT_RISK"]].corr().iloc[0, 1]
         print(f"    corr({col}, AT_RISK) = {r:+.3f}")
 
-    print(f"\n  Risk-source breakdown of AT_RISK equipment:")
+    print("\n  Risk-source breakdown of AT_RISK equipment:")
     ar = eq_df[eq_df["AT_RISK"] == 1].copy()
     ar["RISK_SOURCE"] = "other / noise"
     # Order matters: assign the most-specific category first so each
@@ -414,7 +415,7 @@ def report(eq_df: pd.DataFrame, hl_df: pd.DataFrame, adv_df: pd.DataFrame, upgra
     ] = "health-only"
     print(ar["RISK_SOURCE"].value_counts().to_string())
 
-    print(f"\n  SQL-vs-GNN comparison:")
+    print("\n  SQL-vs-GNN comparison:")
     total_atrisk = int(eq_df["AT_RISK"].sum())
 
     # 1) Naive SQL: equipment columns only (health threshold).
@@ -466,9 +467,8 @@ def main():
     # Phase 2: install dates + serial numbers
     records = add_serials_and_install_dates(records, rng)
 
-    # Phase 3: label model -- AT_RISK, STATUS, HEALTH_SCORE
-    advisory_sev = {m: sev for m, _, sev, _ in ADVISORIES}
-    # Note: multiple advisories per model -> take the max severity. Build map:
+    # Phase 3: label model -- AT_RISK, STATUS, HEALTH_SCORE.
+    # Multiple advisories per MODEL collapse to max severity.
     adv_max_sev: dict[str, float] = {}
     for m, _, sev, _ in ADVISORIES:
         adv_max_sev[m] = max(adv_max_sev.get(m, 0.0), sev)
