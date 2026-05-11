@@ -1,0 +1,11 @@
+# Local-only artifacts (not committed)
+raiconfig.yaml
+.venv/
+__pycache__/
+*.log
+*.kept.log
+*.first_complete.log
+*.max.log
+build/
+debug.jsonl
+spans.jsonl
