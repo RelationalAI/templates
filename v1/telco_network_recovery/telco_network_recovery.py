@@ -74,6 +74,11 @@ GNN_LR = 0.002
 BUDGET_USD = 5_000_000
 INSTALL_WEEKS_BUDGET = 200
 
+# Stage 4 MIP solver. Change to "highs" / "cbc" if your prescriptive
+# engine isn't gurobi-enabled (see raiconfig.yaml `reasoners.prescriptive
+# .settings.gurobi.enabled`).
+MIP_SOLVER = "gurobi"
+
 # Stage 2 threshold for the predictive-driven critical-restore branch.
 # failure_intensity is the per-tower SUM of equipment failure probs --
 # effectively expected count of at-risk equipment items on the tower.
@@ -818,8 +823,8 @@ problem.maximize(
     )
 )
 
-print("\n  Solving...")
-problem.solve(solver="gurobi")
+print(f"\n  Solving (MIP solver: {MIP_SOLVER})...")
+problem.solve(solver=MIP_SOLVER)
 problem.display()
 
 # Extract selected upgrades. Cast int128 (returned by RAI select) to
@@ -857,6 +862,73 @@ if len(selected_df) > 0:
     print(f"  Towers covered:           {len(selected_df)} of {len(flagged_df)} critical")
     print(f"  Region breakdown:         {selected_df['region'].value_counts().to_dict()}")
 
+# --------------------------------------------------
+# Persist plan summary + selected view back to the ontology, so every
+# headline metric (total cost, install weeks, capacity, tier mix,
+# binding constraint) is first-class ontology -- not stage-local
+# Python state. A downstream analyst (or Cortex Agent) can query
+# RestorePlan and TowerUpgradeOption.is_selected_upgrade directly
+# without re-running the chain.
+# --------------------------------------------------
+RestorePlan = model.Concept("RestorePlan", identify_by={"id": String})
+RestorePlan.total_cost = model.Property(f"{RestorePlan} has {Float:total_cost}")
+RestorePlan.total_install_weeks = model.Property(f"{RestorePlan} has {Integer:total_install_weeks}")
+RestorePlan.capacity_restored_gbps = model.Property(f"{RestorePlan} has {Integer:capacity_restored_gbps}")
+RestorePlan.gold_count = model.Property(f"{RestorePlan} has {Integer:gold_count}")
+RestorePlan.silver_count = model.Property(f"{RestorePlan} has {Integer:silver_count}")
+RestorePlan.bronze_count = model.Property(f"{RestorePlan} has {Integer:bronze_count}")
+RestorePlan.towers_covered = model.Property(f"{RestorePlan} has {Integer:towers_covered}")
+RestorePlan.binding_constraint = model.Property(f"{RestorePlan} has {String:binding_constraint}")
+
+_total_cost = float(selected_df["cost"].sum()) if len(selected_df) else 0.0
+_total_weeks = int(selected_df["install_weeks"].sum()) if len(selected_df) else 0
+_capacity = int(selected_df["capacity_gbps"].sum()) if len(selected_df) else 0
+_tier_counts = selected_df["tier"].value_counts().to_dict() if len(selected_df) else {}
+_binding = (
+    "budget" if _total_cost > BUDGET_USD * 0.999
+    else "install_weeks" if _total_weeks >= INSTALL_WEEKS_BUDGET - 1
+    else "none"
+)
+
+model.define(
+    rp := RestorePlan.new(id="TELCO_RECOVERY_2024Q4"),
+    rp.total_cost(_total_cost),
+    rp.total_install_weeks(_total_weeks),
+    rp.capacity_restored_gbps(_capacity),
+    rp.gold_count(int(_tier_counts.get("GOLD", 0))),
+    rp.silver_count(int(_tier_counts.get("SILVER", 0))),
+    rp.bronze_count(int(_tier_counts.get("BRONZE", 0))),
+    rp.towers_covered(len(selected_df)),
+    rp.binding_constraint(_binding),
+)
+
+TowerUpgradeOption.is_selected_upgrade = model.Relationship(
+    f"{TowerUpgradeOption} is selected upgrade"
+)
+model.where(TowerUpgradeOption.selected > 0.5).define(
+    TowerUpgradeOption.is_selected_upgrade()
+)
+
+# Query the new ontology back to confirm everything is reachable.
+print("\n  Plan (queryable as ontology):")
+plan_df = (
+    model.select(
+        RestorePlan.id.alias("plan_id"),
+        RestorePlan.total_cost.alias("total_cost"),
+        RestorePlan.total_install_weeks.alias("install_weeks"),
+        RestorePlan.capacity_restored_gbps.alias("capacity_gbps"),
+        RestorePlan.gold_count.alias("gold"),
+        RestorePlan.silver_count.alias("silver"),
+        RestorePlan.bronze_count.alias("bronze"),
+        RestorePlan.towers_covered.alias("towers"),
+        RestorePlan.binding_constraint.alias("binding"),
+    )
+    .to_df()
+)
+print(plan_df.to_string(index=False))
+
 print(f"\n{'=' * 60}")
 print("PIPELINE COMPLETE: 4 stages executed on the shared Telco ontology")
+print(f"Plan headline + {len(selected_df)}-row SelectedUpgrade view are now queryable")
+print("as ontology -- RestorePlan and TowerUpgradeOption.is_selected_upgrade.")
 print("=" * 60)

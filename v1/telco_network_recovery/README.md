@@ -34,32 +34,6 @@ This template uses RelationalAI's **predictive reasoning**, **rules-based classi
 
 Each stage writes derived properties back to the same ontology that downstream stages read. There is no DataFrame ping-pong between stages — the ontology is the single source of truth, and changing any upstream signal automatically propagates through the rules engine and the optimizer.
 
-## Why a GNN here, not a SQL query?
-
-The label model in the bundled data is designed to make this question concrete. Each equipment's underlying risk combines **five** signals — three direct, two relational:
-
-```
-latent_risk = 0.25 × advisory_severity_on_model      ← neighbor concept (1-hop)
-            + 0.45 × neighbor_advisory_severity      ← neighbor concept (2-hop via tower)
-            + 0.10 × (1 − health_score)              ← direct equipment column
-            + 0.05 × firmware_outdated_flag          ← direct equipment column
-            + 0.10 × three_way_smooth_interaction    ← non-linear product
-            + 0.05 × noise
-```
-
-Three layers of SQL sophistication are required to approximate this — and even the most sophisticated SQL still leaves a measurable gap:
-
-| Reasoning shape | Catches (of 597) | Why this number |
-|---|---|---|
-| **Naive SQL** (`WHERE health_score < 0.5`) | **39 (6.5 %)** | Most risk lives on the `ModelAdvisory` concept, not on equipment columns. |
-| **Join-aware SQL** (also `OR model IN advised`) | **510 (85.4 %)** | The analyst has to know about `ModelAdvisory`, write the join, and pick a severity threshold. Still misses the 2-hop and smooth-interaction cases. |
-| **GNN @ p≥0.5** (per-equipment binary recall) | **503 (84.3 %)** | At the standard probability threshold, the GNN's per-item recall is comparable to join-aware SQL. Calibration is graded: pos_prob distribution is min=0.024, median=0.331, max=0.890. |
-| **GNN's contribution to the chain** | **graded score on all 1,500 items** | Per-equipment positive-class probability is summed per tower into `CellTower.failure_intensity` (range ~0.09–8.67), giving the optimizer a *continuous* priority signal — not a binary flag. |
-
-The **87 / 597 = 14.6 % gap** between join-aware SQL and the true at-risk set is the *uniquely GNN-distinctive* opportunity: equipment whose own MODEL has no advisory but whose tower-mate's does (2-hop case), plus equipment whose risk only emerges from a smooth combination of moderate signals no threshold captures (three-way interaction).
-
-The chain's value isn't binary recall — even at p≥0.5 the GNN is close to join-aware SQL. The value is the **graded per-tower priority score**: many items with pos_prob ∈ [0.3, 0.5] don't fire individual binary flags but, summed per tower, surface high-`failure_intensity` towers the optimizer can rank against (165 / 190 towers exceed `failure_intensity > 1.5` and join the predictive critical-restore branch).
-
 ## Reasoner overview: inputs, outputs, and role
 
 | Stage | Reasoner | Reads from ontology | Writes to ontology | Role |
@@ -209,7 +183,13 @@ Set `EXP_DATABASE` at the top of `telco_network_recovery.py` to that database (d
      Tier mix:                 {'BRONZE': 22, 'SILVER': 13, 'GOLD': 4}
      Region breakdown:         {'EAST': 11, 'WEST': 9, 'SOUTH': 8, 'CENTRAL': 7, 'NORTH': 4}
 
+     Plan (queryable as ontology):
+       plan_id              total_cost install_weeks capacity_gbps gold silver bronze towers binding
+       TELCO_RECOVERY_2024Q4 4999671.0           195           214    4     13     22     39  budget
+
    PIPELINE COMPLETE: 4 stages executed on the shared Telco ontology
+   Plan headline + 39-row SelectedUpgrade view are now queryable as ontology
+   -- RestorePlan and TowerUpgradeOption.is_selected_upgrade.
    ```
 
    Exact numbers depend on the synthesis seed and the GNN training run.
