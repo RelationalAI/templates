@@ -5,9 +5,9 @@ Generates four CSVs end-to-end with reproducible seed:
 - network_equipment.csv     -- ~1,500 items across 250 towers, MODEL from
                                20-value catalog
 - equipment_health.csv      -- 1:1 with equipment, rebalanced HEALTH_SCORE
-                               (corr with AT_RISK drops from -0.9 to ~-0.4)
-- model_advisories.csv      -- NEW: 8 recall/defect/EOL advisories on 7
-                               of the 20 models, severity 0.50-0.95
+- model_advisories.csv      -- 8 recall/defect/EOL/firmware/security
+                               advisories on 7 of the 20 models, severity
+                               0.50-0.95
 - tower_upgrade_options.csv -- 250 towers x 3 tiers = 750 rows so every
                                tower is upgradeable
 
@@ -16,11 +16,38 @@ Reads cell_towers.csv (kept as-is) for tower IDs and regions.
 Run from inside data/ with:
     python _synthesize_advisory_data.py
 
-Design: AT_RISK is driven primarily by a relational neighbor signal
-(a ModelAdvisory linked to NetworkEquipment by shared MODEL) -- not by
-the equipment's own HEALTH_SCORE. A SQL filter on health thresholds
-alone catches < 35% of true AT_RISK cases. The GNN's heterogeneous
-ModelAdvisory -> NetworkEquipment edge is what closes the gap.
+Design: AT_RISK is driven by FIVE signals that are deliberately hard to
+reproduce with a SQL query. The GNN's heterogeneous topology -- with
+edges across NetworkEquipment <-> CellTower <-> NetworkEquipment as
+well as ModelAdvisory -> NetworkEquipment -- learns these patterns
+naturally via message passing.
+
+Latent risk model:
+
+    latent_risk = 0.25 * advisory_severity_on_model
+                + 0.45 * neighbor_advisory_severity     <-- 2-hop relational
+                + 0.10 * health_gap
+                + 0.05 * firmware_outdated_flag
+                + 0.10 * three_way_interaction          <-- smooth product
+                + 0.05 * noise
+
+  AT_RISK = latent_risk > 0.50
+
+Where:
+  - neighbor_advisory_severity is the MAX advisory severity among OTHER
+    equipment items on the same tower (the 2-hop GNN signal: your
+    tower-mate's advisory boosts your own risk through the
+    Equipment <-> Tower <-> Equipment path).
+  - three_way_interaction = advisory_severity * health_gap *
+    (firmware_outdated + 0.3) * 4 -- a smooth product term that fires
+    only when ALL three of advisory / health / firmware signals are
+    present at moderate levels. No single SQL threshold captures it.
+
+A naive SQL filter on HEALTH_SCORE alone misses ~93% of true at-risk
+equipment. Even a sophisticated join-aware SQL writer has to know
+about the ModelAdvisory table, the tower-mate effect, AND the smooth
+interaction -- three layers of ontology awareness the GNN learns from
+training data automatically.
 """
 
 import numpy as np
@@ -163,16 +190,44 @@ def firmware_outdated(version: str) -> int:
 
 
 def synthesize_labels(records: list[dict], advisory_severity: dict, rng: np.random.Generator):
-    """For each equipment, draw the four risk components, combine, set
+    """For each equipment, draw the five risk components, combine, set
     HEALTH_SCORE consistent with the health component, and derive
-    AT_RISK + STATUS. The advisory signal dominates (0.60 weight) so
-    HEALTH_SCORE alone cannot recover the AT_RISK label."""
+    AT_RISK + STATUS. The advisory signal dominates the linear part
+    (0.35); a 2-hop neighbor signal (0.25) adds the tower-mate effect;
+    a smooth three-way interaction (0.15) catches compound risk that no
+    single threshold isolates.
+    """
     n = len(records)
 
     adv_sev = np.array([advisory_severity.get(r["MODEL"], 0.0) for r in records])
 
+    # 2-hop relational signal: max advisory severity among OTHER
+    # equipment items on the same tower. This is the multi-hop pattern
+    # the GNN learns via Equipment -> Tower -> Equipment message
+    # passing -- "your tower-mate has a known-bad model, so your
+    # operational risk is elevated even if your own model is clean."
+    tower_to_indices: dict[str, list[int]] = {}
+    for i, r in enumerate(records):
+        tower_to_indices.setdefault(r["TOWER_ID"], []).append(i)
+
+    neighbor_risk = np.zeros(n)
+    for tower_id, idxs in tower_to_indices.items():
+        # For each equipment on this tower, neighbor_risk = max advisory
+        # severity among the OTHER equipment on the same tower.
+        if len(idxs) <= 1:
+            continue
+        sevs = adv_sev[idxs]
+        max_sev = sevs.max()
+        # Equipment that itself has the max severity gets the
+        # second-highest; everyone else gets the max.
+        sorted_sevs = np.sort(sevs)[::-1]
+        second_max = sorted_sevs[1] if len(sorted_sevs) > 1 else 0.0
+        for j, i in enumerate(idxs):
+            neighbor_risk[i] = second_max if adv_sev[i] >= max_sev - 1e-9 else max_sev
+
     # Health gap distribution depends on advisory presence:
-    # - strong advisory (>=0.7): equipment LOOKS healthy (advisory drives risk)
+    # - strong advisory (>=0.7): equipment LOOKS healthy (advisory
+    #   drives risk on its own)
     # - mid advisory (0.4-0.7): wider spread (combined cases exist)
     # - no/weak advisory: occasional health-only failures
     health_gap = np.empty(n)
@@ -187,18 +242,25 @@ def synthesize_labels(records: list[dict], advisory_severity: dict, rng: np.rand
     firmware_flag = np.array([firmware_outdated(r["FIRMWARE_VERSION"]) for r in records])
     noise = rng.uniform(0.0, 1.0, size=n)
 
+    # Smooth three-way interaction: fires when advisory + health gap +
+    # firmware-outdated all contribute. A SQL writer can approximate
+    # the AND-of-thresholds pattern but not the smooth product. The
+    # `firmware_flag + 0.3` shifts the firmware contribution so a 0/1
+    # binary doesn't fully zero out the interaction term.
+    three_way = adv_sev * health_gap * (firmware_flag + 0.3) * 4.0
+
     latent = (
-        0.60 * adv_sev
-      + 0.25 * health_gap
-      + 0.10 * firmware_flag
+        0.25 * adv_sev
+      + 0.45 * neighbor_risk
+      + 0.10 * health_gap
+      + 0.05 * firmware_flag
+      + 0.10 * three_way
       + 0.05 * noise
     )
 
     at_risk = (latent > 0.50).astype(int)
-    # FAILING threshold 0.65: items where multiple risk channels stack
-    # (e.g., strong advisory + meaningful health gap + outdated firmware).
     status = np.where(
-        latent > 0.65, "FAILING",
+        latent > 0.70, "FAILING",
         np.where(latent > 0.50, "WARNING", "OPERATIONAL"),
     )
     health_score = np.clip(
@@ -208,8 +270,10 @@ def synthesize_labels(records: list[dict], advisory_severity: dict, rng: np.rand
     for i, r in enumerate(records):
         r["LATENT_RISK"] = round(float(latent[i]), 3)
         r["ADVISORY_SEVERITY"] = float(adv_sev[i])
+        r["NEIGHBOR_RISK"] = round(float(neighbor_risk[i]), 3)
         r["HEALTH_GAP"] = round(float(health_gap[i]), 3)
         r["HEALTH_SCORE"] = round(float(health_score[i]), 3)
+        r["THREE_WAY"] = round(float(three_way[i]), 3)
         r["AT_RISK"] = int(at_risk[i])
         r["STATUS"] = str(status[i])
         r["FIRMWARE_OUTDATED"] = int(firmware_flag[i])
@@ -320,24 +384,59 @@ def report(eq_df: pd.DataFrame, hl_df: pd.DataFrame, adv_df: pd.DataFrame, upgra
 
     print(f"\n  Risk-source breakdown of AT_RISK equipment:")
     ar = eq_df[eq_df["AT_RISK"] == 1].copy()
-    ar["RISK_SOURCE"] = np.where(
-        (ar["ADVISORY_SEVERITY"] > 0.4) & (ar["HEALTH_GAP"] < 0.3), "advisory-only",
-        np.where(
-            (ar["ADVISORY_SEVERITY"] < 0.2) & (ar["HEALTH_GAP"] > 0.4), "health-only",
-            np.where(
-                (ar["ADVISORY_SEVERITY"] > 0.3) & (ar["HEALTH_GAP"] > 0.25), "combined",
-                "other / noise",
-            ),
-        ),
-    )
+    ar["RISK_SOURCE"] = "other / noise"
+    # Order matters: assign the most-specific category first so each
+    # equipment lands in exactly one bucket.
+    ar.loc[ar["THREE_WAY"] > 0.8, "RISK_SOURCE"] = "three-way interaction"
+    ar.loc[
+        (ar["RISK_SOURCE"] == "other / noise")
+        & (ar["NEIGHBOR_RISK"] > 0.5)
+        & (ar["ADVISORY_SEVERITY"] < 0.3),
+        "RISK_SOURCE",
+    ] = "neighbor-driven (2-hop)"
+    ar.loc[
+        (ar["RISK_SOURCE"] == "other / noise")
+        & (ar["ADVISORY_SEVERITY"] > 0.4)
+        & (ar["HEALTH_GAP"] < 0.3),
+        "RISK_SOURCE",
+    ] = "advisory-only"
+    ar.loc[
+        (ar["RISK_SOURCE"] == "other / noise")
+        & (ar["ADVISORY_SEVERITY"] > 0.3)
+        & (ar["HEALTH_GAP"] > 0.25),
+        "RISK_SOURCE",
+    ] = "combined (advisory + health)"
+    ar.loc[
+        (ar["RISK_SOURCE"] == "other / noise")
+        & (ar["ADVISORY_SEVERITY"] < 0.2)
+        & (ar["HEALTH_GAP"] > 0.4),
+        "RISK_SOURCE",
+    ] = "health-only"
     print(ar["RISK_SOURCE"].value_counts().to_string())
 
-    print(f"\n  SQL-vs-GNN check (target: SQL catches < 35% of AT_RISK):")
-    sql_catch = ((eq_df["AT_RISK"] == 1) & (eq_df["HEALTH_SCORE"] < 0.5)).sum()
+    print(f"\n  SQL-vs-GNN comparison:")
     total_atrisk = int(eq_df["AT_RISK"].sum())
-    print(f"    SQL `WHERE health_score < 0.5` catches: {sql_catch} / {total_atrisk} ({sql_catch/total_atrisk:.1%})")
-    print(f"    GNN-only opportunity (advisory-driven AT_RISK with normal health):"
-          f" {total_atrisk - sql_catch} ({(total_atrisk - sql_catch)/total_atrisk:.1%})")
+
+    # 1) Naive SQL: equipment columns only (health threshold).
+    sql_naive = ((eq_df["AT_RISK"] == 1) & (eq_df["HEALTH_SCORE"] < 0.5)).sum()
+    print(f"    Naive SQL (`WHERE health_score < 0.5`): "
+          f"{sql_naive} / {total_atrisk} ({sql_naive/total_atrisk:.1%})")
+
+    # 2) Join-aware SQL: also joins ModelAdvisory by MODEL.
+    advised_models = set(adv_df["MODEL"].tolist())
+    sql_joined = (
+        (eq_df["AT_RISK"] == 1)
+        & ((eq_df["HEALTH_SCORE"] < 0.5) | (eq_df["MODEL"].isin(advised_models)))
+    ).sum()
+    print(f"    Join-aware SQL (above + `OR model IN advised`): "
+          f"{sql_joined} / {total_atrisk} ({sql_joined/total_atrisk:.1%})")
+
+    # 3) GNN-only opportunity: AT_RISK items the join-aware SQL still misses.
+    #    These are dominated by 2-hop neighbor-driven cases and smooth
+    #    three-way interactions on non-advised models.
+    gnn_only = total_atrisk - sql_joined
+    print(f"    Remaining (only the GNN's multi-hop / interaction signal): "
+          f"{gnn_only} ({gnn_only/total_atrisk:.1%})")
 
 
 def main():

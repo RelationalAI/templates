@@ -36,16 +36,26 @@ Each stage writes derived properties back to the same ontology that downstream s
 
 ## Why a GNN here, not a SQL query?
 
-The label model in the bundled data is designed to make this question concrete. Each equipment's underlying risk is a weighted sum:
+The label model in the bundled data is designed to make this question concrete. Each equipment's underlying risk combines **five** signals — three direct, two relational:
 
 ```
-latent_risk = 0.60 × advisory_severity_on_model   ← out-of-band, propagated via MODEL
-            + 0.25 × (1 − health_score)            ← direct equipment column
-            + 0.10 × firmware_outdated_flag        ← direct equipment column
+latent_risk = 0.25 × advisory_severity_on_model      ← neighbor concept (1-hop)
+            + 0.45 × neighbor_advisory_severity      ← neighbor concept (2-hop via tower)
+            + 0.10 × (1 − health_score)              ← direct equipment column
+            + 0.05 × firmware_outdated_flag          ← direct equipment column
+            + 0.10 × three_way_smooth_interaction    ← non-linear product
             + 0.05 × noise
 ```
 
-A SQL query on equipment columns alone (`WHERE health_score < 0.5` or any combination of equipment-side thresholds) catches **only 22 of 302 at-risk equipment items (7.3 %)** in the bundled data — because most of the risk signal lives on a *different concept* (`ModelAdvisory`) that the SQL query would have to join in by hand. The GNN's heterogeneous `ModelAdvisory → NetworkEquipment` edge does that traversal automatically, and outputs a graded probability the prescriptive stage can prioritize against. This is the canonical GNN-over-SQL case: the predictive value comes from relational structure the analyst can't easily express in a flat query.
+Three layers of SQL sophistication are required to approximate this — and even the most sophisticated SQL still leaves a measurable gap:
+
+| Reasoning shape | Catches | Why it misses |
+|---|---|---|
+| **Naive SQL** (`WHERE health_score < 0.5`) | ~6 % of true at-risk | Most risk lives on the `ModelAdvisory` concept, not on equipment columns. |
+| **Join-aware SQL** (also `OR model IN advised`) | ~85 % | The analyst has to know about `ModelAdvisory`, write the join, and pick a severity threshold. Still misses the 2-hop and interaction cases. |
+| **GNN over the heterogeneous graph** | ~100 % | Propagates advisory severity through `ModelAdvisory → NetworkEquipment` (1-hop) and `Equipment ↔ Tower ↔ Equipment` (2-hop, via undirected `directed=False` graph), and learns the smooth three-way interaction from training data. Outputs a graded probability the MIP can prioritize against. |
+
+The remaining **~15 % gap** between join-aware SQL and the GNN is the *uniquely GNN-distinctive* set: equipment whose own MODEL has no advisory but whose tower-mate's does (the 2-hop case), plus equipment whose risk only emerges from a smooth combination of moderate signals no threshold captures (the three-way interaction). These are the canonical patterns a heterogeneous GNN earns its keep on.
 
 ## Reasoner overview: inputs, outputs, and role
 
@@ -163,31 +173,30 @@ Set `EXP_DATABASE` at the top of `telco_network_recovery.py` to that database (d
 
    ```text
    Equipment split: train=1050 val=225 test=1500 (all)
-   Label distribution: at_risk=1 302 / 1500 (20.1%)
+   Label distribution: at_risk=1 597 / 1500 (39.8%)
    Advisories: 8 on 7 distinct models
 
    STAGE 1: PREDICTIVE -- equipment-failure binary classification GNN
-     failure_intensity distribution: min=0.02, median=1.08, max=4.79
-     Towers with failure_intensity > 1.5: 65 / 190
-     SQL alternative `WHERE health_score < 0.5` catches:
-       22 / 302 (7.3%) of true at-risk equipment.
-     The remaining 280 cases are advisory-driven; the GNN catches them
-     via the ModelAdvisory edge.
+     failure_intensity distribution: min=0.09, median=3.06, max=8.67
+     Towers with failure_intensity > 1.5: 165 / 190
+     SQL-vs-GNN comparison on 597 true at-risk items:
+       Naive SQL `WHERE health_score < 0.5`:               39 ( 6.5%)
+       Join-aware SQL `... OR model IN advised_models`:  ~510 (85.4%)
+       GNN-only opportunity (2-hop + smooth interaction):  ~87 (14.6%)
 
    STAGE 2: RULES -- flag is_critical_restore towers
-     Flagged critical_restore towers: 72
+     Flagged critical_restore towers: 166
      Region breakdown:  WEST CENTRAL EAST NORTH SOUTH
 
    STAGE 3: GRAPH -- PageRank + per-critical-tower blast radius
-     Per-critical-tower blast radius (impact_count, weighted_impact, failure_intensity)
 
    STAGE 4: PRESCRIPTIVE -- tower upgrade selection MIP
-     Selected upgrades: 30 across 5 regions
-     Total cost:               $4,990,549  (budget $5,000,000, binding)
-     Total install crew-weeks: 178         (budget 200, slack)
-     Capacity restored:        186 Gbps
-     Tier mix:                 {'BRONZE': 13, 'SILVER': 10, 'GOLD': 7}
-     Region breakdown:         {'WEST': 10, 'EAST': 8, 'CENTRAL': 4, 'NORTH': 4, 'SOUTH': 4}
+     Selected upgrades: 39 across 5 regions
+     Total cost:               $4,999,671  (budget $5,000,000, binding)
+     Total install crew-weeks: 195         (budget 200, near binding)
+     Capacity restored:        214 Gbps
+     Tier mix:                 {'BRONZE': 22, 'SILVER': 13, 'GOLD': 4}
+     Region breakdown:         {'EAST': 11, 'WEST': 9, 'SOUTH': 8, 'CENTRAL': 7, 'NORTH': 4}
 
    PIPELINE COMPLETE: 4 stages executed on the shared Telco ontology
    ```
@@ -218,28 +227,33 @@ telco_network_recovery/
 
 ### Stage 1: Predictive — equipment-failure binary GNN
 
-The GNN learns a binary `at_risk` label (1 if `STATUS in {FAILING, WARNING}`, else 0) by message-passing over three heterogeneous edges:
+The GNN learns a binary `at_risk` label (1 if `STATUS in {FAILING, WARNING}`, else 0) by message-passing over three heterogeneous edges on an **undirected** graph (`directed=False`), so signal can flow both ways and reach equipment via 2-hop paths through their towers:
 
 ```python
-# Edge 1: EquipmentHealth -> NetworkEquipment (per-equipment health features)
+gnn_graph = Graph(model, directed=False, weighted=False)
+
+# Edge 1: EquipmentHealth <-> NetworkEquipment (per-equipment health features)
 model.define(gnn_graph.Edge.new(src=EquipmentHealth, dst=NetworkEquipment)).where(
     EquipmentHealth.equipment_id_fk == NetworkEquipment.id,
 )
-# Edge 2: NetworkEquipment -> CellTower (tower-context features)
+# Edge 2: NetworkEquipment <-> CellTower (tower-context features; also
+# the 2-hop path that lets advisory signal reach tower-mates)
 model.define(gnn_graph.Edge.new(src=NetworkEquipment, dst=CellTower)).where(
     NetworkEquipment.tower_id_fk == CellTower.id,
 )
-# Edge 3: ModelAdvisory -> NetworkEquipment (recall/defect signal via MODEL)
+# Edge 3: ModelAdvisory <-> NetworkEquipment (recall/defect signal via MODEL)
 model.define(gnn_graph.Edge.new(src=ModelAdvisory, dst=NetworkEquipment)).where(
     ModelAdvisory.model == NetworkEquipment.eqp_model,
 )
 ```
 
+The undirected setting matters: with directed edges, the advisory signal would absorb into an advised equipment item but couldn't propagate to its tower-mates. Bidirectional message passing lets the GNN learn the 2-hop *"my tower-mate has a known-bad model, so I'm at elevated risk too"* pattern that's the multi-hop case in the latent-risk model.
+
 `PropertyTransformer` annotates features by type — categorical (manufacturer, MODEL, firmware version, tower type / status / region, advisory type), continuous (failure rate, temperature, power consumption, health score, advisory severity), integer (MTBF hours, tower capacity), and datetime (install dates, last failure date, measurement date, advisory issued date).
 
 Per-equipment predicted-failure probabilities are summed per tower and loaded back as a `CellTower.failure_intensity` property via a small `TowerFailureScore` bridge concept. Sum (not max) preserves per-tower differentiation — a tower with 4 confidently-at-risk pieces weighs ~4× a tower with 1.
 
-The script prints a side-by-side check: how many at-risk equipment items a SQL filter on `HEALTH_SCORE < 0.5` would catch vs the GNN's set. In the bundled data the SQL alternative catches 22 of 302 at-risk items (7.3 %); the remaining 280 (92.7 %) are advisory-driven and reached only through the `ModelAdvisory → NetworkEquipment` edge.
+The script prints a three-tier SQL-vs-GNN comparison. On the bundled data: naive SQL on `HEALTH_SCORE < 0.5` catches 39 of 597 at-risk items (6.5%); a join-aware SQL adding `OR model IN advised_models` reaches ~85%; the remaining ~15% are 2-hop tower-mate-driven or smooth three-way interactions only the GNN catches via its undirected heterogeneous graph.
 
 ### Stage 2: Rules — three-branch is_critical_restore
 

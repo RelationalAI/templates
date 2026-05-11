@@ -9,12 +9,14 @@ by manufacturer advisories (captured by a GNN). Neither signal is
 recoverable from the other alone, so the chain integrates both.
 
 - Stage 1 -- Predictive: train a binary classification GNN on
-  NetworkEquipment.STATUS over a heterogeneous graph that includes
-  EquipmentHealth -> NetworkEquipment, NetworkEquipment -> CellTower,
-  and ModelAdvisory -> NetworkEquipment (the recall/defect edge). The
-  GNN learns to propagate advisory severity through shared-MODEL
-  message passing -- a relational signal a SQL filter on equipment
-  columns alone cannot reproduce. Per-equipment predicted-failure
+  NetworkEquipment.STATUS over a heterogeneous *undirected* graph
+  that includes EquipmentHealth <-> NetworkEquipment, NetworkEquipment
+  <-> CellTower, and ModelAdvisory <-> NetworkEquipment (the
+  recall/defect edge). The undirected setting enables 2-hop message
+  passing across Equipment <-> Tower <-> Equipment, so the GNN learns
+  that a piece of equipment is at elevated risk when its tower-mate
+  sits on a recalled MODEL -- a pattern a SQL `JOIN model_advisories`
+  query cannot easily reproduce. Per-equipment predicted-failure
   probability is summed per tower into `CellTower.failure_intensity`.
 - Stage 2 -- Rules: derive per-tower averages from NetworkPerformance
   and EquipmentHealth, then flag `CellTower.is_critical_restore` via
@@ -313,14 +315,18 @@ print(f"\n{'=' * 60}")
 print("STAGE 1: PREDICTIVE -- equipment-failure binary classification GNN")
 print("=" * 60)
 
-# Heterogeneous graph with three FK edges:
-#   1. EquipmentHealth -> NetworkEquipment  (per-equipment health features)
-#   2. NetworkEquipment -> CellTower        (tower-context features)
-#   3. ModelAdvisory -> NetworkEquipment   (recall/defect signal via MODEL)
-# The third edge is what distinguishes the GNN from a per-row tabular
-# classifier: advisory severity propagates to every fleet sibling
-# through shared MODEL, without the analyst joining tables by hand.
-gnn_graph = Graph(model, directed=True, weighted=False)
+# Heterogeneous graph with three FK / shared-MODEL edges:
+#   1. EquipmentHealth <-> NetworkEquipment  (per-equipment health features)
+#   2. NetworkEquipment <-> CellTower        (tower-context features)
+#   3. ModelAdvisory <-> NetworkEquipment    (recall/defect signal via MODEL)
+# We use `directed=False` (undirected, bidirectional message passing)
+# so the GNN can propagate signal across multi-hop paths: a piece of
+# equipment whose own MODEL has no advisory can still inherit risk
+# from a tower-mate whose MODEL does, via the path
+#   ModelAdvisory -> tower_mate -> CellTower -> this_equipment.
+# That 2-hop neighbor pattern is the one a SQL `JOIN model_advisories`
+# query cannot easily reproduce.
+gnn_graph = Graph(model, directed=False, weighted=False)
 
 model.define(gnn_graph.Edge.new(src=EquipmentHealth, dst=NetworkEquipment)).where(
     EquipmentHealth.equipment_id_fk == NetworkEquipment.id,
@@ -456,19 +462,32 @@ print(
     f"{int((per_tower['FAILURE_INTENSITY'] > FAILURE_INTENSITY_THRESHOLD).sum())} / {len(per_tower)}"
 )
 
-# Side-by-side check: what would a SQL filter on HEALTH_SCORE alone catch?
+# Side-by-side check: how far different levels of SQL sophistication
+# get on this data, vs the GNN's set. Three tiers:
+#   1. Naive SQL on health columns -- catches the health-only tail.
+#   2. Join-aware SQL also filtering on advised MODEL -- catches the
+#      bulk, but misses 2-hop neighbor-driven and smooth-interaction
+#      cases.
+#   3. The GNN (the chain output) -- closes the remaining gap via
+#      heterogeneous undirected message passing.
+total_atrisk = int(network_equipment_df["AT_RISK"].sum())
 sql_alt = network_equipment_df.merge(
     equipment_health_df[["EQUIPMENT_ID", "HEALTH_SCORE"]], on="EQUIPMENT_ID"
 )
-sql_caught = sql_alt[(sql_alt["AT_RISK"] == 1) & (sql_alt["HEALTH_SCORE"] < 0.5)].shape[0]
-total_atrisk = int(network_equipment_df["AT_RISK"].sum())
+sql_naive = sql_alt[(sql_alt["AT_RISK"] == 1) & (sql_alt["HEALTH_SCORE"] < 0.5)].shape[0]
+advised_models = set(advisories_df["MODEL"].tolist())
+sql_joined = sql_alt[
+    (sql_alt["AT_RISK"] == 1)
+    & ((sql_alt["HEALTH_SCORE"] < 0.5) | (sql_alt["MODEL"].isin(advised_models)))
+].shape[0]
 print(
-    f"\n  SQL alternative: `WHERE health_score < 0.5` catches "
-    f"{sql_caught} / {total_atrisk} ({sql_caught/total_atrisk:.1%}) of true at-risk."
-)
-print(
-    f"  The remaining {total_atrisk - sql_caught} cases ({(total_atrisk - sql_caught)/total_atrisk:.1%}) "
-    f"are advisory-driven; the GNN catches them via the ModelAdvisory edge."
+    f"\n  SQL-vs-GNN comparison on {total_atrisk} true at-risk items:"
+    f"\n    Naive SQL `WHERE health_score < 0.5`:                "
+    f"{sql_naive:>4} ({sql_naive/total_atrisk:>5.1%})"
+    f"\n    Join-aware SQL `... OR model IN advised_models`:    "
+    f"{sql_joined:>4} ({sql_joined/total_atrisk:>5.1%})"
+    f"\n    GNN-only opportunity (2-hop + smooth interaction):  "
+    f"{total_atrisk - sql_joined:>4} ({(total_atrisk - sql_joined)/total_atrisk:>5.1%})"
 )
 
 # Bridge concept: load per-tower failure_intensity back as a CellTower
