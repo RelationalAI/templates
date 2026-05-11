@@ -49,13 +49,16 @@ latent_risk = 0.25 × advisory_severity_on_model      ← neighbor concept (1-ho
 
 Three layers of SQL sophistication are required to approximate this — and even the most sophisticated SQL still leaves a measurable gap:
 
-| Reasoning shape | Catches | Why it misses |
+| Reasoning shape | Catches (of 597) | Why this number |
 |---|---|---|
-| **Naive SQL** (`WHERE health_score < 0.5`) | 39 / 597 = 6.5 % of true at-risk | Most risk lives on the `ModelAdvisory` concept, not on equipment columns. |
-| **Join-aware SQL** (also `OR model IN advised`) | 510 / 597 = 85.4 % | The analyst has to know about `ModelAdvisory`, write the join, and pick a severity threshold. Still misses the 2-hop and interaction cases. |
-| **GNN over the heterogeneous graph** | 597 / 597 = 100 % | Propagates advisory severity through `ModelAdvisory → NetworkEquipment` (1-hop) and `Equipment ↔ Tower ↔ Equipment` (2-hop, via undirected `directed=False` graph), and learns the smooth three-way interaction from training data. Outputs a graded probability the MIP can prioritize against. |
+| **Naive SQL** (`WHERE health_score < 0.5`) | **39 (6.5 %)** | Most risk lives on the `ModelAdvisory` concept, not on equipment columns. |
+| **Join-aware SQL** (also `OR model IN advised`) | **510 (85.4 %)** | The analyst has to know about `ModelAdvisory`, write the join, and pick a severity threshold. Still misses the 2-hop and smooth-interaction cases. |
+| **GNN @ p≥0.5** (per-equipment binary recall) | **503 (84.3 %)** | At the standard probability threshold, the GNN's per-item recall is comparable to join-aware SQL. Calibration is graded: pos_prob distribution is min=0.024, median=0.331, max=0.890. |
+| **GNN's contribution to the chain** | **graded score on all 1,500 items** | Per-equipment positive-class probability is summed per tower into `CellTower.failure_intensity` (range ~0.09–8.67), giving the optimizer a *continuous* priority signal — not a binary flag. |
 
-The remaining **87 / 597 = 14.6 % gap** between join-aware SQL and the GNN is the *uniquely GNN-distinctive* set: equipment whose own MODEL has no advisory but whose tower-mate's does (the 2-hop case), plus equipment whose risk only emerges from a smooth combination of moderate signals no threshold captures (the three-way interaction). These are the canonical patterns a heterogeneous GNN earns its keep on.
+The **87 / 597 = 14.6 % gap** between join-aware SQL and the true at-risk set is the *uniquely GNN-distinctive* opportunity: equipment whose own MODEL has no advisory but whose tower-mate's does (2-hop case), plus equipment whose risk only emerges from a smooth combination of moderate signals no threshold captures (three-way interaction).
+
+The chain's value isn't binary recall — even at p≥0.5 the GNN is close to join-aware SQL. The value is the **graded per-tower priority score**: many items with pos_prob ∈ [0.3, 0.5] don't fire individual binary flags but, summed per tower, surface high-`failure_intensity` towers the optimizer can rank against (165 / 190 towers exceed `failure_intensity > 1.5` and join the predictive critical-restore branch).
 
 ## Reasoner overview: inputs, outputs, and role
 
@@ -180,13 +183,21 @@ Set `EXP_DATABASE` at the top of `telco_network_recovery.py` to that database (d
      failure_intensity distribution: min=0.09, median=3.06, max=8.67
      Towers with failure_intensity > 1.5: 165 / 190
      SQL-vs-GNN comparison on 597 true at-risk items:
-       Naive SQL `WHERE health_score < 0.5`:               39 ( 6.5%)
-       Join-aware SQL `... OR model IN advised_models`:   510 (85.4%)
-       GNN-only opportunity (2-hop + smooth interaction):  87 (14.6%)
+       Naive SQL `WHERE health_score < 0.5`:                 39 ( 6.5%)
+       Join-aware SQL `... OR model IN advised_models`:    510 (85.4%)
+       GNN-only opportunity (2-hop + smooth interaction):   87 (14.6%)
+       GNN recall, argmax (predicted_label == 1):             0 ( 0.0%)
+       GNN recall, p>=0.5 (probabilistic threshold):        503 (84.3%)
+     GNN per-equipment positive-prob distribution: min=0.024,
+       median=0.331, max=0.890; items with pos_prob>=0.5: 572 / 1500
 
    STAGE 2: RULES -- flag is_critical_restore towers
      Flagged critical_restore towers: 166
      Region breakdown:  WEST 47, EAST 37, SOUTH 33, NORTH 29, CENTRAL 20
+     Branch 1 (WEST + DEGRADED + low health):                  12 towers
+     Branch 2 (WEST + high packet loss + low health):          12 towers
+     Branch 3 (failure_intensity > 1.5, any region):          165 towers
+     Towers flagged ONLY by the predictive branch:            154 (93%)
 
    STAGE 3: GRAPH -- PageRank + per-critical-tower blast radius
 

@@ -251,76 +251,12 @@ model.define(ModelAdvisory.new(
     issued_date=src.ISSUED_DATE,
 ))
 
-# NetworkPerformance -- per-tower measurements consumed by Stage 2
-# rules (avg packet loss / latency / error rate).
-NetworkPerformance = model.Concept("NetworkPerformance", identify_by={"id": String})
-NetworkPerformance.packet_loss_pct = model.Property(f"{NetworkPerformance} has {Float:packet_loss_pct}")
-NetworkPerformance.latency_ms = model.Property(f"{NetworkPerformance} has {Float:latency_ms}")
-NetworkPerformance.error_rate = model.Property(f"{NetworkPerformance} has {Float:error_rate}")
-NetworkPerformance.for_tower = model.Relationship(
-    f"{NetworkPerformance} for tower {CellTower}", short_name="performance_for_tower"
-)
-src = model.data(network_perf_df)
-model.define(NetworkPerformance.new(
-    id=src.METRIC_ID,
-    packet_loss_pct=src.PACKET_LOSS_PCT,
-    latency_ms=src.LATENCY_MS,
-    error_rate=src.ERROR_RATE,
-    for_tower=CellTower.filter_by(id=src.TOWER_ID),
-))
-
-# Subscriber -- nodes of the Stage 3 call graph.
-Subscriber = model.Concept("Subscriber", identify_by={"id": String})
-Subscriber.subscriber_type = model.Property(f"{Subscriber} has {String:subscriber_type}")
-Subscriber.lifetime_value = model.Property(f"{Subscriber} has {Float:lifetime_value}")
-src = model.data(subscribers_df)
-model.define(Subscriber.new(
-    id=src.SUB_ID,
-    subscriber_type=src.SUBSCRIBER_TYPE,
-    lifetime_value=src.LIFETIME_VALUE_USD,
-))
-
-# CallDetailRecord -- edge concept for Stage 3.
-CallDetailRecord = model.Concept("CallDetailRecord", identify_by={"id": String})
-CallDetailRecord.caller = model.Relationship(
-    f"{CallDetailRecord} has caller {Subscriber}", short_name="cdr_caller"
-)
-CallDetailRecord.callee = model.Relationship(
-    f"{CallDetailRecord} has callee {Subscriber}", short_name="cdr_callee"
-)
-CallDetailRecord.routed_through = model.Relationship(
-    f"{CallDetailRecord} routed through {CellTower}", short_name="cdr_routed_through"
-)
-src = model.data(cdr_df)
-model.define(CallDetailRecord.new(
-    id=src.CDR_ID,
-    caller=Subscriber.filter_by(id=src.CALLER_SUB_ID),
-    callee=Subscriber.filter_by(id=src.CALLEE_SUB_ID),
-    routed_through=CellTower.filter_by(id=src.TOWER_ID),
-))
-
-# TowerUpgradeOption -- Stage 4 decision space. Every tower has three
-# tier options (BRONZE / SILVER / GOLD).
-TowerUpgradeOption = model.Concept(
-    "TowerUpgradeOption", identify_by={"tower_id": String, "tier": String}
-)
-TowerUpgradeOption.capacity_increase_gbps = model.Property(
-    f"{TowerUpgradeOption} has {Integer:capacity_increase_gbps}"
-)
-TowerUpgradeOption.cost = model.Property(f"{TowerUpgradeOption} has {Float:cost}")
-TowerUpgradeOption.install_weeks = model.Property(f"{TowerUpgradeOption} has {Integer:install_weeks}")
-TowerUpgradeOption.for_tower = model.Relationship(
-    f"{TowerUpgradeOption} for tower {CellTower}", short_name="upgrade_for_tower"
-)
-src = model.data(upgrade_options_df)
-model.define(TowerUpgradeOption.new(
-    tower_id=src.TOWER_ID,
-    tier=src.UPGRADE_TIER,
-    capacity_increase_gbps=src.CAPACITY_INCREASE_GBPS,
-    cost=src.COST_USD,
-    install_weeks=src.INSTALL_WEEKS,
-    for_tower=CellTower.filter_by(id=src.TOWER_ID),
-))
+# Note: NetworkPerformance, Subscriber, CallDetailRecord, and
+# TowerUpgradeOption are loaded just before their respective stages
+# below. Loading them up front keeps gnn.fit()'s transaction payload
+# small enough to avoid Snowflake's CREATE_TRANSACTION_V2 row-size
+# limit, and avoids triggering the SDK's _collect_node_columns
+# iteration-mutation bug on CellTower's relationship set.
 
 # --------------------------------------------------
 # Stage 1: Predictive -- equipment-failure binary GNN
@@ -495,6 +431,32 @@ sql_joined = sql_alt[
     (sql_alt["AT_RISK"] == 1)
     & ((sql_alt["HEALTH_SCORE"] < 0.5) | (sql_alt["MODEL"].isin(advised_models)))
 ].shape[0]
+# GNN end-to-end recall on at-risk items. Report two views:
+#   - At the model's built-in argmax (predicted_label == 1).
+#   - At the standard probability threshold (pos_prob >= 0.5).
+# The argmax view answers "what the model says"; the 0.5-threshold view
+# answers "what a downstream rule would catch using the GNN's calibrated
+# probability." They can diverge if the model's calibration is shifted
+# (the argmax can be conservative even when probs are well-separated).
+gnn_flagged_atrisk = pred_df.merge(
+    network_equipment_df[["EQUIPMENT_ID", "AT_RISK"]].rename(
+        columns={"EQUIPMENT_ID": "equipment_id"}
+    ),
+    on="equipment_id",
+    how="left",
+)
+gnn_recall_argmax = int(
+    gnn_flagged_atrisk[
+        (gnn_flagged_atrisk["AT_RISK"] == 1)
+        & (gnn_flagged_atrisk["predicted_label"] == 1)
+    ].shape[0]
+)
+gnn_recall_p05 = int(
+    gnn_flagged_atrisk[
+        (gnn_flagged_atrisk["AT_RISK"] == 1)
+        & (gnn_flagged_atrisk["pos_prob"] >= 0.5)
+    ].shape[0]
+)
 print(
     f"\n  SQL-vs-GNN comparison on {total_atrisk} true at-risk items:"
     f"\n    Naive SQL `WHERE health_score < 0.5`:                "
@@ -503,6 +465,18 @@ print(
     f"{sql_joined:>4} ({sql_joined/total_atrisk:>5.1%})"
     f"\n    GNN-only opportunity (2-hop + smooth interaction):  "
     f"{total_atrisk - sql_joined:>4} ({(total_atrisk - sql_joined)/total_atrisk:>5.1%})"
+    f"\n    GNN recall, argmax (predicted_label == 1):          "
+    f"{gnn_recall_argmax:>4} ({gnn_recall_argmax/total_atrisk:>5.1%})"
+    f"\n    GNN recall, p>=0.5 (probabilistic threshold):       "
+    f"{gnn_recall_p05:>4} ({gnn_recall_p05/total_atrisk:>5.1%})"
+)
+# Per-equipment positive-prediction distribution for transparency.
+print(
+    f"\n  GNN per-equipment positive-prob distribution: "
+    f"min={pred_df['pos_prob'].min():.3f}, "
+    f"median={pred_df['pos_prob'].median():.3f}, "
+    f"max={pred_df['pos_prob'].max():.3f}; "
+    f"items with pos_prob>=0.5: {int((pred_df['pos_prob']>=0.5).sum())} / {len(pred_df)}"
 )
 
 # Bridge concept: load per-tower failure_intensity back as a CellTower
@@ -531,6 +505,24 @@ model.define(CellTower.failure_intensity(TowerFailureScore.score)).where(
 print(f"\n{'=' * 60}")
 print("STAGE 2: RULES -- flag is_critical_restore towers")
 print("=" * 60)
+
+# NetworkPerformance -- per-tower measurements consumed by the avg
+# packet loss / latency / error rate properties below.
+NetworkPerformance = model.Concept("NetworkPerformance", identify_by={"id": String})
+NetworkPerformance.packet_loss_pct = model.Property(f"{NetworkPerformance} has {Float:packet_loss_pct}")
+NetworkPerformance.latency_ms = model.Property(f"{NetworkPerformance} has {Float:latency_ms}")
+NetworkPerformance.error_rate = model.Property(f"{NetworkPerformance} has {Float:error_rate}")
+NetworkPerformance.for_tower = model.Relationship(
+    f"{NetworkPerformance} for tower {CellTower}", short_name="performance_for_tower"
+)
+src = model.data(network_perf_df)
+model.define(NetworkPerformance.new(
+    id=src.METRIC_ID,
+    packet_loss_pct=src.PACKET_LOSS_PCT,
+    latency_ms=src.LATENCY_MS,
+    error_rate=src.ERROR_RATE,
+    for_tower=CellTower.filter_by(id=src.TOWER_ID),
+))
 
 # Per-tower averages from NetworkPerformance (one row per measurement).
 CellTower.avg_packet_loss = model.Property(f"{CellTower} has {Float:avg_packet_loss}")
@@ -639,6 +631,36 @@ print(f"\n{'=' * 60}")
 print("STAGE 3: GRAPH -- PageRank + per-critical-tower blast radius")
 print("=" * 60)
 
+# Subscriber -- nodes of the Stage 3 call graph.
+Subscriber = model.Concept("Subscriber", identify_by={"id": String})
+Subscriber.subscriber_type = model.Property(f"{Subscriber} has {String:subscriber_type}")
+Subscriber.lifetime_value = model.Property(f"{Subscriber} has {Float:lifetime_value}")
+src = model.data(subscribers_df)
+model.define(Subscriber.new(
+    id=src.SUB_ID,
+    subscriber_type=src.SUBSCRIBER_TYPE,
+    lifetime_value=src.LIFETIME_VALUE_USD,
+))
+
+# CallDetailRecord -- edge concept for Stage 3.
+CallDetailRecord = model.Concept("CallDetailRecord", identify_by={"id": String})
+CallDetailRecord.caller = model.Relationship(
+    f"{CallDetailRecord} has caller {Subscriber}", short_name="cdr_caller"
+)
+CallDetailRecord.callee = model.Relationship(
+    f"{CallDetailRecord} has callee {Subscriber}", short_name="cdr_callee"
+)
+CallDetailRecord.routed_through = model.Relationship(
+    f"{CallDetailRecord} routed through {CellTower}", short_name="cdr_routed_through"
+)
+src = model.data(cdr_df)
+model.define(CallDetailRecord.new(
+    id=src.CDR_ID,
+    caller=Subscriber.filter_by(id=src.CALLER_SUB_ID),
+    callee=Subscriber.filter_by(id=src.CALLEE_SUB_ID),
+    routed_through=CellTower.filter_by(id=src.TOWER_ID),
+))
+
 call_graph = Graph(
     model,
     directed=True,
@@ -711,6 +733,29 @@ print(blast_df.to_string(index=False))
 print(f"\n{'=' * 60}")
 print("STAGE 4: PRESCRIPTIVE -- tower upgrade selection MIP")
 print("=" * 60)
+
+# TowerUpgradeOption -- Stage 4 decision space. Every tower has three
+# tier options (BRONZE / SILVER / GOLD).
+TowerUpgradeOption = model.Concept(
+    "TowerUpgradeOption", identify_by={"tower_id": String, "tier": String}
+)
+TowerUpgradeOption.capacity_increase_gbps = model.Property(
+    f"{TowerUpgradeOption} has {Integer:capacity_increase_gbps}"
+)
+TowerUpgradeOption.cost = model.Property(f"{TowerUpgradeOption} has {Float:cost}")
+TowerUpgradeOption.install_weeks = model.Property(f"{TowerUpgradeOption} has {Integer:install_weeks}")
+TowerUpgradeOption.for_tower = model.Relationship(
+    f"{TowerUpgradeOption} for tower {CellTower}", short_name="upgrade_for_tower"
+)
+src = model.data(upgrade_options_df)
+model.define(TowerUpgradeOption.new(
+    tower_id=src.TOWER_ID,
+    tier=src.UPGRADE_TIER,
+    capacity_increase_gbps=src.CAPACITY_INCREASE_GBPS,
+    cost=src.COST_USD,
+    install_weeks=src.INSTALL_WEEKS,
+    for_tower=CellTower.filter_by(id=src.TOWER_ID),
+))
 
 TowerUpgradeOption.selected = model.Property(f"{TowerUpgradeOption} has {Float:selected}")
 
