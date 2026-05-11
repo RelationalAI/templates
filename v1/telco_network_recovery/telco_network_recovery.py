@@ -1,47 +1,53 @@
 """Telco network recovery (multi-reasoner) template.
 
-This script demonstrates a four-stage multi-reasoner pipeline in RelationalAI,
-combining predictive forecasting, declarative rules, graph analysis, and
-prescriptive optimization on a single shared ontology. The narrative thread:
-one region (WEST) is missing revenue targets while every other region grows;
-the chain produces an actionable tower-upgrade plan.
+Four-stage RelationalAI pipeline that produces a defensible tower-upgrade
+plan from a heterogeneous telco ontology. The narrative: a regional
+operator must allocate a fixed capex budget across cell towers in the
+face of two distinct risk signals -- in-region operational degradation
+(captured by declarative rules) and predicted equipment failure driven
+by manufacturer advisories (captured by a GNN). Neither signal is
+recoverable from the other alone, so the chain integrates both.
 
-- Stage 1 -- Predictive: train a regression GNN on per-region daily KPIs to
-  forecast subscriber growth. Per-region predicted growth is bound back to
-  each CellTower as `projected_demand_growth`, consumed by Stage 4's objective.
-- Stage 2 -- Rules: derive per-tower averages from NetworkPerformance and
-  EquipmentHealth aggregations, then flag `CellTower.is_critical_restore`
-  for WEST DEGRADED towers with low equipment health.
-- Stage 3 -- Graph: PageRank on a directed Subscriber -> Subscriber call
-  graph (caller -> callee). Per-critical-tower `weighted_impact` aggregates
-  the influence scores of subscribers whose calls route through that tower.
+- Stage 1 -- Predictive: train a binary classification GNN on
+  NetworkEquipment.STATUS over a heterogeneous *undirected* graph
+  that includes EquipmentHealth <-> NetworkEquipment, NetworkEquipment
+  <-> CellTower, and ModelAdvisory <-> NetworkEquipment (the
+  recall/defect edge). The undirected setting enables 2-hop message
+  passing across Equipment <-> Tower <-> Equipment, so the GNN learns
+  that a piece of equipment is at elevated risk when its tower-mate
+  sits on a recalled MODEL -- a pattern a SQL `JOIN model_advisories`
+  query cannot easily reproduce. Per-equipment predicted-failure
+  probability is summed per tower into `CellTower.failure_intensity`.
+- Stage 2 -- Rules: derive per-tower averages from NetworkPerformance
+  and EquipmentHealth, then flag `CellTower.is_critical_restore` via
+  three branches: WEST + DEGRADED + low equipment health; WEST + high
+  packet loss + low health; or `failure_intensity > threshold` (any
+  region). The third branch broadens upgrade scope beyond WEST when
+  the GNN flags concentrated equipment failure elsewhere.
+- Stage 3 -- Graph: PageRank on a directed Subscriber -> Subscriber
+  call graph (caller -> callee). Per-critical-tower `weighted_impact`
+  aggregates the influence scores of subscribers whose calls route
+  through that tower.
 - Stage 4 -- Prescriptive: tower-upgrade MIP. Decision variable
-  `TowerUpgradeOption.selected` is binary (one of three tiers per tower).
-  Constraints: at most one tier per tower, total cost <= budget, total
-  install crew-weeks <= 200. Objective maximizes
-  selected x capacity_increase x weighted_impact x projected_demand_growth.
+  `TowerUpgradeOption.selected` is binary (one of three tiers per
+  tower). Constraints: at most one tier per tower, total cost <=
+  budget, total install crew-weeks <= 200. Objective maximizes
+  selected x capacity_increase x weighted_impact x failure_intensity.
 
-Each stage enriches the shared ontology, and downstream stages consume those
-enrichments as first-class properties -- the accretive enrichment pattern.
+Each stage enriches the shared ontology, and downstream stages consume
+those enrichments as first-class properties -- the accretive enrichment
+pattern.
 
 Run:
     python telco_network_recovery.py
-
-Output:
-    Per-stage console summary including:
-    - Per-region GNN-predicted subscriber growth (Dec test horizon)
-    - 15 critical_restore towers with their derived health metrics
-    - PageRank-based per-tower blast radius (distinct subs touched + total influence)
-    - Optimal tower-upgrade plan: status, total cost, capacity restored, tier mix
 """
 
-import datetime as dt
 from pathlib import Path
 
 import pandas as pd
 from relationalai.semantics import (
     Any,
-    Date,
+    DateTime,
     Float,
     Integer,
     Model,
@@ -64,15 +70,20 @@ SEED = 42
 GNN_EPOCHS = 80
 GNN_LR = 0.002
 
-# Stage 4 budget envelope (matches the source-demo numbers).
+# Stage 4 budget envelope.
 BUDGET_USD = 5_000_000
 INSTALL_WEEKS_BUDGET = 200
 
-# RelationalAI's predictive reasoner writes GNN experiment artifacts to a
-# Snowflake schema that the RELATIONALAI native app must have write access
-# to. Set EXP_DATABASE to a database you own; the schema EXPERIMENTS will
-# be created on first run. See README "Prerequisites" for the one-time
-# setup DDL.
+# Stage 2 threshold for the predictive-driven critical-restore branch.
+# failure_intensity is the per-tower SUM of equipment failure probs --
+# effectively expected count of at-risk equipment items on the tower.
+# 1.5 means "the GNN is confident at least ~2 pieces are at risk."
+FAILURE_INTENSITY_THRESHOLD = 1.5
+
+# RelationalAI's predictive reasoner writes GNN experiment artifacts to
+# a Snowflake schema the RELATIONALAI native app must have write access
+# to. Set EXP_DATABASE to a database you own; the schema EXPERIMENTS
+# will be created on first run.
 EXP_DATABASE = "TELCO_ENRICHMENT"
 EXP_SCHEMA = "EXPERIMENTS"
 
@@ -82,57 +93,61 @@ pd.set_option("display.float_format", lambda v: f"{v:,.4f}")
 # Load CSV data
 # --------------------------------------------------
 
-cell_towers_df = pd.read_csv(DATA_DIR / "cell_towers.csv")
+cell_towers_df = pd.read_csv(DATA_DIR / "cell_towers.csv", parse_dates=["INSTALL_DATE"])
 subscribers_df = pd.read_csv(DATA_DIR / "subscribers.csv")
 cdr_df = pd.read_csv(DATA_DIR / "call_detail_records.csv")
 network_perf_df = pd.read_csv(DATA_DIR / "network_performance.csv")
-network_equipment_df = pd.read_csv(DATA_DIR / "network_equipment.csv")
-equipment_health_df = pd.read_csv(DATA_DIR / "equipment_health.csv")
-upgrade_options_df = pd.read_csv(DATA_DIR / "tower_upgrade_options.csv")
-tsm_df = pd.read_csv(DATA_DIR / "time_series_metrics.csv", parse_dates=["METRIC_DATE"])
-
-# Compute per-region temporal lag features for the GNN. The source pipeline
-# precomputed these in Snowflake via window functions; here we do the same
-# transformation in pandas before loading the rows into PyRel.
-tsm_df = tsm_df.sort_values(["REGION", "METRIC_DATE"]).reset_index(drop=True)
-tsm_df["PREV_DAY_GROWTH"] = tsm_df.groupby("REGION")["SUBSCRIBER_GROWTH_RATE"].shift(1).fillna(0.0)
-tsm_df["PREV_WEEK_GROWTH"] = tsm_df.groupby("REGION")["SUBSCRIBER_GROWTH_RATE"].shift(7).fillna(0.0)
-tsm_df["GROWTH_7D_MEAN"] = (
-    tsm_df.groupby("REGION")["SUBSCRIBER_GROWTH_RATE"]
-    .shift(1)
-    .rolling(7, min_periods=1)
-    .mean()
-    .fillna(0.0)
-    .reset_index(level=0, drop=True)
+network_equipment_df = pd.read_csv(DATA_DIR / "network_equipment.csv", parse_dates=["INSTALL_DATE"])
+equipment_health_df = pd.read_csv(
+    DATA_DIR / "equipment_health.csv",
+    parse_dates=["LAST_FAILURE_DATE", "MEASUREMENT_DATE"],
 )
-tsm_df["REGION_FEAT"] = tsm_df["REGION"]
+upgrade_options_df = pd.read_csv(DATA_DIR / "tower_upgrade_options.csv")
+advisories_df = pd.read_csv(DATA_DIR / "model_advisories.csv", parse_dates=["ISSUED_DATE"])
 
-# Same-region 1-day-lag temporal edges drive GNN message passing along time.
-edge_df = tsm_df[["METRIC_DATE", "REGION"]].copy()
-edge_df["PREV_DATE"] = edge_df.groupby("REGION")["METRIC_DATE"].shift(1)
-edge_df = edge_df.dropna(subset=["PREV_DATE"]).reset_index(drop=True)
-edge_df = edge_df.rename(columns={"METRIC_DATE": "DST_DATE", "REGION": "DST_REGION", "PREV_DATE": "SRC_DATE"})
-edge_df["SRC_REGION"] = edge_df["DST_REGION"]
-edge_df = edge_df[["SRC_DATE", "SRC_REGION", "DST_DATE", "DST_REGION"]]
-edge_df["SRC_DATE"] = pd.to_datetime(edge_df["SRC_DATE"]).dt.date
-edge_df["DST_DATE"] = pd.to_datetime(edge_df["DST_DATE"]).dt.date
+# Binary at_risk label for the GNN: STATUS in {FAILING, WARNING} are
+# the positive class (~20% of equipment). OPERATIONAL is the negative
+# class. STATUS itself is dropped from the feature set to prevent leak.
+network_equipment_df["AT_RISK"] = (
+    network_equipment_df["STATUS"].isin(["FAILING", "WARNING"]).astype(int)
+)
 
-tsm_df["METRIC_DATE"] = tsm_df["METRIC_DATE"].dt.date
+# Train/val/test split. Train + val carry labels for fit + evaluation;
+# test = ALL equipment so every item receives a prediction (inference
+# domain) for the chain's per-tower aggregation.
+eq_shuf = network_equipment_df.sample(frac=1, random_state=SEED).reset_index(drop=True)
+n = len(eq_shuf)
+train_n = int(n * 0.70)
+val_n = int(n * 0.15)
+train_eq_df = eq_shuf.iloc[:train_n][["EQUIPMENT_ID", "AT_RISK"]].rename(
+    columns={"EQUIPMENT_ID": "equipment_id", "AT_RISK": "at_risk"}
+)
+val_eq_df = eq_shuf.iloc[train_n:train_n + val_n][["EQUIPMENT_ID", "AT_RISK"]].rename(
+    columns={"EQUIPMENT_ID": "equipment_id", "AT_RISK": "at_risk"}
+)
+test_eq_df = network_equipment_df[["EQUIPMENT_ID"]].rename(
+    columns={"EQUIPMENT_ID": "equipment_id"}
+)
 
-# Train < Nov 2024 (covers WEST's Sep-Oct decline onset).
-# Val = Nov 2024. Test = Dec 2024.
-val_start = dt.date(2024, 11, 1)
-test_start = dt.date(2024, 12, 1)
-train_df = tsm_df.loc[tsm_df["METRIC_DATE"] < val_start, ["METRIC_DATE", "REGION", "SUBSCRIBER_GROWTH_RATE"]].reset_index(drop=True)
-val_df = tsm_df.loc[(tsm_df["METRIC_DATE"] >= val_start) & (tsm_df["METRIC_DATE"] < test_start),
-                     ["METRIC_DATE", "REGION", "SUBSCRIBER_GROWTH_RATE"]].reset_index(drop=True)
-test_df = tsm_df.loc[tsm_df["METRIC_DATE"] >= test_start, ["METRIC_DATE", "REGION"]].reset_index(drop=True)
+print(f"Equipment split: train={len(train_eq_df)} val={len(val_eq_df)} test={len(test_eq_df)} (all)")
+print(f"Label distribution: at_risk=1 {network_equipment_df['AT_RISK'].sum()} / "
+      f"{len(network_equipment_df)} ({network_equipment_df['AT_RISK'].mean():.1%})")
+print(f"Advisories: {len(advisories_df)} on {advisories_df['MODEL'].nunique()} distinct models")
 
-print(f"RegionMetric rows: {len(tsm_df):,}  (9 regions x 365 days)")
-print(f"Cell towers: {len(cell_towers_df)}  Subscribers: {len(subscribers_df)}  CDRs: {len(cdr_df):,}")
-print(f"NetworkPerformance: {len(network_perf_df):,}  NetworkEquipment: {len(network_equipment_df)}  EquipmentHealth: {len(equipment_health_df)}")
-print(f"TowerUpgradeOptions: {len(upgrade_options_df)}  (3 tiers per tower)")
-print(f"GNN splits: train={len(train_df):,} (<{val_start})  val={len(val_df)} (Nov)  test={len(test_df)} (Dec)")
+# Descriptive: advisory landscape -- which MODELs are affected, severity,
+# and how many equipment items sit on each. This is the relational
+# neighbor signal the GNN propagates in Stage 1.
+print("\n  Advisory landscape -- equipment count per advised MODEL:")
+_adv_landscape = (
+    advisories_df
+    .merge(network_equipment_df.groupby("MODEL").size().rename("eq_count").reset_index(), on="MODEL", how="left")
+    .sort_values("SEVERITY", ascending=False)
+    [["MODEL", "ADVISORY_TYPE", "SEVERITY", "ISSUED_DATE", "eq_count"]]
+)
+print(_adv_landscape.to_string(index=False))
+_n_on_advised = int(network_equipment_df["MODEL"].isin(set(advisories_df["MODEL"])).sum())
+print(f"  Equipment on an advised MODEL: {_n_on_advised} / {len(network_equipment_df)} "
+      f"({_n_on_advised/len(network_equipment_df):.1%})")
 
 # --------------------------------------------------
 # Define semantic model & load data
@@ -140,14 +155,15 @@ print(f"GNN splits: train={len(train_df):,} (<{val_start})  val={len(val_df)} (N
 
 model = Model("Telco Network Recovery")
 
-# CellTower concept: physical radio tower in a region. Status = ACTIVE /
-# DEGRADED / MAINTENANCE; capacity_gbps caps total throughput.
+# CellTower -- physical radio tower in a region. The GNN reaches it
+# from each NetworkEquipment via the tower_id_fk property-equality edge.
 CellTower = model.Concept("CellTower", identify_by={"id": String})
 CellTower.name = model.Property(f"{CellTower} has {String:name}")
 CellTower.tower_type = model.Property(f"{CellTower} has {String:tower_type}")
 CellTower.capacity_gbps = model.Property(f"{CellTower} has {Integer:capacity_gbps}")
 CellTower.status = model.Property(f"{CellTower} has {String:status}")
 CellTower.region = model.Property(f"{CellTower} has {String:region}")
+CellTower.install_date = model.Property(f"{CellTower} has {DateTime:install_date}")
 
 src = model.data(cell_towers_df)
 model.define(CellTower.new(
@@ -157,35 +173,341 @@ model.define(CellTower.new(
     capacity_gbps=src.CAPACITY_GBPS,
     status=src.STATUS,
     region=src.REGION,
+    install_date=src.INSTALL_DATE,
 ))
 
-# NetworkEquipment concept: radio / antenna / baseband installed at a tower.
+# NetworkEquipment -- the predicted-on concept. We load every
+# observable column (MODEL, MANUFACTURER, FIRMWARE_VERSION, INSTALL_DATE)
+# as a typed feature. tower_id_fk is an explicit FK property used by
+# the GNN graph via property equality; we avoid `model.Relationship`
+# on concepts that participate in the GNN graph because the SDK's
+# `_collect_node_columns` iterates `concept._relationships` during
+# fit() and lazy-registration during iteration trips a `RuntimeError:
+# dictionary changed size during iteration`.
 NetworkEquipment = model.Concept("NetworkEquipment", identify_by={"id": String})
-NetworkEquipment.installed_at = model.Relationship(
-    f"{NetworkEquipment} installed at {CellTower}", short_name="equipment_installed_at"
-)
+NetworkEquipment.equipment_type = model.Property(f"{NetworkEquipment} has {String:equipment_type}")
+NetworkEquipment.manufacturer = model.Property(f"{NetworkEquipment} has {String:manufacturer}")
+NetworkEquipment.eqp_model = model.Property(f"{NetworkEquipment} has {String:eqp_model}")
+NetworkEquipment.firmware_version = model.Property(f"{NetworkEquipment} has {String:firmware_version}")
+NetworkEquipment.install_date = model.Property(f"{NetworkEquipment} has {DateTime:install_date}")
+NetworkEquipment.tower_id_fk = model.Property(f"{NetworkEquipment} has {String:tower_id_fk}")
+
 src = model.data(network_equipment_df)
 model.define(NetworkEquipment.new(
     id=src.EQUIPMENT_ID,
-    installed_at=CellTower.filter_by(id=src.TOWER_ID),
+    equipment_type=src.EQUIPMENT_TYPE,
+    manufacturer=src.MANUFACTURER,
+    eqp_model=src.MODEL,
+    firmware_version=src.FIRMWARE_VERSION,
+    install_date=src.INSTALL_DATE,
+    tower_id_fk=src.TOWER_ID,
 ))
 
-# EquipmentHealth concept: per-equipment health snapshot. health_score is
-# 0-1; below 0.85 is the threshold for degraded health in Stage 2.
+# EquipmentHealth -- per-equipment snapshot. All numeric health columns
+# flow into the GNN via the equipment_id_fk property-equality edge.
 EquipmentHealth = model.Concept("EquipmentHealth", identify_by={"id": String})
+EquipmentHealth.mtbf_hours = model.Property(f"{EquipmentHealth} has {Integer:mtbf_hours}")
+EquipmentHealth.failure_rate = model.Property(f"{EquipmentHealth} has {Float:failure_rate}")
+EquipmentHealth.last_failure_date = model.Property(f"{EquipmentHealth} has {DateTime:last_failure_date}")
+EquipmentHealth.temperature_avg_c = model.Property(f"{EquipmentHealth} has {Float:temperature_avg_c}")
+EquipmentHealth.power_consumption_kw = model.Property(f"{EquipmentHealth} has {Float:power_consumption_kw}")
 EquipmentHealth.health_score = model.Property(f"{EquipmentHealth} has {Float:health_score}")
-EquipmentHealth.for_equipment = model.Relationship(
-    f"{EquipmentHealth} for equipment {NetworkEquipment}", short_name="health_for_equipment"
-)
+EquipmentHealth.measurement_date = model.Property(f"{EquipmentHealth} has {DateTime:measurement_date}")
+EquipmentHealth.equipment_id_fk = model.Property(f"{EquipmentHealth} has {String:equipment_id_fk}")
+
 src = model.data(equipment_health_df)
 model.define(EquipmentHealth.new(
     id=src.HEALTH_ID,
+    mtbf_hours=src.MTBF_HOURS,
+    failure_rate=src.FAILURE_RATE,
+    last_failure_date=src.LAST_FAILURE_DATE,
+    temperature_avg_c=src.TEMPERATURE_AVG_C,
+    power_consumption_kw=src.POWER_CONSUMPTION_KW,
     health_score=src.HEALTH_SCORE,
-    for_equipment=NetworkEquipment.filter_by(id=src.EQUIPMENT_ID),
+    measurement_date=src.MEASUREMENT_DATE,
+    equipment_id_fk=src.EQUIPMENT_ID,
 ))
 
-# NetworkPerformance concept: per-tower performance measurement. Stage 2
-# aggregates these into per-tower averages (packet loss, latency, error rate).
+# ModelAdvisory -- manufacturer-issued recalls / defect batches /
+# firmware bugs / EOL notices that apply to a MODEL. The "out of band"
+# relational signal the GNN propagates to every NetworkEquipment
+# sharing the affected MODEL. A single MODEL can have multiple
+# advisories; we collapse to one row per MODEL by taking the max
+# severity so the GNN sees one ModelAdvisory node per affected fleet.
+ModelAdvisory = model.Concept("ModelAdvisory", identify_by={"model": String})
+ModelAdvisory.advisory_type = model.Property(f"{ModelAdvisory} has {String:advisory_type}")
+ModelAdvisory.severity = model.Property(f"{ModelAdvisory} has {Float:severity}")
+ModelAdvisory.issued_date = model.Property(f"{ModelAdvisory} has {DateTime:issued_date}")
+
+adv_collapsed = (
+    advisories_df.sort_values("SEVERITY", ascending=False)
+    .drop_duplicates(subset=["MODEL"], keep="first")
+)
+src = model.data(adv_collapsed)
+model.define(ModelAdvisory.new(
+    model=src.MODEL,
+    advisory_type=src.ADVISORY_TYPE,
+    severity=src.SEVERITY,
+    issued_date=src.ISSUED_DATE,
+))
+
+# Note: NetworkPerformance, Subscriber, CallDetailRecord, and
+# TowerUpgradeOption are loaded just before their respective stages
+# below. Loading them up front keeps gnn.fit()'s transaction payload
+# small enough to avoid Snowflake's CREATE_TRANSACTION_V2 row-size
+# limit, and avoids triggering the SDK's _collect_node_columns
+# iteration-mutation bug on CellTower's relationship set.
+
+# --------------------------------------------------
+# Stage 1: Predictive -- equipment-failure binary GNN
+# --------------------------------------------------
+
+print(f"\n{'=' * 60}")
+print("STAGE 1: PREDICTIVE -- equipment-failure binary classification GNN")
+print("=" * 60)
+
+# Heterogeneous graph with three FK / shared-MODEL edges:
+#   1. EquipmentHealth <-> NetworkEquipment  (per-equipment health features)
+#   2. NetworkEquipment <-> CellTower        (tower-context features)
+#   3. ModelAdvisory <-> NetworkEquipment    (recall/defect signal via MODEL)
+# We use `directed=False` (undirected, bidirectional message passing)
+# so the GNN can propagate signal across multi-hop paths: a piece of
+# equipment whose own MODEL has no advisory can still inherit risk
+# from a tower-mate whose MODEL does, via the path
+#   ModelAdvisory -> tower_mate -> CellTower -> this_equipment.
+# That 2-hop neighbor pattern is the one a SQL `JOIN model_advisories`
+# query cannot easily reproduce.
+gnn_graph = Graph(model, directed=False, weighted=False)
+
+model.define(gnn_graph.Edge.new(src=EquipmentHealth, dst=NetworkEquipment)).where(
+    EquipmentHealth.equipment_id_fk == NetworkEquipment.id,
+)
+model.define(gnn_graph.Edge.new(src=NetworkEquipment, dst=CellTower)).where(
+    NetworkEquipment.tower_id_fk == CellTower.id,
+)
+model.define(gnn_graph.Edge.new(src=ModelAdvisory, dst=NetworkEquipment)).where(
+    ModelAdvisory.model == NetworkEquipment.eqp_model,
+)
+
+# Feature configuration. Drop identifier / FK columns and high-cardinality
+# free-text fields. Pull every other ontology property as a typed feature.
+pt = PropertyTransformer(
+    drop=[
+        NetworkEquipment.tower_id_fk,
+        EquipmentHealth.equipment_id_fk,
+        CellTower.name,
+    ],
+    category=[
+        NetworkEquipment.equipment_type,
+        NetworkEquipment.manufacturer,
+        NetworkEquipment.eqp_model,
+        NetworkEquipment.firmware_version,
+        CellTower.tower_type,
+        CellTower.status,
+        CellTower.region,
+        ModelAdvisory.advisory_type,
+    ],
+    continuous=[
+        EquipmentHealth.failure_rate,
+        EquipmentHealth.temperature_avg_c,
+        EquipmentHealth.power_consumption_kw,
+        EquipmentHealth.health_score,
+        ModelAdvisory.severity,
+    ],
+    integer=[
+        EquipmentHealth.mtbf_hours,
+        CellTower.capacity_gbps,
+    ],
+    datetime=[
+        NetworkEquipment.install_date,
+        EquipmentHealth.last_failure_date,
+        EquipmentHealth.measurement_date,
+        CellTower.install_date,
+        ModelAdvisory.issued_date,
+    ],
+)
+
+# Task tables. Test = all equipment so every NetworkEquipment receives
+# a prediction (inference domain), independent of train/val split.
+TrainEqTable = model.Concept("TrainEqTable")
+ValEqTable = model.Concept("ValEqTable")
+TestEqTable = model.Concept("TestEqTable")
+model.define(TrainEqTable.new(model.data(train_eq_df).to_schema()))
+model.define(ValEqTable.new(model.data(val_eq_df).to_schema()))
+model.define(TestEqTable.new(model.data(test_eq_df).to_schema()))
+
+Train = model.Relationship(f"{NetworkEquipment} has {Any:label}")
+model.define(Train(NetworkEquipment, TrainEqTable.at_risk)).where(
+    NetworkEquipment.id == TrainEqTable.equipment_id,
+)
+Val = model.Relationship(f"{NetworkEquipment} has {Any:label}")
+model.define(Val(NetworkEquipment, ValEqTable.at_risk)).where(
+    NetworkEquipment.id == ValEqTable.equipment_id,
+)
+Test = model.Relationship(f"{NetworkEquipment}")
+model.define(Test(NetworkEquipment)).where(
+    NetworkEquipment.id == TestEqTable.equipment_id,
+)
+
+gnn = GNN(
+    exp_database=EXP_DATABASE,
+    exp_schema=EXP_SCHEMA,
+    graph=gnn_graph,
+    property_transformer=pt,
+    train=Train,
+    validation=Val,
+    task_type="binary_classification",
+    eval_metric="roc_auc",
+    has_time_column=False,
+    stream_logs=False,
+    seed=SEED,
+    device="cpu",
+    n_epochs=GNN_EPOCHS,
+    lr=GNN_LR,
+)
+gnn.fit()
+NetworkEquipment.predictions = gnn.predictions(domain=Test)
+
+# Pull predictions to pandas; aggregate per tower as SUM of positive
+# probabilities (= expected count of at-risk equipment on the tower);
+# load back as a CellTower property the rest of the chain consumes.
+# SUM (not max) preserves per-tower differentiation when individual
+# predictions saturate near 0 or 1.
+pred_df = (
+    select(
+        NetworkEquipment.id.alias("equipment_id"),
+        NetworkEquipment.predictions.probs.alias("probs"),
+        NetworkEquipment.predictions.predicted_labels.alias("predicted_label"),
+    )
+    .where(NetworkEquipment.predictions)
+    .to_df()
+)
+def _pos_prob(p):
+    if isinstance(p, (list, tuple)):
+        return float(p[1]) if len(p) > 1 else float(p[0])
+    return float(p)
+pred_df["pos_prob"] = pred_df["probs"].apply(_pos_prob)
+pred_df = pred_df.merge(
+    network_equipment_df[["EQUIPMENT_ID", "TOWER_ID"]].rename(columns={"EQUIPMENT_ID": "equipment_id"}),
+    on="equipment_id",
+    how="left",
+)
+
+per_tower = (
+    pred_df.groupby("TOWER_ID")["pos_prob"]
+    .sum()
+    .reset_index()
+    .rename(columns={"pos_prob": "FAILURE_INTENSITY"})
+    .sort_values("FAILURE_INTENSITY", ascending=False)
+)
+print("\n  Top 10 towers by predicted failure intensity (sum of equipment failure probs):")
+print(per_tower.head(10).to_string(index=False))
+print(
+    f"\n  failure_intensity distribution: "
+    f"min={per_tower['FAILURE_INTENSITY'].min():.2f}, "
+    f"median={per_tower['FAILURE_INTENSITY'].median():.2f}, "
+    f"max={per_tower['FAILURE_INTENSITY'].max():.2f}"
+)
+print(
+    f"  Towers with failure_intensity > {FAILURE_INTENSITY_THRESHOLD}: "
+    f"{int((per_tower['FAILURE_INTENSITY'] > FAILURE_INTENSITY_THRESHOLD).sum())} / {len(per_tower)}"
+)
+
+# Side-by-side check: how far different levels of SQL sophistication
+# get on this data, vs the GNN's set. Three tiers:
+#   1. Naive SQL on health columns -- catches the health-only tail.
+#   2. Join-aware SQL also filtering on advised MODEL -- catches the
+#      bulk, but misses 2-hop neighbor-driven and smooth-interaction
+#      cases.
+#   3. The GNN (the chain output) -- closes the remaining gap via
+#      heterogeneous undirected message passing.
+total_atrisk = int(network_equipment_df["AT_RISK"].sum())
+sql_alt = network_equipment_df.merge(
+    equipment_health_df[["EQUIPMENT_ID", "HEALTH_SCORE"]], on="EQUIPMENT_ID"
+)
+sql_naive = sql_alt[(sql_alt["AT_RISK"] == 1) & (sql_alt["HEALTH_SCORE"] < 0.5)].shape[0]
+advised_models = set(advisories_df["MODEL"].tolist())
+sql_joined = sql_alt[
+    (sql_alt["AT_RISK"] == 1)
+    & ((sql_alt["HEALTH_SCORE"] < 0.5) | (sql_alt["MODEL"].isin(advised_models)))
+].shape[0]
+# GNN end-to-end recall on at-risk items. Report two views:
+#   - At the model's built-in argmax (predicted_label == 1).
+#   - At the standard probability threshold (pos_prob >= 0.5).
+# The argmax view answers "what the model says"; the 0.5-threshold view
+# answers "what a downstream rule would catch using the GNN's calibrated
+# probability." They can diverge if the model's calibration is shifted
+# (the argmax can be conservative even when probs are well-separated).
+gnn_flagged_atrisk = pred_df.merge(
+    network_equipment_df[["EQUIPMENT_ID", "AT_RISK"]].rename(
+        columns={"EQUIPMENT_ID": "equipment_id"}
+    ),
+    on="equipment_id",
+    how="left",
+)
+gnn_recall_argmax = int(
+    gnn_flagged_atrisk[
+        (gnn_flagged_atrisk["AT_RISK"] == 1)
+        & (gnn_flagged_atrisk["predicted_label"] == 1)
+    ].shape[0]
+)
+gnn_recall_p05 = int(
+    gnn_flagged_atrisk[
+        (gnn_flagged_atrisk["AT_RISK"] == 1)
+        & (gnn_flagged_atrisk["pos_prob"] >= 0.5)
+    ].shape[0]
+)
+print(
+    f"\n  SQL-vs-GNN comparison on {total_atrisk} true at-risk items:"
+    f"\n    Naive SQL `WHERE health_score < 0.5`:                "
+    f"{sql_naive:>4} ({sql_naive/total_atrisk:>5.1%})"
+    f"\n    Join-aware SQL `... OR model IN advised_models`:    "
+    f"{sql_joined:>4} ({sql_joined/total_atrisk:>5.1%})"
+    f"\n    GNN-only opportunity (2-hop + smooth interaction):  "
+    f"{total_atrisk - sql_joined:>4} ({(total_atrisk - sql_joined)/total_atrisk:>5.1%})"
+    f"\n    GNN recall, argmax (predicted_label == 1):          "
+    f"{gnn_recall_argmax:>4} ({gnn_recall_argmax/total_atrisk:>5.1%})"
+    f"\n    GNN recall, p>=0.5 (probabilistic threshold):       "
+    f"{gnn_recall_p05:>4} ({gnn_recall_p05/total_atrisk:>5.1%})"
+)
+# Per-equipment positive-prediction distribution for transparency.
+print(
+    f"\n  GNN per-equipment positive-prob distribution: "
+    f"min={pred_df['pos_prob'].min():.3f}, "
+    f"median={pred_df['pos_prob'].median():.3f}, "
+    f"max={pred_df['pos_prob'].max():.3f}; "
+    f"items with pos_prob>=0.5: {int((pred_df['pos_prob']>=0.5).sum())} / {len(pred_df)}"
+)
+
+# Bridge concept: load per-tower failure_intensity back as a CellTower
+# property. Mirrors the bridge pattern used elsewhere in the template
+# corpus (e.g. retail_planning) -- aggregate in pandas, then join onto
+# the concept that hosts the downstream property.
+TowerFailureScore = model.Concept("TowerFailureScore", identify_by={"tower_id": String})
+TowerFailureScore.score = model.Property(f"{TowerFailureScore} has {Float:score}")
+tfs_src = model.data(per_tower[["TOWER_ID", "FAILURE_INTENSITY"]])
+model.define(TowerFailureScore.new(
+    tower_id=tfs_src.TOWER_ID,
+    score=tfs_src.FAILURE_INTENSITY,
+))
+
+CellTower.failure_intensity = model.Property(
+    f"{CellTower} has {Float:failure_intensity}"
+)
+model.define(CellTower.failure_intensity(TowerFailureScore.score)).where(
+    TowerFailureScore.tower_id == CellTower.id,
+)
+
+# --------------------------------------------------
+# Stage 2: Rules -- flag is_critical_restore towers
+# --------------------------------------------------
+
+print(f"\n{'=' * 60}")
+print("STAGE 2: RULES -- flag is_critical_restore towers")
+print("=" * 60)
+
+# NetworkPerformance -- per-tower measurements consumed by the avg
+# packet loss / latency / error rate properties below.
 NetworkPerformance = model.Concept("NetworkPerformance", identify_by={"id": String})
 NetworkPerformance.packet_loss_pct = model.Property(f"{NetworkPerformance} has {Float:packet_loss_pct}")
 NetworkPerformance.latency_ms = model.Property(f"{NetworkPerformance} has {Float:latency_ms}")
@@ -201,219 +523,6 @@ model.define(NetworkPerformance.new(
     error_rate=src.ERROR_RATE,
     for_tower=CellTower.filter_by(id=src.TOWER_ID),
 ))
-
-# Subscriber concept: account holder. Used as nodes in the call graph.
-Subscriber = model.Concept("Subscriber", identify_by={"id": String})
-Subscriber.subscriber_type = model.Property(f"{Subscriber} has {String:subscriber_type}")
-Subscriber.lifetime_value = model.Property(f"{Subscriber} has {Float:lifetime_value}")
-src = model.data(subscribers_df)
-model.define(Subscriber.new(
-    id=src.SUB_ID,
-    subscriber_type=src.SUBSCRIBER_TYPE,
-    lifetime_value=src.LIFETIME_VALUE_USD,
-))
-
-# CallDetailRecord concept: directed call between two subscribers, routed
-# through a single tower. Acts as the edge concept for the call graph.
-CallDetailRecord = model.Concept("CallDetailRecord", identify_by={"id": String})
-CallDetailRecord.caller = model.Relationship(
-    f"{CallDetailRecord} has caller {Subscriber}", short_name="cdr_caller"
-)
-CallDetailRecord.callee = model.Relationship(
-    f"{CallDetailRecord} has callee {Subscriber}", short_name="cdr_callee"
-)
-CallDetailRecord.routed_through = model.Relationship(
-    f"{CallDetailRecord} routed through {CellTower}", short_name="cdr_routed_through"
-)
-src = model.data(cdr_df)
-model.define(CallDetailRecord.new(
-    id=src.CDR_ID,
-    caller=Subscriber.filter_by(id=src.CALLER_SUB_ID),
-    callee=Subscriber.filter_by(id=src.CALLEE_SUB_ID),
-    routed_through=CellTower.filter_by(id=src.TOWER_ID),
-))
-
-# TowerUpgradeOption concept: junction with compound identity (tower, tier).
-# Each critical tower has 3 options (BRONZE / SILVER / GOLD) with different
-# capacity, cost, and install-time tradeoffs. Stage 4's binary decision
-# variable is the `selected` property.
-TowerUpgradeOption = model.Concept(
-    "TowerUpgradeOption", identify_by={"tower_id": String, "tier": String}
-)
-TowerUpgradeOption.capacity_increase_gbps = model.Property(
-    f"{TowerUpgradeOption} has {Integer:capacity_increase_gbps}"
-)
-TowerUpgradeOption.cost = model.Property(f"{TowerUpgradeOption} has {Float:cost}")
-TowerUpgradeOption.install_weeks = model.Property(f"{TowerUpgradeOption} has {Integer:install_weeks}")
-TowerUpgradeOption.for_tower = model.Relationship(
-    f"{TowerUpgradeOption} for tower {CellTower}", short_name="upgrade_for_tower"
-)
-src = model.data(upgrade_options_df)
-model.define(TowerUpgradeOption.new(
-    tower_id=src.TOWER_ID,
-    tier=src.UPGRADE_TIER,
-    capacity_increase_gbps=src.CAPACITY_INCREASE_GBPS,
-    cost=src.COST_USD,
-    install_weeks=src.INSTALL_WEEKS,
-    for_tower=CellTower.filter_by(id=src.TOWER_ID),
-))
-
-# RegionMetric concept: composite-key (date, region) daily KPI row. Target
-# of the Stage 1 GNN regression.
-RegionMetric = model.Concept(
-    "RegionMetric", identify_by={"metric_date": Date, "region": String}
-)
-tsm_src = model.data(tsm_df)
-model.define(RegionMetric.new(tsm_src.to_schema()))
-
-# TemporalEdge concept: same-region 1-day-lag pair connecting consecutive
-# RegionMetric rows. The Graph reasoner builds edges from these pairs.
-TemporalEdge = model.Concept(
-    "TemporalEdge",
-    identify_by={"src_date": Date, "src_region": String, "dst_date": Date, "dst_region": String},
-)
-te_src = model.data(edge_df)
-model.define(TemporalEdge.new(te_src.to_schema()))
-
-# --------------------------------------------------
-# Stage 1: Predictive -- per-region growth GNN
-# --------------------------------------------------
-
-print(f"\n{'=' * 60}")
-print("STAGE 1: PREDICTIVE -- per-region subscriber-growth GNN")
-print("=" * 60)
-
-# Build a directed graph over RegionMetric where each edge connects a metric
-# to its same-region predecessor (1-day lag). The GNN propagates signal
-# along these temporal edges plus the region category.
-gnn_graph = Graph(model, directed=True, weighted=False)
-src_rm = RegionMetric.ref()
-dst_rm = RegionMetric.ref()
-te_ref = TemporalEdge.ref()
-model.define(gnn_graph.Edge.new(src=src_rm, dst=dst_rm)).where(
-    te_ref.src_region == src_rm.region,
-    te_ref.src_date == src_rm.metric_date,
-    te_ref.dst_region == dst_rm.region,
-    te_ref.dst_date == dst_rm.metric_date,
-)
-
-# Feature scopes for the GNN. Drop the date (encoded by edges), the target,
-# and high-cardinality compound identity columns.
-pt = PropertyTransformer(
-    drop=[RegionMetric.metric_date, RegionMetric.subscriber_growth_rate],
-    category=[RegionMetric.region, RegionMetric.region_feat],
-    continuous=[
-        RegionMetric.daily_revenue_usd,
-        RegionMetric.avg_call_quality,
-        RegionMetric.network_availability_pct,
-        RegionMetric.data_consumed_tb,
-        RegionMetric.avg_latency_ms,
-        RegionMetric.churn_rate,
-        RegionMetric.nps_daily_avg,
-        RegionMetric.marketing_spend_usd,
-        RegionMetric.prev_day_growth,
-        RegionMetric.prev_week_growth,
-        RegionMetric.growth_7d_mean,
-    ],
-    integer=[
-        RegionMetric.active_subscribers,
-        RegionMetric.total_calls,
-        RegionMetric.support_tickets_opened,
-        RegionMetric.support_tickets_resolved,
-    ],
-)
-
-TrainTable = model.Concept("TrainTable")
-ValTable = model.Concept("ValTable")
-TestTable = model.Concept("TestTable")
-model.define(TrainTable.new(model.data(train_df).to_schema()))
-model.define(ValTable.new(model.data(val_df).to_schema()))
-model.define(TestTable.new(model.data(test_df).to_schema()))
-
-Train = model.Relationship(f"{RegionMetric} has {Any:value}")
-model.define(Train(RegionMetric, TrainTable.subscriber_growth_rate)).where(
-    RegionMetric.metric_date == TrainTable.metric_date,
-    RegionMetric.region == TrainTable.region,
-)
-Val = model.Relationship(f"{RegionMetric} has {Any:value}")
-model.define(Val(RegionMetric, ValTable.subscriber_growth_rate)).where(
-    RegionMetric.metric_date == ValTable.metric_date,
-    RegionMetric.region == ValTable.region,
-)
-Test = model.Relationship(f"{RegionMetric}")
-model.define(Test(RegionMetric)).where(
-    RegionMetric.metric_date == TestTable.metric_date,
-    RegionMetric.region == TestTable.region,
-)
-
-gnn = GNN(
-    exp_database=EXP_DATABASE,
-    exp_schema=EXP_SCHEMA,
-    graph=gnn_graph,
-    property_transformer=pt,
-    train=Train,
-    validation=Val,
-    task_type="regression",
-    eval_metric="rmse",
-    has_time_column=False,
-    stream_logs=False,
-    seed=SEED,
-    device="cpu",
-    n_epochs=GNN_EPOCHS,
-    lr=GNN_LR,
-)
-gnn.fit()
-RegionMetric.predictions = gnn.predictions(domain=Test)
-
-predictions_df = (
-    select(
-        RegionMetric.metric_date.alias("date"),
-        RegionMetric.region.alias("region"),
-        RegionMetric.predictions.predicted_value.alias("predicted_growth"),
-    )
-    .where(RegionMetric.predictions)
-    .to_df()
-)
-predictions_df["predicted_growth"] = predictions_df["predicted_growth"].astype(float)
-
-per_region = (
-    predictions_df.groupby("region")["predicted_growth"]
-    .mean()
-    .reset_index()
-    .rename(columns={"predicted_growth": "MEAN_PREDICTED_GROWTH"})
-    .sort_values("MEAN_PREDICTED_GROWTH")
-)
-per_region["MULTIPLIER"] = 1.0 + per_region["MEAN_PREDICTED_GROWTH"]
-per_region.columns = ["REGION_ID", "MEAN_PREDICTED_GROWTH", "MULTIPLIER"]
-print("\n  Per-region GNN-predicted SUBSCRIBER_GROWTH_RATE (Dec 2024 test horizon):")
-print(per_region.to_string(index=False))
-
-# Bind per-region multiplier back to each CellTower as projected_demand_growth.
-# Loaded as a small RegionGrowth concept and joined to CellTower via region.
-RegionGrowth = model.Concept("RegionGrowth", identify_by={"region": String})
-RegionGrowth.multiplier = model.Property(f"{RegionGrowth} has {Float:multiplier}")
-rg_src = model.data(per_region[["REGION_ID", "MULTIPLIER"]])
-model.define(RegionGrowth.new(
-    region=rg_src.REGION_ID,
-    multiplier=rg_src.MULTIPLIER,
-))
-
-# CellTower.projected_demand_growth: the per-tower demand multiplier
-# inherited from its region's GNN forecast. Stage 4's objective reads this.
-CellTower.projected_demand_growth = model.Property(
-    f"{CellTower} has {Float:projected_demand_growth}"
-)
-model.define(CellTower.projected_demand_growth(RegionGrowth.multiplier)).where(
-    RegionGrowth.region == CellTower.region,
-)
-
-# --------------------------------------------------
-# Stage 2: Rules -- flag is_critical_restore towers
-# --------------------------------------------------
-
-print(f"\n{'=' * 60}")
-print("STAGE 2: RULES -- flag is_critical_restore towers")
-print("=" * 60)
 
 # Per-tower averages from NetworkPerformance (one row per measurement).
 CellTower.avg_packet_loss = model.Property(f"{CellTower} has {Float:avg_packet_loss}")
@@ -442,23 +551,24 @@ model.define(
     )
 )
 
-# Per-tower equipment health average across all attached equipment (two-hop
-# join: NetworkPerformance / EquipmentHealth -> NetworkEquipment -> CellTower).
+# Per-tower equipment-health average (two-hop join via property
+# equality: EquipmentHealth -> NetworkEquipment -> CellTower).
 CellTower.avg_health_score = model.Property(f"{CellTower} has {Float:avg_health_score}")
 model.define(
     CellTower.avg_health_score(
         aggs.avg(EquipmentHealth.health_score)
         .where(
-            EquipmentHealth.for_equipment(NetworkEquipment),
-            NetworkEquipment.installed_at(CellTower),
+            EquipmentHealth.equipment_id_fk == NetworkEquipment.id,
+            NetworkEquipment.tower_id_fk == CellTower.id,
         )
         .per(CellTower)
     )
 )
 
-# is_critical_restore flag. Two branches (OR semantics):
-#   1. WEST + DEGRADED status + low equipment health
-#   2. WEST + high packet loss + low equipment health (catches ACTIVE-but-failing)
+# is_critical_restore flag, three branches (OR semantics):
+#   1. WEST + DEGRADED status + low equipment health  (operational)
+#   2. WEST + high packet loss + low equipment health (ACTIVE-but-failing)
+#   3. failure_intensity > threshold                  (predictive, any region)
 CellTower.is_critical_restore = model.Relationship(f"{CellTower} is critical restore")
 
 model.where(
@@ -473,33 +583,84 @@ model.where(
     CellTower.avg_health_score < 0.85,
 ).define(CellTower.is_critical_restore())
 
+model.where(
+    CellTower.failure_intensity > FAILURE_INTENSITY_THRESHOLD,
+).define(CellTower.is_critical_restore())
+
 flagged_df = (
     model.where(CellTower.is_critical_restore())
     .select(
         CellTower.id.alias("tower_id"),
+        CellTower.region.alias("region"),
         CellTower.status.alias("status"),
         CellTower.capacity_gbps.alias("capacity_gbps"),
         CellTower.avg_packet_loss.alias("avg_loss"),
-        CellTower.avg_latency_ms.alias("avg_lat"),
         CellTower.avg_health_score.alias("avg_health"),
+        CellTower.failure_intensity.alias("failure_intensity"),
     )
     .to_df()
-    .sort_values("avg_health")
+    .sort_values("failure_intensity", ascending=False)
 )
 print(f"\n  Flagged critical_restore towers: {len(flagged_df)}")
-print(flagged_df.to_string(index=False))
+print("  Breakdown by region:")
+print(flagged_df["region"].value_counts().to_string())
+
+# Per-branch contribution. Each branch is independently evaluable
+# against the per-tower properties already on the flagged_df rows, so
+# we can attribute each flag to one or more branches.
+_b1 = (flagged_df["region"] == "WEST") & (flagged_df["status"] == "DEGRADED") & (flagged_df["avg_health"] < 0.85)
+_b2 = (flagged_df["region"] == "WEST") & (flagged_df["avg_loss"] > 5.0) & (flagged_df["avg_health"] < 0.85)
+_b3 = flagged_df["failure_intensity"] > FAILURE_INTENSITY_THRESHOLD
+print("\n  Per-branch contribution (a tower can fire on multiple branches):")
+print(f"    Branch 1 (WEST + DEGRADED + low health):                  {int(_b1.sum())} towers")
+print(f"    Branch 2 (WEST + high packet loss + low health):          {int(_b2.sum())} towers")
+print(f"    Branch 3 (failure_intensity > {FAILURE_INTENSITY_THRESHOLD}, any region):  "
+      f"{int(_b3.sum())} towers")
+_only_predictive = (_b3 & ~_b1 & ~_b2).sum()
+print(f"    Towers flagged ONLY by the predictive branch:             {int(_only_predictive)} "
+      f"({_only_predictive/len(flagged_df):.0%} of flagged set)")
+
+print("\n  Top 20 by predicted failure intensity:")
+print(flagged_df.head(20).to_string(index=False))
 
 # --------------------------------------------------
-# Stage 3: Graph -- PageRank + per-tower blast radius
+# Stage 3: Graph -- PageRank + per-critical-tower blast radius
 # --------------------------------------------------
 
 print(f"\n{'=' * 60}")
 print("STAGE 3: GRAPH -- PageRank + per-critical-tower blast radius")
 print("=" * 60)
 
-# Directed Subscriber -> Subscriber call graph. CallDetailRecord IS the
-# edge concept; aggregator="sum" collapses parallel calls between the same
-# pair. Pattern 3 (edge_concept) from rai-graph-analysis.
+# Subscriber -- nodes of the Stage 3 call graph.
+Subscriber = model.Concept("Subscriber", identify_by={"id": String})
+Subscriber.subscriber_type = model.Property(f"{Subscriber} has {String:subscriber_type}")
+Subscriber.lifetime_value = model.Property(f"{Subscriber} has {Float:lifetime_value}")
+src = model.data(subscribers_df)
+model.define(Subscriber.new(
+    id=src.SUB_ID,
+    subscriber_type=src.SUBSCRIBER_TYPE,
+    lifetime_value=src.LIFETIME_VALUE_USD,
+))
+
+# CallDetailRecord -- edge concept for Stage 3.
+CallDetailRecord = model.Concept("CallDetailRecord", identify_by={"id": String})
+CallDetailRecord.caller = model.Relationship(
+    f"{CallDetailRecord} has caller {Subscriber}", short_name="cdr_caller"
+)
+CallDetailRecord.callee = model.Relationship(
+    f"{CallDetailRecord} has callee {Subscriber}", short_name="cdr_callee"
+)
+CallDetailRecord.routed_through = model.Relationship(
+    f"{CallDetailRecord} routed through {CellTower}", short_name="cdr_routed_through"
+)
+src = model.data(cdr_df)
+model.define(CallDetailRecord.new(
+    id=src.CDR_ID,
+    caller=Subscriber.filter_by(id=src.CALLER_SUB_ID),
+    callee=Subscriber.filter_by(id=src.CALLEE_SUB_ID),
+    routed_through=CellTower.filter_by(id=src.TOWER_ID),
+))
+
 call_graph = Graph(
     model,
     directed=True,
@@ -510,9 +671,6 @@ call_graph = Graph(
     edge_dst_relationship=CallDetailRecord.callee,
     aggregator="sum",
 )
-
-# PageRank on the call graph -- result lands directly on Subscriber
-# because node_concept=Subscriber.
 call_graph.Node.influence_score = call_graph.pagerank()
 
 top_subs = (
@@ -529,8 +687,6 @@ top_subs = (
 print("\n  Top 10 subscribers by PageRank:")
 print(top_subs.to_string(index=False))
 
-# Per-critical-tower blast radius: distinct subscribers whose calls route
-# through the tower, plus the sum of their PageRank.
 CellTower.impact_count = model.Property(f"{CellTower} has {Float:impact_count}")
 CellTower.weighted_impact = model.Property(f"{CellTower} has {Float:weighted_impact}")
 
@@ -559,14 +715,15 @@ blast_df = (
     model.where(CellTower.is_critical_restore())
     .select(
         CellTower.id.alias("tower_id"),
+        CellTower.region.alias("region"),
         CellTower.impact_count.alias("impact_count"),
         CellTower.weighted_impact.alias("weighted_impact"),
-        CellTower.projected_demand_growth.alias("growth_mult"),
+        CellTower.failure_intensity.alias("failure_intensity"),
     )
     .to_df()
     .sort_values("weighted_impact", ascending=False)
 )
-print("\n  Per-critical-tower blast radius (impact_count, weighted_impact, growth_mult from Stage 1):")
+print("\n  Per-critical-tower blast radius (impact_count, weighted_impact, failure_intensity):")
 print(blast_df.to_string(index=False))
 
 # --------------------------------------------------
@@ -576,6 +733,29 @@ print(blast_df.to_string(index=False))
 print(f"\n{'=' * 60}")
 print("STAGE 4: PRESCRIPTIVE -- tower upgrade selection MIP")
 print("=" * 60)
+
+# TowerUpgradeOption -- Stage 4 decision space. Every tower has three
+# tier options (BRONZE / SILVER / GOLD).
+TowerUpgradeOption = model.Concept(
+    "TowerUpgradeOption", identify_by={"tower_id": String, "tier": String}
+)
+TowerUpgradeOption.capacity_increase_gbps = model.Property(
+    f"{TowerUpgradeOption} has {Integer:capacity_increase_gbps}"
+)
+TowerUpgradeOption.cost = model.Property(f"{TowerUpgradeOption} has {Float:cost}")
+TowerUpgradeOption.install_weeks = model.Property(f"{TowerUpgradeOption} has {Integer:install_weeks}")
+TowerUpgradeOption.for_tower = model.Relationship(
+    f"{TowerUpgradeOption} for tower {CellTower}", short_name="upgrade_for_tower"
+)
+src = model.data(upgrade_options_df)
+model.define(TowerUpgradeOption.new(
+    tower_id=src.TOWER_ID,
+    tier=src.UPGRADE_TIER,
+    capacity_increase_gbps=src.CAPACITY_INCREASE_GBPS,
+    cost=src.COST_USD,
+    install_weeks=src.INSTALL_WEEKS,
+    for_tower=CellTower.filter_by(id=src.TOWER_ID),
+))
 
 TowerUpgradeOption.selected = model.Property(f"{TowerUpgradeOption} has {Float:selected}")
 
@@ -623,17 +803,15 @@ problem.satisfy(
     )
 )
 
-# Objective: maximize three-factor weighted capacity gain. The three
-# coefficients each come from a different upstream stage:
-#   capacity_increase_gbps -- raw upgrade attribute
-#   weighted_impact        -- Stage 3 graph (subscriber influence)
-#   projected_demand_growth -- Stage 1 GNN (regional forecast)
+# Objective: three-factor weighted capacity gain. Each factor comes
+# from a different upstream stage; the third is the GNN's per-tower
+# failure_intensity.
 problem.maximize(
     aggs.sum(
         TowerUpgradeOption.selected
         * TowerUpgradeOption.capacity_increase_gbps
         * CellTower.weighted_impact
-        * CellTower.projected_demand_growth
+        * CellTower.failure_intensity
     ).where(
         TowerUpgradeOption.for_tower(CellTower),
         CellTower.is_critical_restore(),
@@ -644,160 +822,40 @@ print("\n  Solving...")
 problem.solve(solver="gurobi")
 problem.display()
 
-# Extract the selected upgrades.
-plan_df = (
-    model.where(
-        TowerUpgradeOption.for_tower(CellTower),
-        CellTower.is_critical_restore(),
-    )
+# Extract selected upgrades. Cast int128 (returned by RAI select) to
+# int64 so pandas .sum() works.
+selected_df = (
+    model.where(TowerUpgradeOption.selected == 1)
     .select(
-        CellTower.id.alias("tower_id"),
+        TowerUpgradeOption.tower_id.alias("tower_id"),
         TowerUpgradeOption.tier.alias("tier"),
+        TowerUpgradeOption.capacity_increase_gbps.alias("capacity_gbps"),
         TowerUpgradeOption.cost.alias("cost"),
-        TowerUpgradeOption.capacity_increase_gbps.alias("cap_gbps"),
-        TowerUpgradeOption.install_weeks.alias("weeks"),
-        CellTower.weighted_impact.alias("wgt_impact"),
-        CellTower.projected_demand_growth.alias("growth"),
-        TowerUpgradeOption.selected.alias("x"),
+        TowerUpgradeOption.install_weeks.alias("install_weeks"),
     )
     .to_df()
 )
-plan_df["x"] = plan_df["x"].astype(float)
-selected = plan_df[plan_df["x"] > 0.5].copy().sort_values("wgt_impact", ascending=False)
+for _col in ("capacity_gbps", "install_weeks"):
+    if _col in selected_df.columns:
+        selected_df[_col] = selected_df[_col].astype("int64")
+selected_df["cost"] = selected_df["cost"].astype(float)
 
-print("\n  OPTIMAL plan -- selected upgrades:")
-print(selected[["tower_id", "tier", "cost", "cap_gbps", "weeks", "wgt_impact", "growth"]].to_string(index=False))
-print()
-print(f"  Total cost:               ${selected['cost'].astype(float).sum():,.0f}  (budget ${BUDGET_USD:,})")
-print(f"  Total install crew-weeks: {selected['weeks'].astype(int).sum()}  (budget {INSTALL_WEEKS_BUDGET})")
-print(f"  Capacity restored:        {selected['cap_gbps'].astype(int).sum()} Gbps")
-print(f"  Tier mix:                 {selected['tier'].value_counts().to_dict()}")
-print(f"  Towers covered:           {len(selected)} of {plan_df['tower_id'].nunique()} critical")
+selected_df = selected_df.merge(
+    flagged_df[["tower_id", "region", "failure_intensity"]],
+    on="tower_id",
+    how="left",
+).sort_values(["region", "tier"])
 
-# --------------------------------------------------
-# Stage 5: Persist solution concepts into the ontology
-# --------------------------------------------------
+print(f"\n  Selected upgrades: {len(selected_df)}")
+print(selected_df.to_string(index=False))
 
-print(f"\n{'=' * 60}")
-print("STAGE 5: ONTOLOGY -- materialize RestorePlan + SelectedUpgrade")
-print("=" * 60)
-
-# SelectedUpgrade view-concept: unary relationship narrowing
-# TowerUpgradeOption to the 15 chosen rows (selected == 1).
-TowerUpgradeOption.is_selected_upgrade = model.Relationship(
-    f"{TowerUpgradeOption} is selected upgrade"
-)
-model.where(TowerUpgradeOption.selected == 1).define(
-    TowerUpgradeOption.is_selected_upgrade()
-)
-
-# RestorePlan singleton: one row keyed by key=1 holding the plan summary.
-RestorePlan = model.Concept("RestorePlan", identify_by={"key": Integer})
-RestorePlan.total_cost = model.Property(f"{RestorePlan} has {Float:total_cost}")
-RestorePlan.total_install_weeks = model.Property(
-    f"{RestorePlan} has {Integer:total_install_weeks}"
-)
-RestorePlan.capacity_restored_gbps = model.Property(
-    f"{RestorePlan} has {Integer:capacity_restored_gbps}"
-)
-RestorePlan.gold_count = model.Property(f"{RestorePlan} has {Integer:gold_count}")
-RestorePlan.silver_count = model.Property(f"{RestorePlan} has {Integer:silver_count}")
-RestorePlan.bronze_count = model.Property(f"{RestorePlan} has {Integer:bronze_count}")
-RestorePlan.towers_covered = model.Property(f"{RestorePlan} has {Integer:towers_covered}")
-RestorePlan.binding_constraint = model.Property(
-    f"{RestorePlan} has {String:binding_constraint}"
-)
-
-model.define(RestorePlan.new(key=1))
-
-# Bind aggregations off the SelectedUpgrade view back onto the singleton.
-rp = RestorePlan.ref()
-model.define(
-    rp.total_cost(
-        aggs.sum(TowerUpgradeOption.cost).where(
-            TowerUpgradeOption.is_selected_upgrade()
-        )
-    )
-)
-model.define(
-    rp.total_install_weeks(
-        aggs.sum(TowerUpgradeOption.install_weeks).where(
-            TowerUpgradeOption.is_selected_upgrade()
-        )
-    )
-)
-model.define(
-    rp.capacity_restored_gbps(
-        aggs.sum(TowerUpgradeOption.capacity_increase_gbps).where(
-            TowerUpgradeOption.is_selected_upgrade()
-        )
-    )
-)
-model.define(
-    rp.gold_count(
-        aggs.count(TowerUpgradeOption).where(
-            TowerUpgradeOption.is_selected_upgrade(),
-            TowerUpgradeOption.tier == "GOLD",
-        )
-    )
-)
-model.define(
-    rp.silver_count(
-        aggs.count(TowerUpgradeOption).where(
-            TowerUpgradeOption.is_selected_upgrade(),
-            TowerUpgradeOption.tier == "SILVER",
-        )
-    )
-)
-model.define(
-    rp.bronze_count(
-        aggs.count(TowerUpgradeOption).where(
-            TowerUpgradeOption.is_selected_upgrade(),
-            TowerUpgradeOption.tier == "BRONZE",
-        )
-    )
-)
-model.define(
-    rp.towers_covered(
-        aggs.count(distinct(CellTower)).where(
-            TowerUpgradeOption.for_tower(CellTower),
-            TowerUpgradeOption.is_selected_upgrade(),
-        )
-    )
-)
-
-# Binding-constraint classification:
-#   "budget" if total_cost is within $50k of $5M
-#   else "install_weeks" if total_install_weeks is within 5 of 200
-#   else "neither"
-model.where(
-    rp.total_cost >= BUDGET_USD - 50_000,
-).define(rp.binding_constraint("budget"))
-model.where(
-    rp.total_cost < BUDGET_USD - 50_000,
-    rp.total_install_weeks >= INSTALL_WEEKS_BUDGET - 5,
-).define(rp.binding_constraint("install_weeks"))
-model.where(
-    rp.total_cost < BUDGET_USD - 50_000,
-    rp.total_install_weeks < INSTALL_WEEKS_BUDGET - 5,
-).define(rp.binding_constraint("neither"))
-
-# Read the singleton back from the ontology and surface it.
-plan_summary_df = (
-    model.select(
-        RestorePlan.total_cost.alias("total_cost"),
-        RestorePlan.total_install_weeks.alias("total_install_weeks"),
-        RestorePlan.capacity_restored_gbps.alias("capacity_restored_gbps"),
-        RestorePlan.gold_count.alias("gold_count"),
-        RestorePlan.silver_count.alias("silver_count"),
-        RestorePlan.bronze_count.alias("bronze_count"),
-        RestorePlan.towers_covered.alias("towers_covered"),
-        RestorePlan.binding_constraint.alias("binding_constraint"),
-    )
-    .to_df()
-)
-print("\n  RestorePlan (queried from ontology):")
-print(plan_summary_df.to_string(index=False))
+if len(selected_df) > 0:
+    print(f"\n  Total cost:               ${selected_df['cost'].sum():,.0f}")
+    print(f"  Total install crew-weeks: {int(selected_df['install_weeks'].sum())}")
+    print(f"  Capacity restored:        {int(selected_df['capacity_gbps'].sum())} Gbps")
+    print(f"  Tier mix:                 {selected_df['tier'].value_counts().to_dict()}")
+    print(f"  Towers covered:           {len(selected_df)} of {len(flagged_df)} critical")
+    print(f"  Region breakdown:         {selected_df['region'].value_counts().to_dict()}")
 
 print(f"\n{'=' * 60}")
 print("PIPELINE COMPLETE: 4 stages executed on the shared Telco ontology")
