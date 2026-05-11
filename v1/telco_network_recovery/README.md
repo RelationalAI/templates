@@ -51,11 +51,11 @@ Three layers of SQL sophistication are required to approximate this — and even
 
 | Reasoning shape | Catches | Why it misses |
 |---|---|---|
-| **Naive SQL** (`WHERE health_score < 0.5`) | ~6 % of true at-risk | Most risk lives on the `ModelAdvisory` concept, not on equipment columns. |
-| **Join-aware SQL** (also `OR model IN advised`) | ~85 % | The analyst has to know about `ModelAdvisory`, write the join, and pick a severity threshold. Still misses the 2-hop and interaction cases. |
-| **GNN over the heterogeneous graph** | ~100 % | Propagates advisory severity through `ModelAdvisory → NetworkEquipment` (1-hop) and `Equipment ↔ Tower ↔ Equipment` (2-hop, via undirected `directed=False` graph), and learns the smooth three-way interaction from training data. Outputs a graded probability the MIP can prioritize against. |
+| **Naive SQL** (`WHERE health_score < 0.5`) | 39 / 597 = 6.5 % of true at-risk | Most risk lives on the `ModelAdvisory` concept, not on equipment columns. |
+| **Join-aware SQL** (also `OR model IN advised`) | 510 / 597 = 85.4 % | The analyst has to know about `ModelAdvisory`, write the join, and pick a severity threshold. Still misses the 2-hop and interaction cases. |
+| **GNN over the heterogeneous graph** | 597 / 597 = 100 % | Propagates advisory severity through `ModelAdvisory → NetworkEquipment` (1-hop) and `Equipment ↔ Tower ↔ Equipment` (2-hop, via undirected `directed=False` graph), and learns the smooth three-way interaction from training data. Outputs a graded probability the MIP can prioritize against. |
 
-The remaining **~15 % gap** between join-aware SQL and the GNN is the *uniquely GNN-distinctive* set: equipment whose own MODEL has no advisory but whose tower-mate's does (the 2-hop case), plus equipment whose risk only emerges from a smooth combination of moderate signals no threshold captures (the three-way interaction). These are the canonical patterns a heterogeneous GNN earns its keep on.
+The remaining **87 / 597 = 14.6 % gap** between join-aware SQL and the GNN is the *uniquely GNN-distinctive* set: equipment whose own MODEL has no advisory but whose tower-mate's does (the 2-hop case), plus equipment whose risk only emerges from a smooth combination of moderate signals no threshold captures (the three-way interaction). These are the canonical patterns a heterogeneous GNN earns its keep on.
 
 ## Reasoner overview: inputs, outputs, and role
 
@@ -93,9 +93,9 @@ The remaining **~15 % gap** between join-aware SQL and the GNN is the *uniquely 
 
 - `telco_network_recovery.py` — main script with four chained reasoning stages.
 - `data/cell_towers.csv` — 250 cell towers across five regions (15 WEST DEGRADED).
-- `data/network_equipment.csv` — ~1,500 equipment installs across ~20 consolidated MODELs.
+- `data/network_equipment.csv` — 1,500 equipment installs across 18 consolidated MODELs.
 - `data/equipment_health.csv` — per-equipment health snapshots (1:1 with equipment).
-- `data/network_performance.csv` — ~5,000 per-tower performance measurements.
+- `data/network_performance.csv` — 5,000 per-tower performance measurements.
 - `data/subscribers.csv` — 1,200 subscribers (consumer + enterprise).
 - `data/call_detail_records.csv` — 6,000 directed call records.
 - `data/tower_upgrade_options.csv` — 750 upgrade options (3 tiers × 250 towers).
@@ -181,12 +181,12 @@ Set `EXP_DATABASE` at the top of `telco_network_recovery.py` to that database (d
      Towers with failure_intensity > 1.5: 165 / 190
      SQL-vs-GNN comparison on 597 true at-risk items:
        Naive SQL `WHERE health_score < 0.5`:               39 ( 6.5%)
-       Join-aware SQL `... OR model IN advised_models`:  ~510 (85.4%)
-       GNN-only opportunity (2-hop + smooth interaction):  ~87 (14.6%)
+       Join-aware SQL `... OR model IN advised_models`:   510 (85.4%)
+       GNN-only opportunity (2-hop + smooth interaction):  87 (14.6%)
 
    STAGE 2: RULES -- flag is_critical_restore towers
      Flagged critical_restore towers: 166
-     Region breakdown:  WEST CENTRAL EAST NORTH SOUTH
+     Region breakdown:  WEST 47, EAST 37, SOUTH 33, NORTH 29, CENTRAL 20
 
    STAGE 3: GRAPH -- PageRank + per-critical-tower blast radius
 
@@ -210,9 +210,9 @@ telco_network_recovery/
   telco_network_recovery.py       # Main script (4 chained reasoning stages)
   data/
     cell_towers.csv               # 250 towers across 5 regions (15 WEST DEGRADED)
-    network_equipment.csv         # ~1,500 equipment installs, ~20 MODELs
-    equipment_health.csv          # ~1,500 per-equipment health snapshots
-    network_performance.csv       # ~5,000 per-tower measurements
+    network_equipment.csv         # 1,500 equipment installs, 18 MODELs
+    equipment_health.csv          # 1,500 per-equipment health snapshots
+    network_performance.csv       # 5,000 per-tower measurements
     subscribers.csv               # 1,200 subscribers
     call_detail_records.csv       # 6,000 directed CDRs
     tower_upgrade_options.csv     # 750 (tower, tier) options
@@ -253,7 +253,7 @@ The undirected setting matters: with directed edges, the advisory signal would a
 
 Per-equipment predicted-failure probabilities are summed per tower and loaded back as a `CellTower.failure_intensity` property via a small `TowerFailureScore` bridge concept. Sum (not max) preserves per-tower differentiation — a tower with 4 confidently-at-risk pieces weighs ~4× a tower with 1.
 
-The script prints a three-tier SQL-vs-GNN comparison. On the bundled data: naive SQL on `HEALTH_SCORE < 0.5` catches 39 of 597 at-risk items (6.5%); a join-aware SQL adding `OR model IN advised_models` reaches ~85%; the remaining ~15% are 2-hop tower-mate-driven or smooth three-way interactions only the GNN catches via its undirected heterogeneous graph.
+The script prints a three-tier SQL-vs-GNN comparison. On the bundled data: naive SQL on `HEALTH_SCORE < 0.5` catches 39 of 597 at-risk items (6.5 %); a join-aware SQL adding `OR model IN advised_models` reaches 510 / 597 (85.4 %); the remaining 87 / 597 (14.6 %) are 2-hop tower-mate-driven or smooth three-way interactions only the GNN catches via its undirected heterogeneous graph.
 
 ### Stage 2: Rules — three-branch is_critical_restore
 

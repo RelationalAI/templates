@@ -8,7 +8,7 @@ A regional telco operator must allocate a fixed $5M capex budget and 200 crew-we
 Two distinct risk signals -- operational degradation and predicted
 equipment failure -- combined via a multi-hop GNN. Naive SQL catches
 6.5% of the true at-risk; a sophisticated join-aware SQL gets to
-~85%; the GNN closes the remaining ~15% via 2-hop tower-mate
+85.4%; the GNN closes the remaining 14.6% via 2-hop tower-mate
 propagation and a smooth three-way interaction no threshold isolates.
 The chain produces a multi-region preventive-maintenance plan within
 the $5M / 200-week envelope, restoring 214 Gbps (75% more capacity
@@ -23,7 +23,7 @@ than a rules-only plan on the same data).
   STAGE 2  Predictive   ──►  NetworkEquipment.predictions (1,500)
                  (GNN)        CellTower.failure_intensity (190)
                               Naive SQL catches 6.5%, join-aware SQL
-                              ~85%, GNN-only ~15% (2-hop + smooth).
+                              85.4%, GNN-only 14.6% (2-hop + smooth).
   ─────────────────────────────────────────────────────────────────
   STAGE 3  Rules        ──►  CellTower.is_critical_restore  (166)
                               Three-branch flag: 2 WEST operational
@@ -67,7 +67,7 @@ Concepts: `CellTower`, `NetworkEquipment` (with `tower_id_fk` FK property), `Equ
 
 **Response**
 
-9 concepts wired to the bundled CSVs: 250 `CellTower`, 1,500 `NetworkEquipment`, 1,500 `EquipmentHealth`, ~5,000 `NetworkPerformance`, 1,200 `Subscriber`, 6,000 `CallDetailRecord`, 750 `TowerUpgradeOption` (3 tiers × 250 towers), 8 `ModelAdvisory` rows on 7 distinct MODELs. Advisory severities span 0.50–0.95 (RECALL / DEFECT_BATCH / FIRMWARE_BUG / EOL / SECURITY_PATCH). About a third of the 1,500 equipment items sit on an advised MODEL — these are the items the GNN's ModelAdvisory edge will surface as elevated-risk.
+8 concepts wired to the bundled CSVs: 250 `CellTower`, 1,500 `NetworkEquipment`, 1,500 `EquipmentHealth`, 5,000 `NetworkPerformance`, 1,200 `Subscriber`, 6,000 `CallDetailRecord`, 750 `TowerUpgradeOption` (3 tiers × 250 towers), 8 `ModelAdvisory` rows on 7 distinct MODELs. Advisory severities span 0.50–0.95 (RECALL / DEFECT_BATCH / FIRMWARE_BUG / EOL / SECURITY_PATCH). 572 of the 1,500 equipment items (38.1 %) sit on an advised MODEL — these are the items the GNN's ModelAdvisory edge will surface as elevated-risk.
 
 ### 3. Discover reasoner questions
 
@@ -86,24 +86,24 @@ Plans the 5-reasoner chain on the shared ontology — descriptive (`/rai-queryin
 **Prompt**
 
 ```
-/rai-predictive-modeling + /rai-predictive-training Train a binary classification GNN on NetworkEquipment.STATUS (AT_RISK = STATUS in {FAILING, WARNING}). The graph should include three heterogeneous edges: EquipmentHealth -> NetworkEquipment via equipment_id_fk; NetworkEquipment -> CellTower via tower_id_fk; ModelAdvisory -> NetworkEquipment via shared MODEL. Sum predicted failure probability per tower into CellTower.failure_intensity. Show a side-by-side check: how many at-risk items does a SQL filter on HEALTH_SCORE < 0.5 catch vs the GNN?
+/rai-predictive-modeling + /rai-predictive-training Predict which equipment items in the network are at risk of failure. The risk should factor in not just each equipment's own health metrics, but also the broader fleet context — manufacturer advisories on the same model, and the health of other equipment on the same tower. Roll the per-equipment predictions up to a per-tower failure-intensity score that downstream stages can use for prioritization. Show me how the GNN compares to what a SQL query on equipment columns alone would catch.
 ```
 
 **Response**
 
-GNN binary classification with `eval_metric=roc_auc`, 80 epochs, three FK / shared-MODEL edges on an **undirected** graph (`directed=False`) so signal can flow both ways across `Equipment ↔ Tower ↔ Equipment` and propagate the 2-hop neighbor-advisory pattern. PropertyTransformer pulls equipment / health / tower / advisory features (category, continuous, integer, datetime). Train/val/test split is 1050/225/1500 (test = all equipment so every item gets a prediction). Per-equipment positive-class probabilities are summed per tower in pandas and loaded back as `CellTower.failure_intensity` via a `TowerFailureScore` bridge concept. The script prints a three-tier SQL-vs-GNN comparison: naive SQL on `HEALTH_SCORE < 0.5` catches 6.5%; join-aware SQL with `OR model IN advised_models` gets to ~85%; the GNN closes the remaining ~15% via 2-hop tower-mate propagation and the smooth three-way interaction term. Per-tower `failure_intensity` distribution: min 0.09, median 3.06, max 8.67 — graded enough that the Stage 4 objective gets a real priority signal.
+GNN binary classification with `eval_metric=roc_auc`, 80 epochs, three FK / shared-MODEL edges on an **undirected** graph (`directed=False`) so signal can flow both ways across `Equipment ↔ Tower ↔ Equipment` and propagate the 2-hop neighbor-advisory pattern. PropertyTransformer pulls equipment / health / tower / advisory features (category, continuous, integer, datetime). Train/val/test split is 1050/225/1500 (test = all equipment so every item gets a prediction). Per-equipment positive-class probabilities are summed per tower in pandas and loaded back as `CellTower.failure_intensity` via a `TowerFailureScore` bridge concept. The script prints a three-tier SQL-vs-GNN comparison: naive SQL on `HEALTH_SCORE < 0.5` catches 6.5%; join-aware SQL with `OR model IN advised_models` gets to 85.4%; the GNN closes the remaining 14.6% via 2-hop tower-mate propagation and the smooth three-way interaction term. Per-tower `failure_intensity` distribution: min 0.09, median 3.06, max 8.67 — graded enough that the Stage 4 objective gets a real priority signal.
 
 ### 5. Flag critical-restore towers
 
 **Prompt**
 
 ```
-/rai-rules-authoring Define CellTower.is_critical_restore with three branches: (1) WEST + DEGRADED + avg equipment health below 0.85; (2) WEST + avg packet loss above 5% + low health -- this catches ACTIVE-but-failing in the operational region; (3) failure_intensity above the configurable threshold -- this catches predicted-failure towers in any region. Use FK property-equality for the two-hop equipment-health-to-tower aggregation.
+/rai-rules-authoring Flag a tower as critical-restore in any of three cases: (1) it's in WEST and DEGRADED with poor equipment health (avg health below 0.85); (2) it's in WEST and showing high packet loss (above 5%) with poor health — catches ACTIVE-but-failing towers operations would otherwise miss; (3) the predicted equipment-failure intensity is high (any region) — catches towers where multiple equipment items are at risk before they fail. Compute the per-tower health average by joining EquipmentHealth through NetworkEquipment to CellTower.
 ```
 
 **Response**
 
-Four derived health properties (`avg_packet_loss`, `avg_latency_ms`, `avg_error_rate`, `avg_health_score`) computed for all 250 towers; the equipment-health aggregation traverses `EquipmentHealth.equipment_id_fk == NetworkEquipment.id` and `NetworkEquipment.tower_id_fk == CellTower.id`. The three-branch `CellTower.is_critical_restore` relationship fires on 166 towers spanning all five regions. The GNN's third branch contributes almost all of them — the WEST operational branches alone would produce only the 15 in-region cases the rule-only baseline would have caught.
+Four derived health properties (`avg_packet_loss`, `avg_latency_ms`, `avg_error_rate`, `avg_health_score`) computed for all 250 towers; the equipment-health aggregation joins from EquipmentHealth through NetworkEquipment to CellTower. The three-branch `CellTower.is_critical_restore` relationship fires on 166 towers spanning all five regions, distributed: WEST 47, EAST 37, SOUTH 33, NORTH 29, CENTRAL 20. The GNN's third branch contributes 165 of the 166 (154 of those are flagged ONLY by the predictive branch). The WEST operational branches alone would produce 12 in-region cases — 3 of the 15 WEST DEGRADED towers happen to have avg_health ≥ 0.85 in the augmented data and don't trip Branches 1/2 (though all 15 still fire on Branch 3 via their predicted failure_intensity).
 
 ### 6. Score subscriber blast radius
 
@@ -115,7 +115,7 @@ Four derived health properties (`avg_packet_loss`, `avg_latency_ms`, `avg_error_
 
 **Response**
 
-`Subscriber.influence_score` (PageRank) on all 1,200 subscribers; `CellTower.weighted_impact` and `CellTower.impact_count` on ~125 critical towers. Multi-region scope means the blast-radius story spans the operator's full customer base, not just the WEST cohort.
+`Subscriber.influence_score` (PageRank) on all 1,200 subscribers; `CellTower.weighted_impact` and `CellTower.impact_count` on all 166 critical towers. Multi-region scope means the blast-radius story spans the operator's full customer base, not just the WEST cohort.
 
 ### 7. Optimize tier selection
 
@@ -151,7 +151,7 @@ Budget is binding ($4,999,671 / $5,000,000); install-weeks at 195 / 200 are near
 
 **Response**
 
-The comparison surfaces three tiers of at-risk equipment. The naive `WHERE health_score < 0.5` query catches the small "health-driven" tail (~6% of true at-risk). A more sophisticated **join-aware SQL** that also adds `OR model IN advised_models` jumps to ~85% — but it still misses the **2-hop neighbor-driven** cases (equipment on a clean MODEL whose tower-mate is on a recalled one) and the **smooth three-way interaction** cases (moderate advisory + moderate health + outdated firmware compounding into elevated risk that no single threshold isolates). The GNN catches both via its heterogeneous undirected graph -- the remaining ~15% gap is the uniquely GNN-distinctive set.
+The comparison surfaces three tiers of at-risk equipment. The naive `WHERE health_score < 0.5` query catches 39 of 597 at-risk items (6.5 %) — the small "health-driven" tail. A more sophisticated **join-aware SQL** that also adds `OR model IN advised_models` reaches 510 / 597 (85.4 %) — but it still misses the **2-hop neighbor-driven** cases (equipment on a clean MODEL whose tower-mate is on a recalled one) and the **smooth three-way interaction** cases (moderate advisory + moderate health + outdated firmware compounding into elevated risk that no single threshold isolates). The GNN catches both via its heterogeneous undirected graph — the remaining 87 / 597 (14.6 %) is the uniquely GNN-distinctive set.
 
 ### 10. Persist solution concepts into the ontology
 
@@ -167,4 +167,4 @@ Ontology gains a singleton `RestorePlan` Concept with `total_cost`, `total_insta
 
 ## Data
 
-Bundled CSVs in `data/`: 250 cell towers (15 WEST DEGRADED), 1,500 NetworkEquipment items across ~20 consolidated MODELs, 1,500 EquipmentHealth snapshots, ~5,000 NetworkPerformance measurements, 1,200 subscribers, 6,000 CDRs, 750 TowerUpgradeOptions (3 tiers × 250 towers), 8 ModelAdvisory rows on 7 distinct MODELs. The synthesis script `data/_synthesize_advisory_data.py` regenerates the equipment / health / advisory / upgrade-option CSVs deterministically from a seed. The AT_RISK label is governed by a weighted sum of five signals: own-model advisory severity (0.25), tower-mate's advisory severity (0.45 -- the multi-hop signal), health gap (0.10), outdated-firmware flag (0.05), and a smooth three-way interaction (advisory × health_gap × firmware-outdated, weight 0.10). This is designed so a SQL query on equipment columns alone misses most of the risk, and even a join-aware SQL on `ModelAdvisory` still leaves a measurable gap the GNN closes via 2-hop neighbor message passing. All five stages run end-to-end via `telco_network_recovery.py`.
+Bundled CSVs in `data/`: 250 cell towers (15 WEST DEGRADED), 1,500 NetworkEquipment items across 18 consolidated MODELs, 1,500 EquipmentHealth snapshots, 5,000 NetworkPerformance measurements, 1,200 subscribers, 6,000 CDRs, 750 TowerUpgradeOptions (3 tiers × 250 towers), 8 ModelAdvisory rows on 7 distinct MODELs (severities 0.50–0.95). The synthesis script `data/_synthesize_advisory_data.py` regenerates the equipment / health / advisory / upgrade-option CSVs deterministically from a seed. The AT_RISK label is governed by a weighted sum of five signals: own-model advisory severity (0.25), tower-mate's advisory severity (0.45 -- the multi-hop signal), health gap (0.10), outdated-firmware flag (0.05), and a smooth three-way interaction (advisory × health_gap × firmware-outdated, weight 0.10). This is designed so a SQL query on equipment columns alone misses most of the risk, and even a join-aware SQL on `ModelAdvisory` still leaves a measurable gap the GNN closes via 2-hop neighbor message passing. All five stages run end-to-end via `telco_network_recovery.py`.

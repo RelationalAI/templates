@@ -134,6 +134,21 @@ print(f"Label distribution: at_risk=1 {network_equipment_df['AT_RISK'].sum()} / 
       f"{len(network_equipment_df)} ({network_equipment_df['AT_RISK'].mean():.1%})")
 print(f"Advisories: {len(advisories_df)} on {advisories_df['MODEL'].nunique()} distinct models")
 
+# Descriptive: advisory landscape -- which MODELs are affected, severity,
+# and how many equipment items sit on each. This is the relational
+# neighbor signal the GNN propagates in Stage 1.
+print("\n  Advisory landscape -- equipment count per advised MODEL:")
+_adv_landscape = (
+    advisories_df
+    .merge(network_equipment_df.groupby("MODEL").size().rename("eq_count").reset_index(), on="MODEL", how="left")
+    .sort_values("SEVERITY", ascending=False)
+    [["MODEL", "ADVISORY_TYPE", "SEVERITY", "ISSUED_DATE", "eq_count"]]
+)
+print(_adv_landscape.to_string(index=False))
+_n_on_advised = int(network_equipment_df["MODEL"].isin(set(advisories_df["MODEL"])).sum())
+print(f"  Equipment on an advised MODEL: {_n_on_advised} / {len(network_equipment_df)} "
+      f"({_n_on_advised/len(network_equipment_df):.1%})")
+
 # --------------------------------------------------
 # Define semantic model & load data
 # --------------------------------------------------
@@ -597,6 +612,22 @@ flagged_df = (
 print(f"\n  Flagged critical_restore towers: {len(flagged_df)}")
 print(f"  Breakdown by region:")
 print(flagged_df["region"].value_counts().to_string())
+
+# Per-branch contribution. Each branch is independently evaluable
+# against the per-tower properties already on the flagged_df rows, so
+# we can attribute each flag to one or more branches.
+_b1 = (flagged_df["region"] == "WEST") & (flagged_df["status"] == "DEGRADED") & (flagged_df["avg_health"] < 0.85)
+_b2 = (flagged_df["region"] == "WEST") & (flagged_df["avg_loss"] > 5.0) & (flagged_df["avg_health"] < 0.85)
+_b3 = flagged_df["failure_intensity"] > FAILURE_INTENSITY_THRESHOLD
+print("\n  Per-branch contribution (a tower can fire on multiple branches):")
+print(f"    Branch 1 (WEST + DEGRADED + low health):                  {int(_b1.sum())} towers")
+print(f"    Branch 2 (WEST + high packet loss + low health):          {int(_b2.sum())} towers")
+print(f"    Branch 3 (failure_intensity > {FAILURE_INTENSITY_THRESHOLD}, any region):  "
+      f"{int(_b3.sum())} towers")
+_only_predictive = (_b3 & ~_b1 & ~_b2).sum()
+print(f"    Towers flagged ONLY by the predictive branch:             {int(_only_predictive)} "
+      f"({_only_predictive/len(flagged_df):.0%} of flagged set)")
+
 print("\n  Top 20 by predicted failure intensity:")
 print(flagged_df.head(20).to_string(index=False))
 
@@ -619,6 +650,20 @@ call_graph = Graph(
     aggregator="sum",
 )
 call_graph.Node.influence_score = call_graph.pagerank()
+
+top_subs = (
+    model.select(
+        Subscriber.id.alias("sub_id"),
+        Subscriber.subscriber_type.alias("type"),
+        Subscriber.lifetime_value.alias("ltv"),
+        Subscriber.influence_score.alias("influence"),
+    )
+    .to_df()
+    .sort_values("influence", ascending=False)
+    .head(10)
+)
+print("\n  Top 10 subscribers by PageRank:")
+print(top_subs.to_string(index=False))
 
 CellTower.impact_count = model.Property(f"{CellTower} has {Float:impact_count}")
 CellTower.weighted_impact = model.Property(f"{CellTower} has {Float:weighted_impact}")
