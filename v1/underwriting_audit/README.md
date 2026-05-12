@@ -94,18 +94,18 @@ The bundled ruleset has a deliberate bug: `is_manual_review` is defined as "seni
    python underwriting_audit.py
    ```
 
-6. Expected output. With `MAX_WITNESSES = 8` the solver enumerates up to 8 distinct counterexamples and each row carries its `solution` index. Solver build strings, exact wall times, and per-solution ordering will vary; the structure of the output and the *set* of returned witnesses is stable:
+6. Expected output. With `MAX_WITNESSES = 16` the solver exhausts the bundled feasible set (3 non-senior age buckets × 4 coverage bands = 12 counterexamples) and reports `status: OPTIMAL`. Solver build strings, exact wall times, and per-solution row ordering will vary across runs; the *set* of 12 returned witnesses is stable because the search exhausts:
    ```text
    Solve result:
-   • status: SOLUTION_LIMIT
+   • status: OPTIMAL
    • objective: 0
-   • solve time: 1.30s
-   • num_points: 8
+   • solve time: 1.27s
+   • num_points: 12
    • solver: MiniZinc_unknown
 
-   Audit result: FAIL (ruleset has counterexamples) -- 8 counterexample applicant(s) found (status: SOLUTION_LIMIT). Any returned witness disproves the property even if the solver stopped before exhausting the search; witnesses below.
+   Audit result: FAIL (ruleset has counterexamples) -- 12 counterexample applicant(s) found (status: OPTIMAL). Each witness disproves the property under the encoded ruleset; witnesses below.
 
-   Counterexample witnesses (up to 8 per run):
+   Counterexample witnesses (up to 16 per run):
       solution  age_years  has_chronic  coverage_dollars  is_senior  is_frail  is_manual_review
    0         0         55            1           1000000          0         1                 0
    1         1         45            1           1000000          0         1                 0
@@ -115,9 +115,13 @@ The bundled ruleset has a deliberate bug: `is_manual_review` is defined as "seni
    5         5         45            1            500000          0         1                 0
    6         6         55            1            250000          0         1                 0
    7         7         28            1            250000          0         1                 0
+   8         8         55            1            100000          0         1                 0
+   9         9         55            1            500000          0         1                 0
+   10       10         28            1            100000          0         1                 0
+   11       11         28            1            500000          0         1                 0
    ```
 
-   Each witness row is one applicant who falsifies the property "every frail applicant goes through manual review": `is_frail == 1` (because `has_chronic == 1` -- chronic-condition applicants are frail by the rule book) and `is_manual_review == 0` (because the buggy rule only flags seniors and these applicants are below the 70 threshold). The verdict line says **FAIL** to mean *the ruleset under audit fails the property* -- the audit tool itself ran cleanly; FAIL is the audit's *finding*, not a template error. The audit demonstrates the bug by showing K such applicants spread across three of the four non-senior age buckets and all four coverage bands -- enough variation for the actuary to confirm the failure mode is structural, not specific to one age or coverage value. Raising `MAX_WITNESSES` past the size of the feasible set (3 non-senior ages × 4 coverage bands = 12 witnesses under the bundled data; recount if you swap the CSVs) flips `status` to `OPTIMAL` and surfaces the entire failure shape.
+   Each witness row is one applicant who falsifies the property "every frail applicant goes through manual review": `is_frail == 1` (because `has_chronic == 1` -- chronic-condition applicants are frail by the rule book) and `is_manual_review == 0` (because the buggy rule only flags seniors and these applicants are below the 70 threshold). The verdict line says **FAIL** to mean *the ruleset under audit fails the property* -- the audit tool itself ran cleanly; FAIL is the audit's *finding*, not a template error. The 12 witnesses span all three non-senior age buckets and all four coverage bands -- enough variation for the actuary to confirm the failure mode is structural, not specific to one age or coverage value. Lower `MAX_WITNESSES` below the feasible-set size (e.g. 4) to demonstrate the `SOLUTION_LIMIT` outcome where the solver returns a sample and signals that more witnesses may exist.
 
 ## Template structure
 ```text
@@ -227,7 +231,7 @@ model.select(
 
 - The audited property holds: no feasible applicant falsifies it under the bundled ruleset. This is the audit's *pass* signal -- the script prints `Audit result: PASS`. Confirm by checking `solve_info().termination_status` -- the string `INFEASIBLE` means no counterexample exists.
 - If you expected a witness and got none, double-check the counterexample IC: did you assert `is_frail == 1 AND is_manual_review == 0`, or did you accidentally assert `is_frail == 0`? The IC must point at the *negation* of the property.
-- Empty reference data: confirm `data/age_buckets.csv` has at least one bucket on each side of `SENIOR_THRESHOLD_YEARS`. If every bucket is below the threshold, `is_senior` can never be 1; if every bucket is above, the buggy rule's gap (chronic + non-senior) cannot be reached.
+- Empty reference data: confirm `data/age_buckets.csv` has at least one non-senior bucket (age < `SENIOR_THRESHOLD_YEARS`). The buggy rule's gap is chronic + non-senior applicants slipping past manual review; if every bucket is at or above the threshold, all applicants are flagged as senior and the audit correctly finds no counterexample (PASS).
 
 </details>
 
@@ -243,8 +247,9 @@ model.select(
 <details>
   <summary>How many witnesses will the solver return?</summary>
 
-- Up to `MAX_WITNESSES` (8 by default) or however many feasible witnesses exist, whichever is smaller. `solve_info().num_points` reports the actual count after the solve; `solve_info().termination_status` reports `SOLUTION_LIMIT` when the limit was hit and `OPTIMAL` when the search has been exhausted.
-- Solution ordering is not guaranteed across runs or solver versions; the *set* of witnesses is, but solution index 0 may swap with solution index 1 between runs. Treat the `solution` column as a label, not a ranking.
+- Up to `MAX_WITNESSES` (16 by default) or however many feasible witnesses exist, whichever is smaller. `solve_info().num_points` reports the actual count after the solve; `solve_info().termination_status` reports `SOLUTION_LIMIT` when the limit was hit and `OPTIMAL` when the search has been exhausted.
+- When `status == OPTIMAL`, the search exhausted the feasible set: the *set* of returned witnesses is stable across runs and only the row ordering may vary. When `status == SOLUTION_LIMIT`, the solver stopped early and the specific K-subset of witnesses returned can vary across runs and solver versions -- only the existence of K witnesses is stable.
+- Treat the `solution` column as a label, not a ranking.
 - The K returned witnesses are guaranteed to be pairwise *distinct* on at least one decision (age, chronic flag, coverage, or any indicator) but not maximally diverse, and they are not ranked by severity or any objective. For systematic spread across the failure-mode space, raise `MAX_WITNESSES` past the size of the feasible set so the solver exhausts every distinct case; for ranking, add `problem.minimize(...)` over a severity score and post-process.
 
 </details>

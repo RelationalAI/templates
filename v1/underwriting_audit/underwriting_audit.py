@@ -16,9 +16,12 @@ ruleset:
   actuary that the property fails; K distinct witnesses surface concrete
   failure cases across age buckets, coverage bands, and condition profiles
   the buggy rule misses. The solver guarantees the witnesses are pairwise
-  distinct, not maximally diverse -- raise `MAX_WITNESSES` past the
-  feasible-set size to exhaust the failure space. Multi-solution is the
-  right return shape.
+  distinct, not maximally diverse. The default `MAX_WITNESSES` is set
+  above the bundled feasible-set size so the search exhausts and the
+  output is stable across runs; sizing the cap below the feasible set
+  flips `status` to `SOLUTION_LIMIT` and only the existence of K
+  witnesses (not their specific identity) is stable. Multi-solution
+  is the right return shape.
 
 The bundled ruleset has a deliberate bug: `is_manual_review` is defined as
 "senior", but `is_frail` is defined as "senior OR has chronic condition".
@@ -56,9 +59,14 @@ pd_set_option("display.width", 200)
 SENIOR_THRESHOLD_YEARS = 70
 # Solver solution-limit: how many distinct counterexample applicants to
 # enumerate per audit run. Real audit workflows want a *batch* of
-# witnesses showing the failure modes, not a single one -- raise the
-# limit on real rulesets to surface a richer set of cases.
-MAX_WITNESSES = 8
+# witnesses showing the failure modes, not a single one. Set above
+# the bundled feasible-set size (3 non-senior buckets * 4 coverage
+# bands = 12) so the search exhausts and the verdict is `OPTIMAL` --
+# this gives the actuary the full failure shape and makes the output
+# stable across runs. Lower it (e.g. 4) to demonstrate the
+# `SOLUTION_LIMIT` outcome where more witnesses may exist beyond
+# the cap; raise it for production rule packs.
+MAX_WITNESSES = 16
 
 model = Model("underwriting_audit")
 
@@ -295,8 +303,8 @@ elif si.num_points is not None and si.num_points >= 1:
     print(
         f"\nAudit result: FAIL (ruleset has counterexamples) -- "
         f"{si.num_points} counterexample applicant(s) found (status: {status}). "
-        "Any returned witness disproves the property even if the solver stopped "
-        "before exhausting the search; witnesses below."
+        "Each witness disproves the property under the encoded ruleset; "
+        "witnesses below."
     )
 else:
     n = si.num_points if si.num_points is not None else "(unavailable)"
