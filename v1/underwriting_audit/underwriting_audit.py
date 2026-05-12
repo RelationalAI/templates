@@ -191,7 +191,12 @@ problem.satisfy(senior_def_neg_ic)
 
 # Rule: `is_frail` is 1 iff the applicant is senior OR has a chronic
 # condition. Encoded as the standard OR-arithmetic equivalence on
-# binaries (`y = a OR b` is `y >= a, y >= b, y <= a + b`).
+# binaries (`y = a OR b` is `y >= a, y >= b, y <= a + b`). Keep all
+# three arms even when one looks redundant under the bundled
+# counterexample ICs -- each arm is part of the definition of the OR
+# rule, and dropping an arm silently weakens the ruleset against a
+# future rule change (the exact silent-pass shape the audit warns
+# against). Same applies to the two `is_manual_review` arms below.
 frail_lb_senior_ic = model.require(Applicant.is_frail >= Applicant.is_senior)
 frail_lb_chronic_ic = model.require(Applicant.is_frail >= Applicant.has_chronic)
 frail_ub_ic = model.require(Applicant.is_frail <= Applicant.is_senior + Applicant.has_chronic)
@@ -288,9 +293,10 @@ if status == "INFEASIBLE":
     )
 elif si.num_points is not None and si.num_points >= 1:
     print(
-        f"\nAudit result: FAIL -- {si.num_points} counterexample applicant(s) found "
-        f"(status: {status}). Any returned witness disproves the property "
-        "even if the solver stopped before exhausting the search; witnesses below."
+        f"\nAudit result: FAIL (ruleset has counterexamples) -- "
+        f"{si.num_points} counterexample applicant(s) found (status: {status}). "
+        "Any returned witness disproves the property even if the solver stopped "
+        "before exhausting the search; witnesses below."
     )
 else:
     n = si.num_points if si.num_points is not None else "(unavailable)"

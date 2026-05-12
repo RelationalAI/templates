@@ -103,7 +103,7 @@ The bundled ruleset has a deliberate bug: `is_manual_review` is defined as "seni
    • num_points: 8
    • solver: MiniZinc_unknown
 
-   Audit result: FAIL -- 8 counterexample applicant(s) found (status: SOLUTION_LIMIT). The property does not hold under the encoded ruleset; witnesses below.
+   Audit result: FAIL (ruleset has counterexamples) -- 8 counterexample applicant(s) found (status: SOLUTION_LIMIT). Any returned witness disproves the property even if the solver stopped before exhausting the search; witnesses below.
 
    Counterexample witnesses (up to 8 per run):
       solution  age_years  has_chronic  coverage_dollars  is_senior  is_frail  is_manual_review
@@ -117,7 +117,7 @@ The bundled ruleset has a deliberate bug: `is_manual_review` is defined as "seni
    7         7         28            1            250000          0         1                 0
    ```
 
-   Each witness row is one applicant who falsifies the property "every frail applicant goes through manual review": `is_frail == 1` (because `has_chronic == 1` -- chronic-condition applicants are frail by the rule book) and `is_manual_review == 0` (because the buggy rule only flags seniors and these applicants are below the 70 threshold). The audit demonstrates the bug by showing K such applicants spread across three of the four non-senior age buckets and all four coverage bands -- enough variation for the actuary to confirm the failure mode is structural, not specific to one age or coverage value. Raising `MAX_WITNESSES` past the size of the feasible set (3 non-senior ages × 4 coverage bands = 12 witnesses with the bundled data) flips `status` to `OPTIMAL` and surfaces the entire failure shape.
+   Each witness row is one applicant who falsifies the property "every frail applicant goes through manual review": `is_frail == 1` (because `has_chronic == 1` -- chronic-condition applicants are frail by the rule book) and `is_manual_review == 0` (because the buggy rule only flags seniors and these applicants are below the 70 threshold). The verdict line says **FAIL** to mean *the ruleset under audit fails the property* -- the audit tool itself ran cleanly; FAIL is the audit's *finding*, not a template error. The audit demonstrates the bug by showing K such applicants spread across three of the four non-senior age buckets and all four coverage bands -- enough variation for the actuary to confirm the failure mode is structural, not specific to one age or coverage value. Raising `MAX_WITNESSES` past the size of the feasible set (3 non-senior ages × 4 coverage bands = 12 witnesses under the bundled data; recount if you swap the CSVs) flips `status` to `OPTIMAL` and surfaces the entire failure shape.
 
 ## Template structure
 ```text
@@ -214,7 +214,7 @@ model.select(
 ## Customize this template
 
 - **Audit a corrected ruleset** by changing the buggy rule. `is_manual_review` is encoded as TWO ICs (`manual_review_eq_lb_ic` and `manual_review_eq_ub_ic`) that together pin `is_manual_review == is_senior`; replace both with the OR-arithmetic shape that pins `is_manual_review == is_frail` (i.e. `>= is_senior`, `>= has_chronic`, `<= is_senior + has_chronic`) and the model becomes infeasible. `solve_info().termination_status` reports `INFEASIBLE` and `solve_info().num_points` is 0; the script prints `Audit result: PASS -- proven no counterexample applicants exist.` That is the audit's pass signal: no counterexample exists, so the property holds.
-- **Audit a different property** by *replacing* the two `counterexample_*` ICs (not adding new ones alongside; leaving the original assertions in place silently turns the audit into a conjunction of both properties). To audit "no senior is in the cheapest coverage band", replace them with `Applicant.is_senior == 1` and `Applicant.coverage_band_id == 1` (assuming band 1 is the cheapest). Witnesses then show seniors who slipped into the lowest band.
+- **Audit a different property** by **replacing** the two `counterexample_*` ICs. Do not add new counterexample ICs alongside the existing ones -- leaving `is_frail == 1` and `is_manual_review == 0` in place silently turns the audit into a conjunction of both properties, which is almost never what you want. Example: to audit "no senior is in the cheapest coverage band", replace them with `Applicant.is_senior == 1` and `Applicant.coverage_band_id == 1` (assuming band 1 is the cheapest). Witnesses then show seniors who slipped into the lowest band.
 - **Add more rule indicators** by introducing additional decisions and OR/AND-arithmetic ICs. Conjunction `y = a AND b` is encoded as `y <= a, y <= b, y >= a + b - 1` -- the dual of the OR pattern.
 - **Raise the witness count on a real ruleset** by increasing `MAX_WITNESSES`. Production audits typically want 50--500 witnesses to cover a rule pack's failure modes.
 - **Switch from "any witness" to "minimum-violation witness"** by adding `problem.minimize(...)` over a violation severity score and `solution_limit=1`. Useful for ranking failures when triage capacity is limited.
@@ -253,6 +253,7 @@ model.select(
   <summary>"Property holds" -- how do I know the audit was sound?</summary>
 
 - A pass result (no witness) means the solver could not find a feasible applicant satisfying the counterexample IC under the modelled ruleset. This is sound *for the ruleset as encoded* -- if your encoding misses a rule arm, the audit will silently pass on the unencoded gap. Always cross-check the encoding against the source rule pack: for every rule arm, there should be a corresponding `model.require(...)` or `implies(...)`.
+- A pass result is also sound only *for the property as encoded*. Cross-check that the property itself matches the regulation -- auditing the wrong property PASSes for the wrong reason.
 - Bounded model-checking caveat: this template enumerates K witnesses up to a `MAX_WITNESSES` limit. That is a search-space cap, not a soundness cap -- the solver still proves INFEASIBLE (or returns the full feasible set) when the search exhausts within the time limit. Watch for `status: SOLUTION_LIMIT`: that means more witnesses may exist beyond the K reported.
 
 </details>
