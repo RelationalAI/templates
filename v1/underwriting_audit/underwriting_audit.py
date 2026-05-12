@@ -222,6 +222,14 @@ problem.satisfy(manual_review_eq_ub_ic)
 # the audit succeeds (witnesses exist); under a corrected rule the same
 # IC would render the model INFEASIBLE, signalling that the property
 # holds.
+#
+# These ICs are unconditional `model.require(...)` (no `model.where(...)`
+# scope) because `Applicant` is a singleton -- there is exactly one row
+# in the Applicant table, so the ICs bind to that single decision slot.
+# When extending to a fleet of N applicants, scope each IC with
+# `model.where(Applicant)` (or a tighter applicant filter), otherwise the
+# unconditional require demands that *every* applicant be a counterexample
+# rather than finding a single applicant that is.
 counterexample_frail_ic = model.require(Applicant.is_frail == 1)
 counterexample_no_review_ic = model.require(Applicant.is_manual_review == 0)
 problem.satisfy(counterexample_frail_ic)
