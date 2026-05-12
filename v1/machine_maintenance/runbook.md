@@ -46,12 +46,12 @@ all 3 Turbine techs sit in one city, a $3,200 fix away from resolved.
 **Prompt**
 
 ```
-/rai-build-starter-ontology Build a manufacturing maintenance ontology from the CSVs in data/ covering machines, technicians, qualifications, periods, sensor readings, failure predictions, downtime events, production runs, parts inventory, and certification expiry.
+/rai-build-starter-ontology Build a manufacturing maintenance ontology from the CSVs in data/. Scope: support preventive-maintenance scheduling over a multi-period horizon — so introduce a Period concept (1..N from the `period` column) alongside the source-bound concepts.
 ```
 
 **Response**
 
-Concepts: `Machine`, `Technician`, `Qualification`, `Period`, `MachinePeriod`, `TechnicianPeriod`, `TechnicianMachinePeriod`, `Sensor`, `SensorReading`, `FailurePrediction`, `DowntimeEvent`, `ProductionRun`, `PartsInventory`, `CertificationExpiry` — bound to the bundled CSVs (30 machines × 3 plants, 10 technicians, 4 periods). `training_options.csv` is loaded as a DataFrame (read in Stage 4), not modeled as a concept.
+Concepts: `Machine`, `Technician`, `Qualification`, `Period`, `Sensor`, `SensorReading`, `FailurePrediction`, `DowntimeEvent`, `ProductionRun`, `PartsInventory`, `CertificationExpiry`, `TrainingOption` — bound to the bundled CSVs (30 machines × 3 plants, 10 technicians, 4 periods). Junction concepts (`MachinePeriod`, `TechnicianPeriod`, `TechnicianMachinePeriod`) are deferred to Stage 3 when the prescriptive formulation needs them.
 
 ### 2. Examine ontology
 

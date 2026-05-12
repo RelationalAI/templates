@@ -3,13 +3,13 @@ requires = ["setuptools>=64", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "rai-template-telco-network-recovery"
+name = "rai-template-book-slate-recommendation"
 version = "0.0.0"
-description = "RelationalAI template: telco_network_recovery (PyRel v1)"
+description = "RelationalAI template: book_slate_recommendation (PyRel v1)"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-  "relationalai==1.2.2",
+  "relationalai==1.1.0",
   "pandas>=2.0",
 ]
 
