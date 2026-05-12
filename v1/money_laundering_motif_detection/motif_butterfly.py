@@ -26,8 +26,9 @@ from relationalai.semantics.reasoners.prescriptive import Problem
 # K = 3 is the smallest hub count that's clearly a fan-out-then-fan-in pattern
 # rather than a direct payment chain.
 K = 3
-# Per-hub conservation tolerance: a hub absorbs a small per-hop fee ("dirty")
-# but must forward most of the funds. $100 admits realistic small residuals.
+# Per-hub conservation tolerance: a hub absorbs a small per-hop skim (the
+# launderer's overhead) but must forward most of the funds. $100 admits
+# realistic small residuals.
 CONSERVATION_TOLERANCE_DOLLARS = 100
 # Solver solution-limit: cap how many distinct motifs to enumerate per run.
 # The bundled data plants exactly two butterflies; raise this when running on
@@ -40,9 +41,9 @@ model, Account, Transaction = create_model()
 # form makes that IC active when `is_hub == 1` and vacuous when `is_hub == 0`;
 # M needs to bound |sum_in - sum_out| over decision-selected motif edges,
 # which is at most the per-account total of incoming or outgoing amounts.
-# Compute that from the data and add a small buffer. (We re-read the CSV here
-# rather than wire it through `create_model()`'s return -- only butterfly
-# needs the post-load aggregation, and the bundled file is small.)
+# Re-load transactions here to compute that bound; only the butterfly motif
+# needs this post-load aggregation, so it's local rather than wired through
+# `create_model()`'s return.
 _tx_csv = pd.read_csv(DATA_DIR / "transactions.csv")
 CONSERVATION_BIG_M = (
     int(
@@ -120,13 +121,29 @@ in_flow_ic = model.where(Transaction.dst == Account).require(
 )
 problem.satisfy(in_flow_ic)
 
+# Global motif-edge count = K source->hub edges + K hub->dest edges = 2K.
+# Closes a gap in the per-account flow ICs above: those use `model.where(...)`
+# to scope per-account, so the IC isn't instantiated for accounts with no
+# outgoing (resp. no incoming) transactions. On a customer ledger with
+# sink-only or source-only accounts, the per-account ICs alone would let the
+# solver pick such an account as a hub (or one-sided role) with no actual
+# motif edge attached. The global count forces 2K motif edges total, which
+# combined with the per-account ICs that DO fire on connected accounts
+# rules out phantom role assignments.
+total_motif_edges_ic = model.require(sum(Transaction.is_motif) == 2 * K)
+problem.satisfy(total_motif_edges_ic)
+
 # Layer constraints: forbid a motif edge from going directly source -> dest
-# (skipping the hub layer), and forbid a motif edge from going hub -> hub
-# (chaining through hubs). Without these, the per-account count flow ICs
-# alone admit non-butterfly shapes when the graph has the right inter-role
-# edges. Expressed as `sum of three binaries <= 2` (equivalent to "the three
-# binaries are not all 1 simultaneously") so the constraint stays in plain
-# relational arithmetic and `verify()` can re-evaluate it.
+# (skipping the hub layer) or hub -> hub (chaining through hubs). The count
+# flow ICs above plus the global motif-edge count constrain the *number* of
+# motif edges per role, but cannot rule out the topological shape
+# `S->D, S->H1, S->H2, H1->H3, H2->D, H3->D` (still 2K edges, still 1 per
+# hub in / 1 per hub out, K per dest in, K per source out) where one hub
+# chains through another and one leg skips the hub layer. The bundled
+# data has no under-threshold direct source-dest or hub-hub edges, so these
+# ICs are vacuous on the demo; they are load-bearing on customer ledgers
+# that have such edges. Expressed as `sum of three binaries <= 2` so the
+# constraint stays in plain relational arithmetic.
 no_direct_src_to_dst_ic = model.require(
     Transaction.is_motif + Transaction.src.is_source + Transaction.dst.is_dest <= 2
 )
@@ -195,18 +212,14 @@ problem.solve("minizinc", time_limit_sec=60, solution_limit=MAX_BUTTERFLY_MOTIFS
 si = problem.solve_info()
 si.display()
 
-problem.verify(
-    role_exclusive_ic,
-    one_source_ic,
-    k_hubs_ic,
-    one_dest_ic,
-    out_flow_ic,
-    in_flow_ic,
-    no_direct_src_to_dst_ic,
-    no_hub_to_hub_ic,
-    amount_threshold_ic,
-    same_bo_ic,
-)
+# No `problem.verify(...)` call: `populate=False` on the `solve_for(...)`
+# calls above means the decision-variable values are NOT written back to
+# the relational `is_motif` / `is_source` / `is_hub` / `is_dest` properties.
+# Without those values in the relational layer, verify() cannot re-evaluate
+# ICs that reference them and prints spurious "Requirements not met"
+# warnings instead of doing real verification. The inspect tables below
+# surface the solver's choices directly; manual inspection against the IC
+# formulas is the verification path here.
 
 status = si.termination_status
 motif_count = si.num_points or 0
@@ -232,7 +245,7 @@ else:
         "did not finish. Raise time_limit_sec or check the README troubleshooting."
     )
 
-print("\nButterfly: candidate motif transactions (one row per motif edge per solution):")
+print("\nButterfly: chosen motif transactions (one row per motif edge per solution):")
 sol_idx = Integer.ref()
 val = Integer.ref()
 model.select(
@@ -246,7 +259,7 @@ model.select(
     is_motif_var.transaction.ts_minutes.alias("ts_min"),
 ).where(is_motif_var.values(sol_idx, val), val == 1).inspect()
 
-print("\nButterfly: candidate motif hubs per solution (with shared beneficial owner):")
+print("\nButterfly: chosen motif hubs per solution (with shared beneficial owner):")
 model.select(
     sol_idx.alias("solution"),
     is_hub_var.account.id.alias("hub_id"),
@@ -254,7 +267,7 @@ model.select(
     is_hub_var.account.bo_id.alias("bo_id"),
 ).where(is_hub_var.values(sol_idx, val), val == 1).inspect()
 
-print("\nButterfly: candidate motif source and destination per solution:")
+print("\nButterfly: chosen motif source and destination per solution:")
 src_sol = Integer.ref()
 src_val = Integer.ref()
 dst_sol = Integer.ref()

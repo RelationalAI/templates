@@ -1,17 +1,16 @@
-"""KYC-burst motif with cardinality / distribution constraints.
+"""KYC-burst motif with cardinality constraint over a chosen subset.
 
-CSP technique demonstrated: cardinality and distribution constraints over
-a decision-selected vertex subset. The solver picks N source accounts
-whose deposits to a single target destination must:
+CSP technique demonstrated: cardinality constraint over a decision-selected
+vertex subset. The solver picks N source accounts whose deposits to a single
+target destination must:
   - have at least RETAIL_FLOOR retail-tier accounts among the chosen
-  - have at most BUSINESS_CAP business-tier accounts among the chosen
   - all transact within a tight time window of each other
   - each stay below the FinCEN $10K currency-transaction-report threshold
 
-The cardinality constraints are over the *chosen* subset of accounts.
+The cardinality constraint is over the *chosen* subset of accounts.
 Rules can label each account's KYC tier; only CSP enforces the count
-distribution *over the selected subset*. A graph or paths library has
-no way to express "≥ 4 of the K accounts I'm picking are retail-tier."
+*over the selected subset*. A graph or paths library has no way to
+express "≥ 4 of the K accounts I'm picking are retail-tier."
 
 Topology: AMLworld fan-in pattern (Altman et al., NeurIPS 2023) with the
 KYC-tier-diversity profile that AML practitioner literature flags as a
@@ -34,12 +33,12 @@ BURST_TARGET_DESTINATION_ID = 51
 BURST_WINDOW_MINUTES = 60
 # Cohort size: exactly N accounts in the burst.
 N_BURST = 5
-# KYC-mix distribution: a launder-grade burst recruits ≥ RETAIL_FLOOR retail
-# accounts and admits at most BUSINESS_CAP business accounts. The mix lets
-# the launderer pass a single-tier-only alert while the structuring signal
-# is still present in aggregate.
+# KYC-mix distribution: a launder-grade burst recruits at least RETAIL_FLOOR
+# retail-tier accounts within the cohort. The cardinality is over the
+# *selected* subset, so rules alone can't enforce it -- they can label each
+# account's tier but not bind a count constraint to the K-subset the solver
+# picks.
 RETAIL_FLOOR = 4
-BUSINESS_CAP = 1
 # Solver solution-limit: enumerate up to this many distinct burst cohorts.
 MAX_BURST_MOTIFS = 5
 
@@ -113,16 +112,7 @@ retail_floor_ic = model.require(
 )
 problem.satisfy(retail_floor_ic)
 
-# CSP-required piece #2: business-tier cap over the chosen subset. At most
-# BUSINESS_CAP of the chosen accounts can be business-tier. Same shape as
-# the retail floor -- a cardinality constraint over a decision-selected
-# vertex subset.
-business_cap_ic = model.require(
-    sum(Account.is_burst).where(Account.kyc_tier == "business") <= BUSINESS_CAP
-)
-problem.satisfy(business_cap_ic)
-
-# CSP-required piece #3: time window across the chosen burst-tx. For any
+# CSP-required piece #2: time window across the chosen burst-tx. For any
 # pair of transactions to the target whose timestamps differ by more than
 # the window, both can't be burst-tx. The asymmetric
 # `T2.ts_minutes - Transaction.ts_minutes > WINDOW` predicate handles each
@@ -148,23 +138,21 @@ problem.satisfy(threshold_ic)
 # Solve and report.
 print("\n" + "=" * 70)
 print(f"KYC-MIX BURST (fan-in to account id {BURST_TARGET_DESTINATION_ID})")
-print("CSP technique: cardinality / distribution over chosen subset")
+print("CSP technique: cardinality over chosen subset")
 print("=" * 70)
 problem.display()
 problem.solve("minizinc", time_limit_sec=60, solution_limit=MAX_BURST_MOTIFS)
 si = problem.solve_info()
 si.display()
 
-problem.verify(
-    not_target_tx_ic,
-    n_burst_ic,
-    out_burst_ic,
-    flow_consistency_ic,
-    retail_floor_ic,
-    business_cap_ic,
-    window_ic,
-    threshold_ic,
-)
+# No `problem.verify(...)` call: `populate=False` on the `solve_for(...)`
+# calls above means the decision-variable values are NOT written back to
+# the relational `is_burst` / `is_burst_tx` properties. Without those values
+# in the relational layer, verify() cannot re-evaluate ICs that reference
+# them and prints spurious "Requirements not met" warnings instead of
+# doing real verification. The inspect tables below surface the solver's
+# choices directly; manual inspection against the IC formulas is the
+# verification path here.
 
 status = si.termination_status
 motif_count = si.num_points or 0

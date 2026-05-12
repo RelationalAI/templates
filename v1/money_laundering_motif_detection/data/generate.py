@@ -15,24 +15,23 @@ meaningful discrimination work, not just trivial pattern matching.
 
 Planted motifs:
 
-1. Two scatter-gather "butterflies" (the existing fixtures from prior
-   versions, preserved verbatim): cluster bo=100 -> WireRecipientCorp,
-   cluster bo=200 -> OffshoreLLC. Each butterfly fans 3 under-threshold
+1. Two scatter-gather "butterflies": cluster bo=100 -> Wire Recipient Corp,
+   cluster bo=200 -> Offshore LLC. Each butterfly fans 3 under-threshold
    deposits through 3 same-beneficial-owner hubs to a single recipient,
    with per-hub flow conservation in dollar amount.
 
 2. One smurf-army deposit cluster: 5 source accounts with pairwise
    distinct beneficial owners and pairwise distinct jurisdictions all
-   deposit small amounts to TargetMerchantX within a 60-minute window,
-   summing to a known $27,000 target. Several decoys: dup-BO accounts
-   that would fail pairwise distinctness, an out-of-window account, an
-   over-target amount account.
+   deposit small amounts to Pacific Receivables Inc within a 60-minute
+   window, summing to a known $27,000 target. Decoys: a dup-BO pair
+   whose amounts also sum in-range (so distinct_bo_ic actually binds),
+   an out-of-window account, an over-target amount account.
 
 3. One temporal-burst KYC-mix cluster: 4 retail-tier + 1 business-tier
    account across 4 distinct jurisdictions all transact to
-   BurstTargetCorp within a 60-minute window. Decoys: a second
-   business-tier account that would push the business count over cap,
-   out-of-window accounts, and a single-account decoy.
+   Continental Settlements LLC within a 60-minute window. Decoys: a
+   second business-tier account that swaps in for the planted business
+   account, out-of-window accounts, and a single-account decoy.
 
 Background noise: 60 random transactions among unrelated accounts to
 make each solver do real discrimination work. Noise is deterministic
@@ -59,7 +58,7 @@ random.seed(SEED)
 # and category counts, not the specific codes).
 
 NAMED_ACCOUNTS = [
-    # --- Butterfly fixture (preserved from earlier template versions) ---
+    # --- Butterfly cluster: source -> 3 same-BO hubs -> destination ---
     (1, "SourceShellCorp", 600, "business", "US"),
     (2, "HubAccA1", 100, "retail", "US"),
     (3, "HubAccA2", 100, "retail", "US"),
@@ -100,7 +99,7 @@ NAMED_ACCOUNTS = [
     (38, "NoiseAccE2", 1800, "retail", "UK"),
     (39, "NoiseAccF1", 1900, "retail", "US"),
     (40, "NoiseAccG1", 2000, "retail", "US"),
-    # --- Smurf-army cluster (variant 2): 5 distinct-BO sources -> single dest ---
+    # --- Smurf-army cluster: 5 distinct-BO sources -> single target merchant ---
     (41, "Pacific Receivables Inc", 2100, "business", "US"),
     (42, "Adrian Park", 1701, "retail", "US"),
     (43, "Mira Volkov", 1702, "retail", "UK"),
@@ -111,7 +110,7 @@ NAMED_ACCOUNTS = [
     (48, "Lewis Holdings B", 1706, "retail", "UK"),
     (49, "Yara Costa", 1707, "retail", "US"),
     (50, "Helena Vargas", 1708, "retail", "US"),
-    # --- KYC-burst cluster (variant 3): mixed retail/business across jurisdictions ---
+    # --- KYC-burst cluster: mixed retail/business across jurisdictions ---
     (51, "Continental Settlements LLC", 2200, "business", "US"),
     (52, "Trent Hayes", 2201, "retail", "US"),
     (53, "Samira Choudhury", 2202, "retail", "UK"),
@@ -147,14 +146,14 @@ def _make_noise_accounts(start_id: int, count: int) -> list:
 # Columns: tx_id, src_id, dst_id, amount_dollars, ts_minutes.
 
 NAMED_TRANSACTIONS = [
-    # --- Butterfly motif #1 (cluster bo=100 -> WireRecipientCorp), ts 5-19 ---
+    # --- Butterfly motif #1 (cluster bo=100 -> Wire Recipient Corp), ts 5-19 ---
     (1, 1, 2, 9000, 5),
     (2, 1, 3, 8500, 7),
     (3, 1, 4, 9500, 9),
     (4, 2, 5, 8980, 15),
     (5, 3, 5, 8475, 17),
     (6, 4, 5, 9420, 19),
-    # --- Butterfly motif #2 (cluster bo=200 -> OffshoreLLC), ts 30-44 ---
+    # --- Butterfly motif #2 (cluster bo=200 -> Offshore LLC), ts 30-44 ---
     (7, 6, 7, 7000, 30),
     (8, 6, 8, 7500, 32),
     (9, 6, 9, 7800, 34),
@@ -211,7 +210,7 @@ NAMED_TRANSACTIONS = [
     (58, 13, 1, 1500, 84),
     (59, 2, 30, 300, 90),
     (60, 30, 5, 200, 92),
-    # --- Smurf-army motif (variant 2): 5 distinct-BO sources -> TargetMerchantX ---
+    # --- Smurf-army motif: 5 distinct-BO sources -> Pacific Receivables Inc ---
     # Sum = 5400 + 5450 + 5400 + 5350 + 5400 = 27000 (target). Window: 102-120 (max-min = 18 mins).
     (61, 42, 41, 5400, 102),
     (62, 43, 41, 5450, 105),
@@ -219,16 +218,19 @@ NAMED_TRANSACTIONS = [
     (64, 45, 41, 5350, 115),
     (65, 46, 41, 5400, 120),
     # --- Smurf-army decoys ---
-    # 47 and 48 share bo=1706 (would fail pairwise distinctness if both chosen).
-    # Their amounts ($4500) differ from the real smurfs' $5350-5450 so substituting
-    # one for any real smurf would also break the sum-equals-target constraint.
-    (66, 47, 41, 4500, 108),
-    (67, 48, 41, 4500, 112),
+    # 47 and 48 share bo=1706, so a cohort containing both fails pairwise
+    # distinctness. Their amounts ($5400) match the planted smurfs so the
+    # sum-equals-target constraint admits cohorts that swap one of {47, 48}
+    # in for a planted smurf -- the test that distinct_bo_ic actually binds
+    # is whether the dup-BO cohort {47, 48, + 3 planted} (which sums in range)
+    # is excluded only by pairwise distinctness, not by any other IC.
+    (66, 47, 41, 5400, 108),
+    (67, 48, 41, 5400, 112),
     # 49 transacts outside the 60-min window
     (68, 49, 41, 5400, 200),
     # 50 transacts in-window but at $9000, breaking the sum-equals-target constraint
     (69, 50, 41, 9000, 110),
-    # --- KYC-burst motif (variant 3): 4 retail + 1 business -> BurstTargetCorp ---
+    # --- KYC-burst motif: 4 retail + 1 business -> Continental Settlements LLC ---
     # Distribution: retail=4 (>= floor 4), business=1 (<= cap 1), 4 distinct
     # jurisdictions (US, UK, Cayman, Singapore). Window: 202-218 (max-min = 16 mins).
     (70, 52, 51, 4500, 202),
@@ -289,7 +291,9 @@ def main() -> None:
     here = Path(__file__).parent
 
     # Build account list: named + noise.
-    n_noise_accounts = 30  # 40 named butterfly + 20 motif (smurf+burst) + 30 noise = 90
+    n_noise_accounts = 90 - len(
+        NAMED_ACCOUNTS
+    )  # target 90 total; 60 named (40 butterfly + 10 smurf + 10 burst) + 30 noise
     noise_accounts = _make_noise_accounts(start_id=len(NAMED_ACCOUNTS) + 1, count=n_noise_accounts)
     all_accounts = NAMED_ACCOUNTS + noise_accounts
 

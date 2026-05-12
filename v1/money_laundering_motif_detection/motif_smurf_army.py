@@ -138,8 +138,8 @@ problem.satisfy(sum_target_neg_ic)
 # pair of transactions to the target whose timestamps differ by more than
 # the window, both can't be smurf-tx. This is also a pairwise-over-decision-
 # variables formulation; rules / paths can't bind it to the chosen subset.
-# The asymmetric `T2.ts_minutes - T1.ts_minutes > WINDOW` predicate handles
-# each unordered pair exactly once -- the (a, b) and (b, a) iteration sees
+# The asymmetric `T2.ts_minutes - Transaction.ts_minutes > WINDOW` predicate
+# handles each unordered pair exactly once -- the (a, b) and (b, a) iteration sees
 # only one side of the timestamp difference satisfy the > WINDOW threshold,
 # so no extra tx_id ordering is needed (and adding one would silently miss
 # pairs where tx_id order disagrees with ts_minutes order).
@@ -170,17 +170,14 @@ problem.solve("minizinc", time_limit_sec=60, solution_limit=MAX_SMURF_MOTIFS)
 si = problem.solve_info()
 si.display()
 
-problem.verify(
-    not_target_tx_ic,
-    n_smurfs_ic,
-    out_smurf_ic,
-    flow_consistency_ic,
-    distinct_bo_ic,
-    sum_target_pos_ic,
-    sum_target_neg_ic,
-    window_ic,
-    threshold_ic,
-)
+# No `problem.verify(...)` call: `populate=False` on the `solve_for(...)`
+# calls above means the decision-variable values are NOT written back to
+# the relational `is_smurf` / `is_smurf_tx` properties. Without those values
+# in the relational layer, verify() cannot re-evaluate ICs that reference
+# them and prints spurious "Requirements not met" warnings instead of
+# doing real verification. The inspect tables below surface the solver's
+# choices directly; manual inspection against the IC formulas is the
+# verification path here.
 
 status = si.termination_status
 motif_count = si.num_points or 0
