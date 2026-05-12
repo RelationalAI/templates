@@ -23,11 +23,11 @@ tags:
 
 ## What this template is for
 
-A regional telco operator must allocate a fixed capex budget across cell towers in the face of two distinct risk signals. Some towers are visibly broken — degraded status, high packet loss, low equipment health — and a declarative rule can find them. Others have equipment that **looks operationally fine on its own measurements** but sits on a manufacturer's MODEL that just received a recall, a defect-batch notice, or an EOL advisory; those towers won't fail today, but they will fail soon. A SQL query on equipment health columns alone catches the first set but misses the second.
+A regional telco operator must allocate a fixed capex budget across cell towers in the face of two distinct risk signals. Some towers are visibly broken — degraded status, high packet loss, low equipment health — and a declarative rule can find them. Others have equipment that **looks operationally fine on its own measurements** but sits on a manufacturer's MODEL that just received a recall, a defect-batch notice, or an EOL advisory; those towers won't fail today, but they will fail soon. The chain integrates both signals into an optimizable plan.
 
 This template uses RelationalAI's **predictive reasoning**, **rules-based classification**, **graph analysis**, and **prescriptive reasoning (MIP)** in a chained workflow on a shared ontology:
 
-1. **Predictive (GNN)** trains a binary classifier on `NetworkEquipment.STATUS` over a heterogeneous graph that links each equipment to its `EquipmentHealth` snapshot, its `CellTower`, and any `ModelAdvisory` on its MODEL. The GNN's structural advantage is the **ModelAdvisory → NetworkEquipment** edge: advisory severity propagates to every fleet sibling through shared-MODEL message passing — a relational signal a SQL filter on equipment columns alone cannot reproduce. Per-equipment predicted-failure probability is summed per tower into `CellTower.failure_intensity`.
+1. **Predictive (GNN)** trains a binary classifier on `NetworkEquipment.STATUS` over a heterogeneous graph that links each equipment to its `EquipmentHealth` snapshot, its `CellTower`, and any `ModelAdvisory` on its MODEL. Advisory severity propagates to every fleet sibling through shared-MODEL message passing, and 2-hop paths via `CellTower` let the GNN reach tower-mate equipment too. Per-equipment predicted-failure probability is summed per tower into `CellTower.failure_intensity`.
 2. **Rules** derive per-tower averages from `NetworkPerformance` measurements and equipment health (two-hop join via FK property equality), then flag `CellTower.is_critical_restore` via three branches: WEST + DEGRADED + low equipment health; WEST + high packet loss + low health; or `failure_intensity > threshold` (any region). The third branch broadens upgrade scope beyond WEST when the GNN flags concentrated predicted failure elsewhere.
 3. **Graph** builds a directed `Subscriber → Subscriber` call graph from `CallDetailRecord`, runs PageRank, and aggregates per critical tower the subscribers routing through it weighted by their influence — the social blast radius if that tower fails.
 4. **Prescriptive** picks one upgrade tier (BRONZE / SILVER / GOLD) per critical tower under a $5M budget and a 200 crew-week install cap. The objective multiplies three coefficients, one from each upstream stage: capacity boost × weighted impact (Stage 3) × failure intensity (Stage 1).
@@ -46,7 +46,7 @@ Each stage writes derived properties back to the same ontology that downstream s
 **Key design patterns demonstrated:**
 
 - **Accretive ontology enrichment** — each stage writes derived properties that downstream stages consume as first-class attributes. No glue code, no DataFrame round-trips between stages (except where the GNN's prediction shape needs a one-step pandas aggregation before binding back).
-- **Heterogeneous-graph GNN** — three FK / shared-MODEL edges (`EquipmentHealth → NetworkEquipment`, `NetworkEquipment → CellTower`, `ModelAdvisory → NetworkEquipment`). The third edge is the relational signal that earns the GNN its keep over a per-row tabular classifier.
+- **Heterogeneous-graph GNN** — three FK / shared-MODEL edges (`EquipmentHealth → NetworkEquipment`, `NetworkEquipment → CellTower`, `ModelAdvisory → NetworkEquipment`) so advisory severity propagates to every fleet sibling AND reaches tower-mate equipment via 2-hop paths.
 - **Property-equality edges** — the GNN graph defines edges via `==` between FK columns instead of `model.Relationship` traversal. This pattern sidesteps an SDK iteration-mutation bug and is the recommended shape for any concept that participates in a GNN graph and has cross-pointing relationships.
 - **Bridge concept** — per-equipment predictions are aggregated in pandas (`sum`) and loaded back as a `CellTower.failure_intensity` property via a small `TowerFailureScore` concept. Same pattern as in `retail_planning`.
 - **Three-branch rule** — `CellTower.is_critical_restore` is defined three times (OR semantics). A tower is critical if any branch fires; the third branch lets the GNN broaden scope beyond WEST.
@@ -56,7 +56,7 @@ Each stage writes derived properties back to the same ontology that downstream s
 
 - Telco network operations and capital planning teams.
 - Operations researchers exploring multi-reasoner pipelines in RelationalAI.
-- Developers learning when a GNN earns its keep over a flat tabular model — and how to model the heterogeneous edges that unlock that value.
+- Developers learning how to model heterogeneous-graph GNN inputs (FK property-equality edges, shared-key edges, undirected message passing) on a multi-concept ontology.
 
 ## What you'll build
 
@@ -156,12 +156,9 @@ Set `EXP_DATABASE` at the top of `telco_network_recovery.py` to that database (d
    STAGE 1: PREDICTIVE -- equipment-failure binary classification GNN
      failure_intensity distribution: min=0.09, median=3.06, max=8.67
      Towers with failure_intensity > 1.5: 165 / 190
-     SQL-vs-GNN comparison on 597 true at-risk items:
-       Naive SQL `WHERE health_score < 0.5`:                 39 ( 6.5%)
-       Join-aware SQL `... OR model IN advised_models`:    510 (85.4%)
-       GNN-only opportunity (2-hop + smooth interaction):   87 (14.6%)
-       GNN recall, argmax (predicted_label == 1):             0 ( 0.0%)
-       GNN recall, p>=0.5 (probabilistic threshold):        503 (84.3%)
+     GNN recall on 597 true at-risk items:
+       Argmax (predicted_label == 1):                         0 ( 0.0%)
+       p>=0.5 (probabilistic threshold):                    503 (84.3%)
      GNN per-equipment positive-prob distribution: min=0.024,
        median=0.331, max=0.890; items with pos_prob>=0.5: 572 / 1500
 
@@ -243,8 +240,6 @@ The undirected setting matters: with directed edges, the advisory signal would a
 `PropertyTransformer` annotates features by type — categorical (manufacturer, MODEL, firmware version, tower type / status / region, advisory type), continuous (failure rate, temperature, power consumption, health score, advisory severity), integer (MTBF hours, tower capacity), and datetime (install dates, last failure date, measurement date, advisory issued date).
 
 Per-equipment predicted-failure probabilities are summed per tower and loaded back as a `CellTower.failure_intensity` property via a small `TowerFailureScore` bridge concept. Sum (not max) preserves per-tower differentiation — a tower with 4 confidently-at-risk pieces weighs ~4× a tower with 1.
-
-The script prints a three-tier SQL-vs-GNN comparison. On the bundled data: naive SQL on `HEALTH_SCORE < 0.5` catches 39 of 597 at-risk items (6.5 %); a join-aware SQL adding `OR model IN advised_models` reaches 510 / 597 (85.4 %); the remaining 87 / 597 (14.6 %) are 2-hop tower-mate-driven or smooth three-way interactions only the GNN catches via its undirected heterogeneous graph.
 
 ### Stage 2: Rules — three-branch is_critical_restore
 
