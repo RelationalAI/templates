@@ -58,7 +58,7 @@ Concepts: `Machine`, `Technician`, `Qualification`, `Period`, `Sensor`, `SensorR
 **Prompt**
 
 ```
-/rai-querying Show the ontology as a concept-relationship diagram and report row counts per concept.
+/rai-querying What concepts and relationships does the ontology have, and how many rows are in each?
 ```
 
 **Response**
@@ -94,19 +94,19 @@ Plant_C 79.8% > Plant_A 68.2% > Plant_B 61.4%; 7 of 9 anomalies at Plant_A; `Mac
 **Prompt**
 
 ```
-/rai-graph-analysis Which machines share qualified technicians? Score each machine by how central it is in the qualification network so the optimizer can prioritize the bottlenecks.
+/rai-graph-analysis Which machines are the biggest scheduling bottlenecks — machines that many qualification paths route through, so the optimizer should prioritize them?
 ```
 
 **Response**
 
-30 machines → 1 connected component; Pumps tie at top centrality (normalized to 1.0); `Machine.betweenness` stored.
+30 machines → 1 connected component; Pumps tie at top betweenness (24.0); `Machine.betweenness` stored (normalized so Pumps = 1.0).
 
 ### 6. Classify machine risk
 
 **Prompt**
 
 ```
-/rai-rules-authoring Rate each machine's risk: chronic if >8 downtime events, high-risk if failure prob >0.3 AND criticality 4+, plus overdue for maintenance. All three flags = Critical, two = Elevated, otherwise Standard.
+/rai-rules-authoring Which machines are at highest maintenance risk — chronic (more than 8 downtime events), high-risk (failure probability above 0.3 AND criticality 4 or higher), or overdue (remaining useful life below the planned maintenance duration)? Classify each as Critical (all three flags fire), Elevated (two), or Standard (zero or one).
 ```
 
 **Response**
@@ -118,7 +118,7 @@ Plant_C 79.8% > Plant_A 68.2% > Plant_B 61.4%; 7 of 9 anomalies at Plant_A; `Mac
 **Prompt**
 
 ```
-/rai-prescriptive-problem-formulation Schedule preventive maintenance across the 30 machines and 4 periods. Each machine in each period is either maintained or left exposed to failure risk for that period. Cap maintenance at 5 jobs per period (parts/bay limit). Every overdue machine must be maintained by period 2. Each maintained machine needs a qualified technician assigned, and technicians can't exceed their available hours per period. Minimize expected failure cost on machines left exposed (weighted by criticality and centrality) plus technician labor and travel.
+/rai-prescriptive-problem-formulation What's the optimal preventive-maintenance schedule across the 30 machines and 4 periods, with each machine in each period either maintained or left exposed to failure risk? Cap maintenance at 5 jobs per period (parts/bay limit); every overdue machine must be done by period 2; each maintained machine needs a qualified technician assigned within their hours budget. Minimize expected failure cost on exposed machines (weighted by criticality and centrality) plus technician labor and travel.
 ```
 
 **Response**
@@ -130,7 +130,7 @@ Decision variables for maintain / vulnerable / technician-assignment over the 30
 **Prompt**
 
 ```
-/rai-prescriptive-solver-management + /rai-prescriptive-results-interpretation For each machine type, check whether all qualified technicians sit in one location and recommend the cheapest cross-training fix.
+/rai-prescriptive-solver-management + /rai-prescriptive-results-interpretation For each machine type, are all qualified technicians concentrated in one location, and what's the cheapest cross-training fix to break that concentration?
 ```
 
 **Response**

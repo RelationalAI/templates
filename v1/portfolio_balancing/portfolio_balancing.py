@@ -1201,8 +1201,10 @@ for budget in budgets:
 
 print(
     "\n  Expected pattern: crisis vol > base vol at every lambda; "
-    "the gap widens\n  toward the concentrated (high-return) end of the "
-    "frontier. Because the investable\n  universe was already deduplicated "
-    "in Stage 2, the gap reflects genuine\n  co-movement in distinct bets, "
-    "not near-duplicate holdings stacking."
+    "the gap peaks\n  in the middle of the frontier (eps_1..eps_2) and "
+    "narrows toward the\n  concentrated (high-return) end. Because the "
+    "investable universe was\n  already deduplicated in Stage 2, the "
+    "concentrated end picks the highest-\n  Sharpe distinct bet per cluster "
+    "rather than stacking near-duplicates, so\n  the crisis gap shrinks "
+    "there instead of widening."
 )

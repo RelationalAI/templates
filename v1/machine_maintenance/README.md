@@ -256,36 +256,23 @@ The multi-reasoner approach is necessary because no single analytical technique 
      ...
 
    Qualification coverage by machine type:
-     Compressor: 3 techs in Chicago_IL, Houston_TX -- gaps at Phoenix_AZ
-     Generator: 3 techs in Chicago_IL, Phoenix_AZ -- gaps at Houston_TX
-     Motor: 4 techs in Chicago_IL, Phoenix_AZ -- gaps at Houston_TX
-     Pump: 3 techs in Chicago_IL, Phoenix_AZ -- gaps at Houston_TX
-     Turbine: 3 techs in Houston_TX -- CONCENTRATED
+     Compressor: 3 techs in Chicago_IL, Houston_TX -- OK
+     Generator: 3 techs in Chicago_IL, Phoenix_AZ -- OK
+     Motor: 4 techs in Chicago_IL, Phoenix_AZ -- OK
+     Pump: 3 techs in Chicago_IL, Phoenix_AZ -- OK
+     Turbine: 3 techs in Houston_TX -- CONCENTRATED -- all 3 techs in Houston_TX
 
    Concentration risk detail:
 
-     Turbine: 6 machines across 3 facilities, all 3 qualified techs in Houston_TX
-       Local machines (Houston_TX): 2
-       Remote machines (require travel): 4
+     Turbine: all 3 qualified techs in Houston_TX
        Scheduled Turbine jobs: 3, of which 2 require travel (67%)
-       Qualified techs (all Houston_TX):
-         T001 (Alice_Johnson, Senior)
-         T002 (Bob_Martinez, Senior)
-         T003 (Charlie_Brown, Junior)
 
    ======================================================================
    RECOMMENDATION: Cross-Training to Eliminate Concentration Risk
    ======================================================================
 
      Turbine -- add coverage outside Houston_TX:
-       Best candidate: T006 (Fiona_Garcia, Senior, Chicago_IL)
-       Cost: $3,200, Duration: 5 weeks
-       All candidates:
-         T006 (Fiona_Garcia, Chicago_IL): $3,200, 5 weeks
-         T005 (Edward_Smith, Chicago_IL): $3,500, 6 weeks
-         T008 (Hannah_Wilson, Phoenix_AZ): $3,800, 6 weeks
-         T009 (Ian_Taylor, Phoenix_AZ): $4,200, 8 weeks
-         T004 (Diana_Chen, Chicago_IL): $5,500, 10 weeks
+       Best candidate: T006 (Fiona_Garcia): $3,200, 5 weeks
    ```
 
 ## Template structure
