@@ -1,0 +1,9 @@
+node_id,name,cpu_millicores,memory_mib,gpu_units,zone,rack
+1,gen-a1-n1,12000,49152,0,us-east-1a,rack-a1
+2,gen-a1-n2,12000,49152,0,us-east-1a,rack-a1
+3,gen-a2-n1,12000,49152,0,us-east-1a,rack-a2
+4,gen-a2-n2,12000,49152,0,us-east-1a,rack-a2
+5,gpu-b1-n1,8000,32768,4,us-east-1b,rack-b1
+6,gen-b1-n2,12000,49152,0,us-east-1b,rack-b1
+7,gpu-b2-n1,8000,32768,4,us-east-1b,rack-b2
+8,gen-b2-n2,12000,49152,0,us-east-1b,rack-b2
