@@ -39,7 +39,16 @@ those enrichments as first-class properties -- the accretive enrichment
 pattern.
 
 Run:
-    python telco_network_recovery.py
+    `python telco_network_recovery.py`
+
+Output:
+    Prints per-stage diagnostics -- equipment split, advisory landscape,
+    GNN per-tower failure_intensity distribution and recall, three-branch
+    critical-restore rule firings, top subscribers by PageRank and per-
+    critical-tower blast radius, MIP termination status -- and a final
+    RestorePlan singleton row (total cost, install-weeks, capacity
+    restored, tier mix, towers covered, binding constraint) showing the
+    plan as queryable ontology.
 """
 
 from pathlib import Path
@@ -160,8 +169,9 @@ print(f"  Equipment on an advised MODEL: {_n_on_advised} / {len(network_equipmen
 
 model = Model("Telco Network Recovery")
 
-# CellTower -- physical radio tower in a region. The GNN reaches it
-# from each NetworkEquipment via the tower_id_fk property-equality edge.
+# CellTower concept: a physical radio tower in a region. The GNN
+# reaches it from each NetworkEquipment via the tower_id_fk
+# property-equality edge.
 CellTower = model.Concept("CellTower", identify_by={"id": String})
 CellTower.name = model.Property(f"{CellTower} has {String:name}")
 CellTower.tower_type = model.Property(f"{CellTower} has {String:tower_type}")
@@ -181,14 +191,14 @@ model.define(CellTower.new(
     install_date=src.INSTALL_DATE,
 ))
 
-# NetworkEquipment -- the predicted-on concept. We load every
-# observable column (MODEL, MANUFACTURER, FIRMWARE_VERSION, INSTALL_DATE)
-# as a typed feature. tower_id_fk is an explicit FK property used by
-# the GNN graph via property equality; we avoid `model.Relationship`
-# on concepts that participate in the GNN graph because the SDK's
-# `_collect_node_columns` iterates `concept._relationships` during
-# fit() and lazy-registration during iteration trips a `RuntimeError:
-# dictionary changed size during iteration`.
+# NetworkEquipment concept: equipment items (radios, antennas, BBUs,
+# amplifiers, ...) installed on cell towers; the GNN's prediction
+# target. tower_id_fk is an explicit FK property used by the GNN
+# graph via property equality; we avoid `model.Relationship` on
+# concepts in the GNN graph because the SDK's _collect_node_columns
+# iterates concept._relationships during fit() and lazy-registration
+# during iteration trips RuntimeError: dictionary changed size during
+# iteration.
 NetworkEquipment = model.Concept("NetworkEquipment", identify_by={"id": String})
 NetworkEquipment.equipment_type = model.Property(f"{NetworkEquipment} has {String:equipment_type}")
 NetworkEquipment.manufacturer = model.Property(f"{NetworkEquipment} has {String:manufacturer}")
@@ -208,8 +218,10 @@ model.define(NetworkEquipment.new(
     tower_id_fk=src.TOWER_ID,
 ))
 
-# EquipmentHealth -- per-equipment snapshot. All numeric health columns
-# flow into the GNN via the equipment_id_fk property-equality edge.
+# EquipmentHealth concept: per-equipment health snapshot (MTBF, failure
+# rate, temperature, power consumption, health score). All numeric
+# columns flow into the GNN via the equipment_id_fk property-equality
+# edge.
 EquipmentHealth = model.Concept("EquipmentHealth", identify_by={"id": String})
 EquipmentHealth.mtbf_hours = model.Property(f"{EquipmentHealth} has {Integer:mtbf_hours}")
 EquipmentHealth.failure_rate = model.Property(f"{EquipmentHealth} has {Float:failure_rate}")
@@ -233,12 +245,12 @@ model.define(EquipmentHealth.new(
     equipment_id_fk=src.EQUIPMENT_ID,
 ))
 
-# ModelAdvisory -- manufacturer-issued recalls / defect batches /
-# firmware bugs / EOL notices that apply to a MODEL. The "out of band"
-# relational signal the GNN propagates to every NetworkEquipment
-# sharing the affected MODEL. A single MODEL can have multiple
-# advisories; we collapse to one row per MODEL by taking the max
-# severity so the GNN sees one ModelAdvisory node per affected fleet.
+# ModelAdvisory concept: a manufacturer-issued recall / defect batch /
+# firmware bug / EOL / security-patch notice that applies to an
+# equipment MODEL. The relational signal the GNN propagates to every
+# NetworkEquipment sharing the affected MODEL. We collapse multiple
+# advisories on the same MODEL to one row by taking the max severity
+# so the GNN sees one ModelAdvisory node per affected fleet.
 ModelAdvisory = model.Concept("ModelAdvisory", identify_by={"model": String})
 ModelAdvisory.advisory_type = model.Property(f"{ModelAdvisory} has {String:advisory_type}")
 ModelAdvisory.severity = model.Property(f"{ModelAdvisory} has {Float:severity}")
@@ -332,8 +344,10 @@ pt = PropertyTransformer(
     ],
 )
 
-# Task tables. Test = all equipment so every NetworkEquipment receives
-# a prediction (inference domain), independent of train/val split.
+# TrainEqTable / ValEqTable / TestEqTable concepts: GNN task tables
+# holding (equipment_id, at_risk) pairs for training / validation /
+# inference. Test = all equipment so every NetworkEquipment receives
+# a prediction, independent of train/val split.
 TrainEqTable = model.Concept("TrainEqTable")
 ValEqTable = model.Concept("ValEqTable")
 TestEqTable = model.Concept("TestEqTable")
@@ -488,6 +502,10 @@ print(
 # property. Mirrors the bridge pattern used elsewhere in the template
 # corpus (e.g. retail_planning) -- aggregate in pandas, then join onto
 # the concept that hosts the downstream property.
+# TowerFailureScore concept: bridge concept holding the per-tower SUM
+# of GNN equipment-failure probabilities. Loaded from pandas after
+# Stage 1 and joined onto CellTower to expose failure_intensity as a
+# first-class Property the rules + MIP downstream consume.
 TowerFailureScore = model.Concept("TowerFailureScore", identify_by={"tower_id": String})
 TowerFailureScore.score = model.Property(f"{TowerFailureScore} has {Float:score}")
 tfs_src = model.data(per_tower[["TOWER_ID", "FAILURE_INTENSITY"]])
@@ -511,8 +529,10 @@ print(f"\n{'=' * 60}")
 print("STAGE 2: RULES -- flag is_critical_restore towers")
 print("=" * 60)
 
-# NetworkPerformance -- per-tower measurements consumed by the avg
-# packet loss / latency / error rate properties below.
+# NetworkPerformance concept: per-tower performance measurements
+# (packet loss %, latency ms, error rate). Aggregated into Stage 2's
+# avg_packet_loss / avg_latency_ms / avg_error_rate CellTower
+# properties used by the critical-restore rule branches.
 NetworkPerformance = model.Concept("NetworkPerformance", identify_by={"id": String})
 NetworkPerformance.packet_loss_pct = model.Property(f"{NetworkPerformance} has {Float:packet_loss_pct}")
 NetworkPerformance.latency_ms = model.Property(f"{NetworkPerformance} has {Float:latency_ms}")
@@ -636,7 +656,8 @@ print(f"\n{'=' * 60}")
 print("STAGE 3: GRAPH -- PageRank + per-critical-tower blast radius")
 print("=" * 60)
 
-# Subscriber -- nodes of the Stage 3 call graph.
+# Subscriber concept: customer accounts (consumer or enterprise) that
+# place calls; nodes of the Stage 3 PageRank graph.
 Subscriber = model.Concept("Subscriber", identify_by={"id": String})
 Subscriber.subscriber_type = model.Property(f"{Subscriber} has {String:subscriber_type}")
 Subscriber.lifetime_value = model.Property(f"{Subscriber} has {Float:lifetime_value}")
@@ -647,7 +668,9 @@ model.define(Subscriber.new(
     lifetime_value=src.LIFETIME_VALUE_USD,
 ))
 
-# CallDetailRecord -- edge concept for Stage 3.
+# CallDetailRecord concept: a directed call (caller -> callee routed
+# through a specific CellTower). Used as the edge concept for Stage 3's
+# subscriber PageRank graph and for per-tower blast-radius aggregation.
 CallDetailRecord = model.Concept("CallDetailRecord", identify_by={"id": String})
 CallDetailRecord.caller = model.Relationship(
     f"{CallDetailRecord} has caller {Subscriber}", short_name="cdr_caller"
@@ -739,8 +762,9 @@ print(f"\n{'=' * 60}")
 print("STAGE 4: PRESCRIPTIVE -- tower upgrade selection MIP")
 print("=" * 60)
 
-# TowerUpgradeOption -- Stage 4 decision space. Every tower has three
-# tier options (BRONZE / SILVER / GOLD).
+# TowerUpgradeOption concept: a (tower, tier) candidate upgrade with
+# capacity, cost, and install-weeks; the MIP's decision space. Every
+# tower carries three tier options (BRONZE / SILVER / GOLD).
 TowerUpgradeOption = model.Concept(
     "TowerUpgradeOption", identify_by={"tower_id": String, "tier": String}
 )
@@ -870,6 +894,11 @@ if len(selected_df) > 0:
 # RestorePlan and TowerUpgradeOption.is_selected_upgrade directly
 # without re-running the chain.
 # --------------------------------------------------
+
+# RestorePlan concept: singleton holding the headline plan metrics
+# (cost, install-weeks, capacity restored, tier mix, towers covered,
+# binding constraint) -- the prescriptive output materialized as
+# queryable ontology rather than stage-local Python state.
 RestorePlan = model.Concept("RestorePlan", identify_by={"id": String})
 RestorePlan.total_cost = model.Property(f"{RestorePlan} has {Float:total_cost}")
 RestorePlan.total_install_weeks = model.Property(f"{RestorePlan} has {Integer:total_install_weeks}")
