@@ -40,7 +40,7 @@ watch->avoid downgrade = +0.0% (optimizer already routed around it).
 **Prompt**
 
 ```
-/rai-build-starter-ontology Build a supply chain ontology from the CSVs in data/ covering sites, businesses, SKUs, shipping operations, demand orders, historical shipments, and quarterly delay predictions.
+/rai-build-starter-ontology Build a supply chain ontology from the CSVs in data/.
 ```
 
 **Response**
