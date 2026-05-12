@@ -114,10 +114,9 @@ problem.satisfy(flow_consistency_ic)
 # from both being chosen as smurfs simultaneously. Pre-filtered pair tables
 # can't bind to "the K-subset the solver picks" -- only this pairwise-over-
 # decision-variables formulation does.
-S1 = Account.ref()
 S2 = Account.ref()
-distinct_bo_ic = model.where(S1.id < S2.id, S1.bo_id == S2.bo_id).require(
-    S1.is_smurf + S2.is_smurf <= 1
+distinct_bo_ic = model.where(Account.id < S2.id, Account.bo_id == S2.bo_id).require(
+    Account.is_smurf + S2.is_smurf <= 1
 )
 problem.satisfy(distinct_bo_ic)
 
@@ -139,14 +138,17 @@ problem.satisfy(sum_target_neg_ic)
 # pair of transactions to the target whose timestamps differ by more than
 # the window, both can't be smurf-tx. This is also a pairwise-over-decision-
 # variables formulation; rules / paths can't bind it to the chosen subset.
-T1 = Transaction.ref()
+# The asymmetric `T2.ts_minutes - T1.ts_minutes > WINDOW` predicate handles
+# each unordered pair exactly once -- the (a, b) and (b, a) iteration sees
+# only one side of the timestamp difference satisfy the > WINDOW threshold,
+# so no extra tx_id ordering is needed (and adding one would silently miss
+# pairs where tx_id order disagrees with ts_minutes order).
 T2 = Transaction.ref()
 window_ic = model.where(
-    T1.dst.id == SMURF_TARGET_DESTINATION_ID,
+    Transaction.dst.id == SMURF_TARGET_DESTINATION_ID,
     T2.dst.id == SMURF_TARGET_DESTINATION_ID,
-    T1.tx_id < T2.tx_id,
-    T2.ts_minutes - T1.ts_minutes > SMURF_WINDOW_MINUTES,
-).require(T1.is_smurf_tx + T2.is_smurf_tx <= 1)
+    T2.ts_minutes - Transaction.ts_minutes > SMURF_WINDOW_MINUTES,
+).require(Transaction.is_smurf_tx + T2.is_smurf_tx <= 1)
 problem.satisfy(window_ic)
 
 # Amount filter: structuring requires sub-threshold deposits. Push the

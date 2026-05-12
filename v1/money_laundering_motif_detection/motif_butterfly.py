@@ -145,25 +145,24 @@ problem.satisfy(no_hub_to_hub_ic)
 #   in - out + M * is_hub <= TOL + M
 # When is_hub == 1: in - out <= TOL  (active conservation)
 # When is_hub == 0: in - out <= TOL + M  (vacuous if M big enough)
-# We prefer big-M to a half-reified `implies(is_hub == 1, ...)` because
+# Big-M is preferred over a half-reified `implies(is_hub == 1, ...)`:
 # half-reification introduces a free Boolean auxiliary per non-hub account
 # that MiniZinc treats as part of the search space, returning thousands of
 # trivially-distinct solutions for the same role/motif assignment. The big-M
 # form has no auxiliary -- enumeration stays clean and the solver exhausts
 # after the data's actual motifs.
-T_in = Transaction.ref()
 T_out = Transaction.ref()
-conservation_pos_ic = model.where(T_in.dst == Account, T_out.src == Account).require(
-    sum(T_in.amount_dollars * T_in.is_motif).per(T_in.dst)
+conservation_pos_ic = model.where(Transaction.dst == Account, T_out.src == Account).require(
+    sum(Transaction.amount_dollars * Transaction.is_motif).per(Transaction.dst)
     - sum(T_out.amount_dollars * T_out.is_motif).per(T_out.src)
     + CONSERVATION_BIG_M * Account.is_hub
     <= CONSERVATION_TOLERANCE_DOLLARS + CONSERVATION_BIG_M
 )
 problem.satisfy(conservation_pos_ic)
 
-conservation_neg_ic = model.where(T_in.dst == Account, T_out.src == Account).require(
+conservation_neg_ic = model.where(Transaction.dst == Account, T_out.src == Account).require(
     sum(T_out.amount_dollars * T_out.is_motif).per(T_out.src)
-    - sum(T_in.amount_dollars * T_in.is_motif).per(T_in.dst)
+    - sum(Transaction.amount_dollars * Transaction.is_motif).per(Transaction.dst)
     + CONSERVATION_BIG_M * Account.is_hub
     <= CONSERVATION_TOLERANCE_DOLLARS + CONSERVATION_BIG_M
 )
@@ -179,12 +178,11 @@ problem.satisfy(amount_threshold_ic)
 # Same beneficial owner across hubs: pairwise filter forbids cross-cluster
 # hub pairs so a motif's hubs read as a single beneficial-owner ring rather
 # than scattered hits across distinct owners.
-H1 = Account.ref()
 H2 = Account.ref()
 same_bo_ic = model.where(
-    H1.id < H2.id,
-    H1.bo_id != H2.bo_id,
-).require(H1.is_hub + H2.is_hub <= 1)
+    Account.id < H2.id,
+    Account.bo_id != H2.bo_id,
+).require(Account.is_hub + H2.is_hub <= 1)
 problem.satisfy(same_bo_ic)
 
 # Solve and report.

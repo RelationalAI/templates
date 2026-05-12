@@ -79,8 +79,8 @@ Multi-solution enumeration via `problem.solve(..., solution_limit=K)` is availab
 - `motif_butterfly.py` -- per-hub flow conservation over a decision-selected edge subset.
 - `motif_smurf_army.py` -- pairwise distinct beneficial owners + sum-target + tight time window.
 - `motif_kyc_burst.py` -- cardinality / distribution on the chosen subset + tight time window.
-- `data/accounts.csv` -- 140 accounts across ~30 beneficial-owner clusters, including two butterfly-cluster hubs (`bo_id=100`, `bo_id=200`), a five-account smurf cohort with pairwise-distinct BOs (`bo_id=1701..1705`), a five-account KYC-mix burst cohort (4 retail + 1 business across 4 jurisdictions), plus dup-BO / out-of-window / over-amount decoys for each motif and ~80 unrelated noise accounts.
-- `data/transactions.csv` -- 358 directed transactions: 12 butterfly motif edges, 5 smurf motif edges, 5 KYC-burst motif edges, ~50 named decoys / cross-cluster traffic, and ~280 noise transactions deterministically generated via `data/generate.py`.
+- `data/accounts.csv` -- 90 accounts across 69 beneficial-owner clusters, including two butterfly-cluster hubs (`bo_id=100`, `bo_id=200`), a five-account smurf cohort with pairwise-distinct BOs (`bo_id=1701..1705`), a five-account KYC-mix burst cohort (4 retail + 1 business across 4 jurisdictions), plus dup-BO / out-of-window / over-amount decoys for each motif and 30 unrelated noise accounts.
+- `data/transactions.csv` -- 138 directed transactions: 12 butterfly motif edges, 5 smurf motif edges, 5 KYC-burst motif edges, named decoys / cross-cluster traffic, and 60 noise transactions deterministically generated via `data/generate.py`.
 - `data/generate.py` -- the deterministic generator that produced the bundled CSVs. Re-run only if you change the planted-motif design or want to regenerate at a different size; the template ships its outputs so users don't need to run it.
 - `pyproject.toml` -- Python package configuration.
 
@@ -214,7 +214,7 @@ conservation_pos_ic = model.where(T_in.dst == Account, T_out.src == Account).req
 
 A path enumeration sees one walk at a time and never the joint condition; a rules-only encoding can sum-per-vertex but cannot bind that sum to "the chosen subset of edges, where the chosen accounts are hubs."
 
-> The earlier draft of this template used a half-reified `implies(Account.is_hub == 1, ...)` instead of big-M. That form introduces a free Boolean auxiliary per non-hub account that MiniZinc treats as part of the search space, returning thousands of trivially-distinct solutions for the same role/motif assignment. Big-M with a data-computed bound has no auxiliary; enumeration stays clean and the solver exhausts after the data's actual motifs.
+> We use big-M rather than a half-reified `implies(Account.is_hub == 1, ...)` for this constraint. Half-reification introduces a free Boolean auxiliary per non-hub account that MiniZinc treats as part of the search space, returning thousands of trivially-distinct solutions for the same role/motif assignment. Big-M with a data-computed bound has no auxiliary, so enumeration stays clean and the solver exhausts after the data's actual motifs.
 
 ### Smurf army: pairwise constraints over a decision-selected vertex subset
 
@@ -248,6 +248,8 @@ The launder-grade burst signature is "K accounts of mixed KYC tier transacting t
 ### Solver call and enumeration
 
 Every runner calls `problem.solve("minizinc", time_limit_sec=60, solution_limit=...)`. The variable subconcept returned by `solve_for(...)` exposes a `.values(solution_index, value)` relationship that indexes per-solution outputs; filtering on `value == 1` surfaces the rows the solver picked. The populated property reflects only the first solution, so for multi-solution output the inspect blocks always go through `.values(...)`.
+
+These are pure satisfaction problems with no objective, so `status: OPTIMAL` in the `solve_info().display()` output means the solver enumerated all feasible motifs up to `solution_limit`. It is not an optimisation verdict. `SOLUTION_LIMIT` means the limit was hit before enumeration exhausted -- raise `MAX_*_MOTIFS` to surface more.
 
 ## Customize this template
 

@@ -6,11 +6,12 @@ not need to run it. Re-run only if you change the planted-motif design
 or want to regenerate with different parameters.
 
 The output is a small synthetic AML ledger sized for a CSP solver demo:
-~150 accounts, ~350 transactions. Three motifs are planted at known
-coordinates so the runner's three solve_* functions each surface exactly
-the patterns they target. Decoy accounts and transactions populate the
-remainder so each solver does meaningful discrimination work, not just
-trivial pattern matching.
+60 named accounts (motif + decoy) plus 30 noise accounts (90 total), and
+78 named transactions (motif + decoy) plus 60 noise transactions
+(138 total). Three motifs are planted at known coordinates so each of
+the three motif runners surfaces exactly the patterns they target. Decoy
+accounts and transactions populate the remainder so each solver does
+meaningful discrimination work, not just trivial pattern matching.
 
 Planted motifs:
 
@@ -33,7 +34,7 @@ Planted motifs:
    business-tier account that would push the business count over cap,
    out-of-window accounts, and a single-account decoy.
 
-Background noise: ~280 random transactions among unrelated accounts to
+Background noise: 60 random transactions among unrelated accounts to
 make each solver do real discrimination work. Noise is deterministic
 (seeded) so the bundled CSVs are reproducible.
 
