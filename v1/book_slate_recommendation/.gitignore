@@ -1,0 +1,5 @@
+data/_cache/
+*.egg-info/
+__pycache__/
+build/
+debug.jsonl

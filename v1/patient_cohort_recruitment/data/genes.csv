@@ -1,0 +1,11 @@
+id,name
+1,KinasePathwayRoot
+2,SerineThreonineKinase
+3,TyrosineKinase
+4,EGFR
+5,HER2
+6,BRAF
+7,MEK1
+8,UnrelatedRoot
+9,LipidMetabolism
+10,GlucoseMetabolism
