@@ -52,7 +52,7 @@ Concepts: `Site`, `Business`, `SKU`, `Operation`, `Demand`, `Shipment`, `DelayPr
 **Prompt**
 
 ```
-/rai-querying Show the ontology as a concept-relationship diagram and report row counts per concept.
+/rai-querying What concepts and relationships does the ontology have, and how many rows are in each?
 ```
 
 **Response**
@@ -76,7 +76,7 @@ Reasoner-routing plan: (1) Graph reachability for upstream supplier exposure, (2
 **Prompt**
 
 ```
-/rai-graph-analysis If a key supplier goes offline, which downstream buyers and finished products are at risk? For each HIGH-priority customer, list the suppliers it transitively depends on through the shipment graph, with their reliability scores.
+/rai-graph-analysis Which suppliers do our HIGH-priority customers transitively depend on through the shipment graph, and what are those suppliers' reliability scores?
 ```
 
 **Response**
@@ -88,7 +88,7 @@ Reasoner-routing plan: (1) Graph reachability for upstream supplier exposure, (2
 **Prompt**
 
 ```
-/rai-graph-analysis Which sites are the most influential hubs in the supply network — sites that connect to other influential sites, not just sites with many direct connections? Persist the centrality score back to each site so the optimizer can use it as a bottleneck weight.
+/rai-graph-analysis Which sites are the most influential hubs in the supply network — sites that connect to other influential sites, not just sites with many direct connections? Build the graph from SHIP-type operations (undirected). Persist the centrality score, normalized to [0,1] by dividing by the max, back to each site as Site.centrality so the optimizer can use it as a bottleneck weight.
 ```
 
 **Response**
@@ -100,7 +100,7 @@ Reasoner-routing plan: (1) Graph reachability for upstream supplier exposure, (2
 **Prompt**
 
 ```
-/rai-rules-authoring Rate each supplier's delivery reliability. Flag any with reliability score below 0.80 as unreliable, and any with a Q1 delay prediction above 0.15 as high-delay-risk. Classify suppliers as 'avoid' (both flags fire), 'watch' (either flag fires), or 'reliable' (neither). Also flag HIGH-priority demand orders as escalated so downstream solves can prioritize them.
+/rai-rules-authoring Which suppliers are unreliable (reliability score below 0.80) or high-delay-risk (Q1 delay prediction above 0.15), and how should we tier them — 'avoid' (both flags fire), 'watch' (either flag fires), or 'reliable' (neither)? Also flag any HIGH-priority demand orders as escalated so downstream solves can prioritize them.
 ```
 
 **Response**
@@ -112,7 +112,7 @@ Reasoner-routing plan: (1) Graph reachability for upstream supplier exposure, (2
 **Prompt**
 
 ```
-/rai-prescriptive-problem-formulation Find the minimum-cost shipping plan that fulfills all open demand. Don't ship from 'avoid' suppliers at all, add a $5/unit surcharge for 'watch' suppliers, prefer non-bottleneck sites, and charge $100/unit for any unmet demand.
+/rai-prescriptive-problem-formulation What's the minimum-cost shipping plan that fulfills all open demand, hard-blocks 'avoid' suppliers (x_flow == 0), adds a $5/unit surcharge on 'watch' suppliers, weights each unit of flow into a destination site by 2.0 × that site's centrality (so flow into high-centrality hubs costs more), and penalizes unmet demand at $100/unit?
 ```
 
 **Response**

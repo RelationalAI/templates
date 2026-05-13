@@ -55,12 +55,12 @@ Concepts: `Substation`, `Generator`, `TransmissionLine`, `LoadZone`, `DemandPeri
 **Prompt**
 
 ```
-/rai-querying Show the ontology as a concept-relationship diagram and report row counts per concept.
+/rai-querying What concepts and relationships does the ontology have, and how many rows are in each?
 ```
 
 **Response**
 
-13 concepts: 12 `Substation`, 15 `Generator`, 18 `TransmissionLine`, 8 `LoadZone`, 24 `DemandPeriod`, 12 `RenewableProfile`, 8 `MaintenanceWindow`, 100 `Customer`, 10 `DataCenterRequest` (2,930 MW total), 10 `SubstationUpgrade` ($630M total), historical `LoadHistory` and forward `DemandForecast` rows backing the predictive stage.
+13 concepts: 12 `Substation`, 15 `Generator`, 18 `TransmissionLine`, 5 `LoadZone`, 120 `DemandPeriod`, 120 `RenewableProfile`, 5 `MaintenanceWindow`, 10 `Customer`, 10 `DataCenterRequest` (2,930 MW total), 10 `SubstationUpgrade` ($630M total), historical `LoadHistory` and forward `DemandForecast` rows backing the predictive stage.
 
 ### 3. Discover reasoner questions
 
@@ -79,7 +79,7 @@ Plan routing sub-questions to predictive, graph, rules, and prescriptive reasone
 **Prompt**
 
 ```
-/rai-predictive-modeling + /rai-predictive-training Forecast substation load growth over the next 24 months from historical demand, planned generator additions, and the DC request pipeline. Use the pre-trained model from the bundled DemandForecast table if available, or train fresh. Bind each substation's predicted peak load back to the ontology so the rules engine and optimizer can read it.
+/rai-predictive-modeling + /rai-predictive-training What's each substation's predicted peak load over the next 24 months, given historical demand, planned generator additions, and the DC request pipeline? Bind the predictions back to the ontology so the rules engine and optimizer can read them. Use the pre-trained model from the DemandForecast table if available, or train fresh.
 ```
 
 **Response**
@@ -91,7 +91,7 @@ Plan routing sub-questions to predictive, graph, rules, and prescriptive reasone
 **Prompt**
 
 ```
-/rai-graph-analysis Which substations are most critical to power flow based on grid topology? Flag the top 3 most structurally critical, surface any regional clustering, and persist the structural-criticality scores back to the ontology.
+/rai-graph-analysis Which substations are most structurally critical to power flow — combining whether many paths route through them, how many direct connections they have, and how connected they are to other influential substations? Flag the top 3 by combined criticality, surface any regional clustering, and persist the scores back to the ontology.
 ```
 
 **Response**
@@ -115,7 +115,7 @@ Plan routing sub-questions to predictive, graph, rules, and prescriptive reasone
 **Prompt**
 
 ```
-/rai-prescriptive-problem-formulation Decide which data center requests to approve and which substation upgrades to fund at $200M, $300M, $400M, $500M, and $600M investment levels. Maximize annual revenue across all five levels in a single solve. A request can only be approved if its substation has enough capacity after upgrades, and total upgrade spend at each level must stay within that level's budget. Consider all 10 requests — the Stage 3 compliance flags are informational, not hard filters.
+/rai-prescriptive-problem-formulation Which data center requests should we approve and which substation upgrades should we fund at each of the five investment levels ($200M, $300M, $400M, $500M, $600M), maximizing annual revenue across all five in a single solve? A request can only be approved if its substation has enough capacity after upgrades, and total upgrade spend at each level must stay within budget. Consider all 10 requests — the compliance flags from the rules screen are informational, not hard filters.
 ```
 
 **Response**
@@ -127,7 +127,7 @@ OPTIMAL MIP across 5 `InvestmentLevel` values in one solve; `x_approve` and `x_u
 **Prompt**
 
 ```
-/rai-prescriptive-results-interpretation Which data centers get approved, which upgrades are selected, and where's the biggest return on investment at each budget level?
+/rai-prescriptive-results-interpretation Which data centers get approved and which upgrades are selected at each budget level, and where's the knee — the budget where the marginal net value per added dollar starts to drop sharply?
 ```
 
 **Response**

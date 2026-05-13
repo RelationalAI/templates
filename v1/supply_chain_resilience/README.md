@@ -29,7 +29,7 @@ This template uses RelationalAI's **Graph** analysis, **Rules-based** classifica
 1. **Graph analysis** builds a site dependency graph from shipping operations and computes eigenvector centrality to identify critical warehouses and bridges between supply chain regions.
 2. **Rules** classify suppliers by risk level (avoid / watch / reliable) using reliability scores and ML delay predictions, and flag escalated demand orders.
 3. **Prescriptive optimization** solves a minimum-cost network flow that routes supply to meet demand. Graph centrality feeds a bottleneck penalty in the objective, and supplier risk flags feed hard constraints (no flow from "avoid" suppliers) and surcharges (extra cost for "watch" suppliers).
-4. **Scenario analysis** re-solves with disruptions -- taking a critical site offline (+23.4% cost) and downgrading watch suppliers to avoid (+13.4% cost) -- to quantify resilience costs.
+4. **Scenario analysis** re-solves with disruptions -- taking a critical site offline (+88.5% cost) and downgrading watch suppliers to avoid (+0.0% cost, because the optimizer had already routed around them) -- to quantify resilience costs.
 
 Each stage enriches the shared ontology, and downstream stages consume those enrichments -- this is the **accretive ontology enrichment** pattern:
 
@@ -79,12 +79,12 @@ The multi-reasoner approach is necessary because structural risk (graph), suppli
 
 - `supply_chain_resilience.py` -- Main script with three chained reasoning stages and scenario analysis
 - `data/site.csv` -- 31 sites (factories, distribution centers, offices, stores) across multiple regions
-- `data/business.csv` -- 32 businesses (suppliers, manufacturers, warehouses, buyers) with reliability scores
-- `data/operation.csv` -- ~70 shipping and transfer operations with cost, capacity, and transit time
-- `data/sku.csv` -- 10 SKUs (raw materials, components, finished goods)
+- `data/business.csv` -- 31 businesses (suppliers, manufacturers, warehouses, buyers) with reliability scores
+- `data/operation.csv` -- 70 shipping and transfer operations with cost, capacity, and transit time
+- `data/sku.csv` -- 9 SKUs (raw materials, components, finished goods)
 - `data/demand.csv` -- 20 customer demand orders with quantity and priority
 - `data/shipment.csv` -- 262 historical shipments with delay data
-- `data/delay_prediction.csv` -- 37 ML-predicted delay probabilities per supplier per quarter
+- `data/delay_prediction.csv` -- 36 ML-predicted delay probabilities per supplier per quarter
 - `pyproject.toml` -- Python project configuration with dependencies
 
 ## Prerequisites
