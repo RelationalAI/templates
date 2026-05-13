@@ -130,9 +130,14 @@ power_envelope_df = load_csv("power_envelope_levels.csv")
 margin_floors_df = load_csv("margin_floors.csv")
 diversity_caps_df = load_csv("diversity_caps.csv")
 lab_metrics_df = load_csv("lab_metrics.csv")
+lab_metrics_df["metric_date"] = pd.to_datetime(lab_metrics_df["metric_date"]).dt.date
+
 wl_util_train_df = load_csv("workload_utilization_train.csv")
+wl_util_train_df["observation_date"] = pd.to_datetime(wl_util_train_df["observation_date"]).dt.date
 wl_util_val_df = load_csv("workload_utilization_val.csv")
+wl_util_val_df["observation_date"] = pd.to_datetime(wl_util_val_df["observation_date"]).dt.date
 wl_util_test_df = load_csv("workload_utilization_test.csv")
+wl_util_test_df["observation_date"] = pd.to_datetime(wl_util_test_df["observation_date"]).dt.date
 wl_util_fallback_df = load_csv("workload_utilization_fallback.csv")
 
 

@@ -171,16 +171,19 @@ Set `EXP_DATABASE` at the top of `datacenter_compute_allocation.py` to that data
      Ontology loaded: 6 labs, 28 pools, 110 workloads, 138 dep edges, 3x4x4=48 scenario cells
 
    STAGE 1: PREDICT -- per-workload utilization-probability GNN
-     Workload utilization-probability distribution: n_total=110, n>=0.5: ~70, n<0.5: ~40
+     Workload utilization-probability distribution: n_total=110, n>=0.5: 99, n<0.5: 11
      Top 5 (most likely to be high-utilization):
-       + GPT-Next pretrain shard 02                    p=0.94
-       + Claude-Next pretrain shard 02                 p=0.92
-       + Grok-Next pretrain shard 04                   p=0.90
-       ...
+       + Claude-Next pretrain shard 04                 p=0.881
+       + Grok-Next pretrain shard 04                   p=0.881
+       + Grok-Next pretrain shard 03                   p=0.881
+       + Claude-Next pretrain shard 02                 p=0.881
+       + GPT-Next pretrain shard 05                    p=0.880
      Bottom 5 (most likely to stall / be repaced):
-       - Stability eval batch 12                       p=0.21
-       - Stability eval batch 07                       p=0.24
-       ...
+       - Stability eval batch 14                       p=0.338
+       - Stability eval batch 15                       p=0.339
+       - Stability eval batch 11                       p=0.340
+       - Stability eval batch 12                       p=0.342
+       - Stability eval batch 13                       p=0.342
 
    STAGE 2: RULES -- eligibility + priority classification
      Compatibility table: 1918 eligible (Workload, GpuPool) pairs
@@ -196,13 +199,13 @@ Set `EXP_DATABASE` at the top of `datacenter_compute_allocation.py` to that data
    STAGE 4: PRESCRIPTIVE -- compute allocation MIP (48-cell sweep)
      Termination status: TIME_LIMIT
      Per-cell summary (48 cells: 33 optimal, 15 infeasible):
-       100pct unconstrained    none   OPTIMAL    110  25,277,810.94  4,187,977.91  0.83  0.95
-       100pct          85pct   none   OPTIMAL     20  22,032,951.05  3,304,939.84  0.85  1.00
+       100pct unconstrained    none   OPTIMAL    110  25,277,810.94  4,204,035.68  0.83  0.95
+       100pct          85pct   none   OPTIMAL     18  22,032,899.59  3,304,895.87  0.85  1.00
        ...
 
      AllocationPlan singleton (queryable as ontology):
        plan_id        envelope        margin     diversity  status   n_assigned   revenue_usd   total_cost_usd   realized_margin   anchor_share    binding_axis
-       DCCA_BASELINE    100pct  unconstrained         none  OPTIMAL         110   25277810.94      4187977.91         0.834322          0.947251  power_envelope
+       DCCA_BASELINE    100pct  unconstrained         none  OPTIMAL         110   25277810.94      4204035.68         0.833687          0.947251  power_envelope
 
      Assignment.is_chosen rows: 110 (matches n_assigned above)
 
@@ -223,7 +226,7 @@ Set `EXP_DATABASE` at the top of `datacenter_compute_allocation.py` to that data
 
    **Expected per-cell behavior:**
    - `(*, unconstrained / 75% / 80% margin, none diversity)`: full assignment of all 110 workloads, ~$25M revenue, 83% realized margin, 95% anchor share
-   - `(*, 85% margin, none)`: tight floor binds — drops 90 lower-margin workloads, retains 14 of 15 frontier P0 pretrains plus 4 P1 finetunes and 2 P2 evals that fit under the floor, revenue $22M @ 85% margin / 100% anchor
+   - `(*, 85% margin, none)`: tight floor binds — drops 92 lower-margin workloads, retains 14 of 15 frontier P0 pretrains plus 4 P1 finetunes that fit under the floor (the under-provisioning amplifier on P0 + the GNN's per-workload utilization signal devalue P1/P2 enough that none fit at this margin floor), revenue $22M @ 85% margin / 100% anchor
    - `(*, *, anchor_max_70pct)`: anchor cap drops most P0 pretrains, $4-5M revenue @ ~70% anchor
    - `(*, *, anchor_max_50pct)`: CoreWeave-target cap, $2.6M @ 49% anchor (only 2 of 15 P0 pretrains fit)
    - `(*, *, anchor_max_40pct_with_type_floor)`: INFEASIBLE — too tight to satisfy with this lab roster
