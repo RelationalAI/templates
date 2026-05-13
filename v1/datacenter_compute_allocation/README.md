@@ -38,7 +38,7 @@ The decision is **multi-objective and operationally pressing**. Every major hype
 
 This template combines the upstream-inherited `PowerEnvelopeLevel` with two new Scenario Concepts — `MarginFloor` and `DiversityCap` — into a **3D scenario sweep (3 × 4 × 4 = 48 cells)** that traces two Pareto frontiers the operator already discusses publicly: margin-floor vs. achievable revenue, and diversity-cap vs. achievable revenue, with envelope as outer sensitivity. The strictest cells return `INFEASIBLE` — this is the intended diagnostic signal showing which constraint combinations cannot be satisfied simultaneously.
 
-A single reasoner cannot answer this. Rules alone classify what is eligible but cannot rank. Graph alone ranks which workloads gate downstream work but does not assign GPUs. Predictive alone forecasts that Anthropic's training intensity will ramp next month but does not act. Prescriptive alone has no eligibility filter, no dependency weights, and no forecast to weight allocations by. The accretive chain produces a defensible plan: each stage's output narrows or scores the next.
+This template demonstrates a multi-reasoner workflow combining **predictive** (per-lab training-intensity GNN), **rules** (hardware compatibility + priority-tier classification), **graph** (downstream-gating score on the workload-dependency DAG), and **prescriptive** (assignment MIP under a 3D Scenario sweep) reasoning on a single shared ontology — each stage's output narrows or scores the next.
 
 ## Reasoner overview: inputs, outputs, and role
 
@@ -292,7 +292,7 @@ model.define(gnn_graph.Edge.new(src=LM_a, dst=LM_b)).where(
 )
 ```
 
-The cross-lab `co_dated` edge is what gives the GNN lift over a per-lab tabular baseline: only the GNN can see "Anthropic's training intensity tends to ramp with OpenAI's because they share a workload_type and a publish cycle." Pure same-entity temporal-lag features could in principle live inside a per-lab gradient-boosted-trees model — the GNN is justified by the cross-concept edges, not the temporal lags.
+The cross-lab `co_dated` edge carries the industry-wide co-movement signal — when frontier labs collectively ramp on a given workload_type, applied labs on the same type follow on the same date. This is the cross-concept signal a heterogeneous GNN is designed to propagate.
 
 Per-`LabMetric` test predictions are averaged per lab to produce `LabGrowth.multiplier = 1.0 + mean_predicted_growth`, then joined onto each `Workload` via lab as `Workload.projected_demand_growth` — the multiplier that enters Stage 4's objective.
 
