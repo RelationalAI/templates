@@ -199,13 +199,13 @@ Set `EXP_DATABASE` at the top of `datacenter_compute_allocation.py` to that data
    STAGE 4: PRESCRIPTIVE -- compute allocation MIP (48-cell sweep)
      Termination status: OPTIMAL
      Per-cell summary (48 cells: 33 optimal, 15 infeasible):
-       100pct unconstrained    none   OPTIMAL    110  25,277,810.94  4,204,035.68  0.83  0.95
-       100pct          85pct   none   OPTIMAL     18  22,032,899.59  3,304,895.87  0.85  1.00
+       100pct unconstrained    none   OPTIMAL    110  25,277,810.94  4,197,891.06  0.83  0.95
+       100pct          85pct   none   OPTIMAL     20  22,032,951.05  3,304,939.27  0.85  1.00
        ...
 
      AllocationPlan singleton (queryable as ontology):
        plan_id        envelope        margin     diversity  status   n_assigned   revenue_usd   total_cost_usd   realized_margin   anchor_share    binding_axis
-       DCCA_BASELINE    100pct  unconstrained         none  OPTIMAL         110   25277810.94      4204035.68         0.833687          0.947251  power_envelope
+       DCCA_BASELINE    100pct  unconstrained         none  OPTIMAL         110   25277810.94      4197891.06         0.833930          0.947251  power_envelope
 
      Assignment.is_chosen rows: 110 (matches n_assigned above)
 
@@ -220,13 +220,14 @@ Set `EXP_DATABASE` at the top of `datacenter_compute_allocation.py` to that data
    Exact GNN multipliers depend on the seed and the predictive engine run; the `--no-gnn` fallback values are deterministic.
 
    **Expected runtime** (full pipeline, real GNN):
-   - Stage 1 (GNN training + prediction): ~90-120s on `GPU_NV_S` predictive engine
+   - Stage 1 (GNN training + prediction): ~3-4 min on `GPU_NV_S` predictive engine (most of the total wall time)
    - Stages 2-3 (rules + PageRank): a few seconds
-   - Stage 4 (48-cell MIP): Gurobi typically reaches OPTIMAL across all feasible cells within the 60s `time_limit_sec`. If you do not have a Gurobi-enabled prescriptive engine, swap `problem.solve("gurobi", ...)` to `problem.solve("highs", ...)` and raise the limit (`time_limit_sec=900`); HiGHS will hit the wall and return a feasible-but-not-proven-optimal solution, which `rai-prescriptive-results-interpretation` considers signal, not failure.
+   - Stage 4 (48-cell MIP): Gurobi reaches OPTIMAL across all feasible cells in **~10s** (verified on this dataset). The `time_limit_sec=60` is a safety cap rather than a typical wall. Without a Gurobi-enabled prescriptive engine, swap `problem.solve("gurobi", ...)` to `problem.solve("highs", ...)` and raise the limit (`time_limit_sec=900`); HiGHS will hit the wall and return a feasible-but-not-proven-optimal solution, which `rai-prescriptive-results-interpretation` considers signal, not failure.
+   - Total wall time: ~5 min end-to-end with Gurobi; ~17 min with HiGHS.
 
    **Expected per-cell behavior:**
    - `(*, unconstrained / 75% / 80% margin, none diversity)`: full assignment of all 110 workloads, ~$25M revenue, 83% realized margin, 95% anchor share
-   - `(*, 85% margin, none)`: tight floor binds — drops 92 lower-margin workloads, retains 14 of 15 frontier P0 pretrains plus 4 P1 finetunes that fit under the floor (the under-provisioning amplifier on P0 + the GNN's per-workload utilization signal devalue P1/P2 enough that none fit at this margin floor), revenue $22M @ 85% margin / 100% anchor
+   - `(*, 85% margin, none)`: tight floor binds — drops 90 lower-margin workloads, retains 14 of 15 frontier P0 pretrains plus 4 P1 finetunes and 2 P2 evals that fit under the floor, revenue $22M @ 85% margin / 100% anchor
    - `(*, *, anchor_max_70pct)`: anchor cap drops most P0 pretrains, $4-5M revenue @ ~70% anchor
    - `(*, *, anchor_max_50pct)`: CoreWeave-target cap, $2.6M @ 49% anchor (only 2 of 15 P0 pretrains fit)
    - `(*, *, anchor_max_40pct_with_type_floor)`: INFEASIBLE — too tight to satisfy with this lab roster
