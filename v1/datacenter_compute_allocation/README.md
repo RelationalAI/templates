@@ -15,7 +15,11 @@ tags:
   - Chained Reasoning
   - Cross-Template Ontology
   - GNN
+  - Binary Classification
   - Heterogeneous Graph
+  - PageRank
+  - MIP
+  - Scenario Analysis
   - Multi-Objective
   - Pareto Frontier
   - AI Compute
