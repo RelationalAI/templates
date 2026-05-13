@@ -5,7 +5,6 @@ featured: false
 experience_level: intermediate
 industry: "Manufacturing"
 reasoning_types:
-  - Rules-based
   - Prescriptive
 tags:
   - configuration

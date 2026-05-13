@@ -5,7 +5,6 @@ featured: false
 experience_level: intermediate
 industry: "Healthcare"
 reasoning_types:
-  - Rules-based
   - Prescriptive
 tags:
   - constraint-programming
