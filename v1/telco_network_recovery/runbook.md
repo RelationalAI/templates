@@ -5,31 +5,29 @@ A regional telco operator must allocate a fixed $5M capex budget and 200 crew-we
 ## The chain
 
 ```
-The chain produces a multi-region preventive-maintenance plan
-within the $5M / 200-week envelope, restoring 214 Gbps of capacity
-across 39 critical towers in all 5 regions.
+Ontology: 8 concepts including ModelAdvisory; 1,500 equipment items,
+8 advisories on 7 MODELs (RECALL / DEFECT_BATCH / EOL / FIRMWARE_BUG
+/ SECURITY_PATCH). The chain produces a multi-region preventive-
+maintenance plan within the $5M / 200-week envelope, restoring 214
+Gbps of capacity across 39 selected towers (out of 166 flagged
+critical-restore) in all 5 regions.
 
   ─────────────────────────────────────────────────────────────────
-  STAGE 1  Descriptive  ──►  Ontology = 9 concepts incl. ModelAdvisory
-                              1,500 equipment, 8 advisories on 7 MODELs
-                              (RECALL / DEFECT_BATCH / EOL /
-                              FIRMWARE_BUG / SECURITY_PATCH).
-  ─────────────────────────────────────────────────────────────────
-  STAGE 2  Predictive   ──►  NetworkEquipment.predictions (1,500)
+  STAGE 1  Predictive   ──►  NetworkEquipment.predictions (1,500)
                  (GNN)        CellTower.failure_intensity (190)
                               Per-tower SUM of equipment failure
                               probabilities; range 0.09-8.67.
   ─────────────────────────────────────────────────────────────────
-  STAGE 3  Rules        ──►  CellTower.is_critical_restore  (166)
+  STAGE 2  Rules        ──►  CellTower.is_critical_restore  (166)
                               Three-branch flag: 2 WEST operational
                               branches + 1 predictive branch.
   ─────────────────────────────────────────────────────────────────
-  STAGE 4  Graph        ──►  Subscriber.influence_score  (PageRank)
+  STAGE 3  Graph        ──►  Subscriber.influence_score  (PageRank)
                               CellTower.weighted_impact  (166)
                               Distinct subscribers routing through
                               each critical tower, weighted by PageRank.
   ─────────────────────────────────────────────────────────────────
-  STAGE 5  Prescriptive ──►  TowerUpgradeOption.selected  (39)
+  STAGE 4  Prescriptive ──►  TowerUpgradeOption.selected  (39)
                               OPTIMAL · 22 BRONZE · 13 SILVER · 4 GOLD
                               $4,999,671 of $5M (binding) · 214 Gbps
                               195 of 200 install-weeks (near binding)
@@ -57,7 +55,7 @@ Concepts: `CellTower`, `NetworkEquipment` (with `tower_id_fk` FK property), `Equ
 **Prompt**
 
 ```
-/rai-querying Show the ontology as a concept-relationship diagram and report row counts per concept. Cover the advisory coverage too: how many MODELs are advised, what severities, and what fraction of equipment sits on an advised model.
+/rai-querying What concepts and relationships does the ontology have, how many rows are in each, and what's the advisory coverage (how many MODELs are advised, what severities, and what fraction of equipment sits on an advised model)?
 ```
 
 **Response**
@@ -81,7 +79,7 @@ Plans the 5-reasoner chain on the shared ontology — descriptive (`/rai-queryin
 **Prompt**
 
 ```
-/rai-predictive-modeling + /rai-predictive-training Predict which equipment items in the network are at risk of failure. The risk should factor in not just each equipment's own health metrics, but also the broader fleet context — manufacturer advisories on the same model, and the health of other equipment on the same tower. Roll the per-equipment predictions up to a per-tower failure-intensity score that downstream stages can use for prioritization.
+/rai-predictive-modeling + /rai-predictive-training Which equipment items are at risk of failure, factoring in not just each item's own health metrics but the broader fleet context — manufacturer advisories on the same model, and the health of other equipment on the same tower? Roll the per-equipment predictions up to a per-tower failure-intensity score so downstream reasoners can use it for prioritization.
 ```
 
 **Response**
@@ -93,19 +91,19 @@ GNN binary classification with `eval_metric=roc_auc`, 80 epochs, three FK / shar
 **Prompt**
 
 ```
-/rai-rules-authoring Flag a tower as critical-restore in any of three cases: (1) it's in WEST and DEGRADED with poor equipment health (avg health below 0.85); (2) it's in WEST and showing high packet loss (above 5%) with poor health — catches ACTIVE-but-failing towers operations would otherwise miss; (3) the predicted equipment-failure intensity is high (any region) — catches towers where multiple equipment items are at risk before they fail. Compute the per-tower health average by joining EquipmentHealth through NetworkEquipment to CellTower.
+/rai-rules-authoring Which towers should we flag as critical-restore? Any tower fitting one of three cases: (1) in WEST and DEGRADED with poor equipment health (avg health below 0.85); (2) in WEST and showing high packet loss (above 5%) with poor health — catches ACTIVE-but-failing towers operations would otherwise miss; (3) predicted equipment-failure intensity above 1.5 (any region) — catches towers where multiple equipment items are at risk before they fail. Compute the per-tower health average by joining EquipmentHealth through NetworkEquipment to CellTower.
 ```
 
 **Response**
 
-Four derived health properties (`avg_packet_loss`, `avg_latency_ms`, `avg_error_rate`, `avg_health_score`) computed for all 250 towers; the equipment-health aggregation joins from EquipmentHealth through NetworkEquipment to CellTower. The three-branch `CellTower.is_critical_restore` relationship fires on 166 towers spanning all five regions, distributed: WEST 47, EAST 37, SOUTH 33, NORTH 29, CENTRAL 20. The GNN's third branch contributes 165 of the 166 (154 of those are flagged ONLY by the predictive branch). The WEST operational branches alone would produce 12 in-region cases — 3 of the 15 WEST DEGRADED towers happen to have avg_health ≥ 0.85 in the augmented data and don't trip Branches 1/2 (though all 15 still fire on Branch 3 via their predicted failure_intensity).
+Four derived health properties (`avg_packet_loss`, `avg_latency_ms`, `avg_error_rate`, `avg_health_score`) computed for all 250 towers; the equipment-health aggregation joins from EquipmentHealth through NetworkEquipment to CellTower. The three-branch `CellTower.is_critical_restore` relationship fires on 166 towers spanning all five regions, distributed: WEST 47, EAST 37, SOUTH 33, NORTH 29, CENTRAL 20. Per-branch contribution: Branch 1 fires on 12 towers, Branch 2 fires on 12 towers, Branch 3 (`failure_intensity > 1.5`) fires on 165 towers — 154 of which are flagged ONLY by the predictive branch (93% of the flagged set). 3 of the 15 WEST DEGRADED towers happen to have avg_health ≥ 0.85 in the augmented data and don't trip Branch 1 (though all 15 still fire on Branch 3 via their predicted failure_intensity).
 
 ### 6. Score subscriber blast radius
 
 **Prompt**
 
 ```
-/rai-graph-analysis Who are our most socially influential subscribers based on call patterns? For each critical-restore tower, score its blast radius -- how many distinct subscribers route calls through it, weighted by their influence.
+/rai-graph-analysis Who are our most socially influential subscribers — subscribers who receive calls from other highly-called subscribers? For each critical-restore tower, score its blast radius — how many distinct subscribers route calls through it, weighted by their influence.
 ```
 
 **Response**
@@ -117,7 +115,7 @@ Four derived health properties (`avg_packet_loss`, `avg_latency_ms`, `avg_error_
 **Prompt**
 
 ```
-/rai-prescriptive-problem-formulation Stay within $5M and 200 install-weeks. For each critical-restore tower, pick at most one upgrade tier (BRONZE / SILVER / GOLD) that maximizes capacity restored, weighted by each tower's blast radius (Stage 4) and its predicted failure intensity (Stage 2).
+/rai-prescriptive-problem-formulation Which tower upgrade plan maximizes weighted capacity restored within our $5M capex and 200 install-week envelope? For each critical-restore tower, pick at most one upgrade tier (BRONZE / SILVER / GOLD). Each option's contribution to the objective is its capacity_increase_gbps multiplied by the tower's weighted_impact (Stage 3) and failure_intensity (Stage 1) — a three-factor product so a high-failure-intensity tower with many influential subscribers outscores a low-risk one.
 ```
 
 **Response**
