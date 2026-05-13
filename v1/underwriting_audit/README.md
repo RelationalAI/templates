@@ -35,7 +35,7 @@ The bundled ruleset has a deliberate bug: `is_manual_review` is defined as "seni
 
 ## What you'll build
 
-- A constraint model with three free decision properties on a singleton `Applicant` (`age_bucket_id`, `has_chronic`, `coverage_band_id`) plus three derived binary indicators (`is_senior`, `is_frail`, `is_manual_review`) tied to the free decisions via solver-side ICs
+- A constraint model with three scalar free decisions (`age_bucket_id`, `has_chronic`, `coverage_band_id`) plus three derived binary indicators (`is_senior`, `is_frail`, `is_manual_review`) tied to the free decisions via solver-side ICs. Each decision is declared as `model.Relationship(f"{Integer:name}")` -- the unparented scalar shape used by the `rosenbrock` prescriptive example -- rather than a property on a singleton `Applicant` concept, because there is exactly one applicant slot and the concept adds identity overhead with no payoff at N=1
 - A senior-indicator definition iterating over `AgeBucket` reference rows at relational time and binding `is_senior` via two `implies`-bodied ICs (one for senior buckets, one for non-senior)
 - A frail-indicator definition encoding `is_frail = is_senior OR has_chronic` via the standard OR-arithmetic equivalence on binaries (three linear ICs: two lower bounds, one upper bound)
 - A buggy `is_manual_review = is_senior` definition encoded as a binary equality (the audit will surface its missing chronic-condition arm)
@@ -138,53 +138,52 @@ The bundled ruleset has a deliberate bug: `is_manual_review` is defined as "seni
 
 The template encodes an underwriting ruleset, a property to audit, and a counterexample IC; multi-solution enumeration surfaces K distinct witnesses showing where the property fails. The script consists of these patterns:
 
-**Free decisions describe what an applicant looks like.** Three integer/binary decisions on a singleton `Applicant`: which age bucket they fall into, whether they have a chronic condition, which coverage band they sit in. The solver picks values for these on every solution.
+**Free decisions describe what an applicant looks like.** Three integer/binary scalar decisions: which age bucket the applicant falls into, whether they have a chronic condition, which coverage band they sit in. Each is `model.Relationship(f"{Integer:name}")` (the unparented scalar shape used by the `rosenbrock` prescriptive example), not a property on a singleton `Applicant` concept. The solver picks values for these on every solution.
 
 ```python
-Applicant.age_bucket_id = model.Property(f"{Applicant} in age bucket {Integer:age_bucket_id}")
-Applicant.has_chronic = model.Property(f"{Applicant} has {Integer:has_chronic}")
-Applicant.coverage_band_id = model.Property(f"{Applicant} in coverage band {Integer:coverage_band_id}")
+age_bucket_id = model.Relationship(f"{Integer:age_bucket_id}")
+has_chronic = model.Relationship(f"{Integer:has_chronic}")
+coverage_band_id = model.Relationship(f"{Integer:coverage_band_id}")
 ```
 
-**Derived indicators encode the rule body.** Three more binaries -- `is_senior`, `is_frail`, `is_manual_review` -- defined via solver-side ICs that pin them to functions of the free decisions. Treating the indicators as decisions (rather than as relational-time predicates) lets the property-entailment IC compare them directly:
+**Derived indicators encode the rule body.** Three more scalar binaries -- `is_senior`, `is_frail`, `is_manual_review` -- defined via solver-side ICs that pin them to functions of the free decisions. Treating the indicators as decisions (rather than as relational-time predicates) lets the property-entailment IC compare them directly:
 
 ```python
-Applicant.is_senior = model.Property(f"{Applicant} has {Integer:is_senior}")
-Applicant.is_frail = model.Property(f"{Applicant} has {Integer:is_frail}")
-Applicant.is_manual_review = model.Property(f"{Applicant} has {Integer:is_manual_review}")
+is_senior = model.Relationship(f"{Integer:is_senior}")
+is_frail = model.Relationship(f"{Integer:is_frail}")
+is_manual_review = model.Relationship(f"{Integer:is_manual_review}")
 ```
 
-**Senior indicator via per-bucket iteration.** `is_senior` is 1 iff the applicant's age bucket has age >= 70. Iterate over `AgeBucket` reference rows at relational time and gate on the decision-valued `Applicant.age_bucket_id == AgeBucket.id` inside `implies`. Two ICs cover both directions of the equivalence:
+**Senior indicator via per-bucket iteration.** `is_senior` is 1 iff the applicant's age bucket has age >= 70. Iterate over `AgeBucket` reference rows at relational time and gate on the decision-valued `age_bucket_id == AgeBucket.id` inside `implies`. Two ICs cover both directions of the equivalence:
 
 ```python
 senior_def_pos_ic = model.where(AgeBucket.age_years >= SENIOR_THRESHOLD_YEARS).require(
-    implies(Applicant.age_bucket_id == AgeBucket.id, Applicant.is_senior == 1)
+    implies(age_bucket_id == AgeBucket.id, is_senior == 1)
 )
 senior_def_neg_ic = model.where(AgeBucket.age_years < SENIOR_THRESHOLD_YEARS).require(
-    implies(Applicant.age_bucket_id == AgeBucket.id, Applicant.is_senior == 0)
+    implies(age_bucket_id == AgeBucket.id, is_senior == 0)
 )
 ```
 
 **Frail indicator via OR-arithmetic equivalence.** `is_frail = is_senior OR has_chronic`. The standard CSP encoding for OR over binaries is three linear ICs -- `y >= a`, `y >= b`, `y <= a + b` -- which together force `y` to equal `max(a, b)`. All three are pure relational arithmetic, so `verify()` re-evaluates them in the returned solution:
 
 ```python
-frail_lb_senior_ic = model.require(Applicant.is_frail >= Applicant.is_senior)
-frail_lb_chronic_ic = model.require(Applicant.is_frail >= Applicant.has_chronic)
-frail_ub_ic = model.require(Applicant.is_frail <= Applicant.is_senior + Applicant.has_chronic)
+frail_lb_senior_ic = model.require(is_frail >= is_senior)
+frail_lb_chronic_ic = model.require(is_frail >= has_chronic)
+frail_ub_ic = model.require(is_frail <= is_senior + has_chronic)
 ```
 
-**Buggy manual-review rule via equality.** The bundled ruleset has `is_manual_review = is_senior`, encoded as two arithmetic constraints (`y >= a`, `y <= a`). The intended rule was `is_manual_review = is_frail`; the missing chronic arm is exactly what the audit exposes:
+**Buggy manual-review rule via equality.** The bundled ruleset has `is_manual_review = is_senior`, encoded as a single equality. The intended rule was `is_manual_review = is_frail`; the missing chronic arm is exactly what the audit exposes:
 
 ```python
-manual_review_eq_lb_ic = model.require(Applicant.is_manual_review >= Applicant.is_senior)
-manual_review_eq_ub_ic = model.require(Applicant.is_manual_review <= Applicant.is_senior)
+manual_review_eq_ic = model.require(is_manual_review == is_senior)
 ```
 
-**Counterexample IC asserts property failure.** The property "every frail applicant goes through manual review" is `is_frail <= is_manual_review`. The audit asks for *applicants where the property fails* -- `is_frail == 1 AND is_manual_review == 0` -- encoded as a hard IC below. If any feasible applicant satisfies it, the property does not hold; if the model is INFEASIBLE the property holds:
+**Counterexample IC asserts property failure.** The property "every frail applicant goes through manual review" is `is_frail <= is_manual_review`. The audit asks for *applicants where the property fails* -- `is_frail == 1 AND is_manual_review == 0` -- encoded as a hard IC below. If any feasible assignment satisfies it, the property does not hold; if the model is INFEASIBLE the property holds:
 
 ```python
-counterexample_frail_ic = model.require(Applicant.is_frail == 1)
-counterexample_no_review_ic = model.require(Applicant.is_manual_review == 0)
+counterexample_frail_ic = model.require(is_frail == 1)
+counterexample_no_review_ic = model.require(is_manual_review == 0)
 ```
 
 **Multi-solution enumeration via `Variable.values(solution_index, value)`.** Capturing the variable subconcept from `solve_for(...)` exposes a `.values(sol_idx, val)` relationship that indexes per-solution outputs. Binding the value slot directly to a reference Concept's `.id` walks the chosen ID back to that row's columns in one step; the binary indicator decisions read out into Integer placeholders for display:
@@ -217,8 +216,9 @@ model.select(
 
 ## Customize this template
 
-- **Audit a corrected ruleset** by changing the buggy rule. `is_manual_review` is encoded as TWO ICs (`manual_review_eq_lb_ic` and `manual_review_eq_ub_ic`) that together pin `is_manual_review == is_senior`; replace both with the OR-arithmetic shape that pins `is_manual_review == is_frail` (i.e. `>= is_senior`, `>= has_chronic`, `<= is_senior + has_chronic`) and the model becomes infeasible. `solve_info().termination_status` reports `INFEASIBLE` and `solve_info().num_points` is 0; the script prints `Audit result: PASS -- proven no counterexample applicants exist.` That is the audit's pass signal: no counterexample exists, so the property holds.
-- **Audit a different property** by **replacing** the two `counterexample_*` ICs. Do not add new counterexample ICs alongside the existing ones -- leaving `is_frail == 1` and `is_manual_review == 0` in place silently turns the audit into a conjunction of both properties, which is almost never what you want. Example: to audit "no senior is in the cheapest coverage band", replace them with `Applicant.is_senior == 1` and `Applicant.coverage_band_id == 1` (assuming band 1 is the cheapest). Witnesses then show seniors who slipped into the lowest band.
+- **Audit a corrected ruleset** by changing the buggy rule. `is_manual_review` is encoded as a single equality IC (`manual_review_eq_ic`) pinning `is_manual_review == is_senior`; replace it with the OR-arithmetic shape that pins `is_manual_review == is_frail` (i.e. `>= is_senior`, `>= has_chronic`, `<= is_senior + has_chronic`) and the model becomes infeasible. `solve_info().termination_status` reports `INFEASIBLE` and `solve_info().num_points` is 0; the script prints `Audit result: PASS -- proven no counterexample applicants exist.` That is the audit's pass signal: no counterexample exists, so the property holds.
+- **Audit a different property** by **replacing** the two `counterexample_*` ICs. Do not add new counterexample ICs alongside the existing ones -- leaving `is_frail == 1` and `is_manual_review == 0` in place silently turns the audit into a conjunction of both properties, which is almost never what you want. Example: to audit "no senior is in the cheapest coverage band", replace them with `is_senior == 1` and `coverage_band_id == 1` (assuming band 1 is the cheapest). Witnesses then show seniors who slipped into the lowest band.
+- **Extend to a fleet of N applicants** by reintroducing an `Applicant` concept and lifting each scalar decision to a property on it (e.g. `Applicant.age_bucket_id = model.Property(f"{Applicant} in age bucket {Integer:age_bucket_id}")`). Then scope every IC below with `model.where(Applicant)` (or a tighter applicant filter) -- unconditional `model.require(...)` would otherwise demand that *every* applicant be a counterexample rather than finding a single applicant that is. The scalar shape used here is the right default at N=1; the per-applicant shape becomes mandatory the moment you bind the audit to a real applicant table.
 - **Add more rule indicators** by introducing additional decisions and OR/AND-arithmetic ICs. Conjunction `y = a AND b` is encoded as `y <= a, y <= b, y >= a + b - 1` -- the dual of the OR pattern.
 - **Raise the witness count on a real ruleset** by increasing `MAX_WITNESSES`. Production audits typically want 50--500 witnesses to cover a rule pack's failure modes.
 - **Switch from "any witness" to "minimum-violation witness"** by adding `problem.minimize(...)` over a violation severity score and `solution_limit=1`. Useful for ranking failures when triage capacity is limited.

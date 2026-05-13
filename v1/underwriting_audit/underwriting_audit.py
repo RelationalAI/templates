@@ -3,12 +3,16 @@
 This script demonstrates property-entailment audit on a small underwriting
 ruleset:
 
-- Define the ruleset as binary indicators on a synthesised applicant
-  (`is_senior`, `is_frail`, `is_manual_review`), each tied to the applicant's
-  decision-valued properties via OR-arithmetic equivalences.
+- Define the ruleset as scalar binary indicators (`is_senior`, `is_frail`,
+  `is_manual_review`), each tied to the applicant-shaped free decisions
+  (`age_bucket_id`, `has_chronic`, `coverage_band_id`) via OR-arithmetic
+  equivalences. The applicant is a *shape* in the decisions, not an
+  Applicant concept: with a single slot, scalar `model.Relationship`s
+  match the prescriptive `rosenbrock` example pattern and avoid the
+  identity overhead of a one-row concept.
 - Audit the property "every frail applicant goes through manual review" by
   asking the solver for a counterexample applicant -- one who is frail but
-  not flagged for manual review. If any feasible applicant exists, the
+  not flagged for manual review. If any feasible assignment exists, the
   property does NOT hold and the rules contain a bug.
 - Solve as constraint satisfaction with `solution_limit=K` (MiniZinc) and
   enumerate every distinct witness via `Variable.values(solution_index, value)`.
@@ -124,61 +128,53 @@ coverage_bands_csv = read_csv(DATA_DIR / "coverage_bands.csv")
 _assert_dense_ids(coverage_bands_csv, "coverage_bands.csv")
 model.define(CoverageBand.new(model.data(coverage_bands_csv).to_schema()))
 
-# Concept: synthesised applicant. The CSV holds a single placeholder row;
-# every decision-valued property below describes that one slot. Each
-# solution returned by the solver is a different feasible filling of
-# that slot -- which is what gives us K witness applicants per audit.
-Applicant = model.Concept("Applicant", identify_by={"id": Integer})
-model.define(Applicant.new(id=1))
-
 # --------------------------------------------------
-# Decision-valued properties on Applicant
+# Scalar decision variables (the applicant shape)
 # --------------------------------------------------
 
 # Free decisions: applicant attributes the audit is allowed to vary.
-Applicant.age_bucket_id = model.Property(f"{Applicant} in age bucket {Integer:age_bucket_id}")
-Applicant.has_chronic = model.Property(f"{Applicant} has {Integer:has_chronic}")
-Applicant.coverage_band_id = model.Property(
-    f"{Applicant} in coverage band {Integer:coverage_band_id}"
-)
+# Each is a scalar `model.Relationship` (one Integer slot), mirroring the
+# `rosenbrock` prescriptive example. No singleton Applicant concept is
+# required because there is exactly one applicant slot; the solver picks
+# values for these scalars on every solution. To extend to a fleet of N
+# applicants, reintroduce an `Applicant` concept and lift each scalar to
+# a `model.Property(f"{Applicant} has {Integer:foo}")`, then scope every
+# IC below with `model.where(Applicant)` (or a tighter filter).
+age_bucket_id = model.Relationship(f"{Integer:age_bucket_id}")
+has_chronic = model.Relationship(f"{Integer:has_chronic}")
+coverage_band_id = model.Relationship(f"{Integer:coverage_band_id}")
 
 # Derived indicators: defined in terms of the free decisions via
 # arithmetic-equivalence ICs below. These are also decision variables
 # from the solver's point of view so that the property-entailment IC
 # can compare them directly.
-Applicant.is_senior = model.Property(f"{Applicant} has {Integer:is_senior}")
-Applicant.is_frail = model.Property(f"{Applicant} has {Integer:is_frail}")
-Applicant.is_manual_review = model.Property(f"{Applicant} has {Integer:is_manual_review}")
+is_senior = model.Relationship(f"{Integer:is_senior}")
+is_frail = model.Relationship(f"{Integer:is_frail}")
+is_manual_review = model.Relationship(f"{Integer:is_manual_review}")
 
 problem = Problem(model, Integer)
-# `populate=True` (default) writes the first solution back into the
-# `Applicant.*` properties so `problem.verify(...)` can re-evaluate the
+# `populate=True` (default) writes the first solution back into each
+# scalar relationship so `problem.verify(...)` can re-evaluate the
 # pure-arithmetic ICs against it. Multi-solution output below still goes
 # through `Variable.values(solution_index, value)` for every witness.
 age_bucket_var = problem.solve_for(
-    Applicant.age_bucket_id,
+    age_bucket_id,
     type="int",
-    name=["age_bucket", Applicant.id],
+    name="age_bucket",
     lower=int(age_buckets_csv["id"].min()),
     upper=int(age_buckets_csv["id"].max()),
 )
-chronic_var = problem.solve_for(
-    Applicant.has_chronic, type="bin", name=["has_chronic", Applicant.id]
-)
+chronic_var = problem.solve_for(has_chronic, type="bin", name="has_chronic")
 coverage_band_var = problem.solve_for(
-    Applicant.coverage_band_id,
+    coverage_band_id,
     type="int",
-    name=["coverage_band", Applicant.id],
+    name="coverage_band",
     lower=int(coverage_bands_csv["id"].min()),
     upper=int(coverage_bands_csv["id"].max()),
 )
-senior_var = problem.solve_for(Applicant.is_senior, type="bin", name=["is_senior", Applicant.id])
-frail_var = problem.solve_for(Applicant.is_frail, type="bin", name=["is_frail", Applicant.id])
-manual_review_var = problem.solve_for(
-    Applicant.is_manual_review,
-    type="bin",
-    name=["is_manual_review", Applicant.id],
-)
+senior_var = problem.solve_for(is_senior, type="bin", name="is_senior")
+frail_var = problem.solve_for(is_frail, type="bin", name="is_frail")
+manual_review_var = problem.solve_for(is_manual_review, type="bin", name="is_manual_review")
 
 # --------------------------------------------------
 # Rule definitions (the underwriting ruleset under audit)
@@ -189,11 +185,11 @@ manual_review_var = problem.solve_for(
 # bucket, if the applicant picks it, is_senior must be 1; for each
 # non-senior bucket, if the applicant picks it, is_senior must be 0.
 senior_def_pos_ic = model.where(AgeBucket.age_years >= SENIOR_THRESHOLD_YEARS).require(
-    implies(Applicant.age_bucket_id == AgeBucket.id, Applicant.is_senior == 1)
+    implies(age_bucket_id == AgeBucket.id, is_senior == 1)
 )
 problem.satisfy(senior_def_pos_ic)
 senior_def_neg_ic = model.where(AgeBucket.age_years < SENIOR_THRESHOLD_YEARS).require(
-    implies(Applicant.age_bucket_id == AgeBucket.id, Applicant.is_senior == 0)
+    implies(age_bucket_id == AgeBucket.id, is_senior == 0)
 )
 problem.satisfy(senior_def_neg_ic)
 
@@ -206,9 +202,9 @@ problem.satisfy(senior_def_neg_ic)
 # part of the definition of the OR rule, and dropping an arm silently
 # weakens the ruleset against a future rule change (the exact
 # silent-pass shape the audit warns against).
-frail_lb_senior_ic = model.require(Applicant.is_frail >= Applicant.is_senior)
-frail_lb_chronic_ic = model.require(Applicant.is_frail >= Applicant.has_chronic)
-frail_ub_ic = model.require(Applicant.is_frail <= Applicant.is_senior + Applicant.has_chronic)
+frail_lb_senior_ic = model.require(is_frail >= is_senior)
+frail_lb_chronic_ic = model.require(is_frail >= has_chronic)
+frail_ub_ic = model.require(is_frail <= is_senior + has_chronic)
 problem.satisfy(frail_lb_senior_ic)
 problem.satisfy(frail_lb_chronic_ic)
 problem.satisfy(frail_ub_ic)
@@ -217,7 +213,7 @@ problem.satisfy(frail_ub_ic)
 # correct rule should also flag frail applicants (senior OR chronic), but
 # this version misses the chronic arm -- which is exactly the bug the
 # audit exposes. Encoded as a single equality constraint.
-manual_review_eq_ic = model.require(Applicant.is_manual_review == Applicant.is_senior)
+manual_review_eq_ic = model.require(is_manual_review == is_senior)
 problem.satisfy(manual_review_eq_ic)
 
 # --------------------------------------------------
@@ -236,14 +232,14 @@ problem.satisfy(manual_review_eq_ic)
 # holds.
 #
 # These ICs are unconditional `model.require(...)` (no `model.where(...)`
-# scope) because `Applicant` is a singleton -- there is exactly one row
-# in the Applicant table, so the ICs bind to that single decision slot.
-# When extending to a fleet of N applicants, scope each IC with
-# `model.where(Applicant)` (or a tighter applicant filter), otherwise the
-# unconditional require demands that *every* applicant be a counterexample
-# rather than finding a single applicant that is.
-counterexample_frail_ic = model.require(Applicant.is_frail == 1)
-counterexample_no_review_ic = model.require(Applicant.is_manual_review == 0)
+# scope) because each decision is a single scalar slot, so the IC binds
+# to that single value. When extending to a fleet of N applicants
+# (lifting the scalars to `Applicant.foo` properties), scope each IC
+# below with `model.where(Applicant)` (or a tighter applicant filter):
+# the unconditional require would then demand that *every* applicant be
+# a counterexample rather than finding a single applicant that is.
+counterexample_frail_ic = model.require(is_frail == 1)
+counterexample_no_review_ic = model.require(is_manual_review == 0)
 problem.satisfy(counterexample_frail_ic)
 problem.satisfy(counterexample_no_review_ic)
 
