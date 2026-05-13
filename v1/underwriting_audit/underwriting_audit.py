@@ -10,13 +10,21 @@ in one script means a single run surfaces the full audit report.
 
 Modeling shape:
 
-- Define the ruleset as scalar binary indicators (`is_senior`, `is_frail`,
-  `is_manual_review`), each tied to the applicant-shaped free decisions
-  (`age_bucket_id`, `has_chronic`, `coverage_band_id`) via OR-arithmetic
-  equivalences. The applicant is a *shape* in the decisions, not an
-  Applicant concept: with a single slot, scalar `model.Relationship`s
-  match the prescriptive `rosenbrock` example pattern and avoid the
-  identity overhead of a one-row concept.
+- Two reference concepts (`AgeBucket`, `CoverageBand`) and three scalar
+  free decisions (`age_bucket_id`, `has_chronic`, `coverage_band_id`).
+  `age_bucket_id` and `has_chronic` drive the indicator rules below;
+  `coverage_band_id` enters no rule IC and is a *spread-only* decision
+  dimension whose role is to diversify witness output across coverage
+  bands (real underwriting rules typically mix coverage in, so the
+  column is left in place for customisation). The applicant is a *shape*
+  in the scalar decisions, not an `Applicant` concept: with a single
+  slot, scalar `model.Relationship`s avoid the identity overhead of a
+  one-row concept.
+- Three derived binary indicators (`is_senior`, `is_frail`,
+  `is_manual_review`), each declared as a scalar `model.Relationship`
+  and pinned to functions of the free decisions by solver-side ICs.
+  Treating the indicators as decisions (rather than relational-time
+  predicates) lets the property-entailment IC compare them directly.
 - Author a `PROPERTIES` catalog -- a list of named properties, each with
   a counterexample builder that, given a fresh audit session, returns
   the property's counterexample ICs. The counterexample for a property
@@ -28,11 +36,11 @@ Modeling shape:
   `solution_limit=K` (MiniZinc), classifies the verdict, and (for FAILs)
   enumerates every distinct witness via `Variable.values(solution_index,
   value)`. Fresh Models per audit are required for two reasons: (1)
-  constraints on a Problem are add-only, so we cannot remove a previous
-  property's counterexample ICs from a reused Problem; (2) PyRel tracks
-  internal-rule-create counts per-Model and warns at the 50-rule
-  threshold, which our internal cumulative count would otherwise trip
-  during the second iteration on a shared Model.
+  constraints on a `Problem` are add-only, so a previous property's
+  counterexample ICs cannot be detached from a reused `Problem`;
+  (2) PyRel emits a `"Rules created in a loop"` warning when the
+  per-Model internal-rule count crosses a fixed threshold, which a
+  shared Model would trip after a few iterations.
 
 The bundled ruleset has a deliberate bug: `is_manual_review` is defined as
 "senior", but `is_frail` is defined as "senior OR has chronic condition".
@@ -100,24 +108,59 @@ DATA_DIR = Path(__file__).parent / "data"
 # --------------------------------------------------
 
 
-# Reference-data contract: integer IDs must be dense and contiguous so the
-# solver's `lower=min(id), upper=max(id)` decision bounds line up exactly
-# with the reference rows. Sparse IDs would let the solver pick a missing
-# value: the relational-time `implies(...) ` ICs gated on the matching
-# reference row would never fire, leaving the indicator decisions
-# unconstrained for that solution. Validate up front rather than letting
-# bad customizations silently degrade audit coverage.
+# Reference-data contract: integer IDs must be dense, contiguous, and
+# unique so the solver's `lower=min(id), upper=max(id)` decision bounds
+# line up exactly with the reference rows. Sparse IDs would let the
+# solver pick a missing value: the relational-time `implies(...)` ICs
+# gated on the matching reference row would never fire, leaving the
+# indicator decisions unconstrained for that solution. Validate up front
+# rather than letting bad customizations silently degrade audit coverage.
 def _assert_dense_ids(df, name):
-    ids = sorted(int(v) for v in df["id"].tolist())
-    if not ids:
+    raw = df["id"].tolist()
+    if not raw:
         raise ValueError(
             f"{name} has no rows; at least one row is required to set the "
             "decision-variable bounds (`lower=min(id), upper=max(id)`)."
         )
+    # Normalise via float first so Excel-y `.0` suffixes (e.g. "1.0",
+    # `id` columns pandas typed as float64) pass through; then check the
+    # fractional part explicitly so `1.5`-style values raise rather than
+    # silently truncating to `1`.
+    try:
+        floats = [float(v) for v in raw]
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            f"{name} `id` column contains a non-numeric value ({exc}). IDs must be whole numbers."
+        ) from exc
+    ids = []
+    for f, v in zip(floats, raw):
+        try:
+            i = int(f)
+        except (ValueError, OverflowError):
+            # `nan` -> ValueError, `inf`/`-inf` -> OverflowError.
+            raise ValueError(
+                f"{name} `id` column contains a non-integer value ({v!r}). "
+                "IDs must be whole numbers."
+            ) from None
+        if f != i:
+            raise ValueError(
+                f"{name} `id` column contains a non-integer value ({v!r}). "
+                "IDs must be whole numbers."
+            )
+        ids.append(i)
+    duplicates = sorted({v for v in ids if ids.count(v) > 1})
+    if duplicates:
+        raise ValueError(
+            f"{name} `id` column contains duplicate values {duplicates}; "
+            "each row must have a unique id."
+        )
+    ids.sort()
     expected = list(range(ids[0], ids[-1] + 1))
     if ids != expected:
+        missing = sorted(set(expected) - set(ids))
         raise ValueError(
-            f"{name} `id` column must be dense and contiguous; got {ids}. "
+            f"{name} `id` column must be dense and contiguous; "
+            f"missing ids {missing} between {ids[0]} and {ids[-1]}. "
             "Renumber the rows or add explicit ID-membership ICs before solving."
         )
 
@@ -140,13 +183,12 @@ def _build_session():
     `model`, the two reference concepts, the six scalar decisions, and
     `rule_pack` (the list of rule IC handles).
 
-    A fresh Model per audit isolates PyRel's `_rule_source_counts` --
-    the counter used to detect rules-created-in-a-loop. Sharing one
-    Model across audits trips its "rules created in a loop" warning at
-    the cumulative 50-rule threshold; per-audit Models keep each
-    session's internal-rule count under that threshold. The build is
-    cheap -- concepts and rule ICs are just Python objects on the
-    Model, the costly work is the solve below.
+    A fresh Model per audit keeps the per-audit internal-rule count low
+    enough to stay clear of PyRel's `"Rules created in a loop"` warning;
+    a shared Model accumulates rules across iterations and trips the
+    warning after a few audits. The build is cheap -- concepts and rule
+    ICs are just Python objects on the Model -- and the costly work is
+    the solve below.
     """
     model = Model("underwriting_audit")
 
@@ -172,11 +214,11 @@ def _build_session():
     model.define(CoverageBand.new(model.data(coverage_bands_csv).to_schema()))
 
     # Free decisions: applicant attributes the audit is allowed to
-    # vary. Each is a scalar `model.Relationship` (one Integer slot),
-    # mirroring the `rosenbrock` prescriptive example. No singleton
-    # Applicant concept is required because there is exactly one
-    # applicant slot; the solver picks values for these scalars on
-    # every solution. To extend to a fleet of N applicants, reintroduce
+    # vary. Each is a scalar `model.Relationship` (one Integer slot) --
+    # the unparented scalar shape. No singleton Applicant concept is
+    # required because there is exactly one applicant slot; the solver
+    # picks values for these scalars on every solution. To extend to a
+    # fleet of N applicants, reintroduce
     # an `Applicant` concept and lift each scalar to a
     # `model.Property(f"{Applicant} has {Integer:foo}")`, then scope
     # every IC below (including each property's counterexample ICs)
@@ -332,18 +374,24 @@ PROPERTIES = [
 def _classify_verdict(si):
     """Map solver termination + witness count to an audit verdict.
 
-    - INFEASIBLE -> PASS: solver proved no counterexample exists, so the
-      property holds under the encoded rule pack. Soundness is bounded
-      by encoding fidelity: missing rule arms can produce a silent pass.
+    - INFEASIBLE, or OPTIMAL with zero witnesses -> PASS: solver proved
+      no counterexample exists (or exhausted the search and found none),
+      so the property holds under the encoded rule pack. Soundness is
+      bounded by encoding fidelity: missing rule arms can produce a
+      silent pass.
     - OPTIMAL or SOLUTION_LIMIT with num_points >= 1 -> FAIL: at least
       one counterexample exists, so the property does not hold. Each
       witness is a concrete failure mode for triage.
-    - Anything else -> INCONCLUSIVE: the audit did not finish. Surface
-      explicitly rather than treating it as a pass.
+    - Anything else (TIME_LIMIT, MEMORY_LIMIT, OTHER_ERROR, ...) ->
+      INCONCLUSIVE: the audit did not finish. Surface explicitly rather
+      than treating it as a pass.
     """
+    n = si.num_points if si.num_points is not None else 0
     if si.termination_status == "INFEASIBLE":
         return "PASS"
-    if si.num_points is not None and si.num_points >= 1:
+    if si.termination_status == "OPTIMAL" and n == 0:
+        return "PASS"
+    if si.termination_status in ("OPTIMAL", "SOLUTION_LIMIT") and n >= 1:
         return "FAIL"
     return "INCONCLUSIVE"
 
@@ -397,6 +445,14 @@ def run_audit(name, description, counterexample_fn, show_formulation):
     for rule_ic in s.rule_pack:
         problem.satisfy(rule_ic)
     for counterexample_ic in counterexample_fn(s):
+        if counterexample_ic is None:
+            raise ValueError(
+                f"Property '{name}': counterexample builder returned None. "
+                "Each element must be a model IC (the result of "
+                "`model.require(...)` or `model.where(...).require(...)`). "
+                "Common cause: the lambda returns the condition expression "
+                "rather than calling `require()` on it."
+            )
         problem.satisfy(counterexample_ic)
 
     # Show the formulation on the first audit only. The rule pack is
@@ -415,6 +471,10 @@ def run_audit(name, description, counterexample_fn, show_formulation):
     verdict = _classify_verdict(si)
     n_witnesses = si.num_points if si.num_points is not None else 0
     print(f"Verdict: {verdict}  ({n_witnesses} witness(es), status={si.termination_status})")
+    if verdict == "FAIL" and si.termination_status == "SOLUTION_LIMIT":
+        print(
+            f"Note: hit MAX_WITNESSES={MAX_WITNESSES}; raise it to enumerate more counterexamples."
+        )
 
     # Per-FAIL witness table: `Variable.values(sol_idx, value)` indexes
     # the solver's outputs across every returned solution. Binding the
