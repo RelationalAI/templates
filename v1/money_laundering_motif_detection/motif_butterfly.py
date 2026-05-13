@@ -14,7 +14,14 @@ share a beneficial owner, each forwarding their share onward to a
 single destination. Every per-leg amount stays under the FinCEN $10K
 currency-transaction-report threshold so no leg triggers a CTR filing.
 
-Run:  python motif_butterfly.py
+Run:
+    `python motif_butterfly.py`
+
+Output:
+    Prints the formulation, the solve-result block, and three
+    per-solution inspect tables: the chosen motif transactions
+    (one row per motif edge), the K hubs and their shared
+    beneficial owner, and the source / destination assignments.
 """
 
 import pandas as pd

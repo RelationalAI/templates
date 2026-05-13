@@ -18,7 +18,14 @@ smurf-army signature -- launderers recruit a tier-diverse cohort of
 mules to defeat single-tier-pattern alerts ([Tookitaki AML guidance](
 https://www.tookitaki.com/compliance-hub/smurfing-structuring-aml-detection-reporting)).
 
-Run:  python motif_kyc_burst.py
+Run:
+    `python motif_kyc_burst.py`
+
+Output:
+    Prints the formulation, the solve-result block, and two
+    per-solution inspect tables: the chosen burst transactions
+    and the chosen burst accounts annotated with KYC tier and
+    jurisdiction so the retail-floor mix is visible.
 """
 
 from model_setup import AMOUNT_THRESHOLD_DOLLARS, create_model

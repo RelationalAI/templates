@@ -21,7 +21,14 @@ recruits N separate identities with distinct beneficial owners to break
 a known total ($SMURF_TARGET_DOLLARS) into under-threshold deposits all
 arriving at the target merchant within a short coordinated burst.
 
-Run:  python motif_smurf_army.py
+Run:
+    `python motif_smurf_army.py`
+
+Output:
+    Prints the formulation, the solve-result block, and two
+    per-solution inspect tables: the chosen smurf transactions
+    and the chosen smurf accounts annotated with their distinct
+    beneficial owners and jurisdictions.
 """
 
 from model_setup import AMOUNT_THRESHOLD_DOLLARS, create_model
