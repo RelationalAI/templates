@@ -193,13 +193,13 @@ Set `EXP_DATABASE` at the top of `datacenter_compute_allocation.py` to that data
    STAGE 4: PRESCRIPTIVE -- compute allocation MIP (48-cell sweep)
      Termination status: TIME_LIMIT
      Per-cell summary (48 cells: 33 optimal, 15 infeasible):
-       100pct unconstrained    none   OPTIMAL    110  25,277,810.94  4,190,130.34  0.83  0.95
-       100pct          85pct   none   OPTIMAL     18  22,032,899.59  3,304,895.87  0.85  1.00
+       100pct unconstrained    none   OPTIMAL    110  25,277,810.94  4,187,977.91  0.83  0.95
+       100pct          85pct   none   OPTIMAL     20  22,032,951.05  3,304,939.84  0.85  1.00
        ...
 
      AllocationPlan singleton (queryable as ontology):
        plan_id        envelope        margin     diversity  status   n_assigned   revenue_usd   total_cost_usd   realized_margin   anchor_share    binding_axis
-       DCCA_BASELINE    100pct  unconstrained         none  OPTIMAL         110   25277810.94      4190130.34         0.834237          0.947251  power_envelope
+       DCCA_BASELINE    100pct  unconstrained         none  OPTIMAL         110   25277810.94      4187977.91         0.834322          0.947251  power_envelope
 
      Assignment.is_chosen rows: 110 (matches n_assigned above)
 
@@ -220,7 +220,7 @@ Set `EXP_DATABASE` at the top of `datacenter_compute_allocation.py` to that data
 
    **Expected per-cell behavior:**
    - `(*, unconstrained / 75% / 80% margin, none diversity)`: full assignment of all 110 workloads, ~$25M revenue, 83% realized margin, 95% anchor share
-   - `(*, 85% margin, none)`: tight floor binds — drops 89 lower-margin workloads, retains 14 of 15 frontier P0 pretrains, revenue $22M @ 85% margin / 100% anchor
+   - `(*, 85% margin, none)`: tight floor binds — drops 90 lower-margin workloads, retains 14 of 15 frontier P0 pretrains plus 4 P1 finetunes and 2 P2 evals that fit under the floor, revenue $22M @ 85% margin / 100% anchor
    - `(*, *, anchor_max_70pct)`: anchor cap drops most P0 pretrains, $4-5M revenue @ ~70% anchor
    - `(*, *, anchor_max_50pct)`: CoreWeave-target cap, $2.6M @ 49% anchor (only 2 of 15 P0 pretrains fit)
    - `(*, *, anchor_max_40pct_with_type_floor)`: INFEASIBLE — too tight to satisfy with this lab roster
