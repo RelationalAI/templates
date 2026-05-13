@@ -48,7 +48,7 @@ This template demonstrates a multi-reasoner workflow combining **predictive** (p
 | 1. Predictive | **Heterogeneous-graph temporal GNN** (binary classification) | `LabMetric` activity features (time-aligned via `metric_date`) + `Workload` features + three edge types: intra-lab `lab_workloads`, `WorkloadDependency.blocks` (shared with Stage 3), cross-lab `co_dated` (LOAD-BEARING) | `Workload.utilization_probability` per workload (positive-class probability) | Predict per-workload utilization probability for the current period: will this workload actually use its allocated capacity at high duty cycle, or stall / be repaced? Trained on 770 historical `(workload, month, is_high_utilization)` observations over 7 prior months + 1 validation month; the GNN uses `has_time_column=True` to align workload-period predictions with same-period LabMetric activity. Stranded-capacity exposure is the operator's biggest economic risk. Cross-concept message passing is genuinely load-bearing — utilization depends on the lab's broader activity at the prediction date (lab→workload), what upstream pretrains produced (dep DAG), and industry-wide trends (cross-lab co_dated). Bound directly as a per-workload signal Stage 4's objective consumes. |
 | 2. Rules | **Rules** (declarative) | `Workload` requirements, `GpuPool` specs | `Workload.fails_memory`, `.passes_gpu_type`, `.is_eligible` Relationships; `Workload.priority_tier`, `.priority_weight`, and `.under_provisioning_penalty` Properties; `Compatibility(workload, gpu_pool)` precompute | Classify which (Workload, GpuPool) pairs are technically eligible (memory + GPU-type allowlist). Assign priority tier P0/P1/P2 from `contract_tier`, with a numeric weight (100/10/1) and an asymmetric under-provisioning penalty (1.0/0.3/0.0) that amplifies the Stage 4 reward for assigning anchor-tier workloads. The Compatibility precompute keeps the Stage 4 MIP linear. |
 | 3. Graph | **Reverse-PageRank** | `Workload` nodes, `WorkloadDependency.blocks` edges | `Workload.gating_score` | Score how much downstream work each workload unblocks. A frontier pretrain that gates 14 fine-tunes and evals lands high; an isolated inference workload sits at baseline. |
-| 4. Prescriptive | **MIP** (Gurobi) | `Compatibility`, `priority_weight`, `under_provisioning_penalty`, `gating_score`, `utilization_probability`, `dollars_per_mwh`, `hourly_depreciation_rate`, `approved_mw`, `is_strategic_anchor`, the three Scenario Concepts | `Assignment.x_assign` per `(PowerEnvelopeLevel, MarginFloor, DiversityCap)`; `AllocationPlan` singleton; `Assignment.is_chosen`; `DemandScenario` + `DemandScenarioOutlook` (4 risk scenarios) | Assign each workload to one (DC, GpuPool) under power, GPU-count, gross-margin-floor (energy + depreciation cost), and anchor / workload-type-diversity constraints. Maximizes a four-factor strategic value amplified by the under-provisioning penalty: priority × gating × utilization_probability × strategic_value × (1 + penalty). 48-cell sweep; strictest cells return INFEASIBLE as designed signal. The headline cell (`100pct / unconstrained / none`) is persisted as the `AllocationPlan` singleton, its decision rows flagged via `Assignment.is_chosen`, and the chosen plan is replayed under four demand-risk scenarios (expected / diffusion_slowdown / scaling_break / frontier_loss) with realized + stranded revenue persisted as `DemandScenarioOutlook` per scenario. All queryable as ontology after the script exits. |
+| 4. Prescriptive | **MIP** | `Compatibility`, `priority_weight`, `under_provisioning_penalty`, `gating_score`, `utilization_probability`, `dollars_per_mwh`, `hourly_depreciation_rate`, `approved_mw`, `is_strategic_anchor`, the three Scenario Concepts | `Assignment.x_assign` per `(PowerEnvelopeLevel, MarginFloor, DiversityCap)`; `AllocationPlan` singleton; `Assignment.is_chosen`; `DemandScenario` + `DemandScenarioOutlook` (4 risk scenarios) | Assign each workload to one (DC, GpuPool) under power, GPU-count, gross-margin-floor (energy + depreciation cost), and anchor / workload-type-diversity constraints. Maximizes a four-factor strategic value amplified by the under-provisioning penalty: priority × gating × utilization_probability × strategic_value × (1 + penalty). 48-cell sweep; strictest cells return INFEASIBLE as designed signal. The headline cell (`100pct / unconstrained / none`) is persisted as the `AllocationPlan` singleton, its decision rows flagged via `Assignment.is_chosen`, and the chosen plan is replayed under four demand-risk scenarios (expected / diffusion_slowdown / scaling_break / frontier_loss) with realized + stranded revenue persisted as `DemandScenarioOutlook` per scenario. All queryable as ontology after the script exits. |
 
 **Key design patterns demonstrated:**
 
@@ -100,7 +100,7 @@ This template demonstrates a multi-reasoner workflow combining **predictive** (p
 
 - A Snowflake account with the RelationalAI native app installed.
 - A Snowflake user with permissions on the RAI native app and on `EXP_DATABASE` (the schema for GNN experiment artifacts).
-- A **Gurobi-enabled** prescriptive engine for Stage 4 (recommended; HiGHS works as a fallback — see Customize section). Optionally a GPU-backed predictive engine for Stage 1.
+- A prescriptive engine for Stage 4. Optionally a GPU-backed predictive engine for Stage 1.
 
 ### Tools
 
@@ -197,7 +197,7 @@ Set `EXP_DATABASE` at the top of `datacenter_compute_allocation.py` to that data
        ...
 
    STAGE 4: PRESCRIPTIVE -- compute allocation MIP (48-cell sweep)
-     Termination status: OPTIMAL
+     Termination status: TIME_LIMIT  (or OPTIMAL depending on solver/limit)
      Per-cell summary (48 cells: 33 optimal, 15 infeasible):
        100pct unconstrained    none   OPTIMAL    110  25,277,810.94  4,197,891.06  0.83  0.95
        100pct          85pct   none   OPTIMAL     20  22,032,951.05  3,304,939.27  0.85  1.00
@@ -222,8 +222,8 @@ Set `EXP_DATABASE` at the top of `datacenter_compute_allocation.py` to that data
    **Expected runtime** (full pipeline, real GNN):
    - Stage 1 (GNN training + prediction): ~3-4 min on `GPU_NV_S` predictive engine (most of the total wall time)
    - Stages 2-3 (rules + PageRank): a few seconds
-   - Stage 4 (48-cell MIP): Gurobi reaches OPTIMAL across all feasible cells in **~10s** (verified on this dataset). The `time_limit_sec=60` is a safety cap rather than a typical wall. Without a Gurobi-enabled prescriptive engine, swap `problem.solve("gurobi", ...)` to `problem.solve("highs", ...)` and raise the limit (`time_limit_sec=900`); HiGHS will hit the wall and return a feasible-but-not-proven-optimal solution, which `rai-prescriptive-results-interpretation` considers signal, not failure.
-   - Total wall time: ~5 min end-to-end with Gurobi; ~17 min with HiGHS.
+   - Stage 4 (48-cell MIP): the default `time_limit_sec=120` returns a feasible solution at the wall; `TIME_LIMIT` is signal, not failure per `rai-prescriptive-results-interpretation`. Increase or change the solver in the Customize section if you need tighter convergence.
+   - Total wall time: ~6 min end-to-end (Stage 1 GNN dominates; ~3-4 min on `GPU_NV_S` predictive engine + Stage 4 MIP wall).
 
    **Expected per-cell behavior:**
    - `(*, unconstrained / 75% / 80% margin, none diversity)`: full assignment of all 110 workloads, ~$25M revenue, 83% realized margin, 95% anchor share
@@ -438,7 +438,7 @@ Finally, a `DemandScenario` overlay replays the locked-in plan under four risk s
 - **Tune scenario axes**: edit `power_envelope_levels.csv`, `margin_floors.csv`, `diversity_caps.csv`. Adding rows scales the cell count multiplicatively.
 - **Change the priority spread** by editing the weights in `stage2_rules` (default 100 / 10 / 1).
 - **Replace the GNN with the deterministic fallback** by setting `--no-gnn` and editing `workload_utilization_fallback.csv` directly.
-- **Use a different solver** by changing `problem.solve("gurobi", ...)` to `"highs"` if your prescriptive engine doesn't have Gurobi licensed. Raise `time_limit_sec` to ~900 in that case; HiGHS will return a feasible-but-not-proven-optimal solution at the wall, which is acceptable for the demo.
+- **Tune the Stage 4 solve** by adjusting the solver name or `time_limit_sec` in `problem.solve(...)`. The default works on any prescriptive engine; faster commercial solvers (when licensed) can reach OPTIMAL in a fraction of the time.
 - **Validate the GNN lift over a tabular baseline** by training a `LogisticRegression` or `GradientBoostingClassifier` on the same workload-side features (`workload_type`, `priority_tier`, `gpu_count_required`, `strategic_value_usd`, etc.) using `workload_utilization_train.csv` as labels and comparing test ROC-AUC. The GNN should beat the tabular baseline by the margin attributable to message passing through `lab_workloads`, `WorkloadDependency.blocks`, and the cross-lab `co_dated` edges — the heterogeneous signal a per-workload tabular model cannot see.
 
 ## Troubleshooting
@@ -476,7 +476,7 @@ Some cell's constraints are mutually unsatisfiable AND the C1 P0 commitment is a
 <details>
 <summary>Solver returns <code>TIME_LIMIT</code> with sensible per-cell results</summary>
 
-Possible if Gurobi can't reach OPTIMAL on a cell in 60s, or if you've swapped in HiGHS. Per-cell numbers remain valid even with `TIME_LIMIT` (`rai-prescriptive-results-interpretation`: `TIME_LIMIT` is signal, not error). Increase `time_limit_sec` in `stage4_prescriptive` if you need a tighter MIP gap.
+Expected at the default `time_limit_sec=120`. Per-cell numbers remain valid with `TIME_LIMIT` (`rai-prescriptive-results-interpretation`: `TIME_LIMIT` is signal, not error). Raise `time_limit_sec` or switch to a faster solver in `stage4_prescriptive` if you need a tighter MIP gap.
 </details>
 
 <details>

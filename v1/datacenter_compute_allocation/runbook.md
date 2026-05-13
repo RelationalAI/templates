@@ -140,7 +140,7 @@ Frontier pretrain shards top the score: GPT-Next pretrain shard 02 ≈ 0.031, Gr
 
 **Response**
 
-Gurobi solves 48 cells in one pass: 33 OPTIMAL + 15 INFEASIBLE (`time_limit_sec = 60` is a safety cap; the actual solve completes in ~10s on this dataset). Baseline cell (100pct / unconstrained / none): 110 workloads, $25.28M revenue, 83% realized margin, 95% anchor share. The strictest cells (`anchor_max_40pct_with_type_floor` at any envelope; `anchor_max_50pct` paired with the 85% margin floor) return INFEASIBLE because the type-floor and anchor-cap combination forbids the pretrain volume that supplies the margin.
+Solver returns 33 cells solved + 15 INFEASIBLE (designed signal). At the default `time_limit_sec=120` the solver returns a feasible solution at the wall; with a faster solver licensed on the prescriptive engine the same problem reaches OPTIMAL in seconds. Baseline cell (100pct / unconstrained / none): 110 workloads, $25.28M revenue, 83% realized margin, 95% anchor share. The strictest cells (`anchor_max_40pct_with_type_floor` at any envelope; `anchor_max_50pct` paired with the 85% margin floor) return INFEASIBLE because the type-floor and anchor-cap combination forbids the pretrain volume that supplies the margin.
 
 ### 9. Read the frontiers and the demand-risk overlay
 

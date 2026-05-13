@@ -1045,8 +1045,8 @@ def stage4_prescriptive(ctx):
         .where(Assignment.x_assign(PowerEnvelopeLevel, MarginFloor, DiversityCap, x_obj))
     )
 
-    print("  Solving 48-cell scenario sweep with Gurobi...")
-    problem.solve("gurobi", time_limit_sec=60)
+    print("  Solving 48-cell scenario sweep...")
+    problem.solve("highs", time_limit_sec=120)
     si = problem.solve_info()
     # Per rai-prescriptive-results-interpretation: status is signal, not
     # always error. INFEASIBLE/TIME_LIMIT cells in a multi-scenario sweep
