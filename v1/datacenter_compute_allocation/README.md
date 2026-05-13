@@ -45,7 +45,7 @@ This template demonstrates a multi-reasoner workflow combining **predictive** (p
 
 | Stage | Reasoner | Reads from ontology | Writes to ontology | Role |
 |-------|----------|---------------------|--------------------|------|
-| 1. Predictive | **Heterogeneous-graph GNN** (binary classification) | `LabMetric` activity features + `Workload` features + three edge types: intra-lab `lab_workloads`, `WorkloadDependency.blocks` (shared with Stage 3), cross-lab `co_dated` (LOAD-BEARING) | `Workload.utilization_probability` per workload (positive-class probability) | Predict per-workload utilization probability: will this workload actually use its allocated capacity at high duty cycle, or stall / be repaced? Stranded-capacity exposure is the operator's biggest economic risk. Cross-concept message passing is genuinely needed — utilization depends on the lab's broader activity (lab→workload), what upstream pretrains produced (dep DAG), and industry-wide trends (cross-lab co_dated). Bound directly as a per-workload signal Stage 4's objective consumes. |
+| 1. Predictive | **Heterogeneous-graph temporal GNN** (binary classification) | `LabMetric` activity features (time-aligned via `metric_date`) + `Workload` features + three edge types: intra-lab `lab_workloads`, `WorkloadDependency.blocks` (shared with Stage 3), cross-lab `co_dated` (LOAD-BEARING) | `Workload.utilization_probability` per workload (positive-class probability) | Predict per-workload utilization probability for the current period: will this workload actually use its allocated capacity at high duty cycle, or stall / be repaced? Trained on 770 historical `(workload, month, is_high_utilization)` observations over 7 prior months + 1 validation month; the GNN uses `has_time_column=True` to align workload-period predictions with same-period LabMetric activity. Stranded-capacity exposure is the operator's biggest economic risk. Cross-concept message passing is genuinely load-bearing — utilization depends on the lab's broader activity at the prediction date (lab→workload), what upstream pretrains produced (dep DAG), and industry-wide trends (cross-lab co_dated). Bound directly as a per-workload signal Stage 4's objective consumes. |
 | 2. Rules | **Rules** (declarative) | `Workload` requirements, `GpuPool` specs | `Workload.fails_memory`, `.passes_gpu_type`, `.is_eligible` Relationships; `Workload.priority_tier`, `.priority_weight`, and `.under_provisioning_penalty` Properties; `Compatibility(workload, gpu_pool)` precompute | Classify which (Workload, GpuPool) pairs are technically eligible (memory + GPU-type allowlist). Assign priority tier P0/P1/P2 from `contract_tier`, with a numeric weight (100/10/1) and an asymmetric under-provisioning penalty (1.0/0.3/0.0) that amplifies the Stage 4 reward for assigning anchor-tier workloads. The Compatibility precompute keeps the Stage 4 MIP linear. |
 | 3. Graph | **Reverse-PageRank** | `Workload` nodes, `WorkloadDependency.blocks` edges | `Workload.gating_score` | Score how much downstream work each workload unblocks. A frontier pretrain that gates 14 fine-tunes and evals lands high; an isolated inference workload sits at baseline. |
 | 4. Prescriptive | **MIP** (HiGHS) | `Compatibility`, `priority_weight`, `under_provisioning_penalty`, `gating_score`, `utilization_probability`, `dollars_per_mwh`, `hourly_depreciation_rate`, `approved_mw`, `is_strategic_anchor`, the three Scenario Concepts | `Assignment.x_assign` per `(PowerEnvelopeLevel, MarginFloor, DiversityCap)`; `AllocationPlan` singleton; `Assignment.is_chosen`; `DemandScenario` + `DemandScenarioOutlook` (4 risk scenarios) | Assign each workload to one (DC, GpuPool) under power, GPU-count, gross-margin-floor (energy + depreciation cost), and anchor / workload-type-diversity constraints. Maximizes a four-factor strategic value amplified by the under-provisioning penalty: priority × gating × utilization_probability × strategic_value × (1 + penalty). 48-cell sweep; strictest cells return INFEASIBLE as designed signal. The headline cell (`100pct / unconstrained / none`) is persisted as the `AllocationPlan` singleton, its decision rows flagged via `Assignment.is_chosen`, and the chosen plan is replayed under four demand-risk scenarios (expected / diffusion_slowdown / scaling_break / frontier_loss) with realized + stranded revenue persisted as `DemandScenarioOutlook` per scenario. All queryable as ontology after the script exits. |
@@ -87,8 +87,8 @@ This template demonstrates a multi-reasoner workflow combining **predictive** (p
 - `data/workload_gpu_compatibility.csv` — per-workload GPU-type allowlist
 - `data/workload_dependencies.csv` — 138 edges (~130 blocks + ~10 informs), DAG depth 4-5 rooted at frontier pretrains
 - `data/lab_metrics.csv` — 365 days × 6 labs = 2,190 rows with cross-lab co-movement
-- `data/workload_utilization_train.csv`, `_val.csv`, `_test.csv` — GNN binary-classification splits (train: 80 workloads with `is_high_utilization` label; val: 15 workloads; test: all 110 workloads, no label — every workload gets a probability)
-- `data/workload_utilization_fallback.csv` — Stage 1 fallback (per-workload deterministic probability, used when `--no-gnn` is set)
+- `data/workload_utilization_train.csv`, `_val.csv`, `_test.csv` — GNN temporal binary-classification splits. **Train**: 7 historical months × 110 workloads = 770 `(workload, observation_date, is_high_utilization)` observations. **Val**: 1 month × 110 = 110. **Test**: the current month × 110 = 110 observations with no label (every workload gets a probability for the upcoming period).
+- `data/workload_utilization_fallback.csv` — Stage 1 fallback (per-workload deterministic probability for the current period, used when `--no-gnn` is set)
 - `data/power_envelope_levels.csv` — 3 scenario rows (0.85 / 1.00 / 1.10)
 - `data/margin_floors.csv` — 4 scenario rows (unconstrained / 75% / 80% / 85% gross margin post-depreciation)
 - `data/diversity_caps.csv` — 4 scenario rows (none / anchor_max_70pct / anchor_max_50pct CoreWeave-target / anchor_max_40pct_with_type_floor)
@@ -243,10 +243,10 @@ datacenter_compute_allocation/
     workload_gpu_compatibility.csv  # Per-workload GPU-type allowlist
     workload_dependencies.csv       # 138 directed edges in the dependency DAG
     lab_metrics.csv                 # 2,190 = 365 days × 6 labs daily KPIs
-    workload_utilization_train.csv  # GNN training split (80 workloads + label)
-    workload_utilization_val.csv    # GNN validation split (15 workloads + label)
-    workload_utilization_test.csv   # GNN test split (all 110 workloads, no label)
-    workload_utilization_fallback.csv  # Stage 1 fallback (deterministic per-workload probability)
+    workload_utilization_train.csv  # GNN train split: 7 historical months × 110 = 770 obs
+    workload_utilization_val.csv    # GNN val split: 1 month × 110 = 110 obs
+    workload_utilization_test.csv   # GNN test: current period × 110, no label
+    workload_utilization_fallback.csv  # Stage 1 fallback (deterministic per-workload p)
     power_envelope_levels.csv       # 3 scenario rows (envelope multiplier)
     margin_floors.csv               # 4 scenario rows (gross margin floors)
     diversity_caps.csv              # 4 scenario rows (anchor concentration caps)
@@ -292,9 +292,39 @@ model.define(gnn_graph.Edge.new(src=LM_a, dst=LM_b)).where(
 )
 ```
 
-Train (80 workloads) / Val (15) / Test (110 — all workloads, so every workload gets a probability) splits live in `workload_utilization_*.csv` and join to `Workload` by `workload_id`. The GNN's training task is binary classification (`task_type="binary_classification"`, `eval_metric="roc_auc"`); the positive-class probability is bound back to the ontology as `Workload.utilization_probability` and consumed by Stage 4's objective.
+The task tables carry per-`(workload, observation_date)` historical labels (`workload_utilization_*.csv`). Each row is one monthly utilization observation; the same workload appears in 7 training rows (one per historical month), giving the GNN per-period variety to learn from instead of a single label per entity. Train (7 months × 110 = 770) / Val (1 month × 110 = 110) / Test (current month × 110, no label — every workload gets a probability for the upcoming period). The task relationships use `at {Date:obs_date}` time slots and the GNN runs with `has_time_column=True` so LabMetric features are time-aligned with each (workload, month) prediction:
 
-GNN is the right tool for this task — the answer for any given workload depends on its lab's broader activity, what upstream pretrains in the dep DAG have produced, and industry-wide trends across labs that share its workload_type. A tabular model could only see the workload's own static features.
+```python
+Train = model.Relationship(f"{Workload} at {Date:obs_date} has {Any:label}")
+model.define(Train(
+    Workload, TrainTable.observation_date, TrainTable.is_high_utilization
+)).where(Workload.id == TrainTable.workload_id)
+
+Test = model.Relationship(f"{Workload} at {Date:obs_date}")
+model.define(Test(
+    Workload, TestTable.observation_date
+)).where(Workload.id == TestTable.workload_id)
+
+pt = PropertyTransformer(
+    ...
+    datetime=[LabMetric.metric_date],
+    time_col=[LabMetric.metric_date],
+)
+
+gnn = GNN(
+    ...
+    task_type="binary_classification",
+    eval_metric="roc_auc",
+    has_time_column=True,
+    ...
+)
+gnn.fit()
+Workload.predictions = gnn.predictions(domain=Test)
+```
+
+The positive-class probability is bound back to the ontology as `Workload.utilization_probability` and consumed by Stage 4's objective.
+
+GNN is the right tool for this task — the answer for any given workload depends on its lab's broader activity at the prediction date, what upstream pretrains in the dep DAG have produced, and industry-wide trends across labs that share its workload_type. A tabular model could only see the workload's own static features, missing all three.
 
 ### Stage 2: Rules — eligibility + priority tiers + Compatibility precompute
 

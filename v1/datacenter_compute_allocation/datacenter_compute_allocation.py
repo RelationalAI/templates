@@ -54,7 +54,7 @@ import argparse
 from pathlib import Path
 
 import pandas as pd
-from relationalai.semantics import Any, Boolean, Float, Integer, Model, String, sum
+from relationalai.semantics import Any, Boolean, Date, Float, Integer, Model, String, sum
 from relationalai.semantics.reasoners.graph import Graph
 from relationalai.semantics.reasoners.prescriptive import Problem
 from relationalai.semantics.std import aggregates as aggs
@@ -477,7 +477,7 @@ def _train_gnn_and_predict(ctx):
     # concept -- the GNN predicts on Workload, with LabMetric features
     # propagating in via the lab_workloads edge).
     LabMetric = model.Concept("LabMetric", identify_by={"metric_id": Integer})
-    LabMetric.metric_date = model.Property(f"{LabMetric} has {String:metric_date}")
+    LabMetric.metric_date = model.Property(f"{LabMetric} has {Date:metric_date}")
     LabMetric.lab = model.Property(f"{LabMetric} has {String:lab}")
     LabMetric.active_training_runs = model.Property(f"{LabMetric} has {Float:active_training_runs}")
     LabMetric.gpu_hours_consumed = model.Property(f"{LabMetric} has {Float:gpu_hours_consumed}")
@@ -540,8 +540,9 @@ def _train_gnn_and_predict(ctx):
         LM_b.lab == co_src.lab_b, LM_b.metric_date == co_src.shared_date,
     )
 
-    # ---- Task tables: split workloads into train (80) / val (15) /
-    # test (110 -- ALL workloads, so every workload gets a prediction).
+    # ---- Task tables: per-(workload, observation-month) historical labels.
+    # Train: 7 months × 110 = 770 obs; Val: 1 month × 110 = 110;
+    # Test: current month × 110 (NO labels — predict for all workloads).
     TrainTable = model.Concept("TrainTable")
     ValTable = model.Concept("ValTable")
     TestTable = model.Concept("TestTable")
@@ -549,25 +550,32 @@ def _train_gnn_and_predict(ctx):
     model.define(ValTable.new(model.data(wl_util_val_df).to_schema()))
     model.define(TestTable.new(model.data(wl_util_test_df).to_schema()))
 
-    # Task relationships. Train/Val carry the binary label; Test omits it.
-    # Join key: Workload.id == TaskTable.workload_id.
-    Train = model.Relationship(f"{Workload} has {Any:label}")
-    model.define(Train(Workload, TrainTable.is_high_utilization)).where(
-        Workload.id == TrainTable.workload_id,
-    )
-    Val = model.Relationship(f"{Workload} has {Any:label}")
-    model.define(Val(Workload, ValTable.is_high_utilization)).where(
-        Workload.id == ValTable.workload_id,
-    )
-    Test = model.Relationship(f"{Workload}")
-    model.define(Test(Workload)).where(
-        Workload.id == TestTable.workload_id,
-    )
+    # Task relationships with `at {Date:obs_date}` time slot. Each
+    # (workload, observation_date) pair gets a binary label in train/val
+    # and a prediction in test. The same workload appears in multiple
+    # training rows (one per historical month), so the GNN learns
+    # temporal patterns rather than memorizing static workload features.
+    Train = model.Relationship(f"{Workload} at {Date:obs_date} has {Any:label}")
+    model.define(Train(
+        Workload, TrainTable.observation_date, TrainTable.is_high_utilization
+    )).where(Workload.id == TrainTable.workload_id)
+    Val = model.Relationship(f"{Workload} at {Date:obs_date} has {Any:label}")
+    model.define(Val(
+        Workload, ValTable.observation_date, ValTable.is_high_utilization
+    )).where(Workload.id == ValTable.workload_id)
+    Test = model.Relationship(f"{Workload} at {Date:obs_date}")
+    model.define(Test(
+        Workload, TestTable.observation_date
+    )).where(Workload.id == TestTable.workload_id)
 
-    # ---- Feature configuration -- drop PKs/identifiers; type the rest ----
+    # ---- Feature configuration -- drop PKs/identifiers; type the rest.
+    # LabMetric.metric_date is the time_col -- it must also appear in
+    # datetime= per the rai-predictive-training triple-coupling rule for
+    # has_time_column=True (the time column of the task relationship
+    # aligns with this LabMetric feature column).
     pt = PropertyTransformer(
         drop=[
-            LabMetric.metric_id, LabMetric.metric_date,
+            LabMetric.metric_id,
             Workload.id, Workload.name,
         ],
         category=[
@@ -585,6 +593,8 @@ def _train_gnn_and_predict(ctx):
             Workload.gpu_count_required, Workload.mem_required_gb,
             Workload.strategic_value_usd, Workload.duration_hours,
         ],
+        datetime=[LabMetric.metric_date],
+        time_col=[LabMetric.metric_date],
     )
 
     gnn = GNN(
@@ -596,7 +606,7 @@ def _train_gnn_and_predict(ctx):
         validation=Val,
         task_type="binary_classification",
         eval_metric="roc_auc",
-        has_time_column=False,
+        has_time_column=True,
         stream_logs=False,
         seed=SEED,
         device="cpu",

@@ -12,9 +12,11 @@ as ontology so the plan survives the chain run.
 
   ─────────────────────────────────────────────────────────────────
   STAGE 1  Predictive   ──►  Workload.utilization_probability  (110)
-                 (GNN,        Binary classification: probability each workload
-                  classify)   actually uses its allocated capacity at high
-                              duty cycle. Frontier pretrains land 0.85+;
+                 (temporal    Binary classification on 770 historical
+                  hetero GNN) (workload, month) observations + 110 val.
+                              Probability each workload actually uses its
+                              allocated capacity at high duty cycle this
+                              period. Frontier pretrains land 0.85+;
                               isolated Stability evals 0.20-0.35.
   ─────────────────────────────────────────────────────────────────
   STAGE 2  Rules        ──►  Compatibility(workload, gpu_pool) (~1,900)
@@ -97,12 +99,12 @@ Frontier labs (Anthropic Research, OpenAI Pretrain, xAI Internal) carry the 15 P
 **Prompt**
 
 ```
-/rai-predictive-modeling + /rai-predictive-training Which workloads will actually use their allocated capacity at high duty cycle next period, vs stall or be repaced? This is the operator's biggest economic risk — stranded capacity is depreciation accruing without offsetting revenue. Train a binary-classification GNN over a heterogeneous graph: lab-side activity (LabMetric → Workload, same lab), dependency propagation (WorkloadDependency.blocks), and cross-lab industry co-movement (LabMetric ↔ LabMetric, same date, labs sharing a workload_type). Labels live in workload_utilization_train.csv / _val.csv (80 / 15 workloads); test on all 110 so every workload gets a probability. Bind the positive-class probability back to the ontology as Workload.utilization_probability.
+/rai-predictive-modeling + /rai-predictive-training Which workloads will actually use their allocated capacity at high duty cycle next period, vs stall or be repaced? This is the operator's biggest economic risk — stranded capacity is depreciation accruing without offsetting revenue. Train a temporal binary-classification GNN over a heterogeneous graph (lab-side activity LabMetric → Workload, dependency propagation WorkloadDependency.blocks, cross-lab industry co-movement LabMetric ↔ LabMetric on the same date when labs share a workload_type). Each workload has 7 historical monthly utilization observations + 1 validation month in workload_utilization_train.csv / _val.csv; the test split is all 110 workloads at the current month (no label — predict for the upcoming period). Use has_time_column=True so LabMetric features are time-aligned with each (workload, observation_date) prediction. Bind the positive-class probability back to the ontology as Workload.utilization_probability.
 ```
 
 **Response**
 
-GNN binary classification (`task_type="binary_classification"`, `eval_metric="roc_auc"`). Per-workload `utilization_probability` distribution: ~70 workloads land at p ≥ 0.5 (likely high-utilization) and ~40 at p < 0.5. Frontier pretrain shards top the distribution (p ≈ 0.85–0.95) because they pull signal through three channels — their lab's recent ramp, the dep DAG (each gates 3–5 downstream evals + finetunes), and cross-lab co-movement. Stability evals sit at the bottom (p ≈ 0.20–0.35) — small lab, isolated dep position, and no cross-lab signal pulling them up. The cross-concept edges are the load-bearing signal: a per-workload tabular baseline can't see lab-side activity, dep propagation, or cross-lab co-movement, so it under-discriminates between similar-on-paper workloads in different lab contexts.
+GNN temporal binary classification (`task_type="binary_classification"`, `eval_metric="roc_auc"`, `has_time_column=True`). 770 training observations (7 historical months × 110 workloads) + 110 validation observations + 110 current-period test predictions. Per-workload `utilization_probability` for the current period: frontier pretrain shards top the distribution (p ≈ 0.85–0.95) because they pull signal through three time-aligned channels — their lab's same-period activity (LabMetric → Workload edges aligned by date), dep DAG propagation (each pretrain gates 3–5 downstream evals + finetunes), and same-period cross-lab co-movement (frontier labs ramping together amplifies each other). Stability evals sit at the bottom (p ≈ 0.20–0.35) — small lab activity, isolated dep position, and no cross-lab signal pulling them up. The cross-concept edges + temporal alignment are the load-bearing signal: a per-workload tabular baseline can't see lab-side activity at the prediction date, dep propagation, or cross-lab co-movement, so it under-discriminates between similar-on-paper workloads observed in different lab contexts and different macro periods.
 
 ### 6. Screen hardware compatibility and priority
 
