@@ -199,12 +199,13 @@ problem.satisfy(senior_def_neg_ic)
 
 # Rule: `is_frail` is 1 iff the applicant is senior OR has a chronic
 # condition. Encoded as the standard OR-arithmetic equivalence on
-# binaries (`y = a OR b` is `y >= a, y >= b, y <= a + b`). Keep all
-# three arms even when one looks redundant under the bundled
-# counterexample ICs -- each arm is part of the definition of the OR
-# rule, and dropping an arm silently weakens the ruleset against a
-# future rule change (the exact silent-pass shape the audit warns
-# against). Same applies to the two `is_manual_review` arms below.
+# binaries (`y = a OR b` is `y >= a, y >= b, y <= a + b`) -- a single
+# `==` constraint won't do here because `is_senior + has_chronic` can
+# be 2 but `is_frail` is binary. Keep all three arms even when one
+# looks redundant under the bundled counterexample ICs -- each arm is
+# part of the definition of the OR rule, and dropping an arm silently
+# weakens the ruleset against a future rule change (the exact
+# silent-pass shape the audit warns against).
 frail_lb_senior_ic = model.require(Applicant.is_frail >= Applicant.is_senior)
 frail_lb_chronic_ic = model.require(Applicant.is_frail >= Applicant.has_chronic)
 frail_ub_ic = model.require(Applicant.is_frail <= Applicant.is_senior + Applicant.has_chronic)
@@ -215,11 +216,9 @@ problem.satisfy(frail_ub_ic)
 # Rule (BUGGY): `is_manual_review` is 1 iff the applicant is senior. The
 # correct rule should also flag frail applicants (senior OR chronic), but
 # this version misses the chronic arm -- which is exactly the bug the
-# audit exposes. Encoded as `y = senior` via two arithmetic constraints.
-manual_review_eq_lb_ic = model.require(Applicant.is_manual_review >= Applicant.is_senior)
-manual_review_eq_ub_ic = model.require(Applicant.is_manual_review <= Applicant.is_senior)
-problem.satisfy(manual_review_eq_lb_ic)
-problem.satisfy(manual_review_eq_ub_ic)
+# audit exposes. Encoded as a single equality constraint.
+manual_review_eq_ic = model.require(Applicant.is_manual_review == Applicant.is_senior)
+problem.satisfy(manual_review_eq_ic)
 
 # --------------------------------------------------
 # Property-entailment audit: ask for a counterexample
@@ -264,7 +263,7 @@ si.display()
 # senior-definition ICs (`senior_def_pos_ic`, `senior_def_neg_ic`) are
 # `implies`-bodied and solver-only; pass only the pure-arithmetic ICs
 # to `verify()`. The OR-arithmetic constraints on `is_frail` and the
-# equality constraints on `is_manual_review` ARE pure relational
+# equality constraint on `is_manual_review` ARE pure relational
 # arithmetic and round-trip cleanly. `verify()` only re-evaluates the
 # first returned solution, so it is a per-solution spot-check on the
 # arithmetic ICs -- not a re-proof across every witness or every IC.
@@ -272,8 +271,7 @@ problem.verify(
     frail_lb_senior_ic,
     frail_lb_chronic_ic,
     frail_ub_ic,
-    manual_review_eq_lb_ic,
-    manual_review_eq_ub_ic,
+    manual_review_eq_ic,
     counterexample_frail_ic,
     counterexample_no_review_ic,
 )
