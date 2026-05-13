@@ -74,7 +74,7 @@ model = Model("underwriting_audit")
 # Define semantic model & load reference data
 # --------------------------------------------------
 
-data_dir = Path(__file__).parent / "data"
+DATA_DIR = Path(__file__).parent / "data"
 
 
 # Reference-data contract: integer IDs must be dense and contiguous so the
@@ -108,7 +108,7 @@ def _assert_dense_ids(df, name):
 # time.
 AgeBucket = model.Concept("AgeBucket", identify_by={"id": Integer})
 AgeBucket.age_years = model.Property(f"{AgeBucket} has {Integer:age_years}")
-age_buckets_csv = read_csv(data_dir / "age_buckets.csv")
+age_buckets_csv = read_csv(DATA_DIR / "age_buckets.csv")
 _assert_dense_ids(age_buckets_csv, "age_buckets.csv")
 model.define(AgeBucket.new(model.data(age_buckets_csv).to_schema()))
 
@@ -120,7 +120,7 @@ model.define(AgeBucket.new(model.data(age_buckets_csv).to_schema()))
 # change.
 CoverageBand = model.Concept("CoverageBand", identify_by={"id": Integer})
 CoverageBand.coverage_dollars = model.Property(f"{CoverageBand} has {Integer:coverage_dollars}")
-coverage_bands_csv = read_csv(data_dir / "coverage_bands.csv")
+coverage_bands_csv = read_csv(DATA_DIR / "coverage_bands.csv")
 _assert_dense_ids(coverage_bands_csv, "coverage_bands.csv")
 model.define(CoverageBand.new(model.data(coverage_bands_csv).to_schema()))
 
