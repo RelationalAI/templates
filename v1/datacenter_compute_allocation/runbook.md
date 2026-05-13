@@ -1,6 +1,6 @@
 # Runbook: Datacenter Compute Allocation — Multi-Reasoner Walkthrough
 
-A neocloud operator has 110 workloads from 6 AI labs competing for 28 GPU pools across 5 hyperscaler campuses (a snapshot of the campus set the upstream `energy_grid_planning` $300M solve approved). The chain forecasts per-lab demand, screens hardware compatibility, weights workloads by downstream gating, and produces a 48-cell scenario sweep — no single reasoner can answer this end-to-end.
+A neocloud operator has 110 workloads from 6 AI labs competing for 28 GPU pools across 5 hyperscaler campuses (a snapshot of the campus set the upstream `energy_grid_planning` $300M solve approved). The chain predicts per-workload utilization probability, screens hardware compatibility, weights workloads by downstream gating, and produces a 48-cell scenario sweep — no single reasoner can answer this end-to-end.
 
 ## The chain
 
@@ -11,10 +11,11 @@ The headline baseline cell (100pct / unconstrained / none) is persisted
 as ontology so the plan survives the chain run.
 
   ─────────────────────────────────────────────────────────────────
-  STAGE 1  Predictive   ──►  LabGrowth.multiplier            (6 labs)
-                 (GNN)       OpenAI 1.12, Anthropic 1.10, xAI 1.08,
-                             Together 1.04, Cohere 1.03, Stability 0.97.
-                             Frontier ramps, research org contracts.
+  STAGE 1  Predictive   ──►  Workload.utilization_probability  (110)
+                 (GNN,        Binary classification: probability each workload
+                  classify)   actually uses its allocated capacity at high
+                              duty cycle. Frontier pretrains land 0.85+;
+                              isolated Stability evals 0.20-0.35.
   ─────────────────────────────────────────────────────────────────
   STAGE 2  Rules        ──►  Compatibility(workload, gpu_pool) (~1,900)
                              Workload.priority_tier            (110)
@@ -53,7 +54,7 @@ Prompts below are designed to run in order in a single session so each step inhe
 
 **Response**
 
-Concepts: `DataCenterRequest`, `GpuPool`, `AILab`, `Workload`, `WorkloadDependency`, `WorkloadGpuCompat`, `LabMetric`, `LabGrowth`, and three Scenario Concepts (`PowerEnvelopeLevel`, `MarginFloor`, `DiversityCap`) — bound to the bundled CSVs (5 DCs, 28 GPU pools, 6 labs, 110 workloads, 138 dependency edges).
+Concepts: `DataCenterRequest`, `GpuPool`, `AILab`, `Workload`, `WorkloadDependency`, `WorkloadGpuCompat`, `LabMetric`, and three Scenario Concepts (`PowerEnvelopeLevel`, `MarginFloor`, `DiversityCap`) — bound to the bundled CSVs (5 DCs, 28 GPU pools, 6 labs, 110 workloads, 138 dependency edges).
 
 ### 2. Examine ontology
 
@@ -65,7 +66,7 @@ Concepts: `DataCenterRequest`, `GpuPool`, `AILab`, `Workload`, `WorkloadDependen
 
 **Response**
 
-11 concepts: 5 `DataCenterRequest` (xAI Colossus, Microsoft Horizon, CoreWeave Austin, Crusoe Permian, Oracle Coastal), 28 `GpuPool`, 6 `AILab`, 110 `Workload`, 181 `WorkloadGpuCompat` (workload-side GPU-type allowlist as a composite-key edge concept), 138 `WorkloadDependency`, 2,190 `LabMetric` covering 365 days × 6 labs (date range 2025-05-11 .. 2026-05-10), 6 `LabGrowth` placeholders, plus 3 / 4 / 4 rows on the three Scenario Concepts (3 × 4 × 4 = 48 cells).
+10 concepts: 5 `DataCenterRequest` (xAI Colossus, Microsoft Horizon, CoreWeave Austin, Crusoe Permian, Oracle Coastal), 28 `GpuPool`, 6 `AILab`, 110 `Workload`, 181 `WorkloadGpuCompat` (workload-side GPU-type allowlist as a composite-key edge concept), 138 `WorkloadDependency`, 2,190 `LabMetric` covering 365 days × 6 labs (date range 2025-05-11 .. 2026-05-10), plus 3 / 4 / 4 rows on the three Scenario Concepts (3 × 4 × 4 = 48 cells).
 
 ### 3. Discover reasoner questions
 
@@ -77,7 +78,7 @@ Concepts: `DataCenterRequest`, `GpuPool`, `AILab`, `Workload`, `WorkloadDependen
 
 **Response**
 
-Plan routes sub-questions to predictive (per-lab demand forecast), rules (hardware eligibility + priority tier), graph (downstream gating), and prescriptive (assignment MIP under a 3D scenario sweep with interpretation).
+Plan routes sub-questions to predictive (per-workload utilization-probability classification — captures the operator's stranded-capacity exposure), rules (hardware eligibility + priority tier), graph (downstream gating), and prescriptive (assignment MIP under a 3D scenario sweep with interpretation).
 
 ### 4. Scope demand
 
@@ -91,17 +92,17 @@ Plan routes sub-questions to predictive (per-lab demand forecast), rules (hardwa
 
 Frontier labs (Anthropic Research, OpenAI Pretrain, xAI Internal) carry the 15 P0 pretrains (256–1,024 GPUs each, GB200/H200/H100 mix). Applied labs (Cohere Inference, Together AI Multi-Lab) carry the 30 P1 fine-tunes + 50 P1 inference workloads. Stability Open carries the 15 P2 evals. Pretrain GPU-hour demand dwarfs inference even at a 50:15 workload-count ratio.
 
-### 5. Forecast per-lab demand
+### 5. Predict per-workload utilization probability
 
 **Prompt**
 
 ```
-/rai-predictive-modeling + /rai-predictive-training What's each lab's next-period training-intensity multiplier, given the daily KPI history? The signal that matters most isn't each lab's own time series — it's cross-lab co-movement: when frontier labs collectively ramp, applied labs follow. Train on a heterogeneous graph that connects lab-metric rows on the same date when their labs share a workload_type, and bind the per-lab forecast back to the ontology as LabGrowth.multiplier so the optimizer can read it.
+/rai-predictive-modeling + /rai-predictive-training Which workloads will actually use their allocated capacity at high duty cycle next period, vs stall or be repaced? This is the operator's biggest economic risk — stranded capacity is depreciation accruing without offsetting revenue. Train a binary-classification GNN over a heterogeneous graph: lab-side activity (LabMetric → Workload, same lab), dependency propagation (WorkloadDependency.blocks), and cross-lab industry co-movement (LabMetric ↔ LabMetric, same date, labs sharing a workload_type). Labels live in workload_utilization_train.csv / _val.csv (80 / 15 workloads); test on all 110 so every workload gets a probability. Bind the positive-class probability back to the ontology as Workload.utilization_probability.
 ```
 
 **Response**
 
-`LabGrowth.multiplier` for all 6 labs: OpenAI ≈1.12, Anthropic ≈1.10, xAI ≈1.08, Together ≈1.04, Cohere ≈1.03, Stability ≈0.97. Frontier labs ramp 5–12%; the research org contracts slightly. The cross-lab `co_dated` edges are the load-bearing signal — a per-lab tabular baseline sits at higher RMSE because it can't see industry-wide co-movement.
+GNN binary classification (`task_type="binary_classification"`, `eval_metric="roc_auc"`). Per-workload `utilization_probability` distribution: ~70 workloads land at p ≥ 0.5 (likely high-utilization) and ~40 at p < 0.5. Frontier pretrain shards top the distribution (p ≈ 0.85–0.95) because they pull signal through three channels — their lab's recent ramp, the dep DAG (each gates 3–5 downstream evals + finetunes), and cross-lab co-movement. Stability evals sit at the bottom (p ≈ 0.20–0.35) — small lab, isolated dep position, and no cross-lab signal pulling them up. The cross-concept edges are the load-bearing signal: a per-workload tabular baseline can't see lab-side activity, dep propagation, or cross-lab co-movement, so it under-discriminates between similar-on-paper workloads in different lab contexts.
 
 ### 6. Screen hardware compatibility and priority
 
@@ -132,7 +133,7 @@ Frontier pretrain shards top the score: GPT-Next pretrain shard 02 ≈ 0.031, Gr
 **Prompt**
 
 ```
-/rai-prescriptive-problem-formulation Which workloads should be assigned to which (DC, GPU pool) under three scenario axes — power envelope (85% / 100% / 110% of approved_mw, tracing the lower-cone / expected / upper-cone planning points), gross-margin floor (unconstrained / 75% / 80% / 85%), and anchor-concentration cap (none / 70% / 50% / 40% with workload-type floor) — solved as one MIP indexed by all three? Stay within per-pool GPU capacity and per-DC power. Maximize Σ priority_weight × gating_score × projected_demand_growth × strategic_value_usd × (1 + under_provisioning_penalty) so anchor under-provisioning is priced asymmetrically. Per-cell INFEASIBLE is diagnostic — the global solve should not fail when one cell binds too tight.
+/rai-prescriptive-problem-formulation Which workloads should be assigned to which (DC, GPU pool) under three scenario axes — power envelope (85% / 100% / 110% of approved_mw, tracing the lower-cone / expected / upper-cone planning points), gross-margin floor (unconstrained / 75% / 80% / 85%), and anchor-concentration cap (none / 70% / 50% / 40% with workload-type floor) — solved as one MIP indexed by all three? Stay within per-pool GPU capacity and per-DC power. Maximize Σ priority_weight × gating_score × utilization_probability × strategic_value_usd × (1 + under_provisioning_penalty) so anchor under-provisioning is priced asymmetrically. Per-cell INFEASIBLE is diagnostic — the global solve should not fail when one cell binds too tight.
 ```
 
 **Response**

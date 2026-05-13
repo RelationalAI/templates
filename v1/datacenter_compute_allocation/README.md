@@ -1,6 +1,6 @@
 ---
 title: "Datacenter Compute Allocation"
-description: "Multi-reasoner template (chain follow-up to energy_grid_planning): heterogeneous-graph GNN demand forecasting, hardware-compatibility rules, dependency PageRank, and 3D-scenario MIP for inside-the-fence GPU allocation across hyperscaler campuses."
+description: "Multi-reasoner template (chain follow-up to energy_grid_planning): heterogeneous-graph GNN classification of per-workload utilization probability, hardware-compatibility rules, dependency PageRank, and 3D-scenario MIP for inside-the-fence GPU allocation across hyperscaler campuses."
 featured: false
 experience_level: advanced
 industry: "AI Infrastructure"
@@ -32,23 +32,23 @@ The 5 hyperscaler campuses in the bundled snapshot — xAI Colossus, Microsoft H
 
 The decision is **multi-objective and operationally pressing**. Every major hyperscaler now reports AI compute as a binding constraint on growth (Microsoft has disclosed an $80B Azure backlog blocked specifically by power constraints). The operator is accountable on three publicly-discussed dimensions:
 
-1. **Power envelope as cone of uncertainty.** Each campus has a substation-bound MW cap (`approved_mw`, set by the interconnection-planning decision the upstream template represents). The three envelope cells trace the cone: 85% is the lower-cone curtailment day (heat-wave or grid-stress de-rating), 100% is the expected grid-approved cap, and 110% is the upper-cone planning point — contracted-curtailment headroom the operator can lean on when frontier-lab demand outruns the midpoint forecast. Hyperscaler compute is exponential and unstable; planning to the midpoint is how operators end up under-provisioned to anchors.
+1. **Power envelope as cone of uncertainty.** Each campus has a substation-bound MW cap (`approved_mw`, set by the interconnection-planning decision the upstream template represents). The three envelope cells trace the cone: 85% is the lower-cone curtailment day (heat-wave or grid-stress de-rating), 100% is the expected grid-approved cap, and 110% is the upper-cone planning point — contracted-curtailment headroom the operator can lean on when frontier-lab demand outruns the midpoint. Hyperscaler compute is exponential and unstable; planning to the midpoint is how operators end up under-provisioned to anchors.
 2. **Gross-margin discipline at the envelope, not per-token.** SemiAnalysis quantifies neocloud BMaaS at 55-65% gross margin pre-depreciation but only **14-16% net** after labor, power, and depreciation, so even a single MWh-cost mis-allocation is meaningful to the P&L. The discipline lives at the *envelope* — return on the full compute base across all uses — not on each individual workload-pool placement.
 3. **Anchor concentration as a strategic floor.** CoreWeave's Q2 2025 10-Q discloses **71% of revenue from a single customer (Microsoft)** and an $11.9B OpenAI commitment booked through October 2030 — the canonical example of the concentration risk that caps equity value. Operators win anchors (because they underwrite debt-financed buildouts) AND dilute them (because investor-visible concentration risk caps equity value). Anchor contracts also act as a *hard floor* — they must be served wherever feasible, even when serving them squeezes margin elsewhere; under-provisioning an anchor is more costly than under-provisioning an opportunistic workload, because the penalty is contractual and reputational, not just foregone revenue.
 4. **Generational layer cake.** A hyperscaler's GPU fleet is itself a portfolio. H100, H200, and GB200 pools sit at different points on the price-per-effective-GPU-hour curve ($1.14, $1.52, $2.66 per GPU-hour at capex/3-year amortization in the bundled data). The optimizer's job is to deploy each generation against the workload type that gets the best return per dollar of depreciation + power — not to treat all GPU-hours as fungible. Effective capacity is `gpu_count × generation_efficiency`, not nameplate.
 
 This template combines three Scenario Concepts — `PowerEnvelopeLevel`, `MarginFloor`, and `DiversityCap` — into a **3D scenario sweep (3 × 4 × 4 = 48 cells)** that traces two Pareto frontiers the operator already discusses publicly: margin-floor vs. achievable revenue, and diversity-cap vs. achievable revenue, with envelope as outer sensitivity. The strictest cells return `INFEASIBLE` — this is the intended diagnostic signal showing which constraint combinations cannot be satisfied simultaneously. After the main solve, a `DemandScenario` overlay replays the chosen plan under risk scenarios (diffusion slowdown, scaling-law plateau, frontier loss) so the operator sees stranded-capacity exposure if lab-side demand softens.
 
-This template demonstrates a multi-reasoner workflow combining **predictive** (per-lab training-intensity GNN), **rules** (hardware compatibility + priority-tier classification), **graph** (downstream-gating score on the workload-dependency DAG), and **prescriptive** (assignment MIP under a 3D Scenario sweep) reasoning on a single shared ontology — each stage's output narrows or scores the next.
+This template demonstrates a multi-reasoner workflow combining **predictive** (per-workload utilization-probability classification GNN — predicts which workloads will actually use their allocated capacity at high duty cycle vs stall or be repaced; stranded-capacity exposure is the operator's biggest economic risk), **rules** (hardware compatibility + priority-tier classification), **graph** (downstream-gating score on the workload-dependency DAG), and **prescriptive** (assignment MIP under a 3D Scenario sweep) reasoning on a single shared ontology — each stage's output narrows or scores the next.
 
 ## Reasoner overview: inputs, outputs, and role
 
 | Stage | Reasoner | Reads from ontology | Writes to ontology | Role |
 |-------|----------|---------------------|--------------------|------|
-| 1. Predictive | **Heterogeneous-graph GNN** | `LabMetric` time series + four edge types: same-lab temporal, intra-lab `lab_workloads`, `WorkloadDependency.blocks` (shared with Stage 3), cross-lab `co_dated` (LOAD-BEARING) | `LabGrowth.multiplier` per lab; `Workload.projected_demand_growth` joined via lab | Forecast per-lab training intensity using cross-lab co-movement (industry GPU supply shocks, AI funding waves, model-release seasons). The cross-lab `co_dated` edge is what makes this a real GNN problem, not 6 disjoint univariate forecasts. |
+| 1. Predictive | **Heterogeneous-graph GNN** (binary classification) | `LabMetric` activity features + `Workload` features + three edge types: intra-lab `lab_workloads`, `WorkloadDependency.blocks` (shared with Stage 3), cross-lab `co_dated` (LOAD-BEARING) | `Workload.utilization_probability` per workload (positive-class probability) | Predict per-workload utilization probability: will this workload actually use its allocated capacity at high duty cycle, or stall / be repaced? Stranded-capacity exposure is the operator's biggest economic risk. Cross-concept message passing is genuinely needed — utilization depends on the lab's broader activity (lab→workload), what upstream pretrains produced (dep DAG), and industry-wide trends (cross-lab co_dated). Bound directly as a per-workload signal Stage 4's objective consumes. |
 | 2. Rules | **Rules** (declarative) | `Workload` requirements, `GpuPool` specs | `Workload.fails_memory`, `.passes_gpu_type`, `.is_eligible` Relationships; `Workload.priority_tier`, `.priority_weight`, and `.under_provisioning_penalty` Properties; `Compatibility(workload, gpu_pool)` precompute | Classify which (Workload, GpuPool) pairs are technically eligible (memory + GPU-type allowlist). Assign priority tier P0/P1/P2 from `contract_tier`, with a numeric weight (100/10/1) and an asymmetric under-provisioning penalty (1.0/0.3/0.0) that amplifies the Stage 4 reward for assigning anchor-tier workloads. The Compatibility precompute keeps the Stage 4 MIP linear. |
 | 3. Graph | **Reverse-PageRank** | `Workload` nodes, `WorkloadDependency.blocks` edges | `Workload.gating_score` | Score how much downstream work each workload unblocks. A frontier pretrain that gates 14 fine-tunes and evals lands high; an isolated inference workload sits at baseline. |
-| 4. Prescriptive | **MIP** (HiGHS) | `Compatibility`, `priority_weight`, `under_provisioning_penalty`, `gating_score`, `projected_demand_growth`, `dollars_per_mwh`, `hourly_depreciation_rate`, `approved_mw`, `is_strategic_anchor`, the three Scenario Concepts | `Assignment.x_assign` per `(PowerEnvelopeLevel, MarginFloor, DiversityCap)`; `AllocationPlan` singleton; `Assignment.is_chosen`; `DemandScenario` + `DemandScenarioOutlook` (4 risk scenarios) | Assign each workload to one (DC, GpuPool) under power, GPU-count, gross-margin-floor (energy + depreciation cost), and anchor / workload-type-diversity constraints. Maximizes a four-factor strategic value amplified by the under-provisioning penalty: priority × gating × growth × strategic_value × (1 + penalty). 48-cell sweep; strictest cells return INFEASIBLE as designed signal. The headline cell (`100pct / unconstrained / none`) is persisted as the `AllocationPlan` singleton, its decision rows flagged via `Assignment.is_chosen`, and the chosen plan is replayed under four demand-risk scenarios (expected / diffusion_slowdown / scaling_break / frontier_loss) with realized + stranded revenue persisted as `DemandScenarioOutlook` per scenario. All queryable as ontology after the script exits. |
+| 4. Prescriptive | **MIP** (HiGHS) | `Compatibility`, `priority_weight`, `under_provisioning_penalty`, `gating_score`, `utilization_probability`, `dollars_per_mwh`, `hourly_depreciation_rate`, `approved_mw`, `is_strategic_anchor`, the three Scenario Concepts | `Assignment.x_assign` per `(PowerEnvelopeLevel, MarginFloor, DiversityCap)`; `AllocationPlan` singleton; `Assignment.is_chosen`; `DemandScenario` + `DemandScenarioOutlook` (4 risk scenarios) | Assign each workload to one (DC, GpuPool) under power, GPU-count, gross-margin-floor (energy + depreciation cost), and anchor / workload-type-diversity constraints. Maximizes a four-factor strategic value amplified by the under-provisioning penalty: priority × gating × utilization_probability × strategic_value × (1 + penalty). 48-cell sweep; strictest cells return INFEASIBLE as designed signal. The headline cell (`100pct / unconstrained / none`) is persisted as the `AllocationPlan` singleton, its decision rows flagged via `Assignment.is_chosen`, and the chosen plan is replayed under four demand-risk scenarios (expected / diffusion_slowdown / scaling_break / frontier_loss) with realized + stranded revenue persisted as `DemandScenarioOutlook` per scenario. All queryable as ontology after the script exits. |
 
 **Key design patterns demonstrated:**
 
@@ -58,7 +58,7 @@ This template demonstrates a multi-reasoner workflow combining **predictive** (p
 - **Heterogeneous GNN, not time-series-on-rails.** Stage 1 connects `LabMetric` to `Workload`, to other `LabMetric` rows on the same date (when their labs share a workload_type), and reuses `WorkloadDependency` — in addition to same-lab temporal lags. Pure same-entity temporal-lag topology is a misuse of the GNN reasoner; the cross-concept edges are what give it lift.
 - **Three-dimensional Scenario Concept design.** `PowerEnvelopeLevel` (outer capacity sensitivity), `MarginFloor` (primary Pareto axis), `DiversityCap` (primary Pareto axis). Decision variable `Assignment.x_assign` is indexed by all three; the Pareto frontier emerges from constraint relaxation across cells, not from a multi-objective solve.
 - **Lex-emulating priority weights.** P0 workloads carry weight 100, P1 carry 10, P2 carry 1, plus a hard P0-must-be-assigned constraint. This mirrors how production cluster schedulers (Borg, Singularity, MAST) balance priority dominance with throughput optimization.
-- **Four-factor MIP objective as envelope-level ROI.** `priority_weight × gating_score × projected_demand_growth × strategic_value_usd` — one factor per upstream reasoner (Stage 2 / Stage 3 / Stage 1) plus the raw dollar baseline. Single-MIP, weighted-sum; the multi-objective Pareto emerges from constraint relaxation, not the objective. The operator's discipline lives at the envelope — return on the full compute base across anchor / opportunistic / research uses — not on each individual workload-pool placement.
+- **Four-factor MIP objective as envelope-level ROI.** `priority_weight × gating_score × utilization_probability × strategic_value_usd` — one factor per upstream reasoner (Stage 2 / Stage 3 / Stage 1) plus the raw dollar baseline. Single-MIP, weighted-sum; the multi-objective Pareto emerges from constraint relaxation, not the objective. The operator's discipline lives at the envelope — return on the full compute base across anchor / opportunistic / research uses — not on each individual workload-pool placement.
 - **Asymmetric failure-mode pricing.** Under-provisioning an anchor is more costly than missing a research eval: the SLA / contract / reputational penalty is a multiple of the raw revenue at stake. Stage 2 derives a `Workload.under_provisioning_penalty` from the priority tier; Stage 4's objective amplifies the reward for assigning high-penalty workloads, so the solver treats anchor under-provisioning as the asymmetric failure mode it is, not as a symmetric foregone-revenue line item.
 
 ## Who this is for
@@ -71,7 +71,7 @@ This template demonstrates a multi-reasoner workflow combining **predictive** (p
 ## What you'll build
 
 - A 6-lab × 5-DC compute allocation MIP, indexed by a 3D Scenario Concept sweep (3 envelopes × 4 margin floors × 4 diversity caps = 48 cells)
-- A heterogeneous-graph GNN for per-lab training-intensity forecasting (with a per-lab gradient-boosted-trees baseline available for the GNN-vs-tabular lift comparison)
+- A heterogeneous-graph GNN that **classifies per-workload utilization probability** (will this workload actually use its allocated capacity?) — the operator's real forward-looking signal, propagated through lab→workload, dep-DAG, and cross-lab co_dated edges
 - Reverse-PageRank scoring on a workload dependency DAG (4-5 deep chains rooted at frontier pretrains)
 - Declarative hardware-compatibility rules + lex-emulating priority weights (P0=100, P1=10, P2=1)
 - Two headline Pareto frontiers (margin × revenue and diversity × revenue) at the 100% envelope, with 85% / 110% drawn as overlay sensitivity bands
@@ -87,8 +87,8 @@ This template demonstrates a multi-reasoner workflow combining **predictive** (p
 - `data/workload_gpu_compatibility.csv` — per-workload GPU-type allowlist
 - `data/workload_dependencies.csv` — 138 edges (~130 blocks + ~10 informs), DAG depth 4-5 rooted at frontier pretrains
 - `data/lab_metrics.csv` — 365 days × 6 labs = 2,190 rows with cross-lab co-movement
-- `data/train_metrics.csv`, `val_metrics.csv`, `test_metrics.csv` — GNN train/val/test splits
-- `data/lab_growth_forecasts.csv` — Stage 1 fallback (lab × multiplier)
+- `data/workload_utilization_train.csv`, `_val.csv`, `_test.csv` — GNN binary-classification splits (train: 80 workloads with `is_high_utilization` label; val: 15 workloads; test: all 110 workloads, no label — every workload gets a probability)
+- `data/workload_utilization_fallback.csv` — Stage 1 fallback (per-workload deterministic probability, used when `--no-gnn` is set)
 - `data/power_envelope_levels.csv` — 3 scenario rows (0.85 / 1.00 / 1.10)
 - `data/margin_floors.csv` — 4 scenario rows (unconstrained / 75% / 80% / 85% gross margin post-depreciation)
 - `data/diversity_caps.csv` — 4 scenario rows (none / anchor_max_70pct / anchor_max_50pct CoreWeave-target / anchor_max_40pct_with_type_floor)
@@ -105,7 +105,7 @@ This template demonstrates a multi-reasoner workflow combining **predictive** (p
 ### Tools
 
 - Python ≥ 3.10.
-- RelationalAI Python SDK with the predictive submodule (`relationalai.semantics.reasoners.predictive`) for Stage 1's GNN. Without it, Stage 1 falls back to the precomputed `lab_growth_forecasts.csv` automatically.
+- RelationalAI Python SDK with the predictive submodule (`relationalai.semantics.reasoners.predictive`) for Stage 1's GNN. Without it, Stage 1 falls back to the precomputed `workload_utilization_fallback.csv` automatically.
 
 ### One-time Snowflake setup for GNN experiment artifacts
 
@@ -158,7 +158,7 @@ Set `EXP_DATABASE` at the top of `datacenter_compute_allocation.py` to that data
    python datacenter_compute_allocation.py
    ```
 
-6. Skip the GNN and load `lab_growth_forecasts.csv` directly (useful for fast iteration on Stages 2–4):
+6. Skip the GNN and load `workload_utilization_fallback.csv` directly (useful for fast iteration on Stages 2–4):
 
    ```bash
    python datacenter_compute_allocation.py --no-gnn
@@ -170,14 +170,17 @@ Set `EXP_DATABASE` at the top of `datacenter_compute_allocation.py` to that data
    STAGE 0: LOAD ONTOLOGY
      Ontology loaded: 6 labs, 28 pools, 110 workloads, 138 dep edges, 3x4x4=48 scenario cells
 
-   STAGE 1: PREDICT -- per-lab training-intensity GNN
-     Per-lab projected demand multiplier (frontier should ramp 1.05+, Stability < 1.0):
-       + OpenAI Pretrain           multiplier=1.1192
-       + Anthropic Research        multiplier=1.1011
-       + xAI Internal              multiplier=1.0816
-       + Together AI Multi-Lab     multiplier=1.0395
-       + Cohere Inference          multiplier=1.0306
-       - Stability Open            multiplier=0.9680
+   STAGE 1: PREDICT -- per-workload utilization-probability GNN
+     Workload utilization-probability distribution: n_total=110, n>=0.5: ~70, n<0.5: ~40
+     Top 5 (most likely to be high-utilization):
+       + GPT-Next pretrain shard 02                    p=0.94
+       + Claude-Next pretrain shard 02                 p=0.92
+       + Grok-Next pretrain shard 04                   p=0.90
+       ...
+     Bottom 5 (most likely to stall / be repaced):
+       - Stability eval batch 12                       p=0.21
+       - Stability eval batch 07                       p=0.24
+       ...
 
    STAGE 2: RULES -- eligibility + priority classification
      Compatibility table: 1918 eligible (Workload, GpuPool) pairs
@@ -240,10 +243,10 @@ datacenter_compute_allocation/
     workload_gpu_compatibility.csv  # Per-workload GPU-type allowlist
     workload_dependencies.csv       # 138 directed edges in the dependency DAG
     lab_metrics.csv                 # 2,190 = 365 days × 6 labs daily KPIs
-    train_metrics.csv               # GNN training split
-    val_metrics.csv                 # GNN validation split
-    test_metrics.csv                # GNN test split
-    lab_growth_forecasts.csv        # Stage 1 fallback (deterministic per-lab multipliers)
+    workload_utilization_train.csv  # GNN training split (80 workloads + label)
+    workload_utilization_val.csv    # GNN validation split (15 workloads + label)
+    workload_utilization_test.csv   # GNN test split (all 110 workloads, no label)
+    workload_utilization_fallback.csv  # Stage 1 fallback (deterministic per-workload probability)
     power_envelope_levels.csv       # 3 scenario rows (envelope multiplier)
     margin_floors.csv               # 4 scenario rows (gross margin floors)
     diversity_caps.csv              # 4 scenario rows (anchor concentration caps)
@@ -254,19 +257,25 @@ datacenter_compute_allocation/
 
 ## How it works
 
-### Stage 1: Predictive — heterogeneous-graph GNN for per-lab demand
+### Stage 1: Predictive — per-workload utilization-probability GNN
 
-The GNN learns a per-`LabMetric` regression on `training_intensity_growth_rate` over a heterogeneous graph that connects three concepts via four edge types:
+Binary node classification on `Workload`: predict the probability that each workload will be high-utilization (actually use its allocated capacity at high duty cycle) vs stall or be repaced. This is the operator's load-bearing forward-looking signal — stranded capacity (depreciation accruing without offsetting revenue) is the operator's biggest economic exposure, and a per-workload signal is sharper than a per-lab demand multiplier.
+
+The graph is heterogeneous with three cross-concept edge types that let the GNN's message passing actually do work — same-entity temporal lag alone would not give the GNN lift over a tabular model:
 
 ```python
 gnn_graph = Graph(model, directed=False, weighted=False)
 
 # Edge 1: LabMetric -> Workload owned by the same lab.
+# Carries lab-side recent activity into the per-workload prediction
+# neighborhood -- a workload owned by a fast-ramping lab inherits signal.
 model.define(gnn_graph.Edge.new(src=LabMetric, dst=Workload)).where(
     LabMetric.lab == Workload.lab.name,
 )
 
 # Edge 2: WorkloadDependency.blocks DAG (shared with Stage 3).
+# A workload downstream of a high-utilization gating pretrain inherits
+# signal through the dep chain.
 dep_ref = WorkloadDependency.ref()
 model.define(
     gnn_graph.Edge.new(src=dep_ref.predecessor, dst=dep_ref.successor)
@@ -283,9 +292,9 @@ model.define(gnn_graph.Edge.new(src=LM_a, dst=LM_b)).where(
 )
 ```
 
-The cross-lab `co_dated` edge carries the industry-wide co-movement signal — when frontier labs collectively ramp on a given workload_type, applied labs on the same type follow on the same date. This is the cross-concept signal a heterogeneous GNN is designed to propagate.
+Train (80 workloads) / Val (15) / Test (110 — all workloads, so every workload gets a probability) splits live in `workload_utilization_*.csv` and join to `Workload` by `workload_id`. The GNN's training task is binary classification (`task_type="binary_classification"`, `eval_metric="roc_auc"`); the positive-class probability is bound back to the ontology as `Workload.utilization_probability` and consumed by Stage 4's objective.
 
-Per-`LabMetric` test predictions are averaged per lab to produce `LabGrowth.multiplier = 1.0 + mean_predicted_growth`, then joined onto each `Workload` via lab as `Workload.projected_demand_growth` — the multiplier that enters Stage 4's objective.
+GNN is the right tool for this task — the answer for any given workload depends on its lab's broader activity, what upstream pretrains in the dep DAG have produced, and industry-wide trends across labs that share its workload_type. A tabular model could only see the workload's own static features.
 
 ### Stage 2: Rules — eligibility + priority tiers + Compatibility precompute
 
@@ -378,7 +387,7 @@ problem.maximize(
     sum(x_obj
         * Assignment.workload.priority_weight       # Stage 2 (rules)
         * Assignment.workload.gating_score          # Stage 3 (graph)
-        * Assignment.workload.projected_demand_growth  # Stage 1 (predictive)
+        * Assignment.workload.utilization_probability  # Stage 1 (predictive)
         * Assignment.workload.strategic_value_usd)   # raw $ baseline
     .where(Assignment.x_assign(PowerEnvelopeLevel, MarginFloor, DiversityCap, x_obj))
 )
@@ -394,9 +403,9 @@ Finally, a `DemandScenario` overlay replays the locked-in plan under four risk s
 - **Adjust the lab roster** in `ai_labs.csv`. Anchor flag drives the `DiversityCap` constraint.
 - **Tune scenario axes**: edit `power_envelope_levels.csv`, `margin_floors.csv`, `diversity_caps.csv`. Adding rows scales the cell count multiplicatively.
 - **Change the priority spread** by editing the weights in `stage2_rules` (default 100 / 10 / 1).
-- **Replace the GNN with a tabular baseline** by setting `--no-gnn` and editing `lab_growth_forecasts.csv` directly.
+- **Replace the GNN with the deterministic fallback** by setting `--no-gnn` and editing `workload_utilization_fallback.csv` directly.
 - **Use a different solver** by changing `problem.solve("highs", ...)` to `"gurobi"` if any single cell consistently exceeds 60s.
-- **Validate the GNN lift over a tabular baseline** by training a per-lab `GradientBoostingRegressor` on the same lag features (`prev_day_growth`, `prev_week_growth`, `growth_7d_mean`, etc.) from `data/train_metrics.csv` and comparing per-lab test RMSE. The GNN should beat the baseline by the margin attributable to the cross-lab `co_dated` edges (the only cross-lab signal source).
+- **Validate the GNN lift over a tabular baseline** by training a `LogisticRegression` or `GradientBoostingClassifier` on the same workload-side features (`workload_type`, `priority_tier`, `gpu_count_required`, `strategic_value_usd`, etc.) using `workload_utilization_train.csv` as labels and comparing test ROC-AUC. The GNN should beat the tabular baseline by the margin attributable to message passing through `lab_workloads`, `WorkloadDependency.blocks`, and the cross-lab `co_dated` edges — the heterogeneous signal a per-workload tabular model cannot see.
 
 ## Troubleshooting
 
@@ -443,9 +452,9 @@ Likely an upstream constraint (C5 / C6 / C7) firing at unintended cells. Check t
 </details>
 
 <details>
-<summary>Per-lab multiplier numbers do not match the README's expected ramp</summary>
+<summary>Per-workload utilization probabilities do not match the README's distribution</summary>
 
-GNN trained with non-default seed/epochs, or `--no-gnn` fallback used. The fallback values in `lab_growth_forecasts.csv` are the deterministic reference; these are what downstream stages consume when `--no-gnn` is set.
+GNN trained with non-default seed/epochs, or `--no-gnn` fallback used. The fallback values in `workload_utilization_fallback.csv` are the deterministic reference (the latent probability used to generate the synthetic labels); these are what downstream stages consume when `--no-gnn` is set.
 </details>
 
 ## What this template abstracts
@@ -458,7 +467,7 @@ This is a tutorial-grade allocator, not a production scheduler. Several real-wor
 - **Per-DC `dollars_per_mwh` is a scalar.** Real wholesale electricity prices vary intraday and seasonally; smart workload scheduling can arbitrage this. The snapshot omits this lever.
 - **Anchor designation is binary.** Real concentration risk is a function of contract size and term, not just identity. The Boolean `is_strategic_anchor` is a tutorial simplification.
 - **Pool fungibility is implicit.** Each `GpuPool` here serves whichever workload type the eligibility rule accepts; a richer model would distinguish dedicated pools (long-running training reservations, expensive to repurpose) from swing pools (can flex between training and inference daily) from scratch pools (best-effort, low SLA). Adding a `pool_fungibility_class` Property with a workload-type-switching cost in the objective is a natural extension — fungible pools are strategically more valuable than single-purpose pools of equal nameplate capacity.
-- **Demand forecast is a point estimate.** `LabGrowth.multiplier` is one number per lab — the GNN's mean prediction. A more discipline-honest model would carry (p10, p50, p90) bands per lab and let the operator plan against the upper end of the band to stay survivable when frontier-lab demand outruns the midpoint. The 3D scenario sweep approximates this at the envelope axis only; per-lab range forecasts would compound the sweep size but capture lab-side uncertainty at the same fidelity.
+- **Utilization probability is a point estimate.** `Workload.utilization_probability` is one number per workload — the GNN's predicted positive-class probability. A more discipline-honest model would carry per-workload (p10, p50, p90) bands and let the operator plan against the upper end of the band for anchors and the lower end for opportunistic seats. The 3D scenario sweep approximates this at the aggregate axis (uniform `DemandScenario` factor on P1/P2 revenue); per-workload range forecasts would compound the sweep size but capture per-workload uncertainty at the same fidelity.
 
 ## Learn more
 

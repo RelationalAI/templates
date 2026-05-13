@@ -9,9 +9,11 @@ demonstrates the operator-side allocation decision that picks up after.
 
 Four reasoner stages on a shared ontology:
 
-  Stage 1 -- Predictive: heterogeneous-graph GNN forecasts per-lab training
-             intensity multiplier (LabGrowth.multiplier). Falls back to
-             lab_growth_forecasts.csv via --no-gnn or on engine error.
+  Stage 1 -- Predictive: heterogeneous-graph GNN binary-classifies per-workload
+             utilization probability (will this workload actually use its
+             allocated capacity at high duty cycle, or stall / be repaced?).
+             Falls back to workload_utilization_fallback.csv via --no-gnn or
+             on engine error.
   Stage 2 -- Rules: hardware compatibility (memory + GPU type allowlist) +
              priority-tier classification (P0/P1/P2 from contract_tier).
              Populates Compatibility(workload, gpu_pool).
@@ -22,7 +24,9 @@ Four reasoner stages on a shared ontology:
              gross-margin-floor, and anchor-concentration-cap constraints,
              across a 3D scenario sweep (PowerEnvelopeLevel x MarginFloor x
              DiversityCap = 48 cells). Maximizes a four-factor strategic
-             value: priority * gating * growth * strategic_value_usd.
+             value: priority * gating * utilization_probability * strategic_value_usd,
+             amplified by (1 + under_provisioning_penalty) for asymmetric
+             failure-mode pricing.
 
 Run:
     python datacenter_compute_allocation.py
@@ -31,9 +35,9 @@ Run (skip GNN, use precomputed forecasts):
     python datacenter_compute_allocation.py --no-gnn
 
 Output:
-    Prints per-stage diagnostics -- ontology load summary, GNN per-lab
-    multipliers (frontier ramp 1.05+, Stability < 1.0), Compatibility table
-    size and P0/P1/P2 priority counts with under-provisioning penalties,
+    Prints per-stage diagnostics -- ontology load summary, per-workload
+    utilization probabilities (top / bottom 5 + n>=0.5 count), Compatibility
+    table size and P0/P1/P2 priority counts with under-provisioning penalties,
     top-10 gating workloads by downstream reach, MIP termination status,
     per-cell summary table (33 OPTIMAL + 15 INFEASIBLE), two Pareto frontiers
     (margin x revenue and diversity x revenue at the 100pct envelope), and
@@ -82,7 +86,7 @@ def parse_args():
     p.add_argument(
         "--no-gnn",
         action="store_true",
-        help="Skip Stage 1 GNN training and load lab_growth_forecasts.csv directly.",
+        help="Skip Stage 1 GNN training and load workload_utilization_fallback.csv directly.",
     )
     p.add_argument(
         "--gnn-strict",
@@ -125,11 +129,11 @@ workload_deps_df = load_csv("workload_dependencies.csv")
 power_envelope_df = load_csv("power_envelope_levels.csv")
 margin_floors_df = load_csv("margin_floors.csv")
 diversity_caps_df = load_csv("diversity_caps.csv")
-lab_growth_fallback_df = load_csv("lab_growth_forecasts.csv")
 lab_metrics_df = load_csv("lab_metrics.csv")
-train_metrics_df = load_csv("train_metrics.csv")
-val_metrics_df = load_csv("val_metrics.csv")
-test_metrics_df = load_csv("test_metrics.csv")
+wl_util_train_df = load_csv("workload_utilization_train.csv")
+wl_util_val_df = load_csv("workload_utilization_val.csv")
+wl_util_test_df = load_csv("workload_utilization_test.csv")
+wl_util_fallback_df = load_csv("workload_utilization_fallback.csv")
 
 
 # --------------------------------------------------
@@ -365,101 +369,102 @@ class _Ctx:
 # --------------------------------------------------
 
 def stage1_predictive(ctx):
-    """Per-lab training-intensity GNN forecast.
+    """Per-workload utilization-probability GNN classification.
 
-    Constructs a heterogeneous graph with four edge types:
-      1. TemporalEdge: same-lab 1-day-lag (per-lab serial correlation)
-      2. lab_workloads: LabMetric -> Workload owned by that lab
-      3. WorkloadDependency.blocks: shared with Stage 3 PageRank
-      4. co_dated: cross-lab same-date pairs sharing a workload_type
-         (LOAD-BEARING -- carries cross-lab co-movement signal)
+    Binary node classification: for each Workload, predict the probability
+    that the workload will be high-utilization next period (i.e., actually
+    use its allocated capacity at high duty cycle, rather than stalling or
+    being repaced). This is the operator's load-bearing forward-looking
+    signal -- stranded capacity (depreciation accruing without offsetting
+    revenue) is the operator's biggest economic exposure.
 
-    Trains a GNN node-regression on `LabMetric.training_intensity_growth_rate`,
-    aggregates per-lab predictions to LabGrowth.multiplier (1.0 + mean growth),
-    then projects onto Workload.projected_demand_growth.
+    Builds a heterogeneous graph with three cross-concept edge types:
+      1. lab_workloads: LabMetric -> Workload owned by the same lab
+         (carries lab-side recent activity into the workload's neighborhood)
+      2. WorkloadDependency.blocks: workload DAG, shared with Stage 3
+         (workloads downstream of high-utilization gating workloads inherit
+          the upstream signal through message passing)
+      3. co_dated: LabMetric -> LabMetric on the same date when their labs
+         share a workload_type (cross-lab industry co-movement signal)
 
-    Falls back to lab_growth_forecasts.csv when --no-gnn is set or the
-    predictive engine is unavailable. Downstream stages don't care which
-    path produced the multiplier.
+    Trains a binary-classification GNN on `Workload.is_high_utilization`
+    labels in `workload_utilization_train.csv` (80 workloads) and
+    `_val.csv` (15 workloads). Test domain = all 110 workloads so every
+    workload gets a probability. Binds `Workload.utilization_probability`
+    from the predicted positive-class probability.
+
+    Falls back to `workload_utilization_fallback.csv` (the deterministic
+    latent probabilities used to generate the synthetic labels) when
+    --no-gnn is set or the predictive engine is unavailable. Downstream
+    stages don't care which path produced the probability.
     """
-    section("STAGE 1: PREDICT -- per-lab training-intensity GNN")
+    section("STAGE 1: PREDICT -- per-workload utilization-probability GNN")
     model = ctx.model
-    AILab = ctx.AILab
     Workload = ctx.Workload
 
-    LabGrowth = model.Concept("LabGrowth", identify_by={"lab": String})
-    LabGrowth.multiplier = model.Property(f"{LabGrowth} has {Float:multiplier}")
-    LabGrowth.mean_predicted_growth = model.Property(
-        f"{LabGrowth} has {Float:mean_predicted_growth}"
+    Workload.utilization_probability = model.Property(
+        f"{Workload} has {Float:utilization_probability} utilization probability"
     )
-    Workload.projected_demand_growth = model.Property(
-        f"{Workload} has {Float:projected_demand_growth} projected demand growth"
-    )
-    ctx.LabGrowth = LabGrowth
 
-    growth_df = None
+    util_df = None
     if not ctx.args.no_gnn:
         if ctx.args.gnn_strict:
-            growth_df = _train_gnn_and_predict(ctx)
-            print("  GNN training complete; per-lab multipliers extracted")
+            util_df = _train_gnn_and_predict(ctx)
+            print("  GNN training complete; per-workload probabilities extracted")
         else:
             try:
-                growth_df = _train_gnn_and_predict(ctx)
-                print("  GNN training complete; per-lab multipliers extracted")
+                util_df = _train_gnn_and_predict(ctx)
+                print("  GNN training complete; per-workload probabilities extracted")
             except Exception as e:
                 import traceback
                 print(f"  GNN unavailable ({type(e).__name__}: {e})")
                 traceback.print_exc()
-                print("  Falling back to data/lab_growth_forecasts.csv")
-                growth_df = None
+                print("  Falling back to data/workload_utilization_fallback.csv")
+                util_df = None
     else:
-        print("  --no-gnn flag set; using precomputed data/lab_growth_forecasts.csv")
+        print("  --no-gnn flag set; using data/workload_utilization_fallback.csv")
 
-    if growth_df is None:
-        growth_df = lab_growth_fallback_df.copy()
+    if util_df is None:
+        util_df = wl_util_fallback_df.copy()
 
-    # Bind LabGrowth concept from the dataframe.
-    src = model.data(growth_df.rename(columns={
-        "lab": "lab", "multiplier": "multiplier",
-        "mean_predicted_growth": "mean_predicted_growth",
-    }))
-    model.define(LabGrowth.new(
-        lab=src.lab, multiplier=src.multiplier,
-        mean_predicted_growth=src.mean_predicted_growth,
-    ))
-
-    # Project per-lab multiplier onto each Workload.
-    # Join key: AILab.name == LabGrowth.lab.
-    LG = LabGrowth.ref()
-    AL = AILab.ref()
-    model.where(
-        Workload.lab(AL),
-        AL.name == LG.lab,
-    ).define(
-        Workload.projected_demand_growth(LG.multiplier)
+    # Bind Workload.utilization_probability from the dataframe.
+    src = model.data(util_df)
+    WlRef = Workload.ref()
+    model.where(WlRef.id == src.workload_id).define(
+        WlRef.utilization_probability(src.utilization_probability)
     )
 
-    # Report the per-lab forecast.
-    pf_df = model.select(
-        LabGrowth.lab.alias("lab"),
-        LabGrowth.multiplier.alias("multiplier"),
-    ).to_df().sort_values("multiplier", ascending=False)
-    print("  Per-lab projected demand multiplier (frontier should ramp 1.05+, Stability < 1.0):")
-    for _, r in pf_df.iterrows():
-        bar = "+" if float(r["multiplier"]) >= 1.0 else "-"
-        print(f"    {bar} {r['lab']:<25} multiplier={float(r['multiplier']):.4f}")
+    # Report distribution + top / bottom 5.
+    probs_df = model.select(
+        Workload.id.alias("id"),
+        Workload.name.alias("name"),
+        Workload.utilization_probability.alias("p"),
+    ).to_df()
+    probs_df["p"] = pd.to_numeric(probs_df["p"], errors="coerce")
+    n_high = int((probs_df["p"] >= 0.5).sum())
+    n_total = int(probs_df["p"].notna().sum())
+    print(f"  Workload utilization-probability distribution: "
+          f"n_total={n_total}, n>=0.5: {n_high}, n<0.5: {n_total - n_high}")
+    print("  Top 5 (most likely to be high-utilization):")
+    for _, r in probs_df.sort_values("p", ascending=False).head(5).iterrows():
+        print(f"    + {r['name']:<45} p={float(r['p']):.3f}")
+    print("  Bottom 5 (most likely to stall / be repaced):")
+    for _, r in probs_df.sort_values("p", ascending=True).head(5).iterrows():
+        print(f"    - {r['name']:<45} p={float(r['p']):.3f}")
 
 
 def _train_gnn_and_predict(ctx):
-    """Build the heterogeneous GNN graph, train, predict, return growth_df.
+    """Build the heterogeneous GNN graph, train binary classification,
+    predict, and return a per-workload probability DataFrame.
 
-    Mirrors the canonical pattern from rai-predictive-modeling and
-    telco_network_recovery: source concept with single PK + task-table
-    concepts (TrainTable/ValTable/TestTable) joined to the source via
-    metric_id, with Train/Val/Test relationships used as the GNN task spec.
+    Defines LabMetric as a feature-node concept (single-PK metric_id),
+    Workload as the source concept for classification, and three
+    cross-concept edge types (lab_workloads, WorkloadDependency.blocks,
+    cross-lab co_dated). Task tables TrainTable / ValTable / TestTable
+    are populated from `workload_utilization_*.csv` and joined to
+    Workload by workload_id.
 
-    Returns DataFrame[lab, multiplier, mean_predicted_growth] where
-    multiplier = 1.0 + mean_predicted_growth on the test horizon.
+    Returns DataFrame[workload_id, utilization_probability].
     """
     from relationalai.semantics.reasoners.predictive import GNN, PropertyTransformer
 
@@ -467,9 +472,10 @@ def _train_gnn_and_predict(ctx):
     Workload = ctx.Workload
     WorkloadDependency = ctx.WorkloadDependency
 
-    # ---- LabMetric source concept (single-column PK is required for FK
-    # joins to task tables; the synthetic metric_id was added to all 4 metric
-    # CSVs by the data-prep step).
+    # ---- LabMetric feature-node concept (single-PK metric_id required for
+    # FK joins; LabMetric is a feature source for the GNN, not the source
+    # concept -- the GNN predicts on Workload, with LabMetric features
+    # propagating in via the lab_workloads edge).
     LabMetric = model.Concept("LabMetric", identify_by={"metric_id": Integer})
     LabMetric.metric_date = model.Property(f"{LabMetric} has {String:metric_date}")
     LabMetric.lab = model.Property(f"{LabMetric} has {String:lab}")
@@ -502,17 +508,21 @@ def _train_gnn_and_predict(ctx):
     ))
 
     # ---- Heterogeneous graph (three cross-concept edge types) ----
-    # All edges cross concept boundaries. Pure same-entity temporal-lag is
-    # an explicit anti-pattern per rai-predictive-modeling Common Pitfalls.
+    # All edges cross concept boundaries. Same-entity-only edges (e.g. pure
+    # temporal lag) would not give the GNN message-passing lift over a
+    # tabular model -- see rai-predictive-modeling Common Pitfalls.
     gnn_graph = Graph(model, directed=False, weighted=False)
 
-    # Edge 1: LabMetric -> Workload owned by the same lab. Brings
-    # workload-side features into per-day prediction neighborhoods.
+    # Edge 1: LabMetric -> Workload owned by the same lab. Brings lab-side
+    # recent activity into the per-workload prediction neighborhood -- a
+    # workload owned by a fast-ramping lab inherits that signal.
     model.define(gnn_graph.Edge.new(src=LabMetric, dst=Workload)).where(
         LabMetric.lab == Workload.lab.name,
     )
 
     # Edge 2: WorkloadDependency.blocks DAG -- shared with Stage 3 PageRank.
+    # A workload downstream of a high-utilization gating pretrain inherits
+    # signal through the dep chain.
     dep_ref = WorkloadDependency.ref()
     model.define(
         gnn_graph.Edge.new(src=dep_ref.predecessor, dst=dep_ref.successor)
@@ -520,7 +530,7 @@ def _train_gnn_and_predict(ctx):
 
     # Edge 3: LabMetric -> LabMetric, cross-lab same-date pairs whose labs
     # share a workload_type. LOAD-BEARING -- this is what carries cross-lab
-    # co-movement signal a per-lab tabular baseline cannot replicate.
+    # co-movement signal a per-workload tabular baseline cannot replicate.
     co_pairs = _build_codated_pairs(lab_metrics_df, ai_labs_df, workloads_df)
     co_src = model.data(co_pairs)
     LM_a = LabMetric.ref()
@@ -530,27 +540,28 @@ def _train_gnn_and_predict(ctx):
         LM_b.lab == co_src.lab_b, LM_b.metric_date == co_src.shared_date,
     )
 
-    # ---- Task tables and task relationships ----
-    # Train/Val carry the regression target; Test omits it. Each task table
-    # joins to LabMetric via metric_id.
+    # ---- Task tables: split workloads into train (80) / val (15) /
+    # test (110 -- ALL workloads, so every workload gets a prediction).
     TrainTable = model.Concept("TrainTable")
     ValTable = model.Concept("ValTable")
     TestTable = model.Concept("TestTable")
-    model.define(TrainTable.new(model.data(train_metrics_df).to_schema()))
-    model.define(ValTable.new(model.data(val_metrics_df).to_schema()))
-    model.define(TestTable.new(model.data(test_metrics_df).to_schema()))
+    model.define(TrainTable.new(model.data(wl_util_train_df).to_schema()))
+    model.define(ValTable.new(model.data(wl_util_val_df).to_schema()))
+    model.define(TestTable.new(model.data(wl_util_test_df).to_schema()))
 
-    Train = model.Relationship(f"{LabMetric} has {Any:value}")
-    model.define(Train(LabMetric, TrainTable.training_intensity_growth_rate)).where(
-        LabMetric.metric_id == TrainTable.metric_id,
+    # Task relationships. Train/Val carry the binary label; Test omits it.
+    # Join key: Workload.id == TaskTable.workload_id.
+    Train = model.Relationship(f"{Workload} has {Any:label}")
+    model.define(Train(Workload, TrainTable.is_high_utilization)).where(
+        Workload.id == TrainTable.workload_id,
     )
-    Val = model.Relationship(f"{LabMetric} has {Any:value}")
-    model.define(Val(LabMetric, ValTable.training_intensity_growth_rate)).where(
-        LabMetric.metric_id == ValTable.metric_id,
+    Val = model.Relationship(f"{Workload} has {Any:label}")
+    model.define(Val(Workload, ValTable.is_high_utilization)).where(
+        Workload.id == ValTable.workload_id,
     )
-    Test = model.Relationship(f"{LabMetric}")
-    model.define(Test(LabMetric)).where(
-        LabMetric.metric_id == TestTable.metric_id,
+    Test = model.Relationship(f"{Workload}")
+    model.define(Test(Workload)).where(
+        Workload.id == TestTable.workload_id,
     )
 
     # ---- Feature configuration -- drop PKs/identifiers; type the rest ----
@@ -583,8 +594,8 @@ def _train_gnn_and_predict(ctx):
         property_transformer=pt,
         train=Train,
         validation=Val,
-        task_type="regression",
-        eval_metric="rmse",
+        task_type="binary_classification",
+        eval_metric="roc_auc",
         has_time_column=False,
         stream_logs=False,
         seed=SEED,
@@ -593,27 +604,25 @@ def _train_gnn_and_predict(ctx):
         lr=GNN_LR,
     )
     gnn.fit()
-    LabMetric.predictions = gnn.predictions(domain=Test)
+    Workload.predictions = gnn.predictions(domain=Test)
 
-    # Pull predictions; aggregate per lab on the test horizon.
-    pred_df = (
-        model.select(
-            LabMetric.lab.alias("lab"),
-            LabMetric.metric_date.alias("metric_date"),
-            LabMetric.predictions.predicted_value.alias("predicted_growth"),
-        )
-        .where(LabMetric.predictions)
-        .to_df()
-    )
-    pred_df["predicted_growth"] = pd.to_numeric(pred_df["predicted_growth"], errors="coerce")
-    growth = (
-        pred_df.dropna(subset=["predicted_growth"])
-        .groupby("lab")["predicted_growth"].mean()
-        .reset_index()
-        .rename(columns={"predicted_growth": "mean_predicted_growth"})
-    )
-    growth["multiplier"] = 1.0 + growth["mean_predicted_growth"]
-    return growth[["lab", "multiplier", "mean_predicted_growth"]]
+    # Pull per-workload positive-class probabilities.
+    pred_df = model.select(
+        Workload.id.alias("workload_id"),
+        Workload.predictions.probs.alias("probs"),
+    ).where(Workload.predictions).to_df()
+
+    # probs is a list/array with class probabilities; positive class
+    # (label=1, "high utilization") is the second element. Take it as the
+    # utilization probability.
+    def _pos_prob(v):
+        try:
+            return float(v[1]) if hasattr(v, "__len__") and len(v) >= 2 else float(v)
+        except (TypeError, ValueError):
+            return float("nan")
+
+    pred_df["utilization_probability"] = pred_df["probs"].apply(_pos_prob)
+    return pred_df[["workload_id", "utilization_probability"]].dropna()
 
 
 def _build_codated_pairs(lab_metrics_df, ai_labs_df, workloads_df):
@@ -864,7 +873,8 @@ def stage4_prescriptive(ctx):
       C7 -- Workload-type floor (skipped unless DiversityCap supplies one).
 
     Objective: maximize sum over assignments of
-        priority_weight * gating_score * projected_demand_growth * strategic_value_usd
+        priority_weight * gating_score * utilization_probability * strategic_value_usd
+        * (1 + under_provisioning_penalty)
     """
     section("STAGE 4: PRESCRIPTIVE -- compute allocation MIP (48-cell sweep)")
     model = ctx.model
@@ -1014,7 +1024,7 @@ def stage4_prescriptive(ctx):
         sum(x_obj
             * Assignment.workload.priority_weight
             * Assignment.workload.gating_score
-            * Assignment.workload.projected_demand_growth
+            * Assignment.workload.utilization_probability
             * Assignment.workload.strategic_value_usd
             * (1.0 + Assignment.workload.under_provisioning_penalty))
         .where(Assignment.x_assign(PowerEnvelopeLevel, MarginFloor, DiversityCap, x_obj))
