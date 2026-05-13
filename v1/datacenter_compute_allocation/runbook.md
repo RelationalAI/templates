@@ -1,6 +1,6 @@
 # Runbook: Datacenter Compute Allocation — Multi-Reasoner Walkthrough
 
-A neocloud operator has 110 workloads from 6 AI labs competing for 28 GPU pools across the 5 hyperscaler campuses the upstream `energy_grid_planning` $300M solve approved. The chain forecasts per-lab demand, screens hardware compatibility, weights workloads by downstream gating, and produces a 48-cell scenario sweep — no single reasoner can answer this end-to-end.
+A neocloud operator has 110 workloads from 6 AI labs competing for 28 GPU pools across 5 hyperscaler campuses (a snapshot of the campus set the upstream `energy_grid_planning` $300M solve approved). The chain forecasts per-lab demand, screens hardware compatibility, weights workloads by downstream gating, and produces a 48-cell scenario sweep — no single reasoner can answer this end-to-end.
 
 ## The chain
 

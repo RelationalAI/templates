@@ -1,15 +1,14 @@
 """Datacenter compute allocation (multi-reasoner) template.
 
 Inside-the-fence GPU allocation: assigns AI lab workloads (pretrains,
-finetunes, inference, evals) to GPU pools across the 5 hyperscaler campuses
-that the upstream `energy_grid_planning` template approved at the $300M
-investment level. Demonstrates accretive ontology enrichment ACROSS templates
-(chain mode) plus a four-stage reasoner chain inside this template:
+finetunes, inference, evals) to GPU pools across 5 hyperscaler campuses
+that a prior interconnection-planning step (see `energy_grid_planning`)
+has approved and energized. The bundled `data_centers.csv` is a snapshot
+of that approved campus set at a $300M investment level; this template
+demonstrates the operator-side allocation decision that picks up after.
 
-  Stage 0 -- Chain bind: connects to `Model("Energy Grid Infrastructure")`,
-             reads upstream `DataCenterRequest.x_approve(InvestmentLevel)`,
-             attaches `dollars_per_mwh` + `approved_mw` via side-table CSV.
-             In standalone mode, loads data/data_centers.csv directly.
+Four reasoner stages on a shared ontology:
+
   Stage 1 -- Predictive: heterogeneous-graph GNN forecasts per-lab training
              intensity multiplier (LabGrowth.multiplier). Falls back to
              lab_growth_forecasts.csv via --no-gnn or on engine error.
@@ -25,11 +24,8 @@ investment level. Demonstrates accretive ontology enrichment ACROSS templates
              DiversityCap = 48 cells). Maximizes a four-factor strategic
              value: priority * gating * growth * strategic_value_usd.
 
-Run (chain mode -- requires upstream energy_grid_planning to have been run):
+Run:
     python datacenter_compute_allocation.py
-
-Run (standalone -- no upstream prerequisite):
-    python datacenter_compute_allocation.py --standalone
 
 Run (skip GNN, use precomputed forecasts):
     python datacenter_compute_allocation.py --no-gnn
@@ -81,18 +77,6 @@ CHOSEN_DIVERSITY = "none"
 def parse_args():
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     p.add_argument(
-        "--standalone",
-        action="store_true",
-        help="Run without binding to upstream Model('Energy Grid Infrastructure'). "
-             "Loads data/data_centers.csv as the supply set.",
-    )
-    p.add_argument(
-        "--investment-level",
-        default="$300M",
-        help="Upstream InvestmentLevel to read approvals from (chain mode only). "
-             "Default: $300M (the upstream knee point that approves 5 DCs).",
-    )
-    p.add_argument(
         "--no-gnn",
         action="store_true",
         help="Skip Stage 1 GNN training and load lab_growth_forecasts.csv directly.",
@@ -130,7 +114,6 @@ def section(title):
 # --------------------------------------------------
 
 data_centers_df = load_csv("data_centers.csv")
-data_center_attrs_df = load_csv("data_center_attrs.csv")
 gpu_pools_df = load_csv("gpu_pools.csv")
 ai_labs_df = load_csv("ai_labs.csv", bool_cols=("is_strategic_anchor",))
 workloads_df = load_csv("workloads.csv")
@@ -152,105 +135,38 @@ test_metrics_df = load_csv("test_metrics.csv")
 
 def main():
     args = parse_args()
-    section("STAGE 0: CHAIN BIND" if not args.standalone else "STAGE 0: STANDALONE LOAD")
+    section("STAGE 0: LOAD ONTOLOGY")
 
-    if args.standalone:
-        model = Model("Datacenter Compute Allocation")
-        print("  Standalone mode: fresh Model('Datacenter Compute Allocation')")
-    else:
-        model = Model("Energy Grid Infrastructure")
-        print(f"  Chain mode: connecting to Model('Energy Grid Infrastructure'), "
-              f"reading InvestmentLevel={args.investment_level}")
+    model = Model("Datacenter Compute Allocation")
 
-    # ---- DataCenterRequest concept ----
-    # In chain mode this re-binds to the upstream concept (name-based registration).
-    # In standalone mode it is freshly defined.
+    # DataCenterRequest concept: the 5 hyperscaler campuses already approved
+    # and energized (snapshot of the upstream energy_grid_planning $300M decision).
     DataCenterRequest = model.Concept("DataCenterRequest", identify_by={"id": String})
-
-    # New properties this template attaches to the (possibly upstream-defined) concept.
+    DataCenterRequest.name = model.Property(f"{DataCenterRequest} has {String:name}")
+    DataCenterRequest.hyperscaler = model.Property(
+        f"{DataCenterRequest} from hyperscaler {String:hyperscaler}"
+    )
+    DataCenterRequest.requested_mw = model.Property(
+        f"{DataCenterRequest} requesting {Float:requested_mw} MW"
+    )
     DataCenterRequest.approved_mw = model.Property(
         f"{DataCenterRequest} approved at {Float:approved_mw} MW"
+    )
+    DataCenterRequest.pue = model.Property(
+        f"{DataCenterRequest} has power usage effectiveness {Float:pue}"
     )
     DataCenterRequest.dollars_per_mwh = model.Property(
         f"{DataCenterRequest} energy rate {Float:dollars_per_mwh} USD per MWh"
     )
 
-    if args.standalone:
-        # Standalone mode: load all DC fields from data/data_centers.csv directly.
-        # Re-declare upstream-shaped properties locally so downstream stages can
-        # query them uniformly.
-        DataCenterRequest.name = model.Property(f"{DataCenterRequest} has {String:name}")
-        DataCenterRequest.hyperscaler = model.Property(
-            f"{DataCenterRequest} from hyperscaler {String:hyperscaler}"
-        )
-        DataCenterRequest.requested_mw = model.Property(
-            f"{DataCenterRequest} requesting {Float:requested_mw} MW"
-        )
-        DataCenterRequest.pue = model.Property(
-            f"{DataCenterRequest} has power usage effectiveness {Float:pue}"
-        )
-
-        src = model.data(data_centers_df)
-        model.define(DataCenterRequest.new(
-            id=src.id, name=src.name, hyperscaler=src.hyperscaler,
-            requested_mw=src.approved_mw, approved_mw=src.approved_mw,
-            pue=src.pue, dollars_per_mwh=src.dollars_per_mwh,
-        ))
-        print(f"  Loaded {len(data_centers_df)} DataCenterRequest entries from "
-              f"data/data_centers.csv")
-    else:
-        # Chain mode: re-declare upstream Properties we read so type-checking works.
-        DataCenterRequest.name = model.Property(f"{DataCenterRequest} has {String:name}")
-        DataCenterRequest.hyperscaler = model.Property(
-            f"{DataCenterRequest} from hyperscaler {String:hyperscaler}"
-        )
-        DataCenterRequest.requested_mw = model.Property(
-            f"{DataCenterRequest} requesting {Float:requested_mw} MW"
-        )
-        DataCenterRequest.pue = model.Property(
-            f"{DataCenterRequest} has power usage effectiveness {Float:pue}"
-        )
-        # Upstream InvestmentLevel scenario concept + decision variable.
-        InvestmentLevel = model.Concept("InvestmentLevel", identify_by={"name": String})
-        InvestmentLevel.budget_cap = model.Property(
-            f"{InvestmentLevel} has {Float:budget_cap}"
-        )
-        DataCenterRequest.x_approve = model.Property(
-            f"{DataCenterRequest} in {InvestmentLevel} has {Float:x_approve}"
-        )
-
-        # Bind approved_mw from upstream x_approve outcome at the chosen InvestmentLevel.
-        # (DC.approved_mw = DC.requested_mw whenever upstream solved x_approve > 0.5
-        #  for the requested level.)
-        x_a_ref = Float.ref("xa")
-        chosen_level = InvestmentLevel.filter_by(name=args.investment_level)
-        model.where(
-            DataCenterRequest.x_approve(chosen_level, x_a_ref),
-            x_a_ref > 0.5,
-        ).define(
-            DataCenterRequest.approved_mw(DataCenterRequest.requested_mw)
-        )
-        # Side-table CSV adds the new dollars_per_mwh property to upstream
-        # DataCenterRequest entries without rewriting upstream data.
-        side = model.data(data_center_attrs_df)
-        model.where(
-            DataCenterRequest.id == side.dc_id,
-        ).define(
-            DataCenterRequest.dollars_per_mwh(side.dollars_per_mwh)
-        )
-
-        # Quick pre-flight: did we actually pick up any approved DCs?
-        approved_check = model.select(
-            DataCenterRequest.id.alias("id"),
-        ).where(DataCenterRequest.approved_mw > 0).to_df()
-        if len(approved_check) == 0:
-            raise RuntimeError(
-                f"Chain mode: no DataCenterRequest entries with x_approve > 0.5 at "
-                f"InvestmentLevel={args.investment_level!r}. Did you run "
-                f"energy_grid_planning first on this account/engine? Or use --standalone."
-            )
-        print(f"  Bound {len(approved_check)} upstream-approved DCs at "
-              f"InvestmentLevel={args.investment_level}")
+    src = model.data(data_centers_df)
+    model.define(DataCenterRequest.new(
+        id=src.id, name=src.name, hyperscaler=src.hyperscaler,
+        requested_mw=src.approved_mw, approved_mw=src.approved_mw,
+        pue=src.pue, dollars_per_mwh=src.dollars_per_mwh,
+    ))
+    print(f"  Loaded {len(data_centers_df)} DataCenterRequest entries from "
+          f"data/data_centers.csv")
 
     # ---- New downstream concepts ----
     AILab = model.Concept("AILab", identify_by={"id": String})

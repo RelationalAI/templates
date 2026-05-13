@@ -24,19 +24,19 @@ tags:
 
 # Datacenter Compute Allocation
 
-This template is a follow-up to **[energy_grid_planning](https://github.com/RelationalAI/templates/tree/main/v1/energy_grid_planning)**. Where the upstream template decides which AI campuses get built and energized at what MW envelope (a multi-year capex / interconnect decision over ~50 binaries), this template zooms into the energized campus and decides which AI lab's individual training, fine-tune, inference, and eval workloads get which GPUs in which pool right now. The two share a single ontology — `DataCenterRequest` — and reason at very different scales.
+This template demonstrates the operator-side decision that picks up where **[energy_grid_planning](https://github.com/RelationalAI/templates/tree/main/v1/energy_grid_planning)** leaves off. That upstream template solves the multi-year capex / interconnect question — which AI campuses get built and energized at what MW envelope — across ~50 binaries. This template zooms into the *energized* campus and decides which AI lab's individual training, fine-tune, inference, and eval workloads get which GPUs in which pool *now*. The bundled `data_centers.csv` is a snapshot of the upstream $300M-approved campus set; the two templates form a conceptual sequence over the same domain, not a literal engine-level chain.
 
 ## What this template is for
 
-The 5 hyperscaler campuses approved by the upstream $300M solve — xAI Colossus, Microsoft Horizon, CoreWeave Austin, Crusoe Permian, Oracle Coastal — are now energized and stocked with GPU pools. The DC operator (a neocloud / colocation provider, or the hyperscaler operating its own campus) has to allocate that GPU capacity across the AI labs renting time on it. Frontier model labs want long-running training reservations on the largest contiguous H100 / H200 / GB200 pools at preferential anchor-customer rates. Inference customers want a steady slice of right-sized GPUs in low-latency regions. Research orgs want bursty best-effort capacity. They all compete for the same physical pools under the same power envelope.
+The 5 hyperscaler campuses in the bundled snapshot — xAI Colossus, Microsoft Horizon, CoreWeave Austin, Crusoe Permian, Oracle Coastal — are energized and stocked with GPU pools. The DC operator (a neocloud / colocation provider, or the hyperscaler operating its own campus) has to allocate that GPU capacity across the AI labs renting time on it. Frontier model labs want long-running training reservations on the largest contiguous H100 / H200 / GB200 pools at preferential anchor-customer rates. Inference customers want a steady slice of right-sized GPUs in low-latency regions. Research orgs want bursty best-effort capacity. They all compete for the same physical pools under the same power envelope.
 
 The decision is **multi-objective and operationally pressing**. Every major hyperscaler now reports AI compute as a binding constraint on growth (Microsoft has disclosed an $80B Azure backlog blocked specifically by power constraints). The operator is accountable on three publicly-discussed dimensions:
 
-1. **Power envelope.** Each campus has a substation-bound MW cap (the upstream-solved `approved_mw`). At 100% the cap is grid-approved; at 85% it is a heat-wave / curtailment day; at 110% it is contracted-curtailment headroom.
+1. **Power envelope.** Each campus has a substation-bound MW cap (`approved_mw`, set by the interconnection-planning decision the upstream template represents). At 100% the cap is grid-approved; at 85% it is a heat-wave / curtailment day; at 110% it is contracted-curtailment headroom.
 2. **Gross-margin discipline.** SemiAnalysis quantifies neocloud BMaaS at 55-65% gross margin pre-depreciation but only **14-16% net** after labor, power, and depreciation, so even a single MWh-cost mis-allocation is meaningful to the P&L.
 3. **Anchor concentration.** CoreWeave's Q2 2025 10-Q discloses **71% of revenue from a single customer (Microsoft)** and an $11.9B OpenAI commitment booked through October 2030 — the canonical example of the concentration risk that caps equity value. Operators win anchors (because they underwrite debt-financed buildouts) AND dilute them (because investor-visible concentration risk caps equity value).
 
-This template combines the upstream-inherited `PowerEnvelopeLevel` with two new Scenario Concepts — `MarginFloor` and `DiversityCap` — into a **3D scenario sweep (3 × 4 × 4 = 48 cells)** that traces two Pareto frontiers the operator already discusses publicly: margin-floor vs. achievable revenue, and diversity-cap vs. achievable revenue, with envelope as outer sensitivity. The strictest cells return `INFEASIBLE` — this is the intended diagnostic signal showing which constraint combinations cannot be satisfied simultaneously.
+This template combines three Scenario Concepts — `PowerEnvelopeLevel`, `MarginFloor`, and `DiversityCap` — into a **3D scenario sweep (3 × 4 × 4 = 48 cells)** that traces two Pareto frontiers the operator already discusses publicly: margin-floor vs. achievable revenue, and diversity-cap vs. achievable revenue, with envelope as outer sensitivity. The strictest cells return `INFEASIBLE` — this is the intended diagnostic signal showing which constraint combinations cannot be satisfied simultaneously.
 
 This template demonstrates a multi-reasoner workflow combining **predictive** (per-lab training-intensity GNN), **rules** (hardware compatibility + priority-tier classification), **graph** (downstream-gating score on the workload-dependency DAG), and **prescriptive** (assignment MIP under a 3D Scenario sweep) reasoning on a single shared ontology — each stage's output narrows or scores the next.
 
@@ -44,7 +44,6 @@ This template demonstrates a multi-reasoner workflow combining **predictive** (p
 
 | Stage | Reasoner | Reads from ontology | Writes to ontology | Role |
 |-------|----------|---------------------|--------------------|------|
-| 0. Chain bind | **Query** | Upstream `DataCenterRequest.x_approve(InvestmentLevel)` and properties | New properties: `approved_mw`, `dollars_per_mwh` | Bind upstream-approved DCs and attach side-table `dollars_per_mwh` for the energy-cost calculation. Defines all new concepts (`GpuPool`, `AILab`, `Workload`, `WorkloadDependency`, scenario concepts). |
 | 1. Predictive | **Heterogeneous-graph GNN** | `LabMetric` time series + four edge types: same-lab temporal, intra-lab `lab_workloads`, `WorkloadDependency.blocks` (shared with Stage 3), cross-lab `co_dated` (LOAD-BEARING) | `LabGrowth.multiplier` per lab; `Workload.projected_demand_growth` joined via lab | Forecast per-lab training intensity using cross-lab co-movement (industry GPU supply shocks, AI funding waves, model-release seasons). The cross-lab `co_dated` edge is what makes this a real GNN problem, not 6 disjoint univariate forecasts. |
 | 2. Rules | **Rules** (declarative) | `Workload` requirements, `GpuPool` specs | `Workload.fails_memory`, `.passes_gpu_type`, `.is_eligible` Relationships; `Workload.priority_tier` and `.priority_weight` Properties; `Compatibility(workload, gpu_pool)` precompute | Classify which (Workload, GpuPool) pairs are technically eligible (memory + GPU-type allowlist). Assign priority tier P0/P1/P2 from `contract_tier`. The Compatibility precompute keeps the Stage 4 MIP linear. |
 | 3. Graph | **Reverse-PageRank** | `Workload` nodes, `WorkloadDependency.blocks` edges | `Workload.gating_score` | Score how much downstream work each workload unblocks. A frontier pretrain that gates 14 fine-tunes and evals lands high; an isolated inference workload sits at baseline. |
@@ -52,7 +51,6 @@ This template demonstrates a multi-reasoner workflow combining **predictive** (p
 
 **Key design patterns demonstrated:**
 
-- **Cross-template ontology extension.** The upstream `DataCenterRequest` concept is extended with new properties (`approved_mw`, `dollars_per_mwh`) via `model.define()` calls that join on the existing identifier. No upstream rewrites; downstream stages query the extended concept uniformly.
 - **One ontology relationship, two reasoners.** `WorkloadDependency.blocks` carries information into both the Stage 1 GNN (as a heterogeneous edge) and the Stage 3 PageRank (as the dependency DAG). Defined once in the ontology, consumed without duplication or DataFrame round-trips.
 - **Per-cell aggregates queried from the ontology.** Stage 4's per-cell summary table (revenue, energy + depreciation cost, anchor share, workload-type counts) comes from `sum(...).where(Assignment.x_assign(env, mar, div, x), x > 0.5).per(env, mar, div)` aggregate expressions assembled inside a single `model.select()` call — mirroring `energy_grid_planning`'s `rev_per_level` pattern. No pandas-side groupby of raw assignments.
 - **Headline plan persisted as ontology.** After the 48-cell sweep, the chosen baseline cell (`100pct / unconstrained / none`) is written back as a singleton `AllocationPlan` Concept carrying revenue, total_cost, realized_margin, anchor_share, n_assigned, status, and binding_axis — plus an `Assignment.is_chosen` unary Relationship that flags the decision rows in that cell. The plan is queryable as ontology after the script exits, mirroring the `RestorePlan` / `is_selected_upgrade` pattern in `telco_network_recovery`.
@@ -79,9 +77,8 @@ This template demonstrates a multi-reasoner workflow combining **predictive** (p
 
 ## What's included
 
-- `datacenter_compute_allocation.py` — main script: chain bind + 4 reasoner stages + Pareto reporting + ontology persistence
-- `data/data_centers.csv` — 5 DCs (snapshot of upstream $300M-approved set; standalone mode only)
-- `data/data_center_attrs.csv` — 5 rows: `dc_id → dollars_per_mwh` (chain mode side table)
+- `datacenter_compute_allocation.py` — main script: 4 reasoner stages + Pareto reporting + ontology persistence
+- `data/data_centers.csv` — 5 DCs (snapshot of the upstream $300M-approved set)
 - `data/gpu_pools.csv` — 28 pools across 5 DCs (H100 / H200 / GB200 mix), with per-GPU `hourly_depreciation_rate` ($1.14 H100, $1.52 H200, $2.66 GB200; capex/3-year amortization)
 - `data/ai_labs.csv` — 6 labs: 3 frontier anchors (Anthropic, OpenAI, xAI Internal) + 2 applied (Cohere Inference, Together AI Multi-Lab) + 1 research (Stability Open)
 - `data/workloads.csv` — 110 workloads: 15 P0 pretrains (frontier labs, 256-1024 GPUs each, GB200/H200/H100 mix), 30 P1 finetune (Together AI + Cohere), 50 P1 inference (Cohere + Together), 15 P2 eval (Stability)
@@ -102,7 +99,6 @@ This template demonstrates a multi-reasoner workflow combining **predictive** (p
 - A Snowflake account with the RelationalAI native app installed.
 - A Snowflake user with permissions on the RAI native app and on `EXP_DATABASE` (the schema for GNN experiment artifacts).
 - A prescriptive engine for Stage 4 and (optionally) a GPU-backed predictive engine for Stage 1.
-- For **chain mode** specifically: the upstream [`energy_grid_planning`](https://github.com/RelationalAI/templates/tree/main/v1/energy_grid_planning) template must have been run first on the same account so `Model("Energy Grid Infrastructure")` is populated with `DataCenterRequest.x_approve(InvestmentLevel)`.
 
 ### Tools
 
@@ -154,36 +150,22 @@ Set `EXP_DATABASE` at the top of `datacenter_compute_allocation.py` to that data
    rai init
    ```
 
-5. Run the template in **standalone** mode (no upstream prerequisite — starts here if you have not yet run `energy_grid_planning`):
-
-   ```bash
-   python datacenter_compute_allocation.py --standalone
-   ```
-
-6. Or run in **chain mode** (default; assumes `energy_grid_planning` has populated `Model("Energy Grid Infrastructure")`):
+5. Run the template:
 
    ```bash
    python datacenter_compute_allocation.py
    ```
 
-7. Pick a different upstream investment level (chain mode only):
-
-   ```bash
-   python datacenter_compute_allocation.py --investment-level "\$400M"
-   ```
-
-   At $400M the upstream solve approves 6 DCs (one more than $300M); the downstream supply set grows accordingly without any code change.
-
-8. Skip the GNN and load `lab_growth_forecasts.csv` directly (useful for fast iteration on Stages 2–4):
+6. Skip the GNN and load `lab_growth_forecasts.csv` directly (useful for fast iteration on Stages 2–4):
 
    ```bash
    python datacenter_compute_allocation.py --no-gnn
    ```
 
-9. Expected output (abbreviated):
+7. Expected output (abbreviated):
 
    ```text
-   STAGE 0: STANDALONE LOAD
+   STAGE 0: LOAD ONTOLOGY
      Ontology loaded: 6 labs, 28 pools, 110 workloads, 138 dep edges, 3x4x4=48 scenario cells
 
    STAGE 1: PREDICT -- per-lab training-intensity GNN
@@ -222,7 +204,7 @@ Set `EXP_DATABASE` at the top of `datacenter_compute_allocation.py` to that data
 
    Exact GNN multipliers depend on the seed and the predictive engine run; the `--no-gnn` fallback values are deterministic.
 
-   **Expected runtime** (full pipeline, standalone, real GNN):
+   **Expected runtime** (full pipeline, real GNN):
    - Stage 1 (GNN training + prediction): ~90-120s on `GPU_NV_S` predictive engine
    - Stages 2-3 (rules + PageRank): a few seconds
    - Stage 4 (48-cell MIP): hits the 900s `time_limit_sec` and returns a feasible solution. Per-cell results remain valid; objective is within demo-acceptable gap (`rai-prescriptive-results-interpretation`: a non-OPTIMAL termination is signal, not failure).
@@ -239,7 +221,7 @@ Set `EXP_DATABASE` at the top of `datacenter_compute_allocation.py` to that data
 
 ```text
 datacenter_compute_allocation/
-  datacenter_compute_allocation.py  # Main script (chain bind + 4 chained reasoning stages + ontology persistence)
+  datacenter_compute_allocation.py  # Main script (4 chained reasoning stages + ontology persistence)
   data/
     data_centers.csv                # 5 DCs (snapshot of upstream $300M-approved set; standalone mode)
     data_center_attrs.csv           # 5 rows of dollars_per_mwh (chain mode side table)
@@ -397,7 +379,7 @@ After the solve, the per-cell summary table is assembled inside a single `model.
 
 ## Customize this template
 
-- **Add or remove DCs** by editing `data_centers.csv` (standalone) or running `energy_grid_planning` at a different `InvestmentLevel` (chain).
+- **Add or remove DCs** by editing `data_centers.csv`. The bundled set is a snapshot of the upstream $300M-approved campuses; re-running `energy_grid_planning` at a different `InvestmentLevel` produces a different approved set you can copy in.
 - **Adjust the lab roster** in `ai_labs.csv`. Anchor flag drives the `DiversityCap` constraint.
 - **Tune scenario axes**: edit `power_envelope_levels.csv`, `margin_floors.csv`, `diversity_caps.csv`. Adding rows scales the cell count multiplicatively.
 - **Change the priority spread** by editing the weights in `stage2_rules` (default 100 / 10 / 1).
@@ -406,12 +388,6 @@ After the solve, the per-cell summary table is assembled inside a single `model.
 - **Validate the GNN lift over a tabular baseline** by training a per-lab `GradientBoostingRegressor` on the same lag features (`prev_day_growth`, `prev_week_growth`, `growth_7d_mean`, etc.) from `data/train_metrics.csv` and comparing per-lab test RMSE. The GNN should beat the baseline by the margin attributable to the cross-lab `co_dated` edges (the only cross-lab signal source).
 
 ## Troubleshooting
-
-<details>
-<summary><code>RuntimeError: no DataCenterRequest entries with x_approve > 0.5</code></summary>
-
-Chain mode but the upstream `energy_grid_planning` template has not run on this account/engine. Run the upstream first, or use `--standalone`.
-</details>
 
 <details>
 <summary><code>ModuleNotFoundError: relationalai.semantics.reasoners.predictive</code></summary>
