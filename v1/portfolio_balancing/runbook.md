@@ -55,12 +55,12 @@ Concepts: `Stock` (with binary `Stock.covar(Stock, Stock)` property carrying cov
 **Prompt**
 
 ```
-/rai-querying Show the ontology as a concept-relationship diagram and report row counts per concept.
+/rai-querying What concepts and relationships does the ontology have, and how many rows are in each?
 ```
 
 **Response**
 
-Concepts: 8 `Stock` across 5 `Sector`, the binary `Stock.covar` covariance property (64 entries), 6 `User`, 4 `Account`, 15 `Holding`, 21 `Transaction` — Stage 5 will introduce `Regime` and `Scenario`.
+Concepts: 8 `Stock` across 5 `Sector`, the binary `Stock.covar` covariance property (64 entries), 6 `User`, 4 `Account`, 15 `Holding`, 21 `Transaction` — Stage 3 will introduce `Regime` and `Scenario`.
 
 ### 3. Discover reasoner questions
 
@@ -79,7 +79,7 @@ Plan: rules for compliance flags, graph for correlation clustering + representat
 **Prompt**
 
 ```
-/rai-rules-authoring Flag any holding worth more than 15% of its account, any sector worth more than 30% of the account, and any user with a risk score above 0.8 and more than five flagged transactions.
+/rai-rules-authoring Which holdings are overconcentrated (worth more than 15% of their account), which (account, sector) pairs are overweight (more than 30% of the account), and which traders are high-risk (risk score above 0.8 with more than five flagged transactions)?
 ```
 
 **Response**
@@ -91,7 +91,7 @@ Plan: rules for compliance flags, graph for correlation clustering + representat
 **Prompt**
 
 ```
-/rai-graph-analysis Cluster stocks where absolute return correlation is at least 0.3 — those are redundant bets. Pick one representative per cluster by highest Sharpe ratio and flag the rest as non-representatives so downstream optimization can exclude them.
+/rai-graph-analysis Which stocks act as redundant bets — pairs with absolute return correlation of at least 0.3? Group them into clusters, pick one representative per cluster by highest Sharpe ratio, and flag the rest so downstream optimization can exclude them.
 ```
 
 **Response**
@@ -103,12 +103,12 @@ Plan: rules for compliance flags, graph for correlation clustering + representat
 **Prompt**
 
 ```
-/rai-prescriptive-problem-formulation Build a Markowitz mean-variance frontier across 6 scenarios = 3 budgets (500, 1000, 2000) x 2 regimes (base, crisis). Each scenario must be fully invested; cap any single position at 30% of budget and any sector at 30%. Only invest in cluster representatives. Show 6 frontier points per scenario from min-risk through high-return.
+/rai-prescriptive-problem-formulation What's the Markowitz mean-variance frontier across our 6 scenarios (3 budgets — 500, 1000, 2000 — times 2 regimes — base, crisis)? Each scenario must be fully invested; cap any single position at 30% of budget and any sector at 30%; only invest in cluster representatives. Trace 6 frontier points per scenario from min-risk through high-return.
 ```
 
 **Response**
 
-48 decision vars (`Stock.x_quantity`, 8 stocks x 6 scenarios; non-reps forced to 0). Constraint families: non-negativity, budget equality (sum = budget per scenario), position cap (30%), sector cap (30%), non-representative = 0, plus epsilon return-rate floor on sweep solves. Return-rate range [0.0634, 0.0840]. 6-point frontier per scenario (min-risk anchor + 5 epsilon points); 7 solves per scenario x 6 scenarios = 42 `LOCALLY_SOLVED` portfolios via Ipopt.
+48 decision vars (`Stock.x_quantity`, 8 stocks x 6 scenarios; non-reps forced to 0). Constraint families: non-negativity, budget equality (sum = budget per scenario), position cap (30%), sector cap (30%), non-representative = 0, plus epsilon return-rate floor on sweep solves. Return-rate range [0.0634, 0.0840]. 6-point frontier per scenario (min-risk anchor + 5 epsilon points); 7 solver invocations total (2 anchors + 5 epsilon), each producing one allocation per scenario, for 42 `LOCALLY_SOLVED` portfolios via Ipopt.
 
 ### 7. Read the frontier
 
@@ -127,7 +127,7 @@ base_500 frontier: returns 32.43 -> 40.28, risk 1160 -> 1742. Marginal `delta_ri
 **Prompt**
 
 ```
-/rai-pyrel-coding + /rai-prescriptive-results-interpretation Add a regime-conditioned covariance to the ontology so the base regime keeps the original covariance and the crisis regime shrinks correlations 30% of the way toward all-ones (PSD-preserving). Re-solve the same frontier under crisis covariance and report how much volatility expands at each frontier point versus the base regime.
+/rai-pyrel-coding + /rai-prescriptive-results-interpretation How much does volatility expand at each frontier point under crisis covariance — where correlations shrink 30% of the way toward all-ones (preserving positive semi-definiteness) — versus the base regime?
 ```
 
 **Response**
