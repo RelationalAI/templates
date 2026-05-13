@@ -10,7 +10,9 @@ problem in RelationalAI:
 - Storage-class ``affinity``: deployments declared affinity-paired
   must co-locate (same node) when both placed.
 - Failure-domain ``spread``: replicas of one deployment are spread
-  across zones (no more than ``ceil(replicas / num_zones)`` per zone).
+  across zones (no more than ``ceil(replicas / num_zones)`` per zone,
+  unless ``deployments.csv`` supplies an explicit
+  ``max_per_zone_override`` for the row).
 - ``Gang placement``: a deployment is either fully placed
   (all replicas) or fully unplaced (none).
 - Topology ``rack-clique``: pods in a distributed-training group must
@@ -56,7 +58,7 @@ Output:
 from math import ceil
 from pathlib import Path
 
-from pandas import read_csv
+from pandas import isna, read_csv
 from relationalai.semantics import Integer, Model, String, sum
 from relationalai.semantics.reasoners.prescriptive import Problem
 
@@ -261,19 +263,54 @@ _assert_one_zone_per_rack(nodes_csv, "nodes.csv")
 
 # Pre-compute per-deployment failure-domain spread caps. With N zones,
 # at most ceil(replicas / N) replicas of any one deployment land in
-# any single zone. Computed in Python and joined onto Deployment as a
-# data property so the spread IC reads as a plain relational
-# inequality. An empty cluster (no nodes) is caught here so the
-# division below is never by zero.
+# any single zone -- unless the row supplies an explicit
+# `max_per_zone_override` (used for deployments where the operator
+# has accepted a wider blast radius, e.g. distributed-training groups
+# whose rack-clique requirement is incompatible with cross-zone
+# spread). The override must be a positive integer no greater than
+# `replicas`; values larger than `replicas` would be meaningless
+# (only `replicas` pods exist), and a non-positive value would make
+# the spread IC vacuous or unsatisfiable. Computed in Python and
+# joined onto Deployment as a data property so the spread IC reads
+# as a plain relational inequality. An empty cluster (no nodes) is
+# caught here so the division below is never by zero.
 num_zones = nodes_csv["zone"].nunique()
 if num_zones == 0:
     raise ValueError(
         "nodes.csv is empty: at least one node is required so the "
         "spread cap `ceil(replicas / num_zones)` is well-defined."
     )
+
+
+def _compute_max_per_zone(replicas, override):
+    if override is not None and not isna(override):
+        cap = int(override)
+        if cap < 1 or cap > int(replicas):
+            raise ValueError(
+                f"deployments.csv has max_per_zone_override={cap} for a "
+                f"row with replicas={int(replicas)}. The override must be "
+                f"a positive integer no greater than `replicas`; a larger "
+                f"value is meaningless (only `replicas` pods exist) and a "
+                f"non-positive value would make the spread IC vacuous or "
+                f"unsatisfiable."
+            )
+        return cap
+    return int(ceil(int(replicas) / num_zones))
+
+
 deployments_csv = deployments_csv.assign(
-    max_per_zone=[int(ceil(int(r) / num_zones)) for r in deployments_csv["replicas"].tolist()]
-)
+    max_per_zone=[
+        _compute_max_per_zone(r, o)
+        for r, o in zip(
+            deployments_csv["replicas"].tolist(),
+            deployments_csv["max_per_zone_override"].tolist(),
+        )
+    ]
+).drop(columns=["max_per_zone_override"])
+# Drop the override column before passing to model.data: rows with NaN
+# in any column get silently filtered, so leaving the override column
+# in (where it is NaN for most rows) would drop those Deployment rows
+# from the model -- breaking the gang IC and the objective.
 
 # --------------------------------------------------
 # Define semantic model

@@ -44,22 +44,22 @@ This template encodes that stack as a pure constraint satisfaction / optimisatio
 - Three bin-packing ICs (`sum(Pod.cpu_millicores * x).per(Node) <= Node.cpu_millicores`, and analogues for memory and GPU)
 - A pairwise tenant anti-affinity IC -- `xi + xj <= 1` per node for every (Pi, Pj) pair whose deployments' tenants are anti-affine -- expressed directly over the matrix without big-M reformulation
 - A pairwise storage-class affinity IC that forces affinity-paired pods to agree on every node's assignment bit
-- A per-(deployment, zone) failure-domain spread IC bounded by `Deployment.max_per_zone = ceil(replicas / num_zones)`
+- A per-(deployment, zone) failure-domain spread IC bounded by `Deployment.max_per_zone` -- by default `ceil(replicas / num_zones)`, with a per-row `max_per_zone_override` column in `deployments.csv` for deployments (e.g. distributed-training groups) that need a wider blast radius to remain feasible
 - A reified-cardinality gang-placement IC `sum(Pod.placed).per(Deployment) == Deployment.replicas * Deployment.placed`
 - A pairwise topology rack-clique IC for distributed-training groups -- `xa + xb <= 1` for every (Pa, Pb, Na, Nb) tuple where the pods are in the same training group and the nodes are in different racks
 - A linear `maximize(sum(Deployment.placed))` objective the CSP optimises
-- Pre-solve Python invariants that catch silent-failure modes (duplicate keys, dangling foreign keys, non-positive capacities, replica-count mismatches) before the solver runs
+- Pre-solve Python invariants that catch silent-failure modes (duplicate keys, dangling foreign keys, non-positive capacities, replica-count mismatches, out-of-range `max_per_zone_override` values) before the solver runs
 - Post-solve verification via `problem.verify()` confirming every IC holds in the returned solution, plus a `termination_status() == "OPTIMAL"` assertion
 
 ## What's included
 
-The bundled CSVs are illustrative, fully synthetic demo data tuned so the gang-placement, anti-affinity, spread, and rack-clique ICs each bind at the optimum -- swap in your own cluster topology and workload to apply the template to a real cluster.
+The bundled CSVs are illustrative, fully synthetic demo data tuned so multiple ICs bind at the optimum -- rack-clique forces the distributed-training group onto one rack, CPU / memory / GPU bin-packing then pin it to a single node at exact 100% utilisation on all three resources, anti-affinity partitions the alpha-beta and gamma-delta tenant pods across disjoint node sets, storage-class affinity co-locates the cache pair, and the spread cap binds for every multi-replica non-overridden deployment. Swap in your own cluster topology and workload to apply the template to a real cluster.
 
 - `pod_placement.py` -- main script with concepts, decisions, constraints, the solver call, and the post-solve inspection
 - `data/nodes.csv` -- 8 nodes across 2 zones (`us-east-1a`, `us-east-1b`) and 4 racks; six general-purpose nodes (12000 millicores, 49152 MiB) and two GPU nodes (8000 millicores, 32768 MiB, 4 GPUs each). Total cluster: 88000 millicores, 360448 MiB, 8 GPUs
 - `data/tenants.csv` -- 4 tenants (`tenant_alpha`, `tenant_beta`, `tenant_gamma`, `tenant_delta`)
 - `data/tenant_anti_affinity.csv` -- 2 anti-affine pairs (`tenant_alpha` x `tenant_beta`, `tenant_gamma` x `tenant_delta`)
-- `data/deployments.csv` -- 12 deployments across the 4 tenants: 8-replica web services, 4-replica api services, single-replica caches, a 6-replica database (`db_gamma`), and a 4-pod distributed-training job (`ml_gamma_train`)
+- `data/deployments.csv` -- 12 deployments across the 4 tenants: 8-replica web services, 4-replica api services, single-replica caches, a 6-replica database (`db_gamma`), and a 4-pod distributed-training job (`ml_gamma_train`). One column, `max_per_zone_override`, is a nullable per-row spread cap; the bundled data sets it to `4` for `ml_gamma_train` so the same-rack training group can land entirely in one zone (the GPU nodes are concentrated there)
 - `data/deployment_affinity.csv` -- 1 affinity-paired pair (`cache_alpha` x `cache_delta`, both ssd-class)
 - `data/pods.csv` -- 50 pods with per-pod CPU / memory / GPU demands aligned to deployment role (web 1000m / 2048 MiB, api 1500m / 3072 MiB, cache 500m / 1024 MiB, db 2000m / 4096 MiB, ml 2000m / 8192 MiB / 1 GPU)
 - `data/distributed_training.csv` -- 6 pairs forming the 4-pod NVLink clique for `ml_gamma_train`
@@ -111,32 +111,31 @@ The bundled CSVs are illustrative, fully synthetic demo data tuned so the gang-p
    ```text
    Solve result:
    • status: OPTIMAL
-   • objective: 11
+   • objective: 12
    • solve time: ~1s
    • num_points: 1
    • solver: MiniZinc_unknown
 
    Per-node utilization:
      node_id       node  cpu_used  cpu_cap  memory_used  gpu_used
-   0       1  gen-a1-n1      6500    12000        13312         0
-   1       2  gen-a1-n2      5000    12000        10240         0
-   2       3  gen-a2-n1      9000    12000        18432         0
-   3       4  gen-a2-n2      8500    12000        17408         0
+   0       1  gen-a1-n1      5500    12000        11264         0
+   1       2  gen-a1-n2     11000    12000        22528         0
+   2       3  gen-a2-n1      8500    12000        17408         0
+   3       4  gen-a2-n2      3500    12000         7168         0
    4       5  gpu-b1-n1      5500     8000        11264         0
-   5       6  gen-b1-n2      5000    12000        10240         0
-   6       7  gpu-b2-n1      8000     8000        16384         0
-   7       8  gen-b2-n2      8500    12000        17408         0
+   5       6  gen-b1-n2     11000    12000        22528         0
+   6       7  gpu-b2-n1      8000     8000        32768         4
+   7       8  gen-b2-n2     11000    12000        22528         0
 
    Placed pods (pod_id -> node_id):
        pod_id  node_id
    ...
 
    Unplaced deployments (if any):
-     deployment_id      deployment  replicas
-   0              7  ml_gamma_train         4
+   (empty)
    ```
 
-   The maximum feasible objective is `11` of `12` deployments: `ml_gamma_train` (4 pods × 1 GPU) is left unplaced because failure-domain spread is the binding constraint on this data. Both GPU nodes (`gpu-b1-n1`, `gpu-b2-n1`) sit in zone `us-east-1b`, so any pod that needs a GPU must land in that zone. With `replicas = 4` and `num_zones = 2`, the per-deployment spread cap is `max_per_zone = ceil(4/2) = 2` -- so at most 2 of the 4 ml pods can be placed. Gang placement then promotes "2 of 4 placed" into "fully unplaced", leaving the deployment at zero. Rack-clique is satisfiable in isolation here (`gpu-b1-n1` alone has 4 GPUs and 8000m CPU = the exact 4 × 2000m the deployment needs), so dropping rack-clique by itself does not help -- spread still caps the deployment at 2 pods because the GPUs are concentrated in one zone. Two changes push the objective to `12`: raise `max_per_zone` for `ml_gamma_train` to `4` and all 4 pods can land on a single GPU node (4 × 2000m fits the 8000m capacity exactly), or drop the rack-clique IC and move one GPU node into `us-east-1a` so the 4 pods can split 2-and-2 across racks in different zones. The bound counts that remain solver-invariant across the optimum: each *placed* multi-replica deployment lands at exactly `ceil(replicas / 2)` pods per zone (`web_*` 4+4, `api_*` 2+2, `db_gamma` 3+3 -- the spread cap binds for every placed deployment with > 1 replica; `ml_gamma_train` is the one excluded by being unplaced), the affinity-paired caches (`cache_alpha`, `cache_delta`) co-locate on a single node, alpha/beta and gamma/delta tenant pods partition the cluster into disjoint node sets, and at least one GPU-adjacent node hits 100% CPU. Specific (pod, node) assignments may differ across runs when multiple placements tie at objective=11.
+   The optimum places all `12` deployments and binds **four** ICs at the chosen GPU node: rack-clique pins `ml_gamma_train`'s 4 pods onto a single rack, and CPU / memory / GPU bin-packing then pin them all to one node within that rack at exactly 100% utilisation on every resource (`gpu-b2-n1` here: 4 × 2000m = 8000m CPU = the node's CPU cap, 4 × 8192 MiB = 32768 MiB memory = the node's memory cap, 4 × 1 = 4 GPUs = the node's GPU cap -- a tight three-resource fit). The training group could equivalently land on `gpu-b1-n1` (same shape, other GPU rack) and the solver may tie-break either way across versions; what's solver-invariant is "all 4 pods on the same rack on a single node, 100% utilised on three resources". The `max_per_zone_override = 4` in `deployments.csv` is what unlocks this: without it, the default spread cap `ceil(4 / 2) = 2` plus the all-or-nothing gang rule plus the rack-clique requirement plus the GPU racks all sitting in `us-east-1b` (a rack belongs to exactly one zone, so all-pods-on-one-rack implies all-pods-in-one-zone) would make `ml_gamma_train` fully unplaced and the objective `11`. The override is the operator's explicit acceptance of a wider blast radius for the training group: a single-zone outage takes the whole training job, which is the standard tradeoff for an NVLink-tight ML deployment. The other bound counts that remain solver-invariant across the optimum: each multi-replica non-overridden deployment lands at exactly `ceil(replicas / 2)` pods per zone (the spread cap binds for `web_*` at 4+4, `api_*` at 2+2, `db_gamma` at 3+3), the affinity-paired caches (`cache_alpha`, `cache_delta`) co-locate on a single node, and alpha/beta and gamma/delta tenant pods partition the cluster into disjoint node sets.
 
 ## Template structure
 ```text
@@ -213,7 +212,7 @@ gang_placement_ic = model.where(Pod.deployment == Deployment).require(
 
 `Deployment.placed == 0` forces every replica's `Pod.placed == 0` (sum == 0); `Deployment.placed == 1` forces every replica's `Pod.placed == 1` (sum == replicas). No big-M, no aux indicator stack.
 
-**Failure-domain spread is a two-key `sum(x).per(Deployment, Zone)`.** With `max_per_zone = ceil(replicas / num_zones)` pre-computed and joined onto `Deployment`, the IC reads as a plain relational inequality:
+**Failure-domain spread is a two-key `sum(x).per(Deployment, Zone)`.** With `max_per_zone` pre-computed (default `ceil(replicas / num_zones)`, or the `max_per_zone_override` value when set on the row) and joined onto `Deployment`, the IC reads as a plain relational inequality:
 
 ```python
 spread_ic = model.where(
@@ -223,17 +222,19 @@ spread_ic = model.where(
 ).require(sum(x).per(Deployment, Zone) <= Deployment.max_per_zone)
 ```
 
+The override is a deployment-level escape hatch for cases where the default spread cap collides with another constraint -- the bundled data uses it on `ml_gamma_train` so the rack-clique IC (which forces all distributed-training pods onto a single rack, and therefore into a single zone) doesn't make the deployment infeasible.
+
 **All nine ICs are pure relational arithmetic.** None of them carry an `implies` body, so `problem.verify()` re-evaluates every constraint in the returned solution. The post-solve assertion `model.require(problem.termination_status() == "OPTIMAL")` then guarantees the solver actually proved optimality rather than timing out.
 
 ## Customize this template
 
-- **Use your own data** by replacing the seven CSV files with your cluster topology and workload. The constraint structure does not change. The data invariants the pre-solve guards catch are: primary keys must be unique across `nodes.csv` / `tenants.csv` / `deployments.csv` / `pods.csv`; every foreign key (`deployments.tenant_id`, `pods.deployment_id`, `tenant_anti_affinity.tenant_*`, etc.) must resolve; node capacities must be positive; and `pods.csv` row counts per `deployment_id` must equal `deployments.csv`.`replicas` (the gang IC pins them).
+- **Use your own data** by replacing the seven CSV files with your cluster topology and workload. The constraint structure does not change. The data invariants the pre-solve guards catch are: primary keys must be unique across `nodes.csv` / `tenants.csv` / `deployments.csv` / `pods.csv`; every foreign key (`deployments.tenant_id`, `pods.deployment_id`, `tenant_anti_affinity.tenant_*`, etc.) must resolve; node capacities must be positive; `pods.csv` row counts per `deployment_id` must equal `deployments.csv`.`replicas` (the gang IC pins them); each rack belongs to exactly one zone; and any `max_per_zone_override` value, when present, must be a positive integer no greater than the row's `replicas`.
 - **Change the objective.** `problem.maximize(sum(Deployment.placed))` maximises the number of placed deployments. Swap for `problem.maximize(sum(Deployment.replicas * Deployment.placed))` to weight by replica count, `problem.minimize(...)` over a per-node fragmentation cost (sum-of-squared-utilisation-gaps), or pure satisfaction (`problem.satisfy()` with a `Deployment.placed == 1` hard floor) when every deployment must run.
 - **Tier-aware placement.** Mark pods with `gpu_units > 0` and add an IC forcing them onto GPU-capable nodes only -- e.g. `model.where(Pod.on_node(Node, 1), Pod.gpu_units >= 1).require(Node.gpu_units >= 1)` (matches the `model.where(...).require(...)` chaining used by every IC in `pod_placement.py`). Conversely, mark some nodes as "general-purpose only" and forbid GPU workloads there.
 - **Migration cost under churn.** Add a `Pod.current_node` data property reflecting the existing assignment, then introduce a per-pod "moved" indicator (`moved = (1 - Pod.on_node(current_node, x))`) and minimise the total move count -- multi-solution then enumerates the N least-disruptive placements.
 - **NVLink-clique with explicit edges.** The bundled `data/distributed_training.csv` lists every pair in the training group, encoding rack-clique implicitly via the pairwise IC. To model a true edge-restricted clique (e.g. NVLink-2 connectivity between specific GPU pairs only), pre-compute the set of `(node_a, node_b)` pairs that lack a direct NVLink edge in Python and load them as a `NoNVLink` data relationship; then drop the `Na.rack != Nb.rack` clause from `rack_clique_ic` and replace it with `NoNVLink(Na, Nb)` to forbid co-placement on any pair of hosts without a direct NVLink path.
 - **Spot / preemptible tier.** Mark a subset of pods as preemptible (`Pod.is_preemptible == 1`) and let them displace lower-priority workloads when capacity is tight. Express as a per-node tiered capacity: preemptible pods consume "remaining" capacity, on-demand pods consume the primary allotment.
-- **Tighten the spread cap.** The default `max_per_zone = ceil(replicas / num_zones)` is the loosest valid spread (just enough that all replicas fit across zones). For a strict 1-per-zone policy (so even a hot zone can't host two replicas of the same service), set `Deployment.max_per_zone = 1` and accept a tighter feasibility region.
+- **Tighten or loosen the spread cap.** The default `max_per_zone = ceil(replicas / num_zones)` is the loosest spread that still admits a placement when replicas fan out evenly across zones. For a strict 1-per-zone policy (so even a hot zone can't host two replicas of the same service), set `max_per_zone_override = 1` for that row in `deployments.csv`. For a deployment whose other ICs force same-zone placement (the bundled `ml_gamma_train` is the canonical example -- rack-clique plus all-GPU-racks-in-one-zone), set `max_per_zone_override = replicas` to opt out of spread for that deployment alone, leaving the cluster-wide default intact for everything else.
 - **Multi-cluster (federated placement).** Add a `Cluster` concept above `Zone` and an outer `Pod.on_cluster(Cluster)` decision; spread / anti-affinity then have to lift to cluster-level constraints. Karmada-style multi-cluster placement is the standard precedent.
 
 ## Learn more
@@ -261,14 +262,14 @@ spread_ic = model.where(
 - A deployment's replica count may exceed what the failure-domain spread allows. With two zones and a replica count of 5, the default `max_per_zone = ceil(5/2) = 3` requires at least one zone to host 3 replicas of that deployment -- if no three-node subset in any zone fits them, the model is infeasible.
 - Tenant anti-affinity may over-partition the cluster. If `tenant_a` and `tenant_b` are anti-affine and your cluster has only enough capacity for one of them on each node, the model can't fit both. Loosen by adding more nodes, dropping the anti-affinity pair, or shrinking workload demands.
 - The bundled affinity-paired deployments must be able to land on a single node. If `cache_alpha` and `cache_delta` have a combined demand that doesn't fit on any one node, the affinity IC is unsatisfiable. Check the affinity-paired demands against the largest node's capacity.
-- Distributed-training rack-cliques interact with failure-domain spread when the GPU racks all sit in the same zone. On the bundled data, both GPU racks (`rack-b1`, `rack-b2`) are in zone `us-east-1b`, so a 4-pod training job that must share a rack also ends up sharing that zone -- but `max_per_zone = ceil(4/2) = 2` allows only 2 of the 4 replicas in any one zone. Combined with gang placement (all 4 or none), the deployment is left fully unplaced and the objective is `11`, not `12`. To make this placement feasible, either raise `max_per_zone` for the deployment (so a single-rack placement is allowed), or drop the rack-clique IC AND spread the GPU nodes across zones (so the 4 pods can split across racks in different zones and still satisfy spread). Note that simply spreading the GPU nodes across zones is not enough on its own: a rack belongs to exactly one zone, so as long as rack-clique forces all 4 pods onto a single rack, those 4 pods still share a zone.
+- Distributed-training rack-cliques interact with failure-domain spread when the GPU racks all sit in the same zone. On the bundled data, both GPU racks (`rack-b1`, `rack-b2`) are in zone `us-east-1b`, so a 4-pod training job that must share a rack also ends up sharing that zone -- but the default `max_per_zone = ceil(4/2) = 2` allows only 2 of the 4 replicas in any one zone. Combined with gang placement (all 4 or none), the deployment would be left fully unplaced and the objective would drop to `11`. The bundled `deployments.csv` sets `max_per_zone_override = 4` on `ml_gamma_train` to opt out of spread for the training group only, which is what lets the bundled solve hit `objective = 12`. To reproduce the infeasibility for the training deployment, blank that override and re-run; to widen the fix to your own workload, raise `max_per_zone_override` on the training row, or drop the rack-clique IC AND spread the GPU nodes across zones (so the 4 pods can split across racks in different zones and still satisfy spread). Note that simply spreading the GPU nodes across zones is not enough on its own: a rack belongs to exactly one zone, so as long as rack-clique forces all 4 pods onto a single rack, those 4 pods still share a zone.
 
 </details>
 
 <details>
   <summary>One deployment is unplaced; how do I find out why?</summary>
 
-- The optimal solution can leave a deployment unplaced if placing it would require violating another IC. Check the printed "Unplaced deployments" block. Common binding constraints: failure-domain spread (a deployment's GPU/CPU demand is concentrated in fewer zones than `max_per_zone` allows -- this is what binds on the bundled `ml_gamma_train`); rack-clique (a distributed-training group's GPU requirement exceeds any single rack's capacity, or all GPU racks are in one zone so a single-rack placement collides with spread); gang placement (the deployment's replicas can't all fit somewhere, so the all-or-none rule leaves it fully unplaced).
+- The optimal solution can leave a deployment unplaced if placing it would require violating another IC. Check the printed "Unplaced deployments" block. Common binding constraints: failure-domain spread (a deployment's GPU/CPU demand is concentrated in fewer zones than `max_per_zone` allows -- raise the row's `max_per_zone_override` if that's the right operational tradeoff); rack-clique (a distributed-training group's GPU requirement exceeds any single rack's capacity, or all GPU racks sit in one zone so a single-rack placement collides with spread -- the bundled `ml_gamma_train` lives at this exact intersection, which is why its row sets the override); gang placement (the deployment's replicas can't all fit somewhere, so the all-or-none rule leaves it fully unplaced).
 - To isolate which IC is binding, drop one IC at a time and re-solve: comment out `problem.satisfy(rack_clique_ic)`, run, and see whether the deployment then places. Repeat with the spread and gang ICs. The first IC whose removal allows placement is the binding one.
 
 </details>
