@@ -1,11 +1,10 @@
 ---
 title: "Underwriting Audit"
-description: "Audit an underwriting ruleset by enumerating K distinct counterexample applicants who falsify a stated property: each witness shows a way the rules let an unintended applicant through. CSP solver in multi-solution mode."
+description: "Audit an underwriting ruleset against a catalog of properties. For each property, the solver either proves the property holds (PASS) or returns K distinct counterexample applicants who falsify it (FAIL). Multi-property batch audit, CSP solver in multi-solution mode."
 featured: false
 experience_level: advanced
 industry: "Insurance"
 reasoning_types:
-  - Rules-based
   - Prescriptive
 tags:
   - constraint-programming
@@ -22,9 +21,11 @@ tags:
 
 Insurance actuaries, RegTech audit teams, and Model Risk Management (MRM) reviewers periodically audit underwriting rulesets to verify that the rules enforce stated properties: "no high-risk applicant is auto-approved", "every frail applicant goes through manual review", "no policy exceeds the regulatory ceiling without two-signoff". Hand-checking a ruleset of even a few dozen rules against a property is intractable; sampled fixtures only catch the failures that happen to be in the sample. The right answer is verification: declare the ruleset and the property as a constraint model, ask the solver if any feasible applicant falsifies the property, and if so, return the *witness*.
 
-Audit / counterexample surfacing is plural by definition. One witness tells the actuary that a property fails; K distinct witnesses surface concrete failure cases across age buckets, condition profiles, and coverage bands the buggy rule misses. A single counterexample is unhelpful for triage because the actuary then has to manually probe variations to understand the failure shape. K distinct witnesses surface the failure shape automatically. The solver guarantees pairwise distinctness, not maximal diversity -- to exhaust the failure space, raise `MAX_WITNESSES` past the size of the feasible set. This template encodes the ruleset + property + witness condition as a constraint satisfaction model and runs the solver in multi-solution mode: pass `solution_limit=K` to `problem.solve(...)`, then enumerate each witness via `Variable.values(solution_index, value)`. The output is one row per witness applicant.
+Real audits are a *batch* operation. The rule team owns the rule pack; the compliance / MRM team owns a catalog of properties the rule pack must satisfy. This template demonstrates that shape: a `PROPERTIES` catalog is separately authored from the rule pack, and a single audit run produces one verdict (PASS / FAIL / INCONCLUSIVE) per property plus witness tables for each FAIL. The mixed-verdict output is the point -- the audit is not rigged to always fail; it distinguishes properties the rule pack satisfies from those it violates. Bundling them in one script makes the per-run audit report the natural deliverable.
 
-The bundled ruleset has a deliberate bug: `is_manual_review` is defined as "senior", but `is_frail` is defined as "senior OR has chronic condition". The audit asks "is every frail applicant in manual review?" and turns up the witnesses that prove it is not -- chronic-condition applicants under 70 who slip past the buggy rule. The same template structure -- decision-valued applicant attributes, derived rule indicators via OR-arithmetic equivalences, a counterexample IC asserting "property fails", multi-solution enumeration -- applies to any rule-based regulated domain: bank AML rules, healthcare prior-auth, manufacturing segregation-of-duties, SaaS retention policy.
+Audit / counterexample surfacing is plural per property as well. One witness tells the actuary that a property fails; K distinct witnesses surface concrete failure cases across age buckets, condition profiles, and coverage bands the buggy rule misses. A single counterexample is unhelpful for triage because the actuary then has to manually probe variations to understand the failure shape. K distinct witnesses surface the failure shape automatically. The solver guarantees pairwise distinctness, not maximal diversity -- to exhaust the failure space, raise `MAX_WITNESSES` past the size of the feasible set. Each property's audit runs in multi-solution mode (`solution_limit=K`) and reads back witnesses via `Variable.values(solution_index, value)`.
+
+The bundled ruleset has a deliberate bug: `is_manual_review` is defined as "senior", but `is_frail` is defined as "senior OR has chronic condition". The bundled property catalog includes two properties the buggy rule violates (frail-implies-review and chronic-implies-review -- both FAIL with chronic non-senior witnesses) and one the buggy rule trivially satisfies (senior-implies-review -- PASS, the rule literally encodes it). The same template structure -- scalar applicant decisions, derived rule indicators via OR-arithmetic equivalences, a property catalog with counterexample-IC builders, fresh-Problem-per-property audit loop -- applies to any rule-based regulated domain: bank AML rules, healthcare prior-auth, manufacturing segregation-of-duties, SaaS retention policy.
 
 ## Who this is for
 
@@ -39,11 +40,12 @@ The bundled ruleset has a deliberate bug: `is_manual_review` is defined as "seni
 - A senior-indicator definition iterating over `AgeBucket` reference rows at relational time and binding `is_senior` via two `implies`-bodied ICs (one for senior buckets, one for non-senior)
 - A frail-indicator definition encoding `is_frail = is_senior OR has_chronic` via the standard OR-arithmetic equivalence on binaries (three linear ICs: two lower bounds, one upper bound)
 - A buggy `is_manual_review = is_senior` definition encoded as a binary equality (the audit will surface its missing chronic-condition arm)
-- A counterexample IC pair asserting the property failure: `is_frail == 1 AND is_manual_review == 0`
-- **Multi-solution enumeration as the primary code path**: `problem.solve(..., solution_limit=MAX_WITNESSES)` runs the search in enumeration mode; `Variable.values(solution_index, value)` joins the decision variables on a shared solution index to reconstruct each witness
+- A `RULE_PACK_ICS` list bundling every rule IC for one-pass attachment to each per-property `Problem`
+- A `PROPERTIES` catalog: a Python list of `(name, description, counterexample_builder)` tuples. The builder is a thunk that returns the property's counterexample ICs on demand; lazy construction is required so the audit loop gets fresh IC handles per iteration
+- **A fresh-Problem-per-property audit loop**: constraints on a `Problem` are add-only, so each property gets its own `Problem`, its own `solve_for(...)` re-bindings of the scalar decisions, its own `problem.satisfy(...)` calls for the rule pack and the property's counterexample ICs, and its own `solve()`. The decision variables are model-level scalars; only the `Variable` subconcepts returned by `solve_for(...)` are per-Problem
+- **Multi-solution enumeration as the per-property code path**: each `problem.solve(..., solution_limit=MAX_WITNESSES)` runs the search in enumeration mode; `Variable.values(solution_index, value)` joins the decision variables on a shared solution index to reconstruct each witness
 - A pre-solve check that reference IDs are dense and contiguous, so `lower=min(id), upper=max(id)` decision bounds line up with the reference rows the relational-time `implies` rules iterate over (sparse IDs would let the solver pick a value with no matching row, leaving the rule indicators unconstrained for that solution)
-- An explicit PASS/FAIL audit verdict driven by `solve_info().termination_status`: `INFEASIBLE` prints PASS (property holds under the encoded ruleset), `OPTIMAL` or `SOLUTION_LIMIT` with one or more witnesses prints FAIL with the witness count and the witness table, anything else prints INCONCLUSIVE
-- Post-solve IC spot-check via `problem.verify()` re-evaluating the pure-arithmetic ICs against the first returned solution (the OR-arithmetic equivalence on `is_frail`, the equality on `is_manual_review`, the counterexample assertions). The `implies`-bodied senior-definition ICs are solver-only and are NOT passed to `verify()` -- the relational engine cannot re-evaluate wire-format constraint relations and would return silently-OK regardless of whether the constraint actually held. `verify()` checks the first solution only; rely on the model itself, not `verify()`, to enforce the constraint across every witness. On a FAIL audit, a clean `verify()` and the FAIL verdict are *both* expected outputs: `verify()` confirms the witness satisfies the counterexample IC (the audit's negation-of-property assertion), and the FAIL verdict reports that one or more such witnesses exist.
+- A per-property verdict driven by `solve_info().termination_status`: `INFEASIBLE` is **PASS** (property holds under the encoded ruleset), `OPTIMAL` or `SOLUTION_LIMIT` with one or more witnesses is **FAIL** (with the witness count and table), anything else is **INCONCLUSIVE**. Verdicts are stashed in a `results` list and printed as a verdict-matrix table at the end of the run
 
 ## What's included
 
@@ -94,34 +96,43 @@ The bundled ruleset has a deliberate bug: `is_manual_review` is defined as "seni
    python underwriting_audit.py
    ```
 
-6. Expected output. With `MAX_WITNESSES = 16` the solver exhausts the bundled feasible set (3 non-senior age buckets × 4 coverage bands = 12 counterexamples) and reports `status: OPTIMAL`. Solver build strings, exact wall times, and per-solution row ordering will vary across runs; the *set* of 12 returned witnesses is stable because the search exhausts:
+6. Expected output. The audit loop processes the three bundled properties in turn. For each FAIL the witness table prints inline (under the property's verdict line); the verdict matrix follows at the end. With `MAX_WITNESSES = 16` each FAIL solve exhausts the bundled feasible set (3 non-senior age buckets × 4 coverage bands = 12 chronic non-senior counterexamples) and reports `status: OPTIMAL`. Per-solution row ordering and wall times will vary across runs; the *set* of returned witnesses per property is stable because the search exhausts. Abridged output (witness tables for FAILs are shown for property 1 only; property 2's witness set is identical):
+
    ```text
-   Solve result:
-   • status: OPTIMAL
-   • objective: 0
-   • solve time: 1.27s
-   • num_points: 12
-   • solver: MiniZinc_unknown
+   ===== Auditing property 1/3: frail_implies_review =====
+   Description: every frail applicant goes through manual review
+   ... [problem.display() and solve progress] ...
+   Verdict: FAIL  (12 witness(es), status=OPTIMAL)
 
-   Audit result: FAIL (ruleset has counterexamples) -- 12 counterexample applicant(s) found (status: OPTIMAL). Each witness disproves the property under the encoded ruleset; witnesses below.
+   Witnesses (up to 16 per run):
+      solution age_years has_chronic coverage_dollars is_senior is_frail is_manual_review
+   0         0        55           1          1000000         0        1                0
+   1         1        55           1           500000         0        1                0
+   2         2        55           1           250000         0        1                0
+   3         3        55           1           100000         0        1                0
+   4         4        28           1           250000         0        1                0
+   ...      (12 rows total)
 
-   Counterexample witnesses (up to 16 per run):
-      solution  age_years  has_chronic  coverage_dollars  is_senior  is_frail  is_manual_review
-   0         0         55            1           1000000          0         1                 0
-   1         1         45            1           1000000          0         1                 0
-   2         2         28            1           1000000          0         1                 0
-   3         3         45            1            100000          0         1                 0
-   4         4         45            1            250000          0         1                 0
-   5         5         45            1            500000          0         1                 0
-   6         6         55            1            250000          0         1                 0
-   7         7         28            1            250000          0         1                 0
-   8         8         55            1            100000          0         1                 0
-   9         9         55            1            500000          0         1                 0
-   10       10         28            1            100000          0         1                 0
-   11       11         28            1            500000          0         1                 0
+   ===== Auditing property 2/3: chronic_implies_review =====
+   Description: every chronic-condition applicant goes through manual review
+   Verdict: FAIL  (12 witness(es), status=OPTIMAL)
+   ... [12 witnesses, same chronic-non-senior set] ...
+
+   ===== Auditing property 3/3: senior_implies_review =====
+   Description: every senior applicant goes through manual review
+   Verdict: PASS  (0 witness(es), status=INFEASIBLE)
+
+   ================================================================================
+   Audit report (3 properties: 1 PASS, 2 FAIL, 0 INCONCLUSIVE)
+   ================================================================================
+     Property                   Verdict         Witnesses  Description
+     ------------------------------------------------------------------------------
+     frail_implies_review       FAIL                   12  every frail applicant goes through manual review
+     chronic_implies_review     FAIL                   12  every chronic-condition applicant goes through manual review
+     senior_implies_review      PASS                    0  every senior applicant goes through manual review
    ```
 
-   Each witness row is one applicant who falsifies the property "every frail applicant goes through manual review": `is_frail == 1` (because `has_chronic == 1` -- chronic-condition applicants are frail by the rule book) and `is_manual_review == 0` (because the buggy rule only flags seniors and these applicants are below the 70 threshold). The verdict line says **FAIL** to mean *the ruleset under audit fails the property* -- the audit tool itself ran cleanly; FAIL is the audit's *finding*, not a template error. The 12 witnesses span all three non-senior age buckets and all four coverage bands -- enough variation for the actuary to confirm the failure mode is structural, not specific to one age or coverage value. Lower `MAX_WITNESSES` below the feasible-set size (e.g. 4) to demonstrate the `SOLUTION_LIMIT` outcome where the solver returns a sample and signals that more witnesses may exist.
+   Each FAIL witness row is one applicant who falsifies that property: `is_frail == 1` (or `has_chronic == 1`, for property 2) and `is_manual_review == 0` -- because the buggy rule only flags seniors and these applicants are below the 70 threshold. The verdict word **FAIL** means *the ruleset under audit fails the property* -- the audit tool itself ran cleanly; FAIL is the audit's *finding*, not a template error. **PASS** on property 3 means the solver proved no counterexample exists -- the buggy rule literally encodes "manual review = senior", so "every senior gets manual review" is trivially satisfied. The mixed-verdict matrix at the bottom is the audit's headline deliverable: a single run distinguishes properties the ruleset satisfies from those it violates. Lower `MAX_WITNESSES` below the feasible-set size (e.g. 4) to demonstrate the `SOLUTION_LIMIT` outcome where the solver returns a sample and signals that more witnesses may exist.
 
 ## Template structure
 ```text
@@ -136,7 +147,7 @@ The bundled ruleset has a deliberate bug: `is_manual_review` is defined as "seni
 
 ## How it works
 
-The template encodes an underwriting ruleset, a property to audit, and a counterexample IC; multi-solution enumeration surfaces K distinct witnesses showing where the property fails. The script consists of these patterns:
+The template builds the rule pack and the property catalog as separate artifacts, then runs a per-property audit loop. Each iteration constructs a fresh `Problem`, wires in the rule pack and that property's counterexample ICs, and solves in multi-solution mode. Verdicts are stashed and printed as a matrix at the end. The script consists of these patterns:
 
 **Free decisions describe what an applicant looks like.** Three integer/binary scalar decisions: which age bucket the applicant falls into, whether they have a chronic condition, which coverage band they sit in. Each is `model.Relationship(f"{Integer:name}")` (the unparented scalar shape used by the `rosenbrock` prescriptive example), not a property on a singleton `Applicant` concept. The solver picks values for these on every solution.
 
@@ -165,7 +176,7 @@ senior_def_neg_ic = model.where(AgeBucket.age_years < SENIOR_THRESHOLD_YEARS).re
 )
 ```
 
-**Frail indicator via OR-arithmetic equivalence.** `is_frail = is_senior OR has_chronic`. The standard CSP encoding for OR over binaries is three linear ICs -- `y >= a`, `y >= b`, `y <= a + b` -- which together force `y` to equal `max(a, b)`. All three are pure relational arithmetic, so `verify()` re-evaluates them in the returned solution:
+**Frail indicator via OR-arithmetic equivalence.** `is_frail = is_senior OR has_chronic`. The standard CSP encoding for OR over binaries is three linear ICs -- `y >= a`, `y >= b`, `y <= a + b` -- which together force `y` to equal `max(a, b)`. All three are pure relational arithmetic:
 
 ```python
 frail_lb_senior_ic = model.require(is_frail >= is_senior)
@@ -179,18 +190,74 @@ frail_ub_ic = model.require(is_frail <= is_senior + has_chronic)
 manual_review_eq_ic = model.require(is_manual_review == is_senior)
 ```
 
-**Counterexample IC asserts property failure.** The property "every frail applicant goes through manual review" is `is_frail <= is_manual_review`. The audit asks for *applicants where the property fails* -- `is_frail == 1 AND is_manual_review == 0` -- encoded as a hard IC below. If any feasible assignment satisfies it, the property does not hold; if the model is INFEASIBLE the property holds:
+The full rule pack is then bundled into a list for one-pass attachment in the audit loop:
 
 ```python
-counterexample_frail_ic = model.require(is_frail == 1)
-counterexample_no_review_ic = model.require(is_manual_review == 0)
+RULE_PACK_ICS = [
+    senior_def_pos_ic, senior_def_neg_ic,
+    frail_lb_senior_ic, frail_lb_chronic_ic, frail_ub_ic,
+    manual_review_eq_ic,
+]
 ```
 
-**Multi-solution enumeration via `Variable.values(solution_index, value)`.** Capturing the variable subconcept from `solve_for(...)` exposes a `.values(sol_idx, val)` relationship that indexes per-solution outputs. Binding the value slot directly to a reference Concept's `.id` walks the chosen ID back to that row's columns in one step; the binary indicator decisions read out into Integer placeholders for display:
+**Property catalog as separately-authored spec.** Each property is a `(name, description, counterexample_builder)` tuple. The builder is a thunk that constructs the property's counterexample ICs on demand -- lazy because the audit loop calls it once per iteration and needs fresh IC handles to pass to `problem.satisfy(...)`. The counterexample for a property `P` is the *negation* of `P`: if the solver finds a feasible assignment satisfying the counterexample, `P` does not hold:
 
 ```python
-problem.solve("minizinc", time_limit_sec=60, solution_limit=MAX_WITNESSES)
+PROPERTIES = [
+    (
+        "frail_implies_review",
+        "every frail applicant goes through manual review",
+        lambda: [
+            model.require(is_frail == 1),
+            model.require(is_manual_review == 0),
+        ],
+    ),
+    (
+        "chronic_implies_review",
+        "every chronic-condition applicant goes through manual review",
+        lambda: [
+            model.require(has_chronic == 1),
+            model.require(is_manual_review == 0),
+        ],
+    ),
+    (
+        "senior_implies_review",
+        "every senior applicant goes through manual review",
+        lambda: [
+            model.require(is_senior == 1),
+            model.require(is_manual_review == 0),
+        ],
+    ),
+]
+```
 
+**Fresh-Problem-per-property audit loop.** Constraints on a `Problem` are add-only -- there is no API to remove a previous property's counterexample ICs. The audit loop builds a fresh `Problem` per property, re-binds every scalar decision via `solve_for(...)`, wires in the rule pack and the property's counterexample ICs, and solves. `populate=False` skips the first-solution write-back to the scalar relationships; every witness is read through `Variable.values(...)`, so the populated state is unused:
+
+```python
+for prop_idx, (name, description, counterexample_fn) in enumerate(PROPERTIES):
+    problem = Problem(model, Integer)
+    age_bucket_var = problem.solve_for(
+        age_bucket_id, type="int", name="age_bucket",
+        lower=int(age_buckets_csv["id"].min()),
+        upper=int(age_buckets_csv["id"].max()),
+        populate=False,
+    )
+    # ... five more solve_for(...) calls for the other scalar decisions ...
+
+    for rule_ic in RULE_PACK_ICS:
+        problem.satisfy(rule_ic)
+    for counterexample_ic in counterexample_fn():
+        problem.satisfy(counterexample_ic)
+
+    problem.solve("minizinc", time_limit_sec=60, solution_limit=MAX_WITNESSES)
+    si = problem.solve_info()
+    verdict = _classify_verdict(si)
+    # ... witness query (FAIL only) and stash result for the verdict matrix ...
+```
+
+**Multi-solution enumeration via `Variable.values(solution_index, value)`.** Inside the loop, the `Variable` subconcepts returned by `solve_for(...)` expose `.values(sol_idx, val)` relationships that index per-solution outputs. Binding the value slot directly to a reference Concept's `.id` walks the chosen ID back to that row's columns in one step; binary indicator decisions read out into Integer placeholders:
+
+```python
 sol_idx = Integer.ref()
 chr_v = Integer.ref()
 sen_v = Integer.ref()
@@ -216,22 +283,22 @@ model.select(
 
 ## Customize this template
 
-- **Audit a corrected ruleset** by changing the buggy rule. `is_manual_review` is encoded as a single equality IC (`manual_review_eq_ic`) pinning `is_manual_review == is_senior`; replace it with the OR-arithmetic shape that pins `is_manual_review == is_frail` (i.e. `>= is_senior`, `>= has_chronic`, `<= is_senior + has_chronic`) and the model becomes infeasible. `solve_info().termination_status` reports `INFEASIBLE` and `solve_info().num_points` is 0; the script prints `Audit result: PASS -- proven no counterexample applicants exist.` That is the audit's pass signal: no counterexample exists, so the property holds.
-- **Audit a different property** by **replacing** the two `counterexample_*` ICs. Do not add new counterexample ICs alongside the existing ones -- leaving `is_frail == 1` and `is_manual_review == 0` in place silently turns the audit into a conjunction of both properties, which is almost never what you want. Example: to audit "no senior is in the cheapest coverage band", replace them with `is_senior == 1` and `coverage_band_id == 1` (assuming band 1 is the cheapest). Witnesses then show seniors who slipped into the lowest band.
-- **Extend to a fleet of N applicants** by reintroducing an `Applicant` concept and lifting each scalar decision to a property on it (e.g. `Applicant.age_bucket_id = model.Property(f"{Applicant} in age bucket {Integer:age_bucket_id}")`). Then scope every IC below with `model.where(Applicant)` (or a tighter applicant filter) -- unconditional `model.require(...)` would otherwise demand that *every* applicant be a counterexample rather than finding a single applicant that is. The scalar shape used here is the right default at N=1; the per-applicant shape becomes mandatory the moment you bind the audit to a real applicant table.
-- **Add more rule indicators** by introducing additional decisions and OR/AND-arithmetic ICs. Conjunction `y = a AND b` is encoded as `y <= a, y <= b, y >= a + b - 1` -- the dual of the OR pattern.
-- **Raise the witness count on a real ruleset** by increasing `MAX_WITNESSES`. Production audits typically want 50--500 witnesses to cover a rule pack's failure modes.
+- **Add a property to the catalog.** Append a new `(name, description, counterexample_builder)` tuple to `PROPERTIES`. The builder is a thunk returning the property's counterexample ICs (the *negation* of the property). Example: to audit "no senior is in the cheapest coverage band", add `("no_senior_cheap_band", "no senior is in the cheapest coverage band", lambda: [model.require(is_senior == 1), model.require(coverage_band_id == 1)])`. The audit loop picks it up automatically -- no other code needs to change.
+- **Audit a corrected ruleset** by changing the buggy rule. `is_manual_review` is encoded as a single equality IC (`manual_review_eq_ic`) pinning `is_manual_review == is_senior`; replace it with the OR-arithmetic shape that pins `is_manual_review == is_frail` (i.e. `>= is_senior`, `>= has_chronic`, `<= is_senior + has_chronic`) and remember to update `RULE_PACK_ICS` to match. With the fix in place, the previously FAILing properties flip to PASS and the verdict matrix reports 3 PASS / 0 FAIL.
+- **Extend to a fleet of N applicants** by reintroducing an `Applicant` concept and lifting each scalar decision to a property on it (e.g. `Applicant.age_bucket_id = model.Property(f"{Applicant} in age bucket {Integer:age_bucket_id}")`). Then scope every IC -- including each property's counterexample ICs in the catalog -- with `model.where(Applicant)` (or a tighter applicant filter). The scalar shape used here is the right default at N=1; the per-applicant shape becomes mandatory the moment you bind the audit to a real applicant table.
+- **Add more rule indicators** by introducing additional decisions and OR/AND-arithmetic ICs, then appending the new ICs to `RULE_PACK_ICS`. Conjunction `y = a AND b` is encoded as `y <= a, y <= b, y >= a + b - 1` -- the dual of the OR pattern.
+- **Raise the witness count on a real ruleset** by increasing `MAX_WITNESSES`. Production audits typically want 50--500 witnesses per FAILed property to cover the rule pack's failure modes.
 - **Switch from "any witness" to "minimum-violation witness"** by adding `problem.minimize(...)` over a violation severity score and `solution_limit=1`. Useful for ranking failures when triage capacity is limited.
-- **Adapt to a different regulated domain** by editing the rule indicators and counterexample IC. The shape carries directly to bank AML rules (`is_pep AND is_high_velocity AND is_auto_approved`), healthcare prior-auth (`requires_pa AND was_auto_paid`), manufacturing segregation-of-duties (`is_requester AND is_approver AND is_executor`), SaaS retention (`is_paying AND is_churn_risk AND is_in_low_touch_segment`).
+- **Adapt to a different regulated domain** by editing the rule pack and the property catalog. The shape carries directly to bank AML rules (`is_pep AND is_high_velocity AND is_auto_approved`), healthcare prior-auth (`requires_pa AND was_auto_paid`), manufacturing segregation-of-duties (`is_requester AND is_approver AND is_executor`), SaaS retention (`is_paying AND is_churn_risk AND is_in_low_touch_segment`).
 
 ## Troubleshooting
 
 <details>
-  <summary>Solver returns INFEASIBLE / num_points = 0</summary>
+  <summary>A property reports PASS / INFEASIBLE when you expected FAIL</summary>
 
-- The audited property holds: no feasible applicant falsifies it under the bundled ruleset. This is the audit's *pass* signal -- the script prints `Audit result: PASS`. Confirm by checking `solve_info().termination_status` -- the string `INFEASIBLE` means no counterexample exists.
-- If you expected a witness and got none, double-check the counterexample IC: did you assert `is_frail == 1 AND is_manual_review == 0`, or did you accidentally assert `is_frail == 0`? The IC must point at the *negation* of the property.
-- Empty reference data: confirm `data/age_buckets.csv` has at least one non-senior bucket (age < `SENIOR_THRESHOLD_YEARS`). The buggy rule's gap is chronic + non-senior applicants slipping past manual review; if every bucket is at or above the threshold, all applicants are flagged as senior and the audit correctly finds no counterexample (PASS).
+- The audited property holds: no feasible applicant falsifies it under the bundled ruleset. This is the audit's *pass* signal for that property -- the verdict line reports `Verdict: PASS  (0 witness(es), status=INFEASIBLE)`. For the bundled catalog this is the expected outcome for `senior_implies_review` because the buggy rule literally encodes "manual review = senior".
+- If you expected a witness and got none for a different property, double-check the counterexample builder: did the thunk return ICs that assert the *negation* of the property (e.g. `is_frail == 1 AND is_manual_review == 0` for "every frail applicant goes through manual review")? An accidentally-positive IC (`is_frail == 0`) would not match the property's negation.
+- Empty reference data: confirm `data/age_buckets.csv` has at least one non-senior bucket (age < `SENIOR_THRESHOLD_YEARS`). The buggy rule's gap is chronic + non-senior applicants slipping past manual review; if every bucket is at or above the threshold, all applicants are flagged as senior and `frail_implies_review` / `chronic_implies_review` correctly find no counterexample (PASS for the wrong reason).
 
 </details>
 
