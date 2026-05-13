@@ -33,6 +33,18 @@ Run (standalone -- no upstream prerequisite):
 
 Run (skip GNN, use precomputed forecasts):
     python datacenter_compute_allocation.py --no-gnn
+
+Output:
+    Prints per-stage diagnostics -- ontology load summary, GNN per-lab
+    multipliers (frontier ramp 1.05+, Stability < 1.0), Compatibility table
+    size and P0/P1/P2 priority counts, top-10 gating workloads by reverse-
+    PageRank, MIP termination status, per-cell summary table (33 OPTIMAL +
+    15 INFEASIBLE), two Pareto frontiers (margin x revenue and diversity
+    x revenue at the 100pct envelope) -- and a final AllocationPlan
+    singleton row (chosen_envelope, chosen_margin, chosen_diversity,
+    revenue_usd, total_cost_usd, realized_margin, anchor_share, n_assigned,
+    status, binding_axis) plus Assignment.is_chosen row count, showing
+    the headline plan as queryable ontology.
 """
 
 import argparse
