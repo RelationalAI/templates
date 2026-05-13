@@ -18,7 +18,9 @@ as ontology so the plan survives the chain run.
   ─────────────────────────────────────────────────────────────────
   STAGE 2  Rules        ──►  Compatibility(workload, gpu_pool) (~1,900)
                              Workload.priority_tier            (110)
-                             P0 = 15, P1 = 80, P2 = 15 (weights 100/10/1).
+                             Workload.under_provisioning_penalty
+                             P0 = 15 (wt 100, pen 1.0), P1 = 80 (10, 0.3),
+                             P2 = 15 (1, 0.0). Asymmetric failure pricing.
   ─────────────────────────────────────────────────────────────────
   STAGE 3  Graph        ──►  Workload.gating_score             (110)
                  (downstream- Frontier pretrain shards (GPT/Grok/Claude-Next)
@@ -30,7 +32,10 @@ as ontology so the plan survives the chain run.
                              110 assigned · $25.3M revenue · 83% margin
                              · 95% anchor · binding axis: power envelope.
                              Persisted as AllocationPlan singleton +
-                             Assignment.is_chosen (110 rows).
+                             Assignment.is_chosen (110 rows) +
+                             DemandScenarioOutlook (4 risk scenarios:
+                             expected / diffusion_slowdown / scaling_break
+                             / frontier_loss with realized + stranded $).
   ─────────────────────────────────────────────────────────────────
 ```
 
@@ -103,12 +108,12 @@ Frontier labs (Anthropic Research, OpenAI Pretrain, xAI Internal) carry the 15 P
 **Prompt**
 
 ```
-/rai-rules-authoring Which (workload, GPU pool) pairs are technically eligible? A pair qualifies when (1) the pool's per-GPU memory meets the workload's mem_required_gb and (2) the pool's gpu_type is in the workload's allowlist. Also classify each workload's priority tier from its lab's contract_tier — frontier-anchor → P0 (weight 100), committed → P1 (10), on-demand → P2 (1) — and write the tier and numeric weight back.
+/rai-rules-authoring Which (workload, GPU pool) pairs are technically eligible? A pair qualifies when (1) the pool's per-GPU memory meets the workload's mem_required_gb and (2) the pool's gpu_type is in the workload's allowlist. Also classify each workload's priority tier from its lab's contract_tier — frontier-anchor → P0 (weight 100), committed → P1 (10), on-demand → P2 (1) — and write the tier, numeric weight, and an under-provisioning penalty (P0 = 1.0, P1 = 0.3, P2 = 0.0) the optimizer can amplify against to model asymmetric failure modes (unfilled anchor seats cost more than the foregone revenue).
 ```
 
 **Response**
 
-`Compatibility(workload, gpu_pool)` precompute holds 1,918 eligible pairs; `Workload.priority_tier` distribution is P0 = 15 / P1 = 80 / P2 = 15 with weights 100 / 10 / 1. The numeric weights emulate lex-priority inside a single weighted-sum MIP, matching production cluster schedulers (Borg, Singularity, MAST).
+`Compatibility(workload, gpu_pool)` precompute holds 1,918 eligible pairs; `Workload.priority_tier` distribution is P0 = 15 / P1 = 80 / P2 = 15 with weights 100 / 10 / 1 and under-provisioning penalties 1.0 / 0.3 / 0.0. The numeric weights emulate lex-priority inside a single weighted-sum MIP, matching production cluster schedulers (Borg, Singularity, MAST); the under-provisioning penalty enters Stage 4's objective as a multiplier on assignment reward so an unfilled anchor counts as a 2× foregone-revenue loss, not 1×.
 
 ### 7. Score downstream gating
 
@@ -127,31 +132,31 @@ Frontier pretrain shards top the score: GPT-Next pretrain shard 02 ≈ 0.031, Gr
 **Prompt**
 
 ```
-/rai-prescriptive-problem-formulation Which workloads should be assigned to which (DC, GPU pool) under three scenario axes — power envelope (85% / 100% / 110% of approved_mw), gross-margin floor (unconstrained / 75% / 80% / 85%), and anchor-concentration cap (none / 70% / 50% / 40% with workload-type floor) — solved as one MIP indexed by all three? Stay within per-pool GPU capacity and per-DC power. Maximize Σ priority_weight × gating_score × projected_demand_growth × strategic_value_usd. Per-cell INFEASIBLE is diagnostic — the global solve should not fail when one cell binds too tight.
+/rai-prescriptive-problem-formulation Which workloads should be assigned to which (DC, GPU pool) under three scenario axes — power envelope (85% / 100% / 110% of approved_mw, tracing the lower-cone / expected / upper-cone planning points), gross-margin floor (unconstrained / 75% / 80% / 85%), and anchor-concentration cap (none / 70% / 50% / 40% with workload-type floor) — solved as one MIP indexed by all three? Stay within per-pool GPU capacity and per-DC power. Maximize Σ priority_weight × gating_score × projected_demand_growth × strategic_value_usd × (1 + under_provisioning_penalty) so anchor under-provisioning is priced asymmetrically. Per-cell INFEASIBLE is diagnostic — the global solve should not fail when one cell binds too tight.
 ```
 
 **Response**
 
 HiGHS solves 48 cells in one pass: 33 OPTIMAL + 15 INFEASIBLE (at `time_limit_sec = 900` returns a feasible-but-not-proven-optimal solution; `TIME_LIMIT` is signal, not error). Baseline cell (100pct / unconstrained / none): 110 workloads, $25.28M revenue, 83% realized margin, 95% anchor share. The strictest cells (`anchor_max_40pct_with_type_floor` at any envelope; `anchor_max_50pct` paired with the 85% margin floor) return INFEASIBLE because the type-floor and anchor-cap combination forbids the pretrain volume that supplies the margin.
 
-### 9. Read the frontiers
+### 9. Read the frontiers and the demand-risk overlay
 
 **Prompt**
 
 ```
-/rai-prescriptive-results-interpretation What's the headline plan for the unconstrained baseline cell — revenue, total cost, realized margin, anchor share, n_assigned, and which axis would bind first if we tightened it? Where do the two Pareto frontiers (margin × revenue, diversity × revenue) cliff, and what does each cliff cost?
+/rai-prescriptive-results-interpretation What's the headline plan for the unconstrained baseline cell — revenue, total cost, realized margin, anchor share, n_assigned, and which axis would bind first if we tightened it? Where do the two Pareto frontiers (margin × revenue, diversity × revenue) cliff, and what does each cliff cost? Then replay the chosen plan under three demand-risk scenarios (diffusion slowdown, scaling-law plateau, frontier-lab displacement) to surface stranded-capacity exposure — anchor revenue is contractual, but opportunistic seats only realize a fraction of forecast under risk.
 ```
 
 **Response**
 
-Baseline cell: 110 workloads, $25.28M revenue, $4.19M total cost, 83% margin, 95% anchor, binding axis is the power envelope (no margin or diversity constraint active here). Margin frontier: revenue holds at $25.3M at 75% / 80% floors but cliffs to $22.0M at 85% (89 workloads dropped, 100% anchor). Diversity frontier: $25.3M with no cap → $4.4M at 70% → $2.6M at 50% (CoreWeave-target shape) → INFEASIBLE at 40% with type-floor.
+Baseline cell: 110 workloads, $25.28M revenue, $4.19M total cost, 83% margin, 95% anchor, binding axis is the power envelope (no margin or diversity constraint active here). Margin frontier: revenue holds at $25.3M at 75% / 80% floors but cliffs to $22.0M at 85% (89 workloads dropped, 100% anchor). Diversity frontier: $25.3M with no cap → $4.4M at 70% → $2.6M at 50% (CoreWeave-target shape) → INFEASIBLE at 40% with type-floor. Demand-risk overlay: P0 anchor revenue (~$23.9M, 95% of the envelope) is contractually locked, leaving only ~$1.33M of P1/P2 opportunistic revenue exposed — stranded exposure is ~$200K (0.8%) under diffusion-slowdown, ~$400K (1.6%) under scaling-break, and ~$667K (2.6%) under frontier-loss. The stranded-capacity envelope is small precisely because the headline plan is anchor-heavy; a more diverse cell (e.g., `anchor_max_70pct`) would have a much wider risk band — visible in `DemandScenarioOutlook` when the overlay is replayed against that cell.
 
 ### 10. Persist solution concepts into the ontology
 
 **Prompt**
 
 ```
-/rai-ontology-design Add an AllocationPlan singleton holding the baseline-cell summary (chosen envelope/margin/diversity, revenue_usd, total_cost_usd, realized_margin, anchor_share, n_assigned, status, binding_axis) and an Assignment.is_chosen unary Relationship narrowing Assignment to the decision rows in the chosen cell.
+/rai-ontology-design Add an AllocationPlan singleton holding the baseline-cell summary (chosen envelope/margin/diversity, revenue_usd, total_cost_usd, realized_margin, anchor_share, n_assigned, status, binding_axis), an Assignment.is_chosen unary Relationship narrowing Assignment to the decision rows in the chosen cell, and a DemandScenario / DemandScenarioOutlook pair carrying the four risk scenarios and their realized/stranded revenue so the overlay survives the chain run.
 ```
 
 **Response**

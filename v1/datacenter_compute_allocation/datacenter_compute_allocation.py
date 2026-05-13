@@ -33,14 +33,17 @@ Run (skip GNN, use precomputed forecasts):
 Output:
     Prints per-stage diagnostics -- ontology load summary, GNN per-lab
     multipliers (frontier ramp 1.05+, Stability < 1.0), Compatibility table
-    size and P0/P1/P2 priority counts, top-10 gating workloads by reverse-
-    PageRank, MIP termination status, per-cell summary table (33 OPTIMAL +
-    15 INFEASIBLE), two Pareto frontiers (margin x revenue and diversity
-    x revenue at the 100pct envelope) -- and a final AllocationPlan
-    singleton row (chosen_envelope, chosen_margin, chosen_diversity,
-    revenue_usd, total_cost_usd, realized_margin, anchor_share, n_assigned,
-    status, binding_axis) plus Assignment.is_chosen row count, showing
-    the headline plan as queryable ontology.
+    size and P0/P1/P2 priority counts with under-provisioning penalties,
+    top-10 gating workloads by downstream reach, MIP termination status,
+    per-cell summary table (33 OPTIMAL + 15 INFEASIBLE), two Pareto frontiers
+    (margin x revenue and diversity x revenue at the 100pct envelope), and
+    a DemandScenario overlay replaying the chosen plan under risk scenarios
+    (expected / diffusion_slowdown / scaling_break / frontier_loss) with
+    realized + stranded revenue. The headline plan persists as an
+    AllocationPlan singleton plus Assignment.is_chosen unary Relationship
+    over the chosen-cell decision rows, and the demand overlay persists
+    as a DemandScenarioOutlook per scenario -- all queryable as ontology
+    after the script exits.
 """
 
 import argparse
@@ -697,6 +700,21 @@ def stage2_rules(ctx):
     model.where(Workload.priority_tier == "P1").define(Workload.priority_weight(10.0))
     model.where(Workload.priority_tier == "P2").define(Workload.priority_weight(1.0))
 
+    # Asymmetric failure mode: under-provisioning an anchor (P0) carries an
+    # SLA / contract / reputational penalty that is a multiple of the raw
+    # foregone revenue; missing a P2 eval does not. Stage 4 multiplies the
+    # assignment reward by (1 + under_provisioning_penalty) so the solver
+    # treats anchor placement as load-bearing, not just revenue-positive.
+    Workload.under_provisioning_penalty = model.Property(
+        f"{Workload} has {Float:under_provisioning_penalty} under-provisioning penalty"
+    )
+    model.where(Workload.priority_tier == "P0").define(
+        Workload.under_provisioning_penalty(1.0))
+    model.where(Workload.priority_tier == "P1").define(
+        Workload.under_provisioning_penalty(0.3))
+    model.where(Workload.priority_tier == "P2").define(
+        Workload.under_provisioning_penalty(0.0))
+
     # Composite eligibility: positive form of (passes_gpu_type AND passes_memory).
     # Iterates over WorkloadGpuCompat rows -- one per allowed (workload, gpu_type)
     # pair -- joined to GpuPool by gpu_type.
@@ -986,14 +1004,19 @@ def stage4_prescriptive(ctx):
                 * sum(x7).per(PowerEnvelopeLevel, MarginFloor, DiversityCap)
         ))
 
-    # ---- Objective: four-factor strategic value ----
+    # ---- Objective: four-factor strategic value, amplified by under-provisioning penalty ----
+    # The (1 + under_provisioning_penalty) multiplier captures asymmetric failure modes:
+    # an unfilled anchor seat (P0) costs more than the foregone revenue (SLA / contract /
+    # reputational penalty), while an unfilled research eval costs only the revenue.
+    # Penalty values: P0 = 1.0 (2x amplification), P1 = 0.3, P2 = 0.0.
     x_obj = Float.ref()
     problem.maximize(
         sum(x_obj
             * Assignment.workload.priority_weight
             * Assignment.workload.gating_score
             * Assignment.workload.projected_demand_growth
-            * Assignment.workload.strategic_value_usd)
+            * Assignment.workload.strategic_value_usd
+            * (1.0 + Assignment.workload.under_provisioning_penalty))
         .where(Assignment.x_assign(PowerEnvelopeLevel, MarginFloor, DiversityCap, x_obj))
     )
 
@@ -1285,6 +1308,74 @@ def _report_pareto(ctx, problem):
     ).where(Assignment.is_chosen()).to_df()
     n_chosen = int(n_chosen_df["n"].iloc[0]) if len(n_chosen_df) else 0
     print(f"  Assignment.is_chosen rows: {n_chosen} (matches n_assigned above)")
+
+    # ---- DemandScenario overlay: stranded-capacity exposure under risk scenarios ----
+    # The chosen plan is locked in, but lab-side demand for the assigned workloads
+    # can soften from the GNN's point forecast. Three risk scenarios scale the
+    # demand-realization factor; revenue on anchor contracts (P0) is contractual
+    # and unaffected, while opportunistic seats (P1/P2) realize only `factor`
+    # of their assigned revenue. The delta from "expected" is stranded capacity:
+    # GPUs already powered, depreciation already accruing, but no workload running.
+    DemandScenario = model.Concept("DemandScenario", identify_by={"name": String})
+    DemandScenario.factor = model.Property(f"{DemandScenario} has {Float:factor}")
+    DemandScenario.label = model.Property(f"{DemandScenario} has {String:label}")
+    ds_data = pd.DataFrame([
+        {"name": "expected",            "factor": 1.00, "label": "baseline forecast"},
+        {"name": "diffusion_slowdown",  "factor": 0.85, "label": "customer adoption hits change-management limits"},
+        {"name": "scaling_break",       "factor": 0.70, "label": "capability plateau reduces incremental demand"},
+        {"name": "frontier_loss",       "factor": 0.50, "label": "competitive displacement of one or more anchor labs"},
+    ])
+    ds_src = model.data(ds_data)
+    model.define(DemandScenario.new(
+        name=ds_src.name, factor=ds_src.factor, label=ds_src.label,
+    ))
+
+    # Pull the chosen-cell assignments + their priority tier + value.
+    chosen_df = model.select(
+        Assignment.workload.id.alias("workload_id"),
+        Assignment.workload.priority_tier.alias("priority_tier"),
+        Assignment.workload.strategic_value_usd.alias("strategic_value_usd"),
+    ).where(Assignment.is_chosen()).to_df()
+
+    overlay_rows = []
+    expected_revenue = float(plan_df["revenue_usd"].iloc[0]) if len(plan_df) else 0.0
+    for _, dsr in ds_data.iterrows():
+        f = float(dsr["factor"])
+        # P0 revenue is contractual (factor = 1.0); P1/P2 realize `factor`.
+        p0_rev = chosen_df.loc[chosen_df["priority_tier"] == "P0", "strategic_value_usd"].sum()
+        non_p0_rev = chosen_df.loc[chosen_df["priority_tier"] != "P0", "strategic_value_usd"].sum()
+        realized = float(p0_rev + non_p0_rev * f)
+        stranded = max(expected_revenue - realized, 0.0)
+        overlay_rows.append({
+            "scenario": dsr["name"],
+            "factor": f,
+            "realized_revenue_usd": realized,
+            "stranded_revenue_usd": stranded,
+            "stranded_pct": (stranded / expected_revenue * 100.0) if expected_revenue else 0.0,
+        })
+
+    print("\n  DemandScenario overlay (chosen plan replayed under risk):")
+    overlay_df = pd.DataFrame(overlay_rows)
+    print(overlay_df.to_string(index=False, float_format=lambda v: f"{v:,.2f}"))
+
+    # Persist the overlay as ontology so it's queryable post-run.
+    DemandScenarioOutlook = model.Concept(
+        "DemandScenarioOutlook",
+        identify_by={"scenario": DemandScenario},
+    )
+    DemandScenarioOutlook.realized_revenue_usd = model.Property(
+        f"{DemandScenarioOutlook} has {Float:realized_revenue_usd}"
+    )
+    DemandScenarioOutlook.stranded_revenue_usd = model.Property(
+        f"{DemandScenarioOutlook} has {Float:stranded_revenue_usd}"
+    )
+    overlay_src = model.data(overlay_df.rename(columns={"scenario": "scenario_name"}))
+    DSRef = DemandScenario.ref()
+    model.where(DSRef.name == overlay_src.scenario_name).define(
+        o := DemandScenarioOutlook.new(scenario=DSRef),
+        o.realized_revenue_usd(overlay_src.realized_revenue_usd),
+        o.stranded_revenue_usd(overlay_src.stranded_revenue_usd),
+    )
 
 
 if __name__ == "__main__":
