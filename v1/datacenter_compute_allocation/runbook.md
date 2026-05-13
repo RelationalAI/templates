@@ -65,7 +65,7 @@ Concepts: `DataCenterRequest`, `GpuPool`, `AILab`, `Workload`, `WorkloadDependen
 
 **Response**
 
-12 concepts: 5 `DataCenterRequest` (xAI Colossus, Microsoft Horizon, CoreWeave Austin, Crusoe Permian, Oracle Coastal), 28 `GpuPool`, 6 `AILab`, 110 `Workload`, 138 `WorkloadDependency`, 2,190 `LabMetric` covering 365 days × 6 labs, plus 3 / 4 / 4 rows on the three Scenario Concepts (3 × 4 × 4 = 48 cells).
+11 concepts: 5 `DataCenterRequest` (xAI Colossus, Microsoft Horizon, CoreWeave Austin, Crusoe Permian, Oracle Coastal), 28 `GpuPool`, 6 `AILab`, 110 `Workload`, 181 `WorkloadGpuCompat` (workload-side GPU-type allowlist as a composite-key edge concept), 138 `WorkloadDependency`, 2,190 `LabMetric` covering 365 days × 6 labs (date range 2025-05-11 .. 2026-05-10), 6 `LabGrowth` placeholders, plus 3 / 4 / 4 rows on the three Scenario Concepts (3 × 4 × 4 = 48 cells).
 
 ### 3. Discover reasoner questions
 
