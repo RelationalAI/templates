@@ -5,7 +5,6 @@ featured: false
 experience_level: intermediate
 industry: "Banking"
 reasoning_types:
-  - Rules-based
   - Prescriptive
 tags:
   - constraint-programming
