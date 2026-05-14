@@ -1,0 +1,13 @@
+deployment_id,name,tenant_id,replicas,max_per_zone_override
+1,web_alpha,1,8,
+2,api_alpha,1,4,
+3,cache_alpha,1,1,
+4,web_beta,2,8,
+5,api_beta,2,4,
+6,cache_beta,2,1,
+7,ml_gamma_train,3,4,4
+8,db_gamma,3,6,
+9,cache_gamma,3,1,
+10,web_delta,4,8,
+11,api_delta,4,4,
+12,cache_delta,4,1,
