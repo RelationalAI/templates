@@ -174,7 +174,6 @@ model.define(
 Deployment = model.Concept("Deployment", identify_by={"id": Integer})
 Deployment.name = model.Property(f"{Deployment} has {String:name}")
 Deployment.replicas = model.Property(f"{Deployment} has {Integer:replicas}")
-Deployment.storage_class = model.Property(f"{Deployment} has {String:storage_class}")
 Deployment.max_per_zone = model.Property(f"{Deployment} has {Integer:max_per_zone}")
 Deployment.tenant = model.Property(f"{Deployment} belongs to {Tenant:tenant}")
 dep_data = model.data(deployments_csv)
@@ -183,7 +182,6 @@ model.define(
         id=dep_data.deployment_id,
         name=dep_data.name,
         replicas=dep_data.replicas,
-        storage_class=dep_data.storage_class,
         max_per_zone=dep_data.max_per_zone,
     )
 )
