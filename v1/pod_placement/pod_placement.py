@@ -7,8 +7,9 @@ problem in RelationalAI:
   and GPU bin-packing budgets.
 - Tenant ``anti-affinity``: pods belonging to anti-affine tenants must
   not share a node (regulated multi-tenancy / isolation).
-- Storage-class ``affinity``: deployments declared affinity-paired
-  must co-locate (same node) when both placed.
+- Deployment co-location ``affinity``: deployments declared
+  affinity-paired (e.g. shared storage class, low-latency RDMA
+  peering) must co-locate (same node) when both placed.
 - Failure-domain ``spread``: replicas of one deployment are spread
   across zones (no more than ``ceil(replicas / num_zones)`` per zone,
   unless ``deployments.csv`` supplies an explicit
@@ -65,8 +66,15 @@ from relationalai.semantics.reasoners.prescriptive import Problem
 DATA_DIR = Path(__file__).parent / "data"
 
 # --------------------------------------------------
-# Load all CSVs upfront so pre-solve invariants can validate the data
-# integrity before any model.define rules are installed.
+# Load CSVs and pre-compute per-deployment failure-domain spread caps.
+# With N zones, at most ceil(replicas / N) replicas of any one
+# deployment land in any single zone -- unless the row supplies an
+# explicit `max_per_zone_override` (used for deployments where the
+# operator has accepted a wider blast radius, e.g. distributed-
+# training groups whose rack-clique requirement is incompatible with
+# cross-zone spread). Computed in Python and joined onto Deployment
+# as a data property so the spread IC reads as a plain relational
+# inequality.
 # --------------------------------------------------
 
 nodes_csv = read_csv(DATA_DIR / "nodes.csv")
@@ -77,15 +85,9 @@ da_csv = read_csv(DATA_DIR / "deployment_affinity.csv")
 pods_csv = read_csv(DATA_DIR / "pods.csv")
 dt_csv = read_csv(DATA_DIR / "distributed_training.csv")
 
-# Pre-compute per-deployment failure-domain spread caps. With N zones,
-# at most ceil(replicas / N) replicas of any one deployment land in
-# any single zone -- unless the row supplies an explicit
-# `max_per_zone_override` (used for deployments where the operator
-# has accepted a wider blast radius, e.g. distributed-training groups
-# whose rack-clique requirement is incompatible with cross-zone
-# spread). Computed in Python and joined onto Deployment as a data
-# property so the spread IC reads as a plain relational inequality.
 num_zones = nodes_csv["zone"].nunique()
+if num_zones == 0:
+    raise ValueError("nodes.csv must contain at least one row to define the cluster topology.")
 
 
 def _compute_max_per_zone(replicas, override):
@@ -345,8 +347,8 @@ anti_affinity_ic = model.where(
 ).require(xi + xj <= 1)
 problem.satisfy(anti_affinity_ic)
 
-# Storage-class affinity: for every ordered pair (Pi, Pj) whose
-# deployments are affinity-paired, the pods must agree on every
+# Deployment co-location affinity: for every ordered pair (Pi, Pj)
+# whose deployments are affinity-paired, the pods must agree on every
 # node's assignment bit -- i.e. they share the same single node when
 # both placed, and are simultaneously unplaced otherwise. For
 # multi-replica affinity-paired deployments, the per-node `xi == xj`

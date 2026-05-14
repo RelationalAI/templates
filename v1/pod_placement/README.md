@@ -1,6 +1,6 @@
 ---
 title: "Pod Placement"
-description: "Assign pods to nodes in a Kubernetes-style cluster subject to per-node CPU / memory / GPU bin-packing, pairwise tenant anti-affinity, storage-class affinity, failure-domain spread, gang-placement atomicity, and topology rack-clique rules. Pure CSP via MiniZinc / Chuffed."
+description: "Assign pods to nodes in a Kubernetes-style cluster subject to per-node CPU / memory / GPU bin-packing, pairwise tenant anti-affinity, deployment co-location affinity, failure-domain spread, gang-placement atomicity, and topology rack-clique rules. Pure CSP via MiniZinc / Chuffed."
 featured: false
 experience_level: intermediate
 industry: "Cloud infrastructure"
@@ -23,7 +23,7 @@ Multi-tenant Kubernetes / SaaS / HPC platform teams place pods (containerised wo
 
 - **Resource bin-packing** -- each node has fixed CPU / memory / GPU capacity, and the sum of pod demands on a node can't exceed it.
 - **Tenant anti-affinity** -- regulated workloads (SEC / OCC / NAIC / FedRAMP) require pairs of tenants to never share a host, so a single noisy-neighbour or compromised node can't span the isolation boundary.
-- **Storage-class affinity** -- deployments declared affinity-paired (shared storage class, low-latency RDMA peering) must co-locate (same node) or share their unplaced state: the `xi == xj` IC forces both to agree on every node's assignment bit, which means they share a single node when placed and are simultaneously unplaced otherwise.
+- **Deployment co-location affinity** -- deployments declared affinity-paired (e.g. shared storage class, low-latency RDMA peering) must co-locate (same node) or share their unplaced state: the `xi == xj` IC forces both to agree on every node's assignment bit, which means they share a single node when placed and are simultaneously unplaced otherwise.
 - **Failure-domain spread** -- replicas of one deployment fan out across zones so a single-zone outage can't take down a quorum.
 - **Gang-placement atomicity** -- a multi-replica deployment is either fully placed (every replica scheduled) or fully unplaced; a partial schedule is worse than nothing for stateful systems with leader elections, quorums, and shared-state protocols.
 - **Topology rack-clique** -- distributed-training pods need NVLink-class bandwidth between every pair, so the whole group must land on hosts within the same rack.
@@ -43,24 +43,23 @@ This template encodes that stack as a pure constraint satisfaction / optimisatio
 - A binary 2D assignment matrix decision `Pod.on_node(Node, x)` paired with two 0/1 indicators (`Pod.placed`, `Deployment.placed`) that pin each pod's row sum and each deployment's gang state
 - Three bin-packing ICs (`sum(Pod.cpu_millicores * x).per(Node) <= Node.cpu_millicores`, and analogues for memory and GPU)
 - A pairwise tenant anti-affinity IC -- `xi + xj <= 1` per node for every (Pi, Pj) pair whose deployments' tenants are anti-affine -- expressed directly over the matrix without big-M reformulation
-- A pairwise storage-class affinity IC that forces affinity-paired pods to agree on every node's assignment bit
+- A pairwise deployment co-location affinity IC that forces affinity-paired pods to agree on every node's assignment bit
 - A per-(deployment, zone) failure-domain spread IC bounded by `Deployment.max_per_zone` -- by default `ceil(replicas / num_zones)`, with a per-row `max_per_zone_override` column in `deployments.csv` for deployments (e.g. distributed-training groups) that need a wider blast radius to remain feasible
 - A reified-cardinality gang-placement IC `sum(Pod.placed).per(Deployment) == Deployment.replicas * Deployment.placed`
 - A pairwise topology rack-clique IC for distributed-training groups -- `xa + xb <= 1` for every (Pa, Pb, Na, Nb) tuple where the pods are in the same training group and the nodes are in different racks
 - A linear `maximize(sum(Deployment.placed))` objective the CSP optimises
-- Pre-solve Python invariants that catch silent-failure modes (duplicate keys, dangling foreign keys, non-positive capacities, replica-count mismatches, out-of-range `max_per_zone_override` values) before the solver runs
 - Post-solve verification via `problem.verify()` confirming every IC holds in the returned solution, plus a `termination_status() == "OPTIMAL"` assertion
 
 ## What's included
 
-The bundled CSVs are illustrative, fully synthetic demo data tuned so multiple ICs bind at the optimum -- rack-clique forces the distributed-training group onto one rack, CPU / memory / GPU bin-packing then pin it to a single node at exact 100% utilisation on all three resources, anti-affinity partitions the alpha-beta and gamma-delta tenant pods across disjoint node sets, storage-class affinity co-locates the cache pair, and the spread cap binds for every multi-replica non-overridden deployment. Swap in your own cluster topology and workload to apply the template to a real cluster.
+The bundled CSVs are illustrative, fully synthetic demo data tuned so multiple ICs bind at the optimum -- rack-clique forces the distributed-training group onto one rack, CPU / memory / GPU bin-packing then pin it to a single node at exact 100% utilisation on all three resources, anti-affinity partitions the alpha-beta and gamma-delta tenant pods across disjoint node sets, deployment co-location affinity co-locates the cache pair, and the spread cap binds for every multi-replica non-overridden deployment. Swap in your own cluster topology and workload to apply the template to a real cluster.
 
 - `pod_placement.py` -- main script with concepts, decisions, constraints, the solver call, and the post-solve inspection
 - `data/nodes.csv` -- 8 nodes across 2 zones (`us-east-1a`, `us-east-1b`) and 4 racks; six general-purpose nodes (12000 millicores, 49152 MiB) and two GPU nodes (8000 millicores, 32768 MiB, 4 GPUs each). Total cluster: 88000 millicores, 360448 MiB, 8 GPUs
 - `data/tenants.csv` -- 4 tenants (`tenant_alpha`, `tenant_beta`, `tenant_gamma`, `tenant_delta`)
 - `data/tenant_anti_affinity.csv` -- 2 anti-affine pairs (`tenant_alpha` x `tenant_beta`, `tenant_gamma` x `tenant_delta`)
 - `data/deployments.csv` -- 12 deployments across the 4 tenants: 8-replica web services, 4-replica api services, single-replica caches, a 6-replica database (`db_gamma`), and a 4-pod distributed-training job (`ml_gamma_train`). One column, `max_per_zone_override`, is a nullable per-row spread cap; the bundled data sets it to `4` for `ml_gamma_train` so the same-rack training group can land entirely in one zone (the GPU nodes are concentrated there)
-- `data/deployment_affinity.csv` -- 1 affinity-paired pair (`cache_alpha` x `cache_delta`, both ssd-class)
+- `data/deployment_affinity.csv` -- 1 affinity-paired pair (`cache_alpha` x `cache_delta`, motivated by a shared storage class)
 - `data/pods.csv` -- 50 pods with per-pod CPU / memory / GPU demands aligned to deployment role (web 1000m / 2048 MiB, api 1500m / 3072 MiB, cache 500m / 1024 MiB, db 2000m / 4096 MiB, ml 2000m / 8192 MiB / 1 GPU)
 - `data/distributed_training.csv` -- 6 pairs forming the 4-pod NVLink clique for `ml_gamma_train`
 - `pyproject.toml` -- Python package configuration
@@ -197,7 +196,7 @@ anti_affinity_ic = model.where(
 ).require(xi + xj <= 1)
 ```
 
-The ordered `Pi.id < Pj.id` filter canonicalises each pair so the IC fires once per `{Pi, Pj}` unordered pair. `TenantAntiAffinity` is closed symmetrically at definition time (the two `model.define` rules), so the predicate matches in either argument order. The same pairwise-pod / pairwise-node shape encodes the storage-class affinity IC (`xi == xj` on every node) and the topology rack-clique IC (`xa + xb <= 1` whenever the two pods are in a distributed-training group and the two nodes are in different racks).
+The ordered `Pi.id < Pj.id` filter canonicalises each pair so the IC fires once per `{Pi, Pj}` unordered pair. `TenantAntiAffinity` is closed symmetrically at definition time (the two `model.define` rules), so the predicate matches in either argument order. The same pairwise-pod / pairwise-node shape encodes the deployment co-location affinity IC (`xi == xj` on every node) and the topology rack-clique IC (`xa + xb <= 1` whenever the two pods are in a distributed-training group and the two nodes are in different racks).
 
 **Gang placement is a reified cardinality IC.** A deployment is either fully placed (`sum(Pod.placed).per(Deployment) == Deployment.replicas`) or fully unplaced (`sum(Pod.placed).per(Deployment) == 0`). The unified form uses a 0/1 deployment-level indicator:
 
@@ -228,7 +227,7 @@ The override is a deployment-level escape hatch for cases where the default spre
 
 ## Customize this template
 
-- **Use your own data** by replacing the seven CSV files with your cluster topology and workload. The constraint structure does not change. The data invariants the pre-solve guards catch are: primary keys must be unique across `nodes.csv` / `tenants.csv` / `deployments.csv` / `pods.csv`; every foreign key (`deployments.tenant_id`, `pods.deployment_id`, `tenant_anti_affinity.tenant_*`, etc.) must resolve; node capacities must be positive; `pods.csv` row counts per `deployment_id` must equal `deployments.csv`.`replicas` (the gang IC pins them); each rack belongs to exactly one zone; and any `max_per_zone_override` value, when present, must be a positive integer no greater than the row's `replicas`.
+- **Use your own data** by replacing the seven CSV files with your cluster topology and workload. The constraint structure does not change. The data requirements are: primary keys must be unique across `nodes.csv` / `tenants.csv` / `deployments.csv` / `pods.csv`; every foreign key (`deployments.tenant_id`, `pods.deployment_id`, `tenant_anti_affinity.tenant_*`, etc.) must resolve; node capacities must be positive; `pods.csv` row counts per `deployment_id` must equal `deployments.csv`.`replicas` (the gang IC pins them); each rack belongs to exactly one zone; and any `max_per_zone_override` value, when present, must be a positive integer no greater than the row's `replicas`.
 - **Change the objective.** `problem.maximize(sum(Deployment.placed))` maximises the number of placed deployments. Swap for `problem.maximize(sum(Deployment.replicas * Deployment.placed))` to weight by replica count, `problem.minimize(...)` over a per-node fragmentation cost (sum-of-squared-utilisation-gaps), or pure satisfaction (`problem.satisfy()` with a `Deployment.placed == 1` hard floor) when every deployment must run.
 - **Tier-aware placement.** Mark pods with `gpu_units > 0` and add an IC forcing them onto GPU-capable nodes only -- e.g. `model.where(Pod.on_node(Node, 1), Pod.gpu_units >= 1).require(Node.gpu_units >= 1)` (matches the `model.where(...).require(...)` chaining used by every IC in `pod_placement.py`). Conversely, mark some nodes as "general-purpose only" and forbid GPU workloads there.
 - **Migration cost under churn.** Add a `Pod.current_node` data property reflecting the existing assignment, then introduce a per-pod "moved" indicator (`moved = (1 - Pod.on_node(current_node, x))`) and minimise the total move count -- multi-solution then enumerates the N least-disruptive placements.
