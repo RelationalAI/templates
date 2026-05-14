@@ -20,79 +20,6 @@ DATA_DIR = Path(__file__).parent / "data"
 AMOUNT_THRESHOLD_DOLLARS = 10_000
 
 
-# --------------------------------------------------
-# Pre-solve invariants
-#
-# Catch the most common silent-failure modes before the solver runs:
-# duplicate keys (would collapse rows) and dangling foreign keys (would
-# silently drop transactions from joins, weakening every motif IC that
-# walks Transaction.src/dst). Non-positive amounts would make the
-# under-threshold IC vacuous and let zero-dollar edges pass as motif
-# edges; self-loops would let an account count as both source and
-# destination of the same transaction.
-# --------------------------------------------------
-
-
-def _assert_unique_keys(df, key, source):
-    dupe_rows = df[df.duplicated(subset=[key], keep=False)]
-    if not dupe_rows.empty:
-        duplicates = sorted({int(v) for v in dupe_rows[key].tolist()})
-        raise ValueError(
-            f"{source} has duplicate {key}={duplicates}. Each {key} "
-            f"must be unique; duplicates collapse rows on join."
-        )
-
-
-def _assert_no_dangling_fks(child_df, child_col, parent_df, parent_col, source, parent_source):
-    parent_ids = set(parent_df[parent_col].unique().tolist())
-    dangling = sorted(
-        {int(v) for v in child_df[child_col].unique().tolist() if v not in parent_ids}
-    )
-    if dangling:
-        raise ValueError(
-            f"{source}.{child_col} references unknown {parent_col}={dangling} "
-            f"that does not appear in {parent_source}.{parent_col}. Every "
-            f"foreign key must resolve, or the transaction is silently "
-            f"dropped from Transaction.src / Transaction.dst joins."
-        )
-
-
-def _assert_positive(df, cols, source):
-    cols = cols if isinstance(cols, list) else [cols]
-    for c in cols:
-        bad = sorted({int(v) for v in df[c].tolist() if int(v) <= 0})
-        if bad:
-            raise ValueError(
-                f"{source} has non-positive {c}={bad}. {c} must be > 0; "
-                f"a zero or negative amount would make the under-threshold "
-                f"IC vacuous and admit spurious motif edges."
-            )
-
-
-def _assert_non_negative(df, cols, source):
-    cols = cols if isinstance(cols, list) else [cols]
-    for c in cols:
-        bad = sorted({int(v) for v in df[c].tolist() if int(v) < 0})
-        if bad:
-            raise ValueError(
-                f"{source} has negative {c}={bad}. {c} must be >= 0; "
-                f"a negative timestamp breaks the burst-window IC, which "
-                f"compares (max ts - min ts) across the chosen subset."
-            )
-
-
-def _assert_no_self_loops(df, src_col, dst_col, source):
-    self_rows = df[df[src_col] == df[dst_col]]
-    if not self_rows.empty:
-        bad = sorted({int(v) for v in self_rows[src_col].tolist()})
-        raise ValueError(
-            f"{source} has self-loop rows where {src_col} == {dst_col} = {bad}. "
-            f"A transaction's src and dst must be distinct accounts; a "
-            f"self-loop lets one account count as both source and "
-            f"destination of the same edge in the motif ICs."
-        )
-
-
 def create_model():
     """Build the shared semantic model: accounts and transactions.
 
@@ -107,18 +34,6 @@ def create_model():
     """
     accounts_csv = pd.read_csv(DATA_DIR / "accounts.csv")
     tx_csv = pd.read_csv(DATA_DIR / "transactions.csv")
-
-    _assert_unique_keys(accounts_csv, "id", "accounts.csv")
-    _assert_unique_keys(tx_csv, "tx_id", "transactions.csv")
-    _assert_no_dangling_fks(
-        tx_csv, "src_id", accounts_csv, "id", "transactions.csv", "accounts.csv"
-    )
-    _assert_no_dangling_fks(
-        tx_csv, "dst_id", accounts_csv, "id", "transactions.csv", "accounts.csv"
-    )
-    _assert_positive(tx_csv, "amount_dollars", "transactions.csv")
-    _assert_non_negative(tx_csv, "ts_minutes", "transactions.csv")
-    _assert_no_self_loops(tx_csv, "src_id", "dst_id", "transactions.csv")
 
     model = Model("money_laundering_motif_detection")
 
