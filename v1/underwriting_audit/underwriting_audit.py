@@ -108,66 +108,21 @@ DATA_DIR = Path(__file__).parent / "data"
 # --------------------------------------------------
 
 
-# Reference-data contract: integer IDs must be dense, contiguous, and
-# unique so the solver's `lower=min(id), upper=max(id)` decision bounds
-# line up exactly with the reference rows. Sparse IDs would let the
-# solver pick a missing value: the relational-time `implies(...)` ICs
-# gated on the matching reference row would never fire, leaving the
-# indicator decisions unconstrained for that solution. Validate up front
-# rather than letting bad customizations silently degrade audit coverage.
+# Reference-data contract: integer `id` columns must be dense and
+# contiguous so the solver's `lower=min(id), upper=max(id)` decision
+# bounds line up exactly with the reference rows. Sparse IDs would let
+# the solver pick a missing value: the relational-time `implies(...)`
+# ICs gated on the matching reference row would never fire, leaving the
+# indicator decisions unconstrained for that solution.
 def _assert_dense_ids(df, name):
-    raw = df["id"].tolist()
-    if not raw:
+    ids = sorted(int(v) for v in df["id"].tolist())
+    expected = list(range(ids[0], ids[-1] + 1))
+    if ids != expected:
+        missing = sorted(set(expected) - set(ids))
         raise ValueError(
-            f"{name} has no rows; at least one row is required to set the "
-            "decision-variable bounds (`lower=min(id), upper=max(id)`)."
+            f"{name} `id` column must be dense and contiguous integers; "
+            f"missing ids {missing} between {ids[0]} and {ids[-1]}."
         )
-    # Normalise via float first so Excel-y `.0` suffixes (e.g. "1.0",
-    # `id` columns pandas typed as float64) pass through; then check the
-    # fractional part explicitly so `1.5`-style values raise rather than
-    # silently truncating to `1`.
-    try:
-        floats = [float(v) for v in raw]
-    except (TypeError, ValueError) as exc:
-        raise ValueError(
-            f"{name} `id` column contains a non-numeric value ({exc}). IDs must be whole numbers."
-        ) from exc
-    ids = []
-    for f, v in zip(floats, raw):
-        try:
-            i = int(f)
-        except (ValueError, OverflowError):
-            # `nan` -> ValueError, `inf`/`-inf` -> OverflowError.
-            raise ValueError(
-                f"{name} `id` column contains a non-integer value ({v!r}). "
-                "IDs must be whole numbers."
-            ) from None
-        if f != i:
-            raise ValueError(
-                f"{name} `id` column contains a non-integer value ({v!r}). "
-                "IDs must be whole numbers."
-            )
-        ids.append(i)
-    duplicates = sorted({v for v in ids if ids.count(v) > 1})
-    if duplicates:
-        raise ValueError(
-            f"{name} `id` column contains duplicate values {duplicates}; "
-            "each row must have a unique id."
-        )
-    sorted_ids = sorted(ids)
-    expected = list(range(sorted_ids[0], sorted_ids[-1] + 1))
-    if sorted_ids != expected:
-        missing = sorted(set(expected) - set(sorted_ids))
-        raise ValueError(
-            f"{name} `id` column must be dense and contiguous; "
-            f"missing ids {missing} between {sorted_ids[0]} and {sorted_ids[-1]}. "
-            "Renumber the rows or add explicit ID-membership ICs before solving."
-        )
-    # Pandas may have parsed the column as float64 (e.g. "1.0" entries or
-    # mixed-decimal CSVs). PyRel's reference Concepts identify by Integer,
-    # so write the validated integer values back to the original column
-    # to ensure the dtype the solver sees matches what was validated here.
-    df["id"] = ids
 
 
 age_buckets_csv = read_csv(DATA_DIR / "age_buckets.csv")
@@ -450,14 +405,6 @@ def run_audit(name, description, counterexample_fn, show_formulation):
     for rule_ic in s.rule_pack:
         problem.satisfy(rule_ic)
     for counterexample_ic in counterexample_fn(s):
-        if counterexample_ic is None:
-            raise ValueError(
-                f"Property '{name}': counterexample builder returned None. "
-                "Each element must be a model IC (the result of "
-                "`model.require(...)` or `model.where(...).require(...)`). "
-                "Common cause: the lambda returns the condition expression "
-                "rather than calling `require()` on it."
-            )
         problem.satisfy(counterexample_ic)
 
     # Show the formulation on the first audit only. The rule pack is
