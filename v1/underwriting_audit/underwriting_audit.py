@@ -154,15 +154,20 @@ def _assert_dense_ids(df, name):
             f"{name} `id` column contains duplicate values {duplicates}; "
             "each row must have a unique id."
         )
-    ids.sort()
-    expected = list(range(ids[0], ids[-1] + 1))
-    if ids != expected:
-        missing = sorted(set(expected) - set(ids))
+    sorted_ids = sorted(ids)
+    expected = list(range(sorted_ids[0], sorted_ids[-1] + 1))
+    if sorted_ids != expected:
+        missing = sorted(set(expected) - set(sorted_ids))
         raise ValueError(
             f"{name} `id` column must be dense and contiguous; "
-            f"missing ids {missing} between {ids[0]} and {ids[-1]}. "
+            f"missing ids {missing} between {sorted_ids[0]} and {sorted_ids[-1]}. "
             "Renumber the rows or add explicit ID-membership ICs before solving."
         )
+    # Pandas may have parsed the column as float64 (e.g. "1.0" entries or
+    # mixed-decimal CSVs). PyRel's reference Concepts identify by Integer,
+    # so write the validated integer values back to the original column
+    # to ensure the dtype the solver sees matches what was validated here.
+    df["id"] = ids
 
 
 age_buckets_csv = read_csv(DATA_DIR / "age_buckets.csv")
