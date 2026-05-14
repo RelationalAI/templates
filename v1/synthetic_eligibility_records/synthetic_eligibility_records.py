@@ -117,44 +117,46 @@ age_buckets_csv = read_csv(DATA_DIR / "age_buckets.csv")
 _assert_dense_ids(age_buckets_csv, "age_buckets.csv")
 model.define(AgeBucket.new(model.data(age_buckets_csv).to_schema()))
 
-# Member concept: one singleton placeholder. The solver enumerates K
-# feasible fillings of this member's three decision slots (age bucket,
-# plan, provider); each filling = one synthetic record.
-Member = model.Concept("Member", identify_by={"id": Integer})
-model.define(Member.new(id=1))
-
 # --------------------------------------------------
 # Model the decision problem
 # --------------------------------------------------
 
-Member.age_bucket_id = model.Property(f"{Member} in age bucket {Integer:age_bucket_id}")
-Member.plan_id = model.Property(f"{Member} on plan {Integer:plan_id}")
-Member.provider_id = model.Property(f"{Member} sees provider {Integer:provider_id}")
+# Free decisions: the three categorical slots the solver fills on every
+# solution. Each is a scalar `model.Relationship` (one Integer slot) --
+# the unparented scalar shape. No singleton Member concept is required
+# because there is exactly one member slot; the solver picks values
+# for these scalars on every solution. To extend to a fleet of N
+# members, reintroduce a `Member` concept and lift each scalar to a
+# `model.Property(f"{Member} has {Integer:foo}")`, then scope every IC
+# below with `model.where(Member)` (or a tighter filter).
+age_bucket_id = model.Relationship(f"{Integer:age_bucket_id}")
+plan_id = model.Relationship(f"{Integer:plan_id}")
+provider_id = model.Relationship(f"{Integer:provider_id}")
 
 problem = Problem(model, Integer)
 # All output goes through `Variable.values(sol_idx, value)`, so the
 # populated property is unused. `populate=False` skips the first-solution
 # write-back to avoid the latent FDError it invites under `solution_limit`.
 age_bucket_var = problem.solve_for(
-    Member.age_bucket_id,
+    age_bucket_id,
     type="int",
-    name=["age_bucket", Member.id],
+    name="age_bucket",
     lower=int(age_buckets_csv["id"].min()),
     upper=int(age_buckets_csv["id"].max()),
     populate=False,
 )
 plan_id_var = problem.solve_for(
-    Member.plan_id,
+    plan_id,
     type="int",
-    name=["plan_id", Member.id],
+    name="plan_id",
     lower=int(plans_csv["id"].min()),
     upper=int(plans_csv["id"].max()),
     populate=False,
 )
 provider_id_var = problem.solve_for(
-    Member.provider_id,
+    provider_id,
     type="int",
-    name=["provider_id", Member.id],
+    name="provider_id",
     lower=int(providers_csv["id"].min()),
     upper=int(providers_csv["id"].max()),
     populate=False,
@@ -165,7 +167,7 @@ provider_id_var = problem.solve_for(
 # (Plan, Provider) pair in *different* networks, if the member picks that
 # plan, then the member must not pick that provider.
 network_match_ic = model.where(Plan.network_id != Provider.network_id).require(
-    implies(Member.plan_id == Plan.id, Member.provider_id != Provider.id)
+    implies(plan_id == Plan.id, provider_id != Provider.id)
 )
 problem.satisfy(network_match_ic)
 
@@ -178,8 +180,8 @@ senior_must_medicare_ic = model.where(
     AgeBucket.age_years >= SENIOR_THRESHOLD_YEARS,
 ).require(
     implies(
-        Member.age_bucket_id == AgeBucket.id,
-        Member.plan_id != Plan.id,
+        age_bucket_id == AgeBucket.id,
+        plan_id != Plan.id,
     )
 )
 problem.satisfy(senior_must_medicare_ic)
@@ -193,8 +195,8 @@ non_senior_no_medicare_ic = model.where(
     AgeBucket.age_years < SENIOR_THRESHOLD_YEARS,
 ).require(
     implies(
-        Member.age_bucket_id == AgeBucket.id,
-        Member.plan_id != Plan.id,
+        age_bucket_id == AgeBucket.id,
+        plan_id != Plan.id,
     )
 )
 problem.satisfy(non_senior_no_medicare_ic)

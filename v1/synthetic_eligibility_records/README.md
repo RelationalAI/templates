@@ -35,9 +35,9 @@ The rule structure here is drawn from the public [CMS Medicare](https://www.cms.
 
 ## What you'll build
 
-- A constraint model with three integer decision properties on a singleton `Member`: `age_bucket_id`, `plan_id`, `provider_id` -- each solution returns one feasible filling of those three slots
+- A constraint model with three scalar integer decisions (`age_bucket_id`, `plan_id`, `provider_id`) declared as unparented `model.Relationship(f"{Integer:name}")` -- each solution returns one feasible filling of those three slots. The member is a *shape* in the scalar decisions, not a Concept: with a single slot, scalar relationships avoid the identity overhead of a one-row Member concept
 - A small reference table of representative ages (`AgeBucket`) so age is a categorical decision rather than a per-year integer; this keeps every decision domain compact and similar in size, which is what makes the multi-solution enumeration produce structurally varied records across age, plan, and network
-- A pair of CFD ICs encoding the two arms of the age-by-plan rule using the forbidden-pair `implies(Member.age_bucket_id == AgeBucket.id, Member.plan_id != Plan.id)` idiom -- safe under the CSP rewriter
+- A pair of CFD ICs encoding the two arms of the age-by-plan rule using the forbidden-pair `implies(age_bucket_id == AgeBucket.id, plan_id != Plan.id)` idiom -- safe under the CSP rewriter
 - A PCP-network attribution IC iterating over reference-data `(Plan, Provider)` tuples in different networks and forbidding the cross-network combination
 - A pre-solve dense-ID check on `plans.csv`, `providers.csv`, and `age_buckets.csv` so the solver's integer decision bounds line up with the reference rows the CFDs iterate over (sparse IDs would let the solver pick a value with no matching row, leaving the rules unconstrained for that record and silently dropping it from the post-solve display join)
 - **Multi-solution enumeration as the primary code path**: `problem.solve(..., solution_limit=MAX_RECORDS)` runs the search in enumeration mode; `Variable.values(solution_index, value)` joins the three decision variables on a shared solution index to reconstruct each record
@@ -131,16 +131,24 @@ The rule structure here is drawn from the public [CMS Medicare](https://www.cms.
 
 ## How it works
 
-The solver decides three integer attributes of a singleton `Member` -- age bucket, plan, provider -- subject to the eligibility rules. Each solution returned by the solver is one feasible filling of those three slots; multi-solution mode enumerates K of them per solve.
+The solver decides three integer scalar attributes -- age bucket, plan, provider -- subject to the eligibility rules. Each solution returned by the solver is one feasible filling of those three slots; multi-solution mode enumerates K of them per solve.
 
-**1. Categorical age via a small reference table.** Age is *not* a per-year integer decision: instead, the `AgeBucket` reference table holds four representative ages, and `Member.age_bucket_id` picks one. The CFDs walk through `AgeBucket.age_years` to compare against the seniority threshold. This keeps the age decision domain at the same order of magnitude as the plan and provider domains, which is what makes the solver's enumeration produce structurally varied records across all three dimensions:
+**1. Categorical age via a small reference table.** Age is *not* a per-year integer decision: instead, the `AgeBucket` reference table holds four representative ages, and the `age_bucket_id` decision picks one. The CFDs walk through `AgeBucket.age_years` to compare against the seniority threshold. This keeps the age decision domain at the same order of magnitude as the plan and provider domains, which is what makes the solver's enumeration produce structurally varied records across all three dimensions:
 
 ```python
 AgeBucket = model.Concept("AgeBucket", identify_by={"id": Integer})
 AgeBucket.age_years = model.Property(f"{AgeBucket} has {Integer:age_years}")
 ```
 
-**2. Forbidden-pair encoding for CFDs.** The Medicare-Advantage CFD has two arms: senior implies Medicare, non-senior implies non-Medicare. Each arm is encoded as a *forbidden pair* iteration. The where clause filters reference-data tuples at relational time (here, all `(Plan, AgeBucket)` pairs that violate the arm); the implies inside the require gates on the decision-valued match. This sidesteps the rewriter's restriction on decision variables in `where` clauses (`where(Plan.id == Member.plan_id)` would not parse; iteration over `Plan` and `AgeBucket` happens at relational time, the decision check goes inside `implies`):
+**2. Free decisions as unparented scalar relationships.** Three integer scalar decisions: which age bucket, plan, and provider the member picks. Each is `model.Relationship(f"{Integer:name}")` (the unparented scalar shape), not a property on a singleton `Member` concept. The solver picks values for these on every solution.
+
+```python
+age_bucket_id = model.Relationship(f"{Integer:age_bucket_id}")
+plan_id = model.Relationship(f"{Integer:plan_id}")
+provider_id = model.Relationship(f"{Integer:provider_id}")
+```
+
+**3. Forbidden-pair encoding for CFDs.** The Medicare-Advantage CFD has two arms: senior implies Medicare, non-senior implies non-Medicare. Each arm is encoded as a *forbidden pair* iteration. The where clause filters reference-data tuples at relational time (here, all `(Plan, AgeBucket)` pairs that violate the arm); the implies inside the require gates on the decision-valued match. This sidesteps the rewriter's restriction on decision variables in `where` clauses (`where(Plan.id == plan_id)` would not parse; iteration over `Plan` and `AgeBucket` happens at relational time, the decision check goes inside `implies`):
 
 ```python
 senior_must_medicare_ic = model.where(
@@ -148,23 +156,23 @@ senior_must_medicare_ic = model.where(
     AgeBucket.age_years >= SENIOR_THRESHOLD_YEARS,
 ).require(
     implies(
-        Member.age_bucket_id == AgeBucket.id,
-        Member.plan_id != Plan.id,
+        age_bucket_id == AgeBucket.id,
+        plan_id != Plan.id,
     )
 )
 ```
 
 The non-senior arm uses the same shape with `Plan.plan_type == "MedicareAdvantage"` and `AgeBucket.age_years < SENIOR_THRESHOLD_YEARS` in the where.
 
-**3. PCP-network attribution as forbidden cross-network pairs.** The chosen provider's network must equal the chosen plan's network. Same forbidden-pair shape: iterate over `(Plan, Provider)` tuples in *different* networks at relational time, and forbid that combination if the member picks both:
+**4. PCP-network attribution as forbidden cross-network pairs.** The chosen provider's network must equal the chosen plan's network. Same forbidden-pair shape: iterate over `(Plan, Provider)` tuples in *different* networks at relational time, and forbid that combination if the member picks both:
 
 ```python
 network_match_ic = model.where(Plan.network_id != Provider.network_id).require(
-    implies(Member.plan_id == Plan.id, Member.provider_id != Provider.id)
+    implies(plan_id == Plan.id, provider_id != Provider.id)
 )
 ```
 
-**4. Multi-solution enumeration via `Variable.values(solution_index, value)`.** Capturing the variable subconcept from `solve_for(...)` exposes a `.values(sol_idx, val)` relationship that indexes the per-solution outputs. Binding the value slot directly to a reference Concept's `.id` walks the chosen ID back to that record's columns in one step:
+**5. Multi-solution enumeration via `Variable.values(solution_index, value)`.** Capturing the variable subconcept from `solve_for(...)` exposes a `.values(sol_idx, val)` relationship that indexes the per-solution outputs. Binding the value slot directly to a reference Concept's `.id` walks the chosen ID back to that record's columns in one step:
 
 ```python
 problem.solve("minizinc", time_limit_sec=60, solution_limit=MAX_RECORDS)
@@ -194,15 +202,15 @@ print(f"\nGenerated member records (up to {MAX_RECORDS} per run):")
 print(records_df.to_string(index=False))
 ```
 
-The variable subconcept exposes a back-pointer named after the entity in its property: `age_bucket_var.member` walks back to the `Member` instance (not exercised in this single-member template; useful for multi-member variants where each row of `.values(...)` is one `(Member, solution)` pair).
+To extend to a fleet of N members, reintroduce a `Member` concept inside the model and lift each scalar decision to a property on it (e.g. `Member.age_bucket_id = model.Property(f"{Member} has {Integer:age_bucket_id}")`). Then scope every IC -- including the CFD and network-attribution ICs above -- with `model.where(Member)` (or a tighter member filter). The scalar shape used here is the right default at N=1; the per-member shape becomes mandatory the moment you bind the generator to a real member table.
 
 ## Customize this template
 
-- **Use your own plans and providers** by replacing the two CSV files. The constraint structure does not change; the integer ID columns stay required (the script uses them for the `Member.plan_id` / `Member.provider_id` decision domains) and IDs must remain dense and contiguous (the pre-solve check enforces this).
+- **Use your own plans and providers** by replacing the two CSV files. The constraint structure does not change; the integer ID columns stay required (the script uses them for the `plan_id` / `provider_id` decision domains) and IDs must remain dense and contiguous (the pre-solve check enforces this).
 - **Raise the solution limit on a real catalog.** The bundled `MAX_RECORDS = 16` is sized so the solver exhausts the small demo feasible set; production test suites typically want 100--10,000 records per solve. `time_limit_sec` is your safety net -- enumeration stops when either the limit or the budget is reached.
 - **Adjust the seniority gate** by changing `SENIOR_THRESHOLD_YEARS` (currently 65, the CMS Medicare threshold). Both arms of the age-by-plan CFD read this constant directly.
-- **Add a dependent-count decision** by introducing a `Member.num_dependents` integer decision bounded by 0 and a per-plan `max_dependents` cap. Extend `plans.csv` with a `max_dependents` column, declare `Plan.max_dependents = model.Property(f"{{Plan}} has {{Integer:max_dependents}}")`, add `Member.num_dependents = model.Property(...)` and a `problem.solve_for(Member.num_dependents, ...)` call, then encode the cap with the same forbidden-pair idiom: `model.where(Plan.max_dependents >= 0).require(implies(Member.plan_id == Plan.id, Member.num_dependents <= Plan.max_dependents))`.
-- **Add a coverage-period decision pair** by introducing `coverage_start_days` and `coverage_end_days` as integer day decisions (counted from a notional epoch) bounded around a target date. The temporal-interval-containment shape needs two ICs: one requiring `Member.coverage_start_days <= TARGET_DATE_DAYS` and one requiring `TARGET_DATE_DAYS <= Member.coverage_end_days`, plus a minimum-duration IC `Member.coverage_end_days - Member.coverage_start_days >= MIN_DAYS`. This is useful for fuzzing claim-adjudication date logic.
+- **Add a dependent-count decision** by introducing a `num_dependents` scalar decision bounded by 0 and a per-plan `max_dependents` cap. Extend `plans.csv` with a `max_dependents` column, declare `Plan.max_dependents = model.Property(f"{Plan} has {Integer:max_dependents}")`, add `num_dependents = model.Relationship(f"{Integer:num_dependents}")` and a `problem.solve_for(num_dependents, ...)` call, then encode the cap with the same forbidden-pair idiom: `model.where(Plan.max_dependents >= 0).require(implies(plan_id == Plan.id, num_dependents <= Plan.max_dependents))`.
+- **Add a coverage-period decision pair** by introducing `coverage_start_days` and `coverage_end_days` as integer day decisions (counted from a notional epoch) bounded around a target date. The temporal-interval-containment shape needs two ICs: one requiring `coverage_start_days <= TARGET_DATE_DAYS` and one requiring `TARGET_DATE_DAYS <= coverage_end_days`, plus a minimum-duration IC `coverage_end_days - coverage_start_days >= MIN_DAYS`. This is useful for fuzzing claim-adjudication date logic.
 - **Switch from "all feasible" to "smallest violating instance"** by adding `problem.minimize(...)` over a violation count, dropping a positive IC, and using `solution_limit=1`. This is the negative-mode use case from the constrained-generative-models literature -- handy for finding the cheapest counter-example to a candidate rule.
 - **Adapt to a different regulatory regime** by editing the CFD predicates and the network-attribution IC. The shape is identical for KYC member records (banking AML), tenant lease attributes (proptech), shipment manifests (logistics customs) -- declare the rules as forbidden-pair iterations, ask the solver for K records.
 - **Watch the cross-product cost on real catalogs.** `where(Plan.network_id != Provider.network_id)` materializes the full Plan × Provider product at relational time -- trivial here (3 × 4 = 12 pairs), but a 1,000-plan × 10,000-provider catalog gives 10M pairs before filtering. For production-scale catalogs, partition the IC by region or pre-filter the relational walk to plans and providers that share at least one common region tag.
@@ -278,7 +286,7 @@ The variable subconcept exposes a back-pointer named after the entity in its pro
   <summary>Adding a where-side filter on a decision variable raises <code>ValueError: Unexpected SymbolicNode result</code></summary>
 
 - `model.where(...)` filters at relational time only -- decision variables are not legal inside it. The rewriter raises this error when it encounters a decision-valued comparison in a `where` clause.
-- Move the decision condition into `implies` and use a tautological relational filter (or a real one) to scope any reference-data Concepts the IC needs. For example, replace `model.where(Plan.id == Member.plan_id).require(Member.num_dependents <= Plan.max_dependents)` with `model.where(Plan.max_dependents >= 0).require(implies(Member.plan_id == Plan.id, Member.num_dependents <= Plan.max_dependents))`.
+- Move the decision condition into `implies` and use a tautological relational filter (or a real one) to scope any reference-data Concepts the IC needs. For example, replace `model.where(Plan.id == plan_id).require(num_dependents <= Plan.max_dependents)` with `model.where(Plan.max_dependents >= 0).require(implies(plan_id == Plan.id, num_dependents <= Plan.max_dependents))`.
 - See the three constraint definitions in `synthetic_eligibility_records.py` (`network_match_ic`, `senior_must_medicare_ic`, `non_senior_no_medicare_ic`) for the canonical idiom.
 
 </details>
