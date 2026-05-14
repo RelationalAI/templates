@@ -45,7 +45,7 @@ The bundled ruleset has a deliberate bug: `is_manual_review` is defined as "seni
 - **A `run_audit(...)` helper that owns the per-property lifecycle**: build session, create `Problem`, re-bind every scalar decision via `solve_for(...)`, attach the rule pack and the property's counterexample ICs via `problem.satisfy(...)`, solve, classify, print witnesses (FAIL only), return the result. Each call is a fully isolated audit -- the model, decisions, rule pack, and Problem are all per-audit. The main loop is then a list comprehension over `PROPERTIES`
 - **Multi-solution enumeration as the per-property code path**: each `problem.solve(..., solution_limit=MAX_WITNESSES)` runs the search in enumeration mode; `Variable.values(solution_index, value)` joins the decision variables on a shared solution index to reconstruct each witness
 - A pre-solve check that reference IDs are dense and contiguous, so `lower=min(id), upper=max(id)` decision bounds line up with the reference rows the relational-time `implies` rules iterate over (sparse IDs would let the solver pick a value with no matching row, leaving the rule indicators unconstrained for that solution)
-- A per-property verdict driven by `solve_info().termination_status`: `INFEASIBLE` is **PASS** (property holds under the encoded ruleset), `OPTIMAL` or `SOLUTION_LIMIT` with one or more witnesses is **FAIL** (with the witness count and table), anything else is **INCONCLUSIVE**. Verdicts are stashed in a `results` list and printed as a verdict-matrix table at the end of the run
+- A per-property verdict driven by `solve_info().termination_status`: any status with one or more witnesses is **FAIL** (one witness falsifies the property regardless of whether the search exhausted), `INFEASIBLE` (or `OPTIMAL` with zero witnesses) is **PASS**, and anything else (`TIME_LIMIT`, `MEMORY_LIMIT`, ... with zero witnesses) is **INCONCLUSIVE**. Local-only statuses from continuous solvers (e.g. `LOCALLY_SOLVED`) are not exhaustion proofs and route to `INCONCLUSIVE`. Verdicts are stashed in a `results` list and printed as a verdict-matrix table at the end of the run
 
 ## What's included
 
@@ -336,7 +336,6 @@ s.model.select(
 
 - The pre-solve check ran on `age_buckets.csv` or `coverage_bands.csv` and found gaps in the `id` column. The solver bounds the corresponding decision by `lower=min(id), upper=max(id)`; without dense IDs it can pick a value with no matching reference row, and the relational-time `implies` rules gated on the matching row will not fire -- leaving the rule indicator unconstrained for that solution.
 - Renumber the rows so IDs run consecutively from the minimum to the maximum (e.g., 1, 2, 3, ... or 10, 11, 12, ...). Trailing or leading gaps are fine to delete; mid-table gaps are the problem.
-- Alternatively, replace the bound-only `solve_for(..., lower=, upper=)` with explicit ID-membership ICs (one `model.where(AB.id == decision_id).require(...)` per slot) and remove the dense-ID assertion.
 
 </details>
 

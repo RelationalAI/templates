@@ -116,6 +116,8 @@ DATA_DIR = Path(__file__).parent / "data"
 # indicator decisions unconstrained for that solution.
 def _assert_dense_ids(df, name):
     ids = sorted(int(v) for v in df["id"].tolist())
+    if not ids:
+        raise ValueError(f"{name} has no rows; at least one reference row is required.")
     expected = list(range(ids[0], ids[-1] + 1))
     if ids != expected:
         missing = sorted(set(expected) - set(ids))
@@ -334,25 +336,26 @@ PROPERTIES = [
 def _classify_verdict(si):
     """Map solver termination + witness count to an audit verdict.
 
+    - Any status with num_points >= 1 -> FAIL: a counterexample exists,
+      which falsifies the property regardless of whether the search was
+      exhaustive. The witness count is partial when status is not
+      OPTIMAL/SOLUTION_LIMIT, but the verdict itself is conclusive.
     - INFEASIBLE, or OPTIMAL with zero witnesses -> PASS: solver proved
       no counterexample exists (or exhausted the search and found none),
       so the property holds under the encoded rule pack. Soundness is
       bounded by encoding fidelity: missing rule arms can produce a
-      silent pass.
-    - OPTIMAL or SOLUTION_LIMIT with num_points >= 1 -> FAIL: at least
-      one counterexample exists, so the property does not hold. Each
-      witness is a concrete failure mode for triage.
-    - Anything else (TIME_LIMIT, MEMORY_LIMIT, OTHER_ERROR, ...) ->
-      INCONCLUSIVE: the audit did not finish. Surface explicitly rather
-      than treating it as a pass.
+      silent pass. Local-only statuses (e.g. LOCALLY_SOLVED from an LP
+      solver) do not count as exhaustion and route to INCONCLUSIVE
+      below.
+    - Anything else (TIME_LIMIT, MEMORY_LIMIT, OTHER_ERROR, ... with
+      zero witnesses) -> INCONCLUSIVE: the audit did not finish and no
+      witness was found, so neither pass nor fail can be concluded.
     """
     n = si.num_points if si.num_points is not None else 0
-    if si.termination_status == "INFEASIBLE":
-        return "PASS"
-    if si.termination_status == "OPTIMAL" and n == 0:
-        return "PASS"
-    if si.termination_status in ("OPTIMAL", "SOLUTION_LIMIT") and n >= 1:
+    if n >= 1:
         return "FAIL"
+    if si.termination_status in ("INFEASIBLE", "OPTIMAL"):
+        return "PASS"
     return "INCONCLUSIVE"
 
 
