@@ -1,4 +1,4 @@
-"""Smoker Status Prediction -- local CSV-only runner.
+"""Smoker Status Prediction -- local CSV-only script.
 
 Predicts whether a person is a smoker (binary classification) using their
 demographic and medical attributes plus a network of social connections.
@@ -7,7 +7,7 @@ linked, where linked pairs are more likely to share smoking status. The GNN
 learns from both per-person features and the network structure, leveraging
 relational signal that flat tabular models miss.
 
-This local runner loads everything from the bundled CSVs in `data/` via
+This local script loads everything from the bundled CSVs in `data/` via
 `model.data()` -- no Snowflake data loading, no GPU required (CPU GNN
 training on this slice is tractable).
 

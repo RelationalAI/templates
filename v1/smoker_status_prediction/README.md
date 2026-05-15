@@ -15,32 +15,39 @@ tags:
 
 ## What this template is for
 
-Predicting health-related behaviors like smoking status from medical and demographic attributes alone is a familiar tabular-ML problem. But people don't make these choices in isolation -- friends, family, and peers influence them. This template shows how to use a Graph Neural Network (GNN) to combine **per-person features** with a **network of social connections** in a single model, trained with the RelationalAI predictive reasoner.
+Predicting health-related behaviors like smoking status from medical and demographic data is a common tabular machine learning task. In practice, though, these behaviors are also shaped by social context: friends, family, and peers often influence one another. This template demonstrates how to model both individual attributes and social relationships with a Graph Neural Network (GNN), using the RelationalAI predictive reasoner to train a single end-to-end model.
 
 The pipeline is intentionally minimal:
 
-1. **People** as nodes -- demographic and medical attributes per person.
-2. **Related** as edges -- pairs of people who are connected.
-3. **Binary classification** -- predict each person's smoking status (0 / 1).
+1. Load person-level attributes and relationship edges.
+2. Build a graph where people are nodes and social connections are edges.
+3. Define the feature configuration, including categorical and numerical properties.
+4. Train a GNN to predict each person's smoking status.
+5. Use both individual features and neighborhood structure during prediction.
 
-The GNN learns from both per-person features and how those features propagate across the graph: two connected people who share many similar attributes nudge the model's prediction for both.
+The dataset consists of:
+
+- **People** as nodes -- demographic and medical attributes per person.
+- **Related** as edges -- pairs of people who are connected.
+- **Binary labels** -- smoking status (0 / 1) for each person.
+
+The GNN learns from both per-person features and graph structure, allowing information from connected individuals to influence each prediction.
 
 **Start with `smoker_status_prediction_local.py`** -- it loads the bundled CSV data via `model.data()` and runs end-to-end without external Snowflake setup beyond the RelationalAI Native App.
 
 **Then adapt `smoker_status_prediction.py`** -- the same pipeline pointed at Snowflake-hosted tables.
 
-Both runners train the GNN through the same RelationalAI Native App; the only difference is whether the source data is loaded from local CSVs or from Snowflake tables. The default `device="cuda"` works on a GPU-enabled RAI engine -- change it to `"cpu"` at the top of either runner if your engine is CPU-only.
+Both scripts train the GNN through the same RelationalAI Native App; the only difference is whether the source data is loaded from local CSVs or from Snowflake tables. The default `device="cuda"` works on a GPU-enabled RAI engine -- change it to `"cpu"` at the top of either script if your engine is CPU-only.
 
 > [!IMPORTANT]
 > The RelationalAI **predictive reasoner (GNN)** used in this template is in
-> early access. The API surface (`GNN`, `PropertyTransformer`, task
-> relationships) may still change between releases.
+> private preview.
 
 ## Who this is for
 
-- Data scientists exploring GNNs as an alternative to flat tabular models
+- Data scientists who want to leverage the relational structure of data stored across connected tables
 - ML engineers learning the RelationalAI predictive reasoner workflow
-- Health analytics teams interested in network-aware prediction
+- Health analytics teams interested in incorporating social or relational structure into predictive models
 
 Assumes familiarity with Python and basic ML concepts (binary classification, train/val/test splits).
 
@@ -53,7 +60,7 @@ Assumes familiarity with Python and basic ML concepts (binary classification, tr
 
 ## What's included
 
-- **Runners**:
+- **Scripts**:
   - `smoker_status_prediction_local.py` -- **primary, runnable out of the box.** Loads CSVs from `data/` via `model.data()`.
   - `smoker_status_prediction.py` -- **reference pattern** for adapting the same pipeline to Snowflake-hosted tables.
 - **Sample data** (`data/`):
@@ -65,17 +72,14 @@ Assumes familiarity with Python and basic ML concepts (binary classification, tr
 
 ### Access
 
-**To run the local demo (`smoker_status_prediction_local.py`)** you need a Snowflake account with the RelationalAI Native App. The bundled CSVs in `data/` ship with the template; GNN training runs on the RelationalAI engine, so the native app needs USAGE + CREATE EXPERIMENT / CREATE MODEL grants on the experiment schema (see the SQL block in step 5 of the Quickstart).
+**To run the local demo (`smoker_status_prediction_local.py`)** you need a Snowflake account with the RelationalAI Native App. The bundled CSVs in `data/` ship with the template; GNN training runs on the RelationalAI engine, so the native app needs USAGE + CREATE EXPERIMENT / CREATE MODEL grants on the experiment schema (see the SQL block in [step 5 of the Quickstart](#quickstart)).
 
-**To adapt to your own Snowflake pipeline (`smoker_status_prediction.py` as reference)** you'll additionally need:
-
-- The CSVs uploaded to Snowflake tables (or your own schema-equivalent dataset). Quote column names when creating the tables so spaces and parentheses are preserved (e.g. `"height(cm)"`, `"fasting blood sugar"`).
-- A GPU-enabled RAI engine for the default `device="cuda"` (or change to `"cpu"` if your engine is CPU-only).
+**To adapt to your own Snowflake pipeline (`smoker_status_prediction.py` as reference)** you'll additionally need the CSVs uploaded to Snowflake tables (or your own schema-equivalent dataset). Quote column names when creating the tables so spaces and parentheses are preserved (e.g. `"height(cm)"`, `"fasting blood sugar"`).
 
 ### Tools
 
 - Python >= 3.10
-- RelationalAI Python SDK (`relationalai`) >= 1.0.14
+- RelationalAI Python SDK (`relationalai`) >= 1.4.1
 
 ## Quickstart
 
@@ -104,13 +108,18 @@ Assumes familiarity with Python and basic ML concepts (binary classification, tr
    ```bash
    rai init
    ```
+   Follow the interactive prompts (host platform, account, user, role, warehouse, etc.) -- your `raiconfig.toml` is generated automatically from the answers you provide.
 
-5. Grant the RelationalAI Native App access to a schema for experiment artifacts. The local runner uses `SMOKER_STATUS_PREDICTION.EXPERIMENTS` by default -- create those (or change the constants at the top of the script) and run:
+5. Grant the RelationalAI Native App access to a schema for experiment artifacts. The local script uses `SMOKER_STATUS_PREDICTION.EXPERIMENTS` by default -- create those (or change the constants at the top of the script), update the `SET` statements below to match your database, schema, and Native App name, and run the following in a Snowflake SQL worksheet:
    ```sql
-   GRANT USAGE ON DATABASE SMOKER_STATUS_PREDICTION TO APPLICATION RELATIONALAI;
-   GRANT USAGE ON SCHEMA SMOKER_STATUS_PREDICTION.EXPERIMENTS TO APPLICATION RELATIONALAI;
-   GRANT CREATE EXPERIMENT ON SCHEMA SMOKER_STATUS_PREDICTION.EXPERIMENTS TO APPLICATION RELATIONALAI;
-   GRANT CREATE MODEL ON SCHEMA SMOKER_STATUS_PREDICTION.EXPERIMENTS TO APPLICATION RELATIONALAI;
+   SET db_name            = 'SMOKER_STATUS_PREDICTION';
+   SET schema_experiments = 'SMOKER_STATUS_PREDICTION.EXPERIMENTS';
+   SET app_name           = 'RELATIONALAI';   -- replace with your app name
+
+   GRANT USAGE             ON DATABASE identifier($db_name)            TO APPLICATION identifier($app_name);
+   GRANT USAGE             ON SCHEMA   identifier($schema_experiments) TO APPLICATION identifier($app_name);
+   GRANT CREATE EXPERIMENT ON SCHEMA   identifier($schema_experiments) TO APPLICATION identifier($app_name);
+   GRANT CREATE MODEL      ON SCHEMA   identifier($schema_experiments) TO APPLICATION identifier($app_name);
    ```
 
 6. Run the local demo on the bundled CSVs:
@@ -137,8 +146,7 @@ Assumes familiarity with Python and basic ML concepts (binary classification, tr
    GNN_EXP_DATABASE = "YOUR_DB"
    GNN_EXP_SCHEMA = "EXPERIMENTS"
    ```
-3. Adjust the `PropertyTransformer` if your column names differ.
-4. Run against a GPU-enabled RAI engine:
+3. Run:
    ```bash
    python smoker_status_prediction.py
    ```
@@ -149,7 +157,7 @@ Assumes familiarity with Python and basic ML concepts (binary classification, tr
 .
 ├── README.md                               # this file
 ├── pyproject.toml                          # dependencies
-├── smoker_status_prediction_local.py       # primary: CSV-based runner
+├── smoker_status_prediction_local.py       # primary: CSV-based script
 ├── smoker_status_prediction.py             # reference: Snowflake pipeline
 └── data/
     ├── people.csv          # 38,985 rows, 17 columns
@@ -165,8 +173,8 @@ Assumes familiarity with Python and basic ML concepts (binary classification, tr
 
 The dataset is based on the [Smoker Status Prediction](https://www.kaggle.com/datasets/gauravduttakiit/smoker-status-prediction) Kaggle dataset, augmented with a synthetic `RELATED` edge list. Pairs of people in `RELATED` were generated by randomly pairing individuals, with a higher probability assigned to pairs where both share the same smoking status. The network signal is therefore genuinely informative.
 
-- **people.csv** -- 16 medical/demographic features: `age`, `height(cm)`, `weight(kg)`, blood pressure (`systolic`, `relaxation`), `fasting blood sugar`, lipids (`Cholesterol`, `triglyceride`, `HDL`, `LDL`), `hemoglobin`, urinalysis (`Urine protein`, `serum creatinine`), liver enzymes (`AST`, `ALT`, `Gtp`), and a binary `dental caries` indicator.
-- **related.csv** -- pairs of `Id`s representing connections.
+- **people.csv** -- an `Id` identifier plus 16 medical/demographic features: `age`, `height(cm)`, `weight(kg)`, blood pressure (`systolic`, `relaxation`), `fasting blood sugar`, lipids (`Cholesterol`, `triglyceride`, `HDL`, `LDL`), `hemoglobin`, urinalysis (`Urine protein`, `serum creatinine`), liver enzymes (`AST`, `ALT`, `Gtp`), and a binary `dental caries` indicator.
+- **related.csv** -- pairs of `Id`s representing connections between persons.
 - **train / validation / test** -- split-specific `(Id, smoking)` rows where `smoking ∈ {0, 1}`.
 
 ## Model overview
@@ -174,25 +182,57 @@ The dataset is based on the [Smoker Status Prediction](https://www.kaggle.com/da
 ### Key entities
 
 - **People** (`Id`): individuals with demographic and medical attributes.
-- **Related**: pairs of people, used as an edge bridge in the GNN graph.
+- **Related**: pairs of people, used as the edge list of the GNN graph.
 
 ### Pipeline stages
 
 ```text
 People + Related (CSVs or Snowflake tables)
-  → Self-referential edge: People ↔ People (via Related)
-  → PropertyTransformer (continuous medical features + dental_caries category)
-  → Binary classification GNN
-  → Predictions on the Test cohort
+  → Build the graph: nodes as persons, self-referential edges People ↔ People (via Related)
+  → Configure features: PropertyTransformer (continuous medical features + dental_caries category)
+  → Define the task: Train / Validation / Test relationships
+  → Train and predict: binary-classification GNN → predictions on the Test cohort
+  → (Optional) Register and load the trained model
 ```
 
 ### Concepts
 
-**People** -- domain entity with an `Id` candidate key and 16 medical and demographic features.
+**People** -- individuals with demographic and medical attributes.
 
-**Related** -- edge bridge with two foreign keys (`person1`, `person2`) into `People.Id`. No primary key; only used to construct edges.
+| Property | Type | Notes |
+|---|---|---|
+| `Id` | integer | Identifying; unique per person |
+| `age` | integer | Age in years |
+| `height(cm)` | integer | Height in centimeters |
+| `weight(kg)` | integer | Weight in kilograms |
+| `systolic` | integer | Systolic blood pressure |
+| `relaxation` | integer | Diastolic blood pressure |
+| `fasting blood sugar` | integer | Fasting blood glucose level |
+| `Cholesterol` | integer | Total cholesterol |
+| `triglyceride` | integer | Triglyceride level |
+| `HDL` | integer | High-density lipoprotein |
+| `LDL` | integer | Low-density lipoprotein |
+| `hemoglobin` | float | Hemoglobin level |
+| `Urine protein` | integer | Urine protein indicator |
+| `serum creatinine` | float | Serum creatinine level |
+| `AST` | integer | Aspartate aminotransferase (liver enzyme) |
+| `ALT` | integer | Alanine aminotransferase (liver enzyme) |
+| `Gtp` | integer | Gamma-glutamyl transferase (liver enzyme) |
+| `dental caries` | integer | Binary indicator (0 / 1) |
 
-**TrainTable / ValidationTable / TestTable** -- split tables joined to `People` by `Id` to build the train, validation, and test relationships.
+**Related** -- pairs of connected people; used to construct edges in the GNN graph. No primary key.
+
+| Property | Type | Notes |
+|---|---|---|
+| `person1` | integer | Foreign key into `People.Id` |
+| `person2` | integer | Foreign key into `People.Id` |
+
+**TrainTable / ValidationTable / TestTable** -- split tables joined to `People` by `Id` to build the train, validation, and test relationships. `TestTable.smoking` is held out from the model.
+
+| Property | Type | Notes |
+|---|---|---|
+| `Id` | integer | Foreign key into `People.Id` |
+| `smoking` | integer | Binary label (0 / 1); held out for `TestTable` |
 
 ## How it works
 
@@ -245,6 +285,8 @@ model.define(Test(People)).where(
 
 ### 4. Train and predict
 
+Instantiate the GNN with the graph, the `PropertyTransformer`, and the Train / Validation relationships, fit it, then attach predictions over the held-out Test cohort to each `People` instance:
+
 ```python
 gnn = GNN(
     exp_database=GNN_EXP_DATABASE, exp_schema=GNN_EXP_SCHEMA,
@@ -259,7 +301,7 @@ People.predictions = gnn.predictions(domain=Test)
 
 ### 5. (Optional) Register and load
 
-The bottom of each runner has a commented-out block that registers the trained model in the Snowflake Model Registry, then loads it into a fresh `GNN` instance and predicts without retraining. Uncomment it after you've verified the pipeline works end-to-end.
+The bottom of each script has a commented-out block that registers the trained model in the Snowflake Model Registry, then loads it into a fresh `GNN` instance and predicts without retraining. Uncomment it if you want to register a model, load it back, and run predictions without retraining.
 
 ## Customize this template
 
@@ -281,7 +323,7 @@ For the full hyperparameter list, see the [Configure a GNN](https://docs.relatio
 
 - **Add categorical demographics** (e.g. occupation, income bracket): list them under `category=[...]` in the `PropertyTransformer`.
 - **Try a multiclass task**: if your label has more than two values (e.g. never / light / heavy smoker), change `task_type="multiclass_classification"` and use `eval_metric="macro_f1"` or `"accuracy"`.
-- **Register the model** for reuse: uncomment the bonus section at the bottom of either runner.
+- **Register the model** for reuse: uncomment the bonus section at the bottom of either script.
 
 ## Troubleshooting
 
@@ -292,15 +334,9 @@ Check the class balance in `train.csv` -- if it's heavily skewed, consider re-sa
 </details>
 
 <details>
-<summary>GNN training fails or is very slow</summary>
+<summary>GNN training is very slow</summary>
 
-GNN training runs on the RelationalAI engine you've provisioned. The `device` flag in the runner picks which engine flavor to use -- `"cuda"` for GPU-enabled engines (default; significantly faster), `"cpu"` for CPU-only engines. If training is slow with `device="cuda"`, your engine may not actually have GPU; check the engine type or fall back to `"cpu"`.
-</details>
-
-<details>
-<summary>Snowflake column-name error: "concept has no field"</summary>
-
-Snowflake uppercases unquoted identifiers by default. If you created the tables with unquoted column names, the script's `getattr(People, "fasting blood sugar")` references won't match. Either quote column names when creating the tables, or rename the columns to underscore-separated lowercase variants (e.g. `fasting_blood_sugar`) and update the `PropertyTransformer` accordingly.
+GNN training runs on the RelationalAI engine you've provisioned. The `device` flag in the script picks which engine flavor to use -- `"cuda"` for GPU-enabled engines (default; significantly faster), `"cpu"` for CPU-only engines. If training is slow with `device="cuda"`, your engine may not actually have GPU; check the engine type or fall back to `"cpu"`.
 </details>
 
 <details>
@@ -309,10 +345,14 @@ Snowflake uppercases unquoted identifiers by default. If you created the tables 
 The native app needs USAGE on the database and CREATE EXPERIMENT / CREATE MODEL on the experiment schema. Run:
 
 ```sql
-GRANT USAGE ON DATABASE <db> TO APPLICATION RELATIONALAI;
-GRANT USAGE ON SCHEMA <db>.<exp_schema> TO APPLICATION RELATIONALAI;
-GRANT CREATE EXPERIMENT ON SCHEMA <db>.<exp_schema> TO APPLICATION RELATIONALAI;
-GRANT CREATE MODEL ON SCHEMA <db>.<exp_schema> TO APPLICATION RELATIONALAI;
+SET db_name            = '<db>';
+SET schema_experiments = '<db>.<exp_schema>';
+SET app_name           = 'RELATIONALAI';   -- replace with your app name
+
+GRANT USAGE             ON DATABASE identifier($db_name)            TO APPLICATION identifier($app_name);
+GRANT USAGE             ON SCHEMA   identifier($schema_experiments) TO APPLICATION identifier($app_name);
+GRANT CREATE EXPERIMENT ON SCHEMA   identifier($schema_experiments) TO APPLICATION identifier($app_name);
+GRANT CREATE MODEL      ON SCHEMA   identifier($schema_experiments) TO APPLICATION identifier($app_name);
 ```
 </details>
 

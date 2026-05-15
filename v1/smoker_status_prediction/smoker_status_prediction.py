@@ -2,7 +2,7 @@
 
 Reference pattern for adapting the smoker classification pipeline against
 Snowflake-hosted tables. See `smoker_status_prediction_local.py` for a
-CSV-based runner that you can execute without external setup.
+CSV-based script that you can execute without external setup.
 
 Predicts whether a person is a smoker (binary classification) using their
 demographic and medical attributes plus a network of social connections.
