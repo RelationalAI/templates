@@ -19,7 +19,7 @@ tags:
 
 ## What this template is for
 
-Retailers face interconnected decisions: which items will sell, which customers are at risk of leaving, what discounts to offer, and how much inventory to stock. Traditionally these are solved in isolation -- demand forecasting in one silo, pricing optimization in another, supply planning in a third. This template shows how to unify them in a single **predict-then-optimize** pipeline using RelationalAI.
+Retailers face interconnected decisions: which items will sell, which customers are at risk of leaving, what discounts to offer, and how much inventory to stock. Traditionally these are solved in isolation -- demand forecasting in one silo, pricing optimization in another, supply planning is a third. This template shows how to unify them in a single **predict-then-optimize** pipeline using RelationalAI.
 
 **Start with `retail_planning_local.py`** -- it trains a real sales-regression GNN on a bundled H&M subset (CPU, no external data), aggregates predictions per article, and runs both optimizers. A few minutes end-to-end. It's the quickest way to see the whole pattern working.
 
@@ -27,7 +27,7 @@ Retailers face interconnected decisions: which items will sell, which customers 
 
 > [!IMPORTANT]
 > The RelationalAI **predictive reasoner (GNN)** used in this template is in
-> early access. The API surface (`GNN`, `PropertyTransformer`, task
+> private preview. The API surface (`GNN`, `PropertyTransformer`, task
 > relationships) may still change between releases; check the
 > `rai-predictive-modeling` and `rai-predictive-training` skills for the
 > current guidance before adapting to production data.
@@ -54,7 +54,7 @@ Assumes familiarity with Python, basic ML concepts (classification, regression, 
 - **Runners**:
   - `retail_planning_local.py` -- **primary, runnable out of the box.** Trains a sales-regression GNN on the bundled HM_MINI subset and solves both optimizers.
   - `retail_planning.py` -- **reference pattern** for adapting the same pipeline to your own Snowflake data. Trains three GNNs (sales, churn, purchase) against a full H&M dataset in Snowflake.
-- **Model**: Three GNN tasks on the H&M knowledge graph (Customer, Article, Transaction), two prescriptive problems consuming their output
+- **Model**: Three GNN tasks on the H&M knowledge graph (Customer, Article, Transaction), two prescriptive problems consuming their output.
 - **Sample data**:
   - `data/hm_mini/` -- bundled H&M subset (~10K customers / 5K articles / 9.6K transactions) with sales task splits. This is what the local runner trains on.
   - `data/*.csv` -- optimizer parameters: discounts, weeks, article inventory, production capacity.
@@ -83,7 +83,7 @@ you'll additionally need:
 ### Tools
 
 - Python >= 3.10
-- RelationalAI Python SDK (`relationalai`) >= 1.0.14
+- RelationalAI Python SDK (`relationalai`) >= 1.3.1
 
 ## Quickstart
 
@@ -109,11 +109,25 @@ you'll additionally need:
    ```
 
 4. Configure:
-   ```bash
-   rai init
+   Open `raiconfig.yaml` and fill in your Snowflake credentials (`account`, `user`, `password`, `warehouse`, `rai_app_name`). The file is pre-populated with placeholder values — replace them with your actual account details.
+
+5. Set up the experiment schema in Snowflake:
+
+   Before running, create the database and schema used to store GNN experiments, and grant the required permissions to the RAI Native App. Run the following in a Snowflake worksheet:
+
+   ```sql
+   CREATE DATABASE IF NOT EXISTS HM_MINI;
+   CREATE SCHEMA IF NOT EXISTS HM_MINI.EXPERIMENTS;
+   GRANT USAGE ON DATABASE HM_MINI TO APPLICATION RELATIONALAI;
+   GRANT USAGE ON SCHEMA HM_MINI.EXPERIMENTS TO APPLICATION RELATIONALAI;
+   GRANT CREATE EXPERIMENT ON SCHEMA HM_MINI.EXPERIMENTS TO APPLICATION RELATIONALAI;
+   GRANT CREATE MODEL ON SCHEMA HM_MINI.EXPERIMENTS TO APPLICATION RELATIONALAI;
    ```
 
-5. Run the local demo on the bundled H&M subset (CPU, a few minutes):
+   > [!NOTE]
+   > Replace `RELATIONALAI` with the `rai_app_name` you set in `raiconfig.yaml` if it differs.
+
+6. Run the local demo on the bundled H&M subset (CPU, a few minutes):
    ```bash
    python retail_planning_local.py
    ```
@@ -379,16 +393,6 @@ dp.minimize(prod_cost_total + hold_cost_total + unmet_cost_total)
 - Verify that the test set tables contain rows and that foreign keys link correctly to the core entity tables.
 - If val-RMSE is at or above `stddev(target)`, the regression model has
   collapsed to the mean — revisit the PropertyTransformer and task setup.
-</details>
-
-<details>
-<summary><code>has_time_column=True</code> fails validation</summary>
-
-Known limitation flagged in the rai-predictive-training skill: when the concept
-carrying `time_col` (here, `Transaction`) is used only as an edge intermediary,
-validation can fail with "no time column defined in data tables." Workaround:
-set `has_time_column=False` on the affected GNN and remove the `"at"` clause
-from its Relationship templates until the GNN team resolves this.
 </details>
 
 <details>
