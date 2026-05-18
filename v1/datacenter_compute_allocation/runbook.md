@@ -1,11 +1,11 @@
 # Runbook: Datacenter Compute Allocation — Multi-Reasoner Walkthrough
 
-A neocloud operator has 110 workloads from 6 AI labs competing for 28 GPU pools across 5 hyperscaler campuses (a snapshot of the campus set the upstream `energy_grid_planning` $300M solve approved). The chain predicts per-workload utilization probability, screens hardware compatibility, weights workloads by downstream gating, and produces a 48-cell scenario sweep — no single reasoner can answer this end-to-end.
+A neocloud operator has 110 workloads from 6 AI labs competing for 28 GPU pools across 5 hyperscaler campuses (a snapshot of the campus set the upstream `energy_grid_planning` $300M solve approved). The chain predicts per-workload utilization probability, screens hardware compatibility, weights workloads by downstream gating, and produces a 24-cell scenario sweep — no single reasoner can answer this end-to-end.
 
 ## The chain
 
 ```
-The 48-cell sweep (3 envelopes × 4 margin floors × 4 diversity caps)
+The 24-cell sweep (2 envelopes × 3 margin floors × 4 diversity caps)
 traces two Pareto frontiers — margin × revenue and diversity × revenue.
 The headline baseline cell (100pct / unconstrained / none) is persisted
 as ontology so the plan survives the chain run.
@@ -16,10 +16,10 @@ as ontology so the plan survives the chain run.
                   hetero GNN) (workload, month) observations + 110 val.
                               Probability each workload actually uses its
                               allocated capacity at high duty cycle this
-                              period. Frontier pretrains land 0.88;
-                              isolated Stability evals 0.34.
+                              period. Frontier pretrains land ~0.78;
+                              isolated Stability evals ~0.38.
   ─────────────────────────────────────────────────────────────────
-  STAGE 2  Rules        ──►  Compatibility(workload, gpu_pool) (~1,900)
+  STAGE 2  Rules        ──►  Compatibility(workload, gpu_pool) (1,918)
                              Workload.priority_tier            (110)
                              Workload.under_provisioning_penalty
                              P0 = 15 (wt 100, pen 1.0), P1 = 80 (10, 0.3),
@@ -28,17 +28,21 @@ as ontology so the plan survives the chain run.
   STAGE 3  Graph        ──►  Workload.gating_score             (110)
                  (downstream- Frontier pretrain shards (GPT/Grok/Claude-Next)
                   reach)      top the score, gating 4–5-deep chains.
+                              GPT-Next 02 ≈ 0.0310, Grok-Next 04 ≈ 0.0266.
   ─────────────────────────────────────────────────────────────────
   STAGE 4  Prescriptive ──►  Assignment.x_assign(env, mar, div)
-                 (MIP)       48 cells: 33 OPTIMAL, 15 INFEASIBLE.
+                 (MIP)       24 cells: 16 OPTIMAL, 8 INFEASIBLE.
+                             OPTIMAL in 6 s with Gurobi.
                              Baseline (100pct / unconstrained / none):
-                             110 assigned · $25.3M revenue · 83% margin
+                             110 assigned · $25.28M revenue · 83% margin
                              · 95% anchor · binding axis: power envelope.
+                             Margin cliff at 85% (-13% rev, 90 dropped).
+                             Diversity cliff at any cap (-82% at 70%).
                              Persisted as AllocationPlan singleton +
                              Assignment.is_chosen (110 rows) +
                              DemandScenarioOutlook (4 risk scenarios:
                              expected / diffusion_slowdown / scaling_break
-                             / frontier_loss with realized + stranded $).
+                             / frontier_loss; stranded $200K / $400K / $667K).
   ─────────────────────────────────────────────────────────────────
 ```
 
@@ -68,7 +72,7 @@ Concepts: `DataCenterRequest`, `GpuPool`, `AILab`, `Workload`, `WorkloadDependen
 
 **Response**
 
-10 concepts: 5 `DataCenterRequest` (xAI Colossus, Microsoft Horizon, CoreWeave Austin, Crusoe Permian, Oracle Coastal), 28 `GpuPool`, 6 `AILab`, 110 `Workload`, 181 `WorkloadGpuCompat` (workload-side GPU-type allowlist as a composite-key edge concept), 138 `WorkloadDependency`, 2,190 `LabMetric` covering 365 days × 6 labs (date range 2025-05-11 .. 2026-05-10), plus 3 / 4 / 4 rows on the three Scenario Concepts (3 × 4 × 4 = 48 cells).
+10 concepts wired to the bundled CSVs: 5 `DataCenterRequest`, 28 `GpuPool`, 6 `AILab`, 110 `Workload`, 181 `WorkloadGpuCompat`, 138 `WorkloadDependency`, 2,190 `LabMetric` (365 days × 6 labs, 2025-05-11 .. 2026-05-10), plus 2 / 3 / 4 rows on `PowerEnvelopeLevel` / `MarginFloor` / `DiversityCap` (2 × 3 × 4 = 24 scenario cells).
 
 ### 3. Discover reasoner questions
 
@@ -80,7 +84,7 @@ Concepts: `DataCenterRequest`, `GpuPool`, `AILab`, `Workload`, `WorkloadDependen
 
 **Response**
 
-Plan routes sub-questions to predictive (per-workload utilization-probability classification — captures the operator's stranded-capacity exposure), rules (hardware eligibility + priority tier), graph (downstream gating), and prescriptive (assignment MIP under a 3D scenario sweep with interpretation).
+Plan routes sub-questions to predictive (per-workload utilization-probability classification), rules (hardware eligibility + priority tier), graph (downstream gating on the dep DAG), and prescriptive (assignment MIP under a 3-axis scenario sweep with interpretation).
 
 ### 4. Scope demand
 
@@ -92,19 +96,19 @@ Plan routes sub-questions to predictive (per-workload utilization-probability cl
 
 **Response**
 
-Frontier labs (Anthropic Research, OpenAI Pretrain, xAI Internal) carry the 15 P0 pretrains (256–1,024 GPUs each, GB200/H200/H100 mix). Applied labs (Cohere Inference, Together AI Multi-Lab) carry the 30 P1 fine-tunes + 50 P1 inference workloads. Stability Open carries the 15 P2 evals. Pretrain GPU-hour demand dwarfs inference even at a 50:15 workload-count ratio.
+Frontier labs (Anthropic, OpenAI, xAI Internal) carry the 15 P0 pretrains (256–1,024 GPUs each, GB200/H200/H100 mix); applied labs (Cohere, Together AI) carry 30 P1 fine-tunes + 50 P1 inference; Stability Open carries 15 P2 evals. Pretrain GPU-hour pressure dominates despite the 15:50 pretrain-to-inference workload count.
 
 ### 5. Predict per-workload utilization probability
 
 **Prompt**
 
 ```
-/rai-predictive-modeling + /rai-predictive-training Which workloads will actually use their allocated capacity at high duty cycle next period, vs stall or be repaced? This is the operator's biggest economic risk — stranded capacity is depreciation accruing without offsetting revenue. Train a temporal binary-classification GNN over a heterogeneous graph (lab-side activity LabMetric → Workload, dependency propagation WorkloadDependency.blocks, cross-lab industry co-movement LabMetric ↔ LabMetric on the same date when labs share a workload_type). Each workload has 7 historical monthly utilization observations + 1 validation month in workload_utilization_train.csv / _val.csv; the test split is all 110 workloads at the current month (no label — predict for the upcoming period). Use has_time_column=True so LabMetric features are time-aligned with each (workload, observation_date) prediction. Bind the positive-class probability back to the ontology as Workload.utilization_probability.
+/rai-predictive-modeling + /rai-predictive-training Which workloads will actually use their allocated capacity at high duty cycle next period, vs stall or be repaced? Train a temporal binary-classification GNN over a heterogeneous graph spanning lab-side activity (LabMetric → Workload), dependency propagation (WorkloadDependency.blocks), and cross-lab industry co-movement (LabMetric ↔ LabMetric on the same date when labs share a workload_type). Labels are per-(workload, observation_date): 7 historical months in workload_utilization_train.csv plus 1 validation month in _val.csv; the test split is the current month, unlabeled. Bind the positive-class probability back as Workload.utilization_probability.
 ```
 
 **Response**
 
-GNN temporal binary classification (`task_type="binary_classification"`, `eval_metric="roc_auc"`, `has_time_column=True`). 770 training observations (7 historical months × 110 workloads) + 110 validation observations + 110 current-period test predictions. Per-workload `utilization_probability` for the current period: frontier pretrain shards top the distribution (p ≈ 0.85–0.95) because they pull signal through three time-aligned channels — their lab's same-period activity (LabMetric → Workload edges aligned by date), dep DAG propagation (each pretrain gates 3–5 downstream evals + finetunes), and same-period cross-lab co-movement (frontier labs ramping together amplifies each other). Stability evals sit at the bottom (p ≈ 0.34) — small lab activity, isolated dep position, and no cross-lab signal pulling them up. The cross-concept edges + temporal alignment are the load-bearing signal: a per-workload tabular baseline can't see lab-side activity at the prediction date, dep propagation, or cross-lab co-movement, so it under-discriminates between similar-on-paper workloads observed in different lab contexts and different macro periods.
+GNN temporal binary classification (`task_type="binary_classification"`, `eval_metric="roc_auc"`, `has_time_column=True`) on 770 training + 110 validation + 110 test `(workload, observation_date)` observations across three cross-concept edges (`LabMetric→Workload`, `WorkloadDependency.blocks`, cross-lab `co_dated`). `Workload.utilization_probability` bound for all 110: 95 at p ≥ 0.5, 15 at p < 0.5. Frontier pretrain shards top the distribution (p ≈ 0.78), Stability evals sit at the bottom (p ≈ 0.38).
 
 ### 6. Screen hardware compatibility and priority
 
@@ -116,7 +120,7 @@ GNN temporal binary classification (`task_type="binary_classification"`, `eval_m
 
 **Response**
 
-`Compatibility(workload, gpu_pool)` precompute holds 1,918 eligible pairs; `Workload.priority_tier` distribution is P0 = 15 / P1 = 80 / P2 = 15 with weights 100 / 10 / 1 and under-provisioning penalties 1.0 / 0.3 / 0.0. The numeric weights emulate lex-priority inside a single weighted-sum MIP, matching production cluster schedulers (Borg, Singularity, MAST); the under-provisioning penalty enters Stage 4's objective as a multiplier on assignment reward so an unfilled anchor counts as a 2× foregone-revenue loss, not 1×.
+`Compatibility(workload, gpu_pool)` precompute (1,918 eligible pairs); `Workload.priority_tier` (P0 = 15 / P1 = 80 / P2 = 15), `.priority_weight` (100 / 10 / 1), and `.under_provisioning_penalty` (1.0 / 0.3 / 0.0). Diagnostic relationships `Workload.is_eligible(GpuPool)` and `Workload.fails_memory(GpuPool)` also derived for queryability.
 
 ### 7. Score downstream gating
 
@@ -128,19 +132,19 @@ GNN temporal binary classification (`task_type="binary_classification"`, `eval_m
 
 **Response**
 
-Frontier pretrain shards top the score: GPT-Next pretrain shard 02 ≈ 0.031, Grok-Next pretrain shard 04 ≈ 0.027, Claude-Next pretrain shard 02 ≈ 0.023 — they root 4–5-deep dependency chains. Isolated inference workloads sit at the baseline ≈ 1 / 110.
+`Workload.gating_score` for all 110: frontier pretrain shards top the score (GPT-Next pretrain shard 02 ≈ 0.031, Grok-Next 04 ≈ 0.027, Claude-Next 02 ≈ 0.023) rooting 4–5-deep dependency chains; isolated inference workloads sit at the baseline ≈ 1/110.
 
-### 8. Allocate GPU capacity under the 3D scenario sweep
+### 8. Allocate GPU capacity under the 3-axis scenario sweep
 
 **Prompt**
 
 ```
-/rai-prescriptive-problem-formulation Which workloads should be assigned to which (DC, GPU pool) under three scenario axes — power envelope (85% / 100% / 110% of approved_mw, tracing the lower-cone / expected / upper-cone planning points), gross-margin floor (unconstrained / 75% / 80% / 85%), and anchor-concentration cap (none / 70% / 50% / 40% with workload-type floor) — solved as one MIP indexed by all three? Stay within per-pool GPU capacity and per-DC power. Maximize Σ priority_weight × gating_score × utilization_probability × strategic_value_usd × (1 + under_provisioning_penalty) so anchor under-provisioning is priced asymmetrically. Per-cell INFEASIBLE is diagnostic — the global solve should not fail when one cell binds too tight.
+/rai-prescriptive-problem-formulation Which workloads should be assigned to which (DC, GPU pool) under three scenario axes — power envelope (85% / 100% of approved_mw), gross-margin floor (unconstrained / 80% / 85%), and anchor-concentration cap (none / 70% / 50% / 40% with workload-type floor) — solved as one MIP indexed by all three? Stay within per-pool GPU capacity and per-DC power, hit the margin and diversity caps per cell, and amplify anchor reward by the under-provisioning penalty so unfilled anchor seats cost more than unfilled research seats. Per-cell INFEASIBLE is diagnostic — the global solve should not fail when one cell binds too tight.
 ```
 
 **Response**
 
-Solver returns 33 cells solved + 15 INFEASIBLE (designed signal). At the default `time_limit_sec=120` the solver returns a feasible solution at the wall; with a faster solver licensed on the prescriptive engine the same problem reaches OPTIMAL in seconds. Baseline cell (100pct / unconstrained / none): 110 workloads, $25.28M revenue, 83% realized margin, 95% anchor share. The strictest cells (`anchor_max_40pct_with_type_floor` at any envelope; `anchor_max_50pct` paired with the 85% margin floor) return INFEASIBLE because the type-floor and anchor-cap combination forbids the pretrain volume that supplies the margin.
+Single MIP across 24 cells: `Assignment.x_assign(PowerEnvelopeLevel, MarginFloor, DiversityCap)` written back per cell — 16 OPTIMAL, 8 INFEASIBLE (designed signal at the strictest anchor-cap + type-floor combinations). OPTIMAL in ~6 s with Gurobi. Baseline (100pct / unconstrained / none): 110 workloads, $25.28M revenue, 83% margin, 95% anchor.
 
 ### 9. Read the frontiers and the demand-risk overlay
 
@@ -152,7 +156,7 @@ Solver returns 33 cells solved + 15 INFEASIBLE (designed signal). At the default
 
 **Response**
 
-Baseline cell: 110 workloads, $25.28M revenue, $4.20M total cost, 83% margin, 95% anchor, binding axis is the power envelope (no margin or diversity constraint active here). Margin frontier: revenue holds at $25.3M at 75% / 80% floors but cliffs to $22.0M at 85% (90 workloads dropped, 100% anchor — the cell retains 14 of 15 frontier P0 pretrains plus 4 P1 finetunes and 2 P2 evals that fit under the floor). Diversity frontier: $25.3M with no cap → $4.4M at 70% → $2.6M at 50% (CoreWeave-target shape) → INFEASIBLE at 40% with type-floor. Demand-risk overlay: P0 anchor revenue (~$23.9M, 95% of the envelope) is contractually locked, leaving only ~$1.33M of P1/P2 opportunistic revenue exposed — stranded exposure is ~$200K (0.8%) under diffusion-slowdown, ~$400K (1.6%) under scaling-break, and ~$667K (2.6%) under frontier-loss. The stranded-capacity envelope is small precisely because the headline plan is anchor-heavy; a more diverse cell (e.g., `anchor_max_70pct`) would have a much wider risk band — visible in `DemandScenarioOutlook` when the overlay is replayed against that cell.
+Baseline: 110 workloads, $25.28M revenue, $4.18M cost, 83% margin, 95% anchor, binding axis = power envelope. Margin frontier: $25.28M at unconstrained / 80% floors (80% is not binding — unconstrained naturally lands at 83%), cliffs to $22.03M at 85% (90 workloads dropped, 100% anchor). Diversity frontier: $25.28M (none) → $4.44M (70%, -82%) → $2.60M (50%, -90%) → INFEASIBLE (40% with type floor). Demand overlay on a ~$1.33M opportunistic base (P0 anchor revenue contractually locked): stranded ~$200K (diffusion_slowdown), ~$400K (scaling_break), ~$667K (frontier_loss).
 
 ### 10. Persist solution concepts into the ontology
 
@@ -164,7 +168,7 @@ Baseline cell: 110 workloads, $25.28M revenue, $4.20M total cost, 83% margin, 95
 
 **Response**
 
-Ontology gains a singleton `AllocationPlan` (id = `DCCA_BASELINE`) with revenue ≈ $25.28M, total cost ≈ $4.19M, margin ≈ 0.83, anchor share ≈ 0.95, n_assigned = 110, status = `OPTIMAL`, binding_axis = `power_envelope`; plus `Assignment.is_chosen` (110 rows). Headline plan is queryable as ontology rather than stdout — mirrors the `RestorePlan` / `is_selected_upgrade` pattern in `telco_network_recovery` and the `InvestmentPortfolio` pattern in `energy_grid_planning`.
+Ontology gains a singleton `AllocationPlan(id="DCCA_BASELINE")` with `revenue_usd` ≈ $25.28M, `total_cost_usd` ≈ $4.18M, `realized_margin` ≈ 0.83, `anchor_share` ≈ 0.95, `n_assigned` = 110, `status` = `OPTIMAL`, `binding_axis` = `power_envelope`; plus `Assignment.is_chosen` (110 rows), `DemandScenario` (4 rows), and `DemandScenarioOutlook` (per-scenario realized + stranded revenue). All queryable as ontology, not stdout.
 
 ## Data
 

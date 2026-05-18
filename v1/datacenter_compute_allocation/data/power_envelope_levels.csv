@@ -1,4 +1,3 @@
 name,envelope_multiplier,label
 85pct,0.85,85% (de-rated)
 100pct,1.0,100% (approved)
-110pct,1.1,110% (over-commit)
