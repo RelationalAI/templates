@@ -172,4 +172,4 @@ Ontology gains a singleton `AllocationPlan(id="DCCA_BASELINE")` with `revenue_us
 
 ## Data
 
-Bundled CSVs in `data/`: 5 data centers, 28 GPU pools, 6 AI labs, 110 workloads (15 P0 pretrain / 30 P1 finetune / 50 P1 inference / 15 P2 eval), 138 workload dependencies, 2,190 lab-metric rows (365 days × 6 labs) split into train/val/test, plus 3 / 4 / 4 scenario rows. Full chain implemented in `datacenter_compute_allocation.py`.
+Bundled CSVs in `data/`: 5 data centers, 28 GPU pools, 6 AI labs, 110 workloads (15 P0 pretrain / 30 P1 finetune / 50 P1 inference / 15 P2 eval), 138 workload dependencies, 2,190 lab-metric rows (365 days × 6 labs) split into train/val/test, plus 2 / 3 / 4 scenario rows. Full chain implemented in `datacenter_compute_allocation.py`.

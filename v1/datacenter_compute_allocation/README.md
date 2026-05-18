@@ -1,6 +1,6 @@
 ---
 title: "Datacenter Compute Allocation"
-description: "Multi-reasoner template (chain follow-up to energy_grid_planning): heterogeneous-graph GNN classification of per-workload utilization probability, hardware-compatibility rules, dependency PageRank, and 3D-scenario MIP for inside-the-fence GPU allocation across hyperscaler campuses."
+description: "Multi-reasoner template (chain follow-up to energy_grid_planning): heterogeneous-graph GNN classification of per-workload utilization probability, hardware-compatibility rules, dependency PageRank, and 24-cell scenario MIP for inside-the-fence GPU allocation across hyperscaler campuses."
 featured: false
 private: true
 experience_level: advanced
@@ -284,9 +284,9 @@ datacenter_compute_allocation/
     workload_utilization_train.csv  # GNN train split: 7 historical months × 110 = 770 obs
     workload_utilization_val.csv    # GNN val split: 1 month × 110 = 110 obs
     workload_utilization_test.csv   # GNN test: current period × 110, no label
-    workload_utilization_fallback.csv  # Stage 1 fallback (deterministic per-workload p)
-    power_envelope_levels.csv       # 3 scenario rows (envelope multiplier)
-    margin_floors.csv               # 4 scenario rows (gross margin floors)
+    workload_utilization_fallback.csv  # Stage 1 fallback (GNN-shape per-workload p)
+    power_envelope_levels.csv       # 2 scenario rows (envelope multiplier)
+    margin_floors.csv               # 3 scenario rows (gross margin floors)
     diversity_caps.csv              # 4 scenario rows (anchor concentration caps)
   README.md                         # this file
   runbook.md                        # multi-reasoner agent-skill walkthrough
