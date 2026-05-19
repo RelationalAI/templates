@@ -27,7 +27,7 @@ Setup:
         <DATABASE>.<SCHEMA>.RELATED       (person1, person2)
         <DATABASE>.<TASK_SCHEMA>.TRAIN    (Id, smoking)
         <DATABASE>.<TASK_SCHEMA>.VALIDATION (Id, smoking)
-        <DATABASE>.<TASK_SCHEMA>.TEST     (Id)
+        <DATABASE>.<TASK_SCHEMA>.TEST     (Id, smoking)
 
 Run:
     python smoker_status_prediction.py

@@ -16,7 +16,7 @@ tags:
 
 ## What this template is for
 
-Predicting health-related behaviors like smoking status from medical and demographic data is a common tabular machine learning task. In practice, though, these behaviors are also shaped by social context: friends, family, and peers often influence one another. This template demonstrates how to model both individual attributes and social relationships with a Graph Neural Network (GNN), using the RelationalAI predictive reasoner to train a single end-to-end model.
+Predicting health-related behaviors like smoking status from medical and demographic data is a common tabular machine learning task. In practice, though, these behaviors are also shaped by social context: friends, family, and peers often influence one another. This template demonstrates how to model both individual attributes and social relationships with a Graph Neural Network (GNN), using the RelationalAI **Predictive** reasoner to train a single end-to-end model.
 
 The pipeline is intentionally minimal:
 
@@ -46,7 +46,7 @@ Both scripts train the GNN through the same RelationalAI Native App; the only di
 ## Who this is for
 
 - Data scientists who want to leverage the relational structure of data stored across connected tables
-- ML engineers learning the RelationalAI predictive reasoner workflow
+- ML engineers learning the RelationalAI **Predictive** reasoner workflow
 - Health analytics teams interested in incorporating social or relational structure into predictive models
 
 Assumes familiarity with Python and basic ML concepts (binary classification, train/val/test splits).
