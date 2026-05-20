@@ -83,9 +83,10 @@ GNN_LR = 0.002
 BUDGET_USD = 5_000_000
 INSTALL_WEEKS_BUDGET = 200
 
-# Stage 4 MIP solver. Change to "highs" / "cbc" if your prescriptive
-# engine isn't gurobi-enabled (see raiconfig.yaml `reasoners.prescriptive
-# .settings.gurobi.enabled`).
+# Stage 4 MIP solver. Defaults to gurobi; if the prescriptive engine
+# isn't gurobi-enabled/licensed, the solve below automatically falls
+# back to the bundled open-source "highs" solver -- no config change
+# needed (see raiconfig.yaml `reasoners.prescriptive.settings.gurobi`).
 MIP_SOLVER = "gurobi"
 
 # Stage 2 threshold for the predictive-driven critical-restore branch.
@@ -133,15 +134,19 @@ eq_shuf = network_equipment_df.sample(frac=1, random_state=SEED).reset_index(dro
 n = len(eq_shuf)
 train_n = int(n * 0.70)
 val_n = int(n * 0.15)
+# reset_index(drop=True) on every split: model.data() infers column
+# types via df[col][0], a 0-based label lookup. An .iloc slice keeps
+# the parent index (val/test start mid-frame), so without this reset
+# the val split has no row labeled 0 -> KeyError: 0.
 train_eq_df = eq_shuf.iloc[:train_n][["EQUIPMENT_ID", "AT_RISK"]].rename(
     columns={"EQUIPMENT_ID": "equipment_id", "AT_RISK": "at_risk"}
-)
+).reset_index(drop=True)
 val_eq_df = eq_shuf.iloc[train_n:train_n + val_n][["EQUIPMENT_ID", "AT_RISK"]].rename(
     columns={"EQUIPMENT_ID": "equipment_id", "AT_RISK": "at_risk"}
-)
+).reset_index(drop=True)
 test_eq_df = network_equipment_df[["EQUIPMENT_ID"]].rename(
     columns={"EQUIPMENT_ID": "equipment_id"}
-)
+).reset_index(drop=True)
 
 print(f"Equipment split: train={len(train_eq_df)} val={len(val_eq_df)} test={len(test_eq_df)} (all)")
 print(f"Label distribution: at_risk=1 {network_equipment_df['AT_RISK'].sum()} / "
@@ -848,7 +853,20 @@ problem.maximize(
 )
 
 print(f"\n  Solving (MIP solver: {MIP_SOLVER})...")
-problem.solve(solver=MIP_SOLVER)
+try:
+    problem.solve(solver=MIP_SOLVER)
+except Exception as exc:
+    # Fall back to the bundled open-source HiGHS solver when gurobi is
+    # unavailable / unlicensed on the prescriptive engine.
+    _msg = str(exc).lower()
+    if "gurobi" in _msg and any(
+        k in _msg for k in ("licen", "unavailable", "not enabled",
+                             "not found", "disabled", "install")
+    ):
+        print(f"  Gurobi unavailable ({exc}); falling back to solver='highs'.")
+        problem.solve(solver="highs")
+    else:
+        raise
 problem.display()
 
 # Extract selected upgrades. Cast int128 (returned by RAI select) to

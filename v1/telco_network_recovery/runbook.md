@@ -5,7 +5,7 @@ A regional telco operator must allocate a fixed $5M capex budget and 200 crew-we
 ## The chain
 
 ```
-Ontology: 8 concepts including ModelAdvisory; 1,500 equipment items,
+Ontology: 8 source-data concepts including ModelAdvisory; 1,500 equipment items,
 8 advisories on 7 MODELs (RECALL / DEFECT_BATCH / EOL / FIRMWARE_BUG
 / SECURITY_PATCH). The chain produces a multi-region preventive-
 maintenance plan within the $5M / 200-week envelope, restoring 214
@@ -60,7 +60,14 @@ Concepts: `CellTower`, `NetworkEquipment` (with `tower_id_fk` FK property), `Equ
 
 **Response**
 
-8 concepts wired to the bundled CSVs: 250 `CellTower`, 1,500 `NetworkEquipment`, 1,500 `EquipmentHealth`, 5,000 `NetworkPerformance`, 1,200 `Subscriber`, 6,000 `CallDetailRecord`, 750 `TowerUpgradeOption` (3 tiers × 250 towers), 8 `ModelAdvisory` rows on 7 distinct MODELs. Advisory severities span 0.50–0.95 (RECALL / DEFECT_BATCH / FIRMWARE_BUG / EOL / SECURITY_PATCH). 572 of the 1,500 equipment items (38.1 %) sit on an advised MODEL — these are the items the GNN's ModelAdvisory edge will surface as elevated-risk.
+8 source-data concepts wired to the bundled CSVs: 250 `CellTower`, 1,500 `NetworkEquipment`, 1,500 `EquipmentHealth`, 5,000 `NetworkPerformance`, 1,200 `Subscriber`, 6,000 `CallDetailRecord`, 750 `TowerUpgradeOption` (3 tiers × 250 towers), 8 `ModelAdvisory` rows on 7 distinct MODELs. (Downstream stages add more concepts — `TowerFailureScore`, `RestorePlan`, and the GNN task tables — so the running script defines more than 8.) Advisory severities span 0.50–0.95 (RECALL / DEFECT_BATCH / FIRMWARE_BUG / EOL / SECURITY_PATCH).
+
+Two distinct equipment fractions are worth separating here:
+
+- **Advised-MODEL coverage** — 572 of the 1,500 equipment items (38.1 %) sit on a MODEL that carries an advisory. This is the relational neighbor signal the GNN's `ModelAdvisory → NetworkEquipment` edge propagates.
+- **At-risk label rate** — 597 of the 1,500 items (39.8 %) carry the binary `AT_RISK` GNN label (STATUS in FAILING / WARNING). This is the prediction target, not the advisory-coverage figure.
+
+The two overlap but are not the same set: advisory coverage is a structural property of the fleet, while the at-risk label is the operational outcome the GNN learns to predict.
 
 ### 3. Discover reasoner questions
 
@@ -139,12 +146,12 @@ Budget is binding ($4,999,671 / $5,000,000); install-weeks at 195 / 200 are near
 **Prompt**
 
 ```
-/rai-ontology-design Materialize the optimal plan and the selected upgrades as queryable ontology. Add a RestorePlan concept holding the plan summary (total cost, install-weeks, capacity restored, tier-mix counts, towers covered, binding constraints) and a SelectedUpgrade view restricted to the chosen tower-tier rows.
+/rai-ontology-design Materialize the optimal plan and the selected upgrades as queryable ontology. Add a RestorePlan concept holding the plan summary (total cost, install-weeks, capacity restored, tier-mix counts, towers covered, binding constraint) and mark the chosen tower-tier rows on TowerUpgradeOption.
 ```
 
 **Response**
 
-Ontology gains a singleton `RestorePlan` Concept with `total_cost`, `total_install_weeks`, `capacity_restored_gbps`, `gold_count`, `silver_count`, `bronze_count`, `towers_covered`, `binding_constraints` (now a list); plus `SelectedUpgrade` (a view over the chosen rows of `TowerUpgradeOption`). Headline plan numbers are queryable as ontology, not stdout.
+Ontology gains a singleton `RestorePlan` Concept with `total_cost`, `total_install_weeks`, `capacity_restored_gbps`, `gold_count`, `silver_count`, `bronze_count`, `towers_covered`, and `binding_constraint` (a single String — `"budget"`, `"install_weeks"`, or `"none"`); plus a `TowerUpgradeOption.is_selected_upgrade` relationship marking the chosen tower-tier rows. Headline plan numbers are queryable as ontology, not stdout.
 
 ## Data
 
