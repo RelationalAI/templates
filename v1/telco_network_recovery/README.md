@@ -146,7 +146,9 @@ Set `EXP_DATABASE` at the top of `telco_network_recovery.py` to that database (d
    python telco_network_recovery.py
    ```
 
-7. Expected output (abbreviated, with the bundled seed):
+7. Representative output (one run on RAI 1.4.2):
+
+   > The equipment-failure GNN is stochastic — exact figures (failure_intensity, flagged-tower count, tier mix, Gbps) shift run to run. The structural outcome reproduces: all 5 regions covered, budget binding, ~200 Gbps restored across ~36 towers.
 
    ```text
    Equipment split: train=1050 val=225 test=1500 (all)
@@ -154,38 +156,38 @@ Set `EXP_DATABASE` at the top of `telco_network_recovery.py` to that database (d
    Advisories: 8 on 7 distinct models
 
    STAGE 1: PREDICTIVE -- equipment-failure binary classification GNN
-     failure_intensity distribution: min=0.09, median=3.06, max=8.67
-     Towers with failure_intensity > 1.5: 165 / 190
+     failure_intensity distribution: min=0.02, median=2.92, max=10.47
+     Towers with failure_intensity > 1.5: 139 / 190
      GNN recall on 597 true at-risk items:
        Argmax (predicted_label == 1):                         0 ( 0.0%)
-       p>=0.5 (probabilistic threshold):                    503 (84.3%)
-     GNN per-equipment positive-prob distribution: min=0.024,
-       median=0.331, max=0.890; items with pos_prob>=0.5: 572 / 1500
+       p>=0.5 (probabilistic threshold):                    547 (91.6%)
+     GNN per-equipment positive-prob distribution: min=0.006,
+       median=0.021, max=0.977; items with pos_prob>=0.5: 576 / 1500
 
    STAGE 2: RULES -- flag is_critical_restore towers
-     Flagged critical_restore towers: 166
-     Region breakdown:  WEST 47, EAST 37, SOUTH 33, NORTH 29, CENTRAL 20
+     Flagged critical_restore towers: 142
+     Region breakdown:  WEST 43, EAST 32, SOUTH 25, NORTH 23, CENTRAL 19
      Branch 1 (WEST + DEGRADED + low health):                  12 towers
      Branch 2 (WEST + high packet loss + low health):          12 towers
-     Branch 3 (failure_intensity > 1.5, any region):          165 towers
-     Towers flagged ONLY by the predictive branch:            154 (93%)
+     Branch 3 (failure_intensity > 1.5, any region):          139 towers
+     Towers flagged ONLY by the predictive branch:            130 (92%)
 
    STAGE 3: GRAPH -- PageRank + per-critical-tower blast radius
 
    STAGE 4: PRESCRIPTIVE -- tower upgrade selection MIP
-     Selected upgrades: 39 across 5 regions
-     Total cost:               $4,999,671  (budget $5,000,000, binding)
-     Total install crew-weeks: 195         (budget 200, near binding)
-     Capacity restored:        214 Gbps
-     Tier mix:                 {'BRONZE': 22, 'SILVER': 13, 'GOLD': 4}
-     Region breakdown:         {'EAST': 11, 'WEST': 9, 'SOUTH': 8, 'CENTRAL': 7, 'NORTH': 4}
+     Selected upgrades: 36 across 5 regions
+     Total cost:               $4,997,992  (budget $5,000,000, binding)
+     Total install crew-weeks: 194         (budget 200, near binding)
+     Capacity restored:        207 Gbps
+     Tier mix:                 {'BRONZE': 17, 'SILVER': 15, 'GOLD': 4}
+     Region breakdown:         {'EAST': 10, 'SOUTH': 9, 'CENTRAL': 7, 'WEST': 6, 'NORTH': 4}
 
      Plan (queryable as ontology):
        plan_id              total_cost install_weeks capacity_gbps gold silver bronze towers binding
-       TELCO_RECOVERY_2024Q4 4999671.0           195           214    4     13     22     39  budget
+       TELCO_RECOVERY_2024Q4 4997992.0           194           207    4     15     17     36  budget
 
    PIPELINE COMPLETE: 4 stages executed on the shared Telco ontology
-   Plan headline + 39-row SelectedUpgrade view are now queryable as ontology
+   Plan headline + 36-row SelectedUpgrade view are now queryable as ontology
    -- RestorePlan and TowerUpgradeOption.is_selected_upgrade.
    ```
 
