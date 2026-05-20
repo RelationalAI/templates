@@ -853,6 +853,7 @@ problem.maximize(
 )
 
 print(f"\n  Solving (MIP solver: {MIP_SOLVER})...")
+_used_solver = MIP_SOLVER
 try:
     problem.solve(solver=MIP_SOLVER)
 except Exception as exc:
@@ -864,9 +865,17 @@ except Exception as exc:
                              "not found", "disabled", "install")
     ):
         print(f"  Gurobi unavailable ({exc}); falling back to solver='highs'.")
+        _used_solver = "highs"
         problem.solve(solver="highs")
     else:
         raise
+# A non-OPTIMAL solve does NOT raise — it returns a status. Catch a
+# transient/failed gurobi solve (e.g. OTHER_ERROR on a cold call) here
+# and retry on HiGHS so the chain still produces a plan.
+if _used_solver == "gurobi" and problem.solve_info().termination_status != "OPTIMAL":
+    print(f"  gurobi returned {problem.solve_info().termination_status}; "
+          f"retrying with solver='highs'.")
+    problem.solve(solver="highs")
 problem.display()
 
 # Extract selected upgrades. Cast int128 (returned by RAI select) to
