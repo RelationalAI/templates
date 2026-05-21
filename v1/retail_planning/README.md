@@ -113,6 +113,13 @@ you'll additionally need:
    rai init
    ```
 
+   After `rai init` generates the config file, add the following to your `raiconfig.yaml`:
+
+   ```yaml
+   data:
+       ensure_change_tracking: true
+   ```
+
 5. Set up the experiment schema in Snowflake:
 
    Before running, create the database and schema used to store GNN experiments, and grant the required permissions to the RAI Native App. Run the following in a Snowflake worksheet:
