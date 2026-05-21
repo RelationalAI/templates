@@ -18,28 +18,6 @@ tags:
 
 Predicting health-related behaviors like smoking status from medical and demographic data is a common tabular machine learning task. In practice, though, these behaviors are also shaped by social context: friends, family, and peers often influence one another. This template demonstrates how to model both individual attributes and social relationships with a Graph Neural Network (GNN), using the RelationalAI **Predictive** reasoner to train a single end-to-end model.
 
-The pipeline is intentionally minimal:
-
-1. Load person-level attributes and relationship edges.
-2. Build a graph where people are nodes and social connections are edges.
-3. Define the feature configuration, including categorical and numerical properties.
-4. Train a GNN to predict each person's smoking status.
-5. Use both individual features and neighborhood structure during prediction.
-
-The dataset consists of:
-
-- **People** as nodes -- demographic and medical attributes per person.
-- **Related** as edges -- pairs of people who are connected.
-- **Binary labels** -- smoking status (0 / 1) for each person.
-
-The GNN learns from both per-person features and graph structure, allowing information from connected individuals to influence each prediction.
-
-**Start with `smoker_status_prediction_local.py`** -- it loads the bundled CSV data via `model.data()` and runs end-to-end without external Snowflake setup beyond the RelationalAI Native App.
-
-**Then adapt `smoker_status_prediction.py`** -- the same pipeline pointed at Snowflake-hosted tables.
-
-Both scripts train the GNN through the same RelationalAI Native App; the only difference is whether the source data is loaded from local CSVs or from Snowflake tables. The default `device="cuda"` works on a GPU-enabled RAI engine -- change it to `"cpu"` at the top of either script if your engine is CPU-only.
-
 > [!IMPORTANT]
 > The RelationalAI **predictive reasoner (GNN)** used in this template is in early access. The API surface (`GNN`, `PropertyTransformer`, task relationships) may still change between releases; check the `rai-predictive-modeling` and `rai-predictive-training` skills for current guidance before adapting to production data.
 
