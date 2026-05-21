@@ -358,6 +358,8 @@ model.define(
     pc.pc_initial_inventory(prod_data.initial_inventory),
 )
 
+ProdCapacity.opt_article = model.Relationship(
+    f"{ProdCapacity} has {OptArticle:opt_article}")
 model.define(ProdCapacity.opt_article(OptArticle)).where(
     ProdCapacity.pc_article_id == OptArticle.opt_article_id)
 
