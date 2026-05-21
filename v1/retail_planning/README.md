@@ -83,7 +83,7 @@ you'll additionally need:
 ### Tools
 
 - Python >= 3.10
-- RelationalAI Python SDK (`relationalai`) >= 1.4.1
+- RelationalAI Python SDK (`relationalai`) == 1.4.1
 
 ## Quickstart
 
@@ -109,7 +109,9 @@ you'll additionally need:
    ```
 
 4. Configure:
-   Open `raiconfig.yaml` and fill in your Snowflake credentials (`account`, `user`, `password`, `warehouse`, `rai_app_name`). The file is pre-populated with placeholder values — replace them with your actual account details.
+   ```bash
+   rai init
+   ```
 
 5. Set up the experiment schema in Snowflake:
 
