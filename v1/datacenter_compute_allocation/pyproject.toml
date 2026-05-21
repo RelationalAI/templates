@@ -3,9 +3,9 @@ requires = ["setuptools>=64", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "rai-template-telco-network-recovery"
+name = "rai-template-datacenter-compute-allocation"
 version = "0.0.0"
-description = "RelationalAI template: telco_network_recovery (PyRel v1)"
+description = "RelationalAI template: datacenter_compute_allocation (PyRel v1)"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [

@@ -5,12 +5,13 @@ A regional telco operator must allocate a fixed $5M capex budget and 200 crew-we
 ## The chain
 
 ```
-Ontology: 8 concepts including ModelAdvisory; 1,500 equipment items,
+Ontology: 8 source-data concepts including ModelAdvisory; 1,500 equipment items,
 8 advisories on 7 MODELs (RECALL / DEFECT_BATCH / EOL / FIRMWARE_BUG
 / SECURITY_PATCH). The chain produces a multi-region preventive-
-maintenance plan within the $5M / 200-week envelope, restoring 214
-Gbps of capacity across 39 selected towers (out of 166 flagged
-critical-restore) in all 5 regions.
+maintenance plan within the $5M / 200-week envelope, restoring 207
+Gbps of capacity across 36 selected towers (out of 142 flagged
+critical-restore) in all 5 regions. (The GNN is stochastic — exact
+figures shift run to run; the structural outcome holds.)
 
   ─────────────────────────────────────────────────────────────────
   STAGE 1  Predictive   ──►  NetworkEquipment.predictions (1,500)
@@ -18,7 +19,7 @@ critical-restore) in all 5 regions.
                               Per-tower SUM of equipment failure
                               probabilities; range 0.09-8.67.
   ─────────────────────────────────────────────────────────────────
-  STAGE 2  Rules        ──►  CellTower.is_critical_restore  (166)
+  STAGE 2  Rules        ──►  CellTower.is_critical_restore  (142)
                               Three-branch flag: 2 WEST operational
                               branches + 1 predictive branch.
   ─────────────────────────────────────────────────────────────────
@@ -28,9 +29,9 @@ critical-restore) in all 5 regions.
                               each critical tower, weighted by PageRank.
   ─────────────────────────────────────────────────────────────────
   STAGE 4  Prescriptive ──►  TowerUpgradeOption.selected  (39)
-                              OPTIMAL · 22 BRONZE · 13 SILVER · 4 GOLD
-                              $4,999,671 of $5M (binding) · 214 Gbps
-                              195 of 200 install-weeks (near binding)
+                              OPTIMAL · 17 BRONZE · 15 SILVER · 4 GOLD
+                              $4,997,992 of $5M (binding) · 207 Gbps
+                              194 of 200 install-weeks (near binding)
                               Region: EAST 11, WEST 9, SOUTH 8,
                               CENTRAL 7, NORTH 4.
   ─────────────────────────────────────────────────────────────────
@@ -60,7 +61,14 @@ Concepts: `CellTower`, `NetworkEquipment` (with `tower_id_fk` FK property), `Equ
 
 **Response**
 
-8 concepts wired to the bundled CSVs: 250 `CellTower`, 1,500 `NetworkEquipment`, 1,500 `EquipmentHealth`, 5,000 `NetworkPerformance`, 1,200 `Subscriber`, 6,000 `CallDetailRecord`, 750 `TowerUpgradeOption` (3 tiers × 250 towers), 8 `ModelAdvisory` rows on 7 distinct MODELs. Advisory severities span 0.50–0.95 (RECALL / DEFECT_BATCH / FIRMWARE_BUG / EOL / SECURITY_PATCH). 572 of the 1,500 equipment items (38.1 %) sit on an advised MODEL — these are the items the GNN's ModelAdvisory edge will surface as elevated-risk.
+8 source-data concepts wired to the bundled CSVs: 250 `CellTower`, 1,500 `NetworkEquipment`, 1,500 `EquipmentHealth`, 5,000 `NetworkPerformance`, 1,200 `Subscriber`, 6,000 `CallDetailRecord`, 750 `TowerUpgradeOption` (3 tiers × 250 towers), 8 `ModelAdvisory` rows on 7 distinct MODELs. (Downstream stages add more concepts — `TowerFailureScore`, `RestorePlan`, and the GNN task tables — so the running script defines more than 8.) Advisory severities span 0.50–0.95 (RECALL / DEFECT_BATCH / FIRMWARE_BUG / EOL / SECURITY_PATCH).
+
+Two distinct equipment fractions are worth separating here:
+
+- **Advised-MODEL coverage** — 572 of the 1,500 equipment items (38.1 %) sit on a MODEL that carries an advisory. This is the relational neighbor signal the GNN's `ModelAdvisory → NetworkEquipment` edge propagates.
+- **At-risk label rate** — 597 of the 1,500 items (39.8 %) carry the binary `AT_RISK` GNN label (STATUS in FAILING / WARNING). This is the prediction target, not the advisory-coverage figure.
+
+The two overlap but are not the same set: advisory coverage is a structural property of the fleet, while the at-risk label is the operational outcome the GNN learns to predict.
 
 ### 3. Discover reasoner questions
 
@@ -96,7 +104,7 @@ GNN binary classification with `eval_metric=roc_auc`, 80 epochs, three FK / shar
 
 **Response**
 
-Four derived health properties (`avg_packet_loss`, `avg_latency_ms`, `avg_error_rate`, `avg_health_score`) computed for all 250 towers; the equipment-health aggregation joins from EquipmentHealth through NetworkEquipment to CellTower. The three-branch `CellTower.is_critical_restore` relationship fires on 166 towers spanning all five regions, distributed: WEST 47, EAST 37, SOUTH 33, NORTH 29, CENTRAL 20. Per-branch contribution: Branch 1 fires on 12 towers, Branch 2 fires on 12 towers, Branch 3 (`failure_intensity > 1.5`) fires on 165 towers — 154 of which are flagged ONLY by the predictive branch (93% of the flagged set). 3 of the 15 WEST DEGRADED towers happen to have avg_health ≥ 0.85 in the augmented data and don't trip Branch 1 (though all 15 still fire on Branch 3 via their predicted failure_intensity).
+Four derived health properties (`avg_packet_loss`, `avg_latency_ms`, `avg_error_rate`, `avg_health_score`) computed for all 250 towers; the equipment-health aggregation joins from EquipmentHealth through NetworkEquipment to CellTower. The three-branch `CellTower.is_critical_restore` relationship fires on 142 towers spanning all five regions, distributed: WEST 43, EAST 32, SOUTH 25, NORTH 23, CENTRAL 19. Per-branch contribution: Branch 1 fires on 12 towers, Branch 2 fires on 12 towers, Branch 3 (`failure_intensity > 1.5`) fires on 139 towers — 130 of which are flagged ONLY by the predictive branch (92% of the flagged set). 3 of the 15 WEST DEGRADED towers happen to have avg_health ≥ 0.85 in the augmented data and don't trip Branch 1 (though all 15 still fire on Branch 3 via their predicted failure_intensity).
 
 ### 6. Score subscriber blast radius
 
@@ -108,7 +116,7 @@ Four derived health properties (`avg_packet_loss`, `avg_latency_ms`, `avg_error_
 
 **Response**
 
-`Subscriber.influence_score` (PageRank) on all 1,200 subscribers; `CellTower.weighted_impact` and `CellTower.impact_count` on all 166 critical towers. Multi-region scope means the blast-radius story spans the operator's full customer base, not just the WEST cohort.
+`Subscriber.influence_score` (PageRank) on all 1,200 subscribers; `CellTower.weighted_impact` and `CellTower.impact_count` on all 142 critical towers. Multi-region scope means the blast-radius story spans the operator's full customer base, not just the WEST cohort.
 
 ### 7. Optimize tier selection
 
@@ -120,7 +128,7 @@ Four derived health properties (`avg_packet_loss`, `avg_latency_ms`, `avg_error_
 
 **Response**
 
-Status OPTIMAL; 39 towers covered (selected from the 166 flagged) across all five regions (EAST 11, WEST 9, SOUTH 8, CENTRAL 7, NORTH 4). Tier mix is 22 BRONZE / 13 SILVER / 4 GOLD — the predictive-intensity factor lets smaller upgrades on many towers outscore premium upgrades on few; the plan is dominantly preventive-maintenance, not WEST recovery. Total capacity restored 214 Gbps. Budget is binding at $4,999,671 of $5,000,000; install-weeks at 195 of 200 are near-binding, indicating crew capacity is the next constraint to relax if scope expands further.
+Status OPTIMAL; 36 towers covered (selected from the 142 flagged) across all five regions (EAST 10, SOUTH 9, CENTRAL 7, WEST 6, NORTH 4). Tier mix is 17 BRONZE / 15 SILVER / 4 GOLD — the predictive-intensity factor lets smaller upgrades on many towers outscore premium upgrades on few; the plan is dominantly preventive-maintenance, not WEST recovery. Total capacity restored 207 Gbps. Budget is binding at $4,997,992 of $5,000,000; install-weeks at 194 of 200 are near-binding, indicating crew capacity is the next constraint to relax if scope expands further.
 
 ### 8. Interpret the plan
 
@@ -132,19 +140,19 @@ Status OPTIMAL; 39 towers covered (selected from the 166 flagged) across all fiv
 
 **Response**
 
-Budget is binding ($4,999,671 / $5,000,000); install-weeks at 195 / 200 are near-binding. The two constraints are close enough that the next scope expansion needs both relaxed together — the 127 flagged-but-not-selected towers can't all be reached by relaxing budget alone. A sensitivity sweep would show the marginal-Gbps-per-dollar curve flattening as the optimizer moves down the predicted-failure-intensity ranking.
+Budget is binding ($4,997,992 / $5,000,000); install-weeks at 194 / 200 are near-binding. The two constraints are close enough that the next scope expansion needs both relaxed together — the 106 flagged-but-not-selected towers can't all be reached by relaxing budget alone. A sensitivity sweep would show the marginal-Gbps-per-dollar curve flattening as the optimizer moves down the predicted-failure-intensity ranking.
 
 ### 9. Persist solution concepts into the ontology
 
 **Prompt**
 
 ```
-/rai-ontology-design Materialize the optimal plan and the selected upgrades as queryable ontology. Add a RestorePlan concept holding the plan summary (total cost, install-weeks, capacity restored, tier-mix counts, towers covered, binding constraints) and a SelectedUpgrade view restricted to the chosen tower-tier rows.
+/rai-ontology-design Materialize the optimal plan and the selected upgrades as queryable ontology. Add a RestorePlan concept holding the plan summary (total cost, install-weeks, capacity restored, tier-mix counts, towers covered, binding constraint) and mark the chosen tower-tier rows on TowerUpgradeOption.
 ```
 
 **Response**
 
-Ontology gains a singleton `RestorePlan` Concept with `total_cost`, `total_install_weeks`, `capacity_restored_gbps`, `gold_count`, `silver_count`, `bronze_count`, `towers_covered`, `binding_constraints` (now a list); plus `SelectedUpgrade` (a view over the chosen rows of `TowerUpgradeOption`). Headline plan numbers are queryable as ontology, not stdout.
+Ontology gains a singleton `RestorePlan` Concept with `total_cost`, `total_install_weeks`, `capacity_restored_gbps`, `gold_count`, `silver_count`, `bronze_count`, `towers_covered`, and `binding_constraint` (a single String — `"budget"`, `"install_weeks"`, or `"none"`); plus a `TowerUpgradeOption.is_selected_upgrade` relationship marking the chosen tower-tier rows. Headline plan numbers are queryable as ontology, not stdout.
 
 ## Data
 

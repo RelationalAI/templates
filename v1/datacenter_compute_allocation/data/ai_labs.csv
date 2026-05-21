@@ -1,0 +1,7 @@
+id,name,lab_type,contract_tier,is_strategic_anchor,payment_per_gpu_hour
+LAB-001,Anthropic Research,frontier,anchor_reserved,True,10.0
+LAB-002,OpenAI Pretrain,frontier,anchor_reserved,True,10.5
+LAB-003,xAI Internal,frontier,anchor_reserved,True,9.5
+LAB-004,Cohere Inference,applied,committed,False,3.5
+LAB-005,Together AI Multi-Lab,applied,committed,False,6.0
+LAB-008,Stability Open,research,on_demand,False,1.5

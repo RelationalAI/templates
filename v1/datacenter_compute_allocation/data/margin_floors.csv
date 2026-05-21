@@ -1,0 +1,4 @@
+name,fraction,label
+unconstrained,,unconstrained
+80pct,0.8,80% gross margin (post-depreciation)
+85pct,0.85,"85% gross margin (post-depreciation, tight)"
