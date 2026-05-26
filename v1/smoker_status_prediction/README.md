@@ -18,9 +18,6 @@ tags:
 
 Predicting health-related behaviors like smoking status from medical and demographic data is a common tabular machine learning task. In practice, though, these behaviors are also shaped by social context: friends, family, and peers often influence one another. This template demonstrates how to model both individual attributes and social relationships with a Graph Neural Network (GNN), using the RelationalAI **Predictive** reasoner to train a single end-to-end model.
 
-> [!IMPORTANT]
-> The RelationalAI **predictive reasoner (GNN)** used in this template is in early access. The API surface (`GNN`, `PropertyTransformer`, task relationships) may still change between releases; check the `rai-predictive-modeling` and `rai-predictive-training` skills for current guidance before adapting to production data.
-
 ## Who this is for
 
 - Data scientists who want to leverage the relational structure of data stored across connected tables

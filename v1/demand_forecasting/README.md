@@ -21,9 +21,6 @@ tags:
 
 Retail planners forecast unit sales at fine granularity — per store, per item, per day — to drive replenishment, promotions, and labour planning. Classical demand-forecasting models score one (store, item) series in isolation; they miss the fact that store A's sales of bread move with bakery sales across the chain, and that bakery sells through similarly to dairy. This template wires those hierarchies into a **Predictive** reasoner: a regression GNN trained over a heterogeneous Sale → Store, Sale → Item, Item → ItemFamily graph, so the model propagates signal through the store and product hierarchies while predicting per-Sale unit sales.
 
-> [!IMPORTANT]
-> The RelationalAI **predictive reasoner (GNN)** used in this template is in early access. The API surface (`GNN`, `PropertyTransformer`, task relationships) may still change between releases; check the `rai-predictive-modeling` and `rai-predictive-training` skills for current guidance before adapting to production data.
-
 ## Who this is for
 
 - Retail data scientists building per-(store, item, day) demand-forecasting pipelines who want to add hierarchical signal (item family, store cluster) without manually engineering features
@@ -351,14 +348,6 @@ The SDK matches submitted training jobs to existing experiments by `Model("...")
 ```python
 model = Model("demand_forecasting_local_v2")  # bump on each re-run if needed
 ```
-</details>
-
-<details>
-<summary>Train job failures with date columns at scale (<code>has_time_column=True</code>)</summary>
-
-PyRel 1.0.x has a server-side `DateTime/VString` signature mismatch when `has_time_column=True` is paired with a date column at non-trivial dataset sizes. Symptoms include train jobs that hang at "Step 2/4: Preparing model for prediction" with no JOBS row, or fail with a SQL signature error.
-
-Workaround (used as the default in this template): keep the date as a plain `datetime` feature in `PropertyTransformer`, but set `has_time_column=False` and drop `time_col` / `temporal_strategy`. Preserve the temporal split in pandas before building task tables. See [Customize this template](#customize-this-template) for the instructions to re-enable temporal indexing once the SDK fix lands.
 </details>
 
 ## Related templates

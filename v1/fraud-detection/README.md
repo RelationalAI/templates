@@ -31,13 +31,6 @@ Fraud and risk teams face four interconnected problems: discovering suspicious s
 
 **For the older rule-based-only take** (no ML), see `fraud_detection_rules.ipynb` -- a standalone notebook using Weakly Connected Components on shared-identifier edges to flag suspicious users.
 
-> [!IMPORTANT]
-> The RelationalAI **predictive reasoner (GNN)** used in this template is in
-> early access. The API surface (`GNN`, `PropertyTransformer`, task
-> relationships) may still change between releases; check the
-> `rai-predictive-modeling` and `rai-predictive-training` skills for the
-> current guidance before adapting to production data.
-
 ## Who this is for
 
 - Data scientists building end-to-end ML-to-optimization pipelines on transaction graphs
@@ -136,10 +129,8 @@ Snowflake dataset (accounts + transactions + train/val/test task tables):
    SCHEMA = "YOUR_SCHEMA"   # schema with ACCOUNTS, TRANSACTIONS, TRAIN, VAL, TEST
    ```
 2. Adjust the `PropertyTransformer` to match your columns -- drop your PKs/FKs
-   explicitly, annotate categoricals and continuous fields, and -- if your
-   data is small enough that the GNN's datetime pipeline doesn't choke on it
-   -- set `time_col` on your timestamp column. (See the "has_time_column"
-   troubleshooting note below for the workaround at scale.)
+   explicitly, annotate categoricals and continuous fields, and set `time_col`
+   on your timestamp column.
 3. If your task tables use different column names, update the `Relationship`
    templates (and any `TrainTable.<column>` accesses) to match.
 4. Run against a GPU-enabled RAI engine:
@@ -342,10 +333,7 @@ alongside the raw transaction fields.
 
 Task relationships encode the `isFraud` label on train/val and omit it on
 test. Both the local and Snowflake reference scripts use temporal
-Relationships (`at {Any:step_ts}`) and `has_time_column=True`. At
-multi-million-row scale the GNN's datetime pipeline can hit a server-side
-`ValidationError` -- if you encounter that adapting to your own data, see
-the troubleshooting block below for the workaround (drop temporal handling).
+Relationships (`at {Any:step_ts}`) and `has_time_column=True`.
 
 ```python
 Train = Relationship(f"{Transaction} at {Any:step_ts} has {Any:label}")
@@ -453,17 +441,6 @@ the tradeoff is visible.
 
 - Infeasible: `AUDIT_BUDGET_HOURS` is tighter than the cheapest feasible audit, or the per-receiver cap is already saturated. Widen the budget or the per-receiver cap.
 - Degenerate (selects 0 transactions): no transactions have an alert_score. Confirm `Transaction.predictions` was populated (test split present + GNN fit succeeded).
-</details>
-
-<details>
-<summary><code>has_time_column=True</code> fails validation (two known triggers)</summary>
-
-Known limitation in the predictive reasoner — the GNN's datetime feature pipeline can fail in two distinct cases:
-
-1. **Edge-intermediary case** (small-data trigger, documented in `rai-predictive-training`): when the concept carrying `time_col` is used only as an edge intermediary (not a node), validation fails with *"no time column defined in data tables"*.
-2. **Large-data trigger** (encountered while scaling this template's full Snowflake path): with a Snowflake `VARCHAR` ISO-8601 timestamp column loaded via `Table().to_schema()`, training fails server-side with *"ValidationError: Error processing datetime column 'step_ts'"* — even when the column is a node property, format is correct, and there are no NULLs. The bundled local CSV path (which uses `model.data(df).to_schema()` after `parse_dates=...`) does not hit this.
-
-**Workaround for both:** set `has_time_column=False` in the `GNN(...)` constructor, drop `temporal_strategy=...`, strip the `at {Any:step_ts}` clauses from your Train/Val/Test relationship templates, and comment out `datetime=` and `time_col=` from your `PropertyTransformer`. Build the train/val/test split tables by `step` cutoff in SQL (the temporal split is preserved in the data even if the GNN can't use the timestamp as a feature).
 </details>
 
 <details>

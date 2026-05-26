@@ -47,7 +47,7 @@ Each stage writes derived properties back to the same ontology that downstream s
 
 - **Accretive ontology enrichment** — each stage writes derived properties that downstream stages consume as first-class attributes. No glue code, no DataFrame round-trips between stages (except where the GNN's prediction shape needs a one-step pandas aggregation before binding back).
 - **Heterogeneous-graph GNN** — three FK / shared-MODEL edges (`EquipmentHealth → NetworkEquipment`, `NetworkEquipment → CellTower`, `ModelAdvisory → NetworkEquipment`) so advisory severity propagates to every fleet sibling AND reaches tower-mate equipment via 2-hop paths.
-- **Property-equality edges** — the GNN graph defines edges via `==` between FK columns instead of `model.Relationship` traversal. This pattern sidesteps an SDK iteration-mutation bug and is the recommended shape for any concept that participates in a GNN graph and has cross-pointing relationships.
+- **Property-equality edges** — the GNN graph defines edges via `==` between FK columns instead of `model.Relationship` traversal. FK properties on `NetworkEquipment` and `EquipmentHealth` carry the join keys explicitly so heterogeneous edges read as property-level equality conditions.
 - **Bridge concept** — per-equipment predictions are aggregated in pandas (`sum`) and loaded back as a `CellTower.failure_intensity` property via a small `TowerFailureScore` concept. Same pattern as in `retail_planning`.
 - **Three-branch rule** — `CellTower.is_critical_restore` is defined three times (OR semantics). A tower is critical if any branch fires; the third branch lets the GNN broaden scope beyond WEST.
 - **Three-factor MIP objective** — `capacity_increase × weighted_impact × failure_intensity`. Each factor comes from a different reasoner upstream.
@@ -306,13 +306,6 @@ problem.maximize(
 The `RELATIONALAI` native app must own the `EXPERIMENTS` schema. Run the one-time setup DDL from the Prerequisites section.
 
 Verify with `SHOW GRANTS ON SCHEMA <DB>.EXPERIMENTS` — you should see `OWNERSHIP` granted to `APPLICATION RELATIONALAI`.
-
-</details>
-
-<details>
-<summary>GNN training raises <code>RuntimeError: dictionary changed size during iteration</code></summary>
-
-This is a known SDK issue when a concept that participates in the GNN graph also carries a `model.Relationship` (the iteration over `concept._relationships` mutates mid-loop). The template works around it by using **property-equality edges** — FK columns (`tower_id_fk`, `equipment_id_fk`) joined via `==` in edge definitions instead of relationship traversal. If you add new edges, keep this pattern.
 
 </details>
 

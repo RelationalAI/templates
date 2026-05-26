@@ -13,9 +13,8 @@ Pipeline:
      graph so the GNN can propagate signal through the store and item
      hierarchies.
   3. Train a regression GNN predicting Sale.unit_sales. Sale.date is fed
-     as a plain datetime feature, not as a temporal index -- see the
-     `has_time_column=False` NOTE inline for the SDK workaround and the
-     README "Customize this template" for re-enabling temporal indexing.
+     as a plain datetime feature, not as a temporal index; the temporal
+     split is done in pandas before the task tables are built (see step 4).
   4. Generate per-Sale predictions on a forward-looking 60-day test window
      (temporal split done in pandas before the task tables are built) and
      aggregate to weekly per-(store, family) forecasts.
@@ -131,13 +130,11 @@ pt = PropertyTransformer(
     continuous=[Store.cluster],
     integer=[Item.item_class],
     datetime=[Sale.date],
-    # NOTE: time_col disabled. The PyRel 1.0.x predictive backend has a known
-    # DateTime/VString signature mismatch when has_time_column=True is used
-    # with a date column at scale; the workaround is to keep the date as a
-    # plain datetime feature (above) and disable temporal indexing. The
-    # split is still temporal — see the train_mask / val_mask / test_mask
-    # assignments below — so we still train on the past and evaluate on
-    # the future, just without temporal-strategy aggregation in the GNN.
+    # Sale.date is exposed as a plain datetime feature above; we don't set
+    # time_col here so the GNN treats it as a regular feature rather than a
+    # temporal index. The split is still temporal — see the
+    # train_mask / val_mask / test_mask assignments below — so we still
+    # train on the past and evaluate on the future.
 )
 
 # --------------------------------------------------
