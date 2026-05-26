@@ -137,7 +137,7 @@ Test-set RMSE (per (city, family, week)): 150.8997
 ```
 
 > [!NOTE]
-> The GNN learns base-level demand and weekday/weekend seasonality cleanly. The December holiday spike is partially captured but under-shot — that's because the SDK's `has_time_column=True` temporal indexing is currently disabled in this template (see [Customize this template](#customize-this-template) and the troubleshooting note below). The pandas-level temporal split is preserved (we still train on the past and evaluate on the future), but the GNN itself sees the date as a flat datetime feature rather than a temporal index. When the SDK's time-aware mode is stable for this dataset shape, re-enabling it should improve the December-spike capture.
+> The GNN learns base-level demand and weekday/weekend seasonality cleanly. The December holiday spike is partially captured but under-shot — Sale.date is exposed as a flat datetime feature, not a temporal index, so the GNN doesn't aggregate over time windows. The pandas-level temporal split is preserved (we still train on the past and evaluate on the future). To trade simplicity for tighter spike capture, see the "Use temporal indexing" variant in [Customize this template](#customize-this-template).
 
 ## Template structure
 
@@ -288,7 +288,7 @@ results_df = (
 
 ## Customize this template
 
-- **Re-enable temporal indexing** when the SDK ships a stable fix — set `has_time_column=True`, restore `time_col=[Sale.date]` in the PropertyTransformer, restore the date arg in the Train/Val/Test relationships (`f"{Sale} at {Any:date} has {Any:value}"`), and add `temporal_strategy="last"` to the `GNN(...)` constructor. The December holiday spike should predict better.
+- **Use temporal indexing instead** — for tighter holiday/seasonal spike capture, set `has_time_column=True`, restore `time_col=[Sale.date]` in the PropertyTransformer, restore the date arg in the Train/Val/Test relationships (`f"{Sale} at {Any:date} has {Any:value}"`), and add `temporal_strategy="last"` to the `GNN(...)` constructor. Trades simplicity for the GNN aggregating over time windows.
 - **Forecast different granularity** — change `TEST_DAYS` / `VAL_DAYS` at the top of the script. Default is a 60-day test window after a 60-day val window.
 - **Add weather, promotions calendar, holiday flags** — extend `Sale` with extra columns and add them to `PropertyTransformer.category` or `.continuous` as appropriate. The same hierarchical-graph + GNN scaffold absorbs new features without restructuring.
 - **Bring more hierarchy in** — the bundled data has Item → ItemFamily. Real Favorita data has Item → Class → Family → Department. Define a `Class` and `Department` concept the same way `ItemFamily` is defined, add `Class → Family` and `Family → Department` edges, and the GNN propagates through deeper product hierarchies.
