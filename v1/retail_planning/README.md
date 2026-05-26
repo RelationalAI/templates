@@ -76,7 +76,7 @@ you'll additionally need:
 ### Tools
 
 - Python >= 3.10
-- RelationalAI Python SDK (`relationalai`) == 1.4.1
+- RelationalAI Python SDK with the predictive extra (`relationalai[gnn] == 1.4.2`)
 
 ## Quickstart
 

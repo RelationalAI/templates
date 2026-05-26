@@ -54,7 +54,7 @@ Assumes familiarity with Python and basic ML concepts (binary classification, tr
 ### Tools
 
 - Python >= 3.10
-- RelationalAI Python SDK (`relationalai`) >= 1.4.2
+- RelationalAI Python SDK with the predictive extra (`relationalai[gnn] == 1.4.2`)
 
 ## Quickstart
 

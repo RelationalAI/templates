@@ -66,7 +66,7 @@ GRANT ALL PRIVILEGES ON SCHEMA TELCO_ENRICHMENT.EXPERIMENTS TO APPLICATION RELAT
 ### Tools
 
 - Python >= 3.10
-- RelationalAI Python SDK (`relationalai`)
+- RelationalAI Python SDK with the predictive extra (`relationalai[gnn] == 1.4.2`)
 
 ## Quickstart
 

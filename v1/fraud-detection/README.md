@@ -82,7 +82,7 @@ you'll additionally need:
 ### Tools
 
 - Python >= 3.10
-- RelationalAI Python SDK (`relationalai`) `==1.0.14`
+- RelationalAI Python SDK with the predictive extra (`relationalai[gnn] == 1.4.2`)
 - For the rule-based notebook only: `jupyter`
 
 ## Quickstart

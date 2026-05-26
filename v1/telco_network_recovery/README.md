@@ -90,7 +90,7 @@ Each stage writes derived properties back to the same ontology that downstream s
 ### Tools
 
 - Python ≥ 3.10.
-- RelationalAI Python SDK with the predictive submodule (`relationalai.semantics.reasoners.predictive`).
+- RelationalAI Python SDK with the predictive extra (`relationalai[gnn] == 1.4.2`).
 
 ### One-time Snowflake setup for GNN experiment artifacts
 
