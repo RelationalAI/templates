@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rai-template-smoker-status-prediction"
+version = "0.0.0"
+description = "RelationalAI template: smoker_status_prediction (PyRel v1)"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "relationalai==1.4.2",
+  "pandas>=2.0",
+]
+
+[tool.setuptools]
+packages = []
