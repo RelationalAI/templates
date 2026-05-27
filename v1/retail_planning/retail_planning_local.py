@@ -136,7 +136,7 @@ gnn = GNN(
     train=Train, validation=Val,
     task_type="regression", eval_metric="rmse",
     has_time_column=True, stream_logs=False, seed=42,
-    device="cpu", n_epochs=20, lr=0.005,
+    device="cpu", n_epochs=20, lr=0.005, patience=10,
 )
 gnn.fit()
 Transaction.predictions = gnn.predictions(domain=Test)
