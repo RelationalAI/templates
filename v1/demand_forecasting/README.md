@@ -333,21 +333,6 @@ The error also fires if you've changed `EXP_DATABASE` to a database you own but 
 </details>
 
 <details>
-<summary><code>worker is not ready to accept jobs - please retry the job later</code></summary>
-
-The predictive reasoner can show `STATUS='READY'` while its in-pod worker is still coming up; train submissions hit a 400 error in this state. Recover by suspend / resume on the predictive reasoner, then wait for `READY` again before retrying:
-
-```sql
-CALL RELATIONALAI.API.SUSPEND_REASONER('predictive', '<reasoner_name>');
-CALL RELATIONALAI.API.RESUME_REASONER_ASYNC('predictive', '<reasoner_name>');
--- poll until STATUS=READY:
-CALL RELATIONALAI.API.GET_REASONER('predictive', '<reasoner_name>');
-```
-
-If you're driving the reasoner via the SDK and saw an earlier-in-the-day successful run for a smaller template (e.g. `subscriber_retention`), running that template once *primes* the worker — chaining a smaller run before this one is a reliable way to avoid the cold-worker hit.
-</details>
-
-<details>
 <summary>Re-running with a stale experiment causes <code>training job failed</code> at the prediction step</summary>
 
 The SDK matches submitted training jobs to existing experiments by `Model("...")` name. If a previous failed run left a model_run_id behind, a re-run can match the stale model and fail trying to predict against incompatible artifacts (or hang at "Step 2/4: Preparing model for prediction" indefinitely). Bump the model name to force a fresh experiment:

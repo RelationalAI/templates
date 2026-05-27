@@ -366,24 +366,6 @@ The error also fires if you've changed `EXP_DATABASE` to a database you own but 
 </details>
 
 <details>
-<summary>Train job stays in <code>QUEUED</code> with no progress</summary>
-
-The GNN training job runs in a Snowpark Container Services service that the predictive reasoner provisions on demand. If the service can't come up (e.g. compute pool suspended, image-version mismatch in the RAI app manifest), submitted train jobs sit in `QUEUED` indefinitely.
-
-Diagnose by checking server-side state:
-
-```sql
--- Is the train job actually running?
-SELECT ID, STATE, CREATED_ON, FINISHED_AT, ABORT_REASON
-FROM RELATIONALAI.API.JOBS
-WHERE PAYLOAD LIKE '%"job_type": "train"%'
-ORDER BY CREATED_ON DESC LIMIT 5;
-```
-
-If `STATE='QUEUED'` for >5 minutes with nothing else `RUNNING`, the GNN service likely isn't accepting jobs — escalate to RelationalAI support rather than killing/restarting the script.
-</details>
-
-<details>
 <summary>Predictions cluster around the segment mean</summary>
 
 Expected on the bundled synthetic dataset — see the *Expected output* note. Real telco data with stronger churn-correlated features will produce more spread.
