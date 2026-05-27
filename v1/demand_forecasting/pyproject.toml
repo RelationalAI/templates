@@ -9,7 +9,7 @@ description = "RelationalAI template: demand_forecasting (PyRel v1)"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-  "relationalai==1.0.14",
+  "relationalai[gnn]==1.4.2",
   "pandas",
   "numpy",
 ]

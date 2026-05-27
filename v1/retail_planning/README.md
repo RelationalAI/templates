@@ -25,13 +25,6 @@ Retailers face interconnected decisions: which items will sell, which customers 
 
 **Then adapt the pattern to your own Snowflake data** using `retail_planning.py` as a reference. It trains three GNNs (sales regression, customer-churn classification, user-article link prediction) against the full Kaggle H&M dataset in Snowflake, aggregates all three signals into an adjusted demand estimate, and feeds that into the same two optimizers. The H&M pipeline is the worked example -- the structure (graph concepts → GNN tasks → aggregation bridge → prescriptive constraints) is what carries over to your own retail, pricing, or demand-planning data.
 
-> [!IMPORTANT]
-> The RelationalAI **predictive reasoner (GNN)** used in this template is in
-> private preview. The API surface (`GNN`, `PropertyTransformer`, task
-> relationships) may still change between releases; check the
-> `rai-predictive-modeling` and `rai-predictive-training` skills for the
-> current guidance before adapting to production data.
-
 ## Who this is for
 
 - Data scientists building end-to-end ML-to-optimization pipelines
@@ -83,7 +76,7 @@ you'll additionally need:
 ### Tools
 
 - Python >= 3.10
-- RelationalAI Python SDK (`relationalai`) == 1.4.1
+- RelationalAI Python SDK with the predictive extra (`relationalai[gnn] == 1.4.2`)
 
 ## Quickstart
 

@@ -21,9 +21,6 @@ tags:
 
 Retail planners forecast unit sales at fine granularity — per store, per item, per day — to drive replenishment, promotions, and labour planning. Classical demand-forecasting models score one (store, item) series in isolation; they miss the fact that store A's sales of bread move with bakery sales across the chain, and that bakery sells through similarly to dairy. This template wires those hierarchies into a **Predictive** reasoner: a regression GNN trained over a heterogeneous Sale → Store, Sale → Item, Item → ItemFamily graph, so the model propagates signal through the store and product hierarchies while predicting per-Sale unit sales.
 
-> [!IMPORTANT]
-> The RelationalAI **predictive reasoner (GNN)** used in this template is in early access. The API surface (`GNN`, `PropertyTransformer`, task relationships) may still change between releases; check the `rai-predictive-modeling` and `rai-predictive-training` skills for current guidance before adapting to production data.
-
 ## Who this is for
 
 - Retail data scientists building per-(store, item, day) demand-forecasting pipelines who want to add hierarchical signal (item family, store cluster) without manually engineering features
@@ -67,7 +64,7 @@ GRANT ALL PRIVILEGES ON SCHEMA FAVORITA_MINI.EXPERIMENTS TO APPLICATION RELATION
 ### Tools
 
 - Python >= 3.10
-- RelationalAI Python SDK (`relationalai`)
+- RelationalAI Python SDK with the predictive extra (`relationalai[gnn] == 1.4.2`)
 
 ## Quickstart
 
@@ -140,7 +137,7 @@ Test-set RMSE (per (city, family, week)): 150.8997
 ```
 
 > [!NOTE]
-> The GNN learns base-level demand and weekday/weekend seasonality cleanly. The December holiday spike is partially captured but under-shot — that's because the SDK's `has_time_column=True` temporal indexing is currently disabled in this template (see [Customize this template](#customize-this-template) and the troubleshooting note below). The pandas-level temporal split is preserved (we still train on the past and evaluate on the future), but the GNN itself sees the date as a flat datetime feature rather than a temporal index. When the SDK's time-aware mode is stable for this dataset shape, re-enabling it should improve the December-spike capture.
+> The GNN learns base-level demand and weekday/weekend seasonality cleanly. The December holiday spike is partially captured but under-shot — Sale.date is exposed as a flat datetime feature, not a temporal index, so the GNN doesn't aggregate over time windows. The pandas-level temporal split is preserved (we still train on the past and evaluate on the future). To trade simplicity for tighter spike capture, see the "Use temporal indexing" variant in [Customize this template](#customize-this-template).
 
 ## Template structure
 
@@ -291,7 +288,7 @@ results_df = (
 
 ## Customize this template
 
-- **Re-enable temporal indexing** when the SDK ships a stable fix — set `has_time_column=True`, restore `time_col=[Sale.date]` in the PropertyTransformer, restore the date arg in the Train/Val/Test relationships (`f"{Sale} at {Any:date} has {Any:value}"`), and add `temporal_strategy="last"` to the `GNN(...)` constructor. The December holiday spike should predict better.
+- **Use temporal indexing instead** — for tighter holiday/seasonal spike capture, set `has_time_column=True`, restore `time_col=[Sale.date]` in the PropertyTransformer, restore the date arg in the Train/Val/Test relationships (`f"{Sale} at {Any:date} has {Any:value}"`), and add `temporal_strategy="last"` to the `GNN(...)` constructor. Trades simplicity for the GNN aggregating over time windows.
 - **Forecast different granularity** — change `TEST_DAYS` / `VAL_DAYS` at the top of the script. Default is a 60-day test window after a 60-day val window.
 - **Add weather, promotions calendar, holiday flags** — extend `Sale` with extra columns and add them to `PropertyTransformer.category` or `.continuous` as appropriate. The same hierarchical-graph + GNN scaffold absorbs new features without restructuring.
 - **Bring more hierarchy in** — the bundled data has Item → ItemFamily. Real Favorita data has Item → Class → Family → Department. Define a `Class` and `Department` concept the same way `ItemFamily` is defined, add `Class → Family` and `Family → Department` edges, and the GNN propagates through deeper product hierarchies.
@@ -351,14 +348,6 @@ The SDK matches submitted training jobs to existing experiments by `Model("...")
 ```python
 model = Model("demand_forecasting_local_v2")  # bump on each re-run if needed
 ```
-</details>
-
-<details>
-<summary>Train job failures with date columns at scale (<code>has_time_column=True</code>)</summary>
-
-PyRel 1.0.x has a server-side `DateTime/VString` signature mismatch when `has_time_column=True` is paired with a date column at non-trivial dataset sizes. Symptoms include train jobs that hang at "Step 2/4: Preparing model for prediction" with no JOBS row, or fail with a SQL signature error.
-
-Workaround (used as the default in this template): keep the date as a plain `datetime` feature in `PropertyTransformer`, but set `has_time_column=False` and drop `time_col` / `temporal_strategy`. Preserve the temporal split in pandas before building task tables. See [Customize this template](#customize-this-template) for the instructions to re-enable temporal indexing once the SDK fix lands.
 </details>
 
 ## Related templates

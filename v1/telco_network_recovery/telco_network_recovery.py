@@ -199,11 +199,9 @@ model.define(CellTower.new(
 # NetworkEquipment concept: equipment items (radios, antennas, BBUs,
 # amplifiers, ...) installed on cell towers; the GNN's prediction
 # target. tower_id_fk is an explicit FK property used by the GNN
-# graph via property equality; we avoid `model.Relationship` on
-# concepts in the GNN graph because the SDK's _collect_node_columns
-# iterates concept._relationships during fit() and lazy-registration
-# during iteration trips RuntimeError: dictionary changed size during
-# iteration.
+# graph via property equality, so heterogeneous edges are expressed as
+# property-level equality conditions rather than `model.Relationship`
+# traversal.
 NetworkEquipment = model.Concept("NetworkEquipment", identify_by={"id": String})
 NetworkEquipment.equipment_type = model.Property(f"{NetworkEquipment} has {String:equipment_type}")
 NetworkEquipment.manufacturer = model.Property(f"{NetworkEquipment} has {String:manufacturer}")
@@ -277,8 +275,7 @@ model.define(ModelAdvisory.new(
 # TowerUpgradeOption are loaded just before their respective stages
 # below. Loading them up front keeps gnn.fit()'s transaction payload
 # small enough to avoid Snowflake's CREATE_TRANSACTION_V2 row-size
-# limit, and avoids triggering the SDK's _collect_node_columns
-# iteration-mutation bug on CellTower's relationship set.
+# limit.
 
 # --------------------------------------------------
 # Stage 1: Predictive -- equipment-failure binary GNN

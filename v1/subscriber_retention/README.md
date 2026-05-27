@@ -23,9 +23,6 @@ tags:
 
 Telco retention teams need to score every active subscriber for churn risk so they can target proactive offers at the right people before contracts roll over. Traditional churn models lean on plan attributes (rate, term, auto-renew) and demographics; they ignore the network around each subscriber. This template wires a call-graph signal into the model: who you call, who calls you, and how central you sit in the call network all become features, and the **Predictive** reasoner trains a GNN regression head over them. The graph features come from the **Graph** reasoner (PageRank on the Subscriber→Subscriber call graph); aggregate-derived `outgoing_calls` / `incoming_calls` properties round out the per-subscriber feature row.
 
-> [!IMPORTANT]
-> The RelationalAI **predictive reasoner (GNN)** used in this template is in early access. The API surface (`GNN`, `PropertyTransformer`, task relationships) may still change between releases; check the `rai-predictive-modeling` and `rai-predictive-training` skills for current guidance before adapting to production data.
-
 ## Who this is for
 
 - Telco data scientists building churn-risk scoring pipelines that combine static plan attributes with relational/network signal
@@ -69,7 +66,7 @@ GRANT ALL PRIVILEGES ON SCHEMA TELCO_ENRICHMENT.EXPERIMENTS TO APPLICATION RELAT
 ### Tools
 
 - Python >= 3.10
-- RelationalAI Python SDK (`relationalai`)
+- RelationalAI Python SDK with the predictive extra (`relationalai[gnn] == 1.4.2`)
 
 ## Quickstart
 
