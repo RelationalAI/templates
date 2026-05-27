@@ -113,6 +113,13 @@ you'll additionally need:
    rai init
    ```
 
+   After `rai init` generates the config file, add the following to your `raiconfig.yaml`:
+
+   ```yaml
+   data:
+       ensure_change_tracking: true
+   ```
+
 5. Run the local demo on the bundled subset (CPU, a few minutes):
    ```bash
    python fraud_detection_local.py

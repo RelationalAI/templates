@@ -130,11 +130,7 @@ pt = PropertyTransformer(
     continuous=[Store.cluster],
     integer=[Item.item_class],
     datetime=[Sale.date],
-    # Sale.date is exposed as a plain datetime feature above; we don't set
-    # time_col here so the GNN treats it as a regular feature rather than a
-    # temporal index. The split is still temporal — see the
-    # train_mask / val_mask / test_mask assignments below — so we still
-    # train on the past and evaluate on the future.
+    time_col=[Sale.date],
 )
 
 # --------------------------------------------------
@@ -151,9 +147,9 @@ train_mask = sales_df["date"] < val_start
 val_mask = (sales_df["date"] >= val_start) & (sales_df["date"] < test_start)
 test_mask = sales_df["date"] >= test_start
 
-train_df = sales_df.loc[train_mask, ["sale_id", "unit_sales"]].reset_index(drop=True)
-val_df = sales_df.loc[val_mask, ["sale_id", "unit_sales"]].reset_index(drop=True)
-test_df = sales_df.loc[test_mask, ["sale_id"]].reset_index(drop=True)
+train_df = sales_df.loc[train_mask, ["sale_id", "date", "unit_sales"]].reset_index(drop=True)
+val_df = sales_df.loc[val_mask, ["sale_id", "date", "unit_sales"]].reset_index(drop=True)
+test_df = sales_df.loc[test_mask, ["sale_id", "date"]].reset_index(drop=True)
 
 print(
     f"Stores: {len(stores_df)}  Items: {len(items_df)}  Sales: {len(sales_df):,}"
@@ -179,19 +175,18 @@ model.define(TestTable.new(model.data(test_df).to_schema()))
 
 # Regression task relationships. The split was already done temporally in
 # pandas above (train < val_start, val < test_start, test >= test_start), so
-# the GNN trains on the past and evaluates on the future; we just don't pass
-# the time column into the GNN itself due to the SDK limitation noted at
-# `time_col=` above.
-Train = Relationship(f"{Sale} has {Any:value}")
-model.define(Train(Sale, TrainTable.unit_sales)).where(
+# the GNN trains on the past and evaluates on the future. Each relationship
+# carries the timestamp (Sale.date) since has_time_column=True.
+Train = Relationship(f"{Sale} at {Any:timestamp} has {Any:value}")
+model.define(Train(Sale, TrainTable.date, TrainTable.unit_sales)).where(
     Sale.sale_id == TrainTable.sale_id,
 )
-Val = Relationship(f"{Sale} has {Any:value}")
-model.define(Val(Sale, ValTable.unit_sales)).where(
+Val = Relationship(f"{Sale} at {Any:timestamp} has {Any:value}")
+model.define(Val(Sale, ValTable.date, ValTable.unit_sales)).where(
     Sale.sale_id == ValTable.sale_id,
 )
-Test = Relationship(f"{Sale}")
-model.define(Test(Sale)).where(
+Test = Relationship(f"{Sale} at {Any:timestamp}")
+model.define(Test(Sale, TestTable.date)).where(
     Sale.sale_id == TestTable.sale_id,
 )
 
@@ -212,7 +207,7 @@ gnn = GNN(
     validation=Val,
     task_type="regression",
     eval_metric="rmse",
-    has_time_column=False,
+    has_time_column=True,
     stream_logs=STREAM_LOGS,
     seed=SEED,
     device="cpu",

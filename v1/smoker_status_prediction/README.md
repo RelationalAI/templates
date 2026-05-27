@@ -83,7 +83,13 @@ Assumes familiarity with Python and basic ML concepts (binary classification, tr
    ```bash
    rai init
    ```
-   Follow the interactive prompts (host platform, account, user, role, warehouse, etc.) -- your `raiconfig.toml` is generated automatically from the answers you provide.
+
+   After `rai init` generates the config file, add the following to your `raiconfig.yaml`:
+
+   ```yaml
+   data:
+       ensure_change_tracking: true
+   ```
 
 5. Grant the RelationalAI Native App access to a schema for experiment artifacts. The local script uses `SMOKER_STATUS_PREDICTION.EXPERIMENTS` by default (or change the constants at the top of the script). Update the `SET` statements below to match your database, schema, and Native App name, then run the following in a Snowflake SQL worksheet:
    ```sql

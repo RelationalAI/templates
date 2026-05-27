@@ -128,10 +128,16 @@ Set `EXP_DATABASE` at the top of `telco_network_recovery.py` to that database (d
    python -m pip install .
    ```
 
-4. Configure your RAI connection:
-
+4. Configure:
    ```bash
    rai init
+   ```
+
+   After `rai init` generates the config file, add the following to your `raiconfig.yaml`:
+
+   ```yaml
+   data:
+       ensure_change_tracking: true
    ```
 
 5. (Optional) Regenerate the synthetic data corpus with a fresh seed:

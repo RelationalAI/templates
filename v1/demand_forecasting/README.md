@@ -94,6 +94,13 @@ GRANT ALL PRIVILEGES ON SCHEMA FAVORITA_MINI.EXPERIMENTS TO APPLICATION RELATION
    rai init
    ```
 
+   After `rai init` generates the config file, add the following to your `raiconfig.yaml`:
+
+   ```yaml
+   data:
+       ensure_change_tracking: true
+   ```
+
 5. Run the experiments-schema setup DDL above (one-time per Snowflake account).
 
 6. Run:
