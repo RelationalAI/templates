@@ -3,13 +3,13 @@ requires = ["setuptools>=64", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "rai-template-retail-planning"
+name = "rai-template-smoker-status-prediction"
 version = "0.0.0"
-description = "RelationalAI template: retail_planning (PyRel v1)"
+description = "RelationalAI template: smoker_status_prediction (PyRel v1)"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-  "relationalai[gnn]==1.4.1",
+  "relationalai==1.4.2",
   "pandas>=2.0",
 ]
 
