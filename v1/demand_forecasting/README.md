@@ -63,7 +63,7 @@ GRANT ALL PRIVILEGES ON SCHEMA FAVORITA_MINI.EXPERIMENTS TO APPLICATION RELATION
 ### Tools
 
 - Python >= 3.10
-- RelationalAI Python SDK with the predictive extra (`relationalai[gnn] == 1.4.2`)
+- RelationalAI Python SDK (`relationalai == 1.8`)
 
 ## Quickstart
 
