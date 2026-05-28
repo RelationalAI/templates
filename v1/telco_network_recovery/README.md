@@ -2,7 +2,6 @@
 title: "Telco Network Recovery"
 description: "Multi-reasoner template: equipment-failure GNN over a heterogeneous graph (with manufacturer advisories), declarative critical-tower rules, call-graph blast radius, and tower-upgrade optimization on a shared telco ontology."
 featured: false
-private: true
 experience_level: advanced
 industry: "Telecommunications"
 reasoning_types:

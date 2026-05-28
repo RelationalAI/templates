@@ -2,7 +2,6 @@
 title: "Smoker Status Prediction"
 description: "Predict whether a person is a smoker from demographic and medical attributes plus a network of social connections, using a Graph Neural Network."
 featured: false
-private: true
 experience_level: intermediate
 industry: "Healthcare"
 reasoning_types:
