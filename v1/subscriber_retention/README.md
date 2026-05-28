@@ -51,7 +51,7 @@ Assumes familiarity with Python, basic ML concepts (regression, RMSE), and graph
 
 Any Snowflake account with the **RelationalAI Native App** installed. The bundled CSVs ship with the template; there is no source-table setup. The GNN trains on CPU.
 
-The predictive reasoner needs a writable Snowflake schema where it can create experiments and models. The script defaults to `TELCO_ENRICHMENT.EXPERIMENTS` (configurable via `EXP_DATABASE` / `EXP_SCHEMA` near the top of the script). One-time setup, run as `ACCOUNTADMIN`:
+The predictive reasoner needs a writable Snowflake schema where it can create experiments and models. The script defaults to `TELCO_ENRICHMENT.EXPERIMENTS` (configurable via `EXP_DATABASE` / `EXP_SCHEMA` near the top of the script). One-time setup, run as `ACCOUNTADMIN` or any role with privileges to run the commands below:
 
 ```sql
 -- Use a database you own (TELCO_ENRICHMENT shown; pick anything writable)
@@ -59,7 +59,9 @@ CREATE DATABASE IF NOT EXISTS TELCO_ENRICHMENT;
 CREATE SCHEMA IF NOT EXISTS TELCO_ENRICHMENT.EXPERIMENTS;
 
 GRANT USAGE ON DATABASE TELCO_ENRICHMENT TO APPLICATION RELATIONALAI;
-GRANT ALL PRIVILEGES ON SCHEMA TELCO_ENRICHMENT.EXPERIMENTS TO APPLICATION RELATIONALAI;
+GRANT USAGE ON SCHEMA TELCO_ENRICHMENT.EXPERIMENTS TO APPLICATION RELATIONALAI;
+GRANT CREATE EXPERIMENT ON SCHEMA TELCO_ENRICHMENT.EXPERIMENTS TO APPLICATION RELATIONALAI;
+GRANT CREATE MODEL ON SCHEMA TELCO_ENRICHMENT.EXPERIMENTS TO APPLICATION RELATIONALAI;
 ```
 
 ### Tools

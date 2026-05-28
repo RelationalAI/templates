@@ -67,7 +67,7 @@ account with the RAI Native App. No external data, no GPU. The bundled CSVs
 under `data/paysim_mini/` ship with the template; the GNN trains on CPU in a
 few minutes.
 
-The predictive reasoner needs a writable Snowflake schema where it can create experiments and models. The script defaults to `FRAUD_DETECTION.EXPERIMENTS` (configurable via `exp_database` / `exp_schema` in the script). One-time setup, run as `ACCOUNTADMIN`:
+The predictive reasoner needs a writable Snowflake schema where it can create experiments and models. The script defaults to `FRAUD_DETECTION.EXPERIMENTS` (configurable via `exp_database` / `exp_schema` in the script). One-time setup, run as `ACCOUNTADMIN` or any role with privileges to run the commands below:
 
 ```sql
 -- Use a database you own (FRAUD_DETECTION shown; pick anything writable)
@@ -75,7 +75,9 @@ CREATE DATABASE IF NOT EXISTS FRAUD_DETECTION;
 CREATE SCHEMA IF NOT EXISTS FRAUD_DETECTION.EXPERIMENTS;
 
 GRANT USAGE ON DATABASE FRAUD_DETECTION TO APPLICATION RELATIONALAI;
-GRANT ALL PRIVILEGES ON SCHEMA FRAUD_DETECTION.EXPERIMENTS TO APPLICATION RELATIONALAI;
+GRANT USAGE ON SCHEMA FRAUD_DETECTION.EXPERIMENTS TO APPLICATION RELATIONALAI;
+GRANT CREATE EXPERIMENT ON SCHEMA FRAUD_DETECTION.EXPERIMENTS TO APPLICATION RELATIONALAI;
+GRANT CREATE MODEL ON SCHEMA FRAUD_DETECTION.EXPERIMENTS TO APPLICATION RELATIONALAI;
 ```
 
 **To adapt to your own Snowflake pipeline (`fraud_detection.py` as reference)**

@@ -49,7 +49,7 @@ Assumes familiarity with Python, basic ML concepts (regression, RMSE), and time-
 
 Any Snowflake account with the **RelationalAI Native App** installed. The bundled CSVs ship with the template; there is no source-table setup. The GNN trains on CPU.
 
-The predictive reasoner needs a writable Snowflake schema where it can create experiments and models. The script defaults to `FAVORITA_MINI.EXPERIMENTS` (configurable via `EXP_DATABASE` / `EXP_SCHEMA` near the top of the script). One-time setup, run as `ACCOUNTADMIN`:
+The predictive reasoner needs a writable Snowflake schema where it can create experiments and models. The script defaults to `FAVORITA_MINI.EXPERIMENTS` (configurable via `EXP_DATABASE` / `EXP_SCHEMA` near the top of the script). One-time setup, run as `ACCOUNTADMIN`, or any role with privileges to run the commands below:
 
 ```sql
 -- Use a database you own (FAVORITA_MINI shown; pick anything writable)
@@ -57,7 +57,9 @@ CREATE DATABASE IF NOT EXISTS FAVORITA_MINI;
 CREATE SCHEMA IF NOT EXISTS FAVORITA_MINI.EXPERIMENTS;
 
 GRANT USAGE ON DATABASE FAVORITA_MINI TO APPLICATION RELATIONALAI;
-GRANT ALL PRIVILEGES ON SCHEMA FAVORITA_MINI.EXPERIMENTS TO APPLICATION RELATIONALAI;
+GRANT USAGE ON SCHEMA FAVORITA.EXPERIMENTS TO APPLICATION RELATIONALAI;
+GRANT CREATE EXPERIMENT ON SCHEMA FAVORITA.EXPERIMENTS TO APPLICATION RELATIONALAI;
+GRANT CREATE MODEL ON SCHEMA FAVORITA.EXPERIMENTS TO APPLICATION RELATIONALAI;
 ```
 
 ### Tools
