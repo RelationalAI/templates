@@ -2,7 +2,6 @@
 title: "Telco Network Recovery"
 description: "Multi-reasoner template: equipment-failure GNN over a heterogeneous graph (with manufacturer advisories), declarative critical-tower rules, call-graph blast radius, and tower-upgrade optimization on a shared telco ontology."
 featured: false
-private: false
 experience_level: advanced
 industry: "Telecommunications"
 reasoning_types:
@@ -90,16 +89,24 @@ Each stage writes derived properties back to the same ontology that downstream s
 ### Tools
 
 - Python ≥ 3.10.
-- RelationalAI Python SDK with the predictive extra (`relationalai[gnn] == 1.4.2`).
+- RelationalAI Python SDK (`relationalai == 1.8`).
 
 ### One-time Snowflake setup for GNN experiment artifacts
 
-The predictive reasoner writes training artifacts (model checkpoints, metrics, predictions) to a Snowflake schema that the `RELATIONALAI` native app must own. Pick a database you control, then grant ownership of the experiments schema to the native app:
+Grant the RelationalAI Native App access to a schema for experiment artifacts. The local script uses TELCO_ENRICHMENT.EXPERIMENTS by default (or change the constants at the top of the script). Update the SET statements below to match your database, schema, and Native App name, then run the following in a Snowflake SQL worksheet:
 
 ```sql
-USE DATABASE <YOUR_DATABASE>;
-CREATE SCHEMA IF NOT EXISTS EXPERIMENTS;
-GRANT OWNERSHIP ON SCHEMA EXPERIMENTS TO APPLICATION RELATIONALAI;
+SET db_name            = 'TELCO_ENRICHMENT';
+SET schema_experiments = 'TELCO_ENRICHMENT.EXPERIMENTS';
+SET app_name           = 'RELATIONALAI';   -- replace with your app name
+
+CREATE DATABASE IF NOT EXISTS identifier($db_name);
+CREATE SCHEMA   IF NOT EXISTS identifier($schema_experiments);
+
+GRANT USAGE             ON DATABASE identifier($db_name)            TO APPLICATION identifier($app_name);
+GRANT USAGE             ON SCHEMA   identifier($schema_experiments) TO APPLICATION identifier($app_name);
+GRANT CREATE EXPERIMENT ON SCHEMA   identifier($schema_experiments) TO APPLICATION identifier($app_name);
+GRANT CREATE MODEL      ON SCHEMA   identifier($schema_experiments) TO APPLICATION identifier($app_name);
 ```
 
 Set `EXP_DATABASE` at the top of `telco_network_recovery.py` to that database (default: `TELCO_ENRICHMENT`).
@@ -128,10 +135,16 @@ Set `EXP_DATABASE` at the top of `telco_network_recovery.py` to that database (d
    python -m pip install .
    ```
 
-4. Configure your RAI connection:
-
+4. Configure:
    ```bash
    rai init
+   ```
+
+   After `rai init` generates the config file, add the following to your `raiconfig.yaml`:
+
+   ```yaml
+   data:
+       ensure_change_tracking: true
    ```
 
 5. (Optional) Regenerate the synthetic data corpus with a fresh seed:

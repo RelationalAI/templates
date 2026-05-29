@@ -2,7 +2,6 @@
 title: "Fraud Detection"
 description: "Multi-reasoner transaction-fraud pipeline: account PageRank (Graph) + high-volume account flags (Rules) feed a GNN binary classifier (Predictive) whose per-transaction scores drive a knapsack investigator-budget MILP (Prescriptive)."
 featured: true
-private: false
 experience_level: advanced
 industry: "Financial Services"
 reasoning_types:
@@ -68,6 +67,19 @@ account with the RAI Native App. No external data, no GPU. The bundled CSVs
 under `data/paysim_mini/` ship with the template; the GNN trains on CPU in a
 few minutes.
 
+The predictive reasoner needs a writable Snowflake schema where it can create experiments and models. The script defaults to `FRAUD_DETECTION.EXPERIMENTS` (configurable via `exp_database` / `exp_schema` in the script). One-time setup, run as `ACCOUNTADMIN` or any role with privileges to run the commands below:
+
+```sql
+-- Use a database you own (FRAUD_DETECTION shown; pick anything writable)
+CREATE DATABASE IF NOT EXISTS FRAUD_DETECTION;
+CREATE SCHEMA IF NOT EXISTS FRAUD_DETECTION.EXPERIMENTS;
+
+GRANT USAGE ON DATABASE FRAUD_DETECTION TO APPLICATION RELATIONALAI;
+GRANT USAGE ON SCHEMA FRAUD_DETECTION.EXPERIMENTS TO APPLICATION RELATIONALAI;
+GRANT CREATE EXPERIMENT ON SCHEMA FRAUD_DETECTION.EXPERIMENTS TO APPLICATION RELATIONALAI;
+GRANT CREATE MODEL ON SCHEMA FRAUD_DETECTION.EXPERIMENTS TO APPLICATION RELATIONALAI;
+```
+
 **To adapt to your own Snowflake pipeline (`fraud_detection.py` as reference)**
 you'll additionally need:
 
@@ -82,7 +94,7 @@ you'll additionally need:
 ### Tools
 
 - Python >= 3.10
-- RelationalAI Python SDK with the predictive extra (`relationalai[gnn] == 1.4.2`)
+- RelationalAI Python SDK (`relationalai == 1.8`)
 - For the rule-based notebook only: `jupyter`
 
 ## Quickstart
@@ -111,6 +123,13 @@ you'll additionally need:
 4. Configure:
    ```bash
    rai init
+   ```
+
+   After `rai init` generates the config file, add the following to your `raiconfig.yaml`:
+
+   ```yaml
+   data:
+       ensure_change_tracking: true
    ```
 
 5. Run the local demo on the bundled subset (CPU, a few minutes):

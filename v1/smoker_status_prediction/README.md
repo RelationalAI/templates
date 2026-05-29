@@ -2,7 +2,6 @@
 title: "Smoker Status Prediction"
 description: "Predict whether a person is a smoker from demographic and medical attributes plus a network of social connections, using a Graph Neural Network."
 featured: false
-private: false
 experience_level: intermediate
 industry: "Healthcare"
 reasoning_types:
@@ -54,7 +53,7 @@ Assumes familiarity with Python and basic ML concepts (binary classification, tr
 ### Tools
 
 - Python >= 3.10
-- RelationalAI Python SDK with the predictive extra (`relationalai[gnn] == 1.4.2`)
+- RelationalAI Python SDK (`relationalai == 1.8`)
 
 ## Quickstart
 
@@ -83,7 +82,13 @@ Assumes familiarity with Python and basic ML concepts (binary classification, tr
    ```bash
    rai init
    ```
-   Follow the interactive prompts (host platform, account, user, role, warehouse, etc.) -- your `raiconfig.toml` is generated automatically from the answers you provide.
+
+   After `rai init` generates the config file, add the following to your `raiconfig.yaml`:
+
+   ```yaml
+   data:
+       ensure_change_tracking: true
+   ```
 
 5. Grant the RelationalAI Native App access to a schema for experiment artifacts. The local script uses `SMOKER_STATUS_PREDICTION.EXPERIMENTS` by default (or change the constants at the top of the script). Update the `SET` statements below to match your database, schema, and Native App name, then run the following in a Snowflake SQL worksheet:
    ```sql

@@ -2,7 +2,6 @@
 title: "Retail Planning"
 description: "Predict article sales and customer churn with GNNs, then optimize markdown pricing and inventory planning to maximize revenue and minimize costs."
 featured: true
-private: false
 experience_level: advanced
 industry: "Retail"
 reasoning_types:
@@ -76,7 +75,7 @@ you'll additionally need:
 ### Tools
 
 - Python >= 3.10
-- RelationalAI Python SDK with the predictive extra (`relationalai[gnn] == 1.4.2`)
+- RelationalAI Python SDK (`relationalai == 1.8`)
 
 ## Quickstart
 

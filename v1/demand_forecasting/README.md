@@ -2,7 +2,6 @@
 title: "Demand Forecasting"
 description: "Forecast next-period unit sales per (store, item, day) with a regression GNN over a heterogeneous retail knowledge graph: sales transactions linked to stores, items, and item families so the GNN propagates signal through the store and product hierarchies."
 featured: false
-private: false
 experience_level: advanced
 industry: "Retail"
 reasoning_types:
@@ -50,7 +49,7 @@ Assumes familiarity with Python, basic ML concepts (regression, RMSE), and time-
 
 Any Snowflake account with the **RelationalAI Native App** installed. The bundled CSVs ship with the template; there is no source-table setup. The GNN trains on CPU.
 
-The predictive reasoner needs a writable Snowflake schema where it can create experiments and models. The script defaults to `FAVORITA_MINI.EXPERIMENTS` (configurable via `EXP_DATABASE` / `EXP_SCHEMA` near the top of the script). One-time setup, run as `ACCOUNTADMIN`:
+The predictive reasoner needs a writable Snowflake schema where it can create experiments and models. The script defaults to `FAVORITA_MINI.EXPERIMENTS` (configurable via `EXP_DATABASE` / `EXP_SCHEMA` near the top of the script). One-time setup, run as `ACCOUNTADMIN`, or any role with privileges to run the commands below:
 
 ```sql
 -- Use a database you own (FAVORITA_MINI shown; pick anything writable)
@@ -58,13 +57,15 @@ CREATE DATABASE IF NOT EXISTS FAVORITA_MINI;
 CREATE SCHEMA IF NOT EXISTS FAVORITA_MINI.EXPERIMENTS;
 
 GRANT USAGE ON DATABASE FAVORITA_MINI TO APPLICATION RELATIONALAI;
-GRANT ALL PRIVILEGES ON SCHEMA FAVORITA_MINI.EXPERIMENTS TO APPLICATION RELATIONALAI;
+GRANT USAGE ON SCHEMA FAVORITA.EXPERIMENTS TO APPLICATION RELATIONALAI;
+GRANT CREATE EXPERIMENT ON SCHEMA FAVORITA.EXPERIMENTS TO APPLICATION RELATIONALAI;
+GRANT CREATE MODEL ON SCHEMA FAVORITA.EXPERIMENTS TO APPLICATION RELATIONALAI;
 ```
 
 ### Tools
 
 - Python >= 3.10
-- RelationalAI Python SDK with the predictive extra (`relationalai[gnn] == 1.4.2`)
+- RelationalAI Python SDK (`relationalai == 1.8`)
 
 ## Quickstart
 
@@ -92,6 +93,13 @@ GRANT ALL PRIVILEGES ON SCHEMA FAVORITA_MINI.EXPERIMENTS TO APPLICATION RELATION
 4. Configure:
    ```bash
    rai init
+   ```
+
+   After `rai init` generates the config file, add the following to your `raiconfig.yaml`:
+
+   ```yaml
+   data:
+       ensure_change_tracking: true
    ```
 
 5. Run the experiments-schema setup DDL above (one-time per Snowflake account).
@@ -323,21 +331,6 @@ The bundled `favorita_mini` is intentionally tiny so the template runs in minute
 The GNN training service writes experiment artifacts to a Snowflake schema, and the `RELATIONALAI` native app must have write access. If the run fails with a message like *"The experiment is configured to use database 'X' and schema 'EXPERIMENTS' ... grant the necessary permissions ..."*, run the [setup DDL](#access) as `ACCOUNTADMIN`.
 
 The error also fires if you've changed `EXP_DATABASE` to a database you own but haven't granted USAGE on the database itself; both grants (USAGE on database + ALL on schema) are required.
-</details>
-
-<details>
-<summary><code>worker is not ready to accept jobs - please retry the job later</code></summary>
-
-The predictive reasoner can show `STATUS='READY'` while its in-pod worker is still coming up; train submissions hit a 400 error in this state. Recover by suspend / resume on the predictive reasoner, then wait for `READY` again before retrying:
-
-```sql
-CALL RELATIONALAI.API.SUSPEND_REASONER('predictive', '<reasoner_name>');
-CALL RELATIONALAI.API.RESUME_REASONER_ASYNC('predictive', '<reasoner_name>');
--- poll until STATUS=READY:
-CALL RELATIONALAI.API.GET_REASONER('predictive', '<reasoner_name>');
-```
-
-If you're driving the reasoner via the SDK and saw an earlier-in-the-day successful run for a smaller template (e.g. `subscriber_retention`), running that template once *primes* the worker — chaining a smaller run before this one is a reliable way to avoid the cold-worker hit.
 </details>
 
 <details>

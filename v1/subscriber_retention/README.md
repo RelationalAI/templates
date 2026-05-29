@@ -2,7 +2,6 @@
 title: "Subscriber Retention"
 description: "Telco churn-risk scoring: PageRank over a Subscriber→Subscriber call graph (Graph) plus aggregate-derived call-volume features feed a regression GNN (Predictive) that scores per-subscriber churn risk, then surfaces the highest-risk subscribers per segment for retention campaigns."
 featured: false
-private: false
 experience_level: advanced
 industry: "Telecommunications"
 reasoning_types:
@@ -52,7 +51,7 @@ Assumes familiarity with Python, basic ML concepts (regression, RMSE), and graph
 
 Any Snowflake account with the **RelationalAI Native App** installed. The bundled CSVs ship with the template; there is no source-table setup. The GNN trains on CPU.
 
-The predictive reasoner needs a writable Snowflake schema where it can create experiments and models. The script defaults to `TELCO_ENRICHMENT.EXPERIMENTS` (configurable via `EXP_DATABASE` / `EXP_SCHEMA` near the top of the script). One-time setup, run as `ACCOUNTADMIN`:
+The predictive reasoner needs a writable Snowflake schema where it can create experiments and models. The script defaults to `TELCO_ENRICHMENT.EXPERIMENTS` (configurable via `EXP_DATABASE` / `EXP_SCHEMA` near the top of the script). One-time setup, run as `ACCOUNTADMIN` or any role with privileges to run the commands below:
 
 ```sql
 -- Use a database you own (TELCO_ENRICHMENT shown; pick anything writable)
@@ -60,13 +59,15 @@ CREATE DATABASE IF NOT EXISTS TELCO_ENRICHMENT;
 CREATE SCHEMA IF NOT EXISTS TELCO_ENRICHMENT.EXPERIMENTS;
 
 GRANT USAGE ON DATABASE TELCO_ENRICHMENT TO APPLICATION RELATIONALAI;
-GRANT ALL PRIVILEGES ON SCHEMA TELCO_ENRICHMENT.EXPERIMENTS TO APPLICATION RELATIONALAI;
+GRANT USAGE ON SCHEMA TELCO_ENRICHMENT.EXPERIMENTS TO APPLICATION RELATIONALAI;
+GRANT CREATE EXPERIMENT ON SCHEMA TELCO_ENRICHMENT.EXPERIMENTS TO APPLICATION RELATIONALAI;
+GRANT CREATE MODEL ON SCHEMA TELCO_ENRICHMENT.EXPERIMENTS TO APPLICATION RELATIONALAI;
 ```
 
 ### Tools
 
 - Python >= 3.10
-- RelationalAI Python SDK with the predictive extra (`relationalai[gnn] == 1.4.2`)
+- RelationalAI Python SDK (`relationalai == 1.8`)
 
 ## Quickstart
 
@@ -94,6 +95,13 @@ GRANT ALL PRIVILEGES ON SCHEMA TELCO_ENRICHMENT.EXPERIMENTS TO APPLICATION RELAT
 4. Configure:
    ```bash
    rai init
+   ```
+
+   After `rai init` generates the config file, add the following to your `raiconfig.yaml`:
+
+   ```yaml
+   data:
+       ensure_change_tracking: true
    ```
 
 5. Run the experiments-schema setup DDL above (one-time per Snowflake account).
@@ -356,24 +364,6 @@ The bundled CSVs are loaded via `model.data(df)` for a no-setup local demo. To r
 The GNN training service writes experiment artifacts to a Snowflake schema, and the `RELATIONALAI` native app must have write access. If the run fails with a message like *"The experiment is configured to use database 'X' and schema 'EXPERIMENTS' ... grant the necessary permissions ..."*, run the [setup DDL](#access) as `ACCOUNTADMIN`.
 
 The error also fires if you've changed `EXP_DATABASE` to a database you own but haven't granted USAGE on the database itself; both grants (USAGE on database + ALL on schema) are required.
-</details>
-
-<details>
-<summary>Train job stays in <code>QUEUED</code> with no progress</summary>
-
-The GNN training job runs in a Snowpark Container Services service that the predictive reasoner provisions on demand. If the service can't come up (e.g. compute pool suspended, image-version mismatch in the RAI app manifest), submitted train jobs sit in `QUEUED` indefinitely.
-
-Diagnose by checking server-side state:
-
-```sql
--- Is the train job actually running?
-SELECT ID, STATE, CREATED_ON, FINISHED_AT, ABORT_REASON
-FROM RELATIONALAI.API.JOBS
-WHERE PAYLOAD LIKE '%"job_type": "train"%'
-ORDER BY CREATED_ON DESC LIMIT 5;
-```
-
-If `STATE='QUEUED'` for >5 minutes with nothing else `RUNNING`, the GNN service likely isn't accepting jobs — escalate to RelationalAI support rather than killing/restarting the script.
 </details>
 
 <details>
