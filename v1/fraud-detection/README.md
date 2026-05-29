@@ -2,7 +2,7 @@
 title: "Fraud Detection"
 description: "Multi-reasoner transaction-fraud pipeline: account PageRank (Graph) + high-volume account flags (Rules) feed a GNN binary classifier (Predictive) whose per-transaction scores drive a knapsack investigator-budget MILP (Prescriptive)."
 featured: true
-private: true
+private: false
 experience_level: advanced
 industry: "Financial Services"
 reasoning_types:
