@@ -1,0 +1,6 @@
+id,name,family,unit_price_usd_per_gb,margin_pct
+1,HBM3E,HBM,40.0,0.55
+2,HBM3,HBM,28.0,0.45
+3,DDR5-6400,DDR,4.5,0.32
+4,LPDDR5X,LPDDR,5.2,0.28
+5,NAND-TLC-512Gb,NAND,0.09,0.18
