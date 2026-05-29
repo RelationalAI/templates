@@ -69,7 +69,7 @@ Concepts created and bound to the bundled CSVs: Customer (11 rows), Product (5 S
 
 **Response**
 
-11 source-data concepts including the predictive `SupplierCapabilityForecast` and the 7-row `Dependency` junction. 4 customers declare outgoing yields (Hyperion 10%, Aether 8%, Helios 5%, Astra 3%); 4 customers carry an elevated floor above their base (Photonic Lithography 0.95, Vertex Test Systems 0.92, Crystal Wafer Tools 0.90, Apex Photonic Components 0.90). One 2-hop chain in the data: Photonic Lithography both receives yield (from Hyperion and Aether) AND declares yield outgoing (to Apex), creating `Hyperion → Photonic → Apex` and `Aether → Photonic → Apex`. Demand totals $147B across the horizon; baseline effective capacity totals $125B — HBM3E is the structurally binding SKU.
+11 source-data concepts including the predictive `SupplierCapabilityForecast` and the 7-row `Dependency` junction. 5 customers declare outgoing yields (Hyperion 10%, Aether 8%, Helios 5%, Astra 3%, plus Photonic Lithography 5%); 4 customers carry an elevated floor above their base (Photonic Lithography 0.95, Vertex Test Systems 0.92, Crystal Wafer Tools 0.90, Apex Photonic Components 0.90). Photonic Lithography is the bridge node — both declaring outgoing yield (to Apex) AND receiving incoming yield (from Hyperion and Aether) — which creates the only 2-hop chains in the graph: `Hyperion → Photonic → Apex` and `Aether → Photonic → Apex`. Demand totals $147B across the horizon; baseline effective capacity totals ~$121B — HBM3E is the structurally binding SKU.
 
 ### 3. Discover reasoner chain
 
@@ -93,7 +93,7 @@ Four-reasoner chain on the shared ontology. **Rules** (`/rai-rules-authoring`) t
 
 **Response**
 
-`Customer.max_declared_yield_pct`, `Customer.elevated_floor_pct`, `Customer.has_elevated_floor`, `Customer.n_incoming_dependencies`, and `Customer.is_dependency_spof` derived properties bound to the ontology. 4 customers declare yield (Hyperion 10%, Aether 8%, Helios 5%, Astra 3%). 4 customers carry elevated floors (Photonic 0.95, Vertex 0.92, Crystal 0.90, Apex 0.90). Exactly 1 customer is a dependency SPOF: Apex Photonic Components, protected only by the Photonic → Apex edge.
+`Customer.max_declared_yield_pct`, `Customer.elevated_floor_pct`, `Customer.has_elevated_floor`, `Customer.n_incoming_dependencies`, and `Customer.is_dependency_spof` derived properties bound to the ontology. Coalesce both derived values with `| 0.0` (max-yield) and `| base_service_floor_pct` (effective floor) so customers outside the dependency graph still get a value — without this, downstream solver constraints silently fail to ground. 5 customers declare yield (4 hyperscalers/consumer + Photonic Lithography as bridge node); 4 customers carry elevated floors above base (Photonic 0.95, Vertex 0.92, Crystal 0.90, Apex 0.90). Exactly 1 customer is a dependency SPOF: Apex Photonic Components, protected only by the Photonic → Apex edge.
 
 ### 5. Bind supplier capability forecast as ontology
 
@@ -117,26 +117,26 @@ Four-reasoner chain on the shared ontology. **Rules** (`/rai-rules-authoring`) t
 
 **Response**
 
-OPTIMAL · margin $47,089,150,341 over months 1–36 · binding constraint is HBM3E capacity. Equipment-maker customers run at their elevated floors: Photonic Lithography 95.0%, Vertex Test Systems 98.8%, Crystal Wafer Tools 98.2%, Apex Photonic Components 97.5%. Hyperscalers run below 100% under HBM3E scarcity: Hyperion 76.0%, Aether 83.7%, Helios 83.5%. ScenarioOutcome with iter_id=0 persists the headline.
+OPTIMAL · margin **$47,089,150,341** over months 1–36 (this number is invariant; the LP's optimal objective is unique) · binding constraint is HBM3E capacity. Equipment-maker customers run at or near their elevated floors: Photonic Lithography 95.0% (pinned), Vertex / Crystal / Apex 97-99%. Hyperscalers run below 100% under HBM3E scarcity, in the 76-84% range (exact per-customer split is degenerate — multiple optimal allocations exist with the same total margin, so HiGHS may pick a different vertex run-to-run within a few percentage points). ScenarioOutcome with iter_id=0 persists the headline.
 
 ### 7. Apply disruption reveals and re-solve rolling horizon
 
 **Prompt**
 
 ```
-/rai-prescriptive-problem-formulation Replan as each disruption surfaces. At month 5, Orion Foundry capability_pct drops to 0.78 for months 5–10 (unscheduled EUV tool downtime). At month 13, helium availability drops to 0.80 for months 13–18 (geopolitical event). For each reveal, update effective capacity and re-solve over the remaining months under the same three constraint types from the baseline solve. Report the cumulative plan diff at the customer level vs the prior iteration's allocation over the overlapping months.
+/rai-prescriptive-problem-formulation Replan as each disruption surfaces. At month 5, Orion Foundry capability_pct drops to 0.78 for months 5–10 (unscheduled EUV tool downtime); after month 10 Orion's forecast capability returns to baseline. At month 13, helium availability drops to 0.80 and holds at that level for the rest of the horizon (planner conservatively assumes the geopolitical event persists; the disruption_reveal start/end columns are diagnostic — the script applies input disruptions persistently). For each reveal, update effective capacity and re-solve over the remaining months under the same three constraint types from the baseline solve. Report the cumulative plan diff at the customer level vs the prior iteration's allocation over the overlapping months.
 ```
 
 **Response**
 
-Two additional OPTIMAL solves: iter_id=1 (months 5–36) margin $41,960,554,872; iter_id=2 (months 13–36) margin $30,188,075,056. Plan-diff iter 0 → iter 1 (months 5–36): Aether −$369.62M, Hyperion −$280.36M, Beacon −$27.10M, Helios −$11.94M, equipment makers $0 (pinned to elevated floor). Plan-diff iter 1 → iter 2 (months 13–36): Hyperion −$2,149.37M, Aether −$1,839.17M, Helios −$553.37M, Beacon −$367.45M, equipment makers still $0. Hyperscalers absorb the entire disruption surface.
+Two additional OPTIMAL solves: iter_id=1 (months 5–36) margin **$41,960,554,872** (exact); iter_id=2 (months 13–36) margin **$30,188,075,056** (depends on persistent-helium semantics described above — if helium availability is restored at month 19 instead, iter 2 margin rises to ~$31.94B). Plan-diff iter 0 → iter 1 (months 5–36, signs are stable across LP-degenerate runs): Aether ~−$370M, Hyperion ~−$280M, smaller deltas for Helios and Beacon, equipment makers $0 (pinned). Plan-diff iter 1 → iter 2 (months 13–36): Hyperion ~−$2.1B, Aether ~−$1.8B, Helios ~−$550M, equipment makers still at zero delta. Hyperscalers absorb the entire disruption surface across both reveals.
 
 ### 8. Enumerate dependency chains and confirm the SPOF
 
 **Prompt**
 
 ```
-/rai-graph-analysis Using the paths library, enumerate every 1- to 3-hop chain through the Customer.depends_on graph. Which customer endpoints have the most paths terminating at them (the most redundant protection), and which customer is structurally a single point of failure — the only customer whose elevated floor depends on exactly one direct incoming dependency edge AND has no alternative-path protection?
+/rai-graph-analysis Using the paths library, enumerate every 1- to 3-hop chain through the Customer.depends_on graph. Declare the depends_on relationship with explicit role short_names so the paths library can resolve the two same-type slots — `Customer.depends_on = model.Relationship(f"{Customer:downstream} depends on {Customer:upstream}")`. Then call `model.path(Customer.depends_on.repeat(1, 3)).all_paths()` and cast `PathTraversal.length` to int before pandas comparisons. Which customer endpoints have the most paths terminating at them (the most redundant protection), and which customer is structurally a single point of failure — the only customer whose elevated floor depends on exactly one direct incoming dependency edge AND has no alternative-path protection?
 ```
 
 **Response**
@@ -169,4 +169,14 @@ Equipment-maker customers (Photonic Lithography, Vertex Test Systems, Crystal Wa
 
 ## Data
 
-Bundled CSVs in `data/`: 11 customers (3 hyperscalers, 1 consumer OEM, 1 automotive, 1 industrial, 4 foundry-equipment makers, 1 distributor — service floors 0.45 to 0.75), 5 chip SKUs (HBM3E / HBM3 / DDR5 / LPDDR5X / NAND with margin 0.18–0.55), 36 monthly periods spanning 2026-01 to 2028-12, 1,476 demand cells (customer × SKU × month, USD), 6 named foundries (Orion / Helios / Nimbus / Pelican / Stellar / Vega), 360 supplier-product-month nominal capacities, 3 raw-material inputs (Helium / Neon / Palladium), 10 input-usage intensities, 216 supplier-capability forecasts (capability_pct ∈ [0.91, 0.99]), 7 dependency declarations (yield 0.03–0.10, elevated floor 0.88–0.95), 2 disruption-reveal rows (Orion at month 5, helium at month 13). The data generator `dev_temp/gen_memory_alloc_data_v2.py` regenerates the CSVs deterministically from a seed and prints a baseline-feasibility precheck. All four chain stages run end-to-end via `memory_supply_allocation.py`.
+Bundled CSVs in `data/`: 11 customers (3 hyperscalers, 1 consumer OEM, 1 automotive, 1 industrial, 4 foundry-equipment makers, 1 distributor — service floors 0.45 to 0.75), 5 chip SKUs (HBM3E / HBM3 / DDR5 / LPDDR5X / NAND with margin 0.18–0.55), 36 monthly periods spanning 2026-01 to 2028-12, 1,476 demand cells (customer × SKU × month, USD), 6 named foundries (Orion / Helios / Nimbus / Pelican / Stellar / Vega), 360 supplier-product-month nominal capacities, 3 raw-material inputs (Helium / Neon / Palladium), 10 input-usage intensities, 216 supplier-capability forecasts (capability_pct ∈ [0.93, 0.99]), 7 dependency declarations (yield 0.03–0.10, elevated floor 0.88–0.95), 2 disruption-reveal rows (Orion at month 5, helium at month 13). The data generator `dev_temp/gen_memory_alloc_data_v2.py` regenerates the CSVs deterministically from a seed and prints a baseline-feasibility precheck. All four chain stages run end-to-end via `memory_supply_allocation.py`.
+
+## Reproducibility notes
+
+This runbook was paste-tested against fresh `/rai-*` skill sessions on 2026-05-29; results below are from that test and inform the wording above:
+
+- **Margin totals are invariant** across runs of HiGHS on this LP — Step 6 reproduced **$47,089,150,341 to the dollar**, Step 7 iter 1 reproduced **$41,960,554,872 exactly**, Step 9 cascade rankings reproduced bit-exactly.
+- **Per-customer service-level splits are LP-degenerate** — multiple optimal allocations with identical total margin exist on the feasible face. Step 6's documented hyperscaler service levels are representative ranges; the exact per-customer split may drift a few percentage points run-to-run while structural facts (equipment makers pinned at elevated floor, hyperscalers below 100%) hold.
+- **Input disruption semantics**: the script applies input disruptions (helium shortage) persistently from the reveal period through end-of-horizon, not just within the `start_period`–`end_period` window in `disruption_reveal.csv` (suppliers DO respect the window). The runbook's iter 2 margin reflects this. A future revision could symmetrize the semantics.
+- **Step 8 (paths library)** is the only step that needed an explicit signature hint to reproduce, because the `model.path(...).all_paths()` API is new and not yet documented in `rai-graph-analysis`. The prompt now includes the relationship declaration; the underlying API is documented at `relationalai/semantics/std/paths/README.md` and full integration into the graph-analysis skill is a planned follow-up.
+- **Sparse derived properties**: a derived property bound only to customers with an incoming or outgoing dependency (e.g., 5 out of 11 rows) silently fails to ground downstream solver constraints — symptom is alloc grossly exceeding demand, not an obvious INFEASIBLE. Always coalesce with `| 0.0` or `| base_value` so every entity has a value.
