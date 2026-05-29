@@ -45,7 +45,6 @@ from relationalai.semantics.std import aggregates
 DATA_DIR = Path(__file__).parent / "data"
 
 HBM3E_PRODUCT_ID = 1
-HELIUM_INPUT_ID = 1
 HORIZON_END_PERIOD = 36
 SOLVE_TIME_LIMIT_SEC = 60
 
@@ -53,7 +52,9 @@ pd.set_option("display.float_format", lambda v: f"{v:,.2f}")
 pd.set_option("display.max_columns", 20)
 pd.set_option("display.width", 200)
 
-# ---- Stage 0: Load ontology and sample data ----
+# --------------------------------------------------
+# Define semantic model & load data
+# --------------------------------------------------
 
 model = Model("memory_supply_allocation")
 Concept, Property = model.Concept, model.Property
@@ -147,7 +148,9 @@ model.define(Dependency.new(model.data(dependencies_df).to_schema()))
 # Disruption-reveal schedule for the rolling horizon (data, not ontology).
 disruption_reveal_df = pd.read_csv(DATA_DIR / "disruption_reveal.csv")
 
-# ---- Stage 1: Rules -- derive customer yield/floor properties + graph edges ----
+# --------------------------------------------------
+# Stage 1: Rules -- derive customer yield/floor properties + graph edges
+# --------------------------------------------------
 
 # Per-customer max declared yield across outgoing dependencies (0.0 if none).
 Customer.max_declared_yield_pct = Property(
@@ -212,7 +215,9 @@ model.where(
 # Decision variable property.
 Demand.x_alloc = Property(f"{Demand} has {Float:x_alloc}")
 
-# ---- Stage 2: Predictive -- load pre-computed supplier capability forecast ----
+# --------------------------------------------------
+# Stage 2: Predictive -- load pre-computed supplier capability forecast
+# --------------------------------------------------
 #
 # In production, this would be a `rai-predictive-modeling` GNN run -- node
 # classification on suppliers, predicting `capability_pct` per (supplier, period)
@@ -241,7 +246,9 @@ fc_summary["supplier"] = fc_summary.index.map(
 )
 print(fc_summary.to_string())
 
-# ---- Stage 3: Prescriptive -- monthly rolling-horizon LP ----
+# --------------------------------------------------
+# Stage 3: Prescriptive -- monthly rolling-horizon LP
+# --------------------------------------------------
 #
 # Three solves: at the start of months 1, 5, 13 (one baseline + two disruption
 # reveals). Between solves, the disruption_reveal data is applied to a working
@@ -472,7 +479,9 @@ for spec in iter_specs:
     print(per_customer[["name", "industry", "demand_$B", "alloc_$B", "service_%"]]
           .to_string(index=False))
 
-# ---- Stage 3 summary ----
+# --------------------------------------------------
+# Stage 3 summary -- persist outcomes to ontology
+# --------------------------------------------------
 
 # Persist rolling-horizon outcomes for downstream querying.
 ScenarioOutcome = Concept(
@@ -507,7 +516,9 @@ for r in scenario_results:
     print(f"  iter={r['iter_id']} months={r['horizon_start']}-{HORIZON_END_PERIOD}: "
           f"{r['status']:12s} margin={obj_str}")
 
-# ---- Stage 4: Graph (PATHS) -- dependency chains, RCA, and what-if ----
+# --------------------------------------------------
+# Stage 4: Graph (PATHS) -- dependency chains, RCA, and what-if
+# --------------------------------------------------
 
 print("\n" + "=" * 60)
 print("Stage 4: Dependency-chain analysis (PATHS), RCA, and what-if")
@@ -577,17 +588,45 @@ for _, sup in suppliers_df.iterrows():
     affected_products = significant["product_id"].unique()
     what_if_supplier_rows.append(
         {
+            "supplier_id": int(sup["id"]),
             "supplier": sup["name"],
             "n_affected_cells": int(len(significant)),
-            "max_cap_drop_%": (significant["cap_drop_pct"].max() * 100).round(1)
+            "max_cap_drop_pct": float(significant["cap_drop_pct"].max())
             if not significant.empty else 0.0,
             "affected_products": ", ".join(
                 products_df.set_index("id").loc[affected_products, "name"].tolist()
             ),
         }
     )
+what_if_supplier_df = pd.DataFrame(what_if_supplier_rows)
+
+# Persist what-if 1 output back to the ontology so a downstream analyst can
+# query supplier-offline risk without re-running the script.
+Supplier.offline_impact_cells = Property(f"{Supplier} has {Integer:offline_impact_cells}")
+Supplier.offline_max_cap_drop_pct = Property(
+    f"{Supplier} has {Float:offline_max_cap_drop_pct}"
+)
+impact_bind = model.data(
+    what_if_supplier_df[["supplier_id", "n_affected_cells", "max_cap_drop_pct"]]
+)
+model.define(
+    Supplier.filter_by(id=impact_bind.supplier_id).offline_impact_cells(
+        impact_bind.n_affected_cells
+    )
+)
+model.define(
+    Supplier.filter_by(id=impact_bind.supplier_id).offline_max_cap_drop_pct(
+        impact_bind.max_cap_drop_pct
+    )
+)
+
 print("\n  === Supplier-offline impact (each supplier in isolation) ===")
-print(pd.DataFrame(what_if_supplier_rows).to_string(index=False))
+display_supplier = what_if_supplier_df.drop(columns=["supplier_id"]).copy()
+display_supplier["max_cap_drop_%"] = (display_supplier["max_cap_drop_pct"] * 100).round(1)
+display_supplier = display_supplier[
+    ["supplier", "n_affected_cells", "max_cap_drop_%", "affected_products"]
+]
+print(display_supplier.to_string(index=False))
 
 # ---- What-if 2: Raw-material input shortage ----
 # Each input drops to 30% availability. Recompute effective capacity, surface
@@ -616,6 +655,7 @@ for _, inp in inputs_df.iterrows():
     )
     what_if_input_rows.append(
         {
+            "input_id": int(inp["id"]),
             "input": inp["name"],
             "n_affected_cells": int(len(significant)),
             "affected_products_avg_drop": ", ".join(
@@ -624,8 +664,20 @@ for _, inp in inputs_df.iterrows():
             ),
         }
     )
+what_if_input_df = pd.DataFrame(what_if_input_rows)
+
+# Persist what-if 2 output back to the ontology so the input-shortage risk
+# ranking is queryable after the script exits.
+Input.shortage_impact_cells = Property(f"{Input} has {Integer:shortage_impact_cells}")
+input_bind = model.data(what_if_input_df[["input_id", "n_affected_cells"]])
+model.define(
+    Input.filter_by(id=input_bind.input_id).shortage_impact_cells(
+        input_bind.n_affected_cells
+    )
+)
+
 print("\n  === Input-shortage impact (each input at 30% availability) ===")
-print(pd.DataFrame(what_if_input_rows).to_string(index=False))
+print(what_if_input_df.drop(columns=["input_id"]).to_string(index=False))
 
 # ---- Headline ----
 print("\n" + "=" * 60)
@@ -642,7 +694,7 @@ if not multihop.empty:
 worst_supplier = max(what_if_supplier_rows, key=lambda r: r["n_affected_cells"])
 print(f"  Supplier with widest offline impact: {worst_supplier['supplier']} "
       f"({worst_supplier['n_affected_cells']} affected cells, "
-      f"max cap drop {worst_supplier['max_cap_drop_%']}%)")
+      f"max cap drop {worst_supplier['max_cap_drop_pct'] * 100:.1f}%)")
 worst_input = max(what_if_input_rows, key=lambda r: r["n_affected_cells"])
 print(f"  Input with widest shortage impact: {worst_input['input']} "
       f"({worst_input['n_affected_cells']} affected cells)")
