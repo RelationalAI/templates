@@ -54,6 +54,7 @@ This template chains **Predictive**, **Rules**, **Prescriptive**, and **Graph** 
 ## What's included
 
 - **Script**: `memory_supply_allocation.py` — four-stage chain end-to-end
+- **Runbook**: `runbook.md` — analyst-facing paste-testable walkthrough, one prompt per stage
 - **Data**: `data/customers.csv`, `data/products.csv`, `data/periods.csv`, `data/demand.csv`, `data/suppliers.csv`, `data/supplier_product_capacity.csv`, `data/inputs.csv`, `data/input_usage.csv`, `data/supplier_capability_forecast.csv`, `data/dependencies.csv`, `data/disruption_reveal.csv`
 - **Config**: `pyproject.toml`
 
@@ -213,6 +214,7 @@ This template chains **Predictive**, **Rules**, **Prescriptive**, and **Graph** 
 ```text
 .
 ├── README.md
+├── runbook.md
 ├── pyproject.toml
 ├── memory_supply_allocation.py
 └── data/
@@ -231,7 +233,7 @@ This template chains **Predictive**, **Rules**, **Prescriptive**, and **Graph** 
 
 ## How it works
 
-### 1. Stage 1: rules-authored derived properties
+### Stage 1: rules-authored derived properties
 
 Two declarative aggregations turn `Dependency` into per-customer attributes the LP consumes. Both default to `0.0` so customers outside the dependency graph fall through cleanly:
 
@@ -255,9 +257,9 @@ model.define(Customer.elevated_floor_pct(elevated_expr))
 
 A `Customer.depends_on` graph relationship is materialized from the same rows, and a `Customer.is_dependency_spof` boolean flag fires when exactly one incoming dependency is the only thing keeping a customer above its base floor. All Stage-1 outputs are first-class ontology — a downstream analyst can `model.where(Customer.is_dependency_spof()).select(Customer.name).to_df()` and get the answer without re-running the pipeline.
 
-### 2. Stage 2: predictive supplier-capability forecast
+### Stage 2: predictive supplier-capability forecast
 
-The forecast is a regression target per (supplier, month): `capability_pct ∈ [0.85, 1.00]`. It loads as a first-class ontology Concept:
+The forecast is a regression target per (supplier, month). The bundled CSV holds `capability_pct` values in `[0.93, 0.99]` across the 216 rows (per-supplier mean 0.95–0.97). It loads as a first-class ontology Concept:
 
 ```python
 SupplierCapabilityForecast = Concept(
@@ -267,24 +269,39 @@ SupplierCapabilityForecast = Concept(
 SupplierCapabilityForecast.capability_pct = Property(
     f"{SupplierCapabilityForecast} has {Float:capability_pct}"
 )
+forecast_df_initial = pd.read_csv(DATA_DIR / "supplier_capability_forecast.csv")
 model.define(SupplierCapabilityForecast.new(model.data(forecast_df_initial).to_schema()))
 ```
 
 The template ships the forecast as pre-computed data so it runs portably without a training stage. To swap in a GNN: use `rai-predictive-modeling` to define a node-classification task on Supplier (features = recent on-time-rate, equipment age, geopolitical exposure score, etc.), train, generate predictions, and load the prediction DataFrame here instead. The downstream ontology binding is identical.
 
-### 3. Stage 3: rolling-horizon prescriptive LP
+### Stage 3: rolling-horizon prescriptive LP
 
 The LP runs three times. Between solves, a disruption-reveal data table is consulted; any rows whose `reveal_period` has been reached overwrite the working forecast or input-availability state, and effective capacity is recomputed from scratch:
 
 ```python
 def compute_effective_capacity(forecast_df_state, input_avail_state):
+    """Compute effective capacity per (product, period) given current forecast
+    and input availability state. Returns a DataFrame with columns
+    product_id, period_id, effective_capacity_usd."""
     sp = spc_df.merge(forecast_df_state, on=["supplier_id", "period_id"])
     sp["eff_supply_usd"] = sp["nominal_capacity_usd"] * sp["capability_pct"]
-    per_prod_period = sp.groupby(["product_id", "period_id"])["eff_supply_usd"].sum()
+    per_prod_period = (
+        sp.groupby(["product_id", "period_id"])["eff_supply_usd"].sum().reset_index()
+    )
+
+    # Multiply by input-availability factor per product:
+    #   product_multiplier = product over inputs of (1 - intensity * (1 - avail))
     iu = input_usage_df.copy()
     iu["avail"] = iu["input_id"].map(input_avail_state).fillna(1.0)
     iu["mult"] = 1.0 - iu["intensity"] * (1.0 - iu["avail"])
-    # ... product-level multiplier, then multiply by per-product sum
+    per_prod_mult = iu.groupby("product_id")["mult"].prod()
+
+    per_prod_period["mult"] = per_prod_period["product_id"].map(per_prod_mult).fillna(1.0)
+    per_prod_period["effective_capacity_usd"] = (
+        per_prod_period["eff_supply_usd"] * per_prod_period["mult"]
+    )
+    return per_prod_period[["product_id", "period_id", "effective_capacity_usd"]]
 ```
 
 The result loads into an `EffectiveCapacity` concept tagged with the rolling-horizon `iter_id` discriminator, so the LP at iteration K references only its own rows:
@@ -295,14 +312,16 @@ problem.satisfy(
         sum(Demand.x_alloc).per(EffectiveCapacity).where(
             Demand.product_id == EffectiveCapacity.product_id,
             Demand.period_id == EffectiveCapacity.period_id,
-        ) <= EffectiveCapacity.effective_capacity_usd
+        )
+        <= EffectiveCapacity.effective_capacity_usd
     ),
+    name=["cap", EffectiveCapacity.iter_id, EffectiveCapacity.product_id, EffectiveCapacity.period_id],
 )
 ```
 
 The decision variable is scoped to the current iteration's horizon via `where=[Demand.period_id >= horizon_start]` so the LP only resolves the unsolved tail of the horizon. After each solve, the script extracts the allocation and computes a per-customer plan-diff vs the prior iteration's allocation — the table that exposes who absorbs the disruption.
 
-### 4. Stage 4: dependency-chain enumeration and what-if scenarios
+### Stage 4: dependency-chain enumeration and what-if scenarios
 
 The paths library handles variable-length traversal of the customer dependency graph. The README example output shows two 2-hop chains both passing through Photonic Lithography to reach Apex Photonic Components — these are the structural reason Apex has no alternative protection. Path enumeration runs once and is independent of the LP solves:
 
