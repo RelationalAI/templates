@@ -48,6 +48,18 @@ HBM3E_PRODUCT_ID = 1
 HORIZON_END_PERIOD = 36
 SOLVE_TIME_LIMIT_SEC = 60
 
+# Stage 2 (Predictive) configuration.
+# Default behavior is an actual GNN regression run on Supplier capability;
+# set USE_PRECOMPUTED_FORECAST=True to skip training and load the bundled
+# forecast CSV directly (useful for fast iteration / offline reproducibility).
+USE_PRECOMPUTED_FORECAST = False
+EXP_DATABASE = "MEMORY_SUPPLY"      # See README Prerequisites: create this DB + schema with the 4 RAI grants
+EXP_SCHEMA = "EXPERIMENTS"
+GNN_DEVICE = "cpu"                  # "cuda" if your predictive reasoner is GPU-sized
+GNN_N_EPOCHS = 30
+GNN_LR = 0.005
+GNN_SEED = 42
+
 pd.set_option("display.float_format", lambda v: f"{v:,.2f}")
 pd.set_option("display.max_columns", 20)
 pd.set_option("display.width", 200)
@@ -216,14 +228,14 @@ model.where(
 Demand.x_alloc = Property(f"{Demand} has {Float:x_alloc}")
 
 # --------------------------------------------------
-# Stage 2: Predictive -- load pre-computed supplier capability forecast
+# Stage 2: Predictive -- supplier capability forecast
 # --------------------------------------------------
 #
-# In production, this would be a `rai-predictive-modeling` GNN run -- node
-# classification on suppliers, predicting `capability_pct` per (supplier, period)
-# from features like recent on-time-rate, equipment age, geopolitical exposure.
-# For template portability, the forecast is loaded as data; the ontology binding
-# is identical either way.
+# Default: train a node-regression GNN on Supplier predicting capability_pct
+# per (supplier, period) from static features + historical observations.
+# Set USE_PRECOMPUTED_FORECAST=True at the top of the file to skip training and
+# load the bundled forecast CSV directly. Either path populates the same
+# SupplierCapabilityForecast concept; downstream stages don't care which ran.
 
 SupplierCapabilityForecast = Concept(
     "SupplierCapabilityForecast",
@@ -232,12 +244,170 @@ SupplierCapabilityForecast = Concept(
 SupplierCapabilityForecast.capability_pct = Property(
     f"{SupplierCapabilityForecast} has {Float:capability_pct}"
 )
-forecast_df_initial = pd.read_csv(DATA_DIR / "supplier_capability_forecast.csv")
-model.define(SupplierCapabilityForecast.new(model.data(forecast_df_initial).to_schema()))
 
-print("=" * 60)
-print("Stage 2: Predictive forecast loaded")
-print("=" * 60)
+if USE_PRECOMPUTED_FORECAST:
+    print("=" * 60)
+    print("Stage 2: Loading pre-computed forecast (USE_PRECOMPUTED_FORECAST=True)")
+    print("=" * 60)
+    forecast_df_initial = pd.read_csv(DATA_DIR / "supplier_capability_forecast.csv")
+    model.define(
+        SupplierCapabilityForecast.new(model.data(forecast_df_initial).to_schema())
+    )
+else:
+    print("=" * 60)
+    print("Stage 2: Training supplier-capability GNN (regression, CPU)")
+    print("=" * 60)
+    from relationalai.semantics import Any
+    from relationalai.semantics.reasoners.graph import Graph
+    from relationalai.semantics.reasoners.predictive import GNN, PropertyTransformer
+
+    # Per-supplier static features for the GNN.
+    Supplier.equipment_age_months = Property(f"{Supplier} has {Integer:equipment_age_months}")
+    Supplier.geopolitical_exposure_score = Property(
+        f"{Supplier} has {Float:geopolitical_exposure_score}"
+    )
+    Supplier.region = Property(f"{Supplier} has {String:region}")
+    Supplier.process_node_nm = Property(f"{Supplier} has {Integer:process_node_nm}")
+    Supplier.workforce_size_k = Property(f"{Supplier} has {Integer:workforce_size_k}")
+    features_df = pd.read_csv(DATA_DIR / "supplier_features.csv")
+    f_data = model.data(features_df)
+    model.define(
+        Supplier.filter_by(id=f_data.supplier_id).equipment_age_months(
+            f_data.equipment_age_months
+        )
+    )
+    model.define(
+        Supplier.filter_by(id=f_data.supplier_id).geopolitical_exposure_score(
+            f_data.geopolitical_exposure_score
+        )
+    )
+    model.define(Supplier.filter_by(id=f_data.supplier_id).region(f_data.region))
+    model.define(
+        Supplier.filter_by(id=f_data.supplier_id).process_node_nm(f_data.process_node_nm)
+    )
+    model.define(
+        Supplier.filter_by(id=f_data.supplier_id).workforce_size_k(f_data.workforce_size_k)
+    )
+
+    # SupplierObservation: GNN source concept. One row per (supplier, period).
+    # Historical rows (-23..0) carry capability_pct as the regression label;
+    # future rows (1..36) are the prediction targets (no label).
+    SupplierObservation = Concept(
+        "SupplierObservation",
+        identify_by={"supplier_id": Integer, "period_id": Integer},
+    )
+    SupplierObservation.capability_pct = Property(
+        f"{SupplierObservation} has {Float:capability_pct}"
+    )
+    hist_df = pd.read_csv(DATA_DIR / "supplier_observations_historical.csv")
+    model.define(SupplierObservation.new(model.data(hist_df).to_schema()))
+
+    future_obs_df = pd.DataFrame(
+        [
+            {"supplier_id": int(s), "period_id": p}
+            for s in suppliers_df["id"]
+            for p in range(1, HORIZON_END_PERIOD + 1)
+        ]
+    )
+    model.define(SupplierObservation.new(model.data(future_obs_df).to_schema()))
+
+    # GNN graph: each observation links to its supplier; suppliers in the same
+    # region link to each other so feature signal flows between similar fabs.
+    gnn_graph = Graph(model, directed=True, weighted=False)
+    GEdge = gnn_graph.Edge
+    model.define(GEdge.new(src=SupplierObservation, dst=Supplier)).where(
+        SupplierObservation.supplier_id == Supplier.id
+    )
+    SupRef = Supplier.ref()
+    model.define(GEdge.new(src=Supplier, dst=SupRef)).where(
+        Supplier.region == SupRef.region,
+        Supplier.id < SupRef.id,
+    )
+
+    pt = PropertyTransformer(
+        drop=[
+            Supplier.id, Supplier.name, Supplier.type,
+            SupplierObservation.supplier_id,
+            SupplierObservation.period_id,
+            SupplierObservation.capability_pct,  # target — don't leak
+        ],
+        category=[Supplier.region],
+        continuous=[Supplier.geopolitical_exposure_score],
+        integer=[
+            Supplier.equipment_age_months,
+            Supplier.process_node_nm,
+            Supplier.workforce_size_k,
+        ],
+    )
+
+    # Temporal split: train on -23..-4, validate on -3..0, test on 1..36.
+    train_split_df = hist_df[hist_df["period_id"] < -3].reset_index(drop=True)
+    val_split_df = hist_df[hist_df["period_id"] >= -3].reset_index(drop=True)
+    test_split_df = future_obs_df[["supplier_id", "period_id"]].reset_index(drop=True)
+    print(
+        f"Split: train={len(train_split_df)} (periods -23..-4), "
+        f"val={len(val_split_df)} (periods -3..0), "
+        f"test={len(test_split_df)} (periods 1..{HORIZON_END_PERIOD})"
+    )
+
+    TrainTable = Concept("TrainTable")
+    ValTable = Concept("ValTable")
+    TestTable = Concept("TestTable")
+    model.define(TrainTable.new(model.data(train_split_df).to_schema()))
+    model.define(ValTable.new(model.data(val_split_df).to_schema()))
+    model.define(TestTable.new(model.data(test_split_df).to_schema()))
+
+    Train = model.Relationship(f"{SupplierObservation} has {Any:value}")
+    model.define(Train(SupplierObservation, TrainTable.capability_pct)).where(
+        SupplierObservation.supplier_id == TrainTable.supplier_id,
+        SupplierObservation.period_id == TrainTable.period_id,
+    )
+    Val = model.Relationship(f"{SupplierObservation} has {Any:value}")
+    model.define(Val(SupplierObservation, ValTable.capability_pct)).where(
+        SupplierObservation.supplier_id == ValTable.supplier_id,
+        SupplierObservation.period_id == ValTable.period_id,
+    )
+    Test = model.Relationship(f"{SupplierObservation}")
+    model.define(Test(SupplierObservation)).where(
+        SupplierObservation.supplier_id == TestTable.supplier_id,
+        SupplierObservation.period_id == TestTable.period_id,
+    )
+
+    gnn = GNN(
+        exp_database=EXP_DATABASE,
+        exp_schema=EXP_SCHEMA,
+        graph=gnn_graph,
+        property_transformer=pt,
+        train=Train,
+        validation=Val,
+        task_type="regression",
+        eval_metric="rmse",
+        has_time_column=False,
+        stream_logs=False,
+        seed=GNN_SEED,
+        device=GNN_DEVICE,
+        n_epochs=GNN_N_EPOCHS,
+        lr=GNN_LR,
+    )
+    gnn.fit()
+    SupplierObservation.predictions = gnn.predictions(domain=Test)
+
+    pred_df = model.where(SupplierObservation.predictions).select(
+        SupplierObservation.supplier_id.alias("supplier_id"),
+        SupplierObservation.period_id.alias("period_id"),
+        SupplierObservation.predictions.predicted_value.alias("capability_pct"),
+    ).to_df()
+    pred_df["supplier_id"] = pred_df["supplier_id"].astype(int)
+    pred_df["period_id"] = pred_df["period_id"].astype(int)
+    pred_df["capability_pct"] = pred_df["capability_pct"].clip(0.85, 1.0).round(4)
+    print(f"GNN predictions: {len(pred_df)} rows for periods 1..{HORIZON_END_PERIOD}")
+
+    forecast_df_initial = pred_df.copy()
+    model.define(
+        SupplierCapabilityForecast.new(model.data(forecast_df_initial).to_schema())
+    )
+
+print("\nPer-supplier capability_pct summary (post-Stage 2):")
 fc_summary = forecast_df_initial.groupby("supplier_id")["capability_pct"].agg(
     ["mean", "min", "max"]
 ).round(3)

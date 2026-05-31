@@ -55,7 +55,7 @@ This template chains **Predictive**, **Rules**, **Prescriptive**, and **Graph** 
 
 - **Script**: `memory_supply_allocation.py` — four-stage chain end-to-end
 - **Runbook**: `runbook.md` — analyst-facing paste-testable walkthrough, one prompt per stage
-- **Data**: `data/customers.csv`, `data/products.csv`, `data/periods.csv`, `data/demand.csv`, `data/suppliers.csv`, `data/supplier_product_capacity.csv`, `data/inputs.csv`, `data/input_usage.csv`, `data/supplier_capability_forecast.csv`, `data/dependencies.csv`, `data/disruption_reveal.csv`
+- **Data**: `data/customers.csv`, `data/products.csv`, `data/periods.csv`, `data/demand.csv`, `data/suppliers.csv`, `data/supplier_features.csv`, `data/supplier_observations_historical.csv`, `data/supplier_product_capacity.csv`, `data/inputs.csv`, `data/input_usage.csv`, `data/supplier_capability_forecast.csv`, `data/dependencies.csv`, `data/disruption_reveal.csv`
 - **Config**: `pyproject.toml`
 
 ## Prerequisites
@@ -67,6 +67,24 @@ This template chains **Predictive**, **Rules**, **Prescriptive**, and **Graph** 
 ### Tools
 - Python >= 3.10
 - RelationalAI Python SDK (`relationalai`) >= 1.0.14
+
+### Stage 2 (Predictive GNN) — one-time Snowflake setup
+
+The default run trains an actual GNN regression model for Stage 2. The predictive reasoner needs an experiment database + schema with four grants, and a GPU-sized predictive reasoner provisioned. Run once as `ACCOUNTADMIN`:
+
+```sql
+CREATE DATABASE IF NOT EXISTS MEMORY_SUPPLY;
+CREATE SCHEMA   IF NOT EXISTS MEMORY_SUPPLY.EXPERIMENTS;
+
+GRANT USAGE             ON DATABASE MEMORY_SUPPLY            TO APPLICATION RELATIONALAI;
+GRANT USAGE             ON SCHEMA   MEMORY_SUPPLY.EXPERIMENTS TO APPLICATION RELATIONALAI;
+GRANT CREATE EXPERIMENT ON SCHEMA   MEMORY_SUPPLY.EXPERIMENTS TO APPLICATION RELATIONALAI;
+GRANT CREATE MODEL      ON SCHEMA   MEMORY_SUPPLY.EXPERIMENTS TO APPLICATION RELATIONALAI;
+```
+
+Then provision a GPU-sized predictive reasoner (`GPU_NV_S`) and reference it in `raiconfig.yaml` under `reasoners.predictive`. The script's `EXP_DATABASE` and `EXP_SCHEMA` constants default to `MEMORY_SUPPLY` / `EXPERIMENTS`; change them if you used different names.
+
+If you don't need to demonstrate the GNN training step (e.g. for fast iteration or offline reproducibility), set `USE_PRECOMPUTED_FORECAST = True` at the top of the script — it skips training entirely and loads `data/supplier_capability_forecast.csv` directly. The Stage-3 LP and Stage-4 paths analysis run identically either way.
 
 ## Quickstart
 
@@ -116,7 +134,7 @@ This template chains **Predictive**, **Rules**, **Prescriptive**, and **Graph** 
    Stage 3 iteration 0: Baseline (month 1, no disruption revealed)
    ============================================================
      Status: OPTIMAL
-     Total margin over horizon (months 1-36): $47,089,150,341.47
+     Total margin over horizon (months 1-36): $45,488,032,436.79
 
      === Per-customer service level (over current horizon) ===
                        name          industry  demand_$B  alloc_$B  service_%
@@ -130,7 +148,7 @@ This template chains **Predictive**, **Rules**, **Prescriptive**, and **Graph** 
    Stage 3 iteration 1: Re-plan at month 5 (Orion downtime revealed)
    ============================================================
      Status: OPTIMAL
-     Total margin over horizon (months 5-36): $41,960,554,871.69
+     Total margin over horizon (months 5-36): $40,523,678,803.86
 
      === Plan diff vs prior iteration (months 5-36) ===
                        name  delta_$M
@@ -148,7 +166,7 @@ This template chains **Predictive**, **Rules**, **Prescriptive**, and **Graph** 
    Stage 3 iteration 2: Re-plan at month 13 (helium shortage revealed)
    ============================================================
      Status: OPTIMAL
-     Total margin over horizon (months 13-36): $30,188,075,056.34
+     Total margin over horizon (months 13-36): $28,972,506,958.58
 
      === Plan diff vs prior iteration (months 13-36) ===
                        name   delta_$M
@@ -161,9 +179,9 @@ This template chains **Predictive**, **Rules**, **Prescriptive**, and **Graph** 
    ============================================================
    Rolling-horizon summary
    ============================================================
-     iter=0 months=1-36:  OPTIMAL  margin=$47,089,150,341.47
-     iter=1 months=5-36:  OPTIMAL  margin=$41,960,554,871.69
-     iter=2 months=13-36: OPTIMAL  margin=$30,188,075,056.34
+     iter=0 months=1-36:  OPTIMAL  margin=$45,488,032,436.79
+     iter=1 months=5-36:  OPTIMAL  margin=$40,523,678,803.86
+     iter=2 months=13-36: OPTIMAL  margin=$28,972,506,958.58
 
    ============================================================
    Stage 4: Dependency-chain analysis (PATHS), RCA, and what-if
@@ -202,12 +220,12 @@ This template chains **Predictive**, **Rules**, **Prescriptive**, and **Graph** 
      Multi-hop dependency chains:
        Aether Cloud -> Photonic Lithography -> Apex Photonic Components
        Hyperion Compute -> Photonic Lithography -> Apex Photonic Components
-     Supplier with widest offline impact: Orion Foundry (72 affected cells, max cap drop 60.9%)
+     Supplier with widest offline impact: Orion Foundry (72 affected cells, max cap drop 60.0%)
      Input with widest shortage impact: Helium (180 affected cells)
-     Margin erosion across rolling horizon (iter 0 -> iter 2): $16,901,075,285.13
+     Margin erosion across rolling horizon (iter 0 -> iter 2): $16,515,525,478.20
    ```
 
-   Headline read: as disruption surfaces, hyperscalers absorb all of the pain (Hyperion takes -$2.15B in iter 2, Aether -$1.84B) while equipment-maker customers stay pinned at their elevated floors (95%, 92%, 88%) — exactly the strategic dynamic the dependency declarations were designed to enforce. PATHS analysis surfaces Apex Photonic Components as a structural single point of failure: its 90% floor is sustained by exactly one upstream signal (Photonic Lithography). Orion Foundry is the supplier whose offline scenario casts the widest shadow; Helium is the input whose shortage touches every SKU.
+   Headline read: as disruption surfaces, hyperscalers absorb all of the pain while equipment-maker customers stay pinned at their elevated floors (95%, 92%, 88%) — exactly the strategic dynamic the dependency declarations were designed to enforce. PATHS analysis surfaces Apex Photonic Components as a structural single point of failure: its 90% floor is sustained by exactly one upstream signal (Photonic Lithography). Orion Foundry is the supplier whose offline scenario casts the widest shadow; Helium is the input whose shortage touches every SKU. Numbers shown are from a GNN-default run; switching to `USE_PRECOMPUTED_FORECAST=True` produces slightly higher margins (~$47.1B / $42.0B / $30.2B) because the GNN's feature-driven predictions land slightly below the synthetic forecast values.
 
 ## Template structure
 
@@ -223,6 +241,8 @@ This template chains **Predictive**, **Rules**, **Prescriptive**, and **Graph** 
     ├── periods.csv
     ├── demand.csv
     ├── suppliers.csv
+    ├── supplier_features.csv
+    ├── supplier_observations_historical.csv
     ├── supplier_product_capacity.csv
     ├── inputs.csv
     ├── input_usage.csv
@@ -257,23 +277,32 @@ model.define(Customer.elevated_floor_pct(elevated_expr))
 
 A `Customer.depends_on` graph relationship is materialized from the same rows, and a `Customer.is_dependency_spof` boolean flag fires when exactly one incoming dependency is the only thing keeping a customer above its base floor. All Stage-1 outputs are first-class ontology — a downstream analyst can `model.where(Customer.is_dependency_spof()).select(Customer.name).to_df()` and get the answer without re-running the pipeline.
 
-### Stage 2: predictive supplier-capability forecast
+### Stage 2: predictive supplier-capability GNN
 
-The forecast is a regression target per (supplier, month). The bundled CSV holds `capability_pct` values in `[0.93, 0.99]` across the 216 rows (per-supplier mean 0.95–0.97). It loads as a first-class ontology Concept:
+The forecast is a regression target per (supplier, month). The default code path trains an actual GNN — a `task_type="regression"` model over a heterogeneous graph (`SupplierObservation → Supplier` for each observation; `Supplier → Supplier` for same-region clustering) using per-supplier static features (equipment_age_months, geopolitical_exposure_score, region, process_node_nm, workforce_size_k). Training labels come from 24 months of past observations in `supplier_observations_historical.csv`; predictions are generated for periods 1–36:
 
 ```python
-SupplierCapabilityForecast = Concept(
-    "SupplierCapabilityForecast",
-    identify_by={"supplier_id": Integer, "period_id": Integer},
+gnn = GNN(
+    exp_database=EXP_DATABASE,
+    exp_schema=EXP_SCHEMA,
+    graph=gnn_graph,
+    property_transformer=pt,
+    train=Train,
+    validation=Val,
+    task_type="regression",
+    eval_metric="rmse",
+    has_time_column=False,
+    device=GNN_DEVICE,
+    n_epochs=GNN_N_EPOCHS,
+    lr=GNN_LR,
 )
-SupplierCapabilityForecast.capability_pct = Property(
-    f"{SupplierCapabilityForecast} has {Float:capability_pct}"
-)
-forecast_df_initial = pd.read_csv(DATA_DIR / "supplier_capability_forecast.csv")
-model.define(SupplierCapabilityForecast.new(model.data(forecast_df_initial).to_schema()))
+gnn.fit()
+SupplierObservation.predictions = gnn.predictions(domain=Test)
 ```
 
-The template ships the forecast as pre-computed data so it runs portably without a training stage. To swap in a GNN: use `rai-predictive-modeling` to define a node-classification task on Supplier (features = recent on-time-rate, equipment age, geopolitical exposure score, etc.), train, generate predictions, and load the prediction DataFrame here instead. The downstream ontology binding is identical.
+Predictions are extracted via the standard `Source.predictions.predicted_value` pattern and bound into the `SupplierCapabilityForecast` concept — the same downstream ontology surface either code path produces. Training takes ~60-90 seconds on a GPU-sized predictive reasoner (`GPU_NV_S`).
+
+The pre-computed forecast path (`USE_PRECOMPUTED_FORECAST = True`) skips the GNN entirely and loads `data/supplier_capability_forecast.csv` directly. Use it when iterating on Stage 3 / Stage 4 or running in environments without the experiment-schema setup.
 
 ### Stage 3: rolling-horizon prescriptive LP
 
