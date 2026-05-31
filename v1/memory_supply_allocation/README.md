@@ -66,7 +66,7 @@ This template chains **Predictive**, **Rules**, **Prescriptive**, and **Graph** 
 
 ### Tools
 - Python >= 3.10
-- RelationalAI Python SDK (`relationalai`) >= 1.0.14
+- RelationalAI Python SDK (`relationalai[gnn]==1.5.0`)
 
 ### Stage 2 (Predictive GNN) — one-time Snowflake setup
 
@@ -292,6 +292,8 @@ gnn = GNN(
     task_type="regression",
     eval_metric="rmse",
     has_time_column=False,
+    stream_logs=False,
+    seed=GNN_SEED,
     device=GNN_DEVICE,
     n_epochs=GNN_N_EPOCHS,
     lr=GNN_LR,

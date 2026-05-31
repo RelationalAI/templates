@@ -34,7 +34,9 @@ Output:
 from pathlib import Path
 
 import pandas as pd
-from relationalai.semantics import Float, Integer, Model, String, sum
+from relationalai.semantics import Any, Float, Integer, Model, String, sum
+from relationalai.semantics.reasoners.graph import Graph
+from relationalai.semantics.reasoners.predictive import GNN, PropertyTransformer
 from relationalai.semantics.reasoners.prescriptive import Problem
 from relationalai.semantics.std import aggregates
 
@@ -257,9 +259,6 @@ else:
     print("=" * 60)
     print("Stage 2: Training supplier-capability GNN (regression, CPU)")
     print("=" * 60)
-    from relationalai.semantics import Any
-    from relationalai.semantics.reasoners.graph import Graph
-    from relationalai.semantics.reasoners.predictive import GNN, PropertyTransformer
 
     # Per-supplier static features for the GNN.
     Supplier.equipment_age_months = Property(f"{Supplier} has {Integer:equipment_age_months}")
