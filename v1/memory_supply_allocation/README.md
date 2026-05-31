@@ -84,7 +84,7 @@ GRANT CREATE MODEL      ON SCHEMA   MEMORY_SUPPLY.EXPERIMENTS TO APPLICATION REL
 
 Then provision a GPU-sized predictive reasoner (`GPU_NV_S`) and reference it in `raiconfig.yaml` under `reasoners.predictive`. The script's `EXP_DATABASE` and `EXP_SCHEMA` constants default to `MEMORY_SUPPLY` / `EXPERIMENTS`; change them if you used different names.
 
-If you don't need to demonstrate the GNN training step (e.g. for fast iteration or offline reproducibility), set `USE_PRECOMPUTED_FORECAST = True` at the top of the script — it skips training entirely and loads `data/supplier_capability_forecast.csv` directly. The Stage-3 LP and Stage-4 paths analysis run identically either way.
+If you don't need to demonstrate the GNN training step (e.g. for fast iteration or offline reproducibility), set `USE_PRECOMPUTED_FORECAST = True` at the top of the script — it skips training and loads `data/supplier_capability_forecast.csv` directly. The CSV is a snapshot of the GNN's prediction output, so the Stage-3 LP and Stage-4 paths analysis produce bit-identical results on either path.
 
 ## Quickstart
 
@@ -225,7 +225,7 @@ If you don't need to demonstrate the GNN training step (e.g. for fast iteration 
      Margin erosion across rolling horizon (iter 0 -> iter 2): $16,515,525,478.20
    ```
 
-   Headline read: as disruption surfaces, hyperscalers absorb all of the pain while equipment-maker customers stay pinned at their elevated floors (95%, 92%, 88%) — exactly the strategic dynamic the dependency declarations were designed to enforce. PATHS analysis surfaces Apex Photonic Components as a structural single point of failure: its 90% floor is sustained by exactly one upstream signal (Photonic Lithography). Orion Foundry is the supplier whose offline scenario casts the widest shadow; Helium is the input whose shortage touches every SKU. Numbers shown are from a GNN-default run; switching to `USE_PRECOMPUTED_FORECAST=True` produces slightly higher margins (~$47.1B / $42.0B / $30.2B) because the GNN's feature-driven predictions land slightly below the synthetic forecast values.
+   Headline read: as disruption surfaces, hyperscalers absorb all of the pain while equipment-maker customers stay pinned at their elevated floors (95%, 92%, 88%) — exactly the strategic dynamic the dependency declarations were designed to enforce. PATHS analysis surfaces Apex Photonic Components as a structural single point of failure: its 90% floor is sustained by exactly one upstream signal (Photonic Lithography). Orion Foundry is the supplier whose offline scenario casts the widest shadow; Helium is the input whose shortage touches every SKU.
 
 ## Template structure
 
@@ -300,9 +300,9 @@ gnn.fit()
 SupplierObservation.predictions = gnn.predictions(domain=Test)
 ```
 
-Predictions are extracted via the standard `Source.predictions.predicted_value` pattern and bound into the `SupplierCapabilityForecast` concept — the same downstream ontology surface either code path produces. Training takes ~60-90 seconds on a GPU-sized predictive reasoner (`GPU_NV_S`).
+Predictions are extracted via the standard `Source.predictions.predicted_value` pattern and bound into the `SupplierCapabilityForecast` concept. Training takes ~60-90 seconds on a GPU-sized predictive reasoner (`GPU_NV_S`).
 
-The pre-computed forecast path (`USE_PRECOMPUTED_FORECAST = True`) skips the GNN entirely and loads `data/supplier_capability_forecast.csv` directly. Use it when iterating on Stage 3 / Stage 4 or running in environments without the experiment-schema setup.
+The pre-computed forecast path (`USE_PRECOMPUTED_FORECAST = True`) skips the GNN and loads `data/supplier_capability_forecast.csv`, which is a checked-in snapshot of the GNN's output — both paths produce identical downstream margins, service levels, and headlines. Refresh the snapshot by running `dev_temp/snapshot_gnn_forecast.py` after changing supplier features or historical observations.
 
 ### Stage 3: rolling-horizon prescriptive LP
 

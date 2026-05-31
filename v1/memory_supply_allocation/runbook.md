@@ -37,8 +37,6 @@ maker customers stay pinned at their elevated floors.
                               iter 2 OPTIMAL · $28.97B · months 13-36
                               Equipment makers pinned; hyperscalers
                               absorb the disruption surface.
-                              (USE_PRECOMPUTED_FORECAST=True gives
-                              $47.09B/$41.96B/$30.19B — see Reproducibility.)
   ─────────────────────────────────────────────────────────────────
   STAGE 4  Graph        ──►  9 paths (7 one-hop + 2 two-hop)
             (paths)           Customer.is_dependency_spof query
@@ -122,7 +120,7 @@ GNN regression with `task_type="regression"`, `eval_metric="rmse"`, 30 epochs on
 
 **Response**
 
-OPTIMAL · margin $45,488,032,436 over months 1–36 (GNN-default path) · binding constraint is HBM3E capacity. Equipment-maker customers run at their elevated floors (Photonic 0.95 pinned; Vertex / Crystal / Apex 0.92 / 0.90 / 0.90); hyperscalers run in the 75–84% range under HBM3E scarcity. ScenarioOutcome with iter_id=0 persists the headline. (Per-customer service-level splits are LP-degenerate AND margins depend on the Stage-2 path — `USE_PRECOMPUTED_FORECAST=True` yields ~$47.09B; see Reproducibility notes.)
+OPTIMAL · margin $45,488,032,436 over months 1–36 · binding constraint is HBM3E capacity. Equipment-maker customers run at their elevated floors (Photonic 0.95 pinned; Vertex / Crystal / Apex 0.92 / 0.90 / 0.90); hyperscalers run in the 75–84% range under HBM3E scarcity. ScenarioOutcome with iter_id=0 persists the headline. (Per-customer service-level splits are LP-degenerate — see Reproducibility notes.)
 
 ### 7. Apply disruption reveals and re-solve rolling horizon
 
@@ -134,7 +132,7 @@ OPTIMAL · margin $45,488,032,436 over months 1–36 (GNN-default path) · bindi
 
 **Response**
 
-Two additional OPTIMAL solves (GNN-default path): iter_id=1 (months 5–36) margin $40,523,678,803; iter_id=2 (months 13–36) margin $28,972,506,958. Margin erosion across the rolling horizon ~$16.5B. Plan-diff iter 0 → iter 1 (over months 5–36): hyperscalers absorb the Orion downtime; equipment makers stay at zero delta (pinned at elevated floor). Plan-diff iter 1 → iter 2 (over months 13–36): hyperscalers absorb the helium shortage; equipment makers still at zero delta. The CSV-fallback path gives iter 1 / iter 2 margins ~$41.96B / $30.19B respectively.
+Two additional OPTIMAL solves: iter_id=1 (months 5–36) margin $40,523,678,803; iter_id=2 (months 13–36) margin $28,972,506,958. Margin erosion across the rolling horizon $16,515,525,478. Plan-diff iter 0 → iter 1 (over months 5–36): hyperscalers absorb the Orion downtime; equipment makers stay at zero delta (pinned at elevated floor). Plan-diff iter 1 → iter 2 (over months 13–36): hyperscalers absorb the helium shortage; equipment makers still at zero delta.
 
 ### 8. Enumerate dependency chains and confirm the SPOF
 
@@ -195,7 +193,7 @@ Bundled CSVs in `data/`: 11 customers (3 hyperscalers, 1 consumer OEM, 1 automot
 
 This runbook was paste-tested against fresh `/rai-*` skill sessions on 2026-05-29; results below are from that test and inform the wording above:
 
-- **Margin totals are path-dependent and within-path invariant.** Holding the Stage-2 path fixed, HiGHS produces the same LP objective bit-exactly across runs. GNN-default path: $45.49B / $40.52B / $28.97B. CSV-fallback path (`USE_PRECOMPUTED_FORECAST=True`): $47.09B / $41.96B / $30.19B — the difference comes from the GNN learning slightly lower capability_pct values (mean 0.92–0.93) than the synthetic forecast (mean 0.95–0.97). Stage 9 cascade rankings (Orion widest supplier impact, Helium widest input impact, 72 / 180 cells respectively) reproduce on both paths.
+- **Margin totals are invariant across runs and across Stage-2 paths.** HiGHS produces the same LP objective bit-exactly. The bundled `supplier_capability_forecast.csv` is a snapshot of the GNN's output, so `USE_PRECOMPUTED_FORECAST=True` and `USE_PRECOMPUTED_FORECAST=False` produce identical $45,488,032,436 / $40,523,678,803 / $28,972,506,958 margins on the three iterations, plus identical Stage 9 cascade rankings (Orion 72 cells / 60.0% drop, Helium 180 cells). The CSV is refreshed via `dev_temp/snapshot_gnn_forecast.py` whenever supplier features or historical observations change.
 - **Per-customer service-level splits are LP-degenerate** — multiple optimal allocations with identical total margin exist on the feasible face. Step 6's documented hyperscaler service levels are representative ranges; the exact per-customer split may drift a few percentage points run-to-run while structural facts (equipment makers pinned at elevated floor, hyperscalers below 100%) hold.
 - **Input disruption semantics**: the script applies input disruptions (helium shortage) persistently from the reveal period through end-of-horizon, not just within the `start_period`–`end_period` window in `disruption_reveal.csv` (suppliers DO respect the window). The runbook's iter 2 margin reflects this. A future revision could symmetrize the semantics.
 - **Step 8 (paths library)** is the only step that needed an explicit Setup note to reproduce, because the `model.path(...).all_paths()` API is new and not yet documented in `rai-graph-analysis`. Both the relationship signature (role short_names) AND the entity-binding population pattern (via two `Customer.ref()`, not via FK-Property navigation) are required — paste-testing surfaced both gaps. The underlying API is documented at `relationalai/semantics/std/paths/README.md`; full integration into the graph-analysis skill is a planned follow-up that will obviate the Setup note.
