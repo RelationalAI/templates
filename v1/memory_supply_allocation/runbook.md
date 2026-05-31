@@ -117,26 +117,41 @@ Four-reasoner chain on the shared ontology. **Rules** (`/rai-rules-authoring`) t
 
 **Response**
 
-OPTIMAL · margin **$47,089,150,341** over months 1–36 (this number is invariant; the LP's optimal objective is unique) · binding constraint is HBM3E capacity. Equipment-maker customers run at or near their elevated floors: Photonic Lithography 95.0% (pinned), Vertex / Crystal / Apex 97-99%. Hyperscalers run below 100% under HBM3E scarcity, in the 76-84% range (exact per-customer split is degenerate — multiple optimal allocations exist with the same total margin, so HiGHS may pick a different vertex run-to-run within a few percentage points). ScenarioOutcome with iter_id=0 persists the headline.
+OPTIMAL · margin $47,089,150,341 over months 1–36 · binding constraint is HBM3E capacity. Equipment-maker customers run at their elevated floors (Photonic 0.95 pinned; Vertex / Crystal / Apex 0.92 / 0.90 / 0.90); hyperscalers run in the 76–84% range under HBM3E scarcity. ScenarioOutcome with iter_id=0 persists the headline. (Per-customer service-level splits are LP-degenerate — see Reproducibility notes.)
 
 ### 7. Apply disruption reveals and re-solve rolling horizon
 
 **Prompt**
 
 ```
-/rai-prescriptive-problem-formulation Replan as each disruption surfaces. At month 5, Orion Foundry capability_pct drops to 0.78 for months 5–10 (unscheduled EUV tool downtime); after month 10 Orion's forecast capability returns to baseline. At month 13, helium availability drops to 0.80 and holds at that level for the rest of the horizon (planner conservatively assumes the geopolitical event persists; the disruption_reveal start/end columns are diagnostic — the script applies input disruptions persistently). For each reveal, update effective capacity and re-solve over the remaining months under the same three constraint types from the baseline solve. Report the cumulative plan diff at the customer level vs the prior iteration's allocation over the overlapping months.
+/rai-prescriptive-problem-formulation Replan as each disruption surfaces. At month 5, Orion Foundry's capability_pct drops to 0.78 for months 5–10 (unscheduled EUV tool downtime) and recovers afterward. At month 13, helium availability drops to 0.80 and holds at that level through end of horizon (planner's conservative assumption — the geopolitical event has uncertain resolution timing). For each reveal, update effective capacity and re-solve the remaining months against the same three constraint types from the baseline solve. Report the cumulative plan diff at the customer level vs the prior iteration's allocation over the overlapping months.
 ```
 
 **Response**
 
-Two additional OPTIMAL solves: iter_id=1 (months 5–36) margin **$41,960,554,872** (exact); iter_id=2 (months 13–36) margin **$30,188,075,056** (depends on persistent-helium semantics described above — if helium availability is restored at month 19 instead, iter 2 margin rises to ~$31.94B). Plan-diff iter 0 → iter 1 (months 5–36, signs are stable across LP-degenerate runs): Aether ~−$370M, Hyperion ~−$280M, smaller deltas for Helios and Beacon, equipment makers $0 (pinned). Plan-diff iter 1 → iter 2 (months 13–36): Hyperion ~−$2.1B, Aether ~−$1.8B, Helios ~−$550M, equipment makers still at zero delta. Hyperscalers absorb the entire disruption surface across both reveals.
+Two additional OPTIMAL solves: iter_id=1 (months 5–36) margin $41,960,554,872; iter_id=2 (months 13–36) margin $30,188,075,056. Plan-diff iter 0 → iter 1 (over months 5–36): Aether −$370M, Hyperion −$280M, smaller deltas for Helios and Beacon, equipment makers $0 (pinned at elevated floor). Plan-diff iter 1 → iter 2 (over months 13–36): Hyperion −$2.1B, Aether −$1.8B, Helios −$550M, equipment makers still at zero delta. Hyperscalers absorb the entire disruption surface across both reveals.
 
 ### 8. Enumerate dependency chains and confirm the SPOF
+
+**Setup note**: declare `Customer.depends_on` with role short_names and populate it via two `Customer.ref()` entities bound through `Dependency.downstream_id` / `Dependency.upstream_id` — the paths library in the current PyRel version traverses entity-bound relationships, not relationships populated from Property-chain navigations:
+
+```python
+Customer.depends_on = model.Relationship(
+    f"{Customer:downstream} depends on {Customer:upstream}"
+)
+c_down, c_up = Customer.ref("c_down"), Customer.ref("c_up")
+model.where(
+    Dependency.downstream_id == c_down.id,
+    Dependency.upstream_id == c_up.id,
+).define(Customer.depends_on(c_down, c_up))
+```
+
+Cast `PathTraversal.length` to int before pandas comparisons (the paths library returns Int128).
 
 **Prompt**
 
 ```
-/rai-graph-analysis Using the paths library, enumerate every 1- to 3-hop chain through the Customer.depends_on graph. Declare the depends_on relationship with explicit role short_names so the paths library can resolve the two same-type slots — `Customer.depends_on = model.Relationship(f"{Customer:downstream} depends on {Customer:upstream}")`. Then call `model.path(Customer.depends_on.repeat(1, 3)).all_paths()` and cast `PathTraversal.length` to int before pandas comparisons. Which customer endpoints have the most paths terminating at them (the most redundant protection), and which customer is structurally a single point of failure — the only customer whose elevated floor depends on exactly one direct incoming dependency edge AND has no alternative-path protection?
+/rai-graph-analysis Using the paths library, enumerate every 1- to 3-hop chain through the Customer.depends_on graph. Which customer endpoints have the most paths terminating at them (the most redundant protection), and which customer is structurally a single point of failure — the only customer whose elevated floor depends on exactly one direct incoming dependency edge AND has no alternative-path protection?
 ```
 
 **Response**
@@ -178,5 +193,5 @@ This runbook was paste-tested against fresh `/rai-*` skill sessions on 2026-05-2
 - **Margin totals are invariant** across runs of HiGHS on this LP — Step 6 reproduced **$47,089,150,341 to the dollar**, Step 7 iter 1 reproduced **$41,960,554,872 exactly**, Step 9 cascade rankings reproduced bit-exactly.
 - **Per-customer service-level splits are LP-degenerate** — multiple optimal allocations with identical total margin exist on the feasible face. Step 6's documented hyperscaler service levels are representative ranges; the exact per-customer split may drift a few percentage points run-to-run while structural facts (equipment makers pinned at elevated floor, hyperscalers below 100%) hold.
 - **Input disruption semantics**: the script applies input disruptions (helium shortage) persistently from the reveal period through end-of-horizon, not just within the `start_period`–`end_period` window in `disruption_reveal.csv` (suppliers DO respect the window). The runbook's iter 2 margin reflects this. A future revision could symmetrize the semantics.
-- **Step 8 (paths library)** is the only step that needed an explicit signature hint to reproduce, because the `model.path(...).all_paths()` API is new and not yet documented in `rai-graph-analysis`. The prompt now includes the relationship declaration; the underlying API is documented at `relationalai/semantics/std/paths/README.md` and full integration into the graph-analysis skill is a planned follow-up.
+- **Step 8 (paths library)** is the only step that needed an explicit Setup note to reproduce, because the `model.path(...).all_paths()` API is new and not yet documented in `rai-graph-analysis`. Both the relationship signature (role short_names) AND the entity-binding population pattern (via two `Customer.ref()`, not via FK-Property navigation) are required — paste-testing surfaced both gaps. The underlying API is documented at `relationalai/semantics/std/paths/README.md`; full integration into the graph-analysis skill is a planned follow-up that will obviate the Setup note.
 - **Sparse derived properties**: a derived property bound only to customers with an incoming or outgoing dependency (e.g., 5 out of 11 rows) silently fails to ground downstream solver constraints — symptom is alloc grossly exceeding demand, not an obvious INFEASIBLE. Always coalesce with `| 0.0` or `| base_value` so every entity has a value.
