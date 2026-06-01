@@ -6,7 +6,7 @@ experience_level: intermediate
 industry: "Semiconductors"
 reasoning_types:
   - Predictive
-  - Rules
+  - Rules-based
   - Prescriptive
   - Graph
 tags:
