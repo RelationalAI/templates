@@ -1,6 +1,7 @@
 """CI/CD runner allocation (prescriptive optimization) template.
 
-This script demonstrates a resource assignment optimization in RelationalAI:
+This script demonstrates a resource assignment optimization in RelationalAI, then
+diagnoses what makes a maintenance outage *unschedulable*:
 
 - Load sample CSVs describing CI/CD runners, workflow jobs, and compatibility.
 - Model runners, workflows, and assignments as concepts with typed properties.
@@ -9,14 +10,28 @@ This script demonstrates a resource assignment optimization in RelationalAI:
 - Respect per-runner concurrency limits.
 - Compare costs across budget scenarios with different concurrency caps.
 
+Then a **maintenance outage** takes two well-connected Linux runners offline. That
+funnels every high-CPU Linux job onto the one surviving large runner, whose
+concurrency cap cannot hold them all -- the model is infeasible. "Infeasible" alone
+is not actionable, so the outage solve requests ``solve(conflict=True)``, which
+computes an irreducible infeasible subsystem (IIS): a small set of rules that cannot
+all hold at once. ``in_conflict`` is a bare predicate on each constraint instance --
+true when the solver reports that instance in the conflict (it collapses the solver's
+IN_CONFLICT and MAYBE_IN_CONFLICT into a single membership). Each constraint carries an
+entity back-pointer to what it grounds over (``assign_one.workflow`` / ``conc.runner``),
+so the conflict reads back as the actual *stranded jobs* and the *binding runner cap*,
+joined by KEY -- no rule-name parsing.
+
 Run:
     `python cicd_runner_allocation.py`
 
 Output:
-    Prints per-scenario solver status, total pipeline cost, and the
-    runner-to-workflow assignment table showing which runner handles each job.
+    Per-scenario solver status, total pipeline cost, and the runner-to-workflow
+    assignment table; then the maintenance-outage diagnosis naming the stranded
+    jobs and the binding concurrency cap.
 """
 
+from collections import namedtuple
 from pathlib import Path
 
 from pandas import read_csv
@@ -118,36 +133,55 @@ model.define(
 # Solve with scenario analysis (concurrency multiplier)
 # --------------------------------------------------
 
-def solve_allocation(concurrency_multiplier):
-    """Solve runner assignment with a given concurrency cap multiplier.
+# Handles returned by a solve: the solve_info plus the variable and the two named
+# constraint families, so callers can read assignments (feasible) or IIS membership
+# (infeasible) by entity key.
+Allocation = namedtuple("Allocation", "si assign_var assign_one conc")
 
-    Returns (solve_info, assignment_df) or None if infeasible.
+
+def solve_allocation(concurrency_multiplier, offline_runners=(), conflict=False):
+    """Solve runner assignment under a concurrency cap.
+
+    ``offline_runners`` takes the named runners offline (a maintenance outage) by
+    excluding their assignments. ``conflict=True`` requests an IIS diagnosis on the
+    same solve. Returns an ``Allocation`` with the named constraint handles.
     """
     problem = Problem(model, Float)
 
-    # Decision variable: binary assignment of workflow to runner.
+    # Decision variable: binary assignment of workflow to runner. A maintenance
+    # outage drops the offline runners' assignments via where=.
+    where_clause = [Assignment.runner.name != r for r in offline_runners] or None
     assign_var = problem.solve_for(
         Assignment.x_assigned,
         type="bin",
         name=["assign", Assignment.workflow.name, Assignment.runner.name],
+        where=where_clause,
         populate=False,
     )
 
     AssignRef = Assignment.ref()
 
-    # Constraint: each workflow assigned to exactly one runner.
-    problem.satisfy(model.require(
-        sum(AssignRef.x_assigned)
-        .where(AssignRef.workflow == Workflow)
-        .per(Workflow) == 1
-    ))
+    # Constraint: each workflow assigned to exactly one runner. Named per workflow so
+    # its IIS membership reads back by key (assign_one.workflow).
+    assign_one = problem.satisfy(
+        model.require(
+            sum(AssignRef.x_assigned)
+            .where(AssignRef.workflow == Workflow)
+            .per(Workflow)
+            == 1
+        ),
+        name=["assign_one", Workflow.name],
+    )
 
-    # Constraint: per-runner concurrency limit (scaled by scenario multiplier).
-    problem.satisfy(model.require(
-        sum(AssignRef.x_assigned)
-        .where(AssignRef.runner == Runner)
-        .per(Runner) <= concurrency_multiplier * Runner.max_concurrent
-    ))
+    # Constraint: per-runner concurrency limit (scaled by scenario multiplier). Named
+    # per runner so its IIS membership reads back by key (conc.runner).
+    conc = problem.satisfy(
+        model.require(
+            sum(AssignRef.x_assigned).where(AssignRef.runner == Runner).per(Runner)
+            <= concurrency_multiplier * Runner.max_concurrent
+        ),
+        name=["concurrency", Runner.name],
+    )
 
     # Objective: minimize total pipeline cost.
     problem.minimize(
@@ -158,24 +192,51 @@ def solve_allocation(concurrency_multiplier):
         )
     )
 
-    problem.solve("highs", time_limit_sec=60)
-    si = problem.solve_info()
+    problem.solve("highs", time_limit_sec=60, conflict=conflict)
+    return Allocation(problem.solve_info(), assign_var, assign_one, conc)
 
-    if si.termination_status not in ("OPTIMAL", "LOCALLY_SOLVED"):
-        return None
 
+def assignment_df(assign_var):
+    """The chosen (workflow, runner) assignments, read off the variable by key."""
     value_ref = Float.ref()
-    assign_df = model.select(
-        assign_var.assignment.workflow.name.alias("workflow"),
-        assign_var.assignment.runner.name.alias("runner"),
-    ).where(assign_var.values(0, value_ref), value_ref > 0.5).to_df()
-
-    return si, assign_df
+    return (
+        model.select(
+            assign_var.assignment.workflow.name.alias("workflow"),
+            assign_var.assignment.runner.name.alias("runner"),
+        )
+        .where(assign_var.values(0, value_ref), value_ref > 0.5)
+        .to_df()
+    )
 
 
 # --------------------------------------------------
 # Main execution
 # --------------------------------------------------
+
+# Maintenance outage: take two well-connected Linux runners offline. Every high-CPU
+# Linux job (min_cpu >= 4) is compatible only with {ubuntu-large, ubuntu-xlarge,
+# self-hosted-linux}; with two of those three down, all seven funnel onto the one
+# survivor -- whose concurrency cap cannot hold them.
+OFFLINE_RUNNERS = ["ubuntu-large", "self-hosted-linux"]
+HIGH_CPU_LINUX_JOBS = {
+    "build-mobile-android",
+    "unit-tests-api",
+    "integration-tests",
+    "e2e-tests-chrome",
+    "docker-build",
+    "performance-tests",
+    "nightly-build",
+}
+# Guard against CSV drift: this set must stay equal to the data's actual high-CPU Linux
+# jobs (min_cpu >= 4 on a Linux runner), so editing workflows.csv can't silently
+# invalidate the IIS assertions below.
+assert HIGH_CPU_LINUX_JOBS == set(
+    workflow_csv.loc[
+        (workflow_csv["min_cpu"] >= 4) & (workflow_csv["required_os"] == "linux"),
+        "name",
+    ]
+)
+
 
 if __name__ == "__main__":
 
@@ -185,33 +246,37 @@ if __name__ == "__main__":
         print(f"\nRunning scenario: {SCENARIO_PARAM} = {multiplier}")
         print("-" * 50)
 
-        result = solve_allocation(multiplier)
+        alloc = solve_allocation(multiplier)
 
-        if result is None:
-            print("  Status: INFEASIBLE -- skipping results")
-            scenario_results.append({
-                "scenario": multiplier,
-                "status": "INFEASIBLE",
-                "objective": None,
-            })
+        if alloc.si.termination_status != "OPTIMAL":
+            print(f"  Status: {alloc.si.termination_status} -- skipping results")
+            scenario_results.append(
+                {
+                    "scenario": multiplier,
+                    "status": str(alloc.si.termination_status),
+                    "objective": None,
+                }
+            )
             continue
 
-        si, assign_df = result
-        print(f"  Status: {si.termination_status}")
-        print(f"  Total pipeline cost: ${si.objective_value:.2f}")
+        print(f"  Status: {alloc.si.termination_status}")
+        print(f"  Total pipeline cost: ${alloc.si.objective_value:.2f}")
 
         # Print assignments grouped by runner.
+        assign_df = assignment_df(alloc.assign_var)
         print("\n  Assignments:")
         for runner_name in sorted(assign_df["runner"].unique()):
             jobs = assign_df[assign_df["runner"] == runner_name]
             workflows = ", ".join(sorted(jobs["workflow"]))
             print(f"    {runner_name} ({len(jobs)} jobs): {workflows}")
 
-        scenario_results.append({
-            "scenario": multiplier,
-            "status": si.termination_status,
-            "objective": si.objective_value,
-        })
+        scenario_results.append(
+            {
+                "scenario": multiplier,
+                "status": str(alloc.si.termination_status),
+                "objective": alloc.si.objective_value,
+            }
+        )
 
     # --------------------------------------------------
     # Scenario comparison
@@ -227,3 +292,76 @@ if __name__ == "__main__":
                   f"{r['status']}, cost=${r['objective']:.2f}")
         else:
             print(f"  {SCENARIO_PARAM}={r['scenario']}: {r['status']}")
+
+    # --------------------------------------------------
+    # Maintenance outage: diagnose the infeasibility (conflict / IIS)
+    # --------------------------------------------------
+
+    print(f"\n{'=' * 50}")
+    print(f"Maintenance outage: {', '.join(OFFLINE_RUNNERS)} offline")
+    print("=" * 50)
+
+    outage = solve_allocation(1.0, offline_runners=OFFLINE_RUNNERS, conflict=True)
+    outage.si.display()
+
+    assert outage.si.conflict is True
+    # An infeasible model may be reported as INFEASIBLE or INFEASIBLE_OR_UNBOUNDED.
+    assert outage.si.termination_status in ("INFEASIBLE", "INFEASIBLE_OR_UNBOUNDED")
+    assert outage.si.conflict_status == "CONFLICT_FOUND"
+
+    # in_conflict is a bare predicate on each constraint instance; the entity
+    # back-pointer (assign_one.workflow / conc.runner) joins the IIS to the actual
+    # stranded jobs and the binding runner cap by KEY -- no rule-name parsing.
+    print("\nStranded jobs (assign-one rule in conflict):")
+    model.select(outage.assign_one.workflow.name).where(
+        outage.assign_one.in_conflict
+    ).inspect()
+    print("\nBinding runner caps (concurrency rule in conflict):")
+    model.select(outage.conc.runner.name, outage.conc.runner.max_concurrent).where(
+        outage.conc.in_conflict
+    ).inspect()
+
+    stranded = set(
+        model.select(outage.assign_one.workflow.name)
+        .where(outage.assign_one.in_conflict)
+        .to_df()
+        .iloc[:, 0]
+    )
+    caps = set(
+        model.select(outage.conc.runner.name)
+        .where(outage.conc.in_conflict)
+        .to_df()
+        .iloc[:, 0]
+    )
+    print("\nJobs in conflict:", sorted(stranded))
+    print("Runner caps in conflict:", sorted(caps))
+
+    # The binding capacity is ubuntu-xlarge -- the only surviving cpu>=4 Linux runner,
+    # and the sole runner cap in the IIS. (This <= constraint is the tested IIS path.)
+    assert caps == {"ubuntu-xlarge"}
+    # The stranded jobs are the high-CPU Linux jobs funneled onto it. A minimal IIS
+    # names cap+1 = 6 of the seven (which six is solver-dependent), so assert the
+    # provable lower bound and a subset rather than an exact set. This exercises
+    # in_conflict on the equality (== 1) rows -- the on-engine validation point for
+    # PyRel #1617.
+    assert len(stranded) >= 6, (
+        f"expected >= 6 stranded jobs (cap+1), got {len(stranded)}: {sorted(stranded)} "
+        "-- check in_conflict on '== 1' rows"
+    )
+    assert stranded.issubset(HIGH_CPU_LINUX_JOBS)
+
+    # State part of the diagnosis as an integrity constraint joined by key: the
+    # ubuntu-xlarge concurrency rule must be in the conflict. (A require only runs
+    # when the model is next queried, so the select below also forces it.)
+    model.where(outage.conc.runner.name == "ubuntu-xlarge").require(
+        outage.conc.in_conflict
+    )
+    model.select(outage.conc.runner.name).where(outage.conc.in_conflict).inspect()
+
+    print(
+        "\nTo restore feasibility, relax one member of the conflict: bring "
+        "ubuntu-large or self-hosted-linux back online, or raise ubuntu-xlarge's "
+        "concurrency cap. All seven high-CPU jobs share the one survivor, so lift the "
+        "cap (or restore a runner) enough for all of them and re-solve to confirm -- "
+        "clearing a single stranded job only resolves that row of the conflict."
+    )
