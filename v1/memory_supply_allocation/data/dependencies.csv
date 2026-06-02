@@ -1,0 +1,8 @@
+downstream_id,upstream_id,declared_yield_pct,elevated_floor_pct
+1,7,0.1,0.95
+1,8,0.05,0.92
+2,7,0.08,0.95
+2,9,0.05,0.9
+3,8,0.05,0.92
+4,9,0.03,0.88
+7,11,0.05,0.9
