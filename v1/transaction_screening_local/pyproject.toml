@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rai-template-transaction-screening-local"
+version = "0.0.0"
+description = "RelationalAI template: transaction_screening_local (PyRel v1, local DuckDB)"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "relationalai==1.8.1",
+]
+
+[tool.setuptools]
+packages = []
