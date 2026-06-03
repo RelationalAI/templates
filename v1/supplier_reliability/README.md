@@ -94,42 +94,42 @@ Finally, the template demonstrates **scenario analysis** by re-solving the probl
    python supplier_reliability.py
    ```
 
-6. Expected output (marginal tables are read back by entity key):
+6. Expected output (model and solver display trimmed; marginal tables are read back by entity key):
    ```text
    Baseline status: OPTIMAL, objective: 4850.00
 
    Baseline orders:
-    supplier   product   quantity
-   SupplierB    Widget      150.0
-   SupplierC Component      200.0
-   SupplierC    Gadget      250.0
-   SupplierC    Widget      150.0
+    supplier   product  quantity
+   SupplierB    Widget     150.0
+   SupplierC Component     200.0
+   SupplierC    Gadget     250.0
+   SupplierC    Widget     150.0
 
    Lane reduced costs and basis status:
-    supplier   product   reduced_cost  basis_status
-   SupplierA    Widget            2.0  NONBASIC_AT_LOWER
-   SupplierA    Gadget            3.0  NONBASIC_AT_LOWER
-   SupplierB    Widget            0.0  BASIC
-   SupplierB    Gadget            0.0  NONBASIC_AT_LOWER
-   SupplierB Component            0.0  NONBASIC_AT_LOWER
-   SupplierC    Widget            0.0  BASIC
-   SupplierC    Gadget            0.0  BASIC
-   SupplierC Component            0.0  BASIC
-   SupplierD    Gadget            2.0  NONBASIC_AT_LOWER
-   SupplierD Component            2.0  NONBASIC_AT_LOWER
+    supplier   product  reduced_cost      basis_status
+   SupplierA    Gadget           3.0 NONBASIC_AT_LOWER
+   SupplierA    Widget           2.0 NONBASIC_AT_LOWER
+   SupplierB Component           0.0 NONBASIC_AT_LOWER
+   SupplierB    Gadget           0.0 NONBASIC_AT_LOWER
+   SupplierB    Widget           0.0             BASIC
+   SupplierC Component           0.0             BASIC
+   SupplierC    Gadget           0.0             BASIC
+   SupplierC    Widget           0.0             BASIC
+   SupplierD Component           2.0 NONBASIC_AT_LOWER
+   SupplierD    Gadget           2.0 NONBASIC_AT_LOWER
 
    Supplier capacity shadow prices (d cost / d capacity):
-    supplier   capacity   shadow_price
-   SupplierA        500            0.0
-   SupplierB        400            0.0
-   SupplierC        600           -2.0
-   SupplierD        350            0.0
+    supplier capacity  shadow_price
+   SupplierA      500           0.0
+   SupplierB      400           0.0
+   SupplierC      600          -2.0
+   SupplierD      350           0.0
 
    Product demand shadow prices (d cost / d demand):
-    product    demand   shadow_price
-   Widget         300            8.0
-   Gadget         250            9.0
-   Component      200            7.0
+     product demand  shadow_price
+   Component    200           7.0
+      Gadget    250           9.0
+      Widget    300           8.0
 
    Most cost-sensitive capacity: SupplierC (d cost / d capacity = -2.00)
 

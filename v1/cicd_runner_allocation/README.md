@@ -143,22 +143,25 @@ Finally, it shows **conflict analysis (infeasibility diagnosis)**. A maintenance
    ==================================================
    Maintenance outage: ubuntu-large, self-hosted-linux offline
    ==================================================
-     Status: INFEASIBLE
-     Conflict status: CONFLICT_FOUND
+   Solve result:
+   • status: INFEASIBLE
+   • primal status: NO_SOLUTION
+   • dual status: INFEASIBILITY_CERTIFICATE
+   • conflict status: CONFLICT_FOUND
+   ...
 
    Stranded jobs (assign-one rule in conflict):
-     build-mobile-android
-     docker-build
-     e2e-tests-chrome
-     integration-tests
-     performance-tests
-     unit-tests-api
+               workflow
+   build-mobile-android
+           docker-build
+       e2e-tests-chrome
+      integration-tests
+      performance-tests
+         unit-tests-api
 
    Binding runner caps (concurrency rule in conflict):
-     ubuntu-xlarge   5
-
-   Jobs in conflict: ['build-mobile-android', 'docker-build', 'e2e-tests-chrome', 'integration-tests', 'performance-tests', 'unit-tests-api']
-   Runner caps in conflict: ['ubuntu-xlarge']
+          runner max_concurrent
+   ubuntu-xlarge              5
 
    To restore feasibility, relax one member of the conflict: bring ubuntu-large or
    self-hosted-linux back online, or raise ubuntu-xlarge's concurrency cap. ...
@@ -316,7 +319,14 @@ outage = solve_allocation(1.0, offline_runners=["ubuntu-large", "self-hosted-lin
 
 assert outage.si.conflict is True
 assert outage.si.termination_status in ("INFEASIBLE", "INFEASIBLE_OR_UNBOUNDED")
-assert outage.si.conflict_status == "CONFLICT_FOUND"
+
+# conflict_status gates whether an IIS is available -- dispatch on it.
+if outage.si.conflict_status == "CONFLICT_FOUND":
+    ...  # read the stranded jobs and the binding cap (below)
+else:
+    # NO_CONFLICT_EXISTS (the model was feasible) or NOT_SUPPORTED / FAILED (this solver
+    # build produced no IIS, e.g. needs HiGHS >= 1.13) -- report the status, don't read it.
+    print(f"No IIS to inspect: {outage.si.conflict_status}")
 ```
 
 `in_conflict` is a bare predicate on each constraint instance -- true when the solver reports that instance in the conflict (it collapses the solver's `IN_CONFLICT` and `MAYBE_IN_CONFLICT` into one membership). Each constraint carries an **entity back-pointer** (`assign_one.workflow`, `conc.runner`), mirroring the variable's back-pointer, so the conflict reads back as the actual stranded jobs and the binding runner cap, joined by KEY -- no rule-name parsing:
@@ -330,7 +340,7 @@ model.select(outage.conc.runner.name, outage.conc.runner.max_concurrent).where(
 ).inspect()
 ```
 
-The IIS is minimal: it names **six of the seven** high-CPU jobs (six already exceed the cap of five) plus the `ubuntu-xlarge` concurrency rule. To restore feasibility, relax one member -- bring a runner back online or raise the cap. Because all seven jobs share the one survivor, lift the cap enough for all of them (or restore a runner) and re-solve to confirm; clearing a single job only resolves that one row of the conflict.
+The IIS is minimal: it names **six of the seven** high-CPU jobs (any six already exceed the cap of five, so which six is solver-dependent) plus the `ubuntu-xlarge` concurrency rule. To restore feasibility, relax one member -- bring a runner back online or raise the cap. Because all seven jobs share the one survivor, lift the cap enough for all of them (or restore a runner) and re-solve to confirm; clearing a single job only resolves that one row of the conflict.
 
 > [!NOTE]
 > Conflict analysis works for mixed-integer models like this one (unlike sensitivity analysis, which needs an LP/QP). It requires no objective -- it diagnoses feasibility. Request `conflict=True` on the solve whose infeasibility you want to explain.

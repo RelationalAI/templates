@@ -107,6 +107,10 @@ assert set(factory_csv["name"]) == EXPECTED_FACTORIES, (
 assert set(product_csv["name"]) == EXPECTED_PRODUCTS, (
     f"products.csv changed: {set(product_csv['name'])} != {EXPECTED_PRODUCTS}"
 )
+# Product names are unique across factories, so the plan is keyed by name alone below.
+assert product_csv["name"].is_unique, (
+    f"product names are not unique across factories: {list(product_csv['name'])}"
+)
 
 # --------------------------------------------------
 # Model the decision problem
@@ -163,9 +167,7 @@ assert si.sensitivity is True
 # caps in 25 of its 30 hrs. Profit = 192000 + 8000 = 200000.
 assert si.objective_value is not None and abs(si.objective_value - 200000) < 0.01
 
-print(
-    f"\nBaseline status: {str(si.termination_status)}, total profit: {si.objective_value:.2f}"
-)
+print(f"\nBaseline status: {si.termination_status}, total profit: {si.objective_value:.2f}")
 
 # --- The solved production plan -------------------------------------------------
 # Read every product's solved quantity once via values(0, ref) on the variable (no
@@ -189,12 +191,16 @@ print("\nProduction plan:")
 produced = plan_df.loc[plan_df["quantity"] > 1e-6, ["factory", "product", "quantity"]]
 print(produced.to_string(index=False))
 
-# Pin the whole plan, not just the objective scalar: a matching objective is necessary
-# but not sufficient (an alternate optimum could reach 200000 with a different mix).
+# Pin the whole plan, not just the objective scalar: in general a matching objective is
+# necessary but not sufficient, because a different product mix could reach the same
+# profit. This LP's optimum happens to be unique (each factory's hours pin its plan), so
+# pinning the quantities both guards against a regression and documents that uniqueness.
+# Product names are unique across factories (asserted above), so the per-name lookup is a
+# single row; tolerance is tight because the vertices here are exactly integral.
 EXPECTED_PLAN = {"bands": 6000.0, "coils": 1400.0, "stouts": 1000.0, "ales": 2000.0}
 for product_name, expected_qty in EXPECTED_PLAN.items():
     actual_qty = plan_df.loc[plan_df["product"] == product_name, "quantity"].sum()
-    assert abs(actual_qty - expected_qty) < 1.0, (
+    assert abs(actual_qty - expected_qty) < 0.01, (
         f"{product_name}: expected {expected_qty}, got {actual_qty}"
     )
 
@@ -275,8 +281,10 @@ print(
 # --------------------------------------------------
 # Summary — capacity utilization per factory
 # --------------------------------------------------
-# Ties the shadow prices above back to the plan: a factory with zero idle hours is the
-# binding one (positive shadow price); idle hours mean a slack capacity (zero price).
+# Ties the shadow prices above back to the plan: in this data the binding factory has
+# zero idle hours and a positive shadow price, while idle hours mean slack and a zero
+# price. Only idle => zero-price holds in general; a binding capacity can still price at
+# zero under degeneracy, so read the prices, not just the idle column.
 plan_df["hours"] = plan_df["quantity"] / plan_df["rate"]
 util = (
     plan_df.groupby("factory")
@@ -296,6 +304,7 @@ print(util.to_string(index=False))
 # - Raise amazing_brewery's demand caps (products.csv) until its 30 hrs bind: its
 #   capacity shadow price jumps from 0 to positive once capacity becomes the bottleneck.
 # - Lower steel_factory's avail (factories.csv): coils (the swing product) shrinks but
-#   stays the swing down to 30 hrs, so the shadow price holds at 4200; only below 30 hrs
-#   can bands no longer fill its 6000 demand -- bands becomes the swing and the price
-#   rises to 5000 (its own profit-per-hour, 25 x 200).
+#   stays the swing down to just above 30 hrs, so the shadow price holds at 4200. At
+#   exactly 30 hrs coils hits zero -- a degenerate breakpoint where the marginal is
+#   one-sided -- and below 30 hrs bands can no longer fill its 6000 demand, so bands
+#   becomes the swing and the price rises to 5000 (its own profit-per-hour, 25 x 200).

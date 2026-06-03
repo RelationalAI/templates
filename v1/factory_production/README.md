@@ -219,7 +219,7 @@ Sensitivity marginals are exact for a linear program. They describe the rate of 
 ## Customize this template
 
 - **Find the demand bottleneck**: Raise `amazing_brewery`'s demand caps in `products.csv`. Once its 30 hours bind, its capacity shadow price jumps from 0 to positive — capacity becomes the bottleneck.
-- **Shift the swing product**: Lower `steel_factory`'s `avail` in `factories.csv`. `coils` (the basic, swing product) shrinks but stays the swing down to 30 hours, so the shadow price holds at 4200; only below 30 hours does `bands` become the swing and the price rise to 5000.
+- **Shift the swing product**: Lower `steel_factory`'s `avail` in `factories.csv`. `coils` (the basic, swing product) shrinks but stays the swing down to just above 30 hours, so the shadow price holds at 4200. At exactly 30 hours `coils` hits zero — a degenerate breakpoint where the marginal is one-sided — and below 30 hours `bands` becomes the swing and the price rises to 5000.
 - **Add more factories and products**: Extend the CSV files. The model and the per-factory marginals pick up new rows automatically.
 - **Integer production**: Change the variable type from continuous to integer if products must be produced in whole units. Note that sensitivity marginals are an LP concept — they are reported only for continuous (LP/QP) problems, and are empty for integer models.
 
@@ -234,7 +234,7 @@ Sensitivity marginals are an LP/QP concept. They are populated only when the pro
 <details>
 <summary>A factory's capacity shadow price is zero</summary>
 
-That factory has idle resource-hours — its capacity is *not* binding, so an extra hour buys nothing. Its bottleneck is elsewhere (typically product demand). This is expected, not an error: compare the `idle` column in the capacity summary.
+Usually that factory has idle resource-hours — slack capacity, so an extra hour buys nothing, and its bottleneck is elsewhere (typically product demand). Confirm with the `idle` column in the capacity summary: a positive `idle` is genuine slack. (Less commonly, a *binding* capacity can also price at zero under degeneracy — zero idle hours yet a zero price — so read the `idle` column, not the price alone.)
 </details>
 
 <details>

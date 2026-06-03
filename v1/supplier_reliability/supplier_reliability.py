@@ -181,23 +181,34 @@ print(
 # Read the solved amounts via values(0, ref) on the variable (no populate), filtered
 # to the lanes actually used in the query.
 amt = Float.ref()
+orders_df = (
+    model.select(
+        qty_var.supplyorder.supplier.name.alias("supplier"),
+        qty_var.supplyorder.product.name.alias("product"),
+        amt.alias("quantity"),
+    )
+    .where(qty_var.values(0, amt), amt > 1e-6)
+    .to_df()
+    .sort_values(["supplier", "product"], ignore_index=True)
+)
 print("\nBaseline orders:")
-model.select(
-    qty_var.supplyorder.supplier.name,
-    qty_var.supplyorder.product.name,
-    amt,
-).where(qty_var.values(0, amt), amt > 1e-6).inspect()
+print(orders_df.to_string(index=False))
 
 # --- Reduced costs: which lanes are priced out? ---------------------------------
 # Each marginal reads straight off the variable; the variable's back-pointer
 # (qty_var.supplyorder) joins it to the lane's supplier / product by ENTITY KEY.
+lane_rc_df = (
+    model.select(
+        qty_var.supplyorder.supplier.name.alias("supplier"),
+        qty_var.supplyorder.product.name.alias("product"),
+        qty_var.reduced_cost.alias("reduced_cost"),
+        qty_var.basis_status.alias("basis_status"),
+    )
+    .to_df()
+    .sort_values(["supplier", "product"], ignore_index=True)
+)
 print("\nLane reduced costs and basis status:")
-model.select(
-    qty_var.supplyorder.supplier.name,
-    qty_var.supplyorder.product.name,
-    qty_var.reduced_cost,
-    qty_var.basis_status,
-).inspect()
+print(lane_rc_df.to_string(index=False))
 # A lane in use is BASIC with ~0 reduced cost; a priced-out lane is NONBASIC_AT_LOWER
 # with a positive reduced cost (how far its cost must fall before using it pays off).
 #
@@ -210,7 +221,7 @@ model.where(qty_var.supplyorder.supplier.name == "SupplierA").require(
 model.where(qty_var.supplyorder.supplier.name == "SupplierD").require(
     qty_var.reduced_cost > 1e-6
 )
-model.select(qty_var.supplyorder.supplier.name, qty_var.reduced_cost).inspect()
+# (these requires are validated when the next query below runs)
 # (2) Every lane actually in use prices at ~0. Read each lane's reduced cost and solved
 # amount together (values(k, ref) is the solution accessor) and check in Python:
 rc_amt = Float.ref()
@@ -231,8 +242,17 @@ assert (cs_df.loc[cs_df["quantity"] > 1e-6, "reduced_cost"].abs() < 1e-4).all()
 # --- Shadow prices: the marginal value of capacity and demand -------------------
 # A constraint carries an entity back-pointer too (cap.supplier / meet.product), so a
 # shadow price joins to that entity's own data by KEY -- no name parsing, no pandas.
+cap_sp_df = (
+    model.select(
+        cap.supplier.name.alias("supplier"),
+        cap.supplier.capacity.alias("capacity"),
+        cap.shadow_price.alias("shadow_price"),
+    )
+    .to_df()
+    .sort_values("supplier", ignore_index=True)
+)
 print("\nSupplier capacity shadow prices (d cost / d capacity):")
-model.select(cap.supplier.name, cap.supplier.capacity, cap.shadow_price).inspect()
+print(cap_sp_df.to_string(index=False))
 # Minimize + a <= capacity constraint => shadow_price <= 0: loosening a binding
 # capacity lowers cost. SupplierC is the only binding capacity (cheapest source, fills
 # up), so it carries the marginal value; the others have room to spare and price at 0.
@@ -241,21 +261,36 @@ model.where(cap.supplier.name != "SupplierC").require(
     std.math.abs(cap.shadow_price) < 1e-6
 )
 
+demand_sp_df = (
+    model.select(
+        meet.product.name.alias("product"),
+        meet.product.demand.alias("demand"),
+        meet.shadow_price.alias("shadow_price"),
+    )
+    .to_df()
+    .sort_values("product", ignore_index=True)
+)
 print("\nProduct demand shadow prices (d cost / d demand):")
-model.select(meet.product.name, meet.product.demand, meet.shadow_price).inspect()
+print(demand_sp_df.to_string(index=False))
 # Minimize + a >= demand constraint => shadow_price >= 0: the marginal cost to serve
 # one more unit of that product. Every product's demand binds here, and each demand
 # shadow price is strictly positive because the marginal serving cost of each is > 0.
 model.where(meet.product.name == "Widget").require(meet.shadow_price > 1e-6)
 model.where(meet.product.name == "Gadget").require(meet.shadow_price > 1e-6)
 model.where(meet.product.name == "Component").require(meet.shadow_price > 1e-6)
-model.select(meet.product.name, meet.shadow_price).inspect()
 
 # --- Acting on it: which supplier capacity is the bottleneck? -------------------
 # The largest-magnitude capacity shadow price is the capacity whose marginal unit
-# moves the bill the most -- the supplier to expand (or protect) first.
-cap_df = model.select(cap.supplier.name.alias("s"), cap.shadow_price.alias("p")).to_df()
-bottleneck = max(zip(cap_df["s"], cap_df["p"]), key=lambda sp: abs(sp[1]))
+# moves the bill the most -- the supplier to expand (or protect) first. This read is
+# also the query that validates the demand requires stated just above: a
+# model.require() stays pending until the next query forces its evaluation.
+bottleneck_df = model.select(
+    cap.supplier.name.alias("supplier"), cap.shadow_price.alias("shadow_price")
+).to_df()
+bottleneck = max(
+    zip(bottleneck_df["supplier"], bottleneck_df["shadow_price"]),
+    key=lambda sp: abs(sp[1]),
+)
 print(
     f"\nMost cost-sensitive capacity: {bottleneck[0]} (d cost / d capacity = {bottleneck[1]:+.2f})"
 )
@@ -341,6 +376,7 @@ for excluded in ["SupplierC", "SupplierB"]:
         )
         .where(qty_scn.values(0, value_ref), value_ref > 1e-6)
         .to_df()
+        .sort_values(["supplier", "product"], ignore_index=True)
     )
     print("\n  Orders:")
     print(qty_df.to_string(index=False))

@@ -31,12 +31,22 @@ Output:
     jobs and the binding concurrency cap.
 """
 
+import warnings
 from collections import namedtuple
 from pathlib import Path
 
 from pandas import read_csv
 from relationalai.semantics import Float, Integer, Model, String, sum
 from relationalai.semantics.reasoners.prescriptive import Problem
+
+# This template re-solves the model once per scenario (the concurrency sweep) and again
+# for the outage. Rebuilding the Problem -- with its per-workflow and per-runner *named*
+# constraints -- in that loop trips PyRel's "rules created in a loop" heuristic. That
+# pattern is intentional here (re-solving with a different cap is the point) and harmless
+# at this size, and the per-instance names are what let the IIS read back by entity key.
+# RAI diagnostics route through Python's warnings module, so silence just this one by
+# message and leave every other warning visible.
+warnings.filterwarnings("ignore", message=r"\[Rules created in a loop\]")
 
 # --------------------------------------------------
 # Configure inputs
@@ -149,7 +159,10 @@ def solve_allocation(concurrency_multiplier, offline_runners=(), conflict=False)
     problem = Problem(model, Float)
 
     # Decision variable: binary assignment of workflow to runner. A maintenance
-    # outage drops the offline runners' assignments via where=.
+    # outage drops the offline runners' assignments via where=. With no offline
+    # runners the comprehension is empty and `[] or None` collapses to None, i.e.
+    # "no filter" -- solve_for treats where=None and where=[] differently, so the
+    # None is deliberate.
     where_clause = [Assignment.runner.name != r for r in offline_runners] or None
     assign_var = problem.solve_for(
         Assignment.x_assigned,
@@ -307,61 +320,68 @@ if __name__ == "__main__":
     assert outage.si.conflict is True
     # An infeasible model may be reported as INFEASIBLE or INFEASIBLE_OR_UNBOUNDED.
     assert outage.si.termination_status in ("INFEASIBLE", "INFEASIBLE_OR_UNBOUNDED")
-    assert outage.si.conflict_status == "CONFLICT_FOUND"
 
-    # in_conflict is a bare predicate on each constraint instance; the entity
-    # back-pointer (assign_one.workflow / conc.runner) joins the IIS to the actual
-    # stranded jobs and the binding runner cap by KEY -- no rule-name parsing.
-    print("\nStranded jobs (assign-one rule in conflict):")
-    model.select(outage.assign_one.workflow.name).where(
-        outage.assign_one.in_conflict
-    ).inspect()
-    print("\nBinding runner caps (concurrency rule in conflict):")
-    model.select(outage.conc.runner.name, outage.conc.runner.max_concurrent).where(
-        outage.conc.in_conflict
-    ).inspect()
+    # conflict_status gates whether an IIS is available to read. A copyable diagnostic
+    # dispatches on it -- inspect the conflict only for CONFLICT_FOUND, and report the
+    # reason for the other documented outcomes -- rather than reading an empty IIS. This
+    # model is built infeasible on purpose, so on a solver with MIP conflict support
+    # (HiGHS >= 1.13) we expect CONFLICT_FOUND; the else branch is therefore also this
+    # template's regression guard. (When you copy this for a model whose infeasibility is
+    # not guaranteed, swap the raise for a print/return.)
+    if outage.si.conflict_status == "CONFLICT_FOUND":
+        # in_conflict is a bare predicate on each constraint instance; the entity
+        # back-pointer (assign_one.workflow / conc.runner) joins the IIS to the actual
+        # stranded jobs and the binding runner cap by KEY -- no rule-name parsing.
+        print("\nStranded jobs (assign-one rule in conflict):")
+        stranded_df = (
+            model.select(outage.assign_one.workflow.name.alias("workflow"))
+            .where(outage.assign_one.in_conflict)
+            .to_df()
+            .sort_values("workflow", ignore_index=True)
+        )
+        print(stranded_df.to_string(index=False))
 
-    stranded = set(
-        model.select(outage.assign_one.workflow.name)
-        .where(outage.assign_one.in_conflict)
-        .to_df()
-        .iloc[:, 0]
-    )
-    caps = set(
-        model.select(outage.conc.runner.name)
-        .where(outage.conc.in_conflict)
-        .to_df()
-        .iloc[:, 0]
-    )
-    print("\nJobs in conflict:", sorted(stranded))
-    print("Runner caps in conflict:", sorted(caps))
+        print("\nBinding runner caps (concurrency rule in conflict):")
+        caps_df = (
+            model.select(
+                outage.conc.runner.name.alias("runner"),
+                outage.conc.runner.max_concurrent.alias("max_concurrent"),
+            )
+            .where(outage.conc.in_conflict)
+            .to_df()
+            .sort_values("runner", ignore_index=True)
+        )
+        print(caps_df.to_string(index=False))
 
-    # The binding capacity is ubuntu-xlarge -- the only surviving cpu>=4 Linux runner,
-    # and the sole runner cap in the IIS. (This <= constraint is the tested IIS path.)
-    assert caps == {"ubuntu-xlarge"}
-    # The stranded jobs are the high-CPU Linux jobs funneled onto it. A minimal IIS
-    # names cap+1 = 6 of the seven (which six is solver-dependent), so assert the
-    # provable lower bound and a subset rather than an exact set. This exercises
-    # in_conflict on the equality (== 1) rows -- the on-engine validation point for
-    # PyRel #1617.
-    assert len(stranded) >= 6, (
-        f"expected >= 6 stranded jobs (cap+1), got {len(stranded)}: {sorted(stranded)} "
-        "-- check in_conflict on '== 1' rows"
-    )
-    assert stranded.issubset(HIGH_CPU_LINUX_JOBS)
+        stranded = set(stranded_df["workflow"])
+        caps = set(caps_df["runner"])
 
-    # State part of the diagnosis as an integrity constraint joined by key: the
-    # ubuntu-xlarge concurrency rule must be in the conflict. (A require only runs
-    # when the model is next queried, so the select below also forces it.)
-    model.where(outage.conc.runner.name == "ubuntu-xlarge").require(
-        outage.conc.in_conflict
-    )
-    model.select(outage.conc.runner.name).where(outage.conc.in_conflict).inspect()
+        # The binding capacity is ubuntu-xlarge -- the only surviving cpu>=4 Linux runner,
+        # and the sole runner cap in the IIS. (This <= constraint is the tested IIS path.)
+        assert caps == {"ubuntu-xlarge"}
+        # The stranded jobs are the high-CPU Linux jobs funneled onto it. A minimal IIS
+        # names cap+1 = 6 of the seven (which six is solver-dependent), so assert the
+        # provable lower bound and a subset rather than an exact set. This exercises
+        # in_conflict on the equality (== 1) rows -- the on-engine validation point for
+        # PyRel #1617.
+        assert len(stranded) >= 6, (
+            f"expected >= 6 stranded jobs (cap+1), got {len(stranded)}: {sorted(stranded)} "
+            "-- check in_conflict on '== 1' rows"
+        )
+        assert stranded.issubset(HIGH_CPU_LINUX_JOBS)
 
-    print(
-        "\nTo restore feasibility, relax one member of the conflict: bring "
-        "ubuntu-large or self-hosted-linux back online, or raise ubuntu-xlarge's "
-        "concurrency cap. All seven high-CPU jobs share the one survivor, so lift the "
-        "cap (or restore a runner) enough for all of them and re-solve to confirm -- "
-        "clearing a single stranded job only resolves that row of the conflict."
-    )
+        print(
+            "\nTo restore feasibility, relax one member of the conflict: bring "
+            "ubuntu-large or self-hosted-linux back online, or raise ubuntu-xlarge's "
+            "concurrency cap. All seven high-CPU jobs share the one survivor, so lift the "
+            "cap (or restore a runner) enough for all of them and re-solve to confirm -- "
+            "clearing a single stranded job only resolves that row of the conflict."
+        )
+    else:
+        # NO_CONFLICT_EXISTS => the model was feasible; NOT_SUPPORTED / FAILED => this
+        # solver build produced no IIS (needs HiGHS >= 1.13 with MIP conflict support).
+        raise AssertionError(
+            f"expected CONFLICT_FOUND for this deliberately-infeasible model, got "
+            f"{outage.si.conflict_status} -- conflict analysis needs HiGHS >= 1.13 "
+            "with MIP IIS support"
+        )
