@@ -24,10 +24,13 @@ recoverable from the other alone, so the chain integrates both.
   packet loss + low health; or `failure_intensity > threshold` (any
   region). The third branch broadens upgrade scope beyond WEST when
   the GNN flags concentrated equipment failure elsewhere.
-- Stage 3 -- Graph: PageRank on a directed Subscriber -> Subscriber
-  call graph (caller -> callee). Per-critical-tower `weighted_impact`
-  aggregates the influence scores of subscribers whose calls route
-  through that tower.
+- Stage 3 -- Graph: Customer impact analysis. PageRank on a directed
+  Subscriber -> Subscriber call graph (caller -> callee) is the
+  graph-reasoner signal. Per-critical-tower `weighted_impact`
+  aggregates the *customer value* (revenue weighted by churn risk)
+  of ACTIVE subscribers whose calls route through the tower;
+  PageRank-weighted impact is exposed alongside as a secondary
+  network-effect signal.
 - Stage 4 -- Prescriptive: tower-upgrade MIP. Decision variable
   `TowerUpgradeOption.selected` is binary (one of three tiers per
   tower). Constraints: at most one tier per tower, total cost <=
@@ -44,8 +47,9 @@ Run:
 Output:
     Prints per-stage diagnostics -- equipment split, advisory landscape,
     GNN per-tower failure_intensity distribution and recall, three-branch
-    critical-restore rule firings, top subscribers by PageRank and per-
-    critical-tower blast radius, MIP termination status -- and a final
+    critical-restore rule firings, top subscribers by customer value
+    (with PageRank shown alongside), per-critical-tower customer
+    impact, MIP termination status -- and a final
     RestorePlan singleton row (total cost, install-weeks, capacity
     restored, tier mix, towers covered, binding constraint) showing the
     plan as queryable ontology.
@@ -110,6 +114,17 @@ pd.set_option("display.float_format", lambda v: f"{v:,.4f}")
 
 cell_towers_df = pd.read_csv(DATA_DIR / "cell_towers.csv", parse_dates=["INSTALL_DATE"])
 subscribers_df = pd.read_csv(DATA_DIR / "subscribers.csv")
+# Per-subscriber customer_value = lifetime value weighted by churn risk:
+# at-risk subscribers (high churn_risk_score) get up to ~1.9x the weight
+# of stable ones. Precomputed in pandas to keep loading straightforward;
+# downstream PyRel just reads it as another Float Property on Subscriber.
+# Refinements deferred to a later v2: SLA-tier and emergency-service
+# multipliers; NPS-deterioration weighting; log-scaling to compress the
+# enterprise-vs-consumer LTV gap (~130x in the bundled corpus).
+subscribers_df["CUSTOMER_VALUE"] = (
+    subscribers_df["LIFETIME_VALUE_USD"]
+    * (1.0 + subscribers_df["CHURN_RISK_SCORE"])
+)
 cdr_df = pd.read_csv(DATA_DIR / "call_detail_records.csv")
 network_perf_df = pd.read_csv(DATA_DIR / "network_performance.csv")
 network_equipment_df = pd.read_csv(DATA_DIR / "network_equipment.csv", parse_dates=["INSTALL_DATE"])
@@ -651,28 +666,43 @@ print("\n  Top 20 by predicted failure intensity:")
 print(flagged_df.head(20).to_string(index=False))
 
 # --------------------------------------------------
-# Stage 3: Graph -- PageRank + per-critical-tower blast radius
+# Stage 3: Graph -- Customer impact analysis
+# (PageRank as graph-reasoner signal; per-tower weighted_impact from
+# customer_value (revenue x churn). PageRank-weighted impact retained
+# as a secondary network-effect signal alongside the headline measure.)
 # --------------------------------------------------
 
 print(f"\n{'=' * 60}")
-print("STAGE 3: GRAPH -- PageRank + per-critical-tower blast radius")
+print("STAGE 3: GRAPH -- Customer impact (revenue x churn; PageRank shown alongside)")
 print("=" * 60)
 
 # Subscriber concept: customer accounts (consumer or enterprise) that
-# place calls; nodes of the Stage 3 PageRank graph.
+# place calls. Nodes of the Stage 3 PageRank graph AND the carriers of
+# the customer-value signal that drives per-tower weighted_impact.
 Subscriber = model.Concept("Subscriber", identify_by={"id": String})
 Subscriber.subscriber_type = model.Property(f"{Subscriber} has {String:subscriber_type}")
+Subscriber.segment = model.Property(f"{Subscriber} has {String:segment}")
 Subscriber.lifetime_value = model.Property(f"{Subscriber} has {Float:lifetime_value}")
+Subscriber.churn_risk_score = model.Property(f"{Subscriber} has {Float:churn_risk_score}")
+Subscriber.status = model.Property(f"{Subscriber} has {String:status}")
+# Composite revenue-at-risk signal (LTV * (1 + churn)), precomputed in
+# pandas above; this is the per-subscriber weight that Stage 3 sums into
+# `CellTower.weighted_impact` and Stage 4 uses in the objective.
+Subscriber.customer_value = model.Property(f"{Subscriber} has {Float:customer_value}")
 src = model.data(subscribers_df)
 model.define(Subscriber.new(
     id=src.SUB_ID,
     subscriber_type=src.SUBSCRIBER_TYPE,
+    segment=src.SEGMENT,
     lifetime_value=src.LIFETIME_VALUE_USD,
+    churn_risk_score=src.CHURN_RISK_SCORE,
+    status=src.STATUS,
+    customer_value=src.CUSTOMER_VALUE,
 ))
 
 # CallDetailRecord concept: a directed call (caller -> callee routed
 # through a specific CellTower). Used as the edge concept for Stage 3's
-# subscriber PageRank graph and for per-tower blast-radius aggregation.
+# subscriber PageRank graph and for per-tower customer-impact aggregation.
 CallDetailRecord = model.Concept("CallDetailRecord", identify_by={"id": String})
 CallDetailRecord.caller = model.Relationship(
     f"{CallDetailRecord} has caller {Subscriber}", short_name="cdr_caller"
@@ -707,18 +737,36 @@ top_subs = (
     model.select(
         Subscriber.id.alias("sub_id"),
         Subscriber.subscriber_type.alias("type"),
+        Subscriber.segment.alias("segment"),
         Subscriber.lifetime_value.alias("ltv"),
-        Subscriber.influence_score.alias("influence"),
+        Subscriber.churn_risk_score.alias("churn"),
+        Subscriber.customer_value.alias("customer_value"),
+        Subscriber.influence_score.alias("pagerank"),
     )
     .to_df()
-    .sort_values("influence", ascending=False)
+    .sort_values("customer_value", ascending=False)
     .head(10)
 )
-print("\n  Top 10 subscribers by PageRank:")
+print("\n  Top 10 subscribers by customer_value (PageRank shown for reference):")
 print(top_subs.to_string(index=False))
 
 CellTower.impact_count = model.Property(f"{CellTower} has {Float:impact_count}")
+# weighted_impact is the headline per-tower customer-impact score: the
+# sum of customer_value (revenue x churn) over ACTIVE subscribers whose
+# calls route through the tower. Stage 4's objective consumes this name
+# unchanged; the *measure* underneath shifted from PageRank-influence
+# sum to customer-value sum to answer the operator's prioritization
+# question more directly (revenue at risk, churn urgency).
+#
+# Note: this is CDR-weighted (each call from a subscriber contributes
+# their customer_value once), so a heavy-calling high-value account
+# lifts a tower more than the same account calling once. A
+# distinct-subscriber-per-tower variant is a defensible v2 refinement.
 CellTower.weighted_impact = model.Property(f"{CellTower} has {Float:weighted_impact}")
+# Secondary signal: PageRank-weighted impact retained so the graph
+# reasoner's network-effect view is still queryable alongside the
+# revenue-based headline. Not consumed by the Stage 4 objective.
+CellTower.weighted_pagerank = model.Property(f"{CellTower} has {Float:weighted_pagerank}")
 
 model.define(
     CellTower.impact_count(
@@ -726,16 +774,29 @@ model.define(
         .where(
             CallDetailRecord.routed_through(CellTower),
             CallDetailRecord.caller(Subscriber),
+            Subscriber.status == "ACTIVE",
         )
         .per(CellTower)
     )
 )
 model.define(
     CellTower.weighted_impact(
+        aggs.sum(Subscriber.customer_value)
+        .where(
+            CallDetailRecord.routed_through(CellTower),
+            CallDetailRecord.caller(Subscriber),
+            Subscriber.status == "ACTIVE",
+        )
+        .per(CellTower)
+    )
+)
+model.define(
+    CellTower.weighted_pagerank(
         aggs.sum(Subscriber.influence_score)
         .where(
             CallDetailRecord.routed_through(CellTower),
             CallDetailRecord.caller(Subscriber),
+            Subscriber.status == "ACTIVE",
         )
         .per(CellTower)
     )
@@ -748,12 +809,15 @@ blast_df = (
         CellTower.region.alias("region"),
         CellTower.impact_count.alias("impact_count"),
         CellTower.weighted_impact.alias("weighted_impact"),
+        CellTower.weighted_pagerank.alias("weighted_pagerank"),
         CellTower.failure_intensity.alias("failure_intensity"),
     )
     .to_df()
     .sort_values("weighted_impact", ascending=False)
 )
-print("\n  Per-critical-tower blast radius (impact_count, weighted_impact, failure_intensity):")
+print("\n  Per-critical-tower customer impact "
+      "(weighted_impact = sum of caller customer_value; "
+      "weighted_pagerank shown as secondary):")
 print(blast_df.to_string(index=False))
 
 # --------------------------------------------------
@@ -890,8 +954,66 @@ selected_df = selected_df.merge(
     how="left",
 ).sort_values(["region", "tier"])
 
+# Per-tower selection rationale: tag which upstream signal(s) drove
+# inclusion. The opening business question ends with "...and why?" --
+# this turns the plan output into a defensible answer per tower.
+#
+# Three signal categories, OR-combined per tower:
+#   - operational       : WEST tower in DEGRADED status (Stage 2 branches 1/2)
+#   - advisory/predicted: failure_intensity > threshold (Stage 1 GNN -> Stage 2 branch 3)
+#   - high-value        : weighted_impact in top quartile of critical towers
+# (A future v2 G-full pass would extend this with GNN-confidence and
+# data-quality annotations alongside the tag.)
+selected_df = selected_df.merge(
+    blast_df[["tower_id", "weighted_impact", "weighted_pagerank"]],
+    on="tower_id",
+    how="left",
+)
+selected_df = selected_df.merge(
+    cell_towers_df[["TOWER_ID", "STATUS"]].rename(
+        columns={"TOWER_ID": "tower_id", "STATUS": "tower_status"}
+    ),
+    on="tower_id",
+    how="left",
+)
+selected_df["sig_operational"] = (
+    (selected_df["region"] == "WEST") & (selected_df["tower_status"] == "DEGRADED")
+)
+selected_df["sig_predictive"] = (
+    selected_df["failure_intensity"] > FAILURE_INTENSITY_THRESHOLD
+)
+_q75_impact = blast_df["weighted_impact"].quantile(0.75)
+selected_df["sig_high_value"] = selected_df["weighted_impact"] >= _q75_impact
+
+
+def _rationale(row):
+    sigs = []
+    if row["sig_operational"]:
+        sigs.append("operational")
+    if row["sig_predictive"]:
+        sigs.append("advisory/predicted")
+    if row["sig_high_value"]:
+        sigs.append("high-value")
+    return ", ".join(sigs) if sigs else "(low signal)"
+
+
+selected_df["rationale"] = selected_df.apply(_rationale, axis=1)
+
 print(f"\n  Selected upgrades: {len(selected_df)}")
-print(selected_df.to_string(index=False))
+print(
+    selected_df[
+        ["tower_id", "region", "tier", "capacity_gbps", "cost",
+         "install_weeks", "failure_intensity", "weighted_impact",
+         "rationale"]
+    ].to_string(index=False)
+)
+print(
+    f"\n  Rationale tally: "
+    f"operational={int(selected_df['sig_operational'].sum())}, "
+    f"advisory/predicted={int(selected_df['sig_predictive'].sum())}, "
+    f"high-value={int(selected_df['sig_high_value'].sum())} "
+    f"(towers can fire on multiple signals)"
+)
 
 if len(selected_df) > 0:
     print(f"\n  Total cost:               ${selected_df['cost'].sum():,.0f}")
@@ -929,7 +1051,11 @@ _total_weeks = int(selected_df["install_weeks"].sum()) if len(selected_df) else 
 _capacity = int(selected_df["capacity_gbps"].sum()) if len(selected_df) else 0
 _tier_counts = selected_df["tier"].value_counts().to_dict() if len(selected_df) else {}
 _binding = (
-    "budget" if _total_cost > BUDGET_USD * 0.999
+    # 0.995: residual headroom below ~0.5% is too small to fit another
+    # whole-tier upgrade (cheapest BRONZE > $25k vs $25k of slack), so
+    # the cap is effectively hit. Earlier 0.999 misclassified clearly-
+    # budget-bound runs as "none" when the optimizer left ~$5-10k slack.
+    "budget" if _total_cost > BUDGET_USD * 0.995
     else "install_weeks" if _total_weeks >= INSTALL_WEEKS_BUDGET - 1
     else "none"
 )
