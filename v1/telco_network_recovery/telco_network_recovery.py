@@ -15,8 +15,7 @@ recoverable from the other alone, so the chain integrates both.
   recall/defect edge). The undirected setting enables 2-hop message
   passing across Equipment <-> Tower <-> Equipment, so the GNN learns
   that a piece of equipment is at elevated risk when its tower-mate
-  sits on a recalled MODEL -- a pattern a SQL `JOIN model_advisories`
-  query cannot easily reproduce. Per-equipment predicted-failure
+  sits on a recalled MODEL. Per-equipment predicted-failure
   probability is summed per tower into `CellTower.failure_intensity`.
 - Stage 2 -- Rules: derive per-tower averages from NetworkPerformance
   and EquipmentHealth, then flag `CellTower.is_critical_restore` via
@@ -87,12 +86,6 @@ GNN_LR = 0.002
 BUDGET_USD = 5_000_000
 INSTALL_WEEKS_BUDGET = 200
 
-# Stage 4 MIP solver. Defaults to gurobi; if the prescriptive engine
-# isn't gurobi-enabled/licensed, the solve below automatically falls
-# back to the bundled open-source "highs" solver -- no config change
-# needed (see raiconfig.yaml `reasoners.prescriptive.settings.gurobi`).
-MIP_SOLVER = "gurobi"
-
 # Stage 2 threshold for the predictive-driven critical-restore branch.
 # failure_intensity is the per-tower SUM of equipment failure probs --
 # effectively expected count of at-risk equipment items on the tower.
@@ -118,8 +111,8 @@ subscribers_df = pd.read_csv(DATA_DIR / "subscribers.csv")
 # at-risk subscribers (high churn_risk_score) get up to ~1.9x the weight
 # of stable ones. Precomputed in pandas to keep loading straightforward;
 # downstream PyRel just reads it as another Float Property on Subscriber.
-# Refinements deferred to a later v2: SLA-tier and emergency-service
-# multipliers; NPS-deterioration weighting; log-scaling to compress the
+# Possible refinements: SLA-tier and emergency-service multipliers;
+# NPS-deterioration weighting; log-scaling to compress the
 # enterprise-vs-consumer LTV gap (~130x in the bundled corpus).
 subscribers_df["CUSTOMER_VALUE"] = (
     subscribers_df["LIFETIME_VALUE_USD"]
@@ -309,8 +302,6 @@ print("=" * 60)
 # equipment whose own MODEL has no advisory can still inherit risk
 # from a tower-mate whose MODEL does, via the path
 #   ModelAdvisory -> tower_mate -> CellTower -> this_equipment.
-# That 2-hop neighbor pattern is the one a SQL `JOIN model_advisories`
-# query cannot easily reproduce.
 gnn_graph = Graph(model, directed=False, weighted=False)
 
 model.define(gnn_graph.Edge.new(src=EquipmentHealth, dst=NetworkEquipment)).where(
@@ -449,31 +440,14 @@ print(
     f"{int((per_tower['FAILURE_INTENSITY'] > FAILURE_INTENSITY_THRESHOLD).sum())} / {len(per_tower)}"
 )
 
-# Side-by-side check: how far different levels of SQL sophistication
-# get on this data, vs the GNN's set. Three tiers:
-#   1. Naive SQL on health columns -- catches the health-only tail.
-#   2. Join-aware SQL also filtering on advised MODEL -- catches the
-#      bulk, but misses 2-hop neighbor-driven and smooth-interaction
-#      cases.
-#   3. The GNN (the chain output) -- closes the remaining gap via
-#      heterogeneous undirected message passing.
-total_atrisk = int(network_equipment_df["AT_RISK"].sum())
-sql_alt = network_equipment_df.merge(
-    equipment_health_df[["EQUIPMENT_ID", "HEALTH_SCORE"]], on="EQUIPMENT_ID"
-)
-sql_naive = sql_alt[(sql_alt["AT_RISK"] == 1) & (sql_alt["HEALTH_SCORE"] < 0.5)].shape[0]
-advised_models = set(advisories_df["MODEL"].tolist())
-sql_joined = sql_alt[
-    (sql_alt["AT_RISK"] == 1)
-    & ((sql_alt["HEALTH_SCORE"] < 0.5) | (sql_alt["MODEL"].isin(advised_models)))
-].shape[0]
-# GNN end-to-end recall on at-risk items. Report two views:
+# GNN end-to-end recall on at-risk items. Two views:
 #   - At the model's built-in argmax (predicted_label == 1).
 #   - At the standard probability threshold (pos_prob >= 0.5).
 # The argmax view answers "what the model says"; the 0.5-threshold view
 # answers "what a downstream rule would catch using the GNN's calibrated
 # probability." They can diverge if the model's calibration is shifted
 # (the argmax can be conservative even when probs are well-separated).
+total_atrisk = int(network_equipment_df["AT_RISK"].sum())
 gnn_flagged_atrisk = pred_df.merge(
     network_equipment_df[["EQUIPMENT_ID", "AT_RISK"]].rename(
         columns={"EQUIPMENT_ID": "equipment_id"}
@@ -494,16 +468,10 @@ gnn_recall_p05 = int(
     ].shape[0]
 )
 print(
-    f"\n  SQL-vs-GNN comparison on {total_atrisk} true at-risk items:"
-    f"\n    Naive SQL `WHERE health_score < 0.5`:                "
-    f"{sql_naive:>4} ({sql_naive/total_atrisk:>5.1%})"
-    f"\n    Join-aware SQL `... OR model IN advised_models`:    "
-    f"{sql_joined:>4} ({sql_joined/total_atrisk:>5.1%})"
-    f"\n    GNN-only opportunity (2-hop + smooth interaction):  "
-    f"{total_atrisk - sql_joined:>4} ({(total_atrisk - sql_joined)/total_atrisk:>5.1%})"
-    f"\n    GNN recall, argmax (predicted_label == 1):          "
+    f"\n  GNN recall on {total_atrisk} true at-risk items:"
+    f"\n    argmax (predicted_label == 1):                    "
     f"{gnn_recall_argmax:>4} ({gnn_recall_argmax/total_atrisk:>5.1%})"
-    f"\n    GNN recall, p>=0.5 (probabilistic threshold):       "
+    f"\n    p>=0.5 (probabilistic threshold):                 "
     f"{gnn_recall_p05:>4} ({gnn_recall_p05/total_atrisk:>5.1%})"
 )
 # Per-equipment positive-prediction distribution for transparency.
@@ -515,14 +483,13 @@ print(
     f"items with pos_prob>=0.5: {int((pred_df['pos_prob']>=0.5).sum())} / {len(pred_df)}"
 )
 
-# Bridge concept: load per-tower failure_intensity back as a CellTower
-# property. Mirrors the bridge pattern used elsewhere in the template
-# corpus (e.g. retail_planning) -- aggregate in pandas, then join onto
-# the concept that hosts the downstream property.
 # TowerFailureScore concept: bridge concept holding the per-tower SUM
-# of GNN equipment-failure probabilities. Loaded from pandas after
-# Stage 1 and joined onto CellTower to expose failure_intensity as a
-# first-class Property the rules + MIP downstream consume.
+# of GNN equipment-failure probabilities, loaded from pandas after the
+# GNN run and joined onto CellTower to expose failure_intensity as a
+# first-class Property the downstream stages consume. Mirrors the
+# bridge pattern used in other multi-reasoner templates (e.g.
+# retail_planning) -- aggregate in pandas, then join onto the concept
+# that hosts the downstream property.
 TowerFailureScore = model.Concept("TowerFailureScore", identify_by={"tower_id": String})
 TowerFailureScore.score = model.Property(f"{TowerFailureScore} has {Float:score}")
 tfs_src = model.data(per_tower[["TOWER_ID", "FAILURE_INTENSITY"]])
@@ -753,15 +720,14 @@ print(top_subs.to_string(index=False))
 CellTower.impact_count = model.Property(f"{CellTower} has {Float:impact_count}")
 # weighted_impact is the headline per-tower customer-impact score: the
 # sum of customer_value (revenue x churn) over ACTIVE subscribers whose
-# calls route through the tower. Stage 4's objective consumes this name
-# unchanged; the *measure* underneath shifted from PageRank-influence
-# sum to customer-value sum to answer the operator's prioritization
-# question more directly (revenue at risk, churn urgency).
+# calls route through the tower. The Stage 4 MIP objective consumes
+# this directly to prioritize towers by revenue-at-risk weighted by
+# churn urgency.
 #
-# Note: this is CDR-weighted (each call from a subscriber contributes
-# their customer_value once), so a heavy-calling high-value account
-# lifts a tower more than the same account calling once. A
-# distinct-subscriber-per-tower variant is a defensible v2 refinement.
+# This is CDR-weighted (each call from a subscriber contributes their
+# customer_value once), so a heavy-calling high-value account lifts a
+# tower more than the same account calling once. A distinct-subscriber-
+# per-tower variant is a defensible refinement.
 CellTower.weighted_impact = model.Property(f"{CellTower} has {Float:weighted_impact}")
 # Secondary signal: PageRank-weighted impact retained so the graph
 # reasoner's network-effect view is still queryable alongside the
@@ -913,9 +879,13 @@ problem.maximize(
     )
 )
 
-print(f"\n  Solving (MIP solver: {MIP_SOLVER})...")
+# The prescriptive engine's configured solver picks up by default
+# (see raiconfig.yaml `reasoners.prescriptive`). If the engine is set
+# to gurobi but gurobi errors at runtime (license, integration), the
+# except branch catches the failure and retries with HiGHS explicitly.
+print("\n  Solving...")
 try:
-    problem.solve(solver=MIP_SOLVER)
+    problem.solve()
 except Exception as exc:
     # Fall back to the bundled open-source HiGHS solver when gurobi is
     # unavailable / unlicensed on the prescriptive engine.
@@ -962,8 +932,8 @@ selected_df = selected_df.merge(
 #   - operational       : WEST tower in DEGRADED status (Stage 2 branches 1/2)
 #   - advisory/predicted: failure_intensity > threshold (Stage 1 GNN -> Stage 2 branch 3)
 #   - high-value        : weighted_impact in top quartile of critical towers
-# (A future v2 G-full pass would extend this with GNN-confidence and
-# data-quality annotations alongside the tag.)
+# A natural extension: surface GNN-confidence and data-quality flags
+# alongside the rationale tag.
 selected_df = selected_df.merge(
     blast_df[["tower_id", "weighted_impact", "weighted_pagerank"]],
     on="tower_id",
