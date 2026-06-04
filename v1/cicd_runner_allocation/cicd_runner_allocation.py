@@ -39,15 +39,6 @@ from pandas import read_csv
 from relationalai.semantics import Float, Integer, Model, String, sum
 from relationalai.semantics.reasoners.prescriptive import Problem
 
-# This template re-solves the model once per scenario (the concurrency sweep) and again
-# for the outage. Rebuilding the Problem -- with its per-workflow and per-runner *named*
-# constraints -- in that loop trips PyRel's "rules created in a loop" heuristic. That
-# pattern is intentional here (re-solving with a different cap is the point) and harmless
-# at this size, and the per-instance names are what let the IIS read back by entity key.
-# RAI diagnostics route through Python's warnings module, so silence just this one by
-# message and leave every other warning visible.
-warnings.filterwarnings("ignore", message=r"\[Rules created in a loop\]")
-
 # --------------------------------------------------
 # Configure inputs
 # --------------------------------------------------
@@ -156,60 +147,68 @@ def solve_allocation(concurrency_multiplier, offline_runners=(), conflict=False)
     excluding their assignments. ``conflict=True`` requests an IIS diagnosis on the
     same solve. Returns an ``Allocation`` with the named constraint handles.
     """
-    problem = Problem(model, Float)
+    # This builder runs once per scenario (the concurrency sweep, then the outage).
+    # Rebuilding the Problem -- with its per-workflow and per-runner *named*
+    # constraints -- that many times trips PyRel's "rules created in a loop"
+    # heuristic. The pattern is intentional here (re-solving with a different cap is
+    # the point) and harmless at this size, and the per-instance names are what let
+    # the IIS read back by entity key. RAI diagnostics route through Python's
+    # warnings module, so silence just that one message, scoped to this builder --
+    # warning state outside it is untouched.
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", message=r"\[Rules created in a loop\]")
 
-    # Decision variable: binary assignment of workflow to runner. A maintenance
-    # outage drops the offline runners' assignments via where=. With no offline
-    # runners the comprehension is empty and `[] or None` collapses to None, i.e.
-    # "no filter" -- solve_for treats where=None and where=[] differently, so the
-    # None is deliberate.
-    where_clause = [Assignment.runner.name != r for r in offline_runners] or None
-    assign_var = problem.solve_for(
-        Assignment.x_assigned,
-        type="bin",
-        name=["assign", Assignment.workflow.name, Assignment.runner.name],
-        where=where_clause,
-        populate=False,
-    )
+        problem = Problem(model, Float)
 
-    AssignRef = Assignment.ref()
-
-    # Constraint: each workflow assigned to exactly one runner. ``keyed_by`` declares
-    # the workflow key, so IIS membership reads back by it (assign_one.workflow); the
-    # per-workflow name is a readable label.
-    assign_one = problem.satisfy(
-        model.require(
-            sum(AssignRef.x_assigned)
-            .where(AssignRef.workflow == Workflow)
-            .per(Workflow)
-            == 1
-        ),
-        name=["assign_one", Workflow.name],
-        keyed_by={"workflow": Workflow},
-    )
-
-    # Constraint: per-runner concurrency limit (scaled by scenario multiplier).
-    # ``keyed_by`` declares the runner key (conc.runner).
-    conc = problem.satisfy(
-        model.require(
-            sum(AssignRef.x_assigned).where(AssignRef.runner == Runner).per(Runner)
-            <= concurrency_multiplier * Runner.max_concurrent
-        ),
-        name=["concurrency", Runner.name],
-        keyed_by={"runner": Runner},
-    )
-
-    # Objective: minimize total pipeline cost.
-    problem.minimize(
-        sum(
-            Assignment.x_assigned
-            * Assignment.runner.cost_per_minute
-            * Assignment.workflow.estimated_minutes
+        # Decision variable: binary assignment of workflow to runner. A maintenance
+        # outage drops the offline runners' assignments via where=. With no offline
+        # runners the comprehension is empty and `[] or None` collapses to None, i.e.
+        # "no filter" -- solve_for treats where=None and where=[] differently, so the
+        # None is deliberate.
+        where_clause = [Assignment.runner.name != r for r in offline_runners] or None
+        assign_var = problem.solve_for(
+            Assignment.x_assigned,
+            type="bin",
+            name=["assign", Assignment.workflow.name, Assignment.runner.name],
+            where=where_clause,
+            populate=False,
         )
-    )
 
-    problem.solve("highs", time_limit_sec=60, conflict=conflict)
-    return Allocation(problem.solve_info(), assign_var, assign_one, conc)
+        AssignRef = Assignment.ref()
+
+        # Constraint: each workflow assigned to exactly one runner. ``keyed_by`` declares
+        # the workflow key, so IIS membership reads back by it (assign_one.workflow); the
+        # per-workflow name is a readable label.
+        assign_one = problem.satisfy(
+            model.require(
+                sum(AssignRef.x_assigned).where(AssignRef.workflow == Workflow).per(Workflow) == 1
+            ),
+            name=["assign_one", Workflow.name],
+            keyed_by={"workflow": Workflow},
+        )
+
+        # Constraint: per-runner concurrency limit (scaled by scenario multiplier).
+        # ``keyed_by`` declares the runner key (conc.runner).
+        conc = problem.satisfy(
+            model.require(
+                sum(AssignRef.x_assigned).where(AssignRef.runner == Runner).per(Runner)
+                <= concurrency_multiplier * Runner.max_concurrent
+            ),
+            name=["concurrency", Runner.name],
+            keyed_by={"runner": Runner},
+        )
+
+        # Objective: minimize total pipeline cost.
+        problem.minimize(
+            sum(
+                Assignment.x_assigned
+                * Assignment.runner.cost_per_minute
+                * Assignment.workflow.estimated_minutes
+            )
+        )
+
+        problem.solve("highs", time_limit_sec=60, conflict=conflict)
+        return Allocation(problem.solve_info(), assign_var, assign_one, conc)
 
 
 def assignment_df(assign_var):
