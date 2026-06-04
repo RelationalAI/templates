@@ -100,18 +100,18 @@ Finally, the template demonstrates **scenario analysis** by re-solving the probl
 
    Baseline orders:
     supplier   product  quantity
-   SupplierB    Widget     150.0
-   SupplierC Component     200.0
+   SupplierB Component     150.0
+   SupplierC Component      50.0
    SupplierC    Gadget     250.0
-   SupplierC    Widget     150.0
+   SupplierC    Widget     300.0
 
    Lane reduced costs and basis status:
     supplier   product  reduced_cost      basis_status
    SupplierA    Gadget           3.0 NONBASIC_AT_LOWER
    SupplierA    Widget           2.0 NONBASIC_AT_LOWER
-   SupplierB Component           0.0 NONBASIC_AT_LOWER
+   SupplierB Component           0.0             BASIC
    SupplierB    Gadget           0.0 NONBASIC_AT_LOWER
-   SupplierB    Widget           0.0             BASIC
+   SupplierB    Widget           0.0 NONBASIC_AT_LOWER
    SupplierC Component           0.0             BASIC
    SupplierC    Gadget           0.0             BASIC
    SupplierC    Widget           0.0             BASIC
@@ -139,9 +139,9 @@ Finally, the template demonstrates **scenario analysis** by re-solving the probl
      Orders:
      supplier   product  quantity
     SupplierA    Widget     300.0
-    SupplierB Component     150.0
-    SupplierB    Gadget     250.0
-    SupplierD Component      50.0
+    SupplierB Component     200.0
+    SupplierB    Gadget     200.0
+    SupplierD    Gadget      50.0
 
    Running scenario: without_SupplierB
      Status: OPTIMAL, Objective: 5150.0
@@ -176,7 +176,7 @@ Finally, the template demonstrates **scenario analysis** by re-solving the probl
    same $4,850 objective and the same shadow prices.
 
    **Scenario analysis.** Removing SupplierC entirely increases cost by 39% ($4,850 to
-   $6,750) as demand shifts to more expensive SupplierB and SupplierD -- consistent
+   $6,750) as demand shifts to the more expensive SupplierA, SupplierB, and SupplierD -- consistent
    with SupplierC's high marginal value, though the duals (local marginals) do not by
    themselves predict the full impact of removing all 600 units. Removing SupplierB has
    less impact (+6%) since SupplierC absorbs most of the displaced volume.

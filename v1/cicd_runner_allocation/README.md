@@ -102,9 +102,9 @@ Finally, it shows **conflict analysis (infeasibility diagnosis)**. A maintenance
        macos-large (1 jobs): ios-testflight
        macos-latest (2 jobs): build-mobile-ios, e2e-tests-safari
        self-hosted-linux (4 jobs): e2e-tests-chrome, integration-tests, nightly-build, performance-tests
-       ubuntu-22.04 (4 jobs): build-api, build-frontend, lint-and-format, release-notes
+       ubuntu-22.04 (2 jobs): build-api, release-notes
        ubuntu-large (3 jobs): build-mobile-android, docker-build, unit-tests-api
-       ubuntu-latest (5 jobs): dependency-audit, deploy-production, deploy-staging, security-scan, unit-tests-frontend
+       ubuntu-latest (7 jobs): build-frontend, dependency-audit, deploy-production, deploy-staging, lint-and-format, security-scan, unit-tests-frontend
        windows-latest (1 jobs): windows-installer
 
    Running scenario: concurrency_multiplier = 1.0
@@ -116,8 +116,8 @@ Finally, it shows **conflict analysis (infeasibility diagnosis)**. A maintenance
        macos-large (1 jobs): ios-testflight
        macos-latest (2 jobs): build-mobile-ios, e2e-tests-safari
        self-hosted-linux (8 jobs): build-api, build-mobile-android, docker-build, e2e-tests-chrome, integration-tests, nightly-build, performance-tests, unit-tests-api
-       ubuntu-22.04 (3 jobs): build-frontend, lint-and-format, release-notes
-       ubuntu-latest (5 jobs): dependency-audit, deploy-production, deploy-staging, security-scan, unit-tests-frontend
+       ubuntu-22.04 (1 jobs): release-notes
+       ubuntu-latest (7 jobs): build-frontend, dependency-audit, deploy-production, deploy-staging, lint-and-format, security-scan, unit-tests-frontend
        windows-latest (1 jobs): windows-installer
 
    Running scenario: concurrency_multiplier = 1.5
@@ -129,8 +129,8 @@ Finally, it shows **conflict analysis (infeasibility diagnosis)**. A maintenance
        macos-large (1 jobs): ios-testflight
        macos-latest (2 jobs): build-mobile-ios, e2e-tests-safari
        self-hosted-linux (12 jobs): build-api, build-frontend, build-mobile-android, dependency-audit, docker-build, e2e-tests-chrome, integration-tests, nightly-build, performance-tests, security-scan, unit-tests-api, unit-tests-frontend
-       ubuntu-22.04 (3 jobs): deploy-production, lint-and-format, release-notes
-       ubuntu-latest (1 jobs): deploy-staging
+       ubuntu-22.04 (2 jobs): deploy-production, release-notes
+       ubuntu-latest (2 jobs): deploy-staging, lint-and-format
        windows-latest (1 jobs): windows-installer
 
    ==================================================
