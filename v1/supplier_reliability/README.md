@@ -17,7 +17,7 @@ tags:
 
 ## What this template is for
 
-Procurement teams must choose which suppliers to source from when multiple options exist for each product. Each supplier has different pricing and capacity limits (plus a reliability score, carried as extension data — not priced into the objective, and not what drives the disruption scenarios below). The challenge is to meet all product demand at minimum cost without exceeding any supplier's capacity.
+Procurement teams must choose which suppliers to source from when multiple options exist for each product. Each supplier has different pricing and capacity limits (plus a reliability score, carried as extension data -- not priced into the objective, and not what drives the disruption scenarios below). The challenge is to meet all product demand at minimum cost without exceeding any supplier's capacity.
 
 This template uses **Prescriptive** reasoning to formulate the supplier selection problem as a linear program. It determines the optimal order quantities across supply options, ensuring that every product's demand is met and no supplier is overloaded. The solver finds the cost-minimizing allocation automatically.
 
@@ -165,7 +165,8 @@ Finally, the template demonstrates **scenario analysis** by re-solving the probl
    it fills its 600-unit capacity and is the only **binding** capacity -- its shadow
    price of `-2.0` means each extra unit of SupplierC capacity would lower total cost
    by $2. Every other capacity has room to spare and prices at `0`. The demand shadow
-   prices (`8`, `9`, `7`) are the marginal cost of one more unit of each product.
+   prices (`7`, `9`, `8` for Component, Gadget, Widget) are the marginal cost of one
+   more unit of each product.
    SupplierA's and SupplierD's lanes are **priced out** (positive reduced cost); note
    SupplierB's unused lanes price at `~0` because each is exactly $2 above SupplierC --
    an alternate-optimum tie, which is why the script asserts only that *used* lanes
