@@ -252,6 +252,13 @@ assert HIGH_CPU_LINUX_JOBS == set(
         "name",
     ]
 )
+# Same guard for the runner side: the outage runners and the surviving cap asserted
+# below must exist in runners.csv, or the where= exclusion silently excludes nothing
+# and the outage stays feasible.
+assert set(OFFLINE_RUNNERS) | {"ubuntu-xlarge"} <= set(runner_csv["name"]), (
+    f"runners.csv changed: expected {sorted(set(OFFLINE_RUNNERS) | {'ubuntu-xlarge'})} "
+    f"among {sorted(runner_csv['name'])}"
+)
 
 
 if __name__ == "__main__":

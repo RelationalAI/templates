@@ -267,6 +267,7 @@ model.where(cap.supplier.name == "SupplierC").require(cap.shadow_price < -1e-6)
 model.where(cap.supplier.name != "SupplierC").require(
     std.math.abs(cap.shadow_price) < 1e-6
 )
+# (like all requires, validated on the next query -- the demand read just below)
 
 demand_sp_df = (
     model.select(
