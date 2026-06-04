@@ -232,9 +232,8 @@ model.where(qty_var.supplyorder.supplier.name == "SupplierD").require(
 # (these requires are validated when the next query below runs)
 # (2) Every lane actually in use prices at ~0. Read each lane's reduced cost and solved
 # amount together (values(k, ref) is the solution accessor) and check in Python. The
-# supplier column keeps one row per lane -- select returns DISTINCT rows, so without an
-# identifying column, lanes with equal (reduced_cost, quantity) pairs would collapse --
-# and names the offender if the check ever fails:
+# supplier column keeps each row identifiable -- and names the offender if the check
+# ever fails:
 rc_amt = Float.ref()
 cs_df = (
     model.select(
