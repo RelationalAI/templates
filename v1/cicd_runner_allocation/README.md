@@ -1,8 +1,8 @@
 ---
 title: "CI/CD Runner Allocation"
-description: "Assign CI/CD workflow jobs to the cheapest compatible runner type, subject to concurrency limits, with scenario analysis across capacity levels."
+description: "Assign CI/CD workflow jobs to the cheapest compatible runner type, subject to concurrency limits, with scenario analysis across capacity levels and conflict analysis to diagnose an infeasible outage."
 featured: false
-experience_level: beginner
+experience_level: intermediate
 industry: "Software Engineering"
 reasoning_types:
   - Prescriptive

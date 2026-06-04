@@ -168,7 +168,9 @@ assert si.sensitivity is True
 # Optimum: steel_factory fills all 40 hrs (bands to its 6000 cap = 30 hrs, coils takes
 # the last 10 hrs = 1400 units); amazing_brewery makes both products to their demand
 # caps in 25 of its 30 hrs. Profit = 192000 + 8000 = 200000.
-assert si.objective_value is not None and abs(si.objective_value - 200000) < 0.01
+assert si.objective_value is not None and abs(si.objective_value - 200000) < 0.01, (
+    f"total profit changed: expected 200000, got {si.objective_value}"
+)
 
 print(f"\nBaseline status: {si.termination_status}, total profit: {si.objective_value:.2f}")
 

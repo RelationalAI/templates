@@ -174,7 +174,9 @@ assert si.termination_status == "OPTIMAL"
 assert si.sensitivity is True
 # Optimum: SupplierC (cheapest for every product) fills its 600 capacity; the
 # remaining 150 units of demand go to SupplierB at +2/unit -> 4550 + 300 = 4850.
-assert si.objective_value is not None and abs(si.objective_value - 4850) < 0.01
+assert si.objective_value is not None and abs(si.objective_value - 4850) < 0.01, (
+    f"baseline objective changed: expected 4850, got {si.objective_value}"
+)
 
 baseline_objective = si.objective_value
 print(
@@ -370,7 +372,10 @@ for excluded in ["SupplierC", "SupplierB"]:
         print(f"  Status: {si_scn.termination_status} — skipping results")
         continue
     print(f"  Status: {si_scn.termination_status}, Objective: {si_scn.objective_value}")
-    assert abs(si_scn.objective_value - EXPECTED_SCENARIO_OBJECTIVE[label]) < 0.01
+    assert abs(si_scn.objective_value - EXPECTED_SCENARIO_OBJECTIVE[label]) < 0.01, (
+        f"{label} objective changed: expected {EXPECTED_SCENARIO_OBJECTIVE[label]}, "
+        f"got {si_scn.objective_value}"
+    )
 
     value_ref = Float.ref()
     qty_df = (

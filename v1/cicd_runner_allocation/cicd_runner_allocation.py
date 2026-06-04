@@ -364,9 +364,9 @@ if __name__ == "__main__":
         assert caps == {"ubuntu-xlarge"}
         # The stranded jobs are the high-CPU Linux jobs funneled onto it. A minimal IIS
         # names cap+1 = 6 of the seven (which six is solver-dependent), so assert the
-        # provable lower bound and a subset rather than an exact set. This exercises
-        # in_conflict on the equality (== 1) rows -- the on-engine validation point for
-        # PyRel #1617.
+        # provable lower bound and a subset rather than an exact set. This also
+        # exercises in_conflict on the equality (== 1) rows, not just the <=
+        # concurrency row.
         assert len(stranded) >= 6, (
             f"expected >= 6 stranded jobs (cap+1), got {len(stranded)}: {sorted(stranded)} "
             "-- check in_conflict on '== 1' rows"
