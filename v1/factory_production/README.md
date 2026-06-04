@@ -65,7 +65,7 @@ Because the objective is a **maximization**, the *capacity shadow price* is the 
 
 ### Tools
 - Python >= 3.10
-- RelationalAI Python SDK (`relationalai`) >= 1.0.14
+- RelationalAI Python SDK (`relationalai`) >= 1.9.0
 
 ## Quickstart
 
@@ -214,6 +214,8 @@ model.select(
     quantity_var.basis_status,
 ).inspect()
 ```
+
+(`.inspect()` prints the rows for a quick look; the script materializes the same selects as DataFrames with `.to_df()` for its printed report and assertions.)
 
 Sensitivity marginals are exact for a linear program. They describe the rate of change at the current optimum -- the range over which that rate holds is not reported (there is no RHS/coefficient ranging) -- and a large, discrete change (adding a factory, removing a product) is a structural change best answered by re-solving.
 

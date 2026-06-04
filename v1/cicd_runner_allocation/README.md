@@ -56,7 +56,7 @@ Finally, it shows **conflict analysis (infeasibility diagnosis)**. A maintenance
 
 ### Tools
 - Python >= 3.10
-- RelationalAI Python SDK (`relationalai`) >= 1.0.14
+- RelationalAI Python SDK (`relationalai`) >= 1.9.0
 
 ## Quickstart
 
@@ -344,6 +344,8 @@ model.select(outage.conc.runner.name, outage.conc.runner.max_concurrent).where(
     outage.conc.in_conflict
 ).inspect()
 ```
+
+(`.inspect()` prints the rows for a quick look; the script materializes the same selects as DataFrames with `.to_df()` for its printed report and assertions.)
 
 The IIS is minimal: it names **six of the seven** high-CPU jobs (any six already exceed the cap of five, so which six is solver-dependent) plus the `ubuntu-xlarge` concurrency rule. To restore feasibility, relax one member -- bring a runner back online or raise the cap. Because all seven jobs share the one survivor, lift the cap enough for all of them (or restore a runner) and re-solve to confirm; clearing a single job only resolves that one row of the conflict.
 

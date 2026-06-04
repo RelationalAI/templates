@@ -3,7 +3,7 @@ title: "Supplier Reliability"
 description: "Select suppliers to meet product demand at minimum cost, with sensitivity marginals and supplier-disruption scenario analysis."
 featured: false
 experience_level: intermediate
-industry: "Supply Chain"
+industry: "Supply Chain & Logistics"
 reasoning_types:
   - Prescriptive
 tags:
@@ -59,7 +59,7 @@ Finally, the template demonstrates **scenario analysis** by re-solving the probl
 
 ### Tools
 - Python >= 3.10
-- RelationalAI Python SDK (`relationalai`) >= 1.0.14
+- RelationalAI Python SDK (`relationalai`) >= 1.9.0
 
 ## Quickstart
 
@@ -267,6 +267,8 @@ model.select(
     qty_var.reduced_cost, qty_var.basis_status,
 ).inspect()
 ```
+
+(`.inspect()` prints the rows for a quick look; the script materializes the same selects as DataFrames with `.to_df()` for its printed report and assertions.)
 
 The economics are also stated as integrity constraints joined by the same keys -- but only the always-true directions of complementary slackness (a lane in use prices at ~0; SupplierA's lanes are priced out). The converse "every unused lane has a positive reduced cost" is **not** asserted, because SupplierB's lanes tie SupplierC at the margin (alternate optima).
 
