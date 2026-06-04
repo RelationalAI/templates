@@ -21,7 +21,7 @@ Procurement teams must choose which suppliers to source from when multiple optio
 
 This template uses **Prescriptive** reasoning to formulate the supplier selection problem as a linear program. It determines the optimal order quantities across supply options, ensuring that every product's demand is met and no supplier is overloaded. The solver finds the cost-minimizing allocation automatically.
 
-A plain solve answers *"what is the cheapest sourcing plan?"*. This template also requests **sensitivity analysis** (`solve(sensitivity=True)`) on the baseline, which answers the *marginal* questions a planner asks next -- in the same solve:
+A plain solve answers *"what is the cheapest sourcing plan?"*. This template requests **sensitivity analysis** (`solve(sensitivity=True)`) on the baseline, which ALSO answers the *marginal* questions a planner asks next -- in the same solve:
 
 - **Which supplier capacity is the bottleneck?** The *shadow price* of each capacity constraint (`cap.shadow_price`) is how much total cost moves per unit of that supplier's capacity. A capacity with room to spare prices at zero; a nonzero price marks a binding bottleneck.
 - **What does one more unit of demand cost?** The shadow price of each demand constraint (`meet.shadow_price`) is the marginal cost to serve one more unit of that product.

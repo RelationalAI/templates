@@ -284,7 +284,7 @@ print(
 )
 
 # --------------------------------------------------
-# Summary — capacity utilization per factory
+# Summary -- capacity utilization per factory
 # --------------------------------------------------
 # Ties the shadow prices above back to the plan: in this data the binding factory has
 # zero idle hours and a positive shadow price, while idle hours mean slack and a zero

@@ -124,7 +124,7 @@ SupplyOrder.cost_per_unit = Property(f"{SupplyOrder} has {Float:cost_per_unit}")
 model.define(SupplyOrder.cost_per_unit(SupplyOption.cost_per_unit)).where(SupplyOrder.option(SupplyOption))
 
 # --------------------------------------------------
-# Phase A — baseline solve with sensitivity analysis
+# Phase A -- baseline solve with sensitivity analysis
 # --------------------------------------------------
 # The marginal reads MUST live on this single baseline Problem, built OUTSIDE the
 # scenario loop below: the loop rebuilds a fresh Problem each iteration, so a handle
@@ -308,7 +308,7 @@ print(
 )
 
 # --------------------------------------------------
-# Phase B — disruption scenarios (separate re-solves)
+# Phase B -- disruption scenarios (separate re-solves)
 # --------------------------------------------------
 # Each scenario is its own Problem with a where= filter excluding one supplier -- a
 # FINITE structural change (a supplier fully removed). A shadow price is a marginal at
@@ -374,7 +374,7 @@ for excluded in ["SupplierC", "SupplierB"]:
         }
     )
     if si_scn.termination_status != "OPTIMAL":
-        print(f"  Status: {si_scn.termination_status} — skipping results")
+        print(f"  Status: {si_scn.termination_status} -- skipping results")
         continue
     print(f"  Status: {si_scn.termination_status}, Objective: {si_scn.objective_value}")
     assert (

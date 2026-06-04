@@ -18,23 +18,23 @@ tags:
 
 ## What this template is for
 
-This template uses **Prescriptive** reasoning to maximize factory production profit under resource constraints, and then to read back the **sensitivity marginals** a planner asks next — all from a single solve. It is a compact, textbook **product-mix linear program**: the cleanest setting in this portfolio for learning what shadow prices and reduced costs mean.
+This template uses **Prescriptive** reasoning to maximize factory production profit under resource constraints, and then to read back the **sensitivity marginals** a planner asks next -- all from a single solve. It is a compact, textbook **product-mix linear program**: a small, fully hand-checkable setting for learning what shadow prices and reduced costs mean.
 
 Manufacturing operations must decide how much of each product to produce at each factory to maximize profit, given limited resources and bounded demand. Each product has a production rate (units per hour of resource), a profit per unit, and a maximum demand. Each factory has a fixed number of available resource-hours.
 
 This template formulates the problem as a linear program. Decision variables represent the quantity of each product to produce, bounded above by demand. A per-factory constraint keeps total resource usage within availability, and the objective maximizes total profit.
 
-A plain solve answers *"what is the most profitable production plan?"*. Adding `sensitivity=True` to the solve ALSO answers the marginal questions — in the same solve, with the answers read straight off the variable and constraint objects:
+A plain solve answers *"what is the most profitable production plan?"*. Adding `sensitivity=True` to the solve ALSO answers the marginal questions -- in the same solve, with the answers read straight off the variable and constraint objects:
 
-- **Capacity shadow price** (`cap.shadow_price`): how much total profit moves per extra hour at a factory. A capacity with idle hours prices at **zero** (it is not the bottleneck); a positive price flags a binding capacity worth expanding — so this ranks which factory to expand first. (The rule is one-way: slack ⇒ zero price, and a positive price ⇒ binding.)
+- **Capacity shadow price** (`cap.shadow_price`): how much total profit moves per extra hour at a factory. A capacity with idle hours prices at **zero** (it is not the bottleneck); a positive price flags a binding capacity worth expanding -- so this ranks which factory to expand first. (The rule is one-way: slack ⇒ zero price, and a positive price ⇒ binding.)
 - **Product reduced cost** and **basis status** (`quantity_var.reduced_cost` / `quantity_var.basis_status`): a product held at its demand cap shows a positive reduced cost here (the extra profit per unit of demand allowed); the swing product that sets the binding factory's marginal price is `BASIC` at ~0.
 
-Because the objective is a **maximization**, the *capacity shadow price* is the mirror image of a minimize-cost model — a binding `<=` capacity prices `>= 0` here, versus `<= 0` in the cost-minimizing [`supplier_reliability`](../supplier_reliability/) template. The nonbasic bound marginals shown in *both* tables are non-negative; what flips for the *product* marginal is the active bound — the binding product is `NONBASIC_AT_UPPER` (its demand cap) here, versus `NONBASIC_AT_LOWER` (zero) there. Laying the two reduced-cost tables side by side is the fastest way to internalize the conventions.
+Because the objective is a **maximization**, the *capacity shadow price* is the mirror image of a minimize-cost model -- a binding `<=` capacity prices `>= 0` here, versus `<= 0` in the cost-minimizing [`supplier_reliability`](../supplier_reliability/) template. The nonbasic bound marginals shown in *both* tables are non-negative; what flips for the *product* marginal is the active bound -- a demand-capped product sits at its upper bound (`NONBASIC_AT_UPPER`) here, while a priced-out supply lane sits at its lower bound of zero (`NONBASIC_AT_LOWER`) there. Laying the two reduced-cost tables side by side is the fastest way to internalize the conventions.
 
 > **Production-planning learning ladder**
-> 1. **Factory Production** *(this template)* — single-period product-mix LP with sensitivity analysis.
-> 2. [`production_planning`](../production_planning/) — multi-machine assignment with integer decisions and demand multipliers.
-> 3. [`demand_planning_temporal`](../demand_planning_temporal/) — multi-period production + inventory across sites with date-filtered planning horizon.
+> 1. **Factory Production** *(this template)* -- single-period product-mix LP with sensitivity analysis.
+> 2. [`production_planning`](../production_planning/) -- multi-machine assignment with integer decisions and demand multipliers.
+> 3. [`demand_planning_temporal`](../demand_planning_temporal/) -- multi-period production + inventory across sites with date-filtered planning horizon.
 
 ## Who this is for
 
@@ -133,7 +133,7 @@ Because the objective is a **maximization**, the *capacity shadow price* is the 
      steel_factory   40.0        40.0   0.0
    ```
 
-   Reading the result: `steel_factory` fills all 40 hours (it is the binding factory, so its capacity prices at **+4200/hour** — the per-hour profit of the swing product `coils`, i.e. its 30/unit profit × 140 units/hour rate). `amazing_brewery` meets all demand in 25 of its 30 hours, so its capacity is **slack** and prices at **0** — its bottleneck is demand, not capacity. Each of these demand-capped products (`bands`, `stouts`, `ales`) carries a positive reduced cost here: the profit you would gain per extra unit of demand allowed.
+   Reading the result: `steel_factory` fills all 40 hours (it is the binding factory, so its capacity prices at **+4200/hour** -- the per-hour profit of the swing product `coils`, i.e. its 30/unit profit × 140 units/hour rate). `amazing_brewery` meets all demand in 25 of its 30 hours, so its capacity is **slack** and prices at **0** -- its bottleneck is demand, not capacity. Each of these demand-capped products (`bands`, `stouts`, `ales`) carries a positive reduced cost here: the profit you would gain per extra unit of demand allowed.
 
 ## Template structure
 
@@ -200,7 +200,7 @@ problem.solve("highs", time_limit_sec=60, sensitivity=True)
 
 ### 4. Read the sensitivity marginals
 
-After a `sensitivity=True` solve, the marginals are attributes on the captured handles. A constraint carries the entity back-pointer declared with `keyed_by` (`cap.factory`) and a variable carries an automatic one to its product (`quantity_var.product`), so each marginal joins to that entity's own data by key — no pandas, no name parsing:
+After a `sensitivity=True` solve, the marginals are attributes on the captured handles. A constraint carries the entity back-pointer declared with `keyed_by` (`cap.factory`) and a variable carries an automatic one to its product (`quantity_var.product`), so each marginal joins to that entity's own data by key -- no pandas, no name parsing:
 
 ```python
 # Which factory's capacity to expand first?
@@ -219,23 +219,23 @@ Sensitivity marginals are exact for a linear program. They describe the rate of 
 
 ## Customize this template
 
-- **Find the demand bottleneck**: Raise `amazing_brewery`'s demand caps in `products.csv`. Once its 30 hours bind, its capacity shadow price jumps from 0 to positive — capacity becomes the bottleneck.
-- **Shift the swing product**: Lower `steel_factory`'s `avail` in `factories.csv`. `coils` (the basic, swing product) shrinks but stays the swing down to just above 30 hours, so the shadow price holds at 4200. At exactly 30 hours `coils` hits zero — a degenerate breakpoint where the marginal is one-sided — and below 30 hours `bands` becomes the swing and the price rises to 5000.
+- **Find the demand bottleneck**: Raise `amazing_brewery`'s demand caps in `products.csv`. Once its 30 hours bind, its capacity shadow price jumps from 0 to positive -- capacity becomes the bottleneck.
+- **Shift the swing product**: Lower `steel_factory`'s `avail` in `factories.csv`. `coils` (the basic, swing product) shrinks but stays the swing down to just above 30 hours, so the shadow price holds at 4200. At exactly 30 hours `coils` hits zero -- a degenerate breakpoint where the marginal is one-sided -- and below 30 hours `bands` becomes the swing and the price rises to 5000.
 - **Add more factories and products**: Extend the CSV files. The model and the per-factory marginals pick up new rows automatically.
-- **Integer production**: Change the variable type from continuous to integer if products must be produced in whole units. Note that sensitivity marginals are an LP concept — they are reported only for continuous (LP/QP) problems, and are empty for integer models.
+- **Integer production**: Change the variable type from continuous to integer if products must be produced in whole units. Note that sensitivity marginals are an LP concept -- they are reported only for continuous (LP/QP) problems, and are empty for integer models.
 
 ## Troubleshooting
 
 <details>
 <summary>Shadow prices or reduced costs are all empty</summary>
 
-Sensitivity marginals are an LP/QP concept. They are populated only when the problem is continuous and solved with `sensitivity=True`. An integer (MIP) model returns no marginals — keep the production variables continuous to see them.
+Sensitivity marginals are an LP/QP concept. They are populated only when the problem is continuous and solved with `sensitivity=True`. An integer (MIP) model returns no marginals -- keep the production variables continuous to see them.
 </details>
 
 <details>
 <summary>A factory's capacity shadow price is zero</summary>
 
-Usually that factory has idle resource-hours — slack capacity, so an extra hour buys nothing, and its bottleneck is elsewhere (typically product demand). Confirm with the `idle` column in the capacity summary: a positive `idle` is genuine slack. (Less commonly, a *binding* capacity can also price at zero under degeneracy — zero idle hours yet a zero price — so read the `idle` column, not the price alone.)
+Usually that factory has idle resource-hours -- slack capacity, so an extra hour buys nothing, and its bottleneck is elsewhere (typically product demand). Confirm with the `idle` column in the capacity summary: a positive `idle` is genuine slack. (Less commonly, a *binding* capacity can also price at zero under degeneracy -- zero idle hours yet a zero price -- so read the `idle` column, not the price alone.)
 </details>
 
 <details>

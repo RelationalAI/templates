@@ -91,7 +91,7 @@ Finally, it shows **conflict analysis (infeasibility diagnosis)**. A maintenance
    python cicd_runner_allocation.py
    ```
 
-6. Expected output (representative — equal-cost runners may be swapped between tied optima, and the IIS may name a different six of the seven stranded jobs; the statuses, costs, and binding runner cap are stable):
+6. Expected output (representative -- equal-cost runners may be swapped between tied optima, and the IIS may name a different six of the seven stranded jobs; the statuses, costs, and binding runner cap are stable):
    ```text
    Running scenario: concurrency_multiplier = 0.5
    --------------------------------------------------
