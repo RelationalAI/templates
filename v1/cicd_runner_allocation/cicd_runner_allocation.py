@@ -135,8 +135,9 @@ model.define(
 # --------------------------------------------------
 
 # Handles returned by a solve: the solve_info plus the variable and the two named
-# constraint families, so callers can read assignments (feasible) or IIS membership
-# (infeasible) by entity key.
+# constraint families, so callers can read assignments (feasible solves, via
+# assign_var) or IIS membership (the conflict=True outage, via assign_one / conc)
+# by entity key.
 Allocation = namedtuple("Allocation", "si assign_var assign_one conc")
 
 

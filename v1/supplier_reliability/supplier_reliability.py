@@ -185,7 +185,9 @@ print(
 
 # --- The baseline sourcing plan -------------------------------------------------
 # Read the solved amounts via values(0, ref) on the variable (no populate), filtered
-# to the lanes actually used in the query.
+# to the lanes actually used in the query. (Only the objective is pinned above, not
+# these quantities: the optimum has cost-equal alternates, so the exact split is
+# solver-build-dependent -- contrast factory_production, whose unique plan is asserted.)
 amt = Float.ref()
 orders_df = (
     model.select(
@@ -229,7 +231,10 @@ model.where(qty_var.supplyorder.supplier.name == "SupplierD").require(
 )
 # (these requires are validated when the next query below runs)
 # (2) Every lane actually in use prices at ~0. Read each lane's reduced cost and solved
-# amount together (values(k, ref) is the solution accessor) and check in Python:
+# amount together (values(k, ref) is the solution accessor) and check in Python. The
+# supplier column keeps one row per lane -- select returns DISTINCT rows, so without an
+# identifying column, lanes with equal (reduced_cost, quantity) pairs would collapse --
+# and names the offender if the check ever fails:
 rc_amt = Float.ref()
 cs_df = (
     model.select(
