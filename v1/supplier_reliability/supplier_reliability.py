@@ -377,7 +377,10 @@ for excluded in ["SupplierC", "SupplierB"]:
         print(f"  Status: {si_scn.termination_status} — skipping results")
         continue
     print(f"  Status: {si_scn.termination_status}, Objective: {si_scn.objective_value}")
-    assert abs(si_scn.objective_value - EXPECTED_SCENARIO_OBJECTIVE[label]) < 0.01, (
+    assert (
+        si_scn.objective_value is not None
+        and abs(si_scn.objective_value - EXPECTED_SCENARIO_OBJECTIVE[label]) < 0.01
+    ), (
         f"{label} objective changed: expected {EXPECTED_SCENARIO_OBJECTIVE[label]}, "
         f"got {si_scn.objective_value}"
     )
