@@ -314,7 +314,7 @@ for r in scenario_results:
 
 ### Diagnose a maintenance outage with conflict analysis
 
-The final section models a maintenance outage: `ubuntu-large` and `self-hosted-linux` go offline (their assignments are dropped with a `where=` filter). Every high-CPU Linux job (`min_cpu >= 4`) is compatible only with `{ubuntu-large, ubuntu-xlarge, self-hosted-linux}`, so with two of those three down, all seven funnel onto `ubuntu-xlarge` -- whose concurrency cap of 5 cannot hold them. The solve requests a conflict diagnosis:
+The final section models a maintenance outage: `ubuntu-large` and `self-hosted-linux` go offline (their assignments are dropped with a `where=` filter). Every high-CPU Linux job (`min_cpu >= 4`) is compatible only with runners in `{ubuntu-large, ubuntu-xlarge, self-hosted-linux}` (the two heaviest jobs with just the latter two), so with two of those three down, all seven funnel onto `ubuntu-xlarge` -- whose concurrency cap of 5 cannot hold them. The solve requests a conflict diagnosis:
 
 ```python
 outage = solve_allocation(1.0, offline_runners=["ubuntu-large", "self-hosted-linux"], conflict=True)
@@ -330,6 +330,8 @@ else:
     # build produced no IIS, e.g. needs HiGHS >= 1.13) -- report the status, don't read it.
     print(f"No IIS to inspect: {outage.si.conflict_status}")
 ```
+
+(The template's own `else` branch raises instead of printing: its outage is infeasible by construction, so a missing IIS there is a regression. The `print` form above is the one to copy when infeasibility is not guaranteed.)
 
 `in_conflict` is a bare predicate on each constraint instance -- true when the solver reports that instance in the conflict (it collapses the solver's `IN_CONFLICT` and `MAYBE_IN_CONFLICT` into one membership). Each constraint's declared key gives it an **entity back-pointer** (`assign_one.workflow`, `conc.runner`), mirroring the variable's automatic back-pointer, so the conflict reads back as the actual stranded jobs and the binding runner cap, joined by KEY -- no rule-name parsing:
 

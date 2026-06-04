@@ -162,9 +162,9 @@ def solve_allocation(concurrency_multiplier, offline_runners=(), conflict=False)
 
         # Decision variable: binary assignment of workflow to runner. A maintenance
         # outage drops the offline runners' assignments via where=. With no offline
-        # runners the comprehension is empty and `[] or None` collapses to None, i.e.
-        # "no filter" -- solve_for treats where=None and where=[] differently, so the
-        # None is deliberate.
+        # runners the comprehension is empty and `[] or None` collapses to None --
+        # solve_for treats an empty where= and None the same ("no filter"); the
+        # `or None` just makes the no-filter case explicit.
         where_clause = [Assignment.runner.name != r for r in offline_runners] or None
         assign_var = problem.solve_for(
             Assignment.x_assigned,
@@ -229,8 +229,9 @@ def assignment_df(assign_var):
 # --------------------------------------------------
 
 # Maintenance outage: take two well-connected Linux runners offline. Every high-CPU
-# Linux job (min_cpu >= 4) is compatible only with {ubuntu-large, ubuntu-xlarge,
-# self-hosted-linux}; with two of those three down, all seven funnel onto the one
+# Linux job (min_cpu >= 4) is compatible only with runners in {ubuntu-large,
+# ubuntu-xlarge, self-hosted-linux} (the two min_cpu=8 jobs with just the latter
+# two); with ubuntu-large and self-hosted-linux down, all seven funnel onto the one
 # survivor -- whose concurrency cap cannot hold them.
 OFFLINE_RUNNERS = ["ubuntu-large", "self-hosted-linux"]
 HIGH_CPU_LINUX_JOBS = {
