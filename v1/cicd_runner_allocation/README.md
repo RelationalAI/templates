@@ -171,7 +171,8 @@ Finally, it shows **conflict analysis (infeasibility diagnosis)**. A maintenance
    $0.005/min -- the cheapest runner. At half capacity (0.5x), its 4-job
    cap forces overflow to ubuntu-large and ubuntu-22.04, raising cost by
    6%. Burst mode (1.5x) pushes 12 jobs to self-hosted, saving another
-   $0.09 by keeping the high-CPU jobs off the pricier ubuntu-large and ubuntu-xlarge runners. (How the cheap,
+   $0.09 by pulling four more low-CPU jobs off the pricier ubuntu runners
+   (the high-CPU jobs already fit on self-hosted at 1.0x). (How the cheap,
    low-CPU jobs split between the two equal-cost ubuntu runners is one of several
    tied optima -- a different HiGHS build may place them differently at the same
    total cost.)
