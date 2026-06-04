@@ -17,10 +17,10 @@ is not actionable, so the outage solve requests ``solve(conflict=True)``, which
 computes an irreducible infeasible subsystem (IIS): a small set of rules that cannot
 all hold at once. ``in_conflict`` is a bare predicate on each constraint instance --
 true when the solver reports that instance in the conflict (it collapses the solver's
-IN_CONFLICT and MAYBE_IN_CONFLICT into a single membership). Each constraint carries an
-entity back-pointer to what it grounds over (``assign_one.workflow`` / ``conc.runner``),
-so the conflict reads back as the actual *stranded jobs* and the *binding runner cap*,
-joined by KEY -- no rule-name parsing.
+IN_CONFLICT and MAYBE_IN_CONFLICT into a single membership). Each constraint is declared
+with ``keyed_by``, so it carries an entity back-pointer to what it grounds over
+(``assign_one.workflow`` / ``conc.runner``) and the conflict reads back as the actual
+*stranded jobs* and the *binding runner cap*, joined by KEY -- no rule-name parsing.
 
 Run:
     `python cicd_runner_allocation.py`
@@ -174,8 +174,9 @@ def solve_allocation(concurrency_multiplier, offline_runners=(), conflict=False)
 
     AssignRef = Assignment.ref()
 
-    # Constraint: each workflow assigned to exactly one runner. Named per workflow so
-    # its IIS membership reads back by key (assign_one.workflow).
+    # Constraint: each workflow assigned to exactly one runner. ``keyed_by`` declares
+    # the workflow key, so IIS membership reads back by it (assign_one.workflow); the
+    # per-workflow name is a readable label.
     assign_one = problem.satisfy(
         model.require(
             sum(AssignRef.x_assigned)
@@ -184,16 +185,18 @@ def solve_allocation(concurrency_multiplier, offline_runners=(), conflict=False)
             == 1
         ),
         name=["assign_one", Workflow.name],
+        keyed_by={"workflow": Workflow},
     )
 
-    # Constraint: per-runner concurrency limit (scaled by scenario multiplier). Named
-    # per runner so its IIS membership reads back by key (conc.runner).
+    # Constraint: per-runner concurrency limit (scaled by scenario multiplier).
+    # ``keyed_by`` declares the runner key (conc.runner).
     conc = problem.satisfy(
         model.require(
             sum(AssignRef.x_assigned).where(AssignRef.runner == Runner).per(Runner)
             <= concurrency_multiplier * Runner.max_concurrent
         ),
         name=["concurrency", Runner.name],
+        keyed_by={"runner": Runner},
     )
 
     # Objective: minimize total pipeline cost.
@@ -329,9 +332,9 @@ if __name__ == "__main__":
     # template's regression guard. (When you copy this for a model whose infeasibility is
     # not guaranteed, swap the raise for a print/return.)
     if outage.si.conflict_status == "CONFLICT_FOUND":
-        # in_conflict is a bare predicate on each constraint instance; the entity
-        # back-pointer (assign_one.workflow / conc.runner) joins the IIS to the actual
-        # stranded jobs and the binding runner cap by KEY -- no rule-name parsing.
+        # in_conflict is a bare predicate on each constraint instance; the declared
+        # entity key (assign_one.workflow / conc.runner) joins the IIS to the actual
+        # stranded jobs and the binding runner cap -- no rule-name parsing.
         print("\nStranded jobs (assign-one rule in conflict):")
         stranded_df = (
             model.select(outage.assign_one.workflow.name.alias("workflow"))

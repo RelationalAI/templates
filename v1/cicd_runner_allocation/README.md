@@ -256,7 +256,7 @@ problem.solve_for(
 )
 ```
 
-Two constraints enforce feasibility. Each is **captured as a handle** and **named per entity** so its conflict membership can be read back by key if the model turns out infeasible. First, each workflow must be assigned to exactly one runner:
+Two constraints enforce feasibility. Each is **captured as a handle**, **named per entity** (a readable label), and declared with **`keyed_by`** -- the entity key its conflict membership reads back through if the model turns out infeasible. First, each workflow must be assigned to exactly one runner:
 
 ```python
 assign_one = problem.satisfy(
@@ -264,6 +264,7 @@ assign_one = problem.satisfy(
         sum(AssignRef.x_assigned).where(AssignRef.workflow == Workflow).per(Workflow) == 1
     ),
     name=["assign_one", Workflow.name],
+    keyed_by={"workflow": Workflow},
 )
 ```
 
@@ -276,6 +277,7 @@ conc = problem.satisfy(
         <= concurrency_multiplier * Runner.max_concurrent
     ),
     name=["concurrency", Runner.name],
+    keyed_by={"runner": Runner},
 )
 ```
 
@@ -329,7 +331,7 @@ else:
     print(f"No IIS to inspect: {outage.si.conflict_status}")
 ```
 
-`in_conflict` is a bare predicate on each constraint instance -- true when the solver reports that instance in the conflict (it collapses the solver's `IN_CONFLICT` and `MAYBE_IN_CONFLICT` into one membership). Each constraint carries an **entity back-pointer** (`assign_one.workflow`, `conc.runner`), mirroring the variable's back-pointer, so the conflict reads back as the actual stranded jobs and the binding runner cap, joined by KEY -- no rule-name parsing:
+`in_conflict` is a bare predicate on each constraint instance -- true when the solver reports that instance in the conflict (it collapses the solver's `IN_CONFLICT` and `MAYBE_IN_CONFLICT` into one membership). Each constraint's declared key gives it an **entity back-pointer** (`assign_one.workflow`, `conc.runner`), mirroring the variable's automatic back-pointer, so the conflict reads back as the actual stranded jobs and the binding runner cap, joined by KEY -- no rule-name parsing:
 
 ```python
 # Stranded jobs (their assign-one rule is in the conflict):

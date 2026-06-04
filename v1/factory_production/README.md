@@ -180,7 +180,7 @@ quantity_var = problem.solve_for(
 
 ### 3. Capacity constraint and objective
 
-Each factory's total resource usage must not exceed its availability. The constraint is captured as a handle (`cap`) and named per factory, so each instance's shadow price reads back through the constraint's **entity key** (`cap.factory`) rather than by parsing a name string. The objective maximizes total profit across all factories:
+Each factory's total resource usage must not exceed its availability. The constraint is captured as a handle (`cap`), named per factory (a readable label), and declared with `keyed_by={"factory": Factory}`, so each instance's shadow price reads back through that **entity key** (`cap.factory`) rather than by parsing a name string. The objective maximizes total profit across all factories:
 
 ```python
 cap = problem.satisfy(
@@ -191,6 +191,7 @@ cap = problem.satisfy(
         <= Factory.avail
     ),
     name=["cap", Factory.name],
+    keyed_by={"factory": Factory},
 )
 
 problem.maximize(sum(Product.profit * Product.x_quantity))
@@ -199,7 +200,7 @@ problem.solve("highs", time_limit_sec=60, sensitivity=True)
 
 ### 4. Read the sensitivity marginals
 
-After a `sensitivity=True` solve, the marginals are attributes on the captured handles. A constraint carries an entity back-pointer (`cap.factory`) and a variable carries one to its product (`quantity_var.product`), so each marginal joins to that entity's own data by key — no pandas, no name parsing:
+After a `sensitivity=True` solve, the marginals are attributes on the captured handles. A constraint carries the entity back-pointer declared with `keyed_by` (`cap.factory`) and a variable carries an automatic one to its product (`quantity_var.product`), so each marginal joins to that entity's own data by key — no pandas, no name parsing:
 
 ```python
 # Which factory's capacity to expand first?

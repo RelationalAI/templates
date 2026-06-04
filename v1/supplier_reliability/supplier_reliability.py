@@ -25,10 +25,12 @@ in one solve, with the answers read straight off the variable / constraint objec
 - **Reduced cost** of a supply lane (``qty_var.reduced_cost``) and its **basis
   status** (``qty_var.basis_status``): which lanes are priced out versus in use.
 
-Each constraint carries an entity back-pointer to what it grounds over
-(``cap.supplier`` / ``meet.product``), just like a variable points back to its lane
-(``qty_var.supplyorder``), so a marginal joins to that entity's own data by ENTITY
-KEY (``cap.supplier.capacity``) -- never by parsing the constraint name string.
+A constraint declared with ``keyed_by={"supplier": Supplier}`` carries an entity
+back-pointer to what it grounds over (``cap.supplier`` / ``meet.product``), so a
+marginal joins to that entity's own data by ENTITY KEY (``cap.supplier.capacity``)
+-- never by parsing the constraint name string. (A variable's back-pointer, such as
+``qty_var.supplyorder``, is derived automatically from its field names; a
+constraint's is declared.)
 
 Modeling approach:
 - Phase A: one baseline Problem solved with ``sensitivity=True``; the marginals are
@@ -138,9 +140,9 @@ qty_var = baseline.solve_for(
     populate=False,
 )
 
-# Constraints, captured as handles and named per entity so each instance's marginal
-# reads back through the constraint's ENTITY KEY (cap.supplier / meet.product), never
-# by parsing the constraint name string.
+# Constraints, captured as handles. ``keyed_by`` declares each instance's ENTITY KEY,
+# so its marginal reads back through that key (cap.supplier / meet.product), never by
+# parsing the constraint name string; the per-entity name is a readable label.
 cap = baseline.satisfy(
     model.require(
         sum(SupplyOrder.x_quantity)
@@ -149,6 +151,7 @@ cap = baseline.satisfy(
         <= Supplier.capacity
     ),
     name=["cap", Supplier.name],
+    keyed_by={"supplier": Supplier},
 )
 meet = baseline.satisfy(
     model.require(
@@ -156,6 +159,7 @@ meet = baseline.satisfy(
         >= Product.demand
     ),
     name=["demand", Product.name],
+    keyed_by={"product": Product},
 )
 
 # Objective: minimize total sourcing cost.
@@ -240,8 +244,9 @@ assert (cs_df.loc[cs_df["quantity"] > 1e-6, "reduced_cost"].abs() < 1e-4).all()
 # at ~0. The strict converse holds only under a unique optimum.
 
 # --- Shadow prices: the marginal value of capacity and demand -------------------
-# A constraint carries an entity back-pointer too (cap.supplier / meet.product), so a
-# shadow price joins to that entity's own data by KEY -- no name parsing, no pandas.
+# A constraint carries its declared entity key as a back-pointer too (cap.supplier /
+# meet.product), so a shadow price joins to that entity's own data by KEY -- no name
+# parsing, no pandas.
 cap_sp_df = (
     model.select(
         cap.supplier.name.alias("supplier"),

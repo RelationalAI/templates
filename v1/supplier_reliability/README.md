@@ -229,7 +229,7 @@ model.define(SupplyOrder.new(option=SupplyOption))
 
 ### 3. Add constraints and objective
 
-Capacity and demand constraints ensure feasibility, while the objective minimizes total procurement cost. Each constraint is **captured as a handle** and **named per entity** so its marginal can be read back by key after the solve:
+Capacity and demand constraints ensure feasibility, while the objective minimizes total procurement cost. Each constraint is **captured as a handle**, **named per entity** (a readable label), and declared with **`keyed_by`** -- the entity key its marginal reads back through after the solve:
 
 ```python
 cap = baseline.satisfy(
@@ -237,19 +237,21 @@ cap = baseline.satisfy(
         sum(SupplyOrder.x_quantity).where(SupplyOrder.supplier == Supplier).per(Supplier) <= Supplier.capacity
     ),
     name=["cap", Supplier.name],
+    keyed_by={"supplier": Supplier},
 )
 meet = baseline.satisfy(
     model.require(
         sum(SupplyOrder.x_quantity).where(SupplyOrder.product == Product).per(Product) >= Product.demand
     ),
     name=["demand", Product.name],
+    keyed_by={"product": Product},
 )
 baseline.minimize(sum(SupplyOrder.x_quantity * SupplyOrder.cost_per_unit))
 ```
 
 ### 4. Request sensitivity and read the marginals
 
-Solve the baseline with `sensitivity=True`, then read each marginal straight off the variable or constraint object -- the same attribute style as `.name`. Each constraint carries an **entity back-pointer** (`cap.supplier`, `meet.product`), mirroring the variable's back-pointer (`qty_var.supplyorder`), so a marginal joins to that entity's own data by KEY -- no name parsing, no pandas:
+Solve the baseline with `sensitivity=True`, then read each marginal straight off the variable or constraint object -- the same attribute style as `.name`. A constraint declared with `keyed_by` carries an **entity back-pointer** (`cap.supplier`, `meet.product`), mirroring the variable's automatic back-pointer (`qty_var.supplyorder`), so a marginal joins to that entity's own data by KEY -- no name parsing, no pandas:
 
 ```python
 baseline.solve("highs", time_limit_sec=60, sensitivity=True)

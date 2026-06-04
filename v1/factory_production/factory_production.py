@@ -35,10 +35,11 @@ the two sensitivity objects come from two different modeling choices: capacity i
 *constraint* (its marginal is a shadow price), while the demand cap is a variable
 *upper bound* (its marginal is a reduced cost).
 
-Each constraint carries an entity back-pointer to what it grounds over
-(``cap.factory``), just like a variable points back to its product
-(``quantity_var.product``), so a marginal joins to that entity's own data by ENTITY
-KEY (``cap.factory.avail``) -- never by parsing the constraint name string.
+A constraint declared with ``keyed_by={"factory": Factory}`` carries an entity
+back-pointer to what it grounds over (``cap.factory``), so a marginal joins to that
+entity's own data by ENTITY KEY (``cap.factory.avail``) -- never by parsing the
+constraint name string. (A variable's back-pointer, such as ``quantity_var.product``,
+is derived automatically from its field names; a constraint's is declared.)
 
 Run:
     `python factory_production.py`
@@ -140,8 +141,9 @@ quantity_var = problem.solve_for(
 )
 
 # Constraint: each factory's total resource usage <= its available hours. Captured as
-# a handle and named per factory so each instance's shadow price reads back through the
-# constraint's ENTITY KEY (cap.factory), never by parsing the constraint name string.
+# a handle; ``keyed_by`` declares each instance's ENTITY KEY, so its shadow price reads
+# back through that key (cap.factory), never by parsing the constraint name string; the
+# per-factory name is a readable label.
 cap = problem.satisfy(
     model.require(
         sum(Product.x_quantity / Product.rate)
@@ -150,6 +152,7 @@ cap = problem.satisfy(
         <= Factory.avail
     ),
     name=["cap", Factory.name],
+    keyed_by={"factory": Factory},
 )
 
 # Objective: maximize total profit across all factories.
@@ -205,8 +208,8 @@ for product_name, expected_qty in EXPECTED_PLAN.items():
     )
 
 # --- Capacity shadow prices: which factory to expand first ----------------------
-# A constraint carries an entity back-pointer (cap.factory), so a shadow price joins
-# to that factory's own data by KEY -- no name parsing, no pandas join.
+# A constraint carries its declared entity key as a back-pointer (cap.factory), so a
+# shadow price joins to that factory's own data by KEY -- no name parsing, no pandas join.
 cap_df = (
     model.select(
         cap.factory.name.alias("factory"),
