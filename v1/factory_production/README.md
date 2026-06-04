@@ -215,7 +215,7 @@ model.select(
 ).inspect()
 ```
 
-Sensitivity marginals are exact for a linear program. They describe the rate of change at the current optimum, valid over a range; a large, discrete change (adding a factory, removing a product) is a structural change best answered by re-solving.
+Sensitivity marginals are exact for a linear program. They describe the rate of change at the current optimum -- the range over which that rate holds is not reported (there is no RHS/coefficient ranging) -- and a large, discrete change (adding a factory, removing a product) is a structural change best answered by re-solving.
 
 ## Customize this template
 

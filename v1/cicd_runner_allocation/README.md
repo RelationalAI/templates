@@ -347,7 +347,7 @@ model.select(outage.conc.runner.name, outage.conc.runner.max_concurrent).where(
 The IIS is minimal: it names **six of the seven** high-CPU jobs (any six already exceed the cap of five, so which six is solver-dependent) plus the `ubuntu-xlarge` concurrency rule. To restore feasibility, relax one member -- bring a runner back online or raise the cap. Because all seven jobs share the one survivor, lift the cap enough for all of them (or restore a runner) and re-solve to confirm; clearing a single job only resolves that one row of the conflict.
 
 > [!NOTE]
-> Conflict analysis works for mixed-integer models like this one (unlike sensitivity analysis, which needs an LP/QP). It requires no objective -- it diagnoses feasibility. Request `conflict=True` on the solve whose infeasibility you want to explain.
+> Conflict analysis works for mixed-integer models like this one (unlike sensitivity analysis, which needs an LP/QP). It requires no objective -- it diagnoses feasibility. Request `conflict=True` on the solve whose infeasibility you want to explain -- up front, or on a fresh build: a `Problem` already solved without it cannot add it on a re-solve.
 
 ## Customize this template
 

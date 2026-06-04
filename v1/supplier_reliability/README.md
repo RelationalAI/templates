@@ -270,7 +270,7 @@ model.select(
 The economics are also stated as integrity constraints joined by the same keys -- but only the always-true directions of complementary slackness (a lane in use prices at ~0; SupplierA's lanes are priced out). The converse "every unused lane has a positive reduced cost" is **not** asserted, because SupplierB's lanes tie SupplierC at the margin (alternate optima).
 
 > [!NOTE]
-> Sensitivity analysis returns marginals only for LP/QP models (a binding mix of `<=`/`>=`/`=` linear constraints with a linear or quadratic objective). For mixed-integer models the duals are empty -- use scenario analysis instead. The marginal reads must happen on the **baseline** Problem, before the scenario loop rebuilds a fresh Problem.
+> Sensitivity analysis returns marginals only for LP/QP models (linear constraints with a linear or quadratic objective). For mixed-integer models the duals are empty -- use scenario analysis instead. The marginal reads must happen on the **baseline** Problem, before the scenario loop rebuilds a fresh Problem.
 
 ### 5. Scenario analysis
 
