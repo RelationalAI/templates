@@ -1,6 +1,6 @@
 ---
 title: "Portfolio Balancing"
-description: "Multi-reasoner template: rules-based compliance, covariance clustering, and bi-objective Markowitz optimization with a crisis-regime stress test."
+description: "Multi-reasoner template: rules-based compliance, covariance clustering, and bi-objective Markowitz optimization that uses solver shadow prices to trace the risk-return frontier, with a crisis-regime stress test."
 featured: false
 experience_level: intermediate
 industry: "Finance"
@@ -13,8 +13,10 @@ tags:
   - Risk Minimization
   - Portfolio Optimization
   - Multi-Objective
+  - Sensitivity Analysis
+  - Shadow Prices
   - Scenario Analysis
-  - Ipopt
+  - HiGHS
   - Multi-Reasoner
   - Chained Reasoning
   - Compliance
@@ -33,7 +35,7 @@ It uses RelationalAI's **rules**, **graph**, and **prescriptive** reasoners in a
 
 1. **Rules** scan the current book for compliance violations -- overconcentrated holdings (> 15% of balance), sector concentration (> 30%), and high-risk traders -- as derived Relationships.
 2. **Graph** builds a correlation graph from the covariance matrix, runs Louvain clustering, and picks the highest-Sharpe stock per cluster as the cluster's **representative**. 8 stocks collapse to 5 distinct bets; near-duplicates are dropped from the investable universe rather than capped within it.
-3. **Prescriptive optimization** solves a bi-objective Markowitz QP on the representative-only universe under position and sector caps, tracing the efficient frontier via the epsilon constraint method across a `Scenario` Concept that combines three budgets and two regimes.
+3. **Prescriptive optimization** solves a bi-objective Markowitz QP on the representative-only universe under position and sector caps, using the solver's shadow prices (constraint duals) to trace the efficient frontier efficiently across a `Scenario` Concept that combines three budgets and two regimes.
 4. **Crisis stress test** is the same `solve_epsilon` call -- no separate model -- but `Scenario.regime` picks a PSD-preserving shrinkage covariance, so base and crisis frontiers come out of one pipeline.
 
 Each stage writes derived properties the next reads directly: Rules define the thresholds Stage 3 enforces as constraints, Stage 2's `Stock.is_representative` shapes the decision space, and the stress test reads `Stock.regime_covar` keyed by `Scenario.regime`. See "How it works" for the full data flow.
@@ -50,10 +52,11 @@ The four-stage approach addresses each gap. Stage 1 surfaces existing violations
 - **Graph results feed optimization** -- Louvain cluster ids and per-cluster argmax (highest Sharpe) both persist on `Stock`, and the optimizer's `Stock.is_non_representative()` constraint forces non-reps to zero (complement defined positively because the prescriptive rewriter doesn't accept `model.not_()` in a solver `.where()`)
 - **Collapse, don't cap** -- the graph stage reduces the investable universe to distinct bets rather than allowing all N stocks and capping within redundant groups
 - **Scenario Concept for parameter sweeps** -- `Scenario` entities combine budget ($500, $1,000, $2,000) and regime (base, crisis) so each epsilon solve handles all six combinations in one call
-- **Epsilon constraint method** -- `solve_epsilon(eps_rate)` sweeps return targets across the feasible range, producing the full Pareto frontier without manually fixing return values
-- **PSD-preserving stress covariance** -- correlation shrinkage toward all-ones keeps the QP convex at every lambda, unlike naive off-diagonal scaling
-- **Quadratic programming via Ipopt** -- the risk objective is quadratic (`x' * Cov * x`), solved with Ipopt's nonlinear optimizer rather than a linear MIP solver
-- **Anchor solves establish feasible range** -- Anchor 1 (minimize risk) and Anchor 2 (maximize return) determine the return rate range before the epsilon sweep
+- **Shadow-price-guided frontier** -- each `solve(sensitivity=True)` returns the return-constraint's dual (shadow price), which IS the frontier's local slope d(variance)/d(return). Three drivers (grid, adaptive, dichotomic) use that dual to place sample points; at equal solve budget the dual-guided drivers approximate the frontier far more tightly than blind even spacing
+- **Epsilon constraint method** -- `solve_epsilon(eps_rate)` minimizes variance subject to a return-target floor, producing one Pareto point per call without manually fixing return values
+- **PSD-preserving stress covariance** -- correlation shrinkage toward all-ones keeps the QP convex at every point, unlike naive off-diagonal scaling
+- **Quadratic programming via HiGHS** -- the risk objective is quadratic (`x' * Cov * x`); HiGHS solves the convex QP to a global optimum and, with `sensitivity=True`, returns the duals the frontier search relies on
+- **Anchor solves establish feasible range** -- Anchor 1 (minimize risk) and Anchor 2 (maximize return) bracket the return range before the frontier search
 
 ## Who this is for
 
@@ -68,14 +71,14 @@ The four-stage approach addresses each gap. Stage 1 surfaces existing violations
 - A correlation graph over stocks with Louvain community detection, plus per-cluster representative selection by highest Sharpe
 - A quadratic programming model that minimizes portfolio variance subject to position and sector limits on a representative-only universe (non-reps forced to zero)
 - Budget and no-short-selling constraints across multiple (budget, regime) scenarios
-- Epsilon constraint method sweeping return targets to trace the efficient frontier
+- Shadow-price-guided frontier tracing: three drivers (grid, adaptive, dichotomic) that use solver duals to sample the efficient frontier, compared head-to-head at equal solve budget
 - Anchor solves to establish the feasible return range
-- Pareto analysis with marginal cost and knee detection
+- Pareto analysis with exact dual marginals (shadow prices) and knee detection
 - A crisis-regime stress test using PSD-preserving correlation shrinkage to compare base vs crisis frontiers side-by-side
 
 ## What's included
 
-- `portfolio_balancing.py` -- Main script with all four stages: rules-based compliance, covariance clustering (Louvain), bi-objective QP with epsilon sweep, and crisis-regime stress test
+- `portfolio_balancing.py` -- Main script with all four stages: rules-based compliance, covariance clustering (Louvain), bi-objective QP with shadow-price-guided frontier tracing, and crisis-regime stress test
 - `data/returns.csv` -- Stock universe: index, ticker, sector, expected returns (8 stocks)
 - `data/covar.csv` -- Covariance matrix entries (i, j, covariance value)
 - `data/users.csv` -- User profiles with risk scores
@@ -92,7 +95,7 @@ The four-stage approach addresses each gap. Stage 1 surfaces existing violations
 
 ### Tools
 - Python >= 3.10
-- RelationalAI Python SDK (`relationalai`) == 1.0.14
+- RelationalAI Python SDK (`relationalai`) == 1.9.0
 
 ## Quickstart
 
@@ -148,20 +151,20 @@ The four-stage approach addresses each gap. Stage 1 surfaces existing violations
    ======================================================================
      Correlation graph: 4 edges (|correlation| >= 0.3)
      Louvain communities: 5 cluster(s)
-       Cluster 1 (size 2): JNJ (Healthcare), PFE (Healthcare)
-       Cluster 2 (size 3): AAPL (Technology), MSFT (Technology), GOOGL (Technology)
-       Cluster 3 (size 1): JPM (Financials)
+       Cluster 1 (size 3): AAPL (Technology), MSFT (Technology), GOOGL (Technology)
+       Cluster 2 (size 2): JNJ (Healthcare), PFE (Healthcare)
+       Cluster 3 (size 1): XOM (Energy)
        Cluster 4 (size 1): PG (Consumer Staples)
-       Cluster 5 (size 1): XOM (Energy)
+       Cluster 5 (size 1): JPM (Financials)
 
      Avg correlation: intra-cluster = +0.683, inter-cluster = +0.131
 
      Cluster representatives (5 of 8 stocks, picked by highest Sharpe):
-       Cluster 1: PFE (Healthcare) -- Sharpe = 0.530
-       Cluster 2: GOOGL (Technology) -- Sharpe = 0.605
-       Cluster 3: JPM (Financials) -- Sharpe = 0.500
+       Cluster 1: GOOGL (Technology) -- Sharpe = 0.605
+       Cluster 2: PFE (Healthcare) -- Sharpe = 0.530
+       Cluster 3: XOM (Energy) -- Sharpe = 0.588
        Cluster 4: PG (Consumer Staples) -- Sharpe = 0.444
-       Cluster 5: XOM (Energy) -- Sharpe = 0.588
+       Cluster 5: JPM (Financials) -- Sharpe = 0.500
 
    ======================================================================
    STAGE 3: BI-OBJECTIVE OPTIMIZATION
@@ -169,63 +172,82 @@ The four-stage approach addresses each gap. Stage 1 surfaces existing violations
    ======================================================================
 
    ANCHOR SOLVE 1: Minimize risk (no return constraint)
-   Status: LOCALLY_SOLVED
-     base_500:    return = 32.4335, risk =   1160.3926
-     base_1000:   return = 64.8673, risk =   4641.5704
-     base_2000:   return = 129.7346, risk =  18566.2815
+   Status: OPTIMAL
+     base_500:    return = 32.4336, risk =   1160.3926
+     base_1000:   return = 64.8673, risk =   4641.5705
+     base_2000:   return = 129.7346, risk =  18566.2819
      crisis_500:  return = 31.6873, risk =   1913.5995
-     crisis_1000: return = 63.3745, risk =   7654.3979
-     crisis_2000: return = 126.7490, risk =  30617.5917
+     crisis_1000: return = 63.3745, risk =   7654.3981
+     crisis_2000: return = 126.7490, risk =  30617.5925
 
-   ANCHOR SOLVE 2: Maximize return
-   Status: LOCALLY_SOLVED
+   ANCHOR SOLVE 2: Maximize return (swap objective)
+   Status: OPTIMAL
      base_500/crisis_500:   return = 42.0000
      base_1000/crisis_1000: return = 84.0000
      base_2000/crisis_2000: return = 168.0000
 
-   Return rate range: [0.0634, 0.0840] per unit invested
+   Reference scenario 'base_1000': frontier spans expected return [64.8673, 84.0000]
 
-   EPSILON SWEEP: 5 interior points
-     Point 1 .. Point 5: all LOCALLY_SOLVED
+   ======================================================================
+   SENSITIVITY-GUIDED FRONTIER  (reference 'base_1000', 6-solve budget per method)
+   ======================================================================
+     running grid driver ...
+     running adaptive driver ...
+     running dichotomic driver ...
 
-   EFFICIENT FRONTIER: Risk vs Return (per scenario)
+   Frontier approximation quality (same solve budget, lower gap = better):
+     method        solves     max chord-gap
+     --------------------------------------
+     grid               6          557.9250
+     adaptive           6          415.1730
+     dichotomic         6          202.2972  <- tightest
 
-     base_500 (budget=500, regime=base):
-       #      Label     Return         Risk
-       --------------------------------------
-       1   min_risk      32.43    1160.3926
-       2      eps_1      33.41    1176.7790
-       3      eps_2      35.12    1262.6111
-       4      eps_3      36.84    1385.8901
-       5      eps_4      38.56    1545.7909
-       6      eps_5      40.28    1742.4712
-
-     Marginal analysis: rate climbs 16.85 -> 49.94 -> 71.72 -> 93.03 -> 114.43 risk/return.
-     Knee: Point 2 (eps_1) -- marginal cost jumps 3.0x beyond this point.
-
-   (similar tables for base_1000, base_2000, crisis_500, crisis_1000, crisis_2000)
+   Shadow price = frontier slope (exact dual vs finite-difference secant):
+     (dual = extra variance incurred per unit of additional required return)
+         return      variance   dual (lambda)        secant
+     ------------------------------------------------------
+        64.8673     4641.5705            0.00            --
+        71.2734     5181.9733          134.83         84.36
+        75.9396     5946.0980          192.68        163.75
+        80.4605     6944.2401          250.64        220.79
+        83.1779     7809.1748          650.79        318.29
+        84.0000     8528.0000         1098.00        874.39
 
    ======================================================================
    STAGE 4: CRISIS REGIME STRESS TEST
    (PSD-preserving correlation shrinkage, alpha = 0.7)
    ======================================================================
 
-     Volatility comparison (sqrt risk) -- base vs crisis at each lambda:
+   EFFICIENT FRONTIER: Risk vs Return (per scenario, exact dual marginals)
 
-     Budget 500:
-         Label     vol_base   vol_crisis        gap    gap_%
+     base_1000 (budget=1000, regime=base):
+       #     Label     Return         Risk    Marginal   Knee
      --------------------------------------------------------
-      min_risk      34.0645      43.7447    +9.6802   +28.4%
-         eps_1      34.3042      44.5398   +10.2356   +29.8%
-         eps_2      35.5332      46.1119   +10.5787   +29.8%
-         eps_3      37.2275      47.9433   +10.7158   +28.8%
-         eps_4      39.3165      49.9933   +10.6768   +27.2%
-         eps_5      41.7429      52.2694   +10.5265   +25.2%
+       1  min_risk      64.87    4641.5705        0.00
+       2        p1      71.27    5181.9733      134.83  <--
+       3        p2      75.94    5946.0980      192.68
+       4        p3      80.46    6944.2401      250.64
+       5        p4      83.18    7809.1748      650.79
+       6        p5      84.00    8528.0000     1098.00
 
-     (similar tables for Budget 1000 and Budget 2000, identical gap_% pattern)
+     (similar tables for base_500, base_2000, crisis_500, crisis_1000, crisis_2000)
+
+     Volatility (sqrt risk) -- base vs crisis at each frontier point:
+
+     Budget 1000:
+         Label     vol_base   vol_crisis        gap    gap_%
+     -------------------------------------------------------
+      min_risk      68.1291      87.4894   +19.3603   +28.4%
+            p1      71.9859      93.2657   +21.2798   +29.6%
+            p2      77.1109      98.5270   +21.4161   +27.8%
+            p3      83.3321     104.3961   +21.0640   +25.3%
+            p4      88.3695     109.1925   +20.8230   +23.6%
+            p5      92.3472     112.3478   +20.0006   +21.7%
+
+     (similar tables for Budget 500 and Budget 2000, identical gap_% pattern)
    ```
 
-   Crisis volatility sits 25-30% above base at every lambda and the gap peaks in the middle of the frontier (eps_1..eps_2 at +29.8%), not at the concentrated end (eps_5 at +25.2%). That inversion is the payoff of the representative-only universe: at the concentrated end the optimizer is picking the highest-Sharpe distinct bet per cluster, which incidentally sits in sectors with lower crisis correlations (Energy, Consumer Staples). Without the representative collapse, the concentrated end would stack near-duplicates and see the crisis gap grow, not shrink.
+   Crisis volatility sits ~22-30% above base at every frontier point and the gap peaks in the middle of the frontier (p1 at +29.6%), not at the concentrated end (p5 at +21.7%). That inversion is the payoff of the representative-only universe: at the concentrated end the optimizer is picking the highest-Sharpe distinct bet per cluster, which incidentally sits in sectors with lower crisis correlations (Energy, Consumer Staples). Without the representative collapse, the concentrated end would stack near-duplicates and see the crisis gap grow, not shrink.
 
 ## Template structure
 
@@ -253,8 +275,8 @@ This section walks through the highlights in `portfolio_balancing.py`.
 |-------|----------|---------------------|--------------------|------|
 | 1 | Rules | Holding, Account, User, Transaction, Stock | Holding.is_overconcentrated, Holding.is_sector_concentrated, User.is_high_risk_trader | 4 overconcentrated holdings (AAPL 18%, MSFT 16%, JNJ 16%, PFE 16.2%). 2 sector concentrations (Technology 34%, Healthcare 32.2%). 2 high-risk traders (Alice Chen 0.85, Eve Taylor 0.92). |
 | 2 | Graph (Louvain) | Stock.covar (diagonal for variance), derived Stock.correlation filtered at threshold 0.3 | Stock.variance, Stock.volatility, Stock.correlation, Stock.cluster, Stock.sharpe, Stock.cluster_max_sharpe, Stock.is_representative | 4 edges retained after thresholding. Louvain yields 5 clusters; 5 representatives picked by highest Sharpe (one per cluster). Collapses 8 stocks to 5 distinct bets. |
-| 3 | Prescriptive (QP) | Stock.returns, Stock.regime_covar, Stock.is_representative, Scenario.budget, Scenario.regime | Stock.x_quantity indexed by Scenario (non-reps forced to 0) | Min-risk and max-return anchors bracket the frontier. Epsilon sweep traces 5 interior points per (budget, regime). Programmatic knee detection at eps_1. |
-| 4 | Prescriptive (stress) | Stock.regime_covar under "crisis" regime | (shares Stock.x_quantity with Stage 3) | Crisis volatility 25-30% higher than base at every lambda; gap peaks at the middle of the frontier (eps_1..eps_2 at +29.8%) and narrows toward the concentrated end (eps_5 at +25.2%). The representative-only universe keeps the concentrated end from stacking near-duplicate bets that would otherwise amplify crisis vol. |
+| 3 | Prescriptive (QP) | Stock.returns, Stock.regime_covar, Stock.is_representative, Scenario.budget, Scenario.regime | Stock.x_quantity indexed by Scenario (non-reps forced to 0) | Min-risk and max-return anchors bracket the frontier. `solve(sensitivity=True)` returns the constraint dual (shadow price) at each point; three drivers (grid/adaptive/dichotomic) use it to place 6 samples, dichotomic giving the tightest approximation (max chord-gap 202 vs grid 558). Knee detected at p1 from the exact duals. |
+| 4 | Prescriptive (stress) | Stock.regime_covar under "crisis" regime | (shares Stock.x_quantity with Stage 3) | Crisis volatility ~22-30% higher than base at every frontier point; gap peaks mid-frontier (p1 at +29.6%) and narrows toward the concentrated end (p5 at +21.7%). The representative-only universe keeps the concentrated end from stacking near-duplicate bets that would otherwise amplify crisis vol. |
 
 All four stages share a single RAI model. Compliance thresholds are defined once at the top of the script. Stage 1 uses `POSITION_LIMIT = 0.15` and `SECTOR_LIMIT = 0.30` to flag existing violations as derived Relationships. Stage 3 re-uses `SECTOR_LIMIT` but applies `REP_POSITION_LIMIT = 0.30` to the decision variable: after representative collapse each cluster has exactly one carrier, so its cap is legitimately higher than a per-stock compliance cap.
 
@@ -264,9 +286,9 @@ Each stage writes derived properties the next reads directly. Stage 1's threshol
 
 ### Multi-scenario Pareto frontier in one pipeline
 
-`Scenario` combines three budgets and two regimes -- six tuples. Each `solve_epsilon(eps_rate)` call returns one optimal allocation per tuple; the epsilon sweep repeats across return-rate targets. Six scenarios × seven points (two anchors + five interior) = 42 optimal portfolios, all from seven solver invocations. Two consequences:
+`Scenario` combines three budgets and two regimes -- six tuples. Each `solve_epsilon(eps_rate)` call returns one optimal allocation per tuple, so a single solve prices all six scenarios at once. The three frontier drivers share a solve cache, so running all of them costs roughly one budget's worth of unique solves rather than 3x. Two consequences:
 
-1. Base and crisis are comparable at equal budget and equal lambda: the vol gap is a pure regime effect, not a re-fitting artifact.
+1. Base and crisis are comparable at equal budget and equal return target: the vol gap is a pure regime effect, not a re-fitting artifact.
 2. Adding a fourth regime or a fifth budget is a data edit in `scenario_data`, not a code change in `solve_epsilon`. Scenarios are data.
 
 ### Stage 1: Rules-based compliance analysis
@@ -491,30 +513,34 @@ problem.minimize(
 )
 ```
 
-#### Solve anchor points and run the epsilon sweep
+#### Solve anchors, then trace the frontier with shadow prices
 
-Two anchor solves establish the feasible return range. Anchor 1 minimizes risk with no return constraint. Anchor 2 maximizes return.
-
-```python
-result1 = solve_epsilon(eps_rate=None)
-```
-
-The epsilon sweep then traces interior points. Each solve minimizes risk subject to a return-rate floor that scales with budget.
+Two anchor solves establish the feasible return range. Anchor 1 minimizes risk with no return constraint; Anchor 2 maximizes return. The span is measured on a single reference scenario (`base_1000`).
 
 ```python
-n_interior = 5
-epsilon_rates = [
-    return_rate_min + i * (return_rate_max - return_rate_min) / (n_interior + 1)
-    for i in range(1, n_interior + 1)
-]
-
-for i, rate in enumerate(epsilon_rates):
-    result = solve_epsilon(eps_rate=rate)
+result1 = solve_epsilon(eps_rate=None)   # min-risk anchor
 ```
+
+Each interior solve minimizes variance subject to a return-target floor and requests sensitivity information, so HiGHS returns the return constraint's **dual** -- the shadow price. By the envelope theorem that dual is exactly the frontier's local slope d(variance)/d(return), so one solve yields both a Pareto point and the slope there, with no finite differencing.
+
+```python
+problem.solve("highs", time_limit_sec=60, sensitivity=True)
+# shadow_price = dual of the return-floor constraint = d(variance)/d(return)
+```
+
+Sign convention: minimizing variance subject to `return >= target`, the dual is non-negative with units of variance per unit return, and it rises monotonically along the frontier (variance gets more expensive as you demand more return).
+
+Three drivers spend the same solve budget differently and are compared head-to-head:
+
+- **grid** -- evenly spaced return targets, blind to the frontier's shape (the control).
+- **adaptive** -- sizes each step by the current shadow price so points land evenly in variance space.
+- **dichotomic** -- repeatedly splits the interval with the largest chord-vs-tangent gap, sampling where the two endpoints' shadow prices predict they meet (the NISE scheme).
+
+Quality is scored by **max chord-gap**: the largest variance error of linearly interpolating between solved points. At equal 6-solve budget the dual-guided drivers win decisively (dichotomic 202 vs grid 558), because the duals tell the search where the frontier curves most.
 
 #### Pareto analysis output
 
-The script prints the efficient frontier per (budget, regime) scenario, marginal risk-per-return between adjacent points, and programmatic knee detection where the marginal cost jumps most.
+The script prints the three-driver quality comparison, the shadow-price-vs-secant table (each exact dual next to the finite-difference slope it brackets), the efficient frontier per (budget, regime) scenario, and programmatic knee detection where the exact dual jumps most. The dichotomic frontier is materialized as the `FrontierPoint` Concept, with integrity constraints asserting that neither return nor risk decreases along it -- a relational statement of Pareto-efficiency.
 
 ### Stage 4: Crisis regime stress test
 
@@ -547,7 +573,7 @@ model.where(
 
 Both regimes live on the same `Stock.regime_covar` property, keyed by the `Regime` concept, so Stage 3's objective can select the right covariance per scenario without branching:
 
-After the Stage 3 sweep finishes, Stage 4 emits a side-by-side comparison of base and crisis volatility (`sqrt(risk)`) at each epsilon point, grouped by budget. Crisis volatility is consistently 25-30% higher than base at every lambda. The gap peaks in the middle of the frontier (eps_1..eps_2 at +29.8%) and narrows toward the concentrated end (eps_5 at +25.2%). That shape is the payoff of the representative-only universe: at the concentrated end the optimizer is picking the highest-Sharpe distinct bet per cluster (Energy and Consumer Staples in this dataset), which happen to have lower crisis correlations than the middle of the frontier. Without the representative collapse, the concentrated end would stack near-duplicates and the crisis gap would grow instead of shrink.
+After the Stage 3 frontier is traced, Stage 4 emits a side-by-side comparison of base and crisis volatility (`sqrt(risk)`) at each frontier point, grouped by budget. Crisis volatility is consistently ~22-30% higher than base. The gap peaks in the middle of the frontier (p1 at +29.6%) and narrows toward the concentrated end (p5 at +21.7%). That shape is the payoff of the representative-only universe: at the concentrated end the optimizer is picking the highest-Sharpe distinct bet per cluster (Energy and Consumer Staples in this dataset), which happen to have lower crisis correlations than the middle of the frontier. Without the representative collapse, the concentrated end would stack near-duplicates and the crisis gap would grow instead of shrink.
 
 ## Customize this template
 
@@ -558,7 +584,7 @@ After the Stage 3 sweep finishes, Stage 4 emits a side-by-side comparison of bas
 - **Add more stocks**: Extend `returns.csv` and `covar.csv` with additional assets and their covariance entries.
 - **Add compliance rules**: Define additional Relationships in the rules stage (e.g., minimum holding period, transaction velocity limits).
 - **Allow short selling**: Remove the non-negativity constraint to allow negative holdings.
-- **Adjust frontier resolution**: Increase `n_interior` for a finer-grained efficient frontier.
+- **Adjust frontier resolution**: Increase `N_SOLVES` for a finer-grained frontier. Because the three drivers share a solve cache, the total number of unique solves stays close to `N_SOLVES` rather than 3x.
 - **Maximize return for given risk**: Flip the formulation to maximize expected return subject to a risk budget.
 - **Transaction costs**: Add a linear or quadratic penalty term for rebalancing from an existing portfolio.
 
@@ -567,7 +593,7 @@ After the Stage 3 sweep finishes, Stage 4 emits a side-by-side comparison of bas
 <details>
 <summary>Problem is infeasible</summary>
 
-The return rate target may be too high for the available stocks and budget. Reduce `n_interior` to use fewer sweep points, or increase the budget values in the scenario data.
+The return rate target may be too high for the available stocks and budget. Reduce `N_SOLVES` to use fewer frontier points, or increase the budget values in the scenario data.
 </details>
 
 <details>
@@ -585,5 +611,5 @@ Make sure you activated the virtual environment and ran `python -m pip install .
 <details>
 <summary>Solver reports non-convex or numerical issues</summary>
 
-Ensure the covariance matrix is symmetric and positive semi-definite. Check that `covar.csv` contains entries for all (i, j) pairs and that covar(i,j) == covar(j,i). The Ipopt solver finds locally optimal solutions for convex QP problems.
+Ensure the covariance matrix is symmetric and positive semi-definite. Check that `covar.csv` contains entries for all (i, j) pairs and that covar(i,j) == covar(j,i). HiGHS solves convex QPs to a global optimum and returns shadow prices (duals) when `sensitivity=True`.
 </details>

@@ -23,10 +23,16 @@ Run:
 Output:
     Stage 1: compliance violations.
     Stage 2: cluster count/sizes, intra- vs inter-cluster avg correlation.
-    Stage 3: anchor solves, epsilon sweep, marginal analysis + knee.
-    Stage 4: base-vs-crisis vol table per (budget, lambda).
+    Stage 3: anchor solves, then a sensitivity-guided frontier -- three drivers
+        (grid / adaptive / dichotomic) compared by approximation quality, plus a
+        shadow-price-vs-secant table showing each dual equals the frontier slope.
+    Stage 4: per-scenario efficient frontier with exact dual marginals and knee,
+        then a base-vs-crisis volatility table per frontier point.
 """
 
+import heapq
+import warnings
+from dataclasses import dataclass
 from pathlib import Path
 
 from pandas import DataFrame, read_csv
@@ -36,6 +42,11 @@ from relationalai.semantics.reasoners.prescriptive import Problem
 from relationalai.semantics.std import aggregates as aggs
 from relationalai.semantics.std.math import abs as math_abs
 from relationalai.semantics.std.math import sqrt
+
+# The epsilon sweep re-solves a fresh Problem per return target -- a loop of
+# independent optimizations (the epsilon-constraint method), not an accidental rule
+# explosion. Silence the "rules created in a loop" perf heuristic for these solves.
+warnings.filterwarnings("ignore", message=r"\[Rules created in a loop\]")
 
 # --------------------------------------------------
 # Configure inputs
@@ -730,12 +741,19 @@ def _add_compliance_constraints(problem):
 
 
 def solve_epsilon(eps_rate=None):
-    """Solve risk minimization with optional return-rate constraint.
+    """Minimize portfolio variance, optionally under a per-scenario return floor.
 
-    eps_rate: if set, constrains return >= eps_rate * Scenario.budget per scenario.
-              This scales the epsilon target with budget so all scenarios are
-              handled in a single solve.
-    Returns (solve_info, allocation_df) or None if infeasible.
+    One solve prices every (budget, regime) Scenario at once. When ``eps_rate`` is
+    set, the floor ``sum(returns * qty).per(Scenario) >= eps_rate * budget`` is declared
+    with ``keyed_by={"scenario": Scenario}`` and the solve runs with ``sensitivity=True``,
+    so the solver returns each scenario's SHADOW PRICE -- the dual of its floor. By the
+    envelope theorem that dual IS the local slope of the efficient frontier,
+    ``shadow_price = d(min variance) / d(return target)`` (HiGHS convention for a minimize
+    objective against a ``>=`` floor: the dual is non-negative). No finite differencing
+    required.
+
+    Returns ``(solve_info, allocation_df, shadow_by_scenario)`` or ``None`` if infeasible.
+    ``shadow_by_scenario`` is empty when ``eps_rate is None`` (no floor to price).
     """
     problem = Problem(model, Float)
 
@@ -763,13 +781,18 @@ def solve_epsilon(eps_rate=None):
     # Compliance constraints (position + sector limits; non-reps forced to 0)
     _add_compliance_constraints(problem)
 
-    # EPSILON CONSTRAINT: return rate >= target rate (scaled by budget)
+    # EPSILON CONSTRAINT: per-scenario return floor (target scaled by budget).
+    # keyed_by Scenario attaches an entity back-pointer so the shadow price joins
+    # back to its scenario by KEY, never by parsing the constraint name.
+    ret_con = None
     if eps_rate is not None:
-        problem.satisfy(model.where(
-            Stock.x_quantity(Scenario, x_qty),
-        ).require(
-            sum(Stock.returns * x_qty).per(Scenario) >= eps_rate * Scenario.budget
-        ))
+        ret_con = problem.satisfy(
+            model.where(
+                Stock.x_quantity(Scenario, x_qty),
+            ).require(sum(Stock.returns * x_qty).per(Scenario) >= eps_rate * Scenario.budget),
+            name=["return_floor", Scenario.name],
+            keyed_by={"scenario": Scenario},
+        )
 
     # Primary objective: minimize risk (quadratic via regime-conditioned covariance).
     # Each Scenario picks its matching regime covariance, so base and crisis
@@ -783,9 +806,13 @@ def solve_epsilon(eps_rate=None):
         )
     )
 
-    problem.solve("ipopt", time_limit_sec=60)
+    # HiGHS solves this convex QP (the covariance is PSD-preserving) and, unlike the
+    # earlier ipopt path, returns sensitivity duals. sensitivity is requested only when
+    # there is a return floor to price.
+    problem.solve("highs", time_limit_sec=60, sensitivity=eps_rate is not None)
     si = problem.solve_info()
 
+    # "LOCALLY_SOLVED" is kept for non-HiGHS solver back ends; HiGHS itself reports "OPTIMAL".
     if si.termination_status not in ("OPTIMAL", "LOCALLY_SOLVED"):
         return None
 
@@ -796,7 +823,25 @@ def solve_epsilon(eps_rate=None):
         value_ref.alias("quantity"),
     ).where(quantity_var.values(0, value_ref)).to_df()
 
-    return si, var_df
+    # Per-scenario shadow prices, joined to the scenario by the constraint's key.
+    shadow_by_scenario = {}
+    if ret_con is not None:
+        sp_df = model.select(
+            ret_con.scenario.name.alias("scenario"),
+            ret_con.shadow_price.alias("shadow_price"),
+        ).to_df()
+        shadow_by_scenario = {
+            row["scenario"]: max(0.0, float(row["shadow_price"])) for _, row in sp_df.iterrows()
+        }
+        if not shadow_by_scenario:
+            warnings.warn(
+                "Solver returned no sensitivity duals for the return floor (e.g. a "
+                "time-limit exit); shadow prices default to 0, so the adaptive and "
+                "dichotomic drivers degrade to blind spacing.",
+                stacklevel=2,
+            )
+
+    return si, var_df, shadow_by_scenario
 
 
 # Hydrate scenario metadata from the ontology for post-solve evaluation.
@@ -824,7 +869,7 @@ if result1 is None:
     raise SystemExit(
         "Anchor solve 1 (min risk) is infeasible -- check data and constraints."
     )
-si1, df1 = result1
+si1, df1, _ = result1
 print(f"Status: {si1.termination_status}")
 
 anchor1_returns = {}
@@ -860,7 +905,7 @@ _add_compliance_constraints(p2)
 p2.maximize(
     sum(Stock.returns * x_qty).where(Stock.x_quantity(Scenario, x_qty))
 )
-p2.solve("ipopt", time_limit_sec=60)
+p2.solve("highs", time_limit_sec=60)
 si2 = p2.solve_info()
 if si2.termination_status not in ("OPTIMAL", "LOCALLY_SOLVED"):
     raise SystemExit(
@@ -880,121 +925,213 @@ print(f"Status: {si2.termination_status}")
 for sn in scenario_names:
     print(f"  {sn}: return = {anchor2_returns[sn]:.4f}")
 
-# Return range as rate (per unit invested) -- tightest across scenarios.
-# Return rates don't depend on regime (Stock.returns is regime-independent),
-# so base and crisis scenarios at the same budget yield identical rates.
-return_rate_min = min(
-    anchor1_returns[sn] / scenario_meta[sn]["budget"] for sn in scenario_names
-)
-return_rate_max = max(
-    anchor2_returns[sn] / scenario_meta[sn]["budget"] for sn in scenario_names
-)
-print(
-    f"\nReturn rate range: [{return_rate_min:.4f}, {return_rate_max:.4f}] "
-    "per unit invested"
-)
-
 # --------------------------------------------------
-# Epsilon sweep -- trace the efficient frontier
+# Sensitivity-guided efficient frontier
 # --------------------------------------------------
+# Every solve prices ALL scenarios at once, but the smart drivers (adaptive,
+# dichotomic) need a single frontier to steer by. We steer by a REFERENCE scenario
+# (mid-budget, base regime); each driver's chosen return targets are then applied to
+# every scenario in one solve apiece -- keeping the Scenario-Concept "all combinations
+# in one solve" efficiency while getting dual-guided sampling. (Return rates are
+# regime- and budget-independent, so one scenario's target range is valid for all.)
+#
+# The steering signal is the return floor's SHADOW PRICE: by the envelope theorem it
+# equals d(variance)/d(return), the exact local slope of the frontier, so a driver that
+# uses it can place its limited solves where the frontier actually bends instead of on
+# a blind uniform grid.
 
-n_interior = 5
-epsilon_rates = [
-    return_rate_min + i * (return_rate_max - return_rate_min) / (n_interior + 1)
-    for i in range(1, n_interior + 1)
-]
+REFERENCE_SCENARIO = "base_1000"
+ref_budget = scenario_meta[REFERENCE_SCENARIO]["budget"]
 
-print(f"\n{'=' * 70}")
-print(f"EPSILON SWEEP: {n_interior} interior points")
-print(f"Return rates: {[f'{r:.4f}' for r in epsilon_rates]}")
-print(f"{'=' * 70}")
 
-pareto = {sn: [] for sn in scenario_names}
+@dataclass(frozen=True)
+class Point:
+    """One efficient-frontier portfolio for the reference scenario."""
 
-for sn in scenario_names:
-    pareto[sn].append({
-        "label": "min_risk",
-        "return_target": anchor1_returns[sn],
-        "return_actual": anchor1_returns[sn],
-        "risk": anchor1_risks[sn],
-        "df": df1,
-    })
+    ret: float  # achieved expected return (absolute level, not a rate) -- frontier x-coordinate
+    variance: float  # portfolio variance -- the value function at this return target
+    shadow_price: float  # dual of the return floor = local frontier slope d(variance)/d(return)
+    rate: float  # the return-rate target that produced it (return / budget)
 
-for i, rate in enumerate(epsilon_rates):
-    result = solve_epsilon(eps_rate=rate)
+
+# Cache solves by return rate: the three drivers share endpoints and the production
+# frontier below reuses the dichotomic driver's solves (each already priced every
+# scenario), so no rate is ever solved twice.
+_solve_cache: dict[float, tuple | None] = {}
+
+
+def _solve_rate(rate):
+    key = round(rate, 10)
+    if key not in _solve_cache:
+        _solve_cache[key] = solve_epsilon(eps_rate=rate)
+    return _solve_cache[key]
+
+
+def solve_at(r):
+    """min variance s.t. reference-scenario return >= r. Reads the reference scenario's
+    variance and the shadow price (its frontier slope) off ONE all-scenario solve."""
+    rate = r / ref_budget
+    result = _solve_rate(rate)
     if result is None:
-        print(f"  Point {i+1} (rate={rate:.4f}): INFEASIBLE -- stopping sweep")
-        break
-    si, df = result
-    for sn in scenario_names:
-        budget = scenario_meta[sn]["budget"]
-        ret = evaluate_return(df, sn)
-        risk = evaluate_risk(df, sn)
-        pareto[sn].append({
-            "label": f"eps_{i+1}",
-            "return_target": rate * budget,
-            "return_actual": ret,
-            "risk": risk,
-            "df": df,
-        })
-    print(f"  Point {i+1} (rate={rate:.4f}): {si.termination_status}")
+        raise SystemExit(f"Frontier solve at return={r:.4f} (rate={rate:.4f}) is infeasible.")
+    _si, df, shadow = result
+    return Point(
+        evaluate_return(df, REFERENCE_SCENARIO),
+        evaluate_risk(df, REFERENCE_SCENARIO),
+        max(0.0, shadow.get(REFERENCE_SCENARIO, 0.0)),
+        rate,
+    )
 
-# --------------------------------------------------
-# Pareto analysis -- per scenario
-# --------------------------------------------------
 
+# Frontier anchors (solved once, shared by all three drivers). The min-variance
+# anchor declares no return floor (eps_rate=None), so its shadow price is 0 by definition.
+RETURN_LO = anchor1_returns[REFERENCE_SCENARIO]  # min-variance portfolio's return
+RETURN_HI = anchor2_returns[REFERENCE_SCENARIO]  # max achievable return
+lo = Point(RETURN_LO, anchor1_risks[REFERENCE_SCENARIO], 0.0, RETURN_LO / ref_budget)
+hi = solve_at(RETURN_HI)
+print(
+    f"\nReference scenario '{REFERENCE_SCENARIO}': frontier spans expected return "
+    f"[{RETURN_LO:.4f}, {RETURN_HI:.4f}]"
+)
+
+
+def pair_gap(a, b):
+    """Chord-vs-tangent gap between two points on the convex frontier, and the tangent
+    crossover eps* where it peaks. The value function lies below the chord between two
+    points and above each point's supporting tangent (slope = its shadow price), so the
+    gap = chord - tangent-envelope >= 0. eps* is also the best place to sample next."""
+    de = b.ret - a.ret
+    if de <= 1e-9:
+        return 0.0, 0.5 * (a.ret + b.ret)
+    dl = b.shadow_price - a.shadow_price
+    if dl <= 1e-9:  # locally linear: tangents ~parallel, chord hugs them -> ~0 gap
+        estar = 0.5 * (a.ret + b.ret)
+    else:
+        estar = (a.variance - a.shadow_price * a.ret - b.variance + b.shadow_price * b.ret) / dl
+        estar = min(max(estar, a.ret), b.ret)
+    chord = a.variance + (b.variance - a.variance) / de * (estar - a.ret)
+    tangent = a.variance + a.shadow_price * (estar - a.ret)
+    return max(chord - tangent, 0.0), estar
+
+
+def max_gap(points):
+    return max(
+        (pair_gap(points[i], points[i + 1])[0] for i in range(len(points) - 1)),
+        default=0.0,
+    )
+
+
+def dedupe(points):
+    """Sort by return; drop points that collapse onto a neighbour so the frontier is
+    strictly increasing in return."""
+    out = []
+    for p in sorted(points, key=lambda q: q.ret):
+        if not out or p.ret - out[-1].ret > 1e-6:
+            out.append(p)
+    return out
+
+
+# Three drivers, each the SAME solve budget N (2 shared anchors + N-2 interior); they
+# differ only in how they pick the next return target.
+def frontier_grid(n):
+    """Control: evenly spaced returns, blind to the frontier's shape."""
+    if RETURN_HI - RETURN_LO <= 1e-9:  # degenerate (single-point) frontier
+        return dedupe([lo, hi])
+    step = (RETURN_HI - RETURN_LO) / (n - 1)
+    interior = [solve_at(RETURN_LO + i * step) for i in range(1, n - 1)]
+    return dedupe([lo] + interior + [hi])
+
+
+def frontier_adaptive(n):
+    """Pointwise dual use: size each step by the current slope so points land evenly in
+    variance space -- d(return) = target_dvar / lambda."""
+    if RETURN_HI - RETURN_LO <= 1e-9:  # degenerate (single-point) frontier
+        return dedupe([lo, hi])
+    target_dvar = (hi.variance - lo.variance) / (n - 1)
+    min_step = (RETURN_HI - RETURN_LO) / (4 * (n - 1))
+    max_step = (RETURN_HI - RETURN_LO) / (n - 2)
+    lam = (hi.variance - lo.variance) / (hi.ret - lo.ret)  # bootstrap: chord slope
+    pts, e = [lo], RETURN_LO
+    for _ in range(n - 2):
+        step = min(max(target_dvar / max(lam, 1e-9), min_step), max_step)
+        e = min(e + step, RETURN_HI)
+        p = solve_at(e)
+        pts.append(p)
+        lam = p.shadow_price
+    pts.append(hi)
+    return dedupe(pts)
+
+
+def frontier_dichotomic(n):
+    """Global dual use: repeatedly split the interval with the largest chord-vs-tangent
+    gap, sampling at the crossover point where the two endpoints' tangents (their shadow
+    prices) meet -- the non-inferior-set estimation (NISE) scheme."""
+    pts = {lo.ret: lo, hi.ret: hi}
+    g0, _ = pair_gap(lo, hi)
+    heap, ctr = [(-g0, 0, lo, hi)], 1
+    for _ in range(n - 2):
+        if not heap:
+            break
+        _, _, a, b = heapq.heappop(heap)
+        _, estar = pair_gap(a, b)
+        p = solve_at(estar)
+        pts[p.ret] = p
+        for x, y in ((a, p), (p, b)):
+            g, _ = pair_gap(x, y)
+            heapq.heappush(heap, (-g, ctr, x, y))
+            ctr += 1
+    return dedupe(list(pts.values()))
+
+
+N_SOLVES = 6
 print(f"\n{'=' * 70}")
-print("EFFICIENT FRONTIER: Risk vs Return (per scenario)")
+print(
+    f"SENSITIVITY-GUIDED FRONTIER  (reference '{REFERENCE_SCENARIO}', "
+    f"{N_SOLVES}-solve budget per method)"
+)
 print(f"{'=' * 70}")
+# Each driver shares the same solve cache, so the second and third runs mostly hit
+# cached points; the per-driver print keeps the (otherwise silent) solve phase legible.
+methods = {}
+for _name, _driver in (
+    ("grid", frontier_grid),
+    ("adaptive", frontier_adaptive),
+    ("dichotomic", frontier_dichotomic),
+):
+    print(f"  running {_name} driver ...", flush=True)
+    methods[_name] = _driver(N_SOLVES)
 
-for sn in scenario_names:
-    pts = pareto[sn]
-    if len(pts) < 2:
-        continue
-    meta = scenario_meta[sn]
-    print(f"\n  {sn} (budget={meta['budget']:.0f}, regime={meta['regime']}):")
-    print(f"  {'#':>3} {'Label':>10} {'Return':>10} {'Risk':>12}")
-    print(f"  {'-' * 38}")
-    for j, pt in enumerate(pts):
-        print(
-            f"  {j+1:>3} {pt['label']:>10} "
-            f"{pt['return_actual']:>10.2f} {pt['risk']:>12.4f}"
-        )
+# The headline result: at equal solve budget, using the dual to place samples shrinks
+# the worst chord-vs-tangent gap. Using it globally (dichotomic) is the guaranteed win.
+gaps = {m: max_gap(pts) for m, pts in methods.items()}
+print("\nFrontier approximation quality (same solve budget, lower gap = better):")
+print(f"  {'method':<12}{'solves':>8}{'max chord-gap':>18}")
+print("  " + "-" * 38)
+best = min(gaps.values())
+for m, pts in methods.items():
+    flag = "  <- tightest" if gaps[m] == best else ""
+    print(f"  {m:<12}{len(pts):>8}{gaps[m]:>18.4f}{flag}")
+if gaps["dichotomic"] > gaps["grid"] + 1e-9:
+    raise SystemExit(
+        f"dichotomic gap ({gaps['dichotomic']:.3e}) should not exceed grid "
+        f"({gaps['grid']:.3e}) at equal budget -- check the frontier driver inputs"
+    )
 
-    # Marginal analysis
-    if len(pts) >= 3:
-        print("\n  Marginal analysis:")
-        rates = []
-        for j in range(len(pts) - 1):
-            dr = pts[j+1]['risk'] - pts[j]['risk']
-            dret = pts[j+1]['return_actual'] - pts[j]['return_actual']
-            if abs(dret) > 1e-6:
-                rate_val = dr / dret
-                rates.append(rate_val)
-                print(
-                    f"    {pts[j]['label']:>10} -> {pts[j+1]['label']:<10}: "
-                    f"delta_risk={dr:>+10.4f}, delta_return={dret:>+8.4f}, "
-                    f"marginal={rate_val:>8.2f} risk/return"
-                )
-            else:
-                rates.append(0)
-
-        # Knee detection: where marginal cost jumps most.
-        if len(rates) >= 2:
-            max_jump = 0
-            knee_idx = 1
-            for j in range(len(rates) - 1):
-                if rates[j] > 1e-6:
-                    jump = rates[j+1] / rates[j]
-                else:
-                    jump = rates[j+1] if rates[j+1] > 0 else 0
-                if jump > max_jump:
-                    max_jump = jump
-                    knee_idx = j + 1
-            print(
-                f"\n    Knee: Point {knee_idx + 1} ({pts[knee_idx]['label']}) "
-                f"-- marginal cost jumps {max_jump:.1f}x beyond this point"
-            )
+# The shadow price IS the frontier slope: show each point's exact dual next to the
+# finite-difference secant between consecutive points. The secant is bracketed by the
+# two duals -- which is why no finite differencing is needed to recover each point's slope.
+print("\nShadow price = frontier slope (exact dual vs finite-difference secant):")
+print("  (dual = extra variance incurred per unit of additional required return)")
+print(f"  {'return':>10}{'variance':>14}{'dual (lambda)':>16}{'secant':>14}")
+print("  " + "-" * 54)
+dpts = methods["dichotomic"]
+for j, p in enumerate(dpts):
+    if j == 0:
+        secant_str = f"{'--':>14}"
+    else:
+        sec = (p.variance - dpts[j - 1].variance) / (p.ret - dpts[j - 1].ret)
+        secant_str = f"{sec:>14.2f}"
+    print(f"  {p.ret:>10.4f}{p.variance:>14.4f}{p.shadow_price:>16.2f}{secant_str}")
 
 
 # --------------------------------------------------
@@ -1011,84 +1148,79 @@ print("STAGE 4: CRISIS REGIME STRESS TEST")
 print(f"(PSD-preserving correlation shrinkage, alpha = {CRISIS_ALPHA})")
 print("=" * 70)
 
-# Build the per-(scenario, eps_label) frontier table and materialize it as
-# the `FrontierPoint` Concept. Each Pareto point's metadata -- return, risk,
-# inter-row marginals, the knee flag, and the base/crisis vol comparison --
-# becomes ontology data instead of stdout.
+# Production frontier: evaluate the dual-guided (dichotomic) sample points for EVERY
+# scenario, reusing those solves (each already priced all scenarios), then materialize
+# the whole thing as the `FrontierPoint` Concept. The marginals (exact shadow prices)
+# drove the search; now the model verifies and reasons over the result relationally.
+prod_points = methods["dichotomic"]  # already deduped + sorted by return (reference scenario)
+
+# (eps_label, allocation_df, shadow_by_scenario) per production point. k=0 is the
+# min-variance anchor (solved as eps_rate=None -> df1, zero dual); the rest reuse the
+# cached dual-guided solves.
+prod_solves = []
+for k, p in enumerate(prod_points):
+    if k == 0:
+        prod_solves.append(("min_risk", df1, {sn: 0.0 for sn in scenario_names}))
+    else:
+        result = _solve_rate(p.rate)
+        assert result is not None, f"frontier point p{k} (rate={p.rate}) had no cached solve"
+        _si, df, shadow = result
+        prod_solves.append((f"p{k}", df, shadow))
+
 fp_rows = []
 for sn in scenario_names:
-    pts = pareto[sn]
-    if not pts:
-        continue
-    rates = []
-    for j, pt in enumerate(pts):
-        if j == 0:
-            marginal = None
-        else:
-            dr = pt["risk"] - pts[j - 1]["risk"]
-            dret = pt["return_actual"] - pts[j - 1]["return_actual"]
-            marginal = (dr / dret) if abs(dret) > 1e-6 else 0.0
-        rates.append(marginal)
-        fp_rows.append({
-            "scenario_label": sn,
-            "eps_label": pt["label"],
-            "return": pt["return_actual"],
-            "risk": pt["risk"],
-            "marginal_risk_per_return": marginal,
-            "is_knee": False,
-        })
-
-    # Knee = the eps point with the largest jump in marginal vs the prior
-    # point (per scenario). rates[0] is None (min_risk has no marginal),
-    # so we start scanning from index 2 against rates[1..].
-    knee_idx = None
-    max_jump = 0.0
-    for j in range(2, len(rates)):
-        prev = rates[j - 1]
-        curr = rates[j]
-        if prev is None or curr is None:
-            continue
-        if abs(prev) > 1e-6:
-            jump = curr / prev
-        else:
-            jump = curr if curr and curr > 0 else 0.0
+    slopes = []
+    rows_for_sn = []
+    for k, (label, df, shadow) in enumerate(prod_solves):
+        marginal = float(shadow.get(sn, 0.0))  # EXACT dual; 0 at the min-risk anchor
+        slopes.append(marginal)
+        rows_for_sn.append(
+            {
+                "scenario_label": sn,
+                "eps_label": label,
+                "k": k,
+                "return": evaluate_return(df, sn),
+                "risk": evaluate_risk(df, sn),
+                "marginal_risk_per_return": marginal,
+                "is_knee": False,
+            }
+        )
+    # Knee = the point where the exact slope (shadow price) jumps most vs the prior.
+    knee_idx, max_jump = None, 0.0
+    for j in range(1, len(slopes)):
+        prev, curr = slopes[j - 1], slopes[j]
+        jump = (curr / prev) if prev > 1e-9 else (curr if curr > 0 else 0.0)
         if jump > max_jump:
-            max_jump = jump
-            knee_idx = j
+            max_jump, knee_idx = jump, j
     if knee_idx is not None:
-        # fp_rows for this scenario starts at len(fp_rows) - len(pts).
-        scenario_start = len(fp_rows) - len(pts)
-        fp_rows[scenario_start + knee_idx]["is_knee"] = True
+        rows_for_sn[knee_idx]["is_knee"] = True
+    fp_rows.extend(rows_for_sn)
 
-# Pair base and crisis rows by (budget, eps_label) so vol_base / vol_crisis
-# carry on BOTH the base-regime row and its matching crisis-regime row.
-risk_by_key = {
-    (r["scenario_label"], r["eps_label"]): r["risk"] for r in fp_rows
-}
+# Pair base and crisis rows by (budget, eps_label) so vol_base / vol_crisis carry on
+# BOTH the base-regime row and its matching crisis-regime row.
+risk_by_key = {(r["scenario_label"], r["eps_label"]): r["risk"] for r in fp_rows}
 for r in fp_rows:
-    sn = r["scenario_label"]
-    eps = r["eps_label"]
-    # Strip "base_" / "crisis_" prefix to get the budget suffix.
-    budget_suffix = sn.split("_", 1)[1]
-    base_risk = risk_by_key.get((f"base_{budget_suffix}", eps))
-    crisis_risk = risk_by_key.get((f"crisis_{budget_suffix}", eps))
+    budget_suffix = r["scenario_label"].split("_", 1)[1]
+    base_risk = risk_by_key.get((f"base_{budget_suffix}", r["eps_label"]))
+    crisis_risk = risk_by_key.get((f"crisis_{budget_suffix}", r["eps_label"]))
     vol_base = base_risk ** 0.5 if base_risk is not None else 0.0
     vol_crisis = crisis_risk ** 0.5 if crisis_risk is not None else 0.0
     vol_gap = vol_crisis - vol_base
-    vol_gap_pct = (vol_gap / vol_base * 100.0) if vol_base > 1e-9 else 0.0
     r["vol_base"] = vol_base
     r["vol_crisis"] = vol_crisis
     r["vol_gap"] = vol_gap
-    r["vol_gap_pct"] = vol_gap_pct
+    r["vol_gap_pct"] = (vol_gap / vol_base * 100.0) if vol_base > 1e-9 else 0.0
 
 fp_df = DataFrame(fp_rows)
 
-# FrontierPoint Concept -- one row per (Scenario, eps_label).
+# FrontierPoint Concept -- one row per (scenario, point). The marginal is the exact
+# dual everywhere (0 at the min-risk anchor), so a single-pass load works (no NaN).
 FrontierPoint = model.Concept(
     "FrontierPoint",
     identify_by={"scenario_label": String, "eps_label": String},
 )
 FrontierPoint.scenario = model.Property(f"{FrontierPoint} for {Scenario}")
+FrontierPoint.k = model.Property(f"{FrontierPoint} has order {Integer:fp_k}")
 FrontierPoint.return_value = model.Property(
     f"{FrontierPoint} has return {Float:fp_return}"
 )
@@ -1112,21 +1244,32 @@ FrontierPoint.vol_gap_pct = model.Property(
     f"{FrontierPoint} has vol_gap_pct {Float:fp_vol_gap_pct}"
 )
 
-# Two-pass load: marginal_risk_per_return is null at min_risk, so it
-# can't sit on the same model.data() frame as the all-rows columns
-# (NaN breaks model.data()).
-fp_main_df = fp_df[[
-    "scenario_label", "eps_label", "return", "risk", "is_knee",
-    "vol_base", "vol_crisis", "vol_gap", "vol_gap_pct",
-]].reset_index(drop=True)
-fp_data = model.data(fp_main_df)
+fp_data = model.data(
+    fp_df[
+        [
+            "scenario_label",
+            "eps_label",
+            "k",
+            "return",
+            "risk",
+            "marginal_risk_per_return",
+            "is_knee",
+            "vol_base",
+            "vol_crisis",
+            "vol_gap",
+            "vol_gap_pct",
+        ]
+    ].reset_index(drop=True)
+)
 model.define(
     fp := FrontierPoint.new(
         scenario_label=fp_data["scenario_label"],
         eps_label=fp_data["eps_label"],
     ),
+    fp.k(fp_data["k"]),
     fp.return_value(fp_data["return"]),
     fp.risk(fp_data["risk"]),
+    fp.marginal_risk_per_return(fp_data["marginal_risk_per_return"]),
     fp.is_knee(fp_data["is_knee"]),
     fp.vol_base(fp_data["vol_base"]),
     fp.vol_crisis(fp_data["vol_crisis"]),
@@ -1141,70 +1284,94 @@ model.where(
     fp_link_ref.scenario_label == sc_link_ref.name,
 ).define(fp_link_ref.scenario(sc_link_ref))
 
-# Second pass: marginal_risk_per_return (only the 30 non-min_risk rows).
-fp_marg_df = (
-    fp_df[fp_df["marginal_risk_per_return"].notna()][
-        ["scenario_label", "eps_label", "marginal_risk_per_return"]
-    ]
-    .reset_index(drop=True)
-)
-fp_marg_data = model.data(fp_marg_df)
-fp_marg_ref = FrontierPoint.ref()
-model.where(
-    fp_marg_ref.scenario_label == fp_marg_data["scenario_label"],
-    fp_marg_ref.eps_label == fp_marg_data["eps_label"],
-).define(
-    fp_marg_ref.marginal_risk_per_return(fp_marg_data["marginal_risk_per_return"])
-)
+# Relational verification: the defining property of a Pareto-efficient frontier --
+# neither coordinate decreases along it, so no point dominates another -- stated as
+# integrity constraints per scenario (self-join on consecutive order k), not a Python
+# post-check. A violation would surface at the next query.
+#
+# The interior return targets are picked off the reference scenario only, then applied
+# to every scenario; under a shrunk crisis covariance two adjacent targets can price
+# out to (near-)equal risk or return. So the checks are non-decreasing with a small
+# relative slack rather than strictly increasing -- a genuine dominance violation
+# (an actual decrease beyond the slack) still trips them.
+MONOTONIC_TOL = 1e-4  # relative slack for the non-decreasing checks (~0.01%)
+P = FrontierPoint
+Q = FrontierPoint.ref()
+consecutive = model.where(P.scenario_label == Q.scenario_label, Q.k == P.k + 1)
+consecutive.require(Q.return_value >= (1.0 - MONOTONIC_TOL) * P.return_value)
+consecutive.require(Q.risk >= (1.0 - MONOTONIC_TOL) * P.risk)
+# Force the ICs + the materialization to evaluate now.
+model.select(P.scenario_label, P.k, P.return_value, P.risk, P.marginal_risk_per_return).inspect()
 
-# Side-by-side vol (sqrt variance) by budget x lambda -- now sourced from
-# the FrontierPoint Concept rather than the in-memory pareto dict.
-print("\n  Volatility comparison (sqrt risk) -- base vs crisis at each lambda:")
-fp_q = FrontierPoint.ref()
-fp_query_df = (
+# --------------------------------------------------
+# Efficient frontier per scenario (exact dual marginals)
+# --------------------------------------------------
+print(f"\n{'=' * 70}")
+print("EFFICIENT FRONTIER: Risk vs Return (per scenario, exact dual marginals)")
+print(f"{'=' * 70}")
+fp_view = FrontierPoint.ref()
+frontier_df = (
     model.select(
-        fp_q.scenario_label.alias("scenario_label"),
-        fp_q.eps_label.alias("eps_label"),
-        fp_q.vol_base.alias("vol_base"),
-        fp_q.vol_crisis.alias("vol_crisis"),
-        fp_q.vol_gap.alias("vol_gap"),
-        fp_q.vol_gap_pct.alias("vol_gap_pct"),
+        fp_view.scenario_label.alias("scenario_label"),
+        fp_view.k.alias("k"),
+        fp_view.eps_label.alias("eps_label"),
+        fp_view.return_value.alias("return"),
+        fp_view.risk.alias("risk"),
+        fp_view.marginal_risk_per_return.alias("marginal"),
+        fp_view.is_knee.alias("is_knee"),
     )
     .to_df()
+    .sort_values(["scenario_label", "k"])
 )
+for sn in scenario_names:
+    sub = frontier_df[frontier_df["scenario_label"] == sn]
+    if len(sub) < 2:
+        continue
+    meta = scenario_meta[sn]
+    print(f"\n  {sn} (budget={meta['budget']:.0f}, regime={meta['regime']}):")
+    print(f"  {'#':>3} {'Label':>9} {'Return':>10} {'Risk':>12} {'Marginal':>11} {'Knee':>6}")
+    print(f"  {'-' * 56}")
+    for _, row in sub.iterrows():
+        knee = "  <--" if bool(row["is_knee"]) else ""
+        print(
+            f"  {int(row['k']) + 1:>3} {row['eps_label']:>9} "
+            f"{float(row['return']):>10.2f} {float(row['risk']):>12.4f} "
+            f"{float(row['marginal']):>11.2f}{knee}"
+        )
 
-eps_order = ["min_risk", "eps_1", "eps_2", "eps_3", "eps_4", "eps_5"]
+# --------------------------------------------------
+# Volatility comparison: base vs crisis at each frontier point
+# --------------------------------------------------
+print("\n  Volatility (sqrt risk) -- base vs crisis at each frontier point:")
+fp_q = FrontierPoint.ref()
+fp_query_df = model.select(
+    fp_q.scenario_label.alias("scenario_label"),
+    fp_q.eps_label.alias("eps_label"),
+    fp_q.k.alias("k"),
+    fp_q.vol_base.alias("vol_base"),
+    fp_q.vol_crisis.alias("vol_crisis"),
+    fp_q.vol_gap.alias("vol_gap"),
+    fp_q.vol_gap_pct.alias("vol_gap_pct"),
+).to_df()
+
 for budget in budgets:
-    base_sn = f"base_{budget}"
-    crisis_sn = f"crisis_{budget}"
-    base_rows = fp_query_df[fp_query_df["scenario_label"] == base_sn]
-    crisis_rows = fp_query_df[fp_query_df["scenario_label"] == crisis_sn]
-    if base_rows.empty or crisis_rows.empty:
+    base_rows = fp_query_df[fp_query_df["scenario_label"] == f"base_{budget}"].sort_values("k")
+    if base_rows.empty:
         continue
     print(f"\n  Budget {budget}:")
-    print(
-        f"  {'Label':>10} {'vol_base':>12} {'vol_crisis':>12} "
-        f"{'gap':>10} {'gap_%':>8}"
-    )
-    print(f"  {'-' * 56}")
-    base_by_eps = {row["eps_label"]: row for _, row in base_rows.iterrows()}
-    for eps in eps_order:
-        if eps not in base_by_eps:
-            continue
-        row = base_by_eps[eps]
+    print(f"  {'Label':>9} {'vol_base':>12} {'vol_crisis':>12} {'gap':>10} {'gap_%':>8}")
+    print(f"  {'-' * 55}")
+    for _, row in base_rows.iterrows():
         print(
-            f"  {eps:>10} {float(row['vol_base']):>12.4f} "
-            f"{float(row['vol_crisis']):>12.4f} "
-            f"{float(row['vol_gap']):>+10.4f} "
+            f"  {row['eps_label']:>9} {float(row['vol_base']):>12.4f} "
+            f"{float(row['vol_crisis']):>12.4f} {float(row['vol_gap']):>+10.4f} "
             f"{float(row['vol_gap_pct']):>+7.1f}%"
         )
 
 print(
-    "\n  Expected pattern: crisis vol > base vol at every lambda; "
-    "the gap peaks\n  in the middle of the frontier (eps_1..eps_2) and "
-    "narrows toward the\n  concentrated (high-return) end. Because the "
-    "investable universe was\n  already deduplicated in Stage 2, the "
-    "concentrated end picks the highest-\n  Sharpe distinct bet per cluster "
-    "rather than stacking near-duplicates, so\n  the crisis gap shrinks "
-    "there instead of widening."
+    "\n  Expected pattern: crisis vol > base vol at every point; the gap peaks in the\n"
+    "  middle of the frontier and narrows toward the concentrated (high-return) end.\n"
+    "  Because Stage 2 already deduplicated the universe, the concentrated end picks\n"
+    "  the highest-Sharpe distinct bet per cluster rather than stacking near-\n"
+    "  duplicates, so the crisis gap shrinks there instead of widening."
 )
