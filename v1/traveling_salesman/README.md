@@ -3,7 +3,7 @@ title: "Traveling Salesman"
 description: "Find the shortest route visiting all cities exactly once using the MTZ formulation."
 featured: false
 experience_level: intermediate
-industry: "Logistics"
+industry: "Supply Chain & Logistics"
 reasoning_types:
   - Prescriptive
 tags:

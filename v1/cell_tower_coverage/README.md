@@ -3,7 +3,7 @@ title: "Cell Tower Coverage"
 description: "Select candidate cell tower sites and assign demand zones to maximize covered population under budget, tower-count, and capacity limits."
 featured: false
 experience_level: beginner
-industry: "Energy & Utilities"
+industry: "Technology & Telecom"
 reasoning_types:
     - Prescriptive
 tags:

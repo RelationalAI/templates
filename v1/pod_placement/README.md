@@ -3,7 +3,7 @@ title: "Pod Placement"
 description: "Assign pods to nodes in a Kubernetes-style cluster subject to per-node CPU / memory / GPU bin-packing, pairwise tenant anti-affinity, deployment co-location affinity, failure-domain spread, gang-placement atomicity, and topology rack-clique rules. Pure CSP via MiniZinc / Chuffed."
 featured: false
 experience_level: intermediate
-industry: "Cloud infrastructure"
+industry: "Technology & Telecom"
 reasoning_types:
   - Prescriptive
 tags:

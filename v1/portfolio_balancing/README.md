@@ -3,7 +3,7 @@ title: "Portfolio Balancing"
 description: "Multi-reasoner template: rules-based compliance, covariance clustering, and bi-objective Markowitz optimization with a crisis-regime stress test."
 featured: false
 experience_level: intermediate
-industry: "Finance"
+industry: "Financial Services"
 reasoning_types:
   - Prescriptive
   - Rules-based

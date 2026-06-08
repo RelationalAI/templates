@@ -3,7 +3,7 @@ title: "Demand Forecasting"
 description: "Forecast next-period unit sales per (store, item, day) with a regression GNN over a heterogeneous retail knowledge graph: sales transactions linked to stores, items, and item families so the GNN propagates signal through the store and product hierarchies."
 featured: false
 experience_level: advanced
-industry: "Retail"
+industry: "Retail & Consumer"
 reasoning_types:
   - Predictive
 tags:

@@ -3,7 +3,7 @@ title: "Vehicle Scheduling"
 description: "Assign trips to vehicles to minimize total cost, including fixed vehicle activation costs and per-mile costs."
 featured: false
 experience_level: intermediate
-industry: "Supply Chain"
+industry: "Supply Chain & Logistics"
 reasoning_types:
   - Prescriptive
 tags:

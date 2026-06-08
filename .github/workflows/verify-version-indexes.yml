@@ -3,6 +3,7 @@ name: Verify version indexes
 on:
   pull_request:
     paths:
+      - "README.md"
       - "v*/**/README.md"
       - "scripts/generate_version_indexes.py"
       - "requirements-dev.txt"

@@ -3,7 +3,7 @@ title: "Shift Assignment"
 description: "Assign workers to shifts based on availability to meet coverage requirements."
 featured: false
 experience_level: beginner
-industry: "Operations"
+industry: "Cross-Industry"
 reasoning_types:
   - Prescriptive
 tags:

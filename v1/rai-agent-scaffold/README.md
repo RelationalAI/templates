@@ -2,7 +2,7 @@
 title: "Snowflake Intelligence Agent — RelationalAI Knowledge Graph"
 description: "Scaffold for packaging a RelationalAI semantic model as a Snowflake Cortex agent and exposing it through Snowflake Intelligence."
 experience_level: intermediate
-industry: General
+industry: "Cross-Industry"
 reasoning_types:
   - Graph
 tags:
