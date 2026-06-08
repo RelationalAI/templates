@@ -182,9 +182,12 @@ The four-stage approach addresses each gap. Stage 1 surfaces existing violations
 
    ANCHOR SOLVE 2: Maximize return (swap objective)
    Status: OPTIMAL
-     base_500/crisis_500:   return = 42.0000
-     base_1000/crisis_1000: return = 84.0000
-     base_2000/crisis_2000: return = 168.0000
+     base_500:    return = 42.0000
+     base_1000:   return = 84.0000
+     base_2000:   return = 168.0000
+     crisis_500:  return = 42.0000
+     crisis_1000: return = 84.0000
+     crisis_2000: return = 168.0000
 
    Reference scenario 'base_1000': frontier spans expected return [64.8673, 84.0000]
 
@@ -593,7 +596,7 @@ After the Stage 3 frontier is traced, Stage 4 emits a side-by-side comparison of
 <details>
 <summary>Problem is infeasible</summary>
 
-The return rate target may be too high for the available stocks and budget. Reduce `N_SOLVES` to use fewer frontier points, or increase the budget values in the scenario data.
+A frontier solve becomes infeasible when its return-floor target exceeds what the position and sector limits allow at that budget; the error message names the return level that failed. Check that the Anchor 2 max-return output looks right for your data, then relax `REP_POSITION_LIMIT` or `SECTOR_LIMIT`, or raise the budget values in the scenario data. Reducing `N_SOLVES` only coarsens the frontier grid -- it does not fix infeasibility.
 </details>
 
 <details>

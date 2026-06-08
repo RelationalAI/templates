@@ -43,22 +43,27 @@ from relationalai.semantics.std import aggregates as aggs
 from relationalai.semantics.std.math import abs as math_abs
 from relationalai.semantics.std.math import sqrt
 
-# The epsilon sweep re-solves a fresh Problem per return target -- a loop of
-# independent optimizations (the epsilon-constraint method), not an accidental rule
-# explosion. Silence the "rules created in a loop" perf heuristic for these solves.
+# This template intentionally creates rules in Python loops in more than one place
+# -- the epsilon-constraint sweep (one independent solve per return target) and the
+# per-scenario FrontierPoint materialization -- which trips PyRel's "rules created in
+# a loop" perf heuristic. The pattern is deliberate and harmless at this size. Since
+# this is a standalone script (the whole process is single-purpose), a single module
+# filter is simpler and more robust than scattering catch_warnings blocks around every
+# loop, where a future loop is easy to miss.
 warnings.filterwarnings("ignore", message=r"\[Rules created in a loop\]")
 
 # --------------------------------------------------
 # Configure inputs
 # --------------------------------------------------
 
-POSITION_LIMIT = 0.15        # max fraction per stock in Stage 1 compliance rules
-REP_POSITION_LIMIT = 0.30    # max fraction per representative in Stage 3 optimization
-                             # (reps carry combined cluster exposure, so cap is higher;
-                             # also required for feasibility: 5 reps x 0.20 = 1.00)
-SECTOR_LIMIT = 0.30          # max fraction of budget per sector (both stages)
-CORR_THRESHOLD = 0.3         # |correlation| >= threshold to create a graph edge (Stage 2)
-CRISIS_ALPHA = 0.7           # shrinkage weight for base correlation in crisis regime (Stage 4)
+POSITION_LIMIT = 0.15  # max fraction per stock in Stage 1 compliance rules
+REP_POSITION_LIMIT = 0.30  # max fraction per representative in Stage 3 optimization
+# (reps carry combined cluster exposure, so cap is higher;
+# feasibility needs REP_POSITION_LIMIT * num_reps >= 1.0 --
+# floor is 1/5 = 0.20, so 0.30 leaves headroom)
+SECTOR_LIMIT = 0.30  # max fraction of budget per sector (both stages)
+CORR_THRESHOLD = 0.3  # |correlation| >= threshold to create a graph edge (Stage 2)
+CRISIS_ALPHA = 0.7  # shrinkage weight for base correlation in crisis regime (Stage 4)
 
 DATA_DIR = Path(__file__).parent / "data"
 returns_csv = read_csv(DATA_DIR / "returns.csv")
@@ -808,7 +813,8 @@ def solve_epsilon(eps_rate=None):
 
     # HiGHS solves this convex QP (the covariance is PSD-preserving) and, unlike the
     # earlier ipopt path, returns sensitivity duals. sensitivity is requested only when
-    # there is a return floor to price.
+    # there is a return floor to price. (The "rules created in a loop" warning from this
+    # function being called once per return target is silenced at module scope above.)
     problem.solve("highs", time_limit_sec=60, sensitivity=eps_rate is not None)
     si = problem.solve_info()
 
@@ -822,6 +828,13 @@ def solve_epsilon(eps_rate=None):
         quantity_var.stock.index.alias("stock_index"),
         value_ref.alias("quantity"),
     ).where(quantity_var.values(0, value_ref)).to_df()
+
+    # A solve can report OPTIMAL yet return no primal rows (e.g. an unstable or timed-out
+    # reasoner handing back a hollow result). Treat that as a non-result so the drivers fall
+    # back through the same path as infeasible, instead of KeyError-ing on the missing
+    # "scenario" column downstream in _extract_allocations.
+    if var_df.empty:
+        return None
 
     # Per-scenario shadow prices, joined to the scenario by the constraint's key.
     shadow_by_scenario = {}
@@ -907,6 +920,7 @@ p2.maximize(
 )
 p2.solve("highs", time_limit_sec=60)
 si2 = p2.solve_info()
+# "LOCALLY_SOLVED" is kept for non-HiGHS solver back ends; HiGHS itself reports "OPTIMAL".
 if si2.termination_status not in ("OPTIMAL", "LOCALLY_SOLVED"):
     raise SystemExit(
         "Anchor solve 2 (max return) is infeasible -- check data and constraints."
@@ -973,7 +987,10 @@ def solve_at(r):
     rate = r / ref_budget
     result = _solve_rate(rate)
     if result is None:
-        raise SystemExit(f"Frontier solve at return={r:.4f} (rate={rate:.4f}) is infeasible.")
+        raise SystemExit(
+            f"Frontier solve at return={r:.4f} (rate={rate:.4f}) returned no solution "
+            "(infeasible, or an unstable/timed-out reasoner gave a hollow result)."
+        )
     _si, df, shadow = result
     return Point(
         evaluate_return(df, REFERENCE_SCENARIO),
@@ -998,8 +1015,9 @@ print(
 def pair_gap(a, b):
     """Chord-vs-tangent gap between two points on the convex frontier, and the tangent
     crossover eps* where it peaks. The value function lies below the chord between two
-    points and above each point's supporting tangent (slope = its shadow price), so the
-    gap = chord - tangent-envelope >= 0. eps* is also the best place to sample next."""
+    points and above each point's supporting tangent (slope = its shadow price). At eps*
+    the two tangents cross, so the gap there is chord - tangent >= 0 (either tangent gives
+    the same value at the crossover). eps* is also the best place to sample next."""
     de = b.ret - a.ret
     if de <= 1e-9:
         return 0.0, 0.5 * (a.ret + b.ret)
@@ -1045,7 +1063,7 @@ def frontier_grid(n):
 def frontier_adaptive(n):
     """Pointwise dual use: size each step by the current slope so points land evenly in
     variance space -- d(return) = target_dvar / lambda."""
-    if RETURN_HI - RETURN_LO <= 1e-9:  # degenerate (single-point) frontier
+    if n <= 2 or RETURN_HI - RETURN_LO <= 1e-9:  # anchors-only / degenerate frontier
         return dedupe([lo, hi])
     target_dvar = (hi.variance - lo.variance) / (n - 1)
     min_step = (RETURN_HI - RETURN_LO) / (4 * (n - 1))
