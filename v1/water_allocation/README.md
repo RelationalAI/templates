@@ -3,7 +3,7 @@ title: "Water Allocation"
 description: "Minimize the cost of distributing water from sources to users with nonlinear transmission losses."
 featured: false
 experience_level: intermediate
-industry: "Utilities & Resources"
+industry: "Energy & Utilities"
 reasoning_types:
   - Prescriptive
 tags:

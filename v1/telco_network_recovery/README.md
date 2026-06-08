@@ -4,7 +4,7 @@ description: "Multi-reasoner template: equipment-failure GNN over a heterogeneou
 featured: false
 private: true
 experience_level: advanced
-industry: "Telecommunications"
+industry: "Technology & Telecom"
 reasoning_types:
   - Predictive
   - Rules-based

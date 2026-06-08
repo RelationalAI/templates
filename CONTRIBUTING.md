@@ -159,11 +159,11 @@ Before opening a PR, make sure you can complete this checklist from a clean envi
   python scripts/generate_version_indexes.py --check
   ```
 
-## Keep version README indexes in sync
+## Keep template indexes in sync
 
-Version README files (`v0.13/README.md`, `v0.14/README.md`, `v1/README.md`) are generated from template README metadata, specifically the `description` field in front matter.
+The template index is generated from each template README's front matter — the `description`, `industry`, and `reasoning_types` fields. It is written to each version README (`v0.13/README.md`, `v0.14/README.md`, `v1/README.md`) and to the repository root `README.md`, between its `<!-- BEGIN TEMPLATE INDEX -->` / `<!-- END TEMPLATE INDEX -->` markers.
 
-If you add a template or update a template description, regenerate the version indexes and commit the resulting README changes.
+If you add a template or change a template's `description`, `industry`, or `reasoning_types`, regenerate the indexes and commit the resulting README changes.
 
 ```bash
 python scripts/generate_version_indexes.py

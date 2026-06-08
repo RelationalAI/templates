@@ -3,7 +3,7 @@ title: "Test Data Generation"
 description: "Determine optimal row counts for test database tables satisfying schema and referential integrity constraints."
 featured: false
 experience_level: intermediate
-industry: "Software Engineering"
+industry: "Technology & Telecom"
 reasoning_types:
   - Prescriptive
 tags:

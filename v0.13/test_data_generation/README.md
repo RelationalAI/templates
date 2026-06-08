@@ -3,7 +3,7 @@ title: "Test Data Generation"
 description: "Determine feasible row counts for test database tables that satisfy schema constraints, then generate example synthetic rows."
 featured: false
 experience_level: intermediate
-industry: "Data Engineering"
+industry: "Technology & Telecom"
 reasoning_types:
   - Prescriptive
 tags:

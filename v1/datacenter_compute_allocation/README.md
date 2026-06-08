@@ -4,7 +4,7 @@ description: "Multi-reasoner template (chain follow-up to energy_grid_planning):
 featured: false
 private: true
 experience_level: advanced
-industry: "AI Infrastructure"
+industry: "Technology & Telecom"
 reasoning_types:
   - Predictive
   - Graph

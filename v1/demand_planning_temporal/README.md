@@ -3,7 +3,7 @@ title: "Demand Planning Temporal"
 description: "Plan weekly production and inventory across sites over a date-filtered planning horizon to minimize total cost while meeting demand."
 featured: false
 experience_level: intermediate
-industry: "Supply Chain"
+industry: "Supply Chain & Logistics"
 reasoning_types:
   - Prescriptive
 tags:

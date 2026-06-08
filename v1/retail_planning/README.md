@@ -4,7 +4,7 @@ description: "Predict article sales and customer churn with GNNs, then optimize 
 featured: true
 private: true
 experience_level: advanced
-industry: "Retail"
+industry: "Retail & Consumer"
 reasoning_types:
   - Predictive
   - Prescriptive

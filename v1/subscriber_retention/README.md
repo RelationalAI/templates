@@ -4,7 +4,7 @@ description: "Telco churn-risk scoring: PageRank over a Subscriber→Subscriber 
 featured: false
 private: true
 experience_level: advanced
-industry: "Telecommunications"
+industry: "Technology & Telecom"
 reasoning_types:
   - Graph
   - Predictive

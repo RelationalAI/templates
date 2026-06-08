@@ -4,7 +4,7 @@ description: "Predict whether a person is a smoker from demographic and medical 
 featured: false
 private: true
 experience_level: intermediate
-industry: "Healthcare"
+industry: "Healthcare & Life Sciences"
 reasoning_types:
   - Predictive
 tags:

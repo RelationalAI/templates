@@ -3,7 +3,7 @@ title: "Diet Optimization"
 description: "Select foods to satisfy nutritional requirements at minimum cost."
 featured: false
 experience_level: beginner
-industry: "Healthcare & Nutrition"
+industry: "Healthcare & Life Sciences"
 reasoning_types:
   - Prescriptive
 tags:

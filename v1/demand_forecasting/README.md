@@ -4,7 +4,7 @@ description: "Forecast next-period unit sales per (store, item, day) with a regr
 featured: false
 private: true
 experience_level: advanced
-industry: "Retail"
+industry: "Retail & Consumer"
 reasoning_types:
   - Predictive
 tags:

@@ -3,7 +3,7 @@ title: "Underwriting Audit"
 description: "Audit an underwriting ruleset against a catalog of properties. For each property, the solver either proves the property holds (PASS) or returns K distinct counterexample applicants who falsify it (FAIL). Multi-property batch audit, CSP solver in multi-solution mode."
 featured: false
 experience_level: advanced
-industry: "Insurance"
+industry: "Financial Services"
 reasoning_types:
   - Prescriptive
 tags:

@@ -3,7 +3,7 @@ title: "Synthetic Eligibility Records"
 description: "Generate K distinct, internally consistent member eligibility records per solve using a CSP solver in multi-solution mode: each record satisfies CMS Medicare-eligibility, age-by-plan-type CFDs, and PCP-network attribution."
 featured: false
 experience_level: intermediate
-industry: "Healthcare"
+industry: "Healthcare & Life Sciences"
 reasoning_types:
   - Prescriptive
 tags:

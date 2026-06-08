@@ -3,7 +3,7 @@ title: "Patient Cohort Recruitment"
 description: "Build a clinical-research cohort over a patient knowledge graph: a Graph reasoner closes a kinase-pathway sub-ontology, relational rules lift the closure to per-patient eligibility and coverage facts, and a CSP solver picks K patients whose joint coverage spans enough distinct genes, therapies, and adverse events for the analysis to generalize."
 featured: false
 experience_level: intermediate
-industry: "Healthcare"
+industry: "Healthcare & Life Sciences"
 reasoning_types:
   - Graph
   - Rules-based
