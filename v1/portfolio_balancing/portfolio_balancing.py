@@ -1083,7 +1083,10 @@ def frontier_adaptive(n):
 def frontier_dichotomic(n):
     """Global dual use: repeatedly split the interval with the largest chord-vs-tangent
     gap, sampling at the crossover point where the two endpoints' tangents (their shadow
-    prices) meet -- the non-inferior-set estimation (NISE) scheme."""
+    prices) meet. This is the epsilon-constraint, dual-guided analogue of NISE: classical
+    NISE (Aneja-Nair 1979, non-inferior-set estimation) is a WEIGHTED-SUM scheme that splits
+    by picking the next weight as the chord normal; here we split by picking the next epsilon
+    at the shadow-price crossover. Same supported set on a convex bi-objective frontier."""
     pts = {lo.ret: lo, hi.ret: hi}
     g0, _ = pair_gap(lo, hi)
     heap, ctr = [(-g0, 0, lo, hi)], 1
@@ -1120,7 +1123,9 @@ for _name, _driver in (
     methods[_name] = _driver(N_SOLVES)
 
 # The headline result: at equal solve budget, using the dual to place samples shrinks
-# the worst chord-vs-tangent gap. Using it globally (dichotomic) is the guaranteed win.
+# the worst chord-vs-tangent gap. On a smooth convex frontier (like the bundled data)
+# using it globally (dichotomic) wins -- but that ordering is an empirical expectation,
+# not a theorem: on a near-linear or dual-degenerate frontier the advantage can shrink.
 gaps = {m: max_gap(pts) for m, pts in methods.items()}
 print("\nFrontier approximation quality (same solve budget, lower gap = better):")
 print(f"  {'method':<12}{'solves':>8}{'max chord-gap':>18}")
@@ -1129,10 +1134,16 @@ best = min(gaps.values())
 for m, pts in methods.items():
     flag = "  <- tightest" if gaps[m] == best else ""
     print(f"  {m:<12}{len(pts):>8}{gaps[m]:>18.4f}{flag}")
+# Inform rather than abort: dual-guided beating blind grid is the expected result on the
+# bundled data, but it is not invariant under user data swaps, so a violation is a notice
+# (your frontier is near-linear or degenerate), not a failure of the template.
 if gaps["dichotomic"] > gaps["grid"] + 1e-9:
-    raise SystemExit(
-        f"dichotomic gap ({gaps['dichotomic']:.3e}) should not exceed grid "
-        f"({gaps['grid']:.3e}) at equal budget -- check the frontier driver inputs"
+    warnings.warn(
+        f"dichotomic gap ({gaps['dichotomic']:.3e}) exceeds grid ({gaps['grid']:.3e}) at "
+        "equal budget. On the bundled data the dual-guided driver is tightest; on a near-"
+        "linear or dual-degenerate frontier (e.g. after swapping in your own returns/"
+        "covariance) that advantage can shrink or invert. Informational, not an error.",
+        stacklevel=2,
     )
 
 # The shadow price IS the frontier slope: show each point's exact dual next to the
@@ -1203,13 +1214,21 @@ for sn in scenario_names:
                 "is_knee": False,
             }
         )
-    # Knee = the point where the exact slope (shadow price) jumps most vs the prior.
+    # Knee = the last point before the frontier slope accelerates most: the largest RATIO
+    # jump between consecutive exact duals (lambda_j / lambda_{j-1}), marking point j-1 so
+    # "cost jumps beyond this point". This is the ratio-knee convention from
+    # rai-prescriptive-results-interpretation -- the knee is NOT where the absolute slope is
+    # highest (that is always the last point). The min-risk anchor (k=0) declares no return
+    # floor so its dual is structurally 0; the scan starts at j=2 to skip that 0->lambda_1
+    # transition, whose "jump" would be an absolute magnitude rather than a rate-of-change.
     knee_idx, max_jump = None, 0.0
-    for j in range(1, len(slopes)):
+    for j in range(2, len(slopes)):
         prev, curr = slopes[j - 1], slopes[j]
-        jump = (curr / prev) if prev > 1e-9 else (curr if curr > 0 else 0.0)
+        if prev <= 1e-9:
+            continue
+        jump = curr / prev
         if jump > max_jump:
-            max_jump, knee_idx = jump, j
+            max_jump, knee_idx = jump, j - 1
     if knee_idx is not None:
         rows_for_sn[knee_idx]["is_knee"] = True
     fp_rows.extend(rows_for_sn)
