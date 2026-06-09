@@ -366,7 +366,7 @@ The bundled subscriber data has 50 enterprise (~$300K LTV avg) vs. 1,150 consume
 <details>
 <summary>Gurobi unavailable / unlicensed</summary>
 
-The script attempts the engine's configured solver first. If gurobi is configured but errors at runtime (license, integration), the script catches the failure and retries with `solver="highs"` — no edit needed. To force HiGHS, set the engine's prescriptive solver to `highs` in `raiconfig.yaml`.
+The script requests gurobi first. If gurobi errors at runtime (license, integration), it catches the failure and retries with `solver="highs"` — no edit needed. To always use HiGHS, change `problem.solve("gurobi")` to `problem.solve("highs")`.
 
 </details>
 
