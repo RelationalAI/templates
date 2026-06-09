@@ -522,7 +522,7 @@ NetworkPerformance.packet_loss_pct = model.Property(f"{NetworkPerformance} has {
 NetworkPerformance.latency_ms = model.Property(f"{NetworkPerformance} has {Float:latency_ms}")
 NetworkPerformance.error_rate = model.Property(f"{NetworkPerformance} has {Float:error_rate}")
 NetworkPerformance.for_tower = model.Relationship(
-    f"{NetworkPerformance} for tower {CellTower}", short_name="performance_for_tower"
+    f"{NetworkPerformance} for tower {CellTower}"
 )
 src = model.data(network_perf_df)
 model.define(NetworkPerformance.new(
@@ -672,13 +672,13 @@ model.define(Subscriber.new(
 # subscriber PageRank graph and for per-tower customer-impact aggregation.
 CallDetailRecord = model.Concept("CallDetailRecord", identify_by={"id": String})
 CallDetailRecord.caller = model.Relationship(
-    f"{CallDetailRecord} has caller {Subscriber}", short_name="cdr_caller"
+    f"{CallDetailRecord} has caller {Subscriber}"
 )
 CallDetailRecord.callee = model.Relationship(
-    f"{CallDetailRecord} has callee {Subscriber}", short_name="cdr_callee"
+    f"{CallDetailRecord} has callee {Subscriber}"
 )
 CallDetailRecord.routed_through = model.Relationship(
-    f"{CallDetailRecord} routed through {CellTower}", short_name="cdr_routed_through"
+    f"{CallDetailRecord} routed through {CellTower}"
 )
 src = model.data(cdr_df)
 model.define(CallDetailRecord.new(
@@ -806,7 +806,7 @@ TowerUpgradeOption.capacity_increase_gbps = model.Property(
 TowerUpgradeOption.cost = model.Property(f"{TowerUpgradeOption} has {Float:cost}")
 TowerUpgradeOption.install_weeks = model.Property(f"{TowerUpgradeOption} has {Integer:install_weeks}")
 TowerUpgradeOption.for_tower = model.Relationship(
-    f"{TowerUpgradeOption} for tower {CellTower}", short_name="upgrade_for_tower"
+    f"{TowerUpgradeOption} for tower {CellTower}"
 )
 src = model.data(upgrade_options_df)
 model.define(TowerUpgradeOption.new(
@@ -879,13 +879,12 @@ problem.maximize(
     )
 )
 
-# The prescriptive engine's configured solver picks up by default
-# (see raiconfig.yaml `reasoners.prescriptive`). If the engine is set
-# to gurobi but gurobi errors at runtime (license, integration), the
-# except branch catches the failure and retries with HiGHS explicitly.
+# Prefer gurobi (engine-configured for licensed deployments). If gurobi
+# errors at runtime (license, integration), the except branch catches the
+# failure and retries with the bundled HiGHS solver explicitly.
 print("\n  Solving...")
 try:
-    problem.solve()
+    problem.solve("gurobi")
 except Exception as exc:
     # Fall back to the bundled open-source HiGHS solver when gurobi is
     # unavailable / unlicensed on the prescriptive engine.

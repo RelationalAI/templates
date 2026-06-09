@@ -56,7 +56,7 @@ Finally, it shows **conflict analysis (infeasibility diagnosis)**. A maintenance
 
 ### Tools
 - Python >= 3.10
-- RelationalAI Python SDK (`relationalai`) >= 1.9.0
+- RelationalAI Python SDK (`relationalai`) == 1.11.0
 
 ## Quickstart
 

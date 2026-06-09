@@ -59,7 +59,7 @@ Built using **predictive reasoning** (GNN on a heterogeneous graph), **rules-bas
 ### Tools
 
 - Python ≥ 3.10.
-- RelationalAI Python SDK (`relationalai == 1.8`).
+- RelationalAI Python SDK (`relationalai == 1.11.0`).
 
 ### One-time Snowflake setup for GNN experiment artifacts
 
