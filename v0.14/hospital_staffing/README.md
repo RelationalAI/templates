@@ -3,7 +3,7 @@ title: "Hospital Staffing"
 description: "Assign nurses to shifts to minimize overtime cost and overflow penalties from unmet patient demand."
 featured: false
 experience_level: intermediate
-industry: "Healthcare"
+industry: "Healthcare & Life Sciences"
 reasoning_types:
   - Prescriptive
 tags:

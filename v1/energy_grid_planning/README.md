@@ -1,6 +1,6 @@
 ---
 title: "Energy Grid Planning"
-description: "Multi-reasoner template: demand forecasting, grid vulnerability analysis, compliance rules, and multi-objective optimization for AI data center interconnection planning on the ERCOT (Texas) grid."
+description: "AI data center interconnection planning on the ERCOT (Texas) grid: demand forecasting, grid-vulnerability analysis, compliance rules, and multi-objective optimization."
 featured: true
 experience_level: intermediate
 industry: "Energy & Utilities"

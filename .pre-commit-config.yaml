@@ -23,4 +23,4 @@ repos:
         pass_filenames: false
         additional_dependencies:
           - PyYAML==6.0.2
-        files: ^(v\d.*/.*/README\.md|scripts/generate_version_indexes\.py)$
+        files: ^(README\.md|v\d.*/.*/README\.md|scripts/generate_version_indexes\.py)$

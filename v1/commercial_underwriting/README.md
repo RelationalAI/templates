@@ -1,9 +1,9 @@
 ---
 title: "Commercial Underwriting"
-description: "Run rules-based eligibility checks and risk-tier classification across a four-level commercial property/casualty hierarchy (insured entity, policy, location, coverage)."
+description: "Eligibility checks and risk-tier classification across a four-level commercial property/casualty hierarchy (insured entity, policy, location, coverage)."
 featured: false
 experience_level: intermediate
-industry: "Insurance"
+industry: "Financial Services"
 reasoning_types:
   - Rules-based
 tags:

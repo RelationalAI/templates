@@ -3,7 +3,7 @@ title: "Order Fulfillment"
 description: "Assign customer orders to fulfillment centers to minimize shipping and fixed costs."
 featured: true
 experience_level: beginner
-industry: "Supply Chain"
+industry: "Supply Chain & Logistics"
 reasoning_types:
    - Prescriptive
 tags:

@@ -1,6 +1,6 @@
 ---
 title: "Product Configurator"
-description: "Enumerate every feasible build of a configurable product using a CSP solver in multi-solution mode: one option per slot subject to feature-model rules, regional regulations, and a price ceiling."
+description: "Enumerate every feasible build of a configurable product in multi-solution mode: one option per slot subject to feature-model rules, regional regulations, and a price ceiling."
 featured: false
 experience_level: intermediate
 industry: "Manufacturing"

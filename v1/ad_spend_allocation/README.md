@@ -3,7 +3,7 @@ title: "Ad Spend Allocation"
 description: "Allocate marketing budget across channels and campaigns to maximize conversions."
 featured: false
 experience_level: intermediate
-industry: "Marketing"
+industry: "Retail & Consumer"
 reasoning_types:
   - Prescriptive
 tags:

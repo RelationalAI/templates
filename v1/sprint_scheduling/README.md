@@ -3,7 +3,7 @@ title: "Sprint Scheduling"
 description: "Assign backlog issues to developers across sprints, minimizing weighted completion time while respecting capacity and skill constraints."
 featured: false
 experience_level: intermediate
-industry: "Technology"
+industry: "Technology & Telecom"
 reasoning_types:
   - Prescriptive
 tags:

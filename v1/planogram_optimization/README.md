@@ -4,7 +4,7 @@ description: "Decide integer facing counts per SKU to maximize predicted weekly 
 featured: false
 private: true
 experience_level: intermediate
-industry: "Retail"
+industry: "Retail & Consumer"
 reasoning_types:
   - Predictive
   - Prescriptive

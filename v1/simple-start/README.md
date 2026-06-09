@@ -2,7 +2,7 @@
 title: "Simple Start"
 description: "A minimal notebook to connect to Snowflake, model a small graph, and compute betweenness centrality with RelationalAI."
 experience_level: beginner
-industry: "General"
+industry: "Cross-Industry"
 featured: true
 reasoning_types:
   - Graph

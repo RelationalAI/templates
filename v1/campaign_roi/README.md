@@ -3,7 +3,7 @@ title: "Campaign ROI"
 description: "Reallocate marketing campaign budgets across regions to maximize conversions, with per-campaign floor and cap constraints and a regional cap on a paused region."
 featured: false
 experience_level: beginner
-industry: "Marketing"
+industry: "Retail & Consumer"
 reasoning_types:
   - Prescriptive
 tags:

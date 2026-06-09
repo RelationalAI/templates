@@ -1,9 +1,9 @@
 ---
 title: "Financial Index Replication"
-description: "Prescriptive optimization template for selecting a sparse 20-stock replication basket and weights that track an S&P 500-like benchmark."
+description: "Select a sparse 20-stock replication basket and weights that track an S&P 500-like benchmark."
 featured: false
 experience_level: intermediate
-industry: "Finance"
+industry: "Financial Services"
 reasoning_types:
     - Prescriptive
     - Rules-based

@@ -1,6 +1,6 @@
 ---
 title: "Portfolio Balancing"
-description: "Multi-reasoner template: rules-based compliance, covariance clustering, and bi-objective Markowitz optimization that uses solver shadow prices to trace the risk-return frontier, with a crisis-regime stress test."
+description: "Compliance screening, covariance clustering, and bi-objective Markowitz optimization that traces the risk-return frontier with solver shadow prices, plus a crisis-regime stress test."
 featured: false
 experience_level: intermediate
 industry: "Financial Services"
