@@ -879,24 +879,17 @@ problem.maximize(
     )
 )
 
-# Prefer gurobi (engine-configured for licensed deployments). If gurobi
-# errors at runtime (license, integration), the except branch catches the
-# failure and retries with the bundled HiGHS solver explicitly.
+# Prefer gurobi (typically faster on MIPs where licensed). If the gurobi
+# solve fails for any reason -- most often gurobi being unavailable or
+# unlicensed on the prescriptive engine -- fall back to the bundled
+# open-source HiGHS solver so the template runs on any engine. If HiGHS
+# also fails, that error (e.g. a genuine model issue) propagates.
 print("\n  Solving...")
 try:
     problem.solve("gurobi")
 except Exception as exc:
-    # Fall back to the bundled open-source HiGHS solver when gurobi is
-    # unavailable / unlicensed on the prescriptive engine.
-    _msg = str(exc).lower()
-    if "gurobi" in _msg and any(
-        k in _msg for k in ("licen", "unavailable", "not enabled",
-                             "not found", "disabled", "install")
-    ):
-        print(f"  Gurobi unavailable ({exc}); falling back to solver='highs'.")
-        problem.solve(solver="highs")
-    else:
-        raise
+    print(f"  gurobi solve failed ({exc}); falling back to solver='highs'.")
+    problem.solve("highs")
 problem.display()
 
 # Extract selected upgrades. Cast int128 (returned by RAI select) to

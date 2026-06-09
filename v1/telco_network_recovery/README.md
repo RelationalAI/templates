@@ -54,7 +54,7 @@ Built using **predictive reasoning** (GNN on a heterogeneous graph), **rules-bas
 
 - A Snowflake account with the RelationalAI native app installed.
 - A Snowflake user with permissions on the RAI native app and on `EXP_DATABASE` (the schema for GNN experiment artifacts).
-- A gurobi-enabled prescriptive engine for Stage 4 (the script automatically falls back to the bundled HiGHS solver if gurobi is not configured).
+- A gurobi-enabled prescriptive engine for Stage 4 (if gurobi is unavailable or unlicensed, the script catches the solver error and falls back to the bundled HiGHS solver automatically).
 
 ### Tools
 
