@@ -1,6 +1,6 @@
 ---
 title: "Datacenter Compute Allocation"
-description: "Multi-reasoner template (chain follow-up to energy_grid_planning): heterogeneous-graph GNN classification of per-workload utilization probability, hardware-compatibility rules, dependency PageRank, and 24-cell scenario MIP for inside-the-fence GPU allocation across hyperscaler campuses."
+description: "Inside-the-fence GPU allocation across hyperscaler campuses, a chain follow-up to energy_grid_planning: GNN-predicted per-workload utilization, hardware-compatibility rules, dependency PageRank, and a 24-cell scenario MIP."
 featured: false
 private: true
 experience_level: advanced

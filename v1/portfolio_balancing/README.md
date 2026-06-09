@@ -1,6 +1,6 @@
 ---
 title: "Portfolio Balancing"
-description: "Multi-reasoner template: rules-based compliance, covariance clustering, and bi-objective Markowitz optimization with a crisis-regime stress test."
+description: "Compliance screening, covariance clustering, and bi-objective Markowitz optimization with a crisis-regime stress test."
 featured: false
 experience_level: intermediate
 industry: "Financial Services"

@@ -1,6 +1,6 @@
 ---
 title: "Disease Outbreak Prevention"
-description: "Use weighted degree centrality to identify the highest-risk healthcare facilities in a public health network, considering both connection volume and intensity, to prioritize resource deployment during disease outbreaks."
+description: "Rank the highest-risk facilities in a public health network by weighted degree centrality (connection volume and intensity) to prioritize resource deployment during outbreaks."
 experience_level: intermediate
 industry: "Healthcare & Life Sciences"
 featured: true

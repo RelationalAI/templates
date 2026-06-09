@@ -1,6 +1,6 @@
 ---
 title: "Underwriting Audit"
-description: "Audit an underwriting ruleset against a catalog of properties. For each property, the solver either proves the property holds (PASS) or returns K distinct counterexample applicants who falsify it (FAIL). Multi-property batch audit, CSP solver in multi-solution mode."
+description: "Audit an underwriting ruleset against a catalog of properties. For each, either prove it holds (PASS) or return K distinct counterexample applicants that falsify it (FAIL). Multi-property batch audit in multi-solution mode."
 featured: false
 experience_level: advanced
 industry: "Financial Services"

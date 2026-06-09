@@ -1,6 +1,6 @@
 ---
 title: "Wildlife Conservation Network"
-description: "Use the Louvain community detection algorithm and degree centrality analysis to identify collaboration clusters among wildlife conservation organizations, helping optimize resource sharing and identify key coordination hubs."
+description: "Identify collaboration clusters among wildlife-conservation organizations with Louvain community detection and degree centrality, surfacing key coordination hubs for resource sharing."
 experience_level: beginner
 industry: "Cross-Industry"
 reasoning_types:
