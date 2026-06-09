@@ -8,8 +8,9 @@ Rebalance an 8-stock book under compliance + crisis stress. Rules surface broken
 The current book breaks compliance on 4 holdings + 2 sectors. Naive
 "diversification" hides correlated bets. The chain collapses 8 stocks
 into 5 distinct cluster representatives, traces the efficient frontier
-under base + crisis covariance, and shows crisis vol sits 25-30% above
-base at every lambda — without the cluster collapse, the gap would grow.
+with solver shadow prices (each return-floor dual IS the frontier slope),
+and shows crisis vol sits 22-30% above base at every frontier point —
+without the cluster collapse, the gap would grow.
 
   ─────────────────────────────────────────────────────────────────
   STAGE 1  Rules        ──►  Holding.is_overconcentrated         (4)
@@ -24,15 +25,18 @@ base at every lambda — without the cluster collapse, the gap would grow.
                               intra +0.683 vs inter +0.131.
   ─────────────────────────────────────────────────────────────────
   STAGE 3  Prescriptive ──►  Stock.x_quantity (per Scenario)
-                 (QP)         6 scenarios = 3 budgets x 2 regimes.
-                              Min-risk anchor + 5 epsilon points = 6-point
-                              frontier per scenario. Knee at eps_1.
+              (QP, HiGHS)     6 scenarios = 3 budgets x 2 regimes.
+                              solve(sensitivity=True): each return-floor dual
+                              IS the frontier slope d(var)/d(return). Three
+                              drivers (grid/adaptive/dichotomic) place 6 points
+                              at equal budget; dichotomic tightest (max chord-
+                              gap 202 vs grid 558). Reference base_1000 knee at p3.
   ─────────────────────────────────────────────────────────────────
   STAGE 4  Stress       ──►  Stock.regime_covar (PSD-preserving)
-                              Crisis vol 25-30% above base across
+                              Crisis vol 22-30% above base across
                               the frontier. Gap peaks mid-frontier
-                              (eps_1..eps_2 at +29.8%), narrows
-                              toward the concentrated end (+25.2%).
+                              (p1 at +29.6%), narrows toward the
+                              concentrated end (p5 at +21.7%).
   ─────────────────────────────────────────────────────────────────
 ```
 
@@ -103,24 +107,24 @@ Plan: rules for compliance flags, graph for correlation clustering + representat
 **Prompt**
 
 ```
-/rai-prescriptive-problem-formulation What's the Markowitz mean-variance frontier across our 6 scenarios (3 budgets — 500, 1000, 2000 — times 2 regimes — base, crisis)? Each scenario must be fully invested; cap any single position at 30% of budget and any sector at 30%; only invest in cluster representatives. Trace 6 frontier points per scenario from min-risk through high-return.
+/rai-prescriptive-problem-formulation What's the Markowitz mean-variance frontier across our 6 scenarios (3 budgets — 500, 1000, 2000 — times 2 regimes — base, crisis)? Each scenario must be fully invested; cap any single position at 30% of budget and any sector at 30%; only invest in cluster representatives. Solve with sensitivity enabled so each return-floor constraint returns its shadow price. Trace 6 frontier points per scenario by dual-guided sampling: start from the min-risk and max-return anchors, then add each next return target where the two bracketing points' shadow prices (their tangents) predict the largest gap to the chord — not on a uniform grid, which over-samples the flat low-risk end and crowds the max-return wall.
 ```
 
 **Response**
 
-48 decision vars (`Stock.x_quantity`, 8 stocks x 6 scenarios; non-reps forced to 0). Constraint families: non-negativity, budget equality (sum = budget per scenario), position cap (30%), sector cap (30%), non-representative = 0, plus epsilon return-rate floor on sweep solves. Return-rate range [0.0634, 0.0840]. 6-point frontier per scenario (min-risk anchor + 5 epsilon points); 7 solver invocations total (2 anchors + 5 epsilon), each producing one allocation per scenario, for 42 `LOCALLY_SOLVED` portfolios via Ipopt.
+48 decision vars (`Stock.x_quantity`, 8 stocks x 6 scenarios; non-reps forced to 0). Constraint families: non-negativity, budget equality (sum = budget per scenario), position cap (30%), sector cap (30%), non-representative = 0, plus a per-scenario epsilon return-rate floor on the sweep solves. The reference scenario base_1000 spans return [64.87, 84.00] (rate [0.0649, 0.0840]). HiGHS solves the convex QP to `OPTIMAL` and, with `sensitivity=True`, returns each return-floor's dual — the shadow price, which by the envelope theorem equals the frontier slope d(variance)/d(return), so no finite differencing is needed. Each solve prices all 6 scenarios at once, and the three frontier drivers share a solve cache (≈ one budget of unique solves, not 3x).
 
 ### 7. Read the frontier
 
 **Prompt**
 
 ```
-/rai-prescriptive-results-interpretation For each scenario, list the six-point Pareto frontier and find the knee — where does the marginal risk per unit return jump the most?
+/rai-prescriptive-results-interpretation For the reference scenario (base_1000), list the Pareto frontier with each point's exact shadow price (the return-floor dual), and find the knee — the last point before the marginal risk per unit return jumps the most. Treat the knee as the largest ratio jump between consecutive duals.
 ```
 
 **Response**
 
-base_500 frontier: returns 32.43 -> 40.28, risk 1160 -> 1742. Marginal `delta_risk/delta_return` jumps ~3x at eps_1 (knee). Same shape across all 6 scenarios — risk scales as budget^2, rate-form frontier is budget-independent.
+Reference base_1000 frontier: return 64.87 -> 84.00, variance 4641.57 -> 8528.00 across 6 points. The exact return-floor duals rise 0 -> 134.83 -> 192.68 -> 250.64 -> 650.79 -> 1098.00; each dual is the frontier's local slope and brackets the finite-difference secant, so no differencing is needed. Knee at p3 — the last point before the largest ratio jump in consecutive duals (250.64 -> 650.79).
 
 ### 8. Stress under crisis
 
@@ -132,7 +136,7 @@ base_500 frontier: returns 32.43 -> 40.28, risk 1160 -> 1742. Marginal `delta_ri
 
 **Response**
 
-Crisis vol 25-30% above base across the frontier (budget 500: min_risk 34.06 -> 43.74 at +28.4%, eps_1 34.30 -> 44.54 at +29.8% peak). Gap peaks mid-frontier (eps_1..eps_2 at +29.8%), narrows to +25.2% at eps_5 — the cluster-collapse payoff.
+Crisis vol runs 22-30% above base at every frontier point (budget 1000: min_risk 68.13 -> 87.49 at +28.4%, p1 71.99 -> 93.27 at +29.6%). The gap peaks at p1 (+29.6%) and narrows to +21.7% at p5 — the cluster-collapse payoff: the concentrated end holds the highest-Sharpe distinct bet per cluster (lower-crisis-correlation sectors) rather than stacked near-duplicates. The gap_% pattern is identical across all three budgets.
 
 ### 9. Persist solution concepts into the ontology
 
@@ -144,7 +148,7 @@ Crisis vol 25-30% above base across the frontier (budget 500: min_risk 34.06 -> 
 
 **Response**
 
-Ontology gains a `FrontierPoint(Scenario, eps_label)` Concept (36 rows = 6 scenarios x 6 points) with `return`, `risk`, `marginal_risk_per_return`, `is_knee`, `vol_base`, `vol_crisis`, `vol_gap`, `vol_gap_pct`. The frontier shape (32.43->40.28 / 1160->1742 in base_500), knee at eps_1, and crisis vol gap (+28.4% min_risk -> +29.8% peak -> +25.2% eps_5) are now queryable as ontology rather than stdout.
+Ontology gains a `FrontierPoint(Scenario, eps_label)` Concept (6 scenarios x up to 6 points; adjacent targets that collapse are deduped) with `return`, `risk`, `marginal_risk_per_return`, `is_knee`, `vol_base`, `vol_crisis`, `vol_gap`, `vol_gap_pct`. The frontier shape (base_1000 return 64.87->84.00, variance 4641->8528), knee at p3, and the crisis vol gap (+28.4% min_risk -> +29.6% peak at p1 -> +21.7% at p5) are now queryable as ontology rather than stdout.
 
 ## Data
 
