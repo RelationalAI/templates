@@ -54,12 +54,12 @@ Built using **predictive reasoning** (GNN on a heterogeneous graph), **rules-bas
 
 - A Snowflake account with the RelationalAI native app installed.
 - A Snowflake user with permissions on the RAI native app and on `EXP_DATABASE` (the schema for GNN experiment artifacts).
-- A gurobi-enabled prescriptive engine for Stage 4 (the script automatically falls back to the bundled HiGHS solver if gurobi is not configured).
+- A gurobi-enabled prescriptive engine for Stage 4 (if gurobi is unavailable or unlicensed, the script catches the solver error and falls back to the bundled HiGHS solver automatically).
 
 ### Tools
 
 - Python ≥ 3.10.
-- RelationalAI Python SDK (`relationalai == 1.8`).
+- RelationalAI Python SDK (`relationalai == 1.11.0`).
 
 ### One-time Snowflake setup for GNN experiment artifacts
 
@@ -366,7 +366,7 @@ The bundled subscriber data has 50 enterprise (~$300K LTV avg) vs. 1,150 consume
 <details>
 <summary>Gurobi unavailable / unlicensed</summary>
 
-The script attempts the engine's configured solver first. If gurobi is configured but errors at runtime (license, integration), the script catches the failure and retries with `solver="highs"` — no edit needed. To force HiGHS, set the engine's prescriptive solver to `highs` in `raiconfig.yaml`.
+The script requests gurobi first. If gurobi errors at runtime (license, integration), it catches the failure and retries with `solver="highs"` — no edit needed. To always use HiGHS, change `problem.solve("gurobi")` to `problem.solve("highs")`.
 
 </details>
 
