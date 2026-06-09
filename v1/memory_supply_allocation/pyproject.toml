@@ -9,7 +9,7 @@ description = "RelationalAI template: memory_supply_allocation (PyRel v1)"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-  "relationalai[gnn]==1.5.0",
+  "relationalai[gnn]==1.11.0",
   "pandas",
 ]
 

@@ -71,8 +71,8 @@ lane_data = model.data(lane_csv)
 model.define(
     lane := Lane.new(
         id=lane_data.id,
-        source=Site.filter_by(id=lane_data.source_id),
-        dest=Site.filter_by(id=lane_data.dest_id),
+        source=Site.lookup(id=lane_data.source_id),
+        dest=Site.lookup(id=lane_data.dest_id),
     ),
     lane.cost_per_unit(lane_data.cost_per_unit),
     lane.capacity(lane_data.capacity),
@@ -91,7 +91,7 @@ demand_data = model.data(demand_csv)
 model.define(
     d := Demand.new(
         id=demand_data.id,
-        site=Site.filter_by(id=demand_data.site_id),
+        site=Site.lookup(id=demand_data.site_id),
     ),
     d.quantity(demand_data.quantity),
     d.customer(demand_data.customer),

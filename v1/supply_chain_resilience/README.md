@@ -95,7 +95,7 @@ The multi-reasoner approach is necessary because structural risk (graph), suppli
 
 ### Tools
 - Python >= 3.10
-- RelationalAI Python SDK (`relationalai`) >= 1.0.14
+- RelationalAI Python SDK (`relationalai`) == 1.11.0
 
 ## Quickstart
 

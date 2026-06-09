@@ -271,21 +271,21 @@ else:
     features_df = pd.read_csv(DATA_DIR / "supplier_features.csv")
     f_data = model.data(features_df)
     model.define(
-        Supplier.filter_by(id=f_data.supplier_id).equipment_age_months(
+        Supplier.lookup(id=f_data.supplier_id).equipment_age_months(
             f_data.equipment_age_months
         )
     )
     model.define(
-        Supplier.filter_by(id=f_data.supplier_id).geopolitical_exposure_score(
+        Supplier.lookup(id=f_data.supplier_id).geopolitical_exposure_score(
             f_data.geopolitical_exposure_score
         )
     )
-    model.define(Supplier.filter_by(id=f_data.supplier_id).region(f_data.region))
+    model.define(Supplier.lookup(id=f_data.supplier_id).region(f_data.region))
     model.define(
-        Supplier.filter_by(id=f_data.supplier_id).process_node_nm(f_data.process_node_nm)
+        Supplier.lookup(id=f_data.supplier_id).process_node_nm(f_data.process_node_nm)
     )
     model.define(
-        Supplier.filter_by(id=f_data.supplier_id).workforce_size_k(f_data.workforce_size_k)
+        Supplier.lookup(id=f_data.supplier_id).workforce_size_k(f_data.workforce_size_k)
     )
 
     # SupplierObservation: GNN source concept. One row per (supplier, period).
@@ -779,12 +779,12 @@ impact_bind = model.data(
     what_if_supplier_df[["supplier_id", "n_affected_cells", "max_cap_drop_pct"]]
 )
 model.define(
-    Supplier.filter_by(id=impact_bind.supplier_id).offline_impact_cells(
+    Supplier.lookup(id=impact_bind.supplier_id).offline_impact_cells(
         impact_bind.n_affected_cells
     )
 )
 model.define(
-    Supplier.filter_by(id=impact_bind.supplier_id).offline_max_cap_drop_pct(
+    Supplier.lookup(id=impact_bind.supplier_id).offline_max_cap_drop_pct(
         impact_bind.max_cap_drop_pct
     )
 )
@@ -840,7 +840,7 @@ what_if_input_df = pd.DataFrame(what_if_input_rows)
 Input.shortage_impact_cells = Property(f"{Input} has {Integer:shortage_impact_cells}")
 input_bind = model.data(what_if_input_df[["input_id", "n_affected_cells"]])
 model.define(
-    Input.filter_by(id=input_bind.input_id).shortage_impact_cells(
+    Input.lookup(id=input_bind.input_id).shortage_impact_cells(
         input_bind.n_affected_cells
     )
 )

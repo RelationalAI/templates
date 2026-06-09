@@ -63,8 +63,8 @@ def create_model():
 
     define(
         Partnership.new(
-            org1=org_from.filter_by(id=partnerships_data.from_org_id),
-            org2=org_to.filter_by(id=partnerships_data.to_org_id)
+            org1=org_from.lookup(id=partnerships_data.from_org_id),
+            org2=org_to.lookup(id=partnerships_data.to_org_id)
         )
     )
 

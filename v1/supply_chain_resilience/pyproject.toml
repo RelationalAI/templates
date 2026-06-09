@@ -9,7 +9,7 @@ description = "RelationalAI template: supply_chain_resilience (PyRel v1)"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-  "relationalai==1.0.14",
+  "relationalai==1.11.0",
   "pandas>=2.0",
 ]
 

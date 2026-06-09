@@ -247,15 +247,15 @@ model.define(Generator.new(
     marginal_cost=src.MARGINAL_COST, min_up_time_hrs=src.MIN_UP_TIME_HRS,
     min_down_time_hrs=src.MIN_DOWN_TIME_HRS, emissions_rate=src.EMISSIONS_RATE,
     is_renewable=src.IS_RENEWABLE,
-    substation=Substation.filter_by(id=src.SUBSTATION_ID),
+    substation=Substation.lookup(id=src.SUBSTATION_ID),
 ))
 
 # Load transmission line data from CSV.
 src = model.data(transmission_lines_df)
 model.define(TransmissionLine.new(
     id=src.ID,
-    from_substation=Substation.filter_by(id=src.FROM_SUBSTATION_ID),
-    to_substation=Substation.filter_by(id=src.TO_SUBSTATION_ID),
+    from_substation=Substation.lookup(id=src.FROM_SUBSTATION_ID),
+    to_substation=Substation.lookup(id=src.TO_SUBSTATION_ID),
     capacity_mw=src.CAPACITY_MW, length_km=src.LENGTH_KM,
     impedance=src.IMPEDANCE, is_active=src.IS_ACTIVE,
     maintenance_priority=src.MAINTENANCE_PRIORITY,
@@ -271,14 +271,14 @@ model.define(LoadZone.new(
 # Load demand period data from CSV.
 src = model.data(demand_periods_df)
 model.define(DemandPeriod.new(
-    id=src.ID, load_zone=LoadZone.filter_by(id=src.LOAD_ZONE_ID),
+    id=src.ID, load_zone=LoadZone.lookup(id=src.LOAD_ZONE_ID),
     period=src.PERIOD, demand_mw=src.DEMAND_MW, price_per_mwh=src.PRICE_PER_MWH,
 ))
 
 # Load renewable profile data from CSV.
 src = model.data(renewable_profiles_df)
 model.define(RenewableProfile.new(
-    id=src.ID, generator=Generator.filter_by(id=src.GENERATOR_ID),
+    id=src.ID, generator=Generator.lookup(id=src.GENERATOR_ID),
     period=src.PERIOD, capacity_factor=src.CAPACITY_FACTOR,
 ))
 
@@ -293,7 +293,7 @@ model.define(MaintenanceWindow.new(
 # Load customer data from CSV.
 src = model.data(customers_df)
 model.define(Customer.new(
-    id=src.ID, name=src.NAME, load_zone=LoadZone.filter_by(id=src.LOAD_ZONE_ID),
+    id=src.ID, name=src.NAME, load_zone=LoadZone.lookup(id=src.LOAD_ZONE_ID),
     contracted_demand_mw=src.CONTRACTED_DEMAND_MW, flexibility_pct=src.FLEXIBILITY_PCT,
     curtailment_cost_per_mwh=src.CURTAILMENT_COST_PER_MWH,
 ))
@@ -303,7 +303,7 @@ src = model.data(data_center_requests_df)
 model.define(DataCenterRequest.new(
     id=src.ID, name=src.NAME, hyperscaler=src.HYPERSCALER,
     requested_mw=src.REQUESTED_MW,
-    substation=Substation.filter_by(id=src.SUBSTATION_ID),
+    substation=Substation.lookup(id=src.SUBSTATION_ID),
     annual_revenue_per_mw=src.ANNUAL_REVENUE_PER_MW,
     pue=src.PUE, is_ai_workload=src.IS_AI_WORKLOAD,
     cooling_type=src.COOLING_TYPE,
@@ -314,7 +314,7 @@ model.define(DataCenterRequest.new(
 # Load substation upgrade data from CSV.
 src = model.data(substation_upgrades_df)
 model.define(SubstationUpgrade.new(
-    id=src.ID, substation=Substation.filter_by(id=src.SUBSTATION_ID),
+    id=src.ID, substation=Substation.lookup(id=src.SUBSTATION_ID),
     capacity_increase_mw=src.CAPACITY_INCREASE_MW, cost_million=src.COST_MILLION,
     lead_time_months=src.LEAD_TIME_MONTHS, enables_low_carbon=src.ENABLES_LOW_CARBON,
 ))
@@ -322,7 +322,7 @@ model.define(SubstationUpgrade.new(
 # Load demand forecast data from CSV.
 src = model.data(demand_forecasts_df)
 model.define(DemandForecast.new(
-    id=src.ID, substation=Substation.filter_by(id=src.SUBSTATION_ID),
+    id=src.ID, substation=Substation.lookup(id=src.SUBSTATION_ID),
     forecast_period=src.FORECAST_PERIOD, predicted_load_mw=src.PREDICTED_LOAD_MW,
     confidence=src.CONFIDENCE, includes_dc_growth=src.INCLUDES_DC_GROWTH,
 ))
@@ -334,7 +334,7 @@ src = model.data(load_history_df)
 model.define(LoadHistory.new(
     id=src.READING_ID, reading_date=src.READING_DATE, load_mw=src.LOAD_MW,
     temperature_f=src.TEMPERATURE_F, is_peak_season=src.IS_PEAK_SEASON,
-    substation=Substation.filter_by(id=src.SUBSTATION_ID),
+    substation=Substation.lookup(id=src.SUBSTATION_ID),
 ))
 
 # Load DC announcement data from CSV.
@@ -342,7 +342,7 @@ src = model.data(dc_announcements_df)
 model.define(DCAnnouncement.new(
     id=src.ANNOUNCEMENT_ID, hyperscaler=src.HYPERSCALER,
     announced_date=src.ANNOUNCED_DATE, announced_mw=src.ANNOUNCED_MW,
-    substation=Substation.filter_by(id=src.SUBSTATION_ID),
+    substation=Substation.lookup(id=src.SUBSTATION_ID),
 ))
 
 # --------------------------------------------------
@@ -1048,7 +1048,7 @@ portfolio_src = model.data(portfolio_df.rename(columns={
 
 model.define(InvestmentPortfolio.new(
     investment_level_name=portfolio_src.INVESTMENT_LEVEL_NAME,
-    investment_level=InvestmentLevel.filter_by(name=portfolio_src.INVESTMENT_LEVEL_NAME),
+    investment_level=InvestmentLevel.lookup(name=portfolio_src.INVESTMENT_LEVEL_NAME),
     dc_count=portfolio_src.DC_COUNT,
     total_mw=portfolio_src.TOTAL_MW,
     annual_revenue=portfolio_src.ANNUAL_REVENUE,

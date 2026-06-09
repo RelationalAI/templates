@@ -59,8 +59,8 @@ shipment_data = model.data(read_csv(DATA_DIR / "shipments.csv"))
 model.define(
     s := Shipment.new(
         id=shipment_data.id,
-        sku=SKU.filter_by(id=shipment_data.sku_id),
-        supplier=Supplier.filter_by(id=shipment_data.supplier_id),
+        sku=SKU.lookup(id=shipment_data.sku_id),
+        supplier=Supplier.lookup(id=shipment_data.supplier_id),
     ),
     s.status(shipment_data.status),
     s.delay_days(shipment_data.delay_days),
@@ -78,8 +78,8 @@ op_data = model.data(read_csv(DATA_DIR / "operations.csv"))
 model.define(
     op := Operation.new(
         id=op_data.id,
-        input_sku=SKU.filter_by(id=op_data.input_sku_id),
-        output_sku=SKU.filter_by(id=op_data.output_sku_id),
+        input_sku=SKU.lookup(id=op_data.input_sku_id),
+        output_sku=SKU.lookup(id=op_data.output_sku_id),
     ),
     op.type(op_data.type),
     op.cost_per_unit(op_data.cost_per_unit),
@@ -96,7 +96,7 @@ bom_data = model.data(read_csv(DATA_DIR / "bill_of_materials.csv"))
 model.define(
     b := BOM.new(
         id=bom_data.id,
-        input_sku=SKU.filter_by(id=bom_data.input_sku_id),
+        input_sku=SKU.lookup(id=bom_data.input_sku_id),
     ),
     b.site_id(bom_data.site_id),
     b.input_quantity(bom_data.input_quantity),
@@ -112,7 +112,7 @@ demand_data = model.data(read_csv(DATA_DIR / "demands.csv"))
 model.define(
     d := Demand.new(
         id=demand_data.id,
-        sku=SKU.filter_by(id=demand_data.sku_id),
+        sku=SKU.lookup(id=demand_data.sku_id),
     ),
     d.quantity(demand_data.quantity),
     d.priority(demand_data.priority),
