@@ -44,7 +44,7 @@ What runs locally vs. needs a Snowflake connection:
 ## What's included
 
 - **Model**: `Account`, the `transfers_to` relationship, and the classification + expansion rules
-- **Runner**: a single Python script
+- **Runner**: a single Python script (and `runbook.md`, an analyst paste-test walkthrough)
 - **Sample data**: a small transfer ledger with an embedded structuring ring
 - **Outputs**: printed tables (network overview, per-account volume, suspects, counterparties, investigation set)
 
@@ -93,6 +93,7 @@ No Snowflake account, Native App, or `raiconfig.yaml` is required — the script
 ```text
 transaction_screening_local/
 ├── README.md
+├── runbook.md                       # analyst paste-test walkthrough
 ├── pyproject.toml
 ├── transaction_screening_local.py   # model, rules, and queries
 └── data/
@@ -110,7 +111,8 @@ The model derives accounts from both ends of every transfer, links them with a `
 - **`is_structuring`** — sent a transfer in the 9,000–10,000 band.
 - **`is_large_sender`** — sent a transfer over 50,000.
 - **`is_suspect`** — either of the above (defined as two rules, an OR).
-- **`near_suspect`** — one hop from a suspect, in either direction.
+- **`near_suspect`** — transacted directly with a suspect, in either direction.
+- **`under_review`** — the investigation set: suspect OR near a suspect.
 
 ## How it works
 

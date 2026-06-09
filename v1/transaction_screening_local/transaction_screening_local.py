@@ -95,10 +95,16 @@ model.where(Account.is_large_sender()).define(Account.is_suspect())
 # --------------------------------------------------
 # Stage 2: investigation expansion (one hop from a suspect)
 # --------------------------------------------------
+# near_suspect: transacted directly with a suspect, in either direction.
 Account.near_suspect = model.Relationship(f"{Account} near suspect")
 _other = Account.ref()
 model.where(Account.transfers_to(_other), _other.is_suspect()).define(Account.near_suspect())
 model.where(_other.transfers_to(Account), _other.is_suspect()).define(Account.near_suspect())
+
+# under_review: the investigation set = suspects plus their direct counterparties.
+Account.under_review = model.Relationship(f"{Account} under review")
+model.where(Account.is_suspect()).define(Account.under_review())
+model.where(Account.near_suspect()).define(Account.under_review())
 
 # --------------------------------------------------
 # Results
@@ -127,4 +133,4 @@ model.where(Account.is_suspect(), Account.transfers_to(_counterparty)).select(
 ).inspect()
 
 print("\n== Investigation set (suspect or one hop from a suspect) ==")
-model.where(Account.near_suspect()).select(Account.id.alias("flagged_for_review")).inspect()
+model.where(Account.under_review()).select(Account.id.alias("flagged_for_review")).inspect()
