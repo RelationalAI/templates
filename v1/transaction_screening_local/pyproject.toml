@@ -9,7 +9,7 @@ description = "RelationalAI template: transaction_screening_local (PyRel v1, loc
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-  "relationalai==1.8.1",
+  "relationalai==1.9.0",
 ]
 
 [tool.setuptools]

@@ -51,7 +51,7 @@ What runs locally vs. needs a Snowflake connection:
 ## Prerequisites
 
 - Python 3.10+
-- `relationalai==1.8.1` (DuckDB ships with it)
+- `relationalai==1.9.0` (DuckDB ships with it)
 
 No Snowflake account, Native App, or `raiconfig.yaml` is required — the script builds an in-memory DuckDB config inline. (Local DuckDB execution relies on deploy mode, which the package currently flags as experimental.)
 
@@ -114,14 +114,13 @@ The model derives accounts from both ends of every transfer, links them with a `
 
 ## How it works
 
-The local path is configured with four keys — a `duckdb` connection, `enable_model_deployment`, a model schema, and `auto_deploy`:
+The local path is configured with a `duckdb` connection plus a `deployment` section (`schema` + `auto_deploy`):
 
 ```python
 config = create_config(
     connections={"local": DuckDBConnection(path=":memory:")},  # or a file path, e.g. "./dev.duckdb"
     default_connection="local",
-    enable_model_deployment=True,
-    model={"schema": "main", "auto_deploy": True},
+    deployment={"schema": "main", "auto_deploy": True},
 )
 ```
 
@@ -165,7 +164,7 @@ DuckDB tables need a three-part name. Reference them as `memory.<schema>.<table>
 <details>
 <summary>A query falls back to a Snowflake path, or reads an empty model relation</summary>
 
-Make sure the config sets `enable_model_deployment=True` and `model={"auto_deploy": True}` so the model is routed to the DuckDB executor and materialized before queries.
+Make sure the config includes a `deployment` section with `auto_deploy: true` so the model is routed to the DuckDB executor and materialized before queries.
 </details>
 
 <details>

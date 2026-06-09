@@ -38,13 +38,13 @@ DATA_DIR = Path(__file__).parent / "data"
 STRUCTURING_FLOOR, STRUCTURING_CEILING = 9000.0, 10000.0
 LARGE_TRANSFER = 50000.0
 
-# Local DuckDB config (no Snowflake). Four keys unlock the local path: a duckdb
-# connection, enable_model_deployment, a model schema, and auto_deploy.
+# Local DuckDB config (no Snowflake): a duckdb connection plus a `deployment`
+# section (schema + auto_deploy) routes the model to the local DuckDB executor
+# and materializes derived relations before queries.
 config = create_config(
     connections={"local": DuckDBConnection(path=":memory:")},  # or a file path, e.g. "./dev.duckdb"
     default_connection="local",
-    enable_model_deployment=True,
-    model={"schema": "main", "auto_deploy": True},
+    deployment={"schema": "main", "auto_deploy": True},
 )
 
 # --------------------------------------------------
