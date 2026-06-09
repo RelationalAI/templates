@@ -537,7 +537,7 @@ Three drivers spend the same solve budget differently and are compared head-to-h
 
 - **grid** -- evenly spaced return targets, blind to the frontier's shape (the control).
 - **adaptive** -- sizes each step by the current shadow price so points land evenly in variance space.
-- **dichotomic** -- repeatedly splits the interval with the largest chord-vs-tangent gap, sampling where the two endpoints' shadow prices predict they meet (the NISE scheme).
+- **dichotomic** -- repeatedly splits the interval with the largest chord-vs-tangent gap, sampling where the two endpoints' shadow prices predict they meet (a dual-guided, epsilon-space analogue of NISE, not the classical Aneja-Nair weighted-sum scheme).
 
 Quality is scored by **max chord-gap**: the largest variance error of linearly interpolating between solved points. At equal 6-solve budget the dual-guided drivers win decisively (dichotomic 202 vs grid 558), because the duals tell the search where the frontier curves most.
 
