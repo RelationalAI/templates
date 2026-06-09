@@ -3,7 +3,7 @@ title: "Portfolio Balancing"
 description: "Multi-reasoner template: rules-based compliance, covariance clustering, and bi-objective Markowitz optimization that uses solver shadow prices to trace the risk-return frontier, with a crisis-regime stress test."
 featured: false
 experience_level: intermediate
-industry: "Finance"
+industry: "Financial Services"
 reasoning_types:
   - Prescriptive
   - Rules-based
@@ -42,7 +42,7 @@ Each stage writes derived properties the next reads directly: Rules define the t
 
 ## Why this problem matters
 
-Portfolio managers don't want to pay twice for the same exposure. If two funds track nearly the same benchmark, allocating $4k to one and $5k to the other is functionally a single $9k bet with worse bookkeeping. Sector labels alone miss this: two tech ETFs can share a Technology label and still be near-duplicates, or two instruments from different sectors can co-move strongly enough that owning both is redundant. And base-case optimization is optimistic -- under crisis regimes (correlations spike toward 1), everything that hasn't been deduplicated hurts twice.
+The cost of paying twice for one exposure is concrete: allocating $4k to one fund and $5k to a near-identical one is functionally a single $9k bet with worse bookkeeping. Sector labels alone miss this: two tech ETFs can share a Technology label and still be near-duplicates, or two instruments from different sectors can co-move strongly enough that owning both is redundant. And base-case optimization is optimistic -- under crisis regimes (correlations spike toward 1), everything that hasn't been deduplicated hurts twice.
 
 The four-stage approach addresses each gap. Stage 1 surfaces existing violations in the current book (diagnostic). Stage 2 clusters by return covariance and picks the highest-Sharpe representative per cluster, collapsing redundant bets. Stage 3 optimizes over the representative-only universe under position and sector limits. Stage 4 re-solves under a PSD-preserving crisis covariance to stress the resulting portfolio.
 
@@ -92,6 +92,7 @@ The four-stage approach addresses each gap. Stage 1 surfaces existing violations
 ### Access
 - A Snowflake account that has the RAI Native App installed.
 - A Snowflake user with permissions to access the RAI Native App.
+- A prescriptive-capable RAI engine. The frontier tracing solves the convex QP with HiGHS and requests sensitivity (`solve("highs", sensitivity=True)`), which returns the return-constraint duals (shadow prices) the frontier search relies on.
 
 ### Tools
 - Python >= 3.10
