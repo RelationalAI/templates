@@ -1,12 +1,10 @@
 # RelationalAI Templates
 
-This repository contains runnable RelationalAI templates that demonstrate end-to-end solution patterns across optimization, graph analytics, fraud detection, supply chain planning, and other decision intelligence workflows.
-
-Each template lives in its own folder with code, sample data, and a template-specific README. Templates are grouped into versioned directories so the repository can support multiple generations of examples side by side.
+This repository contains runnable RelationalAI templates that demonstrate end-to-end solution pattern examples across optimization and constraint satisfaction, graph analytics and path-finding, rules-based reasoning, and graph neural network predictions. 
 
 ## Templates
 
-Within a template folder, you will usually find:
+Each template lives in its own folder in the `v1` directory. Within a folder, you will usually find:
 
 - `README.md` with the problem statement, prerequisites, and run instructions
 - `pyproject.toml` for template-local dependencies
@@ -14,7 +12,7 @@ Within a template folder, you will usually find:
 - `data/` containing sample input data when the template uses local files
 - `runbook.md` with ordered prompts to recreate or adapt the template using a coding agent with RelationalAI skills (multi-reasoner templates)
 
-The index below covers the current (`v1`) templates, grouped by industry. Expand an industry to see its templates, the reasoners each uses, and a one-line description. Older templates remain under [`v0.13/`](v0.13/) and [`v0.14/`](v0.14/) for reference; use `v1` for new development.
+The index below covers the current templates. Expand an industry to see its templates with reasoners and a description.
 
 <!-- BEGIN TEMPLATE INDEX -->
 
