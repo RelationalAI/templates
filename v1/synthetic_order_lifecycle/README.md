@@ -1,9 +1,9 @@
 ---
 title: "Synthetic Order Lifecycle"
-description: "Generate synthetic order-lifecycle event traces (PLACE / MODIFY / CANCEL / FILL) that satisfy MiFID II / Reg NMS-flavour sequencing rules using a CSP solver."
+description: "Generate synthetic order-lifecycle event traces (PLACE / MODIFY / CANCEL / FILL) that satisfy MiFID II / Reg NMS-flavour sequencing rules."
 featured: false
 experience_level: intermediate
-industry: "Banking"
+industry: "Financial Services"
 reasoning_types:
   - Prescriptive
 tags:

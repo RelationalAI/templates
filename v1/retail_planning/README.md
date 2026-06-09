@@ -3,7 +3,7 @@ title: "Retail Planning"
 description: "Predict article sales and customer churn with GNNs, then optimize markdown pricing and inventory planning to maximize revenue and minimize costs."
 featured: true
 experience_level: advanced
-industry: "Retail"
+industry: "Retail & Consumer"
 reasoning_types:
   - Predictive
   - Prescriptive

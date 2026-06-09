@@ -3,7 +3,7 @@ title: "Money-Laundering Motif Detection"
 description: "Detect three classes of layering motif on the same transaction ledger, each demonstrating a different CSP technique that rules / paths / graph reasoning alone cannot enforce: per-vertex aggregate equality (butterfly), pairwise distinctness over a chosen subset (smurf army), and cardinality on a chosen subset (KYC-mix burst)."
 featured: false
 experience_level: intermediate
-industry: "Banking"
+industry: "Financial Services"
 reasoning_types:
   - Prescriptive
 tags:

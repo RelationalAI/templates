@@ -1,6 +1,6 @@
 ---
 title: "Shipment Compliance"
-description: "Define derived business rules for shipment compliance, sourcing risk, and demand escalation."
+description: "Derived classifications for shipment compliance, sourcing risk, and demand escalation."
 featured: false
 experience_level: beginner
 industry: "Supply Chain & Logistics"

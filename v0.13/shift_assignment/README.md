@@ -3,7 +3,7 @@ title: "Shift Assignment"
 description: "Assign workers to shifts based on availability while meeting minimum coverage and per-worker capacity constraints."
 featured: true
 experience_level: beginner
-industry: "Workforce Management"
+industry: "Cross-Industry"
 reasoning_types:
   - Prescriptive
 tags:

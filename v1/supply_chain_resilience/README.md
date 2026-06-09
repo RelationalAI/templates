@@ -1,6 +1,6 @@
 ---
 title: "Supply Chain Resilience"
-description: "A multi-reasoner template that chains blast-radius reachability, graph analysis, rules-based classification, and prescriptive optimization to build a risk-adjusted minimum-cost network flow for supply chain routing."
+description: "Chain blast-radius reachability, network analysis, and rule-based risk classification into a risk-adjusted minimum-cost network flow for supply-chain routing."
 featured: false
 experience_level: intermediate
 industry: "Supply Chain & Logistics"

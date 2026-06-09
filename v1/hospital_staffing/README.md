@@ -3,7 +3,7 @@ title: "Hospital Staffing"
 description: "Explore the tradeoff between overtime cost and patient service level using bi-objective optimization with epsilon constraint."
 featured: false
 experience_level: intermediate
-industry: "Healthcare"
+industry: "Healthcare & Life Sciences"
 reasoning_types:
   - Prescriptive
 tags:

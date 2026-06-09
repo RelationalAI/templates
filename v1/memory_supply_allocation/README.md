@@ -1,9 +1,9 @@
 ---
 title: "Memory Supply Allocation"
-description: "Monthly rolling-horizon allocation of constrained memory-chip supply across customers with strategic supplier dependencies, named foundries, and raw-material inputs. Four-reasoner chain: predicted supplier capability feeds the optimization, customer-customer paths surface single points of failure, and two what-if scenarios trace supplier-offline and input-shortage cascades."
+description: "Monthly rolling-horizon allocation of constrained memory-chip supply across customers with supplier dependencies, named foundries, and raw-material inputs: predicted supplier capability feeds the optimization, customer-customer paths surface single points of failure, and two what-if scenarios trace supplier-offline and input-shortage cascades."
 featured: false
 experience_level: intermediate
-industry: "Semiconductors"
+industry: "Technology & Telecom"
 reasoning_types:
   - Predictive
   - Rules-based

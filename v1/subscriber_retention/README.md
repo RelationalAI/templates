@@ -1,9 +1,9 @@
 ---
 title: "Subscriber Retention"
-description: "Telco churn-risk scoring: PageRank over a Subscriber→Subscriber call graph (Graph) plus aggregate-derived call-volume features feed a regression GNN (Predictive) that scores per-subscriber churn risk, then surfaces the highest-risk subscribers per segment for retention campaigns."
+description: "Telco churn-risk scoring: PageRank over a Subscriber→Subscriber call graph plus aggregate-derived call-volume features feed a regression GNN that scores per-subscriber churn risk, then surfaces the highest-risk subscribers per segment."
 featured: false
 experience_level: advanced
-industry: "Telecommunications"
+industry: "Technology & Telecom"
 reasoning_types:
   - Graph
   - Predictive
