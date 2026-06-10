@@ -253,8 +253,8 @@ model.require(problem.termination_status() == "OPTIMAL")
   <summary>Import error or AttributeError on <code>relationalai</code></summary>
 
 - Confirm your virtual environment is active: `which python` should point to `.venv`.
-- Reinstall dependencies: `python -m pip install .`. This template requires `relationalai>=1.12`, which ships enum members as constants across the DSL and prescriptive reasoning (alongside the `solve_info()`, `verify()`, and chained-`where().require()` APIs); older versions reject the enum-indexed decision variable and produce type or attribute errors.
-- If you share a venv across templates, run `python -m pip install --upgrade relationalai`.
+- Reinstall dependencies: `python -m pip install .`. The pinned version (`relationalai==1.12.0`) ships enum members as constants across the DSL and prescriptive reasoning (alongside the `solve_info()`, `verify()`, and chained-`where().require()` APIs); older versions reject the enum-indexed decision variable and produce type or attribute errors.
+- If you share a venv across templates, run `python -m pip install --upgrade --force-reinstall relationalai==1.12.0`.
 
 </details>
 
