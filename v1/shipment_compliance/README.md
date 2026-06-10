@@ -133,6 +133,8 @@ s.status(ShipmentStatus.lookup(shipment_data.status))
 
 Rules then compare against members rather than raw strings -- typo-proof and discoverable -- and queries read the label back with `.name` (e.g. `Shipment.status.name.alias("status")`).
 
+One caveat when bringing your own data: `lookup()` does not validate its input. A CSV value that matches no member name silently maps to a nonexistent entity, and those rows simply drop out of every member-comparison rule. Keep the enum declarations in sync with your data's vocabulary.
+
 ### 2. Define rules as derived Relationships
 
 Each rule uses the `model.where(...).define(...)` pattern to create a boolean flag:
