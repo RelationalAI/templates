@@ -34,10 +34,10 @@ The same pattern applies to any test-data-generation problem where rows have to 
 
 ## What you'll build
 
-- A constraint model with binary type indicators (`is_place`, `is_modify`, `is_cancel`, `is_fill`) and integer decision properties for `ts_ms`, `qty`, `tick_price`, `venue_id`
+- A constraint model with an `EventType` enum (`PLACE`, `MODIFY`, `CANCEL`, `FILL`) indexing one binary type indicator per (event slot, type), plus integer decision properties for `ts_ms`, `qty`, `tick_price`, `venue_id`
 - Categorical regular-language transitions (`PLACE` first, nothing-after-`CANCEL`) encoded as pairwise temporal rules
 - Cross-table aggregate constraint: total `FILL` quantity per order cannot exceed `Order.original_qty`
-- An auxiliary `fill_qty` decision channeled to `qty when is_fill else 0` via two `implies` so the per-order fill-conservation aggregate stays linear
+- An auxiliary `fill_qty` decision channeled to `qty` when the `FILL` indicator is 1 (else 0) via two `implies` so the per-order fill-conservation aggregate stays linear
 - Value-pinning: PLACE event's `qty` and `tick_price` pinned to the order's `original_qty` and `original_tick_price` via `implies`
 - Venue eligibility encoded as a relationship lookup against the event's chosen `venue_id`
 - Post-solve verification via `problem.verify()` confirming every re-evaluable constraint in the returned trace (`implies`-bodied and `all_different`-bodied ICs are solver-side only and intentionally excluded -- see step 5)
@@ -94,23 +94,23 @@ The same pattern applies to any test-data-generation problem where rows have to 
    python synthetic_order_lifecycle.py
    ```
 
-6. Expected output. The script prints the formulation (~30 lines, omitted here), the solve-result block, the full event trace (all 36 rows; abridged below to the AAPL block), and per-order fill totals. Rows are sorted by `(order_id, ts_ms)`; the four binary `is_place`/`is_modify`/`is_cancel`/`is_fill` indicators are collapsed into a single `type` column on the display side. Exact event types, timestamps, quantities, prices, and venues vary across runs and solver versions:
+6. Expected output. The script prints the formulation (every variable and constraint, ~1,000 lines on the sample data, omitted here; the four per-event type indicators share a display name like `is_type_1` because variable names are keyed by event id), the solve-result block, the full event trace (all 36 rows; abridged below to the first AAPL block), and per-order fill totals. Rows are sorted by `(order_id, ts_ms)`; the `type` column reads each event's chosen `EventType` member name back from a derived enum-typed property (`OrderEvent.event_type.name`), with no display-side post-processing. Exact event types, timestamps, quantities, prices, and venues vary across runs and solver versions:
    ```text
    Solve result:
    • status: OPTIMAL
-   • objective: 0
-   • solve time: 1.11s
+   • solve time: 1.17s
    • num_points: 1
    • solver: MiniZinc_unknown
+   • raw status string: SATISFIABLE
 
    Generated event trace (one row per slot, sorted by order then timestamp):
     order_id symbol  event_id  ts_ms   type  qty  tick_price venue
-           1   AAPL         3    995  PLACE  100       17500  ARCA
-           1   AAPL         5    996 MODIFY  100       17501  ARCA
-           1   AAPL         6    997 MODIFY  100       17501  ARCA
-           1   AAPL         1    998 MODIFY   81       17501  ARCA
-           1   AAPL         4    999 MODIFY  100       17501  ARCA
-           1   AAPL         2   1000   FILL  100       17501  ARCA
+           1   AAPL         4    995  PLACE  100       17500  ARCA
+           1   AAPL         2    996 MODIFY  100       17501  ARCA
+           1   AAPL         3    997 MODIFY  100       17501  ARCA
+           1   AAPL         6    998   FILL  100       17501  ARCA
+           1   AAPL         5    999 MODIFY  100       17501  ARCA
+           1   AAPL         1   1000 MODIFY  100       17501  ARCA
     ...    [rows for orders 2-6 omitted for brevity; the script prints all 36 rows -- 6 events per order across orders 1-6]
 
    Filled quantity per order (cannot exceed Order.original_qty):
@@ -119,11 +119,11 @@ The same pattern applies to any test-data-generation problem where rows have to 
    1         2           50         50
    2         3           80         80
    3         4          200        200
-   4         5          120        120
+   4         5          120        117
    5         6           60         60
    ```
 
-   The AAPL block above is one of six orders; the others follow the same shape. PLACE has the smallest `ts_ms` per order with `qty` / `tick_price` pinned to the order row, and venues are constrained to the symbol's eligible set (here `{NYSE, NASDAQ, ARCA}` for AAPL). The conservation IC is `sum(fill_qty) <= original_qty`; the run above happens to fill exactly `original_qty` per order, but feasible traces with lower fill totals are also valid.
+   The AAPL block above is one of six orders; the others follow the same shape. PLACE has the smallest `ts_ms` per order with `qty` / `tick_price` pinned to the order row, and venues are constrained to the symbol's eligible set (here `{NYSE, NASDAQ, ARCA}` for AAPL). The conservation IC is `sum(fill_qty) <= original_qty`; the run above fills exactly `original_qty` on five orders and 117 of 120 on order 5 -- any fill total at or below the original quantity is a valid trace.
 
 ## Template structure
 ```text
@@ -145,7 +145,22 @@ The solver decides every event's type, timestamp, venue, and quantity. The scrip
 
 **1. Define the ontology and load data.** `Symbol`, `Venue`, `Order`, and `OrderEvent` concepts are declared with their identifying properties; `SymbolVenue` and a derived `NotAllowedSymbolVenue` capture the eligible (and dual disallowed) symbol/venue pairs. CSV rows from `data/` populate every concept and relationship. `NotAllowedSymbolVenue` is an encoding artifact, not a domain concept: the CSP arithmetic supports only `!=, *, +, -`, so the rule is encoded as "forbid these pairs" rather than the more natural "require an allowed pair".
 
-**2. Declare decision variables.** Each event slot gets binary type indicators (`is_place`, `is_modify`, `is_cancel`, `is_fill`) and integer decisions (`ts_ms`, `qty`, `tick_price`, `venue_id`). An auxiliary `fill_qty` decision channels `qty when is_fill else 0` so the per-order fill-conservation aggregate stays linear.
+**2. Declare decision variables.** The event-type vocabulary is a `model.Enum` (`EventType`: `PLACE`, `MODIFY`, `CANCEL`, `FILL`), and a single enum-indexed property `OrderEvent.has_type` carries one binary indicator per (event slot, type) -- one `solve_for` call instead of four parallel indicator properties. Each slot also gets integer decisions (`ts_ms`, `qty`, `tick_price`, `venue_id`). An auxiliary `fill_qty` decision channels `qty` when the `FILL` indicator is 1 (else 0) so the per-order fill-conservation aggregate stays linear:
+
+```python
+class EventType(model.Enum):
+    PLACE = 1
+    MODIFY = 2
+    CANCEL = 3
+    FILL = 4
+
+OrderEvent.has_type = model.Property(
+    f"{OrderEvent} is {EventType:event_type} if {Integer:indicator}"
+)
+problem.solve_for(OrderEvent.has_type, type="bin", name=["is_type", OrderEvent.event_id])
+```
+
+Constraints slice the indicators by member: a `where` clause like `OrderEvent.has_type(EventType.PLACE, place_ind)` binds `place_ind` to each event's `PLACE` indicator, which the constraint body then aggregates or gates on.
 
 **3. Add sequencing rules as pairwise temporal constraints.** Conditional rules read as 'if premise then consequent'. PLACE-first and nothing-after-CANCEL are pairwise rules over two refs into the same concept; `A.order == B.order` asserts same-order without a free `Order` variable:
 
@@ -153,10 +168,12 @@ The solver decides every event's type, timestamp, venue, and quantity. The scrip
 A = OrderEvent.ref()
 B = OrderEvent.ref()
 
+a_place_ind = Integer.ref()
 place_first_ic = model.where(
     A.order == B.order,
     A.event_id != B.event_id,
-).require(implies(A.is_place == 1, A.ts_ms < B.ts_ms))
+    A.has_type(EventType.PLACE, a_place_ind),
+).require(implies(a_place_ind == 1, A.ts_ms < B.ts_ms))
 ```
 
 Distinctness within a group is one global constraint, not pairwise `!=`. `all_different.per(...)` lowers to MiniZinc's native alldifferent propagator:
@@ -178,12 +195,14 @@ venue_ok_ic = model.where(
 Value-pinning couples a decision variable to a data property via `implies`. The PLACE event's `qty` and `tick_price` are pinned to the order's `original_qty` and `original_tick_price` so the generated trace stays internally consistent with the order's stated price and size:
 
 ```python
-place_qty_match_ic = model.require(
-    implies(OrderEvent.is_place == 1, OrderEvent.qty == OrderEvent.order.original_qty)
+place_qty_ind = Integer.ref()
+place_qty_match_ic = model.where(OrderEvent.has_type(EventType.PLACE, place_qty_ind)).require(
+    implies(place_qty_ind == 1, OrderEvent.qty == OrderEvent.order.original_qty)
 )
-place_price_match_ic = model.require(
+place_price_ind = Integer.ref()
+place_price_match_ic = model.where(OrderEvent.has_type(EventType.PLACE, place_price_ind)).require(
     implies(
-        OrderEvent.is_place == 1,
+        place_price_ind == 1,
         OrderEvent.tick_price == OrderEvent.order.original_tick_price,
     )
 )
@@ -215,13 +234,17 @@ model.require(problem.termination_status() == "OPTIMAL")
 - **Add the inverse rule "no MODIFY after FILL"** with the same shape as `place_first_ic`, but filtering `B` to fills. `A` and `B` are the two `OrderEvent.ref()` aliases declared earlier in the script alongside `place_first_ic`:
   ```python
   # A = OrderEvent.ref(); B = OrderEvent.ref()  # already declared earlier
+  a_modify_ind = Integer.ref()
+  b_fill_ind = Integer.ref()
   no_modify_after_fill_ic = model.where(
       A.order == B.order,
       A.event_id != B.event_id,
-      B.is_fill == 1,
-  ).require(implies(A.is_modify == 1, A.ts_ms < B.ts_ms))
+      A.has_type(EventType.MODIFY, a_modify_ind),
+      B.has_type(EventType.FILL, b_fill_ind),
+      b_fill_ind == 1,
+  ).require(implies(a_modify_ind == 1, A.ts_ms < B.ts_ms))
   ```
-- **Generate a "smallest violating trace" instead of a positive trace** by negating one of the rules (e.g. drop `no_after_cancel_ic` and add `model.require(sum(A.is_cancel + B.is_fill - 1).per(Order) >= 0)` plus a temporal predicate) and minimizing the number of events. The model is already in optimization-ready shape -- the termination-status gate stays at `"OPTIMAL"`.
+- **Generate a "smallest violating trace" instead of a positive trace** by negating one of the rules (e.g. drop `no_after_cancel_ic`, bind `A`'s `CANCEL` and `B`'s `FILL` indicators via `has_type` in a `where`, and add `model.require(sum(a_cancel_ind + b_fill_ind - 1).per(Order) >= 0)` plus a temporal predicate) and minimizing the number of events. The model is already in optimization-ready shape -- the termination-status gate stays at `"OPTIMAL"`.
 - **Replace the synthetic time horizon** by reading `ts_ms` bounds from your real session schedule (market open / market close) and updating `TS_MIN` / `TS_MAX`.
 
 ## Troubleshooting
@@ -230,8 +253,8 @@ model.require(problem.termination_status() == "OPTIMAL")
   <summary>Import error or AttributeError on <code>relationalai</code></summary>
 
 - Confirm your virtual environment is active: `which python` should point to `.venv`.
-- Reinstall dependencies: `python -m pip install .`. The pinned version (`relationalai==1.1.0`) ships the `solve_info()`, `verify()`, and chained-`where().require()` APIs this template uses; older versions lack them and produce attribute errors.
-- If you share a venv across templates, run `python -m pip install --upgrade --force-reinstall relationalai==1.1.0`.
+- Reinstall dependencies: `python -m pip install .`. This template requires `relationalai>=1.12`, which ships enum members as constants across the DSL and prescriptive reasoning (alongside the `solve_info()`, `verify()`, and chained-`where().require()` APIs); older versions reject the enum-indexed decision variable and produce type or attribute errors.
+- If you share a venv across templates, run `python -m pip install --upgrade relationalai`.
 
 </details>
 
