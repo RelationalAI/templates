@@ -40,6 +40,12 @@ Each stage enriches the shared ontology, and downstream stages consume
 those enrichments as first-class properties -- the accretive enrichment
 pattern.
 
+Subscriber account status is modelled as a `model.Enum` (requires
+relationalai>=1.12): CSV strings map to members by name on load, and the
+Stage 3 aggregates filter on `SubscriberStatus.ACTIVE` instead of a raw
+string. Tower status intentionally stays a String property -- it feeds
+the Stage 1 GNN's PropertyTransformer as a categorical feature.
+
 Run:
     `python telco_network_recovery.py`
 
@@ -189,6 +195,8 @@ CellTower = model.Concept("CellTower", identify_by={"id": String})
 CellTower.name = model.Property(f"{CellTower} has {String:name}")
 CellTower.tower_type = model.Property(f"{CellTower} has {String:tower_type}")
 CellTower.capacity_gbps = model.Property(f"{CellTower} has {Integer:capacity_gbps}")
+# status stays a String (not a model.Enum): the Stage 1 GNN's
+# PropertyTransformer consumes it as a categorical feature below.
 CellTower.status = model.Property(f"{CellTower} has {String:status}")
 CellTower.region = model.Property(f"{CellTower} has {String:region}")
 CellTower.install_date = model.Property(f"{CellTower} has {DateTime:install_date}")
@@ -643,6 +651,15 @@ print(f"\n{'=' * 60}")
 print("STAGE 3: GRAPH -- Customer impact (revenue x churn; PageRank shown alongside)")
 print("=" * 60)
 
+
+# Subscriber-account-status vocabulary. CSV status strings map to
+# members BY NAME via `SubscriberStatus.lookup(...)` below; the wrapped
+# values are arbitrary distinct integers.
+class SubscriberStatus(model.Enum):
+    ACTIVE = 1
+    SUSPENDED = 2
+
+
 # Subscriber concept: customer accounts (consumer or enterprise) that
 # place calls. Nodes of the Stage 3 PageRank graph AND the carriers of
 # the customer-value signal that drives per-tower weighted_impact.
@@ -651,21 +668,23 @@ Subscriber.subscriber_type = model.Property(f"{Subscriber} has {String:subscribe
 Subscriber.segment = model.Property(f"{Subscriber} has {String:segment}")
 Subscriber.lifetime_value = model.Property(f"{Subscriber} has {Float:lifetime_value}")
 Subscriber.churn_risk_score = model.Property(f"{Subscriber} has {Float:churn_risk_score}")
-Subscriber.status = model.Property(f"{Subscriber} has {String:status}")
+Subscriber.status = model.Property(f"{Subscriber} has {SubscriberStatus:status}")
 # Composite revenue-at-risk signal (LTV * (1 + churn)), precomputed in
 # pandas above; this is the per-subscriber weight that Stage 3 sums into
 # `CellTower.weighted_impact` and Stage 4 uses in the objective.
 Subscriber.customer_value = model.Property(f"{Subscriber} has {Float:customer_value}")
 src = model.data(subscribers_df)
-model.define(Subscriber.new(
-    id=src.SUB_ID,
-    subscriber_type=src.SUBSCRIBER_TYPE,
-    segment=src.SEGMENT,
-    lifetime_value=src.LIFETIME_VALUE_USD,
-    churn_risk_score=src.CHURN_RISK_SCORE,
-    status=src.STATUS,
-    customer_value=src.CUSTOMER_VALUE,
-))
+model.define(
+    sub := Subscriber.new(
+        id=src.SUB_ID,
+        subscriber_type=src.SUBSCRIBER_TYPE,
+        segment=src.SEGMENT,
+        lifetime_value=src.LIFETIME_VALUE_USD,
+        churn_risk_score=src.CHURN_RISK_SCORE,
+        customer_value=src.CUSTOMER_VALUE,
+    ),
+    sub.status(SubscriberStatus.lookup(src.STATUS)),
+)
 
 # CallDetailRecord concept: a directed call (caller -> callee routed
 # through a specific CellTower). Used as the edge concept for Stage 3's
@@ -740,7 +759,7 @@ model.define(
         .where(
             CallDetailRecord.routed_through(CellTower),
             CallDetailRecord.caller(Subscriber),
-            Subscriber.status == "ACTIVE",
+            Subscriber.status == SubscriberStatus.ACTIVE,
         )
         .per(CellTower)
     )
@@ -751,7 +770,7 @@ model.define(
         .where(
             CallDetailRecord.routed_through(CellTower),
             CallDetailRecord.caller(Subscriber),
-            Subscriber.status == "ACTIVE",
+            Subscriber.status == SubscriberStatus.ACTIVE,
         )
         .per(CellTower)
     )
@@ -762,7 +781,7 @@ model.define(
         .where(
             CallDetailRecord.routed_through(CellTower),
             CallDetailRecord.caller(Subscriber),
-            Subscriber.status == "ACTIVE",
+            Subscriber.status == SubscriberStatus.ACTIVE,
         )
         .per(CellTower)
     )
