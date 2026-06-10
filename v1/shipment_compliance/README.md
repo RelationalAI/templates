@@ -127,8 +127,11 @@ class ShipmentStatus(model.Enum):
     DELIVERED = 3
 
 Shipment.status = Property(f"{Shipment} has {ShipmentStatus:status}")
-# ... inside the define():
-s.status(ShipmentStatus.lookup(shipment_data.status))
+
+model.define(
+    s := Shipment.new(id=shipment_data.id, ...),
+    s.status(ShipmentStatus.lookup(shipment_data.status)),
+)
 ```
 
 Rules then compare against members rather than raw strings -- typo-proof and discoverable -- and queries read the label back with `.name` (e.g. `Shipment.status.name.alias("status")`).

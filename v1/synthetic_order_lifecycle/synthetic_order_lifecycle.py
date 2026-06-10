@@ -8,9 +8,9 @@ This script demonstrates a CSP-based synthetic order-lifecycle trace generator i
 - Solve as constraint satisfaction (MiniZinc) and verify the relational arithmetic ICs against the returned trace.
 
 Event types are modelled as a `model.Enum` (requires relationalai>=1.12):
-one enum-indexed binary decision variable per (event slot, type) replaces
-four parallel indicator properties, and the trace reads the chosen type
-back by member name instead of collapsing indicator columns in pandas.
+a single enum-indexed property carries one binary decision variable per
+(event slot, type), and the trace reads each event's chosen type label
+from the member's built-in `.name`.
 
 All decisions are integer: prices are integer ticks (1c, so 17500 reads as
 $175.00), times are integer milliseconds, quantities are integer shares.
@@ -127,7 +127,6 @@ class EventType(model.Enum):
 
 
 # Enum-indexed type decision: one binary indicator per (event slot, type).
-# Replaces four parallel is_place/is_modify/is_cancel/is_fill properties.
 OrderEvent.has_type = model.Property(
     f"{OrderEvent} is {EventType:event_type} if {Integer:indicator}"
 )

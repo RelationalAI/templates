@@ -95,7 +95,7 @@ The same pattern applies to any test-data-generation problem where rows have to 
    python synthetic_order_lifecycle.py
    ```
 
-6. Expected output. The script prints the formulation (every variable and constraint, ~1,000 lines on the sample data, omitted here; the four per-event type indicators share a display name like `is_type_1` because variable names are keyed by event id), the solve-result block, the full event trace (all 36 rows; abridged below to the first AAPL block), and per-order fill totals. Rows are sorted by `(order_id, ts_ms)`; the `type` column reads each event's chosen `EventType` member name back from a derived enum-typed property (`OrderEvent.event_type.name`), with no display-side post-processing. Exact event types, timestamps, quantities, prices, and venues vary across runs and solver versions:
+6. Expected output. The script prints the formulation (every variable and constraint, ~1,000 lines on the sample data, omitted here; each event's four type indicators all print as `is_type_<event id>` -- so `is_type_1` appears four times -- because variable names are keyed by event id), the solve-result block, the full event trace (all 36 rows; abridged below to the first AAPL block), and per-order fill totals. Rows are sorted by `(order_id, ts_ms)`; the `type` column reads each event's chosen `EventType` member name back from a derived enum-typed property (`OrderEvent.event_type.name`), with no display-side post-processing. Exact event types, timestamps, quantities, prices, and venues vary across runs and solver versions:
    ```text
    Solve result:
    • status: OPTIMAL
@@ -146,7 +146,7 @@ The solver decides every event's type, timestamp, venue, and quantity. The scrip
 
 **1. Define the ontology and load data.** `Symbol`, `Venue`, `Order`, and `OrderEvent` concepts are declared with their identifying properties; `SymbolVenue` and a derived `NotAllowedSymbolVenue` capture the eligible (and dual disallowed) symbol/venue pairs. CSV rows from `data/` populate every concept and relationship. `NotAllowedSymbolVenue` is an encoding artifact, not a domain concept: the CSP arithmetic supports only `!=, *, +, -`, so the rule is encoded as "forbid these pairs" rather than the more natural "require an allowed pair".
 
-**2. Declare decision variables.** The event-type vocabulary is a `model.Enum` (`EventType`: `PLACE`, `MODIFY`, `CANCEL`, `FILL`), and a single enum-indexed property `OrderEvent.has_type` carries one binary indicator per (event slot, type) -- one `solve_for` call instead of four parallel indicator properties. Each slot also gets integer decisions (`ts_ms`, `qty`, `tick_price`, `venue_id`). An auxiliary `fill_qty` decision channels `qty` when the `FILL` indicator is 1 (else 0) so the per-order fill-conservation aggregate stays linear:
+**2. Declare decision variables.** The event-type vocabulary is a `model.Enum` (`EventType`: `PLACE`, `MODIFY`, `CANCEL`, `FILL`), and a single enum-indexed property `OrderEvent.has_type` carries one binary indicator per (event slot, type), declared with a single `solve_for` call. Each slot also gets integer decisions (`ts_ms`, `qty`, `tick_price`, `venue_id`). An auxiliary `fill_qty` decision channels `qty` when the `FILL` indicator is 1 (else 0) so the per-order fill-conservation aggregate stays linear:
 
 ```python
 class EventType(model.Enum):
