@@ -118,7 +118,8 @@ model.define(
 )
 
 
-# Demand-priority vocabulary, in ascending urgency order.
+# Demand-priority vocabulary; the wrapped values are arbitrary distinct
+# integers (here in ascending urgency order).
 class Priority(model.Enum):
     LOW = 1
     STANDARD = 2

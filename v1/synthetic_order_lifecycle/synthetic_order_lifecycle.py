@@ -117,7 +117,8 @@ model.define(OrderEvent.order(Order)).where(
 
 
 # The event-type vocabulary. Members appear directly in constraints and
-# readbacks; the wrapped values are arbitrary distinct integers.
+# readbacks; the wrapped values are arbitrary distinct integers (here in
+# lifecycle order).
 class EventType(model.Enum):
     PLACE = 1
     MODIFY = 2
