@@ -69,8 +69,8 @@ route_data = model.data(read_csv(DATA_DIR / "routes.csv"))
 model.define(
     r := Route.new(
         id=route_data.id,
-        source=Site.filter_by(id=route_data.source_id),
-        dest=Site.filter_by(id=route_data.dest_id),
+        source=Site.lookup(id=route_data.source_id),
+        dest=Site.lookup(id=route_data.dest_id),
     ),
     r.capacity(route_data.capacity),
     r.transport_cost(route_data.transport_cost),
@@ -85,7 +85,7 @@ demand_data = model.data(read_csv(DATA_DIR / "demands.csv"))
 model.define(
     d := Demand.new(
         id=demand_data.id,
-        site=Site.filter_by(id=demand_data.site_id),
+        site=Site.lookup(id=demand_data.site_id),
     ),
     d.quantity(demand_data.quantity),
 )

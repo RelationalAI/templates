@@ -59,8 +59,8 @@ def create_model():
 
     define(
         FacilityConnection.new(
-            from_facility=f_from.filter_by(id=connections_data.from_facility_id),
-            to_facility=f_to.filter_by(id=connections_data.to_facility_id),
+            from_facility=f_from.lookup(id=connections_data.from_facility_id),
+            to_facility=f_to.lookup(id=connections_data.to_facility_id),
             transfer_volume=connections_data.transfer_volume,
             contact_intensity=connections_data.contact_intensity
         )

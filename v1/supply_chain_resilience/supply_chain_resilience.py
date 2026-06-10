@@ -93,7 +93,7 @@ biz_no_rel = biz_csv[biz_csv["RELIABILITY_SCORE"].isna()][biz_cols[:4]].reset_in
 # Batch 1: businesses WITH reliability (suppliers, manufacturers).
 d1 = model.data(biz_with_rel)
 model.define(
-    b1 := Business.new(id=d1["ID"], site=Site.filter_by(id=d1["SITE_ID"])),
+    b1 := Business.new(id=d1["ID"], site=Site.lookup(id=d1["SITE_ID"])),
     b1.name(d1["NAME"]),
     b1.business_type(d1["TYPE"]),
     b1.reliability_score(d1["RELIABILITY_SCORE"]),
@@ -103,7 +103,7 @@ model.define(
 if len(biz_no_rel) > 0:
     d2 = model.data(biz_no_rel)
     model.define(
-        b2 := Business.new(id=d2["ID"], site=Site.filter_by(id=d2["SITE_ID"])),
+        b2 := Business.new(id=d2["ID"], site=Site.lookup(id=d2["SITE_ID"])),
         b2.name(d2["NAME"]),
         b2.business_type(d2["TYPE"]),
     )
@@ -143,9 +143,9 @@ model.define(
     o.transit_time_days(op_data["TRANSIT_TIME_DAYS"]),
     o.cost_per_unit(op_data["COST_PER_UNIT"]),
     o.capacity_per_day(op_data["CAPACITY_PER_DAY"]),
-    o.source_site(Site.filter_by(id=op_data["SOURCE_SITE_ID"])),
-    o.output_site(Site.filter_by(id=op_data["OUTPUT_SITE_ID"])),
-    o.output_sku(SKU.filter_by(id=op_data["OUTPUT_SKU"])),
+    o.source_site(Site.lookup(id=op_data["SOURCE_SITE_ID"])),
+    o.output_site(Site.lookup(id=op_data["OUTPUT_SITE_ID"])),
+    o.output_sku(SKU.lookup(id=op_data["OUTPUT_SKU"])),
 )
 
 # Derived relationship: Operation's source business (via shared site).
@@ -180,8 +180,8 @@ model.define(
     d := Demand.new(id=dem_data["ID"]),
     d.quantity(dem_data["QUANTITY"]),
     d.priority(dem_data["PRIORITY"]),
-    d.business(Business.filter_by(id=dem_data["BUSINESS_ID"])),
-    d.sku(SKU.filter_by(id=dem_data["SKU_ID"])),
+    d.business(Business.lookup(id=dem_data["BUSINESS_ID"])),
+    d.sku(SKU.lookup(id=dem_data["SKU_ID"])),
 )
 
 # Shipment data: loaded BOTH as pandas DataFrame (for late-shipment stats)
@@ -198,8 +198,8 @@ Shipment.quantity = model.Property(f"{Shipment} has {Integer:quantity}")
 ship_data = model.data(shipments_df[["ID", "SUPPLIER_BUSINESS_ID", "CUSTOMER_BUSINESS_ID", "SKU_ID", "QUANTITY"]])
 model.define(
     sh := Shipment.new(id=ship_data["ID"]),
-    sh.supplier(Business.filter_by(id=ship_data["SUPPLIER_BUSINESS_ID"])),
-    sh.customer(Business.filter_by(id=ship_data["CUSTOMER_BUSINESS_ID"])),
+    sh.supplier(Business.lookup(id=ship_data["SUPPLIER_BUSINESS_ID"])),
+    sh.customer(Business.lookup(id=ship_data["CUSTOMER_BUSINESS_ID"])),
     sh.sku_id(ship_data["SKU_ID"]),
     sh.quantity(ship_data["QUANTITY"]),
 )
@@ -245,7 +245,7 @@ model.define(
     dp.fiscal_quarter(pred_data["FISCAL_QUARTER"]),
     dp.predicted_delay_prob(pred_data["PREDICTED_DELAY_PROB"]),
     dp.risk_tier(pred_data["RISK_TIER"]),
-    dp.supplier_business(Business.filter_by(id=pred_data["SUPPLIER_BUSINESS_ID"])),
+    dp.supplier_business(Business.lookup(id=pred_data["SUPPLIER_BUSINESS_ID"])),
 )
 
 # --------------------------------------------------
@@ -756,7 +756,7 @@ RoutingScenario.unmet_total = model.Property(f"{RoutingScenario} has {Float:unme
 RoutingScenario.blocked_businesses = model.Property(f"{RoutingScenario} has {String:blocked_businesses}")
 
 # Materialize per-scenario results as RoutingScenario instances. Pre-create
-# the three instances by name, then bind each property via filter_by — this
+# the three instances by name, then bind each property via lookup — this
 # avoids the row-collapse seen with model.data() multi-row binding here.
 baseline_obj = results[0]["objective"]
 for r in results:
@@ -769,7 +769,7 @@ for r in results:
     unmet_val = float(r["unmet"]) if r["unmet"] else 0.0
 
     model.define(RoutingScenario.new(name=name))
-    rs = RoutingScenario.filter_by(name=name)
+    rs = RoutingScenario.lookup(name=name)
     model.define(rs.status(r["status"] or "UNKNOWN"))
     model.define(rs.total_cost(obj))
     model.define(rs.cost_delta_pct(float(delta_pct)))

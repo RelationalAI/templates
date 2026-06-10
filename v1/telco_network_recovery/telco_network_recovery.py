@@ -530,7 +530,7 @@ model.define(NetworkPerformance.new(
     packet_loss_pct=src.PACKET_LOSS_PCT,
     latency_ms=src.LATENCY_MS,
     error_rate=src.ERROR_RATE,
-    for_tower=CellTower.filter_by(id=src.TOWER_ID),
+    for_tower=CellTower.lookup(id=src.TOWER_ID),
 ))
 
 # Per-tower averages from NetworkPerformance (one row per measurement).
@@ -683,9 +683,9 @@ CallDetailRecord.routed_through = model.Relationship(
 src = model.data(cdr_df)
 model.define(CallDetailRecord.new(
     id=src.CDR_ID,
-    caller=Subscriber.filter_by(id=src.CALLER_SUB_ID),
-    callee=Subscriber.filter_by(id=src.CALLEE_SUB_ID),
-    routed_through=CellTower.filter_by(id=src.TOWER_ID),
+    caller=Subscriber.lookup(id=src.CALLER_SUB_ID),
+    callee=Subscriber.lookup(id=src.CALLEE_SUB_ID),
+    routed_through=CellTower.lookup(id=src.TOWER_ID),
 ))
 
 call_graph = Graph(
@@ -815,7 +815,7 @@ model.define(TowerUpgradeOption.new(
     capacity_increase_gbps=src.CAPACITY_INCREASE_GBPS,
     cost=src.COST_USD,
     install_weeks=src.INSTALL_WEEKS,
-    for_tower=CellTower.filter_by(id=src.TOWER_ID),
+    for_tower=CellTower.lookup(id=src.TOWER_ID),
 ))
 
 TowerUpgradeOption.selected = model.Property(f"{TowerUpgradeOption} has {Float:selected}")
