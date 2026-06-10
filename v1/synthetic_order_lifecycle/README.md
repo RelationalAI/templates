@@ -60,6 +60,7 @@ The same pattern applies to any test-data-generation problem where rows have to 
 
 ### Tools
 - Python >= 3.10
+- RelationalAI Python SDK (`relationalai == 1.12.0`)
 
 ## Quickstart
 
