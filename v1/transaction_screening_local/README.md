@@ -32,7 +32,7 @@ What runs locally vs. needs a Snowflake connection:
 
 - Anyone who wants to try RelationalAI without provisioning Snowflake
 - Developers prototyping an ontology, rules, and queries before pointing at production data
-- Anyone learning the rules + relationship-traversal patterns on a small, legible dataset
+- Anyone learning the rules + relationship-traversal patterns on a legible dataset with a realistic low base rate of suspicious activity
 
 ## What you'll build
 
@@ -45,7 +45,7 @@ What runs locally vs. needs a Snowflake connection:
 
 - **Model**: `Account`, the `transfers_to` relationship, and the classification + expansion rules
 - **Runner**: a single Python script (and `runbook.md`, an analyst paste-test walkthrough)
-- **Sample data**: a small transfer ledger with an embedded structuring ring
+- **Sample data**: a 75-transfer ledger across 54 accounts — a structuring ring and a large sender embedded in a legitimate-traffic majority (6 of 54 accounts flag)
 - **Outputs**: printed tables (network overview, per-account volume, suspects, counterparties, investigation set)
 
 ## Prerequisites
@@ -102,7 +102,7 @@ transaction_screening_local/
 
 ## Sample data
 
-`data/transactions.csv` is a transfer ledger with columns `id, src, dst, amount`. Accounts `C1001–C1004` transact ordinarily; `C2001–C2005` form a ring that cycles money in amounts just under the $10,000 reporting threshold (structuring), with one large $60,000 transfer from `C1001`.
+`data/transactions.csv` is a 75-transfer ledger across 54 accounts, with columns `id, src, dst, amount`. Most of it is legitimate small-business traffic (the `C3xxx` accounts — payroll runs, vendor invoices, retail transfers) that never flags. The suspicious activity is a small minority: `C2001–C2005` form a ring that cycles money in amounts just under the $10,000 reporting threshold (structuring), and `C1001` makes one large $60,000 transfer. In all, 6 of 54 accounts flag (~11%) — a realistic AML base rate. A few near-miss transfers (8,900; exactly 10,000; 49,000; exactly 50,000) sit right on the threshold edges and deliberately stay clean.
 
 ## Model overview
 
