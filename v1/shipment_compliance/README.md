@@ -38,6 +38,7 @@ The four rules demonstrate different rule patterns:
 ## What you'll build
 
 - A data model with suppliers, SKUs, shipments, operations, BOMs, and demand
+- `model.Enum` vocabularies for the closed-value fields (`ShipmentStatus`, `Priority`), mapped from CSV strings on load
 - Four derived rules using `model.where(...).define(...)` pattern
 - Queries that surface which entities match each rule
 
@@ -116,6 +117,21 @@ The four rules demonstrate different rule patterns:
 
 The model defines six concepts (Supplier, SKU, Shipment, Operation, BillOfMaterials, Demand) and loads each from CSV. Relationships link shipments to suppliers and SKUs, operations to input/output SKUs, etc.
 
+Closed vocabularies are declared as `model.Enum` types and populated by name from the raw CSV strings (so `"DELIVERED"` in `shipments.csv` becomes the `ShipmentStatus.DELIVERED` member):
+
+```python
+class ShipmentStatus(model.Enum):
+    PENDING = 1
+    IN_TRANSIT = 2
+    DELIVERED = 3
+
+Shipment.status = Property(f"{Shipment} has {ShipmentStatus:status}")
+# ... inside the define():
+s.status(ShipmentStatus.lookup(shipment_data.status))
+```
+
+Rules then compare against members rather than raw strings -- typo-proof and discoverable -- and queries read the label back with `.name` (e.g. `Shipment.status.name.alias("status")`).
+
 ### 2. Define rules as derived Relationships
 
 Each rule uses the `model.where(...).define(...)` pattern to create a boolean flag:
@@ -128,7 +144,7 @@ model.where(Shipment.delay_days > 0).define(Shipment.is_late())
 # Cross-entity rule (joins Shipment -> Supplier)
 Shipment.is_at_risk = Relationship(f"{Shipment} is at risk")
 model.where(
-    Shipment.status != "DELIVERED",
+    Shipment.status != ShipmentStatus.DELIVERED,
     Shipment.supplier(SupplierRef),
     SupplierRef.reliability_score < 0.8,
 ).define(Shipment.is_at_risk())
@@ -138,8 +154,8 @@ route_count = aggregates.count(Operation).per(BOM).where(...)
 model.where(route_count == 1).define(BOM.is_single_sourced())
 
 # OR semantics (multiple define calls on same Relationship)
-model.where(Demand.priority == "HIGH").define(Demand.is_escalated())
-model.where(Demand.priority == "URGENT").define(Demand.is_escalated())
+model.where(Demand.priority == Priority.HIGH).define(Demand.is_escalated())
+model.where(Demand.priority == Priority.URGENT).define(Demand.is_escalated())
 ```
 
 ### 3. Query flagged entities

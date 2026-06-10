@@ -6,6 +6,11 @@ This script demonstrates derived business rules in RelationalAI:
 - Define four rules as derived Relationships (boolean flags) on existing concepts.
 - Query and display which entities match each rule.
 
+Closed vocabularies (shipment status, demand priority) are modelled as
+`model.Enum` types (requires relationalai>=1.12): CSV strings map to enum
+members on load, rules compare against members instead of raw strings, and
+queries read the member name back.
+
 Rules defined:
   1. Shipment.is_late -- shipment arrived after expected date (delay_days > 0)
   2. Shipment.is_at_risk -- undelivered shipment from an unreliable supplier
@@ -48,11 +53,21 @@ SKU.name = Property(f"{SKU} has {String:name}")
 SKU.product_type = Property(f"{SKU} has {String:product_type}")
 model.define(SKU.new(model.data(read_csv(DATA_DIR / "skus.csv")).to_schema()))
 
+
+# Shipment-status vocabulary. CSV status strings map to members BY NAME via
+# `ShipmentStatus.lookup(...)` below; the wrapped values are arbitrary
+# distinct integers (here in lifecycle order).
+class ShipmentStatus(model.Enum):
+    PENDING = 1
+    IN_TRANSIT = 2
+    DELIVERED = 3
+
+
 # Shipment concept: deliveries of SKUs from suppliers.
 Shipment = Concept("Shipment", identify_by={"id": Integer})
 Shipment.sku = Relationship(f"{Shipment} carries {SKU}")
 Shipment.supplier = Relationship(f"{Shipment} from {Supplier}")
-Shipment.status = Property(f"{Shipment} has {String:status}")
+Shipment.status = Property(f"{Shipment} has {ShipmentStatus:status}")
 Shipment.delay_days = Property(f"{Shipment} has {Integer:delay_days}")
 
 shipment_data = model.data(read_csv(DATA_DIR / "shipments.csv"))
@@ -62,7 +77,7 @@ model.define(
         sku=SKU.lookup(id=shipment_data.sku_id),
         supplier=Supplier.lookup(id=shipment_data.supplier_id),
     ),
-    s.status(shipment_data.status),
+    s.status(ShipmentStatus.lookup(shipment_data.status)),
     s.delay_days(shipment_data.delay_days),
 )
 
@@ -102,11 +117,20 @@ model.define(
     b.input_quantity(bom_data.input_quantity),
 )
 
+
+# Demand-priority vocabulary, in ascending urgency order.
+class Priority(model.Enum):
+    LOW = 1
+    STANDARD = 2
+    HIGH = 3
+    URGENT = 4
+
+
 # Demand concept: quantity requirements for specific SKUs.
 Demand = Concept("Demand", identify_by={"id": Integer})
 Demand.sku = Relationship(f"{Demand} for {SKU}")
 Demand.quantity = Property(f"{Demand} has {Integer:quantity}")
-Demand.priority = Property(f"{Demand} has {String:priority}")
+Demand.priority = Property(f"{Demand} has {Priority:priority}")
 
 demand_data = model.data(read_csv(DATA_DIR / "demands.csv"))
 model.define(
@@ -115,7 +139,7 @@ model.define(
         sku=SKU.lookup(id=demand_data.sku_id),
     ),
     d.quantity(demand_data.quantity),
-    d.priority(demand_data.priority),
+    d.priority(Priority.lookup(demand_data.priority)),
 )
 
 # --------------------------------------------------
@@ -135,7 +159,7 @@ model.where(Shipment.delay_days > 0).define(Shipment.is_late())
 Shipment.is_at_risk = Relationship(f"{Shipment} is at risk")
 SupplierRef = Supplier.ref()
 model.where(
-    Shipment.status != "DELIVERED",
+    Shipment.status != ShipmentStatus.DELIVERED,
     Shipment.supplier(SupplierRef),
     SupplierRef.reliability_score < 0.8,
 ).define(Shipment.is_at_risk())
@@ -165,8 +189,8 @@ model.where(route_count == 1).define(BOM.is_single_sourced())
 # --------------------------------------------------
 
 Demand.is_escalated = Relationship(f"{Demand} is escalated")
-model.where(Demand.priority == "HIGH").define(Demand.is_escalated())
-model.where(Demand.priority == "URGENT").define(Demand.is_escalated())
+model.where(Demand.priority == Priority.HIGH).define(Demand.is_escalated())
+model.where(Demand.priority == Priority.URGENT).define(Demand.is_escalated())
 
 # --------------------------------------------------
 # Query results
@@ -185,7 +209,7 @@ model.select(
     Shipment.id.alias("shipment_id"),
     Shipment.sku.name.alias("sku"),
     Shipment.supplier.name.alias("supplier"),
-    Shipment.status.alias("status"),
+    Shipment.status.name.alias("status"),
     Shipment.supplier.reliability_score.alias("reliability"),
 ).where(Shipment.is_at_risk()).inspect()
 
@@ -201,5 +225,5 @@ model.select(
     Demand.id.alias("demand_id"),
     Demand.sku.name.alias("sku"),
     Demand.quantity.alias("quantity"),
-    Demand.priority.alias("priority"),
+    Demand.priority.name.alias("priority"),
 ).where(Demand.is_escalated()).inspect()
