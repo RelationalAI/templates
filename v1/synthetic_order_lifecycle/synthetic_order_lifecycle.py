@@ -296,7 +296,7 @@ print("\nGenerated event trace (one row per slot, sorted by order then timestamp
 OrderEvent.event_type = model.Property(
     f"{OrderEvent} has decided {EventType:event_type}"
 )
-for member in (EventType.PLACE, EventType.MODIFY, EventType.CANCEL, EventType.FILL):
+for member in EventType:
     chosen_ind = Integer.ref()
     model.define(OrderEvent.event_type(member)).where(
         OrderEvent.has_type(member, chosen_ind), chosen_ind == 1
