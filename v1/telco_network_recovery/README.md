@@ -310,7 +310,7 @@ Focus on the first changes most users will make.
 ### Use your own data
 
 - Replace the CSVs in `data/` with your own; keep the column names listed in *Sample data* above.
-- The subscriber `STATUS` column is enum-mapped: values must exactly match the `SubscriberStatus` member names (`ACTIVE` / `SUSPENDED`). `lookup()` does not validate its input — unrecognized values silently map to a nonexistent member, and those subscribers drop out of the Stage 3 customer-impact aggregates. Extend the enum if your feed has more statuses.
+- The subscriber `STATUS` column is enum-mapped: values must exactly match the `SubscriberStatus` member names (`ACTIVE` / `SUSPENDED`). `lookup()` cannot validate values that arrive from data columns — unrecognized values silently map to a nonexistent member, and those subscribers drop out of the Stage 3 customer-impact aggregates. Extend the enum if your feed has more statuses.
 - For Snowflake-backed runs, swap the `pd.read_csv(...)` calls for `model.data(snowflake_table)` calls and adjust `EXP_DATABASE` / `EXP_SCHEMA` at the top of the script.
 - If your subscriber feed lacks `LIFETIME_VALUE_USD` or `CHURN_RISK_SCORE`, supply a `CUSTOMER_VALUE` column directly and skip the pandas precompute.
 

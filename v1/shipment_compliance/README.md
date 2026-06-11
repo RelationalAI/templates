@@ -136,7 +136,7 @@ model.define(
 
 Rules then compare against members rather than raw strings -- typo-proof and discoverable -- and queries read the label back with `.name` (e.g. `Shipment.status.name.alias("status")`).
 
-One caveat when bringing your own data: `lookup()` does not validate its input. A CSV value that matches no member name silently maps to a nonexistent entity, and those rows simply drop out of every member-comparison rule. Keep the enum declarations in sync with your data's vocabulary.
+One caveat when bringing your own data: `lookup()` cannot validate values that arrive from data columns. A CSV value that matches no member name silently maps to a nonexistent entity, and those rows simply drop out of every member-comparison rule. Keep the enum declarations in sync with your data's vocabulary. (Literal strings in code are checked at construction and raise a `ValueError` naming the valid members.)
 
 ### 2. Define rules as derived Relationships
 
