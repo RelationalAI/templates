@@ -9,7 +9,7 @@ description = "RelationalAI template: shipment_compliance (PyRel v1)"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-  "relationalai==1.12.0",
+  "relationalai==1.13.0",
   "pandas",
 ]
 
