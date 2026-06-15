@@ -59,7 +59,7 @@ Built using **predictive reasoning** (GNN on a heterogeneous graph), **rules-bas
 ### Tools
 
 - Python ≥ 3.10.
-- RelationalAI Python SDK (`relationalai == 1.11.0`).
+- RelationalAI Python SDK (`relationalai == 1.12.0`).
 
 ### One-time Snowflake setup for GNN experiment artifacts
 
@@ -230,7 +230,8 @@ One shared ontology threads all four stages. Each stage reads concepts and prope
 | Property | Type | Identifying? | Notes |
 |---|---|---|---|
 | `id` | String | Yes | `SUB_ID` |
-| `subscriber_type`, `segment`, `status` | String | No | `CONSUMER`/`ENTERPRISE`; segment tier; `ACTIVE`/`SUSPENDED` |
+| `subscriber_type`, `segment` | String | No | `CONSUMER`/`ENTERPRISE`; segment tier |
+| `status` | `SubscriberStatus` enum | No | `ACTIVE`/`SUSPENDED` — a `model.Enum`, mapped from the CSV strings by member name |
 | `lifetime_value` | Float | No | `LIFETIME_VALUE_USD` |
 | `churn_risk_score` | Float | No | `[0, 1]` — probability of churn |
 | `customer_value` | Float | No | Precomputed: `lifetime_value × (1 + churn_risk_score)` — the per-subscriber weight Stage 3 sums into `weighted_impact` |
@@ -282,7 +283,7 @@ One shared ontology threads all four stages. Each stage reads concepts and prope
 
 **Stage 2 — Rules.** A three-branch `CellTower.is_critical_restore` flag fires when (1) `region == "WEST"` + `status == "DEGRADED"` + low avg equipment health, (2) WEST + high packet loss + low health, or (3) `failure_intensity > 1.5` (any region). Per-tower averages (`avg_packet_loss`, `avg_latency_ms`, `avg_error_rate`, `avg_health_score`) are derived first from `NetworkPerformance` and a two-hop `EquipmentHealth → NetworkEquipment → CellTower` join.
 
-**Stage 3 — Graph (customer impact analysis).** PageRank on the directed `Subscriber → Subscriber` call graph lands on `Subscriber.influence_score` (the graph reasoner's network-effect signal). The headline per-tower measure is `CellTower.weighted_impact` — sum of `Subscriber.customer_value` (= `lifetime_value × (1 + churn_risk_score)`) across the ACTIVE callers whose calls route through each tower. `weighted_pagerank` is the parallel PageRank-weighted view, exposed as a secondary signal queryable alongside the revenue-based headline.
+**Stage 3 — Graph (customer impact analysis).** PageRank on the directed `Subscriber → Subscriber` call graph lands on `Subscriber.influence_score` (the graph reasoner's network-effect signal). The headline per-tower measure is `CellTower.weighted_impact` — sum of `Subscriber.customer_value` (= `lifetime_value × (1 + churn_risk_score)`) across the active callers (`Subscriber.status == SubscriberStatus.ACTIVE`) whose calls route through each tower. `weighted_pagerank` is the parallel PageRank-weighted view, exposed as a secondary signal queryable alongside the revenue-based headline.
 
 **Stage 4 — Prescriptive (MIP).** Binary `TowerUpgradeOption.selected`, scoped to critical-restore towers, with three constraints (at most one tier per tower, total cost ≤ $5M, total install-weeks ≤ 200) and a three-factor objective:
 
@@ -309,6 +310,7 @@ Focus on the first changes most users will make.
 ### Use your own data
 
 - Replace the CSVs in `data/` with your own; keep the column names listed in *Sample data* above.
+- The subscriber `STATUS` column is enum-mapped: values must exactly match the `SubscriberStatus` member names (`ACTIVE` / `SUSPENDED`). `lookup()` cannot validate values that arrive from data columns — unrecognized values silently map to a nonexistent member, and those subscribers drop out of the Stage 3 customer-impact aggregates. Extend the enum if your feed has more statuses.
 - For Snowflake-backed runs, swap the `pd.read_csv(...)` calls for `model.data(snowflake_table)` calls and adjust `EXP_DATABASE` / `EXP_SCHEMA` at the top of the script.
 - If your subscriber feed lacks `LIFETIME_VALUE_USD` or `CHURN_RISK_SCORE`, supply a `CUSTOMER_VALUE` column directly and skip the pandas precompute.
 
