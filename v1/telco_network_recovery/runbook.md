@@ -126,7 +126,7 @@ Four derived health properties (`avg_packet_loss`, `avg_latency_ms`, `avg_error_
 
 **Response**
 
-Where PageRank scores a *subscriber*, paths scores the *route*. From the top-PageRank hub, call paths (≤ 3 hops, simple) are enumerated over an arity-3 caller-via-tower-callee edge; the routing tower on each hop is recovered, and each path is ranked by summed PageRank. Persists the hub's top route as `Subscriber.top_call_path_influence`. (Scoped to a seed hub — the full call graph is large and cyclic.)
+Where PageRank scores a *subscriber*, paths scores the *route*. From the top-PageRank hub (SUB-CON-00900), 198 simple call paths (≤ 3 hops) are enumerated over an arity-3 caller-via-tower-callee edge, recovering 54 distinct routing towers; each path is ranked by summed PageRank. Top route: `SUB-CON-00900 → SUB-CON-00814 → SUB-ENT-0038 → SUB-CON-00644` (PageRank sum 0.009041). Persists the hub's top route as `Subscriber.top_call_path_influence`. (Scoped to a seed hub — the full call graph is large and cyclic.)
 
 ### 7. Optimize tier selection
 
