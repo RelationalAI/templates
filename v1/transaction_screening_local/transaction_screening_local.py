@@ -6,7 +6,7 @@ or Native App required:
 
 - Load a transfer ledger into DuckDB and model accounts over it.
 - Define a self-referential `transfers_to` relationship between accounts.
-- Author declarative rules as derived Relationships using `define()` + `where()`:
+- Author declarative rules as derived Relationships using `define()` and `where()`:
   structuring (transfers just under the reporting threshold), large sender,
   and a combined suspect flag.
 - Expand a one-hop investigation set across the transfer network with a
@@ -39,7 +39,7 @@ STRUCTURING_FLOOR, STRUCTURING_CEILING = 9000.0, 10000.0
 LARGE_TRANSFER = 50000.0
 
 # Local DuckDB config (no Snowflake): a duckdb connection plus a `deployment`
-# section (schema + auto_deploy) routes the model to the local DuckDB executor
+# section (schema and auto_deploy) routes the model to the local DuckDB executor
 # and materializes derived relations before queries.
 config = create_config(
     connections={"local": DuckDBConnection(path=":memory:")},  # or a file path, e.g. "./dev.duckdb"

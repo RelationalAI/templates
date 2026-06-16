@@ -7,14 +7,14 @@ A paste-testable walkthrough for an analyst. Each prompt below is something you 
 ```
 transactions.csv — 75 transfers, 54 accounts  (in-memory DuckDB, no Snowflake)
         │
-        ▼  /rai-setup + /rai-pyrel-coding  — ontology
+        ▼  /rai-setup and /rai-pyrel-coding  — ontology
         Account · transfers_to (self-referential)
         │
         ▼  /rai-rules-authoring  — classification
         is_structuring · is_large_sender · is_suspect · near_suspect · under_review
         → 6 suspects
         │
-        ▼  /rai-querying  — surface & expand
+        ▼  /rai-querying  — surface and expand
         suspect → counterparty (self-join) · investigation set
         → 8 accounts under review
 ```
@@ -31,7 +31,7 @@ Requires `relationalai >= 1.13`. Local DuckDB execution uses deploy mode (flagge
 
 > Set up a RelationalAI model on local DuckDB (no Snowflake) over `data/transactions.csv` (columns: `id, src, dst, amount`). Create an `Account` concept identified by `id`, drawn from both the `src` and `dst` of every transfer, and a self-referential `transfers_to` relationship linking each transfer's sender to its receiver.
 
-**Response.** A model on an in-memory DuckDB database, configured with a `deployment` section (`schema` + `auto_deploy`). `Account` has 54 instances; `transfers_to` has 75 directed links, one per transfer. (To count the links, count the transfers — `aggs.count(<transfer id>)`. Counting a single account ref instead collapses to distinct senders, not arcs.)
+**Response.** A model on an in-memory DuckDB database, configured with a `deployment` section (`schema` and `auto_deploy`). `Account` has 54 instances; `transfers_to` has 75 directed links, one per transfer. (To count the links, count the transfers — `aggs.count(<transfer id>)`. Counting a single account ref instead collapses to distinct senders, not arcs.)
 
 ### Examine the ontology
 
@@ -53,7 +53,7 @@ Requires `relationalai >= 1.13`. Local DuckDB execution uses deploy mode (flagge
 
 > For each suspect, which accounts did they transfer money to?
 
-**Response.** 8 suspect → counterparty pairs: `C1001`→`C1002`, `C1001`→`C1003`, and the ring `C2001`→`C2002`, `C2001`→`C2003`, `C2002`→`C2003`, `C2003`→`C2004`, `C2004`→`C2005`, `C2005`→`C2001`. The `C2001`–`C2005` cycle is the structuring ring.
+**Response.** 8 suspect-to-counterparty pairs: `C1001` to `C1002`, `C1001` to `C1003`, and the ring `C2001` to `C2002`, `C2001` to `C2003`, `C2002` to `C2003`, `C2003` to `C2004`, `C2004` to `C2005`, `C2005` to `C2001`. The accounts `C2001` through `C2005` form the structuring ring.
 
 ### Who is in the investigation set?
 
@@ -65,4 +65,4 @@ Requires `relationalai >= 1.13`. Local DuckDB execution uses deploy mode (flagge
 
 ## Cohesion
 
-Every number above matches the script's printed output (`transaction_screening_local.py`): 75 transfers / 870,000 moved; 6 suspects (of 54 accounts); 8 suspect→counterparty pairs; 8 accounts in the investigation set. Re-run the script to refresh these if the data or thresholds change.
+Every number above matches the script's printed output (`transaction_screening_local.py`): 75 transfers and 870,000 moved; 6 suspects (of 54 accounts); 8 suspect-to-counterparty pairs; 8 accounts in the investigation set. Re-run the script to refresh these if the data or thresholds change.
