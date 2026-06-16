@@ -46,6 +46,7 @@ The hard part is that duplicates link *transitively*. Record A may match B on ph
 - **Runner**: `entity_resolution.py`, run end to end with `python entity_resolution.py`.
 - **Sample data**: `data/records.csv` (50 dirty party records across AUTO / HOME / LIFE / LEGACY systems) and `data/ground_truth.csv` (record-to-party labels for evaluation).
 - **Outputs**: printed blocking statistics, graph size, the resolved-party and golden-record summary, the confidence-tier breakdown, and pairwise precision / recall / F1.
+- **Runbook**: `runbook.md` — a paste-able, ordered walkthrough that recreates the template with a coding agent using the RelationalAI skills (`/rai-*`), with the expected response at each step.
 
 ## Prerequisites
 
@@ -139,6 +140,7 @@ The hard part is that duplicates link *transitively*. Record A may match B on ph
 ```text
 .
 ├── README.md
+├── runbook.md               # paste-able multi-reasoner walkthrough (RAI skills)
 ├── pyproject.toml
 ├── entity_resolution.py
 └── data/
@@ -146,7 +148,7 @@ The hard part is that duplicates link *transitively*. Record A may match B on ph
     └── ground_truth.csv     # record_id -> true_entity_id labels for evaluation
 ```
 
-**Start here**: run `python entity_resolution.py` for the full blocking -> graph -> rules -> evaluation pipeline.
+**Start here**: run `python entity_resolution.py` for the full blocking -> graph -> rules -> evaluation pipeline, or follow `runbook.md` to rebuild it step by step with a coding agent.
 
 ## Sample data
 
