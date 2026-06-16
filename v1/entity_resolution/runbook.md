@@ -2,8 +2,6 @@
 
 An insurer accumulates the same customer many times over: a household holds auto, home, and life policies in separate administration systems, and acquired books of business arrive with their own records. The bundled sample has 50 raw party records — pulled from AUTO (21), HOME (14), LIFE (11), and an acquired LEGACY book (4) — that refer to just 30 real people. The chain resolves them into one record per insured party, so the customer view, total exposure, and sanctions/fraud screening all see one person instead of several, and scores itself against ground-truth labels.
 
-> **Headline figures below are from a real Snowflake-backed run and are deterministic** — the matching is rule-scored (no stochastic model), so the same input reproduces the same 30 parties and `F1 = 1.000` every run. Re-tune the `MATCH_THRESHOLD` and per-field weights (template README, *Tune parameters*) to trade precision against recall on your own data.
-
 ## The chain
 
 ```
