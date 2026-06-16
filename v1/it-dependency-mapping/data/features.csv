@@ -1,0 +1,15 @@
+id,name,owner,deploy_tier
+clickstream-ingest,Clickstream Ingest,Maya Chen,critical
+txn-cdc-stream,Transaction CDC Stream,Maya Chen,critical
+crm-sync,CRM Sync,Raj Patel,standard
+events-enrichment,Events Enrichment Pipeline,Sofia Rossi,high
+ledger-normalizer,Ledger Normalizer,Sofia Rossi,critical
+customer-360-build,Customer 360 Build,Raj Patel,high
+session-features,Session Feature Job,Liang Wu,high
+revenue-rollup,Revenue Rollup,Sofia Rossi,critical
+churn-feature-store,Churn Feature Store,Liang Wu,high
+recommendation-svc,Recommendation Service,Liang Wu,high
+churn-scoring-api,Churn Scoring API,Priya Nair,high
+billing-api,Billing API,Tom Becker,critical
+exec-revenue-dashboard,Executive Revenue Dashboard,Hana Kim,standard
+retention-dashboard,Retention Dashboard,Hana Kim,standard

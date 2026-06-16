@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rai-template-it-dependency-mapping"
+version = "0.0.0"
+description = "RelationalAI template: map downstream software / data-pipeline dependency chains with variable-length path traversal over a dependency DAG"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "relationalai==1.13.0",
+  "pandas>=2.0.0",
+]
+
+[tool.setuptools]
+packages = []
