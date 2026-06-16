@@ -1,6 +1,6 @@
 ---
 title: "Entity Resolution"
-description: "Resolve duplicate policyholder records across an insurer's policy systems and acquired books, then aggregate exposure per resolved household and choose minimum-cost reinsurance cessions to clear accumulation breaches: graph clustering, rules, and a prescriptive knapsack."
+description: "Resolve duplicate policyholder records scattered across an insurer's policy systems and acquired books into one insured party, then total each household's exposure, flag accumulation-limit breaches, and choose the lowest-cost reinsurance cessions to clear them."
 featured: false
 experience_level: intermediate
 industry: "Financial Services"
@@ -22,23 +22,16 @@ tags:
 
 ## What this template is for
 
-This template chains **Graph** clustering, **Rules-based** aggregation, and **Prescriptive** optimization to show why entity resolution matters: resolution is the step that makes the downstream reasoning correct.
+An insurer accumulates the same customer many times over. A household holds auto, home, and life policies in separate administration systems, books of business arrive through acquisitions, and names, addresses, and contact details drift between them. Until those records are resolved into one insured party, the carrier's total exposure to each customer is invisible: no single policy looks dangerous, yet a household's combined coverage can quietly exceed an accumulation limit.
 
-An insurer accumulates the same customer many times over -- a household holds auto, home, and life policies in separate administration systems, and acquired books arrive with their own records, with names, addresses, and contact details drifting between them. Until those records are resolved, the carrier's total exposure to each insured is invisible: no single policy looks dangerous, yet a household's combined sum insured can blow past an accumulation limit. Duplicates also link *transitively* (A matches B on phone, B matches C on email, A and C share nothing) -- a case a pairwise pass never resolves.
-
-So the template resolves first, then acts on the resolved view:
-
-1. **Graph** -- treat accepted matches as edges and run weakly-connected-components, collapsing records (including transitive chains) into one insured party.
-2. **Rules-based** -- aggregate each resolved party's total exposure and flag the ones over the accumulation limit. At the record level zero policies breach; resolved, several households do.
-3. **Prescriptive** -- with a finite reinsurance budget, choose which breached households to cede to reinsurance to transfer the most excess exposure off the book (a knapsack).
-
-Matching runs in two bands -- high-confidence pairs merge automatically, borderline pairs go to a review queue -- so the accuracy is honest (recall below 1.0) and the review queue is load-bearing: confirming it surfaces a breach the automated pass missed.
+This template treats entity resolution as the foundation for a decision, not an end in itself. It uses **Graph** clustering to merge duplicate records into one insured party (following chains of matches that a simple pairwise comparison would miss), **Rules-based** aggregation to total each household's exposure and flag the ones over the accumulation limit, and **Prescriptive** optimization to choose the lowest-cost reinsurance cessions that bring breached households back under the limit. Resolution is the step that makes that downstream risk decision correct.
 
 ## Who this is for
 
 - Accumulation, catastrophe, and reinsurance teams who need exposure measured per real insured, not per record
 - Master-data, SIU/fraud, and compliance teams that need duplicate parties collapsed before screening
 - Anyone learning to chain fuzzy matching, graph clustering, rule-based aggregation, and optimization in RelationalAI
+- **Assumed knowledge**: comfortable reading Python; entity resolution, accumulation limits, and reinsurance terms are explained as they come up, so no prior RelationalAI experience is required to follow along
 
 ## What you'll build
 
@@ -65,7 +58,7 @@ Matching runs in two bands -- high-confidence pairs merge automatically, borderl
 
 ### Tools
 
-- Python >= 3.10
+- Python 3.10 or later
 - The prescriptive stage solves with HiGHS, which ships with the prescriptive reasoner -- no extra solver license required.
 
 ## Quickstart
@@ -150,10 +143,10 @@ Matching runs in two bands -- high-confidence pairs merge automatically, borderl
 ├── entity_resolution.py
 └── data/
     ├── records.csv          # 51 dirty party records (AUTO / HOME / LIFE / LEGACY) with coverage
-    └── ground_truth.csv     # record_id -> true_entity_id labels for evaluation
+    └── ground_truth.csv     # maps each record to its true party, for evaluation
 ```
 
-**Start here**: run `python entity_resolution.py` for the full blocking -> graph -> rules -> prescriptive pipeline, or follow `runbook.md` to rebuild it step by step with a coding agent.
+**Start here**: run `python entity_resolution.py` for the full pipeline (blocking, then graph clustering, rules, and the prescriptive plan), or follow `runbook.md` to rebuild it step by step with a coding agent.
 
 ## Sample data
 

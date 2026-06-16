@@ -379,10 +379,10 @@ ResolvedParty.premium = Property(f"{ResolvedParty} has {Float:premium}")
 model.define(ResolvedParty.premium(ResolvedParty.excess * REINSURANCE_RATE))
 
 # --------------------------------------------------
-# Model the decision problem
+# Stage 3: Prescriptive -- reinsurance cession knapsack
 # --------------------------------------------------
-# Knapsack: with a finite reinsurance premium budget, choose which breached
-# households to cede so the most excess exposure is transferred off the book.
+# With a finite reinsurance premium budget, choose which breached households to
+# cede so the most excess exposure is transferred off the book.
 
 problem = Problem(model, Float)
 ResolvedParty.cede = Property(f"{ResolvedParty} cede decision {Float:cede}")
@@ -400,10 +400,7 @@ problem.satisfy(
 )
 problem.maximize(aggregates.sum(ResolvedParty.excess * ResolvedParty.cede))
 
-# --------------------------------------------------
-# Solve and check solution
-# --------------------------------------------------
-
+# Solve the knapsack and read the chosen cessions.
 problem.solve("highs", time_limit_sec=60)
 si = problem.solve_info()
 
