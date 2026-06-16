@@ -740,7 +740,13 @@ def most_fragile_corridor_per_dc(removed_id=None):
 
 
 baseline_corridors = most_fragile_corridor_per_dc()
-n_corridors = corridor_df["corridor"].nunique()
+# Count only SIMPLE corridors (drop node-repeating walks; the grid is cyclic).
+# `len([...])`, not `sum(...)`: `sum` is shadowed by the relationalai import.
+n_corridors = len([
+    cid
+    for cid, grp in corridor_df.groupby("corridor")
+    if len(set(grp["substation_id"])) == len(grp["substation_id"])
+])
 print(
     f"\n  {n_corridors} generator-sub -> DC-sub corridors (<= {MAX_CORRIDOR_HOPS} hops, simple); "
     f"most-fragile corridor for {len(baseline_corridors)} DC substation(s):"
