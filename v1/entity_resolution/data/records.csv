@@ -1,51 +1,52 @@
-record_id,source_system,full_name,date_of_birth,gov_id_last4,email,phone,street,city,state,postal_code,created_at
-1005,HOME,Michael O'Sullivan,1972-06-25,7834,msullivan@workmail.com,(617) 555-0190,42 Beacon St,Boston,MA,02108,2019-05-22
-1006,AUTO,Mike O Sullivan,1972-06-25,7834,msullivan@workmail.com,6175550190,42 Beacon St Unit 5,Boston,MA,02108,2021-12-01
-1003,AUTO,Jennifer Walsh,1985-11-03,2261,jwalsh@outlook.com,(212) 555-0177,55 W 21st St,New York,NY,10010,2020-09-14
-1004,LIFE,Jen Walsh,1985-11-03,2261,jwalsh@outlook.com,212.555.0177,55 West 21st Street,New York,NY,10010,2022-11-30
-1014,AUTO,Margaret O'Brien,1976-12-01,3915,,(917) 555-0233,55 W 12th St,New York,NY,10011,2019-08-01
-1015,HOME,Maggie O'Brien,1976-12-01,3915,mobrien@fastmail.com,917-555-0233,55 W 12th St,New York,NY,10011,2021-05-19
-1016,LEGACY,M. O'Brien,,,mobrien@fastmail.com,,318 Hudson St,New York,NY,10013,2023-10-04
-1023,AUTO,Sarah Goldberg,1992-01-27,4456,sgoldberg@gmail.com,(646) 555-0112,14 E 60th St,New York,NY,10022,2021-06-30
-1024,HOME,Sara Goldburg,1992-01-27,4456,sgoldberg@gmail.com,(646) 555-0112,14 East 60th St,New York,NY,10022,2022-10-17
-1036,AUTO,Hannah Weiss,1982-08-14,4190,hweiss@gmail.com,(215) 555-0128,1500 Locust St,Philadelphia,PA,19102,2019-04-17
-1033,AUTO,Grace Liu,1995-05-02,6677,gliu@gmail.com,(919) 555-0150,120 Fayetteville St,Raleigh,NC,27601,2023-03-08
-1025,HOME,James Whitfield,1974-08-19,1623,jwhitfield@aol.com,(404) 555-0199,1100 Peachtree St NE,Atlanta,GA,30309,2018-03-19
-1026,LEGACY,Jim Whitfield,1974-08-19,,,404-555-0199,1100 Peachtree St,Atlanta,GA,30309,2023-05-21
-1012,LIFE,Elizabeth Ramirez,1983-07-08,6642,liz.ramirez@yahoo.com,(305) 555-0148,700 Brickell Ave,Miami,FL,33131,2021-01-29
-1013,AUTO,Liz Ramirez,1983-07-08,6642,liz.ramirez@yahoo.com,,700 Brickell Avenue,Miami,FL,33131,2022-03-12
-1029,AUTO,Olivia Martins,1993-09-19,1208,omartins@gmail.com,(305) 555-0171,1450 Ocean Dr,Miami Beach,FL,33139,2020-06-12
-1049,LIFE,Gabriel Santos,1988-08-08,2156,gsantos@gmail.com,(813) 555-0121,400 N Ashley Dr,Tampa,FL,33602,2021-03-17
-1046,HOME,Thomas Wright,1969-04-21,5413,twright@gmail.com,(615) 555-0159,222 2nd Ave S,Nashville,TN,37201,2020-10-22
-1047,AUTO,Tom Wright,1969-04-21,5413,twright@gmail.com,(615) 555-0159,222 Second Ave South,Nashville,TN,37201,2021-08-30
-1038,AUTO,Emma Schroeder,1994-10-27,1735,eschroeder@gmail.com,(414) 555-0175,310 E Wisconsin Ave,Milwaukee,WI,53202,2021-12-21
-1032,LIFE,Noah Bergman,1990-07-23,2904,nbergman@gmail.com,(612) 555-0166,900 Nicollet Mall,Minneapolis,MN,55403,2021-07-19
-1010,AUTO,William Foster,1968-09-30,1190,wfoster@gmail.com,(312) 555-0163,8 N Clark St,Chicago,IL,60602,2018-11-03
-1011,HOME,Bill Foster,1968-09-30,1190,wfoster1@gmail.com,(312) 555-0163,8 North Clark St,Chicago,IL,60602,2022-06-15
-1035,HOME,John Smith,1979-11-23,3344,jsmith@workplace.com,(773) 555-0190,55 E Monroe St,Chicago,IL,60603,2021-02-26
-1034,AUTO,John Smith,1986-04-02,7012,john.smith.84@gmail.com,(773) 555-0102,1230 W Webster Ave,Chicago,IL,60614,2020-08-15
-1037,LIFE,Lucas Moreau,1989-01-11,9520,lmoreau@gmail.com,(504) 555-0143,700 Canal St,New Orleans,LA,70130,2022-09-09
-1027,AUTO,Aisha Patel,1991-06-05,3360,apatel@gmail.com,(469) 555-0107,2100 Ross Ave,Dallas,TX,75201,2022-01-10
-1044,AUTO,Maria Gonzalez,1986-12-05,3071,mgonzalez@gmail.com,(210) 555-0137,600 E Market St,San Antonio,TX,78205,2019-02-28
-1045,LIFE,Maria Gonzales,1986-12-05,3071,mgonzalez@gmail.com,210-555-0137,600 East Market Street,San Antonio,TX,78205,2022-12-19
-1030,HOME,Ethan Brooks,1979-12-12,5591,ebrooks@gmail.com,(720) 555-0145,1700 Lincoln St,Denver,CO,80203,2019-10-28
-1031,AUTO,Sofia Castro,1984-03-30,8013,scastro@yahoo.com,(602) 555-0188,201 E Washington St,Phoenix,AZ,85004,2022-04-03
-1028,LIFE,Daniel Kim,1987-02-28,7745,dkim@hotmail.com,(702) 555-0133,3900 Las Vegas Blvd S,Las Vegas,NV,89119,2021-11-05
-1021,LIFE,Christopher Lee,1981-10-09,9931,clee@protonmail.com,(213) 555-0181,350 S Grand Ave,Los Angeles,CA,90071,2020-04-25
-1022,AUTO,Chris Lee,1981-10-09,9931,clee@protonmail.com,2135550181,350 South Grand Avenue,Los Angeles,CA,90071,2023-02-14
-1017,AUTO,David Park,1988-03-22,8820,dpark@gmail.com,(408) 555-0124,500 Castro St,Mountain View,CA,94041,2020-07-07
-1018,HOME,Dave Park,1988-03-22,8820,dpark@gmail.com,(408) 555-0124,500 Castro Street,Mountain View,CA,94041,2021-09-22
-1000,AUTO,Robert Chen,1979-04-12,4417,r.chen@gmail.com,(415) 555-0142,100 Market St,San Francisco,CA,94105,2021-03-11
-1001,HOME,Bob Chen,1979-04-12,,,415-555-0142,100 Market Street,San Francisco,CA,94105,2022-07-02
-1002,LEGACY,Bob Chen,1979-04-12,4417,r.chen@gmail.com,,100 Market St Apt 2,SF,CA,94105-1101,2023-01-20
-1040,AUTO,Andrew Fitzgerald,1971-03-09,8862,afitz@gmail.com,(415) 555-0211,1 Embarcadero Ctr,San Francisco,CA,94111,2018-06-04
-1041,HOME,Andy Fitzgerald,1971-03-09,8862,afitz@gmail.com,(415) 555-0211,1 Embarcadero Center,San Francisco,CA,94111,2020-01-13
-1042,LEGACY,Andrew Fitzgerald,1971-03-09,,afitzgerald@gmail.com,415-555-0211,1 Embarcadero Ctr Ste 400,SF,CA,94111,2023-07-25
-1043,LIFE,Drew Fitzgerald,1971-03-09,8862,afitz@gmail.com,,1 Embarcadero,San Francisco,CA,94111,2023-11-02
-1048,AUTO,Priya Raman,1992-11-30,7689,praman@gmail.com,(408) 555-0184,2200 Mission College Blvd,Santa Clara,CA,95054,2022-02-11
-1019,HOME,Patricia Johnson,1965-05-14,2078,pjohnson@comcast.net,(503) 555-0156,221 SW Yamhill St,Portland,OR,97204,2019-12-11
-1020,LIFE,Trish Johnson,1965-05-14,2078,pjohnson@comcast.net,503-555-0156,221 SW Yamhill,Portland,OR,97204,2022-08-08
-1007,HOME,Katherine Nguyen,1990-02-17,5503,k.nguyen@gmail.com,(206) 555-0119,1200 Pine Ave,Seattle,WA,98101,2020-02-18
-1008,AUTO,Kathy Nguyen,1990-02-17,5503,k.nguyen@gmail.com,206-555-0119,1200 Pine Avenue,Seattle,WA,98101,2023-04-09
-1009,LIFE,Katie Nguyen,1990-02-07,,,(206) 555-0119,1200 Pine Ave Apt 7,Seattle,WA,98101,2023-08-27
-1039,HOME,Benjamin Tan,1977-06-18,6248,btan@gmail.com,(206) 555-0193,400 Broad St,Seattle,WA,98109,2020-05-30
+record_id,source_system,full_name,date_of_birth,gov_id_last4,email,phone,street,city,state,postal_code,created_at,coverage_amount
+1005,HOME,Michael O'Sullivan,1972-06-25,7834,msullivan@workmail.com,(617) 555-0190,42 Beacon St,Boston,MA,02108,2019-05-22,480000
+1006,AUTO,Mike O Sullivan,1972-06-25,7834,msullivan@workmail.com,6175550190,42 Beacon St Unit 5,Boston,MA,02108,2021-12-01,52000
+1003,AUTO,Jennifer Walsh,1985-11-03,2261,jwalsh@outlook.com,(212) 555-0177,55 W 21st St,New York,NY,10010,2020-09-14,66000
+1004,LIFE,Jen Walsh,1985-11-03,2261,jwalsh@outlook.com,212.555.0177,55 West 21st Street,New York,NY,10010,2022-11-30,740000
+1014,AUTO,Margaret O'Brien,1976-12-01,3915,,(917) 555-0233,55 W 12th St,New York,NY,10011,2019-08-01,73000
+1015,HOME,Maggie O'Brien,1976-12-01,3915,mobrien@fastmail.com,917-555-0233,55 W 12th St,New York,NY,10011,2021-05-19,480000
+1016,LEGACY,M. O'Brien,,,mobrien@fastmail.com,,318 Hudson St,New York,NY,10013,2023-10-04,400000
+1023,AUTO,Sarah Goldberg,1992-01-27,4456,sgoldberg@gmail.com,(646) 555-0112,14 E 60th St,New York,NY,10022,2021-06-30,66000
+1024,HOME,Sara Goldburg,1992-01-27,4456,sgoldberg@gmail.com,(646) 555-0112,14 East 60th St,New York,NY,10022,2022-10-17,720000
+1037,AUTO,Hannah Weiss,1982-08-14,4190,hweiss@gmail.com,(215) 555-0128,1500 Locust St,Philadelphia,PA,19102,2019-04-17,59000
+1034,AUTO,Grace Liu,1995-05-02,6677,gliu@gmail.com,(919) 555-0150,120 Fayetteville St,Raleigh,NC,27601,2023-03-08,73000
+1025,HOME,James Whitfield,1974-08-19,1623,jwhitfield@aol.com,(404) 555-0199,1100 Peachtree St NE,Atlanta,GA,30309,2018-03-19,480000
+1026,LEGACY,Jim Whitfield,1974-08-19,,,404-555-0199,1100 Peachtree St,Atlanta,GA,30309,2023-05-21,400000
+1012,LIFE,Elizabeth Ramirez,1983-07-08,6642,liz.ramirez@yahoo.com,(305) 555-0148,700 Brickell Ave,Miami,FL,33131,2021-01-29,630000
+1013,AUTO,Liz Ramirez,1983-07-08,6642,liz.ramirez@yahoo.com,,700 Brickell Avenue,Miami,FL,33131,2022-03-12,66000
+1029,AUTO,Olivia Martins,1993-09-19,1208,omartins@gmail.com,(305) 555-0171,1450 Ocean Dr,Miami Beach,FL,33139,2020-06-12,73000
+1050,LIFE,Gabriel Santos,1988-08-08,2156,gsantos@gmail.com,(813) 555-0121,400 N Ashley Dr,Tampa,FL,33602,2021-03-17,520000
+1047,HOME,Thomas Wright,1969-04-21,5413,twright@gmail.com,(615) 555-0159,222 2nd Ave S,Nashville,TN,37201,2020-10-22,600000
+1048,AUTO,Tom Wright,1969-04-21,5413,twright@gmail.com,(615) 555-0159,222 Second Ave South,Nashville,TN,37201,2021-08-30,66000
+1039,AUTO,Emma Schroeder,1994-10-27,1735,eschroeder@gmail.com,(414) 555-0175,310 E Wisconsin Ave,Milwaukee,WI,53202,2021-12-21,73000
+1033,LIFE,Noah Bergman,1990-07-23,2904,nbergman@gmail.com,(612) 555-0166,900 Nicollet Mall,Minneapolis,MN,55403,2021-07-19,685000
+1010,AUTO,William Foster,1968-09-30,1190,wfoster@gmail.com,(312) 555-0163,8 N Clark St,Chicago,IL,60602,2018-11-03,45000
+1011,HOME,Bill Foster,1968-09-30,1190,wfoster1@gmail.com,(312) 555-0163,8 North Clark St,Chicago,IL,60602,2022-06-15,540000
+1036,HOME,John Smith,1979-11-23,3344,jsmith@workplace.com,(773) 555-0190,55 E Monroe St,Chicago,IL,60603,2021-02-26,540000
+1035,AUTO,John Smith,1986-04-02,7012,john.smith.84@gmail.com,(773) 555-0102,1230 W Webster Ave,Chicago,IL,60614,2020-08-15,45000
+1038,LIFE,Lucas Moreau,1989-01-11,9520,lmoreau@gmail.com,(504) 555-0143,700 Canal St,New Orleans,LA,70130,2022-09-09,685000
+1027,AUTO,Aisha Patel,1991-06-05,3360,apatel@gmail.com,(469) 555-0107,2100 Ross Ave,Dallas,TX,75201,2022-01-10,59000
+1045,AUTO,Maria Gonzalez,1986-12-05,3071,mgonzalez@gmail.com,(210) 555-0137,600 E Market St,San Antonio,TX,78205,2019-02-28,45000
+1046,LIFE,Maria Gonzales,1986-12-05,3071,mgonzalez@gmail.com,210-555-0137,600 East Market Street,San Antonio,TX,78205,2022-12-19,575000
+1031,LIFE,E. Brooks,1979-12-12,,,(303) 555-0241,2400 16th St,Denver,CO,80014,2023-06-14,575000
+1030,HOME,Ethan Brooks,1979-12-12,5591,ebrooks@gmail.com,(720) 555-0145,1700 Lincoln St,Denver,CO,80203,2019-10-28,480000
+1032,AUTO,Sofia Castro,1984-03-30,8013,scastro@yahoo.com,(602) 555-0188,201 E Washington St,Phoenix,AZ,85004,2022-04-03,59000
+1028,LIFE,Daniel Kim,1987-02-28,7745,dkim@hotmail.com,(702) 555-0133,3900 Las Vegas Blvd S,Las Vegas,NV,89119,2021-11-05,685000
+1021,LIFE,Christopher Lee,1981-10-09,9931,clee@protonmail.com,(213) 555-0181,350 S Grand Ave,Los Angeles,CA,90071,2020-04-25,575000
+1022,AUTO,Chris Lee,1981-10-09,9931,clee@protonmail.com,2135550181,350 South Grand Avenue,Los Angeles,CA,90071,2023-02-14,59000
+1017,AUTO,David Park,1988-03-22,8820,dpark@gmail.com,(408) 555-0124,500 Castro St,Mountain View,CA,94041,2020-07-07,59000
+1018,HOME,Dave Park,1988-03-22,8820,dpark@gmail.com,(408) 555-0124,500 Castro Street,Mountain View,CA,94041,2021-09-22,660000
+1000,AUTO,Robert Chen,1979-04-12,4417,r.chen@gmail.com,(415) 555-0142,100 Market St,San Francisco,CA,94105,2021-03-11,45000
+1001,HOME,Bob Chen,1979-04-12,,,415-555-0142,100 Market Street,San Francisco,CA,94105,2022-07-02,540000
+1002,LEGACY,Bob Chen,1979-04-12,4417,r.chen@gmail.com,,100 Market St Apt 2,SF,CA,94105-1101,2023-01-20,450000
+1041,AUTO,Andrew Fitzgerald,1971-03-09,8862,afitz@gmail.com,(415) 555-0211,1 Embarcadero Ctr,San Francisco,CA,94111,2018-06-04,52000
+1042,HOME,Andy Fitzgerald,1971-03-09,8862,afitz@gmail.com,(415) 555-0211,1 Embarcadero Center,San Francisco,CA,94111,2020-01-13,600000
+1043,LEGACY,Andrew Fitzgerald,1971-03-09,,afitzgerald@gmail.com,415-555-0211,1 Embarcadero Ctr Ste 400,SF,CA,94111,2023-07-25,500000
+1044,LIFE,Drew Fitzgerald,1971-03-09,8862,afitz@gmail.com,,1 Embarcadero,San Francisco,CA,94111,2023-11-02,740000
+1049,AUTO,Priya Raman,1992-11-30,7689,praman@gmail.com,(408) 555-0184,2200 Mission College Blvd,Santa Clara,CA,95054,2022-02-11,73000
+1019,HOME,Patricia Johnson,1965-05-14,2078,pjohnson@comcast.net,(503) 555-0156,221 SW Yamhill St,Portland,OR,97204,2019-12-11,720000
+1020,LIFE,Trish Johnson,1965-05-14,2078,pjohnson@comcast.net,503-555-0156,221 SW Yamhill,Portland,OR,97204,2022-08-08,520000
+1007,HOME,Katherine Nguyen,1990-02-17,5503,k.nguyen@gmail.com,(206) 555-0119,1200 Pine Ave,Seattle,WA,98101,2020-02-18,600000
+1008,AUTO,Kathy Nguyen,1990-02-17,5503,k.nguyen@gmail.com,206-555-0119,1200 Pine Avenue,Seattle,WA,98101,2023-04-09,66000
+1009,LIFE,Katie Nguyen,1990-02-07,,,(206) 555-0119,1200 Pine Ave Apt 7,Seattle,WA,98101,2023-08-27,740000
+1040,HOME,Benjamin Tan,1977-06-18,6248,btan@gmail.com,(206) 555-0193,400 Broad St,Seattle,WA,98109,2020-05-30,480000

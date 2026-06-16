@@ -1,19 +1,20 @@
 ---
 title: "Entity Resolution"
-description: "Resolve duplicate policyholder records across an insurer's policy systems and acquired books into one record per insured party, using fuzzy matching, weakly-connected-components clustering, and confidence-tier rules."
+description: "Resolve duplicate policyholder records across an insurer's policy systems and acquired books, then aggregate exposure per resolved household and choose minimum-cost reinsurance cessions to clear accumulation breaches: graph clustering, rules, and a prescriptive knapsack."
 featured: false
 experience_level: intermediate
 industry: "Financial Services"
 reasoning_types:
   - Graph
   - Rules-based
+  - Prescriptive
 tags:
   - Entity Resolution
   - Record Linkage
   - Deduplication
   - Weakly Connected Components
-  - Fuzzy Matching
-  - Master Data Management
+  - Accumulation Control
+  - Reinsurance Optimization
   - Insurance
 ---
 
@@ -21,32 +22,39 @@ tags:
 
 ## What this template is for
 
-This template chains **Graph** analysis and **Rules-based** reasoning to resolve duplicate policyholder records into one record per real-world insured party.
+This template chains **Graph** clustering, **Rules-based** aggregation, and **Prescriptive** optimization to show why entity resolution matters: resolution is the step that makes the downstream reasoning correct.
 
-Insurers accumulate the same customer many times over. A household holds auto, home, and life policies in separate administration systems; books of business arrive through acquisitions; and names, addresses, and contact details drift between them ("Robert Chen" / "Bob Chen", `415-555-0142` / `(415) 555-0142`, a street that gained an apartment number). Left unresolved, these duplicates fragment the customer view, understate a household's total exposure for accumulation and catastrophe risk, waste outreach on the same person twice, and weaken sanctions and fraud screening — one individual can sit behind several "distinct" claimants.
+An insurer accumulates the same customer many times over -- a household holds auto, home, and life policies in separate administration systems, and acquired books arrive with their own records, with names, addresses, and contact details drifting between them. Until those records are resolved, the carrier's total exposure to each insured is invisible: no single policy looks dangerous, yet a household's combined sum insured can blow past an accumulation limit. Duplicates also link *transitively* (A matches B on phone, B matches C on email, A and C share nothing) -- a case a pairwise pass never resolves.
 
-The hard part is that duplicates link *transitively*. Record A may match B on phone, and B match C on email, while A and C share nothing directly. A pairwise spreadsheet pass records the A–B and B–C matches but never concludes that A, B, and C are one person. This template treats accepted matches as edges in a graph and runs weakly-connected-components, so each connected group collapses into a single insured party — then classifies how confident each match is so a steward can review the weakest merges.
+So the template resolves first, then acts on the resolved view:
+
+1. **Graph** -- treat accepted matches as edges and run weakly-connected-components, collapsing records (including transitive chains) into one insured party.
+2. **Rules-based** -- aggregate each resolved party's total exposure and flag the ones over the accumulation limit. At the record level zero policies breach; resolved, several households do.
+3. **Prescriptive** -- with a finite reinsurance budget, choose which breached households to cede to reinsurance to transfer the most excess exposure off the book (a knapsack).
+
+Matching runs in two bands -- high-confidence pairs merge automatically, borderline pairs go to a review queue -- so the accuracy is honest (recall below 1.0) and the review queue is load-bearing: confirming it surfaces a breach the automated pass missed.
 
 ## Who this is for
 
-- Data and analytics teams building a single customer or single-party view across insurance systems
+- Accumulation, catastrophe, and reinsurance teams who need exposure measured per real insured, not per record
 - Master-data, SIU/fraud, and compliance teams that need duplicate parties collapsed before screening
-- Anyone learning to combine fuzzy matching with graph clustering and rule-based classification in RelationalAI
+- Anyone learning to chain fuzzy matching, graph clustering, rule-based aggregation, and optimization in RelationalAI
 
 ## What you'll build
 
-- A candidate-generation step that blocks records into buckets and scores each pair with field-level similarity (name, date of birth, government-ID fragment, email, phone, address)
-- A record graph whose edges are accepted matches, clustered into insured parties with weakly-connected-components
-- Rule-derived `confidence_tier` (HIGH / MEDIUM / REVIEW) on each match and an `is_duplicate` flag on each record, both queryable in the ontology
-- A golden (surviving) record per party and a pairwise precision / recall / F1 score against ground-truth labels
+- A two-band matcher (auto-merge vs review queue) over blocked, field-scored candidate pairs
+- A record graph clustered into insured parties with weakly-connected-components
+- Rule-derived match tiers, a duplicate flag, and per-party total exposure with an accumulation-limit breach flag
+- A minimum-cost reinsurance cession plan (a prescriptive knapsack) over the breached households
+- The record-level vs resolved-level breach contrast, a review queue, and pairwise precision / recall / F1
 
 ## What's included
 
-- **Model**: a `Record` concept (raw party records) and a `CandidateMatch` concept (accepted pairwise matches); a graph that derives each record's resolved `entity_id`; and rules that derive match `confidence_tier` and the `is_duplicate` flag.
+- **Model**: `Record` (raw party records with coverage), `CandidateMatch` (auto-merged pairs) and `ReviewPair` (held pairs); a graph deriving each record's resolved party; rules deriving match `confidence_tier`, an `is_duplicate` flag, and `ResolvedParty` total exposure + breach flag; and a prescriptive cession decision.
 - **Runner**: `entity_resolution.py`, run end to end with `python entity_resolution.py`.
-- **Sample data**: `data/records.csv` (50 dirty party records across AUTO / HOME / LIFE / LEGACY systems) and `data/ground_truth.csv` (record-to-party labels for evaluation).
-- **Outputs**: printed blocking statistics, graph size, the resolved-party and golden-record summary, the confidence-tier breakdown, and pairwise precision / recall / F1.
-- **Runbook**: `runbook.md` — a paste-able, ordered walkthrough that recreates the template with a coding agent using the RelationalAI skills (`/rai-*`), with the expected response at each step.
+- **Sample data**: `data/records.csv` (51 dirty party records across AUTO / HOME / LIFE / LEGACY, with per-policy coverage) and `data/ground_truth.csv` (record-to-party labels for evaluation).
+- **Outputs**: printed blocking/banding stats, graph size, resolved-party and golden-record summary, the record-vs-resolved accumulation contrast, the reinsurance cession plan, the review queue, and pairwise precision / recall / F1.
+- **Runbook**: `runbook.md` -- a paste-able, ordered walkthrough that recreates the template with a coding agent using the RelationalAI skills (`/rai-*`), with the expected response at each step.
 
 ## Prerequisites
 
@@ -58,6 +66,7 @@ The hard part is that duplicates link *transitively*. Record A may match B on ph
 ### Tools
 
 - Python >= 3.10
+- The prescriptive stage solves with HiGHS, which ships with the prescriptive reasoner -- no extra solver license required.
 
 ## Quickstart
 
@@ -94,46 +103,42 @@ The hard part is that duplicates link *transitively*. Record A may match B on ph
 
 6. Expected output (abridged):
    ```text
-   ============================================================
+   ================================================================
    Blocking & scoring
-   ============================================================
-   Records:                50
-   All possible pairs:     1225
-   Candidate pairs:        27  (97.8% fewer comparisons)
-   Accepted match edges:   25  (score >= 0.55)
-   Graph:                  50 nodes, 25 match edges
+   ================================================================
+   Records:                 51
+   All possible pairs:      1275
+   Candidate pairs:         28  (97.8% fewer comparisons)
+   Auto-merge matches:      25  (score >= 0.7)
+   Held for review:         1  ([0.55, 0.7))
+   Graph:                   51 nodes, 25 match edges
 
-   ============================================================
-   Resolved parties
-   ============================================================
-   Resolved 50 records into 30 insured parties (20 duplicate records collapsed).
-   Records flagged as duplicates (in a multi-record party): 35
+   ================================================================
+   Accumulation control (limit $1,000,000)
+   ================================================================
+   Policies over the limit at the RECORD level:      0
+   Households over the limit after RESOLUTION:       4
 
-   Multi-record parties (golden record in CAPS, then merged duplicates):
+   Reinsurance cession plan  (status OPTIMAL, budget $120,000 at 12% rate on line):
+     CEDE  Drew Fitzgerald        exposure $  1,892,000  excess $  892,000  premium $ 107,040
+     keep  Katie Nguyen           exposure $  1,406,000  excess $  406,000  premium $  48,720
+     keep  Trish Johnson          exposure $  1,240,000  excess $  240,000  premium $  28,800
+     CEDE  Bob Chen               exposure $  1,035,000  excess $   35,000  premium $   4,200
+     -> ceded $927,000 of excess exposure for $111,240 premium (of $120,000)
 
-     M. O'BRIEN  <mobrien@fastmail.com>  [golden from LEGACY, 2023-10-04]
-         record 1014 [AUTO   ] Margaret O'Brien       -
-         record 1015 [HOME   ] Maggie O'Brien         mobrien@fastmail.com
-         record 1016 [LEGACY ] M. O'Brien             mobrien@fastmail.com        <- golden
-     ... (14 more multi-record parties)
+   ================================================================
+   Review queue
+   ================================================================
+   Pairs held for steward review: 1
+   Breaches surfaced only if the review queue is confirmed: 1 (resolution would then show 5 breached households, not 4)
 
-   ============================================================
-   Match confidence tiers
-   ============================================================
-     HIGH    20 matches
-     MEDIUM  2 matches
-     REVIEW  3 matches
-
-   ============================================================
-   Evaluation vs ground truth (pairwise)
-   ============================================================
-     precision: 1.000
-     recall:    1.000
-     f1:        1.000
-     (true positives=26, false positives=0, false negatives=0)
+   ================================================================
+   Evaluation vs ground truth (pairwise, auto-resolution)
+   ================================================================
+     precision: 1.000   recall: 0.963   f1: 0.981
    ```
 
-   The `M. O'Brien` party is the payoff: record 1014 (no email) links to 1015 on phone and date of birth, 1015 links to the acquired legacy record 1016 on email, and 1014 and 1016 share no identifier at all. Weakly-connected-components still resolves all three into one insured party.
+   The story: no single policy breaches the $1M limit, but resolving the records surfaces four over-limit households; the optimizer cedes the most excess exposure it can afford ($927k for $111k of the $120k budget), and the one review pair, if confirmed, reveals a fifth breach the automated pass missed.
 
 ## Template structure
 
@@ -144,71 +149,67 @@ The hard part is that duplicates link *transitively*. Record A may match B on ph
 ├── pyproject.toml
 ├── entity_resolution.py
 └── data/
-    ├── records.csv          # 50 dirty party records (AUTO / HOME / LIFE / LEGACY)
+    ├── records.csv          # 51 dirty party records (AUTO / HOME / LIFE / LEGACY) with coverage
     └── ground_truth.csv     # record_id -> true_entity_id labels for evaluation
 ```
 
-**Start here**: run `python entity_resolution.py` for the full blocking -> graph -> rules -> evaluation pipeline, or follow `runbook.md` to rebuild it step by step with a coding agent.
+**Start here**: run `python entity_resolution.py` for the full blocking -> graph -> rules -> prescriptive pipeline, or follow `runbook.md` to rebuild it step by step with a coding agent.
 
 ## Sample data
 
-`data/records.csv` holds 50 party records pulled from four sources — three policy systems (`AUTO`, `HOME`, `LIFE`) and an acquired book of business (`LEGACY`) — covering 30 real people. Fifteen people appear in more than one system, with realistic corruptions: nickname versus legal name, typos, email and phone format drift, an apartment number that comes and goes, a mistyped date of birth, and government-ID fragments that the legacy system never captured (empty cells).
+`data/records.csv` holds 51 party records from four sources -- three policy systems (`AUTO`, `HOME`, `LIFE`) and an acquired book (`LEGACY`) -- covering 30 real people, 16 of whom appear in more than one system. Each row carries identifiers (`full_name`, `date_of_birth`, `gov_id_last4`, `email`, `phone`, address) and a per-policy `coverage_amount` (sum insured). `email`, `phone`, `date_of_birth`, and `gov_id_last4` may be empty. No single policy reaches the $1,000,000 accumulation limit -- a household only breaches it once its policies are resolved together.
 
-Each row has a `record_id`, `source_system`, `full_name`, `date_of_birth`, `gov_id_last4`, `email`, `phone`, `street`, `city`, `state`, `postal_code`, and `created_at`. `email`, `phone`, `date_of_birth`, and `gov_id_last4` may be empty.
+Three cases are placed deliberately:
 
-Two cases are placed deliberately:
+- **A transitive chain** (`M. O'Brien`): three records whose endpoints share no identifier, linked only through the middle record -- resolved only because clustering closes over the graph.
+- **A same-name trap** (two `John Smith` records in Chicago): blocked together but kept apart by differing date of birth, government ID, contact, and address.
+- **A review-band duplicate** (`Ethan Brooks` / `E. Brooks`): a true second policy that shares only date of birth, so it scores in the review band and is *not* auto-merged. Its household's combined exposure ($1,055,000) breaches the limit -- a breach that stays hidden until a steward confirms the match.
 
-- **A transitive chain** (`M. O'Brien`): three records where the endpoints share no identifier and are linked only through the middle record — resolved correctly only because clustering closes over the graph.
-- **A same-name trap** (two `John Smith` records in Chicago): blocking puts them in the same bucket, but they differ on date of birth, government ID, contact details, and address, so scoring keeps them as two separate parties.
-
-`data/ground_truth.csv` maps each `record_id` to its true party so the script can score the resolution. In practice this is a labeled sample used to tune the match threshold.
+`data/ground_truth.csv` maps each `record_id` to its true party for evaluation.
 
 ## Model overview
 
-- **Key entities**: `Record` (one raw party record from a source system) and `CandidateMatch` (one accepted pairwise match between two records).
-- **Primary identifiers**: `Record` is identified by `record_id`; `CandidateMatch` by `pair_id`.
-- **Important invariants**: a match links two distinct records; `entity_id` (the resolved party) is shared by every record in a connected component.
+- **Key entities**: `Record` (one raw policy record), `CandidateMatch` (an auto-merged pair), `ReviewPair` (a held pair), and `ResolvedParty` (one real insured, keyed by its weakly-connected-component party key).
+- **Primary identifiers**: `Record` by `record_id`; `CandidateMatch`/`ReviewPair` by `pair_id`; `ResolvedParty` by integer `key`.
+- **Important invariants**: every record in a party shares one `entity_key`; a party breaches when its summed coverage exceeds the accumulation limit; only breached parties carry an `excess`, `premium`, and `cede` decision.
 
 ### `Record`
 
-A raw party record before resolution. `email`, `phone`, `date_of_birth`, and `gov_id_last4` are optional and may be null.
+A raw policy record before resolution. `email`, `phone`, `date_of_birth`, and `gov_id_last4` are optional.
 
 | Property | Type | Identifying? | Notes |
 |---|---|---|---|
 | `record_id` | int | Yes | Loaded from `data/records.csv` |
 | `source_system` | string | No | `AUTO`, `HOME`, `LIFE`, or `LEGACY` |
-| `full_name` | string | No | Raw, uncleaned name |
-| `date_of_birth` | string | No | `YYYY-MM-DD`; optional |
-| `gov_id_last4` | string | No | Last four digits of a government ID; optional |
-| `email` | string | No | Optional |
-| `phone` | string | No | Any format; optional |
-| `street` / `city` / `state` / `postal_code` | string | No | Mailing address |
-| `created_at` | string | No | Record load date; used for golden-record survivorship |
-| `entity_id` | (graph) | No | Resolved party — the weakly-connected-component label (Stage 1) |
-| `is_duplicate` | flag | No | Set when the record's party has more than one record (Stage 2) |
+| `full_name` / address fields | string | No | Raw, uncleaned |
+| `coverage_amount` | float | No | Per-policy sum insured |
+| `date_of_birth` / `gov_id_last4` / `email` / `phone` | string | No | Optional matching identifiers |
+| `entity_id` (graph) / `entity_key` | (node) / int | No | Resolved party — WCC label and its integer key (Stage 1) |
+| `is_duplicate` | flag | No | Record shares its party with another (Stage 2) |
 
-### `CandidateMatch`
+### `ResolvedParty`
 
-An accepted pairwise match. `rec_a` and `rec_b` are functional links to `Record`, so they are Properties, not Relationships.
+One real insured, created from the distinct party keys.
 
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `pair_id` | int | Yes | Row in the candidate set |
-| `rec_a` / `rec_b` | `Record` | No | The two matched records |
-| `score` | float | No | Field-similarity score in `[0, 1]` |
-| `confidence_tier` | string | No | `HIGH` / `MEDIUM` / `REVIEW`, derived from `score` (Stage 2) |
+| Property | Type | Notes |
+|---|---|---|
+| `key` | int | Identifying; the party's representative record id |
+| `total_exposure` | float | Sum of coverage across the party's resolved policies |
+| `is_over_limit` | flag | Total exposure exceeds the accumulation limit |
+| `excess` / `premium` | float | Excess over the limit and premium to cede it (breached parties) |
+| `cede` | float (binary) | Prescriptive decision: cede this party to reinsurance (Stage 3) |
 
 ## How it works
 
-The script runs blocking and scoring in pandas (fuzzy string work is awkward in any query language), then hands the accepted matches to RelationalAI for the parts that genuinely need a reasoning engine: transitive clustering and declarative classification.
+Blocking and fuzzy scoring run in pandas (no string-similarity primitive in any query language); the engine does the parts that need reasoning -- transitive clustering, declarative aggregation, and optimization.
 
 ### Candidate generation (pandas)
 
-Comparing all 1,225 record pairs is wasteful. Blocking groups records that share an email handle, a phone number, or a name-and-postal key, and only those candidate pairs are scored — here, 27 pairs instead of 1,225. Each candidate gets a weighted similarity score across name (Jaro-Winkler with nickname folding), date of birth, government-ID fragment, email, phone, and address. Pairs at or above `MATCH_THRESHOLD` become match edges.
+Blocking groups records sharing an email handle, phone, name+postal key, or date of birth, so only 28 candidate pairs are scored instead of 1,275. Each candidate's weighted field-similarity score lands it in one of two bands: at or above `AUTO_MERGE` it becomes a match edge; in `[REVIEW_FLOOR, AUTO_MERGE)` it is held for a steward instead of merged.
 
-### Stage 1 — Graph: transitive clustering
+### Stage 1 -- Graph: transitive clustering
 
-Each accepted match is an undirected edge between two records. Weakly-connected-components collapses every connected group into one resolved party, so a chain of pairwise matches becomes a single insured customer:
+Each auto-merge match is an undirected edge; weakly-connected-components collapses connected records into one party. Because WCC returns the representative node, the script derives a stable integer party key from it:
 
 ```python
 graph = Graph(model, directed=False, weighted=False, node_concept=Record)
@@ -220,58 +221,69 @@ model.where(
     match_ref.rec_b == rec_b
 ).define(graph.Edge.new(src=rec_a, dst=rec_b))
 
-# Each record's resolved entity id is its weakly-connected-component label,
-# available directly on Record because node_concept=Record.
 graph.Node.entity_id = graph.weakly_connected_component()
 ```
 
-Because `node_concept=Record`, every record is a node, so a record with no matches forms its own single-record party.
+### Stage 2 -- Rules-based: exposure per resolved party
 
-### Stage 2 — Rules-based: confidence tiers and duplicate flags
-
-The rules read graph output (`entity_id`) and match scores and write classifications back to the ontology, where any query can filter on them:
+A `ResolvedParty` is created per party key; its total exposure is the summed coverage of its records, and it breaches when that total exceeds the limit:
 
 ```python
-records_per_entity = aggregates.count(Record).per(Record.entity_id)
-model.define(Record.is_duplicate(Record)).where(records_per_entity >= 2)
-
-model.define(CandidateMatch.confidence_tier("HIGH")).where(
-    CandidateMatch.score >= HIGH_TIER
+model.where(party_rec.entity_key == ResolvedParty.key).define(
+    ResolvedParty.total_exposure(aggregates.sum(party_rec.coverage_amount).per(ResolvedParty))
+)
+model.define(ResolvedParty.is_over_limit(ResolvedParty)).where(
+    ResolvedParty.total_exposure > ACCUMULATION_LIMIT
 )
 ```
 
-### Resolution summary and evaluation
+### Stage 3 -- Prescriptive: reinsurance cession knapsack
 
-A golden record is chosen per party (most recent record wins), and the resolution is scored against `ground_truth.csv` with pairwise precision / recall / F1.
+A binary cede decision per breached party, maximizing excess exposure transferred within the premium budget:
+
+```python
+problem.solve_for(
+    ResolvedParty.cede,
+    where=[ResolvedParty.is_over_limit()],
+    name=["cede", ResolvedParty.key],
+    type="bin",
+    lower=0.0,
+    upper=1.0,
+)
+problem.satisfy(
+    model.require(aggregates.sum(ResolvedParty.premium * ResolvedParty.cede) <= REINSURANCE_BUDGET),
+    name=["reinsurance_budget"],
+)
+problem.maximize(aggregates.sum(ResolvedParty.excess * ResolvedParty.cede))
+```
 
 ```text
-records (CSV) -> block + score (pandas) -> match edges -> WCC clusters -> tier + duplicate rules -> golden record + evaluation
+records (CSV) -> block + score (pandas) -> auto edges + review queue
+   -> WCC clusters -> per-party exposure + breach flag -> reinsurance cession plan
 ```
 
 ## Customize this template
 
 ### Use your own data
 
-- Replace `data/records.csv` with your records. Keep the `record_id`, `full_name`, and address columns; `email`, `phone`, `date_of_birth`, and `gov_id_last4` may be blank.
-- Optional fields are loaded only for rows where they are present (see `load_optional_property`), so blank cells become nulls rather than dropping the record.
-- Provide `data/ground_truth.csv` for a labeled sample to measure accuracy, or delete the evaluation block if you have no labels.
+- Replace `data/records.csv`. Keep `record_id`, `full_name`, `coverage_amount`, and address columns; `email`, `phone`, `date_of_birth`, `gov_id_last4` may be blank (loaded only where present, so a blank cell doesn't drop the record).
+- Provide `data/ground_truth.csv` to measure accuracy, or delete the evaluation block.
 
 ### Tune parameters
 
-- `MATCH_THRESHOLD` (default `0.55`) is the merge cutoff. Raise it to merge more conservatively, lower it to merge more aggressively.
-- `HIGH_TIER` / `MEDIUM_TIER` set the confidence bands. The per-field weights live in `pair_score`; reweight them to match which fields you trust most.
-- `NICKNAMES` folds nicknames to legal first names — extend it for your population.
+- `AUTO_MERGE` / `REVIEW_FLOOR` set the two matching bands. Raise `AUTO_MERGE` to send more pairs to review (higher precision, lower recall); the per-field weights live in `pair_score`.
+- `ACCUMULATION_LIMIT`, `REINSURANCE_RATE`, and `REINSURANCE_BUDGET` drive the downstream stages. A tighter budget forces the optimizer to prioritize; raise it and more breaches get ceded.
 
 ### Extend the model
 
-- **Blocking keys**: add keys in `blocking_keys` (for example, date of birth or government-ID fragment) to catch duplicates whose contact details changed.
-- **Survivorship**: the golden record uses most-recent-wins. Swap in source-priority (prefer `AUTO` over `LEGACY`) or most-complete-record by changing the `groupby` selection.
-- **Review queue**: filter `CandidateMatch` to `confidence_tier == "REVIEW"` to route the weakest merges to a steward.
+- **Survivorship**: the golden record uses most-recent-wins; swap in source-priority or most-complete.
+- **Cession objective**: maximize breaches *cured* instead of exposure ceded, or add a per-state rate on line so catastrophe-exposed accumulations cost more to cede.
+- **Review workflow**: route `ReviewPair` rows to a steward; confirming one re-runs resolution and can surface a new breach.
 
 ### Scale up / productionize
 
-- Point `Record` at a Snowflake table instead of a CSV (see the data-loading docs) and let the engine cluster at warehouse scale.
-- For very large inputs, tighten blocking so candidate counts stay manageable; blocking, not clustering, dominates cost.
+- Point `Record` at a Snowflake table instead of a CSV and let the engine cluster and aggregate at warehouse scale.
+- For very large inputs, tighten blocking so candidate counts stay manageable -- blocking, not clustering, dominates cost.
 
 ## Troubleshooting
 
@@ -290,25 +302,25 @@ Run `rai init` to configure your Snowflake connection. Verify that the RAI Nativ
 <details>
 <summary>Why did some records silently disappear after loading?</summary>
 
-`model.data(df).to_schema()` drops any row that has an empty or null cell in one of the loaded columns. If your data has optional fields (blank email, phone, etc.), load the always-present columns via `to_schema` and load each optional column only over the rows where it is present, as `load_optional_property` does here. A quick check: `model.select(Record.record_id).to_df().shape[0]` should equal your row count.
+`model.data(df).to_schema()` drops any row that has an empty or null cell in a loaded column. Load the always-present columns via `to_schema` and load each optional column only over the rows where it is present, as `load_optional_property` does here. Quick check: `model.select(Record.record_id).to_df().shape[0]` should equal your row count.
 </details>
 
 <details>
-<summary>Everything merged into one giant party (or nothing merged)</summary>
+<summary><code>TypeMismatch: Expected 'String', got 'Record'</code> from the WCC output</summary>
 
-This is almost always `MATCH_THRESHOLD`. Too low and unrelated records link into a megacluster; too high and real duplicates stay split. Inspect the `score` column on `CandidateMatch` and pick a threshold that separates your true matches from coincidental ones.
+`graph.weakly_connected_component()` returns the component-representative node, not a scalar. Don't key a concept by it directly as a string -- derive an integer key from the representative's id (`Record.entity_key` here) and key `ResolvedParty` off that.
 </details>
 
 <details>
-<summary>Two different people keep merging</summary>
+<summary>The cession plan is empty or leaves the biggest breach uncovered</summary>
 
-A shared identifier (a recycled phone number, a family email) can over-link. Lower the weight of that field in `pair_score`, require a second corroborating field, or route borderline pairs to the `REVIEW` tier instead of auto-merging.
+That is the budget binding. The knapsack maximizes excess exposure ceded within `REINSURANCE_BUDGET`; an expensive single accumulation can be skipped in favor of cheaper ones. Raise the budget, or change the objective to prioritize the largest breach.
 </details>
 
 ## Learn more
 
 - [RelationalAI documentation](https://docs.relational.ai/) — language, modeling, and reasoner reference.
-- [Template gallery](https://docs.relational.ai/build/templates) — other runnable templates, including graph and rules-based examples.
+- [Template gallery](https://docs.relational.ai/build/templates) — other runnable templates, including graph, rules, and prescriptive examples.
 
 ## Support
 
