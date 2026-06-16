@@ -58,7 +58,7 @@ This template treats entity resolution as the foundation for a decision, not an 
 
 ### Tools
 
-- Python 3.10 or later
+- Python >= 3.10
 - The prescriptive stage solves with HiGHS, which ships with the prescriptive reasoner -- no extra solver license required.
 
 ## Quickstart
