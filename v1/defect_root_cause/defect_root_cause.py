@@ -238,7 +238,7 @@ Unit.touches_lot = model.Relationship(f"{Unit} touches {Lot:lot}")
 model.where((u := Unit.ref()).consumes_lot(top := Lot.ref())).define(Unit.touches_lot(u, top))
 model.where(
     (u := Unit.ref()).consumes_lot(top := Lot.ref()),
-    reach(top, deep := Lot.ref()),
+    reach(top, deep := Lot.ref())
 ).define(Unit.touches_lot(u, deep))
 
 # Factor.touches: the unified incidence the diagnosis ranges over. Lot factors
@@ -298,7 +298,7 @@ model.where(Factor.defect_count > 0).define(
 model.where(
     Factor.lift >= LIFT_THRESHOLD,
     Factor.touched_count >= MIN_SUPPORT,
-    Factor.defect_count >= MIN_DEFECTS,
+    Factor.defect_count >= MIN_DEFECTS
 ).define(Factor.is_suspect(Factor))
 
 suspects = model.where(Factor.is_suspect(f := Factor.ref())).select(
@@ -379,7 +379,7 @@ diagnosis = model.where((f := Factor.ref()).is_root_cause > 0.5).select(
 explained = model.where(
     Unit.is_defective(),
     (f := Factor.ref()).is_root_cause > 0.5,
-    f.touches(Unit),
+    f.touches(Unit)
 ).select(Unit.id.alias("unit")).to_df()
 n_defective = len(n_def)
 n_explained = explained["unit"].nunique()
@@ -411,7 +411,7 @@ print(diagnosis.to_string(index=False))
 sig = model.where(
     (f := Factor.ref()).is_root_cause > 0.5,
     f.touches(u := Unit.ref()),
-    u.is_defective(),
+    u.is_defective()
 ).select(f.id.alias("factor"), u.defect_type.alias("defect_type")).to_df()
 print("\nCorroborating evidence per root cause:")
 for _, row in diagnosis.iterrows():
@@ -423,7 +423,7 @@ for _, row in diagnosis.iterrows():
     if kind == "LOT":
         tell_df = model.where(
             (lo := Lot.ref()).id == ref,
-            lo.supplier(sp := Supplier.ref()),
+            lo.supplier(sp := Supplier.ref())
         ).select(sp.name.alias("supplier"), lo.received_date.alias("recv")).to_df()
         tell = f"supplier {tell_df['supplier'].iloc[0]}, received {tell_df['recv'].iloc[0]}"
     else:
