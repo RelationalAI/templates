@@ -1,9 +1,9 @@
 ---
 title: "Memory Supply Allocation"
-description: "Monthly rolling-horizon allocation of constrained memory-chip supply across customers with strategic supplier dependencies, named foundries, and raw-material inputs. Four-reasoner chain: predicted supplier capability feeds the optimization, customer-customer paths surface single points of failure, and two what-if scenarios trace supplier-offline and input-shortage cascades."
+description: "Monthly rolling-horizon allocation of constrained memory-chip supply across customers with supplier dependencies, named foundries, and raw-material inputs: predicted supplier capability feeds the optimization, customer-customer paths surface single points of failure, and two what-if scenarios trace supplier-offline and input-shortage cascades."
 featured: false
 experience_level: intermediate
-industry: "Semiconductors"
+industry: "Technology & Telecom"
 reasoning_types:
   - Predictive
   - Rules-based
@@ -58,7 +58,7 @@ This template shows how RelationalAI answers that question on a single shared mo
 ### Tools
 
 - Python >= 3.10
-- RelationalAI Python SDK (`relationalai[gnn]==1.5.0`)
+- RelationalAI Python SDK (`relationalai[gnn]==1.11.0`)
 
 ### One-time Snowflake setup (predictive GNN)
 
@@ -320,7 +320,7 @@ Each solve is constrained by capacity, a yield-aware demand cap, and the base an
 ### Scale up / productionize
 
 - **Engine sizing**: the GNN path needs a GPU-sized predictive reasoner (`GPU_NV_S`); the LP solves on the default `highs` solver.
-- **Reproducibility**: pin `relationalai[gnn]==1.5.0`, set `GNN_SEED`, and prefer `USE_PRECOMPUTED_FORECAST = True` for deterministic, offline reruns.
+- **Reproducibility**: pin `relationalai[gnn]==1.11.0`, set `GNN_SEED`, and prefer `USE_PRECOMPUTED_FORECAST = True` for deterministic, offline reruns.
 - **Scheduling**: the script is a single entrypoint, so it drops into any scheduler or pipeline that can run `python memory_supply_allocation.py`.
 
 ## Troubleshooting

@@ -1,6 +1,6 @@
 ---
 title: "Warehouse Allocation"
-description: "Allocate inventory across a distribution network using graph centrality, weakly-connected-components, and bridge-route detection to prioritize critical hubs."
+description: "Allocate inventory across a distribution network using centrality, weakly-connected components, and bridge-route detection to prioritize critical hubs."
 featured: false
 experience_level: intermediate
 industry: "Supply Chain & Logistics"

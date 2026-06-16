@@ -233,7 +233,7 @@ model.define(GpuPool.new(
     power_per_gpu_kw=src.power_per_gpu_kw,
     available_gpu_count=src.available_gpu_count,
     hourly_depreciation_rate=src.hourly_depreciation_rate,
-    data_center=DataCenterRequest.filter_by(id=src.data_center_id),
+    data_center=DataCenterRequest.lookup(id=src.data_center_id),
 ))
 
 # Workload
@@ -268,7 +268,7 @@ model.define(Workload.new(
     gpu_type_preferred=src.gpu_type_preferred,
     duration_hours=src.duration_hours,
     strategic_value_usd=src.strategic_value_usd,
-    lab=AILab.filter_by(id=src.lab_id),
+    lab=AILab.lookup(id=src.lab_id),
 ))
 
 # GPU-type allowlist as its own Concept (composite identity), not as a
@@ -299,8 +299,8 @@ WorkloadDependency.dependency_type = model.Property(
     f"{WorkloadDependency} has type {String:dependency_type}"
 )
 # Composite-identity population: use .ref() + .where(), mirroring the
-# cicd_runner_allocation Compatibility pattern. .filter_by() does not
-# bind composite-identity components correctly during define().
+# cicd_runner_allocation Compatibility pattern. Binding composite-identity
+# components directly during define() does not populate them correctly.
 deps_src = model.data(workload_deps_df)
 PredRef = Workload.ref()
 SuccRef = Workload.ref()
@@ -1144,9 +1144,9 @@ else:
 
         Assignment.is_chosen = model.Relationship(f"{Assignment} is in chosen cell")
         xc = Float.ref("xc")
-        chosen_env_c = PowerEnvelopeLevel.filter_by(name=CHOSEN_ENVELOPE)
-        chosen_mar_c = MarginFloor.filter_by(name=CHOSEN_MARGIN)
-        chosen_div_c = DiversityCap.filter_by(name=CHOSEN_DIVERSITY)
+        chosen_env_c = PowerEnvelopeLevel.lookup(name=CHOSEN_ENVELOPE)
+        chosen_mar_c = MarginFloor.lookup(name=CHOSEN_MARGIN)
+        chosen_div_c = DiversityCap.lookup(name=CHOSEN_DIVERSITY)
         model.where(
             Assignment.x_assign(chosen_env_c, chosen_mar_c, chosen_div_c, xc),
             xc > 0.5,

@@ -2,7 +2,7 @@
 title: "BOM Reachability"
 description: "Trace transitive dependencies through a bill of materials to identify which raw materials each finished product depends on and which components are structural bottlenecks."
 experience_level: intermediate
-industry: Manufacturing
+industry: "Manufacturing"
 featured: false
 reasoning_types:
   - Graph

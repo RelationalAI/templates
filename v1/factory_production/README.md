@@ -1,8 +1,8 @@
 ---
 title: "Factory Production"
-description: "Maximize profit from production with limited resource availability per factory."
+description: "Maximize production profit under per-factory resource limits, then read the sensitivity marginals (capacity shadow prices and product reduced costs) from one solve."
 featured: false
-experience_level: beginner
+experience_level: intermediate
 industry: "Manufacturing"
 reasoning_types:
   - Prescriptive
@@ -10,43 +10,49 @@ tags:
   - Linear Programming
   - Profit Maximization
   - Resource Allocation
-  - Scenario Analysis
+  - Sensitivity Analysis
+  - Shadow Prices
 ---
 
 # Factory Production
 
 ## What this template is for
 
-This template uses **Prescriptive** reasoning to maximize factory production profit under resource constraints. It is the recommended starting point for prescriptive optimization in this portfolio — the simplest end-to-end LP template before moving on to multi-machine scheduling and multi-period planning.
+This template uses **Prescriptive** reasoning to maximize factory production profit under resource constraints, and then to read back the **sensitivity marginals** a planner asks next -- all from a single solve. It is a compact, textbook **product-mix linear program**: a small, fully hand-checkable setting for learning what shadow prices and reduced costs mean.
 
 Manufacturing operations must decide how much of each product to produce at each factory to maximize profit, given limited resources and bounded demand. Each product has a production rate (units per hour of resource), a profit per unit, and a maximum demand. Each factory has a fixed number of available resource-hours.
 
-This template formulates the problem as a linear program. Decision variables represent the quantity of each product to produce. Constraints ensure that total resource usage at each factory does not exceed availability and that production does not exceed demand. The objective maximizes total profit.
+This template formulates the problem as a linear program. Decision variables represent the quantity of each product to produce, bounded above by demand. A per-factory constraint keeps total resource usage within availability, and the objective maximizes total profit.
 
-The template solves the problem independently per factory, demonstrating a scenario-based approach where each factory is treated as a separate optimization.
+A plain solve answers *"what is the most profitable production plan?"*. Adding `sensitivity=True` to the solve ALSO answers the marginal questions -- in the same solve, with the answers read straight off the variable and constraint objects:
+
+- **Capacity shadow price** (`cap.shadow_price`): how much total profit moves per extra hour at a factory. A capacity with idle hours prices at **zero** (it is not the bottleneck); a positive price flags a binding capacity worth expanding -- so this ranks which factory to expand first. (The rule is one-way: slack ⇒ zero price, and a positive price ⇒ binding.)
+- **Product reduced cost** and **basis status** (`quantity_var.reduced_cost` / `quantity_var.basis_status`): a product held at its demand cap shows a positive reduced cost here (the extra profit per unit of demand allowed); the swing product that sets the binding factory's marginal price is `BASIC` at ~0.
+
+Because the objective is a **maximization**, the *capacity shadow price* is the mirror image of a minimize-cost model -- a binding `<=` capacity prices `>= 0` here, versus `<= 0` in the cost-minimizing [`supplier_reliability`](../supplier_reliability/) template. The nonbasic bound marginals shown in *both* tables are non-negative; what flips for the *product* marginal is the active bound -- a demand-capped product sits at its upper bound (`NONBASIC_AT_UPPER`) here, while a priced-out supply lane sits at its lower bound of zero (`NONBASIC_AT_LOWER`) there. Laying the two reduced-cost tables side by side is the fastest way to internalize the conventions.
 
 > **Production-planning learning ladder**
-> 1. **Factory Production** *(this template)* — single-period LP, profit max, scenario-per-factory.
-> 2. [`production_planning`](../production_planning/) — multi-machine assignment with integer decisions and demand multipliers.
-> 3. [`demand_planning_temporal`](../demand_planning_temporal/) — multi-period production + inventory across sites with date-filtered planning horizon.
+> 1. **Factory Production** *(this template)* -- single-period product-mix LP with sensitivity analysis.
+> 2. [`production_planning`](../production_planning/) -- multi-machine assignment with integer decisions and demand multipliers.
+> 3. [`demand_planning_temporal`](../demand_planning_temporal/) -- multi-period production + inventory across sites with date-filtered planning horizon.
 
 ## Who this is for
 
-- Manufacturing planners optimizing production schedules
-- Operations researchers learning resource-constrained profit maximization
-- Data scientists exploring factory-level scenario analysis
-- Beginners looking for a clean LP example with real-world context
+- Manufacturing planners optimizing production schedules and ranking capacity investments
+- Operations researchers learning resource-constrained profit maximization and LP duality
+- Data scientists who want shadow prices and reduced costs without leaving the model
+- Anyone learning what "sensitivity analysis" means on a small, fully hand-checkable LP
 
 ## What you'll build
 
 - A linear programming model that determines optimal production quantities per product
-- Resource capacity constraints tied to factory availability
-- Demand upper bounds on each product
-- Per-factory scenario analysis with independent optimization
+- Per-factory resource capacity constraints, captured as handles for marginal read-back
+- Demand upper bounds on each product (whose marginals surface as reduced costs)
+- A one-solve sensitivity report: capacity shadow prices, product reduced costs, and basis status, each joined back to its factory/product by entity key
 
 ## What's included
 
-- `factory_production.py` -- Main script defining the optimization model, constraints, and per-factory scenarios
+- `factory_production.py` -- Main script defining the optimization model, constraints, objective, and sensitivity read-back
 - `data/factories.csv` -- Factory names and available resource-hours
 - `data/products.csv` -- Products with factory assignment, production rate, profit, and demand cap
 - `pyproject.toml` -- Python package configuration with dependencies
@@ -59,7 +65,7 @@ The template solves the problem independently per factory, demonstrating a scena
 
 ### Tools
 - Python >= 3.10
-- RelationalAI Python SDK (`relationalai`) >= 1.0.14
+- RelationalAI Python SDK (`relationalai`) == 1.11.0
 
 ## Quickstart
 
@@ -94,28 +100,40 @@ The template solves the problem independently per factory, demonstrating a scena
    python factory_production.py
    ```
 
-6. Expected output:
+6. Expected output (model and solver display trimmed):
    ```text
-   For factory: steel_factory
-     Status: OPTIMAL, Profit: $192000.00
-     Production plan:
-      name     value
-     bands    6000.0
-     coils    1400.0
+   Baseline status: OPTIMAL, total profit: 200000.00
 
-   For factory: amazing_brewery
-     Status: OPTIMAL, Profit: $6000.00
-     Production plan:
-      name     value
-    stouts    1000.0
-      ales    1000.0
+   Production plan:
+           factory product  quantity
+   amazing_brewery    ales    2000.0
+   amazing_brewery  stouts    1000.0
+     steel_factory   bands    6000.0
+     steel_factory   coils    1400.0
+
+   Factory capacity shadow prices (d profit / d hour):
+           factory  avail  shadow_price
+   amazing_brewery   30.0          -0.0
+     steel_factory   40.0        4200.0
+
+   Product reduced costs and basis status:
+           factory product  reduced_cost      basis_status
+   amazing_brewery    ales           2.0 NONBASIC_AT_UPPER
+   amazing_brewery  stouts           4.0 NONBASIC_AT_UPPER
+     steel_factory   bands           4.0 NONBASIC_AT_UPPER
+     steel_factory   coils          -0.0             BASIC
+
+   Most profit-sensitive capacity: steel_factory (d profit / d hour = +4200.00)
 
    ==================================================
-   Factory Production Summary
+   Factory Capacity Summary
    ==================================================
-     steel_factory: OPTIMAL, profit=$192000.00
-     amazing_brewery: OPTIMAL, profit=$6000.00
+           factory  avail  hours_used  idle
+   amazing_brewery   30.0        25.0   5.0
+     steel_factory   40.0        40.0   0.0
    ```
+
+   Reading the result: `steel_factory` fills all 40 hours (it is the binding factory, so its capacity prices at **+4200/hour** -- the per-hour profit of the swing product `coils`, i.e. its 30/unit profit × 140 units/hour rate). `amazing_brewery` meets all demand in 25 of its 30 hours, so its capacity is **slack** and prices at **0** -- its bottleneck is demand, not capacity. Each of these demand-capped products (`bands`, `stouts`, `ales`) carries a positive reduced cost here: the profit you would gain per extra unit of demand allowed.
 
 ## Template structure
 
@@ -148,49 +166,78 @@ Product.demand = Property(f"{Product} has {Integer:demand}")
 
 ### 2. Decision variables
 
-Each product gets a continuous variable bounded between 0 and its demand cap:
+Each product gets a continuous variable bounded between 0 and its demand cap. The demand cap is the variable's **upper bound** (not a separate constraint), so its marginal surfaces later as the variable's *reduced cost*:
 
 ```python
-problem.solve_for(
+quantity_var = problem.solve_for(
     Product.x_quantity,
+    name=["qty", Product.factory.name, Product.name],
     lower=0,
     upper=Product.demand,
-    name=Product.name,
-    where=[this_product],
     populate=False,
 )
 ```
 
-### 3. Constraints and objective
+### 3. Capacity constraint and objective
 
-Resource usage at each factory must not exceed availability. The objective maximizes total profit:
+Each factory's total resource usage must not exceed its availability. The constraint is captured as a handle (`cap`), named per factory (a readable label), and declared with `keyed_by={"factory": Factory}`, so each instance's shadow price reads back through that **entity key** (`cap.factory`) rather than by parsing a name string. The objective maximizes total profit across all factories:
 
 ```python
-profit = sum(Product.profit * Product.x_quantity).where(this_product)
-problem.maximize(profit)
+cap = problem.satisfy(
+    model.require(
+        sum(Product.x_quantity / Product.rate)
+        .where(Product.factory == Factory)
+        .per(Factory)
+        <= Factory.avail
+    ),
+    name=["cap", Factory.name],
+    keyed_by={"factory": Factory},
+)
 
-problem.satisfy(model.require(
-    sum(Product.x_quantity / Product.rate) <= Factory.avail
-).where(this_product, Factory.name(factory_name)))
+problem.maximize(sum(Product.profit * Product.x_quantity))
+problem.solve("highs", time_limit_sec=60, sensitivity=True)
 ```
 
-### 4. Per-factory scenario analysis
+### 4. Read the sensitivity marginals
 
-The template iterates over factories and solves an independent optimization for each, filtering products by their factory assignment. This allows comparison of optimal production plans across facilities.
+After a `sensitivity=True` solve, the marginals are attributes on the captured handles. A constraint carries the entity back-pointer declared with `keyed_by` (`cap.factory`) and a variable carries an automatic one to its product (`quantity_var.product`), so each marginal joins to that entity's own data by key -- no pandas, no name parsing:
+
+```python
+# Which factory's capacity to expand first?
+model.select(cap.factory.name, cap.factory.avail, cap.shadow_price).inspect()
+
+# Which products are pinned at their demand cap, and which is the swing product?
+model.select(
+    quantity_var.product.factory.name,
+    quantity_var.product.name,
+    quantity_var.reduced_cost,
+    quantity_var.basis_status,
+).inspect()
+```
+
+(`.inspect()` prints the rows for a quick look; the script materializes the same selects as DataFrames with `.to_df()` for its printed report and assertions.)
+
+Sensitivity marginals are exact for a linear program. They describe the rate of change at the current optimum -- the range over which that rate holds is not reported (there is no RHS/coefficient ranging) -- and a large, discrete change (adding a factory, removing a product) is a structural change best answered by re-solving.
 
 ## Customize this template
 
-- **Add more factories and products**: Extend the CSV files. The model automatically picks up new data and creates scenarios per factory.
-- **Shared resources across factories**: Remove the per-factory loop and solve a single global problem with cross-factory resource constraints.
-- **Multi-period planning**: Add a time dimension to model production across multiple periods with inventory carryover.
-- **Integer production**: Change the variable type from continuous to integer if products must be produced in whole units.
+- **Find the demand bottleneck**: Raise `amazing_brewery`'s demand caps in `products.csv`. Once its 30 hours bind, its capacity shadow price jumps from 0 to positive -- capacity becomes the bottleneck.
+- **Shift the swing product**: Lower `steel_factory`'s `avail` in `factories.csv`. `coils` (the basic, swing product) shrinks but stays the swing down to just above 30 hours, so the shadow price holds at 4200. At exactly 30 hours `coils` hits zero -- a degenerate breakpoint where the marginal is one-sided -- and below 30 hours `bands` becomes the swing and the price rises to 5000.
+- **Add more factories and products**: Extend the CSV files. The model and the per-factory marginals pick up new rows automatically.
+- **Integer production**: Change the variable type from continuous to integer if products must be produced in whole units. Note that sensitivity marginals are an LP concept -- they are reported only for continuous (LP/QP) problems, and are empty for integer models.
 
 ## Troubleshooting
 
 <details>
-<summary>Problem is infeasible</summary>
+<summary>Shadow prices or reduced costs are all empty</summary>
 
-Check that factory availability is sufficient to produce at least some quantity of each product. If demand is high but resource-hours are too low, the bounded problem may still be feasible but produce small quantities.
+Sensitivity marginals are an LP/QP concept. They are populated only when the problem is continuous and solved with `sensitivity=True`. An integer (MIP) model returns no marginals -- keep the production variables continuous to see them.
+</details>
+
+<details>
+<summary>A factory's capacity shadow price is zero</summary>
+
+Usually that factory has idle resource-hours -- slack capacity, so an extra hour buys nothing, and its bottleneck is elsewhere (typically product demand). Confirm with the `idle` column in the capacity summary: a positive `idle` is genuine slack. (Less commonly, a *binding* capacity can also price at zero under degeneracy -- zero idle hours yet a zero price -- so read the `idle` column, not the price alone.)
 </details>
 
 <details>
@@ -206,7 +253,7 @@ Make sure you activated the virtual environment and ran `python -m pip install .
 </details>
 
 <details>
-<summary>Products missing from solution</summary>
+<summary>Products missing from the plan</summary>
 
-Products with zero quantity in the solution are not profitable enough to justify their resource usage. This is expected when resource availability is tight. Increase factory `avail` or reduce the production rate to see more products in the plan.
+A product with zero quantity is not profitable enough to justify its resource usage given tighter, more profitable competitors. Its reduced cost tells you how far its economics are from being worth producing. Increase factory `avail`, raise the product's profit, or lower its production rate to bring it into the plan.
 </details>

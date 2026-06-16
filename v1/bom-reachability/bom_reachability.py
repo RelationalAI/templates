@@ -54,8 +54,8 @@ BillOfMaterials.input_sku = model.Relationship(f"{BillOfMaterials} requires {SKU
 bom_data = model.data(read_csv(data_dir / "bill_of_materials.csv"))
 model.define(BillOfMaterials.new(id=bom_data["ID"]))
 where(BillOfMaterials.id == bom_data["ID"]).define(
-    BillOfMaterials.output_sku(SKU.filter_by(id=bom_data["OUTPUT_SKU_ID"])),
-    BillOfMaterials.input_sku(SKU.filter_by(id=bom_data["INPUT_SKU_ID"])),
+    BillOfMaterials.output_sku(SKU.lookup(id=bom_data["OUTPUT_SKU_ID"])),
+    BillOfMaterials.input_sku(SKU.lookup(id=bom_data["INPUT_SKU_ID"])),
 )
 
 # --------------------------------------------------

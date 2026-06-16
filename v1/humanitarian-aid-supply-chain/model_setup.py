@@ -66,8 +66,8 @@ def create_model():
 
     define(
         SupplyRoute.new(
-            from_point=from_dist.filter_by(id=routes_data.from_point_id),
-            to_point=to_dist.filter_by(id=routes_data.to_point_id),
+            from_point=from_dist.lookup(id=routes_data.from_point_id),
+            to_point=to_dist.lookup(id=routes_data.to_point_id),
             route_capacity=routes_data.route_capacity,
             reliability_score=routes_data.reliability_score,
             distance_km=routes_data.distance_km

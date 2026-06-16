@@ -1,6 +1,6 @@
 ---
 title: "Shipment Compliance"
-description: "Define derived business rules for shipment compliance, sourcing risk, and demand escalation."
+description: "Derived classifications for shipment compliance, sourcing risk, and demand escalation."
 featured: false
 experience_level: beginner
 industry: "Supply Chain & Logistics"
@@ -38,6 +38,7 @@ The four rules demonstrate different rule patterns:
 ## What you'll build
 
 - A data model with suppliers, SKUs, shipments, operations, BOMs, and demand
+- `model.Enum` vocabularies for the closed-value fields (`ShipmentStatus`, `Priority`), mapped from CSV strings on load
 - Four derived rules using `model.where(...).define(...)` pattern
 - Queries that surface which entities match each rule
 
@@ -60,6 +61,7 @@ The four rules demonstrate different rule patterns:
 
 ### Tools
 - Python >= 3.10
+- RelationalAI Python SDK (`relationalai == 1.12.0`)
 
 ## Quickstart
 
@@ -116,6 +118,26 @@ The four rules demonstrate different rule patterns:
 
 The model defines six concepts (Supplier, SKU, Shipment, Operation, BillOfMaterials, Demand) and loads each from CSV. Relationships link shipments to suppliers and SKUs, operations to input/output SKUs, etc.
 
+Closed vocabularies are declared as `model.Enum` types and populated by name from the raw CSV strings (so `"DELIVERED"` in `shipments.csv` becomes the `ShipmentStatus.DELIVERED` member):
+
+```python
+class ShipmentStatus(model.Enum):
+    PENDING = 1
+    IN_TRANSIT = 2
+    DELIVERED = 3
+
+Shipment.status = Property(f"{Shipment} has {ShipmentStatus:status}")
+
+model.define(
+    s := Shipment.new(id=shipment_data.id, ...),
+    s.status(ShipmentStatus.lookup(shipment_data.status)),
+)
+```
+
+Rules then compare against members rather than raw strings -- typo-proof and discoverable -- and queries read the label back with `.name` (e.g. `Shipment.status.name.alias("status")`).
+
+One caveat when bringing your own data: `lookup()` cannot validate values that arrive from data columns. A CSV value that matches no member name silently maps to a nonexistent entity, and those rows simply drop out of every member-comparison rule. Keep the enum declarations in sync with your data's vocabulary. (Literal strings in code are checked at construction and raise a `ValueError` naming the valid members.)
+
 ### 2. Define rules as derived Relationships
 
 Each rule uses the `model.where(...).define(...)` pattern to create a boolean flag:
@@ -128,7 +150,7 @@ model.where(Shipment.delay_days > 0).define(Shipment.is_late())
 # Cross-entity rule (joins Shipment -> Supplier)
 Shipment.is_at_risk = Relationship(f"{Shipment} is at risk")
 model.where(
-    Shipment.status != "DELIVERED",
+    Shipment.status != ShipmentStatus.DELIVERED,
     Shipment.supplier(SupplierRef),
     SupplierRef.reliability_score < 0.8,
 ).define(Shipment.is_at_risk())
@@ -138,8 +160,8 @@ route_count = aggregates.count(Operation).per(BOM).where(...)
 model.where(route_count == 1).define(BOM.is_single_sourced())
 
 # OR semantics (multiple define calls on same Relationship)
-model.where(Demand.priority == "HIGH").define(Demand.is_escalated())
-model.where(Demand.priority == "URGENT").define(Demand.is_escalated())
+model.where(Demand.priority == Priority.HIGH).define(Demand.is_escalated())
+model.where(Demand.priority == Priority.URGENT).define(Demand.is_escalated())
 ```
 
 ### 3. Query flagged entities

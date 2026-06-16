@@ -3,7 +3,7 @@ title: "Network Flow"
 description: "Maximize flow through a capacitated network from a source node."
 featured: false
 experience_level: beginner
-industry: "Supply Chain"
+industry: "Supply Chain & Logistics"
 reasoning_types:
   - Prescriptive
 tags:

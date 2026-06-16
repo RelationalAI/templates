@@ -3,7 +3,7 @@ title: "Water Allocation"
 description: "Allocate water from sources to users at minimum cost while meeting demand, subject to connection limits and transmission losses."
 featured: false
 experience_level: beginner
-industry: "Utilities"
+industry: "Energy & Utilities"
 reasoning_types:
   - Prescriptive
 tags:

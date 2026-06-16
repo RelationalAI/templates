@@ -3,7 +3,7 @@ title: "Ad Spend Allocation"
 description: "Allocate a fixed budget across channel–campaign combinations to maximize expected conversions, subject to channel spend bounds and per-campaign budget limits."
 featured: false
 experience_level: intermediate
-industry: "Marketing"
+industry: "Retail & Consumer"
 reasoning_types:
   - Prescriptive
 tags:

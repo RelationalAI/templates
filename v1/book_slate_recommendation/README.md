@@ -4,7 +4,7 @@ description: "Recommend K books per reader and order them by slot, under diversi
 featured: false
 private: true
 experience_level: advanced
-industry: "Media"
+industry: "Retail & Consumer"
 reasoning_types:
   - Graph
   - Prescriptive

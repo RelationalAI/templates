@@ -7,6 +7,11 @@ This script demonstrates a CSP-based synthetic order-lifecycle trace generator i
 - Encode MiFID II / Reg NMS-flavour sequencing rules: PLACE first, nothing after CANCEL, exactly one PLACE per order, fill-quantity conservation, venue eligibility per symbol.
 - Solve as constraint satisfaction (MiniZinc) and verify the relational arithmetic ICs against the returned trace.
 
+Event types are modelled as a `model.Enum` (requires relationalai>=1.12):
+a single enum-indexed property carries one binary decision variable per
+(event slot, type), and the trace reads each event's chosen type label
+from the member's built-in `.name`.
+
 All decisions are integer: prices are integer ticks (1c, so 17500 reads as
 $175.00), times are integer milliseconds, quantities are integer shares.
 
@@ -110,15 +115,26 @@ model.define(OrderEvent.order(Order)).where(
 # Model the decision problem
 # --------------------------------------------------
 
-OrderEvent.is_place = model.Property(f"{OrderEvent} is place if {Integer:is_place}")
-OrderEvent.is_modify = model.Property(f"{OrderEvent} is modify if {Integer:is_modify}")
-OrderEvent.is_cancel = model.Property(f"{OrderEvent} is cancel if {Integer:is_cancel}")
-OrderEvent.is_fill = model.Property(f"{OrderEvent} is fill if {Integer:is_fill}")
+
+# The event-type vocabulary. Members appear directly in constraints and
+# readbacks; the wrapped values are arbitrary distinct integers (here in
+# lifecycle order).
+class EventType(model.Enum):
+    PLACE = 1
+    MODIFY = 2
+    CANCEL = 3
+    FILL = 4
+
+
+# Enum-indexed type decision: one binary indicator per (event slot, type).
+OrderEvent.has_type = model.Property(
+    f"{OrderEvent} is {EventType:event_type} if {Integer:indicator}"
+)
 OrderEvent.ts_ms = model.Property(f"{OrderEvent} occurs at {Integer:ts_ms}")
 OrderEvent.venue_id = model.Property(f"{OrderEvent} on venue {Integer:venue_id}")
 OrderEvent.qty = model.Property(f"{OrderEvent} has qty {Integer:qty}")
 OrderEvent.tick_price = model.Property(f"{OrderEvent} has tick price {Integer:tick_price}")
-# Auxiliary integer: equals qty when is_fill == 1 and 0 when is_fill == 0.
+# Auxiliary integer: equals qty when the FILL indicator is 1, else 0.
 # Lets the per-order fill-conservation aggregate stay purely linear.
 OrderEvent.fill_qty = model.Property(f"{OrderEvent} has fill qty {Integer:fill_qty}")
 
@@ -129,11 +145,12 @@ venue_max = int(venues_csv["id"].max())
 
 problem = Problem(model, Integer)
 
-problem.solve_for(OrderEvent.is_place, type="bin", name=["is_place", OrderEvent.event_id])
-problem.solve_for(OrderEvent.is_modify, type="bin", name=["is_modify", OrderEvent.event_id])
-problem.solve_for(OrderEvent.is_cancel, type="bin", name=["is_cancel", OrderEvent.event_id])
-problem.solve_for(OrderEvent.is_fill, type="bin", name=["is_fill", OrderEvent.event_id])
-problem.solve_for(OrderEvent.ts_ms, name=["ts", OrderEvent.event_id], lower=TS_MIN, upper=TS_MAX)
+problem.solve_for(
+    OrderEvent.has_type, type="bin", name=["is_type", OrderEvent.event_id]
+)
+problem.solve_for(
+    OrderEvent.ts_ms, name=["ts", OrderEvent.event_id], lower=TS_MIN, upper=TS_MAX
+)
 problem.solve_for(
     OrderEvent.venue_id, name=["venue", OrderEvent.event_id], lower=1, upper=venue_max
 )
@@ -148,18 +165,23 @@ problem.solve_for(
     OrderEvent.fill_qty, name=["fill_qty", OrderEvent.event_id], lower=0, upper=qty_max
 )
 
-# Each event has exactly one type.
-type_sum_ic = model.require(
-    OrderEvent.is_place + OrderEvent.is_modify + OrderEvent.is_cancel + OrderEvent.is_fill == 1
-)
+# Each event has exactly one type: its four (event, type) indicators sum to 1.
+type_sum_ic = model.require(rai_sum(OrderEvent.has_type).per(OrderEvent) == 1)
 problem.satisfy(type_sum_ic)
 
-# Exactly one PLACE event per order.
-exactly_one_place_ic = model.require(rai_sum(OrderEvent.is_place).per(OrderEvent.order) == 1)
+# Exactly one PLACE event per order. The where-clause binds `place_ind` to
+# each event's PLACE indicator; the aggregate then sums it per order.
+place_ind = Integer.ref()
+exactly_one_place_ic = model.where(
+    OrderEvent.has_type(EventType.PLACE, place_ind)
+).require(rai_sum(place_ind).per(OrderEvent.order) == 1)
 problem.satisfy(exactly_one_place_ic)
 
 # At most one CANCEL event per order.
-at_most_one_cancel_ic = model.require(rai_sum(OrderEvent.is_cancel).per(OrderEvent.order) <= 1)
+cancel_ind = Integer.ref()
+at_most_one_cancel_ic = model.where(
+    OrderEvent.has_type(EventType.CANCEL, cancel_ind)
+).require(rai_sum(cancel_ind).per(OrderEvent.order) <= 1)
 problem.satisfy(at_most_one_cancel_ic)
 
 # Distinct ts_ms within an order (every event has its own moment).
@@ -173,16 +195,22 @@ B = OrderEvent.ref()
 
 # PLACE-first: if A is a PLACE event, A.ts_ms < B.ts_ms for every other
 # event B in the same order.
-place_first_ic = model.where(A.order == B.order, A.event_id != B.event_id).require(
-    implies(A.is_place == 1, A.ts_ms < B.ts_ms)
-)
+a_place_ind = Integer.ref()
+place_first_ic = model.where(
+    A.order == B.order,
+    A.event_id != B.event_id,
+    A.has_type(EventType.PLACE, a_place_ind),
+).require(implies(a_place_ind == 1, A.ts_ms < B.ts_ms))
 problem.satisfy(place_first_ic)
 
 # Nothing-after-CANCEL: if A is a CANCEL event, A.ts_ms > B.ts_ms for every
 # other event B in the same order.
-no_after_cancel_ic = model.where(A.order == B.order, A.event_id != B.event_id).require(
-    implies(A.is_cancel == 1, A.ts_ms > B.ts_ms)
-)
+a_cancel_ind = Integer.ref()
+no_after_cancel_ic = model.where(
+    A.order == B.order,
+    A.event_id != B.event_id,
+    A.has_type(EventType.CANCEL, a_cancel_ind),
+).require(implies(a_cancel_ind == 1, A.ts_ms > B.ts_ms))
 problem.satisfy(no_after_cancel_ic)
 
 # Quantity bound: every event's qty <= the order's original_qty.
@@ -190,16 +218,20 @@ qty_upper_ic = model.require(OrderEvent.qty <= OrderEvent.order.original_qty)
 problem.satisfy(qty_upper_ic)
 
 # PLACE event's qty matches the order's original_qty.
-place_qty_match_ic = model.require(
-    implies(OrderEvent.is_place == 1, OrderEvent.qty == OrderEvent.order.original_qty)
-)
+place_qty_ind = Integer.ref()
+place_qty_match_ic = model.where(
+    OrderEvent.has_type(EventType.PLACE, place_qty_ind)
+).require(implies(place_qty_ind == 1, OrderEvent.qty == OrderEvent.order.original_qty))
 problem.satisfy(place_qty_match_ic)
 
 # PLACE event's tick_price matches the order's original_tick_price (so the
 # generated trace stays internally consistent with the order's price).
-place_price_match_ic = model.require(
+place_price_ind = Integer.ref()
+place_price_match_ic = model.where(
+    OrderEvent.has_type(EventType.PLACE, place_price_ind)
+).require(
     implies(
-        OrderEvent.is_place == 1,
+        place_price_ind == 1,
         OrderEvent.tick_price == OrderEvent.order.original_tick_price,
     )
 )
@@ -213,13 +245,17 @@ venue_ok_ic = model.where(OrderEvent.order.symbol.id(NotAllowedSymbolVenue.symbo
 )
 problem.satisfy(venue_ok_ic)
 
-# Channel fill_qty to (qty when is_fill else 0).
-fill_qty_match_on_ic = model.require(
-    implies(OrderEvent.is_fill == 1, OrderEvent.fill_qty == OrderEvent.qty)
-)
+# Channel fill_qty to (qty when the FILL indicator is 1, else 0).
+fill_on_ind = Integer.ref()
+fill_qty_match_on_ic = model.where(
+    OrderEvent.has_type(EventType.FILL, fill_on_ind)
+).require(implies(fill_on_ind == 1, OrderEvent.fill_qty == OrderEvent.qty))
 problem.satisfy(fill_qty_match_on_ic)
 
-fill_qty_zero_off_ic = model.require(implies(OrderEvent.is_fill == 0, OrderEvent.fill_qty == 0))
+fill_off_ind = Integer.ref()
+fill_qty_zero_off_ic = model.where(
+    OrderEvent.has_type(EventType.FILL, fill_off_ind)
+).require(implies(fill_off_ind == 0, OrderEvent.fill_qty == 0))
 problem.satisfy(fill_qty_zero_off_ic)
 
 # Quantity conservation: total filled quantity across an order's FILL events
@@ -253,16 +289,26 @@ model.require(problem.termination_status() == "OPTIMAL")
 # Inspect the generated trace.
 
 print("\nGenerated event trace (one row per slot, sorted by order then timestamp):")
+# Derived enum-typed property mapping each event to its chosen type: the
+# member whose (event, type) indicator the solver set to 1 -- exactly one
+# per event, guaranteed by the one-hot IC. The trace then reads the type
+# label off the member's built-in `.name`.
+OrderEvent.event_type = model.Property(
+    f"{OrderEvent} has decided {EventType:event_type}"
+)
+for member in EventType:
+    chosen_ind = Integer.ref()
+    model.define(OrderEvent.event_type(member)).where(
+        OrderEvent.has_type(member, chosen_ind), chosen_ind == 1
+    )
+
 trace_df = (
     model.select(
         OrderEvent.order.id.alias("order_id"),
         OrderEvent.order.symbol.name.alias("symbol"),
         OrderEvent.event_id.alias("event_id"),
         OrderEvent.ts_ms.alias("ts_ms"),
-        OrderEvent.is_place.alias("is_place"),
-        OrderEvent.is_modify.alias("is_modify"),
-        OrderEvent.is_cancel.alias("is_cancel"),
-        OrderEvent.is_fill.alias("is_fill"),
+        OrderEvent.event_type.name.alias("type"),
         OrderEvent.qty.alias("qty"),
         OrderEvent.tick_price.alias("tick_price"),
         Venue.name.alias("venue"),
@@ -270,13 +316,8 @@ trace_df = (
     .where(Venue.id(OrderEvent.venue_id))
     .to_df()
 )
-# Display-side: collapse the four binary indicators into one human-readable label
-# and sort by (order, ts) so each order's events appear in temporal order.
-type_map = {"is_place": "PLACE", "is_modify": "MODIFY", "is_cancel": "CANCEL", "is_fill": "FILL"}
-trace_df["type"] = trace_df[list(type_map)].astype("int64").idxmax(axis=1).map(type_map)
 trace_df = (
-    trace_df.drop(columns=list(type_map))
-    .astype(
+    trace_df.astype(
         {
             "order_id": "int64",
             "event_id": "int64",
