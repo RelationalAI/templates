@@ -116,6 +116,18 @@ Four derived health properties (`avg_packet_loss`, `avg_latency_ms`, `avg_error_
 
 `Subscriber.influence_score` (PageRank, 1,200 subs) plus two per-tower properties on the 142 critical towers: `CellTower.weighted_impact` (headline — sum of `Subscriber.customer_value = LTV × (1 + churn_risk_score)` over ACTIVE callers routed through; CDR-weighted so heavy callers count more than once) and `CellTower.weighted_pagerank` (secondary — sum of PageRank influence over the same set). The prescriptive MIP consumes `weighted_impact` in its objective.
 
+### 6b. Trace the most-influential call paths (PREVIEW, requires `relationalai>=1.13`)
+
+**Prompt**
+
+```
+/rai-graph-analysis Starting from our most influential subscriber, what are the call paths of up to three hops through the network, which cell tower carried each hop, and which path carries the most social influence — the path running through the subscribers with the highest combined importance, where a subscriber is influential when influential subscribers call them? Don't revisit a subscriber.
+```
+
+**Response**
+
+Where PageRank scores a *subscriber*, paths scores the *route*. From the top-PageRank hub, call paths (≤ 3 hops, simple) are enumerated over an arity-3 caller-via-tower-callee edge; the routing tower on each hop is recovered, and each path is ranked by summed PageRank. Persists the hub's top route as `Subscriber.top_call_path_influence`. (Scoped to a seed hub — the full call graph is large and cyclic.)
+
 ### 7. Optimize tier selection
 
 **Prompt**

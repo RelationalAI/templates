@@ -236,6 +236,7 @@ One shared ontology threads all four stages. Each stage reads concepts and prope
 | `churn_risk_score` | Float | No | `[0, 1]` — probability of churn |
 | `customer_value` | Float | No | Precomputed: `lifetime_value × (1 + churn_risk_score)` — the per-subscriber weight Stage 3 sums into `weighted_impact` |
 | `influence_score` | Float | No | **Stage 3** PageRank on the call graph |
+| `top_call_path_influence` | Float | No | **Stage 3.5** (PREVIEW) most-influential call path's summed PageRank, for the seed hub |
 
 **`TowerUpgradeOption`** — a (tower, tier) candidate upgrade. The MIP's decision space.
 
