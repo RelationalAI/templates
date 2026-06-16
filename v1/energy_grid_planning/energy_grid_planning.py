@@ -11,6 +11,10 @@ prescriptive optimization on a single shared ontology:
   detection, and multi-metric centrality (betweenness, degree, eigenvector) on
   the transmission grid topology. Results are stored directly as Substation
   properties on the shared ontology.
+- Stage 2.5 -- Paths (PREVIEW, relationalai>=1.13): enumerate generator-sub ->
+  DC-sub transmission corridors, rank each by Stage 2 betweenness summed along
+  the route (most fragile = greatest through-traffic exposure), and re-enumerate
+  with the highest-betweenness substation offline. Persists Substation.fragility_load.
 - Stage 3 -- Rules: declarative interconnection queue compliance checks
   (capacity, structural criticality, low-carbon mandate) that consume Stage 1
   and 2 enrichments.
@@ -26,6 +30,8 @@ Output:
     - Stage 1: substation load forecasts with growth rates and breach detection
     - Stage 2: grid connectivity (WCC), community structure (Louvain), centrality
       ranking, and structurally critical substations
+    - Stage 2.5: most-fragile generator-to-DC transmission corridors (betweenness
+      summed along the route) + a highest-betweenness-offline contingency
     - Stage 3: compliance table (10 DC requests vs 3 rules: capacity, low-carbon,
       structural risk)
     - Stage 4: Pareto frontier across 5 investment levels ($200M-$600M) with
@@ -648,6 +654,125 @@ if len(dc_sub_df) > 0 and len(centrality_df) > 0:
             )
     else:
         print("\n  No DC requests target structurally critical substations.")
+
+# --------------------------------------------------
+# Stage 2.5: Paths -- Transmission Corridors & Contingency
+#   PREVIEW capability; requires relationalai>=1.13.
+# --------------------------------------------------
+# Composes on Stage 2's Substation.betweenness. Where Stage 2 scores a *node*,
+# paths scores the *corridor* feeding each data center: enumerate generator-sub ->
+# DC-sub transmission routes, rank each by total betweenness summed along its hops
+# (most fragile = greatest through-traffic exposure), then re-enumerate with the
+# highest-betweenness substation offline to see which DC substations reroute.
+
+print(f"\n{'=' * 60}")
+print("STAGE 2.5: PATHS -- Transmission Corridors & Contingency")
+print("=" * 60)
+
+# Bidirectional Substation<->Substation grid edge from active transmission lines.
+Substation.connects_to = model.Relationship(
+    f"{Substation} connects to {Substation}", short_name="connects_to"
+)
+tl_fwd = TransmissionLine.ref()
+s_from, s_to = Substation.ref(), Substation.ref()
+model.where(
+    tl_fwd.from_substation(s_from),
+    tl_fwd.to_substation(s_to),
+    tl_fwd.is_active == True,
+).define(s_from.connects_to(s_to))
+tl_rev = TransmissionLine.ref()
+s_a, s_b = Substation.ref(), Substation.ref()
+model.where(
+    tl_rev.from_substation(s_a),
+    tl_rev.to_substation(s_b),
+    tl_rev.is_active == True,
+).define(s_b.connects_to(s_a))
+
+# Typed endpoints: substations hosting a generator (source) and a DC request (sink).
+GeneratorSubstation = model.Concept("GeneratorSubstation", extends=[Substation])
+gen_ref, gen_sub = Generator.ref(), Substation.ref()
+model.where(gen_ref.substation(gen_sub)).define(GeneratorSubstation(gen_sub))
+DCSubstation = model.Concept("DCSubstation", extends=[Substation])
+dc_ref, dc_sub = DataCenterRequest.ref(), Substation.ref()
+model.where(dc_ref.substation(dc_sub)).define(DCSubstation(dc_sub))
+
+# Enumerate generator-sub -> DC-sub corridors (finite repeat; the grid is meshed/cyclic).
+MAX_CORRIDOR_HOPS = 6
+corridor_src, corridor_dst = GeneratorSubstation.ref(), DCSubstation.ref()
+corridor_df = model.where(
+    corridor := model.path(
+        corridor_src, Substation.connects_to.repeat(1, MAX_CORRIDOR_HOPS), corridor_dst
+    ).all_paths(),
+).select(
+    corridor.alias("corridor"),
+    corridor.nodes["index"].alias("hop"),
+    Substation(corridor.nodes).id.alias("substation_id"),
+    Substation(corridor.nodes).name.alias("substation_name"),
+).to_df()
+
+# Weight each corridor by Stage 2's betweenness, summed along its substations.
+betw_df = model.select(
+    Substation.id.alias("substation_id"),
+    Substation.name.alias("substation_name"),
+    Substation.betweenness.alias("betweenness"),
+).to_df()
+betw_by_id = dict(zip(betw_df["substation_id"], betw_df["betweenness"].fillna(0.0)))
+name_by_id = dict(zip(betw_df["substation_id"], betw_df["substation_name"]))
+corridor_df["hop"] = corridor_df["hop"].astype(int)
+corridor_df["betweenness"] = corridor_df["substation_id"].map(betw_by_id).fillna(0.0)
+
+
+def most_fragile_corridor_per_dc(removed_id=None):
+    """Highest total-betweenness SIMPLE corridor terminating at each DC substation."""
+    best = {}
+    for _, grp in corridor_df.groupby("corridor"):
+        ordered = grp.sort_values("hop")
+        ids = ordered["substation_id"].tolist()
+        if len(set(ids)) != len(ids):
+            continue  # simple paths only (the grid is cyclic)
+        if removed_id is not None and removed_id in ids:
+            continue
+        load = round(float(ordered["betweenness"].sum()), 3)
+        dest = ids[-1]
+        if dest not in best or load > best[dest][1]:
+            best[dest] = (ordered["substation_name"].tolist(), load)
+    return best
+
+
+baseline_corridors = most_fragile_corridor_per_dc()
+n_corridors = corridor_df["corridor"].nunique()
+print(
+    f"\n  {n_corridors} generator-sub -> DC-sub corridors (<= {MAX_CORRIDOR_HOPS} hops, simple); "
+    f"most-fragile corridor for {len(baseline_corridors)} DC substation(s):"
+)
+for dest, (route, load) in sorted(baseline_corridors.items(), key=lambda kv: -kv[1][1])[:5]:
+    print(f"    betweenness-load {load}: " + " -> ".join(route))
+
+# Persist each DC substation's most-fragile-corridor load back to the ontology.
+Substation.fragility_load = model.Property(f"{Substation} has {Float:fragility_load}")
+frag_rows = pd.DataFrame(
+    [{"substation_id": dest, "fragility_load": load} for dest, (_, load) in baseline_corridors.items()]
+)
+if not frag_rows.empty:
+    frag_data = model.data(frag_rows)
+    model.define(Substation.fragility_load(frag_data.fragility_load)).where(
+        Substation.id == frag_data.substation_id
+    )
+
+# Contingency: take the highest-betweenness substation offline and re-enumerate.
+if betw_by_id:
+    top_id = max(betw_by_id, key=betw_by_id.get)
+    after_corridors = most_fragile_corridor_per_dc(removed_id=top_id)
+    # NB: `sum` is shadowed by the relationalai import, so count with len([...]).
+    rerouted = len(
+        [d for d in baseline_corridors if d in after_corridors and baseline_corridors[d][0] != after_corridors[d][0]]
+    )
+    lost = [d for d in baseline_corridors if d not in after_corridors]
+    print(
+        f"\n  Contingency -- highest-betweenness substation offline "
+        f"({name_by_id.get(top_id, top_id)}): {len(baseline_corridors)} -> {len(after_corridors)} "
+        f"DC substations served, {rerouted} reroute, {len(lost)} lose all corridors."
+    )
 
 # --------------------------------------------------
 # Stage 3: Rules -- Interconnection Queue Compliance
