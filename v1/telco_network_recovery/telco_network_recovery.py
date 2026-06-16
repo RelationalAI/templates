@@ -30,6 +30,13 @@ recoverable from the other alone, so the chain integrates both.
   of ACTIVE subscribers whose calls route through the tower;
   PageRank-weighted impact is exposed alongside as a secondary
   network-effect signal.
+- Stage 3.5 -- Paths (PREVIEW, relationalai>=1.13): enumerate caller
+  -> callee call paths (<=3 hops, simple) from the highest-PageRank
+  subscriber over an arity-3 `{Subscriber} via {CellTower} calls
+  {Subscriber}` edge, recovering the routing tower on each hop via
+  `relationship_fields`. Ranks each scoped subscriber's routes by
+  Stage 3 PageRank summed along the chain and persists the top route's
+  influence load as `Subscriber.top_call_path_influence`.
 - Stage 4 -- Prescriptive: tower-upgrade MIP. Decision variable
   `TowerUpgradeOption.selected` is binary (one of three tiers per
   tower). Constraints: at most one tier per tower, total cost <=
@@ -804,6 +811,171 @@ print("\n  Per-critical-tower customer impact "
       "(weighted_impact = sum of caller customer_value; "
       "weighted_pagerank shown as secondary):")
 print(blast_df.to_string(index=False))
+
+# --------------------------------------------------
+# Stage 3.5: Paths -- Call-path enumeration through critical towers
+#   PREVIEW capability; requires relationalai>=1.13.
+# --------------------------------------------------
+# Composes on Stage 3's Subscriber.influence_score (PageRank) and Stage 2's
+# CellTower.is_critical_restore. Where PageRank scores a *node*, paths scores
+# the *call route*: enumerate caller -> ... -> callee chains, recover the
+# routing tower on each hop, and rank each scoped subscriber's routes by total
+# influence summed along the chain. The routing tower is the auxiliary middle
+# field of an arity-3 edge, so each enumerated path also tells us which towers
+# the influence flows through -- the join between the graph and rules stages.
+
+print(f"\n{'=' * 60}")
+print("STAGE 3.5: PATHS -- Call-path enumeration through critical towers")
+print("=" * 60)
+
+# Arity-3 call edge: {Subscriber:caller} via {CellTower:tower} calls {Subscriber:callee}.
+# First/last fields (caller/callee) are the path endpoints; the tower is the
+# auxiliary middle field (field_index 1), recoverable per hop via
+# relationship_fields. Derived from CallDetailRecord's caller/callee/routed_through.
+Subscriber.calls_via = model.Relationship(
+    f"{Subscriber:caller} via {CellTower:tower} calls {Subscriber:callee}",
+    short_name="calls_via",
+)
+cdr_edge = CallDetailRecord.ref()
+caller_sub, callee_sub, via_tower = Subscriber.ref(), Subscriber.ref(), CellTower.ref()
+model.where(
+    cdr_edge.caller(caller_sub),
+    cdr_edge.callee(callee_sub),
+    cdr_edge.routed_through(via_tower),
+).define(caller_sub.calls_via(via_tower, callee_sub))
+
+# Scope the enumeration: the full call graph is large and cyclic, so we anchor
+# on a deterministic seed -- the single highest-PageRank subscriber (max
+# influence_score, ties broken by id). From that hub we enumerate call paths up
+# to 3 hops and keep simple paths only. `path(C.r.repeat(1, 3))` constrains only
+# the *source* to type Subscriber; we pin the hub as the start node via .where().
+SEED_HUB_COUNT = 1  # deterministic single-hub scope
+PATH_MAX_HOPS = 3
+
+influence_df = model.select(
+    Subscriber.id.alias("sub_id"),
+    Subscriber.influence_score.alias("influence"),
+).to_df()
+influence_df["influence"] = influence_df["influence"].astype(float)
+seed_hub_ids = (
+    influence_df.sort_values(["influence", "sub_id"], ascending=[False, True])
+    .head(SEED_HUB_COUNT)["sub_id"]
+    .tolist()
+)
+influence_by_id = dict(zip(influence_df["sub_id"], influence_df["influence"]))
+
+# Per-subscriber influence load of the top-ranked call path, persisted below.
+Subscriber.top_call_path_influence = model.Property(
+    f"{Subscriber} has {Float:top_call_path_influence}"
+)
+tower_name_df = model.select(
+    CellTower.id.alias("tower_id"),
+    CellTower.name.alias("tower_name"),
+).to_df()
+tower_name_by_id = dict(zip(tower_name_df["tower_id"], tower_name_df["tower_name"]))
+
+frag_rows = []
+total_simple_paths = 0
+towers_recovered = set()
+top_route_overall = None  # (influence_load, [sub ids], [tower ids])
+
+for hub_id in seed_hub_ids:
+    # Pin the start node via an explicit src argument to path() + an outer id
+    # filter (the live-validated form), not a p.nodes(0, ref) post-filter.
+    seed = Subscriber.ref()
+    p_nodes = model.where(
+        seed.id == hub_id,
+        p := model.path(
+            seed, Subscriber.calls_via.repeat(1, PATH_MAX_HOPS)
+        ).all_paths(),
+    ).select(
+        p.alias("path_id"),
+        p.nodes["index"].alias("step"),
+        Subscriber(p.nodes).id.alias("sub_id"),
+    ).to_df()
+
+    # Recover the routing tower on each hop: field_index 1 is the CellTower in
+    # the arity-3 edge (caller=0, tower=1, callee=2). Project all edge fields and
+    # filter to field_index 1 in pandas (the live-validated form) rather than in
+    # the where clause.
+    seed_h = Subscriber.ref()
+    p_hops = model.where(
+        seed_h.id == hub_id,
+        p := model.path(
+            seed_h, Subscriber.calls_via.repeat(1, PATH_MAX_HOPS)
+        ).all_paths(),
+    ).select(
+        p.alias("path_id"),
+        p.relationship_fields["index"].alias("hop"),
+        p.relationship_fields["field_index"].alias("fidx"),
+        CellTower(p.relationship_fields["field"]).id.alias("tower_id"),
+    ).to_df()
+    if not p_hops.empty:
+        p_hops = p_hops[p_hops["fidx"].astype(int) == 1]
+
+    if p_nodes.empty:
+        continue
+    p_nodes["step"] = p_nodes["step"].astype(int)
+
+    # Reassemble each path in pandas: order nodes by step, keep SIMPLE paths
+    # only (the call graph is cyclic), then weight by PageRank summed along the
+    # subscribers on the route.
+    tower_by_path = {}
+    if not p_hops.empty:
+        p_hops["hop"] = p_hops["hop"].astype(int)
+        for path_id, hop_grp in p_hops.groupby("path_id"):
+            towers = hop_grp.sort_values("hop")["tower_id"].tolist()
+            tower_by_path[path_id] = towers
+
+    hub_best_load = None
+    for path_id, grp in p_nodes.groupby("path_id"):
+        ordered = grp.sort_values("step")
+        sub_ids = ordered["sub_id"].tolist()
+        if len(set(sub_ids)) != len(sub_ids):
+            continue  # simple paths only (the call graph is cyclic)
+        total_simple_paths += 1
+        route_towers = tower_by_path.get(path_id, [])
+        towers_recovered.update(route_towers)
+        # PageRank summed along the route (pandas .sum(); `sum` may be shadowed
+        # by relationalai.semantics in these templates -- never call it on
+        # Python data).
+        influence_load = round(
+            float(pd.Series([influence_by_id.get(s, 0.0) for s in sub_ids]).sum()), 6
+        )
+        if hub_best_load is None or influence_load > hub_best_load:
+            hub_best_load = influence_load
+        if top_route_overall is None or influence_load > top_route_overall[0]:
+            top_route_overall = (influence_load, sub_ids, route_towers)
+
+    # Persist this hub's best (max influence-load) simple call path.
+    if hub_best_load is not None:
+        frag_rows.append(
+            {"sub_id": hub_id, "top_call_path_influence": hub_best_load}
+        )
+
+# Persist the top-route influence-load as a Subscriber property on the ontology.
+if frag_rows:
+    frag_df = pd.DataFrame(frag_rows)
+    frag_data = model.data(frag_df)
+    model.define(
+        Subscriber.top_call_path_influence(frag_data.top_call_path_influence)
+    ).where(Subscriber.id == frag_data.sub_id)
+
+# Concise summary: counts, the top influence-weighted call path, towers recovered.
+print(
+    f"\n  Seed scope: {len(seed_hub_ids)} highest-PageRank hub(s) "
+    f"{seed_hub_ids}; enumeration <= {PATH_MAX_HOPS} hops, simple paths only."
+)
+print(f"  Simple call paths enumerated from the seed hub(s): {total_simple_paths}")
+print(f"  Distinct routing towers recovered across those paths: {len(towers_recovered)}")
+if top_route_overall is not None:
+    _load, _subs, _towers = top_route_overall
+    route_str = " -> ".join(_subs)
+    tower_str = (
+        " via towers [" + ", ".join(tower_name_by_id.get(t, t) for t in _towers) + "]"
+        if _towers else ""
+    )
+    print(f"  Top influence-weighted call path (PageRank sum {_load}): {route_str}{tower_str}")
 
 # --------------------------------------------------
 # Stage 4: Prescriptive -- tower upgrade MIP
