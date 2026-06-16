@@ -57,7 +57,11 @@ DATA_DIR.mkdir(exist_ok=True)
 
 WINDOW_START = date(2026, 2, 2)
 WINDOW_DAYS = 21
-DRIFT_DAY = 6  # REF-02 calibration drift begins WINDOW_START + DRIFT_DAY
+# Incident onset (start of week 2): the contaminated paste lot is received and
+# reflow oven REF-02 drifts out of calibration. Units built before this run at
+# the plant baseline; the failure spike begins here. Tying both causes to one
+# onset makes the "what changed, and when?" timeline a real signal.
+INCIDENT_DAY = 7
 
 
 def day(offset: int) -> date:
@@ -186,7 +190,9 @@ def lot_id(sku: str, i: int) -> str:
 for sku, n in LOT_COUNTS.items():
     for i in range(n):
         lid = lot_id(sku, i)
-        lots.append((lid, sku, SKU_SUPPLIER[sku], rand_day().isoformat()))
+        # the contaminated paste lot is received at the incident onset
+        received = day(INCIDENT_DAY) if lid == BAD_PASTE_LOT else rand_day()
+        lots.append((lid, sku, SKU_SUPPLIER[sku], received.isoformat()))
         lots_by_sku[sku].append(lid)
 
 # --------------------------------------------------
@@ -261,17 +267,25 @@ RC1_ADD = 0.18   # paste-exposed -> COLD_SOLDER
 RC2_ADD = 0.16   # REF-02 after drift -> SOLDER_BRIDGE
 BASELINE_DEFECTS = ["MISSING_COMPONENT", "TOMBSTONE", "MISALIGNMENT", "COLD_SOLDER", "SOLDER_BRIDGE"]
 
-units = []          # (UNIT_ID, SKU_ID, BUILD_DATE, DEFECTIVE, DEFECT_TYPE)
+units = []          # (UNIT_ID, SKU_ID, BUILD_DATE, DEFECTIVE, DEFECT_TYPE, SHIFT, BUILD_WEEK)
 unit_lots = []      # (UNIT_ID, LOT_ID)  -- top-tier lots consumed directly
 unit_process = []   # (UNIT_ID, OPERATION, MACHINE_ID, SHIFT, RUN_TS)
+
+# Boards built with the contaminated paste only reach units built on/after the
+# incident onset -- the lot was not on the line before then.
+clean_pcba_lots = [lid for lid in lots_by_sku["SA-PCBA"] if lid not in paste_exposed_pcba]
 
 for u in range(N_UNITS):
     uid = f"U-{u + 1:05d}"
     sku = random.choices(FINISHED, weights=[0.4, 0.35, 0.25])[0]
     bdate = rand_day()
+    days_in = (bdate - WINDOW_START).days
+    post_incident = days_in >= INCIDENT_DAY
 
-    # top-tier lots consumed by the finished unit
-    top = [pick_lot("SA-PCBA"), pick_lot("SA-BATT"), pick_lot("SA-DISP"), pick_lot("SA-ENC")]
+    # top-tier lots consumed by the finished unit. Pre-incident units can only
+    # draw a clean PCBA lot; the contaminated boards appear at the onset.
+    pcba_lot = pick_lot("SA-PCBA") if post_incident else random.choice(clean_pcba_lots)
+    top = [pcba_lot, pick_lot("SA-BATT"), pick_lot("SA-DISP"), pick_lot("SA-ENC")]
     for lid in top:
         unit_lots.append((uid, lid))
     anc = ancestor_lots(top)
@@ -291,7 +305,9 @@ for u in range(N_UNITS):
     unit_process.append((uid, "FINAL_ASSEMBLY", random.choice(ASM), shift, bts))
     unit_process.append((uid, "FUNCTIONAL_TEST", random.choice(TST), shift, bts))
 
-    rc2_active = (reflow == "REF-02") and ((bdate - WINDOW_START).days >= DRIFT_DAY)
+    # REF-02 drifts out of calibration at the onset; only post-incident units
+    # reflowed on it are affected.
+    rc2_active = (reflow == "REF-02") and post_incident
 
     # test outcome: independent failure mechanisms compose
     defect_type = ""
@@ -302,7 +318,7 @@ for u in range(N_UNITS):
     if rc2_active and random.random() < RC2_ADD:
         defect_type = "SOLDER_BRIDGE"
     defective = 1 if defect_type else 0
-    units.append((uid, sku, bdate.isoformat(), defective, defect_type or "NONE", shift))
+    units.append((uid, sku, bdate.isoformat(), defective, defect_type or "NONE", shift, days_in // 7 + 1))
 
 # --------------------------------------------------
 # Write CSVs
@@ -320,7 +336,7 @@ pd.DataFrame(
 ).to_csv(DATA_DIR / "machines.csv", index=False)
 pd.DataFrame(lots, columns=["LOT_ID", "SKU_ID", "SUPPLIER_ID", "RECEIVED_DATE"]).to_csv(DATA_DIR / "lots.csv", index=False)
 pd.DataFrame(genealogy, columns=["PARENT_LOT_ID", "CHILD_LOT_ID"]).to_csv(DATA_DIR / "lot_genealogy.csv", index=False)
-pd.DataFrame(units, columns=["UNIT_ID", "SKU_ID", "BUILD_DATE", "DEFECTIVE", "DEFECT_TYPE", "SHIFT"]).to_csv(DATA_DIR / "units.csv", index=False)
+pd.DataFrame(units, columns=["UNIT_ID", "SKU_ID", "BUILD_DATE", "DEFECTIVE", "DEFECT_TYPE", "SHIFT", "BUILD_WEEK"]).to_csv(DATA_DIR / "units.csv", index=False)
 pd.DataFrame(unit_lots, columns=["UNIT_ID", "LOT_ID"]).to_csv(DATA_DIR / "unit_lots.csv", index=False)
 pd.DataFrame(unit_process, columns=["UNIT_ID", "OPERATION", "MACHINE_ID", "SHIFT", "RUN_TS"]).to_csv(DATA_DIR / "unit_process.csv", index=False)
 
@@ -344,10 +360,12 @@ print(f"Candidate factors: {len(factors)} ({sum(k == 'LOT' for _, k, _, _ in fac
 # Verification report -- the planted narrative must be auditable
 # --------------------------------------------------
 
-udf = pd.DataFrame(units, columns=["UNIT_ID", "SKU_ID", "BUILD_DATE", "DEFECTIVE", "DEFECT_TYPE", "SHIFT"])
+udf = pd.DataFrame(units, columns=["UNIT_ID", "SKU_ID", "BUILD_DATE", "DEFECTIVE", "DEFECT_TYPE", "SHIFT", "BUILD_WEEK"])
 n = len(udf)
 n_def = int(udf["DEFECTIVE"].sum())
 base_rate = n_def / n
+_wk = udf.groupby("BUILD_WEEK").agg(units=("DEFECTIVE", "size"), defects=("DEFECTIVE", "sum"))
+_wk["rate"] = (_wk["defects"] / _wk["units"]).map(lambda r: f"{r:.1%}")
 
 # per-unit factor membership (lots via transitive genealogy; machines/shift via process)
 unit_anc = {uid: ancestor_lots([lid for (x, lid) in unit_lots if x == uid]) for uid in udf["UNIT_ID"]}
@@ -372,6 +390,7 @@ print("DEFECT ROOT CAUSE -- DATA VERIFICATION")
 print("=" * 72)
 print(f"Units: {n}   Defective: {n_def}   Overall final-test failure rate: {base_rate:.2%}")
 print(f"Defect-type mix:\n{udf[udf.DEFECTIVE == 1]['DEFECT_TYPE'].value_counts().to_string()}")
+print(f"\nDefect rate by build week (incident onset = week 2):\n{_wk.to_string()}")
 
 rows = [
     factor_stats(lambda uid: BAD_PASTE_LOT in unit_anc[uid], f"LOT {BAD_PASTE_LOT} (paste, RC1)"),

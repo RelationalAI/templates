@@ -1,6 +1,6 @@
 ---
 title: "Defect Root-Cause Analysis"
-description: "Diagnose a final-test defect spike on an electronics assembly line: trace each unit's genealogy backward through the bill of materials, contrast-score candidate factors against good units, then solve a minimal set-cover MILP for the smallest, most specific set of root causes."
+description: "Diagnose a final-test defect spike on an electronics assembly line: locate the onset week, trace each unit's genealogy backward through the bill of materials, contrast-score candidate factors against good units, then solve a minimal set-cover MILP for the smallest, most specific set of root causes."
 experience_level: advanced
 industry: "Manufacturing"
 featured: false
@@ -23,9 +23,9 @@ sidebar:
 
 ## What this template is for
 
-Final-test failures on a discrete manufacturing line have spiked from a ~1.2% baseline to 6.3%. The genealogy is all there -- every serialized unit records which material lots it consumed (transitively, through a multi-tier bill of materials) and which machine and shift ran each operation -- but a naive "what's common to the failures?" scan points at whatever touches the most units: a near-universal housing lot, the busiest placement line. Those are red herrings. The real causes are specific and upstream.
+Final-test failures on a discrete manufacturing line have spiked -- from a ~1.9% baseline in week 1 to 6-8% once an incident lands at the start of week 2. The genealogy is all there -- every serialized unit records which material lots it consumed (transitively, through a multi-tier bill of materials) and which machine and shift ran each operation -- but a naive "what's common to the failures?" scan points at whatever touches the most units: a near-universal housing lot, the busiest placement line. Those are red herrings. The real causes are specific and upstream.
 
-This template works *backward* from the failures to the smallest, most specific set of causes that explains them, chaining three reasoners on one ontology:
+This template starts on the timeline -- *when* did the spike begin? -- then works *backward* from the failures to the smallest, most specific set of causes that explains them, chaining three reasoners on one ontology:
 
 - **Graph** reasoning closes the lot genealogy transitively, so each unit is linked to every lot consumed anywhere beneath it -- the inverse of forward BOM dependency tracing. This is what surfaces a contaminated component lot sitting two tiers below the finished unit.
 - **Rules-based** reasoning contrast-scores each candidate factor by how concentrated defects are among the units it touches versus the plant-wide baseline, screening out high-coverage / low-lift factors before optimization.
@@ -114,7 +114,7 @@ defect_root_cause/
     ├── machines.csv          # placement / reflow / assembly / test equipment
     ├── lots.csv              # 105 received or produced batches
     ├── lot_genealogy.csv     # 162 parent -> child lot edges
-    ├── units.csv             # 2,500 serialized units + final-test result
+    ├── units.csv             # 2,500 serialized units + final-test result + build week
     ├── unit_lots.csv         # top-tier lots each unit consumes
     ├── unit_process.csv      # which machine/shift ran each operation
     └── factors.csv           # 118 candidate factors (lots + machines + shifts)
@@ -124,9 +124,23 @@ defect_root_cause/
 
 ```text
 CSV genealogy corpus
+  --> Examine:                final-test failure rate by build week     --> locates the spike onset (week 2)
   --> Stage 1 (Graph):        backward reachability over lot genealogy  --> Unit.touches_lot
   --> Stage 2 (Rules):        contrast scoring vs. baseline             --> Factor.lift, Factor.is_suspect
   --> Stage 3 (Prescriptive): minimal set-cover MILP                    --> Factor.is_root_cause, DiagnosisResult
+```
+
+### Examine -- when did the spike start?
+
+A real investigation starts on the timeline, not the genealogy: rolling failures up by build week locates the onset -- the first week whose rate runs well above the opening baseline -- which tells the rest of the chain whose window to interrogate. Here the rate steps from 1.9% (week 1) to 6.6% (week 2), so the onset is week 2.
+
+```python
+wk = model.select(Unit.build_week.alias("week"), Unit.defective.alias("defective")).to_df()
+wk["defective"] = wk["defective"].astype(int)
+timeline = wk.groupby("week").agg(units=("defective", "size"), defects=("defective", "sum"))
+timeline["rate"] = timeline["defects"] / timeline["units"]
+opening = timeline["rate"].iloc[0]
+onset = next((int(w) for w, r in timeline["rate"].items() if r > 2 * opening), None)
 ```
 
 ### Stage 1 -- Graph: backward reachability over the lot genealogy
@@ -193,43 +207,49 @@ problem.solve("highs", time_limit_sec=120)
 The naive raw-count view ranks high-volume trunk factors first -- none of which is a cause. Contrast scoring flips the ranking, and set cover resolves the suspects to the two real roots.
 
 ```text
-Loaded 2500 units, 157 defective (6.28% final-test failure rate)
+Loaded 2500 units, 142 defective (5.68% final-test failure rate)
+When did the spike start? Final-test failure rate by build week:
+  week 1:  795 units    1.9%
+  week 2:  852 units    6.6%  <- spike onset
+  week 3:  853 units    8.3%
+Spike onset at week 2: the chain interrogates what entered the line then.
 Genealogy graph: 105 lot nodes, 162 parent->child edges
-Backward reachability built 57,142 (factor, unit) incidence facts.
+Backward reachability built 57,133 (factor, unit) incidence facts.
 Top candidate factors by RAW defective units touched (pre-contrast -- note the high-volume bias):
            factor    kind  units  defects
- LOT::RM-POLY-L01     LOT   2500      157
- LOT::CP-HOUS-L01     LOT   2195      137
-LOT::RM-RESIN-L02     LOT   1627      125
-  MACHINE::SMT-01 MACHINE   1778      114
-   LOT::RM-LI-L01     LOT   1795      110
-   LOT::RM-SI-L04     LOT   1984      109
+ LOT::RM-POLY-L01     LOT   2500      142
+ LOT::CP-HOUS-L01     LOT   2197      126
+LOT::RM-RESIN-L02     LOT   1550      110
+   LOT::RM-SI-L04     LOT   2012      104
+   LOT::RM-LI-L01     LOT   1788      103
+  MACHINE::SMT-01 MACHINE   1761       98
 
-Contrast scoring: 9 suspect factors (baseline failure rate 6.28%, lift>=1.5, support>=30, defects>=5)
+Contrast scoring: 10 suspect factors (baseline failure rate 5.68%, lift>=1.5, support>=30, defects>=5)
           factor    kind units defects     rate     lift
-LOT::SA-PCBA-L05     LOT   132      31 0.234848 3.739626
-LOT::SA-PCBA-L09     LOT   129      28 0.217054 3.456278
-    LOT::SP-0423     LOT   371      78 0.210243 3.347812
- LOT::CP-PCB-L08     LOT   110      19 0.172727 2.750434
-LOT::SA-PCBA-L15     LOT   110      19 0.172727 2.750434
- LOT::CP-SOC-L04     LOT   260      37 0.142308 2.266046
-  LOT::RM-SI-L03     LOT   260      37 0.142308 2.266046
- MACHINE::REF-02 MACHINE   584      77 0.131849 2.099511
- LOT::CP-PCB-L03     LOT   375      36 0.096000 1.528662
+LOT::SA-PCBA-L05     LOT    82      23 0.280488 4.938166
+LOT::SA-PCBA-L09     LOT    83      23 0.277108 4.878670
+    LOT::SP-0423     LOT   258      62 0.240310 4.230811
+ LOT::CP-PCB-L08     LOT    93      16 0.172043 3.028926
+LOT::SA-PCBA-L15     LOT    93      16 0.172043 3.028926
+ LOT::CP-SOC-L04     LOT   226      29 0.128319 2.259130
+  LOT::RM-SI-L03     LOT   226      29 0.128319 2.259130
+ MACHINE::REF-02 MACHINE   593      73 0.123103 2.167304
+ LOT::CP-PCB-L03     LOT   332      31 0.093373 1.643900
+  LOT::RM-CU-L02     LOT   803      71 0.088418 1.556663
 
-Pre-solve audit: 157 coverage constraints grounded (one per defective unit).
-Diagnosis solve: OPTIMAL   objective=42.0
-Root-cause diagnosis: 2 factors explain 141/157 defective units (90% coverage)
+Pre-solve audit: 142 coverage constraints grounded (one per defective unit).
+Diagnosis solve: OPTIMAL   objective=46.32
+Root-cause diagnosis: 2 factors explain 120/142 defective units (85% coverage)
          factor                  label    kind defects_on_factor     lift
-   LOT::SP-0423   CP-PASTE lot SP-0423     LOT                78 3.347812
-MACHINE::REF-02 Reflow oven 2 (REFLOW) MACHINE                77 2.099511
+   LOT::SP-0423   CP-PASTE lot SP-0423     LOT                62 4.230811
+MACHINE::REF-02 Reflow oven 2 (REFLOW) MACHINE                73 2.167304
 
 Corroborating evidence per root cause:
-  CP-PASTE lot SP-0423       87% COLD_SOLDER    supplier Meridian Components, received 2026-02-09
-  Reflow oven 2 (REFLOW)     84% SOLDER_BRIDGE  168 days since last calibration
+  CP-PASTE lot SP-0423       84% COLD_SOLDER    supplier Meridian Components, received 2026-02-09
+  Reflow oven 2 (REFLOW)     81% SOLDER_BRIDGE  168 days since last calibration
 ```
 
-The diagnosis names a contaminated solder-paste lot (`SP-0423`) and a reflow oven (`REF-02`). Note what the MILP did with the suspects: three populated-board lots (`SA-PCBA-L05/L09/L15`) carry the contaminated paste and so score high on lift, but the optimizer prefers the single deep paste lot that explains all of them -- and ignores the correlated bystanders (`CP-SOC-L04`, `RM-SI-L03`) whose defects are already covered. Each named cause is reported with the evidence an engineer would confirm physically: SP-0423's failures are overwhelmingly cold solder (the paste signature) and it arrived mid-window, while REF-02's are solder bridges and it is 168 days past calibration. The diagnosis is the prioritized hypothesis; the evidence is what you check next.
+The diagnosis names a contaminated solder-paste lot (`SP-0423`) and a reflow oven (`REF-02`). Note what the MILP did with the suspects: three populated-board lots (`SA-PCBA-L05/L09/L15`) carry the contaminated paste and so score high on lift, but the optimizer prefers the single deep paste lot that explains all of them -- and ignores the correlated bystanders (`CP-SOC-L04`, `RM-SI-L03`) whose defects are already covered. Each named cause is reported with the evidence an engineer would confirm physically: SP-0423's failures are overwhelmingly cold solder (the paste signature) and it arrived exactly at the week-2 onset, while REF-02's are solder bridges and it is 168 days past calibration. The diagnosis is the prioritized hypothesis; the evidence is what you check next.
 
 ## Customize this template
 

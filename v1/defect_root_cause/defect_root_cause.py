@@ -115,6 +115,7 @@ Lot.consumes = model.Relationship(f"{Lot} consumes {Lot:child}")
 Unit = model.Concept("Unit", identify_by={"id": String})
 Unit.sku = model.Property(f"{Unit} is a {SKU:sku}")
 Unit.build_date = model.Property(f"{Unit} built on {String:build_date}")
+Unit.build_week = model.Property(f"{Unit} built in week {Integer:build_week}")
 Unit.defective = model.Property(f"{Unit} has defective flag {Integer:defective}")
 Unit.defect_type = model.Property(f"{Unit} has {String:defect_type}")
 Unit.shift = model.Property(f"{Unit} ran on shift {String:shift}")
@@ -175,6 +176,7 @@ model.define(
     u.defective(ud.DEFECTIVE),
     u.defect_type(ud.DEFECT_TYPE),
     u.shift(ud.SHIFT),
+    u.build_week(ud.BUILD_WEEK),
 )
 model.define(Unit.is_defective(u := Unit.ref())).where(u.defective == 1)
 uld = model.data(read_csv(DATA_DIR / "unit_lots.csv"))
@@ -196,6 +198,22 @@ model.define(f := Factor.new(id=sf.FACTOR_ID), f.kind(sf.KIND), f.label(sf.LABEL
 n_units = model.select(Unit.id).to_df()
 n_def = model.where(Unit.is_defective()).select(Unit.id).to_df()
 print(f"Loaded {len(n_units)} units, {len(n_def)} defective ({len(n_def) / len(n_units):.2%} final-test failure rate)")
+
+# Descriptive: when did the spike start? A real investigation begins on the
+# timeline -- failures by build week -- before touching genealogy. The onset is
+# the first week whose rate runs well above the opening week's baseline; it
+# tells the rest of the chain which window's changes to interrogate.
+wk = model.select(Unit.build_week.alias("week"), Unit.defective.alias("defective")).to_df()
+wk["defective"] = wk["defective"].astype(int)
+timeline = wk.groupby("week").agg(units=("defective", "size"), defects=("defective", "sum"))
+timeline["rate"] = timeline["defects"] / timeline["units"]
+opening = timeline["rate"].iloc[0]
+onset = next((int(w) for w, r in timeline["rate"].items() if r > 2 * opening), None)
+print("\nWhen did the spike start? Final-test failure rate by build week:")
+for week, r in timeline.iterrows():
+    mark = "  <- spike onset" if onset == int(week) else ""
+    print(f"  week {int(week)}: {int(r['units']):>4} units   {r['rate']:>5.1%}{mark}")
+print(f"Spike onset at week {onset}: the chain interrogates what entered the line then.")
 
 # --------------------------------------------------
 # Stage 1 -- Graph: backward reachability over the lot genealogy
