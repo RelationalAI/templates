@@ -35,7 +35,8 @@ This template uses RelationalAI's **predictive reasoning**, **graph analysis**, 
 Each stage enriches the shared ontology, and downstream stages consume those enrichments -- this is the **accretive ontology enrichment** pattern. No Python dicts or DataFrames carry state between stages; the ontology is the single source of truth:
 
 - **Stage 1 writes** `Substation.predicted_load` -- consumed by Stage 3's capacity rule AND Stage 4's capacity constraint. Both downstream reasoners see the same forecasted headroom.
-- **Stage 2 writes** `Substation.betweenness`, `Substation.grid_community`, `Substation.is_structurally_critical` -- consumed by Stage 3's structural risk rule (Rule 2).
+- **Stage 2 writes** `Substation.betweenness`, `Substation.grid_community`, `Substation.is_structurally_critical` -- consumed by Stage 3's structural risk rule (Rule 2) and by Stage 2.5's corridor ranking.
+- **Stage 2.5 writes** `Substation.fragility_load` (PREVIEW) -- the most-fragile generator-to-DC corridor's betweenness load per data-center substation, consuming Stage 2's betweenness along enumerated routes.
 - **Stage 3 writes** `DataCenterRequest.fails_capacity`, `.fails_structural`, `.fails_low_carbon`, `.is_compliant` -- queryable compliance flags that document why each request was flagged.
 - **Stage 4 writes** `DataCenterRequest.x_approve` and `SubstationUpgrade.x_upgrade` per `InvestmentLevel` -- queried from the ontology via `model.select()`, not parsed from solver output.
 
@@ -283,6 +284,25 @@ model.define(
 
 community = grid_graph.louvain()
 betweenness = grid_graph.betweenness_centrality()
+```
+
+### Stage 2.5: Paths -- Transmission Corridors & Contingency
+
+> PREVIEW capability; requires `relationalai>=1.13`.
+
+Where Stage 2 scores a *substation*, the **Graph** paths capability scores the *corridor* feeding each data center. It derives a bidirectional substation-to-substation edge from active transmission lines, enumerates generator-substation to DC-substation routes, and ranks each by the Stage 2 betweenness summed along its hops — the most fragile corridor is the one carrying the greatest through-traffic exposure. A contingency pass removes the highest-betweenness substation and re-enumerates to show which data centers reroute. The most-fragile load is persisted as `Substation.fragility_load`.
+
+```python
+corridor_df = model.where(
+    corridor := model.path(
+        corridor_src, Substation.connects_to.repeat(1, MAX_CORRIDOR_HOPS), corridor_dst
+    ).all_paths(),
+).select(
+    corridor.alias("corridor"),
+    corridor.nodes["index"].alias("hop"),
+    Substation(corridor.nodes).id.alias("substation_id"),
+    Substation(corridor.nodes).name.alias("substation_name"),
+).to_df()
 ```
 
 ### Stage 3: Rules -- Interconnection Queue Compliance

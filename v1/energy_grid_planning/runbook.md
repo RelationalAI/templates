@@ -98,6 +98,18 @@ Plan routing sub-questions to predictive, graph, rules, and prescriptive reasone
 
 1 connected component, 3 Louvain communities (North Texas, West Texas, Gulf Coast); DFW, Houston, San Antonio flagged `is_structurally_critical`; 7 of 10 DC requests target critical nodes.
 
+### 5b. Trace fragile transmission corridors (PREVIEW, requires `relationalai>=1.13`)
+
+**Prompt**
+
+```
+/rai-graph-analysis For each data-center substation, what is the most fragile transmission corridor from a generator substation — the route running through the greatest total structural criticality across its substations, where a substation's criticality reflects how many power-flow paths route through it? Consider corridors up to about six hops that don't revisit a substation. Then, if the single most critical substation goes offline, which data-center substations reroute and which lose every corridor?
+```
+
+**Response**
+
+421 generator-substation to DC-substation corridors. The most fragile carries a betweenness-load of 99.833, routing through the Dallas-Fort Worth / Abilene Central / Houston Ship Channel hubs. Taking the top substation (Dallas-Fort Worth) offline reroutes the other DC substations' corridors; the meshed grid stays connected (no full isolation). Persists `Substation.fragility_load`.
+
 ### 6. Screen DC requests
 
 **Prompt**
