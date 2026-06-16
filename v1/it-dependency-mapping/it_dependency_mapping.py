@@ -95,23 +95,25 @@ paths_df = (
     model.where(p := p_pattern.all_paths())
     .select(
         p.alias("path_id"),
-        p.length.alias("hops"),
         p.nodes["index"].alias("step"),
         Feature(p.nodes).id.alias("feature_id"),
         Feature(p.nodes).name.alias("feature_name"),
     )
     .to_df()
 )
-paths_df["hops"] = paths_df["hops"].astype(int)
 paths_df["step"] = paths_df["step"].astype(int)
+# Projecting p.nodes can emit duplicate (path, step) rows -- dedupe to one node
+# per step before reassembly. (Do NOT also select p.length here: selecting it
+# alongside p.nodes fans the node rows out.)
+paths_df = paths_df.drop_duplicates(["path_id", "step"]).sort_values(["path_id", "step"])
 
-# Reassemble each path: group on the path-id column, order steps by node index,
-# and join the visited features into an ordered chain.
+# Reassemble each path: order steps by node index, join the visited features into
+# an ordered chain. The hop count is the max node index (a path over N edges has
+# nodes at indices 0..N).
 chains = (
-    paths_df.sort_values(["path_id", "step"])
-    .groupby("path_id")
+    paths_df.groupby("path_id")
     .agg(
-        hops=("hops", "first"),
+        hops=("step", "max"),
         node_ids=("feature_id", lambda s: tuple(s)),
         chain=("feature_name", lambda s: " -> ".join(s)),
     )
