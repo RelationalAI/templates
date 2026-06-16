@@ -9,7 +9,7 @@ description = "RelationalAI template: bill of materials dependency tracing with 
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-  "relationalai==1.11.0",
+  "relationalai==1.13.0",
   "pandas>=2.0.0",
 ]
 
