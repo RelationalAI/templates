@@ -151,9 +151,16 @@ Where reachability returns dependency *pairs*, path enumeration returns the actu
 ```python
 SKU.feeds = model.Relationship(f"{SKU} feeds into {SKU}", short_name="feeds")
 p = model.path(SKU.feeds.repeat(1, MAX_ASSEMBLY_HOPS)).all_paths()
-paths_df = model.where(p).select(
-    p.alias("path"), p.nodes["index"].alias("step"), SKU(p.nodes).name.alias("sku_name")
-).to_df()
+assembly_df = (
+    model.where(p)
+    .select(
+        p.alias("path"),
+        p.nodes["index"].alias("step"),
+        SKU(p.nodes).id.alias("sku_id"),
+        SKU(p.nodes).name.alias("sku_name"),
+    )
+    .to_df()
+)
 ```
 
 ## Customize this template
