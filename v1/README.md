@@ -63,7 +63,7 @@ Templates are grouped by industry. Expand an industry to see its templates, the 
 | Template | Reasoners | Description |
 | --- | --- | --- |
 | [bom-reachability](./bom-reachability/) | Graph | Trace transitive dependencies through a bill of materials to identify which raw materials each finished product depends on and which components are structural bottlenecks. |
-| [defect_root_cause](./defect_root_cause/) | Graph, Rules-based, Prescriptive | Diagnose a final-test defect spike: trace each unit's genealogy backward through the bill of materials, contrast-score candidate factors against good units, then solve a minimal set-cover MILP for the smallest, most specific set of root causes. |
+| [defect_root_cause](./defect_root_cause/) | Graph, Rules-based, Prescriptive | Diagnose a final-test defect spike on an electronics assembly line: trace each unit's genealogy backward through the bill of materials, contrast-score candidate factors against good units, then solve a minimal set-cover MILP for the smallest, most specific set of root causes. |
 | [factory_production](./factory_production/) | Prescriptive | Maximize production profit under per-factory resource limits, then read the sensitivity marginals (capacity shadow prices and product reduced costs) from one solve. |
 | [product_configurator](./product_configurator/) | Prescriptive | Enumerate every feasible build of a configurable product in multi-solution mode: one option per slot subject to feature-model rules, regional regulations, and a price ceiling. |
 | [production_planning](./production_planning/) | Prescriptive | Schedule production across machines to meet demand and maximize profit with scenario analysis. |
