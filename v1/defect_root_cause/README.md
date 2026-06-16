@@ -223,9 +223,13 @@ Root-cause diagnosis: 2 factors explain 141/157 defective units (90% coverage)
          factor                  label    kind defects_on_factor     lift
    LOT::SP-0423   CP-PASTE lot SP-0423     LOT                78 3.347812
 MACHINE::REF-02 Reflow oven 2 (REFLOW) MACHINE                77 2.099511
+
+Corroborating evidence per root cause:
+  CP-PASTE lot SP-0423       87% COLD_SOLDER    supplier Meridian Components, received 2026-02-09
+  Reflow oven 2 (REFLOW)     84% SOLDER_BRIDGE  168 days since last calibration
 ```
 
-The diagnosis names a contaminated solder-paste lot (`SP-0423`) and a reflow oven (`REF-02`). Note what the MILP did with the suspects: three populated-board lots (`SA-PCBA-L05/L09/L15`) carry the contaminated paste and so score high on lift, but the optimizer prefers the single deep paste lot that explains all of them -- and ignores the correlated bystanders (`CP-SOC-L04`, `RM-SI-L03`) whose defects are already covered.
+The diagnosis names a contaminated solder-paste lot (`SP-0423`) and a reflow oven (`REF-02`). Note what the MILP did with the suspects: three populated-board lots (`SA-PCBA-L05/L09/L15`) carry the contaminated paste and so score high on lift, but the optimizer prefers the single deep paste lot that explains all of them -- and ignores the correlated bystanders (`CP-SOC-L04`, `RM-SI-L03`) whose defects are already covered. Each named cause is reported with the evidence an engineer would confirm physically: SP-0423's failures are overwhelmingly cold solder (the paste signature) and it arrived mid-window, while REF-02's are solder bridges and it is 168 days past calibration. The diagnosis is the prioritized hypothesis; the evidence is what you check next.
 
 ## Customize this template
 

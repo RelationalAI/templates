@@ -108,6 +108,7 @@ Machine.calibration_age_days = model.Property(f"{Machine} has {Integer:calibrati
 Lot = model.Concept("Lot", identify_by={"id": String})
 Lot.sku = model.Property(f"{Lot} is of {SKU:sku}")
 Lot.supplier = model.Property(f"{Lot} supplied by {Supplier:supplier}")
+Lot.received_date = model.Property(f"{Lot} received on {String:received_date}")
 Lot.consumes = model.Relationship(f"{Lot} consumes {Lot:child}")
 
 # Unit concept: a serialized finished unit and its final-test outcome.
@@ -160,6 +161,7 @@ model.define(
     lot := Lot.new(id=ld.LOT_ID),
     lot.sku(SKU.lookup(id=ld.SKU_ID)),
     lot.supplier(Supplier.lookup(id=ld.SUPPLIER_ID)),
+    lot.received_date(ld.RECEIVED_DATE),
 )
 gd = model.data(read_csv(DATA_DIR / "lot_genealogy.csv"))
 model.define(Lot.lookup(id=gd.PARENT_LOT_ID).consumes(Lot.lookup(id=gd.CHILD_LOT_ID)))
@@ -381,3 +383,34 @@ model.define(
 print(f"\nRoot-cause diagnosis: {len(diagnosis)} factors explain {n_explained}/{n_defective} "
       f"defective units ({n_explained / n_defective:.0%} coverage)")
 print(diagnosis.to_string(index=False))
+
+# Corroborating evidence per named cause, the way a real RCA write-up reads:
+# the defect signature it concentrates (a paste fault should present as cold
+# solder, a reflow fault as solder bridging), plus a kind-specific tell --
+# supplier and receipt date for a lot, calibration age for a machine. All of it
+# is read back from ontology already loaded; the diagnosis is the hypothesis,
+# this is the supporting evidence an engineer would confirm physically.
+sig = model.where(
+    (f := Factor.ref()).is_root_cause > 0.5,
+    f.touches(u := Unit.ref()),
+    u.is_defective(),
+).select(f.id.alias("factor"), u.defect_type.alias("defect_type")).to_df()
+print("\nCorroborating evidence per root cause:")
+for _, row in diagnosis.iterrows():
+    fid, kind, label = row["factor"], row["kind"], row["label"]
+    types = sig[sig["factor"] == fid]["defect_type"]
+    dom = types.value_counts()
+    signature = f"{dom.iloc[0] / len(types):.0%} {dom.index[0]}"
+    ref = fid.split("::", 1)[1]
+    if kind == "LOT":
+        tell_df = model.where(
+            (lo := Lot.ref()).id == ref,
+            lo.supplier(sp := Supplier.ref()),
+        ).select(sp.name.alias("supplier"), lo.received_date.alias("recv")).to_df()
+        tell = f"supplier {tell_df['supplier'].iloc[0]}, received {tell_df['recv'].iloc[0]}"
+    else:
+        tell_df = model.where((mm := Machine.ref()).id == ref).select(
+            mm.calibration_age_days.alias("age")
+        ).to_df()
+        tell = f"{int(tell_df['age'].iloc[0])} days since last calibration"
+    print(f"  {label:<26} {signature:<18} {tell}")

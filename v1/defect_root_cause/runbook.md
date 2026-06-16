@@ -114,7 +114,7 @@ Status OPTIMAL, objective 42.0 (26.0 in factor-selection cost plus 16 unexplaine
 
 **Response**
 
-Two root causes explain 90% of the failures: `SP-0423` (a contaminated solder-paste lot, the `COLD_SOLDER` signature) and `REF-02` (a reflow oven, the `SOLDER_BRIDGE` signature — corroborated by being 168 days since its last calibration, far past its peers). The three `SA-PCBA` board lots score higher on raw lift only because every unit on them carries `SP-0423`; backward reachability plus parsimony collapse them into the single upstream lot that actually explains them. The 16 unexplained defects are scattered baseline failures with no shared suspect — correctly left rather than over-fit.
+Two root causes explain 90% of the failures, each reported with corroborating evidence: `SP-0423` (a contaminated solder-paste lot from supplier Meridian Components — 87% of its failures are `COLD_SOLDER`, the paste signature) and `REF-02` (a reflow oven — 84% `SOLDER_BRIDGE`, and 168 days past calibration, far beyond its peers). The three `SA-PCBA` board lots score higher on raw lift only because every unit on them carries `SP-0423`; backward reachability plus parsimony collapse them into the single upstream lot that actually explains them. The 16 unexplained defects are scattered baseline failures with no shared suspect — correctly left rather than over-fit. The diagnosis is the prioritized hypothesis; the signature, supplier/receipt date, and calibration age are the evidence an engineer confirms physically.
 
 ### 8. Persist the diagnosis into the ontology
 
