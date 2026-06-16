@@ -144,6 +144,18 @@ betweenness = graph.betweenness_centrality()
 
 Components with high betweenness are structural bottlenecks -- disrupting them affects the most product lines.
 
+### 5. Enumerate Assembly Paths (PREVIEW, requires `relationalai>=1.13`)
+
+Where reachability returns dependency *pairs*, path enumeration returns the actual *build sequences*. It derives a SKU-to-SKU `feeds` edge from the `BillOfMaterials` intermediary (input SKU feeds output SKU) and enumerates every assembly path; because the BOM is acyclic, `.all_paths()` yields exactly the simple paths -- no cycle risk. A maximal-paths view keeps only the longest non-extendable chains, and the longest assembly depth is persisted as `SKU.assembly_depth`.
+
+```python
+SKU.feeds = model.Relationship(f"{SKU} feeds into {SKU}", short_name="feeds")
+p = model.path(SKU.feeds.repeat(1, MAX_ASSEMBLY_HOPS)).all_paths()
+paths_df = model.where(p).select(
+    p.alias("path"), p.nodes["index"].alias("step"), SKU(p.nodes).name.alias("sku_name")
+).to_df()
+```
+
 ## Customize this template
 
 **Use your own data:**
