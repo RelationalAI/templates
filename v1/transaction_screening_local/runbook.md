@@ -21,7 +21,7 @@ transactions.csv — 75 transfers, 54 accounts  (in-memory DuckDB, no Snowflake)
 
 **These prompts are designed to run in order, in a single session** — each builds on the ontology state created by the ones before it.
 
-Requires `relationalai >= 1.12`. Local DuckDB execution uses deploy mode (flagged experimental in the package).
+Requires `relationalai >= 1.13`. Local DuckDB execution uses deploy mode (flagged experimental in the package).
 
 ---
 

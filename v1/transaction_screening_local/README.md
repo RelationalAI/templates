@@ -51,7 +51,7 @@ What runs locally vs. needs a Snowflake connection:
 ## Prerequisites
 
 - Python 3.10+
-- `relationalai>=1.12.0` (DuckDB ships with it; 1.12 is the minimum for the local path)
+- `relationalai>=1.13.0` (DuckDB ships with it; 1.13 is the minimum for the local path)
 
 No Snowflake account, Native App, or `raiconfig.yaml` is required — the script builds an in-memory DuckDB config inline. (Local DuckDB execution relies on deploy mode, which the package currently flags as experimental.)
 
