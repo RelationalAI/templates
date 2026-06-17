@@ -41,6 +41,8 @@ This template shows how to cut through that noise and produce a defensible, rank
 - A contrast score for each candidate cause (a lot, a machine, or a shift) that separates genuine signals from high-volume noise.
 - A minimal root-cause diagnosis that names the fewest, most specific causes explaining the failures, each reported with the evidence an engineer would confirm next.
 
+At a high level, this exercises three RelationalAI capabilities on one shared model: **graph reachability** to close the genealogy, **rules and derived properties** to score the candidates, and **prescriptive optimization** to select the minimal diagnosis.
+
 ## What's included
 
 - **Model and pipeline** (`defect_root_cause.py`): a single script that defines the ontology and runs all three reasoning stages end to end.
@@ -100,6 +102,17 @@ This template shows how to cut through that noise and produce a defensible, rank
    python defect_root_cause.py
    ```
 
+6. Confirm success. The run ends with the diagnosis; the final lines should look like this:
+
+   ```text
+   Root-cause diagnosis: 2 factors explain 120/142 defective units (85% coverage)
+            factor                  label    kind defects_on_factor     lift
+      LOT::SP-0423   CP-PASTE lot SP-0423     LOT                62 4.230811
+   MACHINE::REF-02 Reflow oven 2 (REFLOW) MACHINE                73 2.167304
+   ```
+
+   The full annotated output appears in the [Sample output](#sample-output) section below.
+
 ## Template structure
 
 ```text
@@ -132,17 +145,73 @@ The bundled corpus is a serialized-unit manufacturing genealogy for a consumer-e
 
 The model represents a manufacturing genealogy: finished units built from material lots through a multi-tier bill of materials, each with a full process history.
 
-The key entities and the most important relationships are:
+The genealogy is the backbone: a built `Lot` consumes its input lots, so following those links from a finished unit reaches every material beneath it. The sections below document the model concept by concept.
 
-| Concept | Identified by | Key properties and relationships |
+### SKU
+
+An item in the product structure. SKUs, and the bill of materials between them, define the product's type-level structure that the lot genealogy instantiates.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `id` | string | Yes | Loaded from `data/skus.csv` |
+| `name` | string | No | Human-readable name |
+| `tier` | string | No | One of `FINISHED`, `SUBASSEMBLY`, `COMPONENT`, or `RAW` |
+
+### Lot
+
+A specific received or produced batch of a SKU. Lots form the genealogy the diagnosis traces backward.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `id` | string | Yes | Loaded from `data/lots.csv` |
+| `sku` | SKU | No | Which SKU this lot is a batch of |
+| `supplier` | Supplier | No | Who supplied the lot |
+| `received_date` | string | No | When the lot was received; corroborating evidence |
+
+### Unit
+
+A serialized finished unit and its final-test outcome. Defective units are the symptoms the diagnosis must explain.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `id` | string | Yes | Loaded from `data/units.csv` |
+| `sku` | SKU | No | The finished product built |
+| `defective` | int | No | 1 if the unit failed final test, otherwise 0 |
+| `defect_type` | string | No | Failure signature, for example `COLD_SOLDER` |
+| `build_week` | int | No | Week index used by the timeline step |
+| `shift` | string | No | Shift that built the unit |
+
+### Machine
+
+A piece of process equipment. Calibration age corroborates a machine-as-cause finding.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `id` | string | Yes | Loaded from `data/machines.csv` |
+| `machine_type` | string | No | The operation it performs (placement, reflow, assembly, test) |
+| `calibration_age_days` | int | No | Days since last calibration |
+
+### Factor
+
+A candidate root cause: any lot, machine, or shift, put on a common footing so the diagnosis can range over all three. The rules and optimization stages enrich each factor with derived properties.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `id` | string | Yes | Loaded from `data/factors.csv`, for example `LOT::SP-0423` |
+| `kind` | string | No | `LOT`, `MACHINE`, or `SHIFT` |
+| `lift` | float | No | Derived: defect rate among touched units versus the plant baseline |
+| `is_root_cause` | float (binary) | No | Decision variable: named in the diagnosis |
+
+### Relationships
+
+The reasoning relies on a few relations beyond concept properties:
+
+| Relationship | Reading | Notes |
 |---|---|---|
-| `SKU` | `id` | `name`, `tier` (finished good, sub-assembly, component, or raw material) |
-| `Lot` | `id` | `sku`, `supplier`, `received_date`; `consumes` other lots (the genealogy) |
-| `Unit` | `id` | `defective`, `defect_type`, `build_week`, `shift`; `consumes_lot`, `ran_on` |
-| `Machine` | `id` | `machine_type`, `calibration_age_days` |
-| `Factor` | `id` | `kind` (lot, machine, or shift); the derived `lift`, `is_suspect`, and `is_root_cause` |
-
-The genealogy is the backbone: a built `Lot` consumes its input lots, so following those links from a finished unit reaches every material beneath it. A unified `Factor` then puts lots, machines, and shifts on the same footing as candidate causes, and the derived `Factor.touches` relationship records which units each candidate is associated with.
+| `Lot consumes Lot` | parent lot, child lot | The genealogy; closed transitively in the graph stage |
+| `Unit consumes Lot` | unit, lot | Top-tier lots the unit consumed directly |
+| `Unit ran on Machine` | unit, machine | Process history (one per operation) |
+| `Factor touches Unit` | factor, unit | Derived incidence the diagnosis ranges over |
 
 ## How it works
 
