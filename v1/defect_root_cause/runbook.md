@@ -2,8 +2,6 @@
 
 Final-test failures on a consumer-electronics assembly line have jumped — from a ~1.9% baseline in week 1 to 6.6% in week 2 and 8.3% by week 3, once an incident lands at the start of week 2. Every serialized unit carries its full material genealogy (which lots it consumed, transitively, through a four-tier bill of materials) and its process history (which machine and shift ran each operation). The chain locates the onset, then works backward from the failures to the smallest, most specific set of root causes — resisting the pull of high-volume factors that merely touch everything.
 
-> **Headline figures below** are from a real Snowflake-backed run of `defect_root_cause.py`. The corpus and all reasoners are deterministic (the data is seeded; the timeline rollup, graph reachability, contrast scoring, and the set-cover MILP are exact), so the figures reproduce run-to-run. See the template README's *Customize this template* for the contrast thresholds and objective-weight knobs.
-
 ## The chain
 
 ```
