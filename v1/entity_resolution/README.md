@@ -18,8 +18,6 @@ tags:
   - Insurance
 ---
 
-# Entity Resolution
-
 ## What this template is for
 
 An insurer accumulates the same customer many times over. A household holds auto, home, and life policies in separate administration systems, books of business arrive through acquisitions, and names, addresses, and contact details drift between them. Until those records are resolved into one insured party, the carrier's total exposure to each customer is invisible: no single policy looks dangerous, yet a household's combined coverage can quietly exceed an accumulation limit.
@@ -94,44 +92,15 @@ This template treats entity resolution as the foundation for a decision, not an 
    python entity_resolution.py
    ```
 
-6. Expected output (abridged):
+6. Expected output (a few lines confirm success):
    ```text
-   ================================================================
-   Blocking & scoring
-   ================================================================
-   Records:                 51
-   All possible pairs:      1275
-   Candidate pairs:         28  (97.8% fewer comparisons)
-   Auto-merge matches:      25  (score >= 0.7)
-   Held for review:         1  ([0.55, 0.7))
-   Graph:                   51 nodes, 25 match edges
-
-   ================================================================
-   Accumulation control (limit $1,000,000)
-   ================================================================
-   Policies over the limit at the RECORD level:      0
+   Auto-resolved 51 records into 31 insured parties.
    Households over the limit after RESOLUTION:       4
-
-   Reinsurance cession plan  (status OPTIMAL, budget $120,000 at 12% rate on line):
-     CEDE  Drew Fitzgerald        exposure $  1,892,000  excess $  892,000  premium $ 107,040
-     keep  Katie Nguyen           exposure $  1,406,000  excess $  406,000  premium $  48,720
-     keep  Trish Johnson          exposure $  1,240,000  excess $  240,000  premium $  28,800
-     CEDE  Bob Chen               exposure $  1,035,000  excess $   35,000  premium $   4,200
      -> ceded $927,000 of excess exposure for $111,240 premium (of $120,000)
-
-   ================================================================
-   Review queue
-   ================================================================
-   Pairs held for steward review: 1
-   Breaches surfaced only if the review queue is confirmed: 1 (resolution would then show 5 breached households, not 4)
-
-   ================================================================
-   Evaluation vs ground truth (pairwise, auto-resolution)
-   ================================================================
      precision: 1.000   recall: 0.963   f1: 0.981
    ```
 
-   The story: no single policy breaches the $1M limit, but resolving the records surfaces four over-limit households; the optimizer cedes the most excess exposure it can afford ($927k for $111k of the $120k budget), and the one review pair, if confirmed, reveals a fifth breach the automated pass missed.
+   No single policy breaches the $1M limit, yet resolution surfaces four over-limit households and the optimizer cedes the most excess it can afford within budget. The full printout and a step-by-step walkthrough are in `runbook.md`.
 
 ## Template structure
 
