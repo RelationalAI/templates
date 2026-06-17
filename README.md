@@ -39,7 +39,7 @@ The index below covers the current templates. Expand an industry to see its temp
 </details>
 
 <details>
-<summary>Financial Services (7)</summary>
+<summary>Financial Services (8)</summary>
 
 | Template | Reasoners | Description |
 | --- | --- | --- |
@@ -49,6 +49,7 @@ The index below covers the current templates. Expand an industry to see its temp
 | [money_laundering_motif_detection](v1/money_laundering_motif_detection/) | Prescriptive | Detect three classes of layering motif on the same transaction ledger, each demonstrating a different CSP technique that rules / paths / graph reasoning alone cannot enforce: per-vertex aggregate equality (butterfly), pairwise distinctness over a chosen subset (smurf army), and cardinality on a chosen subset (KYC-mix burst). |
 | [portfolio_balancing](v1/portfolio_balancing/) | Prescriptive, Rules-based, Graph | Compliance screening, covariance clustering, and bi-objective Markowitz optimization that traces the risk-return frontier with solver shadow prices, plus a crisis-regime stress test. |
 | [synthetic_order_lifecycle](v1/synthetic_order_lifecycle/) | Prescriptive | Generate synthetic order-lifecycle event traces (PLACE / MODIFY / CANCEL / FILL) that satisfy MiFID II / Reg NMS-flavour sequencing rules. |
+| [transaction_screening_local](v1/transaction_screening_local/) | Rules-based | Triage a transfer ledger with rules-based reasoning on a local DuckDB database, with no Snowflake account required: classify accounts that move money just under reporting thresholds, flag large senders, and expand the investigation to everyone who transacted with a flagged account. |
 | [underwriting_audit](v1/underwriting_audit/) | Prescriptive | Audit an underwriting ruleset against a catalog of properties. For each, either prove it holds (PASS) or return K distinct counterexample applicants that falsify it (FAIL). Multi-property batch audit in multi-solution mode. |
 
 </details>
