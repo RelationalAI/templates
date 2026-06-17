@@ -70,11 +70,12 @@ The index below covers the current templates. Expand an industry to see its temp
 </details>
 
 <details>
-<summary>Manufacturing (4)</summary>
+<summary>Manufacturing (5)</summary>
 
 | Template | Reasoners | Description |
 | --- | --- | --- |
 | [bom-reachability](v1/bom-reachability/) | Graph | Trace transitive dependencies through a bill of materials to identify which raw materials each finished product depends on and which components are structural bottlenecks. |
+| [defect_root_cause](v1/defect_root_cause/) | Graph, Rules-based, Prescriptive | Diagnose a spike in final-test failures on an electronics assembly line by tracing each unit's history back through the bill of materials and the production line, then identifying the smallest set of causes that explains the failures. |
 | [factory_production](v1/factory_production/) | Prescriptive | Maximize production profit under per-factory resource limits, then read the sensitivity marginals (capacity shadow prices and product reduced costs) from one solve. |
 | [product_configurator](v1/product_configurator/) | Prescriptive | Enumerate every feasible build of a configurable product in multi-solution mode: one option per slot subject to feature-model rules, regional regulations, and a price ceiling. |
 | [production_planning](v1/production_planning/) | Prescriptive | Schedule production across machines to meet demand and maximize profit with scenario analysis. |
