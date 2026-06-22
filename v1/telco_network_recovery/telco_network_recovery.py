@@ -30,7 +30,7 @@ recoverable from the other alone, so the chain integrates both.
   of ACTIVE subscribers whose calls route through the tower;
   PageRank-weighted impact is exposed alongside as a secondary
   network-effect signal.
-- Stage 3.5 -- Paths (PREVIEW, relationalai>=1.13): enumerate caller
+- Stage 3.5 -- Paths (PREVIEW, relationalai>=1.15): enumerate caller
   -> callee call paths (<=3 hops, simple) from the highest-PageRank
   subscriber over an arity-3 `{Subscriber} via {CellTower} calls
   {Subscriber}` edge, recovering the routing tower on each hop via
@@ -814,7 +814,7 @@ print(blast_df.to_string(index=False))
 
 # --------------------------------------------------
 # Stage 3.5: Paths -- Call-path enumeration through critical towers
-#   PREVIEW capability; requires relationalai>=1.13.
+#   PREVIEW capability; requires relationalai>=1.15.
 # --------------------------------------------------
 # Composes on Stage 3's Subscriber.influence_score (PageRank) and Stage 2's
 # CellTower.is_critical_restore. Where PageRank scores a *node*, paths scores

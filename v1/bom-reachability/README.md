@@ -144,7 +144,7 @@ betweenness = graph.betweenness_centrality()
 
 Components with high betweenness are structural bottlenecks -- disrupting them affects the most product lines.
 
-### 5. Enumerate Assembly Paths (PREVIEW, requires `relationalai>=1.13`)
+### 5. Enumerate Assembly Paths (PREVIEW, requires `relationalai>=1.15`)
 
 Where reachability returns dependency *pairs*, path enumeration returns the actual *build sequences*. It derives a SKU-to-SKU `feeds` edge from the `BillOfMaterials` intermediary (input SKU feeds output SKU) and enumerates every assembly path; because the BOM is acyclic, `.all_paths()` yields exactly the simple paths -- no cycle risk. A maximal-paths view keeps only the longest non-extendable chains, and the longest assembly depth is persisted as `SKU.assembly_depth`.
 

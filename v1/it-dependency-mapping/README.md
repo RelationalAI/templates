@@ -52,7 +52,7 @@ This template demonstrates **Graph** reasoning -- specifically variable-length p
 - Python >= 3.10
 - A Snowflake account that has the RAI Native App installed.
 - A Snowflake user with permissions to access the RAI Native App.
-- `relationalai >= 1.13` -- the path-traversal API is a preview capability introduced in 1.13.
+- `relationalai >= 1.15` -- the path-traversal API is a preview capability (introduced in 1.13, validated on 1.15).
 
 ## Quickstart
 
@@ -128,7 +128,7 @@ Feature.contributes_to = model.Relationship(
 
 ### 2. Enumerate Downstream Paths
 
-`model.path(Feature.contributes_to.repeat(1, MAX_DEPTH))` describes a variable-length traversal of 1 to `MAX_DEPTH` `contributes_to` edges. `all_paths()` enumerates every such path. Each result is a `PathTraversal`: `p.length` is its hop count and `p.nodes` is the ordered sequence of features it visits:
+`model.path(Feature.contributes_to.repeat(1, MAX_DEPTH))` describes a variable-length traversal of 1 to `MAX_DEPTH` `contributes_to` edges. `all_paths()` enumerates every such path. Each result is a `PathTraversal`; project `p.nodes` to get the ordered features it visits. Do not also select `p.length` alongside `p.nodes` -- that fans the node rows out; derive the hop count from the maximum node index instead:
 
 ```python
 p_pattern = model.path(Feature.contributes_to.repeat(1, MAX_DEPTH))
@@ -136,23 +136,24 @@ paths_df = (
     model.where(p := p_pattern.all_paths())
     .select(
         p.alias("path_id"),
-        p.length.alias("hops"),
         p.nodes["index"].alias("step"),
         Feature(p.nodes).id.alias("feature_id"),
         Feature(p.nodes).name.alias("feature_name"),
     )
     .to_df()
 )
+paths_df["step"] = paths_df["step"].astype(int)
+# Projecting p.nodes can emit duplicate (path, step) rows -- dedupe before reassembly.
+paths_df = paths_df.drop_duplicates(["path_id", "step"]).sort_values(["path_id", "step"])
 ```
 
-Each path arrives as one row per visited node. Grouping on the path-id column and ordering by node index reassembles the ordered chain:
+Each path arrives as one row per visited node. Grouping on the path-id column reassembles the ordered chain; the hop count is the maximum node index:
 
 ```python
 chains = (
-    paths_df.sort_values(["path_id", "step"])
-    .groupby("path_id")
+    paths_df.groupby("path_id")
     .agg(
-        hops=("hops", "first"),
+        hops=("step", "max"),
         node_ids=("feature_id", lambda s: tuple(s)),
         chain=("feature_name", lambda s: " -> ".join(s)),
     )
@@ -232,7 +233,7 @@ The deepest chain runs five hops from a raw source all the way to a downstream d
 <details>
   <summary>Why does <code>model.path(...)</code> raise an <code>AttributeError</code> or <code>ImportError</code>?</summary>
 
-- The path-traversal API is a preview capability introduced in `relationalai` 1.13. Confirm your installed version with `python -c "import relationalai; print(relationalai.__version__)"` and upgrade if it is older.
+- The path-traversal API is a preview capability introduced in `relationalai` 1.13 and validated on 1.15. Confirm your installed version (>= 1.15) with `python -c "import relationalai; print(relationalai.__version__)"` and upgrade if it is older.
 
 </details>
 

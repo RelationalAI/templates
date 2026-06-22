@@ -111,7 +111,7 @@ This is not a single-reasoner problem. Approving a data center at a structurally
 
 ### Tools
 - Python >= 3.10
-- RelationalAI Python SDK (`relationalai`) == 1.11.0
+- RelationalAI Python SDK (`relationalai`) == 1.15.0
 
 ## Quickstart
 
@@ -288,7 +288,7 @@ betweenness = grid_graph.betweenness_centrality()
 
 ### Stage 2.5: Paths -- Transmission Corridors & Contingency
 
-> PREVIEW capability; requires `relationalai>=1.13`.
+> PREVIEW capability; requires `relationalai>=1.15`.
 
 Where Stage 2 scores a *substation*, the **Graph** paths capability scores the *corridor* feeding each data center. It derives a bidirectional substation-to-substation edge from active transmission lines, enumerates generator-substation to DC-substation routes, and ranks each by the Stage 2 betweenness summed along its hops — the most fragile corridor is the one carrying the greatest through-traffic exposure. A contingency pass removes the highest-betweenness substation and re-enumerates to show which data centers reroute. The most-fragile load is persisted as `Substation.fragility_load`.
 

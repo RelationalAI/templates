@@ -80,7 +80,7 @@ model.where(
 
 # --------------------------------------------------
 # Paths: enumerate downstream dependency paths
-#   PREVIEW capability; requires relationalai>=1.13.
+#   PREVIEW capability; requires relationalai>=1.15.
 # --------------------------------------------------
 # model.path(Feature.contributes_to.repeat(1, MAX_DEPTH)) describes a
 # variable-length traversal of 1..MAX_DEPTH contributes_to edges. all_paths()

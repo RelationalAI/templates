@@ -158,7 +158,8 @@ hop_df = hop_df.drop_duplicates(["path_id", "hop"]).sort_values(["path_id", "hop
 # Reassemble each kill-chain: ordered asset names + the technique used at each hop.
 def technique_label(raw):
     # relationship labels arrive as e.g. "-<exploit_to>->"; strip to the verb stem.
-    return raw.strip("-<>⟨⟩→ ").replace("_to", "")
+    stem = raw.strip("-<>⟨⟩→ ")
+    return stem[:-3] if stem.endswith("_to") else stem
 
 chains = []
 for pid, g in kill_df.groupby("path_id"):
@@ -225,7 +226,7 @@ exposure = dict(
     .itertuples(index=False, name=None)
 )
 for ch in chains:
-    ch["total_exposure"] = sum(exposure[i] for i in ch["asset_ids"])
+    ch["total_exposure"] = sum(exposure[i] for i in set(ch["asset_ids"]))
 
 print("\n=== Kill-chains ranked by total asset exposure (highest = remediate first) ===")
 for ch in sorted(chains, key=lambda c: c["total_exposure"], reverse=True):

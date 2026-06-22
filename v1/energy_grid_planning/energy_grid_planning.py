@@ -11,7 +11,7 @@ prescriptive optimization on a single shared ontology:
   detection, and multi-metric centrality (betweenness, degree, eigenvector) on
   the transmission grid topology. Results are stored directly as Substation
   properties on the shared ontology.
-- Stage 2.5 -- Paths (PREVIEW, relationalai>=1.13): enumerate generator-sub ->
+- Stage 2.5 -- Paths (PREVIEW, relationalai>=1.15): enumerate generator-sub ->
   DC-sub transmission corridors, rank each by Stage 2 betweenness summed along
   the route (most fragile = greatest through-traffic exposure), and re-enumerate
   with the highest-betweenness substation offline. Persists Substation.fragility_load.
@@ -657,7 +657,7 @@ if len(dc_sub_df) > 0 and len(centrality_df) > 0:
 
 # --------------------------------------------------
 # Stage 2.5: Paths -- Transmission Corridors & Contingency
-#   PREVIEW capability; requires relationalai>=1.13.
+#   PREVIEW capability; requires relationalai>=1.15.
 # --------------------------------------------------
 # Composes on Stage 2's Substation.betweenness. Where Stage 2 scores a *node*,
 # paths scores the *corridor* feeding each data center: enumerate generator-sub ->

@@ -10,7 +10,7 @@ Graph: directed, unweighted. SKU nodes, BOM rows as edges (output -> input).
 Algorithms: reachable(full=True) for transitive dependency tracing,
   betweenness_centrality() for identifying structural bottlenecks.
 
-Assembly path enumeration (PREVIEW, requires relationalai>=1.13): enumerate the
+Assembly path enumeration (PREVIEW, requires relationalai>=1.15): enumerate the
   bottom-up assembly chains that build each finished good. Derives a binary
   SKU->SKU "feeds into" edge from the BillOfMaterials intermediary (input feeds
   output), enumerates every assembly path with model.path(...).all_paths(),
@@ -31,7 +31,6 @@ Output:
 from pathlib import Path
 
 import pandas as pd
-from pandas import read_csv
 from relationalai.semantics import Float, Integer, Model, String, where
 from relationalai.semantics.reasoners.graph import Graph
 
@@ -49,7 +48,7 @@ SKU.name = model.Property(f"{SKU} has {String:name}")
 SKU.type = model.Property(f"{SKU} has type {String:type}")
 SKU.category = model.Property(f"{SKU} in {String:category}")
 
-sku_data = model.data(read_csv(data_dir / "skus.csv"))
+sku_data = model.data(pd.read_csv(data_dir / "skus.csv"))
 model.define(SKU.new(id=sku_data["ID"]))
 where(SKU.id == sku_data["ID"]).define(
     SKU.name(sku_data["NAME"]),
@@ -62,7 +61,7 @@ BillOfMaterials = model.Concept("BillOfMaterials", identify_by={"id": String})
 BillOfMaterials.output_sku = model.Relationship(f"{BillOfMaterials} produces {SKU}")
 BillOfMaterials.input_sku = model.Relationship(f"{BillOfMaterials} requires {SKU}")
 
-bom_data = model.data(read_csv(data_dir / "bill_of_materials.csv"))
+bom_data = model.data(pd.read_csv(data_dir / "bill_of_materials.csv"))
 model.define(BillOfMaterials.new(id=bom_data["ID"]))
 where(BillOfMaterials.id == bom_data["ID"]).define(
     BillOfMaterials.output_sku(SKU.lookup(id=bom_data["OUTPUT_SKU_ID"])),
@@ -176,7 +175,7 @@ if len(bottlenecks) > 0:
 
 # --------------------------------------------------
 # Assembly path enumeration
-#   PREVIEW capability; requires relationalai>=1.13.
+#   PREVIEW capability; requires relationalai>=1.15.
 # --------------------------------------------------
 # Where betweenness scores a single *node*, this enumerates the full *chains*
 # that build each finished good: every bottom-up assembly path from a raw
