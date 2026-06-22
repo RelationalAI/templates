@@ -129,12 +129,12 @@ Turbines are most constrained — only **3** qualified technicians (T001, T009, 
 **Prompt**
 
 ```
-/rai-graph-analysis In a machine-product capability graph, which machines are the biggest producibility bottlenecks — the machines that the most production routes flow through, so they bridge the most product lines?
+/rai-graph-analysis In a bipartite machine-product capability graph (machines and products as nodes), which machines are the biggest producibility bottlenecks — the machines that the most production routes flow through, so they bridge the most product lines?
 ```
 
 **Response**
 
-Bipartite graph: 58 nodes (50 machines + 8 products), 120 edges. Top betweenness centrality is shared by the **Pumps (M021, M030) and Motors (M041, M043–M046, M049)** at 46.7 — each makes 3 products, so they bridge the most product lines and are hardest to route around if lost. This independently corroborates the eval's Q8 finding that Pumps and Motors are the producibility bottlenecks.
+The bipartite graph has 58 nodes (50 machines + 8 products) and 120 edges. Betweenness centrality is highest for the **20 machines that each make three products — every Pump (M021–M030) and Motor (M041–M050)** — which tie at the top (46.7) because the most production routes flow through them; the two-product machines sit on no shortest paths. (A machine-machine co-occurrence projection over shared products surfaces the same 20.) This corroborates the eval's Q8 finding that Pumps and Motors are the producibility bottlenecks.
 
 ### 9. Predict failures  _(eval Q6, Q13)_
 
