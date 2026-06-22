@@ -9,7 +9,7 @@ description = "RelationalAI template: map downstream software / data-pipeline de
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-  "relationalai==1.13.0",
+  "relationalai==1.15.0",
   "pandas>=2.0.0",
 ]
 
