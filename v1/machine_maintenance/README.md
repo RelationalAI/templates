@@ -1,10 +1,11 @@
 ---
 title: "Machine Maintenance"
-description: "A multi-reasoner template that chains querying, graph analysis, rules-based classification, and prescriptive optimization to schedule preventive maintenance, surface hidden operational risk, and recommend cross-training to eliminate concentration vulnerabilities."
+description: "A multi-reasoner template that chains querying, graph analysis, rules-based classification, and prescriptive optimization to diagnose plant performance, surface producibility bottlenecks, classify machine risk, and schedule preventive maintenance under technician-coverage constraints."
 featured: false
 experience_level: intermediate
 industry: "Manufacturing"
 reasoning_types:
+  - Querying
   - Graph
   - Rules-based
   - Prescriptive
@@ -14,89 +15,44 @@ tags:
   - Scheduling
   - Maintenance
   - Manufacturing
-  - Assignment
   - OEE
-  - Sensor Anomalies
   - Risk Classification
+  - Bottleneck Analysis
 ---
 
 # Machine Maintenance
 
 ## What this template is for
 
-Manufacturing facilities must schedule preventive maintenance for machines with ML-predicted failure probabilities. The challenge is that surface-level metrics (like OEE) can mask structural vulnerabilities -- a plant that looks mid-tier on performance may actually carry the highest concentration risk, discoverable only by chaining multiple analytical layers.
+This template models a **50-machine, 3-plant, 12-period** manufacturing operation and threads four RelationalAI reasoners through a single ontology, with each stage's enrichments feeding the next:
 
-This template uses RelationalAI's **querying**, **graph analysis**, **rules-based classification**, and **prescriptive reasoning (optimization)** capabilities in a five-stage multi-reasoner workflow:
+1. **Querying** — diagnose plant performance: OEE (availability × performance × quality), downtime drivers, forward failure risk, waste rates, and technician coverage.
+2. **Graph** — build a machine-product bipartite graph and rank machines by betweenness centrality to find producibility bottlenecks.
+3. **Rules** — classify each machine into a risk tier (Critical / Elevated / Standard) from chronic-downtime, high-risk, and maintenance-overdue flags.
+4. **Prescriptive** — schedule preventive maintenance across machines and periods under a per-period bay limit and technician-coverage feasibility (Turbine work needs an on-site qualified technician), then stress-test the schedule against the loss of a key technician.
 
-1. **Querying** computes OEE by facility, surfaces sensor anomalies, and identifies machines with the steepest failure degradation trajectories. Plant_B looks worst at 61.4% OEE -- but Plant_A, at 68.2%, has 7 of 9 sensor anomalies and the 3 steepest degradation curves.
-2. **Graph analysis** builds a machine dependency graph from shared-technician qualifications. All 30 machines form a single connected cluster, and Pump-type machines score highest on betweenness centrality (24.0) as the most constrained scheduling bottlenecks.
-3. **Rules** derive seven compliance flags and chain three of them (chronic downtime, high-risk, overdue) into a composite risk tier. M013 (Pump, Plant_A) is the only Critical-tier machine -- it triggers all three flags.
-4. **Prescriptive optimization** schedules 20 maintenance jobs across 4 periods at $605K total cost, assigning qualified technicians. The optimizer consumes per-period failure predictions from Stage 0, betweenness centrality from Stage 1, and overdue-maintenance flags from Stage 2.
-5. **Resilience analysis** reveals that all 3 Turbine-qualified technicians are in Houston_TX, forcing 67% of scheduled Turbine jobs to require travel. Cross-training T006 (Senior, Chicago_IL) for $3,200 over 5 weeks eliminates this geographic concentration risk.
-
-Each stage enriches the shared ontology, and downstream stages consume those enrichments -- this is the **accretive ontology enrichment** pattern. No Python dicts carry state between stages; the ontology is the single source of truth:
-
-- **Stage 0 writes** `Machine.performance_ratio`, `Machine.quality_ratio`, `Machine.anomaly_count`, `MachinePeriod.predicted_fp` -- consumed by Stage 2's rules AND Stage 3's objective. Both downstream reasoners see the same derived signals.
-- **Stage 1 writes** `Machine.betweenness` (normalized centrality) -- consumed by Stage 3's failure cost term. Bottleneck machines are more expensive to leave vulnerable.
-- **Stage 2 writes** `Machine.is_overdue_maintenance`, `Machine.is_high_risk`, `Machine.is_chronic_downtime`, `Machine.risk_tier` -- the overdue flag feeds a hard scheduling constraint in Stage 3 (overdue machines must be maintained by period 2).
-- **Stage 3 writes** `x_maintain`, `x_vulnerable`, `x_assigned` (decision variables) -- parsed in Stage 4 to analyze technician utilization and concentration risk.
-
-### Reasoner overview
-
-| Stage | Reasoner | Reads from ontology | Writes to ontology | Role |
-|-------|----------|---------------------|--------------------|------|
-| 0 | Querying | ProductionRun, SensorReading, FailurePrediction | Machine.performance_ratio, Machine.quality_ratio, Machine.anomaly_count, MachinePeriod.predicted_fp | Plant_C leads at 79.8% OEE; Plant_A mid at 68.2% but has 7 of 9 sensor anomalies and the 3 steepest failure trajectories (M001 +0.230, M013 +0.228, M016 +0.219). |
-| 1 | Graph | Qualification, Machine (as `node_concept`) | Machine.betweenness (normalized centrality) | All 30 machines form 1 connected cluster. Pump-type machines are the top bottlenecks (betweenness=24.0). Centrality scores feed the failure cost multiplier in Stage 3. |
-| 2 | Rules | Machine (all derived properties from Stages 0-1) | Machine.is_overdue_maintenance, Machine.is_high_risk, Machine.is_chronic_downtime, Machine.risk_tier | 6 overdue, 1 high-risk, 3 chronic downtime. Composite tier: M013 is Critical (all 3 flags), M016 is Elevated (2 of 3). Overdue flag becomes a hard constraint in Stage 3. |
-| 3 | Prescriptive | MachinePeriod.predicted_fp, Machine.betweenness, Machine.is_overdue_maintenance | x_maintain, x_vulnerable, x_assigned (decision variables) | 20 jobs across 4 periods at $605K total cost. Per-period failure predictions (not static probability) weight the objective. Overdue machines scheduled by period 2. |
-| 4 | Analysis | Solution variables, Qualification, TrainingOption | (terminal -- prints recommendations) | All 3 Turbine techs in Houston_TX -- 67% of Turbine jobs require travel. Best cross-training: T006 (Chicago_IL, Senior) at $3,200 / 5 weeks. |
-
-## Why this problem matters
-
-OEE dashboards and failure-probability rankings are how most plants prioritize maintenance today. But these metrics evaluate machines in isolation -- they miss structural dependencies between machines, technicians, and locations that create cascading risk. A plant where all Turbine-qualified technicians happen to work from the same office looks fine on every individual metric. The concentration risk is invisible until someone leaves, a certification expires, or a weather event disrupts the location -- at which point multiple machines lose coverage simultaneously.
-
-The multi-reasoner approach is necessary because no single analytical technique surfaces this risk. Querying reveals sensor anomalies that OEE masks. Graph analysis exposes which machines share technician pools. Rules chain individual flags into composite risk tiers. Optimization produces a schedule, and resilience analysis stress-tests that schedule against the qualification structure. Each layer reveals something the previous one missed.
-
-### Key design patterns demonstrated
-
-- **Accretive ontology enrichment** -- each stage writes derived properties (betweenness, risk_tier, predicted_fp) that downstream stages consume, building a progressively richer model
-- **Rules chaining** -- three boolean flags (is_chronic_downtime, is_high_risk, is_overdue_maintenance) are composed into a single risk_tier property using exhaustive enumeration with `model.not_()`
-- **Graph directly on domain concept** -- the Graph reasoner uses `Machine` directly as `node_concept`, so centrality scores are stored as Machine properties without a mirror concept
-- **Per-period failure predictions** -- the optimization objective uses `MachinePeriod.predicted_fp` (period-specific) rather than static `Machine.failure_probability`, giving the solver time-varying cost information
-- **Post-solve resilience analysis** -- Stage 4 inspects the solution and qualification structure to identify concentration risk, producing actionable cross-training recommendations without re-solving
+The point is the chain: OEE alone misranks the plants, downtime totals don't say what will fail next, rules flag risky machines but don't allocate scarce technician time, and the optimizer produces a feasible schedule but can't see that on-site Turbine coverage funnels through a single technician per plant.
 
 ## Who this is for
 
-- Manufacturing and plant managers scheduling preventive maintenance
-- Operations researchers exploring multi-reasoner pipelines in RelationalAI
-- Developers learning how to chain querying, graph, rules, and optimization in a single model
+- Data scientists and analysts learning to chain multiple RelationalAI reasoners over one ontology
+- Manufacturing and reliability teams building preventive-maintenance and risk-classification workflows
+- Anyone wanting a worked multi-reasoner example on a realistic operational dataset
 
 ## What you'll build
 
-- Machine-level production aggregates, OEE components, and anomaly counts as derived properties
-- A machine dependency graph with cluster detection and centrality scoring
-- Seven compliance rules as derived Relationships and Properties, including a composite risk tier that chains three boolean flags
-- Binary decision variables for maintenance timing, vulnerability tracking, and technician assignment
-- Cumulative coverage, capacity, and overdue-deadline constraints
-- A cost minimization objective that incorporates per-period failure predictions and graph centrality
-- Geographic concentration risk analysis with cross-training recommendations
+- An ontology over machines, technicians, qualifications, products, production runs, downtime events, failure predictions, and machine-product capabilities
+- Querying-stage metrics: OEE by plant, downtime by fault and plant, failure ranking, waste rates, technician coverage
+- A betweenness-centrality bottleneck ranking over the machine-product graph
+- A per-machine `risk_tier` derived from business rules
+- A preventive-maintenance schedule plus a technician-availability what-if
 
 ## What's included
 
-- `machine_maintenance.py` -- Main script with five chained reasoning stages
-- `data/machines.csv` -- 30 machines with failure probability, criticality (1-5), duration, and parts cost
-- `data/technicians.csv` -- 10 technicians with skill levels, certifications, hourly rates, and locations
-- `data/availability.csv` -- Technician availability across the 4-period planning horizon
-- `data/qualifications.csv` -- Mapping of which technicians can service which machine types
-- `data/parts_inventory.csv` -- Spare parts stock levels at each facility
-- `data/certification_expiry.csv` -- Days remaining on technician certifications per machine type
-- `data/sensors.csv` -- 60 sensors (2 per machine) with warning and critical thresholds
-- `data/sensor_readings.csv` -- 240 periodic sensor measurements with anomaly flags
-- `data/failure_predictions.csv` -- 120 per-period failure probability trajectories with predicted failure modes
-- `data/downtime_events.csv` -- 129 downtime events with fault categories and durations
-- `data/production_runs.csv` -- 120 production runs with planned, actual, and good quantities
-- `data/training_options.csv` -- 13 cross-training options with costs and durations
-- `pyproject.toml` -- Python project configuration with dependencies
+- `machine_maintenance.py` — the four-stage multi-reasoner script
+- `runbook.md` — a prompt-by-prompt walkthrough mapped to 13 reasoner questions, with the real figures each stage produces
+- `data/` — the bundled `MANUFACTURING.PUBLIC` sample (15 CSVs)
+- `pyproject.toml` — package configuration and dependencies
 
 ## Prerequisites
 
@@ -106,483 +62,128 @@ The multi-reasoner approach is necessary because no single analytical technique 
 
 ### Tools
 - Python >= 3.10
-- RelationalAI Python SDK (`relationalai`) >= 1.0.14
 
 ## Quickstart
 
-1. Download the ZIP file for this template and extract it:
-
+1. Download ZIP:
    ```bash
    curl -O https://docs.relational.ai/templates/zips/v1/machine_maintenance.zip
    unzip machine_maintenance.zip
    cd machine_maintenance
    ```
-
    > [!TIP]
    > You can also download the template ZIP using the "Download ZIP" button at the top of this page.
 
-2. Create a virtual environment and activate it:
-
+2. Create venv:
    ```bash
    python -m venv .venv
    source .venv/bin/activate
    python -m pip install --upgrade pip
    ```
 
-3. Install dependencies:
-
+3. Install:
    ```bash
    python -m pip install .
    ```
 
-4. Configure your RAI connection:
-
+4. Configure:
    ```bash
    rai init
    ```
 
-5. Run the template:
-
+5. Run:
    ```bash
    python machine_maintenance.py
    ```
 
-6. Expected output:
-   ```text
-   ======================================================================
-   STAGE 0: Querying -- Operational Intelligence
-   ======================================================================
-
-   OEE proxy by facility (Performance x Quality):
-     Plant_C: Perf=81.3%, Qual=98.1%, OEE=79.8%
-     Plant_A: Perf=69.8%, Qual=97.8%, OEE=68.2%
-     Plant_B: Perf=62.6%, Qual=98.1%, OEE=61.4%
-
-   Sensor anomalies (9 readings across 5 machines):
-     M013 (Pump, Plant_A): 3 anomalies
-     M001 (Turbine, Plant_A): 2 anomalies
-     M016 (Turbine, Plant_A): 2 anomalies
-     M002 (Compressor, Plant_B): 1 anomalies
-     M006 (Turbine, Plant_C): 1 anomalies
-     By facility: {'Plant_A': 7, 'Plant_B': 1, 'Plant_C': 1}
-
-   Steepest failure trajectories (period 1 -> 4):
-     M001 (Turbine, Plant_A): 0.102 -> 0.332 (+0.230) [bearing_wear]
-     M013 (Pump, Plant_A): 0.435 -> 0.663 (+0.228) [impeller_erosion]
-     M016 (Turbine, Plant_A): 0.263 -> 0.482 (+0.219) [bearing_wear]
-     ...
-
-   ======================================================================
-   STAGE 1: Graph Analysis -- Dependency Clusters & Centrality
-   ======================================================================
-
-   Dependency clusters found: 1
-
-   Top bottleneck machines (betweenness centrality):
-     M003 (Pump, Plant_C): betweenness=24.0000, failure_prob=0.089
-     M008 (Pump, Plant_B): betweenness=24.0000, failure_prob=0.076
-     M013 (Pump, Plant_A): betweenness=24.0000, failure_prob=0.435
-     ...
-
-   ======================================================================
-   STAGE 2: Rules -- Compliance Flags & Composite Risk Tier
-   ======================================================================
-
-   Overdue maintenance (6 machines):
-     M002 (Compressor_Beta_1): RUL=3.7h < duration=6h
-     M006 (Turbine_Alpha_2): RUL=3.4h < duration=8h
-     M013 (Pump_Gamma_3): RUL=2.3h < duration=4h
-     ...
-
-   High-risk machines (1):
-     M013 (Pump_Gamma_3): prob=0.435, crit=4
-
-   Anomalous machines (5):
-     M013 (Pump_Gamma_3, Plant_A): 3 anomalies
-     M001 (Turbine_Alpha_1, Plant_A): 2 anomalies
-     M016 (Turbine_Alpha_4, Plant_A): 2 anomalies
-     ...
-
-   Chronic downtime machines (>8 events, 3 machines):
-     M001 (Turbine_Alpha_1, Plant_A): 12 events, 1635 min total downtime
-     M016 (Turbine_Alpha_4, Plant_A): 11 events, 1314 min total downtime
-     M013 (Pump_Gamma_3, Plant_A): 10 events, 1272 min total downtime
-
-   Composite risk tier:
-     Critical (1): M013
-     Elevated (1): M016
-     Standard (28): M001, M002, ...
-
-   Parts needing reorder (4):
-     P001 (Spindle Bearings, Plant_A): stock=25 <= min_order=50
-     ...
-
-   Expiring certifications (5):
-     T001 (Alice_Johnson): Compressor -- 22 days remaining
-     T004 (Diana_Chen): Pump -- 8 days remaining
-     ...
-
-   ======================================================================
-   STAGE 3: Prescriptive -- Maintenance Scheduling
-   ======================================================================
-
-   Status: OPTIMAL
-   Objective value: 605240.61
-
-   Maintenance schedule (20 jobs):
-     Period 1:
-       M002 (Compressor, Plant_B, crit=5)
-       M006 (Turbine, Plant_C, crit=5)
-       M013 (Pump, Plant_A, crit=4)
-       M016 (Turbine, Plant_A, crit=3)
-       ...
-     Period 2: ...
-     Period 3: ...
-     Period 4: ...
-
-   Technician assignments (20):
-     Period 1:
-       M002: T003 (6h x $65/h = $390) [TRAVEL]
-       M013: T006 (4h x $88/h = $352) [TRAVEL]
-       ...
-
-   ======================================================================
-   STAGE 4: Resilience -- Concentration Risk Analysis
-   ======================================================================
-
-   Technician utilization in optimal schedule:
-     T003 (Charlie_Brown, Junior, Houston_TX): 5 assignments (25%)
-     T004 (Diana_Chen, Junior, Chicago_IL): 5 assignments (25%)
-     ...
-
-   Qualification coverage by machine type:
-     Compressor: 3 techs in Chicago_IL, Houston_TX -- OK
-     Generator: 3 techs in Chicago_IL, Phoenix_AZ -- OK
-     Motor: 4 techs in Chicago_IL, Phoenix_AZ -- OK
-     Pump: 3 techs in Chicago_IL, Phoenix_AZ -- OK
-     Turbine: 3 techs in Houston_TX -- CONCENTRATED -- all 3 techs in Houston_TX
-
-   Concentration risk detail:
-
-     Turbine: all 3 qualified techs in Houston_TX
-       Scheduled Turbine jobs: 3, of which 2 require travel (67%)
-
-   ======================================================================
-   RECOMMENDATION: Cross-Training to Eliminate Concentration Risk
-   ======================================================================
-
-     Turbine -- add coverage outside Houston_TX:
-       Best candidate: T006 (Fiona_Garcia): $3,200, 5 weeks
-   ```
+   Each stage prints its findings — OEE by plant, downtime drivers, the bottleneck ranking, risk tiers, and the maintenance schedule with its what-if.
 
 ## Template structure
 
 ```text
 .
 ├── README.md
+├── runbook.md
 ├── pyproject.toml
 ├── machine_maintenance.py
 └── data/
     ├── machines.csv
     ├── technicians.csv
-    ├── availability.csv
     ├── qualifications.csv
-    ├── parts_inventory.csv
-    ├── certification_expiry.csv
+    ├── products.csv
+    ├── production_runs.csv
+    ├── machine_product_capabilities.csv
+    ├── downtime_events.csv
+    ├── fault_types.csv
+    ├── failure_predictions.csv
     ├── sensors.csv
     ├── sensor_readings.csv
-    ├── failure_predictions.csv
-    ├── downtime_events.csv
-    ├── production_runs.csv
-    └── training_options.csv
+    ├── travel.csv
+    ├── training_options.csv
+    ├── availability.csv
+    └── degradation.csv
 ```
+
+## Sample data
+
+The bundled CSVs are the real `MANUFACTURING.PUBLIC` sample dataset:
+
+| File | Rows | Description |
+|---|---|---|
+| `machines.csv` | 50 | Machines across 3 plants × 5 types (Turbine, Generator, Pump, Compressor, Motor) |
+| `technicians.csv` | 20 | Technicians with skill level, base location, and rate |
+| `qualifications.csv` | 32 | Which technicians are qualified for which machine type |
+| `products.csv` | 8 | Products manufactured |
+| `production_runs.csv` | 844 | Per-run planned/actual/good/waste quantities and speeds |
+| `machine_product_capabilities.csv` | 120 | Which machines can produce which products |
+| `downtime_events.csv` | 353 | Downtime events with fault name, duration, and planned flag |
+| `fault_types.csv` | 15 | Fault catalog (name, category, MTTR/MTBF) |
+| `failure_predictions.csv` | 600 | Per-machine, per-period failure probability and predicted mode |
+| `sensors.csv` / `sensor_readings.csv` | 200 / 2,400 | Sensor catalog and readings with anomaly flags |
+| `travel.csv` | 9 | Inter-location travel hours and cost |
+| `training_options.csv` | 41 | Cross-training cost and duration per technician/type |
+| `availability.csv` | 240 | Per-technician, per-period availability |
+| `degradation.csv` | 5 | Per-type degradation rate and maintenance reset factor |
+
+## Model overview
+
+Core concepts: `Machine`, `Technician`, `Qualification`, `Product`, `ProductionRun`, `DowntimeEvent`, `FailurePrediction`, `MachineProductCapability`, and a generated `Period` (1..12). The prescriptive stage adds a `MachinePeriod` decision space (machine × period).
 
 ## How it works
 
-This section walks through the highlights in `machine_maintenance.py`.
+### 1. Querying
+Per-plant OEE is built from production runs (performance = avg of actual/target speed; quality = good/actual quantity) and downtime events (availability from unplanned downtime against an 480-minute-per-run planned base). Additional queries rank downtime by fault and plant, surface the highest forward failure risk, compute waste rates by machine-product, and count qualified technicians per machine type.
 
-### Define concepts and load CSV data
+### 2. Graph
+A bipartite machine-product graph is built from `machine_product_capabilities` (edge = machine can produce product). `betweenness_centrality()` ranks machines by how much production-routing flows through them — the producibility bottlenecks.
 
-The model defines concepts for machines (with ML-predicted failure probability and numeric criticality), technicians (with skills and hourly rates), qualifications linking technicians to machine types, parts inventory, certification expiry, sensors, sensor readings, failure predictions, downtime events, and production runs. All data is loaded from CSV files:
+### 3. Rules
+Three boolean flags — chronic downtime (> 15 events), high-risk (failure probability > 0.20 **and** criticality ≥ 4), and maintenance-overdue (remaining useful life ≤ 9) — combine into `Machine.risk_tier`: all three → Critical, exactly two → Elevated, otherwise Standard.
 
-```python
-Machine = model.Concept("Machine", identify_by={"machine_id": String})
-Machine.failure_probability = model.Property(
-    f"{Machine} has failure probability {Float:failure_probability}")
-Machine.criticality = model.Property(f"{Machine} has criticality {Integer:criticality}")
-
-Technician = model.Concept("Technician", identify_by={"technician_id": String})
-Qualification = model.Concept(
-    "Qualification", identify_by={"technician_id": String, "machine_type": String})
-
-Sensor = model.Concept("Sensor", identify_by={"sensor_id": String})
-SensorReading = model.Concept(
-    "SensorReading",
-    identify_by={"sensor_id": String, "machine_id": String, "pid": Integer})
-FailurePrediction = model.Concept(
-    "FailurePrediction", identify_by={"prediction_id": String})
-DowntimeEvent = model.Concept("DowntimeEvent", identify_by={"event_id": String})
-ProductionRun = model.Concept("ProductionRun", identify_by={"run_id": String})
-```
-
-Machine-level derived aggregates are computed from the loaded data using `aggs.sum` and `aggs.count`, providing production ratios, downtime counts, and anomaly counts as derived properties:
-
-```python
-Machine.total_planned_qty = model.Property(
-    f"{Machine} has total planned qty {Float:total_planned_qty}")
-model.define(Machine.total_planned_qty(
-    aggs.sum(ProductionRun.planned_quantity).per(Machine)
-    .where(ProductionRun.machine(Machine)) | 0
-))
-
-model.where(Machine.total_planned_qty > 0).define(
-    Machine.performance_ratio(
-        floats.float(Machine.total_actual_qty)
-        / floats.float(Machine.total_planned_qty)
-    )
-)
-```
-
-Cross-product concepts define the scheduling decision space. `MachinePeriod` pairs each machine with each planning period and stores per-period failure predictions. `TechnicianMachinePeriod` is restricted to qualified pairs -- technicians can only be assigned to machine types they are certified for:
-
-```python
-MachinePeriod.predicted_fp = model.Property(
-    f"{MachinePeriod} has predicted failure probability {Float:predicted_fp}")
-FPJoin = FailurePrediction.ref()
-model.where(
-    MachinePeriod.machine_id == FPJoin.machine_id_str,
-    MachinePeriod.pid == FPJoin.period_int,
-).define(MachinePeriod.predicted_fp(FPJoin.failure_probability))
-```
-
-### Stage 0: Querying -- operational intelligence
-
-The querying stage computes OEE proxy (Performance x Quality) by facility, surfaces machines with above-threshold sensor readings, and identifies the steepest failure degradation trajectories. All queries use `model.select` with derived properties:
-
-```python
-oee_df = (
-    model.select(
-        Machine.machine_id.alias("machine_id"),
-        Machine.facility.alias("facility"),
-        Machine.performance_ratio.alias("performance"),
-        Machine.quality_ratio.alias("quality"),
-    )
-    .to_df()
-)
-```
-
-### Stage 1: Graph -- dependency clusters and centrality
-
-The Graph reasoner uses `Machine` directly as `node_concept` -- no mirror concept needed. Edges connect machines when at least one technician is qualified for both machine types:
-
-```python
-dep_graph = Graph(
-    model, directed=False, weighted=False, node_concept=Machine, aggregator="sum"
-)
-```
-
-Weakly connected components identify dependency clusters (groups of machines that compete for the same technicians). Betweenness centrality scores bottleneck machines -- those whose maintenance blocks the most scheduling options. The scores are normalized and stored directly on `Machine`:
-
-```python
-Machine.betweenness_raw = model.Property(
-    f"{Machine} has raw betweenness centrality {Float:betweenness_raw}")
-m_btwn = Machine.ref("m_btwn")
-model.define(m_btwn.betweenness_raw(btwn_score)).where(betweenness(m_btwn, btwn_score))
-max_betweenness = max(Machine.betweenness_raw)
-Machine.betweenness = model.Property(
-    f"{Machine} has betweenness centrality {Float:betweenness}")
-m_norm = Machine.ref("m_norm")
-model.where(max_betweenness == 0).define(m_norm.betweenness(0.0))
-model.where(max_betweenness > 0).define(
-    m_norm.betweenness(m_norm.betweenness_raw / max_betweenness)
-)
-```
-
-### Stage 2: Rules -- compliance flags and composite risk tier
-
-Seven derived Relationships and Properties flag compliance issues. Each rule is a pure logic derivation using `model.where(...).define(...)`:
-
-```python
-Machine.is_overdue_maintenance = model.Relationship(
-    f"{Machine} is overdue maintenance")
-model.where(
-    Machine.remaining_useful_life < floats.float(Machine.maintenance_duration_hours)
-).define(Machine.is_overdue_maintenance())
-
-Machine.is_chronic_downtime = model.Relationship(f"{Machine} has chronic downtime")
-model.where(
-    Machine.downtime_event_count > CHRONIC_DOWNTIME_THRESHOLD
-).define(Machine.is_chronic_downtime())
-```
-
-Individual flags are chained into a composite risk tier using `model.not_()` for negation. This exhaustively enumerates all eight combinations of three boolean flags:
-
-```python
-Machine.risk_tier = model.Property(f"{Machine} has risk tier {String:risk_tier}")
-
-# Critical: all 3 flags.
-model.where(
-    Machine.is_chronic_downtime(),
-    Machine.is_high_risk(),
-    Machine.is_overdue_maintenance(),
-).define(Machine.risk_tier("Critical"))
-
-# Elevated: exactly 2 of 3 flags.
-model.where(
-    Machine.is_chronic_downtime(),
-    Machine.is_high_risk(),
-    model.not_(Machine.is_overdue_maintenance()),
-).define(Machine.risk_tier("Elevated"))
-```
-
-### Stage 3: Define decision variables, constraints, and objective
-
-Three binary decision variables control the schedule: whether to maintain a machine in a period, whether it remains vulnerable, and whether a technician is assigned. The formulation includes four standard constraints (cumulative coverage, assignment linkage, technician capacity, parts/bay capacity) plus a hard constraint from Stage 2's overdue flag:
-
-```python
-maintained_by_deadline = (
-    sum(MachinePeriod_overdue.x_maintain)
-    .where(
-        MachinePeriod_overdue.machine(Machine_overdue),
-        MachinePeriod_overdue.period(Period_overdue),
-        Period_overdue.pid <= OVERDUE_DEADLINE,
-    )
-    .per(Machine_overdue)
-)
-problem.satisfy(
-    model.require(maintained_by_deadline >= 1).where(
-        Machine_overdue.is_overdue_maintenance()
-    )
-)
-```
-
-The objective minimizes expected total cost with three components. The failure cost term incorporates per-period failure predictions from Stage 0 and betweenness centrality from Stage 1, making it more expensive to leave bottleneck machines vulnerable in periods where their predicted failure probability is highest:
-
-```python
-failure_cost = sum(
-    MachinePeriod_outer.x_vulnerable
-    * MachinePeriod_outer.predicted_fp
-    * Machine_obj.estimated_parts_cost
-    * Machine_obj.criticality
-    * (1 + CENTRALITY_WEIGHT * Machine_obj.betweenness)
-).where(
-    MachinePeriod_outer.machine(Machine_obj), MachinePeriod_outer.period(Period_outer)
-)
-```
-
-### Solve and extract results
-
-The model is solved using the HiGHS solver with a two-minute time limit. Assignment decisions are parsed from the solution to build the maintenance schedule:
-
-```python
-problem.solve("highs", time_limit_sec=120)
-si = problem.solve_info()
-assert si.termination_status == "OPTIMAL"
-```
-
-### Stage 4: Resilience analysis and cross-training
-
-After solving, the script analyzes qualification coverage by machine type and location. For each machine type, it checks whether all qualified technicians are concentrated in a single location -- a geographic single-point-of-failure invisible to the optimizer:
-
-```python
-for mtype in machine_types:
-    qual_techs = qualifications_df[
-        qualifications_df["machine_type"] == mtype
-    ]["technician_id"].tolist()
-    tech_info = technicians_df[technicians_df["technician_id"].isin(qual_techs)]
-    locations = tech_info["base_location"].unique().tolist()
-    if len(locations) == 1:
-        concentrated_types.append((mtype, locations[0], len(qual_techs)))
-```
-
-For concentrated types, the script queries `training_options.csv` to recommend the cheapest candidate at a different location, producing a specific, costed action item (e.g., "Cross-train T006 for Turbine at $3,200 / 5 weeks").
-
-### Stage 5: Inspect the model schema (post-pipeline)
-
-Templates that chain multiple reasoners over a rich ontology benefit from a quick schema dump once the pipeline has run. `relationalai.semantics.inspect` (available in `relationalai>=1.0.14`) returns a typed view of every registered concept, property, and relationship -- handy for confirming that decision variables, derived aggregates, and cross-product concepts all registered correctly across the five-stage pipeline.
-
-Once `Problem(...)` plus `solve_for` / `satisfy` / `minimize` / `maximize` have run in Stage 3, the prescriptive reasoner registers root concepts named `Variable`, `Expression`, `Constraint`, and `Objective` (plus per-solve `Variable_<id>` / `Constraint_<id>` / `Objective_<id>` subconcepts) on the shared model. Graph(model, node_concept=Machine) from Stage 1 also registers an edge concept (e.g. `graph<id>_Edge`). These are noise for user-facing introspection, so filter them out by exact name and reasoner-name prefix -- an underscore check won't catch them since the names don't start with `_`:
-
-```python
-from relationalai.semantics import inspect
-
-schema = inspect.schema(model)
-reasoner_names = {"Variable", "Expression", "Constraint", "Objective"}
-user_concepts = [
-    c for c in schema.concepts
-    if c.name not in reasoner_names
-    and not any(c.name.startswith(p + "_") for p in reasoner_names)
-    and not c.name.startswith("graph")  # Graph reasoner registers e.g. graph<id>_Edge
-]
-print(f"User concepts: {len(user_concepts)}")
-for c in user_concepts:
-    print(f"  {c.name}: {len(c.properties)} properties, {len(c.relationships)} relationships")
-```
-
-Print `inspect.schema(model)` first to see the actual names registered in your model, then extend the filter list if other reasoner-owned concepts appear.
+### 4. Prescriptive
+A binary `MachinePeriod.x_maintain` decides which machine is maintained in which period. Each machine gets at most one slot and only if coverage is feasible (Turbine work requires an on-site qualified technician); each period is capped at 5 jobs. The objective prioritizes high failure-probability × criticality work in earlier periods. A second solve removes a key technician (T001) to show which machines lose coverage.
 
 ## Customize this template
 
-- **Adjust centrality weight** via `CENTRALITY_WEIGHT` to control how strongly graph bottleneck scores influence scheduling priority.
-- **Change the overdue deadline** via `OVERDUE_DEADLINE` to give more or fewer periods for overdue machines.
-- **Extend the planning horizon** by adding more periods to the availability and failure prediction data and increasing `PERIOD_HORIZON`.
-- **Adjust capacity limits** via `PARTS_CAPACITY_PER_PERIOD` to see how tighter constraints shift scheduling priorities.
-- **Tune travel cost** via `TRAVEL_COST_PER_HOUR` to control preference for local vs. cross-facility assignments.
-- **Add rule thresholds** -- adjust `failure_probability > 0.3` or `criticality >= 4` in the high-risk rule to match your risk tolerance.
-- **Change chronic downtime threshold** via `CHRONIC_DOWNTIME_THRESHOLD` to control which machines are flagged.
-- **Add sensor types** -- extend `sensors.csv` with new sensor types and adjust `sensor_readings.csv` with corresponding measurements.
-- **Add training options** -- extend `training_options.csv` to explore different cross-training strategies.
+### Use your own data
+Replace the CSVs in `data/` with your own machines, technicians, production, and downtime records (matching the column headers). Concept definitions bind directly to the CSV columns.
+
+### Tune parameters
+The thresholds at the top of `machine_maintenance.py` — period horizon, per-period bay limit, chronic/high-risk/overdue cutoffs — are constants you can adjust to your operation.
+
+### Extend the model
+Add reasoners or stages: cluster machines by shared technicians, train a GNN on the sensor/downtime history for failure prediction, or add cross-training recommendations from `training_options` to relieve the coverage bottlenecks the what-if surfaces.
 
 ## Troubleshooting
 
 <details>
-<summary><code>Status: INFEASIBLE</code></summary>
-
-- The overdue-maintenance constraint requires certain machines to be scheduled in early periods. If technician capacity is too tight, this can cause infeasibility.
-- Try increasing `OVERDUE_DEADLINE` from 2 to 3, or increase `PARTS_CAPACITY_PER_PERIOD`.
-- Check that technician hours capacity across all periods can accommodate all machines.
-</details>
-
-<details>
-<summary>All machines maintained in period 1</summary>
-
-- The solver minimizes total cost. If capacity allows, it may schedule all maintenance early to avoid vulnerability costs.
-- Tighten `PARTS_CAPACITY_PER_PERIOD` to spread maintenance across periods.
-</details>
-
-<details>
-<summary>Graph shows 0 edges</summary>
-
-- This means no two machines share a qualified technician. Check that `qualifications.csv` has overlapping machine types across technicians.
-- The graph edge construction uses type-based joins: two machines connect if any technician is qualified for both their `machine_type` values.
-</details>
-
-<details>
-<summary><code>input definition is too large</code></summary>
-
-- This occurs with large cross-products. The qualification-filtered assignment space avoids this issue for the default 30-machine dataset.
-- If you scale up significantly, consider reducing data size or querying solver
-  results via `Variable.values(...)` instead of broad `model.select(...)`
-  patterns.
-</details>
-
-<details>
 <summary><code>ModuleNotFoundError</code></summary>
 
-- Make sure you activated the virtual environment and ran `python -m pip install .` from the template directory.
-- The `pyproject.toml` declares the required dependencies.
+Make sure you activated the virtual environment and ran `python -m pip install .` to install dependencies listed in `pyproject.toml`.
 </details>
 
 <details>
 <summary>Connection or authentication errors</summary>
 
-- Run `rai init` to configure your Snowflake connection.
-- Verify that the RAI Native App is installed and your user has the required permissions.
-</details>
-
-<details>
-<summary>No concentration risk detected in Stage 4</summary>
-
-- This means all machine types have qualified technicians in multiple locations. The resilience analysis examines geographic diversity of the qualification pool, not individual assignment redundancy.
-- Try modifying `qualifications.csv` to concentrate a machine type's technicians in one location to see how the analysis surfaces this risk.
+Run `rai init` to configure your Snowflake connection. Verify that the RAI Native App is installed and your user has the required permissions.
 </details>

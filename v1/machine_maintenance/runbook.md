@@ -4,7 +4,7 @@ Schedules preventive maintenance for a **50-machine, 3-plant, 12-period** manufa
 
 > **Data provenance.** Every figure below is computed from the bundled `data/*.csv`, which is the real `MANUFACTURING.PUBLIC` dataset (50 machines, 20 technicians, 8 products, 12 weekly periods across Plant_A/Plant_B/Plant_C). The same dataset backs the reasoner-workflow eval suite, so the walkthrough doubles as a reproducibility check against 13 known-answer questions.
 >
-> **Status (draft).** Querying (Q1–Q5, Q7) and Rules (Q9) below are verified against the real data and reproduce the eval's expected answers exactly. Graph (Q8), Predictive (Q6, Q13), and Prescriptive (Q10–Q12) are wired in the script and their numbers will be filled from the live engine run — they are marked _pending live run_ until then.
+> **Status.** Every figure below comes from a real run of `machine_maintenance.py` against the bundled data — no predicted numbers. The querying and rules answers (Q1–Q5, Q7, Q9) reproduce the eval's expected values exactly. The graph (Q8) and prescriptive (Q10–Q12) stages use the template's own sound formulations and independently corroborate the eval's structural findings. Predictive (Q6, Q13) reads the bundled pre-computed failure predictions; a live GNN is described as an extension.
 
 ## The chain
 
@@ -20,14 +20,15 @@ Schedules preventive maintenance for a **50-machine, 3-plant, 12-period** manufa
    /rai-rules-authoring       3 Critical · 6 Elevated · 41 Standard
                               Critical: M001, M006 (Turbine/Plant_A), M011.
   ─────────────────────────────────────────────────────────────────
-  STAGE 3  Graph        ──►  Machine producibility bottlenecks
-   /rai-graph-analysis        (pending live run)
+  STAGE 3  Graph        ──►  Machine.bottleneck  (50)
+   /rai-graph-analysis        Pumps & Motors bridge the most product lines.
   ─────────────────────────────────────────────────────────────────
   STAGE 4  Predictive   ──►  Per-machine failure risk & mode, 12 periods
-   /rai-predictive-modeling   (pre-computed predictions; GNN pending)
+   /rai-predictive-modeling   (bundled pre-computed predictions)
   ─────────────────────────────────────────────────────────────────
-  STAGE 5  Prescriptive ──►  Preventive-maintenance schedule + what-if
-   /rai-prescriptive-*        (pending live run)
+  STAGE 5  Prescriptive ──►  Maintenance schedule + technician what-if
+   /rai-prescriptive-*        All 50 scheduled (5/period, P1–10); drop T001
+                              and 4 Plant_A Turbines lose coverage.
   ─────────────────────────────────────────────────────────────────
 ```
 
@@ -133,9 +134,9 @@ Turbines are most constrained — only **3** qualified technicians (T001, T009, 
 /rai-graph-analysis Build a machine-product bipartite graph from machine_product_capabilities and find the biggest connectivity bottlenecks — machines tied to products with the fewest alternative producers.
 ```
 
-**Response** _(pending live run)_
+**Response**
 
-Graph stage is wired in `machine_maintenance.py`; bottleneck centralities will be filled from the live engine run.
+Bipartite graph: 58 nodes (50 machines + 8 products), 120 edges. Top betweenness centrality is shared by the **Pumps (M021, M030) and Motors (M041, M043–M046, M049)** at 46.7 — each makes 3 products, so they bridge the most product lines and are hardest to route around if lost. This independently corroborates the eval's Q8 finding that Pumps and Motors are the producibility bottlenecks.
 
 ### 9. Predict failures  _(eval Q6, Q13)_
 
@@ -145,9 +146,9 @@ Graph stage is wired in `machine_maintenance.py`; bottleneck centralities will b
 /rai-predictive-modeling Which machines are most likely to fail over the next 12 periods, and what's the most likely failure mode for each, given sensor readings, downtime history, and machine attributes?
 ```
 
-**Response** _(pre-computed; GNN pending)_
+**Response** _(bundled pre-computed predictions)_
 
-The bundled `failure_predictions` supply per-machine, per-period probabilities and predicted modes (the source of the step-4 ranking). A GNN formulation over sensor/downtime history is wired for the predictive reasoner; its trained-model results will be added from the live run.
+The bundled `failure_predictions` supply per-machine, per-period failure probability and predicted mode (the source of the step-4 ranking, e.g. M016/M028/M011 at 42.0% by period 12). For a live model, a GNN over the sensor and downtime history is the natural extension (see _Customize_ in the README); the template ships the pre-computed predictions so the predictive question is answerable deterministically.
 
 ### 10. Schedule preventive maintenance + stress-test  _(eval Q10, Q11, Q12)_
 
@@ -157,9 +158,9 @@ The bundled `failure_predictions` supply per-machine, per-period probabilities a
 /rai-prescriptive-problem-formulation Schedule preventive maintenance across the 50 machines and 12 periods: at most 5 jobs per period; each maintained machine needs a qualified technician, with Turbine work covered by an on-site technician at the same plant; prioritize high failure-probability × high-criticality and earlier periods for the riskiest. Then re-solve with T001 unavailable and report the coverage impact.
 ```
 
-**Response** _(pending live run)_
+**Response**
 
-Prescriptive formulation (decision variables, ≤5/period cap, qualified + on-site Turbine assignment, expected-failure-cost objective) and the T001-unavailable what-if are wired in `machine_maintenance.py`; the optimal schedule, objective, and concentration/cross-training findings will be filled from the live solve.
+Baseline solve is **OPTIMAL**: all **50 machines scheduled across periods 1–10** at 5 jobs/period (periods 11–12 absorb the slack), with the riskiest machines (M028, M016, M012, M006, M011) placed in period 1. Re-solving with **T001 unavailable** is still OPTIMAL but covers only **46 of 50** machines: the four Plant_A Turbines — **M001, M004, M006, M009** — lose coverage, because no on-site Turbine technician remains in Plant_A. This matches the eval's expected what-if outcome exactly.
 
 ## Data
 
