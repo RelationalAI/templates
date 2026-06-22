@@ -41,9 +41,9 @@ OVERDUE_RUL = 9                      # remaining-useful-life at/below which main
 
 model = Model("machine_maintenance")
 
-# --------------------------------------------------
-# Concepts & data loading
-# --------------------------------------------------
+# ==================================================================
+# Stage 0: Ontology -- load the MANUFACTURING.PUBLIC sample
+# ==================================================================
 
 # Machine ---------------------------------------------------------------------
 Machine = model.Concept("Machine", identify_by={"machine_id": String})
@@ -194,7 +194,7 @@ def banner(text):
 
 
 # ==================================================================
-# STAGE 1: Querying -- diagnose plant operations
+# Stage 1: Querying -- diagnose plant operations
 # ==================================================================
 
 banner("STAGE 1  Querying")
@@ -305,7 +305,7 @@ for _, row in tech_cov.iterrows():
 
 
 # ==================================================================
-# STAGE 2: Rules -- classify machine risk
+# Stage 2: Rules -- classify machine risk
 # ==================================================================
 
 banner("STAGE 2  Rules")
@@ -363,7 +363,7 @@ for _, row in critical.iterrows():
     print(f"     {row['machine_id']} ({row['machine_type']}, {row['facility']})")
 
 # ==================================================================
-# STAGE 3: Graph -- producibility bottlenecks
+# Stage 3: Graph -- producibility bottlenecks
 # ==================================================================
 
 banner("STAGE 3  Graph")
@@ -409,7 +409,7 @@ for _, row in bottlenecks.head(8).iterrows():
     )
 
 # ==================================================================
-# STAGE 4: Prescriptive -- preventive-maintenance schedule + what-if
+# Stage 4: Prescriptive -- preventive-maintenance schedule + what-if
 # ==================================================================
 
 banner("STAGE 4  Prescriptive")
@@ -567,5 +567,28 @@ print(f"   machines scheduled: {len(sched2)} of 50 (baseline {len(sched)}); obje
 print(f"   machines that lose coverage: {len(dropped)}")
 for _, row in dropped.iterrows():
     print(f"     {row['machine_id']} ({row['machine_type']}, {row['facility']})")
+
+# Persist the plan headline as ontology so it stays queryable after the run.
+MaintenancePlan = model.Concept("MaintenancePlan", identify_by={"key": Integer})
+MaintenancePlan.objective = model.Property(f"{MaintenancePlan} has objective {Float:objective}")
+MaintenancePlan.machines_scheduled = model.Property(f"{MaintenancePlan} schedules {Integer:machines_scheduled} machines")
+MaintenancePlan.periods_used = model.Property(f"{MaintenancePlan} spans {Integer:periods_used} periods")
+_plan = model.data([{"key": 1, "obj": float(si.objective_value), "n": int(len(sched)), "p": int(sched["pid"].max())}])
+model.define(
+    plan := MaintenancePlan.new(key=_plan["key"]),
+    plan.objective(_plan["obj"]),
+    plan.machines_scheduled(_plan["n"]),
+    plan.periods_used(_plan["p"]),
+)
+plan_df = model.select(
+    MaintenancePlan.machines_scheduled.alias("machines_scheduled"),
+    MaintenancePlan.periods_used.alias("periods_used"),
+    MaintenancePlan.objective.alias("objective"),
+).to_df()
+print(
+    f"\n-- MaintenancePlan (persisted to ontology): "
+    f"{int(plan_df['machines_scheduled'].iloc[0])} machines over "
+    f"{int(plan_df['periods_used'].iloc[0])} periods, objective {plan_df['objective'].iloc[0]:.3f} --"
+)
 
 print("\n>>> ALL STAGES complete")

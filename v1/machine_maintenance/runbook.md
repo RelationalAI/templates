@@ -11,7 +11,8 @@ Schedules preventive maintenance for a **50-machine, 3-plant, 12-period** manufa
 ```
   ─────────────────────────────────────────────────────────────────
   STAGE 1  Querying     ──►  OEE by plant, downtime drivers, failure
-   /rai-querying              ranking, waste rates, tech coverage
+   /rai-querying              ranking (from pre-computed predictions),
+                              waste rates, technician coverage
                               Plant_C 78.3% > Plant_A 68.0% > Plant_B 63.3%
                               Bearing Failure = 19.4% of all downtime.
                               Turbines have only 3 qualified technicians.
@@ -23,10 +24,7 @@ Schedules preventive maintenance for a **50-machine, 3-plant, 12-period** manufa
   STAGE 3  Graph        ──►  Machine.bottleneck  (50)
    /rai-graph-analysis        Pumps & Motors bridge the most product lines.
   ─────────────────────────────────────────────────────────────────
-  STAGE 4  Predictive   ──►  Per-machine failure risk & mode, 12 periods
-   /rai-predictive-modeling   (bundled pre-computed predictions)
-  ─────────────────────────────────────────────────────────────────
-  STAGE 5  Prescriptive ──►  Maintenance schedule + technician what-if
+  STAGE 4  Prescriptive ──►  Maintenance schedule + technician what-if
    /rai-prescriptive-*        All 50 scheduled (5/period, P1–10); drop T001
                               and 4 Plant_A Turbines lose coverage.
   ─────────────────────────────────────────────────────────────────
@@ -131,7 +129,7 @@ Turbines are most constrained — only **3** qualified technicians (T001, T009, 
 **Prompt**
 
 ```
-/rai-graph-analysis Build a machine-product bipartite graph from machine_product_capabilities and find the biggest connectivity bottlenecks — machines tied to products with the fewest alternative producers.
+/rai-graph-analysis In a machine-product capability graph, which machines are the biggest producibility bottlenecks — the machines that the most production routes flow through, so they bridge the most product lines?
 ```
 
 **Response**
@@ -155,7 +153,7 @@ The bundled `failure_predictions` supply per-machine, per-period failure probabi
 **Prompt**
 
 ```
-/rai-prescriptive-problem-formulation Schedule preventive maintenance across the 50 machines and 12 periods: at most 5 jobs per period; each maintained machine needs a qualified technician, with Turbine work covered by an on-site technician at the same plant; prioritize high failure-probability × high-criticality and earlier periods for the riskiest. Then re-solve with T001 unavailable and report the coverage impact.
+/rai-prescriptive-problem-formulation What's the optimal preventive-maintenance schedule across the 50 machines and 12 periods — at most 5 jobs per period, each maintained machine assigned a qualified technician (Turbine work covered by an on-site technician at the same plant), prioritizing high failure-probability and high-criticality machines in earlier periods? And if technician T001 becomes unavailable, which machines lose coverage?
 ```
 
 **Response**

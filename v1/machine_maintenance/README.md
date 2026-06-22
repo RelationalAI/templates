@@ -5,7 +5,6 @@ featured: false
 experience_level: intermediate
 industry: "Manufacturing"
 reasoning_types:
-  - Querying
   - Graph
   - Rules-based
   - Prescriptive
@@ -20,24 +19,19 @@ tags:
   - Bottleneck Analysis
 ---
 
-# Machine Maintenance
-
 ## What this template is for
 
-This template models a **50-machine, 3-plant, 12-period** manufacturing operation and threads four RelationalAI reasoners through a single ontology, with each stage's enrichments feeding the next:
+Manufacturing reliability teams have to decide **which machines to maintain, when, and with which technician** — under a fixed maintenance-bay limit and a thin bench of qualified technicians. Get it wrong and a critical machine fails unplanned, or a plant's only on-site specialist becomes a single point of failure. The hard part is that no single view answers the question: plant OEE shows where output is lost but not what will fail next, failure predictions rank risk but ignore who can do the work, and a feasible schedule can still hide a concentration risk that one resignation would expose.
 
-1. **Querying** — diagnose plant performance: OEE (availability × performance × quality), downtime drivers, forward failure risk, waste rates, and technician coverage.
-2. **Graph** — build a machine-product bipartite graph and rank machines by betweenness centrality to find producibility bottlenecks.
-3. **Rules** — classify each machine into a risk tier (Critical / Elevated / Standard) from chronic-downtime, high-risk, and maintenance-overdue flags.
-4. **Prescriptive** — schedule preventive maintenance across machines and periods under a per-period bay limit and technician-coverage feasibility (Turbine work needs an on-site qualified technician), then stress-test the schedule against the loss of a key technician.
-
-The point is the chain: OEE alone misranks the plants, downtime totals don't say what will fail next, rules flag risky machines but don't allocate scarce technician time, and the optimizer produces a feasible schedule but can't see that on-site Turbine coverage funnels through a single technician per plant.
+This template works the problem end to end on a 50-machine, 3-plant, 12-period operation. **It chains four RelationalAI reasoners over one ontology — querying to diagnose plant performance, rules to classify machine risk, graph analysis to find producibility bottlenecks, and prescriptive optimization to schedule maintenance and stress-test it.** Each stage writes its findings back to the model, so the next stage builds on what the last one learned.
 
 ## Who this is for
 
 - Data scientists and analysts learning to chain multiple RelationalAI reasoners over one ontology
 - Manufacturing and reliability teams building preventive-maintenance and risk-classification workflows
 - Anyone wanting a worked multi-reasoner example on a realistic operational dataset
+
+Readers are assumed comfortable reading Python; domain terms (OEE, betweenness centrality, the maintenance horizon) are explained inline.
 
 ## What you'll build
 
@@ -96,7 +90,14 @@ The point is the chain: OEE alone misranks the plants, downtime totals don't say
    python machine_maintenance.py
    ```
 
-   Each stage prints its findings — OEE by plant, downtime drivers, the bottleneck ranking, risk tiers, and the maintenance schedule with its what-if.
+   Each stage prints its findings. The first lines look like:
+
+   ```text
+   -- Q1: OEE by plant --
+      Plant_C: availability 97.7%  performance 81.7%  quality 98.2%  OEE 78.3%
+   ```
+
+   See `runbook.md` for the full walkthrough and output.
 
 ## Template structure
 
@@ -130,7 +131,7 @@ The bundled CSVs are the real `MANUFACTURING.PUBLIC` sample dataset:
 
 | File | Rows | Description |
 |---|---|---|
-| `machines.csv` | 50 | Machines across 3 plants × 5 types (Turbine, Generator, Pump, Compressor, Motor) |
+| `machines.csv` | 50 | Machines across 3 plants and 5 types (Turbine, Generator, Pump, Compressor, Motor) |
 | `technicians.csv` | 20 | Technicians with skill level, base location, and rate |
 | `qualifications.csv` | 32 | Which technicians are qualified for which machine type |
 | `products.csv` | 8 | Products manufactured |
@@ -147,21 +148,58 @@ The bundled CSVs are the real `MANUFACTURING.PUBLIC` sample dataset:
 
 ## Model overview
 
-Core concepts: `Machine`, `Technician`, `Qualification`, `Product`, `ProductionRun`, `DowntimeEvent`, `FailurePrediction`, `MachineProductCapability`, and a generated `Period` (1..12). The prescriptive stage adds a `MachinePeriod` decision space (machine × period).
+Core concepts: `Machine`, `Technician`, `Qualification`, `Product`, `ProductionRun`, `DowntimeEvent`, `FailurePrediction`, `MachineProductCapability`, and a generated `Period` (1..12). The prescriptive stage adds a `MachinePeriod` decision space (one entry per machine and period).
 
 ## How it works
 
+The script runs four stages in order — querying, rules, graph, prescriptive — each writing its findings back to the shared model.
+
 ### 1. Querying
-Per-plant OEE is built from production runs (performance = avg of actual/target speed; quality = good/actual quantity) and downtime events (availability from unplanned downtime against an 480-minute-per-run planned base). Additional queries rank downtime by fault and plant, surface the highest forward failure risk, compute waste rates by machine-product, and count qualified technicians per machine type.
+Per-plant OEE combines a performance leg (average of actual-versus-target speed) and a quality leg (good versus actual quantity) from production runs with an availability leg from unplanned downtime against a planned base of 480 minutes per run. The legs are aggregated per plant, then multiplied:
 
-### 2. Graph
-A bipartite machine-product graph is built from `machine_product_capabilities` (edge = machine can produce product). `betweenness_centrality()` ranks machines by how much production-routing flows through them — the producibility bottlenecks.
+```python
+oee["availability"] = (oee["n_runs"] * OEE_PLANNED_MIN_PER_RUN - oee["unplanned_dt"]) / (
+    oee["n_runs"] * OEE_PLANNED_MIN_PER_RUN
+)
+oee["oee"] = oee["availability"] * oee["performance"] * oee["quality"]
+```
 
-### 3. Rules
-Three boolean flags — chronic downtime (> 15 events), high-risk (failure probability > 0.20 **and** criticality ≥ 4), and maintenance-overdue (remaining useful life ≤ 9) — combine into `Machine.risk_tier`: all three → Critical, exactly two → Elevated, otherwise Standard.
+Further queries rank downtime by fault and plant, surface the highest forward failure risk, compute waste rates by machine-product, and count qualified technicians per machine type.
+
+### 2. Rules
+Three boolean flags combine into a single `Machine.risk_tier`. Each flag is a derived relationship — for example, chronic downtime fires above the event threshold:
+
+```python
+Machine.is_chronic = model.Relationship(f"{Machine} has chronic downtime")
+model.where(Machine.downtime_event_count > CHRONIC_DOWNTIME_THRESHOLD).define(Machine.is_chronic())
+```
+
+A machine with all three flags is Critical, exactly two is Elevated, otherwise Standard.
+
+### 3. Graph
+A bipartite machine-product graph is built from `machine_product_capabilities`, and betweenness centrality ranks machines by how much production routing flows through them — the producibility bottlenecks:
+
+```python
+prod_graph = Graph(model, directed=False, weighted=False)
+model.where(
+    MachineProductCapability.machine(_GM), MachineProductCapability.product(_GP)
+).define(prod_graph.Edge.new(src=_GM, dst=_GP))
+prod_graph.Node.bottleneck_raw = prod_graph.betweenness_centrality()
+```
 
 ### 4. Prescriptive
-A binary `MachinePeriod.x_maintain` decides which machine is maintained in which period. Each machine gets at most one slot and only if coverage is feasible (Turbine work requires an on-site qualified technician); each period is capped at 5 jobs. The objective prioritizes high failure-probability × criticality work in earlier periods. A second solve removes a key technician (T001) to show which machines lose coverage.
+A binary `MachinePeriod.x_maintain` decides which machine is maintained in which period. Each machine gets at most one slot and only if coverage is feasible (Turbine work requires an on-site qualified technician), and each period is capped at five jobs:
+
+```python
+prob.satisfy(
+    model.require(
+        aggs.sum(MachinePeriod.x_maintain).per(Period).where(MachinePeriod.period(Period)) <= 5
+    ),
+    name=["bay", Period.pid],
+)
+```
+
+The objective prioritizes high failure-probability, high-criticality work in earlier periods. A second solve removes a key technician to show which machines lose coverage. The result is persisted as a `MaintenancePlan` headline so it stays queryable after the run.
 
 ## Customize this template
 
