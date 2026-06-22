@@ -1,0 +1,10 @@
+from_location,to_location,travel_hours,travel_cost
+Chicago_IL,Houston_TX,3.0,650.0
+Chicago_IL,Chicago_IL,0.0,0.0
+Chicago_IL,Phoenix_AZ,3.5,720.0
+Houston_TX,Houston_TX,0.0,0.0
+Houston_TX,Chicago_IL,3.0,650.0
+Houston_TX,Phoenix_AZ,2.5,480.0
+Phoenix_AZ,Houston_TX,2.5,480.0
+Phoenix_AZ,Chicago_IL,3.5,720.0
+Phoenix_AZ,Phoenix_AZ,0.0,0.0

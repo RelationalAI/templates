@@ -1,0 +1,16 @@
+fault_type_id,fault_name,fault_category,avg_mttr_minutes,avg_mtbf_hours
+FT01,Bearing Failure,Mechanical,75,1000
+FT02,Shaft Misalignment,Mechanical,55,4502
+FT03,Gear Wear,Mechanical,60,1051
+FT04,Belt Snap,Mechanical,35,3853
+FT05,Motor Burnout,Electrical,65,3079
+FT06,Wiring Fault,Electrical,45,1997
+FT07,Sensor Failure,Electrical,30,2520
+FT08,Control Board,Electrical,50,2263
+FT09,Overheating,Process,60,1781
+FT10,Pressure Loss,Process,45,478
+FT11,Flow Blockage,Process,40,394
+FT12,Seal Degradation,Material,55,953
+FT13,Corrosion,Material,50,665
+FT14,Impeller Erosion,Material,65,1976
+FT15,Valve Fouling,Material,50,1197
