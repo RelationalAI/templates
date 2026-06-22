@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rai-template-cybersecurity-attack-paths"
+version = "0.0.0"
+description = "RelationalAI template: enumerate multi-step cyber attack chains across an asset graph by composing distinct attacker techniques in series with multi-edge path patterns"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "relationalai==1.15.0",
+  "pandas>=2.0.0",
+]
+
+[tool.setuptools]
+packages = []
