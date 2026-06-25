@@ -57,6 +57,19 @@ EMISSIONS_CAP = 50000  # tons
 AMORTIZATION_YEARS = 20  # upgrade cost spread over 20 years
 CRITICAL_THRESHOLD = 3  # top-N substations by combined centrality rank are "structurally critical"
 
+# Stage 1 GNN model registry (org-specific Snowflake names). The optional
+# pre-trained substation-load GNN lives in these Snowflake database/schema
+# locations; point them at your own account, or leave them and Stage 1 falls
+# back to the bundled demand_forecasts.csv when the model is not found.
+GNN_DATABASE = "ENERGY"
+GNN_SCHEMA = "PUBLIC"
+GNN_EXP_DATABASE = "ENERGY"
+GNN_EXP_SCHEMA = "EXPERIMENTS"
+GNN_MODEL_DATABASE = "ENERGY"
+GNN_MODEL_SCHEMA = "MODEL_REGISTRY"
+GNN_MODEL_NAME = "substation_load_forecaster"
+GNN_VERSION_NAME = "v1.0"
+
 
 # --------------------------------------------------
 # CSV loader with boolean auto-detection
@@ -372,23 +385,23 @@ try:
     s1, s2 = Substation.ref(), Substation.ref()
 
     gnn = GNN(
-        database="ENERGY",
-        schema="PUBLIC",
-        exp_database="ENERGY",
-        exp_schema="EXPERIMENTS",
+        database=GNN_DATABASE,
+        schema=GNN_SCHEMA,
+        exp_database=GNN_EXP_DATABASE,
+        exp_schema=GNN_EXP_SCHEMA,
         graph=gnn_graph,
         pt=PropertyTransformer(
             continuous=[Substation.max_capacity_mw, Substation.current_load_mw],
             drop=[Substation, TransmissionLine],
         ),
-        model_database="ENERGY",
-        model_schema="MODEL_REGISTRY",
-        model_name="substation_load_forecaster",
-        version_name="v1.0",
+        model_database=GNN_MODEL_DATABASE,
+        model_schema=GNN_MODEL_SCHEMA,
+        model_name=GNN_MODEL_NAME,
+        version_name=GNN_VERSION_NAME,
     )
     gnn.load()
     gnn_available = True
-    print("  GNN model loaded from ENERGY.MODEL_REGISTRY")
+    print(f"  GNN model loaded from {GNN_MODEL_DATABASE}.{GNN_MODEL_SCHEMA}")
 except Exception as e:
     print(
         f"  GNN model not available ({type(e).__name__}), falling back to DEMAND_FORECASTS table"

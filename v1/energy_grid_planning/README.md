@@ -23,24 +23,7 @@ tags:
 
 ERCOT's interconnection planning team faces a queue of 10 AI data center requests from hyperscalers (Microsoft, Google, Amazon, Meta, xAI, Oracle, CoreWeave, Lambda Labs, Crusoe Energy, Apple) competing for scarce grid capacity across the Texas grid. They must decide which requests to approve, what substation upgrades to invest in, and how to keep the grid reliable -- all under budget constraints and renewable energy mandates.
 
-This template uses RelationalAI's **predictive reasoning**, **graph analysis**, **rules-based classification**, and **prescriptive reasoning (multi-objective optimization)** in a chained multi-reasoner workflow:
-
-1. **Predictive** forecasts substation load growth from historical demand data, identifying which substations will exceed capacity as data center demand accelerates. Dallas-Fort Worth is the only substation predicted to breach capacity -- at 24 months with 54.6% growth.
-2. **Graph analysis** maps the ERCOT grid topology (12 substations + 18 transmission lines), detects community structure (Louvain) across 3 regions (North Texas, West Texas, Gulf Coast), and ranks substations by betweenness centrality to identify structurally critical bottlenecks. 7 of 10 DC requests target structurally critical substations.
-3. **Rules** check each data center request against interconnection compliance: capacity limits (using predicted load from Stage 1), low-carbon energy mandates, and structural risk (using centrality-based criticality from Stage 2). Only 2 of 10 requests pass (Crusoe and Oracle); 8 are flagged.
-4. **Prescriptive optimization** jointly decides which data centers to approve and which substation upgrades to build across multiple investment levels ($200M-$600M). An InvestmentLevel Scenario Concept traces the Pareto frontier in a single solve, with results queryable in the ontology. The knee point at $300M unlocks 5 DCs (1,500 MW) including xAI Colossus -- the highest-revenue single request at $105M/yr.
-
-Each stage enriches the shared ontology, and downstream stages consume those enrichments -- this is the **accretive ontology enrichment** pattern. No Python dicts or DataFrames carry state between stages; the ontology is the single source of truth:
-
-- **Stage 1 writes** `Substation.predicted_load` -- consumed by Stage 3's capacity rule AND Stage 4's capacity constraint. Both downstream reasoners see the same forecasted headroom.
-- **Stage 2 writes** `Substation.betweenness`, `Substation.grid_community`, `Substation.is_structurally_critical` -- consumed by Stage 3's structural risk rule (Rule 2) and by Stage 2.5's corridor ranking.
-- **Stage 2.5 writes** `Substation.fragility_load` (PREVIEW) -- the most-fragile generator-to-DC corridor's betweenness load per data-center substation, consuming Stage 2's betweenness along enumerated routes.
-- **Stage 3 writes** `DataCenterRequest.fails_capacity`, `.fails_structural`, `.fails_low_carbon`, `.is_compliant` -- queryable compliance flags that document why each request was flagged.
-- **Stage 4 writes** `DataCenterRequest.x_approve` and `SubstationUpgrade.x_upgrade` per `InvestmentLevel` -- queried from the ontology via `model.select()`, not parsed from solver output.
-
-The ontology is accretive: each stage enriches it with derived properties, and downstream stages consume those enrichments as first-class attributes. This means changing Stage 1's demand forecast automatically propagates through the rules engine and optimizer without any code changes.
-
-The optimization is **multi-scenario and multi-objective**: `InvestmentLevel` is a Scenario Concept -- 5 budget entities ($200M-$600M) that parameterize the optimization. One mixed-integer program (MIP) solve produces the entire Pareto frontier simultaneously (not a re-solve loop). The frontier reveals the knee point at $300M (5 DCs, 1,500 MW, $264M net value), where xAI Colossus ($105M/yr) unlocks -- the highest marginal return per dollar. Beyond $300M, marginal returns diminish: $995K/$M at the knee vs $400K/$M at $600M. Because the optimizer uses `predicted_load` from Stage 1 (not raw historical load), the capacity constraints reflect forecasted growth -- the same signal the rules engine uses.
+A defensible answer needs all four signals at once: which substations will run out of headroom, which are structurally critical to keep the grid connected, which requests clear interconnection compliance, and which approval-and-upgrade portfolio maximizes value at each budget. **The template chains RelationalAI's predictive load forecasting, graph topology and centrality analysis, rules-based interconnection compliance, and prescriptive multi-objective optimization on a single, accretively-enriched ontology** -- each reasoner writes derived properties the next consumes, so capacity, criticality, and compliance signals stay consistent end to end without DataFrame hand-offs between stages.
 
 ## Why this problem matters
 
@@ -150,72 +133,19 @@ This is not a single-reasoner problem. Approving a data center at a structurally
    python energy_grid_planning.py
    ```
 
-6. Expected output:
+6. Expected output (a few lines confirm a successful run):
 
    ```text
-   STAGE 1: PREDICT -- Substation Load Forecasting
-     GNN model not available, falling back to DEMAND_FORECASTS table
-     Substations at risk of capacity breach:
-       Dallas-Fort Worth: 1100 MW current → 1700 MW predicted vs 1600 MW capacity (breach at 24mo, 54.6% growth)
-     All substation forecasts:
-       Houston Ship Channel      pred=1797.1 MW  growth=43.8%  breach=safe
-       Dallas-Fort Worth         pred=1700.2 MW  growth=54.6%  breach=24mo
-       San Antonio Metro         pred=1069.1 MW  growth=37.1%  breach=safe
-       Austin Energy             pred=818.8 MW  growth=32.1%  breach=safe
-       ...
-
-   STAGE 2: GRAPH -- Grid Topology & Structural Vulnerability
-     Grid connectivity: 12 substations, 1 component(s) -- CONNECTED
-     Grid community structure (Louvain): 3 region(s)
-       Region 1 (North Texas): Dallas-Fort Worth, Austin Energy, Waco Gateway
-       Region 2 (West Texas): Midland-Permian, Lubbock, El Paso, Amarillo, Abilene
-       Region 3 (Gulf Coast): Houston, San Antonio, Corpus Christi, Brownsville
-     Top 3 structurally critical substations:
-       #1: Dallas-Fort Worth (betw=31.67) [CRITICAL]
-       #2: Houston Ship Channel (betw=15.83) [CRITICAL]
-       #3: San Antonio Metro (betw=4.33) [CRITICAL]
-     KEY INSIGHT: 7 of 10 DC requests target structurally critical substations
-
-   STAGE 3: RULES -- Interconnection Queue Compliance
-     DC Request                Hyper         Q#     MW   Cap  LowC  Crit  OK?
-     Microsoft Horizon Campus  Microsoft      1    350  FAIL  PASS  FAIL    N
-     Meta Bayou DC             Meta           2    300  FAIL  PASS  FAIL    N
-     Google Metroplex DC       Google         3    400  FAIL  PASS  FAIL    N
-     xAI Colossus Texas        xAI            4    500  FAIL  PASS  FAIL    N
-     Lambda Labs DFW           Lambda Labs    5    200  FAIL  PASS  FAIL    N
-     Amazon SA Cloud           Amazon         6    280  FAIL  PASS  FAIL    N
-     Apple iCloud Texas        Apple          7    250  FAIL  PASS  FAIL    N
-     CoreWeave Austin GPU      CoreWeave      8    320  FAIL  PASS  PASS    N
-     Crusoe Permian DC         Crusoe Energy   9    180  PASS  PASS  PASS    Y
-     Oracle Coastal DC         Oracle        10    150  PASS  PASS  PASS    Y
-     Summary: 2 compliant, 8 flagged
-
    STAGE 4: OPTIMIZE -- Joint Interconnection + Upgrade
      Status: OPTIMAL | Objective: 1,579,200,000
-
-     Pareto frontier:
-       #    Level   DCs    DC MW   Revenue $/yr   Upg $M     Net Value
-       1    $200M     4    1,000    174,350,000    190.0    164,850,000
-       2    $300M     5    1,500    279,350,000    300.0    264,350,000
-       3    $400M     6    1,800    328,850,000    385.0    309,600,000
-       4    $500M     7    2,080    376,450,000    430.0    354,950,000
-       5    $600M     8    2,330    420,200,000    505.0    394,950,000
 
      KNEE POINT: $300M -- 5 DCs, 1,500 MW, $264M net value
      xAI Colossus ($105M/yr) unlocks at $300M -- highest-revenue single request
 
-     Per-level (abbreviated):
-     $200M: Microsoft, CoreWeave, Crusoe, Oracle (1,000 MW)
-     $300M: + xAI (500 MW)
-     $400M: + Meta (300 MW)
-     $500M: + Amazon (280 MW)
-     $600M: + Apple (250 MW)
-     Never approved: Google (400 MW), Lambda Labs (200 MW) -- DFW is full
-
-     Marginal: $200->$300M = $995K/$M | $300->$400M = $453K/$M | $400->$500M = $454K/$M | $500->$600M = $400K/$M
-
    PIPELINE COMPLETE: 4 stages executed on shared Energy Grid ontology
    ```
+
+   See `runbook.md` for the full log.
 
 ## Template structure
 
@@ -398,7 +328,7 @@ The Stage 2.5 paths analysis also derives two transient sub-concepts, `Generator
 
 ### Stage 1: Predict -- Substation Load Forecasting
 
-Derives `Substation.predicted_load` as an ontology property from the `DemandForecast` table using `aggs.max().per(Substation)`. Substations near announced data center projects show 32-55% growth depending on location and announced capacity. Dallas-Fort Worth is the only substation predicted to breach capacity (1,700 MW predicted vs 1,600 MW capacity at 24 months, 54.6% growth). Houston Ship Channel shows the highest absolute load (1,797 MW) but remains within its larger capacity. This predicted load feeds the capacity constraint in Stage 4.
+Derives `Substation.predicted_load` as an ontology property from the `DemandForecast` table using `aggs.max().per(Substation)`. Substations near announced data center projects show 32-55% growth depending on location and announced capacity. Dallas-Fort Worth is the only substation predicted to breach capacity (1,700 MW predicted vs 1,600 MW capacity at 24 months, 54.6% growth). Houston Ship Channel shows the highest absolute load (1,797 MW) but remains within its larger capacity. This predicted load feeds both Stage 3's capacity rule and Stage 4's capacity constraint -- the first link in the accretive chain. Because both downstream reasoners read `predicted_load` as a first-class ontology attribute, changing the demand forecast automatically propagates through the rules engine and optimizer without any code changes.
 
 The `predicted_load` derived property aggregates the max forecasted load per substation:
 
