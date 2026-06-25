@@ -27,6 +27,7 @@ from pathlib import Path
 
 import pandas as pd
 from relationalai.semantics import Integer, Model, String
+from relationalai.semantics.std import aggregates as aggs
 
 # --------------------------------------------------
 # Configure inputs
@@ -82,17 +83,24 @@ model.where(
 # Paths: enumerate downstream dependency paths
 #   PREVIEW capability; requires relationalai>=1.15.
 # --------------------------------------------------
-# model.path(Feature.contributes_to.repeat(1, MAX_DEPTH)) describes a
-# variable-length traversal of 1..MAX_DEPTH contributes_to edges. all_paths()
-# enumerates every such path; because contributes_to is acyclic, each path is
-# simple. The result is one PathTraversal per path -- p.length is its hop count
-# and p.nodes is the ordered sequence of Feature nodes it visits.
+# model.path(src, Feature.contributes_to.repeat(1, MAX_DEPTH)) describes a
+# variable-length traversal of 1..MAX_DEPTH contributes_to edges starting from a
+# typed source endpoint `src`. all_paths() enumerates every such path; because
+# contributes_to is acyclic, each path is simple. The result is one PathTraversal
+# per path -- p.length is its hop count, p.nodes is the ordered sequence of
+# Feature nodes it visits, and src is auto-unified with p.nodes(0) (the start).
 
 print("=== IT Dependency Mapping: downstream paths ===")
 
-p_pattern = model.path(Feature.contributes_to.repeat(1, MAX_DEPTH))
+src = Feature.ref()
+p = model.path(src, Feature.contributes_to.repeat(1, MAX_DEPTH)).all_paths()
+
+# Project the node sequence of each path (for display-side reassembly). Keep this
+# its own query: selecting p.length or a path aggregate alongside p.nodes fans the
+# node rows out (known paths issue), so the per-path rollups below are SEPARATE
+# model.where(...) queries.
 paths_df = (
-    model.where(p := p_pattern.all_paths())
+    model.where(p)
     .select(
         p.alias("path_id"),
         p.nodes["index"].alias("step"),
@@ -103,13 +111,12 @@ paths_df = (
 )
 paths_df["step"] = paths_df["step"].astype(int)
 # Projecting p.nodes can emit duplicate (path, step) rows -- dedupe to one node
-# per step before reassembly. (Do NOT also select p.length here: selecting it
-# alongside p.nodes fans the node rows out.)
+# per step before reassembly.
 paths_df = paths_df.drop_duplicates(["path_id", "step"]).sort_values(["path_id", "step"])
 
 # Reassemble each path: order steps by node index, join the visited features into
 # an ordered chain. The hop count is the max node index (a path over N edges has
-# nodes at indices 0..N).
+# nodes at indices 0..N). String-joining names into a chain label is a pandas job.
 chains = (
     paths_df.groupby("path_id")
     .agg(
@@ -123,7 +130,7 @@ chains = (
 print(f"\nTotal downstream dependency paths (1-{MAX_DEPTH} hops): {len(chains)}")
 
 # --------------------------------------------------
-# Per-feature path counts and longest downstream depth
+# Per-feature path counts and longest downstream depth (in-PyRel aggregates)
 # --------------------------------------------------
 
 feature_df = model.select(
@@ -133,15 +140,43 @@ feature_df = model.select(
     Feature.deploy_tier.alias("deploy_tier"),
 ).to_df()
 
-# Paths starting at each feature, and the longest path starting there.
-chains["start_id"] = chains["node_ids"].apply(lambda ids: ids[0])
-paths_started = chains.groupby("start_id").size().rename("paths_downstream")
-max_depth_by_id = chains.groupby("start_id")["hops"].max().rename("max_downstream_depth")
-
-feature_summary = (
-    feature_df.merge(paths_started, left_on="feature_id", right_index=True, how="left")
-    .merge(max_depth_by_id, left_on="feature_id", right_index=True, how="left")
+# Paths starting at each feature: aggregates.count(p).per(src) groups the
+# enumerated paths by their (typed) source endpoint -- a path-level rollup keyed
+# on src, computed IN PyRel rather than via a pandas groupby on the chains frame.
+paths_started_df = (
+    model.where(p, n := aggs.count(p).per(src))
+    .select(src.id.alias("feature_id"), n.alias("paths_downstream"))
+    .to_df()
 )
+# Count column arrives as Int128 -- cast before pandas merge/arithmetic.
+paths_started_df["paths_downstream"] = paths_started_df["paths_downstream"].astype(int)
+
+# Persist each feature's longest downstream depth back to the ontology so a
+# downstream query can rank features by reach without re-enumerating paths.
+# aggregates.max(p.length).per(src) takes the max hop count over the paths rooted
+# at each src and defines it directly onto the Feature property -- no pandas
+# groupby and no model.data round-trip. Kept SEPARATE from the node projection.
+Feature.max_downstream_depth = model.Property(
+    f"{Feature} has {Integer:max_downstream_depth}"
+)
+model.define(src.max_downstream_depth(aggs.max(p.length).per(src))).where(p)
+
+# Read the persisted depth back for the display table. Features with no outgoing
+# path (the leaf dashboards) have no max_downstream_depth row -- fill them as 0.
+max_depth_df = model.select(
+    Feature.id.alias("feature_id"),
+    Feature.max_downstream_depth.alias("max_downstream_depth"),
+).to_df()
+max_depth_df["max_downstream_depth"] = max_depth_df["max_downstream_depth"].astype(
+    "Int64"
+)
+
+# Build the per-feature display table from the query results above (NOT from a
+# pandas groupby on chains): paths_downstream from the count query, depth from the
+# persisted property.
+feature_summary = feature_df.merge(
+    paths_started_df, on="feature_id", how="left"
+).merge(max_depth_df, on="feature_id", how="left")
 feature_summary["paths_downstream"] = (
     feature_summary["paths_downstream"].fillna(0).astype(int)
 )
@@ -161,17 +196,6 @@ for _, r in feature_summary.sort_values(
         f"  {r['feature_name']:<30} {r['deploy_tier']:<9} "
         f"{r['paths_downstream']:>6} {r['max_downstream_depth']:>10}"
     )
-
-# Persist each feature's longest downstream depth back to the ontology so a
-# downstream query can rank features by reach without re-enumerating paths.
-Feature.max_downstream_depth = model.Property(
-    f"{Feature} has {Integer:max_downstream_depth}"
-)
-depth_rows = feature_summary[["feature_id", "max_downstream_depth"]]
-depth_data = model.data(depth_rows)
-model.define(
-    Feature.max_downstream_depth(depth_data.max_downstream_depth)
-).where(Feature.id == depth_data.feature_id)
 
 # --------------------------------------------------
 # Maximal chains: longest non-extendable dependency chains

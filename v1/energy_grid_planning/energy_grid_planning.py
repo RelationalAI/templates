@@ -41,7 +41,7 @@ Output:
 from pathlib import Path
 
 import pandas as pd
-from relationalai.semantics import Boolean, Float, Integer, Model, String, sum
+from relationalai.semantics import Boolean, Float, Integer, Model, String, not_, sum, where
 from relationalai.semantics.reasoners.graph import Graph
 from relationalai.semantics.reasoners.prescriptive import Problem
 from relationalai.semantics.std import aggregates as aggs
@@ -712,18 +712,52 @@ model.where(dc_ref.substation(dc_sub)).define(DCSubstation(dc_sub))
 # Enumerate generator-sub -> DC-sub corridors (finite repeat; the grid is meshed/cyclic).
 MAX_CORRIDOR_HOPS = 6
 corridor_src, corridor_dst = GeneratorSubstation.ref(), DCSubstation.ref()
-corridor_df = model.where(
-    corridor := model.path(
-        corridor_src, Substation.connects_to.repeat(1, MAX_CORRIDOR_HOPS), corridor_dst
-    ).all_paths(),
+corridor = model.path(
+    corridor_src, Substation.connects_to.repeat(1, MAX_CORRIDOR_HOPS), corridor_dst
+).all_paths()
+
+# Score each corridor IN PyRel by Stage 2's betweenness summed ALONG its hops, and
+# roll the most-fragile (max-load) corridor up per DC substation -- all native paths.
+#
+# Three operations move into PyRel:
+#   1. Per-corridor score: aggs.sum(Substation(p.nodes).betweenness).per(p) sums the
+#      per-node betweenness over each corridor's node sequence (the core paths-only op).
+#   2. Simple-path filter: the grid is cyclic, so walk-semantics all_paths() revisits
+#      nodes; not_(where(i < j, p.nodes(i) == p.nodes(j))) drops any node-repeating walk
+#      via a negated existential over positions. It sits in the SAME where() as the sum,
+#      so the sum only sees simple corridors -- on a simple corridor the position-sum
+#      equals the distinct-substation sum.
+#   3. Per-DC rollup: aggs.max(total).per(corridor_dst) takes the highest-load corridor
+#      terminating at each DC substation (corridor_dst is auto-unified at p.nodes(length)).
+i, j = Integer.ref(), Integer.ref()
+fragility_per_dc = model.where(
+    corridor,
+    not_(where(i < j, corridor.nodes(i) == corridor.nodes(j))),  # simple corridors only
+    total := aggs.sum(Substation(corridor.nodes).betweenness).per(corridor),
+    frag := aggs.max(total).per(corridor_dst),
 ).select(
+    corridor_dst.id.alias("substation_id"),
+    frag.alias("fragility_load"),
+).to_df()
+
+# Persist each DC substation's most-fragile-corridor load directly from the native rollup.
+Substation.fragility_load = model.Property(f"{Substation} has {Float:fragility_load}")
+if not fragility_per_dc.empty:
+    frag_data = model.data(fragility_per_dc)
+    model.define(Substation.fragility_load(frag_data.fragility_load)).where(
+        Substation.id == frag_data.substation_id
+    )
+
+# Reassemble corridor node sequences in pandas for human-readable route labels (string-
+# joining names is a pandas job) and for the contingency re-enumeration below. Selecting
+# names alongside the score would fan out rows, so the node-sequence projection is a
+# SEPARATE query from the scoring above.
+corridor_df = model.where(corridor).select(
     corridor.alias("corridor"),
     corridor.nodes["index"].alias("hop"),
     Substation(corridor.nodes).id.alias("substation_id"),
     Substation(corridor.nodes).name.alias("substation_name"),
 ).to_df()
-
-# Weight each corridor by Stage 2's betweenness, summed along its substations.
 betw_df = model.select(
     Substation.id.alias("substation_id"),
     Substation.name.alias("substation_name"),
@@ -736,7 +770,12 @@ corridor_df["betweenness"] = corridor_df["substation_id"].map(betw_by_id).fillna
 
 
 def most_fragile_corridor_per_dc(removed_id=None):
-    """Highest total-betweenness SIMPLE corridor terminating at each DC substation."""
+    """Highest total-betweenness SIMPLE corridor terminating at each DC substation.
+
+    Used to recover each winning corridor's node names (for printing) and for the
+    contingency re-enumeration. The baseline per-DC max load is computed natively
+    above (fragility_per_dc); this reproduces it and adds the route node sequence.
+    """
     best = {}
     for _, grp in corridor_df.groupby("corridor"):
         ordered = grp.sort_values("hop")
@@ -753,8 +792,10 @@ def most_fragile_corridor_per_dc(removed_id=None):
 
 
 baseline_corridors = most_fragile_corridor_per_dc()
-# Count only SIMPLE corridors (drop node-repeating walks; the grid is cyclic).
-# `len([...])`, not `sum(...)`: `sum` is shadowed by the relationalai import.
+# Count only SIMPLE corridors (drop node-repeating walks; the grid is cyclic). Kept in
+# pandas via node-sequence reassembly: native count(corridor) fans out over the simple-
+# path filter and count(distinct(corridor)) collapses to all-walks -- neither is the
+# simple-corridor count. `len([...])`, not `sum(...)`: `sum` is shadowed by the relationalai import.
 n_corridors = len([
     cid
     for cid, grp in corridor_df.groupby("corridor")
@@ -766,17 +807,6 @@ print(
 )
 for dest, (route, load) in sorted(baseline_corridors.items(), key=lambda kv: -kv[1][1])[:5]:
     print(f"    betweenness-load {load}: " + " -> ".join(route))
-
-# Persist each DC substation's most-fragile-corridor load back to the ontology.
-Substation.fragility_load = model.Property(f"{Substation} has {Float:fragility_load}")
-frag_rows = pd.DataFrame(
-    [{"substation_id": dest, "fragility_load": load} for dest, (_, load) in baseline_corridors.items()]
-)
-if not frag_rows.empty:
-    frag_data = model.data(frag_rows)
-    model.define(Substation.fragility_load(frag_data.fragility_load)).where(
-        Substation.id == frag_data.substation_id
-    )
 
 # Contingency: take the highest-betweenness substation offline and re-enumerate.
 if betw_by_id:

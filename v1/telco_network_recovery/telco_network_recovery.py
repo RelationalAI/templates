@@ -78,7 +78,9 @@ from relationalai.semantics import (
     Model,
     String,
     distinct,
+    not_,
     select,
+    where,
 )
 from relationalai.semantics.reasoners.graph import Graph
 from relationalai.semantics.reasoners.predictive import GNN, PropertyTransformer
@@ -862,7 +864,6 @@ seed_hub_ids = (
     .head(SEED_HUB_COUNT)["sub_id"]
     .tolist()
 )
-influence_by_id = dict(zip(influence_df["sub_id"], influence_df["influence"]))
 
 # Per-subscriber influence load of the top-ranked call path, persisted below.
 Subscriber.top_call_path_influence = model.Property(
@@ -880,77 +881,106 @@ towers_recovered = set()
 top_route_overall = None  # (influence_load, [sub ids], [tower ids])
 
 for hub_id in seed_hub_ids:
-    # Pin the start node via an explicit src argument to path() + an outer id
-    # filter (the live-validated form), not a p.nodes(0, ref) post-filter.
+    # Score each simple call path IN PYREL: fold the simple-path filter and the
+    # PageRank-sum-along-the-route into one scoped query. The negated
+    # existential `not_(where(i < j, p.nodes(i) == p.nodes(j)))` drops walks
+    # that revisit a node (the call graph is cyclic), so the sum sees only
+    # simple paths; `aggs.sum(Subscriber(p.nodes).influence_score).per(p)` sums
+    # the per-node PageRank over each path's node sequence. On a simple path the
+    # position-sum equals the distinct-subscriber sum, preserving the ranking.
+    # Keep this score query SEPARATE from the node-sequence / tower projections
+    # below: selecting an aggregate alongside p.nodes fans out rows.
     seed = Subscriber.ref()
-    p_nodes = model.where(
+    i, j = Integer.ref(), Integer.ref()
+    p = model.path(
+        seed, Subscriber.calls_via.repeat(1, PATH_MAX_HOPS)
+    ).all_paths()
+    score_df = model.where(
         seed.id == hub_id,
-        p := model.path(
-            seed, Subscriber.calls_via.repeat(1, PATH_MAX_HOPS)
-        ).all_paths(),
+        p,
+        not_(where(i < j, p.nodes(i) == p.nodes(j))),
+        total := aggs.sum(Subscriber(p.nodes).influence_score).per(p),
     ).select(
         p.alias("path_id"),
-        p.nodes["index"].alias("step"),
-        Subscriber(p.nodes).id.alias("sub_id"),
+        total.alias("influence_load"),
+    ).to_df()
+    if score_df.empty:
+        continue
+    score_df["influence_load"] = score_df["influence_load"].astype(float).round(6)
+    # The simple-path set: path_ids the PyRel filter kept. The node-sequence and
+    # tower projections below are joined to this set by path_id, so non-simple
+    # walks are never referenced for the counts or the displayed top route.
+    simple_path_ids = set(score_df["path_id"])
+    total_simple_paths += len(simple_path_ids)
+
+    # Node sequence per path (for the route-label string-join, a pandas job).
+    # Pin the start node via an explicit src argument to path() + an outer id
+    # filter, not a p.nodes(0, ref) post-filter.
+    seed_n = Subscriber.ref()
+    p_nodes = model.where(
+        seed_n.id == hub_id,
+        pn := model.path(
+            seed_n, Subscriber.calls_via.repeat(1, PATH_MAX_HOPS)
+        ).all_paths(),
+    ).select(
+        pn.alias("path_id"),
+        pn.nodes["index"].alias("step"),
+        Subscriber(pn.nodes).id.alias("sub_id"),
     ).to_df()
 
     # Recover the routing tower on each hop: field_index 1 is the CellTower in
     # the arity-3 edge (caller=0, tower=1, callee=2). Project all edge fields and
-    # filter to field_index 1 in pandas (the live-validated form) rather than in
-    # the where clause.
+    # filter to field_index 1 in pandas (the sanctioned read-the-field,
+    # filter-in-pandas pattern) rather than in the where clause.
     seed_h = Subscriber.ref()
     p_hops = model.where(
         seed_h.id == hub_id,
-        p := model.path(
+        ph := model.path(
             seed_h, Subscriber.calls_via.repeat(1, PATH_MAX_HOPS)
         ).all_paths(),
     ).select(
-        p.alias("path_id"),
-        p.relationship_fields["index"].alias("hop"),
-        p.relationship_fields["field_index"].alias("fidx"),
-        CellTower(p.relationship_fields["field"]).id.alias("tower_id"),
+        ph.alias("path_id"),
+        ph.relationship_fields["index"].alias("hop"),
+        ph.relationship_fields["field_index"].alias("fidx"),
+        CellTower(ph.relationship_fields["field"]).id.alias("tower_id"),
     ).to_df()
     if not p_hops.empty:
         p_hops = p_hops[p_hops["fidx"].astype(int) == 1]
 
-    if p_nodes.empty:
-        continue
     p_nodes["step"] = p_nodes["step"].astype(int)
+    # Restrict the node-sequence / tower assembly to the simple-path set.
+    p_nodes = p_nodes[p_nodes["path_id"].isin(simple_path_ids)]
 
-    # Reassemble each path in pandas: order nodes by step, keep SIMPLE paths
-    # only (the call graph is cyclic), then weight by PageRank summed along the
-    # subscribers on the route.
+    # Assemble per-path node id sequences and routing-tower lists (display only).
+    sub_ids_by_path = {}
+    for path_id, grp in p_nodes.groupby("path_id"):
+        sub_ids_by_path[path_id] = grp.sort_values("step")["sub_id"].tolist()
+
     tower_by_path = {}
     if not p_hops.empty:
+        p_hops = p_hops[p_hops["path_id"].isin(simple_path_ids)]
         p_hops["hop"] = p_hops["hop"].astype(int)
         for path_id, hop_grp in p_hops.groupby("path_id"):
             towers = hop_grp.sort_values("hop")["tower_id"].tolist()
             tower_by_path[path_id] = towers
+            towers_recovered.update(towers)
 
-    hub_best_load = None
-    for path_id, grp in p_nodes.groupby("path_id"):
-        ordered = grp.sort_values("step")
-        sub_ids = ordered["sub_id"].tolist()
-        if len(set(sub_ids)) != len(sub_ids):
-            continue  # simple paths only (the call graph is cyclic)
-        total_simple_paths += 1
-        route_towers = tower_by_path.get(path_id, [])
-        towers_recovered.update(route_towers)
-        # PageRank summed along the route (pandas .sum(); `sum` may be shadowed
-        # by relationalai.semantics in these templates -- never call it on
-        # Python data).
-        influence_load = round(
-            float(pd.Series([influence_by_id.get(s, 0.0) for s in sub_ids]).sum()), 6
-        )
-        if hub_best_load is None or influence_load > hub_best_load:
-            hub_best_load = influence_load
-        if top_route_overall is None or influence_load > top_route_overall[0]:
-            top_route_overall = (influence_load, sub_ids, route_towers)
+    # Persist this hub's best (max influence-load) simple call path; track the
+    # single top route overall for display. Ties broken by path_id for
+    # determinism. The PageRank sum is the PyRel-computed influence_load.
+    hub_best_load = float(score_df["influence_load"].max())
+    frag_rows.append({"sub_id": hub_id, "top_call_path_influence": hub_best_load})
 
-    # Persist this hub's best (max influence-load) simple call path.
-    if hub_best_load is not None:
-        frag_rows.append(
-            {"sub_id": hub_id, "top_call_path_influence": hub_best_load}
+    top_row = score_df.sort_values(
+        ["influence_load", "path_id"], ascending=[False, True]
+    ).iloc[0]
+    top_load = float(top_row["influence_load"])
+    if top_route_overall is None or top_load > top_route_overall[0]:
+        top_pid = top_row["path_id"]
+        top_route_overall = (
+            top_load,
+            sub_ids_by_path.get(top_pid, []),
+            tower_by_path.get(top_pid, []),
         )
 
 # Persist the top-route influence-load as a Subscriber property on the ontology.

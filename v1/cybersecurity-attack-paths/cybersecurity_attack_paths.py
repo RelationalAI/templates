@@ -32,7 +32,8 @@ Output:
 from pathlib import Path
 
 import pandas as pd
-from relationalai.semantics import Integer, Model, String
+from relationalai.semantics import Integer, Model, String, not_, where
+from relationalai.semantics.std import aggregates as aggs
 
 # --------------------------------------------------
 # Configure inputs
@@ -186,11 +187,16 @@ for ch in sorted(chains, key=lambda c: c["hops"]):
 
 src_pt, dst_pt = Asset.ref(), Asset.ref()
 route = model.path(src_pt.can_reach.repeat(1, MAX_ROUTE_HOPS), dst_pt).all_paths()
+# Keep only SIMPLE routes (no asset revisited). all_paths() has WALK semantics and
+# no native simple-path mode, so drop node-repeating walks with a negated existential
+# over positions -- expressed natively in the route's where() (no pandas).
+i, j = Integer.ref(), Integer.ref()
 route_df = (
     model.where(
         route,
         src_pt.id == ENTRY_ASSET,
         dst_pt.id == TARGET_ASSET,
+        not_(where(i < j, route.nodes(i) == route.nodes(j))),
     )
     .select(
         route.alias("path_id"),
@@ -201,12 +207,10 @@ route_df = (
 )
 route_df["step"] = route_df["step"].astype(int)
 route_df = route_df.drop_duplicates(["path_id", "step"]).sort_values(["path_id", "step"])
-routes = []
-for pid, g in route_df.groupby("path_id"):
-    seq = list(g.sort_values("step")["asset_id"])
-    if len(set(seq)) == len(seq):  # simple
-        routes.append(tuple(seq))
-routes = sorted(set(routes), key=len)
+routes = sorted(
+    {tuple(g.sort_values("step")["asset_id"]) for _, g in route_df.groupby("path_id")},
+    key=len,
+)
 
 print(f"\n=== Point query: all routes from {ENTRY_ASSET} to {TARGET_ASSET} "
       f"(any technique, <= {MAX_ROUTE_HOPS} hops, simple) ===")
@@ -219,14 +223,28 @@ for seq in routes:
 # --------------------------------------------------
 # The riskiest chain is the one whose assets carry the most exposure overall -- the
 # first remediation target. Exposure is a per-asset score (a stand-in for a CVSS /
-# attack-surface metric) summed across the chain's distinct assets.
-
-exposure = dict(
-    model.select(Asset.id.alias("id"), Asset.exposure_score.alias("e")).to_df()
-    .itertuples(index=False, name=None)
+# attack-surface metric) summed ALONG each kill-chain IN PYREL:
+# aggregates.sum(Asset(kill.nodes).exposure_score).per(kill) sums the per-node value
+# over each path's node sequence -- the core paths-only aggregation, reusing the same
+# kill pattern and its internet-facing/crown-jewel endpoint filters. This is a
+# position-sum (every node position, with repetition); it equals the distinct-asset
+# sum because each kill-chain here is a simple path (no asset revisited).
+totals = (
+    model.where(
+        kill,
+        a.internet_facing == "yes",
+        dst.crown_jewel == "yes",
+        total := aggs.sum(Asset(kill.nodes).exposure_score).per(kill),
+    )
+    .select(kill.alias("path_id"), total.alias("total_exposure"))
+    .to_df()
+)
+# Join total_exposure onto the assembled chains by path id (label string-join is pandas).
+exposure_by_path = dict(
+    totals[["path_id", "total_exposure"]].itertuples(index=False, name=None)
 )
 for ch in chains:
-    ch["total_exposure"] = sum(exposure[i] for i in set(ch["asset_ids"]))
+    ch["total_exposure"] = int(exposure_by_path[ch["path_id"]])
 
 print("\n=== Kill-chains ranked by total asset exposure (highest = remediate first) ===")
 for ch in sorted(chains, key=lambda c: c["total_exposure"], reverse=True):
@@ -239,6 +257,7 @@ for ch in sorted(chains, key=lambda c: c["total_exposure"], reverse=True):
 # on a kill-chain without re-enumerating paths.
 
 Asset.on_attack_path = model.Property(f"{Asset} on attack path {String:on_attack_path}")
+total_assets = len(model.select(Asset.id.alias("id")).to_df())
 on_path_ids = sorted({i for ch in chains for i in ch["asset_ids"]})
 flag_data = model.data(pd.DataFrame({"id": on_path_ids}))
 fa = Asset.ref()
@@ -254,6 +273,6 @@ flagged = (
 )
 
 print("\n=== Assets on a crown-jewel attack path (Asset.on_attack_path persisted) ===")
-print(f"  {len(flagged)} of {len(exposure)} assets:")
+print(f"  {len(flagged)} of {total_assets} assets:")
 for _, r in flagged.sort_values("id").iterrows():
     print(f"    {r['id']:<8} {r['name']:<24} ({r['zone']})")
