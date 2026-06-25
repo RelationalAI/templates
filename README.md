@@ -39,16 +39,18 @@ The index below covers the current templates. Expand an industry to see its temp
 </details>
 
 <details>
-<summary>Financial Services (7)</summary>
+<summary>Financial Services (8)</summary>
 
 | Template | Reasoners | Description |
 | --- | --- | --- |
 | [commercial_underwriting](v1/commercial_underwriting/) | Rules-based | Eligibility checks and risk-tier classification across a four-level commercial property/casualty hierarchy (insured entity, policy, location, coverage). |
+| [entity_resolution](v1/entity_resolution/) | Graph, Rules-based, Prescriptive | Resolve duplicate policyholder records scattered across an insurer's policy systems and acquired books into one insured party, then total each household's exposure, flag accumulation-limit breaches, and choose the lowest-cost reinsurance cessions to clear them. |
 | [financial_index_replication](v1/financial_index_replication/) | Prescriptive, Rules-based | Select a sparse 20-stock replication basket and weights that track an S&P 500-like benchmark. |
 | [fraud-detection](v1/fraud-detection/) | Graph, Rules-based, Predictive, Prescriptive | Transaction-fraud pipeline: account PageRank and high-volume account flags feed a GNN binary classifier whose per-transaction scores drive a knapsack investigator-budget MILP. |
 | [money_laundering_motif_detection](v1/money_laundering_motif_detection/) | Prescriptive | Detect three classes of layering motif on the same transaction ledger, each demonstrating a different CSP technique that rules / paths / graph reasoning alone cannot enforce: per-vertex aggregate equality (butterfly), pairwise distinctness over a chosen subset (smurf army), and cardinality on a chosen subset (KYC-mix burst). |
 | [portfolio_balancing](v1/portfolio_balancing/) | Prescriptive, Rules-based, Graph | Compliance screening, covariance clustering, and bi-objective Markowitz optimization that traces the risk-return frontier with solver shadow prices, plus a crisis-regime stress test. |
 | [synthetic_order_lifecycle](v1/synthetic_order_lifecycle/) | Prescriptive | Generate synthetic order-lifecycle event traces (PLACE / MODIFY / CANCEL / FILL) that satisfy MiFID II / Reg NMS-flavour sequencing rules. |
+| [transaction_screening_local](v1/transaction_screening_local/) | Rules-based | Triage a transfer ledger with rules-based reasoning on a local DuckDB database, with no Snowflake account required: classify accounts that move money just under reporting thresholds, flag large senders, and expand the investigation to everyone who transacted with a flagged account. |
 | [underwriting_audit](v1/underwriting_audit/) | Prescriptive | Audit an underwriting ruleset against a catalog of properties. For each, either prove it holds (PASS) or return K distinct counterexample applicants that falsify it (FAIL). Multi-property batch audit in multi-solution mode. |
 
 </details>
@@ -68,11 +70,12 @@ The index below covers the current templates. Expand an industry to see its temp
 </details>
 
 <details>
-<summary>Manufacturing (4)</summary>
+<summary>Manufacturing (5)</summary>
 
 | Template | Reasoners | Description |
 | --- | --- | --- |
 | [bom-reachability](v1/bom-reachability/) | Graph | Trace transitive dependencies through a bill of materials to identify which raw materials each finished product depends on and which components are structural bottlenecks. |
+| [defect_root_cause](v1/defect_root_cause/) | Graph, Rules-based, Prescriptive | Diagnose a spike in final-test failures on an electronics assembly line by tracing each unit's history back through the bill of materials and the production line, then identifying the smallest set of causes that explains the failures. |
 | [factory_production](v1/factory_production/) | Prescriptive | Maximize production profit under per-factory resource limits, then read the sensitivity marginals (capacity shadow prices and product reduced costs) from one solve. |
 | [product_configurator](v1/product_configurator/) | Prescriptive | Enumerate every feasible build of a configurable product in multi-solution mode: one option per slot subject to feature-model rules, regional regulations, and a price ceiling. |
 | [production_planning](v1/production_planning/) | Prescriptive | Schedule production across machines to meet demand and maximize profit with scenario analysis. |
