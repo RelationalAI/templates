@@ -1,6 +1,6 @@
 ---
 title: "Telco Network Recovery"
-description: "Tower-upgrade planning on a shared telco ontology: an equipment-failure GNN over a heterogeneous graph (with manufacturer advisories), declarative critical-tower rules, and customer-impact analysis (revenue × churn, with PageRank)."
+description: "Tower-upgrade planning on a shared telco ontology: an equipment-failure GNN over a heterogeneous graph (with manufacturer advisories), declarative critical-tower rules, and customer-impact analysis (revenue x churn, with PageRank)."
 featured: false
 experience_level: advanced
 industry: "Technology & Telecom"
@@ -31,6 +31,7 @@ This template chains RelationalAI's reasoners — predictive, rules-based, graph
 - Telco network operations and capital planning teams.
 - Operations researchers exploring multi-reasoner pipelines in RelationalAI.
 - Developers learning heterogeneous-graph graph-neural-network (GNN) modeling on a multi-concept ontology.
+- **Assumed knowledge**: comfortable reading Python; the telco, GNN, graph, and optimization terms are explained as they come up. As an advanced multi-reasoner template, it goes faster if you have followed a single-reasoner template first, but no deep RelationalAI experience is required to run it.
 
 ## What you'll build
 
@@ -43,7 +44,7 @@ Built using **predictive reasoning** (GNN on a heterogeneous graph), **rules-bas
 
 ## What's included
 
-- **Model**: a 4-stage pipeline (predictive → rules → graph → prescriptive) on a single shared ontology — 8 source-data concepts wired to the bundled CSVs, plus the enrichments each stage writes back.
+- **Model**: a 4-stage pipeline (predictive, then rules, then graph, then prescriptive) on a single shared ontology — 8 source-data concepts wired to the bundled CSVs, plus the enrichments each stage writes back.
 - **Runner**: `telco_network_recovery.py` — a single Python script with four module-scope stages, runs end-to-end against a Snowflake-connected RAI account.
 - **Sample data**: 250 cell towers, 1,500 equipment items, 8 manufacturer advisories on 7 MODELs, 1,200 subscribers, 6,000 call records, 750 upgrade options. See *Sample data* below.
 - **Outputs**: per-stage stdout diagnostics plus an ontology-resident `RestorePlan` singleton holding cost, capacity, install-weeks, tier mix, towers covered, and binding constraint.
@@ -58,7 +59,7 @@ Built using **predictive reasoning** (GNN on a heterogeneous graph), **rules-bas
 
 ### Tools
 
-- Python ≥ 3.10.
+- Python >= 3.10.
 - RelationalAI Python SDK (`relationalai == 1.15.0`).
 
 ### One-time Snowflake setup for GNN experiment artifacts
@@ -130,19 +131,22 @@ Set `EXP_DATABASE` at the top of `telco_network_recovery.py` to that database (d
    python telco_network_recovery.py
    ```
 
-   You should see the four stages print diagnostics and then a final plan as queryable ontology. Tail of a successful run:
+   The four stages print diagnostics and then a final plan as queryable ontology.
+
+7. Expected output (a few lines confirm a successful run):
 
    ```text
    STAGE 4: PRESCRIPTIVE -- tower upgrade selection MIP
-     Selected upgrades: 27 across 5 regions
-     Total cost:               $4,992,276  (budget $5,000,000, binding)
+     Status: OPTIMAL
+     Selected upgrades: 27
+     Total cost:               $4,992,276
      Capacity restored:        180 Gbps
-     Rationale tally: operational=2, advisory/predicted=27, high-value=17
+     Towers covered:           27 of 142 critical (all 5 regions)
 
    PIPELINE COMPLETE: 4 stages executed on the shared Telco ontology
    ```
 
-   Exact numbers shift run-to-run with the stochastic GNN; the structural outcome — all 5 regions covered, budget binding, ~180-210 Gbps restored across ~25-40 towers — reproduces.
+   The GNN is stochastic, so exact figures shift run-to-run; the structural outcome reproduces — status OPTIMAL, budget binding (~$4.99M of $5M), all 5 regions covered, ~180-210 Gbps restored across ~25-40 towers. The full printout and a step-by-step walkthrough are in `runbook.md`.
 
 ## Template structure
 
@@ -169,11 +173,11 @@ telco_network_recovery/
 The bundled data is **synthetic and illustrative** — designed to teach the reasoning flow on a Snowflake-connected RAI account, not to match a specific operator's network. The data does not yet model site / sector / band / radio-unit / vendor / backhaul attributes that a production network catalog carries; those are extension points (see *Customize this template*), not gaps in the reasoning pattern.
 
 - **`cell_towers.csv`** (250 rows) — towers across 5 regions; 15 WEST towers are explicitly `DEGRADED`.
-- **`network_equipment.csv`** (1,500 rows) — equipment installs across 18 consolidated MODELs (manufacturer × model name); each links to one tower.
+- **`network_equipment.csv`** (1,500 rows) — equipment installs across 18 consolidated MODELs (manufacturer x model name); each links to one tower.
 - **`equipment_health.csv`** (1,500 rows) — per-equipment health snapshot (MTBF hours, failure rate, temperature, power, health score).
 - **`network_performance.csv`** (5,000 rows) — per-tower performance measurements (latency, throughput, packet loss, jitter, signal strength, utilization).
-- **`subscribers.csv`** (1,200 rows) — 1,150 `CONSUMER` + 50 `ENTERPRISE` accounts with `LIFETIME_VALUE_USD`, `CHURN_RISK_SCORE`, `SEGMENT`, `STATUS`. Enterprise LTV averages ~130× consumer, so the customer-impact aggregation in Stage 3 weights heavily toward enterprise-bearing towers — realistic for capex prioritization.
-- **`call_detail_records.csv`** (6,000 rows) — directed call records (`caller → callee`), each routed through a specific tower.
+- **`subscribers.csv`** (1,200 rows) — 1,150 `CONSUMER` + 50 `ENTERPRISE` accounts with `LIFETIME_VALUE_USD`, `CHURN_RISK_SCORE`, `SEGMENT`, `STATUS`. Enterprise LTV averages ~130x consumer, so the customer-impact aggregation in Stage 3 weights heavily toward enterprise-bearing towers — realistic for capex prioritization.
+- **`call_detail_records.csv`** (6,000 rows) — directed call records (`caller -> callee`), each routed through a specific tower.
 - **`tower_upgrade_options.csv`** (750 rows) — three BRONZE / SILVER / GOLD options per tower with capacity, cost, and install-week deltas.
 - **`model_advisories.csv`** (8 rows) — manufacturer advisories (`RECALL` / `DEFECT_BATCH` / `EOL` / `FIRMWARE_BUG` / `SECURITY_PATCH`) on 7 MODELs, with severities `0.50–0.95`.
 
@@ -234,7 +238,7 @@ One shared ontology threads all four stages. Each stage reads concepts and prope
 | `status` | `SubscriberStatus` enum | No | `ACTIVE`/`SUSPENDED` — a `model.Enum`, mapped from the CSV strings by member name |
 | `lifetime_value` | Float | No | `LIFETIME_VALUE_USD` |
 | `churn_risk_score` | Float | No | `[0, 1]` — probability of churn |
-| `customer_value` | Float | No | Precomputed: `lifetime_value × (1 + churn_risk_score)` — the per-subscriber weight Stage 3 sums into `weighted_impact` |
+| `customer_value` | Float | No | Precomputed: `lifetime_value x (1 + churn_risk_score)` — the per-subscriber weight Stage 3 sums into `weighted_impact` |
 | `influence_score` | Float | No | **Stage 3** PageRank on the call graph |
 | `top_call_path_influence` | Float | No | **Stage 3.5** (PREVIEW) most-influential call path's summed PageRank, for the seed hub |
 
@@ -273,20 +277,20 @@ One shared ontology threads all four stages. Each stage reads concepts and prope
 
 - `NetworkEquipment.tower_id_fk == CellTower.id` — equipment install on a tower (also a Stage 1 GNN edge).
 - `EquipmentHealth.equipment_id_fk == NetworkEquipment.id` — per-equipment health snapshot (GNN edge).
-- `ModelAdvisory.model == NetworkEquipment.eqp_model` — advisory ↔ every equipment item on the affected MODEL (GNN edge — propagates advisory severity across fleet siblings).
-- `CallDetailRecord.caller` and `.callee` ⟶ `Subscriber` — directed edges of the Stage 3 PageRank call graph.
-- `CallDetailRecord.routed_through` ⟶ `CellTower` — links each call to the tower it routed through; the per-tower customer-impact aggregation reads this.
-- `TowerUpgradeOption.for_tower` ⟶ `CellTower` — Stage 4 scopes the decision space to options on critical-restore towers.
+- `ModelAdvisory.model == NetworkEquipment.eqp_model` — advisory links to every equipment item on the affected MODEL (GNN edge — propagates advisory severity across fleet siblings).
+- `CallDetailRecord.caller` and `.callee` -> `Subscriber` — directed edges of the Stage 3 PageRank call graph.
+- `CallDetailRecord.routed_through` -> `CellTower` — links each call to the tower it routed through; the per-tower customer-impact aggregation reads this.
+- `TowerUpgradeOption.for_tower` -> `CellTower` — Stage 4 scopes the decision space to options on critical-restore towers.
 
 ## How it works
 
-**Stage 1 — Predictive (GNN).** A binary `at_risk` classifier message-passes over three heterogeneous edges on an undirected graph (`EquipmentHealth ↔ NetworkEquipment ↔ CellTower`, plus `ModelAdvisory ↔ NetworkEquipment` via shared MODEL). The undirected setting matters: bidirectional message passing lets the GNN reach tower-mate equipment via 2-hop paths through `CellTower`, so the *"my tower-mate sits on a recalled MODEL"* pattern is learnable. Per-equipment positive probabilities are summed per tower into `CellTower.failure_intensity` via a `TowerFailureScore` bridge concept.
+**Stage 1 — Predictive (GNN).** A binary `at_risk` classifier message-passes over three heterogeneous edges on an undirected graph (`EquipmentHealth -> NetworkEquipment -> CellTower`, plus `ModelAdvisory -> NetworkEquipment` via shared MODEL). The undirected setting matters: bidirectional message passing lets the GNN reach tower-mate equipment via 2-hop paths through `CellTower`, so the *"my tower-mate sits on a recalled MODEL"* pattern is learnable. Per-equipment positive probabilities are summed per tower into `CellTower.failure_intensity` via a `TowerFailureScore` bridge concept.
 
-**Stage 2 — Rules.** A three-branch `CellTower.is_critical_restore` flag fires when (1) `region == "WEST"` + `status == "DEGRADED"` + low avg equipment health, (2) WEST + high packet loss + low health, or (3) `failure_intensity > 1.5` (any region). Per-tower averages (`avg_packet_loss`, `avg_latency_ms`, `avg_error_rate`, `avg_health_score`) are derived first from `NetworkPerformance` and a two-hop `EquipmentHealth → NetworkEquipment → CellTower` join.
+**Stage 2 — Rules.** A three-branch `CellTower.is_critical_restore` flag fires when (1) `region == "WEST"` + `status == "DEGRADED"` + low avg equipment health, (2) WEST + high packet loss + low health, or (3) `failure_intensity > 1.5` (any region). Per-tower averages (`avg_packet_loss`, `avg_latency_ms`, `avg_error_rate`, `avg_health_score`) are derived first from `NetworkPerformance` and a two-hop `EquipmentHealth -> NetworkEquipment -> CellTower` join.
 
-**Stage 3 — Graph (customer impact analysis).** PageRank on the directed `Subscriber → Subscriber` call graph lands on `Subscriber.influence_score` (the graph reasoner's network-effect signal). The headline per-tower measure is `CellTower.weighted_impact` — sum of `Subscriber.customer_value` (= `lifetime_value × (1 + churn_risk_score)`) across the active callers (`Subscriber.status == SubscriberStatus.ACTIVE`) whose calls route through each tower. `weighted_pagerank` is the parallel PageRank-weighted view, exposed as a secondary signal queryable alongside the revenue-based headline.
+**Stage 3 — Graph (customer impact analysis).** PageRank on the directed `Subscriber -> Subscriber` call graph lands on `Subscriber.influence_score` (the graph reasoner's network-effect signal). The headline per-tower measure is `CellTower.weighted_impact` — sum of `Subscriber.customer_value` (= `lifetime_value x (1 + churn_risk_score)`) across the active callers (`Subscriber.status == SubscriberStatus.ACTIVE`) whose calls route through each tower. `weighted_pagerank` is the parallel PageRank-weighted view, exposed as a secondary signal queryable alongside the revenue-based headline.
 
-**Stage 4 — Prescriptive (MIP).** Binary `TowerUpgradeOption.selected`, scoped to critical-restore towers, with three constraints (at most one tier per tower, total cost ≤ $5M, total install-weeks ≤ 200) and a three-factor objective:
+**Stage 4 — Prescriptive (MIP).** Binary `TowerUpgradeOption.selected`, scoped to critical-restore towers, with three constraints (at most one tier per tower, total cost at most $5M, total install-weeks at most 200) and a three-factor objective:
 
 ```python
 problem.maximize(
@@ -319,14 +323,14 @@ Focus on the first changes most users will make.
 
 - **Budget envelope** — `BUDGET_USD` (default `$5,000,000`), `INSTALL_WEEKS_BUDGET` (default `200`).
 - **Predictive threshold** — `FAILURE_INTENSITY_THRESHOLD` (default `1.5`) is Branch 3's cutoff for *"the GNN is confident multiple pieces are at risk."*
-- **Customer-value formula** — the bundled formula is `LTV × (1 + churn_risk_score)`. Use `log1p(LTV) × (1 + churn)` to compress the enterprise-vs-consumer gap; multiply by an `NPS_SCORE`-derived factor for retention fragility; or add SLA-tier and emergency-service multipliers once those fields land on `subscribers.csv`.
+- **Customer-value formula** — the bundled formula is `LTV x (1 + churn_risk_score)`. Use `log1p(LTV) x (1 + churn)` to compress the enterprise-vs-consumer gap; multiply by an `NPS_SCORE`-derived factor for retention fragility; or add SLA-tier and emergency-service multipliers once those fields land on `subscribers.csv`.
 
 ### Extend the model
 
 - **Add more advisories** — extend `data/model_advisories.csv` with new advisory types and severities; the GNN picks them up on the next training run.
-- **Add a fourth GNN edge** — e.g., `NetworkEquipment → SimilarEquipment` via shared `FIRMWARE_VERSION` or `MANUFACTURER` to test other heterogeneous-neighborhood patterns.
+- **Add a fourth GNN edge** — e.g., `NetworkEquipment -> SimilarEquipment` via shared `FIRMWARE_VERSION` or `MANUFACTURER` to test other heterogeneous-neighborhood patterns.
 - **Add SLA-tier weighting** — add `SLA_TIER` / `is_emergency_service` columns to `subscribers.csv` and fold them into the `customer_value` precompute; the rest of the chain is unchanged.
-- **Add backhaul coupling** — model `BackhaulPath` / `AggregationNode` as Concepts and add a per-node capacity constraint to Stage 4 (`aggs.sum(selected × capacity).per(AggregationNode) <= node_headroom`).
+- **Add backhaul coupling** — model `BackhaulPath` / `AggregationNode` as Concepts and add a per-node capacity constraint to Stage 4 (`aggs.sum(selected * capacity).per(AggregationNode) <= node_headroom`).
 - **Swap PageRank for another graph algorithm** — `weighted_pagerank` is the secondary network-effect signal; replace `call_graph.pagerank()` with `betweenness_centrality()` or `eigenvector_centrality()` to surface different structural roles without changing the optimizer.
 
 ### Scale up / productionize
@@ -362,7 +366,7 @@ The Stage 2 rule still fires on them (Branches 1 and 2) — they're in the flagg
 <details>
 <summary>The plan looks enterprise-heavy</summary>
 
-The bundled subscriber data has 50 enterprise (~$300K LTV avg) vs. 1,150 consumer (~$3K LTV avg) accounts, so `weighted_impact` concentrates heavily on enterprise-bearing towers. This matches operator reality (enterprise SLAs drive capex). For a more balanced spread, swap the `customer_value` formula for `log1p(LTV) × (1 + churn)` or add a per-region minimum-coverage constraint to Stage 4 — both are tuning knobs, not redesigns.
+The bundled subscriber data has 50 enterprise (~$300K LTV avg) vs. 1,150 consumer (~$3K LTV avg) accounts, so `weighted_impact` concentrates heavily on enterprise-bearing towers. This matches operator reality (enterprise SLAs drive capex). For a more balanced spread, swap the `customer_value` formula for `log1p(LTV) x (1 + churn)` or add a per-region minimum-coverage constraint to Stage 4 — both are tuning knobs, not redesigns.
 
 </details>
 

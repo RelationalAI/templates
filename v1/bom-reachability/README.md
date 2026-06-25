@@ -28,6 +28,7 @@ A bill of materials (BOM) defines how finished products are built from component
 - **Intermediate users** who want to learn reachability analysis on directed graphs
 - **Supply chain analysts** assessing multi-tier dependency exposure
 - **Manufacturing engineers** identifying single-source risks in their BOM
+- **Assumed knowledge**: comfortable reading Python and familiar with basic graph and dependency concepts (nodes, directed edges, reachability); BOM, betweenness centrality, and the RelationalAI features are explained as they come up
 
 ## What you'll build
 
@@ -37,6 +38,9 @@ A bill of materials (BOM) defines how finished products are built from component
 - List dependencies per finished good, broken down by type (COMPONENT vs RAW_MATERIAL)
 - Rank components by how many other SKUs depend on them
 - Compute betweenness centrality to identify structural bottlenecks
+- Enumerate the end-to-end assembly chains that build each finished good and persist each one's assembly depth
+
+Built on RelationalAI's graph reasoner: **reachability** for transitive dependencies, **betweenness centrality** for bottlenecks, and **path enumeration** for assembly chains.
 
 ## What's included
 
@@ -45,9 +49,16 @@ A bill of materials (BOM) defines how finished products are built from component
 
 ## Prerequisites
 
-- Python >= 3.10
+### Access
+
 - A Snowflake account that has the RAI Native App installed.
 - A Snowflake user with permissions to access the RAI Native App.
+
+### Tools
+
+- Python >= 3.10
+- The `relationalai` SDK and the `rai` CLI (installed by the Quickstart's `python -m pip install .`).
+- Assembly-path enumeration is a PREVIEW capability that requires `relationalai>=1.15`; reachability and betweenness run on earlier versions.
 
 ## Quickstart
 
@@ -87,6 +98,19 @@ A bill of materials (BOM) defines how finished products are built from component
    ```bash
    python bom_reachability.py
    ```
+
+6. **Expected output** (a few lines confirm success):
+
+   ```text
+   === BOM Dependency Graph ===
+   9          # SKUs (nodes)
+   10         # dependency edges (14 site-specific BOM rows deduplicated)
+   Top bottleneck: Mobile Processor A15 (betweenness=4.0000)
+   Enumerated 18 assembly path(s) (<= 4 hops).
+   Maximal assembly chains (8 of 18, sub-paths suppressed):
+   ```
+
+   Both finished goods resolve to 7 transitive dependencies, the processor is the single most disruptive component, and each finished good lands at assembly depth 2. The full printout and a step-by-step walkthrough are in `runbook.md`.
 
 ## Template structure
 

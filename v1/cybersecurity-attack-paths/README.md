@@ -26,14 +26,14 @@ This template enumerates multi-step attack paths across an enterprise asset grap
 ## Who this is for
 
 - **Security analysts and threat modelers** who want to reason about attack paths, not just isolated findings
-- **Intermediate users** comfortable reading Python; graph and path terms are explained inline
 - **Detection and remediation teams** prioritizing which assets to harden first
+- **Assumed knowledge**: comfortable reading Python; graph and path terms (nodes, edges, path enumeration) are explained inline, so no prior RelationalAI experience is required to follow along
 
 ## What you'll build
 
 - Load a 12-asset enterprise estate (perimeter hosts, internal services and workstations, restricted crown jewels) and 16 directed attack steps from CSV
 - Model three distinct attacker techniques as separate edges between assets: vulnerability exploitation, credential reuse, and network pivoting
-- Enumerate kill-chain attack paths with a multi-edge pattern that fixes the technique order
+- Enumerate kill-chain attack paths with RelationalAI multi-relationship path enumeration, a multi-edge pattern that fixes the technique order
 - Run a point query that lists every route between one named entry point and one named crown jewel
 - Rank the kill-chains by the asset exposure summed along each one
 - Persist which assets lie on a crown-jewel attack path back onto the ontology
@@ -45,10 +45,16 @@ This template enumerates multi-step attack paths across an enterprise asset grap
 
 ## Prerequisites
 
-- Python 3.10 or newer
-- A Snowflake account that has the RAI Native App installed
-- A Snowflake user with permissions to access the RAI Native App
-- `relationalai` 1.15 or newer (path enumeration with multi-edge patterns is a preview capability)
+### Access
+
+- A Snowflake account that has the RAI Native App installed.
+- A Snowflake user with permissions to access the RAI Native App.
+
+### Tools
+
+- Python >= 3.10.
+- `relationalai` SDK >= 1.15 (path enumeration with multi-edge patterns is a preview capability) and the `rai` CLI, both installed by the Quickstart steps below.
+- OS notes: works on macOS, Linux, and Windows; the Quickstart's virtual-environment activation command assumes macOS or Linux.
 
 ## Quickstart
 

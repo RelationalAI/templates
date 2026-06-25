@@ -31,12 +31,13 @@ This template demonstrates **Graph** reasoning -- specifically variable-length p
 - **Intermediate users** who want to learn variable-length path traversal on a directed acyclic graph
 - **Platform and data engineers** assessing the downstream impact of a pipeline change or outage
 - **Reliability owners** who need to know which chains, and which people, sit between a root component and its consumers
+- **Assumed knowledge**: comfortable reading Python; graph and dependency-mapping terms are explained as they come up, so no prior RelationalAI experience is required to follow along
 
 ## What you'll build
 
 - Load a 14-feature, 15-edge dependency estate from CSV (raw sources, pipelines, feature jobs, services, dashboards)
 - Define a `contributes_to` self-relationship forming an acyclic dependency DAG
-- Enumerate every downstream dependency path with `model.path(...).all_paths()`
+- Enumerate every downstream dependency path with RelationalAI's variable-length path enumeration (`model.path(...).all_paths()`)
 - Report per-feature path counts and longest downstream depth
 - Reduce the path set to its maximal chains (longest non-extendable dependency chains)
 - Persist each feature's longest downstream depth back to the ontology as `Feature.max_downstream_depth`
@@ -49,10 +50,16 @@ This template demonstrates **Graph** reasoning -- specifically variable-length p
 
 ## Prerequisites
 
-- Python >= 3.10
+### Access
+
 - A Snowflake account that has the RAI Native App installed.
 - A Snowflake user with permissions to access the RAI Native App.
+
+### Tools
+
+- Python >= 3.10
 - `relationalai >= 1.15` -- the path-traversal API is a preview capability.
+- The `rai` CLI (ships with the `relationalai` SDK) for configuring your connection.
 
 ## Quickstart
 
@@ -92,6 +99,17 @@ This template demonstrates **Graph** reasoning -- specifically variable-length p
    ```bash
    python it_dependency_mapping.py
    ```
+
+6. **Expected output** (a few lines confirm success):
+
+   ```text
+   Total downstream dependency paths (1-8 hops): 46
+   === Maximal dependency chains (6 of 46 paths) ===
+     5 hops: Clickstream Ingest -> Events Enrichment Pipeline -> Session Feature Job -> Churn Feature Store -> Churn Scoring API -> Retention Dashboard
+   === Longest dependency chain: 5 hops ===
+   ```
+
+   The full printout -- per-feature reach, all six maximal chains, and the owners along the longest chain -- is in the `## Expected output` section below.
 
 ## Template structure
 
