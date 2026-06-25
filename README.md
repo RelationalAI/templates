@@ -39,7 +39,7 @@ The index below covers the current templates. Expand an industry to see its temp
 </details>
 
 <details>
-<summary>Financial Services (8)</summary>
+<summary>Financial Services (9)</summary>
 
 | Template | Reasoners | Description |
 | --- | --- | --- |

@@ -29,7 +29,7 @@ Templates are grouped by industry. Expand an industry to see its templates, the 
 </details>
 
 <details>
-<summary>Financial Services (8)</summary>
+<summary>Financial Services (9)</summary>
 
 | Template | Reasoners | Description |
 | --- | --- | --- |
