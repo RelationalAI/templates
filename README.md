@@ -112,13 +112,15 @@ The index below covers the current templates. Expand an industry to see its temp
 </details>
 
 <details>
-<summary>Technology & Telecom (9)</summary>
+<summary>Technology & Telecom (11)</summary>
 
 | Template | Reasoners | Description |
 | --- | --- | --- |
 | [cell_tower_coverage](v1/cell_tower_coverage/) | Prescriptive | Select candidate cell tower sites and assign demand zones to maximize covered population under budget, tower-count, and capacity limits. |
 | [cicd_runner_allocation](v1/cicd_runner_allocation/) | Prescriptive | Assign CI/CD workflow jobs to the cheapest compatible runner type, subject to concurrency limits, with scenario analysis across capacity levels and conflict analysis to diagnose an infeasible outage. |
+| [cybersecurity-attack-paths](v1/cybersecurity-attack-paths/) | Graph | Trace multi-step cyber attack chains across an enterprise asset graph by composing attacker techniques in order, then rank the routes that reach crown-jewel systems by their total exposure. |
 | [datacenter_compute_allocation](v1/datacenter_compute_allocation/) | Predictive, Graph, Rules-based, Prescriptive | Inside-the-fence GPU allocation across hyperscaler campuses, a chain follow-up to energy_grid_planning: GNN-predicted per-workload utilization, hardware-compatibility rules, dependency PageRank, and a 24-cell scenario MIP. |
+| [it-dependency-mapping](v1/it-dependency-mapping/) | Graph | Map the downstream dependency structure of a software and data-pipeline estate by enumerating variable-length traversal paths over an acyclic dependency graph, then surface the longest end-to-end chains and the owners along them. |
 | [memory_supply_allocation](v1/memory_supply_allocation/) | Predictive, Rules-based, Prescriptive, Graph | Monthly rolling-horizon allocation of constrained memory-chip supply across customers with supplier dependencies, named foundries, and raw-material inputs: predicted supplier capability feeds the optimization, customer-customer paths surface single points of failure, and two what-if scenarios trace supplier-offline and input-shortage cascades. |
 | [pod_placement](v1/pod_placement/) | Prescriptive | Assign pods to nodes in a Kubernetes-style cluster subject to per-node CPU / memory / GPU bin-packing, pairwise tenant anti-affinity, deployment co-location affinity, failure-domain spread, gang-placement atomicity, and topology rack-clique rules. Pure CSP via MiniZinc / Chuffed. |
 | [sprint_scheduling](v1/sprint_scheduling/) | Prescriptive | Assign backlog issues to developers across sprints, minimizing weighted completion time while respecting capacity and skill constraints. |
