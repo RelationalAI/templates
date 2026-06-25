@@ -40,7 +40,7 @@ Each stage enriches the shared ontology, and downstream stages consume those enr
 
 The ontology is accretive: each stage enriches it with derived properties, and downstream stages consume those enrichments as first-class attributes. This means changing Stage 1's demand forecast automatically propagates through the rules engine and optimizer without any code changes.
 
-The optimization is **multi-scenario and multi-objective**: `InvestmentLevel` is a Scenario Concept -- 5 budget entities ($200M-$600M) that parameterize the optimization. One MIP solve produces the entire Pareto frontier simultaneously (not a re-solve loop). The frontier reveals the knee point at $300M (5 DCs, 1,500 MW, $264M net value), where xAI Colossus ($105M/yr) unlocks -- the highest marginal return per dollar. Beyond $300M, marginal returns diminish: $995K/$M at the knee vs $400K/$M at $600M. Because the optimizer uses `predicted_load` from Stage 1 (not raw historical load), the capacity constraints reflect forecasted growth -- the same signal the rules engine uses.
+The optimization is **multi-scenario and multi-objective**: `InvestmentLevel` is a Scenario Concept -- 5 budget entities ($200M-$600M) that parameterize the optimization. One mixed-integer program (MIP) solve produces the entire Pareto frontier simultaneously (not a re-solve loop). The frontier reveals the knee point at $300M (5 DCs, 1,500 MW, $264M net value), where xAI Colossus ($105M/yr) unlocks -- the highest marginal return per dollar. Beyond $300M, marginal returns diminish: $995K/$M at the knee vs $400K/$M at $600M. Because the optimizer uses `predicted_load` from Stage 1 (not raw historical load), the capacity constraints reflect forecasted growth -- the same signal the rules engine uses.
 
 ## Why this problem matters
 
@@ -99,7 +99,7 @@ This is not a single-reasoner problem. Approving a data center at a structurally
 - `data/demand_forecasts.csv` -- Pre-computed substation load forecasts (6/12/18/24 month horizons)
 - `data/load_history.csv` -- 4 years of monthly substation load readings
 - `data/dc_announcements.csv` -- Hyperscaler announcement events
-- `data/train_forecasts.csv`, `data/val_forecasts.csv`, `data/test_forecasts.csv` -- GNN training splits (used by optional GNN training workflow, not by the main script)
+- `data/train_forecasts.csv`, `data/val_forecasts.csv`, `data/test_forecasts.csv` -- graph neural network (GNN) training splits (used by optional GNN training workflow, not by the main script)
 
 ## Prerequisites
 
@@ -243,6 +243,8 @@ energy_grid_planning/
   pyproject.toml             # Dependencies
 ```
 
+**Start here**: run `python energy_grid_planning.py` for the full four-stage chain end to end, or follow `runbook.md` to rebuild it step by step.
+
 ## Sample data
 
 The bundled data is **synthetic and illustrative** — modeled on the public shape of the ERCOT (Texas) grid and the wave of hyperscaler AI data center announcements, not a specific operator's network export. It is sized to teach the four-stage reasoning flow on a Snowflake-connected RAI account; production attributes a real interconnection study carries (sub-hourly SCADA telemetry, nodal pricing, contingency sets, protection settings) are extension points (see *Customize this template*), not gaps in the reasoning pattern.
@@ -257,7 +259,7 @@ The script loads thirteen CSVs from `data/` into the ontology (`energy_grid_plan
 - **`renewable_profiles.csv`** (120 rows) — hourly solar/wind capacity factors per generator.
 - **`maintenance_windows.csv`** (5 rows) — planned generator/line outage windows.
 - **`customers.csv`** (10 rows) — end-use customers with contracted demand, flexibility, and curtailment cost.
-- **`data_center_requests.csv`** (10 rows) — hyperscaler interconnection requests (Microsoft, Google, Amazon, Meta, xAI, Oracle, CoreWeave, Lambda Labs, Crusoe Energy, Apple), 2,930 MW total, each targeting one substation with a requested MW, annual revenue per MW, PUE, cooling type, low-carbon requirement, and queue position.
+- **`data_center_requests.csv`** (10 rows) — hyperscaler interconnection requests (Microsoft, Google, Amazon, Meta, xAI, Oracle, CoreWeave, Lambda Labs, Crusoe Energy, Apple), 2,930 MW total, each targeting one substation with a requested MW, annual revenue per MW, power usage effectiveness (PUE), cooling type, low-carbon requirement, and queue position.
 - **`substation_upgrades.csv`** (10 rows) — candidate capacity upgrades, each on one substation, with `CAPACITY_INCREASE_MW`, `COST_MILLION`, lead time, and a low-carbon-enablement flag.
 - **`demand_forecasts.csv`** (96 rows) — pre-computed substation load forecasts at 6/12/18/24-month horizons, with confidence and a DC-growth-included flag. Stage 1 reads this directly (the GNN fallback path).
 - **`load_history.csv`** (576 rows) — 4 years of monthly per-substation load readings with temperature and a peak-season flag.
@@ -518,12 +520,32 @@ problem.satisfy(model.where(
 
 ## Customize this template
 
-- **Add investment levels**: Add rows to the InvestmentLevel DataFrame for finer Pareto resolution
-- **Add demand scenarios**: Create a DemandScenario concept as a second Scenario axis
-- **Add generation dispatch**: Extend with GeneratorPeriod cross-product and dispatch variables (increases problem size significantly)
-- **Use real GNN predictions**: Install the predictive reasoner and train on `load_history.csv` via `energy_demand_forecast.py`
-- **Adjust low-carbon target**: Modify the `fails_low_carbon` rule (e.g., exclude nuclear to use renewable-only)
-- **Add your grid data**: Replace CSVs with your substation/transmission line topology
+Focus on the first changes most users will make.
+
+### Use your own data
+
+- Replace the CSVs in `data/` with your own substation/transmission-line topology; keep the column names listed in *Sample data* above.
+- For Snowflake-backed runs, swap the `pd.read_csv(...)` calls for `model.data(snowflake_table)` calls.
+- Use real GNN predictions by installing the predictive reasoner and training on `load_history.csv` (the GNN training splits ship in `data/` for this), then let Stage 1 read the trained model instead of the `demand_forecasts.csv` fallback.
+
+### Tune parameters
+
+- **Investment levels** — the budget scenarios (`$200M-$600M`) are `InvestmentLevel` rows; add rows for finer Pareto resolution or shift the budget caps to match your capex envelope.
+- **Corridor hop bound** — `MAX_CORRIDOR_HOPS` caps the Stage 2.5 path enumeration; raise it to trace longer generator-to-DC corridors.
+- **Structural-criticality cutoff** — `CRITICAL_THRESHOLD` sets how many top-betweenness substations Stage 2 flags critical, feeding Stage 3's structural rule.
+- **Objective weights** — Stage 4 maximizes annual interconnection revenue; adjust `annual_revenue_per_mw` or the net-value amortization to reweight which requests clear at each budget.
+
+### Extend the model
+
+- **Add demand scenarios** — create a `DemandScenario` concept as a second Scenario axis alongside `InvestmentLevel`.
+- **Add generation dispatch** — extend with a `GeneratorPeriod` cross-product and dispatch variables (increases problem size significantly).
+- **Adjust the low-carbon target** — modify the `fails_low_carbon` rule (e.g., exclude nuclear to use a renewable-only mandate).
+
+### Scale up / productionize
+
+- Replace the `data/` CSV bundle with CDC ingestion from your grid systems; the ontology shape is independent of the load pipeline.
+- The synthetic grid is sized at 12 substations / 18 lines; the chain scales to whatever fits the prescriptive engine's solve budget. Size the engine up for larger grids or finer investment grids, since the MIP grows with substations × investment levels.
+- Pin `relationalai` (this template targets `1.15.0`) and schedule the run as a pipeline step for reproducible, deterministic re-runs.
 
 ## Troubleshooting
 

@@ -243,14 +243,28 @@ assembly_df = (
 
 ## Customize this template
 
-**Use your own data:**
-- Replace CSVs in `data/` with your own SKU and BOM data, keeping the same column names.
-- The BOM data can include site-specific assembly (SITE_ID column) for multi-site manufacturing.
+Focus on the first changes most users will make.
 
-**Extend the analysis:**
-- Use `reachable(from_=target)` to trace downstream impact of a specific component disruption
-- Add cost or lead time properties to quantify dependency exposure
-- Combine with supplier data to map component-to-supplier risk chains
+### Use your own data
+
+- Replace the CSVs in `data/` with your own SKU and BOM data, keeping the same column names.
+- The BOM data can include site-specific assembly (`SITE_ID` column) for multi-site manufacturing.
+
+### Tune parameters
+
+- **Assembly-path depth** — `MAX_ASSEMBLY_HOPS` (the `repeat(1, MAX_ASSEMBLY_HOPS)` bound) caps how many tiers `all_paths()` enumerates. Raise it if your BOM is deeper than the bundled three tiers; lower it to keep path counts manageable on wide structures.
+
+### Extend the model
+
+- Use `reachable(from_=target)` to trace the downstream impact of a specific component disruption.
+- Add cost or lead-time properties to quantify dependency exposure.
+- Combine with supplier data to map component-to-supplier risk chains.
+
+### Scale up / productionize
+
+- Swap the CSV loads for `model.data(snowflake_table)` calls to run against Snowflake-backed tables instead of the bundled files.
+- Size the engine to the graph: reachability and betweenness scale with node and edge counts, and path enumeration grows with assembly depth and branching, so wide or deep BOMs want a larger engine.
+- Pin `relationalai` to a known-good version for reproducible runs, and schedule the script (cron, orchestrator, or Snowflake task) to refresh results as the BOM changes.
 
 ## Troubleshooting
 

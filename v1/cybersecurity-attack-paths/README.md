@@ -117,6 +117,8 @@ cybersecurity-attack-paths/
     └── attack_steps.csv
 ```
 
+**Start here**: run `python cybersecurity_attack_paths.py` for the full analysis end to end, or follow `runbook.md` to rebuild it step by step.
+
 ## Sample data
 
 `data/assets.csv` holds 12 assets that make up a small enterprise estate, spanning a perimeter (`dmz`), an `internal` zone of services and workstations, and a `restricted` zone of high-value systems. Each row carries `id`, `name`, `zone`, an `internet_facing` flag (`yes`/`no`), a `crown_jewel` flag (`yes`/`no`), and an `exposure_score` (an integer stand-in for a CVSS or attack-surface metric). Two assets are crown jewels (the Domain Controller and the Customer Database); three sit internet-facing on the perimeter.
@@ -235,14 +237,26 @@ model.where(fa.id == flag_data["id"]).define(fa.on_attack_path("yes"))
 
 ## Customize this template
 
-**Use your own data:**
+### Use your own data
+
 - Replace the CSVs in `data/` with your own assets and attack steps, keeping the same column names. Tag each step with the technique an attacker would use (`exploit`, `cred`, `pivot`, or your own taxonomy).
 - Mark internet-facing assets and crown jewels with `yes` or `no` so the kill-chain endpoints match your environment.
-
-**Extend the analysis:**
-- Add more techniques (for example `phish` or `escalate`) as additional edges and lengthen the multi-edge pattern.
-- Raise `MAX_PIVOTS` or `MAX_ROUTE_HOPS` for larger estates with deeper lateral movement.
 - Feed `Asset.exposure_score` from a real vulnerability or attack-surface feed so the ranking reflects live risk.
+
+### Tune parameters
+
+- Raise `MAX_PIVOTS` or `MAX_ROUTE_HOPS` for larger estates with deeper lateral movement (these bound the kill-chain pivot repeat and the point-query hop count).
+- Adjust how `Asset.exposure_score` is weighted in the ranking so the chains that surface first match your prioritization (raw sum, per-hop average, or a max along the path).
+
+### Extend the model
+
+- Add more techniques (for example `phish` or `escalate`) as additional edges and lengthen the multi-edge pattern.
+
+### Scale up / productionize
+
+- Size the RAI engine to the estate: path enumeration grows with the number of assets and edges, so larger graphs want a larger engine.
+- Schedule the run (cron, Airflow, or your orchestrator of choice) to re-enumerate paths as the asset and attack-step feeds refresh.
+- Pin `relationalai` to a known-good version in `pyproject.toml` for reproducible runs across environments.
 
 ## Troubleshooting
 

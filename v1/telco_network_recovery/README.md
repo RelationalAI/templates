@@ -1,6 +1,6 @@
 ---
 title: "Telco Network Recovery"
-description: "Tower-upgrade planning on a shared telco ontology: an equipment-failure GNN over a heterogeneous graph (with manufacturer advisories), declarative critical-tower rules, and customer-impact analysis (revenue x churn, with PageRank)."
+description: "Tower-upgrade planning on a shared telco ontology: an equipment-failure graph neural network (GNN) over a heterogeneous graph (with manufacturer advisories), declarative critical-tower rules, and customer-impact analysis (revenue x churn, with PageRank)."
 featured: false
 experience_level: advanced
 industry: "Technology & Telecom"
@@ -168,15 +168,17 @@ telco_network_recovery/
   pyproject.toml                  # dependencies
 ```
 
+**Start here**: run `python telco_network_recovery.py` for the full four-stage chain end to end, or follow `runbook.md` to rebuild it step by step.
+
 ## Sample data
 
 The bundled data is **synthetic and illustrative** — designed to teach the reasoning flow on a Snowflake-connected RAI account, not to match a specific operator's network. The data does not yet model site / sector / band / radio-unit / vendor / backhaul attributes that a production network catalog carries; those are extension points (see *Customize this template*), not gaps in the reasoning pattern.
 
 - **`cell_towers.csv`** (250 rows) — towers across 5 regions; 15 WEST towers are explicitly `DEGRADED`.
 - **`network_equipment.csv`** (1,500 rows) — equipment installs across 18 consolidated MODELs (manufacturer x model name); each links to one tower.
-- **`equipment_health.csv`** (1,500 rows) — per-equipment health snapshot (MTBF hours, failure rate, temperature, power, health score).
+- **`equipment_health.csv`** (1,500 rows) — per-equipment health snapshot (mean time between failures (MTBF) hours, failure rate, temperature, power, health score).
 - **`network_performance.csv`** (5,000 rows) — per-tower performance measurements (latency, throughput, packet loss, jitter, signal strength, utilization).
-- **`subscribers.csv`** (1,200 rows) — 1,150 `CONSUMER` + 50 `ENTERPRISE` accounts with `LIFETIME_VALUE_USD`, `CHURN_RISK_SCORE`, `SEGMENT`, `STATUS`. Enterprise LTV averages ~130x consumer, so the customer-impact aggregation in Stage 3 weights heavily toward enterprise-bearing towers — realistic for capex prioritization.
+- **`subscribers.csv`** (1,200 rows) — 1,150 `CONSUMER` + 50 `ENTERPRISE` accounts with `LIFETIME_VALUE_USD`, `CHURN_RISK_SCORE`, `SEGMENT`, `STATUS`. Enterprise lifetime value (LTV) averages ~130x consumer, so the customer-impact aggregation in Stage 3 weights heavily toward enterprise-bearing towers — realistic for capex prioritization.
 - **`call_detail_records.csv`** (6,000 rows) — directed call records (`caller -> callee`), each routed through a specific tower.
 - **`tower_upgrade_options.csv`** (750 rows) — three BRONZE / SILVER / GOLD options per tower with capacity, cost, and install-week deltas.
 - **`model_advisories.csv`** (8 rows) — manufacturer advisories (`RECALL` / `DEFECT_BATCH` / `EOL` / `FIRMWARE_BUG` / `SECURITY_PATCH`) on 7 MODELs, with severities `0.50–0.95`.

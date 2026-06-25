@@ -21,7 +21,7 @@ sidebar:
 
 Modern software estates are webs of dependencies: raw data sources feed ingestion pipelines, pipelines feed feature jobs, jobs back services and APIs, and services power dashboards. When someone proposes changing a pipeline -- or one goes down at 2am -- the question is always the same: what is downstream of this, and how far does the blast radius reach? Direct dependencies are easy to list; the full transitive chains are not.
 
-This template demonstrates **Graph** reasoning -- specifically variable-length path traversal -- over a dependency DAG:
+This template demonstrates **Graph** reasoning -- specifically variable-length path traversal -- over a dependency directed acyclic graph (DAG):
 
 1. **Path enumeration** (`model.path(Feature.contributes_to.repeat(1, N)).all_paths()`) -- Walk every downstream dependency path of every length. Because the estate is acyclic, each enumerated path is a simple chain.
 2. **Maximal-chain reduction** -- Collapse the full path set down to the longest non-extendable chains, dropping the shorter sub-chains contained inside them, so the end-to-end propagation paths stand out.
@@ -35,13 +35,12 @@ This template demonstrates **Graph** reasoning -- specifically variable-length p
 
 ## What you'll build
 
-- Load a 14-feature, 15-edge dependency estate from CSV (raw sources, pipelines, feature jobs, services, dashboards)
-- Define a `contributes_to` self-relationship forming an acyclic dependency DAG
-- Enumerate every downstream dependency path with RelationalAI's variable-length path enumeration (`model.path(...).all_paths()`)
-- Report per-feature path counts and longest downstream depth
-- Reduce the path set to its maximal chains (longest non-extendable dependency chains)
-- Persist each feature's longest downstream depth back to the ontology as `Feature.max_downstream_depth`
-- Trace the owners along the single longest chain -- the worst-case change/incident blast radius
+- The full set of downstream dependency paths across a 14-feature, 15-edge estate (raw sources, pipelines, feature jobs, services, dashboards), reduced to the maximal chains -- the longest non-extendable end-to-end propagation paths.
+- A per-feature reach summary: how many downstream paths each feature has and how deep its longest chain runs.
+- `Feature.max_downstream_depth` persisted back to the ontology, so downstream queries can rank features by reach without re-enumerating paths.
+- The owners along the single longest chain -- the worst-case change/incident blast radius.
+
+Built using RelationalAI's **variable-length path enumeration** (`model.path(...).all_paths()`) over an acyclic dependency graph.
 
 ## What's included
 
@@ -123,6 +122,8 @@ it-dependency-mapping/
     └── dependencies.csv        # 15 dependency edges (from_feature, to_feature)
 ```
 
+**Start here**: run `python it_dependency_mapping.py` for the full analysis end to end, or follow `runbook.md` to rebuild it step by step.
+
 ## Sample data
 
 `data/features.csv` holds 14 features that make up a small software and data-pipeline estate -- raw sources, ingestion pipelines, feature jobs, services, and dashboards. Each row carries an `id`, a human-readable `name`, an `owner`, and a `deploy_tier` (`critical`, `high`, or `standard`).
@@ -146,6 +147,10 @@ The estate is **acyclic** (a dependency DAG): no feature transitively depends on
 ## Model overview
 
 A single concept, `Feature`, represents every node in the estate, and one self-relationship, `contributes_to`, records the directed dependency edges between features.
+
+- **Key entities**: `Feature` — one node in the software and data-pipeline estate (raw source, ingestion pipeline, feature job, service, or dashboard).
+- **Primary identifiers**: the string `id` on `Feature`.
+- **Important invariants**: the `contributes_to` graph is acyclic — a feature does not depend on itself, so every enumerated traversal path is a simple chain.
 
 ### `Feature`
 
@@ -279,14 +284,25 @@ The deepest chain runs five hops from a raw source all the way to a downstream d
 
 ## Customize this template
 
-**Use your own data:**
+### Use your own data
+
 - Replace the CSVs in `data/` with your own features and dependency edges, keeping the same column names.
 - `deploy_tier` is illustrative metadata; swap in your own (criticality, environment, SLA class) and group the output by it.
 
-**Extend the analysis:**
-- Raise `MAX_DEPTH` if your estate has longer chains than the sample.
+### Tune parameters
+
+- `MAX_DEPTH` (default `8`, at the top of `it_dependency_mapping.py`) bounds the traversal length. Raise it if your estate has longer chains than the sample; lower it to cap enumeration on a denser graph.
+
+### Extend the model
+
 - Filter the enumerated paths to those that end at a `critical`-tier feature to find the chains that matter most.
 - Add edge attributes (latency, freshness SLA) and sum them along each path to rank chains by cumulative risk, not just length.
+
+### Scale up / productionize
+
+- Size the RAI engine to the graph: path enumeration grows with the number of edges and `MAX_DEPTH`, so a larger estate warrants a larger engine.
+- Schedule recurring runs (e.g. after each dependency-catalog refresh) so `Feature.max_downstream_depth` stays current for downstream queries.
+- Pin `relationalai` to a known-good version for reproducible runs.
 
 ## Troubleshooting
 
