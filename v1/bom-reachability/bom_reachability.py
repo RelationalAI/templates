@@ -34,13 +34,17 @@ import pandas as pd
 from relationalai.semantics import Float, Integer, Model, String, where
 from relationalai.semantics.reasoners.graph import Graph
 
+# --------------------------------------------------
+# Configure inputs
+# --------------------------------------------------
+
+DATA_DIR = Path(__file__).parent / "data"
+
+# --------------------------------------------------
+# Define semantic model & load data
+# --------------------------------------------------
+
 model = Model("bom_reachability")
-
-# --------------------------------------------------
-# Load data & define semantic model
-# --------------------------------------------------
-
-data_dir = Path(__file__).parent / "data"
 
 # SKU concept
 SKU = model.Concept("SKU", identify_by={"id": String})
@@ -48,7 +52,7 @@ SKU.name = model.Property(f"{SKU} has {String:name}")
 SKU.type = model.Property(f"{SKU} has type {String:type}")
 SKU.category = model.Property(f"{SKU} in {String:category}")
 
-sku_data = model.data(pd.read_csv(data_dir / "skus.csv"))
+sku_data = model.data(pd.read_csv(DATA_DIR / "skus.csv"))
 model.define(SKU.new(id=sku_data["ID"]))
 where(SKU.id == sku_data["ID"]).define(
     SKU.name(sku_data["NAME"]),
@@ -61,7 +65,7 @@ BillOfMaterials = model.Concept("BillOfMaterials", identify_by={"id": String})
 BillOfMaterials.output_sku = model.Relationship(f"{BillOfMaterials} produces {SKU}")
 BillOfMaterials.input_sku = model.Relationship(f"{BillOfMaterials} requires {SKU}")
 
-bom_data = model.data(pd.read_csv(data_dir / "bill_of_materials.csv"))
+bom_data = model.data(pd.read_csv(DATA_DIR / "bill_of_materials.csv"))
 model.define(BillOfMaterials.new(id=bom_data["ID"]))
 where(BillOfMaterials.id == bom_data["ID"]).define(
     BillOfMaterials.output_sku(SKU.lookup(id=bom_data["OUTPUT_SKU_ID"])),
