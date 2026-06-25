@@ -111,6 +111,43 @@ cybersecurity-attack-paths/
     └── attack_steps.csv
 ```
 
+## Sample data
+
+`data/assets.csv` holds 12 assets that make up a small enterprise estate, spanning a perimeter (`dmz`), an `internal` zone of services and workstations, and a `restricted` zone of high-value systems. Each row carries `id`, `name`, `zone`, an `internet_facing` flag (`yes`/`no`), a `crown_jewel` flag (`yes`/`no`), and an `exposure_score` (an integer stand-in for a CVSS or attack-surface metric). Two assets are crown jewels (the Domain Controller and the Customer Database); three sit internet-facing on the perimeter.
+
+`data/attack_steps.csv` holds 16 directed attack steps, one per row, with `src`, `dst`, and a `technique` tag. The technique splits the steps into the three attacker moves the kill-chain composes in order: `exploit` (vulnerability exploitation), `cred` (credential reuse), and `pivot` (network lateral movement). Each step reads as "an attacker on `src` can reach `dst` by this technique".
+
+## Model overview
+
+- **Key entities**: `Asset` — one host, service, or account in the enterprise estate.
+- **Primary identifiers**: `Asset` by `id`.
+- **Important invariants**: the three technique edges are directed (`src` reaches `dst`, not the reverse); `internet_facing` and `crown_jewel` are `yes`/`no` flags that pin the kill-chain endpoints; `on_attack_path` is set only on assets that lie on a crown-jewel-reaching chain.
+
+### `Asset`
+
+A host, service, or account in the enterprise estate. Its flags mark where attack paths can start (`internet_facing`) and end (`crown_jewel`), and `on_attack_path` is persisted back onto the asset after the kill-chains are enumerated.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `id` | string | Yes | Loaded from `data/assets.csv` |
+| `name` | string | No | Human-readable asset name |
+| `zone` | string | No | `dmz`, `internal`, or `restricted` |
+| `internet_facing` | string | No | `yes`/`no`; a kill-chain source must be `yes` |
+| `crown_jewel` | string | No | `yes`/`no`; a kill-chain destination must be `yes` |
+| `exposure_score` | int | No | Per-asset risk score summed along each chain for ranking |
+| `on_attack_path` | string | No | `yes`, persisted onto assets that lie on a crown-jewel chain |
+
+### Relationships
+
+Four directed self-relationships between assets. The first three are the technique-tagged kill-chain edges; `can_reach` is the technique-agnostic union used by the point query.
+
+| Relationship | Schema (reading string fields) | Notes |
+|---|---|---|
+| `exploit_to(Asset, Asset)` | `src`, `dst` | Vulnerability exploitation step |
+| `cred_to(Asset, Asset)` | `src`, `dst` | Credential-reuse step |
+| `pivot_to(Asset, Asset)` | `src`, `dst` | Network lateral-movement step |
+| `can_reach(Asset, Asset)` | `src`, `dst` | Union of all steps (any technique); used by the point query |
+
 ## How it works
 
 ```text
@@ -217,3 +254,12 @@ model.where(fa.id == flag_data["id"]).define(fa.on_attack_path("yes"))
 - If you have multiple profiles, set `RAI_PROFILE` or switch profiles in your config.
 
 </details>
+
+## Learn more
+
+- [RelationalAI documentation](https://docs.relational.ai/) — language, modeling, and reasoner reference.
+- [Template gallery](https://docs.relational.ai/build/templates) — other runnable templates, including graph, rules, and prescriptive examples.
+
+## Support
+
+- Questions or issues: [support.relational.ai](https://support.relational.ai).

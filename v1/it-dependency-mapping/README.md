@@ -52,7 +52,7 @@ This template demonstrates **Graph** reasoning -- specifically variable-length p
 - Python >= 3.10
 - A Snowflake account that has the RAI Native App installed.
 - A Snowflake user with permissions to access the RAI Native App.
-- `relationalai >= 1.15` -- the path-traversal API is a preview capability (introduced in 1.13, validated on 1.15).
+- `relationalai >= 1.15` -- the path-traversal API is a preview capability.
 
 ## Quickstart
 
@@ -104,6 +104,48 @@ it-dependency-mapping/
     ├── features.csv            # 14 features (id, name, owner, deploy_tier)
     └── dependencies.csv        # 15 dependency edges (from_feature, to_feature)
 ```
+
+## Sample data
+
+`data/features.csv` holds 14 features that make up a small software and data-pipeline estate -- raw sources, ingestion pipelines, feature jobs, services, and dashboards. Each row carries an `id`, a human-readable `name`, an `owner`, and a `deploy_tier` (`critical`, `high`, or `standard`).
+
+| Column | Description |
+|---|---|
+| `id` | Stable identifier for the feature (e.g. `clickstream-ingest`) |
+| `name` | Human-readable name (e.g. `Clickstream Ingest`) |
+| `owner` | Person responsible for the feature |
+| `deploy_tier` | Criticality tier: `critical`, `high`, or `standard` |
+
+`data/dependencies.csv` holds 15 dependency edges. Each row is a directed `from_feature -> to_feature` pair, where the upstream feature feeds (contributes to) the downstream one.
+
+| Column | Description |
+|---|---|
+| `from_feature` | `id` of the upstream feature |
+| `to_feature` | `id` of the downstream feature it feeds |
+
+The estate is **acyclic** (a dependency DAG): no feature transitively depends on itself, so every enumerated traversal path is a simple end-to-end chain.
+
+## Model overview
+
+A single concept, `Feature`, represents every node in the estate, and one self-relationship, `contributes_to`, records the directed dependency edges between features.
+
+### `Feature`
+
+A node in the estate -- a raw source, ingestion pipeline, feature job, service, or dashboard.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `id` | string | Yes | Loaded from `data/features.csv` |
+| `name` | string | No | Human-readable name |
+| `owner` | string | No | Person responsible for the feature |
+| `deploy_tier` | string | No | Criticality tier: `critical`, `high`, or `standard` |
+| `max_downstream_depth` | int | No | Longest downstream dependency depth, persisted back to the ontology after path enumeration |
+
+### Relationships
+
+| Relationship | Schema | Notes |
+|---|---|---|
+| `contributes_to(Feature, Feature)` | upstream `Feature`, downstream `Feature` | A Feature -> Feature self-relationship: the upstream feature feeds the downstream one. Acyclic, so it forms a dependency DAG. |
 
 ## How it works
 
@@ -233,7 +275,7 @@ The deepest chain runs five hops from a raw source all the way to a downstream d
 <details>
   <summary>Why does <code>model.path(...)</code> raise an <code>AttributeError</code> or <code>ImportError</code>?</summary>
 
-- The path-traversal API is a preview capability introduced in `relationalai` 1.13 and validated on 1.15. Confirm your installed version (>= 1.15) with `python -c "import relationalai; print(relationalai.__version__)"` and upgrade if it is older.
+- The path-traversal API is a preview capability that requires `relationalai >= 1.15`. Confirm your installed version with `python -c "import relationalai; print(relationalai.__version__)"` and upgrade if it is older.
 
 </details>
 
@@ -251,3 +293,12 @@ The deepest chain runs five hops from a raw source all the way to a downstream d
 - If you have multiple profiles, set `RAI_PROFILE` or switch profiles in your config.
 
 </details>
+
+## Learn more
+
+- [RelationalAI documentation](https://docs.relational.ai/) — language, modeling, and reasoner reference.
+- [Template gallery](https://docs.relational.ai/build/templates) — other runnable templates, including graph, rules, and prescriptive examples.
+
+## Support
+
+- Questions or issues: [support.relational.ai](https://support.relational.ai).

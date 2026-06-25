@@ -245,6 +245,155 @@ energy_grid_planning/
   pyproject.toml             # Dependencies
 ```
 
+## Sample data
+
+The bundled data is **synthetic and illustrative** — modeled on the public shape of the ERCOT (Texas) grid and the wave of hyperscaler AI data center announcements, not a specific operator's network export. It is sized to teach the four-stage reasoning flow on a Snowflake-connected RAI account; production attributes a real interconnection study carries (sub-hourly SCADA telemetry, nodal pricing, contingency sets, protection settings) are extension points (see *Customize this template*), not gaps in the reasoning pattern.
+
+The script loads thirteen CSVs from `data/` into the ontology (`energy_grid_planning.py` lines 77-89). Three additional GNN-split files ship for the optional training workflow and are **not** read by the main script.
+
+- **`substations.csv`** (12 rows) — Texas grid nodes (Houston Ship Channel, Dallas-Fort Worth, San Antonio Metro, …) with `VOLTAGE_KV`, `MAX_CAPACITY_MW`, `CURRENT_LOAD_MW`, and lat/long coordinates.
+- **`generators.csv`** (15 rows) — generation units across 7 types (2 nuclear — STP + Comanche Peak — plus gas, coal, wind, solar, battery, hydro), each linked to a substation, with capacity, ramp, cost, emissions, and a renewable flag.
+- **`transmission_lines.csv`** (18 rows) — directed `FROM_SUBSTATION_ID -> TO_SUBSTATION_ID` edges forming a single connected ERCOT grid, with capacity, length, impedance, an `IS_ACTIVE` flag, and maintenance priority.
+- **`load_zones.csv`** (5 rows) — ERCOT load zones with peak and base demand.
+- **`demand_periods.csv`** (120 rows) — 24-hour demand-and-price profiles per load zone.
+- **`renewable_profiles.csv`** (120 rows) — hourly solar/wind capacity factors per generator.
+- **`maintenance_windows.csv`** (5 rows) — planned generator/line outage windows.
+- **`customers.csv`** (10 rows) — end-use customers with contracted demand, flexibility, and curtailment cost.
+- **`data_center_requests.csv`** (10 rows) — hyperscaler interconnection requests (Microsoft, Google, Amazon, Meta, xAI, Oracle, CoreWeave, Lambda Labs, Crusoe Energy, Apple), 2,930 MW total, each targeting one substation with a requested MW, annual revenue per MW, PUE, cooling type, low-carbon requirement, and queue position.
+- **`substation_upgrades.csv`** (10 rows) — candidate capacity upgrades, each on one substation, with `CAPACITY_INCREASE_MW`, `COST_MILLION`, lead time, and a low-carbon-enablement flag.
+- **`demand_forecasts.csv`** (96 rows) — pre-computed substation load forecasts at 6/12/18/24-month horizons, with confidence and a DC-growth-included flag. Stage 1 reads this directly (the GNN fallback path).
+- **`load_history.csv`** (576 rows) — 4 years of monthly per-substation load readings with temperature and a peak-season flag.
+- **`dc_announcements.csv`** (8 rows) — hyperscaler announcement events (date, MW, target substation).
+
+Optional GNN training splits, **not loaded by the main script**: `train_forecasts.csv` (360 rows), `val_forecasts.csv` (108 rows), `test_forecasts.csv` (108 rows) — `substation_id` / `timestamp` / `target_load_mw` series for the optional predictive-training workflow.
+
+## Model overview
+
+One shared ontology threads all four stages. Each stage reads concepts and properties earlier stages wrote, and writes new ones for downstream stages — the accretive-enrichment pattern described above.
+
+- **Key entities**: `Substation`, `Generator`, `TransmissionLine`, `DataCenterRequest`, `SubstationUpgrade`, `DemandForecast`; plus the Stage 4 Scenario Concept `InvestmentLevel` and the results concept `InvestmentPortfolio`. Supporting concepts (`LoadZone`, `DemandPeriod`, `RenewableProfile`, `MaintenanceWindow`, `Customer`, `LoadHistory`, `DCAnnouncement`) mirror their CSVs and back the aggregations.
+- **Primary identifiers**: string `id` on the base entities (e.g. `SUB-001`, `TL-001`); `name` on `InvestmentLevel` (e.g. `"$300M"`); `investment_level_name` on `InvestmentPortfolio`.
+- **Important invariants**: `predicted_load`, `max_capacity_mw`, `current_load_mw`, `requested_mw`, and `capacity_increase_mw` are non-negative MW; `low_carbon_requirement_pct` is a percentage; a generator is low-carbon when `emissions_rate == 0`; Stage 4 decision variables (`x_approve`, `x_upgrade`) are binary.
+
+### Concepts
+
+**`Substation`** — a grid node. The hub of the model: Stages 1-2.5 enrich it with forecast, topology, and corridor-fragility properties that Stages 3-4 consume.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `id` | String | Yes | `ID` from `data/substations.csv` |
+| `name` | String | No | Human-readable name |
+| `voltage_kv` | Float | No | Operating voltage |
+| `max_capacity_mw` | Float | No | Capacity ceiling |
+| `current_load_mw` | Float | No | Present load (fallback when no forecast) |
+| `latitude`, `longitude` | Float | No | Coordinates |
+| `predicted_load` | Float | No | **Stage 1** max forecast per substation |
+| `grid_community` | Integer | No | **Stage 2** Louvain region label |
+| `betweenness`, `degree_centrality`, `eigenvector_centrality` | Float | No | **Stage 2** centrality scores |
+| `betweenness_rank`, `degree_rank`, `eigenvector_rank`, `combined_rank`, `critical_rank` | Integer | No | **Stage 2** rank derivations |
+| `is_structurally_critical` | Relationship | — | **Stage 2** top-`CRITICAL_THRESHOLD` flag |
+| `connects_to` | Relationship | — | **Stage 2.5** bidirectional substation-to-substation grid edge |
+| `fragility_load` | Float | No | **Stage 2.5** (PREVIEW) most-fragile corridor's summed betweenness |
+| `low_carbon_gen_mw`, `total_gen_mw` | Float | No | **Stage 3** per-substation generation aggregates |
+
+**`Generator`** — a generation unit connected to a substation. Stage 3's low-carbon rule sums its capacity by emissions.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `id` | String | Yes | `ID` from `data/generators.csv` |
+| `name`, `gen_type` | String | No | `gen_type` is one of nuclear/gas/coal/wind/solar/battery/hydro |
+| `capacity_mw`, `min_output_mw`, `ramp_rate_mw_per_hr` | Float | No | Output characteristics |
+| `startup_cost`, `marginal_cost` | Float | No | Cost characteristics |
+| `min_up_time_hrs`, `min_down_time_hrs` | Integer | No | Commitment constraints |
+| `emissions_rate` | Float | No | tons/MWh; `0` means low-carbon |
+| `is_renewable` | Boolean | No | Renewable flag |
+| `substation` | Relationship | — | Link to hosting `Substation` |
+
+**`TransmissionLine`** — a directed line between two substations; the Stage 2 graph edges (when `is_active`).
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `id` | String | Yes | `ID` from `data/transmission_lines.csv` |
+| `from_substation` | Relationship | — | Origin `Substation` |
+| `to_substation` | Relationship | — | Terminating `Substation` |
+| `capacity_mw`, `length_km`, `impedance` | Float | No | Line characteristics |
+| `is_active` | Boolean | No | Only active lines become graph edges |
+| `maintenance_priority` | String | No | `high` / `medium` / `low` |
+
+**`DataCenterRequest`** — a hyperscaler interconnection request targeting one substation. The MIP approves a subset; Stage 3 flags compliance.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `id` | String | Yes | `ID` from `data/data_center_requests.csv` |
+| `name`, `hyperscaler` | String | No | Project and operator |
+| `requested_mw` | Float | No | Interconnection size |
+| `substation` | Relationship | — | Target `Substation` |
+| `annual_revenue_per_mw` | Float | No | Interconnection capacity revenue ($/MW/yr) |
+| `pue` | Float | No | Power usage effectiveness |
+| `is_ai_workload` | Boolean | No | AI workload flag |
+| `cooling_type` | String | No | Cooling technology |
+| `low_carbon_requirement_pct` | Float | No | Required low-carbon generation fraction |
+| `queue_position` | Integer | No | Interconnection-queue order |
+| `status` | String | No | Request status |
+| `fails_capacity`, `fails_structural`, `fails_low_carbon`, `is_compliant` | Relationship | — | **Stage 3** compliance flags |
+| `x_approve` | Float | No | **Stage 4** binary approval per `InvestmentLevel` |
+
+**`SubstationUpgrade`** — a candidate capacity upgrade on one substation. The MIP's build decisions.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `id` | String | Yes | `ID` from `data/substation_upgrades.csv` |
+| `substation` | Relationship | — | Upgraded `Substation` |
+| `capacity_increase_mw` | Float | No | MW added if built |
+| `cost_million` | Float | No | Cost in $M |
+| `lead_time_months` | Integer | No | Build lead time |
+| `enables_low_carbon` | Boolean | No | Whether it unlocks low-carbon supply |
+| `x_upgrade` | Float | No | **Stage 4** binary build decision per `InvestmentLevel` |
+
+**`DemandForecast`** — a per-substation load forecast at a horizon. Stage 1 aggregates the max per substation into `Substation.predicted_load`.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `id` | String | Yes | `ID` from `data/demand_forecasts.csv` |
+| `substation` | Relationship | — | Forecasted `Substation` |
+| `forecast_period` | Integer | No | Horizon in months (6/12/18/24) |
+| `predicted_load_mw` | Float | No | Forecasted load |
+| `confidence` | Float | No | Forecast confidence |
+| `includes_dc_growth` | Boolean | No | Whether DC growth is folded in |
+
+**`InvestmentLevel`** — the Stage 4 Scenario Concept; 5 budget entities ($200M-$600M) that parameterize one MIP solve into a Pareto frontier.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `name` | String | Yes | Budget label (e.g. `"$300M"`) |
+| `budget_cap` | Float | No | Upgrade-spend ceiling in $M |
+
+**`InvestmentPortfolio`** — one results row per `InvestmentLevel`, materialized after the solve so the Pareto frontier is queryable as ontology rather than parsed from solver output.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `investment_level_name` | String | Yes | Matches the `InvestmentLevel.name` |
+| `investment_level` | Relationship | — | Link to the `InvestmentLevel` |
+| `dc_count` | Integer | No | DCs approved at this level |
+| `total_mw` | Float | No | Approved MW |
+| `annual_revenue` | Float | No | Annual interconnection revenue |
+| `upgrade_cost` | Float | No | Upgrade spend (dollars) |
+| `net_value` | Float | No | Revenue minus amortized upgrade cost |
+| `marginal_per_m_to_next_level` | Float | No | Marginal net value per $M to the next level |
+| `is_knee_point` | Boolean | No | Pareto-frontier knee flag |
+
+The Stage 2.5 paths analysis also derives two transient sub-concepts, `GeneratorSubstation` and `DCSubstation` (both `extends=[Substation]`), to type the corridor endpoints — substations hosting a generator (source) and substations hosting a DC request (sink).
+
+### Relationships
+
+- `Generator.substation -> Substation` — each generator's hosting substation; Stage 3 sums generation per substation along it.
+- `TransmissionLine.from_substation` / `.to_substation -> Substation` — directed grid edge; active lines become the Stage 2 graph edges.
+- `Substation.connects_to -> Substation` — **Stage 2.5** bidirectional substation-to-substation edge derived from active transmission lines; the corridor enumeration walks it.
+- `DataCenterRequest.substation -> Substation` — the substation a request targets; the capacity, structural, and low-carbon rules all join through it.
+- `SubstationUpgrade.substation -> Substation` — the substation an upgrade expands; the Stage 4 capacity constraint nets its `capacity_increase_mw` against load.
+- `DemandForecast.substation -> Substation` — the forecasted substation; Stage 1's `aggs.max(...).per(Substation)` reads it.
+- `InvestmentPortfolio.investment_level -> InvestmentLevel` — links each results row to its budget scenario.
+
 ## How it works
 
 ### Stage 1: Predict -- Substation Load Forecasting
@@ -415,3 +564,20 @@ problem.satisfy(model.where(
 - The optimizer correctly prioritizes revenue-maximizing allocations at the constrained substation.
 
 </details>
+
+## Learn more
+
+### Core concepts
+
+- [Multi-reasoner workflows](https://docs.relational.ai/) — chained reasoner patterns and ontology enrichment.
+- [PyRel v1 query language](https://docs.relational.ai/) — `model.where(...)` / `aggs` / `.define()`.
+
+### Reasoner reference
+
+- [Predictive reasoner (GNN)](https://docs.relational.ai/) — heterogeneous-graph classification, PropertyTransformer, edge patterns.
+- [Graph reasoner](https://docs.relational.ai/) — node-concept and edge-concept patterns, PageRank and centrality.
+- [Prescriptive reasoner](https://docs.relational.ai/) — `Problem` API, decision variables, constraints, objective.
+
+## Support
+
+- File issues at the RelationalAI templates repository.

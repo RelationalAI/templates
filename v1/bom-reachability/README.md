@@ -88,6 +88,60 @@ A bill of materials (BOM) defines how finished products are built from component
    python bom_reachability.py
    ```
 
+## Template structure
+
+```text
+.
+├── README.md
+├── runbook.md                   # paste-able graph-analysis walkthrough (RAI skills)
+├── pyproject.toml               # dependencies
+├── bom_reachability.py          # self-contained runner (reachability + betweenness + assembly paths)
+└── data/
+    ├── skus.csv                 # 9 SKUs across 3 tiers (raw material / component / finished good)
+    └── bill_of_materials.csv    # 14 site-specific BOM entries (output SKU requires input SKU)
+```
+
+**Start here**: run `python bom_reachability.py` for the full analysis end to end (reachability, betweenness centrality, and assembly-path enumeration), or follow `runbook.md` to rebuild it step by step with a coding agent.
+
+## Sample data
+
+`data/skus.csv` holds 9 SKUs spanning the three assembly tiers: 4 `RAW_MATERIAL` (silicon wafer, display glass, lithium-ion cells, NAND flash), 3 `COMPONENT` (mobile processor, OLED display, battery pack), and 2 `FINISHED_GOOD` (a smartphone and a tablet). Each row carries an `ID`, `NAME`, `TYPE`, `CATEGORY`, `UNIT_OF_MEASURE`, `LEAD_TIME_DAYS`, `UNIT_COST`, and `UNIT_PRICE`; the graph analysis uses `ID`, `NAME`, `TYPE`, and `CATEGORY`.
+
+`data/bill_of_materials.csv` holds 14 BOM entries, each linking an `OUTPUT_SKU_ID` (what is produced) to an `INPUT_SKU_ID` (what it requires), with `ID`, `SITE_ID`, and `INPUT_QUANTITY`. The same output-to-input pair is recorded once per `SITE_ID`, so multi-site assemblies appear as duplicate edges (for example, `SKU001` is assembled at both `S001` and `S012`). The graph deduplicates these automatically -- see the multi-edges note under Troubleshooting.
+
+## Model overview
+
+- **Key entities**: `SKU` (one stock-keeping unit at any tier) and `BillOfMaterials` (one output-to-input link, used as the directed graph's edge concept).
+- **Primary identifiers**: `SKU` by `id`; `BillOfMaterials` by `id`.
+- **Important invariants**: each `BillOfMaterials` row points an output SKU at one input SKU ("depends on"); the BOM is acyclic (raw materials feed components feed finished goods, never back).
+
+### `SKU`
+
+One stock-keeping unit at any assembly tier (raw material, component, or finished good).
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `id` | string | Yes | Loaded from `data/skus.csv` (`ID`) |
+| `name` | string | No | Human-readable name (`NAME`) |
+| `type` | string | No | `RAW_MATERIAL`, `COMPONENT`, or `FINISHED_GOOD` (`TYPE`) |
+| `category` | string | No | Used for grouping/filters (`CATEGORY`) |
+| `assembly_depth` | int | No | Derived and persisted: longest assembly chain terminating at this SKU (PREVIEW stage) |
+
+The model also derives a `feeds` self-relationship on `SKU` (`SKU feeds into SKU`): a binary input-feeds-output edge built from the `BillOfMaterials` intermediary and used to enumerate assembly paths.
+
+### `BillOfMaterials`
+
+One link in the bill of materials, recorded per assembly site and used as the graph's edge concept.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `id` | string | Yes | Loaded from `data/bill_of_materials.csv` (`ID`) |
+
+| Relationship | Schema | Notes |
+|---|---|---|
+| `output_sku` | `BillOfMaterials produces SKU` | The SKU this entry produces; graph edge source |
+| `input_sku` | `BillOfMaterials requires SKU` | The SKU this entry requires; graph edge destination |
+
 ## How it works
 
 ```text
@@ -190,3 +244,12 @@ assembly_df = (
 - If you have multiple profiles, set `RAI_PROFILE` or switch profiles in your config.
 
 </details>
+
+## Learn more
+
+- [RelationalAI documentation](https://docs.relational.ai/) — language, modeling, and reasoner reference.
+- [Template gallery](https://docs.relational.ai/build/templates) — other runnable templates, including graph, rules, and prescriptive examples.
+
+## Support
+
+- Questions or issues: [support.relational.ai](https://support.relational.ai).
