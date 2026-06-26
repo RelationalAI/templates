@@ -31,7 +31,12 @@ figures shift run to run; the structural outcome holds.)
                               only) — headline; weighted_pagerank
                               kept as secondary network-effect view.
   ─────────────────────────────────────────────────────────────────
-  STAGE 4  Prescriptive ──►  TowerUpgradeOption.selected  (27)
+  STAGE 4  Paths        ──►  Subscriber.top_call_path_influence
+   /rai-graph-analysis        198 simple call paths (≤ 3 hops) from
+                              the top-PageRank hub; 54 routing towers
+                              recovered. Top route persisted.
+  ─────────────────────────────────────────────────────────────────
+  STAGE 5  Prescriptive ──►  TowerUpgradeOption.selected  (27)
    /rai-prescriptive-         OPTIMAL · 12 BRONZE · 7 SILVER · 8 GOLD
    problem-formulation        $4,992,276 of $5M (binding) · 180 Gbps
                               161 of 200 install-weeks (slack)
@@ -116,7 +121,7 @@ Four derived health properties (`avg_packet_loss`, `avg_latency_ms`, `avg_error_
 
 `Subscriber.influence_score` (PageRank, 1,200 subs) plus two per-tower properties on the 142 critical towers: `CellTower.weighted_impact` (headline — sum of `Subscriber.customer_value = LTV × (1 + churn_risk_score)` over ACTIVE callers routed through; CDR-weighted so heavy callers count more than once) and `CellTower.weighted_pagerank` (secondary — sum of PageRank influence over the same set). The prescriptive MIP consumes `weighted_impact` in its objective.
 
-### 6b. Trace the most-influential call paths (PREVIEW, requires `relationalai>=1.15`)
+### 7. Trace the most-influential call paths (PREVIEW, requires `relationalai>=1.15`)
 
 **Prompt**
 
@@ -128,7 +133,7 @@ Four derived health properties (`avg_packet_loss`, `avg_latency_ms`, `avg_error_
 
 Where PageRank scores a *subscriber*, paths scores the *route*. From the top-PageRank hub (SUB-CON-00900), 198 simple call paths (≤ 3 hops) are enumerated over an arity-3 caller-via-tower-callee edge, recovering 54 distinct routing towers; each path is ranked by summed PageRank. Top route: `SUB-CON-00900 → SUB-CON-00814 → SUB-ENT-0038 → SUB-CON-00644` (PageRank sum 0.009041). Persists the hub's top route as `Subscriber.top_call_path_influence`. (Scoped to a seed hub — the full call graph is large and cyclic.)
 
-### 7. Optimize tier selection
+### 8. Optimize tier selection
 
 **Prompt**
 
@@ -140,7 +145,7 @@ Where PageRank scores a *subscriber*, paths scores the *route*. From the top-Pag
 
 Status OPTIMAL; 27 towers covered (selected from the 142 flagged) across all five regions (SOUTH 7, EAST 6, WEST 6, CENTRAL 4, NORTH 4). Tier mix 12 BRONZE / 7 SILVER / 8 GOLD — the customer-value × failure-intensity objective rewards concentrating spend on high-revenue, high-risk towers. Total capacity restored 180 Gbps; budget binding ($4,992,276 / $5,000,000); install-weeks have slack (161 / 200). Each selected tower carries a `rationale` tag (`operational` / `advisory/predicted` / `high-value`): in this run, all 27 fired on `advisory/predicted`, 17 also on `high-value`, 2 on `operational` (towers can fire on multiple signals).
 
-### 8. Interpret the plan
+### 9. Interpret the plan
 
 **Prompt**
 
@@ -152,7 +157,7 @@ Status OPTIMAL; 27 towers covered (selected from the 142 flagged) across all fiv
 
 Budget is the binding constraint ($4,992,276 of $5M); install-weeks have ~20% slack (161 of 200) because the objective concentrates spend on fewer, higher-value GOLD upgrades. The ~115 flagged-but-not-selected towers would unlock primarily with more capex, not more crews. A sensitivity sweep would show the marginal-Gbps-per-dollar curve flattening as the optimizer moves down the `customer-value × failure-intensity` ranking.
 
-### 9. Persist solution concepts into the ontology
+### 10. Persist solution concepts into the ontology
 
 **Prompt**
 

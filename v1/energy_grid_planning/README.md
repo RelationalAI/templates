@@ -39,11 +39,12 @@ This is not a single-reasoner problem. Approving a data center at a structurally
 |-------|----------|--------------------|--------------------|------|
 | 1. Predict | **Predictive** | `DemandForecast` table (historical load + DC announcements) | `Substation.predicted_load` (derived Property) | Forecast which substations hit capacity limits. DFW breaches at 24 months (54.6% growth); Houston, San Antonio, Austin grow 32-44% but remain within capacity. |
 | 2. Graph | **Graph** (WCC, Louvain, centrality) | `Substation` nodes, `TransmissionLine` edges | `Substation.betweenness`, `.grid_community` (Properties), `Substation.is_structurally_critical` (Relationship) | Map ERCOT grid topology into 3 regions (North Texas, West Texas, Gulf Coast). DFW and Houston are the top structural bottlenecks. 7 of 10 DC requests target critical substations. |
-| 3. Rules | **Rules** (declarative) | `predicted_load` (Stage 1), `is_structurally_critical` (Stage 2), DC request properties | `DataCenterRequest.fails_capacity`, `.fails_structural`, `.fails_low_carbon`, `.is_compliant` (Relationships) | Check each request against interconnection compliance. 2 compliant (Crusoe, Oracle), 8 flagged. Every flag is a derived Relationship consuming upstream enrichments. |
-| 4. Prescriptive | **Prescriptive** (MIP, Scenario Concept) | `predicted_load` (Stage 1), `InvestmentLevel` budget scenarios, upgrade costs/capacities | `DataCenterRequest.x_approve`, `SubstationUpgrade.x_upgrade` per InvestmentLevel (Properties) | Jointly optimize approvals + upgrades across budget levels. One solve produces the full Pareto frontier. Knee at $300M (5 DCs, $264M net value). All results queryable via `model.select()`. |
+| 3. Paths | **Graph** (paths, PREVIEW) | `Substation.betweenness` (Stage 2), `connects_to` grid edges | `Substation.fragility_load` (Property) | Score the most-fragile generator-to-DC transmission corridor by betweenness summed along the route. The most fragile carries a betweenness-load of 99.833 through Dallas-Fort Worth / Abilene Central / Houston Ship Channel. |
+| 4. Rules | **Rules** (declarative) | `predicted_load` (Stage 1), `is_structurally_critical` (Stage 2), DC request properties | `DataCenterRequest.fails_capacity`, `.fails_structural`, `.fails_low_carbon`, `.is_compliant` (Relationships) | Check each request against interconnection compliance. 2 compliant (Crusoe, Oracle), 8 flagged. Every flag is a derived Relationship consuming upstream enrichments. |
+| 5. Prescriptive | **Prescriptive** (MIP, Scenario Concept) | `predicted_load` (Stage 1), `InvestmentLevel` budget scenarios, upgrade costs/capacities | `DataCenterRequest.x_approve`, `SubstationUpgrade.x_upgrade` per InvestmentLevel (Properties) | Jointly optimize approvals + upgrades across budget levels. One solve produces the full Pareto frontier. Knee at $300M (5 DCs, $264M net value). All results queryable via `model.select()`. |
 
 **Key design patterns demonstrated:**
-- **Accretive ontology enrichment** -- each stage writes derived properties that downstream stages consume as first-class ontology attributes. Stage 1's `predicted_load` flows into both Stage 3 rules and Stage 4 optimization constraints, ensuring consistent capacity signals across the pipeline.
+- **Accretive ontology enrichment** -- each stage writes derived properties that downstream stages consume as first-class ontology attributes. Stage 1's `predicted_load` flows into both Stage 4 rules and Stage 5 optimization constraints, ensuring consistent capacity signals across the pipeline.
 - **Multi-scenario / multi-objective via Scenario Concept** -- `InvestmentLevel` is a Scenario Concept: 5 budget entities ($200M-$600M) that parameterize the optimization. One MIP solve produces the entire Pareto frontier simultaneously (not a re-solve loop). Decision variables `x_approve` and `x_upgrade` are indexed per InvestmentLevel, and results are queryable ontology properties -- not parsed from solver output.
 - **Ontology as shared state** -- each stage writes derived properties/relationships that downstream stages read; no Python dicts or DataFrames carry state between stages
 - **Graph directly on domain concept** -- the Graph reasoner uses `Substation` as its node concept, so centrality and community results are stored as native Substation properties with no mirror concept or enrichment rules
@@ -68,7 +69,7 @@ This is not a single-reasoner problem. Approving a data center at a structurally
 
 ## What's included
 
-- `energy_grid_planning.py` -- Main script with four chained reasoning stages
+- `energy_grid_planning.py` -- Main script with five chained reasoning stages
 - `data/substations.csv` -- 12 Texas substations with capacity, load, and coordinates
 - `data/generators.csv` -- 15 generators (2 nuclear: STP + Comanche Peak, plus gas, coal, wind, solar, battery)
 - `data/transmission_lines.csv` -- 18 transmission lines forming a connected ERCOT grid
@@ -136,13 +137,13 @@ This is not a single-reasoner problem. Approving a data center at a structurally
 6. Expected output (a few lines confirm a successful run):
 
    ```text
-   STAGE 4: OPTIMIZE -- Joint Interconnection + Upgrade
+   STAGE 5: OPTIMIZE -- Joint Interconnection + Upgrade
      Status: OPTIMAL | Objective: 1,579,200,000
 
      KNEE POINT: $300M -- 5 DCs, 1,500 MW, $264M net value
      xAI Colossus ($105M/yr) unlocks at $300M -- highest-revenue single request
 
-   PIPELINE COMPLETE: 4 stages executed on shared Energy Grid ontology
+   PIPELINE COMPLETE: 5 stages executed on shared Energy Grid ontology
    ```
 
    See `runbook.md` for the full log.
@@ -151,7 +152,7 @@ This is not a single-reasoner problem. Approving a data center at a structurally
 
 ```text
 energy_grid_planning/
-  energy_grid_planning.py    # Main script (4 chained reasoning stages)
+  energy_grid_planning.py    # Main script (5 chained reasoning stages)
   data/
     substations.csv          # 12 Texas grid nodes
     generators.csv           # 15 generators (nuclear, gas, coal, wind, solar, battery)
@@ -173,11 +174,11 @@ energy_grid_planning/
   pyproject.toml             # Dependencies
 ```
 
-**Start here**: run `python energy_grid_planning.py` for the full four-stage chain end to end, or follow `runbook.md` to rebuild it step by step.
+**Start here**: run `python energy_grid_planning.py` for the full five-stage chain end to end, or follow `runbook.md` to rebuild it step by step.
 
 ## Sample data
 
-The bundled data is **synthetic and illustrative** — modeled on the public shape of the ERCOT (Texas) grid and the wave of hyperscaler AI data center announcements, not a specific operator's network export. It is sized to teach the four-stage reasoning flow on a Snowflake-connected RAI account; production attributes a real interconnection study carries (sub-hourly SCADA telemetry, nodal pricing, contingency sets, protection settings) are extension points (see *Customize this template*), not gaps in the reasoning pattern.
+The bundled data is **synthetic and illustrative** — modeled on the public shape of the ERCOT (Texas) grid and the wave of hyperscaler AI data center announcements, not a specific operator's network export. It is sized to teach the five-stage reasoning flow on a Snowflake-connected RAI account; production attributes a real interconnection study carries (sub-hourly SCADA telemetry, nodal pricing, contingency sets, protection settings) are extension points (see *Customize this template*), not gaps in the reasoning pattern.
 
 The script loads thirteen CSVs from `data/` into the ontology (`energy_grid_planning.py` lines 77-89). Three additional GNN-split files ship for the optional training workflow and are **not** read by the main script.
 
@@ -201,13 +202,13 @@ Optional GNN training splits, **not loaded by the main script**: `train_forecast
 
 One shared ontology threads all four stages. Each stage reads concepts and properties earlier stages wrote, and writes new ones for downstream stages — the accretive-enrichment pattern described above.
 
-- **Key entities**: `Substation`, `Generator`, `TransmissionLine`, `DataCenterRequest`, `SubstationUpgrade`, `DemandForecast`; plus the Stage 4 Scenario Concept `InvestmentLevel` and the results concept `InvestmentPortfolio`. Supporting concepts (`LoadZone`, `DemandPeriod`, `RenewableProfile`, `MaintenanceWindow`, `Customer`, `LoadHistory`, `DCAnnouncement`) mirror their CSVs and back the aggregations.
+- **Key entities**: `Substation`, `Generator`, `TransmissionLine`, `DataCenterRequest`, `SubstationUpgrade`, `DemandForecast`; plus the Stage 5 Scenario Concept `InvestmentLevel` and the results concept `InvestmentPortfolio`. Supporting concepts (`LoadZone`, `DemandPeriod`, `RenewableProfile`, `MaintenanceWindow`, `Customer`, `LoadHistory`, `DCAnnouncement`) mirror their CSVs and back the aggregations.
 - **Primary identifiers**: string `id` on the base entities (e.g. `SUB-001`, `TL-001`); `name` on `InvestmentLevel` (e.g. `"$300M"`); `investment_level_name` on `InvestmentPortfolio`.
-- **Important invariants**: `predicted_load`, `max_capacity_mw`, `current_load_mw`, `requested_mw`, and `capacity_increase_mw` are non-negative MW; `low_carbon_requirement_pct` is a percentage; a generator is low-carbon when `emissions_rate == 0`; Stage 4 decision variables (`x_approve`, `x_upgrade`) are binary.
+- **Important invariants**: `predicted_load`, `max_capacity_mw`, `current_load_mw`, `requested_mw`, and `capacity_increase_mw` are non-negative MW; `low_carbon_requirement_pct` is a percentage; a generator is low-carbon when `emissions_rate == 0`; Stage 5 decision variables (`x_approve`, `x_upgrade`) are binary.
 
 ### Concepts
 
-**`Substation`** — a grid node. The hub of the model: Stages 1-2.5 enrich it with forecast, topology, and corridor-fragility properties that Stages 3-4 consume.
+**`Substation`** — a grid node. The hub of the model: Stages 1-3 enrich it with forecast, topology, and corridor-fragility properties that Stages 4-5 consume.
 
 | Property | Type | Identifying? | Notes |
 |---|---|---|---|
@@ -222,11 +223,11 @@ One shared ontology threads all four stages. Each stage reads concepts and prope
 | `betweenness`, `degree_centrality`, `eigenvector_centrality` | Float | No | **Stage 2** centrality scores |
 | `betweenness_rank`, `degree_rank`, `eigenvector_rank`, `combined_rank`, `critical_rank` | Integer | No | **Stage 2** rank derivations |
 | `is_structurally_critical` | Relationship | — | **Stage 2** top-`CRITICAL_THRESHOLD` flag |
-| `connects_to` | Relationship | — | **Stage 2.5** bidirectional substation-to-substation grid edge |
-| `fragility_load` | Float | No | **Stage 2.5** (PREVIEW) most-fragile corridor's summed betweenness |
-| `low_carbon_gen_mw`, `total_gen_mw` | Float | No | **Stage 3** per-substation generation aggregates |
+| `connects_to` | Relationship | — | **Stage 3** bidirectional substation-to-substation grid edge |
+| `fragility_load` | Float | No | **Stage 3** (PREVIEW) most-fragile corridor's summed betweenness |
+| `low_carbon_gen_mw`, `total_gen_mw` | Float | No | **Stage 4** per-substation generation aggregates |
 
-**`Generator`** — a generation unit connected to a substation. Stage 3's low-carbon rule sums its capacity by emissions.
+**`Generator`** — a generation unit connected to a substation. Stage 4's low-carbon rule sums its capacity by emissions.
 
 | Property | Type | Identifying? | Notes |
 |---|---|---|---|
@@ -250,7 +251,7 @@ One shared ontology threads all four stages. Each stage reads concepts and prope
 | `is_active` | Boolean | No | Only active lines become graph edges |
 | `maintenance_priority` | String | No | `high` / `medium` / `low` |
 
-**`DataCenterRequest`** — a hyperscaler interconnection request targeting one substation. The MIP approves a subset; Stage 3 flags compliance.
+**`DataCenterRequest`** — a hyperscaler interconnection request targeting one substation. The MIP approves a subset; Stage 4 flags compliance.
 
 | Property | Type | Identifying? | Notes |
 |---|---|---|---|
@@ -265,8 +266,8 @@ One shared ontology threads all four stages. Each stage reads concepts and prope
 | `low_carbon_requirement_pct` | Float | No | Required low-carbon generation fraction |
 | `queue_position` | Integer | No | Interconnection-queue order |
 | `status` | String | No | Request status |
-| `fails_capacity`, `fails_structural`, `fails_low_carbon`, `is_compliant` | Relationship | — | **Stage 3** compliance flags |
-| `x_approve` | Float | No | **Stage 4** binary approval per `InvestmentLevel` |
+| `fails_capacity`, `fails_structural`, `fails_low_carbon`, `is_compliant` | Relationship | — | **Stage 4** compliance flags |
+| `x_approve` | Float | No | **Stage 5** binary approval per `InvestmentLevel` |
 
 **`SubstationUpgrade`** — a candidate capacity upgrade on one substation. The MIP's build decisions.
 
@@ -278,7 +279,7 @@ One shared ontology threads all four stages. Each stage reads concepts and prope
 | `cost_million` | Float | No | Cost in $M |
 | `lead_time_months` | Integer | No | Build lead time |
 | `enables_low_carbon` | Boolean | No | Whether it unlocks low-carbon supply |
-| `x_upgrade` | Float | No | **Stage 4** binary build decision per `InvestmentLevel` |
+| `x_upgrade` | Float | No | **Stage 5** binary build decision per `InvestmentLevel` |
 
 **`DemandForecast`** — a per-substation load forecast at a horizon. Stage 1 aggregates the max per substation into `Substation.predicted_load`.
 
@@ -291,7 +292,7 @@ One shared ontology threads all four stages. Each stage reads concepts and prope
 | `confidence` | Float | No | Forecast confidence |
 | `includes_dc_growth` | Boolean | No | Whether DC growth is folded in |
 
-**`InvestmentLevel`** — the Stage 4 Scenario Concept; 5 budget entities ($200M-$600M) that parameterize one MIP solve into a Pareto frontier.
+**`InvestmentLevel`** — the Stage 5 Scenario Concept; 5 budget entities ($200M-$600M) that parameterize one MIP solve into a Pareto frontier.
 
 | Property | Type | Identifying? | Notes |
 |---|---|---|---|
@@ -312,15 +313,15 @@ One shared ontology threads all four stages. Each stage reads concepts and prope
 | `marginal_per_m_to_next_level` | Float | No | Marginal net value per $M to the next level |
 | `is_knee_point` | Boolean | No | Pareto-frontier knee flag |
 
-The Stage 2.5 paths analysis also derives two transient sub-concepts, `GeneratorSubstation` and `DCSubstation` (both `extends=[Substation]`), to type the corridor endpoints — substations hosting a generator (source) and substations hosting a DC request (sink).
+The Stage 3 paths analysis also derives two transient sub-concepts, `GeneratorSubstation` and `DCSubstation` (both `extends=[Substation]`), to type the corridor endpoints — substations hosting a generator (source) and substations hosting a DC request (sink).
 
 ### Relationships
 
 - `Generator.substation -> Substation` — each generator's hosting substation; Stage 3 sums generation per substation along it.
 - `TransmissionLine.from_substation` / `.to_substation -> Substation` — directed grid edge; active lines become the Stage 2 graph edges.
-- `Substation.connects_to -> Substation` — **Stage 2.5** bidirectional substation-to-substation edge derived from active transmission lines; the corridor enumeration walks it.
+- `Substation.connects_to -> Substation` — **Stage 3** bidirectional substation-to-substation edge derived from active transmission lines; the corridor enumeration walks it.
 - `DataCenterRequest.substation -> Substation` — the substation a request targets; the capacity, structural, and low-carbon rules all join through it.
-- `SubstationUpgrade.substation -> Substation` — the substation an upgrade expands; the Stage 4 capacity constraint nets its `capacity_increase_mw` against load.
+- `SubstationUpgrade.substation -> Substation` — the substation an upgrade expands; the Stage 5 capacity constraint nets its `capacity_increase_mw` against load.
 - `DemandForecast.substation -> Substation` — the forecasted substation; Stage 1's `aggs.max(...).per(Substation)` reads it.
 - `InvestmentPortfolio.investment_level -> InvestmentLevel` — links each results row to its budget scenario.
 
@@ -328,7 +329,7 @@ The Stage 2.5 paths analysis also derives two transient sub-concepts, `Generator
 
 ### Stage 1: Predict -- Substation Load Forecasting
 
-Derives `Substation.predicted_load` as an ontology property from the `DemandForecast` table using `aggs.max().per(Substation)`. Substations near announced data center projects show 32-55% growth depending on location and announced capacity. Dallas-Fort Worth is the only substation predicted to breach capacity (1,700 MW predicted vs 1,600 MW capacity at 24 months, 54.6% growth). Houston Ship Channel shows the highest absolute load (1,797 MW) but remains within its larger capacity. This predicted load feeds both Stage 3's capacity rule and Stage 4's capacity constraint -- the first link in the accretive chain. Because both downstream reasoners read `predicted_load` as a first-class ontology attribute, changing the demand forecast automatically propagates through the rules engine and optimizer without any code changes.
+Derives `Substation.predicted_load` as an ontology property from the `DemandForecast` table using `aggs.max().per(Substation)`. Substations near announced data center projects show 32-55% growth depending on location and announced capacity. Dallas-Fort Worth is the only substation predicted to breach capacity (1,700 MW predicted vs 1,600 MW capacity at 24 months, 54.6% growth). Houston Ship Channel shows the highest absolute load (1,797 MW) but remains within its larger capacity. This predicted load feeds both Stage 4's capacity rule and Stage 5's capacity constraint -- the first link in the accretive chain. Because both downstream reasoners read `predicted_load` as a first-class ontology attribute, changing the demand forecast automatically propagates through the rules engine and optimizer without any code changes.
 
 The `predicted_load` derived property aggregates the max forecasted load per substation:
 
@@ -365,11 +366,11 @@ community = grid_graph.louvain()
 betweenness = grid_graph.betweenness_centrality()
 ```
 
-### Stage 2.5: Paths -- Transmission Corridors & Contingency
+### Stage 3: Paths -- Transmission Corridors & Contingency
 
 > PREVIEW capability; requires `relationalai>=1.15`.
 
-Where Stage 2 scores a *substation*, the **Graph** paths capability scores the *corridor* feeding each data center. It derives a bidirectional substation-to-substation edge from active transmission lines, enumerates generator-substation to DC-substation routes, and ranks each by the Stage 2 betweenness summed along its hops — the most fragile corridor is the one carrying the greatest through-traffic exposure. A contingency pass removes the highest-betweenness substation and re-enumerates to show which data centers reroute. The most-fragile load is persisted as `Substation.fragility_load`.
+Where Stage 2 scores a *substation*, the **Graph** paths capability scores the *corridor* feeding each data center. It derives a bidirectional substation-to-substation edge from active transmission lines, enumerates generator-substation to DC-substation routes, and ranks each by the Stage 2 betweenness summed along its hops — the most fragile corridor is the one carrying the greatest through-traffic exposure. A contingency pass removes the highest-betweenness substation and re-enumerates to show which data centers reroute. The most-fragile load is persisted as `Substation.fragility_load`. On the bundled grid this enumerates 421 generator-to-DC corridors; the most fragile carries a betweenness-load of 99.833 through the Dallas-Fort Worth, Abilene Central, and Houston Ship Channel hubs.
 
 ```python
 corridor_df = model.where(
@@ -384,7 +385,7 @@ corridor_df = model.where(
 ).to_df()
 ```
 
-### Stage 3: Rules -- Interconnection Queue Compliance
+### Stage 4: Rules -- Interconnection Queue Compliance
 
 Three declarative rules (RAI Relationships) consume upstream outputs:
 - **Capacity check**: `requested_mw + predicted_load > max_capacity_mw` (uses Stage 1). Most requests fail because the existing grid lacks headroom for new AI load without upgrades.
@@ -404,7 +405,7 @@ model.where(
 ).define(DataCenterRequest.fails_capacity())
 ```
 
-### Stage 4: Prescriptive -- Multi-Objective Optimization
+### Stage 5: Prescriptive -- Multi-Objective Optimization
 
 Uses the **InvestmentLevel Scenario Concept** pattern:
 - 5 budget levels ($200M-$600M) as Scenario entities
@@ -461,9 +462,9 @@ Focus on the first changes most users will make.
 ### Tune parameters
 
 - **Investment levels** — the budget scenarios (`$200M-$600M`) are `InvestmentLevel` rows; add rows for finer Pareto resolution or shift the budget caps to match your capex envelope.
-- **Corridor hop bound** — `MAX_CORRIDOR_HOPS` caps the Stage 2.5 path enumeration; raise it to trace longer generator-to-DC corridors.
-- **Structural-criticality cutoff** — `CRITICAL_THRESHOLD` sets how many top-betweenness substations Stage 2 flags critical, feeding Stage 3's structural rule.
-- **Objective weights** — Stage 4 maximizes annual interconnection revenue; adjust `annual_revenue_per_mw` or the net-value amortization to reweight which requests clear at each budget.
+- **Corridor hop bound** — `MAX_CORRIDOR_HOPS` caps the Stage 3 path enumeration; raise it to trace longer generator-to-DC corridors.
+- **Structural-criticality cutoff** — `CRITICAL_THRESHOLD` sets how many top-betweenness substations Stage 2 flags critical, feeding Stage 4's structural rule.
+- **Objective weights** — Stage 5 maximizes annual interconnection revenue; adjust `annual_revenue_per_mw` or the net-value amortization to reweight which requests clear at each budget.
 
 ### Extend the model
 
@@ -480,7 +481,7 @@ Focus on the first changes most users will make.
 ## Troubleshooting
 
 <details>
-<summary>Stage 2 graph queries work but Stage 4 fails with <code>UnsupportedRecursionError</code></summary>
+<summary>Stage 2 graph queries work but Stage 5 fails with <code>UnsupportedRecursionError</code></summary>
 
 - SDK versions before 1.0.13 could hit this when recursive graph rules and
   prescriptive result queries shared one model. Upgrade to >= 1.0.13.

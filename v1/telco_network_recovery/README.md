@@ -44,7 +44,7 @@ Built using **predictive reasoning** (GNN on a heterogeneous graph), **rules-bas
 
 ## What's included
 
-- **Model**: a 4-stage pipeline (predictive, then rules, then graph, then prescriptive) on a single shared ontology — 8 source-data concepts wired to the bundled CSVs, plus the enrichments each stage writes back.
+- **Model**: a 5-stage pipeline (predictive, then rules, then graph, then paths, then prescriptive) on a single shared ontology — 8 source-data concepts wired to the bundled CSVs, plus the enrichments each stage writes back.
 - **Runner**: `telco_network_recovery.py` — a single Python script with four module-scope stages, runs end-to-end against a Snowflake-connected RAI account.
 - **Sample data**: 250 cell towers, 1,500 equipment items, 8 manufacturer advisories on 7 MODELs, 1,200 subscribers, 6,000 call records, 750 upgrade options. See *Sample data* below.
 - **Outputs**: per-stage stdout diagnostics plus an ontology-resident `RestorePlan` singleton holding cost, capacity, install-weeks, tier mix, towers covered, and binding constraint.
@@ -55,7 +55,7 @@ Built using **predictive reasoning** (GNN on a heterogeneous graph), **rules-bas
 
 - A Snowflake account with the RelationalAI native app installed.
 - A Snowflake user with permissions on the RAI native app and on `EXP_DATABASE` (the schema for GNN experiment artifacts).
-- A gurobi-enabled prescriptive engine for Stage 4 (if gurobi is unavailable or unlicensed, the script catches the solver error and falls back to the bundled HiGHS solver automatically).
+- A gurobi-enabled prescriptive engine for Stage 5 (if gurobi is unavailable or unlicensed, the script catches the solver error and falls back to the bundled HiGHS solver automatically).
 
 ### Tools
 
@@ -131,19 +131,19 @@ Set `EXP_DATABASE` at the top of `telco_network_recovery.py` to that database (d
    python telco_network_recovery.py
    ```
 
-   The four stages print diagnostics and then a final plan as queryable ontology.
+   The five stages print diagnostics and then a final plan as queryable ontology.
 
 7. Expected output (a few lines confirm a successful run):
 
    ```text
-   STAGE 4: PRESCRIPTIVE -- tower upgrade selection MIP
+   STAGE 5: PRESCRIPTIVE -- tower upgrade selection MIP
      Status: OPTIMAL
      Selected upgrades: 27
      Total cost:               $4,992,276
      Capacity restored:        180 Gbps
      Towers covered:           27 of 142 critical (all 5 regions)
 
-   PIPELINE COMPLETE: 4 stages executed on the shared Telco ontology
+   PIPELINE COMPLETE: 5 stages executed on the shared Telco ontology
    ```
 
    The GNN is stochastic, so exact figures shift run-to-run; the structural outcome reproduces — status OPTIMAL, budget binding (~$4.99M of $5M), all 5 regions covered, ~180-210 Gbps restored across ~25-40 towers. The full printout and a step-by-step walkthrough are in `runbook.md`.
@@ -168,7 +168,7 @@ telco_network_recovery/
   pyproject.toml                  # dependencies
 ```
 
-**Start here**: run `python telco_network_recovery.py` for the full four-stage chain end to end, or follow `runbook.md` to rebuild it step by step.
+**Start here**: run `python telco_network_recovery.py` for the full five-stage chain end to end, or follow `runbook.md` to rebuild it step by step.
 
 ## Sample data
 
@@ -200,11 +200,11 @@ The ontology shape is independent of the load pipeline.
 
 ## Model overview
 
-One shared ontology threads all four stages. Each stage reads concepts and properties earlier stages wrote, and writes new ones for downstream stages.
+One shared ontology threads all five stages. Each stage reads concepts and properties earlier stages wrote, and writes new ones for downstream stages.
 
 - **Key entities**: `CellTower`, `NetworkEquipment`, `EquipmentHealth`, `NetworkPerformance`, `ModelAdvisory`, `Subscriber`, `CallDetailRecord`, `TowerUpgradeOption`; plus the derived `TowerFailureScore` (bridge for the GNN output) and `RestorePlan` (singleton plan headline).
 - **Primary identifiers**: string ids on the base entities (e.g. `TOWER_ID`, `EQUIPMENT_ID`, `SUB_ID`); composite key on `TowerUpgradeOption` (`tower_id` + `tier`); MODEL string on `ModelAdvisory`.
-- **Important invariants**: `severity`, `churn_risk_score`, and `health_score` are fractions in `[0, 1]`; `capacity_gbps` and `cost` are non-negative; the GNN's `at_risk` label is `1` if `STATUS` is `FAILING` or `WARNING`; Stage 4 decision variables are binary.
+- **Important invariants**: `severity`, `churn_risk_score`, and `health_score` are fractions in `[0, 1]`; `capacity_gbps` and `cost` are non-negative; the GNN's `at_risk` label is `1` if `STATUS` is `FAILING` or `WARNING`; Stage 5 decision variables are binary.
 
 ### Concepts
 
@@ -242,7 +242,7 @@ One shared ontology threads all four stages. Each stage reads concepts and prope
 | `churn_risk_score` | Float | No | `[0, 1]` — probability of churn |
 | `customer_value` | Float | No | Precomputed: `lifetime_value x (1 + churn_risk_score)` — the per-subscriber weight Stage 3 sums into `weighted_impact` |
 | `influence_score` | Float | No | **Stage 3** PageRank on the call graph |
-| `top_call_path_influence` | Float | No | **Stage 3.5** (PREVIEW) most-influential call path's summed PageRank, for the seed hub |
+| `top_call_path_influence` | Float | No | **Stage 4** (PREVIEW) most-influential call path's summed PageRank, for the seed hub |
 
 **`TowerUpgradeOption`** — a (tower, tier) candidate upgrade. The MIP's decision space.
 
@@ -253,8 +253,8 @@ One shared ontology threads all four stages. Each stage reads concepts and prope
 | `cost` | Float | No | USD |
 | `install_weeks` | Integer | No | Crew weeks required |
 | `for_tower` | Relationship | — | Link back to `CellTower` |
-| `selected` | Float | No | **Stage 4** binary decision (0/1) |
-| `is_selected_upgrade` | Relationship | — | **Stage 4** narrowed view of `selected == 1` |
+| `selected` | Float | No | **Stage 5** binary decision (0/1) |
+| `is_selected_upgrade` | Relationship | — | **Stage 5** narrowed view of `selected == 1` |
 
 **`ModelAdvisory`** — a manufacturer advisory on an equipment MODEL.
 
@@ -282,7 +282,7 @@ One shared ontology threads all four stages. Each stage reads concepts and prope
 - `ModelAdvisory.model == NetworkEquipment.eqp_model` — advisory links to every equipment item on the affected MODEL (GNN edge — propagates advisory severity across fleet siblings).
 - `CallDetailRecord.caller` and `.callee` -> `Subscriber` — directed edges of the Stage 3 PageRank call graph.
 - `CallDetailRecord.routed_through` -> `CellTower` — links each call to the tower it routed through; the per-tower customer-impact aggregation reads this.
-- `TowerUpgradeOption.for_tower` -> `CellTower` — Stage 4 scopes the decision space to options on critical-restore towers.
+- `TowerUpgradeOption.for_tower` -> `CellTower` — Stage 5 scopes the decision space to options on critical-restore towers.
 
 ## How it works
 
@@ -292,7 +292,9 @@ One shared ontology threads all four stages. Each stage reads concepts and prope
 
 **Stage 3 — Graph (customer impact analysis).** PageRank on the directed `Subscriber -> Subscriber` call graph lands on `Subscriber.influence_score` (the graph reasoner's network-effect signal). The headline per-tower measure is `CellTower.weighted_impact` — sum of `Subscriber.customer_value` (= `lifetime_value x (1 + churn_risk_score)`) across the active callers (`Subscriber.status == SubscriberStatus.ACTIVE`) whose calls route through each tower. `weighted_pagerank` is the parallel PageRank-weighted view, exposed as a secondary signal queryable alongside the revenue-based headline.
 
-**Stage 4 — Prescriptive (MIP).** Binary `TowerUpgradeOption.selected`, scoped to critical-restore towers, with three constraints (at most one tier per tower, total cost at most $5M, total install-weeks at most 200) and a three-factor objective:
+**Stage 4 — Paths (PREVIEW).** Where Stage 3 scores a *subscriber*, the paths capability scores the *route*: from the top-PageRank hub it enumerates the simple call paths (up to three hops) over an arity-3 caller-via-tower-callee edge and ranks them by summed PageRank influence. On the bundled data this is 198 simple call paths recovering 54 distinct routing towers; the hub's top route is persisted as `Subscriber.top_call_path_influence`.
+
+**Stage 5 — Prescriptive (MIP).** Binary `TowerUpgradeOption.selected`, scoped to critical-restore towers, with three constraints (at most one tier per tower, total cost at most $5M, total install-weeks at most 200) and a three-factor objective:
 
 ```python
 problem.maximize(
@@ -332,7 +334,7 @@ Focus on the first changes most users will make.
 - **Add more advisories** — extend `data/model_advisories.csv` with new advisory types and severities; the GNN picks them up on the next training run.
 - **Add a fourth GNN edge** — e.g., `NetworkEquipment -> SimilarEquipment` via shared `FIRMWARE_VERSION` or `MANUFACTURER` to test other heterogeneous-neighborhood patterns.
 - **Add SLA-tier weighting** — add `SLA_TIER` / `is_emergency_service` columns to `subscribers.csv` and fold them into the `customer_value` precompute; the rest of the chain is unchanged.
-- **Add backhaul coupling** — model `BackhaulPath` / `AggregationNode` as Concepts and add a per-node capacity constraint to Stage 4 (`aggs.sum(selected * capacity).per(AggregationNode) <= node_headroom`).
+- **Add backhaul coupling** — model `BackhaulPath` / `AggregationNode` as Concepts and add a per-node capacity constraint to Stage 5 (`aggs.sum(selected * capacity).per(AggregationNode) <= node_headroom`).
 - **Swap PageRank for another graph algorithm** — `weighted_pagerank` is the secondary network-effect signal; replace `call_graph.pagerank()` with `betweenness_centrality()` or `eigenvector_centrality()` to surface different structural roles without changing the optimizer.
 
 ### Scale up / productionize
@@ -352,23 +354,23 @@ Verify with `SHOW GRANTS ON SCHEMA <DB>.EXPERIMENTS` — you should see `OWNERSH
 </details>
 
 <details>
-<summary>Stage 4 returns an infeasible status</summary>
+<summary>Stage 5 returns an infeasible status</summary>
 
-Stage 4 is feasible whenever the flagged-tower set has at least one BRONZE option that fits under the remaining budget. The bundled data has BRONZE options on every tower; tightening `BUDGET_USD` below the minimum total cost of one BRONZE per flagged tower will produce infeasibility.
+Stage 5 is feasible whenever the flagged-tower set has at least one BRONZE option that fits under the remaining budget. The bundled data has BRONZE options on every tower; tightening `BUDGET_USD` below the minimum total cost of one BRONZE per flagged tower will produce infeasibility.
 
 </details>
 
 <details>
-<summary>The 15 WEST DEGRADED towers don't show up in Stage 4 selections</summary>
+<summary>The 15 WEST DEGRADED towers don't show up in Stage 5 selections</summary>
 
-The Stage 2 rule still fires on them (Branches 1 and 2) — they're in the flagged set. Whether they're picked by Stage 4 depends on the multiplicative objective: a WEST tower with low `failure_intensity` (healthy equipment) and low `weighted_impact` (few high-value callers) gets a small objective contribution and may be deprioritized vs. higher-risk, higher-value towers elsewhere. This is the intended behavior of the chain.
+The Stage 2 rule still fires on them (Branches 1 and 2) — they're in the flagged set. Whether they're picked by Stage 5 depends on the multiplicative objective: a WEST tower with low `failure_intensity` (healthy equipment) and low `weighted_impact` (few high-value callers) gets a small objective contribution and may be deprioritized vs. higher-risk, higher-value towers elsewhere. This is the intended behavior of the chain.
 
 </details>
 
 <details>
 <summary>The plan looks enterprise-heavy</summary>
 
-The bundled subscriber data has 50 enterprise (~$300K LTV avg) vs. 1,150 consumer (~$3K LTV avg) accounts, so `weighted_impact` concentrates heavily on enterprise-bearing towers. This matches operator reality (enterprise SLAs drive capex). For a more balanced spread, swap the `customer_value` formula for `log1p(LTV) x (1 + churn)` or add a per-region minimum-coverage constraint to Stage 4 — both are tuning knobs, not redesigns.
+The bundled subscriber data has 50 enterprise (~$300K LTV avg) vs. 1,150 consumer (~$3K LTV avg) accounts, so `weighted_impact` concentrates heavily on enterprise-bearing towers. This matches operator reality (enterprise SLAs drive capex). For a more balanced spread, swap the `customer_value` formula for `log1p(LTV) x (1 + churn)` or add a per-region minimum-coverage constraint to Stage 5 — both are tuning knobs, not redesigns.
 
 </details>
 

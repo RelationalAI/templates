@@ -1,8 +1,8 @@
 """Energy grid planning (multi-reasoner) template.
 
-This script demonstrates a four-stage multi-reasoner pipeline in RelationalAI,
-combining predictive enrichment, graph analysis, rules-based compliance, and
-prescriptive optimization on a single shared ontology:
+This script demonstrates a five-stage multi-reasoner pipeline in RelationalAI,
+combining predictive enrichment, graph analysis, path-based corridor fragility,
+rules-based compliance, and prescriptive optimization on a single shared ontology:
 
 - Stage 1 -- Predict: load a pre-trained GNN for substation demand forecasting
   (or fall back to the demand_forecasts CSV). Enriches each Substation with a
@@ -11,14 +11,14 @@ prescriptive optimization on a single shared ontology:
   detection, and multi-metric centrality (betweenness, degree, eigenvector) on
   the transmission grid topology. Results are stored directly as Substation
   properties on the shared ontology.
-- Stage 2.5 -- Paths (PREVIEW, relationalai>=1.15): enumerate generator-sub ->
+- Stage 3 -- Paths (PREVIEW, relationalai>=1.15): enumerate generator-sub ->
   DC-sub transmission corridors, rank each by Stage 2 betweenness summed along
   the route (most fragile = greatest through-traffic exposure), and re-enumerate
   with the highest-betweenness substation offline. Persists Substation.fragility_load.
-- Stage 3 -- Rules: declarative interconnection queue compliance checks
+- Stage 4 -- Rules: declarative interconnection queue compliance checks
   (capacity, structural criticality, low-carbon mandate) that consume Stage 1
   and 2 enrichments.
-- Stage 4 -- Prescriptive: joint DC approval + grid upgrade optimization using
+- Stage 5 -- Prescriptive: joint DC approval + grid upgrade optimization using
   InvestmentLevel as a Scenario Concept. One solve across 5 budget levels
   produces a Pareto frontier with results queryable directly from the ontology.
 
@@ -26,15 +26,15 @@ Run:
     /opt/homebrew/bin/python3.11 energy_grid_planning.py
 
 Output:
-    Prints a four-stage pipeline summary:
+    Prints a five-stage pipeline summary:
     - Stage 1: substation load forecasts with growth rates and breach detection
     - Stage 2: grid connectivity (WCC), community structure (Louvain), centrality
       ranking, and structurally critical substations
-    - Stage 2.5: most-fragile generator-to-DC transmission corridors (betweenness
+    - Stage 3: most-fragile generator-to-DC transmission corridors (betweenness
       summed along the route) + a highest-betweenness-offline contingency
-    - Stage 3: compliance table (10 DC requests vs 3 rules: capacity, low-carbon,
+    - Stage 4: compliance table (10 DC requests vs 3 rules: capacity, low-carbon,
       structural risk)
-    - Stage 4: Pareto frontier across 5 investment levels ($200M-$600M) with
+    - Stage 5: Pareto frontier across 5 investment levels ($200M-$600M) with
       per-level DC approvals, upgrade selections, marginal analysis, and knee point
 """
 
@@ -669,7 +669,7 @@ if len(dc_sub_df) > 0 and len(centrality_df) > 0:
         print("\n  No DC requests target structurally critical substations.")
 
 # --------------------------------------------------
-# Stage 2.5: Paths -- Transmission Corridors & Contingency
+# Stage 3: Paths -- Transmission Corridors & Contingency
 #   PREVIEW capability; requires relationalai>=1.15.
 # --------------------------------------------------
 # Composes on Stage 2's Substation.betweenness. Where Stage 2 scores a *node*,
@@ -679,7 +679,7 @@ if len(dc_sub_df) > 0 and len(centrality_df) > 0:
 # highest-betweenness substation offline to see which DC substations reroute.
 
 print(f"\n{'=' * 60}")
-print("STAGE 2.5: PATHS -- Transmission Corridors & Contingency")
+print("STAGE 3: PATHS -- Transmission Corridors & Contingency")
 print("=" * 60)
 
 # Bidirectional Substation<->Substation grid edge from active transmission lines.
@@ -824,7 +824,7 @@ if betw_by_id:
     )
 
 # --------------------------------------------------
-# Stage 3: Rules -- Interconnection Queue Compliance
+# Stage 4: Rules -- Interconnection Queue Compliance
 # --------------------------------------------------
 # Accretive chain: each rule consumes ontology enrichments from earlier stages.
 # Rule 1 reads Substation.predicted_load (Stage 1).
@@ -833,7 +833,7 @@ if betw_by_id:
 # All flags are written back as Relationships — queryable and consumable downstream.
 
 print(f"\n{'=' * 60}")
-print("STAGE 3: RULES -- Interconnection Queue Compliance")
+print("STAGE 4: RULES -- Interconnection Queue Compliance")
 print("=" * 60)
 
 # Rule 1: Capacity check -- consumes predicted_load from Stage 1
@@ -955,7 +955,7 @@ print(
 )
 
 # --------------------------------------------------
-# Stage 4: Optimize -- Joint DC Approval + Grid Upgrade
+# Stage 5: Optimize -- Joint DC Approval + Grid Upgrade
 #   Accretive chain: the capacity constraint uses predicted_load from Stage 1
 #   (via the | fallback pattern), matching the rules engine. All solve results
 #   (x_approve, x_upgrade per InvestmentLevel) are written to the ontology —
@@ -964,7 +964,7 @@ print(
 # --------------------------------------------------
 
 print(f"\n{'=' * 60}")
-print("STAGE 4: OPTIMIZE -- Joint Interconnection + Upgrade")
+print("STAGE 5: OPTIMIZE -- Joint Interconnection + Upgrade")
 print("=" * 60)
 
 # InvestmentLevel Scenario Concept: 5 budget levels
@@ -1326,7 +1326,7 @@ if len(portfolio_query_df) >= 3:
 # --------------------------------------------------
 
 print(f"\n{'=' * 80}")
-print("  PIPELINE COMPLETE: 4 stages executed on shared Energy Grid ontology")
-print("  Stage 4 solved all investment levels in a single formulation")
+print("  PIPELINE COMPLETE: 5 stages executed on shared Energy Grid ontology")
+print("  Stage 5 solved all investment levels in a single formulation")
 print("  (Scenario Concept pattern -- results in ontology, no re-solve loops)")
 print("=" * 80)

@@ -22,13 +22,19 @@ $300M unlocks 5 DCs (1,500 MW, $264M net value) including xAI Colossus.
                  centrality) DFW, Houston, San Antonio dominate. 7 of 10
                               DC requests target critical substations.
   ─────────────────────────────────────────────────────────────────
-  STAGE 3  Rules        ──►  DataCenterRequest.is_compliant    (2)
+  STAGE 3  Paths        ──►  Substation.fragility_load
+                 (PREVIEW)    Most-fragile generator-to-DC corridor:
+                              betweenness-load 99.833 via Dallas-Fort
+                              Worth / Abilene Central / Houston Ship
+                              Channel. ~421 corridors enumerated.
+  ─────────────────────────────────────────────────────────────────
+  STAGE 4  Rules        ──►  DataCenterRequest.is_compliant    (2)
                               fails_capacity / fails_structural /
                               fails_low_carbon flags written back.
                               Only Crusoe (Midland) and Oracle
                               (Corpus Christi) pass all three.
   ─────────────────────────────────────────────────────────────────
-  STAGE 4  Prescriptive ──►  DataCenterRequest.x_approve  (per InvestmentLevel)
+  STAGE 5  Prescriptive ──►  DataCenterRequest.x_approve  (per InvestmentLevel)
                               SubstationUpgrade.x_upgrade  (per InvestmentLevel)
                               OPTIMAL across 5 budget levels in one solve.
                               Knee $300M · 5 DCs · 1,500 MW · $264M net.
@@ -98,7 +104,7 @@ Plan routing sub-questions to predictive, graph, rules, and prescriptive reasone
 
 1 connected component, 3 Louvain communities (North Texas, West Texas, Gulf Coast); DFW, Houston, San Antonio flagged `is_structurally_critical`; 7 of 10 DC requests target critical nodes.
 
-### 5b. Trace fragile transmission corridors (PREVIEW, requires `relationalai>=1.15`)
+### 6. Trace fragile transmission corridors (PREVIEW, requires `relationalai>=1.15`)
 
 **Prompt**
 
@@ -110,7 +116,7 @@ Plan routing sub-questions to predictive, graph, rules, and prescriptive reasone
 
 421 generator-substation to DC-substation corridors. The most fragile carries a betweenness-load of 99.833, routing through the Dallas-Fort Worth / Abilene Central / Houston Ship Channel hubs. Taking the top substation (Dallas-Fort Worth) offline reroutes the other DC substations' corridors; the meshed grid stays connected (no full isolation). Persists `Substation.fragility_load`.
 
-### 6. Screen DC requests
+### 7. Screen DC requests
 
 **Prompt**
 
@@ -122,7 +128,7 @@ Plan routing sub-questions to predictive, graph, rules, and prescriptive reasone
 
 `fails_capacity` / `fails_structural` / `fails_low_carbon` + `is_compliant`; 2 pass (Crusoe, Oracle), 8 flagged.
 
-### 7. Approve DCs and fund upgrades
+### 8. Approve DCs and fund upgrades
 
 **Prompt**
 
@@ -134,7 +140,7 @@ Plan routing sub-questions to predictive, graph, rules, and prescriptive reasone
 
 OPTIMAL MIP across 5 `InvestmentLevel` values in one solve; `x_approve` and `x_upgrade` written back per level.
 
-### 8. Read the frontier
+### 9. Read the frontier
 
 **Prompt**
 
@@ -146,7 +152,7 @@ OPTIMAL MIP across 5 `InvestmentLevel` values in one solve; `x_approve` and `x_u
 
 Pareto frontier with knee at $300M (5 DCs, 1,500 MW, $264M net); marginal $995K/$M at knee, declining to $400K/$M by $600M; Google + Lambda never approved (DFW full).
 
-### 9. Persist solution concepts into the ontology
+### 10. Persist solution concepts into the ontology
 
 **Prompt**
 

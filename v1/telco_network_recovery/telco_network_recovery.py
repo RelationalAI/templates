@@ -1,6 +1,6 @@
 """Telco network recovery (multi-reasoner) template.
 
-Four-stage RelationalAI pipeline that produces a defensible tower-upgrade
+Five-stage RelationalAI pipeline that produces a defensible tower-upgrade
 plan from a heterogeneous telco ontology. The narrative: a regional
 operator must allocate a fixed capex budget across cell towers in the
 face of two distinct risk signals -- in-region operational degradation
@@ -30,14 +30,14 @@ recoverable from the other alone, so the chain integrates both.
   of ACTIVE subscribers whose calls route through the tower;
   PageRank-weighted impact is exposed alongside as a secondary
   network-effect signal.
-- Stage 3.5 -- Paths (PREVIEW, relationalai>=1.15): enumerate caller
+- Stage 4 -- Paths (PREVIEW, relationalai>=1.15): enumerate caller
   -> callee call paths (<=3 hops, simple) from the highest-PageRank
   subscriber over an arity-3 `{Subscriber} via {CellTower} calls
   {Subscriber}` edge, recovering the routing tower on each hop via
   `relationship_fields`. Ranks each scoped subscriber's routes by
   Stage 3 PageRank summed along the chain and persists the top route's
   influence load as `Subscriber.top_call_path_influence`.
-- Stage 4 -- Prescriptive: tower-upgrade MIP. Decision variable
+- Stage 5 -- Prescriptive: tower-upgrade MIP. Decision variable
   `TowerUpgradeOption.selected` is binary (one of three tiers per
   tower). Constraints: at most one tier per tower, total cost <=
   budget, total install crew-weeks <= 200. Objective maximizes
@@ -97,7 +97,7 @@ SEED = 42
 GNN_EPOCHS = 80
 GNN_LR = 0.002
 
-# Stage 4 budget envelope.
+# Stage 5 budget envelope.
 BUDGET_USD = 5_000_000
 INSTALL_WEEKS_BUDGET = 200
 
@@ -680,7 +680,7 @@ Subscriber.churn_risk_score = model.Property(f"{Subscriber} has {Float:churn_ris
 Subscriber.status = model.Property(f"{Subscriber} has {SubscriberStatus:status}")
 # Composite revenue-at-risk signal (LTV * (1 + churn)), precomputed in
 # pandas above; this is the per-subscriber weight that Stage 3 sums into
-# `CellTower.weighted_impact` and Stage 4 uses in the objective.
+# `CellTower.weighted_impact` and Stage 5 uses in the objective.
 Subscriber.customer_value = model.Property(f"{Subscriber} has {Float:customer_value}")
 src = model.data(subscribers_df)
 model.define(
@@ -748,7 +748,7 @@ print(top_subs.to_string(index=False))
 CellTower.impact_count = model.Property(f"{CellTower} has {Float:impact_count}")
 # weighted_impact is the headline per-tower customer-impact score: the
 # sum of customer_value (revenue x churn) over ACTIVE subscribers whose
-# calls route through the tower. The Stage 4 MIP objective consumes
+# calls route through the tower. The Stage 5 MIP objective consumes
 # this directly to prioritize towers by revenue-at-risk weighted by
 # churn urgency.
 #
@@ -759,7 +759,7 @@ CellTower.impact_count = model.Property(f"{CellTower} has {Float:impact_count}")
 CellTower.weighted_impact = model.Property(f"{CellTower} has {Float:weighted_impact}")
 # Secondary signal: PageRank-weighted impact retained so the graph
 # reasoner's network-effect view is still queryable alongside the
-# revenue-based headline. Not consumed by the Stage 4 objective.
+# revenue-based headline. Not consumed by the Stage 5 objective.
 CellTower.weighted_pagerank = model.Property(f"{CellTower} has {Float:weighted_pagerank}")
 
 model.define(
@@ -815,7 +815,7 @@ print("\n  Per-critical-tower customer impact "
 print(blast_df.to_string(index=False))
 
 # --------------------------------------------------
-# Stage 3.5: Paths -- Call-path enumeration through critical towers
+# Stage 4: Paths -- Call-path enumeration through critical towers
 #   PREVIEW capability; requires relationalai>=1.15.
 # --------------------------------------------------
 # Composes on Stage 3's Subscriber.influence_score (PageRank) and Stage 2's
@@ -827,7 +827,7 @@ print(blast_df.to_string(index=False))
 # the influence flows through -- the join between the graph and rules stages.
 
 print(f"\n{'=' * 60}")
-print("STAGE 3.5: PATHS -- Call-path enumeration through critical towers")
+print("STAGE 4: PATHS -- Call-path enumeration through critical towers")
 print("=" * 60)
 
 # Arity-3 call edge: {Subscriber:caller} via {CellTower:tower} calls {Subscriber:callee}.
@@ -1008,11 +1008,11 @@ if top_route_overall is not None:
     print(f"  Top influence-weighted call path (PageRank sum {_load}): {route_str}{tower_str}")
 
 # --------------------------------------------------
-# Stage 4: Prescriptive -- tower upgrade MIP
+# Stage 5: Prescriptive -- tower upgrade MIP
 # --------------------------------------------------
 
 print(f"\n{'=' * 60}")
-print("STAGE 4: PRESCRIPTIVE -- tower upgrade selection MIP")
+print("STAGE 5: PRESCRIPTIVE -- tower upgrade selection MIP")
 print("=" * 60)
 
 # TowerUpgradeOption concept: a (tower, tier) candidate upgrade with
@@ -1281,7 +1281,7 @@ plan_df = (
 print(plan_df.to_string(index=False))
 
 print(f"\n{'=' * 60}")
-print("PIPELINE COMPLETE: 4 stages executed on the shared Telco ontology")
+print("PIPELINE COMPLETE: 5 stages executed on the shared Telco ontology")
 print(f"Plan headline + {len(selected_df)}-row SelectedUpgrade view are now queryable")
 print("as ontology -- RestorePlan and TowerUpgradeOption.is_selected_upgrade.")
 print("=" * 60)
