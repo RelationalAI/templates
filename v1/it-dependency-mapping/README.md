@@ -228,16 +228,15 @@ chains = (
 
 ### 3. Persist Longest Downstream Depth
 
-The longest path starting at each feature is its downstream depth. Writing it back as a first-class property lets a downstream query rank features by reach without re-enumerating paths:
+The longest path starting at each feature is its downstream depth. RelationalAI computes it in PyRel with `aggregates.max(p.length).per(src)` over a typed source endpoint and defines it straight onto the feature as a first-class property — no DataFrame round-trip — so a downstream query can rank features by reach without re-enumerating paths:
 
 ```python
 Feature.max_downstream_depth = model.Property(
     f"{Feature} has {Integer:max_downstream_depth}"
 )
-depth_data = model.data(depth_rows)
-model.define(
-    Feature.max_downstream_depth(depth_data.max_downstream_depth)
-).where(Feature.id == depth_data.feature_id)
+src = Feature.ref()
+p = model.path(src, Feature.contributes_to.repeat(1, MAX_DEPTH)).all_paths()
+model.define(src.max_downstream_depth(aggs.max(p.length).per(src))).where(p)
 ```
 
 ### 4. Reduce to Maximal Chains
