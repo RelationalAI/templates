@@ -1,0 +1,16 @@
+from_feature,to_feature
+clickstream-ingest,events-enrichment
+txn-cdc-stream,ledger-normalizer
+txn-cdc-stream,customer-360-build
+crm-sync,customer-360-build
+events-enrichment,session-features
+ledger-normalizer,revenue-rollup
+session-features,churn-feature-store
+customer-360-build,churn-feature-store
+session-features,recommendation-svc
+churn-feature-store,churn-scoring-api
+revenue-rollup,billing-api
+revenue-rollup,exec-revenue-dashboard
+billing-api,exec-revenue-dashboard
+churn-scoring-api,retention-dashboard
+recommendation-svc,retention-dashboard

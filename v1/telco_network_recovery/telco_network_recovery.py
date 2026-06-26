@@ -1,6 +1,6 @@
 """Telco network recovery (multi-reasoner) template.
 
-Four-stage RelationalAI pipeline that produces a defensible tower-upgrade
+Five-stage RelationalAI pipeline that produces a defensible tower-upgrade
 plan from a heterogeneous telco ontology. The narrative: a regional
 operator must allocate a fixed capex budget across cell towers in the
 face of two distinct risk signals -- in-region operational degradation
@@ -30,7 +30,14 @@ recoverable from the other alone, so the chain integrates both.
   of ACTIVE subscribers whose calls route through the tower;
   PageRank-weighted impact is exposed alongside as a secondary
   network-effect signal.
-- Stage 4 -- Prescriptive: tower-upgrade MIP. Decision variable
+- Stage 4 -- Paths (PREVIEW, relationalai>=1.15): enumerate caller
+  -> callee call paths (<=3 hops, simple) from the highest-PageRank
+  subscriber over an arity-3 `{Subscriber} via {CellTower} calls
+  {Subscriber}` edge, recovering the routing tower on each hop via
+  `relationship_fields`. Ranks each scoped subscriber's routes by
+  Stage 3 PageRank summed along the chain and persists the top route's
+  influence load as `Subscriber.top_call_path_influence`.
+- Stage 5 -- Prescriptive: tower-upgrade MIP. Decision variable
   `TowerUpgradeOption.selected` is binary (one of three tiers per
   tower). Constraints: at most one tier per tower, total cost <=
   budget, total install crew-weeks <= 200. Objective maximizes
@@ -71,7 +78,9 @@ from relationalai.semantics import (
     Model,
     String,
     distinct,
+    not_,
     select,
+    where,
 )
 from relationalai.semantics.reasoners.graph import Graph
 from relationalai.semantics.reasoners.predictive import GNN, PropertyTransformer
@@ -88,7 +97,7 @@ SEED = 42
 GNN_EPOCHS = 80
 GNN_LR = 0.002
 
-# Stage 4 budget envelope.
+# Stage 5 budget envelope.
 BUDGET_USD = 5_000_000
 INSTALL_WEEKS_BUDGET = 200
 
@@ -671,7 +680,7 @@ Subscriber.churn_risk_score = model.Property(f"{Subscriber} has {Float:churn_ris
 Subscriber.status = model.Property(f"{Subscriber} has {SubscriberStatus:status}")
 # Composite revenue-at-risk signal (LTV * (1 + churn)), precomputed in
 # pandas above; this is the per-subscriber weight that Stage 3 sums into
-# `CellTower.weighted_impact` and Stage 4 uses in the objective.
+# `CellTower.weighted_impact` and Stage 5 uses in the objective.
 Subscriber.customer_value = model.Property(f"{Subscriber} has {Float:customer_value}")
 src = model.data(subscribers_df)
 model.define(
@@ -739,7 +748,7 @@ print(top_subs.to_string(index=False))
 CellTower.impact_count = model.Property(f"{CellTower} has {Float:impact_count}")
 # weighted_impact is the headline per-tower customer-impact score: the
 # sum of customer_value (revenue x churn) over ACTIVE subscribers whose
-# calls route through the tower. The Stage 4 MIP objective consumes
+# calls route through the tower. The Stage 5 MIP objective consumes
 # this directly to prioritize towers by revenue-at-risk weighted by
 # churn urgency.
 #
@@ -750,7 +759,7 @@ CellTower.impact_count = model.Property(f"{CellTower} has {Float:impact_count}")
 CellTower.weighted_impact = model.Property(f"{CellTower} has {Float:weighted_impact}")
 # Secondary signal: PageRank-weighted impact retained so the graph
 # reasoner's network-effect view is still queryable alongside the
-# revenue-based headline. Not consumed by the Stage 4 objective.
+# revenue-based headline. Not consumed by the Stage 5 objective.
 CellTower.weighted_pagerank = model.Property(f"{CellTower} has {Float:weighted_pagerank}")
 
 model.define(
@@ -806,11 +815,204 @@ print("\n  Per-critical-tower customer impact "
 print(blast_df.to_string(index=False))
 
 # --------------------------------------------------
-# Stage 4: Prescriptive -- tower upgrade MIP
+# Stage 4: Paths -- Call-path enumeration through critical towers
+#   PREVIEW capability; requires relationalai>=1.15.
+# --------------------------------------------------
+# Composes on Stage 3's Subscriber.influence_score (PageRank) and Stage 2's
+# CellTower.is_critical_restore. Where PageRank scores a *node*, paths scores
+# the *call route*: enumerate caller -> ... -> callee chains, recover the
+# routing tower on each hop, and rank each scoped subscriber's routes by total
+# influence summed along the chain. The routing tower is the auxiliary middle
+# field of an arity-3 edge, so each enumerated path also tells us which towers
+# the influence flows through -- the join between the graph and rules stages.
+
+print(f"\n{'=' * 60}")
+print("STAGE 4: PATHS -- Call-path enumeration through critical towers")
+print("=" * 60)
+
+# Arity-3 call edge: {Subscriber:caller} via {CellTower:tower} calls {Subscriber:callee}.
+# First/last fields (caller/callee) are the path endpoints; the tower is the
+# auxiliary middle field (field_index 1), recoverable per hop via
+# relationship_fields. Derived from CallDetailRecord's caller/callee/routed_through.
+Subscriber.calls_via = model.Relationship(
+    f"{Subscriber:caller} via {CellTower:tower} calls {Subscriber:callee}",
+    short_name="calls_via",
+)
+cdr_edge = CallDetailRecord.ref()
+caller_sub, callee_sub, via_tower = Subscriber.ref(), Subscriber.ref(), CellTower.ref()
+model.where(
+    cdr_edge.caller(caller_sub),
+    cdr_edge.callee(callee_sub),
+    cdr_edge.routed_through(via_tower),
+).define(caller_sub.calls_via(via_tower, callee_sub))
+
+# Scope the enumeration: the full call graph is large and cyclic, so we anchor
+# on a deterministic seed -- the single highest-PageRank subscriber (max
+# influence_score, ties broken by id). From that hub we enumerate call paths up
+# to 3 hops and keep simple paths only. `path(C.r.repeat(1, 3))` constrains only
+# the *source* to type Subscriber; we pin the hub as the start node via .where().
+SEED_HUB_COUNT = 1  # deterministic single-hub scope
+PATH_MAX_HOPS = 3
+
+influence_df = model.select(
+    Subscriber.id.alias("sub_id"),
+    Subscriber.influence_score.alias("influence"),
+).to_df()
+influence_df["influence"] = influence_df["influence"].astype(float)
+seed_hub_ids = (
+    influence_df.sort_values(["influence", "sub_id"], ascending=[False, True])
+    .head(SEED_HUB_COUNT)["sub_id"]
+    .tolist()
+)
+
+# Per-subscriber influence load of the top-ranked call path, persisted below.
+Subscriber.top_call_path_influence = model.Property(
+    f"{Subscriber} has {Float:top_call_path_influence}"
+)
+tower_name_df = model.select(
+    CellTower.id.alias("tower_id"),
+    CellTower.name.alias("tower_name"),
+).to_df()
+tower_name_by_id = dict(zip(tower_name_df["tower_id"], tower_name_df["tower_name"]))
+
+frag_rows = []
+total_simple_paths = 0
+towers_recovered = set()
+top_route_overall = None  # (influence_load, [sub ids], [tower ids])
+
+for hub_id in seed_hub_ids:
+    # Score each simple call path IN PYREL: fold the simple-path filter and the
+    # PageRank-sum-along-the-route into one scoped query. The negated
+    # existential `not_(where(i < j, p.nodes(i) == p.nodes(j)))` drops walks
+    # that revisit a node (the call graph is cyclic), so the sum sees only
+    # simple paths; `aggs.sum(Subscriber(p.nodes).influence_score).per(p)` sums
+    # the per-node PageRank over each path's node sequence. On a simple path the
+    # position-sum equals the distinct-subscriber sum, preserving the ranking.
+    # Keep this score query SEPARATE from the node-sequence / tower projections
+    # below: selecting an aggregate alongside p.nodes fans out rows.
+    seed = Subscriber.ref()
+    i, j = Integer.ref(), Integer.ref()
+    p = model.path(
+        seed, Subscriber.calls_via.repeat(1, PATH_MAX_HOPS)
+    ).all_paths()
+    score_df = model.where(
+        seed.id == hub_id,
+        p,
+        not_(where(i < j, p.nodes(i) == p.nodes(j))),
+        total := aggs.sum(Subscriber(p.nodes).influence_score).per(p),
+    ).select(
+        p.alias("path_id"),
+        total.alias("influence_load"),
+    ).to_df()
+    if score_df.empty:
+        continue
+    score_df["influence_load"] = score_df["influence_load"].astype(float).round(6)
+    # The simple-path set: path_ids the PyRel filter kept. The node-sequence and
+    # tower projections below are joined to this set by path_id, so non-simple
+    # walks are never referenced for the counts or the displayed top route.
+    simple_path_ids = set(score_df["path_id"])
+    total_simple_paths += len(simple_path_ids)
+
+    # Node sequence per path (for the route-label string-join, a pandas job).
+    # Pin the start node via an explicit src argument to path() + an outer id
+    # filter, not a p.nodes(0, ref) post-filter.
+    seed_n = Subscriber.ref()
+    p_nodes = model.where(
+        seed_n.id == hub_id,
+        pn := model.path(
+            seed_n, Subscriber.calls_via.repeat(1, PATH_MAX_HOPS)
+        ).all_paths(),
+    ).select(
+        pn.alias("path_id"),
+        pn.nodes["index"].alias("step"),
+        Subscriber(pn.nodes).id.alias("sub_id"),
+    ).to_df()
+
+    # Recover the routing tower on each hop: field_index 1 is the CellTower in
+    # the arity-3 edge (caller=0, tower=1, callee=2). Project all edge fields and
+    # filter to field_index 1 in pandas (the sanctioned read-the-field,
+    # filter-in-pandas pattern) rather than in the where clause.
+    seed_h = Subscriber.ref()
+    p_hops = model.where(
+        seed_h.id == hub_id,
+        ph := model.path(
+            seed_h, Subscriber.calls_via.repeat(1, PATH_MAX_HOPS)
+        ).all_paths(),
+    ).select(
+        ph.alias("path_id"),
+        ph.relationship_fields["index"].alias("hop"),
+        ph.relationship_fields["field_index"].alias("fidx"),
+        CellTower(ph.relationship_fields["field"]).id.alias("tower_id"),
+    ).to_df()
+    if not p_hops.empty:
+        p_hops = p_hops[p_hops["fidx"].astype(int) == 1]
+
+    p_nodes["step"] = p_nodes["step"].astype(int)
+    # Restrict the node-sequence / tower assembly to the simple-path set.
+    p_nodes = p_nodes[p_nodes["path_id"].isin(simple_path_ids)]
+
+    # Assemble per-path node id sequences and routing-tower lists (display only).
+    sub_ids_by_path = {}
+    for path_id, grp in p_nodes.groupby("path_id"):
+        sub_ids_by_path[path_id] = grp.sort_values("step")["sub_id"].tolist()
+
+    tower_by_path = {}
+    if not p_hops.empty:
+        p_hops = p_hops[p_hops["path_id"].isin(simple_path_ids)]
+        p_hops["hop"] = p_hops["hop"].astype(int)
+        for path_id, hop_grp in p_hops.groupby("path_id"):
+            towers = hop_grp.sort_values("hop")["tower_id"].tolist()
+            tower_by_path[path_id] = towers
+            towers_recovered.update(towers)
+
+    # Persist this hub's best (max influence-load) simple call path; track the
+    # single top route overall for display. Ties broken by path_id for
+    # determinism. The PageRank sum is the PyRel-computed influence_load.
+    hub_best_load = float(score_df["influence_load"].max())
+    frag_rows.append({"sub_id": hub_id, "top_call_path_influence": hub_best_load})
+
+    top_row = score_df.sort_values(
+        ["influence_load", "path_id"], ascending=[False, True]
+    ).iloc[0]
+    top_load = float(top_row["influence_load"])
+    if top_route_overall is None or top_load > top_route_overall[0]:
+        top_pid = top_row["path_id"]
+        top_route_overall = (
+            top_load,
+            sub_ids_by_path.get(top_pid, []),
+            tower_by_path.get(top_pid, []),
+        )
+
+# Persist the top-route influence-load as a Subscriber property on the ontology.
+if frag_rows:
+    frag_df = pd.DataFrame(frag_rows)
+    frag_data = model.data(frag_df)
+    model.define(
+        Subscriber.top_call_path_influence(frag_data.top_call_path_influence)
+    ).where(Subscriber.id == frag_data.sub_id)
+
+# Concise summary: counts, the top influence-weighted call path, towers recovered.
+print(
+    f"\n  Seed scope: {len(seed_hub_ids)} highest-PageRank hub(s) "
+    f"{seed_hub_ids}; enumeration <= {PATH_MAX_HOPS} hops, simple paths only."
+)
+print(f"  Simple call paths enumerated from the seed hub(s): {total_simple_paths}")
+print(f"  Distinct routing towers recovered across those paths: {len(towers_recovered)}")
+if top_route_overall is not None:
+    _load, _subs, _towers = top_route_overall
+    route_str = " -> ".join(_subs)
+    tower_str = (
+        " via towers [" + ", ".join(tower_name_by_id.get(t, t) for t in _towers) + "]"
+        if _towers else ""
+    )
+    print(f"  Top influence-weighted call path (PageRank sum {_load}): {route_str}{tower_str}")
+
+# --------------------------------------------------
+# Stage 5: Prescriptive -- tower upgrade MIP
 # --------------------------------------------------
 
 print(f"\n{'=' * 60}")
-print("STAGE 4: PRESCRIPTIVE -- tower upgrade selection MIP")
+print("STAGE 5: PRESCRIPTIVE -- tower upgrade selection MIP")
 print("=" * 60)
 
 # TowerUpgradeOption concept: a (tower, tier) candidate upgrade with
@@ -1079,7 +1281,7 @@ plan_df = (
 print(plan_df.to_string(index=False))
 
 print(f"\n{'=' * 60}")
-print("PIPELINE COMPLETE: 4 stages executed on the shared Telco ontology")
+print("PIPELINE COMPLETE: 5 stages executed on the shared Telco ontology")
 print(f"Plan headline + {len(selected_df)}-row SelectedUpgrade view are now queryable")
 print("as ontology -- RestorePlan and TowerUpgradeOption.is_selected_upgrade.")
 print("=" * 60)

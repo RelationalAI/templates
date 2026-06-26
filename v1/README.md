@@ -29,7 +29,7 @@ Templates are grouped by industry. Expand an industry to see its templates, the 
 </details>
 
 <details>
-<summary>Financial Services (8)</summary>
+<summary>Financial Services (9)</summary>
 
 | Template | Reasoners | Description |
 | --- | --- | --- |
@@ -105,18 +105,20 @@ Templates are grouped by industry. Expand an industry to see its templates, the 
 </details>
 
 <details>
-<summary>Technology & Telecom (9)</summary>
+<summary>Technology & Telecom (11)</summary>
 
 | Template | Reasoners | Description |
 | --- | --- | --- |
 | [cell_tower_coverage](./cell_tower_coverage/) | Prescriptive | Select candidate cell tower sites and assign demand zones to maximize covered population under budget, tower-count, and capacity limits. |
 | [cicd_runner_allocation](./cicd_runner_allocation/) | Prescriptive | Assign CI/CD workflow jobs to the cheapest compatible runner type, subject to concurrency limits, with scenario analysis across capacity levels and conflict analysis to diagnose an infeasible outage. |
+| [cybersecurity-attack-paths](./cybersecurity-attack-paths/) | Graph | Trace multi-step cyber attack chains across an enterprise asset graph by composing attacker techniques in order, then rank the routes that reach crown-jewel systems by their total exposure. |
 | [datacenter_compute_allocation](./datacenter_compute_allocation/) | Predictive, Graph, Rules-based, Prescriptive | Inside-the-fence GPU allocation across hyperscaler campuses, a chain follow-up to energy_grid_planning: GNN-predicted per-workload utilization, hardware-compatibility rules, dependency PageRank, and a 24-cell scenario MIP. |
+| [it-dependency-mapping](./it-dependency-mapping/) | Graph | Map the downstream dependency structure of a software and data-pipeline estate by enumerating variable-length traversal paths over an acyclic dependency graph, then surface the longest end-to-end chains and the owners along them. |
 | [memory_supply_allocation](./memory_supply_allocation/) | Predictive, Rules-based, Prescriptive, Graph | Monthly rolling-horizon allocation of constrained memory-chip supply across customers with supplier dependencies, named foundries, and raw-material inputs: predicted supplier capability feeds the optimization, customer-customer paths surface single points of failure, and two what-if scenarios trace supplier-offline and input-shortage cascades. |
 | [pod_placement](./pod_placement/) | Prescriptive | Assign pods to nodes in a Kubernetes-style cluster subject to per-node CPU / memory / GPU bin-packing, pairwise tenant anti-affinity, deployment co-location affinity, failure-domain spread, gang-placement atomicity, and topology rack-clique rules. Pure CSP via MiniZinc / Chuffed. |
 | [sprint_scheduling](./sprint_scheduling/) | Prescriptive | Assign backlog issues to developers across sprints, minimizing weighted completion time while respecting capacity and skill constraints. |
 | [subscriber_retention](./subscriber_retention/) | Graph, Predictive | Telco churn-risk scoring: PageRank over a Subscriber→Subscriber call graph plus aggregate-derived call-volume features feed a regression GNN that scores per-subscriber churn risk, then surfaces the highest-risk subscribers per segment. |
-| [telco_network_recovery](./telco_network_recovery/) | Predictive, Rules-based, Graph, Prescriptive | Tower-upgrade planning on a shared telco ontology: an equipment-failure GNN over a heterogeneous graph (with manufacturer advisories), declarative critical-tower rules, and customer-impact analysis (revenue × churn, with PageRank). |
+| [telco_network_recovery](./telco_network_recovery/) | Predictive, Rules-based, Graph, Prescriptive | Tower-upgrade planning on a shared telco ontology: an equipment-failure graph neural network (GNN) over a heterogeneous graph (with manufacturer advisories), declarative critical-tower rules, and customer-impact analysis (revenue x churn, with PageRank). |
 | [test_data_generation](./test_data_generation/) | Prescriptive | Determine optimal row counts for test database tables satisfying schema and referential integrity constraints. |
 
 </details>

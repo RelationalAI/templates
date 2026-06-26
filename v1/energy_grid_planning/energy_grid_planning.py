@@ -1,8 +1,8 @@
 """Energy grid planning (multi-reasoner) template.
 
-This script demonstrates a four-stage multi-reasoner pipeline in RelationalAI,
-combining predictive enrichment, graph analysis, rules-based compliance, and
-prescriptive optimization on a single shared ontology:
+This script demonstrates a five-stage multi-reasoner pipeline in RelationalAI,
+combining predictive enrichment, graph analysis, path-based corridor fragility,
+rules-based compliance, and prescriptive optimization on a single shared ontology:
 
 - Stage 1 -- Predict: load a pre-trained GNN for substation demand forecasting
   (or fall back to the demand_forecasts CSV). Enriches each Substation with a
@@ -11,10 +11,14 @@ prescriptive optimization on a single shared ontology:
   detection, and multi-metric centrality (betweenness, degree, eigenvector) on
   the transmission grid topology. Results are stored directly as Substation
   properties on the shared ontology.
-- Stage 3 -- Rules: declarative interconnection queue compliance checks
+- Stage 3 -- Paths (PREVIEW, relationalai>=1.15): enumerate generator-sub ->
+  DC-sub transmission corridors, rank each by Stage 2 betweenness summed along
+  the route (most fragile = greatest through-traffic exposure), and re-enumerate
+  with the highest-betweenness substation offline. Persists Substation.fragility_load.
+- Stage 4 -- Rules: declarative interconnection queue compliance checks
   (capacity, structural criticality, low-carbon mandate) that consume Stage 1
   and 2 enrichments.
-- Stage 4 -- Prescriptive: joint DC approval + grid upgrade optimization using
+- Stage 5 -- Prescriptive: joint DC approval + grid upgrade optimization using
   InvestmentLevel as a Scenario Concept. One solve across 5 budget levels
   produces a Pareto frontier with results queryable directly from the ontology.
 
@@ -22,20 +26,22 @@ Run:
     /opt/homebrew/bin/python3.11 energy_grid_planning.py
 
 Output:
-    Prints a four-stage pipeline summary:
+    Prints a five-stage pipeline summary:
     - Stage 1: substation load forecasts with growth rates and breach detection
     - Stage 2: grid connectivity (WCC), community structure (Louvain), centrality
       ranking, and structurally critical substations
-    - Stage 3: compliance table (10 DC requests vs 3 rules: capacity, low-carbon,
+    - Stage 3: most-fragile generator-to-DC transmission corridors (betweenness
+      summed along the route) + a highest-betweenness-offline contingency
+    - Stage 4: compliance table (10 DC requests vs 3 rules: capacity, low-carbon,
       structural risk)
-    - Stage 4: Pareto frontier across 5 investment levels ($200M-$600M) with
+    - Stage 5: Pareto frontier across 5 investment levels ($200M-$600M) with
       per-level DC approvals, upgrade selections, marginal analysis, and knee point
 """
 
 from pathlib import Path
 
 import pandas as pd
-from relationalai.semantics import Boolean, Float, Integer, Model, String, sum
+from relationalai.semantics import Boolean, Float, Integer, Model, String, not_, sum, where
 from relationalai.semantics.reasoners.graph import Graph
 from relationalai.semantics.reasoners.prescriptive import Problem
 from relationalai.semantics.std import aggregates as aggs
@@ -50,6 +56,19 @@ LOW_CARBON_TARGET = 0.30  # 30% of generation must be low-carbon (renewable + nu
 EMISSIONS_CAP = 50000  # tons
 AMORTIZATION_YEARS = 20  # upgrade cost spread over 20 years
 CRITICAL_THRESHOLD = 3  # top-N substations by combined centrality rank are "structurally critical"
+
+# Stage 1 GNN model registry (org-specific Snowflake names). The optional
+# pre-trained substation-load GNN lives in these Snowflake database/schema
+# locations; point them at your own account, or leave them and Stage 1 falls
+# back to the bundled demand_forecasts.csv when the model is not found.
+GNN_DATABASE = "ENERGY"
+GNN_SCHEMA = "PUBLIC"
+GNN_EXP_DATABASE = "ENERGY"
+GNN_EXP_SCHEMA = "EXPERIMENTS"
+GNN_MODEL_DATABASE = "ENERGY"
+GNN_MODEL_SCHEMA = "MODEL_REGISTRY"
+GNN_MODEL_NAME = "substation_load_forecaster"
+GNN_VERSION_NAME = "v1.0"
 
 
 # --------------------------------------------------
@@ -366,23 +385,23 @@ try:
     s1, s2 = Substation.ref(), Substation.ref()
 
     gnn = GNN(
-        database="ENERGY",
-        schema="PUBLIC",
-        exp_database="ENERGY",
-        exp_schema="EXPERIMENTS",
+        database=GNN_DATABASE,
+        schema=GNN_SCHEMA,
+        exp_database=GNN_EXP_DATABASE,
+        exp_schema=GNN_EXP_SCHEMA,
         graph=gnn_graph,
         pt=PropertyTransformer(
             continuous=[Substation.max_capacity_mw, Substation.current_load_mw],
             drop=[Substation, TransmissionLine],
         ),
-        model_database="ENERGY",
-        model_schema="MODEL_REGISTRY",
-        model_name="substation_load_forecaster",
-        version_name="v1.0",
+        model_database=GNN_MODEL_DATABASE,
+        model_schema=GNN_MODEL_SCHEMA,
+        model_name=GNN_MODEL_NAME,
+        version_name=GNN_VERSION_NAME,
     )
     gnn.load()
     gnn_available = True
-    print("  GNN model loaded from ENERGY.MODEL_REGISTRY")
+    print(f"  GNN model loaded from {GNN_MODEL_DATABASE}.{GNN_MODEL_SCHEMA}")
 except Exception as e:
     print(
         f"  GNN model not available ({type(e).__name__}), falling back to DEMAND_FORECASTS table"
@@ -650,7 +669,162 @@ if len(dc_sub_df) > 0 and len(centrality_df) > 0:
         print("\n  No DC requests target structurally critical substations.")
 
 # --------------------------------------------------
-# Stage 3: Rules -- Interconnection Queue Compliance
+# Stage 3: Paths -- Transmission Corridors & Contingency
+#   PREVIEW capability; requires relationalai>=1.15.
+# --------------------------------------------------
+# Composes on Stage 2's Substation.betweenness. Where Stage 2 scores a *node*,
+# paths scores the *corridor* feeding each data center: enumerate generator-sub ->
+# DC-sub transmission routes, rank each by total betweenness summed along its hops
+# (most fragile = greatest through-traffic exposure), then re-enumerate with the
+# highest-betweenness substation offline to see which DC substations reroute.
+
+print(f"\n{'=' * 60}")
+print("STAGE 3: PATHS -- Transmission Corridors & Contingency")
+print("=" * 60)
+
+# Bidirectional Substation<->Substation grid edge from active transmission lines.
+Substation.connects_to = model.Relationship(
+    f"{Substation} connects to {Substation}", short_name="connects_to"
+)
+tl_fwd = TransmissionLine.ref()
+s_from, s_to = Substation.ref(), Substation.ref()
+model.where(
+    tl_fwd.from_substation(s_from),
+    tl_fwd.to_substation(s_to),
+    tl_fwd.is_active == True,
+).define(s_from.connects_to(s_to))
+tl_rev = TransmissionLine.ref()
+s_a, s_b = Substation.ref(), Substation.ref()
+model.where(
+    tl_rev.from_substation(s_a),
+    tl_rev.to_substation(s_b),
+    tl_rev.is_active == True,
+).define(s_b.connects_to(s_a))
+
+# Typed endpoints: substations hosting a generator (source) and a DC request (sink).
+GeneratorSubstation = model.Concept("GeneratorSubstation", extends=[Substation])
+gen_ref, gen_sub = Generator.ref(), Substation.ref()
+model.where(gen_ref.substation(gen_sub)).define(GeneratorSubstation(gen_sub))
+DCSubstation = model.Concept("DCSubstation", extends=[Substation])
+dc_ref, dc_sub = DataCenterRequest.ref(), Substation.ref()
+model.where(dc_ref.substation(dc_sub)).define(DCSubstation(dc_sub))
+
+# Enumerate generator-sub -> DC-sub corridors (finite repeat; the grid is meshed/cyclic).
+MAX_CORRIDOR_HOPS = 6
+corridor_src, corridor_dst = GeneratorSubstation.ref(), DCSubstation.ref()
+corridor = model.path(
+    corridor_src, Substation.connects_to.repeat(1, MAX_CORRIDOR_HOPS), corridor_dst
+).all_paths()
+
+# Score each corridor IN PyRel by Stage 2's betweenness summed ALONG its hops, and
+# roll the most-fragile (max-load) corridor up per DC substation -- all native paths.
+#
+# Three operations move into PyRel:
+#   1. Per-corridor score: aggs.sum(Substation(p.nodes).betweenness).per(p) sums the
+#      per-node betweenness over each corridor's node sequence (the core paths-only op).
+#   2. Simple-path filter: the grid is cyclic, so walk-semantics all_paths() revisits
+#      nodes; not_(where(i < j, p.nodes(i) == p.nodes(j))) drops any node-repeating walk
+#      via a negated existential over positions. It sits in the SAME where() as the sum,
+#      so the sum only sees simple corridors -- on a simple corridor the position-sum
+#      equals the distinct-substation sum.
+#   3. Per-DC rollup: aggs.max(total).per(corridor_dst) takes the highest-load corridor
+#      terminating at each DC substation (corridor_dst is auto-unified at p.nodes(length)).
+i, j = Integer.ref(), Integer.ref()
+fragility_per_dc = model.where(
+    corridor,
+    not_(where(i < j, corridor.nodes(i) == corridor.nodes(j))),  # simple corridors only
+    total := aggs.sum(Substation(corridor.nodes).betweenness).per(corridor),
+    frag := aggs.max(total).per(corridor_dst),
+).select(
+    corridor_dst.id.alias("substation_id"),
+    frag.alias("fragility_load"),
+).to_df()
+
+# Persist each DC substation's most-fragile-corridor load directly from the native rollup.
+Substation.fragility_load = model.Property(f"{Substation} has {Float:fragility_load}")
+if not fragility_per_dc.empty:
+    frag_data = model.data(fragility_per_dc)
+    model.define(Substation.fragility_load(frag_data.fragility_load)).where(
+        Substation.id == frag_data.substation_id
+    )
+
+# Reassemble corridor node sequences in pandas for human-readable route labels (string-
+# joining names is a pandas job) and for the contingency re-enumeration below. Selecting
+# names alongside the score would fan out rows, so the node-sequence projection is a
+# SEPARATE query from the scoring above.
+corridor_df = model.where(corridor).select(
+    corridor.alias("corridor"),
+    corridor.nodes["index"].alias("hop"),
+    Substation(corridor.nodes).id.alias("substation_id"),
+    Substation(corridor.nodes).name.alias("substation_name"),
+).to_df()
+betw_df = model.select(
+    Substation.id.alias("substation_id"),
+    Substation.name.alias("substation_name"),
+    Substation.betweenness.alias("betweenness"),
+).to_df()
+betw_by_id = dict(zip(betw_df["substation_id"], betw_df["betweenness"].fillna(0.0)))
+name_by_id = dict(zip(betw_df["substation_id"], betw_df["substation_name"]))
+corridor_df["hop"] = corridor_df["hop"].astype(int)
+corridor_df["betweenness"] = corridor_df["substation_id"].map(betw_by_id).fillna(0.0)
+
+
+def most_fragile_corridor_per_dc(removed_id=None):
+    """Highest total-betweenness SIMPLE corridor terminating at each DC substation.
+
+    Used to recover each winning corridor's node names (for printing) and for the
+    contingency re-enumeration. The baseline per-DC max load is computed natively
+    above (fragility_per_dc); this reproduces it and adds the route node sequence.
+    """
+    best = {}
+    for _, grp in corridor_df.groupby("corridor"):
+        ordered = grp.sort_values("hop")
+        ids = ordered["substation_id"].tolist()
+        if len(set(ids)) != len(ids):
+            continue  # simple paths only (the grid is cyclic)
+        if removed_id is not None and removed_id in ids:
+            continue
+        load = round(float(ordered["betweenness"].sum()), 3)
+        dest = ids[-1]
+        if dest not in best or load > best[dest][1]:
+            best[dest] = (ordered["substation_name"].tolist(), load)
+    return best
+
+
+baseline_corridors = most_fragile_corridor_per_dc()
+# Count only SIMPLE corridors (drop node-repeating walks; the grid is cyclic). Kept in
+# pandas via node-sequence reassembly: native count(corridor) fans out over the simple-
+# path filter and count(distinct(corridor)) collapses to all-walks -- neither is the
+# simple-corridor count. `len([...])`, not `sum(...)`: `sum` is shadowed by the relationalai import.
+n_corridors = len([
+    cid
+    for cid, grp in corridor_df.groupby("corridor")
+    if len(set(grp["substation_id"])) == len(grp["substation_id"])
+])
+print(
+    f"\n  {n_corridors} generator-sub -> DC-sub corridors (<= {MAX_CORRIDOR_HOPS} hops, simple); "
+    f"most-fragile corridor for {len(baseline_corridors)} DC substation(s):"
+)
+for dest, (route, load) in sorted(baseline_corridors.items(), key=lambda kv: -kv[1][1])[:5]:
+    print(f"    betweenness-load {load}: " + " -> ".join(route))
+
+# Contingency: take the highest-betweenness substation offline and re-enumerate.
+if betw_by_id:
+    top_id = max(betw_by_id, key=betw_by_id.get)
+    after_corridors = most_fragile_corridor_per_dc(removed_id=top_id)
+    # NB: `sum` is shadowed by the relationalai import, so count with len([...]).
+    rerouted = len(
+        [d for d in baseline_corridors if d in after_corridors and baseline_corridors[d][0] != after_corridors[d][0]]
+    )
+    lost = [d for d in baseline_corridors if d not in after_corridors]
+    print(
+        f"\n  Contingency -- highest-betweenness substation offline "
+        f"({name_by_id.get(top_id, top_id)}): {len(baseline_corridors)} -> {len(after_corridors)} "
+        f"DC substations served, {rerouted} reroute, {len(lost)} lose all corridors."
+    )
+
+# --------------------------------------------------
+# Stage 4: Rules -- Interconnection Queue Compliance
 # --------------------------------------------------
 # Accretive chain: each rule consumes ontology enrichments from earlier stages.
 # Rule 1 reads Substation.predicted_load (Stage 1).
@@ -659,7 +833,7 @@ if len(dc_sub_df) > 0 and len(centrality_df) > 0:
 # All flags are written back as Relationships — queryable and consumable downstream.
 
 print(f"\n{'=' * 60}")
-print("STAGE 3: RULES -- Interconnection Queue Compliance")
+print("STAGE 4: RULES -- Interconnection Queue Compliance")
 print("=" * 60)
 
 # Rule 1: Capacity check -- consumes predicted_load from Stage 1
@@ -781,7 +955,7 @@ print(
 )
 
 # --------------------------------------------------
-# Stage 4: Optimize -- Joint DC Approval + Grid Upgrade
+# Stage 5: Optimize -- Joint DC Approval + Grid Upgrade
 #   Accretive chain: the capacity constraint uses predicted_load from Stage 1
 #   (via the | fallback pattern), matching the rules engine. All solve results
 #   (x_approve, x_upgrade per InvestmentLevel) are written to the ontology —
@@ -790,7 +964,7 @@ print(
 # --------------------------------------------------
 
 print(f"\n{'=' * 60}")
-print("STAGE 4: OPTIMIZE -- Joint Interconnection + Upgrade")
+print("STAGE 5: OPTIMIZE -- Joint Interconnection + Upgrade")
 print("=" * 60)
 
 # InvestmentLevel Scenario Concept: 5 budget levels
@@ -1152,7 +1326,7 @@ if len(portfolio_query_df) >= 3:
 # --------------------------------------------------
 
 print(f"\n{'=' * 80}")
-print("  PIPELINE COMPLETE: 4 stages executed on shared Energy Grid ontology")
-print("  Stage 4 solved all investment levels in a single formulation")
+print("  PIPELINE COMPLETE: 5 stages executed on shared Energy Grid ontology")
+print("  Stage 5 solved all investment levels in a single formulation")
 print("  (Scenario Concept pattern -- results in ontology, no re-solve loops)")
 print("=" * 80)
