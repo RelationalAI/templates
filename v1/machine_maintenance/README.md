@@ -1,13 +1,14 @@
 ---
 title: "Machine Maintenance"
-description: "A multi-reasoner template that chains querying, graph analysis, rules-based classification, and prescriptive optimization to diagnose plant performance, surface producibility bottlenecks, classify machine risk, and schedule preventive maintenance under technician-coverage constraints."
+description: "A multi-reasoner template that chains querying, rules, graph analysis, predictive scoring, and prescriptive optimization to diagnose plant performance, classify machine risk, find producibility bottlenecks, rank forward failure risk, and schedule preventive maintenance under technician-coverage limits."
 featured: false
 experience_level: intermediate
 industry: "Manufacturing"
 reasoning_types:
   - Graph
-  - Rules-based
+  - Predictive
   - Prescriptive
+  - Rules-based
 tags:
   - Multi-Reasoner
   - Chained Reasoning
@@ -23,7 +24,7 @@ tags:
 
 Manufacturing reliability teams have to decide **which machines to maintain, when, and with which technician** — under a fixed maintenance-bay limit and a thin bench of qualified technicians. Get it wrong and a critical machine fails unplanned, or a plant's only on-site specialist becomes a single point of failure. The hard part is that no single view answers the question: plant OEE shows where output is lost but not what will fail next, failure predictions rank risk but ignore who can do the work, and a feasible schedule can still hide a concentration risk that one resignation would expose.
 
-This template works the problem end to end on a 50-machine, 3-plant, 12-period operation. **It chains four RelationalAI reasoners over one ontology — querying to diagnose plant performance, rules to classify machine risk, graph analysis to find producibility bottlenecks, and prescriptive optimization to schedule maintenance and stress-test it.** Each stage writes its findings back to the model, so the next stage builds on what the last one learned.
+This template works the problem end to end on a 50-machine, 3-plant, 12-period operation. **It chains five reasoning stages over one ontology — querying to diagnose plant performance, rules to classify machine risk, graph analysis to find producibility bottlenecks, predictive scoring to rank forward failure risk, and prescriptive optimization to schedule maintenance and stress-test it.** Each stage writes its findings back to the model, so the next stage builds on what the last one learned.
 
 ## Who this is for
 
@@ -36,15 +37,16 @@ Readers are assumed comfortable reading Python; domain terms (OEE, betweenness c
 ## What you'll build
 
 - An ontology over machines, technicians, qualifications, products, production runs, downtime events, failure predictions, and machine-product capabilities
-- Querying-stage metrics: OEE by plant, downtime by fault and plant, failure ranking, waste rates, technician coverage
-- A betweenness-centrality bottleneck ranking over the machine-product graph
+- Querying-stage metrics: OEE by plant, downtime by fault and plant, waste rates, technician coverage
 - A per-machine `risk_tier` derived from business rules
+- A betweenness-centrality bottleneck ranking over the machine-product graph
+- A forward failure-risk ranking from the bundled predictions (or a live GNN)
 - A preventive-maintenance schedule plus a technician-availability what-if
 
 ## What's included
 
-- `machine_maintenance.py` — the four-stage multi-reasoner script
-- `runbook.md` — a prompt-by-prompt walkthrough of the four-reasoner chain, with the real figures each stage produces
+- `machine_maintenance.py` — the five-stage multi-reasoner script
+- `runbook.md` — a prompt-by-prompt walkthrough of the five-stage chain, with the real figures each stage produces
 - `data/` — the bundled `MANUFACTURING.PUBLIC` sample (15 CSVs)
 - `pyproject.toml` — package configuration and dependencies
 
@@ -146,7 +148,7 @@ The bundled CSVs are the real `MANUFACTURING.PUBLIC` sample dataset:
 | `availability.csv` | 240 | Per-technician, per-period availability |
 | `degradation.csv` | 5 | Per-type degradation rate and maintenance reset factor |
 
-The four-stage script loads `machines`, `technicians`, `qualifications`, `products`, `production_runs`, `machine_product_capabilities`, `downtime_events`, and `failure_predictions`. The remaining files — `fault_types`, `sensors`/`sensor_readings`, `travel`, `training_options`, `availability`, `degradation` — ship for the extensions in [Customize](#customize-this-template) and richer modeling of your own.
+The five-stage script loads `machines`, `technicians`, `qualifications`, `products`, `production_runs`, `machine_product_capabilities`, `downtime_events`, and `failure_predictions`. The remaining files — `fault_types`, `sensors`/`sensor_readings`, `travel`, `training_options`, `availability`, `degradation` — ship for the extensions in [Customize](#customize-this-template) and richer modeling of your own.
 
 ## Model overview
 
@@ -154,7 +156,7 @@ Core concepts: `Machine`, `Technician`, `Qualification`, `Product`, `ProductionR
 
 ## How it works
 
-The script runs four stages in order — querying, rules, graph, prescriptive — each writing its findings back to the shared model.
+The script runs five stages in order — querying, rules, graph, predictive, prescriptive — each writing its findings back to the shared model.
 
 ### 1. Querying
 Per-plant OEE combines a performance leg (average of actual-versus-target speed) and a quality leg (good versus actual quantity) from production runs with an availability leg from unplanned downtime against a planned base of 480 minutes per run. The legs are aggregated per plant, then multiplied:
@@ -189,7 +191,19 @@ model.where(
 prod_graph.Node.bottleneck_raw = prod_graph.betweenness_centrality()
 ```
 
-### 4. Prescriptive
+### 4. Predictive
+Forward failure risk comes from the bundled pre-computed `failure_predictions` by default — no training step — so the predictive question is answerable out of the box. Set `USE_PRELOADED_PREDICTIONS = False` to wire a live GNN over the sensor and downtime history instead (see _Customize_):
+
+```python
+if USE_PRELOADED_PREDICTIONS:
+    fail_p12 = model.where(FailurePrediction.period_int == PERIOD_HORIZON).select(
+        FailurePrediction.machine_id_str.alias("machine_id"),
+        FailurePrediction.predicted_failure_mode.alias("mode"),
+        FailurePrediction.failure_probability.alias("fp"),
+    ).to_df().sort_values("fp", ascending=False)
+```
+
+### 5. Prescriptive
 A binary `MachinePeriod.x_maintain` decides which machine is maintained in which period. Each machine gets at most one slot and only if coverage is feasible (Turbine work requires an on-site qualified technician), and each period is capped at five jobs:
 
 ```python

@@ -38,6 +38,8 @@ CHRONIC_DOWNTIME_THRESHOLD = 15      # downtime events above which a machine is 
 HIGH_RISK_FP = 0.20                  # failure-probability cutoff for high-risk
 HIGH_RISK_CRITICALITY = 4            # criticality cutoff for high-risk
 OVERDUE_RUL = 9                      # remaining-useful-life at/below which maintenance is overdue
+USE_PRELOADED_PREDICTIONS = True     # predictive stage: read the bundled failure_predictions
+#                                      (default); set False to wire a live GNN -- see README "Customize"
 
 model = Model("machine_maintenance")
 
@@ -265,17 +267,7 @@ print("\n-- Q3: downtime by plant --")
 for _, row in plant_dt.iterrows():
     print(f"   {row['facility']}: {row['dt_min']:.0f} min ({row['pct']:.1f}%)")
 
-# --- Q4: highest forward failure risk at the end of the horizon ---
-fail_p12 = model.where(FailurePrediction.period_int == PERIOD_HORIZON).select(
-    FailurePrediction.machine_id_str.alias("machine_id"),
-    FailurePrediction.predicted_failure_mode.alias("mode"),
-    FailurePrediction.failure_probability.alias("fp"),
-).to_df().sort_values("fp", ascending=False)
-print(f"\n-- Q4: top failure predictions at period {PERIOD_HORIZON} --")
-for _, row in fail_p12.head(5).iterrows():
-    print(f"   {row['machine_id']} {row['mode']} ({row['fp']*100:.1f}%)")
-
-# --- Q5: worst waste rates by machine-product ---
+# --- Worst waste rates by machine-product ---
 waste = model.where(ProductionRun.machine(Machine), ProductionRun.product(Product)).select(
     distinct(
         Machine.machine_id.alias("machine_id"),
@@ -409,10 +401,39 @@ for _, row in bottlenecks.head(8).iterrows():
     )
 
 # ==================================================================
-# Stage 4: Prescriptive -- preventive-maintenance schedule + what-if
+# Stage 4: Predictive -- forward failure risk
+# ==================================================================
+#
+# Ships with pre-loaded predictions (failure_predictions.csv) so the predictive
+# question is answerable out of the box, with no training step. To run a live model
+# instead, set USE_PRELOADED_PREDICTIONS = False and train a GNN over the sensor and
+# downtime history (see README "Customize" and the rai-predictive-* skills).
+
+banner("STAGE 4  Predictive")
+
+if USE_PRELOADED_PREDICTIONS:
+    fail_p12 = model.where(FailurePrediction.period_int == PERIOD_HORIZON).select(
+        FailurePrediction.machine_id_str.alias("machine_id"),
+        FailurePrediction.predicted_failure_mode.alias("mode"),
+        FailurePrediction.failure_probability.alias("fp"),
+    ).to_df().sort_values("fp", ascending=False)
+    print(f"\n-- Most likely to fail by period {PERIOD_HORIZON} (pre-loaded predictions) --")
+    for _, row in fail_p12.head(5).iterrows():
+        print(f"   {row['machine_id']} {row['mode']} ({row['fp'] * 100:.1f}%)")
+else:
+    raise NotImplementedError(
+        "Live GNN path is not wired in this template. Either set "
+        "USE_PRELOADED_PREDICTIONS = True to use the bundled predictions, or train a "
+        "GNN over sensor/downtime history and write FailurePrediction "
+        "(see README 'Customize' and the rai-predictive-modeling / -training skills)."
+    )
+
+
+# ==================================================================
+# Stage 5: Prescriptive -- preventive-maintenance schedule + what-if
 # ==================================================================
 
-banner("STAGE 4  Prescriptive")
+banner("STAGE 5  Prescriptive")
 
 # Periods 1..H as a concept so the schedule can index (machine, period).
 Period = model.Concept("Period", identify_by={"pid": Integer})
