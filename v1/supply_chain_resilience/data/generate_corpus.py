@@ -94,10 +94,35 @@ for year in YEARS:
             "DELAY_DAYS": delay_days,
             "SHIP_MONTH": ship.month, "SHIP_QUARTER": (ship.month - 1) // 3 + 1,
             "FISCAL_QUARTER": f"Q{(order.month - 1) // 3 + 1}-{year}", "FISCAL_YEAR": year,
+            # the shipper's OWN reliability, denormalized as a node feature. It is
+            # deliberately the raw score (not the propagated one), so the graph has
+            # to correct it: B004 looks safe at 0.90 but its labels are risky.
+            "SUPPLIER_RELIABILITY": round(biz[sup]["rel"], 3),
             "IS_LATE": int(is_late),
         })
         sid += 1
 random.Random(SEED).shuffle(rows)
+
+# ── Shipment relatedness edge list (homogeneous graph for a CSV-backed GNN) ───
+# Each shipment links to a few others sharing its supplier (so per-supplier risk
+# propagates) and to a few from its supplier's UPSTREAM suppliers (so an unreliable
+# upstream's risky labels reach a high-own-reliability shipper like B004 <- B003).
+from collections import defaultdict
+by_sup = defaultdict(list)
+for r in rows:
+    by_sup[r["SUPPLIER_BUSINESS_ID"]].append(r["ID"])
+erng = random.Random(SEED + 1)
+edges, K_SAME, K_UP = [], 6, 4
+for r in rows:
+    sid_, sup = r["ID"], r["SUPPLIER_BUSINESS_ID"]
+    peers = [p for p in by_sup.get(sup, []) if p != sid_]
+    for _ in range(min(K_SAME, len(peers))):
+        edges.append((sid_, erng.choice(peers)))
+    up_ships = [s for u in upstream.get(sup, ()) for s in by_sup.get(u, [])]
+    for _ in range(min(K_UP, len(up_ships))):
+        edges.append((sid_, erng.choice(up_ships)))
+with open(DATA / "shipment_edges.csv", "w", newline="") as f:
+    w = csv.writer(f); w.writerow(["SRC", "DST"]); w.writerows(edges)
 
 cols = list(rows[0].keys())
 with open(DATA / "shipment_corpus.csv", "w", newline="") as f:

@@ -7,14 +7,15 @@ Dual-mode, selected by the TRAIN_GNN env var:
     script with TRAIN_GNN=true). Fast, no GPU, no Snowflake experiment schema needed.
 
   - TRAIN_GNN=true: train a GNN from scratch on the bundled multi-year corpus
-    (data/shipment_corpus.csv + the temporal splits shipment_{train,val,test}.csv),
-    generate per-supplier delay-risk predictions, and (re)write data/delay_prediction.csv.
+    (data/shipment_corpus.csv + the temporal splits) and the shipment relatedness graph
+    (data/shipment_edges.csv), then (re)write data/delay_prediction.csv.
 
-Why a GNN: delay risk propagates through the supply graph -- a shipper with high own
-reliability is still risky when its upstream supplier is unreliable (e.g. B004 <- B003).
-A per-supplier or flat tabular model can't see that; message-passing over
-Shipment -> Supplier -> upstream-Supplier edges recovers it. Features and graph load from
-the local CSVs via model.data(); only the GNN experiment artifacts are Snowflake-resident.
+Everything loads from local CSV via model.data() -- only the GNN experiment artifacts are
+Snowflake-resident. The graph is homogeneous (Shipment nodes): each shipment links to
+others sharing its supplier and to shipments of its UPSTREAM suppliers, so risk
+propagates through the chain. A shipper with high own reliability is still flagged risky
+when its upstream supplier is unreliable (B004 <- B003) -- the GNN learns that from the
+graph + labels even though the denormalized supplier_reliability feature looks benign.
 
 Run (train from scratch):  TRAIN_GNN=true python supply_chain_resilience_predictive.py
 Run (use bundled output):  python supply_chain_resilience_predictive.py
@@ -28,19 +29,13 @@ from relationalai.semantics import Any, Model, String, select
 from relationalai.semantics.reasoners.graph import Graph
 from relationalai.semantics.reasoners.predictive import GNN, PropertyTransformer
 
-# --------------------------------------------------
-# Configuration
-# --------------------------------------------------
 TRAIN_GNN = os.getenv("TRAIN_GNN", "false").lower() == "true"
-# Snowflake location for GNN experiment artifacts (the native app needs USAGE +
-# CREATE EXPERIMENT / CREATE MODEL here). Features themselves load from local CSV.
 GNN_EXP_DATABASE = os.getenv("GNN_EXP_DATABASE", "SUPPLY_CHAIN")
 GNN_EXP_SCHEMA = os.getenv("GNN_EXP_SCHEMA", "EXPERIMENTS")
 GNN_DEVICE = os.getenv("GNN_DEVICE", "cuda")  # "cpu" if your RAI engine is CPU-only
 SEED = 42
 DATA_DIR = Path(__file__).parent / "data"
 PRED_CSV = DATA_DIR / "delay_prediction.csv"
-# Quarters the bundled prediction table covers (the Rules stage reads Q1-2025).
 FORECAST_QUARTERS = ["Q1-2025", "Q2-2025", "Q3-2025", "Q4-2025"]
 
 if not TRAIN_GNN:
@@ -50,9 +45,6 @@ if not TRAIN_GNN:
     )
     raise SystemExit(0)
 
-# --------------------------------------------------
-# Define semantic model & load data (local CSV)
-# --------------------------------------------------
 print("=" * 60)
 print("PREDICTIVE: training supplier delay-risk GNN from scratch")
 print("=" * 60)
@@ -60,81 +52,60 @@ print("=" * 60)
 model = Model("supply_chain_resilience_predictive")
 Concept, Relationship = model.Concept, model.Relationship
 
-Shipment = Concept("CorpusShipment", identify_by={"ID": String})
-Business = Concept("Business", identify_by={"ID": String})
-Operation = Concept("Operation", identify_by={"ID": String})
+# Homogeneous node type (Shipment) + an explicit relatedness edge list -- the proven
+# CSV-backed GNN shape. Secondary entities (supplier/sku/site) enter as denormalized
+# features and via the edge structure, not as separate node tables.
+Shipment = Concept("CorpusShipment", identify_by={"id": String})
+Related = Concept("Related")  # shipment-to-shipment edge list (src, dst)
 TrainTable = Concept("TrainTable")
 ValTable = Concept("ValTable")
 TestTable = Concept("TestTable")
 
-corpus_df = read_csv(DATA_DIR / "shipment_corpus.csv")
-biz_df = read_csv(DATA_DIR / "business.csv")
-ops_df = read_csv(DATA_DIR / "operation.csv")
-train_df = read_csv(DATA_DIR / "shipment_train.csv")
-val_df = read_csv(DATA_DIR / "shipment_val.csv")
-test_df = read_csv(DATA_DIR / "shipment_test.csv")
-
-model.define(Shipment.new(model.data(corpus_df).to_schema()))
-model.define(Business.new(model.data(biz_df).to_schema()))
-model.define(Operation.new(model.data(ops_df).to_schema()))
-model.define(TrainTable.new(model.data(train_df).to_schema()))
-model.define(ValTable.new(model.data(val_df).to_schema()))
-model.define(TestTable.new(model.data(test_df).to_schema()))
+model.define(Shipment.new(model.data(read_csv(DATA_DIR / "shipment_corpus.csv")).to_schema()))
+model.define(Related.new(model.data(read_csv(DATA_DIR / "shipment_edges.csv")).to_schema()))
+model.define(TrainTable.new(model.data(read_csv(DATA_DIR / "shipment_train.csv")).to_schema()))
+model.define(ValTable.new(model.data(read_csv(DATA_DIR / "shipment_val.csv")).to_schema()))
+model.define(TestTable.new(model.data(read_csv(DATA_DIR / "shipment_test.csv")).to_schema()))
 
 # --------------------------------------------------
-# Build the GNN graph -- this is where the graph earns its keep
-# --------------------------------------------------
-# Shipment -> its Supplier, and Supplier -> upstream Supplier (a SHIP operation
-# SOURCE_SITE->OUTPUT_SITE means the business at SOURCE feeds the business at OUTPUT).
-# Message-passing then carries upstream reliability down to each shipment.
-gnn_graph = Graph(model, directed=True, weighted=False)
-Edge = gnn_graph.Edge
-
-model.define(Edge.new(src=Shipment, dst=Business)).where(
-    Shipment.SUPPLIER_BUSINESS_ID == Business.ID
-)
-
-SrcBiz, DstBiz = Business.ref(), Business.ref()
-op = Operation.ref()
-model.define(Edge.new(src=SrcBiz, dst=DstBiz)).where(
-    op.SOURCE_SITE_ID == SrcBiz.SITE_ID,
-    op.OUTPUT_SITE_ID == DstBiz.SITE_ID,
-)
-
-# --------------------------------------------------
-# Train / Val / Test split (labels keyed in by shipment id)
+# Task split (Test is unlabelled)
 # --------------------------------------------------
 Train = Relationship(f"{Shipment} has {Any:is_late}")
-model.define(Train(Shipment, TrainTable.IS_LATE)).where(Shipment.ID == TrainTable.SHIPMENT_ID)
-
+model.define(Train(Shipment, TrainTable.is_late)).where(Shipment.id == TrainTable.shipment_id)
 Validation = Relationship(f"{Shipment} has {Any:is_late}")
-model.define(Validation(Shipment, ValTable.IS_LATE)).where(Shipment.ID == ValTable.SHIPMENT_ID)
-
+model.define(Validation(Shipment, ValTable.is_late)).where(Shipment.id == ValTable.shipment_id)
 Test = Relationship(f"{Shipment}")
-model.define(Test(Shipment)).where(Shipment.ID == TestTable.SHIPMENT_ID)
+model.define(Test(Shipment)).where(Shipment.id == TestTable.shipment_id)
 
 # --------------------------------------------------
-# Features -- per-shipment observables only (no label-derived columns)
+# Self-referential Shipment <-> Shipment graph from the relatedness edge list
 # --------------------------------------------------
-# Seasonality (month/quarter) is signal; quantity is a minor covariate. Everything
-# label-derived (STATUS / DELAY_DAYS / ACTUAL_DELIVERY_DATE / IS_LATE) and every
-# identifier/date is dropped to prevent leakage. Supplier/upstream risk arrives via
-# the graph, not as a shipment feature.
+gnn_graph = Graph(model, directed=True, weighted=False)
+Edge = gnn_graph.Edge
+ShipmentRef = Shipment.ref()
+model.define(Edge.new(src=Shipment, dst=ShipmentRef)).where(
+    Shipment.id == Related.src,
+    ShipmentRef.id == Related.dst,
+)
+
+# --------------------------------------------------
+# Features -- per-shipment observables (label-derived columns dropped)
+# --------------------------------------------------
 pt = PropertyTransformer(
-    continuous=[Shipment.QUANTITY],
-    category=[Shipment.SHIP_MONTH, Shipment.SHIP_QUARTER],
+    continuous=[Shipment.quantity, Shipment.supplier_reliability],
+    category=[Shipment.ship_month, Shipment.ship_quarter],
     drop=[
-        Shipment.ID, Shipment.SUPPLIER_BUSINESS_ID, Shipment.CUSTOMER_BUSINESS_ID,
-        Shipment.SKU_ID, Shipment.ORIGIN_SITE_ID, Shipment.DESTINATION_SITE_ID,
-        Shipment.OPERATION_ID, Shipment.ORDER_DATE, Shipment.SHIP_DATE,
-        Shipment.EXPECTED_DELIVERY_DATE, Shipment.ACTUAL_DELIVERY_DATE,
-        Shipment.STATUS, Shipment.DELAY_DAYS, Shipment.FISCAL_QUARTER,
-        Shipment.FISCAL_YEAR, Shipment.IS_LATE,
+        Shipment.id, Shipment.supplier_business_id, Shipment.customer_business_id,
+        Shipment.sku_id, Shipment.origin_site_id, Shipment.destination_site_id,
+        Shipment.operation_id, Shipment.order_date, Shipment.ship_date,
+        Shipment.expected_delivery_date, Shipment.actual_delivery_date,
+        Shipment.status, Shipment.delay_days, Shipment.fiscal_quarter,
+        Shipment.fiscal_year, Shipment.is_late,
     ],
 )
 
 # --------------------------------------------------
-# Train the GNN  (n_epochs high enough to avoid early-stopping into the base rate)
+# Train + predict
 # --------------------------------------------------
 gnn = GNN(
     exp_database=GNN_EXP_DATABASE,
@@ -147,11 +118,8 @@ gnn = GNN(
     eval_metric="roc_auc",
     has_time_column=False,
     device=GNN_DEVICE,
-    n_epochs=30,
-    lr=0.005,
-    train_batch_size=256,
     seed=SEED,
-    stream_logs=False,
+    n_epochs=50,
 )
 gnn.fit()
 Shipment.predictions = gnn.predictions(domain=Test)
@@ -161,7 +129,7 @@ Shipment.predictions = gnn.predictions(domain=Test)
 # --------------------------------------------------
 preds_df = (
     select(
-        Shipment.SUPPLIER_BUSINESS_ID.alias("supplier"),
+        Shipment.supplier_business_id.alias("supplier"),
         Shipment.predictions.probs.alias("prob"),
     )
     .where(Shipment.predictions)
