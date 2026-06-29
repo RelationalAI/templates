@@ -66,7 +66,7 @@ Concepts bound to the bundled CSVs: `Machine` (50, across Plant_A/B/C × Turbine
 **Prompt**
 
 ```
-/rai-discovery We run a 50-machine, 3-plant operation and want to keep it healthy: where are we losing output, what is likely to fail next, where are the structural single points of failure, and how should we schedule preventive maintenance under a thin bench of qualified technicians? Which of these are querying, rules, graph, predictive, and prescriptive questions?
+/rai-discovery We run a 50-machine, 3-plant operation and want to keep it healthy: where are we losing output, what is likely to fail next, where are the structural single points of failure, and how should we schedule preventive maintenance under a thin bench of qualified technicians?
 ```
 
 **Response**
@@ -144,7 +144,7 @@ Turbines are most constrained — only **3** qualified technicians (T001, T009, 
 **Prompt**
 
 ```
-/rai-graph-analysis In a bipartite machine-product capability graph (machines and products as nodes), which machines are the biggest producibility bottlenecks — the machines that the most production routes flow through, so they bridge the most product lines?
+/rai-graph-analysis Which machines are the biggest producibility bottlenecks — the ones the most production routes flow through, so they bridge the most product lines and are hardest to route around if lost?
 ```
 
 **Response**
@@ -156,7 +156,7 @@ The bipartite graph has 58 nodes (50 machines + 8 products) and 120 edges. Betwe
 **Prompt**
 
 ```
-/rai-predictive-modeling Which machines are most likely to fail over the next 12 periods, and what's the most likely failure mode for each? Use the bundled pre-loaded predictions, or train a live GNN over the sensor and downtime history.
+/rai-predictive-modeling Which machines are most likely to fail over the next 12 periods, and what's the most likely failure mode for each?
 ```
 
 **Response**
