@@ -39,12 +39,12 @@ Schedules preventive maintenance for a **50-machine, 3-plant, 12-period** manufa
 **Prompt**
 
 ```
-/rai-build-starter-ontology Build a manufacturing maintenance ontology from the CSVs in data/. Scope it for preventive-maintenance scheduling over a multi-period horizon — introduce a Period concept (1..12 from the `period` column) alongside the source-bound concepts (machines, technicians, qualifications, products, production runs, downtime events, failure predictions, sensors, machine-product capabilities).
+/rai-build-starter-ontology Build a manufacturing maintenance ontology from the CSVs in data/. Scope it for preventive-maintenance scheduling over a multi-period horizon — introduce a Period concept (1..12 from the `period` column) alongside the source-bound concepts (machines, technicians, qualifications, products, production runs, downtime events, failure predictions, machine-product capabilities).
 ```
 
 **Response**
 
-Concepts bound to the bundled CSVs: `Machine` (50, across Plant_A/B/C × Turbine/Generator/Pump/Compressor/Motor), `Technician` (20), `Qualification` (32), `Product` (8), `ProductionRun` (844), `DowntimeEvent` (353), `FailurePrediction` (600), `Sensor` (200), `SensorReading` (2400), `MachineProductCapability` (120), and a generated `Period` (1..12). Junction concepts (`MachinePeriod`, `TechnicianMachinePeriod`) are deferred to the prescriptive stage.
+Concepts bound to the bundled CSVs: `Machine` (50, across Plant_A/B/C × Turbine/Generator/Pump/Compressor/Motor), `Technician` (20), `Qualification` (32), `Product` (8), `ProductionRun` (844), `DowntimeEvent` (353), `FailurePrediction` (600), `MachineProductCapability` (120), and a generated `Period` (1..12). The `MachinePeriod` decision space is added later, in the prescriptive stage.
 
 ### 2. Examine the ontology
 
@@ -56,7 +56,7 @@ Concepts bound to the bundled CSVs: `Machine` (50, across Plant_A/B/C × Turbine
 
 **Response**
 
-50 `Machine`, 20 `Technician`, 32 `Qualification`, 8 `Product`, 844 `ProductionRun`, 353 `DowntimeEvent`, 600 `FailurePrediction`, 200 `Sensor` / 2,400 `SensorReading`, 120 `MachineProductCapability`, and 12 `Period`. Machines relate to production runs, downtime events, failure predictions, and product capabilities; technicians relate to qualifications.
+50 `Machine`, 20 `Technician`, 32 `Qualification`, 8 `Product`, 844 `ProductionRun`, 353 `DowntimeEvent`, 600 `FailurePrediction`, 120 `MachineProductCapability`, and 12 `Period`. Machines relate to production runs, downtime events, failure predictions, and product capabilities; technicians relate to qualifications.
 
 ### 3. Discover reasoner questions
 
@@ -110,7 +110,7 @@ Top fault names: **Bearing Failure 3,905 min (19.4%)**, Overheating 3,183 (15.8%
 
 **Response**
 
-M016 valve_stuck (42.0%), M028 seal_leak (42.0%), M011 valve_stuck (42.0%), M012 valve_stuck (41.5%), M047 motor_burnout (35.4%).
+M016 valve_stuck (42.0%), M028 seal_leak (42.0%), M011 valve_stuck (42.0%), M012 valve_stuck (41.5%), M047 motor_burnout (35.4%). These per-machine, per-period probabilities and predicted modes come from the bundled pre-computed `failure_predictions`; training a live GNN over the sensor and downtime history is the natural extension (see _Customize_ in the README).
 
 ### 7. Surface the worst waste
 
@@ -160,19 +160,7 @@ Turbines are most constrained — only **3** qualified technicians (T001, T009, 
 
 The bipartite graph has 58 nodes (50 machines + 8 products) and 120 edges. Betweenness centrality is highest for the **20 machines that each make three products — every Pump (M021–M030) and Motor (M041–M050)** — which tie at the top (46.7) because the most production routes flow through them; the two-product machines sit on no shortest paths. (A machine-machine co-occurrence projection over shared products surfaces the same 20.)
 
-### 11. Predict failures
-
-**Prompt**
-
-```
-/rai-predictive-modeling Which machines are most likely to fail over the next 12 periods, and what's the most likely failure mode for each, given sensor readings, downtime history, and machine attributes?
-```
-
-**Response** _(bundled pre-computed predictions)_
-
-The bundled `failure_predictions` supply per-machine, per-period failure probability and predicted mode — the same probabilities behind the forward-failure ranking (e.g. M016/M028/M011 at 42.0% by period 12). For a live model, a GNN over the sensor and downtime history is the natural extension (see _Customize_ in the README); the template ships the pre-computed predictions so the predictive question is answerable deterministically.
-
-### 12. Schedule preventive maintenance + stress-test
+### 11. Schedule preventive maintenance + stress-test
 
 **Prompt**
 

@@ -146,6 +146,8 @@ The bundled CSVs are the real `MANUFACTURING.PUBLIC` sample dataset:
 | `availability.csv` | 240 | Per-technician, per-period availability |
 | `degradation.csv` | 5 | Per-type degradation rate and maintenance reset factor |
 
+The four-stage script loads `machines`, `technicians`, `qualifications`, `products`, `production_runs`, `machine_product_capabilities`, `downtime_events`, and `failure_predictions`. The remaining files — `fault_types`, `sensors`/`sensor_readings`, `travel`, `training_options`, `availability`, `degradation` — ship for the extensions in [Customize](#customize-this-template) and richer modeling of your own.
+
 ## Model overview
 
 Core concepts: `Machine`, `Technician`, `Qualification`, `Product`, `ProductionRun`, `DowntimeEvent`, `FailurePrediction`, `MachineProductCapability`, and a generated `Period` (1..12). The prescriptive stage adds a `MachinePeriod` decision space (one entry per machine and period).
