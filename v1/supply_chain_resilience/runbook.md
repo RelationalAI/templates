@@ -95,6 +95,18 @@ Reasoner-routing plan: (1) Graph reachability for upstream supplier exposure, (2
 
 `Site.centrality` normalized [0,1]: S004=1.000, S006=0.776, S003=0.735; 2 weakly-connected components.
 
+### 5b. (Optional) Train the delay predictor from scratch
+
+**Prompt**
+
+```
+/rai-predictive-modeling + /rai-predictive-training Train a GNN to forecast per-supplier delay risk from the multi-year shipment corpus (data/shipment_corpus.csv + the shipment_{train,val,test}.csv temporal splits). Build the graph from Shipment->Supplier and Supplier->upstream-Supplier edges so risk propagates through the chain, predict per-shipment lateness, and aggregate to a per-supplier delay probability written to data/delay_prediction.csv.
+```
+
+**Response**
+
+`supply_chain_resilience_predictive.py` is dual-mode. By default (`TRAIN_GNN` unset) the downstream stages use the bundled `data/delay_prediction.csv` — itself produced by a real GNN run — so the walkthrough runs fast with no GPU. To regenerate it from scratch (needs a GPU engine plus a Snowflake experiment schema), run `TRAIN_GNN=true python supply_chain_resilience_predictive.py`. The GNN learns each supplier's reliability, a recurring seasonal pattern, and upstream propagation through the supply graph — so a high-own-reliability shipper like B004 is still flagged risky because its upstream supplier B003 is unreliable, signal a per-supplier model misses. Its per-supplier output feeds the reliability classification below.
+
 ### 6. Classify supplier reliability
 
 **Prompt**
