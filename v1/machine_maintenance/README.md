@@ -44,7 +44,7 @@ Readers are assumed comfortable reading Python; domain terms (OEE, betweenness c
 ## What's included
 
 - `machine_maintenance.py` — the four-stage multi-reasoner script
-- `runbook.md` — a prompt-by-prompt walkthrough mapped to 13 reasoner questions, with the real figures each stage produces
+- `runbook.md` — a prompt-by-prompt walkthrough of the four-reasoner chain, with the real figures each stage produces
 - `data/` — the bundled `MANUFACTURING.PUBLIC` sample (15 CSVs)
 - `pyproject.toml` — package configuration and dependencies
 
