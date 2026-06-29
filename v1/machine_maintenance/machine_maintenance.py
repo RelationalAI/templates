@@ -7,8 +7,8 @@ reasoning stages through a single ontology so each stage's enrichments feed the 
                            technician coverage.
   Stage 2  Rules        -- per-machine risk tier (chronic / high-risk / overdue).
   Stage 3  Graph        -- machine-product producibility bottlenecks.
-  Stage 4  Predictive   -- forward failure risk & mode (pre-loaded predictions;
-                           live GNN optional).
+  Stage 4  Predictive   -- forward failure risk & mode (pre-loaded by default;
+                           skippable, or wire a live GNN).
   Stage 5  Prescriptive -- preventive-maintenance schedule + a technician what-if.
 
 Data is the bundled sample in data/*.csv.
@@ -40,8 +40,17 @@ CHRONIC_DOWNTIME_THRESHOLD = 15      # downtime events above which a machine is 
 HIGH_RISK_FP = 0.20                  # failure-probability cutoff for high-risk
 HIGH_RISK_CRITICALITY = 4            # criticality cutoff for high-risk
 OVERDUE_RUL = 9                      # remaining-useful-life at/below which maintenance is overdue
-USE_PRELOADED_PREDICTIONS = True     # predictive stage: read the bundled failure_predictions
-#                                      (default); set False to wire a live GNN -- see README "Customize"
+
+# Predictive stage (Stage 4) -- how forward failure risk is produced:
+#   "preloaded" (default) -- read the bundled failure_predictions; answerable, no training step.
+#   "skip"                -- omit the stage entirely; the rest of the pipeline (incl. the Stage 5
+#                            schedule) is unaffected, since it reads per-machine failure_probability
+#                            from the machine records, not these forward predictions.
+#   "live"                -- train a GNN over sensor/downtime history (see README "Customize").
+PREDICTIVE_MODE = "preloaded"
+_VALID_PREDICTIVE_MODES = ("preloaded", "skip", "live")
+if PREDICTIVE_MODE not in _VALID_PREDICTIVE_MODES:
+    raise ValueError(f"PREDICTIVE_MODE must be one of {_VALID_PREDICTIVE_MODES}, got {PREDICTIVE_MODE!r}")
 
 model = Model("machine_maintenance")
 
@@ -406,14 +415,19 @@ for _, row in bottlenecks.head(8).iterrows():
 # Stage 4: Predictive -- forward failure risk
 # ==================================================================
 #
-# Ships with pre-loaded predictions (failure_predictions.csv) so the predictive
-# question is answerable out of the box, with no training step. To run a live model
-# instead, set USE_PRELOADED_PREDICTIONS = False and train a GNN over the sensor and
-# downtime history (see README "Customize" and the rai-predictive-* skills).
+# PREDICTIVE_MODE (set at the top of this file) selects how the stage runs:
+#   "preloaded" (default) -- read the bundled failure_predictions; no training step.
+#   "skip"                -- omit the stage; nothing downstream depends on it, so the
+#                            schedule in Stage 5 is identical with or without it.
+#   "live"                -- train a GNN over sensor/downtime history (see README).
 
 banner("STAGE 4  Predictive")
 
-if USE_PRELOADED_PREDICTIONS:
+if PREDICTIVE_MODE == "skip":
+    print("\n   (predictive stage skipped -- PREDICTIVE_MODE = 'skip')")
+    print("   Nothing downstream depends on it: the Stage 5 schedule reads per-machine")
+    print("   failure_probability from the machine records, not these forward predictions.")
+elif PREDICTIVE_MODE == "preloaded":
     fail_p12 = model.where(FailurePrediction.period_int == PERIOD_HORIZON).select(
         FailurePrediction.machine_id_str.alias("machine_id"),
         FailurePrediction.predicted_failure_mode.alias("mode"),
@@ -422,12 +436,12 @@ if USE_PRELOADED_PREDICTIONS:
     print(f"\n-- Most likely to fail by period {PERIOD_HORIZON} (pre-loaded predictions) --")
     for _, row in fail_p12.head(5).iterrows():
         print(f"   {row['machine_id']} {row['mode']} ({row['fp'] * 100:.1f}%)")
-else:
+else:  # "live"
     raise NotImplementedError(
-        "Live GNN path is not wired in this template. Either set "
-        "USE_PRELOADED_PREDICTIONS = True to use the bundled predictions, or train a "
-        "GNN over sensor/downtime history and write FailurePrediction "
-        "(see README 'Customize' and the rai-predictive-modeling / -training skills)."
+        "Live GNN path is not wired in this template. Set PREDICTIVE_MODE = 'preloaded' to "
+        "use the bundled predictions, 'skip' to omit the stage, or train a GNN over "
+        "sensor/downtime history and write FailurePrediction (see README 'Customize' and "
+        "the rai-predictive-modeling / -training skills)."
     )
 
 

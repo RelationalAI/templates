@@ -40,7 +40,7 @@ Readers are assumed comfortable reading Python; domain terms (OEE, betweenness c
 - Querying-stage metrics: OEE by plant, downtime by fault and plant, waste rates, technician coverage
 - A per-machine `risk_tier` derived from business rules
 - A betweenness-centrality bottleneck ranking over the machine-product graph
-- A forward failure-risk ranking from the bundled predictions (or a live GNN)
+- A forward failure-risk ranking from the bundled predictions (skippable, or a live GNN)
 - A preventive-maintenance schedule plus a technician-availability what-if
 
 ## What's included
@@ -95,7 +95,7 @@ Readers are assumed comfortable reading Python; domain terms (OEE, betweenness c
    Each stage prints its findings. The first lines look like:
 
    ```text
-   -- Q1: OEE by plant --
+   -- OEE by plant --
       Plant_C: availability 97.7%  performance 81.7%  quality 98.2%  OEE 78.3%
    ```
 
@@ -272,10 +272,12 @@ prod_graph.Node.bottleneck_raw = prod_graph.betweenness_centrality()
 ```
 
 ### 4. Predictive
-Forward failure risk comes from the bundled pre-computed `failure_predictions` by default — no training step — so the predictive question is answerable out of the box. Set `USE_PRELOADED_PREDICTIONS = False` to wire a live GNN over the sensor and downtime history instead (see _Customize_):
+Forward failure risk comes from the bundled pre-computed `failure_predictions` by default — no training step — so the predictive question is answerable out of the box. The stage is controlled by `PREDICTIVE_MODE` at the top of the script: `"preloaded"` (default), `"skip"` to omit the stage entirely, or `"live"` to wire a GNN over the sensor and downtime history (see _Customize_). Nothing downstream depends on this stage — the Stage 5 schedule reads each machine's own `failure_probability`, not these forward predictions — so `"skip"` leaves every other result unchanged:
 
 ```python
-if USE_PRELOADED_PREDICTIONS:
+PREDICTIVE_MODE = "preloaded"   # "preloaded" | "skip" | "live"
+...
+elif PREDICTIVE_MODE == "preloaded":
     fail_p12 = model.where(FailurePrediction.period_int == PERIOD_HORIZON).select(
         FailurePrediction.machine_id_str.alias("machine_id"),
         FailurePrediction.predicted_failure_mode.alias("mode"),
@@ -306,7 +308,7 @@ Replace the CSVs in `data/` with your own machines, technicians, production, and
 The thresholds at the top of `machine_maintenance.py` — period horizon, per-period bay limit, chronic/high-risk/overdue cutoffs — are constants you can adjust to your operation.
 
 ### Extend the model
-Add reasoners or stages: cluster machines by shared technicians, train a GNN on the sensor/downtime history for failure prediction (set `USE_PRELOADED_PREDICTIONS = False`), or add cross-training recommendations from `training_options` to relieve the coverage bottlenecks the what-if surfaces.
+Add reasoners or stages: cluster machines by shared technicians, train a GNN on the sensor/downtime history for failure prediction (set `PREDICTIVE_MODE = "live"`), or add cross-training recommendations from `training_options` to relieve the coverage bottlenecks the what-if surfaces.
 
 ### Scale up / productionize
 - Swap the `data/` CSV bundle for `model.Table(...)` reads against your Snowflake tables — the concept definitions stay the same — so the model runs on live operational data.

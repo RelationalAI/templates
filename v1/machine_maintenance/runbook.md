@@ -4,7 +4,7 @@ Schedules preventive maintenance for a **50-machine, 3-plant, 12-period** manufa
 
 > **Data provenance.** Every figure below is computed from the bundled `data/*.csv` — a sample manufacturing dataset: 50 machines, 20 technicians, 8 products, and 12 weekly periods across Plant_A, Plant_B, and Plant_C.
 >
-> **Status.** Every figure below comes from a real run of `machine_maintenance.py` against the bundled data — no predicted numbers. Querying and rules are deterministic; the graph and prescriptive stages use the template's own sound formulations. The predictive stage reads the bundled pre-loaded failure predictions by default (no training step); a live GNN is the opt-in alternative.
+> **Status.** Every figure below comes from a real run of `machine_maintenance.py` against the bundled data — no predicted numbers. Querying and rules are deterministic; the graph and prescriptive stages use the template's own sound formulations. The predictive stage reads the bundled pre-loaded failure predictions by default (no training step); it can be skipped entirely (`PREDICTIVE_MODE = "skip"`) or swapped for a live GNN, and skipping it leaves every other figure unchanged.
 
 ## The chain
 
@@ -24,7 +24,7 @@ Schedules preventive maintenance for a **50-machine, 3-plant, 12-period** manufa
    /rai-graph-analysis        Pumps & Motors bridge the most product lines.
   ─────────────────────────────────────────────────────────────────
   STAGE 4  Predictive   ──►  Forward failure risk & mode, 12 periods
-   /rai-predictive-modeling   Pre-loaded by default; live GNN optional.
+   /rai-predictive-modeling   Pre-loaded by default; skippable or live GNN.
                               M016 / M028 / M011 ≈ 42% by period 12.
   ─────────────────────────────────────────────────────────────────
   STAGE 5  Prescriptive ──►  Maintenance schedule + technician what-if
@@ -161,7 +161,7 @@ The bipartite graph has 58 nodes (50 machines + 8 products) and 120 edges. Betwe
 
 **Response**
 
-By default the template reads the bundled pre-loaded `failure_predictions` (no training step), so the answer is deterministic — by period 12 the highest-risk machines are M016 valve_stuck (42.0%), M028 seal_leak (42.0%), M011 valve_stuck (42.0%), M012 valve_stuck (41.5%), M047 motor_burnout (35.4%). To run it live instead, set `USE_PRELOADED_PREDICTIONS = False` and train a GNN over the sensor and downtime history (see _Customize_ in the README and the rai-predictive-modeling / rai-predictive-training skills).
+By default the template reads the bundled pre-loaded `failure_predictions` (no training step), so the answer is deterministic — by period 12 the highest-risk machines are M016 valve_stuck (42.0%), M028 seal_leak (42.0%), M011 valve_stuck (42.0%), M012 valve_stuck (41.5%), M047 motor_burnout (35.4%). This stage is **optional**: set `PREDICTIVE_MODE = "skip"` to omit it entirely — the schedule in the next step is unchanged, because it reads each machine's own `failure_probability`, not these forward predictions. To run it live instead, set `PREDICTIVE_MODE = "live"` and train a GNN over the sensor and downtime history (see _Customize_ in the README and the rai-predictive-modeling / rai-predictive-training skills).
 
 ### 11. Schedule preventive maintenance + stress-test
 
