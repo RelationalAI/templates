@@ -158,19 +158,81 @@ One shared ontology threads all five stages. Each stage reads concepts and prope
 - **Primary identifiers**: string ids on the base entities (`machine_id`, `technician_id`, `product_id`, `run_id`, `event_id`, `prediction_id`); composite keys on `Qualification` (`technician_id` + `machine_type`), `MachineProductCapability` (`machine_id` + `product_id`), and `MachinePeriod` (`machine_id` + period); integer `pid` on `Period`.
 - **Important invariants**: `failure_probability` is a fraction in `[0, 1]`; `criticality` is an integer from 1 to 5; `is_planned` is 0 or 1; durations, quantities, and costs are non-negative; `Machine.risk_tier` is one of Critical, Elevated, or Standard; the prescriptive decision variables are binary.
 
-| Concept | Identifier | Role |
-|---|---|---|
-| `Machine` | `machine_id` | The 50 machines (type, plant, location, remaining useful life, failure probability, criticality). Stages 2–4 enrich it with `risk_tier`, `bottleneck`, and coverage flags. |
-| `Technician` | `technician_id` | The 20 technicians, with base location and skill level. |
-| `Qualification` | `technician_id` + `machine_type` | Which technicians can service which machine type. |
-| `Product` | `product_id` | The 8 manufactured products. |
-| `ProductionRun` | `run_id` | Per-run planned/actual/good/waste quantities and speeds (feeds OEE and waste). |
-| `DowntimeEvent` | `event_id` | Downtime events with fault name, duration, and planned flag. |
-| `FailurePrediction` | `prediction_id` | Per-machine, per-period failure probability and predicted mode. |
-| `MachineProductCapability` | `machine_id` + `product_id` | Which machines can produce which products (the bipartite graph edges). |
-| `Period` | `pid` | Planning periods 1 to 12 (generated). |
-| `MachinePeriod` | `machine_id` + period | The machine-by-period maintenance decision space (prescriptive stage). |
-| `MaintenancePlan` | singleton | Persisted plan headline: objective, machines scheduled, periods used. |
+### Concepts
+
+**`Machine`** — the 50 machines under management. Stages 2–4 enrich it with risk, bottleneck, and coverage properties.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `machine_id` | String | Yes | From `data/machines.csv` |
+| `machine_type`, `facility`, `location` | String | No | Type (Turbine/Generator/Pump/Compressor/Motor), plant, plant city |
+| `remaining_useful_life`, `failure_probability` | Float | No | Remaining useful life; static per-machine failure probability |
+| `criticality` | Integer | No | Business impact, 1 to 5 |
+| `risk_tier` | String | No | **Rules stage** — Critical / Elevated / Standard |
+| `bottleneck` | Float | No | **Graph stage** — betweenness centrality |
+
+**`Technician`** — the 20 maintenance technicians.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `technician_id` | String | Yes | From `data/technicians.csv` |
+| `base_location`, `skill_level` | String | No | Home plant city; skill band |
+| `hourly_rate`, `max_weekly_hours` | Float / Integer | No | Labor capacity |
+
+**`Qualification`** — which technicians can service which machine type.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `technician_id` + `machine_type` | String | Yes | Composite key from `data/qualifications.csv` |
+| `technician` | Relationship | — | Link to `Technician` |
+
+**`Product`** — the 8 manufactured products.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `product_id` | String | Yes | From `data/products.csv` |
+| `product_name` | String | No | Human-readable name |
+
+**`ProductionRun`** — per-run output; feeds OEE and waste.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `run_id` | String | Yes | From `data/production_runs.csv` |
+| `machine`, `product` | Relationship | — | Links to `Machine` / `Product` |
+| `period_int` | Integer | No | Period, 1 to 12 |
+| `actual_quantity`, `good_quantity`, `waste_quantity` | Integer | No | Quality and waste inputs |
+| `actual_speed`, `target_speed` | Float | No | OEE performance inputs |
+
+**`DowntimeEvent`** — downtime occurrences.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `event_id` | String | Yes | From `data/downtime_events.csv` |
+| `machine` | Relationship | — | Link to `Machine` |
+| `fault_name` | String | No | Specific fault |
+| `duration_minutes` | Integer | No | Downtime length |
+| `is_planned` | Integer | No | 0 = unplanned (counts against availability) |
+
+**`FailurePrediction`** — per-machine, per-period failure forecast (pre-loaded).
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `prediction_id` | String | Yes | From `data/failure_predictions.csv` |
+| `machine_id_str`, `period_int` | String / Integer | No | Machine and period |
+| `failure_probability`, `predicted_failure_mode` | Float / String | No | Predictive-stage inputs |
+
+**`MachineProductCapability`** — which machines can produce which products (the graph edges).
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `machine_id` + `product_id` | String | Yes | Composite key from `data/machine_product_capabilities.csv` |
+| `machine`, `product` | Relationship | — | Links to `Machine` / `Product` |
+
+**`Period`** — planning periods 1 to 12, generated in code (no CSV).
+
+**`MachinePeriod`** — the machine-by-period maintenance decision space (prescriptive stage); carries the binary `x_maintain` decision.
+
+**`MaintenancePlan`** — a singleton written after the solve, holding the objective, machines scheduled, and periods used.
 
 ## How it works
 
@@ -267,8 +329,13 @@ Run `rai init` to configure your Snowflake connection. Verify that the RAI Nativ
 
 ## Learn more
 
+### Core concepts
 - [Multi-reasoner workflows](https://docs.relational.ai/) — chaining reasoners and accreting enrichments on one ontology.
+
+### Language & modeling reference
 - [PyRel v1 query language](https://docs.relational.ai/) — `model.where(...)`, `aggs`, and `.define()`.
+
+### Reasoner reference
 - [Graph reasoner](https://docs.relational.ai/) — node/edge construction and centrality algorithms.
 - [Prescriptive reasoner](https://docs.relational.ai/) — the `Problem` API, decision variables, constraints, and objectives.
 
