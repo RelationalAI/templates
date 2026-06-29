@@ -45,8 +45,8 @@ Each stage enriches the shared ontology, and downstream stages consume those enr
 | Stage | Reasoner | Reads from ontology | Writes to ontology | Role |
 |-------|----------|---------------------|--------------------|------|
 | 1 | Graph | Site, Operation (SHIP edges) | Site.centrality (normalized eigenvector) | 2 connected components. Top hubs: S004 TechAssembly (0.50), S006 West Coast DC (0.39), S003 PowerCell (0.37). Centrality feeds the bottleneck penalty in Stage 4. |
-| 2 | Predictive | Multi-year shipment corpus + temporal splits + relatedness graph | DelayPrediction.predicted_delay_prob | GNN forecasts per-supplier delay risk; upstream propagation flags a reliable shipper with an unreliable upstream supplier. Feeds the Stage 3 rules. |
-| 3 | Rules | Business.reliability_score, DelayPrediction | Business.is_unreliable, Business.has_high_delay_risk, Business.is_watch_level, Demand.is_escalated | 37 of 262 shipments late (14%). B003 classified as watch (reliability=0.81). 9 escalated demands. Watch/avoid flags feed constraints and surcharges in Stage 4. |
+| 2 | Predictive | Multi-year shipment corpus + temporal splits + relatedness graph | DelayPrediction.predicted_delay_prob | GNN forecasts per-supplier delay risk (riskiest: B017, B003, B014, B005 ~0.74-0.84); upstream propagation lifts shippers fed by unreliable suppliers. Feeds the Stage 3 rules. |
+| 3 | Rules | Business.reliability_score, DelayPrediction | Business.is_unreliable, Business.has_high_delay_risk, Business.is_watch_level, Demand.is_escalated | 37 of 262 shipments late (14%). The predicted delay risk flags 5 suppliers: B017 avoid (also unreliable at 0.78); B003, B005, B014, B024 watch. 9 escalated demands. Watch/avoid flags feed constraints and surcharges in Stage 4. |
 | 4 | Prescriptive | Site.centrality (Stage 1), Business.is_watch_level (Stage 3), Operation capacity/cost | Operation.x_flow, Demand.x_unmet | Baseline: $1,865 optimal cost, 8 active flows, all demand satisfied. |
 | 4+ | Scenario Analysis | Same + exclude_site_id / block_business_ids | Re-solved x_flow, x_unmet per scenario | S004 offline: +88.5% cost ($3,515). Watch→Avoid: +0.0% ($1,865 -- watch suppliers were not on optimal routes). |
 
@@ -172,8 +172,9 @@ The multi-reasoner approach is necessary because structural risk (graph), suppli
      ...
 
    Supplier risk classification:
+     [X] B017 CellChem China: reliability=0.78, class=avoid
      [!] B003 PowerCell Ltd: reliability=0.81, class=watch
-     [ ] B005 GlobalBuild Inc: reliability=0.85, class=reliable
+     [!] B005 GlobalBuild Inc: reliability=0.85, class=watch
      [ ] B001 ChipTech Industries: reliability=0.95, class=reliable
      ...
 
@@ -243,7 +244,7 @@ model = Model("supply_chain_resilience")
 UNMET_PENALTY = 100.0  # penalty for unmet demand (kept moderate so routing costs are visible)
 RISK_SURCHARGE = 5.0  # cost multiplier for "watch" supplier operations
 CENTRALITY_WEIGHT = 2.0  # multiplier for bottleneck site penalty
-DELAY_PROB_THRESHOLD = 0.15  # above this = high delay risk
+DELAY_PROB_THRESHOLD = 0.50  # GNN-predicted delay prob above this = high delay risk
 RELIABILITY_THRESHOLD = 0.80  # below this = unreliable supplier
 PREDICTION_QUARTER = "Q1-2025"  # which quarter's predictions to use
 ```

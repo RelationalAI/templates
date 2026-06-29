@@ -21,15 +21,16 @@ watch->avoid downgrade = +0.0% (optimizer already routed around it).
                               2 weakly-connected components.
   ─────────────────────────────────────────────────────────────────
   STAGE 2  Predictive  ──►  DelayPrediction.predicted_delay_prob
-                              GNN on the multi-year shipment corpus;
-                              upstream propagation can flag a reliable
-                              shipper whose upstream supplier is unreliable.
+                              GNN on the multi-year corpus ranks B017, B003,
+                              B014, B005 riskiest (~0.74-0.84); upstream
+                              propagation lifts shippers fed by unreliable
+                              suppliers above their own reliability.
   ─────────────────────────────────────────────────────────────────
   STAGE 3  Rules        ──►  Business.is_unreliable           (1)
-                              Business.has_high_delay_risk    (2)
-                              Business.is_watch_level         (2)
+                              Business.has_high_delay_risk    (5)
+                              Business.is_watch_level         (5)
                               Demand.is_escalated             (9)
-                              [X] B017 avoid · [!] B003 watch
+                              [X] B017 avoid · [!] B003 B005 B014 B024 watch
                               37 of 262 shipments late (14%).
   ─────────────────────────────────────────────────────────────────
   STAGE 4  Prescriptive ──►  Operation.x_flow / Demand.x_unmet
@@ -110,19 +111,19 @@ Reasoner-routing plan: (1) Graph reachability for upstream supplier exposure, (2
 
 **Response**
 
-Stage 2 of the combined script is dual-mode. By default (`TRAIN_GNN` unset) it loads the bundled `data/delay_prediction.csv` — itself produced by a real GNN run — so the chain runs fast with no GPU. Set `TRAIN_GNN=true` to retrain from scratch (needs a GPU predictive engine plus a Snowflake experiment schema), which rewrites that CSV. The GNN learns each supplier's reliability, a recurring seasonal pattern, and upstream propagation through the supply graph — so a high-own-reliability shipper is still flagged risky when its upstream supplier is unreliable, a signal a per-supplier model misses. Per-supplier delay probabilities land in `DelayPrediction.predicted_delay_prob`, which the reliability classification below consumes.
+Stage 2 of the combined script is dual-mode. By default (`TRAIN_GNN` unset) it loads the bundled `data/delay_prediction.csv` — itself produced by a real GNN run — so the chain runs fast with no GPU. Set `TRAIN_GNN=true` to retrain from scratch (needs a GPU predictive engine plus a Snowflake experiment schema), which rewrites that CSV. The GNN learns each supplier's reliability, a recurring seasonal pattern, and upstream propagation through the supply graph — so a high-own-reliability shipper is still flagged risky when its upstream supplier is unreliable, a signal a per-supplier model misses. Per-supplier delay probabilities land in `DelayPrediction.predicted_delay_prob`, which the reliability classification below consumes. On the bundled run the riskiest are B017, B003, B014, B005 (~0.74-0.84), with the rest below ~0.52.
 
 ### 7. Classify supplier reliability
 
 **Prompt**
 
 ```
-/rai-rules-authoring Which suppliers are unreliable (reliability score below 0.80) or high-delay-risk (Q1 delay prediction above 0.15), and how should we tier them — 'avoid' (both flags fire), 'watch' (either flag fires), or 'reliable' (neither)? Also flag any HIGH-priority demand orders as escalated so downstream solves can prioritize them.
+/rai-rules-authoring Which suppliers are unreliable (reliability score below 0.80) or high-delay-risk (Q1 predicted delay probability above 0.50), and how should we tier them — 'avoid' (both flags fire), 'watch' (either flag fires), or 'reliable' (neither)? Also flag any HIGH-priority demand orders as escalated so downstream solves can prioritize them.
 ```
 
 **Response**
 
-`is_unreliable` (1: B017), `has_high_delay_risk` (2: B003, B017), `is_watch_level` (2), `Demand.is_escalated` (9).
+`is_unreliable` (1: B017), `has_high_delay_risk` (5: B017, B003, B014, B005, B024), `is_watch_level` (5: B017 avoid; B003, B005, B014, B024 watch), `Demand.is_escalated` (9).
 
 ### 8. Solve risk-adjusted flow
 

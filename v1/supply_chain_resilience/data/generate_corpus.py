@@ -55,7 +55,7 @@ def _unrel(b):
 eff_unrel = {}
 for b in biz:
     worst_up = max((_unrel(u) for u in upstream.get(b, ())), default=0.0)
-    eff_unrel[b] = min(0.62, 1.6 * _unrel(b) + 0.5 * worst_up)
+    eff_unrel[b] = min(0.85, 2.4 * _unrel(b) + 0.6 * worst_up)
 
 # Distinct delivery lanes (supplier, customer, sku, origin, dest, op) from the bundled shipments.
 lanes = {}
@@ -77,9 +77,9 @@ for year in YEARS:
         expected = ship + timedelta(days=transit)
         # feature-driven, mostly-deterministic delay risk (steep-but-capped sigmoid)
         risk = (eff_unrel[sup]
-                + (0.15 if order.month in (10, 11, 12) else 0.0)   # recurring Q4 surge
-                + 0.03 * (transit - 5))                            # lead time
-        prob = 1.0 / (1.0 + math.exp(-6.0 * (risk - 0.35)))
+                + (0.08 if order.month in (10, 11, 12) else 0.0)   # recurring Q4 surge
+                + 0.02 * (transit - 5))                            # lead time
+        prob = 1.0 / (1.0 + math.exp(-7.5 * (risk - 0.42)))
         is_late = random.random() < min(0.90, max(0.02, prob))
         delay_days = random.randint(1, 10) if is_late else 0
         actual = expected + timedelta(days=delay_days if is_late else -random.randint(0, 1))

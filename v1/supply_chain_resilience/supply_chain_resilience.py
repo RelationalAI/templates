@@ -52,7 +52,7 @@ DATA_DIR = Path(__file__).parent / "data"
 UNMET_PENALTY = 100.0  # penalty for unmet demand (kept moderate so routing costs are visible)
 RISK_SURCHARGE = 5.0  # cost multiplier for "watch" supplier operations
 CENTRALITY_WEIGHT = 2.0  # multiplier for bottleneck site penalty
-DELAY_PROB_THRESHOLD = 0.15  # above this = high delay risk
+DELAY_PROB_THRESHOLD = 0.50  # GNN-predicted delay prob above this = high delay risk
 RELIABILITY_THRESHOLD = 0.80  # below this = unreliable supplier
 PREDICTION_QUARTER = "Q1-2025"  # which quarter's predictions to use
 TRAIN_GNN = os.getenv("TRAIN_GNN", "false").lower() == "true"  # true = retrain the GNN from scratch (needs a GPU predictive engine)
@@ -403,54 +403,55 @@ if TRAIN_GNN:
     # default (bundled-predictions) run needs only base relationalai -- no GPU deps.
     from relationalai.semantics.reasoners.predictive import GNN, PropertyTransformer
 
-    # Separate model so the corpus concepts never collide with the main
-    # ontology (its Shipment/Graph/Edge concepts stay untouched).
-    pred_model = Model("supply_chain_resilience_predictive")
-    PredConcept, PredRelationship = pred_model.Concept, pred_model.Relationship
+    # Train on the main model: the GNN's internal queries require a single model
+    # in scope, so defining a second Model raises [Ambiguous model]. The corpus
+    # concepts (CorpusShipment, etc.) are distinct from the ontology's Shipment and
+    # the GNN is scoped to them via its graph + transformer, so the other stages
+    # ignore them; default mode skips this block, so they load only when retraining.
 
     # Homogeneous node type (Shipment) + an explicit relatedness edge list --
     # the proven CSV-backed GNN shape. Secondary entities (supplier/sku/site)
     # enter as denormalized features and via the edge structure, not as
     # separate node tables.
-    CorpusShipment = PredConcept("CorpusShipment", identify_by={"id": String})
-    Related = PredConcept("Related")  # shipment-to-shipment edge list (src, dst)
-    TrainTable = PredConcept("TrainTable")
-    ValTable = PredConcept("ValTable")
-    TestTable = PredConcept("TestTable")
+    CorpusShipment = model.Concept("CorpusShipment", identify_by={"id": String})
+    Related = model.Concept("Related")  # shipment-to-shipment edge list (src, dst)
+    TrainTable = model.Concept("TrainTable")
+    ValTable = model.Concept("ValTable")
+    TestTable = model.Concept("TestTable")
 
-    pred_model.define(
-        CorpusShipment.new(pred_model.data(read_csv(DATA_DIR / "shipment_corpus.csv")).to_schema())
+    model.define(
+        CorpusShipment.new(model.data(read_csv(DATA_DIR / "shipment_corpus.csv")).to_schema())
     )
-    pred_model.define(
-        Related.new(pred_model.data(read_csv(DATA_DIR / "shipment_edges.csv")).to_schema())
+    model.define(
+        Related.new(model.data(read_csv(DATA_DIR / "shipment_edges.csv")).to_schema())
     )
-    pred_model.define(
-        TrainTable.new(pred_model.data(read_csv(DATA_DIR / "shipment_train.csv")).to_schema())
+    model.define(
+        TrainTable.new(model.data(read_csv(DATA_DIR / "shipment_train.csv")).to_schema())
     )
-    pred_model.define(
-        ValTable.new(pred_model.data(read_csv(DATA_DIR / "shipment_val.csv")).to_schema())
+    model.define(
+        ValTable.new(model.data(read_csv(DATA_DIR / "shipment_val.csv")).to_schema())
     )
-    pred_model.define(
-        TestTable.new(pred_model.data(read_csv(DATA_DIR / "shipment_test.csv")).to_schema())
+    model.define(
+        TestTable.new(model.data(read_csv(DATA_DIR / "shipment_test.csv")).to_schema())
     )
 
     # Task split (Test is unlabelled).
-    Train = PredRelationship(f"{CorpusShipment} has {Any:is_late}")
-    pred_model.define(Train(CorpusShipment, TrainTable.is_late)).where(
+    Train = model.Relationship(f"{CorpusShipment} has {Any:is_late}")
+    model.define(Train(CorpusShipment, TrainTable.is_late)).where(
         CorpusShipment.id == TrainTable.shipment_id
     )
-    Validation = PredRelationship(f"{CorpusShipment} has {Any:is_late}")
-    pred_model.define(Validation(CorpusShipment, ValTable.is_late)).where(
+    Validation = model.Relationship(f"{CorpusShipment} has {Any:is_late}")
+    model.define(Validation(CorpusShipment, ValTable.is_late)).where(
         CorpusShipment.id == ValTable.shipment_id
     )
-    Test = PredRelationship(f"{CorpusShipment}")
-    pred_model.define(Test(CorpusShipment)).where(CorpusShipment.id == TestTable.shipment_id)
+    Test = model.Relationship(f"{CorpusShipment}")
+    model.define(Test(CorpusShipment)).where(CorpusShipment.id == TestTable.shipment_id)
 
     # Self-referential Shipment <-> Shipment graph from the relatedness edges.
-    gnn_graph = Graph(pred_model, directed=True, weighted=False)
+    gnn_graph = Graph(model, directed=True, weighted=False)
     GnnEdge = gnn_graph.Edge
     corpus_ref = CorpusShipment.ref()
-    pred_model.define(GnnEdge.new(src=CorpusShipment, dst=corpus_ref)).where(
+    model.define(GnnEdge.new(src=CorpusShipment, dst=corpus_ref)).where(
         CorpusShipment.id == Related.src,
         corpus_ref.id == Related.dst,
     )
