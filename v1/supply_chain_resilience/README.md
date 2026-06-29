@@ -1,11 +1,12 @@
 ---
 title: "Supply Chain Resilience"
-description: "Chain blast-radius reachability, network analysis, and rule-based risk classification into a risk-adjusted minimum-cost network flow for supply-chain routing."
+description: "Chain blast-radius reachability, network analysis, a graph neural network (GNN) that forecasts per-supplier delay risk, and rule-based risk classification into a risk-adjusted minimum-cost network flow for supply-chain routing."
 featured: false
 experience_level: intermediate
 industry: "Supply Chain & Logistics"
 reasoning_types:
     - Graph
+    - Predictive
     - Rules-based
     - Prescriptive
 tags:
@@ -23,28 +24,31 @@ tags:
 
 Supply chain networks must route goods from suppliers through factories and distribution centers to customers -- but not all routes carry equal risk. Unreliable suppliers, ML-predicted delays, and over-reliance on bottleneck sites can all disrupt fulfillment. This template shows how to combine multiple analytical signals into a single routing decision.
 
-This template uses RelationalAI's **Graph** analysis, **Rules-based** classification, and **Prescriptive** optimization capabilities in a chained multi-reasoner workflow:
+This template uses RelationalAI's **Graph** analysis, **Predictive** forecasting, **Rules-based** classification, and **Prescriptive** optimization capabilities in a chained multi-reasoner workflow:
 
 0. **Blast-radius pre-analysis** builds a directed Business graph from shipment data and traces every supplier each high-priority demand customer transitively depends on -- making the exposure footprint explicit before any optimization runs.
 1. **Graph analysis** builds a site dependency graph from shipping operations and computes eigenvector centrality to identify critical warehouses and bridges between supply chain regions.
-2. **Rules** classify suppliers by risk level (avoid / watch / reliable) using reliability scores and ML delay predictions, and flag escalated demand orders.
-3. **Prescriptive optimization** solves a minimum-cost network flow that routes supply to meet demand. Graph centrality feeds a bottleneck penalty in the objective, and supplier risk flags feed hard constraints (no flow from "avoid" suppliers) and surcharges (extra cost for "watch" suppliers).
-4. **Scenario analysis** re-solves with disruptions -- taking a critical site offline (+88.5% cost) and downgrading watch suppliers to avoid (+0.0% cost, because the optimizer had already routed around them) -- to quantify resilience costs.
+2. **Predictive forecasting** trains a graph neural network (GNN) on a multi-year shipment corpus to forecast per-supplier delay risk, propagating risk upstream so a reliable shipper with an unreliable upstream supplier is still flagged.
+3. **Rules** classify suppliers by risk level (avoid / watch / reliable) using reliability scores and the predicted delay risk, and flag escalated demand orders.
+4. **Prescriptive optimization** solves a minimum-cost network flow that routes supply to meet demand. Graph centrality feeds a bottleneck penalty in the objective, and supplier risk flags feed hard constraints (no flow from "avoid" suppliers) and surcharges (extra cost for "watch" suppliers).
+5. **Scenario analysis** re-solves with disruptions -- taking a critical site offline (+88.5% cost) and downgrading watch suppliers to avoid (+0.0% cost, because the optimizer had already routed around them) -- to quantify resilience costs.
 
 Each stage enriches the shared ontology, and downstream stages consume those enrichments -- this is the **accretive ontology enrichment** pattern:
 
-- **Stage 1 writes** `Site.centrality` (normalized eigenvector centrality) -- consumed by Stage 3's bottleneck penalty in the objective. High-centrality sites incur a `CENTRALITY_WEIGHT` surcharge per unit of flow.
-- **Stage 2 writes** `Business.is_unreliable`, `Business.has_high_delay_risk`, `Business.is_watch_level` -- consumed by Stage 3 as hard constraints (avoid suppliers get zero flow) and cost surcharges (watch suppliers get `RISK_SURCHARGE` per unit of flow).
-- **Stage 3 writes** `Operation.x_flow` and `Demand.x_unmet` decision variables, re-solved per scenario with modified constraints.
+- **Stage 1 writes** `Site.centrality` (normalized eigenvector centrality) -- consumed by Stage 4's bottleneck penalty in the objective. High-centrality sites incur a `CENTRALITY_WEIGHT` surcharge per unit of flow.
+- **Stage 2 writes** `DelayPrediction.predicted_delay_prob` (per-supplier delay risk from the GNN) -- consumed by Stage 3's rules.
+- **Stage 3 writes** `Business.is_unreliable`, `Business.has_high_delay_risk`, `Business.is_watch_level` -- consumed by Stage 4 as hard constraints (avoid suppliers get zero flow) and cost surcharges (watch suppliers get `RISK_SURCHARGE` per unit of flow).
+- **Stage 4 writes** `Operation.x_flow` and `Demand.x_unmet` decision variables, re-solved per scenario with modified constraints.
 
 ### Reasoner overview
 
 | Stage | Reasoner | Reads from ontology | Writes to ontology | Role |
 |-------|----------|---------------------|--------------------|------|
-| 1 | Graph | Site, Operation (SHIP edges) | Site.centrality (normalized eigenvector) | 2 connected components. Top hubs: S004 TechAssembly (0.50), S006 West Coast DC (0.39), S003 PowerCell (0.37). Centrality feeds the bottleneck penalty in Stage 3. |
-| 2 | Rules | Business.reliability_score, DelayPrediction | Business.is_unreliable, Business.has_high_delay_risk, Business.is_watch_level, Demand.is_escalated | 37 of 262 shipments late (14%). B003 classified as watch (reliability=0.81). 9 escalated demands. Watch/avoid flags feed constraints and surcharges in Stage 3. |
-| 3 | Prescriptive | Site.centrality (Stage 1), Business.is_watch_level (Stage 2), Operation capacity/cost | Operation.x_flow, Demand.x_unmet | Baseline: $1,865 optimal cost, 8 active flows, all demand satisfied. |
-| 3+ | Scenario Analysis | Same + exclude_site_id / block_business_ids | Re-solved x_flow, x_unmet per scenario | S004 offline: +88.5% cost ($3,515). Watch→Avoid: +0.0% ($1,865 -- watch suppliers were not on optimal routes). |
+| 1 | Graph | Site, Operation (SHIP edges) | Site.centrality (normalized eigenvector) | 2 connected components. Top hubs: S004 TechAssembly (0.50), S006 West Coast DC (0.39), S003 PowerCell (0.37). Centrality feeds the bottleneck penalty in Stage 4. |
+| 2 | Predictive | Multi-year shipment corpus + temporal splits + relatedness graph | DelayPrediction.predicted_delay_prob | GNN forecasts per-supplier delay risk (riskiest: B017, B003, B014, B005 ~0.74-0.84); upstream propagation lifts shippers fed by unreliable suppliers. Feeds the Stage 3 rules. |
+| 3 | Rules | Business.reliability_score, DelayPrediction | Business.is_unreliable, Business.has_high_delay_risk, Business.is_watch_level, Demand.is_escalated | 37 of 262 shipments late (14%). The predicted delay risk flags 5 suppliers: B017 avoid (also unreliable at 0.78); B003, B005, B014, B024 watch. 9 escalated demands. Watch/avoid flags feed constraints and surcharges in Stage 4. |
+| 4 | Prescriptive | Site.centrality (Stage 1), Business.is_watch_level (Stage 3), Operation capacity/cost | Operation.x_flow, Demand.x_unmet | Baseline: $1,865 optimal cost, 8 active flows, all demand satisfied. |
+| 4+ | Scenario Analysis | Same + exclude_site_id / block_business_ids | Re-solved x_flow, x_unmet per scenario | S004 offline: +88.5% cost ($3,515). Watch→Avoid: +0.0% ($1,865 -- watch suppliers were not on optimal routes). |
 
 ## Why this problem matters
 
@@ -54,8 +58,8 @@ The multi-reasoner approach is necessary because structural risk (graph), suppli
 
 ### Key design patterns demonstrated
 
-- **Accretive ontology enrichment** -- Stage 1's `Site.centrality` feeds Stage 3's objective; Stage 2's risk flags feed Stage 3's constraints and surcharges
-- **Single model composition** -- all three reasoners (Graph, Rules, Prescriptive) attach to one `Model` instance, unlike templates that require a separate graph model
+- **Accretive ontology enrichment** -- Stage 1's `Site.centrality` feeds Stage 4's objective; Stage 3's risk flags feed Stage 4's constraints and surcharges
+- **Single model composition with a separate predictive corpus** -- the descriptive, graph, rules, and prescriptive chain composes on one `Model` instance, unlike templates that require a separate graph model; the predictive stage trains its GNN on its own multi-year corpus `Model` and hands per-supplier predictions back to the main model via `DelayPrediction`
 - **Reusable solve function** -- `solve_flow(label, exclude_site_id, block_business_ids)` encapsulates the full formulation, enabling scenario analysis by re-solving with modified constraints
 - **Derived relationship for business-to-operation linkage** -- `Operation.source_business` is derived by matching `source_site` to `Business.site`, avoiding an explicit join table
 - **Scenario analysis via re-solve** -- disruptions are modeled as constraint modifications (site offline = zero flow, supplier downgrade = block), not separate models
@@ -77,14 +81,15 @@ The multi-reasoner approach is necessary because structural risk (graph), suppli
 
 ## What's included
 
-- `supply_chain_resilience.py` -- Main script with three chained reasoning stages and scenario analysis
+- `supply_chain_resilience.py` -- Main script with five chained reasoning stages (0-4) and scenario analysis
 - `data/site.csv` -- 31 sites (factories, distribution centers, offices, stores) across multiple regions
 - `data/business.csv` -- 31 businesses (suppliers, manufacturers, warehouses, buyers) with reliability scores
 - `data/operation.csv` -- 70 shipping and transfer operations with cost, capacity, and transit time
 - `data/sku.csv` -- 9 SKUs (raw materials, components, finished goods)
 - `data/demand.csv` -- 20 customer demand orders with quantity and priority
 - `data/shipment.csv` -- 262 historical shipments with delay data
-- `data/delay_prediction.csv` -- 36 ML-predicted delay probabilities per supplier per quarter
+- `data/shipment_corpus.csv`, `data/shipment_edges.csv`, `data/shipment_{train,val,test}.csv` -- the GNN's multi-year training corpus, supplier relatedness edges, and temporal splits
+- `data/delay_prediction.csv` -- bundled per-supplier delay predictions from the GNN (loaded by default so the chain runs without a GPU)
 - `pyproject.toml` -- Python project configuration with dependencies
 
 ## Prerequisites
@@ -151,7 +156,14 @@ The multi-reasoner approach is necessary because structural risk (graph), suppli
      ...
 
    ======================================================================
-   STAGE 2: Rules -- Supplier Risk Classification
+   STAGE 2: Predictive -- GNN Supplier Delay-Risk Forecast
+   ======================================================================
+
+   Using the bundled GNN predictions at delay_prediction.csv.
+   Set TRAIN_GNN=true to retrain the model from scratch.
+
+   ======================================================================
+   STAGE 3: Rules -- Supplier Risk Classification
    ======================================================================
 
    Late shipments: 37 of 262 (14%)
@@ -160,15 +172,16 @@ The multi-reasoner approach is necessary because structural risk (graph), suppli
      ...
 
    Supplier risk classification:
+     [X] B017 CellChem China: reliability=0.78, class=avoid
      [!] B003 PowerCell Ltd: reliability=0.81, class=watch
-     [ ] B005 GlobalBuild Inc: reliability=0.85, class=reliable
+     [!] B005 GlobalBuild Inc: reliability=0.85, class=watch
      [ ] B001 ChipTech Industries: reliability=0.95, class=reliable
      ...
 
    Escalated demands (HIGH priority): 9
 
    ======================================================================
-   STAGE 3: Prescriptive -- Risk-Adjusted Network Flow
+   STAGE 4: Prescriptive -- Risk-Adjusted Network Flow
    ======================================================================
 
      [Baseline]
@@ -203,6 +216,12 @@ The multi-reasoner approach is necessary because structural risk (graph), suppli
     ├── sku.csv
     ├── demand.csv
     ├── shipment.csv
+    ├── shipment_corpus.csv
+    ├── shipment_edges.csv
+    ├── shipment_train.csv
+    ├── shipment_val.csv
+    ├── shipment_test.csv
+    ├── generate_corpus.py
     └── delay_prediction.csv
 ```
 
@@ -225,7 +244,7 @@ model = Model("supply_chain_resilience")
 UNMET_PENALTY = 100.0  # penalty for unmet demand (kept moderate so routing costs are visible)
 RISK_SURCHARGE = 5.0  # cost multiplier for "watch" supplier operations
 CENTRALITY_WEIGHT = 2.0  # multiplier for bottleneck site penalty
-DELAY_PROB_THRESHOLD = 0.15  # above this = high delay risk
+DELAY_PROB_THRESHOLD = 0.50  # GNN-predicted delay prob above this = high delay risk
 RELIABILITY_THRESHOLD = 0.80  # below this = unreliable supplier
 PREDICTION_QUARTER = "Q1-2025"  # which quarter's predictions to use
 ```
@@ -269,17 +288,7 @@ model.define(Operation.source_business(Operation, Business)).where(
 )
 ```
 
-`DelayPrediction` captures ML-predicted delay probabilities per supplier per fiscal quarter:
-
-```python
-DelayPrediction = model.Concept("DelayPrediction", identify_by={"id": String})
-DelayPrediction.predicted_delay_prob = model.Property(
-    f"{DelayPrediction} has {Float:predicted_delay_prob}"
-)
-DelayPrediction.supplier_business = model.Relationship(
-    f"{DelayPrediction} predicts for {Business}"
-)
-```
+The `DelayPrediction` concept that carries the GNN's per-supplier forecast is defined later, in Stage 2, where the predictions are loaded.
 
 ### Stage 1: Graph -- network criticality
 
@@ -311,7 +320,47 @@ model.where(Site.id == cent_data["site_id"]).define(
 )
 ```
 
-### Stage 2: Rules -- supplier risk classification
+### Stage 2: Predictive -- GNN supplier delay-risk forecast
+
+A graph neural network (GNN) forecasts each supplier's delay risk from a multi-year shipment corpus, wired by a relatedness graph so risk propagates upstream -- a shipper with strong own reliability is still flagged risky when an upstream supplier is unreliable. This stage is dual-mode: by default it reads the bundled `data/delay_prediction.csv` so the chain runs with no GPU, and `TRAIN_GNN=true` retrains the model from scratch (which needs a GPU predictive engine):
+
+```python
+if TRAIN_GNN:
+    print("\nTraining supplier delay-risk GNN from scratch...")
+
+    from relationalai.semantics.reasoners.predictive import GNN, PropertyTransformer
+
+    # Separate model so the corpus concepts never collide with the main
+    # ontology (its Shipment/Graph/Edge concepts stay untouched).
+    pred_model = Model("supply_chain_resilience_predictive")
+    ...
+else:
+    print(
+        f"\nUsing the bundled GNN predictions at {DELAY_PREDICTION_CSV.name}. "
+        "Set TRAIN_GNN=true to retrain the model from scratch."
+    )
+```
+
+In both modes the predictions are loaded onto the main model's `DelayPrediction` concept -- this is the chain hand-off the rules stage reads:
+
+```python
+DelayPrediction = model.Concept("DelayPrediction", identify_by={"id": String})
+DelayPrediction.predicted_delay_prob = model.Property(
+    f"{DelayPrediction} has {Float:predicted_delay_prob}"
+)
+DelayPrediction.supplier_business = model.Relationship(
+    f"{DelayPrediction} predicts for {Business}"
+)
+
+pred_data = model.data(read_csv(DELAY_PREDICTION_CSV))
+model.define(
+    dp := DelayPrediction.new(id=pred_data["ID"]),
+    dp.predicted_delay_prob(pred_data["PREDICTED_DELAY_PROB"]),
+    dp.supplier_business(Business.lookup(id=pred_data["SUPPLIER_BUSINESS_ID"])),
+)
+```
+
+### Stage 3: Rules -- supplier risk classification
 
 Two derived Relationships flag risky suppliers. The first marks businesses with reliability scores below the threshold. The second uses ML delay predictions to flag suppliers with high predicted delay probability:
 
@@ -341,7 +390,7 @@ Demand.is_escalated = model.Relationship(f"{Demand} is escalated")
 model.where(Demand.priority == "HIGH").define(Demand.is_escalated())
 ```
 
-### Stage 3: Define decision variables, constraints, and objective
+### Stage 4: Define decision variables, constraints, and objective
 
 Two continuous decision variables control the network flow: `x_flow` is the flow on each operation (bounded by capacity), and `x_unmet` is unmet demand slack per order:
 
