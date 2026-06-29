@@ -1,6 +1,8 @@
 # Runbook: Supply Chain Resilience — Multi-Reasoner Walkthrough
 
-Risk-adjusted network flow with disruption scenarios, traced across four RAI reasoning stages. Each stage writes properties back to the same ontology that downstream stages consume, so the optimizer can hard-block bad suppliers, surcharge watch suppliers, and weight bottleneck hubs using upstream graph and rules signals.
+Two HIGH-priority customers depend on a network of upstream suppliers, some of which are unreliable or delay-prone. A planner needs a risk-adjusted routing plan: the minimum-cost way to fulfill all open demand while steering flow away from risky suppliers and bottleneck hubs, plus an estimate of how much a disruption would cost. The chain produces that plan and prices two disruption scenarios against it. The dataset has 7 concepts — 31 sites, 31 businesses, 9 SKUs, 70 operations, 20 demand orders, 262 shipments, and 36 quarterly delay predictions.
+
+This is traced across four RAI reasoning stages. Each stage writes properties back to the same ontology that downstream stages consume, so the optimizer can hard-block bad suppliers, surcharge watch suppliers, and weight bottleneck hubs using upstream graph and rules signals.
 
 ## The chain
 
@@ -35,12 +37,14 @@ watch->avoid downgrade = +0.0% (optimizer already routed around it).
 
 ## Workflow
 
+> **How to use this walkthrough.** Each section below is a Prompt that an analyst pastes into a fresh agent session loaded with the named `/rai-*` skill. Prompts are designed to run **in order, in a single session** — every step relies on enrichments the previous steps wrote back to the shared ontology, so the agent inherits accumulated model state across prompts.
+
 ### 1. Build ontology
 
 **Prompt**
 
 ```
-/rai-build-starter-ontology Build a supply chain ontology from the CSVs in data/.
+/rai-build-starter-ontology Build a supply chain ontology from the CSVs in data/. It should have a Site (a physical location with a region), a Business (a supplier, manufacturer, warehouse, or buyer, each at a site, with a reliability score), a SKU, an Operation (a shipping lane between two sites carrying a SKU at a per-unit cost — model it as the network edge the optimizer will route flow over), a Demand order (a quantity of a SKU requested by a business, with a priority), a Shipment (a historical movement with an on-time/late flag), and a quarterly DelayPrediction per supplier. Wire Operations between their origin and destination Sites so the shipment graph can be traced, and link Demand and Shipment back to their Business and SKU.
 ```
 
 **Response**
@@ -117,7 +121,7 @@ Reasoner-routing plan: (1) Graph reachability for upstream supplier exposure, (2
 
 **Response**
 
-MILP on `Operation.x_flow` + `Demand.x_unmet`; objective = transport + risk surcharge + centrality weight + unmet penalty.
+OPTIMAL · $1,865 · 8 active flows · 0 unmet. MILP on `Operation.x_flow` + `Demand.x_unmet`; objective = transport + risk surcharge + centrality weight + unmet penalty.
 
 ### 8. Quantify disruption scenarios
 

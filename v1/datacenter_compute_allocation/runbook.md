@@ -108,7 +108,7 @@ Frontier labs (Anthropic, OpenAI, xAI Internal) carry the 15 P0 pretrains (256�
 
 **Response**
 
-GNN temporal binary classification (`task_type="binary_classification"`, `eval_metric="roc_auc"`, `has_time_column=True`) on 770 training + 110 validation + 110 test `(workload, observation_date)` observations across three cross-concept edges (`LabMetric→Workload`, `WorkloadDependency.blocks`, cross-lab `co_dated`). `Workload.utilization_probability` bound for all 110: 95 at p ≥ 0.5, 15 at p < 0.5. Frontier pretrain shards top the distribution (p ≈ 0.78), Stability evals sit at the bottom (p ≈ 0.38).
+`Workload.utilization_probability` bound for all 110: 95 at p ≥ 0.5, 15 at p < 0.5. Frontier pretrain shards top the distribution (p ≈ 0.78), Stability evals sit at the bottom (p ≈ 0.38). Trained as a temporal binary-classification GNN on 770 training + 110 validation + 110 test `(workload, observation_date)` observations across three cross-concept edges (`LabMetric→Workload`, `WorkloadDependency.blocks`, cross-lab `co_dated`).
 
 ### 6. Screen hardware compatibility and priority
 

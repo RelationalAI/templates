@@ -42,6 +42,8 @@ without the cluster collapse, the gap would grow.
 
 ## Workflow
 
+> **How to use this walkthrough.** Each section below is a Prompt that an analyst pastes into a fresh agent session loaded with the named `/rai-*` skill. Prompts are designed to run **in order, in a single session** — every step relies on enrichments the previous steps wrote back to the shared ontology, so the agent inherits accumulated model state across prompts.
+
 ### 1. Build ontology
 
 **Prompt**
@@ -112,7 +114,7 @@ Plan: rules for compliance flags, graph for correlation clustering + representat
 
 **Response**
 
-48 decision vars (`Stock.x_quantity`, 8 stocks x 6 scenarios; non-reps forced to 0). Constraint families: non-negativity, budget equality (sum = budget per scenario), position cap (30%), sector cap (30%), non-representative = 0, plus a per-scenario epsilon return-rate floor on the sweep solves. The reference scenario base_1000 spans return [64.87, 84.00] (rate [0.0649, 0.0840]). HiGHS solves the convex QP to `OPTIMAL` and, with `sensitivity=True`, returns each return-floor's dual — the shadow price, which by the envelope theorem equals the frontier slope d(variance)/d(return), so no finite differencing is needed. Each solve prices all 6 scenarios at once, and the three frontier drivers share a solve cache (≈ one budget of unique solves, not 3x).
+48 decision vars (`Stock.x_quantity`, 8 stocks x 6 scenarios; non-reps forced to 0). Constraint families: non-negativity, budget equality (sum = budget per scenario), position cap (30%), sector cap (30%), non-representative = 0, plus a per-scenario epsilon return-rate floor on the sweep solves. HiGHS solves the convex QP to `OPTIMAL` with `sensitivity=True`, returning each return-floor's dual. The reference scenario base_1000 spans return [64.87, 84.00] (rate [0.0649, 0.0840]).
 
 ### 7. Read the frontier
 
@@ -124,7 +126,7 @@ Plan: rules for compliance flags, graph for correlation clustering + representat
 
 **Response**
 
-Reference base_1000 frontier: return 64.87 -> 84.00, variance 4641.57 -> 8528.00 across 6 points. The exact return-floor duals rise 0 -> 134.83 -> 192.68 -> 250.64 -> 650.79 -> 1098.00; each dual is the frontier's local slope and brackets the finite-difference secant, so no differencing is needed. Knee at p3 — the last point before the largest ratio jump in consecutive duals (250.64 -> 650.79).
+Reference base_1000 frontier: return 64.87 -> 84.00, variance 4641.57 -> 8528.00 across 6 points. The exact return-floor duals rise 0 -> 134.83 -> 192.68 -> 250.64 -> 650.79 -> 1098.00. Knee at p3 — the last point before the largest ratio jump in consecutive duals (250.64 -> 650.79).
 
 ### 8. Stress under crisis
 
@@ -136,7 +138,7 @@ Reference base_1000 frontier: return 64.87 -> 84.00, variance 4641.57 -> 8528.00
 
 **Response**
 
-Crisis vol runs 22-30% above base at every frontier point (budget 1000: min_risk 68.13 -> 87.49 at +28.4%, p1 71.99 -> 93.27 at +29.6%). The gap peaks at p1 (+29.6%) and narrows to +21.7% at p5 — the cluster-collapse payoff: the concentrated end holds the highest-Sharpe distinct bet per cluster (lower-crisis-correlation sectors) rather than stacked near-duplicates. The gap_% pattern is identical across all three budgets.
+Crisis vol runs 22-30% above base at every frontier point (budget 1000: min_risk 68.13 -> 87.49 at +28.4%, p1 71.99 -> 93.27 at +29.6%). The gap peaks at p1 (+29.6%) and narrows to +21.7% at p5. The gap_% pattern is identical across all three budgets.
 
 ### 9. Persist solution concepts into the ontology
 

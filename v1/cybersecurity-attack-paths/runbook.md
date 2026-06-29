@@ -27,7 +27,7 @@ Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` 
 
 ## 2. Examine the ontology
 
-**Prompt:** /rai-querying What concepts and relationships does the ontology have?
+**Prompt:** /rai-querying What concepts and relationships does the ontology have, and how many of each?
 
 **Response:** One concept, `Asset`, with properties `name`, `zone`, `internet_facing`, `crown_jewel`, and `exposure_score`; and four self-relationships (`exploit_to`, `cred_to`, `pivot_to`, `can_reach`).
 
