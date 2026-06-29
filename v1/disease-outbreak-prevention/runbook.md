@@ -30,7 +30,7 @@ Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` 
 
 ## 3. Rank facilities by transmission risk
 
-**Prompt:** /rai-graph-analysis Which facilities carry the greatest cumulative transmission risk — the highest total risk-weighted connections (weighted degree centrality on the risk-weighted graph)? Rank them so we can prioritize resource deployment, and include each facility's incoming and outgoing connection counts for context.
+**Prompt:** /rai-graph-analysis Which facilities carry the greatest cumulative transmission risk — the highest total risk across their direct transfer links, weighting each link by its transmission risk? Rank them so we can prioritize resource deployment, and include each facility's incoming and outgoing connection counts for context.
 
 **Response:** By weighted degree centrality, the top hubs are **Central Hospital and Public Health Dept, tied at 28.89**, then **Regional Testing Lab at 24.22** and Emergency Response Hub at 20.89. Indegree/outdegree add nuance — Central Hospital is a pure source (4 out, 0 in) while Emergency Response Hub is a pure sink (3 in, 0 out).
 

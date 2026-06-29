@@ -98,7 +98,7 @@ OPTIMAL (HiGHS), total holding cost **$13,713.29**. 10 continuous allocation var
 
 **Response**
 
-About **951 of the 2,000 units** are placed, so the **budget is slack** — it isn't the binding limit. The **four hub warehouse centrality floors bind** (Chicago ~126, Detroit ~102, Dallas ~70, Denver ~43 units), pushing buffer stock above what demand alone needs; the stores each sit at exactly their demand (LA 120, NYC 150, Miami 100, Phoenix 90, Seattle 80). Atlanta holds 70 — its demand floor edges out its slightly lower centrality floor. The centrality scores from Stage 1, not the budget, shape where inventory concentrates.
+About **951 of the 2,000 units** are placed, so the **budget is slack** — it isn't the binding limit. The **four hub warehouse centrality floors bind** (Chicago ~126, Detroit ~102, Dallas ~70, Denver ~43 units), pushing buffer stock above what demand alone needs; the stores each sit at exactly their demand (LA 120, NYC 150, Miami 100, Phoenix 90, Seattle 80). Atlanta holds 70 — its demand floor edges out its slightly lower centrality floor. The `Site.centrality` scores from the graph step, not the budget, shape where inventory concentrates.
 
 ## Data
 
