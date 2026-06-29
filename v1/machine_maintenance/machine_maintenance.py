@@ -11,7 +11,7 @@ reasoning stages through a single ontology so each stage's enrichments feed the 
                            live GNN optional).
   Stage 5  Prescriptive -- preventive-maintenance schedule + a technician what-if.
 
-Data is the bundled MANUFACTURING.PUBLIC sample (data/*.csv).
+Data is the bundled sample in data/*.csv.
 
 Run:
     python machine_maintenance.py
@@ -46,7 +46,7 @@ USE_PRELOADED_PREDICTIONS = True     # predictive stage: read the bundled failur
 model = Model("machine_maintenance")
 
 # ==================================================================
-# Stage 0: Ontology -- load the MANUFACTURING.PUBLIC sample
+# Stage 0: Ontology -- load the bundled sample data
 # ==================================================================
 
 # Machine ---------------------------------------------------------------------

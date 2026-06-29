@@ -2,7 +2,7 @@
 
 Schedules preventive maintenance for a **50-machine, 3-plant, 12-period** manufacturing operation. OEE alone misranks the plants; downtime totals don't say what will fail next; rules flag risky machines but don't allocate scarce technician time; the optimizer produces a feasible schedule but can't see that all on-site Turbine coverage funnels through a single technician per plant. The chain threads querying, rules, graph, predictive, and prescriptive reasoners through one ontology so each stage's enrichments feed the next.
 
-> **Data provenance.** Every figure below is computed from the bundled `data/*.csv` — the real `MANUFACTURING.PUBLIC` sample: 50 machines, 20 technicians, 8 products, and 12 weekly periods across Plant_A, Plant_B, and Plant_C.
+> **Data provenance.** Every figure below is computed from the bundled `data/*.csv` — a sample manufacturing dataset: 50 machines, 20 technicians, 8 products, and 12 weekly periods across Plant_A, Plant_B, and Plant_C.
 >
 > **Status.** Every figure below comes from a real run of `machine_maintenance.py` against the bundled data — no predicted numbers. Querying and rules are deterministic; the graph and prescriptive stages use the template's own sound formulations. The predictive stage reads the bundled pre-loaded failure predictions by default (no training step); a live GNN is the opt-in alternative.
 
@@ -177,4 +177,4 @@ Baseline solve is **OPTIMAL**: all **50 machines scheduled across periods 1–10
 
 ## Data
 
-Bundled CSVs in `data/` (real `MANUFACTURING.PUBLIC`): 50 machines (3 plants, 5 types), 20 technicians, 32 qualifications, 8 products, 120 machine-product capabilities, 844 production runs, 353 downtime events, 600 failure predictions, 200 sensors / 2,400 sensor readings, plus travel, training options, availability, and degradation references. The five-stage script loads the first eight; the rest support the extensions in the README. All stages run in `machine_maintenance.py`.
+Bundled CSVs in `data/`: 50 machines (3 plants, 5 types), 20 technicians, 32 qualifications, 8 products, 120 machine-product capabilities, 844 production runs, 353 downtime events, 600 failure predictions, 200 sensors / 2,400 sensor readings, plus travel, training options, availability, and degradation references. The five-stage script loads the first eight; the rest support the extensions in the README. All stages run in `machine_maintenance.py`.

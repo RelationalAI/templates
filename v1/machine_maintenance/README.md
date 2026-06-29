@@ -47,7 +47,7 @@ Readers are assumed comfortable reading Python; domain terms (OEE, betweenness c
 
 - `machine_maintenance.py` — the five-stage multi-reasoner script
 - `runbook.md` — a prompt-by-prompt walkthrough of the five-stage chain, with the real figures each stage produces
-- `data/` — the bundled `MANUFACTURING.PUBLIC` sample (15 CSVs)
+- `data/` — the bundled sample data (15 CSVs)
 - `pyproject.toml` — package configuration and dependencies
 
 ## Prerequisites
@@ -129,7 +129,7 @@ Readers are assumed comfortable reading Python; domain terms (OEE, betweenness c
 
 ## Sample data
 
-The bundled CSVs are the real `MANUFACTURING.PUBLIC` sample dataset:
+The bundled CSVs are a sample manufacturing dataset:
 
 | File | Rows | Description |
 |---|---|---|
