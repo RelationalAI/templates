@@ -11,10 +11,14 @@ optimization for supply chain risk management:
 - Stage 1 -- Graph: build a site dependency graph from shipping operations,
   compute eigenvector centrality to identify critical warehouses and bridges
   between supply chain regions.
-- Stage 2 -- Rules: classify suppliers by risk level (avoid/watch/reliable)
-  using reliability scores and ML delay predictions. Flag late shipments
-  and escalated demand orders.
-- Stage 3 -- Prescriptive: solve a minimum-cost network flow that routes
+- Stage 2 -- Predictive: a GNN forecasts per-supplier delay risk on a
+  multi-year shipment corpus, wired by a relatedness graph so risk propagates
+  upstream. Dual-mode -- the default uses bundled predictions (no GPU),
+  TRAIN_GNN=true retrains the model from scratch.
+- Stage 3 -- Rules: classify suppliers by risk level (avoid/watch/reliable)
+  using reliability scores and the predicted delay risk from Stage 2. Flag late
+  shipments and escalated demand orders.
+- Stage 4 -- Prescriptive: solve a minimum-cost network flow that routes
   supply to meet demand. Graph centrality feeds a bottleneck penalty in the
   objective. Supplier risk flags feed hard constraints (no flow from "avoid"
   suppliers) and surcharges (extra cost for "watch" suppliers).
@@ -30,10 +34,12 @@ Output:
     comparison showing the cost of disruptions.
 """
 
+import os
+from datetime import datetime, timezone
 from pathlib import Path
 
-from pandas import read_csv
-from relationalai.semantics import Float, Integer, Model, String, sum, where
+from pandas import DataFrame, read_csv
+from relationalai.semantics import Any, Float, Integer, Model, String, select, sum, where
 from relationalai.semantics.reasoners.graph import Graph
 from relationalai.semantics.reasoners.prescriptive import Problem
 from relationalai.semantics.std import aggregates as aggs
@@ -49,6 +55,13 @@ CENTRALITY_WEIGHT = 2.0  # multiplier for bottleneck site penalty
 DELAY_PROB_THRESHOLD = 0.15  # above this = high delay risk
 RELIABILITY_THRESHOLD = 0.80  # below this = unreliable supplier
 PREDICTION_QUARTER = "Q1-2025"  # which quarter's predictions to use
+TRAIN_GNN = os.getenv("TRAIN_GNN", "false").lower() == "true"  # true = retrain the GNN from scratch (needs a GPU predictive engine)
+GNN_EXP_DATABASE = os.getenv("GNN_EXP_DATABASE", "SUPPLY_CHAIN")
+GNN_EXP_SCHEMA = os.getenv("GNN_EXP_SCHEMA", "EXPERIMENTS")
+GNN_DEVICE = os.getenv("GNN_DEVICE", "cuda")
+GNN_SEED = 42
+FORECAST_QUARTERS = ["Q1-2025", "Q2-2025", "Q3-2025", "Q4-2025"]
+DELAY_PREDICTION_CSV = DATA_DIR / "delay_prediction.csv"
 
 # --------------------------------------------------
 # Define semantic model & load data
@@ -224,36 +237,12 @@ model.where(
     Demand.priority == "HIGH",
 ).define(Business.is_high_priority_customer())
 
-# DelayPrediction concept: ML-predicted delay probabilities per supplier.
-DelayPrediction = model.Concept("DelayPrediction", identify_by={"id": String})
-DelayPrediction.fiscal_quarter = model.Property(
-    f"{DelayPrediction} for {String:fiscal_quarter}"
-)
-DelayPrediction.predicted_delay_prob = model.Property(
-    f"{DelayPrediction} has {Float:predicted_delay_prob}"
-)
-DelayPrediction.risk_tier = model.Property(
-    f"{DelayPrediction} has risk tier {String:risk_tier}"
-)
-DelayPrediction.supplier_business = model.Relationship(
-    f"{DelayPrediction} predicts for {Business}"
-)
-
-pred_data = model.data(read_csv(DATA_DIR / "delay_prediction.csv"))
-model.define(
-    dp := DelayPrediction.new(id=pred_data["ID"]),
-    dp.fiscal_quarter(pred_data["FISCAL_QUARTER"]),
-    dp.predicted_delay_prob(pred_data["PREDICTED_DELAY_PROB"]),
-    dp.risk_tier(pred_data["RISK_TIER"]),
-    dp.supplier_business(Business.lookup(id=pred_data["SUPPLIER_BUSINESS_ID"])),
-)
-
 # --------------------------------------------------
 # Stage 0: Blast-radius pre-analysis (directed Business graph)
 # --------------------------------------------------
 # Trace every supplier each high-priority customer transitively depends on.
 # This surfaces the exposure footprint BEFORE the MILP runs, so the
-# scenario analysis in Stage 3 can be read in context: "if supplier X is
+# scenario analysis in Stage 4 can be read in context: "if supplier X is
 # downgraded, the optimizer is rerouting around the demands listed here."
 
 print("=" * 70)
@@ -394,11 +383,186 @@ model.where(Site.id == cent_data["site_id"]).define(
 )
 
 # --------------------------------------------------
-# Stage 2: Rules -- supplier risk classification
+# Stage 2: Predictive -- GNN supplier delay-risk forecast
+# --------------------------------------------------
+# A GNN predicts per-supplier delay risk from the multi-year shipment corpus
+# (data/shipment_corpus.csv + temporal splits), wired by a relatedness graph
+# (data/shipment_edges.csv) so risk propagates upstream: a shipper with strong
+# own reliability is still flagged risky when an upstream supplier is unreliable.
+# Dual-mode -- the default reads the bundled data/delay_prediction.csv (no GPU),
+# while TRAIN_GNN=true retrains the model from scratch (needs a GPU engine).
+
+print(f"\n{'=' * 70}")
+print("STAGE 2: Predictive -- GNN Supplier Delay-Risk Forecast")
+print("=" * 70)
+
+if TRAIN_GNN:
+    print("\nTraining supplier delay-risk GNN from scratch...")
+
+    # Deferred import: the predictive stack loads only on the train path, so the
+    # default (bundled-predictions) run needs only base relationalai -- no GPU deps.
+    from relationalai.semantics.reasoners.predictive import GNN, PropertyTransformer
+
+    # Separate model so the corpus concepts never collide with the main
+    # ontology (its Shipment/Graph/Edge concepts stay untouched).
+    pred_model = Model("supply_chain_resilience_predictive")
+    PredConcept, PredRelationship = pred_model.Concept, pred_model.Relationship
+
+    # Homogeneous node type (Shipment) + an explicit relatedness edge list --
+    # the proven CSV-backed GNN shape. Secondary entities (supplier/sku/site)
+    # enter as denormalized features and via the edge structure, not as
+    # separate node tables.
+    CorpusShipment = PredConcept("CorpusShipment", identify_by={"id": String})
+    Related = PredConcept("Related")  # shipment-to-shipment edge list (src, dst)
+    TrainTable = PredConcept("TrainTable")
+    ValTable = PredConcept("ValTable")
+    TestTable = PredConcept("TestTable")
+
+    pred_model.define(
+        CorpusShipment.new(pred_model.data(read_csv(DATA_DIR / "shipment_corpus.csv")).to_schema())
+    )
+    pred_model.define(
+        Related.new(pred_model.data(read_csv(DATA_DIR / "shipment_edges.csv")).to_schema())
+    )
+    pred_model.define(
+        TrainTable.new(pred_model.data(read_csv(DATA_DIR / "shipment_train.csv")).to_schema())
+    )
+    pred_model.define(
+        ValTable.new(pred_model.data(read_csv(DATA_DIR / "shipment_val.csv")).to_schema())
+    )
+    pred_model.define(
+        TestTable.new(pred_model.data(read_csv(DATA_DIR / "shipment_test.csv")).to_schema())
+    )
+
+    # Task split (Test is unlabelled).
+    Train = PredRelationship(f"{CorpusShipment} has {Any:is_late}")
+    pred_model.define(Train(CorpusShipment, TrainTable.is_late)).where(
+        CorpusShipment.id == TrainTable.shipment_id
+    )
+    Validation = PredRelationship(f"{CorpusShipment} has {Any:is_late}")
+    pred_model.define(Validation(CorpusShipment, ValTable.is_late)).where(
+        CorpusShipment.id == ValTable.shipment_id
+    )
+    Test = PredRelationship(f"{CorpusShipment}")
+    pred_model.define(Test(CorpusShipment)).where(CorpusShipment.id == TestTable.shipment_id)
+
+    # Self-referential Shipment <-> Shipment graph from the relatedness edges.
+    gnn_graph = Graph(pred_model, directed=True, weighted=False)
+    GnnEdge = gnn_graph.Edge
+    corpus_ref = CorpusShipment.ref()
+    pred_model.define(GnnEdge.new(src=CorpusShipment, dst=corpus_ref)).where(
+        CorpusShipment.id == Related.src,
+        corpus_ref.id == Related.dst,
+    )
+
+    # Features -- per-shipment observables (label-derived columns dropped).
+    pt = PropertyTransformer(
+        continuous=[CorpusShipment.quantity, CorpusShipment.supplier_reliability],
+        category=[CorpusShipment.ship_month, CorpusShipment.ship_quarter],
+        drop=[
+            CorpusShipment.id, CorpusShipment.supplier_business_id, CorpusShipment.customer_business_id,
+            CorpusShipment.sku_id, CorpusShipment.origin_site_id, CorpusShipment.destination_site_id,
+            CorpusShipment.operation_id, CorpusShipment.order_date, CorpusShipment.ship_date,
+            CorpusShipment.expected_delivery_date, CorpusShipment.actual_delivery_date,
+            CorpusShipment.status, CorpusShipment.delay_days, CorpusShipment.fiscal_quarter,
+            CorpusShipment.fiscal_year, CorpusShipment.is_late,
+        ],
+    )
+
+    # Train + predict.
+    gnn = GNN(
+        exp_database=GNN_EXP_DATABASE,
+        exp_schema=GNN_EXP_SCHEMA,
+        graph=gnn_graph,
+        property_transformer=pt,
+        train=Train,
+        validation=Validation,
+        task_type="binary_classification",
+        eval_metric="roc_auc",
+        has_time_column=False,
+        device=GNN_DEVICE,
+        seed=GNN_SEED,
+        n_epochs=50,
+    )
+    gnn.fit()
+    CorpusShipment.predictions = gnn.predictions(domain=Test)
+
+    # Aggregate per-shipment probabilities to a per-supplier delay risk.
+    preds_df = (
+        select(
+            CorpusShipment.supplier_business_id.alias("supplier"),
+            CorpusShipment.predictions.probs.alias("prob"),
+        )
+        .where(CorpusShipment.predictions)
+        .to_df()
+    )
+    preds_df["prob"] = preds_df["prob"].astype(float)
+    per_supplier = preds_df.groupby("supplier")["prob"].mean().sort_values(ascending=False)
+
+    print("\n=== per-supplier predicted delay risk (top) ===")
+    print(per_supplier.head(8).round(3).to_string())
+
+    # (Re)write data/delay_prediction.csv from the GNN output.
+    def _tier(p):
+        return "HIGH" if p >= 0.30 else ("MEDIUM" if p >= 0.12 else "LOW")
+
+    _now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    _rows = []
+    for _supplier, _prob in per_supplier.items():
+        _prob = round(float(_prob), 3)
+        for _q in FORECAST_QUARTERS:
+            _rows.append({
+                "ID": f"PRED_{_supplier}_{_q.replace('-', '_')}",
+                "SUPPLIER_BUSINESS_ID": _supplier,
+                "FISCAL_QUARTER": _q,
+                "PREDICTED_DELAY_PROB": _prob,
+                "PREDICTED_AVG_DELAY_DAYS": round(_prob * 10.0, 1),
+                "CONFIDENCE": 0.85,
+                "RISK_TIER": _tier(_prob),
+                "MODEL_VERSION": "gnn_v3.0",
+                "CREATED_AT": _now,
+            })
+    DataFrame(_rows).to_csv(DELAY_PREDICTION_CSV, index=False)
+    print(f"\n[predictive] wrote {len(_rows)} rows to {DELAY_PREDICTION_CSV.name} "
+          f"({per_supplier.size} suppliers x {len(FORECAST_QUARTERS)} quarters, model gnn_v3.0)")
+else:
+    print(
+        f"\nUsing the bundled GNN predictions at {DELAY_PREDICTION_CSV.name}. "
+        "Set TRAIN_GNN=true to retrain the model from scratch."
+    )
+
+# DelayPrediction concept: GNN-predicted delay probabilities per supplier.
+# Loaded in BOTH modes from DELAY_PREDICTION_CSV -- this is the chain hand-off
+# the Rules stage reads. Defined on the MAIN model.
+DelayPrediction = model.Concept("DelayPrediction", identify_by={"id": String})
+DelayPrediction.fiscal_quarter = model.Property(
+    f"{DelayPrediction} for {String:fiscal_quarter}"
+)
+DelayPrediction.predicted_delay_prob = model.Property(
+    f"{DelayPrediction} has {Float:predicted_delay_prob}"
+)
+DelayPrediction.risk_tier = model.Property(
+    f"{DelayPrediction} has risk tier {String:risk_tier}"
+)
+DelayPrediction.supplier_business = model.Relationship(
+    f"{DelayPrediction} predicts for {Business}"
+)
+
+pred_data = model.data(read_csv(DELAY_PREDICTION_CSV))
+model.define(
+    dp := DelayPrediction.new(id=pred_data["ID"]),
+    dp.fiscal_quarter(pred_data["FISCAL_QUARTER"]),
+    dp.predicted_delay_prob(pred_data["PREDICTED_DELAY_PROB"]),
+    dp.risk_tier(pred_data["RISK_TIER"]),
+    dp.supplier_business(Business.lookup(id=pred_data["SUPPLIER_BUSINESS_ID"])),
+)
+
+# --------------------------------------------------
+# Stage 3: Rules -- supplier risk classification
 # --------------------------------------------------
 
 print(f"\n{'=' * 70}")
-print("STAGE 2: Rules -- Supplier Risk Classification")
+print("STAGE 3: Rules -- Supplier Risk Classification")
 print("=" * 70)
 
 # Late shipment analysis (from pandas, not RAI — keeps model size manageable).
@@ -433,7 +597,7 @@ model.where(
 ).define(Business.has_high_delay_risk())
 
 # Rule: Business is watch-level when it has either risk flag.
-# "Avoid" businesses (both flags) are hard-blocked in Stage 3; watch-level
+# "Avoid" businesses (both flags) are hard-blocked in Stage 4; watch-level
 # businesses get a soft risk surcharge in the objective.
 Business.is_watch_level = model.Relationship(f"{Business} is watch level")
 model.where(Business.is_unreliable()).define(Business.is_watch_level())
@@ -509,11 +673,11 @@ esc_n = int(esc_df["count"].iloc[0]) if len(esc_df) > 0 else 0
 print(f"\nEscalated demands (HIGH priority): {esc_n}")
 
 # --------------------------------------------------
-# Stage 3: Prescriptive -- risk-adjusted network flow
+# Stage 4: Prescriptive -- risk-adjusted network flow
 # --------------------------------------------------
 
 print(f"\n{'=' * 70}")
-print("STAGE 3: Prescriptive -- Risk-Adjusted Network Flow")
+print("STAGE 4: Prescriptive -- Risk-Adjusted Network Flow")
 print("=" * 70)
 
 

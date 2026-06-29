@@ -1,6 +1,6 @@
 # Runbook: Supply Chain Resilience — Multi-Reasoner Walkthrough
 
-Risk-adjusted network flow with disruption scenarios, traced across four RAI reasoning stages. Each stage writes properties back to the same ontology that downstream stages consume, so the optimizer can hard-block bad suppliers, surcharge watch suppliers, and weight bottleneck hubs using upstream graph and rules signals.
+Risk-adjusted network flow with disruption scenarios, traced across five RAI reasoning stages. Each stage writes properties back to the same ontology that downstream stages consume, so the optimizer can hard-block bad suppliers, surcharge watch suppliers, and weight bottleneck hubs using upstream graph, predicted delay risk, and rules signals.
 
 ## The chain
 
@@ -20,14 +20,19 @@ watch->avoid downgrade = +0.0% (optimizer already routed around it).
                               S006 West Coast DC 0.776, S003 PowerCell 0.735.
                               2 weakly-connected components.
   ─────────────────────────────────────────────────────────────────
-  STAGE 2  Rules        ──►  Business.is_unreliable           (1)
+  STAGE 2  Predictive  ──►  DelayPrediction.predicted_delay_prob
+                              GNN on the multi-year shipment corpus;
+                              upstream propagation can flag a reliable
+                              shipper whose upstream supplier is unreliable.
+  ─────────────────────────────────────────────────────────────────
+  STAGE 3  Rules        ──►  Business.is_unreliable           (1)
                               Business.has_high_delay_risk    (2)
                               Business.is_watch_level         (2)
                               Demand.is_escalated             (9)
                               [X] B017 avoid · [!] B003 watch
                               37 of 262 shipments late (14%).
   ─────────────────────────────────────────────────────────────────
-  STAGE 3  Prescriptive ──►  Operation.x_flow / Demand.x_unmet
+  STAGE 4  Prescriptive ──►  Operation.x_flow / Demand.x_unmet
                               OPTIMAL · $1,865 · 8 active flows · 0 unmet
                               + 2 scenario re-solves (S004 offline, watch->avoid)
   ─────────────────────────────────────────────────────────────────
@@ -95,19 +100,19 @@ Reasoner-routing plan: (1) Graph reachability for upstream supplier exposure, (2
 
 `Site.centrality` normalized [0,1]: S004=1.000, S006=0.776, S003=0.735; 2 weakly-connected components.
 
-### 5b. (Optional) Train the delay predictor from scratch
+### 6. Forecast supplier delay risk
 
 **Prompt**
 
 ```
-/rai-predictive-modeling + /rai-predictive-training Train a GNN to forecast per-supplier delay risk from the multi-year shipment corpus (data/shipment_corpus.csv + the shipment_{train,val,test}.csv temporal splits). Build the graph from Shipment->Supplier and Supplier->upstream-Supplier edges so risk propagates through the chain, predict per-shipment lateness, and aggregate to a per-supplier delay probability written to data/delay_prediction.csv.
+/rai-predictive-modeling + /rai-predictive-training How risky is each supplier's delivery heading into the coming quarters — learned from history rather than current reliability alone? Train a GNN on the multi-year shipment corpus (data/shipment_corpus.csv + the shipment_{train,val,test}.csv temporal splits), connect each shipment to others from its supplier and from its upstream suppliers so risk propagates through the chain, predict per-shipment lateness, and aggregate to a per-supplier delay probability persisted as DelayPrediction.predicted_delay_prob for the reliability screen.
 ```
 
 **Response**
 
-`supply_chain_resilience_predictive.py` is dual-mode. By default (`TRAIN_GNN` unset) the downstream stages use the bundled `data/delay_prediction.csv` — itself produced by a real GNN run — so the walkthrough runs fast with no GPU. To regenerate it from scratch (needs a GPU engine plus a Snowflake experiment schema), run `TRAIN_GNN=true python supply_chain_resilience_predictive.py`. The GNN learns each supplier's reliability, a recurring seasonal pattern, and upstream propagation through the supply graph — so a high-own-reliability shipper like B004 is still flagged risky because its upstream supplier B003 is unreliable, signal a per-supplier model misses. Its per-supplier output feeds the reliability classification below.
+Stage 2 of the combined script is dual-mode. By default (`TRAIN_GNN` unset) it loads the bundled `data/delay_prediction.csv` — itself produced by a real GNN run — so the chain runs fast with no GPU. Set `TRAIN_GNN=true` to retrain from scratch (needs a GPU predictive engine plus a Snowflake experiment schema), which rewrites that CSV. The GNN learns each supplier's reliability, a recurring seasonal pattern, and upstream propagation through the supply graph — so a high-own-reliability shipper is still flagged risky when its upstream supplier is unreliable, a signal a per-supplier model misses. Per-supplier delay probabilities land in `DelayPrediction.predicted_delay_prob`, which the reliability classification below consumes.
 
-### 6. Classify supplier reliability
+### 7. Classify supplier reliability
 
 **Prompt**
 
@@ -119,7 +124,7 @@ Reasoner-routing plan: (1) Graph reachability for upstream supplier exposure, (2
 
 `is_unreliable` (1: B017), `has_high_delay_risk` (2: B003, B017), `is_watch_level` (2), `Demand.is_escalated` (9).
 
-### 7. Solve risk-adjusted flow
+### 8. Solve risk-adjusted flow
 
 **Prompt**
 
@@ -131,7 +136,7 @@ Reasoner-routing plan: (1) Graph reachability for upstream supplier exposure, (2
 
 MILP on `Operation.x_flow` + `Demand.x_unmet`; objective = transport + risk surcharge + centrality weight + unmet penalty.
 
-### 8. Quantify disruption scenarios
+### 9. Quantify disruption scenarios
 
 **Prompt**
 
@@ -143,7 +148,7 @@ MILP on `Operation.x_flow` + `Demand.x_unmet`; objective = transport + risk surc
 
 Baseline OPTIMAL $1,865 / 8 flows / 0 unmet; S004 offline +88.5%; watch->avoid +0.0% (B003 already off optimal lanes).
 
-### 9. Persist solution concepts into the ontology
+### 10. Persist solution concepts into the ontology
 
 **Prompt**
 
