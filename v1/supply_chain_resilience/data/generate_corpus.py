@@ -17,6 +17,7 @@ Run:  python data/generate_corpus.py
 import csv
 import math
 import random
+from collections import defaultdict
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -107,7 +108,6 @@ random.Random(SEED).shuffle(rows)
 # Each shipment links to a few others sharing its supplier (so per-supplier risk
 # propagates) and to a few from its supplier's UPSTREAM suppliers (so an unreliable
 # upstream's risky labels reach a high-own-reliability shipper like B004 <- B003).
-from collections import defaultdict
 by_sup = defaultdict(list)
 for r in rows:
     by_sup[r["SUPPLIER_BUSINESS_ID"]].append(r["ID"])
@@ -118,29 +118,38 @@ for r in rows:
     peers = [p for p in by_sup.get(sup, []) if p != sid_]
     for _ in range(min(K_SAME, len(peers))):
         edges.append((sid_, erng.choice(peers)))
-    up_ships = [s for u in upstream.get(sup, ()) for s in by_sup.get(u, [])]
+    # sorted(): upstream values are sets, whose iteration order is hash-randomized
+    # per process — sort so the seeded erng.choice below yields reproducible edges.
+    up_ships = [s for u in sorted(upstream.get(sup, ())) for s in by_sup.get(u, [])]
     for _ in range(min(K_UP, len(up_ships))):
         edges.append((sid_, erng.choice(up_ships)))
 with open(DATA / "shipment_edges.csv", "w", newline="") as f:
-    w = csv.writer(f); w.writerow(["SRC", "DST"]); w.writerows(edges)
+    w = csv.writer(f)
+    w.writerow(["SRC", "DST"])
+    w.writerows(edges)
 
 cols = list(rows[0].keys())
 with open(DATA / "shipment_corpus.csv", "w", newline="") as f:
-    w = csv.DictWriter(f, fieldnames=cols); w.writeheader(); w.writerows(rows)
+    w = csv.DictWriter(f, fieldnames=cols)
+    w.writeheader()
+    w.writerows(rows)
 
 # temporal split by ship date
 def ymd(r): return r["SHIP_DATE"]
 label_cols = ["SHIPMENT_ID", "SHIP_DATE", "IS_LATE"]
 def write_split(name, rs):
     with open(DATA / f"shipment_{name}.csv", "w", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=label_cols); w.writeheader()
+        w = csv.DictWriter(f, fieldnames=label_cols)
+        w.writeheader()
         for r in rs:
             w.writerow({"SHIPMENT_ID": r["ID"], "SHIP_DATE": r["SHIP_DATE"], "IS_LATE": r["IS_LATE"]})
 ordered = sorted(rows, key=ymd)
 train = [r for r in ordered if r["SHIP_DATE"] < "2024-10-01"]
 val = [r for r in ordered if "2024-10-01" <= r["SHIP_DATE"] < "2024-11-01"]
 test = [r for r in ordered if r["SHIP_DATE"] >= "2024-11-01"]
-write_split("train", train); write_split("val", val); write_split("test", test)
+write_split("train", train)
+write_split("val", val)
+write_split("test", test)
 
 n_late = sum(r["IS_LATE"] for r in rows)
 print(f"corpus: {len(rows)} rows ({n_late} late, {n_late/len(rows):.1%}) | "
