@@ -152,7 +152,25 @@ The five-stage script loads `machines`, `technicians`, `qualifications`, `produc
 
 ## Model overview
 
-Core concepts: `Machine`, `Technician`, `Qualification`, `Product`, `ProductionRun`, `DowntimeEvent`, `FailurePrediction`, `MachineProductCapability`, and a generated `Period` (1..12). The prescriptive stage adds a `MachinePeriod` decision space (one entry per machine and period).
+One shared ontology threads all five stages. Each stage reads concepts and properties earlier stages wrote, and writes new ones for downstream stages.
+
+- **Key entities**: `Machine`, `Technician`, `Qualification`, `Product`, `ProductionRun`, `DowntimeEvent`, `FailurePrediction`, `MachineProductCapability`, and a generated `Period`; plus the derived `MachinePeriod` (the schedule decision space) and `MaintenancePlan` (singleton plan headline).
+- **Primary identifiers**: string ids on the base entities (`machine_id`, `technician_id`, `product_id`, `run_id`, `event_id`, `prediction_id`); composite keys on `Qualification` (`technician_id` + `machine_type`), `MachineProductCapability` (`machine_id` + `product_id`), and `MachinePeriod` (`machine_id` + period); integer `pid` on `Period`.
+- **Important invariants**: `failure_probability` is a fraction in `[0, 1]`; `criticality` is an integer from 1 to 5; `is_planned` is 0 or 1; durations, quantities, and costs are non-negative; `Machine.risk_tier` is one of Critical, Elevated, or Standard; the prescriptive decision variables are binary.
+
+| Concept | Identifier | Role |
+|---|---|---|
+| `Machine` | `machine_id` | The 50 machines (type, plant, location, remaining useful life, failure probability, criticality). Stages 2–4 enrich it with `risk_tier`, `bottleneck`, and coverage flags. |
+| `Technician` | `technician_id` | The 20 technicians, with base location and skill level. |
+| `Qualification` | `technician_id` + `machine_type` | Which technicians can service which machine type. |
+| `Product` | `product_id` | The 8 manufactured products. |
+| `ProductionRun` | `run_id` | Per-run planned/actual/good/waste quantities and speeds (feeds OEE and waste). |
+| `DowntimeEvent` | `event_id` | Downtime events with fault name, duration, and planned flag. |
+| `FailurePrediction` | `prediction_id` | Per-machine, per-period failure probability and predicted mode. |
+| `MachineProductCapability` | `machine_id` + `product_id` | Which machines can produce which products (the bipartite graph edges). |
+| `Period` | `pid` | Planning periods 1 to 12 (generated). |
+| `MachinePeriod` | `machine_id` + period | The machine-by-period maintenance decision space (prescriptive stage). |
+| `MaintenancePlan` | singleton | Persisted plan headline: objective, machines scheduled, periods used. |
 
 ## How it works
 
@@ -226,7 +244,12 @@ Replace the CSVs in `data/` with your own machines, technicians, production, and
 The thresholds at the top of `machine_maintenance.py` — period horizon, per-period bay limit, chronic/high-risk/overdue cutoffs — are constants you can adjust to your operation.
 
 ### Extend the model
-Add reasoners or stages: cluster machines by shared technicians, train a GNN on the sensor/downtime history for failure prediction, or add cross-training recommendations from `training_options` to relieve the coverage bottlenecks the what-if surfaces.
+Add reasoners or stages: cluster machines by shared technicians, train a GNN on the sensor/downtime history for failure prediction (set `USE_PRELOADED_PREDICTIONS = False`), or add cross-training recommendations from `training_options` to relieve the coverage bottlenecks the what-if surfaces.
+
+### Scale up / productionize
+- Swap the `data/` CSV bundle for `model.Table(...)` reads against your Snowflake tables — the concept definitions stay the same — so the model runs on live operational data.
+- Lengthen `PERIOD_HORIZON` and raise the per-period bay limit to match a real maintenance calendar; the prescriptive solve scales with the engine's solve budget.
+- For larger schedules, run the prescriptive stage on a gurobi-enabled engine; the formulation is unchanged.
 
 ## Troubleshooting
 
@@ -241,3 +264,14 @@ Make sure you activated the virtual environment and ran `python -m pip install .
 
 Run `rai init` to configure your Snowflake connection. Verify that the RAI Native App is installed and your user has the required permissions.
 </details>
+
+## Learn more
+
+- [Multi-reasoner workflows](https://docs.relational.ai/) — chaining reasoners and accreting enrichments on one ontology.
+- [PyRel v1 query language](https://docs.relational.ai/) — `model.where(...)`, `aggs`, and `.define()`.
+- [Graph reasoner](https://docs.relational.ai/) — node/edge construction and centrality algorithms.
+- [Prescriptive reasoner](https://docs.relational.ai/) — the `Problem` API, decision variables, constraints, and objectives.
+
+## Support
+
+- File issues at the RelationalAI templates repository.

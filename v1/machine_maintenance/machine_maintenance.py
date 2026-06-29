@@ -1,13 +1,15 @@
 """Machine Maintenance -- multi-reasoner template (PyRel v1).
 
-A 50-machine, 3-plant, 12-period manufacturing operation. The script threads four
-reasoners through a single ontology so each stage's enrichments feed the next:
+A 50-machine, 3-plant, 12-period manufacturing operation. The script threads five
+reasoning stages through a single ontology so each stage's enrichments feed the next:
 
-  Stage 1  Querying     -- OEE by plant, downtime drivers, failure ranking,
-                           waste rates, technician coverage.
+  Stage 1  Querying     -- OEE by plant, downtime drivers, waste rates,
+                           technician coverage.
   Stage 2  Rules        -- per-machine risk tier (chronic / high-risk / overdue).
   Stage 3  Graph        -- machine-product producibility bottlenecks.
-  Stage 4  Prescriptive -- preventive-maintenance schedule + a technician what-if.
+  Stage 4  Predictive   -- forward failure risk & mode (pre-loaded predictions;
+                           live GNN optional).
+  Stage 5  Prescriptive -- preventive-maintenance schedule + a technician what-if.
 
 Data is the bundled MANUFACTURING.PUBLIC sample (data/*.csv).
 
@@ -201,7 +203,7 @@ def banner(text):
 
 banner("STAGE 1  Querying")
 
-# --- Q1: OEE by plant = Availability x Performance x Quality ---
+# --- OEE by plant = Availability x Performance x Quality ---
 # Performance / quality / run counts come from production runs; unplanned downtime
 # from downtime events. Aggregated separately (different fact tables) then combined.
 runs_by_plant = model.where(ProductionRun.machine(Machine)).select(
@@ -232,7 +234,7 @@ oee["availability"] = (oee["n_runs"] * OEE_PLANNED_MIN_PER_RUN - oee["unplanned_
 oee["quality"] = oee["good_q"] / oee["actual_q"]
 oee["oee"] = oee["availability"] * oee["performance"] * oee["quality"]
 oee = oee.sort_values("oee", ascending=False)
-print("\n-- Q1: OEE by plant --")
+print("\n-- OEE by plant --")
 for _, row in oee.iterrows():
     print(
         f"   {row['facility']}: availability {row['availability']*100:.1f}%  "
@@ -240,7 +242,7 @@ for _, row in oee.iterrows():
         f"OEE {row['oee']*100:.1f}%"
     )
 
-# --- Q2: top downtime drivers by fault name ---
+# --- Top downtime drivers by fault name ---
 fault_dt = model.select(
     distinct(
         DowntimeEvent.fault_name.alias("fault_name"),
@@ -250,11 +252,11 @@ fault_dt = model.select(
 total_dt = fault_dt["dt_min"].sum()
 fault_dt["pct"] = 100 * fault_dt["dt_min"] / total_dt
 fault_dt = fault_dt.sort_values("dt_min", ascending=False)
-print(f"\n-- Q2: top downtime by fault name (total {total_dt:.0f} min) --")
+print(f"\n-- Top downtime by fault name (total {total_dt:.0f} min) --")
 for _, row in fault_dt.head(5).iterrows():
     print(f"   {row['fault_name']}: {row['dt_min']:.0f} min ({row['pct']:.1f}%)")
 
-# --- Q3: downtime by plant ---
+# --- Downtime by plant ---
 plant_dt = model.where(DowntimeEvent.machine(Machine)).select(
     distinct(
         Machine.facility.alias("facility"),
@@ -263,7 +265,7 @@ plant_dt = model.where(DowntimeEvent.machine(Machine)).select(
 ).to_df()
 plant_dt["pct"] = 100 * plant_dt["dt_min"] / plant_dt["dt_min"].sum()
 plant_dt = plant_dt.sort_values("dt_min", ascending=False)
-print("\n-- Q3: downtime by plant --")
+print("\n-- Downtime by plant --")
 for _, row in plant_dt.iterrows():
     print(f"   {row['facility']}: {row['dt_min']:.0f} min ({row['pct']:.1f}%)")
 
@@ -278,11 +280,11 @@ waste = model.where(ProductionRun.machine(Machine), ProductionRun.product(Produc
         ).alias("waste_rate"),
     )
 ).to_df().sort_values("waste_rate", ascending=False)
-print("\n-- Q5: worst waste rates by machine-product --")
+print("\n-- Worst waste rates by machine-product --")
 for _, row in waste.head(5).iterrows():
     print(f"   {row['machine_id']} + {row['product_name']} ({row['waste_rate']*100:.1f}%)")
 
-# --- Q7: machine types with fewest qualified technicians ---
+# --- Machine types with fewest qualified technicians ---
 tech_cov = model.select(
     distinct(
         Qualification.machine_type_str.alias("machine_type"),
@@ -291,7 +293,7 @@ tech_cov = model.select(
 ).to_df()
 tech_cov["n_techs"] = tech_cov["n_techs"].astype(int)
 tech_cov = tech_cov.sort_values("n_techs")
-print("\n-- Q7: qualified technicians per machine type --")
+print("\n-- Qualified technicians per machine type --")
 for _, row in tech_cov.iterrows():
     print(f"   {row['machine_type']}: {int(row['n_techs'])}")
 
@@ -341,7 +343,7 @@ tiers = model.select(
 ).to_df()
 tiers["n"] = tiers["n"].astype(int)
 tiers = tiers.sort_values("n", ascending=False)
-print("\n-- Q9: machine risk tiers --")
+print("\n-- Machine risk tiers --")
 for _, row in tiers.iterrows():
     print(f"   {row['tier']}: {int(row['n'])}")
 
@@ -393,7 +395,7 @@ bottlenecks = model.select(
 ).to_df()
 bottlenecks["product_count"] = bottlenecks["product_count"].astype(int)
 bottlenecks = bottlenecks.sort_values("bottleneck", ascending=False)
-print("\n-- Q8: top machine producibility bottlenecks (betweenness centrality) --")
+print("\n-- Top machine producibility bottlenecks (betweenness centrality) --")
 for _, row in bottlenecks.head(8).iterrows():
     print(
         f"   {row['machine_id']} ({row['machine_type']}): betweenness {row['bottleneck']:.4f}, "
@@ -540,7 +542,7 @@ sched = model.select(
     MachinePeriod.period_num.alias("pid"),
 ).where(MachinePeriod.machine(_sm), MachinePeriod.x_maintain(_vr), _vr > 0.5).to_df()
 sched["pid"] = sched["pid"].astype(int)
-_report_schedule("Q10/Q12 baseline schedule", sched, si)
+_report_schedule("Baseline schedule", sched, si)
 earliest = sched.sort_values("pid").head(5)
 print("   first jobs (riskiest, earliest): " + ", ".join(f"{r.machine_id}(p{r.pid})" for r in earliest.itertuples()))
 
@@ -583,7 +585,7 @@ sched2 = model.select(
     _sm2.machine_id.alias("machine_id"),
     MachinePeriod.period_num.alias("pid"),
 ).where(MachinePeriod.machine(_sm2), MachinePeriod.x_maintain_wif(_vr2), _vr2 > 0.5).to_df()
-print(f"\n-- Q11 what-if (T001 unavailable): status {si2.termination_status}, objective {si2.objective_value:.3f} --")
+print(f"\n-- What-if (T001 unavailable): status {si2.termination_status}, objective {si2.objective_value:.3f} --")
 print(f"   machines scheduled: {len(sched2)} of 50 (baseline {len(sched)}); objective delta {si.objective_value - si2.objective_value:.3f}")
 print(f"   machines that lose coverage: {len(dropped)}")
 for _, row in dropped.iterrows():
