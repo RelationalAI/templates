@@ -424,5 +424,3 @@ This is expected if one runner is cheapest and has enough concurrency. Check tha
 ## Support
 
 - File issues at the RelationalAI templates repository.
-</content>
-</invoke>

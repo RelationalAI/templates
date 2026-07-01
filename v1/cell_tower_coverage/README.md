@@ -335,5 +335,3 @@ Focus on the first changes most users will make.
 ## Support
 
 - File issues at the RelationalAI templates repository.
-</content>
-</invoke>
