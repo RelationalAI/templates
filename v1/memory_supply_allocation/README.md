@@ -1,6 +1,6 @@
 ---
 title: "Memory Supply Allocation"
-description: "Allocate constrained memory-chip supply across customers month by month over a rolling horizon, chaining four RelationalAI reasoners on one shared model. A supplier-capability forecast feeds a margin-maximizing optimization, protection rules set customer service floors, and graph path traversal plus what-if scenarios trace which suppliers and raw materials put the plan most at risk."
+description: "Allocate limited memory-chip supply across customers month by month to maximize margin while protecting key accounts. Also surfaces which suppliers and raw materials put the plan most at risk."
 featured: false
 experience_level: intermediate
 industry: "Technology & Telecom"

@@ -88,6 +88,34 @@ Local DuckDB execution relies on deploy mode, which the package currently flags 
    python transaction_screening_local.py
    ```
 
+5. Expected output (abbreviated). The suspects and the investigation set confirm a successful run — 6 of 54 accounts flag, and the review set expands to 8:
+
+   ```text
+   == Network overview ==
+    transactions  total_moved
+              75       870000
+
+   == Suspect accounts (rules) ==
+    suspect
+      C1001
+      C2001
+      C2002
+      C2003
+      C2004
+      C2005
+
+   == Investigation set (suspect or one hop from a suspect) ==
+    flagged_for_review
+      C1001
+      C1002
+      C1003
+      C2001
+      C2002
+      C2003
+      C2004
+      C2005
+   ```
+
 ## Template structure
 
 ```text
@@ -182,7 +210,7 @@ Adjust `STRUCTURING_FLOOR`, `STRUCTURING_CEILING`, and `LARGE_TRANSFER` at the t
 
 Add new derived relationships in the same `define()` and `where()` style to capture additional rules, then surface them in the queries at the bottom of the script.
 
-### Scale up
+### Scale up / productionize
 
 To move from local development to production scale, point `model.Table(...)` at a Snowflake table instead of the DuckDB connection. The ontology, rules, and queries stay the same. Because deploy mode on local DuckDB is flagged as experimental, confirm the support stance before relying on it for customer-facing work.
 

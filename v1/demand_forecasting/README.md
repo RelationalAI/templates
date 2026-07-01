@@ -160,6 +160,8 @@ Test-set RMSE (per (city, family, week)): 150.8997
         └── sales.csv               # ~27K daily (store, item, date) rows with unit_sales + onpromotion
 ```
 
+**Start here**: `python demand_forecasting.py` runs the full pipeline — graph build, GNN training, predictions, and weekly aggregation — end to end on the bundled CSVs.
+
 ## Sample data
 
 Two ways to feed this template:
@@ -407,6 +409,11 @@ model = Model("demand_forecasting_local_v2")  # bump on each re-run if needed
 ```
 </details>
 
+## Related templates
+
+- **`subscriber_retention`** — sibling Predictive template using a regression GNN on a homogeneous call graph (no time column); useful as a comparison for the simpler-graph case
+- **`fraud-detection`** — the canonical multi-reasoner GNN template (Graph + Rules + Predictive + Prescriptive); use as the reference for adding a Prescriptive optimization stage on top of forecasting predictions (e.g., truck-routing or replenishment optimization driven by predicted demand)
+
 ## Learn more
 
 ### Core concepts
@@ -425,8 +432,3 @@ model = Model("demand_forecasting_local_v2")  # bump on each re-run if needed
 ## Support
 
 - File issues at the RelationalAI templates repository.
-
-## Related templates
-
-- **`subscriber_retention`** — sibling Predictive template using a regression GNN on a homogeneous call graph (no time column); useful as a comparison for the simpler-graph case
-- **`fraud-detection`** — the canonical multi-reasoner GNN template (Graph + Rules + Predictive + Prescriptive); use as the reference for adding a Prescriptive optimization stage on top of forecasting predictions (e.g., truck-routing or replenishment optimization driven by predicted demand)

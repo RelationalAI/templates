@@ -18,11 +18,11 @@ tags:
 
 ## What this template is for
 
-Retailers face interconnected decisions: which items will sell, which customers are at risk of leaving, what discounts to offer, and how much inventory to stock. Traditionally these are solved in isolation -- demand forecasting in one silo, pricing optimization in another, supply planning is a third. This template shows how to unify them in a single **predict-then-optimize** pipeline using RelationalAI.
+Retailers face interconnected decisions: which items will sell, which customers are at risk of leaving, what discounts to offer, and how much inventory to stock. Traditionally these are solved in isolation -- demand forecasting in one silo, pricing optimization in another, supply planning a third. Solved separately, they pull against each other: a markdown plan that ignores the demand forecast, or an inventory plan that ignores the markdowns, leaves revenue on the table. This template unifies them so predicted demand flows straight into the pricing and inventory decisions that depend on it.
 
-**Start with `retail_planning_local.py`** -- it trains a real sales-regression GNN on a bundled H&M subset (CPU, no external data), aggregates predictions per article, and runs both optimizers. A few minutes end-to-end. It's the quickest way to see the whole pattern working.
+**Graph neural networks predict article demand and customer churn, and those predictions become the parameters of a markdown-pricing and inventory optimization** -- a single predict-then-optimize pipeline on one shared ontology, so the optimizer prices and plans against learned demand rather than static estimates.
 
-**Then adapt the pattern to your own Snowflake data** using `retail_planning.py` as a reference. It trains three graph neural networks (GNNs) — sales regression, customer-churn classification, and user-article link prediction — against the full Kaggle H&M dataset in Snowflake, aggregates all three signals into an adjusted demand estimate, and feeds that into the same two optimizers. The H&M pipeline is the worked example; the structure — graph concepts, then GNN tasks, then an aggregation bridge, then prescriptive constraints — is what carries over to your own retail, pricing, or demand-planning data (see the *Pipeline stages* diagram under *Model overview*).
+The bundled H&M dataset is the worked example; the structure -- graph concepts, then GNN tasks, then an aggregation bridge, then prescriptive constraints -- is what carries over to your own retail, pricing, or demand-planning data (see the *Pipeline stages* diagram under *Model overview*).
 
 ## Who this is for
 
@@ -219,6 +219,10 @@ The H&M core data (customers, articles, transactions) comes from Snowflake, sour
 - **Article** (`article_id`): Products with rich metadata (category hierarchy, color, department, description)
 - **Transaction**: Purchase events linking customers to articles with price and date
 
+**Primary identifiers**: `Customer.customer_id`, `Article.article_id`, and `Week.num` / `Discount.level` identify their rows; the optimizer concepts key on the matching article id (`OptArticle.opt_article_id` and `ProdCapacity.pc_article_id` both equal an `article_id`). A `Transaction` is identified by its `(customer_id, article_id, date)` combination.
+
+**Important invariants**: `opt_article_id` and `pc_article_id` must match real `article_id` values that carry GNN predictions; the discount tiers include a 0% level (feasible starting point) and only increase across weeks (price ladder); prices, costs, inventory, and demand are non-negative.
+
 ### Pipeline stages
 
 ```text
@@ -240,43 +244,43 @@ splits. Churn and purchase are omitted from the local aggregation step.
 
 **OptArticle** -- Articles in the optimizer's scope, linking GNN predictions to pricing/inventory data.
 
-| Property | Type | Notes |
-|---|---|---|
-| `opt_article_id` | integer | Identifying; matches `article_id` |
-| `name` | string | Human-readable product name |
-| `initial_price` | float | Starting price before discounts |
-| `cost` | float | Unit cost |
-| `initial_inventory` | integer | Available stock |
-| `salvage_rate` | float | Fraction of price recovered for unsold units |
-| `predicted_sales` | float | From item-sales GNN |
-| `avg_buyer_churn` | float | Average churn probability of recent buyers |
-| `avg_purchase_score` | float | Average purchase prediction score across predicted buyers |
-| `adjusted_demand` | float | `predicted_sales * (1 - churn_weight * churn) * (1 + purchase_weight * score)` |
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `opt_article_id` | integer | Yes | Matches `article_id` |
+| `name` | string | No | Human-readable product name |
+| `initial_price` | float | No | Starting price before discounts |
+| `cost` | float | No | Unit cost |
+| `initial_inventory` | integer | No | Available stock |
+| `salvage_rate` | float | No | Fraction of price recovered for unsold units |
+| `predicted_sales` | float | No | From item-sales GNN |
+| `avg_buyer_churn` | float | No | Average churn probability of recent buyers |
+| `avg_purchase_score` | float | No | Average purchase prediction score across predicted buyers |
+| `adjusted_demand` | float | No | `predicted_sales * (1 - churn_weight * churn) * (1 + purchase_weight * score)` |
 
 **Discount** -- Markdown tiers with demand response.
 
-| Property | Type | Notes |
-|---|---|---|
-| `level` | integer | Identifying; ordered tier (0 = no discount) |
-| `discount_pct` | float | Percentage off initial price |
-| `demand_lift` | float | Multiplier on base demand |
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `level` | integer | Yes | Ordered tier (0 = no discount) |
+| `discount_pct` | float | No | Percentage off initial price |
+| `demand_lift` | float | No | Multiplier on base demand |
 
 **Week** -- Planning periods with seasonality.
 
-| Property | Type | Notes |
-|---|---|---|
-| `num` | integer | Identifying; week number |
-| `demand_multiplier` | float | Seasonal adjustment factor |
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `num` | integer | Yes | Week number |
+| `demand_multiplier` | float | No | Seasonal adjustment factor |
 
 **ProdCapacity** -- Per-article production parameters for demand planning.
 
-| Property | Type | Notes |
-|---|---|---|
-| `pc_article_id` | integer | Identifying; matches `article_id` |
-| `max_production_per_week` | integer | Production cap |
-| `production_cost` | float | Cost per unit produced |
-| `holding_cost_per_week` | float | Cost per unit in inventory per week |
-| `pc_initial_inventory` | float | Starting stock for demand planner |
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `pc_article_id` | integer | Yes | Matches `article_id` |
+| `max_production_per_week` | integer | No | Production cap |
+| `production_cost` | float | No | Cost per unit produced |
+| `holding_cost_per_week` | float | No | Cost per unit in inventory per week |
+| `pc_initial_inventory` | float | No | Starting stock for demand planner |
 
 ## How it works
 
@@ -362,6 +366,13 @@ dp.minimize(prod_cost_total + hold_cost_total + unmet_cost_total)
 - **Category-level budgets**: group articles by department and limit total discount exposure per category.
 - **Multi-site planning**: extend `ProdCapacity` with a site dimension and add cross-site transfer variables.
 - **Scenario analysis**: wrap the demand planner in a loop over different planning horizons (see `demand_planning_temporal` template for the pattern).
+
+### Scale up / productionize
+
+- Move from the bundled `data/hm_mini/` CSVs to your full Snowflake dataset by wiring `retail_planning.py` at your customer / article / transaction tables and task splits (see *Adapting to your own Snowflake data* under Quickstart).
+- Train the three GNNs on a GPU-enabled RAI engine; the local sales-only run is CPU-sized for the mini subset and grows well beyond it on GPU.
+- Pin `relationalai` (see Prerequisites) and keep `SEED` fixed so training and solves stay reproducible across environments.
+- Schedule the pipeline as a recurring job once table references and grants are in place; the GNN experiment schema and change tracking configured in Quickstart carry over unchanged.
 
 ## Troubleshooting
 

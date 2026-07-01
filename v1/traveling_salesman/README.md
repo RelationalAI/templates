@@ -1,6 +1,6 @@
 ---
 title: "Traveling Salesman"
-description: "Find the shortest route that visits every city exactly once and returns home. Solves the traveling salesman problem with the Miller-Tucker-Zemlin subtour-elimination formulation as a mixed-integer program."
+description: "Find the shortest route that visits every city exactly once and returns home. A self-contained starting point for building route optimization on RelationalAI."
 featured: false
 experience_level: intermediate
 industry: "Supply Chain & Logistics"
@@ -224,25 +224,6 @@ problem.minimize(total_dist)
 - The MTZ formulation is compact and works well for small to medium instances (up to roughly 50 nodes). Its subtour-elimination constraints grow with the square of the node count, so solves slow down as instances grow.
 - For production-scale routing (100+ stops), move to specialized TSP solvers or cutting-plane / branch-and-cut formulations.
 
-## Learn more
-
-### Core concepts
-
-- [Prescriptive reasoning](https://docs.relational.ai/) — the `Problem` API, decision variables, constraints, and objectives used here.
-- [PyRel v1 modeling](https://docs.relational.ai/) — concepts, properties, and deriving one concept from another (nodes from edges).
-
-### Language / modeling reference
-
-- [Constraints and objectives](https://docs.relational.ai/) — `satisfy()`, `require()`, `minimize()`, and per-group aggregation with `.per(...)`.
-
-### CLI / SDK guides
-
-- [RelationalAI Python SDK](https://docs.relational.ai/) — installing and configuring the `relationalai` package and connecting to Snowflake.
-
-## Support
-
-- File issues at the RelationalAI templates repository.
-
 ## Troubleshooting
 
 <details>
@@ -277,3 +258,22 @@ problem.minimize(total_dist)
 - For production-scale TSP (100+ cities), consider specialized TSP solvers or cutting-plane approaches.
 
 </details>
+
+## Learn more
+
+### Core concepts
+
+- [Prescriptive reasoning](https://docs.relational.ai/) — the `Problem` API, decision variables, constraints, and objectives used here.
+- [PyRel v1 modeling](https://docs.relational.ai/) — concepts, properties, and deriving one concept from another (nodes from edges).
+
+### Language / modeling reference
+
+- [Constraints and objectives](https://docs.relational.ai/) — `satisfy()`, `require()`, `minimize()`, and per-group aggregation with `.per(...)`.
+
+### CLI / SDK guides
+
+- [RelationalAI Python SDK](https://docs.relational.ai/) — installing and configuring the `relationalai` package and connecting to Snowflake.
+
+## Support
+
+- File issues at the RelationalAI templates repository.

@@ -145,7 +145,13 @@ The bundled corpus is a serialized-unit manufacturing genealogy for a consumer-e
 
 The model represents a manufacturing genealogy: finished units built from material lots through a multi-tier bill of materials, each with a full process history.
 
-The genealogy is the backbone: a built `Lot` consumes its input lots, so following those links from a finished unit reaches every material beneath it. The sections below document the model concept by concept.
+The genealogy is the backbone: a built `Lot` consumes its input lots, so following those links from a finished unit reaches every material beneath it.
+
+- **Key entities**: `SKU`, `Lot`, `Unit`, `Machine`, and `Factor` (a candidate root cause — any lot, machine, or shift, put on a common footing); plus a `DiagnosisResult` summary the prescriptive stage writes back.
+- **Primary identifiers**: every concept carries a string `id` (for example `LOT::SP-0423` on `Factor`); the genealogy and process history are threaded by relationships (`Lot consumes Lot`, `Unit consumes Lot`, `Unit ran on Machine`) rather than shared keys.
+- **Important invariants**: `Unit.defective` is `0` or `1`; `Factor.lift` is the touched-unit defect rate over the plant baseline (≈ 1.0 for non-causal high-volume factors); the `is_root_cause` decision variable is binary; a defective unit is either explained by a named cause it touches or marked unexplained.
+
+The sections below document the model concept by concept.
 
 ### SKU
 
@@ -358,6 +364,12 @@ The diagnosis names a contaminated solder-paste lot (`SP-0423`) and a reflow ove
 
 - Run `python generate_data.py` to rebuild the sample corpus. Edit the planted causes, decoys, and volumes near the top of the file to author your own scenario.
 - The timeline step is a natural place to add a more formal change-point test; the contrast step is where you would add a statistical significance test alongside the lift threshold.
+
+### Scale up / productionize
+
+- **Point at Snowflake tables.** Swap the CSV loads for `model.Table(...)` references to your traceability tables (genealogy, process history, test results). The graph, rules, and optimization stages are unchanged. Size the prescriptive engine to the number of suspect factors and defective units — the set-cover grows with those, not with total production volume.
+- **Schedule the investigation.** Wire the pipeline into a yield-monitoring cadence so a diagnosis runs whenever the failure timeline crosses its onset threshold, and persist the `DiagnosisResult` and `is_root_cause` flags for downstream review.
+- **Pin dependencies for reproducibility.** Keep the `relationalai` version pinned in `pyproject.toml` and the data-generator seed fixed so a given corpus yields the same diagnosis run to run.
 
 ## Troubleshooting
 

@@ -1,6 +1,6 @@
 ---
 title: "Energy Grid Planning"
-description: "AI data center interconnection planning on the ERCOT (Texas) grid: demand forecasting, grid-vulnerability analysis, compliance rules, and multi-objective optimization."
+description: "Plan how to connect AI data centers to the Electric Reliability Council of Texas (ERCOT) power grid. Forecasts demand, finds vulnerable parts of the grid, applies compliance rules, and balances competing objectives to recommend where to interconnect."
 featured: true
 experience_level: intermediate
 industry: "Energy & Utilities"

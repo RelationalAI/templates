@@ -90,25 +90,13 @@ Built using **graph analysis** (eigenvector centrality, weakly connected compone
 
 6. Expected output (a few lines confirm a successful run):
    ```text
-   ==================================================
-   Stage 1a: Eigenvector Centrality
-   ==================================================
-     Chicago_Hub  WAREHOUSE  MIDWEST    0.631380
-      Detroit_DC  WAREHOUSE  MIDWEST    0.511638
-   ...
-
-   ==================================================
+   Stage 1a: Eigenvector Centrality  (Chicago_Hub and Detroit_DC rank highest)
    Stage 2: Inventory Allocation
-   ==================================================
-
-   Status: OPTIMAL
-   Total holding cost: $13713.29
+     Status: OPTIMAL
+     Total holding cost: $13713.29
    ```
 
-   The graph analysis identifies Chicago_Hub (0.63) and Detroit_DC (0.51) as the
-   most central network nodes; the optimizer then allocates more inventory to
-   those high-centrality warehouses while stores receive exactly their minimum
-   demand. The full printout and a step-by-step walkthrough are in `runbook.md`.
+   The full printout and a step-by-step walkthrough are in `runbook.md`.
 
 ## Template structure
 

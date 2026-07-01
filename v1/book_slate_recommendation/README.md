@@ -1,6 +1,6 @@
 ---
 title: "Book Slate Recommendation"
-description: "Pick K books per reader and order them by slot under diversity, freshness, and explainability rules. Combines knowledge-graph path walks, graph analytics, and constraint-programming optimization in one declarative model."
+description: "Recommend a ranked slate of books for each reader that balances relevance, diversity, and freshness. Produces an ordered, explainable set of picks per reader."
 featured: false
 private: true
 experience_level: advanced

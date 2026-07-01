@@ -191,6 +191,42 @@ About the bundled mini set:
 - **Subscriber** (`sub_id`): one customer with denormalized plan attributes (`plan_type`, `monthly_rate_usd`, `data_limit_gb`, `term_months`, `auto_renew`, etc.) plus demographic fields (`segment`, `subscriber_type`, `lifetime_value_usd`, `nps_score`, `signup_date`). Enriched at pipeline time with `pagerank` and `outgoing_calls` / `incoming_calls`.
 - **Call**: one call record between two subscribers; serves only as the edge intermediary for the PageRank graph and the call-volume aggregates. Has no identity property — only the edges matter downstream.
 
+**Primary identifiers**: `Subscriber.sub_id` (string, unique per customer). `Call` has no key of its own — its `caller_sub_id` / `callee_sub_id` reference `Subscriber.sub_id` to form call-graph edges.
+
+**Important invariants**: `churn_risk_score` is a fraction in `[0, 1]` (the regression target); every `Call`'s `caller_sub_id` and `callee_sub_id` must resolve to an existing `Subscriber.sub_id`; each subscriber row carries exactly one denormalized plan (1:1 join); `sub_id`, `postal_code`, and the target are dropped from the feature set before training.
+
+### Concepts
+
+**Subscriber** — one customer row with denormalized plan attributes and demographics; enriched at pipeline time with graph and call-volume features, then scored by the GNN.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `sub_id` | string | Yes | Unique per customer; dropped from features (graph carries identity) |
+| `subscriber_type` | string | No | Categorical feature |
+| `segment` | string | No | Categorical feature; drives the stratified split and top-N report |
+| `status` | string | No | Categorical feature |
+| `plan_type` | string | No | Categorical feature; denormalized from the contract |
+| `auto_renew` | string | No | Categorical feature; denormalized from the contract |
+| `lifetime_value_usd` | float | No | Continuous feature |
+| `monthly_rate_usd` | float | No | Continuous feature; denormalized from the contract |
+| `early_termination_fee_usd` | float | No | Continuous feature |
+| `nps_score` | integer | No | Integer feature |
+| `data_limit_gb` | integer | No | Integer feature; denormalized from the contract |
+| `term_months` | integer | No | Integer feature; denormalized from the contract |
+| `signup_date` | datetime | No | Datetime feature |
+| `postal_code` | integer | No | Dropped (high-cardinality; noise as a feature) |
+| `churn_risk_score` | float | No | Regression target (0-1); dropped from features |
+| `pagerank` | float | No | **Graph stage** PageRank on the call graph |
+| `outgoing_calls`, `incoming_calls` | integer | No | **Graph stage** `count(Call).per(Subscriber)` aggregates |
+| `predictions` | Relationship | — | **Predictive stage** GNN output; `predicted_value` per subscriber |
+
+**Call** — one call-detail record between two subscribers; the edge intermediary for the PageRank graph and the call-volume aggregates. No primary key.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `caller_sub_id` | string | No | Foreign key into `Subscriber.sub_id` (edge source) |
+| `callee_sub_id` | string | No | Foreign key into `Subscriber.sub_id` (edge destination) |
+
 ### Pipeline stages
 
 ```text
@@ -318,6 +354,16 @@ results_df = (
 
 ## Customize this template
 
+### Use your own data
+
+- **Repoint to your own subscriber data** — replace the CSVs under `data/telco_mini/` with your real subscriber/plan/CDR exports (same column names) and re-run.
+
+### Tune parameters
+
+- **Adjust the segment stratification** — the default split stratifies by `SEGMENT`. For very imbalanced churn outcomes, stratify by the target instead (or in addition).
+
+### Extend the model
+
 - **Switch to binary churn classification** — change `task_type="regression"` → `"binary_classification"` and set the train/val target to a Boolean churn outcome instead of a continuous risk score. The graph + rules stages stay identical.
 - **Add weights to the call graph** — set `weighted=True` on the `Graph(...)` call and add an aggregated edge-weight property (e.g. total call-duration or call-count per pair). The PageRank scores will reflect call intensity, not just topology.
 - **Bring more features in** — the bundled `billing_events.csv` is not used by the default pipeline. To wire it in as a billing-driven feature, add a `BillingEvent` concept and derive a `Subscriber.late_payment_count` rule from `PAYMENT_STATUS = "OVERDUE"`, then add it to the integer features in `PropertyTransformer`:
@@ -339,10 +385,8 @@ results_df = (
 
   # then add Subscriber.late_payment_count to PropertyTransformer(integer=[...])
   ```
-- **Adjust the segment stratification** — the default split stratifies by `SEGMENT`. For very imbalanced churn outcomes, stratify by the target instead (or in addition).
-- **Repoint to your own subscriber data** — replace the CSVs under `data/telco_mini/` with your real subscriber/plan/CDR exports (same column names) and re-run.
 
-### Run on your own Snowflake data
+### Scale up / productionize
 
 The bundled CSVs are loaded via `model.data(df)` for a no-setup local demo. To run against full data living in Snowflake instead:
 

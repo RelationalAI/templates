@@ -19,7 +19,7 @@ Water utilities must distribute water from multiple sources — reservoirs, grou
 
 The goal is the minimum-cost allocation that still meets every user's demand once realistic, utilization-dependent losses are accounted for.
 
-**A prescriptive reasoner solves this as a network-flow problem with source-capacity limits, per-connection flow bounds, and demand constraints whose nonlinear loss term makes the problem quadratic — solved with the Ipopt nonlinear solver.**
+**A prescriptive reasoner finds the least-cost allocation that meets every demand while honoring source capacities and utilization-dependent transmission losses.**
 
 ## Who this is for
 
@@ -96,8 +96,7 @@ Built using **prescriptive reasoning** (nonlinear program over continuous flow v
      ...
    ```
 
-   Groundwater is not used — the solver routes all flow through the cheaper
-   reservoirs. The full printout and a step-by-step walkthrough are in `runbook.md`.
+   The full printout and a step-by-step walkthrough are in `runbook.md`.
 
 ## Template structure
 
@@ -162,6 +161,8 @@ A single shared ontology holds the network. The `Connection` concept carries the
 | `x_flow` | Float | No | Flow allocated by the solver (decision variable) |
 
 ## How it works
+
+This is a network-flow problem with source-capacity limits, per-connection flow bounds, and demand constraints whose nonlinear loss term makes it quadratic, solved with the Ipopt nonlinear solver.
 
 ### 1. Define sources, users, and connections
 

@@ -17,7 +17,7 @@ Wildlife conservation requires coordination across many organizations — non-go
 
 This template discovers natural collaboration clusters — based on geography, species focus, or organizational mission — and identifies the hub organizations within each cluster that are well-positioned to lead coordination and resource-sharing efforts.
 
-**A graph reasoner detects communities with the Louvain algorithm and ranks organizations by degree centrality, writing both back onto the network for querying and visualization.**
+**A graph reasoner turns a raw partnership network into a coordination map — the collaboration clusters that already exist and the hub organizations best placed to broker resources across them.**
 
 ## Who this is for
 - **Beginners** who want to learn community detection with a real-world use case

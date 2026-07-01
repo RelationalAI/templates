@@ -187,41 +187,17 @@ external data, no GPU). Exact scores shift a little with numerical noise
 between CPU and GPU runs, but the structure and magnitude are consistent.
 
 ```text
-=== Fraud class balance (train split) ===
-  n=11498  fraud=4339  fraud_rate=37.7%
-  Baseline ROC_AUC = 0.5
-
-============================================================
-Stage 3: Predictive -- fraud binary-classification GNN (CPU)
-============================================================
-=== Start GNN Training ===
-  ✓ Step 1 completed (~20s)   # prepare dataset + GNN tables
-  ✓ Step 2 completed (~2s)    # trainer config
-  ✓ Step 3 completed (~5s)    # submit training job
-=== Start GNN Prediction ===
-  ✓ GNN Prediction Complete (~85s)
-
-============================================================
 Stage 5: Prescriptive -- investigator-budget allocation
-============================================================
-MILP Status: OPTIMAL
-Captured expected loss (optimal within budget): $111,854,667
-  MILP (cost-aware + per-receiver cap) -> $111,854,667 captured across the audit queue
-  Naive top-by-alert-score (budget only, same hours) -> $67,947,657 captured across 16 audits
+  MILP Status: OPTIMAL
+  MILP (cost-aware + per-receiver cap) -> $111,854,667 captured
+  Naive top-by-alert-score (same 80 hours)  -> $67,947,657 captured
   MILP uplift over naive sort: $+43,907,010
-
-=== Selected audit queue ===
-  16 audits scheduled; 80.0/80 investigator hours used
-  By trans_type:
-    TRANSFER    11
-    CASH_OUT     5
 ```
 
 The MILP captures ~65% more expected loss than a naive sort-by-alert-score
 under the same 80-hour budget, because it trades off per-audit cost (audit
 hours scale with transaction size) against catch value and respects the
-per-receiver cap. Natural type diversity falls out of the solve without any
-per-type constraint.
+per-receiver cap.
 
 ## Template structure
 

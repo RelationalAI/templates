@@ -101,55 +101,11 @@ Supply chain networks route goods from suppliers through factories and distribut
 
 6. Expected output:
    ```text
-   ======================================================================
-   STAGE 1: Graph -- Network Criticality
-   ======================================================================
-
-   Connected components: 2
-
-   Top critical sites (eigenvector centrality):
-     S004 TechAssembly Factory (FACTORY, APAC): centrality=0.5016
-     S006 West Coast DC (DISTRIBUTION_CENTER, AMERICAS): centrality=0.3895
-     S003 PowerCell Facility (FACTORY, APAC): centrality=0.3688
-     ...
-
-   ======================================================================
-   STAGE 2: Rules -- Supplier Risk Classification
-   ======================================================================
-
-   Late shipments: 37 of 262 (14%)
-     B006: 7 late shipments
-     B007: 5 late shipments
-     ...
-
-   Supplier risk classification:
-     [!] B003 PowerCell Ltd: reliability=0.81, class=watch
-     [ ] B005 GlobalBuild Inc: reliability=0.85, class=reliable
-     [ ] B001 ChipTech Industries: reliability=0.95, class=reliable
-     ...
-
-   Escalated demands (HIGH priority): 9
-
-   ======================================================================
+   STAGE 1: Graph -- Network Criticality        (top critical sites ranked)
+   STAGE 2: Rules -- Supplier Risk Classification (late shipments, risk classes)
    STAGE 3: Prescriptive -- Risk-Adjusted Network Flow
-   ======================================================================
-
-     [Baseline]
-     Status: OPTIMAL
-     Total cost: 1,865.00
-     Active flows: 8
-     All demand satisfied
-
-   ======================================================================
-   SCENARIO ANALYSIS
-   ======================================================================
-
-   SCENARIO COMPARISON
-     Scenario                  Status                Cost        Unmet
-     -----------------------------------------------------------------
-     Baseline                  OPTIMAL            1,865.00          0
-     Site S004 offline         OPTIMAL            3,515.00 (+88.5%)          0
-     Watch->Avoid              OPTIMAL            1,865.00 (0.0%)          0
+     Status: OPTIMAL   Total cost: 1,865.00   All demand satisfied
+   SCENARIO COMPARISON: Baseline vs. Site S004 offline vs. Watch->Avoid
    ```
 
 ## Template structure

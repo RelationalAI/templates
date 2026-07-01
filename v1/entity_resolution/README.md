@@ -153,13 +153,13 @@ A raw policy record before resolution. `email`, `phone`, `date_of_birth`, and `g
 
 One real insured, created from the distinct party keys.
 
-| Property | Type | Notes |
-|---|---|---|
-| `key` | int | Identifying; the party's representative record id |
-| `total_exposure` | float | Sum of coverage across the party's resolved policies |
-| `is_over_limit` | flag | Total exposure exceeds the accumulation limit |
-| `excess` / `premium` | float | Excess over the limit and premium to cede it (breached parties) |
-| `cede` | float (binary) | Prescriptive decision: cede this party to reinsurance (Stage 3) |
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `key` | int | Yes | The party's representative record id |
+| `total_exposure` | float | No | Sum of coverage across the party's resolved policies |
+| `is_over_limit` | flag | No | Total exposure exceeds the accumulation limit |
+| `excess` / `premium` | float | No | Excess over the limit and premium to cede it (breached parties) |
+| `cede` | float (binary) | No | Prescriptive decision: cede this party to reinsurance (Stage 3) |
 
 ## How it works
 

@@ -39,12 +39,10 @@ This template shows how to express that rulebook as declarative logic on a four-
 
 ## What's included
 
-- `commercial_underwriting.py` — main script (single end-to-end run)
-- `data/insured_entities.csv` — 8 insured businesses across 5 industries
-- `data/policies.csv` — 8 commercial property policies (one per insured)
-- `data/locations.csv` — 11 scheduled locations across the policies (some entities have multiple)
-- `data/coverages.csv` — 33 coverage lines (BUILDING / BUSINESS_PERSONAL_PROPERTY / BUSINESS_INTERRUPTION at every location)
-- `pyproject.toml` — Python package configuration with dependencies
+- **Model**: the four-level `InsuredEntity` / `Policy` / `Location` / `Coverage` ontology, eight lower-level eligibility rules, two entity-level rollup rules (decline factors, marginal factors), and four mutually exclusive risk-tier subtype concepts — all as declarative derived Relationships.
+- **Runner**: `commercial_underwriting.py` — a single Python script that loads the CSVs, applies the rules, and prints results end to end.
+- **Sample data**: four CSVs under `data/` — 8 insured businesses across 5 industries (`insured_entities.csv`), 8 commercial property policies one per insured (`policies.csv`), 11 scheduled locations (`locations.csv`), and 33 coverage lines at every location (`coverages.csv`).
+- **Outputs**: the printed eligibility flag matrix, the final per-entity tier classification, and the premium-by-tier business rollup.
 
 ## Prerequisites
 
@@ -173,6 +171,10 @@ The eight insureds are designed so each tier is represented and every rule fires
 | GasStation Group | RETAIL | 10 | Both locations are GAS_STATION (high-risk occupancy) → **Non-Standard** |
 
 ## Model overview
+
+- **Key entities**: `InsuredEntity`, `Policy`, `Location`, and `Coverage` — a four-level property/casualty hierarchy, plus four mutually exclusive risk-tier subtype concepts (`RiskTier_Decline`, `RiskTier_NonStandard`, `RiskTier_Standard`, `RiskTier_Preferred`) that extend `InsuredEntity`.
+- **Primary identifiers**: each level has an integer `id`; the hierarchy is threaded by relationships (`Policy.insured_entity`, `Location.policy`, `Coverage.location`) rather than by shared keys.
+- **Important invariants**: every policy belongs to exactly one insured entity, every location to one policy, every coverage to one location; the ITV check applies to `BUILDING` coverages only; the four risk tiers partition the `InsuredEntity` set (each entity lands in exactly one).
 
 ### InsuredEntity
 
@@ -350,6 +352,12 @@ All thresholds are at the top of the script under `# Configure inputs`:
 - **Add a Catastrophe-Exposure rule** that flags locations in flood zones, earthquake zones, or hurricane-prone counties. Joins to a separate `CatastropheZone` concept.
 - **Pricing factor derivation.** Currently the template only classifies risk tier. Add a derived `Property` (not `Relationship`) on `Policy` for `pricing_factor`, computed from a sum of additive multipliers per matched flag. See the `derivation` rule pattern in the [`shipment_compliance`](../shipment_compliance/) template.
 - **Subline expansion.** Add `GENERAL_LIABILITY`, `UMBRELLA`, `WORKERS_COMP` policies alongside `COMMERCIAL_PROPERTY`. The four-level structure carries over directly.
+
+### Scale up / productionize
+
+- **Point at Snowflake tables.** Swap the CSV `model.data(...)` calls for `model.Table(...)` references to your submission tables; the ontology, rules, and tier classification are unchanged. Size the RAI engine to the submission volume — rules-based classification is lightweight, so a small engine handles large books.
+- **Schedule triage runs.** Wire the script into your submission-intake pipeline (nightly batch or on-submission trigger) so every new account is scored as it arrives, and persist the per-entity tier and flag matrix for downstream underwriting review.
+- **Pin dependencies for reproducibility.** Keep the `relationalai` version pinned in `pyproject.toml` so rule outcomes stay stable across runs, and version-control your threshold constants (top of the script) as auditable underwriting parameters.
 
 ## Troubleshooting
 

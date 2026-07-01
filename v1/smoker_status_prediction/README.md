@@ -292,40 +292,40 @@ People + Related (CSVs or Snowflake tables)
 
 **People** -- individuals with demographic and medical attributes.
 
-| Property | Type | Notes |
-|---|---|---|
-| `Id` | integer | Identifying; unique per person |
-| `age` | integer | Age in years |
-| `height(cm)` | integer | Height in centimeters |
-| `weight(kg)` | integer | Weight in kilograms |
-| `systolic` | integer | Systolic blood pressure |
-| `relaxation` | integer | Diastolic blood pressure |
-| `fasting blood sugar` | integer | Fasting blood glucose level |
-| `Cholesterol` | integer | Total cholesterol |
-| `triglyceride` | integer | Triglyceride level |
-| `HDL` | integer | High-density lipoprotein |
-| `LDL` | integer | Low-density lipoprotein |
-| `hemoglobin` | float | Hemoglobin level |
-| `Urine protein` | integer | Urine protein indicator |
-| `serum creatinine` | float | Serum creatinine level |
-| `AST` | integer | Aspartate aminotransferase (liver enzyme) |
-| `ALT` | integer | Alanine aminotransferase (liver enzyme) |
-| `Gtp` | integer | Gamma-glutamyl transferase (liver enzyme) |
-| `dental caries` | integer | Binary indicator (0 / 1) |
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `Id` | integer | Yes | Unique per person |
+| `age` | integer | No | Age in years |
+| `height(cm)` | integer | No | Height in centimeters |
+| `weight(kg)` | integer | No | Weight in kilograms |
+| `systolic` | integer | No | Systolic blood pressure |
+| `relaxation` | integer | No | Diastolic blood pressure |
+| `fasting blood sugar` | integer | No | Fasting blood glucose level |
+| `Cholesterol` | integer | No | Total cholesterol |
+| `triglyceride` | integer | No | Triglyceride level |
+| `HDL` | integer | No | High-density lipoprotein |
+| `LDL` | integer | No | Low-density lipoprotein |
+| `hemoglobin` | float | No | Hemoglobin level |
+| `Urine protein` | integer | No | Urine protein indicator |
+| `serum creatinine` | float | No | Serum creatinine level |
+| `AST` | integer | No | Aspartate aminotransferase (liver enzyme) |
+| `ALT` | integer | No | Alanine aminotransferase (liver enzyme) |
+| `Gtp` | integer | No | Gamma-glutamyl transferase (liver enzyme) |
+| `dental caries` | integer | No | Binary indicator (0 / 1) |
 
 **Related** -- pairs of connected people; used to construct edges in the GNN graph. No primary key.
 
-| Property | Type | Notes |
-|---|---|---|
-| `person1` | integer | Foreign key into `People.Id` |
-| `person2` | integer | Foreign key into `People.Id` |
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `person1` | integer | No | Foreign key into `People.Id` |
+| `person2` | integer | No | Foreign key into `People.Id` |
 
 **TrainTable / ValidationTable / TestTable** -- split tables joined to `People` by `Id` to build the train, validation, and test relationships. `TestTable.smoking` is held out from the model.
 
-| Property | Type | Notes |
-|---|---|---|
-| `Id` | integer | Foreign key into `People.Id` |
-| `smoking` | integer | Binary label (0 / 1); held out for `TestTable` |
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `Id` | integer | No | Foreign key into `People.Id` (splits have no key of their own) |
+| `smoking` | integer | No | Binary label (0 / 1); held out for `TestTable` |
 
 ## How it works
 
@@ -403,7 +403,7 @@ The bottom of each script has a commented-out block that registers the trained m
 - Replace the CSVs in `data/` with your own equivalent files (people, edges, splits). Column names need to match the `PropertyTransformer`, or you'll need to edit the transformer.
 - For Snowflake adaptation, edit the `DATABASE`, `SCHEMA`, `TASK_SCHEMA`, and `GNN_EXP_*` constants at the top of `smoker_status_prediction.py`.
 
-### Tune the model
+### Tune parameters
 
 - `n_epochs` -- increase for better convergence on a larger dataset.
 - `lr` -- lower if training loss bounces.
@@ -417,6 +417,13 @@ For the full hyperparameter list, see the [Configure a GNN](https://docs.relatio
 - **Add categorical demographics** (e.g. occupation, income bracket): list them under `category=[...]` in the `PropertyTransformer`.
 - **Try a multiclass task**: if your label has more than two values (e.g. never / light / heavy smoker), change `task_type="multiclass_classification"` and use `eval_metric="macro_f1"` or `"accuracy"`.
 - **Register the model** for reuse: uncomment the bonus section at the bottom of either script.
+
+### Scale up / productionize
+
+- Move from the bundled CSVs to Snowflake-hosted tables with `smoker_status_prediction.py` (see *Adapting to your own Snowflake data* under Quickstart); the graph, features, and task setup are unchanged.
+- Train on a GPU-enabled engine (`device="cuda"`) for larger populations; CPU is fine for the bundled ~39K-person demo.
+- Pin `relationalai` (see Prerequisites) so runs stay reproducible across environments.
+- Register the trained model in the Snowflake Model Registry (the optional block at the bottom of each script) so downstream jobs load and predict without retraining.
 
 ## Troubleshooting
 

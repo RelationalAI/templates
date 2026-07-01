@@ -141,101 +141,14 @@ Set `EXP_DATABASE` at the top of `datacenter_compute_allocation.py` to that data
 7. Expected output (abbreviated):
 
    ```text
-   STAGE 0: LOAD ONTOLOGY
-     Ontology loaded: 6 labs, 28 pools, 110 workloads, 138 dep edges, 2x3x4=24 scenario cells
-
-   STAGE 1: PREDICT -- per-workload utilization-probability GNN
-     Workload utilization-probability distribution: n_total=110, n>=0.5: 95, n<0.5: 15
-     Top 5 (most likely to be high-utilization):
-       + GPT-Next pretrain shard 05                    p=0.781
-       + GPT-Next pretrain shard 02                    p=0.780
-       + GPT-Next pretrain shard 03                    p=0.777
-       + Claude-Next pretrain shard 04                 p=0.775
-       + Claude-Next pretrain shard 05                 p=0.774
-     Bottom 5 (most likely to stall / be repaced):
-       - Stability eval batch 11                       p=0.381
-       - Stability eval batch 15                       p=0.382
-       - Stability eval batch 12                       p=0.384
-       - Stability eval batch 14                       p=0.385
-       - Stability eval batch 04                       p=0.385
-
-   STAGE 2: RULES -- eligibility + priority classification
-     Compatibility table: 1918 eligible (Workload, GpuPool) pairs
-     Priority tier counts: P0=15, P1=80, P2=15
-
-   STAGE 3: GRAPH -- workload-dependency PageRank (gating score)
-     Top-10 gating workloads (frontier pretrains expected to dominate):
-       GPT-Next pretrain shard 02                    score=0.0310
-       Grok-Next pretrain shard 04                   score=0.0266
-       Grok-Next pretrain shard 03                   score=0.0259
-       Grok-Next pretrain shard 01                   score=0.0253
-       GPT-Next pretrain shard 04                    score=0.0244
-       Claude-Next pretrain shard 02                 score=0.0227
-       ...
-
    STAGE 4: PRESCRIPTIVE -- compute allocation MIP (24-cell sweep)
-     Solving 24-cell scenario sweep with gurobi...
      Termination status: OPTIMAL
-     Solve time:         6.3s
-     Objective:          543,436,742.28
-
-     Per-cell summary (24 cells: 16 optimal, 8 infeasible):
-       100pct unconstrained             none    OPTIMAL  110  25,277,810.94  4,180,500.79  0.83  0.95
-       100pct         80pct             none    OPTIMAL  110  25,277,810.94  4,224,313.30  0.83  0.95
-       100pct         85pct             none    OPTIMAL   20  22,032,951.05  3,304,939.27  0.85  1.00
-       100pct unconstrained anchor_max_70pct    OPTIMAL   97   4,437,625.19    891,678.81  0.80  0.70
-       100pct unconstrained anchor_max_50pct    OPTIMAL   97   2,598,602.50    598,727.11  0.77  0.49
-       100pct         85pct anchor_max_70pct    OPTIMAL   70   4,053,503.29    608,011.98  0.85  0.70
-       100pct         85pct anchor_max_50pct INFEASIBLE    0           0.00          0.00   NaN   NaN
-       (*, *, anchor_max_40pct_with_type_floor): all 6 cells INFEASIBLE
-       ...
-
-     Pareto frontier 1: Margin floor <-> Revenue (envelope=100pct, diversity=none)
-              margin  n_assigned  revenue_usd  realized_margin  anchor_share
-       unconstrained         110   25,277,811             0.83          0.95
-                80pct        110   25,277,811             0.83          0.95
-                85pct         20   22,032,951             0.85          1.00
-
-     Pareto frontier 2: Diversity cap <-> Revenue (envelope=100pct, margin=unconstrained)
-                              diversity  n_assigned  revenue_usd  realized_margin  anchor_share
-                                   none         110   25,277,811             0.83          0.95
-                       anchor_max_70pct          97    4,437,625             0.80          0.70
-                       anchor_max_50pct          97    2,598,602             0.77          0.49
-       anchor_max_40pct_with_type_floor           0            0              NaN           NaN
-
-     AllocationPlan singleton (queryable as ontology):
-       plan_id        envelope        margin     diversity  status   n_assigned   revenue_usd   total_cost_usd   realized_margin   anchor_share    binding_axis
-       DCCA_BASELINE    100pct  unconstrained         none  OPTIMAL         110   25277810.94      4180500.79         0.834618          0.947251  power_envelope
-
-     Assignment.is_chosen rows: 110 (matches n_assigned above)
-
-     DemandScenario overlay (chosen plan replayed under risk):
-                scenario  factor  realized_revenue_usd  stranded_revenue_usd  stranded_pct
-                expected    1.00         25,277,810.94                  0.00          0.00
-       diffusion_slowdown    0.85         25,077,803.64            200,007.30          0.79
-            scaling_break    0.70         24,877,796.35            400,014.59          1.58
-            frontier_loss    0.50         24,611,119.95            666,690.99          2.64
+     Per-cell summary (24 cells: 16 optimal, 8 infeasible)
+     AllocationPlan singleton (100pct / unconstrained / none):
+       110 workloads assigned, $25.28M revenue, 83% margin, 95% anchor share
    ```
 
-   GNN probabilities depend on seed and predictive engine; the `--no-gnn` fallback values are deterministic. Stage 4 reaches `OPTIMAL` in seconds with Gurobi; the open-source HiGHS default returns a feasible solution at the `time_limit_sec=240` wall and may surface `TIME_LIMIT` (signal, not failure, per `rai-prescriptive-results-interpretation`). Set `SOLVER` in `datacenter_compute_allocation.py` to switch.
-
-   **Expected runtime** (full pipeline, GNN on `GPU_NV_S` + Gurobi on prescriptive engine):
-   - Stage 0 (ontology load): a few seconds
-   - Stage 1 (GNN training + prediction): ~3–4 min on `GPU_NV_S` (training prep ~40 s, training ~20 s, prediction ~75 s)
-   - Stages 2–3 (rules + PageRank): a few seconds combined
-   - Stage 4 (24-cell MIP): ~6 s with Gurobi, OPTIMAL across all 24 cells; up to 240 s wall with HiGHS
-   - Total wall time: ~4–5 min end-to-end (Stage 1 GNN dominates)
-
-   **Expected per-cell behavior** (24 cells = 16 OPTIMAL + 8 INFEASIBLE):
-   - `(*, unconstrained / 80% margin, none diversity)` — full assignment of all 110 workloads, $25.28M revenue, 83% margin, 95% anchor. The 80% floor is not binding; the unconstrained solution naturally lands at 83% margin.
-   - `(*, 85% margin, none)` — tight floor binds: drops 90 lower-margin workloads, retains 14 of 15 frontier P0 pretrains plus 4 P1 finetunes and 2 P2 evals that fit under the floor. Revenue $22.03M @ 85% margin / 100% anchor.
-   - `(*, unconstrained / 80% margin, anchor_max_70pct)` — 97 workloads, $4.44M revenue, 70% anchor. The anchor cap forces most P0 pretrains out; revenue is cut 82% but margin holds.
-   - `(*, unconstrained / 80% margin, anchor_max_50pct)` — 97 workloads, $2.60M revenue, 49% anchor. CoreWeave-target cap; only 2 of 15 P0 pretrains fit.
-   - `(*, 85% margin, anchor_max_70pct)` — 70 workloads, $4.05M revenue. The two constraints partially compose; some pretrains fit, some get dropped.
-   - `(*, 85% margin, anchor_max_50pct)` — INFEASIBLE. High margin floor wants pretrain-heavy, anchor cap forbids that mix.
-   - `(*, *, anchor_max_40pct_with_type_floor)` — all 6 cells INFEASIBLE. Combined cap + workload-type floor too tight for this lab roster.
-
-   **Headline result.** At the chosen baseline (`100pct / unconstrained / none`): 110 workloads assigned → $25.28M revenue, $4.18M cost, 83% realized margin, 95% anchor share, power envelope as the binding axis. The two Pareto frontiers cliff at **85% margin** (−13% revenue, 90 workloads dropped) and at **any anchor cap** (−82% revenue at 70%, −90% at 50%, INFEASIBLE at 40% + type floor). The `DemandScenario` overlay shows only $200K / $400K / $667K stranded under softening scenarios because the plan is anchor-heavy and P0 anchor revenue is contractually locked — `DemandScenarioOutlook(scenario)` ontology rows make this queryable post-run.
+   Full stage-by-stage log (GNN distribution, PageRank scores, both Pareto frontiers, the demand-scenario overlay, and expected per-cell behavior) is in `runbook.md`. GNN probabilities depend on seed and predictive engine; the `--no-gnn` fallback values are deterministic. Stage 4 reaches `OPTIMAL` in seconds with Gurobi; the open-source HiGHS default returns a feasible solution at the `time_limit_sec=240` wall and may surface `TIME_LIMIT` (signal, not failure, per `rai-prescriptive-results-interpretation`). Set `SOLVER` in `datacenter_compute_allocation.py` to switch.
 
 ## Template structure
 

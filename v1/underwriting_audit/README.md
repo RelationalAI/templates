@@ -17,7 +17,7 @@ tags:
 
 ## What this template is for
 
-Insurance actuaries, RegTech audit teams, and Model Risk Management (MRM) reviewers periodically check underwriting rulesets against the properties those rules are supposed to guarantee: no high-risk applicant is auto-approved, every frail applicant goes through manual review, no policy exceeds the regulatory ceiling without a second sign-off. Hand-checking even a few dozen rules against a property is impractical, and testing on a sample of applicants only catches the failures that happen to be in the sample. The dependable answer is verification: state the ruleset and the property as a constraint model and ask the solver whether any applicant at all can slip through. If one can, the solver hands back the concrete applicant that breaks the rule.
+Insurance actuaries, regulatory-technology (RegTech) audit teams, and Model Risk Management (MRM) reviewers periodically check underwriting rulesets against the properties those rules are supposed to guarantee: no high-risk applicant is auto-approved, every frail applicant goes through manual review, no policy exceeds the regulatory ceiling without a second sign-off. Hand-checking even a few dozen rules against a property is impractical, and testing on a sample of applicants only catches the failures that happen to be in the sample. The dependable answer is verification: state the ruleset and the property as a constraint model and ask the solver whether any applicant at all can slip through. If one can, the solver hands back the concrete applicant that breaks the rule.
 
 A real audit is a batch job across many properties at once, and the two sides are owned by different teams: the rule team owns the rule pack, and the compliance or MRM team owns the catalog of properties it must satisfy. This template mirrors that shape. It authors a property catalog separately from the ruleset, then runs one audit per property and produces a single report with a verdict for each — the rule holds (PASS), the rule is broken with example applicants shown (FAIL), or the audit could not decide (INCONCLUSIVE). The bundled ruleset carries a deliberate bug so the report comes back mixed rather than all-clear: the manual-review rule flags only seniors, while the frailty rule counts anyone senior or with a chronic condition, so chronic non-seniors slip past review. The mixed report is the point — a single run separates the properties the ruleset satisfies from the ones it violates. And rather than a single example per failure, the audit returns several distinct counterexamples so the reviewer can see the shape of the failure across ages, conditions, and coverage levels without probing by hand.
 
@@ -28,7 +28,7 @@ A real audit is a batch job across many properties at once, and the two sides ar
 - Insurance actuaries and underwriting governance teams auditing rule libraries
 - RegTech / compliance audit harnesses verifying property entailment over rule packs
 - Model Risk Management (MRM) reviewers performing rule-level verification before promotion
-- Operations researchers learning property-entailment audit as a CSP problem
+- Operations researchers learning property-entailment audit as a constraint satisfaction problem (CSP)
 
 ## What you'll build
 
@@ -94,17 +94,11 @@ Built using **prescriptive reasoning** (constraint satisfaction with multi-solut
    ```text
    ===== Auditing property: frail_implies_review =====
    Verdict: FAIL  (12 witness(es), status=OPTIMAL)
-
-   ===== Auditing property: chronic_under_50_implies_review =====
-   Verdict: FAIL  (8 witness(es), status=OPTIMAL)
-
-   ===== Auditing property: senior_implies_review =====
-   Verdict: PASS  (0 witness(es), status=INFEASIBLE)
-
+   ...
    Audit report (3 properties: 1 PASS, 2 FAIL, 0 INCONCLUSIVE)
    ```
 
-   Each FAIL witness row is one applicant who breaks the property: chronic and frail under the rule book, but missed by manual review because the buggy rule flags only seniors. FAIL is the audit's finding about the ruleset, not a template error; PASS on `senior_implies_review` means the solver proved no counterexample exists. Row ordering and wall times vary across runs, but the set of witnesses per property is stable because each search exhausts its feasible set. The full printout and a step-by-step walkthrough are in `runbook.md`.
+   FAIL is the audit's finding about the ruleset, not a template error; a PASS means the solver proved no counterexample exists. The full printout and a step-by-step walkthrough are in `runbook.md`.
 
 ## Template structure
 

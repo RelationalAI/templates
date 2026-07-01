@@ -1,6 +1,6 @@
 ---
 title: "Money-Laundering Motif Detection"
-description: "Detect three classes of money-laundering layering motif on one transaction ledger with constraint-satisfaction (CSP) reasoning. Each motif enforces a joint condition across a solver-chosen subset of accounts and edges: per-hub flow balance in the butterfly, pairwise-distinct owners in the smurf army, and a retail-tier count floor in the KYC-mix burst."
+description: "Detect three classes of money-laundering layering motif on one transaction ledger using constraint-satisfaction (CSP) reasoning. Each motif enforces a joint condition across a solver-chosen subset of accounts and edges."
 featured: false
 experience_level: intermediate
 industry: "Financial Services"
