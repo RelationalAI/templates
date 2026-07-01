@@ -59,8 +59,8 @@ You can customize the data and model as needed after you have it running end-to-
 
    ```bash
    curl -O https://docs.relational.ai/templates/zips/v1/wildlife-conservation-network.zip
-   unzip wildlife_conservation_network.zip
-   cd wildlife_conservation_network
+   unzip wildlife-conservation-network.zip
+   cd wildlife-conservation-network
    ```
 
    > [!TIP]

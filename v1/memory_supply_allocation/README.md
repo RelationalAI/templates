@@ -388,5 +388,3 @@ Ensure your Snowflake account has the RAI Native App installed and your user has
 ## Support
 
 - File issues at the RelationalAI templates repository.
-</content>
-</invoke>

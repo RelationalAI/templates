@@ -63,8 +63,8 @@ You can customize the data and model as needed after you have it running end-to-
 
    ```bash
    curl -O https://docs.relational.ai/templates/zips/v1/humanitarian-aid-supply-chain.zip
-   unzip humanitarian_aid_supply_chain.zip
-   cd humanitarian_aid_supply_chain
+   unzip humanitarian-aid-supply-chain.zip
+   cd humanitarian-aid-supply-chain
    ```
 
    > [!TIP]
