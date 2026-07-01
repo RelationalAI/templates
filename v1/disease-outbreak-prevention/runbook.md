@@ -7,7 +7,7 @@ When an outbreak spreads, public-health officials have to deploy limited resourc
       │
       ▼
 /rai-graph-analysis
-   • weighted degree centrality (cumulative transmission risk) -> Central Hospital & Public Health Dept (28.89)
+   • weighted degree centrality (cumulative transmission risk) -> Central Hospital & Public Health Dept (260)
    • indegree / outdegree for context (who feeds whom)
    • Downtown facilities hold ranks 1–4 → priority resource deployment
 ```
@@ -32,7 +32,7 @@ Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` 
 
 **Prompt:** /rai-graph-analysis Which facilities carry the greatest cumulative transmission risk — the highest total risk across their direct transfer links, weighting each link by its transmission risk? Rank them so we can prioritize resource deployment, and include each facility's incoming and outgoing connection counts for context.
 
-**Response:** By weighted degree centrality, the top hubs are **Central Hospital and Public Health Dept, tied at 28.89**, then **Regional Testing Lab at 24.22** and Emergency Response Hub at 20.89. Indegree/outdegree add nuance — Central Hospital is a pure source (4 out, 0 in) while Emergency Response Hub is a pure sink (3 in, 0 out).
+**Response:** By weighted degree centrality (total risk-weighted connections), the top hubs are **Central Hospital and Public Health Dept, tied at 260**, then **Regional Testing Lab at 218** and Emergency Response Hub at 188. Indegree/outdegree add nuance — Central Hospital is a pure source (4 out, 0 in) while Emergency Response Hub is a pure sink (3 in, 0 out).
 
 ## 4. Read the priority list
 

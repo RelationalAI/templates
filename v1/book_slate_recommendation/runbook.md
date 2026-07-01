@@ -8,7 +8,7 @@ A reading-app team wants each user's top-3 book slate to be both relevant *and* 
 59 books, 25 users, a knowledge graph of authors / subjects / similar-books and a
 150-row read history. The chain counts explanation paths from each user to each
 candidate book, then picks each user's 3-book slate to maximize weighted, well-explained
-support — OPTIMAL, total weighted support 878.
+support — OPTIMAL, every user gets an ordered, subject-diverse, fully-explained slate.
 
   ─────────────────────────────────────────────────────────────────
   STAGE 1  Graph        ──►  Candidate.path_count_total / triangle_count
@@ -19,7 +19,7 @@ support — OPTIMAL, total weighted support 878.
   STAGE 2  Prescriptive ──►  Candidate.slot   (each user's K=3 slate)
                              Maximize sum((K+1-slot) x path_count_total);
                              subject diversity + an explanation floor +
-                             cold-start handling. OPTIMAL, objective 878.
+                             cold-start handling. OPTIMAL, one ordered slate per user.
   ─────────────────────────────────────────────────────────────────
 ```
 
@@ -85,7 +85,7 @@ For every (user, unread book) candidate, the connecting paths are counted across
 
 **Response**
 
-OPTIMAL (constraint solver), total weighted explanation support **878** across the 25 users. Each user gets an ordered 3-book slate (`Candidate.slot`) that maximizes high-slot path support subject to subject diversity and the per-user explanation floor; the chosen books and slots are written back. (Several slates can tie on support, so exact picks may vary; the objective and the explanation guarantees are stable.)
+OPTIMAL — all 25 users get an ordered 3-book slate (`Candidate.slot`) that maximizes high-slot path support subject to subject diversity and the per-user explanation floor; the chosen books and slots are written back. (The objective value depends on how explanation paths are counted and where the diversity grain and explanation floor are set — and a near-ubiquitous subject may force the diversity rule onto each book's primary subject to stay feasible — so the exact total varies with those modeling choices. What's stable: every user receives a full, subject-diverse, ordered slate that clears the floor, each pick backed by concrete graph paths.)
 
 ### 6. Read the slates
 
