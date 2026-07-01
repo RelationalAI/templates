@@ -18,10 +18,9 @@ sidebar:
 
 ## What this template is for
 
-A bill of materials (BOM) defines how finished products are built from components and raw materials through multiple assembly stages. Understanding the full transitive dependency tree -- not just direct inputs -- is critical for supply chain risk management. This template demonstrates two graph analysis techniques on a BOM structure:
+A bill of materials (BOM) defines how finished products are built from components and raw materials through multiple assembly stages. When a supplier slips, a plant goes down, or a part is recalled, the pressing question is not "what does this product use directly?" but "which finished goods ultimately depend on this part, and how far up the chain does the damage travel?" Direct inputs are easy to read off a spreadsheet; the full transitive dependency tree — and the shared components that quietly sit on everyone's critical path — are not.
 
-1. **Reachability** (`reachable(full=True)`) -- Trace all transitive dependencies to answer "What does Product X ultimately depend on?" across multiple assembly tiers.
-2. **Betweenness Centrality** -- Identify structural bottleneck components that sit on the most dependency paths between finished goods and raw materials.
+This template turns a BOM into a dependency graph so you can trace those transitive dependencies, pinpoint the components that are structural bottlenecks across product lines, and enumerate the end-to-end assembly chains that build each finished good. **It runs on RelationalAI's graph reasoner, using reachability, betweenness centrality, and path enumeration directly over the ontology.**
 
 ## Who this is for
 
@@ -32,20 +31,20 @@ A bill of materials (BOM) defines how finished products are built from component
 
 ## What you'll build
 
-- Load a 9-SKU, 14-BOM-entry product structure from CSV (consumer electronics: smartphones, tablets, components, raw materials)
-- Construct a directed dependency graph where edges point from output SKU to input SKU ("depends on")
-- Compute all-pairs reachability to map full transitive dependency trees
-- List dependencies per finished good, broken down by type (COMPONENT vs RAW_MATERIAL)
-- Rank components by how many other SKUs depend on them
-- Compute betweenness centrality to identify structural bottlenecks
-- Enumerate the end-to-end assembly chains that build each finished good and persist each one's assembly depth
+- A directed dependency graph over the BOM (SKU nodes, output-to-input "depends on" edges) built with the graph reasoner's `Graph` construction.
+- A full transitive dependency tree per finished good, broken down by type (component vs raw material), from all-pairs `reachable(full=True)`.
+- A most-depended-on ranking of SKUs and a betweenness-centrality ranking that flags the structural bottleneck components.
+- An enumeration of the end-to-end assembly chains that build each finished good, reduced to the maximal (non-extendable) chains via path enumeration.
+- An `assembly_depth` property persisted back onto each SKU, so the longest chain terminating at each finished good is queryable as ontology after the run.
 
 Built on RelationalAI's graph reasoner: **reachability** for transitive dependencies, **betweenness centrality** for bottlenecks, and **path enumeration** for assembly chains.
 
 ## What's included
 
-- **Self-contained script**: `bom_reachability.py` -- Runs the full analysis end-to-end
-- **Data**: `data/skus.csv` (9 SKUs across 3 tiers) and `data/bill_of_materials.csv` (14 BOM entries with site-specific assembly)
+- **Model**: two concepts (`SKU` and `BillOfMaterials`) wired into a directed dependency graph, plus a derived `feeds` self-relationship on `SKU` and a persisted `assembly_depth` property.
+- **Runner**: `bom_reachability.py` — a single self-contained Python script that runs reachability, betweenness centrality, and assembly-path enumeration end to end.
+- **Sample data**: `data/skus.csv` (9 SKUs across 3 tiers) and `data/bill_of_materials.csv` (14 BOM entries with site-specific assembly). See *Sample data* below.
+- **Outputs**: printed transitive-dependency lists per finished good, a most-depended-on and betweenness ranking, the maximal assembly chains, and an `assembly_depth` property written back onto the SKU ontology.
 
 ## Prerequisites
 
@@ -131,7 +130,7 @@ Built on RelationalAI's graph reasoner: **reachability** for transitive dependen
 
 `data/skus.csv` holds 9 SKUs spanning the three assembly tiers: 4 `RAW_MATERIAL` (silicon wafer, display glass, lithium-ion cells, NAND flash), 3 `COMPONENT` (mobile processor, OLED display, battery pack), and 2 `FINISHED_GOOD` (a smartphone and a tablet). Each row carries an `ID`, `NAME`, `TYPE`, `CATEGORY`, `UNIT_OF_MEASURE`, `LEAD_TIME_DAYS`, `UNIT_COST`, and `UNIT_PRICE`; the graph analysis uses `ID`, `NAME`, `TYPE`, and `CATEGORY`.
 
-`data/bill_of_materials.csv` holds 14 BOM entries, each linking an `OUTPUT_SKU_ID` (what is produced) to an `INPUT_SKU_ID` (what it requires), with `ID`, `SITE_ID`, and `INPUT_QUANTITY`. The same output-to-input pair is recorded once per `SITE_ID`, so multi-site assemblies appear as duplicate edges (for example, `SKU001` is assembled at both `S001` and `S012`). The graph deduplicates these automatically -- see the multi-edges note under Troubleshooting.
+`data/bill_of_materials.csv` holds 14 BOM entries, each linking an `OUTPUT_SKU_ID` (what is produced) to an `INPUT_SKU_ID` (what it requires), with `ID`, `SITE_ID`, and `INPUT_QUANTITY`. The same output-to-input pair is recorded once per `SITE_ID`, so multi-site assemblies appear as duplicate edges (for example, `SKU001` is assembled at both `S001` and `S012`). The graph deduplicates these automatically — see the multi-edges note under Troubleshooting.
 
 ## Model overview
 
@@ -168,11 +167,13 @@ One link in the bill of materials, recorded per assembly site and used as the gr
 
 ## How it works
 
+The pipeline loads the ontology, builds a directed graph, then runs three graph analyses over it:
+
 ```text
-CSV files --> Define SKU + BOM concepts --> Build directed graph --> Reachability analysis --> Betweenness centrality --> Display results
+CSV files --> Define SKU + BOM concepts --> Build directed graph --> Reachability analysis --> Betweenness centrality --> Assembly-path enumeration --> Display results
 ```
 
-### 1. Load Ontology
+### 1. Load ontology
 
 SKU and BillOfMaterials concepts are loaded from CSV. Each BOM entry links an output SKU (what is produced) to an input SKU (what is required):
 
@@ -183,7 +184,7 @@ BillOfMaterials.output_sku = model.Relationship(f"{BillOfMaterials} produces {SK
 BillOfMaterials.input_sku = model.Relationship(f"{BillOfMaterials} requires {SKU}")
 ```
 
-### 2. Build Directed Graph
+### 2. Build directed graph
 
 The graph uses BillOfMaterials as the edge concept, with edges pointing from output to input ("depends on"):
 
@@ -197,9 +198,9 @@ graph = Graph(
 )
 ```
 
-### 3. Trace Dependencies
+### 3. Trace dependencies
 
-`reachable(full=True)` computes all-pairs reachability -- every (source, destination) pair where a directed path exists:
+`reachable(full=True)` computes all-pairs reachability — every source-and-destination pair where a directed path exists:
 
 ```python
 reachable = graph.reachable(full=True)
@@ -212,7 +213,7 @@ all_deps_df = where(reachable(src, dst)).select(
 ).to_df()
 ```
 
-### 4. Identify Bottlenecks
+### 4. Identify bottlenecks
 
 Betweenness centrality ranks components by how many shortest dependency paths pass through them:
 
@@ -220,11 +221,11 @@ Betweenness centrality ranks components by how many shortest dependency paths pa
 betweenness = graph.betweenness_centrality()
 ```
 
-Components with high betweenness are structural bottlenecks -- disrupting them affects the most product lines.
+Components with high betweenness are structural bottlenecks — disrupting them affects the most product lines.
 
-### 5. Enumerate Assembly Paths (PREVIEW, requires `relationalai>=1.15`)
+### 5. Enumerate assembly paths (PREVIEW, requires `relationalai>=1.15`)
 
-Where reachability returns dependency *pairs*, path enumeration returns the actual *build sequences*. It derives a SKU-to-SKU `feeds` edge from the `BillOfMaterials` intermediary (input SKU feeds output SKU) and enumerates every assembly path; because the BOM is acyclic, `.all_paths()` yields exactly the simple paths -- no cycle risk. A maximal-paths view keeps only the longest non-extendable chains, and the longest assembly depth is persisted as `SKU.assembly_depth`.
+Where reachability returns dependency *pairs*, path enumeration returns the actual *build sequences*. It derives a SKU-to-SKU `feeds` edge from the `BillOfMaterials` intermediary (input SKU feeds output SKU) and enumerates every assembly path; because the BOM is acyclic, `.all_paths()` yields exactly the simple paths — no cycle risk. A maximal-paths view keeps only the longest non-extendable chains, and the longest assembly depth is persisted as `SKU.assembly_depth`.
 
 ```python
 SKU.feeds = model.Relationship(f"{SKU} feeds into {SKU}", short_name="feeds")
@@ -271,7 +272,7 @@ Focus on the first changes most users will make.
 <details>
   <summary>Why do I see a "multi-edges" warning?</summary>
 
-- The BOM data includes site-specific entries (e.g., SKU001 is assembled at both S001 and S012). This creates duplicate edges between the same SKU pair. The warning is informational -- the graph deduplicates automatically. To suppress it, add `aggregator="sum"` to the Graph constructor.
+- The BOM data includes site-specific entries (e.g., SKU001 is assembled at both S001 and S012). This creates duplicate edges between the same SKU pair. The warning is informational — the graph deduplicates automatically. To suppress it, add `aggregator="sum"` to the Graph constructor.
 
 </details>
 
@@ -285,9 +286,19 @@ Focus on the first changes most users will make.
 
 ## Learn more
 
+### Core concepts
+
 - [RelationalAI documentation](https://docs.relational.ai/) — language, modeling, and reasoner reference.
+
+### Reasoner reference
+
+- [Graph reasoner](https://docs.relational.ai/) — node-concept and edge-concept graph construction, reachability, betweenness centrality, and path enumeration.
+
+### More templates
+
 - [Template gallery](https://docs.relational.ai/build/templates) — other runnable templates, including graph, rules, and prescriptive examples.
 
 ## Support
 
 - Questions or issues: [support.relational.ai](https://support.relational.ai).
+- File issues at the RelationalAI templates repository.
