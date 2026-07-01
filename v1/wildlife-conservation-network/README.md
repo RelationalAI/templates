@@ -149,8 +149,8 @@ wildlife-conservation-network/
 
 The bundled data is a small, illustrative conservation network — designed to teach community detection on a Snowflake-connected RAI account, not to match a specific program's partnerships.
 
-- **`organizations.csv`** — conservation organizations, each with a `type` (NGO, research station, reserve, and so on), a `region`, and a `focus_species`.
-- **`partnerships.csv`** — one row per collaboration partnership, given as a pair of organization ids. Partnerships are undirected, so ordering does not matter.
+- **`organizations.csv`** — 12 conservation organizations, each with a `type` (NGO, research station, reserve, and so on), a `region`, and a `focus_species`.
+- **`partnerships.csv`** — 19 collaboration partnerships, one row each, given as a pair of organization ids. Partnerships are undirected, so ordering does not matter.
 
 ## Model overview
 
