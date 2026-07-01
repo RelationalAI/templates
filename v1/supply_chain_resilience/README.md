@@ -17,67 +17,30 @@ tags:
   - Scenario Analysis
 ---
 
-# Supply Chain Resilience
-
 ## What this template is for
 
-Supply chain networks must route goods from suppliers through factories and distribution centers to customers -- but not all routes carry equal risk. Unreliable suppliers, ML-predicted delays, and over-reliance on bottleneck sites can all disrupt fulfillment. This template shows how to combine multiple analytical signals into a single routing decision.
+Supply chain networks route goods from suppliers through factories and distribution centers to customers -- but not all routes carry equal risk. Cost-optimal routes tend to concentrate flow through a few critical hubs, creating fragility that cost-minimization alone never surfaces. Unreliable suppliers, predicted delays, and over-reliance on bottleneck sites all threaten fulfillment, yet each is a different kind of signal: structural risk, supplier reliability, and routing cost are interdependent, and no single analysis reveals how they compound. When a critical warehouse goes offline, the network must absorb the shock through costlier alternatives or unmet demand -- and planners need to know that cost before it happens.
 
-This template uses RelationalAI's **Graph** analysis, **Rules-based** classification, and **Prescriptive** optimization capabilities in a chained multi-reasoner workflow:
-
-0. **Blast-radius pre-analysis** builds a directed Business graph from shipment data and traces every supplier each high-priority demand customer transitively depends on -- making the exposure footprint explicit before any optimization runs.
-1. **Graph analysis** builds a site dependency graph from shipping operations and computes eigenvector centrality to identify critical warehouses and bridges between supply chain regions.
-2. **Rules** classify suppliers by risk level (avoid / watch / reliable) using reliability scores and ML delay predictions, and flag escalated demand orders.
-3. **Prescriptive optimization** solves a minimum-cost network flow that routes supply to meet demand. Graph centrality feeds a bottleneck penalty in the objective, and supplier risk flags feed hard constraints (no flow from "avoid" suppliers) and surcharges (extra cost for "watch" suppliers).
-4. **Scenario analysis** re-solves with disruptions -- taking a critical site offline (+88.5% cost) and downgrading watch suppliers to avoid (+0.0% cost, because the optimizer had already routed around them) -- to quantify resilience costs.
-
-Each stage enriches the shared ontology, and downstream stages consume those enrichments -- this is the **accretive ontology enrichment** pattern:
-
-- **Stage 1 writes** `Site.centrality` (normalized eigenvector centrality) -- consumed by Stage 3's bottleneck penalty in the objective. High-centrality sites incur a `CENTRALITY_WEIGHT` surcharge per unit of flow.
-- **Stage 2 writes** `Business.is_unreliable`, `Business.has_high_delay_risk`, `Business.is_watch_level` -- consumed by Stage 3 as hard constraints (avoid suppliers get zero flow) and cost surcharges (watch suppliers get `RISK_SURCHARGE` per unit of flow).
-- **Stage 3 writes** `Operation.x_flow` and `Demand.x_unmet` decision variables, re-solved per scenario with modified constraints.
-
-### Reasoner overview
-
-| Stage | Reasoner | Reads from ontology | Writes to ontology | Role |
-|-------|----------|---------------------|--------------------|------|
-| 1 | Graph | Site, Operation (SHIP edges) | Site.centrality (normalized eigenvector) | 2 connected components. Top hubs: S004 TechAssembly (0.50), S006 West Coast DC (0.39), S003 PowerCell (0.37). Centrality feeds the bottleneck penalty in Stage 3. |
-| 2 | Rules | Business.reliability_score, DelayPrediction | Business.is_unreliable, Business.has_high_delay_risk, Business.is_watch_level, Demand.is_escalated | 37 of 262 shipments late (14%). B003 classified as watch (reliability=0.81). 9 escalated demands. Watch/avoid flags feed constraints and surcharges in Stage 3. |
-| 3 | Prescriptive | Site.centrality (Stage 1), Business.is_watch_level (Stage 2), Operation capacity/cost | Operation.x_flow, Demand.x_unmet | Baseline: $1,865 optimal cost, 8 active flows, all demand satisfied. |
-| 3+ | Scenario Analysis | Same + exclude_site_id / block_business_ids | Re-solved x_flow, x_unmet per scenario | S004 offline: +88.5% cost ($3,515). Watch→Avoid: +0.0% ($1,865 -- watch suppliers were not on optimal routes). |
-
-## Why this problem matters
-
-Supply chain routing decisions are typically made with cost and capacity data alone. But cost-optimal routes can concentrate flow through a small number of critical hubs, creating fragility invisible to cost-minimization alone. When a critical warehouse goes offline -- due to weather, labor disruption, or infrastructure failure -- the network must absorb the disruption through costlier alternatives or unmet demand.
-
-The multi-reasoner approach is necessary because structural risk (graph), supplier reliability (rules), and routing cost (optimization) are interdependent signals. A cost-optimal route through a high-centrality hub served by a watch-level supplier compounds risk in a way no single analysis reveals. Scenario analysis then quantifies the cost of disruption: taking the highest-centrality site offline increases total cost by 88.5%, while downgrading watch suppliers to avoid has no impact -- because the optimizer already routed around them. This asymmetry is the key insight.
-
-### Key design patterns demonstrated
-
-- **Accretive ontology enrichment** -- Stage 1's `Site.centrality` feeds Stage 3's objective; Stage 2's risk flags feed Stage 3's constraints and surcharges
-- **Single model composition** -- all three reasoners (Graph, Rules, Prescriptive) attach to one `Model` instance, unlike templates that require a separate graph model
-- **Reusable solve function** -- `solve_flow(label, exclude_site_id, block_business_ids)` encapsulates the full formulation, enabling scenario analysis by re-solving with modified constraints
-- **Derived relationship for business-to-operation linkage** -- `Operation.source_business` is derived by matching `source_site` to `Business.site`, avoiding an explicit join table
-- **Scenario analysis via re-solve** -- disruptions are modeled as constraint modifications (site offline = zero flow, supplier downgrade = block), not separate models
+**This template chains RelationalAI's Graph, Rules-based, and Prescriptive reasoners on one shared ontology, so structural criticality and supplier risk flow directly into a risk-adjusted minimum-cost network flow, then re-solves under disruption scenarios to price resilience.**
 
 ## Who this is for
 
-- Supply chain and logistics managers evaluating network resilience
-- Operations researchers exploring multi-reasoner pipelines in RelationalAI
-- Developers learning how to chain graph, rules, and optimization in a single model
+- Supply chain and logistics managers evaluating network resilience.
+- Operations researchers exploring multi-reasoner pipelines in RelationalAI.
+- Developers learning how to chain graph, rules, and optimization in a single model.
+- **Assumed knowledge**: comfortable reading Python; the graph, rules, and optimization terms are explained as they come up. No prior RelationalAI experience is required to run it, though following a single-reasoner template first makes the chained flow easier to follow.
 
 ## What you'll build
 
-- A site dependency graph with connected component detection and eigenvector centrality scoring
-- Supplier risk classification rules combining reliability scores and ML delay predictions
-- Continuous decision variables for flow on each operation and unmet demand slack
-- Demand satisfaction, supplier blocking, and site-offline constraints
-- A cost minimization objective that incorporates transport cost, risk surcharges, centrality-based bottleneck penalties, and unmet demand penalties
-- Scenario analysis comparing baseline, site-offline, and supplier-downgrade disruptions
+- A risk-adjusted routing plan that meets demand at minimum cost while penalizing flow through bottleneck sites and risky suppliers, produced by the **prescriptive** reasoner (continuous flow and unmet-demand decision variables).
+- Per-site criticality scores (`Site.centrality`) from **graph analysis** -- weakly connected components plus normalized eigenvector centrality -- that feed the routing objective as a bottleneck penalty.
+- Supplier risk classifications (`Business.is_unreliable`, `is_watch_level`, `is_avoid`) and escalated-demand flags from **rules-based** reasoning, wired into the optimizer as hard constraints and surcharges.
+- An upstream blast-radius view: for each high-priority customer, the set of suppliers it transitively depends on, computed by **graph reachability** before any optimization runs.
+- A scenario comparison that re-solves the same formulation with a critical site offline and with watch suppliers downgraded to avoid, quantifying the cost of each disruption.
 
 ## What's included
 
-- `supply_chain_resilience.py` -- Main script with three chained reasoning stages and scenario analysis
+- `supply_chain_resilience.py` -- Main script: a blast-radius pre-analysis, three chained reasoning stages (graph, rules, prescriptive), and scenario analysis
 - `data/site.csv` -- 31 sites (factories, distribution centers, offices, stores) across multiple regions
 - `data/business.csv` -- 31 businesses (suppliers, manufacturers, warehouses, buyers) with reliability scores
 - `data/operation.csv` -- 70 shipping and transfer operations with cost, capacity, and transit time
@@ -206,6 +169,109 @@ The multi-reasoner approach is necessary because structural risk (graph), suppli
     └── delay_prediction.csv
 ```
 
+**Start here**: run `python supply_chain_resilience.py` for the full chain end to end -- blast-radius pre-analysis, the three reasoning stages, and the scenario comparison.
+
+## Sample data
+
+The bundled data is synthetic and illustrative -- designed to teach the reasoning flow on a Snowflake-connected RAI account, not to match a specific operator's network.
+
+- **`site.csv`** (31 rows) -- physical locations (factories, distribution centers, offices, stores) with region and country.
+- **`business.csv`** (31 rows) -- suppliers, manufacturers, warehouses, and buyers, each operating at a site, with a `RELIABILITY_SCORE` and value tier.
+- **`operation.csv`** (70 rows) -- shipping and transfer routes between sites, each with `COST_PER_UNIT`, `CAPACITY_PER_DAY`, transit time, and output SKU.
+- **`sku.csv`** (9 rows) -- raw materials, components, and finished goods with unit cost and price.
+- **`demand.csv`** (20 rows) -- customer orders with quantity, priority, and due date.
+- **`shipment.csv`** (262 rows) -- historical shipments with status and delay days; the source for the late-shipment rate and the blast-radius supplier graph.
+- **`delay_prediction.csv`** (36 rows) -- predicted delay probabilities per supplier per fiscal quarter, with a risk tier.
+
+## Model overview
+
+One shared ontology threads the pre-analysis and all three stages. Each stage reads concepts and properties earlier stages wrote, and writes new ones for downstream stages.
+
+- **Key entities**: `Site`, `Business`, `Operation`, `SKU`, `Demand`, `Shipment`, `DelayPrediction`.
+- **Primary identifiers**: string `id` on every concept.
+- **Important invariants**: `reliability_score` and `predicted_delay_prob` are fractions in `[0, 1]`; `capacity_per_day`, `cost_per_unit`, and `quantity` are non-negative; the flow decision variable `x_flow` is bounded by each operation's capacity; unmet-demand slack `x_unmet` is non-negative.
+
+### Concepts
+
+**`Site`** -- a physical location. Stage 1 enriches it with a normalized centrality score.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `id` | String | Yes | `ID` from `data/site.csv` |
+| `name`, `site_type`, `region`, `country` | String | No | Loaded from CSV |
+| `centrality` | Float | No | **Stage 1** normalized eigenvector centrality |
+
+**`Business`** -- a supplier, manufacturer, warehouse, or buyer that operates at a site. Stage 2 enriches it with risk flags.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `id` | String | Yes | `ID` from `data/business.csv` |
+| `name`, `business_type` | String | No | Loaded from CSV |
+| `reliability_score` | Float | No | `[0, 1]` supplier reliability |
+| `site` | Relationship | -- | Business operates at a `Site` |
+| `ships_to` | Relationship | -- | Derived supplier-to-customer edge (collapses shipments); the blast-radius graph edge |
+| `is_high_priority_customer` | Relationship | -- | Pre-analysis flag; seeds upstream reachability |
+| `is_unreliable`, `has_high_delay_risk`, `is_watch_level`, `is_avoid` | Relationship | -- | **Stage 2** risk classifications |
+
+**`Operation`** -- a shipping or transfer route between sites. The flow decision space.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `id` | String | Yes | `ID` from `data/operation.csv` |
+| `op_type` | String | No | `SHIP` / transfer; SHIP operations form the site graph edges |
+| `cost_per_unit` | Float | No | Base transport cost |
+| `capacity_per_day` | Integer | No | Upper bound on `x_flow` |
+| `transit_time_days` | Integer | No | Loaded from CSV |
+| `source_site`, `output_site`, `output_sku` | Relationship | -- | Route endpoints and produced SKU |
+| `source_business` | Relationship | -- | Derived by matching `source_site` to `Business.site` |
+| `x_flow` | Float | No | **Stage 3** flow decision variable (0 to capacity) |
+
+**`Demand`** -- a customer order. Stage 2 flags escalations; Stage 3 tracks unmet slack.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `id` | String | Yes | `ID` from `data/demand.csv` |
+| `quantity` | Integer | No | Units ordered |
+| `priority` | String | No | `HIGH` triggers escalation |
+| `business`, `sku` | Relationship | -- | Placing customer and demanded SKU |
+| `is_escalated` | Relationship | -- | **Stage 2** flag for `priority == "HIGH"` |
+| `x_unmet` | Float | No | **Stage 3** unmet-demand slack |
+
+**`SKU`** -- a stock-keeping unit (raw material, component, or finished good).
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `id` | String | Yes | `ID` from `data/sku.csv` |
+| `name`, `sku_type` | String | No | Loaded from CSV |
+
+**`Shipment`** -- a historical shipment; the source for late-shipment rates and the blast-radius supplier graph.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `id` | String | Yes | `ID` from `data/shipment.csv` |
+| `sku_id` | String | No | Shipped SKU |
+| `quantity` | Integer | No | Units shipped |
+| `supplier`, `customer` | Relationship | -- | Supplier and customer `Business` endpoints |
+
+**`DelayPrediction`** -- a predicted delay probability per supplier per fiscal quarter.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `id` | String | Yes | `ID` from `data/delay_prediction.csv` |
+| `fiscal_quarter` | String | No | E.g. `Q1-2025` |
+| `predicted_delay_prob` | Float | No | `[0, 1]` predicted delay probability |
+| `risk_tier` | String | No | Loaded from CSV |
+| `supplier_business` | Relationship | -- | Links the prediction to a `Business` |
+
+### Relationships
+
+- `Business.site` -- each business operates at a `Site`.
+- `Operation.source_site` / `output_site` / `output_sku` -- route endpoints and the SKU produced.
+- `Operation.source_business` -- derived by matching `Operation.source_site` to `Business.site`, avoiding an explicit join table.
+- `Business.ships_to` -- derived supplier-to-customer edge collapsing many shipments; the directed edge the blast-radius reachability traverses.
+- `Demand.business` / `sku` -- the customer placing the order and the SKU demanded.
+- `Shipment.supplier` / `customer` and `DelayPrediction.supplier_business` -- link history and predictions back to `Business`.
+
 ## How it works
 
 This section walks through the highlights in `supply_chain_resilience.py`.
@@ -279,6 +345,21 @@ DelayPrediction.predicted_delay_prob = model.Property(
 DelayPrediction.supplier_business = model.Relationship(
     f"{DelayPrediction} predicts for {Business}"
 )
+```
+
+### Stage 0: Blast-radius pre-analysis
+
+Before any optimization runs, a directed `Business` graph is built from the derived `ships_to` edges (supplier to customer). Upstream reachability from the high-priority customers traces every supplier each one transitively depends on, making the exposure footprint explicit so the later scenario results can be read in context:
+
+```python
+model.where(Business.ships_to(b_src, b_dst)).define(
+    biz_graph.Edge.new(src=b_src, dst=b_dst)
+)
+
+target_customer = model.Relationship(f"target customer {Business}")
+model.where(Business.is_high_priority_customer()).define(target_customer(Business))
+
+reachable_to = biz_graph.reachable(to=target_customer)
 ```
 
 ### Stage 1: Graph -- network criticality
@@ -411,13 +492,32 @@ After the baseline solve, two disruption scenarios are evaluated by re-solving w
 
 ## Customize this template
 
-- **Adjust risk thresholds** via `RELIABILITY_THRESHOLD` and `DELAY_PROB_THRESHOLD` to control which suppliers are flagged as unreliable or high-delay-risk.
-- **Change the prediction quarter** via `PREDICTION_QUARTER` to use different ML delay predictions.
-- **Tune the centrality weight** via `CENTRALITY_WEIGHT` to control how strongly bottleneck penalties influence routing.
-- **Adjust the risk surcharge** via `RISK_SURCHARGE` to increase or decrease the cost penalty for "watch" suppliers.
-- **Change the unmet demand penalty** via `UNMET_PENALTY` to control the trade-off between routing cost and demand fulfillment.
-- **Add new scenarios** by calling `solve_flow()` with different `exclude_site_id` or `block_business_ids` parameters.
-- **Extend the data** by adding rows to the CSV files -- more sites, operations, or demand orders will scale the network flow problem.
+Focus on the first changes most users will make.
+
+### Use your own data
+
+- Replace the CSVs in `data/` with your own; keep the column names listed in *Sample data* above.
+- For Snowflake-backed runs, swap the `pd.read_csv(...)` calls for `model.data(snowflake_table)` calls.
+- The `source_business` link is derived by matching `Operation.source_site` to `Business.site` -- ensure those IDs align across `operation.csv` and `business.csv` (the script prints a populated count on startup).
+
+### Tune parameters
+
+- **Risk thresholds** -- `RELIABILITY_THRESHOLD` and `DELAY_PROB_THRESHOLD` control which suppliers are flagged as unreliable or high-delay-risk.
+- **Prediction quarter** -- `PREDICTION_QUARTER` selects which quarter's delay predictions to use.
+- **Centrality weight** -- `CENTRALITY_WEIGHT` controls how strongly bottleneck penalties influence routing.
+- **Risk surcharge** -- `RISK_SURCHARGE` sets the cost penalty for "watch" suppliers.
+- **Unmet-demand penalty** -- `UNMET_PENALTY` controls the trade-off between routing cost and demand fulfillment.
+
+### Extend the model
+
+- Add new scenarios by calling `solve_flow()` with different `exclude_site_id` or `block_business_ids` parameters.
+- Add rows to the CSV files -- more sites, operations, or demand orders scale the network flow problem.
+- Swap eigenvector centrality for another graph algorithm (e.g. betweenness) to surface a different notion of structural criticality without changing the optimizer.
+
+### Scale up / productionize
+
+- Replace the `data/` CSV bundle with change-data-capture ingestion from the operator's upstream systems.
+- The formulation scales to whatever fits the prescriptive engine's solve budget; the reusable `solve_flow()` function makes scheduled re-solves and new disruption scenarios cheap to add.
 
 ## Troubleshooting
 
@@ -463,3 +563,20 @@ After the baseline solve, two disruption scenarios are evaluated by re-solving w
 - Run `rai init` to configure your Snowflake connection.
 - Verify that the RAI Native App is installed and your user has the required permissions.
 </details>
+
+## Learn more
+
+### Core concepts
+
+- [Multi-reasoner workflows](https://docs.relational.ai/) -- chained reasoner patterns and accretive ontology enrichment.
+- [PyRel v1 query language](https://docs.relational.ai/) -- `model.where(...)` / `aggs` / `.define()`.
+
+### Reasoner reference
+
+- [Graph reasoner](https://docs.relational.ai/) -- connected components, eigenvector centrality, and reachability.
+- [Rules-based reasoning](https://docs.relational.ai/) -- deriving classifications and flags as relationships.
+- [Prescriptive reasoner](https://docs.relational.ai/) -- `Problem` API, decision variables, constraints, and objective.
+
+## Support
+
+- File issues at the RelationalAI templates repository.

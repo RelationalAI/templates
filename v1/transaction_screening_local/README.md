@@ -206,6 +206,26 @@ Make sure the configuration includes a `deployment` section with `auto_deploy` s
 DuckDB is case-insensitive, so a source table named like a concept collides with the installed view. Keep source tables in a schema named `raw`, separate from the model install schema named `main`.
 </details>
 
+## Learn more
+
+### Core concepts
+
+- [PyRel v1 modeling](https://docs.relational.ai/) — concepts, relationships, and the `define()` / `where()` workflow this template is built on.
+- [Local DuckDB development](https://docs.relational.ai/) — running RelationalAI on a local DuckDB database with no Snowflake account.
+
+### Language / modeling reference
+
+- [Rules and derived relationships](https://docs.relational.ai/) — authoring classification rules like `is_structuring`, `is_suspect`, and the investigation expansion.
+- [Querying](https://docs.relational.ai/) — `select()`, filtering, and aggregation for the summary and review tables.
+
+### CLI / SDK guides
+
+- [RelationalAI Python SDK](https://docs.relational.ai/) — installing and configuring the `relationalai` package.
+
+## Support
+
+- File issues at the RelationalAI templates repository.
+
 ## Related templates
 
 - [commercial_underwriting](../commercial_underwriting/) is a rules-based eligibility and risk-tier classification on a hierarchical ontology.

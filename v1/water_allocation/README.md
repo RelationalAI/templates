@@ -13,17 +13,13 @@ tags:
   - Ipopt
 ---
 
-# Water Allocation
-
 ## What this template is for
 
-This template uses **Prescriptive** reasoning (nonlinear optimization) to minimize the cost of distributing water from sources to users with nonlinear transmission losses.
+Water utilities must distribute water from multiple sources — reservoirs, groundwater — to multiple user groups such as municipal, industrial, and agricultural demand. Each source has a limited capacity and a different extraction cost, and every connection in the distribution network has a maximum flow rate and a transmission loss that reduces the amount actually delivered. Losses grow as a pipe runs closer to capacity, so a plan that ignores that effect over-promises delivery on its busiest routes.
 
-Water utilities must distribute water from multiple sources (reservoirs, groundwater) to multiple user groups (municipal, industrial, agricultural). Each source has a limited capacity and a different extraction cost. Each connection in the distribution network has a maximum flow rate and a transmission loss rate that reduces the effective amount delivered.
+The goal is the minimum-cost allocation that still meets every user's demand once realistic, utilization-dependent losses are accounted for.
 
-This template uses prescriptive reasoning to find the minimum-cost allocation that satisfies every user's demand. It models the distribution network as a flow problem with source capacity constraints, demand satisfaction constraints with nonlinear transmission losses, and connection flow limits.
-
-The key feature is nonlinear loss modeling: transmission losses increase with utilization (effective delivery = flow * (1 - loss_rate * flow / max_flow)), creating a quadratic constraint that requires the Ipopt nonlinear solver. This is more realistic than constant-rate losses -- at low flow the loss is small, but at capacity the full loss rate applies.
+**A prescriptive reasoner solves this as a network-flow problem with source-capacity limits, per-connection flow bounds, and demand constraints whose nonlinear loss term makes the problem quadratic — solved with the Ipopt nonlinear solver.**
 
 ## Who this is for
 
@@ -33,18 +29,18 @@ The key feature is nonlinear loss modeling: transmission losses increase with ut
 
 ## What you'll build
 
-- A nonlinear optimization model for minimum-cost water distribution solved with Ipopt
-- Source capacity constraints limiting total outflow per source
-- Demand constraints with nonlinear (utilization-dependent) transmission losses
-- Flow upper bounds on individual connections
+- A minimum-cost water-distribution plan — a flow allocation across every source-to-user connection — solved with the Ipopt nonlinear solver.
+- Source-capacity constraints limiting total outflow per source, and per-connection flow upper bounds.
+- Demand constraints that model utilization-dependent transmission losses, so delivered volume reflects how hard each route is being pushed.
+
+Built using **prescriptive reasoning** (nonlinear program over continuous flow variables, with a quadratic loss term).
 
 ## What's included
 
-- `water_allocation.py` -- Main script defining the network model, constraints, and solver call
-- `data/sources.csv` -- Water sources with capacity and cost per unit
-- `data/users.csv` -- User groups with demand and priority
-- `data/connections.csv` -- Network connections with max flow and loss rate
-- `pyproject.toml` -- Python package configuration
+- **Model**: a single-stage nonlinear optimization on a shared ontology — `Source`, `User`, and `Connection` concepts wired to the bundled CSVs.
+- **Runner**: `water_allocation.py` — a single Python script that builds the model, constraints, and objective and calls the solver against a Snowflake-connected RAI account.
+- **Sample data**: a small water-distribution network of sources, user groups, and the connections between them. See *Sample data* below.
+- **Outputs**: solver status, total cost, and the per-connection flow allocations.
 
 ## Prerequisites
 
@@ -53,7 +49,8 @@ The key feature is nonlinear loss modeling: transmission losses increase with ut
 - A Snowflake user with permissions to access the RAI Native App.
 
 ### Tools
-- Python >= 3.10
+- Python >= 3.10.
+- RelationalAI Python SDK (`relationalai == 1.0.14`).
 
 ## Quickstart
 
@@ -88,36 +85,81 @@ The key feature is nonlinear loss modeling: transmission losses increase with ut
    python water_allocation.py
    ```
 
-6. Expected output:
+6. Expected output (a few lines confirm a successful run):
    ```text
    Status: LOCALLY_SOLVED
    Total cost: $853.39
 
    Flow allocations:
-     Reservoir_A  Agricultural  352.77
-     Reservoir_A    Industrial  247.23
      Reservoir_A     Municipal  400.00
      Reservoir_B  Agricultural  182.06
-     Reservoir_B    Industrial  177.93
-     Reservoir_B     Municipal  228.99
+     ...
    ```
 
    Groundwater is not used — the solver routes all flow through the cheaper
-   reservoirs. Reservoir A supplies its full municipal capacity (400 units) while
-   splitting the remainder between agricultural and industrial users. Reservoir B
-   covers the remaining demand.
+   reservoirs. The full printout and a step-by-step walkthrough are in `runbook.md`.
 
 ## Template structure
+
 ```text
-.
-├── README.md
-├── pyproject.toml
-├── water_allocation.py
-└── data/
-    ├── connections.csv
-    ├── sources.csv
-    └── users.csv
+water_allocation/
+  water_allocation.py   # Main script (network model, constraints, solver call)
+  data/
+    sources.csv         # Water sources with capacity and cost per unit
+    users.csv           # User groups with demand and priority
+    connections.csv     # Network connections with max flow and loss rate
+  README.md             # this file
+  runbook.md            # analyst-facing paste-testable walkthrough
+  pyproject.toml        # dependencies
 ```
+
+**Start here**: run `python water_allocation.py` for the full solve end to end, or follow `runbook.md` to rebuild it step by step.
+
+## Sample data
+
+The bundled data is a small, illustrative water-distribution network — designed to teach the nonlinear flow formulation on a Snowflake-connected RAI account, not to match a specific utility's system.
+
+- **`sources.csv`** — water sources, each with a `capacity` and a `cost_per_unit`.
+- **`users.csv`** — user groups, each with a `demand` and a `priority`.
+- **`connections.csv`** — source-to-user links, each with a `max_flow` and a `loss_rate` (the fraction lost at full utilization).
+
+## Model overview
+
+A single shared ontology holds the network. The `Connection` concept carries the flow decision variable the solver assigns.
+
+- **Key entities**: `Source` (reservoirs, groundwater), `User` (demand groups), `Connection` (source-to-user links).
+- **Primary identifiers**: integer `id` on `Source` and `User`; `Connection` is identified by its `source` and `user` endpoints.
+- **Important invariants**: `capacity`, `demand`, `max_flow`, and `cost_per_unit` are non-negative; `loss_rate` is a fraction in `[0, 1]`; each connection's flow is continuous and bounded between 0 and its `max_flow`.
+
+### Concepts
+
+**`Source`** — a water source with a capacity ceiling and an extraction cost.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `id` | Integer | Yes | Loaded from `data/sources.csv` |
+| `name` | String | No | e.g. `Reservoir_A` |
+| `capacity` | Float | No | Maximum total outflow |
+| `cost_per_unit` | Float | No | Extraction cost per unit of flow |
+
+**`User`** — a demand group that must be served.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `id` | Integer | Yes | Loaded from `data/users.csv` |
+| `name` | String | No | e.g. `Municipal` |
+| `demand` | Float | No | Required delivered volume |
+| `priority` | Integer | No | Group priority (available for priority-based extensions) |
+
+**`Connection`** — a link from a source to a user; the flow decision lives here.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `source` | Relationship | Yes | Endpoint on `Source` |
+| `user` | Relationship | Yes | Endpoint on `User` |
+| `max_flow` | Float | No | Upper bound on this connection's flow |
+| `loss_rate` | Float | No | Fraction lost at full utilization |
+| `x_flow` | Float | No | Flow allocated by the solver (decision variable) |
 
 ## How it works
 
@@ -155,7 +197,7 @@ problem.solve_for(
 
 ### 3. Add capacity and demand constraints
 
-Source capacity limits total outflow. Demand constraints use nonlinear losses -- loss increases with utilization, so effective delivery per connection is `flow * (1 - loss_rate * flow / max_flow)`:
+Source capacity limits total outflow. Demand constraints use nonlinear losses that increase with utilization, so effective delivery per connection falls as a route approaches its `max_flow`, as encoded below:
 
 ```python
 outflow = sum(ConnectionRef.x_flow).where(ConnectionRef.source == Source).per(Source)
@@ -180,10 +222,30 @@ problem.minimize(total_cost)
 
 ## Customize this template
 
+Focus on the first changes most users will make.
+
+### Use your own data
+
+- Replace the CSVs in `data/` with your own; keep the column names shown in *Sample data* above (`sources.csv`, `users.csv`, `connections.csv`).
+- For Snowflake-backed runs, swap the `read_csv(...)` calls for `model.data(snowflake_table)` calls.
+- Confirm `source_id` and `user_id` in `connections.csv` match the `id` columns in `sources.csv` and `users.csv` — a mismatched key silently drops the connection.
+
+### Tune parameters
+
+- **Source capacity and cost** — edit `capacity` and `cost_per_unit` in `sources.csv` to change which sources the solver prefers.
+- **Loss rate** — `loss_rate` in `connections.csv` controls how steeply delivery falls as a route approaches capacity.
+
+### Extend the model
+
 - **Add seasonal variation** by introducing time periods with different source capacities and user demands.
-- **Include priority-based allocation** using the priority field to penalize unmet demand differently for each user group.
+- **Include priority-based allocation** using the `priority` field to penalize unmet demand differently for each user group.
 - **Add minimum flow requirements** on certain connections to model contractual obligations.
 - **Extend the network** with intermediate nodes (pumping stations, treatment plants) that add processing costs or additional capacity constraints.
+
+### Scale up / productionize
+
+- Replace the `data/` CSV bundle with CDC ingestion from your upstream source and demand systems.
+- The bundled network is small; the formulation scales to whatever the Ipopt solver can handle in your solve budget. Pin dependencies via `pyproject.toml` for reproducible runs.
 
 ## Troubleshooting
 
@@ -210,3 +272,19 @@ Make sure you activated the virtual environment and ran `python -m pip install .
 
 Run `rai init` to configure your Snowflake connection. Verify that your account has the RAI Native App installed and that your user has the required permissions.
 </details>
+
+## Learn more
+
+### Core concepts
+
+- [PyRel v1 query language](https://docs.relational.ai/) — `model.where(...)` / `model.select(...)` / `sum`.
+- [Ontology modeling](https://docs.relational.ai/) — concepts, properties, and relationships that back this network model.
+
+### Reasoner reference
+
+- [Prescriptive reasoner](https://docs.relational.ai/) — `Problem` API, decision variables, constraints, objective.
+- [Nonlinear solving with Ipopt](https://docs.relational.ai/) — when a quadratic or nonlinear constraint requires the nonlinear solver.
+
+## Support
+
+- File issues at the RelationalAI templates repository.

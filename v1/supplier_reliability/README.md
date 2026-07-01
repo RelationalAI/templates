@@ -13,21 +13,13 @@ tags:
   - Cost Optimization
 ---
 
-# Supplier Reliability
-
 ## What this template is for
 
-Procurement teams must choose which suppliers to source from when multiple options exist for each product. Each supplier has different pricing and capacity limits (plus a reliability score, carried as extension data -- not priced into the objective, and not what drives the disruption scenarios below). The challenge is to meet all product demand at minimum cost without exceeding any supplier's capacity.
+Procurement teams must choose which suppliers to source from when multiple options exist for each product. Each supplier has different pricing and capacity limits, and the challenge is to meet all product demand at minimum cost without overloading any supplier. Beyond the cheapest plan, a planner wants to know which supplier is the real bottleneck, what one more unit of demand would cost, and how badly the plan breaks if a key supplier goes offline.
 
-This template uses **Prescriptive** reasoning to formulate the supplier selection problem as a linear program. It determines the optimal order quantities across supply options, ensuring that every product's demand is met and no supplier is overloaded. The solver finds the cost-minimizing allocation automatically.
+This template answers all of those in one place: it finds the cost-minimizing sourcing plan, reads off the marginal values that rank where to invest next, and re-solves under supplier-disruption scenarios to test resilience.
 
-A plain solve answers *"what is the cheapest sourcing plan?"*. This template requests **sensitivity analysis** (`solve(sensitivity=True)`) on the baseline, which ALSO answers the *marginal* questions a planner asks next -- in the same solve:
-
-- **Which supplier capacity is the bottleneck?** The *shadow price* of each capacity constraint (`cap.shadow_price`) is how much total cost moves per unit of that supplier's capacity. A capacity with room to spare prices at zero; a nonzero price marks a binding bottleneck.
-- **What does one more unit of demand cost?** The shadow price of each demand constraint (`meet.shadow_price`) is the marginal cost to serve one more unit of that product.
-- **Which supply lanes are priced out?** A lane's *reduced cost* (`qty_var.reduced_cost`) and *basis status* (`qty_var.basis_status`) show which options are unused and how far their cost must fall before they enter the plan.
-
-Finally, the template demonstrates **scenario analysis** by re-solving the problem with specific suppliers fully excluded. This is a *finite, structural* change -- what happens to cost and feasibility if a key supplier becomes unavailable? -- that the local marginals contextualize but do not by themselves predict.
+**Prescriptive reasoning formulates supplier selection as a linear program**, solved once with sensitivity analysis for the marginals and re-solved per scenario for the disruption tests.
 
 ## Who this is for
 
@@ -45,11 +37,10 @@ Finally, the template demonstrates **scenario analysis** by re-solving the probl
 
 ## What's included
 
-- `supplier_reliability.py` -- Main script defining the model, constraints, and scenario analysis
-- `data/suppliers.csv` -- Supplier capacity and reliability scores
-- `data/products.csv` -- Product demand requirements
-- `data/supply_options.csv` -- Cost per unit for each supplier-product pair
-- `pyproject.toml` -- Python package configuration
+- **Model**: `Supplier`, `Product`, and `SupplyOption` concepts, a `SupplyOrder` decision concept holding the order-quantity variable, capacity and demand constraints, and a cost-minimizing objective.
+- **Runner**: `supplier_reliability.py` -- a single Python script that loads data, runs the baseline solve with sensitivity analysis, reads the marginals, and runs the disruption scenarios end to end.
+- **Sample data**: three CSVs under `data/` describing suppliers, products, and per-supplier-product supply options. See *Sample data* below.
+- **Outputs**: the baseline plan with capacity and demand shadow prices, lane reduced costs and basis status, a per-scenario order plan, and a scenario-analysis summary printed to stdout.
 
 ## Prerequisites
 
@@ -182,16 +173,71 @@ Finally, the template demonstrates **scenario analysis** by re-solving the probl
    less impact (+6%) since SupplierC absorbs most of the displaced volume.
 
 ## Template structure
+
 ```text
 .
-├── README.md
-├── pyproject.toml
-├── supplier_reliability.py
+├── README.md                # this file
+├── pyproject.toml           # dependencies
+├── supplier_reliability.py  # main script (load, baseline solve, marginals, scenarios)
 └── data/
-    ├── products.csv
-    ├── suppliers.csv
-    └── supply_options.csv
+    ├── products.csv         # products with demand requirements
+    ├── suppliers.csv        # suppliers with capacity and reliability scores
+    └── supply_options.csv   # per-unit cost for each supplier-product pair
 ```
+
+**Start here**: run `python supplier_reliability.py` for the full baseline solve, marginal reads, and disruption scenarios end to end.
+
+## Sample data
+
+The bundled data is synthetic and illustrative -- a small four-supplier, three-product catalog sized to teach the sourcing and sensitivity patterns, not to mirror a specific procurement portfolio.
+
+- **`suppliers.csv`** (4 rows) -- suppliers `SupplierA` through `SupplierD`, each with a `capacity` (350-600 units) and a `reliability` score. The reliability score is carried as data only: it is not priced into the objective and does not drive the disruption scenarios (it is an extension point; see *Customize this template*).
+- **`products.csv`** (3 rows) -- `Widget`, `Gadget`, and `Component`, each with a `demand` requirement.
+- **`supply_options.csv`** -- one row per supplier-product pair with a `cost_per_unit`. `SupplierC` is the cheapest source for every product, so it fills its capacity first; the pricing is tuned so `SupplierC`'s capacity is the single binding bottleneck at the optimum.
+
+## Model overview
+
+The model has three source concepts loaded from CSV, plus a derived `SupplyOrder` decision concept that carries the order-quantity variable and back-pointers to its supplier and product.
+
+- **Key entities**: `Supplier`, `Product`, `SupplyOption`, and the decision concept `SupplyOrder`.
+- **Primary identifiers**: integer `id` on `Supplier`, `Product`, and `SupplyOption`; `SupplyOrder` is identified by the `SupplyOption` it uses.
+- **Important invariants**: `capacity` and `demand` are non-negative integers; `cost_per_unit` is non-negative; order quantities are continuous and non-negative; total ordered per supplier stays within capacity; total ordered per product meets demand.
+
+**`Supplier`** -- a source with a capacity limit and a reliability score.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `id` | int | Yes | Loaded from `data/suppliers.csv` |
+| `name` | string | No | Supplier label (e.g. `SupplierC`) |
+| `reliability` | float | No | Carried as data only; not in the objective |
+| `capacity` | int | No | Maximum total units the supplier can provide |
+
+**`Product`** -- an item with a demand requirement to satisfy.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `id` | int | Yes | Loaded from `data/products.csv` |
+| `name` | string | No | Product label (e.g. `Widget`) |
+| `demand` | int | No | Units that must be sourced |
+
+**`SupplyOption`** -- a supplier-product sourcing lane with a per-unit cost.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `id` | int | Yes | Loaded from `data/supply_options.csv` |
+| `supplier` | `Supplier` | No | The sourcing supplier |
+| `product` | `Product` | No | The product sourced |
+| `cost_per_unit` | float | No | Per-unit cost of this lane |
+
+**`SupplyOrder`** -- the decision concept: an order placed through one supply option.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `option` | `SupplyOption` | Yes | The lane this order uses |
+| `x_quantity` | float | No | Decision variable: units ordered on this lane |
+| `supplier` | `Supplier` | No | Derived back-pointer (via `option`) for direct access |
+| `product` | `Product` | No | Derived back-pointer (via `option`) for direct access |
+| `cost_per_unit` | float | No | Derived from the option's cost |
 
 ## How it works
 
@@ -252,6 +298,12 @@ baseline.minimize(sum(SupplyOrder.x_quantity * SupplyOrder.cost_per_unit))
 
 ### 4. Request sensitivity and read the marginals
 
+A plain solve answers *"what is the cheapest sourcing plan?"*. Requesting sensitivity analysis (`solve(sensitivity=True)`) on the same solve also answers the marginal questions a planner asks next:
+
+- **Which supplier capacity is the bottleneck?** The *shadow price* of each capacity constraint (`cap.shadow_price`) is how much total cost moves per unit of that supplier's capacity. A capacity with room to spare prices at zero; a nonzero price marks a binding bottleneck.
+- **What does one more unit of demand cost?** The shadow price of each demand constraint (`meet.shadow_price`) is the marginal cost to serve one more unit of that product.
+- **Which supply lanes are priced out?** A lane's *reduced cost* (`qty_var.reduced_cost`) and *basis status* (`qty_var.basis_status`) show which options are unused and how far their cost must fall before they enter the plan.
+
 Solve the baseline with `sensitivity=True`, then read each marginal straight off the variable or constraint object -- the same attribute style as `.name`. A constraint declared with `keyed_by` carries an **entity back-pointer** (`cap.supplier`, `meet.product`), mirroring the variable's automatic back-pointer (`qty_var.supplyorder`), so a marginal joins to that entity's own data by KEY -- no name parsing, no pandas:
 
 ```python
@@ -295,10 +347,31 @@ for excluded in ["SupplierC", "SupplierB"]:
 
 ## Customize this template
 
-- **Add a reliability penalty** to the objective function, weighting cost against supplier reliability scores. One weighting yields a single trade-off point; sweep the weight to trace the cost-vs-reliability frontier.
-- **Expand the scenario analysis** to exclude combinations of suppliers or simulate capacity reductions.
+Focus on the first changes most users will make.
+
+### Use your own data
+
+- Replace the three CSVs in `data/` with your own, keeping the column names listed in *Sample data* above. `suppliers.csv`, `products.csv`, and `supply_options.csv` each map directly to a concept.
+- Every product in `products.csv` needs at least one supply option in `supply_options.csv`, and total capacity across suppliers must cover total demand, or the baseline solve is infeasible.
+- For Snowflake-backed runs, swap the `read_csv(...)` calls for `model.data(snowflake_table)` calls.
+
+### Tune parameters
+
+- **Capacity and demand** -- edit `capacity` in `suppliers.csv` and `demand` in `products.csv` to change where the bottleneck lands; the shadow prices track which constraint binds.
+- **Costs** -- adjust `cost_per_unit` in `supply_options.csv` to shift the optimal sourcing mix and the reduced costs of unused lanes.
+- **Scenarios** -- edit the excluded-supplier list in the scenario loop to test different disruptions.
+
+### Extend the model
+
+- **Add a reliability penalty** to the objective, weighting cost against supplier reliability scores. One weighting yields a single trade-off point; sweep the weight to trace the cost-vs-reliability frontier.
 - **Add minimum order quantities** by setting lower bounds on the decision variables for active supply options.
-- **Introduce transportation costs** by adding a distance or shipping cost dimension to supply options.
+- **Introduce transportation costs** by adding a distance or shipping-cost dimension to supply options.
+- **Expand the scenario analysis** to exclude combinations of suppliers or simulate capacity reductions rather than full exclusions.
+
+### Scale up / productionize
+
+- The model is a linear program that solves quickly; it scales to larger supplier-product catalogs within the solver's time budget.
+- Pin the `relationalai` SDK version (see *Prerequisites*) for reproducible solves. Note that the optimum has cost-equal alternates, so exact order quantities can vary across HiGHS builds while the objective and shadow prices stay fixed.
 
 ## Troubleshooting
 
@@ -325,3 +398,22 @@ Run `rai init` to configure your Snowflake connection. Verify that your account 
 
 The solver minimizes cost, so it will avoid expensive supply options when cheaper alternatives exist. Check `supply_options.csv` to see if the cost differences explain the allocation. If you want to enforce minimum diversification, add constraints requiring orders from multiple suppliers.
 </details>
+
+## Learn more
+
+### Core concepts
+
+- [PyRel v1 query language](https://docs.relational.ai/) -- concepts, properties, `sum(...).per(...)` aggregates, and `select(...)` used to build constraints and read marginals.
+
+### Reasoner reference
+
+- [Prescriptive reasoner](https://docs.relational.ai/) -- the `Problem` API, `solve_for` decision variables, `satisfy` constraints, and `minimize` objectives.
+- [Sensitivity analysis](https://docs.relational.ai/) -- shadow prices, reduced costs, and basis status returned by `solve(sensitivity=True)`, and reading them back by entity key.
+
+### CLI / SDK guides
+
+- [RelationalAI setup and `rai init`](https://docs.relational.ai/) -- connecting the SDK to your Snowflake account.
+
+## Support
+
+- File issues at the RelationalAI templates repository.

@@ -13,8 +13,6 @@ tags:
   - Aggregation
 ---
 
-# Shipment Compliance
-
 ## What this template is for
 
 This template uses **rules-based reasoning** to define derived business rules for shipment compliance, sourcing risk, and demand escalation.
@@ -96,21 +94,128 @@ The four rules demonstrate different rule patterns:
    python shipment_compliance.py
    ```
 
+6. Expected output (a few lines confirm a successful run):
+
+   The script prints the entities each rule flags. On the bundled data the four
+   rules catch **2 late shipments**, **6 at-risk shipments**, **2 single-sourced
+   BOM inputs**, and **4 escalated demands**:
+
+   ```text
+   === Rule 1: Late Shipments (delay_days > 0) ===
+   (2 rows)
+
+   === Rule 2: At-Risk Shipments (undelivered + unreliable supplier) ===
+   (6 rows)
+
+   === Rule 3: Single-Sourced BOM Inputs (only 1 operation route) ===
+   (2 rows)
+
+   === Rule 4: Escalated Demands (HIGH or URGENT priority) ===
+   (4 rows)
+   ```
+
+   See `runbook.md` for the full record-by-record walkthrough of each flag.
+
 ## Template structure
 
 ```text
 .
-├── README.md
-├── pyproject.toml
-├── shipment_compliance.py
+├── README.md               # this file
+├── pyproject.toml          # dependencies
+├── shipment_compliance.py  # main script: data model + four derived rules
+├── runbook.md              # analyst-facing paste-testable walkthrough
 └── data/
-    ├── suppliers.csv
-    ├── skus.csv
-    ├── shipments.csv
-    ├── operations.csv
-    ├── bill_of_materials.csv
-    └── demands.csv
+    ├── suppliers.csv          # 5 suppliers (id, name, reliability_score)
+    ├── skus.csv               # 6 SKUs (id, name, product_type)
+    ├── shipments.csv          # 12 shipments (id, sku_id, supplier_id, status, delay_days)
+    ├── operations.csv         # 7 operations (input/output SKU, cost, capacity)
+    ├── bill_of_materials.csv  # 6 BOM lines (input SKU, site, quantity)
+    └── demands.csv            # 8 demand orders (SKU, quantity, priority)
 ```
+
+**Start here**: run `python shipment_compliance.py` to author all four rules and print the flagged records, or follow `runbook.md` to rebuild it step by step.
+
+## Sample data
+
+The bundled data is a small, illustrative sourcing-and-fulfillment model — 6 concepts sized so each rule pattern is easy to trace by hand.
+
+- **`suppliers.csv`** (5 rows) — supplier `name` and `reliability_score` (a fraction in `[0, 1]`); two suppliers score below the `0.8` at-risk threshold.
+- **`skus.csv`** (6 rows) — the product and component catalog (`name`, `product_type`).
+- **`shipments.csv`** (12 rows) — each shipment links to a SKU and a supplier, and carries a `status` and `delay_days`.
+- **`operations.csv`** (7 rows) — production/shipping routes, each consuming an input SKU and producing an output SKU.
+- **`bill_of_materials.csv`** (6 rows) — input-SKU requirements per site.
+- **`demands.csv`** (8 rows) — demand orders for SKUs, each with a `quantity` and a `priority`.
+
+`status` and `priority` are closed vocabularies (`ShipmentStatus`, `Priority`) loaded from the raw CSV strings by member name.
+
+## Model overview
+
+Six concepts model a small supply chain, linked by SKU and supplier references. The four business rules are derived boolean flags added back onto the concepts.
+
+- **Key entities**: `Supplier`, `SKU`, `Shipment`, `Operation`, `BillOfMaterials`, `Demand`.
+- **Primary identifiers**: an integer `id` on every concept.
+- **Important invariants**: `Supplier.reliability_score` is a fraction in `[0, 1]`; `Shipment.status` is a `ShipmentStatus` member (`PENDING` / `IN_TRANSIT` / `DELIVERED`); `Demand.priority` is a `Priority` member (`LOW` / `STANDARD` / `HIGH` / `URGENT`); `delay_days`, `quantity`, and `input_quantity` are non-negative.
+
+### Concepts
+
+**`Supplier`** — a company that supplies parts.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `id` | Integer | Yes | Loaded from `data/suppliers.csv` |
+| `name` | String | No | Supplier name |
+| `reliability_score` | Float | No | `[0, 1]`; below `0.8` flags shipments as at-risk (Rule 2) |
+
+**`SKU`** — a stock-keeping unit tracked in the supply chain.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `id` | Integer | Yes | Loaded from `data/skus.csv` |
+| `name` | String | No | Human-readable name |
+| `product_type` | String | No | e.g. `FINISHED_GOOD` |
+
+**`Shipment`** — a delivery of a SKU from a supplier.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `id` | Integer | Yes | Loaded from `data/shipments.csv` |
+| `sku` | Relationship | — | Links to the `SKU` carried |
+| `supplier` | Relationship | — | Links to the `Supplier` |
+| `status` | `ShipmentStatus` enum | No | `PENDING` / `IN_TRANSIT` / `DELIVERED`, mapped from the CSV string |
+| `delay_days` | Integer | No | Days late; `> 0` flags the shipment as late (Rule 1) |
+| `is_late` | Relationship | — | **Rule 1** derived flag |
+| `is_at_risk` | Relationship | — | **Rule 2** derived flag |
+
+**`Operation`** — a production or shipping route that transforms SKUs.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `id` | Integer | Yes | Loaded from `data/operations.csv` |
+| `type` | String | No | Route type (e.g. `SHIP`) |
+| `input_sku` | Relationship | — | The SKU consumed |
+| `output_sku` | Relationship | — | The SKU produced |
+| `cost_per_unit` | Float | No | Route cost per unit |
+| `capacity_per_day` | Integer | No | Daily throughput limit |
+
+**`BillOfMaterials`** — an input-SKU requirement for production.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `id` | Integer | Yes | Loaded from `data/bill_of_materials.csv` |
+| `input_sku` | Relationship | — | The required input `SKU` |
+| `site_id` | Integer | No | Production site |
+| `input_quantity` | Integer | No | Quantity required |
+| `is_single_sourced` | Relationship | — | **Rule 3** derived flag (only one operation produces the input) |
+
+**`Demand`** — a quantity requirement for a specific SKU.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `id` | Integer | Yes | Loaded from `data/demands.csv` |
+| `sku` | Relationship | — | The `SKU` demanded |
+| `quantity` | Integer | No | Units required |
+| `priority` | `Priority` enum | No | `LOW` / `STANDARD` / `HIGH` / `URGENT`, mapped from the CSV string |
+| `is_escalated` | Relationship | — | **Rule 4** derived flag (`HIGH` or `URGENT`) |
 
 ## How it works
 
@@ -170,9 +275,26 @@ Each rule is queried with `model.select(...).where(Concept.rule_flag())` to disp
 
 ## Customize this template
 
+### Use your own data
+
+- Replace the CSVs in `data/` with your own; keep the column names listed in *Sample data* above. Every foreign-key column (`sku_id`, `supplier_id`, `input_sku_id`, `output_sku_id`) must match an `id` in the referenced file, or those rows drop out of the join.
+- The `status` and `priority` columns are enum-mapped: values must exactly match the `ShipmentStatus` / `Priority` member names. `lookup()` cannot validate values that arrive from data columns — unrecognized values silently map to a nonexistent member and drop out of every member-comparison rule. Extend the enum if your feed has more values.
+
+### Tune parameters
+
+- **At-risk threshold** — Rule 2 flags suppliers scoring below `0.8`; adjust the `reliability_score < 0.8` comparison to match your risk tolerance.
+- **Escalation tiers** — Rule 4 fires on `HIGH` or `URGENT`; add or remove `define()` calls to change which priorities escalate.
+
+### Extend the model
+
 - **Add more rules**: Define additional Relationships for new business conditions (e.g., `Supplier.is_high_risk` based on reliability thresholds).
 - **Chain rules**: Reference one rule's output in another rule's definition (e.g., flag demands as critical if they are escalated AND depend on a single-sourced BOM input).
 - **Connect to optimization**: Use rule flags as constraint filters in a prescriptive formulation (e.g., exclude at-risk shipments from allocation).
+
+### Scale up / productionize
+
+- For Snowflake-backed runs, swap the `read_csv(...)` calls for `model.data(snowflake_table)` and load the concepts from your tables.
+- Rules are pure declarative logic and re-evaluate as the underlying data changes, so they slot naturally into a change-data-capture pipeline. Pin the `relationalai` version for reproducibility.
 
 ## Troubleshooting
 
@@ -187,3 +309,27 @@ Make sure you activated the virtual environment and ran `python -m pip install .
 
 Run `rai init` to configure your Snowflake connection. Verify that the RAI Native App is installed and your user has the required permissions.
 </details>
+
+<details>
+<summary>A rule catches no records (or too few)</summary>
+
+- Confirm the enum values in `status` / `priority` exactly match the `ShipmentStatus` / `Priority` member names — mismatched strings silently drop rows.
+- Sanity-check the input data: Rule 2 needs undelivered shipments from suppliers scoring below `0.8`; Rule 3 needs an input SKU produced by exactly one operation.
+- Verify foreign keys line up across CSVs (`sku_id`, `supplier_id`, `input_sku_id` match an `id` in the referenced file).
+</details>
+
+## Learn more
+
+### Core concepts
+
+- [Rules-based reasoning](https://docs.relational.ai/) — authoring business logic as derived properties: validation, classification, and alerting.
+- [PyRel v1 query language](https://docs.relational.ai/) — `model.where(...).define(...)` and `model.select(...)`, the patterns this template is built on.
+
+### Language / modeling reference
+
+- [Derived relationships and aggregation](https://docs.relational.ai/) — the `define()` pattern and `aggregates.count(...).per(...)` used in Rule 3.
+- [Enum vocabularies](https://docs.relational.ai/) — `model.Enum` types and `lookup()` for closed-value fields.
+
+## Support
+
+- File issues at the RelationalAI templates repository.

@@ -13,8 +13,6 @@ tags:
   - logistics
 ---
 
-# Supply Chain Transport
-
 ## What this template is for
 
 In freight logistics, choosing between truckload (TL) and less-than-truckload (LTL) shipping modes involves a cost trade-off. TL shipments have a fixed cost per truck but offer lower per-unit rates for large volumes. LTL shipments have a piecewise cost structure that is cheaper for small volumes but expensive at scale. On top of mode selection, freight sitting in a vendor warehouse incurs inventory holding costs. The optimal strategy balances when to ship, how much to ship, and which mode to use.
@@ -25,17 +23,18 @@ The model demonstrates several advanced techniques: multi-period inventory flow 
 
 ## Who this is for
 
-- Supply chain planners optimizing freight consolidation and mode selection
-- Logistics analysts comparing TL vs LTL cost trade-offs
-- Operations researchers building multi-period transport models
-- Developers learning mixed-integer programming with RelationalAI
+- Supply chain planners optimizing freight consolidation and mode selection.
+- Logistics analysts comparing TL vs LTL cost trade-offs.
+- Operations researchers building multi-period transport models.
+- Developers learning mixed-integer programming with RelationalAI.
+- **Assumed knowledge**: comfortable reading Python; the transport and optimization terms are explained as they come up. No prior RelationalAI experience is required to run it.
 
 ## What you'll build
 
-- A mixed-integer optimization model for multi-period freight transport
-- Joint inventory and transport decisions across TL and LTL modes
-- Piecewise linear LTL cost modeling with segment breakpoints
-- Arrival day computation linked to departure day and transit time
+- A cost-minimizing transport plan -- per-freight-group inventory levels, shipment quantities, mode choice, and arrival days -- produced by the **prescriptive** reasoner as a mixed-integer program.
+- A binary mode-selection decision (truckload vs less-than-truckload) coupled to shipment volume through big-M constraints, expressed as **prescriptive** decision variables and constraints.
+- A piecewise-linear cost model for less-than-truckload freight, with per-segment breakpoint variables the solver activates as volume grows.
+- Arrival days derived from departure day and transit time, linked into the solve so on-time-arrival deadlines are enforced as constraints.
 
 ## What's included
 
@@ -51,6 +50,7 @@ The model demonstrates several advanced techniques: multi-period inventory flow 
 
 ### Tools
 - Python >= 3.10
+- RelationalAI Python SDK (`relationalai` == 1.0.14)
 
 ## Quickstart
 
@@ -122,6 +122,56 @@ The model demonstrates several advanced techniques: multi-period inventory flow 
     └── freight_groups.csv
 ```
 
+**Start here**: run `python supply_chain_transport.py` for the full formulation and solve end to end.
+
+## Sample data
+
+The bundled data is synthetic and illustrative -- a minimal two-group example designed to teach the formulation on a Snowflake-connected RAI account, not to match a specific shipper's freight book. The transport modes and cost segments are defined inline in the script, not loaded from CSV.
+
+- **`freight_groups.csv`** (2 rows) -- one row per freight group, giving its inventory window (`inv_start_t` to `inv_end_t`), transport window (`tra_start_t` to `tra_end_t`), arrival window (`arr_start_t` to `arr_end_t`), and starting inventory weight (`inv_start`).
+
+## Model overview
+
+The formulation is built on three concepts: the freight groups loaded from CSV, and the transport types and LTL cost segments defined inline in the script.
+
+- **Key entities**: `FreightGroup`, `TransportType`, `LTLSegment`.
+- **Primary identifiers**: `name` on `FreightGroup` and `TransportType`; integer `seg` on `LTLSegment`.
+- **Important invariants**: window start days are less than or equal to window end days; `inv_start` weights are non-negative; transport-mode indicators and segment activation variables are binary; each freight group ships all inventory out by the end of its inventory window.
+
+### Concepts
+
+**`FreightGroup`** -- a batch of freight with its own inventory, transport, and arrival time windows. The optimization solves for its per-day inventory, shipment quantities, and arrival day.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `name` | String | Yes | Loaded from `data/freight_groups.csv` |
+| `inv_start_t`, `inv_end_t` | Integer | No | Inventory window (first/last day) |
+| `tra_start_t`, `tra_end_t` | Integer | No | Transport (departure) window |
+| `arr_start_t`, `arr_end_t` | Integer | No | Arrival deadline window |
+| `inv_start` | Float | No | Starting inventory weight |
+| `x_inv` | Float | No | Decision: inventory level per day |
+| `z_arr_day` | Float | No | Decision: computed arrival day |
+
+**`TransportType`** -- a shipping mode (truckload or less-than-truckload), defined inline with its transit time.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `name` | String | Yes | `tl` or `ltl` |
+| `transit_time` | Integer | No | Days in transit (TL = 2, LTL = 3) |
+| `x_qty_tra` | Float | No | Decision: quantity shipped per group per day |
+| `y_bin_tra` | Float | No | Decision: binary mode indicator |
+| `x_weight` | Float | No | Decision: total weight shipped per departure day |
+
+**`LTLSegment`** -- a breakpoint in the piecewise-linear less-than-truckload cost curve, defined inline.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `seg` | Integer | Yes | Segment index |
+| `limit` | Float | No | Upper weight bound for the segment |
+| `cost` | Float | No | Per-unit cost within the segment |
+| `x_rem_ltl` | Float | No | Decision: weight routed through this segment per day |
+| `y_bin_ltl` | Float | No | Decision: binary segment-activation indicator |
+
 ## How it works
 
 **1. Define freight groups with time windows.** Each freight group has inventory, transport, and arrival windows loaded from CSV:
@@ -167,11 +217,29 @@ problem.satisfy(model.where(
 
 ## Customize this template
 
-- **Add more freight groups** by extending `freight_groups.csv` with additional rows and time windows.
-- **Adjust cost parameters** by changing `inv_cost`, `tl_tra_cost`, or the LTL segment costs and limits.
-- **Add more LTL segments** by defining additional `LTLSegment` instances for finer cost granularity.
-- **Extend to multiple origins/destinations** by adding location concepts and routing constraints.
-- **Add capacity constraints** on warehouses or transport links.
+Focus on the first changes most users will make.
+
+### Use your own data
+
+- Replace `data/freight_groups.csv` with your own; keep the column names listed in *Sample data* above.
+- Ensure each group's windows are internally consistent (start day less than or equal to end day) and that the arrival window is reachable given transit times.
+
+### Tune parameters
+
+- **Cost parameters** -- change `inv_cost`, `tl_tra_cost`, or the LTL segment costs and limits in the script.
+- **Transit times** -- adjust the inline `transit_time` values on the `tl` and `ltl` transport types.
+
+### Extend the model
+
+- Add more freight groups by extending `freight_groups.csv` with additional rows and time windows.
+- Add more LTL segments by defining additional `LTLSegment` instances for finer cost granularity.
+- Extend to multiple origins/destinations by adding location concepts and routing constraints.
+- Add capacity constraints on warehouses or transport links.
+
+### Scale up / productionize
+
+- Replace the CSV load with `model.data(snowflake_table)` for a Snowflake-backed freight book.
+- The formulation scales to many freight groups within the prescriptive engine's solve budget; pin the SDK version for reproducible runs.
 
 ## Troubleshooting
 
@@ -208,3 +276,19 @@ problem.satisfy(model.where(
 - Inventory holding is 0.1% of weight per day. Double-check that your freight weights match expectations.
 
 </details>
+
+## Learn more
+
+### Core concepts
+
+- [PyRel v1 query language](https://docs.relational.ai/) -- `model.where(...)` / `aggs` / `.define()`.
+- [Ontology modeling](https://docs.relational.ai/) -- concepts, properties, and inline instances.
+
+### Reasoner reference
+
+- [Prescriptive reasoner](https://docs.relational.ai/) -- `Problem` API, decision variables, constraints, and objective.
+- [Mixed-integer programming patterns](https://docs.relational.ai/) -- binary coupling, big-M constraints, and piecewise-linear costs.
+
+## Support
+
+- File issues at the RelationalAI templates repository.

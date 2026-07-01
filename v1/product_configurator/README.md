@@ -1,6 +1,6 @@
 ---
 title: "Product Configurator"
-description: "Enumerate every feasible build of a configurable product in multi-solution mode: one option per slot subject to feature-model rules, regional regulations, and a price ceiling."
+description: "Enumerate every feasible build of a configurable product with a constraint solver in multi-solution mode. Each build picks one option per slot subject to feature-model rules, regional regulations, and a price ceiling."
 featured: false
 experience_level: intermediate
 industry: "Manufacturing"
@@ -13,8 +13,6 @@ tags:
   - feature-model
   - manufacturing
 ---
-
-# Product Configurator
 
 ## What this template is for
 
@@ -94,51 +92,87 @@ The configurator scenario here is automotive trim, drawn from the public Renault
    python product_configurator.py
    ```
 
-6. Expected output. With `MAX_CONFIGURATIONS = 100` and `TARGET_REGION = "EU"`, the solver exhausts the search and returns every distinct feasible build (status `OPTIMAL`, 63 builds). The script prints all 63 rows, pivoted to one row per configuration, sorted ascending by total dollars; the block below is **abridged** to the 8 cheapest and 8 most-expensive. The `solution` column is the solver's internal index, not a sequential ranking, and `objective: 0` is reported by convention because this is pure constraint satisfaction with no minimize/maximize call. Exact wall times and the solver build string vary across RAI Native App versions:
+6. Expected output. With `MAX_CONFIGURATIONS = 100` and `TARGET_REGION = "EU"`, the solver exhausts the search and returns every distinct feasible build (status `OPTIMAL`, 63 builds), pivoted to one row per configuration and sorted ascending by total dollars. A few representative lines (the script prints all 63):
+
    ```text
    Solve result:
    • status: OPTIMAL
-   • objective: 0
-   • solve time: 0.95s
    • num_points: 63
-   • solver: MiniZinc_unknown
 
    Feasible builds for region 'EU' (ceiling $20,000, up to 100 per run):
     solution        Engine            Roof          Sound Transmission         Trim              Wheels  total_$
           60 1.6L Inline-4      Steel Roof Standard Sound       Manual    Base Trim       16-inch Alloy     1500
           59 1.6L Inline-4      Steel Roof Standard Sound       Manual    Base Trim       18-inch Sport     2700
-          39 1.6L Inline-4      Steel Roof Standard Sound    Automatic    Base Trim       16-inch Alloy     3500
-          50    2.0L Turbo      Steel Roof Standard Sound       Manual    Base Trim       16-inch Alloy     3500
-          56 1.6L Inline-4      Steel Roof Standard Sound       Manual   Sport Trim       16-inch Alloy     4000
-          51    2.0L Turbo      Steel Roof Standard Sound       Manual    Base Trim       18-inch Sport     4700
-          38 1.6L Inline-4      Steel Roof Standard Sound    Automatic    Base Trim       18-inch Sport     4700
-          57 1.6L Inline-4      Steel Roof Standard Sound       Manual   Sport Trim       18-inch Sport     5200
-           ... 47 more builds omitted (script prints all 63) ...
-           5    2.0L Turbo Panoramic Glass Standard Sound    Automatic Premium Trim       18-inch Sport    14700
-           7    2.0L Turbo Panoramic Glass  Premium Audio    Automatic Premium Trim       16-inch Alloy    15000
-          27    2.0L Turbo      Steel Roof  Premium Audio          DCT Premium Trim       18-inch Sport    15200
-          10    2.0L Turbo Panoramic Glass Standard Sound          DCT Premium Trim       16-inch Alloy    15500
-           1    2.0L Turbo Panoramic Glass  Premium Audio    Automatic Premium Trim       18-inch Sport    16200
-           4    2.0L Turbo Panoramic Glass Standard Sound          DCT Premium Trim       18-inch Sport    16700
-          11    2.0L Turbo Panoramic Glass  Premium Audio          DCT Premium Trim       16-inch Alloy    17000
+           ... 60 more builds omitted (script prints all 63) ...
            2    2.0L Turbo Panoramic Glass  Premium Audio          DCT Premium Trim       18-inch Sport    18200
    ```
 
-   With `TARGET_REGION = "EU"` the V6 engine is unavailable, and the 63 returned builds span $1,500-$18,200 -- every legal combination across the six slots, satisfying every implies/excludes rule. Lower `MAX_CONFIGURATIONS` to cap how many the solver returns (status flips to `SOLUTION_LIMIT` once hit).
+   With `TARGET_REGION = "EU"` the V6 engine is unavailable, and the 63 returned builds span $1,500-$18,200 -- every legal combination across the six slots, satisfying every implies/excludes rule. Lower `MAX_CONFIGURATIONS` to cap how many the solver returns (status flips to `SOLUTION_LIMIT` once hit). The full 63-row printout and a step-by-step walkthrough are in `runbook.md`.
 
 ## Template structure
+
 ```text
-.
-├── README.md
-├── pyproject.toml
-├── product_configurator.py
-└── data/
-    ├── slots.csv
-    ├── options.csv
-    ├── implies.csv
-    ├── excludes.csv
-    └── regional_rules.csv
+product_configurator/
+  product_configurator.py    # Main script (ontology, decisions, constraints, solve, inspection)
+  data/
+    slots.csv                # 6 slots (Engine, Transmission, Trim, Sound, Wheels, Roof)
+    options.csv              # 16 options across the 6 slots, each priced in integer cents
+    implies.csv              # option-to-option implies rules (head -> tail)
+    excludes.csv             # option-to-option excludes rules (symmetric)
+    regional_rules.csv       # which options are allowed in which region (US, EU)
+  README.md                  # this file
+  runbook.md                 # analyst-facing paste-testable walkthrough
+  pyproject.toml             # dependencies
 ```
+
+**Start here**: run `python product_configurator.py` to enumerate every feasible build end to end, or follow `runbook.md` to rebuild it step by step.
+
+## Sample data
+
+The bundled CSVs are illustrative demo data for an automotive trim configurator, drawn from the public Renault feature-model literature. Swap in your own slots, options, and rules to configure a different product.
+
+- **`slots.csv`** (6 rows) — the configurable slots (Engine, Transmission, Trim, Sound, Wheels, Roof).
+- **`options.csv`** (16 rows) — the options across the six slots, each with a `slot_id`, `name`, and `price_cents`.
+- **`implies.csv`** — directional option-to-option rules (`head_id` -> `tail_id`); selecting the head requires the tail.
+- **`excludes.csv`** — symmetric option-to-option rules (`left_id`, `right_id`); at most one of the pair may be selected.
+- **`regional_rules.csv`** — one row per `(option_id, region)` allowed pairing; an option missing for a region is banned there.
+
+## Model overview
+
+The script builds a small ontology from the CSVs, then layers the binary decision and the four constraint families on top.
+
+- **Key entities**: `Slot`, `Option`; plus the `Implies` and `Excludes` rule tables.
+- **Primary identifiers**: integer `id` on `Slot` and `Option`; composite key on each rule table (`head_id` + `tail_id` on `Implies`, `left_id` + `right_id` on `Excludes`).
+- **Important invariants**: every option belongs to exactly one slot; prices are non-negative integer cents; a build picks exactly one option per slot; only options allowed in the target region get a decision variable.
+
+### Concepts
+
+**`Slot`** — a configurable position on the product (e.g. Engine). Each build picks exactly one option per slot.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `id` | Integer | Yes | From `data/slots.csv` |
+| `name` | String | No | Human-readable slot name |
+
+**`Option`** — a choice that can fill a slot, with a price and its region availability.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `id` | Integer | Yes | From `data/options.csv` |
+| `name` | String | No | Human-readable option name |
+| `price_cents` | Integer | No | Price in integer cents |
+| `slot` | Relationship | — | Links to the owning `Slot` |
+| `allowed_in` | Relationship | — | `allowed_in(region)` — regions the option is allowed in |
+| `selected` | Decision | — | 0/1 build indicator; only exists for options allowed in the target region |
+
+### Relationships
+
+The two rule tables are concepts identified by the pair of option ids they link; the constraint families read them directly.
+
+| Relationship | Schema (reading fields) | Notes |
+|---|---|---|
+| `Implies(head_id, tail_id)` | two `Option` ids | Selecting the head requires the tail (`selected[head] <= selected[tail]`) |
+| `Excludes(left_id, right_id)` | two `Option` ids | At most one of the pair (`selected[left] + selected[right] <= 1`) |
 
 ## How it works
 
@@ -248,13 +282,25 @@ print(build_view.to_string(index=False))
 
 ## Customize this template
 
-- **Use your own product** by replacing the five CSV files with your slots, options, implies, excludes, and regional_rules tables. The constraint structure does not change.
-- **Cap the solution limit on a large catalog.** The bundled `MAX_CONFIGURATIONS = 100` is above the demo's feasible-set size so every build is enumerated (status `OPTIMAL`). On a production catalog the feasible set can be enormous; lower `MAX_CONFIGURATIONS` to the K builds your buyer-facing UI wants to surface -- the solver returns once the cap is hit (status `SOLUTION_LIMIT`) and `time_limit_sec` is your safety net for runaway enumeration.
+### Use your own data
+
+- Replace the five CSV files with your slots, options, implies, excludes, and regional_rules tables. The constraint structure does not change.
 - **Add a new region** by adding rows to `regional_rules.csv` for the new region and changing `TARGET_REGION` in the runner.
+
+### Tune parameters
+
+- **Cap the solution limit on a large catalog.** The bundled `MAX_CONFIGURATIONS = 100` is above the demo's feasible-set size so every build is enumerated (status `OPTIMAL`). On a production catalog the feasible set can be enormous; lower `MAX_CONFIGURATIONS` to the K builds your buyer-facing UI wants to surface -- the solver returns once the cap is hit (status `SOLUTION_LIMIT`) and `time_limit_sec` is your safety net for runaway enumeration.
 - **Tighten the price ceiling** by lowering `PRICE_CEILING_CENTS` to force the solver toward cheaper builds. If the ceiling drops below the cheapest feasible build, the solver returns INFEASIBLE.
+
+### Extend the model
+
 - **Switch from "all feasible" to "the cheapest build"** by adding `problem.minimize(sum(Option.price_cents * Option.selected))` and setting `MAX_CONFIGURATIONS = 1`. The solver returns one optimum. Top-K *optimal* enumeration (the K cheapest distinct builds, ranked) is not a single solver call; for that, run an iterative exclusion-cut loop -- after each optimal solve, add a constraint forbidding the just-returned build's exact option set, then re-solve -- or sort the enumerated multi-solution set in post-processing if the feasible set is small enough to fit in memory (the bundled demo already does this: 63 builds sorted ascending by total dollars).
 - **Add cardinality rules** like "at least one of {A, B, C} must be selected" with `count` over a filter on `Option.id`.
+
+### Scale up / productionize
+
 - **Apply this to enterprise software bundling** by mapping slots to product modules, options to feature tiers, implies/excludes to module dependencies, and price_cents to seat-license cost. The constraint families and multi-solution shape carry over unchanged.
+- Swap the `data/` CSV bundle for `model.data(snowflake_table)` calls to configure against a live Snowflake-hosted catalog; `time_limit_sec` and `MAX_CONFIGURATIONS` bound enumeration on large catalogs.
 
 ## Troubleshooting
 
@@ -316,3 +362,19 @@ print(build_view.to_string(index=False))
 - To pin a single answer (e.g. surface the cheapest build first), set `MAX_CONFIGURATIONS = 1` and add `problem.minimize(sum(Option.price_cents * Option.selected))`.
 
 </details>
+
+## Learn more
+
+### Core concepts
+
+- [PyRel v1 query language](https://docs.relational.ai/) — concepts, properties, relationships, and `model.where(...)`.
+- [Prescriptive reasoner](https://docs.relational.ai/) — `Problem` API, binary decision variables, integrity constraints.
+
+### Reasoner reference
+
+- [Multi-solution enumeration](https://docs.relational.ai/) — `solution_limit`, `Variable.values(...)`, and reading every returned solution.
+- [Constraint satisfaction patterns](https://docs.relational.ai/) — exactly-one, implies, excludes, and budget constraints over binary decisions.
+
+## Support
+
+- File issues at the RelationalAI templates repository.

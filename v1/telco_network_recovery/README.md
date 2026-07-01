@@ -1,6 +1,6 @@
 ---
 title: "Telco Network Recovery"
-description: "Tower-upgrade planning on a shared telco ontology: an equipment-failure graph neural network (GNN) over a heterogeneous graph (with manufacturer advisories), declarative critical-tower rules, and customer-impact analysis (revenue x churn, with PageRank)."
+description: "Tower-upgrade planning on a shared telco ontology: an equipment-failure graph neural network (GNN) over a heterogeneous graph (with manufacturer advisories), declarative critical-tower rules, and customer-impact analysis (revenue times churn, with PageRank)."
 featured: false
 experience_level: advanced
 industry: "Technology & Telecom"
@@ -45,7 +45,7 @@ Built using **predictive reasoning** (GNN on a heterogeneous graph), **rules-bas
 ## What's included
 
 - **Model**: a 5-stage pipeline (predictive, then rules, then graph, then paths, then prescriptive) on a single shared ontology — 8 source-data concepts wired to the bundled CSVs, plus the enrichments each stage writes back.
-- **Runner**: `telco_network_recovery.py` — a single Python script with four module-scope stages, runs end-to-end against a Snowflake-connected RAI account.
+- **Runner**: `telco_network_recovery.py` — a single Python script with five module-scope stages, runs end-to-end against a Snowflake-connected RAI account.
 - **Sample data**: 250 cell towers, 1,500 equipment items, 8 manufacturer advisories on 7 MODELs, 1,200 subscribers, 6,000 call records, 750 upgrade options. See *Sample data* below.
 - **Outputs**: per-stage stdout diagnostics plus an ontology-resident `RestorePlan` singleton holding cost, capacity, install-weeks, tier mix, towers covered, and binding constraint.
 

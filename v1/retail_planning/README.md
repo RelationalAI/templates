@@ -1,6 +1,6 @@
 ---
 title: "Retail Planning"
-description: "Predict article sales and customer churn with GNNs, then optimize markdown pricing and inventory planning to maximize revenue and minimize costs."
+description: "Predict article sales and customer churn with graph neural networks (GNNs), then optimize markdown pricing and inventory planning to maximize revenue and minimize costs."
 featured: true
 experience_level: advanced
 industry: "Retail & Consumer"
@@ -8,7 +8,7 @@ reasoning_types:
   - Predictive
   - Prescriptive
 tags:
-  - GNN
+  - Graph Neural Network (GNN)
   - Predict-then-Optimize
   - Markdown Optimization
   - Demand Planning
@@ -22,7 +22,7 @@ Retailers face interconnected decisions: which items will sell, which customers 
 
 **Start with `retail_planning_local.py`** -- it trains a real sales-regression GNN on a bundled H&M subset (CPU, no external data), aggregates predictions per article, and runs both optimizers. A few minutes end-to-end. It's the quickest way to see the whole pattern working.
 
-**Then adapt the pattern to your own Snowflake data** using `retail_planning.py` as a reference. It trains three GNNs (sales regression, customer-churn classification, user-article link prediction) against the full Kaggle H&M dataset in Snowflake, aggregates all three signals into an adjusted demand estimate, and feeds that into the same two optimizers. The H&M pipeline is the worked example -- the structure (graph concepts → GNN tasks → aggregation bridge → prescriptive constraints) is what carries over to your own retail, pricing, or demand-planning data.
+**Then adapt the pattern to your own Snowflake data** using `retail_planning.py` as a reference. It trains three graph neural networks (GNNs) — sales regression, customer-churn classification, and user-article link prediction — against the full Kaggle H&M dataset in Snowflake, aggregates all three signals into an adjusted demand estimate, and feeds that into the same two optimizers. The H&M pipeline is the worked example; the structure — graph concepts, then GNN tasks, then an aggregation bridge, then prescriptive constraints — is what carries over to your own retail, pricing, or demand-planning data (see the *Pipeline stages* diagram under *Model overview*).
 
 ## Who this is for
 
@@ -35,7 +35,7 @@ Assumes familiarity with Python, basic ML concepts (classification, regression, 
 
 ## What you'll build
 
-- Three GNN predictive models on the H&M knowledge graph (item-sales, user-churn, user-item-purchase)
+- Three graph neural network (GNN) predictive models on the H&M knowledge graph (item-sales, user-churn, user-item-purchase)
 - A bridge layer that aggregates all three GNN outputs into adjusted demand per article
 - A markdown optimization (MILP) that selects discount schedules to maximize revenue + salvage
 - A demand/inventory planning (LP) that minimizes production, holding, and unmet demand costs
@@ -419,3 +419,23 @@ continues training server-side; only the client-side log stream is suppressed.
 
 Ensure your Snowflake credentials are configured correctly and that the RAI Native App is installed on your account. Run `rai init` again and verify the connection settings.
 </details>
+
+## Learn more
+
+### Core concepts
+
+- [Multi-reasoner workflows](https://docs.relational.ai/) — chaining predictive output into prescriptive optimization on a shared ontology.
+- [PyRel v1 query language](https://docs.relational.ai/) — `model.where(...)`, aggregations, and `model.select(...)`.
+
+### Reasoner reference
+
+- [Predictive reasoner (GNN)](https://docs.relational.ai/) — the Graph / Relationship / PropertyTransformer API, task types, and training configuration.
+- [Prescriptive reasoner](https://docs.relational.ai/) — the `Problem` API, decision variables, constraints, and objectives.
+
+### Deeper dives
+
+- [Predict-then-optimize patterns](https://docs.relational.ai/) — using model predictions as parameters inside an optimizer, via an aggregation bridge concept.
+
+## Support
+
+- File issues at the RelationalAI templates repository.

@@ -1,27 +1,25 @@
 ---
 title: "Traveling Salesman"
-description: "Find the shortest route visiting all cities exactly once using the MTZ formulation."
+description: "Find the shortest route that visits every city exactly once and returns home. Solves the traveling salesman problem with the Miller-Tucker-Zemlin subtour-elimination formulation as a mixed-integer program."
 featured: false
 experience_level: intermediate
 industry: "Supply Chain & Logistics"
 reasoning_types:
   - Prescriptive
 tags:
-  - routing
-  - mixed-integer-programming
-  - combinatorial-optimization
-  - graph
+  - Routing
+  - Mixed-Integer Programming (MIP)
+  - Combinatorial Optimization
+  - Miller-Tucker-Zemlin (MTZ)
 ---
-
-# Traveling Salesman
 
 ## What this template is for
 
-The traveling salesman problem (TSP) is one of the most studied problems in combinatorial optimization: given a set of cities and the distances between them, find the shortest tour that visits every city exactly once and returns to the starting city. TSP has practical applications in route planning, circuit board drilling, delivery logistics, and many other domains.
+A delivery driver, a service technician, or a drilling head has a list of stops and needs the cheapest way to visit them all and come back. The traveling salesman problem (TSP) captures exactly this: given a set of locations and the distances between them, find the shortest tour that visits every location once and returns to the start. It is one of the most studied problems in optimization and shows up across route planning, delivery logistics, circuit-board drilling, and scheduling.
 
-This template solves a small TSP instance using the Miller-Tucker-Zemlin (MTZ) formulation, which eliminates subtours through auxiliary ordering variables rather than exponentially many subtour-elimination constraints. The model uses binary decision variables for edge selection and integer auxiliary variables for node ordering, solved as a mixed-integer program with HiGHS.
+This template solves a small TSP instance end to end and gives you a clear, self-contained starting point for building route optimization on RelationalAI.
 
-The MTZ formulation is compact and well-suited for small to medium instances. For larger problems, more sophisticated formulations (cutting planes, branch-and-cut) would be needed, but this template provides a clear, self-contained starting point for understanding TSP modeling with RelationalAI.
+**Reasoning approach:** the tour is found with prescriptive reasoning — a mixed-integer program (MIP) whose binary variables choose which edges are on the route and whose Miller-Tucker-Zemlin (MTZ) auxiliary variables rule out disconnected subtours.
 
 ## Who this is for
 
@@ -32,10 +30,12 @@ The MTZ formulation is compact and well-suited for small to medium instances. Fo
 
 ## What you'll build
 
-- An MTZ-based TSP formulation with binary edge variables and integer ordering variables
-- Degree constraints ensuring exactly one in-edge and one out-edge per node
-- Subtour elimination via MTZ auxiliary variables
-- Optimal tour extraction from solver results
+- An optimal tour visiting every node exactly once, returned as the set of selected edges with a total distance.
+- A prescriptive MIP formulation with binary edge decisions and integer ordering variables, expressed directly on the ontology.
+- Degree constraints guaranteeing exactly one in-edge and one out-edge per node.
+- Miller-Tucker-Zemlin subtour elimination that keeps the solution a single connected cycle.
+
+Built using **prescriptive reasoning** (mixed-integer programming with the HiGHS solver).
 
 ## What's included
 
@@ -51,6 +51,7 @@ The MTZ formulation is compact and well-suited for small to medium instances. Fo
 
 ### Tools
 - Python >= 3.10
+- RelationalAI Python SDK (`relationalai == 1.0.14`)
 
 ## Quickstart
 
@@ -99,14 +100,57 @@ The MTZ formulation is compact and well-suited for small to medium instances. Fo
    ```
 
 ## Template structure
+
 ```text
-.
-├── README.md
-├── pyproject.toml
-├── traveling_salesman.py
+traveling_salesman/
+├── README.md            # this file
+├── pyproject.toml       # dependencies
+├── traveling_salesman.py # main script (ontology, MTZ formulation, solve)
 └── data/
-    └── edges.csv
+    └── edges.csv        # 12 directed edges between 4 nodes, with distances
 ```
+
+**Start here:** `traveling_salesman.py` runs the whole template end to end.
+
+## Sample data
+
+`data/edges.csv` is a directed distance matrix with the columns `i`, `j`, and `dist`: a distance `dist` for traveling from node `i` to node `j`. The bundled instance has 12 directed edges connecting 4 nodes, with an edge in both directions between every pair, so the graph is strongly connected and a tour always exists. Nodes are not listed in their own file; the model derives them from the edge endpoints.
+
+## Model overview
+
+The model has two concepts: the `Edge` rows loaded from CSV, and the `Node` set derived from edge endpoints. The optimizer adds one decision per edge and one ordering value per node.
+
+- **Key entities**: `Edge` (a directed leg with a distance), `Node` (a location to visit).
+- **Primary identifiers**: an `Edge` is identified by its endpoint pair `(i, j)`; a `Node` is identified by its index `v`.
+- **Important invariants**: distances are non-negative; every node needs exactly one in-edge and one out-edge; the selected edges must form a single cycle (no subtours).
+
+### Edge
+
+A directed leg from one node to another with an associated distance. Loaded from `data/edges.csv`; the `x` property is filled in by the solver.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `i` | Integer | Yes | Source node index |
+| `j` | Integer | Yes | Destination node index |
+| `dist` | Float | No | Distance from `i` to `j` |
+| `x` | Float | No | Binary decision (0/1): 1 if the edge is on the tour |
+
+### Node
+
+A location to visit, derived from the `i` endpoints of the edges. The `u` property is the MTZ ordering value the solver assigns for subtour elimination.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `v` | Integer | Yes | Node index, derived from `Edge.i` |
+| `u` | Float | No | Integer MTZ ordering value in `[1, node_count]`, assigned by the solver |
+
+### Relationships
+
+The model defines one standalone relationship beyond the concept properties.
+
+| Relationship | Reads as | Notes |
+|---|---|---|
+| `node count is <n>` | the number of nodes in the instance | Stored so the solver can reference it in the ordering-variable bounds |
 
 ## How it works
 
@@ -161,11 +205,43 @@ problem.minimize(total_dist)
 
 ## Customize this template
 
-- **Use your own distance data** by replacing `edges.csv` with your city-to-city distance matrix (as a list of directed edges).
-- **Scale to more cities** by adding nodes and edges. The MTZ formulation works well for up to ~50 nodes.
-- **Add asymmetric costs** -- the formulation already supports directed edges with different forward/reverse distances.
-- **Add time windows** by introducing arrival time variables and constraints per node.
-- **Visualize the tour** by plotting nodes and selected edges with matplotlib.
+### Use your own data
+
+- Replace `data/edges.csv` with your own city-to-city distance matrix, as a list of directed edges with the columns `i`, `j`, and `dist`, or change the `read_csv(...)` path in the script.
+- Provide an edge in both directions for every pair of nodes so the graph stays strongly connected. Asymmetric costs are supported: give the forward and reverse edges different `dist` values.
+
+### Tune parameters
+
+- The solve time cap is `time_limit_sec` (default 60) in the `problem.solve("highs", ...)` call. Lower it to accept a near-optimal tour sooner on larger instances.
+
+### Extend the model
+
+- Add time windows by introducing per-node arrival-time variables and constraints.
+- Visualize the result by plotting the nodes and the selected edges with a plotting library such as matplotlib.
+
+### Scale up / productionize
+
+- The MTZ formulation is compact and works well for small to medium instances (up to roughly 50 nodes). Its subtour-elimination constraints grow with the square of the node count, so solves slow down as instances grow.
+- For production-scale routing (100+ stops), move to specialized TSP solvers or cutting-plane / branch-and-cut formulations.
+
+## Learn more
+
+### Core concepts
+
+- [Prescriptive reasoning](https://docs.relational.ai/) — the `Problem` API, decision variables, constraints, and objectives used here.
+- [PyRel v1 modeling](https://docs.relational.ai/) — concepts, properties, and deriving one concept from another (nodes from edges).
+
+### Language / modeling reference
+
+- [Constraints and objectives](https://docs.relational.ai/) — `satisfy()`, `require()`, `minimize()`, and per-group aggregation with `.per(...)`.
+
+### CLI / SDK guides
+
+- [RelationalAI Python SDK](https://docs.relational.ai/) — installing and configuring the `relationalai` package and connecting to Snowflake.
+
+## Support
+
+- File issues at the RelationalAI templates repository.
 
 ## Troubleshooting
 

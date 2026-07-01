@@ -9,54 +9,19 @@ reasoning_types:
   - Rules-based
   - Graph
 tags:
-  - Quadratic Programming
-  - Risk Minimization
-  - Portfolio Optimization
-  - Multi-Objective
-  - Sensitivity Analysis
-  - Shadow Prices
-  - Scenario Analysis
-  - HiGHS
   - Multi-Reasoner
-  - Chained Reasoning
-  - Compliance
-  - Graph Analysis
+  - Portfolio Optimization
+  - Quadratic Programming
   - Community Detection
+  - Sensitivity Analysis
   - Stress Testing
 ---
 
-# Portfolio Balancing
-
 ## What this template is for
 
-Portfolio managers don't want to pay twice for the same exposure -- if two funds track nearly the same benchmark, owning both is one bet with worse bookkeeping. This template chains four reasoning stages on a single shared ontology to build compliant, risk-optimized portfolios across an 8-stock universe and stress-test them under a crisis regime.
+Portfolio managers don't want to pay twice for the same exposure -- if two funds track nearly the same benchmark, owning both is one bet with worse bookkeeping. Sector labels alone miss this: two tech funds can share a Technology label and still be near-duplicates, or two instruments from different sectors can co-move strongly enough that owning both is redundant. And a base-case optimization is optimistic -- under a crisis regime, correlations spike toward one and everything that hasn't been deduplicated hurts twice.
 
-It uses RelationalAI's **rules**, **graph**, and **prescriptive** reasoners in a chained workflow:
-
-1. **Rules** scan the current book for compliance violations -- overconcentrated holdings (> 15% of balance), sector concentration (> 30%), and high-risk traders -- as derived Relationships.
-2. **Graph** builds a correlation graph from the covariance matrix, runs Louvain clustering, and picks the highest-Sharpe stock per cluster as the cluster's **representative**. 8 stocks collapse to 5 distinct bets; near-duplicates are dropped from the investable universe rather than capped within it.
-3. **Prescriptive optimization** solves a bi-objective Markowitz QP on the representative-only universe under position and sector caps, using the solver's shadow prices (constraint duals) to trace the efficient frontier efficiently across a `Scenario` Concept that combines three budgets and two regimes.
-4. **Crisis stress test** is the same `solve_epsilon` call -- no separate model -- but `Scenario.regime` picks a PSD-preserving shrinkage covariance, so base and crisis frontiers come out of one pipeline.
-
-Each stage writes derived properties the next reads directly: Rules define the thresholds Stage 3 enforces as constraints, Stage 2's `Stock.is_representative` shapes the decision space, and the stress test reads `Stock.regime_covar` keyed by `Scenario.regime`. See "How it works" for the full data flow.
-
-## Why this problem matters
-
-The cost of paying twice for one exposure is concrete: allocating $4k to one fund and $5k to a near-identical one is functionally a single $9k bet with worse bookkeeping. Sector labels alone miss this: two tech ETFs can share a Technology label and still be near-duplicates, or two instruments from different sectors can co-move strongly enough that owning both is redundant. And base-case optimization is optimistic -- under crisis regimes (correlations spike toward 1), everything that hasn't been deduplicated hurts twice.
-
-The four-stage approach addresses each gap. Stage 1 surfaces existing violations in the current book (diagnostic). Stage 2 clusters by return covariance and picks the highest-Sharpe representative per cluster, collapsing redundant bets. Stage 3 optimizes over the representative-only universe under position and sector limits. Stage 4 re-solves under a PSD-preserving crisis covariance to stress the resulting portfolio.
-
-### Key design patterns demonstrated
-
-- **Shared compliance thresholds** -- `SECTOR_LIMIT` is defined once and enforced in both stages. `POSITION_LIMIT` (Stage 1 per-stock compliance) and `REP_POSITION_LIMIT` (Stage 3 per-representative cap) are deliberately different: a representative carries its cluster's combined exposure, so the construction-side cap is higher than the holdings-side compliance cap
-- **Graph results feed optimization** -- Louvain cluster ids and per-cluster argmax (highest Sharpe) both persist on `Stock`, and the optimizer's `Stock.is_non_representative()` constraint forces non-reps to zero (complement defined positively because the prescriptive rewriter doesn't accept `model.not_()` in a solver `.where()`)
-- **Collapse, don't cap** -- the graph stage reduces the investable universe to distinct bets rather than allowing all N stocks and capping within redundant groups
-- **Scenario Concept for parameter sweeps** -- `Scenario` entities combine budget ($500, $1,000, $2,000) and regime (base, crisis) so each epsilon solve handles all six combinations in one call
-- **Shadow-price-guided frontier** -- each `solve(sensitivity=True)` returns the return-constraint's dual (shadow price), which IS the frontier's local slope d(variance)/d(return). Three drivers (grid, adaptive, dichotomic) use that dual to place sample points; at equal solve budget the dual-guided drivers approximate the frontier far more tightly than blind even spacing
-- **Epsilon constraint method** -- `solve_epsilon(eps_rate)` minimizes variance subject to a return-target floor, producing one Pareto point per call without manually fixing return values
-- **PSD-preserving stress covariance** -- correlation shrinkage toward all-ones keeps the QP convex at every point, unlike naive off-diagonal scaling
-- **Quadratic programming via HiGHS** -- the risk objective is quadratic (`x' * Cov * x`); HiGHS solves the convex QP to a global optimum and, with `sensitivity=True`, returns the duals the frontier search relies on
-- **Anchor solves establish feasible range** -- Anchor 1 (minimize risk) and Anchor 2 (maximize return) bracket the return range before the frontier search
+This template builds compliant, risk-optimized portfolios that avoid that trap, then stress-tests them under a crisis regime, all on one shared ontology across an 8-stock universe. **It chains RelationalAI's rules, graph, and prescriptive reasoners: rules flag compliance violations in the current book, a covariance graph collapses near-duplicate bets via Louvain clustering, and a bi-objective Markowitz quadratic program (QP) traces the risk-return frontier using solver shadow prices — then re-solves the same model under a crisis covariance.** See *How it works* for the stage-by-stage data flow.
 
 ## Who this is for
 
@@ -64,6 +29,7 @@ The four-stage approach addresses each gap. Stage 1 surfaces existing violations
 - Data scientists learning quadratic programming with RelationalAI
 - Finance students studying the Markowitz efficient frontier
 - Anyone interested in risk-return trade-off analysis with scenario comparisons
+- **Assumed knowledge**: comfortable reading Python; the Markowitz, covariance, and optimization terms are explained as they come up. As a multi-reasoner template, it goes faster if you have followed a single-reasoner template first, but no deep RelationalAI experience is required to run it.
 
 ## What you'll build
 
@@ -131,143 +97,121 @@ The four-stage approach addresses each gap. Stage 1 surfaces existing violations
    python portfolio_balancing.py
    ```
 
-6. Expected output (sample -- full output covers all four stages):
+6. Expected output. The script prints all four stages in turn; the tail of the run confirms a successful frontier trace and stress test. A few representative lines:
+
    ```text
-   ======================================================================
-   STAGE 1: COMPLIANCE ANALYSIS (rules)
-   ======================================================================
-
-   --- Rule 1: Overconcentrated Holdings (position > 15% of balance) ---
-     holding_id=1, ticker=AAPL, account_id=1, value=18000.00, balance=100000.00, pct=18.0%
-     ...
-   --- Rule 2: Sector Concentration (sector > 30% of balance) ---
-     account_id=1, sector=Technology, sector_value=34000.00, pct=34.0%
-     ...
-   --- Rule 3: High Risk Traders (risk_score > 0.8 AND >5 flagged txns) ---
-     user_id=1, name=Alice Chen, risk_score=0.85
-     ...
-
-   ======================================================================
    STAGE 2: GRAPH -- Covariance Clustering (Louvain)
-   ======================================================================
-     Correlation graph: 4 edges (|correlation| >= 0.3)
      Louvain communities: 5 cluster(s)
-       Cluster 1 (size 3): AAPL (Technology), MSFT (Technology), GOOGL (Technology)
-       Cluster 2 (size 2): JNJ (Healthcare), PFE (Healthcare)
-       Cluster 3 (size 1): XOM (Energy)
-       Cluster 4 (size 1): PG (Consumer Staples)
-       Cluster 5 (size 1): JPM (Financials)
+     Cluster representatives (5 of 8 stocks, picked by highest Sharpe): ...
 
-     Avg correlation: intra-cluster = +0.683, inter-cluster = +0.131
-
-     Cluster representatives (5 of 8 stocks, picked by highest Sharpe):
-       Cluster 1: GOOGL (Technology) -- Sharpe = 0.605
-       Cluster 2: PFE (Healthcare) -- Sharpe = 0.530
-       Cluster 3: XOM (Energy) -- Sharpe = 0.588
-       Cluster 4: PG (Consumer Staples) -- Sharpe = 0.444
-       Cluster 5: JPM (Financials) -- Sharpe = 0.500
-
-   ======================================================================
-   STAGE 3: BI-OBJECTIVE OPTIMIZATION
-   (position + sector limits on representative universe; base & crisis regimes)
-   ======================================================================
-
-   ANCHOR SOLVE 1: Minimize risk (no return constraint)
-   Status: OPTIMAL
-     base_500:    return = 32.4336, risk =   1160.3926
-     base_1000:   return = 64.8673, risk =   4641.5705
-     base_2000:   return = 129.7346, risk =  18566.2819
-     crisis_500:  return = 31.6873, risk =   1913.5995
-     crisis_1000: return = 63.3745, risk =   7654.3981
-     crisis_2000: return = 126.7490, risk =  30617.5925
-
-   ANCHOR SOLVE 2: Maximize return (swap objective)
-   Status: OPTIMAL
-     base_500:    return = 42.0000
-     base_1000:   return = 84.0000
-     base_2000:   return = 168.0000
-     crisis_500:  return = 42.0000
-     crisis_1000: return = 84.0000
-     crisis_2000: return = 168.0000
-
-   Reference scenario 'base_1000': frontier spans expected return [64.8673, 84.0000]
-
-   ======================================================================
    SENSITIVITY-GUIDED FRONTIER  (reference 'base_1000', 6-solve budget per method)
-   ======================================================================
-     running grid driver ...
-     running adaptive driver ...
-     running dichotomic driver ...
-
-   Frontier approximation quality (same solve budget, lower gap = better):
      method        solves     max chord-gap
-     --------------------------------------
      grid               6          557.9250
      adaptive           6          415.1730
      dichotomic         6          202.2972  <- tightest
 
-   Shadow price = frontier slope (exact dual vs finite-difference secant):
-     (dual = extra variance incurred per unit of additional required return)
-         return      variance   dual (lambda)        secant
-     ------------------------------------------------------
-        64.8673     4641.5705            0.00            --
-        71.2734     5181.9733          134.83         84.36
-        75.9396     5946.0980          192.68        163.75
-        80.4605     6944.2401          250.64        220.79
-        83.1779     7809.1748          650.79        318.29
-        84.0000     8528.0000         1098.00        874.39
-
-   ======================================================================
    STAGE 4: CRISIS REGIME STRESS TEST
-   (PSD-preserving correlation shrinkage, alpha = 0.7)
-   ======================================================================
-
-   EFFICIENT FRONTIER: Risk vs Return (per scenario, exact dual marginals)
-
-     base_1000 (budget=1000, regime=base):
-       #     Label     Return         Risk    Marginal   Knee
-     --------------------------------------------------------
-       1  min_risk      64.87    4641.5705        0.00
-       2        p1      71.27    5181.9733      134.83
-       3        p2      75.94    5946.0980      192.68
-       4        p3      80.46    6944.2401      250.64  <--
-       5        p4      83.18    7809.1748      650.79
-       6        p5      84.00    8528.0000     1098.00
-
-     (similar tables for base_500, base_2000, crisis_500, crisis_1000, crisis_2000)
-
-     Volatility (sqrt risk) -- base vs crisis at each frontier point:
-
-     Budget 1000:
-         Label     vol_base   vol_crisis        gap    gap_%
-     -------------------------------------------------------
-      min_risk      68.1291      87.4894   +19.3603   +28.4%
-            p1      71.9859      93.2657   +21.2798   +29.6%
-            p2      77.1109      98.5270   +21.4161   +27.8%
-            p3      83.3321     104.3961   +21.0640   +25.3%
-            p4      88.3695     109.1925   +20.8230   +23.6%
-            p5      92.3472     112.3478   +20.0006   +21.7%
-
-     (similar tables for Budget 500 and Budget 2000, identical gap_% pattern)
+     Crisis volatility ~22-30% above base at every frontier point.
    ```
 
-   Crisis volatility sits ~22-30% above base at every frontier point and the gap peaks in the middle of the frontier (p1 at +29.6%), not at the concentrated end (p5 at +21.7%). That inversion is the payoff of the representative-only universe: at the concentrated end the optimizer is picking the highest-Sharpe distinct bet per cluster, which incidentally sits in sectors with lower crisis correlations (Energy, Consumer Staples). Without the representative collapse, the concentrated end would stack near-duplicates and see the crisis gap grow, not shrink.
+   Crisis volatility sits ~22-30% above base at every frontier point and the gap peaks in the middle of the frontier, not at the concentrated end. That inversion is the payoff of the representative-only universe: at the concentrated end the optimizer picks the highest-Sharpe distinct bet per cluster, which sits in sectors with lower crisis correlations (Energy, Consumer Staples). The full stage-by-stage printout and a step-by-step walkthrough are in `runbook.md`.
 
 ## Template structure
 
 ```text
-.
-├── README.md
-├── pyproject.toml
-├── portfolio_balancing.py
-└── data/
-    ├── returns.csv
-    ├── covar.csv
-    ├── users.csv
-    ├── accounts.csv
-    ├── holdings.csv
-    └── transactions.csv
+portfolio_balancing/
+  portfolio_balancing.py    # Main script (4 chained stages: rules, graph, QP, stress test)
+  data/
+    returns.csv             # 8-stock universe: index, ticker, sector, expected returns
+    covar.csv               # covariance matrix entries (i, j, covar)
+    users.csv               # user profiles with risk scores
+    accounts.csv            # account balances
+    holdings.csv            # current holdings per account and stock
+    transactions.csv        # transaction history with flagged-transaction indicators
+  README.md                 # this file
+  runbook.md                # analyst-facing paste-testable walkthrough
+  pyproject.toml            # dependencies
 ```
+
+**Start here**: run `python portfolio_balancing.py` for the full four-stage chain end to end, or follow `runbook.md` to rebuild it step by step.
+
+## Sample data
+
+The bundled CSVs are illustrative demo data over a compact 8-stock universe, sized so the covariance clustering, frontier trace, and crisis stress test all produce a readable, interpretable result. Swap in your own universe and book to apply the template to a real portfolio.
+
+- **`returns.csv`** (8 rows) — the stock universe: an integer `index`, `ticker`, `sector`, and expected `returns`.
+- **`covar.csv`** — one row per `(i, j)` covariance-matrix entry; must be symmetric (`covar(i, j) == covar(j, i)`) and cover every pair.
+- **`users.csv`** — user profiles with a `risk_score`.
+- **`accounts.csv`** — account balances, each linked to a user.
+- **`holdings.csv`** — current holdings per account and stock, with quantity and purchase price.
+- **`transactions.csv`** — transaction history with an `is_flagged` indicator used by the high-risk-trader rule.
+
+## Model overview
+
+One shared ontology threads all four stages. Each stage reads properties earlier stages wrote and writes new ones for downstream stages.
+
+- **Key entities**: `Stock`, `Sector`, `User`, `Account`, `Holding`, `Transaction`; plus the derived `Regime`, `Scenario`, and `FrontierPoint` concepts the optimization stages build.
+- **Primary identifiers**: integer `index` on `Stock`; integer ids on `User`, `Account`, `Holding`, `Transaction`; string `sector_name` on `Sector`, `regime_name` on `Regime`, `name` on `Scenario`; composite key (`scenario_label` + `eps_label`) on `FrontierPoint`.
+- **Important invariants**: the covariance matrix is symmetric and positive semi-definite; expected returns and balances are per-row data; `Stock.correlation` and `Stock.regime_covar` are derived in PyRel from the base covariance; non-representative stocks are forced to zero allocation at solve time.
+
+### Concepts
+
+**`Stock`** — a security in the investable universe. Loaded from `returns.csv` and `covar.csv`; Stages 2-4 enrich it with clustering, Sharpe, representative, and regime-covariance properties.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `index` | Integer | Yes | Row index from `data/returns.csv` |
+| `ticker`, `sector` | String | No | Loaded from CSV |
+| `returns` | Float | No | Expected return |
+| `covar` | Float (pairwise) | No | `covar(Stock, Stock)` — base covariance entry |
+| `variance`, `volatility` | Float | No | **Stage 2** derived from the covariance diagonal |
+| `correlation` | Float (pairwise) | No | **Stage 2** derived `covar(i,j) / (vol_i * vol_j)` |
+| `cluster` | Integer | No | **Stage 2** Louvain community id |
+| `sharpe`, `cluster_max_sharpe` | Float | No | **Stage 2** Sharpe ratio and per-cluster max |
+| `is_representative` | Relationship | — | **Stage 2** highest-Sharpe stock in its cluster |
+| `is_non_representative` | Relationship | — | **Stage 2** complement (forced to zero in Stage 3) |
+| `regime_covar` | Float (pairwise, per `Regime`) | No | **Stage 4** base or PSD-preserving crisis covariance |
+| `x_quantity` | Decision (per `Scenario`) | — | **Stage 3** continuous allocation variable |
+
+**`User`** — an account holder. Stage 1 flags high-risk traders.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `user_id` | Integer | Yes | From `data/users.csv` |
+| `user_name` | String | No | Human-readable name |
+| `risk_score` | Float | No | Used by the high-risk-trader rule |
+| `is_high_risk_trader` | Relationship | — | **Stage 1** derived flag |
+
+**`Account`** — a portfolio account owned by a user.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `account_id` | Integer | Yes | From `data/accounts.csv` |
+| `account_type` | String | No | Loaded from CSV |
+| `balance` | Float | No | Denominator for concentration rules |
+| `user` | Relationship | — | Links to the owning `User` |
+
+**`Holding`** — a position: a stock held in an account. Stage 1 flags overconcentration.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `holding_id` | Integer | Yes | From `data/holdings.csv` |
+| `quantity`, `purchase_price` | Float | No | Loaded from CSV |
+| `value` | Float | No | **Stage 1** derived `quantity * purchase_price` |
+| `account`, `stock` | Relationship | — | Links to `Account` and `Stock` |
+| `is_overconcentrated`, `is_sector_concentrated` | Relationship | — | **Stage 1** derived flags |
+
+**`Transaction`** — a booked transaction, read by the high-risk-trader rule.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `transaction_id` | Integer | Yes | From `data/transactions.csv` |
+| `amount` | Float | No | Loaded from CSV |
+| `category` | String | No | Loaded from CSV |
+| `is_flagged_val` | Integer | No | 0/1 flag summed per user |
+| `user` | Relationship | — | Links to the placing `User` |
+
+**`Regime`** (`base` / `crisis`), **`Scenario`** (a `(budget, regime)` tuple), and **`FrontierPoint`** (a materialized Pareto point with return, risk, marginal, and knee flag) are the derived concepts the optimization stages build. `Scenario` combines three budgets and two regimes into six tuples so one epsilon solve prices every combination at once.
 
 ## How it works
 
@@ -581,16 +525,30 @@ After the Stage 3 frontier is traced, Stage 4 emits a side-by-side comparison of
 
 ## Customize this template
 
+### Use your own data
+
+- Replace the six CSV files with your own universe and book; the four-stage structure does not change.
+- **Add more stocks**: extend `returns.csv` and `covar.csv` with additional assets and their covariance entries. Keep the covariance matrix symmetric (`covar(i, j) == covar(j, i)`) and complete over every pair.
+
+### Tune parameters
+
 - **Adjust compliance thresholds**: `POSITION_LIMIT` (default 0.15) applies in Stage 1 compliance rules (per-stock holdings). `REP_POSITION_LIMIT` (default 0.30) applies in Stage 3 optimization (per-representative allocation, which carries its cluster's combined exposure). `SECTOR_LIMIT` (default 0.30) applies to both. Note that `REP_POSITION_LIMIT` must satisfy `REP_POSITION_LIMIT * num_representatives >= 1.0` or the fully-invested constraint becomes infeasible.
-- **Tune the correlation graph**: Raise or lower `CORR_THRESHOLD` (default 0.3) to control graph sparsity. Higher thresholds produce fewer edges and more singleton clusters; lower thresholds produce a denser graph and fewer, larger clusters.
+- **Tune the correlation graph**: raise or lower `CORR_THRESHOLD` (default 0.3) to control graph sparsity. Higher thresholds produce fewer edges and more singleton clusters; lower thresholds produce a denser graph and fewer, larger clusters.
+- **Adjust crisis severity**: lower `CRISIS_ALPHA` (default 0.7) shrinks correlations harder toward all-ones (more severe crisis). `alpha = 1.0` is no crisis (base); `alpha = 0.0` is maximum crisis (all correlations = 1). Values between 0.5 and 0.9 give interesting comparisons while keeping the QP well-conditioned.
+- **Adjust frontier resolution**: increase `N_SOLVES` for a finer-grained frontier. Because the three drivers share a solve cache, the total number of unique solves stays close to `N_SOLVES` rather than 3x.
+
+### Extend the model
+
 - **Change the representative picking rule**: Stage 2 picks the highest-Sharpe stock per cluster. To pick differently, change the `Stock.cluster_max_sharpe` derivation -- e.g., replace `Stock.sharpe` with `Stock.returns` (highest return), `-Stock.volatility` (lowest vol), or a weighted blend. Singletons are always their own representative regardless of rule.
-- **Adjust crisis severity**: Lower `CRISIS_ALPHA` (default 0.7) shrinks correlations harder toward all-ones (more severe crisis). `alpha = 1.0` is no crisis (base); `alpha = 0.0` is maximum crisis (all correlations = 1). Values between 0.5 and 0.9 give interesting comparisons while keeping the QP well-conditioned.
-- **Add more stocks**: Extend `returns.csv` and `covar.csv` with additional assets and their covariance entries.
-- **Add compliance rules**: Define additional Relationships in the rules stage (e.g., minimum holding period, transaction velocity limits).
-- **Allow short selling**: Remove the non-negativity constraint to allow negative holdings.
-- **Adjust frontier resolution**: Increase `N_SOLVES` for a finer-grained frontier. Because the three drivers share a solve cache, the total number of unique solves stays close to `N_SOLVES` rather than 3x.
-- **Maximize return for given risk**: Flip the formulation to maximize expected return subject to a risk budget.
-- **Transaction costs**: Add a linear or quadratic penalty term for rebalancing from an existing portfolio.
+- **Add compliance rules**: define additional Relationships in the rules stage (e.g., minimum holding period, transaction velocity limits).
+- **Allow short selling**: remove the non-negativity constraint to allow negative holdings.
+- **Maximize return for given risk**: flip the formulation to maximize expected return subject to a risk budget.
+- **Transaction costs**: add a linear or quadratic penalty term for rebalancing from an existing portfolio.
+
+### Scale up / productionize
+
+- Swap the `data/` CSV bundle for `model.data(snowflake_table)` calls to run against a live Snowflake-hosted universe and book.
+- Add a fourth regime or a fifth budget as a data edit in `scenario_data` -- the `solve_epsilon` call is unchanged, since scenarios are data, not code.
 
 ## Troubleshooting
 
@@ -617,3 +575,20 @@ Make sure you activated the virtual environment and ran `python -m pip install .
 
 Ensure the covariance matrix is symmetric and positive semi-definite. Check that `covar.csv` contains entries for all (i, j) pairs and that covar(i,j) == covar(j,i). HiGHS solves convex QPs to a global optimum and returns shadow prices (duals) when `sensitivity=True`.
 </details>
+
+## Learn more
+
+### Core concepts
+
+- [Multi-reasoner workflows](https://docs.relational.ai/) — chained reasoner patterns and ontology enrichment across stages.
+- [PyRel v1 query language](https://docs.relational.ai/) — `model.where(...)` / `aggs` / derived properties.
+
+### Reasoner reference
+
+- [Rules-based reasoner](https://docs.relational.ai/) — derived properties and Relationships for compliance flags.
+- [Graph reasoner](https://docs.relational.ai/) — building graphs from ontology, Louvain community detection.
+- [Prescriptive reasoner](https://docs.relational.ai/) — `Problem` API, quadratic objectives, sensitivity (duals / shadow prices), the epsilon-constraint frontier method.
+
+## Support
+
+- File issues at the RelationalAI templates repository.

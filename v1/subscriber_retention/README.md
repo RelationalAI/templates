@@ -1,6 +1,6 @@
 ---
 title: "Subscriber Retention"
-description: "Telco churn-risk scoring: PageRank over a Subscriber→Subscriber call graph plus aggregate-derived call-volume features feed a regression GNN that scores per-subscriber churn risk, then surfaces the highest-risk subscribers per segment."
+description: "Score every telco subscriber for churn risk using a graph neural network (GNN) that learns from both plan attributes and each subscriber's position in the call network, then surface the highest-risk subscribers per segment for retention campaigns."
 featured: false
 experience_level: advanced
 industry: "Technology & Telecom"
@@ -8,7 +8,7 @@ reasoning_types:
   - Graph
   - Predictive
 tags:
-  - GNN
+  - Graph Neural Network (GNN)
   - Regression
   - Churn Prediction
   - Graph Features
@@ -16,27 +16,31 @@ tags:
   - Multi-Reasoner
 ---
 
-# Subscriber Retention
-
 ## What this template is for
 
-Telco retention teams need to score every active subscriber for churn risk so they can target proactive offers at the right people before contracts roll over. Traditional churn models lean on plan attributes (rate, term, auto-renew) and demographics; they ignore the network around each subscriber. This template wires a call-graph signal into the model: who you call, who calls you, and how central you sit in the call network all become features, and the **Predictive** reasoner trains a GNN regression head over them. The graph features come from the **Graph** reasoner (PageRank on the Subscriber→Subscriber call graph); aggregate-derived `outgoing_calls` / `incoming_calls` properties round out the per-subscriber feature row.
+Telco retention teams need to know which subscribers are most likely to churn, so they can spend a limited campaign budget on the people most worth keeping. Traditional churn models lean on plan attributes and demographics alone, and miss a signal the operator already owns: the call network. A subscriber who talks to many others, or sits at the center of a tight calling community, behaves differently from an isolated one -- and that structure predicts retention.
+
+This template scores every subscriber for churn risk using both their plan attributes and their standing in the call network, then ranks the highest-risk subscribers within each segment so a retention team can act on them first.
+
+**A graph neural network learns per-subscriber churn risk from plan and demographic attributes enriched with call-network features**, so who a subscriber talks to shapes the score, not just what plan they hold.
 
 ## Who this is for
 
 - Telco data scientists building churn-risk scoring pipelines that combine static plan attributes with relational/network signal
 - Retention marketers who need a per-subscriber risk score by segment to drive targeted offer campaigns
-- ML engineers exploring GNN regression over heterogeneous customer graphs
+- ML engineers exploring graph neural network (GNN) regression over customer graphs
 - Teams already querying RelationalAI on a Subscriber/Plan/Call ontology who want to layer a predictive head onto it
 
-Assumes familiarity with Python, basic ML concepts (regression, RMSE), and graph data structures.
+**Assumed knowledge**: comfortable with Python, basic ML concepts (regression, root-mean-square error / RMSE), and graph data structures. The telco, graph, and GNN terms are explained as they come up.
 
 ## What you'll build
 
-- **Graph**: PageRank on a directed Subscriber→Subscriber call graph, exposing each subscriber's "social influence" as a continuous GNN feature
-- **Predictive**: a regression GNN on the call graph predicting `churn_risk_score` per subscriber from demographics + plan attributes + the PageRank feature + aggregate-derived `outgoing_calls` / `incoming_calls` properties
-- **Reporting**: top-N highest-predicted-risk subscribers per segment, ready to drop into a retention campaign queue
-- The whole pipeline runs end-to-end on a small bundled telco dataset (~1,200 subscribers, ~6,000 calls); no Snowflake source data setup, no GPU
+- A per-subscriber churn-risk score, predicted by a **graph neural network (GNN) regression head** (the predictive reasoner) from plan attributes, demographics, and call-network features.
+- Call-network features enriched onto each subscriber by the **graph reasoner** -- a PageRank "social influence" score plus aggregate-derived `outgoing_calls` / `incoming_calls` counts -- so the GNN sees who each subscriber talks to.
+- A retention-ready report of the top-N highest-predicted-risk subscribers per segment, queryable straight from the ontology.
+- A pipeline that runs end-to-end on the small bundled telco dataset (~1,200 subscribers, ~6,000 calls) with no Snowflake source-data setup and no GPU.
+
+Built using the **graph reasoner** (PageRank on the call graph) and the **predictive reasoner** (GNN regression scored per subscriber).
 
 ## What's included
 
@@ -165,17 +169,19 @@ Test-set RMSE: 0.1386
         └── billing_events.csv      # billing-cycle records (not used by the default pipeline; available for customization)
 ```
 
+**Start here**: run `python subscriber_retention.py` for the full graph-feature, GNN-regression, and reporting pipeline end to end.
+
 ## Sample data
 
 Two ways to feed this template:
 
 1. **Bundled (light)** — `data/telco_mini/` ships with the template ZIP. ~1,200 subscribers + ~6,000 calls + 1,200 plans. Demo data. The four identifier columns (`FIRST_NAME`, `LAST_NAME`, `EMAIL`, `PHONE`) are dropped at load time as unused features. No external setup. **Quickstart uses this.**
-2. **Bring-your-own** — replace the four CSVs under `data/telco_mini/` with your own subscriber / plan / CDR exports (same column names) and re-run. There is no widely-known public telco churn dataset that includes a caller→callee call graph (the popular [IBM Telco Customer Churn](https://www.kaggle.com/datasets/blastchar/telco-customer-churn) benchmark is tabular only — no calls, no graph), so the GNN graph path requires real CDR data or a synthetic call-graph generator. See [Run on your own Snowflake data](#run-on-your-own-snowflake-data) for the loading pattern.
+2. **Bring-your-own** — replace the four CSVs under `data/telco_mini/` with your own subscriber / plan / CDR exports (same column names) and re-run. There is no widely-known public telco churn dataset that includes a caller-to-callee call graph (the popular [IBM Telco Customer Churn](https://www.kaggle.com/datasets/blastchar/telco-customer-churn) benchmark is tabular only — no calls, no graph), so the GNN graph path requires real CDR data or a synthetic call-graph generator. See [Run on your own Snowflake data](#run-on-your-own-snowflake-data) for the loading pattern.
 
 About the bundled mini set:
 
 - **~1,200 subscribers** across five segments: `BUDGET`, `ENTERPRISE_PREMIUM`, `HIGH_VALUE_INFLUENCER`, `PREMIUM`, `STANDARD`
-- **~6,000 call records** wired as Subscriber→Subscriber edges for the PageRank graph
+- **~6,000 call records** wired as Subscriber-to-Subscriber edges for the PageRank graph
 - **`CHURN_RISK_SCORE` target** is a continuous 0-1 risk score sourced from the analyst-facing risk model in the source schema. Customers adapting this template would replace it with their own labelled churn ground-truth (binary outcome) — the regression scaffold transfers directly to a binary-classification task by switching `task_type` and the target type.
 
 ## Model overview
@@ -354,7 +360,7 @@ The bundled CSVs are loaded via `model.data(df)` for a no-setup local demo. To r
 3. Bump the GNN's compute (`device="cuda"` and a GPU-backed RAI engine) if the call graph has more than ~50K subscribers; CPU works for ~1-10K subscribers.
 
 > [!NOTE]
-> There is no widely-known public telco churn dataset that includes a caller→callee call graph. The IBM Telco Customer Churn dataset (popular benchmark) is tabular only — no calls, no graph — so this template's GNN regression head doesn't add value over a tabular model on that benchmark. To exercise the graph path you need real CDR data or a synthetic call-graph generator.
+> There is no widely-known public telco churn dataset that includes a caller-to-callee call graph. The IBM Telco Customer Churn dataset (popular benchmark) is tabular only — no calls, no graph — so this template's GNN regression head doesn't add value over a tabular model on that benchmark. To exercise the graph path you need real CDR data or a synthetic call-graph generator.
 
 ## Troubleshooting
 
@@ -383,6 +389,25 @@ The SDK matches submitted training jobs to existing experiments by name. If a pr
 model = Model("subscriber_retention_local_v2")  # bump on each re-run if needed
 ```
 </details>
+
+## Learn more
+
+### Core concepts
+
+- [PyRel v1 query language](https://docs.relational.ai/) — concepts, properties, `count(...).per(...)` aggregates, and `select(...)` used to derive features and build the top-N report.
+
+### Reasoner reference
+
+- [Graph reasoner](https://docs.relational.ai/) — building a `Graph`, edge patterns, and PageRank on the call graph.
+- [Predictive reasoner (GNN)](https://docs.relational.ai/) — `GNN` regression, `PropertyTransformer` feature declaration, train/validation/test tables, and predictions.
+
+### CLI / SDK guides
+
+- [RelationalAI setup and `rai init`](https://docs.relational.ai/) — connecting the SDK and configuring the experiments schema.
+
+## Support
+
+- File issues at the RelationalAI templates repository.
 
 ## Related templates
 

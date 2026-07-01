@@ -13,30 +13,28 @@ tags:
   - Pricing Optimization
 ---
 
-# Retail Markdown
-
 ## What this template is for
 
 Retailers often face the challenge of clearing seasonal inventory before it loses value. Markdown optimization determines the best discount schedule across a planning horizon to maximize total revenue -- including both sales revenue and the salvage value of any remaining stock. Discounts stimulate demand but reduce per-unit revenue, so the trade-off must be carefully balanced.
 
-This template uses **Prescriptive** reasoning to model the markdown problem as a mixed-integer program. Binary decision variables select which discount level to apply to each product in each week. Continuous variables track units sold and cumulative sales. Constraints enforce that exactly one discount is chosen per product-week, that discounts can only increase over time (a price ladder), and that cumulative sales never exceed initial inventory. Demand depends on a base rate, a discount-specific demand lift, and a weekly seasonal multiplier.
+This template finds the discount schedule that maximizes revenue across a multi-week horizon, respecting a price ladder (discounts only deepen over time) and finite inventory, and crediting the salvage value of whatever is left at the end. It captures the full trade-off between aggressive discounting to drive volume and preserving margin on high-value items.
 
-The objective maximizes total revenue from sales plus the salvage value of unsold inventory at the end of the planning horizon. This captures the full trade-off between aggressive discounting to drive volume and preserving margin on high-value items.
+**The reasoning approach uses prescriptive optimization: a mixed-integer program that picks one discount level per product-week and tracks the resulting sales and cumulative inventory.**
 
 ## Who this is for
 
 - Retail pricing and merchandising analysts optimizing markdown schedules
 - Operations researchers working with mixed-integer programming
 - Data scientists exploring multi-period optimization with binary decisions
-- Anyone interested in inventory clearance and revenue management
+- **Assumed knowledge**: comfortable reading Python; the pricing and optimization terms are explained as they come up
 
 ## What you'll build
 
-- A mixed-integer programming model that selects discount levels per product per week
-- Price ladder constraints preventing discount reversals
-- Demand modeling with base demand, discount lifts, and seasonal multipliers
-- Inventory tracking via cumulative sales constraints
-- Revenue maximization including end-of-horizon salvage value
+- A revenue-maximizing markdown schedule (one discount level per product per week), produced by **prescriptive reasoning** (mixed-integer program)
+- A price ladder that prevents discounts from reversing week to week
+- A demand model combining base demand, discount lift, and weekly seasonal multipliers
+- Per-week sales and cumulative-inventory tracking, bounded so cumulative sales never exceed initial stock
+- A total-revenue figure that credits end-of-horizon salvage value on unsold units
 
 ## What's included
 
@@ -154,15 +152,63 @@ The objective maximizes total revenue from sales plus the salvage value of unsol
 ## Template structure
 
 ```text
-.
-├── README.md
-├── pyproject.toml
-├── retail_markdown.py
+retail_markdown/
+├── README.md            # this file
+├── pyproject.toml       # dependencies
+├── retail_markdown.py   # main script (MIP model, solve, result tables)
+├── runbook.md           # analyst-facing walkthrough
 └── data/
-    ├── products.csv
-    ├── discounts.csv
-    └── weeks.csv
+    ├── products.csv     # products with price, cost, inventory, base demand, salvage rate
+    ├── discounts.csv    # discount levels with percentage and demand lift
+    └── weeks.csv        # planning weeks with seasonal demand multipliers
 ```
+
+**Start here**: run `python retail_markdown.py` for the end-to-end solve, or follow `runbook.md` to rebuild it step by step.
+
+## Sample data
+
+The bundled data is small and illustrative — a short seasonal clearance across a handful of products, sized so the model solves instantly while showing the full workflow.
+
+- **`products.csv`** — one row per product, with `initial_price`, `cost`, `initial_inventory`, `base_demand` (units per week at full price), and `salvage_rate` (fraction of price recovered on leftovers).
+- **`discounts.csv`** — one row per discount tier, with `discount_pct` (percent off) and `demand_lift` (demand multiplier at that discount). Includes a `level` 0 / 0% tier so "no markdown" is always an option.
+- **`weeks.csv`** — one row per planning week, with `demand_multiplier` (seasonal factor applied to base demand).
+
+## Model overview
+
+- **Key entities**: `Product`, `Discount`, `Week`.
+- **Primary identifiers**: string `name` on `Product`; integer `level` on `Discount`; integer `num` on `Week`.
+- **Important invariants**: exactly one discount level is active per product-week; discounts can only deepen over successive weeks (price ladder); cumulative sales never exceed `initial_inventory`; `discount_pct`, `demand_lift`, and `demand_multiplier` are non-negative; the selection variable is binary and sales variables are non-negative.
+
+**`Product`** — an item to mark down, with its price, cost, stock, demand, and salvage economics. The solve writes the discount-selection, sales, and cumulative-sales decision variables onto it.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `name` | String | Yes | Loaded from `data/products.csv` |
+| `initial_price` | Float | No | Full price before any markdown |
+| `cost` | Float | No | Unit cost |
+| `initial_inventory` | Integer | No | Starting stock |
+| `base_demand` | Float | No | Units per week at full price |
+| `salvage_rate` | Float | No | Fraction of price recovered on unsold units |
+| `x_select` | Float (binary decision) | No | 1 if a given `Discount` is active for the product in a given `Week` |
+| `x_sales` | Float (continuous decision) | No | Units sold per product-week-discount |
+| `x_cuml_sales` | Float (continuous decision) | No | Cumulative units sold through a given `Week` |
+
+**`Discount`** — a discount tier, defining how much price is cut and how much demand rises.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `level` | Integer | Yes | Discount ordering (0 = no discount) |
+| `discount_pct` | Float | No | Percent off `initial_price` |
+| `demand_lift` | Float | No | Demand multiplier at this discount |
+
+**`Week`** — a period in the planning horizon, with its seasonal demand factor.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `num` | Integer | Yes | Week index (1-based) |
+| `demand_multiplier` | Float | No | Seasonal factor on base demand |
+
+The script also defines a `num_weeks` relationship (`count(Week)`) used to identify the last week for the salvage term.
 
 ## How it works
 
@@ -230,11 +276,30 @@ problem.maximize(revenue + salvage)
 
 ## Customize this template
 
-- **Add more products or weeks**: Extend the CSV files. The model scales with additional products and longer planning horizons.
-- **Change discount levels**: Modify `discounts.csv` to add finer or coarser discount tiers with different demand lifts.
-- **Minimum margin constraint**: Add a constraint ensuring the discounted price always exceeds the product cost.
-- **Category-level constraints**: Group products by category and limit the total discount budget per category.
-- **Demand elasticity**: Replace the fixed demand lift with a price-elasticity function for more realistic demand modeling.
+Focus on the first changes most users will make.
+
+### Use your own data
+
+- Replace the CSVs in `data/` with your own, keeping the column names listed in *Sample data* above.
+- Keep a `level` 0 / 0% row in `discounts.csv` so "no markdown" remains a feasible choice.
+- For Snowflake-backed runs, swap the `read_csv(...)` calls for `model.data(snowflake_table)`.
+
+### Tune parameters
+
+- **Discount levels** — modify `discounts.csv` to add finer or coarser tiers with different demand lifts.
+- **Planning horizon** — add or remove rows in `weeks.csv`; the model scales with longer horizons.
+- **Solver time limit** — `time_limit_sec` (default `60`) on the `problem.solve(...)` call.
+
+### Extend the model
+
+- **Minimum margin constraint** — add a constraint ensuring the discounted price always exceeds the product cost.
+- **Category-level constraints** — group products by category and limit the total discount budget per category.
+- **Demand elasticity** — replace the fixed demand lift with a price-elasticity function for more realistic demand modeling.
+
+### Scale up / productionize
+
+- Replace the CSV bundle with ingestion from your merchandising or point-of-sale tables.
+- Mixed-integer programs grow harder with more products, weeks, and discount tiers; give the solver more time via `time_limit_sec`, or accept a near-optimal solution by checking the MIP gap.
 
 ## Troubleshooting
 
@@ -261,3 +326,21 @@ Ensure your Snowflake credentials are configured correctly and that the RAI Nati
 
 Make sure you activated the virtual environment and ran `python -m pip install .` from the template directory. The `pyproject.toml` declares the required dependencies.
 </details>
+
+## Learn more
+
+### Core concepts
+
+- [PyRel v1 query language](https://docs.relational.ai/) — `model.where(...)`, `.per(...)`, aggregations, and `model.select(...)`.
+
+### Reasoner reference
+
+- [Prescriptive reasoner](https://docs.relational.ai/) — the `Problem` API, decision variables, constraints, and objectives.
+
+### Deeper dives
+
+- [Multi-period optimization patterns](https://docs.relational.ai/) — modeling week-over-week state (cumulative sales, price ladders) with indexed decision variables.
+
+## Support
+
+- File issues at the RelationalAI templates repository.

@@ -7,7 +7,7 @@ industry: "Healthcare & Life Sciences"
 reasoning_types:
   - Predictive
 tags:
-  - GNN
+  - Graph Neural Network (GNN)
   - Binary Classification
   - Node Classification
   - Healthcare
@@ -273,10 +273,9 @@ The dataset contains medical and demographic attributes for a population of indi
 
 ## Model overview
 
-### Key entities
-
-- **People** (`Id`): individuals with demographic and medical attributes.
-- **Related**: pairs of people, used as the edge list of the GNN graph.
+- **Key entities**: `People` (individuals with demographic and medical attributes), `Related` (pairs of people, used as the edge list of the graph neural network (GNN) graph), and the split tables `TrainTable` / `ValidationTable` / `TestTable`.
+- **Primary identifiers**: `People.Id` (integer, unique per person). `Related`, `TrainTable`, `ValidationTable`, and `TestTable` have no key of their own — they join back to `People` by `Id`.
+- **Important invariants**: `Id` values in `Related` and the split tables must reference an existing `People.Id`; the `smoking` label is binary (`0` / `1`); `TestTable.smoking` is held out and never fed to the model; the three splits partition the labeled population (31,187 train / 3,898 validation / 3,899 test).
 
 ### Pipeline stages
 
@@ -458,3 +457,20 @@ GRANT CREATE MODEL      ON SCHEMA   identifier($schema_experiments) TO APPLICATI
 
 Ensure your Snowflake credentials are configured correctly and that the RAI Native App is installed on your account. Run `rai init` again and verify the connection settings.
 </details>
+
+## Learn more
+
+### Core concepts
+
+- [Predictive reasoning (GNN)](https://docs.relational.ai/) — graph neural network modeling on an ontology: nodes, edges, and features.
+- [PyRel v1 query language](https://docs.relational.ai/) — `model.define(...)` / `model.where(...)`, used to build the edge list and split relationships.
+
+### Reasoner reference
+
+- [Configure a GNN](https://docs.relational.ai/build/guides/reasoning/predictive/configure-a-GNN) — the full hyperparameter list for `GNN(...)`.
+- [PropertyTransformer](https://docs.relational.ai/) — declaring continuous vs. category features and dropping identifier columns.
+- [Model Registry](https://docs.relational.ai/) — registering, loading, and reusing a trained model without retraining (the optional bonus block).
+
+## Support
+
+- File issues at the RelationalAI templates repository.
