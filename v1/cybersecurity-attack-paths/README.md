@@ -270,7 +270,7 @@ model.where(fa.id == flag_data["id"]).define(fa.on_attack_path("yes"))
 <details>
   <summary>Why does authentication or configuration fail?</summary>
 
-- Run `rai init` to create or update `raiconfig.toml`.
+- Run `rai init` to create or update `raiconfig.yaml`.
 - If you have multiple profiles, set `RAI_PROFILE` or switch profiles in your config.
 
 </details>

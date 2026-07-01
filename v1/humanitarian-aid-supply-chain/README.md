@@ -322,7 +322,7 @@ connectors = results[
 <details>
   <summary>Why does authentication/configuration fail?</summary>
 
-- Run `rai init` to create/update `raiconfig.toml`.
+- Run `rai init` to create/update `raiconfig.yaml`.
 - If you have multiple profiles, set `RAI_PROFILE` or switch profiles in your config.
 
 </details>
@@ -330,7 +330,7 @@ connectors = results[
 <details>
   <summary>Why does the script fail to connect to the RAI Native App?</summary>
 
-- Verify the Snowflake account/role/warehouse and `rai_app_name` are correct in `raiconfig.toml`.
+- Verify the Snowflake account/role/warehouse and `rai_app_name` are correct in `raiconfig.yaml`.
 - Ensure the RAI Native App is installed and you have access.
 
 </details>

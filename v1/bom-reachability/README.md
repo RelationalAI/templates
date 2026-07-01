@@ -278,7 +278,7 @@ Focus on the first changes most users will make.
 <details>
   <summary>Why does authentication/configuration fail?</summary>
 
-- Run `rai init` to create/update `raiconfig.toml`.
+- Run `rai init` to create/update `raiconfig.yaml`.
 - If you have multiple profiles, set `RAI_PROFILE` or switch profiles in your config.
 
 </details>
