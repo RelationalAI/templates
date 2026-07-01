@@ -99,7 +99,7 @@ The hard part is that name selection and weight optimization interact. The best 
 
 1. Download ZIP:
    ```bash
-   curl -O https://private.relational.ai/templates/zips/v1/financial_index_replication.zip
+   curl -O https://docs.relational.ai/templates/zips/v1/financial_index_replication.zip
    unzip financial_index_replication.zip
    cd financial_index_replication
    ```

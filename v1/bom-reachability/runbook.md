@@ -39,7 +39,7 @@ Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` 
 
 **Prompt:** /rai-graph-analysis Which components are the structural bottlenecks — the ones sitting on the most dependency paths between finished goods and raw materials, so disrupting them would ripple across the most products? Contrast that with which SKUs are simply depended on by the most others.
 
-**Response:** Betweenness centrality ranks Mobile Processor A15 highest at 4.0 — it lies on every path from both finished goods down to the wafer and flash die, so it is the single most disruptive component. OLED Display Panel 6.1 and Lithium Battery Pack 4500mAh follow at 2.0; raw materials and finished goods score 0 because they are the ends of every chain, never the middle. By raw count the four raw materials are each depended on by 3 SKUs and the three components by 2 — but "most depended-on" (a sink) is not the same as "bottleneck" (a node on the most paths), which is why betweenness, not the dependency count, points at the processor.
+**Response:** Betweenness centrality ranks Mobile Processor A15 highest at 4.0 — it lies on every path from both finished goods down to the wafer and flash die, so it is the single most disruptive component. OLED Display Panel 6.1 and Lithium Battery Pack 4500mAh follow at 2.0; raw materials and finished goods score 0 because they are the ends of every chain, never the middle. By raw count the four raw materials are each depended on by 3 SKUs and the three components by 2 — most-depended-on (the sink) is not the bottleneck (the node on the most paths).
 
 ## 5. Assembly chains that build each finished good (paths, requires `relationalai>=1.15`)
 
