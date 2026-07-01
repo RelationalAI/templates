@@ -14,8 +14,6 @@ tags:
   - Cost Minimization
 ---
 
-# Network Flow Planning
-
 ## What this template is for
 
 This template uses **Prescriptive** reasoning to solve a multi-tier supply-chain network design problem in a single MILP. Distribution networks usually decide two things at once:
@@ -162,6 +160,12 @@ The data describes a small but non-trivial multi-tier network where the optimize
 Lane costs are set so that opening FC_West would unlock the cheapest LA route (`FC_West → LA` at 1.5/unit). The optimizer must weigh that against the $1,000 fixed cost of opening it. With this data it elects not to.
 
 ## Model overview
+
+The model uses three concepts. A single `Site` concept carries all four network tiers, distinguished by a `type` property, so warehouses, hubs, fulfillment centers, and customers share one entity and each contributes the constraint that matches its role.
+
+- **Key entities**: `Site`, `Lane`, `Demand`.
+- **Primary identifiers**: integer `id` on each of `Site`, `Lane`, and `Demand`, loaded from the corresponding CSV.
+- **Important invariants**: `inventory`, `capacity`, `fixed_cost`, `cost_per_unit`, and `quantity` are non-negative; only fulfillment centers carry a positive `fixed_cost` (that is what scopes the binary open decision); every `Lane.source` / `Lane.dest` and every `Demand.site` resolves to a real `Site`.
 
 ### Site
 
@@ -315,6 +319,13 @@ Replace the three CSVs in `data/` with your own:
 - **Service-level constraints.** Replace the hard demand-satisfaction constraint with a soft one and a slack variable, and add a service-level threshold.
 - **Multi-period planning.** Index `Lane.x_flow` by a time period concept and add inventory carry-over constraints between periods.
 
+### Scale up / productionize
+
+- For a live network, replace the three `data/` CSVs with `model.data(snowflake_table)` calls so the model reads sites, lanes, and demand directly from your warehouse tables.
+- The bundled data is 12 sites and 17 lanes; the MILP scales to whatever fits the prescriptive engine's solve budget. If solves grow slow, tighten lane capacities to prune the flow space or size up the engine.
+- The template solves with HiGHS by default (`problem.solve("highs")`); swap to `"gurobi"` for larger integer programs if a Gurobi-enabled engine is available.
+- Pin `relationalai` (see Prerequisites) so runs stay reproducible across environments.
+
 ## Troubleshooting
 
 <details>
@@ -340,6 +351,26 @@ Replace the three CSVs in `data/` with your own:
 
   PyRel disallows `+` between aggregated terms of different concepts. `model.union` lets the outer `sum` aggregate per-Lane and per-Site cost terms in a single objective. Each branch must be a per-entity expression, not a fully-aggregated scalar.
 </details>
+
+## Learn more
+
+### Core concepts
+
+- [PyRel v1 query language](https://docs.relational.ai/) — `model.where(...)`, `sum(...).per(...)`, and `model.union` for multi-concept objectives.
+- [Prescriptive reasoner](https://docs.relational.ai/) — the `Problem` API: decision variables (`solve_for`), constraints (`satisfy`), and objectives (`minimize` / `maximize`).
+
+### Language / modeling reference
+
+- [Concepts and properties](https://docs.relational.ai/) — modeling multiple roles on one concept via a typed property, as `Site.type` does here.
+- [Relationships](https://docs.relational.ai/) — directed links like `Lane.source` / `Lane.dest` and `Demand.site`.
+
+### Deeper dives
+
+- [Solver selection and diagnostics](https://docs.relational.ai/) — choosing HiGHS vs. Gurobi, reading termination status, and diagnosing infeasibility.
+
+## Support
+
+- File issues at the RelationalAI templates repository.
 
 ## Related templates
 

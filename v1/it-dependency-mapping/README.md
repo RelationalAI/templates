@@ -1,6 +1,6 @@
 ---
 title: "IT Dependency Mapping"
-description: "Map the downstream dependency structure of a software and data-pipeline estate by enumerating variable-length traversal paths over an acyclic dependency graph, then surface the longest end-to-end chains and the owners along them."
+description: "Map the downstream dependency structure of a software and data-pipeline estate by enumerating variable-length paths over an acyclic dependency graph. Surface the longest end-to-end chains and the owners along them to see a change or outage's full blast radius."
 experience_level: intermediate
 industry: "Technology & Telecom"
 featured: false

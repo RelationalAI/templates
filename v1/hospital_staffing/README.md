@@ -13,8 +13,6 @@ tags:
   - Multi-Objective
 ---
 
-# Hospital Staffing
-
 ## What this template is for
 
 This template uses **prescriptive reasoning (optimization)** to frame hospital nurse scheduling as a bi-objective problem with two competing objectives: minimize overtime cost versus minimize unmet patient demand. The original single-objective formulation bundled both goals into one weighted penalty sum, forcing the modeler to choose a penalty weight up front. This version unbundles them using the epsilon constraint method: it sweeps a range of caps on allowable unmet demand, and at each cap the solver minimizes overtime cost subject to that service-level constraint.
@@ -173,6 +171,68 @@ The result is a Pareto frontier that reveals exactly how much overtime cost each
     └── availability.csv
 ```
 
+**Start here**: run `python hospital_staffing.py` for the full anchor-solve, epsilon-sweep, and Pareto analysis end to end.
+
+## Sample data
+
+The bundled data is small and illustrative — a single hospital day with a handful of nurses and shifts, sized so the whole epsilon sweep solves in seconds. It is designed to make the cost-service tradeoff visible, not to match a specific hospital's roster.
+
+- **`nurses.csv`** — the nurse roster: skill level, hourly cost, regular-hour limit, and an overtime pay multiplier per nurse.
+- **`shifts.csv`** — shift definitions: start hour, duration, minimum nurses, minimum skill, patient demand, and the patients each nurse-hour can serve.
+- **`availability.csv`** — a nurse-to-shift availability matrix; `available = 1` means the nurse can work that shift.
+
+## Model overview
+
+The model is a small optimization ontology: two entities (nurses, shifts) linked by an availability matrix, with a per-availability assignment decision the solver fills in.
+
+- **Key entities**: `Nurse`, `Shift`, `Availability`, `Assignment`.
+- **Primary identifiers**: `Nurse.id` and `Shift.id` (integers); `Availability` is keyed by the `(nurse_id, shift_id)` pair; `Assignment` is keyed by its `Availability`.
+- **Important invariants**: overtime hours, patients served, and unmet demand are non-negative continuous quantities; each nurse works one to two shifts; every shift meets its minimum-nurse and minimum-skill floor; assignment decisions are binary.
+
+### Concepts
+
+**`Nurse`** — a nurse with a skill level and cost parameters. Loaded from `data/nurses.csv`; the solver adds overtime hours.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `id` | Integer | Yes | Nurse identifier |
+| `name` | String | No | Human-readable name |
+| `skill_level` | Integer | No | Used to meet each shift's minimum-skill floor |
+| `hourly_cost` | Float | No | Base pay rate |
+| `regular_hours` | Integer | No | Regular-hour limit before overtime accrues |
+| `overtime_multiplier` | Float | No | Pay multiplier applied to overtime hours |
+| `x_overtime_hours` | Float | No | Solver variable: overtime hours worked |
+
+**`Shift`** — a shift with coverage requirements and patient demand. Loaded from `data/shifts.csv`; the solver adds patients-served and unmet-demand quantities.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `id` | Integer | Yes | Shift identifier |
+| `name` | String | No | Human-readable name |
+| `start_hour` | Integer | No | Shift start (hour of day) |
+| `duration` | Integer | No | Shift length in hours |
+| `min_nurses` | Integer | No | Minimum nurses required |
+| `min_skill` | Integer | No | Minimum skill level required |
+| `patient_demand` | Integer | No | Patients needing care this shift |
+| `patients_per_nurse_hour` | Float | No | Throughput per nurse-hour |
+| `x_patients_served` | Float | No | Solver variable: patients served |
+| `x_unmet_demand` | Float | No | Solver variable: demand left unmet |
+
+**`Availability`** — a nurse's eligibility for a shift. Loaded from `data/availability.csv`.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `nurse` | `Nurse` | Yes | The nurse (composite key) |
+| `shift` | `Shift` | Yes | The shift (composite key) |
+| `available` | Integer | No | `1` if the nurse can work the shift |
+
+**`Assignment`** — the decision to staff a nurse on a shift, keyed by its `Availability`. The MILP's decision space.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `availability` | `Availability` | Yes | The (nurse, shift) pair this assignment covers |
+| `x_assigned` | Float | No | Solver variable: binary staffing decision (0/1) |
+
 ## How it works
 
 This section walks through the highlights in `hospital_staffing.py`.
@@ -298,11 +358,29 @@ print(f"  Recommendation: Target {pareto[knee_idx]['unmet_demand']:.0f} unmet pa
 
 ## Customize this template
 
-- **Add more nurses or shifts** by extending the CSV files with additional rows.
-- **Adjust frontier resolution**: Increase `n_interior` for a finer-grained Pareto frontier.
-- **Add shift preferences** by introducing a preference weight per nurse-shift pair and including it in the objective.
-- **Model consecutive shift restrictions** by adding constraints that prevent nurses from working back-to-back shifts without rest.
-- **Introduce part-time nurses** with different regular hour limits and availability patterns.
+Focus on the first changes most users will make.
+
+### Use your own data
+
+- Replace the CSVs in `data/` with your own roster, shifts, and availability; keep the column names listed in *Sample data* above.
+- Ensure `availability.csv` only references valid nurse and shift IDs, and that available nurses provide enough coverage to meet each shift's `min_nurses` and `min_skill` requirements.
+- Add more nurses or shifts simply by appending rows to the CSVs.
+
+### Tune parameters
+
+- **Frontier resolution** — increase `n_interior` for a finer-grained Pareto frontier (more interior epsilon points between the two anchors).
+- **Solve budget** — `time_limit_sec` on `problem.solve("highs", ...)` caps each solve; raise it if larger rosters time out.
+
+### Extend the model
+
+- **Add shift preferences** by introducing a preference weight per nurse-shift pair and folding it into the objective.
+- **Model consecutive-shift restrictions** by adding constraints that prevent nurses from working back-to-back shifts without rest.
+- **Introduce part-time nurses** with different regular-hour limits and availability patterns.
+
+### Scale up / productionize
+
+- Swap the `read_csv(...)` loads for `model.data(snowflake_table)` calls to run against roster and demand tables maintained in Snowflake.
+- Pin `relationalai` in `pyproject.toml` for reproducible solves, and schedule the run to refresh the frontier as demand forecasts update.
 
 ## Troubleshooting
 
@@ -329,3 +407,22 @@ Run `rai init` to configure your Snowflake connection. Verify that the RAI Nativ
 
 Ensure you activated the virtual environment and ran `python -m pip install .` to install all dependencies listed in `pyproject.toml`.
 </details>
+
+## Learn more
+
+### Core concepts
+
+- [Prescriptive reasoning](https://docs.relational.ai/) — the `Problem` API, decision variables, constraints, and objectives.
+- [PyRel v1 modeling](https://docs.relational.ai/) — concepts, properties, and loading CSV data into relations.
+
+### Modeling reference
+
+- [Multi-objective optimization](https://docs.relational.ai/) — trading off competing objectives, including epsilon-constraint sweeps.
+
+### Deeper dives
+
+- [Sensitivity and marginal analysis](https://docs.relational.ai/) — reading shadow prices and marginal costs, as the Pareto knee detection does here.
+
+## Support
+
+- File issues at the RelationalAI templates repository.

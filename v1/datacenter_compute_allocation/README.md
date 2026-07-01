@@ -1,6 +1,6 @@
 ---
 title: "Datacenter Compute Allocation"
-description: "Inside-the-fence GPU allocation across hyperscaler campuses, a chain follow-up to energy_grid_planning: GNN-predicted per-workload utilization, hardware-compatibility rules, dependency PageRank, and a 24-cell scenario MIP."
+description: "Allocate GPU capacity across hyperscaler campuses using a graph neural network (GNN) that predicts per-workload utilization, hardware-compatibility rules, dependency PageRank, and a 24-cell scenario mixed-integer program (MIP). Picks up where energy_grid_planning leaves off."
 featured: false
 private: true
 experience_level: advanced
@@ -27,44 +27,13 @@ tags:
   - Capacity Planning
 ---
 
-# Datacenter Compute Allocation
-
-This template demonstrates the operator-side decision that picks up where **[energy_grid_planning](https://github.com/RelationalAI/templates/tree/main/v1/energy_grid_planning)** leaves off. That upstream template solves the multi-year capex / interconnect question — which AI campuses get built and energized at what MW envelope — across ~50 binaries. This template zooms into the *energized* campus and decides which AI lab's individual training, fine-tune, inference, and eval workloads get which GPUs in which pool *now*. The bundled `data_centers.csv` is a snapshot of the upstream $300M-approved campus set; the two templates form a conceptual sequence over the same domain, not a literal engine-level chain.
-
 ## What this template is for
 
-The 5 hyperscaler campuses in the bundled snapshot — xAI Colossus, Microsoft Horizon, CoreWeave Austin, Crusoe Permian, Oracle Coastal — are energized and stocked with GPU pools. The DC operator (a neocloud / colocation provider, or the hyperscaler operating its own campus) has to allocate that GPU capacity across the AI labs renting time on it. Frontier model labs want long-running training reservations on the largest contiguous H100 / H200 / GB200 pools at preferential anchor-customer rates. Inference customers want a steady slice of right-sized GPUs in low-latency regions. Research orgs want bursty best-effort capacity. They all compete for the same physical pools under the same power envelope.
+A datacenter operator — a neocloud, a colocation provider, or a hyperscaler running its own campuses — has energized GPU pools across several sites and must decide which AI lab's workloads get which GPUs in which pool right now. Frontier labs want long-running training reservations on the largest contiguous pools at anchor-customer rates; inference customers want a steady slice of right-sized GPUs; research orgs want bursty best-effort capacity. They all compete for the same physical pools under the same power envelope, and the operator has to keep three tensions in balance at once: staying under each campus's substation-bound power cap, holding gross margin after energy and depreciation, and serving anchor customers without letting any one customer's share grow into a concentration risk. Getting the allocation wrong strands expensive capacity — depreciation accruing on GPUs that sit idle — which is the operator's biggest economic exposure.
 
-The decision is **multi-objective and operationally pressing**. Every major hyperscaler now reports AI compute as a binding constraint on growth (Microsoft has disclosed an $80B Azure backlog blocked specifically by power constraints). The operator is accountable on three publicly-discussed dimensions:
+This template models that allocation as a scenario sweep across three axes (power envelope, margin floor, and anchor-diversity cap, for 24 combinations in all), tracing the trade-off frontiers the operator actually reasons about: how much revenue a tighter margin floor costs, and how much a tighter anchor cap costs. The strictest combinations come back infeasible, which is itself the answer — a signal that those constraints cannot all be met at once. A follow-on demand overlay then replays the chosen plan under softening-demand scenarios so the operator can see stranded-capacity exposure before committing. It picks up where the [energy_grid_planning](https://github.com/RelationalAI/templates/tree/main/v1/energy_grid_planning) template leaves off: that upstream template decides which campuses get built and energized, and the bundled `data_centers.csv` here is a snapshot of its approved campus set.
 
-1. **Power envelope as cone of uncertainty.** Each campus has a substation-bound MW cap (`approved_mw`, set by the interconnection-planning decision the upstream template represents). Two envelope cells trace the cone direction: 85% is the lower-cone curtailment day (heat-wave or grid-stress de-rating), 100% is the expected grid-approved cap. Hyperscaler compute is exponential and unstable; planning to the midpoint is how operators end up under-provisioned to anchors.
-2. **Gross-margin discipline at the envelope, not per-token.** SemiAnalysis quantifies neocloud BMaaS at 55-65% gross margin pre-depreciation but only **14-16% net** after labor, power, and depreciation, so even a single MWh-cost mis-allocation is meaningful to the P&L. The discipline lives at the *envelope* — return on the full compute base across all uses — not on each individual workload-pool placement.
-3. **Anchor concentration as a strategic floor.** CoreWeave's Q2 2025 10-Q discloses **71% of revenue from a single customer (Microsoft)** and an $11.9B OpenAI commitment booked through October 2030 — the canonical example of the concentration risk that caps equity value. Operators win anchors (because they underwrite debt-financed buildouts) AND dilute them (because investor-visible concentration risk caps equity value). Anchor contracts also act as a *hard floor* — they must be served wherever feasible, even when serving them squeezes margin elsewhere; under-provisioning an anchor is more costly than under-provisioning an opportunistic workload, because the penalty is contractual and reputational, not just foregone revenue.
-4. **Generational layer cake.** A hyperscaler's GPU fleet is itself a portfolio. H100, H200, and GB200 pools sit at different points on the price-per-effective-GPU-hour curve ($1.14, $1.52, $2.66 per GPU-hour at capex/3-year amortization in the bundled data). The optimizer's job is to deploy each generation against the workload type that gets the best return per dollar of depreciation + power — not to treat all GPU-hours as fungible. Effective capacity is `gpu_count × generation_efficiency`, not nameplate.
-
-This template combines three Scenario Concepts — `PowerEnvelopeLevel`, `MarginFloor`, and `DiversityCap` — into a **scenario sweep (2 × 3 × 4 = 24 cells)** that traces two Pareto frontiers the operator already discusses publicly: margin-floor vs. achievable revenue, and diversity-cap vs. achievable revenue, with envelope as outer sensitivity. The strictest cells return `INFEASIBLE` — this is the intended diagnostic signal showing which constraint combinations cannot be satisfied simultaneously. After the main solve, a `DemandScenario` overlay replays the chosen plan under risk scenarios (diffusion slowdown, scaling-law plateau, frontier loss) so the operator sees stranded-capacity exposure if lab-side demand softens.
-
-This template demonstrates a multi-reasoner workflow combining **predictive** (per-workload utilization-probability classification GNN — predicts which workloads will actually use their allocated capacity at high duty cycle vs stall or be repaced; stranded-capacity exposure is the operator's biggest economic risk), **rules** (hardware compatibility + priority-tier classification), **graph** (downstream-gating score on the workload-dependency DAG), and **prescriptive** (assignment MIP under a 3D Scenario sweep) reasoning on a single shared ontology — each stage's output narrows or scores the next.
-
-## Reasoner overview: inputs, outputs, and role
-
-| Stage | Reasoner | Reads from ontology | Writes to ontology | Role |
-|-------|----------|---------------------|--------------------|------|
-| 1. Predictive | **Heterogeneous-graph temporal GNN** (binary classification) | `LabMetric` activity features (time-aligned via `metric_date`) + `Workload` features + three edge types: intra-lab `lab_workloads`, `WorkloadDependency.blocks` (shared with Stage 3), cross-lab `co_dated` (LOAD-BEARING) | `Workload.utilization_probability` per workload (positive-class probability) | Predict per-workload utilization probability for the current period: will this workload actually use its allocated capacity at high duty cycle, or stall / be repaced? Trained on 770 historical `(workload, month, is_high_utilization)` observations over 7 prior months + 1 validation month; the GNN uses `has_time_column=True` to align workload-period predictions with same-period LabMetric activity. Stranded-capacity exposure is the operator's biggest economic risk. Cross-concept message passing is genuinely load-bearing — utilization depends on the lab's broader activity at the prediction date (lab→workload), what upstream pretrains produced (dep DAG), and industry-wide trends (cross-lab co_dated). Bound directly as a per-workload signal Stage 4's objective consumes. |
-| 2. Rules | **Rules** (declarative) | `Workload` requirements, `GpuPool` specs | `Workload.fails_memory`, `.passes_gpu_type`, `.is_eligible` Relationships; `Workload.priority_tier`, `.priority_weight`, and `.under_provisioning_penalty` Properties; `Compatibility(workload, gpu_pool)` precompute | Classify which (Workload, GpuPool) pairs are technically eligible (memory + GPU-type allowlist). Assign priority tier P0/P1/P2 from `contract_tier`, with a numeric weight (100/10/1) and an asymmetric under-provisioning penalty (1.0/0.3/0.0) that amplifies the Stage 4 reward for assigning anchor-tier workloads. The Compatibility precompute keeps the Stage 4 MIP linear. |
-| 3. Graph | **Reverse-PageRank** | `Workload` nodes, `WorkloadDependency.blocks` edges | `Workload.gating_score` | Score how much downstream work each workload unblocks. A frontier pretrain that gates 14 fine-tunes and evals lands high; an isolated inference workload sits at baseline. |
-| 4. Prescriptive | **MIP** | `Compatibility`, `priority_weight`, `under_provisioning_penalty`, `gating_score`, `utilization_probability`, `dollars_per_mwh`, `hourly_depreciation_rate`, `approved_mw`, `is_strategic_anchor`, the three Scenario Concepts | `Assignment.x_assign` per `(PowerEnvelopeLevel, MarginFloor, DiversityCap)`; `AllocationPlan` singleton; `Assignment.is_chosen`; `DemandScenario` + `DemandScenarioOutlook` (4 risk scenarios) | Assign each workload to one (DC, GpuPool) under power, GPU-count, gross-margin-floor (energy + depreciation cost), and anchor / workload-type-diversity constraints. Maximizes a four-factor strategic value amplified by the under-provisioning penalty: priority × gating × utilization_probability × strategic_value × (1 + penalty). 24-cell sweep; strictest cells return INFEASIBLE as designed signal. The headline cell (`100pct / unconstrained / none`) is persisted as the `AllocationPlan` singleton, its decision rows flagged via `Assignment.is_chosen`, and the chosen plan is replayed under four demand-risk scenarios (expected / diffusion_slowdown / scaling_break / frontier_loss) with realized + stranded revenue persisted as `DemandScenarioOutlook` per scenario. All queryable as ontology after the script exits. |
-
-**Key design patterns demonstrated:**
-
-- **One ontology relationship, two reasoners.** `WorkloadDependency.blocks` carries information into both the Stage 1 GNN (as a heterogeneous edge) and the Stage 3 PageRank (as the dependency DAG). Defined once in the ontology, consumed without duplication or DataFrame round-trips.
-- **Per-cell aggregates queried from the ontology.** Stage 4's per-cell summary table (revenue, energy + depreciation cost, anchor share, workload-type counts) comes from `sum(...).where(Assignment.x_assign(env, mar, div, x), x > 0.5).per(env, mar, div)` aggregate expressions assembled inside a single `model.select()` call — mirroring `energy_grid_planning`'s `rev_per_level` pattern. No pandas-side groupby of raw assignments.
-- **Headline plan persisted as ontology.** After the 24-cell sweep, the chosen baseline cell (`100pct / unconstrained / none`) is written back as a singleton `AllocationPlan` Concept carrying revenue, total_cost, realized_margin, anchor_share, n_assigned, status, and binding_axis — plus an `Assignment.is_chosen` unary Relationship that flags the decision rows in that cell. The plan is queryable as ontology after the script exits, mirroring the `RestorePlan` / `is_selected_upgrade` pattern in `telco_network_recovery`.
-- **Heterogeneous GNN, not time-series-on-rails.** Stage 1 connects `LabMetric` to `Workload`, to other `LabMetric` rows on the same date (when their labs share a workload_type), and reuses `WorkloadDependency` — in addition to same-lab temporal lags. Pure same-entity temporal-lag topology is a misuse of the GNN reasoner; the cross-concept edges are what give it lift.
-- **Three-dimensional Scenario Concept design.** `PowerEnvelopeLevel` (outer capacity sensitivity), `MarginFloor` (primary Pareto axis), `DiversityCap` (primary Pareto axis). Decision variable `Assignment.x_assign` is indexed by all three; the Pareto frontier emerges from constraint relaxation across cells, not from a multi-objective solve.
-- **Lex-emulating priority weights.** P0 workloads carry weight 100, P1 carry 10, P2 carry 1, plus a hard P0-must-be-assigned constraint. This mirrors how production cluster schedulers (Borg, Singularity, MAST) balance priority dominance with throughput optimization.
-- **Four-factor MIP objective as envelope-level ROI.** `priority_weight × gating_score × utilization_probability × strategic_value_usd` — one factor per upstream reasoner (Stage 2 / Stage 3 / Stage 1) plus the raw dollar baseline. Single-MIP, weighted-sum; the multi-objective Pareto emerges from constraint relaxation, not the objective. The operator's discipline lives at the envelope — return on the full compute base across anchor / opportunistic / research uses — not on each individual workload-pool placement.
-- **Asymmetric failure-mode pricing.** Under-provisioning an anchor is more costly than missing a research eval: the SLA / contract / reputational penalty is a multiple of the raw revenue at stake. Stage 2 derives a `Workload.under_provisioning_penalty` from the priority tier; Stage 4's objective amplifies the reward for assigning high-penalty workloads, so the solver treats anchor under-provisioning as the asymmetric failure mode it is, not as a symmetric foregone-revenue line item.
+**The reasoning approach chains four reasoners on one shared ontology — a graph neural network (GNN) predicting per-workload utilization, declarative hardware-compatibility and priority rules, dependency-graph PageRank scoring how much downstream work each workload unblocks, and a scenario-parameterized mixed-integer program (MIP) that makes the assignment — with each stage writing signals the next stage reads.**
 
 ## Who this is for
 
@@ -293,6 +262,105 @@ datacenter_compute_allocation/
   pyproject.toml                    # dependencies
 ```
 
+**Start here**: run `python datacenter_compute_allocation.py` for the full four-stage chain end to end (add `--no-gnn` to skip Stage 1's GNN and load the deterministic fallback), or follow `runbook.md` to rebuild it step by step.
+
+## Sample data
+
+The bundled data is synthetic and illustrative — designed to teach the four-stage reasoning flow on a Snowflake-connected RAI account, not to match a specific operator's fleet. The five campuses, six labs, GPU generations, and workload mix are shaped so every stage does visible work and the Pareto frontiers and infeasible cells show up as intended.
+
+- **`data_centers.csv`** (5 rows) — campuses (snapshot of the upstream $300M-approved set), each with an approved power cap, PUE, and energy cost.
+- **`gpu_pools.csv`** (28 rows) — GPU pools across the 5 campuses (H100 / H200 / GB200 mix), each with a per-GPU hourly depreciation rate.
+- **`ai_labs.csv`** (6 rows) — labs: 3 frontier anchors, 2 applied, 1 research, each with a contract tier and anchor flag.
+- **`workloads.csv`** (110 rows) — training, fine-tune, inference, and eval workloads with GPU and memory requirements and a strategic dollar value.
+- **`workload_gpu_compatibility.csv`** — the per-workload GPU-type allowlist (multi-valued, so it lives as its own concept).
+- **`workload_dependencies.csv`** (138 rows) — directed dependency edges (`blocks` / `informs`), DAG depth 4-5 rooted at frontier pretrains.
+- **`lab_metrics.csv`** (2,190 rows) — 365 days x 6 labs of daily lab-activity KPIs with cross-lab co-movement, the GNN's temporal feature source.
+- **`workload_utilization_train.csv` / `_val.csv` / `_test.csv`** — the GNN's temporal binary-classification splits (7 historical months / 1 validation month / current period, no label).
+- **`workload_utilization_fallback.csv`** — the deterministic Stage 1 fallback used when `--no-gnn` is set.
+- **`power_envelope_levels.csv` / `margin_floors.csv` / `diversity_caps.csv`** — the three scenario-axis tables (2 / 3 / 4 rows) that index the 24-cell sweep.
+
+## Model overview
+
+One shared ontology threads all four stages: each stage reads concepts and properties earlier stages wrote and writes new ones for downstream stages.
+
+- **Key entities**: `DataCenterRequest` (a campus), `GpuPool`, `AILab`, `Workload`, `WorkloadGpuCompat` and `WorkloadDependency` (workload relationships as their own concepts), the three scenario concepts `PowerEnvelopeLevel` / `MarginFloor` / `DiversityCap`, plus the derived `Compatibility` and `Assignment` (decision space), the `AllocationPlan` singleton, and the `DemandScenario` overlay.
+- **Primary identifiers**: string ids on `DataCenterRequest`, `GpuPool`, `AILab`, and `Workload`; the scenario concepts are identified by `name`; `WorkloadGpuCompat`, `WorkloadDependency`, `Compatibility`, and `Assignment` carry composite keys.
+- **Important invariants**: `envelope_multiplier`, `fraction`, and `anchor_max_share` are fractions; a negative sentinel on `MarginFloor.fraction` / `DiversityCap.anchor_max_share` marks the unconstrained row (its constraint is skipped); the `is_high_utilization` label is binary; `Assignment.x_assign` decision variables are binary; power / cost / GPU counts are non-negative.
+
+### `DataCenterRequest`
+
+A campus in the fleet, loaded from `data/data_centers.csv`. Carries the power envelope and energy cost the Stage 4 constraints read.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `id` | String | Yes | Loaded from `data/data_centers.csv` |
+| `name`, `hyperscaler` | String | No | Campus and operator name |
+| `requested_mw`, `approved_mw` | Float | No | Power envelope (set to `approved_mw` from the upstream template) |
+| `pue` | Float | No | Power usage effectiveness, multiplies GPU power draw |
+| `dollars_per_mwh` | Float | No | Energy cost, feeds the Stage 4 margin constraint |
+
+### `GpuPool`
+
+A pool of identical GPUs at one campus. The generational layer cake — H100 / H200 / GB200 — sits here.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `id` | String | Yes | Loaded from `data/gpu_pools.csv` |
+| `data_center` | DataCenterRequest | — | Relationship to the parent campus |
+| `gpu_type` | String | No | `H100` / `H200` / `GB200` |
+| `gpu_count`, `available_gpu_count` | Integer | No | Pool size and free capacity |
+| `mem_per_gpu_gb` | Integer | No | Per-GPU memory, checked against workload requirements |
+| `interconnect` | String | No | Fabric type |
+| `power_per_gpu_kw` | Float | No | Feeds the power-envelope constraint |
+| `hourly_depreciation_rate` | Float | No | Per-GPU depreciation, feeds the margin constraint |
+
+### `AILab`
+
+A customer renting compute. The contract tier and anchor flag drive priority weighting and the diversity cap.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `id` | String | Yes | Loaded from `data/ai_labs.csv` |
+| `name`, `lab_type` | String | No | Lab name; `frontier` / `applied` / `research` |
+| `contract_tier` | String | No | Drives the Stage 2 priority tier (P0 / P1 / P2) |
+| `is_strategic_anchor` | Boolean | No | Drives the Stage 4 anchor-concentration cap |
+| `payment_per_gpu_hour` | Float | No | Rate card input |
+
+### `Workload`
+
+A unit of work to place on a pool — the GNN's prediction target and the MIP's assignment unit. Stages 1-3 enrich it with predicted utilization, priority, and gating signals.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `id` | String | Yes | Loaded from `data/workloads.csv` |
+| `name` | String | No | Human-readable workload name |
+| `lab` | AILab | — | Relationship to the owning lab |
+| `workload_type` | String | No | `pretrain` / `finetune` / `inference` / `eval` |
+| `reservation_model` | String | No | Reservation vs. best-effort |
+| `gpu_count_required`, `mem_required_gb` | Integer | No | Sizing, checked by the Stage 2 eligibility rule |
+| `gpu_type_preferred` | String | No | Preferred generation |
+| `duration_hours` | Float | No | Reservation length |
+| `strategic_value_usd` | Float | No | Raw dollar baseline in the Stage 4 objective |
+| `utilization_probability` | Float | No | **Stage 1** GNN positive-class probability |
+| `is_eligible` | Relationship | — | **Stage 2** eligible on a given `GpuPool` |
+| `priority_tier`, `priority_weight`, `under_provisioning_penalty` | String / Float | No | **Stage 2** priority classification |
+| `gating_score` | Float | No | **Stage 3** reverse-PageRank on the dependency DAG |
+
+### Scenario concepts (`PowerEnvelopeLevel` / `MarginFloor` / `DiversityCap`)
+
+The three axes of the 24-cell sweep. Each is identified by `name` and carries the numeric knob its Stage 4 constraint reads (`envelope_multiplier`, `fraction`, `anchor_max_share` / `workload_type_floor`) plus a display `label`.
+
+### Relationships and derived concepts
+
+- `GpuPool.data_center` -> `DataCenterRequest` — pool sits at a campus.
+- `Workload.lab` -> `AILab` — workload owned by a lab.
+- `WorkloadGpuCompat(workload, gpu_type)` — the per-workload GPU-type allowlist, its own composite-key concept (a multi-valued allowlist on a GNN-node concept must not live as a `Workload` relationship).
+- `WorkloadDependency(predecessor, successor)` with `dependency_type` — the dependency DAG, consumed by both the Stage 1 GNN (heterogeneous edge) and the Stage 3 PageRank.
+- `Compatibility(workload, gpu_pool)` — **Stage 2** derived precompute of eligible pairs that keeps the Stage 4 MIP linear.
+- `Assignment(workload, gpu_pool)` — **Stage 4** decision space; `Assignment.x_assign` is a binary variable indexed by the three scenario concepts, and `Assignment.is_chosen` flags the rows in the persisted baseline cell.
+- `AllocationPlan` — **Stage 4** singleton holding the chosen cell's revenue, cost, margin, anchor share, assignment count, status, and binding axis.
+- `DemandScenario` with `DemandScenarioOutlook` — **Stage 4** overlay replaying the chosen plan under four demand-risk scenarios, persisting realized and stranded revenue per scenario.
+
 ## How it works
 
 ### Stage 1: Predictive — per-workload utilization-probability GNN
@@ -465,12 +533,26 @@ Finally, a `DemandScenario` overlay replays the locked-in plan under four risk s
 
 ## Customize this template
 
-- **Add or remove DCs** by editing `data_centers.csv`. The bundled set is a snapshot of the upstream $300M-approved campuses; re-running `energy_grid_planning` at a different `InvestmentLevel` produces a different approved set you can copy in.
-- **Adjust the lab roster** in `ai_labs.csv`. Anchor flag drives the `DiversityCap` constraint.
-- **Tune scenario axes**: edit `power_envelope_levels.csv`, `margin_floors.csv`, `diversity_caps.csv`. Adding rows scales the cell count multiplicatively.
-- **Change the priority spread** by editing the weights in the `# Stage 2: Rules` section (default 100 / 10 / 1).
-- **Replace the GNN with the deterministic fallback** by setting `--no-gnn` and editing `workload_utilization_fallback.csv` directly.
-- **Tune the Stage 4 solve** by adjusting the solver name or `time_limit_sec` in `problem.solve(...)`. The default works on any prescriptive engine; faster commercial solvers (when licensed) can reach OPTIMAL in a fraction of the time.
+### Use your own data
+
+- Add or remove campuses by editing `data_centers.csv`. The bundled set is a snapshot of the upstream $300M-approved campuses; re-running `energy_grid_planning` at a different `InvestmentLevel` produces a different approved set you can copy in.
+- Adjust the lab roster in `ai_labs.csv`. The anchor flag drives the `DiversityCap` constraint.
+- Replace the GNN with the deterministic fallback by setting `--no-gnn` and editing `workload_utilization_fallback.csv` directly.
+
+### Tune parameters
+
+- Tune the scenario axes: edit `power_envelope_levels.csv`, `margin_floors.csv`, and `diversity_caps.csv`. Adding rows scales the cell count multiplicatively.
+- Change the priority spread by editing the weights in the `# Stage 2: Rules` section (default 100 / 10 / 1).
+
+### Extend the model
+
+- Add a fourth GNN edge type, a new dependency relation, or extra scenario axes; the accretive-ontology pattern means downstream stages pick up new signals without restructuring.
+
+### Scale up / productionize
+
+- Tune the Stage 4 solve by adjusting the solver name or `time_limit_sec` in `problem.solve(...)`. The default works on any prescriptive engine; faster commercial solvers (when licensed) can reach OPTIMAL in a fraction of the time.
+- Replace the bundled CSVs with CDC ingestion from the operator's inventory, telemetry, and contract systems; the ontology shape is independent of the load pipeline.
+
 ## Troubleshooting
 
 <details>

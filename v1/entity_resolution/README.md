@@ -1,6 +1,6 @@
 ---
 title: "Entity Resolution"
-description: "Resolve duplicate policyholder records scattered across an insurer's policy systems and acquired books into one insured party, then total each household's exposure, flag accumulation-limit breaches, and choose the lowest-cost reinsurance cessions to clear them."
+description: "Resolve duplicate policyholder records across an insurer's policy systems and acquired books into one insured party. Total each household's exposure, flag accumulation-limit breaches, and choose the lowest-cost reinsurance cessions to clear them."
 featured: false
 experience_level: intermediate
 industry: "Financial Services"
@@ -165,6 +165,11 @@ One real insured, created from the distinct party keys.
 
 Blocking and fuzzy scoring run in pandas (no string-similarity primitive in any query language); the engine does the parts that need reasoning -- transitive clustering, declarative aggregation, and optimization.
 
+```text
+records (CSV) -> block + score (pandas) -> auto edges + review queue
+   -> WCC clusters -> per-party exposure + breach flag -> reinsurance cession plan
+```
+
 ### Candidate generation (pandas)
 
 Blocking groups records sharing an email handle, phone, name+postal key, or date of birth, so only 28 candidate pairs are scored instead of 1,275. Each candidate's weighted field-similarity score lands it in one of two bands: at or above `AUTO_MERGE` it becomes a match edge; in `[REVIEW_FLOOR, AUTO_MERGE)` it is held for a steward instead of merged.
@@ -217,11 +222,6 @@ problem.satisfy(
     name=["reinsurance_budget"],
 )
 problem.maximize(aggregates.sum(ResolvedParty.excess * ResolvedParty.cede))
-```
-
-```text
-records (CSV) -> block + score (pandas) -> auto edges + review queue
-   -> WCC clusters -> per-party exposure + breach flag -> reinsurance cession plan
 ```
 
 ## Customize this template

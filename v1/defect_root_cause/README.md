@@ -384,3 +384,20 @@ The diagnosis names a contaminated solder-paste lot (`SP-0423`) and a reflow ove
 - If you have multiple profiles, set <code>RAI_PROFILE</code> or switch profiles in your configuration.
 
 </details>
+
+## Learn more
+
+### Core concepts
+
+- [Multi-reasoner workflows](https://docs.relational.ai/) — how graph, rules, and prescriptive stages share one ontology, the pattern this template follows.
+- [PyRel v1 query language](https://docs.relational.ai/) — `model.where(...)`, `aggs`, and `.define()`, used throughout the pipeline.
+
+### Reasoner reference
+
+- [Graph reasoner](https://docs.relational.ai/) — `Graph`, edges, and `reachable(full=True)`, the transitive closure behind the genealogy stage.
+- [Rules and derived properties](https://docs.relational.ai/) — deriving `lift` and the `is_suspect` flag from base relations.
+- [Prescriptive reasoner](https://docs.relational.ai/) — `Problem`, decision variables, `satisfy`, and `minimize`, used for the minimal-diagnosis set cover.
+
+## Support
+
+- File issues at the RelationalAI templates repository.

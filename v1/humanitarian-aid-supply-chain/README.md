@@ -31,15 +31,14 @@ PageRank simulates how aid flows through the network using iterative random walk
 
 ## What you'll build
 
-- Load a humanitarian aid network with 18 distribution points and 28 directed supply routes from CSV files
-- Use RelationalAI's Graph API to model a weighted, directed supply chain network
-- Calculate PageRank to identify where aid flows naturally concentrate (influence)
-- Calculate Weighted Degree Centrality to find highly connected coordination nodes (network hubs)
-- Analyze strategic categories: critical coordination hubs, influential endpoints, and network connectors
-- Generate actionable recommendations for resource deployment and network resilience
-- Compare multiple graph metrics to make informed strategic decisions
+- A weighted, directed supply-chain graph over distribution points and routes, built with RelationalAI's Graph API
+- A per-node PageRank score identifying where aid naturally concentrates (influence)
+- A per-node Weighted Degree Centrality score surfacing highly connected coordination hubs
+- A strategic classification of every distribution point (critical coordination hub, influential endpoint, or network connector) from the two metrics together
+- A ranked deployment-priority table with actionable recommendations, exportable to CSV
+- An optional Streamlit dashboard visualizing the network and rankings interactively
 
-This template uses **RelationalAI's advanced graph algorithms** including PageRank (an iterative algorithm requiring multiple passes over the network) and Weighted Degree Centrality (analyzing network connectivity patterns).
+Built using **graph analysis** — PageRank (an iterative random-walk algorithm) and Weighted Degree Centrality (network-connectivity analysis) on a shared supply-chain ontology.
 
 ## What's included
 
@@ -50,9 +49,16 @@ This template uses **RelationalAI's advanced graph algorithms** including PageRa
 
 ## Prerequisites
 
-- Python >= 3.10
+### Access
+
 - A Snowflake account that has the RAI Native App installed.
 - A Snowflake user with permissions to access the RAI Native App.
+
+### Tools
+
+- Python >= 3.10
+- RelationalAI Python SDK (`relationalai == 1.11.0`)
+- For the interactive app only: the `visualization` extra (`python -m pip install .[visualization]`)
 
 ## Quickstart
 
@@ -116,36 +122,86 @@ You can customize the data and model as needed after you have it running end-to-
    - Detailed strategic-category analysis
    - CSV export functionality
 
-## Model overview
+6. Expected output (a few lines confirm a successful run):
 
-The `SupplyRoute` concept represents directed supply routes between distribution points with weighted attributes.
+   ```text
+   By PageRank (where aid concentrates):
+     Emergency Field Hospital   0.1097
+   By weighted degree centrality (coordination hubs):
+     Central Warehouse          794.81  (9 routes)
 
-| Property | Type | Notes |
-|---|---|---|
-| `from_point` | DistributionPoint | Source point in the supply route |
-| `to_point` | DistributionPoint | Destination point in the supply route |
-| `route_capacity` | Integer | Maximum throughput (units/day) |
-| `reliability_score` | Float | Route reliability (0-1 scale) |
-| `distance_km` | Integer | Physical distance for routing calculations |
+   Strategic categories: 2 critical coordination hubs,
+     4 influential endpoints, 4 network connectors
+   ```
 
-### Flow Weight Property
+   See `runbook.md` for the full ranked tables and the strategic-category walkthrough.
 
-The flow weight property represents expected aid throughput considering capacity, reliability, and distance and is calculated using the following formula:
+## Template structure
 
 ```text
-flow_weight = (route_capacity * reliability_score) / distance_km
+humanitarian-aid-supply-chain/
+├── README.md                          # this file
+├── pyproject.toml                     # dependencies
+├── model_setup.py                     # shared model + graph construction
+├── humanitarian_aid_supply_chain.py   # CLI analysis script
+├── app.py                             # optional Streamlit dashboard
+├── runbook.md                         # analyst-facing walkthrough
+└── data/
+    ├── distribution_points.csv        # 18 distribution points
+    └── supply_routes.csv              # 28 directed supply routes
 ```
 
-### Graph Metrics
+**Start here**: run `python humanitarian_aid_supply_chain.py` for the full command-line analysis, or launch `streamlit run app.py` for the interactive dashboard. Both build the model through `model_setup.create_model()`.
 
-The template calculates these advanced metrics using RelationalAI's Graph API:
+## Sample data
 
-| Metric | Type | Description |
+The bundled data is small and illustrative — an 18-node humanitarian relief network sized to make the two centrality metrics tell contrasting stories, not to match a specific operation.
+
+- **`distribution_points.csv`** (18 rows) — airports, warehouses, border crossings, and relief camps, each with a type, region, capacity, and population served.
+- **`supply_routes.csv`** (28 rows) — directed routes between points, each carrying a throughput capacity, a reliability score, and a physical distance used to derive the flow weight.
+
+## Model overview
+
+The model is a small graph ontology: distribution points connected by directed, weighted supply routes. Graph metrics are computed at query time from the route graph rather than stored on the point.
+
+- **Key entities**: `DistributionPoint`, `SupplyRoute`.
+- **Primary identifiers**: `DistributionPoint.id` (integer); `SupplyRoute` is keyed by its `(from_point, to_point)` pair.
+- **Important invariants**: `reliability_score` is a fraction in `[0, 1]`; capacity and distance are positive; the derived `flow_weight` combines all three into the edge weight the graph algorithms read.
+
+### Concepts
+
+**`DistributionPoint`** — a node in the relief network (airport, warehouse, border crossing, or relief camp). Loaded from `data/distribution_points.csv`.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `id` | Integer | Yes | Point identifier |
+| `name` | String | No | Human-readable name |
+| `type` | String | No | Airport / Warehouse / Border Crossing / Relief Camp |
+| `region` | String | No | Geographic region |
+| `capacity` | Integer | No | Site throughput capacity (units/day) |
+| `population_served` | Integer | No | People the point serves |
+
+**`SupplyRoute`** — a directed route between two distribution points, with weighted attributes. Loaded from `data/supply_routes.csv`.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `from_point` | `DistributionPoint` | Yes | Source point (composite key) |
+| `to_point` | `DistributionPoint` | Yes | Destination point (composite key) |
+| `route_capacity` | Integer | No | Maximum throughput (units/day) |
+| `reliability_score` | Float | No | Route reliability, `[0, 1]` |
+| `distance_km` | Float | No | Physical distance for routing calculations |
+| `flow_weight` | Float | No | Derived edge weight: `(route_capacity * reliability_score) / distance_km` |
+
+### Graph metrics
+
+These are computed by the Graph API over the route graph at query time (not stored as `DistributionPoint` properties).
+
+| Metric | Type | Notes |
 |---|---|---|
-| `pagerank` | Float | Influence score (0-1) based on iterative random walk simulation. Higher = more aid naturally flows here |
-| `degree_centrality` | Float | Sum of flow weights for all connected routes. Higher = more influential hub |
-| `incoming_routes` | Integer | Indegree: number of supply routes delivering TO this point |
-| `outgoing_routes` | Integer | Outdegree: number of supply routes originating FROM this point |
+| `pagerank` | Float | Influence score from iterative random walk; higher means more aid naturally flows here |
+| `degree_centrality` | Float | Sum of flow weights across a point's routes; higher means a more connected hub |
+| `incoming_routes` | Integer | Indegree: routes delivering to this point |
+| `outgoing_routes` | Integer | Outdegree: routes originating from this point |
 
 ## How it works
 
@@ -284,38 +340,38 @@ connectors = results[
 
 ## Customize this template
 
-**Use your own data:**
+Focus on the first changes most users will make.
 
-- Replace the CSV files in the `data/` directory with your own supply chain network, keeping the same column names (or update the logic in `model_setup.py`).
-- Ensure that supply routes only reference valid distribution point IDs.
-- You can add additional properties to distribution points (organization, contact info, GPS coordinates) by adding columns to the CSV and corresponding properties to the model in `model_setup.py`.
+### Use your own data
 
-**Extend the model:**
+- Replace the CSVs in `data/` with your own network, keeping the same column names (or update the loading logic in `model_setup.py`).
+- Ensure supply routes only reference valid distribution-point IDs.
+- Add properties to distribution points (organization, contact info, GPS coordinates) by adding CSV columns and the corresponding properties in `model_setup.py`.
 
-- **Adjust PageRank parameters**: Experiment with different damping factors:
+### Tune parameters
 
-  - Higher damping (0.90-0.95): More emphasis on network structure, less on random teleportation
-  - Lower damping (0.70-0.80): More emphasis on direct connections, less on global influence
+- **PageRank damping factor** — higher damping (0.90-0.95) emphasizes network structure over teleportation; lower damping (0.70-0.80) emphasizes direct connections over global influence.
+- **Edge-weight formula** — change the `flow_weight` formula in `model_setup.py` to reweight the graph. Higher weights indicate stronger connections that PageRank favors.
 
-- **Add different edge weights**: Change the graph edge weight formula in `model_setup.py` to optimize for different factors. Remember: **for PageRank, use direct multipliers**—higher weights indicate stronger connections that PageRank will favor.
-
-  Current formula: `(route_capacity * reliability_score) / distance_km` — good for balanced optimization
-
-  Alternative formulas (all using direct multipliers):
+  The current formula `(route_capacity * reliability_score) / distance_km` balances all three factors. Alternatives:
   - Capacity-focused: `route_capacity` (maximize throughput)
   - Reliability-focused: `reliability_score` (emphasize route stability)
   - Simple combined: `route_capacity * reliability_score` (ignore distance)
 
+### Extend the model
+
 - **Try additional algorithms**:
+  - `graph.louvain()` — community detection to find regional distribution clusters
+  - `graph.is_reachable(point1, point2)` — verify connectivity between two locations
+  - `graph.distance(point1, point2)` — shortest-path length between points
+  - `graph.weakly_connected_components()` — identify disconnected network regions
+- **Add temporal analysis** — include route availability schedules or seasonal variations to model time-dependent supply chains.
+- **Incorporate risk factors** — add node properties for conflict zones, disease prevalence, or disaster risk to prioritize safe routes.
 
-  - `graph.louvain()` - Community detection to identify regional aid distribution clusters
-  - `graph.is_reachable(point1, point2)` - Verify connectivity between specific locations
-  - `graph.distance(point1, point2)` - Calculate shortest path length between points
-  - `graph.weakly_connected_components()` - Identify disconnected network regions
+### Scale up / productionize
 
-**Add temporal analysis**: Include route availability schedules or seasonal variations to model time-dependent supply chains.
-
-**Incorporate risk factors**: Add node properties for conflict zones, disease prevalence, or natural disaster risk to prioritize safe routes.
+- Swap the `read_csv(...)` loads in `model_setup.py` for `model.data(snowflake_table)` calls to run against a network catalog maintained in Snowflake.
+- Pin `relationalai` in `pyproject.toml` for reproducible runs, and schedule the CLI script to refresh rankings as the network changes.
 
 ## Troubleshooting
 
@@ -364,3 +420,22 @@ connectors = results[
   - Just update the CSV data and entity names to match your domain.
 
 </details>
+
+## Learn more
+
+### Core concepts
+
+- [Graph analysis](https://docs.relational.ai/) — building graphs from an ontology and running centrality and community algorithms.
+- [PyRel v1 modeling](https://docs.relational.ai/) — concepts, properties, and loading CSV data into relations.
+
+### Modeling reference
+
+- [PageRank and centrality](https://docs.relational.ai/) — influence and connectivity measures, damping, and convergence.
+
+### Deeper dives
+
+- [Querying graph results](https://docs.relational.ai/) — selecting, aliasing, and exporting metric results to DataFrames and CSV.
+
+## Support
+
+- File issues at the RelationalAI templates repository.

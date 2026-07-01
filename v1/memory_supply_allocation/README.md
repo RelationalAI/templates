@@ -1,6 +1,6 @@
 ---
 title: "Memory Supply Allocation"
-description: "Monthly rolling-horizon allocation of constrained memory-chip supply across customers with supplier dependencies, named foundries, and raw-material inputs: predicted supplier capability feeds the optimization, customer-customer paths surface single points of failure, and two what-if scenarios trace supplier-offline and input-shortage cascades."
+description: "Allocate constrained memory-chip supply across customers month by month over a rolling horizon, chaining four RelationalAI reasoners on one shared model. A supplier-capability forecast feeds a margin-maximizing optimization, protection rules set customer service floors, and graph path traversal plus what-if scenarios trace which suppliers and raw materials put the plan most at risk."
 featured: false
 experience_level: intermediate
 industry: "Technology & Telecom"

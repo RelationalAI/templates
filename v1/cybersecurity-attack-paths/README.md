@@ -31,12 +31,11 @@ This template enumerates multi-step attack paths across an enterprise asset grap
 
 ## What you'll build
 
-- Load a 12-asset enterprise estate (perimeter hosts, internal services and workstations, restricted crown jewels) and 16 directed attack steps from CSV
-- Model three distinct attacker techniques as separate edges between assets: vulnerability exploitation, credential reuse, and network pivoting
-- Enumerate kill-chain attack paths with RelationalAI multi-relationship path enumeration, a multi-edge pattern that fixes the technique order
-- Run a point query that lists every route between one named entry point and one named crown jewel
-- Rank the kill-chains by the asset exposure summed along each one
-- Persist which assets lie on a crown-jewel attack path back onto the ontology
+- An enterprise asset graph (perimeter hosts, internal services and workstations, restricted crown jewels) with three distinct attacker techniques — vulnerability exploitation, credential reuse, and network pivoting — modeled as separate directed edges between assets
+- An enumerated set of kill-chain attack paths, produced by RelationalAI multi-relationship path enumeration (a multi-edge pattern that fixes the technique order)
+- A point-query result listing every route between one named entry point and one named crown jewel over the technique-agnostic union edge
+- A ranking of the kill-chains by the asset exposure summed along each one
+- An `Asset.on_attack_path` flag persisted back onto the ontology, marking every asset that lies on a crown-jewel-reaching chain
 
 ## What's included
 

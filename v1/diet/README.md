@@ -12,15 +12,11 @@ tags:
   - Scenario Analysis
 ---
 
-# Diet Optimization
-
 ## What this template is for
 
-Choosing a balanced diet that meets nutritional requirements while staying within a budget is a classic optimization problem. Given a set of foods with known costs and nutrient contents, and a set of nutrients with minimum and maximum daily intake bounds, the goal is to find the cheapest combination of foods that satisfies all nutritional constraints.
+Choosing a balanced diet that meets nutritional requirements while staying within a budget is a classic optimization problem. Given a set of foods with known costs and nutrient contents, and a set of nutrients with minimum and maximum daily intake bounds, the goal is to find the cheapest combination of foods that satisfies all nutritional constraints. It also shows how the same model answers a "what if" question — how cost moves as requirements tighten or loosen — without re-modeling anything.
 
-This template uses **Prescriptive** reasoning to formulate and solve the diet problem as a linear program. Each food has a continuous decision variable representing how much of it to include. Constraints enforce that the total nutrient intake from the selected foods falls within the required bounds for every nutrient.
-
-The template also demonstrates scenario analysis by scaling nutritional requirements up and down (0.8x, 1.0x, 1.2x) and solving independently for each scenario. This lets you compare how dietary cost changes as requirements become more or less restrictive.
+**The template uses prescriptive reasoning to formulate the diet problem as a linear program and solve several requirement scenarios in a single solve.**
 
 ## Who this is for
 
@@ -31,16 +27,18 @@ The template also demonstrates scenario analysis by scaling nutritional requirem
 
 ## What you'll build
 
-- A linear programming model that selects foods to minimize total cost
-- Nutritional constraints ensuring minimum and maximum daily intake for calories, protein, fat, and sodium
-- Scenario analysis that scales nutritional requirements and compares results across scenarios
+- A least-cost diet plan — the amount of each food that meets every nutrient bound at minimum total cost — produced by **prescriptive reasoning** (a linear program).
+- Nutritional constraints holding total intake within minimum and maximum daily bounds for calories, protein, fat, and sodium.
+- A scenario comparison showing how least-cost changes as requirements scale, built with a first-class `Scenario` concept so all cases solve at once.
+
+Built using **prescriptive reasoning** (linear programming with continuous decision variables and a `Scenario` concept for multi-case solves).
 
 ## What's included
 
-- `diet.py` -- Main script defining the optimization model, constraints, and scenario analysis
-- `data/foods.csv` -- Food items with cost and nutrient content per serving
-- `data/nutrients.csv` -- Nutrient names with minimum and maximum daily intake bounds
-- `pyproject.toml` -- Python package configuration with dependencies
+- **Model**: two concepts (`Food`, `Nutrient`), a `Scenario` concept, per-food decision variables, nutrient-bound constraints, and a cost-minimizing objective — all in `diet.py`.
+- **Runner**: `diet.py`, a single Python script that runs end-to-end against a Snowflake-connected RAI account.
+- **Sample data**: `data/foods.csv` (foods with cost and per-nutrient content) and `data/nutrients.csv` (nutrient min/max bounds).
+- **Outputs**: per-scenario termination status, objective cost, and a table of the foods (and amounts) in each least-cost basket, printed to stdout.
 
 ## Prerequisites
 
@@ -84,32 +82,9 @@ The template also demonstrates scenario analysis by scaling nutritional requirem
    python diet.py
    ```
 
-6. Expected output:
+6. Expected output — a few lines confirm a successful run:
+
    ```text
-   Running scenario: nutrient_scaling = 0.8
-     Status: OPTIMAL, Objective: $6.53
-     Diet plan:
-        name  value
-     chicken   0.52
-        milk  10.41
-    icecream   1.37
-
-   Running scenario: nutrient_scaling = 1.0
-     Status: OPTIMAL, Objective: $8.20
-     Diet plan:
-        name  value
-     chicken   0.65
-        milk  13.01
-    icecream   1.71
-
-   Running scenario: nutrient_scaling = 1.2
-     Status: OPTIMAL, Objective: $9.87
-     Diet plan:
-        name  value
-     chicken   0.78
-        milk  15.62
-    icecream   2.06
-
    ==================================================
    Scenario Analysis Summary
    ==================================================
@@ -118,17 +93,67 @@ The template also demonstrates scenario analysis by scaling nutritional requirem
      scaling=1.2: OPTIMAL, cost=$9.87
    ```
 
+   The full per-scenario diet plans print above this summary; see `runbook.md` for the complete log.
+
 ## Template structure
 
 ```text
 .
-├── README.md
-├── pyproject.toml
-├── diet.py
+├── README.md          # this file
+├── runbook.md         # step-by-step analyst walkthrough
+├── pyproject.toml     # dependencies
+├── diet.py            # main script (model, constraints, scenarios, solve)
 └── data/
-    ├── foods.csv
-    └── nutrients.csv
+    ├── foods.csv      # foods with cost and per-nutrient content
+    └── nutrients.csv  # nutrient min/max bounds
 ```
+
+**Start here**: run `python diet.py` for the full model and scenario solve end to end, or follow `runbook.md` to rebuild it step by step.
+
+## Sample data
+
+The bundled data is small and illustrative — a handful of foods and four nutrients, sized to teach the linear-program formulation, not to represent a clinically complete diet.
+
+- **`data/foods.csv`** — one row per food, with a `cost` per serving and one column per nutrient (`calories`, `protein`, `fat`, `sodium`) giving that food's content per serving. Each food's nutrient columns must match the nutrient `name`s in `nutrients.csv`.
+- **`data/nutrients.csv`** — one row per nutrient, with `min` and `max` daily-intake bounds. The scenario scaling factor multiplies these bounds up and down.
+
+## Model overview
+
+The model is small and self-contained: two source concepts plus a `Scenario` concept that parameterizes the solve.
+
+- **Key entities**: `Food`, `Nutrient`, and `Scenario`.
+- **Primary identifiers**: `Food.name` and `Nutrient.name` (both strings); `Scenario.scenario_name` (string).
+- **Important invariants**: nutrient `min` and `max` bounds are non-negative and `min <= max`; each food's decision amount is non-negative (`lower=0`); each food's per-nutrient content is keyed by a nutrient that exists in `nutrients.csv`.
+
+### Concepts
+
+**`Nutrient`** — a nutrient with a minimum and maximum daily-intake bound. The constraint bounds are read from these, scaled per scenario.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `name` | String | Yes | Nutrient name from `data/nutrients.csv` |
+| `min` | Float | No | Minimum daily intake |
+| `max` | Float | No | Maximum daily intake |
+
+**`Food`** — a food with a per-serving cost and a per-nutrient content. Each food carries a continuous decision variable for the amount to include.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `name` | String | Yes | Food name from `data/foods.csv` |
+| `cost` | Float | No | Cost per serving |
+| `contains` | Relationship | — | `Food contains Nutrient in qty` — per-nutrient content (ternary) |
+| `x_amount` | Float | No | Decision variable: amount of this food per `Scenario` |
+
+**`Scenario`** — a requirement-scaling case. Each scenario scales every nutrient bound by its factor; all scenarios solve together in one solve.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `scenario_name` | String | Yes | Scenario label (`scaling_80pct` / `baseline` / `scaling_120pct`) |
+| `nutrient_scaling` | Float | No | Factor applied to every nutrient bound |
+
+### Relationships
+
+- `Food.contains(Nutrient, qty)` — the amount of each nutrient in one serving of a food; the nutrient-bound constraint sums `qty * amount` across foods per nutrient.
 
 ## How it works
 
@@ -217,10 +242,28 @@ After calling `Problem(...)` and `problem.solve_for / satisfy / minimize`, the p
 
 ## Customize this template
 
-- **Add more foods or nutrients**: Extend the CSV files with additional rows and columns. The model automatically picks up new data.
-- **Change scenario parameters**: Modify `SCENARIO_VALUES` to test different scaling factors or introduce entirely different scenario dimensions (e.g., budget caps).
-- **Add dietary preferences**: Introduce upper bounds on specific foods (e.g., limit red meat) or add binary variables to model food inclusion/exclusion.
-- **Weight objectives**: Add a secondary objective term to penalize undesirable foods alongside cost minimization.
+Focus on the first changes most users will make.
+
+### Use your own data
+
+- Replace `data/foods.csv` and `data/nutrients.csv` with your own; keep the column names described in *Sample data* above. Each food's nutrient columns must match the nutrient `name`s in `nutrients.csv` — the model reads one food column per nutrient row.
+- For Snowflake-backed runs, swap the `read_csv(...)` calls for `model.data(snowflake_table)` calls.
+
+### Tune parameters
+
+- Edit the scenario rows in `diet.py` (the `("scaling_80pct", 0.8)`, `("baseline", 1.0)`, `("scaling_120pct", 1.2)` tuples) to test different scaling factors, or add rows for finer resolution.
+- Adjust the solver time limit (`time_limit_sec`) if you scale up to many foods and nutrients.
+
+### Extend the model
+
+- Add dietary preferences: introduce upper bounds on specific foods (for example, limiting red meat), or add binary variables to model food inclusion/exclusion.
+- Weight the objective: add a secondary term to penalize undesirable foods alongside cost minimization.
+- Add a second scenario axis (for example, budget caps) as another `Scenario`-style concept.
+
+### Scale up / productionize
+
+- Pin `relationalai` and schedule the run as a pipeline step for reproducible, deterministic re-runs.
+- Size the prescriptive engine up if the food and nutrient counts grow the linear program substantially.
 
 ## Troubleshooting
 
@@ -247,3 +290,23 @@ Make sure you activated the virtual environment and ran `python -m pip install .
 
 Foods with zero in the solution are not cost-effective given the constraints. This is expected behavior. If you want to force inclusion of specific foods, add a minimum bound on their decision variables.
 </details>
+
+## Learn more
+
+### Core concepts
+
+- [PyRel v1 query language](https://docs.relational.ai/) — `model.where(...)` / `model.select(...)` / `.per(...)` and result extraction.
+- [Concepts and properties](https://docs.relational.ai/) — modeling entities like `Food` and `Nutrient` with typed properties.
+
+### Reasoner reference
+
+- [Prescriptive reasoner](https://docs.relational.ai/) — `Problem` API, decision variables, constraints, and objectives.
+- [Scenario modeling](https://docs.relational.ai/) — parameterizing one solve across cases with a `Scenario` concept.
+
+### CLI / SDK guides
+
+- [RelationalAI setup](https://docs.relational.ai/) — `rai init`, profiles, and `raiconfig.yaml`.
+
+## Support
+
+- File issues at the RelationalAI templates repository.

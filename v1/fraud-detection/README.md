@@ -1,6 +1,6 @@
 ---
 title: "Fraud Detection"
-description: "Transaction-fraud pipeline: account PageRank and high-volume account flags feed a GNN binary classifier whose per-transaction scores drive a knapsack investigator-budget MILP."
+description: "Transaction-fraud pipeline where account PageRank and high-volume account flags feed a graph neural network (GNN) binary classifier whose per-transaction scores drive a knapsack investigator-budget mixed-integer linear program (MILP)."
 featured: true
 experience_level: advanced
 industry: "Financial Services"
@@ -22,13 +22,11 @@ sidebar:
 
 ## What this template is for
 
-Fraud and risk teams face four interconnected problems: discovering suspicious structure in the identity / transaction graph, classifying accounts by behavior rules, scoring transactions as they come in, and deciding which alerts to investigate given finite human capacity. Traditionally these live in separate tools. This template shows all four working together on one semantic model in RelationalAI, wiring the **Graph → Rules → Predictive → Prescriptive** reasoners into a single pipeline.
+Fraud and risk teams face four interconnected problems: discovering suspicious structure in the transaction graph, classifying accounts by their behavior, scoring transactions as they arrive, and deciding which alerts to investigate given finite human capacity. Traditionally these live in separate tools, so the signal from one rarely informs the next, and the investigator queue is set by a naive sort rather than by the value at stake.
 
-**Start with `fraud_detection_local.py`** -- it runs the full five-stage pipeline on a small bundled demo dataset (CPU, no external data): compute account PageRank, derive high-volume account flags, train a GNN binary classifier on the Account-Transaction graph, blend its probability with a rule-based heuristic flag, and solve a knapsack investigator-budget MILP. A few minutes end-to-end.
+This template shows all four working together on one semantic model in RelationalAI: graph structure feeds behavioral rules, both feed a learned per-transaction fraud score, and that score drives an investigator-budget allocation that captures the most expected loss the audit team's hours can reach.
 
-**Adapt the pattern to your own Snowflake data** using `fraud_detection.py` as a reference -- same five stages, loaded from Snowflake and trained on GPU.
-
-**For the older rule-based-only take** (no ML), see `fraud_detection_rules.ipynb` -- a standalone notebook using Weakly Connected Components on shared-identifier edges to flag suspicious users.
+**It chains RelationalAI's graph, rules, predictive, and prescriptive reasoners into a single predict-then-optimize pipeline over a shared ontology** — from account PageRank through a graph neural network (GNN) classifier to a mixed-integer linear programming (MILP) audit allocation.
 
 ## Who this is for
 
@@ -269,12 +267,41 @@ Edgar Lopez-Rojas, released under
 
 ## Model overview
 
-### Key entities
+Two concepts carry the pipeline: `Account` and `Transaction`. Each stage enriches them with new properties the next stage reads, so the model grows accretively across the run.
 
-- **Account** (`account_id`): one participant in the transaction network -- customer (ID prefix `C`) or merchant (prefix `M`) in the demo dataset. Appears as either sender (`name_orig`) or receiver (`name_dest`) on transactions. Enriched at pipeline time with `pagerank` (from Stage 1) and `activity_count` (from Stage 2).
-- **Transaction**: one transfer with amount, sender balance delta, receiver balance delta, transaction type, and a pre-existing rule-based flag `is_flagged_fraud` used as the heuristic comparator.
+- **Key entities**: `Account` (a participant in the transaction network) and `Transaction` (one transfer between two accounts).
+- **Primary identifiers**: `Account.account_id` (string, e.g. customer prefix `C` or merchant prefix `M`); `Transaction.transaction_id` (integer).
+- **Important invariants**: `is_flagged_fraud` and the GNN's `is_fraud` label are 0/1; `alert_score` is a `[0, 1]` blend of the flag and the GNN probability; audit-cost hours and transaction amounts are non-negative; the MILP's audit decision is binary.
+
+### Concepts
+
+**`Account`** — one participant in the transaction network, appearing as sender (`name_orig`) or receiver (`name_dest`) on transactions. Loaded from `data/paysim_mini/accounts.csv`; Stages 1-2 enrich it.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `account_id` | String | Yes | Account identifier (`C` customer / `M` merchant prefix) |
+| `account_type_prefix` | String | No | Categorical GNN feature derived from the ID prefix |
+| `pagerank` | Float | No | **Stage 1** graph-reasoner centrality, fed to the GNN |
+| `activity_count` | Integer | No | **Stage 2** per-sender transaction count, fed to the GNN |
+
+**`Transaction`** — one transfer with amount, balance deltas, type, and a heuristic flag. Loaded from `data/paysim_mini/transactions.csv`; Stages 3-5 enrich it.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `transaction_id` | Integer | Yes | Transaction identifier |
+| `step`, `step_ts` | Integer / DateTime | No | Time step and timestamp (temporal GNN key) |
+| `trans_type` | String | No | Categorical (e.g. `TRANSFER`, `CASH_OUT`) |
+| `amount` | Float | No | Transfer amount; also drives audit cost |
+| `name_orig`, `name_dest` | String | No | Sender and receiver account IDs (graph edges) |
+| `old_balance_orig`, `new_balance_orig` | Float | No | Sender balance before/after |
+| `old_balance_dest`, `new_balance_dest` | Float | No | Receiver balance before/after |
+| `is_flagged_fraud` | Integer | No | Pre-existing rule-based heuristic flag (0/1) |
+| `alert_score` | Float | No | **Stage 4** blend of `is_flagged_fraud` and the GNN probability |
+| `x_audit` | Float | No | **Stage 5** binary audit decision (0/1) |
 
 ### Pipeline stages
+
+The five stages thread through the shared ontology, each stage's output becoming a property the next stage reads.
 
 ```text
 Accounts + Transactions (Snowflake tables or bundled CSVs)
@@ -407,17 +434,20 @@ the tradeoff is visible.
 
 ## Customize this template
 
-**Use your own data:**
+Focus on the first changes most users will make.
 
-- Replace the bundled CSVs (or Snowflake tables) with your own accounts /
-  transactions. Keep `customer_id`-style string PKs and a stable transaction
-  PK.
-- The PropertyTransformer is the main place to localize: drop your PKs/FKs,
-  list your categorical vs continuous fields.
+### Use your own data
 
-**Tune knobs:**
+- Replace the bundled CSVs (or Snowflake tables) with your own accounts and
+  transactions. Keep `customer_id`-style string primary keys and a stable
+  transaction primary key.
+- The `PropertyTransformer` is the main place to localize: drop your primary
+  and foreign keys, and list your categorical versus continuous fields.
 
-- `ALPHA_FLAG` (0..1) -- weight on the rule-based flag vs the GNN prob.
+### Tune parameters
+
+- `ALPHA_FLAG` (0..1) -- weight on the rule-based flag versus the GNN
+  probability.
 - `AUDIT_BUDGET_HOURS` / `PER_ACCOUNT_CAP` -- investigator budget knobs.
   Raise the budget to audit more transactions; tighten the cap to spread
   audits across more receivers.
@@ -427,7 +457,7 @@ the tradeoff is visible.
 - GNN hyperparameters (`n_epochs`, `lr`, `train_batch_size`, ...) -- see the
   `rai-predictive-training` skill for tuning guidance.
 
-**Extend the model:**
+### Extend the model
 
 - Swap PageRank for other centrality measures (betweenness, eigenvector) or
   add community labels (Louvain / Infomap) as a categorical GNN feature.
@@ -436,6 +466,15 @@ the tradeoff is visible.
 - Fold a rule-based flag directly into the MILP as a hard constraint (e.g.
   never skip an already-`is_flagged_fraud=True` transaction) rather than as
   an alert-score contributor.
+
+### Scale up / productionize
+
+- Use `fraud_detection.py` as the reference for running against a full
+  Snowflake dataset on a GPU-enabled RAI engine (see *Adapting to your own
+  Snowflake data* under Quickstart).
+- Pin `relationalai` in `pyproject.toml` and set a fixed GNN `seed` for
+  reproducible runs; schedule the pipeline to refresh the audit queue as new
+  transactions land.
 
 ## Troubleshooting
 
@@ -467,3 +506,24 @@ the tradeoff is visible.
 
 Set `STREAM_LOGS = False` at the top of the script (the default). The GNN continues training server-side; only the client-side log stream is suppressed.
 </details>
+
+## Learn more
+
+### Core concepts
+
+- [Multi-reasoner workflows](https://docs.relational.ai/) — chaining reasoners and enriching a shared ontology, as this predict-then-optimize pipeline does.
+- [PyRel v1 modeling](https://docs.relational.ai/) — concepts, properties, and derived rules.
+
+### Reasoner reference
+
+- [Graph reasoner](https://docs.relational.ai/) — building graphs from an ontology and running PageRank and centrality.
+- [Predictive reasoner (GNN)](https://docs.relational.ai/) — graph neural network classification, the `PropertyTransformer`, and temporal task relationships.
+- [Prescriptive reasoner](https://docs.relational.ai/) — the `Problem` API, decision variables, constraints, and objectives for the knapsack MILP.
+
+### Deeper dives
+
+- [GNN training and tuning](https://docs.relational.ai/) — hyperparameters, evaluation metrics, and predictions; see also the `rai-predictive-training` skill.
+
+## Support
+
+- File issues at the RelationalAI templates repository.

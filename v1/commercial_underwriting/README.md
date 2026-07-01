@@ -15,19 +15,13 @@ tags:
   - Insurance to Value
 ---
 
-# Commercial Underwriting
-
 ## What this template is for
 
-This template uses **Rules-based** reasoning to underwrite a portfolio of commercial property/casualty submissions. It demonstrates how to express real-world insurance rules as declarative derived properties on a four-level hierarchy:
+Commercial property and casualty carriers triage every submission against a book of underwriting rules — insurance-to-value adequacy, fire-protection class, year-built floors, occupancy restrictions, industry appetite, operating history — and the answer for each account depends on the worst thing found anywhere beneath it. One old building or one restricted industry can decline an otherwise clean insured. Encoding that judgment as maintainable, auditable logic (rather than a tangle of procedural if-checks) is the hard part.
 
-```text
-InsuredEntity -> Policy -> Location -> Coverage
-```
+This template shows how to express that rulebook as declarative logic on a four-level hierarchy of insured entity, policy, location, and coverage, so lower-level eligibility checks roll up automatically into a per-entity risk tier. The result is an underwriting view that says not just which tier each account lands in, but exactly which rule put it there.
 
-Each level carries its own eligibility checks. A coverage is checked for insurance-to-value (ITV) adequacy. A location is checked for fire-protection class, year-built, and occupancy class. An insured entity is checked for industry and operating history. Then those flags roll up: any decline factor at any level pushes the entity to the **Decline** tier; marginal factors push it to **Non-Standard**; clean entities are **Standard**, and clean long-tenured entities with the highest fire-protection grades are **Preferred**.
-
-Everything is declarative — no procedural rule chains, no explicit ordering. PyRel resolves dependencies automatically. Rules at lower levels feed entity-level rollup rules, which in turn feed the tier classification.
+**The reasoning approach is rules-based: every eligibility check and rollup is a declarative derived property, and PyRel resolves the dependencies between levels automatically — no procedural rule chains, no explicit ordering.**
 
 ## Who this is for
 
@@ -233,6 +227,12 @@ A coverage line scheduled on a location.
 
 ## How it works
 
+Rules run at three altitudes on the hierarchy and feed each other. A coverage is checked for insurance-to-value (ITV) adequacy; a location for fire-protection class, year-built, and occupancy class; an insured entity for industry and operating history. Those lower-level flags then roll up: any decline factor at any level pushes the entity to the **Decline** tier, marginal factors push it to **Non-Standard**, clean entities are **Standard**, and clean long-tenured entities with the highest fire-protection grades are **Preferred**. Everything is declarative — rules at lower levels feed entity-level rollup rules, which in turn feed the tier classification.
+
+```text
+InsuredEntity -> Policy -> Location -> Coverage
+```
+
 ### 1. Lower-level eligibility flags
 
 Boolean flags as unary `Relationship` declarations. Each rule is a single declarative `where(...).define(...)`.
@@ -382,6 +382,26 @@ All thresholds are at the top of the script under `# Configure inputs`:
 
   Decline-factor membership is the union of all `has_decline_factor()` definitions. Add a new flag rule on the appropriate level (e.g., `Location.has_seismic_exposure`), add an entity-level rollup (`InsuredEntity.has_seismic_exposure_location`), then add one more `model.where(InsuredEntity.has_seismic_exposure_location()).define(InsuredEntity.has_decline_factor())` line. PyRel automatically unions all definitions of the same Relationship.
 </details>
+
+## Learn more
+
+### Core concepts
+
+- [PyRel v1 modeling](https://docs.relational.ai/) — concepts, properties, and derived Relationships, the building blocks this template uses at every level.
+- [Rules-based reasoning](https://docs.relational.ai/) — authoring declarative business rules and letting the engine resolve their dependencies.
+
+### Language / modeling reference
+
+- [Derived Relationships and set-union semantics](https://docs.relational.ai/) — how defining the same Relationship multiple times unions the matches, the pattern behind the OR-style rollups.
+- [Subtype concepts (`extends`)](https://docs.relational.ai/) — modeling mutually exclusive risk tiers as sub-concepts of `InsuredEntity`.
+
+### CLI / SDK guides
+
+- [`rai init` and `raiconfig.yaml`](https://docs.relational.ai/) — connecting the template to your RelationalAI account.
+
+## Support
+
+- File issues at the RelationalAI templates repository.
 
 ## Related templates
 

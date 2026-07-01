@@ -27,28 +27,9 @@ A defensible answer needs all four signals at once: which substations will run o
 
 ## Why this problem matters
 
-ERCOT -- the Electric Reliability Council of Texas -- operates an isolated grid that is not interconnected with the Eastern or Western Interconnections. This isolation means Texas cannot import power from neighboring grids during demand spikes, making capacity planning uniquely consequential. Winter Storm Uri (2021) demonstrated the vulnerability: grid failures cascaded without external relief, causing widespread blackouts.
+ERCOT -- the Electric Reliability Council of Texas -- operates an isolated grid not interconnected with the Eastern or Western Interconnections, so Texas cannot import power during demand spikes. That makes capacity planning uniquely consequential, as Winter Storm Uri (2021) showed when grid failures cascaded without external relief.
 
 Texas is now the fastest-growing market for AI data center development. Hyperscalers are requesting multi-hundred-megawatt interconnections at substations designed for decades of steady organic growth. The ERCOT grid must absorb 2,930 MW of new data center load -- equivalent to roughly 3 nuclear reactors -- while maintaining reliability for 30 million existing customers.
-
-This is not a single-reasoner problem. Approving a data center at a structurally critical substation like Dallas-Fort Worth (graph) without sufficient capacity headroom (predictive) violates reliability rules (rules) and may not be economically justified at lower budget levels (prescriptive). The value of the multi-reasoner approach is that each stage's output constrains the next -- predictions inform rules, rules inform optimization, and the optimizer respects all upstream signals.
-
-## Reasoner overview: inputs, outputs, and role
-
-| Stage | Reasoner | Reads from ontology | Writes to ontology | Role |
-|-------|----------|--------------------|--------------------|------|
-| 1. Predict | **Predictive** | `DemandForecast` table (historical load + DC announcements) | `Substation.predicted_load` (derived Property) | Forecast which substations hit capacity limits. DFW breaches at 24 months (54.6% growth); Houston, San Antonio, Austin grow 32-44% but remain within capacity. |
-| 2. Graph | **Graph** (WCC, Louvain, centrality) | `Substation` nodes, `TransmissionLine` edges | `Substation.betweenness`, `.grid_community` (Properties), `Substation.is_structurally_critical` (Relationship) | Map ERCOT grid topology into 3 regions (North Texas, West Texas, Gulf Coast). DFW and Houston are the top structural bottlenecks. 7 of 10 DC requests target critical substations. |
-| 3. Paths | **Graph** (paths, PREVIEW) | `Substation.betweenness` (Stage 2), `connects_to` grid edges | `Substation.fragility_load` (Property) | Score the most-fragile generator-to-DC transmission corridor by betweenness summed along the route. The most fragile carries a betweenness-load of 99.833 through Dallas-Fort Worth / Abilene Central / Houston Ship Channel. |
-| 4. Rules | **Rules** (declarative) | `predicted_load` (Stage 1), `is_structurally_critical` (Stage 2), DC request properties | `DataCenterRequest.fails_capacity`, `.fails_structural`, `.fails_low_carbon`, `.is_compliant` (Relationships) | Check each request against interconnection compliance. 2 compliant (Crusoe, Oracle), 8 flagged. Every flag is a derived Relationship consuming upstream enrichments. |
-| 5. Prescriptive | **Prescriptive** (MIP, Scenario Concept) | `predicted_load` (Stage 1), `InvestmentLevel` budget scenarios, upgrade costs/capacities | `DataCenterRequest.x_approve`, `SubstationUpgrade.x_upgrade` per InvestmentLevel (Properties) | Jointly optimize approvals + upgrades across budget levels. One solve produces the full Pareto frontier. Knee at $300M (5 DCs, $264M net value). All results queryable via `model.select()`. |
-
-**Key design patterns demonstrated:**
-- **Accretive ontology enrichment** -- each stage writes derived properties that downstream stages consume as first-class ontology attributes. Stage 1's `predicted_load` flows into both Stage 4 rules and Stage 5 optimization constraints, ensuring consistent capacity signals across the pipeline.
-- **Multi-scenario / multi-objective via Scenario Concept** -- `InvestmentLevel` is a Scenario Concept: 5 budget entities ($200M-$600M) that parameterize the optimization. One MIP solve produces the entire Pareto frontier simultaneously (not a re-solve loop). Decision variables `x_approve` and `x_upgrade` are indexed per InvestmentLevel, and results are queryable ontology properties -- not parsed from solver output.
-- **Ontology as shared state** -- each stage writes derived properties/relationships that downstream stages read; no Python dicts or DataFrames carry state between stages
-- **Graph directly on domain concept** -- the Graph reasoner uses `Substation` as its node concept, so centrality and community results are stored as native Substation properties with no mirror concept or enrichment rules
-- **Marginal analysis from ontology queries** -- the per-level DC approvals, upgrade selections, and net value are all queried from the ontology via `model.select(...).where(x_approve > 0.5)` per InvestmentLevel, enabling marginal return analysis across the frontier
 
 ## Who this is for
 
@@ -200,7 +181,7 @@ Optional GNN training splits, **not loaded by the main script**: `train_forecast
 
 ## Model overview
 
-One shared ontology threads all four stages. Each stage reads concepts and properties earlier stages wrote, and writes new ones for downstream stages — the accretive-enrichment pattern described above.
+One shared ontology threads all five stages. Each stage reads concepts and properties earlier stages wrote, and writes new ones for downstream stages — the accretive-enrichment pattern described above.
 
 - **Key entities**: `Substation`, `Generator`, `TransmissionLine`, `DataCenterRequest`, `SubstationUpgrade`, `DemandForecast`; plus the Stage 5 Scenario Concept `InvestmentLevel` and the results concept `InvestmentPortfolio`. Supporting concepts (`LoadZone`, `DemandPeriod`, `RenewableProfile`, `MaintenanceWindow`, `Customer`, `LoadHistory`, `DCAnnouncement`) mirror their CSVs and back the aggregations.
 - **Primary identifiers**: string `id` on the base entities (e.g. `SUB-001`, `TL-001`); `name` on `InvestmentLevel` (e.g. `"$300M"`); `investment_level_name` on `InvestmentPortfolio`.

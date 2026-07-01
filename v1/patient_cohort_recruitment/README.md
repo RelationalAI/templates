@@ -1,6 +1,6 @@
 ---
 title: "Patient Cohort Recruitment"
-description: "Build a clinical-research cohort over a patient knowledge graph: close a kinase-pathway sub-ontology, lift the closure to per-patient eligibility and coverage facts, then pick K patients whose joint coverage spans enough distinct genes, therapies, and adverse events to generalize."
+description: "Build a clinical-research cohort over a patient knowledge graph. The template closes a gene-pathway ontology, derives which patients are eligible, then selects a small cohort whose members together span enough distinct genes, therapies, and adverse events for a study to generalize."
 featured: false
 experience_level: intermediate
 industry: "Healthcare & Life Sciences"
@@ -16,17 +16,13 @@ tags:
   - clinical-research
 ---
 
-# Patient Cohort Recruitment
-
 ## What this template is for
 
-Clinical research and pharma R&D teams build patient cohorts to power studies. A typical ask: *"find patients with a mutation in some gene from the kinase pathway who received a therapy and developed an adverse event within 90 days, and pick K of them so the cohort spans enough distinct genes, therapies, and toxicity profiles for the analysis to generalize."*
+Clinical research and pharma R&D teams build patient cohorts to power studies. A typical ask: find patients who carry a mutation in a gene from a target pathway, received a therapy, and then developed an adverse event within a set window, and pick a handful of them so the cohort spans enough distinct genes, therapies, and toxicity profiles for the later analysis to generalize. Getting this right by hand is slow and error-prone, because eligibility depends on tracing an ontology and the cohort must be balanced across several dimensions at once.
 
-The pieces are recognizable across healthcare data. A gene ontology with `is_a` edges defines the pathway. A patient knowledge graph carries mutations / therapies / adverse events with timestamps. The cohort itself is a small set of patients chosen against multiple coverage criteria.
+The same shape recurs across knowledge-graph cohort and set-cover problems where eligibility is a rule over a labelled subgraph and the chosen set must span a minimum spread on several attributes: insurance claim audits (members spanning procedures and comorbidities), grant-applicant diversification (applicants spanning institutions, fields, and career stages), or security-alert triage (alerts spanning attack categories and asset classes).
 
-This template encodes that ask as a three-reasoner pipeline. The **Graph** reasoner runs a single `reachable(full=True)` call to close `is_a` over the gene ontology, returning every gene in the kinase-pathway sub-ontology in one step. Pure relational **Rules** then lift the closure to per-patient eligibility -- represented as a sub-concept `EligiblePatient extends Patient` whose membership is the eligibility conjunction -- and to per-(patient, gene), per-(patient, therapy), and per-(patient, adverse-event) coverage facts. The **Prescriptive** reasoner (CSP, MiniZinc / Chuffed) selects the cohort: binary `is_in_cohort` decisions are scoped to `EligiblePatient` rows only, plus `is_covered` indicators on three sub-concepts (`CoverableGene`, `CoverableTherapy`, `CoverableAdverseEvent`) that the upper-bound ICs link back to the patient decisions.
-
-The same pattern applies to other knowledge-graph cohort / set-cover problems where eligibility is a relational predicate over a labelled subgraph and the chosen set must witness a minimum spread on several attributes: insurance claim audits (find K members spanning N procedures and M comorbidities), grant-applicant diversification (find K applicants spanning institutions, fields, and career stages), security alert triage (find K alerts spanning attack categories and asset classes).
+**The template chains three RelationalAI reasoners on one ontology: the graph reasoner closes the gene pathway, relational rules derive per-patient eligibility and coverage, and the prescriptive reasoner selects a cohort that meets every coverage floor.**
 
 ## Who this is for
 
@@ -69,6 +65,7 @@ The bundled CSVs are illustrative, fully synthetic demo data (e.g. patient names
 
 ### Tools
 - Python >= 3.10
+- RelationalAI Python SDK (`relationalai == 1.1.0`)
 
 ## Quickstart
 
@@ -103,7 +100,8 @@ The bundled CSVs are illustrative, fully synthetic demo data (e.g. patient names
    python patient_cohort_recruitment.py
    ```
 
-6. Expected output (the bundled data has eight eligible patients and several feasible cohorts that hit the coverage floors -- the exact choice may vary across solver versions):
+6. Expected output — a few lines confirm a successful run (the script also prints the gene closure, the eligible-patient set, and the per-axis coverage tally):
+
    ```text
    Solve result:
    • status: OPTIMAL
@@ -112,55 +110,15 @@ The bundled CSVs are illustrative, fully synthetic demo data (e.g. patient names
    • num_points: 1
    • solver: MiniZinc_unknown
 
-   Kinase-pathway gene closure (reachable from KINASE_ROOT_GENE_ID):
-     gene_id              gene_name
-           1      KinasePathwayRoot
-           2  SerineThreonineKinase
-           3         TyrosineKinase
-           4                   EGFR
-           5                   HER2
-           6                   BRAF
-           7                   MEK1
-
-   Eligible patients (carry a kinase mutation and have a qualifying pair):
-      patient_id patient_name
-               1      P_Alpha
-               2      P_Bravo
-               3    P_Charlie
-               4      P_Delta
-               5       P_Echo
-               7       P_Golf
-               8      P_Hotel
-               9      P_India
-
    Selected cohort:
      patient_id patient_name age_years
               2      P_Bravo        61
               7       P_Golf        63
               8      P_Hotel        49
               9      P_India        57
-
-   Kinase-pathway genes covered by the cohort:
-     gene_id gene_name
-           4      EGFR
-           5      HER2
-           6      BRAF
-           7      MEK1
-
-   Therapies covered by the cohort:
-     therapy_id    therapy_name
-              1  EGFR_Inhibitor
-              2  HER2_Inhibitor
-              3   MEK_Inhibitor
-
-   Adverse events covered by the cohort:
-     ae_id         ae_term
-         1            Rash
-         2  Hepatotoxicity
-         3  Cardiomyopathy
    ```
 
-   Eight of the 15 patients are eligible (the seven excluded patients each fail either the kinase-mutation test or the qualifying-pair test within the 90-day window). The kinase-pathway closure transitively covers the root, the two sub-roots, and all four leaves. Several four-patient cohorts hit the `MIN_GENES_COVERED = 3` / `MIN_THERAPIES_COVERED = 2` / `MIN_AES_COVERED = 2` floors; the solver returns one of them (the specific cohort can vary across runs). `Statin` and `GLP1_Agonist` (therapies 4 and 5) and `Myalgia` (AE 4) appear in the data but are unreachable for any cohort because no eligible patient has a qualifying-pair on them -- the `Coverable*` sub-concepts correctly exclude them from the count.
+   Eight of the 15 patients are eligible (the seven excluded patients each fail either the kinase-mutation test or the qualifying-pair test within the 90-day window). Several four-patient cohorts hit the `MIN_GENES_COVERED = 3` / `MIN_THERAPIES_COVERED = 2` / `MIN_AES_COVERED = 2` floors; the solver returns one of them, so the specific cohort can vary across runs.
 
 ## Template structure
 ```text
@@ -178,6 +136,98 @@ The bundled CSVs are illustrative, fully synthetic demo data (e.g. patient names
     ├── therapies.csv
     └── ae_terms.csv
 ```
+
+**Start here**: run `python patient_cohort_recruitment.py` for the full three-stage pipeline (graph closure, rules, then the cohort-selection solve) end to end.
+
+## Sample data
+
+The bundled CSVs are illustrative, fully synthetic demo data (patient names `P_Alpha`...`P_Oscar`, fictional gene / therapy / adverse-event labels) sized so the pipeline runs end-to-end in a few seconds. The shape mirrors an OMOP / FHIR-class patient store: a gene ontology with `is_a` edges, plus event tables (mutations, therapies, adverse events) that reference patients and dictionary concepts by foreign key.
+
+- **`genes.csv`** (10 rows) — 7 genes in the kinase-pathway sub-ontology (a root, two intermediate sub-roots, four leaves) and 3 unrelated metabolism genes.
+- **`gene_is_a.csv`** (8 rows) — `is_a` edges (child, parent) laying out the kinase-pathway tree and a parallel unrelated tree.
+- **`patients.csv`** (15 rows) — synthetic patients with names and ages.
+- **`mutation_events.csv`** (26 rows) — mutation events spanning kinase and non-kinase genes; some patients carry only non-kinase mutations and are correctly excluded.
+- **`therapy_events.csv`** (15 rows) — therapy events across 5 therapies.
+- **`adverse_events.csv`** (12 rows) — adverse-event occurrences across 4 AE terms; some fall outside the 90-day window from any therapy and are excluded by the qualifying-pair rule.
+- **`therapies.csv`** (5 rows) — therapy concepts (3 kinase inhibitors, 2 unrelated).
+- **`ae_terms.csv`** (4 rows) — adverse-event terms.
+
+Event timestamps are integer `t_days` (days since the patient's index date); a pre-solve pass validates unique keys, foreign-key integrity, the presence of the pathway root, and non-negative timestamps before the rules install.
+
+## Model overview
+
+One ontology threads all three stages: the graph closure writes a `KinaseGene` sub-concept, the rules derive eligibility and coverage sub-concepts, and the CSP scopes its decisions to those sub-concepts.
+
+- **Key entities**: base concepts `Gene`, `GeneIsA`, `Therapy`, `AdverseEvent`, `Patient`, `MutationEvent`, `TherapyEvent`, `AdverseEventOcc`; derived sub-concepts `KinaseGene`, `KinaseMutationCarrier`, `QualifyingPairPatient`, `EligiblePatient`, `CoverableGene`, `CoverableTherapy`, `CoverableAdverseEvent`.
+- **Primary identifiers**: integer `id` on each base concept, loaded from the corresponding CSV; `GeneIsA` is keyed by the composite `(child_id, parent_id)`.
+- **Important invariants**: every foreign key resolves (event tables reference real patients and dictionary concepts); event `t_days` values are non-negative; the pathway root gene exists; a sub-concept's membership *is* its predicate (a patient is eligible exactly when they are a `KinaseMutationCarrier` and a `QualifyingPairPatient`).
+
+### Gene
+
+An ontology node. `KinaseGene` (below) is the sub-concept of genes reachable from the pathway root.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `id` | Integer | Yes | Loaded from `data/genes.csv` |
+| `name` | String | No | Human-readable gene name |
+| `is_covered` | Integer | No | **Stage 3** decision (0/1) on the `CoverableGene` sub-concept |
+
+### GeneIsA
+
+A gene-ontology `is_a` edge, stored child-to-parent in OMOP / SNOMED convention. The graph reasoner reads it with source and destination swapped so reachability flows down the subclass tree.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `child_id`, `parent_id` | Integer | Yes | Composite key, from `data/gene_is_a.csv` |
+| `parent`, `child` | Gene | No | Relationships resolving each side of the edge to a `Gene` |
+
+### Patient
+
+A patient. Rules enrich patients with the eligibility and coverage sub-concepts and relationships.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `id` | Integer | Yes | Loaded from `data/patients.csv` |
+| `name` | String | No | Human-readable patient name |
+| `age_years` | Integer | No | Patient age |
+| `qualifying_pair` | Relationship | — | **Stage 2** 3-arity relation over `(TherapyEvent, AdverseEventOcc)` where the AE follows the therapy within the window |
+| `covers_kinase_gene`, `covers_therapy`, `covers_ae` | Relationship | — | **Stage 2** per-axis coverage, projected from `qualifying_pair` (gene coverage from `MutationEvent`) |
+| `is_in_cohort` | Integer | No | **Stage 3** decision (0/1) on the `EligiblePatient` sub-concept |
+
+### MutationEvent
+
+A mutation observed in a patient at a point in time.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `id` | Integer | Yes | Loaded from `data/mutation_events.csv` |
+| `patient` | Patient | No | Relationship to the patient |
+| `gene` | Gene | No | Relationship to the mutated gene |
+| `t_days` | Integer | No | Days since index date (non-negative) |
+
+### TherapyEvent
+
+A therapy received by a patient at a point in time.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `id` | Integer | Yes | Loaded from `data/therapy_events.csv` |
+| `patient` | Patient | No | Relationship to the patient |
+| `therapy` | Therapy | No | Relationship to the therapy arm |
+| `t_days` | Integer | No | Days since index date (non-negative) |
+
+### AdverseEventOcc
+
+An adverse-event occurrence in a patient at a point in time.
+
+| Property | Type | Identifying? | Notes |
+|---|---|---|---|
+| `id` | Integer | Yes | Loaded from `data/adverse_events.csv` |
+| `patient` | Patient | No | Relationship to the patient |
+| `term` | AdverseEvent | No | Relationship to the AE term |
+| `t_days` | Integer | No | Days since index date (non-negative) |
+
+`Therapy` (`id`, `name`) and `AdverseEvent` (`id`, `term`) are small dictionary concepts; each carries an `is_covered` decision on its `Coverable*` sub-concept. The derived sub-concepts (`KinaseGene`, `EligiblePatient`, `CoverableGene`, `CoverableTherapy`, `CoverableAdverseEvent`, and the two eligibility halves) add no new stored properties — their *membership* encodes the predicate.
 
 ## How it works
 
@@ -268,14 +318,31 @@ All ten ICs are pure relational arithmetic, so `problem.verify()` re-evaluates e
 
 ## Customize this template
 
-- **Use your own data** by replacing the eight CSV files with your gene ontology and patient knowledge graph. The constraint structure does not change. If your ontology already stores `is_a` parent -> child, drop the `parent` / `child` flip in the `Graph` constructor. If you don't have ontology data, define `KinaseGene` membership directly on the genes you care about and skip the Graph step.
-- **Change the cohort target** by adjusting `COHORT_SIZE` and the three `MIN_*_COVERED` floors at the top. Tightening any one of them shrinks the feasible region; setting `MIN_GENES_COVERED = COHORT_SIZE` forces every patient in the cohort to cover a distinct gene (rules out two patients with identical mutation patterns).
-- **Move from feasibility to optimization.** This template is a satisfaction model -- any cohort that hits the floors is correct. To rank, swap `problem.solve(...)` for `problem.maximize(sum(CoverableGene.is_covered) + sum(CoverableTherapy.is_covered) + sum(CoverableAdverseEvent.is_covered))` to find the cohort with the broadest joint span, or `problem.minimize(sum(EligiblePatient.is_in_cohort * EligiblePatient.age_years))` for a younger cohort. MiniZinc / Chuffed handles both.
-- **Keep aggregates on a single sub-concept.** Aggregations over a decision must reference the sub-concept the decision was scoped to -- mixing parent and sub-concept references in a single aggregate triggers a TypeError.
-- **Tighten the qualifying window** by editing `MAX_THERAPY_TO_AE_DAYS`. The 90-day window is a common attribution choice for treatment-emergent AEs in oncology trials; some indications use 28 days for acute toxicity, others 180 days for late-onset events.
-- **Add patient-level eligibility rules** -- minimum age, treatment-naive status, organ-function thresholds -- by adding more conjuncts to the `EligiblePatient` definition (or by introducing further `extends=[Patient]` sub-concepts). Each extra rule narrows the eligible set; the CSP automatically drops decisions for newly-ineligible patients.
+### Use your own data
+
+- Replace the eight CSV files with your gene ontology and patient knowledge graph. The constraint structure does not change.
+- If your ontology already stores `is_a` parent-to-child, drop the `parent` / `child` flip in the `Graph` constructor.
+- If you don't have ontology data, define `KinaseGene` membership directly on the genes you care about and skip the Graph step.
+- Anchor on a different ontology root by changing `KINASE_ROOT_GENE_ID`. Multi-pathway studies can run several queries with different roots and union the results.
+
+### Tune parameters
+
+- **Cohort target** — adjust `COHORT_SIZE` and the three `MIN_*_COVERED` floors at the top. Tightening any one shrinks the feasible region; setting `MIN_GENES_COVERED = COHORT_SIZE` forces every patient in the cohort to cover a distinct gene (rules out two patients with identical mutation patterns).
+- **Qualifying window** — edit `MAX_THERAPY_TO_AE_DAYS`. The 90-day window is a common attribution choice for treatment-emergent AEs in oncology trials; some indications use 28 days for acute toxicity, others 180 days for late-onset events.
+
+### Extend the model
+
+- **Move from feasibility to optimization.** This template is a satisfaction model — any cohort that hits the floors is correct. To rank, swap `problem.solve(...)` for `problem.maximize(sum(CoverableGene.is_covered) + sum(CoverableTherapy.is_covered) + sum(CoverableAdverseEvent.is_covered))` to find the cohort with the broadest joint span, or `problem.minimize(sum(EligiblePatient.is_in_cohort * EligiblePatient.age_years))` for a younger cohort. MiniZinc / Chuffed handles both.
+- **Add patient-level eligibility rules** — minimum age, treatment-naive status, organ-function thresholds — by adding more conjuncts to the `EligiblePatient` definition (or by introducing further `extends=[Patient]` sub-concepts). Each extra rule narrows the eligible set; the CSP automatically drops decisions for newly-ineligible patients.
 - **Add cohort-level fairness rules.** A balanced-cohort study might require a minimum count from each of two demographic strata. Add a stratum property (`Patient.stratum`) and an IC `sum(EligiblePatient.is_in_cohort).per(EligiblePatient.stratum) >= MIN_PER_STRATUM` to enforce minimum representation per stratum. The decision-side aggregate must key on the sub-concept (`EligiblePatient`), not the parent (`Patient`).
-- **Anchor on a different ontology root** by changing `KINASE_ROOT_GENE_ID`. Multi-pathway studies can run several queries with different roots and union the results.
+- **Keep aggregates on a single sub-concept.** Aggregations over a decision must reference the sub-concept the decision was scoped to — mixing parent and sub-concept references in a single aggregate triggers a TypeError.
+
+### Scale up / productionize
+
+- For a live patient store, replace the `read_csv(...)` loads with `model.data(snowflake_table)` calls so the ontology reads directly from your OMOP / FHIR tables; the rules and CSP are unchanged.
+- The pre-solve invariants (unique keys, foreign-key integrity, root presence, non-negative timestamps) become your first-pass data-quality gate on real feeds — keep them.
+- The bundled data runs in seconds; larger cohorts scale to whatever the constraint solver's budget allows. Raise `time_limit_sec` in the `problem.solve(...)` call for bigger eligible sets.
+- Pin `relationalai` (see Prerequisites) so runs stay reproducible across environments.
 
 ## Learn more
 
@@ -351,3 +418,7 @@ Two encoding pitfalls produce this symptom; both must be guarded against.
 - HiGHS is not appropriate here -- this is a discrete satisfaction model with categorical decisions and structural propagation, not LP/MILP.
 
 </details>
+
+## Support
+
+- File issues at the RelationalAI templates repository.
