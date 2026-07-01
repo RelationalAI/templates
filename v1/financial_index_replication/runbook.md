@@ -37,15 +37,15 @@ Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` 
 
 ## 3. Build the replication basket
 
-**Prompt:** /rai-prescriptive-problem-formulation + /rai-prescriptive-solver-management Which 20 stocks, and at what weights, best replicate the benchmark's monthly returns? Select exactly 20 names (binary) and assign continuous weights that sum to 1, with at most 10% in any one name and a weight only if the name is selected; keep each sector within ±4% of its benchmark weight; respect a trading-capacity limit (the change from the previous weight, scaled by portfolio value, can't exceed 5% of a stock's average dollar volume); and define each month's tracking residual as benchmark return minus basket return. Minimize the total absolute monthly tracking error, and persist the selection and weights to the ontology.
+**Prompt:** /rai-prescriptive-problem-formulation + /rai-prescriptive-solver-management Which 20 stocks, and at what weights, best replicate the benchmark's monthly returns? Select exactly 20 names (binary) and assign continuous weights that sum to 1, with at most 10% in any one name and a weight only if the name is selected; keep each sector within ±4% of its benchmark weight; respect a trading-capacity limit (the change from the previous weight, scaled by a $10 million portfolio value, can't exceed 5% of a stock's average dollar volume); and define each month's tracking residual as benchmark return minus basket return. Minimize the total absolute monthly tracking error, and persist the selection and weights to the ontology.
 
-**Response:** Returns a feasible 20-name basket (HiGHS). The decision is `Stock.x_selected` (exactly 20 names) plus `Stock.x_weight` (summing to 1) and per-month residual variables. The solve hits its 240-second time limit with a strong feasible incumbent rather than a proven optimum (a sizeable remaining gap to the bound), which is expected for a cardinality-constrained tracking MILP — so the exact names and weights can vary run to run.
+**Response:** Returns a 20-name basket. The decision is `Stock.x_selected` (exactly 20 names) plus `Stock.x_weight` (summing to 1) and per-month residual variables. This is a cardinality-constrained tracking MILP: depending on the solver it either solves to OPTIMAL or returns a strong feasible incumbent at the time limit — either way the exact names and weights can vary, so treat the tracking quality below, not a specific basket, as the result.
 
 ## 4. Assess tracking quality
 
-**Prompt:** /rai-prescriptive-results-interpretation How closely does the basket track the benchmark, and how does it compare to a naive equal-weight basket?
+**Prompt:** /rai-prescriptive-results-interpretation How closely does the basket track the benchmark (annualized tracking error), and how does it compare to a naive equal-weight basket of the 20 stocks most correlated with the benchmark?
 
-**Response:** The optimized 20-name basket tracks the benchmark to **well under 1% annualized tracking error** (about 0.4% on this run) — **several times tighter than an equal-weight top-20-by-correlation baseline at roughly 2.6%**. It holds sector neutrality within the ±4% band (Energy and Consumer Staples sit closest to the edge). Because the solve is time-limited, the specific basket is a strong feasible incumbent, so the headline is the tracking quality and the large margin over the naive baseline rather than any single name list.
+**Response:** The optimized 20-name basket tracks the benchmark to a **low annualized tracking error — on the order of ~0.4%** (the exact figure varies with the solver and solve settings) — **materially tighter than the naive equal-weight top-20-by-correlation baseline (~2.6%)**. It holds sector neutrality within the ±4% band (Energy and Consumer Staples sit closest to the edge). The reproducible headline is that the optimized basket tracks well under the naive one, not any single name list.
 
 ## Data
 

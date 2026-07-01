@@ -15,8 +15,8 @@ A marketing team wants to split an advertising budget across channels and campai
       │
       ▼
 /rai-prescriptive-results-interpretation
-   • $35k and $45k levels spend their full budget; the $55k level spends only $45k
-   • diminishing returns — beyond $45k there's no profitable pair left to fund
+   • the two higher budget levels give the identical plan — extra budget buys no more conversions
+   • the real limits are per-channel max-spend and per-campaign budgets, not the total cap
 ```
 
 Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` skill (named at the start of each prompt). They run in order in a single session — the formulate step reads the `Channel`/`Campaign`/`Effectiveness` concepts the build step created, and the interpret step reads the spend decisions the solve wrote back.
@@ -43,9 +43,9 @@ Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` 
 
 ## 4. Read the allocation across budget levels
 
-**Prompt:** /rai-prescriptive-results-interpretation How much of each budget level actually gets spent, and what does that say about diminishing returns?
+**Prompt:** /rai-prescriptive-results-interpretation How does the plan change as the total budget grows, and what does that say about diminishing returns?
 
-**Response:** The $35k and $45k levels both spend their **entire** budget (the cap binds), but the **$55k level spends only $45k** — its allocation is identical to the $45k case. Beyond $45k there's no remaining channel-campaign pair whose conversion rate justifies more spend (per-campaign budgets and per-channel max-spend are exhausted on the profitable pairs), so the extra $10k sits idle. The marginal budget stops buying conversions at $45k.
+**Response:** OPTIMAL, **9,740 combined conversions**. The tell is sharply diminishing returns: the **two higher budget levels ($45k and $55k) produce the identical allocation and conversions** — beyond a point, additional budget can't be profitably deployed because every remaining channel-campaign pair is already capped by its channel's max-spend or its campaign's budget. So the extra budget goes unused, and the **total-budget cap is not the binding limit** — the per-channel and per-campaign caps are. Raising the overall budget past that point buys zero marginal conversions.
 
 ## Data
 

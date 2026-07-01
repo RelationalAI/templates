@@ -16,7 +16,7 @@ A platform team running a multi-tenant cluster needs to place every workload pod
       ▼
 /rai-prescriptive-results-interpretation
    • all 50 pods + 12 deployments placed, every rule satisfied
-   • the 4-pod training clique pins GPU node 7 to exactly 100% on CPU, memory, and GPU
+   • the 4-pod training clique pins one GPU node to exactly 100% on CPU, memory, and GPU
 ```
 
 Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` skill (named at the start of each prompt). They run in order in a single session — the formulate step reads the `Node`/`Pod`/`Deployment`/`Tenant` concepts and rule relationships the build step created, and the interpret step reads the placement decisions the solve wrote back.
@@ -45,7 +45,7 @@ Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` 
 
 **Prompt:** /rai-prescriptive-results-interpretation Are all deployments placed, which node is the tightest, and what makes it the binding one?
 
-**Response:** Every deployment is placed — all 50 pods land on a node with no rule violated. The binding node is **GPU node 7**, pinned to **exactly 100% on all three resources** (8000/8000 millicores, 32768 MiB, 4/4 GPU): the 4-pod distributed-training clique must share one rack and each pod needs a GPU, so it consumes a GPU node entirely. The other nodes carry general-purpose pods with headroom, and the affinity-paired caches co-locate as required — so the GPU/rack-locality rule, not raw cluster capacity, is what's tight.
+**Response:** Every deployment is placed — all 50 pods land on a node with no rule violated. The binding node is **one of the two GPU nodes** (which one is an alternate-optimum detail), pinned to **exactly 100% on all three resources** (8000/8000 millicores, 32768 MiB, 4/4 GPU): the 4-pod distributed-training clique must share one rack and each pod needs a GPU, so it consumes a GPU node entirely. The other nodes carry general-purpose pods with headroom, and the affinity-paired caches co-locate as required — so the GPU/rack-locality rule, not raw cluster capacity, is what's tight.
 
 ## Data
 

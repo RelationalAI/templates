@@ -7,7 +7,7 @@ A retailer must decide how many facings (front-row shelf positions) to give each
 ```
 18 SKUs across 4 categories sit on 4 fixed-length shelves. The chain reads predicted
 demand at each facing count, then chooses integer facings per SKU to maximize total
-predicted weekly demand — OPTIMAL at 1,656 units, 16 of 18 SKUs given shelf space.
+predicted weekly demand — a strong plan (~1,600+ units), 16 of 18 SKUs given shelf space.
 
   ─────────────────────────────────────────────────────────────────
   STAGE 1  Predictive   ──►  PredictedDemand.demand_units        (73)
@@ -18,8 +18,8 @@ predicted weekly demand — OPTIMAL at 1,656 units, 16 of 18 SKUs given shelf sp
   ─────────────────────────────────────────────────────────────────
   STAGE 2  Prescriptive ──►  Sku.facings / Sku.realized_demand / Sku.active
                               Choose integer facings per SKU to maximize
-                              total predicted demand. OPTIMAL, 1,656 units,
-                              16 of 18 SKUs active. Bottom shelf full (90/90 cm).
+                              total predicted demand. Strong incumbent (~1,600+),
+                              16 of 18 SKUs active; category-max caps bind.
   ─────────────────────────────────────────────────────────────────
 ```
 
@@ -85,7 +85,7 @@ Each SKU has a concave demand curve over facing counts — demand rises with fac
 
 **Response**
 
-OPTIMAL (MiniZinc), total predicted weekly demand **1,656 units**. The decision picks facings per SKU (binding each SKU's realized demand to its predicted-demand row via a table lookup), with shelf-length and category-cardinality constraints; `Sku.facings`, `Sku.realized_demand`, and `Sku.active` are written back.
+Total predicted weekly demand around **1,600+ units** — the decision picks facings per SKU (binding each SKU's realized demand to its predicted-demand row via a table lookup), with shelf-length and category-cardinality constraints; `Sku.facings`, `Sku.realized_demand`, and `Sku.active` are written back. (MiniZinc runs to its time limit and returns a strong incumbent surfaced as OPTIMAL, so the exact objective and the specific SKUs dropped vary slightly run to run; the structure below is stable.)
 
 ### 6. Read the planogram
 
@@ -97,7 +97,7 @@ OPTIMAL (MiniZinc), total predicted weekly demand **1,656 units**. The decision 
 
 **Response**
 
-**16 of 18 SKUs are active**; two are squeezed out (a mint roll and a paper-towel pack) because the candy and household-paper categories each cap active SKUs at 3 while holding 4 candidates. The **Bottom shelf is the binding one — full at 90/90 cm** — and the other three shelves sit within a few centimeters of capacity, so shelf length and the category caps together, not demand, decide which SKUs make the set.
+**16 of 18 SKUs are active**; two are squeezed out because the candy and household-paper categories each cap active SKUs at 3 while holding 4 candidates, so each drops its lowest-value SKU. The **binding force is the category-max caps**, all four of which are full (snacks 5/5, beverages 5/5, candy 3/3, household-paper 3/3) — the shelves run near capacity (~89–99% full) but it's the per-category count, not shelf length or demand, that decides which SKUs make the set.
 
 ## Data
 

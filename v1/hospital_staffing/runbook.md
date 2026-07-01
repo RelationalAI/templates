@@ -15,8 +15,8 @@ A nurse manager faces a real tradeoff: minimize overtime cost, or minimize unmet
       │
       ▼
 /rai-prescriptive-results-interpretation
-   • frontier runs from (130 unmet, $0 overtime) to (0 unmet, full overtime)
-   • knee at ~43 unmet still costs $0; past it cost climbs steeply (~$15.51/patient, then steeper)
+   • frontier from a cheapest-overtime anchor (most unmet) to a full-service anchor (most overtime)
+   • a knee: service improves cheaply, then overtime climbs steeply to reach zero unmet
 ```
 
 Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` skill (named at the start of each prompt). They run in order in a single session — the formulate step reads the `Nurse`/`Shift` concepts and availability the build step created, and the interpret step reads the frontier the sweep produced.
@@ -39,13 +39,13 @@ Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` 
 
 **Prompt:** /rai-prescriptive-problem-formulation + /rai-prescriptive-solver-management Trace the tradeoff between overtime cost and unmet patient demand. Assign nurses to shifts (binary, only where available; each nurse works 1 or 2 shifts; each shift meets its minimum staff and skill), track overtime hours beyond regular hours, and let patients served be capped by both demand and nursing capacity, with unmet demand the shortfall. First find the two anchors — the minimum-overtime schedule and the minimum-unmet schedule — then sweep five intermediate caps on total unmet demand, each minimizing overtime cost (the epsilon-constraint method). Report each point on the frontier.
 
-**Response:** All solves OPTIMAL (HiGHS). The anchors bound the frontier: the minimum-overtime schedule costs **$0** but leaves **130 patients unmet**, while the best-service schedule reaches **0 unmet** only by taking on substantial overtime. The five epsilon caps step across the [0, 130] unmet range, each giving the cheapest schedule that meets that service level.
+**Response:** All solves OPTIMAL (HiGHS). The anchors bound the frontier: the minimum-overtime schedule keeps overtime cost lowest while leaving the most patient demand unmet, and the best-service schedule drives unmet demand to zero by taking on the most overtime. The epsilon caps step between them, each the cheapest schedule that meets its service level. (The exact unmet counts and overtime dollars depend on how nurse capacity, patient demand, and overtime are modeled, so the frontier's shape — not specific figures — is the reproducible result.)
 
 ## 4. Find the knee
 
 **Prompt:** /rai-prescriptive-results-interpretation Where's the knee of the cost-vs-service frontier — the best-value operating point — and how fast does overtime cost rise as we push toward full service?
 
-**Response:** Overtime stays at **$0 all the way down to about 43 unmet patients** — service improves for free until then, which is the knee. Past it, cost climbs steeply: roughly **$15.51 per additional patient** served in the next segment, and steeper still on the final push to zero unmet (the cost-per-patient accelerates as the frontier turns convex). The recommended operating point is the knee at ~43 unmet with $0 overtime; closing the last gap to full service is disproportionately expensive.
+**Response:** The frontier has a clear knee: overtime stays flat (the cheapest schedules) across a range of service levels, then rises steeply as you push toward serving every patient — the last increments of service are the most expensive, so the cost-per-patient accelerates as the frontier turns convex. The recommended operating point is the knee, capturing most of the achievable service before overtime cost takes off; closing the final gap to zero unmet is disproportionately expensive.
 
 ## Data
 

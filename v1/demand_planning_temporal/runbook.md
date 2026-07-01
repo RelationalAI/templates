@@ -11,7 +11,7 @@ A supply planner wants a least-cost, multi-week production-and-inventory plan: h
    • constraints: inventory flow (inv[t] = inv[t-1] + production − demand); capacity;
      95% service level; safety stock ≥ 1 week of average demand
    • objective: minimize production + holding + unmet-demand penalty
-   • horizons ending Jan / Feb / Mar in a scenario sweep  -> OPTIMAL, $26.1k / $30.9k / $34.8k
+   • horizons ending Jan / Feb / Mar in a scenario sweep  -> OPTIMAL all three; cost is pure holding, rising with horizon
       │
       ▼
 /rai-prescriptive-results-interpretation
@@ -39,13 +39,13 @@ Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` 
 
 **Prompt:** /rai-prescriptive-problem-formulation + /rai-prescriptive-solver-management Map each order's due date to a week and build a weekly time grid, then decide weekly production, end-of-week inventory, and any unmet demand per site-SKU (all non-negative). Inventory must carry over week to week — end-of-week inventory equals last week's inventory plus this week's production minus this week's demand, starting from opening inventory — weekly production can't exceed capacity, at least 95% of total demand must be met, and end-of-week inventory must stay above one week of average demand (safety stock). Minimize total cost — production plus holding plus a penalty on unmet demand. Solve three planning horizons in a scenario sweep — ending 2026-01-31, 2026-02-28, and 2026-03-31 — and persist the decisions to the ontology.
 
-**Response:** OPTIMAL in all three horizons (HiGHS). Total cost rises with the horizon — about **$26.1k** for the January horizon (14 weeks), **$30.9k** for February (18 weeks), and **$34.8k** for March (22 weeks) — as more weeks and orders accrue holding cost. (The exact totals shift slightly with how past-due orders are scoped into the first week.) Production, inventory, and unmet decisions are written back as `ProdCapacity.x_production`, `ProdCapacity.x_inventory`, and `DemandOrder.x_unmet`.
+**Response:** OPTIMAL in all three horizons (HiGHS). Total cost **rises with the horizon** — a longer plan carries the same inventory for more weeks and pulls in more orders, so more holding cost accrues. (The absolute dollar totals depend on the planning-start date and how the weekly grid is anchored, so the reproducible result is the upward trend across horizons, not a specific figure.) Production, inventory, and unmet decisions are written back as `ProdCapacity.x_production`, `ProdCapacity.x_inventory`, and `DemandOrder.x_unmet`.
 
 ## 4. Read the plan across horizons
 
 **Prompt:** /rai-prescriptive-results-interpretation Is all demand met in each horizon, what drives the cost, and why does cost rise as the horizon extends?
 
-**Response:** All demand is met in every horizon — **unmet demand is zero** throughout, so the service-level and safety-stock constraints hold with slack. With opening inventory abundant relative to in-scope demand, the optimal plan **produces nothing and draws demand down from inventory**, so total cost is essentially holding cost on carried stock. Extending the horizon from January to March pulls in more weeks (14 → 22) and more orders (14 → 20), accumulating more holding cost — which is why cost climbs from $26.1k to $34.8k.
+**Response:** All demand is met in every horizon — **unmet demand is zero** throughout, so the service-level and safety-stock constraints hold with slack. With opening inventory abundant relative to in-scope demand, the optimal plan **produces nothing and draws demand down from inventory**, so total cost is essentially holding cost on carried stock. Extending the horizon from January to March pulls in more weeks and more orders, accumulating more holding cost — which is why cost climbs steadily across the three horizons.
 
 ## Data
 

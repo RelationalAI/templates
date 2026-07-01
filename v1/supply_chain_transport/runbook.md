@@ -25,7 +25,7 @@ Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` 
 
 ## 1. Build the ontology
 
-**Prompt:** /rai-build-starter-ontology Build an ontology from `data/freight_groups.csv` — each freight group has an inventory window, a transport window, an arrival window (each a start and end day), and a starting weight. Also model two transport types (truckload and less-than-truckload, each with a transit time) and the LTL cost segments (each a weight limit and a per-pound rate).
+**Prompt:** /rai-build-starter-ontology Build an ontology from `data/freight_groups.csv` — each freight group has an inventory window, a transport window, an arrival window (each a start and end day), and a starting weight. Also model two transport types — truckload (transit 2 days, $2,000 per truck, 24,000 lb capacity) and less-than-truckload (transit 3 days) — and the LTL cost segments as a piecewise per-pound rate: up to 6,000 lb at $0.18/lb, then up to 7,000 lb at $0.12/lb. Inventory holding costs 0.1% of weight per day held.
 
 **Response:** Loads `FreightGroup` (2: fg1 4,000 lb, fg2 5,000 lb, each with inventory/transport/arrival day-windows), `TransportType` (2: TL transit 2 days, LTL transit 3 days), and `LTLSegment` (2 piecewise tiers: up to 6,000 lb at $0.18/lb, then to 7,000 lb at $0.12/lb).
 
