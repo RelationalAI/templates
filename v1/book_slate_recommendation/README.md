@@ -2,7 +2,7 @@
 title: "Book Slate Recommendation"
 description: "Recommend a ranked slate of books for each reader that balances relevance, diversity, and freshness. Produces an ordered, explainable set of picks per reader."
 featured: false
-private: true
+private: false
 experience_level: advanced
 industry: "Retail & Consumer"
 reasoning_types:
