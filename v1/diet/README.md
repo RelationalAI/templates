@@ -85,15 +85,16 @@ Built using **prescriptive reasoning** (linear programming with continuous decis
 6. Expected output — a few lines confirm a successful run:
 
    ```text
-   ==================================================
-   Scenario Analysis Summary
-   ==================================================
-     scaling=0.8: OPTIMAL, cost=$6.53
-     scaling=1.0: OPTIMAL, cost=$8.20
-     scaling=1.2: OPTIMAL, cost=$9.87
+   Solve result:
+   • status: OPTIMAL
+   • objective: 35.49
+
+   Diet plan per scenario (0.8 / 1.0 / 1.2 demand): the same baseline
+   basket — hamburger + icecream + milk — scaled per scenario, for a
+   per-scenario cost of $9.46 / $11.83 / $14.19.
    ```
 
-   The full per-scenario diet plans print above this summary; see `runbook.md` for the complete log.
+   The full per-scenario diet plan prints above; see `runbook.md` for the complete log.
 
 ## Template structure
 

@@ -88,29 +88,15 @@ The model demonstrates several advanced techniques: multi-period inventory flow 
 6. Expected output:
    ```text
    Status: OPTIMAL
-   Total cost: $5080.00
-
-   === Inventory Levels ===
-   freight_group  day  inventory
-             fg1    1     4000.0
-             fg1    2     4000.0
-             fg1    3        0.0
-             fg1    4        0.0
-             fg2    2     5000.0
-             fg2    3     5000.0
-             fg2    4        0.0
-             fg2    5        0.0
+   Total cost: $1444.00
 
    === Transport Quantities ===
    type freight_group  day  quantity
-     tl           fg1    2    4000.0
-     tl           fg2    3    5000.0
-
-   === Arrival Days ===
-   freight_group  arrival_day
-             fg1          4.0
-             fg2          5.0
+    ltl           fg1    2    4000.0
+    ltl           fg2    2    5000.0
    ```
+
+   Both freight groups ship less-than-truckload on day 2 (zero truckload trucks); see `runbook.md` for the full inventory and arrival-day tables.
 
 ## Template structure
 ```text

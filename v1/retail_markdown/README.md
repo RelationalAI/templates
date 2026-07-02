@@ -89,65 +89,12 @@ This template finds the discount schedule that maximizes revenue across a multi-
 6. Expected output:
    ```text
    Status: OPTIMAL
-   Total revenue (sales + salvage): $18432.50
-
-   === Selected Discounts by Product-Week ===
-    product  week  discount_pct
-    Sweater     1           0.0
-    Sweater     2          10.0
-    Sweater     3          20.0
-    Sweater     4          30.0
-     Jacket     1           0.0
-     Jacket     2           0.0
-     Jacket     3          10.0
-     Jacket     4          20.0
-      Pants     1           0.0
-      Pants     2          10.0
-      Pants     3          20.0
-      Pants     4          30.0
-      Shirt     1           0.0
-      Shirt     2           0.0
-      Shirt     3          10.0
-      Shirt     4          20.0
-
-   === Sales by Product-Week ===
-    product  week  discount_pct  units_sold
-    Sweater     1           0.0       20.00
-    Sweater     2          10.0       20.70
-    Sweater     3          20.0       21.60
-    Sweater     4          30.0       22.40
-     Jacket     1           0.0       12.00
-     Jacket     2           0.0       10.80
-     Jacket     3          10.0       11.04
-     Jacket     4          20.0       11.34
-      Pants     1           0.0       25.00
-      Pants     2          10.0       25.88
-      Pants     3          20.0       27.00
-      Pants     4          30.0       28.00
-      Shirt     1           0.0       30.00
-      Shirt     2           0.0       27.00
-      Shirt     3          10.0       27.60
-      Shirt     4          20.0       28.35
-
-   === Cumulative Sales by Product-Week ===
-    product  week  cumulative_sold
-    Sweater     1            20.00
-    Sweater     2            40.70
-    Sweater     3            62.30
-    Sweater     4            84.70
-     Jacket     1            12.00
-     Jacket     2            22.80
-     Jacket     3            33.84
-     Jacket     4            45.18
-      Pants     1            25.00
-      Pants     2            50.88
-      Pants     3            77.88
-      Pants     4           105.88
-      Shirt     1            30.00
-      Shirt     2            57.00
-      Shirt     3            84.60
-      Shirt     4           112.95
+   Total revenue (sales + salvage): $23374.65
    ```
+
+   Discounts start shallow (20%) and deepen to 30% later in the season; no
+   product needs the 50% tier. See `runbook.md` for the full discount, sales,
+   and cumulative-sales schedule.
 
 ## Template structure
 

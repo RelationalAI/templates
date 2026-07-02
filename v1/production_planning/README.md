@@ -84,49 +84,34 @@ This template finds the profit-maximizing production plan across a set of machin
    python production_planning.py
    ```
 
-6. Expected output:
+6. Expected output (all scenarios solved together in a single call):
    ```text
-   Running scenario: demand_multiplier = 0.8
-     Status: OPTIMAL, Objective: 14650.0
+   Solve result:
+   • status: OPTIMAL
+   • objective: 44735.0
+   • solver: HiGHS
+   • relative gap: 0.0
 
-     Production plan:
-              name  value
-    qty_Machine_1_Widget_A   80.0
-    qty_Machine_1_Widget_C   48.0
-    qty_Machine_2_Widget_B   64.0
-    qty_Machine_3_Widget_A    2.0
-    qty_Machine_3_Widget_B    2.0
-
-   Running scenario: demand_multiplier = 1.0
-     Status: OPTIMAL, Objective: 15950.0
-
-     Production plan:
-              name  value
-    qty_Machine_1_Widget_A   80.0
-    qty_Machine_1_Widget_C   60.0
-    qty_Machine_2_Widget_B   70.0
-    qty_Machine_3_Widget_A   20.0
-    qty_Machine_3_Widget_B   10.0
-
-   Running scenario: demand_multiplier = 1.1
-     Status: OPTIMAL, Objective: 16800.0
-
-     Production plan:
-              name  value
-    qty_Machine_1_Widget_A   80.0
-    qty_Machine_1_Widget_B   10.0
-    qty_Machine_1_Widget_C   66.0
-    qty_Machine_2_Widget_B   70.0
-    qty_Machine_3_Widget_A   30.0
-    qty_Machine_3_Widget_B   10.0
-
-   ==================================================
-   Scenario Analysis Summary
-   ==================================================
-     0.8: OPTIMAL, obj=14650.0
-     1.0: OPTIMAL, obj=15950.0
-     1.1: OPTIMAL, obj=16800.0
+   Production plan per scenario:
+          scenario    machine   product  quantity
+   0      baseline  Machine_1  Widget_A       4.0
+   1      baseline  Machine_1  Widget_C      95.0
+   2      baseline  Machine_2  Widget_B      70.0
+   3      baseline  Machine_3  Widget_A      96.0
+   4      baseline  Machine_3  Widget_B      11.0
+   5   high_demand  Machine_1  Widget_A      24.0
+   6   high_demand  Machine_1  Widget_B       1.0
+   7   high_demand  Machine_1  Widget_C      68.0
+   8   high_demand  Machine_2  Widget_B      70.0
+   9   high_demand  Machine_3  Widget_A      87.0
+   10  high_demand  Machine_3  Widget_B      17.0
+   11   low_demand  Machine_1  Widget_C     100.0
+   12   low_demand  Machine_2  Widget_B      70.0
+   13   low_demand  Machine_3  Widget_A     111.0
+   14   low_demand  Machine_3  Widget_B       1.0
    ```
+
+   The single objective (`44735.0`) is the combined profit across all three scenarios. Per-scenario profit is $15,020 (0.8x), $14,945 (1.0x), and $14,770 (1.1x) — profit *falls* as the demand floor rises, because a looser floor leaves more capacity for the highest-margin mix.
 
 ## Template structure
 
