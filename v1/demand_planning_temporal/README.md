@@ -104,7 +104,9 @@ Built using **prescriptive reasoning**: continuous decision variables for produc
    ```
 
    Extending the planning horizon from January to March increases cost from
-   $26,138 to $34,768 as more demand orders come into scope (14 to 20).
+   $26,138 to $34,768 as the horizon lengthens (14 to 22 weeks, 14 to 20
+   demand orders); demand is met entirely from opening inventory, so the
+   increase is holding cost accrued over the longer horizon.
    All demand is fulfilled in every scenario -- no unmet demand penalties.
 
 ## Template structure
@@ -244,7 +246,7 @@ This removes orders outside the horizon so the solver only sees relevant demand.
     ).astype(int)
 ```
 
-The number of weeks varies by scenario (e.g. 13 weeks for January, 18 for February, 22 for March).
+The number of weeks varies by scenario (e.g. 14 weeks for January, 18 for February, 22 for March).
 
 ### 3. Multi-arity decision variables indexed by time
 

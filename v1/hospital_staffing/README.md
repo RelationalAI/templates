@@ -117,10 +117,10 @@ The result is a Pareto frontier that reveals exactly how much overtime cost each
      4          eps_3           65.0 $         0.00
      5          eps_4           43.3 $         0.00
      6          eps_5           21.7 $       336.00
-     7   best_service            0.0 $      1116.00
+     7   best_service            0.0 $      1728.00
 
    Overtime Cost
-   $ 1,116.00 |7                                                 |
+   $ 1,728.00 |7                                                 |
               |                                                  |
               |                                                  |
               |                                                  |
@@ -139,7 +139,7 @@ The result is a Pareto frontier that reveals exactly how much overtime cost each
    Marginal analysis (cost of reducing unmet demand by 1 patient):
        cheapest -> eps_4         : $0.00/patient (free capacity available)
           eps_4 -> eps_5         : $15.51/patient
-          eps_5 -> best_service  : $36.00/patient
+          eps_5 -> best_service  : $64.25/patient
 
      Knee: Point 5 (eps_4) -- marginal cost jumps 15.5x beyond this point
      Recommendation: Target 43 unmet patients at $0.00 overtime cost --
@@ -156,8 +156,8 @@ The result is a Pareto frontier that reveals exactly how much overtime cost each
 
    The Pareto frontier reveals a sharp knee at point 5: the first 67% of
    demand reduction (130 to 43 patients) is free, but reducing the last 43
-   patients costs $1,116 in overtime -- the marginal cost jumps from $0 to
-   $15.51 then $36.00 per patient.
+   patients costs $1,728 in overtime -- the marginal cost jumps from $0 to
+   $15.51 then $64.25 per patient.
 
 ## Template structure
 ```text
