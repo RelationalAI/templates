@@ -42,6 +42,7 @@ Manufacturing operations must decide how much of each product to make at each fa
 ## What's included
 
 - `factory_production.py` -- Main script defining the optimization model, constraints, objective, and sensitivity read-back
+- `runbook.md` -- a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself
 - `data/factories.csv` -- Factory names and available resource-hours
 - `data/products.csv` -- Products with factory assignment, production rate, profit, and demand cap
 - `pyproject.toml` -- Python package configuration with dependencies
@@ -129,6 +130,7 @@ Manufacturing operations must decide how much of each product to make at each fa
 ```text
 .
 ├── README.md                 # this file
+├── runbook.md                # step-by-step analyst walkthrough
 ├── pyproject.toml            # dependencies
 ├── factory_production.py     # main script (LP model + sensitivity read-back)
 └── data/
@@ -136,7 +138,7 @@ Manufacturing operations must decide how much of each product to make at each fa
     └── products.csv          # products with factory, rate, profit, demand cap
 ```
 
-**Start here**: run `python factory_production.py` for the full solve and sensitivity report end to end.
+**Start here**: run `python factory_production.py` for the full solve and sensitivity report end to end, or follow `runbook.md` to reproduce it step by step with the RAI skills.
 
 ## Sample data
 
@@ -155,98 +157,23 @@ The model has two concepts and one relationship linking them; the decision varia
 - **Primary identifiers**: `Factory` by `name`; `Product` by `name` plus `factory_name` (a composite identity).
 - **Important invariants**: production quantities are non-negative and capped at each product's demand; each factory's total resource usage stays within its available hours; profit and rate are positive.
 
-### `Factory`
-
-A plant with a fixed number of available resource-hours per period.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `name` | String | Yes | Loaded from `data/factories.csv` |
-| `avail` | Float | No | Available resource-hours |
-
-### `Product`
-
-An item produced at one factory, with a per-hour production rate, unit profit, and demand cap. The decision variable and its sensitivity marginals attach here.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `name` | String | Yes | Loaded from `data/products.csv` |
-| `factory_name` | String | Yes | Composite-identity component; the parent factory's name |
-| `factory` | Relationship | — | Link to the producing `Factory` |
-| `rate` | Float | No | Units produced per resource-hour |
-| `profit` | Float | No | Profit per unit |
-| `demand` | Integer | No | Maximum sellable units (the variable's upper bound) |
-| `x_quantity` | Float | No | Decision variable: units to produce (0 to `demand`) |
+For the full concept and property definitions, see `factory_production.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
-### 1. Define concepts and load data
+The template loads two source tables, sets up one product-mix LP, and reads the marginals off the same solve:
 
-The model defines `Factory` (with available resource-hours) and `Product` (with factory assignment, production rate, profit, and demand). A relationship links products to their factory:
-
-```python
-Factory = Concept("Factory", identify_by={"name": String})
-Factory.avail = Property(f"{Factory} has {Float:avail}")
-
-Product = Concept("Product", identify_by={"name": String, "factory_name": String})
-Product.factory = Property(f"{Product} is produced by {Factory}")
-Product.rate = Property(f"{Product} has {Float:rate}")
-Product.profit = Property(f"{Product} has {Float:profit}")
-Product.demand = Property(f"{Product} has {Integer:demand}")
+```text
+factories.csv + products.csv → decision variables → capacity constraint + profit objective → sensitivity solve → shadow prices + reduced costs
 ```
 
-### 2. Decision variables
+1. **Define concepts and load data.** `Factory` carries its available resource-hours; `Product` carries a per-hour production rate, unit profit, and demand cap, and links to the factory that produces it (a composite `(name, factory_name)` identity).
 
-Each product gets a continuous variable bounded between 0 and its demand cap. The demand cap is the variable's **upper bound** (not a separate constraint), so its marginal surfaces later as the variable's *reduced cost*:
+2. **Decision variables.** Each product gets a continuous quantity variable bounded between 0 and its demand cap. The demand cap is the variable's *upper bound* (not a separate constraint), so its marginal surfaces as the variable's reduced cost.
 
-```python
-quantity_var = problem.solve_for(
-    Product.x_quantity,
-    name=["qty", Product.factory.name, Product.name],
-    lower=0,
-    upper=Product.demand,
-    populate=False,
-)
-```
+3. **Capacity constraint and objective.** Each factory's total resource usage (quantity over rate, summed) must stay within its available hours. The constraint is captured as a handle keyed by `Factory`, so each instance's shadow price reads back through the entity key rather than by parsing a name string. The objective maximizes total profit, and the solve runs with `sensitivity=True`.
 
-### 3. Capacity constraint and objective
-
-Each factory's total resource usage must not exceed its availability. The constraint is captured as a handle (`cap`), named per factory (a readable label), and declared with `keyed_by={"factory": Factory}`, so each instance's shadow price reads back through that **entity key** (`cap.factory`) rather than by parsing a name string. The objective maximizes total profit across all factories:
-
-```python
-cap = problem.satisfy(
-    model.require(
-        sum(Product.x_quantity / Product.rate)
-        .where(Product.factory == Factory)
-        .per(Factory)
-        <= Factory.avail
-    ),
-    name=["cap", Factory.name],
-    keyed_by={"factory": Factory},
-)
-
-problem.maximize(sum(Product.profit * Product.x_quantity))
-problem.solve("highs", time_limit_sec=60, sensitivity=True)
-```
-
-### 4. Read the sensitivity marginals
-
-After a `sensitivity=True` solve, the marginals are attributes on the captured handles. A constraint carries the entity back-pointer declared with `keyed_by` (`cap.factory`) and a variable carries an automatic one to its product (`quantity_var.product`), so each marginal joins to that entity's own data by key -- no pandas, no name parsing:
-
-```python
-# Which factory's capacity to expand first?
-model.select(cap.factory.name, cap.factory.avail, cap.shadow_price).inspect()
-
-# Which products are pinned at their demand cap, and which is the swing product?
-model.select(
-    quantity_var.product.factory.name,
-    quantity_var.product.name,
-    quantity_var.reduced_cost,
-    quantity_var.basis_status,
-).inspect()
-```
-
-(`.inspect()` prints the rows for a quick look; the script materializes the same selects as DataFrames with `.to_df()` for its printed report and assertions.)
+4. **Read the sensitivity marginals.** After the solve, marginals are attributes on the captured handles: each constraint carries an entity back-pointer to its factory and each variable an automatic one to its product, so every marginal joins to that entity's own data by key — no pandas, no name parsing.
 
 ### Reading the marginals: two objects, one sign convention
 
@@ -255,6 +182,8 @@ The two sensitivity objects come from two different modeling choices. Capacity i
 Because the objective is a maximization, the signs mirror a minimize-cost model: a binding capacity prices at zero or above here, versus zero or below in the cost-minimizing [`supplier_reliability`](../supplier_reliability/) template, and a demand-capped product sits at its upper bound (`NONBASIC_AT_UPPER`) here while a priced-out supply lane there sits at its lower bound of zero (`NONBASIC_AT_LOWER`). Laying the two reduced-cost tables side by side is the fastest way to internalize the conventions.
 
 Sensitivity marginals are exact for a linear program. They describe the rate of change at the current optimum -- the range over which that rate holds is not reported (there is no RHS/coefficient ranging) -- and a large, discrete change (adding a factory, removing a product) is a structural change best answered by re-solving.
+
+See `factory_production.py` for the implementation and `runbook.md` for the skill-driven reproduction.
 
 ## Customize this template
 

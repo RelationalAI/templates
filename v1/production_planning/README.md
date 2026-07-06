@@ -37,6 +37,7 @@ This template finds the profit-maximizing production plan across a set of machin
 ## What's included
 
 - `production_planning.py` -- Main script with the scenario model, constraints, objective, and result summary
+- **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - `data/products.csv` -- Products with base demand and per-unit profit margins
 - `data/machines.csv` -- Machines with available hours per planning period
 - `data/production_rates.csv` -- Hours required per unit for each machine-product combination
@@ -127,7 +128,7 @@ production_planning/
     └── production_rates.csv # hours per unit for each machine-product pair
 ```
 
-**Start here**: run `python production_planning.py` for the end-to-end solve, or follow `runbook.md` to rebuild it step by step.
+**Start here**: run `python production_planning.py` for the full run end to end, or follow `runbook.md` to reproduce it step by step with the RAI skills.
 
 ## Sample data
 
@@ -145,114 +146,24 @@ The three demand scenarios (`low_demand` 0.8, `baseline` 1.0, `high_demand` 1.1)
 - **Primary identifiers**: integer `id` on `Product` and `Machine`; string `name` on `Scenario`. `ProductionRate` and `Production` are identified structurally by the entities they link.
 - **Important invariants**: `demand`, `profit`, `hours_available`, and `hours_per_unit` are non-negative; the decision variable `x_quantity` is a non-negative integer; total machine hours used cannot exceed `hours_available`; total units produced must meet demand scaled by the scenario multiplier.
 
-**`Product`** — a product to manufacture, with its base demand and profit margin.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | Integer | Yes | Loaded from `data/products.csv` |
-| `name` | String | No | Human-readable product name |
-| `demand` | Integer | No | Base units required (scaled per scenario) |
-| `profit` | Float | No | Per-unit profit margin |
-
-**`Machine`** — a machine with a fixed number of available hours per planning period.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | Integer | Yes | Loaded from `data/machines.csv` |
-| `name` | String | No | Human-readable machine name |
-| `hours_available` | Float | No | Capacity per planning period |
-
-**`ProductionRate`** — how long a given machine takes to make one unit of a given product.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `machine` | Relationship | — | Link to `Machine` |
-| `product` | Relationship | — | Link to `Product` |
-| `hours_per_unit` | Float | No | Machine hours per unit, from `data/production_rates.csv` |
-
-**`Scenario`** — a demand scenario applied uniformly to all products.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `name` | String | Yes | `low_demand` / `baseline` / `high_demand` |
-| `demand_multiplier` | Float | No | Scales each product's demand (0.8 / 1.0 / 1.1) |
-
-**`Production`** — the decision concept, one per production rate; carries the solved quantity per scenario.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `rate` | Relationship | — | Link to the `ProductionRate` being decided |
-| `x_quantity` | Float (integer decision) | No | Units to produce, indexed by `Scenario`; the solver's decision variable |
+For the full concept and property definitions, see `production_planning.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
-### 1. Define the ontology and load data
+The pipeline loads the three CSVs into the ontology, layers a `Scenario` concept over them, and hands a single mixed-integer program to the solver that decides production quantities for every scenario at once.
 
-The model defines products with demand and profit, machines with available hours, and production rates linking each machine-product pair.
-
-```python
-Product = Concept("Product", identify_by={"id": Integer})
-Product.name = Property(f"{Product} has {String:name}")
-Product.demand = Property(f"{Product} has {Integer:demand}")
-Product.profit = Property(f"{Product} has {Float:profit}")
-
-Machine = Concept("Machine", identify_by={"id": Integer})
-Machine.name = Property(f"{Machine} has {String:name}")
-Machine.hours_available = Property(f"{Machine} has {Float:hours_available}")
-
-Rate = Concept("ProductionRate")
-Rate.machine = Property(f"{Rate} on {Machine}", short_name="machine")
-Rate.product = Property(f"{Rate} for {Product}", short_name="product")
-Rate.hours_per_unit = Property(f"{Rate} has {Float:hours_per_unit}")
+```text
+CSV inputs → load Product / Machine / ProductionRate → add Scenario multipliers
+  → build the integer production variable (per rate, per scenario)
+  → capacity + demand constraints → maximize profit → solve → per-scenario plan
 ```
 
-### 2. Define decision variables and scenarios
+1. **Load the data.** Products carry base demand and per-unit profit, machines carry available hours, and each `ProductionRate` links a machine-product pair to the hours it takes to make one unit. A missing pair means that machine cannot make that product.
+2. **Add scenarios and the decision variable.** The three demand scenarios become a first-class `Scenario` concept, each with a `demand_multiplier`. The solver decides one non-negative integer quantity per production rate *per scenario*, so all scenarios are solved together in a single call rather than in a loop.
+3. **Constrain the plan.** For each machine and scenario, total hours used cannot exceed the machine's available hours. For each product and scenario, total units produced must meet that product's demand scaled by the scenario's multiplier.
+4. **Maximize profit.** The objective sums per-unit profit across every production assignment, and the solver returns the profit-maximizing plan for all scenarios at once.
 
-Scenarios are modeled as a `Scenario` concept with a `demand_multiplier` property — all scenarios are solved in a single call, not a loop.
-
-```python
-Scenario = Concept("Scenario", identify_by={"name": String})
-Scenario.demand_multiplier = Property(f"{Scenario} has {Float:demand_multiplier}")
-
-problem = Problem(model, Float)
-
-# Variable indexed by Scenario — one quantity per production rate per scenario
-Production.x_quantity = Property(f"{Production} in {Scenario} has {Float:quantity}")
-problem.solve_for(
-    Production.x_quantity(Scenario, x_qty),
-    name=["qty", Scenario.name, Production.rate.machine.name, Production.rate.product.name],
-    lower=0, type="int",
-)
-```
-
-### 3. Add constraints
-
-Machine capacity and demand satisfaction constraints are defined per scenario.
-
-```python
-# Machine capacity: total production hours <= available hours (per machine, per scenario)
-problem.satisfy(model.where(...).require(
-    sum(x_qty * Production.rate.hours_per_unit)
-    .where(Production.rate.machine == Machine)
-    .per(Machine, Scenario)
-    <= Machine.hours_available
-))
-
-# Meet scaled demand (per product, per scenario)
-problem.satisfy(model.where(...).require(
-    sum(x_qty).where(Production.rate.product == Product).per(Product, Scenario)
-    >= Product.demand * Scenario.demand_multiplier
-))
-```
-
-### 4. Maximize profit
-
-The objective maximizes total profit across all production assignments.
-
-```python
-total_profit = sum(Production.x_quantity * Production.rate.product.profit)
-problem.maximize(total_profit)
-```
+See `production_planning.py` for the implementation and `runbook.md` for the skill-driven reproduction.
 
 ## Customize this template
 

@@ -41,6 +41,7 @@ Supply chain networks route goods from suppliers through factories and distribut
 ## What's included
 
 - `supply_chain_resilience.py` -- Main script: a blast-radius pre-analysis, three chained reasoning stages (graph, rules, prescriptive), and scenario analysis
+- `runbook.md` -- a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself
 - `data/site.csv` -- 31 sites (factories, distribution centers, offices, stores) across multiple regions
 - `data/business.csv` -- 31 businesses (suppliers, manufacturers, warehouses, buyers) with reliability scores
 - `data/operation.csv` -- 70 shipping and transfer operations with cost, capacity, and transit time
@@ -125,7 +126,7 @@ Supply chain networks route goods from suppliers through factories and distribut
     └── delay_prediction.csv
 ```
 
-**Start here**: run `python supply_chain_resilience.py` for the full chain end to end -- blast-radius pre-analysis, the three reasoning stages, and the scenario comparison.
+**Start here**: run `python supply_chain_resilience.py` for the full chain end to end -- blast-radius pre-analysis, the three reasoning stages, and the scenario comparison -- or follow `runbook.md` to reproduce it step by step with the RAI skills.
 
 ## Sample data
 
@@ -147,304 +148,31 @@ One shared ontology threads the pre-analysis and all three stages. Each stage re
 - **Primary identifiers**: string `id` on every concept.
 - **Important invariants**: `reliability_score` and `predicted_delay_prob` are fractions in `[0, 1]`; `capacity_per_day`, `cost_per_unit`, and `quantity` are non-negative; the flow decision variable `x_flow` is bounded by each operation's capacity; unmet-demand slack `x_unmet` is non-negative.
 
-### Concepts
-
-**`Site`** -- a physical location. Stage 1 enriches it with a normalized centrality score.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | String | Yes | `ID` from `data/site.csv` |
-| `name`, `site_type`, `region`, `country` | String | No | Loaded from CSV |
-| `centrality` | Float | No | **Stage 1** normalized eigenvector centrality |
-
-**`Business`** -- a supplier, manufacturer, warehouse, or buyer that operates at a site. Stage 2 enriches it with risk flags.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | String | Yes | `ID` from `data/business.csv` |
-| `name`, `business_type` | String | No | Loaded from CSV |
-| `reliability_score` | Float | No | `[0, 1]` supplier reliability |
-| `site` | Relationship | -- | Business operates at a `Site` |
-| `ships_to` | Relationship | -- | Derived supplier-to-customer edge (collapses shipments); the blast-radius graph edge |
-| `is_high_priority_customer` | Relationship | -- | Pre-analysis flag; seeds upstream reachability |
-| `is_unreliable`, `has_high_delay_risk`, `is_watch_level`, `is_avoid` | Relationship | -- | **Stage 2** risk classifications |
-
-**`Operation`** -- a shipping or transfer route between sites. The flow decision space.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | String | Yes | `ID` from `data/operation.csv` |
-| `op_type` | String | No | `SHIP` / transfer; SHIP operations form the site graph edges |
-| `cost_per_unit` | Float | No | Base transport cost |
-| `capacity_per_day` | Integer | No | Upper bound on `x_flow` |
-| `transit_time_days` | Integer | No | Loaded from CSV |
-| `source_site`, `output_site`, `output_sku` | Relationship | -- | Route endpoints and produced SKU |
-| `source_business` | Relationship | -- | Derived by matching `source_site` to `Business.site` |
-| `x_flow` | Float | No | **Stage 3** flow decision variable (0 to capacity) |
-
-**`Demand`** -- a customer order. Stage 2 flags escalations; Stage 3 tracks unmet slack.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | String | Yes | `ID` from `data/demand.csv` |
-| `quantity` | Integer | No | Units ordered |
-| `priority` | String | No | `HIGH` triggers escalation |
-| `business`, `sku` | Relationship | -- | Placing customer and demanded SKU |
-| `is_escalated` | Relationship | -- | **Stage 2** flag for `priority == "HIGH"` |
-| `x_unmet` | Float | No | **Stage 3** unmet-demand slack |
-
-**`SKU`** -- a stock-keeping unit (raw material, component, or finished good).
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | String | Yes | `ID` from `data/sku.csv` |
-| `name`, `sku_type` | String | No | Loaded from CSV |
-
-**`Shipment`** -- a historical shipment; the source for late-shipment rates and the blast-radius supplier graph.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | String | Yes | `ID` from `data/shipment.csv` |
-| `sku_id` | String | No | Shipped SKU |
-| `quantity` | Integer | No | Units shipped |
-| `supplier`, `customer` | Relationship | -- | Supplier and customer `Business` endpoints |
-
-**`DelayPrediction`** -- a predicted delay probability per supplier per fiscal quarter.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | String | Yes | `ID` from `data/delay_prediction.csv` |
-| `fiscal_quarter` | String | No | E.g. `Q1-2025` |
-| `predicted_delay_prob` | Float | No | `[0, 1]` predicted delay probability |
-| `risk_tier` | String | No | Loaded from CSV |
-| `supplier_business` | Relationship | -- | Links the prediction to a `Business` |
-
-### Relationships
-
-- `Business.site` -- each business operates at a `Site`.
-- `Operation.source_site` / `output_site` / `output_sku` -- route endpoints and the SKU produced.
-- `Operation.source_business` -- derived by matching `Operation.source_site` to `Business.site`, avoiding an explicit join table.
-- `Business.ships_to` -- derived supplier-to-customer edge collapsing many shipments; the directed edge the blast-radius reachability traverses.
-- `Demand.business` / `sku` -- the customer placing the order and the SKU demanded.
-- `Shipment.supplier` / `customer` and `DelayPrediction.supplier_business` -- link history and predictions back to `Business`.
+For the full concept and property definitions, see `supply_chain_resilience.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
-This section walks through the highlights in `supply_chain_resilience.py`.
+One shared ontology threads a pre-analysis and three chained reasoning stages -- each stage reads what earlier stages wrote and enriches the model for the next.
 
-### Import libraries and configure inputs
-
-First, the script imports the RAI SDK and configures key parameters that control risk thresholds, penalties, and the prediction quarter:
-
-```python
-from relationalai.semantics import Float, Integer, Model, String, select, sum, where
-from relationalai.semantics.reasoners.graph import Graph
-from relationalai.semantics.reasoners.prescriptive import Problem
-from relationalai.semantics.std import aggregates as aggs
-
-model = Model("supply_chain_resilience")
-
-UNMET_PENALTY = 100.0  # penalty for unmet demand (kept moderate so routing costs are visible)
-RISK_SURCHARGE = 5.0  # cost multiplier for "watch" supplier operations
-CENTRALITY_WEIGHT = 2.0  # multiplier for bottleneck site penalty
-DELAY_PROB_THRESHOLD = 0.15  # above this = high delay risk
-RELIABILITY_THRESHOLD = 0.80  # below this = unreliable supplier
-PREDICTION_QUARTER = "Q1-2025"  # which quarter's predictions to use
+```text
+CSV inputs → blast-radius reachability → Graph criticality → Rules risk classification → Prescriptive risk-adjusted flow → scenario re-solves
 ```
 
-### Define concepts and load CSV data
+**Configure inputs.** A handful of parameters at the top control the run: risk thresholds (`RELIABILITY_THRESHOLD`, `DELAY_PROB_THRESHOLD`), objective penalties (`UNMET_PENALTY`, `RISK_SURCHARGE`, `CENTRALITY_WEIGHT`), and which quarter's delay predictions to use (`PREDICTION_QUARTER`).
 
-Next, the model defines concepts for the supply chain ontology. `Site` represents physical locations (factories, distribution centers, stores). `Business` represents entities (suppliers, manufacturers, buyers) with reliability scores. `Operation` defines shipping routes between sites with cost and capacity:
+**Define concepts and load data.** The seven source concepts load from CSV. A derived `Operation.source_business` relationship links each operation to its source business by matching the operation's source site to the business's site, avoiding an explicit join table.
 
-```python
-Site = model.Concept("Site", identify_by={"id": String})
-Site.name = model.Property(f"{Site} has {String:name}")
-Site.site_type = model.Property(f"{Site} has type {String:site_type}")
-Site.region = model.Property(f"{Site} in {String:region}")
+**Stage 0 -- blast-radius pre-analysis.** A directed `Business` graph is built from the derived supplier-to-customer `ships_to` edges. Upstream reachability from each high-priority customer traces every supplier it transitively depends on, making the exposure footprint explicit so the later scenario results can be read in context.
 
-Business = model.Concept("Business", identify_by={"id": String})
-Business.reliability_score = model.Property(
-    f"{Business} has reliability {Float:reliability_score}"
-)
-Business.site = model.Relationship(f"{Business} operates at {Site}")
+**Stage 1 -- Graph, network criticality.** An undirected graph with sites as nodes and SHIP operations as edges captures the physical shipping network. Weakly connected components reveal whether the network is fragmented or unified; eigenvector centrality scores each site by its structural influence. Scores are normalized and stored as `Site.centrality` for the optimizer to penalize.
 
-Operation = model.Concept("Operation", identify_by={"id": String})
-Operation.cost_per_unit = model.Property(
-    f"{Operation} costs {Float:cost_per_unit} per unit"
-)
-Operation.capacity_per_day = model.Property(
-    f"{Operation} has capacity {Integer:capacity_per_day} per day"
-)
-Operation.source_site = model.Relationship(f"{Operation} from {Site}")
-Operation.output_site = model.Relationship(f"{Operation} to {Site}")
-Operation.output_sku = model.Relationship(f"{Operation} produces {SKU}")
-```
+**Stage 2 -- Rules, supplier risk classification.** Derived relationships flag suppliers below the reliability threshold and suppliers with high predicted delay probability. Suppliers with both flags are classified "avoid" (blocked from flow); suppliers with either flag are "watch" (allowed but surcharged). A further rule flags `HIGH`-priority demand as escalated. These classifications feed the optimizer as hard constraints and cost surcharges.
 
-A derived relationship links each operation to its source business by matching the operation's source site to the business's site:
+**Stage 3 -- Prescriptive, risk-adjusted network flow.** Two continuous decision variables drive the solve: `x_flow` per operation (bounded by capacity) and `x_unmet` slack per order. A demand-satisfaction constraint requires inbound flow at each customer's site for the demanded SKU, plus slack, to cover the order. Operations from "avoid" suppliers are pinned to zero flow. The objective minimizes four components: base transport cost, a surcharge on flow through "watch" suppliers, a centrality penalty that discourages over-reliance on bottleneck sites, and a high penalty on unmet demand.
 
-```python
-Operation.source_business = model.Relationship(
-    f"{Operation} sourced from {Business}"
-)
-model.define(Operation.source_business(Operation, Business)).where(
-    Operation.source_site == Business.site
-)
-```
+**Solve and run scenarios.** The baseline solves with HiGHS. Two disruption scenarios then re-solve with modified constraints -- taking the highest-centrality site offline, and downgrading all "watch" suppliers to "avoid" -- and the cost increase across scenarios quantifies the network's resilience to each type of disruption.
 
-`DelayPrediction` captures ML-predicted delay probabilities per supplier per fiscal quarter:
-
-```python
-DelayPrediction = model.Concept("DelayPrediction", identify_by={"id": String})
-DelayPrediction.predicted_delay_prob = model.Property(
-    f"{DelayPrediction} has {Float:predicted_delay_prob}"
-)
-DelayPrediction.supplier_business = model.Relationship(
-    f"{DelayPrediction} predicts for {Business}"
-)
-```
-
-### Stage 0: Blast-radius pre-analysis
-
-Before any optimization runs, a directed `Business` graph is built from the derived `ships_to` edges (supplier to customer). Upstream reachability from the high-priority customers traces every supplier each one transitively depends on, making the exposure footprint explicit so the later scenario results can be read in context:
-
-```python
-model.where(Business.ships_to(b_src, b_dst)).define(
-    biz_graph.Edge.new(src=b_src, dst=b_dst)
-)
-
-target_customer = model.Relationship(f"target customer {Business}")
-model.where(Business.is_high_priority_customer()).define(target_customer(Business))
-
-reachable_to = biz_graph.reachable(to=target_customer)
-```
-
-### Stage 1: Graph -- network criticality
-
-An undirected graph is built with sites as nodes and shipping operations as edges. This captures how sites are connected through the physical shipping network:
-
-```python
-graph = Graph(model, directed=False, weighted=False, node_concept=Site, aggregator="sum")
-
-s1, s2, op_ref = Site.ref(), Site.ref(), Operation.ref()
-model.define(
-    graph.Edge.new(src=s1, dst=s2)
-).where(
-    op_ref.source_site(s1),
-    op_ref.output_site(s2),
-    op_ref.op_type == "SHIP",
-)
-```
-
-Weakly connected components identify whether the network is fragmented or unified. Eigenvector centrality scores each site by its influence in the network -- high-centrality sites are critical hubs whose disruption would cascade through many routes. These scores are normalized and stored as a `Site.centrality` property for use in the optimization objective:
-
-```python
-eigenvector = graph.eigenvector_centrality()
-
-Site.centrality = model.Property(f"{Site} has centrality {Float:centrality}")
-eig_df["normalized"] = eig_df["centrality_score"] / max_centrality
-cent_data = model.data(eig_df[["site_id", "normalized"]])
-model.where(Site.id == cent_data["site_id"]).define(
-    Site.centrality(cent_data["normalized"])
-)
-```
-
-### Stage 2: Rules -- supplier risk classification
-
-Two derived Relationships flag risky suppliers. The first marks businesses with reliability scores below the threshold. The second uses ML delay predictions to flag suppliers with high predicted delay probability:
-
-```python
-Business.is_unreliable = model.Relationship(f"{Business} is unreliable")
-model.where(
-    Business.reliability_score < RELIABILITY_THRESHOLD
-).define(Business.is_unreliable())
-
-Business.has_high_delay_risk = model.Relationship(
-    f"{Business} has high delay risk"
-)
-dp_ref = DelayPrediction.ref()
-model.where(
-    dp_ref.supplier_business(Business),
-    dp_ref.fiscal_quarter == PREDICTION_QUARTER,
-    dp_ref.predicted_delay_prob > DELAY_PROB_THRESHOLD,
-).define(Business.has_high_delay_risk())
-```
-
-Suppliers that are both unreliable and have high delay risk are classified as "avoid" (blocked from the network flow). Suppliers with either flag are "watch" (allowed but penalized). These classifications feed directly into the optimizer as hard constraints and cost surcharges.
-
-A third rule flags escalated demand orders to surface high-priority fulfillment requirements:
-
-```python
-Demand.is_escalated = model.Relationship(f"{Demand} is escalated")
-model.where(Demand.priority == "HIGH").define(Demand.is_escalated())
-```
-
-### Stage 3: Define decision variables, constraints, and objective
-
-Two continuous decision variables control the network flow: `x_flow` is the flow on each operation (bounded by capacity), and `x_unmet` is unmet demand slack per order:
-
-```python
-problem = Problem(model, Float)
-
-problem.solve_for(
-    Operation.x_flow,
-    name=["x_flow", Operation.id],
-    lower=0,
-    upper=Operation.capacity_per_day,
-)
-
-problem.solve_for(Demand.x_unmet, name=["x_unmet", Demand.id], lower=0, populate=False)
-```
-
-The demand satisfaction constraint requires that inbound flow at each customer's site for the demanded SKU, plus unmet slack, covers the order quantity:
-
-```python
-problem.satisfy(
-    model.require(
-        sum(Op.x_flow).per(D) + D.x_unmet >= D.quantity
-    ).where(
-        D.business(B),
-        B.site == Op.output_site,
-        D.sku == Op.output_sku,
-    ),
-    name=["demand_sat", D.id],
-)
-```
-
-Operations sourced from "avoid" suppliers are blocked with zero-flow constraints. In scenario mode, operations from a specific site can also be disabled.
-
-The objective minimizes four cost components. Transport cost is the base shipping cost. Risk surcharge penalizes flow through "watch"-level suppliers. The centrality penalty discourages over-reliance on bottleneck sites identified in Stage 1. Unmet demand incurs a high penalty:
-
-```python
-transport_cost = sum(Operation.cost_per_unit * Operation.x_flow)
-
-risk_cost = RISK_SURCHARGE * sum(op_watch.x_flow).where(
-    op_watch.source_business(biz_watch),
-    biz_watch.is_watch_level(),
-)
-
-centrality_cost = CENTRALITY_WEIGHT * sum(
-    op_cent.x_flow * cent_val
-).where(
-    op_cent.output_site(site_cent),
-    site_cent.centrality(cent_val),
-)
-
-unmet_cost = UNMET_PENALTY * sum(Demand.x_unmet)
-
-problem.minimize(
-    sum(model.union(transport_cost, risk_cost, centrality_cost, unmet_cost))
-)
-```
-
-### Solve and run scenario analysis
-
-The model is solved using the HiGHS solver with a two-minute time limit. The `solve_flow` function encapsulates the full formulation and accepts optional parameters to disable a site or block additional suppliers:
-
-```python
-problem.solve("highs", time_limit_sec=120)
-```
-
-After the baseline solve, two disruption scenarios are evaluated by re-solving with modified constraints: taking the highest-centrality site offline, and downgrading all "watch" suppliers to "avoid". The cost increase across scenarios quantifies the network's resilience to each type of disruption.
+For the implementation, see `supply_chain_resilience.py`; to reproduce it step by step with the RAI skills, follow `runbook.md`.
 
 ## Customize this template
 

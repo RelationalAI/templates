@@ -39,6 +39,7 @@ Built using **prescriptive reasoning** (nonlinear program over continuous flow v
 
 - **Model**: a single-stage nonlinear optimization on a shared ontology — `Source`, `User`, and `Connection` concepts wired to the bundled CSVs.
 - **Runner**: `water_allocation.py` — a single Python script that builds the model, constraints, and objective and calls the solver against a Snowflake-connected RAI account.
+- **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - **Sample data**: a small water-distribution network of sources, user groups, and the connections between them. See *Sample data* below.
 - **Outputs**: solver status, total cost, and the per-connection flow allocations.
 
@@ -130,96 +131,21 @@ A single shared ontology holds the network. The `Connection` concept carries the
 - **Primary identifiers**: integer `id` on `Source` and `User`; `Connection` is identified by its `source` and `user` endpoints.
 - **Important invariants**: `capacity`, `demand`, `max_flow`, and `cost_per_unit` are non-negative; `loss_rate` is a fraction in `[0, 1]`; each connection's flow is continuous and bounded between 0 and its `max_flow`.
 
-### Concepts
-
-**`Source`** — a water source with a capacity ceiling and an extraction cost.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | Integer | Yes | Loaded from `data/sources.csv` |
-| `name` | String | No | e.g. `Reservoir_A` |
-| `capacity` | Float | No | Maximum total outflow |
-| `cost_per_unit` | Float | No | Extraction cost per unit of flow |
-
-**`User`** — a demand group that must be served.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | Integer | Yes | Loaded from `data/users.csv` |
-| `name` | String | No | e.g. `Municipal` |
-| `demand` | Float | No | Required delivered volume |
-| `priority` | Integer | No | Group priority (available for priority-based extensions) |
-
-**`Connection`** — a link from a source to a user; the flow decision lives here.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `source` | Relationship | Yes | Endpoint on `Source` |
-| `user` | Relationship | Yes | Endpoint on `User` |
-| `max_flow` | Float | No | Upper bound on this connection's flow |
-| `loss_rate` | Float | No | Fraction lost at full utilization |
-| `x_flow` | Float | No | Flow allocated by the solver (decision variable) |
+For the full concept and property definitions, see `water_allocation.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
-This is a network-flow problem with source-capacity limits, per-connection flow bounds, and demand constraints whose nonlinear loss term makes it quadratic, solved with the Ipopt nonlinear solver.
+This is a network-flow problem: source-capacity limits, per-connection flow bounds, and demand constraints whose nonlinear loss term makes it quadratic, solved with the Ipopt nonlinear solver.
 
-### 1. Define sources, users, and connections
+The script loads three concepts from CSV — sources with a capacity and an extraction cost, users with a demand, and connections that link a source to a user with a maximum flow and a loss rate. Each connection then gets a continuous flow decision variable, bounded between zero and its maximum flow, that the solver assigns.
 
-The model loads three concepts from CSV. Sources have capacity and cost. Users have demand and priority. Connections link sources to users with max flow and loss rate:
+Two families of constraints shape the plan. A source-capacity constraint holds the total outflow from each source within its capacity. A demand constraint requires each user's effective inflow — the flow delivered after losses — to meet its demand. The loss term is where the nonlinearity enters: the fraction lost on a connection grows with how hard the route is being pushed, so effective delivery falls as a connection approaches its maximum flow. That utilization-dependent loss makes the demand constraint quadratic, which is why the model needs the Ipopt nonlinear solver rather than a linear one. The objective minimizes total extraction cost across all flows, so the solver leans on cheaper sources and lightly loaded routes.
 
-```python
-Source = Concept("Source", identify_by={"id": Integer})
-Source.capacity = Property(f"{Source} has {Float:capacity}")
-Source.cost_per_unit = Property(f"{Source} has {Float:cost_per_unit}")
-
-User = Concept("User", identify_by={"id": Integer})
-User.demand = Property(f"{User} has {Float:demand}")
-
-Connection = Concept("Connection")
-Connection.source = Property(f"{Connection} from {Source}", short_name="source")
-Connection.user = Property(f"{Connection} to {User}", short_name="user")
-Connection.max_flow = Property(f"{Connection} has {Float:max_flow}")
-Connection.loss_rate = Property(f"{Connection} has {Float:loss_rate}")
+```text
+sources/users/connections CSVs → per-connection flow variables → capacity + loss-adjusted demand constraints → minimize cost → allocation plan
 ```
 
-### 2. Define the flow variable
-
-Each connection gets a continuous flow variable bounded between zero and its maximum flow:
-
-```python
-problem.solve_for(
-    Connection.x_flow,
-    name=["flow", Connection.source.name, Connection.user.name],
-    lower=0,
-    upper=Connection.max_flow
-)
-```
-
-### 3. Add capacity and demand constraints
-
-Source capacity limits total outflow. Demand constraints use nonlinear losses that increase with utilization, so effective delivery per connection falls as a route approaches its `max_flow`, as encoded below:
-
-```python
-outflow = sum(ConnectionRef.x_flow).where(ConnectionRef.source == Source).per(Source)
-problem.satisfy(model.require(outflow <= Source.capacity))
-
-effective_inflow = sum(
-    ConnectionRef.x_flow * (1 - ConnectionRef.loss_rate * ConnectionRef.x_flow / ConnectionRef.max_flow)
-).where(ConnectionRef.user == User).per(User)
-problem.satisfy(model.require(effective_inflow >= User.demand))
-```
-
-This quadratic constraint makes the problem nonlinear, requiring the Ipopt solver.
-
-### 4. Minimize cost
-
-The objective minimizes total extraction cost across all active flows:
-
-```python
-total_cost = sum(Connection.x_flow * Connection.source.cost_per_unit)
-problem.minimize(total_cost)
-```
+See `water_allocation.py` for the implementation, and `runbook.md` to reproduce it step by step with the RAI skills.
 
 ## Customize this template
 

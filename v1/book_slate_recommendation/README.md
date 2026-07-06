@@ -43,6 +43,7 @@ This template composes the slate as a single optimization decision rather than a
 
 - **Model**: a three-stage pipeline (knowledge-graph path walks, then graph analysis, then prescriptive optimization) on a single shared ontology, wired to the bundled CSVs.
 - **Runner**: `book_slate_recommendation.py` — a single Python script that runs end-to-end against a Snowflake-connected RAI account.
+- **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - **Sample data**: a deterministic Open Library (CC0 public domain) slice of roughly 59 books, 52 authors, and 12 subjects, with synthetic users and read events layered on top. See *Sample data* below.
 - **Outputs**: the formulation, the solve-result block, the chosen slate (with per-book `path_count_total` and `triangle_count`), the per-user subject distribution, per-pick explanation-path support, and diagnostic candidate-set and structural-embeddedness tables.
 
@@ -123,6 +124,7 @@ Short annotated tree of the template folder:
 ```text
 book_slate_recommendation/
 ├── book_slate_recommendation.py     # Main script (paths walk + graph + prescriptive)
+├── runbook.md                       # paste-testable walkthrough (RAI skills)
 ├── pyproject.toml                   # dependencies
 ├── README.md                        # this file
 └── data/
@@ -137,7 +139,7 @@ book_slate_recommendation/
     └── book_similar.csv             # derived book-to-book similarity edges
 ```
 
-**Start here**: run `python book_slate_recommendation.py` for the full three-stage pipeline end to end.
+**Start here**: run `python book_slate_recommendation.py` for the full three-stage pipeline end to end, or follow `runbook.md` to reproduce it step by step with the RAI skills.
 
 ## Sample data
 
@@ -160,109 +162,21 @@ One shared ontology threads all three stages. The path-walk stage derives candid
 - **Primary identifiers**: integer `id` on `User`, `Book`, `Author`, `Subject`; `pos` on `Slot`; composite `(user_id, book_id)` on `Candidate`.
 - **Important invariants**: `Book.in_house` is a 0/1 flag; `Book.age_days` is non-negative; similarity edges are unique on `(src_book_id, dst_book_id)`; every foreign key resolves; slot decisions take values in `1..K+1`, where slot 1 is the hero position and slot K+1 is the unpicked sentinel.
 
-### Concepts
+The typed edges (`read`, `written_by`, `about`, `similar_to`) carry the graph structure; the unified `Item.connected_to` super-edge is their symmetric union, so the path walker can traverse one 2-arity relationship across the heterogeneous graph. Each `Candidate` carries typed evidence counts (`path_count_via_author`, `path_count_via_subject`, `path_count_via_kg_walk`, summed into `path_count_total`) and a `slot` decision.
 
-`Item` is a super-concept; `User`, `Book`, `Author`, and `Subject` all extend it so the path walker can traverse the whole heterogeneous graph via one 2-arity edge. It carries no properties of its own.
-
-`User` — a reader.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | Integer | Yes | Loaded from `data/users.csv` |
-| `name` | String | No | Human-readable name |
-
-`Book` — a catalog item with bibliographic, freshness, and in-house attributes.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | Integer | Yes | Loaded from `data/books.csv` |
-| `title` | String | No | Human-readable title |
-| `age_days` | Integer | No | Recency in days; drives the freshness floor |
-| `in_house` | Integer | No | 0/1 flag; 1 = in-house / originals item |
-| `triangle_count` | Integer | No | Graph-stage structural embeddedness over `similar_to`; drives the hero pin |
-
-`Author` — a book's writer.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | Integer | Yes | Loaded from `data/authors.csv` |
-| `name` | String | No | Human-readable name |
-
-`Subject` — a topical category attached to books.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | Integer | Yes | Loaded from `data/subjects.csv` |
-| `name` | String | No | Human-readable name |
-
-`Slot` — a slate position `1..K`, used by the slot-uniqueness rule as a global-cardinality-style per-pair count cap. Slot K+1 (unpicked) is intentionally not a `Slot` row, so the cap applies only to filled positions.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `pos` | Integer | Yes | Positions `1..K` |
-
-`Candidate` — a `(user, book)` pair reachable by a bounded knowledge-graph walk. This is the prescriptive model's decision space; each candidate is assigned a slot.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `user_id`, `book_id` | Integer | Yes | Composite key; derived from path-walk endpoints |
-| `path_count_via_author` | Integer | No | Shared-author connections to the user's read history |
-| `path_count_via_subject` | Integer | No | Shared-subject connections to the user's read history |
-| `path_count_via_kg_walk` | Integer | No | Count of bounded knowledge-graph paths from user to candidate |
-| `path_count_total` | Integer | No | Sum of the three typed counts; feeds cold-start cap, explanation floor, and objective |
-| `slot` | Integer | No | Prescriptive decision in `1..K+1` (1 = hero, K+1 = unpicked) |
-
-### Relationships
-
-The typed edges below carry the graph structure; the unified `Item.connected_to` super-edge is the symmetric union of them, materialized so the path walker can traverse one 2-arity relationship at a time across the heterogeneous graph.
-
-| Relationship | Schema (reading fields) | Notes |
-|---|---|---|
-| `User.read(user, book, rating)` | `User`, `Book`, `Integer` | Read history; source of the already-read exclusion |
-| `Book.written_by(book, author)` | `Book`, `Author` | Authorship edge |
-| `Book.about(book, subject)` | `Book`, `Subject` | Subject-attachment edge |
-| `Book.similar_to(book, other)` | `Book`, `Book` | Similarity edge; the retrieval artifact and the graph-stage input |
-| `Item.connected_to(src, dst)` | `Item`, `Item` | Unified super-edge the path walker traverses (symmetric union of the four typed edges) |
+For the full concept and property definitions, see `book_slate_recommendation.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
 The pipeline runs in three stages over the shared ontology. Its architectural centerpiece is the bounded knowledge-graph walk: without the paths library there are no candidates and no optimization variables.
 
-**Stage 1 — Knowledge-graph path walks (candidate generation).** The path walker traverses `Item.connected_to` (the symmetric union of `read`, `written_by`, `about`, and `similar_to`) from each user up to `MAX_HOPS = 2` hops. With a `Book` endpoint, the candidate set is the union of length-1 walks (`User -> read_Book`, later excluded because already read) and length-2 walks (`User -> read_Book -> similar_Book`). Each reachable `(user, book)` becomes a `Candidate`. The per-`(user, candidate)` typed counts feed the explanation floor, the cold-start cap, and the objective:
+**Stage 1 — Knowledge-graph path walks (candidate generation).** The path walker traverses `Item.connected_to` (the symmetric union of `read`, `written_by`, `about`, and `similar_to`) from each user up to `MAX_HOPS = 2` hops. With a `Book` endpoint, the candidate set is the union of length-1 walks (`User -> read_Book`, later excluded because already read) and length-2 walks (`User -> read_Book -> similar_Book`). Each reachable `(user, book)` becomes a `Candidate`. The per-`(user, candidate)` typed counts — shared-author and shared-subject joins against the user's read history, plus the count of walker-enumerated paths — feed the explanation floor, the cold-start cap, and the objective. Each count is defined for every candidate so a candidate with no matches still gets a value, and `path_count_total` sums the three.
 
-```python
-kg_paths = model.path(
-    Item.connected_to.repeat(1, MAX_HOPS),
-).all_paths()
+**Stage 2 — Graph analysis (hero-slot embeddedness).** A `Graph` is built from `Book.similar_to`, and triangle count returns the per-book count of similarity triangles each book participates in, stored as `Book.triangle_count`. Triangle count is graph-derived: it depends on the topology of the similarity graph, not on a per-book scalar that could be supplied externally. Stage 3 uses it to pin the hero slot to a densely embedded book.
 
-model.define(Candidate.new(user_id=u_cand.id, book_id=b_cand.id)).where(
-    kg_paths(p_cand),
-    p_cand.nodes(0, u_cand),
-    p_cand.nodes(p_cand.length, b_cand),
-)
-```
+**Stage 3 — Prescriptive constraint program (slot assignment).** Each candidate's slot is a decision in `1..K+1`, where slots `1..K` are slate positions (1 = hero, K = bottom of row) and slot K+1 is the unpicked sentinel. The K+1 encoding lets the position weight `(K + 1 - slot)` be zero for unpicked candidates, so no auxiliary picked/unpicked indicator is needed. The model enforces ten constraints — cardinality (exactly K picks per user), slot uniqueness, already-read exclusion, author uniqueness, subject-concentration cap, freshness floor, originals-exposure floor, cold-start cap, hero pin, and explanation-path floor — under a position-weighted engagement-decay objective. The objective weights each pick by `(K + 1 - slot) * path_count_total`, largest at slot 1, so the solver places the highest-path-support candidates at the top of the row — the canonical position-decay engagement model. After the solve, the runner verifies every constraint, requires an `OPTIMAL` status, and prints the chosen slate, subject distribution, and per-pick explanation support.
 
-The `path_count_via_author` and `path_count_via_subject` counts are direct shared-entity joins between the candidate and the user's read history; `path_count_via_kg_walk` is the count of walker-enumerated paths. Each count is defined for every candidate (using `| 0`) so a candidate with no matches still gets a value, and `path_count_total` sums the three.
-
-**Stage 2 — Graph analysis (hero-slot embeddedness).** A `Graph` is built from `Book.similar_to`, and `triangle_count()` returns the per-book count of similarity triangles each book participates in, stored as `Book.triangle_count`:
-
-```python
-sim_graph = Graph(model, directed=False, weighted=False, node_concept=Book, aggregator="sum")
-model.define(sim_graph.Edge.new(src=src_g, dst=dst_g)).where(Book.similar_to(src_g, dst_g))
-
-triangle_rel = sim_graph.triangle_count()
-model.define(b_tc.triangle_count(tc)).where(triangle_rel(b_tc, tc))
-```
-
-Triangle count is graph-derived: it depends on the topology of the similarity graph, not on a per-book scalar that could be supplied externally. Stage 3 uses it to pin the hero slot to a densely embedded book.
-
-**Stage 3 — Prescriptive constraint program (slot assignment).** Each candidate's slot is a decision in `1..K+1`, where slots `1..K` are slate positions (1 = hero, K = bottom of row) and slot K+1 is the unpicked sentinel. The K+1 encoding lets the position weight `(K + 1 - slot)` be zero for unpicked candidates, so no auxiliary picked/unpicked indicator is needed. The model enforces ten constraints — cardinality (exactly K picks per user), slot uniqueness, already-read exclusion, author uniqueness, subject-concentration cap, freshness floor, originals-exposure floor, cold-start cap, hero pin, and explanation-path floor — under a position-weighted engagement-decay objective:
-
-```python
-problem.maximize(sum((SLATE_SIZE_K + 1 - Candidate.slot) * Candidate.path_count_total))
-```
-
-The weight is largest at slot 1, so the solver places the highest-path-support candidates at the top of the row — the canonical position-decay engagement model. After the solve, the runner verifies every constraint, requires an `OPTIMAL` status, and prints the chosen slate, subject distribution, and per-pick explanation support.
+See `book_slate_recommendation.py` for the implementation and `runbook.md` for the skill-driven reproduction.
 
 **Where this fits in production.** Production recommender systems run a multi-stage funnel: catalog, then retrieval, then pre-ranking, then ranking, then slate optimization. This template implements the final slate-optimization stage — where business rules, diversity, exposure floors, and explainability constraints land — with the upstream graph and path-walk signals in the same declarative model. The per-typed evidence counts the runner emits for each pick (`paths_via_author`, `paths_via_subject`, `paths_via_kg_walk`) are a decomposable, graph-grounded justification suitable for transparency workflows.
 

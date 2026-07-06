@@ -42,6 +42,7 @@ Built using **graph analysis** (eigenvector centrality, weakly connected compone
 
 - **Model**: a two-stage pipeline (graph, then prescriptive) on a single shared ontology — `Site`, `Route`, and `Demand` concepts wired to the bundled CSVs, plus the centrality enrichment Stage 1 writes back.
 - **Runner**: `warehouse_allocation.py` — a single Python script that runs both stages end-to-end against a Snowflake-connected RAI account.
+- **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - **Sample data**: a small distribution network of warehouses and stores with routes and per-site demand. See *Sample data* below.
 - **Outputs**: stdout diagnostics (centrality ranking, connected-component summary, bridge routes, solver status) plus the inventory allocation plan as queryable `Site.x_inventory`.
 
@@ -130,90 +131,25 @@ One shared ontology threads both stages. Stage 1 (graph) writes centrality onto 
 - **Primary identifiers**: integer `id` on each of `Site`, `Route`, and `Demand`.
 - **Important invariants**: `holding_cost`, `capacity`, and `quantity` are non-negative; the centrality floor applies only to `Site.type == "WAREHOUSE"`; allocation variables are continuous and non-negative.
 
-### Concepts
-
-**`Site`** — a distribution site (warehouse or store). Stage 1 enriches it with a centrality score; Stage 2 assigns it an inventory allocation.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | Integer | Yes | Loaded from `data/sites.csv` |
-| `name`, `region`, `type` | String | No | `type` is `WAREHOUSE` or `STORE` |
-| `holding_cost` | Float | No | Per-unit holding cost |
-| `centrality` | Float | No | **Stage 1** eigenvector centrality |
-| `x_inventory` | Float | No | **Stage 2** allocated inventory (decision variable) |
-
-**`Route`** — a transport link between two sites; capacity becomes the graph edge weight.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | Integer | Yes | Loaded from `data/routes.csv` |
-| `capacity` | Integer | No | Edge weight for the graph |
-| `transport_cost` | Float | No | Per-route transport cost |
-| `source`, `dest` | Relationship | — | Endpoints on `Site` |
-| `is_cross_region` | Float | No | **Stage 1c** flag (1.0) for cross-region bridge routes |
-
-**`Demand`** — the required inventory quantity at a site.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | Integer | Yes | Loaded from `data/demands.csv` |
-| `quantity` | Integer | No | Required units at the site |
-| `site` | Relationship | — | Link to `Site` |
-
-### Relationships
-
-- `Route.source` and `Route.dest` -> `Site` — a route's two endpoints; also the source and destination of each graph edge.
-- `Demand.site` -> `Site` — the site a demand requirement applies to; Stage 2's demand-satisfaction constraint reads this.
+For the full concept and property definitions, see `warehouse_allocation.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
-This section walks through the highlights in `warehouse_allocation.py`. Stage 1 characterizes the route topology three ways, then Stage 2 allocates inventory using the results.
+Stage 1 characterizes the route topology three ways, then Stage 2 allocates inventory using the results — all on the one shared ontology, so the graph reasoner's output is read directly by the optimizer with no data hand-off in between.
 
-### Stage 1a: Eigenvector centrality
+**Stage 1a — Eigenvector centrality.** The script builds an undirected weighted graph from the route network, using route capacity as the edge weight, and scores each site with eigenvector centrality. This surfaces sites that are structurally important because of where they sit in the network, not merely how much throughput passes through them. The scores are written back onto `Site.centrality`.
 
-An undirected weighted graph is built from the route network, with route capacity as edge weight. Eigenvector centrality identifies sites whose connections make them structurally important:
+**Stage 1b — Weakly connected components.** The same graph is checked for fragmentation. Weakly connected components reveal whether every site is reachable from every other, or whether the network has split into isolated clusters that no route bridges. The script reports whether the network is unified or fragmented and lists the size and regions of each component.
 
-```python
-graph = Graph(model, directed=False, weighted=True, node_concept=Site, aggregator="sum")
-Site.centrality = graph.eigenvector_centrality()
+**Stage 1c — Bridge routes.** Cross-region routes are flagged as bridges: links whose two endpoints lie in different regions, so losing one fragments the corresponding inter-region flow.
+
+**Stage 2 — Inventory allocation.** The optimizer allocates inventory across sites to minimize total holding cost, subject to a total budget, demand satisfaction at each site, and a centrality-based floor that requires each warehouse to hold buffer stock proportional to its centrality score. That floor reads the `Site.centrality` property Stage 1 wrote, so the more structurally critical a warehouse, the more stock the plan holds there.
+
+```text
+sites/routes/demands CSVs → graph (centrality, components, bridges) → Site.centrality → optimizer (budget, demand, centrality floor) → allocation plan
 ```
 
-### Stage 1b: Weakly connected components
-
-The same graph is checked for fragmentation. Weakly connected components reveal whether every site is reachable from every other, or whether the network has split into isolated clusters that no route bridges:
-
-```python
-wcc = graph.weakly_connected_component()
-```
-
-The script reports whether the network is unified or fragmented, and lists the size and regions of each component.
-
-### Stage 1c: Bridge routes
-
-Cross-region routes are flagged as bridges — links whose two endpoints lie in different regions, so losing one fragments the corresponding inter-region flow:
-
-```python
-model.where(
-    route_ref.source(src),
-    route_ref.dest(dst),
-    src.region != dst.region,
-).define(Route.is_cross_region(route_ref, 1.0))
-```
-
-### Stage 2: Inventory allocation
-
-The optimization allocates inventory across sites to minimize holding cost, subject to:
-- Total budget constraint
-- Demand satisfaction at each site
-- **Centrality-based minimum**: warehouses must hold stock proportional to their centrality score
-
-```python
-problem.satisfy(model.require(
-    Site.x_inventory >= Site.centrality * MIN_CENTRALITY_FACTOR
-).where(Site.type("WAREHOUSE")))
-```
-
-The `Site.centrality` property was populated by Stage 1 and is referenced directly here.
+See `warehouse_allocation.py` for the implementation, and `runbook.md` to reproduce it step by step with the RAI skills.
 
 ## Customize this template
 

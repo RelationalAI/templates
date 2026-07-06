@@ -41,6 +41,7 @@ Built using **prescriptive reasoning** (mixed-integer programming solved with Hi
 
 - **Model**: developers, sprints, issues, and skill mappings as concepts, plus a cross-product `Assignment` decision concept with binary assignment variables, capacity and once-per-issue constraints, and a weighted-completion-time objective.
 - **Runner**: `sprint_scheduling.py` -- a single Python script that loads data, builds the model, and sweeps the capacity scenarios end to end.
+- **Runbook**: `runbook.md` -- a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - **Sample data**: four CSVs under `data/` describing 8 developers, 4 sprints, 30 backlog issues, and developer-team skills. See *Sample data* below.
 - **Outputs**: per-scenario solver status, objective, planning-horizon summary, and assignment table printed to stdout, plus a scenario-analysis summary.
 
@@ -150,7 +151,7 @@ Built using **prescriptive reasoning** (mixed-integer programming solved with Hi
     └── skills.csv         # developer-team skill mappings
 ```
 
-**Start here**: run `python sprint_scheduling.py` for the full load, model, and capacity-scenario sweep end to end.
+**Start here**: run `python sprint_scheduling.py` for the full load, model, and capacity-scenario sweep end to end, or follow `runbook.md` to reproduce it step by step with the RAI skills.
 
 ## Sample data
 
@@ -169,152 +170,25 @@ The model has four source concepts loaded from CSV, plus a derived `Assignment` 
 - **Primary identifiers**: integer `id` on `Developer`, `Sprint`, `Issue`, and `Skill`; `Assignment` is identified by its `(developer, issue, sprint)` triple.
 - **Important invariants**: `story_points`, `priority`, and `capacity_points_per_sprint` are positive integers; each issue is assigned exactly once; a developer's assigned story points per sprint stay within capacity (scaled by the scenario's `capacity_multiplier`); a sprint can only host issues whose target sprint is at or before it.
 
-**`Developer`** -- an engineer with a team affiliation and a per-sprint story-point capacity.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | int | Yes | Loaded from `data/developers.csv` |
-| `name` | string | No | Human-readable developer name |
-| `team` | string | No | Primary team affiliation |
-| `capacity_points_per_sprint` | int | No | Story points a developer can take per sprint |
-
-**`Sprint`** -- a two-week planning period with epoch boundaries.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | int | Yes | Loaded from `data/sprints.csv` |
-| `name` | string | No | Display label (e.g. `Sprint 1`) |
-| `number` | int | No | Sprint ordinal; used in the objective and target-sprint mapping |
-| `startdate`, `enddate` | int | No | Unix epoch seconds bounding the sprint |
-
-**`Issue`** -- a backlog item to schedule; the event table filtered by epoch.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | int | Yes | Loaded from `data/issues.csv` |
-| `key` | string | No | Ticket key (e.g. `PROJ-106`) |
-| `summary` | string | No | Short description |
-| `story_points` | int | No | Effort estimate consumed against capacity |
-| `created_at` | int | No | Unix epoch seconds; drives the horizon filter |
-| `priority` | int | No | 1 = most urgent; weights the objective |
-| `team` | string | No | Team that must supply a skilled developer |
-| `target_sprint_number` | int | No | Derived from `created_at`; earliest eligible sprint |
-
-**`Skill`** -- a developer-team capability row.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | int | Yes | Loaded from `data/skills.csv` |
-| `developer_id` | int | No | The developer this skill belongs to |
-| `team` | string | No | A team the developer can work on |
-
-**`Assignment`** -- the decision concept: a valid (developer, issue, sprint) placement.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `developer` | `Developer` | Yes | One leg of the composite identity |
-| `issue` | `Issue` | Yes | One leg of the composite identity |
-| `sprint` | `Sprint` | Yes | One leg of the composite identity |
-| `x_assigned` | float | No | Binary decision variable (1 = assigned) |
+For the full concept and property definitions, see `sprint_scheduling.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
-### 1. Epoch filtering -- scope the backlog to the planning horizon
-
-Issues have a `created_at` column storing Unix epoch seconds. The script converts the planning horizon boundaries to epochs and filters:
-
-```python
-planning_start = "2024-10-01"
-planning_end = "2024-11-26"
-
-start_epoch = int(datetime.strptime(planning_start, "%Y-%m-%d").timestamp())
-end_epoch = int(datetime.strptime(planning_end, "%Y-%m-%d").timestamp())
-
-filtered_issues = issues_df[
-    (issues_df["created_at"] >= start_epoch) & (issues_df["created_at"] <= end_epoch)
-].copy()
+```text
+CSV inputs → epoch filter → target-sprint mapping → assignment domain → constraints + objective → solve → results
 ```
 
-This keeps only issues created within the planning horizon. Issues created before or after are excluded from scheduling.
+**1. Epoch filtering -- scope the backlog to the planning horizon.** Issues carry a `created_at` column in Unix epoch seconds. The script converts the planning-horizon boundaries to epochs and keeps only issues created within the window; issues created before or after are excluded from scheduling.
 
-### 2. Epoch-to-categorical-period mapping -- assign target sprints
+**2. Epoch-to-categorical-period mapping -- assign target sprints.** Each in-scope issue is mapped to its earliest eligible sprint based on when it was created. An issue created during Sprint 2 cannot be scheduled into Sprint 1 -- only Sprint 2 or later.
 
-Unlike the date-to-integer mapping in the demand planning template, this template maps epochs to categorical sprint periods. Each issue is assigned to its earliest eligible sprint based on when it was created:
+**3. Assignment domain with skill constraints.** The `Assignment` decision concept is a cross-product of developers, issues, and sprints, pruned to valid placements only: the developer must have the matching team skill, and the sprint must be at or after the issue's target sprint. Pruning up front keeps the search space tractable by creating variables only where a valid assignment could exist.
 
-```python
-def map_to_sprint(created_at_epoch):
-    for _, sprint in sprints_df.iterrows():
-        if created_at_epoch < sprint["startdate"]:
-            return int(sprint["number"])
-        if sprint["startdate"] <= created_at_epoch < sprint["enddate"]:
-            return int(sprint["number"])
-    return int(sprints_df["number"].max())
+**4. Binary assignment variables and constraints.** Each valid placement gets a binary variable (1 = assigned). Two constraints govern the solve: each issue is assigned exactly once, and each developer's assigned story points per sprint stay within capacity scaled by the scenario's `capacity_multiplier`.
 
-filtered_issues["target_sprint_number"] = filtered_issues["created_at"].apply(map_to_sprint)
-```
+**5. Weighted completion time objective.** The objective minimizes a weighted sum where higher-priority issues (lower priority number) cost more when placed in later sprints -- a priority-1 issue in Sprint 4 costs `(4-1+1) * 4 = 12`, a priority-3 issue in Sprint 4 costs `(4-3+1) * 4 = 8`. This pushes the most urgent work into the earliest sprints.
 
-Issues created during Sprint 2 cannot be assigned to Sprint 1 (only Sprint 2 or later). Issues created before `planning_start` are excluded by the epoch filter in step 1.
-
-### 3. Assignment domain with skill constraints
-
-The `Assignment` concept is a cross-product of developers, issues, and sprints, filtered by two conditions: the developer must have the matching team skill, and the sprint must be at or after the issue's target sprint:
-
-```python
-Assignment = Concept("Assignment")
-Assignment.developer = Property(f"{Assignment} has {Developer}", short_name="developer")
-Assignment.issue = Property(f"{Assignment} has {Issue}", short_name="issue")
-Assignment.sprint = Property(f"{Assignment} has {Sprint}", short_name="sprint")
-
-model.define(
-    Assignment.new(developer=Developer, issue=Issue, sprint=Sprint)
-).where(
-    Skill.developer_id == Developer.id,
-    Skill.team == Issue.team,
-    Sprint.number >= Issue.target_sprint_number,
-)
-```
-
-This dramatically reduces the search space by only creating assignment variables where a valid assignment could exist.
-
-### 4. Binary assignment variables and constraints
-
-Each valid assignment gets a binary variable (1 = assigned, 0 = not assigned). The "each issue assigned exactly once" constraint is defined once as a named expression, while the capacity constraint references a `capacity_multiplier` that varies per scenario:
-
-```python
-problem.solve_for(
-    Assignment.x_assigned,
-    type="bin",
-    name=["assign", Assignment.issue.key, Assignment.developer.name, Assignment.sprint.name],
-)
-
-# Static constraint: each issue assigned exactly once
-issue_once = model.require(
-    sum(Assignment.x_assigned).per(Issue) == 1
-).where(Assignment.issue == Issue)
-problem.satisfy(issue_once)
-
-# Parameterized constraint: developer capacity per sprint (references capacity_multiplier)
-problem.satisfy(model.require(
-    sum(Assignment.x_assigned * Assignment.issue.story_points).per(Developer, Sprint)
-    <= Developer.capacity_points_per_sprint * capacity_multiplier
-).where(Assignment.developer == Developer, Assignment.sprint == Sprint))
-```
-
-### 5. Weighted completion time objective
-
-The objective minimizes a weighted sum where high-priority issues (lower priority number) incur a higher cost when placed in later sprints. It is defined once and reused across scenario iterations:
-
-```python
-max_priority = 3
-weighted_completion = sum(
-    Assignment.x_assigned
-    * (max_priority + 1 - Assignment.issue.priority)
-    * Assignment.sprint.number
-)
-problem.minimize(weighted_completion)
-```
-
-A priority-1 issue in Sprint 4 costs `(4-1+1) * 4 = 12`, while a priority-3 issue in Sprint 4 costs `(4-3+1) * 4 = 8`. This pushes the most urgent work into the earliest sprints.
+For the implementation, see `sprint_scheduling.py`; to reproduce it step by step with the RAI skills, follow `runbook.md`.
 
 ## Customize this template
 

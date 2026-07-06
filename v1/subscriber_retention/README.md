@@ -45,6 +45,7 @@ Built using the **graph reasoner** (PageRank on the call graph) and the **predic
 ## What's included
 
 - **Runner**: `subscriber_retention.py` — runs the full Graph-feature + GNN-regression pipeline plus reporting on the bundled CSVs
+- **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - **Model**: `Subscriber` (with denormalized plan attributes), `Call` (edge-intermediary for the call graph), and three task-table concepts (`TrainTable`, `ValTable`, `TestTable`) carrying the churn-risk labels
 - **Sample data**: small telco subset (subscribers + plans + call detail records); see [Sample data](#sample-data) below
 - **Outputs**: subscriber/call counts, churn-risk distribution, GNN training/prediction metrics, top-5 highest-risk subscribers per segment, test-set RMSE
@@ -169,7 +170,7 @@ Test-set RMSE: 0.1386
         └── billing_events.csv      # billing-cycle records (not used by the default pipeline; available for customization)
 ```
 
-**Start here**: run `python subscriber_retention.py` for the full graph-feature, GNN-regression, and reporting pipeline end to end.
+**Start here**: run `python subscriber_retention.py` for the full graph-feature, GNN-regression, and reporting pipeline end to end, or follow `runbook.md` to reproduce it step by step with the RAI skills.
 
 ## Sample data
 
@@ -195,37 +196,7 @@ About the bundled mini set:
 
 **Important invariants**: `churn_risk_score` is a fraction in `[0, 1]` (the regression target); every `Call`'s `caller_sub_id` and `callee_sub_id` must resolve to an existing `Subscriber.sub_id`; each subscriber row carries exactly one denormalized plan (1:1 join); `sub_id`, `postal_code`, and the target are dropped from the feature set before training.
 
-### Concepts
-
-**Subscriber** — one customer row with denormalized plan attributes and demographics; enriched at pipeline time with graph and call-volume features, then scored by the GNN.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `sub_id` | string | Yes | Unique per customer; dropped from features (graph carries identity) |
-| `subscriber_type` | string | No | Categorical feature |
-| `segment` | string | No | Categorical feature; drives the stratified split and top-N report |
-| `status` | string | No | Categorical feature |
-| `plan_type` | string | No | Categorical feature; denormalized from the contract |
-| `auto_renew` | string | No | Categorical feature; denormalized from the contract |
-| `lifetime_value_usd` | float | No | Continuous feature |
-| `monthly_rate_usd` | float | No | Continuous feature; denormalized from the contract |
-| `early_termination_fee_usd` | float | No | Continuous feature |
-| `nps_score` | integer | No | Integer feature |
-| `data_limit_gb` | integer | No | Integer feature; denormalized from the contract |
-| `term_months` | integer | No | Integer feature; denormalized from the contract |
-| `signup_date` | datetime | No | Datetime feature |
-| `postal_code` | integer | No | Dropped (high-cardinality; noise as a feature) |
-| `churn_risk_score` | float | No | Regression target (0-1); dropped from features |
-| `pagerank` | float | No | **Graph stage** PageRank on the call graph |
-| `outgoing_calls`, `incoming_calls` | integer | No | **Graph stage** `count(Call).per(Subscriber)` aggregates |
-| `predictions` | Relationship | — | **Predictive stage** GNN output; `predicted_value` per subscriber |
-
-**Call** — one call-detail record between two subscribers; the edge intermediary for the PageRank graph and the call-volume aggregates. No primary key.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `caller_sub_id` | string | No | Foreign key into `Subscriber.sub_id` (edge source) |
-| `callee_sub_id` | string | No | Foreign key into `Subscriber.sub_id` (edge destination) |
+For the full concept and property definitions, see `subscriber_retention.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ### Pipeline stages
 
@@ -239,118 +210,17 @@ Subscribers + Plans + Call records (bundled CSVs, denormalized to Subscriber)
 
 ## How it works
 
-### 1. Build the call graph
+**1. Build the call graph.** A directed `Subscriber → Subscriber` graph is built with one edge per call record. PageRank runs over it and is bound back to a `Subscriber.pagerank` property, so each subscriber's "social influence" in the call network becomes a continuous feature the GNN can learn from.
 
-A directed `Subscriber → Subscriber` graph with one edge per call record drives the PageRank score:
+**2. Derive call-volume features.** Two count-based rules derive `outgoing_calls` and `incoming_calls` per subscriber via `count(Call).per(Subscriber)` aggregates. These attach to the same `Subscriber` row PageRank is on, so the GNN sees one feature row per subscriber with graph structure and call volume blended in.
 
-```python
-call_graph = Graph(
-    model,
-    directed=True,
-    weighted=False,
-    node_concept=Subscriber,
-    aggregator="sum",
-)
-caller = Subscriber.ref()
-callee = Subscriber.ref()
-call_ref = Call.ref()
-model.define(call_graph.Edge.new(src=caller, dst=callee)).where(
-    call_ref.caller_sub_id == caller.sub_id,
-    call_ref.callee_sub_id == callee.sub_id,
-)
-```
+**3. Declare features and target.** A `PropertyTransformer` declares each feature's type explicitly — categorical, continuous, integer, datetime — and drops the primary key, high-cardinality `postal_code`, and the `churn_risk_score` target from the feature set.
 
-PageRank is bound to a `Subscriber.pagerank` property so it shows up as a continuous feature for the GNN:
+**4. Train and predict.** The split is stratified by `SEGMENT` so each segment's risk distribution carries through train/val/test. The GNN trains as a regression head evaluated with RMSE, then scores the held-out test subscribers; predictions bind back as `Subscriber.predictions` for downstream queries.
 
-```python
-pagerank_rel = call_graph.pagerank()
-Subscriber.pagerank = model.Property(f"{Subscriber} has {Float:pagerank}")
-sub_pr = Subscriber.ref()
-score_pr = Float.ref()
-model.define(sub_pr.pagerank(score_pr)).where(pagerank_rel(sub_pr, score_pr))
-```
+**5. Top-N per segment.** A single declarative query joins predicted risk back to subscriber metadata and groups by segment, surfacing the highest-predicted-risk subscribers a retention team should act on first.
 
-### 2. Derive call-volume features
-
-Two count-based rules derive `outgoing_calls` and `incoming_calls` per subscriber. Each is a Property bound via a `count(Call).per(Subscriber)` aggregate:
-
-```python
-Subscriber.outgoing_calls = model.Property(f"{Subscriber} has {Integer:outgoing_calls}")
-model.define(
-    Subscriber.outgoing_calls(count(Call).per(Subscriber))
-).where(Call.caller_sub_id == Subscriber.sub_id)
-
-Subscriber.incoming_calls = model.Property(f"{Subscriber} has {Integer:incoming_calls}")
-model.define(
-    Subscriber.incoming_calls(count(Call).per(Subscriber))
-).where(Call.callee_sub_id == Subscriber.sub_id)
-```
-
-These declarative rules feed the same `Subscriber` row that PageRank is attached to, so the GNN sees one feature row per subscriber with everything blended in.
-
-### 3. Declare features and target (PropertyTransformer)
-
-Categorical, continuous, and integer feature types are declared explicitly. PKs and target columns are dropped:
-
-```python
-pt = PropertyTransformer(
-    drop=[Subscriber.sub_id, Subscriber.postal_code, Subscriber.churn_risk_score],
-    category=[Subscriber.subscriber_type, Subscriber.segment, Subscriber.status,
-              Subscriber.plan_type, Subscriber.auto_renew],
-    continuous=[Subscriber.lifetime_value_usd, Subscriber.monthly_rate_usd,
-                Subscriber.early_termination_fee_usd, Subscriber.pagerank],
-    integer=[Subscriber.nps_score, Subscriber.data_limit_gb, Subscriber.term_months,
-             Subscriber.outgoing_calls, Subscriber.incoming_calls],
-    datetime=[Subscriber.signup_date],
-)
-```
-
-### 4. Train and predict (GNN regression)
-
-The split is stratified by `SEGMENT` so each segment's distribution carries through train/val/test. The GNN trains as a regression head with `eval_metric="rmse"`:
-
-```python
-gnn = GNN(
-    exp_database=EXP_DATABASE,
-    exp_schema=EXP_SCHEMA,
-    graph=call_graph,
-    property_transformer=pt,
-    train=Train,
-    validation=Val,
-    task_type="regression",
-    eval_metric="rmse",
-    has_time_column=False,
-    seed=SEED,
-    device="cpu",
-    n_epochs=20,
-    lr=0.005,
-)
-gnn.fit()
-Subscriber.predictions = gnn.predictions(domain=Test)
-```
-
-The prediction is bound back as `Subscriber.predictions` so downstream queries can pull `predicted_value` per subscriber.
-
-### 5. Top-N per segment (Reporting)
-
-A single declarative query joins predicted risk back to subscriber metadata and groups by segment:
-
-```python
-sub_ref = Subscriber.ref()
-risk_ref = Float.ref()
-results_df = (
-    select(
-        sub_ref.sub_id.alias("sub_id"),
-        sub_ref.segment.alias("segment"),
-        sub_ref.subscriber_type.alias("type"),
-        sub_ref.lifetime_value_usd.alias("lifetime_value"),
-        sub_ref.churn_risk_score.alias("actual_risk"),
-        risk_ref.alias("predicted_risk"),
-    )
-    .where(sub_ref.predictions.predicted_value(risk_ref))
-    .to_df()
-)
-```
+For the implementation, see `subscriber_retention.py`; to reproduce it step by step with the RAI skills, follow `runbook.md`.
 
 ## Customize this template
 

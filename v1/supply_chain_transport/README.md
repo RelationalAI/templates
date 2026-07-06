@@ -39,6 +39,7 @@ The model demonstrates several advanced techniques: multi-period inventory flow 
 ## What's included
 
 - `supply_chain_transport.py` -- main script with ontology, formulation, and solver call
+- `runbook.md` -- a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself
 - `data/freight_groups.csv` -- 2 freight groups with inventory/transport/arrival windows
 - `pyproject.toml` -- Python package configuration
 
@@ -108,7 +109,7 @@ The model demonstrates several advanced techniques: multi-period inventory flow 
     └── freight_groups.csv
 ```
 
-**Start here**: run `python supply_chain_transport.py` for the full formulation and solve end to end.
+**Start here**: run `python supply_chain_transport.py` for the full formulation and solve end to end, or follow `runbook.md` to reproduce it step by step with the RAI skills.
 
 ## Sample data
 
@@ -124,82 +125,25 @@ The formulation is built on three concepts: the freight groups loaded from CSV, 
 - **Primary identifiers**: `name` on `FreightGroup` and `TransportType`; integer `seg` on `LTLSegment`.
 - **Important invariants**: window start days are less than or equal to window end days; `inv_start` weights are non-negative; transport-mode indicators and segment activation variables are binary; each freight group ships all inventory out by the end of its inventory window.
 
-### Concepts
-
-**`FreightGroup`** -- a batch of freight with its own inventory, transport, and arrival time windows. The optimization solves for its per-day inventory, shipment quantities, and arrival day.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `name` | String | Yes | Loaded from `data/freight_groups.csv` |
-| `inv_start_t`, `inv_end_t` | Integer | No | Inventory window (first/last day) |
-| `tra_start_t`, `tra_end_t` | Integer | No | Transport (departure) window |
-| `arr_start_t`, `arr_end_t` | Integer | No | Arrival deadline window |
-| `inv_start` | Float | No | Starting inventory weight |
-| `x_inv` | Float | No | Decision: inventory level per day |
-| `z_arr_day` | Float | No | Decision: computed arrival day |
-
-**`TransportType`** -- a shipping mode (truckload or less-than-truckload), defined inline with its transit time.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `name` | String | Yes | `tl` or `ltl` |
-| `transit_time` | Integer | No | Days in transit (TL = 2, LTL = 3) |
-| `x_qty_tra` | Float | No | Decision: quantity shipped per group per day |
-| `y_bin_tra` | Float | No | Decision: binary mode indicator |
-| `x_weight` | Float | No | Decision: total weight shipped per departure day |
-
-**`LTLSegment`** -- a breakpoint in the piecewise-linear less-than-truckload cost curve, defined inline.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `seg` | Integer | Yes | Segment index |
-| `limit` | Float | No | Upper weight bound for the segment |
-| `cost` | Float | No | Per-unit cost within the segment |
-| `x_rem_ltl` | Float | No | Decision: weight routed through this segment per day |
-| `y_bin_ltl` | Float | No | Decision: binary segment-activation indicator |
+For the full concept and property definitions, see `supply_chain_transport.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
-**1. Define freight groups with time windows.** Each freight group has inventory, transport, and arrival windows loaded from CSV:
-
-```python
-FreightGroup = Concept("FreightGroup", identify_by={"name": String})
-FreightGroup.inv_start_t = Property(f"{FreightGroup} has {Integer:inv_start_t}")
-FreightGroup.tra_start_t = Property(f"{FreightGroup} has {Integer:tra_start_t}")
-FreightGroup.inv_start = Property(f"{FreightGroup} has {Float:inv_start}")
+```text
+CSV freight groups + inline modes/segments → decision variables → inventory + mode + arrival constraints → cost objective → solve
 ```
 
-**2. Define transport types and LTL cost segments.** TL and LTL modes are defined inline with transit times. LTL uses a piecewise linear cost structure:
+**1. Define freight groups with time windows.** Each freight group loads from CSV with its inventory, transport (departure), and arrival deadline windows plus a starting inventory weight.
 
-```python
-tl = TransportType.new(name="tl")
-ltl = TransportType.new(name="ltl")
-model.define(tl, tl.transit_time(2))
-model.define(ltl, ltl.transit_time(3))
+**2. Define transport types and LTL cost segments.** The two shipping modes -- truckload (TL, 2-day transit) and less-than-truckload (LTL, 3-day transit) -- are defined inline, along with the LTL cost-curve breakpoints. TL carries a flat per-truck fixed cost; LTL is priced as a piecewise-linear curve the solver walks up as volume grows.
 
-seg1 = LTLSegment.new(seg=1)
-model.define(seg1, seg1.limit(6000.0), seg1.cost(0.18))
-```
+**3. Formulate decision variables.** The solve determines per-day inventory levels, per-mode shipment quantities, binary mode indicators, computed arrival days, and the piecewise LTL segment variables -- indexed over each group's own time windows.
 
-**3. Formulate decision variables.** The model solves for inventory levels, transport quantities, binary mode indicators, arrival days, and piecewise LTL segment variables:
+**4. Add constraints.** Multi-period inventory flow conservation ties each day's inventory to the next day's plus what ships out; big-M coupling links the binary mode indicator to shipment volume; segment-activation logic enforces the LTL piecewise cost; and arrival days derived from departure day plus transit time must land within each group's arrival window.
 
-```python
-problem.solve_for(FreightGroup.x_inv(time_period_ref, x_inv), lower=0,
-    name=["x_inv", FreightGroup.name, time_period_ref],
-    where=[time_period_ref == std.common.range(FreightGroup.inv_start_t, FreightGroup.inv_end_t + 1)])
-```
+**5. Minimize total cost.** The objective combines inventory holding cost, TL fixed cost, and piecewise LTL variable cost, and the MIP is solved end to end.
 
-**4. Add inventory flow conservation.** Inventory on day t equals inventory on day t+1 plus what is shipped out:
-
-```python
-problem.satisfy(model.where(
-    FreightGroup.x_inv(time_period_ref, x_inv_current),
-    FreightGroup.x_inv(time_period_ref + 1, x_inv_next),
-    TransportType.x_qty_tra(FreightGroup, time_period_ref, x_qty_tra),
-).require(x_inv_current == x_inv_next + sum(x_qty_tra).per(FreightGroup, time_period_ref)))
-```
-
-**5. Minimize total cost.** The objective combines inventory holding costs, TL fixed costs, and piecewise LTL variable costs.
+For the implementation, see `supply_chain_transport.py`; to reproduce it step by step with the RAI skills, follow `runbook.md`.
 
 ## Customize this template
 

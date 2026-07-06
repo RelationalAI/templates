@@ -78,6 +78,7 @@ Multi-solution enumeration via `problem.solve(..., solution_limit=K)` is availab
 - `motif_butterfly.py` -- per-hub flow conservation over a decision-selected edge subset.
 - `motif_smurf_army.py` -- pairwise distinct beneficial owners + sum-target + tight time window.
 - `motif_kyc_burst.py` -- cardinality on the chosen subset + tight time window.
+- **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - `data/accounts.csv` -- 90 accounts across 69 beneficial-owner clusters, including two butterfly-cluster hubs (`bo_id=100`, `bo_id=200`), a five-account smurf cohort with pairwise-distinct BOs (`bo_id=1701..1705`), a five-account KYC-mix burst cohort (4 retail + 1 business across 4 jurisdictions), plus dup-BO / out-of-window / over-amount decoys for each motif and 30 unrelated noise accounts.
 - `data/transactions.csv` -- 138 directed transactions: 12 butterfly motif edges, 5 smurf motif edges, 5 KYC-burst motif edges, named decoys / cross-cluster traffic, and 60 noise transactions deterministically generated via `data/generate.py`.
 - `data/generate.py` -- the deterministic generator that produced the bundled CSVs. Re-run only if you change the planted-motif design or want to regenerate at a different size; the template ships its outputs so users don't need to run it.
@@ -198,7 +199,7 @@ Multi-solution enumeration via `problem.solve(..., solution_limit=K)` is availab
     └── generate.py            # deterministic generator (one-time, not runtime)
 ```
 
-**Start here**: run `python motif_butterfly.py` (or `motif_smurf_army.py` / `motif_kyc_burst.py`). Each is self-contained -- it imports the shared ontology from `model_setup.py`, loads the bundled data, and solves its own motif independently.
+**Start here**: run `python motif_butterfly.py` (or `motif_smurf_army.py` / `motif_kyc_burst.py`) for a motif detector end to end, or follow `runbook.md` to reproduce the template step by step with the RAI skills. Each runner is self-contained -- it imports the shared ontology from `model_setup.py`, loads the bundled data, and solves its own motif independently.
 
 ## Sample data
 
@@ -215,82 +216,21 @@ All three runners share one ontology, defined in `model_setup.py`: `Account` ver
 - **Primary identifiers**: integer `id` on `Account`; integer `tx_id` on `Transaction`.
 - **Important invariants**: `Transaction.src` and `Transaction.dst` reference existing accounts; `amount_dollars` is positive; layering edges sit under the `AMOUNT_THRESHOLD_DOLLARS` CTR line (default `$10,000`); `ts_minutes` is non-negative.
 
-**`Account`** -- a bank account, and a vertex in the transaction graph.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | Integer | Yes | Loaded from `data/accounts.csv` |
-| `name` | String | No | Human-readable account name |
-| `bo_id` | Integer | No | Beneficial-owner cluster; accounts sharing a `bo_id` share an owner |
-| `kyc_tier` | String | No | Know-your-customer tier (`retail` / `business` / `private`) |
-| `jurisdiction` | String | No | Account jurisdiction (e.g. `US`, `UK`, `Cayman`) |
-
-Each runner also adds motif-specific decision properties -- e.g. `Account.is_hub` (butterfly), `Account.is_smurf` (smurf army), `Account.is_burst` (KYC-mix burst) -- populated by the solver.
-
-**`Transaction`** -- a directed transfer, and an edge in the graph.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `tx_id` | Integer | Yes | Loaded from `data/transactions.csv` |
-| `src` | `Account` | No | Sending account (from `src_id`) |
-| `dst` | `Account` | No | Receiving account (from `dst_id`) |
-| `amount_dollars` | Integer | No | Transfer amount in USD |
-| `ts_minutes` | Integer | No | Timestamp in minutes; drives the time-window constraints |
-
-Each runner adds a motif-specific edge decision -- e.g. `Transaction.is_motif` (butterfly), `Transaction.is_smurf_tx` (smurf army), `Transaction.is_burst_tx` (KYC-mix burst) -- populated by the solver.
+`Account` carries `name`, `bo_id` (beneficial-owner cluster), `kyc_tier`, and `jurisdiction`; `Transaction` carries `src`, `dst`, `amount_dollars`, and `ts_minutes`. Each runner then adds its own motif-specific decision properties on top -- e.g. `Account.is_hub` / `is_smurf` / `is_burst` and `Transaction.is_motif` / `is_smurf_tx` / `is_burst_tx` -- populated by the solver. For the full concept and property definitions, see `model_setup.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
-The three motifs share an `Account` / `Transaction` ontology defined in `model_setup.py`. Each runner adds its own decision-valued properties, builds its own `Problem`, and constrains it with a different *class* of CSP technique. The "What you'll build" section above lists every constraint per motif; below is the load-bearing CSP IC for each, with the part that rules / paths / graph reasoning cannot express called out explicitly.
+The three motifs share an `Account` / `Transaction` ontology defined in `model_setup.py`. Each runner adds its own decision-valued properties, builds its own `Problem`, and constrains it with a different *class* of CSP technique. The "What you'll build" section above lists every constraint per motif; below is the load-bearing joint condition for each, with the part that rules / paths / graph reasoning cannot express called out explicitly.
 
-### Butterfly: per-vertex aggregate equality over a decision-selected edge subset
+**Butterfly: per-vertex aggregate equality over a decision-selected edge subset.** For every account the solver picks as a hub, the dollars it receives via motif edges must equal what it forwards, within `CONSERVATION_TOLERANCE_DOLLARS`. The constraint is arithmetic over a *decision-selected subset* of edges -- it cannot be evaluated until the solver has chosen which transactions are in the motif and which accounts are hubs. It is written in big-M form so it is active when an account is a hub and vacuous otherwise, with the M coefficient computed from the data. (Big-M rather than half-reification: a half-reified `implies` introduces a free Boolean auxiliary per non-hub account that the solver treats as search space, returning thousands of trivially-distinct solutions; big-M with a data-computed bound has no auxiliary, so enumeration stays clean and the solver exhausts after the data's actual motifs.) A path enumeration sees one walk at a time and never the joint condition; a rules-only encoding can sum-per-vertex but cannot bind that sum to "the chosen subset of edges, where the chosen accounts are hubs."
 
-For every account the solver picks as a hub, the dollar amount it receives via motif edges must equal what it forwards, within `CONSERVATION_TOLERANCE_DOLLARS`. The constraint is arithmetic over a *decision-selected subset* of edges -- it cannot be evaluated until the solver has chosen which transactions are in the motif and which accounts are hubs. Written in big-M form so the constraint is active when `is_hub == 1` and vacuous when `is_hub == 0`, with the M coefficient computed from the data:
+**Smurf army: pairwise constraints over a decision-selected vertex subset.** Among the N chosen smurfs, no two may share a beneficial owner. The constraint is over the *selected* subset, not an edge filter: an account may exist in the same `bo_id` cluster as another, but cannot be a smurf *in the same cohort*. A second account handle lets the constraint range over ordered pairs without double-counting. Pre-filtered pair tables can't bind to "the K-subset the solver itself picks." Combined with sum-equals-target on the chosen smurf-tx amounts and a tight pairwise time window, this motif's CSP shape is two joint conditions on the same chosen subset: the *sum* must hit a known launder target while the *pairwise distinctness* holds on the same chosen set.
 
-```python
-T_out = Transaction.ref()
-conservation_pos_ic = model.where(Transaction.dst == Account, T_out.src == Account).require(
-    sum(Transaction.amount_dollars * Transaction.is_motif).per(Transaction.dst)
-    - sum(T_out.amount_dollars * T_out.is_motif).per(T_out.src)
-    + CONSERVATION_BIG_M * Account.is_hub
-    <= CONSERVATION_TOLERANCE_DOLLARS + CONSERVATION_BIG_M
-)
-```
+**KYC-mix burst: cardinality over a decision-selected vertex subset.** Among the N chosen burst accounts, at least `RETAIL_FLOOR` must be retail-tier. Rules can label each account's tier; only CSP enforces the count *over the selected subset*. The launder-grade burst signature is "K accounts with a retail-tier floor transacting together in a tight window." A graph-pattern matcher can find the time-window cluster but has no way to express "and at least M of the chosen K are retail-tier."
 
-A path enumeration sees one walk at a time and never the joint condition; a rules-only encoding can sum-per-vertex but cannot bind that sum to "the chosen subset of edges, where the chosen accounts are hubs."
+**Solver call and enumeration.** Every runner calls the MiniZinc solver with a `solution_limit`. The variable subconcept returned by `solve_for(...)` exposes a per-solution values relationship; filtering on the chosen rows surfaces what the solver picked, since the populated property reflects only the first solution. These are pure satisfaction problems with no objective, so `status: OPTIMAL` means the solver enumerated all feasible motifs up to `solution_limit` -- not an optimisation verdict -- while `SOLUTION_LIMIT` means the limit was hit before enumeration exhausted (raise `MAX_*_MOTIFS` to surface more).
 
-> We use big-M rather than a half-reified `implies(Account.is_hub == 1, ...)` for this constraint. Half-reification introduces a free Boolean auxiliary per non-hub account that MiniZinc treats as part of the search space, returning thousands of trivially-distinct solutions for the same role/motif assignment. Big-M with a data-computed bound has no auxiliary, so enumeration stays clean and the solver exhausts after the data's actual motifs.
-
-### Smurf army: pairwise constraints over a decision-selected vertex subset
-
-Among the N chosen smurfs, no two may share a beneficial owner. The constraint is over the *selected* subset, not an edge filter: an account is allowed to exist in the same `bo_id` cluster as another, but cannot be a smurf *in the same cohort*. A second `Account.ref()` handle plus the bare `Account` lets the constraint range over ordered pairs, with `Account.id < S2.id` to avoid double-counting:
-
-```python
-S2 = Account.ref()
-distinct_bo_ic = model.where(Account.id < S2.id, Account.bo_id == S2.bo_id).require(
-    Account.is_smurf + S2.is_smurf <= 1
-)
-```
-
-Pre-filtered pair tables can't bind to "the K-subset the solver itself picks." Combined with sum-equals-target on the chosen smurf-tx amounts and a tight pairwise time window, this motif's CSP shape is two joint conditions on the same chosen subset: the *sum* must hit a known launder target while the *pairwise distinctness* holds on the same chosen set.
-
-### KYC-mix burst: cardinality over a decision-selected vertex subset
-
-Among the N chosen burst accounts, at least `RETAIL_FLOOR` must be retail-tier. Rules can label each account's tier; only CSP enforces the count *over the selected subset*:
-
-```python
-retail_floor_ic = model.require(
-    sum(Account.is_burst).where(Account.kyc_tier == "retail") >= RETAIL_FLOOR
-)
-```
-
-The launder-grade burst signature is "K accounts with a retail-tier floor transacting together in a tight window." A graph-pattern matcher can find the time-window cluster but has no way to express "and at least M of the chosen K are retail-tier."
-
-### Solver call and enumeration
-
-Every runner calls `problem.solve("minizinc", time_limit_sec=60, solution_limit=...)`. The variable subconcept returned by `solve_for(...)` exposes a `.values(solution_index, value)` relationship that indexes per-solution outputs; filtering on `value == 1` surfaces the rows the solver picked. The populated property reflects only the first solution, so for multi-solution output the inspect blocks always go through `.values(...)`.
-
-These are pure satisfaction problems with no objective, so `status: OPTIMAL` in the `solve_info().display()` output means the solver enumerated all feasible motifs up to `solution_limit`. It is not an optimisation verdict. `SOLUTION_LIMIT` means the limit was hit before enumeration exhausted -- raise `MAX_*_MOTIFS` to surface more.
+See `model_setup.py` and the three motif runners for the implementation, and `runbook.md` for the skill-driven reproduction.
 
 ## Customize this template
 

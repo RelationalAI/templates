@@ -45,6 +45,7 @@ This template builds compliant, risk-optimized portfolios that avoid that trap, 
 ## What's included
 
 - `portfolio_balancing.py` -- Main script with all four stages: rules-based compliance, covariance clustering (Louvain), bi-objective QP with shadow-price-guided frontier tracing, and crisis-regime stress test
+- **Runbook**: `runbook.md` -- a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - `data/returns.csv` -- Stock universe: index, ticker, sector, expected returns (8 stocks)
 - `data/covar.csv` -- Covariance matrix entries (i, j, covariance value)
 - `data/users.csv` -- User profiles with risk scores
@@ -154,64 +155,9 @@ One shared ontology threads all four stages. Each stage reads properties earlier
 - **Primary identifiers**: integer `index` on `Stock`; integer ids on `User`, `Account`, `Holding`, `Transaction`; string `sector_name` on `Sector`, `regime_name` on `Regime`, `name` on `Scenario`; composite key (`scenario_label` + `eps_label`) on `FrontierPoint`.
 - **Important invariants**: the covariance matrix is symmetric and positive semi-definite; expected returns and balances are per-row data; `Stock.correlation` and `Stock.regime_covar` are derived in PyRel from the base covariance; non-representative stocks are forced to zero allocation at solve time.
 
-### Concepts
+The derived concepts the optimization stages build are `Regime` (`base` / `crisis`), `Scenario` (a `(budget, regime)` tuple — three budgets × two regimes give six tuples so one epsilon solve prices every combination at once), and `FrontierPoint` (a materialized Pareto point with return, risk, marginal, and knee flag).
 
-**`Stock`** — a security in the investable universe. Loaded from `returns.csv` and `covar.csv`; Stages 2-4 enrich it with clustering, Sharpe, representative, and regime-covariance properties.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `index` | Integer | Yes | Row index from `data/returns.csv` |
-| `ticker`, `sector` | String | No | Loaded from CSV |
-| `returns` | Float | No | Expected return |
-| `covar` | Float (pairwise) | No | `covar(Stock, Stock)` — base covariance entry |
-| `variance`, `volatility` | Float | No | **Stage 2** derived from the covariance diagonal |
-| `correlation` | Float (pairwise) | No | **Stage 2** derived `covar(i,j) / (vol_i * vol_j)` |
-| `cluster` | Integer | No | **Stage 2** Louvain community id |
-| `sharpe`, `cluster_max_sharpe` | Float | No | **Stage 2** Sharpe ratio and per-cluster max |
-| `is_representative` | Relationship | — | **Stage 2** highest-Sharpe stock in its cluster |
-| `is_non_representative` | Relationship | — | **Stage 2** complement (forced to zero in Stage 3) |
-| `regime_covar` | Float (pairwise, per `Regime`) | No | **Stage 4** base or PSD-preserving crisis covariance |
-| `x_quantity` | Decision (per `Scenario`) | — | **Stage 3** continuous allocation variable |
-
-**`User`** — an account holder. Stage 1 flags high-risk traders.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `user_id` | Integer | Yes | From `data/users.csv` |
-| `user_name` | String | No | Human-readable name |
-| `risk_score` | Float | No | Used by the high-risk-trader rule |
-| `is_high_risk_trader` | Relationship | — | **Stage 1** derived flag |
-
-**`Account`** — a portfolio account owned by a user.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `account_id` | Integer | Yes | From `data/accounts.csv` |
-| `account_type` | String | No | Loaded from CSV |
-| `balance` | Float | No | Denominator for concentration rules |
-| `user` | Relationship | — | Links to the owning `User` |
-
-**`Holding`** — a position: a stock held in an account. Stage 1 flags overconcentration.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `holding_id` | Integer | Yes | From `data/holdings.csv` |
-| `quantity`, `purchase_price` | Float | No | Loaded from CSV |
-| `value` | Float | No | **Stage 1** derived `quantity * purchase_price` |
-| `account`, `stock` | Relationship | — | Links to `Account` and `Stock` |
-| `is_overconcentrated`, `is_sector_concentrated` | Relationship | — | **Stage 1** derived flags |
-
-**`Transaction`** — a booked transaction, read by the high-risk-trader rule.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `transaction_id` | Integer | Yes | From `data/transactions.csv` |
-| `amount` | Float | No | Loaded from CSV |
-| `category` | String | No | Loaded from CSV |
-| `is_flagged_val` | Integer | No | 0/1 flag summed per user |
-| `user` | Relationship | — | Links to the placing `User` |
-
-**`Regime`** (`base` / `crisis`), **`Scenario`** (a `(budget, regime)` tuple), and **`FrontierPoint`** (a materialized Pareto point with return, risk, marginal, and knee flag) are the derived concepts the optimization stages build. `Scenario` combines three budgets and two regimes into six tuples so one epsilon solve prices every combination at once.
+For the full concept and property definitions — including every property each stage writes onto `Stock` — see `portfolio_balancing.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
@@ -241,242 +187,27 @@ Each stage writes derived properties the next reads directly. Stage 1's threshol
 
 ### Stage 1: Rules-based compliance analysis
 
-The first stage defines compliance flags as RAI derived properties and Relationships. The model loads portfolio data (users, accounts, holdings, transactions) alongside the stock universe, then evaluates three rules using two configurable thresholds:
+The first stage defines compliance flags as RAI derived properties and Relationships. The model loads portfolio data (users, accounts, holdings, transactions) alongside the stock universe, then evaluates three rules using two configurable thresholds — `POSITION_LIMIT` (max fraction of budget per stock, default 0.15) and `SECTOR_LIMIT` (max fraction per sector, default 0.30):
 
-```python
-POSITION_LIMIT = 0.15   # max fraction of budget per stock
-SECTOR_LIMIT = 0.30     # max fraction of budget per sector
-```
-
-**Rule 1 -- Overconcentrated holdings**: a holding whose value exceeds `POSITION_LIMIT` of the account balance. The holding value is a derived property:
-
-```python
-Holding.value = model.Property(f"{Holding} has value {Float:holding_value}")
-model.define(Holding.value(Holding.quantity * Holding.purchase_price))
-
-Holding.is_overconcentrated = model.Relationship(f"{Holding} is overconcentrated")
-AccountR1 = Account.ref()
-model.where(
-    Holding.account(AccountR1),
-    Holding.value > POSITION_LIMIT * AccountR1.balance,
-).define(Holding.is_overconcentrated())
-```
-
-**Rule 2 -- Sector concentration**: total holdings in a sector exceeding `SECTOR_LIMIT` of the account balance. Uses aggregation to sum holding values per (account, sector):
-
-```python
-sector_exposure = sum(HoldingSC.value).where(
-    HoldingSC.account(AccountSC),
-    HoldingSC.stock(StockSC),
-    StockSC.sector_ref(SectorSC),
-).per(AccountSC, SectorSC)
-
-model.where(
-    Holding.account(AccountSC),
-    Holding.stock(StockR2),
-    StockR2.sector_ref(SectorSC),
-    sector_exposure > SECTOR_LIMIT * AccountSC.balance,
-).define(Holding.is_sector_concentrated())
-```
-
-**Rule 3 -- High-risk traders**: users with `risk_score > 0.8` and more than 5 flagged transactions. Flagged transaction count is computed via aggregation:
-
-```python
-flagged_count = sum(TransactionHR.is_flagged_val).where(
-    TransactionHR.user(User),
-).per(User)
-
-model.where(
-    User.risk_score > 0.8,
-    flagged_count > 5,
-).define(User.is_high_risk_trader())
-```
+- **Rule 1 — Overconcentrated holdings**: flag any holding whose value (a derived `quantity × purchase_price`) exceeds `POSITION_LIMIT` of its account balance.
+- **Rule 2 — Sector concentration**: sum holding values per (account, sector) and flag every holding in a sector whose total exceeds `SECTOR_LIMIT` of the account balance.
+- **Rule 3 — High-risk traders**: flag users with `risk_score > 0.8` and more than 5 flagged transactions (the flagged count is an aggregation per user).
 
 ### Stage 2: Graph -- covariance clustering
 
-Volatility and correlation are derived in PyRel from the base covariance, so the ontology is the single source of truth for every similarity metric. `Stock.variance` picks the covariance diagonal, `Stock.volatility` applies `sqrt(variance)` via `relationalai.semantics.std.math.sqrt`, and `Stock.correlation(i, j) = covar(i, j) / (vol_i * vol_j)`:
+Volatility and correlation are derived in PyRel from the base covariance, so the ontology is the single source of truth for every similarity metric: `variance` is the covariance diagonal, `volatility` is its square root, and `correlation(i, j) = covar(i, j) / (vol_i · vol_j)`. The graph reasoner then builds an undirected graph over `Stock`, with edges filtered directly against the derived correlation — an edge exists between two stocks whose absolute correlation clears `CORR_THRESHOLD`, so no upstream edge list is needed.
 
-```python
-Stock.volatility = model.Property(f"{Stock} has {Float:stock_volatility}")
-model.define(Stock.volatility(sqrt(Stock.variance)))
-
-Stock.correlation = model.Property(
-    f"{Stock} and {Stock} have correlation {Float:stock_correlation}"
-)
-PairedStockCorr = Stock.ref()
-cov_ij_ref = Float.ref()
-model.where(
-    Stock.covar(PairedStockCorr, cov_ij_ref),
-).define(
-    Stock.correlation(
-        PairedStockCorr,
-        cov_ij_ref / (Stock.volatility * PairedStockCorr.volatility),
-    )
-)
-```
-
-The `Graph` reasoner builds an undirected graph with `Stock` as the node concept. Edges are filtered in PyRel directly against the derived correlation property -- no upstream edge list required:
-
-```python
-corr_graph = Graph(
-    model,
-    directed=False,
-    weighted=False,
-    node_concept=Stock,
-    aggregator="sum",
-)
-
-stock_i_ref = Stock.ref()
-stock_j_ref = Stock.ref()
-corr_ref = Float.ref()
-model.define(corr_graph.Edge.new(src=stock_i_ref, dst=stock_j_ref)).where(
-    stock_i_ref.correlation(stock_j_ref, corr_ref),
-    stock_i_ref.index < stock_j_ref.index,
-    math_abs(corr_ref) >= CORR_THRESHOLD,
-)
-```
-
-Louvain community detection runs directly on the graph and returns (node, cluster_id) pairs. The cluster id is persisted as a `Stock` property so downstream stages can consume it:
-
-```python
-community = corr_graph.louvain()
-cluster_label = Integer.ref("cluster_label")
-Stock.cluster = model.Property(f"{Stock} in cluster {Integer:cluster_id}")
-stock_clust_ref = Stock.ref()
-model.define(stock_clust_ref.cluster(cluster_label)).where(
-    community(stock_clust_ref, cluster_label)
-)
-```
-
-The script reports cluster sizes and intra- vs inter-cluster average correlation as a sanity check that the clustering separates co-moving stocks from independent ones.
-
-After clustering, Stage 2 picks one representative per cluster -- the stock with the highest Sharpe ratio -- using per-group argmax in PyRel. Only the representatives will be eligible for allocation in Stage 3:
-
-```python
-Stock.sharpe = model.Property(f"{Stock} has Sharpe {Float:stock_sharpe}")
-model.define(Stock.sharpe(Stock.returns / Stock.volatility))
-
-peer_for_max = Stock.ref()
-Stock.cluster_max_sharpe = model.Property(
-    f"{Stock} has cluster max Sharpe {Float:cluster_max_sharpe}"
-)
-model.define(
-    Stock.cluster_max_sharpe(
-        aggs.max(peer_for_max.sharpe)
-        .where(peer_for_max.cluster == Stock.cluster)
-        .per(Stock)
-    )
-)
-
-Stock.is_representative = model.Relationship(f"{Stock} is cluster representative")
-model.where(Stock.sharpe == Stock.cluster_max_sharpe).define(
-    Stock.is_representative()
-)
-```
+Louvain community detection runs on that graph and the resulting cluster id is persisted as a `Stock` property. The script reports cluster sizes and intra- vs inter-cluster average correlation as a sanity check that co-moving stocks group together. Finally, Stage 2 picks one representative per cluster — the highest-Sharpe stock (`returns / volatility`), via per-group argmax — and only those representatives are eligible for allocation in Stage 3. Singletons are their own representative.
 
 ### Stage 3: Bi-objective optimization
 
-#### Scenario concept and decision variables
+**Scenarios and decision variables.** Stage 3 consumes the representative flag from Stage 2 and adds budget-and-regime scenarios, regime-conditioned covariance, and the decision variables. A `Scenario` combines a budget and a regime, so the six `(budget, regime)` tuples are all priced in one epsilon solve. Each stock carries a continuous quantity variable indexed by `Scenario`.
 
-The `Stock` concept (defined earlier for all stages) carries ticker, sector, expected returns, and the base covariance matrix. Stage 2 added `Stock.variance`, `Stock.volatility`, `Stock.correlation`, `Stock.cluster`, `Stock.sharpe`, `Stock.cluster_max_sharpe`, `Stock.is_representative`, and `Stock.is_non_representative` on top. Stage 3 consumes the representative flag via its compliance constraints, and adds budget-and-regime scenarios, regime-conditioned covariance, and decision variables.
+**Constraints.** Three constraints shape the allocation: a position cap (each representative ≤ `REP_POSITION_LIMIT` of budget), a sector cap (total allocation per sector ≤ `SECTOR_LIMIT` of budget), and a representative-only filter that forces every non-representative stock to zero — this is how the graph stage's redundancy removal shows up at solve time. The complement (`is_non_representative`) is defined positively because the prescriptive rewriter can't accept a negation inside a solver constraint.
 
-Scenarios combine budget and regime so each epsilon solve handles all six (budget, regime) combinations simultaneously:
+**Objective.** The risk objective is quadratic in the decision variables and uses the regime-conditioned covariance, so each scenario solves against its own regime's covariance in the same call.
 
-```python
-Regime = model.Concept("Regime", identify_by={"regime_name": String})
-model.define(Regime.new(regime_name="base"))
-model.define(Regime.new(regime_name="crisis"))
-
-Scenario = model.Concept("Scenario", identify_by={"name": String})
-Scenario.budget = model.Property(f"{Scenario} has {Float:budget}")
-Scenario.regime = model.Property(f"{Scenario} in {Regime}")
-scenario_data = model.data(
-    [
-        ("base_500", 500, "base"),
-        ("base_1000", 1000, "base"),
-        ("base_2000", 2000, "base"),
-        ("crisis_500", 500, "crisis"),
-        ("crisis_1000", 1000, "crisis"),
-        ("crisis_2000", 2000, "crisis"),
-    ],
-    columns=["name", "budget", "regime"],
-)
-model.define(
-    s := Scenario.new(name=scenario_data["name"]),
-    s.budget(scenario_data["budget"]),
-)
-# Link Scenario to Regime by matching the regime name from the data.
-scenario_link_ref = Scenario.ref()
-regime_link_ref = Regime.ref()
-model.where(
-    scenario_link_ref.name == scenario_data["name"],
-    regime_link_ref.regime_name == scenario_data["regime"],
-).define(scenario_link_ref.regime(regime_link_ref))
-```
-
-#### Define decision variables, constraints, and objective
-
-Each stock gets a continuous quantity variable indexed by Scenario (multi-argument Property).
-
-```python
-Stock.x_quantity = model.Property(f"{Stock} in {Scenario} has {Float:quantity}")
-x_qty = Float.ref()
-```
-
-Two concentration limits plus a representative-only filter are added via `_add_compliance_constraints`. Position and sector caps behave as before; the `Stock.is_non_representative()` relation forces every non-representative stock to zero allocation, which is how the graph stage's redundancy removal shows up at solve time. The complement is defined positively because the prescriptive rewriter can't accept `model.not_(...)` inside a solver constraint:
-
-```python
-def _add_compliance_constraints(problem):
-    # Position limit: each representative <= REP_POSITION_LIMIT * budget.
-    problem.satisfy(model.where(
-        Stock.x_quantity(Scenario, x_qty),
-    ).require(x_qty <= REP_POSITION_LIMIT * Scenario.budget))
-
-    # Sector limit: total allocation to stocks in same sector <= SECTOR_LIMIT * budget.
-    sector_alloc = sum(x_qty).where(
-        Stock.x_quantity(Scenario, x_qty),
-        Stock.sector == s_sector_ref.sector,
-    ).per(Scenario, s_sector_ref.sector)
-    problem.satisfy(model.where(
-        Stock.x_quantity(Scenario, x_qty),
-    ).require(sector_alloc <= SECTOR_LIMIT * Scenario.budget))
-
-    # Representative-only: non-representative stocks forced to zero.
-    problem.satisfy(model.where(
-        Stock.x_quantity(Scenario, x_qty),
-        Stock.is_non_representative(),
-    ).require(x_qty == 0))
-```
-
-The risk objective is quadratic in the decision variables and uses the regime-conditioned covariance: each Scenario picks its matching regime's covariance, so base and crisis scenarios solve against different covariances in the same call.
-
-```python
-problem.minimize(
-    sum(regime_cov_val * x_qty * x_qty_paired)
-    .where(
-        Stock.regime_covar(PairedStock, Scenario.regime, regime_cov_val),
-        Stock.x_quantity(Scenario, x_qty),
-        PairedStock.x_quantity(Scenario, x_qty_paired),
-    )
-)
-```
-
-#### Solve anchors, then trace the frontier with shadow prices
-
-Two anchor solves establish the feasible return range. Anchor 1 minimizes risk with no return constraint; Anchor 2 maximizes return. The span is measured on a single reference scenario (`base_1000`).
-
-```python
-result1 = solve_epsilon(eps_rate=None)   # min-risk anchor
-```
-
-Each interior solve minimizes variance subject to a return-target floor and requests sensitivity information, so HiGHS returns the return constraint's **dual** -- the shadow price. By the envelope theorem that dual is exactly the frontier's local slope d(variance)/d(return), so one solve yields both a Pareto point and the slope there, with no finite differencing.
-
-```python
-problem.solve("highs", time_limit_sec=60, sensitivity=True)
-# shadow_price = dual of the return-floor constraint = d(variance)/d(return)
-```
-
-Sign convention: minimizing variance subject to `return >= target`, the dual is non-negative with units of variance per unit return, and it rises monotonically along the frontier (variance gets more expensive as you demand more return).
+**Anchors, then shadow-price-guided frontier tracing.** Two anchor solves bracket the feasible return range (min-risk with no return floor, then max-return), measured on the reference scenario `base_1000`. Each interior solve then minimizes variance subject to a return-target floor and requests sensitivity, so HiGHS returns the return constraint's **dual** — the shadow price. By the envelope theorem that dual is exactly the frontier's local slope d(variance)/d(return), so one solve yields both a Pareto point and its slope with no finite differencing. The dual is non-negative (variance per unit return) and rises monotonically along the frontier as return gets more expensive.
 
 Three drivers spend the same solve budget differently and are compared head-to-head:
 
@@ -486,42 +217,15 @@ Three drivers spend the same solve budget differently and are compared head-to-h
 
 Quality is scored by **max chord-gap**: the largest variance error of linearly interpolating between solved points. At equal 6-solve budget the dual-guided drivers win decisively (dichotomic 202 vs grid 558), because the duals tell the search where the frontier curves most.
 
-#### Pareto analysis output
-
-The script prints the three-driver quality comparison, the shadow-price-vs-secant table (each exact dual next to the finite-difference slope it brackets), the efficient frontier per (budget, regime) scenario, and programmatic knee detection at the last point before the exact dual's largest ratio jump (where diminishing returns accelerate, not where the absolute dual is highest). The dichotomic frontier is materialized as the `FrontierPoint` Concept, with integrity constraints asserting that neither return nor risk decreases along it -- a relational statement of Pareto-efficiency.
+**Pareto analysis output.** The script prints the three-driver quality comparison, the shadow-price-vs-secant table (each exact dual next to the finite-difference slope it brackets), the efficient frontier per (budget, regime) scenario, and programmatic knee detection at the last point before the exact dual's largest ratio jump (where diminishing returns accelerate, not where the absolute dual is highest). The dichotomic frontier is materialized as the `FrontierPoint` Concept, with integrity constraints asserting that neither return nor risk decreases along it -- a relational statement of Pareto-efficiency.
 
 ### Stage 4: Crisis regime stress test
 
-Crisis covariance is derived in PyRel via PSD-preserving correlation shrinkage, keyed by a `Regime` concept. The shrinkage formula `rho_crisis = alpha * rho + (1 - alpha) * J` re-expressed in covariance units becomes `cov_crisis(i, j) = alpha * cov(i, j) + (1 - alpha) * vol_i * vol_j` -- a convex combination of PSD matrices, so PSD is preserved by construction:
-
-```python
-Stock.regime_covar = model.Property(
-    f"{Stock} and {Stock} in {Regime} have {Float:regime_covar}"
-)
-
-# Base regime: covariance unchanged.
-model.where(
-    Stock.covar(PairedStockBase, base_cov_ref),
-    base_regime_ref.regime_name == "base",
-).define(Stock.regime_covar(PairedStockBase, base_regime_ref, base_cov_ref))
-
-# Crisis regime: convex combination of base covariance and vol_i * vol_j.
-model.where(
-    Stock.covar(PairedStockCrisis, crisis_cov_ref),
-    crisis_regime_ref.regime_name == "crisis",
-).define(
-    Stock.regime_covar(
-        PairedStockCrisis,
-        crisis_regime_ref,
-        CRISIS_ALPHA * crisis_cov_ref
-        + (1 - CRISIS_ALPHA) * Stock.volatility * PairedStockCrisis.volatility,
-    )
-)
-```
-
-Both regimes live on the same `Stock.regime_covar` property, keyed by the `Regime` concept, so Stage 3's objective can select the right covariance per scenario without branching:
+Crisis covariance is derived in PyRel via PSD-preserving correlation shrinkage, keyed by the `Regime` concept. The shrinkage formula `rho_crisis = alpha · rho + (1 - alpha) · J`, re-expressed in covariance units, becomes `cov_crisis(i, j) = alpha · cov(i, j) + (1 - alpha) · vol_i · vol_j` — a convex combination of PSD matrices, so positive semi-definiteness is preserved by construction. The base regime leaves covariance unchanged. Both regimes live on the same `regime_covar` property keyed by `Regime`, so Stage 3's objective selects the right covariance per scenario without branching.
 
 After the Stage 3 frontier is traced, Stage 4 emits a side-by-side comparison of base and crisis volatility (`sqrt(risk)`) at each frontier point, grouped by budget. Crisis volatility is consistently ~22-30% higher than base. The gap peaks in the middle of the frontier (p1 at +29.6%) and narrows toward the concentrated end (p5 at +21.7%). That shape is the payoff of the representative-only universe: at the concentrated end the optimizer is picking the highest-Sharpe distinct bet per cluster (Energy and Consumer Staples in this dataset), which happen to have lower crisis correlations than the middle of the frontier. Without the representative collapse, the concentrated end would stack near-duplicates and the crisis gap would grow instead of shrink.
+
+For the exact PyRel formulation of all four stages, see `portfolio_balancing.py`; `runbook.md` reproduces them step by step with the RAI skills.
 
 ## Customize this template
 

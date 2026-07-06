@@ -36,6 +36,7 @@ Use language that’s accessible to a broad audience.
 
 - **Model**: (what logic/relations are implemented)
 - **Runner**: (how to execute: Python script / CLI commands / notebook)
+- **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills. The recommended way to learn how it is built; as important a reference as the script itself.
 - **Sample data**: (what it represents)
 - **Outputs**: (what results are produced and where)
 
@@ -114,7 +115,7 @@ Provide a short annotated tree. Keep it to the top level and the most important 
 └─ ...
 ```
 
-**Start here**: point to the one command/script that runs end-to-end.
+**Start here**: name the one command/script that runs end-to-end, and point to `runbook.md` to reproduce the template step by step with the RAI skills.
 
 ## Sample data
 
@@ -122,51 +123,17 @@ Describe what the sample data represents, and any important notes about its stru
 
 ## Model overview
 
-Describe the main entities and the most important relationships.
+Give the reader the shape of the model at a glance — the README is the map, not the schema. Keep this to the three intro bullets; the full concept-and-property definitions live in the script, so don't restate them here.
 
-- **Key entities**: (e.g., `product`, `warehouse`, `lane`)
+- **Key entities**: (e.g., `product`, `warehouse`, `lane`) — name the concepts and, in a phrase each, what they represent
 - **Primary identifiers**: what uniquely identifies each entity
 - **Important invariants**: (e.g., demand non-negative; capacity limits)
 
-Document the data model concept-by-concept.
-
-### Concepts (one table per concept)
-
-For each key concept/type:
-
-1. Write a brief sentence *outside the table* describing what the concept represents and how it’s used.
-2. Add a table with **one row per property**.
-
-Suggested table shape:
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `product_id` | int | Yes | Loaded from `data/products.csv` |
-| `name` | string | No | Human-readable name |
-| `category` | string | No | Used for grouping/filters |
-
-Repeat this table for each concept (e.g., `product`, `warehouse`, `lane`).
-
-### Relationships (only if there are non-property relations)
-
-Only include a Relationships table if the model defines relations **beyond concept properties** (e.g., standalone predicates like `demand(product, date, units)` or recursive relations).
-
-| Relationship | Schema (reading string fields) | Notes |
-|---|---|---|
-| `demand(product, date, units)` | `product`, `date`, `units` | Units are weekly; non-negative |
-| `lane(source, destination, capacity)` | `source`, `destination`, `capacity` | Capacity is per day |
+For the full concept and property definitions, read `<template>.py`; to see them built step by step with the RAI skills, follow `runbook.md`.
 
 ## How it works
 
-Give a short, end-to-end walkthrough of the template, with relevant code examples. Example:
-
-- Ingest sample CSVs into relations
-- Derive intermediate relations (feature engineering / aggregations)
-- Apply constraints/objective (if optimization)
-- Compute outputs (recommended actions / assignments)
-- Export results to CSV / print summary
-
-If helpful, add a small diagram:
+Give a short, plain-language walkthrough of the chain — what each stage reads and produces and why — so a reader understands the flow without opening the code. Keep code out of this section: point to the script for the implementation and to `runbook.md` for the skill-driven reproduction. One small flow diagram is welcome:
 
 ```text
 CSV inputs → load → base relations → model logic → results → export

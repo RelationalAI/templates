@@ -200,79 +200,7 @@ One shared ontology threads all four stages: each stage reads concepts and prope
 - **Primary identifiers**: string ids on `DataCenterRequest`, `GpuPool`, `AILab`, and `Workload`; the scenario concepts are identified by `name`; `WorkloadGpuCompat`, `WorkloadDependency`, `Compatibility`, and `Assignment` carry composite keys.
 - **Important invariants**: `envelope_multiplier`, `fraction`, and `anchor_max_share` are fractions; a negative sentinel on `MarginFloor.fraction` / `DiversityCap.anchor_max_share` marks the unconstrained row (its constraint is skipped); the `is_high_utilization` label is binary; `Assignment.x_assign` decision variables are binary; power / cost / GPU counts are non-negative.
 
-### `DataCenterRequest`
-
-A campus in the fleet, loaded from `data/data_centers.csv`. Carries the power envelope and energy cost the Stage 4 constraints read.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | String | Yes | Loaded from `data/data_centers.csv` |
-| `name`, `hyperscaler` | String | No | Campus and operator name |
-| `requested_mw`, `approved_mw` | Float | No | Power envelope (set to `approved_mw` from the upstream template) |
-| `pue` | Float | No | Power usage effectiveness, multiplies GPU power draw |
-| `dollars_per_mwh` | Float | No | Energy cost, feeds the Stage 4 margin constraint |
-
-### `GpuPool`
-
-A pool of identical GPUs at one campus. The generational layer cake — H100 / H200 / GB200 — sits here.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | String | Yes | Loaded from `data/gpu_pools.csv` |
-| `data_center` | DataCenterRequest | — | Relationship to the parent campus |
-| `gpu_type` | String | No | `H100` / `H200` / `GB200` |
-| `gpu_count`, `available_gpu_count` | Integer | No | Pool size and free capacity |
-| `mem_per_gpu_gb` | Integer | No | Per-GPU memory, checked against workload requirements |
-| `interconnect` | String | No | Fabric type |
-| `power_per_gpu_kw` | Float | No | Feeds the power-envelope constraint |
-| `hourly_depreciation_rate` | Float | No | Per-GPU depreciation, feeds the margin constraint |
-
-### `AILab`
-
-A customer renting compute. The contract tier and anchor flag drive priority weighting and the diversity cap.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | String | Yes | Loaded from `data/ai_labs.csv` |
-| `name`, `lab_type` | String | No | Lab name; `frontier` / `applied` / `research` |
-| `contract_tier` | String | No | Drives the Stage 2 priority tier (P0 / P1 / P2) |
-| `is_strategic_anchor` | Boolean | No | Drives the Stage 4 anchor-concentration cap |
-| `payment_per_gpu_hour` | Float | No | Rate card input |
-
-### `Workload`
-
-A unit of work to place on a pool — the GNN's prediction target and the MIP's assignment unit. Stages 1-3 enrich it with predicted utilization, priority, and gating signals.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | String | Yes | Loaded from `data/workloads.csv` |
-| `name` | String | No | Human-readable workload name |
-| `lab` | AILab | — | Relationship to the owning lab |
-| `workload_type` | String | No | `pretrain` / `finetune` / `inference` / `eval` |
-| `reservation_model` | String | No | Reservation vs. best-effort |
-| `gpu_count_required`, `mem_required_gb` | Integer | No | Sizing, checked by the Stage 2 eligibility rule |
-| `gpu_type_preferred` | String | No | Preferred generation |
-| `duration_hours` | Float | No | Reservation length |
-| `strategic_value_usd` | Float | No | Raw dollar baseline in the Stage 4 objective |
-| `utilization_probability` | Float | No | **Stage 1** GNN positive-class probability |
-| `is_eligible` | Relationship | — | **Stage 2** eligible on a given `GpuPool` |
-| `priority_tier`, `priority_weight`, `under_provisioning_penalty` | String / Float | No | **Stage 2** priority classification |
-| `gating_score` | Float | No | **Stage 3** reverse-PageRank on the dependency DAG |
-
-### Scenario concepts (`PowerEnvelopeLevel` / `MarginFloor` / `DiversityCap`)
-
-The three axes of the 24-cell sweep. Each is identified by `name` and carries the numeric knob its Stage 4 constraint reads (`envelope_multiplier`, `fraction`, `anchor_max_share` / `workload_type_floor`) plus a display `label`.
-
-### Relationships and derived concepts
-
-- `GpuPool.data_center` -> `DataCenterRequest` — pool sits at a campus.
-- `Workload.lab` -> `AILab` — workload owned by a lab.
-- `WorkloadGpuCompat(workload, gpu_type)` — the per-workload GPU-type allowlist, its own composite-key concept (a multi-valued allowlist on a GNN-node concept must not live as a `Workload` relationship).
-- `WorkloadDependency(predecessor, successor)` with `dependency_type` — the dependency DAG, consumed by both the Stage 1 GNN (heterogeneous edge) and the Stage 3 PageRank.
-- `Compatibility(workload, gpu_pool)` — **Stage 2** derived precompute of eligible pairs that keeps the Stage 4 MIP linear.
-- `Assignment(workload, gpu_pool)` — **Stage 4** decision space; `Assignment.x_assign` is a binary variable indexed by the three scenario concepts, and `Assignment.is_chosen` flags the rows in the persisted baseline cell.
-- `AllocationPlan` — **Stage 4** singleton holding the chosen cell's revenue, cost, margin, anchor share, assignment count, status, and binding axis.
-- `DemandScenario` with `DemandScenarioOutlook` — **Stage 4** overlay replaying the chosen plan under four demand-risk scenarios, persisting realized and stranded revenue per scenario.
+For the full concept and property definitions — the entity concepts, the three scenario concepts, and the derived `Compatibility` / `Assignment` / `AllocationPlan` / `DemandScenario` concepts each stage writes — see `datacenter_compute_allocation.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
@@ -280,145 +208,21 @@ The three axes of the 24-cell sweep. Each is identified by `name` and carries th
 
 Binary node classification on `Workload`: predict the probability that each workload will be high-utilization (actually use its allocated capacity at high duty cycle) vs stall or be repaced. Stranded capacity (depreciation accruing without offsetting revenue) is the operator's biggest economic exposure, so this is the chain's load-bearing forward-looking signal.
 
-The graph is heterogeneous with three cross-concept edge types:
+The graph is heterogeneous with three cross-concept edge types: a `LabMetric → Workload` edge that carries lab-side recent activity into a workload's prediction neighborhood (a workload owned by a fast-ramping lab inherits its signal); the `WorkloadDependency.blocks` DAG shared with Stage 3, so a workload downstream of a high-utilization gating pretrain inherits signal through the dependency chain; and a load-bearing `LabMetric → LabMetric` edge between cross-lab same-date pairs sharing a workload type, which carries cross-lab co-movement (funding waves, supply shocks).
 
-```python
-gnn_graph = Graph(model, directed=False, weighted=False)
-
-# Edge 1: LabMetric -> Workload owned by the same lab.
-# Carries lab-side recent activity into the per-workload prediction
-# neighborhood -- a workload owned by a fast-ramping lab inherits signal.
-model.define(gnn_graph.Edge.new(src=LabMetric, dst=Workload)).where(
-    LabMetric.lab == Workload.lab.name,
-)
-
-# Edge 2: WorkloadDependency.blocks DAG (shared with Stage 3).
-# A workload downstream of a high-utilization gating pretrain inherits
-# signal through the dep chain.
-dep_ref = WorkloadDependency.ref()
-model.define(
-    gnn_graph.Edge.new(src=dep_ref.predecessor, dst=dep_ref.successor)
-).where(dep_ref.dependency_type == "blocks")
-
-# Edge 3: LabMetric -> LabMetric, cross-lab same-date pairs sharing a workload_type.
-# LOAD-BEARING -- carries cross-lab co-movement (funding waves, supply shocks).
-co_pairs = _build_codated_pairs()
-co_src = model.data(co_pairs)
-LM_a, LM_b = LabMetric.ref(), LabMetric.ref()
-model.define(gnn_graph.Edge.new(src=LM_a, dst=LM_b)).where(
-    LM_a.lab == co_src.lab_a, LM_a.metric_date == co_src.shared_date,
-    LM_b.lab == co_src.lab_b, LM_b.metric_date == co_src.shared_date,
-)
-```
-
-The task tables carry per-`(workload, observation_date)` historical labels (`workload_utilization_*.csv`). Each row is one monthly utilization observation; the same workload appears in 7 training rows (one per historical month), giving the GNN per-period variety to learn from instead of a single label per entity. Train (7 months × 110 = 770) / Val (1 month × 110 = 110) / Test (current month × 110, no label — every workload gets a probability for the upcoming period). The task relationships use `at {Date:obs_date}` time slots and the GNN runs with `has_time_column=True` so LabMetric features are time-aligned with each (workload, month) prediction:
-
-```python
-Train = model.Relationship(f"{Workload} at {Date:obs_date} has {Any:label}")
-model.define(Train(
-    Workload, TrainTable.observation_date, TrainTable.is_high_utilization
-)).where(Workload.id == TrainTable.workload_id)
-
-Test = model.Relationship(f"{Workload} at {Date:obs_date}")
-model.define(Test(
-    Workload, TestTable.observation_date
-)).where(Workload.id == TestTable.workload_id)
-
-pt = PropertyTransformer(
-    ...
-    datetime=[LabMetric.metric_date],
-    time_col=[LabMetric.metric_date],
-)
-
-gnn = GNN(
-    ...
-    task_type="binary_classification",
-    eval_metric="roc_auc",
-    has_time_column=True,
-    ...
-)
-gnn.fit()
-Workload.predictions = gnn.predictions(domain=Test)
-```
-
-The positive-class probability is bound back to the ontology as `Workload.utilization_probability` and consumed by Stage 4's objective.
+The task tables carry per-`(workload, observation_date)` historical labels. Each row is one monthly utilization observation, so the same workload appears in 7 training rows (one per historical month), giving the GNN per-period variety to learn from instead of a single label per entity — Train (7 months × 110 = 770) / Val (1 month × 110 = 110) / Test (current month × 110, no label, so every workload gets a probability for the upcoming period). The task relationships use `at` time slots and the GNN runs with `has_time_column=True` so LabMetric features are time-aligned with each (workload, month) prediction. The positive-class probability is bound back to the ontology as `Workload.utilization_probability` and consumed by Stage 4's objective.
 
 ### Stage 2: Rules — eligibility + priority tiers + Compatibility precompute
 
-Two rule families run on the workload-pool product. The eligibility rule joins through the `WorkloadGpuCompat(workload, gpu_type)` composite-key concept (per the GNN-node FD trap: multi-valued allowlists on a GNN-node concept must live as their own concept, not as a Workload Relationship) and enforces both the memory check and the GPU-type allowlist:
-
-```python
-Workload.is_eligible = model.Relationship(
-    f"{Workload} is eligible on {GpuPool}"
-)
-model.where(
-    WorkloadGpuCompat.workload == Workload,
-    WorkloadGpuCompat.gpu_type == GpuPool.gpu_type,
-    Workload.mem_required_gb <= GpuPool.mem_per_gpu_gb,
-).define(Workload.is_eligible(GpuPool))
-
-# Compatibility precompute -- keeps the Stage 4 MIP linear and small.
-Compatibility = model.Concept(
-    "Compatibility",
-    identify_by={"workload": Workload, "gpu_pool": GpuPool},
-)
-model.where(Workload.is_eligible(GpuPool)).define(
-    Compatibility.new(workload=Workload, gpu_pool=GpuPool)
-)
-```
-
-Priority tier classification reads `AILab.contract_tier` and writes both `Workload.priority_tier` (string) and `Workload.priority_weight` (100 / 10 / 1) — the numeric form is what Stage 4's objective consumes.
+Two rule families run on the workload-pool product. The eligibility rule joins through the `WorkloadGpuCompat(workload, gpu_type)` composite-key concept (per the GNN-node FD trap: multi-valued allowlists on a GNN-node concept must live as their own concept, not as a Workload Relationship) and enforces both the memory check and the GPU-type allowlist. Eligible pairs are then materialized into a `Compatibility(workload, gpu_pool)` concept — a precompute that keeps the Stage 4 MIP linear and small. Priority tier classification reads `AILab.contract_tier` and writes both `Workload.priority_tier` (string) and `Workload.priority_weight` (100 / 10 / 1) — the numeric form is what Stage 4's objective consumes.
 
 ### Stage 3: Graph — reverse-PageRank for downstream gating
 
-A directed `Workload` graph is built with edge reversal (successor → predecessor) so a node's PageRank accumulates flow from everything it gates downstream:
-
-```python
-dag = Graph(model, directed=True, weighted=False, node_concept=Workload)
-dep_ref = WorkloadDependency.ref()
-model.define(
-    dag.Edge.new(src=dep_ref.successor, dst=dep_ref.predecessor)
-).where(dep_ref.dependency_type == "blocks")
-
-pagerank = dag.pagerank()
-Workload.gating_score = model.Property(
-    f"{Workload} has {Float:gating_score} gating score"
-)
-score_ref = Float.ref("g")
-wl_ref = Workload.ref()
-model.define(wl_ref.gating_score(score_ref)).where(pagerank(wl_ref, score_ref))
-```
-
-Workloads absent from the DAG get a backstop `gating_score = 1.0` so they enter the Stage 4 objective product without zeroing out.
+A directed `Workload` graph is built with edge reversal (successor → predecessor) so a node's PageRank accumulates flow from everything it gates downstream. The resulting score lands on `Workload.gating_score`. Workloads absent from the DAG get a backstop `gating_score = 1.0` so they enter the Stage 4 objective product without zeroing out.
 
 ### Stage 4: Prescriptive — assignment MIP under a 3D Scenario sweep
 
-The decision variable `Assignment.x_assign` is indexed by the three Scenario Concepts so the MIP solves all 24 cells in a single pass:
-
-```python
-Assignment = model.Concept(
-    "Assignment",
-    identify_by={"workload": Workload, "gpu_pool": GpuPool},
-)
-model.define(
-    Assignment.new(workload=Compatibility.workload, gpu_pool=Compatibility.gpu_pool)
-)
-Assignment.x_assign = model.Property(
-    f"{Assignment} per {PowerEnvelopeLevel} per {MarginFloor} per {DiversityCap} "
-    f"assigned {Float:x_assign}"
-)
-
-problem = Problem(model, Float)
-x = Float.ref("x")
-problem.solve_for(
-    Assignment.x_assign(PowerEnvelopeLevel, MarginFloor, DiversityCap, x),
-    type="bin",
-    name=["assign", PowerEnvelopeLevel.name, MarginFloor.name, DiversityCap.name,
-          Assignment.workload.id, Assignment.gpu_pool.id],
-)
-```
-
-Constraint families (one per scenario axis):
+The decision variable `Assignment.x_assign` is a binary variable indexed by the three scenario concepts (`PowerEnvelopeLevel`, `MarginFloor`, `DiversityCap`), so the MIP solves all 24 cells in a single pass. Constraint families run one per scenario axis:
 
 - **C1+C2** at-most-one per workload per cell (soft P0; priority_weight = 100 drives P0 from the objective).
 - **C3** per-pool GPU-count capacity.
@@ -427,22 +231,11 @@ Constraint families (one per scenario axis):
 - **C6** anchor-concentration cap (skipped when `DiversityCap.anchor_max_share < 0`).
 - **C7** workload-type floor (skipped unless `DiversityCap.workload_type_floor >= 0`).
 
-The four-factor objective is what makes this a real chain rather than four disjoint reasoners:
-
-```python
-problem.maximize(
-    sum(x_obj
-        * Assignment.workload.priority_weight       # Stage 2 (rules)
-        * Assignment.workload.gating_score          # Stage 3 (graph)
-        * Assignment.workload.utilization_probability  # Stage 1 (predictive)
-        * Assignment.workload.strategic_value_usd)   # raw $ baseline
-    .where(Assignment.x_assign(PowerEnvelopeLevel, MarginFloor, DiversityCap, x_obj))
-)
-```
-
-After the solve, the per-cell summary table is assembled inside a single `model.select(...)` — `sum(...).where(Assignment.x_assign(env, mar, div, x), x > 0.5).per(env, mar, div)` aggregates run on the ontology, no pandas-side groupby. The chosen baseline cell (`100pct / unconstrained / none`) is persisted as a singleton `AllocationPlan` Concept with revenue / total_cost / margin / anchor_share / n_assigned / status / binding_axis, plus an `Assignment.is_chosen` unary Relationship over its decision rows.
+The objective is what makes this a real chain rather than four disjoint reasoners: it maximizes the sum over chosen assignments of `priority_weight` (Stage 2) × `gating_score` (Stage 3) × `utilization_probability` (Stage 1) × `strategic_value_usd` (raw $ baseline) — every prior stage's signal enters the same product. After the solve, the per-cell summary is assembled with ontology-side aggregation (no pandas groupby). The chosen baseline cell (`100pct / unconstrained / none`) is persisted as a singleton `AllocationPlan` concept with revenue / total_cost / margin / anchor_share / n_assigned / status / binding_axis, plus an `Assignment.is_chosen` flag over its decision rows.
 
 Finally, a `DemandScenario` overlay replays the locked-in plan under four risk scenarios. Anchor (P0) revenue is treated as contractual (factor 1.0) — the operator gets paid for the seat regardless of utilization — while opportunistic (P1/P2) seats realize only the scenario factor of their assigned revenue. The overlay reports realized and stranded revenue per scenario and persists each as a `DemandScenarioOutlook(scenario)` concept row, so the stranded-capacity exposure of the chosen plan is queryable as ontology, not just printed.
+
+See `datacenter_compute_allocation.py` for the implementation and `runbook.md` to reproduce each stage step by step with the RAI skills.
 
 ## Customize this template
 

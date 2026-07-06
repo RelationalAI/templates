@@ -40,6 +40,7 @@ Telecommunications and infrastructure teams routinely have to decide where to bu
 
 - **Model**: `cell_tower_coverage.py` builds the semantic model (three concepts, two coverage relationships), the mixed-integer optimization problem (three binary variable families, four constraints, one objective), the solve, and the reporting.
 - **Runner**: `cell_tower_coverage.py` — a single Python script that runs end-to-end against a Snowflake-connected RAI account.
+- **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - **Sample data**: 6 candidate tower sites, 10 demand zones, and 19 feasible tower-zone coverage pairs. See *Sample data* below.
 - **Outputs**: stdout tables (selected sites, assigned zones, uncovered zones, coverage summary) plus `data/coverage_solution.csv`.
 
@@ -128,10 +129,11 @@ cell_tower_coverage/
     coverage_pairs.csv            # 19 feasible tower-zone coverage pairs
     coverage_solution.csv         # written by the script after solving
   README.md                       # this file
+  runbook.md                      # paste-testable walkthrough (RAI skills)
   pyproject.toml                  # dependencies
 ```
 
-**Start here**: run `python cell_tower_coverage.py` for the full model, solve, and report end to end.
+**Start here**: run `python cell_tower_coverage.py` for the full model, solve, and report end to end, or follow `runbook.md` to reproduce it step by step with the RAI skills.
 
 ## Sample data
 
@@ -150,43 +152,9 @@ Three concepts describe the planning problem; the optimization adds one binary d
 - **Primary identifiers**: `site_id` on `TowerSite`, `zone_id` on `DemandZone`, and a composite `site_id` + `zone_id` key on `CoveragePair`.
 - **Important invariants**: build costs, capacities, and populations are non-negative; every demand zone is reachable by at least one coverage pair (the script raises an error otherwise); the decision variables (`selected`, `covered`, `assigned`) are binary; total build cost stays at or under the budget and the number of selected towers stays at or under the cap.
 
-### Concepts
+`CoveragePair` links each pair to its `TowerSite` and `DemandZone`, so only zones that appear as a pair can be served, and only by the towers they are paired with.
 
-**`TowerSite`** — a candidate infrastructure location that may be built. Loaded from `data/tower_sites.csv`.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `site_id` | String | Yes | Identifies the candidate site |
-| `name` | String | No | Human-readable site name |
-| `site_type` | String | No | `Macro` or `Small Cell` |
-| `region` | String | No | Region label |
-| `build_cost` | Float | No | Capital cost to build the site |
-| `capacity` | Integer | No | Population the site can serve |
-| `x_selected` | Float (binary) | No | Decision: 1 if the site is built |
-
-**`DemandZone`** — a population area that may be covered by a selected tower. Loaded from `data/demand_zones.csv`.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `zone_id` | String | Yes | Identifies the demand zone |
-| `name` | String | No | Human-readable zone name |
-| `region` | String | No | Region label |
-| `population` | Integer | No | Population in the zone; the objective weight |
-| `y_covered` | Float (binary) | No | Decision: 1 if the zone is covered |
-
-**`CoveragePair`** — a feasible tower-zone service relationship. Loaded from `data/coverage_pairs.csv`; only zones that appear here can be served, and only by the towers they are paired with.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `site_id`, `zone_id` | String | Yes | Composite key |
-| `distance_km` | Float | No | Distance from site to zone |
-| `signal_score` | Float | No | Predicted signal quality on the pair |
-| `z_assigned` | Float (binary) | No | Decision: 1 if this pair serves the zone |
-
-### Relationships
-
-- `CoveragePair.site` links each coverage pair to its `TowerSite` (`CoveragePair.site_id == TowerSite.site_id`).
-- `CoveragePair.zone` links each coverage pair to its `DemandZone` (`CoveragePair.zone_id == DemandZone.zone_id`).
+For the full concept and property definitions, see `cell_tower_coverage.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
@@ -202,33 +170,11 @@ The script reads the three CSVs and runs feasibility checks before building the 
 
 ### 2. Define selection, coverage, and assignment variables
 
-The model has three families of binary decision variables:
-
-```python
-TowerSite.x_selected = model.Property(f"{TowerSite} selected if {Float:selected}")
-DemandZone.y_covered = model.Property(f"{DemandZone} covered if {Float:covered}")
-CoveragePair.z_assigned = model.Property(f"{CoveragePair} assigned if {Float:assigned}")
-```
-
-`x_selected` chooses which candidate sites to build. `y_covered` records whether each demand zone ends up covered. `z_assigned` chooses the specific selected tower that serves a covered zone; assignment variables exist only on rows of `coverage_pairs.csv`, so a zone can only be assigned to a tower that can physically cover it.
+The model has three families of binary decision variables. `x_selected` chooses which candidate sites to build. `y_covered` records whether each demand zone ends up covered. `z_assigned` chooses the specific selected tower that serves a covered zone; assignment variables exist only on rows of `coverage_pairs.csv`, so a zone can only be assigned to a tower that can physically cover it.
 
 ### 3. Link coverage to serving assignments
 
-A zone counts as covered only when it is assigned to exactly one feasible coverage pair, expressed as a per-zone constraint:
-
-```python
-problem.satisfy(
-    model.where(
-        DemandZone.y_covered(covered),
-        CoveragePair.zone(DemandZone),
-        CoveragePair.z_assigned(assigned),
-    ).require(
-        sum(assigned).per(DemandZone) == covered
-    )
-)
-```
-
-This prevents the objective from marking a zone as covered without a physical serving tower.
+A zone counts as covered only when it is assigned to exactly one feasible coverage pair. This per-zone rule prevents the objective from marking a zone as covered without a physical serving tower.
 
 ### 4. Assign zones only to selected towers
 
@@ -244,15 +190,9 @@ Two portfolio constraints bound the plan: total build cost stays at or under `BU
 
 ### 7. Maximize covered population
 
-The objective rewards covering high-population zones:
+The objective rewards covering high-population zones, weighting each covered zone by its population. Because each zone has a single binary covered variable and each covered zone has exactly one assignment, the model handles overlapping tower coverage without double-counting population or overloading selected towers. After the solve, the script builds report tables (selected sites with utilization, assigned zones, uncovered zones, coverage summary) and writes `data/coverage_solution.csv`.
 
-```python
-problem.maximize(
-    sum(DemandZone.population * covered).where(DemandZone.y_covered(covered))
-)
-```
-
-Because each zone has a single binary covered variable and each covered zone has exactly one assignment, the model handles overlapping tower coverage without double-counting population or overloading selected towers. After the solve, the script builds report tables (selected sites with utilization, assigned zones, uncovered zones, coverage summary) and writes `data/coverage_solution.csv`.
+See `cell_tower_coverage.py` for the implementation and `runbook.md` for the skill-driven reproduction.
 
 ## Customize this template
 

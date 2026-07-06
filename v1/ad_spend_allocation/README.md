@@ -41,6 +41,7 @@ This template also answers the follow-up question every planner asks: if we had 
 
 - **Model**: a single ontology with `Channel`, `Campaign`, `Effectiveness`, `Scenario`, and an `Allocation` decision concept — plus the prescriptive formulation (decision variables, constraints, objective) that runs on it.
 - **Runner**: `ad_spend_allocation.py` — one Python script that loads the CSVs, builds the model, solves all scenarios at once, and prints the allocation table.
+- **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - **Sample data**: 5 channels with spend bounds, 3 campaigns with budgets, and the 15 channel-campaign conversion rates. See *Sample data* below.
 - **Outputs**: solver termination status, objective value, and a per-scenario table of non-trivial spend allocations printed to stdout; the spend and funding decisions are also written back to the ontology as queryable properties.
 
@@ -126,7 +127,7 @@ ad_spend_allocation/
 └── pyproject.toml           # dependencies
 ```
 
-**Start here**: run `python ad_spend_allocation.py` for the full model end to end, or follow `runbook.md` to rebuild it step by step.
+**Start here**: run `python ad_spend_allocation.py` for the full run end to end, or follow `runbook.md` to reproduce it step by step with the RAI skills.
 
 ## Sample data
 
@@ -146,114 +147,25 @@ One ontology holds the inputs and the decision variables. The three source CSVs 
 - **Primary identifiers**: integer `id` on `Channel` and `Campaign`; a composite `channel_id` + `campaign_id` on `Effectiveness`; a string `name` on `Scenario`; and the linked `Effectiveness` on `Allocation`.
 - **Important invariants**: spend is non-negative; `x_active` is binary (0/1); spend on a pair sits within its channel's min/max only when the pair is active; per-campaign spend stays within the campaign budget; every campaign has at least one funded channel; and total spend stays within the scenario's total budget.
 
-### Concepts
-
-**`Channel`** — a marketing channel with spend bounds and an ROI coefficient.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | Integer | Yes | Loaded from `data/channels.csv` |
-| `name` | String | No | Human-readable channel name (Search, Social, Display, Video, Email) |
-| `min_spend` | Float | No | Minimum spend when the channel is funded |
-| `max_spend` | Float | No | Maximum spend for the channel |
-| `roi_coefficient` | Float | No | ROI coefficient carried from the CSV |
-
-**`Campaign`** — a campaign with a budget and a conversion target.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | Integer | Yes | Loaded from `data/campaigns.csv` |
-| `name` | String | No | Human-readable campaign name (Brand_Awareness, Product_Launch, Seasonal_Sale) |
-| `budget` | Float | No | Spend cap across all channels for this campaign |
-| `target_conversions` | Integer | No | Conversion target carried from the CSV |
-
-**`Effectiveness`** — the conversion rate for one channel-campaign pair; also the link between a channel and a campaign.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `channel_id` | Integer | Yes | First half of the composite key |
-| `campaign_id` | Integer | Yes | Second half of the composite key |
-| `channel` | Relationship | — | Link to `Channel` (via matching `channel_id`) |
-| `campaign` | Relationship | — | Link to `Campaign` (via matching `campaign_id`) |
-| `conversion_rate` | Float | No | Conversions per dollar spent on this pair |
-
-**`Scenario`** — a budget level in the what-if sweep.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `name` | String | Yes | Scenario label (`budget_35k`, `budget_45k`, `budget_55k`) |
-| `total_budget` | Float | No | Total budget cap for this scenario |
-
-**`Allocation`** — the decision concept: one per channel-campaign pair, holding the spend and funding variables the solver sets. The decision variables are indexed by `Scenario`, so a single solve covers all budget levels.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `effectiveness` | Relationship | Yes | Identifies the allocation by its `Effectiveness` pair |
-| `x_spend` | Float | No | Continuous spend decision, indexed by `Scenario` |
-| `x_active` | Float | No | Binary funding decision (0/1), indexed by `Scenario` |
-
-### Relationships
-
-- `Effectiveness.channel == Channel` — links each effectiveness row to its channel (joined on `channel_id == Channel.id`).
-- `Effectiveness.campaign == Campaign` — links each effectiveness row to its campaign (joined on `campaign_id == Campaign.id`).
-- `Allocation.effectiveness == Effectiveness` — ties each decision allocation to one channel-campaign pair.
+For the full concept and property definitions, see `ad_spend_allocation.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
 The script loads the CSVs into concepts, defines the decision variables, adds the constraints and objective, and solves all budget levels in one call.
 
-1. **Define the ontology.** Channels, campaigns, and their effectiveness (conversion rates) are modeled as concepts:
+1. **Define the ontology.** Channels, campaigns, and their per-pair effectiveness (conversion rates) load into concepts, with the effectiveness rows linking each channel to each campaign.
 
-   ```python
-   Channel = Concept("Channel", identify_by={"id": Integer})
-   Channel.min_spend = Property(f"{Channel} has {Float:min_spend}")
-   Channel.max_spend = Property(f"{Channel} has {Float:max_spend}")
+2. **Model budget levels as a concept.** `Scenario` carries the three total-budget levels, so the what-if sweep is data rather than a Python loop.
 
-   Campaign = Concept("Campaign", identify_by={"id": Integer})
-   Campaign.budget = Property(f"{Campaign} has {Float:budget}")
+3. **Define decision variables.** For each channel-campaign pair the solver sets a continuous spend amount and a binary activation indicator, both indexed by scenario so one solve covers every budget level.
 
-   Effectiveness = Concept("Effectiveness", identify_by={"channel_id": Integer, "campaign_id": Integer})
-   Effectiveness.conversion_rate = Property(f"{Effectiveness} has {Float:conversion_rate}")
-   ```
+4. **Add constraints.** Spend must fall within a channel's min/max only when its pair is active, per-campaign spend stays within the campaign budget, every campaign keeps at least one active channel, and total spend stays within the scenario's total budget — each scoped per scenario.
 
-2. **Model budget levels as a concept.** `Scenario` carries the three total-budget levels, so the sweep is data, not a Python loop:
+5. **Maximize conversions.** The objective sums spend times conversion rate across all allocations, so the solver funds the highest-return pairs first.
 
-   ```python
-   Scenario = Concept("Scenario", identify_by={"name": String})
-   Scenario.total_budget = Property(f"{Scenario} has {Float:total_budget}")
-   ```
+6. **Solve once for all scenarios.** A single HiGHS solve covers all three budget levels; results are extracted per scenario and printed as a table.
 
-3. **Define decision variables.** Continuous spend amounts and binary activation indicators per channel-campaign pair, each indexed by scenario:
-
-   ```python
-   Allocation.x_spend = Property(f"{Allocation} in {Scenario} has {Float:spend}")
-   Allocation.x_active = Property(f"{Allocation} in {Scenario} is {Float:active}")
-
-   problem.solve_for(Allocation.x_spend(Scenario, x_spend), name=[...], lower=0)
-   problem.solve_for(Allocation.x_active(Scenario, x_active), type="bin", name=[...])
-   ```
-
-4. **Add constraints.** Minimum and maximum spend when active, per-campaign budget limits, at least one active channel per campaign, and a total-budget cap — each scoped per scenario with `.per(Scenario)`:
-
-   ```python
-   problem.satisfy(model.where(...).require(x_spend >= Allocation.effectiveness.channel.min_spend * x_active))
-   problem.satisfy(model.where(...).require(x_spend <= Allocation.effectiveness.channel.max_spend * x_active))
-   problem.satisfy(model.where(...).require(sum(x_spend).where(...).per(Campaign, Scenario) <= Campaign.budget))
-   problem.satisfy(model.where(...).require(sum(x_spend).per(Scenario) <= Scenario.total_budget))
-   ```
-
-5. **Maximize conversions.** The objective sums spend times conversion rate across all allocations:
-
-   ```python
-   problem.maximize(
-       sum(x_spend * Allocation.effectiveness.conversion_rate)
-       .where(Allocation.x_spend(Scenario, x_spend))
-   )
-   ```
-
-6. **Solve once for all scenarios.** A single HiGHS solve covers all three budget levels; results are extracted per scenario with `model.select(...)` and printed as a table.
-
-The end-to-end flow:
+See `ad_spend_allocation.py` for the implementation and `runbook.md` for the skill-driven reproduction. The end-to-end flow:
 
 ```text
 CSV inputs → load into concepts → decision variables (spend + funding, per scenario)

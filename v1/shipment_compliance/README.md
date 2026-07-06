@@ -43,6 +43,7 @@ The four rules demonstrate different rule patterns:
 ## What's included
 
 - `shipment_compliance.py` -- Main script defining the data model and four rules
+- **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - `data/suppliers.csv` -- Supplier names and reliability scores
 - `data/skus.csv` -- Product and component catalog
 - `data/shipments.csv` -- Shipment records with status and delay
@@ -133,7 +134,7 @@ The four rules demonstrate different rule patterns:
     └── demands.csv            # 8 demand orders (SKU, quantity, priority)
 ```
 
-**Start here**: run `python shipment_compliance.py` to author all four rules and print the flagged records, or follow `runbook.md` to rebuild it step by step.
+**Start here**: run `python shipment_compliance.py` for the full run end to end — authoring all four rules and printing the flagged records — or follow `runbook.md` to reproduce it step by step with the RAI skills.
 
 ## Sample data
 
@@ -154,124 +155,24 @@ Six concepts model a small supply chain, linked by SKU and supplier references. 
 
 - **Key entities**: `Supplier`, `SKU`, `Shipment`, `Operation`, `BillOfMaterials`, `Demand`.
 - **Primary identifiers**: an integer `id` on every concept.
-- **Important invariants**: `Supplier.reliability_score` is a fraction in `[0, 1]`; `Shipment.status` is a `ShipmentStatus` member (`PENDING` / `IN_TRANSIT` / `DELIVERED`); `Demand.priority` is a `Priority` member (`LOW` / `STANDARD` / `HIGH` / `URGENT`); `delay_days`, `quantity`, and `input_quantity` are non-negative.
+- **Important invariants**: `Supplier.reliability_score` is a fraction in `[0, 1]`; `Shipment.status` is a `ShipmentStatus` member (`PENDING` / `IN_TRANSIT` / `DELIVERED`); `Demand.priority` is a `Priority` member (`LOW` / `STANDARD` / `HIGH` / `URGENT`); `delay_days`, `quantity`, and `input_quantity` are non-negative. Each rule adds a derived boolean flag back onto its concept: `Shipment.is_late` (Rule 1), `Shipment.is_at_risk` (Rule 2), `BillOfMaterials.is_single_sourced` (Rule 3), and `Demand.is_escalated` (Rule 4).
 
-### Concepts
-
-**`Supplier`** — a company that supplies parts.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | Integer | Yes | Loaded from `data/suppliers.csv` |
-| `name` | String | No | Supplier name |
-| `reliability_score` | Float | No | `[0, 1]`; below `0.8` flags shipments as at-risk (Rule 2) |
-
-**`SKU`** — a stock-keeping unit tracked in the supply chain.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | Integer | Yes | Loaded from `data/skus.csv` |
-| `name` | String | No | Human-readable name |
-| `product_type` | String | No | e.g. `FINISHED_GOOD` |
-
-**`Shipment`** — a delivery of a SKU from a supplier.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | Integer | Yes | Loaded from `data/shipments.csv` |
-| `sku` | Relationship | — | Links to the `SKU` carried |
-| `supplier` | Relationship | — | Links to the `Supplier` |
-| `status` | `ShipmentStatus` enum | No | `PENDING` / `IN_TRANSIT` / `DELIVERED`, mapped from the CSV string |
-| `delay_days` | Integer | No | Days late; `> 0` flags the shipment as late (Rule 1) |
-| `is_late` | Relationship | — | **Rule 1** derived flag |
-| `is_at_risk` | Relationship | — | **Rule 2** derived flag |
-
-**`Operation`** — a production or shipping route that transforms SKUs.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | Integer | Yes | Loaded from `data/operations.csv` |
-| `type` | String | No | Route type (e.g. `SHIP`) |
-| `input_sku` | Relationship | — | The SKU consumed |
-| `output_sku` | Relationship | — | The SKU produced |
-| `cost_per_unit` | Float | No | Route cost per unit |
-| `capacity_per_day` | Integer | No | Daily throughput limit |
-
-**`BillOfMaterials`** — an input-SKU requirement for production.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | Integer | Yes | Loaded from `data/bill_of_materials.csv` |
-| `input_sku` | Relationship | — | The required input `SKU` |
-| `site_id` | Integer | No | Production site |
-| `input_quantity` | Integer | No | Quantity required |
-| `is_single_sourced` | Relationship | — | **Rule 3** derived flag (only one operation produces the input) |
-
-**`Demand`** — a quantity requirement for a specific SKU.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | Integer | Yes | Loaded from `data/demands.csv` |
-| `sku` | Relationship | — | The `SKU` demanded |
-| `quantity` | Integer | No | Units required |
-| `priority` | `Priority` enum | No | `LOW` / `STANDARD` / `HIGH` / `URGENT`, mapped from the CSV string |
-| `is_escalated` | Relationship | — | **Rule 4** derived flag (`HIGH` or `URGENT`) |
+For the full concept and property definitions, see `shipment_compliance.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
-### 1. Define concepts and load data
+The pipeline loads six concepts from CSV, maps the closed-vocabulary columns to enums, then declares four derived rules as boolean flags and queries the entities each one catches. No solver is involved — the rules are pure declarative logic that re-evaluates as the data changes.
 
-The model defines six concepts (Supplier, SKU, Shipment, Operation, BillOfMaterials, Demand) and loads each from CSV. Relationships link shipments to suppliers and SKUs, operations to input/output SKUs, etc.
-
-Closed vocabularies are declared as `model.Enum` types and populated by name from the raw CSV strings (so `"DELIVERED"` in `shipments.csv` becomes the `ShipmentStatus.DELIVERED` member):
-
-```python
-class ShipmentStatus(model.Enum):
-    PENDING = 1
-    IN_TRANSIT = 2
-    DELIVERED = 3
-
-Shipment.status = Property(f"{Shipment} has {ShipmentStatus:status}")
-
-model.define(
-    s := Shipment.new(id=shipment_data.id, ...),
-    s.status(ShipmentStatus.lookup(shipment_data.status)),
-)
+```text
+CSV inputs → load Supplier / SKU / Shipment / Operation / BOM / Demand
+  → map status & priority strings to enum members → define four rule flags → query flagged entities
 ```
 
-Rules then compare against members rather than raw strings -- typo-proof and discoverable -- and queries read the label back with `.name` (e.g. `Shipment.status.name.alias("status")`).
+1. **Load the data and map enums.** Six concepts load from CSV, with relationships linking shipments to their SKU and supplier, operations to their input/output SKUs, and so on. The `status` and `priority` columns are closed vocabularies declared as `model.Enum` types (`ShipmentStatus`, `Priority`) and populated by name — so `"DELIVERED"` in the CSV becomes the `ShipmentStatus.DELIVERED` member. Rules then compare against members rather than raw strings, which is typo-proof and discoverable, and queries read the label back with `.name`. One caveat when bringing your own data: `lookup()` cannot validate values arriving from data columns — a CSV value matching no member name silently maps to a nonexistent entity and drops out of every member-comparison rule, so keep the enum declarations in sync with your data's vocabulary.
+2. **Define four rule patterns.** Each rule uses the `model.where(...).define(...)` pattern to set a boolean flag, and together they show four shapes: a simple threshold (Rule 1: `delay_days > 0`), a cross-entity join (Rule 2: undelivered shipments from suppliers scoring below `0.8`), an aggregation (Rule 3: BOM inputs produced by exactly one operation route), and OR semantics via multiple `define()` calls on the same relationship (Rule 4: `HIGH` or `URGENT` priority).
+3. **Query the flags.** Each rule is queried with `model.select(...).where(Concept.rule_flag())` to display the matching entities.
 
-One caveat when bringing your own data: `lookup()` cannot validate values that arrive from data columns. A CSV value that matches no member name silently maps to a nonexistent entity, and those rows simply drop out of every member-comparison rule. Keep the enum declarations in sync with your data's vocabulary. (Literal strings in code are checked at construction and raise a `ValueError` naming the valid members.)
-
-### 2. Define rules as derived Relationships
-
-Each rule uses the `model.where(...).define(...)` pattern to create a boolean flag:
-
-```python
-# Simple threshold rule
-Shipment.is_late = Relationship(f"{Shipment} is late")
-model.where(Shipment.delay_days > 0).define(Shipment.is_late())
-
-# Cross-entity rule (joins Shipment -> Supplier)
-Shipment.is_at_risk = Relationship(f"{Shipment} is at risk")
-model.where(
-    Shipment.status != ShipmentStatus.DELIVERED,
-    Shipment.supplier(SupplierRef),
-    SupplierRef.reliability_score < 0.8,
-).define(Shipment.is_at_risk())
-
-# Aggregation rule (count operations per BOM)
-route_count = aggregates.count(Operation).per(BOM).where(...)
-model.where(route_count == 1).define(BOM.is_single_sourced())
-
-# OR semantics (multiple define calls on same Relationship)
-model.where(Demand.priority == Priority.HIGH).define(Demand.is_escalated())
-model.where(Demand.priority == Priority.URGENT).define(Demand.is_escalated())
-```
-
-### 3. Query flagged entities
-
-Each rule is queried with `model.select(...).where(Concept.rule_flag())` to display matching entities.
+See `shipment_compliance.py` for the implementation and `runbook.md` for the skill-driven reproduction.
 
 ## Customize this template
 

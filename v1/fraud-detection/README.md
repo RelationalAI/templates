@@ -52,6 +52,7 @@ Assumes familiarity with Python, basic ML concepts (binary classification, ROC A
   - `fraud_detection_local.py` -- **primary, runnable out of the box.** Runs all five stages (Graph / Rules / Predictive / Bridge / Prescriptive) end-to-end on the bundled demo CSVs.
   - `fraud_detection.py` -- **reference pattern** for adapting the pipeline to your own Snowflake data. Same five stages, GPU-trained.
   - `fraud_detection_rules.ipynb` -- original rule-based identity-graph notebook, kept as a complementary intro.
+- **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - **Model**: `Account`, `Transaction`, plus two graphs (Account-Account for PageRank; Transaction-to-Account for the GNN), derived account properties, and the alert-score bridge
 - **Sample data**: a small class-balanced transactions subset sampled from a public mobile-money dataset (CC BY-SA 4.0) -- see [Sample data](#sample-data) below for details and attribution
 - **Outputs**: class-balance profile, GNN ROC-AUC, top-K alert queue, optimal audit schedule, MILP-vs-naive uplift
@@ -224,10 +225,12 @@ on Snowflake at a much larger scale.
         └── LICENSE.txt             # CC BY-SA 4.0 + PaySim attribution
 ```
 
-**Start here**: `fraud_detection_local.py` (CPU, no external setup). Use
-`fraud_detection.py` (requires GPU) as the adaptation reference when you wire
-this pattern into your own Snowflake data. Explore
-`fraud_detection_rules.ipynb` for a rule-based-only take on identity graphs.
+**Start here**: run `python fraud_detection_local.py` for the full five-stage
+pipeline end to end (CPU, no external setup), or follow `runbook.md` to
+reproduce it step by step with the RAI skills. Use `fraud_detection.py`
+(requires GPU) as the adaptation reference when you wire this pattern into your
+own Snowflake data, and explore `fraud_detection_rules.ipynb` for a
+rule-based-only take on identity graphs.
 
 ## Sample data
 
@@ -254,33 +257,9 @@ Two concepts carry the pipeline: `Account` and `Transaction`. Each stage enriche
 - **Primary identifiers**: `Account.account_id` (string, e.g. customer prefix `C` or merchant prefix `M`); `Transaction.transaction_id` (integer).
 - **Important invariants**: `is_flagged_fraud` and the GNN's `is_fraud` label are 0/1; `alert_score` is a `[0, 1]` blend of the flag and the GNN probability; audit-cost hours and transaction amounts are non-negative; the MILP's audit decision is binary.
 
-### Concepts
+For the full concept and property definitions, see `fraud_detection_local.py`; `runbook.md` builds them step by step with the RAI skills (covering the Snowflake-scale `fraud_detection.py` path).
 
-**`Account`** — one participant in the transaction network, appearing as sender (`name_orig`) or receiver (`name_dest`) on transactions. Loaded from `data/paysim_mini/accounts.csv`; Stages 1-2 enrich it.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `account_id` | String | Yes | Account identifier (`C` customer / `M` merchant prefix) |
-| `account_type_prefix` | String | No | Categorical GNN feature derived from the ID prefix |
-| `pagerank` | Float | No | **Stage 1** graph-reasoner centrality, fed to the GNN |
-| `activity_count` | Integer | No | **Stage 2** per-sender transaction count, fed to the GNN |
-
-**`Transaction`** — one transfer with amount, balance deltas, type, and a heuristic flag. Loaded from `data/paysim_mini/transactions.csv`; Stages 3-5 enrich it.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `transaction_id` | Integer | Yes | Transaction identifier |
-| `step`, `step_ts` | Integer / DateTime | No | Time step and timestamp (temporal GNN key) |
-| `trans_type` | String | No | Categorical (e.g. `TRANSFER`, `CASH_OUT`) |
-| `amount` | Float | No | Transfer amount; also drives audit cost |
-| `name_orig`, `name_dest` | String | No | Sender and receiver account IDs (graph edges) |
-| `old_balance_orig`, `new_balance_orig` | Float | No | Sender balance before/after |
-| `old_balance_dest`, `new_balance_dest` | Float | No | Receiver balance before/after |
-| `is_flagged_fraud` | Integer | No | Pre-existing rule-based heuristic flag (0/1) |
-| `alert_score` | Float | No | **Stage 4** blend of `is_flagged_fraud` and the GNN probability |
-| `x_audit` | Float | No | **Stage 5** binary audit decision (0/1) |
-
-### Pipeline stages
+## How it works
 
 The five stages thread through the shared ontology, each stage's output becoming a property the next stage reads.
 
@@ -293,125 +272,19 @@ Accounts + Transactions (Snowflake tables or bundled CSVs)
   → Stage 5 -- Prescriptive: knapsack MILP (hours budget + per-receiver cap)
 ```
 
-## How it works
+**Build the graphs.** `Account` and `Transaction` are populated from CSVs (local) or Snowflake (full), then two graphs are constructed for different reasoners: a directed Transaction-to-Account bipartite graph that the GNN consumes, and a directed Account-Account funds-flow graph the graph reasoner runs PageRank over.
 
-### 1. Build the graphs
+**Stage 1 -- Graph reasoner: account PageRank.** PageRank runs on the funds-flow graph, and each account's score is bound to an explicit `Account.pagerank` property so it surfaces as a GNN feature column.
 
-`Account` and `Transaction` concepts are populated from CSVs (local) or
-Snowflake (full). The template constructs two graphs serving different
-reasoners. A directed Transaction-to-Account bipartite graph used by the GNN:
+**Stage 2 -- Rules reasoner: account activity.** A derived property aggregates each sending account's transaction count into `Account.activity_count`. Both `pagerank` (continuous) and `activity_count` (integer) go into the `PropertyTransformer` so the GNN sees them as features alongside the raw transaction fields.
 
-```python
-gnn_graph = Graph(model, directed=True, weighted=False)
-Edge = gnn_graph.Edge
-model.define(Edge.new(src=Transaction, dst=Account)).where(
-    Transaction.name_orig == Account.account_id)
-model.define(Edge.new(src=Transaction, dst=Account)).where(
-    Transaction.name_dest == Account.account_id)
-```
+**Stage 3 -- Predictive: GNN binary classifier.** Task relationships encode the `is_fraud` label on the train/validation splits and omit it on test. The GNN trains on the Transaction-to-Account graph with the enriched features and emits a per-transaction fraud probability. Both scripts use temporal task relationships keyed on the transaction timestamp.
 
-And a directed Account-Account funds-flow graph used by the graph reasoner
-(`node_concept=Account` means `acct_graph.Node` binds directly to `Account`):
+**Stage 4 -- Bridge: blend GNN probability with heuristic flag.** The dataset carries an `is_flagged_fraud` heuristic. A convex mix (weighted by `ALPHA_FLAG`) combines it with the GNN probability into a per-transaction `alert_score` in `[0, 1]`.
 
-```python
-acct_graph = Graph(
-    model, directed=True, weighted=False,
-    node_concept=Account, aggregator="sum",
-)
-_sender, _receiver = Account.ref(), Account.ref()
-_txn = Transaction.ref()
-model.define(acct_graph.Edge.new(src=_sender, dst=_receiver)).where(
-    _txn.name_orig == _sender.account_id,
-    _txn.name_dest == _receiver.account_id,
-)
-```
+**Stage 5 -- Prescriptive: knapsack MILP investigator-budget allocation.** An auditor's time is the scarce resource: the total investigation budget is fixed in hours, and the time to audit a transaction grows with its size. The MILP maximizes expected loss averted (`alert_score × amount`) subject to that budget, plus a per-receiver cap to prevent flooding one account. Because cost and value both scale with transaction size, ranking by `alert_score` alone is provably suboptimal -- a high-score $5M transfer consumes 5 hours but may yield less value per hour than three medium-score $500K transfers at 1 hour each. The MILP trades them off correctly; the output prints both the MILP objective and a naive sort-and-take baseline so the tradeoff is visible.
 
-### 2. Stage 1 -- Graph reasoner: account PageRank
-
-Run PageRank on the funds-flow graph and bind the score to an explicit
-`Account.pagerank` property so it surfaces as a GNN feature column:
-
-```python
-pagerank_rel = acct_graph.pagerank()
-Account.pagerank = model.Property(f"{Account} has {Float:pagerank}")
-a, score = Account.ref(), Float.ref()
-model.define(a.pagerank(score)).where(pagerank_rel(a, score))
-```
-
-### 3. Stage 2 -- Rules reasoner: account activity
-
-Canonical PyRel derivation rule -- a `Property` whose value comes from an
-aggregation over related instances:
-
-```python
-# Aggregate transaction count per sending account
-Account.activity_count = model.Property(
-    f"{Account} has {Integer:activity_count}")
-model.define(Account.activity_count(
-    count(Transaction).per(Account)
-)).where(Transaction.name_orig == Account.account_id)
-```
-
-Both `Account.pagerank` (continuous) and `Account.activity_count` (integer)
-get included in the `PropertyTransformer` so the GNN sees them as features
-alongside the raw transaction fields.
-
-### 4. Stage 3 -- Predictive: GNN binary classifier
-
-Task relationships encode the `isFraud` label on train/val and omit it on
-test. Both the local and Snowflake reference scripts use temporal
-Relationships (`at {Any:step_ts}`) and `has_time_column=True`.
-
-```python
-Train = Relationship(f"{Transaction} at {Any:step_ts} has {Any:label}")
-model.define(Train(Transaction, TrainTable.step_ts, TrainTable.is_fraud))
-    .where(Transaction.transaction_id == TrainTable.transaction_id)
-
-gnn = GNN(
-    exp_database=..., exp_schema=...,
-    graph=gnn_graph, property_transformer=pt,
-    train=Train, validation=Val,
-    task_type="binary_classification", eval_metric="roc_auc",
-    has_time_column=True, stream_logs=False, seed=42,
-    device="cpu", n_epochs=10, lr=0.005, temporal_strategy="last",
-)
-gnn.fit()
-Transaction.predictions = gnn.predictions(domain=Test)
-```
-
-### 5. Stage 4 -- Bridge: blend GNN probability with heuristic flag
-
-The bundled dataset carries an `is_flagged_fraud` heuristic from the source
-dataset. Combine it with the GNN probability via a convex mix:
-
-```python
-model.define(Transaction.alert_score(
-    ALPHA_FLAG * Transaction.is_flagged_fraud
-    + (1 - ALPHA_FLAG) * Transaction.predictions.probs
-)).where(Transaction.predictions)
-```
-
-### 6. Stage 5 -- Prescriptive: knapsack MILP investigator-budget allocation
-
-An auditor's time is the scarce resource: the total investigation budget is
-fixed in hours, and the time to audit a transaction grows with its size.
-Maximize expected loss averted (score × amount) subject to that budget, plus
-a per-receiver cap to prevent flooding one account.
-
-```python
-problem.satisfy(...).require(
-    sum(Txn_ref, Txn_ref.audit_cost * select_ref) <= AUDIT_BUDGET_HOURS
-)
-# per-receiver cap: at most 1 audit per destination account
-problem.maximize(sum(Txn_obj.alert_score * Txn_obj.amount * sel_obj))
-```
-
-Because cost and value both scale with transaction size, ranking by
-`alert_score` alone is provably suboptimal -- a high-score $5M transfer
-consumes 5 hours but may yield less value per hour than three medium-score
-$500K transfers at 1 hour each. The MILP trades them off correctly; the
-output prints both the MILP objective and a naive sort-and-take baseline so
-the tradeoff is visible.
+See `fraud_detection_local.py` (and `fraud_detection.py` for the Snowflake path) for the implementation, and `runbook.md` for the skill-driven reproduction.
 
 ## Customize this template
 

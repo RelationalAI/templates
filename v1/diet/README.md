@@ -37,6 +37,7 @@ Built using **prescriptive reasoning** (linear programming with continuous decis
 
 - **Model**: two concepts (`Food`, `Nutrient`), a `Scenario` concept, per-food decision variables, nutrient-bound constraints, and a cost-minimizing objective — all in `diet.py`.
 - **Runner**: `diet.py`, a single Python script that runs end-to-end against a Snowflake-connected RAI account.
+- **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - **Sample data**: `data/foods.csv` (foods with cost and per-nutrient content) and `data/nutrients.csv` (nutrient min/max bounds).
 - **Outputs**: per-scenario termination status, objective cost, and a table of the foods (and amounts) in each least-cost basket, printed to stdout.
 
@@ -126,120 +127,25 @@ The model is small and self-contained: two source concepts plus a `Scenario` con
 - **Primary identifiers**: `Food.name` and `Nutrient.name` (both strings); `Scenario.scenario_name` (string).
 - **Important invariants**: nutrient `min` and `max` bounds are non-negative and `min <= max`; each food's decision amount is non-negative (`lower=0`); each food's per-nutrient content is keyed by a nutrient that exists in `nutrients.csv`.
 
-### Concepts
-
-**`Nutrient`** — a nutrient with a minimum and maximum daily-intake bound. The constraint bounds are read from these, scaled per scenario.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `name` | String | Yes | Nutrient name from `data/nutrients.csv` |
-| `min` | Float | No | Minimum daily intake |
-| `max` | Float | No | Maximum daily intake |
-
-**`Food`** — a food with a per-serving cost and a per-nutrient content. Each food carries a continuous decision variable for the amount to include.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `name` | String | Yes | Food name from `data/foods.csv` |
-| `cost` | Float | No | Cost per serving |
-| `contains` | Relationship | — | `Food contains Nutrient in qty` — per-nutrient content (ternary) |
-| `x_amount` | Float | No | Decision variable: amount of this food per `Scenario` |
-
-**`Scenario`** — a requirement-scaling case. Each scenario scales every nutrient bound by its factor; all scenarios solve together in one solve.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `scenario_name` | String | Yes | Scenario label (`scaling_80pct` / `baseline` / `scaling_120pct`) |
-| `nutrient_scaling` | Float | No | Factor applied to every nutrient bound |
-
-### Relationships
-
-- `Food.contains(Nutrient, qty)` — the amount of each nutrient in one serving of a food; the nutrient-bound constraint sums `qty * amount` across foods per nutrient.
+For the full concept and property definitions, see `diet.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
-### 1. Define concepts and map data
-
-The model defines two concepts: `Nutrient` (with min/max bounds) and `Food` (with cost and nutrient content). A ternary property links each food to its nutrient quantities:
-
-```python
-Nutrient = model.Concept("Nutrient", identify_by={"name": String})
-Nutrient.min = model.Property(f"{Nutrient} has {Float:min}")
-Nutrient.max = model.Property(f"{Nutrient} has {Float:max}")
-
-Food = model.Concept("Food", identify_by={"name": String})
-Food.cost = model.Property(f"{Food} has {Float:cost}")
-Food.contains = model.Property(f"{Food} contains {Nutrient} in {Float:qty}")
-```
-
-### 2. Decision variables
-
-Each food gets a continuous decision variable representing the amount to include in the diet:
-
-```python
-Food.x_amount = model.Property(f"{Food} has {Float:amount}")
-problem.solve_for(Food.x_amount, name=Food.name, lower=0, populate=False)
-```
-
-### 3. Constraints and objective
-
-Nutritional constraints ensure total intake from all foods falls within bounds for each nutrient. The objective minimizes total food cost:
-
-```python
-nutrient_qty = Float.ref()
-nutrient_total = sum(nutrient_qty * Food.x_amount).where(Food.contains(Nutrient, nutrient_qty)).per(Nutrient)
-problem.satisfy(model.require(
-    nutrient_total >= Nutrient.min * scenario_value,
-    nutrient_total <= Nutrient.max * scenario_value
-))
-problem.minimize(sum(Food.cost * Food.x_amount))
-```
-
-### 4. Scenario analysis
-
-The template solves three scenarios by scaling nutritional requirements to 80%, 100%, and 120% of their base values, demonstrating how tighter or looser requirements affect total cost.
-
-### 5. Inspect the model schema
-
-`relationalai.semantics.inspect` (available in `relationalai>=1.0.14`) surfaces a typed view of the registered concepts, properties, relationships, and data sources. It's handy for sanity-checking a model before handing it to the solver:
-
-```python
-from relationalai.semantics import inspect
-
-print(inspect.schema(model))
-```
-
-Excerpt of the user-declared part of the output:
+The model reads two source tables, adds a scenario axis, and hands a single parameterized linear program to the prescriptive solver:
 
 ```text
-Model: diet
-===========
-
-  Nutrient
-    Identity:
-      name: String
-    Properties:
-      min: Float
-      max: Float
-
-  Food
-    Identity:
-      name: String
-    Properties:
-      cost: Float
-      contains(Nutrient) -> Float
-      x_amount(Scenario) -> Float
-
-  Scenario
-    Identity:
-      scenario_name: String
-    Properties:
-      nutrient_scaling: Float
+foods.csv + nutrients.csv → concepts → decision variables → constraints + objective → multi-scenario solve → per-scenario baskets
 ```
 
-Notice that the prescriptive decision variable (`Food.x_amount(Scenario) -> Float`) appears alongside the source-data properties -- the schema is a unified view of everything the model knows, including variables added by `solve_for()`.
+1. **Define concepts and map data.** `Nutrient` carries min/max daily-intake bounds; `Food` carries a per-serving cost and a per-nutrient content (a ternary `contains` property linking each food to a nutrient quantity).
 
-After calling `Problem(...)` and `problem.solve_for / satisfy / minimize`, the prescriptive reasoner also registers root concepts named `Variable`, `Expression`, `Constraint`, and `Objective` (plus per-solve `Variable_<id>` subconcepts). They appear below the user-declared concepts in the full output; filter them out with a list-based check if you want a user-facing view (see the `machine_maintenance` template for the recipe).
+2. **Decision variables.** Each food gets a continuous, non-negative decision variable — the amount to include in the diet — created per scenario so all cases share one formulation.
+
+3. **Constraints and objective.** For each nutrient, total intake across foods (quantity times amount, summed) must fall between the scenario-scaled min and max bounds. The objective minimizes total cost (cost times amount, summed over foods).
+
+4. **Scenario analysis.** A first-class `Scenario` concept scales every nutrient bound by a factor (0.8 / 1.0 / 1.2 here), so tighter and looser requirements solve together in a single solve and their costs are directly comparable.
+
+The prescriptive decision variable appears in the model schema alongside the source-data properties — a unified view of everything the model knows, including variables added by `solve_for()`. See `diet.py` for the implementation and `runbook.md` for the skill-driven reproduction.
 
 ## Customize this template
 

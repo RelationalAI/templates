@@ -43,6 +43,7 @@ Built on RelationalAI's graph reasoner: **reachability** for transitive dependen
 
 - **Model**: two concepts (`SKU` and `BillOfMaterials`) wired into a directed dependency graph, plus a derived `feeds` self-relationship on `SKU` and a persisted `assembly_depth` property.
 - **Runner**: `bom_reachability.py` — a single self-contained Python script that runs reachability, betweenness centrality, and assembly-path enumeration end to end.
+- **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - **Sample data**: `data/skus.csv` (9 SKUs across 3 tiers) and `data/bill_of_materials.csv` (14 BOM entries with site-specific assembly). See *Sample data* below.
 - **Outputs**: printed transitive-dependency lists per finished good, a most-depended-on and betweenness ranking, the maximal assembly chains, and an `assembly_depth` property written back onto the SKU ontology.
 
@@ -124,7 +125,7 @@ Built on RelationalAI's graph reasoner: **reachability** for transitive dependen
     └── bill_of_materials.csv    # 14 site-specific BOM entries (output SKU requires input SKU)
 ```
 
-**Start here**: run `python bom_reachability.py` for the full analysis end to end (reachability, betweenness centrality, and assembly-path enumeration), or follow `runbook.md` to rebuild it step by step with a coding agent.
+**Start here**: run `python bom_reachability.py` for the full analysis end to end (reachability, betweenness centrality, and assembly-path enumeration), or follow `runbook.md` to reproduce it step by step with the RAI skills.
 
 ## Sample data
 
@@ -138,32 +139,9 @@ Built on RelationalAI's graph reasoner: **reachability** for transitive dependen
 - **Primary identifiers**: `SKU` by `id`; `BillOfMaterials` by `id`.
 - **Important invariants**: each `BillOfMaterials` row points an output SKU at one input SKU ("depends on"); the BOM is acyclic (raw materials feed components feed finished goods, never back).
 
-### `SKU`
+The model also derives a `feeds` self-relationship on `SKU` (input SKU feeds output SKU), built from the `BillOfMaterials` intermediary and used to enumerate assembly paths, plus a persisted `assembly_depth` property (the longest assembly chain terminating at each SKU).
 
-One stock-keeping unit at any assembly tier (raw material, component, or finished good).
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | string | Yes | Loaded from `data/skus.csv` (`ID`) |
-| `name` | string | No | Human-readable name (`NAME`) |
-| `type` | string | No | `RAW_MATERIAL`, `COMPONENT`, or `FINISHED_GOOD` (`TYPE`) |
-| `category` | string | No | Used for grouping/filters (`CATEGORY`) |
-| `assembly_depth` | int | No | Derived and persisted: longest assembly chain terminating at this SKU (PREVIEW stage) |
-
-The model also derives a `feeds` self-relationship on `SKU` (`SKU feeds into SKU`): a binary input-feeds-output edge built from the `BillOfMaterials` intermediary and used to enumerate assembly paths.
-
-### `BillOfMaterials`
-
-One link in the bill of materials, recorded per assembly site and used as the graph's edge concept.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | string | Yes | Loaded from `data/bill_of_materials.csv` (`ID`) |
-
-| Relationship | Schema | Notes |
-|---|---|---|
-| `output_sku` | `BillOfMaterials produces SKU` | The SKU this entry produces; graph edge source |
-| `input_sku` | `BillOfMaterials requires SKU` | The SKU this entry requires; graph edge destination |
+For the full concept and property definitions, see `bom_reachability.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
@@ -175,72 +153,25 @@ CSV files --> Define SKU + BOM concepts --> Build directed graph --> Reachabilit
 
 ### 1. Load ontology
 
-SKU and BillOfMaterials concepts are loaded from CSV. Each BOM entry links an output SKU (what is produced) to an input SKU (what is required):
-
-```python
-SKU = model.Concept("SKU", identify_by={"id": String})
-BillOfMaterials = model.Concept("BillOfMaterials", identify_by={"id": String})
-BillOfMaterials.output_sku = model.Relationship(f"{BillOfMaterials} produces {SKU}")
-BillOfMaterials.input_sku = model.Relationship(f"{BillOfMaterials} requires {SKU}")
-```
+The `SKU` and `BillOfMaterials` concepts load from CSV. Each BOM entry links an output SKU (what is produced) to an input SKU (what is required), which becomes the directed "depends on" edge.
 
 ### 2. Build directed graph
 
-The graph uses BillOfMaterials as the edge concept, with edges pointing from output to input ("depends on"):
-
-```python
-graph = Graph(
-    model, directed=True, weighted=False,
-    node_concept=SKU,
-    edge_concept=BillOfMaterials,
-    edge_src_relationship=BillOfMaterials.output_sku,
-    edge_dst_relationship=BillOfMaterials.input_sku,
-)
-```
+The graph uses `BillOfMaterials` as the edge concept, with edges pointing from output SKU to input SKU — so following an edge means following a dependency.
 
 ### 3. Trace dependencies
 
-`reachable(full=True)` computes all-pairs reachability — every source-and-destination pair where a directed path exists:
-
-```python
-reachable = graph.reachable(full=True)
-
-src, dst = graph.Node.ref("src"), graph.Node.ref("dst")
-all_deps_df = where(reachable(src, dst)).select(
-    src.id.alias("product_id"),
-    dst.id.alias("dep_id"),
-    ...
-).to_df()
-```
+All-pairs reachability computes every source-and-destination pair where a directed path exists, giving the full transitive dependency tree behind each finished good rather than just its direct inputs.
 
 ### 4. Identify bottlenecks
 
-Betweenness centrality ranks components by how many shortest dependency paths pass through them:
-
-```python
-betweenness = graph.betweenness_centrality()
-```
-
-Components with high betweenness are structural bottlenecks — disrupting them affects the most product lines.
+Betweenness centrality ranks components by how many shortest dependency paths pass through them. Components with high betweenness are structural bottlenecks — disrupting them affects the most product lines.
 
 ### 5. Enumerate assembly paths (PREVIEW, requires `relationalai>=1.15`)
 
-Where reachability returns dependency *pairs*, path enumeration returns the actual *build sequences*. It derives a SKU-to-SKU `feeds` edge from the `BillOfMaterials` intermediary (input SKU feeds output SKU) and enumerates every assembly path; because the BOM is acyclic, `.all_paths()` yields exactly the simple paths — no cycle risk. A maximal-paths view keeps only the longest non-extendable chains, and the longest assembly depth is persisted as `SKU.assembly_depth`.
+Where reachability returns dependency *pairs*, path enumeration returns the actual *build sequences*. It walks the derived `feeds` edge to enumerate every assembly path; because the BOM is acyclic, this yields exactly the simple paths with no cycle risk. A maximal-paths view keeps only the longest non-extendable chains, and the longest assembly depth is persisted as `SKU.assembly_depth`.
 
-```python
-SKU.feeds = model.Relationship(f"{SKU} feeds into {SKU}", short_name="feeds")
-p = model.path(SKU.feeds.repeat(1, MAX_ASSEMBLY_HOPS)).all_paths()
-assembly_df = (
-    model.where(p)
-    .select(
-        p.alias("path"),
-        p.nodes["index"].alias("step"),
-        SKU(p.nodes).id.alias("sku_id"),
-        SKU(p.nodes).name.alias("sku_name"),
-    )
-    .to_df()
-)
-```
+See `bom_reachability.py` for the implementation and `runbook.md` for the skill-driven reproduction.
 
 ## Customize this template
 

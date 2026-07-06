@@ -39,6 +39,7 @@ This template finds the discount schedule that maximizes revenue across a multi-
 ## What's included
 
 - `retail_markdown.py` -- Main script defining the MIP model with discount selection, sales tracking, and revenue optimization
+- **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - `data/products.csv` -- Products with initial price, cost, inventory, base demand, and salvage rate
 - `data/discounts.csv` -- Discount levels with percentage and demand lift factor
 - `data/weeks.csv` -- Planning weeks with seasonal demand multipliers
@@ -110,7 +111,7 @@ retail_markdown/
     └── weeks.csv        # planning weeks with seasonal demand multipliers
 ```
 
-**Start here**: run `python retail_markdown.py` for the end-to-end solve, or follow `runbook.md` to rebuild it step by step.
+**Start here**: run `python retail_markdown.py` for the full run end to end, or follow `runbook.md` to reproduce it step by step with the RAI skills.
 
 ## Sample data
 
@@ -126,100 +127,23 @@ The bundled data is small and illustrative — a short seasonal clearance across
 - **Primary identifiers**: string `name` on `Product`; integer `level` on `Discount`; integer `num` on `Week`.
 - **Important invariants**: exactly one discount level is active per product-week; discounts can only deepen over successive weeks (price ladder); cumulative sales never exceed `initial_inventory`; `discount_pct`, `demand_lift`, and `demand_multiplier` are non-negative; the selection variable is binary and sales variables are non-negative.
 
-**`Product`** — an item to mark down, with its price, cost, stock, demand, and salvage economics. The solve writes the discount-selection, sales, and cumulative-sales decision variables onto it.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `name` | String | Yes | Loaded from `data/products.csv` |
-| `initial_price` | Float | No | Full price before any markdown |
-| `cost` | Float | No | Unit cost |
-| `initial_inventory` | Integer | No | Starting stock |
-| `base_demand` | Float | No | Units per week at full price |
-| `salvage_rate` | Float | No | Fraction of price recovered on unsold units |
-| `x_select` | Float (binary decision) | No | 1 if a given `Discount` is active for the product in a given `Week` |
-| `x_sales` | Float (continuous decision) | No | Units sold per product-week-discount |
-| `x_cuml_sales` | Float (continuous decision) | No | Cumulative units sold through a given `Week` |
-
-**`Discount`** — a discount tier, defining how much price is cut and how much demand rises.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `level` | Integer | Yes | Discount ordering (0 = no discount) |
-| `discount_pct` | Float | No | Percent off `initial_price` |
-| `demand_lift` | Float | No | Demand multiplier at this discount |
-
-**`Week`** — a period in the planning horizon, with its seasonal demand factor.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `num` | Integer | Yes | Week index (1-based) |
-| `demand_multiplier` | Float | No | Seasonal factor on base demand |
-
-The script also defines a `num_weeks` relationship (`count(Week)`) used to identify the last week for the salvage term.
+For the full concept and property definitions, see `retail_markdown.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
-### 1. Define concepts and load data
+The pipeline loads products, discount tiers, and planning weeks, then builds a single mixed-integer program that chooses a discount for each product-week, tracks the resulting sales and inventory, and credits salvage value on whatever is left over.
 
-Three concepts are defined: `Product` (with pricing, inventory, and demand info), `Discount` (with percentage and demand lift), and `Week` (with seasonal demand multiplier):
-
-```python
-Product = model.Concept("Product", identify_by={"name": String})
-Product.initial_price = model.Property(f"{Product} has {Float:initial_price}")
-Product.initial_inventory = model.Property(f"{Product} has {Integer:initial_inventory}")
-Product.base_demand = model.Property(f"{Product} has {Float:base_demand}")
-Product.salvage_rate = model.Property(f"{Product} has {Float:salvage_rate}")
-
-Discount = model.Concept("Discount", identify_by={"level": Integer})
-Discount.discount_pct = model.Property(f"{Discount} has {Float:discount_pct}")
-Discount.demand_lift = model.Property(f"{Discount} has {Float:demand_lift}")
-
-Week = model.Concept("Week", identify_by={"num": Integer})
-Week.demand_multiplier = model.Property(f"{Week} has {Float:demand_multiplier}")
+```text
+CSV inputs → load Product / Discount / Week → decision variables (discount choice, sales, cumulative sales)
+  → one-discount + price-ladder + inventory constraints → maximize sales revenue + salvage → solve → schedule
 ```
 
-### 2. Decision variables
+1. **Load the data.** Products carry price, cost, starting inventory, base demand, and a salvage rate; discounts carry a percent-off and a demand-lift multiplier (including a 0% tier so "no markdown" is always available); weeks carry a seasonal demand multiplier.
+2. **Set up the decisions.** Three variable families capture the plan: a binary choice of which discount is active for each product-week, continuous units sold per product-week-discount, and cumulative units sold through each week. A `num_weeks` count marks the final week for the salvage term.
+3. **Constrain the schedule.** Exactly one discount level is active per product-week; discounts can only deepen from one week to the next (the price ladder); and cumulative sales can never exceed starting inventory.
+4. **Maximize revenue.** The objective adds sales revenue — discounted price times units sold — to the salvage value of unsold units at the end of the horizon, and the solver returns the revenue-maximizing discount schedule.
 
-Three sets of variables model the decisions and state: binary selection of discount level per product-week, continuous sales per product-week-discount, and cumulative sales per product-week:
-
-```python
-problem.solve_for(Product.x_select(Week_ref, Discount_ref, selection_ref), type="bin", ...)
-problem.solve_for(Product.x_sales(Week_ref, Discount_ref, sales_ref), type="cont", lower=0, ...)
-problem.solve_for(Product.x_cuml_sales(Week_ref, cumulative_ref), type="cont", lower=0, ...)
-```
-
-### 3. Key constraints
-
-The one-hot constraint ensures exactly one discount level is active per product-week. The price ladder constraint prevents discount reversals:
-
-```python
-# One discount per product-week
-problem.satisfy(model.where(Product.x_select(Week_ref, Discount_ref, selection_ref)).require(
-    sum(Discount_ref, selection_ref).per(Product, Week_ref) == 1
-))
-
-# Discounts can only increase over time
-problem.satisfy(model.where(
-    Product.x_select(Week_ref, Discount_ref, selection_ref),
-    Product.x_select(Week_inner, Discount_inner, selection_inner),
-    Week_inner.num == Week_ref.num + 1,
-    Discount_inner.level < Discount_ref.level,
-).require(selection_ref + selection_inner <= 1))
-```
-
-### 4. Objective
-
-Revenue combines sales revenue (price after discount times units sold) and salvage value of remaining inventory:
-
-```python
-revenue = sum(
-    Product.initial_price * (1 - Discount_ref.discount_pct / 100) * sales_ref
-).where(Product.x_sales(Week_ref, Discount_ref, sales_ref))
-salvage = sum(
-    Product.initial_price * Product.salvage_rate * (Product.initial_inventory - cumulative_ref)
-).where(Product.x_cuml_sales(Week_ref, cumulative_ref), Week_ref.num == num_weeks)
-problem.maximize(revenue + salvage)
-```
+See `retail_markdown.py` for the implementation and `runbook.md` for the skill-driven reproduction.
 
 ## Customize this template
 

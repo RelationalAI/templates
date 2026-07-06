@@ -44,6 +44,7 @@ Built using **graph analysis** — PageRank (an iterative random-walk algorithm)
 
 - **Shared model setup**: `model_setup.py` - Common model configuration and graph creation (used by both scripts)
 - **Command-line script**: `humanitarian_aid_supply_chain.py` - CLI analysis script with detailed output
+- **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - **Interactive app**: `app.py` - Streamlit web application with visualizations and interactive analysis
 - **Data**: `data/distribution_points.csv` and `data/supply_routes.csv`
 
@@ -151,7 +152,7 @@ humanitarian-aid-supply-chain/
     └── supply_routes.csv              # 28 directed supply routes
 ```
 
-**Start here**: run `python humanitarian_aid_supply_chain.py` for the full command-line analysis, or launch `streamlit run app.py` for the interactive dashboard. Both build the model through `model_setup.create_model()`.
+**Start here**: run `python humanitarian_aid_supply_chain.py` for the full command-line analysis end to end, or follow `runbook.md` to reproduce it step by step with the RAI skills. You can also launch `streamlit run app.py` for the interactive dashboard. All paths build the model through `model_setup.create_model()`.
 
 ## Sample data
 
@@ -168,40 +169,9 @@ The model is a small graph ontology: distribution points connected by directed, 
 - **Primary identifiers**: `DistributionPoint.id` (integer); `SupplyRoute` is keyed by its `(from_point, to_point)` pair.
 - **Important invariants**: `reliability_score` is a fraction in `[0, 1]`; capacity and distance are positive; the derived `flow_weight` combines all three into the edge weight the graph algorithms read.
 
-### Concepts
+The two centrality metrics (`pagerank`, `degree_centrality`) and the degree counts (`incoming_routes`, `outgoing_routes`) are computed by the Graph API over the route graph at query time, not stored as `DistributionPoint` properties.
 
-**`DistributionPoint`** — a node in the relief network (airport, warehouse, border crossing, or relief camp). Loaded from `data/distribution_points.csv`.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | Integer | Yes | Point identifier |
-| `name` | String | No | Human-readable name |
-| `type` | String | No | Airport / Warehouse / Border Crossing / Relief Camp |
-| `region` | String | No | Geographic region |
-| `capacity` | Integer | No | Site throughput capacity (units/day) |
-| `population_served` | Integer | No | People the point serves |
-
-**`SupplyRoute`** — a directed route between two distribution points, with weighted attributes. Loaded from `data/supply_routes.csv`.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `from_point` | `DistributionPoint` | Yes | Source point (composite key) |
-| `to_point` | `DistributionPoint` | Yes | Destination point (composite key) |
-| `route_capacity` | Integer | No | Maximum throughput (units/day) |
-| `reliability_score` | Float | No | Route reliability, `[0, 1]` |
-| `distance_km` | Float | No | Physical distance for routing calculations |
-| `flow_weight` | Float | No | Derived edge weight: `(route_capacity * reliability_score) / distance_km` |
-
-### Graph metrics
-
-These are computed by the Graph API over the route graph at query time (not stored as `DistributionPoint` properties).
-
-| Metric | Type | Notes |
-|---|---|---|
-| `pagerank` | Float | Influence score from iterative random walk; higher means more aid naturally flows here |
-| `degree_centrality` | Float | Sum of flow weights across a point's routes; higher means a more connected hub |
-| `incoming_routes` | Integer | Indegree: routes delivering to this point |
-| `outgoing_routes` | Integer | Outdegree: routes originating from this point |
+For the full concept and property definitions, see `model_setup.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
@@ -211,132 +181,17 @@ The template follows this flow:
 CSV files → model_setup.create_model() → Calculate PageRank → Calculate Degree Centrality → Analyze strategic categories → Display results
 ```
 
-### 1. Shared Model Setup
+**Shared model setup.** Both the CLI script and the Streamlit app build the model through `model_setup.create_model()`, which creates the model container, defines the `DistributionPoint` and weighted `SupplyRoute` concepts, loads both CSVs, and constructs the weighted, directed route graph — returning every component the analysis needs.
 
-Both the CLI script and Streamlit app use the same model setup from `model_setup.py`:
+**Calculate PageRank.** PageRank simulates random walks through the network to find where aid naturally concentrates. Starting from equal probability at every node, it iteratively propagates probability along edges, applying a damping factor (85% chance of following a route, 15% chance of teleporting to a random node) until the scores stabilize. A higher score means a node is more central to network flow.
 
-```python
-from model_setup import create_model
+**Calculate weighted degree centrality.** This sums each node's flow weights (capacity × reliability across its routes), so it rewards not just how many connections a node has but how strong they are. A high weighted degree marks a coordination hub with substantial aid throughput. Indegree and outdegree are also computed for context.
 
-# Create the model, concepts, relationships, and graph (all in one call)
-model, graph, DistributionPoint, SupplyRoute = create_model()
-```
+**Query and analyze strategic categories.** Both metrics are queried together into a DataFrame, then each distribution point is classified against the 70th-percentile thresholds on the two scores: critical coordination hubs (high on both), influential endpoints (high PageRank, lower degree), and network connectors (lower PageRank, high degree).
 
-The `create_model()` function handles:
-- Creating the RelationalAI model container
-- Defining the `DistributionPoint` concept with all properties
-- Loading distribution points from CSV
-- Defining the `SupplyRoute` concept with weighted properties
-- Loading supply routes from CSV
-- Creating the weighted, directed graph
-- Returning all components for use in analysis
+**Display strategic analysis and recommendations.** The CLI script prints a ranked table of all points with both metrics, the strategic-category breakdown, network-wide and regional statistics, and recommendations for response teams. The Streamlit app adds an interactive overview, a color-coded network visualization, filterable rankings with CSV export, and per-category detail.
 
-### 2. Calculate PageRank (Iterative Algorithm)
-
-PageRank simulates random walks through the network to identify influential nodes:
-
-```python
-# Calculate PageRank with damping factor 0.85
-# Damping factor models probability of continuing along routes vs. teleporting
-pagerank = graph.pagerank(damping_factor=0.85, tolerance=1e-6, max_iter=100)
-```
-
-**How PageRank works:**
-1. Start with equal probability at all nodes
-2. Iteratively propagate probability along edges
-3. Apply damping factor: 85% chance of following an edge, 15% chance of "teleporting" to random node
-4. Converge when probabilities stabilize (tolerance threshold)
-5. Higher PageRank = more "important" in the network flow
-
-### 3. Calculate Weighted Degree Centrality
-
-Degree Centrality identifies highly connected network hubs:
-
-```python
-# Calculate Degree Centrality
-degree_centrality = graph.degree_centrality()
-
-# Also calculate degree metrics for context
-indegree = graph.indegree()   # Incoming routes
-outdegree = graph.outdegree()  # Outgoing routes
-```
-
-**How Weighted Degree Centrality works:**
-1. Sum the flow weights for all connected routes (capacity × reliability) for each node
-2. Higher weighted degree = more influential hub with greater aid throughput capacity
-3. Accounts for both connectivity AND the strength/importance of those connections
-4. Identifies nodes that serve as critical coordination hubs with substantial flow capacity
-
-### 4. Query and analyze strategic categories
-
-Query both metrics and assign a strategic category to each distribution point.
-
-```python
-from relationalai.semantics import where, select
-
-# Create variable references
-point = graph.Node.ref("point")
-pr_score = Float.ref("pr_score")
-dc_score = Float.ref("dc_score")
-in_routes = Integer.ref("in_routes")
-out_routes = Integer.ref("out_routes")
-
-# Query all metrics together
-results = where(
-    pagerank(point, pr_score),
-    degree_centrality(point, dc_score),
-    indegree(point, in_routes),
-    outdegree(point, out_routes)
-).select(
-    point.id,
-    point.name,
-    point.type,
-    point.region,
-    point.capacity,
-    point.population_served,
-    pr_score.alias("pagerank"),
-    dc_score.alias("degree_centrality"),
-    in_routes.alias("incoming_routes"),
-    out_routes.alias("outgoing_routes")
-).to_df()
-
-# Assign a strategic category based on both metrics
-pr_threshold = results['pagerank'].quantile(0.70)
-dc_threshold = results['degree_centrality'].quantile(0.70)
-
-# Critical Coordination Hubs: High PageRank + High Degree Centrality
-critical_hubs = results[
-    (results['pagerank'] >= pr_threshold) &
-    (results['degree_centrality'] >= dc_threshold)
-]
-
-# Influential Endpoints: High PageRank + Lower Degree Centrality
-influential_endpoints = results[
-    (results['pagerank'] >= pr_threshold) &
-    (results['degree_centrality'] < dc_threshold)
-]
-
-# Network Connectors: Lower PageRank + High Degree Centrality
-connectors = results[
-    (results['pagerank'] < pr_threshold) &
-    (results['degree_centrality'] >= dc_threshold)
-]
-```
-
-### 5. Display strategic analysis and recommendations
-
-**CLI script** (`humanitarian_aid_supply_chain.py`) prints:
-- Ranked table of all distribution points with both metrics
-- Strategic category analysis (Critical Coordination Hubs, Influential Endpoints, Network Connectors)
-- Network-wide and regional statistics
-- Actionable recommendations for emergency response teams
-
-**Streamlit app** (`app.py`) provides:
-- Interactive overview with top-5 rankings
-- Network visualization with color-coded nodes by strategic category
-- Detailed filterable rankings with CSV export
-- Strategic analysis with expandable details for each category
-- Regional distribution statistics
+See `model_setup.py` and `humanitarian_aid_supply_chain.py` for the implementation, and `runbook.md` for the skill-driven reproduction.
 
 ## Customize this template
 

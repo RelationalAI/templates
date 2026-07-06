@@ -39,6 +39,7 @@ Built using **prescriptive reasoning**: continuous decision variables for produc
 ## What's included
 
 - **Script**: `demand_planning_temporal.py` -- end-to-end model, solve, and results
+- **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - **Data**: `data/sites.csv`, `data/skus.csv`, `data/demand_orders.csv`, `data/production_capacity.csv`, `data/initial_inventory.csv`
 - **Config**: `pyproject.toml`
 
@@ -124,7 +125,7 @@ Built using **prescriptive reasoning**: continuous decision variables for produc
     └── initial_inventory.csv     # per-(site, SKU) starting inventory
 ```
 
-**Start here**: run `python demand_planning_temporal.py` to solve all three horizon scenarios end to end.
+**Start here**: run `python demand_planning_temporal.py` to solve all three horizon scenarios end to end, or follow `runbook.md` to reproduce it step by step with the RAI skills.
 
 ## Sample data
 
@@ -144,175 +145,23 @@ The model is a multi-period production and inventory ontology. Sites and SKUs ar
 - **Primary identifiers**: `Site.id` and `SKU.id` (integers); `DemandOrder.id` (integer); the composite key `ProdCapacity(site_id, sku_id)`; the composite key `WeeklyDemand(wk_site_id, wk_sku_id, wk_week_num)`.
 - **Important invariants**: quantities, costs, production, and inventory are non-negative; inventory obeys flow conservation (`inv[t] = inv[t-1] + production[t] - demand[t]`); week 0 inventory equals the initial inventory; unmet demand per order is bounded by the order quantity; total unmet demand is capped by the 95% service level.
 
-### Site
-
-A warehouse or distribution site. A reference entity that production capacity and demand attach to.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | int | Yes | Loaded from `data/sites.csv` |
-| `name` | string | No | Site name (e.g. `Chicago_DC`) |
-| `site_type` | string | No | Loaded from the CSV `type` column |
-| `capacity_per_week` | int | No | Weekly site throughput |
-
-### SKU
-
-A product. Supplies the unit and holding costs used in the objective.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | int | Yes | Loaded from `data/skus.csv` |
-| `name` | string | No | Product name (e.g. `Widget_A`) |
-| `unit_cost` | float | No | Per-unit cost |
-| `holding_cost_per_week` | float | No | Per-unit weekly holding cost |
-
-### DemandOrder
-
-A dated customer demand order. The event table that temporal filtering scopes to the planning horizon.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | int | Yes | Loaded from `data/demand_orders.csv` |
-| `quantity` | int | No | Units demanded |
-| `due_date` | string | No | Order due date; compared against the horizon bounds |
-| `week_num` | int | No | Derived week index relative to `planning_start` |
-| `x_unmet` | float | No | Decision variable: unmet quantity for this order |
-
-### ProdCapacity
-
-A per-(site, SKU) production line. Carries the pre-joined initial inventory and holding cost, and holds the time-indexed production and inventory decision variables.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `site_id`, `sku_id` | int | Yes | Composite key |
-| `max_production_per_week` | int | No | Upper bound on `x_production` |
-| `production_cost` | float | No | Per-unit production cost |
-| `initial_inventory` | float | No | Pre-joined from `initial_inventory.csv`; the week-0 condition |
-| `holding_cost_per_week` | float | No | Pre-joined from `skus.csv` |
-| `x_production` | Property | — | Decision variable, indexed by week (`in week t produces production`) |
-| `x_inventory` | Property | — | Decision variable, indexed by week (`at end of week t has inventory`) |
-
-### WeeklyDemand
-
-Per-scenario pre-aggregation of demand into weekly buckets per (site, SKU, week), including zero-demand weeks so the flow-conservation constraint covers every period.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `wk_site_id`, `wk_sku_id`, `wk_week_num` | int | Yes | Composite key |
-| `wk_quantity` | float | No | Total demand in that (site, SKU, week) bucket |
-
-### Relationships
-
-The model links the decision entities to their reference entities:
-
-| Relationship | Reading | Notes |
-|---|---|---|
-| `ProdCapacity.site` | production line → site | Links capacity to its `Site` |
-| `ProdCapacity.sku` | production line → SKU | Links capacity to its `SKU` |
-| `DemandOrder.site` | order → site | Fulfilling site |
-| `DemandOrder.sku` | order → SKU | Ordered product |
+For the full concept and property definitions — including the time-indexed `x_production` / `x_inventory` decision variables on `ProdCapacity` and the relationships linking orders and capacity to their `Site` and `SKU` — see `demand_planning_temporal.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
-### 1. Scenario loop -- sweep planning horizons
+**Sweep planning horizons.** The script loops over three `planning_end` dates to analyze how the horizon length affects cost. Each iteration filters demand orders to the window (dropping orders outside it so the solver sees only relevant demand), recomputes the week mapping, and solves a fresh problem.
 
-The script sweeps over three `planning_end` dates to analyze how the planning horizon affects cost. Each iteration filters demand orders to the horizon, recomputes week mappings, and solves a fresh problem:
+**Map dates to integer weeks.** `std.common.range()` requires integer periods, so each order's due date is converted into a week number relative to the planning start, and the number of weeks is derived from the horizon length. The week count varies by scenario (14 weeks for January, 18 for February, 22 for March).
 
-```python
-planning_start = "2025-11-01"
-SCENARIO_VALUES = ["2026-01-31", "2026-02-28", "2026-03-31"]
+**Index decision variables by time.** Production and inventory variables are indexed by both concept (site × SKU) and time period via a multi-arity property pattern, creating one continuous variable per (site, SKU, week) combination, bounded by the per-line weekly capacity.
 
-for scenario_value in SCENARIO_VALUES:
-    planning_end = scenario_value
-    filtered_orders = orders_df[
-        (orders_df["due_date"] >= planning_start)
-        & (orders_df["due_date"] <= planning_end)
-    ].copy()
-```
+**Enforce flow conservation.** The core multi-period constraint ties adjacent weeks together: inventory at the end of week `t` equals inventory at the end of week `t-1` plus production in week `t` minus demand in week `t`. A `WeeklyDemand` concept pre-aggregates orders into weekly buckets — including zero-demand weeks — so the constraint covers every period.
 
-This removes orders outside the horizon so the solver only sees relevant demand.
+**Minimize total cost.** The objective combines production cost, holding cost, and an unmet-demand penalty from different concepts using `model.union()`, and the solver minimizes their sum subject to the flow-conservation and service-level constraints.
 
-### 2. Date-to-period mapping -- convert dates to integer weeks
+The script also includes a commented-out Pattern B for data that carries Unix epoch-second timestamps instead of date strings: convert the horizon boundaries to epochs and filter identically.
 
-`std.common.range()` requires integer periods. Inside each scenario iteration, the script computes the number of weeks and converts each order's due date into a week number relative to the planning start:
-
-```python
-    start_date = datetime.strptime(planning_start, "%Y-%m-%d")
-    end_date = datetime.strptime(planning_end, "%Y-%m-%d")
-    num_weeks = int((end_date - start_date).days / 7) + 1
-
-    filtered_orders["week_num"] = (
-        (filtered_orders["due_date"] - pd.Timestamp(planning_start)).dt.days // 7 + 1
-    ).astype(int)
-```
-
-The number of weeks varies by scenario (e.g. 14 weeks for January, 18 for February, 22 for March).
-
-### 3. Multi-arity decision variables indexed by time
-
-Production and inventory variables are indexed by both concept (site x SKU) and time period. The `x_production` variable uses a multi-arity property pattern:
-
-```python
-ProdCapacity.x_production = Property(
-    f"{ProdCapacity} in week {Integer:t} produces {Float:production}"
-)
-production_ref = Float.ref()
-problem.solve_for(
-    ProdCapacity.x_production(week_ref, production_ref),
-    type="cont",
-    lower=0,
-    upper=ProdCapacity.max_production_per_week,
-    name=["prod", ProdCapacity.site_id, ProdCapacity.sku_id, week_ref],
-    where=[week_ref == weeks],
-)
-```
-
-This creates one continuous variable per (site, SKU, week) combination.
-
-### 4. Flow conservation constraint
-
-The core multi-period pattern ties adjacent weeks together. Inventory at the end of week `t` must equal inventory at the end of week `t-1` plus production in week `t` minus demand in week `t`:
-
-```python
-problem.satisfy(model.where(
-    ProdCapacity.x_inventory(week_ref, x_inv_curr),
-    ProdCapacity.x_inventory(week_ref - 1, x_inv_prev),
-    ProdCapacity.x_production(week_ref, production_ref),
-    WeeklyDemand.wk_site_id == ProdCapacity.site_id,
-    WeeklyDemand.wk_sku_id == ProdCapacity.sku_id,
-    WeeklyDemand.wk_week_num == week_ref,
-    week_ref >= 1,
-).require(
-    x_inv_curr == x_inv_prev + production_ref - WeeklyDemand.wk_quantity
-))
-```
-
-A `WeeklyDemand` concept pre-aggregates orders into weekly buckets (including zero-demand weeks) so the constraint covers every period.
-
-### 5. Cost objective with model.union()
-
-The objective combines three cost components from different concepts using `model.union()`:
-
-```python
-prod_cost = ProdCapacity.production_cost * sum(production_ref).per(ProdCapacity).where(...)
-hold_cost = ProdCapacity.holding_cost_per_week * sum(inventory_ref).per(ProdCapacity).where(...)
-unmet_cost = unmet_penalty * DemandOrder.x_unmet
-
-problem.minimize(sum(model.union(prod_cost, hold_cost, unmet_cost)))
-```
-
-### Epoch timestamp alternative
-
-The script includes commented-out examples of Pattern B (epoch integer timestamps). If your data uses Unix epoch seconds instead of date strings, convert the planning horizon boundaries to epochs and filter identically:
-
-```python
-start_epoch = int(datetime.strptime(planning_start, "%Y-%m-%d").timestamp())
-end_epoch = int(datetime.strptime(planning_end, "%Y-%m-%d").timestamp()) + 86399
-filtered_orders = orders_df[
-    (orders_df["created_at"] >= start_epoch) &
-    (orders_df["created_at"] <= end_epoch)
-].copy()
-```
+See `demand_planning_temporal.py` for the implementation and `runbook.md` to reproduce it step by step with the RAI skills.
 
 ## Customize this template
 

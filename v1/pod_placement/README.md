@@ -53,6 +53,7 @@ This template encodes that stack as a pure constraint satisfaction and optimizat
 The bundled CSVs are illustrative demo data tuned so multiple ICs bind at the optimum -- rack-clique forces the distributed-training group onto one rack, CPU / memory / GPU bin-packing then pin it to a single node at exact 100% utilization on all three resources, anti-affinity partitions the alpha-beta and gamma-delta tenant pods across disjoint node sets, deployment co-location affinity co-locates the cache pair, and the spread cap binds for every multi-replica non-overridden deployment. Swap in your own cluster topology and workload to apply the template to a real cluster.
 
 - `pod_placement.py` -- main script with concepts, decisions, constraints, the solver call, and the post-solve inspection
+- **Runbook**: `runbook.md` -- a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - `data/nodes.csv` -- 8 nodes across 2 zones (`us-east-1a`, `us-east-1b`) and 4 racks; six general-purpose nodes (12000 millicores, 49152 MiB) and two GPU nodes (8000 millicores, 32768 MiB, 4 GPUs each). Total cluster: 88000 millicores, 360448 MiB, 8 GPUs
 - `data/tenants.csv` -- 4 tenants (`tenant_alpha`, `tenant_beta`, `tenant_gamma`, `tenant_delta`)
 - `data/tenant_anti_affinity.csv` -- 2 anti-affine pairs (`tenant_alpha` x `tenant_beta`, `tenant_gamma` x `tenant_delta`)
@@ -175,130 +176,29 @@ The script builds one semantic model from the CSVs, then layers the decision var
 - **Primary identifiers**: integer `id` on `Node`, `Pod`, `Deployment`, `Tenant`; string `name` on `Zone` and `Rack` (both derived from the unique `zone` / `rack` columns of `nodes.csv`).
 - **Important invariants**: node capacities are positive; pod row counts per `deployment_id` equal that deployment's `replicas` (the gang IC pins them); each rack belongs to exactly one zone; `max_per_zone_override`, when present, is a positive integer no greater than the row's `replicas`.
 
-### Concepts
-
-**`Node`** — a compute host in the cluster, with its resource capacities and topology placement.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | Integer | Yes | `node_id` from `data/nodes.csv` |
-| `name` | String | No | Human-readable host name |
-| `cpu_millicores`, `memory_mib`, `gpu_units` | Integer | No | Per-node capacity budgets |
-| `zone` | Relationship | — | Links to the `Zone` the node sits in |
-| `rack` | Relationship | — | Links to the `Rack` the node sits in |
-
-**`Pod`** — a single workload replica to be placed on a node.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | Integer | Yes | `pod_id` from `data/pods.csv` |
-| `cpu_millicores`, `memory_mib`, `gpu_units` | Integer | No | Per-pod resource demands |
-| `deployment` | Relationship | — | Links to the owning `Deployment` |
-| `on_node` | Decision | — | Binary 2D assignment matrix `on_node(Node, x)` |
-| `placed` | Decision | — | 0/1 indicator: placed on some node |
-
-**`Deployment`** — a group of replica pods owned by one tenant.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | Integer | Yes | `deployment_id` from `data/deployments.csv` |
-| `name` | String | No | Human-readable deployment name |
-| `replicas` | Integer | No | Pod count for gang placement |
-| `max_per_zone` | Integer | No | Spread cap; `ceil(replicas / num_zones)` or the row's `max_per_zone_override` |
-| `tenant` | Relationship | — | Links to the owning `Tenant` |
-| `placed` | Decision | — | 0/1 indicator: fully placed or fully unplaced |
-
-**`Tenant`** — an account whose deployments may be anti-affine to another tenant's.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | Integer | Yes | `tenant_id` from `data/tenants.csv` |
-| `name` | String | No | Human-readable tenant name |
-
-**`Zone`** and **`Rack`** are failure-domain and NVLink-island concepts derived from the `zone` and `rack` columns of `nodes.csv`. Each carries a `name` identifier, and `Rack.zone` links each rack to the single zone that contains it.
-
-### Relationships
-
-Beyond the concept properties above, the model defines three symmetric data relationships, each loaded once per pair from its CSV and closed in both argument orders so the constraints match either way.
-
-| Relationship | Schema (reading string fields) | Notes |
-|---|---|---|
-| `TenantAntiAffinity(a, b)` | two `Tenant` refs | Pods of anti-affine tenants must not share a node |
-| `DeploymentAffinity(a, b)` | two `Deployment` refs | Affinity-paired deployments must co-locate on one node |
-| `DistributedTraining(a, b)` | two `Pod` refs | Pods in one training group must share a rack |
+For the full concept and property definitions — including the three symmetric data relationships (`TenantAntiAffinity`, `DeploymentAffinity`, `DistributedTraining`) — see `pod_placement.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
-The CSP picks a node for each pod via a binary 2D assignment matrix; everything else is plain relational arithmetic over that matrix. The script consists of these patterns:
+The CSP picks a node for each pod via a binary 2D assignment matrix; every other rule is plain relational arithmetic over that matrix, and the solver maximizes the number of placed deployments.
 
-**Binary 2D matrix as the primary decision.** Each pod gets one binary `x` per node, materialised as `Pod.on_node(Node, x)`. A per-pod cardinality IC pins the row sum to a 0/1 placement indicator:
-
-```python
-Pod.on_node = model.Property(f"{Pod} runs on {Node} if {Integer:assigned}")
-Pod.placed = model.Property(f"{Pod} has {Integer:placed}")
-
-x = Integer.ref()
-problem.solve_for(Pod.on_node(Node, x), type="bin", name=["x", Pod.id, Node.id])
-problem.solve_for(Pod.placed, type="bin", name=["placed", Pod.id])
-
-placement_coupling_ic = model.where(Pod.on_node(Node, x)).require(
-    sum(x).per(Pod) == Pod.placed
-)
+```text
+nodes + pods + deployments + affinity / anti-affinity / training relations → 2D on_node matrix + placement indicators → bin-packing / anti-affinity / affinity / spread / gang / rack-clique constraints → maximize placed deployments → solve → verify
 ```
 
-An integer-valued `Pod.node_id` decision would read more naturally for the "different-node" pairwise pattern (`Pi.node_id != Pj.node_id`), but per-node aggregates would then force a `where(Pod.node_id == Node.id)`-shaped binding that mixes a decision variable with a data property -- the prescriptive rewriter does not lower that form today (the planogram template's `implies`-cascade table lookup is the canonical workaround). The 2D matrix sidesteps the rewriter limitation: every aggregate becomes a plain relational sum over `x`.
+**A binary 2D matrix is the primary decision.** Each pod gets one binary variable per node (`Pod.on_node(Node, x)`), and a per-pod cardinality constraint pins each pod's row sum to a 0/1 placement indicator. An integer-valued node-id decision would read more naturally for the "different node" pairwise patterns, but per-node aggregates over it would mix a decision variable with a data property inside a `where` binding — a form the prescriptive rewriter doesn't lower today. The 2D matrix sidesteps that: every constraint becomes a plain relational sum over `x`.
 
-**Bin-packing is one `sum(... * x).per(Node)` per resource.** Three near-identical ICs, one for each of CPU / memory / GPU:
+**Bin-packing is one aggregate per resource.** For CPU, memory, and GPU alike, the sum of pod demand times the assignment bit, per node, must stay within that node's capacity.
 
-```python
-cpu_capacity_ic = model.where(Pod.on_node(Node, x)).require(
-    sum(Pod.cpu_millicores * x).per(Node) <= Node.cpu_millicores
-)
-```
+**Pairwise rules are the CSP signature.** For every canonicalized pod pair whose tenants are anti-affine, at most one of the two may sit on any given node. The symmetric relations are closed in both argument orders at definition time so the predicate matches either way. The same pairwise-pod / pairwise-node shape encodes deployment co-location affinity (the two pods agree on every node's assignment bit) and the topology rack-clique rule (two training-group pods may not sit on nodes in different racks).
 
-**Pairwise anti-affinity is the CSP signature.** For every ordered pod-pair `(Pi, Pj)` whose deployments' tenants are anti-affine, at most one of `(Pi, Pj)` is on any given node:
+**Gang placement is a reified cardinality constraint.** A 0/1 deployment-level indicator forces every replica of a deployment to be placed together or not at all — the per-deployment placed-pod count equals `replicas × placed`, so a partial schedule is impossible. No big-M, no auxiliary indicator stack.
 
-```python
-Pi = Pod
-Pj = Pod.ref()
-xi = Integer.ref()
-xj = Integer.ref()
-anti_affinity_ic = model.where(
-    Pi.id < Pj.id,
-    TenantAntiAffinity(Pi.deployment.tenant, Pj.deployment.tenant),
-    Pi.on_node(Node, xi),
-    Pj.on_node(Node, xj),
-).require(xi + xj <= 1)
-```
+**Failure-domain spread is a two-key aggregate.** With `max_per_zone` precomputed (default `ceil(replicas / num_zones)`, or the row's `max_per_zone_override`), the count of a deployment's pods per zone must stay under its cap. The override is a per-deployment escape hatch: the bundled data uses it on the distributed-training job, whose rack-clique requirement forces all its pods onto one rack — and therefore one zone — which would otherwise collide with the default spread cap.
 
-The ordered `Pi.id < Pj.id` filter canonicalises each pair so the IC fires once per `{Pi, Pj}` unordered pair. `TenantAntiAffinity` is closed symmetrically at definition time (the two `model.define` rules), so the predicate matches in either argument order. The same pairwise-pod / pairwise-node shape encodes the deployment co-location affinity IC (`xi == xj` on every node) and the topology rack-clique IC (`xa + xb <= 1` whenever the two pods are in a distributed-training group and the two nodes are in different racks).
+Every constraint is pure relational arithmetic (no `implies` bodies), so `problem.verify()` re-evaluates all of them in the returned solution, and a post-solve assertion confirms the solver proved `OPTIMAL` rather than timing out.
 
-**Gang placement is a reified cardinality IC.** A deployment is either fully placed (`sum(Pod.placed).per(Deployment) == Deployment.replicas`) or fully unplaced (`sum(Pod.placed).per(Deployment) == 0`). The unified form uses a 0/1 deployment-level indicator:
-
-```python
-Deployment.placed = model.Property(f"{Deployment} has {Integer:placed}")
-problem.solve_for(Deployment.placed, type="bin", name=["dep_placed", Deployment.id])
-
-gang_placement_ic = model.where(Pod.deployment == Deployment).require(
-    sum(Pod.placed).per(Deployment) == Deployment.replicas * Deployment.placed
-)
-```
-
-`Deployment.placed == 0` forces every replica's `Pod.placed == 0` (sum == 0); `Deployment.placed == 1` forces every replica's `Pod.placed == 1` (sum == replicas). No big-M, no aux indicator stack.
-
-**Failure-domain spread is a two-key `sum(x).per(Deployment, Zone)`.** With `max_per_zone` pre-computed (default `ceil(replicas / num_zones)`, or the `max_per_zone_override` value when set on the row) and joined onto `Deployment`, the IC reads as a plain relational inequality:
-
-```python
-spread_ic = model.where(
-    Pod.on_node(Node, x),
-    Pod.deployment == Deployment,
-    Node.zone == Zone,
-).require(sum(x).per(Deployment, Zone) <= Deployment.max_per_zone)
-```
-
-The override is a deployment-level escape hatch for cases where the default spread cap collides with another constraint -- the bundled data uses it on `ml_gamma_train` so the rack-clique IC (which forces all distributed-training pods onto a single rack, and therefore into a single zone) doesn't make the deployment infeasible.
-
-**All nine ICs are pure relational arithmetic.** None of them carry an `implies` body, so `problem.verify()` re-evaluates every constraint in the returned solution. The post-solve assertion `model.require(problem.termination_status() == "OPTIMAL")` then guarantees the solver actually proved optimality rather than timing out.
+For the exact PyRel formulation, see `pod_placement.py`; `runbook.md` reproduces the model step by step with the RAI skills.
 
 ## Customize this template
 

@@ -37,6 +37,7 @@ The template also demonstrates scenario analysis by sweeping over different mini
 ## What's included
 
 - `shift_assignment.py` -- main script with ontology, constraints, and scenario analysis
+- **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - `data/workers.csv` -- 10 workers with IDs and names
 - `data/shifts.csv` -- 3 shifts (Morning, Afternoon, Night) with capacity limits
 - `data/availability.csv` -- worker-to-shift availability mappings
@@ -121,7 +122,7 @@ The template also demonstrates scenario analysis by sweeping over different mini
     └── availability.csv  # worker-to-shift availability pairs
 ```
 
-**Start here**: run `python shift_assignment.py` for the full scenario sweep end to end.
+**Start here**: run `python shift_assignment.py` for the full scenario sweep end to end, or follow `runbook.md` to reproduce it step by step with the RAI skills.
 
 ## Sample data
 
@@ -139,90 +140,24 @@ The model has three concepts plus a `Scenario` concept that parameterizes the co
 - **Primary identifiers**: `Worker.id` and `Shift.id` are integers; `Scenario.name` is a string.
 - **Important invariants**: `Shift.capacity` is a positive integer; each scenario's `min_coverage` must be no larger than the smallest shift capacity or that scenario is infeasible; each worker takes at most `max_shifts` shifts (default 1); a worker can only be assigned to a shift they are available for.
 
-### Concepts
-
-**`Worker`** — a person who can be assigned to shifts.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | Integer | Yes | Loaded from `data/workers.csv` |
-| `name` | String | No | Human-readable name |
-| `available_for` | Relationship | — | Links a worker to each `Shift` they can take (from `data/availability.csv`) |
-| `x_assign` | Property | No | Decision variable — binary assignment of `(Shift, Scenario)`; set by the solver |
-
-**`Shift`** — a shift that needs to be staffed.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | Integer | Yes | Loaded from `data/shifts.csv` |
-| `name` | String | No | Morning / Afternoon / Night |
-| `capacity` | Integer | No | Maximum workers the shift can hold |
-
-**`Scenario`** — one coverage level in the sweep; solved simultaneously with the others.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `name` | String | Yes | `coverage_1` / `coverage_2` / `coverage_3` |
-| `min_coverage` | Integer | No | Minimum workers required per shift in this scenario |
-
-### Relationships
-
-- `Worker.available_for(Shift)` — a worker is available for a shift; loaded from `availability.csv` and used as the `where` filter that scopes the decision variable.
+For the full concept and property definitions, see `shift_assignment.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
-**1. Define the ontology and load data.** Workers, shifts, and availability are modeled as concepts and relationships:
+The pipeline loads workers, shifts, and availability pairs, adds a `Scenario` concept for the coverage sweep, then hands a single constraint-satisfaction problem to the MiniZinc solver that finds a feasible roster for every scenario at once.
 
-```python
-Worker = model.Concept("Worker", identify_by={"id": Integer})
-Worker.name = model.Property(f"{Worker} has {String:name}")
-
-Shift = model.Concept("Shift", identify_by={"id": Integer})
-Shift.name = model.Property(f"{Shift} has {String:name}")
-Shift.capacity = model.Property(f"{Shift} has {Integer:capacity}")
-
-Worker.available_for = model.Relationship(f"{Worker} is available for {Shift}")
+```text
+CSV inputs → load Worker / Shift / availability → add Scenario coverage levels
+  → binary assignment variable (per worker-shift-scenario, scoped to availability)
+  → coverage + workload + capacity constraints → solve → verify → per-scenario roster
 ```
 
-**2. Define decision variables.** A binary variable `x_assign` indicates whether a worker is assigned to a given shift:
+1. **Load the data.** Workers and shifts come from their CSVs; availability pairs become a `Worker.available_for(Shift)` relationship that scopes which assignments are even possible.
+2. **Set up the decision.** A binary `x_assign` variable indicates whether a worker takes a given shift in a given scenario. Each coverage level (`coverage_1` / `_2` / `_3`) is a `Scenario` with a `min_coverage`, and the variable is scoped to the availability relationship so unavailable pairs are never considered.
+3. **Constrain the roster.** Three constraints govern every scenario: each shift meets its `min_coverage`, each worker takes no more than `max_shifts` shifts (default 1), and no shift exceeds its `capacity`. The constraints are named so they can be re-checked after solving.
+4. **Solve and verify.** A single solve handles all scenarios simultaneously; this is a feasibility problem with no objective, so the solver returns any assignment satisfying every constraint. `problem.verify()` then re-fires the named constraints as integrity checks to confirm the solution holds.
 
-```python
-Worker.x_assign = model.Property(f"{Worker} has {Shift} in {Scenario} if {Integer:assigned}")
-problem.solve_for(
-    Worker.x_assign(Shift, Scenario, assigned_ref),
-    type="bin",
-    name=["x", Scenario.name, Worker.name, Shift.name],
-    where=[Worker.available_for(Shift)],
-)
-```
-
-**3. Add constraints.** Three constraints govern the assignment: minimum coverage, maximum shifts per worker, and shift capacity limits. Constraints are stored in named variables so they can be verified after solving:
-
-```python
-coverage_ic = model.where(
-    Worker.x_assign(Shift, Scenario, assigned_ref),
-).require(sum(Worker, assigned_ref).per(Shift, Scenario) >= Scenario.min_coverage)
-problem.satisfy(coverage_ic)
-
-workload_ic = model.where(
-    Worker.x_assign(Shift, Scenario, assigned_ref),
-).require(sum(Shift, assigned_ref).per(Worker, Scenario) <= max_shifts)
-problem.satisfy(workload_ic)
-
-capacity_ic = model.where(
-    Worker.x_assign(Shift, Scenario, assigned_ref),
-).require(sum(Worker, assigned_ref).per(Shift, Scenario) <= Shift.capacity)
-problem.satisfy(capacity_ic)
-```
-
-**4. Solve and verify.** A single solve handles all scenarios simultaneously. After solving, `problem.verify()` fires the named constraints as integrity constraints to confirm the solution satisfies them:
-
-```python
-problem.solve("minizinc", time_limit_sec=60)
-problem.solve_info().display()
-problem.verify(coverage_ic, workload_ic, capacity_ic)
-model.require(problem.termination_status() == "OPTIMAL")
-```
+See `shift_assignment.py` for the implementation and `runbook.md` for the skill-driven reproduction.
 
 ## Customize this template
 

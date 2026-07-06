@@ -39,6 +39,7 @@ Every merge kicks off a pipeline of build, test, and deploy jobs, and each job c
 
 - **Model**: three source concepts (`Runner`, `Workflow`, `Compatibility`) plus an `Assignment` decision concept, with a binary assignment variable, an assign-one-runner rule, a per-runner concurrency rule, and a cost-minimizing objective.
 - **Runner**: `cicd_runner_allocation.py` — a single Python script that runs the scenario sweep and the outage diagnosis end to end against a Snowflake-connected RAI account.
+- **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - **Sample data**: 8 runner types, 20 workflow jobs, and their pre-computed compatibility pairs. See *Sample data* below.
 - **Outputs**: per-scenario solver status, total pipeline cost, and the runner-to-workflow assignment table printed to stdout; then the outage diagnosis naming the stranded jobs and the binding concurrency cap.
 
@@ -135,7 +136,7 @@ cicd_runner_allocation/
   pyproject.toml                  # dependencies
 ```
 
-**Start here**: run `python cicd_runner_allocation.py` for the full scenario sweep and outage diagnosis end to end, or follow `runbook.md` to rebuild it step by step.
+**Start here**: run `python cicd_runner_allocation.py` for the full scenario sweep and outage diagnosis end to end, or follow `runbook.md` to reproduce it step by step with the RAI skills.
 
 ## Sample data
 
@@ -153,201 +154,39 @@ The model has three source concepts loaded from the CSVs plus one decision conce
 - **Primary identifiers**: integer `runner_id` on `Runner` and `workflow_id` on `Workflow`; `Compatibility` and `Assignment` are each identified by the composite `(workflow, runner)` pair.
 - **Important invariants**: `cost_per_minute`, CPU, memory, durations, and concurrency caps are non-negative; each workflow is assigned to exactly one runner; each runner's assigned job count stays within its concurrency cap scaled by the scenario multiplier; assignment variables are binary.
 
-### Concepts
+`Compatibility` is a standalone relation, not a set of properties on `Runner` or `Workflow`: it enumerates which runners can execute which workflows (operating-system and resource match), and it seeds the `Assignment` decision space — `Assignment` is defined over exactly the `Compatibility` pairs.
 
-**`Runner`** — a CI/CD runner type with its resource specs, cost, and concurrency cap.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `runner_id` | Integer | Yes | `id` from `data/runners.csv` |
-| `name` | String | No | `runner_name`, e.g. `ubuntu-latest` |
-| `os` | String | No | Operating system |
-| `cpu` | Integer | No | CPU count |
-| `memory_gb` | Integer | No | Memory in gigabytes |
-| `cost_per_minute` | Float | No | Per-minute cost |
-| `max_concurrent` | Integer | No | Concurrency cap (jobs at once) |
-
-**`Workflow`** — a CI/CD job with its resource requirements and estimated duration.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `workflow_id` | Integer | Yes | `id` from `data/workflows.csv` |
-| `name` | String | No | `workflow_name`, e.g. `unit-tests-api` |
-| `event` | String | No | Triggering event |
-| `required_os` | String | No | Operating system the job needs |
-| `min_cpu` | Integer | No | Minimum CPU required |
-| `min_memory_gb` | Integer | No | Minimum memory required |
-| `estimated_minutes` | Integer | No | Estimated job duration |
-
-**`Assignment`** — the decision concept: one candidate `(workflow, runner)` pairing, existing only for compatible pairs.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `workflow` | Workflow | Yes | Composite key (with `runner`) |
-| `runner` | Runner | Yes | Composite key (with `workflow`) |
-| `x_assigned` | Float | No | Binary decision (0/1) — whether this pairing is chosen |
-
-### Relationships
-
-`Compatibility` is a standalone relation, not a set of properties on `Runner` or `Workflow`: it enumerates which runners can execute which workflows.
-
-| Relationship | Schema (reading string fields) | Notes |
-|---|---|---|
-| `Compatibility(workflow, runner)` | `workflow`, `runner` | Loaded from `data/compatibility.csv`; one row per compatible pair (operating-system and resource match). Seeds the `Assignment` decision space — `Assignment` is defined over exactly the `Compatibility` pairs. |
+For the full concept and property definitions, see `cicd_runner_allocation.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
-This section walks through the highlights in `cicd_runner_allocation.py`.
+The script defines the source concepts, seeds the decision space, adds the constraints and objective, sweeps the capacity scenarios, and finally diagnoses a maintenance outage.
 
 ### Define concepts and load CSV data
 
-The model defines three source concepts. `Runner` represents CI/CD runner types with resource specs and cost:
-
-```python
-Runner = model.Concept("Runner", identify_by={"runner_id": Integer})
-Runner.name = model.Property(f"{Runner} has {String:runner_name}")
-Runner.os = model.Property(f"{Runner} has {String:runner_os}")
-Runner.cpu = model.Property(f"{Runner} has {Integer:cpu}")
-Runner.memory_gb = model.Property(f"{Runner} has {Integer:memory_gb}")
-Runner.cost_per_minute = model.Property(f"{Runner} has {Float:cost_per_minute}")
-Runner.max_concurrent = model.Property(f"{Runner} has {Integer:max_concurrent}")
-```
-
-`Workflow` represents CI/CD jobs with resource requirements:
-
-```python
-Workflow = model.Concept("Workflow", identify_by={"workflow_id": Integer})
-Workflow.name = model.Property(f"{Workflow} has {String:workflow_name}")
-Workflow.event = model.Property(f"{Workflow} has {String:workflow_event}")
-Workflow.required_os = model.Property(f"{Workflow} has {String:required_os}")
-Workflow.min_cpu = model.Property(f"{Workflow} has {Integer:min_cpu}")
-Workflow.min_memory_gb = model.Property(f"{Workflow} has {Integer:min_memory_gb}")
-Workflow.estimated_minutes = model.Property(
-    f"{Workflow} has {Integer:estimated_minutes}"
-)
-```
-
-`Compatibility` links workflows to runners that meet their operating-system and resource requirements. `Assignment` is the decision concept — only compatible `(workflow, runner)` pairs exist:
-
-```python
-Compatibility = model.Concept(
-    "Compatibility", identify_by={"workflow": Workflow, "runner": Runner}
-)
-
-Assignment = model.Concept(
-    "Assignment", identify_by={"workflow": Workflow, "runner": Runner}
-)
-Assignment.x_assigned = model.Property(f"{Assignment} assigned {Float:x_assigned}")
-model.define(
-    Assignment.new(workflow=Compatibility.workflow, runner=Compatibility.runner)
-)
-```
+The model defines three source concepts — `Runner` (runner types with resource specs and cost), `Workflow` (CI/CD jobs with resource requirements), and `Compatibility` (which runners can execute which workflows). `Assignment` is the decision concept, defined over exactly the compatible `(workflow, runner)` pairs.
 
 ### Define decision variables, constraints, and objective
 
-Each assignment is a binary variable — assign this workflow to this runner or not:
-
-```python
-problem.solve_for(
-    Assignment.x_assigned,
-    type="bin",
-    name=["assign", Assignment.workflow.name, Assignment.runner.name],
-)
-```
-
-Two constraints enforce feasibility. Each is captured as a handle, named per entity (a readable label), and declared with `keyed_by` — the entity key its conflict membership reads back through if the model turns out infeasible. First, each workflow must be assigned to exactly one runner:
-
-```python
-assign_one = problem.satisfy(
-    model.require(
-        sum(AssignRef.x_assigned).where(AssignRef.workflow == Workflow).per(Workflow) == 1
-    ),
-    name=["assign_one", Workflow.name],
-    keyed_by={"workflow": Workflow},
-)
-```
-
-Second, the number of workflows assigned to each runner cannot exceed its concurrency limit, scaled by the scenario multiplier:
-
-```python
-conc = problem.satisfy(
-    model.require(
-        sum(AssignRef.x_assigned).where(AssignRef.runner == Runner).per(Runner)
-        <= concurrency_multiplier * Runner.max_concurrent
-    ),
-    name=["concurrency", Runner.name],
-    keyed_by={"runner": Runner},
-)
-```
-
-The objective minimizes total pipeline cost — the sum of runner cost per minute times job duration across all assignments:
-
-```python
-problem.minimize(
-    sum(
-        Assignment.x_assigned
-        * Assignment.runner.cost_per_minute
-        * Assignment.workflow.estimated_minutes
-    )
-)
-```
+Each assignment is a binary variable — assign this workflow to this runner or not. Two constraints enforce feasibility; each is captured as a handle, named per entity (a readable label), and declared with `keyed_by` — the entity key its conflict membership reads back through if the model turns out infeasible. First, each workflow must be assigned to exactly one runner. Second, the number of workflows assigned to each runner cannot exceed its concurrency limit, scaled by the scenario multiplier. The objective minimizes total pipeline cost — the sum of runner cost per minute times job duration across all assignments.
 
 ### Solve with scenario analysis
 
-The script loops over three concurrency multipliers (0.5x, 1.0x, 1.5x), creating a fresh Problem for each. This reveals the cost of operating at reduced capacity (maintenance window) versus full or burst capacity:
+The script loops over three concurrency multipliers (0.5x, 1.0x, 1.5x), creating a fresh Problem for each. This reveals the cost of operating at reduced capacity (maintenance window) versus full or burst capacity.
 
-```python
-SCENARIO_VALUES = [0.5, 1.0, 1.5]
-
-for multiplier in SCENARIO_VALUES:
-    alloc = solve_allocation(multiplier)
-```
-
-At full capacity (1.0x), `self-hosted-linux` absorbs 8 of 20 jobs at `$0.005/min` — the cheapest runner. At half capacity (0.5x), its 4-job cap forces overflow to `ubuntu-large` and `ubuntu-22.04`, raising cost by 6%. Burst mode (1.5x) pushes 12 jobs to self-hosted, saving another `$0.09` by pulling four more low-CPU jobs off the pricier ubuntu runners (the high-CPU jobs already fit on self-hosted at 1.0x). How the cheap, low-CPU jobs split between the two equal-cost ubuntu runners is one of several tied optima — a different HiGHS build may place them differently at the same total cost.
-
-After all scenarios, a summary table compares status and cost:
-
-```python
-for r in scenario_results:
-    print(f"  {SCENARIO_PARAM}={r['scenario']}: "
-          f"{r['status']}, cost=${r['objective']:.2f}")
-```
+At full capacity (1.0x), `self-hosted-linux` absorbs 8 of 20 jobs at `$0.005/min` — the cheapest runner. At half capacity (0.5x), its 4-job cap forces overflow to `ubuntu-large` and `ubuntu-22.04`, raising cost by 6%. Burst mode (1.5x) pushes 12 jobs to self-hosted, saving another `$0.09` by pulling four more low-CPU jobs off the pricier ubuntu runners (the high-CPU jobs already fit on self-hosted at 1.0x). How the cheap, low-CPU jobs split between the two equal-cost ubuntu runners is one of several tied optima — a different HiGHS build may place them differently at the same total cost. A summary table then compares status and cost across the scenarios.
 
 ### Diagnose a maintenance outage with conflict analysis
 
-The final section models a maintenance outage: `ubuntu-large` and `self-hosted-linux` go offline (their assignments are dropped with a `where=` filter). Every high-CPU Linux job (`min_cpu` at least 4) is compatible only with runners in `{ubuntu-large, ubuntu-xlarge, self-hosted-linux}` (the two heaviest jobs with just the latter two), so with two of those three down, all seven funnel onto `ubuntu-xlarge` — whose concurrency cap of 5 cannot hold them. The solve requests a conflict diagnosis:
+The final section models a maintenance outage: `ubuntu-large` and `self-hosted-linux` go offline (their assignments are dropped with a filter). Every high-CPU Linux job (`min_cpu` at least 4) is compatible only with runners in `{ubuntu-large, ubuntu-xlarge, self-hosted-linux}` (the two heaviest jobs with just the latter two), so with two of those three down, all seven funnel onto `ubuntu-xlarge` — whose concurrency cap of 5 cannot hold them. The solve requests a conflict diagnosis.
 
-```python
-outage = solve_allocation(1.0, offline_runners=["ubuntu-large", "self-hosted-linux"], conflict=True)
+A `conflict_status` field gates whether an irreducible infeasible subsystem (IIS) is available: on `CONFLICT_FOUND` the script reads back the stranded jobs and binding cap; otherwise it reports the status rather than reading an IIS that is not there. (The template's own branch raises in that case, because its outage is infeasible by construction, but code where infeasibility is not guaranteed should report and move on.)
 
-assert outage.si.conflict is True
-assert outage.si.termination_status in ("INFEASIBLE", "INFEASIBLE_OR_UNBOUNDED")
-
-# conflict_status gates whether an IIS is available -- dispatch on it.
-if outage.si.conflict_status == "CONFLICT_FOUND":
-    ...  # read the stranded jobs and the binding cap (below)
-else:
-    # NO_CONFLICT_EXISTS (the model was feasible) or NOT_SUPPORTED / FAILED (this solver
-    # build produced no IIS, e.g. needs HiGHS >= 1.13) -- report the status, don't read it.
-    print(f"No IIS to inspect: {outage.si.conflict_status}")
-```
-
-The template's own `else` branch raises instead of printing: its outage is infeasible by construction, so a missing IIS there is a regression. The `print` form above is the one to copy when infeasibility is not guaranteed.
-
-`in_conflict` is a bare predicate on each constraint instance — true when the solver reports that instance in the conflict (it collapses the solver's `IN_CONFLICT` and `MAYBE_IN_CONFLICT` into one membership). Each constraint's declared key gives it an entity back-pointer (`assign_one.workflow`, `conc.runner`), mirroring the variable's automatic back-pointer, so the conflict reads back as the actual stranded jobs and the binding runner cap, joined by key — no rule-name parsing:
-
-```python
-# Stranded jobs (their assign-one rule is in the conflict):
-model.select(outage.assign_one.workflow.name).where(outage.assign_one.in_conflict).inspect()
-# The binding runner cap (its concurrency rule is in the conflict):
-model.select(outage.conc.runner.name, outage.conc.runner.max_concurrent).where(
-    outage.conc.in_conflict
-).inspect()
-```
-
-The `.inspect()` call prints the rows for a quick look; the script materializes the same selects as DataFrames with `.to_df()` for its printed report and assertions.
+Each constraint's declared key gives it an entity back-pointer (`assign_one.workflow`, `conc.runner`), mirroring the variable's automatic back-pointer, so the conflict reads back as the actual stranded jobs and the binding runner cap, joined by key — no rule-name parsing.
 
 The IIS is minimal: it names six of the seven high-CPU jobs (any six already exceed the cap of five, so which six is solver-dependent) plus the `ubuntu-xlarge` concurrency rule. To restore feasibility, relax one member — bring a runner back online or raise the cap. Because all seven jobs share the one survivor, lift the cap enough for all of them (or restore a runner) and re-solve to confirm; clearing a single job only resolves that one row of the conflict.
+
+See `cicd_runner_allocation.py` for the implementation and `runbook.md` for the skill-driven reproduction.
 
 > [!NOTE]
 > Conflict analysis works for mixed-integer models like this one (unlike sensitivity analysis, which needs a linear or quadratic program). It requires no objective — it diagnoses feasibility. Request `conflict=True` on the solve whose infeasibility you want to explain — up front, or on a fresh build: a `Problem` already solved without it cannot add it on a re-solve.

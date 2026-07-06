@@ -41,6 +41,7 @@ This template shows how to express that rulebook as declarative logic on a four-
 
 - **Model**: the four-level `InsuredEntity` / `Policy` / `Location` / `Coverage` ontology, eight lower-level eligibility rules, two entity-level rollup rules (decline factors, marginal factors), and four mutually exclusive risk-tier subtype concepts — all as declarative derived Relationships.
 - **Runner**: `commercial_underwriting.py` — a single Python script that loads the CSVs, applies the rules, and prints results end to end.
+- **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - **Sample data**: four CSVs under `data/` — 8 insured businesses across 5 industries (`insured_entities.csv`), 8 commercial property policies one per insured (`policies.csv`), 11 scheduled locations (`locations.csv`), and 33 coverage lines at every location (`coverages.csv`).
 - **Outputs**: the printed eligibility flag matrix, the final per-entity tier classification, and the premium-by-tier business rollup.
 
@@ -153,7 +154,7 @@ This template shows how to express that rulebook as declarative logic on a four-
     └── coverages.csv               # coverage lines at each location
 ```
 
-**Start here:** `python commercial_underwriting.py`.
+**Start here:** run `python commercial_underwriting.py` for the full run end to end, or follow `runbook.md` to reproduce it step by step with the RAI skills.
 
 ## Sample data
 
@@ -176,153 +177,19 @@ The eight insureds are designed so each tier is represented and every rule fires
 - **Primary identifiers**: each level has an integer `id`; the hierarchy is threaded by relationships (`Policy.insured_entity`, `Location.policy`, `Coverage.location`) rather than by shared keys.
 - **Important invariants**: every policy belongs to exactly one insured entity, every location to one policy, every coverage to one location; the ITV check applies to `BUILDING` coverages only; the four risk tiers partition the `InsuredEntity` set (each entity lands in exactly one).
 
-### InsuredEntity
-
-The named insured business at the top of the hierarchy.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | Integer | Yes | |
-| `name` | String | No | |
-| `industry_code` | String | No | Drives industry-based rules (RESTRICTED, MARGINAL) |
-| `years_in_business` | Integer | No | Drives the insufficient-history and preferred-eligibility rules |
-| `annual_revenue` | Float | No | Carried for reporting; not used by current rules |
-
-### Policy
-
-A commercial property policy bound to one insured entity. Acts as the connector between an entity and its scheduled locations.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | Integer | Yes | |
-| `insured_entity` | InsuredEntity | No | Relationship to the named insured |
-| `policy_type` | String | No | E.g., `COMMERCIAL_PROPERTY` |
-| `effective_date` | String | No | ISO date |
-| `total_premium` | Float | No | Used for the premium-by-tier rollup |
-
-### Location
-
-A physical location/building scheduled on a policy.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | Integer | Yes | |
-| `policy` | Policy | No | Relationship to the parent policy |
-| `address` | String | No | |
-| `occupancy_class` | String | No | Drives the high-risk-occupancy rule |
-| `year_built` | Integer | No | Drives the old-construction rule |
-| `square_feet` | Integer | No | Carried for reporting |
-| `fire_protection_class` | Integer | No | ISO Public Protection Class 1-10; drives multiple rules |
-| `replacement_value` | Float | No | The denominator for the ITV calculation |
-
-### Coverage
-
-A coverage line scheduled on a location.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | Integer | Yes | |
-| `location` | Location | No | Relationship to the parent location |
-| `coverage_type` | String | No | One of `BUILDING`, `BUSINESS_PERSONAL_PROPERTY`, `BUSINESS_INTERRUPTION` |
-| `coverage_limit` | Float | No | Drives the ITV rule (BUILDING coverages only) |
-| `deductible` | Float | No | Carried for reporting |
+For the full concept and property definitions, see `commercial_underwriting.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
-Rules run at three altitudes on the hierarchy and feed each other. A coverage is checked for insurance-to-value (ITV) adequacy; a location for fire-protection class, year-built, and occupancy class; an insured entity for industry and operating history. Those lower-level flags then roll up: any decline factor at any level pushes the entity to the **Decline** tier, marginal factors push it to **Non-Standard**, clean entities are **Standard**, and clean long-tenured entities with the highest fire-protection grades are **Preferred**. Everything is declarative — rules at lower levels feed entity-level rollup rules, which in turn feed the tier classification.
+Rules run at three altitudes on the hierarchy and feed each other. A coverage is checked for insurance-to-value (ITV) adequacy; a location for fire-protection class, year-built, and occupancy class; an insured entity for industry and operating history. Each check is a declarative flag: a single `where(...).define(...)`, defined once per member for list-based checks (industry, occupancy) so PyRel unions the matches, and joining across concept levels in one clause for the ITV check.
+
+Those lower-level flags then roll up. Entity-level rollup rules traverse the `InsuredEntity → Policy → Location → Coverage` chain to raise a flag on the entity if any descendant matches, and an OR-style aggregator (`has_decline_factor`, `has_marginal_factor`) unions the contributing flags via PyRel's set-union semantics. The tiers themselves are typed sub-concepts that extend `InsuredEntity`: any decline factor pushes the entity to **Decline**, marginal factors to **Non-Standard**, clean entities are **Standard**, and clean long-tenured entities with the highest fire-protection grades are **Preferred**. The tier conditions are written with explicit exclusions so the four sets partition the `InsuredEntity` set — Preferred being a tightened subset of "no decline, no marginal." Everything is declarative: lower-level rules feed entity-level rollups, which feed the tier classification, and PyRel resolves the ordering.
 
 ```text
 InsuredEntity -> Policy -> Location -> Coverage
 ```
 
-### 1. Lower-level eligibility flags
-
-Boolean flags as unary `Relationship` declarations. Each rule is a single declarative `where(...).define(...)`.
-
-```python
-Location.has_poor_fire_protection = model.Relationship(
-    f"{Location} has poor fire protection"
-)
-model.where(
-    Location.fire_protection_class > MAX_FP_CLASS_FOR_ELIGIBILITY,
-).define(Location.has_poor_fire_protection())
-```
-
-For list-based membership (industry, occupancy class), the same flag is defined once per list member — PyRel collects the union of matching rows:
-
-```python
-for occ in HIGH_RISK_OCCUPANCIES:
-    model.where(Location.occupancy_class == occ).define(
-        Location.has_high_risk_occupancy()
-    )
-```
-
-The ITV check joins across two concept levels in a single `where()`:
-
-```python
-Coverage.is_underinsured = model.Relationship(f"{Coverage} is underinsured")
-model.where(
-    Coverage.coverage_type == "BUILDING",
-    Coverage.coverage_limit < ITV_THRESHOLD * Coverage.location.replacement_value,
-).define(Coverage.is_underinsured())
-```
-
-### 2. Entity-level rollups
-
-Rollup rules traverse the four-level chain `InsuredEntity → Policy → Location → Coverage` to declare an entity-level flag if any descendant satisfies the lower-level rule:
-
-```python
-InsuredEntity.has_underinsured_coverage = model.Relationship(
-    f"{InsuredEntity} has underinsured coverage"
-)
-model.where(
-    Policy.insured_entity(InsuredEntity),
-    Location.policy(Policy),
-    Coverage.location(Location),
-    Coverage.is_underinsured(),
-).define(InsuredEntity.has_underinsured_coverage())
-```
-
-A single OR-style aggregator flag (`has_decline_factor`, `has_marginal_factor`) is then defined four times — once per contributing flag — using PyRel's set-union semantics for relationships:
-
-```python
-InsuredEntity.has_decline_factor = model.Relationship(
-    f"{InsuredEntity} has any decline factor"
-)
-model.where(InsuredEntity.has_restricted_industry()).define(InsuredEntity.has_decline_factor())
-model.where(InsuredEntity.has_insufficient_history()).define(InsuredEntity.has_decline_factor())
-model.where(InsuredEntity.has_unprotected_location()).define(InsuredEntity.has_decline_factor())
-model.where(InsuredEntity.has_old_construction_location()).define(InsuredEntity.has_decline_factor())
-```
-
-### 3. Risk-tier classification via subtype concepts
-
-The four tiers are typed sub-concepts that extend `InsuredEntity`. Each rule populates exactly one of them, and the conditions are written so the four sets partition the `InsuredEntity` set:
-
-```python
-RiskTier_Decline = model.Concept("RiskTier_Decline", extends=[InsuredEntity])
-RiskTier_NonStandard = model.Concept("RiskTier_NonStandard", extends=[InsuredEntity])
-RiskTier_Standard = model.Concept("RiskTier_Standard", extends=[InsuredEntity])
-RiskTier_Preferred = model.Concept("RiskTier_Preferred", extends=[InsuredEntity])
-
-model.where(
-    InsuredEntity.has_decline_factor(),
-).define(RiskTier_Decline(InsuredEntity))
-
-model.where(
-    model.not_(InsuredEntity.has_decline_factor()),
-    InsuredEntity.has_marginal_factor(),
-).define(RiskTier_NonStandard(InsuredEntity))
-
-model.where(
-    model.not_(InsuredEntity.has_decline_factor()),
-    model.not_(InsuredEntity.has_marginal_factor()),
-    model.not_(InsuredEntity.has_non_preferred_location()),
-    InsuredEntity.years_in_business >= PREFERRED_MIN_YEARS,
-).define(RiskTier_Preferred(InsuredEntity))
-```
-
-The script then post-processes by subtracting the Preferred set from the Standard set, since Preferred is a tightened subset of "no decline, no marginal."
+See `commercial_underwriting.py` for the implementation and `runbook.md` to reproduce it step by step with the RAI skills.
 
 ## Customize this template
 

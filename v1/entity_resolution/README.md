@@ -135,31 +135,7 @@ Three cases are placed deliberately:
 - **Primary identifiers**: `Record` by `record_id`; `CandidateMatch`/`ReviewPair` by `pair_id`; `ResolvedParty` by integer `key`.
 - **Important invariants**: every record in a party shares one `entity_key`; a party breaches when its summed coverage exceeds the accumulation limit; only breached parties carry an `excess`, `premium`, and `cede` decision.
 
-### `Record`
-
-A raw policy record before resolution. `email`, `phone`, `date_of_birth`, and `gov_id_last4` are optional.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `record_id` | int | Yes | Loaded from `data/records.csv` |
-| `source_system` | string | No | `AUTO`, `HOME`, `LIFE`, or `LEGACY` |
-| `full_name` / address fields | string | No | Raw, uncleaned |
-| `coverage_amount` | float | No | Per-policy sum insured |
-| `date_of_birth` / `gov_id_last4` / `email` / `phone` | string | No | Optional matching identifiers |
-| `entity_id` (graph) / `entity_key` | (node) / int | No | Resolved party — WCC label and its integer key (Stage 1) |
-| `is_duplicate` | flag | No | Record shares its party with another (Stage 2) |
-
-### `ResolvedParty`
-
-One real insured, created from the distinct party keys.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `key` | int | Yes | The party's representative record id |
-| `total_exposure` | float | No | Sum of coverage across the party's resolved policies |
-| `is_over_limit` | flag | No | Total exposure exceeds the accumulation limit |
-| `excess` / `premium` | float | No | Excess over the limit and premium to cede it (breached parties) |
-| `cede` | float (binary) | No | Prescriptive decision: cede this party to reinsurance (Stage 3) |
+For the full concept and property definitions, see `entity_resolution.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
@@ -176,53 +152,17 @@ Blocking groups records sharing an email handle, phone, name+postal key, or date
 
 ### Stage 1 -- Graph: transitive clustering
 
-Each auto-merge match is an undirected edge; weakly-connected-components collapses connected records into one party. Because WCC returns the representative node, the script derives a stable integer party key from it:
-
-```python
-graph = Graph(model, directed=False, weighted=False, node_concept=Record)
-
-match_ref = CandidateMatch.ref()
-rec_a, rec_b = Record.ref(), Record.ref()
-model.where(
-    match_ref.rec_a == rec_a,
-    match_ref.rec_b == rec_b
-).define(graph.Edge.new(src=rec_a, dst=rec_b))
-
-graph.Node.entity_id = graph.weakly_connected_component()
-```
+Each auto-merge match becomes an undirected edge between two records, and weakly-connected-components collapses every connected group into one party — closing over transitive chains that a pairwise comparison would miss. WCC returns the representative node, from which the script derives a stable integer party key.
 
 ### Stage 2 -- Rules-based: exposure per resolved party
 
-A `ResolvedParty` is created per party key; its total exposure is the summed coverage of its records, and it breaches when that total exceeds the limit:
-
-```python
-model.where(party_rec.entity_key == ResolvedParty.key).define(
-    ResolvedParty.total_exposure(aggregates.sum(party_rec.coverage_amount).per(ResolvedParty))
-)
-model.define(ResolvedParty.is_over_limit(ResolvedParty)).where(
-    ResolvedParty.total_exposure > ACCUMULATION_LIMIT
-)
-```
+A `ResolvedParty` is created per party key; its total exposure is the summed coverage of its records, and it is flagged over-limit when that total exceeds the accumulation limit.
 
 ### Stage 3 -- Prescriptive: reinsurance cession knapsack
 
-A binary cede decision per breached party, maximizing excess exposure transferred within the premium budget:
+A binary cede decision per breached party maximizes the excess exposure transferred to reinsurance, subject to keeping total cession premium within the budget — a knapsack over the over-limit households.
 
-```python
-problem.solve_for(
-    ResolvedParty.cede,
-    where=[ResolvedParty.is_over_limit()],
-    name=["cede", ResolvedParty.key],
-    type="bin",
-    lower=0.0,
-    upper=1.0,
-)
-problem.satisfy(
-    model.require(aggregates.sum(ResolvedParty.premium * ResolvedParty.cede) <= REINSURANCE_BUDGET),
-    name=["reinsurance_budget"],
-)
-problem.maximize(aggregates.sum(ResolvedParty.excess * ResolvedParty.cede))
-```
+See `entity_resolution.py` for the implementation and `runbook.md` for the skill-driven reproduction.
 
 ## Customize this template
 

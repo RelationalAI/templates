@@ -46,6 +46,7 @@ The hard part is that name selection and weight sizing interact. The best 20 nam
 ## What's included
 
 - `financial_index_replication.py` -- Main script with the semantic model, optimization model, solve, and reporting
+- `runbook.md` -- a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself
 - `data/stocks.csv` -- 50-stock universe with ticker, sector, benchmark weight, liquidity, and previous weight
 - `data/index_returns.csv` -- Monthly S&P 500-like benchmark returns
 - `data/stock_returns.csv` -- Monthly historical returns by stock
@@ -124,6 +125,7 @@ The hard part is that name selection and weight sizing interact. The best 20 nam
 ```text
 .
 ├─ README.md                            # this file
+├─ runbook.md                           # step-by-step analyst walkthrough
 ├─ pyproject.toml                       # dependencies
 ├─ financial_index_replication.py      # main entrypoint: model, solve, report
 └─ data/
@@ -133,7 +135,7 @@ The hard part is that name selection and weight sizing interact. The best 20 nam
    └─ replica_returns.csv               # written by the script after solving
 ```
 
-**Start here**: run `python financial_index_replication.py` for the full solve and reporting end to end.
+**Start here**: run `python financial_index_replication.py` for the full solve and reporting end to end, or follow `runbook.md` to reproduce it step by step with the RAI skills.
 
 ## Sample data
 
@@ -154,110 +156,45 @@ Four concepts describe the universe, its sector grouping, and the historical ret
 - **Primary identifiers**: `Stock` by `ticker`; `Sector` by `sector_name`; `ReturnDate` by `date`.
 - **Important invariants**: exactly `N_REPLICATION_NAMES` stocks are selected; weights are non-negative, at most `MAX_WEIGHT` each, and sum to 100%; a stock can carry weight only if selected; each sector's weight stays within `SECTOR_ACTIVE_BAND` of its benchmark weight.
 
-### `Stock`
-
-A constituent in the investable universe. The selection and weight decision variables attach here.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `ticker` | String | Yes | Loaded from `data/stocks.csv` |
-| `name` | String | No | Company name |
-| `sector` | String | No | GICS-style sector label |
-| `benchmark_weight` | Float | No | Weight in the benchmark |
-| `avg_dollar_volume` | Float | No | Average daily dollar volume, for the ADV participation cap |
-| `previous_weight` | Float | No | Prior-period portfolio weight, for turnover and ADV |
-| `sector_ref` | Relationship | — | Link to the stock's `Sector` |
-| `x_selected` | Float (binary) | No | Decision variable: 1 if the stock is in the basket |
-| `x_weight` | Float | No | Decision variable: portfolio weight (0 to `MAX_WEIGHT`) |
-
-### `Sector`
-
-A GICS-style grouping derived from `Stock.sector`, carrying an aggregated benchmark weight for the neutrality constraint.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `sector_name` | String | Yes | Distinct values of `Stock.sector` |
-| `benchmark_weight` | Float | No | Sum of member stocks' benchmark weights |
-
-### `ReturnDate`
-
-A month in the historical return panel, carrying the benchmark's index return and the per-month tracking-residual variables.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `date` | String | Yes | Loaded from `data/index_returns.csv` |
-| `index_return` | Float | No | Benchmark return for the month |
-| `x_pos_error` | Float | No | Decision variable: positive tracking residual |
-| `x_neg_error` | Float | No | Decision variable: negative tracking residual |
-
-### Relationships
-
-| Relationship | Schema | Notes |
-|---|---|---|
-| `Stock.return_on(ReturnDate, stock_return)` | `Stock`, `ReturnDate`, `Float` | Per-stock monthly return; joins the return panel to the weights in the tracking constraint |
-| `Stock.sector_ref(Sector)` | `Stock`, `Sector` | Assigns each stock to its sector |
+For the full concept and property definitions, see `financial_index_replication.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
 The design patterns worth noting: **cardinality-constrained selection** (binary variables choose exactly 20 stocks), **linked binary and continuous decisions** (a stock carries weight only if selected), an **L1 tracking objective** (minimize absolute residuals to keep the problem linear with binary selection), **sector neutrality** (replicated sector exposure stays within a fixed active band), **ADV participation control** (each name's buy or sell is capped as a fraction of average daily dollar volume), and a **baseline comparison** against an equal-weight top-correlation basket.
 
+```text
+stocks + returns → selection + weight variables → tracking residuals → cardinality/sector/ADV constraints → MIP solve → basket + tracking report
+```
+
 ### 1. Define selection and weight variables
 
-The model has two main decisions per stock:
-
-```python
-Stock.x_selected = model.Property(f"{Stock} selected if {Float:selected}")
-Stock.x_weight = model.Property(f"{Stock} has replication weight {Float:weight}")
-```
-
-`x_selected` is binary. `x_weight` is continuous. The linking constraint keeps unselected names at zero weight:
-
-```python
-weight <= MAX_WEIGHT * selected
-```
+Each stock carries two linked decisions: a binary `x_selected` (in the basket or not) and a continuous `x_weight` (portfolio weight). A linking constraint holds `weight <= MAX_WEIGHT * selected`, so an unselected name is forced to zero weight.
 
 ### 2. Match benchmark returns
 
-For each historical month, the model creates positive and negative residual variables:
+For each historical month, the model creates positive and negative residual variables that absorb the gap between the benchmark return and the replica's weighted return:
 
 ```text
 index_return[t] - sum_i weight[i] * stock_return[i,t] = pos_error[t] - neg_error[t]
 ```
 
-The objective minimizes total absolute residual:
+The objective minimizes the total absolute residual:
 
 ```text
 minimize sum_t pos_error[t] + neg_error[t]
 ```
 
-This keeps the solver problem linear and mixed-integer. After solving, the script computes the standard RMS tracking error across the full history.
-
-This template uses an L1 tracking objective because absolute residuals keep the model linear with binary selection variables. A classic L2 objective, minimizing squared residuals, is also a natural tracking-error formulation if the selected solver supports the resulting mixed-integer quadratic problem.
+This L1 formulation keeps the problem linear and mixed-integer with the binary selection variables; after solving, the script computes the standard RMS tracking error across the full history. A classic L2 objective (squared residuals) is also a natural tracking-error formulation if the selected solver supports the resulting mixed-integer quadratic problem.
 
 ### 3. Add portfolio realism
 
-The template includes constraints practitioners expect:
-
-- exactly 20 selected stocks
-- weights sum to 100%
-- no shorting
-- max 10% per selected stock
-- sector weights within +/- 4% of benchmark sector weights
-- per-name buy and sell amounts no more than 5% of average daily dollar volume (ADV)
+The template layers on the constraints practitioners expect: exactly 20 selected stocks; weights sum to 100%; no shorting; max 10% per selected stock; sector weights within +/- 4% of benchmark sector weights; and per-name buy and sell amounts no more than 5% of average daily dollar volume (ADV).
 
 ### 4. Evaluate the portfolio
 
-After solving, the script reports:
+After solving, the script reports the selected names and weights, sector exposures and active sector weights, annualized tracking error, mean absolute residual, implied turnover, and a comparison to a simple top-correlation baseline. It also writes `data/replica_returns.csv` (`date`, `index_return`, `replica_return`) so you can plot the benchmark series against the optimized replica.
 
-- selected names and weights
-- sector exposures and active sector weights
-- annualized tracking error
-- mean absolute residual
-- implied turnover
-- comparison to a simple top-correlation baseline
-- `data/replica_returns.csv` with `date`, `index_return`, and `replica_return`
-
-You can use `data/replica_returns.csv` to plot the original benchmark return series against the optimized replica return series.
+See `financial_index_replication.py` for the implementation and `runbook.md` for the skill-driven reproduction.
 
 ## Customize this template
 

@@ -38,6 +38,7 @@ Every marketing team eventually faces the same question: the portfolio of campai
 
 - **Model**: a continuous LP over a single `Campaign` concept, with per-campaign floor and cap bounds, a total-budget constraint, a paused-region share cap, and a conversion-maximizing objective.
 - **Runner**: `campaign_roi.py` — a single Python script that runs end-to-end against a Snowflake-connected RAI account.
+- **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - **Sample data**: `data/campaigns.csv` — 12 campaigns across 5 regions with current budgets and empirical conversion rates.
 - **Outputs**: solver status, optimized-versus-current conversions and lift, a per-campaign reallocation table, and a regional-spend summary against the paused-region cap.
 
@@ -117,7 +118,7 @@ Every marketing team eventually faces the same question: the portfolio of campai
     └── campaigns.csv       # 12 campaigns across 5 regions
 ```
 
-**Start here**: run `python campaign_roi.py` for the full reallocation end to end.
+**Start here**: run `python campaign_roi.py` for the full reallocation end to end, or follow `runbook.md` to reproduce it step by step with the RAI skills.
 
 ## Sample data
 
@@ -141,18 +142,7 @@ The model is a single concept: one `Campaign` per row of `campaigns.csv`, enrich
 - **Primary identifiers**: integer `id` on `Campaign`, loaded from `data/campaigns.csv`.
 - **Important invariants**: `current_budget` and `conversion_rate` are non-negative; the optimized budget `x_budget` stays between the per-campaign floor and cap; total spend does not exceed `TOTAL_BUDGET`; and the paused region's spend does not exceed its share cap.
 
-### Campaign
-
-A marketing campaign with a current budget, region tag, and an empirical conversion rate.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | Integer | Yes | Loaded from `data/campaigns.csv` |
-| `name` | String | No | Human-readable name |
-| `region` | String | No | One of NORTH / SOUTH / CENTRAL / EAST / WEST |
-| `current_budget` | Float | No | Current spend in $K |
-| `conversion_rate` | Float | No | Conversions per $K of spend |
-| `x_budget` | Float | No | Optimized budget per campaign — the decision variable populated after the solve |
+For the full concept and property definitions, see `campaign_roi.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
@@ -160,51 +150,17 @@ The script loads the campaigns into a single `Campaign` concept, defines one con
 
 ### 1. Decision variable
 
-A continuous budget variable per campaign. The lower bound of 0 is permissive — the per-campaign floor (below) tightens it from the data.
-
-```python
-Campaign.x_budget = model.Property(f"{Campaign} has new budget {Float:budget}")
-
-problem.solve_for(
-    Campaign.x_budget,
-    lower=0,
-    name=["budget", Campaign.name],
-)
-```
+One continuous budget variable per campaign, with a permissive lower bound of 0 that the per-campaign floor (below) tightens from the data.
 
 ### 2. Constraints
 
-The per-campaign floor and cap are derived from each campaign's current spend. The floor reflects institutional inertia (account managers, vendor commitments, brand presence); the cap reflects creative-fatigue and audience-saturation guardrails.
-
-```python
-problem.satisfy(model.require(
-    Campaign.x_budget >= FLOOR_FRACTION * Campaign.current_budget,
-    Campaign.x_budget <= CAP_MULTIPLIER * Campaign.current_budget,
-))
-```
-
-The total-budget constraint caps combined spend across all campaigns.
-
-```python
-problem.satisfy(model.require(sum(Campaign.x_budget) <= TOTAL_BUDGET))
-```
-
-The paused-region cap is a single constraint summing only campaigns in the paused region, keeping its total within a configurable share of the budget (an organizational pause for regulatory, reputational, or capacity reasons).
-
-```python
-problem.satisfy(model.require(
-    sum(Campaign.x_budget).where(Campaign.region == PAUSED_REGION)
-    <= PAUSED_CAP_FRACTION * TOTAL_BUDGET
-))
-```
+The per-campaign floor and cap are derived from each campaign's current spend: the floor reflects institutional inertia (account managers, vendor commitments, brand presence), and the cap reflects creative-fatigue and audience-saturation guardrails. A total-budget constraint caps combined spend across all campaigns. The paused-region cap sums only campaigns in the paused region and keeps that total within a configurable share of the budget (an organizational pause for regulatory, reputational, or capacity reasons).
 
 ### 3. Objective
 
 The objective maximizes total expected conversions — the sum over campaigns of budget times conversion rate.
 
-```python
-problem.maximize(sum(Campaign.x_budget * Campaign.conversion_rate))
-```
+See `campaign_roi.py` for the implementation and `runbook.md` for the skill-driven reproduction.
 
 ## Customize this template
 

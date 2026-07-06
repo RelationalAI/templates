@@ -40,6 +40,7 @@ Built using **prescriptive reasoning** (mixed-integer programming with the HiGHS
 ## What's included
 
 - `traveling_salesman.py` -- main script with ontology, MTZ formulation, and solver call
+- **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - `data/edges.csv` -- 12 directed edges between 4 nodes with distances
 - `pyproject.toml` -- Python package configuration
 
@@ -110,7 +111,7 @@ traveling_salesman/
     └── edges.csv        # 12 directed edges between 4 nodes, with distances
 ```
 
-**Start here:** `traveling_salesman.py` runs the whole template end to end.
+**Start here:** run `python traveling_salesman.py` for the full run end to end, or follow `runbook.md` to reproduce it step by step with the RAI skills.
 
 ## Sample data
 
@@ -124,84 +125,19 @@ The model has two concepts: the `Edge` rows loaded from CSV, and the `Node` set 
 - **Primary identifiers**: an `Edge` is identified by its endpoint pair `(i, j)`; a `Node` is identified by its index `v`.
 - **Important invariants**: distances are non-negative; every node needs exactly one in-edge and one out-edge; the selected edges must form a single cycle (no subtours).
 
-### Edge
-
-A directed leg from one node to another with an associated distance. Loaded from `data/edges.csv`; the `x` property is filled in by the solver.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `i` | Integer | Yes | Source node index |
-| `j` | Integer | Yes | Destination node index |
-| `dist` | Float | No | Distance from `i` to `j` |
-| `x` | Float | No | Binary decision (0/1): 1 if the edge is on the tour |
-
-### Node
-
-A location to visit, derived from the `i` endpoints of the edges. The `u` property is the MTZ ordering value the solver assigns for subtour elimination.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `v` | Integer | Yes | Node index, derived from `Edge.i` |
-| `u` | Float | No | Integer MTZ ordering value in `[1, node_count]`, assigned by the solver |
-
-### Relationships
-
-The model defines one standalone relationship beyond the concept properties.
-
-| Relationship | Reads as | Notes |
-|---|---|---|
-| `node count is <n>` | the number of nodes in the instance | Stored so the solver can reference it in the ordering-variable bounds |
+For the full concept and property definitions, see `traveling_salesman.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
-**1. Load the edge data and derive nodes.** Edges with distances are loaded from CSV. Nodes are derived from edge endpoints:
+The script loads the directed edges with their distances from CSV, then derives the `Node` set from the edge endpoints so nodes never need their own file. On the ontology it lays down the decision variables the solver will fill in: a binary variable per edge (1 if the edge is on the tour) and an integer ordering value per node used for subtour elimination.
 
-```python
-Edge = model.Concept("Edge", identify_by={"i": Integer, "j": Integer})
-Edge.dist = model.Property(f"{Edge} has {Float:dist}")
+Two families of constraints shape the tour. Degree constraints require exactly one incoming and one outgoing selected edge at every node, so the route enters and leaves each stop once. Miller-Tucker-Zemlin (MTZ) constraints tie the ordering values together: whenever an edge is selected, the destination's order must exceed the source's, which is what rules out disconnected subtours and forces a single connected cycle. The objective minimizes the total distance of the selected edges, and the HiGHS solver returns the optimal tour.
 
-Node = model.Concept("Node", identify_by={"v": Integer})
-model.define(Node.new(v=Edge.i))
+```text
+edges.csv → load edges → derive nodes → edge + ordering variables → degree + MTZ constraints → minimize distance → optimal tour
 ```
 
-**2. Define decision variables.** Binary variables `x[i,j]` select edges in the tour. Integer auxiliary variables `u[v]` enforce node ordering for subtour elimination:
-
-```python
-Edge.x = model.Property(f"{Edge} is selected if {Float:x}")
-problem.solve_for(Edge.x, type="bin", name=["x", Edge.i, Edge.j])
-
-Node.u = model.Property(f"{Node} has auxiliary value {Float:u}")
-problem.solve_for(Node.u, name=["u", Node.v], type="int", lower=1, upper=node_count)
-```
-
-**3. Add degree constraints.** Every node must have exactly one incoming and one outgoing edge:
-
-```python
-node_flow = sum(Edge.x).per(Node)
-problem.satisfy(model.require(
-    node_flow.where(Edge.j == Node.v) == 1,
-    node_flow.where(Edge.i == Node.v) == 1
-))
-```
-
-**4. Add MTZ subtour elimination.** If edge (i,j) is in the tour, then the ordering of j must be at least one more than i. This prevents disconnected subtours:
-
-```python
-problem.satisfy(model.where(
-    Ni := Node, Nj := Node.ref(),
-    Edge.i > 1, Edge.j > 1,
-    Ni.v(Edge.i), Nj.v(Edge.j),
-).require(
-    Ni.u - Nj.u + node_count * Edge.x <= node_count - 1
-))
-```
-
-**5. Minimize total tour distance:**
-
-```python
-total_dist = sum(Edge.dist * Edge.x)
-problem.minimize(total_dist)
-```
+See `traveling_salesman.py` for the implementation, and `runbook.md` to reproduce it step by step with the RAI skills.
 
 ## Customize this template
 
