@@ -31,16 +31,16 @@ This template enumerates multi-step attack paths across an enterprise asset grap
 
 ## What you'll build
 
-- Load a 12-asset enterprise estate (perimeter hosts, internal services and workstations, restricted crown jewels) and 16 directed attack steps from CSV
-- Model three distinct attacker techniques as separate edges between assets: vulnerability exploitation, credential reuse, and network pivoting
-- Enumerate kill-chain attack paths with RelationalAI multi-relationship path enumeration, a multi-edge pattern that fixes the technique order
-- Run a point query that lists every route between one named entry point and one named crown jewel
-- Rank the kill-chains by the asset exposure summed along each one
-- Persist which assets lie on a crown-jewel attack path back onto the ontology
+- An enterprise asset graph (perimeter hosts, internal services and workstations, restricted crown jewels) with three distinct attacker techniques — vulnerability exploitation, credential reuse, and network pivoting — modeled as separate directed edges between assets
+- An enumerated set of kill-chain attack paths, produced by RelationalAI multi-relationship path enumeration (a multi-edge pattern that fixes the technique order)
+- A point-query result listing every route between one named entry point and one named crown jewel over the technique-agnostic union edge
+- A ranking of the kill-chains by the asset exposure summed along each one
+- An `Asset.on_attack_path` flag persisted back onto the ontology, marking every asset that lies on a crown-jewel-reaching chain
 
 ## What's included
 
 - **Self-contained script**: `cybersecurity_attack_paths.py` runs the full analysis end-to-end
+- **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - **Data**: `data/assets.csv` (12 assets) and `data/attack_steps.csv` (16 technique-tagged edges)
 
 ## Prerequisites
@@ -131,30 +131,7 @@ cybersecurity-attack-paths/
 - **Primary identifiers**: `Asset` by `id`.
 - **Important invariants**: the three technique edges are directed (`src` reaches `dst`, not the reverse); `internet_facing` and `crown_jewel` are `yes`/`no` flags that pin the kill-chain endpoints; `on_attack_path` is set only on assets that lie on a crown-jewel-reaching chain.
 
-### `Asset`
-
-A host, service, or account in the enterprise estate. Its flags mark where attack paths can start (`internet_facing`) and end (`crown_jewel`), and `on_attack_path` is persisted back onto the asset after the kill-chains are enumerated.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | string | Yes | Loaded from `data/assets.csv` |
-| `name` | string | No | Human-readable asset name |
-| `zone` | string | No | `dmz`, `internal`, or `restricted` |
-| `internet_facing` | string | No | `yes`/`no`; a kill-chain source must be `yes` |
-| `crown_jewel` | string | No | `yes`/`no`; a kill-chain destination must be `yes` |
-| `exposure_score` | int | No | Per-asset risk score summed along each chain for ranking |
-| `on_attack_path` | string | No | `yes`, persisted onto assets that lie on a crown-jewel chain |
-
-### Relationships
-
-Four directed self-relationships between assets. The first three are the technique-tagged kill-chain edges; `can_reach` is the technique-agnostic union used by the point query.
-
-| Relationship | Schema (reading string fields) | Notes |
-|---|---|---|
-| `exploit_to(Asset, Asset)` | `src`, `dst` | Vulnerability exploitation step |
-| `cred_to(Asset, Asset)` | `src`, `dst` | Credential-reuse step |
-| `pivot_to(Asset, Asset)` | `src`, `dst` | Network lateral-movement step |
-| `can_reach(Asset, Asset)` | `src`, `dst` | Union of all steps (any technique); used by the point query |
+For the full concept and property definitions — including the four directed self-relationships (`exploit_to`, `cred_to`, `pivot_to`, and the technique-agnostic `can_reach` union edge) — see `cybersecurity_attack_paths.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
@@ -163,77 +140,13 @@ CSV files --> Define Asset + technique edges --> Kill-chain enumeration (multi-e
           --> Point query (entry to crown jewel) --> Exposure ranking --> Persist Asset.on_attack_path
 ```
 
-### 1. Model assets and one edge per technique
+The analysis starts by modeling each attacker technique as its own directed relationship between assets — `exploit_to`, `cred_to`, `pivot_to` — plus a technique-agnostic `can_reach` union edge that the point query uses.
 
-Each attacker technique is its own directed relationship between assets, plus a technique-agnostic union edge for the point query:
+The centerpiece is a multi-edge path pattern (which needs `relationalai>=1.15`) that composes the techniques in series: an exploit first, then credential reuse, then one or more lateral pivots, ending at an explicit destination. Filtering the source to an internet-facing asset and the destination to a crown jewel pins the threat model. Enforcing edge order is the whole point — a single union edge or a flat join cannot express "exploit first, then credentials, then pivots," which is exactly the kill-chain signature analysts care about, and each hop records the technique it used.
 
-```python
-Asset.exploit_to = model.Relationship(f"{Asset} exploits to {Asset}", short_name="exploit_to")
-Asset.cred_to = model.Relationship(f"{Asset} reuses credentials to {Asset}", short_name="cred_to")
-Asset.pivot_to = model.Relationship(f"{Asset} pivots to {Asset}", short_name="pivot_to")
-# Technique-agnostic union edge: an attacker can move from src to dst by SOME
-# technique. Used for the point query (any route between two named assets).
-Asset.can_reach = model.Relationship(f"{Asset} can reach {Asset}", short_name="can_reach")
-```
+A separate point query pins both endpoints by id to enumerate every route between a chosen entry point and a chosen crown jewel over the union edge. The kill-chains are then ranked by the exposure summed along each one. Finally, the assets lying on any crown-jewel chain are flagged back onto the ontology as `Asset.on_attack_path`, so a later query can pull them without re-enumerating paths.
 
-### 2. Enumerate kill-chain attack paths (multi-edge, requires `relationalai>=1.15`)
-
-The path pattern composes the three techniques in series. The first hop is an exploit, the second is credential reuse, then one or more lateral pivots, ending at an explicit destination. Filtering the source to an internet-facing asset and the destination to a crown jewel pins the threat model:
-
-```python
-a, b, c, dst = Asset.ref(), Asset.ref(), Asset.ref(), Asset.ref()
-kill = model.path(a.exploit_to, b.cred_to, c.pivot_to.repeat(1, MAX_PIVOTS), dst).all_paths()
-kill_df = (
-    model.where(
-        kill,
-        a.internet_facing == "yes",
-        dst.crown_jewel == "yes",
-    )
-    .select(
-        kill.alias("path_id"),
-        kill.nodes["index"].alias("step"),
-        Asset(kill.nodes).id.alias("asset_id"),
-        Asset(kill.nodes).name.alias("asset_name"),
-    )
-    .to_df()
-)
-```
-
-The edge order is enforced by the pattern. A single "can move" union edge or a flat join cannot express "exploit first, then credentials, then pivots", which is exactly the kill-chain signature analysts care about. `kill.relationships["relationship"]` reads the technique used at each hop.
-
-### 3. Point query between two named assets
-
-Pinning both endpoints by id enumerates every route between a chosen entry point and a chosen crown jewel over the union edge:
-
-```python
-src_pt, dst_pt = Asset.ref(), Asset.ref()
-route = model.path(src_pt.can_reach.repeat(1, MAX_ROUTE_HOPS), dst_pt).all_paths()
-route_df = (
-    model.where(
-        route,
-        src_pt.id == ENTRY_ASSET,
-        dst_pt.id == TARGET_ASSET,
-    )
-    .select(
-        route.alias("path_id"),
-        route.nodes["index"].alias("step"),
-        Asset(route.nodes).id.alias("asset_id"),
-    )
-    .to_df()
-)
-```
-
-### 4. Persist the assets on a crown-jewel attack path
-
-The assets along the kill-chains are flagged back onto the ontology so a later query can pull them without re-enumerating paths:
-
-```python
-Asset.on_attack_path = model.Property(f"{Asset} on attack path {String:on_attack_path}")
-on_path_ids = sorted({i for ch in chains for i in ch["asset_ids"]})
-flag_data = model.data(pd.DataFrame({"id": on_path_ids}))
-fa = Asset.ref()
-model.where(fa.id == flag_data["id"]).define(fa.on_attack_path("yes"))
-```
+See `cybersecurity_attack_paths.py` for the implementation and `runbook.md` to reproduce it step by step with the RAI skills.
 
 ## Customize this template
 
@@ -270,7 +183,7 @@ model.where(fa.id == flag_data["id"]).define(fa.on_attack_path("yes"))
 <details>
   <summary>Why does authentication or configuration fail?</summary>
 
-- Run `rai init` to create or update `raiconfig.toml`.
+- Run `rai init` to create or update `raiconfig.yaml`.
 - If you have multiple profiles, set `RAI_PROFILE` or switch profiles in your config.
 
 </details>

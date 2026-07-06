@@ -2,7 +2,7 @@
 title: "Planogram Optimization"
 description: "Decide integer facing counts per SKU to maximize predicted weekly demand under shelf capacity and category cardinality limits, where per-(SKU, facing_count) demand comes from a regression model."
 featured: false
-private: true
+private: false
 experience_level: intermediate
 industry: "Retail & Consumer"
 reasoning_types:
@@ -15,8 +15,6 @@ tags:
   - retail
   - shelf-space-allocation
 ---
-
-# Planogram Optimization
 
 ## What this template is for
 
@@ -47,6 +45,7 @@ The same pattern applies to any predict-then-optimize problem where the predicti
 ## What's included
 
 - `planogram_optimization.py` -- main script with ontology, decisions, constraints, and solver call
+- **Runbook**: `runbook.md` -- a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - `data/skus.csv` -- 18 SKUs across 4 categories (snacks, beverages, candy, household_paper) with width, max-facings, and pre-assigned shelf; `sku_id` must be unique, `category` must match a `categories.csv` name, and `assigned_shelf_id` must reference a `shelves.csv` id. The `brand` column is loaded but not used by the bundled CSP -- it is reserved for the brand-block contiguity customization described under "Customize this template"
 - `data/shelves.csv` -- 4 shelves (Top Eye-Level 100cm, Upper-Middle 80cm, Lower-Middle 80cm, Bottom 90cm); `id` must be unique and is the foreign-key target of `skus.assigned_shelf_id`
 - `data/categories.csv` -- per-category min/max active SKU bounds; `name` must be unique and is the foreign-key target of `skus.category`
@@ -61,6 +60,7 @@ The same pattern applies to any predict-then-optimize problem where the predicti
 
 ### Tools
 - Python >= 3.10
+- RelationalAI Python SDK (`relationalai == 1.1.0`)
 
 ## Quickstart
 
@@ -155,63 +155,58 @@ The same pattern applies to any predict-then-optimize problem where the predicti
     └── predicted_demand_table.csv
 ```
 
+**Start here**: run `python planogram_optimization.py` for the full predict-then-optimize run end to end — it validates the data, binds each SKU's demand from the prediction table, solves the facing-count CSP, and prints the allocation — or follow `runbook.md` to reproduce it step by step with the RAI skills.
+
+## Sample data
+
+The bundled CSVs are illustrative, fully synthetic demo data sized so the model runs in seconds. The `predicted_demand_table.csv` is a vendored stand-in for the output of any per-(SKU, facings-count) demand regressor, so the predict-to-CSP hand-off can be inspected and run without a training arm. A pre-solve pass validates unique keys, category and shelf foreign keys, and that the demand table is complete over every SKU's `[0, max_facings]` range with `demand_units = 0` at `facings_count = 0`.
+
+- **`skus.csv`** (18 rows) — SKUs across 4 categories (snacks, beverages, candy, household_paper) with `width_cm`, `max_facings`, `category`, and a pre-assigned `assigned_shelf_id`. The `brand` column is loaded but unused by the bundled CSP (reserved for the brand-block-contiguity customization).
+- **`shelves.csv`** (4 rows) — shelves with fixed lengths (Top Eye-Level 100cm, Upper-Middle 80cm, Lower-Middle 80cm, Bottom 90cm); `shelf_id` is the foreign-key target of `skus.assigned_shelf_id`.
+- **`categories.csv`** (4 rows) — per-category minimum and maximum active-SKU bounds; `category` is the foreign-key target of `skus.category`.
+- **`predicted_demand_table.csv`** — one row per `(sku_id, facings_count)` for every `facings_count` in `{0, 1, ..., sku.max_facings}`, with concave per-SKU demand curves; the `facings_count = 0` row is `demand_units = 0`.
+
+## Model overview
+
+The model has four concepts. The predictive output (`PredictedDemand`) is a data table that the CSP reads through a decision-indexed lookup; the decision lives on `Sku`.
+
+- **Key entities**: `Sku` — a product with a width, max-facings cap, category, and assigned shelf (its facing count is the CSP decision); `Shelf` — a shelf with a fixed length that facings must fit within; `Category` — a product category with minimum and maximum active-SKU bounds; `PredictedDemand` — the predicted demand for each `(sku, facings_count)`, read by the CSP through a decision-indexed lookup.
+- **Primary identifiers**: integer `id` on `Sku` and `Shelf`; string `name` on `Category`; composite `(sku_id, facings_count)` on `PredictedDemand`.
+- **Important invariants**: `width_cm`, `max_facings`, and `length_cm` are non-negative integers; every `Sku.category` matches a `Category`, and every `Sku.assigned_shelf_id` matches a `Shelf`; `PredictedDemand` covers every `(sku_id, facings_count)` over `[0, max_facings]` with `demand_units = 0` at `facings_count = 0`; the CSP decisions `facings`, `realized_demand`, and `active` are integers (`active` is 0/1).
+
+For the full concept and property definitions, see `planogram_optimization.py`; `runbook.md` builds them step by step with the RAI skills.
+
 ## How it works
 
-The CSP picks integer facings per SKU; the predictive output binds the realized-demand decision via a decision-indexed table lookup. The script consists of these patterns:
+The CSP picks integer facings per SKU; the predictive output binds each SKU's realized demand via a decision-indexed table lookup, and the solver maximizes total predicted demand under shelf and category limits.
 
-**Element-style decision-indexed table lookup is the predict->CSP hand-off.** For each SKU, `Sku.realized_demand` is pinned to the `demand_units` row of `PredictedDemand` whose `facings_count` matches the chosen `Sku.facings`. The `implies` cascade lowers per row of `PredictedDemand` into one half-reified linear equality `implies(k == Sku.facings, Sku.realized_demand == table[sku, k])`; only the row with `k == Sku.facings` activates:
-
-```python
-demand_lookup_ic = model.where(PredictedDemand.sku_id == Sku.id).require(
-    implies(
-        PredictedDemand.facings_count == Sku.facings,
-        Sku.realized_demand == PredictedDemand.demand_units,
-    )
-)
+```text
+skus + shelves + categories + predicted-demand table → facings / realized_demand / active decisions → lookup + capacity + cardinality constraints → maximize demand → solve → verify
 ```
 
-The natural relational form -- `where(PredictedDemand.facings_count == Sku.facings).require(Sku.realized_demand == PredictedDemand.demand_units)` -- equates a data property with a decision variable inside a `where` binding, which the prescriptive rewriter doesn't lower today. Pushing the decision-vs-data equality into the predicate of an `implies` lets the rewriter expand into the canonical per-`k` form.
+**The decision-indexed table lookup is the predict-to-CSP hand-off.** For each SKU, `realized_demand` must equal the `PredictedDemand` row whose `facings_count` matches the chosen `facings`. Because equating a data property with a decision variable inside a `where` binding isn't a form the prescriptive rewriter lowers today, the lookup is written with an `implies` cascade — one half-reified equality per candidate facing count, of which only the row matching the chosen `facings` activates. This is the element-style lookup: no bilinearity, no big-M, no SOS2.
 
-**Active iff facings is a pair of linear inequalities.** `Sku.active` is a 0/1 integer (declared as `solve_for(..., type="bin")`) because the per-category cardinality is written as `sum(Sku.active).per(Category)`, and a relational sum over a Boolean expression like `Sku.facings >= 1` is not a valid form. Two linear constraints couple the indicator to `Sku.facings`:
+**An `active` indicator couples to `facings` via two linear inequalities.** The per-category cardinality is a relational sum over a 0/1 `active` variable (a sum over a Boolean expression like `facings >= 1` is not a valid form). Two linear constraints pin `active = 1` whenever `facings >= 1` and `active = 0` otherwise, after which the per-category count reads as a plain `sum(active).per(Category)` with min/max bounds. Shelf capacity is likewise a plain relational inequality: facings times width, summed per shelf, cannot exceed the shelf length.
 
-```python
-active_lower_ic = model.require(Sku.facings >= Sku.active)
-active_upper_ic = model.require(Sku.facings <= Sku.max_facings * Sku.active)
-```
+**Verification is split by constraint kind.** The `implies`-bodied lookup is solver-only — it goes to the solver but is not passed to `verify()`, which would return silently OK without evaluating it; instead a post-solve Python dict re-checks each `(sku_id, facings) -> demand_units` against the input table. The pure relational-arithmetic constraints (capacity, cardinality, active coupling) *are* re-evaluated by `verify()`, and a post-solve assertion confirms the solver reached `OPTIMAL`.
 
-`Sku.facings >= Sku.active` forces `facings >= 1` when `active == 1`; `Sku.facings <= Sku.max_facings * Sku.active` forces `facings == 0` when `active == 0`. Together they pin `active = 1` whenever `facings >= 1` and `active = 0` otherwise. Both ICs are pure relational arithmetic, so they get re-evaluated by `problem.verify()` below.
-
-Once `active` is bound, the per-category cardinality reads as a plain relational sum:
-
-```python
-category_min_ic = model.where(Sku.category == Category.name).require(
-    sum(Sku.active).per(Category) >= Category.min_skus_active
-)
-```
-
-**The `implies`-bodied table lookup is solver-only.** It goes to `satisfy()` but must NOT be passed to `verify()` -- implies-bodied ICs are solver-only and `verify()` returns silently-OK without actually evaluating them. The relational-arithmetic ICs (capacity, cardinality, active coupling) ARE re-evaluated by `verify()`, and a post-solve Python dict lookup re-checks the table lookup against the input CSV:
-
-```python
-problem.solve("minizinc", time_limit_sec=60)
-problem.verify(
-    shelf_capacity_ic,
-    category_min_ic,
-    category_max_ic,
-    active_lower_ic,
-    active_upper_ic,
-)
-model.require(problem.termination_status() == "OPTIMAL")
-# ... post-solve Python dict lookup verifies (sku_id, facings) -> demand_units ...
-```
+For the exact PyRel formulation, see `planogram_optimization.py`; `runbook.md` reproduces the pipeline step by step with the RAI skills.
 
 ## Customize this template
 
-- **Replace the vendored table with your own per-(SKU, k) demand model.** In production, `PredictedDemand` is the output of any model that predicts weekly demand at each candidate facings count -- linear or GBM regression over engineered features, a per-tier head, or a graph-aware regressor over `(sku, week, facings_count, units_sold)` history. The structural requirement is that `facings_count` is a feature (or there is a head per tier) so the model can be queried at every `k`.
+### Use your own data
 
-  The path of least friction is to produce `data/predicted_demand_table.csv` in the format `sku_id,facings_count,demand_units` (integer demand) from your inference pipeline and drop it in -- the script picks it up unchanged. To call inference inline, replace the `read_csv(DATA_DIR / "predicted_demand_table.csv")` line with code that returns a DataFrame with those three columns. The CSP shape below is unchanged.
-- **Use your own data** by replacing the four CSV files with your SKUs, shelves, categories, and predicted demand table. The constraint structure does not change. The data invariant: `predicted_demand_table.csv` MUST contain a row for every `(sku_id, k)` for `k in {0, 1, ..., sku.max_facings}` -- if a row is missing, the implies cascade leaves `Sku.realized_demand` unconstrained for that combination and the solver may pick an arbitrary value.
-- **Per-SKU minimum facings** by tightening the lower-coupling IC to `model.require(Sku.facings >= Sku.min_facings * Sku.active)` after adding a `Sku.min_facings` data property. (Removing disallowed `(sku, k)` rows from `predicted_demand_table.csv` would trip `_assert_demand_table_complete`; the lookup formulation requires the table to cover the full `[0, max_facings]` range.)
-- **Eye-level priority** is a constraint over the *static* shelf assignment in the bundled model -- it validates that every premium SKU's `assigned_shelf_id` already points to the eye-level shelf and fails otherwise. Reassigning premium SKUs at solve time requires the multi-shelf reformulation below.
+- Replace the four CSV files with your SKUs, shelves, categories, and predicted demand table. The constraint structure does not change. The data invariant: `predicted_demand_table.csv` must contain a row for every `(sku_id, k)` for `k in {0, 1, ..., sku.max_facings}` — if a row is missing, the implies cascade leaves `Sku.realized_demand` unconstrained for that combination and the solver may pick an arbitrary value.
+- **Wire in a real demand model.** In production, `PredictedDemand` is the output of any model that predicts weekly demand at each candidate facing count — linear or GBM (gradient-boosted machine) regression over engineered features, a per-tier head, or a graph-aware regressor over `(sku, week, facings_count, units_sold)` history. The structural requirement is that `facings_count` is a feature (or there is a head per tier) so the model can be queried at every `k`. Produce `data/predicted_demand_table.csv` in the format `sku_id,facings_count,demand_units` (integer demand) from your inference pipeline and drop it in — the script picks it up unchanged. To call inference inline, replace the `read_csv(DATA_DIR / "predicted_demand_table.csv")` line with code that returns a DataFrame with those three columns.
+
+### Tune parameters
+
+- **Per-SKU minimum facings** — tighten the lower-coupling IC to `model.require(Sku.facings >= Sku.min_facings * Sku.active)` after adding a `Sku.min_facings` data property. (Removing disallowed `(sku, k)` rows from `predicted_demand_table.csv` would trip `_assert_demand_table_complete`; the lookup formulation requires the table to cover the full `[0, max_facings]` range.)
+- **Category cardinality** — adjust `min_skus_active` / `max_skus_active` in `categories.csv` to change how many SKUs each category may keep active.
+
+### Extend the model
+
+- **Eye-level priority** is a constraint over the *static* shelf assignment in the bundled model — it validates that every premium SKU's `assigned_shelf_id` already points to the eye-level shelf and fails otherwise. Reassigning premium SKUs at solve time requires the multi-shelf reformulation below.
   ```python
   Sku.is_premium = model.Property(f"{Sku} has {Integer:is_premium}")
   # ... populate from a column on skus.csv ...
@@ -221,8 +216,15 @@ model.require(problem.termination_status() == "OPTIMAL")
   )
   problem.satisfy(eye_level_ic)
   ```
-- **Multi-shelf reassignment** changes the shape of the model meaningfully. `solve_for` accepts only `int`/`cont`/`bin`, not relationship-valued domains, so shelf assignment cannot be a `Sku.shelf` decision directly. The same decision-vs-data-equality limitation that drives the `implies`-cascade table lookup also blocks `model.define(Sku.shelf(Shelf)).where(Shelf.id == Sku.shelf_id)` when `Sku.shelf_id` is a decision variable. The principled rewrite introduces a per-`(SKU, Shelf)` integer facing decision (e.g. `SkuShelf.facings`), uses `sum(SkuShelf.facings).per(Sku)` as the SKU's total facings, and writes capacity as `sum(SkuShelf.facings * Sku.width_cm).per(Shelf) <= Shelf.length_cm`. This is more involved than the bundled CSP and is left as an exercise.
-- **Brand-block contiguity** -- same-brand SKUs must occupy adjacent facings on the shelf -- requires a per-shelf SKU position decision variable with adjacency constraints (more involved; the basic facing-count CSP above is unchanged but augmented).
+- **Multi-shelf reassignment** changes the shape of the model meaningfully. `solve_for` accepts only `int` / `cont` / `bin`, not relationship-valued domains, so shelf assignment cannot be a `Sku.shelf` decision directly. The same decision-vs-data-equality limitation that drives the `implies`-cascade table lookup also blocks `model.define(Sku.shelf(Shelf)).where(Shelf.id == Sku.shelf_id)` when `Sku.shelf_id` is a decision variable. The principled rewrite introduces a per-`(SKU, Shelf)` integer facing decision (e.g. `SkuShelf.facings`), uses `sum(SkuShelf.facings).per(Sku)` as the SKU's total facings, and writes capacity as `sum(SkuShelf.facings * Sku.width_cm).per(Shelf) <= Shelf.length_cm`. This is more involved than the bundled CSP and is left as an exercise.
+- **Brand-block contiguity** — same-brand SKUs must occupy adjacent facings on the shelf — requires a per-shelf SKU position decision variable with adjacency constraints (more involved; the basic facing-count CSP above is unchanged but augmented).
+
+### Scale up / productionize
+
+- For a live catalog, replace the `read_csv(...)` loads with `model.data(snowflake_table)` calls so the SKUs, shelves, categories, and predicted-demand table read directly from your warehouse; the CSP is unchanged.
+- The vendored `predicted_demand_table.csv` becomes a materialized inference output on a schedule — refresh it from your demand model, and the pre-solve completeness guard (`_assert_demand_table_complete`) gates each run.
+- The bundled data is 18 SKUs across 4 shelves; the CSP scales to whatever the constraint solver's budget allows. Raise `time_limit_sec` in the `problem.solve(...)` call for larger catalogs.
+- Pin `relationalai` (see Prerequisites) so runs stay reproducible across environments.
 
 ## Troubleshooting
 
@@ -275,3 +277,23 @@ model.require(problem.termination_status() == "OPTIMAL")
 - To pin a single answer, add a tie-breaker to the objective -- e.g. `problem.maximize(sum(Sku.realized_demand) * 1000 - sum(Sku.facings))` prefers fewer facings among equal-demand allocations.
 
 </details>
+
+## Learn more
+
+### Core concepts
+
+- [Predict-then-optimize patterns](https://docs.relational.ai/) — feeding a predictive model's output into a prescriptive solve on one ontology.
+- [Prescriptive reasoner](https://docs.relational.ai/) — the `Problem` API: integer decisions (`solve_for`), constraints (`satisfy`), objective (`maximize`), and `verify`.
+
+### Language / modeling reference
+
+- [Concepts and properties](https://docs.relational.ai/) — modeling `Sku`, `Shelf`, `Category`, and the composite-keyed `PredictedDemand`.
+- [Integrity constraints and `implies`](https://docs.relational.ai/) — half-reified linear equalities behind the decision-indexed table lookup.
+
+### Deeper dives
+
+- [Constraint-solver selection (MiniZinc)](https://docs.relational.ai/) — why a pure CSP formulation avoids big-M and SOS2, and when to reformulate for a linear backend.
+
+## Support
+
+- File issues at the RelationalAI templates repository.

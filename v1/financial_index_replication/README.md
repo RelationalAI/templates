@@ -19,29 +19,13 @@ tags:
   - HiGHS
 ---
 
-# Financial Index Replication
-
 ## What this template is for
 
-Index funds and separately managed accounts often need to track a broad benchmark without holding every constituent. This template builds a sparse replication basket: from 50 S&P 500-like stocks, select exactly 20 names and their weights so the portfolio follows the benchmark's historical returns as closely as possible.
+Index funds and separately managed accounts often need to track a broad benchmark without holding every constituent. Full replication is operationally expensive, especially for smaller accounts, tax-aware portfolios, or products with custody and trading constraints. A sparse replicating basket captures most of the benchmark exposure while cutting the number of positions to trade and maintain.
 
-The model uses RelationalAI's **prescriptive** reasoner to optimize both selection and sizing in one mixed-integer program. It includes practical portfolio constraints: long-only weights, max position size, sector neutrality, and per-name ADV participation limits.
+The hard part is that name selection and weight sizing interact. The best 20 names are not simply the largest constituents or the highest-correlated stocks; they have to work together as a portfolio while respecting sector and per-name trading-capacity rules. This template builds that basket from a 50-stock, S&P 500-like universe: it selects exactly 20 names and their weights so the portfolio follows the benchmark's historical returns as closely as possible.
 
-## Why this problem matters
-
-Holding every index constituent can be operationally expensive, especially for smaller accounts, tax-aware portfolios, or products with custody and trading constraints. A sparse replicating basket gives most of the benchmark exposure while reducing the number of positions to trade and maintain.
-
-The hard part is that name selection and weight optimization interact. The best 20 names are not simply the largest constituents or the highest-correlated stocks; they need to work together as a portfolio while respecting sector and per-name trading-capacity rules.
-
-### Key design patterns demonstrated
-
-- **Cardinality-constrained selection** -- binary variables choose exactly 20 stocks.
-- **Linked binary and continuous decisions** -- a stock can carry weight only if selected.
-- **Tracking objective** -- the solver minimizes absolute tracking residuals while the script reports realized RMS tracking error after solving.
-- **Sector neutrality** -- replicated sector exposure must stay within a fixed active band around benchmark sector weights.
-- **ADV participation control** -- ADV stands for average daily dollar volume; each stock's buy or sell amount is capped as a fraction of ADV.
-- **Full-history evaluation** -- optimize across the entire return history and report realized tracking quality.
-- **Baseline comparison** -- compare against equal-weight top-20 stocks by full-history correlation.
+**It uses Prescriptive reasoning to co-optimize selection and sizing in a single mixed-integer program that minimizes tracking residuals subject to long-only weights, a maximum position size, sector neutrality, and per-name average-daily-volume (ADV) participation limits.**
 
 ## Who this is for
 
@@ -62,26 +46,11 @@ The hard part is that name selection and weight optimization interact. The best 
 ## What's included
 
 - `financial_index_replication.py` -- Main script with the semantic model, optimization model, solve, and reporting
+- `runbook.md` -- a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself
 - `data/stocks.csv` -- 50-stock universe with ticker, sector, benchmark weight, liquidity, and previous weight
 - `data/index_returns.csv` -- Monthly S&P 500-like benchmark returns
 - `data/stock_returns.csv` -- Monthly historical returns by stock
 - `pyproject.toml` -- Python package configuration with dependencies
-
-## Template structure
-
-```text
-.
-├─ README.md                            # this file
-├─ pyproject.toml                       # dependencies
-├─ financial_index_replication.py      # main entrypoint: model, solve, report
-└─ data/
-   ├─ stocks.csv                        # 50-stock universe
-   ├─ index_returns.csv                 # benchmark monthly returns
-   ├─ stock_returns.csv                 # per-stock monthly returns
-   └─ replica_returns.csv               # written by the script after solving
-```
-
-**Start here**: run `python financial_index_replication.py`.
 
 ## Prerequisites
 
@@ -128,7 +97,8 @@ The hard part is that name selection and weight optimization interact. The best 
    python financial_index_replication.py
    ```
 
-6. Expected output:
+6. Expected output (a few lines confirm a successful run; exact figures depend on the data):
+
    ```text
    ======================================================================
    FINANCIAL INDEX REPLICATION
@@ -137,119 +107,118 @@ The hard part is that name selection and weight optimization interact. The best 
    Selected names: exactly 20
    Max position: 10%
    Sector active band: +/- 4%
-   Portfolio value: $10,000,000
-   Max ADV participation per name: 5%
 
    Status: OPTIMAL
    Objective: total absolute residual = ...
 
    === Selected Replication Basket ===
-   ticker                  sector weight benchmark_weight previous_weight avg_dollar_volume
-     ...                     ...   ...          ...             ...              ...
-
-   === Sector Exposure ===
-                    sector weight benchmark_weight active_weight
-     Consumer Discretionary  ...        ...             ...
-     ...
-
-   === Tracking Quality ===
-   Annualized tracking error: ...
-   Mean abs monthly residual: ...
-   Implied turnover: ...
-
-   === Baseline Comparison ===
-   Baseline: equal-weight top-20 stocks by full-history correlation
-   Baseline annualized tracking error: ...
+   ticker  sector  weight  benchmark_weight  previous_weight  avg_dollar_volume
+   ...
 
    Wrote benchmark-vs-replica returns to: data/replica_returns.csv
    ```
 
-## How It Works
+   The solve selects exactly 20 names, reports the basket, sector exposures, tracking quality, and a baseline comparison, and writes `data/replica_returns.csv` for plotting. The full printout is in `runbook.md`.
 
-### 1. Load the universe
+## Template structure
 
-The template loads a compact synthetic dataset:
-
-- `stocks.csv`: identifiers, sectors, benchmark weights, liquidity, and previous holdings
-- `index_returns.csv`: monthly benchmark returns
-- `stock_returns.csv`: monthly returns for each stock
-
-The data is synthetic but shaped like an S&P 500 replication problem, so the template is runnable without licensed market data.
-
-The benchmark constituent weights were generated by first assigning broad target
-sector allocations, then drawing uneven positive stock weights within each
-sector and scaling those names so each sector sums back to its target. This
-creates a market-cap-like benchmark shape without using licensed constituent
-weights. The benchmark return for each month is then calculated from the stock
-return table as the weighted sum of all constituent returns, with a small random
-noise term added so the sparse 20-name replication problem is realistic rather
-than perfectly mechanical.
-
-### 2. Define selection and weight variables
-
-The model has two main decisions per stock:
-
-```python
-Stock.x_selected = model.Property(f"{Stock} selected if {Float:selected}")
-Stock.x_weight = model.Property(f"{Stock} has replication weight {Float:weight}")
+```text
+.
+├─ README.md                            # this file
+├─ runbook.md                           # step-by-step analyst walkthrough
+├─ pyproject.toml                       # dependencies
+├─ financial_index_replication.py      # main entrypoint: model, solve, report
+└─ data/
+   ├─ stocks.csv                        # 50-stock universe
+   ├─ index_returns.csv                 # benchmark monthly returns
+   ├─ stock_returns.csv                 # per-stock monthly returns
+   └─ replica_returns.csv               # written by the script after solving
 ```
 
-`x_selected` is binary. `x_weight` is continuous. The linking constraint keeps unselected names at zero weight:
+**Start here**: run `python financial_index_replication.py` for the full solve and reporting end to end, or follow `runbook.md` to reproduce it step by step with the RAI skills.
 
-```python
-weight <= MAX_WEIGHT * selected
+## Sample data
+
+The bundled data is synthetic but shaped like an S&P 500 replication problem, so the template runs without licensed market data.
+
+- **`data/stocks.csv`** (50 rows) -- the investable universe: `ticker`, `name`, `sector`, `benchmark_weight`, `avg_dollar_volume`, and `previous_weight` (the prior-period holding).
+- **`data/index_returns.csv`** -- monthly benchmark returns keyed by `date` (`index_return`).
+- **`data/stock_returns.csv`** -- monthly per-stock returns keyed by `date` and `ticker` (`return`).
+- **`data/replica_returns.csv`** -- written by the script after solving, with `date`, `index_return`, and `replica_return` for downstream plotting.
+
+The benchmark constituent weights were generated by first assigning broad target sector allocations, then drawing uneven positive stock weights within each sector and scaling each sector back to its target. The benchmark return each month is the weighted sum of all constituent returns, plus a small noise term so the sparse 20-name replication problem is realistic rather than perfectly mechanical.
+
+## Model overview
+
+Four concepts describe the universe, its sector grouping, and the historical return panel; the decision variables attach to `Stock` and `ReturnDate`.
+
+- **Key entities**: `Stock` (a constituent in the investable universe), `Sector` (a grouping used for the neutrality constraint), and `ReturnDate` (a month in the return panel).
+- **Primary identifiers**: `Stock` by `ticker`; `Sector` by `sector_name`; `ReturnDate` by `date`.
+- **Important invariants**: exactly `N_REPLICATION_NAMES` stocks are selected; weights are non-negative, at most `MAX_WEIGHT` each, and sum to 100%; a stock can carry weight only if selected; each sector's weight stays within `SECTOR_ACTIVE_BAND` of its benchmark weight.
+
+For the full concept and property definitions, see `financial_index_replication.py`; `runbook.md` builds them step by step with the RAI skills.
+
+## How it works
+
+The design patterns worth noting: **cardinality-constrained selection** (binary variables choose exactly 20 stocks), **linked binary and continuous decisions** (a stock carries weight only if selected), an **L1 tracking objective** (minimize absolute residuals to keep the problem linear with binary selection), **sector neutrality** (replicated sector exposure stays within a fixed active band), **ADV participation control** (each name's buy or sell is capped as a fraction of average daily dollar volume), and a **baseline comparison** against an equal-weight top-correlation basket.
+
+```text
+stocks + returns → selection + weight variables → tracking residuals → cardinality/sector/ADV constraints → MIP solve → basket + tracking report
 ```
 
-### 3. Match benchmark returns
+### 1. Define selection and weight variables
 
-For each historical month, the model creates positive and negative residual variables:
+Each stock carries two linked decisions: a binary `x_selected` (in the basket or not) and a continuous `x_weight` (portfolio weight). A linking constraint holds `weight <= MAX_WEIGHT * selected`, so an unselected name is forced to zero weight.
+
+### 2. Match benchmark returns
+
+For each historical month, the model creates positive and negative residual variables that absorb the gap between the benchmark return and the replica's weighted return:
 
 ```text
 index_return[t] - sum_i weight[i] * stock_return[i,t] = pos_error[t] - neg_error[t]
 ```
 
-The objective minimizes total absolute residual:
+The objective minimizes the total absolute residual:
 
 ```text
 minimize sum_t pos_error[t] + neg_error[t]
 ```
 
-This keeps the solver problem linear and mixed-integer. After solving, the script computes the standard RMS tracking error across the full history.
+This L1 formulation keeps the problem linear and mixed-integer with the binary selection variables; after solving, the script computes the standard RMS tracking error across the full history. A classic L2 objective (squared residuals) is also a natural tracking-error formulation if the selected solver supports the resulting mixed-integer quadratic problem.
 
-This template uses an L1 tracking objective because absolute residuals keep the model linear with binary selection variables. A classic L2 objective, minimizing squared residuals, is also a natural tracking-error formulation if the selected solver supports the resulting mixed-integer quadratic problem.
+### 3. Add portfolio realism
 
-### 4. Add portfolio realism
+The template layers on the constraints practitioners expect: exactly 20 selected stocks; weights sum to 100%; no shorting; max 10% per selected stock; sector weights within +/- 4% of benchmark sector weights; and per-name buy and sell amounts no more than 5% of average daily dollar volume (ADV).
 
-The template includes constraints practitioners expect:
+### 4. Evaluate the portfolio
 
-- exactly 20 selected stocks
-- weights sum to 100%
-- no shorting
-- max 10% per selected stock
-- sector weights within +/- 4% of benchmark sector weights
-- per-name buy and sell amounts no more than 5% of average daily dollar volume (ADV)
+After solving, the script reports the selected names and weights, sector exposures and active sector weights, annualized tracking error, mean absolute residual, implied turnover, and a comparison to a simple top-correlation baseline. It also writes `data/replica_returns.csv` (`date`, `index_return`, `replica_return`) so you can plot the benchmark series against the optimized replica.
 
-### 5. Evaluate the portfolio
+See `financial_index_replication.py` for the implementation and `runbook.md` for the skill-driven reproduction.
 
-After solving, the script reports:
+## Customize this template
 
-- selected names and weights
-- sector exposures and active sector weights
-- annualized tracking error
-- mean absolute residual
-- implied turnover
-- comparison to a simple top-correlation baseline
-- `data/replica_returns.csv` with `date`, `index_return`, and `replica_return`
+### Use your own data
 
-You can use `data/replica_returns.csv` to plot the original benchmark return series against the optimized replica return series.
+- Replace the synthetic CSVs with real benchmark and constituent returns if your data license allows it. Keep the headers: `ticker`, `sector`, `benchmark_weight`, `avg_dollar_volume`, `previous_weight` for `stocks.csv`; `date`, `index_return` for `index_returns.csv`; `date`, `ticker`, `return` for `stock_returns.csv`.
+- Make sure all three files cover the same date range and use the same return convention (simple or log); a mismatch silently drops months from the join or inflates residuals.
 
-## Customize
+### Tune parameters
 
-- Change `N_REPLICATION_NAMES` to select more or fewer names.
-- Change `MAX_WEIGHT` to tighten or relax the largest allowed position size.
-- Tighten `SECTOR_ACTIVE_BAND` for stricter sector neutrality.
-- Lower `MAX_ADV_PARTICIPATION` for stricter per-name trading capacity.
-- Replace the synthetic CSVs with real benchmark and constituent returns if your data license allows it.
+- `N_REPLICATION_NAMES` sets how many names the basket holds.
+- `MAX_WEIGHT` tightens or relaxes the largest allowed position size.
+- `SECTOR_ACTIVE_BAND` controls sector neutrality; tighten it for stricter tracking to benchmark sector weights.
+- `MAX_ADV_PARTICIPATION` sets per-name trading capacity; lower it for stricter ADV limits.
+
+### Extend the model
+
+- Swap the L1 tracking objective for an L2 (squared-residual) objective if your solver supports the resulting mixed-integer quadratic problem.
+- Add constraints practitioners expect, such as a turnover cap against `previous_weight` or a minimum position size for selected names.
+
+### Scale up / productionize
+
+- Point the `pd.read_csv` calls at Snowflake tables via `model.data(...)` to run over a larger universe and longer return history.
+- Pin dependencies and fix any random seed in the data-generation step for reproducible baskets across runs.
 
 ## Troubleshooting
 
@@ -284,3 +253,22 @@ You can use `data/replica_returns.csv` to plot the original benchmark return ser
     - Re-extract the template ZIP if any file looks truncated.
     - On Windows, ensure files are UTF-8 encoded with no BOM.
 </details>
+
+## Learn more
+
+### Core concepts
+
+- [Prescriptive reasoning](https://docs.relational.ai/) — the `Problem` API, decision variables, constraints, and objectives used to co-optimize selection and weights.
+- [Mixed-integer optimization](https://docs.relational.ai/) — binary selection variables linked to continuous weights, and the cardinality constraint.
+
+### Language / modeling reference
+
+- [PyRel v1 language](https://docs.relational.ai/) — concepts, properties, and relationships as used to model stocks, sectors, and the return panel.
+
+### CLI / SDK guides
+
+- [`rai init` and configuration](https://docs.relational.ai/) — connecting the template to your Snowflake-backed RAI account.
+
+## Support
+
+- File issues at the RelationalAI templates repository.

@@ -1,6 +1,6 @@
 ---
 title: "Product Configurator"
-description: "Enumerate every feasible build of a configurable product in multi-solution mode: one option per slot subject to feature-model rules, regional regulations, and a price ceiling."
+description: "Enumerate every feasible build of a configurable product with a constraint solver in multi-solution mode. Each build picks one option per slot subject to feature-model rules, regional regulations, and a price ceiling."
 featured: false
 experience_level: intermediate
 industry: "Manufacturing"
@@ -13,8 +13,6 @@ tags:
   - feature-model
   - manufacturing
 ---
-
-# Product Configurator
 
 ## What this template is for
 
@@ -44,6 +42,7 @@ The configurator scenario here is automotive trim, drawn from the public Renault
 ## What's included
 
 - `product_configurator.py` -- main script with ontology, decisions, constraints, and solver call
+- **Runbook**: `runbook.md` -- a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - `data/slots.csv` -- 6 slots (Engine, Transmission, Trim, Sound, Wheels, Roof)
 - `data/options.csv` -- 16 options across the 6 slots, each with a price in integer cents
 - `data/implies.csv` -- option-to-option implies rules (e.g. Premium Audio implies Premium Trim)
@@ -94,167 +93,107 @@ The configurator scenario here is automotive trim, drawn from the public Renault
    python product_configurator.py
    ```
 
-6. Expected output. With `MAX_CONFIGURATIONS = 100` and `TARGET_REGION = "EU"`, the solver exhausts the search and returns every distinct feasible build (status `OPTIMAL`, 63 builds). The script prints all 63 rows, pivoted to one row per configuration, sorted ascending by total dollars; the block below is **abridged** to the 8 cheapest and 8 most-expensive. The `solution` column is the solver's internal index, not a sequential ranking, and `objective: 0` is reported by convention because this is pure constraint satisfaction with no minimize/maximize call. Exact wall times and the solver build string vary across RAI Native App versions:
+6. Expected output. With `MAX_CONFIGURATIONS = 100` and `TARGET_REGION = "EU"`, the solver exhausts the search and returns every distinct feasible build (status `OPTIMAL`, 63 builds), pivoted to one row per configuration and sorted ascending by total dollars. A few representative lines (the script prints all 63):
+
    ```text
    Solve result:
    • status: OPTIMAL
-   • objective: 0
-   • solve time: 0.95s
    • num_points: 63
-   • solver: MiniZinc_unknown
 
    Feasible builds for region 'EU' (ceiling $20,000, up to 100 per run):
     solution        Engine            Roof          Sound Transmission         Trim              Wheels  total_$
           60 1.6L Inline-4      Steel Roof Standard Sound       Manual    Base Trim       16-inch Alloy     1500
           59 1.6L Inline-4      Steel Roof Standard Sound       Manual    Base Trim       18-inch Sport     2700
-          39 1.6L Inline-4      Steel Roof Standard Sound    Automatic    Base Trim       16-inch Alloy     3500
-          50    2.0L Turbo      Steel Roof Standard Sound       Manual    Base Trim       16-inch Alloy     3500
-          56 1.6L Inline-4      Steel Roof Standard Sound       Manual   Sport Trim       16-inch Alloy     4000
-          51    2.0L Turbo      Steel Roof Standard Sound       Manual    Base Trim       18-inch Sport     4700
-          38 1.6L Inline-4      Steel Roof Standard Sound    Automatic    Base Trim       18-inch Sport     4700
-          57 1.6L Inline-4      Steel Roof Standard Sound       Manual   Sport Trim       18-inch Sport     5200
-           ... 47 more builds omitted (script prints all 63) ...
-           5    2.0L Turbo Panoramic Glass Standard Sound    Automatic Premium Trim       18-inch Sport    14700
-           7    2.0L Turbo Panoramic Glass  Premium Audio    Automatic Premium Trim       16-inch Alloy    15000
-          27    2.0L Turbo      Steel Roof  Premium Audio          DCT Premium Trim       18-inch Sport    15200
-          10    2.0L Turbo Panoramic Glass Standard Sound          DCT Premium Trim       16-inch Alloy    15500
-           1    2.0L Turbo Panoramic Glass  Premium Audio    Automatic Premium Trim       18-inch Sport    16200
-           4    2.0L Turbo Panoramic Glass Standard Sound          DCT Premium Trim       18-inch Sport    16700
-          11    2.0L Turbo Panoramic Glass  Premium Audio          DCT Premium Trim       16-inch Alloy    17000
+           ... 60 more builds omitted (script prints all 63) ...
            2    2.0L Turbo Panoramic Glass  Premium Audio          DCT Premium Trim       18-inch Sport    18200
    ```
 
-   With `TARGET_REGION = "EU"` the V6 engine is unavailable, and the 63 returned builds span $1,500-$18,200 -- every legal combination across the six slots, satisfying every implies/excludes rule. Lower `MAX_CONFIGURATIONS` to cap how many the solver returns (status flips to `SOLUTION_LIMIT` once hit).
+   With `TARGET_REGION = "EU"` the V6 engine is unavailable, and the 63 returned builds span $1,500-$18,200 -- every legal combination across the six slots, satisfying every implies/excludes rule. Lower `MAX_CONFIGURATIONS` to cap how many the solver returns (status flips to `SOLUTION_LIMIT` once hit). The full 63-row printout and a step-by-step walkthrough are in `runbook.md`.
 
 ## Template structure
+
 ```text
-.
-├── README.md
-├── pyproject.toml
-├── product_configurator.py
-└── data/
-    ├── slots.csv
-    ├── options.csv
-    ├── implies.csv
-    ├── excludes.csv
-    └── regional_rules.csv
+product_configurator/
+  product_configurator.py    # Main script (ontology, decisions, constraints, solve, inspection)
+  data/
+    slots.csv                # 6 slots (Engine, Transmission, Trim, Sound, Wheels, Roof)
+    options.csv              # 16 options across the 6 slots, each priced in integer cents
+    implies.csv              # option-to-option implies rules (head -> tail)
+    excludes.csv             # option-to-option excludes rules (symmetric)
+    regional_rules.csv       # which options are allowed in which region (US, EU)
+  README.md                  # this file
+  runbook.md                 # analyst-facing paste-testable walkthrough
+  pyproject.toml             # dependencies
 ```
+
+**Start here**: run `python product_configurator.py` to enumerate every feasible build end to end, or follow `runbook.md` to rebuild it step by step.
+
+## Sample data
+
+The bundled CSVs are illustrative demo data for an automotive trim configurator, drawn from the public Renault feature-model literature. Swap in your own slots, options, and rules to configure a different product.
+
+- **`slots.csv`** (6 rows) — the configurable slots (Engine, Transmission, Trim, Sound, Wheels, Roof).
+- **`options.csv`** (16 rows) — the options across the six slots, each with a `slot_id`, `name`, and `price_cents`.
+- **`implies.csv`** — directional option-to-option rules (`head_id` -> `tail_id`); selecting the head requires the tail.
+- **`excludes.csv`** — symmetric option-to-option rules (`left_id`, `right_id`); at most one of the pair may be selected.
+- **`regional_rules.csv`** — one row per `(option_id, region)` allowed pairing; an option missing for a region is banned there.
+
+## Model overview
+
+The script builds a small ontology from the CSVs, then layers the binary decision and the four constraint families on top.
+
+- **Key entities**: `Slot` — a configurable position on the product (e.g. engine), filled by exactly one option per build; `Option` — a choice that can fill a slot, with a price and region availability; plus the `Implies` and `Excludes` rule tables that constrain which options can combine.
+- **Primary identifiers**: integer `id` on `Slot` and `Option`; composite key on each rule table (`head_id` + `tail_id` on `Implies`, `left_id` + `right_id` on `Excludes`).
+- **Important invariants**: every option belongs to exactly one slot; prices are non-negative integer cents; a build picks exactly one option per slot; only options allowed in the target region get a decision variable.
+
+The two rule tables — `Implies(head_id, tail_id)` (selecting the head requires the tail) and `Excludes(left_id, right_id)` (at most one of the pair) — are concepts identified by the pair of option ids they link, and the constraint families read them directly.
+
+For the full concept and property definitions, see `product_configurator.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
-**1. Define slots, options, and load CSVs.** Slots and options are concepts; each option points to its slot, has a price in integer cents, and lists the regions it is allowed in:
+The model declares a binary "selected" decision per region-allowed option, applies four constraint families, then enumerates every feasible build in one multi-solution solve.
 
-```python
-Slot = model.Concept("Slot", identify_by={"id": Integer})
-Slot.name = model.Property(f"{Slot} has {String:name}")
-
-Option = model.Concept("Option", identify_by={"id": Integer})
-Option.name = model.Property(f"{Option} has {String:name}")
-Option.price_cents = model.Property(f"{Option} has {Integer:price_cents}")
-Option.slot = model.Property(f"{Option} is in {Slot:slot}")
-Option.allowed_in = model.Relationship(f"{Option} is allowed in {String:region}")
+```text
+slots + options + implies + excludes + regional rules → region-filtered selected decisions → exactly-one + implies + excludes + price constraints → multi-solution solve → pivot to one row per build
 ```
 
-**2. Define the implies and excludes rule tables.** Each rule is a concept identified by the pair of option IDs it links. `Implies` is directional (`head_id` -> `tail_id`) -- holding the rule *data*; the constraint *method* `model.require(...)` enforces them. `Excludes` is symmetric (`left_id`, `right_id`). The keys are deliberately dissimilar: PyRel emits a "potential relationship typo" warning when two compound-key names differ in a single character (e.g. `option_a_id` / `option_b_id`):
+**1. Slots, options, and rule tables.** Slots and options are concepts; each option points to its slot, has a price in integer cents, and lists the regions it is allowed in. Each rule is a concept identified by the pair of option ids it links — `Implies` is directional (head -> tail), `Excludes` is symmetric. The compound-key field names are deliberately dissimilar (`head_id`/`tail_id`, `left_id`/`right_id`) because PyRel emits a "potential relationship typo" warning when two compound-key names differ by a single character.
 
-```python
-Implies = model.Concept(
-    "Implies",
-    identify_by={"head_id": Integer, "tail_id": Integer},
-)
-Excludes = model.Concept(
-    "Excludes",
-    identify_by={"left_id": Integer, "right_id": Integer},
-)
-```
+**2. The binary decision.** `Option.selected` is 0/1 and is scoped, via a `where` on region availability, to options allowed in the target region — options banned in the region simply never get a decision variable. The `solve_for` call returns a variable handle that step 4 uses to read per-solution outputs.
 
-**3. Define the binary decision variable.** `Option.selected` is 0/1 and only exists for options allowed in the target region. Options banned in the region simply do not get a decision variable. Capture the returned `selected_var` handle -- step 6 indexes per-solution outputs through it via `.values(solution_index, value)`:
+**3. The four constraint families.** Each is stored in a named variable so it can be re-checked by `problem.verify(...)`, and pushed to the solver with `problem.satisfy(...)`:
 
-```python
-Option.selected = model.Property(f"{Option} is selected if {Integer:selected}")
-selected_var = problem.solve_for(
-    Option.selected,
-    type="bin",
-    name=["selected", Option.name],
-    where=[Option.allowed_in(TARGET_REGION)],
-)
-```
+- **Exactly-one** — the selected options per slot sum to 1, so every build fills each slot exactly once.
+- **Implies** — for each region-allowed rule, `selected[head] <= selected[tail]`: picking the head forces the tail.
+- **Excludes** — for each region-allowed pair, `selected[left] + selected[right] <= 1`: at most one of the pair.
+- **Price ceiling** — the price-weighted sum of selected options stays within `PRICE_CEILING_CENTS`.
 
-**4. Add the four constraint families and register each with the problem.** Each constraint is stored in a named variable so it can be re-checked by `problem.verify(...)` after solving; `problem.satisfy(ic)` is what actually pushes each constraint into the solver:
+**4. Solve in multi-solution mode, verify, and pivot.** Passing `solution_limit=MAX_CONFIGURATIONS` runs the search in enumeration mode, returning up to that many distinct feasible builds. `problem.verify()` re-checks the named constraints against the first returned solution (the constraint structure is shared across every solution the solver returns). The variable handle exposes a `.values(solution_index, value)` relationship over the per-solution outputs; binding the value slot to `1` surfaces just the picked options, and a `pandas.pivot` collapses the per-option rows into one row per build (one column per slot, plus a dollar total, sorted ascending by price) for buyer-facing display.
 
-```python
-exactly_one_ic = model.where(
-    Option.allowed_in(TARGET_REGION),
-    Option.slot(Slot),
-).require(sum(Option.selected).per(Slot) == 1)
-problem.satisfy(exactly_one_ic)
-
-A = Option.ref()
-B = Option.ref()
-implies_ic = model.where(
-    R := Implies,
-    A.id(R.head_id),
-    B.id(R.tail_id),
-    A.allowed_in(TARGET_REGION),
-    B.allowed_in(TARGET_REGION),
-).require(A.selected <= B.selected)
-problem.satisfy(implies_ic)
-
-excludes_ic = model.where(
-    E := Excludes,
-    A.id(E.left_id),
-    B.id(E.right_id),
-    A.allowed_in(TARGET_REGION),
-    B.allowed_in(TARGET_REGION),
-).require(A.selected + B.selected <= 1)
-problem.satisfy(excludes_ic)
-
-price_ic = model.where(
-    Option.allowed_in(TARGET_REGION),
-).require(sum(Option.price_cents * Option.selected) <= PRICE_CEILING_CENTS)
-problem.satisfy(price_ic)
-```
-
-The implies constraint reads as "if A (head) is selected (selected[A] = 1), then B (tail) must be selected too (selected[B] = 1), so selected[A] <= selected[B]". The excludes constraint reads as "at most one of A and B may be selected".
-
-**5. Solve in multi-solution mode and verify.** Pass `solution_limit=MAX_CONFIGURATIONS` to enumerate up to that many distinct feasible builds. After solving, `problem.verify()` fires the named constraints to confirm the configuration satisfies every rule (it inspects only the first solution -- the populated property -- but the constraint structure is shared across every solution the solver returns):
-
-```python
-problem.solve("minizinc", time_limit_sec=60, solution_limit=MAX_CONFIGURATIONS)
-problem.solve_info().display()
-problem.verify(exactly_one_ic, implies_ic, excludes_ic, price_ic)
-```
-
-**6. Inspect every feasible build with `Variable.values`.** Capturing the variable subconcept from `solve_for(...)` exposes a `.values(solution_index, value)` relationship that indexes the per-solution outputs; binding the value slot directly to the literal `1` surfaces just the options the solver picked into each build. The variable subconcept exposes a back-pointer field named after the entity in its property: `selected_var.option` walks back to the `Option` instance for each row, so `selected_var.option.slot.name` and `selected_var.option.price_cents` resolve naturally. A post-solve `pandas.pivot` collapses the per-option rows into one row per build for buyer-facing display:
-
-```python
-sol_idx = Integer.ref()
-selections_df = (
-    model.select(
-        sol_idx.alias("solution"),
-        selected_var.option.slot.name.alias("slot"),
-        selected_var.option.name.alias("option"),
-        selected_var.option.price_cents.alias("price_cents"),
-    )
-    .where(selected_var.values(sol_idx, 1))
-    .to_df()
-    .astype({"solution": "int64", "price_cents": "int64"})
-)
-build_view = selections_df.pivot(index="solution", columns="slot", values="option")
-build_view["total_$"] = selections_df.groupby("solution")["price_cents"].sum() // 100
-build_view = build_view.sort_values("total_$").reset_index()
-print(build_view.to_string(index=False))
-```
+For the exact PyRel formulation, see `product_configurator.py`; `runbook.md` reproduces the model step by step with the RAI skills.
 
 ## Customize this template
 
-- **Use your own product** by replacing the five CSV files with your slots, options, implies, excludes, and regional_rules tables. The constraint structure does not change.
-- **Cap the solution limit on a large catalog.** The bundled `MAX_CONFIGURATIONS = 100` is above the demo's feasible-set size so every build is enumerated (status `OPTIMAL`). On a production catalog the feasible set can be enormous; lower `MAX_CONFIGURATIONS` to the K builds your buyer-facing UI wants to surface -- the solver returns once the cap is hit (status `SOLUTION_LIMIT`) and `time_limit_sec` is your safety net for runaway enumeration.
+### Use your own data
+
+- Replace the five CSV files with your slots, options, implies, excludes, and regional_rules tables. The constraint structure does not change.
 - **Add a new region** by adding rows to `regional_rules.csv` for the new region and changing `TARGET_REGION` in the runner.
+
+### Tune parameters
+
+- **Cap the solution limit on a large catalog.** The bundled `MAX_CONFIGURATIONS = 100` is above the demo's feasible-set size so every build is enumerated (status `OPTIMAL`). On a production catalog the feasible set can be enormous; lower `MAX_CONFIGURATIONS` to the K builds your buyer-facing UI wants to surface -- the solver returns once the cap is hit (status `SOLUTION_LIMIT`) and `time_limit_sec` is your safety net for runaway enumeration.
 - **Tighten the price ceiling** by lowering `PRICE_CEILING_CENTS` to force the solver toward cheaper builds. If the ceiling drops below the cheapest feasible build, the solver returns INFEASIBLE.
+
+### Extend the model
+
 - **Switch from "all feasible" to "the cheapest build"** by adding `problem.minimize(sum(Option.price_cents * Option.selected))` and setting `MAX_CONFIGURATIONS = 1`. The solver returns one optimum. Top-K *optimal* enumeration (the K cheapest distinct builds, ranked) is not a single solver call; for that, run an iterative exclusion-cut loop -- after each optimal solve, add a constraint forbidding the just-returned build's exact option set, then re-solve -- or sort the enumerated multi-solution set in post-processing if the feasible set is small enough to fit in memory (the bundled demo already does this: 63 builds sorted ascending by total dollars).
 - **Add cardinality rules** like "at least one of {A, B, C} must be selected" with `count` over a filter on `Option.id`.
+
+### Scale up / productionize
+
 - **Apply this to enterprise software bundling** by mapping slots to product modules, options to feature tiers, implies/excludes to module dependencies, and price_cents to seat-license cost. The constraint families and multi-solution shape carry over unchanged.
+- Swap the `data/` CSV bundle for `model.data(snowflake_table)` calls to configure against a live Snowflake-hosted catalog; `time_limit_sec` and `MAX_CONFIGURATIONS` bound enumeration on large catalogs.
 
 ## Troubleshooting
 
@@ -316,3 +255,19 @@ print(build_view.to_string(index=False))
 - To pin a single answer (e.g. surface the cheapest build first), set `MAX_CONFIGURATIONS = 1` and add `problem.minimize(sum(Option.price_cents * Option.selected))`.
 
 </details>
+
+## Learn more
+
+### Core concepts
+
+- [PyRel v1 query language](https://docs.relational.ai/) — concepts, properties, relationships, and `model.where(...)`.
+- [Prescriptive reasoner](https://docs.relational.ai/) — `Problem` API, binary decision variables, integrity constraints.
+
+### Reasoner reference
+
+- [Multi-solution enumeration](https://docs.relational.ai/) — `solution_limit`, `Variable.values(...)`, and reading every returned solution.
+- [Constraint satisfaction patterns](https://docs.relational.ai/) — exactly-one, implies, excludes, and budget constraints over binary decisions.
+
+## Support
+
+- File issues at the RelationalAI templates repository.

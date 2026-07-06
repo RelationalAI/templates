@@ -17,9 +17,9 @@ watch->avoid downgrade = +0.0% (optimizer already routed around it).
                               Upstream supplier dependency map for
                               each HIGH-priority customer (B008, B009).
   ─────────────────────────────────────────────────────────────────
-  STAGE 1  Graph        ──►  Site.centrality  (normalized)
-                              Top hubs: S004 TechAssembly 1.000,
-                              S006 West Coast DC 0.776, S003 PowerCell 0.735.
+  STAGE 1  Graph        ──►  Site.centrality  (eigenvector)
+                              Top hubs: S004 TechAssembly 0.5016,
+                              S006 West Coast DC 0.3895, S003 PowerCell 0.3688.
                               2 weakly-connected components.
   ─────────────────────────────────────────────────────────────────
   STAGE 2  Rules        ──►  Business.is_unreliable           (1)
@@ -97,7 +97,7 @@ Reasoner-routing plan: (1) Graph reachability for upstream supplier exposure, (2
 
 **Response**
 
-`Site.centrality` normalized [0,1]: S004=1.000, S006=0.776, S003=0.735; 2 weakly-connected components.
+`Site.centrality` (eigenvector): S004=0.5016, S006=0.3895, S003=0.3688; 2 weakly-connected components.
 
 ### 6. Classify supplier reliability
 

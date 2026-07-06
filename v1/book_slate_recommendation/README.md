@@ -1,8 +1,8 @@
 ---
 title: "Book Slate Recommendation"
-description: "Recommend K books per reader and order them by slot, under diversity, freshness, and explainability constraints."
+description: "Recommend a ranked slate of books for each reader that balances relevance, diversity, and freshness. Produces an ordered, explainable set of picks per reader."
 featured: false
-private: true
+private: false
 experience_level: advanced
 industry: "Retail & Consumer"
 reasoning_types:
@@ -11,155 +11,95 @@ reasoning_types:
 tags:
   - Multi-Reasoner
   - Recommendation
-  - Slate
-  - constraint-programming
+  - Slate Optimization
+  - Constraint Programming
   - Explainability
-  - KG-Paths
+  - Knowledge-Graph Paths
 ---
-
-# Book Slate Recommendation
 
 ## What this template is for
 
-Every consumer-facing platform with a "row of K things" surface --
-streaming homepages, e-commerce cross-sell carousels, news feeds,
-learning-platform course slates -- has the same problem: pick K items
-per user that are *individually* relevant, *collectively* diverse,
-and *explainable* enough to meet platform business rules.
+Every consumer-facing platform with a "row of K things" surface — a streaming homepage, an e-commerce cross-sell carousel, a news feed, a learning-platform course slate — faces the same decision: pick K items per user that are individually relevant, collectively diverse, and explainable enough to satisfy the platform's business rules. Getting the composition right at the top-of-row (hero) position matters most, because that is where engagement concentrates. Doing this by post-processing a ranked list rarely respects the diversity, freshness, and exposure floors that editorial, curation, and compliance teams need on every slate.
 
-This template solves that problem in one declarative model:
-
-- **Bounded KG walks via the paths library (architectural
-  centerpiece)** — `Item.connected_to.repeat(1, 2).all_paths()`
-  combined with direct shared-author / shared-subject joins
-  produces the Candidate concept and its per-`(user, candidate)`
-  typed-evidence counts. The paths library lives in PyRel `std`,
-  not a separate reasoner.
-- **Graph reasoner (hero pin)** computes per-Book triangle counts
-  over the similarity graph and pins slot 1 (the top-of-row
-  position with the most engagement) to a Book whose triangle count
-  clears `HERO_EMBEDDEDNESS_THRESHOLD`. Distinct from a per-book
-  popularity scalar: it depends on the graph topology, not on a
-  value that can be substituted from retrieval. Tying the metric to
-  the hero slot (rather than a "somewhere in the slate" floor)
-  concentrates the Graph contribution at the highest-impression
-  position.
-- **Prescriptive reasoner (CSP, MiniZinc)** decides each Candidate's slot in
-  `{1, 2, ..., K, K+1}` -- slot 1..K are slate positions (1 = hero),
-  slot K+1 is the unpicked sentinel. Constraints: cardinality, slot
-  uniqueness, already-read exclusion, author uniqueness, subject-
-  concentration cap, freshness, originals-exposure, cold-start, hero
-  pin, and explanation-path floor. Objective maximizes
-  `sum((K+1-slot) * path_count_total)` -- the canonical position-
-  decay engagement model. Pure-integer model -- multi-valued integer
-  decisions, integer coefficients, no float blend; lowers cleanly to
-  MiniZinc's CSP / CP-SAT propagators (in particular the GCC-style
-  per-pair cardinality constraints used for slot, author, and
-  subject uniqueness).
-
-The same shape ports to e-commerce ("frequently bought together"
-with category coverage), course slates (career-navigation over a
-skills graph with prerequisite respect), and news feed optimization
-under topic / source / recency caps.
+This template composes the slate as a single optimization decision rather than a filtering pass, so relevance, diversity, freshness, exposure, and explainability are all enforced jointly. **It chains RelationalAI's reasoners — knowledge-graph path walks and graph analytics feeding a constraint-programming optimizer — through one shared ontology, so every recommended item carries a decomposable, graph-grounded explanation without leaving the model.**
 
 ## Who this is for
 
-- Recsys engineers building constrained slate-composition stages
-- Editorial and curation teams who need diversity / freshness /
-  exposure floors enforced on every slate
-- Compliance and transparency teams who want KG-grounded,
-  decomposable explanations for every recommended item
-- Operations researchers exploring multi-reasoner pipelines (Graph
-  analytics → KG paths → prescriptive optimization) on RelationalAI
+- Recommender-systems engineers building the constrained slate-composition stage of a ranking funnel.
+- Editorial and curation teams who need diversity, freshness, and exposure floors enforced on every slate.
+- Compliance and transparency teams who want knowledge-graph-grounded, decomposable explanations for each recommended item.
+- Operations researchers exploring multi-reasoner pipelines on RelationalAI.
+- **Assumed knowledge**: comfortable reading Python; the recommender-systems, graph, and optimization terms are explained as they come up. As an advanced multi-reasoner template it goes faster if you have followed a single-reasoner template first, but no deep RelationalAI experience is required to run it.
 
 ## What you'll build
 
-- A heterogeneous knowledge graph over `User`, `Book`, `Author`,
-  `Subject` with typed edges (`read`, `written_by`, `about`,
-  `similar_to`)
-- A unified `Item.connected_to` super-edge used by the path walker
-- A `Candidate` concept generated by bounded `Item.connected_to`
-  walks of depth ≤ 2 -- candidates are *defined* by paths
-- Per-`(user, candidate)` typed-evidence counts:
-  `path_count_via_author`, `path_count_via_subject`,
-  `path_count_via_kg_walk`, summed into `path_count_total`
-- `Book.triangle_count` derived from
-  `Graph(Book.similar_to).triangle_count()` -- a structural-
-  embeddedness measure used by the hero-pin IC
-- An integer-decision CSP on MiniZinc with ten ICs (cardinality, slot
-  uniqueness, already-read exclusion, author uniqueness, subject-
-  concentration cap, freshness floor, originals-exposure floor,
-  cold-start cap, hero pin, explanation-path floor) and a position-
-  weighted engagement-decay objective `sum((K+1-slot) *
-  path_count_total)`
-- Customer-readable result tables: chosen slate (ordered by slot),
-  per-user subject distribution, per-pick explanation-path support
+- A heterogeneous knowledge graph over `User`, `Book`, `Author`, and `Subject` with typed edges (`read`, `written_by`, `about`, `similar_to`), plus a unified `Item.connected_to` super-edge the path walker traverses.
+- A `Candidate` concept generated by bounded knowledge-graph walks (the PyRel paths library), with per-`(user, candidate)` typed-evidence counts (`path_count_via_author`, `path_count_via_subject`, `path_count_via_kg_walk`, summed into `path_count_total`).
+- A `Book.triangle_count` structural-embeddedness measure from **graph analysis** over the similarity graph, used to pin the hero slot to a structurally central book.
+- A **prescriptive** constraint-programming model on MiniZinc that assigns each candidate a slot and enforces ten rules (cardinality, slot uniqueness, already-read exclusion, author uniqueness, subject-concentration cap, freshness floor, originals-exposure floor, cold-start cap, hero pin, explanation-path floor) under a position-weighted engagement-decay objective.
+- Customer-readable result tables: the chosen slate ordered by slot, the per-user subject distribution, and per-pick explanation-path support.
 
 ## What's included
 
-- `book_slate_recommendation.py` -- main script with the full
-  paths-walk + Graph + Prescriptive pipeline
-- `data/fetch_open_library_slice.py` -- Open Library (CC0) slice
-  fetcher with caching under `data/_cache/`; supports
-  `--size sm|md|lg`
-- `data/*.csv` -- bundled `sm` slice (~59 books, ~52 authors,
-  12 subjects, 25 synthetic users with read events)
-- `pyproject.toml` -- Python package configuration
+- **Model**: a three-stage pipeline (knowledge-graph path walks, then graph analysis, then prescriptive optimization) on a single shared ontology, wired to the bundled CSVs.
+- **Runner**: `book_slate_recommendation.py` — a single Python script that runs end-to-end against a Snowflake-connected RAI account.
+- **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
+- **Sample data**: a deterministic Open Library (CC0 public domain) slice of roughly 59 books, 52 authors, and 12 subjects, with synthetic users and read events layered on top. See *Sample data* below.
+- **Outputs**: the formulation, the solve-result block, the chosen slate (with per-book `path_count_total` and `triangle_count`), the per-user subject distribution, per-pick explanation-path support, and diagnostic candidate-set and structural-embeddedness tables.
 
 ## Prerequisites
 
 ### Access
-- A Snowflake account that has the RAI Native App installed.
-- A Snowflake user with permissions to access the RAI Native App.
+
+- A Snowflake account with the RelationalAI Native App installed.
+- A Snowflake user with permissions to access the RelationalAI Native App.
 
 ### Tools
-- Python >= 3.10
+
+- Python 3.10 or newer.
+- RelationalAI Python SDK (`relationalai == 1.1.0`).
 
 ## Quickstart
 
-1. Download ZIP:
+1. Download the template and extract it:
+
    ```bash
    curl -O https://docs.relational.ai/templates/zips/v1/book_slate_recommendation.zip
    unzip book_slate_recommendation.zip
    cd book_slate_recommendation
    ```
+
    > [!TIP]
    > You can also download the template ZIP using the "Download ZIP" button at the top of this page.
 
-2. Create venv:
+2. Create a virtual environment and activate it:
+
    ```bash
    python -m venv .venv
    source .venv/bin/activate
    python -m pip install --upgrade pip
    ```
 
-3. Install:
+3. Install dependencies:
+
    ```bash
    python -m pip install .
    ```
 
 4. Configure (prompts for Snowflake account, role, and profile name):
+
    ```bash
    rai init
    ```
 
-5. Run:
+5. Run the template end-to-end:
+
    ```bash
    python book_slate_recommendation.py
    ```
 
-6. Expected output. The bundled `data/` directory carries a
-   deterministic Open Library (CC0) slice (~59 books, ~52 authors,
-   12 subjects); synthetic users and read events are layered on
-   top, and `similar_to` edges are derived from shared-author /
-   shared-subject overlap. The runner prints the formulation, the
-   solve-result block, the chosen slate (with per-book
-   `path_count_total` and `triangle_count`), per-user subject
-   distribution, per-pick explanation-path support, and a verbose
-   diagnostic block (candidate set + structural-embeddedness map)
-   at the end. Solver build strings and exact wall times will vary;
-   `status: OPTIMAL` and the chosen slate are stable for the
-   bundled slice:
+6. Expected output (a few lines confirm a successful run). Solver build strings and exact wall times vary, but `status: OPTIMAL` and the chosen slate are stable for the bundled slice:
+
    ```text
    Solve result:
    • status: OPTIMAL
@@ -173,366 +113,167 @@ under topic / source / recency caps.
          1    2     ...               ...             ...
          1    3     ...               ...             ...
    ...
-
-   Explanation-path support per picked item (ordered by slot):
-   user_id slot book_id paths_via_kg_walk paths_via_author paths_via_subject
-         1    1     ...               ...              ...               ...
-   ...
    ```
 
-   To pull a larger Open Library slice, see "Scaling the bundled
-   data" below.
+   To pull a larger Open Library slice, see *Scale up / productionize* below.
 
 ## Template structure
 
-```
+Short annotated tree of the template folder:
+
+```text
 book_slate_recommendation/
-├── data/
-│   ├── fetch_open_library_slice.py    # CC0 slice fetcher
-│   ├── users.csv
-│   ├── books.csv
-│   ├── authors.csv
-│   ├── subjects.csv
-│   ├── read.csv
-│   ├── book_author.csv
-│   ├── book_subject.csv
-│   └── book_similar.csv
-├── book_slate_recommendation.py
-├── pyproject.toml
-└── README.md
+├── book_slate_recommendation.py     # Main script (paths walk + graph + prescriptive)
+├── runbook.md                       # paste-testable walkthrough (RAI skills)
+├── pyproject.toml                   # dependencies
+├── README.md                        # this file
+└── data/
+    ├── fetch_open_library_slice.py  # CC0 Open Library slice fetcher (--size sm|md|lg)
+    ├── users.csv                    # 25 synthetic readers
+    ├── books.csv                    # ~59 books (title, age_days, in_house flag)
+    ├── authors.csv                  # ~52 authors
+    ├── subjects.csv                 # 12 subjects
+    ├── read.csv                     # 150 read events (user, book, rating)
+    ├── book_author.csv              # book-to-author edges
+    ├── book_subject.csv             # book-to-subject edges
+    └── book_similar.csv             # derived book-to-book similarity edges
 ```
 
-Bibliographic data is sourced from
-[Open Library](https://openlibrary.org/dev/docs/api), released
-under CC0 (public domain). Synthetic users and read events, plus
-the derived `similar_to` edges, are generated deterministically by
-the fetch script.
+**Start here**: run `python book_slate_recommendation.py` for the full three-stage pipeline end to end, or follow `runbook.md` to reproduce it step by step with the RAI skills.
+
+## Sample data
+
+The bibliographic data is a deterministic slice of [Open Library](https://openlibrary.org/dev/docs/api), released under CC0 (public domain), pulled by `data/fetch_open_library_slice.py`. Synthetic users and read events, plus the derived `similar_to` edges, are generated deterministically by the fetch script, so reruns are reproducible. The bundled `sm` slice carries roughly 59 books, 52 authors, and 12 subjects with 25 users and 150 read events.
+
+- **`users.csv`** (25 rows) — synthetic readers (`id`, `name`).
+- **`books.csv`** (59 rows) — catalog items with `title`, `age_days` (recency), and an `in_house` 0/1 flag (1 = an in-house / originals item, 0 = third party).
+- **`authors.csv`** (52 rows) — book authors (`id`, `name`).
+- **`subjects.csv`** (12 rows) — topical categories (`id`, `name`).
+- **`read.csv`** (150 rows) — read events (`user_id`, `book_id`, `rating`); the user's read history and the already-read exclusion source.
+- **`book_author.csv`** (71 rows) — book-to-author edges.
+- **`book_subject.csv`** (128 rows) — book-to-subject edges.
+- **`book_similar.csv`** (400 rows) — book-to-book similarity edges, derived from shared-author or shared-subject overlap. In production-recommender terms this is the retrieval artifact: swap it for a learned embedding's nearest neighbors, a behavioral co-engagement matrix, or a third-party recommendation API. The model treats it as input; the upstream choice is independent of the slate-stage logic.
+
+## Model overview
+
+One shared ontology threads all three stages. The path-walk stage derives candidates and their evidence, the graph stage adds a structural measure, and the prescriptive stage reads both to compose the slate.
+
+- **Key entities**: `User` — a reader; `Book` — a catalog title (an `Item` sub-concept); `Author` and `Subject` — a book's authors and topics; `Slot` — one of the K ordered recommendation positions in a user's slate; the derived `Candidate` — a (user, unread book) pair scored by its knowledge-graph explanation paths.
+- **Primary identifiers**: integer `id` on `User`, `Book`, `Author`, `Subject`; `pos` on `Slot`; composite `(user_id, book_id)` on `Candidate`.
+- **Important invariants**: `Book.in_house` is a 0/1 flag; `Book.age_days` is non-negative; similarity edges are unique on `(src_book_id, dst_book_id)`; every foreign key resolves; slot decisions take values in `1..K+1`, where slot 1 is the hero position and slot K+1 is the unpicked sentinel.
+
+The typed edges (`read`, `written_by`, `about`, `similar_to`) carry the graph structure; the unified `Item.connected_to` super-edge is their symmetric union, so the path walker can traverse one 2-arity relationship across the heterogeneous graph. Each `Candidate` carries typed evidence counts (`path_count_via_author`, `path_count_via_subject`, `path_count_via_kg_walk`, summed into `path_count_total`) and a `slot` decision.
+
+For the full concept and property definitions, see `book_slate_recommendation.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
-### Schema
+The pipeline runs in three stages over the shared ontology. Its architectural centerpiece is the bounded knowledge-graph walk: without the paths library there are no candidates and no optimization variables.
 
-- `Item` super-concept; `User`, `Book`, `Author`, `Subject` all
-  `extends=[Item]` so the path walker can chain across the whole
-  heterogeneous KG via a single 2-arity edge.
-- `User(id, name)`
-- `Book(id, title, age_days, in_house)` -- `in_house` is an
-  `Integer` 0/1 flag (1 = an in-house / originals item, 0 = third
-  party).
-- `Author(id, name)`, `Subject(id, name)`
-- Typed edges: `User.read(Book, rating)`,
-  `Book.written_by(Author)`, `Book.about(Subject)`,
-  `Book.similar_to(Book)`.
-- Unified KG edge: `Item.connected_to(Item, Item)` populated as the
-  symmetric union of the typed edges. The unified-edge layer is
-  needed because a `path()` call walks one 2-arity relationship at a
-  time, so the symmetric union of typed edges is pre-materialised
-  onto `Item.connected_to`.
+**Stage 1 — Knowledge-graph path walks (candidate generation).** The path walker traverses `Item.connected_to` (the symmetric union of `read`, `written_by`, `about`, and `similar_to`) from each user up to `MAX_HOPS = 2` hops. With a `Book` endpoint, the candidate set is the union of length-1 walks (`User -> read_Book`, later excluded because already read) and length-2 walks (`User -> read_Book -> similar_Book`). Each reachable `(user, book)` becomes a `Candidate`. The per-`(user, candidate)` typed counts — shared-author and shared-subject joins against the user's read history, plus the count of walker-enumerated paths — feed the explanation floor, the cold-start cap, and the objective. Each count is defined for every candidate so a candidate with no matches still gets a value, and `path_count_total` sums the three.
 
-### Pipeline
+**Stage 2 — Graph analysis (hero-slot embeddedness).** A `Graph` is built from `Book.similar_to`, and triangle count returns the per-book count of similarity triangles each book participates in, stored as `Book.triangle_count`. Triangle count is graph-derived: it depends on the topology of the similarity graph, not on a per-book scalar that could be supplied externally. Stage 3 uses it to pin the hero slot to a densely embedded book.
 
-1. **Bounded KG walks via the paths library + typed evidence joins
-   (architectural centerpiece).** The path walker traverses `Item.connected_to`
-   (the symmetric union of `read | written_by | about | similar_to`)
-   anchored at each `User` up to `MAX_HOPS = 2` hops. With a Book
-   endpoint at length 2, the candidate set is the union of
-   `User -> read_Book` (length 1; pruned by the already-read
-   exclusion) and `User -> read_Book -> similar_Book` (length 2).
-   Author / Subject hubs participate via the `similar_to` edges the
-   data pipeline derives from shared author / subject (see
-   `book_similar.csv`); 3-hop walks
-   (`User -> read_Book -> Author -> candidate_Book`) are not
-   enumerated because the heterogeneous KG saturates fast at that
-   depth and `MAX_HOPS = 2` is the runtime sweet spot. The
-   per-`(user, candidate)` typed-evidence counts
-   (`path_count_via_author`, `_via_subject`) are *direct shared-
-   entity joins* between the candidate and the user's read history
-   rather than walks themselves; `path_count_via_kg_walk` is the
-   actual count of walker-enumerated paths. The composite
-   `path_count_total` feeds the cold-start cap, the explanation
-   floor, and the CSP objective.
+**Stage 3 — Prescriptive constraint program (slot assignment).** Each candidate's slot is a decision in `1..K+1`, where slots `1..K` are slate positions (1 = hero, K = bottom of row) and slot K+1 is the unpicked sentinel. The K+1 encoding lets the position weight `(K + 1 - slot)` be zero for unpicked candidates, so no auxiliary picked/unpicked indicator is needed. The model enforces ten constraints — cardinality (exactly K picks per user), slot uniqueness, already-read exclusion, author uniqueness, subject-concentration cap, freshness floor, originals-exposure floor, cold-start cap, hero pin, and explanation-path floor — under a position-weighted engagement-decay objective. The objective weights each pick by `(K + 1 - slot) * path_count_total`, largest at slot 1, so the solver places the highest-path-support candidates at the top of the row — the canonical position-decay engagement model. After the solve, the runner verifies every constraint, requires an `OPTIMAL` status, and prints the chosen slate, subject distribution, and per-pick explanation support.
 
-   The book-similarity input (`data/book_similar.csv`) is the
-   *retrieval* artifact in production-recsys terms: the data
-   pipeline ships one CC0-derived recipe (shared-author-OR-shared-
-   subject), but customers swap it for any retrieval source -- a
-   learned embedding's k-NN, a behavioral co-engagement matrix, a
-   third-party recommendation API. The model treats it as input
-   data; the upstream choice is independent of the slate-stage
-   logic this template encodes.
+See `book_slate_recommendation.py` for the implementation and `runbook.md` for the skill-driven reproduction.
 
-2. **Graph: hero-slot pin via triangle count.** A `Graph` is built
-   from `Book.similar_to`; `triangle_count()` returns the per-Book
-   count of similar-to triangles each book participates in, stored
-   as `Book.triangle_count` (Integer). The signal feeds the
-   `hero_pin_ic` IC -- the slot-1 (hero) pick must come from a Book
-   whose triangle count clears `HERO_EMBEDDEDNESS_THRESHOLD`. Tying
-   the metric to the hero slot rather than a "somewhere in the
-   slate" floor concentrates the Graph contribution at the
-   highest-impression position, which is where structural quality
-   matters most for engagement. Triangle count is graph-derived: it
-   depends on the topology of the similarity graph, not on a value
-   the customer can supply externally. That's what makes it an
-   irreducible Graph contribution rather than a swappable per-Book
-   scalar.
+**Where this fits in production.** Production recommender systems run a multi-stage funnel: catalog, then retrieval, then pre-ranking, then ranking, then slate optimization. This template implements the final slate-optimization stage — where business rules, diversity, exposure floors, and explainability constraints land — with the upstream graph and path-walk signals in the same declarative model. The per-typed evidence counts the runner emits for each pick (`paths_via_author`, `paths_via_subject`, `paths_via_kg_walk`) are a decomposable, graph-grounded justification suitable for transparency workflows.
 
-3. **Prescriptive: CSP slot assignment.** Decisions:
-   `Candidate.slot in {1, 2, ..., K, K+1}` (`type="int"`, `lower=1`,
-   `upper=K+1`). Slot 1..K are slate positions (1 = hero, K = bottom
-   of row); slot K+1 is the unpicked sentinel. Constraints:
-   - Cardinality: `count(Candidate, slot <= K) per user == K`
-     (exactly K picks).
-   - Slot uniqueness:
-     `count(Candidate, slot == Slot.pos) per (user, Slot) <= 1`
-     (no two picks share a position).
-   - Already-read exclusion: `User.read(user, book) => slot == K+1`.
-   - Author uniqueness: at most 1 picked per `(user, Author)`
-     (per-pair count cap).
-   - Subject-concentration cap: at most `MAX_PER_SUBJECT` picked per
-     `(user, Subject)` (per-pair count cap).
-   - Freshness floor: at least `FRESHNESS_FLOOR` picked items with
-     `age_days <= FRESH_WINDOW_DAYS`.
-   - Originals exposure floor: at least `ORIGINALS_FLOOR` in-house
-     picked items (`Book.in_house == 1`).
-   - Cold-start cap: at most `COLD_START_CAP` weakly-explained
-     picks (those with
-     `path_count_total < WEAK_EXPLANATION_THRESHOLD`).
-   - Hero pin: the slot-1 pick must come from a Book with
-     `triangle_count >= HERO_EMBEDDEDNESS_THRESHOLD`.
-   - Explanation-path floor:
-     `sum((K+1-slot) * path_count_total) per user >=
-     EXPLANATION_FLOOR`. The position weight `(K+1-slot)` is
-     `K..1` at slots `1..K` and `0` at slot `K+1` (unpicked) -- so
-     the sum naturally ignores unpicked Candidates without an
-     auxiliary indicator.
+### Why constraint programming (MiniZinc), not mixed-integer programming
 
-   Objective: maximize `sum((K + 1 - slot) * path_count_total)`.
-   The position weight is the canonical engagement-decay model --
-   higher path-support items gravitate toward slot 1 (top of row,
-   the hero position) because the weight is largest there, which
-   maximizes the weighted sum.
-
-### Why CSP (MiniZinc), not MIP
-
-The model is pure integer with multi-valued integer decision
-variables. MiniZinc's CSP / CP-SAT propagators handle this shape
-natively without LP relaxation overhead, and the per-pair count
-caps used for slot, author, and subject uniqueness map directly
-to MiniZinc's GCC (global cardinality constraint) propagators.
-Slot-equality reification (`slot == 1` inside a count predicate
-for the hero pin) and the conditional domain rule
-(`User.read => slot == K+1`) are also CSP-native. The same
-prescriptive layer would run HiGHS if a future customer layers in
-a float-coefficient scalar (see "Custom scoring signal" in
-Customize) -- the formulation extends without restructure.
-
-### Encoding choices for an ordered slate
-
-This template encodes an *ordered* slate; three choices follow from
-that:
-
-- **Unified `Item.connected_to` super-edge** so the path walker
-  (one 2-arity relationship at a time) can traverse the
-  heterogeneous KG.
-- **Integer slot in `{1..K+1}` with K+1 = unpicked**, so the
-  position weight `(K+1-slot)` is 0 at unpicked and no auxiliary
-  picked-indicator is needed.
-- **Per-pair count caps (GCC idiom)** for slot / author / subject
-  uniqueness, plus a per-user existential count for the hero pin
-  (`count(picked at slot 1 from eligible Books) per user >= 1`).
-  `all_different` would conflict with the shared K+1 sentinel.
-
-### A note on count idioms
-
-PyRel's prescriptive rewriter does *not* currently support distinct
-aggregates in IC compilation (`count(model.distinct(X), ...)`
-raises `NotImplementedError: Distinct aggregates not yet supported`
-when passed to `problem.satisfy`). Distinct counting in ICs is
-therefore expressed indirectly via per-pair count caps: instead of
-`count(distinct Author) per user == K`, we use
-`count(Candidate, slot <= K) per (user, Author) <= 1` (no Author
-repeats) and lean on `slate_size_ic` to fix the pick count. Both
-encode the same constraint; the per-pair cap form is what compiles
-today and is also what MiniZinc consumes most efficiently
-(GCC-style propagation).
-
-## Where this fits in production recsys
-
-Production recommender systems run a multi-stage funnel: *catalog
-(10^6+) -> retrieval (10^3) -> pre-ranking (10^2) -> ranking (float
-utility) -> slate optimization (final K)*. The slate stage is where
-business rules, diversity, exposure floors, and explainability
-constraints land. PyRel's prescriptive reasoner fits this stage
-directly, with the upstream graph and KG-walk signals in the same
-declarative model. The per-typed evidence counts the runner emits
-per picked item (`paths_via_author`, `paths_via_subject`,
-`paths_via_kg_walk`) are a KG-grounded, decomposable justification
-suitable for transparency workflows.
+The model is pure integer with multi-valued integer decisions. MiniZinc's constraint-programming propagators handle this shape natively without linear-programming relaxation overhead, and the per-pair count caps used for slot, author, and subject uniqueness map directly to MiniZinc's global-cardinality-constraint (GCC) propagators. Slot-equality reification (for the hero pin) and the conditional domain rule (already-read implies slot K+1) are also native to constraint programming. The same prescriptive layer would run on HiGHS if you later add a float-coefficient scalar to the objective (see *Extend the model*), so the formulation extends without restructuring.
 
 ## Customize this template
 
-Six common variations:
+Focus on the first changes most users will make.
 
-- **Tighten or relax the constraint dials.** `MAX_PER_SUBJECT`,
-  `FRESHNESS_FLOOR`, `ORIGINALS_FLOOR`, `COLD_START_CAP`,
-  `EXPLANATION_FLOOR`, `WEAK_EXPLANATION_THRESHOLD`,
-  `HERO_EMBEDDEDNESS_THRESHOLD` are top-of-file constants. See
-  Troubleshooting for joint-feasibility relations between them.
-- **Add a per-Book popularity scalar to the objective.** Layer in
-  a per-book Float (collaborative-filtering co-occurrence, learned-
-  embedding k-NN affinity, third-party recommendation API score) by
-  declaring `Book.cf_score`, populating it from your retrieval
-  stage, and rewriting the objective as
-  `sum((K+1-slot) * (PATH_WEIGHT * path_count_total + CF_WEIGHT * cf_score))`.
-  HiGHS handles the float-coefficient blend natively; the rest of
-  the pipeline (path-derived candidates, hero pin, position-decay
-  weighting) is unchanged. Note that this signal is *additive* to
-  the path evidence -- the structural Graph contribution
-  (`Book.triangle_count`, `hero_pin_ic`) stays in regardless, since
-  it constrains the slate rather than scoring it.
-- **A/B candidate slate enumeration.**
-  `solve("minizinc", solution_limit=K_alt)` returns K alternative
-  slates for downstream A/B exposure or human-in-the-loop
-  curation -- the production-deployed shape for editorial-review
-  platforms (kids content, regulated regions).
-- **LLM-grounded explanation surfacing.** Pipe each picked item's
-  per-typed counts (and, optionally, materialized top-N paths via
-  a small extension of the final `inspect()` selecting on
-  `kg_paths(p_s)`) into an LLM call to render natural-language
-  explanations grounded in KG facts.
-- **Retarget to e-commerce.** Replace `Book` with `Product`,
-  `read` with `purchased`, `similar_to` with co-purchase. The
-  template runs as a "frequently bought together" slate composer
-  with category coverage, brand exclusivity, and price-tier mix.
-- **Retarget to course slates / career paths.** Replace `Book`
-  with `Course`, add prerequisite edges, run a career-navigation
-  pattern with prerequisite respect and credit-hour caps.
+### Use your own data
 
-### Scaling the bundled data
+- Replace the CSVs in `data/` with your own, keeping the column names listed in *Sample data* above.
+- The runner runs pre-solve validation before installing any model rules: it checks for unique keys, no null required columns, resolving foreign keys, non-negative `age_days`, and an `in_house` value in `{0, 1}`. Each failing check raises a focused error naming the offending rows.
+- The `book_similar.csv` similarity edges are the retrieval artifact. Swap the bundled shared-author-or-shared-subject recipe for any retrieval source (learned-embedding nearest neighbors, a behavioral co-engagement matrix, a third-party recommendation API); the rest of the pipeline is unchanged.
+- For Snowflake-backed runs, swap the `read_csv(...)` calls for `model.data(snowflake_table)` calls.
 
-To pull a larger Open Library slice for a more realistic instance:
-```bash
-python data/fetch_open_library_slice.py --size md   # ~250 books
-python data/fetch_open_library_slice.py --size lg   # ~600 books
-```
-The fetch script is idempotent and caches API responses under
-`data/_cache/`, so reruns are reproducible and offline-friendly
-after the first pull. After bumping size, re-run
-`python book_slate_recommendation.py`. Two things to retune at
-larger sizes: (1) the `EXPLANATION_FLOOR` /
-`WEAK_EXPLANATION_THRESHOLD` constants in the runner are tuned
-for `sm`'s `path_count_total` distribution (range 2-12); larger
-slices produce much higher walk counts and these thresholds
-become trivially satisfied unless rescaled. (2) MiniZinc
-`time_limit_sec=180` is comfortable at `sm` (~1k integer
-decisions, each with K+1=4 values); raise it for `lg` (~120k
-decisions × 10 ICs).
+### Tune parameters
+
+The constraint dials are top-of-file constants in `book_slate_recommendation.py`:
+
+- **Slate size** — `SLATE_SIZE_K` (default `3`), the K of "row of K things".
+- **Walk depth** — `MAX_HOPS` (default `2`); bumping to 3 or more saturates fast on a heterogeneous graph.
+- **Diversity and exposure** — `MAX_PER_SUBJECT` (default `2`), `FRESHNESS_FLOOR` (default `1`), `FRESH_WINDOW_DAYS` (default `365 * 30`), `ORIGINALS_FLOOR` (default `1`), `COLD_START_CAP` (default `2`).
+- **Explainability** — `EXPLANATION_FLOOR` (default `8`), `WEAK_EXPLANATION_THRESHOLD` (default `2`), `HERO_EMBEDDEDNESS_THRESHOLD` (default `4`).
+
+See *Troubleshooting* for the joint-feasibility relationships between these dials. The explainability and threshold defaults are tuned to the bundled `sm` slice's `path_count_total` distribution (range 2 to 12); rescale them when you change the data size.
+
+### Extend the model
+
+- **Add a per-book popularity scalar to the objective.** Declare a `Book.cf_score` Float (from collaborative filtering, learned-embedding affinity, or a third-party score), populate it from your retrieval stage, and rewrite the objective as `sum((K+1-slot) * (PATH_WEIGHT * path_count_total + CF_WEIGHT * cf_score))`. HiGHS handles the float-coefficient blend natively; the structural graph contribution (`triangle_count`, hero pin) stays in place because it constrains the slate rather than scoring it.
+- **Enumerate alternative slates.** `solve("minizinc", solution_limit=N)` returns N alternative slates for A/B exposure or human-in-the-loop editorial review.
+- **Surface natural-language explanations.** Pipe each pick's per-typed counts (and, optionally, materialized top-N paths) into a language-model call to render explanations grounded in graph facts.
+- **Retarget to another domain.** Replace `Book` with `Product`, `read` with `purchased`, and `similar_to` with co-purchase for a "frequently bought together" slate with category coverage and brand exclusivity; or replace `Book` with `Course`, add prerequisite edges, and run a career-navigation slate with prerequisite respect.
+
+### Scale up / productionize
+
+- **Pull a larger data slice.** Fetch a bigger Open Library slice for a more realistic instance:
+
+  ```bash
+  python data/fetch_open_library_slice.py --size md   # ~250 books
+  python data/fetch_open_library_slice.py --size lg   # ~600 books
+  ```
+
+  The fetch script is idempotent and caches API responses under `data/_cache/`, so reruns are reproducible and offline after the first pull. After changing size, rerun `python book_slate_recommendation.py`. Two things to retune at larger sizes: the `EXPLANATION_FLOOR` and `WEAK_EXPLANATION_THRESHOLD` constants (larger slices produce much higher walk counts, so these thresholds become trivially satisfied unless rescaled), and the MiniZinc `time_limit_sec` (default `180`, comfortable at `sm`; raise it for `lg`).
+- **Replace CSVs with live data.** Point the loaders at Snowflake tables so the pipeline reads current read history and retrieval edges from your warehouse.
 
 ## Troubleshooting
 
 <details>
-<summary>Solve returns INFEASIBLE / Final slate is empty</summary>
+<summary>Solve returns INFEASIBLE / the final slate is empty</summary>
 
-The runner enforces ten ICs and an `OPTIMAL` post-solve
-requirement. If your data is too sparse or too clustered, the
-joint constraints can be jointly infeasible. The dominant causes
-on customer slices are:
+The runner enforces ten constraints and requires an `OPTIMAL` status. If the data is too sparse or too clustered, the joint constraints can be infeasible. The dominant causes on customer slices are:
 
-1. **Too few candidates after exclude_read.** Each user must have
-   at least `SLATE_SIZE_K` candidates in their 2-hop reach AFTER
-   the already-read exclusion. The exclude prunes aggressively:
-   every length-1 walk `User -> read_Book` lands a read book in
-   `Candidate`, and these are all forced to `slot == K+1`. The
-   recommendable candidates come from length-2
-   `read_Book -> similar_Book` walks, so a user whose reads have
-   no `similar_to` neighbors will be infeasible. Inspect the
-   diagnostic `Candidate set per user` block printed at the end
-   of the runner.
-2. **Disjoint floors.** `FRESHNESS_FLOOR` and `ORIGINALS_FLOOR`
-   are independent. A user with no candidate that is BOTH fresh
-   AND in-house must spend `FRESHNESS_FLOOR + ORIGINALS_FLOOR`
-   distinct picks on the disjoint pools, not
-   `max(FRESHNESS_FLOOR, ORIGINALS_FLOOR)`.
-3. **Author-uniqueness vs slate size.** Author uniqueness is
-   hardcoded to "at most 1 per (user, Author)", so each user
-   needs at least `SLATE_SIZE_K` distinct authors in their reach.
-   A user whose reach concentrates in fewer authors is infeasible
-   even when total candidate count is large.
-4. **Cold-start cap × explanation floor.** `EXPLANATION_FLOOR` is
-   position-weighted (weights `K..1` at slots `1..K`); a slate
-   with three picks of `path_count_total=2` at slots 1, 2, 3
-   contributes `2*3 + 2*2 + 2*1 = 12`. With at most
-   `COLD_START_CAP` weakly-explained picks (each contributing at
-   most `(WEAK_EXPLANATION_THRESHOLD - 1) * (K+1-slot)`), the
-   floor must be reachable. Customers raising `EXPLANATION_FLOOR`
-   should inspect the per-user path-count distribution first.
-5. **Missing edges.** Every Book picked must have at least one
-   `Book.about(Subject)` and one `Book.written_by(Author)` row,
-   else the diversity / uniqueness caps silently exempt that
-   Book.
-6. **Hero pin.** Each user needs at least one candidate whose
-   Book has `triangle_count >= HERO_EMBEDDEDNESS_THRESHOLD`. A
-   user whose 2-hop reach lands only on isolated similarity-
-   graph regions (low or zero triangle counts) is infeasible
-   because there's no eligible book for slot 1. Inspect the
-   "Book structural embeddedness" diagnostic table at the end of
-   the runner, and either drop `HERO_EMBEDDEDNESS_THRESHOLD` or
-   densify the similarity input.
+1. **Too few candidates after the already-read exclusion.** Each user needs at least `SLATE_SIZE_K` candidates in their 2-hop reach after already-read books are excluded. Recommendable candidates come from length-2 `read_Book -> similar_Book` walks, so a user whose reads have no `similar_to` neighbors will be infeasible. Inspect the candidate-set diagnostic printed at the end of the runner.
+2. **Disjoint floors.** `FRESHNESS_FLOOR` and `ORIGINALS_FLOOR` are independent. A user with no candidate that is both fresh and in-house must spend `FRESHNESS_FLOOR + ORIGINALS_FLOOR` distinct picks, not the maximum of the two.
+3. **Author uniqueness versus slate size.** Author uniqueness caps at one pick per `(user, author)`, so each user needs at least `SLATE_SIZE_K` distinct authors in reach.
+4. **Cold-start cap and explanation floor.** `EXPLANATION_FLOOR` is position-weighted. With at most `COLD_START_CAP` weakly-explained picks, the floor must still be reachable; inspect the per-user path-count distribution first.
+5. **Missing edges.** Every picked book must have at least one `Book.about(Subject)` and one `Book.written_by(Author)` row, or the diversity and uniqueness caps silently exempt it.
+6. **Hero pin.** Each user needs at least one candidate whose book has `triangle_count >= HERO_EMBEDDEDNESS_THRESHOLD`, or there is no eligible book for slot 1. Inspect the structural-embeddedness diagnostic table, then either lower `HERO_EMBEDDEDNESS_THRESHOLD` or densify the similarity input.
 
-The runner runs a Python-level pre-solve assertion (in
-`book_slate_recommendation.py` immediately before
-`problem.solve(...)`) that materialises the Candidate set,
-anti-joins against `User.read`, and raises `ValueError` if any
-user has fewer than `SLATE_SIZE_K` unread candidates, fewer than
-`FRESHNESS_FLOOR` unread fresh candidates, fewer than
-`ORIGINALS_FLOOR` unread in-house candidates, fewer than
-`SLATE_SIZE_K` distinct unread authors, fewer than
-`ceil(K/MAX_PER_SUBJECT)` distinct unread subjects, fewer than
-`K - COLD_START_CAP` strongly-explained candidates, a max
-achievable position-weighted explanation score below
-`EXPLANATION_FLOOR`, or zero unread hero-eligible candidates. The
-assertion's error message lists the affected users per shortfall
-and a strategy block keyed by which condition fired. The runner also prints
-an "Unread candidate count per user" table just before solving,
-so dense reach can be inspected even when the assert passes. For post-solve diagnostics
-on a non-OPTIMAL run: `problem.verify(...)` already prints
-per-IC violation messages on the failing constraints; if the
-script then exits at the `model.require(... == "OPTIMAL")` line
-you can comment that line out to let the post-solve inspect
-blocks fire (note: with no successful solve, the "Final slate
-per user" table will be empty and the candidate-set diagnostic
-at the end mirrors the pre-solve one).
+The runner runs a Python-level pre-solve assertion just before `problem.solve(...)` that materializes the candidate set, anti-joins against the read history, and raises a `ValueError` naming the affected users per shortfall, with a strategy block keyed by which condition fired. It also prints an unread-candidate-count table before solving.
 
 </details>
 
 <details>
 <summary>Slow or timing out at <code>--size lg</code></summary>
 
-The default `time_limit_sec=180` is sized for the bundled `sm`
-slice. At `lg` (~600 books, ~120k integer-domain decisions × 10
-ICs), raise it to 600 and watch the MiniZinc propagation progress
-in the solver log. If the solve still times out, drop
-`SLATE_SIZE_K` or relax `EXPLANATION_FLOOR` so propagation can
-prune harder.
+The default `time_limit_sec=180` is sized for the bundled `sm` slice. At `lg`, raise it and watch the MiniZinc propagation progress in the solver log. If the solve still times out, drop `SLATE_SIZE_K` or relax `EXPLANATION_FLOOR` so propagation can prune harder.
 
 </details>
 
 <details>
 <summary>Open Library fetch script slow or rate-limited</summary>
 
-The fetcher caches every API response under `data/_cache/` keyed
-by URL. On a fresh `--size lg` pull the script makes a few
-hundred requests at the Open Library default rate. Subsequent
-runs are offline. If your network blocks Open Library, point the
-fetcher at a snapshot of the
-<https://openlibrary.org/data/ol_dump_latest.txt.gz> bulk
-download.
+The fetcher caches every API response under `data/_cache/` keyed by URL, so subsequent runs are offline. On a fresh `--size lg` pull the script makes a few hundred requests at the Open Library default rate. If your network blocks Open Library, point the fetcher at a snapshot of the <https://openlibrary.org/data/ol_dump_latest.txt.gz> bulk download.
 
 </details>
 
+## Learn more
+
+### Core concepts
+
+- [Multi-reasoner workflows](https://docs.relational.ai/) — chained reasoner patterns and ontology enrichment across stages.
+- [PyRel v1 query language](https://docs.relational.ai/) — `model.where(...)`, aggregates, and result selection.
+
+### Reasoner reference
+
+- [Paths library](https://docs.relational.ai/) — bounded knowledge-graph walks with `.repeat(...)` and `all_paths()`.
+- [Graph reasoner](https://docs.relational.ai/) — building a `Graph`, node-concept binding, and structural metrics such as triangle count.
+- [Prescriptive reasoner](https://docs.relational.ai/) — the `Problem` API, integer decisions, constraints, and objectives on MiniZinc and HiGHS.
+
+## Support
+
+- File issues at the RelationalAI templates repository.
+
 ## References
 
-- *Open Library Developer API* (CC0) --
-  <https://openlibrary.org/dev/docs/api>. Bibliographic catalog
-  used by the bundled slice; `data/fetch_open_library_slice.py`
-  pulls deterministic cuts.
+- *Open Library Developer API* (CC0) — <https://openlibrary.org/dev/docs/api>. Bibliographic catalog used by the bundled slice; `data/fetch_open_library_slice.py` pulls deterministic cuts.

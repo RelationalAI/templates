@@ -7,7 +7,7 @@ An insurer holds the same customer many times over: a household carries auto, ho
 ```
 Ontology: Record (51 policy records with per-policy coverage), CandidateMatch
 (25 auto-merge pairs) and ReviewPair (1 held pair). The chain resolves 51 records
-into 30 insured parties, flags 4 accumulation breaches that are invisible at the
+into 31 insured parties, flags 4 accumulation breaches that are invisible at the
 record level, and cedes $927k of excess exposure to reinsurance for $111k.
 
   ─────────────────────────────────────────────────────────────────

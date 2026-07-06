@@ -10,10 +10,8 @@ tags:
   - Multi-Period
   - Temporal-Filtering
   - Inventory
-  - LP
+  - LP (linear programming)
 ---
-
-# Demand Planning Temporal
 
 ## What this template is for
 
@@ -30,20 +28,18 @@ Prescriptive reasoning makes this practical because the solver simultaneously ba
 - **Data scientists** who need to scope optimization to a configurable date window
 - **Operations researchers** looking for a multi-period flow-conservation pattern in RelationalAI
 
-## What you'll build
+- A cost-minimizing weekly production plan per (site, SKU, week), produced by **prescriptive** decision variables and a HiGHS solve.
+- A date-filtered planning horizon: only demand orders inside the configured window enter the model, with due dates mapped to integer week periods via `std.common.range()`.
+- An inventory schedule that satisfies flow conservation (`inv[t] = inv[t-1] + production[t] - demand[t]`) enforced as prescriptive constraints.
+- A service-level guarantee (a 95% minimum-fulfillment constraint) plus an unmet-demand report showing whether any demand went unserved.
+- A three-scenario what-if sweep that shows how total cost changes as the planning horizon extends, all sharing one model.
 
-- Load sites, SKUs, demand orders, production capacity, and initial inventory from CSV files
-- Filter demand orders to a configurable planning horizon using date comparisons
-- Map due dates to integer week numbers for use with `std.common.range()`
-- Define continuous decision variables for production quantities, inventory levels, and unmet demand
-- Enforce inventory flow conservation: `inv[t] = inv[t-1] + production[t] - demand[t]`
-- Set a 95% minimum service level constraint on total demand fulfillment
-- Minimize total cost (production + holding + unmet-demand penalty) using `model.union()` to combine per-entity costs
-- Solve with HiGHS and inspect the production plan, inventory levels, and unmet demand
+Built using **prescriptive reasoning**: continuous decision variables for production, inventory, and unmet demand; a multi-period flow-conservation constraint; and a total-cost objective assembled with `model.union()`.
 
 ## What's included
 
 - **Script**: `demand_planning_temporal.py` -- end-to-end model, solve, and results
+- **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - **Data**: `data/sites.csv`, `data/skus.csv`, `data/demand_orders.csv`, `data/production_capacity.csv`, `data/initial_inventory.csv`
 - **Config**: `pyproject.toml`
 
@@ -90,34 +86,16 @@ Prescriptive reasoning makes this practical because the solver simultaneously ba
    python demand_planning_temporal.py
    ```
 
-6. Expected output:
+6. Expected output. Each scenario prints its status, cost, and plan; the run ends with a summary sweep. A few representative lines confirm a successful run:
+
    ```text
    Running scenario: planning_end = 2026-01-31
      Status: OPTIMAL
      Total cost: $26,137.50
      Planning horizon: 2025-11-01 to 2026-01-31 (14 weeks)
      Demand orders in scope: 14 (of 25 total)
-     === Production Plan (non-zero weeks) ===
-     === Inventory Levels (selected weeks) ===
-     === Unmet Demand ===
      All demand fulfilled!
-
-   Running scenario: planning_end = 2026-02-28
-     Status: OPTIMAL
-     Total cost: $30,863.50
-     Planning horizon: 2025-11-01 to 2026-02-28 (18 weeks)
-     Demand orders in scope: 18 (of 25 total)
-     ...
-     All demand fulfilled!
-
-   Running scenario: planning_end = 2026-03-31
-     Status: OPTIMAL
-     Total cost: $34,768.00
-     Planning horizon: 2025-11-01 to 2026-03-31 (22 weeks)
-     Demand orders in scope: 20 (of 25 total)
-     ...
-     All demand fulfilled!
-
+   ...
    ==================================================
    Scenario Analysis Summary
    ==================================================
@@ -127,133 +105,86 @@ Prescriptive reasoning makes this practical because the solver simultaneously ba
    ```
 
    Extending the planning horizon from January to March increases cost from
-   $26,138 to $34,768 as more demand orders come into scope (14 to 20).
+   $26,138 to $34,768 as the horizon lengthens (14 to 22 weeks, 14 to 20
+   demand orders); demand is met entirely from opening inventory, so the
+   increase is holding cost accrued over the longer horizon.
    All demand is fulfilled in every scenario -- no unmet demand penalties.
 
 ## Template structure
 
 ```text
 .
-├── README.md
-├── pyproject.toml
-├── demand_planning_temporal.py
+├── README.md                     # this file
+├── pyproject.toml                # dependencies
+├── demand_planning_temporal.py   # end-to-end model, scenario sweep, solve, results
 └── data/
-    ├── sites.csv
-    ├── skus.csv
-    ├── demand_orders.csv
-    ├── production_capacity.csv
-    └── initial_inventory.csv
+    ├── sites.csv                 # warehouse/distribution sites
+    ├── skus.csv                  # products with unit and holding costs
+    ├── demand_orders.csv         # dated demand orders (Oct 2025 - Mar 2026)
+    ├── production_capacity.csv    # per-(site, SKU) weekly capacity and production cost
+    └── initial_inventory.csv     # per-(site, SKU) starting inventory
 ```
+
+**Start here**: run `python demand_planning_temporal.py` to solve all three horizon scenarios end to end, or follow `runbook.md` to reproduce it step by step with the RAI skills.
+
+## Sample data
+
+The bundled data is a small, illustrative multi-site production dataset covering three warehouse sites and two SKUs, with demand orders spanning October 2025 through March 2026. It is synthetic and sized to run the temporal-filtering and multi-period optimization pattern quickly, not to match any real plant.
+
+- **`sites.csv`** — warehouse/distribution sites (`Chicago_DC`, `Atlanta_DC`, …) with a weekly throughput capacity.
+- **`skus.csv`** — products (`Widget_A`, `Widget_B`) with a unit cost and a weekly holding cost.
+- **`demand_orders.csv`** — dated demand orders (`id`, `sku_id`, `site_id`, `quantity`, `due_date`); only orders inside the configured horizon enter each scenario.
+- **`production_capacity.csv`** — per-(site, SKU) maximum weekly production and production cost.
+- **`initial_inventory.csv`** — per-(site, SKU) starting inventory, used as the week-0 condition.
+
+## Model overview
+
+The model is a multi-period production and inventory ontology. Sites and SKUs are reference entities; demand orders are the dated event table that temporal filtering scopes; production capacity carries the pre-joined data the solver's decision variables attach to.
+
+- **Key entities**: `Site`, `SKU`, `DemandOrder`, `ProdCapacity`, and `WeeklyDemand` (a per-scenario concept that pre-aggregates orders into weekly buckets, including zero-demand weeks).
+- **Primary identifiers**: `Site.id` and `SKU.id` (integers); `DemandOrder.id` (integer); the composite key `ProdCapacity(site_id, sku_id)`; the composite key `WeeklyDemand(wk_site_id, wk_sku_id, wk_week_num)`.
+- **Important invariants**: quantities, costs, production, and inventory are non-negative; inventory obeys flow conservation (`inv[t] = inv[t-1] + production[t] - demand[t]`); week 0 inventory equals the initial inventory; unmet demand per order is bounded by the order quantity; total unmet demand is capped by the 95% service level.
+
+For the full concept and property definitions — including the time-indexed `x_production` / `x_inventory` decision variables on `ProdCapacity` and the relationships linking orders and capacity to their `Site` and `SKU` — see `demand_planning_temporal.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
-### 1. Scenario loop -- sweep planning horizons
+**Sweep planning horizons.** The script loops over three `planning_end` dates to analyze how the horizon length affects cost. Each iteration filters demand orders to the window (dropping orders outside it so the solver sees only relevant demand), recomputes the week mapping, and solves a fresh problem.
 
-The script sweeps over three `planning_end` dates to analyze how the planning horizon affects cost. Each iteration filters demand orders to the horizon, recomputes week mappings, and solves a fresh problem:
+**Map dates to integer weeks.** `std.common.range()` requires integer periods, so each order's due date is converted into a week number relative to the planning start, and the number of weeks is derived from the horizon length. The week count varies by scenario (14 weeks for January, 18 for February, 22 for March).
 
-```python
-planning_start = "2025-11-01"
-SCENARIO_VALUES = ["2026-01-31", "2026-02-28", "2026-03-31"]
+**Index decision variables by time.** Production and inventory variables are indexed by both concept (site × SKU) and time period via a multi-arity property pattern, creating one continuous variable per (site, SKU, week) combination, bounded by the per-line weekly capacity.
 
-for scenario_value in SCENARIO_VALUES:
-    planning_end = scenario_value
-    filtered_orders = orders_df[
-        (orders_df["due_date"] >= planning_start)
-        & (orders_df["due_date"] <= planning_end)
-    ].copy()
-```
+**Enforce flow conservation.** The core multi-period constraint ties adjacent weeks together: inventory at the end of week `t` equals inventory at the end of week `t-1` plus production in week `t` minus demand in week `t`. A `WeeklyDemand` concept pre-aggregates orders into weekly buckets — including zero-demand weeks — so the constraint covers every period.
 
-This removes orders outside the horizon so the solver only sees relevant demand.
+**Minimize total cost.** The objective combines production cost, holding cost, and an unmet-demand penalty from different concepts using `model.union()`, and the solver minimizes their sum subject to the flow-conservation and service-level constraints.
 
-### 2. Date-to-period mapping -- convert dates to integer weeks
+The script also includes a commented-out Pattern B for data that carries Unix epoch-second timestamps instead of date strings: convert the horizon boundaries to epochs and filter identically.
 
-`std.common.range()` requires integer periods. Inside each scenario iteration, the script computes the number of weeks and converts each order's due date into a week number relative to the planning start:
-
-```python
-    start_date = datetime.strptime(planning_start, "%Y-%m-%d")
-    end_date = datetime.strptime(planning_end, "%Y-%m-%d")
-    num_weeks = int((end_date - start_date).days / 7) + 1
-
-    filtered_orders["week_num"] = (
-        (filtered_orders["due_date"] - pd.Timestamp(planning_start)).dt.days // 7 + 1
-    ).astype(int)
-```
-
-The number of weeks varies by scenario (e.g. 13 weeks for January, 18 for February, 22 for March).
-
-### 3. Multi-arity decision variables indexed by time
-
-Production and inventory variables are indexed by both concept (site x SKU) and time period. The `x_production` variable uses a multi-arity property pattern:
-
-```python
-ProdCapacity.x_production = Property(
-    f"{ProdCapacity} in week {Integer:t} produces {Float:production}"
-)
-production_ref = Float.ref()
-problem.solve_for(
-    ProdCapacity.x_production(week_ref, production_ref),
-    type="cont",
-    lower=0,
-    upper=ProdCapacity.max_production_per_week,
-    name=["prod", ProdCapacity.site_id, ProdCapacity.sku_id, week_ref],
-    where=[week_ref == weeks],
-)
-```
-
-This creates one continuous variable per (site, SKU, week) combination.
-
-### 4. Flow conservation constraint
-
-The core multi-period pattern ties adjacent weeks together. Inventory at the end of week `t` must equal inventory at the end of week `t-1` plus production in week `t` minus demand in week `t`:
-
-```python
-problem.satisfy(model.where(
-    ProdCapacity.x_inventory(week_ref, x_inv_curr),
-    ProdCapacity.x_inventory(week_ref - 1, x_inv_prev),
-    ProdCapacity.x_production(week_ref, production_ref),
-    WeeklyDemand.wk_site_id == ProdCapacity.site_id,
-    WeeklyDemand.wk_sku_id == ProdCapacity.sku_id,
-    WeeklyDemand.wk_week_num == week_ref,
-    week_ref >= 1,
-).require(
-    x_inv_curr == x_inv_prev + production_ref - WeeklyDemand.wk_quantity
-))
-```
-
-A `WeeklyDemand` concept pre-aggregates orders into weekly buckets (including zero-demand weeks) so the constraint covers every period.
-
-### 5. Cost objective with model.union()
-
-The objective combines three cost components from different concepts using `model.union()`:
-
-```python
-prod_cost = ProdCapacity.production_cost * sum(production_ref).per(ProdCapacity).where(...)
-hold_cost = ProdCapacity.holding_cost_per_week * sum(inventory_ref).per(ProdCapacity).where(...)
-unmet_cost = unmet_penalty * DemandOrder.x_unmet
-
-problem.minimize(sum(model.union(prod_cost, hold_cost, unmet_cost)))
-```
-
-### Epoch timestamp alternative
-
-The script includes commented-out examples of Pattern B (epoch integer timestamps). If your data uses Unix epoch seconds instead of date strings, convert the planning horizon boundaries to epochs and filter identically:
-
-```python
-start_epoch = int(datetime.strptime(planning_start, "%Y-%m-%d").timestamp())
-end_epoch = int(datetime.strptime(planning_end, "%Y-%m-%d").timestamp()) + 86399
-filtered_orders = orders_df[
-    (orders_df["created_at"] >= start_epoch) &
-    (orders_df["created_at"] <= end_epoch)
-].copy()
-```
+See `demand_planning_temporal.py` for the implementation and `runbook.md` to reproduce it step by step with the RAI skills.
 
 ## Customize this template
 
-- **Change the planning horizon**: Edit `planning_start` and the `SCENARIO_VALUES` list to shift the optimization window. Values must be in increasing date order (each scenario extends the previous horizon). The week count and date filter update automatically per scenario.
+### Use your own data
+
 - **Add more sites or SKUs**: Append rows to `sites.csv`, `skus.csv`, `production_capacity.csv`, and `initial_inventory.csv`. The model generalizes to any number of site-SKU combinations.
+- **Switch to epoch timestamps**: Follow the commented Pattern B code to adapt the template for data with Unix epoch integer columns.
+
+### Tune parameters
+
+- **Change the planning horizon**: Edit `planning_start` and the `SCENARIO_VALUES` list to shift the optimization window. Values must be in increasing date order (each scenario extends the previous horizon). The week count and date filter update automatically per scenario.
 - **Adjust service level**: Change `min_service_level` (default 0.95) to require higher or lower demand fulfillment.
 - **Adjust safety stock**: The `safety_stock_weeks` parameter (default 1) requires inventory at the end of each week to be at least `safety_stock_weeks × average weekly demand` per site-SKU pair. Set to 0 to disable, or increase for more conservative buffering.
-- **Switch to epoch timestamps**: Follow the commented Pattern B code to adapt the template for data with Unix epoch integer columns.
+
+### Extend the model
+
+- Add new cost components (for example a per-site fixed operating cost) as additional terms in the `model.union()` objective, following the `prod_cost` / `hold_cost` / `unmet_cost` pattern.
+- Add new constraints (for example a per-site total-capacity cap across SKUs) with additional `problem.satisfy(...)` calls alongside the flow-conservation constraint.
+
+### Scale up / productionize
+
+- The scenario sweep shares one model across horizons; for production, replace the CSV loads with Snowflake-backed `model.data(...)` sources and schedule the run.
+- Solve time is controlled by `time_limit_sec` on `problem.solve("highs", ...)`; raise it if larger site/SKU/week grids need more time.
 
 ## Troubleshooting
 
@@ -285,3 +216,19 @@ Verify that `planning_start` and the `SCENARIO_VALUES` dates overlap with the `d
 
 Ensure your Snowflake account has the RAI Native App installed and your user has the required permissions. Run `rai init` to configure your connection profile. See the [RelationalAI documentation](https://docs.relational.ai) for setup details.
 </details>
+
+## Learn more
+
+### Core concepts
+
+- [PyRel v1 query language](https://docs.relational.ai/) — concepts, properties, `model.define(...)`, and `model.where(...)`, used to load and link the entities.
+- [Temporal periods with `std.common.range()`](https://docs.relational.ai/) — building the integer week ranges the multi-period variables and constraints index over.
+
+### Reasoner reference
+
+- [Prescriptive reasoner](https://docs.relational.ai/) — `Problem`, `solve_for` decision variables, `satisfy` constraints, `minimize` objectives, and `model.union()`.
+- [Solver management](https://docs.relational.ai/) — configuring the HiGHS solve and `time_limit_sec`.
+
+## Support
+
+- File issues at the RelationalAI templates repository.

@@ -39,6 +39,7 @@ The value of the template is that you can try this entire workflow with nothing 
 
 - **Model**: the `Account` concept, the `transfers_to` relationship, and the classification and expansion rules.
 - **Runner**: a single Python script, together with `runbook.md`, an analyst paste-test walkthrough.
+- **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - **Sample data**: a ledger of 75 transfers across 54 accounts. A structuring ring and a large sender are embedded in a legitimate-traffic majority, and 6 of the 54 accounts flag.
 - **Outputs**: printed tables for the network overview, per-account volume, suspects, counterparties, and the investigation set.
 
@@ -88,6 +89,34 @@ Local DuckDB execution relies on deploy mode, which the package currently flags 
    python transaction_screening_local.py
    ```
 
+5. Expected output (abbreviated). The suspects and the investigation set confirm a successful run — 6 of 54 accounts flag, and the review set expands to 8:
+
+   ```text
+   == Network overview ==
+    transactions  total_moved
+              75       870000
+
+   == Suspect accounts (rules) ==
+    suspect
+      C1001
+      C2001
+      C2002
+      C2003
+      C2004
+      C2005
+
+   == Investigation set (suspect or one hop from a suspect) ==
+    flagged_for_review
+      C1001
+      C1002
+      C1003
+      C2001
+      C2002
+      C2003
+      C2004
+      C2005
+   ```
+
 ## Template structure
 
 ```text
@@ -100,7 +129,7 @@ transaction_screening_local/
     └── transactions.csv             # sample transfer ledger
 ```
 
-**Start here:** `transaction_screening_local.py` runs the whole template end to end.
+**Start here:** run `python transaction_screening_local.py` for the full run end to end, or follow `runbook.md` to reproduce it step by step with the RAI skills.
 
 ## Sample data
 
@@ -112,61 +141,21 @@ transaction_screening_local/
 - **Primary identifier**: an account is identified by its `id`, drawn from both ends of every transfer.
 - **Important invariants**: every transfer has a sender and a receiver, and transfer amounts are positive.
 
-### Account
-
-The `Account` concept represents a party in the ledger. Accounts are derived from both the `src` and the `dst` of every transfer, so an account appears whether it ever sent money, received money, or both.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | string | Yes | The account identifier, loaded from the `src` and `dst` columns of `data/transactions.csv` |
-
-### Relationships
-
-The model defines one stored relationship and a set of derived relationships that hold the classification rules.
-
-| Relationship | Reads as | Notes |
-|---|---|---|
-| `transfers_to(Account, Account)` | one account transferred money to another | One row per transfer, linking the sender to the receiver |
-| `is_structuring(Account)` | the account sent a transfer in the 9,000 to 10,000 band | Just under the 10,000 reporting threshold |
-| `is_large_sender(Account)` | the account sent a transfer over 50,000 | |
-| `is_suspect(Account)` | the account is structuring or is a large sender | Defined as two rules, which together form a logical OR |
-| `near_suspect(Account)` | the account transacted directly with a suspect | In either direction |
-| `under_review(Account)` | the account is a suspect or is near a suspect | This is the investigation set |
+For the full concept and property definitions, see `transaction_screening_local.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
-The local path is configured with a DuckDB connection plus a `deployment` section that sets the schema and turns on automatic deployment:
+The script starts by configuring a local DuckDB connection with automatic deployment, so the model materializes and runs on your machine with no Snowflake connection. It then loads the transfer ledger from CSV and derives an `Account` for every party seen at either end of a transfer.
 
-```python
-config = create_config(
-    connections={"local": DuckDBConnection(path=":memory:")},  # or a file path, e.g. "./dev.duckdb"
-    default_connection="local",
-    deployment={"schema": "main", "auto_deploy": True},
-)
+Next it builds the `transfers_to` relationship, linking each sender to its receiver, one row per transfer. The classification rules follow as declarative derived relationships: an account is flagged as structuring when it sends a transfer just under the reporting threshold, and as a large sender when it sends a transfer over the large-transfer limit. An account is a suspect if either flag holds — expressed as two rules that together read as a logical OR.
+
+Finally, connectivity comes from a self-join over `transfers_to` rather than a graph reasoner: an account sits near a suspect if it transacted directly with one in either direction. The investigation set — accounts under review — is the union of suspects and their direct counterparties. The queries at the bottom of the script summarize the network and print the review set.
+
+```text
+transactions.csv → load → Account + transfers_to → classification rules → suspects → one-hop expansion → review set
 ```
 
-The `transfers_to` relationship is built with explicit two-ref binding so that each row links the correct source and destination accounts:
-
-```python
-Account.transfers_to = model.Relationship(f"{Account} transfers to {Account:other}")
-_src, _dst = Account.ref(), Account.ref()
-model.where(_src.id == txn.src, _dst.id == txn.dst).define(_src.transfers_to(_dst))
-```
-
-Rules are declarative derived relationships, and `is_suspect` chains on the flags below it:
-
-```python
-Account.is_suspect = model.Relationship(f"{Account} is suspect")
-model.where(Account.is_structuring()).define(Account.is_suspect())
-model.where(Account.is_large_sender()).define(Account.is_suspect())
-```
-
-Connectivity, meaning who transacts with whom, comes from a self-join over `transfers_to` rather than from a graph reasoner:
-
-```python
-_other = Account.ref()
-model.where(Account.transfers_to(_other), _other.is_suspect()).define(Account.near_suspect())
-```
+See `transaction_screening_local.py` for the implementation, and `runbook.md` to reproduce it step by step with the RAI skills.
 
 ## Customize this template
 
@@ -182,7 +171,7 @@ Adjust `STRUCTURING_FLOOR`, `STRUCTURING_CEILING`, and `LARGE_TRANSFER` at the t
 
 Add new derived relationships in the same `define()` and `where()` style to capture additional rules, then surface them in the queries at the bottom of the script.
 
-### Scale up
+### Scale up / productionize
 
 To move from local development to production scale, point `model.Table(...)` at a Snowflake table instead of the DuckDB connection. The ontology, rules, and queries stay the same. Because deploy mode on local DuckDB is flagged as experimental, confirm the support stance before relying on it for customer-facing work.
 
@@ -205,6 +194,26 @@ Make sure the configuration includes a `deployment` section with `auto_deploy` s
 
 DuckDB is case-insensitive, so a source table named like a concept collides with the installed view. Keep source tables in a schema named `raw`, separate from the model install schema named `main`.
 </details>
+
+## Learn more
+
+### Core concepts
+
+- [PyRel v1 modeling](https://docs.relational.ai/) — concepts, relationships, and the `define()` / `where()` workflow this template is built on.
+- [Local DuckDB development](https://docs.relational.ai/) — running RelationalAI on a local DuckDB database with no Snowflake account.
+
+### Language / modeling reference
+
+- [Rules and derived relationships](https://docs.relational.ai/) — authoring classification rules like `is_structuring`, `is_suspect`, and the investigation expansion.
+- [Querying](https://docs.relational.ai/) — `select()`, filtering, and aggregation for the summary and review tables.
+
+### CLI / SDK guides
+
+- [RelationalAI Python SDK](https://docs.relational.ai/) — installing and configuring the `relationalai` package.
+
+## Support
+
+- File issues at the RelationalAI templates repository.
 
 ## Related templates
 

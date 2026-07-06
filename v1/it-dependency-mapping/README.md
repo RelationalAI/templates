@@ -1,6 +1,6 @@
 ---
 title: "IT Dependency Mapping"
-description: "Map the downstream dependency structure of a software and data-pipeline estate by enumerating variable-length traversal paths over an acyclic dependency graph, then surface the longest end-to-end chains and the owners along them."
+description: "Map the downstream dependency structure of a software and data-pipeline estate by enumerating variable-length paths over an acyclic dependency graph. Surface the longest end-to-end chains and the owners along them to see a change or outage's full blast radius."
 experience_level: intermediate
 industry: "Technology & Telecom"
 featured: false
@@ -45,6 +45,7 @@ Built using RelationalAI's **variable-length path enumeration** (`model.path(...
 ## What's included
 
 - **Self-contained script**: `it_dependency_mapping.py` -- Runs the full analysis end-to-end
+- **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - **Data**: `data/features.csv` (14 features across tiers) and `data/dependencies.csv` (15 dependency edges)
 
 ## Prerequisites
@@ -152,23 +153,7 @@ A single concept, `Feature`, represents every node in the estate, and one self-r
 - **Primary identifiers**: the string `id` on `Feature`.
 - **Important invariants**: the `contributes_to` graph is acyclic — a feature does not depend on itself, so every enumerated traversal path is a simple chain.
 
-### `Feature`
-
-A node in the estate -- a raw source, ingestion pipeline, feature job, service, or dashboard.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | string | Yes | Loaded from `data/features.csv` |
-| `name` | string | No | Human-readable name |
-| `owner` | string | No | Person responsible for the feature |
-| `deploy_tier` | string | No | Criticality tier: `critical`, `high`, or `standard` |
-| `max_downstream_depth` | int | No | Longest downstream dependency depth, persisted back to the ontology after path enumeration |
-
-### Relationships
-
-| Relationship | Schema | Notes |
-|---|---|---|
-| `contributes_to(Feature, Feature)` | upstream `Feature`, downstream `Feature` | A Feature -> Feature self-relationship: the upstream feature feeds the downstream one. Acyclic, so it forms a dependency DAG. |
+For the full concept and property definitions, see `it_dependency_mapping.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
@@ -176,84 +161,15 @@ A node in the estate -- a raw source, ingestion pipeline, feature job, service, 
 CSV files --> Define Feature + contributes_to --> Enumerate downstream paths --> Reduce to maximal chains --> Trace owners along longest chain
 ```
 
-### 1. Load Ontology
+**Load the ontology.** A `Feature` is any node in the estate -- a raw source, pipeline, feature job, service, or dashboard -- with `id`, `name`, `owner`, and `deploy_tier` loaded from `data/features.csv`. The `contributes_to` self-relationship records that an upstream feature feeds a downstream one, forming the dependency DAG from `data/dependencies.csv`.
 
-A `Feature` is any node in the estate -- a raw source, pipeline, feature job, service, or dashboard. The `contributes_to` self-relationship records that an upstream feature feeds a downstream one, forming the dependency DAG:
+**Enumerate downstream paths.** A variable-length traversal of 1 to `MAX_DEPTH` `contributes_to` edges, enumerated with `.all_paths()`, walks every downstream dependency path. Each path arrives as one row per visited node; grouping by path reassembles the ordered chain, and the hop count comes from the maximum node index. (Selecting the path length alongside the nodes would fan the rows out, so the code derives hops from the index and dedupes before reassembly.)
 
-```python
-Feature = model.Concept("Feature", identify_by={"id": String})
-Feature.name = model.Property(f"{Feature} has {String:name}")
-Feature.owner = model.Property(f"{Feature} owned by {String:owner}")
-Feature.deploy_tier = model.Property(f"{Feature} has deploy tier {String:deploy_tier}")
+**Persist longest downstream depth.** The longest path starting at each feature is its downstream depth. RelationalAI computes it in PyRel — a max over path length per source endpoint — and defines it straight onto the feature as a first-class `max_downstream_depth` property, with no DataFrame round-trip, so later queries can rank features by reach without re-enumerating paths.
 
-Feature.contributes_to = model.Relationship(
-    f"{Feature} contributes to {Feature}", short_name="contributes_to"
-)
-```
+**Reduce to maximal chains.** The full path set contains every sub-chain. A path is *maximal* when its node sequence is not a contiguous sub-chain of any other enumerated path -- it cannot be extended upstream or downstream. Filtering to maximal chains leaves only the end-to-end propagation paths. The single longest maximal chain is the worst-case blast radius: joining owner metadata onto its features shows every person a change at the root would have to clear before it reaches the final consumer.
 
-### 2. Enumerate Downstream Paths
-
-`model.path(Feature.contributes_to.repeat(1, MAX_DEPTH))` describes a variable-length traversal of 1 to `MAX_DEPTH` `contributes_to` edges. `all_paths()` enumerates every such path. Each result is a `PathTraversal`; project `p.nodes` to get the ordered features it visits. Do not also select `p.length` alongside `p.nodes` -- that fans the node rows out; derive the hop count from the maximum node index instead:
-
-```python
-p_pattern = model.path(Feature.contributes_to.repeat(1, MAX_DEPTH))
-paths_df = (
-    model.where(p := p_pattern.all_paths())
-    .select(
-        p.alias("path_id"),
-        p.nodes["index"].alias("step"),
-        Feature(p.nodes).id.alias("feature_id"),
-        Feature(p.nodes).name.alias("feature_name"),
-    )
-    .to_df()
-)
-paths_df["step"] = paths_df["step"].astype(int)
-# Projecting p.nodes can emit duplicate (path, step) rows -- dedupe before reassembly.
-paths_df = paths_df.drop_duplicates(["path_id", "step"]).sort_values(["path_id", "step"])
-```
-
-Each path arrives as one row per visited node. Grouping on the path-id column reassembles the ordered chain; the hop count is the maximum node index:
-
-```python
-chains = (
-    paths_df.groupby("path_id")
-    .agg(
-        hops=("step", "max"),
-        node_ids=("feature_id", lambda s: tuple(s)),
-        chain=("feature_name", lambda s: " -> ".join(s)),
-    )
-    .reset_index()
-)
-```
-
-### 3. Persist Longest Downstream Depth
-
-The longest path starting at each feature is its downstream depth. RelationalAI computes it in PyRel with `aggregates.max(p.length).per(src)` over a typed source endpoint and defines it straight onto the feature as a first-class property — no DataFrame round-trip — so a downstream query can rank features by reach without re-enumerating paths:
-
-```python
-Feature.max_downstream_depth = model.Property(
-    f"{Feature} has {Integer:max_downstream_depth}"
-)
-src = Feature.ref()
-p = model.path(src, Feature.contributes_to.repeat(1, MAX_DEPTH)).all_paths()
-model.define(src.max_downstream_depth(aggs.max(p.length).per(src))).where(p)
-```
-
-### 4. Reduce to Maximal Chains
-
-The full path set contains every sub-chain. A path is *maximal* when its node sequence is not a contiguous sub-chain of any other enumerated path -- it cannot be extended upstream or downstream. Filtering to maximal chains leaves only the end-to-end propagation paths:
-
-```python
-maximal = chains[
-    chains["node_ids"].apply(
-        lambda seq: not any(
-            is_sub_chain(seq, other) for other in all_sequences if other != seq
-        )
-    )
-].copy()
-```
-
-The single longest maximal chain is the worst-case blast radius: joining owner metadata onto its features shows every person a change at the root would have to clear before it reaches the final consumer.
+See `it_dependency_mapping.py` for the implementation, and `runbook.md` for the skill-driven reproduction.
 
 ## Expected output
 
@@ -322,7 +238,7 @@ The deepest chain runs five hops from a raw source all the way to a downstream d
 <details>
   <summary>Why does authentication/configuration fail?</summary>
 
-- Run `rai init` to create/update `raiconfig.toml`.
+- Run `rai init` to create/update `raiconfig.yaml`.
 - If you have multiple profiles, set `RAI_PROFILE` or switch profiles in your config.
 
 </details>

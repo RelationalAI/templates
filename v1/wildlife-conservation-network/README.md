@@ -13,12 +13,11 @@ tags:
 
 ## What this template is for
 
-Wildlife conservation requires coordination across many organizations—NGOs, research stations, wildlife reserves, veterinary services, and community programs. This template demonstrates how to use graph analytics to understand conservation networks:
+Wildlife conservation requires coordination across many organizations — non-governmental organizations (NGOs), research stations, wildlife reserves, veterinary services, and community programs. Coordination that already works well is hard to see from an org chart, and the organizations best placed to broker resources across groups are rarely the obvious ones. Analyzing the network of partnerships between these organizations makes both visible.
 
-- **Louvain algorithm** — a community detection method that finds clusters of densely connected nodes in a network — to identify groups of conservation organizations that work closely together
-- **Degree centrality** — a connectivity measure that identifies the most influential organizations within each community
+This template discovers natural collaboration clusters — based on geography, species focus, or organizational mission — and identifies the hub organizations within each cluster that are well-positioned to lead coordination and resource-sharing efforts.
 
-By analyzing a network of conservation partnerships, this template helps you discover natural collaboration clusters based on geography, species focus, or organizational mission. These communities reveal which organizations form tight-knit working groups, where coordination is already strong, and where opportunities exist for better cross-community collaboration. Degree centrality then identifies the hub organizations within each cluster that are well-positioned to lead coordination efforts and resource sharing initiatives.
+**A graph reasoner turns a raw partnership network into a coordination map — the collaboration clusters that already exist and the hub organizations best placed to broker resources across them.**
 
 ## Who this is for
 - **Beginners** who want to learn community detection with a real-world use case
@@ -28,27 +27,33 @@ By analyzing a network of conservation partnerships, this template helps you dis
 
 ## What you'll build
 
-- Load a wildlife conservation network with 12 organizations and 19 undirected partnerships from CSV files
-- Use RelationalAI's Graph API to model the conservation partnership network
-- Apply the Louvain algorithm to detect communities (collaboration clusters)
-- Calculate degree centrality to identify which organizations serve as hubs within each community
-- Analyze community characteristics (region, species focus, organization types, hub organizations)
-- Generate insights on intra-community collaboration, hub organization leadership potential, and cross-community coordination opportunities
+- A conservation partnership network modeled with RelationalAI's Graph API, built from the bundled organization and partnership CSVs.
+- Community assignments from the Louvain algorithm — the collaboration clusters within the network — written onto each `Organization`.
+- A degree-centrality ranking that surfaces the hub organization inside each cluster, the one best placed to lead coordination.
+- Community-level insight: region and species-focus makeup, hub identity, and cross-community connectors, available both as a CLI report and an interactive Streamlit visualization.
 
-This template uses **RelationalAI's graph modeling** capabilities with the Graph class to represent the network, the built-in Louvain algorithm for community detection, and degree centrality analysis to identify influential organizations within each cluster.
+Built using **graph analysis** (Louvain community detection and degree centrality on an undirected, unweighted partnership graph).
 
 ## What's included
 
-- **Shared model setup**: `model_setup.py` - Common model configuration and graph creation (used by both scripts)
-- **Command-line script**: `wildlife_conservation_network.py` - CLI analysis script with detailed output
-- **Interactive app**: `app.py` - Streamlit web application with visualizations and interactive analysis
-- **Data**: `data/organizations.csv` and `data/partnerships.csv`
+- **Model**: a single shared ontology — `Organization` nodes and `Partnership` edges — plus the Louvain community and degree-centrality enrichment the graph reasoner writes back. Defined once in `model_setup.py` and reused by both runners.
+- **Runner**: `wildlife_conservation_network.py` (CLI report) and `app.py` (interactive Streamlit visualization), both against a Snowflake-connected RAI account.
+- **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
+- **Sample data**: a small network of conservation organizations and the partnerships between them. See *Sample data* below.
+- **Outputs**: a per-organization table of community assignments and metrics, a per-community breakdown, and (in the app) an interactive network graph.
 
 ## Prerequisites
 
-- Python >= 3.10
+### Access
+
 - A Snowflake account that has the RAI Native App installed.
 - A Snowflake user with permissions to access the RAI Native App.
+
+### Tools
+
+- Python >= 3.10.
+- RelationalAI Python SDK (`relationalai == 1.11.0`).
+- Streamlit (installed via the optional `.[visualization]` extra) for the interactive app.
 
 ## Quickstart
 
@@ -113,145 +118,97 @@ You can customize the data and model as needed after you have it running end-to-
    - Cross-community connector identification
    - Summary statistics and key metrics
 
-## How it works
+6. Expected output (a few lines confirm a successful run):
 
-The template follows this flow:
+   ```text
+   Louvain community detection -> 3 collaboration clusters (5 / 4 / 3 organizations)
+   Global hub: Serengeti Wildlife Trust -- 5 partnerships, degree centrality 0.4545
+   ```
+
+   The community ID numbers are arbitrary labels; what matters is which
+   organizations group together. The full report and a step-by-step walkthrough
+   are in `runbook.md`.
+
+## Template structure
 
 ```text
-CSV files → model_setup.create_model() → Apply Louvain → Analyze communities → Display results
+wildlife-conservation-network/
+  model_setup.py                     # Shared model, concepts, and graph (used by both runners)
+  wildlife_conservation_network.py   # CLI analysis script with detailed output
+  app.py                             # Optional Streamlit visualization app
+  data/
+    organizations.csv                # Conservation organizations (type, region, focus species)
+    partnerships.csv                 # Undirected collaboration partnerships between organizations
+  README.md                          # this file
+  runbook.md                         # analyst-facing paste-testable walkthrough
+  pyproject.toml                     # dependencies
 ```
 
-### 1. Shared Model Setup
+**Start here**: run `python wildlife_conservation_network.py` for the full CLI analysis end to end, or follow `runbook.md` to rebuild it step by step. The Streamlit app is an optional visualization layer over the same model.
 
-Both the CLI script and Streamlit app use the same model setup from `model_setup.py`:
+## Sample data
 
-```python
-from model_setup import create_model
+The bundled data is a small, illustrative conservation network — designed to teach community detection on a Snowflake-connected RAI account, not to match a specific program's partnerships.
 
-# Create the model, concepts, relationships, and graph (all in one call)
-model, graph, Organization = create_model()
+- **`organizations.csv`** — 12 conservation organizations, each with a `type` (NGO, research station, reserve, and so on), a `region`, and a `focus_species`.
+- **`partnerships.csv`** — 19 collaboration partnerships, one row each, given as a pair of organization ids. Partnerships are undirected, so ordering does not matter.
+
+## Model overview
+
+A single shared ontology (defined in `model_setup.py`) backs both runners. The graph reasoner writes community and centrality results back onto the network.
+
+- **Key entities**: `Organization` (the network's nodes), `Partnership` (the collaboration edges).
+- **Primary identifiers**: integer `id` on `Organization`; `Partnership` is identified by its two endpoint organizations.
+- **Important invariants**: every `Partnership` endpoint must reference a valid `Organization` id; the graph is undirected and unweighted, so a partnership counts once regardless of row order.
+
+For the full concept and property definitions, see `model_setup.py`; `runbook.md` builds them step by step with the RAI skills.
+
+## How it works
+
+```text
+CSV files → model_setup.create_model() → apply Louvain + degree centrality → analyze communities → display results
 ```
 
-The `create_model()` function handles:
-- Creating the RelationalAI model container
-- Defining the `Organization` concept with all properties
-- Loading organizations from CSV
-- Defining the `Partnership` concept for edges
-- Loading partnerships from CSV
-- Creating the undirected, unweighted graph
-- Returning all components for use in analysis
+Both runners share one model. `model_setup.py` builds the RelationalAI model container, defines the `Organization` concept and loads it from CSV, defines the `Partnership` edges and loads them, and constructs the undirected, unweighted graph — returning everything the analysis needs in a single call. This keeps the CLI script and the Streamlit app perfectly in sync, since neither redefines the model.
 
-### 2. Apply Community Detection and Centrality Analysis
+The graph reasoner then runs two algorithms over that graph. Louvain community detection partitions the network into collaboration clusters by optimizing modularity — iteratively grouping organizations to maximize connections within a cluster and minimize connections between clusters — and writes a community label onto each organization. Degree centrality normalizes each organization's partnership count to a 0-to-1 scale, which makes hubs comparable across clusters of different sizes; the highest-centrality organization inside a community is the one best placed to broker coordination there.
 
-Use the built-in Louvain algorithm to detect communities and calculate centrality metrics:
+Reading those results back is a query joining the community label, centrality score, and raw partnership count per organization. The CLI script renders a per-organization table, a per-community breakdown (size, region, species focus, hub), and network-wide summary statistics. The optional Streamlit app is a visualization layer over the same query: an interactive network graph colored by community, expandable per-cluster detail, and cross-community connector analysis.
 
-```python
-# Apply Louvain algorithm for community detection
-louvain_communities = graph.louvain()
-
-# Calculate degree centrality to identify hub organizations within communities
-degree_centrality = graph.degree_centrality()
-
-# Also calculate degree (raw partnership count) for additional analysis
-degree = graph.degree()
-```
-
-The Louvain algorithm works by:
-1. Optimizing modularity (a measure of how well the network divides into communities)
-2. Iteratively grouping nodes to maximize within-community connections
-3. Minimizing between-community connections
-4. Returning a community ID for each node
-
-Degree centrality then normalizes the partnership counts to a 0-1 scale, making it easier to compare organizations across different community sizes. Organizations with higher centrality are well-positioned hubs that could lead coordination efforts within their community.
-
-### 3. Query and Analyze Communities
-
-Query the graph to retrieve community assignments and metrics:
-
-```python
-from relationalai.semantics import where, Integer, Float
-
-# Create variable references
-org = graph.Node.ref("org")
-community_id = Integer.ref("community_id")
-centr_score = Float.ref("centr_score")
-partner_count = Integer.ref("partner_count")
-
-# Query the graph
-results = where(
-    louvain_communities(org, community_id),
-    degree_centrality(org, centr_score),
-    degree(org, partner_count)
-).select(
-    org.id,
-    org.name,
-    org.type,
-    org.region,
-    org.focus_species,
-    community_id.alias("community"),
-    centr_score.alias("degree_centrality"),
-    partner_count.alias("partnerships")
-).to_df()
-
-# Sort by community, then by centrality within each community
-results = results.sort_values(["community", "degree_centrality"], ascending=[True, False])
-```
-
-### 4. CLI Script Analysis
-
-The `wildlife_conservation_network.py` script displays:
-- A table of all organizations with their community assignments and metrics
-- Detailed breakdown of each detected community (size, region, species focus, hub organization)
-- Network-wide summary statistics
-- Actionable recommendations for conservation coordination
-
-### 5. Interactive Streamlit App
-
-The included `app.py` provides an interactive web interface using the same shared model:
-
-```python
-import streamlit as st
-from model_setup import create_model
-
-# Load the same model and query results
-model, graph, Organization = create_model()
-results = get_results(model, graph, Organization)
-```
-
-The Streamlit app features:
-- **Interactive network graph**: Nodes colored by community, sized by partnerships
-- **Community breakdown**: Expandable sections with detailed metrics for each cluster
-- **Strategic analysis**: Cross-community connectors, geographic distribution, species focus
-- **Summary statistics**: Sidebar with key network metrics and hub organizations
+See `model_setup.py` and `wildlife_conservation_network.py` for the implementation, and `runbook.md` to reproduce it step by step with the RAI skills.
 
 ## Customize this template
 
-**Use your own data:**
+Focus on the first changes most users will make.
 
-- Replace the CSV files in the `data/` directory with your own conservation network, keeping the same column names (or update the logic in wildlife_conservation_network.py).
-- Make sure that organizations in **partnerships.csv** only reference valid organization IDs.
-- You can add additional properties to organizations (budget, staff size, years active) by adding columns to the CSV and corresponding properties to the model.
+### Use your own data
 
-**Extend the model:**
+- Replace the CSV files in `data/` with your own conservation network, keeping the same column names (or update the logic in `model_setup.py`).
+- Make sure organizations in `partnerships.csv` only reference valid organization ids from `organizations.csv`.
+- For Snowflake-backed runs, swap the `pd.read_csv(...)` calls for `data(snowflake_table)` calls in `model_setup.py`.
 
-- **Add weighted partnerships**: Weight edges by collaboration intensity (number of joint projects, funding shared, frequency of interaction). Update `weighted=True` in the Graph definition and add weight values to edges.
+### Tune parameters
 
-- **Try different community detection algorithms**: RelationalAI supports multiple algorithms:
+- The graph is built undirected and unweighted in `model_setup.py`. Adding edge weights (see *Extend the model*) is the main lever on how the community detection partitions the network.
 
-  - `graph.label_propagation()` - Faster but less accurate for small networks
-  - `graph.weakly_connected_component()` - Finds completely disconnected groups
-  - Experiment to see which algorithm best reveals your network's structure
+### Extend the model
 
-- **Add temporal analysis**: Include partnership start dates to analyze how communities evolve over time.
+- **Add organization properties** — budget, staff size, years active — by adding columns to `organizations.csv` and corresponding properties in `model_setup.py`.
+- **Add weighted partnerships** — weight edges by collaboration intensity (joint projects, shared funding, interaction frequency). Set `weighted=True` in the Graph definition and add weight values to edges.
+- **Try different community-detection algorithms** — `graph.label_propagation()` (faster, less accurate on small networks) or `graph.weakly_connected_component()` (completely disconnected groups); experiment to see which best reveals your network's structure.
+- **Add temporal analysis** — include partnership start dates to study how communities evolve over time.
 
-- **Calculate modularity**: Measure how well the detected communities separate from each other (higher modularity = better community structure).
+### Scale up / productionize
+
+- Replace the `data/` CSV bundle with ingestion from your partnership system of record.
+- The bundled network is small; Louvain and degree centrality scale to much larger graphs. Pin dependencies via `pyproject.toml` for reproducible runs.
 
 ## Troubleshooting
 
 <details>
   <summary>Why does authentication/configuration fail?</summary>
 
-- Run `rai init` to create/update `raiconfig.toml`.
+- Run `rai init` to create/update `raiconfig.yaml`.
 - If you have multiple profiles, set `RAI_PROFILE` or switch profiles in your config.
 
 </details>
@@ -259,7 +216,7 @@ The Streamlit app features:
 <details>
   <summary>Why does the script fail to connect to the RAI Native App?</summary>
 
-- Verify the Snowflake account/role/warehouse and `rai_app_name` are correct in `raiconfig.toml`.
+- Verify the Snowflake account/role/warehouse and `rai_app_name` are correct in `raiconfig.yaml`.
 - Ensure the RAI Native App is installed and you have access.
 
 </details>
@@ -281,3 +238,18 @@ The Streamlit app features:
 - The Louvain algorithm can have some randomness, so community assignments might vary slightly between runs, but the overall structure should be consistent.
 
 </details>
+
+## Learn more
+
+### Core concepts
+
+- [Graph modeling](https://docs.relational.ai/) — building a graph from ontology concepts and relationships, as this template does with `Organization` and `Partnership`.
+- [PyRel v1 query language](https://docs.relational.ai/) — `where(...)` / `select(...)` to read algorithm results back out.
+
+### Reasoner reference
+
+- [Graph reasoner](https://docs.relational.ai/) — Louvain community detection, degree centrality, and other built-in graph algorithms.
+
+## Support
+
+- File issues at the RelationalAI templates repository.

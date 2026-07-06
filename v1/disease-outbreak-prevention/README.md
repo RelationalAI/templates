@@ -29,28 +29,33 @@ By analyzing a network of hospitals, clinics, testing centers, and community org
 
 ## What you'll build
 
-- Load a public health network with 10 facilities and 15 directed connections with transfer volume and contact intensity metrics
-- Use RelationalAI's Graph API to model the healthcare network with weighted edges
-- Calculate risk-weighted degree centrality for each facility based on connection weights (transfer_volume × contact_intensity)
-- Track incoming and outgoing connections (indegree and outdegree)
-- Rank facilities by their cumulative risk (weighted degree centrality scores)
-- Identify top priority facilities for resource deployment
-- Generate a detailed prioritized list to guide outbreak response decisions
+- A risk-weighted facility ranking — every facility scored by weighted degree centrality (`transfer_volume x contact_intensity` summed over its edges) — produced by **graph analysis**.
+- Per-facility connectivity signals: incoming and outgoing connection counts (indegree and outdegree) alongside the centrality score.
+- A prioritized shortlist of the highest-risk facilities to guide where limited outbreak-response resources go first.
+- An optional interactive Streamlit view of the same ranking, with a network visualization and CSV export.
 
-This template uses **RelationalAI's graph modeling** capabilities with the Graph class to represent the network, and built-in weighted graph algorithms to compute degree centrality that accounts for transmission risk factors.
+Built using **graph analysis** (a directed, weighted graph with `Facility` as the node concept and built-in weighted degree centrality).
 
 ## What's included
 
-- **Shared model setup**: `model_setup.py` - Common model configuration and graph creation (used by both scripts)
-- **Command-line script**: `disease_outbreak_prevention_network.py` - CLI analysis script with detailed output
-- **Interactive app**: `app.py` - Streamlit web application with visualizations and interactive analysis
-- **Data**: `data/facilities.csv` and `data/connections.csv`
+- **Model**: shared setup in `model_setup.py` — the `Facility` concept, the `FacilityConnection` edge concept (with `transfer_volume`, `contact_intensity`, and a derived `risk_weight`), and the directed weighted `Graph` built from them.
+- **Runner**: `disease_outbreak_prevention_network.py` (command-line analysis with detailed output) and `app.py` (optional Streamlit web app), both driven by the same shared model.
+- **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
+- **Sample data**: `data/facilities.csv` and `data/connections.csv`.
+- **Outputs**: a ranked facility table, a top-priority breakdown, and network summary statistics printed to stdout; the Streamlit app adds an interactive network graph and CSV export.
 
 ## Prerequisites
 
-- Python >= 3.10
+### Access
+
 - A Snowflake account that has the RAI Native App installed.
 - A Snowflake user with permissions to access the RAI Native App.
+
+### Tools
+
+- Python >= 3.10
+- RelationalAI Python SDK (`relationalai == 1.11.0`).
+- Optional: `streamlit`, `plotly`, `numpy` for the interactive app (installed via the `visualization` extra).
 
 ## Quickstart
 
@@ -114,132 +119,101 @@ You can customize the data and model as needed after you have it running end-to-
    - Detailed priority facility analysis
    - CSV export functionality
 
-## How it works
+6. Expected output — a few lines confirm a successful run:
 
-The template follows this flow:
+   ```text
+   Top facilities by weighted degree centrality (transmission risk):
+     1. Central Hospital        260
+     2. Public Health Dept      260
+     3. Regional Testing Lab    218
+     4. Emergency Response Hub  188
+   ```
+
+   The full ranked table, top-priority breakdown, and network summary print above and below this; see `runbook.md` for the complete walkthrough.
+
+## Template structure
 
 ```text
-CSV files → model_setup.create_model() → Calculate metrics → Analyze strategic priorities → Display results
+disease-outbreak-prevention/
+  disease_outbreak_prevention_network.py  # main CLI analysis script
+  app.py                                  # optional Streamlit web app
+  model_setup.py                          # shared model + graph setup (used by both)
+  data/
+    facilities.csv                        # 10 facilities (id, name, type, region)
+    connections.csv                       # 15 directed connections with risk metrics
+  README.md                               # this file
+  runbook.md                              # step-by-step analyst walkthrough
+  pyproject.toml                          # dependencies
 ```
 
-### 1. Shared Model Setup
+**Start here**: run `python disease_outbreak_prevention_network.py` for the full ranking end to end, or follow `runbook.md` to rebuild it step by step.
 
-Both the CLI script and Streamlit app use the same model setup from `model_setup.py`:
+## Sample data
 
-```python
-from model_setup import create_model
+The bundled data is small and illustrative — a 10-facility regional health network, sized to teach the weighted-centrality flow, not to match a specific jurisdiction's network.
 
-# Create the model, concepts, relationships, and graph (all in one call)
-model, graph, Facility = create_model()
+- **`data/facilities.csv`** (10 rows) — one row per facility, with `id`, `name`, `type` (hospital, clinic, testing center, government, emergency services), and `region`.
+- **`data/connections.csv`** (15 rows) — one row per directed connection, with `from_facility_id`, `to_facility_id`, `transfer_volume`, and `contact_intensity`. The model derives each connection's `risk_weight` as `transfer_volume x contact_intensity`. Every id must reference a valid facility in `facilities.csv`.
+
+## Model overview
+
+The model is a directed, weighted graph with one node concept and one edge concept.
+
+- **Key entities**: `Facility` — a healthcare facility, testing center, or community organization (the graph's node); `FacilityConnection` — a directed transfer link between two facilities, weighted by transmission risk (the graph's edge).
+- **Primary identifiers**: `Facility.id` (integer); `FacilityConnection` is identified by its `(from_facility, to_facility)` pair.
+- **Important invariants**: `transfer_volume` and `contact_intensity` are non-negative; `risk_weight` is derived, not loaded (`transfer_volume x contact_intensity`); every connection endpoint references an existing `Facility`.
+
+For the full concept and property definitions, see `model_setup.py`; `runbook.md` builds them step by step with the RAI skills.
+
+## How it works
+
+Both runners share one model builder, then compute weighted centrality on the resulting graph and rank facilities:
+
+```text
+CSV files → model_setup.create_model() → weighted centrality + degree metrics → rank facilities → display / export
 ```
 
-The `create_model()` function handles:
-- Creating the RelationalAI model container
-- Defining the `Facility` concept with all properties
-- Loading facilities from CSV
-- Defining the `FacilityConnection` concept for edges with transfer_volume, contact_intensity, and risk_weight properties
-- Loading connections from CSV with their risk metrics
-- Calculating risk_weight as transfer_volume × contact_intensity for each connection
-- Creating the directed, weighted graph using risk_weight as edge weights
-- Returning all components for use in analysis
+1. **Shared model setup.** `model_setup.create_model()` builds everything both runners need in one call: the RelationalAI model, the `Facility` node concept, the `FacilityConnection` edge concept, the CSV loads, the derived `risk_weight` (`transfer_volume x contact_intensity`), and the directed, weighted graph that uses `risk_weight` as its edge weight.
 
-### 2. Calculate Graph Metrics
+2. **Calculate graph metrics.** The Graph API computes weighted degree centrality (summing risk-weighted edges, so the score reflects cumulative transmission risk rather than a raw connection count) alongside indegree and outdegree counts.
 
-Use RelationalAI's Graph API to define weighted centrality metrics:
+3. **Query and rank.** A single query pulls each facility's identity, type, region, centrality score, and in/out connection counts, then sorts descending by centrality to produce the ranked shortlist.
 
-```python
-# Weighted degree centrality (sum of risk-weighted edge weights)
-degree_centrality = graph.degree_centrality()
+4. **Present results.** The CLI script prints the ranked table, a top-priority breakdown, network summary statistics, and response recommendations. The optional Streamlit app renders the same ranking as an interactive network graph with a filterable table and CSV export.
 
-# Incoming edges (indegree count)
-incoming_edges = graph.indegree()
-
-# Outgoing edges (outdegree count)
-outgoing_edges = graph.outdegree()
-```
-
-The weighted degree centrality incorporates the risk weights (transfer_volume × contact_intensity) from each edge, providing a measure of cumulative transmission risk rather than just connectivity count.
-
-### 3. Query and Rank Facilities
-
-Query the graph to retrieve all metrics and rank facilities:
-
-```python
-from relationalai.semantics import where, Float, Integer
-
-# Create variable references
-facility = graph.Node.ref("facility")
-centr_score = Float.ref("centr_score")
-in_edges = Integer.ref("in_edges")
-out_edges = Integer.ref("out_edges")
-
-# Query the graph
-results = where(
-    degree_centrality(facility, centr_score),
-    incoming_edges(facility, in_edges),
-    outgoing_edges(facility, out_edges)
-).select(
-    facility.id,
-    facility.name,
-    facility.type,
-    facility.region,
-    centr_score.alias("degree_centrality"),
-    in_edges.alias("incoming_connections"),
-    out_edges.alias("outgoing_connections")
-).to_df()
-
-# Sort by degree centrality (descending)
-results = results.sort_values("degree_centrality", ascending=False)
-results.insert(0, "rank", range(1, len(results) + 1))
-```
-
-### 4. CLI Script Analysis
-
-The `disease_outbreak_prevention_network.py` script displays:
-- A ranked table of all facilities with their metrics
-- Detailed breakdown of the top 3 priority facilities
-- Network-wide summary statistics
-- Actionable recommendations for outbreak response
-
-### 5. Interactive Streamlit App
-
-The included `app.py` provides an interactive web interface using the same shared model:
-
-```python
-import streamlit as st
-from model_setup import create_model
-
-# Load the same model and query results
-model, graph, Facility = create_model()
-results = get_results(model, graph, Facility)
-```
-
-The Streamlit app features:
-- **Interactive network graph**: Directed edges with arrows, hover for facility details, region-based layout
-- **Filterable rankings table**: Filter by facility type and region, download as CSV
-- **Priority facility analysis**: Expandable sections with detailed metrics and role analysis
-- **Summary statistics**: Sidebar with key network metrics
+See `model_setup.py` and `disease_outbreak_prevention_network.py` for the implementation and `runbook.md` for the skill-driven reproduction.
 
 ## Customize this template
 
-**Use your own data:**
+Focus on the first changes most users will make.
 
-- Replace the CSV files in the `data/` directory with your own network, keeping the same column names (or update the logic in disease_outbreak_prevention_network.py).
-- Make sure that the facilities in **connections.csv** only references valid facility IDs.
+### Use your own data
 
-**Extend the model:**
+- Replace the CSV files in `data/` with your own network, keeping the same column names (or update the loading logic in `model_setup.py`).
+- Make sure every facility referenced in `connections.csv` is a valid id in `facilities.csv`.
+- For Snowflake-backed runs, swap the `pd.read_csv(...)` calls in `model_setup.py` for `model.data(snowflake_table)` calls.
 
-**Add more risk factors**: The template already uses weighted connections (transfer_volume × contact_intensity). You could extend this by:
-- Adding additional risk metrics to connections (e.g., disease prevalence, facility bed capacity)
-- Creating a more sophisticated risk formula (e.g., weighted average of multiple factors)
-- Adding temporal aspects (e.g., seasonal variation in transmission rates)
+### Tune parameters
+
+- The risk formula is `risk_weight = transfer_volume x contact_intensity`, defined in `model_setup.py`. Change how the two factors combine (for example, a weighted average) to reweight what "risk" means.
+- Switch the graph's centrality metric if you want a different notion of importance (for example, betweenness or eigenvector centrality) in place of weighted degree.
+
+### Extend the model
+
+- Add more risk factors to `FacilityConnection` (for example, disease prevalence or facility bed capacity) and fold them into `risk_weight`.
+- Add temporal aspects (for example, seasonal variation in transmission rates) as additional edge properties.
+
+### Scale up / productionize
+
+- Replace the CSV bundle with CDC ingestion from your health-network systems; the graph shape is independent of the load pipeline.
+- Pin `relationalai` (this template targets `1.11.0`) and schedule the run as a pipeline step for reproducible re-runs.
 
 ## Troubleshooting
 
 <details>
   <summary>Why does authentication/configuration fail?</summary>
 
-- Run `rai init` to create/update `raiconfig.toml`.
+- Run `rai init` to create/update `raiconfig.yaml`.
 - If you have multiple profiles, set `RAI_PROFILE` or switch profiles in your config.
 
 </details>
@@ -247,7 +221,33 @@ The Streamlit app features:
 <details>
   <summary>Why does the script fail to connect to the RAI Native App?</summary>
 
-- Verify the Snowflake account/role/warehouse and `rai_app_name` are correct in `raiconfig.toml`.
+- Verify the Snowflake account/role/warehouse and `rai_app_name` are correct in `raiconfig.yaml`.
 - Ensure the RAI Native App is installed and you have access.
 
 </details>
+
+<details>
+  <summary>Why is the Streamlit app missing dependencies?</summary>
+
+- Install the visualization extra: `python -m pip install .[visualization]` (adds `streamlit`, `plotly`, `numpy`).
+
+</details>
+
+## Learn more
+
+### Core concepts
+
+- [PyRel v1 query language](https://docs.relational.ai/) — `where(...)` / `select(...)` and result extraction.
+- [Concepts and relationships](https://docs.relational.ai/) — modeling entities and edges like `Facility` and `FacilityConnection`.
+
+### Reasoner reference
+
+- [Graph reasoner](https://docs.relational.ai/) — node-concept and edge-concept patterns, degree centrality, and other graph algorithms.
+
+### CLI / SDK guides
+
+- [RelationalAI setup](https://docs.relational.ai/) — `rai init`, profiles, and `raiconfig.yaml`.
+
+## Support
+
+- File issues at the RelationalAI templates repository.

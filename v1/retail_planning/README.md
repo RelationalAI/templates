@@ -1,6 +1,6 @@
 ---
 title: "Retail Planning"
-description: "Predict article sales and customer churn with GNNs, then optimize markdown pricing and inventory planning to maximize revenue and minimize costs."
+description: "Predict article sales and customer churn with graph neural networks (GNNs), then optimize markdown pricing and inventory planning to maximize revenue and minimize costs."
 featured: true
 experience_level: advanced
 industry: "Retail & Consumer"
@@ -8,7 +8,7 @@ reasoning_types:
   - Predictive
   - Prescriptive
 tags:
-  - GNN
+  - Graph Neural Network (GNN)
   - Predict-then-Optimize
   - Markdown Optimization
   - Demand Planning
@@ -18,11 +18,11 @@ tags:
 
 ## What this template is for
 
-Retailers face interconnected decisions: which items will sell, which customers are at risk of leaving, what discounts to offer, and how much inventory to stock. Traditionally these are solved in isolation -- demand forecasting in one silo, pricing optimization in another, supply planning is a third. This template shows how to unify them in a single **predict-then-optimize** pipeline using RelationalAI.
+Retailers face interconnected decisions: which items will sell, which customers are at risk of leaving, what discounts to offer, and how much inventory to stock. Traditionally these are solved in isolation -- demand forecasting in one silo, pricing optimization in another, supply planning a third. Solved separately, they pull against each other: a markdown plan that ignores the demand forecast, or an inventory plan that ignores the markdowns, leaves revenue on the table. This template unifies them so predicted demand flows straight into the pricing and inventory decisions that depend on it.
 
-**Start with `retail_planning_local.py`** -- it trains a real sales-regression GNN on a bundled H&M subset (CPU, no external data), aggregates predictions per article, and runs both optimizers. A few minutes end-to-end. It's the quickest way to see the whole pattern working.
+**Graph neural networks predict article demand and customer churn, and those predictions become the parameters of a markdown-pricing and inventory optimization** -- a single predict-then-optimize pipeline on one shared ontology, so the optimizer prices and plans against learned demand rather than static estimates.
 
-**Then adapt the pattern to your own Snowflake data** using `retail_planning.py` as a reference. It trains three GNNs (sales regression, customer-churn classification, user-article link prediction) against the full Kaggle H&M dataset in Snowflake, aggregates all three signals into an adjusted demand estimate, and feeds that into the same two optimizers. The H&M pipeline is the worked example -- the structure (graph concepts → GNN tasks → aggregation bridge → prescriptive constraints) is what carries over to your own retail, pricing, or demand-planning data.
+The bundled H&M dataset is the worked example; the structure -- graph concepts, then GNN tasks, then an aggregation bridge, then prescriptive constraints -- is what carries over to your own retail, pricing, or demand-planning data (see the *Pipeline stages* diagram under *Model overview*).
 
 ## Who this is for
 
@@ -35,7 +35,7 @@ Assumes familiarity with Python, basic ML concepts (classification, regression, 
 
 ## What you'll build
 
-- Three GNN predictive models on the H&M knowledge graph (item-sales, user-churn, user-item-purchase)
+- Three graph neural network (GNN) predictive models on the H&M knowledge graph (item-sales, user-churn, user-item-purchase)
 - A bridge layer that aggregates all three GNN outputs into adjusted demand per article
 - A markdown optimization (MILP) that selects discount schedules to maximize revenue + salvage
 - A demand/inventory planning (LP) that minimizes production, holding, and unmet demand costs
@@ -47,6 +47,7 @@ Assumes familiarity with Python, basic ML concepts (classification, regression, 
   - `retail_planning_local.py` -- **primary, runnable out of the box.** Trains a sales-regression GNN on the bundled HM_MINI subset and solves both optimizers.
   - `retail_planning.py` -- **reference pattern** for adapting the same pipeline to your own Snowflake data. Trains three GNNs (sales, churn, purchase) against a full H&M dataset in Snowflake.
 - **Model**: Three GNN tasks on the H&M knowledge graph (Customer, Article, Transaction), two prescriptive problems consuming their output.
+- **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - **Sample data**:
   - `data/hm_mini/` -- bundled H&M subset (~10K customers / 5K articles / 9.6K transactions) with sales task splits. This is what the local runner trains on.
   - `data/*.csv` -- optimizer parameters: discounts, weeks, article inventory, production capacity.
@@ -168,10 +169,10 @@ task splits (see Prerequisites).
        ...
 
 Markdown Status: OPTIMAL
-Total revenue (sales + salvage): $62,096.89
+Total revenue (sales + salvage): $62,038.94
 
 Demand Planning Status: OPTIMAL
-Total cost (production + holding + unmet penalty): $8,985.53
+Total cost (production + holding + unmet penalty): $8,761.30
 ```
 
 ## Template structure
@@ -198,9 +199,7 @@ Total cost (production + holding + unmet penalty): $8,985.53
         └── production_capacity.csv    # matching production params
 ```
 
-**Start here**: `retail_planning_local.py` (CPU, no external setup). Use
-`retail_planning.py` (requires GPU) as the adaptation reference when you wire
-this pattern into your own Snowflake data.
+**Start here**: run `python retail_planning_local.py` for the full run end to end (CPU, no external setup), or follow `runbook.md` to reproduce it step by step with the RAI skills. Use `retail_planning.py` (requires GPU) as the adaptation reference when you wire this pattern into your own Snowflake data.
 
 ## Sample data
 
@@ -219,6 +218,10 @@ The H&M core data (customers, articles, transactions) comes from Snowflake, sour
 - **Article** (`article_id`): Products with rich metadata (category hierarchy, color, department, description)
 - **Transaction**: Purchase events linking customers to articles with price and date
 
+**Primary identifiers**: `Customer.customer_id`, `Article.article_id`, and `Week.num` / `Discount.level` identify their rows; the optimizer concepts key on the matching article id (`OptArticle.opt_article_id` and `ProdCapacity.pc_article_id` both equal an `article_id`). A `Transaction` is identified by its `(customer_id, article_id, date)` combination.
+
+**Important invariants**: `opt_article_id` and `pc_article_id` must match real `article_id` values that carry GNN predictions; the discount tiers include a 0% level (feasible starting point) and only increase across weeks (price ladder); prices, costs, inventory, and demand are non-negative.
+
 ### Pipeline stages
 
 ```text
@@ -236,110 +239,18 @@ task) on the bundled HM_MINI CSVs — HM_MINI does not ship churn or purchase
 splits. Churn and purchase are omitted from the local aggregation step.
 `retail_planning.py` runs all three GNNs against the full HM_PYREL data.
 
-### Concepts
-
-**OptArticle** -- Articles in the optimizer's scope, linking GNN predictions to pricing/inventory data.
-
-| Property | Type | Notes |
-|---|---|---|
-| `opt_article_id` | integer | Identifying; matches `article_id` |
-| `name` | string | Human-readable product name |
-| `initial_price` | float | Starting price before discounts |
-| `cost` | float | Unit cost |
-| `initial_inventory` | integer | Available stock |
-| `salvage_rate` | float | Fraction of price recovered for unsold units |
-| `predicted_sales` | float | From item-sales GNN |
-| `avg_buyer_churn` | float | Average churn probability of recent buyers |
-| `avg_purchase_score` | float | Average purchase prediction score across predicted buyers |
-| `adjusted_demand` | float | `predicted_sales * (1 - churn_weight * churn) * (1 + purchase_weight * score)` |
-
-**Discount** -- Markdown tiers with demand response.
-
-| Property | Type | Notes |
-|---|---|---|
-| `level` | integer | Identifying; ordered tier (0 = no discount) |
-| `discount_pct` | float | Percentage off initial price |
-| `demand_lift` | float | Multiplier on base demand |
-
-**Week** -- Planning periods with seasonality.
-
-| Property | Type | Notes |
-|---|---|---|
-| `num` | integer | Identifying; week number |
-| `demand_multiplier` | float | Seasonal adjustment factor |
-
-**ProdCapacity** -- Per-article production parameters for demand planning.
-
-| Property | Type | Notes |
-|---|---|---|
-| `pc_article_id` | integer | Identifying; matches `article_id` |
-| `max_production_per_week` | integer | Production cap |
-| `production_cost` | float | Cost per unit produced |
-| `holding_cost_per_week` | float | Cost per unit in inventory per week |
-| `pc_initial_inventory` | float | Starting stock for demand planner |
+For the full concept and property definitions, see `retail_planning_local.py` (and `retail_planning.py` for the full Snowflake pipeline); `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
-### 1. Train GNN models on the H&M knowledge graph
+The pipeline trains GNNs on the H&M knowledge graph, aggregates their predictions into an adjusted-demand estimate per article through a bridge concept, and feeds that estimate into two optimizers — one for markdown pricing, one for production/inventory planning. The same demand number flows into both, so pricing and planning stay consistent with the learned forecast rather than static estimates (see the *Pipeline stages* diagram above).
 
-Three separate GNN models are trained using the Graph / Relationship / PropertyTransformer API. All three share the same graph and feature configuration; only the task relationships and task-type differ:
+1. **Train the GNNs.** All models share one graph (Customer-Transaction-Article) and one feature configuration, differing only in task relationship and task type: article sales (regression), customer churn (binary classification), and customer-article purchase links (link prediction). The local runner trains only the sales GNN on the bundled HM_MINI subset; the full runner trains all three against Snowflake.
+2. **Bridge to optimizer inputs.** Predicted sales come straight from the item-sales GNN. Churn risk is averaged per article over each article's recent buyers, and purchase propensity is averaged per article from the link-prediction scores. The three combine into a single `adjusted_demand`: high-churn-buyer articles are marked down in demand, high-purchase-propensity articles are lifted up.
+3. **Markdown optimization (maximize revenue).** A mixed-integer program selects one discount per article per week under a price ladder and inventory limits, bounding sales by the *GNN-predicted* adjusted demand rather than a static estimate, and maximizes sales revenue plus salvage.
+4. **Demand/inventory planning (minimize cost).** A linear program decides production quantities per article per week, tracks inventory with flow conservation against adjusted demand, and minimizes production cost plus holding cost plus an unmet-demand penalty.
 
-```python
-# Item-sales regression
-SalesTrain = Relationship(f"{Article} at {Any:timestamp} has {Any:sales}")
-sales_gnn = GNN(
-    exp_database=GNN_EXP_DATABASE, exp_schema=GNN_EXP_SCHEMA,
-    graph=graph, property_transformer=pt,
-    train=SalesTrain, validation=SalesVal,
-    task_type="regression", eval_metric="rmse",
-    has_time_column=True, stream_logs=STREAM_LOGS, seed=SEED,
-    device="cuda", n_epochs=20, train_batch_size=256, lr=0.005, head_layers=2,
-    temporal_strategy="last", max_iters=500,
-)
-sales_gnn.fit()
-Article.sales_predictions = sales_gnn.predictions(domain=SalesTest)
-```
-
-Each GNN learns from the same knowledge graph (Customer-Transaction-Article) but targets different labels: article sales (regression), customer churn (binary classification), and customer-article purchase links (link prediction).
-
-### 2. Bridge: aggregate predictions into optimizer inputs
-
-Predicted sales per article come directly from the item-sales GNN. Churn risk is aggregated per article by averaging the churn probability of each article's recent buyers. Purchase propensity is derived from the link prediction GNN by averaging prediction scores per article. All three signals combine into a single demand estimate:
-
-```python
-model.define(OptArticle.adjusted_demand(
-    OptArticle.predicted_sales
-    * (1 - CHURN_DISCOUNT_WEIGHT * OptArticle.avg_buyer_churn)
-    * (1 + PURCHASE_PROPENSITY_WEIGHT * OptArticle.avg_purchase_score)
-))
-```
-
-Articles bought primarily by high-churn-risk customers get reduced demand, while articles with high purchase propensity get an uplift.
-
-### 3. Markdown optimization (maximize revenue)
-
-A mixed-integer program selects one discount level per article per week. Constraints enforce a price ladder (discounts only increase) and inventory limits. The demand bound uses GNN-predicted demand instead of static estimates:
-
-```python
-problem.satisfy(model.where(...).require(
-    sales_ref <= OptArticle.adjusted_demand
-    * Discount_ref.demand_lift * Week_ref.demand_multiplier * selection_ref
-))
-problem.maximize(revenue + salvage)
-```
-
-### 4. Demand/inventory planning (minimize cost)
-
-A linear program decides production quantities per article per week. Inventory flow conservation tracks stock levels. The objective balances production cost, holding cost, and a penalty for unmet demand:
-
-```python
-dp.satisfy(model.where(...).require(
-    inv_curr == inv_prev + flow_prod_ref
-    - OptArticle.adjusted_demand * flow_week_ref.demand_multiplier
-    + flow_unmet_ref
-))
-dp.minimize(prod_cost_total + hold_cost_total + unmet_cost_total)
-```
+See `retail_planning_local.py` / `retail_planning.py` for the implementation and `runbook.md` for the skill-driven reproduction.
 
 ## Customize this template
 
@@ -362,6 +273,13 @@ dp.minimize(prod_cost_total + hold_cost_total + unmet_cost_total)
 - **Category-level budgets**: group articles by department and limit total discount exposure per category.
 - **Multi-site planning**: extend `ProdCapacity` with a site dimension and add cross-site transfer variables.
 - **Scenario analysis**: wrap the demand planner in a loop over different planning horizons (see `demand_planning_temporal` template for the pattern).
+
+### Scale up / productionize
+
+- Move from the bundled `data/hm_mini/` CSVs to your full Snowflake dataset by wiring `retail_planning.py` at your customer / article / transaction tables and task splits (see *Adapting to your own Snowflake data* under Quickstart).
+- Train the three GNNs on a GPU-enabled RAI engine; the local sales-only run is CPU-sized for the mini subset and grows well beyond it on GPU.
+- Pin `relationalai` (see Prerequisites) and keep `SEED` fixed so training and solves stay reproducible across environments.
+- Schedule the pipeline as a recurring job once table references and grants are in place; the GNN experiment schema and change tracking configured in Quickstart carry over unchanged.
 
 ## Troubleshooting
 
@@ -419,3 +337,23 @@ continues training server-side; only the client-side log stream is suppressed.
 
 Ensure your Snowflake credentials are configured correctly and that the RAI Native App is installed on your account. Run `rai init` again and verify the connection settings.
 </details>
+
+## Learn more
+
+### Core concepts
+
+- [Multi-reasoner workflows](https://docs.relational.ai/) — chaining predictive output into prescriptive optimization on a shared ontology.
+- [PyRel v1 query language](https://docs.relational.ai/) — `model.where(...)`, aggregations, and `model.select(...)`.
+
+### Reasoner reference
+
+- [Predictive reasoner (GNN)](https://docs.relational.ai/) — the Graph / Relationship / PropertyTransformer API, task types, and training configuration.
+- [Prescriptive reasoner](https://docs.relational.ai/) — the `Problem` API, decision variables, constraints, and objectives.
+
+### Deeper dives
+
+- [Predict-then-optimize patterns](https://docs.relational.ai/) — using model predictions as parameters inside an optimizer, via an aggregation bridge concept.
+
+## Support
+
+- File issues at the RelationalAI templates repository.

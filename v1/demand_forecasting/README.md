@@ -1,20 +1,18 @@
 ---
 title: "Demand Forecasting"
-description: "Forecast next-period unit sales per (store, item, day) with a regression GNN over a heterogeneous retail graph linking sales to stores, items, and item families."
+description: "Forecast next-period unit sales per store, item, and day with a regression graph neural network (GNN) over a heterogeneous retail graph linking sales to stores, items, and item families."
 featured: false
 experience_level: advanced
 industry: "Retail & Consumer"
 reasoning_types:
   - Predictive
 tags:
-  - GNN
+  - GNN (graph neural network)
   - Regression
   - Demand Forecasting
   - Time Series
   - Retail
 ---
-
-# Demand Forecasting
 
 ## What this template is for
 
@@ -38,6 +36,7 @@ Assumes familiarity with Python, basic ML concepts (regression, RMSE), and time-
 ## What's included
 
 - **Runner**: `demand_forecasting.py` — runs the full pipeline (graph build, GNN training, predictions, weekly aggregation) on the bundled CSVs
+- **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - **Synthetic data generator**: `data/generate_favorita_mini.py` — reproducible Favorita-shaped data generator (run once if you need to regenerate; output is committed under `data/favorita_mini/`)
 - **Model**: `Store`, `Item`, `ItemFamily`, `Sale`, plus three task-table concepts (`TrainTable`, `ValTable`, `TestTable`) carrying the unit-sales targets
 - **Sample data**: bundled synthetic Favorita-shaped dataset (3 stores × 25 items × 365 days); see [Sample data](#sample-data)
@@ -162,6 +161,8 @@ Test-set RMSE (per (city, family, week)): 150.8997
         └── sales.csv               # ~27K daily (store, item, date) rows with unit_sales + onpromotion
 ```
 
+**Start here**: run `python demand_forecasting.py` for the full pipeline — graph build, GNN training, predictions, and weekly aggregation — end to end on the bundled CSVs, or follow `runbook.md` to reproduce it step by step with the RAI skills.
+
 ## Sample data
 
 Two ways to feed this template:
@@ -181,126 +182,57 @@ Customers adapting this template would replace these CSVs with a real Favorita s
 
 ## Model overview
 
-### Key entities
+The model is a small retail ontology whose only purpose is to give the graph neural network (GNN) a heterogeneous neighborhood: sales linked to their store and item, and items rolled up to a family.
 
-- **Store** (`store_id`): one physical retail store with city, state, store type, and a cluster identifier
-- **Item** (`item_id`): one SKU with family, item-class, and a perishable flag
-- **ItemFamily** (`family`): derived from the unique `Item.family` values; gives the GNN a hierarchical edge structure (Item → ItemFamily) that lets signal propagate across items within a family
-- **Sale** (`sale_id`): one row per (store, item, date) with `unit_sales` target and an `onpromotion` flag
+- **Key entities**: `Store`, `Item`, `ItemFamily`, `Sale`, plus three task-table concepts (`TrainTable`, `ValTable`, `TestTable`) that carry the split targets into the trainer.
+- **Primary identifiers**: `Store.store_id`, `Item.item_id`, `Sale.sale_id` (all integers); `ItemFamily.family` (the family string).
+- **Important invariants**: `unit_sales` is a non-negative integer and is the regression target (dropped from features to prevent leakage); every `Sale` links to exactly one `Store` and one `Item`; every `Item` links to exactly one `ItemFamily`; `ItemFamily` is derived from the distinct `Item.family` values rather than loaded.
 
-### Pipeline stages
+For the full concept and property definitions — including the GNN edges (`Sale → Store`, `Sale → Item`, `Item → ItemFamily`) and the Train/Val/Test task relationships — see `demand_forecasting.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ```text
 Stores + Items + Sales (bundled CSVs)
-  → Build heterogeneous graph: Sale → Store, Sale → Item, Item → ItemFamily
-  → Temporal train/val/test split in pandas (last 60 days = test, previous 60 = val)
-  → Predictive: GNN regression on Sale.unit_sales
-  → Reporting: aggregate per-Sale predictions to weekly per-(city, family) forecasts
+  -> Build heterogeneous graph: Sale -> Store, Sale -> Item, Item -> ItemFamily
+  -> Temporal train/val/test split in pandas (last 60 days = test, previous 60 = val)
+  -> Predictive: GNN regression on Sale.unit_sales
+  -> Reporting: aggregate per-Sale predictions to weekly per-(city, family) forecasts
 ```
 
 ## How it works
 
-### 1. Build the heterogeneous graph
+The pipeline builds a heterogeneous graph, trains a regression GNN over it, and aggregates the per-Sale predictions into a weekly forecast.
 
-Each Sale connects to its Store and its Item; each Item connects to its ItemFamily. The GNN aggregates over these neighborhoods so signal propagates: e.g., a Cuenca BAKERY sale's prediction is influenced by other Cuenca sales (via Store), by other items in the BAKERY family (via Item → ItemFamily), and by the broader BAKERY family base rate.
+**Build the heterogeneous graph.** Each Sale connects to its Store and its Item; each Item connects to its ItemFamily. The GNN aggregates over these neighborhoods so signal propagates: a Cuenca BAKERY sale's prediction is influenced by other Cuenca sales (via Store), by other items in the BAKERY family (via Item → ItemFamily), and by the broader BAKERY family base rate.
 
-```python
-gnn_graph = Graph(model, directed=True, weighted=False)
-Edge = gnn_graph.Edge
-model.define(Edge.new(src=Sale, dst=Store)).where(Sale.store_id == Store.store_id)
-model.define(Edge.new(src=Sale, dst=Item)).where(Sale.item_id == Item.item_id)
-model.define(Edge.new(src=Item, dst=ItemFamily)).where(Item.family == ItemFamily.family)
-```
+**Declare features and target.** Primary and foreign keys are dropped because the graph carries identity, and `Sale.unit_sales` is dropped from the features because it is the regression target — keeping it would leak the answer. The remaining columns are declared explicitly as categorical, continuous, integer, or datetime features.
 
-### 2. Declare features and target (PropertyTransformer)
+**Split temporally.** Forecasting requires training on the past and evaluating on the future; a random split would leak future signal into training. The split is done in pandas before the task tables are built — the last 60 days become the test window and the 60 before that the validation window.
 
-PKs / FKs are dropped (the graph carries identity). `Sale.unit_sales` is dropped from features (it's the target — keeping it would leak). Categorical, continuous, integer, and datetime feature types are declared explicitly.
+**Train and predict.** The GNN runs a regression task with `has_time_column=False`, a deliberate simplicity choice (the temporal split is preserved at the pandas level above; the GNN just doesn't use the date as a temporal index inside the graph — see [Customize this template](#customize-this-template) for the temporal-indexing variant). Predictions are attached back to each Sale.
 
-```python
-pt = PropertyTransformer(
-    drop=[
-        Sale.sale_id, Sale.store_id, Sale.item_id,
-        Store.store_id, Item.item_id,
-        Sale.unit_sales,   # target — drop to prevent leakage
-    ],
-    category=[Store.city, Store.state, Store.store_type,
-              Item.family, Item.perishable, Sale.onpromotion],
-    continuous=[Store.cluster],
-    integer=[Item.item_class],
-    datetime=[Sale.date],
-)
-```
+**Aggregate to a weekly forecast.** A single declarative query pulls the per-Sale predictions and joins them to store and item metadata; pandas then rolls them up into weekly per-(city, family) buckets against the actuals.
 
-### 3. Temporal train / val / test split
-
-Forecasting requires a temporal split: training on the past, evaluating on the future. Random splits leak future signal into training. The split is done in pandas before the task tables are built:
-
-```python
-max_date = sales_df["date"].max()
-test_start = max_date - pd.Timedelta(days=TEST_DAYS - 1)
-val_start = test_start - pd.Timedelta(days=VAL_DAYS)
-
-train_mask = sales_df["date"] < val_start
-val_mask = (sales_df["date"] >= val_start) & (sales_df["date"] < test_start)
-test_mask = sales_df["date"] >= test_start
-```
-
-### 4. Train and predict (GNN regression)
-
-```python
-gnn = GNN(
-    exp_database=EXP_DATABASE,
-    exp_schema=EXP_SCHEMA,
-    graph=gnn_graph,
-    property_transformer=pt,
-    train=Train,
-    validation=Val,
-    task_type="regression",
-    eval_metric="rmse",
-    has_time_column=False,
-    seed=SEED,
-    device="cpu",
-    n_epochs=20,
-    lr=0.005,
-)
-gnn.fit()
-Sale.predictions = gnn.predictions(domain=Test)
-```
-
-`has_time_column=False` is a deliberate choice — see [Customize this template](#customize-this-template). The temporal split is still preserved at the pandas level above; the GNN just doesn't use the date as a temporal index inside the graph.
-
-### 5. Aggregate to weekly per-(city, family) forecast
-
-A single declarative query pulls per-Sale predictions and joins them back to store/item metadata; pandas then aggregates to weekly buckets:
-
-```python
-sale_ref = Sale.ref()
-predicted_value_ref = Float.ref()
-results_df = (
-    select(
-        sale_ref.sale_id.alias("sale_id"),
-        sale_ref.date.alias("date"),
-        sale_ref.store_id.alias("store_id"),
-        sale_ref.item_id.alias("item_id"),
-        sale_ref.unit_sales.alias("actual"),
-        predicted_value_ref.alias("predicted"),
-    )
-    .where(sale_ref.predictions.predicted_value(predicted_value_ref))
-    .to_df()
-)
-
-# join store + item metadata
-# week_start = results_df["date"].dt.to_period("W").dt.start_time
-# weekly = results_df.groupby(["city", "family", "week_start"])[...].sum()
-```
+See `demand_forecasting.py` for the implementation and `runbook.md` to reproduce it step by step with the RAI skills.
 
 ## Customize this template
 
-- **Use temporal indexing instead** — for tighter holiday/seasonal spike capture, set `has_time_column=True`, restore `time_col=[Sale.date]` in the PropertyTransformer, restore the date arg in the Train/Val/Test relationships (`f"{Sale} at {Any:date} has {Any:value}"`), and add `temporal_strategy="last"` to the `GNN(...)` constructor. Trades simplicity for the GNN aggregating over time windows.
-- **Forecast different granularity** — change `TEST_DAYS` / `VAL_DAYS` at the top of the script. Default is a 60-day test window after a 60-day val window.
-- **Add weather, promotions calendar, holiday flags** — extend `Sale` with extra columns and add them to `PropertyTransformer.category` or `.continuous` as appropriate. The same hierarchical-graph + GNN scaffold absorbs new features without restructuring.
-- **Bring more hierarchy in** — the bundled data has Item → ItemFamily. Real Favorita data has Item → Class → Family → Department. Define a `Class` and `Department` concept the same way `ItemFamily` is defined, add `Class → Family` and `Family → Department` edges, and the GNN propagates through deeper product hierarchies.
+### Use your own data
+
 - **Repoint to your own retail data** — replace the CSVs under `data/favorita_mini/` with your real store / item / sales exports (matching column names) and re-run.
+- **Add weather, promotions calendar, holiday flags** — extend `Sale` with extra columns and add them to `PropertyTransformer.category` or `.continuous` as appropriate. The same hierarchical-graph plus GNN scaffold absorbs new features without restructuring.
+
+### Tune parameters
+
+- **Forecast different granularity** — change `TEST_DAYS` / `VAL_DAYS` at the top of the script. Default is a 60-day test window after a 60-day val window.
+- **Use temporal indexing instead** — for tighter holiday/seasonal spike capture, set `has_time_column=True`, restore `time_col=[Sale.date]` in the PropertyTransformer, restore the date arg in the Train/Val/Test relationships (`f"{Sale} at {Any:date} has {Any:value}"`), and add `temporal_strategy="last"` to the `GNN(...)` constructor. Trades simplicity for the GNN aggregating over time windows.
+
+### Extend the model
+
+- **Bring more hierarchy in** — the bundled data has Item → ItemFamily. Real Favorita data has Item → Class → Family → Department. Define a `Class` and `Department` concept the same way `ItemFamily` is defined, add `Class → Family` and `Family → Department` edges, and the GNN propagates through deeper product hierarchies.
+
+### Scale up / productionize
+
+- **Run on the full public Favorita dataset** — the bundled `favorita_mini` is intentionally tiny so the template runs in minutes on CPU. See the walkthrough below to point the pipeline at the full Kaggle corpus on a GPU-backed engine.
 
 ### Run on the full public Favorita dataset
 
@@ -347,3 +279,22 @@ model = Model("demand_forecasting_local_v2")  # bump on each re-run if needed
 
 - **`subscriber_retention`** — sibling Predictive template using a regression GNN on a homogeneous call graph (no time column); useful as a comparison for the simpler-graph case
 - **`fraud-detection`** — the canonical multi-reasoner GNN template (Graph + Rules + Predictive + Prescriptive); use as the reference for adding a Prescriptive optimization stage on top of forecasting predictions (e.g., truck-routing or replenishment optimization driven by predicted demand)
+
+## Learn more
+
+### Core concepts
+
+- [PyRel v1 query language](https://docs.relational.ai/) — `model.define(...)`, `.where(...)`, and `select(...)`, used to build the graph and pull predictions.
+- [Graph construction](https://docs.relational.ai/) — building the heterogeneous `Graph` and its edges that the GNN aggregates over.
+
+### Reasoner reference
+
+- [Predictive reasoner (GNN)](https://docs.relational.ai/) — `GNN`, `PropertyTransformer`, regression tasks, and temporal handling.
+
+### CLI / SDK guides
+
+- [Setup and configuration](https://docs.relational.ai/) — `rai init`, `raiconfig.yaml`, and granting the Native App access to an experiments schema.
+
+## Support
+
+- File issues at the RelationalAI templates repository.

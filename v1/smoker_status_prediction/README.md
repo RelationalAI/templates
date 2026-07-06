@@ -7,7 +7,7 @@ industry: "Healthcare & Life Sciences"
 reasoning_types:
   - Predictive
 tags:
-  - GNN
+  - Graph Neural Network (GNN)
   - Binary Classification
   - Node Classification
   - Healthcare
@@ -37,6 +37,7 @@ Assumes familiarity with Python and basic ML concepts (binary classification, tr
 - **Scripts**:
   - `smoker_status_prediction_local.py` -- **primary, runnable out of the box.** Loads CSVs from `data/` via `model.data()`.
   - `smoker_status_prediction.py` -- **reference pattern** for adapting the same pipeline to Snowflake-hosted tables.
+- **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - **Sample data** (`data/`) -- bundled demo dataset for end-to-end runs; predictions are illustrative of the GNN methodology, not clinically meaningful (see [Sample data](#sample-data) for what's real vs. constructed):
   - `people.csv` -- 38,984 individuals with demographic and medical features.
   - `related.csv` -- 58,355 connection pairs between people.
@@ -258,7 +259,7 @@ Local run complete.
     └── test.csv            # 3,899 rows
 ```
 
-**Start here**: `smoker_status_prediction_local.py` (no external setup beyond Snowflake grants). Use `smoker_status_prediction.py` as the adaptation reference when you wire this pattern into your own Snowflake data.
+**Start here**: run `python smoker_status_prediction_local.py` for the full run end to end (no external setup beyond Snowflake grants), or follow `runbook.md` to reproduce it step by step with the RAI skills. Use `smoker_status_prediction.py` as the adaptation reference when you wire this pattern into your own Snowflake data.
 
 ## Sample data
 
@@ -273,10 +274,9 @@ The dataset contains medical and demographic attributes for a population of indi
 
 ## Model overview
 
-### Key entities
-
-- **People** (`Id`): individuals with demographic and medical attributes.
-- **Related**: pairs of people, used as the edge list of the GNN graph.
+- **Key entities**: `People` (individuals with demographic and medical attributes), `Related` (pairs of people, used as the edge list of the graph neural network (GNN) graph), and the split tables `TrainTable` / `ValidationTable` / `TestTable`.
+- **Primary identifiers**: `People.Id` (integer, unique per person). `Related`, `TrainTable`, `ValidationTable`, and `TestTable` have no key of their own — they join back to `People` by `Id`.
+- **Important invariants**: `Id` values in `Related` and the split tables must reference an existing `People.Id`; the `smoking` label is binary (`0` / `1`); `TestTable.smoking` is held out and never fed to the model; the three splits partition the labeled population (31,187 train / 3,898 validation / 3,899 test).
 
 ### Pipeline stages
 
@@ -289,113 +289,19 @@ People + Related (CSVs or Snowflake tables)
   → (Optional) Register and load the trained model
 ```
 
-### Concepts
-
-**People** -- individuals with demographic and medical attributes.
-
-| Property | Type | Notes |
-|---|---|---|
-| `Id` | integer | Identifying; unique per person |
-| `age` | integer | Age in years |
-| `height(cm)` | integer | Height in centimeters |
-| `weight(kg)` | integer | Weight in kilograms |
-| `systolic` | integer | Systolic blood pressure |
-| `relaxation` | integer | Diastolic blood pressure |
-| `fasting blood sugar` | integer | Fasting blood glucose level |
-| `Cholesterol` | integer | Total cholesterol |
-| `triglyceride` | integer | Triglyceride level |
-| `HDL` | integer | High-density lipoprotein |
-| `LDL` | integer | Low-density lipoprotein |
-| `hemoglobin` | float | Hemoglobin level |
-| `Urine protein` | integer | Urine protein indicator |
-| `serum creatinine` | float | Serum creatinine level |
-| `AST` | integer | Aspartate aminotransferase (liver enzyme) |
-| `ALT` | integer | Alanine aminotransferase (liver enzyme) |
-| `Gtp` | integer | Gamma-glutamyl transferase (liver enzyme) |
-| `dental caries` | integer | Binary indicator (0 / 1) |
-
-**Related** -- pairs of connected people; used to construct edges in the GNN graph. No primary key.
-
-| Property | Type | Notes |
-|---|---|---|
-| `person1` | integer | Foreign key into `People.Id` |
-| `person2` | integer | Foreign key into `People.Id` |
-
-**TrainTable / ValidationTable / TestTable** -- split tables joined to `People` by `Id` to build the train, validation, and test relationships. `TestTable.smoking` is held out from the model.
-
-| Property | Type | Notes |
-|---|---|---|
-| `Id` | integer | Foreign key into `People.Id` |
-| `smoking` | integer | Binary label (0 / 1); held out for `TestTable` |
+For the full concept and property definitions, see `smoker_status_prediction_local.py` (and `smoker_status_prediction.py` for the Snowflake pipeline); `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
-### 1. Build the graph
+The pipeline turns the `PEOPLE` table into graph nodes and the `RELATED` pairs into edges, configures the medical/demographic features, defines the train/validation/test task, then trains a binary-classification GNN and predicts smoking status on the held-out test cohort (see the *Pipeline stages* diagram above).
 
-Each row of `Related` defines a directed edge from one `People` instance to another. Because both endpoints are the same concept, the destination uses `.ref()`:
+1. **Build the graph.** Each `RELATED` row becomes a directed edge from one `People` node to another. Because both endpoints are the same concept, the destination endpoint uses a `.ref()` of `People`.
+2. **Configure features.** A `PropertyTransformer` lists the medical and demographic columns as continuous features, treats the binary `dental caries` indicator as a category, and drops `Id` so the identifier isn't fed into the model. Column names with spaces or parentheses (`height(cm)`, `fasting blood sugar`) are accessed via `getattr`, and the schema is preserved as-is so the same names work against the underlying Snowflake tables.
+3. **Define the task.** A node-classification task pairs each labeled `People` row with its smoking status via train and validation relationships; the test relationship omits the label because it is held out.
+4. **Train and predict.** The GNN is instantiated with the graph, the transformer, and the train/validation relationships, fit, then used to attach predictions over the held-out test cohort back onto each `People` node.
+5. **(Optional) Register and load.** The bottom of each script has a commented-out block that registers the trained model in the Snowflake Model Registry and loads it back into a fresh `GNN` instance to predict without retraining.
 
-```python
-PeopleRef = People.ref()
-model.define(Edge.new(src=People, dst=PeopleRef)).where(
-    People.Id == Related.person1,
-    PeopleRef.Id == Related.person2,
-)
-```
-
-### 2. Configure features
-
-`PropertyTransformer` lists the medical and demographic features as continuous, treats the binary `dental caries` indicator as a category, and drops the `Id` so it isn't fed into the model:
-
-```python
-pt = PropertyTransformer(
-    continuous=[
-        People.age,
-        getattr(People, "height(cm)"),
-        getattr(People, "weight(kg)"),
-        ...
-    ],
-    category=[getattr(People, "dental caries")],
-    drop=[People.Id],
-)
-```
-
-The `getattr()` calls handle column names with special characters (spaces, parentheses) that aren't valid Python identifiers. The schema is preserved as-is so the same names work in Snowflake queries against the underlying tables.
-
-### 3. Define the task
-
-A simple node-classification task: each labeled row pairs a `People` instance with its smoking status. The `Test` relationship omits the label since it's held out.
-
-```python
-Train = Relationship(f"{People} has {Any:smoking}")
-model.define(Train(People, TrainTable.smoking)).where(
-    People.Id == TrainTable.Id
-)
-
-Test = Relationship(f"{People}")
-model.define(Test(People)).where(
-    People.Id == TestTable.Id
-)
-```
-
-### 4. Train and predict
-
-Instantiate the GNN with the graph, the `PropertyTransformer`, and the Train / Validation relationships, fit it, then attach predictions over the held-out Test cohort to each `People` instance:
-
-```python
-gnn = GNN(
-    exp_database=GNN_EXP_DATABASE, exp_schema=GNN_EXP_SCHEMA,
-    graph=gnn_graph, property_transformer=pt,
-    train=Train, validation=Validation,
-    task_type="binary_classification", eval_metric="roc_auc",
-    device="cuda", n_epochs=5, lr=0.005, train_batch_size=256,
-)
-gnn.fit()
-People.predictions = gnn.predictions(domain=Test)
-```
-
-### 5. (Optional) Register and load
-
-The bottom of each script has a commented-out block that registers the trained model in the Snowflake Model Registry, then loads it into a fresh `GNN` instance and predicts without retraining. Uncomment it if you want to register a model, load it back, and run predictions without retraining.
+See `smoker_status_prediction_local.py` / `smoker_status_prediction.py` for the implementation and `runbook.md` for the skill-driven reproduction.
 
 ## Customize this template
 
@@ -404,7 +310,7 @@ The bottom of each script has a commented-out block that registers the trained m
 - Replace the CSVs in `data/` with your own equivalent files (people, edges, splits). Column names need to match the `PropertyTransformer`, or you'll need to edit the transformer.
 - For Snowflake adaptation, edit the `DATABASE`, `SCHEMA`, `TASK_SCHEMA`, and `GNN_EXP_*` constants at the top of `smoker_status_prediction.py`.
 
-### Tune the model
+### Tune parameters
 
 - `n_epochs` -- increase for better convergence on a larger dataset.
 - `lr` -- lower if training loss bounces.
@@ -418,6 +324,13 @@ For the full hyperparameter list, see the [Configure a GNN](https://docs.relatio
 - **Add categorical demographics** (e.g. occupation, income bracket): list them under `category=[...]` in the `PropertyTransformer`.
 - **Try a multiclass task**: if your label has more than two values (e.g. never / light / heavy smoker), change `task_type="multiclass_classification"` and use `eval_metric="macro_f1"` or `"accuracy"`.
 - **Register the model** for reuse: uncomment the bonus section at the bottom of either script.
+
+### Scale up / productionize
+
+- Move from the bundled CSVs to Snowflake-hosted tables with `smoker_status_prediction.py` (see *Adapting to your own Snowflake data* under Quickstart); the graph, features, and task setup are unchanged.
+- Train on a GPU-enabled engine (`device="cuda"`) for larger populations; CPU is fine for the bundled ~39K-person demo.
+- Pin `relationalai` (see Prerequisites) so runs stay reproducible across environments.
+- Register the trained model in the Snowflake Model Registry (the optional block at the bottom of each script) so downstream jobs load and predict without retraining.
 
 ## Troubleshooting
 
@@ -458,3 +371,20 @@ GRANT CREATE MODEL      ON SCHEMA   identifier($schema_experiments) TO APPLICATI
 
 Ensure your Snowflake credentials are configured correctly and that the RAI Native App is installed on your account. Run `rai init` again and verify the connection settings.
 </details>
+
+## Learn more
+
+### Core concepts
+
+- [Predictive reasoning (GNN)](https://docs.relational.ai/) — graph neural network modeling on an ontology: nodes, edges, and features.
+- [PyRel v1 query language](https://docs.relational.ai/) — `model.define(...)` / `model.where(...)`, used to build the edge list and split relationships.
+
+### Reasoner reference
+
+- [Configure a GNN](https://docs.relational.ai/build/guides/reasoning/predictive/configure-a-GNN) — the full hyperparameter list for `GNN(...)`.
+- [PropertyTransformer](https://docs.relational.ai/) — declaring continuous vs. category features and dropping identifier columns.
+- [Model Registry](https://docs.relational.ai/) — registering, loading, and reusing a trained model without retraining (the optional bonus block).
+
+## Support
+
+- File issues at the RelationalAI templates repository.

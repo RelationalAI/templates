@@ -46,6 +46,7 @@ At a high level, this exercises three RelationalAI capabilities on one shared mo
 ## What's included
 
 - **Model and pipeline** (`defect_root_cause.py`): a single script that defines the ontology and runs all three reasoning stages end to end.
+- **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - **Data generator** (`generate_data.py`): rebuilds the sample corpus deterministically from a fixed seed. The generated files are already included, so you do not need to run it to use the template.
 - **Sample data** (`data/`): ten CSV files describing the product structure, the material lots and their genealogy, the finished units and their test results, the process history, and the list of candidate causes.
 - **Outputs**: the diagnosis is printed to the console and written back into the model as a `DiagnosisResult` summary and an `is_root_cause` flag on each named factor, so the result can be queried after the run rather than only read from the console.
@@ -135,7 +136,7 @@ defect_root_cause/
     └── factors.csv           # 118 candidate causes (lots, machines, and shifts)
 ```
 
-**Start here:** `python defect_root_cause.py` runs the whole pipeline end to end.
+**Start here:** run `python defect_root_cause.py` for the whole pipeline end to end, or follow `runbook.md` to reproduce it step by step with the RAI skills.
 
 ## Sample data
 
@@ -145,77 +146,17 @@ The bundled corpus is a serialized-unit manufacturing genealogy for a consumer-e
 
 The model represents a manufacturing genealogy: finished units built from material lots through a multi-tier bill of materials, each with a full process history.
 
-The genealogy is the backbone: a built `Lot` consumes its input lots, so following those links from a finished unit reaches every material beneath it. The sections below document the model concept by concept.
+The genealogy is the backbone: a built `Lot` consumes its input lots, so following those links from a finished unit reaches every material beneath it.
 
-### SKU
+- **Key entities**: `SKU`, `Lot`, `Unit`, `Machine`, and `Factor` (a candidate root cause — any lot, machine, or shift, put on a common footing); plus a `DiagnosisResult` summary the prescriptive stage writes back.
+- **Primary identifiers**: every concept carries a string `id` (for example `LOT::SP-0423` on `Factor`); the genealogy and process history are threaded by relationships (`Lot consumes Lot`, `Unit consumes Lot`, `Unit ran on Machine`) rather than shared keys.
+- **Important invariants**: `Unit.defective` is `0` or `1`; `Factor.lift` is the touched-unit defect rate over the plant baseline (≈ 1.0 for non-causal high-volume factors); the `is_root_cause` decision variable is binary; a defective unit is either explained by a named cause it touches or marked unexplained.
 
-An item in the product structure. SKUs, and the bill of materials between them, define the product's type-level structure that the lot genealogy instantiates.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | string | Yes | Loaded from `data/skus.csv` |
-| `name` | string | No | Human-readable name |
-| `tier` | string | No | One of `FINISHED`, `SUBASSEMBLY`, `COMPONENT`, or `RAW` |
-
-### Lot
-
-A specific received or produced batch of a SKU. Lots form the genealogy the diagnosis traces backward.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | string | Yes | Loaded from `data/lots.csv` |
-| `sku` | SKU | No | Which SKU this lot is a batch of |
-| `supplier` | Supplier | No | Who supplied the lot |
-| `received_date` | string | No | When the lot was received; corroborating evidence |
-
-### Unit
-
-A serialized finished unit and its final-test outcome. Defective units are the symptoms the diagnosis must explain.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | string | Yes | Loaded from `data/units.csv` |
-| `sku` | SKU | No | The finished product built |
-| `defective` | int | No | 1 if the unit failed final test, otherwise 0 |
-| `defect_type` | string | No | Failure signature, for example `COLD_SOLDER` |
-| `build_week` | int | No | Week index used by the timeline step |
-| `shift` | string | No | Shift that built the unit |
-
-### Machine
-
-A piece of process equipment. Calibration age corroborates a machine-as-cause finding.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | string | Yes | Loaded from `data/machines.csv` |
-| `machine_type` | string | No | The operation it performs (placement, reflow, assembly, test) |
-| `calibration_age_days` | int | No | Days since last calibration |
-
-### Factor
-
-A candidate root cause: any lot, machine, or shift, put on a common footing so the diagnosis can range over all three. The rules and optimization stages enrich each factor with derived properties.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | string | Yes | Loaded from `data/factors.csv`, for example `LOT::SP-0423` |
-| `kind` | string | No | `LOT`, `MACHINE`, or `SHIFT` |
-| `lift` | float | No | Derived: defect rate among touched units versus the plant baseline |
-| `is_root_cause` | float (binary) | No | Decision variable: named in the diagnosis |
-
-### Relationships
-
-The reasoning relies on a few relations beyond concept properties:
-
-| Relationship | Reading | Notes |
-|---|---|---|
-| `Lot consumes Lot` | parent lot, child lot | The genealogy; closed transitively in the graph stage |
-| `Unit consumes Lot` | unit, lot | Top-tier lots the unit consumed directly |
-| `Unit ran on Machine` | unit, machine | Process history (one per operation) |
-| `Factor touches Unit` | factor, unit | Derived incidence the diagnosis ranges over |
+For the full concept and property definitions — including the relations the reasoning traces (`Lot consumes Lot`, `Unit consumes Lot`, `Unit ran on Machine`, and the derived `Factor touches Unit` incidence) — see `defect_root_cause.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
-This section walks through the highlights in `defect_root_cause.py`. The pipeline moves from the failure timeline to a ranked diagnosis:
+The pipeline moves from the failure timeline to a ranked diagnosis:
 
 ```text
 failure timeline -> genealogy graph -> contrast scoring -> minimal-diagnosis optimization -> ranked root causes
@@ -223,75 +164,21 @@ failure timeline -> genealogy graph -> contrast scoring -> minimal-diagnosis opt
 
 ### Locate the spike onset
 
-First, a real investigation starts on the timeline rather than the genealogy. Rolling failures up by build week locates the onset, the first week whose rate runs well above the opening baseline, which tells the rest of the chain which window to interrogate. Here the rate steps from 1.9 percent in week one to 6.6 percent in week two, so the onset is week two:
-
-```python
-wk = model.select(Unit.build_week.alias("week"), Unit.defective.alias("defective")).to_df()
-wk["defective"] = wk["defective"].astype(int)
-timeline = wk.groupby("week").agg(units=("defective", "size"), defects=("defective", "sum"))
-timeline["rate"] = timeline["defects"] / timeline["units"]
-opening = timeline["rate"].iloc[0]
-onset = next((int(w) for w, r in timeline["rate"].items() if r > 2 * opening), None)
-```
+A real investigation starts on the timeline rather than the genealogy. Rolling failures up by build week locates the onset — the first week whose rate runs well above the opening baseline — which tells the rest of the chain which window to interrogate. Here the rate steps from 1.9 percent in week one to 6.6 percent in week two, so the onset is week two.
 
 ### Trace the genealogy backward (Graph)
 
-Next, the lot genealogy is a directed parent-to-child graph: a built lot consumes its input lots. Closing it transitively with `reachable(full=True)` links each unit to every lot beneath the top-tier lots it consumed, so a contaminated component lot two tiers down is still attributed to every finished unit that carries it:
-
-```python
-graph = Graph(model, directed=True, weighted=False, node_concept=Lot)
-parent, child = Lot.ref(), Lot.ref()
-model.where(parent.consumes(child)).define(graph.Edge.new(src=parent, dst=child))
-
-reach = graph.reachable(full=True)
-
-Unit.touches_lot = model.Relationship(f"{Unit} touches {Lot:lot}")
-model.where((u := Unit.ref()).consumes_lot(top := Lot.ref())).define(Unit.touches_lot(u, top))
-model.where(
-    (u := Unit.ref()).consumes_lot(top := Lot.ref()),
-    reach(top, deep := Lot.ref())
-).define(Unit.touches_lot(u, deep))
-```
-
-A unified `Factor.touches` relationship then puts lots, machines, and shifts on the same footing: lot factors inherit the genealogy closure, while machine and shift factors come straight from process history.
+The lot genealogy is a directed parent-to-child graph: a built lot consumes its input lots. Closing it transitively with `reachable(full=True)` links each unit to every lot beneath the top-tier lots it consumed, so a contaminated component lot two tiers down is still attributed to every finished unit that carries it. A unified `Factor.touches` relationship then puts lots, machines, and shifts on the same footing: lot factors inherit the genealogy closure, while machine and shift factors come straight from process history.
 
 ### Score the candidates (Rules)
 
-Then each candidate is scored by how concentrated defects are among the units it touches. The `lift` is the candidate's defect rate divided by the plant-wide baseline, and a candidate becomes a suspect only when its lift, its support, and its defect count all clear a threshold. This is what screens out the high-coverage, low-lift factors that dominate a raw count but explain nothing:
-
-```python
-model.define(Factor.touched_count(aggs.count(Unit).per(Factor).where(Factor.touches(Unit))))
-model.define(Factor.defect_count(aggs.count(Unit).per(Factor).where(Factor.touches(Unit), Unit.is_defective())))
-model.where(Factor.defect_count > 0).define(
-    Factor.lift((floats.float(Factor.defect_count) / floats.float(Factor.touched_count)) / BASELINE_RATE)
-)
-model.where(
-    Factor.lift >= LIFT_THRESHOLD,
-    Factor.touched_count >= MIN_SUPPORT,
-    Factor.defect_count >= MIN_DEFECTS
-).define(Factor.is_suspect(Factor))
-```
+Each candidate is scored by how concentrated defects are among the units it touches. The `lift` is the candidate's defect rate divided by the plant-wide baseline, and a candidate becomes a suspect only when its lift, its support, and its defect count all clear a threshold. This is what screens out the high-coverage, low-lift factors that dominate a raw count but explain nothing.
 
 ### Find the minimal diagnosis (Prescriptive)
 
-Finally, a binary decision variable names each suspect a root cause, and a binary slack lets a defective unit be left unexplained. The coverage constraint requires every defective unit to be explained by a named cause it touches or else marked unexplained. The objective trades off three things: a cost for each named cause (so the diagnosis stays small), a penalty for naming a cause that also touches many good units (so it stays specific), and a cost for leaving a defect unexplained. Together these make the optimizer prefer the single deep root over the several proximate sub-assemblies that merely carry it:
+A binary decision variable names each suspect a root cause, and a binary slack lets a defective unit be left unexplained. The coverage constraint requires every defective unit to be explained by a named cause it touches or else marked unexplained. The objective trades off three things: a cost for each named cause (so the diagnosis stays small), a penalty for naming a cause that also touches many good units (so it stays specific), and a cost for leaving a defect unexplained. Together these make the optimizer prefer the single deep root over the several proximate sub-assemblies that merely carry it.
 
-```python
-problem = Problem(model, Float)
-problem.solve_for(Factor.is_root_cause, where=[Factor.is_suspect()], type="bin", name=["pick", Factor.id])
-problem.solve_for(Unit.unexplained, where=[Unit.is_defective()], type="bin", name=["slack", Unit.id])
-
-cover = problem.satisfy(
-    model.where(Unit.is_defective()).require(
-        (aggs.sum(Factor.is_root_cause).per(Unit).where(Factor.touches(Unit)) | 0) + Unit.unexplained >= 1.0
-    ),
-    name=["cover", Unit.id],
-)
-problem.minimize(
-    aggs.sum(Factor.is_root_cause * Factor.select_cost) + W_UNEXPLAINED * aggs.sum(Unit.unexplained)
-)
-problem.solve("highs", time_limit_sec=120)
-```
+See `defect_root_cause.py` for the implementation and `runbook.md` to reproduce each stage step by step with the RAI skills.
 
 ## Sample output
 
@@ -359,6 +246,12 @@ The diagnosis names a contaminated solder-paste lot (`SP-0423`) and a reflow ove
 - Run `python generate_data.py` to rebuild the sample corpus. Edit the planted causes, decoys, and volumes near the top of the file to author your own scenario.
 - The timeline step is a natural place to add a more formal change-point test; the contrast step is where you would add a statistical significance test alongside the lift threshold.
 
+### Scale up / productionize
+
+- **Point at Snowflake tables.** Swap the CSV loads for `model.Table(...)` references to your traceability tables (genealogy, process history, test results). The graph, rules, and optimization stages are unchanged. Size the prescriptive engine to the number of suspect factors and defective units — the set-cover grows with those, not with total production volume.
+- **Schedule the investigation.** Wire the pipeline into a yield-monitoring cadence so a diagnosis runs whenever the failure timeline crosses its onset threshold, and persist the `DiagnosisResult` and `is_root_cause` flags for downstream review.
+- **Pin dependencies for reproducibility.** Keep the `relationalai` version pinned in `pyproject.toml` and the data-generator seed fixed so a given corpus yields the same diagnosis run to run.
+
 ## Troubleshooting
 
 <details>
@@ -380,7 +273,24 @@ The diagnosis names a contaminated solder-paste lot (`SP-0423`) and a reflow ove
 <details>
   <summary>Why does authentication or configuration fail?</summary>
 
-- Run <code>rai init</code> to create or update <code>raiconfig.toml</code>.
+- Run <code>rai init</code> to create or update <code>raiconfig.yaml</code>.
 - If you have multiple profiles, set <code>RAI_PROFILE</code> or switch profiles in your configuration.
 
 </details>
+
+## Learn more
+
+### Core concepts
+
+- [Multi-reasoner workflows](https://docs.relational.ai/) — how graph, rules, and prescriptive stages share one ontology, the pattern this template follows.
+- [PyRel v1 query language](https://docs.relational.ai/) — `model.where(...)`, `aggs`, and `.define()`, used throughout the pipeline.
+
+### Reasoner reference
+
+- [Graph reasoner](https://docs.relational.ai/) — `Graph`, edges, and `reachable(full=True)`, the transitive closure behind the genealogy stage.
+- [Rules and derived properties](https://docs.relational.ai/) — deriving `lift` and the `is_suspect` flag from base relations.
+- [Prescriptive reasoner](https://docs.relational.ai/) — `Problem`, decision variables, `satisfy`, and `minimize`, used for the minimal-diagnosis set cover.
+
+## Support
+
+- File issues at the RelationalAI templates repository.

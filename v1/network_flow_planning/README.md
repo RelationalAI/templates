@@ -14,8 +14,6 @@ tags:
   - Cost Minimization
 ---
 
-# Network Flow Planning
-
 ## What this template is for
 
 This template uses **Prescriptive** reasoning to solve a multi-tier supply-chain network design problem in a single MILP. Distribution networks usually decide two things at once:
@@ -52,6 +50,7 @@ The objective minimizes transport cost plus fixed-cost FC opening cost.
 ## What's included
 
 - `network_flow_planning.py` — main script (single end-to-end run)
+- **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - `data/sites.csv` — 12 sites: 3 warehouses, 3 transit hubs, 3 fulfillment centers, 3 customers
 - `data/lanes.csv` — 17 directed lanes connecting the tiers, each with a cost-per-unit and capacity
 - `data/demand.csv` — 3 customer demands (NYC 180, LA 120, Houston 150)
@@ -145,7 +144,7 @@ The objective minimizes transport cost plus fixed-cost FC opening cost.
     └── demand.csv                  # 3 customer demands
 ```
 
-**Start here:** `python network_flow_planning.py`.
+**Start here:** run `python network_flow_planning.py` for the full run end to end, or follow `runbook.md` to reproduce it step by step with the RAI skills.
 
 ## Sample data
 
@@ -163,135 +162,29 @@ Lane costs are set so that opening FC_West would unlock the cheapest LA route (`
 
 ## Model overview
 
-### Site
+The model uses three concepts. A single `Site` concept carries all four network tiers, distinguished by a `type` property, so warehouses, hubs, fulfillment centers, and customers share one entity and each contributes the constraint that matches its role.
 
-A node in the distribution network. The `type` property distinguishes the role each site plays.
+- **Key entities**: `Site` — a node in the distribution network, its `type` distinguishing the role each plays (warehouse, hub, fulfillment center, customer); `Lane` — a directed transport link between two sites with a per-unit cost and a flow capacity; `Demand` — a customer order placed at a particular site.
+- **Primary identifiers**: integer `id` on each of `Site`, `Lane`, and `Demand`, loaded from the corresponding CSV.
+- **Important invariants**: `inventory`, `capacity`, `fixed_cost`, `cost_per_unit`, and `quantity` are non-negative; only fulfillment centers carry a positive `fixed_cost` (that is what scopes the binary open decision); every `Lane.source` / `Lane.dest` and every `Demand.site` resolves to a real `Site`.
 
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | Integer | Yes | Loaded from `data/sites.csv` |
-| `name` | String | No | Human-readable name |
-| `type` | String | No | One of `WAREHOUSE`, `HUB`, `FULFILLMENT_CENTER`, `CUSTOMER` |
-| `inventory` | Float | No | Available supply (warehouses only; 0 elsewhere) |
-| `capacity` | Float | No | Throughput cap (FCs only; 0 elsewhere) |
-| `fixed_cost` | Float | No | Fixed cost when opened (FCs only; 0 elsewhere) |
-
-### Lane
-
-A directed transport link between two sites with a per-unit cost and a flow capacity.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | Integer | Yes | Loaded from `data/lanes.csv` |
-| `source` | Site | No | Origin site (Relationship) |
-| `dest` | Site | No | Destination site (Relationship) |
-| `cost_per_unit` | Float | No | Transport cost per unit of flow |
-| `capacity` | Float | No | Maximum flow on this lane |
-
-### Demand
-
-A customer order placed at a particular site.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | Integer | Yes | Loaded from `data/demand.csv` |
-| `site` | Site | No | Customer site (Relationship) |
-| `quantity` | Float | No | Units required |
-| `customer` | String | No | Order identifier (free text) |
-| `priority` | Integer | No | Priority tier (not used by the model in this version) |
+For the full concept and property definitions, see `network_flow_planning.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
-### 1. Decision variables
+The model runs as a single MILP that decides flow on every lane and which fulfillment centers to open, in one solve.
 
-Two variables drive the model:
+**Decision variables.** Each lane carries a continuous `x_flow` bounded by its capacity. Each fulfillment center carries a binary `x_open`; the open decision is scoped to sites with a positive `fixed_cost`, so warehouses, hubs, and customers never get an open variable.
 
-```python
-Lane.x_flow = model.Property(f"{Lane} carries {Float:flow}")
-Site.x_open = model.Property(f"{Site} is open {Float:open}")
+**Constraints.** Each site type contributes the constraint that matches its role. Warehouses cap total outflow at their inventory. Transit hubs and fulfillment centers conserve flow — inflow equals outflow. A fulfillment center's inflow is bounded by `capacity × x_open`, so an unopened FC (open = 0) can carry no flow and the fixed cost is only incurred when it is opened. Customers require inflow to meet their aggregate demand.
 
-problem.solve_for(
-    Lane.x_flow,
-    lower=0,
-    upper=Lane.capacity,
-    name=["flow", Lane.id],
-)
+**Objective.** Minimize transport cost (per-unit lane cost times flow, summed over lanes) plus the fixed cost of every opened fulfillment center. The two cost terms live on different concepts (`Lane` and `Site`), so they are combined into one per-entity sum that the objective minimizes.
 
-problem.solve_for(
-    Site.x_open,
-    type="bin",
-    name=["open", Site.name],
-    where=[Site.fixed_cost > 0],
-)
+For the exact PyRel formulation, see `network_flow_planning.py`; `runbook.md` reproduces the model step by step with the RAI skills.
+
+```text
+CSV inputs → load Site / Lane / Demand → flow + open decisions → role-based constraints → minimize transport + fixed cost → solve → export
 ```
-
-The `where=[Site.fixed_cost > 0]` clause restricts the binary `x_open` to fulfillment centers only — warehouses, hubs, and customers don't get open-decision variables.
-
-### 2. Constraints
-
-Each site type contributes the constraint that matches its role.
-
-**Source supply** at warehouses:
-
-```python
-out_lane = Lane.ref()
-problem.satisfy(model.where(
-    Site.inventory > 0,
-).require(
-    sum(out_lane.x_flow).where(out_lane.source == Site).per(Site) <= Site.inventory
-))
-```
-
-**Flow conservation** at hubs and fulfillment centers (one per type):
-
-```python
-in_lane = Lane.ref()
-out_lane = Lane.ref()
-problem.satisfy(model.where(
-    Site.type == "HUB",
-).require(
-    sum(in_lane.x_flow).where(in_lane.dest == Site).per(Site)
-    == sum(out_lane.x_flow).where(out_lane.source == Site).per(Site)
-))
-```
-
-**FC capacity gated by open decision**:
-
-```python
-in_lane = Lane.ref()
-problem.satisfy(model.where(
-    Site.fixed_cost > 0,
-).require(
-    sum(in_lane.x_flow).where(in_lane.dest == Site).per(Site)
-    <= Site.capacity * Site.x_open
-))
-```
-
-**Demand satisfaction** at customers:
-
-```python
-in_lane = Lane.ref()
-demand_ref = Demand.ref()
-problem.satisfy(model.where(
-    Site.type == "CUSTOMER",
-).require(
-    sum(in_lane.x_flow).where(in_lane.dest == Site).per(Site)
-    >= sum(demand_ref.quantity).where(demand_ref.site == Site).per(Site)
-))
-```
-
-### 3. Objective
-
-The combined objective uses `model.union` so PyRel can sum two per-entity expressions of different concepts in one minimize call:
-
-```python
-problem.minimize(sum(model.union(
-    Lane.cost_per_unit * Lane.x_flow,
-    Site.fixed_cost * Site.x_open,
-)))
-```
-
-Each branch is a per-entity expression (per `Lane` and per `Site`), aggregated by the outer `sum`.
 
 ## Customize this template
 
@@ -314,6 +207,13 @@ Replace the three CSVs in `data/` with your own:
 - **Multiple SKUs.** Add an SKU concept and key flows by `(Lane, SKU)`. Replace the simple `Lane.x_flow` with `Lane.x_flow(SKU, ...)` and update aggregations to be `.per(Lane, SKU)`.
 - **Service-level constraints.** Replace the hard demand-satisfaction constraint with a soft one and a slack variable, and add a service-level threshold.
 - **Multi-period planning.** Index `Lane.x_flow` by a time period concept and add inventory carry-over constraints between periods.
+
+### Scale up / productionize
+
+- For a live network, replace the three `data/` CSVs with `model.data(snowflake_table)` calls so the model reads sites, lanes, and demand directly from your warehouse tables.
+- The bundled data is 12 sites and 17 lanes; the MILP scales to whatever fits the prescriptive engine's solve budget. If solves grow slow, tighten lane capacities to prune the flow space or size up the engine.
+- The template solves with HiGHS by default (`problem.solve("highs")`); swap to `"gurobi"` for larger integer programs if a Gurobi-enabled engine is available.
+- Pin `relationalai` (see Prerequisites) so runs stay reproducible across environments.
 
 ## Troubleshooting
 
@@ -340,6 +240,26 @@ Replace the three CSVs in `data/` with your own:
 
   PyRel disallows `+` between aggregated terms of different concepts. `model.union` lets the outer `sum` aggregate per-Lane and per-Site cost terms in a single objective. Each branch must be a per-entity expression, not a fully-aggregated scalar.
 </details>
+
+## Learn more
+
+### Core concepts
+
+- [PyRel v1 query language](https://docs.relational.ai/) — `model.where(...)`, `sum(...).per(...)`, and `model.union` for multi-concept objectives.
+- [Prescriptive reasoner](https://docs.relational.ai/) — the `Problem` API: decision variables (`solve_for`), constraints (`satisfy`), and objectives (`minimize` / `maximize`).
+
+### Language / modeling reference
+
+- [Concepts and properties](https://docs.relational.ai/) — modeling multiple roles on one concept via a typed property, as `Site.type` does here.
+- [Relationships](https://docs.relational.ai/) — directed links like `Lane.source` / `Lane.dest` and `Demand.site`.
+
+### Deeper dives
+
+- [Solver selection and diagnostics](https://docs.relational.ai/) — choosing HiGHS vs. Gurobi, reading termination status, and diagnosing infeasibility.
+
+## Support
+
+- File issues at the RelationalAI templates repository.
 
 ## Related templates
 

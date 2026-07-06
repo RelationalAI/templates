@@ -13,8 +13,6 @@ tags:
   - Multi-Objective
 ---
 
-# Hospital Staffing
-
 ## What this template is for
 
 This template uses **prescriptive reasoning (optimization)** to frame hospital nurse scheduling as a bi-objective problem with two competing objectives: minimize overtime cost versus minimize unmet patient demand. The original single-objective formulation bundled both goals into one weighted penalty sum, forcing the modeler to choose a penalty weight up front. This version unbundles them using the epsilon constraint method: it sweeps a range of caps on allowable unmet demand, and at each cap the solver minimizes overtime cost subject to that service-level constraint.
@@ -40,6 +38,7 @@ The result is a Pareto frontier that reveals exactly how much overtime cost each
 ## What's included
 
 - `hospital_staffing.py` -- Main script with model definition, epsilon constraint sweep, and Pareto analysis
+- **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - `data/nurses.csv` -- Nurse roster with skill levels, hourly costs, and overtime parameters
 - `data/shifts.csv` -- Shift definitions with timing, staffing requirements, and patient demand
 - `data/availability.csv` -- Nurse-to-shift availability matrix
@@ -119,10 +118,10 @@ The result is a Pareto frontier that reveals exactly how much overtime cost each
      4          eps_3           65.0 $         0.00
      5          eps_4           43.3 $         0.00
      6          eps_5           21.7 $       336.00
-     7   best_service            0.0 $      1116.00
+     7   best_service            0.0 $      1728.00
 
    Overtime Cost
-   $ 1,116.00 |7                                                 |
+   $ 1,728.00 |7                                                 |
               |                                                  |
               |                                                  |
               |                                                  |
@@ -141,7 +140,7 @@ The result is a Pareto frontier that reveals exactly how much overtime cost each
    Marginal analysis (cost of reducing unmet demand by 1 patient):
        cheapest -> eps_4         : $0.00/patient (free capacity available)
           eps_4 -> eps_5         : $15.51/patient
-          eps_5 -> best_service  : $36.00/patient
+          eps_5 -> best_service  : $64.25/patient
 
      Knee: Point 5 (eps_4) -- marginal cost jumps 15.5x beyond this point
      Recommendation: Target 43 unmet patients at $0.00 overtime cost --
@@ -158,8 +157,8 @@ The result is a Pareto frontier that reveals exactly how much overtime cost each
 
    The Pareto frontier reveals a sharp knee at point 5: the first 67% of
    demand reduction (130 to 43 patients) is free, but reducing the last 43
-   patients costs $1,116 in overtime -- the marginal cost jumps from $0 to
-   $15.51 then $36.00 per patient.
+   patients costs $1,728 in overtime -- the marginal cost jumps from $0 to
+   $15.51 then $64.25 per patient.
 
 ## Template structure
 ```text
@@ -173,136 +172,63 @@ The result is a Pareto frontier that reveals exactly how much overtime cost each
     └── availability.csv
 ```
 
+**Start here**: run `python hospital_staffing.py` for the full anchor-solve, epsilon-sweep, and Pareto analysis end to end, or follow `runbook.md` to reproduce it step by step with the RAI skills.
+
+## Sample data
+
+The bundled data is small and illustrative — a single hospital day with a handful of nurses and shifts, sized so the whole epsilon sweep solves in seconds. It is designed to make the cost-service tradeoff visible, not to match a specific hospital's roster.
+
+- **`nurses.csv`** — the nurse roster: skill level, hourly cost, regular-hour limit, and an overtime pay multiplier per nurse.
+- **`shifts.csv`** — shift definitions: start hour, duration, minimum nurses, minimum skill, patient demand, and the patients each nurse-hour can serve.
+- **`availability.csv`** — a nurse-to-shift availability matrix; `available = 1` means the nurse can work that shift.
+
+## Model overview
+
+The model is a small optimization ontology: two entities (nurses, shifts) linked by an availability matrix, with a per-availability assignment decision the solver fills in.
+
+- **Key entities**: `Nurse` — a nurse with a skill level and cost parameters (the solver adds overtime hours); `Shift` — a shift with coverage requirements and patient demand (the solver adds patients-served and unmet-demand quantities); `Availability` — a nurse's eligibility for a shift; `Assignment` — the decision to staff a nurse on a shift, the MILP's decision space.
+- **Primary identifiers**: `Nurse.id` and `Shift.id` (integers); `Availability` is keyed by the `(nurse_id, shift_id)` pair; `Assignment` is keyed by its `Availability`.
+- **Important invariants**: overtime hours, patients served, and unmet demand are non-negative continuous quantities; each nurse works one to two shifts; every shift meets its minimum-nurse and minimum-skill floor; assignment decisions are binary.
+
+For the full concept and property definitions, see `hospital_staffing.py`; `runbook.md` builds them step by step with the RAI skills.
+
 ## How it works
 
-This section walks through the highlights in `hospital_staffing.py`.
+**Define concepts and load CSV data.** The model defines three core concepts: nurses with skill levels and cost parameters, shifts with coverage requirements and patient demand, and an availability relationship linking nurses to shifts. A per-availability `Assignment` carries the binary staffing decision the solver fills in.
 
-### Define concepts and load CSV data
+**Define decision variables, constraints, and objective.** A `solve_staffing` helper encapsulates the full formulation. It registers four variable types -- the binary assignment, each nurse's overtime hours, and each shift's patients-served and unmet-demand quantities -- and applies all constraints: availability, minimum staffing, skill coverage, overtime tracking, and patient-demand accounting (each nurse works one to two shifts; every shift meets its minimum-nurse floor). The original single-objective template bundled overtime cost and unmet demand into one weighted penalty sum, forcing the modeler to pick a penalty weight up front. The bi-objective version splits them: the primary objective minimizes overtime cost, while unmet demand is bounded by an epsilon constraint that caps total unmet demand across all shifts. This eliminates the arbitrary penalty weight and reveals the true tradeoff.
 
-The model defines three core concepts: nurses with skill levels and cost parameters, shifts with coverage requirements and patient demand, and an availability relationship linking nurses to shifts.
+**Solve anchor points and run the epsilon sweep.** Two anchor solves establish the feasible unmet-demand range: anchor 1 minimizes overtime with no demand constraint (the cheapest schedule, which may leave patients unserved), and anchor 2 minimizes unmet demand (the best achievable service level). The epsilon sweep then traces interior points between the anchors, each solve minimizing overtime cost subject to a progressively tighter cap on unmet demand.
 
-```python
-Nurse = Concept("Nurse", identify_by={"id": Integer})
-Nurse.name = Property(f"{Nurse} has {String:name}")
-Nurse.skill_level = Property(f"{Nurse} has {Integer:skill_level}")
-Nurse.hourly_cost = Property(f"{Nurse} has {Float:hourly_cost}")
+**Pareto analysis output.** The script prints the efficient frontier showing how overtime cost rises as the unmet-demand cap tightens. Marginal analysis computes the cost of reducing unmet demand by one patient, and a knee detector flags the point where that marginal cost jumps sharply -- recommending the best cost-service balance.
 
-Shift = Concept("Shift", identify_by={"id": Integer})
-Shift.min_nurses = Property(f"{Shift} has {Integer:min_nurses}")
-Shift.min_skill = Property(f"{Shift} has {Integer:min_skill}")
-Shift.patient_demand = Property(f"{Shift} has {Integer:patient_demand}")
-```
-
-### Define decision variables, constraints, and objective
-
-The `solve_staffing` helper encapsulates the full formulation. It registers four variable types and applies all constraints, then switches between objectives and an optional epsilon bound on unmet demand.
-
-The original single-objective template bundled overtime cost and unmet demand into one weighted penalty sum (`problem.minimize(overtime_cost + PENALTY * sum(Shift.x_unmet_demand))`). The bi-objective version splits them: the primary objective minimizes overtime cost, while unmet demand is bounded by an epsilon constraint. This eliminates the arbitrary penalty weight and reveals the true tradeoff.
-
-```python
-def solve_staffing(objective="min_overtime", eps_unmet=None):
-    problem = Problem(model, Float)
-
-    problem.solve_for(Assignment.x_assigned, type="bin", populate=False,
-                name=["assigned", Assignment.availability.nurse.name,
-                      Assignment.availability.shift.name])
-    problem.solve_for(Nurse.x_overtime_hours, type="cont", populate=False,
-                name=["ot", Nurse.name], lower=0)
-    problem.solve_for(Shift.x_patients_served, type="cont", populate=False,
-                name=["pt", Shift.name], lower=0)
-    problem.solve_for(Shift.x_unmet_demand, type="cont", populate=False,
-                name=["ud", Shift.name], lower=0)
-```
-
-Constraints enforce availability, minimum staffing, skill coverage, overtime tracking, and patient demand accounting.
-
-```python
-    # Each nurse works 1-2 shifts
-    nurse_shift_count = sum(AssignmentRef.x_assigned).where(
-        AssignmentRef.availability.nurse == Nurse).per(Nurse)
-    problem.satisfy(model.require(nurse_shift_count >= 1))
-    problem.satisfy(model.require(nurse_shift_count <= 2))
-
-    # Minimum nurses per shift with skill requirements
-    shift_staff_count = sum(AssignmentRef.x_assigned).where(
-        AssignmentRef.availability.shift == Shift).per(Shift)
-    problem.satisfy(model.require(shift_staff_count >= Shift.min_nurses))
-```
-
-When `eps_unmet` is provided, a constraint caps total unmet demand across all shifts.
-
-```python
-    if eps_unmet is not None:
-        problem.satisfy(model.require(sum(Shift.x_unmet_demand) <= eps_unmet))
-```
-
-The objective switches between minimizing overtime cost (primary) and minimizing unmet demand (used for anchor solve 2).
-
-```python
-    overtime_cost = sum(Nurse.x_overtime_hours * Nurse.hourly_cost * Nurse.overtime_multiplier)
-
-    if objective == "min_overtime":
-        problem.minimize(overtime_cost)
-    elif objective == "min_unmet":
-        problem.minimize(sum(Shift.x_unmet_demand))
-
-    problem.solve("highs", time_limit_sec=60)
-```
-
-### Solve anchor points and run the epsilon sweep
-
-Two anchor solves establish the feasible unmet demand range. Anchor 1 minimizes overtime with no demand constraint (finding the cheapest schedule, which may leave patients unserved). Anchor 2 minimizes unmet demand (finding the best achievable service level).
-
-```python
-result1 = solve_staffing("min_overtime", eps_unmet=None)
-result2 = solve_staffing("min_unmet", eps_unmet=None)
-```
-
-The epsilon sweep then traces interior points between the anchors. Each solve minimizes overtime cost subject to a progressively tighter cap on unmet demand.
-
-```python
-n_interior = 5
-epsilon_values = [
-    unmet_max - i * (unmet_max - unmet_min) / (n_interior + 1)
-    for i in range(1, n_interior + 1)
-]
-
-for i, eps in enumerate(epsilon_values):
-    result = solve_staffing("min_overtime", eps_unmet=eps)
-```
-
-### Pareto analysis output
-
-The script prints the efficient frontier showing how overtime cost increases as the unmet demand cap tightens. Marginal analysis computes the cost of reducing unmet demand by one patient, and a knee detector identifies the point where the marginal cost jumps sharply -- recommending the best cost-service balance.
-
-```python
-print(f"{'#':>3} {'Label':>14} {'Unmet Demand':>14} {'Overtime Cost':>14}")
-for j, pt in enumerate(pareto):
-    print(f"{j+1:>3} {pt['label']:>14} {pt['unmet_demand']:>14.1f} ${pt['overtime_cost']:>13.2f}")
-
-# Marginal analysis (cost of reducing unmet demand by 1 patient)
-for j in range(len(pareto) - 1):
-    d_cost = pareto[j+1]['overtime_cost'] - pareto[j]['overtime_cost']
-    d_unmet = pareto[j]['unmet_demand'] - pareto[j+1]['unmet_demand']
-    if abs(d_unmet) > 1e-6:
-        rate = d_cost / d_unmet
-        # ...
-
-# Knee detection
-print(f"\n  Knee: Point {knee_idx + 1} ({pareto[knee_idx]['label']}) "
-      f"— marginal cost jumps {max_jump:.1f}x beyond this point")
-print(f"  Recommendation: Target {pareto[knee_idx]['unmet_demand']:.0f} unmet patients "
-      f"at ${pareto[knee_idx]['overtime_cost']:.2f} overtime cost — "
-      f"further service improvement costs significantly more per patient.")
-```
+See `hospital_staffing.py` for the implementation, and `runbook.md` for the skill-driven reproduction.
 
 ## Customize this template
 
-- **Add more nurses or shifts** by extending the CSV files with additional rows.
-- **Adjust frontier resolution**: Increase `n_interior` for a finer-grained Pareto frontier.
-- **Add shift preferences** by introducing a preference weight per nurse-shift pair and including it in the objective.
-- **Model consecutive shift restrictions** by adding constraints that prevent nurses from working back-to-back shifts without rest.
-- **Introduce part-time nurses** with different regular hour limits and availability patterns.
+Focus on the first changes most users will make.
+
+### Use your own data
+
+- Replace the CSVs in `data/` with your own roster, shifts, and availability; keep the column names listed in *Sample data* above.
+- Ensure `availability.csv` only references valid nurse and shift IDs, and that available nurses provide enough coverage to meet each shift's `min_nurses` and `min_skill` requirements.
+- Add more nurses or shifts simply by appending rows to the CSVs.
+
+### Tune parameters
+
+- **Frontier resolution** — increase `n_interior` for a finer-grained Pareto frontier (more interior epsilon points between the two anchors).
+- **Solve budget** — `time_limit_sec` on `problem.solve("highs", ...)` caps each solve; raise it if larger rosters time out.
+
+### Extend the model
+
+- **Add shift preferences** by introducing a preference weight per nurse-shift pair and folding it into the objective.
+- **Model consecutive-shift restrictions** by adding constraints that prevent nurses from working back-to-back shifts without rest.
+- **Introduce part-time nurses** with different regular-hour limits and availability patterns.
+
+### Scale up / productionize
+
+- Swap the `read_csv(...)` loads for `model.data(snowflake_table)` calls to run against roster and demand tables maintained in Snowflake.
+- Pin `relationalai` in `pyproject.toml` for reproducible solves, and schedule the run to refresh the frontier as demand forecasts update.
 
 ## Troubleshooting
 
@@ -329,3 +255,22 @@ Run `rai init` to configure your Snowflake connection. Verify that the RAI Nativ
 
 Ensure you activated the virtual environment and ran `python -m pip install .` to install all dependencies listed in `pyproject.toml`.
 </details>
+
+## Learn more
+
+### Core concepts
+
+- [Prescriptive reasoning](https://docs.relational.ai/) — the `Problem` API, decision variables, constraints, and objectives.
+- [PyRel v1 modeling](https://docs.relational.ai/) — concepts, properties, and loading CSV data into relations.
+
+### Modeling reference
+
+- [Multi-objective optimization](https://docs.relational.ai/) — trading off competing objectives, including epsilon-constraint sweeps.
+
+### Deeper dives
+
+- [Sensitivity and marginal analysis](https://docs.relational.ai/) — reading shadow prices and marginal costs, as the Pareto knee detection does here.
+
+## Support
+
+- File issues at the RelationalAI templates repository.

@@ -1,6 +1,6 @@
 ---
 title: "Telco Network Recovery"
-description: "Tower-upgrade planning on a shared telco ontology: an equipment-failure graph neural network (GNN) over a heterogeneous graph (with manufacturer advisories), declarative critical-tower rules, and customer-impact analysis (revenue x churn, with PageRank)."
+description: "Tower-upgrade planning on a shared telco ontology: an equipment-failure graph neural network (GNN) over a heterogeneous graph (with manufacturer advisories), declarative critical-tower rules, and customer-impact analysis (revenue times churn, with PageRank)."
 featured: false
 experience_level: advanced
 industry: "Technology & Telecom"
@@ -45,7 +45,8 @@ Built using **predictive reasoning** (GNN on a heterogeneous graph), **rules-bas
 ## What's included
 
 - **Model**: a 5-stage pipeline (predictive, then rules, then graph, then paths, then prescriptive) on a single shared ontology — 8 source-data concepts wired to the bundled CSVs, plus the enrichments each stage writes back.
-- **Runner**: `telco_network_recovery.py` — a single Python script with four module-scope stages, runs end-to-end against a Snowflake-connected RAI account.
+- **Runner**: `telco_network_recovery.py` — a single Python script with five module-scope stages, runs end-to-end against a Snowflake-connected RAI account.
+- **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - **Sample data**: 250 cell towers, 1,500 equipment items, 8 manufacturer advisories on 7 MODELs, 1,200 subscribers, 6,000 call records, 750 upgrade options. See *Sample data* below.
 - **Outputs**: per-stage stdout diagnostics plus an ontology-resident `RestorePlan` singleton holding cost, capacity, install-weeks, tier mix, towers covered, and binding constraint.
 
@@ -168,7 +169,7 @@ telco_network_recovery/
   pyproject.toml                  # dependencies
 ```
 
-**Start here**: run `python telco_network_recovery.py` for the full five-stage chain end to end, or follow `runbook.md` to rebuild it step by step.
+**Start here**: run `python telco_network_recovery.py` for the full five-stage chain end to end, or follow `runbook.md` to reproduce it step by step with the RAI skills.
 
 ## Sample data
 
@@ -206,83 +207,7 @@ One shared ontology threads all five stages. Each stage reads concepts and prope
 - **Primary identifiers**: string ids on the base entities (e.g. `TOWER_ID`, `EQUIPMENT_ID`, `SUB_ID`); composite key on `TowerUpgradeOption` (`tower_id` + `tier`); MODEL string on `ModelAdvisory`.
 - **Important invariants**: `severity`, `churn_risk_score`, and `health_score` are fractions in `[0, 1]`; `capacity_gbps` and `cost` are non-negative; the GNN's `at_risk` label is `1` if `STATUS` is `FAILING` or `WARNING`; Stage 5 decision variables are binary.
 
-### Concepts
-
-**`CellTower`** — a cell tower with location, status, and region. Stages 1-3 enrich it with predicted-failure, operational, and customer-impact properties.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | String | Yes | `TOWER_ID` from `data/cell_towers.csv` |
-| `name`, `tower_type`, `status`, `region` | String | No | Loaded from CSV |
-| `capacity_gbps` | Integer | No | Baseline backhaul capacity |
-| `install_date` | DateTime | No | When the tower came online |
-| `failure_intensity` | Float | No | **Stage 1** GNN sum (per-tower) |
-| `avg_packet_loss`, `avg_latency_ms`, `avg_error_rate`, `avg_health_score` | Float | No | **Stage 2** rule-stage averages |
-| `is_critical_restore` | Relationship | — | **Stage 2** three-branch flag |
-| `impact_count`, `weighted_impact`, `weighted_pagerank` | Float | No | **Stage 3** customer-impact aggregates |
-
-**`NetworkEquipment`** — an equipment install on a tower. The GNN's prediction target.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | String | Yes | `EQUIPMENT_ID` |
-| `tower_id_fk` | String | No | Explicit FK column for GNN edge construction |
-| `equipment_type`, `manufacturer`, `eqp_model`, `firmware_version`, `status` | String | No | Categorical features |
-| `at_risk` | Integer | No | Binary label (1 if `STATUS in {FAILING, WARNING}`) |
-| `install_date` | DateTime | No | When installed |
-
-**`Subscriber`** — a customer account that places calls. Stage 3 reads `customer_value` and `status` to weight the per-tower aggregation.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | String | Yes | `SUB_ID` |
-| `subscriber_type`, `segment` | String | No | `CONSUMER`/`ENTERPRISE`; segment tier |
-| `status` | `SubscriberStatus` enum | No | `ACTIVE`/`SUSPENDED` — a `model.Enum`, mapped from the CSV strings by member name |
-| `lifetime_value` | Float | No | `LIFETIME_VALUE_USD` |
-| `churn_risk_score` | Float | No | `[0, 1]` — probability of churn |
-| `customer_value` | Float | No | Precomputed: `lifetime_value x (1 + churn_risk_score)` — the per-subscriber weight Stage 3 sums into `weighted_impact` |
-| `influence_score` | Float | No | **Stage 3** PageRank on the call graph |
-| `top_call_path_influence` | Float | No | **Stage 4** (PREVIEW) most-influential call path's summed PageRank, for the seed hub |
-
-**`TowerUpgradeOption`** — a (tower, tier) candidate upgrade. The MIP's decision space.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `tower_id`, `tier` | String | Yes | Composite key |
-| `capacity_increase_gbps` | Integer | No | Capacity restored if selected |
-| `cost` | Float | No | USD |
-| `install_weeks` | Integer | No | Crew weeks required |
-| `for_tower` | Relationship | — | Link back to `CellTower` |
-| `selected` | Float | No | **Stage 5** binary decision (0/1) |
-| `is_selected_upgrade` | Relationship | — | **Stage 5** narrowed view of `selected == 1` |
-
-**`ModelAdvisory`** — a manufacturer advisory on an equipment MODEL.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `model` | String | Yes | Identifies the affected MODEL |
-| `advisory_type` | String | No | `RECALL` / `DEFECT_BATCH` / `EOL` / `FIRMWARE_BUG` / `SECURITY_PATCH` |
-| `severity` | Float | No | `[0, 1]` — manufacturer-stated severity |
-| `issued_date` | DateTime | No | When issued |
-
-`EquipmentHealth`, `NetworkPerformance`, and `CallDetailRecord` are also Concepts (snapshots / metric rows / call edges); they serve as join sources for the aggregations and edges Stages 1-3 build. Their properties mirror their CSV columns.
-
-**`RestorePlan`** — singleton holding the plan headline.
-
-| Property | Type | Notes |
-|---|---|---|
-| `total_cost`, `capacity_restored_gbps`, `total_install_weeks` | Float / Integer | Headline metrics |
-| `gold_count`, `silver_count`, `bronze_count`, `towers_covered` | Integer | Tier mix and reach |
-| `binding_constraint` | String | `"budget"`, `"install_weeks"`, or `"none"` |
-
-### Relationships
-
-- `NetworkEquipment.tower_id_fk == CellTower.id` — equipment install on a tower (also a Stage 1 GNN edge).
-- `EquipmentHealth.equipment_id_fk == NetworkEquipment.id` — per-equipment health snapshot (GNN edge).
-- `ModelAdvisory.model == NetworkEquipment.eqp_model` — advisory links to every equipment item on the affected MODEL (GNN edge — propagates advisory severity across fleet siblings).
-- `CallDetailRecord.caller` and `.callee` -> `Subscriber` — directed edges of the Stage 3 PageRank call graph.
-- `CallDetailRecord.routed_through` -> `CellTower` — links each call to the tower it routed through; the per-tower customer-impact aggregation reads this.
-- `TowerUpgradeOption.for_tower` -> `CellTower` — Stage 5 scopes the decision space to options on critical-restore towers.
+For the full concept and property definitions, see `telco_network_recovery.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
@@ -294,23 +219,11 @@ One shared ontology threads all five stages. Each stage reads concepts and prope
 
 **Stage 4 — Paths (PREVIEW).** Where Stage 3 scores a *subscriber*, the paths capability scores the *route*: from the top-PageRank hub it enumerates the simple call paths (up to three hops) over an arity-3 caller-via-tower-callee edge and ranks them by summed PageRank influence. On the bundled data this is 198 simple call paths recovering 54 distinct routing towers; the hub's top route is persisted as `Subscriber.top_call_path_influence`.
 
-**Stage 5 — Prescriptive (MIP).** Binary `TowerUpgradeOption.selected`, scoped to critical-restore towers, with three constraints (at most one tier per tower, total cost at most $5M, total install-weeks at most 200) and a three-factor objective:
-
-```python
-problem.maximize(
-    aggs.sum(
-        TowerUpgradeOption.selected
-        * TowerUpgradeOption.capacity_increase_gbps
-        * CellTower.weighted_impact      # Stage 3: revenue × churn
-        * CellTower.failure_intensity    # Stage 1: GNN-predicted
-    ).where(
-        TowerUpgradeOption.for_tower(CellTower),
-        CellTower.is_critical_restore(),
-    )
-)
-```
+**Stage 5 — Prescriptive (MIP).** Binary `TowerUpgradeOption.selected`, scoped to critical-restore towers, with three constraints (at most one tier per tower, total cost at most $5M, total install-weeks at most 200). The objective maximizes restored capacity weighted by two upstream signals per tower — Stage 3's `weighted_impact` (revenue × churn) and Stage 1's `failure_intensity` (GNN-predicted risk) — so capacity spent on high-value, high-risk towers counts most.
 
 After the solve, a `RestorePlan` singleton is populated and each selected option is tagged `is_selected_upgrade`. Every selected tower carries a `rationale` tag in the printed plan noting which upstream signal(s) drove its inclusion (`operational` / `advisory/predicted` / `high-value`).
+
+For the implementation, see `telco_network_recovery.py`; to reproduce it step by step with the RAI skills, follow `runbook.md`.
 
 ## Customize this template
 

@@ -1,6 +1,6 @@
 ---
 title: "Cell Tower Coverage"
-description: "Select candidate cell tower sites and assign demand zones to maximize covered population under budget, tower-count, and capacity limits."
+description: "Choose which candidate cell tower sites to build and assign demand zones to them, maximizing covered population under budget, tower-count, and capacity limits."
 featured: false
 experience_level: beginner
 industry: "Technology & Telecom"
@@ -16,117 +16,87 @@ tags:
   - HiGHS
 ---
 
-# Cell Tower Coverage
-
 ## What this template is for
 
-Telecommunications and infrastructure teams often need to decide where to build the next set of wireless sites. Candidate locations differ in cost and serving capacity, and each site can cover only a subset of demand zones based on distance, terrain, signal quality, or planning rules. This template chooses tower sites and assigns covered demand zones to selected towers, maximizing covered population while respecting a fixed build budget, a maximum number of new towers, and tower capacity limits.
+Telecommunications and infrastructure teams routinely have to decide where to build the next set of wireless sites. Candidate locations differ in build cost and serving capacity, and each site can cover only a subset of demand zones based on distance, terrain, signal quality, or planning rules. Picking the cheapest tower or the one covering the single largest zone rarely gives the best plan — the selected sites have to work together as a portfolio, and the demand assigned to a tower cannot exceed its capacity. This template chooses tower sites and assigns each covered demand zone to a serving tower so that covered population is as large as possible within a fixed build budget and a cap on the number of new towers.
 
-The model uses RelationalAI's **prescriptive** reasoner to solve a maximum-coverage mixed-integer program with single assignment. Binary variables choose which tower sites to build, mark which demand zones are covered, and assign each covered demand zone to exactly one selected tower that can serve it.
-
-## Why this problem matters
-
-Coverage planning is a common capital allocation problem for wireless network expansion, public safety communications, rural broadband programs, and temporary network deployments. The challenge is that every candidate tower covers a different overlapping set of zones and has finite serving capacity. The best plan is not always the cheapest tower or the tower covering the largest single zone; the selected sites need to work together as a portfolio, and assigned demand cannot overload any selected tower.
-
-### Key design patterns demonstrated
-
-- **Maximum coverage** -- maximize covered population under a limited budget.
-- **Linked binary decisions** -- a zone can count as covered only if it is assigned to a selected tower that can serve it.
-- **Single assignment** -- every covered demand zone is assigned to exactly one serving tower.
-- **Capacity constraints** -- each selected tower can serve assigned population only up to its capacity.
-- **Budget-constrained selection** -- tower build costs must stay under a capital limit.
-- **Cardinality constraint** -- the plan can select at most a fixed number of towers.
-- **Many-to-many coverage relationships** -- tower-zone coverage pairs are represented explicitly in the ontology.
-- **Post-solve coverage reporting** -- report selected sites, tower utilization, assigned zones, uncovered zones, and total coverage rate.
+**The model uses RelationalAI's prescriptive reasoner to solve a maximum-coverage mixed-integer program in which binary variables select tower sites, mark demand zones as covered, and assign each covered zone to exactly one selected tower that can serve it.** The result is a defensible capital plan: which sites to build, which zones they serve, how loaded each tower is, and which population remains uncovered.
 
 ## Who this is for
 
-- Network planners evaluating candidate tower sites
-- Infrastructure teams prioritizing capital projects
-- Public-sector analysts studying emergency communications coverage
-- Data scientists learning set-covering and maximum-coverage optimization
-- Engineers modeling binary selection decisions with RelationalAI
+- Network planners evaluating candidate tower sites and infrastructure teams prioritizing capital projects.
+- Public-sector analysts studying emergency-communications or rural-broadband coverage.
+- Data scientists and engineers learning set-covering and maximum-coverage optimization with RelationalAI.
+- **Assumed knowledge**: comfortable reading Python; the optimization terms (decision variables, constraints, objective) are explained as they come up. As a beginner-level single-reasoner template, no prior RelationalAI experience is required to run it.
 
 ## What you'll build
 
-- A semantic model for candidate tower sites, demand zones, and feasible coverage pairs
-- A mixed-integer optimization model with tower-selection, zone-coverage, and zone-assignment variables
-- A budget constraint and a maximum-tower constraint
-- A coverage-linking constraint that assigns each covered zone to exactly one selected tower
-- A tower-capacity constraint that prevents overloaded serving plans
-- A covered-population objective
-- A coverage summary and CSV output for downstream mapping or reporting
+- A funded tower-build plan that maximizes covered population within a fixed capital budget and a cap on new towers, produced by **prescriptive reasoning** (a mixed-integer program).
+- A semantic model of candidate tower sites, demand zones, and feasible tower-zone coverage pairs, expressed as RelationalAI concepts and relationships.
+- A coverage-linking rule that counts a zone as covered only when it is assigned to exactly one selected, serving tower, plus a capacity rule that prevents any tower from being overloaded.
+- A coverage report — selected sites with utilization, assigned zones, uncovered zones, and total coverage rate — written to `data/coverage_solution.csv` for downstream mapping or reporting.
 
 ## What's included
 
-- `cell_tower_coverage.py` -- Main script with the semantic model, optimization model, solve, and reporting
-- `data/tower_sites.csv` -- Candidate tower sites with build costs, capacities, and site metadata
-- `data/demand_zones.csv` -- Demand zones with region and population
-- `data/coverage_pairs.csv` -- Feasible tower-zone service pairs with distance and signal score
-- `pyproject.toml` -- Python package configuration with dependencies
-
-## Template structure
-
-```text
-.
-├─ README.md                       # this file
-├─ pyproject.toml                  # dependencies
-├─ cell_tower_coverage.py          # main entrypoint: model, solve, report
-└─ data/
-   ├─ tower_sites.csv              # candidate build sites
-   ├─ demand_zones.csv             # population demand zones
-   ├─ coverage_pairs.csv           # feasible tower-zone coverage pairs
-   └─ coverage_solution.csv        # written by the script after solving
-```
-
-**Start here**: run `python cell_tower_coverage.py`.
+- **Model**: `cell_tower_coverage.py` builds the semantic model (three concepts, two coverage relationships), the mixed-integer optimization problem (three binary variable families, four constraints, one objective), the solve, and the reporting.
+- **Runner**: `cell_tower_coverage.py` — a single Python script that runs end-to-end against a Snowflake-connected RAI account.
+- **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
+- **Sample data**: 6 candidate tower sites, 10 demand zones, and 19 feasible tower-zone coverage pairs. See *Sample data* below.
+- **Outputs**: stdout tables (selected sites, assigned zones, uncovered zones, coverage summary) plus `data/coverage_solution.csv`.
 
 ## Prerequisites
 
 ### Access
 
-- A Snowflake account that has the RAI Native App installed.
-- A Snowflake user with permissions to access the RAI Native App.
+- A Snowflake account with the RelationalAI Native App installed.
+- A Snowflake user with permissions to access the RelationalAI Native App.
 
 ### Tools
 
-- Python >= 3.10
-- RelationalAI Python SDK (`relationalai`) == 1.0.14
+- Python >= 3.10.
+- RelationalAI Python SDK (`relationalai == 1.0.14`).
 
 ## Quickstart
 
-1. Download ZIP:
+1. Download the template and extract it:
+
    ```bash
    curl -O https://docs.relational.ai/templates/zips/v1/cell_tower_coverage.zip
    unzip cell_tower_coverage.zip
    cd cell_tower_coverage
    ```
+
    > [!TIP]
    > You can also download the template ZIP using the "Download ZIP" button at the top of this page.
 
-2. Create venv:
+2. Create a virtual environment and activate it:
+
    ```bash
    python -m venv .venv
    source .venv/bin/activate
    python -m pip install --upgrade pip
    ```
 
-3. Install:
+3. Install dependencies:
+
    ```bash
    python -m pip install .
    ```
 
 4. Configure:
+
    ```bash
    rai init
    ```
 
-5. Run:
+5. Run the template end-to-end:
+
    ```bash
    python cell_tower_coverage.py
    ```
 
-6. Expected output:
+6. Expected output (a few lines confirm a successful run):
+
    ```text
    ======================================================================
    CELL TOWER COVERAGE
@@ -140,108 +110,117 @@ Coverage planning is a common capital allocation problem for wireless network ex
    Status: OPTIMAL
    Objective: covered population = ...
 
-   === Selected Tower Sites ===
-   site_id                    name site_type  region build_cost capacity assigned_population utilization
-      ...                     ...       ...     ...        ...
-
-   === Assigned Demand Zones ===
-   zone_id                 name  region population              assigned_site
-      ...                  ...     ...        ...                         ...
-
-   === Uncovered Demand Zones ===
-   zone_id                 name  region population
-      ...                  ...     ...        ...
-
    === Coverage Summary ===
    Selected build cost: ...
    Covered population: ...
    Coverage rate: ...
-   Uncovered population: ...
 
    Wrote coverage solution to: data/coverage_solution.csv
    ```
 
-## How It Works
+## Template structure
 
-### 1. Load the planning data
+```text
+cell_tower_coverage/
+  cell_tower_coverage.py          # Main script: model, solve, report
+  data/
+    tower_sites.csv               # 6 candidate build sites
+    demand_zones.csv              # 10 population demand zones
+    coverage_pairs.csv            # 19 feasible tower-zone coverage pairs
+    coverage_solution.csv         # written by the script after solving
+  README.md                       # this file
+  runbook.md                      # paste-testable walkthrough (RAI skills)
+  pyproject.toml                  # dependencies
+```
 
-The template loads a compact synthetic dataset:
+**Start here**: run `python cell_tower_coverage.py` for the full model, solve, and report end to end, or follow `runbook.md` to reproduce it step by step with the RAI skills.
 
-- `tower_sites.csv`: candidate tower sites, regions, site types, build costs, and serving capacities
-- `demand_zones.csv`: demand zones with population counts
-- `coverage_pairs.csv`: feasible service pairs from tower sites to demand zones
+## Sample data
 
-The data is synthetic but shaped like a real network expansion screen. The coverage pairs could come from a radio-frequency planning tool, a distance threshold, a terrain model, or engineering judgment.
+The bundled data is synthetic and illustrative — a compact network-expansion screen shaped like a real one, not a specific operator's network. The coverage pairs could come from a radio-frequency planning tool, a distance threshold, a terrain model, or engineering judgment.
+
+- **`tower_sites.csv`** (6 rows) — candidate tower sites across five regions, with site type (macro or small cell), build cost, and serving capacity.
+- **`demand_zones.csv`** (10 rows) — demand zones with region and population count.
+- **`coverage_pairs.csv`** (19 rows) — feasible tower-zone service pairs, each with a distance and a signal score. Every demand zone appears in at least one pair, so every zone is reachable by some tower.
+- **`coverage_solution.csv`** — written after the solve; one row per demand zone with its covered flag and assigned site.
+
+## Model overview
+
+Three concepts describe the planning problem; the optimization adds one binary decision property to each.
+
+- **Key entities**: `TowerSite` — a candidate infrastructure location that may be built (site type, build cost, serving capacity); `DemandZone` — a population area that may be covered by a selected tower; `CoveragePair` — a feasible tower-zone service relationship, where only paired zones can be served and only by their paired towers.
+- **Primary identifiers**: `site_id` on `TowerSite`, `zone_id` on `DemandZone`, and a composite `site_id` + `zone_id` key on `CoveragePair`.
+- **Important invariants**: build costs, capacities, and populations are non-negative; every demand zone is reachable by at least one coverage pair (the script raises an error otherwise); the decision variables (`selected`, `covered`, `assigned`) are binary; total build cost stays at or under the budget and the number of selected towers stays at or under the cap.
+
+`CoveragePair` links each pair to its `TowerSite` and `DemandZone`, so only zones that appear as a pair can be served, and only by the towers they are paired with.
+
+For the full concept and property definitions, see `cell_tower_coverage.py`; `runbook.md` builds them step by step with the RAI skills.
+
+## How it works
+
+The pipeline runs in one script, from CSV inputs to a solved plan and an exported solution:
+
+```text
+CSV inputs -> load and validate -> concepts and coverage pairs -> decision variables -> constraints and objective -> solve (HiGHS) -> report and export
+```
+
+### 1. Load and validate the planning data
+
+The script reads the three CSVs and runs feasibility checks before building the model: each file is non-empty, the parameters are positive, coverage pairs reference known site and zone IDs, and every demand zone is reachable by at least one pair. Any violation raises a clear error rather than producing a silently wrong plan.
 
 ### 2. Define selection, coverage, and assignment variables
 
-The model has three binary decision variables:
-
-```python
-TowerSite.x_selected = model.Property(f"{TowerSite} selected if {Float:selected}")
-DemandZone.y_covered = model.Property(f"{DemandZone} covered if {Float:covered}")
-CoveragePair.z_assigned = model.Property(f"{CoveragePair} assigned if {Float:assigned}")
-```
-
-`x_selected` chooses candidate tower sites. `y_covered` records whether each demand zone is covered by the selected plan. `z_assigned` chooses the specific selected tower that serves a covered demand zone.
+The model has three families of binary decision variables. `x_selected` chooses which candidate sites to build. `y_covered` records whether each demand zone ends up covered. `z_assigned` chooses the specific selected tower that serves a covered zone; assignment variables exist only on rows of `coverage_pairs.csv`, so a zone can only be assigned to a tower that can physically cover it.
 
 ### 3. Link coverage to serving assignments
 
-A demand zone can only count as covered if it is assigned to exactly one feasible tower-zone coverage pair:
-
-```text
-sum_j assigned[i,j] = covered[i]
-```
-
-This prevents the objective from marking a zone as covered unless the physical network plan gives it a serving tower. Assignment variables exist only for rows in `coverage_pairs.csv`, so a zone can only be assigned to a tower that can physically cover it.
+A zone counts as covered only when it is assigned to exactly one feasible coverage pair. This per-zone rule prevents the objective from marking a zone as covered without a physical serving tower.
 
 ### 4. Assign zones only to selected towers
 
-Each assignment must use a selected tower:
-
-```text
-assigned[i,j] <= selected[j]
-```
+Each assignment must use a selected tower, so `assigned` cannot exceed `selected` for the pair's tower. If a tower is not selected, none of its pairs can be assigned.
 
 ### 5. Respect tower capacity
 
-Each selected tower can serve assigned population only up to its capacity:
-
-```text
-sum_i population[i] * assigned[i,j] <= capacity[j] * selected[j]
-```
-
-If a tower is not selected, the right side is zero, so no demand zone can be assigned to it.
+Each selected tower can serve assigned population only up to its capacity, summed per tower over its assigned zones. If a tower is not built, its capacity term is zero and no zone can be assigned to it.
 
 ### 6. Respect capital and rollout limits
 
-The formulation limits both total build cost and the number of tower sites selected:
-
-```text
-sum_j build_cost[j] * selected[j] <= BUILD_BUDGET
-sum_j selected[j] <= MAX_NEW_TOWERS
-```
+Two portfolio constraints bound the plan: total build cost stays at or under `BUILD_BUDGET`, and the number of selected towers stays at or under `MAX_NEW_TOWERS`.
 
 ### 7. Maximize covered population
 
-The objective rewards covering high-population zones:
+The objective rewards covering high-population zones, weighting each covered zone by its population. Because each zone has a single binary covered variable and each covered zone has exactly one assignment, the model handles overlapping tower coverage without double-counting population or overloading selected towers. After the solve, the script builds report tables (selected sites with utilization, assigned zones, uncovered zones, coverage summary) and writes `data/coverage_solution.csv`.
 
-```text
-maximize sum_i population[i] * covered[i]
-```
-
-Because every demand zone has a binary covered variable and each covered zone has exactly one assignment, the model naturally handles overlapping tower coverage without double-counting population or overloading selected towers.
+See `cell_tower_coverage.py` for the implementation and `runbook.md` for the skill-driven reproduction.
 
 ## Customize this template
 
-- **Change the rollout budget** by editing `BUILD_BUDGET` in `cell_tower_coverage.py`.
-- **Limit or expand the build plan** by changing `MAX_NEW_TOWERS`.
-- **Add more candidate tower sites** in `tower_sites.csv`.
-- **Add more demand zones** in `demand_zones.csv`.
-- **Regenerate coverage pairs** using your preferred distance, signal-strength, or engineering threshold.
-- **Adjust capacity assumptions** by editing the `capacity` column in `tower_sites.csv`.
-- **Add regional fairness** by requiring a minimum number of covered zones or covered population per region.
-- **Allow fractional assignment** by replacing binary assignment with continuous fractions if zones can split demand across multiple serving towers.
+Focus on the first changes most users will make.
+
+### Use your own data
+
+- Replace the CSVs in `data/` with your own; keep the column names listed in *Sample data* above.
+- Regenerate coverage pairs with your preferred distance, signal-strength, or engineering threshold, and make sure every demand zone appears in at least one pair (the script requires it).
+- Adjust the `capacity` column in `tower_sites.csv` to reflect real serving capacity, and the `build_cost` column to reflect real capital cost.
+
+### Tune parameters
+
+- **Build budget** — `BUILD_BUDGET` (default `650,000`) caps total capital spend.
+- **Rollout size** — `MAX_NEW_TOWERS` (default `3`) caps how many sites the plan may select.
+- **Solve budget** — `time_limit_sec` on the `problem.solve("highs", ...)` call (default `60` seconds).
+
+### Extend the model
+
+- **Add regional fairness** — require a minimum number of covered zones or a minimum covered population per region.
+- **Allow fractional assignment** — replace the binary assignment variable with a continuous fraction if a zone's demand can split across multiple serving towers.
+- **Add more candidates or zones** — grow `tower_sites.csv` and `demand_zones.csv`, then extend `coverage_pairs.csv` accordingly.
+
+### Scale up / productionize
+
+- For Snowflake-backed runs, swap the `pd.read_csv(...)` calls for `model.data(snowflake_table)` calls so inputs arrive from live tables rather than the bundled CSVs.
+- The model scales to whatever fits the prescriptive engine's solve budget; the default HiGHS solve carries a 60-second time limit that you can raise for larger networks.
+- Pin dependencies (see `pyproject.toml`) for reproducible runs.
 
 ## Troubleshooting
 
@@ -278,3 +257,21 @@ Because every demand zone has a binary covered variable and each covered zone ha
 - If you have multiple profiles, set `export RAI_PROFILE=<your_profile>`.
 
 </details>
+
+## Learn more
+
+### Core concepts
+
+- [RelationalAI documentation](https://docs.relational.ai/) — concepts, relationships, and the semantic model used throughout this template.
+
+### Reasoner reference
+
+- [Prescriptive reasoner](https://docs.relational.ai/) — the `Problem` API, decision variables, constraints, and objectives that drive the maximum-coverage program.
+
+### CLI / SDK guides
+
+- [RelationalAI setup and `rai init`](https://docs.relational.ai/) — connecting the SDK to a Snowflake-backed RAI account.
+
+## Support
+
+- File issues at the RelationalAI templates repository.

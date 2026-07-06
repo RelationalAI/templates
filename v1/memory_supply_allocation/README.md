@@ -1,6 +1,6 @@
 ---
 title: "Memory Supply Allocation"
-description: "Monthly rolling-horizon allocation of constrained memory-chip supply across customers with supplier dependencies, named foundries, and raw-material inputs: predicted supplier capability feeds the optimization, customer-customer paths surface single points of failure, and two what-if scenarios trace supplier-offline and input-shortage cascades."
+description: "Allocate limited memory-chip supply across customers month by month to maximize margin while protecting key accounts. Also surfaces which suppliers and raw materials put the plan most at risk."
 featured: false
 experience_level: intermediate
 industry: "Technology & Telecom"
@@ -44,7 +44,8 @@ This template shows how RelationalAI answers that question on a single shared mo
 ## What's included
 
 - **Model**: `memory_supply_allocation.py` — the four-reasoner chain end-to-end on one ontology
-- **Runner**: a single Python script (`python memory_supply_allocation.py`); `runbook.md` gives an analyst-facing, paste-testable walkthrough with one prompt per stage
+- **Runner**: a single Python script (`python memory_supply_allocation.py`)
+- **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills, one prompt per stage; as important a reference as the script itself.
 - **Sample data**: 13 CSVs under `data/` (customers, products, periods, demand, suppliers, capacity, inputs, dependencies, and the disruption schedule)
 - **Outputs**: per-iteration LP status and margin, plan-diffs, service levels, dependency chains, and what-if rankings — all printed and persisted back to the ontology for later querying
 
@@ -147,7 +148,7 @@ Then provision a GPU-sized predictive reasoner (`GPU_NV_S`) and reference it in 
     └── disruption_reveal.csv
 ```
 
-**Start here**: `python memory_supply_allocation.py` runs all four reasoners end-to-end.
+**Start here**: run `python memory_supply_allocation.py` for all four reasoners end to end, or follow `runbook.md` to reproduce it step by step with the RAI skills.
 
 ## Sample data
 
@@ -170,111 +171,11 @@ The sample data models a memory-chip maker allocating constrained supply across 
 
 The model is one shared ontology that all four reasoners read and write.
 
-- **Key entities**: `Customer`, `Product`, `Period`, `Supplier`, `Input`, and the junction concepts `Demand`, `SupplierProductCapacity`, `InputUsage`, and `Dependency`.
+- **Key entities**: `Customer` — a chip buyer; `Product` — a memory SKU; `Period` — a monthly bucket in the horizon; `Supplier` — a foundry/fab; `Input` — a raw material; plus junction concepts `Demand` (requested USD per customer/product/period, carrying the LP decision variable), `SupplierProductCapacity` (monthly capacity per supplier/product/period), `InputUsage` (each SKU's exposure to each input), and `Dependency` (a customer-to-customer protection edge).
 - **Primary identifiers**: single-column integer ids for the base entities; composite keys for the junctions (e.g. `Demand` is keyed by `(customer_id, product_id, period_id)`).
 - **Important invariants**: demand and capacity are non-negative USD; `base_service_floor_pct`, `elevated_floor_pct`, `declared_yield_pct`, `intensity`, and `capability_pct` are fractions in `[0, 1]`; each customer's allocation must lie between its service floor and its yield-adjusted demand.
 
-### Concepts
-
-**`Customer`** — a chip buyer. The first four properties are loaded from CSV; the rest are **rules-authored** in Stage 1 and queryable after the run.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | int | Yes | Loaded from `data/customers.csv` |
-| `name` | string | No | Human-readable name |
-| `industry` | string | No | Buyer segment (e.g. Hyperscaler, Foundry Equipment, Precision Optics) |
-| `base_service_floor_pct` | float | No | Minimum share of demand the customer must receive |
-| `max_declared_yield_pct` | float | No | Derived: max share this customer will yield to upstream |
-| `elevated_floor_pct` | float | No | Derived: lifted floor from incoming dependencies |
-| `n_incoming_dependencies` | int | No | Derived: count of protecting edges |
-| `has_elevated_floor` | bool | No | Derived: effective floor exceeds base |
-| `is_dependency_spof` | bool | No | Derived: single protecting edge → single point of failure |
-
-**`Product`** — a memory SKU.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | int | Yes | Loaded from `data/products.csv` |
-| `name` | string | No | e.g. `HBM3E` |
-| `family` | string | No | Product family (HBM / DDR / LPDDR / NAND) |
-| `unit_price_usd_per_gb` | float | No | List price |
-| `margin_pct` | float | No | Objective weight in the LP |
-
-**`Period`** — a monthly bucket in the horizon.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | int | Yes | Loaded from `data/periods.csv` |
-| `month_num` | int | No | 1…36 |
-| `label` | string | No | e.g. `2026-01` |
-
-**`Supplier`** — a foundry/fab. Base properties load from `suppliers.csv`; static features load from `supplier_features.csv`; the last two are what-if outputs persisted in Stage 4.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | int | Yes | Loaded from `data/suppliers.csv` |
-| `name` | string | No | e.g. `Orion Foundry` |
-| `type` | string | No | Foundry / Memory Fab / NAND Fab |
-| `equipment_age_months` | int | No | GNN feature |
-| `geopolitical_exposure_score` | float | No | GNN feature |
-| `region` | string | No | GNN feature (categorical) |
-| `process_node_nm` | int | No | GNN feature |
-| `workforce_size_k` | int | No | GNN feature |
-| `offline_impact_cells` | int | No | What-if output: cells affected if offline |
-| `offline_max_cap_drop_pct` | float | No | What-if output: max capacity drop |
-
-**`Demand`** — requested USD per customer/product/period; also carries the LP decision variable.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `customer_id` | int | Yes | Loaded from `data/demand.csv` |
-| `product_id` | int | Yes | Loaded from `data/demand.csv` |
-| `period_id` | int | Yes | Loaded from `data/demand.csv` |
-| `demand_usd` | float | No | Requested USD |
-| `x_alloc` | float | No | Decision variable: allocated USD |
-
-**`SupplierProductCapacity`** — nominal monthly capacity per supplier/product/period.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `supplier_id` | int | Yes | Loaded from `data/supplier_product_capacity.csv` |
-| `product_id` | int | Yes | Loaded from `data/supplier_product_capacity.csv` |
-| `period_id` | int | Yes | Loaded from `data/supplier_product_capacity.csv` |
-| `nominal_capacity_usd` | float | No | Capacity before capability/input scaling |
-
-**`Input`** — a raw material. `shortage_impact_cells` is a Stage-4 what-if output.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `id` | int | Yes | Loaded from `data/inputs.csv` |
-| `name` | string | No | Helium / Neon / Palladium |
-| `description` | string | No | What the material is used for |
-| `shortage_impact_cells` | int | No | What-if output: cells affected by a shortage |
-
-**`InputUsage`** — how exposed each SKU is to each input.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `product_id` | int | Yes | Loaded from `data/input_usage.csv` |
-| `input_id` | int | Yes | Loaded from `data/input_usage.csv` |
-| `intensity` | float | No | Exposure fraction (0 = none, 1 = full) |
-
-**`Dependency`** — a directed customer-customer protection edge that Stage 1 turns into derived floors and the `Customer.depends_on` graph.
-
-| Property | Type | Identifying? | Notes |
-|---|---|---|---|
-| `downstream_id` | int | Yes | Customer that yields (loaded from `data/dependencies.csv`) |
-| `upstream_id` | int | Yes | Customer that is protected |
-| `declared_yield_pct` | float | No | Share the downstream customer will give up |
-| `elevated_floor_pct` | float | No | Floor the upstream customer is lifted to |
-
-### Relationships
-
-| Relationship | Schema | Notes |
-|---|---|---|
-| `Customer.depends_on(downstream, upstream)` | `Customer`, `Customer` | Materialized from `Dependency`; traversed in Stage 4 with the paths library |
-
-Stages 2–4 also create intermediate/output concepts — `SupplierCapabilityForecast` `(supplier_id, period_id) → capability_pct`, `EffectiveCapacity` `(iter_id, product_id, period_id) → effective_capacity_usd`, and `ScenarioOutcome` `(iter_id) → total_margin_usd` — all of which persist in the ontology for later querying.
+Alongside the base entities, Stage 1 rules-authors several derived `Customer` attributes (yield limits, elevated floors, single-point-of-failure flags), and Stages 2–4 create intermediate and output concepts — a supplier-capability forecast, per-iteration effective capacity, and per-scenario margin — that persist in the ontology for later querying. For the full concept and property definitions, see `memory_supply_allocation.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
