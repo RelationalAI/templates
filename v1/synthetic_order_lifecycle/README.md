@@ -60,7 +60,7 @@ The same pattern applies to any test-data-generation problem where rows have to 
 
 ### Tools
 - Python >= 3.10
-- RelationalAI Python SDK (`relationalai == 1.12.0`)
+- RelationalAI Python SDK (`relationalai == 1.13.0`)
 
 ## Quickstart
 
@@ -254,8 +254,8 @@ model.require(problem.termination_status() == "OPTIMAL")
   <summary>Import error or AttributeError on <code>relationalai</code></summary>
 
 - Confirm your virtual environment is active: `which python` should point to `.venv`.
-- Reinstall dependencies: `python -m pip install .`. The pinned version (`relationalai==1.12.0`) ships enum members as constants across the DSL and prescriptive reasoning (alongside the `solve_info()`, `verify()`, and chained-`where().require()` APIs); older versions reject the enum-indexed decision variable and produce type or attribute errors.
-- If you share a venv across templates, run `python -m pip install --upgrade --force-reinstall relationalai==1.12.0`.
+- Reinstall dependencies: `python -m pip install .`. The pinned version (`relationalai==1.13.0`) ships enum members as constants across the DSL and prescriptive reasoning (alongside the `solve_info()`, `verify()`, and chained-`where().require()` APIs); older versions reject the enum-indexed decision variable and produce type or attribute errors.
+- If you share a venv across templates, run `python -m pip install --upgrade --force-reinstall relationalai==1.13.0`.
 
 </details>
 
