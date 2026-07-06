@@ -110,7 +110,7 @@ This template demonstrates a multi-reasoner workflow combining **predictive** (p
 ### Tools
 
 - Python ≥ 3.10.
-- RelationalAI Python SDK with the predictive submodule (`relationalai.semantics.reasoners.predictive`) for Stage 1's GNN. Without it, Stage 1 falls back to the precomputed `workload_utilization_fallback.csv` automatically.
+- RelationalAI Python SDK with the predictive submodule (`relationalai[gnn]`, providing `relationalai.semantics.reasoners.predictive`) for Stage 1's GNN. Without it, Stage 1 falls back to the precomputed `workload_utilization_fallback.csv` automatically.
 
 ### One-time Snowflake setup for GNN experiment artifacts
 

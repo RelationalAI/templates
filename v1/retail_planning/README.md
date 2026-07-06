@@ -75,7 +75,7 @@ you'll additionally need:
 ### Tools
 
 - Python >= 3.10
-- RelationalAI Python SDK (`relationalai == 1.8`)
+- RelationalAI Python SDK (`relationalai[gnn] == 1.8`)
 
 ## Quickstart
 

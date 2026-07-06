@@ -93,7 +93,7 @@ This is not a single-reasoner problem. Approving a data center at a structurally
 
 ### Tools
 - Python >= 3.10
-- RelationalAI Python SDK (`relationalai`) == 1.15.0
+- RelationalAI Python SDK (`relationalai[gnn]`) == 1.15.0
 
 ## Quickstart
 

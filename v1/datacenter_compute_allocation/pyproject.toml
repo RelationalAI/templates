@@ -9,7 +9,7 @@ description = "RelationalAI template: datacenter_compute_allocation (PyRel v1)"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-  "relationalai==1.11.0",
+  "relationalai[gnn]==1.11.0",
   "pandas>=2.0",
 ]
 
