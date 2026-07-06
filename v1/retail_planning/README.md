@@ -168,10 +168,10 @@ task splits (see Prerequisites).
        ...
 
 Markdown Status: OPTIMAL
-Total revenue (sales + salvage): $62,096.89
+Total revenue (sales + salvage): $62,038.94
 
 Demand Planning Status: OPTIMAL
-Total cost (production + holding + unmet penalty): $8,985.53
+Total cost (production + holding + unmet penalty): $8,761.30
 ```
 
 ## Template structure

@@ -194,10 +194,15 @@ Stage 5: Prescriptive -- investigator-budget allocation
   MILP uplift over naive sort: $+43,907,010
 ```
 
-The MILP captures ~65% more expected loss than a naive sort-by-alert-score
+The MILP captures materially more expected loss than a naive sort-by-alert-score
 under the same 80-hour budget, because it trades off per-audit cost (audit
 hours scale with transaction size) against catch value and respects the
-per-receiver cap.
+per-receiver cap. GNN training on GPU is not bit-for-bit reproducible even with
+a fixed seed, so the exact captured and uplift dollars shift from run to run
+(a separate run gave $117.3M captured against a $60.2M naive baseline); the
+large MILP-over-naive uplift is the stable result. The `runbook.md` walkthrough
+covers `fraud_detection.py`, the same chain run against the full PaySim schema
+on Snowflake at a much larger scale.
 
 ## Template structure
 
