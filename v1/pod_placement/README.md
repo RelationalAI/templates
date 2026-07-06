@@ -172,7 +172,7 @@ The bundled CSVs are illustrative demo data for one small cluster, tuned so seve
 
 The script builds one semantic model from the CSVs, then layers the decision variables and constraints on top.
 
-- **Key entities**: `Node`, `Pod`, `Deployment`, `Tenant`, `Zone`, `Rack`.
+- **Key entities**: `Node` — a compute host in the cluster, with its resource capacities and topology placement; `Pod` — a single workload replica to be placed on a node; `Deployment` — a group of replica pods owned by one tenant; `Tenant` — an account whose deployments may be anti-affine to another tenant's; `Zone` and `Rack` — failure-domain and NVLink-island concepts, with `Rack.zone` linking each rack to its containing zone.
 - **Primary identifiers**: integer `id` on `Node`, `Pod`, `Deployment`, `Tenant`; string `name` on `Zone` and `Rack` (both derived from the unique `zone` / `rack` columns of `nodes.csv`).
 - **Important invariants**: node capacities are positive; pod row counts per `deployment_id` equal that deployment's `replicas` (the gang IC pins them); each rack belongs to exactly one zone; `max_per_zone_override`, when present, is a positive integer no greater than the row's `replicas`.
 

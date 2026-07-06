@@ -165,7 +165,7 @@ The bundled data is small and illustrative — an 18-node humanitarian relief ne
 
 The model is a small graph ontology: distribution points connected by directed, weighted supply routes. Graph metrics are computed at query time from the route graph rather than stored on the point.
 
-- **Key entities**: `DistributionPoint`, `SupplyRoute`.
+- **Key entities**: `DistributionPoint` — a node in the relief network (airport, warehouse, border crossing, or relief camp); `SupplyRoute` — a directed route between two distribution points, with weighted attributes (throughput capacity, reliability, distance).
 - **Primary identifiers**: `DistributionPoint.id` (integer); `SupplyRoute` is keyed by its `(from_point, to_point)` pair.
 - **Important invariants**: `reliability_score` is a fraction in `[0, 1]`; capacity and distance are positive; the derived `flow_weight` combines all three into the edge weight the graph algorithms read.
 

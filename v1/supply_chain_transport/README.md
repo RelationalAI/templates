@@ -121,7 +121,7 @@ The bundled data is synthetic and illustrative -- a minimal two-group example de
 
 The formulation is built on three concepts: the freight groups loaded from CSV, and the transport types and LTL cost segments defined inline in the script.
 
-- **Key entities**: `FreightGroup`, `TransportType`, `LTLSegment`.
+- **Key entities**: `FreightGroup` — a batch of freight with its own inventory, transport, and arrival time windows (the optimization solves for its per-day inventory, shipment quantities, and arrival day); `TransportType` — a shipping mode (truckload or less-than-truckload), with its transit time; `LTLSegment` — a breakpoint in the piecewise-linear less-than-truckload cost curve.
 - **Primary identifiers**: `name` on `FreightGroup` and `TransportType`; integer `seg` on `LTLSegment`.
 - **Important invariants**: window start days are less than or equal to window end days; `inv_start` weights are non-negative; transport-mode indicators and segment activation variables are binary; each freight group ships all inventory out by the end of its inventory window.
 

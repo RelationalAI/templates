@@ -138,7 +138,7 @@ Total current budget across all campaigns: $1,130K. WEST has the two highest-rat
 
 The model is a single concept: one `Campaign` per row of `campaigns.csv`, enriched with a decision-variable property after the solve.
 
-- **Key entities**: `Campaign`.
+- **Key entities**: `Campaign` — a marketing campaign with a current budget, region tag, and empirical conversion rate; its optimized budget is the decision variable populated after the solve.
 - **Primary identifiers**: integer `id` on `Campaign`, loaded from `data/campaigns.csv`.
 - **Important invariants**: `current_budget` and `conversion_rate` are non-negative; the optimized budget `x_budget` stays between the per-campaign floor and cap; total spend does not exceed `TOTAL_BUDGET`; and the paused region's spend does not exceed its share cap.
 

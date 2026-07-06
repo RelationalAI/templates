@@ -123,7 +123,7 @@ The bundled data is small and illustrative — a short seasonal clearance across
 
 ## Model overview
 
-- **Key entities**: `Product`, `Discount`, `Week`.
+- **Key entities**: `Product` — an item to mark down, with its price, cost, stock, demand, and salvage economics; `Discount` — a discount tier defining how much price is cut and how much demand rises; `Week` — a period in the planning horizon, with its seasonal demand factor.
 - **Primary identifiers**: string `name` on `Product`; integer `level` on `Discount`; integer `num` on `Week`.
 - **Important invariants**: exactly one discount level is active per product-week; discounts can only deepen over successive weeks (price ladder); cumulative sales never exceed `initial_inventory`; `discount_pct`, `demand_lift`, and `demand_multiplier` are non-negative; the selection variable is binary and sales variables are non-negative.
 

@@ -186,7 +186,7 @@ The bundled data is small and illustrative — a single hospital day with a hand
 
 The model is a small optimization ontology: two entities (nurses, shifts) linked by an availability matrix, with a per-availability assignment decision the solver fills in.
 
-- **Key entities**: `Nurse`, `Shift`, `Availability`, `Assignment`.
+- **Key entities**: `Nurse` — a nurse with a skill level and cost parameters (the solver adds overtime hours); `Shift` — a shift with coverage requirements and patient demand (the solver adds patients-served and unmet-demand quantities); `Availability` — a nurse's eligibility for a shift; `Assignment` — the decision to staff a nurse on a shift, the MILP's decision space.
 - **Primary identifiers**: `Nurse.id` and `Shift.id` (integers); `Availability` is keyed by the `(nurse_id, shift_id)` pair; `Assignment` is keyed by its `Availability`.
 - **Important invariants**: overtime hours, patients served, and unmet demand are non-negative continuous quantities; each nurse works one to two shifts; every shift meets its minimum-nurse and minimum-skill floor; assignment decisions are binary.
 

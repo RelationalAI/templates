@@ -136,7 +136,7 @@ The bundled data is a small, illustrative workforce — 10 workers, 3 shifts, an
 
 The model has three concepts plus a `Scenario` concept that parameterizes the coverage sweep. Availability is a standalone relationship, and the assignment decision is a per-scenario decision variable.
 
-- **Key entities**: `Worker`, `Shift`, `Scenario`.
+- **Key entities**: `Worker` — a person who can be assigned to shifts; `Shift` — a shift that needs to be staffed; `Scenario` — one coverage level in the sweep, solved simultaneously with the others.
 - **Primary identifiers**: `Worker.id` and `Shift.id` are integers; `Scenario.name` is a string.
 - **Important invariants**: `Shift.capacity` is a positive integer; each scenario's `min_coverage` must be no larger than the smallest shift capacity or that scenario is infeasible; each worker takes at most `max_shifts` shifts (default 1); a worker can only be assigned to a shift they are available for.
 

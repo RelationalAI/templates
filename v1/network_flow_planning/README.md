@@ -164,7 +164,7 @@ Lane costs are set so that opening FC_West would unlock the cheapest LA route (`
 
 The model uses three concepts. A single `Site` concept carries all four network tiers, distinguished by a `type` property, so warehouses, hubs, fulfillment centers, and customers share one entity and each contributes the constraint that matches its role.
 
-- **Key entities**: `Site`, `Lane`, `Demand`.
+- **Key entities**: `Site` — a node in the distribution network, its `type` distinguishing the role each plays (warehouse, hub, fulfillment center, customer); `Lane` — a directed transport link between two sites with a per-unit cost and a flow capacity; `Demand` — a customer order placed at a particular site.
 - **Primary identifiers**: integer `id` on each of `Site`, `Lane`, and `Demand`, loaded from the corresponding CSV.
 - **Important invariants**: `inventory`, `capacity`, `fixed_cost`, `cost_per_unit`, and `quantity` are non-negative; only fulfillment centers carry a positive `fixed_cost` (that is what scopes the binary open decision); every `Lane.source` / `Lane.dest` and every `Demand.site` resolves to a real `Site`.
 

@@ -143,7 +143,7 @@ The three budget levels ($35K, $45K, $55K) that drive the scenario sweep are def
 
 One ontology holds the inputs and the decision variables. The three source CSVs load into `Channel`, `Campaign`, and `Effectiveness`; `Scenario` carries the budget levels; and `Allocation` holds the per-pair decision variables the solver sets.
 
-- **Key entities**: `Channel`, `Campaign`, `Effectiveness`, `Scenario`, and the decision concept `Allocation`.
+- **Key entities**: `Channel` — a marketing channel with spend bounds and an ROI coefficient; `Campaign` — a campaign with a budget and a conversion target; `Effectiveness` — the conversion rate for one channel-campaign pair (also the link between a channel and a campaign); `Scenario` — a budget level in the what-if sweep; and the decision concept `Allocation` — one per channel-campaign pair, holding the spend and funding variables the solver sets (indexed by `Scenario`, so a single solve covers all budget levels).
 - **Primary identifiers**: integer `id` on `Channel` and `Campaign`; a composite `channel_id` + `campaign_id` on `Effectiveness`; a string `name` on `Scenario`; and the linked `Effectiveness` on `Allocation`.
 - **Important invariants**: spend is non-negative; `x_active` is binary (0/1); spend on a pair sits within its channel's min/max only when the pair is active; per-campaign spend stays within the campaign budget; every campaign has at least one funded channel; and total spend stays within the scenario's total budget.
 

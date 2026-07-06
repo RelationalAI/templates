@@ -158,7 +158,7 @@ The bibliographic data is a deterministic slice of [Open Library](https://openli
 
 One shared ontology threads all three stages. The path-walk stage derives candidates and their evidence, the graph stage adds a structural measure, and the prescriptive stage reads both to compose the slate.
 
-- **Key entities**: `Item` (super-concept), `User`, `Book`, `Author`, `Subject`, `Slot`, and the derived `Candidate`.
+- **Key entities**: `User` — a reader; `Book` — a catalog title (an `Item` sub-concept); `Author` and `Subject` — a book's authors and topics; `Slot` — one of the K ordered recommendation positions in a user's slate; the derived `Candidate` — a (user, unread book) pair scored by its knowledge-graph explanation paths.
 - **Primary identifiers**: integer `id` on `User`, `Book`, `Author`, `Subject`; `pos` on `Slot`; composite `(user_id, book_id)` on `Candidate`.
 - **Important invariants**: `Book.in_house` is a 0/1 flag; `Book.age_days` is non-negative; similarity edges are unique on `(src_book_id, dst_book_id)`; every foreign key resolves; slot decisions take values in `1..K+1`, where slot 1 is the hero position and slot K+1 is the unpicked sentinel.
 

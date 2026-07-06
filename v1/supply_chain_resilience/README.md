@@ -144,7 +144,7 @@ The bundled data is synthetic and illustrative -- designed to teach the reasonin
 
 One shared ontology threads the pre-analysis and all three stages. Each stage reads concepts and properties earlier stages wrote, and writes new ones for downstream stages.
 
-- **Key entities**: `Site`, `Business`, `Operation`, `SKU`, `Demand`, `Shipment`, `DelayPrediction`.
+- **Key entities**: `Site` — a physical location (Stage 1 enriches it with a centrality score); `Business` — a supplier, manufacturer, warehouse, or buyer operating at a site (Stage 2 enriches it with risk flags); `Operation` — a shipping or transfer route between sites, the flow decision space; `SKU` — a stock-keeping unit (raw material, component, or finished good); `Demand` — a customer order (Stage 2 flags escalations, Stage 3 tracks unmet slack); `Shipment` — a historical shipment, the source for late-shipment rates and the blast-radius supplier graph; `DelayPrediction` — a predicted delay probability per supplier per fiscal quarter.
 - **Primary identifiers**: string `id` on every concept.
 - **Important invariants**: `reliability_score` and `predicted_delay_prob` are fractions in `[0, 1]`; `capacity_per_day`, `cost_per_unit`, and `quantity` are non-negative; the flow decision variable `x_flow` is bounded by each operation's capacity; unmet-demand slack `x_unmet` is non-negative.
 

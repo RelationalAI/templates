@@ -142,7 +142,7 @@ The bundled CSVs are illustrative demo data for an automotive trim configurator,
 
 The script builds a small ontology from the CSVs, then layers the binary decision and the four constraint families on top.
 
-- **Key entities**: `Slot`, `Option`; plus the `Implies` and `Excludes` rule tables.
+- **Key entities**: `Slot` — a configurable position on the product (e.g. engine), filled by exactly one option per build; `Option` — a choice that can fill a slot, with a price and region availability; plus the `Implies` and `Excludes` rule tables that constrain which options can combine.
 - **Primary identifiers**: integer `id` on `Slot` and `Option`; composite key on each rule table (`head_id` + `tail_id` on `Implies`, `left_id` + `right_id` on `Excludes`).
 - **Important invariants**: every option belongs to exactly one slot; prices are non-negative integer cents; a build picks exactly one option per slot; only options allowed in the target region get a decision variable.
 

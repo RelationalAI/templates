@@ -148,7 +148,7 @@ The bundled data is synthetic and illustrative — a compact network-expansion s
 
 Three concepts describe the planning problem; the optimization adds one binary decision property to each.
 
-- **Key entities**: `TowerSite`, `DemandZone`, `CoveragePair`.
+- **Key entities**: `TowerSite` — a candidate infrastructure location that may be built (site type, build cost, serving capacity); `DemandZone` — a population area that may be covered by a selected tower; `CoveragePair` — a feasible tower-zone service relationship, where only paired zones can be served and only by their paired towers.
 - **Primary identifiers**: `site_id` on `TowerSite`, `zone_id` on `DemandZone`, and a composite `site_id` + `zone_id` key on `CoveragePair`.
 - **Important invariants**: build costs, capacities, and populations are non-negative; every demand zone is reachable by at least one coverage pair (the script raises an error otherwise); the decision variables (`selected`, `covered`, `assigned`) are binary; total build cost stays at or under the budget and the number of selected towers stays at or under the cap.
 

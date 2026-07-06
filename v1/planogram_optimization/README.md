@@ -170,7 +170,7 @@ The bundled CSVs are illustrative, fully synthetic demo data sized so the model 
 
 The model has four concepts. The predictive output (`PredictedDemand`) is a data table that the CSP reads through a decision-indexed lookup; the decision lives on `Sku`.
 
-- **Key entities**: `Sku`, `Shelf`, `Category`, `PredictedDemand`.
+- **Key entities**: `Sku` — a product with a width, max-facings cap, category, and assigned shelf (its facing count is the CSP decision); `Shelf` — a shelf with a fixed length that facings must fit within; `Category` — a product category with minimum and maximum active-SKU bounds; `PredictedDemand` — the predicted demand for each `(sku, facings_count)`, read by the CSP through a decision-indexed lookup.
 - **Primary identifiers**: integer `id` on `Sku` and `Shelf`; string `name` on `Category`; composite `(sku_id, facings_count)` on `PredictedDemand`.
 - **Important invariants**: `width_cm`, `max_facings`, and `length_cm` are non-negative integers; every `Sku.category` matches a `Category`, and every `Sku.assigned_shelf_id` matches a `Shelf`; `PredictedDemand` covers every `(sku_id, facings_count)` over `[0, max_facings]` with `demand_units = 0` at `facings_count = 0`; the CSP decisions `facings`, `realized_demand`, and `active` are integers (`active` is 0/1).
 

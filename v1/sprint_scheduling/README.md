@@ -166,7 +166,7 @@ The bundled data is synthetic and illustrative -- a small backlog sized to teach
 
 The model has four source concepts loaded from CSV, plus a derived `Assignment` decision concept that forms the optimizer's search space. All identifiers are integer keys except the composite `Assignment`, which is identified by its three linked entities.
 
-- **Key entities**: `Developer`, `Sprint`, `Issue`, `Skill`, and the decision concept `Assignment`.
+- **Key entities**: `Developer` — an engineer with a team affiliation and a per-sprint story-point capacity; `Sprint` — a two-week planning period with epoch boundaries; `Issue` — a backlog item to schedule; `Skill` — a developer-team capability row; and the decision concept `Assignment` — a valid (developer, issue, sprint) placement.
 - **Primary identifiers**: integer `id` on `Developer`, `Sprint`, `Issue`, and `Skill`; `Assignment` is identified by its `(developer, issue, sprint)` triple.
 - **Important invariants**: `story_points`, `priority`, and `capacity_points_per_sprint` are positive integers; each issue is assigned exactly once; a developer's assigned story points per sprint stay within capacity (scaled by the scenario's `capacity_multiplier`); a sprint can only host issues whose target sprint is at or before it.
 

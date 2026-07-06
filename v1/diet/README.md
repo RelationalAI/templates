@@ -123,7 +123,7 @@ The bundled data is small and illustrative — a handful of foods and four nutri
 
 The model is small and self-contained: two source concepts plus a `Scenario` concept that parameterizes the solve.
 
-- **Key entities**: `Food`, `Nutrient`, and `Scenario`.
+- **Key entities**: `Food` — a food with a per-serving cost and a per-nutrient content, carrying a continuous decision variable for the amount to include; `Nutrient` — a nutrient with minimum and maximum daily-intake bounds (the constraint bounds, scaled per scenario); and `Scenario` — a requirement-scaling case that scales every nutrient bound by its factor, with all scenarios solving together in one solve.
 - **Primary identifiers**: `Food.name` and `Nutrient.name` (both strings); `Scenario.scenario_name` (string).
 - **Important invariants**: nutrient `min` and `max` bounds are non-negative and `min <= max`; each food's decision amount is non-negative (`lower=0`); each food's per-nutrient content is keyed by a nutrient that exists in `nutrients.csv`.
 

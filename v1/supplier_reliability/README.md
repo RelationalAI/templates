@@ -200,7 +200,7 @@ The bundled data is synthetic and illustrative -- a small four-supplier, three-p
 
 The model has three source concepts loaded from CSV, plus a derived `SupplyOrder` decision concept that carries the order-quantity variable and back-pointers to its supplier and product.
 
-- **Key entities**: `Supplier`, `Product`, `SupplyOption`, and the decision concept `SupplyOrder`.
+- **Key entities**: `Supplier` — a source with a capacity limit and a reliability score; `Product` — an item with a demand requirement to satisfy; `SupplyOption` — a supplier-product sourcing lane with a per-unit cost; and the decision concept `SupplyOrder` — an order placed through one supply option.
 - **Primary identifiers**: integer `id` on `Supplier`, `Product`, and `SupplyOption`; `SupplyOrder` is identified by the `SupplyOption` it uses.
 - **Important invariants**: `capacity` and `demand` are non-negative integers; `cost_per_unit` is non-negative; order quantities are continuous and non-negative; total ordered per supplier stays within capacity; total ordered per product meets demand.
 

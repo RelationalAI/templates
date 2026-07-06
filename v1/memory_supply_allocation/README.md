@@ -171,7 +171,7 @@ The sample data models a memory-chip maker allocating constrained supply across 
 
 The model is one shared ontology that all four reasoners read and write.
 
-- **Key entities**: `Customer`, `Product`, `Period`, `Supplier`, `Input`, and the junction concepts `Demand`, `SupplierProductCapacity`, `InputUsage`, and `Dependency`.
+- **Key entities**: `Customer` — a chip buyer; `Product` — a memory SKU; `Period` — a monthly bucket in the horizon; `Supplier` — a foundry/fab; `Input` — a raw material; plus junction concepts `Demand` (requested USD per customer/product/period, carrying the LP decision variable), `SupplierProductCapacity` (monthly capacity per supplier/product/period), `InputUsage` (each SKU's exposure to each input), and `Dependency` (a customer-to-customer protection edge).
 - **Primary identifiers**: single-column integer ids for the base entities; composite keys for the junctions (e.g. `Demand` is keyed by `(customer_id, product_id, period_id)`).
 - **Important invariants**: demand and capacity are non-negative USD; `base_service_floor_pct`, `elevated_floor_pct`, `declared_yield_pct`, `intensity`, and `capability_pct` are fractions in `[0, 1]`; each customer's allocation must lie between its service floor and its yield-adjusted demand.
 

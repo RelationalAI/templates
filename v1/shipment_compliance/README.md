@@ -153,7 +153,7 @@ The bundled data is a small, illustrative sourcing-and-fulfillment model — 6 c
 
 Six concepts model a small supply chain, linked by SKU and supplier references. The four business rules are derived boolean flags added back onto the concepts.
 
-- **Key entities**: `Supplier`, `SKU`, `Shipment`, `Operation`, `BillOfMaterials`, `Demand`.
+- **Key entities**: `Supplier` — a company that supplies parts; `SKU` — a stock-keeping unit tracked in the supply chain; `Shipment` — a delivery of a SKU from a supplier; `Operation` — a production or shipping route that transforms SKUs; `BillOfMaterials` — an input-SKU requirement for production; `Demand` — a quantity requirement for a specific SKU.
 - **Primary identifiers**: an integer `id` on every concept.
 - **Important invariants**: `Supplier.reliability_score` is a fraction in `[0, 1]`; `Shipment.status` is a `ShipmentStatus` member (`PENDING` / `IN_TRANSIT` / `DELIVERED`); `Demand.priority` is a `Priority` member (`LOW` / `STANDARD` / `HIGH` / `URGENT`); `delay_days`, `quantity`, and `input_quantity` are non-negative. Each rule adds a derived boolean flag back onto its concept: `Shipment.is_late` (Rule 1), `Shipment.is_at_risk` (Rule 2), `BillOfMaterials.is_single_sourced` (Rule 3), and `Demand.is_escalated` (Rule 4).
 

@@ -159,7 +159,7 @@ The bundled data is small and illustrative — a 10-facility regional health net
 
 The model is a directed, weighted graph with one node concept and one edge concept.
 
-- **Key entities**: `Facility` (graph node) and `FacilityConnection` (graph edge).
+- **Key entities**: `Facility` — a healthcare facility, testing center, or community organization (the graph's node); `FacilityConnection` — a directed transfer link between two facilities, weighted by transmission risk (the graph's edge).
 - **Primary identifiers**: `Facility.id` (integer); `FacilityConnection` is identified by its `(from_facility, to_facility)` pair.
 - **Important invariants**: `transfer_volume` and `contact_intensity` are non-negative; `risk_weight` is derived, not loaded (`transfer_volume x contact_intensity`); every connection endpoint references an existing `Facility`.
 
