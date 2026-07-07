@@ -18,13 +18,13 @@ Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` 
 
 ## 1. Build the ontology
 
-**Prompt:** /rai-build-starter-ontology Build an ontology from `data/organizations.csv` (each organization has a type, a region, and a focus species) and `data/partnerships.csv` (each row is a collaboration partnership between two organizations). Model the partnership as an undirected relationship between organizations.
+**Prompt:** /rai-ontology Build an ontology from `data/organizations.csv` (each organization has a type, a region, and a focus species) and `data/partnerships.csv` (each row is a collaboration partnership between two organizations). Model the partnership as an undirected relationship between organizations.
 
 **Response:** Loads `Organization` (12, with `type`, `region`, `focus_species`) and a `Partnership` relationship (19 undirected collaboration edges between organizations) — forming a collaboration network across East and Southern Africa.
 
 ## 2. Examine the ontology
 
-**Prompt:** /rai-querying What concepts and relationships does the ontology have, and how many of each?
+**Prompt:** /rai-pyrel What concepts and relationships does the ontology have, and how many of each?
 
 **Response:** One concept, `Organization` (12, with type / region / focus species), connected by `Partnership` (19 undirected edges) — an average of about 3.2 partnerships per organization.
 

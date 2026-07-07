@@ -1221,7 +1221,7 @@ for sn in scenario_names:
     # Knee = the last point before the frontier slope accelerates most: the largest RATIO
     # jump between consecutive exact duals (lambda_j / lambda_{j-1}), marking point j-1 so
     # "cost jumps beyond this point". This applies the ratio-knee principle from
-    # rai-prescriptive-results-interpretation ("Knee from the exact dual sequence") to the exact
+    # rai-prescriptive-results ("Knee from the exact dual sequence") to the exact
     # duals rather than finite-difference secants -- the knee is NOT where the absolute slope is
     # highest (that is always the last point). The min-risk anchor (k=0) declares no return
     # floor so its dual is structurally 0; the scan starts at j=2 to skip that 0->lambda_1

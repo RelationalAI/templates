@@ -7,14 +7,14 @@ A paste-testable walkthrough for an analyst. Each prompt below is something you 
 ```
 transactions.csv — 75 transfers, 54 accounts  (in-memory DuckDB, no Snowflake)
         │
-        ▼  /rai-setup and /rai-pyrel-coding  — ontology
+        ▼  /rai-setup and /rai-pyrel  — ontology
         Account · transfers_to (self-referential)
         │
-        ▼  /rai-rules-authoring  — classification
+        ▼  /rai-pyrel  — classification
         is_structuring · is_large_sender · is_suspect · near_suspect · under_review
         → 6 suspects
         │
-        ▼  /rai-querying  — surface and expand
+        ▼  /rai-pyrel  — surface and expand
         suspect → counterparty (self-join) · investigation set
         → 8 accounts under review
 ```

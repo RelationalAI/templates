@@ -916,7 +916,7 @@ problem.maximize(
 print(f"  Solving 24-cell scenario sweep with {SOLVER}...")
 problem.solve(SOLVER, time_limit_sec=SOLVER_TIME_LIMIT_SEC)
 si = problem.solve_info()
-# Per rai-prescriptive-results-interpretation: status is signal, not always error.
+# Per rai-prescriptive-results: status is signal, not always error.
 # INFEASIBLE/TIME_LIMIT cells in a multi-scenario sweep are diagnostic information
 # about which constraint combinations bind.
 print(f"  Termination status: {si.termination_status}")

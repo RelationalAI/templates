@@ -6,7 +6,7 @@ A marketing team wants to split an advertising budget across channels and campai
 5 channels (min/max spend) · 3 campaigns (budget) · 15 channel-campaign conversion rates
       │
       ▼
-/rai-prescriptive-problem-formulation + /rai-prescriptive-solver-management
+/rai-prescriptive-problem
    • decisions: spend per (channel-campaign, budget level) + binary "fund this pair?"
    • constraints: spend within channel min/max when funded; per-campaign budget;
      ≥ 1 funded channel per campaign; total spend ≤ the scenario's budget level
@@ -14,7 +14,7 @@ A marketing team wants to split an advertising budget across channels and campai
    • budget levels $35k / $45k / $55k in one solve · HiGHS  -> OPTIMAL, 9,740 conversions
       │
       ▼
-/rai-prescriptive-results-interpretation
+/rai-prescriptive-results
    • the two higher budget levels give the identical plan — extra budget buys no more conversions
    • the real limits are per-channel max-spend and per-campaign budgets, not the total cap
 ```
@@ -25,25 +25,25 @@ Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` 
 
 ## 1. Build the ontology
 
-**Prompt:** /rai-build-starter-ontology Build an ontology from `data/channels.csv` (each channel has a min and max spend), `data/campaigns.csv` (each campaign has a budget), and `data/effectiveness.csv` (the conversion rate — conversions per dollar — for each channel-campaign pair). Model effectiveness as a relationship linking a channel and a campaign to its conversion rate.
+**Prompt:** /rai-ontology Build an ontology from `data/channels.csv` (each channel has a min and max spend), `data/campaigns.csv` (each campaign has a budget), and `data/effectiveness.csv` (the conversion rate — conversions per dollar — for each channel-campaign pair). Model effectiveness as a relationship linking a channel and a campaign to its conversion rate.
 
 **Response:** Loads `Channel` (5: Search, Social, Display, Video, Email — each with `min_spend`, `max_spend`), `Campaign` (3: Brand_Awareness $15k, Product_Launch $20k, Seasonal_Sale $10k), and `Effectiveness` (15, every channel-campaign pair, with `conversion_rate` 0.03–0.12).
 
 ## 2. Examine the ontology
 
-**Prompt:** /rai-querying What concepts and relationships does the ontology have, and how many of each?
+**Prompt:** /rai-pyrel What concepts and relationships does the ontology have, and how many of each?
 
 **Response:** Three concepts — 5 `Channel` (min/max spend), 3 `Campaign` (budget), and 15 `Effectiveness` (one conversion rate per channel-campaign pair).
 
 ## 3. Allocate spend across budget levels
 
-**Prompt:** /rai-prescriptive-problem-formulation + /rai-prescriptive-solver-management How should we spend across each channel-campaign pair to maximize total expected conversions, at three total-budget levels — $35k, $45k, and $55k — solved together? Use a continuous spend per pair and a binary "fund this pair" decision: when a pair is funded its spend must sit within that channel's min and max, each campaign's spend across channels can't exceed its budget, every campaign needs at least one funded channel, and total spend can't exceed the budget level. Model the budget level as a first-class scenario concept with the spend indexed by (pair, level). Maximize conversions and persist the spend to the ontology.
+**Prompt:** /rai-prescriptive-problem How should we spend across each channel-campaign pair to maximize total expected conversions, at three total-budget levels — $35k, $45k, and $55k — solved together? Use a continuous spend per pair and a binary "fund this pair" decision: when a pair is funded its spend must sit within that channel's min and max, each campaign's spend across channels can't exceed its budget, every campaign needs at least one funded channel, and total spend can't exceed the budget level. Model the budget level as a first-class scenario concept with the spend indexed by (pair, level). Maximize conversions and persist the spend to the ontology.
 
 **Response:** OPTIMAL (HiGHS), combined **9,740 conversions** across the three budget levels (relative gap 0.0). 90 variables (45 continuous spend + 45 binary funding) and 111 constraints; spend and funding are written back as `Allocation.x_spend(Scenario)` and `Allocation.x_active(Scenario)`.
 
 ## 4. Read the allocation across budget levels
 
-**Prompt:** /rai-prescriptive-results-interpretation How does the plan change as the total budget grows, and what does that say about diminishing returns?
+**Prompt:** /rai-prescriptive-results How does the plan change as the total budget grows, and what does that say about diminishing returns?
 
 **Response:** OPTIMAL, **9,740 combined conversions**. The tell is sharply diminishing returns: the **two higher budget levels ($45k and $55k) produce the identical allocation and conversions** — beyond a point, additional budget can't be profitably deployed because every remaining channel-campaign pair is already capped by its channel's max-spend or its campaign's budget. So the extra budget goes unused, and the **total-budget cap is not the binding limit** — the per-channel and per-campaign caps are. Raising the overall budget past that point buys zero marginal conversions.
 

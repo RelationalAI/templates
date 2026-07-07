@@ -737,7 +737,7 @@ results.append(
 # --------------------------------------------------
 # Persist scenario solves into the ontology (RoutingScenario Concept)
 # --------------------------------------------------
-# Per /rai-prescriptive-problem-formulation/scenario-analysis.md "Scenario
+# Per /rai-prescriptive-problem/scenario-analysis.md "Scenario
 # Concept" pattern: load scenario rows via model.data(list_of_tuples,
 # columns=[...]) and bind via Concept.new(...).to_schema().
 

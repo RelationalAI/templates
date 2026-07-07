@@ -30,7 +30,7 @@ reaching a test RMSE of ~0.14 — a network-aware retention queue.
 **Prompt**
 
 ```
-/rai-build-starter-ontology Build an ontology from data/telco_mini/: subscribers.csv (each subscriber has a segment, type, status, lifetime value, NPS, signup date, and a churn risk score), plans_contracts.csv (each subscriber's plan — type, monthly rate, data limit, term, auto-renew, early-termination fee — joined onto the subscriber), and call_detail_records.csv (each call is from one subscriber to another). Model the call as a relationship between subscribers.
+/rai-ontology Build an ontology from data/telco_mini/: subscribers.csv (each subscriber has a segment, type, status, lifetime value, NPS, signup date, and a churn risk score), plans_contracts.csv (each subscriber's plan — type, monthly rate, data limit, term, auto-renew, early-termination fee — joined onto the subscriber), and call_detail_records.csv (each call is from one subscriber to another). Model the call as a relationship between subscribers.
 ```
 
 **Response**
@@ -42,7 +42,7 @@ Loads `Subscriber` (1,200, with plan attributes joined on, segment mix PREMIUM/S
 **Prompt**
 
 ```
-/rai-querying What concepts and relationships does the ontology have, and how many rows are in each?
+/rai-pyrel What concepts and relationships does the ontology have, and how many rows are in each?
 ```
 
 **Response**
@@ -90,7 +90,7 @@ A GNN regression head trains on the subscriber call graph (features: segment, pl
 **Prompt**
 
 ```
-/rai-querying For each segment, which test-set subscribers have the highest predicted churn risk — the retention queue to action first?
+/rai-pyrel For each segment, which test-set subscribers have the highest predicted churn risk — the retention queue to action first?
 ```
 
 **Response**

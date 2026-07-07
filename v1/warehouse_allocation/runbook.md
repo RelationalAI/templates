@@ -33,7 +33,7 @@ warehouses carry centrality-proportional buffer stock — OPTIMAL at $13,713.29 
 **Prompt**
 
 ```
-/rai-build-starter-ontology Build an ontology from data/sites.csv (each site has a region, a type — warehouse or store — and a per-unit holding cost), data/routes.csv (each route links a source site to a destination site with a capacity and a transport cost), and data/demands.csv (each demand is a quantity at a site). Model the route as a relationship between sites.
+/rai-ontology Build an ontology from data/sites.csv (each site has a region, a type — warehouse or store — and a per-unit holding cost), data/routes.csv (each route links a source site to a destination site with a capacity and a transport cost), and data/demands.csv (each demand is a quantity at a site). Model the route as a relationship between sites.
 ```
 
 **Response**
@@ -45,7 +45,7 @@ Loads `Site` (10: 5 warehouses, 5 stores, each with `region`, `type`, `holding_c
 **Prompt**
 
 ```
-/rai-querying What concepts and relationships does the ontology have, and how many rows are in each?
+/rai-pyrel What concepts and relationships does the ontology have, and how many rows are in each?
 ```
 
 **Response**
@@ -81,7 +81,7 @@ Eigenvector centrality (the "important neighbors make you important" measure) ra
 **Prompt**
 
 ```
-/rai-prescriptive-problem-formulation + /rai-prescriptive-solver-management Allocate a non-negative number of units to each site to minimize total holding cost (units times each site's holding cost), keeping total units within the 2,000-unit budget, meeting every site's demand, and requiring each warehouse to hold at least its centrality score times 200 as buffer stock. Persist the allocation as Site.x_inventory.
+/rai-prescriptive-problem Allocate a non-negative number of units to each site to minimize total holding cost (units times each site's holding cost), keeping total units within the 2,000-unit budget, meeting every site's demand, and requiring each warehouse to hold at least its centrality score times 200 as buffer stock. Persist the allocation as Site.x_inventory.
 ```
 
 **Response**
@@ -93,7 +93,7 @@ OPTIMAL (HiGHS), total holding cost **$13,713.29**. 10 continuous allocation var
 **Prompt**
 
 ```
-/rai-prescriptive-results-interpretation How much inventory does each site hold, which constraints bind, and is the budget the limiting factor?
+/rai-prescriptive-results How much inventory does each site hold, which constraints bind, and is the budget the limiting factor?
 ```
 
 **Response**

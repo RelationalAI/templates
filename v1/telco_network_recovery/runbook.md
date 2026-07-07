@@ -21,7 +21,7 @@ figures shift run to run; the structural outcome holds.)
                               probabilities; range 0.02-10.47.
   ─────────────────────────────────────────────────────────────────
   STAGE 2  Rules        ──►  CellTower.is_critical_restore  (142)
-   /rai-rules-authoring       Three-branch flag: 2 WEST operational
+   /rai-pyrel                 Three-branch flag: 2 WEST operational
                               branches + 1 predictive branch.
   ─────────────────────────────────────────────────────────────────
   STAGE 3  Graph        ──►  Subscriber.influence_score  (PageRank,
@@ -37,8 +37,8 @@ figures shift run to run; the structural outcome holds.)
                               recovered. Top route persisted.
   ─────────────────────────────────────────────────────────────────
   STAGE 5  Prescriptive ──►  TowerUpgradeOption.selected  (27)
-   /rai-prescriptive-         OPTIMAL · 12 BRONZE · 7 SILVER · 8 GOLD
-   problem-formulation        $4,992,276 of $5M (binding) · 180 Gbps
+   /rai-prescriptive-problem  OPTIMAL · 12 BRONZE · 7 SILVER · 8 GOLD
+                              $4,992,276 of $5M (binding) · 180 Gbps
                               161 of 200 install-weeks (slack)
                               Region: SOUTH 7, EAST 6, WEST 6,
                               CENTRAL 4, NORTH 4.
@@ -54,7 +54,7 @@ figures shift run to run; the structural outcome holds.)
 **Prompt**
 
 ```
-/rai-build-starter-ontology Build a telco network ontology from the CSVs in data/. Include a ModelAdvisory concept so manufacturer recall/defect/EOL/firmware notices can be linked to every equipment item of the affected model.
+/rai-ontology Build a telco network ontology from the CSVs in data/. Include a ModelAdvisory concept so manufacturer recall/defect/EOL/firmware notices can be linked to every equipment item of the affected model.
 ```
 
 **Response**
@@ -66,7 +66,7 @@ Concepts: `CellTower`, `NetworkEquipment` (with `tower_id_fk` FK property), `Equ
 **Prompt**
 
 ```
-/rai-querying What concepts and relationships does the ontology have, how many rows are in each, and what's the advisory coverage — how many MODELs are advised, what are the severities, and what fraction of equipment sits on an advised MODEL?
+/rai-pyrel What concepts and relationships does the ontology have, how many rows are in each, and what's the advisory coverage — how many MODELs are advised, what are the severities, and what fraction of equipment sits on an advised MODEL?
 ```
 
 **Response**
@@ -83,7 +83,7 @@ Concepts: `CellTower`, `NetworkEquipment` (with `tower_id_fk` FK property), `Equ
 
 **Response**
 
-Plans the 5-reasoner chain on the shared ontology — descriptive (`/rai-querying`) to scope the ontology and advisory landscape; predictive (`/rai-predictive-modeling` + `/rai-predictive-training`) to train an equipment-failure binary classification GNN with a `ModelAdvisory → NetworkEquipment` edge and bind the per-tower `failure_intensity` back to `CellTower`; rules (`/rai-rules-authoring`) to flag critical-restore towers via a three-branch rule combining operational degradation with the predictive intensity; graph (`/rai-graph-analysis`) to compute subscriber PageRank and aggregate per-tower customer impact (revenue × churn across ACTIVE callers); prescriptive (`/rai-prescriptive-problem-formulation` + `/rai-prescriptive-results-interpretation`) to compose all three signals into the tier-selection MIP and explain the binding constraint.
+Plans the 5-reasoner chain on the shared ontology — descriptive (`/rai-pyrel`) to scope the ontology and advisory landscape; predictive (`/rai-predictive-modeling` + `/rai-predictive-training`) to train an equipment-failure binary classification GNN with a `ModelAdvisory → NetworkEquipment` edge and bind the per-tower `failure_intensity` back to `CellTower`; rules (`/rai-pyrel`) to flag critical-restore towers via a three-branch rule combining operational degradation with the predictive intensity; graph (`/rai-graph-analysis`) to compute subscriber PageRank and aggregate per-tower customer impact (revenue × churn across ACTIVE callers); prescriptive (`/rai-prescriptive-problem` + `/rai-prescriptive-results`) to compose all three signals into the tier-selection MIP and explain the binding constraint.
 
 ### 4. Train the equipment-failure GNN
 
@@ -102,7 +102,7 @@ GNN binary classification with `eval_metric=roc_auc`, 80 epochs, three FK / shar
 **Prompt**
 
 ```
-/rai-rules-authoring Which towers should we flag as critical-restore? Any tower fitting one of three cases: (1) in WEST and DEGRADED with poor equipment health (avg health below 0.85); (2) in WEST and showing high packet loss (above 5%) with poor health — catches ACTIVE-but-failing towers operations would otherwise miss; (3) predicted equipment-failure intensity above 1.5 (any region) — catches towers where multiple equipment items are at risk before they fail. Compute the per-tower health average by joining EquipmentHealth through NetworkEquipment to CellTower.
+/rai-pyrel Which towers should we flag as critical-restore? Any tower fitting one of three cases: (1) in WEST and DEGRADED with poor equipment health (avg health below 0.85); (2) in WEST and showing high packet loss (above 5%) with poor health — catches ACTIVE-but-failing towers operations would otherwise miss; (3) predicted equipment-failure intensity above 1.5 (any region) — catches towers where multiple equipment items are at risk before they fail. Compute the per-tower health average by joining EquipmentHealth through NetworkEquipment to CellTower.
 ```
 
 **Response**
@@ -138,7 +138,7 @@ Where PageRank scores a *subscriber*, paths scores the *route*. From the top-Pag
 **Prompt**
 
 ```
-/rai-prescriptive-problem-formulation Which tower upgrade plan maximizes weighted capacity restored within our $5M capex and 200 install-week envelope? For each critical-restore tower, pick at most one upgrade tier — BRONZE, SILVER, or GOLD. Each option's contribution to the objective is its `capacity_increase_gbps` multiplied by the tower's `weighted_impact` and its `failure_intensity` — a three-factor product so a high-failure-intensity tower serving high-revenue, churn-fragile accounts outscores a low-risk one.
+/rai-prescriptive-problem Which tower upgrade plan maximizes weighted capacity restored within our $5M capex and 200 install-week envelope? For each critical-restore tower, pick at most one upgrade tier — BRONZE, SILVER, or GOLD. Each option's contribution to the objective is its `capacity_increase_gbps` multiplied by the tower's `weighted_impact` and its `failure_intensity` — a three-factor product so a high-failure-intensity tower serving high-revenue, churn-fragile accounts outscores a low-risk one.
 ```
 
 **Response**
@@ -150,7 +150,7 @@ Status OPTIMAL; 27 towers covered (selected from the 142 flagged) across all fiv
 **Prompt**
 
 ```
-/rai-prescriptive-results-interpretation What is the final plan we ended up with — total cost, capacity restored, tier mix, towers covered? Which constraints are binding, and what would relaxing them unlock?
+/rai-prescriptive-results What is the final plan we ended up with — total cost, capacity restored, tier mix, towers covered? Which constraints are binding, and what would relaxing them unlock?
 ```
 
 **Response**
@@ -162,7 +162,7 @@ Budget is the binding constraint ($4,992,276 of $5M); install-weeks have ~20% sl
 **Prompt**
 
 ```
-/rai-ontology-design Materialize the optimal plan and the selected upgrades as queryable ontology. Add a RestorePlan concept holding the plan summary (total cost, install-weeks, capacity restored, tier-mix counts, towers covered, binding constraint) and mark the chosen tower-tier rows on TowerUpgradeOption.
+/rai-ontology Materialize the optimal plan and the selected upgrades as queryable ontology. Add a RestorePlan concept holding the plan summary (total cost, install-weeks, capacity restored, tier-mix counts, towers covered, binding constraint) and mark the chosen tower-tier rows on TowerUpgradeOption.
 ```
 
 **Response**

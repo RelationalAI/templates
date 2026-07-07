@@ -148,7 +148,7 @@ Set `EXP_DATABASE` at the top of `datacenter_compute_allocation.py` to that data
        110 workloads assigned, $25.28M revenue, 83% margin, 95% anchor share
    ```
 
-   Full stage-by-stage log (GNN distribution, PageRank scores, both Pareto frontiers, the demand-scenario overlay, and expected per-cell behavior) is in `runbook.md`. GNN probabilities depend on seed and predictive engine; the `--no-gnn` fallback values are deterministic. Stage 4 reaches `OPTIMAL` in seconds with Gurobi; the open-source HiGHS default returns a feasible solution at the `time_limit_sec=240` wall and may surface `TIME_LIMIT` (signal, not failure, per `rai-prescriptive-results-interpretation`). Set `SOLVER` in `datacenter_compute_allocation.py` to switch.
+   Full stage-by-stage log (GNN distribution, PageRank scores, both Pareto frontiers, the demand-scenario overlay, and expected per-cell behavior) is in `runbook.md`. GNN probabilities depend on seed and predictive engine; the `--no-gnn` fallback values are deterministic. Stage 4 reaches `OPTIMAL` in seconds with Gurobi; the open-source HiGHS default returns a feasible solution at the `time_limit_sec=240` wall and may surface `TIME_LIMIT` (signal, not failure, per `rai-prescriptive-results`). Set `SOLVER` in `datacenter_compute_allocation.py` to switch.
 
 ## Template structure
 
@@ -294,7 +294,7 @@ Some cell's constraints are mutually unsatisfiable AND the C1 P0 commitment is a
 <details>
 <summary>Solver returns <code>TIME_LIMIT</code> with sensible per-cell results</summary>
 
-Expected at the default `time_limit_sec=240`. Per-cell numbers remain valid with `TIME_LIMIT` (`rai-prescriptive-results-interpretation`: `TIME_LIMIT` is signal, not error). Raise `time_limit_sec` or switch to a faster solver in the `# Stage 4: Prescriptive` section if you need a tighter MIP gap.
+Expected at the default `time_limit_sec=240`. Per-cell numbers remain valid with `TIME_LIMIT` (`rai-prescriptive-results`: `TIME_LIMIT` is signal, not error). Raise `time_limit_sec` or switch to a faster solver in the `# Stage 4: Prescriptive` section if you need a tighter MIP gap.
 </details>
 
 <details>

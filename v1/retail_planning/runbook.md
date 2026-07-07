@@ -33,7 +33,7 @@ per-article demand with a GNN, then runs two optimizers on it.
 **Prompt**
 
 ```
-/rai-build-starter-ontology Build an ontology from the bundled H&M subset in data/hm_mini/: articles (products), customers, and transactions (a customer bought an article), with train / validation / test sales splits for the demand model. Also load the planning inputs: the planning articles' inventory, the weeks, and the discount tiers. Model a transaction as a relationship linking a customer and an article.
+/rai-ontology Build an ontology from the bundled H&M subset in data/hm_mini/: articles (products), customers, and transactions (a customer bought an article), with train / validation / test sales splits for the demand model. Also load the planning inputs: the planning articles' inventory, the weeks, and the discount tiers. Model a transaction as a relationship linking a customer and an article.
 ```
 
 **Response**
@@ -45,7 +45,7 @@ Loads `Article` (5,000), `Customer` (10,000), and `Transaction` (~9,601, linking
 **Prompt**
 
 ```
-/rai-querying What concepts and relationships does the ontology have, and how many rows are in each?
+/rai-pyrel What concepts and relationships does the ontology have, and how many rows are in each?
 ```
 
 **Response**
@@ -81,7 +81,7 @@ A sales-regression GNN trains over the transaction graph (beating the predict-th
 **Prompt**
 
 ```
-/rai-prescriptive-problem-formulation + /rai-prescriptive-solver-management Using the learned demand, choose a discount tier for each planning article in each week to maximize total revenue plus salvage value of leftover stock, respecting inventory. Persist the chosen discounts.
+/rai-prescriptive-problem Using the learned demand, choose a discount tier for each planning article in each week to maximize total revenue plus salvage value of leftover stock, respecting inventory. Persist the chosen discounts.
 ```
 
 **Response**
@@ -93,7 +93,7 @@ OPTIMAL (HiGHS), total revenue plus salvage **$62,038.94**. The markdown decisio
 **Prompt**
 
 ```
-/rai-prescriptive-problem-formulation + /rai-prescriptive-solver-management Using the learned demand, plan weekly production and inventory for the planning articles to minimize total cost — production plus holding plus an unmet-demand penalty — within production capacity. Persist the plan.
+/rai-prescriptive-problem Using the learned demand, plan weekly production and inventory for the planning articles to minimize total cost — production plus holding plus an unmet-demand penalty — within production capacity. Persist the plan.
 ```
 
 **Response**
@@ -105,7 +105,7 @@ OPTIMAL (HiGHS), total cost **$8,761.30** (production + holding + unmet penalty)
 **Prompt**
 
 ```
-/rai-prescriptive-results-interpretation What do the two plans recommend, and how does the learned demand drive them?
+/rai-prescriptive-results What do the two plans recommend, and how does the learned demand drive them?
 
 ```
 

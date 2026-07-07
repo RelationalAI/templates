@@ -18,13 +18,13 @@ Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` 
 
 ## 1. Build the ontology
 
-**Prompt:** /rai-build-starter-ontology Build an ontology from `data/distribution_points.csv` (each point has a type, a region, a capacity, and a population served) and `data/supply_routes.csv` (each directed route links two points and has a route capacity, a reliability score, and a distance). Derive a route flow weight as route capacity times reliability divided by distance, and model the route as a directed relationship from one point to another carrying that flow weight.
+**Prompt:** /rai-ontology Build an ontology from `data/distribution_points.csv` (each point has a type, a region, a capacity, and a population served) and `data/supply_routes.csv` (each directed route links two points and has a route capacity, a reliability score, and a distance). Derive a route flow weight as route capacity times reliability divided by distance, and model the route as a directed relationship from one point to another carrying that flow weight.
 
 **Response:** Loads `DistributionPoint` (18, with `type`, `region`, `capacity`, `population_served`) and `SupplyRoute` (28 directed routes, each with `route_capacity`, `reliability_score`, `distance_km`, and a derived `flow_weight`) — a directed, flow-weighted supply network serving 152,000 people.
 
 ## 2. Examine the ontology
 
-**Prompt:** /rai-querying What concepts and relationships does the ontology have, and how many of each?
+**Prompt:** /rai-pyrel What concepts and relationships does the ontology have, and how many of each?
 
 **Response:** One node concept, `DistributionPoint` (18), connected by `SupplyRoute` (28 directed, flow-weighted edges) — about 3.1 routes per point, total network capacity ~64,600 units.
 

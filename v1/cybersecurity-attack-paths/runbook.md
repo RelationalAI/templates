@@ -21,13 +21,13 @@ Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` 
 
 ## 1. Build the ontology
 
-**Prompt:** /rai-build-starter-ontology Build a RelationalAI ontology from `data/assets.csv` and `data/attack_steps.csv`. Each asset has an id, name, zone, whether it is internet-facing, whether it is a crown jewel, and an exposure score. Each attack step is a directed move from one asset to another tagged with a technique (`exploit`, `cred`, or `pivot`). Model one relationship per technique between assets, plus a technique-agnostic `can_reach` relationship populated from every step.
+**Prompt:** /rai-ontology Build a RelationalAI ontology from `data/assets.csv` and `data/attack_steps.csv`. Each asset has an id, name, zone, whether it is internet-facing, whether it is a crown jewel, and an exposure score. Each attack step is a directed move from one asset to another tagged with a technique (`exploit`, `cred`, or `pivot`). Model one relationship per technique between assets, plus a technique-agnostic `can_reach` relationship populated from every step.
 
 **Response:** Loads 12 `Asset` nodes and four asset-to-asset relationships — `exploit_to`, `cred_to`, `pivot_to` (one per technique), and the union `can_reach`. The 16 steps split into the three typed edges and all 16 populate `can_reach`.
 
 ## 2. Examine the ontology
 
-**Prompt:** /rai-querying What concepts and relationships does the ontology have, and how many of each?
+**Prompt:** /rai-pyrel What concepts and relationships does the ontology have, and how many of each?
 
 **Response:** One concept, `Asset`, with properties `name`, `zone`, `internet_facing`, `crown_jewel`, and `exposure_score`; and four self-relationships (`exploit_to`, `cred_to`, `pivot_to`, `can_reach`).
 

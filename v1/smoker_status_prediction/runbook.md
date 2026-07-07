@@ -18,13 +18,13 @@ Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` 
 
 ## 1. Build the ontology
 
-**Prompt:** /rai-build-starter-ontology Build an ontology from `data/people.csv` (each person has an id and health-screening attributes — age, height, weight, blood pressure, fasting blood sugar, cholesterol, triglyceride, HDL, LDL, hemoglobin, and more), `data/related.csv` (an edge list pairing two people who are related), and the `data/train.csv`, `data/validation.csv`, and `data/test.csv` tables that carry the smoking label for each split. Model "related" as a relationship between people.
+**Prompt:** /rai-ontology Build an ontology from `data/people.csv` (each person has an id and health-screening attributes — age, height, weight, blood pressure, fasting blood sugar, cholesterol, triglyceride, HDL, LDL, hemoglobin, and more), `data/related.csv` (an edge list pairing two people who are related), and the `data/train.csv`, `data/validation.csv`, and `data/test.csv` tables that carry the smoking label for each split. Model "related" as a relationship between people.
 
 **Response:** Loads `People` (38,984, with the health-screening attributes), a `Related` person-to-person edge list (58,355 edges), and the train / validation / test label tables (31,187 / 3,898 / 3,899 people, each with a `smoking` flag).
 
 ## 2. Examine the ontology
 
-**Prompt:** /rai-querying What concepts and relationships does the ontology have, and how many rows are in each?
+**Prompt:** /rai-pyrel What concepts and relationships does the ontology have, and how many rows are in each?
 
 **Response:** `People` (38,984, with health attributes), a `Related` self-relationship (58,355 person-to-person edges), and the labeled splits — 31,187 train, 3,898 validation, 3,899 test. The test split is scored by the model.
 
