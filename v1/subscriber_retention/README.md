@@ -72,7 +72,7 @@ GRANT CREATE MODEL ON SCHEMA TELCO_ENRICHMENT.EXPERIMENTS TO APPLICATION RELATIO
 ### Tools
 
 - Python >= 3.10
-- RelationalAI Python SDK (`relationalai == 1.8`)
+- RelationalAI Python SDK (`relationalai[gnn] == 1.8`)
 
 ## Quickstart
 
