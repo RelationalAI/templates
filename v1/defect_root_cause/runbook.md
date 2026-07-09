@@ -111,7 +111,7 @@ Derived `Factor.touched_count`, `Factor.defect_count`, `Factor.defect_rate`, and
 **Prompt**
 
 ```
-/rai-prescriptive-problem From the suspect factors, find the smallest, most specific set that together explains the defective units. Name as few factors as possible — each named factor carries a fixed cost — and penalize naming a factor that also touches many good (non-defective) units. Allow a defective unit to be left unexplained at a cost rather than forcing in a spurious cause. Every defective unit must be explained by a named factor it touches, or marked unexplained.
+/rai-prescriptive-problem From the suspect factors, find the smallest, most specific set that together explains the defective units. Name as few factors as possible — each named factor carries a fixed cost of $5, plus $0.02 per good (non-defective) unit it also touches. Allow a defective unit to be left unexplained at a cost of $1 rather than forcing in a spurious cause. Every defective unit must be explained by a named factor it touches, or marked unexplained.
 ```
 
 **Response**

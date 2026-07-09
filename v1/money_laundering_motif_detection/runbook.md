@@ -37,7 +37,7 @@ Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` 
 
 ## 3. Detect butterfly (scatter-gather) rings
 
-**Prompt:** /rai-prescriptive-problem Find butterfly scatter-gather rings: one source account that fans funds out to exactly 3 hub accounts sharing the same beneficial owner, which then gather into one destination account — with no direct source-to-destination or hub-to-hub edges, every transfer under $10,000, and each hub's dollars in roughly equal to its dollars out (flow conservation within a small tolerance). Enumerate all such rings.
+**Prompt:** /rai-prescriptive-problem Find butterfly scatter-gather rings: one source account that fans funds out to exactly 3 hub accounts sharing the same beneficial owner, which then gather into one destination account — with no direct source-to-destination or hub-to-hub edges, every transfer under $10,000, and each hub's dollars in roughly equal to its dollars out (flow conservation within 5%). Enumerate all such rings.
 
 **Response:** OPTIMAL — enumeration exhausted (MiniZinc), **2 rings found**, both planted scatter-gathers: SourceShellCorp → 3 same-owner hubs → WireRecipientCorp, and SecondShellCorp → 3 same-owner hubs → OffshoreLLC (12 motif edges total). The per-hub dollar-conservation constraint is what rejects structurally-similar but non-laundering fan-outs.
 

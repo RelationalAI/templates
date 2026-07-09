@@ -42,7 +42,7 @@ about +40% over a naive sort-by-score.
 **Prompt**
 
 ```
-/rai-ontology Build an ontology from the PaySim mobile-money Snowflake schema: accounts (each with an id and an account-type prefix), transactions (each with a type, an amount, sender and receiver balance changes, the sender and receiver accounts, an existing fraud flag, and an audit cost), and the train / validation / test split tables that label transactions as fraud or not. Model a transaction's sender and receiver as relationships to accounts.
+/rai-ontology Build an ontology from the PaySim mobile-money Snowflake schema: accounts (each with an id and an account-type prefix), transactions (each with a type, an amount, sender and receiver balance changes, the sender and receiver accounts, an existing fraud flag, and an audit cost), and the train / validation / test split tables that label transactions as fraud or not. Link each transaction to its sender and receiver accounts.
 ```
 
 **Response**

@@ -49,6 +49,6 @@ Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` 
 
 ## 6. Maximal chains and assembly depth
 
-**Prompt:** /rai-graph-analysis The full path set repeats every sub-chain. Reduce it to just the maximal end-to-end chains — the longest routes not contained inside a longer one — and record each finished good's assembly depth, the length of the deepest chain that builds it.
+**Prompt:** /rai-graph-analysis The full path set repeats every sub-chain. Reduce it to just the maximal end-to-end chains — the longest routes not contained inside a longer one — and persist each finished good's assembly depth as `SKU.assembly_depth` on the ontology (the length of the deepest chain that builds it).
 
 **Response:** 8 of the 18 paths are maximal; the other 10 are shorter sub-chains contained inside them. All 8 maximal chains are 2-hop raw-material → component → finished-good routes (e.g. Silicon Wafer 300mm → Mobile Processor A15 → ProTab T1). Both finished goods have an assembly depth of 2, persisted back onto the ontology as `SKU.assembly_depth` so a later query can rank products by build complexity without re-enumerating paths.

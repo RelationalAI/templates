@@ -154,7 +154,7 @@ Cast `PathTraversal.length` to int before pandas comparisons (the paths library 
 **Prompt**
 
 ```
-/rai-graph-analysis Using the paths library, enumerate every 1- to 3-hop chain through the Customer.depends_on graph. Which customer endpoints have the most paths terminating at them (the most redundant protection), and which customer is structurally a single point of failure — the only customer whose elevated floor depends on exactly one direct incoming dependency edge AND has no alternative-path protection?
+/rai-graph-analysis Using the paths library, enumerate every 1- to 3-hop chain through the Customer.depends_on graph. Which customer endpoints have the most paths terminating at them (the most redundant protection), and which customer is structurally a single point of failure — the only customer whose elevated floor depends on exactly one direct incoming dependency edge AND is not itself on any other customer's dependency chain (no one else's protection routes through it)?
 ```
 
 **Response**
@@ -166,7 +166,7 @@ Cast `PathTraversal.length` to int before pandas comparisons (the paths library 
 **Prompt**
 
 ```
-/rai-graph-analysis For each supplier, recompute effective capacity with that supplier's capability_pct forced to 0 across all 36 months and count the (product, period) cells whose capacity drops more than 10% vs the baseline forecast. Do the same for each raw-material input by forcing its availability to 0.30 and counting cells whose drop exceeds 5%. Which single supplier and which single input cast the widest cascade footprint? Persist the per-supplier and per-input cell counts back to the ontology so a downstream analyst can query the risk ranking without re-running the cascade.
+/rai-graph-analysis For each supplier, recompute effective capacity with that supplier's capability_pct forced to 0 across all 36 months and count the (product, period) cells whose capacity drops more than 10% vs the baseline forecast. Do the same for each raw-material input by forcing its availability to 0.30 and counting cells whose drop exceeds 5%. Which supplier(s) and which input(s) cast the widest cascade footprint (ties allowed)? Persist the per-supplier and per-input cell counts back to the ontology so a downstream analyst can query the risk ranking without re-running the cascade.
 ```
 
 **Response**

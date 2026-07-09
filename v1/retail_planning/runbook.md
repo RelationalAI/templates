@@ -81,7 +81,7 @@ A sales-regression GNN trains over the transaction graph (beating the predict-th
 **Prompt**
 
 ```
-/rai-prescriptive-problem Using the learned demand, choose a discount tier for each planning article in each week to maximize total revenue plus salvage value of leftover stock, respecting inventory. Persist the chosen discounts.
+/rai-prescriptive-problem Using the learned demand, choose a discount tier for each planning article in each week to maximize total revenue plus salvage value of leftover stock, respecting inventory. Only let discounts deepen over the season, never reverse. Persist the chosen discounts.
 ```
 
 **Response**
