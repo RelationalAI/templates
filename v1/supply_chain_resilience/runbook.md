@@ -44,7 +44,7 @@ watch->avoid downgrade = +0.0% (optimizer already routed around it).
 **Prompt**
 
 ```
-/rai-build-starter-ontology Build a supply chain ontology from the CSVs in data/. It should have a Site (a physical location with a region), a Business (a supplier, manufacturer, warehouse, or buyer, each at a site, with a reliability score), a SKU, an Operation (a shipping lane between two sites carrying a SKU at a per-unit cost — model it as the network edge the optimizer will route flow over), a Demand order (a quantity of a SKU requested by a business, with a priority), a Shipment (a historical movement with an on-time/late flag), and a quarterly DelayPrediction per supplier. Wire Operations between their origin and destination Sites so the shipment graph can be traced, and link Demand and Shipment back to their Business and SKU.
+/rai-ontology Build a supply chain ontology from the CSVs in data/. It should have a Site (a physical location with a region), a Business (a supplier, manufacturer, warehouse, or buyer, each at a site, with a reliability score), a SKU, an Operation (a shipping lane between two sites carrying a SKU at a per-unit cost — model it as the network edge the optimizer will route flow over), a Demand order (a quantity of a SKU requested by a business, with a priority), a Shipment (a historical movement with an on-time/late flag), and a quarterly DelayPrediction per supplier. Wire Operations between their origin and destination Sites so the shipment graph can be traced, and link Demand and Shipment back to their Business and SKU.
 ```
 
 **Response**
@@ -56,7 +56,7 @@ Concepts: `Site`, `Business`, `SKU`, `Operation`, `Demand`, `Shipment`, `DelayPr
 **Prompt**
 
 ```
-/rai-querying What concepts and relationships does the ontology have, and how many rows are in each?
+/rai-pyrel What concepts and relationships does the ontology have, and how many rows are in each?
 ```
 
 **Response**
@@ -104,7 +104,7 @@ Reasoner-routing plan: (1) Graph reachability for upstream supplier exposure, (2
 **Prompt**
 
 ```
-/rai-rules-authoring Which suppliers are unreliable (reliability score below 0.80) or high-delay-risk (Q1 delay prediction above 0.15), and how should we tier them — 'avoid' (both flags fire), 'watch' (either flag fires), or 'reliable' (neither)? Also flag any HIGH-priority demand orders as escalated so downstream solves can prioritize them.
+/rai-pyrel Which suppliers are unreliable (reliability score below 0.80) or high-delay-risk (Q1 delay prediction above 0.15), and how should we tier them — 'avoid' (both flags fire), 'watch' (either flag fires), or 'reliable' (neither)? Also flag any HIGH-priority demand orders as escalated so downstream solves can prioritize them.
 ```
 
 **Response**
@@ -116,7 +116,7 @@ Reasoner-routing plan: (1) Graph reachability for upstream supplier exposure, (2
 **Prompt**
 
 ```
-/rai-prescriptive-problem-formulation What's the minimum-cost shipping plan that fulfills all open demand, hard-blocks 'avoid' suppliers (x_flow == 0), adds a $5/unit surcharge on 'watch' suppliers, weights each unit of flow into a destination site by 2.0 × that site's centrality (so flow into high-centrality hubs costs more), and penalizes unmet demand at $100/unit?
+/rai-prescriptive-problem What's the minimum-cost shipping plan that fulfills all open demand, hard-blocks 'avoid' suppliers (x_flow == 0), adds a $5/unit surcharge on 'watch' suppliers, weights each unit of flow into a destination site by 2.0 × that site's centrality (so flow into high-centrality hubs costs more), and penalizes unmet demand at $100/unit?
 ```
 
 **Response**
@@ -128,7 +128,7 @@ OPTIMAL · $1,865 · 8 active flows · 0 unmet. MILP on `Operation.x_flow` + `De
 **Prompt**
 
 ```
-/rai-prescriptive-solver-management + /rai-prescriptive-results-interpretation Re-solve with the highest-centrality site offline, and again with watch-level suppliers downgraded to avoid. What's the cost delta in each, and why are they asymmetric?
+/rai-prescriptive-results Re-solve with the highest-centrality site offline, and again with watch-level suppliers downgraded to avoid. What's the cost delta in each, and why are they asymmetric?
 ```
 
 **Response**
@@ -140,7 +140,7 @@ Baseline OPTIMAL $1,865 / 8 flows / 0 unmet; S004 offline +88.5%; watch->avoid +
 **Prompt**
 
 ```
-/rai-ontology-design Add a RoutingScenario concept that materializes each scenario solve (Baseline, S004-offline, Watch->Avoid) with its status, total cost, cost delta versus baseline, active flow count, unmet total, and any blocked businesses.
+/rai-ontology Add a RoutingScenario concept that materializes each scenario solve (Baseline, S004-offline, Watch->Avoid) with its status, total cost, cost delta versus baseline, active flow count, unmet total, and any blocked businesses.
 ```
 
 **Response**

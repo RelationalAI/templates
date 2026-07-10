@@ -260,7 +260,7 @@ For the implementation, see `subscriber_retention.py`; to reproduce it step by s
 
 The bundled CSVs are loaded via `model.data(df)` for a no-setup local demo. To run against full data living in Snowflake instead:
 
-1. Replace the three `pd.read_csv(...)` calls at the top of the script with Snowpark queries (or use `model.Table("<DB>.<SCHEMA>.<TABLE>")` directly per the `rai-pyrel-coding` skill's data-loading guidance):
+1. Replace the three `pd.read_csv(...)` calls at the top of the script with Snowpark queries (or use `model.Table("<DB>.<SCHEMA>.<TABLE>")` directly per the `rai-pyrel` skill's data-loading guidance):
    ```python
    from relationalai.config import SnowflakeConnection, create_config
    from snowflake import snowpark

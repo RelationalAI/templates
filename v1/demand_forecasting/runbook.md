@@ -21,13 +21,13 @@ Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` 
 
 ## 1. Build the ontology
 
-**Prompt:** /rai-build-starter-ontology Build an ontology from `data/favorita_mini/stores.csv` (each store has a city, state, type, and cluster), `data/favorita_mini/items.csv` (each item has a family, class, and perishable flag), and `data/favorita_mini/sales.csv` (one row per store-item-date with unit sales and an on-promotion flag). Derive an item-family concept from the item families.
+**Prompt:** /rai-ontology Build an ontology from `data/favorita_mini/stores.csv` (each store has a city, state, type, and cluster), `data/favorita_mini/items.csv` (each item has a family, class, and perishable flag), and `data/favorita_mini/sales.csv` (one row per store-item-date with unit sales and an on-promotion flag). Derive an item-family concept from the item families.
 
 **Response:** Loads `Store` (3, with city/state/type/cluster), `Item` (25, with family/class/perishable), a derived `ItemFamily` (from the distinct item families), and `Sale` (~27,375 rows, each with `unit_sales`, `date`, and `onpromotion`, linked to its store and item).
 
 ## 2. Examine the ontology
 
-**Prompt:** /rai-querying What concepts and relationships does the ontology have, and how many rows are in each?
+**Prompt:** /rai-pyrel What concepts and relationships does the ontology have, and how many rows are in each?
 
 **Response:** Four concepts — 3 `Store`, 25 `Item`, the derived `ItemFamily`, and ~27,375 `Sale` (one per store-item-date) — the history the forecaster learns from.
 

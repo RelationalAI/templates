@@ -13,7 +13,7 @@ minimal root-cause diagnosis.
 
   ─────────────────────────────────────────────────────────────────
   EXAMINE   Descriptive   ──►  final-test failure rate by build week
-   /rai-querying               1.9% (wk1) -> 6.6% (wk2) -> 8.3% (wk3);
+   /rai-pyrel                  1.9% (wk1) -> 6.6% (wk2) -> 8.3% (wk3);
                                spike onset = week 2.
   ─────────────────────────────────────────────────────────────────
   STAGE 1   Graph         ──►  Unit.touches_lot  (57,133 incidence facts)
@@ -21,12 +21,12 @@ minimal root-cause diagnosis.
                                105-lot / 162-edge parent->child genealogy.
   ─────────────────────────────────────────────────────────────────
   STAGE 2   Rules         ──►  Factor.lift, Factor.is_suspect  (10 suspects)
-   /rai-rules-authoring        Defect lift vs. the 5.68% baseline; screens
+   /rai-pyrel                  Defect lift vs. the 5.68% baseline; screens
                                out high-coverage / low-lift trunk factors.
   ─────────────────────────────────────────────────────────────────
   STAGE 3   Prescriptive  ──►  Factor.is_root_cause (2), DiagnosisResult
-   /rai-prescriptive-          OPTIMAL · obj 46.32 · {SP-0423, REF-02}
-   problem-formulation         explain 120/142 defects (85% coverage).
+   /rai-prescriptive-problem   OPTIMAL · obj 46.32 · {SP-0423, REF-02}
+                               explain 120/142 defects (85% coverage).
   ─────────────────────────────────────────────────────────────────
 ```
 
@@ -39,7 +39,7 @@ minimal root-cause diagnosis.
 **Prompt**
 
 ```
-/rai-build-starter-ontology Build a manufacturing genealogy ontology from the CSVs in data/. Model finished Units with their final-test result and build week, the multi-tier SKU bill of materials, material Lots with a parent->child genealogy (a built lot consumes its input lots) and receipt dates, each unit's directly-consumed lots and its process history (machine and shift per operation), and a Factor concept enumerating the candidate root causes — every lot, machine, and shift.
+/rai-ontology Build a manufacturing genealogy ontology from the CSVs in data/. Model finished Units with their final-test result and build week, the multi-tier SKU bill of materials, material Lots with a parent->child genealogy (a built lot consumes its input lots) and receipt dates, each unit's directly-consumed lots and its process history (machine and shift per operation), and a Factor concept enumerating the candidate root causes — every lot, machine, and shift.
 ```
 
 **Response**
@@ -51,7 +51,7 @@ Concepts bound to the bundled CSVs: `SKU` (20, four tiers), `BillOfMaterials` (2
 **Prompt**
 
 ```
-/rai-querying How many units are there, how many are defective, what failure rate is that, and what is the defect-type mix?
+/rai-pyrel How many units are there, how many are defective, what failure rate is that, and what is the defect-type mix?
 ```
 
 **Response**
@@ -63,7 +63,7 @@ Concepts bound to the bundled CSVs: `SKU` (20, four tiers), `BillOfMaterials` (2
 **Prompt**
 
 ```
-/rai-querying Before touching genealogy: when did the failures start climbing? Roll the final-test failure rate up by build week, and identify the onset — the first week whose rate runs well above the opening week's baseline.
+/rai-pyrel Before touching genealogy: when did the failures start climbing? Roll the final-test failure rate up by build week, and identify the onset — the first week whose rate runs well above the opening week's baseline.
 ```
 
 **Response**
@@ -80,7 +80,7 @@ Failure rate by build week: 1.9% (week 1, 795 units) → 6.6% (week 2, 852) → 
 
 **Response**
 
-Plans the backward chain on the shared ontology: graph (`/rai-graph-analysis`) to close the lot genealogy transitively and attribute every upstream lot to the units that carry it; rules (`/rai-rules-authoring`) to contrast-score each candidate factor by defect lift versus baseline and screen out high-coverage / low-lift factors; prescriptive (`/rai-prescriptive-problem-formulation` + `/rai-prescriptive-results-interpretation`) to solve a minimal set-cover diagnosis and explain why it prefers the deep root over its proximate carriers.
+Plans the backward chain on the shared ontology: graph (`/rai-graph-analysis`) to close the lot genealogy transitively and attribute every upstream lot to the units that carry it; rules (`/rai-pyrel`) to contrast-score each candidate factor by defect lift versus baseline and screen out high-coverage / low-lift factors; prescriptive (`/rai-prescriptive-problem` + `/rai-prescriptive-results`) to solve a minimal set-cover diagnosis and explain why it prefers the deep root over its proximate carriers.
 
 ### 5. Trace genealogy backward
 
@@ -99,7 +99,7 @@ A directed parent -> child genealogy graph on `Lot` (105 nodes, 162 edges); `rea
 **Prompt**
 
 ```
-/rai-rules-authoring Score each candidate factor by how concentrated defects are among the units it touches. Define lift as the factor's defect rate — defective units touched divided by units touched — divided by the plant-wide baseline failure rate (5.68%). Flag a factor as a suspect when its lift is at least 1.5, it touches at least 30 units, and at least 5 of those are defective, so a near-universal lot or the busiest machine — high coverage but baseline lift — is screened out.
+/rai-pyrel Score each candidate factor by how concentrated defects are among the units it touches. Define lift as the factor's defect rate — defective units touched divided by units touched — divided by the plant-wide baseline failure rate (5.68%). Flag a factor as a suspect when its lift is at least 1.5, it touches at least 30 units, and at least 5 of those are defective, so a near-universal lot or the busiest machine — high coverage but baseline lift — is screened out.
 ```
 
 **Response**
@@ -111,7 +111,7 @@ Derived `Factor.touched_count`, `Factor.defect_count`, `Factor.defect_rate`, and
 **Prompt**
 
 ```
-/rai-prescriptive-problem-formulation From the suspect factors, find the smallest, most specific set that together explains the defective units. Name as few factors as possible — each named factor carries a fixed cost — and penalize naming a factor that also touches many good (non-defective) units. Allow a defective unit to be left unexplained at a cost rather than forcing in a spurious cause. Every defective unit must be explained by a named factor it touches, or marked unexplained.
+/rai-prescriptive-problem From the suspect factors, find the smallest, most specific set that together explains the defective units. Name as few factors as possible — each named factor carries a fixed cost of $5, plus $0.02 per good (non-defective) unit it also touches. Allow a defective unit to be left unexplained at a cost of $1 rather than forcing in a spurious cause. Every defective unit must be explained by a named factor it touches, or marked unexplained.
 ```
 
 **Response**
@@ -123,7 +123,7 @@ Status OPTIMAL, objective 46.32 (24.32 in factor-selection cost plus 22 unexplai
 **Prompt**
 
 ```
-/rai-prescriptive-results-interpretation What is the final diagnosis — which factors, how many defects do they explain, and what evidence supports each? Why did the optimizer name the solder-paste lot rather than the three populated-board lots that scored higher on lift?
+/rai-prescriptive-results What is the final diagnosis — which factors, how many defects do they explain, and what evidence supports each? Why did the optimizer name the solder-paste lot rather than the three populated-board lots that scored higher on lift?
 ```
 
 **Response**
@@ -135,7 +135,7 @@ Two root causes explain 85% of the failures, each with corroborating evidence: `
 **Prompt**
 
 ```
-/rai-ontology-design Materialize the diagnosis as queryable ontology: a DiagnosisResult singleton holding the defective-unit count, units explained, coverage, and number of root causes, and mark the named factors on Factor.is_root_cause.
+/rai-ontology Materialize the diagnosis as queryable ontology: a DiagnosisResult singleton holding the defective-unit count, units explained, coverage, and number of root causes, and mark the named factors on Factor.is_root_cause.
 ```
 
 **Response**

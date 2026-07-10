@@ -49,7 +49,7 @@ without the cluster collapse, the gap would grow.
 **Prompt**
 
 ```
-/rai-build-starter-ontology Build a portfolio ontology from the CSVs in data/. The covariance file is in long form (stock_i, stock_j, value) — model it as a binary property on Stock rather than a separate Concept. Promote sector to its own Concept so downstream rules can aggregate exposure per sector.
+/rai-ontology Build a portfolio ontology from the CSVs in data/. The covariance file is in long form (stock_i, stock_j, value) — model it as a binary property on Stock rather than a separate Concept. Promote sector to its own Concept so downstream rules can aggregate exposure per sector.
 ```
 
 **Response**
@@ -61,7 +61,7 @@ Concepts: `Stock` (with binary `Stock.covar(Stock, Stock)` property carrying cov
 **Prompt**
 
 ```
-/rai-querying What concepts and relationships does the ontology have, and how many rows are in each?
+/rai-pyrel What concepts and relationships does the ontology have, and how many rows are in each?
 ```
 
 **Response**
@@ -85,7 +85,7 @@ Plan: rules for compliance flags, graph for correlation clustering + representat
 **Prompt**
 
 ```
-/rai-rules-authoring Which holdings are overconcentrated (worth more than 15% of their account), which (account, sector) pairs are overweight (more than 30% of the account), and which traders are high-risk (risk score above 0.8 with more than five flagged transactions)?
+/rai-pyrel Which holdings are overconcentrated (worth more than 15% of their account), which (account, sector) pairs are overweight (more than 30% of the account), and which traders are high-risk (risk score above 0.8 with more than five flagged transactions)?
 ```
 
 **Response**
@@ -109,7 +109,7 @@ Plan: rules for compliance flags, graph for correlation clustering + representat
 **Prompt**
 
 ```
-/rai-prescriptive-problem-formulation What's the Markowitz mean-variance frontier across our 6 scenarios (3 budgets — 500, 1000, 2000 — times 2 regimes — base, crisis)? Each scenario must be fully invested; cap any single position at 30% of budget and any sector at 30%; only invest in cluster representatives. Solve with sensitivity enabled so each return-floor constraint returns its shadow price. Trace 6 frontier points per scenario by dual-guided sampling: start from the min-risk and max-return anchors, then add each next return target where the two bracketing points' shadow prices (their tangents) predict the largest gap to the chord — not on a uniform grid, which over-samples the flat low-risk end and crowds the max-return wall.
+/rai-prescriptive-problem What's the Markowitz mean-variance frontier across our 6 scenarios (3 budgets — 500, 1000, 2000 — times 2 regimes — base, crisis)? Each scenario must be fully invested; cap any single position at 30% of budget and any sector at 30%; only invest in cluster representatives. Solve with sensitivity enabled so each return-floor constraint returns its shadow price. Trace 6 frontier points per scenario by dual-guided sampling: start from the min-risk and max-return anchors, then add each next return target where the two bracketing points' shadow prices (their tangents) predict the largest gap to the chord — not on a uniform grid, which over-samples the flat low-risk end and crowds the max-return wall.
 ```
 
 **Response**
@@ -121,7 +121,7 @@ Plan: rules for compliance flags, graph for correlation clustering + representat
 **Prompt**
 
 ```
-/rai-prescriptive-results-interpretation For the reference scenario (base_1000), list the Pareto frontier with each point's exact shadow price (the return-floor dual), and find the knee — the last point before the marginal risk per unit return jumps the most. Treat the knee as the largest ratio jump between consecutive duals.
+/rai-prescriptive-results For the reference scenario (base_1000), list the Pareto frontier with each point's exact shadow price (the return-floor dual), and find the knee — the last point before the marginal risk per unit return jumps the most. Treat the knee as the largest ratio jump between consecutive duals.
 ```
 
 **Response**
@@ -133,7 +133,7 @@ Reference base_1000 frontier: return 64.87 -> 84.00, variance 4641.57 -> 8528.00
 **Prompt**
 
 ```
-/rai-pyrel-coding + /rai-prescriptive-results-interpretation How much does volatility expand at each frontier point under crisis covariance — where correlations shrink 30% of the way toward all-ones (preserving positive semi-definiteness) — versus the base regime?
+/rai-pyrel + /rai-prescriptive-results How much does volatility expand at each frontier point under crisis covariance — where correlations shrink 30% of the way toward all-ones (preserving positive semi-definiteness) — versus the base regime?
 ```
 
 **Response**
@@ -145,7 +145,7 @@ Crisis vol runs 22-30% above base at every frontier point (budget 1000: min_risk
 **Prompt**
 
 ```
-/rai-ontology-design Add a FrontierPoint concept indexed by (Scenario, eps_label) that materializes each Pareto point's metadata: return, risk, marginal risk-per-return, knee flag, base-regime volatility, crisis-regime volatility, and the percentage gap between them.
+/rai-ontology Add a FrontierPoint concept indexed by (Scenario, eps_label) that materializes each Pareto point's metadata: return, risk, marginal risk-per-return, knee flag, base-regime volatility, crisis-regime volatility, and the percentage gap between them.
 ```
 
 **Response**

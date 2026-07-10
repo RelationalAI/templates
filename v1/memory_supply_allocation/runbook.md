@@ -55,7 +55,7 @@ maker customers stay pinned at their elevated floors.
 **Prompt**
 
 ```
-/rai-build-starter-ontology Build a memory-chip allocation ontology from the CSVs in data/. Include a Dependency junction concept so downstream-to-upstream customer yield declarations can be modeled, plus Supplier, SupplierProductCapacity, Input, and InputUsage concepts so capacity can be composed from supplier capability and raw-material exposure. Also include a SupplierCapabilityForecast concept holding the predicted capability_pct per (supplier, month).
+/rai-ontology Build a memory-chip allocation ontology from the CSVs in data/. Include a Dependency junction concept so downstream-to-upstream customer yield declarations can be modeled, plus Supplier, SupplierProductCapacity, Input, and InputUsage concepts so capacity can be composed from supplier capability and raw-material exposure. Also include a SupplierCapabilityForecast concept holding the predicted capability_pct per (supplier, month).
 ```
 
 **Response**
@@ -67,7 +67,7 @@ Concepts created and bound to the bundled CSVs: Customer (11 rows), Product (5 S
 **Prompt**
 
 ```
-/rai-querying What concepts and relationships does the ontology have, how many rows are in each, and what is the customer-customer dependency landscape: how many customers declare yield to an upstream supplier, how many are protected by an elevated floor, and is there any multi-hop chaining?
+/rai-pyrel What concepts and relationships does the ontology have, how many rows are in each, and what is the customer-customer dependency landscape: how many customers declare yield to an upstream supplier, how many are protected by an elevated floor, and is there any multi-hop chaining?
 ```
 
 **Response**
@@ -84,14 +84,14 @@ Concepts created and bound to the bundled CSVs: Customer (11 rows), Product (5 S
 
 **Response**
 
-Four-reasoner chain on the shared ontology. **Rules** (`/rai-rules-authoring`) to derive per-customer max_declared_yield_pct + elevated_floor_pct + a single-point-of-failure flag from the Dependency junction. **Predictive** (`/rai-predictive-modeling` or pre-computed table) to provide a SupplierCapabilityForecast per (supplier, month). **Prescriptive** (`/rai-prescriptive-problem-formulation`) to solve revenue-max LP as a rolling horizon — baseline plus one re-solve per disruption reveal, with effective capacity recomputed against the current forecast and input-availability state each time. **Graph** (`/rai-graph-analysis` with the paths library) to enumerate variable-length customer dependency chains, flag the dependency SPOF, and run two cascade what-if branches (supplier-offline, input-shortage).
+Four-reasoner chain on the shared ontology. **Rules** (`/rai-pyrel`) to derive per-customer max_declared_yield_pct + elevated_floor_pct + a single-point-of-failure flag from the Dependency junction. **Predictive** (`/rai-predictive-modeling` or pre-computed table) to provide a SupplierCapabilityForecast per (supplier, month). **Prescriptive** (`/rai-prescriptive-problem`) to solve revenue-max LP as a rolling horizon — baseline plus one re-solve per disruption reveal, with effective capacity recomputed against the current forecast and input-availability state each time. **Graph** (`/rai-graph-analysis` with the paths library) to enumerate variable-length customer dependency chains, flag the dependency SPOF, and run two cascade what-if branches (supplier-offline, input-shortage).
 
 ### 4. Derive customer yield, elevated floor, and SPOF flag
 
 **Prompt**
 
 ```
-/rai-rules-authoring Which customers should be flagged as yielding-downstream (willing to give up part of their allocation to keep an upstream supplier covered), which carry an elevated service floor above their base, and which are dependency single points of failure? A customer is a dependency single point of failure when (a) exactly one incoming dependency lifts its floor above its base, and (b) that floor would drop back to base if the single protecting edge were removed.
+/rai-pyrel Which customers should be flagged as yielding-downstream (willing to give up part of their allocation to keep an upstream supplier covered), which carry an elevated service floor above their base, and which are dependency single points of failure? A customer is a dependency single point of failure when (a) exactly one incoming dependency lifts its floor above its base, and (b) that floor would drop back to base if the single protecting edge were removed.
 ```
 
 **Response**
@@ -115,7 +115,7 @@ Predictions bind into `SupplierCapabilityForecast` (216 rows) with per-supplier 
 **Prompt**
 
 ```
-/rai-prescriptive-problem-formulation What is the revenue-maximizing 36-month monthly allocation of supply across customers, subject to: (1) capacity per (product, month) computed as the sum over suppliers of nominal_capacity_usd × capability_pct, scaled by the product across raw-material inputs of (1 − intensity × (1 − input_availability)); (2) per-cell upper bound of (1 − max_declared_yield_pct) × demand_usd; (3) per-cell lower bound of max(base_service_floor_pct, elevated_floor_pct) × demand_usd. Solve under baseline forecast with no disruption applied. Report total margin and per-customer service level (alloc / demand aggregated per customer over the horizon).
+/rai-prescriptive-problem What is the revenue-maximizing 36-month monthly allocation of supply across customers, subject to: (1) capacity per (product, month) computed as the sum over suppliers of nominal_capacity_usd × capability_pct, scaled by the product across raw-material inputs of (1 − intensity × (1 − input_availability)); (2) per-cell upper bound of (1 − max_declared_yield_pct) × demand_usd; (3) per-cell lower bound of max(base_service_floor_pct, elevated_floor_pct) × demand_usd. Solve under baseline forecast with no disruption applied. Report total margin and per-customer service level (alloc / demand aggregated per customer over the horizon).
 ```
 
 **Response**
@@ -127,7 +127,7 @@ OPTIMAL · margin $45,488,032,436 over months 1–36 · binding constraint is HB
 **Prompt**
 
 ```
-/rai-prescriptive-problem-formulation Replan as each disruption surfaces. At month 5, Orion Foundry's capability_pct drops to 0.78 for months 5–10 (unscheduled EUV tool downtime) and recovers afterward. At month 13, helium availability drops to 0.80 and holds at that level through end of horizon (planner's conservative assumption — the geopolitical event has uncertain resolution timing). For each reveal, update effective capacity and re-solve the remaining months against the same three constraint types from the baseline solve. Report the cumulative plan diff at the customer level vs the prior iteration's allocation over the overlapping months.
+/rai-prescriptive-problem Replan as each disruption surfaces. At month 5, Orion Foundry's capability_pct drops to 0.78 for months 5–10 (unscheduled EUV tool downtime) and recovers afterward. At month 13, helium availability drops to 0.80 and holds at that level through end of horizon (planner's conservative assumption — the geopolitical event has uncertain resolution timing). For each reveal, update effective capacity and re-solve the remaining months against the same three constraint types from the baseline solve. Report the cumulative plan diff at the customer level vs the prior iteration's allocation over the overlapping months.
 ```
 
 **Response**
@@ -154,7 +154,7 @@ Cast `PathTraversal.length` to int before pandas comparisons (the paths library 
 **Prompt**
 
 ```
-/rai-graph-analysis Using the paths library, enumerate every 1- to 3-hop chain through the Customer.depends_on graph. Which customer endpoints have the most paths terminating at them (the most redundant protection), and which customer is structurally a single point of failure — the only customer whose elevated floor depends on exactly one direct incoming dependency edge AND has no alternative-path protection?
+/rai-graph-analysis Using the paths library, enumerate every 1- to 3-hop chain through the Customer.depends_on graph. Which customer endpoints have the most paths terminating at them (the most redundant protection), and which customer is structurally a single point of failure — the only customer whose elevated floor depends on exactly one direct incoming dependency edge AND is not itself on any other customer's dependency chain (no one else's protection routes through it)?
 ```
 
 **Response**
@@ -166,7 +166,7 @@ Cast `PathTraversal.length` to int before pandas comparisons (the paths library 
 **Prompt**
 
 ```
-/rai-graph-analysis For each supplier, recompute effective capacity with that supplier's capability_pct forced to 0 across all 36 months and count the (product, period) cells whose capacity drops more than 10% vs the baseline forecast. Do the same for each raw-material input by forcing its availability to 0.30 and counting cells whose drop exceeds 5%. Which single supplier and which single input cast the widest cascade footprint? Persist the per-supplier and per-input cell counts back to the ontology so a downstream analyst can query the risk ranking without re-running the cascade.
+/rai-graph-analysis For each supplier, recompute effective capacity with that supplier's capability_pct forced to 0 across all 36 months and count the (product, period) cells whose capacity drops more than 10% vs the baseline forecast. Do the same for each raw-material input by forcing its availability to 0.30 and counting cells whose drop exceeds 5%. Which supplier(s) and which input(s) cast the widest cascade footprint (ties allowed)? Persist the per-supplier and per-input cell counts back to the ontology so a downstream analyst can query the risk ranking without re-running the cascade.
 ```
 
 **Response**
@@ -178,7 +178,7 @@ Widest supplier impact: Orion Foundry — 72 cells affected, max 60.0% capacity 
 **Prompt**
 
 ```
-/rai-prescriptive-results-interpretation Summarize the rolling-horizon outcome: who absorbs the disruption, what protects the equipment-maker customers, and how does the margin evolve across the three iterations? Highlight the structural risk visible in the supplier-offline and input-shortage cascade rankings.
+/rai-prescriptive-results Summarize the rolling-horizon outcome: who absorbs the disruption, what protects the equipment-maker customers, and how does the margin evolve across the three iterations? Highlight the structural risk visible in the supplier-offline and input-shortage cascade rankings.
 ```
 
 **Response**

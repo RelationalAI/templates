@@ -18,13 +18,13 @@ Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` 
 
 ## 1. Build the ontology
 
-**Prompt:** /rai-build-starter-ontology Build an ontology from `data/facilities.csv` (each facility has a type and a region) and `data/connections.csv` (each directed connection links two facilities and has a patient transfer volume and a contact intensity). Derive a risk weight as transfer volume times contact intensity, and model the connection as a directed relationship from one facility to another carrying that risk weight.
+**Prompt:** /rai-ontology Build an ontology from `data/facilities.csv` (each facility has a type and a region) and `data/connections.csv` (each directed connection links two facilities and has a patient transfer volume and a contact intensity). Derive a risk weight as transfer volume times contact intensity, and model the connection as a directed relationship from one facility to another carrying that risk weight.
 
 **Response:** Loads `Facility` (10: hospitals, clinics, testing centers, government and emergency services across 5 regions) and `FacilityConnection` (15 directed links, each with `transfer_volume`, `contact_intensity`, and a derived `risk_weight`) — a directed, risk-weighted transmission graph.
 
 ## 2. Examine the ontology
 
-**Prompt:** /rai-querying What concepts and relationships does the ontology have, and how many of each?
+**Prompt:** /rai-pyrel What concepts and relationships does the ontology have, and how many of each?
 
 **Response:** One node concept, `Facility` (10), connected by `FacilityConnection` (15 directed, risk-weighted edges) — about 3 connections per facility.
 

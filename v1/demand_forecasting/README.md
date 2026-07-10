@@ -240,7 +240,7 @@ The bundled `favorita_mini` is intentionally tiny so the template runs in minute
 
 1. Download the dataset from [Kaggle: Corporación Favorita Grocery Sales Forecasting](https://www.kaggle.com/c/favorita-grocery-sales-forecasting). License is "Subject to Competition Rules" — review before redistributing.
 2. Load the CSVs into Snowflake (`stores.csv`, `items.csv`, `train.csv` is the sales table). Rename `train.csv → sales.csv` to match the template.
-3. Replace the `pd.read_csv(...)` calls at the top of the script with Snowpark queries against your loaded tables (or use `model.Table("<DB>.<SCHEMA>.<TABLE>")` per `rai-pyrel-coding` skill's data-loading guidance):
+3. Replace the `pd.read_csv(...)` calls at the top of the script with Snowpark queries against your loaded tables (or use `model.Table("<DB>.<SCHEMA>.<TABLE>")` per `rai-pyrel` skill's data-loading guidance):
    ```python
    from relationalai.config import SnowflakeConnection, create_config
    from snowflake import snowpark

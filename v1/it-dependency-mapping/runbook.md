@@ -19,13 +19,13 @@ Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` 
 
 ## 1. Build the ontology
 
-**Prompt:** /rai-build-starter-ontology Build a RelationalAI ontology from `data/features.csv` and `data/dependencies.csv`. Each feature is a node in a software / data-pipeline estate — a raw source, pipeline, feature job, service, or dashboard — with an owner and a deploy tier. Each dependency edge says an upstream feature contributes to (feeds) a downstream one. Model `contributes_to` as a self-relationship between features.
+**Prompt:** /rai-ontology Build a RelationalAI ontology from `data/features.csv` and `data/dependencies.csv`. Each feature is a node in a software / data-pipeline estate — a raw source, pipeline, feature job, service, or dashboard — with an owner and a deploy tier. Each dependency edge says an upstream feature contributes to (feeds) a downstream one. Model `contributes_to` as a self-relationship between features.
 
 **Response:** Loads 14 `Feature` nodes (properties `name`, `owner`, `deploy_tier`) and a `contributes_to` self-relationship populated from the 15 dependency edges, forming an acyclic dependency DAG from raw sources down to dashboards.
 
 ## 2. Examine the ontology
 
-**Prompt:** /rai-querying What concepts and relationships does the ontology have, and what does the dependency estate look like end to end?
+**Prompt:** /rai-pyrel What concepts and relationships does the ontology have, and what does the dependency estate look like end to end?
 
 **Response:** One concept, `Feature`, with a single `contributes_to` self-relationship. The 14 features flow from two critical raw sources (Clickstream Ingest, Transaction CDC Stream) and a CRM sync, through enrichment and feature-engineering pipelines, into services (Churn Scoring API, Billing API, Recommendation Service), and finally two leaf dashboards (Retention Dashboard, Executive Revenue Dashboard). 15 edges, no cycles.
 

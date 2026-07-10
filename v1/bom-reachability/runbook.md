@@ -19,13 +19,13 @@ Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` 
 
 ## 1. Build the ontology
 
-**Prompt:** /rai-build-starter-ontology Build a RelationalAI ontology from `data/skus.csv` and `data/bill_of_materials.csv`. Each SKU has an id, name, type (`RAW_MATERIAL`, `COMPONENT`, or `FINISHED_GOOD`), and category. Each bill-of-materials entry links an output SKU (what is produced) to an input SKU (what it requires), and may be site-specific. Model `BillOfMaterials` as an edge between SKUs so we can trace what depends on what.
+**Prompt:** /rai-ontology Build a RelationalAI ontology from `data/skus.csv` and `data/bill_of_materials.csv`. Each SKU has an id, name, type (`RAW_MATERIAL`, `COMPONENT`, or `FINISHED_GOOD`), and category. Each bill-of-materials entry links an output SKU (what is produced) to an input SKU (what it requires), and may be site-specific. Model `BillOfMaterials` as an edge between SKUs so we can trace what depends on what.
 
 **Response:** Loads 9 `SKU` nodes (properties `name`, `type`, `category`) and a `BillOfMaterials` edge concept with `output_sku` / `input_sku` relationships from the 14 BOM rows. Several rows are site-specific duplicates (e.g. SKU001 is assembled at both S001 and S012), so the 14 entries collapse to 10 distinct output→input dependency edges; the duplicate-edge warning is informational.
 
 ## 2. Examine the ontology
 
-**Prompt:** /rai-querying What concepts and relationships does the ontology have, and how is the product structure tiered?
+**Prompt:** /rai-pyrel What concepts and relationships does the ontology have, and how is the product structure tiered?
 
 **Response:** One concept, `SKU`, with properties `name`, `type`, and `category`, plus the `BillOfMaterials` edge carrying `output_sku` / `input_sku`. The 9 SKUs span three tiers — 4 raw materials (wafer, display glass, lithium cells, NAND die), 3 components (Mobile Processor A15, OLED Display Panel 6.1, Lithium Battery Pack 4500mAh), and 2 finished goods (ProPhone X1, ProTab T1) — joined by 10 "produces → requires" edges that always point a higher tier down to a lower one.
 
@@ -49,6 +49,6 @@ Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` 
 
 ## 6. Maximal chains and assembly depth
 
-**Prompt:** /rai-graph-analysis The full path set repeats every sub-chain. Reduce it to just the maximal end-to-end chains — the longest routes not contained inside a longer one — and record each finished good's assembly depth, the length of the deepest chain that builds it.
+**Prompt:** /rai-graph-analysis The full path set repeats every sub-chain. Reduce it to just the maximal end-to-end chains — the longest routes not contained inside a longer one — and persist each finished good's assembly depth as `SKU.assembly_depth` on the ontology (the length of the deepest chain that builds it).
 
 **Response:** 8 of the 18 paths are maximal; the other 10 are shorter sub-chains contained inside them. All 8 maximal chains are 2-hop raw-material → component → finished-good routes (e.g. Silicon Wafer 300mm → Mobile Processor A15 → ProTab T1). Both finished goods have an assembly depth of 2, persisted back onto the ontology as `SKU.assembly_depth` so a later query can rank products by build complexity without re-enumerating paths.

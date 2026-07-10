@@ -51,7 +51,7 @@ $300M unlocks 5 DCs (1,500 MW, $264M net value) including xAI Colossus.
 **Prompt**
 
 ```
-/rai-build-starter-ontology Build an ontology for grid infrastructure planning from the CSVs in data/.
+/rai-ontology Build an ontology for grid infrastructure planning from the CSVs in data/.
 ```
 
 **Response**
@@ -63,7 +63,7 @@ Concepts: `Substation`, `Generator`, `TransmissionLine`, `LoadZone`, `DemandPeri
 **Prompt**
 
 ```
-/rai-querying What concepts and relationships does the ontology have, and how many rows are in each?
+/rai-pyrel What concepts and relationships does the ontology have, and how many rows are in each?
 ```
 
 **Response**
@@ -123,7 +123,7 @@ Plan routing sub-questions to predictive, graph, rules, and prescriptive reasone
 **Prompt**
 
 ```
-/rai-rules-authoring Screen each data center request against three criteria: (1) substation must have enough capacity after predicted load, (2) substation's low-carbon (renewable + nuclear) generation share must meet the DC's low-carbon requirement, (3) substation shouldn't be one of the top-3 structurally critical. Which requests pass all three?
+/rai-pyrel Screen each data center request against three criteria: (1) substation must have enough capacity after predicted load, (2) substation's low-carbon (renewable + nuclear) generation share must meet the DC's low-carbon requirement, (3) substation shouldn't be one of the top-3 structurally critical. Which requests pass all three?
 ```
 
 **Response**
@@ -135,7 +135,7 @@ Plan routing sub-questions to predictive, graph, rules, and prescriptive reasone
 **Prompt**
 
 ```
-/rai-prescriptive-problem-formulation Which data center requests should we approve and which substation upgrades should we fund at each of the five investment levels ($200M, $300M, $400M, $500M, $600M), maximizing annual revenue across all five in a single solve? A request can only be approved if its substation has enough capacity after upgrades, and total upgrade spend at each level must stay within budget. Consider all 10 requests — the compliance flags from the rules screen are informational, not hard filters.
+/rai-prescriptive-problem Which data center requests should we approve and which substation upgrades should we fund at each of the five investment levels ($200M, $300M, $400M, $500M, $600M), maximizing annual revenue across all five in a single solve? A request can only be approved if its substation has enough capacity after upgrades, and total upgrade spend at each level must stay within budget. Consider all 10 requests — the compliance flags from the rules screen are informational, not hard filters.
 ```
 
 **Response**
@@ -147,7 +147,7 @@ OPTIMAL MIP across 5 `InvestmentLevel` values in one solve; `x_approve` and `x_u
 **Prompt**
 
 ```
-/rai-prescriptive-results-interpretation Which data centers get approved and which upgrades are selected at each budget level, and where's the knee — the budget where the marginal net value per added dollar starts to drop sharply?
+/rai-prescriptive-results Which data centers get approved and which upgrades are selected at each budget level, and where's the knee — the budget where the marginal net value per added dollar starts to drop sharply?
 ```
 
 **Response**
@@ -159,7 +159,7 @@ Pareto frontier with knee at $300M (5 DCs, 1,500 MW, $264M net); marginal $995K/
 **Prompt**
 
 ```
-/rai-ontology-design Add an InvestmentPortfolio concept indexed by InvestmentLevel that materializes the per-budget aggregates (approved-DC count, total MW, annual revenue, upgrade cost, net value, marginal value per added $M) and flags the knee point.
+/rai-ontology Add an InvestmentPortfolio concept indexed by InvestmentLevel that materializes the per-budget aggregates (approved-DC count, total MW, annual revenue, upgrade cost, net value, marginal value per added $M) and flags the knee point.
 ```
 
 **Response**

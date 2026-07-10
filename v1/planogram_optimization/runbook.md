@@ -32,7 +32,7 @@ predicted weekly demand — a strong plan (~1,600+ units), 16 of 18 SKUs given s
 **Prompt**
 
 ```
-/rai-build-starter-ontology Build an ontology from data/skus.csv (each SKU has a category, a width, a max facings, and an assigned shelf), data/shelves.csv (each shelf has a length), data/categories.csv (each category has a min and max number of active SKUs), and data/predicted_demand_table.csv (predicted weekly demand for each SKU at each possible facing count). Model predicted demand as a relationship keyed by SKU and facing count.
+/rai-ontology Build an ontology from data/skus.csv (each SKU has a category, a width, a max facings, and an assigned shelf), data/shelves.csv (each shelf has a length), data/categories.csv (each category has a min and max number of active SKUs), and data/predicted_demand_table.csv (predicted weekly demand for each SKU at each possible facing count). Model predicted demand as a relationship keyed by SKU and facing count.
 ```
 
 **Response**
@@ -44,7 +44,7 @@ Loads `Sku` (18, across 4 categories: snacks, beverages, candy, household_paper,
 **Prompt**
 
 ```
-/rai-querying What concepts and relationships does the ontology have, and how many rows are in each?
+/rai-pyrel What concepts and relationships does the ontology have, and how many rows are in each?
 ```
 
 **Response**
@@ -80,7 +80,7 @@ Each SKU has a concave demand curve over facing counts — demand rises with fac
 **Prompt**
 
 ```
-/rai-prescriptive-problem-formulation + /rai-prescriptive-solver-management Choose an integer number of facings for each SKU (within its max facings) to maximize total predicted weekly demand, where each SKU's realized demand is the predicted demand at its chosen facing count. Respect each shelf's length (sum of facings times width can't exceed shelf length) and each category's min and max number of active SKUs. Persist the chosen facings, realized demand, and active flag.
+/rai-prescriptive-problem Choose an integer number of facings for each SKU (within its max facings) to maximize total predicted weekly demand, where each SKU's realized demand is the predicted demand at its chosen facing count. Respect each shelf's length (sum of facings times width can't exceed shelf length) and each category's min and max number of active SKUs. Persist the chosen facings, realized demand, and active flag.
 ```
 
 **Response**
@@ -92,7 +92,7 @@ Total predicted weekly demand around **1,600+ units** — the decision picks fac
 **Prompt**
 
 ```
-/rai-prescriptive-results-interpretation How many SKUs get shelf space, which shelf is the tightest, and what forces any SKU off the shelf?
+/rai-prescriptive-results How many SKUs get shelf space, which shelf is the tightest, and what forces any SKU off the shelf?
 ```
 
 **Response**

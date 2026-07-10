@@ -32,7 +32,7 @@ support — OPTIMAL, every user gets an ordered, subject-diverse, fully-explaine
 **Prompt**
 
 ```
-/rai-build-starter-ontology Build an ontology from the data/ CSVs: books, authors, subjects, users, the read history (which user read which book, with a rating), and the knowledge-graph edges — book_author (a book's authors), book_subject (a book's subjects), and book_similar (books similar to a book). Model these as relationships so a book connects to its authors, subjects, similar books, and readers.
+/rai-ontology Build an ontology from the data/ CSVs: books, authors, subjects, users, the read history (which user read which book, with a rating), and the knowledge-graph edges — book_author (a book's authors), book_subject (a book's subjects), and book_similar (books similar to a book). Model these as relationships so a book connects to its authors, subjects, similar books, and readers.
 ```
 
 **Response**
@@ -44,7 +44,7 @@ Loads `Book` (59), `Author` (52), `Subject` (12), `User` (25), a 150-row read hi
 **Prompt**
 
 ```
-/rai-querying What concepts and relationships does the ontology have, and how many rows are in each?
+/rai-pyrel What concepts and relationships does the ontology have, and how many rows are in each?
 ```
 
 **Response**
@@ -80,7 +80,7 @@ For every (user, unread book) candidate, the connecting paths are counted across
 **Prompt**
 
 ```
-/rai-prescriptive-problem-formulation + /rai-prescriptive-solver-management For each user, pick an ordered 3-book slate (slots 1–3) to maximize weighted explanation support — sum of (4 − slot) times the candidate's path count, so stronger picks go in higher slots — while keeping the slate subject-diverse and meeting a minimum total explanation floor. Persist each user's chosen books and slots.
+/rai-prescriptive-problem For each user, pick an ordered 3-book slate (slots 1–3) to maximize weighted explanation support — sum of (4 − slot) times the candidate's path count, so stronger picks go in higher slots — while keeping the slate subject-diverse and meeting a minimum total explanation floor. Persist each user's chosen books and slots.
 ```
 
 **Response**
@@ -92,7 +92,7 @@ OPTIMAL — all 25 users get an ordered 3-book slate (`Candidate.slot`) that max
 **Prompt**
 
 ```
-/rai-prescriptive-results-interpretation What does each user's slate look like, and how is each pick explained?
+/rai-prescriptive-results What does each user's slate look like, and how is each pick explained?
 
 ```
 

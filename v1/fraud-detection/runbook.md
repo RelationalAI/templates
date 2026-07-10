@@ -42,7 +42,7 @@ about +40% over a naive sort-by-score.
 **Prompt**
 
 ```
-/rai-build-starter-ontology Build an ontology from the PaySim mobile-money Snowflake schema: accounts (each with an id and an account-type prefix), transactions (each with a type, an amount, sender and receiver balance changes, the sender and receiver accounts, an existing fraud flag, and an audit cost), and the train / validation / test split tables that label transactions as fraud or not. Model a transaction's sender and receiver as relationships to accounts.
+/rai-ontology Build an ontology from the PaySim mobile-money Snowflake schema: accounts (each with an id and an account-type prefix), transactions (each with a type, an amount, sender and receiver balance changes, the sender and receiver accounts, an existing fraud flag, and an audit cost), and the train / validation / test split tables that label transactions as fraud or not. Link each transaction to its sender and receiver accounts.
 ```
 
 **Response**
@@ -54,7 +54,7 @@ Loads `Account` (~32,661: customer and merchant prefixes), `Transaction` (~16,42
 **Prompt**
 
 ```
-/rai-querying What concepts and relationships does the ontology have, and how many rows are in each?
+/rai-pyrel What concepts and relationships does the ontology have, and how many rows are in each?
 ```
 
 **Response**
@@ -90,7 +90,7 @@ PageRank runs over the account funds-flow graph; `Account.pagerank` is written b
 **Prompt**
 
 ```
-/rai-rules-authoring For each account, count how many transactions it sends, and persist it as Account.activity_count for use as a model feature.
+/rai-pyrel For each account, count how many transactions it sends, and persist it as Account.activity_count for use as a model feature.
 ```
 
 **Response**
@@ -114,7 +114,7 @@ A GNN binary classifier trains on the transaction-account graph (features includ
 **Prompt**
 
 ```
-/rai-rules-authoring Combine the existing fraud flag and the model's probability into a single alert score — 30% the flag, 70% the predicted probability — and persist it as Transaction.alert_score.
+/rai-pyrel Combine the existing fraud flag and the model's probability into a single alert score — 30% the flag, 70% the predicted probability — and persist it as Transaction.alert_score.
 ```
 
 **Response**
@@ -126,7 +126,7 @@ A GNN binary classifier trains on the transaction-account graph (features includ
 **Prompt**
 
 ```
-/rai-prescriptive-problem-formulation + /rai-prescriptive-solver-management Choose which test transactions to audit to maximize captured expected loss — alert score times amount — within a 2,000 investigator-hour budget (each audit costs its transaction's audit_cost in hours), with at most one audit per receiving account. Persist the audit decision as Transaction.x_audit.
+/rai-prescriptive-problem Choose which test transactions to audit to maximize captured expected loss — alert score times amount — within a 2,000 investigator-hour budget (each audit costs its transaction's audit_cost in hours), with at most one audit per receiving account. Persist the audit decision as Transaction.x_audit.
 ```
 
 **Response**
@@ -138,7 +138,7 @@ OPTIMAL (HiGHS knapsack MILP), capturing about **$1.70B** of expected loss withi
 **Prompt**
 
 ```
-/rai-prescriptive-results-interpretation How much more expected loss does the optimized audit queue capture than a naive queue that just sorts by alert score until the budget runs out?
+/rai-prescriptive-results How much more expected loss does the optimized audit queue capture than a naive queue that just sorts by alert score until the budget runs out?
 ```
 
 **Response**

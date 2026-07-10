@@ -37,7 +37,7 @@ eligible set, then picks a diverse 4-patient cohort — OPTIMAL, covering
 **Prompt**
 
 ```
-/rai-build-starter-ontology Build an ontology from the data/ CSVs: genes and gene_is_a (a gene ontology where each is_a edge says a child gene is a kind of a parent gene), therapies, ae_terms (adverse-event terms), patients, and the three patient event tables — mutation_events (patient has a mutation in a gene at a time), therapy_events (patient received a therapy at a time), and adverse_events (patient had an adverse-event term at a time). Model is_a as a relationship between genes and each event as a relationship from a patient.
+/rai-ontology Build an ontology from the data/ CSVs: genes and gene_is_a (a gene ontology where each is_a edge says a child gene is a kind of a parent gene), therapies, ae_terms (adverse-event terms), patients, and the three patient event tables — mutation_events (patient has a mutation in a gene at a time), therapy_events (patient received a therapy at a time), and adverse_events (patient had an adverse-event term at a time). Model is_a as a relationship between genes and each event as a relationship from a patient.
 ```
 
 **Response**
@@ -49,7 +49,7 @@ Loads `Gene` (10) with an `is_a` self-relationship (8 edges), `Therapy` (5), `Ad
 **Prompt**
 
 ```
-/rai-querying What concepts and relationships does the ontology have, and how many rows are in each?
+/rai-pyrel What concepts and relationships does the ontology have, and how many rows are in each?
 ```
 
 **Response**
@@ -85,7 +85,7 @@ Reachability over the `is_a` hierarchy from the kinase root returns **7 of the 1
 **Prompt**
 
 ```
-/rai-rules-authoring A patient is eligible if they (a) carry a mutation in a KinaseGene, and (b) had an adverse event within 0 to 90 days after receiving some therapy. Flag the eligible patients, and for each record which kinase genes, therapies, and adverse-event terms they cover.
+/rai-pyrel A patient is eligible if they (a) carry a mutation in a KinaseGene, and (b) had an adverse event within 0 to 90 days after receiving some therapy. Flag the eligible patients, and for each record which kinase genes, therapies, and adverse-event terms they cover.
 ```
 
 **Response**
@@ -97,7 +97,7 @@ Reachability over the `is_a` hierarchy from the kinase root returns **7 of the 1
 **Prompt**
 
 ```
-/rai-prescriptive-problem-formulation + /rai-prescriptive-solver-management Pick exactly 4 eligible patients to form the study cohort such that, collectively, they cover at least 3 distinct kinase genes, at least 2 distinct therapies, and at least 2 distinct adverse-event terms. Persist the chosen patients as Patient.is_in_cohort and the covered genes/therapies/adverse events.
+/rai-prescriptive-problem Pick exactly 4 eligible patients to form the study cohort such that, collectively, they cover at least 3 distinct kinase genes, at least 2 distinct therapies, and at least 2 distinct adverse-event terms. Persist the chosen patients as Patient.is_in_cohort and the covered genes/therapies/adverse events.
 ```
 
 **Response**
@@ -109,7 +109,7 @@ OPTIMAL (constraint solver) — a valid 4-patient cohort that **exceeds every di
 **Prompt**
 
 ```
-/rai-prescriptive-results-interpretation Which patients are in the cohort, what diversity does it achieve, and what's the binding constraint?
+/rai-prescriptive-results Which patients are in the cohort, what diversity does it achieve, and what's the binding constraint?
 ```
 
 **Response**
