@@ -9,7 +9,7 @@ description = "RelationalAI template: enumerate multi-step cyber attack chains a
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-  "relationalai==1.15.0",
+  "relationalai==1.21.1",
   "pandas>=2.0.0",
 ]
 
