@@ -53,7 +53,7 @@ This template enumerates multi-step attack paths across an enterprise asset grap
 ### Tools
 
 - Python >= 3.10.
-- `relationalai` SDK >= 1.15 (path enumeration with multi-edge patterns is a preview capability) and the `rai` CLI, both installed by the Quickstart steps below.
+- `relationalai` SDK >= 1.21 (path enumeration with multi-edge patterns is a preview capability) and the `rai` CLI, both installed by the Quickstart steps below.
 - OS notes: works on macOS, Linux, and Windows; the Quickstart's virtual-environment activation command assumes macOS or Linux.
 
 ## Quickstart
@@ -99,7 +99,7 @@ This template enumerates multi-step attack paths across an enterprise asset grap
 
    ```text
    3 kill-chain attack path(s) reach a crown jewel (exploit -> cred -> 1-2 pivots, from an internet-facing asset):
-     [3 hops] VPN Gateway  --[exploit]-->  Jump Host  --[cred]-->  File Server  --[pivot]-->  Customer Database
+     [3 hops] VPN Gateway  --[Asset.exploit_to]-->  Jump Host  --[Asset.cred_to]-->  File Server  --[Asset.pivot_to]-->  Customer Database
    ```
 
    See the runbook for the full output.
@@ -142,7 +142,7 @@ CSV files --> Define Asset + technique edges --> Kill-chain enumeration (multi-e
 
 The analysis starts by modeling each attacker technique as its own directed relationship between assets — `exploit_to`, `cred_to`, `pivot_to` — plus a technique-agnostic `can_reach` union edge that the point query uses.
 
-The centerpiece is a multi-edge path pattern (which needs `relationalai>=1.15`) that composes the techniques in series: an exploit first, then credential reuse, then one or more lateral pivots, ending at an explicit destination. Filtering the source to an internet-facing asset and the destination to a crown jewel pins the threat model. Enforcing edge order is the whole point — a single union edge or a flat join cannot express "exploit first, then credentials, then pivots," which is exactly the kill-chain signature analysts care about, and each hop records the technique it used.
+The centerpiece is a multi-edge path pattern (which needs `relationalai>=1.21`) that composes the techniques in series: an exploit first, then credential reuse, then one or more lateral pivots, ending at an explicit destination. Filtering the source to an internet-facing asset and the destination to a crown jewel pins the threat model. Enforcing edge order is the whole point — a single union edge or a flat join cannot express "exploit first, then credentials, then pivots," which is exactly the kill-chain signature analysts care about, and each hop records the technique it used.
 
 A separate point query pins both endpoints by id to enumerate every route between a chosen entry point and a chosen crown jewel over the union edge. The kill-chains are then ranked by the exposure summed along each one. Finally, the assets lying on any crown-jewel chain are flagged back onto the ontology as `Asset.on_attack_path`, so a later query can pull them without re-enumerating paths.
 
@@ -176,7 +176,7 @@ See `cybersecurity_attack_paths.py` for the implementation and `runbook.md` to r
 <details>
   <summary>Why do I see <code>relationalai</code> version or path import errors?</summary>
 
-- Path enumeration with multi-edge patterns requires `relationalai` 1.15 or newer. Confirm your installed version with `python -m pip show relationalai`.
+- Path enumeration with multi-edge patterns requires `relationalai` 1.21 or newer. Confirm your installed version with `python -m pip show relationalai`.
 
 </details>
 

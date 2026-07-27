@@ -2,7 +2,7 @@
 
 Enumerates multi-step attack chains across an enterprise asset graph by composing
 distinct attacker techniques in series -- a capability unlocked by multi-edge path
-patterns (relationalai>=1.15):
+patterns (relationalai>=1.21):
 
 - Loads Asset nodes (hosts, services, accounts) and three DISTINCT directed edges
   between them, one per technique: exploit_to (vulnerability exploitation),
@@ -109,7 +109,7 @@ model.where(
 
 # --------------------------------------------------
 # Paths: kill-chain attack paths (multi-relationship sequence)
-#   PREVIEW capability; requires relationalai>=1.15.
+#   PREVIEW capability; requires relationalai>=1.21.
 # --------------------------------------------------
 # model.path(a.exploit_to, b.cred_to, c.pivot_to.repeat(1, MAX_PIVOTS), dst) is a
 # MULTI-EDGE pattern: distinct relationships in series. It matches the kill-chain
@@ -157,16 +157,12 @@ hop_df["hop"] = hop_df["hop"].astype(int)
 hop_df = hop_df.drop_duplicates(["path_id", "hop"]).sort_values(["path_id", "hop"])
 
 # Reassemble each kill-chain: ordered asset names + the technique used at each hop.
-def technique_label(raw):
-    # relationship labels arrive as e.g. "-<exploit_to>->"; strip to the verb stem.
-    stem = raw.strip("-<>⟨⟩→ ")
-    return stem[:-3] if stem.endswith("_to") else stem
-
+# The technique is the relationship label as-is -- the dotted relationship name,
+# e.g. "Asset.exploit_to".
 chains = []
 for pid, g in kill_df.groupby("path_id"):
     assets = list(g.sort_values("step")["asset_name"])
-    techs = [technique_label(t) for t in
-             hop_df[hop_df["path_id"] == pid].sort_values("hop")["technique"]]
+    techs = list(hop_df[hop_df["path_id"] == pid].sort_values("hop")["technique"])
     labelled = assets[0]
     for nm, tech in zip(assets[1:], techs):
         labelled += f"  --[{tech}]-->  {nm}"
@@ -183,7 +179,7 @@ for ch in sorted(chains, key=lambda c: c["hops"]):
 # --------------------------------------------------
 # Pin both endpoints by id and enumerate all simple routes between them over the
 # technique-agnostic can_reach edge (any technique, 1..MAX_ROUTE_HOPS). This is the
-# >=1.15 native point query -- src/dst unified to specific assets inside all_paths().
+# >=1.15-era native point query (still current) -- src/dst unified to specific assets inside all_paths().
 
 src_pt, dst_pt = Asset.ref(), Asset.ref()
 route = model.path(src_pt.can_reach.repeat(1, MAX_ROUTE_HOPS), dst_pt).all_paths()

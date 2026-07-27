@@ -6,7 +6,7 @@ A security team wants to see how an external attacker could chain techniques to 
 Asset graph  (12 assets, 16 technique-tagged steps: exploit / cred / pivot)
       │
       ▼
-/rai-graph-analysis  — Path enumeration (multi-edge, relationalai>=1.15)
+/rai-graph-analysis  — Path enumeration (multi-edge, relationalai>=1.21)
    • kill-chain signature: exploit (from an internet-facing asset),
      then credential reuse, then 1-2 lateral pivots, into a crown jewel   -> 3 chains
    • point query: every route from Public Web Server to Customer Database
@@ -35,7 +35,7 @@ Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` 
 
 **Prompt:** /rai-graph-analysis Which attack chains follow the full kill-chain signature — an exploit step starting from an internet-facing asset, then a credential-reuse step, then one or two lateral pivots — and end at a crown jewel (an asset flagged `crown_jewel`)? Show the technique used at each hop.
 
-**Response:** 3 kill-chains reach a crown jewel. VPN Gateway —exploit→ Jump Host —cred→ File Server —pivot→ Customer Database; Mail Relay —exploit→ Finance Workstation —cred→ Engineer Workstation —pivot→ Domain Controller; and a 4-hop chain Public Web Server —exploit→ Application Server —cred→ Jump Host —pivot→ Backup Server —pivot→ Customer Database. The technique order is enforced by the path pattern, so chains that move in a different order are correctly excluded.
+**Response:** 3 kill-chains reach a crown jewel. VPN Gateway —Asset.exploit_to→ Jump Host —Asset.cred_to→ File Server —Asset.pivot_to→ Customer Database; Mail Relay —Asset.exploit_to→ Finance Workstation —Asset.cred_to→ Engineer Workstation —Asset.pivot_to→ Domain Controller; and a 4-hop chain Public Web Server —Asset.exploit_to→ Application Server —Asset.cred_to→ Jump Host —Asset.pivot_to→ Backup Server —Asset.pivot_to→ Customer Database. The technique order is enforced by the path pattern, so chains that move in a different order are correctly excluded.
 
 ## 4. All routes between one entry and one crown jewel
 
