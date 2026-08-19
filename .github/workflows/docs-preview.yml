@@ -24,22 +24,41 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.22.3'
+
+      - name: Install Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
       - name: Checkout relationalai-docs
         uses: actions/checkout@v4
         with:
           repository: relationalai/relationalai-docs
+          ref: main
           token: ${{ secrets.DOCS_REPO_TOKEN }}
           path: relationalai-docs
 
-      - name: Install relationalai-docs deps and sync templates
-        working-directory: relationalai-docs
-        env:
-          PRIVATE: true
-          RAI_TEMPLATES_REPO_TOKEN: ${{ secrets.DOCS_REPO_TOKEN }}
-          RAI_TEMPLATES_REPO_BRANCH: ${{ github.head_ref || github.ref_name }}
+      - name: Install D2
         run: |
-          npm install
-          npm run templates:sync
+          set -euo pipefail
+          d2_version="0.7.1"
+          case "${RUNNER_ARCH}" in
+            X64) d2_arch="amd64" ;;
+            ARM64) d2_arch="arm64" ;;
+            *) echo "Unsupported runner architecture for D2: ${RUNNER_ARCH}" >&2; exit 1 ;;
+          esac
+          d2_archive="d2-v${d2_version}-linux-${d2_arch}.tar.gz"
+          curl -fsSL -o /tmp/d2.tar.gz "https://github.com/terrastruct/d2/releases/download/v${d2_version}/${d2_archive}"
+          tar -xzf /tmp/d2.tar.gz -C /tmp
+          mkdir -p "$HOME/.local/bin"
+          cp "/tmp/d2-v${d2_version}/bin/d2" "$HOME/.local/bin/d2"
+          chmod +x "$HOME/.local/bin/d2"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/d2" --version
 
       - name: Install Vercel CLI
         run: npm install -g vercel@latest
@@ -64,15 +83,10 @@ jobs:
             exit 1
           fi
 
-          # IMPORTANT: `aldenquimby/deploy-to-vercel-action@v2` parses BUILD_ENV/ENV as an
-          # "array" input by splitting on newlines *and commas*. That means passing
-          # KEY=VALUE lines breaks whenever VALUE contains a comma (e.g. v1.0a5,v1.0a6).
-          #
-          # Workaround:
-          # - Export key/value pairs into $GITHUB_ENV so they exist in the runner env.
-          # - Pass only the variable *names* (keys) to the action, so Vercel CLI reads
-          #   values from the environment.
-
+          # Export the Vercel project's pulled env vars into $GITHUB_ENV so the build
+          # and deploy steps can read their values from the runner environment, and
+          # expose the list of variable *names* (keys) as a step output. The deploy
+          # step re-emits each as `--env KEY=VALUE` to the Vercel CLI.
           action_env_lines="$(
             while IFS= read -r line || [[ -n "$line" ]]; do
               [[ "$line" =~ ^[[:space:]]*# ]] && continue
@@ -127,31 +141,186 @@ jobs:
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Deploy Private Preview to Vercel
-        uses: aldenquimby/deploy-to-vercel-action@v2
-        id: vercel-deploy
+      - name: Create GitHub deployment
+        id: github-deployment
         if: ${{ github.actor != 'dependabot[bot]' && github.event.pull_request.user.login != 'dependabot[bot]' }}
-        env:
-          RAI_TEMPLATES_REPO_BRANCH: ${{ github.head_ref || github.ref_name }}
+        uses: actions/github-script@v7
         with:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const deployment = await github.rest.repos.createDeployment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: context.sha,
+              auto_merge: false,
+              required_contexts: [],
+              environment: 'Preview',
+              transient_environment: true,
+              production_environment: false,
+              description: 'Deploying templates docs preview to Vercel',
+            });
+
+            await github.rest.repos.createDeploymentStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              deployment_id: deployment.data.id,
+              state: 'in_progress',
+              log_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              description: 'Deploying templates docs preview to Vercel',
+            });
+
+            core.setOutput('deployment_id', deployment.data.id.toString());
+
+      # Minimal build: no API reference docs.
+      # - SKIP_API_ARTIFACTS skips composing the committed Python/CLI API reference artifacts.
+      # - IS_PYREL_PR reuses the docs build's existing lever to skip generating the "latest"
+      #   API reference. Templates previews only need the templates gallery, so we build the
+      #   private site without any API reference to keep the build and upload small.
+      - name: Vercel build (minimal, no API reference)
+        working-directory: relationalai-docs
+        shell: bash
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
+          PRIVATE: "true"
+          SKIP_API_ARTIFACTS: "true"
+          IS_PYREL_PR: "true"
+          RAI_TEMPLATES_REPO_TOKEN: ${{ secrets.DOCS_REPO_TOKEN }}
+          RAI_TEMPLATES_REPO_BRANCH: ${{ github.head_ref || github.ref_name }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-          CREATE_COMMENT: false
-          PRODUCTION: false
-          WORKING_DIRECTORY: relationalai-docs
-          BUILD_ENV: |
-            ${{ steps.vercel-pulled-env.outputs.keys }}
-            RAI_TEMPLATES_REPO_BRANCH
-          ENV: |
-            ${{ steps.vercel-pulled-env.outputs.keys }}
-            RAI_TEMPLATES_REPO_BRANCH
+        run: |
+          set -euo pipefail
+          mapfile -t env_keys < <(printf '%s\n' '${{ steps.vercel-pulled-env.outputs.keys }}' | sed '/^[[:space:]]*$/d')
+          for key in "${env_keys[@]}"; do
+            if [[ ! -v $key ]]; then
+              echo "Expected Vercel env var to be set: $key" >&2
+              exit 1
+            fi
+          done
+          vercel build --target=preview --token="$VERCEL_TOKEN"
+
+      - name: Deploy Preview to Vercel
+        id: vercel-deploy
+        if: ${{ github.actor != 'dependabot[bot]' && github.event.pull_request.user.login != 'dependabot[bot]' }}
+        working-directory: relationalai-docs
+        shell: bash
+        env:
+          PRIVATE: "true"
+          SKIP_API_ARTIFACTS: "true"
+          RAI_TEMPLATES_REPO_BRANCH: ${{ github.head_ref || github.ref_name }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          SOURCE_REPO: ${{ github.repository }}
+          SOURCE_REF: ${{ github.head_ref || github.ref_name }}
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          SOURCE_TITLE: ${{ github.event.pull_request.title || github.workflow }}
+          SOURCE_PR_NUMBER: ${{ github.event.pull_request.number || '' }}
+          SOURCE_AUTHOR_LOGIN: ${{ github.event.pull_request.user.login || github.actor }}
+          SOURCE_RUN_ID: ${{ github.run_id }}
+          SOURCE_RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          mapfile -t env_keys < <(printf '%s\n' '${{ steps.vercel-pulled-env.outputs.keys }}' | sed '/^[[:space:]]*$/d')
+
+          source_repo="${SOURCE_REPO:-$GITHUB_REPOSITORY}"
+          source_org="${source_repo%%/*}"
+          source_repo_name="${source_repo#*/}"
+          source_ref="${SOURCE_REF:-${GITHUB_REF_NAME:-}}"
+          source_sha="${SOURCE_SHA:-$GITHUB_SHA}"
+          source_title="${SOURCE_TITLE:-$GITHUB_WORKFLOW}"
+          source_pr_number="${SOURCE_PR_NUMBER:-}"
+          source_author_login="${SOURCE_AUTHOR_LOGIN:-$GITHUB_ACTOR}"
+
+          source_title="${source_title//$'\r'/ }"
+          source_title="${source_title//$'\n'/ }"
+          if [[ -n "$source_pr_number" ]]; then
+            deployment_message="Templates docs preview #${source_pr_number}: ${source_title}"
+          else
+            deployment_message="Templates docs preview: ${source_title}"
+          fi
+          if (( ${#deployment_message} > 2000 )); then
+            deployment_message="${deployment_message:0:1997}..."
+          fi
+
+          deploy_args=(
+            --prebuilt
+            --archive=tgz
+            --target=preview
+            --token="$VERCEL_TOKEN"
+            --meta "githubOrg=$source_org"
+            --meta "githubRepo=$source_repo_name"
+            --meta "githubCommitOrg=$source_org"
+            --meta "githubCommitRepo=$source_repo_name"
+            --meta "githubCommitRef=$source_ref"
+            --meta "githubCommitSha=$source_sha"
+            --meta "githubCommitMessage=$deployment_message"
+            --meta "githubCommitAuthorLogin=$source_author_login"
+            --meta "githubCommitAuthorName=$source_author_login"
+            --meta "githubDeployment=1"
+            --meta "sourceRepo=$source_repo"
+            --meta "sourceRunId=$SOURCE_RUN_ID"
+            --meta "sourceRunAttempt=$SOURCE_RUN_ATTEMPT"
+          )
+          for key in "${env_keys[@]}"; do
+            if [[ ! -v $key ]]; then
+              echo "Expected Vercel env var to be set: $key" >&2
+              exit 1
+            fi
+            case "$key" in
+              PRIVATE|SKIP_API_ARTIFACTS) continue ;;
+            esac
+            deploy_args+=(--env "${key}=${!key}")
+          done
+          deploy_args+=(--env "PRIVATE=${PRIVATE}")
+          deploy_args+=(--env "SKIP_API_ARTIFACTS=${SKIP_API_ARTIFACTS}")
+
+          deploy_log="$(mktemp)"
+          vercel deploy "${deploy_args[@]}" 2>&1 | tee "$deploy_log"
+
+          preview_url="$(grep -Eo 'https://[^[:space:]]+' "$deploy_log" | tail -n 1)"
+          if [[ -z "$preview_url" ]]; then
+            echo 'Unable to determine preview URL from Vercel deploy output' >&2
+            exit 1
+          fi
+
+          inspector_url="$(curl -fsSL -H "Authorization: Bearer $VERCEL_TOKEN" "https://api.vercel.com/v13/deployments/get?url=${preview_url#https://}" | jq -r '.inspectorUrl // empty')"
+          if [[ -z "$inspector_url" ]]; then
+            echo 'Unable to determine Vercel inspector URL' >&2
+            exit 1
+          fi
+
+          {
+            echo "PREVIEW_URL=$preview_url"
+            echo "DEPLOYMENT_INSPECTOR_URL=$inspector_url"
+            echo 'DEPLOYMENT_CREATED=true'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Update GitHub deployment status
+        if: ${{ always() && steps.github-deployment.outputs.deployment_id != '' }}
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const state = '${{ steps.vercel-deploy.outcome }}' === 'success' ? 'success' : 'failure';
+            const environmentUrl = '${{ steps.vercel-deploy.outputs.PREVIEW_URL }}';
+
+            await github.rest.repos.createDeploymentStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              deployment_id: Number('${{ steps.github-deployment.outputs.deployment_id }}'),
+              state,
+              log_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              environment_url: environmentUrl || undefined,
+              description: state === 'success' ? 'Vercel preview deployed' : 'Vercel preview deployment failed',
+            });
+
       - uses: phulsechinmay/rewritable-pr-comment@v0.3.0
         if: ${{ steps.vercel-deploy.outputs.DEPLOYMENT_CREATED }}
         with:
           message: |
-            The docs preview for this pull request has been deployed to Vercel!
+            The templates docs preview for this pull request has been deployed to Vercel!
 
             <table>
               <tr>
