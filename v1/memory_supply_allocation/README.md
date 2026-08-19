@@ -59,7 +59,7 @@ This template shows how RelationalAI answers that question on a single shared mo
 ### Tools
 
 - Python >= 3.10
-- RelationalAI Python SDK (`relationalai[gnn]==1.11.0`)
+- RelationalAI Python SDK (`relationalai[gnn]==1.27.1`)
 
 ### One-time Snowflake setup (predictive GNN)
 
@@ -221,7 +221,7 @@ Each solve is constrained by capacity, a yield-aware demand cap, and the base an
 ### Scale up / productionize
 
 - **Engine sizing**: the GNN path needs a GPU-sized predictive reasoner (`GPU_NV_S`); the LP solves on the default `highs` solver.
-- **Reproducibility**: pin `relationalai[gnn]==1.11.0`, set `GNN_SEED`, and prefer `USE_PRECOMPUTED_FORECAST = True` for deterministic, offline reruns.
+- **Reproducibility**: pin `relationalai[gnn]==1.27.1`, set `GNN_SEED`, and prefer `USE_PRECOMPUTED_FORECAST = True` for deterministic, offline reruns.
 - **Scheduling**: the script is a single entrypoint, so it drops into any scheduler or pipeline that can run `python memory_supply_allocation.py`.
 
 ## Troubleshooting

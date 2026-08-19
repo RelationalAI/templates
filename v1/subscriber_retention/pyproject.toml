@@ -9,7 +9,7 @@ description = "RelationalAI template: subscriber_retention (PyRel v1)"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-  "relationalai[gnn]==1.8",
+  "relationalai[gnn]==1.27.1",
   "pandas",
   "numpy",
 ]

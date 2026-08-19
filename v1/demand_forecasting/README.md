@@ -64,7 +64,7 @@ GRANT CREATE MODEL ON SCHEMA FAVORITA_MINI.EXPERIMENTS TO APPLICATION RELATIONAL
 ### Tools
 
 - Python >= 3.10
-- RelationalAI Python SDK (`relationalai[gnn] == 1.8`)
+- RelationalAI Python SDK (`relationalai[gnn] == 1.27.1`)
 
 ## Quickstart
 
