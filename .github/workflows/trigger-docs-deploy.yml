@@ -1,0 +1,23 @@
+name: Trigger docs deploy on main
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      # The public docs site is published by relationalai-docs' "Vercel branch
+      # deploys" pipeline (build -> Algolia index -> promote), not by a Vercel
+      # deploy hook. Fire a repository_dispatch so a templates merge rebuilds
+      # and republishes the site through that pipeline.
+      - name: Trigger relationalai-docs public deploy
+        env:
+          GH_TOKEN: ${{ secrets.DOCS_REPO_TOKEN }}
+        run: |
+          gh api \
+            --method POST \
+            repos/relationalai/relationalai-docs/dispatches \
+            -f event_type=templates-updated
+
