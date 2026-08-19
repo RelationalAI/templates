@@ -93,7 +93,7 @@ you'll additionally need:
 ### Tools
 
 - Python >= 3.10
-- RelationalAI Python SDK (`relationalai[gnn] == 1.8`)
+- RelationalAI Python SDK (`relationalai[gnn] == 1.27.1`)
 - For the rule-based notebook only: `jupyter`
 
 ## Quickstart
