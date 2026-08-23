@@ -1,0 +1,9 @@
+product_id,product_name,product_type,unit_weight_kg,target_cycle_time_sec
+PRD01,Turbine Blade Assembly,Component,12.5,180
+PRD02,Compressor Valve Unit,Component,3.2,90
+PRD03,Pump Impeller Kit,Component,8.0,120
+PRD04,Generator Rotor Pack,Assembly,25.0,300
+PRD05,Motor Winding Set,Component,4.5,75
+PRD06,Hydraulic Seal Kit,Sub-Assembly,1.8,45
+PRD07,Bearing Housing Assembly,Sub-Assembly,6.0,150
+PRD08,Control Panel Unit,Assembly,15.0,240

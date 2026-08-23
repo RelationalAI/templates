@@ -1,0 +1,354 @@
+event_id,machine_id,shift_id,period,fault_type_id,fault_name,reason_l1,reason_l2,reason_l3,duration_minutes,is_planned
+DT0001,M001,SHIFT_SWING,1,FT01,Bearing Failure,Mechanical,Rotating Equipment,Bearing Failure,64,0
+DT0002,M001,SHIFT_DAY,1,FT01,Bearing Failure,Mechanical,Rotating Equipment,Bearing Failure,50,0
+DT0003,M001,SHIFT_SWING,2,FT13,Corrosion,Material,Surface,Corrosion,61,0
+DT0004,M001,SHIFT_NIGHT,3,FT03,Gear Wear,Mechanical,Drive Train,Gear Wear,61,0
+DT0005,M001,SHIFT_SWING,3,FT10,Pressure Loss,Process,Fluid,Pressure Loss,44,0
+DT0006,M001,SHIFT_DAY,4,FT02,Shaft Misalignment,Mechanical,Rotating Equipment,Shaft Misalignment,76,0
+DT0007,M001,SHIFT_DAY,4,FT13,Corrosion,Material,Surface,Corrosion,68,1
+DT0008,M001,SHIFT_NIGHT,4,FT02,Shaft Misalignment,Mechanical,Rotating Equipment,Shaft Misalignment,87,0
+DT0009,M001,SHIFT_NIGHT,5,FT02,Shaft Misalignment,Mechanical,Rotating Equipment,Shaft Misalignment,88,0
+DT0010,M001,SHIFT_DAY,5,FT12,Seal Degradation,Material,Wear Parts,Seal Degradation,34,1
+DT0011,M001,SHIFT_SWING,6,FT09,Overheating,Process,Thermal,Overheating,58,0
+DT0012,M001,SHIFT_SWING,6,FT09,Overheating,Process,Thermal,Overheating,28,0
+DT0013,M001,SHIFT_DAY,6,FT01,Bearing Failure,Mechanical,Rotating Equipment,Bearing Failure,73,0
+DT0014,M001,SHIFT_DAY,7,FT01,Bearing Failure,Mechanical,Rotating Equipment,Bearing Failure,117,0
+DT0015,M001,SHIFT_NIGHT,8,FT01,Bearing Failure,Mechanical,Rotating Equipment,Bearing Failure,121,0
+DT0016,M001,SHIFT_SWING,8,FT02,Shaft Misalignment,Mechanical,Rotating Equipment,Shaft Misalignment,71,0
+DT0017,M001,SHIFT_NIGHT,8,FT13,Corrosion,Material,Surface,Corrosion,67,0
+DT0018,M001,SHIFT_SWING,9,FT12,Seal Degradation,Material,Wear Parts,Seal Degradation,85,0
+DT0019,M001,SHIFT_DAY,9,FT12,Seal Degradation,Material,Wear Parts,Seal Degradation,84,0
+DT0020,M001,SHIFT_DAY,10,FT01,Bearing Failure,Mechanical,Rotating Equipment,Bearing Failure,89,0
+DT0021,M001,SHIFT_NIGHT,11,FT01,Bearing Failure,Mechanical,Rotating Equipment,Bearing Failure,91,0
+DT0022,M001,SHIFT_DAY,12,FT03,Gear Wear,Mechanical,Drive Train,Gear Wear,40,0
+DT0023,M001,SHIFT_DAY,12,FT09,Overheating,Process,Thermal,Overheating,75,0
+DT0024,M002,SHIFT_NIGHT,5,FT12,Seal Degradation,Material,Wear Parts,Seal Degradation,59,0
+DT0025,M002,SHIFT_NIGHT,8,FT09,Overheating,Process,Thermal,Overheating,115,1
+DT0026,M003,SHIFT_SWING,1,FT03,Gear Wear,Mechanical,Drive Train,Gear Wear,61,0
+DT0027,M003,SHIFT_DAY,2,FT10,Pressure Loss,Process,Fluid,Pressure Loss,33,0
+DT0028,M003,SHIFT_SWING,2,FT09,Overheating,Process,Thermal,Overheating,56,1
+DT0029,M003,SHIFT_SWING,3,FT03,Gear Wear,Mechanical,Drive Train,Gear Wear,20,0
+DT0030,M003,SHIFT_SWING,3,FT02,Shaft Misalignment,Mechanical,Rotating Equipment,Shaft Misalignment,22,0
+DT0031,M003,SHIFT_DAY,3,FT03,Gear Wear,Mechanical,Drive Train,Gear Wear,23,0
+DT0032,M003,SHIFT_SWING,4,FT09,Overheating,Process,Thermal,Overheating,54,0
+DT0033,M003,SHIFT_DAY,5,FT09,Overheating,Process,Thermal,Overheating,38,0
+DT0034,M003,SHIFT_NIGHT,6,FT02,Shaft Misalignment,Mechanical,Rotating Equipment,Shaft Misalignment,42,0
+DT0035,M003,SHIFT_SWING,7,FT10,Pressure Loss,Process,Fluid,Pressure Loss,27,0
+DT0036,M003,SHIFT_SWING,7,FT12,Seal Degradation,Material,Wear Parts,Seal Degradation,16,0
+DT0037,M003,SHIFT_SWING,8,FT12,Seal Degradation,Material,Wear Parts,Seal Degradation,30,0
+DT0038,M003,SHIFT_SWING,8,FT10,Pressure Loss,Process,Fluid,Pressure Loss,34,0
+DT0039,M003,SHIFT_NIGHT,8,FT03,Gear Wear,Mechanical,Drive Train,Gear Wear,34,0
+DT0040,M003,SHIFT_SWING,9,FT01,Bearing Failure,Mechanical,Rotating Equipment,Bearing Failure,24,0
+DT0041,M003,SHIFT_DAY,9,FT12,Seal Degradation,Material,Wear Parts,Seal Degradation,30,0
+DT0042,M003,SHIFT_SWING,10,FT10,Pressure Loss,Process,Fluid,Pressure Loss,24,0
+DT0043,M003,SHIFT_DAY,10,FT12,Seal Degradation,Material,Wear Parts,Seal Degradation,18,0
+DT0044,M003,SHIFT_NIGHT,11,FT01,Bearing Failure,Mechanical,Rotating Equipment,Bearing Failure,64,0
+DT0045,M003,SHIFT_SWING,12,FT10,Pressure Loss,Process,Fluid,Pressure Loss,40,0
+DT0046,M004,SHIFT_DAY,2,FT09,Overheating,Process,Thermal,Overheating,86,1
+DT0047,M004,SHIFT_DAY,7,FT02,Shaft Misalignment,Mechanical,Rotating Equipment,Shaft Misalignment,57,0
+DT0048,M005,SHIFT_SWING,5,FT01,Bearing Failure,Mechanical,Rotating Equipment,Bearing Failure,22,0
+DT0049,M006,SHIFT_NIGHT,1,FT03,Gear Wear,Mechanical,Drive Train,Gear Wear,42,1
+DT0050,M006,SHIFT_DAY,2,FT01,Bearing Failure,Mechanical,Rotating Equipment,Bearing Failure,44,0
+DT0051,M006,SHIFT_SWING,3,FT01,Bearing Failure,Mechanical,Rotating Equipment,Bearing Failure,34,0
+DT0052,M006,SHIFT_NIGHT,3,FT01,Bearing Failure,Mechanical,Rotating Equipment,Bearing Failure,42,0
+DT0053,M006,SHIFT_DAY,4,FT01,Bearing Failure,Mechanical,Rotating Equipment,Bearing Failure,55,0
+DT0054,M006,SHIFT_NIGHT,5,FT01,Bearing Failure,Mechanical,Rotating Equipment,Bearing Failure,44,0
+DT0055,M006,SHIFT_DAY,6,FT02,Shaft Misalignment,Mechanical,Rotating Equipment,Shaft Misalignment,47,1
+DT0056,M006,SHIFT_NIGHT,6,FT12,Seal Degradation,Material,Wear Parts,Seal Degradation,42,0
+DT0057,M006,SHIFT_NIGHT,6,FT01,Bearing Failure,Mechanical,Rotating Equipment,Bearing Failure,78,0
+DT0058,M006,SHIFT_DAY,7,FT01,Bearing Failure,Mechanical,Rotating Equipment,Bearing Failure,107,0
+DT0059,M006,SHIFT_DAY,7,FT12,Seal Degradation,Material,Wear Parts,Seal Degradation,88,0
+DT0060,M006,SHIFT_DAY,8,FT13,Corrosion,Material,Surface,Corrosion,27,0
+DT0061,M006,SHIFT_NIGHT,8,FT10,Pressure Loss,Process,Fluid,Pressure Loss,45,0
+DT0062,M006,SHIFT_SWING,9,FT13,Corrosion,Material,Surface,Corrosion,32,0
+DT0063,M006,SHIFT_SWING,9,FT09,Overheating,Process,Thermal,Overheating,63,1
+DT0064,M006,SHIFT_DAY,10,FT01,Bearing Failure,Mechanical,Rotating Equipment,Bearing Failure,43,0
+DT0065,M006,SHIFT_NIGHT,10,FT09,Overheating,Process,Thermal,Overheating,47,1
+DT0066,M006,SHIFT_SWING,10,FT02,Shaft Misalignment,Mechanical,Rotating Equipment,Shaft Misalignment,31,0
+DT0067,M006,SHIFT_DAY,11,FT12,Seal Degradation,Material,Wear Parts,Seal Degradation,80,0
+DT0068,M006,SHIFT_DAY,11,FT02,Shaft Misalignment,Mechanical,Rotating Equipment,Shaft Misalignment,81,0
+DT0069,M006,SHIFT_SWING,12,FT03,Gear Wear,Mechanical,Drive Train,Gear Wear,94,0
+DT0070,M006,SHIFT_DAY,12,FT13,Corrosion,Material,Surface,Corrosion,51,0
+DT0071,M006,SHIFT_DAY,12,FT09,Overheating,Process,Thermal,Overheating,75,1
+DT0072,M007,SHIFT_DAY,3,FT13,Corrosion,Material,Surface,Corrosion,95,0
+DT0073,M007,SHIFT_SWING,4,FT02,Shaft Misalignment,Mechanical,Rotating Equipment,Shaft Misalignment,94,1
+DT0074,M007,SHIFT_SWING,7,FT12,Seal Degradation,Material,Wear Parts,Seal Degradation,74,0
+DT0075,M008,SHIFT_DAY,5,FT09,Overheating,Process,Thermal,Overheating,27,1
+DT0076,M008,SHIFT_SWING,9,FT02,Shaft Misalignment,Mechanical,Rotating Equipment,Shaft Misalignment,41,0
+DT0077,M008,SHIFT_SWING,11,FT01,Bearing Failure,Mechanical,Rotating Equipment,Bearing Failure,64,0
+DT0078,M009,SHIFT_SWING,8,FT09,Overheating,Process,Thermal,Overheating,92,0
+DT0079,M009,SHIFT_SWING,11,FT02,Shaft Misalignment,Mechanical,Rotating Equipment,Shaft Misalignment,68,0
+DT0080,M009,SHIFT_SWING,12,FT09,Overheating,Process,Thermal,Overheating,49,0
+DT0081,M010,SHIFT_NIGHT,1,FT12,Seal Degradation,Material,Wear Parts,Seal Degradation,43,0
+DT0082,M010,SHIFT_SWING,5,FT02,Shaft Misalignment,Mechanical,Rotating Equipment,Shaft Misalignment,40,0
+DT0083,M010,SHIFT_SWING,9,FT01,Bearing Failure,Mechanical,Rotating Equipment,Bearing Failure,69,0
+DT0084,M011,SHIFT_SWING,1,FT09,Overheating,Process,Thermal,Overheating,116,0
+DT0085,M011,SHIFT_NIGHT,1,FT10,Pressure Loss,Process,Fluid,Pressure Loss,39,0
+DT0086,M011,SHIFT_DAY,2,FT10,Pressure Loss,Process,Fluid,Pressure Loss,79,0
+DT0087,M011,SHIFT_SWING,3,FT15,Valve Fouling,Material,Wear Parts,Valve Fouling,58,0
+DT0088,M011,SHIFT_NIGHT,4,FT15,Valve Fouling,Material,Wear Parts,Valve Fouling,75,1
+DT0089,M011,SHIFT_SWING,4,FT15,Valve Fouling,Material,Wear Parts,Valve Fouling,66,0
+DT0090,M011,SHIFT_NIGHT,4,FT12,Seal Degradation,Material,Wear Parts,Seal Degradation,36,0
+DT0091,M011,SHIFT_DAY,5,FT12,Seal Degradation,Material,Wear Parts,Seal Degradation,81,0
+DT0092,M011,SHIFT_SWING,5,FT15,Valve Fouling,Material,Wear Parts,Valve Fouling,57,0
+DT0093,M011,SHIFT_DAY,6,FT01,Bearing Failure,Mechanical,Rotating Equipment,Bearing Failure,130,0
+DT0094,M011,SHIFT_SWING,6,FT01,Bearing Failure,Mechanical,Rotating Equipment,Bearing Failure,145,0
+DT0095,M011,SHIFT_NIGHT,6,FT10,Pressure Loss,Process,Fluid,Pressure Loss,85,0
+DT0096,M011,SHIFT_NIGHT,7,FT15,Valve Fouling,Material,Wear Parts,Valve Fouling,30,0
+DT0097,M011,SHIFT_SWING,8,FT12,Seal Degradation,Material,Wear Parts,Seal Degradation,79,0
+DT0098,M011,SHIFT_SWING,9,FT10,Pressure Loss,Process,Fluid,Pressure Loss,43,0
+DT0099,M011,SHIFT_DAY,10,FT09,Overheating,Process,Thermal,Overheating,96,0
+DT0100,M011,SHIFT_DAY,10,FT10,Pressure Loss,Process,Fluid,Pressure Loss,56,0
+DT0101,M011,SHIFT_SWING,11,FT08,Control Board,Electrical,Instrumentation,Control Board,79,0
+DT0102,M011,SHIFT_SWING,12,FT12,Seal Degradation,Material,Wear Parts,Seal Degradation,95,0
+DT0103,M011,SHIFT_DAY,12,FT12,Seal Degradation,Material,Wear Parts,Seal Degradation,33,0
+DT0104,M012,SHIFT_SWING,1,FT01,Bearing Failure,Mechanical,Rotating Equipment,Bearing Failure,112,0
+DT0105,M012,SHIFT_NIGHT,7,FT15,Valve Fouling,Material,Wear Parts,Valve Fouling,37,0
+DT0106,M012,SHIFT_SWING,9,FT15,Valve Fouling,Material,Wear Parts,Valve Fouling,43,0
+DT0107,M013,SHIFT_SWING,1,FT15,Valve Fouling,Material,Wear Parts,Valve Fouling,30,0
+DT0108,M013,SHIFT_DAY,5,FT12,Seal Degradation,Material,Wear Parts,Seal Degradation,76,0
+DT0109,M013,SHIFT_SWING,6,FT10,Pressure Loss,Process,Fluid,Pressure Loss,67,0
+DT0110,M014,SHIFT_NIGHT,1,FT09,Overheating,Process,Thermal,Overheating,22,0
+DT0111,M014,SHIFT_SWING,1,FT08,Control Board,Electrical,Instrumentation,Control Board,49,0
+DT0112,M014,SHIFT_SWING,2,FT10,Pressure Loss,Process,Fluid,Pressure Loss,39,0
+DT0113,M014,SHIFT_DAY,3,FT09,Overheating,Process,Thermal,Overheating,51,0
+DT0114,M014,SHIFT_DAY,3,FT15,Valve Fouling,Material,Wear Parts,Valve Fouling,18,0
+DT0115,M014,SHIFT_SWING,4,FT15,Valve Fouling,Material,Wear Parts,Valve Fouling,36,0
+DT0116,M014,SHIFT_NIGHT,4,FT12,Seal Degradation,Material,Wear Parts,Seal Degradation,20,0
+DT0117,M014,SHIFT_DAY,5,FT08,Control Board,Electrical,Instrumentation,Control Board,47,0
+DT0118,M014,SHIFT_DAY,5,FT12,Seal Degradation,Material,Wear Parts,Seal Degradation,50,0
+DT0119,M014,SHIFT_DAY,6,FT01,Bearing Failure,Mechanical,Rotating Equipment,Bearing Failure,63,0
+DT0120,M014,SHIFT_NIGHT,6,FT12,Seal Degradation,Material,Wear Parts,Seal Degradation,25,0
+DT0121,M014,SHIFT_NIGHT,6,FT10,Pressure Loss,Process,Fluid,Pressure Loss,36,1
+DT0122,M014,SHIFT_SWING,7,FT02,Shaft Misalignment,Mechanical,Rotating Equipment,Shaft Misalignment,31,0
+DT0123,M014,SHIFT_DAY,7,FT02,Shaft Misalignment,Mechanical,Rotating Equipment,Shaft Misalignment,28,0
+DT0124,M014,SHIFT_SWING,7,FT02,Shaft Misalignment,Mechanical,Rotating Equipment,Shaft Misalignment,22,0
+DT0125,M014,SHIFT_DAY,8,FT12,Seal Degradation,Material,Wear Parts,Seal Degradation,32,0
+DT0126,M014,SHIFT_SWING,8,FT01,Bearing Failure,Mechanical,Rotating Equipment,Bearing Failure,66,0
+DT0127,M014,SHIFT_NIGHT,8,FT09,Overheating,Process,Thermal,Overheating,55,0
+DT0128,M014,SHIFT_SWING,9,FT01,Bearing Failure,Mechanical,Rotating Equipment,Bearing Failure,30,0
+DT0129,M014,SHIFT_NIGHT,9,FT15,Valve Fouling,Material,Wear Parts,Valve Fouling,37,0
+DT0130,M014,SHIFT_DAY,9,FT09,Overheating,Process,Thermal,Overheating,18,0
+DT0131,M014,SHIFT_DAY,10,FT09,Overheating,Process,Thermal,Overheating,46,0
+DT0132,M014,SHIFT_DAY,11,FT15,Valve Fouling,Material,Wear Parts,Valve Fouling,17,0
+DT0133,M014,SHIFT_NIGHT,11,FT12,Seal Degradation,Material,Wear Parts,Seal Degradation,47,0
+DT0134,M014,SHIFT_SWING,12,FT10,Pressure Loss,Process,Fluid,Pressure Loss,40,0
+DT0135,M014,SHIFT_DAY,12,FT02,Shaft Misalignment,Mechanical,Rotating Equipment,Shaft Misalignment,21,0
+DT0136,M015,SHIFT_SWING,3,FT09,Overheating,Process,Thermal,Overheating,39,0
+DT0137,M015,SHIFT_SWING,12,FT12,Seal Degradation,Material,Wear Parts,Seal Degradation,35,0
+DT0138,M016,SHIFT_DAY,1,FT01,Bearing Failure,Mechanical,Rotating Equipment,Bearing Failure,141,0
+DT0139,M016,SHIFT_SWING,1,FT01,Bearing Failure,Mechanical,Rotating Equipment,Bearing Failure,116,0
+DT0140,M016,SHIFT_DAY,2,FT12,Seal Degradation,Material,Wear Parts,Seal Degradation,67,0
+DT0141,M016,SHIFT_SWING,2,FT15,Valve Fouling,Material,Wear Parts,Valve Fouling,87,0
+DT0142,M016,SHIFT_DAY,2,FT09,Overheating,Process,Thermal,Overheating,42,0
+DT0143,M016,SHIFT_SWING,3,FT15,Valve Fouling,Material,Wear Parts,Valve Fouling,74,0
+DT0144,M016,SHIFT_SWING,3,FT12,Seal Degradation,Material,Wear Parts,Seal Degradation,30,0
+DT0145,M016,SHIFT_NIGHT,3,FT09,Overheating,Process,Thermal,Overheating,52,0
+DT0146,M016,SHIFT_SWING,4,FT01,Bearing Failure,Mechanical,Rotating Equipment,Bearing Failure,53,0
+DT0147,M016,SHIFT_SWING,4,FT09,Overheating,Process,Thermal,Overheating,49,0
+DT0148,M016,SHIFT_DAY,5,FT15,Valve Fouling,Material,Wear Parts,Valve Fouling,32,1
+DT0149,M016,SHIFT_SWING,5,FT08,Control Board,Electrical,Instrumentation,Control Board,59,0
+DT0150,M016,SHIFT_NIGHT,6,FT08,Control Board,Electrical,Instrumentation,Control Board,68,0
+DT0151,M016,SHIFT_SWING,6,FT01,Bearing Failure,Mechanical,Rotating Equipment,Bearing Failure,93,0
+DT0152,M016,SHIFT_NIGHT,6,FT09,Overheating,Process,Thermal,Overheating,63,1
+DT0153,M016,SHIFT_SWING,7,FT15,Valve Fouling,Material,Wear Parts,Valve Fouling,61,0
+DT0154,M016,SHIFT_DAY,8,FT15,Valve Fouling,Material,Wear Parts,Valve Fouling,63,0
+DT0155,M016,SHIFT_SWING,9,FT08,Control Board,Electrical,Instrumentation,Control Board,61,0
+DT0156,M016,SHIFT_NIGHT,10,FT15,Valve Fouling,Material,Wear Parts,Valve Fouling,88,0
+DT0157,M016,SHIFT_SWING,10,FT08,Control Board,Electrical,Instrumentation,Control Board,62,0
+DT0158,M016,SHIFT_DAY,10,FT15,Valve Fouling,Material,Wear Parts,Valve Fouling,97,0
+DT0159,M016,SHIFT_DAY,11,FT10,Pressure Loss,Process,Fluid,Pressure Loss,51,1
+DT0160,M016,SHIFT_SWING,11,FT15,Valve Fouling,Material,Wear Parts,Valve Fouling,28,0
+DT0161,M016,SHIFT_SWING,11,FT09,Overheating,Process,Thermal,Overheating,41,1
+DT0162,M016,SHIFT_SWING,12,FT12,Seal Degradation,Material,Wear Parts,Seal Degradation,66,1
+DT0163,M016,SHIFT_SWING,12,FT12,Seal Degradation,Material,Wear Parts,Seal Degradation,40,1
+DT0164,M017,SHIFT_SWING,2,FT15,Valve Fouling,Material,Wear Parts,Valve Fouling,62,0
+DT0165,M017,SHIFT_NIGHT,4,FT08,Control Board,Electrical,Instrumentation,Control Board,26,0
+DT0166,M017,SHIFT_SWING,6,FT09,Overheating,Process,Thermal,Overheating,39,1
+DT0167,M018,SHIFT_NIGHT,1,FT01,Bearing Failure,Mechanical,Rotating Equipment,Bearing Failure,108,0
+DT0168,M018,SHIFT_NIGHT,6,FT10,Pressure Loss,Process,Fluid,Pressure Loss,44,0
+DT0169,M018,SHIFT_SWING,9,FT02,Shaft Misalignment,Mechanical,Rotating Equipment,Shaft Misalignment,77,0
+DT0170,M018,SHIFT_SWING,10,FT01,Bearing Failure,Mechanical,Rotating Equipment,Bearing Failure,119,1
+DT0171,M019,SHIFT_SWING,3,FT15,Valve Fouling,Material,Wear Parts,Valve Fouling,28,0
+DT0172,M019,SHIFT_SWING,6,FT09,Overheating,Process,Thermal,Overheating,36,0
+DT0173,M019,SHIFT_SWING,9,FT15,Valve Fouling,Material,Wear Parts,Valve Fouling,21,0
+DT0174,M020,SHIFT_DAY,6,FT15,Valve Fouling,Material,Wear Parts,Valve Fouling,50,0
+DT0175,M020,SHIFT_SWING,11,FT09,Overheating,Process,Thermal,Overheating,32,0
+DT0176,M022,SHIFT_NIGHT,1,FT12,Seal Degradation,Material,Wear Parts,Seal Degradation,74,1
+DT0177,M022,SHIFT_DAY,1,FT10,Pressure Loss,Process,Fluid,Pressure Loss,53,0
+DT0178,M022,SHIFT_SWING,2,FT12,Seal Degradation,Material,Wear Parts,Seal Degradation,83,0
+DT0179,M022,SHIFT_SWING,3,FT01,Bearing Failure,Mechanical,Rotating Equipment,Bearing Failure,105,0
+DT0180,M022,SHIFT_DAY,3,FT13,Corrosion,Material,Surface,Corrosion,83,0
+DT0181,M022,SHIFT_DAY,4,FT11,Flow Blockage,Process,Fluid,Flow Blockage,70,0
+DT0182,M022,SHIFT_DAY,4,FT14,Impeller Erosion,Material,Wear Parts,Impeller Erosion,70,0
+DT0183,M022,SHIFT_NIGHT,5,FT01,Bearing Failure,Mechanical,Rotating Equipment,Bearing Failure,132,0
+DT0184,M022,SHIFT_NIGHT,5,FT11,Flow Blockage,Process,Fluid,Flow Blockage,56,0
+DT0185,M022,SHIFT_SWING,6,FT01,Bearing Failure,Mechanical,Rotating Equipment,Bearing Failure,81,1
+DT0186,M022,SHIFT_DAY,6,FT14,Impeller Erosion,Material,Wear Parts,Impeller Erosion,51,0
+DT0187,M022,SHIFT_DAY,7,FT14,Impeller Erosion,Material,Wear Parts,Impeller Erosion,78,0
+DT0188,M022,SHIFT_DAY,8,FT11,Flow Blockage,Process,Fluid,Flow Blockage,65,1
+DT0189,M022,SHIFT_SWING,8,FT10,Pressure Loss,Process,Fluid,Pressure Loss,32,1
+DT0190,M022,SHIFT_SWING,9,FT14,Impeller Erosion,Material,Wear Parts,Impeller Erosion,99,0
+DT0191,M022,SHIFT_NIGHT,10,FT11,Flow Blockage,Process,Fluid,Flow Blockage,32,0
+DT0192,M022,SHIFT_DAY,10,FT12,Seal Degradation,Material,Wear Parts,Seal Degradation,54,0
+DT0193,M022,SHIFT_SWING,10,FT01,Bearing Failure,Mechanical,Rotating Equipment,Bearing Failure,144,0
+DT0194,M022,SHIFT_SWING,11,FT11,Flow Blockage,Process,Fluid,Flow Blockage,37,0
+DT0195,M022,SHIFT_NIGHT,11,FT11,Flow Blockage,Process,Fluid,Flow Blockage,62,0
+DT0196,M022,SHIFT_DAY,12,FT12,Seal Degradation,Material,Wear Parts,Seal Degradation,33,0
+DT0197,M022,SHIFT_NIGHT,12,FT12,Seal Degradation,Material,Wear Parts,Seal Degradation,33,0
+DT0198,M022,SHIFT_NIGHT,12,FT11,Flow Blockage,Process,Fluid,Flow Blockage,49,0
+DT0199,M023,SHIFT_SWING,2,FT12,Seal Degradation,Material,Wear Parts,Seal Degradation,23,0
+DT0200,M024,SHIFT_DAY,7,FT12,Seal Degradation,Material,Wear Parts,Seal Degradation,70,0
+DT0201,M024,SHIFT_DAY,8,FT12,Seal Degradation,Material,Wear Parts,Seal Degradation,64,0
+DT0202,M025,SHIFT_NIGHT,3,FT01,Bearing Failure,Mechanical,Rotating Equipment,Bearing Failure,57,1
+DT0203,M025,SHIFT_DAY,4,FT12,Seal Degradation,Material,Wear Parts,Seal Degradation,77,0
+DT0204,M026,SHIFT_SWING,3,FT14,Impeller Erosion,Material,Wear Parts,Impeller Erosion,65,0
+DT0205,M026,SHIFT_DAY,9,FT11,Flow Blockage,Process,Fluid,Flow Blockage,26,0
+DT0206,M027,SHIFT_DAY,5,FT01,Bearing Failure,Mechanical,Rotating Equipment,Bearing Failure,63,1
+DT0207,M027,SHIFT_DAY,6,FT13,Corrosion,Material,Surface,Corrosion,68,0
+DT0208,M027,SHIFT_SWING,10,FT12,Seal Degradation,Material,Wear Parts,Seal Degradation,74,0
+DT0209,M028,SHIFT_SWING,1,FT10,Pressure Loss,Process,Fluid,Pressure Loss,32,0
+DT0210,M028,SHIFT_NIGHT,1,FT12,Seal Degradation,Material,Wear Parts,Seal Degradation,64,0
+DT0211,M028,SHIFT_DAY,2,FT14,Impeller Erosion,Material,Wear Parts,Impeller Erosion,47,0
+DT0212,M028,SHIFT_SWING,2,FT11,Flow Blockage,Process,Fluid,Flow Blockage,24,0
+DT0213,M028,SHIFT_DAY,3,FT14,Impeller Erosion,Material,Wear Parts,Impeller Erosion,39,0
+DT0214,M028,SHIFT_DAY,3,FT01,Bearing Failure,Mechanical,Rotating Equipment,Bearing Failure,135,0
+DT0215,M028,SHIFT_NIGHT,3,FT13,Corrosion,Material,Surface,Corrosion,83,0
+DT0216,M028,SHIFT_SWING,4,FT10,Pressure Loss,Process,Fluid,Pressure Loss,68,0
+DT0217,M028,SHIFT_SWING,4,FT12,Seal Degradation,Material,Wear Parts,Seal Degradation,55,0
+DT0218,M028,SHIFT_NIGHT,5,FT14,Impeller Erosion,Material,Wear Parts,Impeller Erosion,71,0
+DT0219,M028,SHIFT_NIGHT,5,FT11,Flow Blockage,Process,Fluid,Flow Blockage,65,0
+DT0220,M028,SHIFT_DAY,6,FT10,Pressure Loss,Process,Fluid,Pressure Loss,65,0
+DT0221,M028,SHIFT_NIGHT,7,FT11,Flow Blockage,Process,Fluid,Flow Blockage,43,0
+DT0222,M028,SHIFT_DAY,8,FT13,Corrosion,Material,Surface,Corrosion,46,0
+DT0223,M028,SHIFT_DAY,9,FT12,Seal Degradation,Material,Wear Parts,Seal Degradation,78,1
+DT0224,M028,SHIFT_SWING,10,FT11,Flow Blockage,Process,Fluid,Flow Blockage,34,0
+DT0225,M028,SHIFT_DAY,10,FT13,Corrosion,Material,Surface,Corrosion,33,0
+DT0226,M028,SHIFT_NIGHT,11,FT11,Flow Blockage,Process,Fluid,Flow Blockage,27,0
+DT0227,M028,SHIFT_SWING,12,FT11,Flow Blockage,Process,Fluid,Flow Blockage,21,0
+DT0228,M028,SHIFT_NIGHT,12,FT10,Pressure Loss,Process,Fluid,Pressure Loss,87,0
+DT0229,M029,SHIFT_SWING,12,FT11,Flow Blockage,Process,Fluid,Flow Blockage,17,0
+DT0230,M030,SHIFT_DAY,1,FT12,Seal Degradation,Material,Wear Parts,Seal Degradation,51,1
+DT0231,M031,SHIFT_DAY,6,FT05,Motor Burnout,Electrical,Power System,Motor Burnout,84,0
+DT0232,M031,SHIFT_DAY,11,FT05,Motor Burnout,Electrical,Power System,Motor Burnout,72,0
+DT0233,M032,SHIFT_DAY,1,FT09,Overheating,Process,Thermal,Overheating,34,1
+DT0234,M032,SHIFT_DAY,2,FT02,Shaft Misalignment,Mechanical,Rotating Equipment,Shaft Misalignment,51,0
+DT0235,M032,SHIFT_SWING,3,FT09,Overheating,Process,Thermal,Overheating,35,0
+DT0236,M032,SHIFT_DAY,4,FT07,Sensor Failure,Electrical,Instrumentation,Sensor Failure,36,0
+DT0237,M032,SHIFT_SWING,5,FT05,Motor Burnout,Electrical,Power System,Motor Burnout,78,0
+DT0238,M032,SHIFT_NIGHT,6,FT07,Sensor Failure,Electrical,Instrumentation,Sensor Failure,35,0
+DT0239,M032,SHIFT_NIGHT,6,FT05,Motor Burnout,Electrical,Power System,Motor Burnout,46,0
+DT0240,M032,SHIFT_NIGHT,6,FT02,Shaft Misalignment,Mechanical,Rotating Equipment,Shaft Misalignment,63,0
+DT0241,M032,SHIFT_DAY,7,FT09,Overheating,Process,Thermal,Overheating,66,0
+DT0242,M032,SHIFT_NIGHT,7,FT02,Shaft Misalignment,Mechanical,Rotating Equipment,Shaft Misalignment,32,0
+DT0243,M032,SHIFT_NIGHT,8,FT09,Overheating,Process,Thermal,Overheating,105,1
+DT0244,M032,SHIFT_SWING,8,FT09,Overheating,Process,Thermal,Overheating,97,0
+DT0245,M032,SHIFT_NIGHT,9,FT09,Overheating,Process,Thermal,Overheating,47,0
+DT0246,M032,SHIFT_SWING,10,FT08,Control Board,Electrical,Instrumentation,Control Board,63,0
+DT0247,M032,SHIFT_NIGHT,10,FT05,Motor Burnout,Electrical,Power System,Motor Burnout,94,0
+DT0248,M032,SHIFT_NIGHT,11,FT07,Sensor Failure,Electrical,Instrumentation,Sensor Failure,26,0
+DT0249,M032,SHIFT_SWING,12,FT05,Motor Burnout,Electrical,Power System,Motor Burnout,83,0
+DT0250,M032,SHIFT_DAY,12,FT05,Motor Burnout,Electrical,Power System,Motor Burnout,113,0
+DT0251,M033,SHIFT_DAY,2,FT09,Overheating,Process,Thermal,Overheating,34,1
+DT0252,M033,SHIFT_SWING,3,FT06,Wiring Fault,Electrical,Power System,Wiring Fault,17,0
+DT0253,M033,SHIFT_NIGHT,7,FT08,Control Board,Electrical,Instrumentation,Control Board,20,1
+DT0254,M034,SHIFT_NIGHT,2,FT06,Wiring Fault,Electrical,Power System,Wiring Fault,60,0
+DT0255,M034,SHIFT_DAY,9,FT05,Motor Burnout,Electrical,Power System,Motor Burnout,78,0
+DT0256,M035,SHIFT_SWING,1,FT07,Sensor Failure,Electrical,Instrumentation,Sensor Failure,28,0
+DT0257,M035,SHIFT_DAY,1,FT01,Bearing Failure,Mechanical,Rotating Equipment,Bearing Failure,92,0
+DT0258,M035,SHIFT_SWING,2,FT07,Sensor Failure,Electrical,Instrumentation,Sensor Failure,38,0
+DT0259,M035,SHIFT_SWING,2,FT09,Overheating,Process,Thermal,Overheating,34,0
+DT0260,M035,SHIFT_DAY,2,FT09,Overheating,Process,Thermal,Overheating,87,1
+DT0261,M035,SHIFT_NIGHT,3,FT02,Shaft Misalignment,Mechanical,Rotating Equipment,Shaft Misalignment,75,0
+DT0262,M035,SHIFT_NIGHT,3,FT02,Shaft Misalignment,Mechanical,Rotating Equipment,Shaft Misalignment,78,0
+DT0263,M035,SHIFT_NIGHT,3,FT06,Wiring Fault,Electrical,Power System,Wiring Fault,33,0
+DT0264,M035,SHIFT_DAY,4,FT02,Shaft Misalignment,Mechanical,Rotating Equipment,Shaft Misalignment,38,0
+DT0265,M035,SHIFT_NIGHT,5,FT01,Bearing Failure,Mechanical,Rotating Equipment,Bearing Failure,61,0
+DT0266,M035,SHIFT_SWING,5,FT06,Wiring Fault,Electrical,Power System,Wiring Fault,67,0
+DT0267,M035,SHIFT_SWING,5,FT08,Control Board,Electrical,Instrumentation,Control Board,76,0
+DT0268,M035,SHIFT_NIGHT,6,FT02,Shaft Misalignment,Mechanical,Rotating Equipment,Shaft Misalignment,64,0
+DT0269,M035,SHIFT_DAY,6,FT01,Bearing Failure,Mechanical,Rotating Equipment,Bearing Failure,53,0
+DT0270,M035,SHIFT_DAY,6,FT05,Motor Burnout,Electrical,Power System,Motor Burnout,34,0
+DT0271,M035,SHIFT_NIGHT,7,FT09,Overheating,Process,Thermal,Overheating,96,1
+DT0272,M035,SHIFT_NIGHT,7,FT01,Bearing Failure,Mechanical,Rotating Equipment,Bearing Failure,108,1
+DT0273,M035,SHIFT_NIGHT,7,FT07,Sensor Failure,Electrical,Instrumentation,Sensor Failure,44,1
+DT0274,M035,SHIFT_SWING,8,FT02,Shaft Misalignment,Mechanical,Rotating Equipment,Shaft Misalignment,75,0
+DT0275,M035,SHIFT_DAY,8,FT07,Sensor Failure,Electrical,Instrumentation,Sensor Failure,45,1
+DT0276,M035,SHIFT_DAY,8,FT02,Shaft Misalignment,Mechanical,Rotating Equipment,Shaft Misalignment,43,0
+DT0277,M035,SHIFT_SWING,9,FT06,Wiring Fault,Electrical,Power System,Wiring Fault,82,0
+DT0278,M035,SHIFT_DAY,10,FT09,Overheating,Process,Thermal,Overheating,100,0
+DT0279,M035,SHIFT_SWING,10,FT02,Shaft Misalignment,Mechanical,Rotating Equipment,Shaft Misalignment,57,0
+DT0280,M035,SHIFT_NIGHT,11,FT09,Overheating,Process,Thermal,Overheating,31,0
+DT0281,M035,SHIFT_SWING,11,FT01,Bearing Failure,Mechanical,Rotating Equipment,Bearing Failure,100,0
+DT0282,M035,SHIFT_NIGHT,12,FT09,Overheating,Process,Thermal,Overheating,88,0
+DT0283,M036,SHIFT_SWING,1,FT05,Motor Burnout,Electrical,Power System,Motor Burnout,21,0
+DT0284,M036,SHIFT_NIGHT,7,FT08,Control Board,Electrical,Instrumentation,Control Board,40,0
+DT0285,M037,SHIFT_SWING,1,FT08,Control Board,Electrical,Instrumentation,Control Board,48,0
+DT0286,M037,SHIFT_NIGHT,11,FT06,Wiring Fault,Electrical,Power System,Wiring Fault,24,0
+DT0287,M038,SHIFT_DAY,1,FT09,Overheating,Process,Thermal,Overheating,113,0
+DT0288,M038,SHIFT_SWING,3,FT09,Overheating,Process,Thermal,Overheating,33,0
+DT0289,M038,SHIFT_SWING,7,FT05,Motor Burnout,Electrical,Power System,Motor Burnout,55,0
+DT0290,M038,SHIFT_SWING,10,FT05,Motor Burnout,Electrical,Power System,Motor Burnout,89,0
+DT0291,M039,SHIFT_SWING,1,FT05,Motor Burnout,Electrical,Power System,Motor Burnout,19,0
+DT0292,M039,SHIFT_NIGHT,4,FT07,Sensor Failure,Electrical,Instrumentation,Sensor Failure,10,0
+DT0293,M039,SHIFT_SWING,5,FT09,Overheating,Process,Thermal,Overheating,42,0
+DT0294,M040,SHIFT_DAY,4,FT09,Overheating,Process,Thermal,Overheating,75,0
+DT0295,M040,SHIFT_DAY,6,FT05,Motor Burnout,Electrical,Power System,Motor Burnout,75,0
+DT0296,M040,SHIFT_SWING,9,FT09,Overheating,Process,Thermal,Overheating,52,0
+DT0297,M041,SHIFT_NIGHT,1,FT06,Wiring Fault,Electrical,Power System,Wiring Fault,43,0
+DT0298,M041,SHIFT_SWING,5,FT06,Wiring Fault,Electrical,Power System,Wiring Fault,38,0
+DT0299,M041,SHIFT_NIGHT,8,FT05,Motor Burnout,Electrical,Power System,Motor Burnout,93,0
+DT0300,M041,SHIFT_DAY,10,FT05,Motor Burnout,Electrical,Power System,Motor Burnout,100,0
+DT0301,M042,SHIFT_DAY,8,FT06,Wiring Fault,Electrical,Power System,Wiring Fault,74,0
+DT0302,M043,SHIFT_SWING,1,FT01,Bearing Failure,Mechanical,Rotating Equipment,Bearing Failure,65,0
+DT0303,M043,SHIFT_DAY,2,FT06,Wiring Fault,Electrical,Power System,Wiring Fault,41,0
+DT0304,M043,SHIFT_DAY,2,FT05,Motor Burnout,Electrical,Power System,Motor Burnout,19,1
+DT0305,M043,SHIFT_SWING,3,FT04,Belt Snap,Mechanical,Drive Train,Belt Snap,34,1
+DT0306,M043,SHIFT_DAY,3,FT05,Motor Burnout,Electrical,Power System,Motor Burnout,28,0
+DT0307,M043,SHIFT_DAY,4,FT05,Motor Burnout,Electrical,Power System,Motor Burnout,60,0
+DT0308,M043,SHIFT_DAY,5,FT09,Overheating,Process,Thermal,Overheating,58,0
+DT0309,M043,SHIFT_SWING,6,FT04,Belt Snap,Mechanical,Drive Train,Belt Snap,33,0
+DT0310,M043,SHIFT_NIGHT,7,FT05,Motor Burnout,Electrical,Power System,Motor Burnout,58,0
+DT0311,M043,SHIFT_SWING,8,FT09,Overheating,Process,Thermal,Overheating,45,0
+DT0312,M043,SHIFT_DAY,8,FT05,Motor Burnout,Electrical,Power System,Motor Burnout,25,0
+DT0313,M043,SHIFT_NIGHT,9,FT06,Wiring Fault,Electrical,Power System,Wiring Fault,25,0
+DT0314,M043,SHIFT_NIGHT,10,FT07,Sensor Failure,Electrical,Instrumentation,Sensor Failure,26,0
+DT0315,M043,SHIFT_SWING,10,FT01,Bearing Failure,Mechanical,Rotating Equipment,Bearing Failure,66,0
+DT0316,M043,SHIFT_NIGHT,11,FT06,Wiring Fault,Electrical,Power System,Wiring Fault,16,0
+DT0317,M043,SHIFT_DAY,11,FT09,Overheating,Process,Thermal,Overheating,26,0
+DT0318,M043,SHIFT_SWING,12,FT04,Belt Snap,Mechanical,Drive Train,Belt Snap,14,0
+DT0319,M043,SHIFT_SWING,12,FT04,Belt Snap,Mechanical,Drive Train,Belt Snap,23,0
+DT0320,M044,SHIFT_SWING,1,FT04,Belt Snap,Mechanical,Drive Train,Belt Snap,37,0
+DT0321,M044,SHIFT_DAY,7,FT05,Motor Burnout,Electrical,Power System,Motor Burnout,44,0
+DT0322,M045,SHIFT_SWING,2,FT05,Motor Burnout,Electrical,Power System,Motor Burnout,75,0
+DT0323,M045,SHIFT_SWING,3,FT01,Bearing Failure,Mechanical,Rotating Equipment,Bearing Failure,75,0
+DT0324,M045,SHIFT_SWING,8,FT05,Motor Burnout,Electrical,Power System,Motor Burnout,93,0
+DT0325,M045,SHIFT_DAY,9,FT01,Bearing Failure,Mechanical,Rotating Equipment,Bearing Failure,97,0
+DT0326,M045,SHIFT_DAY,11,FT05,Motor Burnout,Electrical,Power System,Motor Burnout,37,0
+DT0327,M047,SHIFT_SWING,1,FT06,Wiring Fault,Electrical,Power System,Wiring Fault,74,0
+DT0328,M047,SHIFT_DAY,2,FT05,Motor Burnout,Electrical,Power System,Motor Burnout,80,0
+DT0329,M047,SHIFT_DAY,2,FT05,Motor Burnout,Electrical,Power System,Motor Burnout,85,0
+DT0330,M047,SHIFT_NIGHT,3,FT09,Overheating,Process,Thermal,Overheating,81,0
+DT0331,M047,SHIFT_DAY,3,FT06,Wiring Fault,Electrical,Power System,Wiring Fault,24,0
+DT0332,M047,SHIFT_NIGHT,4,FT06,Wiring Fault,Electrical,Power System,Wiring Fault,43,1
+DT0333,M047,SHIFT_SWING,4,FT05,Motor Burnout,Electrical,Power System,Motor Burnout,97,0
+DT0334,M047,SHIFT_SWING,4,FT05,Motor Burnout,Electrical,Power System,Motor Burnout,92,0
+DT0335,M047,SHIFT_NIGHT,5,FT04,Belt Snap,Mechanical,Drive Train,Belt Snap,32,0
+DT0336,M047,SHIFT_DAY,5,FT06,Wiring Fault,Electrical,Power System,Wiring Fault,21,0
+DT0337,M047,SHIFT_NIGHT,6,FT07,Sensor Failure,Electrical,Instrumentation,Sensor Failure,25,0
+DT0338,M047,SHIFT_SWING,7,FT04,Belt Snap,Mechanical,Drive Train,Belt Snap,31,0
+DT0339,M047,SHIFT_DAY,7,FT06,Wiring Fault,Electrical,Power System,Wiring Fault,48,0
+DT0340,M047,SHIFT_NIGHT,7,FT06,Wiring Fault,Electrical,Power System,Wiring Fault,72,0
+DT0341,M047,SHIFT_DAY,8,FT05,Motor Burnout,Electrical,Power System,Motor Burnout,72,0
+DT0342,M047,SHIFT_SWING,9,FT05,Motor Burnout,Electrical,Power System,Motor Burnout,44,0
+DT0343,M047,SHIFT_DAY,9,FT05,Motor Burnout,Electrical,Power System,Motor Burnout,80,0
+DT0344,M047,SHIFT_SWING,10,FT05,Motor Burnout,Electrical,Power System,Motor Burnout,54,0
+DT0345,M047,SHIFT_SWING,10,FT07,Sensor Failure,Electrical,Instrumentation,Sensor Failure,17,0
+DT0346,M047,SHIFT_DAY,11,FT07,Sensor Failure,Electrical,Instrumentation,Sensor Failure,44,0
+DT0347,M047,SHIFT_DAY,12,FT09,Overheating,Process,Thermal,Overheating,74,0
+DT0348,M048,SHIFT_DAY,5,FT05,Motor Burnout,Electrical,Power System,Motor Burnout,47,0
+DT0349,M048,SHIFT_SWING,7,FT06,Wiring Fault,Electrical,Power System,Wiring Fault,60,0
+DT0350,M048,SHIFT_NIGHT,10,FT09,Overheating,Process,Thermal,Overheating,70,0
+DT0351,M049,SHIFT_DAY,10,FT04,Belt Snap,Mechanical,Drive Train,Belt Snap,10,0
+DT0352,M050,SHIFT_SWING,9,FT05,Motor Burnout,Electrical,Power System,Motor Burnout,88,0
+DT0353,M050,SHIFT_DAY,10,FT05,Motor Burnout,Electrical,Power System,Motor Burnout,32,1

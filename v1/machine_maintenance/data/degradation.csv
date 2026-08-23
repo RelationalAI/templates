@@ -1,0 +1,6 @@
+machine_type,degradation_rate_per_period,maintenance_reset_factor
+Compressor,0.038,0.8
+Generator,0.042,0.9
+Motor,0.025,0.7
+Pump,0.03,0.75
+Turbine,0.045,0.85

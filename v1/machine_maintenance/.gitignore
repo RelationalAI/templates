@@ -1,0 +1,13 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+build/
+
+# RAI / engine local artifacts
+raiconfig.yaml
+metadata.json
+debug.jsonl
+spans.jsonl
+dev_run/
