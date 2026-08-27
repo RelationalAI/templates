@@ -79,6 +79,26 @@ When changing an existing template:
 - verify that any renamed files, commands, or outputs are reflected in the README
 - rerun any local validation steps that the change affects
 
+### Prescriptive templates: bumping the `relationalai` pin past 1.28
+
+`Problem.display()` changes in 1.29. If your template calls it, check these when you bump the pin:
+
+- `display()` no longer accepts `part`, `where` or `limit`; all three raise `TypeError`. Select the `Expression.display_string` property instead and filter it with an ordinary `where`.
+- `display_string` is declared whether or not its rules are installed, so a select that skips `install_display_strings()` returns nulls with no error saying why. Call `problem.install_display_strings()` once, after the model is fully declared, and before deploying under Deploy Mode. `display()` installs the rules itself; a direct select does not.
+- `display()` raises `ValueError` if any decision variable is unnamed, so pass `name=` to every `solve_for(...)`.
+- The client-side depth cap is gone. A deeply nested expression no longer prints `<expression too deep>`; it just takes longer, with trouble starting around 20 nested operators.
+
+```python
+from relationalai.semantics.std import aggregates as aggs
+
+problem.install_display_strings()  # once, after the last define/require
+c = problem.Constraint
+
+model.select(c.name, c.display_string).inspect()                             # whole problem
+model.select(c.name, c.display_string).where(c.name == "cap_3").inspect()    # in place of where=
+model.select(c.name, c.display_string).where(aggs.limit(10, c.name)).inspect()  # in place of limit=
+```
+
 ## README expectations
 
 An authentic template contribution is mostly about reproducibility. The README should let someone unfamiliar with the template run it successfully from scratch.
