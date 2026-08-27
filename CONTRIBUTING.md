@@ -83,10 +83,11 @@ When changing an existing template:
 
 `Problem.display()` changes in 1.29. If your template calls it, check these when you bump the pin:
 
-- `display()` no longer accepts `part`, `where` or `limit`; all three raise `TypeError`. Select the `Expression.display_string` property instead and filter it with an ordinary `where`.
+- `display()` no longer accepts `part` or `where`; both raise `TypeError`. Select the `Expression.display_string` property instead and filter it with an ordinary `where`.
+- `display(limit=n)` still works, but only for the whole problem — it caps each printed table at its first `n` rows and can no longer be scoped to a part. `n` must be a positive integer.
 - `display_string` is declared whether or not its rules are installed, so a select that skips `install_display_strings()` returns nulls with no error saying why. Call `problem.install_display_strings()` once, after the model is fully declared, and before deploying under Deploy Mode. `display()` installs the rules itself; a direct select does not.
 - `display()` raises `ValueError` if any decision variable is unnamed, so pass `name=` to every `solve_for(...)`.
-- The client-side depth cap is gone. A deeply nested expression no longer prints `<expression too deep>`; it just takes longer, with trouble starting around 20 nested operators.
+- The client-side depth cap is gone. A deeply nested expression no longer prints `<expression too deep>`; it renders on the engine instead. Render time climbs steeply with nesting depth, so a template that builds very deep expressions will spend real time on the first query after an install.
 
 ```python
 from relationalai.semantics.std import aggregates as aggs
@@ -96,7 +97,7 @@ c = problem.Constraint
 
 model.select(c.name, c.display_string).inspect()                             # whole problem
 model.select(c.name, c.display_string).where(c.name == "cap_3").inspect()    # in place of where=
-model.select(c.name, c.display_string).where(aggs.limit(10, c.name)).inspect()  # in place of limit=
+model.where(aggs.limit(10, c.name)).select(c.name, c.display_string).inspect()  # in place of a scoped limit=
 ```
 
 ## README expectations
