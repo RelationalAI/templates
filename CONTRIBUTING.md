@@ -83,8 +83,8 @@ When changing an existing template:
 
 `Problem.display()` changes in 1.29. If your template calls it, check these when you bump the pin:
 
-- `display()` no longer accepts `part` or `where`; both raise `TypeError`. Select the `Expression.display_string` property instead and filter it with an ordinary `where`.
-- `display(limit=n)` still works, but only for the whole problem — it caps each printed table at its first `n` rows and can no longer be scoped to a part. `n` must be a positive integer.
+- `display()` no longer accepts `part` or `where`; both raise `TypeError`. Select the `display_string` property on a constraint or objective instead, and filter it with an ordinary `where`.
+- `display(limit=n)` still works, but only for the whole problem — it caps each printed table at its first `n` rows and can no longer be scoped to a part. `n` must be a positive integer. Rows now order as plain text rather than as numbers, so the sample differs from 1.28: over `x_1`..`x_12`, `limit=5` prints `x_1, x_10, x_11, x_12, x_2`.
 - `display_string` is declared whether or not its rules are installed, so a select that skips `install_display_strings()` returns nulls with no error saying why. Call `problem.install_display_strings()` once, after the model is fully declared, and before deploying under Deploy Mode. `display()` installs the rules itself; a direct select does not.
 - `display()` raises `ValueError` if any decision variable is unnamed, so pass `name=` to every `solve_for(...)`.
 - The client-side depth cap is gone. A deeply nested expression no longer prints `<expression too deep>`; it renders on the engine instead. Render time climbs steeply with nesting depth, so a template that builds very deep expressions will spend real time on the first query after an install.
