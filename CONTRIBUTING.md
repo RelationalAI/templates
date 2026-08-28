@@ -79,6 +79,29 @@ When changing an existing template:
 - verify that any renamed files, commands, or outputs are reflected in the README
 - rerun any local validation steps that the change affects
 
+### Prescriptive templates: bumping the `relationalai` pin past 1.28
+
+`Problem.display()` changes in 1.29. If your template calls it, check these when you bump the pin:
+
+- `display()` no longer accepts `part` or `where`; both raise `TypeError`. Select the `display_string` property on a constraint or objective instead, and filter it with an ordinary `where`.
+- `display(limit=n)` still works, but only for the whole problem — it caps each printed table at its first `n` rows and can no longer be scoped to a part. `n` must be a positive integer. Rows now order as plain text rather than as numbers, so the sample differs from 1.28: over `x_1`..`x_12`, `limit=5` prints `x_1, x_10, x_11, x_12, x_2`.
+- `display_string` is declared whether or not its rules are installed, so a select returns nulls with no error saying why. Two common causes: the rules are not installed (`display()` installs them itself, a direct select does not), or a decision variable in the expression was declared without `name=`, which stays null after a correct install. Call `problem.install_display_strings()` once **per Problem**, after that Problem is fully declared, and before deploying under Deploy Mode — installing on one Problem does not render another's, even on the same model.
+- `display()` raises `ValueError` if any decision variable is unnamed, so pass `name=` to every `solve_for(...)`. The name must discriminate: `display()` only rejects null names, so a constant `name="x"` on a per-entity variable renders every row identically with no warning. Include the identifier, as in `name=["x", Entity.id]`.
+- The client-side depth cap is gone. A deeply nested expression no longer prints `<expression too deep>`; it renders on the engine instead, and render time climbs steeply with nesting depth. If your model runs on the SQL backend the first query after an install renders every expression in the problem, so that is where a template with very deep expressions pays.
+
+```python
+from relationalai.semantics.std import aggregates as aggs
+
+problem.install_display_strings()  # once, after the last define/require
+c = problem.Constraint
+
+model.select(c.name, c.display_string).inspect()                             # whole problem
+model.select(c.name, c.display_string).where(c.name == "cap_3").inspect()    # in place of where=
+model.where(aggs.limit(10, c.name)).select(c.name, c.display_string).inspect()  # in place of a scoped limit=
+# aggs.limit reads c.name: it orders as plain text (cap_10 before cap_2) and drops
+# constraints declared without name=. Name any constraint you sample this way.
+```
+
 ## README expectations
 
 An authentic template contribution is mostly about reproducibility. The README should let someone unfamiliar with the template run it successfully from scratch.
