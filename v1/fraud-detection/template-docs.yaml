@@ -9,7 +9,7 @@ page:
     - how-it-works
 
 model_explorer:
-  title: How the fraud-detection model fits together
+  title: Explore the model
   description: >-
     Accounts send and receive transactions. The same connections support
     account-level graph signals, transaction-level fraud predictions, and the
@@ -62,144 +62,91 @@ model_explorer:
         - Transaction
 
 guided_walkthrough:
-  title: Follow the fraud-detection flow
+  title: See how it works
   description: >-
-    These five steps connect the selected data source to one shared model,
-    enrich transactions with graph and rules signals, predict fraud, and
-    choose a budget-feasible audit queue.
+    Trace transaction data from the shared model to fraud signals and a
+    budget-feasible investigation queue.
 
   steps:
-    - id: load-accounts-and-transactions
-      title: Load accounts and transactions
+    - id: load-and-map-transactions
+      title: Load and map transactions
       explanation: >-
-        load_local_data maps the bundled CSVs into the model for the primary
-        runner. load_snowflake_data maps the equivalent Snowflake tables for
-        the full-scale adaptation.
+        accounts_df and transactions_df load the funds-flow network. train_df
+        starts the task splits used to learn fraud.
       focus:
         file: model/source.py
-        symbols:
-          - load_local_data
-          - load_snowflake_data
+        anchors:
+          - start: accounts_df = read_csv
+            end: small_audit_cost_hours,
+          - start: train_df = read_csv
+            end: test_df = read_csv
+          - start: model.define(Account.new(model.data(accounts_df).to_schema()))
+            end: model.define(TestTable.new(model.data(test_df).to_schema()))
       references:
-        load_local_data:
-          symbol: load_local_data
-        load_snowflake_data:
-          symbol: load_snowflake_data
+        accounts_df:
+          symbol: accounts_df
+        transactions_df:
+          symbol: transactions_df
+        train_df:
+          symbol: train_df
       links:
         - title: Declare data sources
           href: /build/guides/modeling/declare-data-sources/
         - title: Define base facts
           href: /build/guides/modeling/define-base-facts/
 
-    - id: connect-transactions-and-accounts
-      title: Connect transactions and accounts
+    - id: derive-fraud-signals
+      title: Derive fraud signals
       explanation: >-
-        Account and Transaction provide the shared business vocabulary.
-        Transaction.sender and Transaction.receiver connect each transfer to
-        both endpoints of the funds flow. Train, Val, and Test declare the
-        classifier's task surfaces.
-      focus:
-        file: model/schema.py
-        symbols:
-          - Account
-          - Transaction
-          - Transaction.sender
-          - Transaction.receiver
-          - Train
-          - Val
-          - Test
-      references:
-        Account:
-          symbol: Account
-        Transaction:
-          symbol: Transaction
-        Transaction.sender:
-          symbol: Transaction.sender
-        Transaction.receiver:
-          symbol: Transaction.receiver
-        Train:
-          symbol: Train
-        Val:
-          symbol: Val
-        Test:
-          symbol: Test
-      links:
-        - title: Declare concepts
-          href: /build/guides/modeling/declare-concepts/
-        - title: Declare relationships and properties
-          href: /build/guides/modeling/declare-relationships-and-properties/
-
-    - id: derive-graph-and-rules-signals
-      title: Derive graph and rules signals
-      explanation: >-
-        acct_graph produces Account.pagerank from the funds-flow network, while
-        Account.activity_count captures sender-side transaction volume. Both
-        signals become classifier features.
+        Account.pagerank and Account.activity_count enrich the network context.
+        Transaction.predictions turns those signals into fraud probabilities.
       focus:
         file: fraud_detection_local.py
-        symbols:
-          - acct_graph
-          - Account.pagerank
-          - Account.activity_count
+        anchors:
+          - start: pagerank_rel = acct_graph.pagerank()
+            end: model.define(_a_pr.pagerank
+          - start: Account.activity_count = model.Property
+            end: ").where(Transaction.name_orig == Account.account_id)"
+          - start: gnn = GNN(
+            end: Transaction.predictions = gnn.predictions(domain=Test)
       references:
-        acct_graph:
-          symbol: acct_graph
         Account.pagerank:
           symbol: Account.pagerank
         Account.activity_count:
           symbol: Account.activity_count
-      links:
-        - title: Run a Graph Algorithm
-          href: /build/guides/reasoning/graph/run-an-algorithm/
-        - title: Rules-based reasoning
-          href: /build/guides/reasoning/rules-based/
-
-    - id: train-and-inspect-classifier
-      title: Train and inspect the fraud classifier
-      explanation: >-
-        Train, Val, and Test define the task surfaces. The GNN learns from the
-        graph and enriched features, then Transaction.predictions stores fraud
-        probabilities for the test transactions.
-      focus:
-        file: fraud_detection_local.py
-        symbols:
-          - pt
-          - gnn
-          - Transaction.predictions
-      references:
-        GNN:
-          symbol: gnn
         Transaction.predictions:
           symbol: Transaction.predictions
       links:
-        - title: Define a learning task
-          href: /build/guides/reasoning/predictive/define-a-learning-task/
+        - title: Run a graph algorithm
+          href: /build/guides/reasoning/graph/run-an-algorithm/
         - title: Solve a classification problem
           href: /build/guides/reasoning/predictive/solve-a-classification-problem/
 
-    - id: prioritize-investigations
-      title: Prioritize investigations under a budget
+    - id: allocate-investigation-capacity
+      title: Allocate investigation capacity
       explanation: >-
-        Transaction.x_audit is a binary decision variable. The decision problem
-        maximizes expected loss averted while respecting investigator hours and
-        the per-receiver cap, then audit_df reports the selected audit queue.
+        problem turns each Transaction.x_audit choice into a budgeted
+        allocation. It maximizes expected loss averted before reporting the queue.
       focus:
         file: fraud_detection_local.py
-        symbols:
-          - problem
-          - Transaction.x_audit
-          - audit_df
+        anchors:
+          - start: select_ref = Float.ref()
+            end: problem = Problem(model, Float)
+          - start: Transaction.x_audit = model.Property
+            end: where=[Transaction.alert_score(alert_bind)],
+          - start: "# Constraint: total investigator hours <= budget"
+            end: sum(Txn_ref, Txn_ref.audit_cost * select_ref) <= AUDIT_BUDGET_HOURS
+          - start: problem.maximize(sum(
+            end: si = problem.solve_info()
       references:
-        Transaction.x_audit:
-          symbol: Transaction.x_audit
         problem:
           symbol: problem
-        audit_df:
-          symbol: audit_df
+        Transaction.x_audit:
+          symbol: Transaction.x_audit
       links:
         - title: Add constraints
           href: /build/guides/reasoning/prescriptive/decision-problems/constraints/
-        - title: Work with solutions
+        - title: Inspect solutions
           href: /build/guides/reasoning/prescriptive/decision-problems/solutions/
 
 sample_data:

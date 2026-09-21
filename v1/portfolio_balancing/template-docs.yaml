@@ -16,7 +16,7 @@ page:
     - how-it-works
 
 model_explorer:
-  title: How the portfolio model fits together
+  title: Explore the model
   description: >-
     The model connects investors and their accounts to holdings, stocks,
     sectors, and transactions. Rules inspect the current portfolio, graph
@@ -97,133 +97,84 @@ model_explorer:
         - Stock
 
 guided_walkthrough:
-  title: Follow the re-balancing flow
+  title: See how it works
   description: >-
-    These five steps connect the input data to the shared model and then show
-    how each reasoning stage contributes to the final portfolio.
+    Trace the shared portfolio model from connected facts to compliance
+    checks, correlation groups, and a re-balanced allocation.
 
   steps:
-    - id: load-inputs
-      title: Load portfolio and market inputs
+    - id: connect-portfolio-model
+      title: Connect the portfolio model
       explanation: >-
-        load_portfolio_data maps users, accounts, holdings, and transactions
-        into the model. load_market_data adds stocks and pairwise covariance
-        values used by the graph and optimization stages.
-      focus:
-        file: model/source.py
-        symbols:
-          - load_portfolio_data
-          - load_market_data
-      references:
-        load_portfolio_data:
-          symbol: load_portfolio_data
-        load_market_data:
-          symbol: load_market_data
-      links:
-        - title: Declare data sources
-          href: /build/guides/modeling/declare-data-sources/
-        - title: Define base facts
-          href: /build/guides/modeling/define-base-facts/
-
-    - id: define-shared-model
-      title: Define the shared portfolio model
-      explanation: >-
-        User, Account, Holding, Transaction, Stock, and Sector give every
-        reasoning stage the same business vocabulary and relationships.
+        Account identifies each account. Account.user and Holding.account
+        connect it to the investor and positions.
       focus:
         file: model/schema.py
-        symbols:
-          - User
-          - Account
-          - Holding
-          - Transaction
-          - Stock
-          - Sector
+        anchors:
+          - start: Account = model.Concept
+            end: Account.user = model.Relationship
+          - start: Holding.purchase_price = model.Property
+            end: Holding.stock = model.Relationship
       references:
-        User:
-          symbol: User
         Account:
           symbol: Account
-        Holding:
-          symbol: Holding
-        Transaction:
-          symbol: Transaction
-        Stock:
-          symbol: Stock
-        Sector:
-          symbol: Sector
+        Account.user:
+          symbol: Account.user
+        Holding.account:
+          symbol: Holding.account
       links:
         - title: Declare concepts
           href: /build/guides/modeling/declare-concepts/
         - title: Declare relationships and properties
           href: /build/guides/modeling/declare-relationships-and-properties/
 
-    - id: flag-compliance-risk
-      title: Flag compliance risk with rules
+    - id: load-portfolio-and-market-facts
+      title: Load portfolio and market facts
       explanation: >-
-        Holding.is_overconcentrated and Holding.is_sector_concentrated identify
-        concentrated positions, while User.is_high_risk_trader combines risk
-        scores with flagged activity.
+        covar_data adds market facts, and user_data starts the portfolio
+        mapping. The same module adds accounts, holdings, and transactions.
+      focus:
+        file: model/source.py
+        anchors:
+          - start: returns_csv = read_csv
+            end: covar_data = model.data(covar_csv)
+          - start: user_data = model.data
+            end: user.risk_score(user_data["risk_score"]),
+      references:
+        covar_data:
+          symbol: covar_data
+        user_data:
+          symbol: user_data
+      links:
+        - title: Declare data sources
+          href: /build/guides/modeling/declare-data-sources/
+        - title: Define base facts
+          href: /build/guides/modeling/define-base-facts/
+
+    - id: flag-cluster-and-rebalance
+      title: Flag, cluster, and re-balance
+      explanation: >-
+        Holding.is_overconcentrated flags compliance risk, community groups
+        correlated stocks, and Stock.x_quantity carries the re-balanced allocation.
       focus:
         file: portfolio_balancing.py
         anchors:
-          - start: Holding.value = model.Property
-            end: ").define(User.is_high_risk_trader())"
+          - start: Holding.is_overconcentrated = model.Relationship
+            end: ").define(Holding.is_overconcentrated())"
+          - start: community = corr_graph.louvain()
+            end: community(stock_clust_ref, cluster_label)
+          - start: Stock.x_quantity = model.Property
+            end: PairedStock = Stock.ref()
       references:
         Holding.is_overconcentrated:
           symbol: Holding.is_overconcentrated
-        Holding.is_sector_concentrated:
-          symbol: Holding.is_sector_concentrated
-        User.is_high_risk_trader:
-          symbol: User.is_high_risk_trader
+        community:
+          symbol: community
+        Stock.x_quantity:
+          symbol: Stock.x_quantity
       links:
         - title: Rules-based reasoning
           href: /build/guides/reasoning/rules-based/
-        - title: Aggregate and group data
-          href: /build/guides/reasoning/rules-based/aggregate-and-group-data/
-
-    - id: group-correlated-stocks
-      title: Group correlated exposures
-      explanation: >-
-        Stock.correlation creates the similarity signal, corr_graph connects
-        strongly correlated stocks, and community assigns Louvain clusters.
-        Stock.is_representative keeps one high-Sharpe stock from each cluster.
-      focus:
-        file: portfolio_balancing.py
-        symbols:
-          - Stock.correlation
-          - corr_graph
-          - community
-          - Stock.is_representative
-      references:
-        Stock.correlation:
-          symbol: Stock.correlation
-        corr_graph:
-          symbol: corr_graph
-        community:
-          symbol: community
-        Stock.is_representative:
-          symbol: Stock.is_representative
-      links:
-        - title: Create a graph
-          href: /build/guides/reasoning/graph/create-a-graph/
-        - title: Run a Graph Algorithm
-          href: /build/guides/reasoning/graph/run-an-algorithm/
-
-    - id: rebalance-and-stress-test
-      title: Re-balance and stress-test the portfolio
-      explanation: >-
-        The decision problem assigns portfolio weights, applies position and
-        sector limits, traces the efficient frontier, and compares the result
-        with a crisis covariance regime.
-      focus:
-        file: portfolio_balancing.py
-        anchors:
-          - start: "# Stage 3: Prescriptive"
-            end: "# Stage 4: Crisis stress"
-      links:
-        - title: Create a decision problem
-          href: /build/guides/reasoning/prescriptive/decision-problems/create/
         - title: Solve a decision problem
           href: /build/guides/reasoning/prescriptive/decision-problems/solve/
 

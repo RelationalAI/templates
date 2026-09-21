@@ -21,9 +21,9 @@ tags:
 
 ## What this template is for
 
-Index funds and separately managed accounts may need to track a broad benchmark without the cost and complexity of holding every constituent. Building a smaller basket is difficult because stock selection and weight sizing must be decided together while respecting portfolio and trading constraints.
+Tracking a broad benchmark with a smaller basket requires stock selection and weight sizing under portfolio and trading constraints.
 
-This template shows how RelationalAI can select and weight a sparse replication basket. Developers can adapt the model to different benchmarks, investment universes, position limits, sector policies, and liquidity constraints.
+This template selects and weights a sparse replication basket. Developers can adapt it to other benchmarks, investment universes, position limits, sector policies, and liquidity constraints.
 
 ## Who this is for
 

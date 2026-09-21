@@ -19,9 +19,9 @@ tags:
 
 ## What this template is for
 
-Portfolio managers need to reduce duplicate exposure, meet compliance limits, and understand how allocations behave when market correlations rise. Sector labels and base-case optimization alone can hide correlated bets and understate crisis risk.
+Portfolio managers need to reduce duplicate exposure, meet compliance limits, and understand how allocations behave when market correlations rise.
 
-This template shows how RelationalAI can build and stress-test a compliant, risk-optimized portfolio from connected portfolio, transaction, and market data. Developers can adapt the same model to different investment universes, limits, and stress assumptions.
+This template connects portfolio and market data to build and stress-test a compliant, risk-optimized portfolio. Developers can adapt it to other investment universes, limits, and stress assumptions.
 
 ## What you'll build
 

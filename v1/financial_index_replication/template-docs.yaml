@@ -9,7 +9,7 @@ page:
     - how-it-works
 
 model_explorer:
-  title: How the index replication model fits together
+  title: Explore the model
   description: >-
     The model connects each stock to a sector and records both benchmark and
     stock returns by month. The decision problem uses those facts to select
@@ -65,24 +65,24 @@ model_explorer:
         - Stock.return_on
 
 guided_walkthrough:
-  title: Follow the index replication flow
+  title: See how it works
   description: >-
-    These five steps connect the return panels to the semantic model and show
-    how the optimizer builds and evaluates the replication basket.
+    Trace market data from the return model to a constrained replication
+    basket and its tracking results.
 
   steps:
-    - id: load-return-panels
-      title: Load the universe and return panels
+    - id: load-stock-return-model
+      title: Load the stock and return model
       explanation: >-
-        stocks_csv describes the investable universe, index_returns_csv
-        provides the benchmark series, and stock_returns_csv provides each
-        stock's monthly history.
+        stocks_csv, index_returns_csv, and stock_returns_csv populate the
+        investable universe and aligned return history.
       focus:
         file: model/source.py
-        symbols:
-          - stocks_csv
-          - index_returns_csv
-          - stock_returns_csv
+        anchors:
+          - start: stocks_csv = pd.read_csv
+            end: model.define(Stock.new
+          - start: model.define(ReturnDate.new
+            end: ReturnDate.date(stock_return_data.date),
       references:
         stocks_csv:
           symbol: stocks_csv
@@ -96,60 +96,21 @@ guided_walkthrough:
         - title: Define base facts
           href: /build/guides/modeling/define-base-facts/
 
-    - id: define-index-model
-      title: Define stocks, sectors, and return dates
+    - id: define-basket-constraints
+      title: Define selection and tracking constraints
       explanation: >-
-        Stock, Sector, and ReturnDate give the source mappings and optimization
-        a shared vocabulary for constituents, exposure groups, and benchmark
-        periods.
-      focus:
-        file: model/schema.py
-        symbols:
-          - Stock
-          - Sector
-          - ReturnDate
-      references:
-        Stock:
-          symbol: Stock
-        Sector:
-          symbol: Sector
-        ReturnDate:
-          symbol: ReturnDate
-      links:
-        - title: Declare concepts
-          href: /build/guides/modeling/declare-concepts/
-        - title: Declare relationships and properties
-          href: /build/guides/modeling/declare-relationships-and-properties/
-
-    - id: connect-stock-returns
-      title: Connect stock returns to benchmark periods
-      explanation: >-
-        map_stock_returns maps each ticker and date to Stock.return_on, so
-        every stock return is aligned with the corresponding ReturnDate.
-      focus:
-        file: model/source.py
-        symbols:
-          - map_stock_returns
-      references:
-        map_stock_returns:
-          symbol: map_stock_returns
-      links:
-        - title: Define base facts
-          href: /build/guides/modeling/define-base-facts/
-        - title: Query a model
-          href: /build/guides/modeling/query-a-model/
-
-    - id: constrain-replication-basket
-      title: Define selection, weight, and tracking constraints
-      explanation: >-
-        Stock.x_selected and Stock.x_weight link membership to portfolio
-        weight, while ReturnDate.x_pos_error and ReturnDate.x_neg_error measure
-        tracking residuals for the objective.
+        Stock.x_selected and Stock.x_weight link basket membership to allocation.
+        ReturnDate.x_pos_error helps measure tracking gaps while constraints
+        enforce the portfolio rules.
       focus:
         file: financial_index_replication.py
         anchors:
-          - start: "# Model the decision problem"
-            end: "# Solve"
+          - start: Stock.x_selected = model.Property
+            end: f"{ReturnDate} has negative tracking residual
+          - start: "# A stock can carry weight only when selected."
+            end: ").require(weight <= MAX_WEIGHT * selected)"
+          - start: ReturnDate.index_return(index_return),
+            end: "== pos_error - neg_error"
       references:
         Stock.x_selected:
           symbol: Stock.x_selected
@@ -157,27 +118,33 @@ guided_walkthrough:
           symbol: Stock.x_weight
         ReturnDate.x_pos_error:
           symbol: ReturnDate.x_pos_error
-        ReturnDate.x_neg_error:
-          symbol: ReturnDate.x_neg_error
       links:
         - title: Create decision variables
           href: /build/guides/reasoning/prescriptive/decision-problems/variables/
         - title: Add constraints
           href: /build/guides/reasoning/prescriptive/decision-problems/constraints/
 
-    - id: solve-and-inspect
-      title: Solve and inspect the replication basket
+    - id: solve-and-inspect-basket
+      title: Solve and inspect the basket
       explanation: >-
-        The HiGHS solve writes the decisions back to the model. The result
-        queries then report the selected basket, sector exposures, tracking
-        quality, turnover, and baseline comparison.
+        si records the solve status. tracking_diff compares the chosen basket
+        with the benchmark before the reports are produced.
       focus:
         file: financial_index_replication.py
         anchors:
-          - start: "# Solve"
-            end: "# Evaluate and report"
+          - start: problem.solve("highs", time_limit_sec=240)
+            end: "print(f\"\\nStatus: {si.termination_status}\")"
           - start: solution_df = (
-            end: 'print(f"Baseline annualized tracking error: {baseline_tracking_error:.2%}")'
+            end: weight.alias("weight"),
+          - start: weight > 0.0001,
+            end: '.sort_values("weight", ascending=False)'
+          - start: weights = solution_df.set_index
+            end: tracking_diff = portfolio_returns - index_series["index_return"]
+      references:
+        si:
+          symbol: si
+        tracking_diff:
+          symbol: tracking_diff
       links:
         - title: Solve a decision problem
           href: /build/guides/reasoning/prescriptive/decision-problems/solve/

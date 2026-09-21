@@ -20,9 +20,9 @@ tags:
 
 ## What this template is for
 
-Insurers often hold duplicate customer records across policy systems and acquired books. Until those records are resolved into real insured parties, no single policy may look risky even when a household's combined coverage exceeds an accumulation limit.
+Duplicate records can hide a customer's total exposure across policy systems and acquired books.
 
-This template shows how RelationalAI can resolve those records, identify overexposure, and choose reinsurance cessions. Developers can adapt the pattern to other entity-resolution problems where downstream decisions depend on a complete view of each person or organization.
+This template resolves records, identifies overexposure, and chooses reinsurance cessions. Developers can adapt it to other entity-resolution problems where decisions need a complete party view.
 
 ## Who this is for
 

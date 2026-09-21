@@ -9,7 +9,7 @@ page:
     - how-it-works
 
 model_explorer:
-  title: How entity resolution connects records to exposure
+  title: Explore the model
   description: >-
     The model represents raw policy records, accepted and review-band matches,
     and the resolved insured parties used for accumulation control. Accepted
@@ -64,124 +64,95 @@ model_explorer:
         per-policy coverage.
 
 guided_walkthrough:
-  title: Follow the entity-resolution flow
+  title: See how it works
   description: >-
-    These five steps connect source preparation to the shared model, graph
-    clustering, exposure rules, and the reinsurance decision.
+    Trace source records from candidate facts to resolved exposure and
+    reinsurance decisions.
 
   steps:
-    - id: normalize-and-score-records
-      title: Normalize and score source records
+    - id: prepare-candidate-facts
+      title: Prepare candidate facts
       explanation: >-
-        load_records reads and loads the policy records, build_candidate_pairs
-        normalizes matching fields and scores blocked pairs, and
-        load_candidate_facts loads accepted matches and the review queue.
+        match_data loads accepted pairs as model facts, and review_data keeps
+        uncertain pairs separate for review.
       focus:
         file: model/source.py
-        symbols:
-          - load_records
-          - build_candidate_pairs
-          - load_candidate_facts
+        anchors:
+          - start: "if score >= AUTO_MERGE:"
+            end: review.append(pair)
+          - start: matches = DataFrame(
+            end: reviews = DataFrame(
+          - start: match_data = model.data(matches)
+            end: score=match_data.score,
+          - start: review_data = model.data(reviews)
+            end: score=review_data.score,
       references:
-        load_records:
-          symbol: load_records
-        build_candidate_pairs:
-          symbol: build_candidate_pairs
-        load_candidate_facts:
-          symbol: load_candidate_facts
+        match_data:
+          symbol: match_data
+        review_data:
+          symbol: review_data
       links:
         - title: Declare data sources
           href: /build/guides/modeling/declare-data-sources/
         - title: Define base facts
           href: /build/guides/modeling/define-base-facts/
 
-    - id: define-resolution-model
-      title: Define records, matches, and resolved parties
+    - id: resolve-parties-and-exposure
+      title: Resolve parties and exposure
       explanation: >-
-        Record, CandidateMatch, ReviewPair, and ResolvedParty provide stable
-        identities and properties, while Record.resolved_party represents
-        membership in the party whose exposure is evaluated.
-      focus:
-        file: model/schema.py
-        symbols:
-          - Record
-          - CandidateMatch
-          - ReviewPair
-          - ResolvedParty
-          - Record.resolved_party
-      references:
-        Record:
-          symbol: Record
-        CandidateMatch:
-          symbol: CandidateMatch
-        ReviewPair:
-          symbol: ReviewPair
-        ResolvedParty:
-          symbol: ResolvedParty
-        Record.resolved_party:
-          symbol: Record.resolved_party
-      links:
-        - title: Declare concepts
-          href: /build/guides/modeling/declare-concepts/
-        - title: Declare relationships and properties
-          href: /build/guides/modeling/declare-relationships-and-properties/
-
-    - id: cluster-accepted-matches
-      title: Cluster accepted matches into parties
-      explanation: >-
-        cluster_accepted_matches turns accepted pairs into undirected graph
-        edges and uses weakly connected components to give every record a
-        stable party key.
+        graph.Node.entity_id groups accepted links into parties.
+        records_per_entity marks duplicates, and party_record rolls policy
+        coverage into party exposure.
       focus:
         file: entity_resolution.py
-        symbols:
-          - cluster_accepted_matches
+        anchors:
+          - start: graph.Node.entity_id = graph.weakly_connected_component()
+            end: Record.entity_key(rep_node.record_id)
+          - start: records_per_entity = aggregates.count
+            end: record, party = Record.ref(), ResolvedParty.ref()
+          - start: model.where(record.entity_key == party.key).define(
+            end: aggregates.sum(party_record.coverage_amount).per(ResolvedParty)
       references:
-        cluster_accepted_matches:
-          symbol: cluster_accepted_matches
+        graph.Node.entity_id:
+          symbol: graph.Node.entity_id
+        records_per_entity:
+          symbol: records_per_entity
+        party_record:
+          symbol: party_record
       links:
-        - title: Create a graph
-          href: /build/guides/reasoning/graph/create-a-graph/
         - title: Run a graph algorithm
           href: /build/guides/reasoning/graph/run-an-algorithm/
-
-    - id: derive-exposure-and-breaches
-      title: Derive exposure and breach facts
-      explanation: >-
-        derive_exposure_and_breaches relates records to resolved parties,
-        aggregates policy coverage, and flags parties above the accumulation
-        limit.
-      focus:
-        file: entity_resolution.py
-        symbols:
-          - derive_exposure_and_breaches
-      references:
-        derive_exposure_and_breaches:
-          symbol: derive_exposure_and_breaches
-      links:
-        - title: Rules-based reasoning
-          href: /build/guides/reasoning/rules-based/
         - title: Aggregate and group data
           href: /build/guides/reasoning/rules-based/aggregate-and-group-data/
 
-    - id: choose-reinsurance-cessions
-      title: Choose reinsurance cessions
+    - id: choose-cessions-and-assess
+      title: Choose cessions and assess outcomes
       explanation: >-
-        choose_reinsurance_cessions assigns a binary decision to each breached
-        party and maximizes ceded excess exposure without exceeding the premium
-        budget.
+        problem chooses breached parties within the premium budget. The
+        cession report and f1 score show financial and matching outcomes.
       focus:
         file: entity_resolution.py
-        symbols:
-          - choose_reinsurance_cessions
+        anchors:
+          - start: problem = Problem(model, Float)
+            end: upper=1.0,
+          - start: problem.maximize(
+            end: return problem.solve_info()
+          - start: ceded = (
+            end: ResolvedParty.cede.alias("cede"),
+          - start: 'ceded["id"] = ceded["id"].astype(str)'
+            end: '.sort_values("excess", ascending=False)'
+          - start: f1 = (
+            end: print("Evaluation vs ground truth (pairwise, auto-resolution)")
       references:
-        choose_reinsurance_cessions:
-          symbol: choose_reinsurance_cessions
+        problem:
+          symbol: problem
+        f1:
+          symbol: f1
       links:
-        - title: Create a decision problem
-          href: /build/guides/reasoning/prescriptive/decision-problems/create/
         - title: Solve a decision problem
           href: /build/guides/reasoning/prescriptive/decision-problems/solve/
+        - title: Inspect solutions
+          href: /build/guides/reasoning/prescriptive/decision-problems/solutions/
 
 sample_data:
   default_rows: 4
