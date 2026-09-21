@@ -80,9 +80,7 @@ guided_walkthrough:
         file: model/source.py
         anchors:
           - start: stocks_csv = pd.read_csv
-            end: model.define(Stock.new
-          - start: model.define(ReturnDate.new
-            end: ReturnDate.date(stock_return_data.date),
+            end: stock_returns_csv = pd.read_csv
       references:
         stocks_csv:
           symbol: stocks_csv
@@ -106,10 +104,10 @@ guided_walkthrough:
         file: financial_index_replication.py
         anchors:
           - start: Stock.x_selected = model.Property
-            end: f"{ReturnDate} has negative tracking residual
-          - start: "# A stock can carry weight only when selected."
+            end: ReturnDate.x_neg_error = model.Property
+          - start: ").require(weight <= MAX_WEIGHT * selected)"
             end: ").require(weight <= MAX_WEIGHT * selected)"
-          - start: ReturnDate.index_return(index_return),
+          - start: index_return - sum(stock_return * weight).per(ReturnDate)
             end: "== pos_error - neg_error"
       references:
         Stock.x_selected:
@@ -133,11 +131,7 @@ guided_walkthrough:
         file: financial_index_replication.py
         anchors:
           - start: problem.solve("highs", time_limit_sec=240)
-            end: "print(f\"\\nStatus: {si.termination_status}\")"
-          - start: solution_df = (
-            end: weight.alias("weight"),
-          - start: weight > 0.0001,
-            end: '.sort_values("weight", ascending=False)'
+            end: si = problem.solve_info()
           - start: weights = solution_df.set_index
             end: tracking_diff = portfolio_returns - index_series["index_return"]
       references:

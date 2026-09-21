@@ -77,11 +77,11 @@ guided_walkthrough:
         file: model/source.py
         anchors:
           - start: accounts_df = read_csv
-            end: small_audit_cost_hours,
+            end: transactions_df = read_csv
           - start: train_df = read_csv
             end: test_df = read_csv
           - start: model.define(Account.new(model.data(accounts_df).to_schema()))
-            end: model.define(TestTable.new(model.data(test_df).to_schema()))
+            end: model.define(Transaction.new(model.data(transactions_df).to_schema()))
       references:
         accounts_df:
           symbol: accounts_df
@@ -104,10 +104,10 @@ guided_walkthrough:
         file: fraud_detection_local.py
         anchors:
           - start: pagerank_rel = acct_graph.pagerank()
-            end: model.define(_a_pr.pagerank
+            end: Account.pagerank = model.Property
           - start: Account.activity_count = model.Property
-            end: ").where(Transaction.name_orig == Account.account_id)"
-          - start: gnn = GNN(
+            end: f"{Account} has {Integer:activity_count}")
+          - start: _report(gnn, "fraud_gnn")
             end: Transaction.predictions = gnn.predictions(domain=Test)
       references:
         Account.pagerank:
@@ -126,18 +126,17 @@ guided_walkthrough:
       title: Allocate investigation capacity
       explanation: >-
         problem turns each Transaction.x_audit choice into a budgeted
-        allocation. It maximizes expected loss averted before reporting the queue.
+        allocation. A budget constraint limits investigator hours before the
+        model prioritizes the queue.
       focus:
         file: fraud_detection_local.py
         anchors:
-          - start: select_ref = Float.ref()
+          - start: problem = Problem(model, Float)
             end: problem = Problem(model, Float)
           - start: Transaction.x_audit = model.Property
-            end: where=[Transaction.alert_score(alert_bind)],
+            end: f"{Transaction} audited as {Float:x}")
           - start: "# Constraint: total investigator hours <= budget"
             end: sum(Txn_ref, Txn_ref.audit_cost * select_ref) <= AUDIT_BUDGET_HOURS
-          - start: problem.maximize(sum(
-            end: si = problem.solve_info()
       references:
         problem:
           symbol: problem

@@ -113,7 +113,7 @@ guided_walkthrough:
         anchors:
           - start: Account = model.Concept
             end: Account.user = model.Relationship
-          - start: Holding.purchase_price = model.Property
+          - start: Holding.account = model.Relationship
             end: Holding.stock = model.Relationship
       references:
         Account:
@@ -136,10 +136,10 @@ guided_walkthrough:
       focus:
         file: model/source.py
         anchors:
-          - start: returns_csv = read_csv
+          - start: covar_data = model.data(covar_csv)
             end: covar_data = model.data(covar_csv)
           - start: user_data = model.data
-            end: user.risk_score(user_data["risk_score"]),
+            end: user_data = model.data
       references:
         covar_data:
           symbol: covar_data
@@ -160,11 +160,11 @@ guided_walkthrough:
         file: portfolio_balancing.py
         anchors:
           - start: Holding.is_overconcentrated = model.Relationship
-            end: ").define(Holding.is_overconcentrated())"
+            end: Holding.is_overconcentrated = model.Relationship
           - start: community = corr_graph.louvain()
-            end: community(stock_clust_ref, cluster_label)
+            end: community = corr_graph.louvain()
           - start: Stock.x_quantity = model.Property
-            end: PairedStock = Stock.ref()
+            end: Stock.x_quantity = model.Property
       references:
         Holding.is_overconcentrated:
           symbol: Holding.is_overconcentrated
