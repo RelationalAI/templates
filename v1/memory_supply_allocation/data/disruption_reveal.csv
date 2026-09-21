@@ -1,0 +1,3 @@
+reveal_period,target_type,target_id,parameter_name,parameter_value,start_period,end_period,narrative
+5,supplier,1,capability_pct,0.78,5,10,Orion Foundry: unscheduled EUV tool downtime (parts shortage)
+13,input,1,input_availability,0.8,13,18,Helium: Qatar geopolitical event constrains global supply

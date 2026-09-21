@@ -1,0 +1,17 @@
+src,dst,technique
+web-01,app-01,exploit
+vpn-01,jump-01,exploit
+mail-01,ws-02,exploit
+app-01,app-02,exploit
+ws-01,fs-01,exploit
+app-01,jump-01,cred
+jump-01,dc-01,cred
+ws-02,ws-01,cred
+app-02,db-01,cred
+jump-01,fs-01,cred
+web-01,vpn-01,pivot
+jump-01,bkp-01,pivot
+ws-01,dc-01,pivot
+fs-01,db-01,pivot
+app-02,jump-01,pivot
+bkp-01,db-01,pivot

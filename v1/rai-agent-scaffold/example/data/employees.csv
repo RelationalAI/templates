@@ -1,0 +1,13 @@
+EMPLOYEE_ID,NAME,DEPARTMENT,TITLE,MANAGER_ID
+E001,Sarah Chen,Engineering,VP of Engineering,
+E002,Alice Smith,Engineering,Senior Engineer,E001
+E003,Bob Jones,Engineering,Engineer,E002
+E004,Dana Lee,Product,VP of Product,
+E005,Carlos Rivera,Product,Product Manager,E004
+E006,Priya Patel,Product,Product Analyst,E005
+E007,James Wright,Design,Head of Design,
+E008,Mia Nguyen,Design,UX Designer,E007
+E009,Tom Baker,Design,UI Designer,E007
+E010,Rachel Kim,Engineering,Engineer,E002
+E011,Omar Hassan,Product,Product Manager,E004
+E012,Lily Zhang,Engineering,Staff Engineer,E001

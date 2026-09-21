@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rai-template-fraud-detection"
+version = "0.0.0"
+description = "RelationalAI template: fraud_detection (PyRel v1)"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "relationalai[gnn]==1.27.1",
+  "pandas>=2.0",
+  "numpy",
+  "jupyter",
+]
+
+[tool.setuptools]
+packages = []

@@ -1,0 +1,12 @@
+id,name,industry,base_service_floor_pct
+1,Hyperion Compute,Hyperscaler,0.55
+2,Aether Cloud,Hyperscaler,0.55
+3,Helios AI Labs,Hyperscaler,0.55
+4,Astra Devices,Consumer OEM,0.65
+5,Quantum Edge Motors,Automotive,0.75
+6,Nimbus Robotics,Industrial,0.75
+7,Photonic Lithography,Foundry Equipment,0.7
+8,Vertex Test Systems,Foundry Equipment,0.7
+9,Crystal Wafer Tools,Foundry Equipment,0.7
+10,Beacon Memory Holdings,Distribution,0.45
+11,Apex Photonic Components,Precision Optics,0.7

@@ -1,0 +1,7 @@
+supplier_id,equipment_age_months,geopolitical_exposure_score,region,process_node_nm,workforce_size_k
+1,24,0.45,Asia,5,65
+2,60,0.2,US,7,28
+3,36,0.5,Asia,10,52
+4,18,0.15,US,14,18
+5,48,0.3,Asia,18,22
+6,30,0.25,Europe,20,12

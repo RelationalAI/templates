@@ -1,0 +1,13 @@
+id,name,zone,internet_facing,crown_jewel,exposure_score
+web-01,Public Web Server,dmz,yes,no,7
+vpn-01,VPN Gateway,dmz,yes,no,8
+mail-01,Mail Relay,dmz,yes,no,6
+app-01,Application Server,internal,no,no,5
+app-02,API Backend,internal,no,no,6
+jump-01,Jump Host,internal,no,no,4
+ws-01,Engineer Workstation,internal,no,no,5
+ws-02,Finance Workstation,internal,no,no,6
+fs-01,File Server,internal,no,no,4
+bkp-01,Backup Server,restricted,no,no,3
+dc-01,Domain Controller,restricted,no,yes,9
+db-01,Customer Database,restricted,no,yes,9

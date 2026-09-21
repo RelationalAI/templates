@@ -1,0 +1,5 @@
+id,name,demand,due_day
+1,Customer_A,80,1
+2,Customer_B,120,2
+3,Customer_C,250,4
+4,Customer_D,300,5

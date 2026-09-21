@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rai-template-defect-root-cause"
+version = "0.0.0"
+description = "RelationalAI template: defect_root_cause (PyRel v1)"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "relationalai==1.13.0",
+  "pandas>=2.0",
+]
+
+[tool.setuptools]
+packages = []

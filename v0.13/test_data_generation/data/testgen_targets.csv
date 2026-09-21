@@ -1,0 +1,7 @@
+table_name,target_rows,min_rows,max_rows,priority
+Customer,100,50,150,1
+Product,500,300,700,2
+Order,800,500,1200,1
+OrderLine,5000,3000,8000,1
+Supplier,20,10,40,3
+SupplierProduct,1500,1000,2500,2

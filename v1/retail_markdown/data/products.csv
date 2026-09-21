@@ -1,0 +1,5 @@
+name,initial_price,cost,initial_inventory,base_demand,salvage_rate
+Sweater,80,30,100,20,0.15
+Jacket,150,60,80,12,0.20
+Pants,60,25,120,25,0.10
+Shirt,40,15,150,30,0.10

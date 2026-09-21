@@ -1,0 +1,5 @@
+id,name,reliability,capacity
+1,SupplierA,0.95,500
+2,SupplierB,0.85,400
+3,SupplierC,0.75,600
+4,SupplierD,0.90,350

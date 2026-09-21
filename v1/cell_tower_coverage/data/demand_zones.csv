@@ -1,0 +1,11 @@
+zone_id,name,region,population
+Z01,Downtown Core,Central,18000
+Z02,North End,North,9500
+Z03,East Village,East,12500
+Z04,Riverfront,Central,7200
+Z05,University District,Central,14500
+Z06,Industrial Park,East,6000
+Z07,West Hills,West,8200
+Z08,Airport District,South,11000
+Z09,South Market,South,10300
+Z10,Lakeside,West,5700

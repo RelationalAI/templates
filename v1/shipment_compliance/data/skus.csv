@@ -1,0 +1,7 @@
+id,name,product_type
+1,Widget-A,FINISHED_GOOD
+2,Widget-B,FINISHED_GOOD
+3,Sensor-X,COMPONENT
+4,Chip-Y,COMPONENT
+5,Frame-Z,RAW_MATERIAL
+6,Wire-Q,RAW_MATERIAL

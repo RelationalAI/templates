@@ -1,0 +1,209 @@
+version: 1
+
+page:
+  lead_from_readme:
+    - what-this-template-is-for
+  omit_from_readme:
+    - sample-data
+    - model-overview
+    - how-it-works
+
+model_explorer:
+  title: How entity resolution connects records to exposure
+  description: >-
+    The model represents raw policy records, accepted and review-band matches,
+    and the resolved insured parties used for accumulation control. Accepted
+    matches create graph edges, while party membership carries each policy's
+    coverage into the resolved exposure.
+
+  concepts:
+    - symbol: Record
+      description: A policyholder record and its coverage from one source system.
+
+    - symbol: CandidateMatch
+      description: A scored record pair accepted for automatic resolution.
+
+    - symbol: ReviewPair
+      description: A possible match held for a steward instead of being merged.
+
+    - symbol: ResolvedParty
+      description: An insured party formed by clustering accepted record matches.
+
+  relationships:
+    - symbol: CandidateMatch.rec_a
+      label: accepts first record
+      reading: CandidateMatch accepts a first Record
+      description: Identifies one endpoint of an accepted match edge.
+
+    - symbol: CandidateMatch.rec_b
+      label: accepts second record
+      reading: CandidateMatch accepts a second Record
+      description: Identifies the other endpoint of an accepted match edge.
+
+    - symbol: ReviewPair.rec_a
+      label: reviews first record
+      reading: ReviewPair holds a first Record for review
+      description: Identifies one endpoint of a possible match awaiting review.
+
+    - symbol: ReviewPair.rec_b
+      label: reviews second record
+      reading: ReviewPair holds a second Record for review
+      description: Identifies the other endpoint of a possible match awaiting review.
+
+    - symbol: Record.resolved_party
+      label: contributes exposure to
+      reading: Record contributes exposure to ResolvedParty
+      description: >-
+        Connects each record to its resolved party so policy coverage can be
+        aggregated into total exposure.
+
+  sources:
+    - path: data/records.csv
+      description: >-
+        Dirty policyholder records, matching identifiers, source systems, and
+        per-policy coverage.
+
+guided_walkthrough:
+  title: Follow the entity-resolution flow
+  description: >-
+    These five steps connect source preparation to the shared model, graph
+    clustering, exposure rules, and the reinsurance decision.
+
+  steps:
+    - id: normalize-and-score-records
+      title: Normalize and score source records
+      explanation: >-
+        load_records reads and loads the policy records, build_candidate_pairs
+        normalizes matching fields and scores blocked pairs, and
+        load_candidate_facts loads accepted matches and the review queue.
+      focus:
+        file: model/source.py
+        symbols:
+          - load_records
+          - build_candidate_pairs
+          - load_candidate_facts
+      references:
+        load_records:
+          symbol: load_records
+        build_candidate_pairs:
+          symbol: build_candidate_pairs
+        load_candidate_facts:
+          symbol: load_candidate_facts
+      links:
+        - title: Declare data sources
+          href: /build/guides/modeling/declare-data-sources/
+        - title: Define base facts
+          href: /build/guides/modeling/define-base-facts/
+
+    - id: define-resolution-model
+      title: Define records, matches, and resolved parties
+      explanation: >-
+        Record, CandidateMatch, ReviewPair, and ResolvedParty provide stable
+        identities and properties, while Record.resolved_party represents
+        membership in the party whose exposure is evaluated.
+      focus:
+        file: model/schema.py
+        symbols:
+          - Record
+          - CandidateMatch
+          - ReviewPair
+          - ResolvedParty
+          - Record.resolved_party
+      references:
+        Record:
+          symbol: Record
+        CandidateMatch:
+          symbol: CandidateMatch
+        ReviewPair:
+          symbol: ReviewPair
+        ResolvedParty:
+          symbol: ResolvedParty
+        Record.resolved_party:
+          symbol: Record.resolved_party
+      links:
+        - title: Declare concepts
+          href: /build/guides/modeling/declare-concepts/
+        - title: Declare relationships and properties
+          href: /build/guides/modeling/declare-relationships-and-properties/
+
+    - id: cluster-accepted-matches
+      title: Cluster accepted matches into parties
+      explanation: >-
+        cluster_accepted_matches turns accepted pairs into undirected graph
+        edges and uses weakly connected components to give every record a
+        stable party key.
+      focus:
+        file: entity_resolution.py
+        symbols:
+          - cluster_accepted_matches
+      references:
+        cluster_accepted_matches:
+          symbol: cluster_accepted_matches
+      links:
+        - title: Create a graph
+          href: /build/guides/reasoning/graph/create-a-graph/
+        - title: Run a graph algorithm
+          href: /build/guides/reasoning/graph/run-an-algorithm/
+
+    - id: derive-exposure-and-breaches
+      title: Derive exposure and breach facts
+      explanation: >-
+        derive_exposure_and_breaches relates records to resolved parties,
+        aggregates policy coverage, and flags parties above the accumulation
+        limit.
+      focus:
+        file: entity_resolution.py
+        symbols:
+          - derive_exposure_and_breaches
+      references:
+        derive_exposure_and_breaches:
+          symbol: derive_exposure_and_breaches
+      links:
+        - title: Rules-based reasoning
+          href: /build/guides/reasoning/rules-based/
+        - title: Aggregate and group data
+          href: /build/guides/reasoning/rules-based/aggregate-and-group-data/
+
+    - id: choose-reinsurance-cessions
+      title: Choose reinsurance cessions
+      explanation: >-
+        choose_reinsurance_cessions assigns a binary decision to each breached
+        party and maximizes ceded excess exposure without exceeding the premium
+        budget.
+      focus:
+        file: entity_resolution.py
+        symbols:
+          - choose_reinsurance_cessions
+      references:
+        choose_reinsurance_cessions:
+          symbol: choose_reinsurance_cessions
+      links:
+        - title: Create a decision problem
+          href: /build/guides/reasoning/prescriptive/decision-problems/create/
+        - title: Solve a decision problem
+          href: /build/guides/reasoning/prescriptive/decision-problems/solve/
+
+sample_data:
+  default_rows: 4
+  tables:
+    - path: data/records.csv
+      title: Policyholder records
+      description: >-
+        Source-system records, matching identifiers, and policy coverage used
+        by resolution and accumulation control.
+      columns:
+        - record_id
+        - source_system
+        - full_name
+        - date_of_birth
+        - email
+        - coverage_amount
+
+    - path: data/ground_truth.csv
+      title: Resolution labels
+      description: >-
+        Known record-to-party assignments used to calculate pairwise precision,
+        recall, and F1.
+      columns:
+        - record_id
+        - true_entity_id

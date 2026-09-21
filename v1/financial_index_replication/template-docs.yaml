@@ -1,0 +1,216 @@
+version: 1
+
+page:
+  lead_from_readme:
+    - what-this-template-is-for
+  omit_from_readme:
+    - sample-data
+    - model-overview
+    - how-it-works
+
+model_explorer:
+  title: How the index replication model fits together
+  description: >-
+    The model connects each stock to a sector and records both benchmark and
+    stock returns by month. The decision problem uses those facts to select
+    and weight a sparse basket that follows the benchmark.
+
+  concepts:
+    - symbol: Stock
+      description: >-
+        An investable security with benchmark weight, liquidity, prior weight,
+        and a monthly return history.
+
+    - symbol: Sector
+      description: >-
+        A market sector used to compare the basket's exposure with the
+        benchmark.
+
+    - symbol: ReturnDate
+      description: >-
+        A month in the historical panel with the benchmark return for that
+        period.
+
+  relationships:
+    - symbol: Stock.sector_ref
+      label: belongs to
+      reading: Stock belongs to Sector
+      description: Groups stocks for benchmark aggregation and sector constraints.
+
+    - symbol: Stock.return_on
+      label: returned on
+      reading: Stock has a return on ReturnDate
+      description: >-
+        Connects each stock to a benchmark period and records the stock's
+        return for that month.
+
+  sources:
+    - path: data/stocks.csv
+      description: >-
+        Investable stocks with sectors, benchmark weights, liquidity, and
+        previous portfolio weights.
+      populates:
+        - Stock
+        - Sector
+        - Stock.sector_ref
+
+    - path: data/index_returns.csv
+      description: Monthly returns for the benchmark being replicated.
+      populates:
+        - ReturnDate
+
+    - path: data/stock_returns.csv
+      description: Monthly returns for each stock in the investable universe.
+      populates:
+        - Stock.return_on
+
+guided_walkthrough:
+  title: Follow the index replication flow
+  description: >-
+    These five steps connect the return panels to the semantic model and show
+    how the optimizer builds and evaluates the replication basket.
+
+  steps:
+    - id: load-return-panels
+      title: Load the universe and return panels
+      explanation: >-
+        stocks_csv describes the investable universe, index_returns_csv
+        provides the benchmark series, and stock_returns_csv provides each
+        stock's monthly history.
+      focus:
+        file: model/source.py
+        symbols:
+          - stocks_csv
+          - index_returns_csv
+          - stock_returns_csv
+      references:
+        stocks_csv:
+          symbol: stocks_csv
+        index_returns_csv:
+          symbol: index_returns_csv
+        stock_returns_csv:
+          symbol: stock_returns_csv
+      links:
+        - title: Declare data sources
+          href: /build/guides/modeling/declare-data-sources/
+        - title: Define base facts
+          href: /build/guides/modeling/define-base-facts/
+
+    - id: define-index-model
+      title: Define stocks, sectors, and return dates
+      explanation: >-
+        Stock, Sector, and ReturnDate give the source mappings and optimization
+        a shared vocabulary for constituents, exposure groups, and benchmark
+        periods.
+      focus:
+        file: model/schema.py
+        symbols:
+          - Stock
+          - Sector
+          - ReturnDate
+      references:
+        Stock:
+          symbol: Stock
+        Sector:
+          symbol: Sector
+        ReturnDate:
+          symbol: ReturnDate
+      links:
+        - title: Declare concepts
+          href: /build/guides/modeling/declare-concepts/
+        - title: Declare relationships and properties
+          href: /build/guides/modeling/declare-relationships-and-properties/
+
+    - id: connect-stock-returns
+      title: Connect stock returns to benchmark periods
+      explanation: >-
+        map_stock_returns maps each ticker and date to Stock.return_on, so
+        every stock return is aligned with the corresponding ReturnDate.
+      focus:
+        file: model/source.py
+        symbols:
+          - map_stock_returns
+      references:
+        map_stock_returns:
+          symbol: map_stock_returns
+      links:
+        - title: Define base facts
+          href: /build/guides/modeling/define-base-facts/
+        - title: Query a model
+          href: /build/guides/modeling/query-a-model/
+
+    - id: constrain-replication-basket
+      title: Define selection, weight, and tracking constraints
+      explanation: >-
+        Stock.x_selected and Stock.x_weight link membership to portfolio
+        weight, while ReturnDate.x_pos_error and ReturnDate.x_neg_error measure
+        tracking residuals for the objective.
+      focus:
+        file: financial_index_replication.py
+        anchors:
+          - start: "# Model the decision problem"
+            end: "# Solve"
+      references:
+        Stock.x_selected:
+          symbol: Stock.x_selected
+        Stock.x_weight:
+          symbol: Stock.x_weight
+        ReturnDate.x_pos_error:
+          symbol: ReturnDate.x_pos_error
+        ReturnDate.x_neg_error:
+          symbol: ReturnDate.x_neg_error
+      links:
+        - title: Create decision variables
+          href: /build/guides/reasoning/prescriptive/decision-problems/variables/
+        - title: Add constraints
+          href: /build/guides/reasoning/prescriptive/decision-problems/constraints/
+
+    - id: solve-and-inspect
+      title: Solve and inspect the replication basket
+      explanation: >-
+        The HiGHS solve writes the decisions back to the model. The result
+        queries then report the selected basket, sector exposures, tracking
+        quality, turnover, and baseline comparison.
+      focus:
+        file: financial_index_replication.py
+        anchors:
+          - start: "# Solve"
+            end: "# Evaluate and report"
+          - start: solution_df = (
+            end: 'print(f"Baseline annualized tracking error: {baseline_tracking_error:.2%}")'
+      links:
+        - title: Solve a decision problem
+          href: /build/guides/reasoning/prescriptive/decision-problems/solve/
+        - title: Inspect solutions
+          href: /build/guides/reasoning/prescriptive/decision-problems/solutions/
+
+sample_data:
+  default_rows: 4
+  tables:
+    - path: data/stocks.csv
+      title: Stock universe
+      description: >-
+        Constituents and portfolio inputs used by the selection, sector, and
+        trading-capacity constraints.
+      columns:
+        - ticker
+        - name
+        - sector
+        - benchmark_weight
+        - avg_dollar_volume
+        - previous_weight
+
+    - path: data/index_returns.csv
+      title: Benchmark returns
+      description: Monthly returns for the index the sparse basket replicates.
+      columns:
+        - date
+        - index_return
+
+    - path: data/stock_returns.csv
+      title: Stock returns
+      description: Monthly returns joined to stocks and benchmark periods.
+      columns:
+        - date
+        - ticker
+        - return

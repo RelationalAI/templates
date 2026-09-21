@@ -1,0 +1,19 @@
+id,name,type,region,capacity,population_served
+1,International Airport Hub,Airport,Capital,10000,0
+2,Central Warehouse,Warehouse,Capital,8000,0
+3,Northern Border Crossing,Border,North,5000,0
+4,Port Authority,Port,Coast,7000,0
+5,Regional Distribution Center North,Distribution Center,North,4000,15000
+6,Regional Distribution Center East,Distribution Center,East,3500,12000
+7,Regional Distribution Center West,Distribution Center,West,4500,18000
+8,NGO Coordination Hub,NGO Hub,Capital,3000,8000
+9,Mountain Relief Station,Relief Station,North,1500,5000
+10,Coastal Relief Camp,Refugee Camp,Coast,2000,25000
+11,Eastern Village Network,Community Hub,East,1000,8000
+12,Western Medical Outpost,Medical Center,West,1200,6000
+13,Remote Highland Camp,Refugee Camp,North,1800,20000
+14,Southern Border Post,Border,South,4000,0
+15,Southern Distribution Hub,Distribution Center,South,3800,14000
+16,Emergency Field Hospital,Medical Center,Capital,2500,10000
+17,Rural Community Center East,Community Hub,East,800,4000
+18,Food Distribution Point West,Relief Station,West,1000,7000

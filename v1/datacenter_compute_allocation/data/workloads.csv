@@ -1,0 +1,111 @@
+id,name,lab_id,workload_type,reservation_model,gpu_count_required,mem_required_gb,gpu_type_preferred,duration_hours,strategic_value_usd
+WL-0001,Claude-Next pretrain shard 01,LAB-001,pretrain,block_reservation,320,80,H100,720.0,2485894.38
+WL-0002,Claude-Next pretrain shard 02,LAB-001,pretrain,block_reservation,256,141,H200,168.0,511902.26
+WL-0003,Claude-Next pretrain shard 03,LAB-001,pretrain,block_reservation,384,80,H100,720.0,3081164.24
+WL-0004,Claude-Next pretrain shard 04,LAB-001,pretrain,block_reservation,384,141,H200,168.0,632317.19
+WL-0005,Claude-Next pretrain shard 05,LAB-001,pretrain,block_reservation,512,192,GB200,336.0,2013988.94
+WL-0006,GPT-Next pretrain shard 01,LAB-002,pretrain,block_reservation,320,80,H100,336.0,1098675.83
+WL-0007,GPT-Next pretrain shard 02,LAB-002,pretrain,block_reservation,256,141,H200,720.0,2084755.91
+WL-0008,GPT-Next pretrain shard 03,LAB-002,pretrain,block_reservation,256,192,GB200,336.0,948958.7
+WL-0009,GPT-Next pretrain shard 04,LAB-002,pretrain,block_reservation,384,80,H100,504.0,2299748.05
+WL-0010,GPT-Next pretrain shard 05,LAB-002,pretrain,block_reservation,320,141,H200,336.0,1194927.17
+WL-0011,Grok-Next pretrain shard 01,LAB-003,pretrain,block_reservation,384,80,H100,168.0,692355.42
+WL-0012,Grok-Next pretrain shard 02,LAB-003,pretrain,block_reservation,768,192,GB200,504.0,4594559.71
+WL-0013,Grok-Next pretrain shard 03,LAB-003,pretrain,block_reservation,320,141,H200,336.0,1019487.31
+WL-0014,Grok-Next pretrain shard 04,LAB-003,pretrain,block_reservation,256,141,H200,336.0,753318.27
+WL-0015,Grok-Next pretrain shard 05,LAB-003,pretrain,block_reservation,320,80,H100,168.0,532375.59
+WL-0016,Aya-70B SFT customer 01,LAB-005,finetune,block_reservation,64,80,H100,72.0,29083.19
+WL-0017,Aya-70B SFT customer 02,LAB-005,finetune,block_reservation,96,141,H200,72.0,41037.23
+WL-0018,Aya-70B SFT customer 03,LAB-005,finetune,block_reservation,64,141,H200,168.0,66258.5
+WL-0019,Aya-70B SFT customer 04,LAB-005,finetune,block_reservation,48,80,H100,72.0,18728.95
+WL-0020,Aya-70B SFT customer 05,LAB-005,finetune,block_reservation,128,80,H100,24.0,22612.3
+WL-0021,Aya-70B SFT customer 06,LAB-005,finetune,block_reservation,64,141,H200,72.0,33832.8
+WL-0022,Aya-70B SFT customer 07,LAB-005,finetune,block_reservation,64,80,H100,72.0,24972.55
+WL-0023,Aya-70B SFT customer 08,LAB-005,finetune,block_reservation,64,80,H100,72.0,29552.43
+WL-0024,Aya-70B SFT customer 09,LAB-005,finetune,block_reservation,32,80,H100,168.0,37116.74
+WL-0025,Aya-70B SFT customer 10,LAB-005,finetune,block_reservation,32,80,H100,72.0,13620.9
+WL-0026,Aya-70B SFT customer 11,LAB-005,finetune,block_reservation,48,80,H100,48.0,13003.21
+WL-0027,Aya-70B SFT customer 12,LAB-005,finetune,block_reservation,128,80,H100,168.0,122611.9
+WL-0028,Aya-70B SFT customer 13,LAB-005,finetune,block_reservation,128,80,H100,48.0,36131.52
+WL-0029,Aya-70B SFT customer 14,LAB-005,finetune,block_reservation,32,141,H200,72.0,16938.3
+WL-0030,Aya-70B SFT customer 15,LAB-005,finetune,block_reservation,64,141,H200,48.0,22862.01
+WL-0031,Aya-70B SFT customer 16,LAB-005,finetune,block_reservation,48,80,H100,24.0,6071.21
+WL-0032,Aya-70B SFT customer 17,LAB-005,finetune,block_reservation,96,141,H200,48.0,25269.42
+WL-0033,Aya-70B SFT customer 18,LAB-005,finetune,block_reservation,128,80,H100,24.0,21777.29
+WL-0034,Aya-70B SFT customer 19,LAB-005,finetune,block_reservation,32,80,H100,48.0,9069.37
+WL-0035,Aya-70B SFT customer 20,LAB-005,finetune,block_reservation,96,141,H200,48.0,24251.67
+WL-0036,Aya-70B SFT customer 21,LAB-005,finetune,block_reservation,48,80,H100,168.0,62300.38
+WL-0037,Aya-70B SFT customer 22,LAB-005,finetune,block_reservation,64,141,H200,48.0,24291.93
+WL-0038,Mistral-Next finetune customer 01,LAB-005,finetune,block_reservation,48,141,H200,72.0,21938.98
+WL-0039,Mistral-Next finetune customer 02,LAB-005,finetune,block_reservation,32,80,H100,24.0,5919.6
+WL-0040,Mistral-Next finetune customer 03,LAB-005,finetune,block_reservation,96,80,H100,24.0,13634.77
+WL-0041,Mistral-Next finetune customer 04,LAB-005,finetune,block_reservation,64,80,H100,24.0,11627.28
+WL-0042,Mistral-Next finetune customer 05,LAB-005,finetune,block_reservation,64,141,H200,72.0,29013.25
+WL-0043,Cohere-R+ finetune 01,LAB-004,finetune,block_reservation,32,141,H200,72.0,16011.74
+WL-0044,Cohere-R+ finetune 02,LAB-004,finetune,block_reservation,96,80,H100,48.0,23615.27
+WL-0045,Cohere-R+ finetune 03,LAB-004,finetune,block_reservation,32,80,H100,48.0,8345.97
+WL-0046,Cohere-R+ inference fleet eu-west-1 01,LAB-004,inference,endpoint_serving,8,80,H100,168.0,3146.55
+WL-0047,Cohere-R+ inference fleet eu-west-1 02,LAB-004,inference,endpoint_serving,32,141,H200,168.0,14481.54
+WL-0048,Cohere-R+ inference fleet us-east-1 03,LAB-004,inference,endpoint_serving,12,80,H100,168.0,7896.91
+WL-0049,Cohere-R+ inference fleet ap-southeast-2 04,LAB-004,inference,endpoint_serving,16,80,H100,168.0,5820.76
+WL-0050,Cohere-R+ inference fleet us-west-2 05,LAB-004,inference,endpoint_serving,24,80,H100,168.0,15626.63
+WL-0051,Cohere-R+ inference fleet us-west-2 06,LAB-004,inference,endpoint_serving,16,80,H100,168.0,6811.26
+WL-0052,Cohere-R+ inference fleet eu-west-1 07,LAB-004,inference,endpoint_serving,16,80,H100,168.0,7735.59
+WL-0053,Cohere-R+ inference fleet ap-southeast-2 08,LAB-004,inference,endpoint_serving,12,80,H100,168.0,7645.32
+WL-0054,Cohere-R+ inference fleet eu-west-1 09,LAB-004,inference,endpoint_serving,12,80,H100,168.0,4469.78
+WL-0055,Cohere-R+ inference fleet us-west-2 10,LAB-004,inference,endpoint_serving,8,80,H100,168.0,4460.53
+WL-0056,Cohere-R+ inference fleet ap-southeast-2 11,LAB-004,inference,endpoint_serving,32,141,H200,168.0,11910.43
+WL-0057,Cohere-R+ inference fleet us-east-1 12,LAB-004,inference,endpoint_serving,32,141,H200,168.0,11154.26
+WL-0058,Cohere-R+ inference fleet us-west-2 13,LAB-004,inference,endpoint_serving,16,80,H100,168.0,9836.95
+WL-0059,Cohere-R+ inference fleet us-west-2 14,LAB-004,inference,endpoint_serving,32,141,H200,168.0,20997.57
+WL-0060,Cohere-R+ inference fleet eu-west-1 15,LAB-004,inference,endpoint_serving,24,80,H100,168.0,10128.1
+WL-0061,Cohere-R+ inference fleet us-east-1 16,LAB-004,inference,endpoint_serving,8,141,H200,168.0,2808.72
+WL-0062,Cohere-R+ inference fleet ap-southeast-2 17,LAB-004,inference,endpoint_serving,32,80,H100,168.0,20339.31
+WL-0063,Cohere-R+ inference fleet ap-southeast-2 18,LAB-004,inference,endpoint_serving,32,141,H200,168.0,20358.34
+WL-0064,Cohere-R+ inference fleet us-west-2 19,LAB-004,inference,endpoint_serving,16,80,H100,168.0,9526.34
+WL-0065,Cohere-R+ inference fleet us-west-2 20,LAB-004,inference,endpoint_serving,16,80,H100,168.0,5883.85
+WL-0066,Cohere-R+ inference fleet us-west-2 21,LAB-004,inference,endpoint_serving,12,141,H200,168.0,7809.23
+WL-0067,Cohere-R+ inference fleet us-east-1 22,LAB-004,inference,endpoint_serving,8,80,H100,168.0,4922.03
+WL-0068,Cohere-R+ inference fleet us-east-1 23,LAB-004,inference,endpoint_serving,24,80,H100,168.0,12897.42
+WL-0069,Cohere-R+ inference fleet us-east-1 24,LAB-004,inference,endpoint_serving,8,141,H200,168.0,3522.15
+WL-0070,Cohere-R+ inference fleet ap-southeast-2 25,LAB-004,inference,endpoint_serving,12,141,H200,168.0,6050.99
+WL-0071,Cohere-R+ inference fleet us-east-1 26,LAB-004,inference,endpoint_serving,32,80,H100,168.0,13221.26
+WL-0072,Cohere-R+ inference fleet eu-west-1 27,LAB-004,inference,endpoint_serving,8,80,H100,168.0,3015.49
+WL-0073,Cohere-R+ inference fleet eu-west-1 28,LAB-004,inference,endpoint_serving,32,80,H100,168.0,17000.17
+WL-0074,Cohere-R+ inference fleet ap-southeast-2 29,LAB-004,inference,endpoint_serving,32,80,H100,168.0,18444.06
+WL-0075,Cohere-R+ inference fleet us-east-1 30,LAB-004,inference,endpoint_serving,32,141,H200,168.0,12082.6
+WL-0076,Cohere-R+ inference fleet us-west-2 31,LAB-004,inference,endpoint_serving,8,141,H200,168.0,3496.95
+WL-0077,Cohere-R+ inference fleet eu-west-1 32,LAB-004,inference,endpoint_serving,16,80,H100,168.0,10513.43
+WL-0078,Cohere-R+ inference fleet ap-southeast-2 33,LAB-004,inference,endpoint_serving,32,80,H100,168.0,11019.29
+WL-0079,Cohere-R+ inference fleet eu-west-1 34,LAB-004,inference,endpoint_serving,8,80,H100,168.0,2972.65
+WL-0080,Cohere-R+ inference fleet us-west-2 35,LAB-004,inference,endpoint_serving,24,80,H100,168.0,15855.69
+WL-0081,Together inference endpoint ap-southeast-2 01,LAB-005,inference,endpoint_serving,8,80,H100,168.0,4850.12
+WL-0082,Together inference endpoint ap-southeast-2 02,LAB-005,inference,endpoint_serving,24,80,H100,168.0,8207.84
+WL-0083,Together inference endpoint ap-southeast-2 03,LAB-005,inference,endpoint_serving,12,80,H100,168.0,7244.77
+WL-0084,Together inference endpoint eu-west-1 04,LAB-005,inference,endpoint_serving,12,80,H100,168.0,6475.46
+WL-0085,Together inference endpoint eu-west-1 05,LAB-005,inference,endpoint_serving,24,141,H200,168.0,11390.98
+WL-0086,Together inference endpoint us-west-2 06,LAB-005,inference,endpoint_serving,32,80,H100,168.0,17761.56
+WL-0087,Together inference endpoint us-west-2 07,LAB-005,inference,endpoint_serving,12,141,H200,168.0,5031.29
+WL-0088,Together inference endpoint eu-west-1 08,LAB-005,inference,endpoint_serving,32,80,H100,168.0,19531.75
+WL-0089,Together inference endpoint us-east-1 09,LAB-005,inference,endpoint_serving,32,80,H100,168.0,17143.35
+WL-0090,Together inference endpoint ap-southeast-2 10,LAB-005,inference,endpoint_serving,8,80,H100,168.0,3522.18
+WL-0091,Together inference endpoint ap-southeast-2 11,LAB-005,inference,endpoint_serving,32,80,H100,168.0,12531.8
+WL-0092,Together inference endpoint us-east-1 12,LAB-005,inference,endpoint_serving,16,80,H100,168.0,5996.87
+WL-0093,Together inference endpoint us-east-1 13,LAB-005,inference,endpoint_serving,24,80,H100,168.0,9472.31
+WL-0094,Together inference endpoint eu-west-1 14,LAB-005,inference,endpoint_serving,16,80,H100,168.0,9035.52
+WL-0095,Together inference endpoint us-west-2 15,LAB-005,inference,endpoint_serving,32,80,H100,168.0,16176.67
+WL-0096,Stability eval batch 01,LAB-008,eval,spot_burst,8,141,H200,48.0,400.69
+WL-0097,Stability eval batch 02,LAB-008,eval,spot_burst,16,80,H100,4.0,79.96
+WL-0098,Stability eval batch 03,LAB-008,eval,spot_burst,16,80,H100,8.0,134.3
+WL-0099,Stability eval batch 04,LAB-008,eval,spot_burst,16,80,H100,24.0,423.04
+WL-0100,Stability eval batch 05,LAB-008,eval,spot_burst,1,141,H200,4.0,7.7
+WL-0101,Stability eval batch 06,LAB-008,eval,spot_burst,16,80,H100,48.0,1461.24
+WL-0102,Stability eval batch 07,LAB-008,eval,spot_burst,2,141,H200,48.0,170.83
+WL-0103,Stability eval batch 08,LAB-008,eval,spot_burst,8,141,H200,48.0,435.67
+WL-0104,Stability eval batch 09,LAB-008,eval,spot_burst,2,80,H100,24.0,89.16
+WL-0105,Stability eval batch 10,LAB-008,eval,spot_burst,8,80,H100,8.0,104.93
+WL-0106,Stability eval batch 11,LAB-008,eval,spot_burst,1,80,H100,4.0,5.91
+WL-0107,Stability eval batch 12,LAB-008,eval,spot_burst,8,80,H100,4.0,43.76
+WL-0108,Stability eval batch 13,LAB-008,eval,spot_burst,8,80,H100,8.0,88.29
+WL-0109,Stability eval batch 14,LAB-008,eval,spot_burst,2,141,H200,8.0,31.18
+WL-0110,Stability eval batch 15,LAB-008,eval,spot_burst,16,141,H200,8.0,170.03

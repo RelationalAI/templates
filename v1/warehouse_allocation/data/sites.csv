@@ -1,0 +1,11 @@
+id,name,region,type,holding_cost
+1,Chicago_Hub,MIDWEST,WAREHOUSE,12.0
+2,Detroit_DC,MIDWEST,WAREHOUSE,10.0
+3,Dallas_Hub,SOUTH,WAREHOUSE,11.0
+4,Atlanta_DC,SOUTH,WAREHOUSE,9.0
+5,Denver_DC,WEST,WAREHOUSE,13.0
+6,LA_Store,WEST,STORE,18.0
+7,Miami_Store,SOUTH,STORE,16.0
+8,NYC_Store,EAST,STORE,20.0
+9,Seattle_Store,WEST,STORE,15.0
+10,Phoenix_Store,WEST,STORE,14.0

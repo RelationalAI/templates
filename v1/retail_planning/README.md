@@ -1,0 +1,359 @@
+---
+title: "Retail Planning"
+description: "Predict article sales and customer churn with graph neural networks (GNNs), then optimize markdown pricing and inventory planning to maximize revenue and minimize costs."
+featured: true
+experience_level: advanced
+industry: "Retail & Consumer"
+reasoning_types:
+  - Predictive
+  - Prescriptive
+tags:
+  - Graph Neural Network (GNN)
+  - Predict-then-Optimize
+  - Markdown Optimization
+  - Demand Planning
+  - Multi-Reasoner
+  - Retail
+---
+
+## What this template is for
+
+Retailers face interconnected decisions: which items will sell, which customers are at risk of leaving, what discounts to offer, and how much inventory to stock. Traditionally these are solved in isolation -- demand forecasting in one silo, pricing optimization in another, supply planning a third. Solved separately, they pull against each other: a markdown plan that ignores the demand forecast, or an inventory plan that ignores the markdowns, leaves revenue on the table. This template unifies them so predicted demand flows straight into the pricing and inventory decisions that depend on it.
+
+**Graph neural networks predict article demand and customer churn, and those predictions become the parameters of a markdown-pricing and inventory optimization** -- a single predict-then-optimize pipeline on one shared ontology, so the optimizer prices and plans against learned demand rather than static estimates.
+
+The bundled H&M dataset is the worked example; the structure -- graph concepts, then GNN tasks, then an aggregation bridge, then prescriptive constraints -- is what carries over to your own retail, pricing, or demand-planning data (see the *Pipeline stages* diagram under *Model overview*).
+
+## Who this is for
+
+- Data scientists building end-to-end ML-to-optimization pipelines
+- Retail analysts combining demand forecasting with pricing and inventory decisions
+- ML engineers exploring GNN-based prediction on relational/graph data
+- Operations researchers interested in predict-then-optimize patterns
+
+Assumes familiarity with Python, basic ML concepts (classification, regression, link prediction), and linear programming.
+
+## What you'll build
+
+- Three graph neural network (GNN) predictive models on the H&M knowledge graph (item-sales, user-churn, user-item-purchase)
+- A bridge layer that aggregates all three GNN outputs into adjusted demand per article
+- A markdown optimization (MILP) that selects discount schedules to maximize revenue + salvage
+- A demand/inventory planning (LP) that minimizes production, holding, and unmet demand costs
+- A unified pipeline where GNN predictions replace static parameters in both optimizers
+
+## What's included
+
+- **Runners**:
+  - `retail_planning_local.py` -- **primary, runnable out of the box.** Trains a sales-regression GNN on the bundled HM_MINI subset and solves both optimizers.
+  - `retail_planning.py` -- **reference pattern** for adapting the same pipeline to your own Snowflake data. Trains three GNNs (sales, churn, purchase) against a full H&M dataset in Snowflake.
+- **Model**: Three GNN tasks on the H&M knowledge graph (Customer, Article, Transaction), two prescriptive problems consuming their output.
+- **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
+- **Sample data**:
+  - `data/hm_mini/` -- bundled H&M subset (~10K customers / 5K articles / 9.6K transactions) with sales task splits. This is what the local runner trains on.
+  - `data/*.csv` -- optimizer parameters: discounts, weeks, article inventory, production capacity.
+- **Outputs**: GNN evaluation metrics, optimal discount schedules, production plans, cost/revenue summaries
+
+## Prerequisites
+
+### Access
+
+**To run the local demo (`retail_planning_local.py`)** you need any Snowflake
+account with the RAI Native App. No H&M Snowflake data, no GPU. The bundled
+`data/hm_mini/` CSVs ship with the template; the sales-regression GNN trains
+on CPU in a few minutes.
+
+**To adapt to your own Snowflake pipeline (`retail_planning.py` as reference)**
+you'll additionally need:
+
+- A dataset in Snowflake analogous to the H&M schema -- customer, item, and
+  transaction tables, plus pre-built train/val/test split tables for whatever
+  predictive tasks you need. The Kaggle [H&M Personalized Fashion
+  Recommendations](https://www.kaggle.com/competitions/h-and-m-personalized-fashion-recommendations/data)
+  dataset (with [RelBench rel-hm](https://relbench.stanford.edu/datasets/rel-hm/)
+  task splits) is the one `retail_planning.py` targets as-shipped.
+- A GPU-enabled RAI engine for GNN training at scale.
+
+### Tools
+
+- Python >= 3.10
+- RelationalAI Python SDK (`relationalai[gnn] == 1.27.1`)
+
+## Quickstart
+
+1. Download ZIP:
+   ```bash
+   curl -O https://docs.relational.ai/templates/zips/v1/retail_planning.zip
+   unzip retail_planning.zip
+   cd retail_planning
+   ```
+   > [!TIP]
+   > You can also download the template ZIP using the "Download ZIP" button at the top of this page.
+
+2. Create venv:
+   ```bash
+   python -m venv .venv
+   source .venv/bin/activate
+   python -m pip install --upgrade pip
+   ```
+
+3. Install:
+   ```bash
+   python -m pip install .
+   ```
+
+4. Configure:
+   ```bash
+   rai init
+   ```
+
+   After `rai init` generates the config file, add the following to your `raiconfig.yaml`:
+
+   ```yaml
+   data:
+       ensure_change_tracking: true
+   ```
+
+5. Set up the experiment schema in Snowflake:
+
+   Before running, create the database and schema used to store GNN experiments, and grant the required permissions to the RAI Native App. Run the following in a Snowflake worksheet:
+
+   ```sql
+   CREATE DATABASE IF NOT EXISTS HM_MINI;
+   CREATE SCHEMA IF NOT EXISTS HM_MINI.EXPERIMENTS;
+   GRANT USAGE ON DATABASE HM_MINI TO APPLICATION RELATIONALAI;
+   GRANT USAGE ON SCHEMA HM_MINI.EXPERIMENTS TO APPLICATION RELATIONALAI;
+   GRANT CREATE EXPERIMENT ON SCHEMA HM_MINI.EXPERIMENTS TO APPLICATION RELATIONALAI;
+   GRANT CREATE MODEL ON SCHEMA HM_MINI.EXPERIMENTS TO APPLICATION RELATIONALAI;
+   ```
+
+   > [!NOTE]
+   > Replace `RELATIONALAI` with the `rai_app_name` you set in `raiconfig.yaml` if it differs.
+
+6. Run the local demo on the bundled H&M subset (CPU, a few minutes):
+   ```bash
+   python retail_planning_local.py
+   ```
+
+### Adapting to your own Snowflake data
+
+`retail_planning.py` is a reference for wiring this pattern against a real
+Snowflake dataset (customers, items, transactions + train/val/test task splits
+for the tasks you care about). To adapt it:
+
+1. Point the table references at your data:
+   ```python
+   DATABASE = "YOUR_DB"
+   SCHEMA = "YOUR_SCHEMA"        # schema with core tables (Customer / Item / Transaction)
+   TASK_SALES_SCHEMA = "..."     # schema with sales train/val/test tables
+   TASK_CHURN_SCHEMA = "..."
+   TASK_PURCHASE_SCHEMA = "..."
+   ```
+2. Adjust the PropertyTransformer to match your columns and drop your PKs/FKs.
+3. Run against a GPU-enabled RAI engine:
+   ```bash
+   python retail_planning.py
+   ```
+The as-shipped `retail_planning.py` targets the Kaggle H&M dataset + RelBench
+task splits (see Prerequisites).
+
+### Expected output (local run, abbreviated)
+
+```text
+=== Sales target profile (train split) ===
+  n=7648  min=0.0004237  max=0.5915  mean=0.0286  stddev=0.02121
+
+=== Adjusted Demand per Article (from sales GNN, aggregated) ===
+  article_id                      name  adjusted_demand
+          74          3p Sneaker Socks        21.95
+       53892  Jade HW Skinny Denim TRS       147.64
+       ...
+
+Markdown Status: OPTIMAL
+Total revenue (sales + salvage): $62,038.94
+
+Demand Planning Status: OPTIMAL
+Total cost (production + holding + unmet penalty): $8,761.30
+```
+
+## Template structure
+
+```text
+.
+├── README.md                    # this file
+├── pyproject.toml               # dependencies
+├── retail_planning_local.py     # primary: real GNN on bundled HM_MINI CSVs + both optimizers
+├── retail_planning.py           # reference pattern: same pipeline against full H&M in Snowflake
+└── data/
+    ├── discounts.csv            # discount levels with demand lifts
+    ├── weeks.csv                # planning weeks with seasonal multipliers
+    ├── articles_inventory.csv   # article pricing/inventory (full-pipeline scope)
+    ├── production_capacity.csv  # production caps/costs (full-pipeline scope)
+    └── hm_mini/                 # HM_MINI subset used by retail_planning_local.py
+        ├── customers.csv        #   10K customers from H&M Kaggle
+        ├── articles.csv         #   5K articles
+        ├── transactions.csv     #   9.6K transactions
+        ├── train_sales.csv      #   RelBench sales task: 7.6K train rows
+        ├── val_sales.csv        #   1.1K val rows
+        ├── test_sales.csv       #   806 test rows
+        ├── articles_inventory.csv     # 12-article optimizer scope (real HM_MINI IDs)
+        └── production_capacity.csv    # matching production params
+```
+
+**Start here**: run `python retail_planning_local.py` for the full run end to end (CPU, no external setup), or follow `runbook.md` to reproduce it step by step with the RAI skills. Use `retail_planning.py` (requires GPU) as the adaptation reference when you wire this pattern into your own Snowflake data.
+
+## Sample data
+
+The H&M core data (customers, articles, transactions) comes from Snowflake, sourced from the [RelBench rel-hm dataset](https://relbench.stanford.edu/datasets/rel-hm/). The local CSV files provide optimization parameters:
+
+- **discounts.csv** -- Five discount tiers (0% to 50%) with demand lift multipliers
+- **weeks.csv** -- Four-week planning horizon with seasonal demand multipliers
+- **articles_inventory.csv** -- 12 articles with initial price, cost, inventory, and salvage rate
+- **production_capacity.csv** -- Per-article production limits, costs, and holding costs
+
+## Model overview
+
+### Key entities
+
+- **Customer** (`customer_id`): H&M shoppers with demographics (age, club status, postal code)
+- **Article** (`article_id`): Products with rich metadata (category hierarchy, color, department, description)
+- **Transaction**: Purchase events linking customers to articles with price and date
+
+**Primary identifiers**: `Customer.customer_id`, `Article.article_id`, and `Week.num` / `Discount.level` identify their rows; the optimizer concepts key on the matching article id (`OptArticle.opt_article_id` and `ProdCapacity.pc_article_id` both equal an `article_id`). A `Transaction` is identified by its `(customer_id, article_id, date)` combination.
+
+**Important invariants**: `opt_article_id` and `pc_article_id` must match real `article_id` values that carry GNN predictions; the discount tiers include a 0% level (feasible starting point) and only increase across weeks (price ladder); prices, costs, inventory, and demand are non-negative.
+
+### Pipeline stages
+
+```text
+Customer / Article / Transaction data (Snowflake tables or bundled CSVs)
+  → GNN item-sales (regression on Article)
+  → GNN user-churn (classification on Customer)     [full pipeline only]
+  → GNN user-item-purchase (link prediction)        [full pipeline only]
+  → Bridge: adjusted demand per article
+  → Markdown optimization (MILP, maximize revenue)
+  → Demand/inventory planning (LP, minimize cost)
+```
+
+`retail_planning_local.py` trains only the sales GNN (the most demonstrative
+task) on the bundled HM_MINI CSVs — HM_MINI does not ship churn or purchase
+splits. Churn and purchase are omitted from the local aggregation step.
+`retail_planning.py` runs all three GNNs against the full HM_PYREL data.
+
+For the full concept and property definitions, see `retail_planning_local.py` (and `retail_planning.py` for the full Snowflake pipeline); `runbook.md` builds them step by step with the RAI skills.
+
+## How it works
+
+The pipeline trains GNNs on the H&M knowledge graph, aggregates their predictions into an adjusted-demand estimate per article through a bridge concept, and feeds that estimate into two optimizers — one for markdown pricing, one for production/inventory planning. The same demand number flows into both, so pricing and planning stay consistent with the learned forecast rather than static estimates (see the *Pipeline stages* diagram above).
+
+1. **Train the GNNs.** All models share one graph (Customer-Transaction-Article) and one feature configuration, differing only in task relationship and task type: article sales (regression), customer churn (binary classification), and customer-article purchase links (link prediction). The local runner trains only the sales GNN on the bundled HM_MINI subset; the full runner trains all three against Snowflake.
+2. **Bridge to optimizer inputs.** Predicted sales come straight from the item-sales GNN. Churn risk is averaged per article over each article's recent buyers, and purchase propensity is averaged per article from the link-prediction scores. The three combine into a single `adjusted_demand`: high-churn-buyer articles are marked down in demand, high-purchase-propensity articles are lifted up.
+3. **Markdown optimization (maximize revenue).** A mixed-integer program selects one discount per article per week under a price ladder and inventory limits, bounding sales by the *GNN-predicted* adjusted demand rather than a static estimate, and maximizes sales revenue plus salvage.
+4. **Demand/inventory planning (minimize cost).** A linear program decides production quantities per article per week, tracks inventory with flow conservation against adjusted demand, and minimizes production cost plus holding cost plus an unmet-demand penalty.
+
+See `retail_planning_local.py` / `retail_planning.py` for the implementation and `runbook.md` for the skill-driven reproduction.
+
+## Customize this template
+
+### Use your own data
+
+- Replace the Snowflake table references at the top of the script (`DATABASE`, `SCHEMA`, etc.) to point to your H&M dataset location.
+- Edit the CSV files in `data/` to change the article subset, pricing, inventory levels, discount tiers, or planning horizon.
+- The `article_id` values in the CSVs must match real article IDs in your Snowflake data.
+
+### Tune parameters
+
+- **Churn discount weight** (`CHURN_DISCOUNT_WEIGHT`): controls how much churn risk reduces demand. 0 = ignore churn, 1 = full reduction.
+- **Purchase propensity weight** (`PURCHASE_PROPENSITY_WEIGHT`): controls how much predicted purchase demand uplifts demand. 0 = ignore, higher = stronger uplift.
+- **Unmet demand penalty** (`UNMET_PENALTY`): higher values force the demand planner to fulfill more demand at the cost of higher production.
+- **Discount tiers and demand lifts**: edit `discounts.csv` for finer or coarser pricing granularity.
+
+### Extend the model
+
+- **Add minimum-margin constraints**: ensure discounted prices always exceed cost (`OptArticle.initial_price * (1 - discount_pct/100) >= OptArticle.cost`).
+- **Category-level budgets**: group articles by department and limit total discount exposure per category.
+- **Multi-site planning**: extend `ProdCapacity` with a site dimension and add cross-site transfer variables.
+- **Scenario analysis**: wrap the demand planner in a loop over different planning horizons (see `demand_planning_temporal` template for the pattern).
+
+### Scale up / productionize
+
+- Move from the bundled `data/hm_mini/` CSVs to your full Snowflake dataset by wiring `retail_planning.py` at your customer / article / transaction tables and task splits (see *Adapting to your own Snowflake data* under Quickstart).
+- Train the three GNNs on a GPU-enabled RAI engine; the local sales-only run is CPU-sized for the mini subset and grows well beyond it on GPU.
+- Pin `relationalai` (see Prerequisites) and keep `SEED` fixed so training and solves stay reproducible across environments.
+- Schedule the pipeline as a recurring job once table references and grants are in place; the GNN experiment schema and change tracking configured in Quickstart carry over unchanged.
+
+## Troubleshooting
+
+<details>
+<summary>GNN training fails or is very slow</summary>
+
+- Ensure a GPU-enabled engine is available. GNN training on CPU is significantly slower.
+- Check that the task tables (TRAIN, VAL, TEST) are populated and the foreign keys match the core tables.
+</details>
+
+<details>
+<summary>Markdown optimization is infeasible</summary>
+
+- Verify that `discounts.csv` includes a 0% discount level (the model needs a feasible starting point).
+- Check that initial inventory in `articles_inventory.csv` is sufficient for at least one week of base demand.
+- Ensure the article IDs in CSVs match articles that have GNN predictions (i.e., appear in the sales test set).
+</details>
+
+<details>
+<summary>Demand planner shows large unmet demand</summary>
+
+- Increase `max_production_per_week` in `production_capacity.csv` or lower the demand by adjusting `CHURN_DISCOUNT_WEIGHT`.
+- Reduce `UNMET_PENALTY` if you want the optimizer to tolerate some shortfall rather than over-producing.
+</details>
+
+<details>
+<summary>Predictions are all NaN or empty</summary>
+
+- Ensure the GNN training completed successfully (check for fit() errors).
+- Verify that the test set tables contain rows and that foreign keys link correctly to the core entity tables.
+- If val-RMSE is at or above `stddev(target)`, the regression model has
+  collapsed to the mean — revisit the PropertyTransformer and task setup.
+</details>
+
+<details>
+<summary>Sales regression R² is low or negative</summary>
+
+R² < 0 early in training is normal — it means the model is doing worse than
+predicting the target mean. See the "Sales target profile (train split)" block
+printed before training: if val-RMSE prints below the target's stddev, the
+GNN is learning signal. If it plateaus at or above the stddev, re-check the
+PropertyTransformer and task setup.
+</details>
+
+<details>
+<summary>Spinner floods the log when running in CI / non-TTY</summary>
+
+Set `STREAM_LOGS = False` at the top of the script (the default). The GNN
+continues training server-side; only the client-side log stream is suppressed.
+</details>
+
+
+<details>
+<summary>rai init fails or connection errors</summary>
+
+Ensure your Snowflake credentials are configured correctly and that the RAI Native App is installed on your account. Run `rai init` again and verify the connection settings.
+</details>
+
+## Learn more
+
+### Core concepts
+
+- [Multi-reasoner workflows](https://docs.relational.ai/) — chaining predictive output into prescriptive optimization on a shared ontology.
+- [PyRel v1 query language](https://docs.relational.ai/) — `model.where(...)`, aggregations, and `model.select(...)`.
+
+### Reasoner reference
+
+- [Predictive reasoner (GNN)](https://docs.relational.ai/) — the Graph / Relationship / PropertyTransformer API, task types, and training configuration.
+- [Prescriptive reasoner](https://docs.relational.ai/) — the `Problem` API, decision variables, constraints, and objectives.
+
+### Deeper dives
+
+- [Predict-then-optimize patterns](https://docs.relational.ai/) — using model predictions as parameters inside an optimizer, via an aggregation bridge concept.
+
+## Support
+
+- File issues at the RelationalAI templates repository.

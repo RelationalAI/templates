@@ -1,0 +1,19 @@
+sku_id,name,category,brand,width_cm,max_facings,assigned_shelf_id
+1,Cookie Box,snacks,Sweetly,12,3,1
+2,Granola Bar,snacks,Healthwise,8,3,1
+3,Trail Mix,snacks,Healthwise,10,3,1
+4,Tortilla Chips,snacks,Crunchy,14,3,2
+5,Popcorn Bag,snacks,Sweetly,11,3,2
+6,Cola 12oz,beverages,Sparkle,6,4,3
+7,Lemon Soda 12oz,beverages,Sparkle,6,4,3
+8,Sparkling Water,beverages,Aqua,7,3,3
+9,Bottled Water,beverages,Aqua,7,4,3
+10,Energy Drink,beverages,Voltage,6,3,2
+11,Gummy Pack,candy,Sweetly,5,3,1
+12,Chocolate Bar,candy,Cocoa,5,3,1
+13,Mint Roll,candy,Cocoa,4,3,4
+14,Caramel Squares,candy,Cocoa,5,3,4
+15,Paper Towels 6pk,household_paper,CleanPro,20,2,4
+16,Toilet Tissue 4pk,household_paper,CleanPro,18,2,4
+17,Facial Tissue Box,household_paper,Softie,12,3,4
+18,Napkins 200ct,household_paper,Softie,10,3,4

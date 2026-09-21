@@ -1,0 +1,287 @@
+# Proposed v1 sidecar for v1/portfolio_balancing/template-docs.yaml.
+#
+# README.md remains authoritative for the page title, description, problem
+# statement, prerequisites, quickstart, expected output, customization, and
+# troubleshooting. The docs build derives identities, properties, source
+# mappings, row counts, and line ranges from the referenced files.
+
+version: 1
+
+page:
+  lead_from_readme:
+    - what-this-template-is-for
+  omit_from_readme:
+    - sample-data
+    - model-overview
+    - how-it-works
+
+model_explorer:
+  title: How the portfolio model fits together
+  description: >-
+    The model connects investors and their accounts to holdings, stocks,
+    sectors, and transactions. Rules inspect the current portfolio, graph
+    reasoning groups correlated stocks, and prescriptive reasoning chooses
+    a re-balanced portfolio.
+
+  # List order controls the reading order. Identity keys and properties are
+  # extracted from model/schema.py and are not repeated here.
+  concepts:
+    - symbol: User
+      description: An investor whose accounts and activity are evaluated.
+
+    - symbol: Account
+      description: A brokerage or retirement account owned by an investor.
+
+    - symbol: Holding
+      description: A stock position held in an account.
+
+    - symbol: Transaction
+      description: An investor transaction used by the compliance rules.
+
+    - symbol: Stock
+      description: An investable security with expected return and covariance data.
+
+    - symbol: Sector
+      description: A market sector used to measure and constrain concentration.
+
+  # Endpoints are extracted from the schema expression. The author supplies
+  # the business reading and explanation.
+  relationships:
+    - symbol: Account.user
+      label: owned by
+      reading: Account is owned by User
+      description: Connects each account to the investor who owns it.
+
+    - symbol: Holding.account
+      label: held in
+      reading: Holding is held in Account
+      description: Connects a position to the account that contains it.
+
+    - symbol: Holding.stock
+      label: position in
+      reading: Holding is a position in Stock
+      description: Connects a position to the security it represents.
+
+    - symbol: Stock.sector_ref
+      label: belongs to
+      reading: Stock belongs to Sector
+      description: Groups stocks for sector exposure checks and constraints.
+
+    - symbol: Transaction.user
+      label: made by
+      reading: Transaction was made by User
+      description: Connects activity to the investor evaluated by compliance rules.
+
+  sources:
+    # The extractor validates these paths and infers which model items they
+    # populate from model/source.py. A populates override is allowed only when
+    # the mapping is dynamic or ambiguous.
+    - path: data/users.csv
+      description: Investor names and risk scores.
+
+    - path: data/accounts.csv
+      description: Account ownership, type, and balance.
+
+    - path: data/holdings.csv
+      description: Current stock positions by account.
+
+    - path: data/transactions.csv
+      description: Investor transactions and existing flagged indicators.
+
+    - path: data/returns.csv
+      description: Stock identifiers, sectors, and expected returns.
+
+    - path: data/covar.csv
+      description: Pairwise stock covariance values.
+      populates:
+        - Stock
+
+guided_walkthrough:
+  title: Follow the re-balancing flow
+  description: >-
+    These five steps connect the input data to the shared model and then show
+    how each reasoning stage contributes to the final portfolio.
+
+  steps:
+    - id: load-inputs
+      title: Load portfolio and market inputs
+      explanation: >-
+        load_portfolio_data maps users, accounts, holdings, and transactions
+        into the model. load_market_data adds stocks and pairwise covariance
+        values used by the graph and optimization stages.
+      focus:
+        file: model/source.py
+        symbols:
+          - load_portfolio_data
+          - load_market_data
+      references:
+        load_portfolio_data:
+          symbol: load_portfolio_data
+        load_market_data:
+          symbol: load_market_data
+      links:
+        - title: Declare data sources
+          href: /build/guides/modeling/declare-data-sources/
+        - title: Define base facts
+          href: /build/guides/modeling/define-base-facts/
+
+    - id: define-shared-model
+      title: Define the shared portfolio model
+      explanation: >-
+        User, Account, Holding, Transaction, Stock, and Sector give every
+        reasoning stage the same business vocabulary and relationships.
+      focus:
+        file: model/schema.py
+        symbols:
+          - User
+          - Account
+          - Holding
+          - Transaction
+          - Stock
+          - Sector
+      references:
+        User:
+          symbol: User
+        Account:
+          symbol: Account
+        Holding:
+          symbol: Holding
+        Transaction:
+          symbol: Transaction
+        Stock:
+          symbol: Stock
+        Sector:
+          symbol: Sector
+      links:
+        - title: Declare concepts
+          href: /build/guides/modeling/declare-concepts/
+        - title: Declare relationships and properties
+          href: /build/guides/modeling/declare-relationships-and-properties/
+
+    - id: flag-compliance-risk
+      title: Flag compliance risk with rules
+      explanation: >-
+        Holding.is_overconcentrated and Holding.is_sector_concentrated identify
+        concentrated positions, while User.is_high_risk_trader combines risk
+        scores with flagged activity.
+      focus:
+        file: portfolio_balancing.py
+        anchors:
+          - start: Holding.value = model.Property
+            end: ").define(User.is_high_risk_trader())"
+      references:
+        Holding.is_overconcentrated:
+          symbol: Holding.is_overconcentrated
+        Holding.is_sector_concentrated:
+          symbol: Holding.is_sector_concentrated
+        User.is_high_risk_trader:
+          symbol: User.is_high_risk_trader
+      links:
+        - title: Rules-based reasoning
+          href: /build/guides/reasoning/rules-based/
+        - title: Aggregate and group data
+          href: /build/guides/reasoning/rules-based/aggregate-and-group-data/
+
+    - id: group-correlated-stocks
+      title: Group correlated exposures
+      explanation: >-
+        Stock.correlation creates the similarity signal, corr_graph connects
+        strongly correlated stocks, and community assigns Louvain clusters.
+        Stock.is_representative keeps one high-Sharpe stock from each cluster.
+      focus:
+        file: portfolio_balancing.py
+        symbols:
+          - Stock.correlation
+          - corr_graph
+          - community
+          - Stock.is_representative
+      references:
+        Stock.correlation:
+          symbol: Stock.correlation
+        corr_graph:
+          symbol: corr_graph
+        community:
+          symbol: community
+        Stock.is_representative:
+          symbol: Stock.is_representative
+      links:
+        - title: Create a graph
+          href: /build/guides/reasoning/graph/create-a-graph/
+        - title: Run a Graph Algorithm
+          href: /build/guides/reasoning/graph/run-an-algorithm/
+
+    - id: rebalance-and-stress-test
+      title: Re-balance and stress-test the portfolio
+      explanation: >-
+        The decision problem assigns portfolio weights, applies position and
+        sector limits, traces the efficient frontier, and compares the result
+        with a crisis covariance regime.
+      focus:
+        file: portfolio_balancing.py
+        anchors:
+          - start: "# Stage 3: Prescriptive"
+            end: "# Stage 4: Crisis stress"
+      links:
+        - title: Create a decision problem
+          href: /build/guides/reasoning/prescriptive/decision-problems/create/
+        - title: Solve a decision problem
+          href: /build/guides/reasoning/prescriptive/decision-problems/solve/
+
+sample_data:
+  default_rows: 4
+  tables:
+    # Table order is editorial. For this template, transactions intentionally
+    # appear before returns and covariance, matching the meeting decision.
+    - path: data/users.csv
+      title: Investors
+      description: Investor profiles and risk scores used by compliance rules.
+      columns:
+        - id
+        - name
+        - risk_score
+
+    - path: data/accounts.csv
+      title: Accounts
+      description: Account ownership, type, and balance.
+      columns:
+        - id
+        - user_id
+        - account_type
+        - balance
+
+    - path: data/holdings.csv
+      title: Holdings
+      description: Current positions that the rules inspect and the optimizer replaces.
+      columns:
+        - id
+        - account_id
+        - stock_id
+        - quantity
+        - purchase_price
+
+    - path: data/transactions.csv
+      title: Transactions
+      description: Activity and flagged indicators used to identify high-risk traders.
+      columns:
+        - id
+        - user_id
+        - amount
+        - category
+        - is_flagged
+
+    - path: data/returns.csv
+      title: Expected returns
+      description: The stock universe, sectors, and expected returns.
+      columns:
+        - index
+        - ticker
+        - sector
+        - returns
+
+    - path: data/covar.csv
+      title: Covariance
+      description: Pairwise covariance values used for clustering and portfolio risk.
+      columns:
+        - i
+        - j
+        - covar

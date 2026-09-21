@@ -1,0 +1,21 @@
+SKU_ID,NAME,TIER
+FG-PHN-A,Aurora Smartphone,FINISHED
+FG-PHN-B,Borealis Smartphone,FINISHED
+FG-TAB-C,Cirrus Tablet,FINISHED
+SA-PCBA,Main PCBA (populated board),SUBASSEMBLY
+SA-BATT,Battery Pack,SUBASSEMBLY
+SA-DISP,Display Module,SUBASSEMBLY
+SA-ENC,Enclosure Assembly,SUBASSEMBLY
+CP-PCB,Bare PCB,COMPONENT
+CP-PASTE,Solder Paste,COMPONENT
+CP-SOC,Application SoC,COMPONENT
+CP-MEM,Memory IC,COMPONENT
+CP-PASS,Passives Kit,COMPONENT
+CP-CELL,Battery Cell,COMPONENT
+CP-LCD,LCD Panel,COMPONENT
+CP-HOUS,Housing Shell,COMPONENT
+RM-CU,Copper Foil,RAW
+RM-RESIN,Laminate Resin,RAW
+RM-LI,Lithium Compound,RAW
+RM-SI,Silicon Wafer,RAW
+RM-POLY,Polymer Pellets,RAW

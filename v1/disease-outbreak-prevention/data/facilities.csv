@@ -1,0 +1,11 @@
+id,name,type,region
+1,Central Hospital,Hospital,Downtown
+2,Westside Clinic,Clinic,West
+3,Community Health Center,Community Org,North
+4,Regional Testing Lab,Testing Center,Downtown
+5,Eastside Medical,Clinic,East
+6,Public Health Dept,Government,Downtown
+7,North Valley Hospital,Hospital,North
+8,Mobile Testing Unit,Testing Center,West
+9,South Community Clinic,Clinic,South
+10,Emergency Response Hub,Emergency Services,Downtown

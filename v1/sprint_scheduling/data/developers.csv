@@ -1,0 +1,9 @@
+id,name,team,capacity_points_per_sprint
+1,Alice,backend,20
+2,Bob,backend,18
+3,Carol,frontend,16
+4,Dave,frontend,20
+5,Eve,data,15
+6,Frank,data,18
+7,Grace,backend,14
+8,Hank,frontend,16

@@ -1,0 +1,4 @@
+id,name,type,capacity_per_week
+1,Chicago_DC,warehouse,5000
+2,Atlanta_DC,warehouse,4000
+3,Dallas_DC,warehouse,3500

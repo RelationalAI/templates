@@ -1,0 +1,5 @@
+name,anchor_max_share,workload_type_floor,label
+none,,,no constraint
+anchor_max_70pct,0.7,,anchor labs <= 70% of strategic value
+anchor_max_50pct,0.5,,anchor labs <= 50% of strategic value (CoreWeave-target)
+anchor_max_40pct_with_type_floor,0.4,0.15,anchor labs <= 40% AND each workload_type >= 15% of count

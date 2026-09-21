@@ -1,0 +1,247 @@
+version: 1
+
+page:
+  lead_from_readme:
+    - what-this-template-is-for
+  omit_from_readme:
+    - sample-data
+    - model-overview
+    - how-it-works
+
+model_explorer:
+  title: How the fraud-detection model fits together
+  description: >-
+    Accounts send and receive transactions. The same connections support
+    account-level graph signals, transaction-level fraud predictions, and the
+    budget-constrained investigation queue.
+
+  concepts:
+    - symbol: Account
+      description: A customer or merchant account in the funds-flow network.
+
+    - symbol: Transaction
+      description: A transfer whose attributes and graph context inform its fraud score.
+
+  relationships:
+    - symbol: Transaction.sender
+      label: sent by
+      reading: Transaction is sent by Account
+      description: Connects each transfer to the account that originated it.
+
+    - symbol: Transaction.receiver
+      label: received by
+      reading: Transaction is received by Account
+      description: Connects each transfer to the account that received it.
+
+  sources:
+    - path: data/paysim_mini/accounts.csv
+      description: Customer and merchant account identifiers and type prefixes.
+      populates:
+        - Account
+
+    - path: data/paysim_mini/transactions.csv
+      description: Transaction amounts, balances, endpoints, timestamps, and heuristic flags.
+      populates:
+        - Transaction
+        - Transaction.sender
+        - Transaction.receiver
+
+    - path: data/paysim_mini/train.csv
+      description: Labeled transactions used to train the fraud classifier.
+      populates:
+        - Transaction
+
+    - path: data/paysim_mini/val.csv
+      description: Labeled transactions used to validate the fraud classifier.
+      populates:
+        - Transaction
+
+    - path: data/paysim_mini/test.csv
+      description: Unlabeled transactions scored for investigation.
+      populates:
+        - Transaction
+
+guided_walkthrough:
+  title: Follow the fraud-detection flow
+  description: >-
+    These five steps connect the selected data source to one shared model,
+    enrich transactions with graph and rules signals, predict fraud, and
+    choose a budget-feasible audit queue.
+
+  steps:
+    - id: load-accounts-and-transactions
+      title: Load accounts and transactions
+      explanation: >-
+        load_local_data maps the bundled CSVs into the model for the primary
+        runner. load_snowflake_data maps the equivalent Snowflake tables for
+        the full-scale adaptation.
+      focus:
+        file: model/source.py
+        symbols:
+          - load_local_data
+          - load_snowflake_data
+      references:
+        load_local_data:
+          symbol: load_local_data
+        load_snowflake_data:
+          symbol: load_snowflake_data
+      links:
+        - title: Declare data sources
+          href: /build/guides/modeling/declare-data-sources/
+        - title: Define base facts
+          href: /build/guides/modeling/define-base-facts/
+
+    - id: connect-transactions-and-accounts
+      title: Connect transactions and accounts
+      explanation: >-
+        Account and Transaction provide the shared business vocabulary.
+        Transaction.sender and Transaction.receiver connect each transfer to
+        both endpoints of the funds flow. Train, Val, and Test declare the
+        classifier's task surfaces.
+      focus:
+        file: model/schema.py
+        symbols:
+          - Account
+          - Transaction
+          - Transaction.sender
+          - Transaction.receiver
+          - Train
+          - Val
+          - Test
+      references:
+        Account:
+          symbol: Account
+        Transaction:
+          symbol: Transaction
+        Transaction.sender:
+          symbol: Transaction.sender
+        Transaction.receiver:
+          symbol: Transaction.receiver
+        Train:
+          symbol: Train
+        Val:
+          symbol: Val
+        Test:
+          symbol: Test
+      links:
+        - title: Declare concepts
+          href: /build/guides/modeling/declare-concepts/
+        - title: Declare relationships and properties
+          href: /build/guides/modeling/declare-relationships-and-properties/
+
+    - id: derive-graph-and-rules-signals
+      title: Derive graph and rules signals
+      explanation: >-
+        acct_graph produces Account.pagerank from the funds-flow network, while
+        Account.activity_count captures sender-side transaction volume. Both
+        signals become classifier features.
+      focus:
+        file: fraud_detection_local.py
+        symbols:
+          - acct_graph
+          - Account.pagerank
+          - Account.activity_count
+      references:
+        acct_graph:
+          symbol: acct_graph
+        Account.pagerank:
+          symbol: Account.pagerank
+        Account.activity_count:
+          symbol: Account.activity_count
+      links:
+        - title: Run a Graph Algorithm
+          href: /build/guides/reasoning/graph/run-an-algorithm/
+        - title: Rules-based reasoning
+          href: /build/guides/reasoning/rules-based/
+
+    - id: train-and-inspect-classifier
+      title: Train and inspect the fraud classifier
+      explanation: >-
+        Train, Val, and Test define the task surfaces. The GNN learns from the
+        graph and enriched features, then Transaction.predictions stores fraud
+        probabilities for the test transactions.
+      focus:
+        file: fraud_detection_local.py
+        symbols:
+          - pt
+          - gnn
+          - Transaction.predictions
+      references:
+        GNN:
+          symbol: gnn
+        Transaction.predictions:
+          symbol: Transaction.predictions
+      links:
+        - title: Define a learning task
+          href: /build/guides/reasoning/predictive/define-a-learning-task/
+        - title: Solve a classification problem
+          href: /build/guides/reasoning/predictive/solve-a-classification-problem/
+
+    - id: prioritize-investigations
+      title: Prioritize investigations under a budget
+      explanation: >-
+        Transaction.x_audit is a binary decision variable. The decision problem
+        maximizes expected loss averted while respecting investigator hours and
+        the per-receiver cap, then audit_df reports the selected audit queue.
+      focus:
+        file: fraud_detection_local.py
+        symbols:
+          - problem
+          - Transaction.x_audit
+          - audit_df
+      references:
+        Transaction.x_audit:
+          symbol: Transaction.x_audit
+        problem:
+          symbol: problem
+        audit_df:
+          symbol: audit_df
+      links:
+        - title: Add constraints
+          href: /build/guides/reasoning/prescriptive/decision-problems/constraints/
+        - title: Work with solutions
+          href: /build/guides/reasoning/prescriptive/decision-problems/solutions/
+
+sample_data:
+  default_rows: 3
+  tables:
+    - path: data/paysim_mini/accounts.csv
+      title: Accounts
+      description: Account identifiers and customer or merchant type prefixes.
+      columns:
+        - account_id
+        - account_type_prefix
+
+    - path: data/paysim_mini/transactions.csv
+      title: Transactions
+      description: Transfers and their sender, receiver, amount, type, and heuristic flag.
+      columns:
+        - transaction_id
+        - trans_type
+        - amount
+        - name_orig
+        - name_dest
+        - is_flagged_fraud
+
+    - path: data/paysim_mini/train.csv
+      title: Training task
+      description: The labeled temporal split used to fit the classifier.
+      columns:
+        - transaction_id
+        - step_ts
+        - is_fraud
+
+    - path: data/paysim_mini/val.csv
+      title: Validation task
+      description: The labeled temporal split used to evaluate training.
+      columns:
+        - transaction_id
+        - step_ts
+        - is_fraud
+
+    - path: data/paysim_mini/test.csv
+      title: Test task
+      description: The unlabeled temporal split scored for investigation.
+      columns:
+        - transaction_id
+        - step_ts

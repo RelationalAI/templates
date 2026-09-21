@@ -1,0 +1,4 @@
+id,name,cost_per_unit,transit_days,capacity
+1,Truck,5,1,200
+2,Rail,2,3,500
+3,Air,15,1,100

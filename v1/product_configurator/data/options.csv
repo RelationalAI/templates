@@ -1,0 +1,17 @@
+id,slot_id,name,price_cents
+101,1,1.6L Inline-4,150000
+102,1,2.0L Turbo,350000
+103,1,V6,600000
+201,2,Manual,0
+202,2,Automatic,200000
+203,2,DCT,400000
+301,3,Base Trim,0
+302,3,Sport Trim,250000
+303,3,Premium Trim,500000
+401,4,Standard Sound,0
+402,4,Premium Audio,150000
+501,5,16-inch Alloy,0
+502,5,18-inch Sport,120000
+503,5,19-inch Performance,250000
+601,6,Steel Roof,0
+602,6,Panoramic Glass,300000

@@ -1,0 +1,6 @@
+id,name,hyperscaler,approved_mw,pue,substation_id,dollars_per_mwh,available_gpu_count_total
+DC-001,Microsoft Horizon Campus,Microsoft,350,1.25,SUB-001,45.0,3712
+DC-008,CoreWeave Austin GPU,CoreWeave,320,1.32,SUB-004,45.0,4608
+DC-004,xAI Colossus Texas,xAI,500,1.35,SUB-002,40.0,4352
+DC-009,Crusoe Permian DC,Crusoe Energy,180,1.22,SUB-005,25.0,2176
+DC-010,Oracle Coastal DC,Oracle,150,1.18,SUB-007,75.0,1216

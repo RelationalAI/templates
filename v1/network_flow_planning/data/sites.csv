@@ -1,0 +1,13 @@
+id,name,type,inventory,capacity,fixed_cost
+1,Chicago_Warehouse,WAREHOUSE,500,0,0
+2,Dallas_Warehouse,WAREHOUSE,400,0,0
+3,Atlanta_Warehouse,WAREHOUSE,300,0,0
+4,Memphis_Hub,HUB,0,0,0
+5,KansasCity_Hub,HUB,0,0,0
+6,StLouis_Hub,HUB,0,0,0
+7,FC_Northeast,FULFILLMENT_CENTER,0,350,1500
+8,FC_Southwest,FULFILLMENT_CENTER,0,200,1200
+9,FC_West,FULFILLMENT_CENTER,0,180,1000
+10,Customer_NYC,CUSTOMER,0,0,0
+11,Customer_LA,CUSTOMER,0,0,0
+12,Customer_Houston,CUSTOMER,0,0,0
