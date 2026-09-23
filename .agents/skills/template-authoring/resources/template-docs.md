@@ -24,13 +24,9 @@ guided_walkthrough:
   title: Plain-text title
   description: Plain-text description
   steps: []
-
-sample_data:
-  default_rows: 4
-  tables: []
 ```
 
-`sample_data` is optional. Every other top-level key is required.
+Every top-level key is required.
 
 ## Page composition
 
@@ -125,28 +121,5 @@ form, and 1-2 public guide links:
 - Reference values contain only `symbol`.
 - IDs use lowercase words separated by hyphens.
 - Update the sidecar whenever a referenced path, symbol, or anchor changes.
-
-## Sample data
-
-Select only local CSV files and representative columns:
-
-```yaml
-sample_data:
-  default_rows: 4
-  tables:
-    - path: data/accounts.csv
-      title: Accounts
-      description: Representative account records.
-      columns:
-        - id
-        - status
-      rows: 3
-```
-
-- `default_rows` and per-table `rows` must be integers from 1 through 10.
-- A table needs at least one unique column and may select at most 50.
-- The docs build reads headers, counts all rows, and emits only the bounded
-  sample. Do not copy data rows into YAML.
-- Order tables by the reader's workflow rather than alphabetically.
 
 Use `sample-template/template-docs.yaml` as the copyable minimal example.

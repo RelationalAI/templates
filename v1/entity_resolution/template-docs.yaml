@@ -143,28 +143,3 @@ guided_walkthrough:
           href: /build/guides/reasoning/prescriptive/decision-problems/solve/
         - title: Inspect solutions
           href: /build/guides/reasoning/prescriptive/decision-problems/solutions/
-
-sample_data:
-  default_rows: 4
-  tables:
-    - path: data/records.csv
-      title: Policyholder records
-      description: >-
-        Source-system records, matching identifiers, and policy coverage used
-        by resolution and accumulation control.
-      columns:
-        - record_id
-        - source_system
-        - full_name
-        - date_of_birth
-        - email
-        - coverage_amount
-
-    - path: data/ground_truth.csv
-      title: Resolution labels
-      description: >-
-        Known record-to-party assignments used to calculate pairwise precision,
-        recall, and F1.
-      columns:
-        - record_id
-        - true_entity_id
