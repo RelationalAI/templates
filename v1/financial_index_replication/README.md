@@ -21,9 +21,9 @@ tags:
 
 ## What this template is for
 
-Tracking a broad benchmark with a smaller basket requires stock selection and weight sizing under portfolio and trading constraints.
+An asset manager wants to track a broad market index without holding every constituent. A smaller basket can reduce operational and trading costs, but it must still follow the benchmark while respecting limits on position size, sector exposure, liquidity, and turnover.
 
-This template selects and weights a sparse replication basket. Developers can adapt it to other benchmarks, investment universes, position limits, sector policies, and liquidity constraints.
+This template selects stocks and assigns weights to minimize tracking error under those constraints. Use it as a starting point for a different benchmark, eligible investment universe, portfolio policy, or liquidity assumption.
 
 ## Who this is for
 

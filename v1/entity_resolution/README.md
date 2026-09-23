@@ -20,9 +20,9 @@ tags:
 
 ## What this template is for
 
-Duplicate records can hide a customer's total exposure across policy systems and acquired books.
+An insurer has policyholder records spread across source systems and acquired books. Differences in names and identifiers can make the same insured party look like several customers, which can hide the party's total coverage and cause the insurer to miss accumulation-limit breaches.
 
-This template resolves records, identifies overexposure, and chooses reinsurance cessions. Developers can adapt it to other entity-resolution problems where decisions need a complete party view.
+This template matches and clusters records into resolved parties, aggregates coverage, identifies overexposed parties, and chooses reinsurance cessions within a premium budget. Use it as a starting point for other entity-resolution workflows where downstream decisions require a complete party view.
 
 ## Who this is for
 

@@ -22,12 +22,15 @@ sidebar:
 
 ## What this template is for
 
-Fraud teams need to combine network, behavioral, and model signals while
-deciding which alerts limited investigators can pursue.
+A payments company receives more potentially fraudulent transactions than its
+investigators can review. Ranking transfers by transaction attributes alone can
+miss suspicious account-network behavior, while investigating every alert
+exceeds the team's capacity.
 
-This template scores transactions and allocates investigation hours in one
-model. Developers can adapt it to their own data, risk signals, and operational
-constraints.
+This template combines account graph features with a transaction classifier,
+then chooses which high-risk transactions to investigate within a fixed hours
+budget. Use it as a starting point for your own transaction data, fraud signals,
+predictive model, and operational constraints.
 
 ## Who this is for
 

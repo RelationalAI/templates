@@ -19,9 +19,9 @@ tags:
 
 ## What this template is for
 
-Portfolio managers need to reduce duplicate exposure, meet compliance limits, and understand how allocations behave when market correlations rise.
+An investment manager oversees client portfolios whose holdings may appear diversified but move together because they share sectors or market behavior. These hidden concentrations can increase risk and cause a portfolio to breach allocation or compliance limits, especially during stressed markets.
 
-This template connects portfolio and market data to build and stress-test a compliant, risk-optimized portfolio. Developers can adapt it to other investment universes, limits, and stress assumptions.
+This template combines current holdings, expected returns, and covariance data to identify concentration problems and choose a rebalanced allocation that balances risk and return while respecting portfolio constraints. Use it as a starting point for a different investment universe, set of limits, objective, or stress scenario.
 
 ## What you'll build
 
