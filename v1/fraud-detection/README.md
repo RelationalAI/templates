@@ -1,6 +1,6 @@
 ---
 title: "Fraud Detection"
-description: "Transaction-fraud pipeline where account PageRank and account-activity signals feed a graph neural network (GNN) binary classifier whose per-transaction scores drive a knapsack investigator-budget mixed-integer linear program (MILP)."
+description: "Find transfers that may be fraudulent by looking at payment details and the flow of money between accounts. Then prioritize cases for investigators by both the chance of fraud and the amount at stake."
 featured: true
 experience_level: advanced
 industry: "Financial Services"
@@ -22,15 +22,15 @@ sidebar:
 
 ## What this template is for
 
-A payments company receives more potentially fraudulent transactions than its
+Payments teams often receive more potentially fraudulent transactions than
 investigators can review. Ranking transfers by transaction attributes alone can
-miss suspicious account-network behavior, while investigating every alert
-exceeds the team's capacity.
+miss suspicious behavior that appears only in the account network, while
+reviewing every alert is not operationally feasible.
 
-This template combines account graph features with a transaction classifier,
-then chooses which high-risk transactions to investigate within a fixed hours
-budget. Use it as a starting point for your own transaction data, fraud signals,
-predictive model, and operational constraints.
+This template combines account-network signals with a fraud classifier, then
+selects the transactions that maximize expected loss averted within a fixed
+investigator-hours budget. Use it as a starting point for adapting your
+transaction data, fraud signals, predictive model, and review constraints.
 
 ## Who this is for
 
