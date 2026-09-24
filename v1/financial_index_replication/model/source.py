@@ -5,7 +5,7 @@ from pathlib import Path
 import pandas as pd
 from relationalai.semantics import sum
 
-from .schema import ReturnDate, Sector, Stock, model
+from .schema import ReturnMonth, Sector, Stock, model
 
 DATA_DIR = Path(__file__).parent.parent / "data"
 
@@ -21,14 +21,14 @@ model.define(
     Sector.benchmark_weight(sum(Stock.benchmark_weight).where(Stock.sector_ref(Sector)).per(Sector))
 )
 
-model.define(ReturnDate.new(model.data(index_returns_csv).to_schema()))
+model.define(ReturnMonth.new(model.data(index_returns_csv).to_schema()))
 
 
 def map_stock_returns() -> None:
     stock_return_data = model.data(stock_returns_csv)
-    model.define(Stock.return_on(ReturnDate, stock_return_data["return"])).where(
+    model.define(Stock.monthly_return(ReturnMonth, stock_return_data["return"])).where(
         Stock.ticker(stock_return_data.ticker),
-        ReturnDate.date(stock_return_data.date),
+        ReturnMonth.date(stock_return_data.date),
     )
 
 

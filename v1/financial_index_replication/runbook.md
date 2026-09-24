@@ -19,21 +19,21 @@ A portfolio manager wants to track a broad benchmark without holding all of its 
    • several times tighter than an equal-weight top-20 baseline (~2.6%); solve is time-limited
 ```
 
-Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` skill (named at the start of each prompt). They run in order in a single session — the formulate step reads the `Stock`/`ReturnDate`/`Sector` concepts declared in `model/schema.py` and populated by `model/source.py`, and the interpret step reads the `Stock.x_selected` and `Stock.x_weight` decisions the solve wrote back.
+Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` skill (named at the start of each prompt). They run in order in a single session — the formulate step reads the `Stock`/`ReturnMonth`/`Sector` concepts declared in `model/schema.py` and populated by `model/source.py`, and the interpret step reads the `Stock.x_selected` and `Stock.x_weight` decisions the solve wrote back.
 
 ---
 
 ## 1. Build the ontology
 
-**Prompt:** /rai-ontology Build an ontology from `data/stocks.csv` (each stock has a benchmark weight, a sector, an average dollar volume, and a previous weight), `data/index_returns.csv` (the benchmark's monthly return per date), and `data/stock_returns.csv` (each stock's monthly return per date). Derive sectors from the stocks, and model the stock return as a relationship from a stock to a date carrying that month's return.
+**Prompt:** /rai-ontology Build an ontology from `data/stocks.csv` (each stock has a benchmark weight, a sector, an average dollar volume, and a previous weight), `data/index_returns.csv` (the benchmark's monthly return per date), and `data/stock_returns.csv` (each stock's monthly return per date). Derive sectors from the stocks, and model the stock return as a relationship from a stock to a month carrying that month's return.
 
-**Response:** `model/source.py` loads `Stock` (50, with `benchmark_weight`, `sector`, `avg_dollar_volume`, `previous_weight`), `ReturnDate` (42 monthly dates with the benchmark `index_return`), a derived `Sector` (7, carrying each sector's aggregated benchmark weight), and a `Stock.return_on(ReturnDate)` relationship carrying 2,100 stock-month returns.
+**Response:** `model/source.py` loads `Stock` (50, with `benchmark_weight`, `sector`, `avg_dollar_volume`, `previous_weight`), `ReturnMonth` (42 months with the benchmark `index_return`), a derived `Sector` (7, carrying each sector's aggregated benchmark weight), and a `Stock.monthly_return(ReturnMonth)` relationship carrying 2,100 stock-month returns.
 
 ## 2. Examine the ontology
 
 **Prompt:** /rai-pyrel What concepts and relationships does the ontology have, and how many rows are in each?
 
-**Response:** Concepts — 50 `Stock`, 42 `ReturnDate` (with `index_return`), and a derived `Sector` (7: Technology, Healthcare, Consumer Discretionary, Financials, Industrials, Consumer Staples, Energy) — linked by `return_on` with 2,100 stock-month return rows (50 stocks x 42 months).
+**Response:** Concepts — 50 `Stock`, 42 `ReturnMonth` (with `index_return`), and a derived `Sector` (7: Technology, Healthcare, Consumer Discretionary, Financials, Industrials, Consumer Staples, Energy) — linked by `monthly_return` with 2,100 stock-month return rows (50 stocks x 42 months).
 
 ## 3. Build the replication basket
 

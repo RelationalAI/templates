@@ -28,7 +28,7 @@ from math import sqrt
 import pandas as pd
 from model import (
     DATA_DIR,
-    ReturnDate,
+    ReturnMonth,
     Sector,
     Stock,
     index_returns_csv,
@@ -69,11 +69,11 @@ if N_REPLICATION_NAMES * MAX_WEIGHT < 1.0:
 
 Stock.x_selected = model.Property(f"{Stock} selected if {Float:selected}")
 Stock.x_weight = model.Property(f"{Stock} has replication weight {Float:weight}")
-ReturnDate.x_pos_error = model.Property(
-    f"{ReturnDate} has positive tracking residual {Float:pos_error}"
+ReturnMonth.x_pos_error = model.Property(
+    f"{ReturnMonth} has positive tracking residual {Float:pos_error}"
 )
-ReturnDate.x_neg_error = model.Property(
-    f"{ReturnDate} has negative tracking residual {Float:neg_error}"
+ReturnMonth.x_neg_error = model.Property(
+    f"{ReturnMonth} has negative tracking residual {Float:neg_error}"
 )
 
 selected = Float.ref("selected")
@@ -98,16 +98,16 @@ problem.solve_for(
     name=["weight", Stock.ticker],
 )
 problem.solve_for(
-    ReturnDate.x_pos_error(pos_error),
+    ReturnMonth.x_pos_error(pos_error),
     type="cont",
     lower=0,
-    name=["pos_error", ReturnDate.date],
+    name=["pos_error", ReturnMonth.date],
 )
 problem.solve_for(
-    ReturnDate.x_neg_error(neg_error),
+    ReturnMonth.x_neg_error(neg_error),
     type="cont",
     lower=0,
-    name=["neg_error", ReturnDate.date],
+    name=["neg_error", ReturnMonth.date],
 )
 
 # Select exactly N names and invest all capital.
@@ -167,13 +167,13 @@ problem.satisfy(
 # index_return[t] - sum_i weight[i] * stock_return[i,t] = pos_error[t] - neg_error[t]
 problem.satisfy(
     model.where(
-        ReturnDate.index_return(index_return),
-        ReturnDate.x_pos_error(pos_error),
-        ReturnDate.x_neg_error(neg_error),
+        ReturnMonth.index_return(index_return),
+        ReturnMonth.x_pos_error(pos_error),
+        ReturnMonth.x_neg_error(neg_error),
         Stock.x_weight(weight),
-        Stock.return_on(ReturnDate, stock_return),
+        Stock.monthly_return(ReturnMonth, stock_return),
     ).require(
-        index_return - sum(stock_return * weight).per(ReturnDate)
+        index_return - sum(stock_return * weight).per(ReturnMonth)
         == pos_error - neg_error
     )
 )
@@ -181,8 +181,8 @@ problem.satisfy(
 # Minimize total absolute tracking residual.
 problem.minimize(
     sum(pos_error + neg_error).where(
-        ReturnDate.x_pos_error(pos_error),
-        ReturnDate.x_neg_error(neg_error),
+        ReturnMonth.x_pos_error(pos_error),
+        ReturnMonth.x_neg_error(neg_error),
     )
 )
 

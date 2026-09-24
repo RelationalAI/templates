@@ -21,6 +21,6 @@ Sector.benchmark_weight = model.Property(
 )
 Stock.sector_ref = model.Relationship(f"{Stock} belongs to {Sector}")
 
-ReturnDate = model.Concept("ReturnDate", identify_by={"date": String})
-ReturnDate.index_return = model.Property(f"{ReturnDate} has index return {Float:index_return}")
-Stock.return_on = model.Relationship(f"{Stock} on {ReturnDate} has return {Float:stock_return}")
+ReturnMonth = model.Concept("ReturnMonth", identify_by={"date": String})
+ReturnMonth.index_return = model.Property(f"{ReturnMonth} has index return {Float:index_return}")
+Stock.monthly_return = model.Relationship(f"{Stock} on {ReturnMonth} has return {Float:stock_return}")

@@ -18,31 +18,39 @@ model_explorer:
   concepts:
     - symbol: Stock
       description: >-
-        An investable security with benchmark weight, liquidity, prior weight,
-        and a monthly return history.
+        One of the 50 stocks the template can hold. Its share of the index and
+        monthly returns help compare the smaller portfolio with the benchmark.
+        Its previous portfolio weight and average daily trading value help
+        limit how much to buy or sell.
 
     - symbol: Sector
       description: >-
-        A market sector used to compare the basket's exposure with the
-        benchmark.
+        A group of stocks in one part of the market, such as Technology. The
+        template keeps the amount invested in each sector close to that
+        sector’s share of the index.
 
-    - symbol: ReturnDate
+    - symbol: ReturnMonth
       description: >-
-        A month in the historical panel with the benchmark return for that
-        period.
+        One month of sample returns. It stores the index return and connects
+        to each stock’s return for that month, so the template can compare the
+        portfolio’s return with the index.
 
   relationships:
     - symbol: Stock.sector_ref
       label: belongs to
       reading: Stock belongs to Sector
-      description: Groups stocks for benchmark aggregation and sector constraints.
-
-    - symbol: Stock.return_on
-      label: returned on
-      reading: Stock has a return on ReturnDate
       description: >-
-        Connects each stock to a benchmark period and records the stock's
-        return for that month.
+        Connects a stock to its sector. The template adds up the index and
+        portfolio weights for stocks in each sector, then limits how far the
+        portfolio can differ from the index.
+
+    - symbol: Stock.monthly_return
+      label: has a return in
+      reading: Stock has a return in ReturnMonth
+      description: >-
+        Links each stock to one month and records the stock’s return for that
+        month. The template weights and adds the stock returns to calculate
+        the basket’s monthly return, then compares it with the index return.
 
   sources:
     - path: data/stocks.csv
@@ -57,90 +65,264 @@ model_explorer:
     - path: data/index_returns.csv
       description: Monthly returns for the benchmark being replicated.
       populates:
-        - ReturnDate
+        - ReturnMonth
 
     - path: data/stock_returns.csv
       description: Monthly returns for each stock in the investable universe.
       populates:
-        - Stock.return_on
+        - Stock.monthly_return
 
 guided_walkthrough:
   title: See how it works
   description: >-
-    Trace market data from the return model to a constrained replication
-    basket and its tracking results.
+    The Model Explorer shows how stocks belong to sectors and have returns
+    for each month. This walkthrough follows those relationships into the
+    Python that loads the data, chooses a 20-stock basket within portfolio
+    limits, and checks its tracking error. Use the excerpts to find the data
+    mappings, limits, and tracking calculation you could adapt for another
+    index.
 
   steps:
     - id: load-stock-return-model
-      title: Load the stock and return model
-      explanation: >-
-        stocks_csv, index_returns_csv, and stock_returns_csv populate the
-        investable universe and aligned return history.
+      title: Load stocks and monthly returns into the model
+      explanation: |-
+        Three CSV files list eligible stocks, monthly index returns, and each
+        stock’s monthly returns. pd.read_csv(...) loads each file into a
+        DataFrame.
+
+        Stock.new(...) and ReturnMonth.new(...) define base facts from the stock
+        and index-return DataFrames. The code groups stocks by sector and uses
+        Stock.monthly_return(...) to connect each stock to its monthly return,
+        giving the model the history needed to compare a proposed basket’s
+        returns with the index.
       focus:
         file: model/source.py
         anchors:
           - start: stocks_csv = pd.read_csv
-            end: stock_returns_csv = pd.read_csv
+            end: ReturnMonth.date(stock_return_data.date),
+            end_offset: 4
       references:
-        stocks_csv:
-          symbol: stocks_csv
-        index_returns_csv:
-          symbol: index_returns_csv
-        stock_returns_csv:
-          symbol: stock_returns_csv
+        pd.read_csv(...):
+          anchor:
+            start: stocks_csv = pd.read_csv
+            end: stock_returns_csv = pd.read_csv
+        Stock.new(...):
+          anchor:
+            start: model.define(Stock.new(model.data(stocks_csv).to_schema()))
+            end: model.define(Stock.new(model.data(stocks_csv).to_schema()))
+        ReturnMonth.new(...):
+          anchor:
+            start: model.define(ReturnMonth.new(model.data(index_returns_csv).to_schema()))
+            end: model.define(ReturnMonth.new(model.data(index_returns_csv).to_schema()))
+        Stock.monthly_return(...):
+          anchor:
+            start: stock_return_data = model.data(stock_returns_csv)
+            end: ReturnMonth.date(stock_return_data.date),
+            end_offset: 1
       links:
-        - title: Declare data sources
-          href: /build/guides/modeling/declare-data-sources/
         - title: Define base facts
           href: /build/guides/modeling/define-base-facts/
+          label: define base facts
 
     - id: define-basket-constraints
-      title: Define selection and tracking constraints
-      explanation: >-
-        Stock.x_selected and Stock.x_weight link basket membership to allocation.
-        ReturnDate.x_pos_error helps measure tracking gaps while constraints
-        enforce the portfolio rules.
+      title: Set up stock choices and weights
+      explanation: |-
+        Once the return history is in the model, the next decisions are which
+        stocks to hold and how much to invest in each. Stock.x_selected and
+        Stock.x_weight represent those choices in a Problem object created by
+        Problem(model, Float).
+
+        The first two problem.solve_for(...) calls create decision variables:
+        yes-or-no selection and a weight from 0% to 10% for each stock. The
+        monthly tracking fields prepare the model to compare the basket’s
+        returns with the index in the next step.
       focus:
         file: financial_index_replication.py
         anchors:
           - start: Stock.x_selected = model.Property
-            end: ReturnDate.x_neg_error = model.Property
-          - start: ").require(weight <= MAX_WEIGHT * selected)"
-            end: ").require(weight <= MAX_WEIGHT * selected)"
-          - start: index_return - sum(stock_return * weight).per(ReturnDate)
-            end: "== pos_error - neg_error"
+            end: name=["weight", Stock.ticker],
+            end_offset: 1
       references:
         Stock.x_selected:
-          symbol: Stock.x_selected
+          anchor:
+            start: Stock.x_selected = model.Property
+            end: Stock.x_selected = model.Property
         Stock.x_weight:
-          symbol: Stock.x_weight
-        ReturnDate.x_pos_error:
-          symbol: ReturnDate.x_pos_error
+          anchor:
+            start: Stock.x_weight = model.Property
+            end: Stock.x_weight = model.Property
+        Problem(model, Float):
+          anchor:
+            start: problem = Problem(model, Float)
+            end: problem = Problem(model, Float)
+        problem.solve_for(...):
+          anchor:
+            start: problem.solve_for(
+            end: name=["weight", Stock.ticker],
+            end_offset: 1
+            occurrence: 1
       links:
+        - title: Create a Problem object
+          href: /build/guides/reasoning/prescriptive/decision-problems/create/
+          label: Problem object
         - title: Create decision variables
           href: /build/guides/reasoning/prescriptive/decision-problems/variables/
+          label: decision variables
+
+    - id: measure-monthly-tracking-gaps
+      title: Minimize monthly return gaps
+      explanation: |-
+        To see how a proposed basket follows the index, the model compares the
+        basket’s return with the index return for each sample month.
+        problem.satisfy(...) adds constraints that express each difference as
+        a positive or negative monthly gap.
+
+        problem.minimize(...) sets an objective that reduces the sum of those
+        gaps across the sample months, so the solver favors baskets closer to
+        the index. This comparison uses past returns and does not guarantee
+        the basket will follow the index as closely in future months.
+      focus:
+        file: financial_index_replication.py
+        anchors:
+          - start: '# Monthly benchmark residual:'
+            end: sum(pos_error + neg_error).where(
+            end_offset: 4
+      references:
+        problem.satisfy(...):
+          anchor:
+            start: '# Monthly benchmark residual:'
+            start_offset: 2
+            end: == pos_error - neg_error
+            end_offset: 2
+        problem.minimize(...):
+          anchor:
+            start: '# Minimize total absolute tracking residual.'
+            start_offset: 1
+            end: sum(pos_error + neg_error).where(
+            end_offset: 4
+      links:
         - title: Add constraints
           href: /build/guides/reasoning/prescriptive/decision-problems/constraints/
+          label: adds constraints
+
+    - id: require-complete-basket
+      title: Select 20 stocks and allocate the portfolio
+      explanation: |-
+        The sample index contains 50 stocks, but the model aims to follow the
+        index with a smaller basket. sum(selected) == N_REPLICATION_NAMES
+        marks 20 of those stocks as selected, and sum(weight) == 1.0 makes
+        the portfolio weights add to 100%.
+
+        MAX_WEIGHT * selected prevents investment in unselected stocks and
+        caps each selected stock at 10%. These constraints still allow a
+        selected stock to have zero weight, so the model may invest in fewer
+        than 20 stocks.
+      focus:
+        file: financial_index_replication.py
+        anchors:
+          - start: '# Select exactly N names and invest all capital.'
+            end: ).require(weight <= MAX_WEIGHT * selected)
+            end_offset: 1
+      references:
+        sum(selected) == N_REPLICATION_NAMES:
+          anchor:
+            start: '# Select exactly N names and invest all capital.'
+            start_offset: 1
+            end: sum(selected) == N_REPLICATION_NAMES
+            end_offset: 2
+        sum(weight) == 1.0:
+          anchor:
+            start: '# Full-investment constraint: portfolio weights must sum to 100%.'
+            start_offset: 1
+            end: problem.satisfy(model.where(Stock.x_weight(weight)).require(sum(weight) == 1.0))
+        MAX_WEIGHT * selected:
+          anchor:
+            start: '# A stock can carry weight only when selected.'
+            start_offset: 1
+            end: ).require(weight <= MAX_WEIGHT * selected)
+            end_offset: 1
+      links:
+        - title: Add constraints
+          href: /build/guides/reasoning/prescriptive/decision-problems/constraints/
+          label: constraints
+
+    - id: limit-sector-and-trades
+      title: Keep sector exposure and trades within limits
+      explanation: |-
+        Matching past index returns is not enough if the basket concentrates
+        in one sector or calls for large trades. SECTOR_ACTIVE_BAND keeps each
+        sector’s share of the portfolio within four percentage points of that
+        sector’s share of the index.
+
+        MAX_ADV_PARTICIPATION compares each proposed buy or sell with the
+        stock’s average daily trading value and caps the trade at 5% of that
+        value. These constraints keep the sector mix near the index while
+        limiting the trades needed to move from the previous portfolio.
+      focus:
+        file: financial_index_replication.py
+        anchors:
+          - start: '# Keep sector exposures close to benchmark sector weights.'
+            end: PORTFOLIO_VALUE * (Stock.previous_weight - weight)
+            end_offset: 3
+      references:
+        SECTOR_ACTIVE_BAND:
+          anchor:
+            start: '# Keep sector exposures close to benchmark sector weights.'
+            end: sum(weight).per(Sector) >= Sector.benchmark_weight - SECTOR_ACTIVE_BAND
+            end_offset: 2
+        MAX_ADV_PARTICIPATION:
+          anchor:
+            start: '# Limit per-name buy and sell dollars as a fraction of average dollar volume.'
+            end: PORTFOLIO_VALUE * (Stock.previous_weight - weight)
+            end_offset: 3
+      links:
+        - title: Add constraints
+          href: /build/guides/reasoning/prescriptive/decision-problems/constraints/
+          label: constraints
 
     - id: solve-and-inspect-basket
-      title: Solve and inspect the basket
-      explanation: >-
-        si records the solve status. tracking_diff compares the chosen basket
-        with the benchmark before the reports are produced.
+      title: Choose the basket and check tracking
+      explanation: |-
+        problem.solve(...) solves the decision problem under the portfolio
+        rules to choose stocks and weights. model.select(...) queries the model
+        for stocks with weights above 0.01% of the portfolio, so a selected
+        stock with zero weight does not appear in the result.
+
+        portfolio_returns calculates the basket’s monthly returns from those
+        weights and stock returns, and tracking_diff compares them with the
+        index returns. annualized_tracking_error() summarizes the monthly gaps
+        as a yearly tracking measure, showing how closely this basket followed
+        the index in the sample months.
       focus:
         file: financial_index_replication.py
         anchors:
           - start: problem.solve("highs", time_limit_sec=240)
-            end: si = problem.solve_info()
-          - start: weights = solution_df.set_index
-            end: tracking_diff = portfolio_returns - index_series["index_return"]
+            end: return monthly_rms * sqrt(MONTHS_PER_YEAR)
       references:
-        si:
-          symbol: si
+        problem.solve(...):
+          anchor:
+            start: problem.solve("highs", time_limit_sec=240)
+            end: problem.solve("highs", time_limit_sec=240)
+        model.select(...):
+          anchor:
+            start: model.select(
+            end: .to_df()
+        portfolio_returns:
+          anchor:
+            start: returns_wide = stock_returns_csv.pivot(
+            end: portfolio_returns = returns_wide[weights.index].mul(weights, axis=1).sum(axis=1)
         tracking_diff:
-          symbol: tracking_diff
+          anchor:
+            start: tracking_diff = portfolio_returns - index_series["index_return"]
+            end: tracking_diff = portfolio_returns - index_series["index_return"]
+        annualized_tracking_error():
+          anchor:
+            start: 'def annualized_tracking_error():'
+            end: return monthly_rms * sqrt(MONTHS_PER_YEAR)
       links:
         - title: Solve a decision problem
           href: /build/guides/reasoning/prescriptive/decision-problems/solve/
-        - title: Inspect solutions
-          href: /build/guides/reasoning/prescriptive/decision-problems/solutions/
+          label: solves the decision problem
+        - title: Query a model
+          href: /build/guides/modeling/query-a-model/
+          label: queries the model
