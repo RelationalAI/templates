@@ -1,6 +1,6 @@
 ---
 title: "Portfolio Re-balancing"
-description: "Compliance screening, covariance clustering, and bi-objective Markowitz optimization that traces the risk-return frontier with solver shadow prices, plus a crisis-regime stress test."
+description: "Flag holdings that exceed concentration limits, group stocks that tend to move together, and compare rebalanced portfolios by expected return and risk under normal and stressed markets."
 featured: false
 experience_level: intermediate
 industry: "Financial Services"
@@ -19,9 +19,9 @@ tags:
 
 ## What this template is for
 
-An investment manager oversees client portfolios whose holdings may appear diversified but move together because they share sectors or market behavior. These hidden concentrations can increase risk and cause a portfolio to breach allocation or compliance limits, especially during stressed markets.
+Investment managers need to keep client portfolios within concentration and compliance limits while weighing expected return against risk. A portfolio can look diversified across many stocks yet still carry hidden risk when holdings share a sector or tend to move together, especially during market stress.
 
-This template combines current holdings, expected returns, and covariance data to identify concentration problems and choose a rebalanced allocation that balances risk and return while respecting portfolio constraints. Use it as a starting point for a different investment universe, set of limits, objective, or stress scenario.
+This template combines portfolio holdings, expected returns, and covariance data to flag concentration problems, group correlated stocks, and calculate rebalanced allocations under portfolio constraints. Use it as a starting point for adapting the investment universe, limits, objectives, or stress scenarios to your own portfolio.
 
 ## What you'll build
 
