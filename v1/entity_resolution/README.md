@@ -1,6 +1,6 @@
 ---
 title: "Entity Resolution"
-description: "Resolve duplicate policyholder records across an insurer's policy systems and acquired books into one insured party. Total each household's exposure, flag accumulation-limit breaches, and choose the lowest-cost reinsurance cessions to clear them."
+description: "Match policy records for the same person or household across insurance systems. Add up their coverage to spot totals above a risk limit, then choose which excess risk to transfer to another insurer within a budget."
 featured: false
 experience_level: intermediate
 industry: "Financial Services"
@@ -20,9 +20,9 @@ tags:
 
 ## What this template is for
 
-An insurer has policyholder records spread across source systems and acquired books. Differences in names and identifiers can make the same insured party look like several customers, which can hide the party's total coverage and cause the insurer to miss accumulation-limit breaches.
+Insurers often store the same person or household as separate policyholder records across product systems and acquired books. Variations in names and identifiers can hide the combined coverage tied to one insured party and leave accumulation risk undetected. This risk grows when one party carries too much exposure.
 
-This template matches and clusters records into resolved parties, aggregates coverage, identifies overexposed parties, and chooses reinsurance cessions within a premium budget. Use it as a starting point for other entity-resolution workflows where downstream decisions require a complete party view.
+This template scores potential record matches, clusters high-confidence matches into resolved parties, and holds uncertain pairs for review. It totals coverage by party, flags exposures above a configurable limit, and selects which coverage to transfer to a reinsurer within a premium budget. Adapt the matching fields, thresholds, exposure rules, and decision constraints to other entity-resolution workflows.
 
 ## Who this is for
 
