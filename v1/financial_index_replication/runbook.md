@@ -19,27 +19,27 @@ A portfolio manager wants to track a broad benchmark without holding all of its 
    • several times tighter than an equal-weight top-20 baseline (~2.6%); solve is time-limited
 ```
 
-Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` skill (named at the start of each prompt). They run in order in a single session — the formulate step reads the `Stock`/`ReturnDate`/`Sector` concepts the build step created, and the interpret step reads the `Stock.x_selected` and `Stock.x_weight` decisions the solve wrote back.
+Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` skill (named at the start of each prompt). They run in order in a single session — the formulate step reads the `Stock`/`ReturnMonth`/`Sector` concepts declared in `model/schema.py` and populated by `model/source.py`, and the interpret step reads the `Stock.x_selected` and `Stock.x_weight` decisions the solve wrote back.
 
 ---
 
 ## 1. Build the ontology
 
-**Prompt:** /rai-ontology Build an ontology from `data/stocks.csv` (each stock has a benchmark weight, a sector, an average dollar volume, and a previous weight), `data/index_returns.csv` (the benchmark's monthly return per date), and `data/stock_returns.csv` (each stock's monthly return per date). Derive sectors from the stocks, and model the stock return as a relationship from a stock to a date carrying that month's return.
+**Prompt:** /rai-ontology Build an ontology from `data/stocks.csv` (each stock has a benchmark weight, a sector, an average dollar volume, and a previous weight), `data/index_returns.csv` (the benchmark's monthly return per date), and `data/stock_returns.csv` (each stock's monthly return per date). Derive sectors from the stocks, and model the stock return as a relationship from a stock to a month carrying that month's return.
 
-**Response:** Loads `Stock` (50, with `benchmark_weight`, `sector`, `avg_dollar_volume`, `previous_weight`), `ReturnDate` (42 monthly dates with the benchmark `index_return`), a derived `Sector` (7, carrying each sector's aggregated benchmark weight), and a `Stock.return_on(ReturnDate)` relationship (2,100 stock-month returns).
+**Response:** `model/source.py` loads `Stock` (50, with `benchmark_weight`, `sector`, `avg_dollar_volume`, `previous_weight`), `ReturnMonth` (42 months with the benchmark `index_return`), a derived `Sector` (7, carrying each sector's aggregated benchmark weight), and a `Stock.monthly_return(ReturnMonth)` relationship carrying 2,100 stock-month returns.
 
 ## 2. Examine the ontology
 
 **Prompt:** /rai-pyrel What concepts and relationships does the ontology have, and how many rows are in each?
 
-**Response:** Concepts — 50 `Stock`, 42 `ReturnDate` (with `index_return`), and a derived `Sector` (7: Technology, Healthcare, Consumer Discretionary, Financials, Industrials, Consumer Staples, Energy) — linked by `return_on` with 2,100 stock-month return rows (50 stocks x 42 months).
+**Response:** Concepts — 50 `Stock`, 42 `ReturnMonth` (with `index_return`), and a derived `Sector` (7: Technology, Healthcare, Consumer Discretionary, Financials, Industrials, Consumer Staples, Energy) — linked by `monthly_return` with 2,100 stock-month return rows (50 stocks x 42 months).
 
 ## 3. Build the replication basket
 
 **Prompt:** /rai-prescriptive-problem Which 20 stocks, and at what weights, best replicate the benchmark's monthly returns? Select exactly 20 names (binary) and assign continuous weights that sum to 1, with at most 10% in any one name and a weight only if the name is selected; keep each sector within ±4% of its benchmark weight; respect a trading-capacity limit (the change from the previous weight, scaled by a $10 million portfolio value, can't exceed 5% of a stock's average dollar volume); and define each month's tracking residual as benchmark return minus basket return. Minimize the total absolute monthly tracking error, and persist the selection and weights to the ontology.
 
-**Response:** Returns a 20-name basket. The decision is `Stock.x_selected` (exactly 20 names) plus `Stock.x_weight` (summing to 1) and per-month residual variables. This is a cardinality-constrained tracking MILP: depending on the solver it either solves to OPTIMAL or returns a strong feasible incumbent at the time limit — either way the exact names and weights can vary, so treat the tracking quality below, not a specific basket, as the result.
+**Response:** `financial_index_replication.py` returns a 20-name basket. The decision is `Stock.x_selected` (exactly 20 names) plus `Stock.x_weight` (summing to 1) and per-month residual variables. This is a cardinality-constrained tracking MILP: depending on the solver it either solves to OPTIMAL or returns a strong feasible incumbent at the time limit — either way the exact names and weights can vary, so treat the tracking quality below, not a specific basket, as the result.
 
 ## 4. Assess tracking quality
 
@@ -49,4 +49,4 @@ Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` 
 
 ## Data
 
-Bundled CSVs in `data/`: 50 stocks, 42 monthly index returns, 2,100 stock-month returns. The policy parameters (20 names, 10% max weight, ±4% sector band, ADV limit) are constants in the script; the run writes a `replica_returns.csv` of monthly basket vs benchmark returns. Full model in `financial_index_replication.py`.
+Bundled CSVs in `data/`: 50 stocks, 42 monthly index returns, 2,100 stock-month returns. The policy parameters (20 names, 10% max weight, ±4% sector band, ADV limit) are constants in `financial_index_replication.py`; the run writes a `replica_returns.csv` of monthly basket vs benchmark returns. The reusable model is split between `model/schema.py` and `model/source.py`, while the runner owns the decision problem, solve, result queries, and reporting.

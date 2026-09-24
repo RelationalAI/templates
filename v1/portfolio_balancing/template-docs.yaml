@@ -1,0 +1,330 @@
+# Proposed v1 sidecar for v1/portfolio_balancing/template-docs.yaml.
+#
+# README.md supplies page metadata, the problem statement, and Quickstart.
+# Its opening link is for README readers, not the generated guide. The docs
+# build derives identities, properties, source mappings, row counts, and line
+# ranges from the referenced files.
+
+version: 1
+
+page:
+  omit_readme_preamble: true
+  lead_from_readme:
+    - what-this-template-is-for
+  omit_from_readme: []
+  download_and_run_from_readme: true
+
+model_explorer:
+  title: Explore the model
+  description: >-
+    The model connects investors and their accounts to holdings, stocks,
+    sectors, and transactions. Rules inspect the current portfolio, graph
+    reasoning groups correlated stocks, and prescriptive reasoning chooses
+    a re-balanced portfolio.
+
+  # List order controls the reading order. Identity keys and properties are
+  # extracted from model/schema.py and are not repeated here.
+  concepts:
+    - symbol: User
+      description: An investor who owns the accounts holding stock positions. The model uses the investor’s risk score and flagged transactions to identify high-risk traders.
+
+    - symbol: Account
+      description: A brokerage or retirement account owned by an investor.
+
+    - symbol: Holding
+      description: A stock position held in an account.
+
+    - symbol: Transaction
+      description: An investor transaction with an amount, category, and flagged status from the input data. The model counts flagged transactions by investor as part of its high-risk trader check.
+
+    - symbol: Stock
+      description: A stock available for investment, with an expected return and covariance values. Covariance describes how its returns tend to move with those of other stocks, helping the model group related stocks and measure portfolio risk.
+
+    - symbol: Sector
+      description: A market sector used to measure and constrain concentration.
+
+  # Endpoints are extracted from the schema expression. The author supplies
+  # the business reading and explanation.
+  relationships:
+    - symbol: Account.user
+      label: owned by
+      reading: Account is owned by User
+      description: Connects each account to the investor who owns it.
+
+    - symbol: Holding.account
+      label: held in
+      reading: Holding is held in Account
+      description: Connects a position to the account that contains it.
+
+    - symbol: Holding.stock
+      label: position in
+      reading: Holding is a position in Stock
+      description: Connects a position to the security it represents.
+
+    - symbol: Stock.sector_ref
+      label: belongs to
+      reading: Stock belongs to Sector
+      description: Groups stocks for sector exposure checks and constraints.
+
+    - symbol: Transaction.user
+      label: made by
+      reading: Transaction was made by User
+      description: Connects activity to the investor evaluated by compliance rules.
+
+  sources:
+    # The extractor validates these paths and infers which model items they
+    # populate from model/source.py. A populates override is allowed only when
+    # the mapping is dynamic or ambiguous.
+    - path: data/users.csv
+      description: Investor names and risk scores.
+
+    - path: data/accounts.csv
+      description: Account ownership, type, and balance.
+
+    - path: data/holdings.csv
+      description: Current stock positions by account.
+
+    - path: data/transactions.csv
+      description: Investor transactions and existing flagged indicators.
+
+    - path: data/returns.csv
+      description: Stock identifiers, sectors, and expected returns.
+
+    - path: data/covar.csv
+      description: Pairwise stock covariance values.
+      populates:
+        - Stock
+
+guided_walkthrough:
+  title: See how it works
+  description: >-
+    The Model Explorer shows the portfolio concepts and relationships. The
+    steps below show how the template defines the model in Python, loads
+    portfolio data, checks compliance, groups correlated stocks, and
+    rebalances the portfolio. Use the excerpts to find the data mappings,
+    rules, and limits you could adapt for your project.
+
+  steps:
+    - id: connect-portfolio-model
+      title: Connect investors to portfolio positions
+      explanation: >-
+        The model declares Account with the type and balance that provide context
+        for portfolio limits, then uses Account.user to connect the account to its
+        investor. It declares Holding with each position's quantity and purchase
+        price, then uses Holding.account and Holding.stock to connect that position
+        to its account and security. Together, these concepts and relationships
+        give later rules and optimization a connected view of the portfolio.
+      focus:
+        file: model/schema.py
+        anchors:
+          - start: Account = model.Concept
+            end: Holding.stock = model.Relationship
+      references:
+        Account:
+          symbol: Account
+        Account.user:
+          symbol: Account.user
+        Holding:
+          symbol: Holding
+        Holding.account:
+          symbol: Holding.account
+        Holding.stock:
+          symbol: Holding.stock
+      links:
+        - title: Declare concepts
+          href: /build/guides/modeling/declare-concepts/
+          label: concepts
+        - title: Declare relationships and properties
+          href: /build/guides/modeling/declare-relationships-and-properties/
+          label: relationships
+
+    - id: load-portfolio-and-market-facts
+      title: Load and connect portfolio positions
+      explanation: >-
+        holding_data declares the bundled holdings file as a data source and
+        reads each current position. Holding.new(...) maps the row's account key,
+        stock key, quantity, and purchase price into model facts.
+        Holding.account(...) and Holding.stock(...) connect that position to its
+        account and security, so later reasoning can combine portfolio structure
+        with market data.
+      focus:
+        file: model/source.py
+        anchors:
+          - start: holding_data = model.data
+            end: model.define(Holding.stock
+      references:
+        holding_data:
+          symbol: holding_data
+        Holding.new(...):
+          anchor:
+            start: holding := Holding.new
+            end: holding.purchase_price
+        Holding.account(...):
+          anchor:
+            start: model.define(Holding.account
+            end: Holding.account_id == Account.account_id
+        Holding.stock(...):
+          anchor:
+            start: model.define(Holding.stock
+            end: model.define(Holding.stock
+      links:
+        - title: Declare data sources
+          href: /build/guides/modeling/declare-data-sources/
+          label: data source
+        - title: Define base facts
+          href: /build/guides/modeling/define-base-facts/
+          label: model facts
+
+    - id: flag-overconcentrated-positions
+      title: Flag positions that exceed concentration limits
+      explanation: >-
+        Holding.value derives each position's value from its quantity and purchase
+        price. Holding.is_overconcentrated names the compliance flag, and
+        model.where(...) applies it when a position exceeds the configured share
+        of its account balance. This rules-based reasoning turns the portfolio
+        policy into a relationship that later queries can inspect.
+      focus:
+        file: portfolio_balancing.py
+        anchors:
+          - start: Holding.value = model.Property
+            end: ).define(Holding.is_overconcentrated())
+      references:
+        Holding.value:
+          anchor:
+            start: Holding.value = model.Property
+            end: model.define(Holding.value
+        Holding.is_overconcentrated:
+          symbol: Holding.is_overconcentrated
+        model.where(...):
+          anchor:
+            start: AccountR1 = Account.ref()
+            end: ).define(Holding.is_overconcentrated())
+      links:
+        - title: Rules-based reasoning
+          href: /build/guides/reasoning/rules-based/
+          label: rules-based reasoning
+
+    - id: build-correlation-graph
+      title: Build a graph of correlated stocks
+      explanation: |-
+        Graph(...) creates an undirected graph whose nodes are stocks.
+        corr_graph.Edge.new(...) connects pairs whose absolute correlation meets
+        the configured threshold, so edges represent meaningful co-movement rather
+        than every possible pair.
+
+        corr_graph.louvain() groups the connected stocks into communities, and
+        Stock.cluster writes each community label back to the shared model. This
+        graph reasoning exposes correlated bets that sector-only limits can miss
+        and gives optimization a way to reduce redundant exposure.
+      focus:
+        file: portfolio_balancing.py
+        anchors:
+          - start: corr_graph = Graph(
+            end: community(stock_clust_ref, cluster_label)
+            end_offset: 1
+      references:
+        Graph(...):
+          anchor:
+            start: corr_graph = Graph(
+            end: aggregator="sum",
+            end_offset: 1
+        corr_graph.Edge.new(...):
+          anchor:
+            start: model.define(corr_graph.Edge.new
+            end: math_abs(corr_ref) >= CORR_THRESHOLD
+            end_offset: 1
+        corr_graph.louvain():
+          symbol: community
+        Stock.cluster:
+          anchor:
+            start: Stock.cluster = model.Property
+            end: community(stock_clust_ref, cluster_label)
+            end_offset: 1
+      links:
+        - title: Graph reasoning
+          href: /build/guides/reasoning/graph/
+          label: graph reasoning
+
+    - id: constrain-portfolio-allocation
+      title: Constrain the portfolio allocation
+      explanation: >-
+        Problem(...) creates a decision problem for prescriptive reasoning, and
+        problem.solve_for(...) makes each stock quantity a decision variable for
+        every budget-and-market scenario. problem.satisfy(...) requires
+        nonnegative, fully invested portfolios, then
+        _add_compliance_constraints(...) reapplies the position, sector, and
+        representative-only limits. These constraints keep every candidate
+        allocation feasible before the model compares risk and return.
+      focus:
+        file: portfolio_balancing.py
+        anchors:
+          - start: problem = Problem(model, Float)
+            end: "# Compliance constraints (position + sector limits; non-reps forced to 0)"
+            end_offset: 1
+      references:
+        Problem(...):
+          anchor:
+            start: problem = Problem(model, Float)
+            end: problem = Problem(model, Float)
+        problem.solve_for(...):
+          anchor:
+            start: quantity_var = problem.solve_for(
+            end: quantity_var = problem.solve_for(
+            end_offset: 4
+        problem.satisfy(...):
+          anchor:
+            start: "# Non-negative"
+            end: "# Compliance constraints (position + sector limits; non-reps forced to 0)"
+        _add_compliance_constraints(...):
+          anchor:
+            start: "# Compliance constraints (position + sector limits; non-reps forced to 0)"
+            end: "# Compliance constraints (position + sector limits; non-reps forced to 0)"
+            end_offset: 1
+      links:
+        - title: Prescriptive reasoning
+          href: /build/guides/reasoning/prescriptive/
+          label: prescriptive reasoning
+        - title: Add decision variables
+          href: /build/guides/reasoning/prescriptive/decision-problems/variables/
+          label: decision variable
+
+    - id: trace-and-stress-test-frontier
+      title: Trace and stress-test the risk-return frontier
+      explanation: |-
+        The template uses ret_con to add a constraint setting a minimum expected
+        return for each budget-and-market scenario, creating a point on the
+        efficient frontier. problem.minimize(...) then chooses the feasible
+        allocation with the lowest covariance-based risk using that scenario’s
+        base or crisis covariance.
+
+        problem.solve(...) solves the decision problem with the quadratic solver
+        and requests sensitivity values when a return target is present. Repeating
+        this solve across targets traces the risk-return frontier and shows how
+        the same allocation problem behaves under market stress.
+      focus:
+        file: portfolio_balancing.py
+        anchors:
+          - start: ret_con = None
+            end: problem.solve("highs", time_limit_sec=60, sensitivity=eps_rate is not None)
+      references:
+        ret_con:
+          anchor:
+            start: ret_con = None
+            end: 'keyed_by={"scenario": Scenario},'
+            end_offset: 1
+        problem.minimize(...):
+          anchor:
+            start: problem.minimize(
+            end: PairedStock.x_quantity(Scenario, x_qty_paired),
+            end_offset: 2
+        problem.solve(...):
+          anchor:
+            start: problem.solve("highs", time_limit_sec=60, sensitivity=eps_rate is not None)
+            end: problem.solve("highs", time_limit_sec=60, sensitivity=eps_rate is not None)
+      links:
+        - title: Add constraints
+          href: /build/guides/reasoning/prescriptive/decision-problems/constraints/
+          label: add a constraint
+        - title: Solve a decision problem
+          href: /build/guides/reasoning/prescriptive/decision-problems/solve/
+          label: solves the decision problem

@@ -1,15 +1,14 @@
 # Runbook: Fraud Detection — Multi-Reasoner Walkthrough
 
-A fraud team has to decide which flagged transactions to send to human investigators when investigator time is the scarce resource. This chain turns raw accounts and transactions into a prioritized, budget-feasible audit queue: score account centrality, flag sender activity, learn a per-transaction fraud probability with a graph neural network (GNN), blend that into an alert score, then solve a knapsack optimization that captures the most expected loss within a fixed investigator-hours budget. Four reasoner families, one ontology — no single one produces the audit schedule.
+A fraud team has to decide which flagged transactions to send to human investigators when investigator time is the scarce resource. This chain turns raw accounts and transactions into a prioritized, budget-feasible audit queue: score account centrality, flag sender activity, learn a per-transaction fraud probability with a graph neural network (GNN), blend that into an alert score, then solve a knapsack optimization that captures the most expected loss within a fixed investigator-hours budget. Four reasoner families, one shared model — no single one produces the audit schedule.
 
 ## The chain
 
 ```
-~32,700 accounts and ~16,400 transactions (PaySim mobile-money). The chain scores
-account centrality, flags sender activity, learns per-transaction fraud probability
-(GNN), blends it into an alert score, then picks the audit queue that captures the most
-expected loss within a 2,000 investigator-hour budget — OPTIMAL, ~$1.70B captured,
-about +40% over a naive sort-by-score.
+~32,700 accounts and ~16,400 transactions (bundled PaySim sample). The chain
+scores account centrality, flags sender activity, learns per-transaction fraud
+probability (GNN), blends it into an alert score, then picks the audit queue
+that captures the most expected loss within an 80 investigator-hour budget.
 
   ─────────────────────────────────────────────────────────────────
   STAGE 1  Graph        ──►  Account.pagerank
@@ -27,45 +26,76 @@ about +40% over a naive sort-by-score.
                              0.3 x is_flagged_fraud + 0.7 x predicted prob.
   ─────────────────────────────────────────────────────────────────
   STAGE 5  Prescriptive ──►  Transaction.x_audit  (knapsack MILP)
-                             Maximize captured expected loss within 2,000
-                             investigator-hours. OPTIMAL, ~$1.70B captured;
-                             +$489M (~40%) over a naive top-by-score sort.
+                             Maximize captured expected loss within 80
+                             investigator-hours, then compare the result with
+                             a naive top-by-score queue.
   ─────────────────────────────────────────────────────────────────
 ```
 
+## Code map
+
+- `model/schema.py` declares the stable `Account` and `Transaction` concepts,
+  sender and receiver relationships, and train/validation/test task surfaces.
+- `model/source.py` provides explicit `load_local_data()` and
+  `load_snowflake_data()` functions. Importing `model` does not select or load
+  a data source.
+- `fraud_detection_local.py` is the primary runner. It loads the bundled CSVs,
+  trains on CPU, solves the 80-hour audit problem, and prints the audit queue.
+- `fraud_detection.py` is the Snowflake adaptation. It loads equivalent tables,
+  trains on GPU, and uses a 2,000-hour budget by default.
+- `fraud_detection_rules.ipynb` remains a complementary rule-based
+  identity-graph introduction.
+
 ## Workflow
 
-> **How to use this walkthrough.** Each section below is a Prompt that an analyst pastes into a fresh agent session loaded with the named `/rai-*` skill. Prompts are designed to run **in order, in a single session** — every step relies on enrichments the previous steps wrote back to the shared ontology, so the agent inherits accumulated model state across prompts. This template reads from Snowflake source tables and trains a GNN on a GPU engine (a gurobi/HiGHS-enabled prescriptive engine and a GPU predictive engine are prerequisites).
+> **How to use this walkthrough.** Run `python fraud_detection_local.py` for
+> the complete bundled example. The prompts below describe the same stages for
+> an analyst using the named `/rai-*` skills. Run them **in order, in one
+> session** because each step adds data or properties to the shared model.
+> The local path uses CSV data and CPU training; it still requires a configured
+> RelationalAI connection and a writable experiment schema.
 
 ### 1. Build ontology
 
 **Prompt**
 
-```
-/rai-ontology Build an ontology from the PaySim mobile-money Snowflake schema: accounts (each with an id and an account-type prefix), transactions (each with a type, an amount, sender and receiver balance changes, the sender and receiver accounts, an existing fraud flag, and an audit cost), and the train / validation / test split tables that label transactions as fraud or not. Link each transaction to its sender and receiver accounts.
+```text
+/rai-ontology Load the bundled PaySim CSVs with load_local_data(): accounts
+(each with an id and account-type prefix), transactions (each with a type,
+amount, sender and receiver balances, sender and receiver accounts, fraud flag,
+and derived audit cost), and the train/validation/test task files. Use the
+Account and Transaction declarations from model/schema.py and connect each
+transaction to its sender and receiver accounts.
 ```
 
 **Response**
 
-Loads `Account` (~32,661: customer and merchant prefixes), `Transaction` (~16,426, with `trans_type`, `amount`, balance deltas, `is_flagged_fraud`, and an `audit_cost` of 1 hour for amounts up to $1M and 5 hours above), and the `TRAIN` / `VAL` / `TEST` label tables (~11,498 / 2,463 / 2,465). The TEST set is the unlabeled decision set.
+`load_local_data()` loads `Account` (~32,661 customer and merchant accounts),
+`Transaction` (~16,426 rows with `trans_type`, `amount`, balance fields,
+`is_flagged_fraud`, and a derived audit cost), and the train/validation/test
+task files (~11,498 / 2,463 / 2,465 rows). The test set is the unlabeled
+decision set.
 
 ### 2. Examine ontology
 
 **Prompt**
 
-```
+```text
 /rai-pyrel What concepts and relationships does the ontology have, and how many rows are in each?
 ```
 
 **Response**
 
-`Account` (~32,661), `Transaction` (~16,426, linked to sender and receiver accounts), and the train/val/test split tables. The training set carries the fraud label (about 38% fraud after class-balance inflation of the rare native rate).
+`Account` (~32,661), `Transaction` (~16,426, linked to sender and receiver
+accounts), and the train/validation/test task surfaces. The training set
+carries the fraud label after the sample inflates the rare native fraud rate
+for CPU training.
 
 ### 3. Discover reasoner questions
 
 **Prompt**
 
-```
+```text
 /rai-discovery We need to pick which flagged transactions to investigate within a limited number of investigator-hours, using network structure and a learned fraud probability. How should we break this down?
 ```
 
@@ -77,7 +107,7 @@ Routes to graph centrality and an activity flag (account features), a GNN fraud 
 
 **Prompt**
 
-```
+```text
 /rai-graph-analysis On the account-to-account funds-flow graph (an edge from each transaction's sender to its receiver), score each account's centrality with PageRank, and persist it as Account.pagerank so the fraud model can use it as a feature.
 ```
 
@@ -89,7 +119,7 @@ PageRank runs over the account funds-flow graph; `Account.pagerank` is written b
 
 **Prompt**
 
-```
+```text
 /rai-pyrel For each account, count how many transactions it sends, and persist it as Account.activity_count for use as a model feature.
 ```
 
@@ -101,19 +131,23 @@ PageRank runs over the account funds-flow graph; `Account.pagerank` is written b
 
 **Prompt**
 
-```
+```text
 /rai-predictive-modeling + /rai-predictive-training Train a graph neural network to predict whether each transaction is fraudulent (binary classification, evaluated by ROC-AUC) over the transaction-to-account graph, using the transaction fields plus the account features (pagerank, activity count). Train on the labeled training split, validate, and score the test transactions, writing the fraud probabilities back to the ontology.
 ```
 
 **Response**
 
-A GNN binary classifier trains on the transaction-account graph (features include `amount`, balance deltas, `pagerank`, `activity_count`) and scores the 2,465 test transactions; the probabilities are written back as `Transaction.predictions` (`.probs`). Training plus prediction takes roughly 10 minutes on the GPU engine.
+A GNN binary classifier trains on the transaction-account graph (features
+include `amount`, balance deltas, `pagerank`, and `activity_count`) and scores
+the 2,465 test transactions. The probabilities are written back as
+`Transaction.predictions` (`.probs`). The bundled runner trains on CPU; runtime
+depends on the connected engine and environment.
 
 ### 7. Blend into an alert score
 
 **Prompt**
 
-```
+```text
 /rai-pyrel Combine the existing fraud flag and the model's probability into a single alert score — 30% the flag, 70% the predicted probability — and persist it as Transaction.alert_score.
 ```
 
@@ -125,26 +159,52 @@ A GNN binary classifier trains on the transaction-account graph (features includ
 
 **Prompt**
 
-```
-/rai-prescriptive-problem Choose which test transactions to audit to maximize captured expected loss — alert score times amount — within a 2,000 investigator-hour budget (each audit costs its transaction's audit_cost in hours), with at most one audit per receiving account. Persist the audit decision as Transaction.x_audit.
+```text
+/rai-prescriptive-problem Choose which test transactions to audit to maximize
+captured expected loss — alert score times amount — within an 80
+investigator-hour budget (each audit costs its transaction's audit_cost in
+hours), with at most one audit per receiving account. Persist the audit
+decision as Transaction.x_audit.
 ```
 
 **Response**
 
-OPTIMAL (HiGHS knapsack MILP), capturing about **$1.70B** of expected loss within the 2,000-hour budget. The budget binds — feasible audit demand (~5,300 hours) far exceeds it — and `Transaction.x_audit` is written back.
+The verified bundled run reaches an `OPTIMAL` HiGHS solution and captures
+about **$111.9M** of expected loss within the 80-hour budget.
+`Transaction.x_audit` stores the selected transactions. Exact values may shift
+slightly with GNN numerical variation.
 
 ### 9. Compare to the naive queue
 
 **Prompt**
 
-```
+```text
 /rai-prescriptive-results How much more expected loss does the optimized audit queue capture than a naive queue that just sorts by alert score until the budget runs out?
 ```
 
 **Response**
 
-The cost-aware MILP captures about **$489M more** than the naive sort-by-score queue (~$1.70B vs ~$1.21B) — roughly a **40% uplift** — by trading each audit's hour-cost against its catch value and respecting the one-audit-per-receiver cap, rather than spending the budget on the highest-scored (but expensive or redundant) transactions first. (The exact dollar figures depend on the trained model's probabilities; the sizable uplift over the naive queue is the stable result.)
+The verified bundled run captures about **$43.9M more** than the naive
+sort-by-score queue (~$111.9M vs ~$67.9M). The MILP trades each audit's
+hour-cost against its catch value and respects the one-audit-per-receiver cap,
+rather than spending the budget on the highest-scored but expensive or
+redundant transactions first. Exact values depend on the trained model's
+probabilities.
 
-## Data
+## Adapt the flow to Snowflake
 
-Source: the PaySim mobile-money Snowflake schema (accounts, transactions, train/val/test splits). The audit budget (2,000 hours), audit-cost tiers, and alert-score blend are constants in the script. Full chain in `fraud_detection.py`.
+Use `fraud_detection.py` when your accounts, transactions, and task splits
+already live in Snowflake:
+
+1. Set `DATABASE` and `SCHEMA` to the location of `ACCOUNTS`,
+   `TRANSACTIONS`, `TRAIN`, `VAL`, and `TEST`.
+2. Provide `audit_cost` on `TRANSACTIONS`; the loader maps the column without
+   recomputing it.
+3. Update the feature mapping and task-column accesses in the runner for your
+   schema.
+4. Run `python fraud_detection.py` on a GPU-enabled RAI engine.
+
+The Snowflake runner calls `load_snowflake_data()` explicitly and retains the
+same schema, reasoning stages, output comparison, and `Transaction.x_audit`
+result as the local runner. Its default investigator budget is 2,000 hours to
+match the larger dataset.

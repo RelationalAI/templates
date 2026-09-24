@@ -1,9 +1,10 @@
 """Fraud Detection -- full-pipeline runner for the predict-then-optimize template.
 
 Reference implementation of the same 5-stage pipeline as fraud_detection_local.py,
-but loading from a Snowflake dataset and training on GPU. Use this as an
-adaptation reference when wiring the pattern into your own Snowflake data
-(customer / transaction / counterparty tables + train/val/test split tables).
+but loading a Snowflake dataset through `load_snowflake_data()` and training
+on GPU. Use this as an adaptation reference when wiring the pattern into your
+own Snowflake data (customer / transaction / counterparty tables +
+train/val/test split tables).
 
 Stages (identical to the local runner):
   1. Graph -- PageRank on an Account-Account funds-flow graph, bound to
@@ -33,9 +34,17 @@ Output:
     loss averted), and a naive-sort baseline for comparison.
 """
 
-from pathlib import Path
-
-from relationalai.semantics import Any, Float, Integer, Model, String, count, select, sum
+from model import (
+    Account,
+    Test,
+    Train,
+    TrainTable,
+    Transaction,
+    Val,
+    load_snowflake_data,
+    model,
+)
+from relationalai.semantics import Float, Integer, count, select, sum
 from relationalai.semantics.reasoners.graph import Graph
 from relationalai.semantics.reasoners.predictive import GNN, PropertyTransformer
 from relationalai.semantics.reasoners.prescriptive import Problem
@@ -65,8 +74,6 @@ ALPHA_FLAG = 0.3
 AUDIT_BUDGET_HOURS = 2000.0       # scale up from the local subset's 80h
 PER_ACCOUNT_CAP = 1
 
-DATA_DIR = Path(__file__).parent / "data"
-
 
 def _report(gnn, label):
     if not VERBOSE_DATASET:
@@ -83,17 +90,10 @@ def _report(gnn, label):
         print(f"  visualize_dataset unavailable (install pydot?): {e}")
 
 
-model = Model("fraud_detection")
-Concept, Table, Relationship = model.Concept, model.Table, model.Relationship
-
 # --------------------------------------------------
-# Setup: concepts, data, and graph structures (loaded from Snowflake)
+# Setup: Snowflake data and graph structures
 # --------------------------------------------------
-Account = Concept("Account", identify_by={"account_id": String})
-Transaction = Concept("Transaction", identify_by={"transaction_id": Integer})
-
-model.define(Account.new(Table(f"{DATABASE}.{SCHEMA}.ACCOUNTS").to_schema()))
-model.define(Transaction.new(Table(f"{DATABASE}.{SCHEMA}.TRANSACTIONS").to_schema()))
+load_snowflake_data(DATABASE, SCHEMA)
 
 # Derive audit_cost (hours) from transaction size in Snowflake as part of the
 # TRANSACTIONS table (add a view with a CASE expression) rather than at Python
@@ -107,9 +107,11 @@ model.define(Transaction.new(Table(f"{DATABASE}.{SCHEMA}.TRANSACTIONS").to_schem
 gnn_graph = Graph(model, directed=True, weighted=False)
 Edge = gnn_graph.Edge
 model.define(Edge.new(src=Transaction, dst=Account)).where(
-    Transaction.name_orig == Account.account_id)
+    Transaction.sender(Account)
+)
 model.define(Edge.new(src=Transaction, dst=Account)).where(
-    Transaction.name_dest == Account.account_id)
+    Transaction.receiver(Account)
+)
 
 # Account-Account funds-flow graph for Stage 1 PageRank.
 # `node_concept=Account` means `acct_graph.Node IS Account`, so the
@@ -124,8 +126,8 @@ _sender = Account.ref()
 _receiver = Account.ref()
 _txn_ref = Transaction.ref()
 model.define(acct_graph.Edge.new(src=_sender, dst=_receiver)).where(
-    _txn_ref.name_orig == _sender.account_id,
-    _txn_ref.name_dest == _receiver.account_id,
+    _txn_ref.sender(_sender),
+    _txn_ref.receiver(_receiver),
 )
 
 # --------------------------------------------------
@@ -175,29 +177,6 @@ pt = PropertyTransformer(
 # --------------------------------------------------
 # Stage 3: Predictive -- GNN binary classification
 # --------------------------------------------------
-TrainTable = Concept("TrainTable")
-ValTable = Concept("ValTable")
-TestTable = Concept("TestTable")
-
-model.define(TrainTable.new(Table(f"{DATABASE}.{SCHEMA}.TRAIN").to_schema()))
-model.define(ValTable.new(Table(f"{DATABASE}.{SCHEMA}.VAL").to_schema()))
-model.define(TestTable.new(Table(f"{DATABASE}.{SCHEMA}.TEST").to_schema()))
-
-Train = Relationship(f"{Transaction} at {Any:step_ts} has {Any:label}")
-model.define(
-    Train(Transaction, TrainTable.step_ts, TrainTable.is_fraud)
-).where(Transaction.transaction_id == TrainTable.transaction_id)
-
-Val = Relationship(f"{Transaction} at {Any:step_ts} has {Any:label}")
-model.define(
-    Val(Transaction, ValTable.step_ts, ValTable.is_fraud)
-).where(Transaction.transaction_id == ValTable.transaction_id)
-
-Test = Relationship(f"{Transaction} at {Any:step_ts}")
-model.define(
-    Test(Transaction, TestTable.step_ts)
-).where(Transaction.transaction_id == TestTable.transaction_id)
-
 _label_df = select(TrainTable.is_fraud.alias("label")).to_df()
 if len(_label_df):
     _l = _label_df["label"].astype("int64")

@@ -1,6 +1,6 @@
-# Runbook: Portfolio Balancing — Multi-Reasoner Walkthrough
+# Runbook: Portfolio Re-balancing — Multi-Reasoner Walkthrough
 
-Rebalance an 8-stock book under compliance + crisis stress. Rules surface broken positions, graph collapses redundant bets via correlation clustering, prescriptive solves a Markowitz QP across 6 (budget, regime) scenarios. No single reasoner does all three: rules don't allocate, graph doesn't optimize, prescriptive on the full universe stacks near-duplicate cluster members.
+Re-balance an 8-stock book under compliance + crisis stress. Rules surface broken positions, graph collapses redundant bets via correlation clustering, prescriptive solves a Markowitz QP across 6 (budget, regime) scenarios. No single reasoner does all three: rules don't allocate, graph doesn't optimize, prescriptive on the full universe stacks near-duplicate cluster members.
 
 ## The chain
 
@@ -40,6 +40,12 @@ without the cluster collapse, the gap would grow.
   ─────────────────────────────────────────────────────────────────
 ```
 
+## Implementation map
+
+- `model/schema.py` creates the shared model and declares `User`, `Account`, `Holding`, `Transaction`, `Stock`, `Sector`, and their stable properties and relationships.
+- `model/source.py` loads the bundled CSVs and maps source fields onto that schema. `model/__init__.py` re-exports the loaded model for the runner.
+- `portfolio_balancing.py` defines and executes the four reasoning stages, solves the frontier, and reports the results.
+
 ## Workflow
 
 > **How to use this walkthrough.** Each section below is a Prompt that an analyst pastes into a fresh agent session loaded with the named `/rai-*` skill. Prompts are designed to run **in order, in a single session** — every step relies on enrichments the previous steps wrote back to the shared ontology, so the agent inherits accumulated model state across prompts.
@@ -49,12 +55,12 @@ without the cluster collapse, the gap would grow.
 **Prompt**
 
 ```
-/rai-ontology Build a portfolio ontology from the CSVs in data/. The covariance file is in long form (stock_i, stock_j, value) — model it as a binary property on Stock rather than a separate Concept. Promote sector to its own Concept so downstream rules can aggregate exposure per sector.
+/rai-ontology Use the declarations in model/schema.py and the CSV mappings in model/source.py to build the portfolio ontology. The covariance file is in long form (stock_i, stock_j, value) — model it as a binary property on Stock rather than a separate Concept. Promote sector to its own Concept so downstream rules can aggregate exposure per sector.
 ```
 
 **Response**
 
-Concepts: `Stock` (with binary `Stock.covar(Stock, Stock)` property carrying covariance), `Sector`, `User`, `Account`, `Holding`, `Transaction` — bound to the bundled CSVs (8 stocks, 64 covariance entries). Stage 3 adds the `Regime` and `Scenario` Concepts (2 regimes x 3 budgets = 6 scenarios).
+`model/schema.py` declares `Stock` (with the binary `Stock.covar(Stock, Stock)` property carrying covariance), `Sector`, `User`, `Account`, `Holding`, and `Transaction`. `model/source.py` binds them to the bundled CSVs (8 stocks, 64 covariance entries). Stage 3 in `portfolio_balancing.py` adds the `Regime` and `Scenario` Concepts (2 regimes x 3 budgets = 6 scenarios).
 
 ### 2. Examine ontology
 
@@ -154,4 +160,4 @@ Ontology gains a `FrontierPoint(Scenario, eps_label)` Concept (6 scenarios x up 
 
 ## Data
 
-Bundled CSVs in `data/`: `returns.csv` (8 stocks across 5 sectors), `covar.csv` (64 symmetric covariance entries), plus `users.csv` (6), `accounts.csv` (4), `holdings.csv` (15), `transactions.csv` (21). All four stages run in `portfolio_balancing.py`.
+Bundled CSVs in `data/`: `users.csv` (6), `accounts.csv` (4), `holdings.csv` (15), `transactions.csv` (21), `returns.csv` (8 stocks across 5 sectors), and `covar.csv` (64 symmetric covariance entries). `model/source.py` loads these files; `portfolio_balancing.py` runs all four reasoning stages.

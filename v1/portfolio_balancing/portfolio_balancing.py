@@ -33,10 +33,10 @@ Output:
 import heapq
 import warnings
 from dataclasses import dataclass
-from pathlib import Path
 
-from pandas import DataFrame, read_csv
-from relationalai.semantics import Boolean, Float, Integer, Model, String, sum
+from model import Account, Holding, Sector, Stock, Transaction, User, model, returns_csv
+from pandas import DataFrame
+from relationalai.semantics import Boolean, Float, Integer, String, sum
 from relationalai.semantics.reasoners.graph import Graph
 from relationalai.semantics.reasoners.prescriptive import Problem
 from relationalai.semantics.std import aggregates as aggs
@@ -64,130 +64,6 @@ REP_POSITION_LIMIT = 0.30  # max fraction per representative in Stage 3 optimiza
 SECTOR_LIMIT = 0.30  # max fraction of budget per sector (both stages)
 CORR_THRESHOLD = 0.3  # |correlation| >= threshold to create a graph edge (Stage 2)
 CRISIS_ALPHA = 0.7  # shrinkage weight for base correlation in crisis regime (Stage 4)
-
-DATA_DIR = Path(__file__).parent / "data"
-returns_csv = read_csv(DATA_DIR / "returns.csv")
-covar_csv = read_csv(DATA_DIR / "covar.csv")
-
-# --------------------------------------------------
-# Define semantic model & load data
-# --------------------------------------------------
-
-model = Model("portfolio")
-
-# --------------------------------------------------
-# Stock concept (used by all stages)
-# --------------------------------------------------
-
-Stock = model.Concept("Stock", identify_by={"index": Integer})
-Stock.ticker = model.Property(f"{Stock} has ticker {String:stock_ticker}")
-Stock.sector = model.Property(f"{Stock} has sector {String:stock_sector}")
-Stock.returns = model.Property(f"{Stock} has {Float:returns}")
-model.define(Stock.new(model.data(returns_csv).to_schema()))
-
-Stock.covar = model.Property(f"{Stock} and {Stock} have {Float:covar}")
-PairedStock = Stock.ref()
-covar_data = model.data(covar_csv)
-model.where(Stock.index(covar_data.i), PairedStock.index(covar_data.j)).define(
-    Stock.covar(Stock, PairedStock, covar_data.covar)
-)
-
-# Sector concept -- derived from Stock sectors for aggregation in rules.
-Sector = model.Concept("Sector", identify_by={"sector_name": String})
-model.define(Sector.new(sector_name=Stock.sector))
-Stock.sector_ref = model.Property(f"{Stock} in {Sector}")
-model.define(Stock.sector_ref(Sector)).where(Stock.sector == Sector.sector_name)
-
-# --------------------------------------------------
-# Compliance concepts (Stage 1 data)
-# --------------------------------------------------
-
-# User concept: portfolio users with risk scores.
-User = model.Concept("User", identify_by={"user_id": Integer})
-User.user_name = model.Property(f"{User} has name {String:user_name}")
-User.risk_score = model.Property(f"{User} has risk score {Float:risk_score}")
-
-user_data = model.data(read_csv(DATA_DIR / "users.csv"))
-model.define(
-    u := User.new(user_id=user_data["id"]),
-    u.user_name(user_data["name"]),
-    u.risk_score(user_data["risk_score"]),
-)
-
-# Account concept: brokerage/retirement accounts with balances.
-Account = model.Concept("Account", identify_by={"account_id": Integer})
-Account.user_id = model.Property(f"{Account} has user id {Integer:acct_user_id}")
-Account.account_type = model.Property(f"{Account} has type {String:account_type}")
-Account.balance = model.Property(f"{Account} has balance {Float:balance}")
-Account.user = model.Property(f"{Account} belongs to {User}")
-
-acct_data = model.data(read_csv(DATA_DIR / "accounts.csv"))
-model.define(
-    a := Account.new(account_id=acct_data["id"]),
-    a.user_id(acct_data["user_id"]),
-    a.account_type(acct_data["account_type"]),
-    a.balance(acct_data["balance"]),
-)
-model.define(Account.user(User)).where(Account.user_id == User.user_id)
-
-# Holding concept: stock positions in accounts.
-Holding = model.Concept("Holding", identify_by={"holding_id": Integer})
-Holding.account_id = model.Property(
-    f"{Holding} has account id {Integer:holding_account_id}"
-)
-Holding.stock_id = model.Property(
-    f"{Holding} has stock id {Integer:holding_stock_id}"
-)
-Holding.quantity = model.Property(f"{Holding} has quantity {Float:holding_quantity}")
-Holding.purchase_price = model.Property(
-    f"{Holding} has purchase price {Float:purchase_price}"
-)
-Holding.account = model.Property(f"{Holding} in {Account}")
-Holding.stock = model.Property(f"{Holding} of {Stock}")
-
-h_data = model.data(read_csv(DATA_DIR / "holdings.csv"))
-model.define(
-    h := Holding.new(holding_id=h_data["id"]),
-    h.account_id(h_data["account_id"]),
-    h.stock_id(h_data["stock_id"]),
-    h.quantity(h_data["quantity"]),
-    h.purchase_price(h_data["purchase_price"]),
-)
-model.define(Holding.account(Account)).where(
-    Holding.account_id == Account.account_id
-)
-model.define(Holding.stock(Stock)).where(Holding.stock_id == Stock.index)
-
-# Transaction concept: user transactions with flagged indicator.
-Transaction = model.Concept("Transaction", identify_by={"transaction_id": Integer})
-Transaction.user_id = model.Property(
-    f"{Transaction} has user id {Integer:txn_user_id}"
-)
-Transaction.amount = model.Property(f"{Transaction} has amount {Float:txn_amount}")
-Transaction.category = model.Property(
-    f"{Transaction} has category {String:txn_category}"
-)
-Transaction.is_flagged_val = model.Property(
-    f"{Transaction} flagged {Float:is_flagged_val}"
-)
-Transaction.user = model.Property(f"{Transaction} by {User}")
-
-transactions_df = read_csv(DATA_DIR / "transactions.csv")
-transactions_df["is_flagged_int"] = (
-    transactions_df["is_flagged"]
-    .astype(str)
-    .str.lower()
-    .map({"true": 1.0, "false": 0.0})
-)
-t_data = model.data(transactions_df)
-model.define(
-    t := Transaction.new(transaction_id=t_data["id"]),
-    t.user_id(t_data["user_id"]),
-    t.amount(t_data["amount"]),
-    t.category(t_data["category"]),
-    t.is_flagged_val(t_data["is_flagged_int"]),
-)
-model.define(Transaction.user(User)).where(Transaction.user_id == User.user_id)
 
 # --------------------------------------------------
 # Stage 1: Rules -- compliance flags
@@ -618,6 +494,7 @@ Stock.x_quantity = model.Property(f"{Stock} in {Scenario} has {Float:quantity}")
 x_qty = Float.ref()
 x_qty_paired = Float.ref()
 regime_cov_val = Float.ref()
+PairedStock = Stock.ref()
 
 # Sector constraint ref -- defined at module level.
 s_sector_ref = Stock.ref()
@@ -1168,7 +1045,7 @@ for j, p in enumerate(dpts):
 
 
 # --------------------------------------------------
-# Stage 4: Crisis regime stress test
+# Stage 4: Crisis stress test
 # (Reuses Stage 3's pareto results; compares base vs crisis vol.)
 # --------------------------------------------------
 

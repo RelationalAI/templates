@@ -24,10 +24,19 @@ Output:
 """
 
 from math import sqrt
-from pathlib import Path
 
 import pandas as pd
-from relationalai.semantics import Float, Model, String, sum
+from model import (
+    DATA_DIR,
+    ReturnMonth,
+    Sector,
+    Stock,
+    index_returns_csv,
+    model,
+    stock_returns_csv,
+    stocks_csv,
+)
+from relationalai.semantics import Float, sum
 from relationalai.semantics.reasoners.prescriptive import Problem
 
 # --------------------------------------------------
@@ -40,17 +49,6 @@ SECTOR_ACTIVE_BAND = 0.04
 PORTFOLIO_VALUE = 10_000_000
 MAX_ADV_PARTICIPATION = 0.05
 MONTHS_PER_YEAR = 12
-
-DATA_DIR = Path(__file__).parent / "data"
-
-# --------------------------------------------------
-# Define semantic model and load data
-# --------------------------------------------------
-
-# Load the stock universe, benchmark returns, and per-stock returns.
-stocks_csv = pd.read_csv(DATA_DIR / "stocks.csv")
-index_returns_csv = pd.read_csv(DATA_DIR / "index_returns.csv")
-stock_returns_csv = pd.read_csv(DATA_DIR / "stock_returns.csv")
 
 # Basic feasibility checks before building and solving the optimization model.
 eligible_stock_count = len(stocks_csv)
@@ -65,68 +63,17 @@ if N_REPLICATION_NAMES * MAX_WEIGHT < 1.0:
         f"investment, got {N_REPLICATION_NAMES * MAX_WEIGHT:.2f}."
     )
 
-model = Model("financial_index_replication")
-
-# Stock concept: a constituent in the investable universe with sector,
-# benchmark weight, ADV, and the prior-period portfolio weight.
-Stock = model.Concept("Stock", identify_by={"ticker": String})
-Stock.name = model.Property(f"{Stock} has name {String:name}")
-Stock.sector = model.Property(f"{Stock} has sector {String:sector}")
-Stock.benchmark_weight = model.Property(
-    f"{Stock} has benchmark weight {Float:benchmark_weight}"
-)
-Stock.avg_dollar_volume = model.Property(
-    f"{Stock} has average dollar volume {Float:avg_dollar_volume}"
-)
-Stock.previous_weight = model.Property(
-    f"{Stock} has previous portfolio weight {Float:previous_weight}"
-)
-model.define(Stock.new(model.data(stocks_csv).to_schema()))
-
-# Sector concept: GICS-style grouping derived from Stock.sector, used for
-# benchmark-aggregate weights and the sector-neutrality constraint.
-Sector = model.Concept("Sector", identify_by={"sector_name": String})
-model.define(Sector.new(sector_name=Stock.sector))
-Stock.sector_ref = model.Property(f"{Stock} belongs to {Sector}")
-model.define(Stock.sector_ref(Sector)).where(Stock.sector == Sector.sector_name)
-
-Sector.benchmark_weight = model.Property(
-    f"{Sector} has benchmark weight {Float:sector_benchmark_weight}"
-)
-model.define(
-    Sector.benchmark_weight(
-        sum(Stock.benchmark_weight).where(Stock.sector_ref(Sector)).per(Sector)
-    )
-)
-
-# ReturnDate concept: a month in the historical return panel; carries the
-# benchmark's index return and joins to per-stock returns.
-ReturnDate = model.Concept("ReturnDate", identify_by={"date": String})
-ReturnDate.index_return = model.Property(
-    f"{ReturnDate} has index return {Float:index_return}"
-)
-model.define(ReturnDate.new(model.data(index_returns_csv).to_schema()))
-
-Stock.return_on = model.Property(
-    f"{Stock} on {ReturnDate} has return {Float:stock_return}"
-)
-stock_return_data = model.data(stock_returns_csv)
-model.define(Stock.return_on(ReturnDate, stock_return_data["return"])).where(
-    Stock.ticker(stock_return_data.ticker),
-    ReturnDate.date(stock_return_data.date),
-)
-
 # --------------------------------------------------
 # Model the decision problem
 # --------------------------------------------------
 
 Stock.x_selected = model.Property(f"{Stock} selected if {Float:selected}")
 Stock.x_weight = model.Property(f"{Stock} has replication weight {Float:weight}")
-ReturnDate.x_pos_error = model.Property(
-    f"{ReturnDate} has positive tracking residual {Float:pos_error}"
+ReturnMonth.x_pos_error = model.Property(
+    f"{ReturnMonth} has positive tracking residual {Float:pos_error}"
 )
-ReturnDate.x_neg_error = model.Property(
-    f"{ReturnDate} has negative tracking residual {Float:neg_error}"
+ReturnMonth.x_neg_error = model.Property(
+    f"{ReturnMonth} has negative tracking residual {Float:neg_error}"
 )
 
 selected = Float.ref("selected")
@@ -151,16 +98,16 @@ problem.solve_for(
     name=["weight", Stock.ticker],
 )
 problem.solve_for(
-    ReturnDate.x_pos_error(pos_error),
+    ReturnMonth.x_pos_error(pos_error),
     type="cont",
     lower=0,
-    name=["pos_error", ReturnDate.date],
+    name=["pos_error", ReturnMonth.date],
 )
 problem.solve_for(
-    ReturnDate.x_neg_error(neg_error),
+    ReturnMonth.x_neg_error(neg_error),
     type="cont",
     lower=0,
-    name=["neg_error", ReturnDate.date],
+    name=["neg_error", ReturnMonth.date],
 )
 
 # Select exactly N names and invest all capital.
@@ -220,13 +167,13 @@ problem.satisfy(
 # index_return[t] - sum_i weight[i] * stock_return[i,t] = pos_error[t] - neg_error[t]
 problem.satisfy(
     model.where(
-        ReturnDate.index_return(index_return),
-        ReturnDate.x_pos_error(pos_error),
-        ReturnDate.x_neg_error(neg_error),
+        ReturnMonth.index_return(index_return),
+        ReturnMonth.x_pos_error(pos_error),
+        ReturnMonth.x_neg_error(neg_error),
         Stock.x_weight(weight),
-        Stock.return_on(ReturnDate, stock_return),
+        Stock.monthly_return(ReturnMonth, stock_return),
     ).require(
-        index_return - sum(stock_return * weight).per(ReturnDate)
+        index_return - sum(stock_return * weight).per(ReturnMonth)
         == pos_error - neg_error
     )
 )
@@ -234,8 +181,8 @@ problem.satisfy(
 # Minimize total absolute tracking residual.
 problem.minimize(
     sum(pos_error + neg_error).where(
-        ReturnDate.x_pos_error(pos_error),
-        ReturnDate.x_neg_error(neg_error),
+        ReturnMonth.x_pos_error(pos_error),
+        ReturnMonth.x_neg_error(neg_error),
     )
 )
 

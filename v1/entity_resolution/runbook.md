@@ -38,12 +38,14 @@ record level, and cedes $927k of excess exposure to reinsurance for $111k.
 
 > **How to use this walkthrough.** Each section below is a Prompt that an analyst pastes into a fresh agent session loaded with the named `/rai-*` skill. Prompts are designed to run **in order, in a single session** — every step relies on enrichments the previous steps wrote back to the shared ontology, so the agent inherits accumulated model state across prompts.
 
+Keep the shared declarations in `model/schema.py`, source preparation and fact loading in `model/source.py`, and graph, rules-based, prescriptive, query, and reporting logic in `entity_resolution.py`.
+
 ### 1. Build the ontology
 
 **Prompt**
 
 ```
-/rai-ontology Build an entity-resolution ontology from data/records.csv. Create a Record concept identified by record_id. Load the always-present columns (source_system, full_name, street, city, state, postal_code, created_at, coverage_amount) by schema; read coverage_amount as a float. Load the optional columns (email, phone, date_of_birth, gov_id_last4) only for the rows where they are non-empty, so a missing value stays null instead of dropping the whole record.
+/rai-ontology In model/schema.py, build an entity-resolution ontology with a Record concept identified by record_id. In model/source.py, load data/records.csv: load the always-present columns (source_system, full_name, street, city, state, postal_code, created_at, coverage_amount) by schema; read coverage_amount as a float. Load the optional columns (email, phone, date_of_birth, gov_id_last4) only for the rows where they are non-empty, so a missing value stays null instead of dropping the whole record.
 ```
 
 **Response**
@@ -67,7 +69,7 @@ record level, and cedes $927k of excess exposure to reinsurance for $111k.
 **Prompt**
 
 ```
-/rai-pyrel Generate candidate duplicate pairs and split them into two bands. Block first: only compare records that share a normalized email handle, the same last-10-digit phone, the same first-four-of-last-name plus 3-digit postal prefix, or the same date of birth. Score each candidate in [0,1]: +0.45 full email match (or +0.32 handle-only), +0.42 phone, +0.30 date of birth, +0.20 government-ID fragment, +0.30 * Jaro-Winkler on names (fold nicknames like Bob->Robert first), +0.15 * Jaro-Winkler on the full address. The fuzzy scoring runs in pandas (no string-similarity primitive in PyRel). Load pairs scoring >= 0.70 as a CandidateMatch concept (auto-merge) and pairs in [0.55, 0.70) as a ReviewPair concept (held for a steward), each with rec_a, rec_b, and score.
+/rai-pyrel In model/schema.py, declare CandidateMatch and ReviewPair concepts with rec_a, rec_b, and score. In model/source.py, generate candidate duplicate pairs and split them into two bands. Block first: only compare records that share a normalized email handle, the same last-10-digit phone, the same first-four-of-last-name plus 3-digit postal prefix, or the same date of birth. Score each candidate in [0,1]: +0.45 full email match (or +0.32 handle-only), +0.42 phone, +0.30 date of birth, +0.20 government-ID fragment, +0.30 * Jaro-Winkler on names (fold nicknames like Bob->Robert first), +0.15 * Jaro-Winkler on the full address. Run the fuzzy scoring in pandas. Load pairs scoring >= 0.70 as CandidateMatch facts (auto-merge) and pairs in [0.55, 0.70) as ReviewPair facts (held for a steward).
 ```
 
 **Response**
@@ -79,7 +81,7 @@ Blocking reduces 1,275 possible pairs to 28 candidates. 25 score >= 0.70 and loa
 **Prompt**
 
 ```
-/rai-graph-analysis Which records refer to the same insured party? Treat each CandidateMatch as an undirected link and group records connected directly or through a chain of matches into one party (connected components). Weakly-connected-components returns the representative record, so also derive a stable integer party key from it, and report how many parties the 51 records auto-resolve into.
+/rai-graph-analysis In entity_resolution.py, determine which records refer to the same insured party. Treat each CandidateMatch as an undirected link and group records connected directly or through a chain of matches into one party (connected components). Weakly-connected-components returns the representative record, so also derive a stable integer party key from it, and report how many parties the 51 records auto-resolve into.
 ```
 
 **Response**
@@ -103,7 +105,7 @@ Weakly-connected-components over 51 nodes and 25 auto-merge edges resolves the r
 **Prompt**
 
 ```
-/rai-pyrel For each resolved party, total the coverage across its policies, and flag the parties whose total exposure exceeds the $1,000,000 accumulation limit. How many policies breach the limit at the record level versus how many households breach it after resolution?
+/rai-pyrel Declare ResolvedParty and its stable properties and relationships in model/schema.py. In entity_resolution.py, create one ResolvedParty per party key, relate each Record to its party, total the coverage across its policies, and flag parties whose total exposure exceeds the $1,000,000 accumulation limit. How many policies breach the limit at the record level versus how many households breach it after resolution?
 ```
 
 **Response**
@@ -115,7 +117,7 @@ A `ResolvedParty` per party key carries `total_exposure` (summed `coverage_amoun
 **Prompt**
 
 ```
-/rai-prescriptive-problem We can spend a $120,000 reinsurance premium this period, at a 12% rate on line, to cede the excess exposure of breached households (premium = 12% of the amount over the limit). Which households should we cede to transfer the most excess exposure off the book? Each breached household is cede-or-not (binary), total premium must stay within budget, and we maximize the excess exposure ceded.
+/rai-prescriptive-problem In entity_resolution.py, choose reinsurance cessions for the breached parties. We can spend a $120,000 reinsurance premium this period, at a 12% rate on line, to cede the excess exposure of breached households (premium = 12% of the amount over the limit). Which households should we cede to transfer the most excess exposure off the book? Each breached household is cede-or-not (binary), total premium must stay within budget, and we maximize the excess exposure ceded.
 ```
 
 **Response**
@@ -127,7 +129,7 @@ A binary `ResolvedParty.cede` over the 4 breached households; budget constraint 
 **Prompt**
 
 ```
-/rai-pyrel How many matches are held in the review queue, and would confirming them change the accumulation picture? Also score the auto-resolution against the ground_truth.csv labels: pairwise precision, recall, and F1.
+/rai-pyrel Using the source frames exported by model/__init__.py and the queries in entity_resolution.py, report how many matches are held in the review queue and whether confirming them changes the accumulation picture. Also score the auto-resolution against the data/ground_truth.csv labels: pairwise precision, recall, and F1.
 ```
 
 **Response**
@@ -136,4 +138,4 @@ A binary `ResolvedParty.cede` over the 4 breached households; budget constraint 
 
 ## Data
 
-Bundled CSVs in `data/`: `records.csv` (51 policy records across AUTO / HOME / LIFE / LEGACY, covering 30 people, with per-policy `coverage_amount`) and `ground_truth.csv` (record_id → true party label). Three cases are placed deliberately: a transitive chain (`M. O'Brien`) that only clustering resolves, a same-name trap (two distinct Chicago "John Smith" policyholders) that scoring keeps apart, and a review-band duplicate (`Ethan Brooks` / `E. Brooks`) whose hidden combined exposure breaches the limit only once confirmed. The dataset is fixed and hand-curated so the walkthrough's numbers are stable. The full chain runs end-to-end via `entity_resolution.py`.
+Bundled CSVs in `data/`: `records.csv` (51 policy records across AUTO / HOME / LIFE / LEGACY, covering 30 people, with per-policy `coverage_amount`) and `ground_truth.csv` (record_id → true party label). Three cases are placed deliberately: a transitive chain (`M. O'Brien`) that only clustering resolves, a same-name trap (two distinct Chicago "John Smith" policyholders) that scoring keeps apart, and a review-band duplicate (`Ethan Brooks` / `E. Brooks`) whose hidden combined exposure breaches the limit only once confirmed. The dataset is fixed and hand-curated so the walkthrough's numbers are stable. `model/source.py` reads and loads the data; `entity_resolution.py` runs the reasoning and reporting chain end to end.

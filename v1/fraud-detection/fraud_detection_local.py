@@ -2,8 +2,8 @@
 
 Runs the full five-stage multi-reasoner pipeline on a small bundled demo
 dataset (~16K transactions, ~50% fraud -- class-balanced to give the GNN
-enough positive signal on CPU). Everything loads from CSVs via
-`model.data()`; no Snowflake data loading, no GPU required.
+enough positive signal on CPU). `load_local_data()` maps the CSVs through
+`model.data()`; no Snowflake data loading or GPU is required.
 
 Stages:
   1. Graph       -- PageRank on an Account-Account funds-flow graph, bound
@@ -33,11 +33,18 @@ Output:
     objective ($ expected loss averted), and a naive-sort baseline for comparison.
 """
 
-from pathlib import Path
-
 import numpy as np
-from pandas import read_csv
-from relationalai.semantics import Any, Float, Integer, Model, String, count, select, sum
+from model import (
+    Account,
+    Test,
+    Train,
+    TrainTable,
+    Transaction,
+    Val,
+    load_local_data,
+    model,
+)
+from relationalai.semantics import Float, Integer, count, select, sum
 from relationalai.semantics.reasoners.graph import Graph
 from relationalai.semantics.reasoners.predictive import GNN, PropertyTransformer
 from relationalai.semantics.reasoners.prescriptive import Problem
@@ -63,9 +70,6 @@ SMALL_AUDIT_COST_HOURS = 1.0      # audit of a transaction <= $1M
 LARGE_AUDIT_COST_HOURS = 5.0      # audit of a transaction > $1M
 PER_ACCOUNT_CAP = 1               # at most 1 audit per receiver account (avoid flooding)
 
-DATA_DIR = Path(__file__).parent / "data"
-PAYSIM_DIR = DATA_DIR / "paysim_mini"
-
 
 def _report(gnn, label):
     """After gnn.fit(), dump the engine-side data config to help diagnose
@@ -85,37 +89,25 @@ def _report(gnn, label):
         print(f"  visualize_dataset unavailable (install pydot?): {e}")
 
 
-model = Model("fraud_detection_local")
-Concept, Relationship = model.Concept, model.Relationship
-
 # --------------------------------------------------
-# Setup: concepts, data, and graph structures
+# Setup: local data and graph structures
 # --------------------------------------------------
-Account = Concept("Account", identify_by={"account_id": String})
-Transaction = Concept("Transaction", identify_by={"transaction_id": Integer})
-
-accounts_df = read_csv(PAYSIM_DIR / "accounts.csv")
-transactions_df = read_csv(PAYSIM_DIR / "transactions.csv", parse_dates=["step_ts"])
-
-# Derive per-audit cost (hours) from transaction size -- kept as a data field
-# rather than a GNN feature so it flows into the MILP as a parameter, not a
-# predictor. (We drop it from the PropertyTransformer below.)
-transactions_df["audit_cost"] = np.where(
-    transactions_df["amount"] > LARGE_AMOUNT_THRESHOLD,
-    LARGE_AUDIT_COST_HOURS, SMALL_AUDIT_COST_HOURS,
+load_local_data(
+    large_amount_threshold=LARGE_AMOUNT_THRESHOLD,
+    small_audit_cost_hours=SMALL_AUDIT_COST_HOURS,
+    large_audit_cost_hours=LARGE_AUDIT_COST_HOURS,
 )
-
-model.define(Account.new(model.data(accounts_df).to_schema()))
-model.define(Transaction.new(model.data(transactions_df).to_schema()))
 
 # Directed Transaction->Account bipartite graph: used by the GNN for
 # sender/receiver message-passing.
 gnn_graph = Graph(model, directed=True, weighted=False)
 Edge = gnn_graph.Edge
 model.define(Edge.new(src=Transaction, dst=Account)).where(
-    Transaction.name_orig == Account.account_id)
+    Transaction.sender(Account)
+)
 model.define(Edge.new(src=Transaction, dst=Account)).where(
-    Transaction.name_dest == Account.account_id)
+    Transaction.receiver(Account)
+)
 
 # Account->Account funds-flow graph: one edge per transaction from sender
 # to receiver. `node_concept=Account` means `acct_graph.Node IS Account`,
@@ -130,8 +122,8 @@ _sender = Account.ref()
 _receiver = Account.ref()
 _txn_ref = Transaction.ref()
 model.define(acct_graph.Edge.new(src=_sender, dst=_receiver)).where(
-    _txn_ref.name_orig == _sender.account_id,
-    _txn_ref.name_dest == _receiver.account_id,
+    _txn_ref.sender(_sender),
+    _txn_ref.receiver(_receiver),
 )
 
 # --------------------------------------------------
@@ -187,33 +179,6 @@ pt = PropertyTransformer(
 # --------------------------------------------------
 # Stage 3: Predictive -- GNN binary classification
 # --------------------------------------------------
-TrainTable = Concept("TrainTable")
-ValTable = Concept("ValTable")
-TestTable = Concept("TestTable")
-
-train_df = read_csv(PAYSIM_DIR / "train.csv", parse_dates=["step_ts"])
-val_df = read_csv(PAYSIM_DIR / "val.csv", parse_dates=["step_ts"])
-test_df = read_csv(PAYSIM_DIR / "test.csv", parse_dates=["step_ts"])
-
-model.define(TrainTable.new(model.data(train_df).to_schema()))
-model.define(ValTable.new(model.data(val_df).to_schema()))
-model.define(TestTable.new(model.data(test_df).to_schema()))
-
-Train = Relationship(f"{Transaction} at {Any:step_ts} has {Any:label}")
-model.define(
-    Train(Transaction, TrainTable.step_ts, TrainTable.is_fraud)
-).where(Transaction.transaction_id == TrainTable.transaction_id)
-
-Val = Relationship(f"{Transaction} at {Any:step_ts} has {Any:label}")
-model.define(
-    Val(Transaction, ValTable.step_ts, ValTable.is_fraud)
-).where(Transaction.transaction_id == ValTable.transaction_id)
-
-Test = Relationship(f"{Transaction} at {Any:step_ts}")
-model.define(
-    Test(Transaction, TestTable.step_ts)
-).where(Transaction.transaction_id == TestTable.transaction_id)
-
 # Class-balance profile before training (baseline ROC_AUC = 0.5)
 _label_df = select(TrainTable.is_fraud.alias("label")).to_df()
 if len(_label_df):
