@@ -1,0 +1,42 @@
+controls:
+- - P:P1
+  - C:C4
+- - P:P2
+  - C:C5
+- - P:P2
+  - C:C6
+- - P:P2
+  - C:C7
+- - C:C8
+  - C:C9
+not_controls:
+- - P:P2
+  - C:C8
+- - P:P3
+  - C:C8
+- - P:P3
+  - C:C6
+families:
+- - P:P2
+  - P:P3
+family_controls:
+- members:
+  - P:P2
+  - P:P3
+  company: C:C8
+- members:
+  - P:P2
+  - P:P3
+  company: C:C9
+close_links_contains:
+- - C:C6
+  - C:C8
+- - C:C4
+  - C:C7
+phi:
+  C:C4|C:C7: 0.2
+phi_paths:
+  C:C8|C:C9: 1.0
+  P:P3|C:C9: 0.5
+phi_unrolled_gt:
+  P:P3|C:C9: 0.5

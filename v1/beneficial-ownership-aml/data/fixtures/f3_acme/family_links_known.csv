@@ -1,0 +1,4 @@
+a_eid,b_eid,link_type,source
+P:X,P:P1,PARTNER_OF,registry
+P:P1,P:P2,SIBLING_OF,registry
+P:P2,P:P3,SIBLING_OF,registry

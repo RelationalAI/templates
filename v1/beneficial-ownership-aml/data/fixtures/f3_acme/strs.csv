@@ -1,0 +1,2 @@
+str_id,num,subject_eid,bank_eid,instrument_type,instrument_id,amount,filed_on
+S1,1,P:X,C:ACME_BANK,LOAN,L1,250000.0,2026-03-05

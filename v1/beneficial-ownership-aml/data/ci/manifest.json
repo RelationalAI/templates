@@ -1,0 +1,280 @@
+{
+ "config": {
+  "seed": 7,
+  "companies": 500,
+  "persons": 300,
+  "days": 180,
+  "density": "normal",
+  "holdout": 0.2,
+  "ubo_hidden_frac": 0.4,
+  "transfers_per_account_day": 0.012
+ },
+ "row_counts": {
+  "companies": 500,
+  "persons": 300,
+  "shareholdings": 903,
+  "roles": 150,
+  "family_links_known": 245,
+  "family_links_hidden": 23,
+  "accounts": 1488,
+  "transfers": 3301,
+  "invoices": 893,
+  "loans": 5,
+  "strs": 52,
+  "str_labels": 52,
+  "high_risk_jurisdictions": 4,
+  "family_pairs_train": 257,
+  "account_labels_train": 40,
+  "family_pairs_val": 97,
+  "account_labels_val": 14,
+  "family_pairs_test": 75,
+  "account_labels_test": 14
+ },
+ "planted_counts": {
+  "pyramids": 4,
+  "cross_holdings": 3,
+  "family_businesses": 6,
+  "close_link_pairs": 4,
+  "ubo_cases": 3,
+  "pep_cases": 1,
+  "bad_actors": 7,
+  "slush_funds": 3
+ },
+ "planted": {
+  "pyramids": [
+   [
+    "C:225",
+    "C:97",
+    "C:41",
+    "C:467",
+    "C:499",
+    "C:278",
+    "C:205"
+   ],
+   [
+    "C:271",
+    "C:156",
+    "C:217",
+    "C:178",
+    "C:196",
+    "C:193",
+    "C:111",
+    "C:232",
+    "C:119"
+   ],
+   [
+    "C:406",
+    "C:322",
+    "C:336",
+    "C:151",
+    "C:66"
+   ],
+   [
+    "C:313",
+    "C:239",
+    "C:304",
+    "C:414",
+    "C:16",
+    "C:333"
+   ]
+  ],
+  "cross_holdings": [
+   [
+    "C:416",
+    "C:435",
+    "C:132"
+   ],
+   [
+    "C:188",
+    "C:347"
+   ],
+   [
+    "C:493",
+    "C:212",
+    "C:262"
+   ]
+  ],
+  "family_businesses": [
+   {
+    "company": "C:277",
+    "members": [
+     "P:136",
+     "P:137",
+     "P:138"
+    ]
+   },
+   {
+    "company": "C:389",
+    "members": [
+     "P:285",
+     "P:286"
+    ]
+   },
+   {
+    "company": "C:323",
+    "members": [
+     "P:143",
+     "P:144"
+    ]
+   },
+   {
+    "company": "C:139",
+    "members": [
+     "P:67",
+     "P:68"
+    ]
+   },
+   {
+    "company": "C:320",
+    "members": [
+     "P:57",
+     "P:58",
+     "P:59"
+    ]
+   },
+   {
+    "company": "C:357",
+    "members": [
+     "P:88",
+     "P:89"
+    ]
+   }
+  ],
+  "close_link_pairs": [
+   [
+    "C:141",
+    "C:347",
+    "P:219"
+   ],
+   [
+    "C:423",
+    "C:362",
+    "P:134"
+   ],
+   [
+    "C:81",
+    "C:224",
+    "P:25"
+   ],
+   [
+    "C:426",
+    "C:13",
+    "P:214"
+   ]
+  ],
+  "ubo_cases": [
+   {
+    "applicant": "P:193",
+    "holders": [
+     "P:192"
+    ],
+    "bank": "C:79",
+    "chain": [
+     "C:477",
+     "C:124",
+     "C:78",
+     "C:198",
+     "C:462",
+     "C:167",
+     "C:345",
+     "C:326",
+     "C:79"
+    ]
+   },
+   {
+    "applicant": "P:211",
+    "holders": [
+     "P:210"
+    ],
+    "bank": "C:191",
+    "chain": [
+     "C:11",
+     "C:108",
+     "C:46",
+     "C:32",
+     "C:72",
+     "C:191"
+    ]
+   },
+   {
+    "applicant": "P:286",
+    "holders": [
+     "P:285"
+    ],
+    "bank": "C:25",
+    "chain": [
+     "C:9",
+     "C:76",
+     "C:302",
+     "C:265",
+     "C:262",
+     "C:480",
+     "C:25"
+    ]
+   }
+  ],
+  "pep_cases": [
+   "P:83"
+  ],
+  "bad_actors": [
+   {
+    "person": "P:83",
+    "typologies": [
+     "pep_high_risk"
+    ]
+   },
+   {
+    "person": "P:226",
+    "typologies": [
+     "near_miss"
+    ]
+   },
+   {
+    "person": "P:159",
+    "typologies": [
+     "near_miss"
+    ]
+   },
+   {
+    "person": "P:100",
+    "typologies": [
+     "fan_out",
+     "cycle"
+    ]
+   },
+   {
+    "person": "P:91",
+    "typologies": [
+     "fan_out",
+     "structuring"
+    ]
+   },
+   {
+    "person": "P:101",
+    "typologies": [
+     "cycle"
+    ]
+   },
+   {
+    "person": "P:122",
+    "typologies": [
+     "near_miss"
+    ]
+   }
+  ],
+  "slush_funds": [
+   {
+    "company": "C:88",
+    "owner": "P:219"
+   },
+   {
+    "company": "C:468",
+    "owner": "P:230"
+   },
+   {
+    "company": "C:380",
+    "owner": "P:125"
+   }
+  ]
+ }
+}

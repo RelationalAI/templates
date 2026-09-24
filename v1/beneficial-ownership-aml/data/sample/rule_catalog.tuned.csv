@@ -1,0 +1,12 @@
+rule_id,weight,offence,priority,description
+P3.R10,0.85,SELF_LENDING,1,Loan applicant (or their family) controls the lending bank (P3 Rule 10)
+P3.PYRAMID,0.45,CONCEALMENT,6,Control of the lending bank runs through a pyramid of depth >= 3
+P3.SLUSH,0.6,FALSE_INVOICING,2,Subject or a company their family controls invoiced without being paid (P3 Eq. 2)
+P4.STRUCTURING,0.1,STRUCTURING,3,Subject account made >= 5 transfers of 1000-3000 totalling >= 9000 in one day
+P4.CYCLE,0.45,LAYERING,4,Subject account sits on a circular chain of transfers
+P4.PEP_HIGH_RISK,0.45,CORRUPTION,5,PEP account credited from a high-risk jurisdiction
+P4.NEAR_MISS,0.95,STRUCTURING,7,Reported transfer is just under the 10000 reporting threshold
+P4.UNKNOWN_CP,0.3,SHELL_ACTIVITY,8,Subject account credited by an entity not in the company or person register
+P4.RECORD,0.1,NONE,10,Subject has a criminal record (weak prior)
+GNN.ACCOUNT,0.5,LAYERING,9,GNN account classifier probability for the subject's accounts
+P4.FAN,0.6,LAYERING,11,Subject account is credited by or pays at least 10 distinct accounts (fan-in / fan-out)

@@ -1,0 +1,4 @@
+account_id,holder_eid,bank_eid,country,opened_on
+A:PEP,P:PEP,C:BANK1,IT,2019-01-01
+A:OFF,P:OFF,C:BANK1,BS,2019-01-01
+A:XYZ,C:XYZ,C:BANK1,IT,2025-12-01

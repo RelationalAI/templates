@@ -29,10 +29,11 @@ Templates are grouped by industry. Expand an industry to see its templates, the 
 </details>
 
 <details>
-<summary>Financial Services (9)</summary>
+<summary>Financial Services (10)</summary>
 
 | Template | Reasoners | Description |
 | --- | --- | --- |
+| [beneficial-ownership-aml](./beneficial-ownership-aml/) | Rules-based, Graph, Predictive, Prescriptive | Find who really controls the banks behind suspicious transactions: recursive ownership and control rules, predicted family links (VADA-LINK with Louvain blocking and a link-prediction GNN), explainable suspicion scores and a MILP that picks which cases analysts investigate. |
 | [commercial_underwriting](./commercial_underwriting/) | Rules-based | Eligibility checks and risk-tier classification across a four-level commercial property/casualty hierarchy (insured entity, policy, location, coverage). |
 | [entity_resolution](./entity_resolution/) | Graph, Rules-based, Prescriptive | Resolve duplicate policyholder records across an insurer's policy systems and acquired books into one insured party. Total each household's exposure, flag accumulation-limit breaches, and choose the lowest-cost reinsurance cessions to clear them. |
 | [financial_index_replication](./financial_index_replication/) | Prescriptive, Rules-based | Select a sparse 20-stock replication basket and weights that track an S&P 500-like benchmark. |

@@ -1,0 +1,3 @@
+eid,num,first_name,surname,sex,birth_date,birth_year,birth_city,address,province,is_pep,has_record
+P:P1,1,Name1,Surname1,M,1963-06-15,1963,City1,1 Via Uno,PR01,0,0
+P:P2,2,Name2,Surname2,M,1966-06-15,1966,City2,2 Via Uno,PR02,0,0
