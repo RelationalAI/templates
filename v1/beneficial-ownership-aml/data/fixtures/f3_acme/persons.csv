@@ -1,0 +1,5 @@
+eid,num,first_name,surname,sex,birth_date,birth_year,birth_city,address,province,is_pep,has_record
+P:X,1,Name1,Ferri,F,1975-06-15,1975,City1,7 Via Roma,PR01,0,1
+P:P1,2,Name2,Conti,M,1972-06-15,1972,City2,7 Via Roma,PR01,0,0
+P:P2,3,Name3,Conti,F,1970-06-15,1970,Lucca,3 Via Uno,PR03,0,0
+P:P3,4,Name4,Conti,M,1968-06-15,1968,Lucca,4 Via Uno,PR04,0,0

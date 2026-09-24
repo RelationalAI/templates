@@ -1,0 +1,29 @@
+[project]
+name = "rai-template-beneficial-ownership-aml"
+version = "0.1.0"
+description = "RelationalAI template: beneficial ownership, company control and hidden family links for anti-money laundering."
+requires-python = ">=3.10"
+dependencies = [
+    "relationalai[gnn]==1.32.0",
+    "pandas>=2",
+    "numpy",
+    "pyyaml",
+    "networkx>=3",  # synthetic data generator and graph statistics only
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "pytest-timeout", "matplotlib", "jupyter", "nbconvert"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["model*", "data*"]
+
+[tool.pytest.ini_options]
+markers = [
+    "offline: runs on local DuckDB, no Snowflake needed",
+    "snowflake: needs a Snowflake connection (set RAI_SF=1)",
+]
+testpaths = ["tests"]

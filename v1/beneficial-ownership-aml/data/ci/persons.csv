@@ -1,0 +1,301 @@
+eid,num,first_name,surname,sex,birth_date,birth_year,birth_city,address,province,is_pep,has_record
+P:1,1,Rusao,Giorosmea,M,1973-09-04,1973,Lapasino,"189 Via Medi Vecchia, Lapasino",PR22,0,0
+P:2,2,Giogala,Pasgiotina,F,1972-03-20,1972,Bervalino,"189 Via Medi Vecchia, Lapasino",PR22,0,0
+P:3,3,Roscao,Giorosmea,M,2007-02-25,2007,Lapasino,"189 Via Medi Vecchia, Lapasino",PR22,0,0
+P:4,4,Fozoo,Giorosmea,M,2005-04-17,2005,Bervalino,"189 Via Medi Vecchia, Lapasino",PR22,0,0
+P:5,5,Gallaa,Giorosmea,F,2003-12-10,2003,Lapasino,"189 Via Medi Vecchia, Lapasino",PR22,0,0
+P:6,6,Berfero,Tinbermona,M,1975-08-01,1975,Giomonano,"4 Via Galgio Nuova, Giomonano",PR20,0,0
+P:7,7,Gucao,Lovala,M,1979-04-08,1979,Berpasello,"12 Via Fertin Nuova, Berpasello",PR04,0,0
+P:8,8,Tinrua,Giofoini,F,1982-11-07,1982,Lomonona,"12 Via Fertin Nuova, Berpasello",PR04,0,0
+P:9,9,Safero,Lovala,M,2010-02-02,2010,Berpasello,"12 Via Fertin Nuova, Berpasello",PR04,0,0
+P:10,10,Ceruo,Tinbermona,M,1962-07-05,1962,Cormeona,"115 Via Cetin, Cormeona",PR24,0,0
+P:11,11,Lozoa,Tinbermona,F,1965-02-28,1965,Niloona,"115 Via Cetin, Cormeona",PR24,0,0
+P:12,12,Saguo,Lenmeceo,M,1959-06-18,1959,Ferdiino,"180 Via Rudi, Ferdiino",PR42,0,1
+P:13,13,Fobero,Lenmeceo,M,1969-07-22,1969,Roslaino,"132 Via Medi Vecchia, Roslaino",PR30,0,0
+P:14,14,Tegua,Lenmeceo,F,1972-05-10,1972,Cefoello,"132 Via Medi Vecchia, Roslaino",PR30,0,0
+P:15,15,Lenlao,Lenmeceo,M,2002-06-12,2002,Corlenano,"132 Via Medi Vecchia, Roslaino",PR30,0,0
+P:16,16,Lavala,Lenmeceo,F,2003-12-18,2003,Roslaino,"142 Via Tinmon Vecchia, Roslaino",PR30,0,0
+P:17,17,Sarena,Lenmeceo,F,1997-09-09,1997,Monceino,"132 Via Medi Vecchia, Roslaino",PR30,0,0
+P:18,18,Zoreno,Galgulena,M,1954-01-23,1954,Teferello,"115 Via Baval, Teferello",PR35,0,0
+P:19,19,Monmono,Lensapasa,M,1968-10-12,1968,Caberano,"26 Via Danros Vecchia, Caberano",PR05,0,0
+P:20,20,Giolao,Giofoini,M,1947-06-05,1947,Dipoello,"33 Via Nilo, Dipoello",PR20,0,0
+P:21,21,Giozoo,Niceteini,M,1974-04-07,1974,Tetinello,"74 Via Berber Nuova, Tetinello",PR19,0,0
+P:22,22,Lenleno,Banio,M,1954-05-15,1954,Bagalello,"44 Via Galgal Vecchia, Bagalello",PR25,0,0
+P:23,23,Rufoo,Galcedana,M,1975-07-20,1975,Paslaano,"106 Via Tinba, Paslaano",PR05,0,0
+P:24,24,Mefera,Fermaretti,F,1967-10-26,1967,Guviello,"106 Via Tinba, Paslaano",PR05,0,0
+P:25,25,Temeo,Tinbermona,M,1981-11-18,1981,Loniona,"101 Via Valba Nuova, Loniona",PR46,0,0
+P:26,26,Tincora,Tinbermona,F,1983-09-14,1983,Valloona,"85 Via Fersa Nuova, Guruano",PR46,0,0
+P:27,27,Giolao,Tinbermona,M,2011-03-10,2011,Loniona,"141 Via Lolen Vecchia, Loniona",PR46,0,0
+P:28,28,Nireno,Monpasi,M,1967-02-04,1967,Viberello,"3 Via Renvi Nuova, Viberello",PR46,0,0
+P:29,29,Menia,Bervio,F,1960-10-25,1960,Pasloano,"3 Via Renvi Nuova, Viberello",PR46,0,0
+P:30,30,Cafero,Giofoini,M,1964-01-16,1964,Foceino,"145 Via Dilo Nuova, Foceino",PR39,0,0
+P:31,31,Foloa,Rucaetti,F,1963-01-24,1963,Poruello,"145 Via Dilo Nuova, Foceino",PR39,0,0
+P:32,32,Pogua,Gioeoini,F,1989-04-19,1989,Caviona,"135 Via Cece Nuova, Foceino",PR39,0,0
+P:33,33,Galfera,Giofoini,F,1996-09-09,1996,Foceino,"10 Via Valgu, Foceino",PR39,0,0
+P:34,34,Mebero,salloi,M,1966-06-17,1966,Poloano,"42 Via Giodan Nuova, Poloano",PR17,0,0
+P:35,35,Tinfera,Fobergioini,F,1961-09-16,1961,Valberino,"113 Via Tinca Nuova, Balenino",PR17,0,0
+P:36,36,Lodana,oalloi,F,1999-09-03,1999,Poloano,"42 Via Giodan Nuova, Poloano",PR17,0,0
+P:37,37,Marmea,Galloi,F,2000-10-22,2000,Poloano,"42 Via Giodan Nuova, Poloano",PR17,0,0
+P:38,38,Temeo,Galloi,M,2000-07-22,2000,Niguano,"42 Via Giodan Nuova, Poloano",PR17,0,0
+P:39,39,Giofoo,Pocao,M,1977-08-11,1977,Nilenona,"141 Via Bagio Nuova, Nilenona",PR53,0,0
+P:40,40,Rosmaro,Tinbermona,M,1983-01-19,1983,Lagioino,"158 Via Dila Nuova, Lagioino",PR40,0,0
+P:41,41,Cafero,Tinbermona,M,1980-02-20,1980,Laruino,"13 Via Galca, Laruino",PR13,0,0
+P:42,42,Sameo,Tinbermona,M,1954-02-18,1954,Tinviano,"111 Via Pocor, Tinviano",PR47,0,0
+P:43,43,Sabaa,Zocaloa,F,1954-01-12,1954,Zotinino,"19 Via Bamar, Dibaona",PR47,0,0
+P:44,44,Valvio,Tinbermona,M,1983-10-25,1983,Mezoino,"111 Via Pocor, Tinviano",PR47,0,0
+P:45,45,Gucao,Tinbermona,M,1978-10-09,1978,Tinviano,"111 Via Pocor, Tinviano",PR47,0,0
+P:46,46,Roscao,Lenmeceo,M,1971-05-15,1971,Meviona,"100 Via Cavi, Meviona",PR05,0,0
+P:47,47,Vimea,Renruo,F,1964-11-18,1964,Nifoello,"7 Via Renmar Vecchia, Balenino",PR05,0,0
+P:48,48,Podia,Lenmeceo,F,1996-11-25,1996,Meviona,"67 Via Rudan, Meviona",PR05,0,0
+P:49,49,Ferrosa,Lenmeceo,F,2004-12-24,2004,Meviona,"18 Via Loren, Meviona",PR05,0,0
+P:50,50,Marloo,Lozoetti,M,1983-07-25,1983,Saruano,"26 Via Caru Vecchia, Saruano",PR13,0,0
+P:51,51,Cadio,Cagioo,M,1957-04-25,1957,Monpasino,"5 Via Rudi, Monpasino",PR00,0,0
+P:52,52,Fovia,Gumarpoetti,F,1951-04-20,1951,Danloello,"5 Via Rudi, Monpasino",PR00,0,0
+P:53,53,Fonio,Valzoa,M,1982-12-19,1982,Ferdiino,"37 Via Vimon, Ferdiino",PR42,0,0
+P:54,54,Ferfera,Tinbermona,F,1986-12-12,1986,Melaona,"87 Via Berte Nuova, Vigioano",PR42,0,0
+P:55,55,Ferruo,Valzoa,M,2017-12-21,2017,Ferdiino,"132 Via Mecor Nuova, Rosrenello",PR42,0,0
+P:56,56,Valleno,Valzoa,M,2009-10-02,2009,Digalello,"60 Via Tinmon Vecchia, Tinrosona",PR42,0,0
+P:57,57,Gumaro,Galteo,M,1966-09-06,1966,Lopoino,"162 Via Rusa Nuova, Lopoino",PR08,0,0
+P:58,58,Saloa,Lamonini,F,1965-01-11,1965,Corteino,"162 Via Rusa Nuova, Lopoino",PR08,0,0
+P:59,59,Cania,Galteo,F,1999-07-15,1999,Galteino,"190 Via Fofo, Monpasino",PR08,0,0
+P:60,60,Marfoo,Lenmeceo,M,1971-11-09,1971,Foceano,"118 Via Dizo Nuova, Foceano",PR16,0,0
+P:61,61,Porosa,Pocoro,F,1966-01-15,1966,Gucorello,"118 Via Dizo Nuova, Foceano",PR16,0,0
+P:62,62,Foguo,Lenmeceo,M,1968-10-28,1968,Polenona,"53 Via Mete Nuova, Polenona",PR28,0,0
+P:63,63,Safero,Marloini,M,1973-11-09,1973,Marguino,"161 Via Mefo Nuova, Marguino",PR42,0,0
+P:64,64,Mebero,Lenmeceo,M,1970-03-24,1970,Nilenona,"108 Via Valpo, Nilenona",PR53,0,0
+P:65,65,Marbero,Gudanbai,M,1957-05-13,1957,Marlaano,"20 Via Ferpo Vecchia, Marlaano",PR41,0,0
+P:66,66,Galdana,Monpasi,F,1952-11-27,1952,Caloano,"20 Via Ferpo Vecchia, Marlaano",PR41,0,0
+P:67,67,Memeo,Cagioo,M,1981-02-09,1981,Marmonano,"47 Via Pasmar Nuova, Marmonano",PR09,0,0
+P:68,68,Giogala,Cagioo,F,1989-02-19,1989,Rosniello,"47 Via Pasmar Nuova, Marmonano",PR09,0,0
+P:69,69,Gucao,Renruo,M,1970-02-26,1970,Caloano,"129 Via Rosfer Nuova, Caloano",PR06,0,0
+P:70,70,Cepaso,Lovalgioini,M,1964-11-21,1964,Saguello,"178 Via Caren, Saguello",PR18,0,0
+P:71,71,Marleno,Pasgiotina,M,1968-01-12,1968,Valpoino,"65 Via Foros Nuova, Valpoino",PR50,0,0
+P:72,72,Nifoo,Pasgiotina,M,1973-01-15,1973,Danzoano,"65 Via Foros Nuova, Valpoino",PR50,0,0
+P:73,73,Ceruo,Rencoretti,M,1961-10-20,1961,Teberello,"15 Via Rendan Vecchia, Teberello",PR21,0,0
+P:74,74,Lengua,Lenguetti,F,1953-11-01,1953,Roslenano,"15 Via Rendan Vecchia, Teberello",PR21,0,0
+P:75,75,Monleno,Tecordani,M,1979-07-26,1979,Balenino,"117 Via Nilo Vecchia, Balenino",PR48,0,0
+P:76,76,Giolena,Zocaloa,F,1972-05-09,1972,Tinzoello,"117 Via Nilo Vecchia, Balenino",PR48,0,0
+P:77,77,Tinvalo,Tecordani,M,2003-02-20,2003,Camarano,"117 Via Nilo Vecchia, Balenino",PR48,1,0
+P:78,78,Marmea,Tecordani,F,2010-05-03,2010,Cedanano,"121 Via Guba Nuova, Balenino",PR48,0,0
+P:79,79,Giofoo,Tinbermona,M,1956-03-08,1956,Dibaona,"92 Via Lapas, Dibaona",PR23,1,0
+P:80,80,Gionio,Lovalgioini,M,1983-04-06,1983,Pozoino,"44 Via Danme, Pozoino",PR58,0,0
+P:81,81,Fonio,Tinbermona,M,1953-09-05,1953,Vallenello,"112 Via Lapas, Gioceino",PR40,0,0
+P:82,82,Giozoo,Visania,M,1951-09-26,1951,Giogalello,"42 Via Didan, Giogalello",PR45,0,0
+P:83,83,Pastino,Danpasetti,M,1971-02-14,1971,Cazoino,"128 Via Ferval Nuova, Cazoino",PR57,1,0
+P:84,84,Rencoro,Monpasi,M,1953-08-18,1953,Dimeano,"118 Via Danme, Dimeano",PR37,0,0
+P:85,85,Giozoo,Lenmonetti,M,1946-03-18,1946,Roslaano,"118 Via Danme, Dimeano",PR37,0,0
+P:86,86,Giolena,Monpasi,F,1988-03-04,1988,Fergalona,"125 Via Giober Vecchia, Dimeano",PR37,0,0
+P:87,87,Gumara,Monpasi,F,1988-11-26,1988,Dimeano,"118 Via Danme, Dimeano",PR37,0,0
+P:88,88,Mefoo,Mebai,M,1943-02-19,1943,Terosello,"79 Via Tindan Vecchia, Terosello",PR12,0,0
+P:89,89,Rendana,Rencadana,F,1949-01-28,1949,Zomarino,"79 Via Tindan Vecchia, Terosello",PR12,0,0
+P:90,90,Monleno,Viroso,M,1958-03-02,1958,Marrenona,"126 Via Zober Nuova, Marrenona",PR43,0,0
+P:91,91,Rucora,Sapoleno,F,1961-09-27,1961,Lenloino,"147 Via Lapas, Dibaona",PR43,0,0
+P:92,92,Gupoo,Tinbermona,M,1941-02-27,1941,Pasguona,"25 Via Pasmon, Pasguona",PR07,0,0
+P:93,93,Rubao,Tinbermona,M,1937-06-03,1937,Gupasona,"64 Via Temon Vecchia, Metinello",PR07,0,0
+P:94,94,Lalao,Monlaceetti,M,1962-04-09,1962,Vigioano,"29 Via Corte Nuova, Vigioano",PR36,0,0
+P:95,95,Camona,Lovalgioini,F,1969-03-17,1969,Tecorello,"29 Via Corte Nuova, Vigioano",PR36,0,0
+P:96,96,Teroso,Monlaceetti,M,1995-02-04,1995,Vigioano,"182 Via Berfer, Vigioano",PR36,0,0
+P:97,97,Ditino,Monlaceetti,M,1997-12-11,1997,Vigioano,"60 Via Galgal Vecchia, Vigioano",PR36,0,0
+P:98,98,Meteo,Fovivalo,M,1964-05-23,1964,Pogioona,"179 Via Lolen Vecchia, Pogioona",PR01,0,0
+P:99,99,Vitino,Giofoini,M,1974-03-01,1974,Rosmonano,"24 Via Mardi Vecchia, Rosmonano",PR57,0,0
+P:100,100,Popasa,Giofoini,F,1977-02-27,1977,Pasberino,"78 Via Renzo, Laberano",PR57,0,0
+P:101,101,Balaa,Giofoini,F,2003-04-03,2003,Rosmonano,"132 Via Rupo Nuova, Rosmonano",PR57,0,0
+P:102,102,Bagalo,Pasgiotina,M,1949-02-16,1949,Laruino,"95 Via Ditin Nuova, Laruino",PR13,0,0
+P:103,103,Bertino,Focetoi,M,1974-10-03,1974,Fobaona,"111 Via Laval, Fobaona",PR51,0,0
+P:104,104,Foguo,Valpoetti,M,1951-11-15,1951,Lomonona,"153 Via Dilo Nuova, Lomonona",PR53,0,0
+P:105,105,Bervalo,Galloi,M,1968-09-19,1968,Dicorino,"174 Via Bamon, Dicorino",PR22,0,0
+P:106,106,Lamona,Sazovio,F,1975-11-13,1975,Monceino,"174 Via Bamon, Dicorino",PR22,0,0
+P:107,107,Marbero,Monpasi,M,1968-03-25,1968,Correnano,"58 Via Ruru Nuova, Lotinino",PR40,1,0
+P:108,108,Terena,Lenmeceo,F,1970-02-27,1970,Meviona,"165 Via Tinba, Correnano",PR40,0,0
+P:109,109,Tinfera,Monpasi,F,1998-07-13,1998,Dibaona,"165 Via Tinba, Correnano",PR40,0,0
+P:110,110,Giofoo,Tinbermona,M,1948-04-19,1948,Nimonino,"60 Via Renvi Vecchia, Nimonino",PR55,0,0
+P:111,111,Rusao,Lorosa,M,1946-12-08,1946,Bergalano,"60 Via Renvi Vecchia, Nimonino",PR55,0,0
+P:112,112,Mardano,Loroso,M,1961-02-08,1961,Cedanino,"31 Via Tesa Vecchia, Nivalona",PR09,0,0
+P:113,113,Fobero,Focezoi,M,1962-01-10,1962,Tinzoello,"198 Via Monlen Vecchia, Tinzoello",PR56,0,0
+P:114,114,Rufoo,Lenmeceo,M,1951-09-10,1951,Cameano,"138 Via Caru Vecchia, Cameano",PR04,0,1
+P:115,115,Gubaa,Lenmeceo,F,1947-01-17,1947,Pasmeello,"20 Via Valgu, Guvalano",PR04,0,0
+P:116,116,Bagala,Lenmecao,F,1977-07-26,1977,Cameano,"138 Via Caru Vecchia, Cameano",PR04,0,0
+P:117,117,Rufoo,Lofero,M,1952-12-12,1952,Roslaino,"148 Via Gume Vecchia, Roslaino",PR30,0,0
+P:118,118,Sabaa,Tinsavala,F,1957-05-16,1957,Giopoona,"148 Via Gume Vecchia, Roslaino",PR30,0,0
+P:119,119,Mebero,Tinsavala,M,1959-05-26,1959,Giocorano,"45 Via Fersa Nuova, Giocorano",PR16,0,0
+P:120,120,Sameo,Fomeo,M,1947-10-03,1947,Zomarano,"183 Via Giovi Vecchia, Zomarano",PR24,0,0
+P:121,121,Gutina,Bercapasi,F,1941-02-17,1941,Valberino,"183 Via Giovi Vecchia, Zomarano",PR24,0,0
+P:122,122,Giolao,Fomeo,M,1981-01-09,1981,Zomarano,"183 Via Giovi Vecchia, Zomarano",PR24,0,0
+P:123,123,Corloa,Fomeo,F,1975-03-16,1975,Zomarano,"28 Via Baren, Camarano",PR24,0,0
+P:124,124,Gionio,Pasgiotina,M,1942-07-18,1942,Ruguano,"82 Via Mete Nuova, Ruguano",PR07,0,0
+P:125,125,Tinfero,Monpasi,M,1948-05-11,1948,Zodanano,"45 Via Zoba Nuova, Zodanano",PR14,0,0
+P:126,126,Bervalo,Monbao,M,1958-02-09,1958,Valpoino,"28 Via Giopo Nuova, Valpoino",PR50,0,0
+P:127,127,Moncao,Calarena,M,1982-12-25,1982,Marrenona,"22 Via Loni Vecchia, Marrenona",PR43,0,0
+P:128,128,Vimaro,Pasterui,M,1955-09-25,1955,Dimeello,"149 Via Dini Vecchia, Dimeello",PR30,0,0
+P:129,129,Diceo,Bapovietti,M,1954-06-16,1954,Dimeello,"180 Via Cefer Nuova, Cefoello",PR30,0,0
+P:130,130,Cabero,Tinbermona,M,1948-11-15,1948,Ferberano,"68 Via Zoca Nuova, Ferberano",PR00,0,0
+P:131,131,Monzoa,Zogalmeini,F,1947-04-28,1947,Lenpasello,"68 Via Zoca Nuova, Ferberano",PR00,0,0
+P:132,132,Nimono,Tinbermona,M,1983-06-03,1983,Ferberano,"68 Via Zoca Nuova, Ferberano",PR00,0,0
+P:133,133,Valgala,Tinbermona,F,1981-02-20,1981,Ferberano,"68 Via Zoca Nuova, Ferberano",PR00,0,0
+P:134,134,Ceruo,Tinbermona,M,1968-10-21,1968,Tecorello,"39 Via Baber, Tecorello",PR36,0,0
+P:135,135,Danvio,Monferdana,M,1948-06-21,1948,Giopoona,"150 Via Roste, Giopoona",PR19,0,0
+P:136,136,Temeo,Marpasini,M,1947-02-19,1947,Correnano,"157 Via Cefo Vecchia, Correnano",PR40,0,0
+P:137,137,Corgala,Tinbermona,F,1953-01-27,1953,Pasloano,"157 Via Cefo Vecchia, Correnano",PR40,0,0
+P:138,138,Roscoro,Marpasini,M,1974-06-07,1974,Corniano,"157 Via Cefo Vecchia, Correnano",PR40,0,0
+P:139,139,Focoro,Pocoro,M,1972-05-08,1972,Digalello,"66 Via Baba Vecchia, Digalello",PR58,0,1
+P:140,140,Renbero,Renvalo,M,1968-06-27,1968,Monceino,"109 Via Gudi Vecchia, Monceino",PR55,0,0
+P:141,141,Larua,Zotinzoini,F,1975-05-22,1975,Lenpasona,"157 Via Tegu, Niloona",PR55,0,0
+P:142,142,Cabero,Renvalo,M,1993-10-07,1993,Giomonano,"21 Via Came Vecchia, Monceino",PR55,0,0
+P:143,143,Valvio,Lodanini,M,1981-01-27,1981,Balenino,"185 Via Galvi, Balenino",PR48,0,0
+P:144,144,Giogala,Tinbermona,F,1986-06-15,1986,Valpasino,"185 Via Galvi, Balenino",PR48,0,0
+P:145,145,Zoreno,Rospasetti,M,1971-05-19,1971,Cedanano,"7 Via Gucor Nuova, Cedanano",PR38,0,0
+P:146,146,Focora,Lovalgioini,F,1973-03-03,1973,Valpasello,"7 Via Gucor Nuova, Cedanano",PR38,0,0
+P:147,147,Poceo,Dipofero,M,1972-09-10,1972,Zotinano,"187 Via Ceru Vecchia, Zotinano",PR50,0,0
+P:148,148,Rensaa,Cagioo,F,1979-06-02,1979,Monteino,"187 Via Ceru Vecchia, Zotinano",PR50,0,0
+P:149,149,Pozoa,Dipofero,F,2001-08-24,2001,Berpasello,"69 Via Meros Vecchia, Zotinano",PR50,0,0
+P:150,150,Fermea,Dipofero,F,2006-04-20,2006,Zotinano,"7 Via Valpo Nuova, Zotinano",PR50,0,0
+P:151,151,Fozoo,Rosmebaini,M,1968-08-23,1968,Rosrenello,"138 Via Rudi, Rosrenello",PR12,0,0
+P:152,152,Rencoro,Tinbermona,M,1981-11-26,1981,Lotinino,"164 Via Tegu, Lotinino",PR58,0,0
+P:153,153,Terena,Renfoneini,F,1986-04-13,1986,Valviano,"164 Via Tegu, Lotinino",PR58,0,0
+P:154,154,Giolao,Tiobermona,M,2007-04-27,2007,Lotinino,"164 Via Tegu, Lotinino",PR58,0,0
+P:155,155,Tincea,Tinbermona,F,2011-12-01,2011,Lotinino,"164 Via Galgal Vecchia, Lotinino",PR58,0,0
+P:156,156,Giozoo,Tinbermona,M,1976-06-10,1976,Cameano,"133 Via Nidi Nuova, Cameano",PR04,0,0
+P:157,157,Calaa,Lorosa,F,1972-05-16,1972,Zomarano,"54 Via Galgio Vecchia, Valpasello",PR04,0,0
+P:158,158,Vicoro,Tinbermona,M,2006-06-28,2006,Ruguano,"8 Via Danmar Nuova, Cameano",PR04,0,0
+P:159,159,Rosfoo,Tinbermona,M,2007-03-11,2007,Tinberino,"133 Via Nidi Nuova, Cameano",PR04,0,0
+P:160,160,Berfero,Tinbermona,M,2011-03-22,2011,Cameano,"49 Via Valval Vecchia, Berniano",PR04,0,0
+P:161,161,Danfero,Monpasi,M,1945-08-05,1945,Valloona,"172 Via Nila Nuova, Danloino",PR25,0,0
+P:162,162,Giogala,Tinbermona,F,1943-07-20,1943,Zomarano,"63 Via Galdi Vecchia, Valloona",PR25,0,0
+P:163,163,Monzoa,Monpasi,F,1979-01-10,1979,Renmonino,"63 Via Galdi Vecchia, Valloona",PR25,0,0
+P:164,164,Fonio,Monpasi,M,1979-06-22,1979,Valloona,"63 Via Galdi Vecchia, Valloona",PR25,0,0
+P:165,165,Pasgalo,Tinbermota,M,1958-11-02,1958,Nizoello,"92 Via Valpo, Nizoello",PR18,0,0
+P:166,166,Rendana,Nimarini,F,1956-11-20,1956,Cecorino,"101 Via Berzo Nuova, Gioferino",PR18,0,0
+P:167,167,Rufoo,Tinbermona,M,1991-08-15,1991,Nizoello,"195 Via Teni, Nizoello",PR18,0,0
+P:168,168,Cadio,Galmono,M,1983-03-01,1983,Marmonano,"95 Via Gioni Nuova, Marmonano",PR09,0,0
+P:169,169,Menia,Galmono,F,1985-04-15,1985,Pasdanona,"95 Via Gioni Nuova, Marmonano",PR09,0,0
+P:170,170,Gupoo,Galmono,M,2009-10-22,2009,Cameano,"72 Via Galtin Vecchia, Marmonano",PR09,0,0
+P:171,171,Ruroso,Lenmeceo,M,1970-12-13,1970,Marlaano,"109 Via Pola Vecchia, Marlaano",PR41,0,0
+P:172,172,Pasrua,Carosini,F,1970-02-17,1970,Corteino,"128 Via Bapas, Laruino",PR41,0,0
+P:173,173,Ferroso,Medicao,M,1949-10-28,1949,Pasbaello,"114 Via Corni, Pasbaello",PR50,0,0
+P:174,174,Digua,Giofoini,F,1954-02-09,1954,Viruino,"114 Via Corni, Pasbaello",PR50,0,0
+P:175,175,Corpasa,Medicao,F,1978-02-27,1978,Pasbaello,"111 Via Sadan Vecchia, Pasbaello",PR50,0,0
+P:176,176,Sateo,Tinpascai,M,1979-07-23,1979,Teferello,"157 Via Fotin Nuova, Teferello",PR35,0,0
+P:177,177,Camara,Tinbermona,F,1974-08-14,1974,Cedanano,"148 Via Zopas Vecchia, Viberello",PR35,0,0
+P:178,178,Vidano,Tinpascai,M,2006-03-14,2006,Teferello,"157 Via Fotin Nuova, Teferello",PR35,0,0
+P:179,179,Tinbao,Ferferini,M,1958-05-24,1958,Bervalino,"34 Via Tingio, Bervalino",PR25,0,0
+P:180,180,Margioa,Renvalo,F,1963-07-24,1963,Lomonona,"34 Via Tingio, Bervalino",PR25,0,0
+P:181,181,Monzoa,Ferferini,F,1984-02-19,1984,Galviano,"169 Via Pomon Nuova, Bervalino",PR25,0,0
+P:182,182,Celena,Ferferini,F,1985-06-16,1985,Bervalino,"24 Via Bervi Vecchia, Moncorino",PR25,0,0
+P:183,183,Zoceo,Nimarini,M,1940-12-27,1940,Pomeello,"142 Via Monlen Vecchia, Pomeello",PR49,0,0
+P:184,184,Tincea,Caniferini,F,1940-02-12,1940,Rosmeello,"13 Via Loru Nuova, Marvalello",PR49,0,0
+P:185,185,Lenzoo,Nimarini,M,1973-07-14,1973,Pomeello,"142 Via Monlen Vecchia, Pomeello",PR49,0,0
+P:186,186,Monloo,Pasgioberetti,M,1943-02-15,1943,Balenino,"102 Via Poni, Balenino",PR36,0,0
+P:187,187,Valleno,Giofoini,M,1958-02-24,1958,Zomarino,"172 Via Tingu, Zomarino",PR14,0,0
+P:188,188,Dirosa,Pocoro,F,1959-12-05,1959,Giogalello,"172 Via Tingu, Zomarino",PR14,0,0
+P:189,189,Forua,Giofoini,F,1987-05-19,1987,Galdanano,"42 Via Danfer Nuova, Zomarino",PR14,0,0
+P:190,190,Lenruo,Lenmeceo,M,1946-08-13,1946,Dimeello,"197 Via Danber Vecchia, Gupasona",PR30,0,0
+P:191,191,Tinnio,Lenguetti,M,1966-07-18,1966,Marrosino,"113 Via Nigu, Marrosino",PR11,0,0
+P:192,192,Ruroso,Lorosa,M,1953-03-11,1953,Rosferona,"141 Via Pasber Nuova, Rosferona",PR54,0,0
+P:193,193,Ferfoa,Giofoini,F,1946-07-12,1946,Nivalona,"72 Via Lapas, Gioniello",PR54,0,0
+P:194,194,Bersao,Batinetti,M,1957-03-19,1957,Merenano,"140 Via Lenpo Vecchia, Merenano",PR41,0,0
+P:195,195,Niroso,Lenmeceo,M,1956-11-09,1956,Caberano,"32 Via Pasber Nuova, Caberano",PR05,0,0
+P:196,196,Danruo,Ferfera,M,1944-09-22,1944,Poviello,"127 Via Foros Nuova, Poviello",PR19,0,0
+P:197,197,Loreno,Nicateo,M,1956-05-13,1956,Caberano,"186 Via Mete Nuova, Caberano",PR05,0,0
+P:198,198,Locaa,Nicateo,F,1963-06-12,1963,Badiano,"186 Via Mete Nuova, Caberano",PR05,0,1
+P:199,199,Lofero,Lenmeceo,M,1946-09-23,1946,Renrenino,"71 Via Valgu, Renrenino",PR16,0,0
+P:200,200,Tindio,Cedia,M,1981-08-23,1981,Nidiano,"170 Via Popo Nuova, Nidiano",PR49,0,0
+P:201,201,Zofera,Galcedana,F,1988-07-06,1988,Zoberona,"170 Via Popo Nuova, Nidiano",PR49,0,0
+P:202,202,Valmaro,Zomarcaa,M,1962-03-06,1962,Berlenello,"132 Via Valmon Nuova, Berlenello",PR54,0,0
+P:203,203,Monzoa,Zomarcaa,F,1968-07-25,1968,Mardanano,"132 Via Valmon Nuova, Berlenello",PR54,0,0
+P:204,204,Lagalo,Tinbermona,M,1946-07-10,1946,Pasguona,"37 Via Fofo Vecchia, Pasguona",PR07,0,0
+P:205,205,Tecoro,Galvivii,M,1969-01-24,1969,Lenloino,"120 Via Visa, Lenloino",PR25,0,0
+P:206,206,Pozoa,Loealgioini,F,1966-03-02,1966,Galteino,"120 Via Visa, Lenloino",PR25,0,0
+P:207,207,Pastino,Lovalgioini,M,1982-05-19,1982,Dimeano,"83 Via Monlen Vecchia, Dimeano",PR37,0,0
+P:208,208,Lengua,Zogalmeini,F,1980-10-17,1980,Saruano,"83 Via Monlen Vecchia, Dimeano",PR37,0,0
+P:209,209,Tesao,Lenmeceo,M,1969-09-11,1969,Marvalona,"99 Via Dancor Vecchia, Marvalona",PR55,0,0
+P:210,210,Bergalo,Berrosgua,M,1960-01-27,1960,Pasbaello,"40 Via Same, Saruano",PR50,0,0
+P:211,211,Sabaa,Galfoetti,F,1962-03-06,1962,Gupasano,"37 Via Corber, Pasbaello",PR50,0,0
+P:212,212,Lacoro,Lenguetti,M,1981-03-12,1981,Bacorino,"39 Via Valte Nuova, Bacorino",PR12,0,0
+P:213,213,Vimea,Galruzoa,F,1974-04-16,1974,Cazoino,"36 Via Niba, Galmeano",PR12,0,0
+P:214,214,Cepaso,Corgiofeia,M,1968-07-22,1968,Bamarano,"63 Via Ruce, Bamarano",PR01,0,0
+P:215,215,Galnia,Galrenreni,F,1965-03-19,1965,Renlenano,"63 Via Ruce, Bamarano",PR01,0,0
+P:216,216,Tesao,Tinbermona,M,1959-11-16,1959,Tinguano,"198 Via Corval Nuova, Tinguano",PR13,0,0
+P:217,217,Bervalo,Lenmeceo,M,1972-06-02,1972,Valloona,"19 Via Mela, Tinsaona",PR25,0,0
+P:218,218,Porosa,Monpani,F,1979-10-22,1979,Valviona,"160 Via Gula Vecchia, Valloona",PR25,0,0
+P:219,219,Focoro,Lenmeceo,M,1999-05-26,1999,Niloona,"160 Via Gula Vecchia, Valloona",PR25,0,0
+P:220,220,Batino,Lenmeceo,M,2005-09-09,2005,Valloona,"160 Via Gula Vecchia, Valloona",PR25,0,0
+P:221,221,Bagala,Lenmeceo,F,1999-09-07,1999,Valloona,"160 Via Gula Vecchia, Valloona",PR25,0,0
+P:222,222,Danfero,Tinsavala,M,1950-11-16,1950,Rensaino,"28 Via Ferfer, Rensaino",PR22,0,0
+P:223,223,Nibao,Martinntti,M,1959-03-22,1959,Valpasino,"80 Via Foros Nuova, Gioniello",PR27,0,0
+P:224,224,Gumara,Danrendietti,F,1961-07-03,1961,Lenloino,"133 Via Pofo Vecchia, Valpasino",PR27,0,1
+P:225,225,Tinfera,Martinetti,F,1984-07-24,1984,Roslenano,"174 Via Danvi Nuova, Metinello",PR27,0,0
+P:226,226,Lalao,Lenmeceo,M,1978-09-11,1978,Tinguano,"153 Via Tela, Danloello",PR13,0,0
+P:227,227,Guteo,Tinbermona,M,1947-02-08,1947,Valviona,"100 Via Runi Nuova, Valviona",PR02,0,0
+P:228,228,Potea,Tinbermona,F,1943-06-12,1943,Galmeano,"100 Via Runi Nuova, Valviona",PR02,0,0
+P:229,229,Diceo,Cagioo,M,1972-05-08,1972,Zomarino,"136 Via Roscor, Guvalano",PR14,0,0
+P:230,230,Poceo,Mesai,M,1975-04-18,1975,Marguino,"198 Via Bermar Nuova, Marguino",PR42,0,0
+P:231,231,Niroso,Tinbermona,M,1970-11-04,1970,Cemarona,"88 Via Giober Vecchia, Cemarona",PR49,0,0
+P:232,232,Balaa,Ferteetti,F,1972-03-05,1972,Ferrosona,"88 Via Giober Vecchia, Cemarona",PR49,0,0
+P:233,233,Vitino,Tinbermona,M,2001-12-13,2001,Renmonino,"88 Via Giober Vecchia, Cemarona",PR49,0,0
+P:234,234,Giodano,Foferruo,M,1973-03-18,1973,Cordiano,"43 Via Monlen, Cordiano",PR42,0,0
+P:235,235,Danmara,Lenmeceo,F,1975-01-19,1975,Tinrosino,"43 Via Monlen, Cordiano",PR42,0,0
+P:236,236,Ferfoa,Foferruo,F,2004-01-04,2004,Cordiano,"173 Via Fofo Vecchia, Cordiano",PR42,0,0
+P:237,237,Ferroso,Foferruo,M,2003-09-19,2003,Cordiano,"20 Via Valdan, Cordiano",PR42,0,0
+P:238,238,Zocao,Foferruo,M,2000-11-13,2000,Cordiano,"43 Via Monlen, Cordiano",PR42,0,0
+P:239,239,Lenzoo,Renruo,M,1942-12-05,1942,Tinzoello,"179 Via Bafo Vecchia, Tinzoello",PR56,0,0
+P:240,240,Roscoro,Tinsavala,M,1944-03-07,1944,Monlenino,"179 Via Bafo Vecchia, Tinzoello",PR56,0,0
+P:241,241,Zoteo,Lalorosetti,M,1968-11-04,1968,Pogioona,"183 Via Valfer, Pogioona",PR01,0,0
+P:242,242,Pogua,Bervaletti,F,1969-11-06,1969,Pasguona,"183 Via Valfer, Pogioona",PR01,0,0
+P:243,243,Lofero,Lalorosetti,M,1999-07-06,1999,Ferfoino,"120 Via Lazo Vecchia, Pogioona",PR01,0,0
+P:244,244,Zolao,Lalorosetti,M,2000-12-19,2000,Cetinona,"94 Via Didan, Pogioona",PR01,0,0
+P:245,245,Monmono,Cagioo,M,1979-07-08,1979,Tegalino,"154 Via Rosfer Nuova, Tegalino",PR45,0,0
+P:246,246,Ferruo,Berrosgua,M,1978-01-28,1978,Zogalino,"108 Via Polen, Zogalino",PR44,0,0
+P:247,247,Fercoro,Lapaso,M,1960-07-03,1960,Tetinello,"114 Via Tela, Tetinello",PR19,0,0
+P:248,248,Sateo,Bapasfoa,M,1973-11-14,1973,Tinrenino,"198 Via Marru Vecchia, Tinrenino",PR52,0,0
+P:249,249,Foreno,Monpaso,M,1966-01-12,1966,Nidiona,"182 Via Lencor Vecchia, Nidiona",PR31,0,0
+P:250,250,Pasmeo,Rearuo,M,1976-05-21,1976,Rospasano,"172 Via Caba, Rospasano",PR44,0,0
+P:251,251,Ferloo,Caferrosa,M,1963-07-22,1963,Renmonino,"178 Via Marru Vecchia, Renmonino",PR39,0,0
+P:252,252,Banio,Meloferini,M,1950-05-27,1950,Roslaino,"79 Via Tinfo Vecchia, Roslaino",PR30,0,0
+P:253,253,Pomona,Meloferini,F,1943-09-27,1943,Metinello,"86 Via Galba, Lofoino",PR30,0,0
+P:254,254,Monsao,Meloferini,M,1978-11-10,1978,Pomeino,"155 Via Pasfer Nuova, Roslaino",PR30,0,0
+P:255,255,Vibao,Zogiofoo,M,1942-05-02,1942,Pasbaello,"73 Via Ferval Vecchia, Pasbaello",PR50,0,0
+P:256,256,Galdana,Tinbermona,F,1939-04-25,1939,Caviona,"41 Via Gioros Nuova, Marrenona",PR50,0,0
+P:257,257,Poteo,Zogiofoo,M,1972-09-23,1972,Pasbaello,"25 Via Ferren Vecchia, Pasbaello",PR50,0,0
+P:258,258,Pascao,Zogiofoo,M,1970-05-05,1970,Pasbaello,"73 Via Ferval Vecchia, Pasbaello",PR50,0,0
+P:259,259,Bersao,Balenetti,M,1978-09-12,1978,Marvalona,"6 Via Galgal Vecchia, Marvalona",PR55,0,0
+P:260,260,Vicaa,Ruvibaetti,F,1979-02-21,1979,Tinrosino,"6 Via Galgal Vecchia, Marvalona",PR55,0,0
+P:261,261,Visao,Tinbermona,M,1942-02-06,1942,Pasberino,"21 Via Valpo Vecchia, Pasberino",PR01,0,0
+P:262,262,Cabera,Zocaloa,F,1940-11-13,1940,Camarano,"21 Via Valpo Vecchia, Pasberino",PR01,0,0
+P:263,263,Galpoa,Tinbermona,F,1968-03-18,1968,Bergalano,"21 Via Valpo Vecchia, Pasberino",PR01,0,0
+P:264,264,Bervalo,Giofoini,M,1982-04-16,1982,Cedanino,"60 Via Galtin Vecchia, Cedanino",PR09,0,0
+P:265,265,Sapoa,Giofoini,F,1984-12-02,1984,Lapasino,"60 Via Galtin Vecchia, Cedanino",PR09,0,0
+P:266,266,Temeo,Giofoini,M,2015-10-13,2015,Cedanino,"60 Via Galtin Vecchia, Cedanino",PR09,0,0
+P:267,267,Lalaa,Giofoini,F,2008-04-22,2008,Cedanino,"78 Via Cormon Vecchia, Cedanino",PR09,0,0
+P:268,268,Lenlao,Zotinzoini,M,1947-12-18,1947,Gucorello,"125 Via Fosa Vecchia, Gucorello",PR33,0,0
+P:269,269,Sabaa,Pocoro,F,1953-06-22,1953,Mardanano,"125 Via Fosa Vecchia, Gucorello",PR33,0,0
+P:270,270,Viceo,Lenmeceo,M,1970-01-10,1970,Diceello,"93 Via Mela, Diceello",PR38,0,0
+P:271,271,Giozoo,Lenmeceo,M,1955-07-17,1955,Bergalello,"189 Via Diru, Bergalello",PR44,0,0
+P:272,272,Bermara,Lenguetti,F,1962-05-28,1962,Lovalino,"193 Via Galba, Valceano",PR44,0,0
+P:273,273,Valsao,Tefoi,M,1945-01-12,1945,Renpoano,"71 Via Galmon Vecchia, Renpoano",PR28,0,0
+P:274,274,Dipasa,Tegioa,F,1939-09-13,1939,Dibaona,"65 Via Lomar Nuova, Zomarino",PR28,0,0
+P:275,275,Direno,Tinbermona,M,1960-01-21,1960,Lenpasello,"98 Via Tegu, Lenpasello",PR30,0,0
+P:276,276,Nifoo,Tinbermona,M,1960-08-12,1960,Bertinano,"128 Via Zoru Vecchia, Bertinano",PR15,0,0
+P:277,277,Zopoa,Memarcaa,F,1967-02-10,1967,Lopoino,"128 Via Zoru Vecchia, Bertinano",PR15,0,0
+P:278,278,Nimea,Tinbermona,F,1991-01-16,1991,Bertinano,"128 Via Zoru Vecchia, Bertinano",PR15,0,0
+P:279,279,Giofoo,Gumarpoetti,M,1962-09-21,1962,Foceano,"150 Via Lani Nuova, Foceano",PR16,0,0
+P:280,280,Bercora,Gumarpoetti,F,1968-07-18,1968,Lenpasello,"150 Via Lani Nuova, Foceano",PR16,0,0
+P:281,281,Sapasa,Gumarpoetti,F,1989-05-13,1989,Foceano,"13 Via Baber, Foceano",PR16,0,0
+P:282,282,Bersao,Gumarpoetti,M,1995-08-27,1995,Marguino,"51 Via Tesa Vecchia, Runiona",PR16,0,0
+P:283,283,Bagala,Gumarpoetti,F,1989-07-20,1989,Ferrosino,"85 Via Gudi Vecchia, Foceano",PR16,0,0
+P:284,284,Lalao,Sanii,M,1945-07-08,1945,Poloano,"159 Via Marte, Poloano",PR17,0,0
+P:285,285,Rosfoo,Dizogali,M,1947-02-21,1947,Pasgioello,"165 Via Caba Nuova, Pasgioello",PR10,0,0
+P:286,286,Pomona,Dizogali,F,1951-12-22,1951,Giocorello,"19 Via Saru Vecchia, Nigioona",PR10,0,0
+P:287,287,Ferroso,Tinsavala,M,1973-09-22,1973,Meviona,"3 Via Danni, Meviona",PR05,0,0
+P:288,288,Galmona,Tinsavala,F,1975-03-06,1975,Renteona,"3 Via Danni, Meviona",PR05,0,0
+P:289,289,Tecoro,Tinsaaala,M,2006-02-22,2006,Meviona,"3 Via Danni, Meviona",PR05,0,0
+P:290,290,Tindio,Cagioo,M,1958-08-19,1958,Foceino,"129 Via Marpas Nuova, Foceino",PR39,0,0
+P:291,291,Monteo,Sagala,M,1943-01-19,1943,Teberello,"74 Via Dizo Nuova, Teberello",PR21,0,0
+P:292,292,Nifoo,Lavala,M,1947-02-03,1947,Pasdanona,"74 Via Dizo Nuova, Teberello",PR21,0,0
+P:293,293,Tindio,Monpasi,M,1963-12-10,1963,Tinberino,"12 Via Foros, Sapasino",PR21,0,0
+P:294,294,Monteo,Focezoi,M,1979-11-20,1979,Merenano,"127 Via Fersa, Merenano",PR41,0,0
+P:295,295,Ferloo,Monpasi,M,1981-11-25,1981,Rosrenello,"149 Via Baber Nuova, Rosrenello",PR12,0,0
+P:296,296,Galmona,Lenmeceo,F,1984-07-02,1984,Galrenello,"149 Via Baber Nuova, Rosrenello",PR12,0,0
+P:297,297,Lendio,Pasgiotina,M,1983-06-19,1983,Lenrosano,"55 Via Valpas Vecchia, Lenrosano",PR24,0,0
+P:298,298,Porosa,Pasbergioini,F,1989-04-23,1989,Pasvalino,"55 Via Valpas Vecchia, Lenrosano",PR24,0,0
+P:299,299,Galpoa,Pasgiotina,F,2011-01-08,2011,Lenrosano,"117 Via Dangal Nuova, Lenrosano",PR24,0,0
+P:300,300,Lofero,Pasgiotina,M,2014-01-07,2014,Lenrosano,"55 Via Valpas Vecchia, Lenrosano",PR24,0,0

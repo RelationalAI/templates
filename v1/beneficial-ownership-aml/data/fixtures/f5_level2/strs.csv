@@ -1,0 +1,2 @@
+str_id,num,subject_eid,bank_eid,instrument_type,instrument_id,amount,filed_on
+S5,1,P:PEP,C:BANK1,TRANSFER,T1,9500.0,2026-04-05

@@ -1,0 +1,7 @@
+findings:
+  S5:
+  - P4.NEAR_MISS
+  - P4.PEP_HIGH_RISK
+  - P4.UNKNOWN_CP
+score_min:
+  S5: 0.6

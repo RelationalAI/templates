@@ -1,0 +1,51 @@
+controls:
+- - P:P1
+  - C:PEOPLE_BANK
+- - P:P1
+  - C:ACME_TRUST
+- - C:MY_BANK
+  - C:ACME_BANK
+- - C:MY_BANK
+  - C:C8
+not_controls:
+- - P:X
+  - C:ACME_BANK
+- - P:P1
+  - C:MY_BANK
+- - P:P2
+  - C:MY_BANK
+phi:
+  P:P1|C:MY_BANK: 0.2139
+families:
+- - P:P1
+  - P:P2
+  - P:P3
+  - P:X
+family_accumulated_share:
+  C:MY_BANK: 0.5539
+family_controls:
+- members:
+  - P:P1
+  - P:P2
+  - P:P3
+  - P:X
+  company: C:MY_BANK
+- members:
+  - P:P1
+  - P:P2
+  - P:P3
+  - P:X
+  company: C:ACME_BANK
+findings:
+  S1:
+  - P3.R10
+  - P3.PYRAMID
+  - P4.RECORD
+score_min:
+  S1: 0.8
+explain_contains:
+  S1:
+  - '0.34'
+  - '0.23'
+  - '0.52'
+  - PARTNER_OF

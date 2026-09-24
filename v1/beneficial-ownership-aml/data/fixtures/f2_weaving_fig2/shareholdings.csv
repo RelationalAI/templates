@@ -1,0 +1,15 @@
+owner_eid,owned_eid,share,right_type
+P:P1,C:C4,0.8,ownership
+P:P1,C:C7,0.1,ownership
+C:C4,C:C5,0.4,ownership
+C:C4,C:C7,0.12,ownership
+C:C5,C:C7,0.2,ownership
+P:P2,C:C5,0.6,ownership
+P:P2,C:C6,0.51,ownership
+P:P2,C:C8,0.1,ownership
+C:C6,C:C7,0.4,ownership
+C:C6,C:C6,0.09,ownership
+P:P3,C:C6,0.4,ownership
+P:P3,C:C8,0.5,ownership
+C:C8,C:C9,1.0,ownership
+C:C9,C:C8,0.3,ownership

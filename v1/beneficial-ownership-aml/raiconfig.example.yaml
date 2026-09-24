@@ -1,0 +1,24 @@
+# Copy to raiconfig.yaml and fill in your Snowflake details (or run `rai init`).
+active_profile: default
+
+data:
+  ensure_change_tracking: true
+
+reasoners:
+  logic:
+    name: bo_aml
+    size: HIGHMEM_X64_S
+
+profile:
+  default:
+    default_connection: snowflake
+
+connections:
+  snowflake:
+    type: snowflake
+    account: <YOUR_ACCOUNT>
+    user: <YOUR_USER>
+    role: <ROLE_WITH_ACCESS_TO_RELATIONALAI>
+    warehouse: <YOUR_WAREHOUSE>
+    authenticator: externalbrowser
+    rai_app_name: RELATIONALAI

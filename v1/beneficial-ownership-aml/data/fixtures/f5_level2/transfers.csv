@@ -1,0 +1,3 @@
+transfer_id,from_account,to_account,amount,ts,product
+T1,A:OFF,A:PEP,9500.0,2026-04-01 11:00:00,
+T2,A:XYZ,A:PEP,4000.0,2026-04-03 15:00:00,

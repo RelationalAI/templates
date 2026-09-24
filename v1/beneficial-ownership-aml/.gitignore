@@ -1,0 +1,11 @@
+raiconfig.yaml
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.duckdb
+eval/out/
+benchmarks/out/
+*.zip
+build/
+*.egg-info/

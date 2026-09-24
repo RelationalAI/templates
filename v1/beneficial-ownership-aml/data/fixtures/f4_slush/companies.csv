@@ -1,0 +1,5 @@
+eid,name,legal_form,sector,province,inc_date,is_bank
+C:A,A,SPA,HOLDING,PR00,2001-01-01,0
+C:B,B,SPA,HOLDING,PR00,2001-01-01,0
+C:D,D,SPA,HOLDING,PR00,2001-01-01,0
+C:BANK,Bank,SPA,BANKING,PR00,2001-01-01,1

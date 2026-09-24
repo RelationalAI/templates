@@ -1,0 +1,2 @@
+loan_id,applicant_eid,lender_eid,amount,requested_on
+L1,P:X,C:ACME_BANK,250000.0,2026-03-01

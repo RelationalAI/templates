@@ -1,0 +1,17 @@
+owner_eid,owned_eid,share,right_type
+C:PEOPLE_BANK,C:ACME_TRUST,0.93,ownership
+C:ACME_TRUST,C:MY_BANK,0.23,ownership
+P:P2,C:MY_BANK,0.34,ownership
+C:MY_BANK,C:C3,0.55,ownership
+C:C3,C:C4,1.0,ownership
+C:C4,C:C6,0.51,ownership
+C:C6,C:C7,0.6,ownership
+C:C6,C:C8,0.6,ownership
+C:C7,C:ACME_BANK,0.25,ownership
+C:C8,C:ACME_BANK,0.21,ownership
+C:MY_BANK,C:ACME_BANK,0.06,ownership
+C:MY_BANK,C:C1,0.7,ownership
+C:MY_BANK,C:C2,0.12,ownership
+C:C3,C:C5,0.4,ownership
+C:C6,C:C9,0.03,ownership
+C:C8,C:C10,0.11,ownership
