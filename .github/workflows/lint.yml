@@ -9,6 +9,8 @@ on:
       - "v1/**"
       - "ruff.toml"
       - "requirements-dev.txt"
+      - "scripts/validate_changed_templates.py"
+      - "tests/test_validate_changed_templates.py"
       - ".github/workflows/lint.yml"
   push:
     branches:
@@ -20,6 +22,8 @@ on:
       - "v1/**"
       - "ruff.toml"
       - "requirements-dev.txt"
+      - "scripts/validate_changed_templates.py"
+      - "tests/test_validate_changed_templates.py"
       - ".github/workflows/lint.yml"
   workflow_dispatch:
 
@@ -28,6 +32,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -38,4 +44,14 @@ jobs:
         run: python -m pip install -r requirements-dev.txt
 
       - name: Run Ruff
-        run: ruff check sample-template v0.13 v0.14 v1
+        run: ruff check sample-template scripts tests v0.13 v0.14 v1
+
+      - name: Test changed-template validation
+        run: python -m unittest discover -s tests -p "test_*.py"
+
+      - name: Validate changed v1 templates
+        if: github.event_name == 'pull_request'
+        run: >-
+          python scripts/validate_changed_templates.py
+          --base-ref "${{ github.event.pull_request.base.sha }}"
+          --head-ref "${{ github.event.pull_request.head.sha }}"

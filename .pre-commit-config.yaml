@@ -4,7 +4,7 @@ repos:
     hooks:
       - id: ruff-check
         name: Ruff lint (templates)
-        files: ^(sample-template|v0\.13|v0\.14|v1)/.*\.py$
+        files: ^(sample-template|scripts|tests|v0\.13|v0\.14|v1)/.*\.py$
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0

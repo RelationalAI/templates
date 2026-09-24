@@ -1,0 +1,73 @@
+version: 1
+
+page:
+  lead_from_readme:
+    - what-this-template-is-for
+    - what-youll-build
+  omit_from_readme:
+    - model-overview
+    - how-it-works
+
+model_explorer:
+  title: How the starter model fits together
+  description: >-
+    The starter separates stable schema declarations from source mappings and
+    keeps executable queries and reporting in the runner.
+  concepts:
+    - symbol: Item
+      description: A generic business record to replace with a domain concept.
+  relationships: []
+  sources: []
+
+guided_walkthrough:
+  title: Follow the starter flow
+  description: >-
+    These three steps show where a template declares its model, loads base
+    facts, and inspects results.
+  steps:
+    - id: define-schema
+      title: Define the stable schema
+      explanation: >-
+        Item establishes the shared business vocabulary used by source mappings
+        and runner logic.
+      focus:
+        file: model/schema.py
+        symbols:
+          - Item
+      references:
+        Item:
+          symbol: Item
+      links:
+        - title: Declare concepts
+          href: /build/guides/modeling/declare-concepts/
+
+    - id: load-base-facts
+      title: Load base facts
+      explanation: >-
+        load_sample_data maps source records into the shared Item concept.
+      focus:
+        file: model/source.py
+        symbols:
+          - load_sample_data
+      references:
+        load_sample_data:
+          symbol: load_sample_data
+      links:
+        - title: Define base facts
+          href: /build/guides/modeling/define-base-facts/
+
+    - id: inspect-results
+      title: Inspect modeled records
+      explanation: >-
+        inspect_items queries the model and returns the records printed by the
+        runner.
+      focus:
+        file: template.py
+        symbols:
+          - inspect_items
+      references:
+        inspect_items:
+          symbol: inspect_items
+      links:
+        - title: Query a model
+          href: /build/guides/modeling/query-a-model/
