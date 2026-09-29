@@ -14,6 +14,77 @@ def parse(path: str) -> ast.Module:
 
 
 class RefactoredTemplateContractTests(unittest.TestCase):
+    def test_portfolio_explorer_declarations_are_stable_schema_symbols(self) -> None:
+        schema_module = parse("v1/portfolio_balancing/model/schema.py")
+        runner_module = parse("v1/portfolio_balancing/portfolio_balancing.py")
+
+        declarations: dict[str, set[str]] = {
+            "Concept": set(),
+            "Property": set(),
+            "Relationship": set(),
+        }
+        for node in schema_module.body:
+            if not isinstance(node, ast.Assign) or len(node.targets) != 1:
+                continue
+            target = node.targets[0]
+            if (
+                not isinstance(node.value, ast.Call)
+                or not isinstance(node.value.func, ast.Attribute)
+                or not isinstance(node.value.func.value, ast.Name)
+                or node.value.func.value.id != "model"
+                or node.value.func.attr not in declarations
+            ):
+                continue
+            if isinstance(target, ast.Name):
+                symbol = target.id
+            elif isinstance(target, ast.Attribute) and isinstance(
+                target.value, ast.Name
+            ):
+                symbol = f"{target.value.id}.{target.attr}"
+            else:
+                continue
+            declarations[node.value.func.attr].add(symbol)
+
+        self.assertEqual(
+            declarations["Concept"],
+            {
+                "Account",
+                "FrontierPoint",
+                "Holding",
+                "Regime",
+                "Scenario",
+                "Sector",
+                "Stock",
+                "Transaction",
+                "User",
+            },
+        )
+        self.assertLessEqual(
+            {
+                "Account.user",
+                "Holding.account",
+                "Holding.is_overconcentrated",
+                "Holding.is_sector_concentrated",
+                "Holding.stock",
+                "Stock.is_non_representative",
+                "Stock.is_representative",
+                "Stock.sector_ref",
+                "Transaction.user",
+                "User.is_high_risk_trader",
+            },
+            declarations["Relationship"],
+        )
+        self.assertFalse(
+            any(
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and isinstance(node.func.value, ast.Name)
+                and node.func.value.id == "model"
+                and node.func.attr in declarations
+                for node in ast.walk(runner_module)
+            )
+        )
+
     def test_entity_ground_truth_is_loaded_only_for_evaluation(self) -> None:
         source_module = parse("v1/entity_resolution/model/source.py")
         functions = {

@@ -42,9 +42,9 @@ without the cluster collapse, the gap would grow.
 
 ## Implementation map
 
-- `model/schema.py` creates the shared model and declares `User`, `Account`, `Holding`, `Transaction`, `Stock`, `Sector`, and their stable properties and relationships.
+- `model/schema.py` creates the shared model and declares all nine concepts, their properties, and their relationships.
 - `model/source.py` loads the bundled CSVs and maps source fields onto that schema. `model/__init__.py` re-exports the loaded model for the runner.
-- `portfolio_balancing.py` defines and executes the four reasoning stages, solves the frontier, and reports the results.
+- `portfolio_balancing.py` defines the derived facts, executes the four reasoning stages, solves the frontier, materializes frontier points, and reports the results.
 
 ## Workflow
 
@@ -60,7 +60,7 @@ without the cluster collapse, the gap would grow.
 
 **Response**
 
-`model/schema.py` declares `Stock` (with the binary `Stock.covar(Stock, Stock)` property carrying covariance), `Sector`, `User`, `Account`, `Holding`, and `Transaction`. `model/source.py` binds them to the bundled CSVs (8 stocks, 64 covariance entries). Stage 3 in `portfolio_balancing.py` adds the `Regime` and `Scenario` Concepts (2 regimes x 3 budgets = 6 scenarios).
+`model/schema.py` declares `Stock` (with the binary `Stock.covar(Stock, Stock)` property carrying covariance), `Sector`, `User`, `Account`, `Holding`, `Transaction`, `Regime`, `Scenario`, and `FrontierPoint`. `model/source.py` binds the portfolio concepts to the bundled CSVs (8 stocks, 64 covariance entries). Stage 3 in `portfolio_balancing.py` creates 2 regimes x 3 budgets = 6 scenarios, and Stage 4 materializes the solved frontier points.
 
 ### 2. Examine ontology
 
@@ -72,7 +72,7 @@ without the cluster collapse, the gap would grow.
 
 **Response**
 
-Concepts: 8 `Stock` across 5 `Sector`, the binary `Stock.covar` covariance property (64 entries), 6 `User`, 4 `Account`, 15 `Holding`, 21 `Transaction` — Stage 3 will introduce `Regime` and `Scenario`.
+Concepts: 8 `Stock` across 5 `Sector`, the binary `Stock.covar` covariance property (64 entries), 6 `User`, 4 `Account`, 15 `Holding`, and 21 `Transaction`. The schema also declares `Regime`, `Scenario`, and `FrontierPoint`; the runner populates them as it solves the base and crisis frontiers.
 
 ### 3. Discover reasoner questions
 

@@ -1,6 +1,17 @@
 """Shared portfolio schema and bundled source mappings."""
 
-from .schema import Account, Holding, Sector, Stock, Transaction, User, model
+from .schema import (
+    Account,
+    FrontierPoint,
+    Holding,
+    Regime,
+    Scenario,
+    Sector,
+    Stock,
+    Transaction,
+    User,
+    model,
+)
 from .source import (
     DATA_DIR,
     covar_csv,
@@ -12,7 +23,10 @@ from .source import (
 __all__ = [
     "Account",
     "DATA_DIR",
+    "FrontierPoint",
     "Holding",
+    "Regime",
+    "Scenario",
     "Sector",
     "Stock",
     "Transaction",

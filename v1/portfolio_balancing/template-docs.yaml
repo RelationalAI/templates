@@ -43,6 +43,15 @@ model_explorer:
     - symbol: Sector
       description: A market sector used to measure and constrain concentration.
 
+    - symbol: Regime
+      description: A market condition used to evaluate portfolio risk with base or crisis covariance.
+
+    - symbol: Scenario
+      description: A budget and market-regime combination solved as one portfolio optimization scenario.
+
+    - symbol: FrontierPoint
+      description: A point on a scenario's efficient frontier, including its return, risk, exact marginal risk, knee indicator, and base-to-crisis volatility change.
+
   # Endpoints are extracted from the schema expression. The author supplies
   # the business reading and explanation.
   relationships:
@@ -70,6 +79,31 @@ model_explorer:
       label: made by
       reading: Transaction was made by User
       description: Connects activity to the investor evaluated by compliance rules.
+
+    - symbol: Holding.is_overconcentrated
+      label: overconcentrated
+      reading: Holding is overconcentrated
+      description: Flags a holding whose value exceeds the configured share of its account balance.
+
+    - symbol: Holding.is_sector_concentrated
+      label: in concentrated sector
+      reading: Holding is in a concentrated sector position
+      description: Flags a holding whose sector exposure exceeds the configured share of its account balance.
+
+    - symbol: User.is_high_risk_trader
+      label: high-risk trader
+      reading: User is a high-risk trader
+      description: Flags an investor whose risk score and flagged transaction count exceed the configured thresholds.
+
+    - symbol: Stock.is_representative
+      label: cluster representative
+      reading: Stock is a cluster representative
+      description: Marks the highest-Sharpe stock selected to represent its correlation cluster.
+
+    - symbol: Stock.is_non_representative
+      label: not a cluster representative
+      reading: Stock is not a cluster representative
+      description: Marks a stock excluded from optimization because another stock represents its correlation cluster.
 
   sources:
     # The extractor validates these paths and infers which model items they
@@ -186,15 +220,17 @@ guided_walkthrough:
       focus:
         file: portfolio_balancing.py
         anchors:
-          - start: Holding.value = model.Property
+          - start: model.define(Holding.value
             end: ).define(Holding.is_overconcentrated())
       references:
         Holding.value:
           anchor:
-            start: Holding.value = model.Property
+            start: model.define(Holding.value
             end: model.define(Holding.value
         Holding.is_overconcentrated:
-          symbol: Holding.is_overconcentrated
+          anchor:
+            start: ).define(Holding.is_overconcentrated())
+            end: ).define(Holding.is_overconcentrated())
         model.where(...):
           anchor:
             start: AccountR1 = Account.ref()
@@ -237,7 +273,7 @@ guided_walkthrough:
           symbol: community
         Stock.cluster:
           anchor:
-            start: Stock.cluster = model.Property
+            start: model.define(stock_clust_ref.cluster
             end: community(stock_clust_ref, cluster_label)
             end_offset: 1
       links:

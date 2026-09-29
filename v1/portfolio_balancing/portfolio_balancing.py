@@ -34,9 +34,21 @@ import heapq
 import warnings
 from dataclasses import dataclass
 
-from model import Account, Holding, Sector, Stock, Transaction, User, model, returns_csv
+from model import (
+    Account,
+    FrontierPoint,
+    Holding,
+    Regime,
+    Scenario,
+    Sector,
+    Stock,
+    Transaction,
+    User,
+    model,
+    returns_csv,
+)
 from pandas import DataFrame
-from relationalai.semantics import Boolean, Float, Integer, String, sum
+from relationalai.semantics import Float, Integer, sum
 from relationalai.semantics.reasoners.graph import Graph
 from relationalai.semantics.reasoners.prescriptive import Problem
 from relationalai.semantics.std import aggregates as aggs
@@ -69,12 +81,10 @@ CRISIS_ALPHA = 0.7  # shrinkage weight for base correlation in crisis regime (St
 # Stage 1: Rules -- compliance flags
 # --------------------------------------------------
 
-# Derived property: holding value = quantity * purchase_price.
-Holding.value = model.Property(f"{Holding} has value {Float:holding_value}")
+# Derived holding value = quantity * purchase_price.
 model.define(Holding.value(Holding.quantity * Holding.purchase_price))
 
 # Rule 1: Overconcentrated holdings -- position value > POSITION_LIMIT of balance.
-Holding.is_overconcentrated = model.Relationship(f"{Holding} is overconcentrated")
 AccountR1 = Account.ref()
 model.where(
     Holding.account(AccountR1),
@@ -82,9 +92,6 @@ model.where(
 ).define(Holding.is_overconcentrated())
 
 # Rule 2: Sector concentration -- total sector exposure > SECTOR_LIMIT of balance.
-Holding.is_sector_concentrated = model.Relationship(
-    f"{Holding} is in a concentrated sector position"
-)
 HoldingSC = Holding.ref()
 StockSC = Stock.ref()
 AccountSC = Account.ref()
@@ -105,7 +112,6 @@ model.where(
 ).define(Holding.is_sector_concentrated())
 
 # Rule 3: High-risk traders -- risk_score > 0.8 AND >5 flagged transactions.
-User.is_high_risk_trader = model.Relationship(f"{User} is high risk trader")
 TransactionHR = Transaction.ref()
 flagged_count = sum(TransactionHR.is_flagged_val).where(
     TransactionHR.user(User),
@@ -227,7 +233,6 @@ else:
 # --------------------------------------------------
 
 # Derived per-stock variance (covar diagonal, i == j).
-Stock.variance = model.Property(f"{Stock} has {Float:stock_variance}")
 PairedStockVar = Stock.ref()
 var_ref = Float.ref()
 model.where(
@@ -237,14 +242,10 @@ model.where(
 
 # Derived per-stock volatility (sqrt of variance). Used downstream to derive
 # correlation and the crisis regime covariance -- no numpy, no precompute.
-Stock.volatility = model.Property(f"{Stock} has {Float:stock_volatility}")
 model.define(Stock.volatility(sqrt(Stock.variance)))
 
 # Derived pairwise correlation: corr(i, j) = covar(i, j) / (vol_i * vol_j).
 # Stored as a two-argument property on Stock (keyed by the paired Stock).
-Stock.correlation = model.Property(
-    f"{Stock} and {Stock} have correlation {Float:stock_correlation}"
-)
 PairedStockCorr = Stock.ref()
 cov_ij_ref = Float.ref()
 model.where(
@@ -279,7 +280,6 @@ model.define(corr_graph.Edge.new(src=stock_i_ref, dst=stock_j_ref)).where(
 # Louvain community detection -- stored as Stock.cluster (integer id).
 community = corr_graph.louvain()
 cluster_label = Integer.ref("cluster_label")
-Stock.cluster = model.Property(f"{Stock} in cluster {Integer:cluster_id}")
 stock_clust_ref = Stock.ref()
 model.define(stock_clust_ref.cluster(cluster_label)).where(
     community(stock_clust_ref, cluster_label)
@@ -290,14 +290,10 @@ model.define(stock_clust_ref.cluster(cluster_label)).where(
 # several stocks co-move strongly they carry near-identical exposure --
 # prefer the best risk-adjusted one and drop the rest from the investable
 # universe. This collapses redundant bets instead of merely capping them.
-Stock.sharpe = model.Property(f"{Stock} has Sharpe {Float:stock_sharpe}")
 model.define(Stock.sharpe(Stock.returns / Stock.volatility))
 
 # Per-cluster maximum Sharpe, written back onto each Stock.
 peer_for_max = Stock.ref()
-Stock.cluster_max_sharpe = model.Property(
-    f"{Stock} has cluster max Sharpe {Float:cluster_max_sharpe}"
-)
 model.define(
     Stock.cluster_max_sharpe(
         aggs.max(peer_for_max.sharpe)
@@ -307,14 +303,12 @@ model.define(
 )
 
 # Representative Relationship: stock whose Sharpe equals its cluster's max.
-Stock.is_representative = model.Relationship(f"{Stock} is cluster representative")
 model.where(Stock.sharpe == Stock.cluster_max_sharpe).define(
     Stock.is_representative()
 )
 
 # Complementary Relationship used positively in solver constraints
 # (the prescriptive rewriter doesn't accept `model.not_(...)` in a .where()).
-Stock.is_non_representative = model.Relationship(f"{Stock} is not cluster representative")
 model.where(Stock.sharpe < Stock.cluster_max_sharpe).define(
     Stock.is_non_representative()
 )
@@ -418,14 +412,10 @@ for _, row in rep_df.iterrows():
 # Stage 4's crisis regime reuses this stage's solver via the crisis_* scenarios.)
 # --------------------------------------------------
 
-# Regime concept -- two instances ("base", "crisis") feed regime-conditioned covariance.
-Regime = model.Concept("Regime", identify_by={"regime_name": String})
+# Two Regime instances ("base", "crisis") feed regime-conditioned covariance.
 model.define(Regime.new(regime_name="base"))
 model.define(Regime.new(regime_name="crisis"))
 
-Scenario = model.Concept("Scenario", identify_by={"name": String})
-Scenario.budget = model.Property(f"{Scenario} has {Float:budget}")
-Scenario.regime = model.Property(f"{Scenario} in {Regime}")
 scenario_data = model.data(
     [
         ("base_500", 500, "base"),
@@ -457,10 +447,6 @@ model.where(
 # (rho_crisis = alpha * rho + (1 - alpha) * J) re-expressed in covariance
 # units. PSD is preserved because the construction is a convex combination of
 # PSD matrices.
-Stock.regime_covar = model.Property(
-    f"{Stock} and {Stock} in {Regime} have {Float:regime_covar}"
-)
-
 # Base regime: covariance unchanged.
 PairedStockBase = Stock.ref()
 base_cov_ref = Float.ref()
@@ -490,7 +476,6 @@ model.where(
 # Decision variable -- indexed by Scenario
 # --------------------------------------------------
 
-Stock.x_quantity = model.Property(f"{Stock} in {Scenario} has {Float:quantity}")
 x_qty = Float.ref()
 x_qty_paired = Float.ref()
 regime_cov_val = Float.ref()
@@ -1132,37 +1117,8 @@ for r in fp_rows:
 
 fp_df = DataFrame(fp_rows)
 
-# FrontierPoint Concept -- one row per (scenario, point). The marginal is the exact
+# FrontierPoint facts -- one row per (scenario, point). The marginal is the exact
 # dual everywhere (0 at the min-risk anchor), so a single-pass load works (no NaN).
-FrontierPoint = model.Concept(
-    "FrontierPoint",
-    identify_by={"scenario_label": String, "eps_label": String},
-)
-FrontierPoint.scenario = model.Property(f"{FrontierPoint} for {Scenario}")
-FrontierPoint.k = model.Property(f"{FrontierPoint} has order {Integer:fp_k}")
-FrontierPoint.return_value = model.Property(
-    f"{FrontierPoint} has return {Float:fp_return}"
-)
-FrontierPoint.risk = model.Property(f"{FrontierPoint} has risk {Float:fp_risk}")
-FrontierPoint.marginal_risk_per_return = model.Property(
-    f"{FrontierPoint} has marginal {Float:fp_marginal}"
-)
-FrontierPoint.is_knee = model.Property(
-    f"{FrontierPoint} is knee {Boolean:fp_is_knee}"
-)
-FrontierPoint.vol_base = model.Property(
-    f"{FrontierPoint} has vol_base {Float:fp_vol_base}"
-)
-FrontierPoint.vol_crisis = model.Property(
-    f"{FrontierPoint} has vol_crisis {Float:fp_vol_crisis}"
-)
-FrontierPoint.vol_gap = model.Property(
-    f"{FrontierPoint} has vol_gap {Float:fp_vol_gap}"
-)
-FrontierPoint.vol_gap_pct = model.Property(
-    f"{FrontierPoint} has vol_gap_pct {Float:fp_vol_gap_pct}"
-)
-
 fp_data = model.data(
     fp_df[
         [

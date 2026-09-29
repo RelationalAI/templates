@@ -74,9 +74,10 @@ keys and properties are extracted from Python and must not be repeated.
   description: Connects each transfer to its sending account.
 ```
 
-The relationship symbol must resolve in `model/schema.py`. Endpoints are
-extracted; the sidecar supplies the reader-facing label, reading, and
-description.
+The relationship symbol must resolve in `model/schema.py`. Unary relationships
+appear in the owning concept's details, while binary relationships also appear
+as links in the model diagram. Endpoints are extracted; the sidecar supplies
+the reader-facing label, reading, and description.
 
 `sources` contains up to 50 entries:
 
