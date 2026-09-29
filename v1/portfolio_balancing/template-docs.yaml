@@ -213,10 +213,11 @@ guided_walkthrough:
       title: Flag positions that exceed concentration limits
       explanation: >-
         Holding.value derives each position's value from its quantity and purchase
-        price. Holding.is_overconcentrated names the compliance flag, and
-        model.where(...) applies it when a position exceeds the configured share
-        of its account balance. This rules-based reasoning turns the portfolio
-        policy into a relationship that later queries can inspect.
+        price. model.where(...) applies the policy when a position exceeds the
+        configured share of its account balance, and
+        Holding.is_overconcentrated names the resulting compliance flag. This
+        rules-based reasoning turns the portfolio policy into a relationship that
+        later queries can inspect.
       focus:
         file: portfolio_balancing.py
         anchors:
