@@ -52,6 +52,15 @@ model_explorer:
     - symbol: FrontierPoint
       description: A point on a scenario's efficient frontier, including its return, risk, exact marginal risk, knee indicator, and base-to-crisis volatility change.
 
+  # Concept-valued properties appear as roads. Override their short labels
+  # here without changing the model declarations.
+  property_labels:
+    - symbol: Scenario.regime
+      label: has regime
+
+    - symbol: FrontierPoint.scenario
+      label: is for scenario
+
   # Endpoints are extracted from the schema expression. The author supplies
   # the business reading and explanation.
   relationships:

@@ -17,6 +17,7 @@ model_explorer:
   title: Plain-text title
   description: Plain-text description
   concepts: []
+  property_labels: []
   relationships: []
   sources: []
 
@@ -64,6 +65,19 @@ sample_data:
 
 The symbol must be a top-level concept declared in `model/schema.py`. Identity
 keys and properties are extracted from Python and must not be repeated.
+
+`property_labels` optionally overrides the short road label for a
+concept-valued property:
+
+```yaml
+- symbol: Scenario.regime
+  label: has regime
+```
+
+The symbol must resolve to a direct `model.Property` declaration on a selected
+concept, and the property's value type must be another selected concept.
+Concept-valued properties appear as roads in the model diagram. Scalar
+properties remain in the owning concept's details.
 
 `relationships` contains up to 100 entries:
 
