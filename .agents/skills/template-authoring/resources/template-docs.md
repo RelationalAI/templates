@@ -72,12 +72,17 @@ concept-valued property:
 ```yaml
 - symbol: Scenario.regime
   label: has regime
+  reading: Scenario has regime
 ```
 
 The symbol must resolve to a direct `model.Property` declaration on a selected
-concept, and the property's value type must be another selected concept.
-Concept-valued properties appear as roads in the model diagram. Scalar
-properties remain in the owning concept's details.
+concept with exactly two distinct selected concept inputs. Repeated inputs of
+the same concept collapse to one road endpoint, so a property over
+`Stock, Stock, Regime` connects `Stock` to `Regime`. Use `reading` when the
+inspector headline needs the destination concept or other context that the
+short road label omits. Direct concept-valued properties appear as roads
+automatically; `property_labels` opts scalar-valued properties into the diagram.
+Other scalar properties remain in the owning concept's details.
 
 `relationships` contains up to 100 entries:
 
