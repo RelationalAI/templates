@@ -551,6 +551,29 @@ def _extract_allocations(var_df, scenario_name):
     return allocs
 
 
+def _extract_frontier_point_allocations(prod_solves, point_row, scenario_name):
+    """Extract the allocations from the cached solve for one frontier point."""
+    solve_index = int(point_row["k"])
+    if solve_index >= len(prod_solves):
+        raise RuntimeError(
+            f"Frontier point {solve_index} for {scenario_name} has no matching solve."
+        )
+
+    label, allocation_df, _ = prod_solves[solve_index]
+    if label != point_row["eps_label"]:
+        raise RuntimeError(
+            f"Frontier point {point_row['eps_label']} for {scenario_name} "
+            f"does not match solve {label}."
+        )
+
+    allocations = _extract_allocations(allocation_df, scenario_name)
+    if not allocations:
+        raise RuntimeError(
+            f"Frontier point {label} for {scenario_name} has no stock allocations."
+        )
+    return label, allocations
+
+
 def evaluate_return(var_df, scenario_name):
     """Evaluate portfolio return for a given scenario from a structured allocation df."""
     allocs = _extract_allocations(var_df, scenario_name)
@@ -1249,4 +1272,60 @@ print(
     "  Because Stage 2 already deduplicated the universe, the concentrated end picks\n"
     "  the highest-Sharpe distinct bet per cluster rather than stacking near-\n"
     "  duplicates, so the crisis gap shrinks there instead of widening."
+)
+
+# --------------------------------------------------
+# Candidate allocations at each scenario's knee
+# --------------------------------------------------
+print(f"\n{'=' * 38}")
+print("KNEE PORTFOLIO ALLOCATIONS BY SCENARIO")
+print("=" * 38)
+
+stock_ticker_map = dict(zip(returns_csv["index"], returns_csv["ticker"]))
+for sn in scenario_names:
+    knee_rows = frontier_df[
+        (frontier_df["scenario_label"] == sn)
+        & frontier_df["is_knee"]
+    ]
+    if len(knee_rows) != 1:
+        print(
+            f"\n  {sn}: No unique knee point was found. "
+            "Choose a point from the frontier table above."
+        )
+        continue
+
+    knee_row = knee_rows.iloc[0]
+    label, allocations = _extract_frontier_point_allocations(
+        prod_solves,
+        knee_row,
+        sn,
+    )
+
+    meta = scenario_meta[sn]
+    budget = meta["budget"]
+    volatility = float(knee_row["risk"]) ** 0.5
+    print(
+        f"\n  {sn} (budget={budget:.0f}, regime={meta['regime']}, point={label})"
+    )
+    print(
+        f"  expected return={float(knee_row['return']):.2f}, "
+        f"volatility={volatility:.2f}"
+    )
+    print(f"  {'Ticker':<8}{'Amount':>12}{'Weight':>10}")
+    print(f"  {'-' * 30}")
+    ordered_allocations = sorted(
+        allocations.items(),
+        key=lambda item: (-item[1], stock_ticker_map.get(item[0], str(item[0]))),
+    )
+    for stock_index, quantity in ordered_allocations:
+        ticker = stock_ticker_map.get(stock_index, f"Stock {stock_index}")
+        print(
+            f"  {ticker:<8}{float(quantity):>12.2f}"
+            f"{float(quantity) / budget:>9.1%}"
+        )
+
+print(
+    "\n  Each knee is a candidate portfolio, not a recommendation. "
+    "The amounts apply to\n"
+    "  the sample scenario, not to a specific account."
 )

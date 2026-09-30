@@ -44,7 +44,7 @@ without the cluster collapse, the gap would grow.
 
 - `model/schema.py` creates the shared model and declares all nine concepts, their properties, and their relationships.
 - `model/source.py` loads the bundled CSVs and maps source fields onto that schema. `model/__init__.py` re-exports the loaded model for the runner.
-- `portfolio_balancing.py` defines the derived facts, executes the four reasoning stages, solves the frontier, materializes frontier points, and reports the results.
+- `portfolio_balancing.py` defines the derived facts, executes the four reasoning stages, solves the frontier, creates frontier point summaries, and reports the stock amounts and weights for each scenario's candidate portfolio.
 
 ## Workflow
 
@@ -157,6 +157,18 @@ Crisis vol runs 22-30% above base at every frontier point (budget 1000: min_risk
 **Response**
 
 Ontology gains a `FrontierPoint(Scenario, eps_label)` Concept (6 scenarios x up to 6 points; adjacent targets that collapse are deduped) with `return`, `risk`, `marginal_risk_per_return`, `is_knee`, `vol_base`, `vol_crisis`, `vol_gap`, `vol_gap_pct`. The frontier shape (base_1000 return 64.87->84.00, variance 4641->8528), knee at p3, and the crisis vol gap (+28.4% min_risk -> +29.6% peak at p1 -> +21.7% at p5) are now queryable as ontology rather than stdout.
+
+### 10. Review candidate allocations
+
+**Prompt**
+
+```
+/rai-prescriptive-results For each scenario, show the stock amounts and portfolio weights for the portfolio associated with the FrontierPoint marked as is_knee.
+```
+
+**Response**
+
+The final report selects the `FrontierPoint` marked as `is_knee` for each of the six scenarios and retrieves the matching Stage 3 allocation. `Amount` shows how much of the scenario's budget is assigned to each stock. `Weight` shows the stock's share of that budget. These are candidate portfolios, not recommendations. To produce trades for an account, link a scenario to that account and compare the target amounts with its current holdings.
 
 ## Data
 

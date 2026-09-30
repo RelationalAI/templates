@@ -90,4 +90,6 @@ Use this sequence to run the bundled example:
      Crisis volatility ~22-30% above base at every frontier point.
    ```
 
-   Crisis volatility sits ~22-30% above base at every frontier point and the gap peaks in the middle of the frontier, not at the concentrated end. That inversion is the payoff of the representative-only universe: at the concentrated end the optimizer picks the highest-Sharpe distinct bet per cluster, which sits in sectors with lower crisis correlations, including Energy and Consumer Staples. The full stage-by-stage printout and a step-by-step walkthrough are in `runbook.md`.
+   Crisis volatility sits ~22-30% above base at every frontier point and the gap peaks in the middle of the frontier, not at the concentrated end. That inversion is the payoff of the representative-only universe: at the concentrated end the optimizer picks the highest-Sharpe distinct bet per cluster, which sits in sectors with lower crisis correlations, including Energy and Consumer Staples.
+
+   The final report lists the stock amounts and budget weights for the portfolio associated with the `FrontierPoint` marked as `is_knee` in each of the six scenarios. Treat these as candidate portfolios, not recommendations. To produce trades for an account, link a scenario to that account and compare the target amounts with its current holdings. The full stage-by-stage printout and a step-by-step walkthrough are in `runbook.md`.
