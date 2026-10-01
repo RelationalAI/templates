@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rai-retail-delivery-agent"
+version = "0.1.0"
+description = "Synthetic delivery planning with PyRel and a governed Snowflake agent"
+requires-python = ">=3.12"
+dependencies = [
+  "relationalai==1.33.0",
+]
+
+[project.optional-dependencies]
+fixture = ["snowflake-connector-python==3.17.4"]
+
+[tool.setuptools]
+packages = ["model"]

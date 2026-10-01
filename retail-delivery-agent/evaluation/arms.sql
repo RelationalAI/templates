@@ -1,0 +1,7 @@
+-- DRAFT: not executable. Requires an approved Snowflake account, reviewed
+-- semantic-view DDL, actual published table names, and equal grants.
+-- A: minimal descriptions over raw depot/road/stock/order sources.
+-- B: same raw sources with SME-reviewed joins/terms/constraint descriptions.
+-- C: same descriptions plus *verified* model-derived statuses/decisions.
+-- Freeze questions.json, fixture revision, model/settings, and access for all
+-- arms. Keep gold answer keys out of views and agent instructions.

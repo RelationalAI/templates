@@ -1,0 +1,1 @@
+case_id,source_revision,state,arm,question_id,run,answer_correct,tool_evidence,abstention_appropriate,source_revision_checked,solver_optimal_checked,latency_ms,cost,sql_trace_reference,error_notes

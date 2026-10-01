@@ -98,13 +98,14 @@ The index below covers the current templates. Expand an industry to see its temp
 </details>
 
 <details>
-<summary>Supply Chain & Logistics (9)</summary>
+<summary>Supply Chain & Logistics (10)</summary>
 
 | Template | Reasoners | Description |
 | --- | --- | --- |
 | [demand_planning_temporal](demand_planning_temporal/) | Prescriptive | Plan weekly production and inventory across sites over a date-filtered planning horizon to minimize total cost while meeting demand. |
 | [humanitarian-aid-supply-chain](humanitarian-aid-supply-chain/) | Graph | Analyze a humanitarian aid supply-chain network with PageRank and weighted degree centrality to optimize resource distribution. |
 | [network_flow_planning](network_flow_planning/) | Prescriptive | Plan a multi-tier distribution flow that decides which fulfillment centers to open and how much to ship on every lane to satisfy customer demand at minimum cost. |
+| [retail-delivery-agent](retail-delivery-agent/) | Graph, Prescriptive | Explore directed reachability and whole-order delivery planning in a synthetic PyRel model; Snowflake agent deployment awaits account verification. |
 | [shipment_compliance](shipment_compliance/) | Rules-based | Derived classifications for shipment compliance, sourcing risk, and demand escalation. |
 | [supplier_reliability](supplier_reliability/) | Prescriptive | Select suppliers to meet product demand at minimum cost, with sensitivity marginals and supplier-disruption scenario analysis. |
 | [supply_chain_resilience](supply_chain_resilience/) | Graph, Rules-based, Prescriptive | Chain blast-radius reachability, network analysis, and rule-based risk classification into a risk-adjusted minimum-cost network flow for supply-chain routing. |

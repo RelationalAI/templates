@@ -1,0 +1,10 @@
+-- Operation contract: scripts/change_state.py close --connection <profile>
+-- --database <database> executes the following guarded DML transaction.
+-- Do not execute these illustrative statements directly: the Python runner
+-- verifies schema ownership and both affected-row counts before commit.
+-- BEGIN;
+-- UPDATE <DATABASE>.<SOURCE_SCHEMA>.DEPOTS SET IS_OPEN = FALSE
+--   WHERE DEPOT_ID = 'North' AND IS_OPEN = TRUE;
+-- UPDATE <DATABASE>.<SOURCE_SCHEMA>.DEMO_STATE SET REVISION = REVISION + 1
+--   WHERE REVISION = <previous_revision>;
+-- COMMIT;
