@@ -117,8 +117,10 @@ guided_walkthrough:
     - id: plan-whole-orders
       title: Maximize complete on-time orders
       explanation: >-
-        problem uses binary Assignment variables over EligiblePair routes
-        and stock constraints; a reachable store need not be selected.
+        EligiblePair identifies on-time routes that can cover a whole order.
+        Binary Assignment choices in the named problem maximize complete
+        orders under depot stock constraints; a reachable store need not
+        be selected.
       focus:
         file: model/schema.py
         symbols:
