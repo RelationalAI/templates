@@ -15,7 +15,8 @@ class GenerateTemplateIndexTests(unittest.TestCase):
         entries = collect_templates(REPO_ROOT)
         names = {entry.name for entry in entries}
 
-        self.assertEqual(len(entries), 53)
+        self.assertEqual(len(entries), 54)
+        self.assertIn("retail-delivery-agent", names)
         self.assertIn("simple-start", names)
         self.assertNotIn("sample-template", names)
         self.assertNotIn("scripts", names)
@@ -26,6 +27,7 @@ class GenerateTemplateIndexTests(unittest.TestCase):
         index = build_index(entries, "")
 
         self.assertIn("[simple-start](simple-start/)", index)
+        self.assertIn("[retail-delivery-agent](retail-delivery-agent/)", index)
         self.assertNotIn("(v1/", index)
 
 
