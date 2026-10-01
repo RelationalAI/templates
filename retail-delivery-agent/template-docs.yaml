@@ -20,7 +20,7 @@ model_explorer:
     - symbol: Store
       description: A destination whose geographic reachability is checked separately from stock.
     - symbol: Road
-      description: A one-way road carrying a nonnegative travel time.
+      description: A one-way road from a source to a destination node with nonnegative travel time.
     - symbol: Order
       description: A whole single-product order with an on-time deadline.
     - symbol: StoreRouteStatus
@@ -38,14 +38,6 @@ model_explorer:
       label: at
       reading: Store is at Node
       description: Associates each store with its road-network node.
-    - symbol: Road.source
-      label: starts at
-      reading: Road starts at Node
-      description: Source endpoint of a directed road.
-    - symbol: Road.destination
-      label: ends at
-      reading: Road ends at Node
-      description: Destination endpoint of a directed road.
     - symbol: Order.store
       label: delivered to
       reading: Order is delivered to Store
