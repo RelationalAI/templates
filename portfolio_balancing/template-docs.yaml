@@ -1,0 +1,499 @@
+# Proposed v1 sidecar for v1/portfolio_balancing/template-docs.yaml.
+#
+# README.md supplies page metadata, the problem statement, and Quickstart.
+# Its opening link is for README readers, not the generated guide. The docs
+# build derives identities, properties, source mappings, row counts, and line
+# ranges from the referenced files.
+
+version: 1
+
+page:
+  omit_readme_preamble: true
+  lead_from_readme:
+    - what-this-template-is-for
+  omit_from_readme: []
+  download_and_run_from_readme: true
+
+model_explorer:
+  title: Explore the model
+  description: >-
+    The model connects investors and their accounts to holdings, stocks,
+    sectors, and transactions. Rules inspect the current portfolio, graph
+    reasoning groups correlated stocks, and prescriptive reasoning chooses
+    a re-balanced portfolio.
+
+  # List order controls the reading order. Identity keys and properties are
+  # extracted from model/schema.py and are not repeated here.
+  concepts:
+    - symbol: User
+      description: An investor who owns the accounts holding stock positions. The model uses the investor’s risk score and flagged transactions to identify high-risk traders.
+
+    - symbol: Account
+      description: A brokerage or retirement account owned by an investor.
+
+    - symbol: Holding
+      description: A stock position held in an account.
+
+    - symbol: Transaction
+      description: An investor transaction with an amount, category, and flagged status from the input data. The model counts flagged transactions by investor as part of its high-risk trader check.
+
+    - symbol: Stock
+      description: A stock available for investment, with an expected return and covariance values. Covariance describes how its returns tend to move with those of other stocks, helping the model group related stocks and measure portfolio risk.
+
+    - symbol: Sector
+      description: A market sector used to measure and constrain concentration.
+
+    - symbol: Regime
+      description: A market condition used to evaluate portfolio risk with base or crisis covariance.
+
+    - symbol: Scenario
+      description: A budget and market-regime combination solved as one portfolio optimization scenario.
+
+    - symbol: FrontierPoint
+      description: A point on a scenario's efficient frontier, including its return, risk, exact marginal risk, knee indicator, and base-to-crisis volatility change.
+
+  # Concept-valued properties appear as roads. Override their short labels
+  # here without changing the model declarations.
+  property_labels:
+    - symbol: Stock.x_quantity
+      label: has quantity in
+      reading: Stock has quantity in Scenario
+
+    - symbol: Stock.regime_covar
+      label: pairs have covariance in
+      reading: Stock pairs have covariance in Regime
+
+    - symbol: Scenario.regime
+      label: has regime
+      reading: Scenario has regime
+
+    - symbol: FrontierPoint.scenario
+      label: is for scenario
+      reading: FrontierPoint is for scenario
+
+  # Endpoints are extracted from the schema expression. The author supplies
+  # the business reading and explanation.
+  relationships:
+    - symbol: Account.user
+      label: owned by
+      reading: Account is owned by User
+      description: Connects each account to the investor who owns it.
+
+    - symbol: Holding.account
+      label: held in
+      reading: Holding is held in Account
+      description: Connects a position to the account that contains it.
+
+    - symbol: Holding.stock
+      label: position in
+      reading: Holding is a position in Stock
+      description: Connects a position to the security it represents.
+
+    - symbol: Stock.sector_ref
+      label: belongs to
+      reading: Stock belongs to Sector
+      description: Groups stocks for sector exposure checks and constraints.
+
+    - symbol: Transaction.user
+      label: made by
+      reading: Transaction was made by User
+      description: Connects activity to the investor evaluated by compliance rules.
+
+    - symbol: Holding.is_overconcentrated
+      label: overconcentrated
+      reading: Holding is overconcentrated
+      description: Flags a holding whose value exceeds the configured share of its account balance.
+
+    - symbol: Holding.is_sector_concentrated
+      label: in concentrated sector
+      reading: Holding is in a concentrated sector position
+      description: Flags a holding whose sector exposure exceeds the configured share of its account balance.
+
+    - symbol: User.is_high_risk_trader
+      label: high-risk trader
+      reading: User is a high-risk trader
+      description: Flags an investor whose risk score and flagged transaction count exceed the configured thresholds.
+
+    - symbol: Stock.is_representative
+      label: cluster representative
+      reading: Stock is a cluster representative
+      description: Marks the highest-Sharpe stock selected to represent its correlation cluster.
+
+    - symbol: Stock.is_non_representative
+      label: not a cluster representative
+      reading: Stock is not a cluster representative
+      description: Marks a stock excluded from optimization because another stock represents its correlation cluster.
+
+  sources:
+    # The extractor validates these paths and infers which model items they
+    # populate from model/source.py. A populates override is allowed only when
+    # the mapping is dynamic or ambiguous.
+    - path: data/users.csv
+      description: Investor names and risk scores.
+
+    - path: data/accounts.csv
+      description: Account ownership, type, and balance.
+
+    - path: data/holdings.csv
+      description: Current stock positions by account.
+
+    - path: data/transactions.csv
+      description: Investor transactions and existing flagged indicators.
+
+    - path: data/returns.csv
+      description: Stock identifiers, sectors, and expected returns.
+
+    - path: data/covar.csv
+      description: Pairwise stock covariance values.
+      populates:
+        - Stock
+
+guided_walkthrough:
+  title: See how it works
+  description: >-
+    These seven steps follow the model from its schema and data through the
+    four stages. The final step shows how to read the results and choose a
+    candidate portfolio. The current holdings and calculated portfolios share
+    Stock, but Scenario is not linked to User, Account, or Holding. The output
+    shows sample portfolios, not trades for a specific account.
+
+  steps:
+    - id: declare-shared-model
+      title: Define the shared model
+      explanation: |-
+        The schema defines nine concepts for the current portfolio, market
+        data, scenarios, and results. This excerpt shows the declarations for
+        the primary concepts used to optimize the portfolio.
+
+        Regime represents a market condition, such as base or crisis. Scenario
+        combines a budget with a regime. Stock.regime_covar records the
+        covariance between each pair of stocks for a regime. Stock.x_quantity
+        represents how much of a stock the optimizer assigns to a scenario.
+        FrontierPoint represents one risk and return result.
+        FrontierPoint.scenario links that result to its scenario.
+      focus:
+        file: model/schema.py
+        anchors:
+          - start: 'Regime = model.Concept("Regime", identify_by={"regime_name": String})'
+            end: FrontierPoint.scenario = model.Property(f"{FrontierPoint} for {Scenario}")
+      references:
+        Regime:
+          anchor:
+            start: 'Regime = model.Concept("Regime", identify_by={"regime_name": String})'
+            end: 'Regime = model.Concept("Regime", identify_by={"regime_name": String})'
+        Scenario:
+          anchor:
+            start: 'Scenario = model.Concept("Scenario", identify_by={"name": String})'
+            end: 'Scenario.regime = model.Property(f"{Scenario} in {Regime}")'
+        Stock.regime_covar:
+          anchor:
+            start: Stock.regime_covar = model.Property(
+            end: 'f"{Stock} and {Stock} in {Regime} have {Float:regime_covar}"'
+            end_offset: 1
+        Stock.x_quantity:
+          anchor:
+            start: Stock.x_quantity = model.Property(f"{Stock} in {Scenario} has {Float:quantity}")
+            end: Stock.x_quantity = model.Property(f"{Stock} in {Scenario} has {Float:quantity}")
+        FrontierPoint:
+          anchor:
+            start: FrontierPoint = model.Concept(
+            end: 'identify_by={"scenario_label": String, "eps_label": String},'
+            end_offset: 1
+        FrontierPoint.scenario:
+          anchor:
+            start: FrontierPoint.scenario = model.Property(f"{FrontierPoint} for {Scenario}")
+            end: FrontierPoint.scenario = model.Property(f"{FrontierPoint} for {Scenario}")
+      links:
+        - title: Declare concepts
+          href: /build/guides/modeling/declare-concepts/
+        - title: Declare relationships and properties
+          href: /build/guides/modeling/declare-relationships-and-properties/
+
+    - id: load-and-connect-data
+      title: Load and connect the data
+      explanation: |-
+        First, the loader creates stocks from the returns file. It also adds
+        covariance values and links each stock to a sector. Next, it loads the
+        current portfolio and connects its records to those stocks.
+
+        model.data() reads the holding rows into the model. Holding.new()
+        creates a holding from each row. Holding.account links each holding to
+        its account. Holding.stock matches each holding to a stock by ID. This
+        match connects each current position to the return and covariance data
+        used to calculate new portfolio allocations.
+      focus:
+        file: model/source.py
+        anchors:
+          - start: 'holding_data = model.data(read_csv(DATA_DIR / "holdings.csv"))'
+            end: model.define(Holding.stock(Stock)).where(Holding.stock_id == Stock.index)
+      references:
+        model.data():
+          anchor:
+            start: 'holding_data = model.data(read_csv(DATA_DIR / "holdings.csv"))'
+            end: 'holding_data = model.data(read_csv(DATA_DIR / "holdings.csv"))'
+        Holding.new():
+          anchor:
+            start: 'holding := Holding.new(holding_id=holding_data["id"]),'
+            end: 'holding.purchase_price(holding_data["purchase_price"]),'
+            end_offset: 1
+        Holding.account:
+          anchor:
+            start: model.define(Holding.account(Account)).where(
+            end: Holding.account_id == Account.account_id
+            end_offset: 1
+        Holding.stock:
+          anchor:
+            start: model.define(Holding.stock(Stock)).where(Holding.stock_id == Stock.index)
+            end: model.define(Holding.stock(Stock)).where(Holding.stock_id == Stock.index)
+      links:
+        - title: Define base facts from tabular data
+          href: /build/guides/modeling/define-base-facts/#map-columns-explicitly
+        - title: Compute derived relationships
+          href: /build/guides/modeling/derive-facts-with-logic/#compute-derived-relationships
+
+    - id: stage-1-audit-current-portfolio
+      title: "Stage 1: Check the current portfolio"
+      explanation: |-
+        Stage 1 checks the current portfolio for three problems. This example
+        calculates each holding's value, finds its account, and flags the
+        holding when its value is more than 15% of the account balance.
+
+        Stage 1 also flags an account when one sector makes up more than 30% of
+        its balance. It flags a user when the user's risk score is above 0.8
+        and the user has more than five flagged transactions. In the sample
+        data, these checks flag four holdings, two account and sector
+        combinations, and two users.
+
+        These flags give investment managers a short list of holdings, sector
+        exposures, and users that may need review.
+      focus:
+        file: portfolio_balancing.py
+        anchors:
+          - start: '# Derived holding value = quantity * purchase_price.'
+            end: ).define(Holding.is_overconcentrated())
+      links:
+        - title: Rules-based reasoning
+          href: /build/guides/reasoning/rules-based/
+
+    - id: stage-2-reduce-correlated-bets
+      title: "Stage 2: Group related stocks"
+      explanation: |-
+        Stage 2 groups stocks that tend to move together. It creates a
+        corr_graph.Edge when the absolute value of their correlation is at
+        least 0.3. corr_graph.louvain() then places connected stocks into
+        clusters. Stock.cluster records the cluster assigned to each stock.
+
+        Within each cluster, the model calculates each stock's Sharpe ratio,
+        which compares return with volatility. It marks the stock with the
+        highest ratio as the representative and excludes the other stocks
+        from the new allocations. In the sample data, four connections form
+        five clusters, and five of the eight stocks become representatives.
+
+        Using one representative from each cluster reduces the chance that a
+        new portfolio will include several stocks that behave alike.
+      focus:
+        file: portfolio_balancing.py
+        anchors:
+          - start: stock_i_ref = Stock.ref()
+            end: community(stock_clust_ref, cluster_label)
+            end_offset: 1
+      references:
+        corr_graph.Edge:
+          anchor:
+            start: model.define(corr_graph.Edge.new(src=stock_i_ref, dst=stock_j_ref)).where(
+            end: math_abs(corr_ref) >= CORR_THRESHOLD,
+            end_offset: 1
+        corr_graph.louvain():
+          anchor:
+            start: community = corr_graph.louvain()
+            end: community = corr_graph.louvain()
+        Stock.cluster:
+          anchor:
+            start: model.define(stock_clust_ref.cluster(cluster_label)).where(
+            end: community(stock_clust_ref, cluster_label)
+            end_offset: 1
+      links:
+        - title: Create a graph
+          href: /build/guides/reasoning/graph/create-a-graph/
+        - title: Run a graph algorithm
+          href: /build/guides/reasoning/graph/run-an-algorithm/#community-detection
+
+    - id: stage-3-solve-scenario-frontiers
+      title: "Stage 3: Calculate portfolio allocations"
+      explanation: |-
+        Stage 3 creates six scenarios from three budgets and two market
+        regimes. For each scenario, it calculates how much of each stock to
+        include. Each portfolio must use its full budget. No amount can be
+        negative, no stock or sector can exceed 30% of the budget, and stocks
+        not selected in Stage 2 get an amount of zero.
+
+        In the code, Stock.regime_covar supplies the covariance values for the
+        scenario's regime. Stock.x_quantity supplies the amount assigned to
+        each stock. The model uses these values to find the portfolio with the
+        lowest variance, the measure of risk in this example, for a required
+        return. For each result, it also calculates how much more variance is
+        needed when the required return increases by one unit.
+
+        Stage 3 starts with the portfolios that have the lowest risk and the
+        highest return. It compares three ways to choose four points between
+        them. For Stage 4, it uses the dichotomic method. This method compares
+        how quickly risk is increasing at two existing points to estimate
+        where the risk and return curve bends most. It calculates a portfolio
+        at that return level and repeats until it has six points. Together,
+        these points show the lowest risk available across a range of returns.
+      focus:
+        file: portfolio_balancing.py
+        anchors:
+          - start: problem.minimize(
+            end: PairedStock.x_quantity(Scenario, x_qty_paired),
+            end_offset: 2
+      references:
+        Stock.regime_covar:
+          anchor:
+            start: Stock.regime_covar(PairedStock, Scenario.regime, regime_cov_val),
+            end: Stock.regime_covar(PairedStock, Scenario.regime, regime_cov_val),
+        Stock.x_quantity:
+          anchor:
+            start: PairedStock.x_quantity(Scenario, x_qty_paired),
+            end: PairedStock.x_quantity(Scenario, x_qty_paired),
+      links:
+        - title: Solve an optimization problem
+          href: /build/guides/reasoning/prescriptive/decision-problems/solve/
+        - title: Estimate the effect of changing a constraint limit
+          href: /build/guides/reasoning/prescriptive/decision-problems/solutions/#estimate-the-effect-of-changing-a-constraint-limit
+
+    - id: stage-4-materialize-and-compare
+      title: "Stage 4: Summarize the results"
+      explanation: |-
+        Stage 4 starts with stage3_solves, which contains the cached allocation
+        table and shadow prices for each point calculated in Stage 3. For every
+        scenario and point, evaluate_return() and evaluate_risk() calculate the
+        summary measures. marginal_risk_per_return records how much more
+        variance is needed when the required return increases by one unit.
+
+        After the code marks the knee and adds the stress comparison,
+        FrontierPoint.new() stores each completed summary in the model. A
+        frontier point represents one calculated portfolio using measures of
+        risk and return. The individual stock amounts remain in the Stage 3
+        results. is_knee marks the point before variance begins to increase much
+        faster. vol_base and vol_crisis record volatility for the matching base
+        and crisis results.
+
+        These summaries let the final queries compare the calculated portfolios
+        and identify the portfolio associated with the FrontierPoint marked as
+        is_knee. The next step shows its stock amounts.
+      focus:
+        file: portfolio_balancing.py
+        anchors:
+          - start: fp_rows = []
+            end: '"is_knee": False,'
+            end_offset: 2
+          - start: fp_data = model.data(DataFrame(fp_rows))
+            end: 'fp.vol_gap_pct(fp_data["vol_gap_pct"]),'
+            end_offset: 1
+      references:
+        stage3_solves:
+          anchor:
+            start: 'for k, (label, allocation_df, shadow) in enumerate(stage3_solves):'
+            end: 'for k, (label, allocation_df, shadow) in enumerate(stage3_solves):'
+        evaluate_return():
+          anchor:
+            start: '"return": evaluate_return(allocation_df, sn),'
+            end: '"return": evaluate_return(allocation_df, sn),'
+        evaluate_risk():
+          anchor:
+            start: '"risk": evaluate_risk(allocation_df, sn),'
+            end: '"risk": evaluate_risk(allocation_df, sn),'
+        marginal_risk_per_return:
+          anchor:
+            start: '"marginal_risk_per_return": marginal,'
+            end: '"marginal_risk_per_return": marginal,'
+        FrontierPoint.new():
+          anchor:
+            start: 'fp := FrontierPoint.new('
+            end: 'eps_label=fp_data["eps_label"],'
+            end_offset: 1
+        is_knee:
+          anchor:
+            start: 'fp.is_knee(fp_data["is_knee"]),'
+            end: 'fp.is_knee(fp_data["is_knee"]),'
+        vol_base:
+          anchor:
+            start: 'fp.vol_base(fp_data["vol_base"]),'
+            end: 'fp.vol_base(fp_data["vol_base"]),'
+        vol_crisis:
+          anchor:
+            start: 'fp.vol_crisis(fp_data["vol_crisis"]),'
+            end: 'fp.vol_crisis(fp_data["vol_crisis"]),'
+      links:
+        - title: Define base facts from tabular data
+          href: /build/guides/modeling/define-base-facts/#map-columns-explicitly
+
+    - id: use-results-to-choose-portfolio
+      title: Choose a candidate portfolio
+      explanation: |-
+        After Stage 4, frontier_df lists the calculated portfolios for every
+        budget and market regime. Each row shows expected return, variance, the
+        extra variance needed for another unit of required return, and whether
+        its FrontierPoint is marked as is_knee. A second table compares
+        volatility under base and crisis conditions.
+
+        To choose a candidate portfolio, first select the budget and market
+        regime you want to plan for. Then compare return and risk across that
+        scenario's rows. The portfolio associated with the FrontierPoint marked
+        as is_knee is a useful place to start because it is the last point
+        before variance begins to rise much faster for each additional unit of
+        required return. It is a candidate to review, not a recommendation.
+
+        The final loop uses _extract_frontier_point_allocations() to retrieve
+        that portfolio's stock amounts from Stage 3 for each of the six
+        scenarios. Amount shows how much of the scenario's budget is assigned
+        to a stock. Weight shows the stock's share of the budget. The output
+        excerpt shows the base portfolio for a budget of 1,000. To turn it into
+        a rebalancing plan, link the scenario to an account and compare these
+        target amounts with its current holdings.
+      output: |-
+          base_1000 (budget=1000, regime=base, point=p3)
+          expected return=80.46, volatility=83.33
+          Ticker        Amount    Weight
+          ------------------------------
+          GOOGL         300.00    30.0%
+          XOM           278.57    27.9%
+          PFE           234.07    23.4%
+          JPM           135.49    13.5%
+          PG             51.87     5.2%
+      focus:
+        file: portfolio_balancing.py
+        anchors:
+          - start: '    knee_rows = frontier_df['
+            end: label, allocations = _extract_frontier_point_allocations(
+            end_offset: 4
+          - start: '    ordered_allocations = sorted('
+            end: '            f"{float(quantity) / budget:>9.1%}"'
+            end_offset: 1
+      references:
+        frontier_df:
+          anchor:
+            start: '    knee_rows = frontier_df['
+            end: '        & frontier_df["is_knee"]'
+            end_offset: 1
+        is_knee:
+          anchor:
+            start: '        & frontier_df["is_knee"]'
+            end: '        & frontier_df["is_knee"]'
+        _extract_frontier_point_allocations():
+          anchor:
+            start: label, allocations = _extract_frontier_point_allocations(
+            end: label, allocations = _extract_frontier_point_allocations(
+            end_offset: 4
+        Amount:
+          anchor:
+            start: '            f"  {ticker:<8}{float(quantity):>12.2f}"'
+            end: '            f"  {ticker:<8}{float(quantity):>12.2f}"'
+        Weight:
+          anchor:
+            start: '            f"{float(quantity) / budget:>9.1%}"'
+            end: '            f"{float(quantity) / budget:>9.1%}"'
+      links:
+        - title: Work with solutions
+          href: /build/guides/reasoning/prescriptive/decision-problems/solutions/

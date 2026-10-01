@@ -1,0 +1,327 @@
+version: 1
+
+page:
+  omit_readme_preamble: true
+  lead_from_readme:
+    - what-this-template-is-for
+  omit_from_readme: []
+  download_and_run_from_readme: true
+
+model_explorer:
+  title: Explore the model
+  description: >-
+    The model represents raw policy records, accepted and review-band matches,
+    and the resolved insured parties used for accumulation control. Accepted
+    matches create graph edges, while party membership carries each policy's
+    coverage into the resolved exposure.
+
+  concepts:
+    - symbol: Record
+      description: A policyholder record and its coverage from one source system.
+
+    - symbol: CandidateMatch
+      description: A pair of policy records with a match score high enough to link without manual review.
+
+    - symbol: ReviewPair
+      description: A possible match between two policy records that the template sets aside for human review instead of linking automatically.
+
+    - symbol: ResolvedParty
+      description: One person or household as represented by one or more policy records. The template totals those records’ coverage to check the risk limit.
+
+  relationships:
+    - symbol: CandidateMatch.rec_a
+      label: accepts first record
+      reading: CandidateMatch accepts a first Record
+      description: Connects an accepted match to the first of its two policy records.
+
+    - symbol: CandidateMatch.rec_b
+      label: accepts second record
+      reading: CandidateMatch accepts a second Record
+      description: Connects an accepted match to the second of its two policy records.
+
+    - symbol: ReviewPair.rec_a
+      label: reviews first record
+      reading: ReviewPair holds a first Record for review
+      description: Connects a pair awaiting human review to the first of its two policy records.
+
+    - symbol: ReviewPair.rec_b
+      label: reviews second record
+      reading: ReviewPair holds a second Record for review
+      description: Connects a pair awaiting human review to the second of its two policy records.
+
+    - symbol: Record.resolved_party
+      label: contributes exposure to
+      reading: Record contributes exposure to ResolvedParty
+      description: >-
+        Connects each policy record to its resolved party, allowing the template
+        to add up coverage across that party’s records.
+
+  sources:
+    - path: data/records.csv
+      description: >-
+        Dirty policyholder records, matching identifiers, source systems, and
+        per-policy coverage.
+
+guided_walkthrough:
+  title: See how it works
+  description: >-
+    The Model Explorer shows the concepts for policy records, match pairs, and
+    resolved parties, along with their relationships. The steps below show
+    how the template loads records, scores possible matches, groups linked
+    records, totals coverage, and chooses which excess risk to transfer. Use
+    the excerpts to find the input mappings, match thresholds, risk limit,
+    and budget you could adapt for your own data.
+
+  steps:
+    - id: load-source-records
+      title: Load the policy records
+      explanation: >-
+        Each row of data/records.csv describes one policy, including identifying
+        details and coverage amount. read_csv(...) reads the file, and
+        Record.new(...) defines a separate Record instance from each row’s
+        required fields (see Define base facts). In this loader,
+        model.data(...).to_schema() omits a row if any field passed to
+        Record.new(...) is empty, so including optional identifiers in that call
+        could leave a whole policy out of the model. The optional-fields loop
+        adds email, phone, and other identifiers separately, only for records
+        that have those values.
+      focus:
+        file: model/source.py
+        anchors:
+          - start: 'def load_records() -> DataFrame:'
+            end: getattr(present_data, column)
+            end_offset: 3
+      references:
+        read_csv(...):
+          anchor:
+            start: records = read_csv(
+            end: ).fillna("")
+        Record.new(...):
+          anchor:
+            start: model.define(Record.new(model.data(records[REQUIRED_COLS]).to_schema()))
+            end: model.define(Record.new(model.data(records[REQUIRED_COLS]).to_schema()))
+        model.data(...).to_schema():
+          anchor:
+            start: model.define(Record.new(model.data(records[REQUIRED_COLS]).to_schema()))
+            end: model.define(Record.new(model.data(records[REQUIRED_COLS]).to_schema()))
+        optional-fields loop:
+          anchor:
+            start: 'for column in OPTIONAL_COLS:'
+            end: getattr(present_data, column)
+            end_offset: 2
+      links:
+        - title: Define base facts
+          href: /build/guides/modeling/define-base-facts/
+          label: Define base facts
+
+    - id: build-blocking-keys
+      title: Find and score possible matches
+      explanation: >-
+        Comparing every policy with every other policy would waste work, so
+        blocking_keys(...) groups records that share clues such as a phone
+        number, date of birth, or surname and postal-code prefix. The
+        candidate-pair loop collects each distinct pair once, and pair_score(...)
+        scores the pairs using their identifying details. Pairs scoring at least
+        AUTO_MERGE are accepted as matches, which the next stages can use to
+        group policies under one insured party. REVIEW_FLOOR retains less
+        certain pairs for human review instead of merging them, and pairs below
+        that floor are omitted.
+      focus:
+        file: model/source.py
+        anchors:
+          - start: 'def build_candidate_pairs(records: DataFrame):'
+            end: review.append(pair)
+      references:
+        blocking_keys(...):
+          anchor:
+            start: 'for key in blocking_keys(rows[record_id]):'
+            end: 'for key in blocking_keys(rows[record_id]):'
+        candidate-pair loop:
+          anchor:
+            start: 'candidates: set[tuple[int, int]] = set()'
+            end: candidates.add((rec_a, rec_b))
+        pair_score(...):
+          anchor:
+            start: score = round(pair_score(rows[rec_a], rows[rec_b]), 4)
+            end: score = round(pair_score(rows[rec_a], rows[rec_b]), 4)
+        AUTO_MERGE:
+          anchor:
+            start: 'if score >= AUTO_MERGE:'
+            end: accepted.append(pair)
+        REVIEW_FLOOR:
+          anchor:
+            start: 'elif score >= REVIEW_FLOOR:'
+            end: review.append(pair)
+      links: []
+
+    - id: prepare-candidate-facts
+      title: Keep accepted and review pairs separate
+      explanation: >-
+        After scoring, one group contains accepted matches and the other
+        contains uncertain pairs for review. CandidateMatch.new(...) uses
+        Record.lookup(...) to define base facts connecting each accepted pair
+        to its two existing policy records. ReviewPair.new(...) defines
+        uncertain pairs separately, retaining their scores for a person to
+        inspect.
+      focus:
+        file: model/source.py
+        anchors:
+          - start: 'def load_candidate_facts(matches: DataFrame, reviews: DataFrame) -> None:'
+            end: score=review_data.score,
+            end_offset: 2
+      references:
+        CandidateMatch.new(...):
+          anchor:
+            start: match_data = model.data(matches)
+            end: score=match_data.score,
+            end_offset: 2
+        Record.lookup(...):
+          anchor:
+            start: rec_a=Record.lookup(record_id=match_data.rec_a),
+            end: rec_b=Record.lookup(record_id=match_data.rec_b),
+        ReviewPair.new(...):
+          anchor:
+            start: review_data = model.data(reviews)
+            end: score=review_data.score,
+            end_offset: 2
+      links:
+        - title: Define base facts
+          href: /build/guides/modeling/define-base-facts/
+          label: define base facts
+
+    - id: resolve-parties-and-exposure
+      title: Group linked records into insured parties
+      explanation: >-
+        To create a graph, Graph(...) treats each policy record as a node, while
+        CandidateMatch supplies an edge for each accepted pair. This graph is
+        undirected because either record in a match can lead to the other.
+        graph.weakly_connected_component() groups records connected by accepted
+        matches, including chains where the first and last records never
+        matched directly. Record.entity_key(...) assigns each record its group’s
+        representative ID, giving later calculations a key for the insured
+        party.
+      focus:
+        file: entity_resolution.py
+        anchors:
+          - start: 'def cluster_accepted_matches() -> tuple[int, int]:'
+            end: Record.entity_key(rep_node.record_id)
+            end_offset: 1
+      references:
+        Graph(...):
+          anchor:
+            start: graph = Graph(model, directed=False, weighted=False, node_concept=Record)
+            end: graph = Graph(model, directed=False, weighted=False, node_concept=Record)
+        CandidateMatch:
+          anchor:
+            start: match_ref = CandidateMatch.ref()
+            end: graph.Edge.new(src=rec_a, dst=rec_b)
+            end_offset: 1
+        graph.weakly_connected_component():
+          anchor:
+            start: graph.Node.entity_id = graph.weakly_connected_component()
+            end: graph.Node.entity_id = graph.weakly_connected_component()
+        Record.entity_key(...):
+          anchor:
+            start: rep_node = Record.ref()
+            end: Record.entity_key(rep_node.record_id)
+            end_offset: 1
+      links:
+        - title: Create a graph
+          href: /build/guides/reasoning/graph/create-a-graph/
+          label: create a graph
+
+    - id: measure-party-exposure
+      title: Find parties above the coverage limit
+      explanation: >-
+        Records with the same graph-derived party key may hold separate policies
+        for one insured person or household. ResolvedParty.new(...) creates a
+        party for each key, and record.resolved_party(...) connects its policy
+        records. To aggregate and group data, ResolvedParty.total_exposure(...)
+        adds the coverage amounts of those records for each party. A comparison
+        with ACCUMULATION_LIMIT flags parties above the risk limit, and
+        ResolvedParty.excess(...) measures how much coverage exceeds it for the
+        reinsurance decision.
+      focus:
+        file: entity_resolution.py
+        anchors:
+          - start: model.define(ResolvedParty.new(key=Record.entity_key))
+            end: ResolvedParty.total_exposure - ACCUMULATION_LIMIT
+            end_offset: 2
+      references:
+        ResolvedParty.new(...):
+          anchor:
+            start: model.define(ResolvedParty.new(key=Record.entity_key))
+            end: model.define(ResolvedParty.new(key=Record.entity_key))
+        record.resolved_party(...):
+          anchor:
+            start: record, party = Record.ref(), ResolvedParty.ref()
+            end: record.resolved_party(party)
+            end_offset: 1
+        ResolvedParty.total_exposure(...):
+          anchor:
+            start: party_record = Record.ref()
+            end: aggregates.sum(party_record.coverage_amount).per(ResolvedParty)
+            end_offset: 2
+        ACCUMULATION_LIMIT:
+          anchor:
+            start: model.define(ResolvedParty.is_over_limit(ResolvedParty)).where(
+            end: model.define(ResolvedParty.is_over_limit(ResolvedParty)).where(
+            end_offset: 2
+        ResolvedParty.excess(...):
+          anchor:
+            start: model.where(ResolvedParty.total_exposure > ACCUMULATION_LIMIT).define(
+            end: ResolvedParty.total_exposure - ACCUMULATION_LIMIT
+            end_offset: 2
+      links:
+        - title: Aggregate and group data
+          href: /build/guides/reasoning/rules-based/aggregate-and-group-data/
+          label: aggregate and group data
+
+    - id: choose-cessions-and-assess
+      title: Choose which excess risk to transfer
+      explanation: >-
+        An insurer can pay a reinsurer to take on the risk above each party’s
+        coverage limit, but it must stay within a budget. Problem(model, Float)
+        sets up the decision, and problem.solve_for(...) gives each over-limit
+        party a yes-or-no choice to transfer its excess. problem.satisfy(...)
+        adds a constraint that caps the total premium paid to the reinsurer at
+        REINSURANCE_BUDGET. problem.maximize(...) aims to transfer the most
+        excess risk, and problem.solve(...) runs the solver, though a small
+        budget may leave some excess with the insurer.
+      focus:
+        file: entity_resolution.py
+        anchors:
+          - start: 'def choose_reinsurance_cessions():'
+            end: return problem.solve_info()
+      references:
+        Problem(model, Float):
+          anchor:
+            start: problem = Problem(model, Float)
+            end: problem = Problem(model, Float)
+        problem.solve_for(...):
+          anchor:
+            start: problem.solve_for(
+            end: upper=1.0,
+            end_offset: 1
+        problem.satisfy(...):
+          anchor:
+            start: problem.satisfy(
+            end: name=["reinsurance_budget"],
+            end_offset: 1
+        REINSURANCE_BUDGET:
+          anchor:
+            start: <= REINSURANCE_BUDGET
+            end: <= REINSURANCE_BUDGET
+        problem.maximize(...):
+          anchor:
+            start: problem.maximize(
+            end: aggregates.sum(ResolvedParty.excess * ResolvedParty.cede)
+            end_offset: 1
+        problem.solve(...):
+          anchor:
+            start: problem.solve("highs", time_limit_sec=60)
+            end: problem.solve("highs", time_limit_sec=60)
+      links:
+        - title: Add constraints
+          href: /build/guides/reasoning/prescriptive/decision-problems/constraints/
+          label: constraint

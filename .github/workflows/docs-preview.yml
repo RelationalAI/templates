@@ -39,7 +39,9 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: relationalai/relationalai-docs
-          ref: main
+          # Keep templates#104 paired with relationalai-docs#914 until its
+          # flat-layout compatibility reader reaches main.
+          ref: ${{ github.event.pull_request.number == 104 && 'agents/template-refactor-and-docs-update' || 'main' }}
           token: ${{ secrets.DOCS_REPO_TOKEN }}
           path: relationalai-docs
 

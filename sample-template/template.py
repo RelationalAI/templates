@@ -1,21 +1,29 @@
-"""<TEMPLATE NAME> template.
+"""Starter RelationalAI template.
 
-This script demonstrates <WHAT THIS TEMPLATE DOES> in RelationalAI:
+This script demonstrates the standard template package layout:
 
-- <Step 1 of what the script does>
-- <Step 2 of what the script does>
-- <Step 3 of what the script does>
+- Declare stable concepts in model/schema.py.
+- Load base facts in model/source.py.
+- Keep queries, reasoning, solves, and reporting in the runner.
 
 Run:
     `python template.py`
 
 Output:
-    <What gets printed or written (briefly).>
+    A small table containing the bundled example item.
 """
+
+from model import Item, model
+
+
+def inspect_items():
+    """Select the items loaded by the model package."""
+    item = Item.ref()
+    return model.select(item.id, item.name)
 
 
 def main() -> None:
-    print("Hello from the RelationalAI templates starter template!")
+    print(inspect_items().to_df())
 
 
 if __name__ == "__main__":

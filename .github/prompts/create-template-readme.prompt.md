@@ -1,101 +1,38 @@
 ---
 name: create-template-readme
-description: Use this prompt to create a README file for a template based on the template's code.
+description: Create the README and generated-docs sidecar for a RelationalAI template.
 tools: ['edit/createFile', 'edit/editFiles', 'read/readFile']
 inputs:
-  version:
-    description: Template version folder (defaults to v0.13).
-    default: v0.13
   templateName:
-    description: Template folder name (for example, diet).
+    description: Template folder name.
 ---
 
-# Comprehensive README Generator for RelationalAI Templates
+# Create template documentation
 
-## Configuration Options
-
-VERSION=${{input:version:v0.13}}
 TEMPLATE_NAME=${{input:templateName}}
 
-## Role
+Read `.agents/skills/template-authoring/SKILL.md` completely and follow its
+**Create** workflow for `${TEMPLATE_NAME}/`.
 
-You are an expert technical writer specializing in creating educational and engaging instructions for getting started with a RelationalAI project. You write in a clear, engaging, and easy to read manner, and always make sure to include clear steps, code snippets, and explanations to help users understand how to use the template effectively.
+Read the entire template before writing. Create an accurate GitHub README and,
+for a new template, a strict `template-docs.yaml` in the same change.
 
-## Task
+- Keep the README complete and runnable from a fresh environment.
+- Begin with the business problem and outcome.
+- For a long-form README, keep the solution stages in **What you'll build**.
+  Name the model schema, source mapping, runner, runbook, sample data, and
+  outputs in **What's included**.
+- For a short enhanced README, use **What this template is for** and
+  **Quickstart** with an opening link to its docs-page model and walkthrough.
+  Opt into README-derived run steps and omit that README-only preamble from
+  the enhanced page.
+- Do not add a standalone **Template structure** section.
+- For a long-form README, use compact Markdown tables for representative
+  sample rows. Keep **Model overview** and **How it works** concise if present.
+- Use the exact entrypoint, install commands, expected output, and data paths.
+- Add three to five semantic sidecar walkthrough steps with stable symbols
+  whenever possible.
+- Use only guide routes in the skill's public catalog.
 
-1. Take a deep breath, and review the entire contents of the ${TEMPLATE_NAME} template located in the ${VERSION}/${TEMPLATE_NAME} folder from the root of the repository. Familiarize yourself with the code, its structure, and its functionality. Identify the key features and components of the template, and understand how they work together to achieve the desired functionality.
-	- If no `version` input is provided, default to `v0.13`.
-2. Review the [template outline file](../../template-outline.md) to understand the structure and sections that should be included in the README file.
-3. Take inspiration from the following README files for other templates in the repository:
-   - [ad_spend_allocation](../../v0.13/ad_spend_allocation/README.md)
-   - [diet](../../v0.13/diet/README.md)
-   - [factory_production](../../v0.13/factory_production/README.md)
-   Follow their structure, formatting, and style as closely as possible, while tailoring the content to fit the specific features and functionality of the ${TEMPLATE_NAME} template. Make sure to include all relevant sections such as "What this template is for", "Who this is for", "What you'll build", "What's included", "Prerequisites", and "Quickstart".
-4. Do not use emojis.
-5. Do not include badges in the README file.
-6. Use GFM (GitHub Flavored Markdown) for formatting, and GitHub admonition syntax ([https://github.com/orgs/community/discussions/16925](https://github.com/orgs/community/discussions/16925)) where appropriate.
-7. Save your README to the ${input:version}/${input:templateName}/README.md file in the root of the repository. If a README.md file already exists, overwrite it with the new content you have generated.
-
-## Reasoning type formatting requirement
-
-In the **What this template is for** section, include a sentence that explicitly identifies the template's reasoning type(s) in **bold**.
-
-- The bold text MUST match the template's declared reasoning type(s) in the README front matter (for example: **prescriptive reasoning (optimization)**).
-- Use the same phrasing style as the newer READMEs (for example: "This template uses RelationalAI's **prescriptive reasoning (optimization)** capabilities to ...").
-
-## Quickstart ZIP download requirement
-
-In the **Quickstart** section, the first numbered step MUST be a ZIP download/extract step using exactly the following commands and tip admonition (substitute the version/template name variables only):
-
-1. Download the ZIP file for this template and extract it:
-
-	```bash
-	curl -O https://private.relational.ai/templates/zips/${input:version}/${input:templateName}.zip
-	unzip ${input:templateName}.zip
-	cd ${input:templateName}
-	```
-
-	> [!TIP]
-	> You can also download the template ZIP using the "Download ZIP" button at the top of this page.
-
-## How it works section formatting
-
-When you create the **How it works** section, match the formatting conventions used in the existing templates (for example, the Diet Optimization and Ad Spend Allocation READMEs):
-
-- Start with a short lead-in line like: `This section walks through the highlights in <script>.py`.
-- Prefer a small set of consistent subheadings (the following are examples only; adjust names as required to fit the content):
-	- `### Import libraries and configure inputs`
-	- `### Define concepts and load CSV data`
-	- `### Define decision variables, constraints, and objective`
-	- `### Solve and print results`
-- Code snippets must be copied from the template script:
-	- Do not rename variables, change indentation, or “clean up” code inside snippets.
-	- It’s fine to omit non-highlight sections between snippets.
-- Every code block must have its own short introductory explainer sentence/paragraph immediately above it.
-	- Do not place two fenced code blocks back-to-back without explanatory text between them.
-	- The explainer should tell the reader what the snippet is doing and why it matters in the model/solve.
-	- Match the house style used in newer templates:
-		- Use simple sequencing words to guide the reader through the workflow (for example: “First…”, “Next…”, “Then…”, “Finally…”, “With the feasible region defined…”).
-		- When an explainer directly introduces the following code block, end the paragraph with a colon.
-		- Mention concrete APIs/symbols that appear in the snippet (for example, `data(...).into(...)`, `where(...).define(...)`, `SolverModel`, `solve_for`, `require`).
-- Every fenced code block must specify a language:
-	- Use ````python` for Python, ````bash` for shell commands, and ````text` for expected output.
-	- Ensure fences are properly closed; a missing closing fence often breaks headings (e.g., `# ...`) into extra H1s.
-
-## Troubleshooting section formatting
-
-When you create the **Troubleshooting** section, match the formatting conventions used in the existing templates (for example, the Diet Optimization, Ad Spend Allocation, and Factory Production READMEs):
-
-- Use collapsible sections with HTML `<details>` blocks and a `<summary>` line.
-- Inside each `<details>` block:
-	- Leave a blank line after the `<summary>`.
-	- Use a short bulleted list with actionable steps.
-	- Use `<code>...</code>` in the summary for error/status strings (for example, `<code>ModuleNotFoundError</code>` or `<code>Status: INFEASIBLE</code>`).
-- Prefer a small set of common questions (include only what’s relevant to the template):
-	- Authentication/config (`rai init`, `raiconfig.toml`, `RAI_PROFILE`)
-	- Connection to the RAI Native App (Snowflake role/warehouse/app access)
-	- Dependency errors (`ModuleNotFoundError`, virtualenv activation, `python -m pip install .`)
-	- Input data problems (missing CSV file/columns; list expected headers)
-	- Infeasibility (`Status: INFEASIBLE`; point to the most likely data/constraint causes)
-	- Empty output tables (call out any output filters like `> 0.001` or `> 0.5`)
-	- Solver/termination-status issues (time limit, problem size)
+Never invent behavior, output, credentials, limits, or source columns. Run the
+skill's focused checks and report any connected runtime verification blocker.

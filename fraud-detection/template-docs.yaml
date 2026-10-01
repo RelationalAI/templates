@@ -1,0 +1,302 @@
+version: 1
+
+page:
+  omit_readme_preamble: true
+  lead_from_readme:
+    - what-this-template-is-for
+  omit_from_readme: []
+  download_and_run_from_readme: true
+
+model_explorer:
+  title: Explore the model
+  description: >-
+    Accounts send and receive transactions. The same connections support
+    account-level graph signals, transaction-level fraud predictions, and the
+    budget-constrained investigation queue.
+
+  concepts:
+    - symbol: Account
+      description: A customer or merchant account that sends or receives transfers. Its activity and connections to other accounts help the model assess whether a related transfer may be fraudulent.
+
+    - symbol: Transaction
+      description: A transfer from one account to another. The model uses its amount and account balances, along with each account’s activity and connections, to estimate whether the transfer may be fraudulent.
+
+  relationships:
+    - symbol: Transaction.sender
+      label: sent by
+      reading: Transaction is sent by Account
+      description: Connects each transfer to the account that originated it.
+
+    - symbol: Transaction.receiver
+      label: received by
+      reading: Transaction is received by Account
+      description: Connects each transfer to the account that received it.
+
+  sources:
+    - path: data/paysim_mini/accounts.csv
+      description: Customer and merchant account identifiers and type prefixes.
+      populates:
+        - Account
+
+    - path: data/paysim_mini/transactions.csv
+      description: Transaction amounts, balances, endpoints, timestamps, and heuristic flags.
+      populates:
+        - Transaction
+        - Transaction.sender
+        - Transaction.receiver
+
+    - path: data/paysim_mini/train.csv
+      description: Labeled transactions used to train the fraud classifier.
+      populates:
+        - Transaction
+
+    - path: data/paysim_mini/val.csv
+      description: Labeled transactions used to validate the fraud classifier.
+      populates:
+        - Transaction
+
+    - path: data/paysim_mini/test.csv
+      description: Unlabeled transactions scored for investigation.
+      populates:
+        - Transaction
+
+guided_walkthrough:
+  title: See how it works
+  description: >-
+    The Model Explorer shows the Account and Transaction concepts and the
+    relationships between them. The steps below show how the template loads
+    account and transaction data, derives fraud signals, scores transfers, and
+    selects cases for investigation. Use the excerpts to locate the input
+    mappings, fraud signals, and review limits to adapt for your own project.
+
+  steps:
+    - id: load-and-map-transactions
+      title: Connect transactions to the account network
+      explanation: |-
+        Python’s read_csv function reads the two CSV data sources into DataFrames
+        named accounts_df and transactions_df. The source loader also estimates
+        the time needed to review each transfer from its amount. Account.new(...)
+        and Transaction.new(...) map the imported records to instances of the
+        Account and Transaction concepts shown in the Model Explorer.
+
+        Transaction.sender(...) and Transaction.receiver(...) define
+        relationships between each transfer and its sending and receiving
+        accounts, which the next steps use to trace money moving between accounts.
+      focus:
+        file: model/source.py
+        anchors:
+          - start: accounts_df = read_csv
+            end: Transaction.name_dest == Account.account_id
+            end_offset: 1
+            occurrence: 1
+      references:
+        accounts_df:
+          symbol: accounts_df
+        transactions_df:
+          anchor:
+            start: transactions_df = read_csv
+            end: small_audit_cost_hours,
+            end_offset: 1
+        Account.new(...):
+          anchor:
+            start: model.define(Account.new(model.data(accounts_df).to_schema()))
+            end: model.define(Account.new(model.data(accounts_df).to_schema()))
+        Transaction.new(...):
+          anchor:
+            start: model.define(Transaction.new(model.data(transactions_df).to_schema()))
+            end: model.define(Transaction.new(model.data(transactions_df).to_schema()))
+        Transaction.sender(...):
+          anchor:
+            start: model.define(Transaction.sender(Transaction, Account)).where(
+            end: Transaction.name_orig == Account.account_id
+            end_offset: 1
+            occurrence: 1
+        Transaction.receiver(...):
+          anchor:
+            start: model.define(Transaction.receiver(Transaction, Account)).where(
+            end: Transaction.name_dest == Account.account_id
+            end_offset: 1
+            occurrence: 1
+      links:
+        - title: Declare data sources
+          href: /build/guides/modeling/declare-data-sources/
+          label: data sources
+
+    - id: rank-accounts-in-funds-flow-graph
+      title: Build the funds-flow graph and rank accounts
+      explanation: |-
+        Graph(...) creates a network of accounts linked by transfers. acct_graph.Edge.new(...) connects a sender to a receiver in the direction money moves.
+
+        acct_graph.pagerank() runs a graph algorithm that scores each account based on which other accounts send it money, giving more weight to connections from higher-scoring senders. Account.pagerank stores the score as an account property, which the fraud classifier uses alongside payment details to estimate whether a transfer may be fraudulent.
+      focus:
+        file: fraud_detection_local.py
+        anchors:
+          - start: acct_graph = Graph(
+            end: model.define(_a_pr.pagerank(_score_pr)).where(pagerank_rel(_a_pr, _score_pr))
+      references:
+        Graph(...):
+          anchor:
+            start: acct_graph = Graph(
+            end: node_concept=Account, aggregator="sum",
+            end_offset: 1
+        acct_graph.Edge.new(...):
+          anchor:
+            start: model.define(acct_graph.Edge.new
+            end: _txn_ref.receiver(_receiver),
+            end_offset: 1
+        acct_graph.pagerank():
+          symbol: pagerank_rel
+        Account.pagerank:
+          anchor:
+            start: Account.pagerank = model.Property
+            end: model.define(_a_pr.pagerank(_score_pr)).where(pagerank_rel(_a_pr, _score_pr))
+      links:
+        - title: Create a graph
+          href: /build/guides/reasoning/graph/create-a-graph/
+          label: network of accounts
+        - title: Run a graph algorithm
+          href: /build/guides/reasoning/graph/run-an-algorithm/
+          label: runs a graph algorithm
+
+    - id: count-account-activity
+      title: Count transfers sent by each account
+      explanation: |-
+        How many transfers an account sends can help the classifier assess a transfer. Account.activity_count defines an account property to hold that count.
+
+        count(Transaction).per(Account) counts transfers by account, and the .where(...) condition matches each transfer’s sender ID to an account ID so that only outgoing transfers contribute. The classifier uses the result with the network score from step 2 and payment details to estimate whether a transfer may be fraudulent.
+      focus:
+        file: fraud_detection_local.py
+        anchors:
+          - start: Account.activity_count = model.Property(
+            end: )).where(Transaction.name_orig == Account.account_id)
+      references:
+        Account.activity_count:
+          anchor:
+            start: Account.activity_count = model.Property(
+            end: )).where(Transaction.name_orig == Account.account_id)
+        count(Transaction).per(Account):
+          anchor:
+            start: count(Transaction).per(Account)
+            end: count(Transaction).per(Account)
+        .where(...):
+          anchor:
+            start: )).where(Transaction.name_orig == Account.account_id)
+            end: )).where(Transaction.name_orig == Account.account_id)
+      links:
+        - title: Aggregate and group data
+          href: /build/guides/reasoning/rules-based/aggregate-and-group-data/
+          label: counts transfers by account
+        - title: Declare relationships and properties
+          href: /build/guides/modeling/declare-relationships-and-properties/
+          label: account property
+
+    - id: train-fraud-classifier
+      title: Train a fraud classifier and score transfers
+      explanation: |-
+        GNN(...) sets up a graph neural network to classify transfers from their payment details, the account signals from steps 2 and 3, and a separate network linking transfers to accounts. gnn.fit() trains on transfers labeled fraudulent or legitimate, then evaluates the model on validation transfers.
+
+        gnn.predictions(domain=Test) assigns a predicted fraud probability to each transaction in the test set. The next step combines that probability with the source data’s fraud flag to help prioritize cases for review.
+      focus:
+        file: fraud_detection_local.py
+        anchors:
+          - start: gnn = GNN(
+            end: Transaction.predictions = gnn.predictions(domain=Test)
+      references:
+        GNN(...):
+          anchor:
+            start: gnn = GNN(
+            end: temporal_strategy="last",
+            end_offset: 1
+        gnn.fit():
+          anchor:
+            start: gnn.fit()
+            end: gnn.fit()
+            occurrence: 2
+        gnn.predictions(domain=Test):
+          anchor:
+            start: Transaction.predictions = gnn.predictions(domain=Test)
+            end: Transaction.predictions = gnn.predictions(domain=Test)
+      links:
+        - title: Solve a classification problem
+          href: /build/guides/reasoning/predictive/solve-a-classification-problem/
+          label: classify transfers
+        - title: Define a learning task
+          href: /build/guides/reasoning/predictive/define-a-learning-task/
+          label: validation transfers
+
+    - id: combine-alert-signals
+      title: Combine two signals into a fraud alert score
+      explanation: |-
+        Transaction.alert_score defines a model property that combines the source data’s existing fraud flag with the classifier’s predicted fraud probability for each transfer in the test set. ALPHA_FLAG controls how much the flag contributes, and Transaction.predictions.probs supplies the remaining share.
+
+        The combined score helps prioritize reviews, but it does not prove that a transfer is fraudulent. The next step uses the score alongside transfer amount and available investigator time to choose cases for review.
+      focus:
+        file: fraud_detection_local.py
+        anchors:
+          - start: Transaction.alert_score = model.Property(
+            end: )).where(Transaction.predictions)
+      references:
+        Transaction.alert_score:
+          anchor:
+            start: Transaction.alert_score = model.Property(
+            end: )).where(Transaction.predictions)
+        ALPHA_FLAG:
+          anchor:
+            start: ALPHA_FLAG * Transaction.is_flagged_fraud
+            end: + (1 - ALPHA_FLAG) * Transaction.predictions.probs
+        Transaction.predictions.probs:
+          anchor:
+            start: + (1 - ALPHA_FLAG) * Transaction.predictions.probs
+            end: + (1 - ALPHA_FLAG) * Transaction.predictions.probs
+      links:
+        - title: Declare relationships and properties
+          href: /build/guides/modeling/declare-relationships-and-properties/
+          label: model property
+        - title: Solve a classification problem
+          href: /build/guides/reasoning/predictive/solve-a-classification-problem/
+          label: predicted fraud probability
+
+    - id: allocate-investigation-capacity
+      title: Choose the highest-value investigations within capacity
+      explanation: |-
+        problem.solve_for(...) defines a decision variable: a yes-or-no choice to investigate each transfer with an alert score. Two constraints narrow those choices: an investigator-hours budget caps total review time, and a receiver-account cap limits how many selected transfers go to the same account.
+
+        problem.maximize(...) seeks the set of reviews with the most estimated loss averted, calculated from each selected transfer’s alert score and amount. problem.solve(...) asks the solver to find a choice that satisfies both constraints instead of simply ranking transfers by score.
+      focus:
+        file: fraud_detection_local.py
+        anchors:
+          - start: problem.solve_for(
+            end: problem.solve("highs", time_limit_sec=120)
+      references:
+        problem.solve_for(...):
+          anchor:
+            start: problem.solve_for(
+            end: where=[Transaction.alert_score(alert_bind)],
+            end_offset: 1
+        investigator-hours budget:
+          anchor:
+            start: problem.satisfy(model.where(
+            end: problem.satisfy(model.where(
+            end_offset: 4
+            occurrence: 1
+        receiver-account cap:
+          anchor:
+            start: problem.satisfy(model.where(
+            end: problem.satisfy(model.where(
+            end_offset: 5
+            occurrence: 2
+        problem.maximize(...):
+          anchor:
+            start: problem.maximize(sum(
+            end: ).where(Txn_obj.x_audit(sel_obj)))
+        problem.solve(...):
+          anchor:
+            start: problem.solve("highs", time_limit_sec=120)
+            end: problem.solve("highs", time_limit_sec=120)
+      links:
+        - title: Define variables
+          href: /build/guides/reasoning/prescriptive/decision-problems/variables/
+          label: decision variable
+        - title: Add constraints
+          href: /build/guides/reasoning/prescriptive/decision-problems/constraints/
+          label: Two constraints
