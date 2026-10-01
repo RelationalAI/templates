@@ -1,0 +1,7 @@
+-- ADMIN-REVIEW CHECKLIST / NOT RUNNABLE.
+-- 1. Stop consumer access and explicitly drop ONLY the verified demo-owned
+--    Cortex Agent and reviewed semantic view after inspecting their ownership.
+-- 2. From a matching local raiconfig.yaml, run `rai models teardown` for the
+--    managed deployment; do not manually sweep the output or meta schemas.
+-- 3. scripts/teardown_sources.py removes the *marked* source schema only
+--    after its exact five-table inventory is verified.

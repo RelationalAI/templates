@@ -1,0 +1,204 @@
+version: 1
+
+page:
+  lead_from_readme:
+    - what-this-template-is-for
+    - what-youll-build
+  omit_from_readme: []
+
+model_explorer:
+  title: Delivery model vocabulary
+  description: >-
+    Open depots and directed weighted roads determine reachability; a
+    configured whole-order problem determines selected decisions. CSVs are
+    setup fixtures; the runtime model binds Snowflake tables separately.
+  concepts:
+    - symbol: Node
+      description: A depot, store, or transfer-hub location in the directed road network.
+    - symbol: Depot
+      description: A source of available stock when open.
+    - symbol: Store
+      description: A destination whose geographic reachability is checked separately from stock.
+    - symbol: Road
+      description: A one-way road carrying a nonnegative travel time.
+    - symbol: Order
+      description: A whole single-product order with an on-time deadline.
+    - symbol: StoreRouteStatus
+      description: A result row for every store, including stores with no open-depot path.
+    - symbol: OrderDecision
+      description: A result row for every order after a proven optimal solve.
+    - symbol: PlanSummary
+      description: The solver status and optimum count for the current source revision.
+  relationships:
+    - symbol: Depot.node
+      label: at
+      reading: Depot is at Node
+      description: Associates each depot with its road-network node.
+    - symbol: Store.node
+      label: at
+      reading: Store is at Node
+      description: Associates each store with its road-network node.
+    - symbol: Road.source
+      label: starts at
+      reading: Road starts at Node
+      description: Source endpoint of a directed road.
+    - symbol: Road.destination
+      label: ends at
+      reading: Road ends at Node
+      description: Destination endpoint of a directed road.
+    - symbol: Order.store
+      label: delivered to
+      reading: Order is delivered to Store
+      description: Destination store for the entire order.
+  # The CSVs are setup fixtures, not direct in-model data sources. The model
+  # binds Snowflake tables in sources.py instead of reading these files.
+  sources: []
+
+guided_walkthrough:
+  title: From open depots to a checked recommendation
+  description: >-
+    Review the source binding, the graph-to-solver chain, and the
+    fail-closed result contract before any live agent setup.
+  steps:
+    - id: declare-delivery-entities
+      title: Declare the delivery vocabulary
+      explanation: >-
+        Depot, Store, Road, and Order separate the road network from
+        stock and whole-order business constraints.
+      focus:
+        file: model/schema.py
+        symbols:
+          - Depot
+          - Store
+          - Road
+          - Order
+      references:
+        Depot:
+          symbol: Depot
+        Store:
+          symbol: Store
+        Road:
+          symbol: Road
+        Order:
+          symbol: Order
+      links:
+        - title: Declare concepts
+          href: /build/guides/modeling/declare-concepts/
+    - id: bind-snowflake-sources
+      title: Bind sources without fixture side effects
+      explanation: >-
+        depots and roads bind to Snowflake source tables; local CSV loading
+        remains a separate, explicit administrative operation.
+      focus:
+        file: model/sources.py
+        symbols:
+          - depots
+          - roads
+      references:
+        depots:
+          symbol: depots
+        roads:
+          symbol: roads
+      links:
+        - title: Declare data sources
+          href: /build/guides/modeling/declare-data-sources/
+    - id: derive-directed-routes
+      title: Find open-depot travel times
+      explanation: >-
+        graph computes directed shortest paths; DepotStoreTime restricts
+        those paths to depots currently open.
+      focus:
+        file: model/schema.py
+        symbols:
+          - graph
+          - DepotStoreTime
+      references:
+        graph:
+          symbol: graph
+        DepotStoreTime:
+          symbol: DepotStoreTime
+      links:
+        - title: Create a graph
+          href: /build/guides/reasoning/graph/create-a-graph/
+        - title: Run a graph algorithm
+          href: /build/guides/reasoning/graph/run-an-algorithm/
+    - id: plan-whole-orders
+      title: Maximize complete on-time orders
+      explanation: >-
+        problem uses binary Assignment variables over EligiblePair routes
+        and stock constraints; a reachable store need not be selected.
+      focus:
+        file: model/schema.py
+        symbols:
+          - EligiblePair
+          - Assignment
+          - problem
+      references:
+        EligiblePair:
+          symbol: EligiblePair
+        Assignment:
+          symbol: Assignment
+        problem:
+          symbol: problem
+      links:
+        - title: Define decision variables
+          href: /build/guides/reasoning/prescriptive/decision-problems/variables/
+        - title: Add constraints
+          href: /build/guides/reasoning/prescriptive/decision-problems/constraints/
+    - id: report-guarded-results
+      title: Preserve all stores and orders
+      explanation: >-
+        StoreRouteStatus includes unreachable destinations; OrderDecision
+        emits chosen depots only after an optimal solve, with PlanSummary
+        recording solver status and source revision for verification.
+      focus:
+        file: model/schema.py
+        symbols:
+          - StoreRouteStatus
+          - OrderDecision
+          - PlanSummary
+      references:
+        StoreRouteStatus:
+          symbol: StoreRouteStatus
+        OrderDecision:
+          symbol: OrderDecision
+        PlanSummary:
+          symbol: PlanSummary
+      links:
+        - title: Derive facts with logic
+          href: /build/guides/modeling/derive-facts-with-logic/
+
+sample_data:
+  default_rows: 4
+  tables:
+    - path: data/depots.csv
+      title: Depots
+      description: Open state and stock for the synthetic depots.
+      columns:
+        - depot_id
+        - node_id
+        - is_open
+        - stock_units
+      rows: 2
+    - path: data/stores.csv
+      title: Stores
+      description: Every store must have a reachable/unreachable status row.
+      columns:
+        - store_id
+        - node_id
+      rows: 3
+    - path: data/roads.csv
+      title: Directed roads
+      description: Minutes of travel in one direction only.
+      columns:
+        - from_node_id
+        - to_node_id
+        - travel_minutes
+    - path: data/orders.csv
+      title: Orders
+      description: Single-product orders completed whole or not at all.
+      columns:
+        - order_id
+        - store_id
+        - units
+        - deadline_minutes

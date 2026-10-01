@@ -1,0 +1,35 @@
+# DRAFT ONLY: complete with an approved account administrator, save locally as
+# raiconfig.yaml, then verify these fields against the installed 1.33.0 release.
+# Do not place credential values or this local config in a shared ZIP/commit.
+default_connection: sf
+connections:
+  sf:
+    type: snowflake
+    account: <YOUR_ACCOUNT>
+    user: <YOUR_USER>
+    warehouse: <YOUR_WAREHOUSE>
+    role: <YOUR_BUILDER_ROLE>
+    authenticator: externalbrowser
+
+tables:
+  default_schema: <YOUR_DATABASE>.DELIVERY_SOURCES
+
+model:
+  path: model/
+  implicit_properties: false
+
+deployment:
+  schema: <YOUR_DATABASE>.DELIVERY_OUTPUTS
+  meta_schema: <YOUR_DATABASE>.DELIVERY_OUTPUTS_META
+  role: <YOUR_REFRESH_ROLE>
+  pat_secret: <APPROVED_SNOWFLAKE_SECRET_OBJECT_NAME>
+  pat_eai: <APPROVED_EXTERNAL_ACCESS_INTEGRATION_NAME>
+  pat_user: <APPROVED_REFRESH_IDENTITY>
+  pat_warehouse: <APPROVED_REFRESH_WAREHOUSE>
+  schedules:
+    standard:
+      interval_s: 0
+      run_on_deploy: true
+  outputs:
+    type: table
+    schedule: standard

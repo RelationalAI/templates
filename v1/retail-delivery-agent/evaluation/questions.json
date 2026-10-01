@@ -1,0 +1,10 @@
+[
+  {
+    "id": "unreachable-stores",
+    "prompt": "Which stores cannot get a delivery from any depot that is open right now?"
+  },
+  {
+    "id": "max-complete-orders",
+    "prompt": "What should we send from the depots still open to complete the most orders on time?"
+  }
+]

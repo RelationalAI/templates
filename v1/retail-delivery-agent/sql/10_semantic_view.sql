@@ -1,0 +1,9 @@
+-- DRAFT / NOT RUNNABLE. DO NOT replace these comments with guessed SQL.
+-- Gate 1: capture live 1.33.0 deployed object names, actual columns/case and
+-- PRIMARY KEYS for StoreRouteStatus, OrderDecision, and PlanSummary.
+-- Gate 2: prove every store and order has one row at the same source revision,
+-- no join fanout, and OPTIMAL solver status before exposing a completed count.
+-- Gate 3: have an SME review "reachable regardless of stock", "on time", and
+-- "whole order" in a full CREATE SEMANTIC VIEW definition, then execute it
+-- and a SEMANTIC_VIEW(...) query under an approved role. Until then no
+-- semantic-view SQL is represented as working.

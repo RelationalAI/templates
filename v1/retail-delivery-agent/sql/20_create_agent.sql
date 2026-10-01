@@ -1,0 +1,5 @@
+-- DRAFT / NOT RUNNABLE. Account gate: verify current Cortex Agent DDL/API,
+-- region, Analyst tool binding to the reviewed semantic view, supported
+-- orchestration.tool_not_accessible: reject placement, evidence-only agent
+-- instructions, and missing-tool failure behavior in the target account.
+-- Model deployment itself does not register an agent or provide CoWork access.

@@ -1,0 +1,9 @@
+-- ADMIN-REVIEW CHECKLIST / NOT RUNNABLE. Do not paste guessed GRANT syntax.
+-- Builder: only dedicated source/output/meta creation privileges; refresh
+-- identity: SELECT on the five demo source tables, task/procedure/solver
+-- privileges and account-specific approved PAT/secret/EAI configuration.
+-- Consumer: default role + warehouse, USAGE on the agent/semantic-view
+-- namespace, SELECT on the semantic view AND underlying published output
+-- tables, plus verified Cortex Agent/Analyst access. No source/meta grants to
+-- the consumer just to make Analyst work. Test separately with a role denied
+-- the view and a role denied underlying published tables; fail closed.

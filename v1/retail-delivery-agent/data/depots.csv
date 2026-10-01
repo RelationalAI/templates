@@ -1,0 +1,3 @@
+depot_id,node_id,is_open,stock_units
+North,NORTH,true,2
+South,SOUTH,true,4
