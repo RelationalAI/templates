@@ -551,15 +551,15 @@ def _extract_allocations(var_df, scenario_name):
     return allocs
 
 
-def _extract_frontier_point_allocations(prod_solves, point_row, scenario_name):
+def _extract_frontier_point_allocations(stage3_solves, point_row, scenario_name):
     """Extract the allocations from the cached solve for one frontier point."""
     solve_index = int(point_row["k"])
-    if solve_index >= len(prod_solves):
+    if solve_index >= len(stage3_solves):
         raise RuntimeError(
             f"Frontier point {solve_index} for {scenario_name} has no matching solve."
         )
 
-    label, allocation_df, _ = prod_solves[solve_index]
+    label, allocation_df, _ = stage3_solves[solve_index]
     if label != point_row["eps_label"]:
         raise RuntimeError(
             f"Frontier point {point_row['eps_label']} for {scenario_name} "
@@ -1075,21 +1075,21 @@ prod_points = methods["dichotomic"]  # already deduped + sorted by return (refer
 # (eps_label, allocation_df, shadow_by_scenario) per production point. k=0 is the
 # min-variance anchor (solved as eps_rate=None -> df1, zero dual); the rest reuse the
 # cached dual-guided solves.
-prod_solves = []
+stage3_solves = []
 for k, p in enumerate(prod_points):
     if k == 0:
-        prod_solves.append(("min_risk", df1, {sn: 0.0 for sn in scenario_names}))
+        stage3_solves.append(("min_risk", df1, {sn: 0.0 for sn in scenario_names}))
     else:
         result = _solve_rate(p.rate)
         assert result is not None, f"frontier point p{k} (rate={p.rate}) had no cached solve"
-        _si, df, shadow = result
-        prod_solves.append((f"p{k}", df, shadow))
+        _si, allocation_df, shadow = result
+        stage3_solves.append((f"p{k}", allocation_df, shadow))
 
 fp_rows = []
 for sn in scenario_names:
     slopes = []
     rows_for_sn = []
-    for k, (label, df, shadow) in enumerate(prod_solves):
+    for k, (label, allocation_df, shadow) in enumerate(stage3_solves):
         marginal = float(shadow.get(sn, 0.0))  # EXACT dual; 0 at the min-risk anchor
         slopes.append(marginal)
         rows_for_sn.append(
@@ -1097,8 +1097,8 @@ for sn in scenario_names:
                 "scenario_label": sn,
                 "eps_label": label,
                 "k": k,
-                "return": evaluate_return(df, sn),
-                "risk": evaluate_risk(df, sn),
+                "return": evaluate_return(allocation_df, sn),
+                "risk": evaluate_risk(allocation_df, sn),
                 "marginal_risk_per_return": marginal,
                 "is_knee": False,
             }
@@ -1138,27 +1138,9 @@ for r in fp_rows:
     r["vol_gap"] = vol_gap
     r["vol_gap_pct"] = (vol_gap / vol_base * 100.0) if vol_base > 1e-9 else 0.0
 
-fp_df = DataFrame(fp_rows)
-
 # FrontierPoint facts -- one row per (scenario, point). The marginal is the exact
 # dual everywhere (0 at the min-risk anchor), so a single-pass load works (no NaN).
-fp_data = model.data(
-    fp_df[
-        [
-            "scenario_label",
-            "eps_label",
-            "k",
-            "return",
-            "risk",
-            "marginal_risk_per_return",
-            "is_knee",
-            "vol_base",
-            "vol_crisis",
-            "vol_gap",
-            "vol_gap_pct",
-        ]
-    ].reset_index(drop=True)
-)
+fp_data = model.data(DataFrame(fp_rows))
 model.define(
     fp := FrontierPoint.new(
         scenario_label=fp_data["scenario_label"],
@@ -1296,7 +1278,7 @@ for sn in scenario_names:
 
     knee_row = knee_rows.iloc[0]
     label, allocations = _extract_frontier_point_allocations(
-        prod_solves,
+        stage3_solves,
         knee_row,
         sn,
     )

@@ -204,6 +204,8 @@ guided_walkthrough:
             start: FrontierPoint.scenario = model.Property(f"{FrontierPoint} for {Scenario}")
             end: FrontierPoint.scenario = model.Property(f"{FrontierPoint} for {Scenario}")
       links:
+        - title: Declare concepts
+          href: /build/guides/modeling/declare-concepts/
         - title: Declare relationships and properties
           href: /build/guides/modeling/declare-relationships-and-properties/
 
@@ -244,8 +246,10 @@ guided_walkthrough:
             start: model.define(Holding.stock(Stock)).where(Holding.stock_id == Stock.index)
             end: model.define(Holding.stock(Stock)).where(Holding.stock_id == Stock.index)
       links:
-        - title: Declare data sources
-          href: /build/guides/modeling/declare-data-sources/
+        - title: Define base facts from tabular data
+          href: /build/guides/modeling/define-base-facts/#map-columns-explicitly
+        - title: Compute derived relationships
+          href: /build/guides/modeling/derive-facts-with-logic/#compute-derived-relationships
 
     - id: stage-1-audit-current-portfolio
       title: "Stage 1: Check the current portfolio"
@@ -274,13 +278,14 @@ guided_walkthrough:
     - id: stage-2-reduce-correlated-bets
       title: "Stage 2: Group related stocks"
       explanation: |-
-        Stage 2 groups stocks that tend to move together. It connects two
-        stocks when the absolute value of their correlation is at least 0.3.
-        The Louvain algorithm then places connected stocks into clusters.
+        Stage 2 groups stocks that tend to move together. It creates a
+        corr_graph.Edge when the absolute value of their correlation is at
+        least 0.3. corr_graph.louvain() then places connected stocks into
+        clusters. Stock.cluster records the cluster assigned to each stock.
 
-        Within each cluster, Stock.sharpe records each stock's Sharpe ratio,
-        which compares return with volatility. Stock.is_representative marks
-        the stock with the highest ratio. The model excludes the other stocks
+        Within each cluster, the model calculates each stock's Sharpe ratio,
+        which compares return with volatility. It marks the stock with the
+        highest ratio as the representative and excludes the other stocks
         from the new allocations. In the sample data, four connections form
         five clusters, and five of the eight stocks become representatives.
 
@@ -289,24 +294,29 @@ guided_walkthrough:
       focus:
         file: portfolio_balancing.py
         anchors:
-          - start: model.define(Stock.sharpe(Stock.returns / Stock.volatility))
-            end: Stock.is_representative()
+          - start: stock_i_ref = Stock.ref()
+            end: community(stock_clust_ref, cluster_label)
             end_offset: 1
-            occurrence: 1
       references:
-        Stock.sharpe:
+        corr_graph.Edge:
           anchor:
-            start: model.define(Stock.sharpe(Stock.returns / Stock.volatility))
-            end: model.define(Stock.sharpe(Stock.returns / Stock.volatility))
-        Stock.is_representative:
-          anchor:
-            start: model.where(Stock.sharpe == Stock.cluster_max_sharpe).define(
-            end: Stock.is_representative()
+            start: model.define(corr_graph.Edge.new(src=stock_i_ref, dst=stock_j_ref)).where(
+            end: math_abs(corr_ref) >= CORR_THRESHOLD,
             end_offset: 1
-            occurrence: 1
+        corr_graph.louvain():
+          anchor:
+            start: community = corr_graph.louvain()
+            end: community = corr_graph.louvain()
+        Stock.cluster:
+          anchor:
+            start: model.define(stock_clust_ref.cluster(cluster_label)).where(
+            end: community(stock_clust_ref, cluster_label)
+            end_offset: 1
       links:
-        - title: Graph reasoning
-          href: /build/guides/reasoning/graph/
+        - title: Create a graph
+          href: /build/guides/reasoning/graph/create-a-graph/
+        - title: Run a graph algorithm
+          href: /build/guides/reasoning/graph/run-an-algorithm/#community-detection
 
     - id: stage-3-solve-scenario-frontiers
       title: "Stage 3: Calculate portfolio allocations"
@@ -347,27 +357,27 @@ guided_walkthrough:
             start: PairedStock.x_quantity(Scenario, x_qty_paired),
             end: PairedStock.x_quantity(Scenario, x_qty_paired),
       links:
-        - title: Add decision-problem constraints
-          href: /build/guides/reasoning/prescriptive/decision-problems/constraints/
-        - title: Interpret decision-problem solutions
-          href: /build/guides/reasoning/prescriptive/decision-problems/solutions/
+        - title: Solve an optimization problem
+          href: /build/guides/reasoning/prescriptive/decision-problems/solve/
+        - title: Estimate the effect of changing a constraint limit
+          href: /build/guides/reasoning/prescriptive/decision-problems/solutions/#estimate-the-effect-of-changing-a-constraint-limit
 
     - id: stage-4-materialize-and-compare
       title: "Stage 4: Summarize the results"
       explanation: |-
-        Stage 4 turns the calculations from Stage 3 into summaries that the
-        final queries can compare. For every scenario and required return, it
-        gathers the portfolio's expected return, variance, and volatility under
-        base and crisis conditions.
+        Stage 4 starts with stage3_solves, which contains the cached allocation
+        table and shadow prices for each point calculated in Stage 3. For every
+        scenario and point, evaluate_return() and evaluate_risk() calculate the
+        summary measures. marginal_risk_per_return records how much more
+        variance is needed when the required return increases by one unit.
 
-        It stores each summary as a FrontierPoint. A frontier point represents
-        one calculated portfolio using measures of risk and return. The
-        individual stock amounts remain in the Stage 3 results.
-        FrontierPoint.new() creates the summary. marginal_risk_per_return
-        records how much more variance is needed when the required return
-        increases by one unit. is_knee marks the point before that increase
-        becomes much steeper. vol_base and vol_crisis record volatility for the
-        matching base and crisis results.
+        After the code marks the knee and adds the stress comparison,
+        FrontierPoint.new() stores each completed summary in the model. A
+        frontier point represents one calculated portfolio using measures of
+        risk and return. The individual stock amounts remain in the Stage 3
+        results. is_knee marks the point before variance begins to increase much
+        faster. vol_base and vol_crisis record volatility for the matching base
+        and crisis results.
 
         These summaries let the final queries compare the calculated portfolios
         and identify the portfolio associated with the FrontierPoint marked as
@@ -375,20 +385,34 @@ guided_walkthrough:
       focus:
         file: portfolio_balancing.py
         anchors:
-          - start: '# FrontierPoint facts -- one row per (scenario, point). The marginal is the exact'
-            start_offset: 19
+          - start: fp_rows = []
+            end: '"is_knee": False,'
+            end_offset: 2
+          - start: fp_data = model.data(DataFrame(fp_rows))
             end: 'fp.vol_gap_pct(fp_data["vol_gap_pct"]),'
             end_offset: 1
       references:
+        stage3_solves:
+          anchor:
+            start: 'for k, (label, allocation_df, shadow) in enumerate(stage3_solves):'
+            end: 'for k, (label, allocation_df, shadow) in enumerate(stage3_solves):'
+        evaluate_return():
+          anchor:
+            start: '"return": evaluate_return(allocation_df, sn),'
+            end: '"return": evaluate_return(allocation_df, sn),'
+        evaluate_risk():
+          anchor:
+            start: '"risk": evaluate_risk(allocation_df, sn),'
+            end: '"risk": evaluate_risk(allocation_df, sn),'
+        marginal_risk_per_return:
+          anchor:
+            start: '"marginal_risk_per_return": marginal,'
+            end: '"marginal_risk_per_return": marginal,'
         FrontierPoint.new():
           anchor:
             start: 'fp := FrontierPoint.new('
             end: 'eps_label=fp_data["eps_label"],'
             end_offset: 1
-        marginal_risk_per_return:
-          anchor:
-            start: 'fp.marginal_risk_per_return(fp_data["marginal_risk_per_return"]),'
-            end: 'fp.marginal_risk_per_return(fp_data["marginal_risk_per_return"]),'
         is_knee:
           anchor:
             start: 'fp.is_knee(fp_data["is_knee"]),'
@@ -402,8 +426,8 @@ guided_walkthrough:
             start: 'fp.vol_crisis(fp_data["vol_crisis"]),'
             end: 'fp.vol_crisis(fp_data["vol_crisis"]),'
       links:
-        - title: Query a model
-          href: /build/guides/modeling/query-a-model/
+        - title: Define base facts from tabular data
+          href: /build/guides/modeling/define-base-facts/#map-columns-explicitly
 
     - id: use-results-to-choose-portfolio
       title: Choose a candidate portfolio
@@ -421,17 +445,14 @@ guided_walkthrough:
         before variance begins to rise much faster for each additional unit of
         required return. It is a candidate to review, not a recommendation.
 
-        The final loop retrieves that portfolio's stock amounts from Stage 3
-        for each of the six scenarios. Amount shows how much of the scenario's
-        budget is assigned to a stock. Weight shows the stock's share of the
-        budget. The shortened output shows the base and crisis portfolios for a
-        budget of 1,000. To turn one into a rebalancing plan, link the scenario
-        to an account and compare these target amounts with its current
-        holdings.
+        The final loop uses _extract_frontier_point_allocations() to retrieve
+        that portfolio's stock amounts from Stage 3 for each of the six
+        scenarios. Amount shows how much of the scenario's budget is assigned
+        to a stock. Weight shows the stock's share of the budget. The output
+        excerpt shows the base portfolio for a budget of 1,000. To turn it into
+        a rebalancing plan, link the scenario to an account and compare these
+        target amounts with its current holdings.
       output: |-
-        KNEE PORTFOLIO ALLOCATIONS BY SCENARIO
-        ======================================
-
           base_1000 (budget=1000, regime=base, point=p3)
           expected return=80.46, volatility=83.33
           Ticker        Amount    Weight
@@ -441,22 +462,15 @@ guided_walkthrough:
           PFE           234.07    23.4%
           JPM           135.49    13.5%
           PG             51.87     5.2%
-
-          crisis_1000 (budget=1000, regime=crisis, point=p3)
-          expected return=80.46, volatility=104.40
-          Ticker        Amount    Weight
-          ------------------------------
-          GOOGL         300.00    30.0%
-          XOM           286.44    28.6%
-          PFE           259.92    26.0%
-          JPM           102.53    10.3%
-          PG             51.11     5.1%
       focus:
         file: portfolio_balancing.py
         anchors:
           - start: '    knee_rows = frontier_df['
             end: label, allocations = _extract_frontier_point_allocations(
             end_offset: 4
+          - start: '    ordered_allocations = sorted('
+            end: '            f"{float(quantity) / budget:>9.1%}"'
+            end_offset: 1
       references:
         frontier_df:
           anchor:
@@ -467,6 +481,19 @@ guided_walkthrough:
           anchor:
             start: '        & frontier_df["is_knee"]'
             end: '        & frontier_df["is_knee"]'
+        _extract_frontier_point_allocations():
+          anchor:
+            start: label, allocations = _extract_frontier_point_allocations(
+            end: label, allocations = _extract_frontier_point_allocations(
+            end_offset: 4
+        Amount:
+          anchor:
+            start: '            f"  {ticker:<8}{float(quantity):>12.2f}"'
+            end: '            f"  {ticker:<8}{float(quantity):>12.2f}"'
+        Weight:
+          anchor:
+            start: '            f"{float(quantity) / budget:>9.1%}"'
+            end: '            f"{float(quantity) / budget:>9.1%}"'
       links:
-        - title: Interpret decision problem solutions
+        - title: Work with solutions
           href: /build/guides/reasoning/prescriptive/decision-problems/solutions/
