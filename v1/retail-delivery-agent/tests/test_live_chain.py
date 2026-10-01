@@ -27,12 +27,14 @@ class TestApprovedLiveChain(unittest.TestCase):
     def test_graph_solver_public_rows_and_later_refresh(self) -> None:
         open_snapshot = _read_env_json("RAI_LIVE_OPEN_SNAPSHOT")
         closed_snapshot = _read_env_json("RAI_LIVE_CLOSED_SNAPSHOT")
+        repeat_snapshot = _read_env_json("RAI_LIVE_REPEAT_SNAPSHOT")
         evidence = _read_env_json("RAI_LIVE_PLAN_AND_REFRESH_EVIDENCE")
 
         compare_snapshot(open_snapshot, closed=False)
         compare_snapshot(closed_snapshot, closed=True, prior_revision=1)
+        compare_snapshot(repeat_snapshot, closed=True, prior_revision=1)
         if set(evidence) != {"plan", "refreshes", "source_mutation_at"}:
-            self.fail("Need live plan, two refreshes, and source mutation timestamp")
+            self.fail("Need live plan, three refreshes, and source mutation timestamp")
         plan = evidence["plan"]
         entries = {str(item["id"]): item for item in plan}
         if len(entries) != len(plan):
@@ -64,21 +66,36 @@ class TestApprovedLiveChain(unittest.TestCase):
             self.fail("No verified graph→prescriptive refresh dependency")
         if not depends_on(decisions, str(solver["id"])):
             self.fail("No verified prescriptive→public-decision refresh dependency")
-        first, second = evidence["refreshes"]
+        if len(evidence["refreshes"]) != 3:
+            self.fail("Need initial, post-closure, and repeated NEW refresh evidence")
+        first, second, repeated = evidence["refreshes"]
+        if any(
+            int(snapshot["sources"]["demo_state"][0]["revision"]) != refresh["source_revision"]
+            for snapshot, refresh in zip(
+                (open_snapshot, closed_snapshot, repeat_snapshot),
+                (first, second, repeated),
+                strict=True,
+            )
+        ):
+            self.fail("A snapshot revision differs from its corresponding refresh trace")
         if (
             first["status"] != "SUCCEEDED"
             or second["status"] != "SUCCEEDED"
-            or first["run_id"] == second["run_id"]
+            or repeated["status"] != "SUCCEEDED"
+            or len({first["run_id"], second["run_id"], repeated["run_id"]}) != 3
             or first["source_revision"] != 1
             or second["source_revision"] != 2
+            or repeated["source_revision"] != 2
             or not (
                 datetime.fromisoformat(first["completed_at"])
                 < datetime.fromisoformat(evidence["source_mutation_at"])
                 <= datetime.fromisoformat(second["started_at"])
                 < datetime.fromisoformat(second["completed_at"])
+                < datetime.fromisoformat(repeated["started_at"])
+                < datetime.fromisoformat(repeated["completed_at"])
             )
         ):
-            self.fail("Refresh trace is stale, incomplete, or not later than source mutation")
+            self.fail("Refresh trace is stale, incomplete, or lacks a later repeated NEW run")
 
 
 if __name__ == "__main__":

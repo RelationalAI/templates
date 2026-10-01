@@ -78,14 +78,15 @@ agent, view, tool description, and retrieval source.
    `REFRESH_STATUS` success without verified fields and run identity:
    preserve the separate refresh trace. Never generate the snapshot from
    the oracle and call it observed data.
-   The opt-in `tests/test_live_chain.py` consumes two real snapshot files
+   The opt-in `tests/test_live_chain.py` consumes three real snapshot files
+   (initial, post-closure and repeated NEW refresh on the unchanged revision)
    plus normalized refresh-plan/status evidence after an approved run.
    Set `RAI_LIVE_APPROVED=1`, `RAI_LIVE_OPEN_SNAPSHOT`,
-   `RAI_LIVE_CLOSED_SNAPSHOT`, and
+   `RAI_LIVE_CLOSED_SNAPSHOT`, `RAI_LIVE_REPEAT_SNAPSHOT`, and
    `RAI_LIVE_PLAN_AND_REFRESH_EVIDENCE` only when those artifacts exist.
    Its normalized `plan` entries require `id`, `kind` and
-   `dependency_ids`; `refreshes` require run IDs, status, source revision,
-   start/end times and `source_mutation_at`. This file is skipped offline;
+   `dependency_ids`; three `refreshes` require distinct run IDs, status,
+   source revision, start/end times and `source_mutation_at`. This file is skipped offline;
    it does not deploy, query an account, or substitute for inspecting the
    live SQL/agent evidence.
 
