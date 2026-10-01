@@ -433,24 +433,24 @@ guided_walkthrough:
         ======================================
 
           base_1000 (budget=1000, regime=base, point=p3)
-          expected return=80.47, volatility=83.35
+          expected return=80.46, volatility=83.33
           Ticker        Amount    Weight
           ------------------------------
           GOOGL         300.00    30.0%
-          XOM           278.70    27.9%
-          PFE           234.11    23.4%
-          JPM           135.53    13.6%
-          PG             51.66     5.2%
+          XOM           278.57    27.9%
+          PFE           234.07    23.4%
+          JPM           135.49    13.5%
+          PG             51.87     5.2%
 
           crisis_1000 (budget=1000, regime=crisis, point=p3)
-          expected return=80.47, volatility=104.41
+          expected return=80.46, volatility=104.40
           Ticker        Amount    Weight
           ------------------------------
           GOOGL         300.00    30.0%
-          XOM           286.57    28.7%
-          PFE           259.96    26.0%
-          JPM           102.57    10.3%
-          PG             50.90     5.1%
+          XOM           286.44    28.6%
+          PFE           259.92    26.0%
+          JPM           102.53    10.3%
+          PG             51.11     5.1%
       focus:
         file: portfolio_balancing.py
         anchors:
