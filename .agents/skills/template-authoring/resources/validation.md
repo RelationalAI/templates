@@ -6,8 +6,8 @@ From the repository root:
 ```bash
 ruff check <template-path> sample-template scripts tests
 python -m compileall -q <template-path> sample-template
-python -m unittest tests/test_validate_changed_templates.py
-python scripts/generate_version_indexes.py --check
+python -m unittest discover -s tests -p "test_*.py"
+python scripts/generate_template_index.py --check
 ```
 
 For a committed branch, run the pull-request policy against its base:
@@ -18,7 +18,7 @@ python scripts/validate_changed_templates.py --base-ref origin/main
 
 The changed-template check:
 
-- Requires `template-docs.yaml` when a `v1/<slug>/README.md` is newly added or
+- Requires `template-docs.yaml` when a `<slug>/README.md` is newly added or
   moved into a new template directory.
 - Allows changes to existing README-only templates without forcing migration.
 - Rejects removing an adopted sidecar while that template's README remains.

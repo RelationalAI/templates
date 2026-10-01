@@ -14,7 +14,7 @@ tags:
 
 ## What this template is for
 
-Use this starter when you create a v1 template. Replace the example model,
+Use this starter when you create a template. Replace the example model,
 source mapping, query, metadata, and prose with the behavior of your template.
 
 The starter demonstrates RelationalAI's **rules-based reasoning** authoring
@@ -22,7 +22,7 @@ layout without prescribing a business domain.
 
 ## Who this is for
 
-- Contributors creating a new v1 template.
+- Contributors creating a new template.
 - Authors who need a consistent boundary between schema, source loading, and
   runner logic.
 
@@ -51,11 +51,11 @@ layout without prescribing a business domain.
 
 ## Quickstart
 
-1. Copy this directory into `v1/` and rename it:
+1. Copy this directory to a new root-level template directory and rename it:
 
    ```bash
-   cp -R sample-template v1/your_template_name
-   cd v1/your_template_name
+   cp -R sample-template your_template_name
+   cd your_template_name
    ```
 
 1. Update the package metadata, runner name, source files, README, and

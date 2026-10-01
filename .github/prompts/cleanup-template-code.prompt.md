@@ -2,24 +2,20 @@
 name: cleanup-template-code
 description: Refactor a RelationalAI template into the standard model package without changing behavior.
 inputs:
-  version:
-    description: Template version folder.
-    default: v1
   templateName:
     description: Template folder name.
 ---
 
 # Refactor template code
 
-VERSION=${{input:version:v1}}
 TEMPLATE_NAME=${{input:templateName}}
 
 Read `.agents/skills/template-authoring/SKILL.md` completely and follow its
-**Update** workflow for `${VERSION}/${TEMPLATE_NAME}/`.
+**Update** workflow for `${TEMPLATE_NAME}/`.
 
 Preserve the existing entrypoint, data semantics, reasoning, solver
 configuration, constraints, thresholds, result ordering, output labels, and
-dependencies. For a v1 migration:
+dependencies. For a model-package refactor:
 
 - Move model creation and stable declarations to `model/schema.py`.
 - Move reads, normalization, and base-fact mappings to `model/source.py`.

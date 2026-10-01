@@ -1,24 +1,22 @@
 # Contributing
 
-This repository contains versioned, runnable RelationalAI templates. Each template is a small, self-contained example with code, sample data, and documentation.
+This repository contains runnable RelationalAI templates. Each template is a small, self-contained example with code, sample data, and documentation.
 
 This guide covers the expected workflow for adding a new template or updating an existing one.
 
-## Choose the right version folder
+## Create a template directory
 
-- Put new templates in `v1/` unless you are intentionally contributing to an older SDK generation.
-- Treat `v0.13/` and `v0.14/` as legacy branches for maintenance, fixes, and backports.
-- Keep the version folder aligned with the `relationalai` package version pinned in the template's `pyproject.toml`.
+Put each template in a root-level directory named for its slug. Keep the
+`relationalai` package version pinned in the template's `pyproject.toml`.
 
 Examples:
 
 ```bash
-cp -R sample-template v1/<your_template_name>
+cp -R sample-template <your_template_name>
 ```
 
-The starter demonstrates the current v1 `model/` package and
-`template-docs.yaml` contract. Do not use it to introduce new templates in the
-legacy version folders.
+The starter demonstrates the current `model/` package and
+`template-docs.yaml` contract.
 
 ## Repository setup
 
@@ -41,7 +39,7 @@ This repository uses Ruff to lint Python template code.
 - Local command from the repository root:
 
   ```bash
-  ruff check sample-template scripts tests v0.13 v0.14 v1
+  ruff check */
   ```
 
 - Pre-commit hook (configured in `.pre-commit-config.yaml`):
@@ -54,7 +52,7 @@ This repository uses Ruff to lint Python template code.
 
 ## Add a new template
 
-1. Copy `sample-template/` into `v1/` and rename it to your template name.
+1. Copy `sample-template/` to a new root-level directory named for your template.
 2. Rename the main runner, package metadata, and starter identifiers so they match the folder name.
 3. Implement the schema, source mappings, runner logic, sample data, and outputs.
 4. Replace the starter README content and update every field in `template-docs.yaml`.
@@ -89,8 +87,8 @@ and resolves its paths and Python symbols without importing the template.
 
 Contributor policy is incremental:
 
-- Every newly added `v1/<slug>/README.md` must be accompanied by
-  `v1/<slug>/template-docs.yaml`.
+- Every newly added `<slug>/README.md` must be accompanied by
+  `<slug>/template-docs.yaml`.
 - Existing README-only templates may be updated without adopting a sidecar.
 - Once a template has a sidecar, do not delete it while the template remains.
 - A present sidecar must stay valid after source or documentation changes.
@@ -146,7 +144,7 @@ This repo includes prompt files under `.github/prompts/` that you can run from V
 
 Useful prompts:
 
-- `cleanup-template-code` - refactor a v1 template into the standard model package without changing behavior
+- `cleanup-template-code` - refactor a template into the standard model package without changing behavior
 - `create-template-readme` - create a README and sidecar from the template code
 - `update-template-readme` - keep a README, runbook, and sidecar aligned after code changes
 - `review-template` - review code, dependencies, data, README, runbook, sidecar, and validation evidence
@@ -158,19 +156,17 @@ canonical authoring workflow.
 
 In VS Code, open Copilot Chat, then run one of the repo prompts from `.github/prompts/` and provide its inputs.
 
-These prompts accept the same inputs:
-
-- `templateName` (required): the template folder name, for example `ad_spend_allocation`
-- `version` (optional): the version folder; for new templates, prefer `v1`
+These prompts accept `templateName`, the required root-level template folder
+name, for example `ad_spend_allocation`.
 
 Examples:
 
 ```text
-/review-template templateName=ad_spend_allocation version=v1
+/review-template templateName=ad_spend_allocation
 
-/create-template-readme templateName=ad_spend_allocation version=v1
+/create-template-readme templateName=ad_spend_allocation
 
-/update-template-readme templateName=ad_spend_allocation version=v1
+/update-template-readme templateName=ad_spend_allocation
 ```
 
 > [!NOTE]
@@ -187,13 +183,13 @@ Before opening a PR, make sure you can complete this checklist from a clean envi
 1. Lint template Python code from the repository root:
 
   ```bash
-  ruff check sample-template scripts tests v0.13 v0.14 v1
+  ruff check */
   ```
 
 1. Compile the changed runner and model package:
 
   ```bash
-  python -m compileall -q v1/<your_template_name> sample-template
+  python -m compileall -q <your_template_name> sample-template
   ```
 
 1. Test the changed-template policy:
@@ -202,7 +198,7 @@ Before opening a PR, make sure you can complete this checklist from a clean envi
   python -m unittest tests/test_validate_changed_templates.py
   ```
 
-1. On a committed branch, validate its changed v1 templates against the base:
+1. On a committed branch, validate its changed templates against the base:
 
   ```bash
   python scripts/validate_changed_templates.py --base-ref origin/main
@@ -214,32 +210,35 @@ Before opening a PR, make sure you can complete this checklist from a clean envi
   pre-commit run --all-files
   ```
 
-1. If you changed template descriptions or added a template, regenerate the version indexes:
+1. If you changed template descriptions or added a template, regenerate the root index:
 
   ```bash
-  python scripts/generate_version_indexes.py
+  python scripts/generate_template_index.py
   ```
 
-1. Verify the generated indexes are clean:
+1. Verify the generated index is clean:
 
   ```bash
-  python scripts/generate_version_indexes.py --check
+  python scripts/generate_template_index.py --check
   ```
 
-## Keep template indexes in sync
+## Keep the template index in sync
 
-The template index is generated from each template README's front matter — the `description`, `industry`, and `reasoning_types` fields. It is written to each version README (`v0.13/README.md`, `v0.14/README.md`, `v1/README.md`) and to the repository root `README.md`, between its `<!-- BEGIN TEMPLATE INDEX -->` / `<!-- END TEMPLATE INDEX -->` markers.
+The template index is generated from each root-level template README's front
+matter — the `description`, `industry`, and `reasoning_types` fields. It is
+written to the repository root `README.md`, between its
+`<!-- BEGIN TEMPLATE INDEX -->` / `<!-- END TEMPLATE INDEX -->` markers.
 
 If you add a template or change a template's `description`, `industry`, or `reasoning_types`, regenerate the indexes and commit the resulting README changes.
 
 ```bash
-python scripts/generate_version_indexes.py
+python scripts/generate_template_index.py
 ```
 
 To validate without writing changes:
 
 ```bash
-python scripts/generate_version_indexes.py --check
+python scripts/generate_template_index.py --check
 ```
 
 ## Open a pull request
@@ -247,7 +246,7 @@ python scripts/generate_version_indexes.py --check
 Open a PR once the template is runnable, the README is accurate, and local validation passes.
 
 The lint workflow in `.github/workflows/lint.yml` runs Ruff, tests the
-changed-template validator, and applies the new-v1/adopted-sidecar policy on
+changed-template validator, and applies the new-template/adopted-sidecar policy on
 pull requests.
 
 The docs preview workflow in `.github/workflows/docs-preview.yml` runs on pull requests and posts a Vercel preview URL in the PR comments.

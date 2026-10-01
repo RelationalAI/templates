@@ -15,8 +15,8 @@ def parse(path: str) -> ast.Module:
 
 class RefactoredTemplateContractTests(unittest.TestCase):
     def test_portfolio_explorer_declarations_are_stable_schema_symbols(self) -> None:
-        schema_module = parse("v1/portfolio_balancing/model/schema.py")
-        runner_module = parse("v1/portfolio_balancing/portfolio_balancing.py")
+        schema_module = parse("portfolio_balancing/model/schema.py")
+        runner_module = parse("portfolio_balancing/portfolio_balancing.py")
 
         declarations: dict[str, set[str]] = {
             "Concept": set(),
@@ -86,7 +86,7 @@ class RefactoredTemplateContractTests(unittest.TestCase):
         )
 
     def test_entity_ground_truth_is_loaded_only_for_evaluation(self) -> None:
-        source_module = parse("v1/entity_resolution/model/source.py")
+        source_module = parse("entity_resolution/model/source.py")
         functions = {
             node.name: node
             for node in source_module.body
@@ -96,7 +96,7 @@ class RefactoredTemplateContractTests(unittest.TestCase):
         self.assertIn("ground_truth.csv", ast.dump(functions["load_ground_truth"]))
         self.assertNotIn("ground_truth.csv", ast.dump(functions["load_source_data"]))
 
-        runner_module = parse("v1/entity_resolution/entity_resolution.py")
+        runner_module = parse("entity_resolution/entity_resolution.py")
         ground_truth_calls = [
             node
             for node in ast.walk(runner_module)
@@ -107,7 +107,7 @@ class RefactoredTemplateContractTests(unittest.TestCase):
         self.assertEqual(len(ground_truth_calls), 1)
 
     def test_fraud_explorer_properties_are_declared_in_schema(self) -> None:
-        module = parse("v1/fraud-detection/model/schema.py")
+        module = parse("fraud-detection/model/schema.py")
         properties = set()
         for node in module.body:
             if not isinstance(node, ast.Assign) or len(node.targets) != 1:

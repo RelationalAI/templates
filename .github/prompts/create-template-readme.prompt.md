@@ -3,23 +3,19 @@ name: create-template-readme
 description: Create the README and generated-docs sidecar for a RelationalAI template.
 tools: ['edit/createFile', 'edit/editFiles', 'read/readFile']
 inputs:
-  version:
-    description: Template version folder.
-    default: v1
   templateName:
     description: Template folder name.
 ---
 
 # Create template documentation
 
-VERSION=${{input:version:v1}}
 TEMPLATE_NAME=${{input:templateName}}
 
 Read `.agents/skills/template-authoring/SKILL.md` completely and follow its
-**Create** workflow for `${VERSION}/${TEMPLATE_NAME}/`.
+**Create** workflow for `${TEMPLATE_NAME}/`.
 
 Read the entire template before writing. Create an accurate GitHub README and,
-for a new v1 template, a strict `template-docs.yaml` in the same change.
+for a new template, a strict `template-docs.yaml` in the same change.
 
 - Keep the README complete and runnable from a fresh environment.
 - Begin with the business problem and outcome.

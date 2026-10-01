@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate template-docs adoption policy for changed v1 templates."""
+"""Validate template-docs adoption policy for changed templates."""
 
 from __future__ import annotations
 
@@ -9,6 +9,17 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Iterable
+
+RESERVED_ROOT_DIRS = frozenset(
+    {
+        ".agents",
+        ".git",
+        ".github",
+        "sample-template",
+        "scripts",
+        "tests",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -56,12 +67,17 @@ def parse_name_status(output: str) -> list[Change]:
     return changes
 
 
-def is_v1_file(path: str | None, filename: str) -> bool:
-    """Return whether path is exactly v1/<slug>/<filename>."""
+def is_template_file(path: str | None, filename: str) -> bool:
+    """Return whether path is exactly <slug>/<filename> for a template."""
     if path is None:
         return False
     parts = PurePosixPath(path).parts
-    return len(parts) == 3 and parts[0] == "v1" and parts[2] == filename
+    return (
+        len(parts) == 2
+        and parts[0] not in RESERVED_ROOT_DIRS
+        and not parts[0].startswith(".")
+        and parts[1] == filename
+    )
 
 
 def template_sidecar(readme_path: str) -> str:
@@ -70,14 +86,17 @@ def template_sidecar(readme_path: str) -> str:
 
 
 def is_new_template_readme(change: Change) -> bool:
-    """Return whether a change introduces a README at a new v1 template path."""
-    if not is_v1_file(change.new_path, "README.md"):
+    """Return whether a change introduces a README at a new template path."""
+    if not is_template_file(change.new_path, "README.md"):
         return False
     if change.status in {"A", "C"}:
         return True
     if change.status != "R" or change.old_path is None or change.new_path is None:
         return False
-    return PurePosixPath(change.old_path).parent != PurePosixPath(change.new_path).parent
+    return (
+        PurePosixPath(change.old_path).parent.name
+        != PurePosixPath(change.new_path).parent.name
+    )
 
 
 def validate_changes(changes: Iterable[Change], head_paths: set[str]) -> list[str]:
@@ -89,11 +108,11 @@ def validate_changes(changes: Iterable[Change], head_paths: set[str]) -> list[st
             sidecar_path = template_sidecar(change.new_path)
             if sidecar_path not in head_paths:
                 errors.append(
-                    f"New v1 template {PurePosixPath(change.new_path).parent} "
+                    f"New template {PurePosixPath(change.new_path).parent} "
                     f"must include {sidecar_path}."
                 )
 
-        if change.old_path is None or not is_v1_file(
+        if change.old_path is None or not is_template_file(
             change.old_path, "template-docs.yaml"
         ):
             continue
@@ -120,8 +139,6 @@ def changed_files(repo_root: Path, base_ref: str, head_ref: str) -> list[Change]
         "--name-status",
         "--find-renames",
         f"{base_ref}...{head_ref}",
-        "--",
-        "v1",
     )
     return parse_name_status(output)
 
@@ -134,7 +151,7 @@ def tree_paths(repo_root: Path, ref: str) -> set[str]:
 def main() -> int:
     parser = argparse.ArgumentParser(
         description=(
-            "Require template-docs.yaml for newly added v1 templates and "
+            "Require template-docs.yaml for newly added templates and "
             "prevent its deletion from adopted templates."
         )
     )

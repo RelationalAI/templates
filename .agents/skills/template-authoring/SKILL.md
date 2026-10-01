@@ -10,7 +10,7 @@ template in this repository.
 
 ## Select the operation
 
-- **Create**: start from `sample-template/`, use the v1 layout, and complete
+- **Create**: start from `sample-template/`, use the standard layout, and complete
   every required artifact.
 - **Update**: preserve the existing command, behavior, and outputs while
   keeping code, README, runbook, and sidecar synchronized.
@@ -19,8 +19,8 @@ template in this repository.
 
 Legacy templates without `template-docs.yaml` may remain README-only. Do not
 require migration merely because an existing template changed. New
-`v1/<slug>/README.md` files require a sidecar, and an adopted sidecar must not
-be removed while the template remains.
+`<slug>/README.md` files require a sidecar, and an adopted sidecar must not be
+removed while the template remains.
 
 ## Required workflow
 
@@ -28,10 +28,10 @@ be removed while the template remains.
    README, runbook, data files, and existing sidecar.
 1. Preserve the entrypoint, solver choices, constraints, thresholds, output
    labels, and data semantics unless the request explicitly changes them.
-1. For new v1 templates and intentional migrations, use this layout:
+1. For new templates and intentional migrations, use this layout:
 
    ```text
-   v1/<slug>/
+   <slug>/
    ├── README.md
    ├── template-docs.yaml
    ├── model/

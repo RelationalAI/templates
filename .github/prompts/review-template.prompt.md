@@ -1,33 +1,29 @@
 ---
 name: review-template
 description: Review a RelationalAI template for reproducibility, model boundaries, and documentation integrity.
-argument-hint: version, templateName
+argument-hint: templateName
 inputs:
-  version:
-    description: Template version folder.
-    default: v1
   templateName:
     description: Template folder name.
 ---
 
 # Review a template
 
-VERSION=${{input:version:v1}}
 TEMPLATE_NAME=${{input:templateName}}
 
 Read `.agents/skills/template-authoring/SKILL.md` completely and follow its
-**Review** workflow for `${VERSION}/${TEMPLATE_NAME}/`. Do not edit files.
+**Review** workflow for `${TEMPLATE_NAME}/`. Do not edit files.
 
 Check:
 
 - Required files, entrypoint, pinned dependencies, and complete sample data.
 - README commands, paths, headings, expected output, and troubleshooting.
 - `model/schema.py`, `model/source.py`, `model/__init__.py`, and runner
-  responsibility boundaries when the template uses the v1 layout.
+  responsibility boundaries when the template uses the standard layout.
 - `runbook.md` consistency with the final code paths.
 - Every existing `template-docs.yaml` key, symbol, source, reference, anchor,
   sample column, and public guide route.
-- New-v1-template sidecar policy without treating legacy README-only templates
+- New-template sidecar policy without treating legacy README-only templates
   as failures.
 - Lint, compilation, generated-index, changed-template, docs-preview, and
   connected runtime evidence.
