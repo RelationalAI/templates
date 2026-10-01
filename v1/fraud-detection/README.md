@@ -20,32 +20,30 @@ sidebar:
   order: 2
 ---
 
-Explore the [model](https://docs.relational.ai/build/templates/fraud-detection/#explore-the-model) and [guided walkthrough](https://docs.relational.ai/build/templates/fraud-detection/#see-how-it-works) in the documentation.
+**Full guide:** [Explore the Fraud Detection model, run the example, and follow the code](https://docs.relational.ai/build/templates/fraud-detection/).
 
 ## What this template is for
 
-Payments teams often receive more potentially fraudulent transactions than
-investigators can review. Ranking transfers by transaction attributes alone can
-miss suspicious behavior that appears only in the account network, while
-reviewing every alert is not operationally feasible.
-
-This template combines account-network signals with a fraud classifier, then
-selects the transactions that maximize expected loss averted within a fixed
-investigator-hours budget. Use it as a starting point for adapting your
-transaction data, fraud signals, predictive model, and review constraints.
+Payments teams often receive more fraud alerts than investigators can review,
+and transaction attributes alone can miss suspicious account-network behavior.
+This template combines network signals with a fraud classifier, then selects
+the investigations that maximize expected loss averted within a fixed
+investigator-hours budget. Adapt its transaction data, fraud signals,
+predictive model, and review constraints for your workflow.
 
 ## Quickstart
 
-Before you start, install Python 3.10 or later. You need a Snowflake account
-with the RAI Native App and user access to it. Graph, Predictive, and
-Prescriptive reasoning are in Public Preview. Ask your RelationalAI support
-representative to enable Prescriptive reasoning before you run the full
-pipeline. Preview features are for evaluation and testing, not production
-applications. The local demo uses bundled CSVs and runs on CPU, without an
-external dataset or GPU. The template installs the SDK version pinned in
-`pyproject.toml`: `relationalai[gnn]==1.27.1`.
+Before you start, install Python 3.10 or later and get access to a Snowflake
+account with the RAI Native App. Graph, Predictive, and Prescriptive reasoning
+are in Public Preview; ask your RelationalAI support representative to enable
+Prescriptive reasoning. Preview features are for evaluation and testing, not
+production applications. The local demo uses bundled CSVs and runs on CPU
+without an external dataset or GPU. The template pins
+`relationalai[gnn]==1.27.1` in `pyproject.toml`.
 
-Before running the demo, ask an administrator with permission to run this SQL to create a writable experiment schema and grant the RAI Native App access. The runner uses `FRAUD_DETECTION.EXPERIMENTS` unless you change `exp_database` and `exp_schema` in `fraud_detection_local.py`:
+Ask an administrator to run this SQL before you start. It creates the writable
+experiment schema used by `fraud_detection_local.py` and grants the RAI Native
+App access:
 
 ```sql
 CREATE DATABASE IF NOT EXISTS FRAUD_DETECTION;
@@ -61,7 +59,7 @@ Use this sequence to run the bundled example:
 
 1. **Download the template**
 
-   [Download the ZIP](https://docs.relational.ai/templates/zips/v1/fraud-detection.zip). Unzip it and enter the template directory:
+   [Download the ZIP](https://docs.relational.ai/templates/zips/v1/fraud-detection.zip), unzip it, and enter the template directory:
 
    ```bash
    unzip fraud-detection.zip
@@ -80,7 +78,7 @@ Use this sequence to run the bundled example:
 
 3. **Install the template**
 
-   Install the template and its dependencies in the active environment:
+   Install the dependencies pinned in `pyproject.toml`:
 
    ```bash
    python -m pip install .
@@ -88,7 +86,7 @@ Use this sequence to run the bundled example:
 
 4. **Configure your project**
 
-   Use the configuration builder in [Start building with PyRel](https://docs.relational.ai/get-started/start-building-with-pyrel/#configure-your-project) to create `raiconfig.yaml` in the template directory. Follow that guide to save the file and verify your connection.
+   Use the configuration builder in [Start building with PyRel](https://docs.relational.ai/get-started/start-building-with-pyrel/#configure-your-project) to create `raiconfig.yaml` in the template directory and verify your connection.
 
    Add this setting to `raiconfig.yaml` before running the template:
 
@@ -105,9 +103,9 @@ Use this sequence to run the bundled example:
    python fraud_detection_local.py
    ```
 
-   The run reports the classifier's ROC-AUC score, the top alerts, and the
-   audit schedule that fits the investigator budget. The bundled PaySim sample
+   The run reports the classifier's ROC-AUC score, ranked alerts, and the audit
+   schedule that fits the investigator budget. The bundled PaySim sample
    overrepresents fraud for CPU training, so its scores don't estimate
-   real-world detection accuracy. It comes from Edgar Lopez-Rojas's PaySim
-   synthetic mobile-money dataset under CC BY-SA 4.0. See
-   `data/paysim_mini/LICENSE.txt` for the full attribution, source, and citation.
+   real-world detection accuracy. The sample comes from Edgar Lopez-Rojas's
+   PaySim synthetic mobile-money dataset under CC BY-SA 4.0. See
+   `data/paysim_mini/LICENSE.txt` for attribution and citation details.

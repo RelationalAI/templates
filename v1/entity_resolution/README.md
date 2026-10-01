@@ -18,29 +18,32 @@ tags:
   - Insurance
 ---
 
-Explore the [model](https://docs.relational.ai/build/templates/entity_resolution/#explore-the-model) and [guided walkthrough](https://docs.relational.ai/build/templates/entity_resolution/#see-how-it-works) in the documentation.
+**Full guide:** [Explore the Entity Resolution model, run the example, and follow the code](https://docs.relational.ai/build/templates/entity_resolution/).
 
 ## What this template is for
 
-Insurers often store the same person or household as separate policyholder records across product systems and acquired books. Variations in names and identifiers can hide the combined coverage tied to one insured party and leave accumulation risk undetected. This risk grows when one party carries too much exposure.
-
-This template scores potential record matches, clusters high-confidence matches into resolved parties, and holds uncertain pairs for review. It totals coverage by party, flags exposures above a configurable limit, and selects which coverage to transfer to a reinsurer within a premium budget. Adapt the matching fields, thresholds, exposure rules, and decision constraints to other entity-resolution workflows.
+Insurers often store the same person or household as separate policyholder
+records, hiding combined coverage and accumulation risk. This template scores
+record matches, clusters high-confidence matches into resolved parties, and
+holds uncertain pairs for review. It then totals coverage, flags parties above
+a configurable limit, and selects reinsurance cessions within a premium
+budget. Adapt the matching fields, thresholds, exposure rules, and decision
+constraints for your workflow.
 
 ## Quickstart
 
-Before you start, install Python 3.10 or later. You need a Snowflake account
-with the RAI Native App, user access to the app, and an engine enabled for
-Prescriptive reasoning. Graph and Prescriptive reasoning are in Public Preview,
-and Prescriptive reasoning is available by request. Preview features are for
-evaluation and testing, not production applications. The template installs the
-SDK version pinned in `pyproject.toml`: `relationalai==1.13.0`. The
-prescriptive stage uses HiGHS without a separate solver license.
+Before you start, install Python 3.10 or later and get access to a Snowflake
+account with the RAI Native App. Graph and Prescriptive reasoning are in Public
+Preview; ask your RelationalAI support representative to enable Prescriptive
+reasoning. Preview features are for evaluation and testing, not production
+applications. The template pins `relationalai==1.13.0` in `pyproject.toml` and
+uses HiGHS without a separate solver license.
 
 Use this sequence to run the bundled example:
 
 1. **Download the template**
 
-   [Download the ZIP](https://docs.relational.ai/templates/zips/v1/entity_resolution.zip). Unzip it and enter the template directory:
+   [Download the ZIP](https://docs.relational.ai/templates/zips/v1/entity_resolution.zip), unzip it, and enter the template directory:
 
    ```bash
    unzip entity_resolution.zip
@@ -59,7 +62,7 @@ Use this sequence to run the bundled example:
 
 3. **Install the template**
 
-   Install the template and its dependencies in the active environment:
+   Install the dependencies pinned in `pyproject.toml`:
 
    ```bash
    python -m pip install .
@@ -67,7 +70,7 @@ Use this sequence to run the bundled example:
 
 4. **Configure your project**
 
-   Use the configuration builder in [Start building with PyRel](https://docs.relational.ai/get-started/start-building-with-pyrel/#configure-your-project) to create `raiconfig.yaml` in the template directory. Follow that guide to save the file and verify your connection.
+   Use the configuration builder in [Start building with PyRel](https://docs.relational.ai/get-started/start-building-with-pyrel/#configure-your-project) to create `raiconfig.yaml` in the template directory and verify your connection.
 
 5. **Run the template**
 
@@ -81,7 +84,8 @@ Use this sequence to run the bundled example:
    Auto-resolved 51 records into 31 insured parties.
    Households over the limit after RESOLUTION:       4
      -> ceded $927,000 of excess exposure for $111,240 premium (of $120,000)
-     precision: 1.000   recall: 0.963   f1: 0.981
    ```
 
-   No single policy breaches the $1M limit, yet resolution surfaces four over-limit households and the optimizer cedes the most excess it can afford within budget. The full printout and a step-by-step walkthrough are in `runbook.md`.
+   No single policy breaches the $1M limit, but resolution surfaces four
+   over-limit households and the optimizer cedes the most excess it can afford
+   within budget. See `runbook.md` for the full workflow.
