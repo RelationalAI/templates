@@ -1,0 +1,9 @@
+relationalai==1.25.0
+snowflake-snowpark-python==1.41.0
+snowflake-cli==3.19.0
+pandas==3.0.3
+plotly==6.7.0
+networkx==3.6.1
+kaleido==1.3.0
+python-dotenv==1.2.2
+PyYAML==6.0.2

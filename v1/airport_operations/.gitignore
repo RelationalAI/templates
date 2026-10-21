@@ -1,0 +1,49 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Editors
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Environment
+.env
+.env.local
+.env.*.local
+raiconfig.yaml
+raiconfig.yml
+.local-bin/
+
+# Logs
+*.log
+logs/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# PyRel runtime cache - exclude per-file rather than the whole dir, so the
+# figure-generation script and the PNGs embedded in RUNNING.html stay in.
+!build/
+build/cache/
+build/runs/
+build/spans.jsonl
+build/debug.jsonl
+build/metadata.json
+.rai/
+# PyRel writes the same runtime cache inside this module dir when modules are
+# imported from the project root.
+rai_code/manual/build/
+
+# Notebook output
+.ipynb_checkpoints/
+*.executed.ipynb
+
+# Claude harness
+.claude/settings.local.json
+.claude/scheduled_tasks.lock

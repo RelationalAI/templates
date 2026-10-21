@@ -1,0 +1,30 @@
+default_connection: sf
+
+connections:
+  sf:
+    type: snowflake
+    authenticator: programmatic_access_token
+    account: ndsoebe-rai_sales_engineering_aws_us_west_2
+    warehouse: RAI_XS
+    database: BERTOLANI
+    schema: ARC
+    user: steve.bertolani@relational.ai
+    token_file_path: /Users/stevebertolani/Desktop/projects/arc3/.pat.txt
+    role: ACCOUNTADMIN
+    rai_app_name: RELATIONALAI
+
+reasoners:
+  logic:
+    size: HIGHMEM_X64_S
+    use_lqp: true
+  predictive:
+    size: HIGHMEM_X64_S
+  prescriptive:
+    size: HIGHMEM_X64_S
+
+data:
+  ensure_change_tracking: false
+  wait_for_stream_sync: false
+
+# Standalone reasoner jobs execute eagerly against deployed Snowflake tables.
+# Do not add deployment or oplog sections to this config.

@@ -1,0 +1,1189 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RelationalAI | Verifiable Telco Decisions</title>
+  <style>
+    :root {
+      --ink: #0b1249;
+      --body: #35415f;
+      --line: #d8e2eb;
+      --teal: #117e9f;
+      --coral: #d65846;
+      --green: #247a68;
+      --gold: #b87519;
+      --blue: #315aa5;
+      --pale: #f4f8fb;
+      --pale-teal: #e5f4f6;
+      --pale-coral: #fff0ec;
+      --pale-green: #e9f5ef;
+      --pale-gold: #fff5df;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      background: var(--ink);
+      color: var(--ink);
+      font-family: "Plus Jakarta Sans", "Avenir Next", Arial, sans-serif;
+      letter-spacing: 0;
+      overflow: hidden;
+    }
+    .deck { width: 100vw; height: 100vh; display: grid; place-items: center; }
+    .slide {
+      display: none;
+      width: 1280px;
+      height: 720px;
+      padding: 43px 56px;
+      background: white;
+      position: relative;
+      overflow: hidden;
+      transform: scale(var(--scale, 1));
+      border-radius: 5px;
+      box-shadow: 0 20px 70px rgba(0, 0, 0, .18);
+    }
+    .slide.active { display: flex; flex-direction: column; }
+    .slide::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 7px;
+      background: var(--accent, var(--teal));
+    }
+    .kicker {
+      color: var(--accent, var(--coral));
+      font-size: 14px;
+      line-height: 1.1;
+      font-weight: 800;
+      text-transform: uppercase;
+      margin-bottom: 13px;
+    }
+    h1, h2, h3, p { margin: 0; letter-spacing: 0; }
+    h1 { font-size: 61px; line-height: 1.03; max-width: 990px; }
+    h2 { font-size: 42px; line-height: 1.08; max-width: 1130px; }
+    h3 { font-size: 22px; line-height: 1.18; }
+    p { color: var(--body); font-size: 19px; line-height: 1.42; }
+    .lead { margin-top: 15px; font-size: 22px; line-height: 1.35; max-width: 1080px; }
+    strong { color: var(--ink); }
+    .body { margin-top: 30px; flex: 1; min-height: 0; }
+    .accent-rule { width: 72px; height: 5px; background: var(--coral); margin-top: 26px; }
+    .eyebrow { color: var(--teal); font-size: 15px; font-weight: 800; text-transform: uppercase; }
+    .big-number { font-size: 74px; line-height: 1; font-weight: 800; color: var(--ink); }
+    .muted { color: var(--body); }
+    .small { font-size: 16px; line-height: 1.38; }
+    .fine { font-size: 14px; line-height: 1.32; }
+    .mono { font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; }
+    .border-top { border-top: 1px solid var(--line); }
+    .band { background: var(--pale); border-left: 6px solid var(--accent, var(--teal)); padding: 19px 22px; }
+    .band p { color: var(--ink); font-weight: 700; font-size: 20px; }
+    .appendix-question { margin-top: 76px; max-width: 1090px; font-size: 39px; line-height: 1.22; font-weight: 800; color: var(--ink); }
+    .appendix-question.short { font-size: 45px; }
+    .appendix-rule { width: 76px; height: 6px; margin-top: 35px; background: var(--accent, var(--teal)); }
+    .appendix-code { margin: 25px 0 0; padding: 22px 26px; background: var(--ink); color: #f5f8ff; font: 17px/1.42 ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; tab-size: 4; }
+    .appendix-code.compact { font-size: 15px; line-height: 1.37; }
+    .appendix-code code { font: inherit; }
+    .appendix-explain { max-width: 1080px; margin-top: 19px; font-size: 19px; line-height: 1.4; }
+    .appendix-source { margin-top: 15px; color: var(--teal); font-size: 16px; font-weight: 800; }
+    .pill { display: inline-flex; align-items: center; gap: 8px; border-radius: 4px; padding: 6px 9px; background: var(--pale); color: var(--ink); font-size: 14px; font-weight: 800; }
+    .pill.teal { background: var(--pale-teal); color: var(--teal); }
+    .pill.coral { background: var(--pale-coral); color: var(--coral); }
+    .pill.green { background: var(--pale-green); color: var(--green); }
+    .pill.gold { background: var(--pale-gold); color: var(--gold); }
+    .pill.blue { background: #e8effa; color: var(--blue); }
+    .cols-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
+    .cols-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+    .cols-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
+    .column { border-top: 5px solid var(--tone, var(--teal)); padding-top: 15px; }
+    .column h3 { margin: 11px 0 8px; }
+    .column p { font-size: 17px; }
+    .column ul, .list { margin: 13px 0 0; padding-left: 21px; color: var(--body); font-size: 17px; line-height: 1.43; }
+    li + li { margin-top: 7px; }
+    .title-split { display: grid; grid-template-columns: 1.2fr .8fr; gap: 36px; align-items: stretch; flex: 1; margin-top: 42px; }
+    .decision-panel { border-left: 1px solid var(--line); padding-left: 31px; display: flex; flex-direction: column; justify-content: center; }
+    .decision-panel .eyebrow { margin-bottom: 18px; }
+    .decision-panel .line { padding: 13px 0; border-top: 1px solid var(--line); font-size: 20px; font-weight: 700; }
+    .decision-panel .line span { display: block; color: var(--body); font-size: 15px; font-weight: 500; margin-top: 4px; }
+    .hero-outcome { margin-top: 31px; display: flex; align-items: baseline; gap: 13px; }
+    .hero-outcome strong { font-size: 45px; }
+    .hero-outcome span { color: var(--body); font-size: 18px; }
+    .hero-outcome.build-up strong { font-size: 31px; }
+    .architecture { display: grid; grid-template-columns: 1fr 48px 1.15fr 48px 1.35fr 48px 1fr; gap: 6px; align-items: stretch; height: 330px; }
+    .arch-node { border-top: 6px solid var(--tone); background: var(--shade); padding: 19px; display: flex; flex-direction: column; }
+    .arch-node h3 { margin: 15px 0 8px; }
+    .arch-node p { font-size: 17px; }
+    .arch-node .code { margin-top: auto; font-size: 15px; font-weight: 800; color: var(--tone); }
+    .arch-arrow { display: grid; place-items: center; color: var(--coral); font-size: 39px; font-weight: 700; }
+    .reasoner-chips { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 14px; }
+    .reasoner-chips span { display: inline-block; background: white; padding: 7px 9px; color: var(--ink); font-size: 14px; font-weight: 700; }
+    .architecture-tail { margin-top: 23px; border-left: 5px solid var(--coral); padding: 14px 20px; background: var(--pale); font-size: 20px; font-weight: 700; }
+    .ontology-image { width: 100%; height: 535px; display: block; object-fit: contain; margin-top: 21px; border: 1px solid var(--line); background: white; }
+    .domain-chain { display: grid; grid-template-columns: 1fr 60px 1fr 60px 1fr; gap: 11px; align-items: center; margin-top: 28px; }
+    .domain-box { min-height: 285px; background: var(--shade); border-top: 6px solid var(--tone); padding: 23px; }
+    .domain-box h3 { margin: 13px 0 11px; }
+    .domain-box p { font-size: 18px; }
+    .domain-box .entities { margin-top: 19px; display: flex; flex-wrap: wrap; gap: 8px; }
+    .domain-box .entities span { padding: 8px 10px; background: white; font-weight: 700; font-size: 15px; }
+    .domain-arrow { color: var(--coral); font-size: 40px; text-align: center; }
+    .rule-formula { display: grid; grid-template-columns: 1fr 70px 1fr; gap: 12px; margin-top: 33px; align-items: center; }
+    .rule-branch { background: var(--pale-teal); border-top: 6px solid var(--teal); padding: 25px; min-height: 245px; }
+    .rule-branch.alt { background: var(--pale-coral); border-color: var(--coral); }
+    .rule-branch h3 { margin: 0 0 16px; }
+    .rule-branch .condition { font-size: 21px; font-weight: 800; line-height: 1.48; color: var(--ink); }
+    .or { font-size: 31px; color: var(--coral); text-align: center; font-weight: 800; }
+    .rule-bottom { display: grid; grid-template-columns: 230px 1fr; gap: 26px; align-items: center; margin-top: 27px; }
+    .rule-count { display: flex; gap: 11px; align-items: baseline; }
+    .rule-count strong { font-size: 69px; line-height: 1; }
+    .rule-count span { font-size: 17px; color: var(--body); }
+    .build-layout { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, .85fr); gap: 28px; margin-top: 26px; flex: 1; min-height: 0; }
+    .build-source { color: var(--accent, var(--teal)); font-size: 15px; font-weight: 800; margin-bottom: 9px; }
+    .build-code { margin: 0; padding: 19px 22px; background: var(--ink); color: #f5f8ff; font: 15.5px/1.42 ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; tab-size: 4; max-height: 505px; overflow: auto; }
+    .build-code.tight { font-size: 14.5px; line-height: 1.35; }
+    .build-code code { font: inherit; }
+    .build-notes { border-top: 6px solid var(--accent, var(--teal)); padding-top: 17px; }
+    .build-notes h3 { font-size: 23px; margin-bottom: 13px; }
+    .build-point { border-top: 1px solid var(--line); padding: 12px 0; color: var(--body); font-size: 18px; line-height: 1.36; }
+    .build-point strong { display: block; font-size: 17px; margin-bottom: 3px; }
+    .build-proof { margin-top: 15px; padding: 13px 16px; background: var(--pale); border-left: 5px solid var(--accent, var(--teal)); color: var(--ink); font-size: 18px; line-height: 1.34; font-weight: 700; }
+    .signal-flow { display: grid; grid-template-columns: 1fr 50px 1.1fr 50px .85fr; gap: 8px; align-items: stretch; margin-top: 25px; height: 240px; }
+    .signal-box { background: var(--shade); border-top: 6px solid var(--tone); padding: 20px; }
+    .signal-box h3 { margin: 8px 0 13px; }
+    .signal-box p { font-size: 17px; }
+    .signal-box .line-item { display: block; padding: 5px 0; font-size: 17px; color: var(--body); }
+    .signal-arrow { color: var(--coral); font-size: 37px; display: grid; place-items: center; }
+    .example-bar { margin-top: 25px; display: grid; grid-template-columns: 1fr 1fr; gap: 25px; align-items: center; }
+    .example-bar .result { background: var(--ink); color: white; padding: 17px 21px; }
+    .example-bar .result strong { color: white; font-size: 29px; }
+    .example-bar .result span { display: block; color: #dceaf2; font-size: 16px; margin-top: 4px; }
+    .call-graph { display: grid; grid-template-columns: 1.05fr .95fr; gap: 30px; margin-top: 31px; }
+    .graph-visual { background: var(--pale); padding: 25px; border-top: 6px solid var(--teal); min-height: 337px; }
+    .graph-route { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 20px 0 25px; }
+    .graph-route span { display: grid; place-items: center; width: 125px; height: 90px; padding: 10px; text-align: center; background: white; border: 2px solid var(--line); font-size: 18px; font-weight: 800; }
+    .graph-route b { font-size: 30px; color: var(--coral); }
+    .graph-visual .subroute { border-top: 1px solid var(--line); padding-top: 20px; font-size: 18px; line-height: 1.38; color: var(--body); }
+    .graph-metrics { display: flex; flex-direction: column; gap: 17px; }
+    .graph-metric { border-left: 5px solid var(--tone); padding: 4px 0 4px 17px; }
+    .graph-metric h3 { margin-bottom: 6px; }
+    .graph-metric p { font-size: 17px; }
+    .graph-result { margin-top: 25px; background: var(--pale-teal); padding: 19px 23px; display: flex; align-items: center; gap: 24px; }
+    .graph-result strong { font-size: 35px; }
+    .graph-result p { font-size: 18px; }
+    .path-layout { display: grid; grid-template-columns: 1.25fr .75fr; gap: 30px; margin-top: 37px; }
+    .path-track { background: var(--pale); padding: 27px 25px; border-top: 6px solid var(--teal); }
+    .path-track .path-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 22px; }
+    .path-track .path-row span { padding: 16px 13px; background: white; border: 1px solid var(--line); flex: 1; text-align: center; font-size: 18px; font-weight: 800; }
+    .path-track .path-row b { color: var(--coral); font-size: 29px; }
+    .path-detail { border-top: 6px solid var(--coral); padding-top: 19px; }
+    .path-detail h3 { margin-bottom: 16px; }
+    .path-detail p + p { margin-top: 15px; }
+    .path-detail .mono { font-size: 18px; font-weight: 700; color: var(--ink); }
+    .path-code { margin: 0 0 15px; padding: 13px 14px; background: var(--ink); color: #f5f8ff; font: 13px/1.36 ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .path-code code { font: inherit; }
+    .callscape-slide { padding: 0; background: #10232a; }
+    .callscape-slide::before { display: none; }
+    .callscape-slide iframe { display: block; width: 100%; height: 100%; border: 0; }
+    .formula { background: var(--ink); color: white; padding: 25px 29px; margin-top: 27px; }
+    .formula .eyebrow { color: #8ddce6; }
+    .formula strong { display: block; color: white; font-size: 27px; line-height: 1.28; margin-top: 10px; }
+    .constraint-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-top: 22px; }
+    .constraint { border-top: 5px solid var(--tone); background: var(--shade); padding: 17px; min-height: 140px; }
+    .constraint strong { display: block; font-size: 25px; margin: 8px 0; }
+    .constraint span { font-size: 16px; color: var(--body); line-height: 1.34; }
+    .output-metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; margin-top: 28px; }
+    .output-metric { border-top: 6px solid var(--tone); padding-top: 16px; }
+    .output-metric strong { display: block; font-size: 36px; }
+    .output-metric span { color: var(--body); font-size: 16px; }
+    .progress-wrap { margin-top: 26px; display: grid; grid-template-columns: 1fr 1fr; gap: 36px; }
+    .progress-head { display: flex; justify-content: space-between; font-size: 17px; font-weight: 800; }
+    .track { margin-top: 10px; height: 18px; background: #e5edf3; }
+    .track span { display: block; height: 100%; background: var(--teal); }
+    .track.coral span { background: var(--coral); }
+    .tier-mix { margin-top: 29px; display: grid; grid-template-columns: .55fr 1fr; gap: 27px; align-items: center; }
+    .tier-mix .mix { display: flex; gap: 13px; }
+    .tier-mix .mix span { padding: 17px 13px; background: var(--pale); flex: 1; text-align: center; font-size: 17px; font-weight: 800; }
+    .tier-mix .mix strong { display: block; font-size: 30px; }
+    .evidence { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-top: 28px; }
+    .evidence-step { border-top: 6px solid var(--tone); background: var(--shade); padding: 19px; min-height: 252px; }
+    .evidence-step .num { font-size: 17px; font-weight: 800; color: var(--tone); }
+    .evidence-step h3 { margin: 13px 0 10px; }
+    .evidence-step p { font-size: 16px; }
+    .evidence-step code { display: block; margin-top: 20px; font-size: 13px; line-height: 1.3; color: var(--ink); overflow-wrap: anywhere; }
+    .prompt-list { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 24px; margin-top: 23px; }
+    .prompt { border-top: 5px solid var(--tone); background: var(--shade); padding: 16px 19px; }
+    .prompt h3 { font-size: 18px; margin-bottom: 7px; }
+    .prompt p { font-size: 17px; line-height: 1.3; color: var(--ink); font-weight: 700; }
+    .prompt.wide { grid-column: 1 / -1; }
+    .duo-compare { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 26px; }
+    .compare-col { background: var(--shade); border-top: 6px solid var(--tone); padding: 20px 23px; min-height: 215px; }
+    .compare-col h3 { font-size: 25px; margin-bottom: 15px; }
+    .compare-stats { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+    .compare-stats strong { display: block; font-size: 26px; line-height: 1.15; }
+    .compare-stats span { display: block; color: var(--body); font-size: 15px; line-height: 1.28; margin-top: 5px; }
+    .compare-col p { font-size: 17px; margin-top: 18px; }
+    .live-question { background: var(--ink); color: white; padding: 19px 23px; margin-top: 21px; }
+    .live-question span { display: block; color: #8ddce6; font-size: 14px; font-weight: 800; text-transform: uppercase; margin-bottom: 8px; }
+    .live-question p { color: white; font-size: 19px; line-height: 1.35; font-weight: 700; }
+    .decision-chain { display: grid; grid-template-columns: 1.2fr 42px .7fr 42px .95fr; gap: 8px; margin-top: 25px; align-items: stretch; height: 188px; }
+    .chain-box { background: var(--shade); border-top: 6px solid var(--tone); padding: 17px 20px; }
+    .chain-box h3 { font-size: 20px; margin-bottom: 10px; }
+    .chain-box p { font-size: 16px; line-height: 1.35; }
+    .chain-box .chain-chips { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 12px; }
+    .chain-box .chain-chips b { background: white; padding: 7px 8px; font-size: 15px; }
+    .chain-arrow { display: grid; place-items: center; color: var(--coral); font-size: 34px; }
+    .path-lane { display: grid; grid-template-columns: 135px 1fr; gap: 18px; align-items: center; background: var(--pale-gold); border-left: 6px solid var(--gold); padding: 15px 19px; margin-top: 17px; }
+    .path-lane strong { color: var(--gold); font-size: 20px; }
+    .path-lane p { font-size: 17px; color: var(--ink); }
+    .visual-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+    .visual-replay { width: 36px; height: 36px; flex: 0 0 36px; border: 1px solid var(--line); background: white; color: var(--ink); border-radius: 5px; font-size: 25px; line-height: 1; cursor: pointer; }
+    .visual-replay:hover { background: var(--pale-teal); }
+    .visual-replay:focus-visible { outline: 3px solid var(--teal); outline-offset: 2px; }
+    .risk-layout { display: grid; grid-template-columns: minmax(0, 1fr) 250px; gap: 25px; height: 266px; margin-top: 22px; }
+    .risk-chart { position: relative; min-width: 0; background: var(--pale); border-top: 5px solid var(--coral); }
+    .risk-chart-title { position: absolute; left: 17px; top: 10px; font-size: 13px; font-weight: 800; color: var(--body); }
+    .risk-plot { position: absolute; left: 70px; right: 28px; top: 38px; bottom: 36px; border-left: 2px solid var(--body); border-bottom: 2px solid var(--body); background: linear-gradient(to top, transparent 49.7%, var(--line) 50%, transparent 50.3%); }
+    .risk-tick { position: absolute; left: -62px; width: 52px; text-align: right; color: var(--body); font-size: 12px; font-weight: 700; }
+    .risk-tick.top { top: -6px; }
+    .risk-tick.middle { top: 50%; transform: translateY(-50%); }
+    .risk-tick.zero { bottom: -7px; }
+    .risk-x-tick { position: absolute; bottom: -21px; transform: translateX(-50%); font-size: 12px; font-weight: 700; color: var(--body); }
+    .risk-x-tick.zero { left: 0; }
+    .risk-x-tick.middle { left: 50%; }
+    .risk-x-tick.max { left: 100%; }
+    .risk-x-label { position: absolute; left: 50%; bottom: -38px; transform: translateX(-50%); white-space: nowrap; font-size: 12px; font-weight: 800; color: var(--body); }
+    .risk-dot { position: absolute; left: 0; bottom: 0; width: 19px; height: 19px; border: 3px solid white; border-radius: 50%; background: var(--dot); box-shadow: 0 0 0 2px var(--dot); transform: translate(-50%, 50%) scale(.7); opacity: 0; transition: left .9s ease, bottom .9s ease, opacity .25s ease, transform .9s ease; z-index: 2; }
+    .risk-dot.is-set { opacity: 1; transform: translate(-50%, 50%) scale(1); }
+    .risk-dot span { position: absolute; left: -112px; top: -51px; width: 105px; color: var(--ink); background: white; border-left: 4px solid var(--dot); padding: 5px 7px; font-size: 13px; line-height: 1.15; font-weight: 800; }
+    .risk-dot.teal span { top: 24px; left: -88px; }
+    .risk-facts { border-top: 5px solid var(--teal); padding-top: 13px; display: flex; flex-direction: column; gap: 12px; }
+    .risk-fact { border-bottom: 1px solid var(--line); padding-bottom: 10px; }
+    .risk-fact strong { display: block; font-size: 22px; line-height: 1.08; }
+    .risk-fact span { color: var(--body); font-size: 14px; }
+    .risk-ratio { margin-top: auto; padding: 9px 11px; background: var(--pale-teal); color: var(--teal); font-size: 16px; font-weight: 800; opacity: .25; transition: opacity .5s ease; }
+    .risk-ratio.is-set { opacity: 1; }
+    .portfolio-demo { display: grid; grid-template-columns: 1.25fr .75fr; gap: 28px; margin-top: 22px; min-height: 285px; }
+    .portfolio-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-rows: 62px; gap: 9px; margin-top: 11px; }
+    .portfolio-tile { border: 1px solid var(--line); border-top: 4px solid var(--tone, var(--teal)); background: var(--pale); padding: 7px 10px; opacity: 0; transform: translateY(15px); transition: opacity .35s ease, transform .45s ease, border-color .35s ease; }
+    .portfolio-tile.is-in { opacity: 1; transform: translateY(0); }
+    .portfolio-tile.candidate { border-style: dashed; background: var(--pale-coral); }
+    .portfolio-tile strong { display: block; font-size: 17px; line-height: 1.1; }
+    .portfolio-tile span { color: var(--body); font-size: 13px; font-weight: 700; }
+    .portfolio-side { border-top: 5px solid var(--coral); padding-top: 11px; }
+    .portfolio-gauge { margin-top: 16px; }
+    .portfolio-gauge-head { display: flex; justify-content: space-between; gap: 9px; align-items: baseline; font-size: 15px; font-weight: 800; }
+    .portfolio-gauge-head strong { white-space: nowrap; font-size: 16px; }
+    .portfolio-track { height: 17px; background: #e5edf3; margin-top: 8px; position: relative; }
+    .portfolio-fill { height: 100%; width: 0; background: var(--teal); transition: width .8s ease, background .3s ease; }
+    .portfolio-track.budget .portfolio-fill { background: var(--coral); }
+    .portfolio-track.over .portfolio-fill { background: #a92f3a; }
+    .portfolio-track.over::after { content: ''; position: absolute; right: -4px; top: -4px; width: 7px; height: 25px; background: #a92f3a; }
+    .portfolio-status { margin-top: 25px; min-height: 50px; border-left: 5px solid var(--green); padding: 4px 0 4px 12px; font-size: 16px; line-height: 1.3; color: var(--ink); font-weight: 700; }
+    .portfolio-status.over { border-color: var(--coral); color: #a92f3a; }
+    .portfolio-caption { color: var(--body); font-size: 13px; margin-top: 6px; }
+    .trace-track { background: var(--pale); padding: 18px 20px 17px; border-top: 6px solid var(--teal); min-height: 295px; }
+    .trace-subs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-top: 20px; }
+    .trace-node { position: relative; border: 2px solid var(--line); background: white; min-height: 60px; padding: 13px 6px; text-align: center; display: grid; place-items: center; color: var(--body); font-size: 15px; font-weight: 800; transition: border-color .3s ease, background .3s ease, color .3s ease; }
+    .trace-node:not(:last-child)::after { content: '\2192'; position: absolute; right: -17px; top: 17px; color: var(--coral); font-size: 24px; }
+    .trace-node.is-traced, .trace-node.is-current { border-color: var(--teal); color: var(--ink); }
+    .trace-node.is-current { background: var(--pale-teal); }
+    .trace-label { margin-top: 18px; font-size: 13px; font-weight: 800; text-transform: uppercase; color: var(--body); }
+    .trace-hops { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 7px; }
+    .trace-hop { border-bottom: 4px solid var(--line); padding: 7px 8px; background: white; text-align: center; color: var(--body); font-size: 17px; font-weight: 800; transition: border-color .3s ease, color .3s ease, background .3s ease; }
+    .trace-hop.is-traced { border-color: var(--gold); color: var(--ink); background: var(--pale-gold); }
+    .trace-stage { margin-top: 12px; min-height: 22px; color: var(--ink); font-size: 15px; font-weight: 800; }
+    .refresh { display: grid; grid-template-columns: 1fr 1fr; gap: 35px; margin-top: 31px; }
+    .refresh h3 { margin-bottom: 18px; }
+    .refresh-row { display: grid; grid-template-columns: 210px 1fr; gap: 12px; border-top: 1px solid var(--line); padding: 11px 0; align-items: baseline; }
+    .refresh-row code { font-size: 15px; font-weight: 800; overflow-wrap: anywhere; }
+    .refresh-row span { font-size: 16px; color: var(--body); }
+    .takeaway { background: var(--pale-teal); border-left: 6px solid var(--teal); padding: 24px; margin-top: 22px; }
+    .takeaway p { font-size: 21px; color: var(--ink); font-weight: 750; }
+    .assurance-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; margin-top: 28px; }
+    .assurance-column { border-top: 6px solid var(--tone); padding-top: 17px; }
+    .assurance-column h3 { margin-bottom: 14px; }
+    .assurance-row { display: grid; grid-template-columns: 44px 1fr; gap: 12px; align-items: start; border-top: 1px solid var(--line); padding: 13px 0; }
+    .assurance-row strong { font-size: 19px; color: var(--tone); }
+    .assurance-row p { font-size: 17px; line-height: 1.34; }
+    .answer-handoff { display: grid; grid-template-columns: 1fr 1fr; gap: 31px; margin-top: 29px; }
+    .handoff-column { border-top: 6px solid var(--tone); padding-top: 17px; }
+    .handoff-column h3 { margin-bottom: 16px; }
+    .handoff-row { border-top: 1px solid var(--line); padding: 11px 0; font-size: 18px; line-height: 1.34; color: var(--body); }
+    .handoff-row strong { color: var(--ink); }
+    .controls { position: fixed; right: 22px; bottom: 19px; z-index: 10; display: flex; gap: 8px; align-items: center; }
+    .controls button, .controls select { border: 1px solid rgba(255,255,255,.35); background: #142164; color: white; border-radius: 5px; height: 38px; cursor: pointer; }
+    .controls button { width: 42px; font-size: 23px; line-height: 1; }
+    .controls select { width: 190px; font: 600 13px "Plus Jakarta Sans", Arial, sans-serif; padding: 0 10px; }
+    .controls button:hover, .controls select:hover { background: #25357c; }
+    .controls button:disabled { opacity: .42; cursor: default; }
+    .controls button:focus-visible, .controls select:focus-visible { outline: 3px solid #74d5e3; outline-offset: 2px; }
+    .controls .count { color: white; font-size: 14px; min-width: 49px; text-align: center; }
+    @media (max-width: 700px) {
+      body { display: flex; flex-direction: column; height: 100dvh; overflow: hidden; }
+      .deck { display: block; width: 100%; height: auto; min-height: 0; flex: 1; overflow: auto; padding: 12px; }
+      .slide, .slide.active { width: 100%; height: auto; min-height: calc(100dvh - 90px); transform: none !important; padding: 27px 21px 35px; overflow: visible; }
+      .slide { display: none; }
+      .slide.active { display: flex; }
+      h1 { font-size: 38px; }
+      h2 { font-size: 30px; }
+      h3 { font-size: 20px; }
+      p, .lead { font-size: 17px; }
+      .body { margin-top: 25px; }
+      .title-split, .cols-2, .cols-3, .cols-4, .call-graph, .path-layout, .progress-wrap, .tier-mix, .refresh, .prompt-list, .duo-compare, .assurance-grid, .answer-handoff, .build-layout { grid-template-columns: 1fr; }
+      .build-layout { flex: 0 0 auto; gap: 22px; }
+      .build-code { max-height: none; font-size: 13px; line-height: 1.48; }
+      .build-code.tight { font-size: 12.5px; }
+      .hero-outcome { flex-wrap: wrap; }
+      .callscape-slide, .callscape-slide.active { padding: 0; min-height: calc(100dvh - 90px); }
+      .callscape-slide iframe { height: calc(100dvh - 90px); min-height: 540px; }
+      .title-split { margin-top: 25px; gap: 25px; }
+      .decision-panel { border-left: 0; border-top: 1px solid var(--line); padding: 20px 0 0; }
+      .architecture, .domain-chain, .rule-formula, .signal-flow { display: flex; flex-direction: column; height: auto; }
+      .arch-node, .domain-box, .rule-branch, .signal-box { min-height: 0; }
+      .arch-arrow, .domain-arrow, .signal-arrow { transform: rotate(90deg); height: 34px; line-height: 34px; }
+      .or { padding: 4px 0; }
+      .ontology-image { height: auto; max-height: 65vh; }
+      .rule-bottom, .constraint-grid, .output-metrics, .evidence { grid-template-columns: 1fr 1fr; }
+      .signal-box { padding: 17px; }
+      .example-bar { grid-template-columns: 1fr; }
+      .graph-route span { width: auto; flex: 1; font-size: 14px; }
+      .graph-result { display: block; }
+      .path-track .path-row { flex-wrap: wrap; }
+      .path-track .path-row span { min-width: 28%; font-size: 14px; }
+      .constraint { min-height: 0; }
+      .prompt.wide { grid-column: auto; }
+      .compare-stats { grid-template-columns: repeat(3, 1fr); }
+      .compare-stats strong { font-size: 21px; }
+      .decision-chain { display: flex; flex-direction: column; height: auto; }
+      .chain-arrow { transform: rotate(90deg); height: 31px; line-height: 31px; }
+      .path-lane { grid-template-columns: 1fr; gap: 7px; }
+      .risk-layout, .portfolio-demo { grid-template-columns: minmax(0, 1fr); height: auto; }
+      .risk-chart { min-height: 250px; }
+      .risk-facts { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; }
+      .risk-ratio { margin-top: 0; }
+      .risk-fact span { overflow-wrap: anywhere; }
+      .trace-subs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .trace-node::after { display: none; }
+      .controls { position: static; flex: 0 0 auto; justify-content: center; background: var(--ink); padding: 8px 12px 4px; border-radius: 0; }
+      .controls select { flex: 1; min-width: 0; max-width: 220px; }
+    }
+    @media (max-width: 430px) {
+      .rule-bottom, .constraint-grid, .output-metrics, .evidence { grid-template-columns: 1fr; }
+      .tier-mix .mix { flex-wrap: wrap; }
+      .refresh-row { grid-template-columns: 1fr; gap: 2px; }
+      .compare-stats { grid-template-columns: 1fr 1fr; }
+      .big-number { font-size: 58px; }
+      .risk-facts { grid-template-columns: 1fr; }
+      .portfolio-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .trace-hops { grid-template-columns: 1fr; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .risk-dot, .risk-ratio, .portfolio-tile, .portfolio-fill, .trace-node, .trace-hop { transition: none !important; }
+    }
+    @media print {
+      @page { size: 16in 9in; margin: 0; }
+      html, body { background: white; overflow: visible; }
+      .deck { display: block; width: auto; height: auto; padding: 0; }
+      .slide, .slide.active { display: flex !important; width: 16in; height: 9in; min-height: 0; transform: none !important; border-radius: 0; box-shadow: none; page-break-after: always; break-after: page; }
+      .controls { display: none; }
+      .visual-replay { display: none; }
+      .risk-dot { opacity: 1 !important; left: var(--target-x) !important; bottom: var(--target-y) !important; transform: translate(-50%, 50%) scale(1) !important; }
+      .risk-ratio { opacity: 1 !important; }
+      .portfolio-tile:not(.candidate) { opacity: 1 !important; transform: none !important; }
+      .portfolio-tile.candidate { opacity: 0 !important; }
+      .portfolio-track.budget .portfolio-fill { width: 99.72% !important; }
+      .portfolio-track.crew .portfolio-fill { width: 83.5% !important; }
+      .trace-node, .trace-hop { border-color: var(--teal) !important; color: var(--ink) !important; }
+    }
+  </style>
+</head>
+<body>
+  <nav class="controls" aria-label="Slide controls">
+    <button id="previous" type="button" aria-label="Previous slide" title="Previous slide">&#8592;</button>
+    <select id="jump" aria-label="Go to slide"></select>
+    <span id="count" class="count" aria-live="polite"></span>
+    <button id="next" type="button" aria-label="Next slide" title="Next slide">&#8594;</button>
+  </nav>
+  <main class="deck" aria-label="Telco reasoner deep dive slides">
+    <section class="slide active" data-title="The decision" style="--accent:var(--coral)">
+      <div class="kicker">RelationalAI / Telco Network Recovery</div>
+      <h1>Can an agent defend a network decision?</h1>
+      <p class="lead">Given a budget, which towers should we upgrade, at which tier, and why? The answer must be a feasible plan with checkable evidence, not just fluent text.</p>
+      <div class="accent-rule"></div>
+      <div class="title-split">
+        <div>
+          <p class="eyebrow">The answer contract</p>
+          <p style="font-size:29px;line-height:1.25;margin-top:13px;color:var(--ink);font-weight:750;max-width:620px">Return selected tower IDs and tiers, check the budget and crew totals, and show the source of each decision signal.</p>
+          <div class="hero-outcome build-up"><strong>Rules + GNN + graph</strong><span>feed a constrained solve</span></div>
+        </div>
+        <div class="decision-panel">
+          <p class="eyebrow">Reasoning behind the answer</p>
+          <div class="line">Rules <span>Operational criticality</span></div>
+          <div class="line">Prediction <span>Equipment status-risk proxy</span></div>
+          <div class="line">Graph <span>Call-weighted customer exposure</span></div>
+          <div class="line">Optimization <span>Feasible upgrade portfolio</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" data-title="System architecture" style="--accent:var(--teal)">
+      <div class="kicker">System Architecture</div>
+      <h2>The ontology connects enterprise data to a decision an agent can inspect.</h2>
+      <div class="body">
+        <div class="architecture">
+          <div class="arch-node" style="--tone:var(--blue);--shade:#e9effa"><span class="pill blue">Snowflake</span><h3>Source data</h3><p>Inventory, health, performance, advisories, subscribers, calls, and upgrade options.</p><div class="code">SOURCE schema</div></div>
+          <div class="arch-arrow">&#8594;</div>
+          <div class="arch-node" style="--tone:var(--teal);--shade:var(--pale-teal)"><span class="pill teal">RelationalAI</span><h3>Deployed ontology</h3><p>Typed concepts, relationships, derived properties, and operational rules.</p><div class="code">TELCO_NETWORK_RECOVERY</div></div>
+          <div class="arch-arrow">&#8594;</div>
+          <div class="arch-node" style="--tone:var(--coral);--shade:var(--pale-coral)"><span class="pill coral">Reasoners</span><h3>Evidence + solver</h3><p>Jobs compute risk and graph signals. Optimization can solve again for a new budget.</p><div class="reasoner-chips"><span>Rules</span><span>GNN</span><span>PageRank</span><span>Paths</span><span>Optimization</span></div><div class="code">RESULTS schema + live solve</div></div>
+          <div class="arch-arrow">&#8594;</div>
+          <div class="arch-node" style="--tone:var(--green);--shade:var(--pale-green)"><span class="pill green">Snowflake CoWork</span><h3>Demo agent</h3><p>Curated tools read evidence or run a budget-specific scenario.</p><div class="code">Cortex agent</div></div>
+        </div>
+        <div class="architecture-tail">RelationalAI computes the decision from an executable ontology. The agent can inspect the saved baseline or request a new budget-only solve.</div>
+      </div>
+    </section>
+
+    <section class="slide" data-title="Ontology visualization" style="--accent:var(--teal)">
+      <div class="kicker">The Ontology</div>
+      <h2>The network is a connected business model, not a set of isolated tables.</h2>
+      <img class="ontology-image" src="marketplace_telco_ontology.png" alt="Full RelationalAI model visualization with towers, equipment, health, advisories, subscribers, calls, performance, and upgrade options">
+    </section>
+
+    <section class="slide" data-title="Domain relationships" style="--accent:var(--teal)">
+      <div class="kicker">Model Semantics</div>
+      <h2>Relationships make each reasoner ask a richer question.</h2>
+      <div class="domain-chain" style="margin-top:20px">
+        <div class="domain-box" style="--tone:var(--blue);--shade:#e9effa"><span class="pill blue">Network state</span><h3>What can fail?</h3><p>Equipment is installed on towers. Health belongs to equipment. Advisories match equipment models. Performance belongs to towers.</p><div class="entities"><span>CellTower</span><span>NetworkEquipment</span><span>EquipmentHealth</span><span>ModelAdvisory</span><span>NetworkPerformance</span></div></div>
+        <div class="domain-arrow">&#8594;</div>
+        <div class="domain-box" style="--tone:var(--teal);--shade:var(--pale-teal)"><span class="pill teal">Customer context</span><h3>Who is affected?</h3><p>Calls connect subscribers and route through towers. Subscriber value combines lifetime value with churn risk.</p><div class="entities"><span>Subscriber</span><span>CallDetailRecord</span></div></div>
+        <div class="domain-arrow">&#8594;</div>
+        <div class="domain-box" style="--tone:var(--coral);--shade:var(--pale-coral)"><span class="pill coral">Decision options</span><h3>What can we do?</h3><p>Each tower has tiered upgrade options with a cost, install effort, and capacity gain.</p><div class="entities"><span>TowerUpgradeOption</span><span>Bronze / Silver / Gold</span></div></div>
+      </div>
+      <div class="band" style="margin-top:18px"><p>The same tower identity links operational rules, predicted equipment risk, call-derived customer impact, and upgrade choices.</p></div>
+    </section>
+
+    <section class="slide" data-title="Rules: derive signals" style="--accent:var(--green)">
+      <div class="kicker">Reasoner 01 / Rules</div>
+      <h2>First, derive tower health from connected observations.</h2>
+      <div class="build-layout">
+        <div><div class="build-source">telco_base_ontology.py / deployed definitions</div><pre class="build-code"><code>model.define(
+    CellTower.avg_packet_loss(
+        aggs.avg(NetworkPerformance.packet_loss_pct)
+        .where(NetworkPerformance.tower == CellTower)
+        .per(CellTower)
+    )
+)
+model.define(
+    CellTower.avg_health_score(
+        aggs.avg(EquipmentHealth.health_score)
+        .where(
+            EquipmentHealth.equipment == NetworkEquipment,
+            NetworkEquipment.tower == CellTower,
+        )
+        .per(CellTower)
+    )
+)</code></pre></div>
+        <div class="build-notes"><h3>What the model computes</h3><div class="build-point"><strong>Performance to tower</strong>Average packet loss is derived from related network-performance observations.</div><div class="build-point"><strong>Health to equipment to tower</strong>Equipment health rolls up through installed equipment to its tower.</div><div class="build-proof">These are reusable ontology properties. The policy rule and agent can read the same derived values.</div></div>
+      </div>
+    </section>
+
+    <section class="slide" data-title="Rules: apply policy" style="--accent:var(--green)">
+      <div class="kicker">Reasoner 01 / Rules</div>
+      <h2>Then define critical restoration as two explicit policy branches.</h2>
+      <div class="build-layout">
+        <div><div class="build-source">telco_base_ontology.py / operational_critical_restore</div><pre class="build-code"><code>model.where(
+    CellTower.region == "WEST",
+    CellTower.status == "DEGRADED",
+    CellTower.avg_health_score &lt; 0.85,
+).define(CellTower.operational_critical_restore())
+
+model.where(
+    CellTower.region == "WEST",
+    CellTower.avg_packet_loss &gt; 5.0,
+    CellTower.avg_health_score &lt; 0.85,
+).define(CellTower.operational_critical_restore())</code></pre></div>
+        <div class="build-notes"><h3>Why two definitions?</h3><div class="build-point"><strong>Branch A</strong>WEST, degraded, and average equipment health below 0.85.</div><div class="build-point"><strong>Branch B</strong>WEST, packet loss above 5%, and average equipment health below 0.85.</div><div class="build-point"><strong>Shared conclusion</strong>Either branch asserts the same tower-level operational flag.</div><div class="build-proof">12 towers are flagged in the current snapshot. Prediction widens the solver candidate set separately.</div></div>
+      </div>
+    </section>
+
+    <section class="slide" data-title="GNN: construct graph" style="--accent:var(--coral)">
+      <div class="kicker">Reasoner 02 / Predictive</div>
+      <h2>The prediction graph follows the ontology's relationships.</h2>
+      <div class="build-layout">
+        <div><div class="build-source">run_predictive_failure.py / graph construction</div><pre class="build-code tight"><code>gnn_graph = Graph(model, directed=False, weighted=False)
+
+model.define(
+    gnn_graph.Edge.new(src=EquipmentHealth, dst=NetworkEquipment)
+).where(EquipmentHealth.equipment == NetworkEquipment)
+
+model.define(
+    gnn_graph.Edge.new(src=NetworkEquipment, dst=CellTower)
+).where(NetworkEquipment.tower == CellTower)
+
+model.define(
+    gnn_graph.Edge.new(src=ModelAdvisory, dst=NetworkEquipment)
+).where(ModelAdvisory.model == NetworkEquipment.eqp_model)</code></pre></div>
+        <div class="build-notes"><h3>What each edge means</h3><div class="build-point"><strong>Health to equipment</strong>Measurements belong to a physical unit.</div><div class="build-point"><strong>Equipment to tower</strong>A unit inherits its location and network context.</div><div class="build-point"><strong>Advisory to equipment</strong>Matching models connect a unit to vendor advisories.</div><div class="build-proof">The GNN sees connected context, not just one equipment row.</div></div>
+      </div>
+    </section>
+
+    <section class="slide" data-title="GNN: configure features" style="--accent:var(--coral)">
+      <div class="kicker">Reasoner 02 / Predictive</div>
+      <h2>Features are typed, and the training label is kept out.</h2>
+      <div class="build-layout">
+        <div><div class="build-source">run_predictive_failure.py / abridged feature configuration</div><pre class="build-code tight"><code>equipment_df["AT_RISK"] = (
+    equipment_df["STATUS"].isin(["FAILING", "WARNING"]).astype(int)
+)
+pt = PropertyTransformer(
+    drop=[
+        NetworkEquipment.status,
+        CellTower.avg_health_score,
+    ],
+    category=[
+        NetworkEquipment.equipment_type,
+        ModelAdvisory.advisory_type,
+    ],
+    continuous=[
+        EquipmentHealth.failure_rate,
+        EquipmentHealth.health_score,
+        ModelAdvisory.severity,
+    ],
+    integer=[EquipmentHealth.mtbf_hours, CellTower.capacity_gbps],
+)</code></pre></div>
+        <div class="build-notes"><h3>Design choices</h3><div class="build-point"><strong>Supervision</strong>Current WARNING/FAILING status supplies the synthetic positive label.</div><div class="build-point"><strong>Leakage guard</strong>Equipment status is excluded from model features because it defines the label.</div><div class="build-point"><strong>Typed features</strong>Categorical, continuous, and integer properties are encoded for the connected graph.</div><div class="build-proof">This is an at-risk status proxy, not a calibrated future-failure forecast.</div></div>
+      </div>
+    </section>
+
+    <section class="slide" data-title="GNN: fit and predict" style="--accent:var(--coral)">
+      <div class="kicker">Reasoner 02 / Predictive</div>
+      <h2>Train once, predict equipment scores, then roll up to towers.</h2>
+      <div class="build-layout">
+        <div><div class="build-source">run_predictive_failure.py / model execution</div><pre class="build-code tight"><code>gnn = GNN(
+    exp_database=EXP_DATABASE,
+    exp_schema=EXP_SCHEMA,
+    graph=gnn_graph,
+    property_transformer=pt,
+    train=Train,
+    validation=Val,
+    task_type="binary_classification",
+    eval_metric="roc_auc",
+    has_time_column=False,
+    stream_logs=False,
+    seed=SEED,
+    device="cpu",
+    n_epochs=GNN_EPOCHS,
+    lr=GNN_LR,
+)
+gnn.fit()
+NetworkEquipment.predictions = gnn.predictions(domain=Test)</code></pre></div>
+        <div class="build-notes"><h3>Output passed forward</h3><div class="build-point"><strong>Equipment score</strong>The job exports the positive-class score for each equipment item.</div><div class="build-point"><strong>Tower failure intensity</strong>Scores of installed equipment are summed by tower for the later candidate rule and objective.</div><div class="build-point"><strong>Materialized handoff</strong>The budget-only live solve reads <span class="mono">TOWER_FAILURE_SCORE</span>; it does not retrain the GNN.</div></div>
+      </div>
+    </section>
+
+    <section class="slide" data-title="Graph: create and rank" style="--accent:var(--teal)">
+      <div class="kicker">Reasoner 03 / Graph</div>
+      <h2>Construct the call graph, then run PageRank.</h2>
+      <div class="build-layout">
+        <div><div class="build-source">run_graph_impact.py / directed graph and centrality</div><pre class="build-code tight"><code>call_graph = Graph(
+    model,
+    directed=True,
+    weighted=False,
+    node_concept=Subscriber,
+    aggregator="sum",
+)
+cdr = CallDetailRecord.ref()
+caller = Subscriber.ref()
+callee = Subscriber.ref()
+model.where(
+    cdr.caller(caller),
+    cdr.callee(callee),
+).define(call_graph.Edge.new(src=caller, dst=callee))
+call_graph.Node.influence_score = call_graph.pagerank()</code></pre></div>
+        <div class="build-notes"><h3>What this graph means</h3><div class="build-point"><strong>Nodes</strong>Subscribers are the graph's node concept.</div><div class="build-point"><strong>Edges</strong>Each call record creates a directed caller-to-callee edge.</div><div class="build-point"><strong>Centrality</strong>PageRank assigns subscriber influence; it does not by itself measure tower value.</div></div>
+      </div>
+    </section>
+
+    <section class="slide" data-title="Graph: tower impact" style="--accent:var(--teal)">
+      <div class="kicker">Reasoner 03 / Graph</div>
+      <h2>Link routed calls back to towers and customer impact.</h2>
+      <div class="build-layout">
+        <div><div class="build-source">run_graph_impact.py / tower-level impact derivation</div><pre class="build-code"><code>model.define(
+    CellTower.weighted_impact(
+        aggs.sum(Subscriber.customer_value)
+        .where(
+            CallDetailRecord.routed_through(CellTower),
+            CallDetailRecord.caller(Subscriber),
+            Subscriber.status == "ACTIVE",
+        )
+        .per(CellTower)
+    )
+)</code></pre></div>
+        <div class="build-notes"><h3>The decision input</h3><div class="build-point"><strong>Call-weighted value</strong>Each active caller's value contributes once per routed call record, so repeated calls count repeatedly.</div><div class="build-point"><strong>Separate PageRank rollup</strong>The job also sums caller influence over routed calls as <span class="mono">weighted_pagerank</span>.</div><div class="build-proof">The optimizer uses <span class="mono">weighted_impact</span>. PageRank is available for explanation, but is not a multiplier in the current objective.</div></div>
+      </div>
+    </section>
+
+    <section class="slide callscape-slide" data-title="3D regional callscape" style="--accent:var(--teal)">
+      <iframe src="telco_callscape_3d.html?embed=1" title="3D regional tower and illustrative call-flow scene" loading="lazy"></iframe>
+    </section>
+
+    <section class="slide" data-title="Path reasoning" data-motion="path" style="--accent:var(--gold)">
+      <div class="kicker">Reasoner 04 / Paths</div>
+      <h2>Which call route connects the most influential subscribers?</h2>
+      <p class="lead">A node score tells us who matters. Path reasoning shows the route, hop by hop, including the towers that carried it.</p>
+      <div class="path-layout">
+        <div class="trace-track">
+          <div class="visual-head"><span class="pill gold">Top enumerated simple path</span><button class="visual-replay" type="button" data-replay aria-label="Replay call-path tracer" title="Replay call-path tracer">&#8635;</button></div>
+          <div class="trace-subs" aria-label="Stored subscriber path">
+            <div class="trace-node" data-step="0">SUB-CON-00900</div><div class="trace-node" data-step="1">SUB-CON-00814</div><div class="trace-node" data-step="2">SUB-ENT-0038</div><div class="trace-node" data-step="3">SUB-CON-00644</div>
+          </div>
+          <div class="trace-label">Routing tower at each hop</div>
+          <div class="trace-hops" aria-label="Stored tower route"><div class="trace-hop" data-step="1">TWR-0094</div><div class="trace-hop" data-step="2">TWR-0113</div><div class="trace-hop" data-step="3">TWR-0055</div></div>
+          <div class="trace-stage" aria-live="polite">Top path / 3 hops</div>
+        </div>
+        <div class="path-detail"><h3>Path enumeration</h3><pre class="path-code"><code>p = model.path(
+    seed,
+    Subscriber.calls_via.repeat(1, PATH_MAX_HOPS),
+).all().paths()</code></pre><p>The job starts at the highest-PageRank subscriber, filters for simple paths, and ranks them by summed node influence. The table retains subscriber IDs and routing towers at each hop.</p></div>
+      </div>
+      <div class="band" style="margin-top:28px;--accent:var(--gold)"><p>Paths are an explanation surface. The optimizer currently consumes tower customer impact, not the top-path row.</p></div>
+    </section>
+
+    <section class="slide" data-title="Optimization: candidates" style="--accent:var(--coral)">
+      <div class="kicker">Reasoner 05 / Prescriptive</div>
+      <h2>Rules and prediction together define the candidate set.</h2>
+      <div class="build-layout">
+        <div><div class="build-source">run_optimization.py / candidate rule and decision variable</div><pre class="build-code tight"><code>model.where(CellTower.operational_critical_restore()).define(
+    CellTower.is_critical_restore()
+)
+model.where(CellTower.failure_intensity &gt; FAILURE_INTENSITY_THRESHOLD).define(
+    CellTower.is_critical_restore()
+)
+
+problem = Problem(model, Float)
+problem.solve_for(
+    TowerUpgradeOption.selected,
+    where=[
+        TowerUpgradeOption.tower == CellTower,
+        CellTower.is_critical_restore(),
+    ],
+    name=["tower_id", "tier"],
+    type="bin",
+)</code></pre></div>
+        <div class="build-notes"><h3>Decision scope</h3><div class="build-point"><strong>Union of reasons</strong>A tower enters if policy flags it or its summed equipment risk exceeds 1.5.</div><div class="build-point"><strong>Binary choices</strong>Each eligible tower-tier option can be selected or not selected.</div><div class="build-proof">A risk score alone does not choose a tier. The portfolio must also fit capex and crew limits.</div></div>
+      </div>
+    </section>
+
+    <section class="slide" data-title="Optimization: constraints" style="--accent:var(--coral)">
+      <div class="kicker">Reasoner 05 / Prescriptive</div>
+      <h2>Make budget, crew, and exclusivity hard constraints.</h2>
+      <div class="build-layout">
+        <div><div class="build-source">run_optimization.py / constraint expressions (shared scope shown once)</div><pre class="build-code tight"><code>scope = model.where(
+    TowerUpgradeOption.tower == CellTower,
+    CellTower.is_critical_restore(),
+)
+problem.satisfy(
+    scope.require(aggs.sum(TowerUpgradeOption.selected).per(CellTower) &lt;= 1)
+)
+problem.satisfy(
+    scope.require(
+        aggs.sum(TowerUpgradeOption.selected * TowerUpgradeOption.cost)
+        &lt;= budget_usd
+    )
+)
+problem.satisfy(
+    scope.require(
+        aggs.sum(TowerUpgradeOption.selected * TowerUpgradeOption.install_weeks)
+        &lt;= INSTALL_WEEKS_BUDGET
+    )
+)</code></pre></div>
+        <div class="build-notes"><h3>Three limits</h3><div class="build-point"><strong>One tier per tower</strong>The sum of selected tier options is at most one for each tower.</div><div class="build-point"><strong>Budget is a parameter</strong><span class="mono">budget_usd</span> can change for a live scenario; the saved baseline uses $5M.</div><div class="build-point"><strong>Install capacity</strong>The current crew limit is 200 total weeks.</div><div class="build-proof">The source repeats the same <span class="mono">model.where(...)</span> scope inside each constraint; it is factored here for slide legibility.</div></div>
+      </div>
+    </section>
+
+    <section class="slide" data-title="Optimization: solve" style="--accent:var(--coral)">
+      <div class="kicker">Reasoner 05 / Prescriptive</div>
+      <h2>Optimize the portfolio, then inspect the solver status.</h2>
+      <div class="build-layout">
+        <div><div class="build-source">run_optimization.py / objective and solve</div><pre class="build-code tight"><code>problem.maximize(
+    aggs.sum(
+        TowerUpgradeOption.selected
+        * TowerUpgradeOption.capacity_increase_gbps
+        * CellTower.weighted_impact
+        * CellTower.failure_intensity
+    ).where(
+        TowerUpgradeOption.tower == CellTower,
+        CellTower.is_critical_restore(),
+    )
+)
+problem.solve("highs")
+status = problem.solve_info().termination_status</code></pre></div>
+        <div class="build-notes"><h3>What the solver combines</h3><div class="build-point"><strong>Option benefit</strong>Capacity gain from the chosen tier.</div><div class="build-point"><strong>Business consequence</strong>Call-weighted customer impact from the tower derivation.</div><div class="build-point"><strong>Risk</strong>Equipment scores rolled up as tower failure intensity.</div><div class="build-proof">The job accepts only <span class="mono">OPTIMAL</span> status and checks selected costs, weeks, and one-tier-per-tower after extraction.</div></div>
+      </div>
+    </section>
+
+    <section class="slide" data-title="Optimized result" data-motion="portfolio" style="--accent:var(--green)">
+      <div class="kicker">Current Materialized Plan</div>
+      <h2>The solved portfolio stays within both limits.</h2>
+      <div class="output-metrics">
+        <div class="output-metric" style="--tone:var(--green)"><strong>27</strong><span>towers selected</span></div>
+        <div class="output-metric" style="--tone:var(--coral)"><strong>$4.986M</strong><span>of $5M capex</span></div>
+        <div class="output-metric" style="--tone:var(--teal)"><strong>183 Gbps</strong><span>capacity gain</span></div>
+        <div class="output-metric" style="--tone:var(--gold)"><strong>167</strong><span>of 200 install weeks</span></div>
+      </div>
+      <div class="portfolio-demo">
+        <div>
+          <div class="visual-head"><p class="eyebrow">Selected upgrade portfolio</p><button class="visual-replay" type="button" data-replay aria-label="Replay portfolio comparison" title="Replay portfolio comparison">&#8635;</button></div>
+          <div class="portfolio-tiles" aria-label="Representative selected upgrades and one hypothetical option">
+            <div class="portfolio-tile" style="--tone:var(--gold)"><strong>TWR-0114</strong><span>Gold</span></div>
+            <div class="portfolio-tile" style="--tone:var(--gold)"><strong>TWR-0067</strong><span>Gold</span></div>
+            <div class="portfolio-tile" style="--tone:var(--gold)"><strong>TWR-0015</strong><span>Gold</span></div>
+            <div class="portfolio-tile" style="--tone:var(--gold)"><strong>TWR-0032</strong><span>Gold</span></div>
+            <div class="portfolio-tile" style="--tone:var(--teal)"><strong>TWR-0055</strong><span>Silver</span></div>
+            <div class="portfolio-tile" style="--tone:var(--green)"><strong>+22 towers</strong><span>other selections</span></div>
+            <div class="portfolio-tile candidate" style="--tone:var(--coral)"><strong>TWR-0030</strong><span>Gold what-if / +$424,012</span></div>
+          </div>
+        </div>
+        <div class="portfolio-side">
+          <p class="eyebrow">Hard limits</p>
+          <div class="portfolio-gauge"><div class="portfolio-gauge-head"><span>Budget</span><strong data-budget-value>$4,985,789 / $5M</strong></div><div class="portfolio-track budget"><div class="portfolio-fill" data-budget-fill></div></div></div>
+          <div class="portfolio-gauge"><div class="portfolio-gauge-head"><span>Install weeks</span><strong data-crew-value>167 / 200</strong></div><div class="portfolio-track crew"><div class="portfolio-fill" data-crew-fill></div></div></div>
+          <div class="portfolio-status" data-portfolio-status aria-live="polite">Current optimized snapshot</div>
+          <p class="portfolio-caption">The what-if is illustrative; it is not a solver search trace.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" data-title="Evidence chain" style="--accent:var(--teal)">
+      <div class="kicker">Decision Evidence</div>
+      <h2>Every selected upgrade exposes the signals used by the portfolio model.</h2>
+      <div class="evidence">
+        <div class="evidence-step" style="--tone:var(--green);--shade:var(--pale-green)"><span class="num">01 / Policy</span><h3>Operational state</h3><p>Region, status, packet loss, and health may make a tower eligible under the deployed critical-restore rule.</p><code>CELLTOWER_OPERATIONAL_CRITICAL_RESTORE</code></div>
+        <div class="evidence-step" style="--tone:var(--coral);--shade:var(--pale-coral)"><span class="num">02 / Prediction</span><h3>Equipment risk</h3><p>Equipment-level positive-class scores roll up to tower failure intensity, which can also make a tower eligible.</p><code>TOWER_FAILURE_SCORE</code></div>
+        <div class="evidence-step" style="--tone:var(--teal);--shade:var(--pale-teal)"><span class="num">03 / Graph</span><h3>Customer exposure</h3><p>Active callers and call-weighted customer value show where an upgrade has business impact.</p><code>TOWER_CUSTOMER_IMPACT</code></div>
+        <div class="evidence-step" style="--tone:var(--blue);--shade:#e9effa"><span class="num">04 / Choice</span><h3>Feasible tier</h3><p>Option cost, install weeks, and capacity gain are evaluated together with the other towers in the portfolio.</p><code>SELECTED_UPGRADES</code></div>
+      </div>
+      <div class="band" style="margin-top:29px"><p>These fields explain the selection inputs and objective contribution. They do not prove why an excluded tower lost a counterfactual solve.</p></div>
+    </section>
+
+    <section class="slide" data-title="CoWork demo questions" style="--accent:var(--blue)">
+      <div class="kicker">Live CoWork Demo</div>
+      <h2>Interrogate each signal, then require a checked portfolio answer.</h2>
+      <div class="prompt-list">
+        <div class="prompt" style="--tone:var(--green);--shade:var(--pale-green)"><h3>Rules</h3><p>Which WEST towers do the deployed operational rules flag as critical for restoration, and why?</p></div>
+        <div class="prompt" style="--tone:var(--coral);--shade:var(--pale-coral)"><h3>Predictive</h3><p>Which equipment items have the highest at-risk scores? Include status, model, and tower.</p></div>
+        <div class="prompt" style="--tone:var(--teal);--shade:var(--pale-teal)"><h3>Graph</h3><p>Which towers carry the greatest call-weighted customer impact? Show active caller counts and PageRank influence.</p></div>
+        <div class="prompt" style="--tone:var(--gold);--shade:var(--pale-gold)"><h3>Paths</h3><p>What is the most influential enumerated call path, and which towers carry its hops?</p></div>
+        <div class="prompt wide" style="--tone:var(--blue);--shade:#e9effa"><h3>Prescriptive + validation</h3><p>Optimize tower upgrades with a budget of $4 million. Run the live budget optimization; list selected tower IDs and tiers, total spend, capacity restored, and install weeks.</p></div>
+      </div>
+    </section>
+
+    <section class="slide" data-title="Prediction plus graph" data-motion="risk" style="--accent:var(--coral)">
+      <div class="kicker">Combined Question 01 / Prediction + Graph</div>
+      <h2>Risk alone misses the business consequence.</h2>
+      <p class="lead">Two towers can look similar on equipment risk but very different on customer exposure.</p>
+      <div class="risk-layout">
+        <div class="risk-chart" role="img" aria-label="TWR-0030 has failure intensity 9.08 and call-weighted impact 76,180. TWR-0067 has failure intensity 8.05 and call-weighted impact 1,466,615.">
+          <div class="risk-chart-title">Routed-call weighted customer impact</div>
+          <div class="risk-plot">
+            <span class="risk-tick top">1.6M</span><span class="risk-tick middle">0.8M</span><span class="risk-tick zero">0</span>
+            <span class="risk-x-tick zero">0</span><span class="risk-x-tick middle">5</span><span class="risk-x-tick max">10</span><span class="risk-x-label">GNN tower failure intensity</span>
+            <div class="risk-dot coral" style="--dot:var(--coral);--target-x:90.8%;--target-y:4.8%" data-x="90.8" data-y="4.8"><span>TWR-0030</span></div>
+            <div class="risk-dot teal" style="--dot:var(--teal);--target-x:80.5%;--target-y:91.7%" data-x="80.5" data-y="91.7"><span>TWR-0067</span></div>
+          </div>
+        </div>
+        <div class="risk-facts">
+          <div class="visual-head"><p class="eyebrow">Two towers</p><button class="visual-replay" type="button" data-replay aria-label="Replay risk and impact plot" title="Replay risk and impact plot">&#8635;</button></div>
+          <div class="risk-fact"><strong>TWR-0030</strong><span>9.08 intensity / 76,180 impact</span></div>
+          <div class="risk-fact"><strong>TWR-0067</strong><span>8.05 intensity / 1,466,615 impact</span></div>
+          <div class="risk-ratio">19.3&times; call-weighted impact</div>
+        </div>
+      </div>
+      <div class="live-question"><span>Ask CoWork / top_tower_risk_and_impact</span><p>Compare TWR-0030 and TWR-0067 on failure intensity and call-weighted customer impact. Why would a risk-only ranking miss an important difference?</p></div>
+      <div class="band" style="margin-top:16px;--accent:var(--coral)"><p>This is a screening comparison, not the final upgrade choice. The optimizer also considers capacity gain, cost, and crew weeks.</p></div>
+    </section>
+
+    <section class="slide" data-title="Validation and provenance" style="--accent:var(--green)">
+      <div class="kicker">The Trust Boundary</div>
+      <h2>What is actually validated, deterministic, and traceable?</h2>
+      <div class="assurance-grid">
+        <div class="assurance-column" style="--tone:var(--green)">
+          <h3>Demonstrated in this snapshot</h3>
+          <div class="assurance-row"><strong>01</strong><p><strong>Named inputs.</strong> The curated query reads the deployed ontology and named <span class="mono">RESULTS</span> tables, not an agent-generated calculation.</p></div>
+          <div class="assurance-row"><strong>02</strong><p><strong>Reconciled plan.</strong> The query rejects a mismatch in selected row count, cost, install weeks, or capacity against <span class="mono">RESTORE_PLAN</span>.</p></div>
+          <div class="assurance-row"><strong>03</strong><p><strong>Fixed result.</strong> Repeated reads of unchanged materialized tables return the same plan data. The stored solver status is <span class="mono">OPTIMAL</span>.</p></div>
+        </div>
+        <div class="assurance-column" style="--tone:var(--coral)">
+          <h3>Do not claim as guaranteed yet</h3>
+          <div class="assurance-row"><strong>01</strong><p><strong>Agent prose.</strong> A free-form answer can omit a row or invent a cause; compare it with tool output and escalate unsupported claims.</p></div>
+          <div class="assurance-row"><strong>02</strong><p><strong>Retraining.</strong> The synthetic-label GNN is a risk proxy; retraining can change scores and the downstream plan.</p></div>
+          <div class="assurance-row"><strong>03</strong><p><strong>Row lineage.</strong> This demo names source tables and jobs but does not persist a versioned, end-to-end row-level provenance record.</p></div>
+        </div>
+      </div>
+      <div class="band" style="margin-top:20px;--accent:var(--green)"><p>For a production guarantee, add pinned input versions and trace IDs around this validated decision result, then evaluate the agent's rendering.</p></div>
+    </section>
+
+    <section class="slide" data-title="All-reasoner briefing" style="--accent:var(--blue)">
+      <div class="kicker">Combined Question 02 / All Five</div>
+      <h2>Use all five reasoners while keeping the decision boundary explicit.</h2>
+      <div class="decision-chain">
+        <div class="chain-box" style="--tone:var(--teal);--shade:var(--pale-teal)"><h3>Decision inputs</h3><p>The ontology links eligible towers, equipment risk, customer exposure, and upgrade options.</p><div class="chain-chips"><b>Rules: eligibility</b><b>GNN: risk</b><b>Graph: impact</b></div></div>
+        <div class="chain-arrow">&#8594;</div>
+        <div class="chain-box" style="--tone:var(--coral);--shade:var(--pale-coral)"><h3>Optimization</h3><p>Choose tower tiers within $5M and 200 install weeks.</p></div>
+        <div class="chain-arrow">&#8594;</div>
+        <div class="chain-box" style="--tone:var(--green);--shade:var(--pale-green)"><h3>Funded plan</h3><p>27 towers, $4,985,789 spend, 183 Gbps capacity gain in the current snapshot.</p></div>
+      </div>
+      <div class="path-lane"><strong>Paths</strong><p>The top call route adds network context to the agent's briefing. It is <strong>not</strong> an optimization input in this demo.</p></div>
+      <div class="live-question"><span>Try live / multi-tool CoWork briefing</span><p>How many WEST towers meet the operational rule? Give the $5M plan totals and three selected upgrades with the largest objective contribution. Report the top call path separately and state that it did not influence the solve.</p></div>
+    </section>
+
+    <section class="slide" data-title="Refresh and handoff" style="--accent:var(--teal)">
+      <div class="kicker">Operational Handoff</div>
+      <h2>Change the budget live; refresh upstream signals when the network changes.</h2>
+      <div class="refresh">
+        <div><h3>Refresh the model and reasoners</h3><div class="refresh-row"><code>rai models deploy --wait</code><span>Refresh deployed ontology and rules.</span></div><div class="refresh-row"><code>run_graph_impact.py</code><span>Recompute PageRank and tower impact.</span></div><div class="refresh-row"><code>run_paths.py</code><span>Re-enumerate the top call path.</span></div><div class="refresh-row"><code>run_predictive_failure.py</code><span>Retrain and write risk scores.</span></div><div class="refresh-row"><code>run_optimization.py</code><span>Solve again after upstream outputs refresh.</span></div></div>
+        <div><h3>What the agent can ask</h3><div class="refresh-row"><code>Saved $5M plan</code><span>Read and reconcile the materialized baseline.</span></div><div class="refresh-row"><code>New budget</code><span>Run <span class="mono">optimize_upgrades_for_budget</span> against current deployed rules and stored signals.</span></div><div class="refresh-row"><code>Prediction outputs</code><span>Equipment scores and tower failure intensity remain fixed until refreshed.</span></div><div class="refresh-row"><code>Graph outputs</code><span>Subscriber influence, tower impact, and top path remain fixed until refreshed.</span></div><div class="takeaway"><p>A budget prompt reruns the solver, not the GNN or PageRank. Source-data changes need a controlled upstream refresh.</p></div></div>
+      </div>
+    </section>
+
+    <section class="slide" data-title="Verifiable agent answer" style="--accent:var(--blue)">
+      <div class="kicker">From Decision to Answer</div>
+      <h2>Make the agent's recommendation inspectable.</h2>
+      <p class="lead">The ontology and reasoners compute a constrained plan. The agent explains it using curated results that can be checked against the stored decision.</p>
+      <div class="answer-handoff">
+        <div class="handoff-column" style="--tone:var(--teal)"><h3>Decision result</h3><div class="handoff-row"><strong>Inputs:</strong> named Snowflake sources, operational rules, and materialized reasoner outputs.</div><div class="handoff-row"><strong>Output:</strong> selected tower tiers, totals, solver status, and supporting signals.</div><div class="handoff-row"><strong>Checks:</strong> selected rows reconcile with budget, crew weeks, and restored capacity.</div></div>
+        <div class="handoff-column" style="--tone:var(--coral)"><h3>Agent answer checks</h3><div class="handoff-row"><strong>Trace:</strong> which curated query ran and what rows it returned.</div><div class="handoff-row"><strong>Evaluate:</strong> completeness, arithmetic, unsupported claims, latency, and cost.</div><div class="handoff-row"><strong>Escalate:</strong> review answers when evidence is missing or a result fails its checks.</div></div>
+      </div>
+      <div class="band" style="margin-top:30px;--accent:var(--blue)"><p>The demo reconciles a stored plan. Production-grade reproducibility also needs pinned snapshots, trace IDs, and versioned row-level lineage.</p></div>
+    </section>
+
+    <section class="slide" data-title="Ask: restoration rules" style="--accent:var(--green)">
+      <div class="kicker">Code Appendix / Telco 1 of 6 / Rules</div>
+      <h2>Here is the question we are asking</h2>
+      <div class="appendix-question">Which WEST towers do the deployed operational rules flag as critical for restoration? Show status, packet loss, equipment health, and the rule thresholds.</div>
+      <div class="appendix-rule"></div>
+    </section>
+    <section class="slide" data-title="PyRel: restoration rules" style="--accent:var(--green)">
+      <div class="kicker">Code Appendix / Telco 1 of 6 / Rules</div>
+      <h2>Here is the PyRel that derives the answer</h2>
+      <pre class="appendix-code compact"><code>model.where(
+    CellTower.region == "WEST",
+    CellTower.status == "DEGRADED",
+    CellTower.avg_health_score &lt; 0.85,
+).define(CellTower.operational_critical_restore())
+
+model.where(
+    CellTower.region == "WEST",
+    CellTower.avg_packet_loss &gt; 5.0,
+    CellTower.avg_health_score &lt; 0.85,
+).define(CellTower.operational_critical_restore())</code></pre>
+      <p class="appendix-explain">Either policy branch asserts the same tower flag. The health and packet-loss values are themselves derived from related equipment and performance observations, as shown earlier; the agent reads the deployed flag.</p>
+      <div class="appendix-source">telco_base_ontology.py &middot; operational_critical_restore</div>
+    </section>
+
+    <section class="slide" data-title="Ask: equipment risk" style="--accent:var(--coral)">
+      <div class="kicker">Code Appendix / Telco 2 of 6 / Predictive</div>
+      <h2>Here is the question we are asking</h2>
+      <div class="appendix-question short">Which equipment items have the highest at-risk scores? Show the top 10 with their score, current status, model, and tower.</div>
+      <div class="appendix-rule"></div>
+    </section>
+    <section class="slide" data-title="PyRel: equipment risk" style="--accent:var(--coral)">
+      <div class="kicker">Code Appendix / Telco 2 of 6 / Predictive</div>
+      <h2>Here is the GNN fit and prediction call</h2>
+      <pre class="appendix-code compact"><code>gnn = GNN(
+    exp_database=EXP_DATABASE, exp_schema=EXP_SCHEMA,
+    graph=gnn_graph, property_transformer=pt,
+    train=Train, validation=Val,
+    task_type="binary_classification", eval_metric="roc_auc",
+    has_time_column=False, stream_logs=False,
+    seed=SEED, device="cpu",
+    n_epochs=GNN_EPOCHS, lr=GNN_LR,
+)
+gnn.fit()
+NetworkEquipment.predictions = gnn.predictions(domain=Test)</code></pre>
+      <p class="appendix-explain">The graph and feature transformer are configured in the preceding slides. Training uses current WARNING/FAILING status as a synthetic label, so this is an at-risk status proxy, not a calibrated future-failure forecast.</p>
+      <div class="appendix-source">run_predictive_failure.py &middot; GNN setup and fit</div>
+    </section>
+
+    <section class="slide" data-title="Ask: customer impact" style="--accent:var(--teal)">
+      <div class="kicker">Code Appendix / Telco 3 of 6 / Graph</div>
+      <h2>Here is the question we are asking</h2>
+      <div class="appendix-question short">Which towers carry the greatest call-weighted customer impact? Show active caller counts and PageRank-weighted influence.</div>
+      <div class="appendix-rule"></div>
+    </section>
+    <section class="slide" data-title="PyRel: customer impact" style="--accent:var(--teal)">
+      <div class="kicker">Code Appendix / Telco 3 of 6 / Graph</div>
+      <h2>Here is the graph and PageRank call</h2>
+      <pre class="appendix-code compact"><code>call_graph = Graph(
+    model,
+    directed=True,
+    weighted=False,
+    node_concept=Subscriber,
+    aggregator="sum",
+)
+cdr = CallDetailRecord.ref()
+caller = Subscriber.ref()
+callee = Subscriber.ref()
+model.where(
+    cdr.caller(caller),
+    cdr.callee(callee),
+).define(call_graph.Edge.new(src=caller, dst=callee))
+call_graph.Node.influence_score = call_graph.pagerank()</code></pre>
+      <p class="appendix-explain">Each call becomes a directed subscriber edge. A separate tower aggregation sums caller value and influence over active routed calls; only call-weighted value enters the current optimizer objective.</p>
+      <div class="appendix-source">run_graph_impact.py &middot; graph construction and pagerank</div>
+    </section>
+
+    <section class="slide" data-title="Ask: budgeted plan" style="--accent:var(--coral)">
+      <div class="kicker">Code Appendix / Telco 4 of 6 / Prescriptive</div>
+      <h2>Here is the question we are asking</h2>
+      <div class="appendix-question">Given everything we know about the network and a chosen budget, which towers and upgrade tiers should we choose, and why?</div>
+      <div class="appendix-rule"></div>
+    </section>
+    <section class="slide" data-title="PyRel: budgeted plan" style="--accent:var(--coral)">
+      <div class="kicker">Code Appendix / Telco 4 of 6 / Prescriptive</div>
+      <h2>Here is the PyRel behind that decision</h2>
+      <pre class="appendix-code compact"><code>problem = Problem(model, Float)
+problem.solve_for(TowerUpgradeOption.selected,
+    where=[TowerUpgradeOption.tower == CellTower,
+           CellTower.is_critical_restore()], type="bin")
+problem.satisfy(model.where(
+    TowerUpgradeOption.tower == CellTower,
+    CellTower.is_critical_restore(),
+).require(aggs.sum(TowerUpgradeOption.selected * TowerUpgradeOption.cost)
+          &lt;= budget_usd))
+problem.maximize(aggs.sum(
+    TowerUpgradeOption.selected * TowerUpgradeOption.capacity_increase_gbps
+    * CellTower.weighted_impact * CellTower.failure_intensity
+).where(TowerUpgradeOption.tower == CellTower,
+        CellTower.is_critical_restore()))</code></pre>
+      <p class="appendix-explain">The solver chooses tiers to maximize capacity gain weighted by failure intensity and routed-call impact. The full formulation also enforces one tier per tower and a 200-week install limit. The agent can run a new budget scenario or read the saved $5M baseline.</p>
+      <div class="appendix-source">run_optimization.py &middot; solve</div>
+    </section>
+
+    <section class="slide" data-title="Ask: call path" style="--accent:var(--gold)">
+      <div class="kicker">Code Appendix / Telco 5 of 6 / Paths</div>
+      <h2>Here is the question we are asking</h2>
+      <div class="appendix-question short">What is the most influential enumerated call path, and which towers carry its hops?</div>
+      <div class="appendix-rule"></div>
+    </section>
+    <section class="slide" data-title="PyRel: call path" style="--accent:var(--gold)">
+      <div class="kicker">Code Appendix / Telco 5 of 6 / Paths</div>
+      <h2>Here is the path enumeration and scoring</h2>
+      <pre class="appendix-code compact"><code>seed = Subscriber.ref()
+i = Integer.ref()
+j = Integer.ref()
+p = model.path(seed, Subscriber.calls_via.repeat(1, PATH_MAX_HOPS)).all().paths()
+score_df = model.where(
+    seed.id == hub_id,
+    p,
+    not_(where(i &lt; j, p.nodes(i) == p.nodes(j))),
+    total := aggs.sum(Subscriber(p.nodes).influence_score).per(p),
+).select(
+    p.alias("PATH_ID"),
+    total.alias("INFLUENCE_LOAD"),
+).to_df()</code></pre>
+      <p class="appendix-explain">The job starts at the highest-PageRank subscriber, enumerates simple paths up to three hops, and ranks them by summed subscriber influence. The path adds context; it is not a solve input.</p>
+      <div class="appendix-source">run_paths.py &middot; find_top_path</div>
+    </section>
+
+    <section class="slide" data-title="Ask: live budget" style="--accent:var(--blue)">
+      <div class="kicker">Code Appendix / Telco 6 of 6 / Multi-reasoner</div>
+      <h2>Here is the question we are asking</h2>
+      <div class="appendix-question">Optimize tower upgrades with a budget of $4 million. Which towers and tiers are selected, and what rules, risk, and customer impact support that plan?</div>
+      <div class="appendix-rule"></div>
+    </section>
+    <section class="slide" data-title="Agent: live budget" style="--accent:var(--blue)">
+      <div class="kicker">Code Appendix / Telco 6 of 6 / Multi-reasoner</div>
+      <h2>Here is the live agent handoff</h2>
+      <pre class="appendix-code compact"><code>selected, plan = optimize(budget_usd, config=model.config)
+summary = plan.iloc[0]
+upgrades = selected.rename(columns={
+    "CAPACITY_GBPS": "capacity_gbps",
+    "FAILURE_INTENSITY": "failure_intensity",
+    "WEIGHTED_IMPACT": "weighted_impact",
+})
+upgrades["objective_contribution"] = (
+    upgrades["capacity_gbps"] * upgrades["failure_intensity"]
+    * upgrades["weighted_impact"]
+)
+upgrades["plan_status"] = summary["TERMINATION_STATUS"]</code></pre>
+      <p class="appendix-explain">Abridged agent tool: it runs a new constrained solve against deployed rules and stored GNN/graph signals. The actual tool also returns budget, spend, install weeks, capacity, and every selected tower and tier; it leaves the saved $5M plan untouched.</p>
+      <div class="appendix-source">telco_agent/queries.py &middot; optimize_upgrades_for_budget</div>
+    </section>
+  </main>
+  <script>
+    const slides = [...document.querySelectorAll('.slide')];
+    const jump = document.getElementById('jump');
+    const count = document.getElementById('count');
+    const previous = document.getElementById('previous');
+    const next = document.getElementById('next');
+    let current = 0;
+    let touchStartX = null;
+    let motionTimers = [];
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+
+    function later(fn, delay) {
+      motionTimers.push(window.setTimeout(fn, delay));
+    }
+    function clearMotion() {
+      motionTimers.forEach(window.clearTimeout);
+      motionTimers = [];
+    }
+    function runRisk(slide) {
+      const dots = [...slide.querySelectorAll('.risk-dot')];
+      const ratio = slide.querySelector('.risk-ratio');
+      dots.forEach(dot => {
+        dot.classList.remove('is-set');
+        dot.style.left = '0%';
+        dot.style.bottom = '0%';
+      });
+      ratio.classList.remove('is-set');
+      function land(dot) {
+        dot.style.left = `${dot.dataset.x}%`;
+        dot.style.bottom = `${dot.dataset.y}%`;
+        dot.classList.add('is-set');
+      }
+      if (reducedMotion.matches) {
+        dots.forEach(land);
+        ratio.classList.add('is-set');
+        return;
+      }
+      later(() => land(dots[0]), 300);
+      later(() => land(dots[1]), 1350);
+      later(() => ratio.classList.add('is-set'), 2400);
+    }
+    function runPortfolio(slide) {
+      const selected = [...slide.querySelectorAll('.portfolio-tile:not(.candidate)')];
+      const candidate = slide.querySelector('.portfolio-tile.candidate');
+      const budgetTrack = slide.querySelector('.portfolio-track.budget');
+      const budgetFill = slide.querySelector('[data-budget-fill]');
+      const crewFill = slide.querySelector('[data-crew-fill]');
+      const budgetValue = slide.querySelector('[data-budget-value]');
+      const crewValue = slide.querySelector('[data-crew-value]');
+      const status = slide.querySelector('[data-portfolio-status]');
+      selected.forEach(tile => tile.classList.remove('is-in'));
+      candidate.classList.remove('is-in');
+      budgetTrack.classList.remove('over');
+      budgetFill.style.width = '0%';
+      crewFill.style.width = '0%';
+      budgetValue.textContent = '$0 / $5M';
+      crewValue.textContent = '0 / 200';
+      status.textContent = 'Building current portfolio';
+      status.classList.remove('over');
+      function gauge(cost, weeks, whatIf) {
+        budgetFill.style.width = `${Math.min(cost / 5000000 * 100, 100)}%`;
+        crewFill.style.width = `${weeks / 200 * 100}%`;
+        budgetValue.textContent = `$${cost.toLocaleString()} / $5M`;
+        crewValue.textContent = `${weeks} / 200`;
+        budgetTrack.classList.toggle('over', whatIf);
+        status.classList.toggle('over', whatIf);
+        status.textContent = whatIf
+          ? 'What-if: add TWR-0030 Gold / $409,801 over budget'
+          : 'Current optimized snapshot / 8 Gold, 8 Silver, 11 Bronze';
+      }
+      if (reducedMotion.matches) {
+        selected.forEach(tile => tile.classList.add('is-in'));
+        gauge(4985789, 167, false);
+        return;
+      }
+      selected.forEach((tile, i) => later(() => tile.classList.add('is-in'), 200 + i * 170));
+      later(() => gauge(4985789, 167, false), 1350);
+      later(() => candidate.classList.add('is-in'), 3150);
+      later(() => gauge(5409801, 182, true), 3350);
+      later(() => { candidate.classList.remove('is-in'); gauge(4985789, 167, false); }, 5650);
+    }
+    function runPath(slide) {
+      const nodes = [...slide.querySelectorAll('.trace-node')];
+      const hops = [...slide.querySelectorAll('.trace-hop')];
+      const stage = slide.querySelector('.trace-stage');
+      nodes.forEach(node => node.classList.remove('is-traced', 'is-current'));
+      hops.forEach(hop => hop.classList.remove('is-traced'));
+      stage.textContent = 'Tracing stored call path';
+      function trace(step) {
+        nodes.forEach((node, i) => {
+          node.classList.toggle('is-traced', i <= step);
+          node.classList.toggle('is-current', i === step);
+        });
+        hops.forEach((hop, i) => hop.classList.toggle('is-traced', i < step));
+        stage.textContent = step === 0 ? 'Hub subscriber / SUB-CON-00900' : `Hop ${step} of 3 / ${hops[step - 1].textContent}`;
+      }
+      if (reducedMotion.matches) { trace(3); return; }
+      [0, 1, 2, 3].forEach((step, i) => later(() => trace(step), 250 + i * 1050));
+    }
+    function runVisual(slide) {
+      clearMotion();
+      if (slide.dataset.motion === 'risk') runRisk(slide);
+      if (slide.dataset.motion === 'portfolio') runPortfolio(slide);
+      if (slide.dataset.motion === 'path') runPath(slide);
+    }
+
+    function resize() {
+      const scale = Math.min((window.innerWidth - 32) / 1280, (window.innerHeight - 54) / 720, 1);
+      document.documentElement.style.setProperty('--scale', Math.max(scale, 0.25));
+    }
+    function show(index) {
+      current = Math.max(0, Math.min(slides.length - 1, index));
+      slides.forEach((slide, i) => slide.classList.toggle('active', i === current));
+      const callscape = document.querySelector('.callscape-slide iframe');
+      callscape?.contentWindow?.postMessage({
+        type: 'telco-callscape-visibility',
+        active: slides[current].classList.contains('callscape-slide'),
+      }, '*');
+      jump.value = String(current);
+      count.textContent = `${current + 1} / ${slides.length}`;
+      previous.disabled = current === 0;
+      next.disabled = current === slides.length - 1;
+      runVisual(slides[current]);
+      history.replaceState(null, '', `#slide-${current + 1}`);
+      document.querySelector('.deck').scrollTo(0, 0);
+      window.scrollTo(0, 0);
+    }
+    slides.forEach((slide, i) => {
+      const option = document.createElement('option');
+      option.value = String(i);
+      option.textContent = `${i + 1}. ${slide.dataset.title}`;
+      jump.append(option);
+    });
+    document.querySelector('.callscape-slide iframe')?.addEventListener('load', event => {
+      event.currentTarget.contentWindow.postMessage({
+        type: 'telco-callscape-visibility',
+        active: slides[current].classList.contains('callscape-slide'),
+      }, '*');
+    });
+    previous.addEventListener('click', () => show(current - 1));
+    next.addEventListener('click', () => show(current + 1));
+    document.querySelectorAll('[data-replay]').forEach(button => {
+      button.addEventListener('click', () => runVisual(button.closest('.slide')));
+    });
+    jump.addEventListener('change', () => show(Number(jump.value)));
+    document.addEventListener('keydown', event => {
+      if (event.target instanceof HTMLElement && ['SELECT', 'INPUT', 'TEXTAREA'].includes(event.target.tagName)) return;
+      if (['ArrowRight', 'PageDown', ' '].includes(event.key)) { event.preventDefault(); show(current + 1); }
+      if (['ArrowLeft', 'PageUp'].includes(event.key)) { event.preventDefault(); show(current - 1); }
+      if (event.key === 'Home') show(0);
+      if (event.key === 'End') show(slides.length - 1);
+    });
+    document.addEventListener('touchstart', event => { touchStartX = event.changedTouches[0].screenX; }, { passive: true });
+    document.addEventListener('touchend', event => {
+      if (touchStartX === null) return;
+      const delta = event.changedTouches[0].screenX - touchStartX;
+      if (Math.abs(delta) > 80) show(current + (delta < 0 ? 1 : -1));
+      touchStartX = null;
+    }, { passive: true });
+    window.addEventListener('resize', resize);
+    window.addEventListener('message', event => {
+      const slide = slides[current];
+      const frame = slide.querySelector('.callscape-slide iframe, iframe');
+      if (!slide.classList.contains('callscape-slide') || event.source !== frame?.contentWindow) return;
+      if (event.data?.type === 'telco-callscape-next') show(current + 1);
+      if (event.data?.type === 'telco-callscape-previous') show(current - 1);
+    });
+    window.addEventListener('hashchange', () => {
+      const match = location.hash.match(/^#slide-(\d+)$/);
+      if (match) show(Number(match[1]) - 1);
+    });
+    resize();
+    const initial = location.hash.match(/^#slide-(\d+)$/);
+    show(initial ? Number(initial[1]) - 1 : 0);
+  </script>
+</body>
+</html>

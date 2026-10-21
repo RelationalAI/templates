@@ -1,0 +1,713 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RelationalAI | Telco Network Recovery</title>
+  <style>
+    :root {
+      --ink: #080e4c;
+      --muted: #354064;
+      --paper: #ffffff;
+      --panel: #ffffff;
+      --line: #d9e2ef;
+      --teal: #1686ae;
+      --blue: #2854a3;
+      --amber: #d75845;
+      --rose: #c64d54;
+      --green: #28769c;
+      --soft-teal: #e3f4fa;
+      --soft-blue: #e9effb;
+      --soft-amber: #fff0ec;
+      --soft-rose: #fcecef;
+      --soft-green: #e6f3f8;
+      --radius: 8px;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: #080e4c;
+      color: var(--ink);
+      font-family: "Plus Jakarta Sans", Arial, sans-serif;
+      overflow: hidden;
+    }
+
+    .deck {
+      width: 100vw;
+      height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+    }
+
+    .slide {
+      display: none;
+      width: min(1280px, calc(100vw - 48px));
+      height: min(720px, calc(100vh - 48px));
+      aspect-ratio: 16 / 9;
+      background: var(--paper);
+      border-radius: var(--radius);
+      position: relative;
+      overflow: hidden;
+      padding: 46px 58px;
+    }
+
+    .slide.active { display: block; }
+
+    .slide.ontology-slide { padding: 30px 34px; }
+
+    .content {
+      position: relative;
+      z-index: 1;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .kicker {
+      color: var(--amber);
+      font-size: 13px;
+      line-height: 1;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0;
+      margin-bottom: 14px;
+    }
+
+    h1, h2, h3, p { margin: 0; letter-spacing: 0; }
+
+    h1 {
+      max-width: 1020px;
+      font-size: 58px;
+      line-height: 0.99;
+    }
+
+    h2 {
+      max-width: 1000px;
+      font-size: 40px;
+      line-height: 1.04;
+    }
+
+    h3 {
+      font-size: 19px;
+      line-height: 1.16;
+      color: var(--ink);
+      margin-bottom: 8px;
+    }
+
+    p {
+      color: var(--muted);
+      font-size: 18px;
+      line-height: 1.36;
+    }
+
+    .subhead {
+      margin-top: 20px;
+      max-width: 900px;
+      font-size: 23px;
+      line-height: 1.34;
+      color: var(--muted);
+    }
+
+    .rule {
+      width: 84px;
+      height: 4px;
+      background: var(--amber);
+      border-radius: 2px;
+      margin: 28px 0;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      margin-top: 28px;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 18px;
+      margin-top: 24px;
+    }
+
+    .two-col {
+      display: grid;
+      grid-template-columns: 0.95fr 1.05fr;
+      gap: 28px;
+      align-items: start;
+      flex: 1;
+      min-height: 0;
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 18px;
+      min-height: 112px;
+      overflow: hidden;
+    }
+
+    .card p, .card li {
+      font-size: 15px;
+      line-height: 1.34;
+      color: var(--muted);
+    }
+
+    .card.small { min-height: 92px; padding: 16px; }
+    .card.tight { padding: 14px; }
+
+    .tag {
+      display: inline-block;
+      border-radius: 999px;
+      padding: 5px 10px;
+      font-size: 12px;
+      line-height: 1;
+      font-weight: 800;
+      margin-bottom: 10px;
+    }
+
+    .tag.blue { color: var(--blue); background: var(--soft-blue); }
+    .tag.teal { color: var(--teal); background: var(--soft-teal); }
+    .tag.amber { color: var(--amber); background: var(--soft-amber); }
+    .tag.rose { color: var(--rose); background: var(--soft-rose); }
+    .tag.green { color: var(--green); background: var(--soft-green); }
+
+    .question {
+      margin-top: 26px;
+      background: white;
+      border: 2px solid var(--line);
+      border-radius: var(--radius);
+      padding: 20px 22px;
+      max-width: 980px;
+    }
+
+    .question p {
+      color: var(--ink);
+      font-size: 24px;
+      line-height: 1.25;
+      font-weight: 700;
+    }
+
+    .flow {
+      display: grid;
+      grid-template-columns: 1fr 52px 1fr 52px 1fr 52px 1fr;
+      gap: 10px;
+      align-items: center;
+      margin-top: 38px;
+    }
+
+    .flow-card {
+      min-height: 142px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      text-align: center;
+    }
+
+    .arrow {
+      color: var(--amber);
+      font-size: 34px;
+      font-weight: 800;
+      text-align: center;
+    }
+
+    .ontology-image {
+      display: block;
+      width: 100%;
+      height: 0;
+      min-height: 0;
+      flex: 1 1 auto;
+      margin-top: 12px;
+      object-fit: contain;
+      border: 1px solid var(--line);
+      background: white;
+    }
+
+    .metric-vs-decision {
+      display: grid;
+      grid-template-columns: 0.82fr 1.18fr;
+      gap: 18px;
+      margin-top: 26px;
+      align-items: stretch;
+    }
+
+    .decision-card {
+      background: var(--ink);
+      color: white;
+      border-color: var(--ink);
+    }
+
+    .decision-card h3 { color: white; }
+
+    .decision-card p,
+    .decision-card li {
+      color: #f0f4fa;
+    }
+
+    .metric-vs-decision > .card:first-child {
+      border-top: 6px solid var(--blue);
+    }
+
+    .metric-vs-decision .decision-card {
+      background: white;
+      color: var(--ink);
+      border: 1px solid var(--line);
+      border-top: 6px solid var(--amber);
+    }
+
+    .metric-vs-decision .decision-card h3,
+    .metric-vs-decision .decision-card li {
+      color: var(--ink);
+    }
+
+    ul {
+      margin: 8px 0 0;
+      padding-left: 18px;
+    }
+
+    li + li { margin-top: 6px; }
+
+    .reasoning-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+      margin-top: 28px;
+    }
+
+    .knowledge-layout {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 36px;
+      margin-top: 28px;
+    }
+
+    .knowledge-layout h3 { margin-bottom: 12px; }
+
+    .knowledge-step {
+      display: grid;
+      grid-template-columns: 38px minmax(0, 1fr);
+      gap: 12px;
+      align-items: start;
+      padding: 12px 0;
+      border-top: 1px solid var(--line);
+    }
+
+    .knowledge-step .index {
+      display: grid;
+      place-items: center;
+      width: 32px;
+      height: 32px;
+      background: var(--soft-blue);
+      color: var(--blue);
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .knowledge-step strong { display: block; font-size: 17px; line-height: 1.2; }
+    .knowledge-step p { margin-top: 3px; font-size: 15px; line-height: 1.3; }
+    .knowledge-step:last-child { border-bottom: 1px solid var(--line); }
+    .knowledge-step:last-child .index { background: var(--soft-amber); color: var(--amber); }
+
+    .question-list { margin: 0; padding: 0; list-style: none; }
+    .question-list li {
+      display: grid;
+      grid-template-columns: 92px minmax(0, 1fr);
+      gap: 12px;
+      padding: 12px 0;
+      border-top: 1px solid var(--line);
+      color: var(--ink);
+      font-size: 17px;
+      line-height: 1.25;
+      font-weight: 700;
+    }
+
+    .question-list li:last-child { border-bottom: 1px solid var(--line); }
+    .question-list .reasoner { color: var(--teal); font-size: 12px; line-height: 1.5; font-weight: 800; text-transform: uppercase; }
+
+    .result-grid {
+      display: grid;
+      grid-template-columns: 1.06fr 0.94fr;
+      gap: 18px;
+      margin-top: 24px;
+      align-items: stretch;
+    }
+
+    .plan {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-top: 10px;
+    }
+
+    .plan-item {
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #f7f9fc;
+    }
+
+    .plan-item strong {
+      display: block;
+      margin-bottom: 4px;
+      font-size: 15px;
+      color: var(--ink);
+    }
+
+    .provenance-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
+    .provenance-replay { width: 38px; height: 38px; flex: 0 0 38px; border: 1px solid var(--line); background: white; color: var(--ink); font-size: 25px; line-height: 1; }
+    .provenance-replay:hover { background: var(--soft-teal); }
+    .provenance-replay:focus-visible { outline: 3px solid var(--teal); outline-offset: 2px; }
+    .provenance-trace { display: grid; gap: 8px; margin-top: 24px; }
+    .provenance-step { display: grid; grid-template-columns: 182px minmax(0, 1fr); align-items: center; gap: 18px; min-height: 73px; padding: 10px 18px; border-left: 6px solid var(--tone); border-bottom: 1px solid var(--line); background: var(--shade); opacity: .18; transform: translateY(10px); transition: opacity .5s ease, transform .5s ease; }
+    .provenance-step.is-shown { opacity: 1; transform: translateY(0); }
+    .provenance-step .label { color: var(--tone); text-transform: uppercase; font-size: 14px; font-weight: 800; }
+    .provenance-step .value { color: var(--ink); font-size: 19px; line-height: 1.28; font-weight: 750; }
+    .provenance-step code { font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; font-size: 16px; font-weight: 700; overflow-wrap: anywhere; }
+    .provenance-outcome { margin-top: 18px; padding: 15px 20px; background: var(--ink); color: white; font-size: 26px; font-weight: 800; opacity: .18; transform: translateY(10px); transition: opacity .5s ease, transform .5s ease; }
+    .provenance-outcome.is-shown { opacity: 1; transform: translateY(0); }
+
+    .closing {
+      margin-top: 30px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+    }
+
+    .callout {
+      margin-top: auto;
+      padding: 18px 20px;
+      border-left: 6px solid var(--amber);
+      background: white;
+      border-radius: var(--radius);
+    }
+
+    .callout p {
+      color: var(--ink);
+      font-size: 22px;
+      line-height: 1.28;
+      font-weight: 750;
+    }
+
+    .controls {
+      position: fixed;
+      right: 22px;
+      bottom: 18px;
+      display: flex;
+      gap: 8px;
+      z-index: 10;
+    }
+
+    button {
+      appearance: none;
+      border: 1px solid rgba(255, 255, 255, 0.24);
+      border-radius: var(--radius);
+      background: rgba(255, 255, 255, 0.1);
+      color: white;
+      width: 38px;
+      height: 34px;
+      font-size: 18px;
+      cursor: pointer;
+    }
+
+    button:hover { background: rgba(255, 255, 255, 0.18); }
+
+    @media (max-width: 900px) {
+      body { overflow: auto; }
+      .deck {
+        height: auto;
+        min-height: 100vh;
+        padding: 12px;
+      }
+      .slide {
+        width: calc(100vw - 24px);
+        height: auto;
+        min-height: calc((100vw - 24px) * 0.5625);
+        padding: 28px 26px;
+      }
+      h1 { font-size: 36px; }
+      h2 { font-size: 28px; }
+      .subhead, .question p, .callout p { font-size: 18px; }
+      .grid-2, .grid-3, .two-col, .flow, .metric-vs-decision, .reasoning-grid, .knowledge-layout, .result-grid, .closing {
+        grid-template-columns: 1fr;
+      }
+      .arrow { display: none; }
+      .slide.ontology-slide { padding: 28px 18px; }
+      .slide[data-title="Knowledge accumulates"] { aspect-ratio: auto; min-height: 0; overflow: visible; }
+      .ontology-image { height: auto; flex: none; }
+      .slide[data-motion="provenance"] { aspect-ratio: auto; height: auto; min-height: 0; overflow: visible; }
+      .slide[data-motion="provenance"] .content { height: auto; }
+      .provenance-step { grid-template-columns: 1fr; gap: 5px; }
+      .provenance-step .value { font-size: 17px; }
+      .provenance-outcome { font-size: 21px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .provenance-step, .provenance-outcome { transition: none; }
+    }
+
+    @media print {
+      body {
+        background: white;
+        overflow: visible;
+      }
+      .deck {
+        display: block;
+        width: auto;
+        height: auto;
+        padding: 0;
+      }
+      .slide {
+        display: block !important;
+        width: 100vw;
+        height: 56.25vw;
+        max-height: 100vh;
+        page-break-after: always;
+        border-radius: 0;
+      }
+      .controls { display: none; }
+      .provenance-replay { display: none; }
+      .provenance-step, .provenance-outcome { opacity: 1 !important; transform: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <main class="deck" aria-live="polite">
+    <section class="slide active" data-title="Decision-led opening">
+      <div class="content">
+        <div class="kicker">RelationalAI</div>
+        <h1>Which towers should we upgrade, and why?</h1>
+        <p class="subhead">The telco demo starts with the business decision: given everything we know about the network, and a fixed budget, choose the best upgrade plan.</p>
+        <div class="rule"></div>
+        <div class="grid-3">
+          <div class="card">
+            <span class="tag blue">Enterprise data</span>
+            <p>Towers, equipment, telemetry, performance, subscribers, calls, upgrade options, and advisories.</p>
+          </div>
+          <div class="card">
+            <span class="tag teal">Business logic</span>
+            <p>Relationships, policies, risk rules, customer impact, and operational constraints.</p>
+          </div>
+          <div class="card">
+            <span class="tag amber">Decision</span>
+            <p>A feasible upgrade plan with cost, capacity restored, and rationale for each selected tower.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" data-title="Marketplace frame">
+      <div class="content">
+        <div class="kicker">Marketplace Frame</div>
+        <h2>Snowflake gives agents access to the enterprise. RelationalAI gives them an executable model of how it works.</h2>
+        <div class="flow">
+          <div class="card flow-card"><span class="tag blue">Snowflake</span><h3>Enterprise data</h3><p>Governed operational tables and semantic context.</p></div>
+          <div class="arrow">→</div>
+          <div class="card flow-card"><span class="tag teal">RelationalAI</span><h3>Ontology</h3><p>Entities, relationships, rules, and reasoning.</p></div>
+          <div class="arrow">→</div>
+          <div class="card flow-card"><span class="tag amber">Reasoning</span><h3>Decision</h3><p>Optimization, prediction, graph impact, and rules.</p></div>
+          <div class="arrow">→</div>
+          <div class="card flow-card"><span class="tag green">CoWork / agent</span><h3>Consumer</h3><p>Asks questions over governed executable logic.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide ontology-slide" data-title="Ontology as connective tissue">
+      <div class="content">
+        <div class="kicker">Ontology</div>
+        <h2>One ontology connects the network.</h2>
+        <img class="ontology-image" src="marketplace_telco_ontology.png" alt="RelationalAI ontology visualization connecting cell towers, network equipment, health, performance, subscribers, calls, advisories, and upgrade options">
+      </div>
+    </section>
+
+    <section class="slide" data-title="Question vs metric">
+      <div class="content">
+        <div class="kicker">Outcome Led</div>
+        <h2>The strongest spine is the decision, not the feature tour.</h2>
+        <div class="metric-vs-decision">
+          <div class="card">
+            <span class="tag blue">Metric question</span>
+            <h3>Show me degraded towers.</h3>
+            <p>A dashboard can expose part of the picture: status, utilization, dropped calls, and repair history.</p>
+          </div>
+          <div class="card decision-card">
+            <span class="tag amber">Decision question</span>
+            <h3>Which towers should we upgrade within the 5 million dollar budget?</h3>
+            <ul>
+              <li>Which towers are degraded or likely to fail?</li>
+              <li>Which customers and calls are affected?</li>
+              <li>Which upgrades restore the most capacity per dollar?</li>
+              <li>Which plan fits budget and crew constraints?</li>
+            </ul>
+          </div>
+        </div>
+        <div class="question">
+          <p>Payoff: a feasible upgrade plan with an explanation, not just a ranked report.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" data-title="Reasoning over one ontology">
+      <div class="content">
+        <div class="kicker">Reasoning</div>
+        <h2>Multiple reasoning patterns operate over the same ontology.</h2>
+        <div class="reasoning-grid">
+          <div class="card">
+            <span class="tag rose">Prediction</span>
+            <h3>Failure risk</h3>
+            <p>Estimate risk from health signals, tower context, and advisories.</p>
+          </div>
+          <div class="card">
+            <span class="tag teal">Rules</span>
+            <h3>Operational criticality</h3>
+            <p>Identify towers and equipment requiring attention under business policy.</p>
+          </div>
+          <div class="card">
+            <span class="tag blue">Graph</span>
+            <h3>Customer impact</h3>
+            <p>Measure affected subscribers by connecting calls, towers, and value at risk.</p>
+          </div>
+          <div class="card">
+            <span class="tag amber">Optimization</span>
+            <h3>Upgrade plan</h3>
+            <p>Choose the best set of upgrades under budget and installation limits.</p>
+          </div>
+        </div>
+        <div class="callout">
+          <p>The point is not four separate features. The point is one executable model supporting one decision.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" data-title="Knowledge accumulates">
+      <div class="content">
+        <div class="kicker">Compounding Knowledge</div>
+        <h2>Build for one decision. Keep every answer.</h2>
+        <p class="subhead">The $5M upgrade decision required us to add knowledge to one executable ontology. That work is additive: the same model can answer the questions behind the plan, and new ones.</p>
+        <div class="knowledge-layout">
+          <div>
+            <h3>What we added</h3>
+            <div class="knowledge-step"><span class="index">01</span><div><strong>Connected data</strong><p>Towers, equipment, health, calls, subscribers, and upgrade options.</p></div></div>
+            <div class="knowledge-step"><span class="index">02</span><div><strong>Business meaning</strong><p>Relationships, operational policies, and eligibility rules.</p></div></div>
+            <div class="knowledge-step"><span class="index">03</span><div><strong>Reasoned signals</strong><p>Failure scores, network influence, and customer impact.</p></div></div>
+            <div class="knowledge-step"><span class="index">04</span><div><strong>A feasible decision</strong><p>Upgrade choices under budget and installation limits.</p></div></div>
+          </div>
+          <div>
+            <h3>What else we can ask</h3>
+            <ul class="question-list">
+              <li><span class="reasoner">Prediction</span><span>Which equipment has the highest failure score?</span></li>
+              <li><span class="reasoner">Rules</span><span>Which towers are operationally critical?</span></li>
+              <li><span class="reasoner">Graph</span><span>Which towers matter most to customer traffic?</span></li>
+              <li><span class="reasoner">Advisories</span><span>Which recalled equipment sits on incident towers?</span></li>
+              <li><span class="reasoner">What-if</span><span>How does the plan change with a $4M budget?</span></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" data-title="Answer provenance" data-motion="provenance">
+      <div class="content">
+        <div class="kicker">Answer Provenance</div>
+        <div class="provenance-heading"><h2>Follow the answer back to the ontology.</h2><button class="provenance-replay" type="button" data-provenance-replay aria-label="Replay answer provenance" title="Replay answer provenance">&#8635;</button></div>
+        <div class="provenance-trace">
+          <div class="provenance-step" style="--tone:var(--green);--shade:var(--soft-green)"><span class="label">CoWork question</span><span class="value">Within $5M, which towers and upgrade tiers should we choose, and why?</span></div>
+          <div class="provenance-step" style="--tone:var(--blue);--shade:var(--soft-blue)"><span class="label">Curated query</span><span class="value"><code>upgrade_plan_with_rationale</code> returns selected tiers with stored risk, impact, and plan totals.</span></div>
+          <div class="provenance-step" style="--tone:var(--amber);--shade:var(--soft-amber)"><span class="label">Stored results</span><span class="value"><code>SELECTED_UPGRADES</code> + <code>RESTORE_PLAN</code> preserve tiers, cost, capacity, and solver status.</span></div>
+          <div class="provenance-step" style="--tone:var(--teal);--shade:var(--soft-teal)"><span class="label">Ontology connections</span><span class="value">CellTower to equipment and health; calls to subscribers; towers to upgrade options.</span></div>
+        </div>
+        <div class="provenance-outcome">27 towers &nbsp; / &nbsp; $4,985,789 &nbsp; / &nbsp; 183 Gbps restored</div>
+      </div>
+    </section>
+
+    <section class="slide" data-title="Payoff and close">
+      <div class="content">
+        <div class="kicker">Payoff</div>
+        <h2>The result is a defensible upgrade decision.</h2>
+        <div class="result-grid">
+          <div class="card">
+            <span class="tag amber">Upgrade plan</span>
+            <div class="plan">
+              <div class="plan-item"><strong>Selected towers</strong><p>Chosen under budget and crew limits.</p></div>
+              <div class="plan-item"><strong>Total cost</strong><p>Within the 5 million dollar capex envelope.</p></div>
+              <div class="plan-item"><strong>Capacity restored</strong><p>Expected recovery from selected upgrades.</p></div>
+              <div class="plan-item"><strong>Rationale</strong><p>Risk, impact, and operating policy.</p></div>
+            </div>
+          </div>
+          <div class="card decision-card">
+            <span class="tag green">Agent close</span>
+            <h3>Agents consume the ontology.</h3>
+            <p>CoWork and Snowflake agents stay grounded because they call governed executable business logic, not just generated analysis plans.</p>
+            <p style="margin-top: 12px;">Semantic views govern metrics. RelationalAI governs executable business logic.</p>
+          </div>
+        </div>
+        <div class="callout">
+          <p>Snowflake gives agents access to enterprise data. RelationalAI gives them an executable model of the enterprise.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div class="controls" aria-label="Slide controls">
+    <button type="button" id="prev" aria-label="Previous slide">‹</button>
+    <button type="button" id="next" aria-label="Next slide">›</button>
+  </div>
+
+  <script>
+    const slides = [...document.querySelectorAll(".slide")];
+    let index = 0;
+    let motionTimers = [];
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+
+    function runProvenance(slide) {
+      motionTimers.forEach(window.clearTimeout);
+      motionTimers = [];
+      const steps = [...slide.querySelectorAll('.provenance-step')];
+      const outcome = slide.querySelector('.provenance-outcome');
+      steps.forEach(step => step.classList.remove('is-shown'));
+      outcome.classList.remove('is-shown');
+      if (reducedMotion.matches) {
+        steps.forEach(step => step.classList.add('is-shown'));
+        outcome.classList.add('is-shown');
+        return;
+      }
+      steps.forEach((step, i) => motionTimers.push(window.setTimeout(() => step.classList.add('is-shown'), 350 + i * 950)));
+      motionTimers.push(window.setTimeout(() => outcome.classList.add('is-shown'), 4450));
+    }
+
+    function showSlide(nextIndex) {
+      motionTimers.forEach(window.clearTimeout);
+      motionTimers = [];
+      index = Math.max(0, Math.min(slides.length - 1, nextIndex));
+      slides.forEach((slide, i) => slide.classList.toggle("active", i === index));
+      document.title = `${slides[index].dataset.title} | RelationalAI`;
+      if (slides[index].dataset.motion === 'provenance') runProvenance(slides[index]);
+    }
+
+    const requestedSlide = Number(new URLSearchParams(location.search).get("slide"));
+    if (Number.isInteger(requestedSlide) && requestedSlide >= 1 && requestedSlide <= slides.length) {
+      showSlide(requestedSlide - 1);
+    }
+
+    document.getElementById("prev").addEventListener("click", () => showSlide(index - 1));
+    document.getElementById("next").addEventListener("click", () => showSlide(index + 1));
+    document.querySelector('[data-provenance-replay]').addEventListener('click', () => runProvenance(slides[index]));
+
+    window.addEventListener("keydown", (event) => {
+      if (event.key === "ArrowRight" || event.key === "PageDown" || event.key === " ") {
+        event.preventDefault();
+        showSlide(index + 1);
+      }
+      if (event.key === "ArrowLeft" || event.key === "PageUp") {
+        event.preventDefault();
+        showSlide(index - 1);
+      }
+      if (event.key === "Home") showSlide(0);
+      if (event.key === "End") showSlide(slides.length - 1);
+    });
+  </script>
+</body>
+</html>

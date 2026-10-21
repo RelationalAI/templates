@@ -1,0 +1,757 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Snowflake Agent Comparison Follow-On</title>
+  <style>
+    :root {
+      --ink: #17212b;
+      --muted: #586472;
+      --paper: #f7f5ef;
+      --panel: #ffffff;
+      --line: #d8d2c4;
+      --teal: #0f766e;
+      --blue: #2854a3;
+      --amber: #b86b16;
+      --rose: #9d3b53;
+      --green: #27734b;
+      --soft-teal: #e4f2ef;
+      --soft-blue: #e7eefb;
+      --soft-amber: #f7ead4;
+      --soft-rose: #f3e2e7;
+      --soft-green: #e3f0e8;
+      --radius: 8px;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: #101820;
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      overflow: hidden;
+    }
+
+    .deck {
+      width: 100vw;
+      height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+    }
+
+    .slide {
+      display: none;
+      width: min(1280px, calc(100vw - 48px));
+      height: min(720px, calc(100vh - 48px));
+      aspect-ratio: 16 / 9;
+      background: var(--paper);
+      border-radius: var(--radius);
+      position: relative;
+      overflow: hidden;
+      padding: 46px 58px 44px;
+    }
+
+    .slide.active { display: block; }
+
+    .slide::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background:
+        linear-gradient(90deg, rgba(15, 118, 110, 0.08), transparent 34%),
+        linear-gradient(180deg, rgba(184, 107, 22, 0.08), transparent 36%);
+    }
+
+    .content {
+      position: relative;
+      z-index: 1;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .kicker {
+      color: var(--teal);
+      font-size: 13px;
+      line-height: 1;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0;
+      margin-bottom: 14px;
+    }
+
+    h1, h2, h3, p { margin: 0; letter-spacing: 0; }
+
+    h1 {
+      max-width: 1000px;
+      font-size: 60px;
+      line-height: 0.98;
+    }
+
+    h2 {
+      max-width: 980px;
+      font-size: 40px;
+      line-height: 1.04;
+    }
+
+    h3 {
+      font-size: 19px;
+      line-height: 1.16;
+      color: var(--ink);
+      margin-bottom: 8px;
+    }
+
+    p {
+      color: var(--muted);
+      font-size: 18px;
+      line-height: 1.36;
+    }
+
+    .subhead {
+      margin-top: 20px;
+      max-width: 860px;
+      font-size: 23px;
+      line-height: 1.34;
+      color: #3e4a57;
+    }
+
+    .footer {
+      position: absolute;
+      left: 58px;
+      right: 58px;
+      bottom: 22px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      color: #7d8792;
+      font-size: 12px;
+      z-index: 2;
+    }
+
+    .rule {
+      width: 84px;
+      height: 4px;
+      background: var(--amber);
+      border-radius: 2px;
+      margin: 28px 0;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      margin-top: 28px;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 18px;
+      margin-top: 24px;
+    }
+
+    .two-col {
+      display: grid;
+      grid-template-columns: 0.94fr 1.06fr;
+      gap: 28px;
+      align-items: start;
+      flex: 1;
+      min-height: 0;
+    }
+
+    .three-col {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+      margin-top: 22px;
+      flex: 1;
+      min-height: 0;
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 18px;
+      min-height: 112px;
+      overflow: hidden;
+    }
+
+    .card p, .card li {
+      font-size: 15px;
+      line-height: 1.34;
+      color: #4f5b68;
+    }
+
+    .card.small { min-height: 92px; padding: 16px; }
+    .card.tight { padding: 14px; }
+
+    .tag {
+      display: inline-block;
+      border-radius: 999px;
+      padding: 5px 10px;
+      font-size: 12px;
+      line-height: 1;
+      font-weight: 800;
+      margin-bottom: 10px;
+    }
+
+    .tag.blue { color: var(--blue); background: var(--soft-blue); }
+    .tag.teal { color: var(--teal); background: var(--soft-teal); }
+    .tag.amber { color: var(--amber); background: var(--soft-amber); }
+    .tag.rose { color: var(--rose); background: var(--soft-rose); }
+    .tag.green { color: var(--green); background: var(--soft-green); }
+
+    .question {
+      margin-top: 26px;
+      background: white;
+      border: 2px solid #d0c6b4;
+      border-radius: var(--radius);
+      padding: 20px 22px;
+      max-width: 980px;
+    }
+
+    .question p {
+      color: var(--ink);
+      font-size: 24px;
+      line-height: 1.3;
+      font-weight: 700;
+    }
+
+    .answer-box {
+      background: white;
+      border: 1px solid var(--line);
+      border-left: 5px solid var(--teal);
+      border-radius: var(--radius);
+      padding: 17px 18px;
+      margin-top: 18px;
+    }
+
+    .answer-box p {
+      font-size: 16px;
+      line-height: 1.38;
+      color: #3d4956;
+    }
+
+    .metric-row {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      margin-top: 20px;
+    }
+
+    .metric {
+      background: white;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 14px;
+      min-height: 86px;
+    }
+
+    .metric strong {
+      display: block;
+      color: var(--ink);
+      font-size: 28px;
+      line-height: 1.05;
+      margin-bottom: 8px;
+    }
+
+    .metric span {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.2;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: white;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      overflow: hidden;
+      table-layout: fixed;
+      font-size: 13px;
+      line-height: 1.2;
+    }
+
+    th, td {
+      padding: 9px 10px;
+      border-bottom: 1px solid #e7e0d2;
+      text-align: left;
+      vertical-align: top;
+      overflow-wrap: anywhere;
+    }
+
+    th {
+      color: var(--ink);
+      background: #fbfaf6;
+      font-weight: 800;
+    }
+
+    tr:last-child td { border-bottom: 0; }
+
+    .num { text-align: right; font-variant-numeric: tabular-nums; }
+
+    .compare-table th:nth-child(1),
+    .compare-table td:nth-child(1) { width: 23%; }
+
+    .compare-table th:nth-child(2),
+    .compare-table td:nth-child(2),
+    .compare-table th:nth-child(3),
+    .compare-table td:nth-child(3),
+    .compare-table th:nth-child(4),
+    .compare-table td:nth-child(4) { width: 25.66%; }
+
+    .score-table {
+      font-size: 12px;
+      line-height: 1.15;
+      margin-top: 20px;
+    }
+
+    .score-table th, .score-table td { padding: 8px 9px; }
+    .score-table th:nth-child(1), .score-table td:nth-child(1) { width: 21%; }
+    .score-table th:nth-child(2), .score-table td:nth-child(2) { width: 15%; }
+    .score-table th:nth-child(3), .score-table td:nth-child(3) { width: 9%; }
+    .score-table th:nth-child(4), .score-table td:nth-child(4) { width: 11%; }
+    .score-table th:nth-child(5), .score-table td:nth-child(5) { width: 10%; }
+    .score-table th:nth-child(6), .score-table td:nth-child(6) { width: 12%; }
+    .score-table th:nth-child(7), .score-table td:nth-child(7) { width: 12%; }
+    .score-table th:nth-child(8), .score-table td:nth-child(8) { width: 10%; }
+
+    .wide-table {
+      font-size: 12px;
+      line-height: 1.14;
+      margin-top: 18px;
+    }
+
+    .wide-table th, .wide-table td { padding: 7px 8px; }
+
+    .evidence-grid {
+      display: grid;
+      grid-template-columns: 0.92fr 1.08fr;
+      gap: 18px;
+      margin-top: 22px;
+      align-items: start;
+    }
+
+    .mini-list {
+      background: white;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 15px 16px;
+    }
+
+    .mini-list h3 { margin-bottom: 10px; }
+    .mini-list p {
+      font-size: 15px;
+      line-height: 1.34;
+      margin-bottom: 10px;
+    }
+
+    .mini-list code {
+      display: block;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      font-size: 13px;
+      color: #27313c;
+      background: #fbfaf6;
+      border: 1px solid #e4dccd;
+      border-radius: 6px;
+      padding: 8px;
+      white-space: normal;
+      overflow-wrap: anywhere;
+    }
+
+    .quote {
+      margin-top: 18px;
+      background: white;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 18px;
+      max-width: 1040px;
+    }
+
+    .quote p {
+      font-size: 17px;
+      color: #3f4a56;
+      line-height: 1.38;
+    }
+
+    .callout {
+      margin-top: 18px;
+      background: var(--soft-green);
+      border: 1px solid #bad9c6;
+      border-radius: var(--radius);
+      padding: 16px 18px;
+    }
+
+    .callout p {
+      font-size: 17px;
+      color: #234332;
+      line-height: 1.35;
+      font-weight: 650;
+    }
+
+    .flow {
+      display: grid;
+      grid-template-columns: 1fr 36px 1fr 36px 1fr;
+      align-items: center;
+      gap: 10px;
+      margin-top: 30px;
+    }
+
+    .flow .node {
+      background: white;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      min-height: 112px;
+      padding: 18px;
+    }
+
+    .arrow {
+      color: var(--amber);
+      font-weight: 900;
+      font-size: 24px;
+      text-align: center;
+    }
+
+    ul {
+      margin: 0;
+      padding-left: 20px;
+    }
+
+    li { margin: 6px 0; }
+
+    .compact-table table { font-size: 12px; }
+    .compact-table th, .compact-table td { padding: 8px 9px; }
+
+    .path {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      font-size: 12px;
+      line-height: 1.3;
+      color: #27313c;
+      background: #fbfaf6;
+      border: 1px solid #e4dccd;
+      border-radius: 6px;
+      padding: 8px;
+      overflow-wrap: anywhere;
+    }
+
+    @media print {
+      @page {
+        size: 13.333in 7.5in;
+        margin: 0;
+      }
+
+      body { background: white; overflow: visible; }
+      .deck { display: block; padding: 0; width: auto; height: auto; }
+      .slide {
+        display: block !important;
+        width: 13.333in;
+        height: 7.5in;
+        margin: 0;
+        border-radius: 0;
+        page-break-after: always;
+      }
+      .slide:last-child { page-break-after: auto; }
+    }
+  </style>
+</head>
+<body>
+  <main class="deck">
+    <section class="slide active">
+      <div class="content">
+        <div class="kicker">Follow-on demo</div>
+        <h1>What changes when CoWork adds semantic views and RelationalAI?</h1>
+        <p class="subhead">Same telco recovery question. Three paths tested: CoWork, CoWork with source-only semantic views, and CoWork with semantic views plus a RelationalAI-backed Cortex agent.</p>
+        <div class="flow">
+          <div class="node"><span class="tag blue">1</span><h3>CoWork</h3><p>Useful analysis plan from natural language.</p></div>
+          <div class="arrow">-&gt;</div>
+          <div class="node"><span class="tag amber">2</span><h3>CoWork + semantic views</h3><p>Governed source-only metrics.</p></div>
+          <div class="arrow">-&gt;</div>
+          <div class="node"><span class="tag teal">3</span><h3>CoWork + semantic views + RelationalAI</h3><p>Exact computed answer with reasoner provenance.</p></div>
+        </div>
+      </div>
+      <div class="footer"><span>RelationalAI marketplace follow-on</span><span>1 / 11</span></div>
+    </section>
+
+    <section class="slide">
+      <div class="content">
+        <div class="kicker">The test</div>
+        <h2>Use one decision-heavy business question</h2>
+        <div class="question"><p>Which towers should we upgrade, why those towers, and what constraint limits the plan?</p></div>
+        <div class="grid-3">
+          <div class="card"><span class="tag rose">Not just SQL</span><h3>It needs a decision</h3><p>The user is not asking for a table scan. They want an upgrade plan under budget and install-week constraints.</p></div>
+          <div class="card"><span class="tag blue">Not just text</span><h3>It needs computed outputs</h3><p>Risk, impact, call paths, upgrade tiers, and objective tradeoffs have to exist somewhere.</p></div>
+          <div class="card"><span class="tag green">Not just a demo</span><h3>It needs provenance</h3><p>Customers need to inspect the answer and change the logic when business policy changes.</p></div>
+        </div>
+      </div>
+      <div class="footer"><span>Umbrella question</span><span>2 / 11</span></div>
+    </section>
+
+    <section class="slide">
+      <div class="content">
+        <div class="kicker">Path 1: CoWork</div>
+        <h2>Actual answer: a 24-tower heuristic plan from raw tables</h2>
+        <div class="two-col">
+          <div>
+            <div class="answer-box">
+              <p>CoWork inspected the raw schema, built a composite 0-100 urgency score, and selected 24 towers under the $5M capex envelope.</p>
+            </div>
+            <div class="callout"><p>It identifies fixed capex as binding: $4,947,688 spent, about $52K remaining, and tower #25 would push the plan over budget.</p></div>
+          </div>
+          <div class="card">
+            <span class="tag blue">Raw-table heuristic</span>
+            <h3>What it used</h3>
+            <ul>
+              <li>Tower health from equipment health scores.</li>
+              <li>Advisory severity from recalls, defects, EOL, and firmware bugs.</li>
+              <li>Subscriber impact from unique subscribers and LTV at risk.</li>
+              <li>Call graph quality and dropped-call exposure.</li>
+              <li>Churn exposure from affected subscribers.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+      <div class="footer"><span>Actual Snowsight CoWork answer over BERTOLANI.TELCO_DEMO_COCO</span><span>3 / 11</span></div>
+    </section>
+
+    <section class="slide">
+      <div class="content">
+        <div class="kicker">Path 2: CoWork + semantic views</div>
+        <h2>Actual answer: a source-only heuristic plan, but not a proven optimum</h2>
+        <div class="metric-row">
+          <div class="metric"><strong>55</strong><span>towers recommended</span></div>
+          <div class="metric"><strong>$4.93M</strong><span>planned spend</span></div>
+          <div class="metric"><strong>541</strong><span>Gbps claimed capacity added</span></div>
+          <div class="metric"><strong>capex</strong><span>binding constraint</span></div>
+        </div>
+        <div class="grid-2 compact-table">
+          <div>
+            <h3>What Snowsight produced from TELCO_SOURCE_NAIVE_SV</h3>
+            <table>
+              <thead><tr><th>Claim</th><th>Value</th></tr></thead>
+              <tbody>
+                <tr><td>Selected towers</td><td>55 of 250</td></tr>
+                <tr><td>Total spend</td><td>$4,929,904</td></tr>
+                <tr><td>Budget remaining</td><td>$70,096</td></tr>
+                <tr><td>Priority method</td><td>Composite 0-1 score across five source signals</td></tr>
+                <tr><td>Limiting constraint</td><td>Fixed capex budget</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div>
+            <h3>Why those towers</h3>
+            <table>
+              <thead><tr><th>Segment</th><th>Explanation</th></tr></thead>
+              <tbody>
+                <tr><td>Top 14</td><td>All DEGRADED, all WEST, with high latency, packet loss, traffic, churn-risk interactions, and recall exposure.</td></tr>
+                <tr><td>Towers 15-55</td><td>ACTIVE or MAINTENANCE towers with heavy advisory exposure and moderate call volume.</td></tr>
+                <tr><td>Deferred 195</td><td>Lower average composite score; generally healthier, fewer advisories, less urgent.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <div class="footer"><span>Actual Snowsight semantic answer; source-only, no RelationalAI result tables</span><span>4 / 11</span></div>
+    </section>
+
+    <section class="slide">
+      <div class="content">
+        <div class="kicker">The key difference</div>
+        <h2>Semantic views describe known business measures. RelationalAI adds executable business logic.</h2>
+        <div class="grid-3">
+          <div class="card">
+            <span class="tag amber">Semantic view</span>
+            <h3>What it does well</h3>
+            <p>Defines business names, dimensions, facts, metrics, and verified SQL patterns so a Snowflake agent can ask cleaner analytical questions.</p>
+          </div>
+          <div class="card">
+            <span class="tag rose">Boundary</span>
+            <h3>What it does not do</h3>
+            <p>It can rank observed metrics, but it does not train a failure model, run graph impact, enumerate paths, or solve the constrained upgrade plan.</p>
+          </div>
+          <div class="card">
+            <span class="tag teal">RelationalAI</span>
+            <h3>What it adds</h3>
+            <p>It creates those outputs from a durable model: rules, relationships, graph algorithms, prediction, path reasoning, and optimization.</p>
+          </div>
+        </div>
+        <div class="callout"><p>In the source-only test, the semantic view gives a credible budget-constrained heuristic plan. It still does not prove optimality against predicted failure risk, graph-derived customer impact, and tier tradeoffs.</p></div>
+      </div>
+      <div class="footer"><span>Presentation layer versus reasoning layer</span><span>5 / 11</span></div>
+    </section>
+
+    <section class="slide">
+      <div class="content">
+        <div class="kicker">Path 3: CoWork + semantic views + RelationalAI</div>
+        <h2>Actual answer: the computed recovery plan</h2>
+        <div class="metric-row">
+          <div class="metric"><strong>OPTIMAL</strong><span>solver status</span></div>
+          <div class="metric"><strong>$4.99M</strong><span>total cost</span></div>
+          <div class="metric"><strong>183</strong><span>Gbps restored</span></div>
+          <div class="metric"><strong>budget</strong><span>binding constraint</span></div>
+        </div>
+        <div class="grid-2">
+          <div class="card">
+            <span class="tag teal">RAI_QUERY_MODEL</span>
+            <h3>plan_summary</h3>
+            <table>
+              <tbody>
+                <tr><td>Plan ID</td><td>TELCO_RECOVERY_STANDALONE</td></tr>
+                <tr><td>Towers covered</td><td>27</td></tr>
+                <tr><td>Install weeks</td><td>167</td></tr>
+                <tr><td>Tier mix</td><td>Gold 8, Silver 8, Bronze 11</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="card">
+            <span class="tag green">Why this matters</span>
+            <h3>The answer is no longer a plan to build analysis</h3>
+            <p>It is a deployed reasoning result. The agent tool returns the optimized plan and can point to the catalog query and physical result tables behind it.</p>
+          </div>
+        </div>
+      </div>
+      <div class="footer"><span>BERTOLANI.TELCO_NETWORK_RECOVERY_AGENT.TELCO_NETWORK_RECOVERY_AGENT</span><span>6 / 11</span></div>
+    </section>
+
+    <section class="slide">
+      <div class="content">
+        <div class="kicker">Reasoner coverage</div>
+        <h2>The RAI answer carries the reasoner chain with it</h2>
+        <div class="three-col">
+          <div class="card tight">
+            <span class="tag rose">Prediction</span>
+            <h3>Equipment failure</h3>
+            <p>Top predicted risk: EQP-00361 at 99.230% failure probability.</p>
+          </div>
+          <div class="card tight">
+            <span class="tag blue">Graph</span>
+            <h3>Customer impact</h3>
+            <p>Tower impact includes active subscribers, weighted impact, and PageRank-weighted influence.</p>
+          </div>
+          <div class="card tight">
+            <span class="tag amber">Path</span>
+            <h3>Influential route</h3>
+            <p class="path">SUB-CON-00900 -&gt; SUB-CON-00814 -&gt; SUB-ENT-0038 -&gt; SUB-CON-00644</p>
+          </div>
+          <div class="card tight">
+            <span class="tag teal">Optimization</span>
+            <h3>Upgrade plan</h3>
+            <p>27 selected towers, $4,985,789 spend, 183 Gbps restored.</p>
+          </div>
+          <div class="card tight">
+            <span class="tag green">Rules</span>
+            <h3>Business logic</h3>
+            <p>Rules and curated tools define what counts as risk, impact, and recovery priority.</p>
+          </div>
+          <div class="card tight">
+            <span class="tag blue">Provenance</span>
+            <h3>Inspectable outputs</h3>
+            <p>Catalog tools read named tables: RESTORE_PLAN, SELECTED_UPGRADES, TOWER_FAILURE_SCORE, TOWER_CUSTOMER_IMPACT, TOP_CALL_PATH.</p>
+          </div>
+        </div>
+      </div>
+      <div class="footer"><span>Same Snowflake UX, deeper reasoning behind the answer</span><span>7 / 11</span></div>
+    </section>
+
+    <section class="slide">
+      <div class="content">
+        <div class="kicker">Side-by-side</div>
+        <h2>Actual difference in answer quality</h2>
+        <table class="compare-table">
+          <thead>
+            <tr><th>Need</th><th>CoWork</th><th>CoWork + semantic views</th><th>CoWork + semantic views + RelationalAI</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Answer type</td><td>Raw-table heuristic plan.</td><td>Source-only semantic heuristic plan.</td><td>Computed decision result from catalog tools.</td></tr>
+            <tr><td>Exact plan</td><td>Returns 24 towers for $4.95M.</td><td>Returns a 55-tower source-metric heuristic plan for $4.93M.</td><td>Creates and returns the optimal plan: $4.99M, 27 towers, 183 Gbps.</td></tr>
+            <tr><td>Why those towers</td><td>Composite urgency score from health, advisories, subscriber impact, call quality, and churn.</td><td>Composite score across health, advisories, performance, subscriber impact, and cost efficiency.</td><td>Combines prediction, graph impact, path reasoning, rules, and optimization.</td></tr>
+            <tr><td>Constraint</td><td>Identifies fixed capex as limiting, with ~$52K remaining.</td><td>Identifies fixed capex as limiting, with ~$70K remaining.</td><td>Solves under constraints and returns binding constraint: budget.</td></tr>
+            <tr><td>Correction path</td><td>Change prompt, SQL, or generated code.</td><td>Change dimensions, metrics, descriptions, or verified queries.</td><td>Change model logic, relationships, objective, constraints, or curated tools, then redeploy.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="footer"><span>Good partner story: Snowflake native experience plus RAI reasoning depth</span><span>8 / 11</span></div>
+    </section>
+
+    <section class="slide">
+      <div class="content">
+        <div class="kicker">RAI as evaluator</div>
+        <h2>RelationalAI can score candidate plans, not just produce its own.</h2>
+        <table class="score-table">
+          <thead>
+            <tr><th>Plan</th><th>Status</th><th class="num">Towers</th><th class="num">Cost</th><th class="num">Weeks</th><th class="num">Capacity</th><th>Tier mix</th><th>RAI scoring</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Actual Snowsight CoWork answer</td><td>Credible heuristic; row-level scoring pending</td><td class="num">24</td><td class="num">$4.95M</td><td class="num">Not reported</td><td class="num">Not reported</td><td>Implied Silver-tier pricing</td><td>Needs selected tower/tier rows</td></tr>
+            <tr><td>Actual Snowsight semantic answer</td><td>Credible heuristic; row-level scoring pending</td><td class="num">55</td><td class="num">$4.93M</td><td class="num">Not reported</td><td class="num">541 Gbps claimed</td><td>Not captured</td><td>Needs selected tower/tier rows</td></tr>
+            <tr><td>CoWork + semantic views + RelationalAI</td><td>Optimal</td><td class="num">27</td><td class="num">$4.99M</td><td class="num">167</td><td class="num">183 Gbps</td><td>8 Gold, 8 Silver, 11 Bronze</td><td>100% benchmark</td></tr>
+          </tbody>
+        </table>
+        <div class="callout"><p>RAI evaluates candidate plans against the governed objective: restored capacity multiplied by predicted failure risk and graph-derived customer impact, under the $5M budget and 200 install-week envelope.</p></div>
+      </div>
+      <div class="footer"><span>BERTOLANI.TELCO_PLAN_EVALUATION.PLAN_SCORECARD</span><span>9 / 11</span></div>
+    </section>
+
+    <section class="slide">
+      <div class="content">
+        <div class="kicker">Why the heuristics lose</div>
+        <h2>The semantic answer is useful, but RAI can still explain what it does not prove.</h2>
+        <div class="evidence-grid">
+          <div class="mini-list">
+            <span class="tag rose">Suboptimality</span>
+            <h3>What RAI explains</h3>
+            <p>The CoWork and semantic answers rank source-observable signals and identify the capex constraint. To score either one exactly, RAI needs the returned tower/tier rows as candidate plans.</p>
+            <code>BERTOLANI.TELCO_PLAN_EVALUATION.PLAN_EXPLANATIONS</code>
+          </div>
+          <div>
+            <table class="wide-table">
+              <thead><tr><th>Question</th><th>Semantic answer</th><th>RAI-added check</th></tr></thead>
+              <tbody>
+                <tr><td>Is it budget aware?</td><td>Yes. CoWork finds $4.95M; semantic finds $4.93M. Both identify capex as binding.</td><td>Verify hard constraints against row-level selections.</td></tr>
+                <tr><td>Is it optimal?</td><td>Not proven. It uses a composite heuristic score.</td><td>Compare to the prescriptive optimum and quantify the objective gap.</td></tr>
+                <tr><td>Is it explainable?</td><td>Yes for source metrics and advisories.</td><td>Add prediction, graph impact, paths, tier tradeoffs, and provenance.</td></tr>
+              </tbody>
+            </table>
+            <div class="callout"><p>This is the added benefit: Snowflake can generate and govern candidate analysis; RelationalAI can judge it, explain the gap, and persist the corrected business logic.</p></div>
+          </div>
+        </div>
+      </div>
+      <div class="footer"><span>BERTOLANI.TELCO_PLAN_EVALUATION.MISSED_RAI_TOWERS</span><span>10 / 11</span></div>
+    </section>
+
+    <section class="slide">
+      <div class="content">
+        <div class="kicker">Closing frame</div>
+        <h2>Be explicit: Snowflake is the platform, RelationalAI adds decision reasoning</h2>
+        <div class="grid-3">
+          <div class="card"><span class="tag blue">Snowflake</span><h3>Governed AI data platform</h3><p>Data, permissions, Cortex, agents, semantic views, and the Snowsight experience.</p></div>
+          <div class="card"><span class="tag teal">RelationalAI</span><h3>Reasoning layer</h3><p>Ontology, rules, graph, paths, prediction, optimization, provenance, and durable correction.</p></div>
+          <div class="card"><span class="tag green">Customer gain</span><h3>More complete answers</h3><p>Not just "how would I analyze this?" but "here is the computed decision, why it won, and where to change it."</p></div>
+        </div>
+        <div class="quote"><p>"We are not replacing the Snowflake agent experience. We are extending what that agent can accurately answer when the question requires connected business reasoning."</p></div>
+      </div>
+      <div class="footer"><span>Follow-on video close</span><span>11 / 11</span></div>
+    </section>
+  </main>
+
+  <script>
+    const slides = [...document.querySelectorAll(".slide")];
+    const requested = Number.parseInt(location.hash.replace("#", ""), 10);
+    let index = Number.isFinite(requested) ? Math.max(0, Math.min(slides.length - 1, requested - 1)) : 0;
+    function show(i) {
+      index = (i + slides.length) % slides.length;
+      slides.forEach((slide, n) => slide.classList.toggle("active", n === index));
+    }
+    show(index);
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "ArrowRight" || event.key === "PageDown" || event.key === " ") show(index + 1);
+      if (event.key === "ArrowLeft" || event.key === "PageUp") show(index - 1);
+    });
+  </script>
+</body>
+</html>

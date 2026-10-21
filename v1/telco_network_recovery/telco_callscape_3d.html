@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Telco Callscape | RelationalAI</title>
+  <style>
+    :root {
+      --bg: #10232a;
+      --ink: #f4f9f7;
+      --muted: #b8cbd0;
+      --teal: #59dbcd;
+      --coral: #ff8269;
+      --gold: #f3c679;
+      --green: #85caa3;
+      --glass: rgba(10, 28, 34, .78);
+      --line: rgba(191, 231, 222, .22);
+    }
+    * { box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+    body { background: var(--bg); color: var(--ink); font-family: "Plus Jakarta Sans", "Avenir Next", Arial, sans-serif; letter-spacing: 0; }
+    button, input { font: inherit; }
+    button { cursor: pointer; }
+    #stage { position: absolute; inset: 0; touch-action: none; }
+    #stage canvas { display: block; width: 100%; height: 100%; }
+    .vignette { position: absolute; inset: 0; pointer-events: none; background: linear-gradient(90deg, rgba(6, 23, 29, .74) 0%, rgba(6, 23, 29, .32) 29%, transparent 62%), linear-gradient(0deg, rgba(6, 23, 29, .6), transparent 24%); }
+    .hud { position: absolute; inset: 0; z-index: 3; pointer-events: none; padding: 40px 48px 32px; display: flex; flex-direction: column; }
+    .hud button, .hud input, .hud label { pointer-events: auto; }
+    .masthead { display: flex; justify-content: space-between; align-items: flex-start; gap: 28px; }
+    .story { width: min(550px, 51%); }
+    .eyebrow { margin: 0 0 11px; color: var(--teal); font-size: 13px; line-height: 1.2; font-weight: 800; text-transform: uppercase; }
+    h1 { margin: 0; max-width: 540px; font-size: 46px; line-height: 1.02; font-weight: 800; }
+    .deckline { max-width: 480px; margin: 14px 0 0; color: #d8e6e5; font-size: 18px; line-height: 1.36; }
+    .upper-tools { display: flex; flex-direction: column; align-items: flex-end; gap: 14px; min-width: 310px; }
+    .metrics { display: flex; gap: 22px; border-top: 1px solid var(--line); padding-top: 10px; }
+    .metric { min-width: 74px; }
+    .metric strong { display: block; font-size: 23px; line-height: 1.15; }
+    .metric span { display: block; margin-top: 3px; color: var(--muted); font-size: 11px; font-weight: 700; text-transform: uppercase; }
+    .toolbar { display: flex; align-items: center; gap: 10px; }
+    .segment { display: flex; border: 1px solid rgba(176, 225, 217, .42); background: var(--glass); padding: 3px; border-radius: 5px; }
+    .segment button { min-width: 75px; border: 0; border-radius: 3px; padding: 8px 10px; color: #c7d8d8; background: transparent; font-size: 13px; font-weight: 800; }
+    .segment button[aria-pressed="true"] { background: var(--teal); color: #11292d; }
+    .command { border: 1px solid rgba(176, 225, 217, .42); border-radius: 5px; padding: 9px 12px; background: var(--glass); color: var(--ink); font-size: 13px; font-weight: 800; }
+    .command:hover, .segment button:not([aria-pressed="true"]):hover { background: rgba(85, 219, 205, .18); }
+    button:focus-visible, input:focus-visible { outline: 3px solid var(--gold); outline-offset: 3px; }
+    .spacer { flex: 1; }
+    .bottom { display: flex; align-items: flex-end; justify-content: space-between; gap: 30px; }
+    .focus { width: 315px; min-height: 132px; padding: 18px 19px; background: var(--glass); border-left: 4px solid var(--teal); backdrop-filter: blur(12px); }
+    .focus .label { color: var(--teal); font-size: 11px; font-weight: 800; text-transform: uppercase; }
+    .focus h2 { margin: 8px 0 6px; font-size: 26px; line-height: 1.05; }
+    .focus p { margin: 0; color: #d7e4e3; font-size: 14px; line-height: 1.35; }
+    .focus .focus-number { display: inline-block; margin-top: 9px; color: var(--gold); font-size: 14px; font-weight: 800; }
+    .side-footer { max-width: 415px; text-align: right; }
+    .legend { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px 17px; margin-bottom: 18px; }
+    .legend span { display: inline-flex; align-items: center; gap: 7px; color: #e6f1ee; font-size: 12px; font-weight: 750; }
+    .swatch { width: 9px; height: 9px; border-radius: 50%; display: inline-block; box-shadow: 0 0 8px currentColor; }
+    .source-note { margin: 0; max-width: 100%; color: #c2d5d4; font-size: 12px; line-height: 1.4; overflow-wrap: anywhere; }
+    .clock-row { display: flex; justify-content: space-between; align-items: center; gap: 15px; margin-top: 19px; color: #b9caca; font-size: 11px; font-weight: 800; text-transform: uppercase; }
+    .clock-row .clock { min-width: 78px; text-align: right; font-variant-numeric: tabular-nums; }
+    .timeline { height: 3px; width: 100%; margin-top: 7px; background: rgba(193, 230, 224, .18); }
+    .timeline-fill { width: 0%; height: 100%; background: var(--coral); box-shadow: 0 0 12px var(--coral); }
+    body.embedded .hud { padding-bottom: 82px; }
+    .tower-tag { position: absolute; z-index: 2; padding: 6px 8px; border: 1px solid rgba(216, 239, 233, .3); background: rgba(9, 27, 32, .79); color: white; font-size: 12px; font-weight: 800; white-space: nowrap; pointer-events: none; transform: translate(9px, -26px); }
+    .tower-tag::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 7px; border-radius: 50%; background: var(--teal); box-shadow: 0 0 9px var(--teal); }
+    .tower-tag.coral::before { background: var(--coral); box-shadow: 0 0 9px var(--coral); }
+    .geo-label { position: absolute; z-index: 1; color: rgba(205, 235, 224, .5); font-size: 12px; font-weight: 800; text-transform: uppercase; pointer-events: none; white-space: nowrap; }
+    .geo-label.bay { color: rgba(110, 219, 222, .5); }
+    .load-state { position: absolute; inset: 0; z-index: 5; display: grid; place-items: center; color: #dceae7; background: #10232a; font-size: 16px; font-weight: 700; text-align: center; padding: 28px; }
+    .load-state.hidden { display: none; }
+    .speed { display: flex; align-items: center; gap: 8px; color: #cfe1de; font-size: 12px; font-weight: 800; }
+    .speed input { width: 75px; accent-color: var(--teal); }
+    .speed output { width: 25px; text-align: right; }
+    @media (max-width: 800px) {
+      .hud { padding: 23px 22px 20px; }
+      .masthead { display: block; }
+      .story { width: min(490px, 88%); }
+      h1 { font-size: 34px; }
+      .deckline { font-size: 14px; max-width: 350px; }
+      .upper-tools { align-items: flex-start; min-width: 0; margin-top: 20px; }
+      .metrics { gap: 18px; }
+      .metric strong { font-size: 20px; }
+      .toolbar { flex-wrap: wrap; }
+      .bottom { align-items: flex-start; }
+      .focus { width: min(280px, 100%); }
+      .side-footer { max-width: 285px; }
+      .source-note { font-size: 11px; }
+    }
+    @media (max-width: 560px) {
+      .hud { padding: 19px 17px 18px; }
+      .story { width: 100%; }
+      h1 { font-size: 29px; max-width: 330px; }
+      .deckline { margin-top: 8px; font-size: 13px; }
+      .upper-tools { margin-top: 13px; gap: 10px; }
+      .metrics { padding-top: 8px; gap: 20px; }
+      .metric strong { font-size: 19px; }
+      .metric span { font-size: 10px; }
+      .toolbar { gap: 7px; }
+      .segment button { min-width: 65px; padding: 7px 8px; font-size: 12px; }
+      .command { padding: 8px 10px; font-size: 12px; }
+      .speed { display: none; }
+      .bottom { display: block; }
+      .focus { min-height: 0; width: 236px; padding: 11px 13px; }
+      .focus h2 { font-size: 21px; margin: 5px 0; }
+      .focus p, .focus .focus-number { font-size: 12px; }
+      .legend { justify-content: flex-start; margin: 10px 0 4px; gap: 7px 11px; }
+      .legend span { font-size: 11px; }
+      .side-footer { width: 100%; min-width: 0; max-width: 100%; text-align: left; }
+      .source-note { font-size: 11px; line-height: 1.3; }
+      .clock-row { margin-top: 8px; }
+      .tower-tag { font-size: 10px; padding: 4px 5px; }
+      .geo-label { font-size: 10px; }
+      body.embedded .hud { padding-bottom: 18px; }
+    }
+    @media (prefers-reduced-motion: reduce) { .timeline-fill { box-shadow: none; } }
+  </style>
+</head>
+<body>
+  <div id="stage" aria-label="Three-dimensional map of sampled telco towers and illustrative call flows"></div>
+  <div class="vignette" aria-hidden="true"></div>
+  <div id="tag-0067" class="tower-tag" aria-hidden="true">TWR-0067</div>
+  <div id="tag-0030" class="tower-tag coral" aria-hidden="true">TWR-0030</div>
+  <div id="tag-0114" class="tower-tag" aria-hidden="true">TWR-0114</div>
+  <div id="geo-west" class="geo-label" aria-hidden="true">122.8&deg; W</div>
+  <div id="geo-east" class="geo-label" aria-hidden="true">122.0&deg; W</div>
+  <div id="geo-north" class="geo-label" aria-hidden="true">38.0&deg; N</div>
+  <div class="hud">
+    <div class="masthead">
+      <div class="story">
+        <p class="eyebrow">RelationalAI / Telco Network Recovery</p>
+        <h1>Calls across the network</h1>
+        <p class="deckline">Geolocated towers light up as call activity moves through an illustrative regional topology.</p>
+      </div>
+      <div class="upper-tools">
+        <div class="metrics" aria-label="Scene data">
+          <div class="metric"><strong>27</strong><span>sampled towers</span></div>
+          <div class="metric"><strong>6,000</strong><span>call records</span></div>
+          <div class="metric"><strong id="link-count">0</strong><span>visual links</span></div>
+        </div>
+        <div class="toolbar">
+          <div class="segment" aria-label="Color mode">
+            <button id="mode-traffic" type="button" aria-pressed="true">Traffic</button>
+            <button id="mode-status" type="button" aria-pressed="false">Status</button>
+          </div>
+          <button id="pause" class="command" type="button" title="Pause or resume the call animation">Pause</button>
+          <button id="reset" class="command" type="button" title="Reset the camera view">Reset view</button>
+          <label class="speed" for="speed">Flow rate <input id="speed" type="range" min="0.5" max="2" step="0.25" value="1"><output id="speed-value">1x</output></label>
+        </div>
+      </div>
+    </div>
+    <div class="spacer"></div>
+    <div class="bottom">
+      <div class="focus" aria-live="polite">
+        <div class="label">Selected tower</div>
+        <h2 id="focus-id">TWR-0067</h2>
+        <p id="focus-detail">WEST / ACTIVE / 35 routed calls</p>
+        <span id="focus-impact" class="focus-number">Call-weighted impact: 1.47M</span>
+      </div>
+      <div class="side-footer">
+        <div class="legend" aria-label="Tower status legend"><span><i class="swatch" style="color:var(--green);background:var(--green)"></i>Active</span><span><i class="swatch" style="color:var(--coral);background:var(--coral)"></i>Degraded</span><span><i class="swatch" style="color:var(--gold);background:var(--gold)"></i>Maintenance</span></div>
+        <p class="source-note">Tower coordinates and routed-call counts are from the demo CSVs. Animated links are an illustrative mockup, not measured inter-tower routes.</p>
+      </div>
+    </div>
+    <div class="clock-row"><span id="phase">Regional call activity</span><span class="clock" id="clock">00:00 / 00:20</span></div>
+    <div class="timeline" aria-hidden="true"><div id="timeline-fill" class="timeline-fill"></div></div>
+  </div>
+  <div id="load-state" class="load-state" role="status">Loading callscape...</div>
+  <script>
+    window.addEventListener('error', event => {
+      document.getElementById('load-state').textContent = `Scene error: ${event.message}`;
+    });
+    window.addEventListener('unhandledrejection', event => {
+      document.getElementById('load-state').textContent = `Scene error: ${event.reason}`;
+    });
+  </script>
+  <script type="module" src="./telco_callscape_3d.js"></script>
+</body>
+</html>

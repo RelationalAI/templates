@@ -1,0 +1,10 @@
+agent:
+  name: TELCO_NETWORK_RECOVERY_AGENT
+  database: BERTOLANI
+  schema: TELCO_NETWORK_RECOVERY_AGENT
+  warehouse: RAI_XS
+  model_name: Telco Network Recovery Agent
+
+model:
+  deployed_schema: BERTOLANI.TELCO_NETWORK_RECOVERY
+  results_schema: BERTOLANI.TELCO_NETWORK_RECOVERY_RESULTS

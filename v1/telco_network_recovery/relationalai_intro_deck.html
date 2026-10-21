@@ -1,0 +1,1073 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RelationalAI Intro Deck</title>
+  <style>
+    :root {
+      --ink: #18212b;
+      --muted: #687382;
+      --paper: #f7f5ef;
+      --panel: #ffffff;
+      --line: #d8d2c4;
+      --teal: #0f766e;
+      --teal-soft: #d9f0ed;
+      --blue: #2854a3;
+      --blue-soft: #dce8ff;
+      --amber: #b86b16;
+      --amber-soft: #f7e4c6;
+      --rose: #9d3b53;
+      --green: #27734b;
+      --shadow: 0 18px 48px rgba(20, 31, 43, 0.16);
+      --radius: 8px;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: #111922;
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      overflow: hidden;
+    }
+
+    .deck {
+      width: 100vw;
+      height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+    }
+
+    .slide {
+      display: none;
+      width: min(1280px, calc(100vw - 48px));
+      height: min(720px, calc(100vh - 48px));
+      aspect-ratio: 16 / 9;
+      background: var(--paper);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      position: relative;
+      overflow: hidden;
+      padding: 54px 64px;
+    }
+
+    .slide.active {
+      display: block;
+    }
+
+    .slide::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background:
+        linear-gradient(90deg, rgba(15, 118, 110, 0.08), transparent 28%),
+        linear-gradient(180deg, rgba(40, 84, 163, 0.07), transparent 38%);
+    }
+
+    .content {
+      position: relative;
+      z-index: 1;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .kicker {
+      font-size: 13px;
+      line-height: 1;
+      text-transform: uppercase;
+      color: var(--teal);
+      letter-spacing: 0;
+      font-weight: 800;
+      margin-bottom: 18px;
+    }
+
+    h1, h2 {
+      margin: 0;
+      letter-spacing: 0;
+      color: var(--ink);
+    }
+
+    h1 {
+      font-size: 64px;
+      line-height: 0.96;
+      max-width: 980px;
+    }
+
+    h2 {
+      font-size: 44px;
+      line-height: 1.04;
+      max-width: 900px;
+    }
+
+    p {
+      margin: 0;
+      font-size: 22px;
+      line-height: 1.45;
+      color: var(--muted);
+      max-width: 860px;
+    }
+
+    .subhead {
+      margin-top: 24px;
+      font-size: 24px;
+      color: #3e4a57;
+    }
+
+    .footer {
+      position: absolute;
+      left: 64px;
+      right: 64px;
+      bottom: 28px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      color: #7f8792;
+      font-size: 13px;
+      z-index: 2;
+    }
+
+    .rule {
+      width: 80px;
+      height: 4px;
+      background: var(--amber);
+      margin: 34px 0;
+      border-radius: 2px;
+    }
+
+    .two-col {
+      display: grid;
+      grid-template-columns: 1.05fr 0.95fr;
+      gap: 42px;
+      align-items: center;
+      flex: 1;
+    }
+
+    .agent-slide .two-col {
+      grid-template-columns: 1.1fr 0.9fr;
+      gap: 32px;
+      align-items: start;
+    }
+
+    .agent-slide h2 {
+      font-size: 40px;
+      line-height: 1.03;
+      max-width: 620px;
+    }
+
+    .code-slide .two-col {
+      grid-template-columns: 0.95fr 1.05fr;
+      gap: 34px;
+      align-items: center;
+    }
+
+    .code-slide h2 {
+      font-size: 40px;
+      line-height: 1.04;
+      max-width: 560px;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 18px;
+      margin-top: 34px;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 18px;
+      margin-top: 32px;
+    }
+
+    .card {
+      background: white;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 22px;
+      min-height: 132px;
+      box-shadow: none;
+    }
+
+    .card h3 {
+      margin: 0 0 10px;
+      font-size: 20px;
+      line-height: 1.15;
+      color: var(--ink);
+      letter-spacing: 0;
+    }
+
+    .card p, .card li {
+      font-size: 16px;
+      line-height: 1.35;
+      color: #4d5966;
+    }
+
+    ul {
+      margin: 0;
+      padding-left: 20px;
+    }
+
+    li {
+      margin: 8px 0;
+    }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      padding: 7px 10px;
+      font-size: 13px;
+      font-weight: 800;
+      background: var(--teal-soft);
+      color: var(--teal);
+      margin-right: 8px;
+      margin-bottom: 8px;
+      white-space: nowrap;
+    }
+
+    .tag.blue { background: var(--blue-soft); color: var(--blue); }
+    .tag.amber { background: var(--amber-soft); color: var(--amber); }
+    .tag.rose { background: #f2d8de; color: var(--rose); }
+
+    .diagram {
+      background: rgba(255, 255, 255, 0.72);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 22px;
+      min-height: 380px;
+      display: grid;
+      align-content: center;
+      gap: 16px;
+    }
+
+    .stack-row {
+      display: grid;
+      grid-template-columns: 1fr 40px 1fr;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .node {
+      border: 1px solid var(--line);
+      border-left: 6px solid var(--teal);
+      background: white;
+      border-radius: var(--radius);
+      padding: 14px 16px;
+      min-height: 68px;
+    }
+
+    .node strong {
+      display: block;
+      font-size: 18px;
+      margin-bottom: 4px;
+    }
+
+    .node span {
+      display: block;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.25;
+    }
+
+    .node.blue { border-left-color: var(--blue); }
+    .node.amber { border-left-color: var(--amber); }
+    .node.rose { border-left-color: var(--rose); }
+    .node.green { border-left-color: var(--green); }
+
+    .arrow {
+      color: var(--muted);
+      text-align: center;
+      font-size: 30px;
+      font-weight: 700;
+    }
+
+    .code-panel {
+      background: #16202b;
+      color: #d7e0ea;
+      border-radius: var(--radius);
+      padding: 18px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      font-size: 13px;
+      line-height: 1.45;
+      overflow: visible;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      border: 1px solid rgba(255,255,255,0.08);
+      box-shadow: none;
+    }
+
+    .code-panel .kw { color: #7dd3fc; }
+    .code-panel .str { color: #f7c873; }
+    .code-panel .cm { color: #8aa0b4; }
+
+    .timeline {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 10px;
+      margin-top: 34px;
+    }
+
+    .step {
+      background: white;
+      border: 1px solid var(--line);
+      border-top: 6px solid var(--teal);
+      border-radius: var(--radius);
+      padding: 16px;
+      min-height: 178px;
+    }
+
+    .step:nth-child(2) { border-top-color: var(--blue); }
+    .step:nth-child(3) { border-top-color: var(--amber); }
+    .step:nth-child(4) { border-top-color: var(--rose); }
+    .step:nth-child(5) { border-top-color: var(--green); }
+
+    .step .num {
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 800;
+      margin-bottom: 12px;
+    }
+
+    .step strong {
+      display: block;
+      font-size: 20px;
+      line-height: 1.1;
+      margin-bottom: 10px;
+    }
+
+    .step span {
+      display: block;
+      font-size: 14px;
+      line-height: 1.32;
+      color: var(--muted);
+    }
+
+    .answer-card {
+      background: #172230;
+      color: white;
+      border-radius: var(--radius);
+      padding: 24px;
+      min-height: 350px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      box-shadow: none;
+    }
+
+    .answer-card h3 {
+      margin: 0 0 18px;
+      color: white;
+      font-size: 24px;
+    }
+
+    .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+    }
+
+    .metric {
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: var(--radius);
+      padding: 14px;
+    }
+
+    .metric .value {
+      display: block;
+      color: #f8d98c;
+      font-size: 26px;
+      line-height: 1;
+      font-weight: 800;
+      margin-bottom: 6px;
+    }
+
+    .metric .label {
+      color: #c8d2df;
+      font-size: 13px;
+    }
+
+    .question {
+      font-size: 33px;
+      line-height: 1.18;
+      color: var(--ink);
+      padding: 30px;
+      background: white;
+      border: 1px solid var(--line);
+      border-left: 8px solid var(--amber);
+      border-radius: var(--radius);
+      box-shadow: none;
+    }
+
+    .prompt-list {
+      display: grid;
+      gap: 10px;
+      margin-top: 20px;
+    }
+
+    .prompt {
+      background: transparent;
+      border: 0;
+      border-radius: 0;
+      padding: 0;
+      font-size: 15px;
+      color: #334252;
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      line-height: 1.2;
+    }
+
+    .prompt::before {
+      content: "";
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--teal);
+      flex: 0 0 auto;
+      margin-top: 5px;
+    }
+
+    .answer-slide h2 {
+      font-size: 38px;
+      line-height: 1.04;
+      max-width: 1100px;
+    }
+
+    .answer-slide .subhead {
+      font-size: 15px;
+      line-height: 1.35;
+      margin: 0 0 14px;
+      max-width: 1040px;
+      color: #596675;
+    }
+
+    .answer-slide .footer {
+      bottom: -14px;
+      justify-content: flex-end;
+    }
+
+    .answer-slide .footer span:first-child {
+      display: none;
+    }
+
+    .answer-layout {
+      display: grid;
+      grid-template-columns: 0.72fr 1.28fr;
+      gap: 22px;
+      margin-top: 24px;
+      align-items: stretch;
+      flex: 1;
+      min-height: 0;
+    }
+
+    .answer-summary {
+      background: #172230;
+      color: white;
+      border-radius: var(--radius);
+      padding: 20px 22px;
+      box-shadow: none;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .answer-summary h3 {
+      margin: 0 0 14px;
+      color: white;
+      font-size: 24px;
+      line-height: 1.1;
+    }
+
+    .answer-summary p {
+      color: #c8d2df;
+      font-size: 16px;
+      line-height: 1.38;
+      margin-top: 12px;
+    }
+
+    .answer-summary .big {
+      color: #f8d98c;
+      font-size: 42px;
+      line-height: 1;
+      font-weight: 850;
+      margin-bottom: 8px;
+    }
+
+    .mini-metrics {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+      margin-top: 18px;
+    }
+
+    .mini {
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: var(--radius);
+      padding: 12px;
+    }
+
+    .mini strong {
+      display: block;
+      color: #f8d98c;
+      font-size: 21px;
+      line-height: 1;
+      margin-bottom: 6px;
+    }
+
+    .mini span {
+      color: #c8d2df;
+      font-size: 12px;
+      line-height: 1.2;
+    }
+
+    .answer-table {
+      width: 100%;
+      border-collapse: collapse;
+      background: white;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      overflow: hidden;
+      box-shadow: none;
+      font-size: 14px;
+    }
+
+    .answer-table th,
+    .answer-table td {
+      padding: 9px 12px;
+      text-align: left;
+      border-bottom: 1px solid #e8e2d8;
+      color: #334252;
+      line-height: 1.15;
+      vertical-align: top;
+    }
+
+    .answer-table th {
+      background: #ebe7dc;
+      color: #18212b;
+      font-size: 12px;
+      text-transform: uppercase;
+      font-weight: 850;
+    }
+
+    .answer-table tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .answer-table .num {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .insight-list {
+      display: grid;
+      gap: 9px;
+      margin-top: 12px;
+    }
+
+    .insight {
+      background: white;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 11px 14px;
+      font-size: 15px;
+      line-height: 1.26;
+      color: #334252;
+    }
+
+    .path-box {
+      background: white;
+      border: 1px solid var(--line);
+      border-left: 8px solid var(--teal);
+      border-radius: var(--radius);
+      padding: 20px;
+      font-size: 25px;
+      line-height: 1.35;
+      color: var(--ink);
+      box-shadow: none;
+    }
+
+    .progress {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: 4px;
+      background: rgba(255,255,255,0.08);
+      z-index: 20;
+    }
+
+    .bar {
+      height: 100%;
+      width: 10%;
+      background: var(--amber);
+      transition: width 180ms ease;
+    }
+
+    .controls {
+      position: fixed;
+      right: 18px;
+      bottom: 14px;
+      z-index: 25;
+      color: rgba(255,255,255,0.65);
+      font-size: 12px;
+    }
+
+    @media print {
+      @page {
+        size: 1280px 720px;
+        margin: 0;
+      }
+
+      * {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+
+      body { overflow: visible; background: white; }
+      .deck { display: block; padding: 0; height: auto; }
+      .slide {
+        display: block !important;
+        width: 1280px;
+        height: 720px;
+        box-shadow: none;
+        border-radius: 0;
+        page-break-after: always;
+        break-after: page;
+      }
+      .progress, .controls { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <main class="deck" aria-live="polite">
+    <section class="slide active">
+      <div class="content">
+        <div class="kicker">RelationalAI Intro</div>
+        <h1>Bring decision intelligence to high-stakes business questions.</h1>
+        <div class="rule"></div>
+        <p class="subhead">Rel is a decision agent grounded in your semantic model, running inside Snowflake, and powered by RelationalAI reasoners.</p>
+        <div class="footer"><span>RelationalAI marketplace intro</span><span>01</span></div>
+      </div>
+    </section>
+
+    <section class="slide code-slide">
+      <div class="content">
+        <div class="kicker">Python-Backed</div>
+        <div class="two-col">
+          <div>
+            <h2>The model is code you can read, review, test, and deploy.</h2>
+            <p class="subhead">Concepts, relationships, rules, and curated queries are authored in Python, so the semantic layer behaves like durable software.</p>
+            <div style="margin-top:26px">
+              <span class="tag">Source controlled</span>
+              <span class="tag blue">Reviewable</span>
+              <span class="tag amber">Testable</span>
+            </div>
+          </div>
+          <pre class="code-panel"><span class="kw">CellTower</span> = model.Concept(
+  <span class="str">"CellTower"</span>,
+  identify_by={<span class="str">"id"</span>: String},
+)
+<span class="kw">NetworkEquipment</span>.tower = model.Property(
+  <span class="str">f"{NetworkEquipment} installed on "</span>
+  <span class="str">f"{CellTower:tower}"</span>
+)
+
+model.where(
+  CellTower.status == <span class="str">"DEGRADED"</span>,
+  CellTower.avg_health_score &lt; 0.85,
+).define(CellTower.operational_critical_restore())</pre>
+        </div>
+        <div class="footer"><span></span><span>02</span></div>
+      </div>
+    </section>
+
+    <section class="slide agent-slide">
+      <div class="content">
+        <div class="kicker">Extensible</div>
+        <h2>Add logic without rebuilding the whole system.</h2>
+        <div class="grid-2">
+          <div class="card">
+            <h3>Extend the domain</h3>
+            <p>Add concepts like towers, subscribers, advisories, assets, accounts, suppliers, claims, or transactions.</p>
+          </div>
+          <div class="card">
+            <h3>Extend the rules</h3>
+            <p>Encode durable business logic once so future answers use the corrected definition.</p>
+          </div>
+          <div class="card">
+            <h3>Extend the tools</h3>
+            <p>Create curated catalog queries for agents when important questions need reliable answer paths.</p>
+          </div>
+          <div class="card">
+            <h3>Extend the reasoners</h3>
+            <p>Write predictive, graph, path, and optimization outputs back into the model or result tables.</p>
+          </div>
+        </div>
+        <div class="footer"><span>Model once, evolve continuously</span><span>03</span></div>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="content">
+        <div class="kicker">Inspectability</div>
+        <div class="two-col">
+          <div>
+            <h2>You can inspect the model and every answer surface.</h2>
+            <p class="subhead">RelationalAI exposes what concepts exist, how tables and documents connect, what queries the agent can run, and what result tables power the answer.</p>
+          </div>
+          <div class="diagram">
+            <div class="stack-row">
+              <div class="node"><strong>Discover</strong><span>What models, concepts, and catalog queries are available?</span></div>
+              <div class="arrow">→</div>
+              <div class="node blue"><strong>Explain</strong><span>What does this concept or property mean?</span></div>
+            </div>
+            <div class="stack-row">
+              <div class="node amber"><strong>Query</strong><span>Which curated tool answered this question?</span></div>
+              <div class="arrow">→</div>
+              <div class="node rose"><strong>Trace</strong><span>Which table, rule, or reasoner output supports it?</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="footer"><span>Inspection is part of the workflow</span><span>04</span></div>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="content">
+        <div class="kicker">Provenance</div>
+        <h2>Answers are grounded in model surfaces and result artifacts.</h2>
+        <div class="grid-3">
+          <div class="card"><h3>Plan summary</h3><p>Backed by <strong>RESTORE_PLAN</strong> from the optimization stage.</p></div>
+          <div class="card"><h3>Failure risk</h3><p>Backed by <strong>TOWER_FAILURE_SCORE</strong> and equipment predictions.</p></div>
+          <div class="card"><h3>Customer impact</h3><p>Backed by graph-derived <strong>TOWER_CUSTOMER_IMPACT</strong>.</p></div>
+          <div class="card"><h3>Call path</h3><p>Backed by path output in <strong>TOP_CALL_PATH</strong>.</p></div>
+          <div class="card"><h3>Selected towers</h3><p>Backed by prescriptive <strong>SELECTED_UPGRADES</strong>.</p></div>
+          <div class="card"><h3>Agent answer</h3><p>Backed by a catalog query, not an improvised SQL guess.</p></div>
+        </div>
+        <div class="footer"><span>Grounding by design</span><span>05</span></div>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="content">
+        <div class="kicker">Correction Loop</div>
+        <div class="two-col">
+          <div>
+            <h2>When an answer is wrong, fix the model so the correction persists.</h2>
+            <p class="subhead">The right unit of correction is not a one-off chat response. It is business intuition turned into a durable rule, relationship, query, or deployed result definition.</p>
+          </div>
+          <div class="diagram">
+            <div class="node"><strong>Observe</strong><span>Agent answer is incomplete or wrong.</span></div>
+            <div class="arrow">↓</div>
+            <div class="node blue"><strong>Correct</strong><span>Update a mapping, rule, or catalog query in Python.</span></div>
+            <div class="arrow">↓</div>
+            <div class="node amber"><strong>Redeploy</strong><span>Publish the correction to Snowflake.</span></div>
+            <div class="arrow">↓</div>
+            <div class="node green"><strong>Persist</strong><span>Every future answer uses the corrected model.</span></div>
+          </div>
+        </div>
+        <div class="footer"><span>Durable corrections beat prompt patches</span><span>06</span></div>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="content">
+        <div class="kicker">Reasoner Workflow</div>
+        <h2>Multiple reasoners operate over the same business model.</h2>
+        <div class="timeline">
+          <div class="step"><div class="num">01</div><strong>Infer with rules</strong><span>Flag operationally critical towers from status, health, and packet loss.</span></div>
+          <div class="step"><div class="num">02</div><strong>Anticipate risk</strong><span>Score equipment failure risk from health, tower context, and advisories.</span></div>
+          <div class="step"><div class="num">03</div><strong>Discover impact</strong><span>Measure customer impact and influence across the subscriber call network.</span></div>
+          <div class="step"><div class="num">04</div><strong>Find paths</strong><span>Trace influential call routes and the towers that carry each hop.</span></div>
+          <div class="step"><div class="num">05</div><strong>Optimize action</strong><span>Select upgrade tiers under budget and install-week constraints.</span></div>
+        </div>
+        <div class="footer"><span>One connected workflow</span><span>07</span></div>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="content">
+        <div class="kicker">Telco Demo Question</div>
+        <div class="two-col">
+          <div>
+            <h2>One business question spans the full platform.</h2>
+            <div class="rule"></div>
+            <p>It starts as a decision problem, not an algorithm choice.</p>
+          </div>
+          <div class="question">Given tower health, equipment advisories, subscriber impact, call graph, and fixed capex, which towers should we upgrade, why those towers, and what constraint limits the plan?</div>
+        </div>
+        <div class="footer"><span>Business question → reasoning chain</span><span>08</span></div>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="content">
+        <div class="kicker">Snowflake Agent</div>
+        <div class="two-col">
+          <div>
+            <h2>Business users ask in Snowflake; RelationalAI supplies grounded tools.</h2>
+            <div class="prompt-list">
+              <div class="prompt">What is the final telco recovery plan summary?</div>
+              <div class="prompt">Which towers have the highest combined failure risk and customer impact?</div>
+              <div class="prompt">Show selected upgrades by region.</div>
+              <div class="prompt">Which equipment items are most likely to fail?</div>
+              <div class="prompt">What is the most influential call path and which towers does it use?</div>
+            </div>
+          </div>
+          <div class="answer-card">
+            <h3>Example answer surface</h3>
+            <div class="metric-grid">
+              <div class="metric"><span class="value">$4.99M</span><span class="label">optimized spend</span></div>
+              <div class="metric"><span class="value">183</span><span class="label">Gbps restored</span></div>
+              <div class="metric"><span class="value">27</span><span class="label">towers selected</span></div>
+              <div class="metric"><span class="value">Budget</span><span class="label">binding constraint</span></div>
+            </div>
+            <p style="font-size:15px;color:#c8d2df;margin-top:18px">The answer is backed by deployed result tables and curated RelationalAI query tools.</p>
+          </div>
+        </div>
+        <div class="footer"><span>Fully inside Snowflake, model-grounded</span><span>09</span></div>
+      </div>
+    </section>
+
+    <section class="slide answer-slide">
+      <div class="content">
+        <div class="kicker">Agent Answer 01</div>
+        <p class="subhead">Question: What is the final telco recovery plan summary?</p>
+        <h2>The optimized plan restores 183 Gbps across 27 towers with budget as the binding constraint.</h2>
+        <div class="answer-layout">
+          <div class="answer-summary">
+            <div>
+              <h3>Final plan</h3>
+              <div class="big">OPTIMAL</div>
+              <p>The plan spends just under the $5M capex envelope and uses 167 install weeks.</p>
+            </div>
+            <div class="mini-metrics">
+              <div class="mini"><strong>$4.99M</strong><span>total cost</span></div>
+              <div class="mini"><strong>183</strong><span>Gbps restored</span></div>
+              <div class="mini"><strong>27</strong><span>towers covered</span></div>
+              <div class="mini"><strong>Budget</strong><span>binding constraint</span></div>
+            </div>
+          </div>
+          <table class="answer-table">
+            <thead><tr><th>Tier</th><th class="num">Selected towers</th><th>Interpretation</th></tr></thead>
+            <tbody>
+              <tr><td>Gold</td><td class="num">8</td><td>High-capacity upgrades concentrated on high-value, high-risk towers.</td></tr>
+              <tr><td>Silver</td><td class="num">8</td><td>Balanced capacity gain where cost and install weeks matter.</td></tr>
+              <tr><td>Bronze</td><td class="num">11</td><td>Cost-efficient coverage for additional critical towers.</td></tr>
+              <tr><td><strong>Total</strong></td><td class="num"><strong>27</strong></td><td><strong>Budget is binding; install weeks have slack.</strong></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="footer"><span>Prescriptive answer</span><span>10</span></div>
+      </div>
+    </section>
+
+    <section class="slide answer-slide">
+      <div class="content">
+        <div class="kicker">Agent Answer 02</div>
+        <p class="subhead">Question: Which towers have the highest combined failure risk and customer impact?</p>
+        <h2>The highest-priority towers combine predicted failure intensity with customer impact.</h2>
+        <div class="answer-layout">
+          <div class="answer-summary">
+            <div>
+              <h3>Risk + impact</h3>
+              <p>Failure intensity comes from the predictive GNN. Weighted impact comes from customer value and graph-derived call activity.</p>
+            </div>
+            <div class="insight-list">
+              <div class="insight"><strong>TWR-0021</strong> has the highest failure intensity at 9.86.</div>
+              <div class="insight"><strong>TWR-0114</strong> has the largest weighted customer impact at about 3.13M.</div>
+              <div class="insight"><strong>TWR-0086</strong> combines high risk, 39 active subscribers, and strong impact.</div>
+            </div>
+          </div>
+          <table class="answer-table">
+            <thead><tr><th>Tower</th><th class="num">Failure intensity</th><th class="num">Active subscribers</th><th class="num">Weighted impact</th></tr></thead>
+            <tbody>
+              <tr><td>TWR-0021</td><td class="num">9.86</td><td class="num">32</td><td class="num">324,669</td></tr>
+              <tr><td>TWR-0030</td><td class="num">9.08</td><td class="num">26</td><td class="num">76,180</td></tr>
+              <tr><td>TWR-0067</td><td class="num">8.05</td><td class="num">24</td><td class="num">1,466,615</td></tr>
+              <tr><td>TWR-0086</td><td class="num">8.02</td><td class="num">39</td><td class="num">1,120,168</td></tr>
+              <tr><td>TWR-0114</td><td class="num">6.09</td><td class="num">34</td><td class="num">3,125,836</td></tr>
+              <tr><td>TWR-0015</td><td class="num">5.06</td><td class="num">38</td><td class="num">1,987,444</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="footer"><span>Predictive + graph answer</span><span>11</span></div>
+      </div>
+    </section>
+
+    <section class="slide answer-slide">
+      <div class="content">
+        <div class="kicker">Agent Answer 03</div>
+        <p class="subhead">Question: Show selected upgrades by region.</p>
+        <h2>The selected upgrades are explainable by region, spend, capacity, and install effort.</h2>
+        <div class="answer-layout">
+          <div class="answer-summary">
+            <div>
+              <h3>Regional allocation</h3>
+              <p>West receives the largest investment and the most restored capacity. East covers the most selected towers.</p>
+            </div>
+            <div class="mini-metrics">
+              <div class="mini"><strong>WEST</strong><span>largest spend</span></div>
+              <div class="mini"><strong>EAST</strong><span>most towers</span></div>
+              <div class="mini"><strong>NORTH</strong><span>lowest cost</span></div>
+              <div class="mini"><strong>183</strong><span>total Gbps</span></div>
+            </div>
+          </div>
+          <table class="answer-table">
+            <thead><tr><th>Region</th><th class="num">Towers</th><th class="num">Cost</th><th class="num">Capacity</th><th class="num">Weeks</th></tr></thead>
+            <tbody>
+              <tr><td>West</td><td class="num">6</td><td class="num">$1,733,199</td><td class="num">54</td><td class="num">49</td></tr>
+              <tr><td>Central</td><td class="num">4</td><td class="num">$976,697</td><td class="num">32</td><td class="num">33</td></tr>
+              <tr><td>East</td><td class="num">7</td><td class="num">$924,664</td><td class="num">40</td><td class="num">35</td></tr>
+              <tr><td>South</td><td class="num">6</td><td class="num">$828,525</td><td class="num">34</td><td class="num">27</td></tr>
+              <tr><td>North</td><td class="num">4</td><td class="num">$522,704</td><td class="num">23</td><td class="num">23</td></tr>
+              <tr><td><strong>Total</strong></td><td class="num"><strong>27</strong></td><td class="num"><strong>$4,985,789</strong></td><td class="num"><strong>183</strong></td><td class="num"><strong>167</strong></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="footer"><span>Optimization answer by region</span><span>12</span></div>
+      </div>
+    </section>
+
+    <section class="slide answer-slide">
+      <div class="content">
+        <div class="kicker">Agent Answer 04</div>
+        <p class="subhead">Question: Which equipment items are most likely to fail?</p>
+        <h2>The GNN surfaces equipment items with very high predicted failure probability.</h2>
+        <div class="answer-layout">
+          <div class="answer-summary">
+            <div>
+              <h3>Equipment risk</h3>
+              <div class="big">99%+</div>
+              <p>The top flagged equipment items all receive a predicted failure label of 1.</p>
+            </div>
+            <div class="insight-list">
+              <div class="insight">The top 50 returned items are all above 99% failure probability.</div>
+              <div class="insight">The highest-scored item is EQP-00361 at 99.23%.</div>
+            </div>
+          </div>
+          <table class="answer-table">
+            <thead><tr><th>Rank</th><th>Equipment</th><th class="num">Failure probability</th></tr></thead>
+            <tbody>
+              <tr><td>1</td><td>EQP-00361</td><td class="num">99.23%</td></tr>
+              <tr><td>2</td><td>EQP-01386</td><td class="num">99.22%</td></tr>
+              <tr><td>3</td><td>EQP-00382</td><td class="num">99.22%</td></tr>
+              <tr><td>4</td><td>EQP-00969</td><td class="num">99.22%</td></tr>
+              <tr><td>5</td><td>EQP-00729</td><td class="num">99.22%</td></tr>
+              <tr><td>6</td><td>EQP-00169</td><td class="num">99.22%</td></tr>
+              <tr><td>7</td><td>EQP-00244</td><td class="num">99.22%</td></tr>
+              <tr><td>8</td><td>EQP-00167</td><td class="num">99.21%</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="footer"><span>Predictive answer</span><span>13</span></div>
+      </div>
+    </section>
+
+    <section class="slide answer-slide">
+      <div class="content">
+        <div class="kicker">Agent Answer 05</div>
+        <p class="subhead">Question: What is the most influential call path and which towers does it use?</p>
+        <h2>The graph/path reasoner traces the most influential call route and the towers carrying it.</h2>
+        <div class="answer-layout">
+          <div class="answer-summary">
+            <div>
+              <h3>Top path</h3>
+              <div class="big">0.00904</div>
+              <p>Influence load for the top call path from the highest-PageRank hub subscriber.</p>
+            </div>
+            <div class="mini-metrics">
+              <div class="mini"><strong>SUB-CON-00900</strong><span>hub subscriber</span></div>
+              <div class="mini"><strong>3</strong><span>tower hops</span></div>
+            </div>
+          </div>
+          <div>
+            <div class="path-box">SUB-CON-00900 → SUB-CON-00814 → SUB-ENT-0038 → SUB-CON-00644</div>
+            <div class="path-box" style="margin-top:18px;border-left-color:var(--blue)">TWR-0094 → TWR-0113 → TWR-0055</div>
+            <div class="insight-list">
+              <div class="insight">The path connects four subscribers over three routed tower hops.</div>
+              <div class="insight">These towers are important because disruption would affect a high-influence communication chain.</div>
+            </div>
+          </div>
+        </div>
+        <div class="footer"><span>Graph + paths answer</span><span>14</span></div>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="content">
+        <div class="kicker">Close</div>
+        <h1>An answer you can inspect, trace, correct, redeploy, and trust.</h1>
+        <div class="rule"></div>
+        <p class="subhead">RelationalAI turns a modeled business domain into a governed, extensible answer system for Snowflake.</p>
+        <div class="footer"><span>RelationalAI</span><span>15</span></div>
+      </div>
+    </section>
+  </main>
+
+  <div class="progress"><div class="bar" id="bar"></div></div>
+  <div class="controls">← → or Space to navigate</div>
+
+  <script>
+    const slides = Array.from(document.querySelectorAll(".slide"));
+    const bar = document.getElementById("bar");
+    let index = Math.max(0, Math.min(slides.length - 1, Number(location.hash.slice(1)) - 1 || 0));
+
+    function render() {
+      slides.forEach((slide, i) => slide.classList.toggle("active", i === index));
+      bar.style.width = `${((index + 1) / slides.length) * 100}%`;
+      document.title = `RelationalAI Intro Deck (${index + 1}/${slides.length})`;
+      if (location.hash !== `#${index + 1}`) {
+        history.replaceState(null, "", `#${index + 1}`);
+      }
+    }
+
+    function next() {
+      index = Math.min(slides.length - 1, index + 1);
+      render();
+    }
+
+    function prev() {
+      index = Math.max(0, index - 1);
+      render();
+    }
+
+    document.addEventListener("keydown", (event) => {
+      if (["ArrowRight", "PageDown", " "].includes(event.key)) {
+        event.preventDefault();
+        next();
+      }
+      if (["ArrowLeft", "PageUp", "Backspace"].includes(event.key)) {
+        event.preventDefault();
+        prev();
+      }
+      if (event.key === "Home") {
+        index = 0;
+        render();
+      }
+      if (event.key === "End") {
+        index = slides.length - 1;
+        render();
+      }
+    });
+
+    document.addEventListener("click", (event) => {
+      if (event.shiftKey) {
+        prev();
+      } else {
+        next();
+      }
+    });
+
+    render();
+  </script>
+</body>
+</html>
