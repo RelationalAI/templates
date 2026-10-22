@@ -166,22 +166,22 @@ problem.solve_for(
 )
 
 # Each event has exactly one type: its four (event, type) indicators sum to 1.
-type_sum_ic = model.require(rai_sum(OrderEvent.has_type).per(OrderEvent) == 1)
+type_sum_ic = model.where(OrderEvent).require(rai_sum(OrderEvent.has_type).per(OrderEvent) == 1)
 problem.satisfy(type_sum_ic)
 
 # Exactly one PLACE event per order. The where-clause binds `place_ind` to
-# each event's PLACE indicator; the aggregate then sums it per order.
+# each event's PLACE indicator; the aggregate sums it per order, one term per event.
 place_ind = Integer.ref()
 exactly_one_place_ic = model.where(
-    OrderEvent.has_type(EventType.PLACE, place_ind)
-).require(rai_sum(place_ind).per(OrderEvent.order) == 1)
+    OrderEvent.has_type(EventType.PLACE, place_ind), OrderEvent.order == Order
+).require(rai_sum(OrderEvent, place_ind).per(Order) == 1)
 problem.satisfy(exactly_one_place_ic)
 
 # At most one CANCEL event per order.
 cancel_ind = Integer.ref()
 at_most_one_cancel_ic = model.where(
-    OrderEvent.has_type(EventType.CANCEL, cancel_ind)
-).require(rai_sum(cancel_ind).per(OrderEvent.order) <= 1)
+    OrderEvent.has_type(EventType.CANCEL, cancel_ind), OrderEvent.order == Order
+).require(rai_sum(OrderEvent, cancel_ind).per(Order) <= 1)
 problem.satisfy(at_most_one_cancel_ic)
 
 # Distinct ts_ms within an order (every event has its own moment).
@@ -214,7 +214,7 @@ no_after_cancel_ic = model.where(
 problem.satisfy(no_after_cancel_ic)
 
 # Quantity bound: every event's qty <= the order's original_qty.
-qty_upper_ic = model.require(OrderEvent.qty <= OrderEvent.order.original_qty)
+qty_upper_ic = model.where(OrderEvent).require(OrderEvent.qty <= OrderEvent.order.original_qty)
 problem.satisfy(qty_upper_ic)
 
 # PLACE event's qty matches the order's original_qty.
@@ -260,8 +260,8 @@ problem.satisfy(fill_qty_zero_off_ic)
 
 # Quantity conservation: total filled quantity across an order's FILL events
 # cannot exceed the original_qty. Linear in fill_qty.
-fill_sum_ic = model.require(
-    rai_sum(OrderEvent.fill_qty).per(OrderEvent.order) <= OrderEvent.order.original_qty
+fill_sum_ic = model.where(OrderEvent.order == Order).require(
+    rai_sum(OrderEvent, OrderEvent.fill_qty).per(Order) <= Order.original_qty
 )
 problem.satisfy(fill_sum_ic)
 
