@@ -201,7 +201,7 @@ problem.satisfy(model.require(sum(Site.x_inventory) <= TOTAL_BUDGET))
 # Constraint: demand satisfaction at each site
 DemandRef = Demand.ref()
 site_alloc = sum(Site.x_inventory).where(Site == DemandRef.site).per(DemandRef)
-problem.satisfy(model.require(site_alloc >= DemandRef.quantity))
+problem.satisfy(model.where(DemandRef).require(site_alloc >= DemandRef.quantity))
 
 # Constraint: critical hubs get minimum allocation proportional to centrality
 # Sites with higher centrality are more important to the network and should
