@@ -154,13 +154,15 @@ problem.satisfy(model.where(Product.x_cuml_sales(Week_ref, cumulative_ref)).requ
 
 # Objective: maximize revenue from sales plus salvage value of remaining inventory
 revenue = sum(
-    Product.initial_price * (1 - Discount_ref.discount_pct / 100) * sales_ref
+    Product, Week_ref, Discount_ref,
+    Product.initial_price * (1 - Discount_ref.discount_pct / 100) * sales_ref,
 ).where(Product.x_sales(Week_ref, Discount_ref, sales_ref))
 salvage = sum(
-    Product.initial_price * Product.salvage_rate * (Product.initial_inventory - cumulative_ref)
+    Product, Week_ref,
+    Product.initial_price * Product.salvage_rate * (Product.initial_inventory - cumulative_ref),
 ).where(
     Product.x_cuml_sales(Week_ref, cumulative_ref),
-    Week_ref.num == num_weeks
+    Week_ref.num == num_weeks,
 )
 problem.maximize(revenue + salvage)
 

@@ -142,22 +142,28 @@ problem.satisfy(model.where(
 problem.satisfy(model.where(
     Allocation.x_spend(Scenario, x_spend),
     Allocation.effectiveness.campaign(Campaign),
-).require(sum(x_spend).where(Allocation.effectiveness.campaign == Campaign).per(Campaign, Scenario) <= Campaign.budget))
+).require(
+    sum(Allocation, x_spend).where(Allocation.effectiveness.campaign == Campaign).per(Campaign, Scenario)
+    <= Campaign.budget
+))
 
 # Constraint: require at least one active channel per campaign (per scenario)
 problem.satisfy(model.where(
     Allocation.x_active(Scenario, x_active),
     Allocation.effectiveness.campaign(Campaign),
-).require(sum(x_active).where(Allocation.effectiveness.campaign == Campaign).per(Campaign, Scenario) >= 1))
+).require(
+    sum(Allocation, x_active).where(Allocation.effectiveness.campaign == Campaign).per(Campaign, Scenario)
+    >= 1
+))
 
 # Constraint: total budget across all campaigns (per scenario)
 problem.satisfy(model.where(
     Allocation.x_spend(Scenario, x_spend),
-).require(sum(x_spend).per(Scenario) <= Scenario.total_budget))
+).require(sum(Allocation, x_spend).per(Scenario) <= Scenario.total_budget))
 
 # Objective: maximize total expected conversions
 problem.maximize(
-    sum(x_spend * Allocation.effectiveness.conversion_rate)
+    sum(Allocation, Scenario, x_spend * Allocation.effectiveness.conversion_rate)
     .where(Allocation.x_spend(Scenario, x_spend))
 )
 

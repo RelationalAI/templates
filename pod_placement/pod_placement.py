@@ -299,7 +299,7 @@ problem.solve_for(Deployment.placed, type="bin", name=["dep_placed", Deployment.
 # Per-pod cardinality: a pod assigns to exactly Pod.placed nodes
 # (0 if unplaced, 1 if placed). Pins the row sum of the assignment
 # matrix to the placement indicator.
-placement_coupling_ic = model.where(Pod.on_node(Node, x)).require(sum(x).per(Pod) == Pod.placed)
+placement_coupling_ic = model.where(Pod.on_node(Node, x)).require(sum(Node, x).per(Pod) == Pod.placed)
 problem.satisfy(placement_coupling_ic)
 
 # Gang placement: all replicas of a deployment placed or none.
@@ -370,10 +370,9 @@ problem.satisfy(affinity_ic)
 # than its fair share -- a single-zone outage cannot take down more
 # than that many replicas.
 spread_ic = model.where(
-    Pod.on_node(Node, x),
     Pod.deployment == Deployment,
     Node.zone == Zone,
-).require(sum(x).per(Deployment, Zone) <= Deployment.max_per_zone)
+).require(sum(Pod, Node, x).where(Pod.on_node(Node, x)).per(Deployment, Zone) <= Deployment.max_per_zone)
 problem.satisfy(spread_ic)
 
 # Distributed-training rack-clique: every pair of pods in a

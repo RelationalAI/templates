@@ -126,7 +126,7 @@ problem.satisfy(model.where(
     Production.x_quantity(Scenario, x_qty),
     Production.rate.product(Product),
 ).require(
-    sum(x_qty)
+    sum(Production, x_qty)
     .where(Production.rate.product == Product)
     .per(Product, Scenario)
     >= Product.demand * Scenario.demand_multiplier
@@ -134,7 +134,7 @@ problem.satisfy(model.where(
 
 # Objective: maximize total profit
 problem.maximize(
-    sum(x_qty * Production.rate.product.profit)
+    sum(Production, Scenario, x_qty * Production.rate.product.profit)
     .where(Production.x_quantity(Scenario, x_qty))
 )
 
