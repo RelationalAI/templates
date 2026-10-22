@@ -48,7 +48,7 @@ from model import (
     returns_csv,
 )
 from pandas import DataFrame
-from relationalai.semantics import Float, Integer, sum
+from relationalai.semantics import Float, Integer, String, sum
 from relationalai.semantics.reasoners.graph import Graph
 from relationalai.semantics.reasoners.prescriptive import Problem
 from relationalai.semantics.std import aggregates as aggs
@@ -482,7 +482,7 @@ regime_cov_val = Float.ref()
 PairedStock = Stock.ref()
 
 # Sector constraint ref -- defined at module level.
-s_sector_ref = Stock.ref()
+sector_ref = String.ref()
 
 # Python-side lookup maps for per-scenario evaluation (post-solve analysis).
 # stock_returns_map is fine to build from the returns CSV since it's the raw
@@ -612,12 +612,12 @@ def _add_compliance_constraints(problem):
     ).require(x_qty <= REP_POSITION_LIMIT * Scenario.budget))
 
     # Sector limit: total allocation to stocks in same sector <= SECTOR_LIMIT * budget.
-    sector_alloc = sum(x_qty).where(
+    sector_alloc = sum(Stock, x_qty).where(
         Stock.x_quantity(Scenario, x_qty),
-        Stock.sector == s_sector_ref.sector,
-    ).per(Scenario, s_sector_ref.sector)
+        Stock.sector == sector_ref,
+    ).per(Scenario, sector_ref)
     problem.satisfy(model.where(
-        Stock.x_quantity(Scenario, x_qty),
+        Stock.x_quantity(Scenario, x_qty), Stock.sector(sector_ref),
     ).require(sector_alloc <= SECTOR_LIMIT * Scenario.budget))
 
     # Representative-only: non-representative stocks are forced to zero.
@@ -661,12 +661,12 @@ def solve_epsilon(eps_rate=None):
     # Budget per scenario
     problem.satisfy(model.where(
         Stock.x_quantity(Scenario, x_qty),
-    ).require(sum(x_qty).per(Scenario) <= Scenario.budget))
+    ).require(sum(Stock, x_qty).per(Scenario) <= Scenario.budget))
 
     # Fully invested per scenario
     problem.satisfy(model.where(
         Stock.x_quantity(Scenario, x_qty),
-    ).require(sum(x_qty).per(Scenario) >= Scenario.budget))
+    ).require(sum(Stock, x_qty).per(Scenario) >= Scenario.budget))
 
     # Compliance constraints (position + sector limits; non-reps forced to 0)
     _add_compliance_constraints(problem)
@@ -679,7 +679,7 @@ def solve_epsilon(eps_rate=None):
         ret_con = problem.satisfy(
             model.where(
                 Stock.x_quantity(Scenario, x_qty),
-            ).require(sum(Stock.returns * x_qty).per(Scenario) >= eps_rate * Scenario.budget),
+            ).require(sum(Stock, Stock.returns * x_qty).per(Scenario) >= eps_rate * Scenario.budget),
             name=["return_floor", Scenario.name],
             keyed_by={"scenario": Scenario},
         )
@@ -688,7 +688,7 @@ def solve_epsilon(eps_rate=None):
     # Each Scenario picks its matching regime covariance, so base and crisis
     # scenarios solve against different covariances in the same call.
     problem.minimize(
-        sum(regime_cov_val * x_qty * x_qty_paired)
+        sum(Stock, PairedStock, Scenario, regime_cov_val * x_qty * x_qty_paired)
         .where(
             Stock.regime_covar(PairedStock, Scenario.regime, regime_cov_val),
             Stock.x_quantity(Scenario, x_qty),
@@ -797,15 +797,15 @@ p2.satisfy(model.where(
 ).require(x_qty >= 0))
 p2.satisfy(model.where(
     Stock.x_quantity(Scenario, x_qty),
-).require(sum(x_qty).per(Scenario) <= Scenario.budget))
+).require(sum(Stock, x_qty).per(Scenario) <= Scenario.budget))
 p2.satisfy(model.where(
     Stock.x_quantity(Scenario, x_qty),
-).require(sum(x_qty).per(Scenario) >= Scenario.budget))
+).require(sum(Stock, x_qty).per(Scenario) >= Scenario.budget))
 
 _add_compliance_constraints(p2)
 
 p2.maximize(
-    sum(Stock.returns * x_qty).where(Stock.x_quantity(Scenario, x_qty))
+    sum(Stock, Scenario, Stock.returns * x_qty).where(Stock.x_quantity(Scenario, x_qty))
 )
 p2.solve("highs", time_limit_sec=60)
 si2 = p2.solve_info()
