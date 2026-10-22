@@ -75,20 +75,20 @@ problem.satisfy(model.require(Node.u == 1).where(Node.v(1)))
 
 # Constraint: degree constraints (exactly one in-edge and one out-edge per node)
 node_flow = sum(Edge.x).per(Node)
-problem.satisfy(model.require(
-    node_flow.where(Edge.j == Node.v) == 1,
-    node_flow.where(Edge.i == Node.v) == 1
-))
+problem.satisfy(model.where(Edge.j == Node.v).require(node_flow.where(Edge.j == Node.v) == 1))
+problem.satisfy(model.where(Edge.i == Node.v).require(node_flow.where(Edge.i == Node.v) == 1))
 
 # Constraint: MTZ subtour elimination
 # If edge (i,j) is in tour (x=1), then u[j] >= u[i]+1.
 # Big-M form: u[i] - u[j] + n*x <= n-1
+n = Integer.ref()
 problem.satisfy(model.where(
     Ni := Node, Nj := Node.ref(),
     Edge.i > 1, Edge.j > 1,
     Ni.v(Edge.i), Nj.v(Edge.j),
+    node_count(n),
 ).require(
-    Ni.u - Nj.u + node_count * Edge.x <= node_count - 1
+    Ni.u - Nj.u + n * Edge.x <= n - 1
 ))
 
 # --------------------------------------------------

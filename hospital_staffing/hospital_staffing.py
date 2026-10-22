@@ -142,43 +142,48 @@ def solve_staffing(objective="min_overtime", eps_unmet=None):
     # Constraints
 
     # Can only assign if available
-    problem.satisfy(model.require(Assignment.x_assigned <= Assignment.availability.available))
+    problem.satisfy(model.where(Assignment).require(Assignment.x_assigned <= Assignment.availability.available))
 
     # Every nurse works at least one shift
     nurse_shift_count = sum(AssignmentRef.x_assigned).where(
         AssignmentRef.availability.nurse == Nurse).per(Nurse)
-    problem.satisfy(model.require(nurse_shift_count >= 1))
+    problem.satisfy(model.where(AssignmentRef.availability.nurse == Nurse).require(nurse_shift_count >= 1))
 
     # Max 2 shifts per nurse
-    problem.satisfy(model.require(nurse_shift_count <= 2))
+    problem.satisfy(model.where(AssignmentRef.availability.nurse == Nurse).require(nurse_shift_count <= 2))
 
     # Minimum nurses per shift
     shift_staff_count = sum(AssignmentRef.x_assigned).where(
         AssignmentRef.availability.shift == Shift).per(Shift)
-    problem.satisfy(model.require(shift_staff_count >= Shift.min_nurses))
+    problem.satisfy(model.where(AssignmentRef.availability.shift == Shift).require(shift_staff_count >= Shift.min_nurses))
 
     # At least one nurse with required skill level per shift
-    skilled_coverage = sum(AssignmentRef.x_assigned).where(
+    skilled = [
         AssignmentRef.availability.shift == Shift,
         AssignmentRef.availability.nurse.skill_level >= Shift.min_skill,
-    ).per(Shift)
-    problem.satisfy(model.require(skilled_coverage >= 1))
+    ]
+    skilled_coverage = sum(AssignmentRef.x_assigned).where(*skilled).per(Shift)
+    problem.satisfy(model.where(*skilled).require(skilled_coverage >= 1))
 
     # Overtime >= total hours worked - regular hours
     total_hours_worked = sum(
         AssignmentRef.x_assigned * AssignmentRef.availability.shift.duration
     ).where(AssignmentRef.availability.nurse == Nurse).per(Nurse)
-    problem.satisfy(model.require(Nurse.x_overtime_hours >= total_hours_worked - Nurse.regular_hours))
+    problem.satisfy(model.where(AssignmentRef.availability.nurse == Nurse).require(
+        Nurse.x_overtime_hours >= total_hours_worked - Nurse.regular_hours
+    ))
 
     # Patients served <= demand per shift
-    problem.satisfy(model.require(Shift.x_patients_served <= Shift.patient_demand))
+    problem.satisfy(model.where(Shift).require(Shift.x_patients_served <= Shift.patient_demand))
 
     # Patients served <= nursing capacity per shift
     shift_nursing_capacity = shift_staff_count * Shift.patients_per_nurse_hour * Shift.duration
-    problem.satisfy(model.require(Shift.x_patients_served <= shift_nursing_capacity))
+    problem.satisfy(model.where(AssignmentRef.availability.shift == Shift).require(
+        Shift.x_patients_served <= shift_nursing_capacity
+    ))
 
     # Unmet demand >= patient demand - patients served
-    problem.satisfy(model.require(Shift.x_unmet_demand >= Shift.patient_demand - Shift.x_patients_served))
+    problem.satisfy(model.where(Shift).require(Shift.x_unmet_demand >= Shift.patient_demand - Shift.x_patients_served))
 
     # --- Epsilon constraint (if sweeping) ---
     # SINGLE-OBJECTIVE: unmet demand was penalized in the objective

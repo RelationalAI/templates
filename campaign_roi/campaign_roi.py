@@ -74,7 +74,7 @@ problem.solve_for(
 
 # Constraint: per-campaign floor and cap, derived from each campaign's
 # current spend.
-problem.satisfy(model.require(
+problem.satisfy(model.where(Campaign).require(
     Campaign.x_budget >= FLOOR_FRACTION * Campaign.current_budget,
     Campaign.x_budget <= CAP_MULTIPLIER * Campaign.current_budget,
 ))

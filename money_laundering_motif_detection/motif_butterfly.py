@@ -103,7 +103,7 @@ is_dest_var = problem.solve_for(
 )
 
 # An account plays at most one motif role.
-role_exclusive_ic = model.require(Account.is_source + Account.is_hub + Account.is_dest <= 1)
+role_exclusive_ic = model.where(Account).require(Account.is_source + Account.is_hub + Account.is_dest <= 1)
 problem.satisfy(role_exclusive_ic)
 
 # Exactly one source, K hubs, one destination.
@@ -151,12 +151,12 @@ problem.satisfy(total_motif_edges_ic)
 # ICs are vacuous on the demo; they are load-bearing on customer ledgers
 # that have such edges. Expressed as `sum of three binaries <= 2` so the
 # constraint stays in plain relational arithmetic.
-no_direct_src_to_dst_ic = model.require(
+no_direct_src_to_dst_ic = model.where(Transaction).require(
     Transaction.is_motif + Transaction.src.is_source + Transaction.dst.is_dest <= 2
 )
 problem.satisfy(no_direct_src_to_dst_ic)
 
-no_hub_to_hub_ic = model.require(
+no_hub_to_hub_ic = model.where(Transaction).require(
     Transaction.is_motif + Transaction.src.is_hub + Transaction.dst.is_hub <= 2
 )
 problem.satisfy(no_hub_to_hub_ic)

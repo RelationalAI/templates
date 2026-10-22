@@ -88,9 +88,9 @@ problem.solve_for(
     upper=Connection.max_flow
 )
 
-# Constraint: total outflow from each source <= capacity
+# Constraint: total outflow from each connected source <= capacity
 outflow = sum(ConnectionRef.x_flow).where(ConnectionRef.source == Source).per(Source)
-source_limit = model.require(outflow <= Source.capacity)
+source_limit = model.where(ConnectionRef.source == Source).require(outflow <= Source.capacity)
 problem.satisfy(source_limit)
 
 # Constraint: effective inflow to each user >= demand (nonlinear losses)
@@ -102,7 +102,7 @@ effective_inflow = (
     .where(ConnectionRef.user == User)
     .per(User)
 )
-meet_demand = model.require(effective_inflow >= User.demand)
+meet_demand = model.where(ConnectionRef.user == User).require(effective_inflow >= User.demand)
 problem.satisfy(meet_demand)
 
 # Objective: minimize total cost
