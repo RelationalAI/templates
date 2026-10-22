@@ -1,0 +1,4 @@
+stage,actor_id,actor_name,actor_role,action,action_at_utc,action_reason,window_start_utc,window_end_utc,observed_at_utc,modeled_baseline_loss_usd,simulated_observed_loss_usd,simulated_incremental_spend_usd
+closure,ACT-AVERY,Avery Tran,dispatcher,approved,2026-10-22T07:31:00Z,Accessible bridge coverage preserved,2026-10-22T07:31:00Z,2026-10-22T07:42:00Z,2026-10-22T07:43:00Z,5000.0,2600.0,1200.0
+vehicle_veto,ACT-MORGAN,Morgan Vale,supervisor,approved,2026-10-22T07:44:00Z,B07 unavailable; B08 preserves accessible capacity,2026-10-22T07:44:00Z,2026-10-22T08:00:00Z,2026-10-22T08:01:00Z,5600.0,4000.0,1700.0
+traffic_update,ACT-MORGAN,Morgan Vale,supervisor,approved,2026-10-22T08:02:00Z,R5 road delay; R6 is policy-compliant within budget,2026-10-22T08:02:00Z,2026-10-22T10:00:00Z,2026-10-22T10:01:00Z,39000.0,7000.0,12600.0

@@ -1,0 +1,4 @@
+id,case_id,event_time_utc,event_type,object_id,actor,reason,value
+E1,CASE-001,2026-10-22T07:30:00Z,rail_closure,RA08,synthetic_sensor,Rail link S08-S09 closed,closed
+E2,CASE-001,2026-10-22T07:42:00Z,vehicle_veto,B07,demo_dispatcher,Accessible bus reported unavailable,unavailable
+E3,CASE-001,2026-10-22T08:00:00Z,traffic_update,RD5,synthetic_partner_feed,Bridge route travel time increased,90 minutes

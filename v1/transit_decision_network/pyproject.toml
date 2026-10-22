@@ -1,0 +1,14 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rai-template-transit-decision-network"
+version = "0.1.0"
+description = "Synthetic decision-network demo for transit disruption response"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = ["relationalai==1.30.3", "pandas>=2,<3"]
+
+[tool.setuptools]
+py-modules = ["transit_model", "dispatch", "run_demo"]

@@ -1,0 +1,598 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RelationalAI | Transit Decision Network</title>
+  <style>
+    :root {
+      --ink: #080e4c;
+      --body: #354064;
+      --muted: #5d6980;
+      --paper: #fff;
+      --canvas: #f2f6f9;
+      --line: #d7e2eb;
+      --teal: #1686ae;
+      --blue: #2854a3;
+      --coral: #d75845;
+      --green: #28769c;
+      --lime: #b5d55d;
+      --soft-teal: #e5f4f8;
+      --soft-coral: #fff0ec;
+      --soft-blue: #e9effb;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; }
+    body {
+      background: var(--ink);
+      color: var(--ink);
+      font-family: "Plus Jakarta Sans", "Avenir Next", Arial, sans-serif;
+      letter-spacing: 0;
+      overflow: hidden;
+    }
+    h1, h2, h3, p, ul { margin: 0; letter-spacing: 0; }
+    p { color: var(--body); line-height: 1.35; }
+    button { font: inherit; }
+    .chrome {
+      position: fixed; z-index: 5; top: 13px; left: 50%; transform: translateX(-50%);
+      width: min(1280px, calc(100vw - 56px));
+      display: flex; align-items: center; justify-content: space-between;
+      color: #e7f6fc; pointer-events: none;
+    }
+    .brand { font-size: 15px; font-weight: 800; letter-spacing: 0; }
+    .controls { display: flex; gap: 8px; align-items: center; pointer-events: auto; }
+    .controls span { font-size: 14px; min-width: 48px; text-align: center; }
+    .icon-button {
+      border: 1px solid #6c76a0; background: #17225f; color: white;
+      width: 34px; height: 34px; display: grid; place-items: center;
+      padding: 0; border-radius: 4px; cursor: pointer; font-size: 22px; line-height: 1;
+    }
+    .icon-button:hover, .icon-button:focus-visible { background: #2854a3; outline: 2px solid white; }
+    .icon-button:disabled { opacity: .42; cursor: default; outline: none; }
+    .deck { min-height: 100dvh; display: grid; place-items: center; padding: 54px 28px 22px; }
+    .slide {
+      display: none; width: min(1280px, calc(100vw - 56px));
+      height: min(720px, calc(100dvh - 76px)); min-height: 600px;
+      background: var(--paper); border-radius: 4px; padding: 44px 56px;
+      overflow: hidden; flex-direction: column; gap: 0;
+    }
+    .slide.active { display: flex; }
+    .eyebrow { color: var(--coral); font-size: 14px; font-weight: 800; text-transform: uppercase; margin-bottom: 12px; }
+    h1 { font-size: 55px; line-height: 1.04; max-width: 1080px; }
+    h2 { font-size: 39px; line-height: 1.08; max-width: 1080px; }
+    h3 { font-size: 19px; line-height: 1.2; }
+    .lead { font-size: 22px; line-height: 1.32; max-width: 980px; margin-top: 18px; }
+    .section-subtitle { font-size: 18px; margin-top: 13px; max-width: 1050px; }
+    .accent { color: var(--teal); }
+    .coral { color: var(--coral); }
+    .top-rule { border-top: 1px solid var(--line); margin-top: 26px; }
+    .pill { display: inline-flex; align-items: center; gap: 7px; padding: 7px 10px; border-radius: 4px; font-size: 14px; font-weight: 800; }
+    .pill.teal { background: var(--soft-teal); color: var(--teal); }
+    .pill.coral { background: var(--soft-coral); color: var(--coral); }
+    .pill.blue { background: var(--soft-blue); color: var(--blue); }
+    .metric-band { display: grid; grid-template-columns: repeat(4, 1fr); border-top: 1px solid var(--line); margin-top: auto; }
+    .metric-band > div { padding: 18px 18px 0 0; border-right: 1px solid var(--line); margin-right: 18px; }
+    .metric-band > div:last-child { border-right: 0; margin-right: 0; }
+    .metric-band strong { display: block; font-size: 32px; line-height: 1; margin-bottom: 7px; }
+    .metric-band span { display: block; color: var(--muted); font-size: 15px; }
+    .map-wrap { flex: 1; min-height: 0; background: #f7fafc; margin: 26px 0 18px; border: 1px solid var(--line); position: relative; }
+    .map-wrap svg { width: 100%; height: 100%; display: block; }
+    .map-note { position: absolute; right: 18px; top: 16px; background: white; border-left: 4px solid var(--coral); padding: 9px 12px; font-size: 15px; font-weight: 800; }
+    .rail { fill: none; stroke: #aebdcc; stroke-width: 5; stroke-linecap: round; }
+    .closed-link { fill: none; stroke: var(--coral); stroke-width: 6; stroke-dasharray: 10 8; }
+    .route { fill: none; stroke-width: 5; stroke-linecap: round; stroke-dasharray: 600; stroke-dashoffset: 600; }
+    .active .route { animation: draw-route 1.2s ease forwards; }
+    .active .route.r3 { animation-delay: .35s; }
+    .active .route.r5 { animation-delay: .7s; }
+    @keyframes draw-route { to { stroke-dashoffset: 0; } }
+    .stop { fill: white; stroke: var(--ink); stroke-width: 3; }
+    .map-label { font-size: 16px; fill: var(--ink); font-weight: 800; }
+    .map-zone { font-size: 15px; fill: #5e6a84; font-weight: 800; }
+    .route-label { font-size: 17px; font-weight: 900; }
+    .map-legend { display: flex; gap: 24px; align-items: center; font-size: 15px; color: var(--body); }
+    .legend-key { display: inline-block; width: 24px; height: 4px; vertical-align: middle; margin-right: 7px; }
+    .facts { display: grid; grid-template-columns: 1.05fr .95fr; gap: 40px; flex: 1; min-height: 0; margin-top: 34px; }
+    .fact-list { display: grid; gap: 0; align-content: start; }
+    .fact-row { display: grid; grid-template-columns: 1fr auto; padding: 17px 0; border-bottom: 1px solid var(--line); font-size: 20px; }
+    .fact-row strong { font-size: 21px; }
+    .event-line { border-left: 3px solid var(--line); margin-left: 9px; padding-left: 23px; display: grid; gap: 22px; align-content: start; }
+    .event { position: relative; }
+    .event::before { content: ""; position: absolute; left: -32px; top: 4px; width: 15px; height: 15px; border-radius: 50%; background: var(--teal); border: 3px solid white; box-shadow: 0 0 0 2px var(--teal); }
+    .event.coral-dot::before { background: var(--coral); box-shadow: 0 0 0 2px var(--coral); }
+    .event time { display: block; font-size: 15px; font-weight: 800; color: var(--coral); margin-bottom: 4px; }
+    .event p { font-size: 18px; }
+    .ontology-flow { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 1.28fr 1fr; gap: 20px; align-items: stretch; margin-top: 31px; }
+    .flow-panel { padding: 25px 23px; border-top: 4px solid var(--teal); background: #f7fafc; }
+    .flow-panel.center { background: #edf7f9; border-color: var(--coral); }
+    .flow-panel:last-child { border-color: var(--blue); }
+    .flow-panel h3 { font-size: 21px; margin-bottom: 20px; }
+    .flow-panel p { font-size: 17px; }
+    .source-line, .output-line { padding: 12px 0; border-top: 1px solid #d9e4e9; color: var(--body); font-size: 17px; }
+    .source-line strong, .output-line strong { display: block; color: var(--ink); font-size: 18px; }
+    .concept-cloud { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin: 22px 0; }
+    .concept-cloud span { background: white; border: 1px solid #bfd5e0; border-radius: 4px; padding: 14px 12px; font-weight: 800; text-align: center; font-size: 16px; }
+    .center-note { color: var(--teal); font-weight: 800; font-size: 16px; }
+    .ontology-arrow { color: var(--coral); font-weight: 900; font-size: 24px; }
+    .rule-layout { display: grid; grid-template-columns: .95fr 1.05fr; gap: 36px; margin-top: 35px; flex: 1; min-height: 0; }
+    .rule-steps { display: grid; gap: 12px; align-content: start; }
+    .rule-step { border-left: 4px solid var(--teal); background: #f7fafc; padding: 16px 18px; }
+    .rule-step strong { display: block; font-size: 19px; margin-bottom: 4px; }
+    .rule-step p { font-size: 16px; }
+    .rule-table { width: 100%; border-collapse: collapse; font-size: 17px; align-self: start; }
+    .rule-table th { text-align: left; color: var(--muted); font-size: 14px; text-transform: uppercase; padding: 12px 10px; border-bottom: 2px solid var(--line); }
+    .rule-table td { padding: 17px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    .rule-table td:first-child { font-weight: 800; white-space: nowrap; }
+    .good { color: #157a83; font-weight: 800; }
+    .bad { color: var(--coral); font-weight: 800; }
+    .solve-layout { display: grid; grid-template-columns: 1.1fr .9fr; gap: 36px; margin-top: 30px; flex: 1; min-height: 0; }
+    .code-block { background: #0d174f; color: #e9f8fa; border-radius: 4px; padding: 21px 24px; overflow: auto; font-size: 16px; line-height: 1.55; }
+    .code-block pre { margin: 0; white-space: pre-wrap; font-family: "SFMono-Regular", Consolas, monospace; }
+    .code-accent { color: #a9e7ee; }
+    .code-coral { color: #ffad9e; }
+    .constraint-list { display: grid; gap: 0; align-content: start; }
+    .constraint-list div { padding: 14px 0; border-bottom: 1px solid var(--line); }
+    .constraint-list strong { display: block; font-size: 18px; }
+    .constraint-list p { font-size: 16px; margin-top: 4px; }
+    .compare { display: grid; grid-template-columns: 1fr 1fr; gap: 0; flex: 1; min-height: 0; margin-top: 33px; }
+    .compare > div { padding: 21px 37px 16px 0; }
+    .compare > div + div { border-left: 1px solid var(--line); padding-left: 38px; padding-right: 0; }
+    .compare h3 { font-size: 23px; margin: 15px 0 28px; }
+    .compare .amount { font-size: 56px; font-weight: 900; line-height: 1; }
+    .compare .route-name { font-size: 29px; font-weight: 900; color: var(--teal); margin-bottom: 16px; }
+    .compare dl { display: grid; grid-template-columns: 1fr auto; gap: 13px; margin: 25px 0 0; font-size: 17px; }
+    .compare dt { color: var(--body); }
+    .compare dd { margin: 0; font-weight: 800; }
+    .callout { background: var(--soft-coral); border-left: 5px solid var(--coral); padding: 16px 20px; margin-top: auto; font-size: 20px; font-weight: 800; }
+    .scenario-tabs { display: flex; border-bottom: 2px solid var(--line); margin-top: 28px; gap: 6px; }
+    .scenario-tabs button { border: 0; border-bottom: 4px solid transparent; background: none; color: var(--body); font-size: 17px; font-weight: 800; padding: 12px 20px; cursor: pointer; }
+    .scenario-tabs button[aria-selected="true"] { color: var(--teal); border-color: var(--teal); }
+    .scenario-tabs button:hover, .scenario-tabs button:focus-visible { background: #eff7fa; outline: none; }
+    .scenario-view { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 30px; flex: 1; min-height: 0; }
+    .assignment-table { width: 100%; border-collapse: collapse; font-size: 18px; }
+    .assignment-table th { color: var(--muted); font-size: 14px; text-align: left; text-transform: uppercase; padding: 11px 9px; border-bottom: 2px solid var(--line); }
+    .assignment-table td { padding: 15px 9px; border-bottom: 1px solid var(--line); }
+    .assignment-table tr:last-child td { color: var(--teal); font-weight: 800; }
+    .scenario-detail { border-left: 4px solid var(--coral); padding-left: 27px; }
+    .scenario-detail .amount { font-size: 46px; font-weight: 900; line-height: 1; margin: 14px 0 5px; }
+    .scenario-detail p { font-size: 19px; margin-top: 17px; }
+    .scenario-detail .diff { font-size: 24px; color: var(--teal); font-weight: 800; margin-top: 25px; }
+    .provenance { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0; margin-top: 38px; flex: 1; min-height: 0; }
+    .prov-step { position: relative; border-top: 4px solid var(--teal); padding: 18px 18px 10px 0; margin-right: 15px; }
+    .prov-step::after { content: ""; position: absolute; right: 0; top: 22px; width: 9px; height: 9px; border-top: 2px solid var(--coral); border-right: 2px solid var(--coral); transform: rotate(45deg); }
+    .prov-step:last-child::after { display: none; }
+    .prov-step:last-child { border-color: var(--coral); }
+    .prov-step b { display: block; font-size: 15px; text-transform: uppercase; color: var(--coral); margin-bottom: 13px; }
+    .prov-step strong { display: block; font-size: 21px; line-height: 1.15; overflow-wrap: anywhere; }
+    .prov-step p { font-size: 16px; margin-top: 10px; }
+    .boundary { border-top: 1px solid var(--line); padding-top: 18px; font-size: 18px; }
+    .decision-map { display: grid; grid-template-columns: 1fr .82fr 1fr; gap: 25px; margin-top: 28px; flex: 1; min-height: 0; }
+    .map-column { display: grid; gap: 9px; align-content: start; }
+    .map-column h3 { color: var(--coral); font-size: 15px; text-transform: uppercase; margin-bottom: 3px; }
+    .map-node { background: #f5f9fb; border-left: 4px solid var(--teal); padding: 10px 13px; }
+    .map-column:last-child .map-node { border-color: var(--blue); }
+    .map-node strong { display: block; font-size: 17px; }
+    .map-node span { color: var(--body); font-size: 14px; }
+    .map-center { display: flex; flex-direction: column; align-items: stretch; justify-content: center; gap: 16px; }
+    .relation-arrow { color: var(--coral); font-size: 16px; font-weight: 800; text-align: center; }
+    .point-node { background: var(--ink); color: white; padding: 23px; border-radius: 4px; }
+    .point-node strong { display: block; font-size: 28px; margin-bottom: 9px; }
+    .point-node span { display: block; font-size: 15px; color: #dceef5; }
+    .roi-layout { display: grid; grid-template-columns: 1.12fr .88fr; gap: 30px; margin-top: 28px; flex: 1; min-height: 0; }
+    .roi-layout .code-block { font-size: 14px; }
+    .roi-results { align-self: start; width: 100%; border-collapse: collapse; font-size: 17px; }
+    .roi-results th { text-align: left; font-size: 13px; color: var(--muted); border-bottom: 2px solid var(--line); padding: 10px 8px; text-transform: uppercase; }
+    .roi-results td { border-bottom: 1px solid var(--line); padding: 15px 8px; }
+    .roi-results td:first-child { font-weight: 800; }
+    .roi-results td:last-child { color: var(--teal); font-weight: 900; font-size: 22px; }
+    .roi-caveat { background: var(--soft-coral); border-left: 5px solid var(--coral); padding: 14px 19px; font-size: 17px; margin-top: 16px; }
+    .cap-grid { display: grid; grid-template-columns: 1fr 1fr; column-gap: 44px; margin-top: 29px; flex: 1; min-height: 0; align-content: start; }
+    .cap-row { display: grid; grid-template-columns: 155px 1fr; gap: 16px; border-top: 1px solid var(--line); padding: 15px 0; }
+    .cap-row strong { font-size: 17px; }
+    .cap-row p { font-size: 16px; }
+    .status-now { color: var(--teal); font-weight: 800; }
+    .status-next { color: var(--coral); font-weight: 800; }
+    .closing { margin-top: auto; background: var(--ink); color: white; padding: 18px 23px; font-size: 23px; font-weight: 800; }
+    @media (max-width: 1050px) {
+      .slide { padding: 33px 38px; }
+      h1 { font-size: 46px; } h2 { font-size: 34px; }
+      .lead { font-size: 19px; }
+      .code-block { font-size: 14px; }
+      .flow-panel { padding: 18px; }
+      .concept-cloud span { font-size: 14px; padding: 10px 6px; }
+    }
+    @media (max-width: 700px) {
+      body { overflow: auto; }
+      .chrome { top: 8px; width: calc(100vw - 24px); }
+      .brand { font-size: 13px; }
+      .deck { min-height: 100dvh; padding: 48px 12px 12px; display: block; }
+      .slide { width: 100%; min-height: calc(100dvh - 60px); height: auto; overflow: visible; padding: 28px 22px; }
+      h1 { font-size: 38px; } h2 { font-size: 30px; }
+      .eyebrow { font-size: 12px; }
+      .lead { font-size: 18px; margin-top: 13px; }
+      .section-subtitle { font-size: 16px; }
+      .map-wrap { min-height: 290px; margin-top: 20px; }
+      .map-note { right: 8px; top: 8px; font-size: 11px; }
+      .map-legend { flex-wrap: wrap; gap: 8px 16px; font-size: 13px; }
+      .metric-band { grid-template-columns: repeat(2, 1fr); margin-top: 25px; }
+      .metric-band > div { padding-top: 13px; margin: 0; border: 0; }
+      .metric-band strong { font-size: 25px; }
+      .facts, .rule-layout, .solve-layout, .compare, .scenario-view, .cap-grid, .decision-map, .roi-layout { grid-template-columns: 1fr; gap: 24px; }
+      .facts { margin-top: 23px; }
+      .fact-row { font-size: 17px; padding: 12px 0; }
+      .fact-row strong { font-size: 18px; }
+      .event-line { margin: 0 0 0 10px; }
+      .ontology-flow { grid-template-columns: 1fr; margin-top: 24px; }
+      .flow-panel { padding: 17px; }
+      .concept-cloud { margin: 13px 0; }
+      .rule-table, .assignment-table { font-size: 15px; }
+      .rule-table td, .assignment-table td { padding: 12px 6px; }
+      .code-block { font-size: 13px; padding: 16px; }
+      .compare > div { padding: 0; }
+      .compare > div + div { border: 0; border-top: 1px solid var(--line); padding: 20px 0 0; }
+      .compare .amount { font-size: 42px; }
+      .scenario-tabs { gap: 0; }
+      .scenario-tabs button { flex: 1; padding: 10px 4px; font-size: 14px; }
+      .scenario-detail { border-left: 0; border-top: 4px solid var(--coral); padding: 17px 0 0; }
+      .provenance { grid-template-columns: 1fr; margin-top: 24px; }
+      .prov-step { border-top: 0; border-left: 4px solid var(--teal); padding: 0 0 19px 17px; margin: 0 0 10px 0; }
+      .prov-step::after { display: none; }
+      .prov-step strong { font-size: 19px; }
+      .decision-map { margin-top: 24px; }
+      .map-center { gap: 8px; }
+      .point-node { padding: 18px; }
+      .roi-layout .code-block { font-size: 12px; }
+      .roi-results { font-size: 15px; }
+      .cap-row { grid-template-columns: 120px 1fr; gap: 10px; }
+      .cap-row strong, .cap-row p { font-size: 14px; }
+      .closing { margin-top: 20px; font-size: 18px; }
+    }
+    @media (prefers-reduced-motion: reduce) { .active .route { animation: none; stroke-dashoffset: 0; } }
+    @media print {
+      body { background: white; overflow: visible; }
+      .chrome { display: none; }
+      .deck { display: block; padding: 0; }
+      .slide, .slide.active { display: flex; width: 100%; height: 100vh; min-height: 0; border-radius: 0; page-break-after: always; break-after: page; }
+      .route { stroke-dashoffset: 0; }
+      @page { size: landscape; margin: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="chrome" aria-label="Slide navigation">
+    <div class="brand">RelationalAI</div>
+    <div class="controls">
+      <button class="icon-button" id="previous" aria-label="Previous slide" title="Previous slide">&#8592;</button>
+      <span id="slide-count" aria-live="polite">1 / 11</span>
+      <button class="icon-button" id="next" aria-label="Next slide" title="Next slide">&#8594;</button>
+    </div>
+  </div>
+  <main class="deck">
+    <section class="slide active" data-title="Decision question">
+      <div class="eyebrow">Transit decision network</div>
+      <h1>A rail link closes. <span class="accent">Which buses do we dispatch?</span></h1>
+      <p class="lead">At 07:30, S08-S09 closes during the morning peak. The decision must cover three zones, preserve accessible service, and stay within an $18,000 operating limit.</p>
+      <div class="map-wrap">
+        <div class="map-note">S08-S09 closed</div>
+        <svg viewBox="0 0 1000 310" role="img" aria-label="Synthetic eight-stop rail line with a closed S08-S09 link and three bus-bridge routes">
+          <text class="map-zone" x="110" y="45">NORTH</text><text class="map-zone" x="458" y="45">CENTRAL</text><text class="map-zone" x="777" y="45">SOUTH</text>
+          <path class="rail" d="M70 190 L190 155 L310 188 L430 154" />
+          <path class="closed-link" d="M430 154 L550 188" />
+          <path class="rail" d="M550 188 L670 154 L790 185 L920 154" />
+          <path class="route r1" stroke="#2854a3" d="M70 190 Q247 272 430 154" />
+          <path class="route r3" stroke="#d75845" d="M430 154 Q565 75 670 154" />
+          <path class="route r5" stroke="#1686ae" d="M550 188 Q750 278 920 154" />
+          <text class="route-label" fill="#2854a3" x="226" y="264">R1</text>
+          <text class="route-label" fill="#d75845" x="548" y="99">R3</text>
+          <text class="route-label" fill="#1686ae" x="755" y="259">R5 accessible</text>
+          <g class="map-label" text-anchor="middle">
+            <circle class="stop" cx="70" cy="190" r="10"/><text x="70" y="220">S05</text>
+            <circle class="stop" cx="190" cy="155" r="10"/><text x="190" y="140">S06</text>
+            <circle class="stop" cx="310" cy="188" r="10"/><text x="310" y="218">S07</text>
+            <circle class="stop" cx="430" cy="154" r="10"/><text x="430" y="138">S08</text>
+            <circle class="stop" cx="550" cy="188" r="10"/><text x="550" y="218">S09</text>
+            <circle class="stop" cx="670" cy="154" r="10"/><text x="670" y="138">S10</text>
+            <circle class="stop" cx="790" cy="185" r="10"/><text x="790" y="215">S11</text>
+            <circle class="stop" cx="920" cy="154" r="10"/><text x="920" y="138">S12</text>
+          </g>
+        </svg>
+      </div>
+      <div class="map-legend"><span><i class="legend-key" style="background:#aebdcc"></i>Rail</span><span><i class="legend-key" style="background:#d75845"></i>Closed link</span><span><i class="legend-key" style="background:#1686ae"></i>Selected bus bridges</span></div>
+    </section>
+
+    <section class="slide" data-title="Source facts">
+      <div class="eyebrow">The case</div>
+      <h2>One decision. Three changing inputs.</h2>
+      <p class="section-subtitle">Synthetic, aggregate data; one continuing case with a new immutable source snapshot at each event.</p>
+      <div class="facts">
+        <div class="fact-list">
+          <div class="fact-row"><span>Operating budget</span><strong>$18,000</strong></div>
+          <div class="fact-row"><span>Riders needing service</span><strong>150</strong></div>
+          <div class="fact-row"><span>Service zones</span><strong>3</strong></div>
+          <div class="fact-row"><span>Route alternatives</span><strong>7</strong></div>
+          <div class="fact-row"><span>Vehicles / drivers</span><strong>5 / 4</strong></div>
+        </div>
+        <div class="event-line">
+          <div class="event"><time>07:30 &nbsp; E1</time><h3>Rail closure</h3><p>Link S08-S09 becomes unavailable. Build the first proposal.</p></div>
+          <div class="event coral-dot"><time>07:42 &nbsp; E2</time><h3>Vehicle veto</h3><p>Accessible bus B07 is reported unavailable. Re-solve, preserving the earlier run.</p></div>
+          <div class="event"><time>08:00 &nbsp; E3</time><h3>Traffic update</h3><p>Travel time rises on R5's road link. Re-solve with a new snapshot.</p></div>
+        </div>
+      </div>
+      <div class="metric-band"><div><strong>60</strong><span>North demand</span></div><div><strong>50</strong><span>Central demand</span></div><div><strong>40</strong><span>South demand</span></div><div><strong>30</strong><span>South accessible floor</span></div></div>
+    </section>
+
+    <section class="slide" data-title="Executable ontology">
+      <div class="eyebrow">Decision modeling</div>
+      <h2>The ontology connects facts to a choice.</h2>
+      <p class="section-subtitle">A shared business model gives the rules and optimizer the same meaning for routes, resources, service, and policy.</p>
+      <div class="ontology-flow">
+        <div class="flow-panel">
+          <h3>Source snapshots</h3>
+          <div class="source-line"><strong>Network</strong> Stops, rail links, road links</div>
+          <div class="source-line"><strong>Operations</strong> Routes, vehicles, drivers</div>
+          <div class="source-line"><strong>Decision context</strong> Case, event, zone demand</div>
+        </div>
+        <div class="flow-panel center">
+          <h3>PyRel ontology</h3>
+          <div class="concept-cloud"><span>DecisionCase</span><span>InputEvent</span><span>RouteOption</span><span>Zone</span><span>Vehicle</span><span>Driver</span><span>AssignmentOption</span><span>RoadLink</span></div>
+          <div class="center-note">Linked identities + derived eligibility</div>
+        </div>
+        <div class="flow-panel">
+          <h3>Decision output</h3>
+          <div class="output-line"><strong>Eligible options</strong> Route + bus + driver</div>
+          <div class="output-line"><strong>Constrained proposal</strong> Selected assignments and unmet demand</div>
+          <div class="output-line"><strong>Evidence</strong> Input hash, policy, solver status</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" data-title="Rules and policy">
+      <div class="eyebrow">Rules and safeguards</div>
+      <h2>Eligibility is not the same as approval.</h2>
+      <p class="section-subtitle">PyRel rules screen route-bus-driver combinations. Plan-level constraints then determine whether a set of eligible options is dispatchable.</p>
+      <div class="rule-layout">
+        <div class="rule-steps">
+          <div class="rule-step"><strong>Resource availability</strong><p>Vehicle and driver must both be available.</p></div>
+          <div class="rule-step"><strong>Shift time</strong><p>Route duration cannot exceed the driver's remaining shift.</p></div>
+          <div class="rule-step"><strong>Accessible route qualification</strong><p>An accessible route needs an accessible bus and qualified driver.</p></div>
+          <div class="rule-step" style="border-color:var(--coral)"><strong>Plan-level South safeguard</strong><p>Selected assignments must provide at least 30 accessible rider places in the South.</p></div>
+        </div>
+        <table class="rule-table" aria-label="Example option screening">
+          <thead><tr><th>Option</th><th>Eligibility</th><th>Plan implication</th></tr></thead>
+          <tbody>
+            <tr><td>R5 / B07 / D03</td><td class="good">Eligible</td><td>40 accessible places</td></tr>
+            <tr><td>R5 / B09 / D03</td><td class="bad">Ineligible</td><td>B09 is not accessible</td></tr>
+            <tr><td>R7 / B09 / D02</td><td class="good">Eligible</td><td class="bad">0 accessible places</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="slide" data-title="Prescriptive solve">
+      <div class="eyebrow">Prescriptive reasoning</div>
+      <h2>Optimization chooses the portfolio, not a ranked list.</h2>
+      <p class="section-subtitle">A binary choice for each eligible assignment, plus an explicit unmet-demand variable for each zone.</p>
+      <div class="solve-layout">
+        <div class="code-block"><pre><span class="code-accent">problem.solve_for</span>(
+    Option.selected,
+    where=[Option.eligible()],
+    name=["route_id", "vehicle_id", "driver_id"],
+    type="bin",
+)
+
+problem.satisfy(model.require(
+    aggs.sum(Option.selected * Option.cost)
+    &lt;= budget_usd
+))
+
+<span class="code-accent">problem.minimize</span>(
+    aggs.sum(Option.selected * Option.cost)
+    + penalty_per_unmet_rider_usd
+      * aggs.sum(Zone.unmet)
+)
+<span class="code-coral">problem.solve("highs", time_limit_sec=60)</span></pre></div>
+        <div class="constraint-list">
+          <div><strong>Hard limit</strong><p>Operating cost stays at or below $18,000.</p></div>
+          <div><strong>Scarce resources</strong><p>One assignment per vehicle, driver, route, and zone.</p></div>
+          <div><strong>Service floors</strong><p>Minimum capacity in every zone and 30 accessible places in the South.</p></div>
+          <div><strong>Soft shortfall</strong><p>Each unmet rider adds $250 to the objective. Shortfall is reported, never hidden.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" data-title="Safeguard tradeoff">
+      <div class="eyebrow">Why a decision model matters</div>
+      <h2>The cheaper answer is not the valid answer.</h2>
+      <div class="compare">
+        <div>
+          <span class="pill coral">Accessibility relaxed</span>
+          <h3>Counterfactual</h3>
+          <div class="route-name">South: R7 / B09</div>
+          <div class="amount">$13,050</div>
+          <dl><dt>South accessible capacity</dt><dd class="bad">0</dd><dt>Unmet riders</dt><dd>0</dd><dt>Dispatchable under policy?</dt><dd class="bad">No</dd></dl>
+        </div>
+        <div>
+          <span class="pill teal">Safeguard enforced</span>
+          <h3>Baseline proposal</h3>
+          <div class="route-name">South: R5 / B07</div>
+          <div class="amount">$15,550</div>
+          <dl><dt>South accessible capacity</dt><dd class="good">40</dd><dt>Unmet riders</dt><dd>0</dd><dt>Dispatchable under policy?</dt><dd class="good">Yes, pending human approval</dd></dl>
+        </div>
+      </div>
+      <div class="callout">$2,500 is the visible cost of preserving the accessibility safeguard in this synthetic case.</div>
+    </section>
+
+    <section class="slide" data-title="Re-decision sequence">
+      <div class="eyebrow">Decision execution</div>
+      <h2>New facts produce a new proposal.</h2>
+      <p class="section-subtitle">Each tab is a separate RelationalAI solve against a pinned snapshot. Earlier answers are not silently overwritten.</p>
+      <div class="scenario-tabs" role="tablist" aria-label="Decision run">
+        <button type="button" role="tab" aria-selected="true" data-scenario="closure">07:30 Closure</button>
+        <button type="button" role="tab" aria-selected="false" data-scenario="vehicle_veto">07:42 Veto</button>
+        <button type="button" role="tab" aria-selected="false" data-scenario="traffic_update">08:00 Traffic</button>
+      </div>
+      <div class="scenario-view">
+        <table class="assignment-table" aria-label="Selected assignments"><thead><tr><th>Zone</th><th>Route</th><th>Bus</th><th>Capacity</th></tr></thead><tbody id="scenario-assignments"></tbody></table>
+        <div class="scenario-detail">
+          <span class="pill teal" id="scenario-status">OPTIMAL</span>
+          <div class="amount" id="scenario-cost">$15,550</div>
+          <p>Operating cost within the $18,000 limit</p>
+          <p id="scenario-shortfall">0 unmet riders; objective $15,550.</p>
+          <div class="diff" id="scenario-diff">Initial proposal for the closure.</div>
+          <p id="scenario-trigger">E1: S08-S09 rail closure.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" data-title="DecisionPoint ontology">
+      <div class="eyebrow">Decision modeling and governance</div>
+      <h2>The decision moment is a first-class concept.</h2>
+      <p class="section-subtitle">One case has three points as facts change. The 07:30 point has two runs: a policy-constrained proposal and a counterfactual.</p>
+      <div class="decision-map" aria-label="Decision ontology relationships">
+        <div class="map-column">
+          <h3>Known at the point</h3>
+          <div class="map-node"><strong>DecisionCase</strong><span>Continuing closure problem</span></div>
+          <div class="map-node"><strong>InputEvent</strong><span>Trigger, time, source, reason</span></div>
+          <div class="map-node"><strong>InputSnapshot</strong><span>Hash and 10 SnapshotFiles</span></div>
+          <div class="map-node"><strong>CodeAsset</strong><span>PyRel and solver source SHA-256</span></div>
+          <div class="map-node"><strong>PolicyVersion</strong><span>Budget and unmet-rider penalty</span></div>
+        </div>
+        <div class="map-center">
+          <div class="relation-arrow">linked by identity &rarr;</div>
+          <div class="point-node"><strong>DecisionPoint</strong><span>DP-90e988ac46bc</span><span>07:30; source 2359eb7f...</span><span>Model ea3d65fb...</span></div>
+          <div class="relation-arrow">evaluated as &rarr;</div>
+        </div>
+        <div class="map-column">
+          <h3>After the point</h3>
+          <div class="map-node"><strong>DecisionRun</strong><span>Solver status, objective, run kind</span></div>
+          <div class="map-node"><strong>DecisionRule</strong><span>Applied rule IDs per run</span></div>
+          <div class="map-node"><strong>RunSelection</strong><span>Route, bus, driver, cost</span></div>
+          <div class="map-node"><strong>DecisionAction</strong><span>Human approval and reason</span></div>
+          <div class="map-node"><strong>OutcomeObservation</strong><span>Later synthetic outcome window</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" data-title="Decision provenance">
+      <div class="eyebrow">Monitoring and governance</div>
+      <h2>A proposal carries its evidence with it.</h2>
+      <p class="section-subtitle">The runner can write a decision-run record with the trigger, source fingerprint, model and policy versions, solver status, assignments, cost, and shortfall.</p>
+      <div class="provenance">
+        <div class="prov-step"><b>Trigger</b><strong>E2: B07 veto</strong><p>07:42, synthetic dispatcher event</p></div>
+        <div class="prov-step"><b>Source</b><strong>Snapshot dce6ae10...</strong><p>SHA-256 hashes cover each CSV fixture</p></div>
+        <div class="prov-step"><b>Decision assets</b><strong>Model 0.1.0<br>Policy P1</strong><p>Fixed inputs for replay</p></div>
+        <div class="prov-step"><b>Execution</b><strong>HiGHS 1.13.1<br>OPTIMAL</strong><p>Constraints and objective checked</p></div>
+        <div class="prov-step"><b>Proposal</b><strong>R5 / B08</strong><p>$16,350; no unmet riders</p></div>
+      </div>
+      <p class="boundary"><strong>Boundary:</strong> follow-up approvals and outcomes are synthetic fixtures. The JSONL ledger is not tamper-proof; authenticated review and real telemetry remain application work.</p>
+    </section>
+
+    <section class="slide" data-title="Decision ROI query">
+      <div class="eyebrow">Querying decision outcomes</div>
+      <h2>Whose approved decisions had the highest estimated return?</h2>
+      <p class="section-subtitle">The ontology joins actor &rarr; review &rarr; run &rarr; outcome. Counterfactuals and unapproved proposals do not receive ROI credit.</p>
+      <div class="roi-layout">
+        <div class="code-block"><pre>model.where(
+    Action.actor == Actor,
+    Action.run == Run,
+    Outcome.run == Run,
+    Action.action == "approved",
+    Run.kind == "policy_constrained",
+    Outcome.evidence_kind == "synthetic_follow_up",
+).select(
+    Actor.name.alias("actor"),
+    (aggs.sum(Outcome.estimated_net_value_usd).per(Actor)
+     / aggs.sum(Outcome.simulated_incremental_spend_usd)
+         .per(Actor)).alias("estimated_roi"),
+)</pre></div>
+        <table class="roi-results" aria-label="Illustrative estimated ROI by reviewer">
+          <thead><tr><th>Reviewer</th><th>Decisions</th><th>Net value</th><th>Est. ROI</th></tr></thead>
+          <tbody><tr><td>Morgan Vale</td><td>2</td><td>$19,300</td><td>135%</td></tr><tr><td>Avery Tran</td><td>1</td><td>$1,200</td><td>100%</td></tr></tbody>
+        </table>
+      </div>
+      <p class="roi-caveat"><strong>Synthetic estimate, not causal ROI:</strong> avoided disruption cost uses a modeled baseline; outcome windows do not overlap, but this small example cannot evaluate people or prove business impact.</p>
+    </section>
+
+    <section class="slide" data-title="Capability roadmap">
+      <div class="eyebrow">From first slice to full decision system</div>
+      <h2>Six capabilities, one honest build path.</h2>
+      <div class="cap-grid">
+        <div class="cap-row"><strong>Modeling</strong><p><span class="status-now">Now:</span> case, event, network, resources, policy logic in PyRel. <span class="status-next">Next:</span> visual blueprint editor.</p></div>
+        <div class="cap-row"><strong>Collaboration</strong><p><span class="status-now">Now:</span> veto input and synthetic review records. <span class="status-next">Next:</span> authenticated approval and override workflow.</p></div>
+        <div class="cap-row"><strong>Composition</strong><p><span class="status-now">Now:</span> generator, model, solver, runner. <span class="status-next">Next:</span> reusable services and CoWork queries.</p></div>
+        <div class="cap-row"><strong>Execution</strong><p><span class="status-now">Now:</span> four live RAI/HiGHS solves. <span class="status-next">Next:</span> dedicated deployment and batch/on-demand orchestration.</p></div>
+        <div class="cap-row"><strong>Monitoring</strong><p><span class="status-now">Now:</span> plan checks and synthetic follow-up. <span class="status-next">Next:</span> real telemetry, drift, and threshold alerts.</p></div>
+        <div class="cap-row"><strong>Governance</strong><p><span class="status-now">Now:</span> source hashes, versions, optional JSONL run record. <span class="status-next">Next:</span> controlled ledger, roles, and stewardship.</p></div>
+      </div>
+      <div class="closing">The answer changes when the facts change, while the decision logic remains inspectable.</div>
+    </section>
+  </main>
+  <script>
+    const slides = Array.from(document.querySelectorAll('.slide'));
+    const count = document.getElementById('slide-count');
+    const previous = document.getElementById('previous');
+    const next = document.getElementById('next');
+    let current = 0;
+    function showSlide(index) {
+      current = Math.max(0, Math.min(slides.length - 1, index));
+      slides.forEach((slide, i) => slide.classList.toggle('active', i === current));
+      count.textContent = `${current + 1} / ${slides.length}`;
+      previous.disabled = current === 0;
+      next.disabled = current === slides.length - 1;
+      document.title = `RelationalAI | ${slides[current].dataset.title}`;
+      const hash = `#slide-${current + 1}`;
+      if (window.location.hash !== hash) window.location.hash = hash;
+      window.scrollTo(0, 0);
+    }
+    previous.addEventListener('click', () => showSlide(current - 1));
+    next.addEventListener('click', () => showSlide(current + 1));
+    window.addEventListener('keydown', (event) => {
+      if (event.key === 'ArrowRight' || event.key === 'PageDown' || event.key === ' ') {
+        event.preventDefault(); showSlide(current + 1);
+      } else if (event.key === 'ArrowLeft' || event.key === 'PageUp') {
+        event.preventDefault(); showSlide(current - 1);
+      } else if (event.key === 'Home') {
+        showSlide(0);
+      } else if (event.key === 'End') {
+        showSlide(slides.length - 1);
+      }
+    });
+    const scenarios = {
+      closure: {
+        assignments: [['North', 'R1', 'B01', '60'], ['Central', 'R3', 'B02', '50'], ['South', 'R5', 'B07', '40']],
+        cost: '$15,550', shortfall: '0 unmet riders; objective $15,550.',
+        diff: 'Initial proposal for the closure.', trigger: 'E1: S08-S09 rail closure.'
+      },
+      vehicle_veto: {
+        assignments: [['North', 'R1', 'B01', '60'], ['Central', 'R3', 'B02', '50'], ['South', 'R5', 'B08', '40']],
+        cost: '$16,350', shortfall: '0 unmet riders; objective $16,350.',
+        diff: 'B07 is replaced by B08; cost rises $800.', trigger: 'E2: dispatcher-style veto marks B07 unavailable.'
+      },
+      traffic_update: {
+        assignments: [['North', 'R1', 'B01', '60'], ['Central', 'R3', 'B02', '50'], ['South', 'R6', 'B08', '35']],
+        cost: '$15,350', shortfall: '5 unmet riders; objective $16,600 including a $1,250 penalty.',
+        diff: 'R6 replaces R5; 5 South riders remain unmet.', trigger: 'E3: synthetic partner traffic update on R5.'
+      }
+    };
+    const tabs = Array.from(document.querySelectorAll('[data-scenario]'));
+    function setScenario(key) {
+      const scenario = scenarios[key];
+      tabs.forEach(tab => tab.setAttribute('aria-selected', String(tab.dataset.scenario === key)));
+      document.getElementById('scenario-assignments').innerHTML = scenario.assignments.map(
+        row => `<tr>${row.map(cell => `<td>${cell}</td>`).join('')}</tr>`
+      ).join('');
+      document.getElementById('scenario-cost').textContent = scenario.cost;
+      document.getElementById('scenario-shortfall').textContent = scenario.shortfall;
+      document.getElementById('scenario-diff').textContent = scenario.diff;
+      document.getElementById('scenario-trigger').textContent = scenario.trigger;
+    }
+    tabs.forEach(tab => tab.addEventListener('click', () => setScenario(tab.dataset.scenario)));
+    window.addEventListener('hashchange', () => {
+      const target = Number(window.location.hash.slice(7));
+      if (Number.isInteger(target) && target >= 1 && target <= slides.length) showSlide(target - 1);
+    });
+    setScenario('closure');
+    const initial = Number(window.location.hash.slice(7));
+    showSlide(Number.isInteger(initial) && initial >= 1 && initial <= slides.length ? initial - 1 : 0);
+  </script>
+</body>
+</html>

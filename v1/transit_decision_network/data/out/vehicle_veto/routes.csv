@@ -1,0 +1,8 @@
+id,zone_id,from_stop,to_stop,road_link_id,capacity,cost,duration_min,accessible_service
+R1,Z1,S05,S08,RD1,60.0,5000.0,55.0,0
+R2,Z1,S06,S08,RD2,50.0,4300.0,65.0,0
+R3,Z2,S08,S10,RD3,50.0,4900.0,60.0,0
+R4,Z2,S08,S09,RD4,45.0,4300.0,70.0,0
+R5,Z3,S09,S12,RD5,40.0,5500.0,60.0,1
+R6,Z3,S10,S12,RD6,35.0,4500.0,70.0,1
+R7,Z3,S09,S12,RD7,40.0,3000.0,50.0,0

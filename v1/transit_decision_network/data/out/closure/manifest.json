@@ -1,0 +1,21 @@
+{
+  "budget_usd": 18000.0,
+  "case_id": "CASE-001",
+  "file_sha256": {
+    "assignment_options.csv": "2ef4a84328958a6aa24c785255311d213744d838144f0be57bb52e8ab6ca5e86",
+    "cases.csv": "8a0df9278101a0b3c6c2ba13180e88ee1ec5fd61de9c6e1bdfd23798e140cdbd",
+    "drivers.csv": "02258205b518e8aae9012558cfd374d66b916edd1c299297afd5e1a678e03635",
+    "events.csv": "666ce1b941669b380d6dd2afd5e4e2a2d6f3336cb5a63e717dc31c9d81ea2c6d",
+    "rail_links.csv": "5c9cbd03c6b3e5b771fe1dd48d08141ee72830684eaad6b5adce458ac596c686",
+    "road_links.csv": "8be89167bf1ae3980d63e12106d79c9ca146fae3a41a679832880f69c4ab7283",
+    "routes.csv": "ab5fb7c6204efc74d70d235f077c0361d80418819040e4fbf381278bb440877f",
+    "stops.csv": "6e12dacfc9d7be09ba266b0709ba3fe25026c516014afaf5d0cd8ff3ea317e58",
+    "vehicles.csv": "f6831e9cc59197b4d2f3b957341f527d0fd24f69c3c554beafe21e1cd4235a02",
+    "zones.csv": "606c1b71d68ec7d93795abac37412063eaa946875a41b1c36a6d7ec40cfac829"
+  },
+  "input_hash": "2359eb7f835c139fb29cb032d3896ffa7fae209b7119aaa3c8e8eb21ec942a44",
+  "penalty_per_unmet_rider_usd": 250.0,
+  "policy_version": "P1",
+  "stage": "closure",
+  "trigger_event_id": "E1"
+}
