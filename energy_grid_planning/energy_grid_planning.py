@@ -1010,17 +1010,18 @@ x_a_c = Float.ref("xa_c")
 x_u_c = Float.ref("xu_c")
 effective_load = Substation.predicted_load | Substation.current_load_mw
 
+# Each upgrade's capacity and each request's MW is weighted by its own variable.
 problem.satisfy(model.where(
-    DataCenterRequest.x_approve(InvestmentLevel, x_a_c),
-    SubstationUpgrade.x_upgrade(InvestmentLevel, x_u_c),
+    InvestmentLevel,
     DataCenterRequest.substation(Substation),
-    SubstationUpgrade.substation(Substation),
 ).require(
     Substation.max_capacity_mw - effective_load
-    + sum(x_u_c * UpgRef.capacity_increase_mw).where(
-        UpgRef.substation == Substation).per(Substation, InvestmentLevel)
-    >= sum(x_a_c * DCRef.requested_mw).where(
-        DCRef.substation == Substation).per(Substation, InvestmentLevel)
+    + sum(UpgRef, x_u_c * UpgRef.capacity_increase_mw).where(
+        UpgRef.substation == Substation, UpgRef.x_upgrade(InvestmentLevel, x_u_c),
+    ).per(Substation, InvestmentLevel)
+    >= sum(DCRef, x_a_c * DCRef.requested_mw).where(
+        DCRef.substation == Substation, DCRef.x_approve(InvestmentLevel, x_a_c),
+    ).per(Substation, InvestmentLevel)
 ))
 
 # C2: Budget per investment level
@@ -1032,7 +1033,7 @@ problem.satisfy(model.where(
 
 # Objective: maximize total DC revenue across all levels
 problem.maximize(
-    sum(x_a * DataCenterRequest.annual_revenue_per_mw * DataCenterRequest.requested_mw).where(
+    sum(InvestmentLevel, x_a * DataCenterRequest.annual_revenue_per_mw * DataCenterRequest.requested_mw).where(
         DataCenterRequest.x_approve(InvestmentLevel, x_a)
     )
 )
