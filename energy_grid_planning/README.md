@@ -120,10 +120,10 @@ Texas is now the fastest-growing market for AI data center development. Hypersca
 
    ```text
    STAGE 5: OPTIMIZE -- Joint Interconnection + Upgrade
-     Status: OPTIMAL | Objective: 1,579,200,000
+     Status: OPTIMAL
+     Objective: 1,562,600,000.00
 
-     KNEE POINT: $300M -- 5 DCs, 1,500 MW, $264M net value
-     xAI Colossus ($105M/yr) unlocks at $300M -- highest-revenue single request
+     KNEE POINT: $300M -- $300M budget, $252,450,000 net value, 6 DCs, 1,530 MW
 
    PIPELINE COMPLETE: 5 stages executed on shared Energy Grid ontology
    ```
@@ -225,7 +225,7 @@ Three declarative rules consume upstream outputs, then a composite flag combines
 
 An `InvestmentLevel` Scenario Concept holds 5 budget levels ($200M-$600M), each parameterizing one MIP solve into a Pareto frontier. Binary variables `x_approve` (per DC request) and `x_upgrade` (per substation upgrade) are indexed by investment level; substation-capacity constraints use `predicted_load` from Stage 1 so the optimizer sees the same forecasted headroom as the rules engine, and budget constraints are scoped `.per(InvestmentLevel)`. Revenue reflects annual interconnection capacity revenue ($145K-$210K per MW/yr), not energy revenue.
 
-One solve produces the entire frontier. The knee point at $300M (5 DCs, 1,500 MW, $264M net value) shows the highest marginal return, unlocking xAI Colossus ($105M/yr). At $200M, 4 DCs are approved (Microsoft, CoreWeave, Crusoe, Oracle); each additional $100M adds one more DC with diminishing returns ($995K/$M at the knee vs $400K/$M at $600M). Google Metroplex DC (400 MW) and Lambda Labs DFW (200 MW) are never approved at any budget — DFW capacity is fully consumed. Per-level results (approvals, upgrades, MW) are all queried from the ontology via `model.select()` rather than parsed from solver output.
+One solve produces the entire frontier. The knee point at $300M (6 DCs, 1,530 MW, $252M net value) shows the highest marginal return: both DFW upgrades fit the budget, and Google Metroplex DC and Lambda Labs DFW join. At $200M, 4 DCs are approved (Microsoft, Amazon SA, Crusoe, Oracle); beyond the knee each additional $100M adds one more DC with diminishing returns ($1,013K/$M into the knee vs $439K/$M from $400M to $500M). xAI Colossus (500 MW) is never approved at any budget — DFW headroom goes to Google and Lambda. Per-level results (approvals, upgrades, MW) are all queried from the ontology via `model.select()` rather than parsed from solver output.
 
 See `energy_grid_planning.py` for the implementation of all five stages and `runbook.md` for the skill-driven reproduction.
 
@@ -288,11 +288,11 @@ Focus on the first changes most users will make.
 </details>
 
 <details>
-<summary>Google and Lambda Labs are never approved at any budget level</summary>
+<summary>xAI Colossus is never approved at any budget level</summary>
 
-- Both target the Dallas-Fort Worth substation, which is already the only substation predicted to breach capacity (54.6% growth).
-- Even with upgrades, DFW capacity is fully consumed by higher-revenue requests (xAI Colossus at 500 MW, $105M/yr).
-- The optimizer correctly prioritizes revenue-maximizing allocations at the constrained substation.
+- It targets the Dallas-Fort Worth substation, the only substation predicted to breach capacity (54.6% growth). Even with both DFW upgrades, DFW has 699.8 MW of headroom.
+- That fits Google Metroplex DC and Lambda Labs DFW together (600 MW, $108M/yr) or xAI alone (500 MW, $105M/yr); xAI with Lambda would need 700 MW.
+- The optimizer correctly prioritizes the revenue-maximizing allocation at the constrained substation.
 
 </details>
 
