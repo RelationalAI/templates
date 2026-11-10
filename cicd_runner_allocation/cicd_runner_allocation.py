@@ -176,22 +176,25 @@ def solve_allocation(concurrency_multiplier, offline_runners=(), conflict=False)
         )
 
         AssignRef = Assignment.ref()
+        # The assignments that have variables: an offline runner's have none.
+        online = [AssignRef.runner.name != r for r in offline_runners]
 
         # Constraint: each workflow assigned to exactly one runner. ``keyed_by`` declares
         # the workflow key, so IIS membership reads back by it (assign_one.workflow); the
         # per-workflow name is a readable label.
         assign_one = problem.satisfy(
-            model.require(
+            model.where(AssignRef.workflow == Workflow, *online).require(
                 sum(AssignRef.x_assigned).where(AssignRef.workflow == Workflow).per(Workflow) == 1
             ),
             name=["assign_one", Workflow.name],
             keyed_by={"workflow": Workflow},
         )
 
-        # Constraint: per-runner concurrency limit (scaled by scenario multiplier).
-        # ``keyed_by`` declares the runner key (conc.runner).
+        # Constraint: per-runner concurrency limit (scaled by scenario multiplier),
+        # over the online runners with assignments. ``keyed_by`` declares the runner
+        # key (conc.runner).
         conc = problem.satisfy(
-            model.require(
+            model.where(AssignRef.runner == Runner, *online).require(
                 sum(AssignRef.x_assigned).where(AssignRef.runner == Runner).per(Runner)
                 <= concurrency_multiplier * Runner.max_concurrent
             ),

@@ -818,7 +818,7 @@ problem.satisfy(model.where(
     Assignment.x_assign(PowerEnvelopeLevel, MarginFloor, DiversityCap, x2),
     Assignment.workload == Wany,
 ).require(
-    sum(x2).per(Wany, PowerEnvelopeLevel, MarginFloor, DiversityCap) <= 1.0
+    sum(Assignment, x2).per(Wany, PowerEnvelopeLevel, MarginFloor, DiversityCap) <= 1.0
 ))
 
 # C3: per-pool GPU count capacity
@@ -891,11 +891,11 @@ for wt in WORKLOAD_TYPES:
         Assignment.x_assign(PowerEnvelopeLevel, MarginFloor, DiversityCap, x7),
         DiversityCap.workload_type_floor >= 0.0,
     ).require(
-        sum(x7)
+        sum(Assignment, x7)
             .where(Assignment.workload.workload_type == wt)
             .per(PowerEnvelopeLevel, MarginFloor, DiversityCap)
         >= DiversityCap.workload_type_floor
-            * sum(x7).per(PowerEnvelopeLevel, MarginFloor, DiversityCap)
+            * sum(Assignment, x7).per(PowerEnvelopeLevel, MarginFloor, DiversityCap)
     ))
 
 # Objective: four-factor strategic value, amplified by under-provisioning penalty
@@ -904,7 +904,8 @@ for wt in WORKLOAD_TYPES:
 # unfilled research eval costs only the revenue. P0 = 1.0 (2x amp), P1 = 0.3, P2 = 0.0.
 x_obj = Float.ref()
 problem.maximize(
-    sum(x_obj
+    sum(PowerEnvelopeLevel, MarginFloor, DiversityCap,
+        x_obj
         * Assignment.workload.priority_weight
         * Assignment.workload.gating_score
         * Assignment.workload.utilization_probability

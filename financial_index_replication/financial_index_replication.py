@@ -113,11 +113,11 @@ problem.solve_for(
 # Select exactly N names and invest all capital.
 problem.satisfy(
     model.where(Stock.x_selected(selected)).require(
-        sum(selected) == N_REPLICATION_NAMES
+        sum(Stock, selected) == N_REPLICATION_NAMES
     )
 )
 # Full-investment constraint: portfolio weights must sum to 100%.
-problem.satisfy(model.where(Stock.x_weight(weight)).require(sum(weight) == 1.0))
+problem.satisfy(model.where(Stock.x_weight(weight)).require(sum(Stock, weight) == 1.0))
 
 # A stock can carry weight only when selected.
 problem.satisfy(
@@ -133,7 +133,7 @@ problem.satisfy(
         Stock.x_weight(weight),
         Stock.sector_ref(Sector),
     ).require(
-        sum(weight).per(Sector) <= Sector.benchmark_weight + SECTOR_ACTIVE_BAND
+        sum(Stock, weight).per(Sector) <= Sector.benchmark_weight + SECTOR_ACTIVE_BAND
     )
 )
 problem.satisfy(
@@ -141,7 +141,7 @@ problem.satisfy(
         Stock.x_weight(weight),
         Stock.sector_ref(Sector),
     ).require(
-        sum(weight).per(Sector) >= Sector.benchmark_weight - SECTOR_ACTIVE_BAND
+        sum(Stock, weight).per(Sector) >= Sector.benchmark_weight - SECTOR_ACTIVE_BAND
     )
 )
 
@@ -173,14 +173,14 @@ problem.satisfy(
         Stock.x_weight(weight),
         Stock.monthly_return(ReturnMonth, stock_return),
     ).require(
-        index_return - sum(stock_return * weight).per(ReturnMonth)
+        index_return - sum(Stock, stock_return * weight).per(ReturnMonth)
         == pos_error - neg_error
     )
 )
 
 # Minimize total absolute tracking residual.
 problem.minimize(
-    sum(pos_error + neg_error).where(
+    sum(ReturnMonth, pos_error + neg_error).where(
         ReturnMonth.x_pos_error(pos_error),
         ReturnMonth.x_neg_error(neg_error),
     )

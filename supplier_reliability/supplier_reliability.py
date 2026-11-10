@@ -144,7 +144,7 @@ qty_var = baseline.solve_for(
 # so its marginal reads back through that key (cap.supplier / meet.product), never by
 # parsing the constraint name string; the per-entity name is a readable label.
 cap = baseline.satisfy(
-    model.require(
+    model.where(SupplyOrder.supplier == Supplier).require(
         sum(SupplyOrder.x_quantity)
         .where(SupplyOrder.supplier == Supplier)
         .per(Supplier)
@@ -154,7 +154,7 @@ cap = baseline.satisfy(
     keyed_by={"supplier": Supplier},
 )
 meet = baseline.satisfy(
-    model.require(
+    model.where(SupplyOrder.product == Product).require(
         sum(SupplyOrder.x_quantity).where(SupplyOrder.product == Product).per(Product)
         >= Product.demand
     ),
@@ -344,8 +344,10 @@ for excluded in ["SupplierC", "SupplierB"]:
         populate=False,
     )
 
+    # Capacity and demand over the remaining suppliers' orders: the excluded one's
+    # orders have no variables.
     problem.satisfy(
-        model.require(
+        model.where(SupplyOrder.supplier == Supplier, Supplier.name != excluded).require(
             sum(SupplyOrder.x_quantity)
             .where(SupplyOrder.supplier == Supplier)
             .per(Supplier)
@@ -353,7 +355,7 @@ for excluded in ["SupplierC", "SupplierB"]:
         )
     )
     problem.satisfy(
-        model.require(
+        model.where(SupplyOrder.product == Product, SupplyOrder.supplier.name != excluded).require(
             sum(SupplyOrder.x_quantity)
             .where(SupplyOrder.product == Product)
             .per(Product)

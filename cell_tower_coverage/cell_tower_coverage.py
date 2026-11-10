@@ -144,7 +144,7 @@ problem.solve_for(
 # Select only as many towers as the plan allows.
 problem.satisfy(
     model.where(TowerSite.x_selected(selected)).require(
-        sum(selected) <= MAX_NEW_TOWERS
+        sum(TowerSite, selected) <= MAX_NEW_TOWERS
     )
 )
 
@@ -164,7 +164,7 @@ problem.satisfy(
         CoveragePair.zone(DemandZone),
         CoveragePair.z_assigned(assigned),
     ).require(
-        sum(assigned).per(DemandZone) == covered
+        sum(CoveragePair, assigned).per(DemandZone) == covered
     )
 )
 
@@ -187,7 +187,7 @@ problem.satisfy(
         CoveragePair.z_assigned(assigned),
         TowerSite.x_selected(selected),
     ).require(
-        sum(DemandZone.population * assigned).per(TowerSite)
+        sum(CoveragePair, DemandZone.population * assigned).per(TowerSite)
         <= TowerSite.capacity * selected
     )
 )

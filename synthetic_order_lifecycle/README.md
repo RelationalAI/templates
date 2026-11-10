@@ -161,7 +161,7 @@ OrderEvent.has_type = model.Property(
 problem.solve_for(OrderEvent.has_type, type="bin", name=["is_type", OrderEvent.event_id])
 ```
 
-Constraints slice the indicators by member: a `where` clause like `OrderEvent.has_type(EventType.PLACE, place_ind)` binds `place_ind` to each event's `PLACE` indicator, which the constraint body then aggregates or gates on.
+Constraints slice the indicators by member: a `where` clause like `OrderEvent.has_type(EventType.PLACE, place_ind)` binds `place_ind` to each event's `PLACE` indicator, which the constraint body then aggregates or gates on. An aggregate names the event it sums over, as in `rai_sum(OrderEvent, place_ind).per(Order)`, so equal indicators from different events each count.
 
 **3. Add sequencing rules as pairwise temporal constraints.** Conditional rules read as 'if premise then consequent'. PLACE-first and nothing-after-CANCEL are pairwise rules over two refs into the same concept; `A.order == B.order` asserts same-order without a free `Order` variable:
 
@@ -186,7 +186,7 @@ distinct_ts_ic = model.require(all_different(OrderEvent.ts_ms).per(OrderEvent.or
 **4. Walk relationships in line for cross-table rules.** Reading the order's `original_qty` from an event, or matching disallowed venue pairs through the order's symbol -- no intermediate refs needed:
 
 ```python
-qty_upper_ic = model.require(OrderEvent.qty <= OrderEvent.order.original_qty)
+qty_upper_ic = model.where(OrderEvent).require(OrderEvent.qty <= OrderEvent.order.original_qty)
 
 venue_ok_ic = model.where(
     OrderEvent.order.symbol.id(NotAllowedSymbolVenue.symbol_id),

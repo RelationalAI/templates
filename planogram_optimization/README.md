@@ -201,7 +201,7 @@ For the exact PyRel formulation, see `planogram_optimization.py`; `runbook.md` r
 
 ### Tune parameters
 
-- **Per-SKU minimum facings** — tighten the lower-coupling IC to `model.require(Sku.facings >= Sku.min_facings * Sku.active)` after adding a `Sku.min_facings` data property. (Removing disallowed `(sku, k)` rows from `predicted_demand_table.csv` would trip `_assert_demand_table_complete`; the lookup formulation requires the table to cover the full `[0, max_facings]` range.)
+- **Per-SKU minimum facings** — tighten the lower-coupling IC to `model.where(Sku).require(Sku.facings >= Sku.min_facings * Sku.active)` after adding a `Sku.min_facings` data property. (Removing disallowed `(sku, k)` rows from `predicted_demand_table.csv` would trip `_assert_demand_table_complete`; the lookup formulation requires the table to cover the full `[0, max_facings]` range.)
 - **Category cardinality** — adjust `min_skus_active` / `max_skus_active` in `categories.csv` to change how many SKUs each category may keep active.
 
 ### Extend the model
@@ -211,7 +211,7 @@ For the exact PyRel formulation, see `planogram_optimization.py`; `runbook.md` r
   Sku.is_premium = model.Property(f"{Sku} has {Integer:is_premium}")
   # ... populate from a column on skus.csv ...
   EYE_LEVEL_SHELF_ID = 1  # Top Eye-Level Shelf
-  eye_level_ic = model.require(
+  eye_level_ic = model.where(Sku).require(
       implies(Sku.is_premium == 1, Sku.shelf.id == EYE_LEVEL_SHELF_ID)
   )
   problem.satisfy(eye_level_ic)

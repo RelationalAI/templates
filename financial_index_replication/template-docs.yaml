@@ -184,7 +184,7 @@ guided_walkthrough:
         file: financial_index_replication.py
         anchors:
           - start: '# Monthly benchmark residual:'
-            end: sum(pos_error + neg_error).where(
+            end: sum(ReturnMonth, pos_error + neg_error).where(
             end_offset: 4
       references:
         problem.satisfy(...):
@@ -197,7 +197,7 @@ guided_walkthrough:
           anchor:
             start: '# Minimize total absolute tracking residual.'
             start_offset: 1
-            end: sum(pos_error + neg_error).where(
+            end: sum(ReturnMonth, pos_error + neg_error).where(
             end_offset: 4
       links:
         - title: Add constraints
@@ -208,8 +208,8 @@ guided_walkthrough:
       title: Select 20 stocks and allocate the portfolio
       explanation: |-
         The sample index contains 50 stocks, but the model aims to follow the
-        index with a smaller basket. sum(selected) == N_REPLICATION_NAMES
-        marks 20 of those stocks as selected, and sum(weight) == 1.0 makes
+        index with a smaller basket. sum(Stock, selected) == N_REPLICATION_NAMES
+        marks 20 of those stocks as selected, and sum(Stock, weight) == 1.0 makes
         the portfolio weights add to 100%.
 
         MAX_WEIGHT * selected prevents investment in unselected stocks and
@@ -223,17 +223,17 @@ guided_walkthrough:
             end: ).require(weight <= MAX_WEIGHT * selected)
             end_offset: 1
       references:
-        sum(selected) == N_REPLICATION_NAMES:
+        sum(Stock, selected) == N_REPLICATION_NAMES:
           anchor:
             start: '# Select exactly N names and invest all capital.'
             start_offset: 1
-            end: sum(selected) == N_REPLICATION_NAMES
+            end: sum(Stock, selected) == N_REPLICATION_NAMES
             end_offset: 2
-        sum(weight) == 1.0:
+        sum(Stock, weight) == 1.0:
           anchor:
             start: '# Full-investment constraint: portfolio weights must sum to 100%.'
             start_offset: 1
-            end: problem.satisfy(model.where(Stock.x_weight(weight)).require(sum(weight) == 1.0))
+            end: problem.satisfy(model.where(Stock.x_weight(weight)).require(sum(Stock, weight) == 1.0))
         MAX_WEIGHT * selected:
           anchor:
             start: '# A stock can carry weight only when selected.'
@@ -267,7 +267,7 @@ guided_walkthrough:
         SECTOR_ACTIVE_BAND:
           anchor:
             start: '# Keep sector exposures close to benchmark sector weights.'
-            end: sum(weight).per(Sector) >= Sector.benchmark_weight - SECTOR_ACTIVE_BAND
+            end: sum(Stock, weight).per(Sector) >= Sector.benchmark_weight - SECTOR_ACTIVE_BAND
             end_offset: 2
         MAX_ADV_PARTICIPATION:
           anchor:

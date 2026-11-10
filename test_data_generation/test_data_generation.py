@@ -138,8 +138,8 @@ problem.solve_for(
 )
 
 # Constraint: deviation captures |actual - target| (linearized)
-problem.satisfy(model.require(Table.x_deviation >= Table.x_actual_rows - Table.target_rows))
-problem.satisfy(model.require(Table.x_deviation >= Table.target_rows - Table.x_actual_rows))
+problem.satisfy(model.where(Table).require(Table.x_deviation >= Table.x_actual_rows - Table.target_rows))
+problem.satisfy(model.where(Table).require(Table.x_deviation >= Table.target_rows - Table.x_actual_rows))
 
 # Constraint: referential integrity - child rows bounded by parent capacity
 # These constraints link specific table pairs via their actual_rows variables

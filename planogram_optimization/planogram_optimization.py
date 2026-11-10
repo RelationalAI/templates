@@ -277,8 +277,8 @@ problem.satisfy(shelf_capacity_ic)
 # Together they pin `active = 1` whenever `facings >= 1`, and `active = 0`
 # otherwise. Pure relational arithmetic, so both ICs are re-evaluated by
 # `problem.verify()` below.
-active_lower_ic = model.require(Sku.facings >= Sku.active)
-active_upper_ic = model.require(Sku.facings <= Sku.max_facings * Sku.active)
+active_lower_ic = model.where(Sku).require(Sku.facings >= Sku.active)
+active_upper_ic = model.where(Sku).require(Sku.facings <= Sku.max_facings * Sku.active)
 problem.satisfy(active_lower_ic)
 problem.satisfy(active_upper_ic)
 

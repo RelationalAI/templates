@@ -140,12 +140,12 @@ quantity_var = problem.solve_for(
     populate=False,
 )
 
-# Constraint: each factory's total resource usage <= its available hours. Captured as
-# a handle; ``keyed_by`` declares each instance's ENTITY KEY, so its shadow price reads
-# back through that key (cap.factory), never by parsing the constraint name string; the
-# per-factory name is a readable label.
+# Constraint: each factory's total resource usage <= its available hours, over the
+# factories that make products. Captured as a handle; ``keyed_by`` declares each
+# instance's ENTITY KEY, so its shadow price reads back through that key (cap.factory),
+# never by parsing the constraint name string; the per-factory name is a readable label.
 cap = problem.satisfy(
-    model.require(
+    model.where(Product.factory == Factory).require(
         sum(Product.x_quantity / Product.rate)
         .where(Product.factory == Factory)
         .per(Factory)

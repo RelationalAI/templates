@@ -97,15 +97,12 @@ problem.satisfy(model.where(
     Food.x_amount(Scenario, x_amt),
     Food.contains(Nutrient, nutrient_qty),
 ).require(
-    sum(nutrient_qty * x_amt).per(Nutrient, Scenario) >= Nutrient.min * Scenario.nutrient_scaling,
-    sum(nutrient_qty * x_amt).per(Nutrient, Scenario) <= Nutrient.max * Scenario.nutrient_scaling,
+    sum(Food, nutrient_qty * x_amt).per(Nutrient, Scenario) >= Nutrient.min * Scenario.nutrient_scaling,
+    sum(Food, nutrient_qty * x_amt).per(Nutrient, Scenario) <= Nutrient.max * Scenario.nutrient_scaling,
 ))
 
 # Objective: minimize total cost
-problem.minimize(
-    sum(Food.cost * x_amt)
-    .where(Food.x_amount(Scenario, x_amt))
-)
+problem.minimize(sum(Food, Scenario, Food.cost * x_amt).where(Food.x_amount(Scenario, x_amt)))
 
 # --------------------------------------------------
 # Solve (single solve for all scenarios)
