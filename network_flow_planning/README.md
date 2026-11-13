@@ -66,7 +66,7 @@ The objective minimizes transport cost plus fixed-cost FC opening cost.
 ### Tools
 
 - Python >= 3.10
-- RelationalAI Python SDK (`relationalai`) == 1.11.0
+- RelationalAI Python SDK (`relationalai`) == 2.1.1
 
 ## Quickstart
 
@@ -178,7 +178,7 @@ The model runs as a single MILP that decides flow on every lane and which fulfil
 
 **Constraints.** Each site type contributes the constraint that matches its role. Warehouses cap total outflow at their inventory. Transit hubs and fulfillment centers conserve flow — inflow equals outflow. A fulfillment center's inflow is bounded by `capacity × x_open`, so an unopened FC (open = 0) can carry no flow and the fixed cost is only incurred when it is opened. Customers require inflow to meet their aggregate demand.
 
-**Objective.** Minimize transport cost (per-unit lane cost times flow, summed over lanes) plus the fixed cost of every opened fulfillment center. The two cost terms live on different concepts (`Lane` and `Site`), so the objective adds one sum per concept, each naming the concept whose members it totals.
+**Objective.** Minimize transport cost (per-unit lane cost times flow, summed over lanes) plus the fixed cost of every opened fulfillment center. The two cost terms live on different concepts (`Lane` and `Site`), so the objective adds one sum per concept.
 
 For the exact PyRel formulation, see `network_flow_planning.py`; `runbook.md` reproduces the model step by step with the RAI skills.
 
@@ -238,7 +238,7 @@ Replace the three CSVs in `data/` with your own:
 <details>
   <summary>Why does the objective add two sums?</summary>
 
-  The transport cost lives on `Lane` and the fixed cost on `Site`. Each `sum` names the concept whose members it totals (`sum(Lane, ...)` and `sum(Site, ...)`), and the two totals are added.
+  The transport cost lives on `Lane` and the fixed cost on `Site`, so each is summed over its own concept and the two totals are added. A single `sum` over `model.union(...)` of both terms is refused: a union keeps one copy of equal values, while the solver needs every lane's and every site's term.
 </details>
 
 ## Learn more
