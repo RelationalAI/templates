@@ -386,12 +386,9 @@ kg_walks = model.path(
     walk_book,
 )
 
-# Candidate set: any (user, book) joined by a bounded KG walk. The
-# already-read exclusion lands as a ``slot == K+1`` IC
-# (``exclude_read_ic`` below) rather than as a pre-pruning filter on
-# this rule -- which keeps the candidate-derivation rule a pure
-# positive join over the path pattern, at the minor CSP cost of a few
-# wasted integer variables forced to K+1.
+# Candidate set: any (user, book) joined by a bounded KG walk. Books the
+# user already read stay candidates; the already-read exclusion below
+# forces them to the unpicked slot K+1.
 Candidate = model.Concept(
     "Candidate",
     identify_by={"user_id": Integer, "book_id": Integer},
