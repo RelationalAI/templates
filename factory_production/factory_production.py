@@ -12,7 +12,7 @@ the *marginals* a planner asks next:
 - Maximize total profit.
 
 A plain solve answers "what is the most profitable production plan?". Requesting
-``solve(sensitivity=True)`` ALSO answers the marginal questions -- in one solve,
+``sensitivity=True`` on the solve ALSO answers the marginal questions -- in one solve,
 read straight off the variable / constraint objects (the same attribute style as
 ``.name`` or ``.lower``):
 
@@ -42,7 +42,9 @@ constraint name string. (A variable's back-pointer, such as ``quantity_var.produ
 is derived automatically from its field names; a constraint's is declared.)
 
 Run:
-    `python factory_production.py`
+    `python factory_production.py` deploys the model to the schema in raiconfig.yaml, waits for
+    its first refresh (which runs the solve), and prints the report from the
+    deployed model.
 
 Output:
     Prints the production plan, each factory's capacity shadow price, each product's
@@ -52,7 +54,7 @@ Output:
 from pathlib import Path
 
 from pandas import read_csv
-from relationalai.semantics import Float, Integer, Model, String, std, sum
+from relationalai.semantics import Float, Integer, Model, String, sum
 from relationalai.semantics.reasoners.prescriptive import Problem
 
 # --------------------------------------------------
@@ -131,13 +133,12 @@ problem = Problem(model, Float)
 
 # Variable: production quantity per product. The demand cap is the variable's UPPER
 # BOUND (not a separate constraint), so its marginal surfaces as the variable's
-# reduced cost below. populate=False keeps the solution read explicit via values().
+# reduced cost below.
 quantity_var = problem.solve_for(
     Product.x_quantity,
     name=["qty", Product.factory.name, Product.name],
     lower=0,
     upper=Product.demand,
-    populate=False,
 )
 
 # Constraint: each factory's total resource usage <= its available hours, over the
@@ -158,149 +159,144 @@ cap = problem.satisfy(
 # Objective: maximize total profit across all factories.
 problem.maximize(sum(Product.profit * Product.x_quantity))
 
-problem.display()
-problem.solve("highs", time_limit_sec=60, sensitivity=True)
-si = problem.solve_info()
-si.display()
+# Each refresh of the deployed model runs this solve, with sensitivity analysis.
+problem.configure("highs", time_limit_sec=60, sensitivity=True)
 
-assert si.termination_status == "OPTIMAL"
-assert si.sensitivity is True
-# Optimum: steel_factory fills all 40 hrs (bands to its 6000 cap = 30 hrs, coils takes
-# the last 10 hrs = 1400 units); amazing_brewery makes both products to their demand
-# caps in 25 of its 30 hrs. Profit = 192000 + 8000 = 200000.
-assert si.objective_value is not None and abs(si.objective_value - 200000) < 0.01, (
-    f"total profit changed: expected 200000, got {si.objective_value}"
-)
+# Deploy the rules behind problem.display() with the model.
+problem.install_display_strings()
 
-print(f"\nBaseline status: {si.termination_status}, total profit: {si.objective_value:.2f}")
-
-# --- The solved production plan -------------------------------------------------
-# Read every product's solved quantity once via values(0, ref) on the variable (no
-# populate). Columns are aliased so the printed headers read as factory / product /
-# quantity; this one frame feeds the plan table, the plan assertion, and the capacity
-# summary below.
-plan_ref = Float.ref()
-plan_df = (
-    model.select(
-        quantity_var.product.factory.name.alias("factory"),
-        quantity_var.product.name.alias("product"),
-        quantity_var.product.factory.avail.alias("avail"),
-        quantity_var.product.rate.alias("rate"),
-        plan_ref.alias("quantity"),
-    )
-    .where(quantity_var.values(0, plan_ref))
-    .to_df()
-    .sort_values(["factory", "product"], ignore_index=True)
-)
-print("\nProduction plan:")
-produced = plan_df.loc[plan_df["quantity"] > 1e-6, ["factory", "product", "quantity"]]
-print(produced.to_string(index=False))
-
-# Pin the whole plan, not just the objective scalar: in general a matching objective is
-# necessary but not sufficient, because a different product mix could reach the same
-# profit. This LP's optimum happens to be unique (each factory's hours pin its plan), so
-# pinning the quantities both guards against a regression and documents that uniqueness.
-# Product names are unique across factories (asserted above), so the per-name lookup is a
-# single row; tolerance is tight because the vertices here are exactly integral.
-EXPECTED_PLAN = {"bands": 6000.0, "coils": 1400.0, "stouts": 1000.0, "ales": 2000.0}
-for product_name, expected_qty in EXPECTED_PLAN.items():
-    actual_qty = plan_df.loc[plan_df["product"] == product_name, "quantity"].sum()
-    assert abs(actual_qty - expected_qty) < 0.01, (
-        f"{product_name}: expected {expected_qty}, got {actual_qty}"
-    )
-
-# --- Capacity shadow prices: which factory to expand first ----------------------
-# A constraint carries its declared entity key as a back-pointer (cap.factory), so a
-# shadow price joins to that factory's own data by KEY -- no name parsing, no pandas join.
-cap_df = (
-    model.select(
-        cap.factory.name.alias("factory"),
-        cap.factory.avail.alias("avail"),
-        cap.shadow_price.alias("shadow_price"),
-    )
-    .to_df()
-    .sort_values("factory", ignore_index=True)
-)
-print("\nFactory capacity shadow prices (d profit / d hour):")
-print(cap_df.to_string(index=False))
-# Maximize + a <= capacity => shadow_price >= 0: an extra hour can only help. The
-# implication runs one way: a factory with idle hours prices at 0 (slack -- its
-# bottleneck is demand, not capacity), and a positive price marks a binding capacity.
-# steel_factory is full (binding) and carries the marginal value of an hour; every other
-# factory has spare hours (slack) and prices at 0.
-model.where(cap.factory.name == "steel_factory").require(cap.shadow_price > 1e-6)
-model.where(cap.factory.name != "steel_factory").require(
-    std.math.abs(cap.shadow_price) < 1e-6
-)
-
-# --- Reduced costs: which products are demand-capped? ---------------------------
-# Each marginal reads straight off the variable; the variable's back-pointer
-# (quantity_var.product) joins it to the product's factory by ENTITY KEY.
-rc_df = (
-    model.select(
-        quantity_var.product.factory.name.alias("factory"),
-        quantity_var.product.name.alias("product"),
-        quantity_var.reduced_cost.alias("reduced_cost"),
-        quantity_var.basis_status.alias("basis_status"),
-    )
-    .to_df()
-    .sort_values(["factory", "product"], ignore_index=True)
-)
-print("\nProduct reduced costs and basis status:")
-print(rc_df.to_string(index=False))
-# A product pinned at its demand cap is NONBASIC_AT_UPPER with reduced_cost >= 0 (the
-# extra profit from one more unit of allowed demand); the swing product that sets a
-# binding factory's marginal price is BASIC at ~0. Here bands, stouts and ales sit at
-# their demand caps; coils is the swing product in steel_factory. Assert BOTH halves of
-# the lesson -- the reduced cost AND the basis status -- so a regression in either is loud.
-for capped in ("bands", "stouts", "ales"):
-    model.where(quantity_var.product.name == capped).require(
-        quantity_var.reduced_cost > 1e-6
-    )
-    model.where(quantity_var.product.name == capped).require(
-        quantity_var.basis_status == "NONBASIC_AT_UPPER"
-    )
-# coils is basic (interior, between 0 and its demand cap): reduced cost ~0, status BASIC.
-# This coils read runs AFTER the requires above, and a query is what validates pending
-# relational requires -- so the same select that fetches coils also checks them. Zero-
-# checks use a HiGHS float tolerance (1e-4); the requires use 1e-6 (both are exact-0 here).
-coils_df = (
-    model.select(
-        quantity_var.reduced_cost.alias("reduced_cost"),
-        quantity_var.basis_status.alias("basis_status"),
-    )
-    .where(quantity_var.product.name == "coils")
-    .to_df()
-)
-assert (coils_df["reduced_cost"].abs() < 1e-4).all()
-assert (coils_df["basis_status"] == "BASIC").all()
-
-# --- Acting on it: which factory's capacity is the bottleneck? ------------------
-# With a maximize objective every capacity shadow price is >= 0, so the largest one is
-# the factory whose marginal hour earns the most -- the capacity to expand first.
-bottleneck = max(zip(cap_df["factory"], cap_df["shadow_price"]), key=lambda fp: fp[1])
-print(
-    f"\nMost profit-sensitive capacity: {bottleneck[0]} (d profit / d hour = {bottleneck[1]:+.2f})"
-)
+# The solve's status and objective, published through the model's own relationships.
+SolveStatus = model.Relationship(f"factory production solve status is {String:status}")
+TotalProfit = model.Relationship(f"factory production total profit is {Float:profit}")
+model.define(SolveStatus(problem.termination_status()), TotalProfit(problem.objective_value()))
 
 # --------------------------------------------------
-# Summary -- capacity utilization per factory
+# Deploy, then report (`rai models deploy` skips this block)
 # --------------------------------------------------
-# Ties the shadow prices above back to the plan: in this data the binding factory has
-# zero idle hours and a positive shadow price, while idle hours mean slack and a zero
-# price. Only idle => zero-price holds in general; a binding capacity can still price at
-# zero under degeneracy, so read the prices, not just the idle column.
-plan_df["hours"] = plan_df["quantity"] / plan_df["rate"]
-util = (
-    plan_df.groupby("factory")
-    .agg(avail=("avail", "first"), hours_used=("hours", "sum"))
-    .reset_index()
-)
-util["idle"] = util["avail"] - util["hours_used"]
-print("\n" + "=" * 50)
-print("Factory Capacity Summary")
-print("=" * 50)
-print(util.to_string(index=False))
+
+if __name__ == "__main__":
+    # Deploy and wait for the first refresh, which runs the solve.
+    model.deploy()
+
+    problem.display()
+    status = model.select(SolveStatus).to_df().iloc[:, 0].tolist()
+    profit = model.select(TotalProfit).to_df().iloc[:, 0].tolist()
+    assert status == ["OPTIMAL"], f"termination status {status}"
+    # Optimum: steel_factory fills all 40 hrs (bands to its 6000 cap = 30 hrs, coils takes
+    # the last 10 hrs = 1400 units); amazing_brewery makes both products to their demand
+    # caps in 25 of its 30 hrs. Profit = 192000 + 8000 = 200000.
+    assert len(profit) == 1 and abs(profit[0] - 200000) < 0.01, (
+        f"total profit changed: expected 200000, got {profit}"
+    )
+
+    print(f"\nBaseline status: {status[0]}, total profit: {profit[0]:.2f}")
+
+    # --- The solved production plan -------------------------------------------------
+    # Read every product's solved quantity once from Product.x_quantity, which the solve
+    # populates. Columns are aliased so the printed headers read as factory / product /
+    # quantity; this one frame feeds the plan table, the plan assertion, and the capacity
+    # summary below.
+    plan_df = (
+        model.select(
+            Product.factory.name.alias("factory"),
+            Product.name.alias("product"),
+            Product.factory.avail.alias("avail"),
+            Product.rate.alias("rate"),
+            Product.x_quantity.alias("quantity"),
+        )
+        .to_df()
+        .sort_values(["factory", "product"], ignore_index=True)
+    )
+    print("\nProduction plan:")
+    produced = plan_df.loc[plan_df["quantity"] > 1e-6, ["factory", "product", "quantity"]]
+    print(produced.to_string(index=False))
+
+    # Pin the whole plan, not just the objective scalar: in general a matching objective is
+    # necessary but not sufficient, because a different product mix could reach the same
+    # profit. This LP's optimum happens to be unique (each factory's hours pin its plan), so
+    # pinning the quantities both guards against a regression and documents that uniqueness.
+    # Product names are unique across factories (asserted above), so the per-name lookup is a
+    # single row; tolerance is tight because the vertices here are exactly integral.
+    EXPECTED_PLAN = {"bands": 6000.0, "coils": 1400.0, "stouts": 1000.0, "ales": 2000.0}
+    for product_name, expected_qty in EXPECTED_PLAN.items():
+        actual_qty = plan_df.loc[plan_df["product"] == product_name, "quantity"].sum()
+        assert abs(actual_qty - expected_qty) < 0.01, f"{product_name}: expected {expected_qty}, got {actual_qty}"
+
+    # --- Capacity shadow prices: which factory to expand first ----------------------
+    # A constraint carries its declared entity key as a back-pointer (cap.factory), so a
+    # shadow price joins to that factory's own data by KEY -- no name parsing, no pandas join.
+    cap_df = (
+        model.select(
+            cap.factory.name.alias("factory"),
+            cap.factory.avail.alias("avail"),
+            cap.shadow_price.alias("shadow_price"),
+        )
+        .to_df()
+        .sort_values("factory", ignore_index=True)
+    )
+    assert len(cap_df) == len(EXPECTED_FACTORIES), "missing capacity shadow prices"
+    print("\nFactory capacity shadow prices (d profit / d hour):")
+    print(cap_df.to_string(index=False))
+    # Maximize + a <= capacity => shadow_price >= 0: an extra hour can only help. The
+    # implication runs one way: a factory with idle hours prices at 0 (slack -- its
+    # bottleneck is demand, not capacity), and a positive price marks a binding capacity.
+    # steel_factory is full (binding) and carries the marginal value of an hour; every other
+    # factory has spare hours (slack) and prices at 0.
+    steel = cap_df["factory"] == "steel_factory"
+    assert (cap_df.loc[steel, "shadow_price"] > 1e-6).all()
+    assert (cap_df.loc[~steel, "shadow_price"].abs() < 1e-6).all()
+
+    # --- Reduced costs: which products are demand-capped? ---------------------------
+    # Each marginal reads straight off the variable; the variable's back-pointer
+    # (quantity_var.product) joins it to the product's factory by ENTITY KEY.
+    rc_df = (
+        model.select(
+            quantity_var.product.factory.name.alias("factory"),
+            quantity_var.product.name.alias("product"),
+            quantity_var.reduced_cost.alias("reduced_cost"),
+            quantity_var.basis_status.alias("basis_status"),
+        )
+        .to_df()
+        .sort_values(["factory", "product"], ignore_index=True)
+    )
+    assert len(rc_df) == len(EXPECTED_PRODUCTS), "missing reduced costs"
+    print("\nProduct reduced costs and basis status:")
+    print(rc_df.to_string(index=False))
+    # A product pinned at its demand cap is NONBASIC_AT_UPPER with reduced_cost >= 0 (the
+    # extra profit from one more unit of allowed demand); the swing product that sets a
+    # binding factory's marginal price is BASIC at ~0. Here bands, stouts and ales sit at
+    # their demand caps; coils is the swing product in steel_factory. Assert BOTH halves of
+    # the lesson -- the reduced cost AND the basis status -- so a regression in either is loud.
+    capped = rc_df["product"].isin(["bands", "stouts", "ales"])
+    assert (rc_df.loc[capped, "reduced_cost"] > 1e-6).all()
+    assert (rc_df.loc[capped, "basis_status"] == "NONBASIC_AT_UPPER").all()
+    # coils is basic (interior, between 0 and its demand cap): reduced cost ~0, status BASIC.
+    # The zero-check uses a HiGHS float tolerance (1e-4); it is exact-0 here.
+    coils = rc_df["product"] == "coils"
+    assert (rc_df.loc[coils, "reduced_cost"].abs() < 1e-4).all()
+    assert (rc_df.loc[coils, "basis_status"] == "BASIC").all()
+
+    # --- Acting on it: which factory's capacity is the bottleneck? ------------------
+    # With a maximize objective every capacity shadow price is >= 0, so the largest one is
+    # the factory whose marginal hour earns the most -- the capacity to expand first.
+    bottleneck = max(zip(cap_df["factory"], cap_df["shadow_price"]), key=lambda fp: fp[1])
+    print(f"\nMost profit-sensitive capacity: {bottleneck[0]} (d profit / d hour = {bottleneck[1]:+.2f})")
+
+    # --------------------------------------------------
+    # Summary -- capacity utilization per factory
+    # --------------------------------------------------
+    # Ties the shadow prices above back to the plan: in this data the binding factory has
+    # zero idle hours and a positive shadow price, while idle hours mean slack and a zero
+    # price. Only idle => zero-price holds in general; a binding capacity can still price at
+    # zero under degeneracy, so read the prices, not just the idle column.
+    plan_df["hours"] = plan_df["quantity"] / plan_df["rate"]
+    util = plan_df.groupby("factory").agg(avail=("avail", "first"), hours_used=("hours", "sum")).reset_index()
+    util["idle"] = util["avail"] - util["hours_used"]
+    print("\n" + "=" * 50)
+    print("Factory Capacity Summary")
+    print("=" * 50)
+    print(util.to_string(index=False))
+
 
 # --------------------------------------------------
 # Customize
