@@ -16,7 +16,9 @@ Modeling approach:
 - One solve handles all scaling levels; results extracted via model.select().
 
 Run:
-    `python diet.py`
+    `python diet.py` deploys the model to the schema in raiconfig.yaml, waits for
+    its first refresh (which runs the solve), and prints the report from the
+    deployed model.
 
 Output:
     Prints per-scenario termination status, objective value, and a table of foods
@@ -108,26 +110,40 @@ problem.minimize(sum(Food, Scenario, Food.cost * x_amt).where(Food.x_amount(Scen
 # Solve (single solve for all scenarios)
 # --------------------------------------------------
 
-problem.display()
-problem.solve("highs", time_limit_sec=60)
+# Each refresh of the deployed model runs this solve.
+problem.configure("highs", time_limit_sec=60)
 
-# Check solve status — engine-side IC avoids querying data to the client.
-model.require(problem.termination_status() == "OPTIMAL")
+# Deploy the rules behind problem.display() with the model.
+problem.install_display_strings()
 
-# Python-side solve info for formatted output.
-si = problem.solve_info()
-si.display()
+# The solve's status and objective, published through the model's own relationships.
+SolveStatus = model.Relationship(f"diet solve status is {String:status}")
+TotalCost = model.Relationship(f"diet total cost is {Float:cost}")
+model.define(SolveStatus(problem.termination_status()), TotalCost(problem.objective_value()))
 
 # --------------------------------------------------
-# Extract results per scenario
+# Deploy, then report (`rai models deploy` skips this block)
 # --------------------------------------------------
 
-print("\nDiet plan per scenario:")
-model.select(
-    Scenario.scenario_name.alias("scenario"),
-    Food.name.alias("food"),
-    Food.cost,
-    x_amt.alias("amount"),
-).where(
-    Food.x_amount(Scenario, x_amt), x_amt > 0.001
-).inspect()
+if __name__ == "__main__":
+    # Deploy and wait for the first refresh, which runs the solve.
+    model.deploy()
+
+    problem.display()
+
+    # Status and objective of the latest refresh's solve. A refresh records any
+    # termination status, so the report checks it.
+    status = model.select(SolveStatus).to_df().iloc[:, 0].tolist()
+    cost = model.select(TotalCost).to_df().iloc[:, 0].tolist()
+    print(f"\nSolve result:\n• status: {', '.join(status)}")
+    if status != ["OPTIMAL"]:
+        raise SystemExit(f"No optimal diet plan: termination status {status}")
+    print(f"• objective: {round(cost[0], 9)}\n")
+
+    print("\nDiet plan per scenario:")
+    model.select(
+        Scenario.scenario_name.alias("scenario"),
+        Food.name.alias("food"),
+        Food.cost,
+        x_amt.alias("amount"),
+    ).where(Food.x_amount(Scenario, x_amt), x_amt > 0.001).inspect()
