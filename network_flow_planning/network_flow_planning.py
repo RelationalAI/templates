@@ -176,8 +176,9 @@ problem.satisfy(model.where(
 ))
 
 # Objective: minimize transport cost + fixed cost of opened fulfillment centers.
+# With no site that has a fixed cost the second sum is empty; `| 0.0` makes it zero.
 problem.minimize(
-    sum(Lane.cost_per_unit * Lane.x_flow) + sum(Site.fixed_cost * Site.x_open)
+    sum(Lane.cost_per_unit * Lane.x_flow) + (sum(Site.fixed_cost * Site.x_open) | 0.0)
 )
 
 # --------------------------------------------------
