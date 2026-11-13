@@ -170,7 +170,7 @@ For the full concept and property definitions, see `book_slate_recommendation.py
 
 The pipeline runs in three stages over the shared ontology. Its architectural centerpiece is the bounded knowledge-graph walk: without the paths library there are no candidates and no optimization variables.
 
-**Stage 1 — Knowledge-graph path walks (candidate generation).** The path walker traverses `Item.connected_to` (the symmetric union of `read`, `written_by`, `about`, and `similar_to`) from each user up to `MAX_HOPS = 2` hops. With a `Book` endpoint, the candidate set is the union of length-1 walks (`User -> read_Book`, later excluded because already read) and length-2 walks (`User -> read_Book -> similar_Book`). Each reachable `(user, book)` becomes a `Candidate`. The per-`(user, candidate)` typed counts — shared-author and shared-subject joins against the user's read history, plus the count of walker-enumerated paths — feed the explanation floor, the cold-start cap, and the objective. Each count is defined for every candidate so a candidate with no matches still gets a value, and `path_count_total` sums the three.
+**Stage 1 — Knowledge-graph path walks (candidate generation).** The path pattern `model.path(user, Item.connected_to.repeat(1, MAX_HOPS), book)` walks `Item.connected_to` (the symmetric union of `read`, `written_by`, `about`, and `similar_to`) from each user up to `MAX_HOPS = 2` hops. The matched walks are the union of length-1 walks (`User -> read_Book`, later excluded because already read) and length-2 walks (`User -> read_Book -> similar_Book`). Each `(user, book)` pair the pattern connects (`.exists()`) becomes a `Candidate`. The per-`(user, candidate)` typed counts — shared-author and shared-subject joins against the user's read history, plus the number of walks between the pair (`.all().count()`) — feed the explanation floor, the cold-start cap, and the objective. Each count is defined for every candidate so a candidate with no matches still gets a value, and `path_count_total` sums the three.
 
 **Stage 2 — Graph analysis (hero-slot embeddedness).** A `Graph` is built from `Book.similar_to`, and triangle count returns the per-book count of similarity triangles each book participates in, stored as `Book.triangle_count`. Triangle count is graph-derived: it depends on the topology of the similarity graph, not on a per-book scalar that could be supplied externally. Stage 3 uses it to pin the hero slot to a densely embedded book.
 
@@ -266,7 +266,7 @@ The fetcher caches every API response under `data/_cache/` keyed by URL, so subs
 
 ### Reasoner reference
 
-- [Paths library](https://docs.relational.ai/) — bounded knowledge-graph walks with `.repeat(...)` and `all_paths()`.
+- [Paths library](https://docs.relational.ai/) — bounded knowledge-graph walks with `.repeat(...)`, `.exists()`, and `.all().count()`.
 - [Graph reasoner](https://docs.relational.ai/) — building a `Graph`, node-concept binding, and structural metrics such as triangle count.
 - [Prescriptive reasoner](https://docs.relational.ai/) — the `Problem` API, integer decisions, constraints, and objectives on MiniZinc and HiGHS.
 
