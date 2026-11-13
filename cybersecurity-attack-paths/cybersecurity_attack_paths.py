@@ -121,7 +121,7 @@ model.where(
 print("=== Cybersecurity Attack Paths: kill-chain into crown jewels ===")
 
 a, b, c, dst = Asset.ref(), Asset.ref(), Asset.ref(), Asset.ref()
-kill = model.path(a.exploit_to, b.cred_to, c.pivot_to.repeat(1, MAX_PIVOTS), dst).all_paths()
+kill = model.path(a.exploit_to, b.cred_to, c.pivot_to.repeat(1, MAX_PIVOTS), dst).all().paths()
 kill_df = (
     model.where(
         kill,
@@ -179,11 +179,11 @@ for ch in sorted(chains, key=lambda c: c["hops"]):
 # --------------------------------------------------
 # Pin both endpoints by id and enumerate all simple routes between them over the
 # technique-agnostic can_reach edge (any technique, 1..MAX_ROUTE_HOPS). This is the
-# >=1.15-era native point query (still current) -- src/dst unified to specific assets inside all_paths().
+# >=1.15-era native point query (still current) -- src/dst unified to specific assets inside .all().paths().
 
 src_pt, dst_pt = Asset.ref(), Asset.ref()
-route = model.path(src_pt.can_reach.repeat(1, MAX_ROUTE_HOPS), dst_pt).all_paths()
-# Keep only SIMPLE routes (no asset revisited). all_paths() has WALK semantics and
+route = model.path(src_pt.can_reach.repeat(1, MAX_ROUTE_HOPS), dst_pt).all().paths()
+# Keep only SIMPLE routes (no asset revisited). .all().paths() has WALK semantics and
 # no native simple-path mode, so drop node-repeating walks with a negated existential
 # over positions -- expressed natively in the route's where() (no pandas).
 i, j = Integer.ref(), Integer.ref()

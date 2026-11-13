@@ -17,7 +17,7 @@ chained on one ontology:
   remaining horizon. Effective capacity per (product, period) = sum over
   suppliers of nominal x predicted capability, scaled by input availability.
 - Stage 4 (Graph / PATHS): enumerate variable-length dependency chains via
-  `model.path(Customer.depends_on.repeat(1, 3)).all_paths()` for root cause
+  `model.path(Customer.depends_on.repeat(1, 3)).all().paths()` for root cause
   on the customer-customer graph. Two what-if branches: (1) supplier goes
   offline, (2) raw-material input shortage. Each surfaces affected (product,
   period) cells without re-solving the LP.
@@ -695,7 +695,7 @@ print("=" * 60)
 
 p_pattern = model.path(Customer.depends_on.repeat(1, 3))
 paths_df = model.where(
-    p := p_pattern.all_paths(),
+    p := p_pattern.all().paths(),
 ).select(
     p.alias("path_id"),
     p.length.alias("hops"),

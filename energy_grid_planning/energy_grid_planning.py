@@ -712,9 +712,13 @@ model.where(dc_ref.substation(dc_sub)).define(DCSubstation(dc_sub))
 # Enumerate generator-sub -> DC-sub corridors (finite repeat; the grid is meshed/cyclic).
 MAX_CORRIDOR_HOPS = 6
 corridor_src, corridor_dst = GeneratorSubstation.ref(), DCSubstation.ref()
-corridor = model.path(
-    corridor_src, Substation.connects_to.repeat(1, MAX_CORRIDOR_HOPS), corridor_dst
-).all_paths()
+corridor = (
+    model.path(
+        corridor_src, Substation.connects_to.repeat(1, MAX_CORRIDOR_HOPS), corridor_dst
+    )
+    .all()
+    .paths()
+)
 
 # Score each corridor IN PyRel by Stage 2's betweenness summed ALONG its hops, and
 # roll the most-fragile (max-load) corridor up per DC substation -- all native paths.
@@ -722,7 +726,7 @@ corridor = model.path(
 # Three operations move into PyRel:
 #   1. Per-corridor score: aggs.sum(Substation(p.nodes).betweenness).per(p) sums the
 #      per-node betweenness over each corridor's node sequence (the core paths-only op).
-#   2. Simple-path filter: the grid is cyclic, so walk-semantics all_paths() revisits
+#   2. Simple-path filter: the grid is cyclic, so walk-semantics .all().paths() revisits
 #      nodes; not_(where(i < j, p.nodes(i) == p.nodes(j))) drops any node-repeating walk
 #      via a negated existential over positions. It sits in the SAME where() as the sum,
 #      so the sum only sees simple corridors -- on a simple corridor the position-sum

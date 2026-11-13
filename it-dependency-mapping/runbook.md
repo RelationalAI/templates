@@ -7,7 +7,7 @@ Dependency DAG  (14 features: sources -> pipelines -> jobs -> services -> dashbo
       │
       ▼
 /rai-graph-analysis  — Variable-length path enumeration (paths: relationalai>=1.15)
-   • every downstream dependency path (1-8 hops, all_paths)     -> 46 paths
+   • every downstream dependency path (1-8 hops, all().paths()) -> 46 paths
    • per-feature reach + persist Feature.max_downstream_depth   -> Clickstream Ingest: 7 paths / depth 5
    • maximal end-to-end chains (sub-chains dropped)             -> 6 of 46
    • longest chain = worst-case blast radius + owners along it  -> 5 hops, 6 features / 5 owners
@@ -33,7 +33,7 @@ Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` 
 
 **Prompt:** /rai-graph-analysis For every feature, how far does its blast radius reach downstream? Enumerate all downstream dependency paths of any length, count how many start at each feature, and record each feature's longest downstream depth so we can rank features by reach.
 
-**Response:** Variable-length path enumeration (`.all_paths()` over 1–8 `contributes_to` hops) finds 46 downstream paths in total; because the estate is acyclic, every path is a simple chain. Transaction CDC Stream spawns the most downstream paths (9, reaching depth 4), while Clickstream Ingest reaches the deepest (7 paths, depth 5) — "most paths" and "furthest reach" are different questions with different answers. The two leaf dashboards start none. Each feature's longest depth is persisted as `Feature.max_downstream_depth` so a later query can rank by reach without re-enumerating.
+**Response:** Variable-length path enumeration (`.all().paths()` over 1–8 `contributes_to` hops) finds 46 downstream paths in total; because the estate is acyclic, every path is a simple chain. Transaction CDC Stream spawns the most downstream paths (9, reaching depth 4), while Clickstream Ingest reaches the deepest (7 paths, depth 5) — "most paths" and "furthest reach" are different questions with different answers. The two leaf dashboards start none. Each feature's longest depth is persisted as `Feature.max_downstream_depth` so a later query can rank by reach without re-enumerating.
 
 ## 4. Maximal end-to-end chains
 

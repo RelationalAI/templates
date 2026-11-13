@@ -195,7 +195,7 @@ effective_capacity = Σ_suppliers (nominal × capability_pct) × Π_inputs (1 �
 
 Each solve is constrained by capacity, a yield-aware demand cap, and the base and elevated service floors. A per-customer plan-diff against the previous solve is the headline: hyperscalers absorb the disruption while equipment-maker customers stay pinned at their elevated floors.
 
-**Stage 4 (Graph)** enumerates variable-length dependency chains with `model.path(Customer.depends_on.repeat(1, 3)).all_paths()` for root-cause analysis, then runs two what-if branches that reuse Stage 3's capacity helper so impact stays consistent with the optimization: one takes each supplier offline, the other drops each input to 30% availability, ranking the widest blast radius.
+**Stage 4 (Graph)** enumerates variable-length dependency chains with `model.path(Customer.depends_on.repeat(1, 3)).all().paths()` for root-cause analysis, then runs two what-if branches that reuse Stage 3's capacity helper so impact stays consistent with the optimization: one takes each supplier offline, the other drops each input to 30% availability, ranking the widest blast radius.
 
 ## Customize this template
 
@@ -203,7 +203,7 @@ Each solve is constrained by capacity, a yield-aware demand cap, and the base an
 
 - Replace the CSVs in `data/` with your own, keeping the headers documented in [Sample data](#sample-data).
 - Add suppliers or inputs by appending rows to `suppliers.csv` + `supplier_product_capacity.csv`, or `inputs.csv` + `input_usage.csv`; the LP picks up new entities automatically.
-- Extend the dependency graph by adding rows to `dependencies.csv`. For chains longer than 3 hops, raise the `repeat(1, 3)` bound in Stage 4. Avoid cycles — `.all_paths()` returns walks, which can blow up enumeration.
+- Extend the dependency graph by adding rows to `dependencies.csv`. For chains longer than 3 hops, raise the `repeat(1, 3)` bound in Stage 4. Avoid cycles — `.all().paths()` returns walks, which can blow up enumeration.
 
 ### Tune parameters
 
@@ -284,7 +284,7 @@ Ensure your Snowflake account has the RAI Native App installed and your user has
 
 - [Predictive reasoner (GNN)](https://docs.relational.ai/) — heterogeneous-graph regression, PropertyTransformer, and edge patterns (Stage 2).
 - [Prescriptive reasoner](https://docs.relational.ai/) — the `Problem` API, decision variables, constraints, and objectives (Stage 3).
-- [Graph reasoner / paths](https://docs.relational.ai/) — variable-length path traversal with `.repeat(...).all_paths()` (Stage 4).
+- [Graph reasoner / paths](https://docs.relational.ai/) — variable-length path traversal with `.repeat(...).all().paths()` (Stage 4).
 
 ## Support
 

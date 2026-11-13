@@ -23,7 +23,7 @@ Modern software estates are webs of dependencies: raw data sources feed ingestio
 
 This template demonstrates **Graph** reasoning -- specifically variable-length path traversal -- over a dependency directed acyclic graph (DAG):
 
-1. **Path enumeration** (`model.path(Feature.contributes_to.repeat(1, N)).all_paths()`) -- Walk every downstream dependency path of every length. Because the estate is acyclic, each enumerated path is a simple chain.
+1. **Path enumeration** (`model.path(Feature.contributes_to.repeat(1, N)).all().paths()`) -- Walk every downstream dependency path of every length. Because the estate is acyclic, each enumerated path is a simple chain.
 2. **Maximal-chain reduction** -- Collapse the full path set down to the longest non-extendable chains, dropping the shorter sub-chains contained inside them, so the end-to-end propagation paths stand out.
 
 ## Who this is for
@@ -40,7 +40,7 @@ This template demonstrates **Graph** reasoning -- specifically variable-length p
 - `Feature.max_downstream_depth` persisted back to the ontology, so downstream queries can rank features by reach without re-enumerating paths.
 - The owners along the single longest chain -- the worst-case change/incident blast radius.
 
-Built using RelationalAI's **variable-length path enumeration** (`model.path(...).all_paths()`) over an acyclic dependency graph.
+Built using RelationalAI's **variable-length path enumeration** (`model.path(...).all().paths()`) over an acyclic dependency graph.
 
 ## What's included
 
@@ -163,7 +163,7 @@ CSV files --> Define Feature + contributes_to --> Enumerate downstream paths -->
 
 **Load the ontology.** A `Feature` is any node in the estate -- a raw source, pipeline, feature job, service, or dashboard -- with `id`, `name`, `owner`, and `deploy_tier` loaded from `data/features.csv`. The `contributes_to` self-relationship records that an upstream feature feeds a downstream one, forming the dependency DAG from `data/dependencies.csv`.
 
-**Enumerate downstream paths.** A variable-length traversal of 1 to `MAX_DEPTH` `contributes_to` edges, enumerated with `.all_paths()`, walks every downstream dependency path. Each path arrives as one row per visited node; grouping by path reassembles the ordered chain, and the hop count comes from the maximum node index. (Selecting the path length alongside the nodes would fan the rows out, so the code derives hops from the index and dedupes before reassembly.)
+**Enumerate downstream paths.** A variable-length traversal of 1 to `MAX_DEPTH` `contributes_to` edges, enumerated with `.all().paths()`, walks every downstream dependency path. Each path arrives as one row per visited node; grouping by path reassembles the ordered chain, and the hop count comes from the maximum node index. (Selecting the path length alongside the nodes would fan the rows out, so the code derives hops from the index and dedupes before reassembly.)
 
 **Persist longest downstream depth.** The longest path starting at each feature is its downstream depth. RelationalAI computes it in PyRel — a max over path length per source endpoint — and defines it straight onto the feature as a first-class `max_downstream_depth` property, with no DataFrame round-trip, so later queries can rank features by reach without re-enumerating paths.
 
@@ -231,7 +231,7 @@ The deepest chain runs five hops from a raw source all the way to a downstream d
 <details>
   <summary>Why does path enumeration hang or return far more paths than expected?</summary>
 
-- `all_paths()` enumerates walks. On an acyclic estate every walk is a simple chain, but if you add an edge that introduces a cycle the enumeration can explode. Keep `contributes_to` acyclic, and use `MAX_DEPTH` to bound traversal.
+- `.all().paths()` enumerates walks. On an acyclic estate every walk is a simple chain, but if you add an edge that introduces a cycle the enumeration can explode. Keep `contributes_to` acyclic, and use `MAX_DEPTH` to bound traversal.
 
 </details>
 

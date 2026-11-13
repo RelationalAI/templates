@@ -6,7 +6,7 @@ by enumerating variable-length traversal paths over an acyclic dependency DAG:
 - Loads Feature nodes (services, pipelines, jobs, dashboards) and a
   contributes_to self-relationship (feeds / contributes to) from CSV.
 - Enumerates every downstream dependency path with
-  ``model.path(Feature.contributes_to.repeat(1, N)).all_paths()`` -- because the
+  ``model.path(Feature.contributes_to.repeat(1, N)).all().paths()`` -- because the
   estate is acyclic, every enumerated path is simple.
 - Reduces the full path set to its maximal chains (longest non-extendable
   dependency chains, with shorter sub-chains dropped).
@@ -85,7 +85,7 @@ model.where(
 # --------------------------------------------------
 # model.path(src, Feature.contributes_to.repeat(1, MAX_DEPTH)) describes a
 # variable-length traversal of 1..MAX_DEPTH contributes_to edges starting from a
-# typed source endpoint `src`. all_paths() enumerates every such path; because
+# typed source endpoint `src`. .all().paths() enumerates every such path; because
 # contributes_to is acyclic, each path is simple. The result is one PathTraversal
 # per path -- p.length is its hop count, p.nodes is the ordered sequence of
 # Feature nodes it visits, and src is auto-unified with p.nodes(0) (the start).
@@ -93,7 +93,7 @@ model.where(
 print("=== IT Dependency Mapping: downstream paths ===")
 
 src = Feature.ref()
-p = model.path(src, Feature.contributes_to.repeat(1, MAX_DEPTH)).all_paths()
+p = model.path(src, Feature.contributes_to.repeat(1, MAX_DEPTH)).all().paths()
 
 # Project the node sequence of each path (for display-side reassembly). Keep this
 # its own query: selecting p.length or a path aggregate alongside p.nodes fans the
