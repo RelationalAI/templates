@@ -130,7 +130,7 @@ Manufacturing operations must decide how much of each product to make at each fa
    ```sql
    CALL <DB>.FACTORY_PRODUCTION_META._INTERNAL_REFRESH_MODEL('standard', NULL);
    ```
-   To remove the deployment, run `rai models teardown --force` from this directory.
+   To remove the deployment, run `rai models teardown --force` from this directory; it keeps the two schemas.
 
 6. Expected output (model and solver display trimmed):
    ```text
