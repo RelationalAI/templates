@@ -640,8 +640,12 @@ def solve_flow(label, exclude_site_id=None, block_business_ids=None, use_avoid_r
 
     unmet_cost = UNMET_PENALTY * sum(Demand.x_unmet)
 
-    # With no watch-level suppliers the risk sum is empty; `| 0.0` makes it zero.
-    problem.minimize(transport_cost + (risk_cost | 0.0) + centrality_cost + unmet_cost)
+    # The risk sum is empty with no watch-level supplier, and the centrality sum
+    # with no operation into a scored site (stores and offices are unscored);
+    # `| 0.0` makes an empty sum zero.
+    problem.minimize(
+        transport_cost + (risk_cost | 0.0) + (centrality_cost | 0.0) + unmet_cost
+    )
 
     problem.solve("highs", time_limit_sec=120)
     si = problem.solve_info()
