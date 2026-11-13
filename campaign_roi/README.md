@@ -52,7 +52,7 @@ Every marketing team eventually faces the same question: the portfolio of campai
 ### Tools
 
 - Python >= 3.10.
-- RelationalAI Python SDK (`relationalai == 1.0.14`).
+- RelationalAI Python SDK (`relationalai == 2.1.1`).
 
 ## Quickstart
 

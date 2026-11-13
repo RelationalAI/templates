@@ -60,7 +60,7 @@ The four rules demonstrate different rule patterns:
 
 ### Tools
 - Python >= 3.10
-- RelationalAI Python SDK (`relationalai == 1.13.0`)
+- RelationalAI Python SDK (`relationalai == 2.1.1`)
 
 ## Quickstart
 

@@ -37,7 +37,7 @@ Before you start, install Python 3.10 or later and get access to a Snowflake
 account with the RAI Native App. Prescriptive reasoning is in Public Preview;
 ask your RelationalAI support representative to enable it. Preview features are
 for evaluation and testing, not production applications. The template pins
-`relationalai==1.0.14` in `pyproject.toml`.
+`relationalai==2.1.1` in `pyproject.toml`.
 
 Use this sequence to run the bundled example:
 

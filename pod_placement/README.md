@@ -71,7 +71,7 @@ The bundled CSVs are illustrative demo data tuned so multiple ICs bind at the op
 
 ### Tools
 - Python >= 3.10
-- RelationalAI Python SDK (`relationalai == 1.1.0`)
+- RelationalAI Python SDK (`relationalai == 2.1.1`)
 
 ## Quickstart
 

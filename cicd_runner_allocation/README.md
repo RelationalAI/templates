@@ -53,7 +53,7 @@ Every merge kicks off a pipeline of build, test, and deploy jobs, and each job c
 ### Tools
 
 - Python >= 3.10.
-- RelationalAI Python SDK (`relationalai == 1.11.0`).
+- RelationalAI Python SDK (`relationalai == 2.1.1`).
 
 ## Quickstart
 
@@ -217,7 +217,7 @@ Focus on the first changes most users will make.
 
 - Replace the `data/` CSV bundle with queries against your CI/CD platform's API or data warehouse.
 - The model scales to whatever fits the prescriptive engine's solve budget; raise `time_limit_sec` and the concurrency caps together as the fleet grows.
-- Pin dependencies (the template pins `relationalai == 1.11.0`) for reproducible runs across environments.
+- Pin dependencies (the template pins `relationalai == 2.1.1`) for reproducible runs across environments.
 
 ## Troubleshooting
 

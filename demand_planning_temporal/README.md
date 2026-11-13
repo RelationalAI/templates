@@ -51,7 +51,7 @@ Built using **prescriptive reasoning**: continuous decision variables for produc
 
 ### Tools
 - Python >= 3.10
-- RelationalAI Python SDK (`relationalai`) >= 1.0.14
+- RelationalAI Python SDK (`relationalai`) == 2.1.1
 
 ## Quickstart
 

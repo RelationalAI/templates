@@ -51,7 +51,7 @@ This template answers all of those in one place: it finds the cost-minimizing so
 
 ### Tools
 - Python >= 3.10
-- RelationalAI Python SDK (`relationalai`) == 1.11.0
+- RelationalAI Python SDK (`relationalai`) == 2.1.1
 
 ## Quickstart
 

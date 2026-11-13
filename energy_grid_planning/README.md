@@ -75,7 +75,7 @@ Texas is now the fastest-growing market for AI data center development. Hypersca
 
 ### Tools
 - Python >= 3.10
-- RelationalAI Python SDK (`relationalai[gnn]`) == 1.27.1
+- RelationalAI Python SDK (`relationalai[gnn]`) == 2.1.1
 
 ## Quickstart
 
@@ -256,7 +256,7 @@ Focus on the first changes most users will make.
 
 - Replace the `data/` CSV bundle with CDC ingestion from your grid systems; the ontology shape is independent of the load pipeline.
 - The synthetic grid is sized at 12 substations / 18 lines; the chain scales to whatever fits the prescriptive engine's solve budget. Size the engine up for larger grids or finer investment grids, since the MIP grows with substations × investment levels.
-- Pin `relationalai` (this template targets `1.15.0`) and schedule the run as a pipeline step for reproducible, deterministic re-runs.
+- Pin `relationalai` (this template targets `2.1.1`) and schedule the run as a pipeline step for reproducible, deterministic re-runs.
 
 ## Troubleshooting
 
@@ -264,7 +264,7 @@ Focus on the first changes most users will make.
 <summary>Stage 2 graph queries work but Stage 5 fails with <code>UnsupportedRecursionError</code></summary>
 
 - SDK versions before 1.0.13 could hit this when recursive graph rules and
-  prescriptive result queries shared one model. Upgrade to >= 1.0.13.
+  prescriptive result queries shared one model. Upgrade to `relationalai` 2.1.1, the version pinned in `pyproject.toml`.
 
 </details>
 
