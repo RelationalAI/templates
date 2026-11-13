@@ -1015,18 +1015,31 @@ x_u_c = Float.ref("xu_c")
 effective_load = Substation.predicted_load | Substation.current_load_mw
 
 # Each upgrade's capacity and each request's MW is weighted by its own variable.
-problem.satisfy(model.where(
-    InvestmentLevel,
-    DataCenterRequest.substation(Substation),
-).require(
-    Substation.max_capacity_mw - effective_load
-    + sum(UpgRef, x_u_c * UpgRef.capacity_increase_mw).where(
-        UpgRef.substation == Substation, UpgRef.x_upgrade(InvestmentLevel, x_u_c),
-    ).per(Substation, InvestmentLevel)
-    >= sum(DCRef, x_a_c * DCRef.requested_mw).where(
-        DCRef.substation == Substation, DCRef.x_approve(InvestmentLevel, x_a_c),
-    ).per(Substation, InvestmentLevel)
-))
+# A substation with no upgrade options adds no capacity (`| 0.0`).
+problem.satisfy(
+    model.where(
+        InvestmentLevel,
+        DataCenterRequest.substation(Substation),
+    ).require(
+        Substation.max_capacity_mw
+        - effective_load
+        + (
+            sum(UpgRef, x_u_c * UpgRef.capacity_increase_mw)
+            .where(
+                UpgRef.substation == Substation,
+                UpgRef.x_upgrade(InvestmentLevel, x_u_c),
+            )
+            .per(Substation, InvestmentLevel)
+            | 0.0
+        )
+        >= sum(DCRef, x_a_c * DCRef.requested_mw)
+        .where(
+            DCRef.substation == Substation,
+            DCRef.x_approve(InvestmentLevel, x_a_c),
+        )
+        .per(Substation, InvestmentLevel)
+    )
+)
 
 # C2: Budget per investment level
 problem.satisfy(model.where(
