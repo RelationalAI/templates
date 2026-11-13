@@ -176,12 +176,10 @@ problem.satisfy(model.where(
 ))
 
 # Objective: minimize transport cost + fixed cost of opened fulfillment centers.
-# Each branch of model.union must be a per-entity expression (per Lane and per
-# Site here), aggregated by the outer sum.
-problem.minimize(sum(model.union(
-    Lane.cost_per_unit * Lane.x_flow,
-    Site.fixed_cost * Site.x_open,
-)))
+problem.minimize(
+    sum(Lane, Lane.cost_per_unit * Lane.x_flow)
+    + sum(Site, Site.fixed_cost * Site.x_open)
+)
 
 # --------------------------------------------------
 # Solve and check solution
