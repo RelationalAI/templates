@@ -31,7 +31,7 @@ Output:
 from pathlib import Path
 
 from pandas import read_csv
-from relationalai.semantics import Float, Integer, Model, String
+from relationalai.semantics import Float, Integer, Model, String, sum
 
 # --------------------------------------------------
 # Configure inputs
@@ -459,7 +459,7 @@ if overlap:
 # Aggregate premium by tier — the underwriting business view.
 premium_df = model.where(Policy.insured_entity(InsuredEntity)).select(
     InsuredEntity.id.alias("id"),
-    Policy.total_premium.alias("premium"),
+    sum(Policy, Policy.total_premium).per(InsuredEntity).alias("premium"),
 ).to_df()
 tier_df = tier_df.merge(premium_df, on="id")
 print("\nPremium by tier:")
