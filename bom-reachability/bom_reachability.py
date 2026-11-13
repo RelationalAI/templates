@@ -15,7 +15,8 @@ Assembly path enumeration (PREVIEW, requires relationalai>=1.15): enumerate the
   SKU->SKU "feeds into" edge from the BillOfMaterials intermediary (input feeds
   output), enumerates every assembly path with model.path(...).all().paths(),
   filters to the maximal (longest non-extendable) chains so sub-paths are
-  suppressed, and reports each finished good's longest assembly depth.
+  suppressed, and persists each finished good's longest assembly depth back onto
+  the SKU ontology.
 
 Run:
     `python bom_reachability.py` deploys the model to the schema in raiconfig.yaml,
@@ -31,8 +32,9 @@ Output:
 from pathlib import Path
 
 import pandas as pd
-from relationalai.semantics import Float, Model, String, where
+from relationalai.semantics import Float, Integer, Model, String, where
 from relationalai.semantics.reasoners.graph import Graph
+from relationalai.semantics.std import aggregates as aggs
 
 # --------------------------------------------------
 # Configure inputs
@@ -125,6 +127,15 @@ model.where(
 # allow extra headroom so deeper BOMs enumerate fully.
 MAX_ASSEMBLY_HOPS = 4
 p = model.path(SKU.feeds.repeat(1, MAX_ASSEMBLY_HOPS)).all().paths()
+
+# Persist each finished good's longest assembly depth onto the SKU ontology: the
+# longest assembly chain that ends at it (max path length per final endpoint).
+built = SKU.ref()
+chain = model.path(SKU.feeds.repeat(1, MAX_ASSEMBLY_HOPS), built).all().paths()
+SKU.assembly_depth = model.Property(f"{SKU} has assembly depth {Integer:assembly_depth}")
+model.where(chain, built.type == "FINISHED_GOOD").define(
+    built.assembly_depth(aggs.max(chain.length).per(built))
+)
 
 
 def _is_contiguous_subsequence(short, long):
@@ -270,26 +281,16 @@ if __name__ == "__main__":
     for path in sorted(maximal, key=lambda x: -x["length"]):
         print(f"    [{path['length']} hop] " + " -> ".join(path["names"]))
 
-    # Each finished good's assembly depth: the terminal SKU of a maximal chain is the
-    # thing it builds, and the deepest chain ending there is its assembly depth.
-    depth_by_sku = {}
-    for path in maximal:
-        terminal = path["ids"][-1]
-        depth_by_sku[terminal] = max(depth_by_sku.get(terminal, 0), path["length"])
-
-    if depth_by_sku:
-        sku_info = all_deps_df.drop_duplicates("product_id").set_index("product_id")
-        depth_df = pd.DataFrame(
-            [
-                {
-                    "sku_id": sku_id,
-                    "sku_name": sku_info.at[sku_id, "product_name"],
-                    "type": sku_info.at[sku_id, "product_type"],
-                    "assembly_depth": depth,
-                }
-                for sku_id, depth in depth_by_sku.items()
-                if depth > 0
-            ]
-        ).sort_values(["assembly_depth", "sku_id"], ascending=[False, True], ignore_index=True)
-        print("\n  Assembly depth (longest chain terminating at each finished good):")
-        print(depth_df.to_string(index=False))
+    print("\n  Assembly depth persisted onto SKU (longest chain terminating at each):")
+    depth_df = (
+        where(SKU.assembly_depth > 0)
+        .select(
+            SKU.id.alias("sku_id"),
+            SKU.name.alias("sku_name"),
+            SKU.type.alias("type"),
+            SKU.assembly_depth.alias("assembly_depth"),
+        )
+        .to_df()
+        .sort_values(["assembly_depth", "sku_id"], ascending=[False, True], ignore_index=True)
+    )
+    print(depth_df.to_string(index=False))

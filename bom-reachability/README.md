@@ -35,17 +35,17 @@ This template turns a BOM into a dependency graph so you can trace those transit
 - A full transitive dependency tree per finished good, broken down by type (component vs raw material), from all-pairs `reachable(full=True)`.
 - A most-depended-on ranking of SKUs and a betweenness-centrality ranking that flags the structural bottleneck components.
 - An enumeration of the end-to-end assembly chains that build each finished good, reduced to the maximal (non-extendable) chains via path enumeration.
-- Each finished good's assembly depth: the length of the longest chain that builds it.
+- An `assembly_depth` property persisted back onto each SKU, so the longest chain terminating at each finished good is queryable as ontology after the run.
 
 Built on RelationalAI's graph reasoner: **reachability** for transitive dependencies, **betweenness centrality** for bottlenecks, and **path enumeration** for assembly chains.
 
 ## What's included
 
-- **Model**: two concepts (`SKU` and `BillOfMaterials`) wired into a directed dependency graph, plus a derived `feeds` self-relationship on `SKU`.
+- **Model**: two concepts (`SKU` and `BillOfMaterials`) wired into a directed dependency graph, plus a derived `feeds` self-relationship on `SKU` and a persisted `assembly_depth` property.
 - **Runner**: `bom_reachability.py` — a single self-contained Python script that deploys the model to your Snowflake account and prints the reachability, betweenness centrality, and assembly-path report from the deployed model.
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - **Sample data**: `data/skus.csv` (9 SKUs across 3 tiers) and `data/bill_of_materials.csv` (14 BOM entries with site-specific assembly). See *Sample data* below.
-- **Outputs**: printed transitive-dependency lists per finished good, a most-depended-on and betweenness ranking, the maximal assembly chains, and each finished good's assembly depth.
+- **Outputs**: printed transitive-dependency lists per finished good, a most-depended-on and betweenness ranking, the maximal assembly chains, and an `assembly_depth` property written back onto the SKU ontology.
 
 ## Prerequisites
 
@@ -154,7 +154,7 @@ Built on RelationalAI's graph reasoner: **reachability** for transitive dependen
 - **Primary identifiers**: `SKU` by `id`; `BillOfMaterials` by `id`.
 - **Important invariants**: each `BillOfMaterials` row points an output SKU at one input SKU ("depends on"); the BOM is acyclic (raw materials feed components feed finished goods, never back).
 
-The model also derives a `feeds` self-relationship on `SKU` (input SKU feeds output SKU), built from the `BillOfMaterials` intermediary and used to enumerate assembly paths.
+The model also derives a `feeds` self-relationship on `SKU` (input SKU feeds output SKU), built from the `BillOfMaterials` intermediary and used to enumerate assembly paths, plus a persisted `assembly_depth` property (the longest assembly chain terminating at each SKU).
 
 For the full concept and property definitions, see `bom_reachability.py`; `runbook.md` builds them step by step with the RAI skills.
 
@@ -184,7 +184,7 @@ Betweenness centrality ranks components by how many shortest dependency paths pa
 
 ### 5. Enumerate assembly paths (PREVIEW, requires `relationalai>=1.15`)
 
-Where reachability returns dependency *pairs*, path enumeration returns the actual *build sequences*. It walks the derived `feeds` edge to enumerate every assembly path; because the BOM is acyclic, this yields exactly the simple paths with no cycle risk. A maximal-paths view keeps only the longest non-extendable chains, and the deepest chain ending at each finished good gives its assembly depth.
+Where reachability returns dependency *pairs*, path enumeration returns the actual *build sequences*. It walks the derived `feeds` edge to enumerate every assembly path; because the BOM is acyclic, this yields exactly the simple paths with no cycle risk. A maximal-paths view keeps only the longest non-extendable chains, and the longest assembly depth is persisted as `SKU.assembly_depth`.
 
 See `bom_reachability.py` for the implementation and `runbook.md` for the skill-driven reproduction.
 
