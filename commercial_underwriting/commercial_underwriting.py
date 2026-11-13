@@ -317,9 +317,8 @@ model.where(
 model.where(
     model.not_(InsuredEntity.has_decline_factor()),
     model.not_(InsuredEntity.has_marginal_factor()),
+    model.not_(RiskTier_Preferred(InsuredEntity)),
 ).define(RiskTier_Standard(InsuredEntity))
-# Standard is then narrowed by NOT being Preferred. We express this by
-# subtracting Preferred from Standard at query time below.
 
 # --------------------------------------------------
 # Reporting
@@ -421,13 +420,8 @@ nonstandard_ids = set(
 preferred_ids = set(
     model.where(RiskTier_Preferred(InsuredEntity)).select(InsuredEntity.id.alias("id")).to_df()["id"]
 )
-# Standard is the rule-defined Standard set MINUS Preferred (Preferred is a
-# tightened subset of "no decline, no marginal").
-standard_ids = (
-    set(
-        model.where(RiskTier_Standard(InsuredEntity)).select(InsuredEntity.id.alias("id")).to_df()["id"]
-    )
-    - preferred_ids
+standard_ids = set(
+    model.where(RiskTier_Standard(InsuredEntity)).select(InsuredEntity.id.alias("id")).to_df()["id"]
 )
 
 
@@ -463,8 +457,10 @@ if overlap:
     print(f"\nWARNING: {len(overlap)} entities classified into multiple tiers: {sorted(overlap)}")
 
 # Aggregate premium by tier — the underwriting business view.
-tier_df["premium"] = tier_df["id"].apply(
-    lambda i: float(policy_csv.loc[policy_csv["insured_entity_id"] == i, "total_premium"].iloc[0])
-)
+premium_df = model.where(Policy.insured_entity(InsuredEntity)).select(
+    InsuredEntity.id.alias("id"),
+    Policy.total_premium.alias("premium"),
+).to_df()
+tier_df = tier_df.merge(premium_df, on="id")
 print("\nPremium by tier:")
 print(tier_df.groupby("tier")["premium"].agg(["count", "sum", "mean"]).to_string())
