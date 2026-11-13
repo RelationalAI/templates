@@ -10,10 +10,10 @@ BOM graph  (9 SKUs across 3 tiers, 10 dependency edges from 14 site-specific BOM
    • transitive dependencies per finished good (reachable)       -> 7 each
    • structural bottleneck component (betweenness centrality)    -> Mobile Processor A15 = 4.0
    • every raw-material to finished-good assembly chain (paths)  -> 18 paths
-   • maximal chains + persist SKU.assembly_depth                 -> 8 maximal, depth 2
+   • maximal chains + assembly depth per finished good           -> 8 maximal, depth 2
 ```
 
-Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` skill (named at the start of each prompt). They run in order in a single session — the assembly-path and depth steps read the `BillOfMaterials` relationships the build step established, and the final step persists `SKU.assembly_depth` back onto the ontology.
+Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` skill (named at the start of each prompt). They run in order in a single session — the assembly-path and depth steps read the `BillOfMaterials` relationships the build step established.
 
 ---
 
@@ -49,6 +49,6 @@ Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` 
 
 ## 6. Maximal chains and assembly depth
 
-**Prompt:** /rai-graph-analysis The full path set repeats every sub-chain. Reduce it to just the maximal end-to-end chains — the longest routes not contained inside a longer one — and persist each finished good's assembly depth as `SKU.assembly_depth` on the ontology (the length of the deepest chain that builds it).
+**Prompt:** /rai-graph-analysis The full path set repeats every sub-chain. Reduce it to just the maximal end-to-end chains — the longest routes not contained inside a longer one — and report each finished good's assembly depth (the length of the deepest chain that builds it).
 
-**Response:** 8 of the 18 paths are maximal; the other 10 are shorter sub-chains contained inside them. All 8 maximal chains are 2-hop raw-material → component → finished-good routes (e.g. Silicon Wafer 300mm → Mobile Processor A15 → ProTab T1). Both finished goods have an assembly depth of 2, persisted back onto the ontology as `SKU.assembly_depth` so a later query can rank products by build complexity without re-enumerating paths.
+**Response:** 8 of the 18 paths are maximal; the other 10 are shorter sub-chains contained inside them. All 8 maximal chains are 2-hop raw-material → component → finished-good routes (e.g. Silicon Wafer 300mm → Mobile Processor A15 → ProTab T1). Both finished goods have an assembly depth of 2.

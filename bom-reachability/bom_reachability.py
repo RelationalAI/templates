@@ -15,11 +15,11 @@ Assembly path enumeration (PREVIEW, requires relationalai>=1.15): enumerate the
   SKU->SKU "feeds into" edge from the BillOfMaterials intermediary (input feeds
   output), enumerates every assembly path with model.path(...).all().paths(),
   filters to the maximal (longest non-extendable) chains so sub-paths are
-  suppressed, and persists each finished good's longest assembly depth back onto
-  the SKU ontology.
+  suppressed, and reports each finished good's longest assembly depth.
 
 Run:
-    `python bom_reachability.py`
+    `python bom_reachability.py` deploys the model to the schema in raiconfig.yaml,
+    waits for its first refresh, and prints the report from the deployed model.
 
 Output:
     Prints transitive dependency lists per finished product, a betweenness
@@ -31,7 +31,7 @@ Output:
 from pathlib import Path
 
 import pandas as pd
-from relationalai.semantics import Float, Integer, Model, String, where
+from relationalai.semantics import Float, Model, String, where
 from relationalai.semantics.reasoners.graph import Graph
 
 # --------------------------------------------------
@@ -87,95 +87,15 @@ graph = Graph(
     edge_dst_relationship=BillOfMaterials.input_sku,
 )
 
-print("=== BOM Dependency Graph ===")
-graph.num_nodes().inspect()
-graph.num_edges().inspect()
+# Graph results the report reads, declared here so they deploy with the model.
+num_nodes = graph.num_nodes()
+num_edges = graph.num_edges()
 
-# --------------------------------------------------
-# Reachability: all transitive dependency pairs
-# --------------------------------------------------
-
+# Reachability: all transitive dependency pairs.
 reachable = graph.reachable(full=True)
 
-src, dst = graph.Node.ref("src"), graph.Node.ref("dst")
-all_deps_df = (
-    where(reachable(src, dst))
-    .select(
-        src.id.alias("product_id"),
-        src.name.alias("product_name"),
-        src.type.alias("product_type"),
-        dst.id.alias("dep_id"),
-        dst.name.alias("dep_name"),
-        dst.type.alias("dep_type"),
-    )
-    .to_df()
-)
-
-print(f"\nTotal reachable pairs: {len(all_deps_df)}")
-
-# --------------------------------------------------
-# Dependencies of each finished good
-# --------------------------------------------------
-
-finished = all_deps_df[all_deps_df["product_type"] == "FINISHED_GOOD"]
-for product_id in sorted(finished["product_id"].unique()):
-    deps = finished[(finished["product_id"] == product_id) & (finished["dep_id"] != product_id)]
-    if len(deps) > 0:
-        product_name = deps["product_name"].iloc[0]
-        print(f"\n--- Dependencies of '{product_name}' ({product_id}) ---")
-        print(f"  {len(deps)} transitive dependencies:")
-        for dep_type in ["COMPONENT", "RAW_MATERIAL"]:
-            type_deps = deps[deps["dep_type"] == dep_type]
-            if len(type_deps) > 0:
-                print(f"\n  {dep_type}s ({len(type_deps)}):")
-                for _, row in type_deps.sort_values("dep_name").iterrows():
-                    print(f"    - {row['dep_name']} ({row['dep_id']})")
-
-# --------------------------------------------------
-# Most depended-on components
-# --------------------------------------------------
-
-non_self = all_deps_df[all_deps_df["product_id"] != all_deps_df["dep_id"]]
-if len(non_self) > 0:
-    dep_counts = (
-        non_self.groupby(["dep_id", "dep_name", "dep_type"])
-        .size()
-        .reset_index(name="depended_on_by")
-        .sort_values("depended_on_by", ascending=False)
-    )
-    print("\n=== Most Depended-On SKUs ===")
-    print(dep_counts.to_string(index=False))
-
-# --------------------------------------------------
-# Betweenness centrality: structural bottlenecks
-# --------------------------------------------------
-
+# Betweenness centrality: structural bottlenecks.
 betweenness = graph.betweenness_centrality()
-
-node = graph.Node.ref("n")
-score = Float.ref("s")
-btw_df = (
-    where(betweenness(node, score))
-    .select(
-        node.id.alias("sku_id"),
-        node.name.alias("sku_name"),
-        node.type.alias("type"),
-        node.category.alias("category"),
-        score.alias("betweenness"),
-    )
-    .to_df()
-    .sort_values("betweenness", ascending=False)
-    .reset_index(drop=True)
-)
-
-print("\n=== Betweenness Centrality (bottleneck components) ===")
-print(btw_df.to_string(index=False))
-
-bottlenecks = btw_df[btw_df["betweenness"] > 0]
-if len(bottlenecks) > 0:
-    top = bottlenecks.iloc[0]
-    print(f"\nTop bottleneck: {top['sku_name']} (betweenness={top['betweenness']:.4f})")
-    print("  Sits on the most dependency paths -- disruption here affects the most product lines.")
 
 # --------------------------------------------------
 # Assembly path enumeration
@@ -187,8 +107,6 @@ if len(bottlenecks) > 0:
 # SKU->SKU "feeds into" edge from the BillOfMaterials intermediary (the input
 # SKU feeds the output SKU), enumerate all such paths, then keep only the
 # maximal (longest, non-extendable) chains so that sub-paths are suppressed.
-
-print("\n=== Assembly Path Enumeration (PREVIEW) ===")
 
 # Binary SKU->SKU edge: input_sku "feeds into" output_sku. This is the
 # build-direction (bottom-up) reverse of the depends-on graph edge above.
@@ -207,36 +125,8 @@ model.where(
 # allow extra headroom so deeper BOMs enumerate fully.
 MAX_ASSEMBLY_HOPS = 4
 p = model.path(SKU.feeds.repeat(1, MAX_ASSEMBLY_HOPS)).all().paths()
-assembly_df = (
-    model.where(p)
-    .select(
-        p.alias("path"),
-        p.nodes["index"].alias("step"),
-        SKU(p.nodes).id.alias("sku_id"),
-        SKU(p.nodes).name.alias("sku_name"),
-    )
-    .to_df()
-)
 
-# Reassemble each path in pandas: group on the path id, order by step index.
-assembly_df["step"] = assembly_df["step"].astype(int)
-paths = []
-for path_id, grp in assembly_df.groupby("path"):
-    ordered = grp.sort_values("step")
-    ids = ordered["sku_id"].tolist()
-    names = ordered["sku_name"].tolist()
-    paths.append({"ids": ids, "names": names, "length": len(ids) - 1})
 
-print(f"\n  Enumerated {len(paths)} assembly path(s) (<= {MAX_ASSEMBLY_HOPS} hops).")
-
-# (a) All assembly paths, longest first.
-print("\n  All assembly chains (feeds-into order):")
-for path in sorted(paths, key=lambda x: -x["length"]):
-    print(f"    [{path['length']} hop] " + " -> ".join(path["names"]))
-
-# (b) Maximal paths: keep only the longest, non-extendable chains -- a chain
-# that is NOT a contiguous sub-sequence (prefix or suffix) of any longer chain.
-# Suppressing these sub-paths leaves just the end-to-end assembly routes.
 def _is_contiguous_subsequence(short, long):
     """True if `short` appears as a contiguous run inside `long`."""
     if len(short) >= len(long):
@@ -244,48 +134,162 @@ def _is_contiguous_subsequence(short, long):
     return any(long[i:i + len(short)] == short for i in range(len(long) - len(short) + 1))
 
 
-maximal = [
-    path
-    for path in paths
-    if not any(
-        other is not path and _is_contiguous_subsequence(path["ids"], other["ids"])
-        for other in paths
-    )
-]
+# --------------------------------------------------
+# Deploy, then report (`rai models deploy` skips this block)
+# --------------------------------------------------
 
-print(f"\n  Maximal assembly chains ({len(maximal)} of {len(paths)}, sub-paths suppressed):")
-for path in sorted(maximal, key=lambda x: -x["length"]):
-    print(f"    [{path['length']} hop] " + " -> ".join(path["names"]))
+if __name__ == "__main__":
+    # Deploy and wait for the first refresh.
+    model.deploy()
 
-# Persist each finished good's longest assembly depth back onto the SKU ontology.
-# The terminal SKU of a maximal chain is the thing it builds; the deepest chain
-# ending there is that finished good's assembly depth.
-SKU.assembly_depth = model.Property(f"{SKU} has assembly depth {Integer:assembly_depth}")
-depth_by_sku = {}
-for path in maximal:
-    terminal = path["ids"][-1]
-    depth_by_sku[terminal] = max(depth_by_sku.get(terminal, 0), path["length"])
+    print("=== BOM Dependency Graph ===")
+    num_nodes.inspect()
+    num_edges.inspect()
 
-if depth_by_sku:
-    depth_rows = pd.DataFrame(
-        [{"sku_id": sku_id, "assembly_depth": depth} for sku_id, depth in depth_by_sku.items()]
-    )
-    depth_data = model.data(depth_rows)
-    model.define(SKU.assembly_depth(depth_data.assembly_depth)).where(
-        SKU.id == depth_data.sku_id
-    )
-
-    print("\n  Assembly depth persisted onto SKU (longest chain terminating at each):")
-    depth_df = (
-        where(SKU.assembly_depth > 0)
+    src, dst = graph.Node.ref("src"), graph.Node.ref("dst")
+    all_deps_df = (
+        where(reachable(src, dst))
         .select(
-            SKU.id.alias("sku_id"),
-            SKU.name.alias("sku_name"),
-            SKU.type.alias("type"),
-            SKU.assembly_depth.alias("assembly_depth"),
+            src.id.alias("product_id"),
+            src.name.alias("product_name"),
+            src.type.alias("product_type"),
+            dst.id.alias("dep_id"),
+            dst.name.alias("dep_name"),
+            dst.type.alias("dep_type"),
         )
         .to_df()
-        .sort_values("assembly_depth", ascending=False)
+    )
+
+    print(f"\nTotal reachable pairs: {len(all_deps_df)}")
+
+    # --------------------------------------------------
+    # Dependencies of each finished good
+    # --------------------------------------------------
+
+    finished = all_deps_df[all_deps_df["product_type"] == "FINISHED_GOOD"]
+    for product_id in sorted(finished["product_id"].unique()):
+        deps = finished[(finished["product_id"] == product_id) & (finished["dep_id"] != product_id)]
+        if len(deps) > 0:
+            product_name = deps["product_name"].iloc[0]
+            print(f"\n--- Dependencies of '{product_name}' ({product_id}) ---")
+            print(f"  {len(deps)} transitive dependencies:")
+            for dep_type in ["COMPONENT", "RAW_MATERIAL"]:
+                type_deps = deps[deps["dep_type"] == dep_type]
+                if len(type_deps) > 0:
+                    print(f"\n  {dep_type}s ({len(type_deps)}):")
+                    for _, row in type_deps.sort_values("dep_name").iterrows():
+                        print(f"    - {row['dep_name']} ({row['dep_id']})")
+
+    # --------------------------------------------------
+    # Most depended-on components
+    # --------------------------------------------------
+
+    non_self = all_deps_df[all_deps_df["product_id"] != all_deps_df["dep_id"]]
+    if len(non_self) > 0:
+        dep_counts = (
+            non_self.groupby(["dep_id", "dep_name", "dep_type"])
+            .size()
+            .reset_index(name="depended_on_by")
+            .sort_values("depended_on_by", ascending=False)
+        )
+        print("\n=== Most Depended-On SKUs ===")
+        print(dep_counts.to_string(index=False))
+
+    # --------------------------------------------------
+    # Betweenness centrality: structural bottlenecks
+    # --------------------------------------------------
+
+    node = graph.Node.ref("n")
+    score = Float.ref("s")
+    btw_df = (
+        where(betweenness(node, score))
+        .select(
+            node.id.alias("sku_id"),
+            node.name.alias("sku_name"),
+            node.type.alias("type"),
+            node.category.alias("category"),
+            score.alias("betweenness"),
+        )
+        .to_df()
+        .sort_values("betweenness", ascending=False)
         .reset_index(drop=True)
     )
-    print(depth_df.to_string(index=False))
+
+    print("\n=== Betweenness Centrality (bottleneck components) ===")
+    print(btw_df.to_string(index=False))
+
+    bottlenecks = btw_df[btw_df["betweenness"] > 0]
+    if len(bottlenecks) > 0:
+        top = bottlenecks.iloc[0]
+        print(f"\nTop bottleneck: {top['sku_name']} (betweenness={top['betweenness']:.4f})")
+        print("  Sits on the most dependency paths -- disruption here affects the most product lines.")
+
+    # --------------------------------------------------
+    # Assembly path enumeration
+    # --------------------------------------------------
+
+    print("\n=== Assembly Path Enumeration (PREVIEW) ===")
+
+    assembly_df = (
+        model.where(p)
+        .select(
+            p.alias("path"),
+            p.nodes["index"].alias("step"),
+            SKU(p.nodes).id.alias("sku_id"),
+            SKU(p.nodes).name.alias("sku_name"),
+        )
+        .to_df()
+    )
+
+    # Reassemble each path in pandas: group on the path id, order by step index.
+    assembly_df["step"] = assembly_df["step"].astype(int)
+    paths = []
+    for path_id, grp in assembly_df.groupby("path"):
+        ordered = grp.sort_values("step")
+        ids = ordered["sku_id"].tolist()
+        names = ordered["sku_name"].tolist()
+        paths.append({"ids": ids, "names": names, "length": len(ids) - 1})
+
+    print(f"\n  Enumerated {len(paths)} assembly path(s) (<= {MAX_ASSEMBLY_HOPS} hops).")
+
+    # (a) All assembly paths, longest first.
+    print("\n  All assembly chains (feeds-into order):")
+    for path in sorted(paths, key=lambda x: -x["length"]):
+        print(f"    [{path['length']} hop] " + " -> ".join(path["names"]))
+
+    # (b) Maximal paths: keep only the longest, non-extendable chains -- a chain
+    # that is NOT a contiguous sub-sequence (prefix or suffix) of any longer chain.
+    # Suppressing these sub-paths leaves just the end-to-end assembly routes.
+    maximal = [
+        path
+        for path in paths
+        if not any(other is not path and _is_contiguous_subsequence(path["ids"], other["ids"]) for other in paths)
+    ]
+
+    print(f"\n  Maximal assembly chains ({len(maximal)} of {len(paths)}, sub-paths suppressed):")
+    for path in sorted(maximal, key=lambda x: -x["length"]):
+        print(f"    [{path['length']} hop] " + " -> ".join(path["names"]))
+
+    # Each finished good's assembly depth: the terminal SKU of a maximal chain is the
+    # thing it builds, and the deepest chain ending there is its assembly depth.
+    depth_by_sku = {}
+    for path in maximal:
+        terminal = path["ids"][-1]
+        depth_by_sku[terminal] = max(depth_by_sku.get(terminal, 0), path["length"])
+
+    if depth_by_sku:
+        sku_info = all_deps_df.drop_duplicates("product_id").set_index("product_id")
+        depth_df = pd.DataFrame(
+            [
+                {
+                    "sku_id": sku_id,
+                    "sku_name": sku_info.at[sku_id, "product_name"],
+                    "type": sku_info.at[sku_id, "product_type"],
+                    "assembly_depth": depth,
+                }
+                for sku_id, depth in depth_by_sku.items()
+                if depth > 0
+            ]
+        ).sort_values(["assembly_depth", "sku_id"], ascending=[False, True], ignore_index=True)
+        print("\n  Assembly depth (longest chain terminating at each finished good):")
+        print(depth_df.to_string(index=False))

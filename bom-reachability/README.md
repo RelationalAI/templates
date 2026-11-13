@@ -35,24 +35,25 @@ This template turns a BOM into a dependency graph so you can trace those transit
 - A full transitive dependency tree per finished good, broken down by type (component vs raw material), from all-pairs `reachable(full=True)`.
 - A most-depended-on ranking of SKUs and a betweenness-centrality ranking that flags the structural bottleneck components.
 - An enumeration of the end-to-end assembly chains that build each finished good, reduced to the maximal (non-extendable) chains via path enumeration.
-- An `assembly_depth` property persisted back onto each SKU, so the longest chain terminating at each finished good is queryable as ontology after the run.
+- Each finished good's assembly depth: the length of the longest chain that builds it.
 
 Built on RelationalAI's graph reasoner: **reachability** for transitive dependencies, **betweenness centrality** for bottlenecks, and **path enumeration** for assembly chains.
 
 ## What's included
 
-- **Model**: two concepts (`SKU` and `BillOfMaterials`) wired into a directed dependency graph, plus a derived `feeds` self-relationship on `SKU` and a persisted `assembly_depth` property.
-- **Runner**: `bom_reachability.py` — a single self-contained Python script that runs reachability, betweenness centrality, and assembly-path enumeration end to end.
+- **Model**: two concepts (`SKU` and `BillOfMaterials`) wired into a directed dependency graph, plus a derived `feeds` self-relationship on `SKU`.
+- **Runner**: `bom_reachability.py` — a single self-contained Python script that deploys the model to your Snowflake account and prints the reachability, betweenness centrality, and assembly-path report from the deployed model.
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - **Sample data**: `data/skus.csv` (9 SKUs across 3 tiers) and `data/bill_of_materials.csv` (14 BOM entries with site-specific assembly). See *Sample data* below.
-- **Outputs**: printed transitive-dependency lists per finished good, a most-depended-on and betweenness ranking, the maximal assembly chains, and an `assembly_depth` property written back onto the SKU ontology.
+- **Outputs**: printed transitive-dependency lists per finished good, a most-depended-on and betweenness ranking, the maximal assembly chains, and each finished good's assembly depth.
 
 ## Prerequisites
 
 ### Access
 
 - A Snowflake account that has the RAI Native App installed.
-- A Snowflake user with permissions to access the RAI Native App.
+- A role that can deploy models, set up once by an account administrator: follow [Set up model deployment](https://private.relational.ai/early-access/model-deploy-setup) (**Try it out**, or **Governed setup** for a shared account). This template has no prescriptive solve, so it needs no PAT setup.
+- A Snowflake user that holds that role.
 
 ### Tools
 
@@ -87,17 +88,31 @@ Built on RelationalAI's graph reasoner: **reachability** for transitive dependen
    python -m pip install .
    ```
 
-4. **Configure Snowflake connection and RAI profile**
+4. **Configure the Snowflake connection and the deployment**
 
-   ```bash
-   rai init
+   Run `rai init` to create `raiconfig.yaml` with your Snowflake connection, set the connection `role` to the model role, then add a `deployment` section. Give each template its own schema pair so two deployed templates never share one; the deploy creates both schemas if they don't exist.
+
+   ```yaml
+   deployment:
+     role: <MODEL_ROLE>
+     public_schema: <DB>.BOM_REACHABILITY              # published views and tables
+     identity:
+       internal_schema: <DB>.BOM_REACHABILITY_META     # refresh procedures and metadata
+     schedules:
+       standard:
+         interval_s: 0           # refresh only on deploy or on demand
+     schedule: standard
    ```
+
+   Without the `deployment` section, `python bom_reachability.py` stops with an error naming the missing setting.
 
 5. **Run the template**
 
    ```bash
    python bom_reachability.py
    ```
+
+   The script deploys the model, waits for its first refresh, and prints the report from the deployed model. `rai models deploy` deploys without printing the report. To remove the deployment, run `rai models teardown --force` from this directory; it keeps the two schemas.
 
 6. **Expected output** (a few lines confirm success):
 
@@ -139,7 +154,7 @@ Built on RelationalAI's graph reasoner: **reachability** for transitive dependen
 - **Primary identifiers**: `SKU` by `id`; `BillOfMaterials` by `id`.
 - **Important invariants**: each `BillOfMaterials` row points an output SKU at one input SKU ("depends on"); the BOM is acyclic (raw materials feed components feed finished goods, never back).
 
-The model also derives a `feeds` self-relationship on `SKU` (input SKU feeds output SKU), built from the `BillOfMaterials` intermediary and used to enumerate assembly paths, plus a persisted `assembly_depth` property (the longest assembly chain terminating at each SKU).
+The model also derives a `feeds` self-relationship on `SKU` (input SKU feeds output SKU), built from the `BillOfMaterials` intermediary and used to enumerate assembly paths.
 
 For the full concept and property definitions, see `bom_reachability.py`; `runbook.md` builds them step by step with the RAI skills.
 
@@ -169,7 +184,7 @@ Betweenness centrality ranks components by how many shortest dependency paths pa
 
 ### 5. Enumerate assembly paths (PREVIEW, requires `relationalai>=1.15`)
 
-Where reachability returns dependency *pairs*, path enumeration returns the actual *build sequences*. It walks the derived `feeds` edge to enumerate every assembly path; because the BOM is acyclic, this yields exactly the simple paths with no cycle risk. A maximal-paths view keeps only the longest non-extendable chains, and the longest assembly depth is persisted as `SKU.assembly_depth`.
+Where reachability returns dependency *pairs*, path enumeration returns the actual *build sequences*. It walks the derived `feeds` edge to enumerate every assembly path; because the BOM is acyclic, this yields exactly the simple paths with no cycle risk. A maximal-paths view keeps only the longest non-extendable chains, and the deepest chain ending at each finished good gives its assembly depth.
 
 See `bom_reachability.py` for the implementation and `runbook.md` for the skill-driven reproduction.
 
