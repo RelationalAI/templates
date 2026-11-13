@@ -57,7 +57,7 @@ This template composes the slate as a single optimization decision rather than a
 ### Tools
 
 - Python 3.10 or newer.
-- RelationalAI Python SDK (`relationalai == 1.1.0`).
+- RelationalAI Python SDK (`relationalai == 2.1.1`).
 
 ## Quickstart
 
