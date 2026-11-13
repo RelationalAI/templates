@@ -39,19 +39,25 @@ STRUCTURING_FLOOR, STRUCTURING_CEILING = 9000.0, 10000.0
 LARGE_TRANSFER = 50000.0
 
 # Local DuckDB config (no Snowflake): a duckdb connection plus a `deployment`
-# section (schema and auto_deploy) routes the model to the local DuckDB executor
-# and materializes derived relations before queries.
+# section routes the model to the local DuckDB executor and materializes derived
+# relations before queries. The section names the schema for the model's
+# published views (`public_schema`), the schema for its internal objects
+# (`identity.internal_schema`), and turns on `auto_deploy`.
 config = create_config(
     connections={"local": DuckDBConnection(path=":memory:")},  # or a file path, e.g. "./dev.duckdb"
     default_connection="local",
-    deployment={"schema": "main", "auto_deploy": True},
+    deployment={
+        "public_schema": "main",
+        "identity": {"internal_schema": "main_internal"},
+        "auto_deploy": True,
+    },
 )
 
 # --------------------------------------------------
 # Define semantic model & load data
 # --------------------------------------------------
 # Load the ledger straight into DuckDB. Keep source data in a schema (`raw`)
-# separate from the model install schema (`main`) — DuckDB is case-insensitive,
+# separate from the model's public schema (`main`) — DuckDB is case-insensitive,
 # so a source table named like a concept would collide with the installed view.
 session = config.get_connection(DuckDBConnection).get_session()
 session.execute("CREATE SCHEMA IF NOT EXISTS raw")

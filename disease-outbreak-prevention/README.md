@@ -54,7 +54,7 @@ Built using **graph analysis** (a directed, weighted graph with `Facility` as th
 ### Tools
 
 - Python >= 3.10
-- RelationalAI Python SDK (`relationalai == 1.11.0`).
+- RelationalAI Python SDK (`relationalai == 2.1.1`).
 - Optional: `streamlit`, `plotly`, `numpy` for the interactive app (installed via the `visualization` extra).
 
 ## Quickstart
@@ -206,7 +206,7 @@ Focus on the first changes most users will make.
 ### Scale up / productionize
 
 - Replace the CSV bundle with CDC ingestion from your health-network systems; the graph shape is independent of the load pipeline.
-- Pin `relationalai` (this template targets `1.11.0`) and schedule the run as a pipeline step for reproducible re-runs.
+- Pin `relationalai` (this template targets `2.1.1`) and schedule the run as a pipeline step for reproducible re-runs.
 
 ## Troubleshooting
 

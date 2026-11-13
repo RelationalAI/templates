@@ -21,7 +21,7 @@ transactions.csv — 75 transfers, 54 accounts  (in-memory DuckDB, no Snowflake)
 
 **These prompts are designed to run in order, in a single session** — each builds on the ontology state created by the ones before it.
 
-Requires `relationalai >= 1.13`. Local DuckDB execution uses deploy mode (flagged experimental in the package).
+Requires `relationalai` 2.1.1. Local DuckDB execution uses deploy mode (flagged experimental in the package).
 
 ---
 
@@ -31,7 +31,7 @@ Requires `relationalai >= 1.13`. Local DuckDB execution uses deploy mode (flagge
 
 > Set up a RelationalAI model on local DuckDB (no Snowflake) over `data/transactions.csv` (columns: `id, src, dst, amount`). Create an `Account` concept identified by `id`, drawn from both the `src` and `dst` of every transfer, and a self-referential `transfers_to` relationship linking each transfer's sender to its receiver.
 
-**Response.** A model on an in-memory DuckDB database, configured with a `deployment` section (`schema` and `auto_deploy`). `Account` has 54 instances; `transfers_to` has 75 directed links, one per transfer. (To count the links, count the transfers — `aggs.count(<transfer id>)`. Counting a single account ref instead collapses to distinct senders, not arcs.)
+**Response.** A model on an in-memory DuckDB database, configured with a `deployment` section (`public_schema`, `identity.internal_schema`, and `auto_deploy`). `Account` has 54 instances; `transfers_to` has 75 directed links, one per transfer. (To count the links, count the transfers — `aggs.count(<transfer id>)`. Counting a single account ref instead collapses to distinct senders, not arcs.)
 
 ### Examine the ontology
 

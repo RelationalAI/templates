@@ -66,7 +66,7 @@ The objective minimizes transport cost plus fixed-cost FC opening cost.
 ### Tools
 
 - Python >= 3.10
-- RelationalAI Python SDK (`relationalai`) == 1.11.0
+- RelationalAI Python SDK (`relationalai`) == 2.1.1
 
 ## Quickstart
 
@@ -178,7 +178,7 @@ The model runs as a single MILP that decides flow on every lane and which fulfil
 
 **Constraints.** Each site type contributes the constraint that matches its role. Warehouses cap total outflow at their inventory. Transit hubs and fulfillment centers conserve flow — inflow equals outflow. A fulfillment center's inflow is bounded by `capacity × x_open`, so an unopened FC (open = 0) can carry no flow and the fixed cost is only incurred when it is opened. Customers require inflow to meet their aggregate demand.
 
-**Objective.** Minimize transport cost (per-unit lane cost times flow, summed over lanes) plus the fixed cost of every opened fulfillment center. The two cost terms live on different concepts (`Lane` and `Site`), so they are combined into one per-entity sum that the objective minimizes.
+**Objective.** Minimize transport cost (per-unit lane cost times flow, summed over lanes) plus the fixed cost of every opened fulfillment center. The two cost terms live on different concepts (`Lane` and `Site`), so the objective adds one sum per concept.
 
 For the exact PyRel formulation, see `network_flow_planning.py`; `runbook.md` reproduces the model step by step with the RAI skills.
 
@@ -236,16 +236,16 @@ Replace the three CSVs in `data/` with your own:
 </details>
 
 <details>
-  <summary>Why is <code>model.union</code> needed in the objective?</summary>
+  <summary>Why does the objective add two sums?</summary>
 
-  PyRel disallows `+` between aggregated terms of different concepts. `model.union` lets the outer `sum` aggregate per-Lane and per-Site cost terms in a single objective. Each branch must be a per-entity expression, not a fully-aggregated scalar.
+  The transport cost lives on `Lane` and the fixed cost on `Site`, so each is summed over its own concept and the two totals are added. A single `sum` over `model.union(...)` of both terms is refused: a union keeps one copy of equal values, while the solver needs every lane's and every site's term.
 </details>
 
 ## Learn more
 
 ### Core concepts
 
-- [PyRel v1 query language](https://docs.relational.ai/) — `model.where(...)`, `sum(...).per(...)`, and `model.union` for multi-concept objectives.
+- [PyRel v1 query language](https://docs.relational.ai/) — `model.where(...)` and `sum(...).per(...)`.
 - [Prescriptive reasoner](https://docs.relational.ai/) — the `Problem` API: decision variables (`solve_for`), constraints (`satisfy`), and objectives (`minimize` / `maximize`).
 
 ### Language / modeling reference

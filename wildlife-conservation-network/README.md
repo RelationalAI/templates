@@ -52,7 +52,7 @@ Built using **graph analysis** (Louvain community detection and degree centralit
 ### Tools
 
 - Python >= 3.10.
-- RelationalAI Python SDK (`relationalai == 1.11.0`).
+- RelationalAI Python SDK (`relationalai == 2.1.1`).
 - Streamlit (installed via the optional `.[visualization]` extra) for the interactive app.
 
 ## Quickstart

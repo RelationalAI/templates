@@ -55,7 +55,7 @@ Built using **prescriptive reasoning** (constraint satisfaction with multi-solut
 
 ### Tools
 - Python >= 3.10
-- RelationalAI Python SDK (`relationalai == 1.1.0`)
+- RelationalAI Python SDK (`relationalai == 2.1.1`)
 
 ## Quickstart
 

@@ -51,7 +51,7 @@ The template also demonstrates scenario analysis by sweeping over different mini
 
 ### Tools
 - Python >= 3.10
-- RelationalAI Python SDK (`relationalai == 1.0.14`)
+- RelationalAI Python SDK (`relationalai == 2.1.1`)
 
 ## Quickstart
 

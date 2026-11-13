@@ -39,7 +39,7 @@ are in Public Preview; ask your RelationalAI support representative to enable
 Prescriptive reasoning. Preview features are for evaluation and testing, not
 production applications. The local demo uses bundled CSVs and runs on CPU
 without an external dataset or GPU. The template pins
-`relationalai[gnn]==1.27.1` in `pyproject.toml`.
+`relationalai[gnn]==2.1.1` in `pyproject.toml`.
 
 Ask an administrator to run this SQL before you start. It creates the writable
 experiment schema used by `fraud_detection_local.py` and grants the RAI Native
