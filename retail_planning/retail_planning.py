@@ -566,12 +566,14 @@ problem.satisfy(model.where(
 
 # Objective: maximize revenue from sales + salvage value of remaining inventory
 revenue = sum(
-    OptArticle.initial_price * (1 - Discount_ref.discount_pct / 100) * sales_ref
+    OptArticle, Week_ref, Discount_ref,
+    OptArticle.initial_price * (1 - Discount_ref.discount_pct / 100) * sales_ref,
 ).where(OptArticle.x_sales(Week_ref, Discount_ref, sales_ref))
 
 salvage = sum(
+    OptArticle, Week_ref,
     OptArticle.initial_price * OptArticle.salvage_rate
-    * (OptArticle.initial_inventory - cumulative_ref)
+    * (OptArticle.initial_inventory - cumulative_ref),
 ).where(
     OptArticle.x_cuml_sales(Week_ref, cumulative_ref),
     Week_ref.num == num_weeks,
@@ -726,18 +728,21 @@ dp.satisfy(model.where(
 
 # Objective: minimize production cost + holding cost + unmet demand penalty
 prod_cost_total = sum(
-    ProdCapacity.production_cost * production_ref
+    ProdCapacity, dp_week_ref,
+    ProdCapacity.production_cost * production_ref,
 ).where(ProdCapacity.x_production(dp_week_ref, production_ref))
 
 hold_cost_total = sum(
-    ProdCapacity.holding_cost_per_week * inventory_ref
+    ProdCapacity, inv_week_ref,
+    ProdCapacity.holding_cost_per_week * inventory_ref,
 ).where(
     ProdCapacity.x_inventory(inv_week_ref, inventory_ref),
     inv_week_ref >= 1,
 )
 
 unmet_cost_total = sum(
-    UNMET_PENALTY * unmet_ref
+    ProdCapacity, dp_week_ref,
+    UNMET_PENALTY * unmet_ref,
 ).where(ProdCapacity.x_unmet(dp_week_ref, unmet_ref))
 
 dp.minimize(prod_cost_total + hold_cost_total + unmet_cost_total)
