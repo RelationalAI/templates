@@ -1,6 +1,6 @@
 """Member-record generation problem: every distinct record the eligibility rules allow."""
 
-from relationalai.semantics import Integer
+from relationalai.semantics import Integer, String
 from relationalai.semantics.reasoners.prescriptive import Problem, implies
 
 from .schema import AgeBucket, Plan, Provider, model
@@ -107,3 +107,8 @@ problem.satisfy(non_senior_no_medicare_ic)
 # `solution_limit=MAX_RECORDS` asks the solver to enumerate up to that
 # many distinct feasible records; query each one via `.values(idx, val)`.
 problem.configure("minizinc", time_limit_sec=60, solution_limit=MAX_RECORDS)
+
+# The solve's status and number of solutions, which the deployed model publishes for the queries.
+SolveStatus = model.Relationship(f"synthetic eligibility solve status is {String:status}")
+NumPoints = model.Relationship(f"synthetic eligibility number of solutions is {Integer:count}")
+model.define(SolveStatus(problem.termination_status()), NumPoints(problem.num_points()))

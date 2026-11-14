@@ -40,13 +40,13 @@ The rule structure here is drawn from the public [CMS Medicare](https://www.cms.
 - A PCP-network attribution IC iterating over reference-data `(Plan, Provider)` tuples in different networks and forbidding the cross-network combination
 - A pre-solve dense-ID check on `plans.csv`, `providers.csv`, and `age_buckets.csv` so the solver's integer decision bounds line up with the reference rows the CFDs iterate over (sparse IDs would let the solver pick a value with no matching row, leaving the rules unconstrained for that record and silently dropping it from the post-solve display join)
 - **Multi-solution enumeration as the primary code path**: `problem.configure(..., solution_limit=MAX_RECORDS)` makes each refresh run the search in enumeration mode; `Variable.values(solution_index, value)` joins the three decision variables on a shared solution index to reconstruct each record
-- An empty-result branch driven by `solve_info().num_points`: when no feasible record exists, the report prints a diagnostic instead of hard-failing, which is the right shape for a reusable generator
+- An empty-result branch driven by the `NumPoints` relationship (`problem.num_points()`): when no feasible record exists, the report prints a diagnostic instead of hard-failing, which is the right shape for a reusable generator
 - No check re-evaluates the ICs: every IC uses `implies`, which is solver-only, and `problem.verify()` returns without evaluating implies-bodied ICs, so passing them to it checks nothing. The CFD and network-attribution invariants are directly visible in the expected-output block in the Quickstart: every record's `age_years` vs `plan_type` and every record's `network` vs `provider` are printed side-by-side
 
 ## What's included
 
 - `model/` -- `schema.py` (ontology), `source.py` (reference data and its pre-solve checks), and `reasoning.py` (decisions, constraints, and solver configuration); `rai models deploy --path model` deploys the package to your Snowflake account, where each refresh runs the solve
-- `queries/eligibility_records.py` -- prints the report from the deployed model: the solve result, including the number of solutions, and every generated member record
+- `queries/eligibility_records.py` -- prints the report from the deployed model: the solve status, the number of solutions, and every generated member record
 - `data/age_buckets.csv` -- 4 representative ages spanning the adult/senior split (2 under 65, 2 at or above)
 - `data/plans.csv` -- 3 plans (PPO, HMO, MedicareAdvantage) each on its own network
 - `data/providers.csv` -- 4 primary-care providers (1 PPO, 1 HMO, 2 Medicare) so each plan-network has at least one in-network PCP and the bundled K=8 enumeration spans all three plans
@@ -161,9 +161,7 @@ Use this sequence to deploy the model and query it:
    ```text
    Solve result:
    • status: OPTIMAL
-   • solve time: 0.13s
    • num_points: 8
-   ...
 
    Generated member records (up to 16 per run):
     solution  age_years         plan_type  plan_network  provider_network     provider
@@ -177,7 +175,7 @@ Use this sequence to deploy the model and query it:
            7         28               PPO             1                 1 Dr_North_PPO
    ```
 
-   The solver details in the solve result are trimmed here. With `MAX_RECORDS = 16` and a bundled feasible set of 8 records, the solver exhausts the search space and returns status `OPTIMAL` with all 8 records. Each row carries its `solution` index. Solver build strings, exact wall times, and per-solution ordering vary from run to run; the structure of the output and the set of returned records is stable. Each row is one full member: an age of 65 or more always pairs with `MedicareAdvantage`, and `plan_network` always equals `provider_network`. On a real catalog the feasible set typically exceeds `MAX_RECORDS`, and the solver returns status `SOLUTION_LIMIT` once the cap is hit. The report prints the status either way, and prints a diagnostic when the solver returned no records.
+   With `MAX_RECORDS = 16` and a bundled feasible set of 8 records, the solver exhausts the search space and returns status `OPTIMAL` with all 8 records. Each row carries its `solution` index. Solver build strings, exact wall times, and per-solution ordering vary from run to run; the structure of the output and the set of returned records is stable. Each row is one full member: an age of 65 or more always pairs with `MedicareAdvantage`, and `plan_network` always equals `provider_network`. On a real catalog the feasible set typically exceeds `MAX_RECORDS`, and the solver returns status `SOLUTION_LIMIT` once the cap is hit. The report prints the status either way, and prints a diagnostic when the solver returned no records.
 
    To solve again without changing the model, refresh the deployed model, then run the query again:
 
@@ -261,9 +259,11 @@ network_match_ic = model.where(Plan.network_id != Provider.network_id).require(
 
 ```python
 problem.configure("minizinc", time_limit_sec=60, solution_limit=MAX_RECORDS)
+NumPoints = model.Relationship(f"synthetic eligibility number of solutions is {Integer:count}")
+model.define(NumPoints(problem.num_points()))
 
 # in the report, after the deploy:
-si = problem.solve_info()
+points = model.select(NumPoints).to_df().iloc[:, 0].tolist()
 
 sol_idx = Integer.ref()
 records_df = (

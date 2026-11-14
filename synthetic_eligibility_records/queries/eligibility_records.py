@@ -1,29 +1,32 @@
 """Eligibility records report: reads the deployed synthetic_eligibility_records model.
 
 Run `python -m queries.eligibility_records` after `rai models deploy --path model`. Prints
-the result of the latest refresh's solve and every generated member record (one row per
-solution). Prints a no-records diagnostic when the reference data is over-constrained or
-the search budget expired.
+the status and number of solutions of the latest refresh's solve and every generated member
+record (one row per solution). Prints a no-records diagnostic when the reference data is
+over-constrained or the search budget expired.
 """
 
 from model import (
     MAX_RECORDS,
     AgeBucket,
+    NumPoints,
     Plan,
     Provider,
+    SolveStatus,
     age_bucket_var,
     model,
     plan_id_var,
-    problem,
     provider_id_var,
 )
 from relationalai.semantics import Integer
 
 if __name__ == "__main__":
-    si = problem.solve_info()
-    si.display()
+    status = model.select(SolveStatus).to_df().iloc[:, 0].tolist()
+    points = model.select(NumPoints).to_df().iloc[:, 0].tolist()
+    num_points = points[0] if points else 0
+    print(f"\nSolve result:\n• status: {', '.join(status)}\n• num_points: {num_points}\n")
 
-    if si.num_points is None or si.num_points == 0:
+    if num_points == 0:
         print(
             "\nThe solver returned no eligibility records. See the printed solve status "
             "above and the troubleshooting section in the README for likely causes "
