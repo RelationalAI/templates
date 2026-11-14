@@ -15,7 +15,9 @@ or Native App required:
 The whole pipeline is declarative — PyRel resolves dependencies automatically.
 
 Run:
-    `python transaction_screening_local.py`
+    `python transaction_screening_local.py` deploys the model to the in-memory
+    DuckDB database, waits for its first refresh, and prints the report from
+    the deployed model.
 
 Output:
     Prints the network overview, per-account sent volume, the suspect accounts,
@@ -39,17 +41,15 @@ STRUCTURING_FLOOR, STRUCTURING_CEILING = 9000.0, 10000.0
 LARGE_TRANSFER = 50000.0
 
 # Local DuckDB config (no Snowflake): a duckdb connection plus a `deployment`
-# section routes the model to the local DuckDB executor and materializes derived
-# relations before queries. The section names the schema for the model's
-# published views (`public_schema`), the schema for its internal objects
-# (`identity.internal_schema`), and turns on `auto_deploy`.
+# section routes the model to the local DuckDB executor. The section names the
+# schema for the model's published views (`public_schema`) and the schema for
+# its internal objects (`identity.internal_schema`).
 config = create_config(
     connections={"local": DuckDBConnection(path=":memory:")},  # or a file path, e.g. "./dev.duckdb"
     default_connection="local",
     deployment={
         "public_schema": "main",
         "identity": {"internal_schema": "main_internal"},
-        "auto_deploy": True,
     },
 )
 
@@ -113,30 +113,35 @@ model.where(Account.is_suspect()).define(Account.under_review())
 model.where(Account.near_suspect()).define(Account.under_review())
 
 # --------------------------------------------------
-# Results
+# Deploy, then report (`rai models deploy` skips this block)
 # --------------------------------------------------
-print("== Network overview ==")
-model.select(
-    aggs.count(txn.id).alias("transactions"),
-    aggs.sum(txn.amount).alias("total_moved"),
-).inspect()
 
-print("\n== Sent volume per account ==")
-model.where(txn.src == Account.id).select(
-    Account.id.alias("account"),
-    aggs.sum(txn.amount).per(Account).alias("total_sent"),
-    aggs.count(txn.id).per(Account).alias("sent_count"),
-).inspect()
+if __name__ == "__main__":
+    # Deploy into the DuckDB database and wait for the first refresh.
+    model.deploy()
 
-print("\n== Suspect accounts (rules) ==")
-model.where(Account.is_suspect()).select(Account.id.alias("suspect")).inspect()
+    print("== Network overview ==")
+    model.select(
+        aggs.count(txn.id).alias("transactions"),
+        aggs.sum(txn.amount).alias("total_moved"),
+    ).inspect()
 
-print("\n== Suspect -> counterparty (relationship self-join) ==")
-_counterparty = Account.ref()
-model.where(Account.is_suspect(), Account.transfers_to(_counterparty)).select(
-    Account.id.alias("suspect"),
-    _counterparty.id.alias("counterparty"),
-).inspect()
+    print("\n== Sent volume per account ==")
+    model.where(txn.src == Account.id).select(
+        Account.id.alias("account"),
+        aggs.sum(txn.amount).per(Account).alias("total_sent"),
+        aggs.count(txn.id).per(Account).alias("sent_count"),
+    ).inspect()
 
-print("\n== Investigation set (suspect or one hop from a suspect) ==")
-model.where(Account.under_review()).select(Account.id.alias("flagged_for_review")).inspect()
+    print("\n== Suspect accounts (rules) ==")
+    model.where(Account.is_suspect()).select(Account.id.alias("suspect")).inspect()
+
+    print("\n== Suspect -> counterparty (relationship self-join) ==")
+    _counterparty = Account.ref()
+    model.where(Account.is_suspect(), Account.transfers_to(_counterparty)).select(
+        Account.id.alias("suspect"),
+        _counterparty.id.alias("counterparty"),
+    ).inspect()
+
+    print("\n== Investigation set (suspect or one hop from a suspect) ==")
+    model.where(Account.under_review()).select(Account.id.alias("flagged_for_review")).inspect()
