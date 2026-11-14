@@ -18,7 +18,9 @@ Modeling approach:
 - One solve handles all demand levels; results extracted via model.select().
 
 Run:
-    `python production_planning.py`
+    `python production_planning.py` deploys the model to the schema in raiconfig.yaml,
+    waits for its first refresh (which runs the solve), and prints the report from the
+    deployed model.
 
 Output:
     Prints the solver termination status, objective value, and a table of
@@ -142,21 +144,44 @@ problem.maximize(
 # Solve (single solve for all scenarios)
 # --------------------------------------------------
 
-problem.display()
-problem.solve("highs", time_limit_sec=60)
-model.require(problem.termination_status() == "OPTIMAL")
-problem.solve_info().display()
+# Each refresh of the deployed model runs this solve.
+problem.configure("highs", time_limit_sec=60)
+
+# Deploy the rules behind problem.display() with the model.
+problem.install_display_strings()
+
+# The solve's status and objective, published through the model's own relationships.
+SolveStatus = model.Relationship(f"production planning solve status is {String:status}")
+TotalProfit = model.Relationship(f"production planning total profit is {Float:profit}")
+model.define(SolveStatus(problem.termination_status()), TotalProfit(problem.objective_value()))
 
 # --------------------------------------------------
-# Extract results per scenario
+# Deploy, then report (`rai models deploy` skips this block)
 # --------------------------------------------------
 
-print("\nProduction plan per scenario:")
-model.select(
-    Scenario.name.alias("scenario"),
-    Production.rate.machine.name.alias("machine"),
-    Production.rate.product.name.alias("product"),
-    x_qty.alias("quantity"),
-).where(
-    Production.x_quantity(Scenario, x_qty), x_qty > 0.001
-).inspect()
+if __name__ == "__main__":
+    # Deploy and wait for the first refresh, which runs the solve.
+    model.deploy()
+
+    problem.display()
+
+    # Status and objective of the latest refresh's solve. A refresh records any
+    # termination status, so the report checks it.
+    status = model.select(SolveStatus).to_df().iloc[:, 0].tolist()
+    profit = model.select(TotalProfit).to_df().iloc[:, 0].tolist()
+    print(f"\nSolve result:\n• status: {', '.join(status)}")
+    if status != ["OPTIMAL"]:
+        raise SystemExit(f"No optimal production plan: termination status {status}")
+    print(f"• objective: {round(profit[0], 9)}\n")
+
+    # --------------------------------------------------
+    # Extract results per scenario
+    # --------------------------------------------------
+
+    print("\nProduction plan per scenario:")
+    model.select(
+        Scenario.name.alias("scenario"),
+        Production.rate.machine.name.alias("machine"),
+        Production.rate.product.name.alias("product"),
+        x_qty.alias("quantity"),
+    ).where(Production.x_quantity(Scenario, x_qty), x_qty > 0.001).inspect()
