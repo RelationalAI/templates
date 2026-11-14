@@ -39,7 +39,7 @@ Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` 
 
 **Prompt:** /rai-prescriptive-problem Assign pods to nodes to place as many deployments as possible, treating every rule as hard: a pod goes on at most one node; a deployment is placed only if all its replicas are; per node, total CPU, memory, and GPU requests can't exceed capacity; pods of anti-affine tenants can't share a node; affinity-paired deployments must share a node; each deployment's pods are spread so no zone holds more than its share; and the distributed-training pods must all land on the same rack. Maximize the number of placed deployments and persist the assignment to the ontology.
 
-**Response:** OPTIMAL (MiniZinc constraint solver), objective **12 — all 12 deployments placed**. The model is a binary pod-to-node assignment matrix plus placed indicators (hundreds of variables and constraints across the six rule families); the assignment, `Pod.placed`, and `Deployment.placed` are written back to the ontology. In `pod_placement.py` the solve is declared with `problem.configure(...)`, so each refresh of the deployed model runs it.
+**Response:** OPTIMAL (MiniZinc constraint solver), objective **12 — all 12 deployments placed**. The model is a binary pod-to-node assignment matrix plus placed indicators (hundreds of variables and constraints across the six rule families); the assignment, `Pod.placed`, and `Deployment.placed` are written back to the ontology. In `model/__init__.py` the solve is declared with `problem.configure(...)`, so each refresh of the deployed model runs it.
 
 ## 4. Read the placement
 
@@ -49,4 +49,4 @@ Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` 
 
 ## Data
 
-Bundled CSVs in `data/`: 8 nodes, 50 pods, 12 deployments, 4 tenants, plus the anti-affinity, affinity, and distributed-training rule files. Full model in `pod_placement.py`.
+Bundled CSVs in `data/`: 8 nodes, 50 pods, 12 deployments, 4 tenants, plus the anti-affinity, affinity, and distributed-training rule files. Full model in `model/__init__.py`; the report in `queries/placement_report.py`.

@@ -46,13 +46,14 @@ This template encodes that stack as a pure constraint satisfaction and optimizat
 - A reified-cardinality gang-placement IC `sum(Pod.placed).per(Deployment) == Deployment.replicas * Deployment.placed`
 - A pairwise topology rack-clique IC for distributed-training groups -- `xa + xb <= 1` for every (Pa, Pb, Na, Nb) tuple where the pods are in the same training group and the nodes are in different racks
 - A linear `maximize(sum(Deployment.placed))` objective the CSP optimizes
-- A `SolveStatus` check in the report: the script stops unless the solver proved `OPTIMAL`
+- A `SolveStatus` check in the report: the report stops unless the solver proved `OPTIMAL`
 
 ## What's included
 
 The bundled CSVs are illustrative demo data tuned so multiple ICs bind at the optimum -- rack-clique forces the distributed-training group onto one rack, CPU / memory / GPU bin-packing then pin it to a single node at exact 100% utilization on all three resources, anti-affinity partitions the alpha-beta and gamma-delta tenant pods across disjoint node sets, deployment co-location affinity co-locates the cache pair, and the spread cap binds for every multi-replica non-overridden deployment. Swap in your own cluster topology and workload to apply the template to a real cluster.
 
-- `pod_placement.py` -- main script with concepts, decisions, constraints, the solver configuration, and the post-solve inspection; it deploys the model and prints the report from the deployed model
+- `model/__init__.py` -- concepts, decisions, constraints, and the solver configuration; `rai models deploy --path model` deploys it
+- `queries/placement_report.py` -- prints the report from the deployed model
 - **Runbook**: `runbook.md` -- a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - `data/nodes.csv` -- 8 nodes across 2 zones (`us-east-1a`, `us-east-1b`) and 4 racks; six general-purpose nodes (12000 millicores, 49152 MiB) and two GPU nodes (8000 millicores, 32768 MiB, 4 GPUs each). Total cluster: 88000 millicores, 360448 MiB, 8 GPUs
 - `data/tenants.csv` -- 4 tenants (`tenant_alpha`, `tenant_beta`, `tenant_gamma`, `tenant_delta`)
@@ -67,7 +68,7 @@ The bundled CSVs are illustrative demo data tuned so multiple ICs bind at the op
 
 ### Access
 - A Snowflake account that has the RAI Native App installed.
-- The one-time model deployment setup on that account, done by an account administrator: follow [Set up model deployment](https://private.relational.ai/early-access/model-deploy-setup) through **Governed setup**, **PAT authentication**, and steps 1-2 of **Additional setup for the prescriptive reasoner** (Quickstart step 4 below covers this template's own schema). It gives you a model role, a programmatic access token (PAT) stored as a secret, an external access integration, a PAT user, and a warehouse.
+- The one-time model deployment setup on that account, done by an account administrator: follow [Set up model deployment](https://private.relational.ai/early-access/model-deploy-setup) through **Governed setup**, **PAT authentication**, and steps 1-2 of **Additional setup for the prescriptive reasoner** (the Quickstart covers this template's own schema). It gives you a model role, a programmatic access token (PAT) stored as a secret, an external access integration, a PAT user, and a warehouse.
 - A Snowflake user that holds the model role.
 
 ### Tools
@@ -76,28 +77,61 @@ The bundled CSVs are illustrative demo data tuned so multiple ICs bind at the op
 
 ## Quickstart
 
-1. Download ZIP:
+Before you start, install Python 3.10 or later and complete the access prerequisites above: a Snowflake account with the RAI Native App, the one-time model deployment setup, and a Snowflake user that holds the model role.
+
+Before the first deploy, create this template's internal schema as the model role, and have an administrator grant the RAI Native App caller access to it. The internal schema holds only this model's objects, so the grants cover all of it, including the solver's result tables that the deploy creates:
+
+```sql
+-- as the model role
+CREATE SCHEMA IF NOT EXISTS <DB>.POD_PLACEMENT_META;
+
+-- as an administrator
+GRANT CALLER USAGE ON DATABASE <DB> TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER USAGE ON SCHEMA <DB>.POD_PLACEMENT_META TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER USAGE ON WAREHOUSE <PAT_WAREHOUSE> TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL TABLES IN SCHEMA <DB>.POD_PLACEMENT_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL DYNAMIC TABLES IN SCHEMA <DB>.POD_PLACEMENT_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL VIEWS IN SCHEMA <DB>.POD_PLACEMENT_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER INSERT, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA <DB>.POD_PLACEMENT_META TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER CREATE TABLE, CREATE STAGE ON SCHEMA <DB>.POD_PLACEMENT_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER READ, WRITE ON ALL STAGES IN SCHEMA <DB>.POD_PLACEMENT_META TO APPLICATION <RAI_APP_NAME>;
+```
+
+Use this sequence to deploy the model and query it:
+
+1. **Download the template**
+
+   [Download the ZIP](https://docs.relational.ai/templates/zips/v1/pod_placement.zip), unzip it, and enter the template directory:
+
    ```bash
-   curl -O https://docs.relational.ai/templates/zips/v1/pod_placement.zip
    unzip pod_placement.zip
    cd pod_placement
    ```
-   > [!TIP]
-   > You can also download the template ZIP using the "Download ZIP" button at the top of this page.
 
-2. Create venv:
+2. **Create a Python environment**
+
+   Create and activate a virtual environment, then update pip:
+
    ```bash
    python -m venv .venv
    source .venv/bin/activate
    python -m pip install --upgrade pip
    ```
 
-3. Install:
+3. **Install the template**
+
+   Install the dependencies pinned in `pyproject.toml`:
+
    ```bash
    python -m pip install .
    ```
 
-4. Configure: run `rai init` to create `raiconfig.yaml` with your Snowflake connection, set the connection `role` to the model role, then add a `deployment` section. Give each template its own schema pair so two deployed templates never share one.
+4. **Configure your project**
+
+   Use the configuration builder in [Install and run PyRel](https://docs.relational.ai/get-started/install-and-run-pyrel/#configure-your-project) to create `raiconfig.yaml` in the template directory and verify your connection.
+
+   Set the connection `role` to the model role, then add the prescriptive reasoner and a `deployment` section. Give each template its own schema pair so two deployed templates never share one:
+
    ```yaml
    reasoners:
      prescriptive:
@@ -116,70 +150,88 @@ The bundled CSVs are illustrative demo data tuned so multiple ICs bind at the op
      pat_user: <PAT_USER>
      pat_warehouse: <PAT_WAREHOUSE>
    ```
-   Without the `deployment` section, `python pod_placement.py` stops with an error naming the missing setting.
 
-   Before the first run, create the internal schema as the model role, and have an administrator grant the RAI Native App caller access to it. The internal schema holds only this model's objects, so the grants cover all of it, including the solver's result tables that the deploy creates:
-   ```sql
-   -- as the model role
-   CREATE SCHEMA IF NOT EXISTS <DB>.POD_PLACEMENT_META;
+5. **Deploy the model**
 
-   -- as an administrator
-   GRANT CALLER USAGE ON DATABASE <DB> TO APPLICATION <RAI_APP_NAME>;
-   GRANT CALLER USAGE ON SCHEMA <DB>.POD_PLACEMENT_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT CALLER USAGE ON WAREHOUSE <PAT_WAREHOUSE> TO APPLICATION <RAI_APP_NAME>;
-   GRANT INHERITED CALLER SELECT ON ALL TABLES IN SCHEMA <DB>.POD_PLACEMENT_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT INHERITED CALLER SELECT ON ALL DYNAMIC TABLES IN SCHEMA <DB>.POD_PLACEMENT_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT INHERITED CALLER SELECT ON ALL VIEWS IN SCHEMA <DB>.POD_PLACEMENT_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT INHERITED CALLER INSERT, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA <DB>.POD_PLACEMENT_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT CALLER CREATE TABLE, CREATE STAGE ON SCHEMA <DB>.POD_PLACEMENT_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT INHERITED CALLER READ, WRITE ON ALL STAGES IN SCHEMA <DB>.POD_PLACEMENT_META TO APPLICATION <RAI_APP_NAME>;
-   ```
-   The deploy creates the public schema `<DB>.POD_PLACEMENT` if it doesn't exist.
+   Deploy the model in `model/` to the schemas in `raiconfig.yaml`:
 
-5. Run:
    ```bash
-   python pod_placement.py
+   rai models deploy --path model
    ```
-   The script deploys the model, waits for the first refresh, which runs the solve, and prints the report from the deployed model. Each refresh of the deployed model runs the solve again; `rai models deploy` deploys without printing the report.
 
-   Running the script again without changing the model redeploys nothing and does not solve again; it reports the latest refresh. A change to the model or to `problem.configure(...)` redeploys, and the redeploy's refresh solves. To solve again without a change, refresh the deployed model, then run the script:
-   ```sql
-   CALL <DB>.POD_PLACEMENT_META._INTERNAL_REFRESH_MODEL('standard', NULL);
+   The deploy creates the public schema named in `raiconfig.yaml` if it doesn't exist and waits for the model's first refresh, which runs the solve. Each refresh of the deployed model runs the solve again.
+
+   Deploying again without changing the model applies no updates and does not solve again. A change to the model or to `problem.configure(...)` redeploys, and the redeploy's refresh solves.
+
+6. **Query the results**
+
+   Print the report from the deployed model:
+
+   ```bash
+   python -m queries.placement_report
    ```
-   To remove the deployment, run `rai models teardown --force` from this directory; it keeps the two schemas.
 
-6. Expected output (the solver maximizes the number of placed deployments; the specific (pod, node) tuples and per-node utilization may vary across solver versions when multiple placements tie at the optimum). The script first prints the formulation (a few thousand lines for the bundled data, omitted here for brevity), then the solve-result block, then the per-node utilization, the per-pod placement, and any unplaced deployments. A representative run looks like:
    ```text
    Solve result:
    • status: OPTIMAL
    • objective: 12
 
    Per-node utilization:
-     node_id       node  cpu_used  cpu_cap  memory_used  gpu_used
-   0       1  gen-a1-n1      5500    12000        11264         0
-   1       2  gen-a1-n2     11000    12000        22528         0
-   2       3  gen-a2-n1      8500    12000        17408         0
-   3       4  gen-a2-n2      3500    12000         7168         0
-   4       5  gpu-b1-n1      5500     8000        11264         0
-   5       6  gen-b1-n2     11000    12000        22528         0
-   6       7  gpu-b2-n1      8000     8000        32768         4
-   7       8  gen-b2-n2     11000    12000        22528         0
+      node_id       node  cpu_used  cpu_cap  memory_used  gpu_used
+   0        1  gen-a1-n1      4500    12000         9216         0
+   1        2  gen-a1-n2      8500    12000        17408         0
+   2        3  gen-a2-n1     11000    12000        22528         0
+   3        4  gen-a2-n2      4500    12000         9216         0
+   4        5  gpu-b1-n1      4500     8000         9216         0
+   5        6  gen-b1-n2     12000    12000        24576         0
+   6        7  gpu-b2-n1      8000     8000        32768         4
+   7        8  gen-b2-n2     11000    12000        22528         0
 
    Placed pods (pod_id -> node_id):
        pod_id  node_id
    ...
 
    Unplaced deployments (if any):
-   (empty)
+   Empty DataFrame
+   Columns: [deployment_id, deployment, replicas]
+   Index: []
    ```
 
-   The optimum places all `12` deployments and binds **four** ICs at the chosen GPU node: rack-clique pins `ml_gamma_train`'s 4 pods onto a single rack, and CPU / memory / GPU bin-packing then pin them all to one node within that rack at exactly 100% utilization on every resource (`gpu-b2-n1` here: 4 × 2000m = 8000m CPU = the node's CPU cap, 4 × 8192 MiB = 32768 MiB memory = the node's memory cap, 4 × 1 = 4 GPUs = the node's GPU cap -- a tight three-resource fit). The training group could equivalently land on `gpu-b1-n1` (same shape, other GPU rack) and the solver may tie-break either way across versions; what's solver-invariant is "all 4 pods on the same rack on a single node, 100% utilized on three resources". The `max_per_zone_override = 4` in `deployments.csv` is what unlocks this: without it, the default spread cap `ceil(4 / 2) = 2` plus the all-or-nothing gang rule plus the rack-clique requirement plus the GPU racks all sitting in `us-east-1b` (a rack belongs to exactly one zone, so all-pods-on-one-rack implies all-pods-in-one-zone) would make `ml_gamma_train` fully unplaced and the objective `11`. The override is the operator's explicit acceptance of a wider blast radius for the training group: a single-zone outage takes the whole training job, which is the standard tradeoff for an NVLink-tight ML deployment. The other bound counts that remain solver-invariant across the optimum: each multi-replica non-overridden deployment lands at exactly `ceil(replicas / 2)` pods per zone (the spread cap binds for `web_*` at 4+4, `api_*` at 2+2, `db_gamma` at 3+3), the affinity-paired caches (`cache_alpha`, `cache_delta`) co-locate on a single node, and alpha/beta and gamma/delta tenant pods partition the cluster into disjoint node sets.
+   The formulation (a few thousand lines for the bundled data) is omitted here, and so are all but the header of the placement table. The solver maximizes the number of placed deployments, and the specific placement and per-node utilization may vary across solver versions when several placements tie at the optimum. The report stops unless the solver proved OPTIMAL.
+
+   The optimum places all `12` deployments and binds four ICs at the chosen GPU node: rack-clique pins `ml_gamma_train`'s 4 pods onto a single rack, and CPU / memory / GPU bin-packing then pin them all to one node within that rack at exactly 100% utilization on every resource (`gpu-b2-n1` here: 4 × 2000m = 8000m CPU = the node's CPU cap, 4 × 8192 MiB = 32768 MiB memory = the node's memory cap, 4 × 1 = 4 GPUs = the node's GPU cap -- a tight three-resource fit).
+
+   The training group could equivalently land on `gpu-b1-n1` (same shape, other GPU rack) and the solver may tie-break either way across versions; what's solver-invariant is "all 4 pods on the same rack on a single node, 100% utilized on three resources".
+
+   The `max_per_zone_override = 4` in `deployments.csv` is what unlocks this: without it, the default spread cap `ceil(4 / 2) = 2` plus the all-or-nothing gang rule plus the rack-clique requirement plus the GPU racks all sitting in `us-east-1b` (a rack belongs to exactly one zone, so all-pods-on-one-rack implies all-pods-in-one-zone) would make `ml_gamma_train` fully unplaced and the objective `11`. The override is the operator's explicit acceptance of a wider blast radius for the training group: a single-zone outage takes the whole training job, which is the standard tradeoff for an NVLink-tight ML deployment.
+
+   The other bound counts that remain solver-invariant across the optimum: each multi-replica non-overridden deployment lands at exactly `ceil(replicas / 2)` pods per zone (the spread cap binds for `web_*` at 4+4, `api_*` at 2+2, `db_gamma` at 3+3), the affinity-paired caches (`cache_alpha`, `cache_delta`) co-locate on a single node, and alpha/beta and gamma/delta tenant pods partition the cluster into disjoint node sets.
+
+   To solve again without changing the model, refresh the deployed model, then run the query again:
+
+   ```sql
+   CALL <DB>.POD_PLACEMENT_META._INTERNAL_REFRESH_MODEL('standard', NULL);
+   ```
+
+7. **Tear down the deployment**
+
+   Preview what the teardown removes, then remove it:
+
+   ```bash
+   rai models teardown
+   rai models teardown --force
+   ```
+
+   The first command lists the model's objects without dropping anything; the second drops them and keeps the two schemas.
 
 ## Template structure
 
 ```text
 pod_placement/
-  pod_placement.py              # Main script (concepts, decisions, constraints, solve, inspection)
+  model/
+    __init__.py                 # the deployed model (concepts, decisions, constraints, solve)
+  queries/
+    placement_report.py         # report from the deployed model
   data/
     nodes.csv                   # 8 nodes across 2 zones and 4 racks
     tenants.csv                 # 4 tenants
@@ -193,7 +245,7 @@ pod_placement/
   pyproject.toml                # dependencies
 ```
 
-**Start here**: run `python pod_placement.py` for the full formulation, solve, and post-solve inspection, or follow `runbook.md` to rebuild it step by step.
+**Start here**: deploy with `rai models deploy --path model` and run `python -m queries.placement_report` for the full formulation, solve, and post-solve inspection, or follow `runbook.md` to rebuild it step by step.
 
 ## Sample data
 
@@ -209,13 +261,13 @@ The bundled CSVs are illustrative demo data for one small cluster, tuned so seve
 
 ## Model overview
 
-The script builds one semantic model from the CSVs, then layers the decision variables and constraints on top.
+The model builds one semantic model from the CSVs, then layers the decision variables and constraints on top.
 
 - **Key entities**: `Node` — a compute host in the cluster, with its resource capacities and topology placement; `Pod` — a single workload replica to be placed on a node; `Deployment` — a group of replica pods owned by one tenant; `Tenant` — an account whose deployments may be anti-affine to another tenant's; `Zone` and `Rack` — failure-domain and NVLink-island concepts, with `Rack.zone` linking each rack to its containing zone.
 - **Primary identifiers**: integer `id` on `Node`, `Pod`, `Deployment`, `Tenant`; string `name` on `Zone` and `Rack` (both derived from the unique `zone` / `rack` columns of `nodes.csv`).
 - **Important invariants**: node capacities are positive; pod row counts per `deployment_id` equal that deployment's `replicas` (the gang IC pins them); each rack belongs to exactly one zone; `max_per_zone_override`, when present, is a positive integer no greater than the row's `replicas`.
 
-For the full concept and property definitions — including the three symmetric data relationships (`TenantAntiAffinity`, `DeploymentAffinity`, `DistributedTraining`) — see `pod_placement.py`; `runbook.md` builds them step by step with the RAI skills.
+For the full concept and property definitions — including the three symmetric data relationships (`TenantAntiAffinity`, `DeploymentAffinity`, `DistributedTraining`) — see `model/__init__.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
@@ -235,9 +287,9 @@ nodes + pods + deployments + affinity / anti-affinity / training relations → 2
 
 **Failure-domain spread is a two-key aggregate.** With `max_per_zone` precomputed (default `ceil(replicas / num_zones)`, or the row's `max_per_zone_override`), the count of a deployment's pods per zone must stay under its cap. The override is a per-deployment escape hatch: the bundled data uses it on the distributed-training job, whose rack-clique requirement forces all its pods onto one rack — and therefore one zone — which would otherwise collide with the default spread cap.
 
-Every constraint is pure relational arithmetic (no `implies` bodies), and an assertion in the report confirms the solver proved `OPTIMAL` rather than timing out. The report does not re-evaluate the constraints, and a refresh started outside the script (`rai models deploy`, the refresh procedure, a schedule) runs no checks, so read `SolveStatus` before relying on a refreshed solution.
+Every constraint is pure relational arithmetic (no `implies` bodies), and the report stops unless the solver proved `OPTIMAL` rather than timing out. The report does not re-evaluate the constraints, and a refresh started outside the report (`rai models deploy`, the refresh procedure, a schedule) runs no checks, so read `SolveStatus` before relying on a refreshed solution.
 
-For the exact PyRel formulation, see `pod_placement.py`; `runbook.md` reproduces the model step by step with the RAI skills.
+For the exact PyRel formulation, see `model/__init__.py`; `runbook.md` reproduces the model step by step with the RAI skills.
 
 ## Customize this template
 
@@ -253,7 +305,7 @@ For the exact PyRel formulation, see `pod_placement.py`; `runbook.md` reproduces
 
 ### Extend the model
 
-- **Tier-aware placement.** Mark pods with `gpu_units > 0` and add an IC forcing them onto GPU-capable nodes only -- e.g. `model.where(Pod.on_node(Node, 1), Pod.gpu_units >= 1).require(Node.gpu_units >= 1)` (matches the `model.where(...).require(...)` chaining used by every IC in `pod_placement.py`). Conversely, mark some nodes as "general-purpose only" and forbid GPU workloads there.
+- **Tier-aware placement.** Mark pods with `gpu_units > 0` and add an IC forcing them onto GPU-capable nodes only -- e.g. `model.where(Pod.on_node(Node, 1), Pod.gpu_units >= 1).require(Node.gpu_units >= 1)` (matches the `model.where(...).require(...)` chaining used by every IC in `model/__init__.py`). Conversely, mark some nodes as "general-purpose only" and forbid GPU workloads there.
 - **Migration cost under churn.** Add a `Pod.current_node` data property reflecting the existing assignment, then introduce a per-pod "moved" indicator (`moved = (1 - Pod.on_node(current_node, x))`) and minimize the total move count -- multi-solution then enumerates the N least-disruptive placements.
 - **NVLink-clique with explicit edges.** The bundled `data/distributed_training.csv` lists every pair in the training group, encoding rack-clique implicitly via the pairwise IC. To model a true edge-restricted clique (e.g. NVLink-2 connectivity between specific GPU pairs only), pre-compute the set of `(node_a, node_b)` pairs that lack a direct NVLink edge in Python and load them as a `NoNVLink` data relationship; then drop the `Na.rack != Nb.rack` clause from `rack_clique_ic` and replace it with `NoNVLink(Na, Nb)` to forbid co-placement on any pair of hosts without a direct NVLink path.
 - **Spot / preemptible tier.** Mark a subset of pods as preemptible (`Pod.is_preemptible == 1`) and let them displace lower-priority workloads when capacity is tight. Express as a per-node tiered capacity: preemptible pods consume "remaining" capacity, on-demand pods consume the primary allotment.
@@ -261,7 +313,7 @@ For the exact PyRel formulation, see `pod_placement.py`; `runbook.md` reproduces
 ### Scale up / productionize
 
 - **Multi-cluster (federated placement).** Add a `Cluster` concept above `Zone` and an outer `Pod.on_cluster(Cluster)` decision; spread / anti-affinity then have to lift to cluster-level constraints. Karmada-style multi-cluster placement is the standard precedent.
-- The bundled cluster is small (8 nodes, 50 pods); the encoding scales to whatever the MiniZinc / Chuffed solver proves optimal within `time_limit_sec`. Raise the limit for larger clusters, or soften the post-solve `OPTIMAL` assertion (see *Troubleshooting*) to accept the best feasible placement found.
+- The bundled cluster is small (8 nodes, 50 pods); the encoding scales to whatever the MiniZinc / Chuffed solver proves optimal within `time_limit_sec`. Raise the limit for larger clusters, or soften the report's `OPTIMAL` check (see *Troubleshooting*) to accept the best feasible placement found.
 
 ## Troubleshooting
 
@@ -287,7 +339,7 @@ For the exact PyRel formulation, see `pod_placement.py`; `runbook.md` reproduces
   <summary>The `Pod.deployment.tenant` chained navigation produces a runtime error on inspection</summary>
 
 - Multi-hop property navigation inside `model.select(...)` combined with a decision-variable filter (`where(Pod.on_node(Node, 1))`) can produce a query the engine refuses to evaluate within its runtime budget. The bundled inspection avoids the issue by keeping each query to single-hop navigation (`Node.id`, `Pod.id`).
-- If you need richer post-solve reporting (e.g. a `(pod, deployment_name, tenant_name, node, zone, rack)` table), pull the placement into pandas and join in Python: `placements = model.select(Pod.id, Node.id).where(Pod.on_node(Node, 1)).to_df()`, then `placements.merge(pods_csv, on="pod_id").merge(deployments_csv, on="deployment_id")...`.
+- If you need richer post-solve reporting (e.g. a `(pod, deployment_name, tenant_name, node, zone, rack)` table), pull the placement into pandas in the query module and join in Python: `placements = model.select(Pod.id, Node.id).where(Pod.on_node(Node, 1)).to_df()`, then `placements.merge(pods_csv, on="pod_id").merge(deployments_csv, on="deployment_id")...`.
 
 </details>
 
@@ -302,7 +354,7 @@ For the exact PyRel formulation, see `pod_placement.py`; `runbook.md` reproduces
 <details>
   <summary>FileNotFoundError on a CSV</summary>
 
-- The script resolves data paths as `Path(__file__).parent / "data"`. Run `python pod_placement.py` from the unzipped template root, not from a parent directory.
+- Run `rai models deploy --path model` and `python -m queries.placement_report` from the unzipped template root, not from a parent directory.
 - Confirm `data/` contains `nodes.csv`, `tenants.csv`, `tenant_anti_affinity.csv`, `deployments.csv`, `deployment_affinity.csv`, `pods.csv`, and `distributed_training.csv`.
 
 </details>
@@ -310,7 +362,7 @@ For the exact PyRel formulation, see `pod_placement.py`; `runbook.md` reproduces
 <details>
   <summary>Authentication or configuration errors</summary>
 
-- Run `rai init` to create or update your RelationalAI/Snowflake configuration.
+- Re-create `raiconfig.yaml` with the configuration builder (Quickstart step 4) and verify the connection settings.
 - If you have multiple profiles, set `export RAI_PROFILE=<your_profile>`.
 
 </details>
@@ -323,10 +375,10 @@ For the exact PyRel formulation, see `pod_placement.py`; `runbook.md` reproduces
 </details>
 
 <details>
-  <summary>Solver hits the time limit (status is not `OPTIMAL`) and the script crashes</summary>
+  <summary>Solver hits the time limit (status is not `OPTIMAL`) and the report stops</summary>
 
-- The report's `assert status == ["OPTIMAL"]` is a hard assertion: if you raise `time_limit_sec` and the solver returns a feasible-but-not-proven-optimal result (`SOLUTION_LIMIT` or `LOCALLY_SOLVED`), the script raises rather than print a partial solution.
-- For a tutorial run on the bundled data this is the right posture (the oracle is "the solver proved 11/12"). For larger user data, either (a) raise `time_limit_sec` until the solver proves optimality, or (b) replace the assertion with a `print(...)` warning and let the inspection blocks run on the best feasible placement found.
+- The report's `if status != ["OPTIMAL"]` check raises `SystemExit`: if you raise `time_limit_sec` and the solver returns a feasible-but-not-proven-optimal result (`SOLUTION_LIMIT` or `LOCALLY_SOLVED`), the report stops rather than print a partial solution.
+- For a tutorial run on the bundled data this is the right posture (the oracle is "the solver proved 11/12"). For larger user data, either (a) raise `time_limit_sec` until the solver proves optimality, or (b) replace the check in `queries/placement_report.py` with a `print(...)` warning and let the inspection blocks run on the best feasible placement found.
 
 </details>
 

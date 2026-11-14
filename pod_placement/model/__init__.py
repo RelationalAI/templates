@@ -1,6 +1,6 @@
-"""Pod placement (pure CSP) template.
+"""Pod placement (pure CSP) template: the model.
 
-This script demonstrates a multi-tenant Kubernetes-style pod-placement
+This package demonstrates a multi-tenant Kubernetes-style pod-placement
 problem in RelationalAI:
 
 - Assign each ``Pod`` to a ``Node`` subject to per-node CPU, memory,
@@ -46,14 +46,9 @@ Modeling approach:
 - All ICs are pure relational arithmetic -- no ``implies`` bodies.
 
 Run:
-    `python pod_placement.py` deploys the model to the schema in raiconfig.yaml,
-    waits for its first refresh (which runs the solve), and prints the report
-    from the deployed model.
-
-Output:
-    Prints the formulation, the solve-result block, per-node
-    utilisation, the chosen (pod, node) placements, and any
-    unplaced deployments.
+    `rai models deploy --path model` deploys this model to the schema in
+    raiconfig.yaml and waits for its first refresh, which runs the solve.
+    `python -m queries.placement_report` then prints the report from the deployed model.
 """
 
 from math import ceil
@@ -63,7 +58,7 @@ from pandas import isna, read_csv
 from relationalai.semantics import Integer, Model, String, sum
 from relationalai.semantics.reasoners.prescriptive import Problem
 
-DATA_DIR = Path(__file__).parent / "data"
+DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 
 # --------------------------------------------------
 # Load CSVs and pre-compute per-deployment failure-domain spread caps.
@@ -421,53 +416,3 @@ problem.install_display_strings()
 SolveStatus = model.Relationship(f"pod placement solve status is {String:status}")
 PlacedDeployments = model.Relationship(f"pod placement placed deployments is {Integer:placed}")
 model.define(SolveStatus(problem.termination_status()), PlacedDeployments(problem.objective_value()))
-
-# --------------------------------------------------
-# Deploy, then report (`rai models deploy` skips this block)
-# --------------------------------------------------
-
-if __name__ == "__main__":
-    # Deploy and wait for the first refresh, which runs the solve.
-    model.deploy()
-
-    problem.display()
-
-    # Status and objective of the latest refresh's solve. A refresh records any
-    # termination status, so the report checks it. This is a hard assertion: if
-    # you raise `time_limit_sec` and the solver returns a feasible-but-not-proven-
-    # optimal result, the script raises rather than print a partial solution.
-    # Soften to a `print(...)` warning if you want the inspection blocks to run
-    # on partial solutions.
-    status = model.select(SolveStatus).to_df().iloc[:, 0].tolist()
-    placed = model.select(PlacedDeployments).to_df().iloc[:, 0].tolist()
-    print(f"\nSolve result:\n• status: {', '.join(status)}")
-    assert status == ["OPTIMAL"], f"termination status {status}"
-    assert len(placed) == 1, f"expected one objective value, got {placed}"
-    print(f"• objective: {placed[0]}\n")
-
-    # ----------------------------------------------
-    # Inspect results
-    # ----------------------------------------------
-
-    print("\nPer-node utilization:")
-    model.select(
-        Node.id.alias("node_id"),
-        Node.name.alias("node"),
-        sum(Pod.cpu_millicores * x).where(Pod.on_node(Node, x)).per(Node).alias("cpu_used"),
-        Node.cpu_millicores.alias("cpu_cap"),
-        sum(Pod.memory_mib * x).where(Pod.on_node(Node, x)).per(Node).alias("memory_used"),
-        sum(Pod.gpu_units * x).where(Pod.on_node(Node, x)).per(Node).alias("gpu_used"),
-    ).inspect()
-
-    print("\nPlaced pods (pod_id -> node_id):")
-    model.select(
-        Pod.id.alias("pod_id"),
-        Node.id.alias("node_id"),
-    ).where(Pod.on_node(Node, 1)).inspect()
-
-    print("\nUnplaced deployments (if any):")
-    model.select(
-        Deployment.id.alias("deployment_id"),
-        Deployment.name.alias("deployment"),
-        Deployment.replicas.alias("replicas"),
-    ).where(Deployment.placed == 0).inspect()
