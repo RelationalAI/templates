@@ -26,7 +26,7 @@ Run:
     `python -m queries.spend_allocation` then prints the report from the deployed model.
 """
 
-from .reasoning import problem, x_active, x_spend
+from .reasoning import SolveStatus, TotalConversions, problem, x_active, x_spend
 from .schema import Allocation, Campaign, Channel, Effectiveness, Scenario, model
 from .source import DATA_DIR
 
@@ -37,6 +37,8 @@ __all__ = [
     "Channel",
     "Effectiveness",
     "Scenario",
+    "SolveStatus",
+    "TotalConversions",
     "model",
     "problem",
     "x_active",

@@ -1,15 +1,18 @@
 """Spend allocation report: reads the deployed ad_spend_allocation model.
 
 Run `python -m queries.spend_allocation` after `rai models deploy --path model`. Prints the
-result of the latest refresh's solve and a table of the non-trivial spend allocations for
-each budget scenario.
+status and objective of the latest refresh's solve and a table of the non-trivial spend
+allocations for each budget scenario.
 """
 
-from model import Allocation, Scenario, model, problem, x_spend
+from model import Allocation, Scenario, SolveStatus, TotalConversions, model, x_spend
 
 if __name__ == "__main__":
-    si = problem.solve_info()
-    si.display()
+    status = model.select(SolveStatus).to_df().iloc[:, 0].tolist()
+    conversions = model.select(TotalConversions).to_df().iloc[:, 0].tolist()
+    print(f"\nSolve result:\n• status: {', '.join(status)}")
+    if conversions:
+        print(f"• objective: {round(conversions[0], 9)}\n")
 
     # --------------------------------------------------
     # Extract results per scenario

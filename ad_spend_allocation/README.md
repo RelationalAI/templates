@@ -44,7 +44,7 @@ This template also answers the follow-up question every planner asks: if we had 
 - **Query**: `queries/spend_allocation.py` prints the allocation table from the deployed model.
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - **Sample data**: 5 channels with spend bounds, 3 campaigns with budgets, and the 15 channel-campaign conversion rates. See *Sample data* below.
-- **Outputs**: the solve result (termination status, objective value, solver details) and a per-scenario table of non-trivial spend allocations printed to stdout; the spend and funding decisions are also written back to the ontology as queryable properties.
+- **Outputs**: solver termination status, objective value, and a per-scenario table of non-trivial spend allocations printed to stdout; the spend and funding decisions are also written back to the ontology as queryable properties.
 
 ## Prerequisites
 
@@ -159,10 +159,6 @@ Use this sequence to deploy the model and query it:
    Solve result:
    • status: OPTIMAL
    • objective: 9740.0
-   • solve time: 0.01s
-   • num_points: 1
-   • solver: HiGHS_1.15.1
-   ...
 
    Spend allocation per scenario:
         scenario channel         campaign    spend
@@ -175,7 +171,7 @@ Use this sequence to deploy the model and query it:
    ...
    ```
 
-   The solver details in the solve result are trimmed here, and so are the budget_45k and budget_55k scenarios that the full report prints. All three budgets invest heavily in Search and Video (highest ROI channels). The $35K budget activates 6 channel-campaign pairs. The $45K and $55K budgets add Search Brand_Awareness ($5K) and increase Social Brand_Awareness to $8K — diminishing returns mean the extra $10K from $45K to $55K produces no new activations. See `runbook.md` for the full printout and a step-by-step walkthrough.
+   The budget_45k and budget_55k scenarios that the full report prints are trimmed here. All three budgets invest heavily in Search and Video (highest ROI channels). The $35K budget activates 6 channel-campaign pairs. The $45K and $55K budgets add Search Brand_Awareness ($5K) and increase Social Brand_Awareness to $8K — diminishing returns mean the extra $10K from $45K to $55K produces no new activations. See `runbook.md` for the full printout and a step-by-step walkthrough.
 
    To solve again without changing the model, refresh the deployed model, then run the query again:
 

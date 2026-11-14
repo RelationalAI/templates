@@ -1,6 +1,6 @@
 """Ad spend decision problem: maximize expected conversions across budget scenarios."""
 
-from relationalai.semantics import Float, sum
+from relationalai.semantics import Float, String, sum
 from relationalai.semantics.reasoners.prescriptive import Problem
 
 from .schema import Allocation, Campaign, Effectiveness, Property, Scenario, model
@@ -80,3 +80,8 @@ problem.maximize(
 
 # Each refresh of the deployed model runs this solve.
 problem.configure("highs", time_limit_sec=60)
+
+# The solve's status and objective, which the deployed model publishes for the queries.
+SolveStatus = model.Relationship(f"ad spend solve status is {String:status}")
+TotalConversions = model.Relationship(f"ad spend total conversions is {Float:conversions}")
+model.define(SolveStatus(problem.termination_status()), TotalConversions(problem.objective_value()))
