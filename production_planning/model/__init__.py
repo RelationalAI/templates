@@ -1,6 +1,6 @@
-"""Production Planning (prescriptive optimization) template.
+"""Production Planning (prescriptive optimization) template: the model.
 
-This script demonstrates a mixed-integer linear optimization (MILP) workflow
+This package demonstrates a mixed-integer linear optimization (MILP) workflow
 in RelationalAI:
 
 - Load sample CSVs describing products, machines, and machine-product production rates.
@@ -18,14 +18,9 @@ Modeling approach:
 - One solve handles all demand levels; results extracted via model.select().
 
 Run:
-    `python production_planning.py` deploys the model to the schema in raiconfig.yaml,
-    waits for its first refresh (which runs the solve), and prints the report from the
-    deployed model.
-
-Output:
-    Prints the solver termination status, objective value, and a table of
-    non-trivial production quantities for each scenario, followed by a scenario
-    summary table.
+    `rai models deploy --path model` deploys this model to the schema in raiconfig.yaml
+    and waits for its first refresh, which runs the solve.
+    `python -m queries.production_plan` then prints the report from the deployed model.
 """
 
 from pathlib import Path
@@ -38,7 +33,7 @@ from relationalai.semantics.reasoners.prescriptive import Problem
 # Configure inputs
 # --------------------------------------------------
 
-DATA_DIR = Path(__file__).parent / "data"
+DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 
 # --------------------------------------------------
 # Define semantic model & load data
@@ -154,34 +149,3 @@ problem.install_display_strings()
 SolveStatus = model.Relationship(f"production planning solve status is {String:status}")
 TotalProfit = model.Relationship(f"production planning total profit is {Float:profit}")
 model.define(SolveStatus(problem.termination_status()), TotalProfit(problem.objective_value()))
-
-# --------------------------------------------------
-# Deploy, then report (`rai models deploy` skips this block)
-# --------------------------------------------------
-
-if __name__ == "__main__":
-    # Deploy and wait for the first refresh, which runs the solve.
-    model.deploy()
-
-    problem.display()
-
-    # Status and objective of the latest refresh's solve. A refresh records any
-    # termination status, so the report checks it.
-    status = model.select(SolveStatus).to_df().iloc[:, 0].tolist()
-    profit = model.select(TotalProfit).to_df().iloc[:, 0].tolist()
-    print(f"\nSolve result:\n• status: {', '.join(status)}")
-    if status != ["OPTIMAL"]:
-        raise SystemExit(f"No optimal production plan: termination status {status}")
-    print(f"• objective: {round(profit[0], 9)}\n")
-
-    # --------------------------------------------------
-    # Extract results per scenario
-    # --------------------------------------------------
-
-    print("\nProduction plan per scenario:")
-    model.select(
-        Scenario.name.alias("scenario"),
-        Production.rate.machine.name.alias("machine"),
-        Production.rate.product.name.alias("product"),
-        x_qty.alias("quantity"),
-    ).where(Production.x_quantity(Scenario, x_qty), x_qty > 0.001).inspect()

@@ -36,7 +36,8 @@ This template finds the profit-maximizing production plan across a set of machin
 
 ## What's included
 
-- `production_planning.py` -- Main script with the scenario model, constraints, objective, and result summary; it deploys the model and prints the report from the deployed model
+- `model/__init__.py` -- The scenario model, constraints, and objective; `rai models deploy --path model` deploys it to your Snowflake account, where each refresh runs the solve
+- `queries/production_plan.py` -- Prints the report from the deployed model: the solve's status and objective and the production plan for each scenario
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - `data/products.csv` -- Products with base demand and per-unit profit margins
 - `data/machines.csv` -- Machines with available hours per planning period
@@ -55,28 +56,61 @@ This template finds the profit-maximizing production plan across a set of machin
 
 ## Quickstart
 
-1. Download ZIP:
+Before you start, install Python 3.10 or later and complete the access prerequisites above: a Snowflake account with the RAI Native App, the one-time model deployment setup, and a Snowflake user that holds the model role.
+
+Before the first deploy, create this template's internal schema as the model role, and have an administrator grant the RAI Native App caller access to it. The internal schema holds only this model's objects, so the grants cover all of it, including the solver's result tables that the deploy creates:
+
+```sql
+-- as the model role
+CREATE SCHEMA IF NOT EXISTS <DB>.PRODUCTION_PLANNING_META;
+
+-- as an administrator
+GRANT CALLER USAGE ON DATABASE <DB> TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER USAGE ON SCHEMA <DB>.PRODUCTION_PLANNING_META TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER USAGE ON WAREHOUSE <PAT_WAREHOUSE> TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL TABLES IN SCHEMA <DB>.PRODUCTION_PLANNING_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL DYNAMIC TABLES IN SCHEMA <DB>.PRODUCTION_PLANNING_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL VIEWS IN SCHEMA <DB>.PRODUCTION_PLANNING_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER INSERT, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA <DB>.PRODUCTION_PLANNING_META TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER CREATE TABLE, CREATE STAGE ON SCHEMA <DB>.PRODUCTION_PLANNING_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER READ, WRITE ON ALL STAGES IN SCHEMA <DB>.PRODUCTION_PLANNING_META TO APPLICATION <RAI_APP_NAME>;
+```
+
+Use this sequence to deploy the model and query it:
+
+1. **Download the template**
+
+   [Download the ZIP](https://docs.relational.ai/templates/zips/v1/production_planning.zip), unzip it, and enter the template directory:
+
    ```bash
-   curl -O https://docs.relational.ai/templates/zips/v1/production_planning.zip
    unzip production_planning.zip
    cd production_planning
    ```
-   > [!TIP]
-   > You can also download the template ZIP using the "Download ZIP" button at the top of this page.
 
-2. Create venv:
+2. **Create a Python environment**
+
+   Create and activate a virtual environment, then update pip:
+
    ```bash
    python -m venv .venv
    source .venv/bin/activate
    python -m pip install --upgrade pip
    ```
 
-3. Install:
+3. **Install the template**
+
+   Install the dependencies pinned in `pyproject.toml`:
+
    ```bash
    python -m pip install .
    ```
 
-4. Configure: run `rai init` to create `raiconfig.yaml` with your Snowflake connection, set the connection `role` to the model role, then add a `deployment` section. Give each template its own schema pair so two deployed templates never share one.
+4. **Configure your project**
+
+   Use the configuration builder in [Install and run PyRel](https://docs.relational.ai/get-started/install-and-run-pyrel/#configure-your-project) to create `raiconfig.yaml` in the template directory and verify your connection.
+
+   Set the connection `role` to the model role, then add the prescriptive reasoner and a `deployment` section. Give each template its own schema pair so two deployed templates never share one:
+
    ```yaml
    reasoners:
      prescriptive:
@@ -95,39 +129,27 @@ This template finds the profit-maximizing production plan across a set of machin
      pat_user: <PAT_USER>
      pat_warehouse: <PAT_WAREHOUSE>
    ```
-   Without the `deployment` section, `python production_planning.py` stops with an error naming the missing setting.
 
-   Before the first run, create the internal schema as the model role, and have an administrator grant the RAI Native App caller access to it. The internal schema holds only this model's objects, so the grants cover all of it, including the solver's result tables that the deploy creates:
-   ```sql
-   -- as the model role
-   CREATE SCHEMA IF NOT EXISTS <DB>.PRODUCTION_PLANNING_META;
+5. **Deploy the model**
 
-   -- as an administrator
-   GRANT CALLER USAGE ON DATABASE <DB> TO APPLICATION <RAI_APP_NAME>;
-   GRANT CALLER USAGE ON SCHEMA <DB>.PRODUCTION_PLANNING_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT CALLER USAGE ON WAREHOUSE <PAT_WAREHOUSE> TO APPLICATION <RAI_APP_NAME>;
-   GRANT INHERITED CALLER SELECT ON ALL TABLES IN SCHEMA <DB>.PRODUCTION_PLANNING_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT INHERITED CALLER SELECT ON ALL DYNAMIC TABLES IN SCHEMA <DB>.PRODUCTION_PLANNING_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT INHERITED CALLER SELECT ON ALL VIEWS IN SCHEMA <DB>.PRODUCTION_PLANNING_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT INHERITED CALLER INSERT, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA <DB>.PRODUCTION_PLANNING_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT CALLER CREATE TABLE, CREATE STAGE ON SCHEMA <DB>.PRODUCTION_PLANNING_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT INHERITED CALLER READ, WRITE ON ALL STAGES IN SCHEMA <DB>.PRODUCTION_PLANNING_META TO APPLICATION <RAI_APP_NAME>;
-   ```
-   The deploy creates the public schema `<DB>.PRODUCTION_PLANNING` if it doesn't exist.
+   Deploy the model in `model/` to the schemas in `raiconfig.yaml`:
 
-5. Run:
    ```bash
-   python production_planning.py
+   rai models deploy --path model
    ```
-   The script deploys the model, waits for the first refresh, which runs the solve, and prints the report from the deployed model. Each refresh of the deployed model runs the solve again; `rai models deploy` deploys without printing the report.
 
-   Running the script again without changing the model redeploys nothing and does not solve again; it reports the latest refresh. A change to the model or to `problem.configure(...)` redeploys, and the redeploy's refresh solves. To solve again without a change, refresh the deployed model, then run the script:
-   ```sql
-   CALL <DB>.PRODUCTION_PLANNING_META._INTERNAL_REFRESH_MODEL('standard', NULL);
+   The deploy creates the public schema named in `raiconfig.yaml` if it doesn't exist and waits for the model's first refresh, which runs the solve. Each refresh of the deployed model runs the solve again.
+
+   Deploying again without changing the model applies no updates and does not solve again. A change to the model or to `problem.configure(...)` redeploys, and the redeploy's refresh solves.
+
+6. **Query the results**
+
+   Print the report from the deployed model:
+
+   ```bash
+   python -m queries.production_plan
    ```
-   To remove the deployment, run `rai models teardown --force` from this directory; it keeps the two schemas.
 
-6. Expected output (all scenarios solved together in a single call):
    ```text
    Solve result:
    • status: OPTIMAL
@@ -152,7 +174,24 @@ This template finds the profit-maximizing production plan across a set of machin
    14   low_demand  Machine_3  Widget_B       1.0
    ```
 
-   The single objective (`44735.0`) is the combined profit across all three scenarios. Per-scenario profit is $15,020 (0.8x), $14,945 (1.0x), and $14,770 (1.1x) — profit *falls* as the demand floor rises, because a looser floor leaves more capacity for the highest-margin mix.
+   The formulation printed above the solve result is trimmed here. The report checks the solve's termination status and stops unless it is `OPTIMAL`. All three scenarios are solved together in a single call. The single objective (44735.0) is the combined profit across all three scenarios. Per-scenario profit is $15,020 (0.8x), $14,945 (1.0x), and $14,770 (1.1x): profit falls as the demand floor rises, because a looser floor leaves more capacity for the highest-margin mix. See `runbook.md` for the step-by-step walkthrough.
+
+   To solve again without changing the model, refresh the deployed model, then run the query again:
+
+   ```sql
+   CALL <DB>.PRODUCTION_PLANNING_META._INTERNAL_REFRESH_MODEL('standard', NULL);
+   ```
+
+7. **Tear down the deployment**
+
+   Preview what the teardown removes, then remove it:
+
+   ```bash
+   rai models teardown
+   rai models teardown --force
+   ```
+
+   The first command lists the model's objects without dropping anything; the second drops them and keeps the two schemas.
 
 ## Template structure
 
@@ -160,15 +199,18 @@ This template finds the profit-maximizing production plan across a set of machin
 production_planning/
 ├── README.md               # this file
 ├── pyproject.toml          # dependencies
-├── production_planning.py   # main script (single solve over all scenarios)
 ├── runbook.md              # analyst-facing walkthrough
+├── model/
+│   └── __init__.py         # the deployed model (single solve over all scenarios)
+├── queries/
+│   └── production_plan.py  # report from the deployed model
 └── data/
     ├── products.csv        # products with base demand and per-unit profit
     ├── machines.csv        # machines with available hours per period
     └── production_rates.csv # hours per unit for each machine-product pair
 ```
 
-**Start here**: run `python production_planning.py` for the full run end to end, or follow `runbook.md` to reproduce it step by step with the RAI skills.
+**Start here**: deploy with `rai models deploy --path model` and run `python -m queries.production_plan` for the full run end to end, or follow `runbook.md` to reproduce it step by step with the RAI skills.
 
 ## Sample data
 
@@ -178,7 +220,7 @@ The bundled data is small and illustrative — three CSVs describing a plant wit
 - **`machines.csv`** — one row per machine, with `hours_available` per planning period.
 - **`production_rates.csv`** — one row per machine-product pair, with `hours_per_unit` (machine time to make one unit). A missing pair means that machine cannot make that product.
 
-The three demand scenarios (`low_demand` 0.8, `baseline` 1.0, `high_demand` 1.1) are defined inline in the script, not loaded from a CSV.
+The three demand scenarios (`low_demand` 0.8, `baseline` 1.0, `high_demand` 1.1) are defined inline in `model/__init__.py`, not loaded from a CSV.
 
 ## Model overview
 
@@ -186,7 +228,7 @@ The three demand scenarios (`low_demand` 0.8, `baseline` 1.0, `high_demand` 1.1)
 - **Primary identifiers**: integer `id` on `Product` and `Machine`; string `name` on `Scenario`. `ProductionRate` and `Production` are identified structurally by the entities they link.
 - **Important invariants**: `demand`, `profit`, `hours_available`, and `hours_per_unit` are non-negative; the decision variable `x_quantity` is a non-negative integer; total machine hours used cannot exceed `hours_available`; total units produced must meet demand scaled by the scenario multiplier.
 
-For the full concept and property definitions, see `production_planning.py`; `runbook.md` builds them step by step with the RAI skills.
+For the full concept and property definitions, see `model/__init__.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
@@ -203,7 +245,7 @@ CSV inputs → load Product / Machine / ProductionRate → add Scenario multipli
 3. **Constrain the plan.** For each machine and scenario, total hours used cannot exceed the machine's available hours. For each product and scenario, total units produced must meet that product's demand scaled by the scenario's multiplier.
 4. **Maximize profit.** The objective sums per-unit profit across every production assignment, and the solver returns the profit-maximizing plan for all scenarios at once.
 
-See `production_planning.py` for the implementation and `runbook.md` for the skill-driven reproduction.
+See `model/__init__.py` for the implementation and `runbook.md` for the skill-driven reproduction.
 
 ## Customize this template
 
@@ -217,7 +259,7 @@ Focus on the first changes most users will make.
 
 ### Tune parameters
 
-- **Demand scenarios** — edit the `scenario_data` list at the top of the script to change the multipliers or add scenarios.
+- **Demand scenarios** — edit the `scenario_data` list in `model/__init__.py` to change the multipliers or add scenarios.
 - **Solver time limit** — `time_limit_sec` (default `60`) on the `problem.configure(...)` call.
 - **Extend scenario analysis** to vary other parameters, such as machine availability or profit margins.
 
@@ -249,7 +291,7 @@ Integer programming is harder than continuous optimization. For large instances,
 <details>
 <summary>Connection or authentication errors</summary>
 
-Run `rai init` to configure your Snowflake connection. Verify that the RAI Native App is installed and your user has the required permissions.
+Re-create `raiconfig.yaml` with the configuration builder (Quickstart step 4) and verify the connection settings. Verify that the RAI Native App is installed and your user has the required permissions.
 </details>
 
 <details>

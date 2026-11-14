@@ -50,4 +50,4 @@ Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` 
 
 ## Data
 
-Bundled CSVs in `data/`: 3 products with demand and profit, 3 machines with hours, 9 machine-product rates. The three demand scenarios (0.8, 1.0, 1.1) are defined in the script. Full model in `production_planning.py`.
+Bundled CSVs in `data/`: 3 products with demand and profit, 3 machines with hours, 9 machine-product rates. The three demand scenarios (0.8, 1.0, 1.1) are defined in `model/__init__.py`. Full model in `model/__init__.py`; the report in `queries/production_plan.py`.
