@@ -1,6 +1,6 @@
 """Diet decision problem: least-cost food amounts per scenario, in one solve."""
 
-from relationalai.semantics import Float, sum
+from relationalai.semantics import Float, String, sum
 from relationalai.semantics.reasoners.prescriptive import Problem
 
 from .schema import Food, Nutrient, Scenario, model
@@ -31,3 +31,8 @@ problem.minimize(sum(Food, Scenario, Food.cost * x_amt).where(Food.x_amount(Scen
 
 # Each refresh of the deployed model runs this solve (one solve for all scenarios).
 problem.configure("highs", time_limit_sec=60)
+
+# The solve's status and objective, which the deployed model publishes for the queries.
+SolveStatus = model.Relationship(f"diet solve status is {String:status}")
+TotalCost = model.Relationship(f"diet total cost is {Float:cost}")
+model.define(SolveStatus(problem.termination_status()), TotalCost(problem.objective_value()))
