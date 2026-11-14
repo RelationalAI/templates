@@ -39,7 +39,8 @@ This template enumerates multi-step attack paths across an enterprise asset grap
 
 ## What's included
 
-- **Self-contained script**: `cybersecurity_attack_paths.py` runs the full analysis end-to-end
+- **Model**: `model/__init__.py` — the asset graph, technique edges, path patterns, and rules that `rai models deploy --path model` deploys to your Snowflake account.
+- **Query**: `queries/attack_path_report.py` — prints the kill-chains, point-query routes, exposure ranking, and flagged assets from the deployed model.
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - **Data**: `data/assets.csv` (12 assets) and `data/attack_steps.csv` (16 technique-tagged edges)
 
@@ -59,34 +60,42 @@ This template enumerates multi-step attack paths across an enterprise asset grap
 
 ## Quickstart
 
-1. Download and extract this template:
+Before you start, install Python 3.10 or later and get a Snowflake role that can deploy models, as described under Access. This template has no prescriptive solve, so it needs no setup beyond that role.
+
+Run these steps from a terminal:
+
+1. **Download the template**
+
+   [Download the ZIP](https://docs.relational.ai/templates/zips/v1/cybersecurity-attack-paths.zip). Unzip it and enter the template directory:
 
    ```bash
-   curl -O https://docs.relational.ai/templates/zips/v1/cybersecurity-attack-paths.zip
    unzip cybersecurity-attack-paths.zip
    cd cybersecurity-attack-paths
    ```
 
-   > [!TIP]
-   > You can also download the template ZIP using the "Download ZIP" button at the top of this page.
+2. **Create a Python environment**
 
-2. **Create and activate a virtual environment**
+   Create and activate a virtual environment, then update pip:
 
    ```bash
    python -m venv .venv
    source .venv/bin/activate
-   python -m pip install -U pip
+   python -m pip install --upgrade pip
    ```
 
-3. **Install dependencies**
+3. **Install the template**
+
+   Install the template's dependencies, including the `rai` CLI, in the active environment:
 
    ```bash
    python -m pip install .
    ```
 
-4. **Configure the Snowflake connection and the deployment**
+4. **Configure your project**
 
-   Run `rai init` to create `raiconfig.yaml` with your Snowflake connection, set the connection `role` to the model role, then add a `deployment` section. Give each template its own schema pair so two deployed templates never share one; the deploy creates both schemas if they don't exist.
+   Use the configuration builder in [Install and run PyRel](https://docs.relational.ai/get-started/install-and-run-pyrel/#configure-your-project) to create `raiconfig.yaml` in the template directory, with the model role as the connection `role`.
+
+   Then add a `deployment` section. Give each template its own schema pair so two deployed templates never share one; the deploy creates both schemas if they don't exist:
 
    ```yaml
    deployment:
@@ -100,39 +109,59 @@ This template enumerates multi-step attack paths across an enterprise asset grap
      schedule: standard
    ```
 
-   Without the `deployment` section, `python cybersecurity_attack_paths.py` stops with an error naming the missing setting.
+5. **Deploy the model**
 
-5. **Run the template**
+   Deploy the model in `model/` to the schemas in `raiconfig.yaml`:
 
    ```bash
-   python cybersecurity_attack_paths.py
+   rai models deploy --path model
    ```
 
-   The script deploys the model, waits for its first refresh, and prints the report from the deployed model. `rai models deploy` deploys without printing the report. To remove the deployment, run `rai models teardown --force` from this directory; it keeps the two schemas.
+   The deploy waits for the model's first refresh, which enumerates the kill-chains and flags the assets on them. Without the `deployment` section, it stops with an error naming the missing setting.
 
-   Expected output starts with the kill-chains that reach a crown jewel:
+6. **Query the results**
+
+   Print the report from the deployed model:
+
+   ```bash
+   python -m queries.attack_path_report
+   ```
 
    ```text
    3 kill-chain attack path(s) reach a crown jewel (exploit -> cred -> 1-2 pivots, from an internet-facing asset):
      [3 hops] VPN Gateway  --[Asset.exploit_to]-->  Jump Host  --[Asset.cred_to]-->  File Server  --[Asset.pivot_to]-->  Customer Database
    ```
 
-   See the runbook for the full output.
+   The lines above are the start of the report. The full report continues with the routes between one entry point and one crown jewel, the kill-chains ranked by total exposure, and the assets flagged on a crown-jewel attack path. See `runbook.md` for the full output.
+
+7. **Tear down the deployment**
+
+   Preview what the teardown removes, then remove it:
+
+   ```bash
+   rai models teardown
+   rai models teardown --force
+   ```
+
+   The teardown removes the deployed objects and keeps the two schemas.
 
 ## Template structure
 
 ```text
 cybersecurity-attack-paths/
-├── cybersecurity_attack_paths.py
 ├── pyproject.toml
 ├── README.md
 ├── runbook.md
+├── model/
+│   └── __init__.py              # assets, technique edges, path patterns, and rules
+├── queries/
+│   └── attack_path_report.py    # report printed from the deployed model
 └── data/
     ├── assets.csv
     └── attack_steps.csv
 ```
 
-**Start here**: run `python cybersecurity_attack_paths.py` for the full analysis end to end, or follow `runbook.md` to rebuild it step by step.
+**Start here**: deploy with `rai models deploy --path model` and run `python -m queries.attack_path_report` for the full analysis end to end, or follow `runbook.md` to rebuild it step by step.
 
 ## Sample data
 
@@ -146,7 +175,7 @@ cybersecurity-attack-paths/
 - **Primary identifiers**: `Asset` by `id`.
 - **Important invariants**: the three technique edges are directed (`src` reaches `dst`, not the reverse); `internet_facing` and `crown_jewel` are `yes`/`no` flags that pin the kill-chain endpoints; `on_attack_path` is set only on assets that lie on a crown-jewel-reaching chain.
 
-For the full concept and property definitions — including the four directed self-relationships (`exploit_to`, `cred_to`, `pivot_to`, and the technique-agnostic `can_reach` union edge) — see `cybersecurity_attack_paths.py`; `runbook.md` builds them step by step with the RAI skills.
+For the full concept and property definitions — including the four directed self-relationships (`exploit_to`, `cred_to`, `pivot_to`, and the technique-agnostic `can_reach` union edge) — see `model/__init__.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
@@ -161,7 +190,7 @@ The centerpiece is a multi-edge path pattern (which needs `relationalai>=1.21`) 
 
 A separate point query pins both endpoints by id to enumerate every route between a chosen entry point and a chosen crown jewel over the union edge. The kill-chains are then ranked by the exposure summed along each one. Finally, the assets lying on any crown-jewel chain are flagged back onto the ontology as `Asset.on_attack_path`, so a later query can pull them without re-enumerating paths.
 
-See `cybersecurity_attack_paths.py` for the implementation and `runbook.md` to reproduce it step by step with the RAI skills.
+See `model/__init__.py` for the implementation, `queries/attack_path_report.py` for the report, and `runbook.md` to reproduce it step by step with the RAI skills.
 
 ## Customize this template
 
