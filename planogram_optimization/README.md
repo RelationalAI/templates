@@ -305,7 +305,7 @@ For the exact PyRel formulation, see `model/__init__.py`; `runbook.md` reproduce
 ### Scale up / productionize
 
 - For a live catalog, replace the `read_csv(...)` loads with `model.data(snowflake_table)` calls so the SKUs, shelves, categories, and predicted-demand table read directly from your warehouse; the CSP is unchanged.
-- The vendored `predicted_demand_table.csv` becomes a materialized inference output on a schedule — refresh it from your demand model, and the pre-solve completeness guard (`_assert_demand_table_complete`) gates each run.
+- The vendored `predicted_demand_table.csv` becomes a materialized inference output on a schedule — refresh it from your demand model. The completeness guard (`_assert_demand_table_complete`) runs when `model` is imported, so it checks the table each deploy uses, not a scheduled refresh's; validate the table in the workflow that refreshes it.
 - The bundled data is 18 SKUs across 4 shelves; the CSP scales to whatever the constraint solver's budget allows. Raise `time_limit_sec` in the `problem.configure(...)` call for larger catalogs.
 - Pin `relationalai` (see Prerequisites) so runs stay reproducible across environments.
 
