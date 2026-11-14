@@ -85,7 +85,7 @@ Each SKU has a concave demand curve over facing counts — demand rises with fac
 
 **Response**
 
-Total predicted weekly demand around **1,600+ units** — the decision picks facings per SKU (binding each SKU's realized demand to its predicted-demand row via a table lookup), with shelf-length and category-cardinality constraints; `Sku.facings`, `Sku.realized_demand`, and `Sku.active` are written back. (MiniZinc runs to its time limit and returns a strong incumbent surfaced as OPTIMAL, so the exact objective and the specific SKUs dropped vary slightly run to run; the structure below is stable.) In `planogram_optimization.py` the solve is declared with `problem.configure(...)`, so each refresh of the deployed model runs it.
+Total predicted weekly demand around **1,600+ units** — the decision picks facings per SKU (binding each SKU's realized demand to its predicted-demand row via a table lookup), with shelf-length and category-cardinality constraints; `Sku.facings`, `Sku.realized_demand`, and `Sku.active` are written back. (MiniZinc runs to its time limit and returns a strong incumbent surfaced as OPTIMAL, so the exact objective and the specific SKUs dropped vary slightly run to run; the structure below is stable.) In `model/__init__.py` the solve is declared with `problem.configure(...)`, so each refresh of the deployed model runs it.
 
 ### 6. Read the planogram
 
@@ -101,4 +101,4 @@ Total predicted weekly demand around **1,600+ units** — the decision picks fac
 
 ## Data
 
-Bundled CSVs in `data/`: 18 SKUs, 4 shelves, 4 categories, 73 predicted-demand rows. The predicted demand is supplied as a table (standing in for a demand regression — see the template's customize section to swap in a trained model). Full chain in `planogram_optimization.py`.
+Bundled CSVs in `data/`: 18 SKUs, 4 shelves, 4 categories, 73 predicted-demand rows. The predicted demand is supplied as a table (standing in for a demand regression — see the template's customize section to swap in a trained model). Full chain in `model/__init__.py`; the report in `queries/facings_plan.py`.

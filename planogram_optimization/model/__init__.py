@@ -1,6 +1,6 @@
-"""Planogram Optimization (predict-then-optimize) template.
+"""Planogram Optimization (predict-then-optimize) template: the model.
 
-This script demonstrates a predictive + prescriptive shelf-allocation problem
+This package demonstrates a predictive + prescriptive shelf-allocation problem
 in RelationalAI:
 
 - Decide integer facing counts per SKU on each shelf.
@@ -20,18 +20,13 @@ Modeling approach:
   `sum(Sku.active).per(Category)`).
 - Capacity, cardinality, and the active-iff-facings coupling are pure
   relational arithmetic constraints. The implies-bodied table lookup is
-  solver-only; a post-solve check re-validates
-  `(sku_id, facings) -> demand_units` against the input table via a Python
-  dict lookup.
+  solver-only; the report re-validates `(sku_id, facings) -> demand_units`
+  against the deployed demand table via a Python dict lookup.
 
 Run:
-    `python planogram_optimization.py` deploys the model to the schema in
-    raiconfig.yaml, waits for its first refresh (which runs the solve), and
-    prints the report from the deployed model.
-
-Output:
-    Prints the formulation, the solve-result block, the optimal facings per
-    SKU, per-shelf utilization, and per-category active counts.
+    `rai models deploy --path model` deploys this model to the schema in
+    raiconfig.yaml and waits for its first refresh, which runs the solve.
+    `python -m queries.facings_plan` then prints the report from the deployed model.
 """
 
 from pathlib import Path
@@ -44,7 +39,7 @@ from relationalai.semantics.reasoners.prescriptive import Problem, implies
 # Configure inputs
 # --------------------------------------------------
 
-DATA_DIR = Path(__file__).parent / "data"
+DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 
 # --------------------------------------------------
 # Pre-solve data invariants
@@ -309,87 +304,3 @@ problem.install_display_strings()
 SolveStatus = model.Relationship(f"planogram solve status is {String:status}")
 TotalDemand = model.Relationship(f"planogram total demand is {Integer:demand}")
 model.define(SolveStatus(problem.termination_status()), TotalDemand(problem.objective_value()))
-
-# --------------------------------------------------
-# Deploy, then report (`rai models deploy` skips this block)
-# --------------------------------------------------
-
-if __name__ == "__main__":
-    # Deploy and wait for the first refresh, which runs the solve.
-    model.deploy()
-
-    problem.display()
-
-    # Status and objective of the latest refresh's solve. A refresh records any
-    # termination status, so the report checks it.
-    status = model.select(SolveStatus).to_df().iloc[:, 0].tolist()
-    demand = model.select(TotalDemand).to_df().iloc[:, 0].tolist()
-    print(f"\nSolve result:\n• status: {', '.join(status)}")
-    assert status == ["OPTIMAL"], f"termination status {status}"
-    assert len(demand) == 1, f"expected one objective value, got {demand}"
-    print(f"• objective: {demand[0]}\n")
-
-    # Post-solve table-lookup check. Pull the chosen `(Sku.id, Sku.facings,
-    # Sku.realized_demand)` triples and confirm `realized_demand` matches the
-    # input table at the chosen `facings`. Catches the silent-failure mode
-    # where the implies cascade leaves `realized_demand` unconstrained for a
-    # missing (sku_id, k) row -- the pre-solve `_assert_demand_table_complete`
-    # guard already covers the bundled data, but this is defense in depth.
-    solution_df = model.select(
-        Sku.id.alias("sku_id"),
-        Sku.facings.alias("facings_count"),
-        Sku.realized_demand.alias("realized_demand"),
-    ).to_df()
-    expected_lookup = {
-        (int(row.sku_id), int(row.facings_count)): int(row.demand_units)
-        for row in demand_csv.itertuples(index=False)
-    }
-    mismatches = []
-    for row in solution_df.itertuples(index=False):
-        key = (int(row.sku_id), int(row.facings_count))
-        expected = expected_lookup.get(key)
-        if expected is None or int(row.realized_demand) != expected:
-            mismatches.append((*key, int(row.realized_demand), expected))
-    if mismatches:
-        raise AssertionError(
-            "Demand-lookup verification failed: Sku.realized_demand does not "
-            "match PredictedDemand.demand_units at the chosen facings count for "
-            f"{len(mismatches)} SKU(s). Pre-solve guards rule out the common "
-            "case (missing rows in predicted_demand_table.csv); reaching this "
-            "check means the implies cascade did not bind realized_demand for "
-            "the chosen `facings`. Inspect the formulation printed by "
-            "`problem.display()` to confirm the demand-lookup constraint expanded "
-            "as expected. Mismatches "
-            "(sku_id, facings, realized_demand, expected_demand):\n"
-            f"{mismatches}"
-        )
-
-    # ----------------------------------------------
-    # Inspect solution
-    # ----------------------------------------------
-
-    print("\nOptimal facings per SKU:")
-    model.select(
-        Sku.id,
-        Sku.name,
-        Sku.category,
-        Sku.shelf.name.alias("shelf"),
-        Sku.facings,
-        Sku.realized_demand,
-    ).inspect()
-
-    print("\nShelf utilization:")
-    model.select(
-        Shelf.id,
-        Shelf.name,
-        sum(Sku.facings * Sku.width_cm).per(Shelf).alias("used_cm"),
-        Shelf.length_cm,
-    ).where(Sku.shelf == Shelf).inspect()
-
-    print("\nCategory active counts:")
-    model.select(
-        Category.name,
-        sum(Sku.active).per(Category).alias("active_skus"),
-        Category.min_skus_active,
-        Category.max_skus_active,
-    ).where(Sku.category == Category.name).inspect()
