@@ -43,12 +43,12 @@ Modeling approach:
   properties; ``TenantAntiAffinity`` and ``DeploymentAffinity`` are
   symmetric data relationships closed at definition time so the ICs
   can use either argument order.
-- All ICs are pure relational arithmetic -- no ``implies`` bodies --
-  so ``problem.verify()`` re-evaluates every one in the returned
-  solution.
+- All ICs are pure relational arithmetic -- no ``implies`` bodies.
 
 Run:
-    `python pod_placement.py`
+    `python pod_placement.py` deploys the model to the schema in raiconfig.yaml,
+    waits for its first refresh (which runs the solve), and prints the report
+    from the deployed model.
 
 Output:
     Prints the formulation, the solve-result block, per-node
@@ -408,56 +408,66 @@ problem.satisfy(rack_clique_ic)
 problem.maximize(sum(Deployment.placed))
 
 # --------------------------------------------------
-# Solve and verify
+# Solve
 # --------------------------------------------------
 
-problem.display()
-problem.solve("minizinc", time_limit_sec=60)
-problem.solve_info().display()
+# Each refresh of the deployed model runs this solve.
+problem.configure("minizinc", time_limit_sec=60)
 
-# Every IC is pure relational arithmetic, so verify() re-evaluates
-# all nine in the returned solution. The post-solve
-# `model.require(... == "OPTIMAL")` below is a hard assertion: if
-# you raise `time_limit_sec` and the solver returns a feasible-but-
-# not-proven-optimal result, the script will raise rather than print
-# a partial solution. Soften to a `print(...)` warning if you want
-# the inspection blocks to run on partial solutions.
-problem.verify(
-    placement_coupling_ic,
-    gang_placement_ic,
-    cpu_capacity_ic,
-    memory_capacity_ic,
-    gpu_capacity_ic,
-    anti_affinity_ic,
-    affinity_ic,
-    spread_ic,
-    rack_clique_ic,
-)
-model.require(problem.termination_status() == "OPTIMAL")
+# Deploy the rules behind problem.display() with the model.
+problem.install_display_strings()
+
+# The solve's status and objective, published through the model's own relationships.
+SolveStatus = model.Relationship(f"pod placement solve status is {String:status}")
+PlacedDeployments = model.Relationship(f"pod placement placed deployments is {Integer:placed}")
+model.define(SolveStatus(problem.termination_status()), PlacedDeployments(problem.objective_value()))
 
 # --------------------------------------------------
-# Inspect results
+# Deploy, then report (`rai models deploy` skips this block)
 # --------------------------------------------------
 
-print("\nPer-node utilization:")
-model.select(
-    Node.id.alias("node_id"),
-    Node.name.alias("node"),
-    sum(Pod.cpu_millicores * x).where(Pod.on_node(Node, x)).per(Node).alias("cpu_used"),
-    Node.cpu_millicores.alias("cpu_cap"),
-    sum(Pod.memory_mib * x).where(Pod.on_node(Node, x)).per(Node).alias("memory_used"),
-    sum(Pod.gpu_units * x).where(Pod.on_node(Node, x)).per(Node).alias("gpu_used"),
-).inspect()
+if __name__ == "__main__":
+    # Deploy and wait for the first refresh, which runs the solve.
+    model.deploy()
 
-print("\nPlaced pods (pod_id -> node_id):")
-model.select(
-    Pod.id.alias("pod_id"),
-    Node.id.alias("node_id"),
-).where(Pod.on_node(Node, 1)).inspect()
+    problem.display()
 
-print("\nUnplaced deployments (if any):")
-model.select(
-    Deployment.id.alias("deployment_id"),
-    Deployment.name.alias("deployment"),
-    Deployment.replicas.alias("replicas"),
-).where(Deployment.placed == 0).inspect()
+    # Status and objective of the latest refresh's solve. A refresh records any
+    # termination status, so the report checks it. This is a hard assertion: if
+    # you raise `time_limit_sec` and the solver returns a feasible-but-not-proven-
+    # optimal result, the script raises rather than print a partial solution.
+    # Soften to a `print(...)` warning if you want the inspection blocks to run
+    # on partial solutions.
+    status = model.select(SolveStatus).to_df().iloc[:, 0].tolist()
+    placed = model.select(PlacedDeployments).to_df().iloc[:, 0].tolist()
+    print(f"\nSolve result:\n• status: {', '.join(status)}")
+    assert status == ["OPTIMAL"], f"termination status {status}"
+    assert len(placed) == 1, f"expected one objective value, got {placed}"
+    print(f"• objective: {placed[0]}\n")
+
+    # ----------------------------------------------
+    # Inspect results
+    # ----------------------------------------------
+
+    print("\nPer-node utilization:")
+    model.select(
+        Node.id.alias("node_id"),
+        Node.name.alias("node"),
+        sum(Pod.cpu_millicores * x).where(Pod.on_node(Node, x)).per(Node).alias("cpu_used"),
+        Node.cpu_millicores.alias("cpu_cap"),
+        sum(Pod.memory_mib * x).where(Pod.on_node(Node, x)).per(Node).alias("memory_used"),
+        sum(Pod.gpu_units * x).where(Pod.on_node(Node, x)).per(Node).alias("gpu_used"),
+    ).inspect()
+
+    print("\nPlaced pods (pod_id -> node_id):")
+    model.select(
+        Pod.id.alias("pod_id"),
+        Node.id.alias("node_id"),
+    ).where(Pod.on_node(Node, 1)).inspect()
+
+    print("\nUnplaced deployments (if any):")
+    model.select(
+        Deployment.id.alias("deployment_id"),
+        Deployment.name.alias("deployment"),
+        Deployment.replicas.alias("replicas"),
+    ).where(Deployment.placed == 0).inspect()

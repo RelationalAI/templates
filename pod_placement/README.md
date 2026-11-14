@@ -46,13 +46,13 @@ This template encodes that stack as a pure constraint satisfaction and optimizat
 - A reified-cardinality gang-placement IC `sum(Pod.placed).per(Deployment) == Deployment.replicas * Deployment.placed`
 - A pairwise topology rack-clique IC for distributed-training groups -- `xa + xb <= 1` for every (Pa, Pb, Na, Nb) tuple where the pods are in the same training group and the nodes are in different racks
 - A linear `maximize(sum(Deployment.placed))` objective the CSP optimizes
-- Post-solve verification via `problem.verify()` confirming every IC holds in the returned solution, plus a `termination_status() == "OPTIMAL"` assertion
+- A `SolveStatus` check in the report: the script stops unless the solver proved `OPTIMAL`
 
 ## What's included
 
 The bundled CSVs are illustrative demo data tuned so multiple ICs bind at the optimum -- rack-clique forces the distributed-training group onto one rack, CPU / memory / GPU bin-packing then pin it to a single node at exact 100% utilization on all three resources, anti-affinity partitions the alpha-beta and gamma-delta tenant pods across disjoint node sets, deployment co-location affinity co-locates the cache pair, and the spread cap binds for every multi-replica non-overridden deployment. Swap in your own cluster topology and workload to apply the template to a real cluster.
 
-- `pod_placement.py` -- main script with concepts, decisions, constraints, the solver call, and the post-solve inspection
+- `pod_placement.py` -- main script with concepts, decisions, constraints, the solver configuration, and the post-solve inspection; it deploys the model and prints the report from the deployed model
 - **Runbook**: `runbook.md` -- a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - `data/nodes.csv` -- 8 nodes across 2 zones (`us-east-1a`, `us-east-1b`) and 4 racks; six general-purpose nodes (12000 millicores, 49152 MiB) and two GPU nodes (8000 millicores, 32768 MiB, 4 GPUs each). Total cluster: 88000 millicores, 360448 MiB, 8 GPUs
 - `data/tenants.csv` -- 4 tenants (`tenant_alpha`, `tenant_beta`, `tenant_gamma`, `tenant_delta`)
@@ -67,7 +67,8 @@ The bundled CSVs are illustrative demo data tuned so multiple ICs bind at the op
 
 ### Access
 - A Snowflake account that has the RAI Native App installed.
-- A Snowflake user with permissions to access the RAI Native App.
+- The one-time model deployment setup on that account, done by an account administrator: follow [Set up model deployment](https://private.relational.ai/early-access/model-deploy-setup) through **Governed setup**, **PAT authentication**, and steps 1-2 of **Additional setup for the prescriptive reasoner** (Quickstart step 4 below covers this template's own schema). It gives you a model role, a programmatic access token (PAT) stored as a secret, an external access integration, a PAT user, and a warehouse.
+- A Snowflake user that holds the model role.
 
 ### Tools
 - Python >= 3.10
@@ -96,24 +97,62 @@ The bundled CSVs are illustrative demo data tuned so multiple ICs bind at the op
    python -m pip install .
    ```
 
-4. Configure:
-   ```bash
-   rai init
+4. Configure: run `rai init` to create `raiconfig.yaml` with your Snowflake connection, set the connection `role` to the model role, then add a `deployment` section. Give each template its own schema pair so two deployed templates never share one.
+   ```yaml
+   reasoners:
+     prescriptive:
+       name: pod_placement_solver            # created on first deploy if it doesn't exist
+   deployment:
+     role: <MODEL_ROLE>
+     public_schema: <DB>.POD_PLACEMENT               # published views and tables
+     identity:
+       internal_schema: <DB>.POD_PLACEMENT_META      # solver inputs, results, refresh procedures
+     schedules:
+       standard:
+         interval_s: 0              # refresh only on deploy or on demand
+     schedule: standard
+     pat_secret: <PAT_SECRET>       # these four come from the setup page
+     pat_eai: <PAT_EAI>
+     pat_user: <PAT_USER>
+     pat_warehouse: <PAT_WAREHOUSE>
    ```
+   Without the `deployment` section, `python pod_placement.py` stops with an error naming the missing setting.
+
+   Before the first run, create the internal schema as the model role, and have an administrator grant the RAI Native App caller access to it. The internal schema holds only this model's objects, so the grants cover all of it, including the solver's result tables that the deploy creates:
+   ```sql
+   -- as the model role
+   CREATE SCHEMA IF NOT EXISTS <DB>.POD_PLACEMENT_META;
+
+   -- as an administrator
+   GRANT CALLER USAGE ON DATABASE <DB> TO APPLICATION <RAI_APP_NAME>;
+   GRANT CALLER USAGE ON SCHEMA <DB>.POD_PLACEMENT_META TO APPLICATION <RAI_APP_NAME>;
+   GRANT CALLER USAGE ON WAREHOUSE <PAT_WAREHOUSE> TO APPLICATION <RAI_APP_NAME>;
+   GRANT INHERITED CALLER SELECT ON ALL TABLES IN SCHEMA <DB>.POD_PLACEMENT_META TO APPLICATION <RAI_APP_NAME>;
+   GRANT INHERITED CALLER SELECT ON ALL DYNAMIC TABLES IN SCHEMA <DB>.POD_PLACEMENT_META TO APPLICATION <RAI_APP_NAME>;
+   GRANT INHERITED CALLER SELECT ON ALL VIEWS IN SCHEMA <DB>.POD_PLACEMENT_META TO APPLICATION <RAI_APP_NAME>;
+   GRANT INHERITED CALLER INSERT, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA <DB>.POD_PLACEMENT_META TO APPLICATION <RAI_APP_NAME>;
+   GRANT CALLER CREATE TABLE, CREATE STAGE ON SCHEMA <DB>.POD_PLACEMENT_META TO APPLICATION <RAI_APP_NAME>;
+   GRANT INHERITED CALLER READ, WRITE ON ALL STAGES IN SCHEMA <DB>.POD_PLACEMENT_META TO APPLICATION <RAI_APP_NAME>;
+   ```
+   The deploy creates the public schema `<DB>.POD_PLACEMENT` if it doesn't exist.
 
 5. Run:
    ```bash
    python pod_placement.py
    ```
+   The script deploys the model, waits for the first refresh, which runs the solve, and prints the report from the deployed model. Each refresh of the deployed model runs the solve again; `rai models deploy` deploys without printing the report.
+
+   Running the script again without changing the model redeploys nothing and does not solve again; it reports the latest refresh. A change to the model or to `problem.configure(...)` redeploys, and the redeploy's refresh solves. To solve again without a change, refresh the deployed model, then run the script:
+   ```sql
+   CALL <DB>.POD_PLACEMENT_META._INTERNAL_REFRESH_MODEL('standard', NULL);
+   ```
+   To remove the deployment, run `rai models teardown --force` from this directory; it keeps the two schemas.
 
 6. Expected output (the solver maximizes the number of placed deployments; the specific (pod, node) tuples and per-node utilization may vary across solver versions when multiple placements tie at the optimum). The script first prints the formulation (a few thousand lines for the bundled data, omitted here for brevity), then the solve-result block, then the per-node utilization, the per-pod placement, and any unplaced deployments. A representative run looks like:
    ```text
    Solve result:
    • status: OPTIMAL
    • objective: 12
-   • solve time: ~1s
-   • num_points: 1
-   • solver: MiniZinc_unknown
 
    Per-node utilization:
      node_id       node  cpu_used  cpu_cap  memory_used  gpu_used
@@ -183,7 +222,7 @@ For the full concept and property definitions — including the three symmetric 
 The CSP picks a node for each pod via a binary 2D assignment matrix; every other rule is plain relational arithmetic over that matrix, and the solver maximizes the number of placed deployments.
 
 ```text
-nodes + pods + deployments + affinity / anti-affinity / training relations → 2D on_node matrix + placement indicators → bin-packing / anti-affinity / affinity / spread / gang / rack-clique constraints → maximize placed deployments → solve → verify
+nodes + pods + deployments + affinity / anti-affinity / training relations → 2D on_node matrix + placement indicators → bin-packing / anti-affinity / affinity / spread / gang / rack-clique constraints → maximize placed deployments → configure solve → deploy → check and report
 ```
 
 **A binary 2D matrix is the primary decision.** Each pod gets one binary variable per node (`Pod.on_node(Node, x)`), and a per-pod cardinality constraint pins each pod's row sum to a 0/1 placement indicator. An integer-valued node-id decision would read more naturally for the "different node" pairwise patterns, but per-node aggregates over it would mix a decision variable with a data property inside a `where` binding — a form the prescriptive rewriter doesn't lower today. The 2D matrix sidesteps that: every constraint becomes a plain relational sum over `x`.
@@ -196,7 +235,7 @@ nodes + pods + deployments + affinity / anti-affinity / training relations → 2
 
 **Failure-domain spread is a two-key aggregate.** With `max_per_zone` precomputed (default `ceil(replicas / num_zones)`, or the row's `max_per_zone_override`), the count of a deployment's pods per zone must stay under its cap. The override is a per-deployment escape hatch: the bundled data uses it on the distributed-training job, whose rack-clique requirement forces all its pods onto one rack — and therefore one zone — which would otherwise collide with the default spread cap.
 
-Every constraint is pure relational arithmetic (no `implies` bodies), so `problem.verify()` re-evaluates all of them in the returned solution, and a post-solve assertion confirms the solver proved `OPTIMAL` rather than timing out.
+Every constraint is pure relational arithmetic (no `implies` bodies), and an assertion in the report confirms the solver proved `OPTIMAL` rather than timing out. The report does not re-evaluate the constraints, and a refresh started outside the script (`rai models deploy`, the refresh procedure, a schedule) runs no checks, so read `SolveStatus` before relying on a refreshed solution.
 
 For the exact PyRel formulation, see `pod_placement.py`; `runbook.md` reproduces the model step by step with the RAI skills.
 
@@ -256,7 +295,7 @@ For the exact PyRel formulation, see `pod_placement.py`; `runbook.md` reproduces
   <summary>Import error or AttributeError on <code>relationalai</code></summary>
 
 - Confirm your virtual environment is active: `which python` should point to `.venv`.
-- Reinstall dependencies: `python -m pip install .`. The pinned version (`relationalai==2.1.1`) ships the `solve_info()`, `verify()`, and `where().require()` APIs this template uses; older versions lack them and produce attribute errors.
+- Reinstall dependencies: `python -m pip install .`. The pinned version (`relationalai==2.1.1`) ships the `configure()`, `install_display_strings()`, and `where().require()` APIs this template uses; older versions lack them and produce attribute errors.
 
 </details>
 
@@ -286,8 +325,8 @@ For the exact PyRel formulation, see `pod_placement.py`; `runbook.md` reproduces
 <details>
   <summary>Solver hits the time limit (status is not `OPTIMAL`) and the script crashes</summary>
 
-- The post-solve `model.require(problem.termination_status() == "OPTIMAL")` is a hard assertion: if you raise `time_limit_sec` and the solver returns a feasible-but-not-proven-optimal result (`SOLUTION_LIMIT` or `LOCALLY_SOLVED`), the script raises rather than print a partial solution.
-- For a tutorial run on the bundled data this is the right posture (the oracle is "the solver proved 11/12"). For larger user data, either (a) raise `time_limit_sec` until the solver proves optimality, or (b) replace `model.require(...)` with a `print(...)` warning and let the inspection blocks run on the best feasible placement found.
+- The report's `assert status == ["OPTIMAL"]` is a hard assertion: if you raise `time_limit_sec` and the solver returns a feasible-but-not-proven-optimal result (`SOLUTION_LIMIT` or `LOCALLY_SOLVED`), the script raises rather than print a partial solution.
+- For a tutorial run on the bundled data this is the right posture (the oracle is "the solver proved 11/12"). For larger user data, either (a) raise `time_limit_sec` until the solver proves optimality, or (b) replace the assertion with a `print(...)` warning and let the inspection blocks run on the best feasible placement found.
 
 </details>
 
