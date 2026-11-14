@@ -5,14 +5,20 @@ disease outbreak prevention network using RelationalAI and Streamlit, incorporat
 transfer volume and contact intensity risk metrics.
 
 Run:
-    streamlit run app.py
+    Deploy the model first with `rai models deploy --path model`, then run
+    `streamlit run app.py`. The app only queries the deployed model.
 """
 
-
-import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
-from model_setup import DATA_DIR, create_model
+from model import (
+    FacilityConnection,
+    degree_centrality,
+    graph,
+    incoming_edges,
+    model,
+    outgoing_edges,
+)
 from relationalai.semantics import Float, Integer, where
 
 # --------------------------------------------------
@@ -26,24 +32,14 @@ st.set_page_config(
 )
 
 # --------------------------------------------------
-# Define semantic model & load data
+# Query the deployed model
 # --------------------------------------------------
 
-@st.cache_resource
-def load_model():
-    """Load and cache the RelationalAI model."""
-    return create_model()
-
 @st.cache_data
-def get_results(_model, _graph, _Facility):
+def get_results():
     """Query and return analysis results."""
-    # Calculate graph metrics
-    degree_centrality = _graph.degree_centrality()
-    incoming_edges = _graph.indegree()
-    outgoing_edges = _graph.outdegree()
-
     # Create variable references
-    facility = _graph.Node.ref("facility")
+    facility = graph.Node.ref("facility")
     centr_score = Float.ref("centr_score")
     in_edges = Integer.ref("in_edges")
     out_edges = Integer.ref("out_edges")
@@ -75,6 +71,15 @@ def get_results(_model, _graph, _Facility):
     results['total_connections'] = results['incoming_connections'] + results['outgoing_connections']
 
     return results
+
+@st.cache_data
+def get_connections():
+    """Query the facility connections (edges) of the deployed network."""
+    return model.select(
+        FacilityConnection.from_facility.id.alias("from_facility_id"),
+        FacilityConnection.to_facility.id.alias("to_facility_id"),
+    ).to_df().astype(int)
+
 
 def create_network_graph(results, connections_df):
     """Create an interactive network visualization using Plotly."""
@@ -237,9 +242,8 @@ def main():
 
     # Load data
     with st.spinner("Loading model and analyzing network..."):
-        model, graph, Facility = load_model()
-        results = get_results(model, graph, Facility)
-        connections_df = pd.read_csv(DATA_DIR / "connections.csv")
+        results = get_results()
+        connections_df = get_connections()
 
     # Sidebar with summary statistics
     st.sidebar.header("📊 Network Summary")

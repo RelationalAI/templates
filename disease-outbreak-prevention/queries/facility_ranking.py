@@ -1,45 +1,12 @@
-"""Disease Outbreak Prevention Network (graph analytics) template.
+"""Facility ranking report: reads the deployed disease_outbreak_prevention model.
 
-This script demonstrates weighted degree centrality analysis in a public health network using
-RelationalAI:
-
-- Load a network of healthcare facilities and their connections from CSV.
-- Calculate weighted degree centrality for each facility (considering connection weights).
-- Identify the most connected facilities for priority resource deployment.
-- Rank facilities by their centrality to optimize outbreak response.
-
-Run:
-    `python disease_outbreak_prevention_network.py` deploys the model to the schema in
-    raiconfig.yaml, waits for its first refresh, and prints the report from the
-    deployed model.
-
-Output:
-    Prints a ranked list of healthcare facilities by degree centrality, showing which
-    facilities should receive priority for vaccines, testing stations, and emergency
-    response teams.
+Run `python -m queries.facility_ranking` after `rai models deploy --path model`. Prints a
+ranked list of healthcare facilities by degree centrality, showing which facilities should
+receive priority for vaccines, testing stations, and emergency response teams.
 """
 
-from model_setup import create_model
+from model import degree_centrality, graph, incoming_edges, outgoing_edges
 from relationalai.semantics import Float, Integer, where
-
-# --------------------------------------------------
-# Create model and calculate graph metrics
-# --------------------------------------------------
-
-model, graph, Facility = create_model()
-
-# Calculate weighted degree centrality: measures how connected each facility is in the network,
-# considering the risk weight of each connection.
-# Higher centrality = more connections with higher risk = more critical for outbreak response coordination.
-degree_centrality = graph.degree_centrality()
-
-# Calculate incoming edges: number of facilities that connect TO this facility.
-# Indicates facilities that others depend on or report to.
-incoming_edges = graph.indegree()
-
-# Calculate outgoing edges: number of facilities this facility connects TO.
-# Indicates facilities that coordinate with or refer patients to others.
-outgoing_edges = graph.outdegree()
 
 # Create variable references for use in queries.
 facility = graph.Node.ref("facility")
@@ -47,19 +14,7 @@ centr_score = Float.ref("centr_score")
 in_edges = Integer.ref("in_edges")
 out_edges = Integer.ref("out_edges")
 
-
-# --------------------------------------------------
-# Query and display results (`rai models deploy` skips the report)
-# --------------------------------------------------
-
-def main() -> None:
-    """
-    Main analysis function that:
-    1. Queries the graph for degree centrality metrics
-    2. Combines facility data with graph metrics
-    3. Displays results in a user-friendly format
-    """
-
+if __name__ == "__main__":
     # Query the graph to retrieve:
     # - Basic facility information (id, name, type, region)
     # - Weighted degree centrality score (sum of edge weights for all connections)
@@ -134,9 +89,3 @@ def main() -> None:
     print(f"  • Most connected facility: {results.iloc[0]['name']} ({int(results.iloc[0]['total_connections'])} connections)")
 
     print("\n✅ Analysis complete!")
-
-
-if __name__ == "__main__":
-    # Deploy and wait for the first refresh, which computes the graph metrics.
-    model.deploy()
-    main()
