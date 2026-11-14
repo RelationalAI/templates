@@ -1,6 +1,6 @@
-"""Shift Assignment (prescriptive optimization) template.
+"""Shift Assignment (prescriptive optimization) template: the model.
 
-This script demonstrates a constraint satisfaction / feasibility problem in RelationalAI:
+This package demonstrates a constraint satisfaction / feasibility problem in RelationalAI:
 
 - Load sample CSVs describing workers, shifts, and worker-shift availability.
 - Model workers and shifts as *concepts* with typed properties and an availability
@@ -17,13 +17,9 @@ Modeling approach:
 - One solve handles all coverage levels; results extracted via model.select().
 
 Run:
-    `python shift_assignment.py` deploys the model to the schema in raiconfig.yaml,
-    waits for its first refresh (which runs the solve), and prints the report
-    from the deployed model.
-
-Output:
-    Prints per-scenario termination status and a table of assignments, followed
-    by a scenario analysis summary.
+    `rai models deploy --path model` deploys this model to the schema in raiconfig.yaml
+    and waits for its first refresh, which runs the solve.
+    `python -m queries.shift_assignments` then prints the report from the deployed model.
 """
 
 from pathlib import Path
@@ -38,7 +34,7 @@ model = Model("shift_assignment")
 # Define semantic model & load data
 # --------------------------------------------------
 
-data_dir = Path(__file__).parent / "data"
+data_dir = Path(__file__).resolve().parents[1] / "data"
 
 # Concept: workers
 Worker = model.Concept("Worker", identify_by={"id": Integer})
@@ -128,32 +124,3 @@ problem.install_display_strings()
 # The solve's status, published through the model's own relationship.
 SolveStatus = model.Relationship(f"shift assignment solve status is {String:status}")
 model.define(SolveStatus(problem.termination_status()))
-
-# --------------------------------------------------
-# Deploy, then report (`rai models deploy` skips this block)
-# --------------------------------------------------
-
-if __name__ == "__main__":
-    # Deploy and wait for the first refresh, which runs the solve.
-    model.deploy()
-
-    problem.display()
-
-    # Status of the latest refresh's solve. A refresh records any termination
-    # status, so the report checks it.
-    status = model.select(SolveStatus).to_df().iloc[:, 0].tolist()
-    print(f"\nSolve result:\n• status: {', '.join(status)}\n")
-    assert status == ["OPTIMAL"], f"termination status {status}"
-
-    # ----------------------------------------------
-    # Extract results per scenario
-    # ----------------------------------------------
-
-    print("\nAssignments per scenario:")
-    model.select(
-        Scenario.name.alias("scenario"),
-        Worker.name.alias("worker"),
-        Shift.name.alias("shift"),
-    ).where(
-        Worker.x_assign(Shift, Scenario, assigned_ref), assigned_ref > 0
-    ).inspect()
