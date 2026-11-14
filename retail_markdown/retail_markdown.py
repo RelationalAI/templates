@@ -12,7 +12,9 @@ workflow in RelationalAI:
 - Maximize total revenue from discounted sales plus salvage value of leftover inventory.
 
 Run:
-    `python retail_markdown.py`
+    `python retail_markdown.py` deploys the model to the schema in raiconfig.yaml, waits
+    for its first refresh (which runs the solve), and prints the report from the
+    deployed model.
 
 Output:
     Prints the solver termination status, objective value (sales + salvage), and
@@ -170,32 +172,56 @@ problem.maximize(revenue + salvage)
 # Solve and check solution
 # --------------------------------------------------
 
-problem.display()
-problem.solve("highs", time_limit_sec=60)
-model.require(problem.termination_status() == "OPTIMAL")
-si = problem.solve_info()
-si.display()
+# Each refresh of the deployed model runs this solve.
+problem.configure("highs", time_limit_sec=60)
 
-print(f"Status: {si.termination_status}")
-print(f"Total revenue (sales + salvage): ${si.objective_value:.2f}")
+# Deploy the rules behind problem.display() with the model.
+problem.install_display_strings()
 
-# Extract solution via model.select() — properties are populated after solve
-print("\n=== Selected Discounts by Product-Week ===")
-model.select(
-    Product.name.alias("product"), Week_ref.num.alias("week"),
-    Discount_ref.discount_pct.alias("discount_pct"),
-).where(
-    Product.x_select(Week_ref, Discount_ref, selection_ref), selection_ref > 0.5
-).inspect()
+# The solve's status and objective, published through the model's own relationships.
+SolveStatus = model.Relationship(f"retail markdown solve status is {String:status}")
+TotalRevenue = model.Relationship(f"retail markdown total revenue is {Float:revenue}")
+model.define(SolveStatus(problem.termination_status()), TotalRevenue(problem.objective_value()))
 
-print("\n=== Sales by Product-Week ===")
-model.select(
-    Product.name.alias("product"), Week_ref.num.alias("week"),
-    Discount_ref.discount_pct.alias("discount_pct"), sales_ref.alias("units_sold"),
-).where(Product.x_sales(Week_ref, Discount_ref, sales_ref), sales_ref > 0.01).inspect()
+# --------------------------------------------------
+# Deploy, then report (`rai models deploy` skips this block)
+# --------------------------------------------------
 
-print("\n=== Cumulative Sales by Product-Week ===")
-model.select(
-    Product.name.alias("product"), Week_ref.num.alias("week"),
-    cumulative_ref.alias("cumulative_sold"),
-).where(Product.x_cuml_sales(Week_ref, cumulative_ref)).inspect()
+if __name__ == "__main__":
+    # Deploy and wait for the first refresh, which runs the solve.
+    model.deploy()
+
+    problem.display()
+
+    # Status and objective of the latest refresh's solve. A refresh records any
+    # termination status, so the report checks it.
+    status = model.select(SolveStatus).to_df().iloc[:, 0].tolist()
+    total_revenue = model.select(TotalRevenue).to_df().iloc[:, 0].tolist()
+    print(f"\nSolve result:\n• status: {', '.join(status)}")
+    if status != ["OPTIMAL"]:
+        raise SystemExit(f"No optimal markdown plan: termination status {status}")
+    print(f"• objective: {round(total_revenue[0], 9)}\n")
+
+    print(f"Status: {status[0]}")
+    print(f"Total revenue (sales + salvage): ${total_revenue[0]:.2f}")
+
+    # Extract solution via model.select() — properties are populated after solve
+    print("\n=== Selected Discounts by Product-Week ===")
+    model.select(
+        Product.name.alias("product"), Week_ref.num.alias("week"),
+        Discount_ref.discount_pct.alias("discount_pct"),
+    ).where(
+        Product.x_select(Week_ref, Discount_ref, selection_ref), selection_ref > 0.5
+    ).inspect()
+
+    print("\n=== Sales by Product-Week ===")
+    model.select(
+        Product.name.alias("product"), Week_ref.num.alias("week"),
+        Discount_ref.discount_pct.alias("discount_pct"), sales_ref.alias("units_sold"),
+    ).where(Product.x_sales(Week_ref, Discount_ref, sales_ref), sales_ref > 0.01).inspect()
+
+    print("\n=== Cumulative Sales by Product-Week ===")
+    model.select(
+        Product.name.alias("product"), Week_ref.num.alias("week"),
+        cumulative_ref.alias("cumulative_sold"),
+    ).where(Product.x_cuml_sales(Week_ref, cumulative_ref)).inspect()
