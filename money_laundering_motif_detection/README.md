@@ -70,7 +70,7 @@ Each motif owns its own decisions and constraints. The bullets below summarise t
   - All chosen burst-tx within `BURST_WINDOW_MINUTES` of each other
   - Sub-threshold amount filter
 
-Multi-solution enumeration via `problem.solve(..., solution_limit=K)` is available on every runner for batch analyst-triage workflows. The butterfly and KYC-burst runners exhaust to `OPTIMAL` on the bundled data; the smurf runner hits `SOLUTION_LIMIT` because pairwise-distinct beneficial-owner cohorts can swap any one chosen smurf for the dup-BO decoys (47 or 48), opening more cohorts than `MAX_SMURF_MOTIFS=5`. Raise the limit to enumerate further.
+Multi-solution enumeration via `problem.configure(..., solution_limit=K)` is available on every runner for batch analyst-triage workflows. The butterfly and KYC-burst runners exhaust to `OPTIMAL` on the bundled data; the smurf runner hits `SOLUTION_LIMIT` because pairwise-distinct beneficial-owner cohorts can swap any one chosen smurf for the dup-BO decoys (47 or 48), opening more cohorts than `MAX_SMURF_MOTIFS=5`. Raise the limit to enumerate further.
 
 ## What's included
 
@@ -88,7 +88,8 @@ Multi-solution enumeration via `problem.solve(..., solution_limit=K)` is availab
 
 ### Access
 - A Snowflake account that has the RAI Native App installed.
-- A Snowflake user with permissions to access the RAI Native App.
+- The one-time model deployment setup on that account, done by an account administrator: follow [Set up model deployment](https://private.relational.ai/early-access/model-deploy-setup) through **Governed setup**, **PAT authentication**, and steps 1-2 of **Additional setup for the prescriptive reasoner** (Quickstart step 4 below covers this template's own schema). It gives you a model role, a programmatic access token (PAT) stored as a secret, an external access integration, a PAT user, and a warehouse.
+- A Snowflake user that holds the model role.
 
 ### Tools
 - Python >= 3.10
@@ -116,17 +117,58 @@ Multi-solution enumeration via `problem.solve(..., solution_limit=K)` is availab
    python -m pip install .
    ```
 
-4. Configure:
-   ```bash
-   rai init
+4. Configure: run `rai init` to create `raiconfig.yaml` with your Snowflake connection, set the connection `role` to the model role, then add a `deployment` section. Give each template its own schema pair so two deployed templates never share one.
+   ```yaml
+   reasoners:
+     prescriptive:
+       name: money_laundering_motif_detection_solver   # created on first deploy if it doesn't exist
+   deployment:
+     role: <MODEL_ROLE>
+     public_schema: <DB>.MONEY_LAUNDERING_MOTIF_DETECTION   # published views and tables
+     identity:
+       internal_schema: <DB>.MONEY_LAUNDERING_MOTIF_DETECTION_META   # solver inputs, results, refresh procedures
+     schedules:
+       standard:
+         interval_s: 0              # refresh only on deploy or on demand
+     schedule: standard
+     pat_secret: <PAT_SECRET>       # these four come from the setup page
+     pat_eai: <PAT_EAI>
+     pat_user: <PAT_USER>
+     pat_warehouse: <PAT_WAREHOUSE>
    ```
+   Without the `deployment` section, each runner stops with an error naming the missing setting.
 
-5. Run any of the three motif detectors. They share the bundled data and run independently:
+   Before the first run, create the internal schema as the model role, and have an administrator grant the RAI Native App caller access to it. The internal schema holds only this model's objects, so the grants cover all of it, including the solver's result tables that the deploy creates:
+   ```sql
+   -- as the model role
+   CREATE SCHEMA IF NOT EXISTS <DB>.MONEY_LAUNDERING_MOTIF_DETECTION_META;
+
+   -- as an administrator
+   GRANT CALLER USAGE ON DATABASE <DB> TO APPLICATION <RAI_APP_NAME>;
+   GRANT CALLER USAGE ON SCHEMA <DB>.MONEY_LAUNDERING_MOTIF_DETECTION_META TO APPLICATION <RAI_APP_NAME>;
+   GRANT CALLER USAGE ON WAREHOUSE <PAT_WAREHOUSE> TO APPLICATION <RAI_APP_NAME>;
+   GRANT INHERITED CALLER SELECT ON ALL TABLES IN SCHEMA <DB>.MONEY_LAUNDERING_MOTIF_DETECTION_META TO APPLICATION <RAI_APP_NAME>;
+   GRANT INHERITED CALLER SELECT ON ALL DYNAMIC TABLES IN SCHEMA <DB>.MONEY_LAUNDERING_MOTIF_DETECTION_META TO APPLICATION <RAI_APP_NAME>;
+   GRANT INHERITED CALLER SELECT ON ALL VIEWS IN SCHEMA <DB>.MONEY_LAUNDERING_MOTIF_DETECTION_META TO APPLICATION <RAI_APP_NAME>;
+   GRANT INHERITED CALLER INSERT, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA <DB>.MONEY_LAUNDERING_MOTIF_DETECTION_META TO APPLICATION <RAI_APP_NAME>;
+   GRANT CALLER CREATE TABLE, CREATE STAGE ON SCHEMA <DB>.MONEY_LAUNDERING_MOTIF_DETECTION_META TO APPLICATION <RAI_APP_NAME>;
+   GRANT INHERITED CALLER READ, WRITE ON ALL STAGES IN SCHEMA <DB>.MONEY_LAUNDERING_MOTIF_DETECTION_META TO APPLICATION <RAI_APP_NAME>;
+   ```
+   The deploy creates the public schema `<DB>.MONEY_LAUNDERING_MOTIF_DETECTION` if it doesn't exist.
+
+5. Run any of the three motif detectors. They share the bundled data and the configured schema pair:
    ```bash
    python motif_butterfly.py
    python motif_smurf_army.py
    python motif_kyc_burst.py
    ```
+   Each runner deploys the model, waits for the first refresh, which runs that runner's solve, and prints its report from the deployed model. `rai models deploy --path motif_butterfly.py` (or another runner) deploys without printing the report.
+
+   The three runners deploy the same model, `money_laundering_motif_detection`, each with only its own motif. Running a different runner than the last one redeploys, replacing the previous runner's motif, and its refresh solves the new motif; the deployed model then holds only that runner's motif. Running the same runner again without changing it redeploys nothing and does not solve again; it reports the latest refresh. A change to a runner or to its `problem.configure(...)` redeploys, and the redeploy's refresh solves. To solve again without a change, refresh the deployed model, then run the same runner:
+   ```sql
+   CALL <DB>.MONEY_LAUNDERING_MOTIF_DETECTION_META._INTERNAL_REFRESH_MODEL('standard', NULL);
+   ```
+   To remove the deployment, run `rai models teardown --force` from this directory; it keeps the two schemas.
 
 6. Expected output. The bundled dataset plants exactly the motifs each detector targets, plus dup-BO / out-of-window / over-amount decoys for each. Solver build strings and exact wall times will vary; the structure of the output is stable.
 
@@ -253,7 +295,7 @@ See `model_setup.py` and the three motif runners for the implementation, and `ru
 
 ### Scale up / productionize
 
-- Raise the solution limit on a real ledger. Each runner's `MAX_*_MOTIFS` is sized for the demo. On a production ledger with thousands of accounts you may want 100+ so the analyst inbox surfaces the full population of candidates. The `time_limit_sec` argument to `problem.solve` is your safety net.
+- Raise the solution limit on a real ledger. Each runner's `MAX_*_MOTIFS` is sized for the demo. On a production ledger with thousands of accounts you may want 100+ so the analyst inbox surfaces the full population of candidates. The `time_limit_sec` argument to `problem.configure` is your safety net.
 - Pin `relationalai` to a known-good version for reproducible runs, and schedule the runners after each ledger refresh so candidate cases stay current for analyst triage.
 
 ## References
