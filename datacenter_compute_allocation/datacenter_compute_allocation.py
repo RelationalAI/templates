@@ -39,7 +39,8 @@ Output:
     utilization probabilities (top / bottom 5 + n>=0.5 count), Compatibility
     table size and P0/P1/P2 priority counts with under-provisioning penalties,
     top-10 gating workloads by downstream reach, MIP termination status,
-    per-cell summary table (with INFEASIBLE cells as designed diagnostic signal), two Pareto frontiers
+    per-cell summary table (INFEASIBLE cells are designed diagnostic signal;
+    UNSOLVED when the solve stops at its time limit), two Pareto frontiers
     (margin x revenue and diversity x revenue at the 100pct envelope), and
     a DemandScenario overlay replaying the chosen plan under risk scenarios
     (expected / diffusion_slowdown / scaling_break / frontier_loss) with

@@ -148,7 +148,7 @@ Set `EXP_DATABASE` at the top of `datacenter_compute_allocation.py` to that data
        110 workloads assigned, $25.28M revenue, 83% margin, 95% anchor share
    ```
 
-   Full stage-by-stage log (GNN distribution, PageRank scores, both Pareto frontiers, the demand-scenario overlay, and expected per-cell behavior) is in `runbook.md`. GNN probabilities depend on seed and predictive engine; the `--no-gnn` fallback values are deterministic. The output above is from the open-source HiGHS default, which returns a feasible solution at the `time_limit_sec=240` wall and reports `TIME_LIMIT` (signal, not failure, per `rai-prescriptive-results`), so cells are labelled FEASIBLE or UNSOLVED. With Gurobi, Stage 4 reaches `OPTIMAL` in seconds and the same cells are OPTIMAL or INFEASIBLE. Set `SOLVER` in `datacenter_compute_allocation.py` to switch.
+   Full stage-by-stage log (GNN distribution, PageRank scores, both Pareto frontiers, the demand-scenario overlay, and expected per-cell behavior) is in `runbook.md`. GNN probabilities depend on seed and predictive engine; the `--no-gnn` fallback values are deterministic. The output above is from the open-source HiGHS default, which returns a feasible solution at the `time_limit_sec=240` wall and reports `TIME_LIMIT` (signal, not failure, per `rai-prescriptive-results`), so cells are labelled FEASIBLE or UNSOLVED. With Gurobi, Stage 4 reaches `OPTIMAL` in seconds and the cells are labelled OPTIMAL or INFEASIBLE. Set `SOLVER` in `datacenter_compute_allocation.py` to switch.
 
 ## Template structure
 
