@@ -11,7 +11,9 @@ This script demonstrates a multi-mode transportation optimization model in Relat
 - Minimize total cost (inventory holding + TL fixed cost + LTL variable cost).
 
 Run:
-    `python supply_chain_transport.py`
+    `python supply_chain_transport.py` deploys the model to the schema in raiconfig.yaml,
+    waits for its first refresh (which runs the solve), and prints the report from the
+    deployed model.
 
 Output:
     Prints the solver termination status, total cost, and tables showing inventory
@@ -252,32 +254,56 @@ problem.minimize(total_cost)
 # Solve and check solution
 # --------------------------------------------------
 
-problem.display()
-problem.solve("highs", time_limit_sec=60)
-model.require(problem.termination_status() == "OPTIMAL")
-si = problem.solve_info()
-si.display()
+# Each refresh of the deployed model runs this solve.
+problem.configure("highs", time_limit_sec=60)
 
-print(f"Status: {si.termination_status}")
-print(f"Total cost: ${si.objective_value:.2f}")
+# Deploy the rules behind problem.display() with the model.
+problem.install_display_strings()
 
-# Extract solution via model.select() — properties are populated after solve
-print("\n=== Inventory Levels ===")
-model.select(
-    FreightGroup.name.alias("freight_group"), time_period_ref.alias("day"),
-    x_inv.alias("inventory"),
-).where(FreightGroup.x_inv(time_period_ref, x_inv)).inspect()
+# The solve's status and objective, published through the model's own relationships.
+SolveStatus = model.Relationship(f"supply chain transport solve status is {String:status}")
+TotalTransportCost = model.Relationship(f"supply chain transport total cost is {Float:cost}")
+model.define(SolveStatus(problem.termination_status()), TotalTransportCost(problem.objective_value()))
 
-print("\n=== Transport Quantities ===")
-model.select(
-    TransportType.name.alias("type"), FreightGroup_ref.name.alias("freight_group"),
-    time_period_ref.alias("day"), x_qty_tra.alias("quantity"),
-).where(
-    TransportType.x_qty_tra(FreightGroup_ref, time_period_ref, x_qty_tra), x_qty_tra > 0.001
-).inspect()
+# --------------------------------------------------
+# Deploy, then report (`rai models deploy` skips this block)
+# --------------------------------------------------
 
-print("\n=== Arrival Days ===")
-model.select(
-    FreightGroup.name.alias("freight_group"),
-    FreightGroup.z_arr_day.alias("arrival_day"),
-).inspect()
+if __name__ == "__main__":
+    # Deploy and wait for the first refresh, which runs the solve.
+    model.deploy()
+
+    problem.display()
+
+    # Status and objective of the latest refresh's solve. A refresh records any
+    # termination status, so the report checks it.
+    status = model.select(SolveStatus).to_df().iloc[:, 0].tolist()
+    cost = model.select(TotalTransportCost).to_df().iloc[:, 0].tolist()
+    print(f"\nSolve result:\n• status: {', '.join(status)}")
+    if status != ["OPTIMAL"]:
+        raise SystemExit(f"No optimal transport plan: termination status {status}")
+    print(f"• objective: {round(cost[0], 9)}\n")
+
+    print(f"Status: {status[0]}")
+    print(f"Total cost: ${cost[0]:.2f}")
+
+    # Extract solution via model.select() — properties are populated after solve
+    print("\n=== Inventory Levels ===")
+    model.select(
+        FreightGroup.name.alias("freight_group"), time_period_ref.alias("day"),
+        x_inv.alias("inventory"),
+    ).where(FreightGroup.x_inv(time_period_ref, x_inv)).inspect()
+
+    print("\n=== Transport Quantities ===")
+    model.select(
+        TransportType.name.alias("type"), FreightGroup_ref.name.alias("freight_group"),
+        time_period_ref.alias("day"), x_qty_tra.alias("quantity"),
+    ).where(
+        TransportType.x_qty_tra(FreightGroup_ref, time_period_ref, x_qty_tra), x_qty_tra > 0.001
+    ).inspect()
+
+    print("\n=== Arrival Days ===")
+    model.select(
+        FreightGroup.name.alias("freight_group"),
+        FreightGroup.z_arr_day.alias("arrival_day"),
+    ).inspect()
