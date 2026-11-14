@@ -10,7 +10,9 @@ This script demonstrates an LP-based test data sizing workflow in RelationalAI:
 - Generate synthetic records consistent with the solved row counts.
 
 Run:
-    `python test_data_generation.py`
+    `python test_data_generation.py` deploys the model to the schema in raiconfig.yaml,
+    waits for its first refresh (which runs the solve), and prints the report from
+    the deployed model.
 
 Output:
     Prints the solver status, total weighted deviation, optimal row counts per
@@ -189,30 +191,21 @@ total_deviation = rai_sum(Table.x_deviation * (11 - Table.priority))
 problem.minimize(total_deviation)
 
 # --------------------------------------------------
-# Solve and check solution
+# Solve
 # --------------------------------------------------
 
-problem.display()
-problem.solve("highs", time_limit_sec=60)
-model.require(problem.termination_status() == "OPTIMAL")
-si = problem.solve_info()
-si.display()
+# Each refresh of the deployed model runs this solve.
+problem.configure("highs", time_limit_sec=60)
 
-print(f"Status: {si.termination_status}")
-print(f"Total weighted deviation: {si.objective_value:.2f}")
+# Deploy the rules behind problem.display() with the model.
+problem.install_display_strings()
 
-# Extract row counts
-row_counts = {}
-results_df = model.select(Table.table_name, Table.x_actual_rows, Table.target_rows).to_df()
-for _, row in results_df.iterrows():
-    actual = int(round(row['actual_rows']))
-    target = int(row['target_rows'])
-    row_counts[row['table_name']] = {'actual': actual, 'target': target}
-
-print("\nOptimal row counts:")
-for table, counts in row_counts.items():
-    dev = abs(counts['actual'] - counts['target'])
-    print(f"  {table}: {counts['actual']} rows (target: {counts['target']}, deviation: {dev})")
+# The solve's status and objective, published through the model's own relationships.
+SolveStatus = model.Relationship(f"test data generation solve status is {String:status}")
+TotalDeviation = model.Relationship(
+    f"test data generation total weighted deviation is {Float:total_deviation}"
+)
+model.define(SolveStatus(problem.termination_status()), TotalDeviation(problem.objective_value()))
 
 # --------------------------------------------------
 # Phase 2: Generate actual test data (optional)
@@ -273,12 +266,44 @@ def generate_test_data(row_counts, seed=42):
 
     return generated
 
-# Generate data and show samples
-print("\n" + "=" * 50)
-print("GENERATED TEST DATA")
-print("=" * 50)
+# --------------------------------------------------
+# Deploy, then report (`rai models deploy` skips this block)
+# --------------------------------------------------
 
-generated_data = generate_test_data(row_counts)
-for table, df in generated_data.items():
-    print(f"\n{table}: {len(df)} rows")
-    print(df.head(3).to_string(index=False))
+if __name__ == "__main__":
+    # Deploy and wait for the first refresh, which runs the solve.
+    model.deploy()
+
+    problem.display()
+
+    # Status and objective of the latest refresh's solve. A refresh records any
+    # termination status, so the report checks it.
+    status = model.select(SolveStatus).to_df().iloc[:, 0].tolist()
+    deviation = model.select(TotalDeviation).to_df().iloc[:, 0].tolist()
+    assert status == ["OPTIMAL"], f"termination status {status}"
+
+    print(f"Status: {status[0]}")
+    print(f"Total weighted deviation: {deviation[0]:.2f}")
+
+    # Extract row counts
+    row_counts = {}
+    results_df = model.select(Table.table_name, Table.x_actual_rows, Table.target_rows).to_df()
+    for _, row in results_df.iterrows():
+        actual = int(round(row['actual_rows']))
+        target = int(row['target_rows'])
+        row_counts[row['table_name']] = {'actual': actual, 'target': target}
+
+    print("\nOptimal row counts:")
+    for table, counts in row_counts.items():
+        dev = abs(counts['actual'] - counts['target'])
+        print(f"  {table}: {counts['actual']} rows (target: {counts['target']}, deviation: {dev})")
+
+    # Generate data and show samples
+    print("\n" + "=" * 50)
+    print("GENERATED TEST DATA")
+    print("=" * 50)
+
+    generated_data = generate_test_data(row_counts)
+    for table, df in generated_data.items():
+        print(f"\n{table}: {len(df)} rows")
+        print(df.head(3).to_string(index=False))
