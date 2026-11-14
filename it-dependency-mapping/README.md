@@ -44,7 +44,7 @@ Built using RelationalAI's **variable-length path enumeration** (`model.path(...
 
 ## What's included
 
-- **Model**: `model/__init__.py` -- the features, dependency edges, path pattern, and depth rule that `rai models deploy --path model` deploys to your Snowflake account.
+- **Model**: the features, dependency edges, path pattern, and depth rule in the `model/` package (`schema.py` declares the concepts, `source.py` loads the sample data, `reasoning.py` states the path pattern and depth rule), which `rai models deploy --path model` deploys to your Snowflake account.
 - **Query**: `queries/dependency_chain_report.py` -- prints the path counts, maximal chains, and owner blast radius from the deployed model.
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - **Data**: `data/features.csv` (14 features across tiers) and `data/dependencies.csv` (15 dependency edges)
@@ -159,7 +159,10 @@ it-dependency-mapping/
 ├── pyproject.toml              # Dependencies and project metadata
 ├── README.md                   # This file
 ├── model/
-│   └── __init__.py             # features, dependency edges, path pattern, and depth rule
+│   ├── __init__.py             # exports of the deployed model
+│   ├── schema.py               # Feature concept and contributes_to relationship
+│   ├── source.py               # loads the sample CSVs
+│   └── reasoning.py            # path pattern and depth rule
 ├── queries/
 │   └── dependency_chain_report.py   # report printed from the deployed model
 └── data/
@@ -197,7 +200,7 @@ A single concept, `Feature`, represents every node in the estate, and one self-r
 - **Primary identifiers**: the string `id` on `Feature`.
 - **Important invariants**: the `contributes_to` graph is acyclic — a feature does not depend on itself, so every enumerated traversal path is a simple chain.
 
-For the full concept and property definitions, see `model/__init__.py`; `runbook.md` builds them step by step with the RAI skills.
+For the full concept and property definitions, see `model/schema.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
@@ -213,7 +216,7 @@ CSV files --> Define Feature + contributes_to --> Enumerate downstream paths -->
 
 **Reduce to maximal chains.** The full path set contains every sub-chain. A path is *maximal* when its node sequence is not a contiguous sub-chain of any other enumerated path -- it cannot be extended upstream or downstream. Filtering to maximal chains leaves only the end-to-end propagation paths. The single longest maximal chain is the worst-case blast radius: joining owner metadata onto its features shows every person a change at the root would have to clear before it reaches the final consumer.
 
-See `model/__init__.py` for the implementation, `queries/dependency_chain_report.py` for the report, and `runbook.md` for the skill-driven reproduction.
+See `model/reasoning.py` for the implementation, `queries/dependency_chain_report.py` for the report, and `runbook.md` for the skill-driven reproduction.
 
 ## Expected output
 
@@ -250,7 +253,7 @@ The deepest chain runs five hops from a raw source all the way to a downstream d
 
 ### Tune parameters
 
-- `MAX_DEPTH` (default `8`, at the top of `model/__init__.py`) bounds the traversal length. Raise it if your estate has longer chains than the sample; lower it to cap enumeration on a denser graph.
+- `MAX_DEPTH` (default `8`, at the top of `model/reasoning.py`) bounds the traversal length. Raise it if your estate has longer chains than the sample; lower it to cap enumeration on a denser graph.
 
 ### Extend the model
 
