@@ -41,7 +41,7 @@ Manufacturing operations must decide how much of each product to make at each fa
 
 ## What's included
 
-- `model/__init__.py` -- the deployed model: concepts, data, constraints, objective, and the solve with sensitivity analysis, deployed with `rai models deploy --path model`
+- `model/` -- the deployed model package, deployed with `rai models deploy --path model`: `schema.py` declares the concepts, `source.py` loads the sample data and checks it, `reasoning.py` states the constraints, objective, and the solve with sensitivity analysis
 - `queries/plan_and_sensitivity.py` -- the report from the deployed model: production plan, shadow prices, reduced costs, basis statuses, and capacity utilization
 - `runbook.md` -- a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself
 - `data/factories.csv` -- Factory names and available resource-hours
@@ -156,6 +156,10 @@ Use this sequence to deploy the model and query it:
    ```
 
    ```text
+   Solve result:
+   • status: OPTIMAL
+   • objective: 200000.0
+
    Baseline status: OPTIMAL, total profit: 200000.00
 
    Production plan:
@@ -187,7 +191,7 @@ Use this sequence to deploy the model and query it:
      steel_factory   40.0        40.0   0.0
    ```
 
-   The formulation printed above the plan is trimmed here. The report checks the solve's status, the plan, and the marginals against the bundled data's optimum, and stops with an error if any of them differs.
+   The report checks the total profit, the plan, and the marginals against the bundled data's optimum, and stops with an error if any of them differs.
 
    Reading the result: `steel_factory` fills all 40 hours (it is the binding factory, so its capacity prices at +4200/hour -- the per-hour profit of the swing product `coils`, i.e. its 30/unit profit times its 140 units/hour rate). `amazing_brewery` meets all demand in 25 of its 30 hours, so its capacity is slack and prices at 0 -- its bottleneck is demand, not capacity. Each of these demand-capped products (`bands`, `stouts`, `ales`) carries a positive reduced cost here: the profit you would gain per extra unit of demand allowed.
 
@@ -216,7 +220,10 @@ Use this sequence to deploy the model and query it:
 ├── runbook.md                # step-by-step analyst walkthrough
 ├── pyproject.toml            # dependencies
 ├── model/
-│   └── __init__.py           # the deployed model (LP + sensitivity solve)
+│   ├── __init__.py           # exports of the deployed model
+│   ├── schema.py             # concepts and properties
+│   ├── source.py             # sample data and its checks
+│   └── reasoning.py          # LP, sensitivity solve, and the published status and objective
 ├── queries/
 │   └── plan_and_sensitivity.py  # report and sensitivity read-back from the deployed model
 └── data/
@@ -233,7 +240,7 @@ The bundled data is a small, hand-checkable product-mix setting -- two factories
 - **`data/factories.csv`** (2 rows) -- `steel_factory` (40 available hours) and `amazing_brewery` (30 available hours).
 - **`data/products.csv`** (4 rows) -- `bands` and `coils` at `steel_factory`, `stouts` and `ales` at `amazing_brewery`, each with a production `rate` (units per hour), a unit `profit`, and a `demand` cap.
 
-Product names are unique across factories, so the plan can be keyed by product name alone. `model/__init__.py` checks the expected factory and product names on load, so an edit to `data/` fails loudly rather than silently passing the name-gated sensitivity checks on zero rows.
+Product names are unique across factories, so the plan can be keyed by product name alone. `model/source.py` checks the expected factory and product names on load, so an edit to `data/` fails loudly rather than silently passing the name-gated sensitivity checks on zero rows.
 
 ## Model overview
 
@@ -243,7 +250,7 @@ The model has two concepts and one relationship linking them; the decision varia
 - **Primary identifiers**: `Factory` by `name`; `Product` by `name` plus `factory_name` (a composite identity).
 - **Important invariants**: production quantities are non-negative and capped at each product's demand; each factory's total resource usage stays within its available hours; profit and rate are positive.
 
-For the full concept and property definitions, see `model/__init__.py`; `runbook.md` builds them step by step with the RAI skills.
+For the full concept and property definitions, see `model/schema.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
@@ -269,7 +276,7 @@ Because the objective is a maximization, the signs mirror a minimize-cost model:
 
 Sensitivity marginals are exact for a linear program. They describe the rate of change at the current optimum -- the range over which that rate holds is not reported (there is no RHS/coefficient ranging) -- and a large, discrete change (adding a factory, removing a product) is a structural change best answered by re-solving.
 
-See `model/__init__.py` and `queries/plan_and_sensitivity.py` for the implementation and `runbook.md` for the skill-driven reproduction.
+See `model/reasoning.py` and `queries/plan_and_sensitivity.py` for the implementation and `runbook.md` for the skill-driven reproduction.
 
 ## Customize this template
 
@@ -277,7 +284,7 @@ See `model/__init__.py` and `queries/plan_and_sensitivity.py` for the implementa
 
 - Replace `data/factories.csv` (columns `name`, `avail`) and `data/products.csv` (columns `factory_name`, `name`, `rate`, `profit`, `demand`) with your own rows. The model and the per-factory marginals pick up new factories and products automatically.
 - Keep product names unique across factories, or key the plan by the composite `(factory_name, name)` instead of by name alone.
-- Update the `EXPECTED_FACTORIES` / `EXPECTED_PRODUCTS` guard sets in `model/__init__.py` (or remove them) so the load-time checks match your data, and update or remove the report's checks of the bundled optimum in `queries/plan_and_sensitivity.py`.
+- Update the `EXPECTED_FACTORIES` / `EXPECTED_PRODUCTS` guard sets in `model/source.py` (or remove them) so the load-time checks match your data, and update or remove the report's checks of the bundled optimum in `queries/plan_and_sensitivity.py`.
 
 ### Tune parameters
 
