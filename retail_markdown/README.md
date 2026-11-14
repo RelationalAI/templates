@@ -38,7 +38,8 @@ This template finds the discount schedule that maximizes revenue across a multi-
 
 ## What's included
 
-- `retail_markdown.py` -- Main script defining the MIP model with discount selection, sales tracking, and revenue optimization; it deploys the model and prints the report from the deployed model
+- `model/__init__.py` -- The MIP model with discount selection, sales tracking, and revenue optimization; `rai models deploy --path model` deploys it to your Snowflake account, where each refresh runs the solve
+- `queries/markdown_plan.py` -- Prints the report from the deployed model: the solve's status and objective and the discount, sales, and cumulative-sales tables
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - `data/products.csv` -- Products with initial price, cost, inventory, base demand, and salvage rate
 - `data/discounts.csv` -- Discount levels with percentage and demand lift factor
@@ -57,28 +58,61 @@ This template finds the discount schedule that maximizes revenue across a multi-
 
 ## Quickstart
 
-1. Download ZIP:
+Before you start, install Python 3.10 or later and complete the access prerequisites above: a Snowflake account with the RAI Native App, the one-time model deployment setup, and a Snowflake user that holds the model role.
+
+Before the first deploy, create this template's internal schema as the model role, and have an administrator grant the RAI Native App caller access to it. The internal schema holds only this model's objects, so the grants cover all of it, including the solver's result tables that the deploy creates:
+
+```sql
+-- as the model role
+CREATE SCHEMA IF NOT EXISTS <DB>.RETAIL_MARKDOWN_META;
+
+-- as an administrator
+GRANT CALLER USAGE ON DATABASE <DB> TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER USAGE ON SCHEMA <DB>.RETAIL_MARKDOWN_META TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER USAGE ON WAREHOUSE <PAT_WAREHOUSE> TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL TABLES IN SCHEMA <DB>.RETAIL_MARKDOWN_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL DYNAMIC TABLES IN SCHEMA <DB>.RETAIL_MARKDOWN_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL VIEWS IN SCHEMA <DB>.RETAIL_MARKDOWN_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER INSERT, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA <DB>.RETAIL_MARKDOWN_META TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER CREATE TABLE, CREATE STAGE ON SCHEMA <DB>.RETAIL_MARKDOWN_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER READ, WRITE ON ALL STAGES IN SCHEMA <DB>.RETAIL_MARKDOWN_META TO APPLICATION <RAI_APP_NAME>;
+```
+
+Use this sequence to deploy the model and query it:
+
+1. **Download the template**
+
+   [Download the ZIP](https://docs.relational.ai/templates/zips/v1/retail_markdown.zip), unzip it, and enter the template directory:
+
    ```bash
-   curl -O https://docs.relational.ai/templates/zips/v1/retail_markdown.zip
    unzip retail_markdown.zip
    cd retail_markdown
    ```
-   > [!TIP]
-   > You can also download the template ZIP using the "Download ZIP" button at the top of this page.
 
-2. Create venv:
+2. **Create a Python environment**
+
+   Create and activate a virtual environment, then update pip:
+
    ```bash
    python -m venv .venv
    source .venv/bin/activate
    python -m pip install --upgrade pip
    ```
 
-3. Install:
+3. **Install the template**
+
+   Install the dependencies pinned in `pyproject.toml`:
+
    ```bash
    python -m pip install .
    ```
 
-4. Configure: run `rai init` to create `raiconfig.yaml` with your Snowflake connection, set the connection `role` to the model role, then add a `deployment` section. Give each template its own schema pair so two deployed templates never share one.
+4. **Configure your project**
+
+   Use the configuration builder in [Install and run PyRel](https://docs.relational.ai/get-started/install-and-run-pyrel/#configure-your-project) to create `raiconfig.yaml` in the template directory and verify your connection.
+
+   Set the connection `role` to the model role, then add the prescriptive reasoner and a `deployment` section. Give each template its own schema pair so two deployed templates never share one:
+
    ```yaml
    reasoners:
      prescriptive:
@@ -97,47 +131,62 @@ This template finds the discount schedule that maximizes revenue across a multi-
      pat_user: <PAT_USER>
      pat_warehouse: <PAT_WAREHOUSE>
    ```
-   Without the `deployment` section, `python retail_markdown.py` stops with an error naming the missing setting.
 
-   Before the first run, create the internal schema as the model role, and have an administrator grant the RAI Native App caller access to it. The internal schema holds only this model's objects, so the grants cover all of it, including the solver's result tables that the deploy creates:
-   ```sql
-   -- as the model role
-   CREATE SCHEMA IF NOT EXISTS <DB>.RETAIL_MARKDOWN_META;
+5. **Deploy the model**
 
-   -- as an administrator
-   GRANT CALLER USAGE ON DATABASE <DB> TO APPLICATION <RAI_APP_NAME>;
-   GRANT CALLER USAGE ON SCHEMA <DB>.RETAIL_MARKDOWN_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT CALLER USAGE ON WAREHOUSE <PAT_WAREHOUSE> TO APPLICATION <RAI_APP_NAME>;
-   GRANT INHERITED CALLER SELECT ON ALL TABLES IN SCHEMA <DB>.RETAIL_MARKDOWN_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT INHERITED CALLER SELECT ON ALL DYNAMIC TABLES IN SCHEMA <DB>.RETAIL_MARKDOWN_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT INHERITED CALLER SELECT ON ALL VIEWS IN SCHEMA <DB>.RETAIL_MARKDOWN_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT INHERITED CALLER INSERT, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA <DB>.RETAIL_MARKDOWN_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT CALLER CREATE TABLE, CREATE STAGE ON SCHEMA <DB>.RETAIL_MARKDOWN_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT INHERITED CALLER READ, WRITE ON ALL STAGES IN SCHEMA <DB>.RETAIL_MARKDOWN_META TO APPLICATION <RAI_APP_NAME>;
-   ```
-   The deploy creates the public schema `<DB>.RETAIL_MARKDOWN` if it doesn't exist.
+   Deploy the model in `model/` to the schemas in `raiconfig.yaml`:
 
-5. Run:
    ```bash
-   python retail_markdown.py
+   rai models deploy --path model
    ```
-   The script deploys the model, waits for the first refresh, which runs the solve, and prints the report from the deployed model. Each refresh of the deployed model runs the solve again; `rai models deploy` deploys without printing the report.
 
-   Running the script again without changing the model redeploys nothing and does not solve again; it reports the latest refresh. A change to the model or to `problem.configure(...)` redeploys, and the redeploy's refresh solves. To solve again without a change, refresh the deployed model, then run the script:
+   The deploy creates the public schema named in `raiconfig.yaml` if it doesn't exist and waits for the model's first refresh, which runs the solve. Each refresh of the deployed model runs the solve again.
+
+   Deploying again without changing the model applies no updates and does not solve again. A change to the model or to `problem.configure(...)` redeploys, and the redeploy's refresh solves.
+
+6. **Query the results**
+
+   Print the report from the deployed model:
+
+   ```bash
+   python -m queries.markdown_plan
+   ```
+
+   ```text
+   Solve result:
+   • status: OPTIMAL
+   • objective: 23374.65
+
+   Status: OPTIMAL
+   Total revenue (sales + salvage): $23374.65
+
+   === Selected Discounts by Product-Week ===
+       product  week  discount_pct
+   0    Jacket     1          20.0
+   1    Jacket     2          20.0
+   2    Jacket     3          20.0
+   3    Jacket     4          20.0
+   ...
+   ```
+
+   The formulation printed above the solve result is trimmed here, and the selected discounts are cut after four rows; the report also prints the units sold and the cumulative sales for each product and week. The report checks the solve's termination status and stops unless it is `OPTIMAL`. Discounts start shallow (20 percent) and deepen to 30 percent later in the season; no product needs the 50 percent tier. See `runbook.md` for the full discount, sales, and cumulative-sales schedule.
+
+   To solve again without changing the model, refresh the deployed model, then run the query again:
+
    ```sql
    CALL <DB>.RETAIL_MARKDOWN_META._INTERNAL_REFRESH_MODEL('standard', NULL);
    ```
-   To remove the deployment, run `rai models teardown --force` from this directory; it keeps the two schemas.
 
-6. Expected output:
-   ```text
-   Status: OPTIMAL
-   Total revenue (sales + salvage): $23374.65
+7. **Tear down the deployment**
+
+   Preview what the teardown removes, then remove it:
+
+   ```bash
+   rai models teardown
+   rai models teardown --force
    ```
 
-   Discounts start shallow (20%) and deepen to 30% later in the season; no
-   product needs the 50% tier. See `runbook.md` for the full discount, sales,
-   and cumulative-sales schedule.
+   The first command lists the model's objects without dropping anything; the second drops them and keeps the two schemas.
 
 ## Template structure
 
@@ -145,15 +194,18 @@ This template finds the discount schedule that maximizes revenue across a multi-
 retail_markdown/
 ├── README.md            # this file
 ├── pyproject.toml       # dependencies
-├── retail_markdown.py   # main script (MIP model, solve, result tables)
 ├── runbook.md           # analyst-facing walkthrough
+├── model/
+│   └── __init__.py      # the deployed model (MIP, solve)
+├── queries/
+│   └── markdown_plan.py # report from the deployed model (result tables)
 └── data/
     ├── products.csv     # products with price, cost, inventory, base demand, salvage rate
     ├── discounts.csv    # discount levels with percentage and demand lift
     └── weeks.csv        # planning weeks with seasonal demand multipliers
 ```
 
-**Start here**: run `python retail_markdown.py` for the full run end to end, or follow `runbook.md` to reproduce it step by step with the RAI skills.
+**Start here**: deploy with `rai models deploy --path model` and run `python -m queries.markdown_plan` for the full run end to end, or follow `runbook.md` to reproduce it step by step with the RAI skills.
 
 ## Sample data
 
@@ -169,7 +221,7 @@ The bundled data is small and illustrative — a short seasonal clearance across
 - **Primary identifiers**: string `name` on `Product`; integer `level` on `Discount`; integer `num` on `Week`.
 - **Important invariants**: exactly one discount level is active per product-week; discounts can only deepen over successive weeks (price ladder); cumulative sales never exceed `initial_inventory`; `discount_pct`, `demand_lift`, and `demand_multiplier` are non-negative; the selection variable is binary and sales variables are non-negative.
 
-For the full concept and property definitions, see `retail_markdown.py`; `runbook.md` builds them step by step with the RAI skills.
+For the full concept and property definitions, see `model/__init__.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
@@ -185,7 +237,7 @@ CSV inputs → load Product / Discount / Week → decision variables (discount c
 3. **Constrain the schedule.** Exactly one discount level is active per product-week; discounts can only deepen from one week to the next (the price ladder); and cumulative sales can never exceed starting inventory.
 4. **Maximize revenue.** The objective adds sales revenue — discounted price times units sold — to the salvage value of unsold units at the end of the horizon, and the solver returns the revenue-maximizing discount schedule.
 
-See `retail_markdown.py` for the implementation and `runbook.md` for the skill-driven reproduction.
+See `model/__init__.py` for the implementation and `runbook.md` for the skill-driven reproduction.
 
 ## Customize this template
 
@@ -229,9 +281,9 @@ Mixed-integer programs can be computationally expensive. Reduce the number of pr
 </details>
 
 <details>
-<summary>rai init fails or connection errors</summary>
+<summary>Connection errors</summary>
 
-Ensure your Snowflake credentials are configured correctly and that the RAI Native App is installed on your account. Run `rai init` again and verify the connection settings.
+Ensure your Snowflake credentials are configured correctly and that the RAI Native App is installed on your account. Re-create `raiconfig.yaml` with the configuration builder (Quickstart step 4) and verify the connection settings.
 </details>
 
 <details>
