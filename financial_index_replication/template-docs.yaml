@@ -205,24 +205,28 @@ guided_walkthrough:
           href: /build/guides/reasoning/prescriptive/decision-problems/constraints/
           label: adds constraints
 
-    - id: require-complete-basket
-      title: Select 20 stocks and allocate the portfolio
+    - id: limit-basket-sectors-and-trades
+      title: Limit the basket, sector exposure and trades
       explanation: |-
         The sample index contains 50 stocks, but the model aims to follow the
         index with a smaller basket. sum(Stock, selected) == N_REPLICATION_NAMES
         marks 20 of those stocks as selected, and sum(Stock, weight) == 1.0 makes
-        the portfolio weights add to 100%.
+        the portfolio weights add to 100%. MAX_WEIGHT * selected prevents
+        investment in unselected stocks and caps each selected stock at 10%.
+        These constraints still allow a selected stock to have zero weight, so
+        the model may invest in fewer than 20 stocks.
 
-        MAX_WEIGHT * selected prevents investment in unselected stocks and
-        caps each selected stock at 10%. These constraints still allow a
-        selected stock to have zero weight, so the model may invest in fewer
-        than 20 stocks.
+        SECTOR_ACTIVE_BAND keeps each sector’s share of the portfolio within
+        four percentage points of that sector’s share of the index.
+        MAX_ADV_PARTICIPATION caps each buy or sell at 5% of the stock’s
+        average daily trading value, which limits the trades needed to move
+        from the previous portfolio.
       focus:
         file: model/reasoning.py
         anchors:
           - start: '# Select exactly N names and invest all capital.'
-            end: ).require(weight <= MAX_WEIGHT * selected)
-            end_offset: 1
+            end: PORTFOLIO_VALUE * (Stock.previous_weight - weight)
+            end_offset: 3
       references:
         sum(Stock, selected) == N_REPLICATION_NAMES:
           anchor:
@@ -241,30 +245,6 @@ guided_walkthrough:
             start_offset: 1
             end: ).require(weight <= MAX_WEIGHT * selected)
             end_offset: 1
-      links:
-        - title: Add constraints
-          href: /build/guides/reasoning/prescriptive/decision-problems/constraints/
-          label: constraints
-
-    - id: limit-sector-and-trades
-      title: Keep sector exposure and trades within limits
-      explanation: |-
-        Matching past index returns is not enough if the basket concentrates
-        in one sector or calls for large trades. SECTOR_ACTIVE_BAND keeps each
-        sector’s share of the portfolio within four percentage points of that
-        sector’s share of the index.
-
-        MAX_ADV_PARTICIPATION compares each proposed buy or sell with the
-        stock’s average daily trading value and caps the trade at 5% of that
-        value. These constraints keep the sector mix near the index while
-        limiting the trades needed to move from the previous portfolio.
-      focus:
-        file: model/reasoning.py
-        anchors:
-          - start: '# Keep sector exposures close to benchmark sector weights.'
-            end: PORTFOLIO_VALUE * (Stock.previous_weight - weight)
-            end_offset: 3
-      references:
         SECTOR_ACTIVE_BAND:
           anchor:
             start: '# Keep sector exposures close to benchmark sector weights.'
@@ -278,7 +258,7 @@ guided_walkthrough:
       links:
         - title: Add constraints
           href: /build/guides/reasoning/prescriptive/decision-problems/constraints/
-          label: constraints
+          label: These constraints
 
     - id: configure-the-solve
       title: Run the solve on each refresh
