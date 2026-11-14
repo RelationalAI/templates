@@ -6,6 +6,7 @@ page:
     - what-this-template-is-for
   omit_from_readme: []
   download_and_run_from_readme: true
+  deployment: true
 
 model_explorer:
   title: Explore the model
@@ -136,7 +137,7 @@ guided_walkthrough:
         monthly tracking fields prepare the model to compare the basket’s
         returns with the index in the next step.
       focus:
-        file: financial_index_replication.py
+        file: model/reasoning.py
         anchors:
           - start: Stock.x_selected = model.Property
             end: name=["weight", Stock.ticker],
@@ -181,7 +182,7 @@ guided_walkthrough:
         the index. This comparison uses past returns and does not guarantee
         the basket will follow the index as closely in future months.
       focus:
-        file: financial_index_replication.py
+        file: model/reasoning.py
         anchors:
           - start: '# Monthly benchmark residual:'
             end: sum(ReturnMonth, pos_error + neg_error).where(
@@ -217,7 +218,7 @@ guided_walkthrough:
         selected stock to have zero weight, so the model may invest in fewer
         than 20 stocks.
       focus:
-        file: financial_index_replication.py
+        file: model/reasoning.py
         anchors:
           - start: '# Select exactly N names and invest all capital.'
             end: ).require(weight <= MAX_WEIGHT * selected)
@@ -258,7 +259,7 @@ guided_walkthrough:
         value. These constraints keep the sector mix near the index while
         limiting the trades needed to move from the previous portfolio.
       focus:
-        file: financial_index_replication.py
+        file: model/reasoning.py
         anchors:
           - start: '# Keep sector exposures close to benchmark sector weights.'
             end: PORTFOLIO_VALUE * (Stock.previous_weight - weight)
@@ -279,15 +280,42 @@ guided_walkthrough:
           href: /build/guides/reasoning/prescriptive/decision-problems/constraints/
           label: constraints
 
-    - id: solve-and-inspect-basket
-      title: Choose the basket and check tracking
+    - id: configure-the-solve
+      title: Run the solve on each refresh
       explanation: |-
         problem.configure(...) sets the solver and time limit that each refresh
         of the deployed model uses when it solves the decision problem under
-        the portfolio rules. model.deploy() deploys the model and waits for the
-        first refresh, which chooses stocks and weights. model.select(...)
-        queries the model for stocks with weights above 0.01% of the portfolio,
-        so a selected stock with zero weight does not appear in the result.
+        the portfolio rules. Deploying the model with rai models deploy --path
+        model waits for the first refresh, which chooses stocks and weights.
+
+        SolveStatus and TotalResidual publish the solve's termination status
+        and total tracking residual through the model's own relationships, so
+        the report can read them after the deployment.
+      focus:
+        file: model/reasoning.py
+        anchors:
+          - start: problem.configure("highs", time_limit_sec=240)
+            end: model.define(SolveStatus(problem.termination_status()), TotalResidual(problem.objective_value()))
+      references:
+        problem.configure(...):
+          anchor:
+            start: problem.configure("highs", time_limit_sec=240)
+            end: problem.configure("highs", time_limit_sec=240)
+        SolveStatus:
+          symbol: SolveStatus
+        TotalResidual:
+          symbol: TotalResidual
+      links:
+        - title: Solve a decision problem
+          href: /build/guides/reasoning/prescriptive/decision-problems/solve/
+          label: solves the decision problem
+
+    - id: inspect-basket
+      title: Check tracking against the index
+      explanation: |-
+        model.select(...) queries the model for stocks with weights above 0.01%
+        of the portfolio, so a selected stock with zero weight does not appear
+        in the result.
 
         portfolio_returns calculates the basket’s monthly returns from those
         weights and stock returns, and tracking_diff compares them with the
@@ -295,24 +323,16 @@ guided_walkthrough:
         as a yearly tracking measure, showing how closely this basket followed
         the index in the sample months.
       focus:
-        file: financial_index_replication.py
+        file: queries/replication_report.py
         anchors:
-          - start: problem.configure("highs", time_limit_sec=240)
+          - start: solution_df = (
             end: return monthly_rms * sqrt(MONTHS_PER_YEAR)
       references:
-        problem.configure(...):
-          anchor:
-            start: problem.configure("highs", time_limit_sec=240)
-            end: problem.configure("highs", time_limit_sec=240)
-        model.deploy():
-          anchor:
-            start: model.deploy()
-            end: model.deploy()
         model.select(...):
           anchor:
             start: model.select(
             end: .to_df()
-            occurrence: 3
+            occurrence: 4
         portfolio_returns:
           anchor:
             start: returns_wide = stock_returns_csv.pivot(
@@ -326,9 +346,6 @@ guided_walkthrough:
             start: 'def annualized_tracking_error():'
             end: return monthly_rms * sqrt(MONTHS_PER_YEAR)
       links:
-        - title: Solve a decision problem
-          href: /build/guides/reasoning/prescriptive/decision-problems/solve/
-          label: solves the decision problem
         - title: Query a model
           href: /build/guides/modeling/query-a-model/
           label: queries the model

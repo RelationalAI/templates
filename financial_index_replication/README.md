@@ -31,24 +31,35 @@ with a simple alternative. Adapt the data and limits for another index
 strategy, but treat the example as a starting point rather than a production
 portfolio.
 
+## Prerequisites
+
+- A Snowflake account that has the RAI Native App installed.
+- The one-time model deployment setup on that account, done by an account administrator: follow [Set up model deployment](https://private.relational.ai/early-access/model-deploy-setup) through **Governed setup**, **PAT authentication**, and steps 1-2 of **Additional setup for the prescriptive reasoner** (the Quickstart covers this template's own schema). It gives you a model role, a programmatic access token (PAT) stored as a secret, an external access integration, a PAT user, and a warehouse.
+- A Snowflake user that holds the model role.
+
 ## Quickstart
 
-Before you start, install Python 3.10 or later and get access to a Snowflake
-account with the RAI Native App. Prescriptive reasoning is in Public Preview;
-ask your RelationalAI support representative to enable it. Preview features are
-for evaluation and testing, not production applications. The template pins
-`relationalai==2.1.1` in `pyproject.toml`.
+Before you start, install Python 3.10 or later and complete the access prerequisites above. Prescriptive reasoning is in Public Preview; ask your RelationalAI support representative to enable it. Preview features are for evaluation and testing, not production applications. The template pins `relationalai==2.1.1` in `pyproject.toml`.
 
-The script deploys the model to your Snowflake account, so an account
-administrator must first complete the one-time model deployment setup there:
-follow [Set up model deployment](https://private.relational.ai/early-access/model-deploy-setup)
-through **Governed setup**, **PAT authentication**, and steps 1-2 of
-**Additional setup for the prescriptive reasoner** (step 4 below covers this
-template's own schema). It gives you a model role, a programmatic access token
-(PAT) stored as a secret, an external access integration, a PAT user, and a
-warehouse. Your Snowflake user must hold the model role.
+Before the first deploy, create this template's internal schema as the model role, and have an administrator grant the RAI Native App caller access to it. The internal schema holds only this model's objects, so the grants cover all of it, including the solver's result tables that the deploy creates:
 
-Use this sequence to run the bundled example:
+```sql
+-- as the model role
+CREATE SCHEMA IF NOT EXISTS <DB>.FINANCIAL_INDEX_REPLICATION_META;
+
+-- as an administrator
+GRANT CALLER USAGE ON DATABASE <DB> TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER USAGE ON SCHEMA <DB>.FINANCIAL_INDEX_REPLICATION_META TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER USAGE ON WAREHOUSE <PAT_WAREHOUSE> TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL TABLES IN SCHEMA <DB>.FINANCIAL_INDEX_REPLICATION_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL DYNAMIC TABLES IN SCHEMA <DB>.FINANCIAL_INDEX_REPLICATION_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL VIEWS IN SCHEMA <DB>.FINANCIAL_INDEX_REPLICATION_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER INSERT, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA <DB>.FINANCIAL_INDEX_REPLICATION_META TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER CREATE TABLE, CREATE STAGE ON SCHEMA <DB>.FINANCIAL_INDEX_REPLICATION_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER READ, WRITE ON ALL STAGES IN SCHEMA <DB>.FINANCIAL_INDEX_REPLICATION_META TO APPLICATION <RAI_APP_NAME>;
+```
+
+Use this sequence to deploy the model and query it:
 
 1. **Download the template**
 
@@ -79,12 +90,14 @@ Use this sequence to run the bundled example:
 
 4. **Configure your project**
 
-   Use the configuration builder in [Start building with PyRel](https://docs.relational.ai/get-started/start-building-with-pyrel/#configure-your-project) to create `raiconfig.yaml` in the template directory and verify your connection. Set the connection `role` to the model role, then add a `deployment` section. Give each template its own schema pair so two deployed templates never share one.
+   Use the configuration builder in [Install and run PyRel](https://docs.relational.ai/get-started/install-and-run-pyrel/#configure-your-project) to create `raiconfig.yaml` in the template directory and verify your connection.
+
+   Set the connection `role` to the model role, then add the prescriptive reasoner and a `deployment` section. Give each template its own schema pair so two deployed templates never share one:
 
    ```yaml
    reasoners:
      prescriptive:
-       name: financial_index_replication_solver   # created on first deploy if it doesn't exist
+       name: financial_index_replication_solver            # created on first deploy if it doesn't exist
    deployment:
      role: <MODEL_ROLE>
      public_schema: <DB>.FINANCIAL_INDEX_REPLICATION               # published views and tables
@@ -100,50 +113,48 @@ Use this sequence to run the bundled example:
      pat_warehouse: <PAT_WAREHOUSE>
    ```
 
-   Without the `deployment` section, `python financial_index_replication.py` stops with an error naming the missing setting.
+5. **Deploy the model**
 
-   Before the first run, create the internal schema as the model role, and have an administrator grant the RAI Native App caller access to it. The internal schema holds only this model's objects, so the grants cover all of it, including the solver's result tables that the deploy creates:
-
-   ```sql
-   -- as the model role
-   CREATE SCHEMA IF NOT EXISTS <DB>.FINANCIAL_INDEX_REPLICATION_META;
-
-   -- as an administrator
-   GRANT CALLER USAGE ON DATABASE <DB> TO APPLICATION <RAI_APP_NAME>;
-   GRANT CALLER USAGE ON SCHEMA <DB>.FINANCIAL_INDEX_REPLICATION_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT CALLER USAGE ON WAREHOUSE <PAT_WAREHOUSE> TO APPLICATION <RAI_APP_NAME>;
-   GRANT INHERITED CALLER SELECT ON ALL TABLES IN SCHEMA <DB>.FINANCIAL_INDEX_REPLICATION_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT INHERITED CALLER SELECT ON ALL DYNAMIC TABLES IN SCHEMA <DB>.FINANCIAL_INDEX_REPLICATION_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT INHERITED CALLER SELECT ON ALL VIEWS IN SCHEMA <DB>.FINANCIAL_INDEX_REPLICATION_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT INHERITED CALLER INSERT, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA <DB>.FINANCIAL_INDEX_REPLICATION_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT CALLER CREATE TABLE, CREATE STAGE ON SCHEMA <DB>.FINANCIAL_INDEX_REPLICATION_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT INHERITED CALLER READ, WRITE ON ALL STAGES IN SCHEMA <DB>.FINANCIAL_INDEX_REPLICATION_META TO APPLICATION <RAI_APP_NAME>;
-   ```
-
-   The deploy creates the public schema `<DB>.FINANCIAL_INDEX_REPLICATION` if it doesn't exist.
-
-5. **Run the template**
-
-   Run the bundled script from the template directory:
+   Deploy the model in `model/` to the schemas in `raiconfig.yaml`:
 
    ```bash
-   python financial_index_replication.py
+   rai models deploy --path model
    ```
 
-   The script deploys the model, waits for the first refresh, which runs the solve, and prints the report from the deployed model. Each refresh of the deployed model runs the solve again; `rai models deploy` deploys without printing the report.
+   The deploy creates the public schema named in `raiconfig.yaml` if it doesn't exist and waits for the model's first refresh, which runs the solve. Each refresh of the deployed model runs the solve again.
+
+   Deploying again without changing the model applies no updates and does not solve again. A change to the model or to `problem.configure(...)` redeploys it.
+
+6. **Query the results**
+
+   Print the report from the deployed model:
+
+   ```bash
+   python -m queries.replication_report
+   ```
 
    ```text
    Selected names: exactly 20
-   Status: OPTIMAL
+   Status: TIME_LIMIT
    Wrote benchmark-vs-replica returns to: data/replica_returns.csv
    ```
 
-   The solve selects exactly 20 names, though a selected stock may have zero
-   weight. It writes `data/replica_returns.csv` for plotting. See `runbook.md`
-   for the basket, sector exposures, tracking quality, and baseline comparison.
+   The solve selects exactly 20 names, though a selected stock may have zero weight. The solve ends as `OPTIMAL` or at its 240 second time limit (`TIME_LIMIT`) with the best basket found so far. The report accepts both, stops on any other termination status, and writes `data/replica_returns.csv` for plotting. See `runbook.md` for the basket, sector exposures, tracking quality, and baseline comparison.
 
-   Running the script again without changing the model redeploys nothing and does not solve again; it reports the latest refresh. A change to the model or to `problem.configure(...)` redeploys, and the redeploy's refresh solves. To solve again without a change, refresh the deployed model, then run the script:
+   To solve again without changing the model, refresh the deployed model, then run the query again:
+
    ```sql
    CALL <DB>.FINANCIAL_INDEX_REPLICATION_META._INTERNAL_REFRESH_MODEL('standard', NULL);
    ```
-   To remove the deployment, run `rai models teardown --force` from this directory; it keeps the two schemas.
+
+7. **Tear down the deployment**
+
+   Preview what the teardown removes, then remove it:
+
+   ```bash
+   rai models teardown
+   rai models teardown --force
+   ```
+
+   The first command lists the model's objects without dropping anything; the second drops them and keeps the two schemas.
+
