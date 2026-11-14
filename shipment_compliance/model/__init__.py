@@ -1,6 +1,6 @@
 """Shipment Compliance (logic reasoning) template.
 
-This script demonstrates derived business rules in RelationalAI:
+This model declares derived business rules in RelationalAI:
 
 - Load sample CSVs describing suppliers, SKUs, shipments, operations, BOMs, and demand.
 - Define four rules as derived Relationships (boolean flags) on existing concepts.
