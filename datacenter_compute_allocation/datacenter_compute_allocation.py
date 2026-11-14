@@ -83,7 +83,7 @@ CHOSEN_DIVERSITY = "none"
 # Stage 4 solver. HiGHS is the open-source default that ships with the
 # prescriptive engine; switch to "gurobi" if your engine has a Gurobi
 # license (faster convergence, tighter MIP gaps on the 24-cell sweep).
-SOLVER = "gurobi"
+SOLVER = "highs"
 SOLVER_TIME_LIMIT_SEC = 240
 
 WORKLOAD_TYPES = ("pretrain", "finetune", "inference", "eval")
