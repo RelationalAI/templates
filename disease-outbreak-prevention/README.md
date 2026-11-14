@@ -39,7 +39,7 @@ Built using **graph analysis** (a directed, weighted graph with `Facility` as th
 ## What's included
 
 - **Model**: shared setup in `model_setup.py` — the `Facility` concept, the `FacilityConnection` edge concept (with `transfer_volume`, `contact_intensity`, and a derived `risk_weight`), and the directed weighted `Graph` built from them.
-- **Runner**: `disease_outbreak_prevention_network.py` (command-line analysis with detailed output) and `app.py` (optional Streamlit web app), both driven by the same shared model.
+- **Runner**: `disease_outbreak_prevention_network.py` (command-line analysis with detailed output, run from a model deployed to your Snowflake account) and `app.py` (optional Streamlit web app), both driven by the same shared model.
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - **Sample data**: `data/facilities.csv` and `data/connections.csv`.
 - **Outputs**: a ranked facility table, a top-priority breakdown, and network summary statistics printed to stdout; the Streamlit app adds an interactive network graph and CSV export.
@@ -49,7 +49,8 @@ Built using **graph analysis** (a directed, weighted graph with `Facility` as th
 ### Access
 
 - A Snowflake account that has the RAI Native App installed.
-- A Snowflake user with permissions to access the RAI Native App.
+- A role that can deploy models, set up once by an account administrator: follow [Set up model deployment](https://private.relational.ai/early-access/model-deploy-setup) (**Try it out**, or **Governed setup** for a shared account). This template has no prescriptive solve, so it needs no PAT setup.
+- A Snowflake user that holds that role.
 
 ### Tools
 
@@ -89,11 +90,23 @@ You can customize the data and model as needed after you have it running end-to-
    python -m pip install .
    ```
 
-4. **Configure Snowflake connection and RAI profile**
+4. **Configure the Snowflake connection and the deployment**
 
-   ```bash
-   rai init
+   Run `rai init` to create `raiconfig.yaml` with your Snowflake connection, set the connection `role` to the model role, then add a `deployment` section. Give each template its own schema pair so two deployed templates never share one; the deploy creates both schemas if they don't exist.
+
+   ```yaml
+   deployment:
+     role: <MODEL_ROLE>
+     public_schema: <DB>.DISEASE_OUTBREAK_PREVENTION              # published views and tables
+     identity:
+       internal_schema: <DB>.DISEASE_OUTBREAK_PREVENTION_META     # refresh procedures and metadata
+     schedules:
+       standard:
+         interval_s: 0           # refresh only on deploy or on demand
+     schedule: standard
    ```
+
+   Without the `deployment` section, `python disease_outbreak_prevention_network.py` stops with an error naming the missing setting.
 
 5. **Run the template**
 
@@ -102,6 +115,8 @@ You can customize the data and model as needed after you have it running end-to-
    ```bash
    python disease_outbreak_prevention_network.py
    ```
+
+   The script deploys the model, waits for its first refresh, and prints the report from the deployed model. `rai models deploy` deploys without printing the report. Running the script again without changing the model redeploys nothing and does not refresh the model again; it reports the latest refresh. A change to the model redeploys, and the redeploy's refresh recomputes the results. To remove the deployment, run `rai models teardown --force` from this directory; it keeps the two schemas.
 
    **Option B: Interactive Streamlit app**
 
@@ -179,7 +194,7 @@ CSV files → model_setup.create_model() → weighted centrality + degree metric
 
 3. **Query and rank.** A single query pulls each facility's identity, type, region, centrality score, and in/out connection counts, then sorts descending by centrality to produce the ranked shortlist.
 
-4. **Present results.** The CLI script prints the ranked table, a top-priority breakdown, network summary statistics, and response recommendations. The optional Streamlit app renders the same ranking as an interactive network graph with a filterable table and CSV export.
+4. **Present results.** The CLI script deploys the model, waits for its first refresh, and prints the ranked table, a top-priority breakdown, network summary statistics, and response recommendations. The optional Streamlit app renders the same ranking as an interactive network graph with a filterable table and CSV export.
 
 See `model_setup.py` and `disease_outbreak_prevention_network.py` for the implementation and `runbook.md` for the skill-driven reproduction.
 

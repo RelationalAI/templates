@@ -9,7 +9,9 @@ RelationalAI:
 - Rank facilities by their centrality to optimize outbreak response.
 
 Run:
-    `python disease_outbreak_prevention_network.py`
+    `python disease_outbreak_prevention_network.py` deploys the model to the schema in
+    raiconfig.yaml, waits for its first refresh, and prints the report from the
+    deployed model.
 
 Output:
     Prints a ranked list of healthcare facilities by degree centrality, showing which
@@ -47,7 +49,7 @@ out_edges = Integer.ref("out_edges")
 
 
 # --------------------------------------------------
-# Query and display results
+# Query and display results (`rai models deploy` skips the report)
 # --------------------------------------------------
 
 def main() -> None:
@@ -135,4 +137,6 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    # Deploy and wait for the first refresh, which computes the graph metrics.
+    model.deploy()
     main()
