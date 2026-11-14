@@ -39,7 +39,7 @@ Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` 
 
 **Prompt:** /rai-prescriptive-problem Which sites should we build and which tower should serve each zone to cover the most people, building at most 3 towers within a $650,000 budget? Use a binary build decision per site, a binary covered decision per zone, and a binary serve decision per feasible site-zone pair. A zone counts as covered only if it's assigned to exactly one built tower, a tower can only serve zones if it's built, and the population a tower serves can't exceed its capacity. Maximize total covered population and persist the decisions to the ontology.
 
-**Response:** OPTIMAL (HiGHS), covered population **90,000 of 102,900** (relative gap 0.0). The model has 3 binary decision families and 5 constraint families; build, cover, and serve decisions are written back as `TowerSite.x_selected`, `DemandZone.y_covered`, and `CoveragePair.z_assigned`. In `cell_tower_coverage.py` the solve is declared with `problem.configure(...)`, so each refresh of the deployed model runs it.
+**Response:** OPTIMAL (HiGHS), covered population **90,000 of 102,900** (relative gap 0.0). The model has 3 binary decision families and 5 constraint families; build, cover, and serve decisions are written back as `TowerSite.x_selected`, `DemandZone.y_covered`, and `CoveragePair.z_assigned`. In `model/__init__.py` the solve is declared with `problem.configure(...)`, so each refresh of the deployed model runs it.
 
 ## 4. Read the build plan
 
@@ -49,4 +49,4 @@ Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` 
 
 ## Data
 
-Bundled CSVs in `data/`: 6 tower sites, 10 demand zones, 19 coverage pairs. The budget ($650k) and tower cap (3) are constants in the script. Full model in `cell_tower_coverage.py`.
+Bundled CSVs in `data/`: 6 tower sites, 10 demand zones, 19 coverage pairs. The budget ($650k) and tower cap (3) are constants in the model. Full model in `model/__init__.py`; the report in `queries/coverage_report.py`.
