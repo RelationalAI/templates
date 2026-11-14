@@ -161,7 +161,10 @@ Run these steps from a terminal:
 ├── runbook.md                   # paste-able graph-analysis walkthrough (RAI skills)
 ├── pyproject.toml               # dependencies
 ├── model/
-│   └── __init__.py              # concepts, data, graph, and rules (reachability + betweenness + assembly paths)
+│   ├── __init__.py              # exports of the deployed model
+│   ├── schema.py                # SKU and BillOfMaterials concepts
+│   ├── source.py                # loads the sample CSVs
+│   └── reasoning.py             # graph and rules (reachability + betweenness + assembly paths)
 ├── queries/
 │   └── dependency_report.py     # report printed from the deployed model
 └── data/
@@ -185,7 +188,7 @@ Run these steps from a terminal:
 
 The model also derives a `feeds` self-relationship on `SKU` (input SKU feeds output SKU), built from the `BillOfMaterials` intermediary and used to enumerate assembly paths, plus a persisted `assembly_depth` property (the longest assembly chain terminating at each SKU that feeds nothing further).
 
-For the full concept and property definitions, see `model/__init__.py`; `runbook.md` builds them step by step with the RAI skills.
+For the full concept and property definitions, see `model/schema.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
@@ -215,7 +218,7 @@ Betweenness centrality ranks components by how many shortest dependency paths pa
 
 Where reachability returns dependency *pairs*, path enumeration returns the actual *build sequences*. It walks the derived `feeds` edge to enumerate every assembly path; because the BOM is acyclic, this yields exactly the simple paths with no cycle risk. A maximal-paths view keeps only the longest non-extendable chains, and the longest assembly depth is persisted as `SKU.assembly_depth`.
 
-See `model/__init__.py` for the implementation, `queries/dependency_report.py` for the report, and `runbook.md` for the skill-driven reproduction.
+See `model/reasoning.py` for the implementation, `queries/dependency_report.py` for the report, and `runbook.md` for the skill-driven reproduction.
 
 ## Customize this template
 

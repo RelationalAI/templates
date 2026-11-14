@@ -40,12 +40,12 @@ The rule structure here is drawn from the public [CMS Medicare](https://www.cms.
 - A PCP-network attribution IC iterating over reference-data `(Plan, Provider)` tuples in different networks and forbidding the cross-network combination
 - A pre-solve dense-ID check on `plans.csv`, `providers.csv`, and `age_buckets.csv` so the solver's integer decision bounds line up with the reference rows the CFDs iterate over (sparse IDs would let the solver pick a value with no matching row, leaving the rules unconstrained for that record and silently dropping it from the post-solve display join)
 - **Multi-solution enumeration as the primary code path**: `problem.configure(..., solution_limit=MAX_RECORDS)` makes each refresh run the search in enumeration mode; `Variable.values(solution_index, value)` joins the three decision variables on a shared solution index to reconstruct each record
-- An empty-result branch driven by `solve_info().num_points`: when no feasible record exists, the report prints a diagnostic instead of hard-failing, which is the right shape for a reusable generator
+- An empty-result branch driven by the `NumPoints` relationship (`problem.num_points()`): when no feasible record exists, the report prints a diagnostic instead of hard-failing, which is the right shape for a reusable generator
 - No check re-evaluates the ICs: every IC uses `implies`, which is solver-only, and `problem.verify()` returns without evaluating implies-bodied ICs, so passing them to it checks nothing. The CFD and network-attribution invariants are directly visible in the expected-output block in the Quickstart: every record's `age_years` vs `plan_type` and every record's `network` vs `provider` are printed side-by-side
 
 ## What's included
 
-- `model/__init__.py` -- ontology, decisions, constraints, and solver configuration; `rai models deploy --path model` deploys it to your Snowflake account, where each refresh runs the solve
+- `model/` -- `schema.py` (ontology), `source.py` (reference data and its pre-solve checks), and `reasoning.py` (decisions, constraints, and solver configuration); `rai models deploy --path model` deploys the package to your Snowflake account, where each refresh runs the solve
 - `queries/eligibility_records.py` -- prints the report from the deployed model: the solve status, the number of solutions, and every generated member record
 - `data/age_buckets.csv` -- 4 representative ages spanning the adult/senior split (2 under 65, 2 at or above)
 - `data/plans.csv` -- 3 plans (PPO, HMO, MedicareAdvantage) each on its own network
@@ -175,9 +175,7 @@ Use this sequence to deploy the model and query it:
            7         28               PPO             1                 1 Dr_North_PPO
    ```
 
-   The formulation printed above the solve result is trimmed here. With `MAX_RECORDS = 16` and a bundled feasible set of 8 records, the solver exhausts the search space and returns status `OPTIMAL` with all 8 records. Each row carries its `solution` index. Solver build strings, exact wall times, and per-solution ordering vary from run to run; the structure of the output and the set of returned records is stable. Each row is one full member: an age of 65 or more always pairs with `MedicareAdvantage`, and `plan_network` always equals `provider_network`. On a real catalog the feasible set typically exceeds `MAX_RECORDS`, and the solver returns status `SOLUTION_LIMIT` once the cap is hit. The report prints the status either way, and prints a diagnostic when the solver returned no records.
-
-   The report stops on a status other than `OPTIMAL`, `SOLUTION_LIMIT`, `INFEASIBLE`, `TIME_LIMIT`, or `UNKNOWN`.
+   With `MAX_RECORDS = 16` and a bundled feasible set of 8 records, the solver exhausts the search space and returns status `OPTIMAL` with all 8 records. Each row carries its `solution` index. Solver build strings, exact wall times, and per-solution ordering vary from run to run; the structure of the output and the set of returned records is stable. Each row is one full member: an age of 65 or more always pairs with `MedicareAdvantage`, and `plan_network` always equals `provider_network`. On a real catalog the feasible set typically exceeds `MAX_RECORDS`, and the solver returns status `SOLUTION_LIMIT` once the cap is hit. The report prints the status either way, and prints a diagnostic when the solver returned no records.
 
    To solve again without changing the model, refresh the deployed model, then run the query again:
 
@@ -202,7 +200,10 @@ Use this sequence to deploy the model and query it:
 ├── README.md
 ├── pyproject.toml
 ├── model/
-│   └── __init__.py
+│   ├── __init__.py
+│   ├── schema.py
+│   ├── source.py
+│   └── reasoning.py
 ├── queries/
 │   └── eligibility_records.py
 └── data/
@@ -258,9 +259,11 @@ network_match_ic = model.where(Plan.network_id != Provider.network_id).require(
 
 ```python
 problem.configure("minizinc", time_limit_sec=60, solution_limit=MAX_RECORDS)
+NumPoints = model.Relationship(f"synthetic eligibility number of solutions is {Integer:count}")
+model.define(NumPoints(problem.num_points()))
 
 # in the report, after the deploy:
-si = problem.solve_info()
+points = model.select(NumPoints).to_df().iloc[:, 0].tolist()
 
 sol_idx = Integer.ref()
 records_df = (
@@ -370,6 +373,6 @@ To extend to a fleet of N members, reintroduce a `Member` concept inside the mod
 
 - `model.where(...)` filters at relational time only -- decision variables are not legal inside it. The rewriter raises this error when it encounters a decision-valued comparison in a `where` clause.
 - Move the decision condition into `implies` and use a tautological relational filter (or a real one) to scope any reference-data Concepts the IC needs. For example, replace `model.where(Plan.id == plan_id).require(num_dependents <= Plan.max_dependents)` with `model.where(Plan.max_dependents >= 0).require(implies(plan_id == Plan.id, num_dependents <= Plan.max_dependents))`.
-- See the three constraint definitions in `model/__init__.py` (`network_match_ic`, `senior_must_medicare_ic`, `non_senior_no_medicare_ic`) for the canonical idiom.
+- See the three constraint definitions in `model/reasoning.py` (`network_match_ic`, `senior_must_medicare_ic`, `non_senior_no_medicare_ic`) for the canonical idiom.
 
 </details>

@@ -32,11 +32,11 @@ The template also demonstrates scenario analysis by sweeping over different mini
 
 - A constraint model that assigns workers to shifts respecting availability and capacity limits
 - Scenario analysis across multiple minimum-coverage levels (1, 2, 3 workers per shift)
-- A report that prints the solve status and stops unless the solver returned `OPTIMAL`
+- A report that prints the solve status and the worker assigned to each shift in every scenario
 
 ## What's included
 
-- `model/__init__.py` -- ontology, constraints, and scenario analysis; `rai models deploy --path model` deploys it to your Snowflake account, where each refresh runs the solve
+- `model/` -- ontology, constraints, and scenario analysis, as a package (`schema.py` declares the concepts, `source.py` loads the sample data, `reasoning.py` states the decision problem); `rai models deploy --path model` deploys it to your Snowflake account, where each refresh runs the solve
 - `queries/shift_assignments.py` -- prints the report from the deployed model: the solve status and the assignments for each scenario
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - `data/workers.csv` -- 10 workers with IDs and names
@@ -163,7 +163,7 @@ Use this sequence to deploy the model and query it:
    ...
    ```
 
-   The formulation printed above the solve result is trimmed here, and the roster is cut after three rows. The three scenarios sweep `min_coverage` from 1 to 3 workers per shift. This is a feasibility problem with no objective, so the solver returns any assignment that satisfies the constraints, and the specific worker-to-shift roster varies from run to run. What is stable is feasibility: the report stops unless the termination status is `OPTIMAL`, and each scenario's roster gives every shift its minimum coverage with no worker over their shift limit. See `runbook.md` for the step-by-step walkthrough.
+   The roster is cut after three rows. The three scenarios sweep `min_coverage` from 1 to 3 workers per shift. This is a feasibility problem with no objective, so the solver returns any assignment that satisfies the constraints, and the specific worker-to-shift roster varies from run to run. What is stable is feasibility: the status above is `OPTIMAL`, and each scenario's roster gives every shift its minimum coverage with no worker over their shift limit. See `runbook.md` for the step-by-step walkthrough.
 
    To solve again without changing the model, refresh the deployed model, then run the query again:
 
@@ -189,7 +189,10 @@ Use this sequence to deploy the model and query it:
 ├── README.md            # this file
 ├── pyproject.toml       # dependencies
 ├── model/
-│   └── __init__.py      # the deployed model: ontology, constraints, scenario sweep
+│   ├── __init__.py      # exports of the deployed model
+│   ├── schema.py        # worker, shift, and scenario concepts
+│   ├── source.py        # loads the sample CSVs and scenario rows
+│   └── reasoning.py     # assignment variable, constraints, solve
 ├── queries/
 │   └── shift_assignments.py  # report from the deployed model
 └── data/
@@ -216,7 +219,7 @@ The model has three concepts plus a `Scenario` concept that parameterizes the co
 - **Primary identifiers**: `Worker.id` and `Shift.id` are integers; `Scenario.name` is a string.
 - **Important invariants**: `Shift.capacity` is a positive integer; each scenario's `min_coverage` must be no larger than the smallest shift capacity or that scenario is infeasible; each worker takes at most `max_shifts` shifts (default 1); a worker can only be assigned to a shift they are available for.
 
-For the full concept and property definitions, see `model/__init__.py`; `runbook.md` builds them step by step with the RAI skills.
+For the full concept and property definitions, see `model/schema.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
@@ -231,9 +234,9 @@ CSV inputs → load Worker / Shift / availability → add Scenario coverage leve
 1. **Load the data.** Workers and shifts come from their CSVs; availability pairs become a `Worker.available_for(Shift)` relationship that scopes which assignments are even possible.
 2. **Set up the decision.** A binary `x_assign` variable indicates whether a worker takes a given shift in a given scenario. Each coverage level (`coverage_1` / `_2` / `_3`) is a `Scenario` with a `min_coverage`, and the variable is scoped to the availability relationship so unavailable pairs are never considered.
 3. **Constrain the roster.** Three constraints govern every scenario: each shift meets its `min_coverage`, each worker takes no more than `max_shifts` shifts (default 1), and no shift exceeds its `capacity`.
-4. **Solve and deploy.** A single solve handles all scenarios simultaneously; this is a feasibility problem with no objective, so the solver returns any assignment satisfying every constraint. `problem.configure(...)` declares the solve, `rai models deploy --path model` deploys the model, and each refresh of the deployed model runs the solve. The report checks the solve status; it does not re-evaluate the constraints, and a refresh started outside the query (`rai models deploy`, the refresh procedure, a schedule) runs no checks, so read `SolveStatus` before relying on a refreshed solution.
+4. **Solve and deploy.** A single solve handles all scenarios simultaneously; this is a feasibility problem with no objective, so the solver returns any assignment satisfying every constraint. `problem.configure(...)` declares the solve, `rai models deploy --path model` deploys the model, and each refresh of the deployed model runs the solve. The report prints the solve status; it does not re-evaluate the constraints, and a refresh started outside the query (`rai models deploy`, the refresh procedure, a schedule) runs no checks, so read `SolveStatus` before relying on a refreshed solution.
 
-See `model/__init__.py` for the implementation and `runbook.md` for the skill-driven reproduction.
+See `model/reasoning.py` for the implementation and `runbook.md` for the skill-driven reproduction.
 
 ## Customize this template
 
@@ -244,8 +247,8 @@ See `model/__init__.py` for the implementation and `runbook.md` for the skill-dr
 
 ### Tune parameters
 
-- **Max shifts per worker** — adjust the `max_shifts` parameter (default `1`) near the top of the decision-problem section.
-- **Coverage levels** — edit the `scenario_data` list to sweep different `min_coverage` values, or add more scenarios.
+- **Max shifts per worker** — adjust the `max_shifts` parameter (default `1`) near the top of `model/reasoning.py`.
+- **Coverage levels** — edit the `scenario_data` list in `model/source.py` to sweep different `min_coverage` values, or add more scenarios.
 
 ### Extend the model
 
@@ -255,7 +258,7 @@ See `model/__init__.py` for the implementation and `runbook.md` for the skill-dr
 
 ### Scale up / productionize
 
-- For Snowflake-backed runs, swap the `read_csv(...)` calls for `model.data(snowflake_table)` and adjust the loaders accordingly.
+- For Snowflake-backed runs, swap the `read_csv(...)` calls in `model/source.py` for `model.data(snowflake_table)` and adjust the loaders accordingly.
 - The feasibility CSP scales to whatever fits the solver's time budget (`time_limit_sec`, default 60). For a scheduled pipeline, pin the `relationalai` version and add an objective so results are reproducible rather than any-feasible.
 
 ## Troubleshooting

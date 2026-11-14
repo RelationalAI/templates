@@ -37,7 +37,7 @@ After determining row counts, the report generates actual test data records with
 
 ## What's included
 
-- `model/__init__.py` -- Row count optimization model; `rai models deploy --path model` deploys it to your Snowflake account, where each refresh runs the solve
+- `model/` -- Row count optimization model, as a package (`schema.py` declares the concepts, `source.py` loads the sample data, `reasoning.py` states the decision problem); `rai models deploy --path model` deploys it to your Snowflake account, where each refresh runs the solve
 - `queries/test_data_plan.py` -- Prints the report from the deployed model: the optimal row counts and the generated test data
 - `data/testgen_schema.csv` -- Table and column definitions with types and foreign keys
 - `data/testgen_constraints.csv` -- Cardinality bounds, coverage, and participation rules
@@ -151,6 +151,10 @@ Use this sequence to deploy the model and query it:
    ```
 
    ```text
+   Solve result:
+   • status: OPTIMAL
+   • objective: 18000.0
+
    Status: OPTIMAL
    Total weighted deviation: 18000.00
 
@@ -186,7 +190,7 @@ Use this sequence to deploy the model and query it:
    ...
    ```
 
-   The formulation printed above the status line is trimmed here, and so are the sample rows of the remaining tables (OrderLine, Supplier, SupplierProduct) that the report also prints. The report stops unless the termination status is `OPTIMAL`. A table can finish away from its target when the foreign-key bounds are tight: here Order and OrderLine move off their targets (800 and 5000 rows) to 1200 and 3600 rows, for a total weighted deviation of 18000. The generated rows come from a fixed random seed, so the sample is repeatable.
+   The sample rows of the remaining tables (OrderLine, Supplier, SupplierProduct) that the report also prints are trimmed here. A table can finish away from its target when the foreign-key bounds are tight: here Order and OrderLine move off their targets (800 and 5000 rows) to 1200 and 3600 rows, for a total weighted deviation of 18000. The generated rows come from a fixed random seed, so the sample is repeatable.
 
    To solve again without changing the model, refresh the deployed model, then run the query again:
 
@@ -211,7 +215,10 @@ Use this sequence to deploy the model and query it:
 ├── README.md
 ├── pyproject.toml
 ├── model/
-│   └── __init__.py
+│   ├── __init__.py      # exports of the deployed model
+│   ├── schema.py        # the table concept
+│   ├── source.py        # loads the CSVs and extracts the foreign keys
+│   └── reasoning.py     # decision variables, constraints, objective, solve
 ├── queries/
 │   └── test_data_plan.py
 └── data/
@@ -227,9 +234,9 @@ Use this sequence to deploy the model and query it:
 The model reads three CSV files describing the database schema: table definitions with column types and foreign keys, constraints (cardinality bounds, coverage, mandatory participation), and row count targets with priorities:
 
 ```python
-schema_df = read_csv(data_dir / "testgen_schema.csv")
-constraints_df = read_csv(data_dir / "testgen_constraints.csv")
-targets_df = read_csv(data_dir / "testgen_targets.csv")
+schema_df = read_csv(DATA_DIR / "testgen_schema.csv")
+constraints_df = read_csv(DATA_DIR / "testgen_constraints.csv")
+targets_df = read_csv(DATA_DIR / "testgen_targets.csv")
 ```
 
 ### 2. Define decision variables
@@ -278,7 +285,7 @@ generated_data = generate_test_data(row_counts)
 ## Customize this template
 
 - **Add your own schema** by editing the three CSV files to match your database structure with its constraints and targets.
-- **Adjust the scale factor** by changing `scale_factor` to proportionally scale all targets up or down.
+- **Adjust the scale factor** by changing `scale_factor` in `model/source.py` to proportionally scale all targets up or down.
 - **Extend data generation** to produce additional column types or more realistic value distributions for your domain.
 - **Add uniqueness constraints** to ensure generated foreign key references follow realistic distributions rather than uniform random.
 

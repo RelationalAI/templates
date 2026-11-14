@@ -1,40 +1,32 @@
 """Eligibility records report: reads the deployed synthetic_eligibility_records model.
 
 Run `python -m queries.eligibility_records` after `rai models deploy --path model`. Prints
-the formulation, the termination status and number of solutions of the latest refresh's
-solve, and every generated member record (one row per solution). Prints a no-records
-diagnostic when the reference data is over-constrained or the search budget expired. The
-report stops on a status other than OPTIMAL (every record enumerated), SOLUTION_LIMIT (the cap
-was hit), INFEASIBLE (no record exists), TIME_LIMIT or UNKNOWN (the budget expired).
+the status and number of solutions of the latest refresh's solve and every generated member
+record (one row per solution). Prints a no-records diagnostic when the reference data is
+over-constrained or the search budget expired.
 """
 
 from model import (
     MAX_RECORDS,
     AgeBucket,
+    NumPoints,
     Plan,
     Provider,
     SolveStatus,
     age_bucket_var,
     model,
     plan_id_var,
-    problem,
     provider_id_var,
 )
 from relationalai.semantics import Integer
 
 if __name__ == "__main__":
-    problem.display()
-
-    # Status and number of solutions of the latest refresh's solve. A refresh records any
-    # termination status, so the report checks it.
     status = model.select(SolveStatus).to_df().iloc[:, 0].tolist()
-    reportable = ("OPTIMAL", "SOLUTION_LIMIT", "INFEASIBLE", "TIME_LIMIT", "UNKNOWN")
-    if len(status) != 1 or status[0] not in reportable:
-        raise SystemExit(f"Unexpected termination status {status}")
-    si = problem.solve_info()
-    print(f"\nSolve result:\n• status: {', '.join(status)}\n• num_points: {si.num_points}\n")
+    points = model.select(NumPoints).to_df().iloc[:, 0].tolist()
+    num_points = points[0] if points else 0
+    print(f"\nSolve result:\n• status: {', '.join(status)}\n• num_points: {num_points}\n")
 
-    if si.num_points is None or si.num_points == 0:
+    if num_points == 0:
         print(
             "\nThe solver returned no eligibility records. See the printed solve status "
             "above and the troubleshooting section in the README for likely causes "
