@@ -1,4 +1,4 @@
-"""Synthetic Eligibility Records (constrained generation, multi-solution) template.
+"""Synthetic Eligibility Records (constrained generation, multi-solution) template: the model.
 
 Generate K distinct, internally consistent member eligibility records per
 solve. Each record is a tuple of three categorical decisions (age bucket,
@@ -11,14 +11,9 @@ attribution. Solve as constraint satisfaction with `solution_limit=K`
 want a batch of records per solve, not one.
 
 Run:
-    `python synthetic_eligibility_records.py` deploys the model to the schema in
-    raiconfig.yaml, waits for its first refresh (which runs the solve), and
-    prints the report from the deployed model.
-
-Output:
-    Prints the formulation, the solver's status block, and every generated
-    member record (one row per solution). Prints a no-records diagnostic
-    when the reference data is over-constrained.
+    `rai models deploy --path model` deploys this model to the schema in raiconfig.yaml
+    and waits for its first refresh, which runs the solve.
+    `python -m queries.eligibility_records` then prints the report from the deployed model.
 """
 
 from pathlib import Path
@@ -40,7 +35,7 @@ SENIOR_THRESHOLD_YEARS = 65
 # to the K records your downstream test fixture wants per solve.
 MAX_RECORDS = 16
 
-DATA_DIR = Path(__file__).parent / "data"
+DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 
 # --------------------------------------------------
 # Define semantic model & load data
@@ -218,60 +213,3 @@ problem.install_display_strings()
 # The solve's status, published through the model's own relationship.
 SolveStatus = model.Relationship(f"synthetic eligibility solve status is {String:status}")
 model.define(SolveStatus(problem.termination_status()))
-
-# --------------------------------------------------
-# Deploy, then report (`rai models deploy` skips this block)
-# --------------------------------------------------
-
-if __name__ == "__main__":
-    # Deploy and wait for the first refresh, which runs the solve.
-    model.deploy()
-
-    problem.display()
-
-    # Status and number of solutions of the latest refresh's solve.
-    status = model.select(SolveStatus).to_df().iloc[:, 0].tolist()
-    si = problem.solve_info()
-    print(f"\nSolve result:\n• status: {', '.join(status)}\n• num_points: {si.num_points}\n")
-
-    # Every IC here is implies-bodied (solver-only), so the report does not
-    # re-evaluate them. The invariants are visible by eye in the table below:
-    # every row prints `age_years` next to `plan_type` (CFD check) and
-    # `plan_network` next to `provider_network` (network-attribution check).
-    if si.num_points is None or si.num_points == 0:
-        print(
-            "\nThe solver returned no eligibility records. See the printed solve status "
-            "above and the troubleshooting section in the README for likely causes "
-            "(over-constrained reference data, mismatched plan/provider networks, or "
-            "the search budget expired before a record was found)."
-        )
-
-    # ----------------------------------------------
-    # Inspect every generated member record
-    # ----------------------------------------------
-
-    # `Variable.values(sol_idx, value)` indexes the solver's outputs across
-    # every returned solution; binding the value slot to a reference Concept's
-    # `.id` walks the chosen ID back to that record's columns in one step.
-
-    sol_idx = Integer.ref()
-    records_df = (
-        model.select(
-            sol_idx.alias("solution"),
-            AgeBucket.age_years.alias("age_years"),
-            Plan.plan_type.alias("plan_type"),
-            Plan.network_id.alias("plan_network"),
-            Provider.network_id.alias("provider_network"),
-            Provider.name.alias("provider"),
-        )
-        .where(
-            age_bucket_var.values(sol_idx, AgeBucket.id),
-            plan_id_var.values(sol_idx, Plan.id),
-            provider_id_var.values(sol_idx, Provider.id),
-        )
-        .to_df()
-        .sort_values("solution")
-        .reset_index(drop=True)
-    )
-    print(f"\nGenerated member records (up to {MAX_RECORDS} per run):")
-    print(records_df.to_string(index=False))

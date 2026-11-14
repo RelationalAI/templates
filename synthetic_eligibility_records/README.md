@@ -40,12 +40,13 @@ The rule structure here is drawn from the public [CMS Medicare](https://www.cms.
 - A PCP-network attribution IC iterating over reference-data `(Plan, Provider)` tuples in different networks and forbidding the cross-network combination
 - A pre-solve dense-ID check on `plans.csv`, `providers.csv`, and `age_buckets.csv` so the solver's integer decision bounds line up with the reference rows the CFDs iterate over (sparse IDs would let the solver pick a value with no matching row, leaving the rules unconstrained for that record and silently dropping it from the post-solve display join)
 - **Multi-solution enumeration as the primary code path**: `problem.configure(..., solution_limit=MAX_RECORDS)` makes each refresh run the search in enumeration mode; `Variable.values(solution_index, value)` joins the three decision variables on a shared solution index to reconstruct each record
-- An empty-result branch driven by `solve_info().num_points`: when no feasible record exists, the script prints a diagnostic instead of hard-failing, which is the right shape for a reusable generator
+- An empty-result branch driven by `solve_info().num_points`: when no feasible record exists, the report prints a diagnostic instead of hard-failing, which is the right shape for a reusable generator
 - No check re-evaluates the ICs: every IC uses `implies`, which is solver-only. The CFD and network-attribution invariants are directly visible in the expected-output block in the Quickstart: every record's `age_years` vs `plan_type` and every record's `network` vs `provider` are printed side-by-side
 
 ## What's included
 
-- `synthetic_eligibility_records.py` -- main script with ontology, decisions, constraints, and solver configuration; it deploys the model and prints the report from the deployed model
+- `model/__init__.py` -- ontology, decisions, constraints, and solver configuration; `rai models deploy --path model` deploys it to your Snowflake account, where each refresh runs the solve
+- `queries/eligibility_records.py` -- prints the report from the deployed model: the solve status, the number of solutions, and every generated member record
 - `data/age_buckets.csv` -- 4 representative ages spanning the adult/senior split (2 under 65, 2 at or above)
 - `data/plans.csv` -- 3 plans (PPO, HMO, MedicareAdvantage) each on its own network
 - `data/providers.csv` -- 4 primary-care providers (1 PPO, 1 HMO, 2 Medicare) so each plan-network has at least one in-network PCP and the bundled K=8 enumeration spans all three plans
@@ -63,28 +64,61 @@ The rule structure here is drawn from the public [CMS Medicare](https://www.cms.
 
 ## Quickstart
 
-1. Download ZIP:
+Before you start, install Python 3.10 or later and complete the access prerequisites above: a Snowflake account with the RAI Native App, the one-time model deployment setup, and a Snowflake user that holds the model role.
+
+Before the first deploy, create this template's internal schema as the model role, and have an administrator grant the RAI Native App caller access to it. The internal schema holds only this model's objects, so the grants cover all of it, including the solver's result tables that the deploy creates:
+
+```sql
+-- as the model role
+CREATE SCHEMA IF NOT EXISTS <DB>.SYNTHETIC_ELIGIBILITY_RECORDS_META;
+
+-- as an administrator
+GRANT CALLER USAGE ON DATABASE <DB> TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER USAGE ON SCHEMA <DB>.SYNTHETIC_ELIGIBILITY_RECORDS_META TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER USAGE ON WAREHOUSE <PAT_WAREHOUSE> TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL TABLES IN SCHEMA <DB>.SYNTHETIC_ELIGIBILITY_RECORDS_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL DYNAMIC TABLES IN SCHEMA <DB>.SYNTHETIC_ELIGIBILITY_RECORDS_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL VIEWS IN SCHEMA <DB>.SYNTHETIC_ELIGIBILITY_RECORDS_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER INSERT, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA <DB>.SYNTHETIC_ELIGIBILITY_RECORDS_META TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER CREATE TABLE, CREATE STAGE ON SCHEMA <DB>.SYNTHETIC_ELIGIBILITY_RECORDS_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER READ, WRITE ON ALL STAGES IN SCHEMA <DB>.SYNTHETIC_ELIGIBILITY_RECORDS_META TO APPLICATION <RAI_APP_NAME>;
+```
+
+Use this sequence to deploy the model and query it:
+
+1. **Download the template**
+
+   [Download the ZIP](https://docs.relational.ai/templates/zips/v1/synthetic_eligibility_records.zip), unzip it, and enter the template directory:
+
    ```bash
-   curl -O https://docs.relational.ai/templates/zips/v1/synthetic_eligibility_records.zip
    unzip synthetic_eligibility_records.zip
    cd synthetic_eligibility_records
    ```
-   > [!TIP]
-   > You can also download the template ZIP using the "Download ZIP" button at the top of this page.
 
-2. Create venv:
+2. **Create a Python environment**
+
+   Create and activate a virtual environment, then update pip:
+
    ```bash
    python -m venv .venv
    source .venv/bin/activate
    python -m pip install --upgrade pip
    ```
 
-3. Install:
+3. **Install the template**
+
+   Install the dependencies pinned in `pyproject.toml`:
+
    ```bash
    python -m pip install .
    ```
 
-4. Configure: run `rai init` to create `raiconfig.yaml` with your Snowflake connection, set the connection `role` to the model role, then add a `deployment` section. Give each template its own schema pair so two deployed templates never share one.
+4. **Configure your project**
+
+   Use the configuration builder in [Install and run PyRel](https://docs.relational.ai/get-started/install-and-run-pyrel/#configure-your-project) to create `raiconfig.yaml` in the template directory and verify your connection.
+
+   Set the connection `role` to the model role, then add the prescriptive reasoner and a `deployment` section. Give each template its own schema pair so two deployed templates never share one:
+
    ```yaml
    reasoners:
      prescriptive:
@@ -103,64 +137,72 @@ The rule structure here is drawn from the public [CMS Medicare](https://www.cms.
      pat_user: <PAT_USER>
      pat_warehouse: <PAT_WAREHOUSE>
    ```
-   Without the `deployment` section, `python synthetic_eligibility_records.py` stops with an error naming the missing setting.
 
-   Before the first run, create the internal schema as the model role, and have an administrator grant the RAI Native App caller access to it. The internal schema holds only this model's objects, so the grants cover all of it, including the solver's result tables that the deploy creates:
-   ```sql
-   -- as the model role
-   CREATE SCHEMA IF NOT EXISTS <DB>.SYNTHETIC_ELIGIBILITY_RECORDS_META;
+5. **Deploy the model**
 
-   -- as an administrator
-   GRANT CALLER USAGE ON DATABASE <DB> TO APPLICATION <RAI_APP_NAME>;
-   GRANT CALLER USAGE ON SCHEMA <DB>.SYNTHETIC_ELIGIBILITY_RECORDS_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT CALLER USAGE ON WAREHOUSE <PAT_WAREHOUSE> TO APPLICATION <RAI_APP_NAME>;
-   GRANT INHERITED CALLER SELECT ON ALL TABLES IN SCHEMA <DB>.SYNTHETIC_ELIGIBILITY_RECORDS_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT INHERITED CALLER SELECT ON ALL DYNAMIC TABLES IN SCHEMA <DB>.SYNTHETIC_ELIGIBILITY_RECORDS_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT INHERITED CALLER SELECT ON ALL VIEWS IN SCHEMA <DB>.SYNTHETIC_ELIGIBILITY_RECORDS_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT INHERITED CALLER INSERT, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA <DB>.SYNTHETIC_ELIGIBILITY_RECORDS_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT CALLER CREATE TABLE, CREATE STAGE ON SCHEMA <DB>.SYNTHETIC_ELIGIBILITY_RECORDS_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT INHERITED CALLER READ, WRITE ON ALL STAGES IN SCHEMA <DB>.SYNTHETIC_ELIGIBILITY_RECORDS_META TO APPLICATION <RAI_APP_NAME>;
-   ```
-   The deploy creates the public schema `<DB>.SYNTHETIC_ELIGIBILITY_RECORDS` if it doesn't exist.
+   Deploy the model in `model/` to the schemas in `raiconfig.yaml`:
 
-5. Run:
    ```bash
-   python synthetic_eligibility_records.py
+   rai models deploy --path model
    ```
-   The script deploys the model, waits for the first refresh, which runs the solve, and prints the report from the deployed model. Each refresh of the deployed model runs the solve again; `rai models deploy` deploys without printing the report.
 
-   Running the script again without changing the model redeploys nothing and does not solve again; it reports the latest refresh. A change to the model or to `problem.configure(...)` redeploys, and the redeploy's refresh solves. To solve again without a change, refresh the deployed model, then run the script:
-   ```sql
-   CALL <DB>.SYNTHETIC_ELIGIBILITY_RECORDS_META._INTERNAL_REFRESH_MODEL('standard', NULL);
+   The deploy creates the public schema named in `raiconfig.yaml` if it doesn't exist and waits for the model's first refresh, which runs the solve. Each refresh of the deployed model runs the solve again.
+
+   Deploying again without changing the model applies no updates and does not solve again. A change to the model or to `problem.configure(...)` redeploys, and the redeploy's refresh solves.
+
+6. **Query the results**
+
+   Print the report from the deployed model:
+
+   ```bash
+   python -m queries.eligibility_records
    ```
-   To remove the deployment, run `rai models teardown --force` from this directory; it keeps the two schemas.
 
-6. Expected output. With `MAX_RECORDS = 16` and a bundled feasible set of 8 records, the solver exhausts the search space and returns status `OPTIMAL` with all 8 records. Each row carries its `solution` index. Solver build strings, exact wall times, and per-solution ordering will vary; the structure of the output and the *set* of returned records is stable:
    ```text
    Solve result:
    • status: OPTIMAL
    • num_points: 8
 
    Generated member records (up to 16 per run):
-   solution age_years         plan_type plan_network provider_network     provider
-          0        78 MedicareAdvantage            3                3  Dr_Senior_B
-          1        68 MedicareAdvantage            3                3  Dr_Senior_B
-          2        78 MedicareAdvantage            3                3  Dr_Senior_A
-          3        68 MedicareAdvantage            3                3  Dr_Senior_A
-          4        28               HMO            2                2  Dr_East_HMO
-          5        50               HMO            2                2  Dr_East_HMO
-          6        50               PPO            1                1 Dr_North_PPO
-          7        28               PPO            1                1 Dr_North_PPO
+    solution  age_years         plan_type  plan_network  provider_network     provider
+           0         78 MedicareAdvantage             3                 3  Dr_Senior_B
+           1         68 MedicareAdvantage             3                 3  Dr_Senior_B
+           2         78 MedicareAdvantage             3                 3  Dr_Senior_A
+           3         68 MedicareAdvantage             3                 3  Dr_Senior_A
+           4         50               HMO             2                 2  Dr_East_HMO
+           5         28               HMO             2                 2  Dr_East_HMO
+           6         50               PPO             1                 1 Dr_North_PPO
+           7         28               PPO             1                 1 Dr_North_PPO
    ```
 
-   Each row is one full member. The constraint encoding is visible by eye: `age_years >= 65` always pairs with `MedicareAdvantage`, and `plan_network` always equals `provider_network`. On a real catalog the feasible set typically exceeds `MAX_RECORDS`; the solver returns status `SOLUTION_LIMIT` once the cap is hit.
+   The formulation printed above the solve result is trimmed here. With `MAX_RECORDS = 16` and a bundled feasible set of 8 records, the solver exhausts the search space and returns status `OPTIMAL` with all 8 records. Each row carries its `solution` index. Solver build strings, exact wall times, and per-solution ordering vary from run to run; the structure of the output and the set of returned records is stable. Each row is one full member: an age of 65 or more always pairs with `MedicareAdvantage`, and `plan_network` always equals `provider_network`. On a real catalog the feasible set typically exceeds `MAX_RECORDS`, and the solver returns status `SOLUTION_LIMIT` once the cap is hit. The report prints the status either way, and prints a diagnostic when the solver returned no records.
+
+   To solve again without changing the model, refresh the deployed model, then run the query again:
+
+   ```sql
+   CALL <DB>.SYNTHETIC_ELIGIBILITY_RECORDS_META._INTERNAL_REFRESH_MODEL('standard', NULL);
+   ```
+
+7. **Tear down the deployment**
+
+   Preview what the teardown removes, then remove it:
+
+   ```bash
+   rai models teardown
+   rai models teardown --force
+   ```
+
+   The first command lists the model's objects without dropping anything; the second drops them and keeps the two schemas.
 
 ## Template structure
 ```text
 .
 ├── README.md
 ├── pyproject.toml
-├── synthetic_eligibility_records.py
+├── model/
+│   └── __init__.py
+├── queries/
+│   └── eligibility_records.py
 └── data/
     ├── age_buckets.csv
     ├── plans.csv
@@ -215,7 +257,7 @@ network_match_ic = model.where(Plan.network_id != Provider.network_id).require(
 ```python
 problem.configure("minizinc", time_limit_sec=60, solution_limit=MAX_RECORDS)
 
-# in the report, after model.deploy():
+# in the report, after the deploy:
 si = problem.solve_info()
 
 sol_idx = Integer.ref()
@@ -245,7 +287,7 @@ To extend to a fleet of N members, reintroduce a `Member` concept inside the mod
 
 ## Customize this template
 
-- **Use your own plans and providers** by replacing the two CSV files. The constraint structure does not change; the integer ID columns stay required (the script uses them for the `plan_id` / `provider_id` decision domains) and IDs must remain dense and contiguous (the pre-solve check enforces this).
+- **Use your own plans and providers** by replacing the two CSV files. The constraint structure does not change; the integer ID columns stay required (the model uses them for the `plan_id` / `provider_id` decision domains) and IDs must remain dense and contiguous (the pre-solve check enforces this).
 - **Raise the solution limit on a real catalog.** The bundled `MAX_RECORDS = 16` is sized so the solver exhausts the small demo feasible set; production test suites typically want 100--10,000 records per solve. `time_limit_sec` is your safety net -- enumeration stops when either the limit or the budget is reached.
 - **Adjust the seniority gate** by changing `SENIOR_THRESHOLD_YEARS` (currently 65, the CMS Medicare threshold). Both arms of the age-by-plan CFD read this constant directly.
 - **Add a dependent-count decision** by introducing a `num_dependents` scalar decision bounded by 0 and a per-plan `max_dependents` cap. Extend `plans.csv` with a `max_dependents` column, declare `Plan.max_dependents = model.Property(f"{Plan} has {Integer:max_dependents}")`, add `num_dependents = model.Relationship(f"{Integer:num_dependents}")` and a `problem.solve_for(num_dependents, ...)` call, then encode the cap with the same forbidden-pair idiom: `model.where(Plan.max_dependents >= 0).require(implies(plan_id == Plan.id, num_dependents <= Plan.max_dependents))`.
@@ -267,7 +309,7 @@ To extend to a fleet of N members, reintroduce a `Member` concept inside the mod
 <details>
   <summary>Authentication or configuration errors</summary>
 
-- Run `rai init` to create or update your RelationalAI/Snowflake configuration.
+- Re-create `raiconfig.yaml` with the configuration builder (Quickstart step 4).
 - If you have multiple profiles, set `export RAI_PROFILE=<your_profile>`.
 
 </details>
@@ -283,7 +325,7 @@ To extend to a fleet of N members, reintroduce a `Member` concept inside the mod
 <details>
   <summary>Solver returns INFEASIBLE / no feasible eligibility records</summary>
 
-- Check the solve status the script prints. `INFEASIBLE` means the reference data admits no record; `UNKNOWN` or `TIME_LIMIT` means the budget expired before a record was found (raise `time_limit_sec` or shrink the decision domains).
+- Check the solve status the report prints. `INFEASIBLE` means the reference data admits no record; `UNKNOWN` or `TIME_LIMIT` means the budget expired before a record was found (raise `time_limit_sec` or shrink the decision domains).
 - For genuine infeasibility: each solution picks one age bucket, so the model is infeasible only when *every* bucket lands on a side of the senior threshold that has no compatible plan-and-provider combination. Confirm there is at least one Medicare-Advantage plan whose network has a provider iff any age bucket has `age_years >= SENIOR_THRESHOLD_YEARS`, and at least one non-Medicare plan whose network has a provider iff any bucket has `age_years < SENIOR_THRESHOLD_YEARS`. The pre-solve coverage check also warns on either-direction asymmetry between `plans.csv` and `providers.csv`; read the startup warnings before assuming the data is sound.
 
 </details>
@@ -307,7 +349,7 @@ To extend to a fleet of N members, reintroduce a `Member` concept inside the mod
 <details>
   <summary>Warning: provider network(s) [...] have no plans in plans.csv</summary>
 
-- The script's symmetric coverage check found a `network_id` value in `providers.csv` that does not appear in any `plans.csv` row. The PCP-network-attribution IC forbids cross-network `(plan, provider)` combinations, so providers in those networks can never be matched to any plan and will never appear in a generated record. The model is still solvable -- this is a warning, not an error.
+- The model's symmetric coverage check found a `network_id` value in `providers.csv` that does not appear in any `plans.csv` row. The PCP-network-attribution IC forbids cross-network `(plan, provider)` combinations, so providers in those networks can never be matched to any plan and will never appear in a generated record. The model is still solvable -- this is a warning, not an error.
 - Add a plan on the listed network(s) to make those providers reachable, or remove the dead provider rows from `providers.csv`.
 
 </details>
@@ -326,6 +368,6 @@ To extend to a fleet of N members, reintroduce a `Member` concept inside the mod
 
 - `model.where(...)` filters at relational time only -- decision variables are not legal inside it. The rewriter raises this error when it encounters a decision-valued comparison in a `where` clause.
 - Move the decision condition into `implies` and use a tautological relational filter (or a real one) to scope any reference-data Concepts the IC needs. For example, replace `model.where(Plan.id == plan_id).require(num_dependents <= Plan.max_dependents)` with `model.where(Plan.max_dependents >= 0).require(implies(plan_id == Plan.id, num_dependents <= Plan.max_dependents))`.
-- See the three constraint definitions in `synthetic_eligibility_records.py` (`network_match_ic`, `senior_must_medicare_ic`, `non_senior_no_medicare_ic`) for the canonical idiom.
+- See the three constraint definitions in `model/__init__.py` (`network_match_ic`, `senior_must_medicare_ic`, `non_senior_no_medicare_ic`) for the canonical idiom.
 
 </details>
