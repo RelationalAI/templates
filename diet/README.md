@@ -35,11 +35,11 @@ Built using **prescriptive reasoning** (linear programming with continuous decis
 
 ## What's included
 
-- **Model**: two concepts (`Food`, `Nutrient`), a `Scenario` concept, per-food decision variables, nutrient-bound constraints, and a cost-minimizing objective — all in `model/__init__.py`, which `rai models deploy --path model` deploys to your Snowflake account, where each refresh runs the solve.
+- **Model**: two concepts (`Food`, `Nutrient`), a `Scenario` concept, per-food decision variables, nutrient-bound constraints, and a cost-minimizing objective — in the `model/` package (`schema.py` declares the concepts, `source.py` loads the sample data, `reasoning.py` states the decision problem), which `rai models deploy --path model` deploys to your Snowflake account, where each refresh runs the solve.
 - **Query**: `queries/diet_plan.py`, which prints the report from the deployed model.
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - **Sample data**: `data/foods.csv` (foods with cost and per-nutrient content) and `data/nutrients.csv` (nutrient min/max bounds).
-- **Outputs**: per-scenario termination status, objective cost, and a table of the foods (and amounts) in each least-cost basket, printed to stdout.
+- **Outputs**: the solve result (termination status, objective cost, solver details) and a table of the foods (and amounts) in each least-cost basket, printed to stdout.
 
 ## Prerequisites
 
@@ -151,6 +151,10 @@ Use this sequence to deploy the model and query it:
    Solve result:
    • status: OPTIMAL
    • objective: 35.486583333
+   • solve time: 0.00s
+   • num_points: 1
+   • solver: HiGHS_1.15.1
+   ...
 
    Diet plan per scenario:
             scenario       food  cost    amount
@@ -165,7 +169,7 @@ Use this sequence to deploy the model and query it:
    8   scaling_80pct       milk  0.89  5.576111
    ```
 
-   The formulation printed above the solve result is trimmed here. The report checks the solve's termination status and stops unless it is `OPTIMAL`. The least-cost basket is the same three foods in every scenario, scaled with the requirements, for a per-scenario cost of $9.46 / $11.83 / $14.19 at 0.8 / 1.0 / 1.2 times the bounds. See `runbook.md` for the step-by-step walkthrough.
+   The solver details in the solve result are trimmed here. The least-cost basket is the same three foods in every scenario, scaled with the requirements, for a per-scenario cost of $9.46 / $11.83 / $14.19 at 0.8 / 1.0 / 1.2 times the bounds. See `runbook.md` for the step-by-step walkthrough.
 
    To solve again without changing the model, refresh the deployed model, then run the query again:
 
@@ -192,7 +196,10 @@ Use this sequence to deploy the model and query it:
 ├── runbook.md         # step-by-step analyst walkthrough
 ├── pyproject.toml     # dependencies
 ├── model/
-│   └── __init__.py    # the deployed model (concepts, constraints, scenarios, solve)
+│   ├── __init__.py    # exports of the deployed model
+│   ├── schema.py      # concepts and properties
+│   ├── source.py      # sample data and scenarios
+│   └── reasoning.py   # decision variables, constraints, objective, solve
 ├── queries/
 │   └── diet_plan.py   # report from the deployed model
 └── data/
@@ -217,7 +224,7 @@ The model is small and self-contained: two source concepts plus a `Scenario` con
 - **Primary identifiers**: `Food.name` and `Nutrient.name` (both strings); `Scenario.scenario_name` (string).
 - **Important invariants**: nutrient `min` and `max` bounds are non-negative and `min <= max`; each food's decision amount is non-negative (`lower=0`); each food's per-nutrient content is keyed by a nutrient that exists in `nutrients.csv`.
 
-For the full concept and property definitions, see `model/__init__.py`; `runbook.md` builds them step by step with the RAI skills.
+For the full concept and property definitions, see `model/schema.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
@@ -235,7 +242,7 @@ foods.csv + nutrients.csv → concepts → decision variables → constraints + 
 
 4. **Scenario analysis.** A first-class `Scenario` concept scales every nutrient bound by a factor (0.8 / 1.0 / 1.2 here), so tighter and looser requirements solve together in a single solve and their costs are directly comparable.
 
-The prescriptive decision variable appears in the model schema alongside the source-data properties — a unified view of everything the model knows, including variables added by `solve_for()`. See `model/__init__.py` for the implementation and `runbook.md` for the skill-driven reproduction.
+The prescriptive decision variable appears in the model schema alongside the source-data properties — a unified view of everything the model knows, including variables added by `solve_for()`. See `model/reasoning.py` for the implementation and `runbook.md` for the skill-driven reproduction.
 
 ## Customize this template
 
@@ -248,8 +255,8 @@ Focus on the first changes most users will make.
 
 ### Tune parameters
 
-- Edit the scenario rows in `model/__init__.py` (the `("scaling_80pct", 0.8)`, `("baseline", 1.0)`, `("scaling_120pct", 1.2)` tuples) to test different scaling factors, or add rows for finer resolution.
-- Adjust the solver time limit (`time_limit_sec`) if you scale up to many foods and nutrients.
+- Edit the scenario rows in `model/source.py` (the `("scaling_80pct", 0.8)`, `("baseline", 1.0)`, `("scaling_120pct", 1.2)` tuples) to test different scaling factors, or add rows for finer resolution.
+- Adjust the solver time limit (`time_limit_sec` in `model/reasoning.py`) if you scale up to many foods and nutrients.
 
 ### Extend the model
 
