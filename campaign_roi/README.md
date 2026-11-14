@@ -37,7 +37,8 @@ Every marketing team eventually faces the same question: the portfolio of campai
 ## What's included
 
 - **Model**: a continuous LP over a single `Campaign` concept, with per-campaign floor and cap bounds, a total-budget constraint, a paused-region share cap, and a conversion-maximizing objective.
-- **Runner**: `campaign_roi.py` — a single Python script that deploys the model to your Snowflake account, where each refresh runs the solve, and prints the report from the deployed model.
+- **Deployment**: `model/__init__.py` holds the model; `rai models deploy --path model` deploys it to your Snowflake account, where each refresh runs the solve.
+- **Query**: `queries/budget_reallocation.py` prints the report from the deployed model.
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - **Sample data**: `data/campaigns.csv` — 12 campaigns across 5 regions with current budgets and empirical conversion rates.
 - **Outputs**: solver status, optimized-versus-current conversions and lift, a per-campaign reallocation table, and a regional-spend summary against the paused-region cap.
@@ -47,7 +48,7 @@ Every marketing team eventually faces the same question: the portfolio of campai
 ### Access
 
 - A Snowflake account that has the RAI Native App installed.
-- The one-time model deployment setup on that account, done by an account administrator: follow [Set up model deployment](https://private.relational.ai/early-access/model-deploy-setup) through **Governed setup**, **PAT authentication**, and steps 1-2 of **Additional setup for the prescriptive reasoner** (Quickstart step 4 below covers this template's own schema). It gives you a model role, a programmatic access token (PAT) stored as a secret, an external access integration, a PAT user, and a warehouse.
+- The one-time model deployment setup on that account, done by an account administrator: follow [Set up model deployment](https://private.relational.ai/early-access/model-deploy-setup) through **Governed setup**, **PAT authentication**, and steps 1-2 of **Additional setup for the prescriptive reasoner** (the Quickstart covers this template's own schema). It gives you a model role, a programmatic access token (PAT) stored as a secret, an external access integration, a PAT user, and a warehouse.
 - A Snowflake user that holds the model role.
 
 ### Tools
@@ -57,32 +58,61 @@ Every marketing team eventually faces the same question: the portfolio of campai
 
 ## Quickstart
 
-1. Download the ZIP file for this template and extract it:
+Before you start, install Python 3.10 or later and complete the access prerequisites above: a Snowflake account with the RAI Native App, the one-time model deployment setup, and a Snowflake user that holds the model role.
+
+Before the first deploy, create this template's internal schema as the model role, and have an administrator grant the RAI Native App caller access to it. The internal schema holds only this model's objects, so the grants cover all of it, including the solver's result tables that the deploy creates:
+
+```sql
+-- as the model role
+CREATE SCHEMA IF NOT EXISTS <DB>.CAMPAIGN_ROI_META;
+
+-- as an administrator
+GRANT CALLER USAGE ON DATABASE <DB> TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER USAGE ON SCHEMA <DB>.CAMPAIGN_ROI_META TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER USAGE ON WAREHOUSE <PAT_WAREHOUSE> TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL TABLES IN SCHEMA <DB>.CAMPAIGN_ROI_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL DYNAMIC TABLES IN SCHEMA <DB>.CAMPAIGN_ROI_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL VIEWS IN SCHEMA <DB>.CAMPAIGN_ROI_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER INSERT, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA <DB>.CAMPAIGN_ROI_META TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER CREATE TABLE, CREATE STAGE ON SCHEMA <DB>.CAMPAIGN_ROI_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER READ, WRITE ON ALL STAGES IN SCHEMA <DB>.CAMPAIGN_ROI_META TO APPLICATION <RAI_APP_NAME>;
+```
+
+Use this sequence to deploy the model and query it:
+
+1. **Download the template**
+
+   [Download the ZIP](https://docs.relational.ai/templates/zips/v1/campaign_roi.zip), unzip it, and enter the template directory:
 
    ```bash
-   curl -O https://docs.relational.ai/templates/zips/v1/campaign_roi.zip
    unzip campaign_roi.zip
    cd campaign_roi
    ```
 
-   > [!TIP]
-   > You can also download the template ZIP using the "Download ZIP" button at the top of this page.
+2. **Create a Python environment**
 
-2. Create and activate a virtual environment:
+   Create and activate a virtual environment, then update pip:
 
    ```bash
    python -m venv .venv
    source .venv/bin/activate
-   python -m pip install -U pip
+   python -m pip install --upgrade pip
    ```
 
-3. Install dependencies:
+3. **Install the template**
+
+   Install the dependencies pinned in `pyproject.toml`:
 
    ```bash
    python -m pip install .
    ```
 
-4. Configure: run `rai init` to create `raiconfig.yaml` with your Snowflake connection, set the connection `role` to the model role, then add a `deployment` section. Give each template its own schema pair so two deployed templates never share one.
+4. **Configure your project**
+
+   Use the configuration builder in [Install and run PyRel](https://docs.relational.ai/get-started/install-and-run-pyrel/#configure-your-project) to create `raiconfig.yaml` in the template directory and verify your connection.
+
+   Set the connection `role` to the model role, then add the prescriptive reasoner and a `deployment` section. Give each template its own schema pair so two deployed templates never share one:
+
    ```yaml
    reasoners:
      prescriptive:
@@ -101,50 +131,58 @@ Every marketing team eventually faces the same question: the portfolio of campai
      pat_user: <PAT_USER>
      pat_warehouse: <PAT_WAREHOUSE>
    ```
-   Without the `deployment` section, `python campaign_roi.py` stops with an error naming the missing setting.
 
-   Before the first run, create the internal schema as the model role, and have an administrator grant the RAI Native App caller access to it. The internal schema holds only this model's objects, so the grants cover all of it, including the solver's result tables that the deploy creates:
-   ```sql
-   -- as the model role
-   CREATE SCHEMA IF NOT EXISTS <DB>.CAMPAIGN_ROI_META;
+5. **Deploy the model**
 
-   -- as an administrator
-   GRANT CALLER USAGE ON DATABASE <DB> TO APPLICATION <RAI_APP_NAME>;
-   GRANT CALLER USAGE ON SCHEMA <DB>.CAMPAIGN_ROI_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT CALLER USAGE ON WAREHOUSE <PAT_WAREHOUSE> TO APPLICATION <RAI_APP_NAME>;
-   GRANT INHERITED CALLER SELECT ON ALL TABLES IN SCHEMA <DB>.CAMPAIGN_ROI_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT INHERITED CALLER SELECT ON ALL DYNAMIC TABLES IN SCHEMA <DB>.CAMPAIGN_ROI_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT INHERITED CALLER SELECT ON ALL VIEWS IN SCHEMA <DB>.CAMPAIGN_ROI_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT INHERITED CALLER INSERT, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA <DB>.CAMPAIGN_ROI_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT CALLER CREATE TABLE, CREATE STAGE ON SCHEMA <DB>.CAMPAIGN_ROI_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT INHERITED CALLER READ, WRITE ON ALL STAGES IN SCHEMA <DB>.CAMPAIGN_ROI_META TO APPLICATION <RAI_APP_NAME>;
-   ```
-   The deploy creates the public schema `<DB>.CAMPAIGN_ROI` if it doesn't exist.
+   Deploy the model in `model/` to the schemas in `raiconfig.yaml`:
 
-5. Run:
    ```bash
-   python campaign_roi.py
+   rai models deploy --path model
    ```
-   The script deploys the model, waits for the first refresh, which runs the solve, and prints the report from the deployed model. Each refresh of the deployed model runs the solve again; `rai models deploy` deploys without printing the report.
 
-   Running the script again without changing the model redeploys nothing and does not solve again; it reports the latest refresh. A change to the model or to `problem.configure(...)` redeploys, and the redeploy's refresh solves. To solve again without a change, refresh the deployed model, then run the script:
-   ```sql
-   CALL <DB>.CAMPAIGN_ROI_META._INTERNAL_REFRESH_MODEL('standard', NULL);
+   The deploy creates the public schema named in `raiconfig.yaml` if it doesn't exist and waits for the model's first refresh, which runs the solve. Each refresh of the deployed model runs the solve again.
+
+   Deploying again without changing the model applies no updates and does not solve again. A change to the model or to `problem.configure(...)` redeploys, and the redeploy's refresh solves.
+
+6. **Query the results**
+
+   Print the report from the deployed model:
+
+   ```bash
+   python -m queries.budget_reallocation
    ```
-   To remove the deployment, run `rai models teardown --force` from this directory; it keeps the two schemas.
-
-6. Expected output (a few lines confirm a successful run):
 
    ```text
+   Solve result:
+   • status: OPTIMAL
+   • objective: 3151.1
+
    Status: OPTIMAL
    Total expected conversions (optimized): 3,151.1
    Total expected conversions (current):   2,691.0
    Lift: +17.1%
-
+   ...
    Paused region 'WEST' cap: 565.0 (50% of $1,130K total)
    ```
 
-   The optimum hits the WEST regional cap exactly (50% of $1,130K = $565K), reaches the 3x cap on three high-performing campaigns (`WEST_Premium_Upgrade`, `CENTRAL_Retention_3`, `SOUTH_WinBack_6`), and pushes six low-performing campaigns down to the 10% floor. Despite holding total spend constant, conversions increase by 17.1%. The full printout, including the per-campaign reallocation table and regional-spend summary, is in `runbook.md`.
+   The formulation, the per-campaign reallocation table, and the regional spend table are trimmed here. The optimum hits the WEST regional cap exactly (50% of $1,130K = $565K), reaches the 3x cap on three high-performing campaigns (`WEST_Premium_Upgrade`, `CENTRAL_Retention_3`, `SOUTH_WinBack_6`), and pushes six low-performing campaigns down to the 10% floor. Despite holding total spend constant, conversions increase by 17.1%. The report checks the solve's termination status and stops unless it is OPTIMAL. The full printout, including the per-campaign reallocation table and regional-spend summary, is in `runbook.md`.
+
+   To solve again without changing the model, refresh the deployed model, then run the query again:
+
+   ```sql
+   CALL <DB>.CAMPAIGN_ROI_META._INTERNAL_REFRESH_MODEL('standard', NULL);
+   ```
+
+7. **Tear down the deployment**
+
+   Preview what the teardown removes, then remove it:
+
+   ```bash
+   rai models teardown
+   rai models teardown --force
+   ```
+
+   The first command lists the model's objects without dropping anything; the second drops them and keeps the two schemas.
 
 ## Template structure
 
@@ -153,12 +191,15 @@ Every marketing team eventually faces the same question: the portfolio of campai
 ├── README.md               # this file
 ├── pyproject.toml          # dependencies
 ├── runbook.md              # analyst-facing walkthrough
-├── campaign_roi.py         # main script (end-to-end)
+├── model/
+│   └── __init__.py         # the deployed model
+├── queries/
+│   └── budget_reallocation.py  # report from the deployed model
 └── data/
     └── campaigns.csv       # 12 campaigns across 5 regions
 ```
 
-**Start here**: run `python campaign_roi.py` for the full reallocation end to end, or follow `runbook.md` to reproduce it step by step with the RAI skills.
+**Start here**: deploy with `rai models deploy --path model` and run `python -m queries.budget_reallocation` for the full reallocation end to end, or follow `runbook.md` to reproduce it step by step with the RAI skills.
 
 ## Sample data
 
@@ -182,11 +223,11 @@ The model is a single concept: one `Campaign` per row of `campaigns.csv`, enrich
 - **Primary identifiers**: integer `id` on `Campaign`, loaded from `data/campaigns.csv`.
 - **Important invariants**: `current_budget` and `conversion_rate` are non-negative; the optimized budget `x_budget` stays between the per-campaign floor and cap; total spend does not exceed `TOTAL_BUDGET`; and the paused region's spend does not exceed its share cap.
 
-For the full concept and property definitions, see `campaign_roi.py`; `runbook.md` builds them step by step with the RAI skills.
+For the full concept and property definitions, see `model/__init__.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
-The script loads the campaigns into a single `Campaign` concept, defines one continuous decision variable per campaign, adds the floor, cap, total-budget, and regional-cap constraints, maximizes conversions, and prints the reallocation.
+The model loads the campaigns into a single `Campaign` concept, defines one continuous decision variable per campaign, adds the floor, cap, total-budget, and regional-cap constraints, and maximizes conversions; the report prints the reallocation.
 
 ### 1. Decision variable
 
@@ -200,7 +241,7 @@ The per-campaign floor and cap are derived from each campaign's current spend: t
 
 The objective maximizes total expected conversions — the sum over campaigns of budget times conversion rate.
 
-See `campaign_roi.py` for the implementation and `runbook.md` for the skill-driven reproduction.
+See `model/__init__.py` for the implementation and `runbook.md` for the skill-driven reproduction.
 
 ## Customize this template
 
@@ -210,7 +251,7 @@ Replace `data/campaigns.csv` with your own. Required columns: `id`, `name`, `reg
 
 ### Tune parameters
 
-All parameters live at the top of the script under `# Configure inputs`:
+All parameters live at the top of `model/__init__.py` under `# Configure inputs`:
 
 | Parameter | Default | Effect |
 |---|---|---|
