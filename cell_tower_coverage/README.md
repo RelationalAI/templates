@@ -38,7 +38,7 @@ Telecommunications and infrastructure teams routinely have to decide where to bu
 
 ## What's included
 
-- **Model**: `model/__init__.py` builds the semantic model (three concepts, two coverage relationships), the mixed-integer optimization problem (three binary variable families, four constraints, one objective), and the solve; `rai models deploy --path model` deploys it to your Snowflake account, where each refresh runs the solve.
+- **Model**: the `model/` package builds the semantic model (three concepts, two coverage relationships), the mixed-integer optimization problem (three binary variable families, four constraints, one objective), and the solve (`schema.py` declares the concepts, `source.py` loads the sample data, `reasoning.py` states the decision problem); `rai models deploy --path model` deploys it to your Snowflake account, where each refresh runs the solve.
 - **Query**: `queries/coverage_report.py` prints the report from the deployed model and writes `data/coverage_solution.csv`.
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - **Sample data**: 6 candidate tower sites, 10 demand zones, and 19 feasible tower-zone coverage pairs. See *Sample data* below.
@@ -163,6 +163,10 @@ Use this sequence to deploy the model and query it:
    Build budget: $650,000
    Max new towers: 3
 
+   Solve result:
+   • status: OPTIMAL
+   • objective: 90000.0
+
    Status: OPTIMAL
    Objective: covered population = 90,000
 
@@ -177,7 +181,7 @@ Use this sequence to deploy the model and query it:
    Wrote coverage solution to: /path/to/cell_tower_coverage/data/coverage_solution.csv
    ```
 
-   The selected-sites, assigned-zones, and uncovered-zones tables are trimmed here. Three towers (T04, T02, and T06) cover 90,000 of 102,900 people for $610,000 of the $650,000 budget, and zones Z04 and Z10 stay uncovered. The report also writes the per-zone solution to `data/coverage_solution.csv` in the template directory, and it stops unless the termination status is OPTIMAL or TIME_LIMIT.
+   The selected-sites, assigned-zones, and uncovered-zones tables are trimmed here. Three towers (T04, T02, and T06) cover 90,000 of 102,900 people for $610,000 of the $650,000 budget, and zones Z04 and Z10 stay uncovered. The report also writes the per-zone solution to `data/coverage_solution.csv` in the template directory.
 
    To solve again without changing the model, refresh the deployed model, then run the query again:
 
@@ -201,7 +205,10 @@ Use this sequence to deploy the model and query it:
 ```text
 cell_tower_coverage/
   model/
-    __init__.py                   # the deployed model (concepts, constraints, solve)
+    __init__.py                   # exports of the deployed model
+    schema.py                     # concepts and properties
+    source.py                     # loads the CSVs, checks them, sets the build budget and tower cap
+    reasoning.py                  # decision variables, constraints, objective, solve
   queries/
     coverage_report.py            # report from the deployed model
   data/
@@ -235,7 +242,7 @@ Three concepts describe the planning problem; the optimization adds one binary d
 
 `CoveragePair` links each pair to its `TowerSite` and `DemandZone`, so only zones that appear as a pair can be served, and only by the towers they are paired with.
 
-For the full concept and property definitions, see `model/__init__.py`; `runbook.md` builds them step by step with the RAI skills.
+For the full concept and property definitions, see `model/schema.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
@@ -273,7 +280,7 @@ Two portfolio constraints bound the plan: total build cost stays at or under `BU
 
 The objective rewards covering high-population zones, weighting each covered zone by its population. Because each zone has a single binary covered variable and each covered zone has exactly one assignment, the model handles overlapping tower coverage without double-counting population or overloading selected towers. After the solve, the query builds report tables (selected sites with utilization, assigned zones, uncovered zones, coverage summary) and writes `data/coverage_solution.csv`.
 
-See `model/__init__.py` for the implementation and `runbook.md` for the skill-driven reproduction.
+See `model/reasoning.py` for the implementation and `runbook.md` for the skill-driven reproduction.
 
 ## Customize this template
 
