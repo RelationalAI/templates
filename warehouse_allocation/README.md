@@ -40,8 +40,8 @@ Built using **graph analysis** (eigenvector centrality, weakly connected compone
 
 ## What's included
 
-- **Model**: a two-stage pipeline (graph, then prescriptive) on a single shared ontology — `Site`, `Route`, and `Demand` concepts wired to the bundled CSVs, plus the centrality enrichment Stage 1 writes back.
-- **Runner**: `warehouse_allocation.py` — a single Python script that deploys the model to your Snowflake account, where each refresh runs both stages, and prints the report from the deployed model.
+- **Model**: a two-stage pipeline (graph, then prescriptive) on a single shared ontology — `Site`, `Route`, and `Demand` concepts wired to the bundled CSVs, plus the centrality enrichment Stage 1 writes back — all in `model/__init__.py`, which `rai models deploy --path model` deploys to your Snowflake account, where each refresh runs both stages.
+- **Query**: `queries/allocation_report.py`, which prints the report from the deployed model.
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - **Sample data**: a small distribution network of warehouses and stores with routes and per-site demand. See *Sample data* below.
 - **Outputs**: stdout diagnostics (centrality ranking, connected-component summary, bridge routes, solver status) plus the inventory allocation plan as queryable `Site.x_inventory`.
@@ -50,7 +50,7 @@ Built using **graph analysis** (eigenvector centrality, weakly connected compone
 
 ### Access
 - A Snowflake account that has the RAI Native App installed.
-- The one-time model deployment setup on that account, done by an account administrator: follow [Set up model deployment](https://private.relational.ai/early-access/model-deploy-setup) through **Governed setup**, **PAT authentication**, and steps 1-2 of **Additional setup for the prescriptive reasoner** (Quickstart step 4 below covers this template's own schema). It gives you a model role, a programmatic access token (PAT) stored as a secret, an external access integration, a PAT user, and a warehouse.
+- The one-time model deployment setup on that account, done by an account administrator: follow [Set up model deployment](https://private.relational.ai/early-access/model-deploy-setup) through **Governed setup**, **PAT authentication**, and steps 1-2 of **Additional setup for the prescriptive reasoner** (the Quickstart covers this template's own schema). It gives you a model role, a programmatic access token (PAT) stored as a secret, an external access integration, a PAT user, and a warehouse.
 - A Snowflake user that holds the model role.
 
 ### Tools
@@ -59,28 +59,60 @@ Built using **graph analysis** (eigenvector centrality, weakly connected compone
 
 ## Quickstart
 
-1. Download ZIP:
+Before you start, install Python 3.10 or later and complete the access prerequisites above: a Snowflake account with the RAI Native App, the one-time model deployment setup, and a Snowflake user that holds the model role.
+
+Before the first deploy, create this template's internal schema as the model role, and have an administrator grant the RAI Native App caller access to it. The internal schema holds only this model's objects, so the grants cover all of it, including the solver's result tables that the deploy creates:
+
+```sql
+-- as the model role
+CREATE SCHEMA IF NOT EXISTS <DB>.WAREHOUSE_ALLOCATION_META;
+
+-- as an administrator
+GRANT CALLER USAGE ON DATABASE <DB> TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER USAGE ON SCHEMA <DB>.WAREHOUSE_ALLOCATION_META TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER USAGE ON WAREHOUSE <PAT_WAREHOUSE> TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL TABLES IN SCHEMA <DB>.WAREHOUSE_ALLOCATION_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL DYNAMIC TABLES IN SCHEMA <DB>.WAREHOUSE_ALLOCATION_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL VIEWS IN SCHEMA <DB>.WAREHOUSE_ALLOCATION_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER INSERT, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA <DB>.WAREHOUSE_ALLOCATION_META TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER CREATE TABLE, CREATE STAGE ON SCHEMA <DB>.WAREHOUSE_ALLOCATION_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER READ, WRITE ON ALL STAGES IN SCHEMA <DB>.WAREHOUSE_ALLOCATION_META TO APPLICATION <RAI_APP_NAME>;
+```
+
+Use this sequence to deploy the model and query it:
+
+1. **Download the template**
+
+   [Download the ZIP](https://docs.relational.ai/templates/zips/v1/warehouse_allocation.zip), unzip it, and enter the template directory:
+
    ```bash
-   curl -O https://docs.relational.ai/templates/zips/v1/warehouse_allocation.zip
    unzip warehouse_allocation.zip
    cd warehouse_allocation
    ```
-   > [!TIP]
-   > You can also download the template ZIP using the "Download ZIP" button at the top of this page.
 
-2. Create venv:
+2. **Create a Python environment**
+
+   Create and activate a virtual environment, then update pip:
+
    ```bash
    python -m venv .venv
    source .venv/bin/activate
    python -m pip install --upgrade pip
    ```
 
-3. Install:
+3. **Install the template**
+
+   Install the dependencies pinned in `pyproject.toml`:
+
    ```bash
    python -m pip install .
    ```
 
-4. Configure: run `rai init` to create `raiconfig.yaml` with your Snowflake connection, set the connection `role` to the model role, then add a `deployment` section. Give each template its own schema pair so two deployed templates never share one.
+4. **Configure your project**
+
+   Use the configuration builder in [Install and run PyRel](https://docs.relational.ai/get-started/install-and-run-pyrel/#configure-your-project) to create `raiconfig.yaml` in the template directory and verify your connection.
+
+   Set the connection `role` to the model role, then add the prescriptive reasoner and a `deployment` section. Give each template its own schema pair so two deployed templates never share one:
 
    ```yaml
    reasoners:
@@ -101,49 +133,74 @@ Built using **graph analysis** (eigenvector centrality, weakly connected compone
      pat_warehouse: <PAT_WAREHOUSE>
    ```
 
-   Without the `deployment` section, `python warehouse_allocation.py` stops with an error naming the missing setting.
+5. **Deploy the model**
 
-   Before the first run, create the internal schema as the model role, and have an administrator grant the RAI Native App caller access to it. The internal schema holds only this model's objects, so the grants cover all of it, including the solver's result tables that the deploy creates:
+   Deploy the model in `model/` to the schemas in `raiconfig.yaml`:
+
+   ```bash
+   rai models deploy --path model
+   ```
+
+   The deploy creates the public schema named in `raiconfig.yaml` if it doesn't exist and waits for the model's first refresh, which runs the graph analysis and the solve. Each refresh of the deployed model runs both again.
+
+6. **Query the results**
+
+   Print the report from the deployed model:
+
+   ```bash
+   python -m queries.allocation_report
+   ```
+
+   ```text
+   ==================================================
+   Stage 1a: Eigenvector Centrality
+   ==================================================
+               site       type   region  centrality
+   0     Atlanta_DC  WAREHOUSE    SOUTH    0.321427
+   1    Chicago_Hub  WAREHOUSE  MIDWEST    0.631380
+   ...
+
+   ==================================================
+   Stage 1b: Connected Components
+   ==================================================
+   UNIFIED NETWORK: all 10 sites in a single component
+   ...
+
+   ==================================================
+   Stage 2: Inventory Allocation
+   ==================================================
+   ...
+   Status: OPTIMAL
+   Total holding cost: $13713.29
+   ```
+
+   The report also prints the bridge routes, the formulation, and the allocation plan, and it stops unless the solve's termination status is OPTIMAL. The full printout and a step-by-step walkthrough are in `runbook.md`.
+
+   To solve again without changing the model, refresh the deployed model, then run the query again:
 
    ```sql
-   -- as the model role
-   CREATE SCHEMA IF NOT EXISTS <DB>.WAREHOUSE_ALLOCATION_META;
-
-   -- as an administrator
-   GRANT CALLER USAGE ON DATABASE <DB> TO APPLICATION <RAI_APP_NAME>;
-   GRANT CALLER USAGE ON SCHEMA <DB>.WAREHOUSE_ALLOCATION_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT CALLER USAGE ON WAREHOUSE <PAT_WAREHOUSE> TO APPLICATION <RAI_APP_NAME>;
-   GRANT INHERITED CALLER SELECT ON ALL TABLES IN SCHEMA <DB>.WAREHOUSE_ALLOCATION_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT INHERITED CALLER SELECT ON ALL DYNAMIC TABLES IN SCHEMA <DB>.WAREHOUSE_ALLOCATION_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT INHERITED CALLER SELECT ON ALL VIEWS IN SCHEMA <DB>.WAREHOUSE_ALLOCATION_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT INHERITED CALLER INSERT, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA <DB>.WAREHOUSE_ALLOCATION_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT CALLER CREATE TABLE, CREATE STAGE ON SCHEMA <DB>.WAREHOUSE_ALLOCATION_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT INHERITED CALLER READ, WRITE ON ALL STAGES IN SCHEMA <DB>.WAREHOUSE_ALLOCATION_META TO APPLICATION <RAI_APP_NAME>;
+   CALL <DB>.WAREHOUSE_ALLOCATION_META._INTERNAL_REFRESH_MODEL('standard', NULL);
    ```
 
-   The deploy creates the public schema `<DB>.WAREHOUSE_ALLOCATION` if it doesn't exist.
+7. **Tear down the deployment**
 
-5. Run:
+   Preview what the teardown removes, then remove it:
+
    ```bash
-   python warehouse_allocation.py
-   ```
-   The script deploys the model, waits for the first refresh, which runs the solve, and prints the report from the deployed model. Each refresh of the deployed model runs the solve again; `rai models deploy` deploys without printing the report. To remove the deployment, run `rai models teardown --force` from this directory; it keeps the two schemas.
-
-6. Expected output (a few lines confirm a successful run):
-   ```text
-   Stage 1a: Eigenvector Centrality  (Chicago_Hub and Detroit_DC rank highest)
-   Stage 2: Inventory Allocation
-     Status: OPTIMAL
-     Total holding cost: $13713.29
+   rai models teardown
+   rai models teardown --force
    ```
 
-   The full printout and a step-by-step walkthrough are in `runbook.md`.
+   The first command lists the model's objects without dropping anything; the second drops them and keeps the two schemas.
 
 ## Template structure
 
 ```text
 warehouse_allocation/
-  warehouse_allocation.py   # Main script (Stage 1 graph + Stage 2 prescriptive)
+  model/
+    __init__.py             # the deployed model (Stage 1 graph + Stage 2 prescriptive)
+  queries/
+    allocation_report.py    # report from the deployed model
   data/
     sites.csv               # Warehouse and store locations with holding costs
     routes.csv              # Distribution routes with capacity and transport cost
@@ -153,7 +210,7 @@ warehouse_allocation/
   pyproject.toml            # dependencies
 ```
 
-**Start here**: run `python warehouse_allocation.py` for both stages end to end, or follow `runbook.md` to rebuild it step by step.
+**Start here**: deploy with `rai models deploy --path model` and run `python -m queries.allocation_report` for both stages end to end, or follow `runbook.md` to rebuild it step by step.
 
 ## Sample data
 
@@ -171,15 +228,15 @@ One shared ontology threads both stages. Stage 1 (graph) writes centrality onto 
 - **Primary identifiers**: integer `id` on each of `Site`, `Route`, and `Demand`.
 - **Important invariants**: `holding_cost`, `capacity`, and `quantity` are non-negative; the centrality floor applies only to `Site.type == "WAREHOUSE"`; allocation variables are continuous and non-negative.
 
-For the full concept and property definitions, see `warehouse_allocation.py`; `runbook.md` builds them step by step with the RAI skills.
+For the full concept and property definitions, see `model/__init__.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
 Stage 1 characterizes the route topology three ways, then Stage 2 allocates inventory using the results — all on the one shared ontology, so the graph reasoner's output is read directly by the optimizer with no data hand-off in between.
 
-**Stage 1a — Eigenvector centrality.** The script builds an undirected weighted graph from the route network, using route capacity as the edge weight, and scores each site with eigenvector centrality. This surfaces sites that are structurally important because of where they sit in the network, not merely how much throughput passes through them. The scores are written back onto `Site.centrality`.
+**Stage 1a — Eigenvector centrality.** The model builds an undirected weighted graph from the route network, using route capacity as the edge weight, and scores each site with eigenvector centrality. This surfaces sites that are structurally important because of where they sit in the network, not merely how much throughput passes through them. The scores are written back onto `Site.centrality`.
 
-**Stage 1b — Weakly connected components.** The same graph is checked for fragmentation. Weakly connected components reveal whether every site is reachable from every other, or whether the network has split into isolated clusters that no route bridges. The script reports whether the network is unified or fragmented and lists the size and regions of each component.
+**Stage 1b — Weakly connected components.** The same graph is checked for fragmentation. Weakly connected components reveal whether every site is reachable from every other, or whether the network has split into isolated clusters that no route bridges. The report states whether the network is unified or fragmented and lists the size and regions of each component.
 
 **Stage 1c — Bridge routes.** Cross-region routes are flagged as bridges: links whose two endpoints lie in different regions, so losing one fragments the corresponding inter-region flow.
 
@@ -189,7 +246,7 @@ Stage 1 characterizes the route topology three ways, then Stage 2 allocates inve
 sites/routes/demands CSVs → graph (centrality, components, bridges) → Site.centrality → optimizer (budget, demand, centrality floor) → allocation plan
 ```
 
-See `warehouse_allocation.py` for the implementation, and `runbook.md` to reproduce it step by step with the RAI skills.
+See `model/__init__.py` for the implementation, and `runbook.md` to reproduce it step by step with the RAI skills.
 
 ## Customize this template
 
@@ -228,7 +285,7 @@ Make sure you activated the virtual environment and ran `python -m pip install .
 <details>
 <summary>Connection or authentication errors</summary>
 
-Run `rai init` to configure your Snowflake connection. Verify that the RAI Native App is installed and your user has the required permissions.
+Re-create `raiconfig.yaml` with the configuration builder (Quickstart step 4) to configure your Snowflake connection. Verify that the RAI Native App is installed and your user has the required permissions.
 </details>
 
 ## Learn more
