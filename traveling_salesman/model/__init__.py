@@ -1,6 +1,6 @@
-"""Traveling salesman (prescriptive optimization) template.
+"""Traveling salesman (prescriptive optimization) template: the model.
 
-This script demonstrates a mixed-integer linear optimization (MILP) problem
+This package demonstrates a mixed-integer linear optimization (MILP) problem
 in RelationalAI:
 
 - Load a directed distance matrix from CSV.
@@ -9,13 +9,9 @@ in RelationalAI:
 - Solve for the shortest Hamiltonian cycle and print the selected edges.
 
 Run:
-    `python traveling_salesman.py` deploys the model to the schema in raiconfig.yaml,
-    waits for its first refresh (which runs the solve), and prints the report from
-    the deployed model.
-
-Output:
-    Prints the solver termination status, objective value (shortest tour
-    distance), and a table of selected edges.
+    `rai models deploy --path model` deploys this model to the schema in raiconfig.yaml
+    and waits for its first refresh, which runs the solve.
+    `python -m queries.tour` then prints the report from the deployed model.
 """
 
 from pathlib import Path
@@ -28,7 +24,7 @@ from relationalai.semantics.reasoners.prescriptive import Problem
 # Configure inputs
 # --------------------------------------------------
 
-DATA_DIR = Path(__file__).parent / "data"
+DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 
 # --------------------------------------------------
 # Define semantic model & load data
@@ -53,6 +49,10 @@ model.define(Node.new(v=Edge.i))
 # Store count as a Relationship and reference it in solve_for(upper=node_count).
 node_count = model.Relationship(f"node count is {Integer}")
 model.define(node_count(count(Node)))
+
+# Rule: edge count, the number of distinct (i, j) edges
+edge_count = model.Relationship(f"edge count is {Integer}")
+model.define(edge_count(count(Edge)))
 
 # --------------------------------------------------
 # Model the decision problem
@@ -108,30 +108,3 @@ TourDistance = model.Relationship(f"tsp tour distance is {Float:distance}")
 model.define(SolveStatus(problem.termination_status()), TourDistance(problem.objective_value()))
 num_variables = problem.num_variables()
 num_min_objectives = problem.num_min_objectives()
-
-# --------------------------------------------------
-# Deploy, then report (`rai models deploy` skips this block)
-# --------------------------------------------------
-
-if __name__ == "__main__":
-    # Deploy and wait for the first refresh, which runs the solve.
-    model.deploy()
-
-    # Check model structure: one variable per edge and per node, one minimization objective.
-    nodes = sorted(edge_csv["i"].unique().tolist())
-    variables = model.select(num_variables).to_df().iloc[:, 0].tolist()
-    assert variables == [len(edge_csv) + len(nodes)], f"expected one variable per edge and node, got {variables}"
-    objectives = model.select(num_min_objectives).to_df().iloc[:, 0].tolist()
-    assert objectives == [1], f"expected one minimization objective, got {objectives}"
-    problem.display()
-
-    status = model.select(SolveStatus).to_df().iloc[:, 0].tolist()
-    distance = model.select(TourDistance).to_df().iloc[:, 0].tolist()
-    print(f"HiGHS: {status[0]}, tour distance={distance[0]:.1f}")
-
-    # Extract solution: the tour leaves every node exactly once.
-    tour = model.select(Edge.i.alias("from"), Edge.j.alias("to")).where(Edge.x > 0.5).to_df()
-    assert sorted(tour["from"].tolist()) == nodes, f"tour does not leave every node exactly once: {tour}"
-    print("\nTour edges:")
-    print(tour)
-    print()

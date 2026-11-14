@@ -37,7 +37,7 @@ Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` 
 
 **Prompt:** /rai-prescriptive-problem What's the shortest round-trip that visits every node exactly once and returns to the start, as one connected tour with no disconnected subtours? Use a binary decision per edge for whether it's in the tour, require every node to have exactly one selected edge in and one out, and eliminate subtours with MTZ ordering variables — one integer position per node, anchored at node 1. Minimize total distance, and persist the edge selection to the ontology.
 
-**Response:** OPTIMAL (HiGHS mixed-integer program), shortest tour distance **8.5** (relative gap 0.0). The model has 16 variables (12 binary edge selections + 4 integer MTZ positions) and 15 constraints; the edge decision is written back as `Edge.x` and the position as `Node.u`. In `traveling_salesman.py` the solve is declared with `problem.configure(...)`, so each refresh of the deployed model runs it.
+**Response:** OPTIMAL (HiGHS mixed-integer program), shortest tour distance **8.5** (relative gap 0.0). The model has 16 variables (12 binary edge selections + 4 integer MTZ positions) and 15 constraints; the edge decision is written back as `Edge.x` and the position as `Node.u`. In `model/__init__.py` the solve is declared with `problem.configure(...)`, so each refresh of the deployed model runs it.
 
 ## 4. Read the optimal route
 
@@ -47,4 +47,4 @@ Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` 
 
 ## Data
 
-Bundled CSV in `data/`: 12 directed edges (distances among 4 nodes). Full model in `traveling_salesman.py`.
+Bundled CSV in `data/`: 12 directed edges (distances among 4 nodes). Full model in `model/__init__.py`; the report in `queries/tour.py`.
