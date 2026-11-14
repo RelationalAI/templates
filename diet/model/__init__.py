@@ -1,6 +1,6 @@
-"""Diet optimization (prescriptive optimization) template.
+"""Diet optimization (prescriptive optimization) template: the model.
 
-This script demonstrates a classic diet linear optimization problem in RelationalAI:
+This package declares a classic diet linear optimization problem in RelationalAI:
 
 - Map sample data from CSVs describing foods, nutrients, and per-food nutrient quantities.
 - Model foods and nutrients as *concepts* with typed properties.
@@ -16,13 +16,9 @@ Modeling approach:
 - One solve handles all scaling levels; results extracted via model.select().
 
 Run:
-    `python diet.py` deploys the model to the schema in raiconfig.yaml, waits for
-    its first refresh (which runs the solve), and prints the report from the
-    deployed model.
-
-Output:
-    Prints per-scenario termination status, objective value, and a table of foods
-    with non-trivial amounts, followed by a scenario analysis summary.
+    `rai models deploy --path model` deploys this model to the schema in
+    raiconfig.yaml and waits for its first refresh, which runs the solve.
+    `python -m queries.diet_plan` then prints the report from the deployed model.
 """
 
 from pathlib import Path
@@ -35,7 +31,7 @@ from relationalai.semantics.reasoners.prescriptive import Problem
 # Configure inputs
 # --------------------------------------------------
 
-DATA_DIR = Path(__file__).parent / "data"
+DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 
 # --------------------------------------------------
 # Define semantic model & map data
@@ -120,30 +116,3 @@ problem.install_display_strings()
 SolveStatus = model.Relationship(f"diet solve status is {String:status}")
 TotalCost = model.Relationship(f"diet total cost is {Float:cost}")
 model.define(SolveStatus(problem.termination_status()), TotalCost(problem.objective_value()))
-
-# --------------------------------------------------
-# Deploy, then report (`rai models deploy` skips this block)
-# --------------------------------------------------
-
-if __name__ == "__main__":
-    # Deploy and wait for the first refresh, which runs the solve.
-    model.deploy()
-
-    problem.display()
-
-    # Status and objective of the latest refresh's solve. A refresh records any
-    # termination status, so the report checks it.
-    status = model.select(SolveStatus).to_df().iloc[:, 0].tolist()
-    cost = model.select(TotalCost).to_df().iloc[:, 0].tolist()
-    print(f"\nSolve result:\n• status: {', '.join(status)}")
-    if status != ["OPTIMAL"]:
-        raise SystemExit(f"No optimal diet plan: termination status {status}")
-    print(f"• objective: {round(cost[0], 9)}\n")
-
-    print("\nDiet plan per scenario:")
-    model.select(
-        Scenario.scenario_name.alias("scenario"),
-        Food.name.alias("food"),
-        Food.cost,
-        x_amt.alias("amount"),
-    ).where(Food.x_amount(Scenario, x_amt), x_amt > 0.001).inspect()
