@@ -1,6 +1,6 @@
-"""Synthetic Order Lifecycle (constrained generation) template.
+"""Synthetic Order Lifecycle (constrained generation) template: the model.
 
-This script demonstrates a CSP-based synthetic order-lifecycle trace generator in RelationalAI:
+This package demonstrates a CSP-based synthetic order-lifecycle trace generator in RelationalAI:
 
 - Pre-allocate (order, event-slot) rows and load order, symbol, and venue reference data from CSV.
 - Model each event slot as a decision over type (PLACE / MODIFY / CANCEL / FILL), timestamp, venue, quantity, and tick price.
@@ -16,13 +16,10 @@ All decisions are integer: prices are integer ticks (1c, so 17500 reads as
 $175.00), times are integer milliseconds, quantities are integer shares.
 
 Run:
-    `python synthetic_order_lifecycle.py` deploys the model to the schema in
-    raiconfig.yaml, waits for its first refresh (which runs the solve), and
-    prints the report from the deployed model.
-
-Output:
-    Prints the formulation, the generated event trace (one row per slot),
-    and the per-order filled-quantity totals.
+    `rai models deploy --path model` deploys this model to the schema in
+    raiconfig.yaml and waits for its first refresh, which runs the solve.
+    `python -m queries.order_trace` then prints the report from the deployed
+    model.
 """
 
 from pathlib import Path
@@ -43,7 +40,7 @@ from relationalai.semantics.reasoners.prescriptive import Problem, all_different
 TS_MIN = 1
 TS_MAX = 1_000
 
-DATA_DIR = Path(__file__).parent / "data"
+DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 
 # --------------------------------------------------
 # Define semantic model & load data
@@ -293,60 +290,3 @@ problem.install_display_strings()
 # The solve's status, published through the model's own relationship.
 SolveStatus = model.Relationship(f"synthetic order lifecycle solve status is {String:status}")
 model.define(SolveStatus(problem.termination_status()))
-
-# --------------------------------------------------
-# Deploy, then report (`rai models deploy` skips this block)
-# --------------------------------------------------
-
-if __name__ == "__main__":
-    # Deploy and wait for the first refresh, which runs the solve.
-    model.deploy()
-
-    problem.display()
-
-    # Status of the latest refresh's solve. A refresh records any termination
-    # status, so the report checks it.
-    status = model.select(SolveStatus).to_df().iloc[:, 0].tolist()
-    print(f"\nSolve result:\n• status: {', '.join(status)}\n")
-    assert status == ["OPTIMAL"], f"termination status {status}"
-
-    # Inspect the generated trace.
-
-    print("\nGenerated event trace (one row per slot, sorted by order then timestamp):")
-    trace_df = (
-        model.select(
-            OrderEvent.order.id.alias("order_id"),
-            OrderEvent.order.symbol.name.alias("symbol"),
-            OrderEvent.event_id.alias("event_id"),
-            OrderEvent.ts_ms.alias("ts_ms"),
-            OrderEvent.event_type.name.alias("type"),
-            OrderEvent.qty.alias("qty"),
-            OrderEvent.tick_price.alias("tick_price"),
-            Venue.name.alias("venue"),
-        )
-        .where(Venue.id(OrderEvent.venue_id))
-        .to_df()
-    )
-    trace_df = (
-        trace_df.astype(
-            {
-                "order_id": "int64",
-                "event_id": "int64",
-                "ts_ms": "int64",
-                "qty": "int64",
-                "tick_price": "int64",
-            }
-        )
-        .sort_values(["order_id", "ts_ms"])
-        .reset_index(drop=True)[
-            ["order_id", "symbol", "event_id", "ts_ms", "type", "qty", "tick_price", "venue"]
-        ]
-    )
-    print(trace_df.to_string(index=False))
-
-    print("\nFilled quantity per order (cannot exceed Order.original_qty):")
-    model.select(
-        Order.id.alias("order_id"),
-        Order.original_qty.alias("original_qty"),
-        rai_sum(OrderEvent.fill_qty).per(Order).alias("filled_qty"),
-    ).where(OrderEvent.order(Order)).inspect()
