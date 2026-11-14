@@ -33,8 +33,15 @@ constraints for your workflow.
 ## Quickstart
 
 Before you start, install Python 3.10 or later and get access to a Snowflake
-account with the RAI Native App. Graph and Prescriptive reasoning are in Public
-Preview; ask your RelationalAI support representative to enable Prescriptive
+account with the RAI Native App. An account administrator must first do the
+one-time model deployment setup on that account: follow
+[Set up model deployment](https://private.relational.ai/early-access/model-deploy-setup)
+through **Governed setup**, **PAT authentication**, and steps 1-2 of
+**Additional setup for the prescriptive reasoner** (Quickstart step 4 below
+covers this template's own schema). It gives you a model role, a programmatic
+access token (PAT) stored as a secret, an external access integration, a PAT
+user, and a warehouse; your Snowflake user must hold the model role. Graph and
+Prescriptive reasoning are in Public Preview; ask your RelationalAI support representative to enable Prescriptive
 reasoning. Preview features are for evaluation and testing, not production
 applications. The template pins `relationalai==2.1.1` in `pyproject.toml` and
 uses HiGHS without a separate solver license.
@@ -70,7 +77,48 @@ Use this sequence to run the bundled example:
 
 4. **Configure your project**
 
-   Use the configuration builder in [Start building with PyRel](https://docs.relational.ai/get-started/start-building-with-pyrel/#configure-your-project) to create `raiconfig.yaml` in the template directory and verify your connection.
+   Use the configuration builder in [Start building with PyRel](https://docs.relational.ai/get-started/start-building-with-pyrel/#configure-your-project) to create `raiconfig.yaml` in the template directory and verify your connection. Set the connection `role` to the model role, then add a `deployment` section. Give each template its own schema pair so two deployed templates never share one.
+
+   ```yaml
+   reasoners:
+     prescriptive:
+       name: entity_resolution_solver            # created on first deploy if it doesn't exist
+   deployment:
+     role: <MODEL_ROLE>
+     public_schema: <DB>.ENTITY_RESOLUTION               # published views and tables
+     identity:
+       internal_schema: <DB>.ENTITY_RESOLUTION_META      # solver inputs, results, refresh procedures
+     schedules:
+       standard:
+         interval_s: 0              # refresh only on deploy or on demand
+     schedule: standard
+     pat_secret: <PAT_SECRET>       # these four come from the setup page
+     pat_eai: <PAT_EAI>
+     pat_user: <PAT_USER>
+     pat_warehouse: <PAT_WAREHOUSE>
+   ```
+
+   Without the `deployment` section, `python entity_resolution.py` stops with an error naming the missing setting.
+
+   Before the first run, create the internal schema as the model role, and have an administrator grant the RAI Native App caller access to it. The internal schema holds only this model's objects, so the grants cover all of it, including the solver's result tables that the deploy creates:
+
+   ```sql
+   -- as the model role
+   CREATE SCHEMA IF NOT EXISTS <DB>.ENTITY_RESOLUTION_META;
+   
+   -- as an administrator
+   GRANT CALLER USAGE ON DATABASE <DB> TO APPLICATION <RAI_APP_NAME>;
+   GRANT CALLER USAGE ON SCHEMA <DB>.ENTITY_RESOLUTION_META TO APPLICATION <RAI_APP_NAME>;
+   GRANT CALLER USAGE ON WAREHOUSE <PAT_WAREHOUSE> TO APPLICATION <RAI_APP_NAME>;
+   GRANT INHERITED CALLER SELECT ON ALL TABLES IN SCHEMA <DB>.ENTITY_RESOLUTION_META TO APPLICATION <RAI_APP_NAME>;
+   GRANT INHERITED CALLER SELECT ON ALL DYNAMIC TABLES IN SCHEMA <DB>.ENTITY_RESOLUTION_META TO APPLICATION <RAI_APP_NAME>;
+   GRANT INHERITED CALLER SELECT ON ALL VIEWS IN SCHEMA <DB>.ENTITY_RESOLUTION_META TO APPLICATION <RAI_APP_NAME>;
+   GRANT INHERITED CALLER INSERT, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA <DB>.ENTITY_RESOLUTION_META TO APPLICATION <RAI_APP_NAME>;
+   GRANT CALLER CREATE TABLE, CREATE STAGE ON SCHEMA <DB>.ENTITY_RESOLUTION_META TO APPLICATION <RAI_APP_NAME>;
+   GRANT INHERITED CALLER READ, WRITE ON ALL STAGES IN SCHEMA <DB>.ENTITY_RESOLUTION_META TO APPLICATION <RAI_APP_NAME>;
+   ```
+
+   The deploy creates the public schema `<DB>.ENTITY_RESOLUTION` if it doesn't exist.
 
 5. **Run the template**
 
@@ -79,6 +127,8 @@ Use this sequence to run the bundled example:
    ```bash
    python entity_resolution.py
    ```
+
+   The script deploys the model, waits for the first refresh, which runs the solve, and prints the report from the deployed model. Each refresh of the deployed model runs the solve again; `rai models deploy` deploys without printing the report. To remove the deployment, run `rai models teardown --force` from this directory; it keeps the two schemas.
 
    ```text
    Auto-resolved 51 records into 31 insured parties.
