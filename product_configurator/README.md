@@ -18,7 +18,7 @@ tags:
 
 Configurable products -- cars, industrial equipment, enterprise software, network gear -- come with hundreds or thousands of options grouped into slots (engine, transmission, trim, sound, wheels, and so on). Picking a buildable combination by hand is hard: options require or exclude other options, regional regulations remove some choices entirely, and the total price has to stay under a target.
 
-A configurator UI rarely wants a *single* feasible build. A buyer's quote, a sales playbook, and a "show me my options under this ceiling" trade-off slider all need the *population* of feasible configurations -- the cheap-but-basic build, the loaded build at the price-ceiling boundary, the build that drops a low-utility option to free up budget elsewhere. This template formulates the configuration problem as a **constraint satisfaction** model using RelationalAI's **prescriptive** reasoning and runs the solver in multi-solution mode: pass `solution_limit=MAX_CONFIGURATIONS` to `problem.solve(...)`, then enumerate each feasible build via `Variable.values(solution_index, value)`. The output is pivoted to one row per build (one column per slot, plus a total in dollars, sorted ascending by price) -- ready to drop straight into a buyer-facing UI.
+A configurator UI rarely wants a *single* feasible build. A buyer's quote, a sales playbook, and a "show me my options under this ceiling" trade-off slider all need the *population* of feasible configurations -- the cheap-but-basic build, the loaded build at the price-ceiling boundary, the build that drops a low-utility option to free up budget elsewhere. This template formulates the configuration problem as a **constraint satisfaction** model using RelationalAI's **prescriptive** reasoning and runs the solver in multi-solution mode: pass `solution_limit=MAX_CONFIGURATIONS` to `problem.configure(...)`, so each refresh of the deployed model enumerates the builds, then enumerate each feasible build via `Variable.values(solution_index, value)`. The output is pivoted to one row per build (one column per slot, plus a total in dollars, sorted ascending by price) -- ready to drop straight into a buyer-facing UI.
 
 For one target region, every returned build picks exactly one option per slot so that all feature-model rules are satisfied (implies / excludes), only region-allowed options appear, and the total price stays within a ceiling. Solver enumeration guarantees each returned build is *distinct* (differs on at least one option). When `solution_limit` is large enough to exhaust the search, the solver returns the full feasible set and reports status `OPTIMAL`; when the limit is tighter than the feasible set, the solver returns the first K it finds (status `SOLUTION_LIMIT`) and the specific subset depends on solver heuristics, so plan accordingly.
 
@@ -36,8 +36,8 @@ The configurator scenario here is automotive trim, drawn from the public Renault
 - A constraint model with binary `Option.selected` decisions and four constraint families: per-slot exactly-one, implies, excludes, and price ceiling
 - A region-filtered decision domain so options not allowed in the target region simply don't appear as decisions
 - A pre-solve catalog validation pass that fails fast on two pathologies the region filter can hide: a slot with zero region-allowed options (the exactly-one IC would not bind), and an implies rule whose tail option is not allowed in the region (the implies IC would not bind)
-- **Multi-solution enumeration as the primary code path**: `problem.solve(..., solution_limit=MAX_CONFIGURATIONS)` runs the search in enumeration mode and `Variable.values(solution_index, value)` surfaces every distinct feasible build; the bundled demo's `MAX_CONFIGURATIONS = 100` is set above the feasible-set size so the solver exhausts the search (status `OPTIMAL`), and a post-solve `pandas.pivot` collapses the per-option rows into one row per build (one column per slot, sorted ascending by total price) for buyer-facing display
-- Post-solve sanity check via `problem.verify()` confirming every re-evaluable constraint holds against the first returned configuration (`verify` re-evaluates each named IC against the populated property -- the first solution -- not across every enumerated build, but the model itself enforces the constraints across every solution the solver returns)
+- **Multi-solution enumeration as the primary code path**: `problem.configure(..., solution_limit=MAX_CONFIGURATIONS)` makes each refresh run the search in enumeration mode and `Variable.values(solution_index, value)` surfaces every distinct feasible build; the bundled demo's `MAX_CONFIGURATIONS = 100` is set above the feasible-set size so the solver exhausts the search (status `OPTIMAL`), and a post-solve `pandas.pivot` collapses the per-option rows into one row per build (one column per slot, sorted ascending by total price) for buyer-facing display
+- A report that prints the solve status and the number of builds, and says so when no feasible build exists; the model itself enforces the constraints across every solution the solver returns
 
 ## What's included
 
@@ -54,7 +54,8 @@ The configurator scenario here is automotive trim, drawn from the public Renault
 
 ### Access
 - A Snowflake account that has the RAI Native App installed.
-- A Snowflake user with permissions to access the RAI Native App.
+- The one-time model deployment setup on that account, done by an account administrator: follow [Set up model deployment](https://private.relational.ai/early-access/model-deploy-setup) through **Governed setup**, **PAT authentication**, and steps 1-2 of **Additional setup for the prescriptive reasoner** (Quickstart step 4 below covers this template's own schema). It gives you a model role, a programmatic access token (PAT) stored as a secret, an external access integration, a PAT user, and a warehouse.
+- A Snowflake user that holds the model role.
 
 ### Tools
 - Python >= 3.10
@@ -83,15 +84,56 @@ The configurator scenario here is automotive trim, drawn from the public Renault
    python -m pip install .
    ```
 
-4. Configure (prompts for Snowflake account, role, and profile name):
-   ```bash
-   rai init
+4. Configure: run `rai init` to create `raiconfig.yaml` with your Snowflake connection, set the connection `role` to the model role, then add a `deployment` section. Give each template its own schema pair so two deployed templates never share one.
+   ```yaml
+   reasoners:
+     prescriptive:
+       name: product_configurator_solver            # created on first deploy if it doesn't exist
+   deployment:
+     role: <MODEL_ROLE>
+     public_schema: <DB>.PRODUCT_CONFIGURATOR               # published views and tables
+     identity:
+       internal_schema: <DB>.PRODUCT_CONFIGURATOR_META      # solver inputs, results, refresh procedures
+     schedules:
+       standard:
+         interval_s: 0              # refresh only on deploy or on demand
+     schedule: standard
+     pat_secret: <PAT_SECRET>       # these four come from the setup page
+     pat_eai: <PAT_EAI>
+     pat_user: <PAT_USER>
+     pat_warehouse: <PAT_WAREHOUSE>
    ```
+   Without the `deployment` section, `python product_configurator.py` stops with an error naming the missing setting.
+
+   Before the first run, create the internal schema as the model role, and have an administrator grant the RAI Native App caller access to it. The internal schema holds only this model's objects, so the grants cover all of it, including the solver's result tables that the deploy creates:
+   ```sql
+   -- as the model role
+   CREATE SCHEMA IF NOT EXISTS <DB>.PRODUCT_CONFIGURATOR_META;
+
+   -- as an administrator
+   GRANT CALLER USAGE ON DATABASE <DB> TO APPLICATION <RAI_APP_NAME>;
+   GRANT CALLER USAGE ON SCHEMA <DB>.PRODUCT_CONFIGURATOR_META TO APPLICATION <RAI_APP_NAME>;
+   GRANT CALLER USAGE ON WAREHOUSE <PAT_WAREHOUSE> TO APPLICATION <RAI_APP_NAME>;
+   GRANT INHERITED CALLER SELECT ON ALL TABLES IN SCHEMA <DB>.PRODUCT_CONFIGURATOR_META TO APPLICATION <RAI_APP_NAME>;
+   GRANT INHERITED CALLER SELECT ON ALL DYNAMIC TABLES IN SCHEMA <DB>.PRODUCT_CONFIGURATOR_META TO APPLICATION <RAI_APP_NAME>;
+   GRANT INHERITED CALLER SELECT ON ALL VIEWS IN SCHEMA <DB>.PRODUCT_CONFIGURATOR_META TO APPLICATION <RAI_APP_NAME>;
+   GRANT INHERITED CALLER INSERT, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA <DB>.PRODUCT_CONFIGURATOR_META TO APPLICATION <RAI_APP_NAME>;
+   GRANT CALLER CREATE TABLE, CREATE STAGE ON SCHEMA <DB>.PRODUCT_CONFIGURATOR_META TO APPLICATION <RAI_APP_NAME>;
+   GRANT INHERITED CALLER READ, WRITE ON ALL STAGES IN SCHEMA <DB>.PRODUCT_CONFIGURATOR_META TO APPLICATION <RAI_APP_NAME>;
+   ```
+   The deploy creates the public schema `<DB>.PRODUCT_CONFIGURATOR` if it doesn't exist.
 
 5. Run:
    ```bash
    python product_configurator.py
    ```
+   The script deploys the model, waits for the first refresh, which runs the solve, and prints the report from the deployed model. Each refresh of the deployed model runs the solve again; `rai models deploy` deploys without printing the report.
+
+   Running the script again without changing the model redeploys nothing and does not solve again; it reports the latest refresh. A change to the model or to `problem.configure(...)` redeploys, and the redeploy's refresh solves. To solve again without a change, refresh the deployed model, then run the script:
+   ```sql
+   CALL <DB>.PRODUCT_CONFIGURATOR_META._INTERNAL_REFRESH_MODEL('standard', NULL);
+   ```
+   To remove the deployment, run `rai models teardown --force` from this directory; it keeps the two schemas.
 
 6. Expected output. With `MAX_CONFIGURATIONS = 100` and `TARGET_REGION = "EU"`, the solver exhausts the search and returns every distinct feasible build (status `OPTIMAL`, 63 builds), pivoted to one row per configuration and sorted ascending by total dollars. A few representative lines (the script prints all 63):
 
@@ -114,7 +156,7 @@ The configurator scenario here is automotive trim, drawn from the public Renault
 
 ```text
 product_configurator/
-  product_configurator.py    # Main script (ontology, decisions, constraints, solve, inspection)
+  product_configurator.py    # Main script (ontology, decisions, constraints, solver configuration, deploy, inspection)
   data/
     slots.csv                # 6 slots (Engine, Transmission, Trim, Sound, Wheels, Roof)
     options.csv              # 16 options across the 6 slots, each priced in integer cents
@@ -155,21 +197,21 @@ For the full concept and property definitions, see `product_configurator.py`; `r
 The model declares a binary "selected" decision per region-allowed option, applies four constraint families, then enumerates every feasible build in one multi-solution solve.
 
 ```text
-slots + options + implies + excludes + regional rules → region-filtered selected decisions → exactly-one + implies + excludes + price constraints → multi-solution solve → pivot to one row per build
+slots + options + implies + excludes + regional rules → region-filtered selected decisions → exactly-one + implies + excludes + price constraints → multi-solution solve configured → deploy → pivot to one row per build
 ```
 
 **1. Slots, options, and rule tables.** Slots and options are concepts; each option points to its slot, has a price in integer cents, and lists the regions it is allowed in. Each rule is a concept identified by the pair of option ids it links — `Implies` is directional (head -> tail), `Excludes` is symmetric. The compound-key field names are deliberately dissimilar (`head_id`/`tail_id`, `left_id`/`right_id`) because PyRel emits a "potential relationship typo" warning when two compound-key names differ by a single character.
 
 **2. The binary decision.** `Option.selected` is 0/1 and is scoped, via a `where` on region availability, to options allowed in the target region — options banned in the region simply never get a decision variable. The `solve_for` call returns a variable handle that step 4 uses to read per-solution outputs.
 
-**3. The four constraint families.** Each is stored in a named variable so it can be re-checked by `problem.verify(...)`, and pushed to the solver with `problem.satisfy(...)`:
+**3. The four constraint families.** Each is pushed to the solver with `problem.satisfy(...)`:
 
 - **Exactly-one** — the selected options per slot sum to 1, so every build fills each slot exactly once.
 - **Implies** — for each region-allowed rule, `selected[head] <= selected[tail]`: picking the head forces the tail.
 - **Excludes** — for each region-allowed pair, `selected[left] + selected[right] <= 1`: at most one of the pair.
 - **Price ceiling** — the price-weighted sum of selected options stays within `PRICE_CEILING_CENTS`.
 
-**4. Solve in multi-solution mode, verify, and pivot.** Passing `solution_limit=MAX_CONFIGURATIONS` runs the search in enumeration mode, returning up to that many distinct feasible builds. `problem.verify()` re-checks the named constraints against the first returned solution (the constraint structure is shared across every solution the solver returns). The variable handle exposes a `.values(solution_index, value)` relationship over the per-solution outputs; binding the value slot to `1` surfaces just the picked options, and a `pandas.pivot` collapses the per-option rows into one row per build (one column per slot, plus a dollar total, sorted ascending by price) for buyer-facing display.
+**4. Solve in multi-solution mode, deploy, and pivot.** Passing `solution_limit=MAX_CONFIGURATIONS` to `problem.configure(...)` makes each refresh of the deployed model run the search in enumeration mode, returning up to that many distinct feasible builds; the report prints the status and the number of builds, and does not re-evaluate the constraints. The variable handle exposes a `.values(solution_index, value)` relationship over the per-solution outputs; binding the value slot to `1` surfaces just the picked options, and a `pandas.pivot` collapses the per-option rows into one row per build (one column per slot, plus a dollar total, sorted ascending by price) for buyer-facing display.
 
 For the exact PyRel formulation, see `product_configurator.py`; `runbook.md` reproduces the model step by step with the RAI skills.
 
@@ -248,7 +290,7 @@ For the exact PyRel formulation, see `product_configurator.py`; `runbook.md` rep
 <details>
   <summary>How many configurations will the solver return?</summary>
 
-- Up to `MAX_CONFIGURATIONS` (100 by default) or however many feasible builds exist in the catalog, whichever is smaller. `solve_info().num_points` reports the actual count; `solve_info().status` reports `OPTIMAL` when the search has been exhausted (every distinct feasible build returned) and `SOLUTION_LIMIT` when the cap was hit before exhaustion (more builds available).
+- Up to `MAX_CONFIGURATIONS` (100 by default) or however many feasible builds exist in the catalog, whichever is smaller. The report's `num_points` line shows the actual count; its `status` line shows `OPTIMAL` when the search has been exhausted (every distinct feasible build returned) and `SOLUTION_LIMIT` when the cap was hit before exhaustion (more builds available).
 - The bundled demo has 63 feasible builds in `EU` and `MAX_CONFIGURATIONS = 100` is large enough to enumerate them all, so status is `OPTIMAL` and the *set* of returned builds is deterministic (ordering is re-imposed by the post-solve sort by `total_$`).
 - When `MAX_CONFIGURATIONS` is tighter than the feasible set, the solver returns the first K it finds and the specific subset depends on MiniZinc's branching heuristics, so the *set* may shift across solver versions. Treat the `solution` column as a label, not a ranking.
 - Returned builds are guaranteed to be *distinct* (each differs on at least one option) but not maximally diverse -- two builds may share five of six slots and only differ on the cheapest. For broad spread, layer optimization passes or apply your own diversity filters in post-processing.

@@ -39,7 +39,7 @@ Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` 
 
 **Prompt:** /rai-prescriptive-problem Enumerate every legal configuration for the EU region that costs at most $20,000. Use a binary "pick this option" decision over the EU-allowed options, require exactly one option per slot, enforce the implies rules (if the head is picked, the tail must be) and the excludes rules (the two can't both be picked), and keep total price within the ceiling. There's no objective — return the full set of feasible builds in multi-solution mode.
 
-**Response:** OPTIMAL — search exhausted (MiniZinc constraint solver in multi-solution mode). **63 distinct feasible builds** found. Because the EU filter drops the V6, the model has 15 binary option variables and 13 constraints (the V6/Manual exclusion drops out with the V6). The selection is `Option.selected`, with the first solution persisted to the ontology for verification.
+**Response:** OPTIMAL — search exhausted (MiniZinc constraint solver in multi-solution mode). **63 distinct feasible builds** found. Because the EU filter drops the V6, the model has 15 binary option variables and 13 constraints (the V6/Manual exclusion drops out with the V6). The selection is `Option.selected`, with the first solution persisted to the ontology. In `product_configurator.py` the solve is declared with `problem.configure(...)`, so each refresh of the deployed model runs it.
 
 ## 4. Read the configuration population
 
