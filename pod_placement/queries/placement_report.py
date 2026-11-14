@@ -1,8 +1,8 @@
 """Placement report: reads the deployed pod_placement model.
 
 Run `python -m queries.placement_report` after `rai models deploy --path model`. Prints the
-formulation, the termination status and objective of the latest refresh's solve, per-node
-utilization, the chosen (pod, node) placements, and any unplaced deployments.
+status and objective of the latest refresh's solve, per-node utilization, the chosen
+(pod, node) placements, and any unplaced deployments.
 """
 
 from model import (
@@ -12,23 +12,20 @@ from model import (
     Pod,
     SolveStatus,
     model,
-    problem,
     x,
 )
 from relationalai.semantics import sum
 
 if __name__ == "__main__":
-    problem.display()
-
-    # Status and objective of the latest refresh's solve. A refresh records any
-    # termination status. The report requires a proven OPTIMAL.
+    # The report stops unless the solver proved OPTIMAL: if you raise `time_limit_sec` and the
+    # solver returns a feasible-but-not-proven-optimal result, the report raises rather than
+    # print a partial solution. Soften to a `print(...)` warning if you want the inspection
+    # blocks to run on partial solutions.
     status = model.select(SolveStatus).to_df().iloc[:, 0].tolist()
     placed = model.select(PlacedDeployments).to_df().iloc[:, 0].tolist()
     print(f"\nSolve result:\n• status: {', '.join(status)}")
     if status != ["OPTIMAL"]:
         raise SystemExit(f"termination status {status}")
-    if len(placed) != 1:
-        raise SystemExit(f"expected one objective value, got {placed}")
     print(f"• objective: {placed[0]}\n")
 
     # ----------------------------------------------
