@@ -1,6 +1,6 @@
-"""Water Allocation (nonlinear optimization) template.
+"""Water Allocation (nonlinear optimization) template: the model.
 
-This script demonstrates a nonlinear optimization model solved with Ipopt
+This package demonstrates a nonlinear optimization model solved with Ipopt
 in RelationalAI:
 
 - Load sample CSVs describing water sources, users (demand points), and connections.
@@ -16,13 +16,9 @@ Solver: Ipopt (interior-point for nonlinear programs). Ipopt finds locally
 optimal solutions for smooth NLP problems with continuous variables.
 
 Run:
-    `python water_allocation.py` deploys the model to the schema in raiconfig.yaml,
-    waits for its first refresh (which runs the solve), and prints the report from
-    the deployed model.
-
-Output:
-    Prints the solver termination status, objective value, and a table of
-    non-trivial flow allocations.
+    `rai models deploy --path model` deploys this model to the schema in raiconfig.yaml
+    and waits for its first refresh, which runs the solve.
+    `python -m queries.flow_allocations` then prints the report from the deployed model.
 """
 
 from pathlib import Path
@@ -35,7 +31,7 @@ from relationalai.semantics.reasoners.prescriptive import Problem
 # Configure inputs
 # --------------------------------------------------
 
-DATA_DIR = Path(__file__).parent / "data"
+DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 
 # --------------------------------------------------
 # Define semantic model & load data
@@ -125,25 +121,3 @@ problem.install_display_strings()
 SolveStatus = model.Relationship(f"water allocation solve status is {String:status}")
 TotalCost = model.Relationship(f"water allocation total cost is {Float:cost}")
 model.define(SolveStatus(problem.termination_status()), TotalCost(problem.objective_value()))
-
-# --------------------------------------------------
-# Deploy, then report (`rai models deploy` skips this block)
-# --------------------------------------------------
-
-if __name__ == "__main__":
-    # Deploy and wait for the first refresh, which runs the solve.
-    model.deploy()
-
-    problem.display()
-
-    status = model.select(SolveStatus).to_df().iloc[:, 0].tolist()
-    cost = model.select(TotalCost).to_df().iloc[:, 0].tolist()
-    print(f"Status: {status[0]}")  # Ipopt returns LOCALLY_SOLVED
-    print(f"Total cost: ${cost[0]:.2f}")
-
-    print("\nFlow allocations:")
-    model.select(
-        Connection.source.name.alias("source"),
-        Connection.user.name.alias("user"),
-        Connection.x_flow
-    ).where(Connection.x_flow > 0.001).inspect()
