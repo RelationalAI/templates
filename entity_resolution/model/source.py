@@ -265,7 +265,7 @@ def load_candidate_facts(matches: DataFrame, reviews: DataFrame) -> None:
 
 
 def load_ground_truth() -> DataFrame:
-    """Read the optional labels used by the runner's evaluation section."""
+    """Read the optional labels used by the report's evaluation section."""
     return read_csv(DATA_DIR / "ground_truth.csv")
 
 
