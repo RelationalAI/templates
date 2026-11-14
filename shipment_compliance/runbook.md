@@ -38,4 +38,4 @@ Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` 
 
 ## Data
 
-Bundled CSVs in `data/`: 5 suppliers, 6 SKUs, 12 shipments, 7 operations, 6 BOM lines, 8 demand orders. Full model in `shipment_compliance.py`.
+Bundled CSVs in `data/`: 5 suppliers, 6 SKUs, 12 shipments, 7 operations, 6 BOM lines, 8 demand orders. Full model in `model/__init__.py`.

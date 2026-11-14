@@ -19,13 +19,10 @@ Rules defined:
 
 No optimization solver is used. Rules are pure logic derivations.
 
-    Run:
-        `python shipment_compliance.py` deploys the model to the schema in
-        raiconfig.yaml, waits for its first refresh, and prints the report from
-        the deployed model.
-
-    Output:
-        Prints which entities match each compliance rule.
+Run:
+    `rai models deploy --path model` deploys this model to the schema in
+    raiconfig.yaml and waits for its first refresh; `python -m
+    queries.compliance_report` then prints the report from the deployed model.
 """
 
 from pathlib import Path
@@ -41,7 +38,7 @@ Concept, Property, Relationship = model.Concept, model.Property, model.Relations
 # Define semantic model & load data
 # --------------------------------------------------
 
-DATA_DIR = Path(__file__).parent / "data"
+DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 
 # Supplier concept: companies that supply parts.
 Supplier = Concept("Supplier", identify_by={"id": Integer})
@@ -194,43 +191,3 @@ model.where(route_count == 1).define(BOM.is_single_sourced())
 Demand.is_escalated = Relationship(f"{Demand} is escalated")
 model.where(Demand.priority == Priority.HIGH).define(Demand.is_escalated())
 model.where(Demand.priority == Priority.URGENT).define(Demand.is_escalated())
-
-# --------------------------------------------------
-# Deploy, then report (`rai models deploy` skips this block)
-# --------------------------------------------------
-
-if __name__ == "__main__":
-    # Deploy and wait for the first refresh.
-    model.deploy()
-
-    print("=== Rule 1: Late Shipments (delay_days > 0) ===\n")
-    model.select(
-        Shipment.id.alias("shipment_id"),
-        Shipment.sku.name.alias("sku"),
-        Shipment.supplier.name.alias("supplier"),
-        Shipment.delay_days.alias("delay_days"),
-    ).where(Shipment.is_late()).inspect()
-
-    print("\n=== Rule 2: At-Risk Shipments (undelivered + unreliable supplier) ===\n")
-    model.select(
-        Shipment.id.alias("shipment_id"),
-        Shipment.sku.name.alias("sku"),
-        Shipment.supplier.name.alias("supplier"),
-        Shipment.status.name.alias("status"),
-        Shipment.supplier.reliability_score.alias("reliability"),
-    ).where(Shipment.is_at_risk()).inspect()
-
-    print("\n=== Rule 3: Single-Sourced BOM Inputs (only 1 operation route) ===\n")
-    model.select(
-        BOM.id.alias("bom_id"),
-        BOM.input_sku.name.alias("input_sku"),
-        BOM.input_quantity.alias("qty"),
-    ).where(BOM.is_single_sourced()).inspect()
-
-    print("\n=== Rule 4: Escalated Demands (HIGH or URGENT priority) ===\n")
-    model.select(
-        Demand.id.alias("demand_id"),
-        Demand.sku.name.alias("sku"),
-        Demand.quantity.alias("quantity"),
-        Demand.priority.name.alias("priority"),
-    ).where(Demand.is_escalated()).inspect()
