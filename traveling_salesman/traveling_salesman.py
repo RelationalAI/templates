@@ -9,7 +9,9 @@ in RelationalAI:
 - Solve for the shortest Hamiltonian cycle and print the selected edges.
 
 Run:
-    `python traveling_salesman.py`
+    `python traveling_salesman.py` deploys the model to the schema in raiconfig.yaml,
+    waits for its first refresh (which runs the solve), and prints the report from
+    the deployed model.
 
 Output:
     Prints the solver termination status, objective value (shortest tour
@@ -19,7 +21,7 @@ Output:
 from pathlib import Path
 
 from pandas import read_csv
-from relationalai.semantics import Float, Integer, Model, count, sum
+from relationalai.semantics import Float, Integer, Model, String, count, sum
 from relationalai.semantics.reasoners.prescriptive import Problem
 
 # --------------------------------------------------
@@ -91,21 +93,45 @@ problem.satisfy(model.where(
 ))
 
 # --------------------------------------------------
-# Solve and check solution
+# Solve
 # --------------------------------------------------
 
-# Check model structure — engine-side ICs avoid querying data to the client.
-model.require(problem.num_variables() == count(Edge) + count(Node))
-model.require(problem.num_min_objectives() == 1)
-problem.display()
+# Each refresh of the deployed model runs this solve (HiGHS MILP branch-and-bound).
+problem.configure("highs", time_limit_sec=60)
 
-# Solve with HiGHS (MILP branch-and-bound)
-problem.solve("highs", time_limit_sec=60)
-si_highs = problem.solve_info()
-si_highs.display()
-print(f"HiGHS: {si_highs.termination_status}, tour distance={si_highs.objective_value:.1f}")
+# Deploy the rules behind problem.display() with the model.
+problem.install_display_strings()
 
-# Extract solution
-model.require(count(Edge).where(Edge.x > 0.5) == count(Node))
-print("\nTour edges:")
-model.select(Edge.i.alias("from"), Edge.j.alias("to")).where(Edge.x > 0.5).inspect()
+# The solve's status and objective, and the problem's size, published through the model.
+SolveStatus = model.Relationship(f"tsp solve status is {String:status}")
+TourDistance = model.Relationship(f"tsp tour distance is {Float:distance}")
+model.define(SolveStatus(problem.termination_status()), TourDistance(problem.objective_value()))
+num_variables = problem.num_variables()
+num_min_objectives = problem.num_min_objectives()
+
+# --------------------------------------------------
+# Deploy, then report (`rai models deploy` skips this block)
+# --------------------------------------------------
+
+if __name__ == "__main__":
+    # Deploy and wait for the first refresh, which runs the solve.
+    model.deploy()
+
+    # Check model structure: one variable per edge and per node, one minimization objective.
+    nodes = sorted(edge_csv["i"].unique().tolist())
+    variables = model.select(num_variables).to_df().iloc[:, 0].tolist()
+    assert variables == [len(edge_csv) + len(nodes)], f"expected one variable per edge and node, got {variables}"
+    objectives = model.select(num_min_objectives).to_df().iloc[:, 0].tolist()
+    assert objectives == [1], f"expected one minimization objective, got {objectives}"
+    problem.display()
+
+    status = model.select(SolveStatus).to_df().iloc[:, 0].tolist()
+    distance = model.select(TourDistance).to_df().iloc[:, 0].tolist()
+    print(f"HiGHS: {status[0]}, tour distance={distance[0]:.1f}")
+
+    # Extract solution: the tour leaves every node exactly once.
+    tour = model.select(Edge.i.alias("from"), Edge.j.alias("to")).where(Edge.x > 0.5).to_df()
+    assert sorted(tour["from"].tolist()) == nodes, f"tour does not leave every node exactly once: {tour}"
+    print("\nTour edges:")
+    print(tour)
+    print()
