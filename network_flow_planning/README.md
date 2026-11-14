@@ -49,7 +49,7 @@ The objective minimizes transport cost plus fixed-cost FC opening cost.
 
 ## What's included
 
-- `model/__init__.py` — the model; `rai models deploy --path model` deploys it
+- `model/` — the model package (`schema.py` declares the concepts, `source.py` loads the sample data, `reasoning.py` states the decision problem); `rai models deploy --path model` deploys it
 - `queries/network_plan.py` — prints the report from the deployed model
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - `data/sites.csv` — 12 sites: 3 warehouses, 3 transit hubs, 3 fulfillment centers, 3 customers
@@ -170,6 +170,10 @@ Use this sequence to deploy the model and query it:
    Solve result:
    • status: OPTIMAL
    • objective: 5280.0
+   • solve time: 0.01s
+   • num_points: 1
+   • solver: HiGHS_1.15.1
+   ...
 
    Status: OPTIMAL
    Total cost: $5,280.00
@@ -192,7 +196,7 @@ Use this sequence to deploy the model and query it:
    8        Memphis_Hub      FC_Northeast  200.0        1.5
    ```
 
-   The formulation printed above the solve result is trimmed here. The optimizer opens the two largest fulfillment centers and routes LA's demand split across both — the savings from not opening FC_West ($1,000 fixed) outweigh the extra transport cost incurred by routing 120 units of LA demand through the more expensive FC_Northeast and FC_Southwest paths. The report checks the solve's termination status and stops unless it is OPTIMAL.
+   The solver details in the solve result are trimmed here. The optimizer opens the two largest fulfillment centers and routes LA's demand split across both — the savings from not opening FC_West ($1,000 fixed) outweigh the extra transport cost incurred by routing 120 units of LA demand through the more expensive FC_Northeast and FC_Southwest paths.
 
    To solve again without changing the model, refresh the deployed model, then run the query again:
 
@@ -218,7 +222,10 @@ Use this sequence to deploy the model and query it:
 ├── README.md                       # this file
 ├── pyproject.toml                  # dependencies
 ├── model/
-│   └── __init__.py                 # the deployed model
+│   ├── __init__.py                 # exports of the deployed model
+│   ├── schema.py                   # Site, Lane, and Demand concepts
+│   ├── source.py                   # loads the sample CSVs
+│   └── reasoning.py                # flow and open decisions, constraints, objective, solve
 ├── queries/
 │   └── network_plan.py             # report from the deployed model
 └── data/
@@ -251,7 +258,7 @@ The model uses three concepts. A single `Site` concept carries all four network 
 - **Primary identifiers**: integer `id` on each of `Site`, `Lane`, and `Demand`, loaded from the corresponding CSV.
 - **Important invariants**: `inventory`, `capacity`, `fixed_cost`, `cost_per_unit`, and `quantity` are non-negative; only fulfillment centers carry a positive `fixed_cost` (that is what scopes the binary open decision); every `Lane.source` / `Lane.dest` and every `Demand.site` resolves to a real `Site`.
 
-For the full concept and property definitions, see `model/__init__.py`; `runbook.md` builds them step by step with the RAI skills.
+For the full concept and property definitions, see `model/schema.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
@@ -263,7 +270,7 @@ The model runs as a single MILP that decides flow on every lane and which fulfil
 
 **Objective.** Minimize transport cost (per-unit lane cost times flow, summed over lanes) plus the fixed cost of every opened fulfillment center. The two cost terms live on different concepts (`Lane` and `Site`), so the objective adds one sum per concept.
 
-For the exact PyRel formulation, see `model/__init__.py`; `runbook.md` reproduces the model step by step with the RAI skills.
+For the exact PyRel formulation, see `model/reasoning.py`; `runbook.md` reproduces the model step by step with the RAI skills.
 
 ```text
 CSV inputs → load Site / Lane / Demand → flow + open decisions → role-based constraints → minimize transport + fixed cost → solve → export
