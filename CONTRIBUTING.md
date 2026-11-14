@@ -82,6 +82,8 @@ runs its report under `if __name__ == "__main__":`. A template with one
 source mode may load it when `model` is imported. A template with multiple
 source modes must expose explicit loader functions and let each entry point
 choose one.
+Existing templates may keep their declarations, source loading and reasoning
+together in `model/__init__.py`.
 
 ## Generated documentation sidecars
 
