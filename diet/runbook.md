@@ -38,7 +38,7 @@ Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` 
 
 **Prompt:** /rai-prescriptive-problem What's the minimum-cost amount of each food (continuous, non-negative) that keeps every nutrient's total intake within its [min, max] bounds? Solve three requirement scenarios in one solve — bounds scaled to 80%, 100%, and 120% — with the scenario as a first-class concept and the amount decision indexed by (food, scenario). Minimize total cost across all three, and persist the amounts to the ontology.
 
-**Response:** OPTIMAL (HiGHS), total objective $35.49 across the three scenarios. The amount decision is written back as `Food.x_amount(Scenario) -> amount` so the next step can read it; the solve is sub-second (18 simplex iterations). In `diet.py` the solve is declared with `problem.configure(...)`, so each refresh of the deployed model runs it.
+**Response:** OPTIMAL (HiGHS), total objective $35.49 across the three scenarios. The amount decision is written back as `Food.x_amount(Scenario) -> amount` so the next step can read it; the solve is sub-second (18 simplex iterations). In `model/__init__.py` the solve is declared with `problem.configure(...)`, so each refresh of the deployed model runs it.
 
 ## 4. Read the per-scenario diet plan
 
@@ -48,4 +48,4 @@ Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` 
 
 ## Data
 
-Bundled CSVs in `data/`: 9 foods with cost and nutrient content, 4 nutrients with min/max bounds. Full model in `diet.py`.
+Bundled CSVs in `data/`: 9 foods with cost and nutrient content, 4 nutrients with min/max bounds. Full model in `model/__init__.py`; the report in `queries/diet_plan.py`.

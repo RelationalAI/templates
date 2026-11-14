@@ -35,8 +35,8 @@ Built using **prescriptive reasoning** (linear programming with continuous decis
 
 ## What's included
 
-- **Model**: two concepts (`Food`, `Nutrient`), a `Scenario` concept, per-food decision variables, nutrient-bound constraints, and a cost-minimizing objective — all in `diet.py`.
-- **Runner**: `diet.py`, a single Python script that deploys the model to your Snowflake account, where each refresh runs the solve, and prints the report from the deployed model.
+- **Model**: two concepts (`Food`, `Nutrient`), a `Scenario` concept, per-food decision variables, nutrient-bound constraints, and a cost-minimizing objective — all in `model/__init__.py`, which `rai models deploy --path model` deploys to your Snowflake account, where each refresh runs the solve.
+- **Query**: `queries/diet_plan.py`, which prints the report from the deployed model.
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - **Sample data**: `data/foods.csv` (foods with cost and per-nutrient content) and `data/nutrients.csv` (nutrient min/max bounds).
 - **Outputs**: per-scenario termination status, objective cost, and a table of the foods (and amounts) in each least-cost basket, printed to stdout.
@@ -45,7 +45,7 @@ Built using **prescriptive reasoning** (linear programming with continuous decis
 
 ### Access
 - A Snowflake account that has the RAI Native App installed.
-- The one-time model deployment setup on that account, done by an account administrator: follow [Set up model deployment](https://private.relational.ai/early-access/model-deploy-setup) through **Governed setup**, **PAT authentication**, and steps 1-2 of **Additional setup for the prescriptive reasoner** (Quickstart step 4 below covers this template's own schema). It gives you a model role, a programmatic access token (PAT) stored as a secret, an external access integration, a PAT user, and a warehouse.
+- The one-time model deployment setup on that account, done by an account administrator: follow [Set up model deployment](https://private.relational.ai/early-access/model-deploy-setup) through **Governed setup**, **PAT authentication**, and steps 1-2 of **Additional setup for the prescriptive reasoner** (the Quickstart covers this template's own schema). It gives you a model role, a programmatic access token (PAT) stored as a secret, an external access integration, a PAT user, and a warehouse.
 - A Snowflake user that holds the model role.
 
 ### Tools
@@ -53,28 +53,61 @@ Built using **prescriptive reasoning** (linear programming with continuous decis
 
 ## Quickstart
 
-1. Download ZIP:
+Before you start, install Python 3.10 or later and complete the access prerequisites above: a Snowflake account with the RAI Native App, the one-time model deployment setup, and a Snowflake user that holds the model role.
+
+Before the first deploy, create this template's internal schema as the model role, and have an administrator grant the RAI Native App caller access to it. The internal schema holds only this model's objects, so the grants cover all of it, including the solver's result tables that the deploy creates:
+
+```sql
+-- as the model role
+CREATE SCHEMA IF NOT EXISTS <DB>.DIET_META;
+
+-- as an administrator
+GRANT CALLER USAGE ON DATABASE <DB> TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER USAGE ON SCHEMA <DB>.DIET_META TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER USAGE ON WAREHOUSE <PAT_WAREHOUSE> TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL TABLES IN SCHEMA <DB>.DIET_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL DYNAMIC TABLES IN SCHEMA <DB>.DIET_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL VIEWS IN SCHEMA <DB>.DIET_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER INSERT, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA <DB>.DIET_META TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER CREATE TABLE, CREATE STAGE ON SCHEMA <DB>.DIET_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER READ, WRITE ON ALL STAGES IN SCHEMA <DB>.DIET_META TO APPLICATION <RAI_APP_NAME>;
+```
+
+Use this sequence to deploy the model and query it:
+
+1. **Download the template**
+
+   [Download the ZIP](https://docs.relational.ai/templates/zips/v1/diet.zip), unzip it, and enter the template directory:
+
    ```bash
-   curl -O https://docs.relational.ai/templates/zips/v1/diet.zip
    unzip diet.zip
    cd diet
    ```
-   > [!TIP]
-   > You can also download the template ZIP using the "Download ZIP" button at the top of this page.
 
-2. Create venv:
+2. **Create a Python environment**
+
+   Create and activate a virtual environment, then update pip:
+
    ```bash
    python -m venv .venv
    source .venv/bin/activate
    python -m pip install --upgrade pip
    ```
 
-3. Install:
+3. **Install the template**
+
+   Install the dependencies pinned in `pyproject.toml`:
+
    ```bash
    python -m pip install .
    ```
 
-4. Configure: run `rai init` to create `raiconfig.yaml` with your Snowflake connection, set the connection `role` to the model role, then add a `deployment` section. Give each template its own schema pair so two deployed templates never share one.
+4. **Configure your project**
+
+   Use the configuration builder in [Install and run PyRel](https://docs.relational.ai/get-started/install-and-run-pyrel/#configure-your-project) to create `raiconfig.yaml` in the template directory and verify your connection.
+
+   Set the connection `role` to the model role, then add the prescriptive reasoner and a `deployment` section. Give each template its own schema pair so two deployed templates never share one:
+
    ```yaml
    reasoners:
      prescriptive:
@@ -93,51 +126,63 @@ Built using **prescriptive reasoning** (linear programming with continuous decis
      pat_user: <PAT_USER>
      pat_warehouse: <PAT_WAREHOUSE>
    ```
-   Without the `deployment` section, `python diet.py` stops with an error naming the missing setting.
 
-   Before the first run, create the internal schema as the model role, and have an administrator grant the RAI Native App caller access to it. The internal schema holds only this model's objects, so the grants cover all of it, including the solver's result tables that the deploy creates:
-   ```sql
-   -- as the model role
-   CREATE SCHEMA IF NOT EXISTS <DB>.DIET_META;
+5. **Deploy the model**
 
-   -- as an administrator
-   GRANT CALLER USAGE ON DATABASE <DB> TO APPLICATION <RAI_APP_NAME>;
-   GRANT CALLER USAGE ON SCHEMA <DB>.DIET_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT CALLER USAGE ON WAREHOUSE <PAT_WAREHOUSE> TO APPLICATION <RAI_APP_NAME>;
-   GRANT INHERITED CALLER SELECT ON ALL TABLES IN SCHEMA <DB>.DIET_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT INHERITED CALLER SELECT ON ALL DYNAMIC TABLES IN SCHEMA <DB>.DIET_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT INHERITED CALLER SELECT ON ALL VIEWS IN SCHEMA <DB>.DIET_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT INHERITED CALLER INSERT, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA <DB>.DIET_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT CALLER CREATE TABLE, CREATE STAGE ON SCHEMA <DB>.DIET_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT INHERITED CALLER READ, WRITE ON ALL STAGES IN SCHEMA <DB>.DIET_META TO APPLICATION <RAI_APP_NAME>;
-   ```
-   The deploy creates the public schema `<DB>.DIET` if it doesn't exist.
+   Deploy the model in `model/` to the schemas in `raiconfig.yaml`:
 
-5. Run:
    ```bash
-   python diet.py
+   rai models deploy --path model
    ```
-   The script deploys the model, waits for the first refresh, which runs the solve, and prints the report from the deployed model. Each refresh of the deployed model runs the solve again; `rai models deploy` deploys without printing the report.
 
-   Running the script again without changing the model redeploys nothing and does not solve again; it reports the latest refresh. A change to the model or to `problem.configure(...)` redeploys, and the redeploy's refresh solves. To solve again without a change, refresh the deployed model, then run the script:
-   ```sql
-   CALL <DB>.DIET_META._INTERNAL_REFRESH_MODEL('standard', NULL);
+   The deploy creates the public schema `<DB>.DIET` if it doesn't exist and waits for the model's first refresh, which runs the solve. Each refresh of the deployed model runs the solve again.
+
+   Deploying again without changing the model applies no updates and does not solve again. A change to the model or to `problem.configure(...)` redeploys, and the redeploy's refresh solves.
+
+6. **Query the results**
+
+   Print the report from the deployed model:
+
+   ```bash
+   python -m queries.diet_plan
    ```
-   To remove the deployment, run `rai models teardown --force` from this directory; it keeps the two schemas.
-
-6. Expected output — a few lines confirm a successful run:
 
    ```text
    Solve result:
    • status: OPTIMAL
-   • objective: 35.49
+   • objective: 35.486583333
 
-   Diet plan per scenario (0.8 / 1.0 / 1.2 demand): the same baseline
-   basket — hamburger + icecream + milk — scaled per scenario, for a
-   per-scenario cost of $9.46 / $11.83 / $14.19.
+   Diet plan per scenario:
+            scenario       food  cost    amount
+   0        baseline  hamburger  2.49  0.604514
+   1        baseline   icecream  1.59  2.591319
+   2        baseline       milk  0.89  6.970139
+   3  scaling_120pct  hamburger  2.49  0.725417
+   4  scaling_120pct   icecream  1.59  3.109583
+   5  scaling_120pct       milk  0.89  8.364167
+   6   scaling_80pct  hamburger  2.49  0.483611
+   7   scaling_80pct   icecream  1.59  2.073056
+   8   scaling_80pct       milk  0.89  5.576111
    ```
 
-   The full per-scenario diet plan prints above; see `runbook.md` for the complete log.
+   The formulation printed above the solve result is trimmed here. The report checks the solve's termination status and stops unless it is `OPTIMAL`. The least-cost basket is the same three foods in every scenario, scaled with the requirements, for a per-scenario cost of $9.46 / $11.83 / $14.19 at 0.8 / 1.0 / 1.2 times the bounds. See `runbook.md` for the step-by-step walkthrough.
+
+   To solve again without changing the model, refresh the deployed model, then run the query again:
+
+   ```sql
+   CALL <DB>.DIET_META._INTERNAL_REFRESH_MODEL('standard', NULL);
+   ```
+
+7. **Tear down the deployment**
+
+   Preview what the teardown removes, then remove it:
+
+   ```bash
+   rai models teardown
+   rai models teardown --force
+   ```
+
+   The first command lists the model's objects without dropping anything; the second drops them and keeps the two schemas.
 
 ## Template structure
 
@@ -146,13 +191,16 @@ Built using **prescriptive reasoning** (linear programming with continuous decis
 ├── README.md          # this file
 ├── runbook.md         # step-by-step analyst walkthrough
 ├── pyproject.toml     # dependencies
-├── diet.py            # main script (model, constraints, scenarios, solve)
+├── model/
+│   └── __init__.py    # the deployed model (concepts, constraints, scenarios, solve)
+├── queries/
+│   └── diet_plan.py   # report from the deployed model
 └── data/
     ├── foods.csv      # foods with cost and per-nutrient content
     └── nutrients.csv  # nutrient min/max bounds
 ```
 
-**Start here**: run `python diet.py` for the full model and scenario solve end to end, or follow `runbook.md` to rebuild it step by step.
+**Start here**: deploy with `rai models deploy --path model` and run `python -m queries.diet_plan` for the full model and scenario solve end to end, or follow `runbook.md` to rebuild it step by step.
 
 ## Sample data
 
@@ -169,7 +217,7 @@ The model is small and self-contained: two source concepts plus a `Scenario` con
 - **Primary identifiers**: `Food.name` and `Nutrient.name` (both strings); `Scenario.scenario_name` (string).
 - **Important invariants**: nutrient `min` and `max` bounds are non-negative and `min <= max`; each food's decision amount is non-negative (`lower=0`); each food's per-nutrient content is keyed by a nutrient that exists in `nutrients.csv`.
 
-For the full concept and property definitions, see `diet.py`; `runbook.md` builds them step by step with the RAI skills.
+For the full concept and property definitions, see `model/__init__.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
@@ -187,7 +235,7 @@ foods.csv + nutrients.csv → concepts → decision variables → constraints + 
 
 4. **Scenario analysis.** A first-class `Scenario` concept scales every nutrient bound by a factor (0.8 / 1.0 / 1.2 here), so tighter and looser requirements solve together in a single solve and their costs are directly comparable.
 
-The prescriptive decision variable appears in the model schema alongside the source-data properties — a unified view of everything the model knows, including variables added by `solve_for()`. See `diet.py` for the implementation and `runbook.md` for the skill-driven reproduction.
+The prescriptive decision variable appears in the model schema alongside the source-data properties — a unified view of everything the model knows, including variables added by `solve_for()`. See `model/__init__.py` for the implementation and `runbook.md` for the skill-driven reproduction.
 
 ## Customize this template
 
@@ -200,7 +248,7 @@ Focus on the first changes most users will make.
 
 ### Tune parameters
 
-- Edit the scenario rows in `diet.py` (the `("scaling_80pct", 0.8)`, `("baseline", 1.0)`, `("scaling_120pct", 1.2)` tuples) to test different scaling factors, or add rows for finer resolution.
+- Edit the scenario rows in `model/__init__.py` (the `("scaling_80pct", 0.8)`, `("baseline", 1.0)`, `("scaling_120pct", 1.2)` tuples) to test different scaling factors, or add rows for finer resolution.
 - Adjust the solver time limit (`time_limit_sec`) if you scale up to many foods and nutrients.
 
 ### Extend the model
@@ -223,9 +271,9 @@ The nutritional bounds may be too tight for the available foods. Check that at l
 </details>
 
 <details>
-<summary>rai init fails or connection errors</summary>
+<summary>Connection errors</summary>
 
-Ensure your Snowflake credentials are configured correctly and that the RAI Native App is installed on your account. Run `rai init` again and verify the connection settings.
+Ensure your Snowflake credentials are configured correctly and that the RAI Native App is installed on your account. Re-create `raiconfig.yaml` with the configuration builder (Quickstart step 4) and verify the connection settings.
 </details>
 
 <details>
