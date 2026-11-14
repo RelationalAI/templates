@@ -63,7 +63,7 @@ neg_error = Float.ref("neg_error")
 index_return = Float.ref("index_return")
 stock_return = Float.ref("stock_return")
 
-problem = Problem(model, Float)
+problem = Problem(model, Float, name="financial_index_replication")
 
 problem.solve_for(
     Stock.x_selected(selected),
@@ -173,7 +173,7 @@ problem.minimize(
 # Each refresh of the deployed model runs this solve.
 problem.configure("highs", time_limit_sec=240)
 
-# The solve's status and objective, published through the model's own relationships.
+# The solve's status and objective, which the deployed model publishes for the queries.
 SolveStatus = model.Relationship(f"financial index replication solve status is {String:status}")
 TotalResidual = model.Relationship(
     f"financial index replication total absolute residual is {Float:residual}"
