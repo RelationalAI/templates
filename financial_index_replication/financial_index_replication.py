@@ -14,7 +14,9 @@ The optimization is modeled as a mixed-integer linear problem that minimizes
 absolute tracking residuals.
 
 Run:
-    python financial_index_replication.py
+    `python financial_index_replication.py` deploys the model to the schema in
+    raiconfig.yaml, waits for its first refresh (which runs the solve), and prints
+    the report from the deployed model.
 
 Output:
     Prints the selected 20-stock basket, sector exposures, tracking quality
@@ -36,7 +38,7 @@ from model import (
     stock_returns_csv,
     stocks_csv,
 )
-from relationalai.semantics import Float, sum
+from relationalai.semantics import Float, String, sum
 from relationalai.semantics.reasoners.prescriptive import Problem
 
 # --------------------------------------------------
@@ -190,146 +192,163 @@ problem.minimize(
 # Solve
 # --------------------------------------------------
 
-print("=" * 70)
-print("FINANCIAL INDEX REPLICATION")
-print("=" * 70)
-print(f"Universe: {len(stocks_csv)} stocks")
-print(f"Selected names: exactly {N_REPLICATION_NAMES}")
-print(f"Max position: {MAX_WEIGHT:.0%}")
-print(f"Sector active band: +/- {SECTOR_ACTIVE_BAND:.0%}")
-print(f"Portfolio value: ${PORTFOLIO_VALUE:,.0f}")
-print(f"Max ADV participation per name: {MAX_ADV_PARTICIPATION:.0%}")
+# Each refresh of the deployed model runs this solve.
+problem.configure("highs", time_limit_sec=240)
 
-# Uncomment to print the formulated problem for debugging.
-# problem.display()
-problem.solve("highs", time_limit_sec=240)
-si = problem.solve_info()
-si.display()
-assert si.termination_status == "OPTIMAL" or si.termination_status == "TIME_LIMIT", "Solver did not find an optimal solution."
-
-print(f"\nStatus: {si.termination_status}")
-print(f"Objective: total absolute residual = {si.objective_value:.6f}")
+# The solve's status and objective, published through the model's own relationships.
+SolveStatus = model.Relationship(f"financial index replication solve status is {String:status}")
+TotalResidual = model.Relationship(
+    f"financial index replication total absolute residual is {Float:residual}"
+)
+model.define(SolveStatus(problem.termination_status()), TotalResidual(problem.objective_value()))
 
 # --------------------------------------------------
-# Evaluate and report
+# Deploy, then report (`rai models deploy` skips this block)
 # --------------------------------------------------
 
-solution_df = (
-    model.select(
-        Stock.ticker.alias("ticker"),
-        Stock.sector.alias("sector"),
-        Stock.benchmark_weight.alias("benchmark_weight"),
-        Stock.previous_weight.alias("previous_weight"),
-        Stock.avg_dollar_volume.alias("avg_dollar_volume"),
-        selected.alias("selected"),
-        weight.alias("weight"),
+if __name__ == "__main__":
+    # Deploy and wait for the first refresh, which runs the solve.
+    model.deploy()
+
+    print("=" * 70)
+    print("FINANCIAL INDEX REPLICATION")
+    print("=" * 70)
+    print(f"Universe: {len(stocks_csv)} stocks")
+    print(f"Selected names: exactly {N_REPLICATION_NAMES}")
+    print(f"Max position: {MAX_WEIGHT:.0%}")
+    print(f"Sector active band: +/- {SECTOR_ACTIVE_BAND:.0%}")
+    print(f"Portfolio value: ${PORTFOLIO_VALUE:,.0f}")
+    print(f"Max ADV participation per name: {MAX_ADV_PARTICIPATION:.0%}")
+
+    # Status and objective of the latest refresh's solve. A refresh records any
+    # termination status, so the report checks it.
+    status = model.select(SolveStatus).to_df().iloc[:, 0].tolist()
+    residual = model.select(TotalResidual).to_df().iloc[:, 0].tolist()
+    assert status in (["OPTIMAL"], ["TIME_LIMIT"]), f"Solver did not find an optimal solution: {status}"
+
+    print(f"\nStatus: {status[0]}")
+    print(f"Objective: total absolute residual = {residual[0]:.6f}")
+
+    # --------------------------------------------------
+    # Evaluate and report
+    # --------------------------------------------------
+
+    solution_df = (
+        model.select(
+            Stock.ticker.alias("ticker"),
+            Stock.sector.alias("sector"),
+            Stock.benchmark_weight.alias("benchmark_weight"),
+            Stock.previous_weight.alias("previous_weight"),
+            Stock.avg_dollar_volume.alias("avg_dollar_volume"),
+            selected.alias("selected"),
+            weight.alias("weight"),
+        )
+        .where(
+            Stock.x_selected(selected),
+            Stock.x_weight(weight),
+            weight > 0.0001,
+        )
+        .to_df()
+        .sort_values("weight", ascending=False)
     )
-    .where(
-        Stock.x_selected(selected),
-        Stock.x_weight(weight),
-        weight > 0.0001,
+
+    returns_wide = stock_returns_csv.pivot(
+        index="date", columns="ticker", values="return"
+    ).sort_index()
+    index_series = index_returns_csv.set_index("date").sort_index()
+    weights = solution_df.set_index("ticker")["weight"]
+    portfolio_returns = returns_wide[weights.index].mul(weights, axis=1).sum(axis=1)
+    tracking_diff = portfolio_returns - index_series["index_return"]
+
+    def annualized_tracking_error():
+        monthly_rms = sqrt((tracking_diff ** 2).mean())
+        return monthly_rms * sqrt(MONTHS_PER_YEAR)
+
+    def mean_abs_tracking():
+        return tracking_diff.abs().mean()
+
+    print("\n=== Selected Replication Basket ===")
+    print(
+        solution_df[
+            [
+                "ticker",
+                "sector",
+                "weight",
+                "benchmark_weight",
+                "previous_weight",
+                "avg_dollar_volume",
+            ]
+        ].to_string(
+            index=False,
+            formatters={
+                "weight": "{:.2%}".format,
+                "benchmark_weight": "{:.2%}".format,
+                "previous_weight": "{:.2%}".format,
+                "avg_dollar_volume": "${:,.0f}".format,
+            },
+        )
     )
-    .to_df()
-    .sort_values("weight", ascending=False)
-)
 
-returns_wide = stock_returns_csv.pivot(
-    index="date", columns="ticker", values="return"
-).sort_index()
-index_series = index_returns_csv.set_index("date").sort_index()
-weights = solution_df.set_index("ticker")["weight"]
-portfolio_returns = returns_wide[weights.index].mul(weights, axis=1).sum(axis=1)
-tracking_diff = portfolio_returns - index_series["index_return"]
-
-def annualized_tracking_error():
-    monthly_rms = sqrt((tracking_diff ** 2).mean())
-    return monthly_rms * sqrt(MONTHS_PER_YEAR)
-
-def mean_abs_tracking():
-    return tracking_diff.abs().mean()
-
-print("\n=== Selected Replication Basket ===")
-print(
-    solution_df[
-        [
-            "ticker",
-            "sector",
-            "weight",
-            "benchmark_weight",
-            "previous_weight",
-            "avg_dollar_volume",
-        ]
-    ].to_string(
-        index=False,
-        formatters={
-            "weight": "{:.2%}".format,
-            "benchmark_weight": "{:.2%}".format,
-            "previous_weight": "{:.2%}".format,
-            "avg_dollar_volume": "${:,.0f}".format,
-        },
+    sector_report = (
+        solution_df.groupby("sector", as_index=False)["weight"].sum()
+        .merge(
+            stocks_csv.groupby("sector", as_index=False)["benchmark_weight"].sum(),
+            on="sector",
+        )
     )
-)
-
-sector_report = (
-    solution_df.groupby("sector", as_index=False)["weight"].sum()
-    .merge(
-        stocks_csv.groupby("sector", as_index=False)["benchmark_weight"].sum(),
-        on="sector",
+    sector_report["active_weight"] = (
+        sector_report["weight"] - sector_report["benchmark_weight"]
     )
-)
-sector_report["active_weight"] = (
-    sector_report["weight"] - sector_report["benchmark_weight"]
-)
 
-print("\n=== Sector Exposure ===")
-print(
-    sector_report.sort_values("sector").to_string(
-        index=False,
-        formatters={
-            "weight": "{:.2%}".format,
-            "benchmark_weight": "{:.2%}".format,
-            "active_weight": "{:+.2%}".format,
-        },
+    print("\n=== Sector Exposure ===")
+    print(
+        sector_report.sort_values("sector").to_string(
+            index=False,
+            formatters={
+                "weight": "{:.2%}".format,
+                "benchmark_weight": "{:.2%}".format,
+                "active_weight": "{:+.2%}".format,
+            },
+        )
     )
-)
 
-turnover = (
-    solution_df.set_index("ticker")["weight"]
-    .reindex(stocks_csv["ticker"], fill_value=0.0)
-    .sub(stocks_csv.set_index("ticker")["previous_weight"])
-    .abs()
-    .sum()
-)
+    turnover = (
+        solution_df.set_index("ticker")["weight"]
+        .reindex(stocks_csv["ticker"], fill_value=0.0)
+        .sub(stocks_csv.set_index("ticker")["previous_weight"])
+        .abs()
+        .sum()
+    )
 
-print("\n=== Tracking Quality ===")
-print(f"Annualized tracking error: {annualized_tracking_error():.2%}")
-print(f"Mean abs monthly residual: {mean_abs_tracking():.4%}")
-print(f"Implied turnover: {turnover:.2%}")
+    print("\n=== Tracking Quality ===")
+    print(f"Annualized tracking error: {annualized_tracking_error():.2%}")
+    print(f"Mean abs monthly residual: {mean_abs_tracking():.4%}")
+    print(f"Implied turnover: {turnover:.2%}")
 
-# Simple benchmark: equal-weight the 20 most correlated stocks.
-top_corr_ids = (
-    returns_wide
-    .corrwith(index_series["index_return"])
-    .abs()
-    .sort_values(ascending=False)
-    .head(20)
-    .index
-)
-baseline_returns = returns_wide[top_corr_ids].mean(axis=1)
-baseline_diff = baseline_returns - index_series["index_return"]
+    # Simple benchmark: equal-weight the 20 most correlated stocks.
+    top_corr_ids = (
+        returns_wide
+        .corrwith(index_series["index_return"])
+        .abs()
+        .sort_values(ascending=False)
+        .head(20)
+        .index
+    )
+    baseline_returns = returns_wide[top_corr_ids].mean(axis=1)
+    baseline_diff = baseline_returns - index_series["index_return"]
 
-baseline_tracking_error = sqrt((baseline_diff ** 2).mean()) * sqrt(
-    MONTHS_PER_YEAR
-)
+    baseline_tracking_error = sqrt((baseline_diff ** 2).mean()) * sqrt(
+        MONTHS_PER_YEAR
+    )
 
-replica_returns_csv = DATA_DIR / "replica_returns.csv"
-pd.DataFrame({
-    "date": index_series.index,
-    "index_return": index_series["index_return"].values,
-    "replica_return": portfolio_returns.reindex(index_series.index).values,
-}).to_csv(replica_returns_csv, index=False)
+    replica_returns_csv = DATA_DIR / "replica_returns.csv"
+    pd.DataFrame({
+        "date": index_series.index,
+        "index_return": index_series["index_return"].values,
+        "replica_return": portfolio_returns.reindex(index_series.index).values,
+    }).to_csv(replica_returns_csv, index=False)
 
-print("\n=== Baseline Comparison ===")
-print("Baseline: equal-weight top-20 stocks by full-history correlation")
-print(f"Baseline annualized tracking error: {baseline_tracking_error:.2%}")
-print(f"\nWrote benchmark-vs-replica returns to: {replica_returns_csv}")
+    print("\n=== Baseline Comparison ===")
+    print("Baseline: equal-weight top-20 stocks by full-history correlation")
+    print(f"Baseline annualized tracking error: {baseline_tracking_error:.2%}")
+    print(f"\nWrote benchmark-vs-replica returns to: {replica_returns_csv}")

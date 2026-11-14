@@ -282,10 +282,12 @@ guided_walkthrough:
     - id: solve-and-inspect-basket
       title: Choose the basket and check tracking
       explanation: |-
-        problem.solve(...) solves the decision problem under the portfolio
-        rules to choose stocks and weights. model.select(...) queries the model
-        for stocks with weights above 0.01% of the portfolio, so a selected
-        stock with zero weight does not appear in the result.
+        problem.configure(...) sets the solver and time limit that each refresh
+        of the deployed model uses when it solves the decision problem under
+        the portfolio rules. model.deploy() deploys the model and waits for the
+        first refresh, which chooses stocks and weights. model.select(...)
+        queries the model for stocks with weights above 0.01% of the portfolio,
+        so a selected stock with zero weight does not appear in the result.
 
         portfolio_returns calculates the basket’s monthly returns from those
         weights and stock returns, and tracking_diff compares them with the
@@ -295,17 +297,22 @@ guided_walkthrough:
       focus:
         file: financial_index_replication.py
         anchors:
-          - start: problem.solve("highs", time_limit_sec=240)
+          - start: problem.configure("highs", time_limit_sec=240)
             end: return monthly_rms * sqrt(MONTHS_PER_YEAR)
       references:
-        problem.solve(...):
+        problem.configure(...):
           anchor:
-            start: problem.solve("highs", time_limit_sec=240)
-            end: problem.solve("highs", time_limit_sec=240)
+            start: problem.configure("highs", time_limit_sec=240)
+            end: problem.configure("highs", time_limit_sec=240)
+        model.deploy():
+          anchor:
+            start: model.deploy()
+            end: model.deploy()
         model.select(...):
           anchor:
             start: model.select(
             end: .to_df()
+            occurrence: 3
         portfolio_returns:
           anchor:
             start: returns_wide = stock_returns_csv.pivot(
