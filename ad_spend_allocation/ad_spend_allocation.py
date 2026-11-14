@@ -21,7 +21,9 @@ Modeling approach:
 - One solve handles all budget levels; results extracted via model.select().
 
 Run:
-    `python ad_spend_allocation.py`
+    `python ad_spend_allocation.py` deploys the model to the schema in raiconfig.yaml,
+    waits for its first refresh (which runs the solve), and prints the report from the
+    deployed model.
 
 Output:
     Prints the solver termination status, objective value, and a table of
@@ -171,21 +173,44 @@ problem.maximize(
 # Solve (single solve for all scenarios)
 # --------------------------------------------------
 
-problem.display()
-problem.solve("highs", time_limit_sec=60)
-model.require(problem.termination_status() == "OPTIMAL")
-problem.solve_info().display()
+# Each refresh of the deployed model runs this solve.
+problem.configure("highs", time_limit_sec=60)
+
+# Deploy the rules behind problem.display() with the model.
+problem.install_display_strings()
+
+# The solve's status and objective, published through the model's own relationships.
+SolveStatus = model.Relationship(f"ad spend solve status is {String:status}")
+TotalConversions = model.Relationship(f"ad spend total conversions is {Float:conversions}")
+model.define(SolveStatus(problem.termination_status()), TotalConversions(problem.objective_value()))
 
 # --------------------------------------------------
-# Extract results per scenario
+# Deploy, then report (`rai models deploy` skips this block)
 # --------------------------------------------------
 
-print("\nSpend allocation per scenario:")
-model.select(
-    Scenario.name.alias("scenario"),
-    Allocation.effectiveness.channel.name.alias("channel"),
-    Allocation.effectiveness.campaign.name.alias("campaign"),
-    x_spend.alias("spend"),
-).where(
-    Allocation.x_spend(Scenario, x_spend), x_spend > 0.001
-).inspect()
+if __name__ == "__main__":
+    # Deploy and wait for the first refresh, which runs the solve.
+    model.deploy()
+
+    problem.display()
+
+    # Status and objective of the latest refresh's solve. A refresh records any
+    # termination status, so the report checks it.
+    status = model.select(SolveStatus).to_df().iloc[:, 0].tolist()
+    conversions = model.select(TotalConversions).to_df().iloc[:, 0].tolist()
+    print(f"\nSolve result:\n• status: {', '.join(status)}")
+    if status != ["OPTIMAL"]:
+        raise SystemExit(f"No optimal spend allocation: termination status {status}")
+    print(f"• objective: {round(conversions[0], 9)}\n")
+
+    # --------------------------------------------------
+    # Extract results per scenario
+    # --------------------------------------------------
+
+    print("\nSpend allocation per scenario:")
+    model.select(
+        Scenario.name.alias("scenario"),
+        Allocation.effectiveness.channel.name.alias("channel"),
+        Allocation.effectiveness.campaign.name.alias("campaign"),
+        x_spend.alias("spend"),
+    ).where(Allocation.x_spend(Scenario, x_spend), x_spend > 0.001).inspect()
