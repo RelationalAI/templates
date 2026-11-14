@@ -27,8 +27,19 @@ Run:
     from the deployed model.
 """
 
-from .reasoning import graph, problem, wcc
+from .reasoning import SolveStatus, TotalHoldingCost, graph, problem, wcc
 from .schema import Demand, Route, Site, model
 from .source import DATA_DIR
 
-__all__ = ["DATA_DIR", "Demand", "Route", "Site", "graph", "model", "problem", "wcc"]
+__all__ = [
+    "DATA_DIR",
+    "Demand",
+    "Route",
+    "Site",
+    "SolveStatus",
+    "TotalHoldingCost",
+    "graph",
+    "model",
+    "problem",
+    "wcc",
+]
