@@ -16,7 +16,9 @@ Solver: Ipopt (interior-point for nonlinear programs). Ipopt finds locally
 optimal solutions for smooth NLP problems with continuous variables.
 
 Run:
-    `python water_allocation.py`
+    `python water_allocation.py` deploys the model to the schema in raiconfig.yaml,
+    waits for its first refresh (which runs the solve), and prints the report from
+    the deployed model.
 
 Output:
     Prints the solver termination status, objective value, and a table of
@@ -110,20 +112,38 @@ total_cost = sum(Connection.x_flow * Connection.source.cost_per_unit)
 problem.minimize(total_cost)
 
 # --------------------------------------------------
-# Solve and check solution
+# Solve
 # --------------------------------------------------
 
-problem.display()
-problem.solve("ipopt", time_limit_sec=60)
-si = problem.solve_info()
-si.display()
+# Each refresh of the deployed model runs this solve.
+problem.configure("ipopt", time_limit_sec=60)
 
-print(f"Status: {si.termination_status}")  # Ipopt returns LOCALLY_SOLVED
-print(f"Total cost: ${si.objective_value:.2f}")
+# Deploy the rules behind problem.display() with the model.
+problem.install_display_strings()
 
-print("\nFlow allocations:")
-model.select(
-    Connection.source.name.alias("source"),
-    Connection.user.name.alias("user"),
-    Connection.x_flow
-).where(Connection.x_flow > 0.001).inspect()
+# The solve's status and objective, published through the model's own relationships.
+SolveStatus = model.Relationship(f"water allocation solve status is {String:status}")
+TotalCost = model.Relationship(f"water allocation total cost is {Float:cost}")
+model.define(SolveStatus(problem.termination_status()), TotalCost(problem.objective_value()))
+
+# --------------------------------------------------
+# Deploy, then report (`rai models deploy` skips this block)
+# --------------------------------------------------
+
+if __name__ == "__main__":
+    # Deploy and wait for the first refresh, which runs the solve.
+    model.deploy()
+
+    problem.display()
+
+    status = model.select(SolveStatus).to_df().iloc[:, 0].tolist()
+    cost = model.select(TotalCost).to_df().iloc[:, 0].tolist()
+    print(f"Status: {status[0]}")  # Ipopt returns LOCALLY_SOLVED
+    print(f"Total cost: ${cost[0]:.2f}")
+
+    print("\nFlow allocations:")
+    model.select(
+        Connection.source.name.alias("source"),
+        Connection.user.name.alias("user"),
+        Connection.x_flow
+    ).where(Connection.x_flow > 0.001).inspect()
