@@ -42,7 +42,7 @@ This template composes the slate as a single optimization decision rather than a
 ## What's included
 
 - **Model**: a three-stage pipeline (knowledge-graph path walks, then graph analysis, then prescriptive optimization) on a single shared ontology, wired to the bundled CSVs.
-- **Runner**: `book_slate_recommendation.py` — a single Python script that runs end-to-end against a Snowflake-connected RAI account.
+- **Runner**: `book_slate_recommendation.py` — a single Python script that deploys the model to your Snowflake account, where each refresh runs the solve, and prints the report from the deployed model.
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - **Sample data**: a deterministic Open Library (CC0 public domain) slice of roughly 59 books, 52 authors, and 12 subjects, with synthetic users and read events layered on top. See *Sample data* below.
 - **Outputs**: the formulation, the solve-result block, the chosen slate (with per-book `path_count_total` and `triangle_count`), the per-user subject distribution, per-pick explanation-path support, and diagnostic candidate-set and structural-embeddedness tables.
@@ -52,7 +52,8 @@ This template composes the slate as a single optimization decision rather than a
 ### Access
 
 - A Snowflake account with the RelationalAI Native App installed.
-- A Snowflake user with permissions to access the RelationalAI Native App.
+- The one-time model deployment setup on that account, done by an account administrator: follow [Set up model deployment](https://private.relational.ai/early-access/model-deploy-setup) through **Governed setup**, **PAT authentication**, and steps 1-2 of **Additional setup for the prescriptive reasoner** (Quickstart step 4 below covers this template's own schema). It gives you a model role, a programmatic access token (PAT) stored as a secret, an external access integration, a PAT user, and a warehouse.
+- A Snowflake user that holds the model role.
 
 ### Tools
 
@@ -86,11 +87,44 @@ This template composes the slate as a single optimization decision rather than a
    python -m pip install .
    ```
 
-4. Configure (prompts for Snowflake account, role, and profile name):
-
-   ```bash
-   rai init
+4. Configure the Snowflake connection and the deployment: run `rai init` to create `raiconfig.yaml` with your Snowflake connection, set the connection `role` to the model role, then add a `deployment` section. Give each template its own schema pair so two deployed templates never share one.
+   ```yaml
+   reasoners:
+     prescriptive:
+       name: book_slate_recommendation_solver            # created on first deploy if it doesn't exist
+   deployment:
+     role: <MODEL_ROLE>
+     public_schema: <DB>.BOOK_SLATE_RECOMMENDATION               # published views and tables
+     identity:
+       internal_schema: <DB>.BOOK_SLATE_RECOMMENDATION_META      # solver inputs, results, refresh procedures
+     schedules:
+       standard:
+         interval_s: 0              # refresh only on deploy or on demand
+     schedule: standard
+     pat_secret: <PAT_SECRET>       # these four come from the setup page
+     pat_eai: <PAT_EAI>
+     pat_user: <PAT_USER>
+     pat_warehouse: <PAT_WAREHOUSE>
    ```
+   Without the `deployment` section, `python book_slate_recommendation.py` stops with an error naming the missing setting.
+
+   Before the first run, create the internal schema as the model role, and have an administrator grant the RAI Native App caller access to it. The internal schema holds only this model's objects, so the grants cover all of it, including the solver's result tables that the deploy creates:
+   ```sql
+   -- as the model role
+   CREATE SCHEMA IF NOT EXISTS <DB>.BOOK_SLATE_RECOMMENDATION_META;
+
+   -- as an administrator
+   GRANT CALLER USAGE ON DATABASE <DB> TO APPLICATION <RAI_APP_NAME>;
+   GRANT CALLER USAGE ON SCHEMA <DB>.BOOK_SLATE_RECOMMENDATION_META TO APPLICATION <RAI_APP_NAME>;
+   GRANT CALLER USAGE ON WAREHOUSE <PAT_WAREHOUSE> TO APPLICATION <RAI_APP_NAME>;
+   GRANT INHERITED CALLER SELECT ON ALL TABLES IN SCHEMA <DB>.BOOK_SLATE_RECOMMENDATION_META TO APPLICATION <RAI_APP_NAME>;
+   GRANT INHERITED CALLER SELECT ON ALL DYNAMIC TABLES IN SCHEMA <DB>.BOOK_SLATE_RECOMMENDATION_META TO APPLICATION <RAI_APP_NAME>;
+   GRANT INHERITED CALLER SELECT ON ALL VIEWS IN SCHEMA <DB>.BOOK_SLATE_RECOMMENDATION_META TO APPLICATION <RAI_APP_NAME>;
+   GRANT INHERITED CALLER INSERT, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA <DB>.BOOK_SLATE_RECOMMENDATION_META TO APPLICATION <RAI_APP_NAME>;
+   GRANT CALLER CREATE TABLE, CREATE STAGE ON SCHEMA <DB>.BOOK_SLATE_RECOMMENDATION_META TO APPLICATION <RAI_APP_NAME>;
+   GRANT INHERITED CALLER READ, WRITE ON ALL STAGES IN SCHEMA <DB>.BOOK_SLATE_RECOMMENDATION_META TO APPLICATION <RAI_APP_NAME>;
+   ```
+   The deploy creates the public schema `<DB>.BOOK_SLATE_RECOMMENDATION` if it doesn't exist.
 
 5. Run the template end-to-end:
 
@@ -98,14 +132,16 @@ This template composes the slate as a single optimization decision rather than a
    python book_slate_recommendation.py
    ```
 
-6. Expected output (a few lines confirm a successful run). Solver build strings and exact wall times vary, but `status: OPTIMAL` and the chosen slate are stable for the bundled slice:
+   The script deploys the model, waits for the first refresh, which runs the solve, and prints the report from the deployed model. Each refresh of the deployed model runs the solve again; `rai models deploy` deploys without printing the report.
+
+   To remove the deployment, run `rai models teardown --force` from this directory; it keeps the two schemas.
+
+6. Expected output (a few lines confirm a successful run). The status is `OPTIMAL` when the solver proves the slate optimal within `time_limit_sec`, and `TIME_LIMIT` when the limit ends the search first with the best slate found, as on the bundled slice with the default 180 seconds. The objective and the chosen slate can differ between runs:
 
    ```text
    Solve result:
-   • status: OPTIMAL
-   • solve time: a few seconds on the bundled slice
-   • num_points: 1
-   • solver: MiniZinc
+   • status: TIME_LIMIT
+   • objective: 542
 
    Final slate per user (K = 3, slot 1 = top of row):
    user_id slot book_id  path_count_total  triangle_count
@@ -230,7 +266,7 @@ See *Troubleshooting* for the joint-feasibility relationships between these dial
 <details>
 <summary>Solve returns INFEASIBLE / the final slate is empty</summary>
 
-The runner enforces ten constraints and requires an `OPTIMAL` status. If the data is too sparse or too clustered, the joint constraints can be infeasible. The dominant causes on customer slices are:
+The runner enforces ten constraints and requires an `OPTIMAL` or `TIME_LIMIT` status with a slate. If the data is too sparse or too clustered, the joint constraints can be infeasible. The dominant causes on customer slices are:
 
 1. **Too few candidates after the already-read exclusion.** Each user needs at least `SLATE_SIZE_K` candidates in their 2-hop reach after already-read books are excluded. Recommendable candidates come from length-2 `read_Book -> similar_Book` walks, so a user whose reads have no `similar_to` neighbors will be infeasible. Inspect the candidate-set diagnostic printed at the end of the runner.
 2. **Disjoint floors.** `FRESHNESS_FLOOR` and `ORIGINALS_FLOOR` are independent. A user with no candidate that is both fresh and in-house must spend `FRESHNESS_FLOOR + ORIGINALS_FLOOR` distinct picks, not the maximum of the two.
@@ -239,7 +275,7 @@ The runner enforces ten constraints and requires an `OPTIMAL` status. If the dat
 5. **Missing edges.** Every picked book must have at least one `Book.about(Subject)` and one `Book.written_by(Author)` row, or the diversity and uniqueness caps silently exempt it.
 6. **Hero pin.** Each user needs at least one candidate whose book has `triangle_count >= HERO_EMBEDDEDNESS_THRESHOLD`, or there is no eligible book for slot 1. Inspect the structural-embeddedness diagnostic table, then either lower `HERO_EMBEDDEDNESS_THRESHOLD` or densify the similarity input.
 
-The runner runs a Python-level pre-solve assertion just before `problem.solve(...)` that materializes the candidate set, anti-joins against the read history, and raises a `ValueError` naming the affected users per shortfall, with a strategy block keyed by which condition fired. It also prints an unread-candidate-count table before solving.
+After the deploy, the runner runs a Python-level assertion that materializes the candidate set, anti-joins against the read history, and raises a `ValueError` naming the affected users per shortfall, with a strategy block keyed by which condition fired. It also prints an unread-candidate-count table before the solve result.
 
 </details>
 
