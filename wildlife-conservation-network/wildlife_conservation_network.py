@@ -10,7 +10,9 @@ conservation network with RelationalAI:
 - Analyze community structure to optimize resource sharing and identify coordination leaders.
 
 Run:
-    `python wildlife_conservation_network.py`
+    `python wildlife_conservation_network.py` deploys the model to the schema in
+    raiconfig.yaml, waits for its first refresh, and prints the report from the
+    deployed model.
 
 Output:
     Prints community clusters of conservation organizations with centrality metrics,
@@ -52,7 +54,7 @@ partner_count = Integer.ref("partner_count")
 
 
 # --------------------------------------------------
-# Query and display results
+# Query and display results (`rai models deploy` skips the report)
 # --------------------------------------------------
 
 def main() -> None:
@@ -167,4 +169,6 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    # Deploy and wait for the first refresh, which computes the graph metrics.
+    model.deploy()
     main()

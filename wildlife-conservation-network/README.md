@@ -37,7 +37,7 @@ Built using **graph analysis** (Louvain community detection and degree centralit
 ## What's included
 
 - **Model**: a single shared ontology — `Organization` nodes and `Partnership` edges — plus the Louvain community and degree-centrality enrichment the graph reasoner writes back. Defined once in `model_setup.py` and reused by both runners.
-- **Runner**: `wildlife_conservation_network.py` (CLI report) and `app.py` (interactive Streamlit visualization), both against a Snowflake-connected RAI account.
+- **Runner**: `wildlife_conservation_network.py` (CLI report, run from a model deployed to your Snowflake account) and `app.py` (interactive Streamlit visualization), both against a Snowflake-connected RAI account.
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - **Sample data**: a small network of conservation organizations and the partnerships between them. See *Sample data* below.
 - **Outputs**: a per-organization table of community assignments and metrics, a per-community breakdown, and (in the app) an interactive network graph.
@@ -47,7 +47,8 @@ Built using **graph analysis** (Louvain community detection and degree centralit
 ### Access
 
 - A Snowflake account that has the RAI Native App installed.
-- A Snowflake user with permissions to access the RAI Native App.
+- A role that can deploy models, set up once by an account administrator: follow [Set up model deployment](https://private.relational.ai/early-access/model-deploy-setup) (**Try it out**, or **Governed setup** for a shared account). This template has no prescriptive solve, so it needs no PAT setup.
+- A Snowflake user that holds that role.
 
 ### Tools
 
@@ -87,11 +88,23 @@ You can customize the data and model as needed after you have it running end-to-
    python -m pip install .
    ```
 
-4. **Configure Snowflake connection and RAI profile**
+4. **Configure the Snowflake connection and the deployment**
 
-   ```bash
-   rai init
+   Run `rai init` to create `raiconfig.yaml` with your Snowflake connection, set the connection `role` to the model role, then add a `deployment` section. Give each template its own schema pair so two deployed templates never share one; the deploy creates both schemas if they don't exist.
+
+   ```yaml
+   deployment:
+     role: <MODEL_ROLE>
+     public_schema: <DB>.WILDLIFE_CONSERVATION_NETWORK              # published views and tables
+     identity:
+       internal_schema: <DB>.WILDLIFE_CONSERVATION_NETWORK_META     # refresh procedures and metadata
+     schedules:
+       standard:
+         interval_s: 0           # refresh only on deploy or on demand
+     schedule: standard
    ```
+
+   Without the `deployment` section, `python wildlife_conservation_network.py` stops with an error naming the missing setting.
 
 5. **Run the template**
 
@@ -100,6 +113,8 @@ You can customize the data and model as needed after you have it running end-to-
    ```bash
    python wildlife_conservation_network.py
    ```
+
+   The script deploys the model, waits for its first refresh, and prints the report from the deployed model. `rai models deploy` deploys without printing the report. To remove the deployment, run `rai models teardown --force` from this directory; it keeps the two schemas.
 
    **Option B: Interactive Streamlit app**
 
@@ -173,7 +188,7 @@ Both runners share one model. `model_setup.py` builds the RelationalAI model con
 
 The graph reasoner then runs two algorithms over that graph. Louvain community detection partitions the network into collaboration clusters by optimizing modularity — iteratively grouping organizations to maximize connections within a cluster and minimize connections between clusters — and writes a community label onto each organization. Degree centrality normalizes each organization's partnership count to a 0-to-1 scale, which makes hubs comparable across clusters of different sizes; the highest-centrality organization inside a community is the one best placed to broker coordination there.
 
-Reading those results back is a query joining the community label, centrality score, and raw partnership count per organization. The CLI script renders a per-organization table, a per-community breakdown (size, region, species focus, hub), and network-wide summary statistics. The optional Streamlit app is a visualization layer over the same query: an interactive network graph colored by community, expandable per-cluster detail, and cross-community connector analysis.
+Reading those results back is a query joining the community label, centrality score, and raw partnership count per organization. The CLI script deploys the model, waits for its first refresh, and renders a per-organization table, a per-community breakdown (size, region, species focus, hub), and network-wide summary statistics. The optional Streamlit app is a visualization layer over the same query: an interactive network graph colored by community, expandable per-cluster detail, and cross-community connector analysis.
 
 See `model_setup.py` and `wildlife_conservation_network.py` for the implementation, and `runbook.md` to reproduce it step by step with the RAI skills.
 
