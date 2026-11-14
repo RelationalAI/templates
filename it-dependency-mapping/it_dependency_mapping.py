@@ -100,8 +100,8 @@ p = model.path(src, Feature.contributes_to.repeat(1, MAX_DEPTH)).all().paths()
 # aggregates.max(p.length).per(src) takes the max hop count over the paths rooted
 # at each src and defines it directly onto Feature -- no pandas groupby and no
 # model.data round-trip. Kept SEPARATE from the node projection. It is a
-# Relationship, not a Property: a Property defined from a path fails deployment
-# planning.
+# Relationship, not a Property: on relationalai 2.1.1, deploying a Property
+# written from a path rule fails planning.
 Feature.max_downstream_depth = model.Relationship(
     f"{Feature} has {Integer:max_downstream_depth}"
 )

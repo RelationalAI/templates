@@ -130,8 +130,8 @@ route = model.path(src_pt.can_reach.repeat(1, MAX_ROUTE_HOPS), dst_pt).all().pat
 
 # Asset.on_attack_path marks the assets that lie on a crown-jewel kill-chain, so a
 # downstream query can pull them without re-enumerating paths. It is a
-# Relationship, not a Property: a Property defined from a path fails deployment
-# planning.
+# Relationship, not a Property: on relationalai 2.1.1, deploying a Property
+# written from a path rule fails planning.
 Asset.on_attack_path = model.Relationship(f"{Asset} on attack path {String:on_attack_path}")
 on_path, pos = Asset.ref(), Integer.ref()
 model.where(
