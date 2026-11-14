@@ -14,24 +14,18 @@ share a beneficial owner, each forwarding their share onward to a
 single destination. Every per-leg amount stays under the FinCEN $10K
 currency-transaction-report threshold so no leg triggers a CTR filing.
 
-Run:
-    `python motif_butterfly.py` deploys the model to the schema in
-    raiconfig.yaml, waits for its first refresh (which runs the solve),
-    and prints the report from the deployed model.
-
-Output:
-    Prints the formulation, the solve-result block, and three
-    per-solution inspect tables: the chosen motif transactions
-    (one row per motif edge), the K hubs and their shared
-    beneficial owner, and the source / destination assignments.
+Deploy:
+    Part of the model in `model/`, deployed with `rai models deploy --path model`;
+    each refresh of the deployment runs this solve. `python -m queries.butterfly_motifs`
+    prints its report from the deployed model.
 """
 
-import pandas as pd
-from model_setup import AMOUNT_THRESHOLD_DOLLARS, DATA_DIR, create_model
 from relationalai.semantics import Integer, String, sum
 from relationalai.semantics.reasoners.prescriptive import Problem
 
-# Runner-level parameters.
+from .ontology import AMOUNT_THRESHOLD_DOLLARS, Account, Transaction, model, tx_csv
+
+# Motif parameters.
 # K = 3 is the smallest hub count that's clearly a fan-out-then-fan-in pattern
 # rather than a direct payment chain.
 K = 3
@@ -44,21 +38,15 @@ CONSERVATION_TOLERANCE_DOLLARS = 100
 # your own ledger.
 MAX_BUTTERFLY_MOTIFS = 10
 
-model, Account, Transaction = create_model()
-
 # Tightest big-M coefficient for the per-hub conservation IC below. The big-M
 # form makes that IC active when `is_hub == 1` and vacuous when `is_hub == 0`;
 # M needs to bound |sum_in - sum_out| over decision-selected motif edges,
 # which is at most the per-account total of incoming or outgoing amounts.
-# Re-load transactions here to compute that bound; only the butterfly motif
-# needs this post-load aggregation, so it's local rather than wired through
-# `create_model()`'s return.
-_tx_csv = pd.read_csv(DATA_DIR / "transactions.csv")
 CONSERVATION_BIG_M = (
     int(
         max(
-            _tx_csv.groupby("dst_id")["amount_dollars"].sum().max(),
-            _tx_csv.groupby("src_id")["amount_dollars"].sum().max(),
+            tx_csv.groupby("dst_id")["amount_dollars"].sum().max(),
+            tx_csv.groupby("src_id")["amount_dollars"].sum().max(),
         )
     )
     + AMOUNT_THRESHOLD_DOLLARS
@@ -70,7 +58,8 @@ Account.is_source = model.Property(f"{Account} is source if {Integer:is_source}"
 Account.is_hub = model.Property(f"{Account} is hub if {Integer:is_hub}")
 Account.is_dest = model.Property(f"{Account} is dest if {Integer:is_dest}")
 
-problem = Problem(model, Integer)
+# The model configures three Problems, one per motif, so each has a unique name.
+problem = Problem(model, Integer, name="butterfly")
 
 # Each role decision spans the full Account scope -- not narrowed via
 # `where=[...]` on the `solve_for(...)` call. Tighter scoping leaves the
@@ -220,90 +209,3 @@ problem.install_display_strings()
 # The solve's status, published through the model's own relationship.
 SolveStatus = model.Relationship(f"butterfly solve status is {String:status}")
 model.define(SolveStatus(problem.termination_status()))
-
-# Deploy, then report (`rai models deploy` skips this block).
-if __name__ == "__main__":
-    # Deploy and wait for the first refresh, which runs the solve.
-    model.deploy()
-
-    print("\n" + "=" * 70)
-    print("BUTTERFLY (scatter-gather with per-hub conservation)")
-    print("CSP technique: per-vertex aggregate equality over decision-selected edge subset")
-    print("=" * 70)
-    problem.display()
-
-    # No `problem.verify(...)` call: `populate=False` on the `solve_for(...)`
-    # calls above means the decision-variable values are NOT written back to
-    # the relational `is_motif` / `is_source` / `is_hub` / `is_dest` properties.
-    # Without those values in the relational layer, verify() cannot re-evaluate
-    # ICs that reference them and prints spurious "Requirements not met"
-    # warnings instead of doing real verification. The inspect tables below
-    # surface the solver's choices directly; manual inspection against the IC
-    # formulas is the verification path here.
-
-    # Status of the latest refresh's solve and the number of solutions it found.
-    status = ", ".join(model.select(SolveStatus).to_df().iloc[:, 0])
-    motif_count = problem.solve_info().num_points or 0
-    print(f"\nSolve result:\n• status: {status}\n• num_points: {motif_count}\n")
-    if status == "INFEASIBLE":
-        print(
-            "\nResult: no butterfly motifs exist under the encoded constraints. "
-            "The search space was exhausted with zero feasible motifs."
-        )
-    elif status == "OPTIMAL":
-        print(
-            f"\nResult: {motif_count} butterfly motif(s) found and search exhausted "
-            "(no further motifs exist under the encoded constraints)."
-        )
-    elif status == "SOLUTION_LIMIT":
-        print(
-            f"\nResult: {motif_count} butterfly motif(s) found; "
-            f"hit MAX_BUTTERFLY_MOTIFS={MAX_BUTTERFLY_MOTIFS}. "
-            "More may exist -- raise the limit to enumerate further."
-        )
-    else:
-        print(
-            f"\nResult: search returned status={status} with {motif_count} motif(s); "
-            "did not finish. Raise time_limit_sec or check the README troubleshooting."
-        )
-
-    print("\nButterfly: chosen motif transactions (one row per motif edge per solution):")
-    sol_idx = Integer.ref()
-    val = Integer.ref()
-    model.select(
-        sol_idx.alias("solution"),
-        is_motif_var.transaction.tx_id.alias("tx_id"),
-        is_motif_var.transaction.src.id.alias("src_account_id"),
-        is_motif_var.transaction.src.name.alias("src_name"),
-        is_motif_var.transaction.dst.id.alias("dst_account_id"),
-        is_motif_var.transaction.dst.name.alias("dst_name"),
-        is_motif_var.transaction.amount_dollars.alias("amount"),
-        is_motif_var.transaction.ts_minutes.alias("ts_min"),
-    ).where(is_motif_var.values(sol_idx, val), val == 1).inspect()
-
-    print("\nButterfly: chosen motif hubs per solution (with shared beneficial owner):")
-    model.select(
-        sol_idx.alias("solution"),
-        is_hub_var.account.id.alias("hub_id"),
-        is_hub_var.account.name.alias("hub_name"),
-        is_hub_var.account.bo_id.alias("bo_id"),
-    ).where(is_hub_var.values(sol_idx, val), val == 1).inspect()
-
-    print("\nButterfly: chosen motif source and destination per solution:")
-    src_sol = Integer.ref()
-    src_val = Integer.ref()
-    dst_sol = Integer.ref()
-    dst_val = Integer.ref()
-    model.select(
-        src_sol.alias("solution"),
-        is_source_var.account.id.alias("source_id"),
-        is_source_var.account.name.alias("source_name"),
-        is_dest_var.account.id.alias("dest_id"),
-        is_dest_var.account.name.alias("dest_name"),
-    ).where(
-        is_source_var.values(src_sol, src_val),
-        src_val == 1,
-        is_dest_var.values(dst_sol, dst_val),
-        dst_val == 1,
-        src_sol == dst_sol,
-    ).inspect()
