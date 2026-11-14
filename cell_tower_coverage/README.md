@@ -39,7 +39,7 @@ Telecommunications and infrastructure teams routinely have to decide where to bu
 ## What's included
 
 - **Model**: `cell_tower_coverage.py` builds the semantic model (three concepts, two coverage relationships), the mixed-integer optimization problem (three binary variable families, four constraints, one objective), the solve, and the reporting.
-- **Runner**: `cell_tower_coverage.py` — a single Python script that runs end-to-end against a Snowflake-connected RAI account.
+- **Runner**: `cell_tower_coverage.py` — a single Python script that deploys the model to your Snowflake account, where each refresh runs the solve, and prints the report from the deployed model.
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - **Sample data**: 6 candidate tower sites, 10 demand zones, and 19 feasible tower-zone coverage pairs. See *Sample data* below.
 - **Outputs**: stdout tables (selected sites, assigned zones, uncovered zones, coverage summary) plus `data/coverage_solution.csv`.
@@ -49,7 +49,8 @@ Telecommunications and infrastructure teams routinely have to decide where to bu
 ### Access
 
 - A Snowflake account with the RelationalAI Native App installed.
-- A Snowflake user with permissions to access the RelationalAI Native App.
+- The one-time model deployment setup on that account, done by an account administrator: follow [Set up model deployment](https://private.relational.ai/early-access/model-deploy-setup) through **Governed setup**, **PAT authentication**, and steps 1-2 of **Additional setup for the prescriptive reasoner** (Quickstart step 4 below covers this template's own schema). It gives you a model role, a programmatic access token (PAT) stored as a secret, an external access integration, a PAT user, and a warehouse.
+- A Snowflake user that holds the model role.
 
 ### Tools
 
@@ -83,17 +84,62 @@ Telecommunications and infrastructure teams routinely have to decide where to bu
    python -m pip install .
    ```
 
-4. Configure:
+4. Configure: run `rai init` to create `raiconfig.yaml` with your Snowflake connection, set the connection `role` to the model role, then add a `deployment` section. Give each template its own schema pair so two deployed templates never share one.
 
-   ```bash
-   rai init
+   ```yaml
+   reasoners:
+     prescriptive:
+       name: cell_tower_coverage_solver            # created on first deploy if it doesn't exist
+   deployment:
+     role: <MODEL_ROLE>
+     public_schema: <DB>.CELL_TOWER_COVERAGE               # published views and tables
+     identity:
+       internal_schema: <DB>.CELL_TOWER_COVERAGE_META      # solver inputs, results, refresh procedures
+     schedules:
+       standard:
+         interval_s: 0              # refresh only on deploy or on demand
+     schedule: standard
+     pat_secret: <PAT_SECRET>       # these four come from the setup page
+     pat_eai: <PAT_EAI>
+     pat_user: <PAT_USER>
+     pat_warehouse: <PAT_WAREHOUSE>
    ```
+
+   Without the `deployment` section, `python cell_tower_coverage.py` stops with an error naming the missing setting.
+
+   Before the first run, create the internal schema as the model role, and have an administrator grant the RAI Native App caller access to it. The internal schema holds only this model's objects, so the grants cover all of it, including the solver's result tables that the deploy creates:
+
+   ```sql
+   -- as the model role
+   CREATE SCHEMA IF NOT EXISTS <DB>.CELL_TOWER_COVERAGE_META;
+
+   -- as an administrator
+   GRANT CALLER USAGE ON DATABASE <DB> TO APPLICATION <RAI_APP_NAME>;
+   GRANT CALLER USAGE ON SCHEMA <DB>.CELL_TOWER_COVERAGE_META TO APPLICATION <RAI_APP_NAME>;
+   GRANT CALLER USAGE ON WAREHOUSE <PAT_WAREHOUSE> TO APPLICATION <RAI_APP_NAME>;
+   GRANT INHERITED CALLER SELECT ON ALL TABLES IN SCHEMA <DB>.CELL_TOWER_COVERAGE_META TO APPLICATION <RAI_APP_NAME>;
+   GRANT INHERITED CALLER SELECT ON ALL DYNAMIC TABLES IN SCHEMA <DB>.CELL_TOWER_COVERAGE_META TO APPLICATION <RAI_APP_NAME>;
+   GRANT INHERITED CALLER SELECT ON ALL VIEWS IN SCHEMA <DB>.CELL_TOWER_COVERAGE_META TO APPLICATION <RAI_APP_NAME>;
+   GRANT INHERITED CALLER INSERT, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA <DB>.CELL_TOWER_COVERAGE_META TO APPLICATION <RAI_APP_NAME>;
+   GRANT CALLER CREATE TABLE, CREATE STAGE ON SCHEMA <DB>.CELL_TOWER_COVERAGE_META TO APPLICATION <RAI_APP_NAME>;
+   GRANT INHERITED CALLER READ, WRITE ON ALL STAGES IN SCHEMA <DB>.CELL_TOWER_COVERAGE_META TO APPLICATION <RAI_APP_NAME>;
+   ```
+
+   The deploy creates the public schema `<DB>.CELL_TOWER_COVERAGE` if it doesn't exist.
 
 5. Run the template end-to-end:
 
    ```bash
    python cell_tower_coverage.py
    ```
+
+   The script deploys the model, waits for the first refresh, which runs the solve, and prints the report from the deployed model. Each refresh of the deployed model runs the solve again; `rai models deploy` deploys without printing the report.
+
+   Running the script again without changing the model redeploys nothing and does not solve again; it reports the latest refresh. A change to the model or to `problem.configure(...)` redeploys, and the redeploy's refresh solves. To solve again without a change, refresh the deployed model, then run the script:
+   ```sql
+   CALL <DB>.CELL_TOWER_COVERAGE_META._INTERNAL_REFRESH_MODEL('standard', NULL);
+   ```
+   To remove the deployment, run `rai models teardown --force` from this directory; it keeps the two schemas.
 
 6. Expected output (a few lines confirm a successful run):
 
@@ -208,7 +254,7 @@ Focus on the first changes most users will make.
 
 - **Build budget** — `BUILD_BUDGET` (default `650,000`) caps total capital spend.
 - **Rollout size** — `MAX_NEW_TOWERS` (default `3`) caps how many sites the plan may select.
-- **Solve budget** — `time_limit_sec` on the `problem.solve("highs", ...)` call (default `60` seconds).
+- **Solve budget** — `time_limit_sec` on the `problem.configure("highs", ...)` call (default `60` seconds).
 
 ### Extend the model
 
