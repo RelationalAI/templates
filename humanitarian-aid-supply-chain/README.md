@@ -43,7 +43,7 @@ Built using **graph analysis** — PageRank (an iterative random-walk algorithm)
 ## What's included
 
 - **Shared model setup**: `model_setup.py` - Common model configuration and graph creation (used by both scripts)
-- **Command-line script**: `humanitarian_aid_supply_chain.py` - CLI analysis script with detailed output
+- **Command-line script**: `humanitarian_aid_supply_chain.py` - CLI analysis script with detailed output, run from a model deployed to your Snowflake account
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - **Interactive app**: `app.py` - Streamlit web application with visualizations and interactive analysis
 - **Data**: `data/distribution_points.csv` and `data/supply_routes.csv`
@@ -53,7 +53,8 @@ Built using **graph analysis** — PageRank (an iterative random-walk algorithm)
 ### Access
 
 - A Snowflake account that has the RAI Native App installed.
-- A Snowflake user with permissions to access the RAI Native App.
+- A role that can deploy models, set up once by an account administrator: follow [Set up model deployment](https://private.relational.ai/early-access/model-deploy-setup) (**Try it out**, or **Governed setup** for a shared account). This template has no prescriptive solve, so it needs no PAT setup.
+- A Snowflake user that holds that role.
 
 ### Tools
 
@@ -93,11 +94,23 @@ You can customize the data and model as needed after you have it running end-to-
    python -m pip install .
    ```
 
-4. **Configure Snowflake connection and RAI profile**
+4. **Configure the Snowflake connection and the deployment**
 
-   ```bash
-   rai init
+   Run `rai init` to create `raiconfig.yaml` with your Snowflake connection, set the connection `role` to the model role, then add a `deployment` section. Give each template its own schema pair so two deployed templates never share one; the deploy creates both schemas if they don't exist.
+
+   ```yaml
+   deployment:
+     role: <MODEL_ROLE>
+     public_schema: <DB>.HUMANITARIAN_AID_SUPPLY_CHAIN              # published views and tables
+     identity:
+       internal_schema: <DB>.HUMANITARIAN_AID_SUPPLY_CHAIN_META     # refresh procedures and metadata
+     schedules:
+       standard:
+         interval_s: 0           # refresh only on deploy or on demand
+     schedule: standard
    ```
+
+   Without the `deployment` section, `python humanitarian_aid_supply_chain.py` stops with an error naming the missing setting.
 
 5. **Run the template**
 
@@ -106,6 +119,8 @@ You can customize the data and model as needed after you have it running end-to-
    ```bash
    python humanitarian_aid_supply_chain.py
    ```
+
+   The script deploys the model, waits for its first refresh, and prints the report from the deployed model. `rai models deploy` deploys without printing the report. To remove the deployment, run `rai models teardown --force` from this directory; it keeps the two schemas.
 
    **Option B: Interactive Streamlit app**
 
@@ -189,7 +204,7 @@ CSV files → model_setup.create_model() → Calculate PageRank → Calculate De
 
 **Query and analyze strategic categories.** Both metrics are queried together into a DataFrame, then each distribution point is classified against the 70th-percentile thresholds on the two scores: critical coordination hubs (high on both), influential endpoints (high PageRank, lower degree), and network connectors (lower PageRank, high degree).
 
-**Display strategic analysis and recommendations.** The CLI script prints a ranked table of all points with both metrics, the strategic-category breakdown, network-wide and regional statistics, and recommendations for response teams. The Streamlit app adds an interactive overview, a color-coded network visualization, filterable rankings with CSV export, and per-category detail.
+**Display strategic analysis and recommendations.** The CLI script deploys the model, waits for its first refresh, and prints a ranked table of all points with both metrics, the strategic-category breakdown, network-wide and regional statistics, and recommendations for response teams. The Streamlit app adds an interactive overview, a color-coded network visualization, filterable rankings with CSV export, and per-category detail.
 
 See `model_setup.py` and `humanitarian_aid_supply_chain.py` for the implementation, and `runbook.md` for the skill-driven reproduction.
 

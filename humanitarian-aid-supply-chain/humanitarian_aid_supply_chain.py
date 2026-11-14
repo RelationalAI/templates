@@ -10,7 +10,9 @@ aid supply chain network with RelationalAI:
 - Analyze weighted, directed supply chains to prioritize humanitarian response.
 
 Run:
-    `python humanitarian_aid_supply_chain.py`
+    `python humanitarian_aid_supply_chain.py` deploys the model to the schema in
+    raiconfig.yaml, waits for its first refresh, and prints the report from the
+    deployed model.
 
 Output:
     Displays ranked distribution points showing both influence (PageRank) and connectivity
@@ -50,7 +52,7 @@ out_routes = Integer.ref("out_routes")
 
 
 # --------------------------------------------------
-# Query and display results
+# Query and display results (`rai models deploy` skips the report)
 # --------------------------------------------------
 
 def main() -> None:
@@ -205,4 +207,6 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    # Deploy and wait for the first refresh, which computes the graph metrics.
+    model.deploy()
     main()
