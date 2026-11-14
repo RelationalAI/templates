@@ -86,7 +86,7 @@ Eigenvector centrality (the "important neighbors make you important" measure) ra
 
 **Response**
 
-OPTIMAL (HiGHS), total holding cost **$13,713.29**. 10 continuous allocation variables, 14 constraints (1 budget cap, 8 demand floors, 5 warehouse centrality floors); `Site.x_inventory` written back.
+OPTIMAL (HiGHS), total holding cost **$13,713.29**. 10 continuous allocation variables, 14 constraints (1 budget cap, 8 demand floors, 5 warehouse centrality floors); `Site.x_inventory` written back. In `model/__init__.py` the solve is declared with `problem.configure(...)`, so each refresh of the deployed model runs the graph analysis, then the solve.
 
 ### 6. Read the allocation
 
@@ -102,4 +102,4 @@ About **951 of the 2,000 units** are placed, so the **budget is slack** — it i
 
 ## Data
 
-Bundled CSVs in `data/`: 10 sites, 14 routes, 8 demands; inventory budget (2,000) and the centrality-to-floor multiplier (200) are constants in the script. Full chain in `warehouse_allocation.py`.
+Bundled CSVs in `data/`: 10 sites, 14 routes, 8 demands; inventory budget (2,000) and the centrality-to-floor multiplier (200) are constants in the model. Full chain in `model/__init__.py`; the report in `queries/allocation_report.py`.

@@ -49,4 +49,4 @@ Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` 
 
 ## Data
 
-Bundled CSVs in `data/`: 4 products, 5 discount levels, 4 weeks. Full model in `retail_markdown.py`.
+Bundled CSVs in `data/`: 4 products, 5 discount levels, 4 weeks. Full model in `model/__init__.py`; the report in `queries/markdown_plan.py`.

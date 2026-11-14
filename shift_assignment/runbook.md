@@ -38,7 +38,7 @@ Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` 
 
 **Prompt:** /rai-prescriptive-problem Is there a feasible assignment of workers to shifts where each shift has at least its minimum coverage and no more than its capacity, each worker works at most one shift, and no one is assigned to a shift they're unavailable for? Solve it for three minimum-coverage targets — 1, 2, and 3 workers per shift — in a single solve, with the coverage target as a first-class scenario concept and the assignment decision indexed by (worker, shift, scenario). Persist the assignments to the ontology.
 
-**Response:** OPTIMAL (satisfiable) at all three coverage levels — 66 binary variables (22 availability pairs x 3 scenarios), 48 constraints. The assignment is written back as `Worker.x_assign(Shift, Scenario)`. This is a feasibility problem with no objective, so the solver returns one valid assignment per level — an alternative valid assignment may differ run to run.
+**Response:** OPTIMAL (satisfiable) at all three coverage levels — 66 binary variables (22 availability pairs x 3 scenarios), 48 constraints. The assignment is written back as `Worker.x_assign(Shift, Scenario)`. This is a feasibility problem with no objective, so the solver returns one valid assignment per level — an alternative valid assignment may differ run to run. In `model/__init__.py` the solve is declared with `problem.configure(...)`, so each refresh of the deployed model runs it.
 
 ## 4. Read the staffing levels
 
@@ -48,4 +48,4 @@ Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` 
 
 ## Data
 
-Bundled CSVs in `data/`: 10 workers, 3 shifts with capacities, 22 availability pairs. The three coverage scenarios (1, 2, 3) are defined in the script. Full model in `shift_assignment.py`.
+Bundled CSVs in `data/`: 10 workers, 3 shifts with capacities, 22 availability pairs. The three coverage scenarios (1, 2, 3) are defined in `model/__init__.py`. Full model in `model/__init__.py`; the report in `queries/shift_assignments.py`.

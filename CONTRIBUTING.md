@@ -53,8 +53,8 @@ This repository uses Ruff to lint Python template code.
 ## Add a new template
 
 1. Copy `sample-template/` to a new root-level directory named for your template.
-2. Rename the main runner, package metadata, and starter identifiers so they match the folder name.
-3. Implement the schema, source mappings, runner logic, sample data, and outputs.
+2. Rename the query module, package metadata, and starter identifiers so they match the folder name.
+3. Implement the schema, source mappings, reasoning, queries, sample data, and outputs.
 4. Replace the starter README content and update every field in `template-docs.yaml`.
 5. Run focused lint, compilation, policy, and index checks.
 6. Run the template from a fresh environment and verify that the README Quickstart works as written.
@@ -69,15 +69,21 @@ At a minimum, make sure your template includes:
 - `model/schema.py` for model creation and stable declarations
 - `model/source.py` for source reads, normalization, and base-fact mappings
 - `model/__init__.py` for stable exports
-- a runnable entrypoint such as `<template_name>.py` or a notebook
+- `queries/<name>.py` modules that read the deployed model, run as `python -m queries.<name>`
 - `runbook.md` that uses the same paths, symbols, and commands
 - `data/` when the template reads local sample files
 - sample data and output paths that match both the code and the README
 
-Keep solver declarations, derived reasoning, result queries, and reporting in
-the runner. A template with one source mode may load it when `model` is
-imported. A template with multiple source modes must expose explicit loader
-functions and let each runner choose one.
+`rai models deploy --path model` deploys what the `model` package declares,
+so solver declarations and derived reasoning belong in the package too (for
+example `model/reasoning.py`). Keep result queries and reporting in
+`queries/<name>.py`: each module imports from `model`, declares nothing, and
+runs its report under `if __name__ == "__main__":`. A template with one
+source mode may load it when `model` is imported. A template with multiple
+source modes must expose explicit loader functions and let each entry point
+choose one.
+Existing templates may keep their declarations, source loading and reasoning
+together in `model/__init__.py`.
 
 ## Generated documentation sidecars
 
@@ -129,7 +135,7 @@ commands, expected results, and any required data attribution in Quickstart.
 The README and generated run steps must agree.
 
 For a longer README, use **What's included** to name the schema, source,
-runner, runbook, sample data, and outputs. Use small Markdown tables for
+queries, runbook, sample data, and outputs. Use small Markdown tables for
 representative sample rows where helpful.
 
 > [!TIP]
@@ -186,7 +192,7 @@ Before opening a PR, make sure you can complete this checklist from a clean envi
   ruff check */
   ```
 
-1. Compile the changed runner and model package:
+1. Compile the changed model package and queries:
 
   ```bash
   python -m compileall -q <your_template_name> sample-template

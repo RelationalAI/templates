@@ -40,7 +40,8 @@ This template also answers the follow-up question every planner asks: if we had 
 ## What's included
 
 - **Model**: a single ontology with `Channel`, `Campaign`, `Effectiveness`, `Scenario`, and an `Allocation` decision concept — plus the prescriptive formulation (decision variables, constraints, objective) that runs on it.
-- **Runner**: `ad_spend_allocation.py` — one Python script that loads the CSVs, builds the model, solves all scenarios at once, and prints the allocation table.
+- **Deployment**: `model/__init__.py` loads the CSVs, builds the model, and configures the solve; `rai models deploy --path model` deploys it to your Snowflake account, where each refresh solves all scenarios at once.
+- **Query**: `queries/spend_allocation.py` prints the allocation table from the deployed model.
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - **Sample data**: 5 channels with spend bounds, 3 campaigns with budgets, and the 15 channel-campaign conversion rates. See *Sample data* below.
 - **Outputs**: solver termination status, objective value, and a per-scenario table of non-trivial spend allocations printed to stdout; the spend and funding decisions are also written back to the ontology as queryable properties.
@@ -50,7 +51,8 @@ This template also answers the follow-up question every planner asks: if we had 
 ### Access
 
 - A Snowflake account with the RelationalAI Native App installed.
-- A Snowflake user with permissions to access the RelationalAI Native App.
+- The one-time model deployment setup on that account, done by an account administrator: follow [Set up model deployment](https://private.relational.ai/early-access/model-deploy-setup) through **Governed setup**, **PAT authentication**, and steps 1-2 of **Additional setup for the prescriptive reasoner** (the Quickstart covers this template's own schema). It gives you a model role, a programmatic access token (PAT) stored as a secret, an external access integration, a PAT user, and a warehouse.
+- A Snowflake user that holds the model role.
 
 ### Tools
 
@@ -59,18 +61,40 @@ This template also answers the follow-up question every planner asks: if we had 
 
 ## Quickstart
 
-1. Download the template and extract it:
+Before you start, install Python 3.10 or later and complete the access prerequisites above: a Snowflake account with the RAI Native App, the one-time model deployment setup, and a Snowflake user that holds the model role.
+
+Before the first deploy, create this template's internal schema as the model role, and have an administrator grant the RAI Native App caller access to it. The internal schema holds only this model's objects, so the grants cover all of it, including the solver's result tables that the deploy creates:
+
+```sql
+-- as the model role
+CREATE SCHEMA IF NOT EXISTS <DB>.AD_SPEND_ALLOCATION_META;
+
+-- as an administrator
+GRANT CALLER USAGE ON DATABASE <DB> TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER USAGE ON SCHEMA <DB>.AD_SPEND_ALLOCATION_META TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER USAGE ON WAREHOUSE <PAT_WAREHOUSE> TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL TABLES IN SCHEMA <DB>.AD_SPEND_ALLOCATION_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL DYNAMIC TABLES IN SCHEMA <DB>.AD_SPEND_ALLOCATION_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL VIEWS IN SCHEMA <DB>.AD_SPEND_ALLOCATION_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER INSERT, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA <DB>.AD_SPEND_ALLOCATION_META TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER CREATE TABLE, CREATE STAGE ON SCHEMA <DB>.AD_SPEND_ALLOCATION_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER READ, WRITE ON ALL STAGES IN SCHEMA <DB>.AD_SPEND_ALLOCATION_META TO APPLICATION <RAI_APP_NAME>;
+```
+
+Use this sequence to deploy the model and query it:
+
+1. **Download the template**
+
+   [Download the ZIP](https://docs.relational.ai/templates/zips/v1/ad_spend_allocation.zip), unzip it, and enter the template directory:
 
    ```bash
-   curl -O https://docs.relational.ai/templates/zips/v1/ad_spend_allocation.zip
    unzip ad_spend_allocation.zip
    cd ad_spend_allocation
    ```
 
-   > [!TIP]
-   > You can also download the template ZIP using the "Download ZIP" button at the top of this page.
+2. **Create a Python environment**
 
-2. Create a virtual environment and activate it:
+   Create and activate a virtual environment, then update pip:
 
    ```bash
    python -m venv .venv
@@ -78,38 +102,93 @@ This template also answers the follow-up question every planner asks: if we had 
    python -m pip install --upgrade pip
    ```
 
-3. Install dependencies:
+3. **Install the template**
+
+   Install the dependencies pinned in `pyproject.toml`:
 
    ```bash
    python -m pip install .
    ```
 
-4. Configure your RelationalAI connection:
+4. **Configure your project**
 
-   ```bash
-   rai init
+   Use the configuration builder in [Install and run PyRel](https://docs.relational.ai/get-started/install-and-run-pyrel/#configure-your-project) to create `raiconfig.yaml` in the template directory and verify your connection.
+
+   Set the connection `role` to the model role, then add the prescriptive reasoner and a `deployment` section. Give each template its own schema pair so two deployed templates never share one:
+
+   ```yaml
+   reasoners:
+     prescriptive:
+       name: ad_spend_allocation_solver            # created on first deploy if it doesn't exist
+   deployment:
+     role: <MODEL_ROLE>
+     public_schema: <DB>.AD_SPEND_ALLOCATION               # published views and tables
+     identity:
+       internal_schema: <DB>.AD_SPEND_ALLOCATION_META      # solver inputs, results, refresh procedures
+     schedules:
+       standard:
+         interval_s: 0              # refresh only on deploy or on demand
+     schedule: standard
+     pat_secret: <PAT_SECRET>       # these four come from the setup page
+     pat_eai: <PAT_EAI>
+     pat_user: <PAT_USER>
+     pat_warehouse: <PAT_WAREHOUSE>
    ```
 
-5. Run the template end-to-end:
+5. **Deploy the model**
+
+   Deploy the model in `model/` to the schemas in `raiconfig.yaml`:
 
    ```bash
-   python ad_spend_allocation.py
+   rai models deploy --path model
    ```
 
-6. Expected output. A per-scenario allocation table confirms a successful run (trimmed to the first budget level here; the full run also prints the $45K and $55K scenarios):
+   The deploy creates the public schema named in `raiconfig.yaml` if it doesn't exist and waits for the model's first refresh, which runs the solve. Each refresh of the deployed model runs the solve again.
+
+   Deploying again without changing the model applies no updates and does not solve again. A change to the model or to `problem.configure(...)` redeploys, and the redeploy's refresh solves.
+
+6. **Query the results**
+
+   Print the report from the deployed model:
+
+   ```bash
+   python -m queries.spend_allocation
+   ```
 
    ```text
+   Solve result:
+   • status: OPTIMAL
+   • objective: 9740.0
+
    Spend allocation per scenario:
-       scenario channel         campaign    spend
-     budget_35k   Email  Brand_Awareness   2000.0
-     budget_35k   Email    Seasonal_Sale   2000.0
-     budget_35k  Search   Product_Launch  10000.0
-     budget_35k  Search    Seasonal_Sale   8000.0
-     budget_35k  Social  Brand_Awareness   3000.0
-     budget_35k   Video   Product_Launch  10000.0
+        scenario channel         campaign    spend
+   0  budget_35k   Email  Brand_Awareness   2000.0
+   1  budget_35k   Email    Seasonal_Sale   2000.0
+   2  budget_35k  Search   Product_Launch  10000.0
+   3  budget_35k  Search    Seasonal_Sale   8000.0
+   4  budget_35k  Social  Brand_Awareness   3000.0
+   5  budget_35k   Video   Product_Launch  10000.0
+   ...
    ```
 
-   All three budgets invest heavily in Search and Video (highest ROI channels). The $35K budget activates 6 channel-campaign pairs. The $45K and $55K budgets add Search Brand_Awareness ($5K) and increase Social Brand_Awareness to $8K — diminishing returns mean the extra $10K from $45K to $55K produces no new activations. See `runbook.md` for the full printout and a step-by-step walkthrough.
+   The formulation printed above the solve result is trimmed here, and so are the budget_45k and budget_55k scenarios that the full report prints. All three budgets invest heavily in Search and Video (highest ROI channels). The $35K budget activates 6 channel-campaign pairs. The $45K and $55K budgets add Search Brand_Awareness ($5K) and increase Social Brand_Awareness to $8K — diminishing returns mean the extra $10K from $45K to $55K produces no new activations. The report checks the solve's termination status and stops unless it is OPTIMAL. See `runbook.md` for the full printout and a step-by-step walkthrough.
+
+   To solve again without changing the model, refresh the deployed model, then run the query again:
+
+   ```sql
+   CALL <DB>.AD_SPEND_ALLOCATION_META._INTERNAL_REFRESH_MODEL('standard', NULL);
+   ```
+
+7. **Tear down the deployment**
+
+   Preview what the teardown removes, then remove it:
+
+   ```bash
+   rai models teardown
+   rai models teardown --force
+   ```
+
+   The first command lists the model's objects without dropping anything; the second drops them and keeps the two schemas.
 
 ## Template structure
 
@@ -117,7 +196,10 @@ The tree below shows the top-level layout:
 
 ```text
 ad_spend_allocation/
-├── ad_spend_allocation.py   # Main script (ontology, formulation, single-solve scenario sweep)
+├── model/
+│   └── __init__.py          # the deployed model (ontology, formulation, scenario sweep)
+├── queries/
+│   └── spend_allocation.py  # report from the deployed model
 ├── data/
 │   ├── channels.csv         # 5 channels with min/max spend and ROI coefficient
 │   ├── campaigns.csv        # 3 campaigns with budget and target conversions
@@ -127,7 +209,7 @@ ad_spend_allocation/
 └── pyproject.toml           # dependencies
 ```
 
-**Start here**: run `python ad_spend_allocation.py` for the full run end to end, or follow `runbook.md` to reproduce it step by step with the RAI skills.
+**Start here**: deploy with `rai models deploy --path model` and run `python -m queries.spend_allocation` for the full run end to end, or follow `runbook.md` to reproduce it step by step with the RAI skills.
 
 ## Sample data
 
@@ -137,7 +219,7 @@ The bundled data is synthetic and illustrative — designed to teach the optimiz
 - **`campaigns.csv`** (3 rows) — the campaigns (Brand_Awareness, Product_Launch, Seasonal_Sale), each with a budget and a target-conversions figure.
 - **`effectiveness.csv`** (15 rows) — one row per channel-campaign pair, giving the conversion rate (conversions per dollar spent) for that pair.
 
-The three budget levels ($35K, $45K, $55K) that drive the scenario sweep are defined in the script, not in a CSV.
+The three budget levels ($35K, $45K, $55K) that drive the scenario sweep are defined in `model/__init__.py`, not in a CSV.
 
 ## Model overview
 
@@ -147,11 +229,11 @@ One ontology holds the inputs and the decision variables. The three source CSVs 
 - **Primary identifiers**: integer `id` on `Channel` and `Campaign`; a composite `channel_id` + `campaign_id` on `Effectiveness`; a string `name` on `Scenario`; and the linked `Effectiveness` on `Allocation`.
 - **Important invariants**: spend is non-negative; `x_active` is binary (0/1); spend on a pair sits within its channel's min/max only when the pair is active; per-campaign spend stays within the campaign budget; every campaign has at least one funded channel; and total spend stays within the scenario's total budget.
 
-For the full concept and property definitions, see `ad_spend_allocation.py`; `runbook.md` builds them step by step with the RAI skills.
+For the full concept and property definitions, see `model/__init__.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
-The script loads the CSVs into concepts, defines the decision variables, adds the constraints and objective, and solves all budget levels in one call.
+The model loads the CSVs into concepts, defines the decision variables, adds the constraints and objective, and solves all budget levels in one solve.
 
 1. **Define the ontology.** Channels, campaigns, and their per-pair effectiveness (conversion rates) load into concepts, with the effectiveness rows linking each channel to each campaign.
 
@@ -165,7 +247,7 @@ The script loads the CSVs into concepts, defines the decision variables, adds th
 
 6. **Solve once for all scenarios.** A single HiGHS solve covers all three budget levels; results are extracted per scenario and printed as a table.
 
-See `ad_spend_allocation.py` for the implementation and `runbook.md` for the skill-driven reproduction. The end-to-end flow:
+See `model/__init__.py` for the implementation and `runbook.md` for the skill-driven reproduction. The end-to-end flow:
 
 ```text
 CSV inputs → load into concepts → decision variables (spend + funding, per scenario)
@@ -185,9 +267,9 @@ Focus on the first changes most users will make.
 
 ### Tune parameters
 
-- **Budget levels** — the three scenarios (`budget_35k`, `budget_45k`, `budget_55k`) are defined in the `scenario_data` block near the top of the script. Add, remove, or change levels there to sweep a different range.
+- **Budget levels** — the three scenarios (`budget_35k`, `budget_45k`, `budget_55k`) are defined in the `scenario_data` block near the top of `model/__init__.py`. Add, remove, or change levels there to sweep a different range.
 - **Spend bounds and budgets** — per-channel `min_spend` / `max_spend` live in `channels.csv`; per-campaign `budget` lives in `campaigns.csv`. These are usually the binding limits, so they are the first knobs to adjust when the total-budget cap stops mattering.
-- **Solver settings** — the solve uses HiGHS with a 60-second time limit (`problem.solve("highs", time_limit_sec=60)`); adjust the limit for larger instances.
+- **Solver settings** — the solve uses HiGHS with a 60-second time limit (`problem.configure("highs", time_limit_sec=60)`); adjust the limit for larger instances.
 
 ### Extend the model
 
@@ -224,7 +306,7 @@ Focus on the first changes most users will make.
 <details>
   <summary>Authentication or configuration errors</summary>
 
-- Run `rai init` to create or update your RelationalAI / Snowflake configuration.
+- Re-create `raiconfig.yaml` with the configuration builder (Quickstart step 4) and verify the connection settings.
 - If you have multiple profiles, set `export RAI_PROFILE=<your_profile>`.
 
 </details>

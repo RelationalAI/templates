@@ -1,29 +1,38 @@
-"""Entity-resolution model and loaded source facts."""
+"""Entity-resolution model: loaded source facts and the reasoning over them.
 
-from .schema import CandidateMatch, Record, ResolvedParty, ReviewPair, model
-from .source import (
-    AUTO_MERGE,
-    REVIEW_FLOOR,
-    candidate_count,
-    load_ground_truth,
-    matches_df,
-    record_ids,
-    records_df,
-    review_df,
+`rai models deploy --path model` deploys everything this package declares.
+"""
+
+from .schema import CandidateMatch, CandidatePairCount, Record, ResolvedParty, ReviewPair, model
+from .source import AUTO_MERGE, REVIEW_FLOOR, load_ground_truth
+
+# isort: split
+# The reasoning declares rules over the facts loaded above.
+from .reasoning import (
+    ACCUMULATION_LIMIT,
+    REINSURANCE_BUDGET,
+    REINSURANCE_RATE,
+    SolveStatus,
+    num_edges,
+    num_nodes,
+    problem,
 )
 
 __all__ = [
+    "ACCUMULATION_LIMIT",
     "AUTO_MERGE",
+    "REINSURANCE_BUDGET",
+    "REINSURANCE_RATE",
     "REVIEW_FLOOR",
     "CandidateMatch",
+    "CandidatePairCount",
     "Record",
     "ResolvedParty",
     "ReviewPair",
-    "candidate_count",
+    "SolveStatus",
     "load_ground_truth",
-    "matches_df",
     "model",
-    "record_ids",
-    "records_df",
-    "review_df",
+    "num_edges",
+    "num_nodes",
+    "problem",
 ]

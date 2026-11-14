@@ -49,4 +49,4 @@ Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` 
 
 ## Data
 
-Bundled CSVs in `data/`: 5 channels, 3 campaigns, 15 effectiveness rows. The three budget levels ($35k, $45k, $55k) are defined in the script. Full model in `ad_spend_allocation.py`.
+Bundled CSVs in `data/`: 5 channels, 3 campaigns, 15 effectiveness rows. The three budget levels ($35k, $45k, $55k) are defined in the model. Full model in `model/__init__.py`; the report in `queries/spend_allocation.py`.

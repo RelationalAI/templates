@@ -49,4 +49,4 @@ Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` 
 
 ## Data
 
-Bundled CSVs in `data/`: 2 factories with resource-hours, 4 products with rate / profit / demand. Full model in `factory_production.py`.
+Bundled CSVs in `data/`: 2 factories with resource-hours, 4 products with rate / profit / demand. Full model in `model/__init__.py`; the report in `queries/plan_and_sensitivity.py`.

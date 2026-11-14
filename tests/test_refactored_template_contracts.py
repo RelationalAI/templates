@@ -96,10 +96,10 @@ class RefactoredTemplateContractTests(unittest.TestCase):
         self.assertIn("ground_truth.csv", ast.dump(functions["load_ground_truth"]))
         self.assertNotIn("ground_truth.csv", ast.dump(functions["load_source_data"]))
 
-        runner_module = parse("entity_resolution/entity_resolution.py")
+        report_module = parse("entity_resolution/queries/resolution_report.py")
         ground_truth_calls = [
             node
-            for node in ast.walk(runner_module)
+            for node in ast.walk(report_module)
             if isinstance(node, ast.Call)
             and isinstance(node.func, ast.Name)
             and node.func.id == "load_ground_truth"

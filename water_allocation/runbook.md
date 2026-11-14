@@ -39,7 +39,7 @@ Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` 
 
 **Prompt:** /rai-prescriptive-problem What non-negative flow on each connection meets every user's demand at minimum total sourcing cost, given that each source's total outflow can't exceed its capacity and that transmission loss grows with utilization — the water delivered on a connection is flow times (1 minus loss_rate times flow over max_flow)? That delivered-water term is quadratic, so this needs a nonlinear solver. Persist the chosen flows to the ontology.
 
-**Response:** LOCALLY_SOLVED (Ipopt nonlinear solver), total cost **$853.39**. 9 continuous flow variables (each bounded by its connection's max flow), 6 constraints (3 source-capacity, 3 nonlinear demand-satisfaction). Flows are written back as `Connection.x_flow`.
+**Response:** LOCALLY_SOLVED (Ipopt nonlinear solver), total cost **$853.39**. 9 continuous flow variables (each bounded by its connection's max flow), 6 constraints (3 source-capacity, 3 nonlinear demand-satisfaction). Flows are written back as `Connection.x_flow`. In `model/__init__.py` the solve is declared with `problem.configure(...)`, so each refresh of the deployed model runs it.
 
 ## 4. Read the allocation
 
@@ -49,4 +49,4 @@ Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` 
 
 ## Data
 
-Bundled CSVs in `data/`: 3 sources with capacity and cost, 3 users with demand, 9 connections with max-flow and loss-rate. Full model in `water_allocation.py`.
+Bundled CSVs in `data/`: 3 sources with capacity and cost, 3 users with demand, 9 connections with max-flow and loss-rate. Full model in `model/__init__.py`; the report in `queries/flow_allocations.py`.

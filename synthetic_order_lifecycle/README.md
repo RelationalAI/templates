@@ -40,11 +40,12 @@ The same pattern applies to any test-data-generation problem where rows have to 
 - An auxiliary `fill_qty` decision channeled to `qty` when the `FILL` indicator is 1 (else 0) via two `implies` so the per-order fill-conservation aggregate stays linear
 - Value-pinning: PLACE event's `qty` and `tick_price` pinned to the order's `original_qty` and `original_tick_price` via `implies`
 - Venue eligibility encoded as a relationship lookup against the event's chosen `venue_id`
-- Post-solve verification via `problem.verify()` confirming every re-evaluable constraint in the returned trace (`implies`-bodied and `all_different`-bodied ICs are solver-side only and intentionally excluded -- see step 5)
+- A report that prints the solve status and stops unless the solver returned `OPTIMAL` (the constraints are not re-evaluated against the returned trace -- see step 5)
 
 ## What's included
 
-- `synthetic_order_lifecycle.py` -- main script with ontology, decisions, constraints, and solver call
+- `model/__init__.py` -- the deployed model: ontology, decisions, constraints, and solver configuration. `rai models deploy --path model` deploys it to your Snowflake account, where each refresh runs the solve.
+- `queries/order_trace.py` -- the report, which prints the trace from the deployed model
 - `data/symbols.csv` -- 5 tradable symbols (AAPL, MSFT, GOOG, NVDA, TSLA)
 - `data/venues.csv` -- 5 trading venues (NYSE, NASDAQ, ARCA, BATS, IEX)
 - `data/symbol_venues.csv` -- 13 (symbol, venue) eligible pairs out of 25 possible (sparser than full coverage so venue eligibility visibly binds)
@@ -56,7 +57,8 @@ The same pattern applies to any test-data-generation problem where rows have to 
 
 ### Access
 - A Snowflake account that has the RAI Native App installed.
-- A Snowflake user with permissions to access the RAI Native App.
+- The one-time model deployment setup on that account, done by an account administrator: follow [Set up model deployment](https://private.relational.ai/early-access/model-deploy-setup) through **Governed setup**, **PAT authentication**, and steps 1-2 of **Additional setup for the prescriptive reasoner** (the Quickstart covers this template's own schema). It gives you a model role, a programmatic access token (PAT) stored as a secret, an external access integration, a PAT user, and a warehouse.
+- A Snowflake user that holds the model role.
 
 ### Tools
 - Python >= 3.10
@@ -64,74 +66,152 @@ The same pattern applies to any test-data-generation problem where rows have to 
 
 ## Quickstart
 
-1. Download ZIP:
+Before you start, install Python 3.10 or later and complete the access prerequisites above: a Snowflake account with the RAI Native App, the one-time model deployment setup, and a Snowflake user that holds the model role.
+
+Before the first deploy, create this template's internal schema as the model role, and have an administrator grant the RAI Native App caller access to it. The internal schema holds only this model's objects, so the grants cover all of it, including the solver's result tables that the deploy creates:
+
+```sql
+-- as the model role
+CREATE SCHEMA IF NOT EXISTS <DB>.SYNTHETIC_ORDER_LIFECYCLE_META;
+
+-- as an administrator
+GRANT CALLER USAGE ON DATABASE <DB> TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER USAGE ON SCHEMA <DB>.SYNTHETIC_ORDER_LIFECYCLE_META TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER USAGE ON WAREHOUSE <PAT_WAREHOUSE> TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL TABLES IN SCHEMA <DB>.SYNTHETIC_ORDER_LIFECYCLE_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL DYNAMIC TABLES IN SCHEMA <DB>.SYNTHETIC_ORDER_LIFECYCLE_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL VIEWS IN SCHEMA <DB>.SYNTHETIC_ORDER_LIFECYCLE_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER INSERT, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA <DB>.SYNTHETIC_ORDER_LIFECYCLE_META TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER CREATE TABLE, CREATE STAGE ON SCHEMA <DB>.SYNTHETIC_ORDER_LIFECYCLE_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER READ, WRITE ON ALL STAGES IN SCHEMA <DB>.SYNTHETIC_ORDER_LIFECYCLE_META TO APPLICATION <RAI_APP_NAME>;
+```
+
+Use this sequence to deploy the model and query it:
+
+1. **Download the template**
+
+   [Download the ZIP](https://docs.relational.ai/templates/zips/v1/synthetic_order_lifecycle.zip), unzip it, and enter the template directory:
+
    ```bash
-   curl -O https://docs.relational.ai/templates/zips/v1/synthetic_order_lifecycle.zip
    unzip synthetic_order_lifecycle.zip
    cd synthetic_order_lifecycle
    ```
-   > [!TIP]
-   > You can also download the template ZIP using the "Download ZIP" button at the top of this page.
 
-2. Create venv:
+2. **Create a Python environment**
+
+   Create and activate a virtual environment, then update pip:
+
    ```bash
    python -m venv .venv
    source .venv/bin/activate
    python -m pip install --upgrade pip
    ```
 
-3. Install:
+3. **Install the template**
+
+   Install the dependencies pinned in `pyproject.toml`:
+
    ```bash
    python -m pip install .
    ```
 
-4. Configure (prompts for Snowflake account, role, and profile name):
-   ```bash
-   rai init
+4. **Configure your project**
+
+   Use the configuration builder in [Install and run PyRel](https://docs.relational.ai/get-started/install-and-run-pyrel/#configure-your-project) to create `raiconfig.yaml` in the template directory and verify your connection.
+
+   Set the connection `role` to the model role, then add the prescriptive reasoner and a `deployment` section. Give each template its own schema pair so two deployed templates never share one:
+
+   ```yaml
+   reasoners:
+     prescriptive:
+       name: synthetic_order_lifecycle_solver            # created on first deploy if it doesn't exist
+   deployment:
+     role: <MODEL_ROLE>
+     public_schema: <DB>.SYNTHETIC_ORDER_LIFECYCLE               # published views and tables
+     identity:
+       internal_schema: <DB>.SYNTHETIC_ORDER_LIFECYCLE_META      # solver inputs, results, refresh procedures
+     schedules:
+       standard:
+         interval_s: 0              # refresh only on deploy or on demand
+     schedule: standard
+     pat_secret: <PAT_SECRET>       # these four come from the setup page
+     pat_eai: <PAT_EAI>
+     pat_user: <PAT_USER>
+     pat_warehouse: <PAT_WAREHOUSE>
    ```
 
-5. Run:
+5. **Deploy the model**
+
+   Deploy the model in `model/` to the schemas in `raiconfig.yaml`:
+
    ```bash
-   python synthetic_order_lifecycle.py
+   rai models deploy --path model
    ```
 
-6. Expected output. The script prints the formulation (every variable and constraint, ~1,000 lines on the sample data, omitted here; each event's four type indicators all print as `is_type_<event id>` -- so `is_type_1` appears four times -- because variable names are keyed by event id), the solve-result block, the full event trace (all 36 rows; abridged below to the first AAPL block), and per-order fill totals. Rows are sorted by `(order_id, ts_ms)`; the `type` column reads each event's chosen `EventType` member name back from a derived enum-typed property (`OrderEvent.event_type.name`), with no display-side post-processing. Exact event types, timestamps, quantities, prices, and venues vary across runs and solver versions:
+   The deploy creates the public schema named in `raiconfig.yaml` if it doesn't exist and waits for the model's first refresh, which runs the solve. Each refresh of the deployed model runs the solve again.
+
+6. **Query the results**
+
+   Print the report from the deployed model:
+
+   ```bash
+   python -m queries.order_trace
+   ```
+
    ```text
    Solve result:
    • status: OPTIMAL
-   • solve time: 1.17s
-   • num_points: 1
-   • solver: MiniZinc_unknown
-   • raw status string: SATISFIABLE
 
    Generated event trace (one row per slot, sorted by order then timestamp):
     order_id symbol  event_id  ts_ms   type  qty  tick_price venue
-           1   AAPL         4    995  PLACE  100       17500  ARCA
-           1   AAPL         2    996 MODIFY  100       17501  ARCA
-           1   AAPL         3    997 MODIFY  100       17501  ARCA
-           1   AAPL         6    998   FILL  100       17501  ARCA
-           1   AAPL         5    999 MODIFY  100       17501  ARCA
-           1   AAPL         1   1000 MODIFY  100       17501  ARCA
-    ...    [rows for orders 2-6 omitted for brevity; the script prints all 36 rows -- 6 events per order across orders 1-6]
+           1   AAPL         1    636  PLACE  100       17500  ARCA
+           1   AAPL         3    637 MODIFY  100       17501  ARCA
+           1   AAPL         2    997 MODIFY  100       17501  ARCA
+           1   AAPL         5    998 MODIFY  100       17501  ARCA
+           1   AAPL         4    999   FILL  100       17501  ARCA
+           1   AAPL         6   1000 MODIFY  100       17501  NYSE
+   ...
 
    Filled quantity per order (cannot exceed Order.original_qty):
-      order_id original_qty filled_qty
-   0         1          100        100
-   1         2           50         50
-   2         3           80         80
-   3         4          200        200
-   4         5          120        117
-   5         6           60         60
+      order_id  original_qty  filled_qty
+   0         1           100         100
+   1         2            50          50
+   2         3            80          80
+   3         4           200         200
+   4         5           120         120
+   5         6            60          60
    ```
 
-   The AAPL block above is one of six orders; the others follow the same shape. PLACE has the smallest `ts_ms` per order with `qty` / `tick_price` pinned to the order row, and venues are constrained to the symbol's eligible set (here `{NYSE, NASDAQ, ARCA}` for AAPL). The conservation IC is `sum(fill_qty) <= original_qty`; the run above fills exactly `original_qty` on five orders and 117 of 120 on order 5 -- any fill total at or below the original quantity is a valid trace.
+   The report prints the formulation (every variable and constraint, about 1,000 lines on the sample data, omitted here), the solve-result block, the full event trace (all 36 rows; abridged above to the first AAPL block), and per-order fill totals. Each event's four type indicators all print as is_type followed by the event id, because variable names are keyed by event id. Rows are sorted by order and timestamp; the type column reads each event's chosen EventType member name back from a derived enum-typed relationship (OrderEvent.event_type.name). The report stops unless the solve's termination status is OPTIMAL. Exact event types, timestamps, quantities, prices, and venues vary across runs and solver versions.
+
+   The AAPL block above is one of six orders; the others follow the same shape. PLACE has the smallest timestamp per order with its quantity and tick price pinned to the order row, and venues are constrained to the symbol's eligible set (here NYSE, NASDAQ, and ARCA for AAPL). The conservation constraint is that the sum of fill_qty is at most original_qty; the run above fills exactly original_qty on every order, and any fill total at or below the original quantity is a valid trace.
+
+   To solve again without changing the model, refresh the deployed model, then run the query again:
+
+   ```sql
+   CALL <DB>.SYNTHETIC_ORDER_LIFECYCLE_META._INTERNAL_REFRESH_MODEL('standard', NULL);
+   ```
+
+7. **Tear down the deployment**
+
+   Preview what the teardown removes, then remove it:
+
+   ```bash
+   rai models teardown
+   rai models teardown --force
+   ```
+
+   The first command lists the model's objects without dropping anything; the second drops them and keeps the two schemas.
 
 ## Template structure
 ```text
 .
 ├── README.md
 ├── pyproject.toml
-├── synthetic_order_lifecycle.py
+├── model/
+│   └── __init__.py
+├── queries/
+│   └── order_trace.py
 └── data/
     ├── symbols.csv
     ├── venues.csv
@@ -142,7 +222,7 @@ The same pattern applies to any test-data-generation problem where rows have to 
 
 ## How it works
 
-The solver decides every event's type, timestamp, venue, and quantity. The script proceeds in five steps.
+The solver decides every event's type, timestamp, venue, and quantity. The template proceeds in five steps.
 
 **1. Define the ontology and load data.** `Symbol`, `Venue`, `Order`, and `OrderEvent` concepts are declared with their identifying properties; `SymbolVenue` and a derived `NotAllowedSymbolVenue` capture the eligible (and dual disallowed) symbol/venue pairs. CSV rows from `data/` populate every concept and relationship. `NotAllowedSymbolVenue` is an encoding artifact, not a domain concept: the CSP arithmetic supports only `!=, *, +, -`, so the rule is encoded as "forbid these pairs" rather than the more natural "require an allowed pair".
 
@@ -209,21 +289,13 @@ place_price_match_ic = model.where(OrderEvent.has_type(EventType.PLACE, place_pr
 )
 ```
 
-**5. Solve and verify.** `implies` and `all_different` are solver-only. They go to `satisfy()` but must NOT be passed to `verify()` -- the relational engine cannot re-evaluate wire-format constraint relations and would return silently-OK regardless of whether the constraint actually holds. The remaining ICs are plain relational arithmetic and ARE re-evaluated by `verify()`:
+**5. Solve and deploy.** Every IC goes to the solver through `satisfy()`; the report does not re-evaluate them against the returned trace. `problem.configure(...)` declares the solve, `rai models deploy --path model` deploys the model, and each refresh of the deployed model runs the solve. The report checks the solve status through the model's own `SolveStatus` relationship; a refresh itself (the deploy, the refresh procedure, a schedule) runs no checks, so read `SolveStatus` before relying on a refreshed trace:
 
 ```python
-problem.solve("minizinc", time_limit_sec=60)
-problem.solve_info().display()
+problem.configure("minizinc", time_limit_sec=60)
 
-problem.verify(
-    type_sum_ic,
-    exactly_one_place_ic,
-    at_most_one_cancel_ic,
-    qty_upper_ic,
-    venue_ok_ic,
-    fill_sum_ic,
-)
-model.require(problem.termination_status() == "OPTIMAL")
+SolveStatus = model.Relationship(f"synthetic order lifecycle solve status is {String:status}")
+model.define(SolveStatus(problem.termination_status()))
 ```
 
 ## Customize this template
@@ -232,7 +304,7 @@ model.require(problem.termination_status() == "OPTIMAL")
   - `venues.csv` ids should be contiguous `1..N` -- the `venue_id` decision domain is `[1, max(venue_id)]`, so non-contiguous ids would let the solver pick venue ids that don't exist.
   - At least one disallowed `(symbol, venue)` pair must exist -- if your `symbol_venues.csv` covers every symbol×venue combination, the empty disallowed list breaks `model.data(...).to_schema()`. In that case drop `venue_ok_ic`.
 - **Force a CANCEL on every order** by changing `at_most_one_cancel_ic` from `<= 1` to `== 1`, then bumping the per-order event count so the order has room for a `PLACE` plus other events before the `CANCEL`.
-- **Add the inverse rule "no MODIFY after FILL"** with the same shape as `place_first_ic`, but filtering `B` to fills. `A` and `B` are the two `OrderEvent.ref()` aliases declared earlier in the script alongside `place_first_ic`:
+- **Add the inverse rule "no MODIFY after FILL"** with the same shape as `place_first_ic`, but filtering `B` to fills. `A` and `B` are the two `OrderEvent.ref()` aliases declared earlier in the model alongside `place_first_ic`:
   ```python
   # A = OrderEvent.ref(); B = OrderEvent.ref()  # already declared earlier
   a_modify_ind = Integer.ref()
@@ -254,7 +326,7 @@ model.require(problem.termination_status() == "OPTIMAL")
   <summary>Import error or AttributeError on <code>relationalai</code></summary>
 
 - Confirm your virtual environment is active: `which python` should point to `.venv`.
-- Reinstall dependencies: `python -m pip install .`. The pinned version (`relationalai==2.1.1`) ships enum members as constants across the DSL and prescriptive reasoning (alongside the `solve_info()`, `verify()`, and chained-`where().require()` APIs); older versions reject the enum-indexed decision variable and produce type or attribute errors.
+- Reinstall dependencies: `python -m pip install .`. The pinned version (`relationalai==2.1.1`) ships enum members as constants across the DSL and prescriptive reasoning (alongside the `configure()`, `install_display_strings()`, and chained-`where().require()` APIs); older versions reject the enum-indexed decision variable and produce type or attribute errors.
 - If you share a venv across templates, run `python -m pip install --upgrade --force-reinstall relationalai==2.1.1`.
 
 </details>
@@ -262,7 +334,7 @@ model.require(problem.termination_status() == "OPTIMAL")
 <details>
   <summary>FileNotFoundError on a CSV</summary>
 
-- The script resolves data paths as `Path(__file__).parent / "data"`. Run `python synthetic_order_lifecycle.py` from the unzipped template root, not from a parent directory.
+- The model resolves data paths as `Path(__file__).resolve().parents[1] / "data"`. Run `rai models deploy --path model` and `python -m queries.order_trace` from the unzipped template root, not from a parent directory.
 - Confirm `data/` contains `symbols.csv`, `venues.csv`, `symbol_venues.csv`, `orders.csv`, and `events.csv`.
 
 </details>
@@ -270,7 +342,7 @@ model.require(problem.termination_status() == "OPTIMAL")
 <details>
   <summary>Authentication or configuration errors</summary>
 
-- Run `rai init` to create or update your RelationalAI/Snowflake configuration.
+- Re-create `raiconfig.yaml` with the configuration builder (Quickstart step 4) to update your RelationalAI/Snowflake configuration.
 - If you have multiple profiles, set `export RAI_PROFILE=<your_profile>`.
 
 </details>

@@ -32,11 +32,12 @@ The template also demonstrates scenario analysis by sweeping over different mini
 
 - A constraint model that assigns workers to shifts respecting availability and capacity limits
 - Scenario analysis across multiple minimum-coverage levels (1, 2, 3 workers per shift)
-- Post-solve verification via `problem.verify()` to confirm constraint satisfaction across all scenarios
+- A report that prints the solve status and stops unless the solver returned `OPTIMAL`
 
 ## What's included
 
-- `shift_assignment.py` -- main script with ontology, constraints, and scenario analysis
+- `model/__init__.py` -- ontology, constraints, and scenario analysis; `rai models deploy --path model` deploys it to your Snowflake account, where each refresh runs the solve
+- `queries/shift_assignments.py` -- prints the report from the deployed model: the solve status and the assignments for each scenario
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - `data/workers.csv` -- 10 workers with IDs and names
 - `data/shifts.csv` -- 3 shifts (Morning, Afternoon, Night) with capacity limits
@@ -47,7 +48,8 @@ The template also demonstrates scenario analysis by sweeping over different mini
 
 ### Access
 - A Snowflake account that has the RAI Native App installed.
-- A Snowflake user with permissions to access the RAI Native App.
+- The one-time model deployment setup on that account, done by an account administrator: follow [Set up model deployment](https://private.relational.ai/early-access/model-deploy-setup) through **Governed setup**, **PAT authentication**, and steps 1-2 of **Additional setup for the prescriptive reasoner** (Quickstart step 4 below covers this template's own schema). It gives you a model role, a programmatic access token (PAT) stored as a secret, an external access integration, a PAT user, and a warehouse.
+- A Snowflake user that holds the model role.
 
 ### Tools
 - Python >= 3.10
@@ -55,59 +57,130 @@ The template also demonstrates scenario analysis by sweeping over different mini
 
 ## Quickstart
 
-1. Download ZIP:
+Before you start, install Python 3.10 or later and complete the access prerequisites above: a Snowflake account with the RAI Native App, the one-time model deployment setup, and a Snowflake user that holds the model role.
+
+Before the first deploy, create this template's internal schema as the model role, and have an administrator grant the RAI Native App caller access to it. The internal schema holds only this model's objects, so the grants cover all of it, including the solver's result tables that the deploy creates:
+
+```sql
+-- as the model role
+CREATE SCHEMA IF NOT EXISTS <DB>.SHIFT_ASSIGNMENT_META;
+
+-- as an administrator
+GRANT CALLER USAGE ON DATABASE <DB> TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER USAGE ON SCHEMA <DB>.SHIFT_ASSIGNMENT_META TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER USAGE ON WAREHOUSE <PAT_WAREHOUSE> TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL TABLES IN SCHEMA <DB>.SHIFT_ASSIGNMENT_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL DYNAMIC TABLES IN SCHEMA <DB>.SHIFT_ASSIGNMENT_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL VIEWS IN SCHEMA <DB>.SHIFT_ASSIGNMENT_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER INSERT, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA <DB>.SHIFT_ASSIGNMENT_META TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER CREATE TABLE, CREATE STAGE ON SCHEMA <DB>.SHIFT_ASSIGNMENT_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER READ, WRITE ON ALL STAGES IN SCHEMA <DB>.SHIFT_ASSIGNMENT_META TO APPLICATION <RAI_APP_NAME>;
+```
+
+Use this sequence to deploy the model and query it:
+
+1. **Download the template**
+
+   [Download the ZIP](https://docs.relational.ai/templates/zips/v1/shift_assignment.zip), unzip it, and enter the template directory:
+
    ```bash
-   curl -O https://docs.relational.ai/templates/zips/v1/shift_assignment.zip
    unzip shift_assignment.zip
    cd shift_assignment
    ```
-   > [!TIP]
-   > You can also download the template ZIP using the "Download ZIP" button at the top of this page.
 
-2. Create venv:
+2. **Create a Python environment**
+
+   Create and activate a virtual environment, then update pip:
+
    ```bash
    python -m venv .venv
    source .venv/bin/activate
    python -m pip install --upgrade pip
    ```
 
-3. Install:
+3. **Install the template**
+
+   Install the dependencies pinned in `pyproject.toml`:
+
    ```bash
    python -m pip install .
    ```
 
-4. Configure:
-   ```bash
-   rai init
+4. **Configure your project**
+
+   Use the configuration builder in [Install and run PyRel](https://docs.relational.ai/get-started/install-and-run-pyrel/#configure-your-project) to create `raiconfig.yaml` in the template directory and verify your connection.
+
+   Set the connection `role` to the model role, then add the prescriptive reasoner and a `deployment` section. Give each template its own schema pair so two deployed templates never share one:
+
+   ```yaml
+   reasoners:
+     prescriptive:
+       name: shift_assignment_solver            # created on first deploy if it doesn't exist
+   deployment:
+     role: <MODEL_ROLE>
+     public_schema: <DB>.SHIFT_ASSIGNMENT               # published views and tables
+     identity:
+       internal_schema: <DB>.SHIFT_ASSIGNMENT_META      # solver inputs, results, refresh procedures
+     schedules:
+       standard:
+         interval_s: 0              # refresh only on deploy or on demand
+     schedule: standard
+     pat_secret: <PAT_SECRET>       # these four come from the setup page
+     pat_eai: <PAT_EAI>
+     pat_user: <PAT_USER>
+     pat_warehouse: <PAT_WAREHOUSE>
    ```
 
-5. Run:
+5. **Deploy the model**
+
+   Deploy the model in `model/` to the schemas in `raiconfig.yaml`:
+
    ```bash
-   python shift_assignment.py
+   rai models deploy --path model
    ```
 
-6. Expected output (a few representative rows confirm a successful run):
+   The deploy creates the public schema named in `raiconfig.yaml` if it doesn't exist and waits for the model's first refresh, which runs the solve. Each refresh of the deployed model runs the solve again.
+
+   Deploying again without changing the model applies no updates and does not solve again. A change to the model or to `problem.configure(...)` redeploys, and the redeploy's refresh solves.
+
+6. **Query the results**
+
+   Print the report from the deployed model:
+
+   ```bash
+   python -m queries.shift_assignments
+   ```
+
    ```text
+   Solve result:
+   • status: OPTIMAL
+
    Assignments per scenario:
-       scenario  worker      shift
-     coverage_1   Alice    Morning
-     coverage_1     Bob      Night
-     coverage_1  Carlos  Afternoon
-     ...
-     coverage_2   Alice  Afternoon
-     coverage_2     Bob    Morning
-     ...
-     coverage_3   Alice    Morning
-     coverage_3     Bob    Morning
-     ...
+         scenario  worker      shift
+   0   coverage_1   Alice  Afternoon
+   1   coverage_1     Bob    Morning
+   2   coverage_1  Carlos  Afternoon
+   ...
    ```
 
-   The three scenarios sweep `min_coverage` from 1 to 3 workers per shift. This
-   is a feasibility problem with no objective, so the solver returns *any*
-   assignment that satisfies the constraints — the specific worker-to-shift
-   roster varies run to run. What is stable is feasibility: each scenario returns
-   an `OPTIMAL` status with every shift meeting its minimum coverage and no worker
-   over their shift limit.
+   The formulation printed above the solve result is trimmed here, and the roster is cut after three rows. The three scenarios sweep `min_coverage` from 1 to 3 workers per shift. This is a feasibility problem with no objective, so the solver returns any assignment that satisfies the constraints, and the specific worker-to-shift roster varies from run to run. What is stable is feasibility: the report stops unless the termination status is `OPTIMAL`, and each scenario's roster gives every shift its minimum coverage with no worker over their shift limit. See `runbook.md` for the step-by-step walkthrough.
+
+   To solve again without changing the model, refresh the deployed model, then run the query again:
+
+   ```sql
+   CALL <DB>.SHIFT_ASSIGNMENT_META._INTERNAL_REFRESH_MODEL('standard', NULL);
+   ```
+
+7. **Tear down the deployment**
+
+   Preview what the teardown removes, then remove it:
+
+   ```bash
+   rai models teardown
+   rai models teardown --force
+   ```
+
+   The first command lists the model's objects without dropping anything; the second drops them and keeps the two schemas.
 
 ## Template structure
 
@@ -115,14 +188,17 @@ The template also demonstrates scenario analysis by sweeping over different mini
 .
 ├── README.md            # this file
 ├── pyproject.toml       # dependencies
-├── shift_assignment.py  # main script: ontology, constraints, scenario sweep
+├── model/
+│   └── __init__.py      # the deployed model: ontology, constraints, scenario sweep
+├── queries/
+│   └── shift_assignments.py  # report from the deployed model
 └── data/
     ├── workers.csv       # 10 workers (id, name)
     ├── shifts.csv        # 3 shifts (id, name, capacity)
     └── availability.csv  # worker-to-shift availability pairs
 ```
 
-**Start here**: run `python shift_assignment.py` for the full scenario sweep end to end, or follow `runbook.md` to reproduce it step by step with the RAI skills.
+**Start here**: deploy with `rai models deploy --path model` and run `python -m queries.shift_assignments` for the full scenario sweep end to end, or follow `runbook.md` to reproduce it step by step with the RAI skills.
 
 ## Sample data
 
@@ -140,7 +216,7 @@ The model has three concepts plus a `Scenario` concept that parameterizes the co
 - **Primary identifiers**: `Worker.id` and `Shift.id` are integers; `Scenario.name` is a string.
 - **Important invariants**: `Shift.capacity` is a positive integer; each scenario's `min_coverage` must be no larger than the smallest shift capacity or that scenario is infeasible; each worker takes at most `max_shifts` shifts (default 1); a worker can only be assigned to a shift they are available for.
 
-For the full concept and property definitions, see `shift_assignment.py`; `runbook.md` builds them step by step with the RAI skills.
+For the full concept and property definitions, see `model/__init__.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
@@ -149,15 +225,15 @@ The pipeline loads workers, shifts, and availability pairs, adds a `Scenario` co
 ```text
 CSV inputs → load Worker / Shift / availability → add Scenario coverage levels
   → binary assignment variable (per worker-shift-scenario, scoped to availability)
-  → coverage + workload + capacity constraints → solve → verify → per-scenario roster
+  → coverage + workload + capacity constraints → configure solve → deploy → per-scenario roster
 ```
 
 1. **Load the data.** Workers and shifts come from their CSVs; availability pairs become a `Worker.available_for(Shift)` relationship that scopes which assignments are even possible.
 2. **Set up the decision.** A binary `x_assign` variable indicates whether a worker takes a given shift in a given scenario. Each coverage level (`coverage_1` / `_2` / `_3`) is a `Scenario` with a `min_coverage`, and the variable is scoped to the availability relationship so unavailable pairs are never considered.
-3. **Constrain the roster.** Three constraints govern every scenario: each shift meets its `min_coverage`, each worker takes no more than `max_shifts` shifts (default 1), and no shift exceeds its `capacity`. The constraints are named so they can be re-checked after solving.
-4. **Solve and verify.** A single solve handles all scenarios simultaneously; this is a feasibility problem with no objective, so the solver returns any assignment satisfying every constraint. `problem.verify()` then re-fires the named constraints as integrity checks to confirm the solution holds.
+3. **Constrain the roster.** Three constraints govern every scenario: each shift meets its `min_coverage`, each worker takes no more than `max_shifts` shifts (default 1), and no shift exceeds its `capacity`.
+4. **Solve and deploy.** A single solve handles all scenarios simultaneously; this is a feasibility problem with no objective, so the solver returns any assignment satisfying every constraint. `problem.configure(...)` declares the solve, `rai models deploy --path model` deploys the model, and each refresh of the deployed model runs the solve. The report checks the solve status; it does not re-evaluate the constraints, and a refresh started outside the query (`rai models deploy`, the refresh procedure, a schedule) runs no checks, so read `SolveStatus` before relying on a refreshed solution.
 
-See `shift_assignment.py` for the implementation and `runbook.md` for the skill-driven reproduction.
+See `model/__init__.py` for the implementation and `runbook.md` for the skill-driven reproduction.
 
 ## Customize this template
 
@@ -205,7 +281,7 @@ See `shift_assignment.py` for the implementation and `runbook.md` for the skill-
 <details>
   <summary>Authentication or configuration errors</summary>
 
-- Run `rai init` to create or update your RelationalAI/Snowflake configuration.
+- Re-create `raiconfig.yaml` with the configuration builder (Quickstart step 4).
 - If you have multiple profiles, set `export RAI_PROFILE=<your_profile>`.
 
 </details>
@@ -214,7 +290,7 @@ See `shift_assignment.py` for the implementation and `runbook.md` for the skill-
   <summary>MiniZinc solver not available</summary>
 
 - This template uses the MiniZinc constraint solver. Ensure the RAI Native App version supports MiniZinc.
-- As an alternative, you can try switching to `"highs"` in the `problem.solve()` call, though HiGHS is designed for linear/MIP problems.
+- As an alternative, you can try switching to `"highs"` in the `problem.configure()` call, though HiGHS is designed for linear/MIP problems.
 
 </details>
 

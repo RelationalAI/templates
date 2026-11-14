@@ -8,7 +8,7 @@ Each template lives in its own root-level folder. Within a folder, you will usua
 
 - `README.md` with the problem statement, prerequisites, and run instructions
 - `pyproject.toml` for template-local dependencies
-- a main runner such as `<template>.py` or a notebook
+- `model/`, the model package that `rai models deploy --path model` deploys, and `queries/`, one module per report, run as `python -m queries.<name>` (a few templates use a single script or a notebook instead)
 - `data/` containing sample input data when the template uses local files
 - `runbook.md` with ordered prompts to recreate or adapt the template using a coding agent with RelationalAI skills (multi-reasoner templates)
 
@@ -152,7 +152,7 @@ The exact setup is documented in each template's README, but the workflow is con
 2. Create a virtual environment inside that folder.
 3. Install the template's dependencies.
 4. Configure RelationalAI access if the template connects to a live environment.
-5. Run the script or notebook described in the template README.
+5. Deploy the model and run its queries, or run the script or notebook, as the template README describes.
 
 Example workflow:
 
@@ -180,7 +180,7 @@ Most templates are designed to be runnable and inspectable without additional re
 To add or update a template:
 
 1. Copy [`sample-template/`](sample-template/) to a new root-level directory.
-2. Implement the model, runner, sample data, and metadata.
+2. Implement the model package, queries, sample data, and metadata.
 3. Replace the README placeholders with template-specific content.
 4. Review the result before opening a pull request.
 

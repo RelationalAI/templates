@@ -49,6 +49,13 @@ sample_data:
   install, configure with the Start building with PyRel configuration builder,
   and run. Keep any representative output directly after its runner command.
   Templates without this flag retain their existing rendering.
+- `deployment: true` (optional, requires `download_and_run_from_readme: true`)
+  marks a template that deploys its model. The Quickstart then has seven ordered
+  steps: download, Python environment, install, configure, deploy (one `bash`
+  block containing exactly `rai models deploy --path model`), query (one `bash`
+  block per report containing exactly `python -m queries.<name>`, each optionally
+  followed by a `text` output block), and tear down (`rai models teardown`, then
+  `rai models teardown --force`).
 - `omit_readme_preamble: true` (optional) excludes the text before the first
   README `##` heading from the enhanced HTML and Markdown pages. Use it when
   the README opens with links to its own generated model explorer and
@@ -149,7 +156,7 @@ guide links:
 
   ```yaml
   focus:
-    file: runner.py
+    file: queries/report.py
     anchors:
       - start: "# Stage 3: Optimize"
         end: "# Stage 4: Report"
