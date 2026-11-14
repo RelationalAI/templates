@@ -1,6 +1,6 @@
-"""Network Flow Planning (prescriptive optimization) template.
+"""Network Flow Planning (prescriptive optimization) template: the model.
 
-This script demonstrates a multi-tier network flow problem with fixed-cost
+This package demonstrates a multi-tier network flow problem with fixed-cost
 facility opening in RelationalAI:
 
 - Load sample CSVs describing sites (warehouses, hubs, fulfillment centers,
@@ -16,14 +16,9 @@ facility opening in RelationalAI:
 - Minimize total cost (transport + fixed-cost FC opening).
 
 Run:
-    `python network_flow_planning.py` deploys the model to the schema in raiconfig.yaml,
-    waits for its first refresh (which runs the solve), and prints the report from the
-    deployed model.
-
-Output:
-    Prints solver termination status, total cost (transport + fixed
-    components), the set of opened fulfillment centers, and the active flow
-    plan across the network.
+    `rai models deploy --path model` deploys this model to the schema in
+    raiconfig.yaml and waits for its first refresh, which runs the solve.
+    `python -m queries.network_plan` then prints the report from the deployed model.
 """
 
 from pathlib import Path
@@ -36,7 +31,7 @@ from relationalai.semantics.reasoners.prescriptive import Problem
 # Configure inputs
 # --------------------------------------------------
 
-DATA_DIR = Path(__file__).parent / "data"
+DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 
 # --------------------------------------------------
 # Define semantic model & load data
@@ -184,7 +179,7 @@ problem.minimize(
 )
 
 # --------------------------------------------------
-# Solve and check solution
+# Solve
 # --------------------------------------------------
 
 # Each refresh of the deployed model runs this solve.
@@ -197,41 +192,3 @@ problem.install_display_strings()
 SolveStatus = model.Relationship(f"network flow solve status is {String:status}")
 TotalCost = model.Relationship(f"network flow total cost is {Float:cost}")
 model.define(SolveStatus(problem.termination_status()), TotalCost(problem.objective_value()))
-
-# --------------------------------------------------
-# Deploy, then report (`rai models deploy` skips this block)
-# --------------------------------------------------
-
-if __name__ == "__main__":
-    # Deploy and wait for the first refresh, which runs the solve.
-    model.deploy()
-
-    problem.display()
-
-    # Status and objective of the latest refresh's solve. A refresh records any
-    # termination status, so the report checks it.
-    status = model.select(SolveStatus).to_df().iloc[:, 0].tolist()
-    cost = model.select(TotalCost).to_df().iloc[:, 0].tolist()
-    print(f"\nSolve result:\n• status: {', '.join(status)}")
-    if status != ["OPTIMAL"]:
-        raise SystemExit(f"No optimal network plan: termination status {status}")
-    total_cost = cost[0]
-    print(f"• objective: {round(total_cost, 9)}\n")
-
-    print(f"\nStatus: {status[0]}")
-    print(f"Total cost: ${total_cost:,.2f}")
-
-    print("\nOpened fulfillment centers:")
-    model.select(
-        Site.name.alias("fulfillment_center"),
-        Site.capacity.alias("capacity"),
-        Site.fixed_cost.alias("fixed_cost"),
-    ).where(Site.x_open > 0.5).inspect()
-
-    print("\nActive flows:")
-    model.select(
-        Lane.source.name.alias("from_site"),
-        Lane.dest.name.alias("to_site"),
-        Lane.x_flow.alias("flow"),
-        Lane.cost_per_unit.alias("unit_cost"),
-    ).where(Lane.x_flow > 0.001).inspect()

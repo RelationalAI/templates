@@ -49,4 +49,4 @@ Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` 
 
 ## Data
 
-Bundled CSVs in `data/`: 12 sites, 17 lanes, 3 demands. Full model in `network_flow_planning.py`.
+Bundled CSVs in `data/`: 12 sites, 17 lanes, 3 demands. Full model in `model/__init__.py`; the report in `queries/network_plan.py`.
