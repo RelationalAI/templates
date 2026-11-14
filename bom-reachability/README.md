@@ -42,7 +42,7 @@ Built on RelationalAI's graph reasoner: **reachability** for transitive dependen
 ## What's included
 
 - **Ontology**: two concepts (`SKU` and `BillOfMaterials`) wired into a directed dependency graph, plus a derived `feeds` self-relationship on `SKU` and a persisted `assembly_depth` property.
-- **Model**: `model/__init__.py` — the concepts, data, graph, and rules that `rai models deploy --path model` deploys to your Snowflake account.
+- **Model**: the concepts, data, graph, and rules in the `model/` package (`schema.py` declares the concepts, `source.py` loads the sample data, `reasoning.py` states the graph and rules), which `rai models deploy --path model` deploys to your Snowflake account.
 - **Query**: `queries/dependency_report.py` — prints the reachability, betweenness centrality, and assembly-path report from the deployed model.
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - **Sample data**: `data/skus.csv` (9 SKUs across 3 tiers) and `data/bill_of_materials.csv` (14 BOM entries with site-specific assembly). See *Sample data* below.
