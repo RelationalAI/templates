@@ -21,8 +21,18 @@ Run:
     `python -m queries.diet_plan` then prints the report from the deployed model.
 """
 
-from .reasoning import problem, x_amt
+from .reasoning import SolveStatus, TotalCost, problem, x_amt
 from .schema import Food, Nutrient, Scenario, model
 from .source import DATA_DIR
 
-__all__ = ["DATA_DIR", "Food", "Nutrient", "Scenario", "model", "problem", "x_amt"]
+__all__ = [
+    "DATA_DIR",
+    "Food",
+    "Nutrient",
+    "Scenario",
+    "SolveStatus",
+    "TotalCost",
+    "model",
+    "problem",
+    "x_amt",
+]
