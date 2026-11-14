@@ -7,7 +7,8 @@ This script demonstrates the standard template package layout:
 - Keep queries, reasoning, solves, and reporting in the runner.
 
 Run:
-    `python template.py`
+    `python template.py` deploys the model to the schema in raiconfig.yaml, waits
+    for its first refresh, and prints the item from the deployed model.
 
 Output:
     A small table containing the bundled example item.
@@ -23,6 +24,9 @@ def inspect_items():
 
 
 def main() -> None:
+    # Deploy and wait for the first refresh.
+    model.deploy()
+
     print(inspect_items().to_df())
 
 

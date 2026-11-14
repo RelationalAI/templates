@@ -47,7 +47,9 @@ layout without prescribing a business domain.
 ## Prerequisites
 
 - Python 3.10 or later.
-- A RelationalAI account and configured credentials.
+- A Snowflake account that has the RAI Native App installed.
+- A role that can deploy models, set up once by an account administrator: follow [Set up model deployment](https://private.relational.ai/early-access/model-deploy-setup) (**Try it out**, or **Governed setup** for a shared account). This starter has no prescriptive solve, so it needs no PAT setup.
+- A Snowflake user that holds that role.
 
 ## Quickstart
 
@@ -69,11 +71,42 @@ layout without prescribing a business domain.
    python -m pip install .
    ```
 
+1. Configure the Snowflake connection and the deployment: run `rai init` to
+   create `raiconfig.yaml` with your Snowflake connection, set the connection
+   `role` to the model role, then add a `deployment` section. Give each template
+   its own schema pair so two deployed templates never share one; the deploy
+   creates both schemas if they don't exist.
+
+   ```yaml
+   deployment:
+     role: <MODEL_ROLE>
+     public_schema: <DB>.SAMPLE_TEMPLATE              # published views and tables
+     identity:
+       internal_schema: <DB>.SAMPLE_TEMPLATE_META     # refresh procedures and metadata
+     schedules:
+       standard:
+         interval_s: 0           # refresh only on deploy or on demand
+     schedule: standard
+   ```
+
+   Without the `deployment` section, `python template.py` stops with an error
+   naming the missing setting.
+
 1. Run the renamed entrypoint:
 
    ```bash
    python template.py
    ```
+
+   The script deploys the model, waits for its first refresh, and prints the
+   report from the deployed model. `rai models deploy` deploys without printing
+   the report.
+
+   Running the script again without changing the model redeploys nothing; it
+   prints the item from the deployed model. A change to the model redeploys it.
+
+   To remove the deployment, run `rai models teardown --force` from
+   this directory; it keeps the two schemas.
 
 The example prints the item loaded by `model/source.py`. Your template should
 document a similarly small success signal.
@@ -96,8 +129,9 @@ do not duplicate them in `template-docs.yaml`.
 ## How it works
 
 `model/schema.py` creates the model and stable vocabulary. Importing `model`
-loads the single source in `model/source.py`. The runner then selects the
-modeled records and prints them.
+loads the single source in `model/source.py`. The runner then deploys the model,
+waits for its first refresh, and selects the modeled records from the deployed
+model and prints them.
 
 ```text
 source records -> model/source.py -> model/schema.py -> runner -> output
@@ -108,7 +142,8 @@ source records -> model/source.py -> model/schema.py -> runner -> output
 1. Replace `Item` with the concepts and relationships for the business
    problem.
 1. Replace the in-memory record with local or remote source mappings.
-1. Add reasoning, solves, queries, and reporting to the runner.
+1. Declare reasoning and solves at the top level of the runner, before the
+   deploy, and put queries and reporting after `model.deploy()`.
 1. Update every sidecar symbol, source path, walkthrough focus, and sample
    column after changing the code.
 
