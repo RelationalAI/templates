@@ -49,4 +49,4 @@ Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` 
 
 ## Data
 
-Bundled CSV in `data/`: 12 campaigns with region, current budget, and conversion rate. The budget bounds (10%–300%), total-spend cap, and WEST regional cap are constants in the model. Full model in `model/__init__.py`; the report in `queries/budget_reallocation.py`.
+Bundled CSV in `data/`: 12 campaigns with region, current budget, and conversion rate. The budget bounds (10%–300%), total-spend cap, and WEST regional cap are constants in `model/reasoning.py`. Full model in `model/`; the report in `queries/budget_reallocation.py`.

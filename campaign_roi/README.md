@@ -36,12 +36,12 @@ Every marketing team eventually faces the same question: the portfolio of campai
 
 ## What's included
 
-- **Model**: a continuous LP over a single `Campaign` concept, with per-campaign floor and cap bounds, a total-budget constraint, a paused-region share cap, and a conversion-maximizing objective.
-- **Deployment**: `model/__init__.py` holds the model; `rai models deploy --path model` deploys it to your Snowflake account, where each refresh runs the solve.
+- **Model**: a continuous LP over a single `Campaign` concept, with per-campaign floor and cap bounds, a total-budget constraint, a paused-region share cap, and a conversion-maximizing objective — in the `model/` package (`schema.py` declares the concept, `source.py` loads the sample data, `reasoning.py` states the decision problem).
+- **Deployment**: `rai models deploy --path model` deploys the package to your Snowflake account, where each refresh runs the solve.
 - **Query**: `queries/budget_reallocation.py` prints the report from the deployed model.
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - **Sample data**: `data/campaigns.csv` — 12 campaigns across 5 regions with current budgets and empirical conversion rates.
-- **Outputs**: solver status, optimized-versus-current conversions and lift, a per-campaign reallocation table, and a regional-spend summary against the paused-region cap.
+- **Outputs**: the solve result (termination status, objective value, solver details), optimized-versus-current conversions and lift, a per-campaign reallocation table, and a regional-spend summary against the paused-region cap.
 
 ## Prerequisites
 
@@ -156,6 +156,10 @@ Use this sequence to deploy the model and query it:
    Solve result:
    • status: OPTIMAL
    • objective: 3151.1
+   • solve time: 0.00s
+   • num_points: 1
+   • solver: HiGHS_1.15.1
+   ...
 
    Status: OPTIMAL
    Total expected conversions (optimized): 3,151.1
@@ -165,7 +169,7 @@ Use this sequence to deploy the model and query it:
    Paused region 'WEST' cap: 565.0 (50% of $1,130K total)
    ```
 
-   The formulation, the per-campaign reallocation table, and the regional spend table are trimmed here. The optimum hits the WEST regional cap exactly (50% of $1,130K = $565K), reaches the 3x cap on three high-performing campaigns (`WEST_Premium_Upgrade`, `CENTRAL_Retention_3`, `SOUTH_WinBack_6`), and pushes six low-performing campaigns down to the 10% floor. Despite holding total spend constant, conversions increase by 17.1%. The report checks the solve's termination status and stops unless it is OPTIMAL. The full printout, including the per-campaign reallocation table and regional-spend summary, is in `runbook.md`.
+   The solver details in the solve result, the per-campaign reallocation table, and the regional spend table are trimmed here. The optimum hits the WEST regional cap exactly (50% of $1,130K = $565K), reaches the 3x cap on three high-performing campaigns (`WEST_Premium_Upgrade`, `CENTRAL_Retention_3`, `SOUTH_WinBack_6`), and pushes six low-performing campaigns down to the 10% floor. Despite holding total spend constant, conversions increase by 17.1%. The full printout, including the per-campaign reallocation table and regional-spend summary, is in `runbook.md`.
 
    To solve again without changing the model, refresh the deployed model, then run the query again:
 
@@ -192,7 +196,10 @@ Use this sequence to deploy the model and query it:
 ├── pyproject.toml          # dependencies
 ├── runbook.md              # analyst-facing walkthrough
 ├── model/
-│   └── __init__.py         # the deployed model
+│   ├── __init__.py         # exports of the deployed model
+│   ├── schema.py           # the Campaign concept
+│   ├── source.py           # loads the sample campaigns
+│   └── reasoning.py        # constants, decision variable, constraints, objective, solve
 ├── queries/
 │   └── budget_reallocation.py  # report from the deployed model
 └── data/
@@ -223,7 +230,7 @@ The model is a single concept: one `Campaign` per row of `campaigns.csv`, enrich
 - **Primary identifiers**: integer `id` on `Campaign`, loaded from `data/campaigns.csv`.
 - **Important invariants**: `current_budget` and `conversion_rate` are non-negative; the optimized budget `x_budget` stays between the per-campaign floor and cap; total spend does not exceed `TOTAL_BUDGET`; and the paused region's spend does not exceed its share cap.
 
-For the full concept and property definitions, see `model/__init__.py`; `runbook.md` builds them step by step with the RAI skills.
+For the full concept and property definitions, see `model/schema.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
@@ -241,7 +248,7 @@ The per-campaign floor and cap are derived from each campaign's current spend: t
 
 The objective maximizes total expected conversions — the sum over campaigns of budget times conversion rate.
 
-See `model/__init__.py` for the implementation and `runbook.md` for the skill-driven reproduction.
+See `model/reasoning.py` for the implementation and `runbook.md` for the skill-driven reproduction.
 
 ## Customize this template
 
@@ -251,7 +258,7 @@ Replace `data/campaigns.csv` with your own. Required columns: `id`, `name`, `reg
 
 ### Tune parameters
 
-All parameters live at the top of `model/__init__.py` under `# Configure inputs`:
+All parameters live at the top of `model/reasoning.py` under `# Configure inputs`:
 
 | Parameter | Default | Effect |
 |---|---|---|
