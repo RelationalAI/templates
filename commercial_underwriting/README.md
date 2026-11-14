@@ -50,7 +50,8 @@ This template shows how to express that rulebook as declarative logic on a four-
 ### Access
 
 - A Snowflake account that has the RAI Native App installed.
-- A Snowflake user with permissions to access the RAI Native App.
+- A role that can deploy models, set up once by an account administrator: follow [Set up model deployment](https://private.relational.ai/early-access/model-deploy-setup) (**Try it out**, or **Governed setup** for a shared account). This template has no prescriptive solve, so it needs no PAT setup.
+- A Snowflake user that holds that role.
 
 ### Tools
 
@@ -84,17 +85,33 @@ This template shows how to express that rulebook as declarative logic on a four-
    python -m pip install .
    ```
 
-4. Configure Snowflake connection and RAI profile:
+4. Configure the Snowflake connection and the deployment: run `rai init` to create `raiconfig.yaml` with your Snowflake connection, set the connection `role` to the model role, then add a `deployment` section. Give each template its own schema pair so two deployed templates never share one; the deploy creates both schemas if they don't exist.
 
-   ```bash
-   rai init
+   ```yaml
+   deployment:
+     role: <MODEL_ROLE>
+     public_schema: <DB>.COMMERCIAL_UNDERWRITING              # published views and tables
+     identity:
+       internal_schema: <DB>.COMMERCIAL_UNDERWRITING_META     # refresh procedures and metadata
+     schedules:
+       standard:
+         interval_s: 0           # refresh only on deploy or on demand
+     schedule: standard
    ```
+
+   Without the `deployment` section, `python commercial_underwriting.py` stops with an error naming the missing setting.
 
 5. Run the template:
 
    ```bash
    python commercial_underwriting.py
    ```
+
+   The script deploys the model, waits for its first refresh, and prints the report from the deployed model. `rai models deploy` deploys without printing the report.
+
+   Running the script again without changing the model redeploys nothing; it prints the report from the deployed model. A change to the model redeploys it.
+
+   To remove the deployment, run `rai models teardown --force` from this directory; it keeps the two schemas.
 
 6. Expected output (truncated):
 
