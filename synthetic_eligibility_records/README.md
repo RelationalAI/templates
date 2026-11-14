@@ -177,6 +177,8 @@ Use this sequence to deploy the model and query it:
 
    The formulation printed above the solve result is trimmed here. With `MAX_RECORDS = 16` and a bundled feasible set of 8 records, the solver exhausts the search space and returns status `OPTIMAL` with all 8 records. Each row carries its `solution` index. Solver build strings, exact wall times, and per-solution ordering vary from run to run; the structure of the output and the set of returned records is stable. Each row is one full member: an age of 65 or more always pairs with `MedicareAdvantage`, and `plan_network` always equals `provider_network`. On a real catalog the feasible set typically exceeds `MAX_RECORDS`, and the solver returns status `SOLUTION_LIMIT` once the cap is hit. The report prints the status either way, and prints a diagnostic when the solver returned no records.
 
+   The report stops on a status other than `OPTIMAL`, `SOLUTION_LIMIT`, `INFEASIBLE`, `TIME_LIMIT`, or `UNKNOWN`.
+
    To solve again without changing the model, refresh the deployed model, then run the query again:
 
    ```sql

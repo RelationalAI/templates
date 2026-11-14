@@ -3,7 +3,9 @@
 Run `python -m queries.eligibility_records` after `rai models deploy --path model`. Prints
 the formulation, the termination status and number of solutions of the latest refresh's
 solve, and every generated member record (one row per solution). Prints a no-records
-diagnostic when the reference data is over-constrained.
+diagnostic when the reference data is over-constrained or the search budget expired. The
+report stops on a status other than OPTIMAL (every record enumerated), SOLUTION_LIMIT (the cap
+was hit), INFEASIBLE (no record exists), TIME_LIMIT or UNKNOWN (the budget expired).
 """
 
 from model import (
@@ -23,8 +25,12 @@ from relationalai.semantics import Integer
 if __name__ == "__main__":
     problem.display()
 
-    # Status and number of solutions of the latest refresh's solve.
+    # Status and number of solutions of the latest refresh's solve. A refresh records any
+    # termination status, so the report checks it.
     status = model.select(SolveStatus).to_df().iloc[:, 0].tolist()
+    reportable = ("OPTIMAL", "SOLUTION_LIMIT", "INFEASIBLE", "TIME_LIMIT", "UNKNOWN")
+    if len(status) != 1 or status[0] not in reportable:
+        raise SystemExit(f"Unexpected termination status {status}")
     si = problem.solve_info()
     print(f"\nSolve result:\n• status: {', '.join(status)}\n• num_points: {si.num_points}\n")
 
