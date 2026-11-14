@@ -36,8 +36,8 @@ Built using **graph analysis** (Louvain community detection and degree centralit
 
 ## What's included
 
-- **Model**: a single shared ontology — `Organization` nodes and `Partnership` edges — plus the Louvain community and degree-centrality enrichment the graph reasoner writes back. Defined once in `model_setup.py` and reused by both runners.
-- **Runner**: `wildlife_conservation_network.py` (CLI report, run from a model deployed to your Snowflake account) and `app.py` (interactive Streamlit visualization), both against a Snowflake-connected RAI account.
+- **Model**: a single shared ontology — `Organization` nodes and `Partnership` edges — plus the Louvain community and degree-centrality enrichment the graph reasoner writes back. Declared in `model/__init__.py`, which `rai models deploy --path model` deploys to your Snowflake account, where each refresh computes the metrics.
+- **Query and app**: `queries/community_report.py` (CLI report) and `app.py` (interactive Streamlit visualization), both querying the deployed model.
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - **Sample data**: a small network of conservation organizations and the partnerships between them. See *Sample data* below.
 - **Outputs**: a per-organization table of community assignments and metrics, a per-community breakdown, and (in the app) an interactive network graph.
@@ -58,39 +58,42 @@ Built using **graph analysis** (Louvain community detection and degree centralit
 
 ## Quickstart
 
-Follow these steps to run the template with the included sample data.
-You can customize the data and model as needed after you have it running end-to-end.
+Before you start, install Python 3.10 or later and get a Snowflake role that can deploy models, as described under Access. This template has no prescriptive solve, so it needs no setup beyond that role.
 
-1. Download the ZIP file for this template and extract it:
+Run these steps from a terminal:
+
+1. **Download the template**
+
+   [Download the ZIP](https://docs.relational.ai/templates/zips/v1/wildlife-conservation-network.zip), unzip it, and enter the template directory:
 
    ```bash
-   curl -O https://docs.relational.ai/templates/zips/v1/wildlife-conservation-network.zip
    unzip wildlife-conservation-network.zip
    cd wildlife-conservation-network
    ```
 
-   > [!TIP]
-   > You can also download the template ZIP using the "Download ZIP" button at the top of this page.
+2. **Create a Python environment**
 
-2. **Create and activate a virtual environment**
+   Create and activate a virtual environment, then update pip:
 
    ```bash
    python -m venv .venv
    source .venv/bin/activate
-   python -m pip install -U pip
+   python -m pip install --upgrade pip
    ```
 
-3. **Install dependencies**
+3. **Install the template**
 
-   From this folder:
+   Install the dependencies pinned in `pyproject.toml`:
 
    ```bash
    python -m pip install .
    ```
 
-4. **Configure the Snowflake connection and the deployment**
+4. **Configure your project**
 
-   Run `rai init` to create `raiconfig.yaml` with your Snowflake connection, set the connection `role` to the model role, then add a `deployment` section. Give each template its own schema pair so two deployed templates never share one; the deploy creates both schemas if they don't exist.
+   Use the configuration builder in [Install and run PyRel](https://docs.relational.ai/get-started/install-and-run-pyrel/#configure-your-project) to create `raiconfig.yaml` in the template directory, with the model role as the connection `role`.
+
+   Then add a `deployment` section. Give each template its own schema pair so two deployed templates never share one; the deploy creates both schemas if they don't exist:
 
    ```yaml
    deployment:
@@ -104,53 +107,96 @@ You can customize the data and model as needed after you have it running end-to-
      schedule: standard
    ```
 
-   Without the `deployment` section, `python wildlife_conservation_network.py` stops with an error naming the missing setting.
+5. **Deploy the model**
 
-5. **Run the template**
-
-   **Option A: Command-line script**
+   Deploy the model in `model/` to the schemas in `raiconfig.yaml`:
 
    ```bash
-   python wildlife_conservation_network.py
+   rai models deploy --path model
    ```
 
-   The script deploys the model, waits for its first refresh, and prints the report from the deployed model. `rai models deploy` deploys without printing the report. To remove the deployment, run `rai models teardown --force` from this directory; it keeps the two schemas.
+   The deploy waits for the model's first refresh, which computes the Louvain communities, degree centrality, and partnership counts.
 
-   **Option B: Interactive Streamlit app**
+6. **Query the results**
+
+   Print the report from the deployed model:
 
    ```bash
-   # Install additional dependencies for visualization
-   python -m pip install .[visualization]
-
-   # Launch the interactive app
-   streamlit run app.py
+   python -m queries.community_report
    ```
-
-   The Streamlit app provides:
-   - Interactive network visualization colored by community with hover details
-   - Community breakdown with detailed statistics and member listings
-   - Geographic and species focus analysis
-   - Cross-community connector identification
-   - Summary statistics and key metrics
-
-6. Expected output (a few lines confirm a successful run):
 
    ```text
-   Louvain community detection -> 3 collaboration clusters (5 / 4 / 3 organizations)
-   Global hub: Serengeti Wildlife Trust -- 5 partnerships, degree centrality 0.4545
+   WILDLIFE CONSERVATION NETWORK - COMMUNITY DETECTION ANALYSIS (LOUVAIN ALGORITHM)
+   ...
+    community                           name      type          region    focus_species  degree_centrality  partnerships
+            1       Serengeti Wildlife Trust       NGO     East Africa        Elephants             0.4545             5
+            1  East African Research Station  Research     East Africa Multiple Species             0.3636             4
+            1      Amboseli Elephant Project  Research     East Africa        Elephants             0.2727             3
+            1    Wildlife Veterinary Network   Medical     East Africa Multiple Species             0.2727             3
+            2    Rhino Conservation Alliance       NGO Southern Africa           Rhinos             0.2727             3
+            2          Kruger Park Authority   Reserve Southern Africa Multiple Species             0.2727             3
+            2   Southern Wildlife Foundation       NGO Southern Africa           Rhinos             0.2727             3
+            2          Rhino Protection Unit  Security Southern Africa           Rhinos             0.2727             3
+            2      Trans-Border Conservation       NGO Southern Africa Multiple Species             0.1818             2
+            3            Big Cats Initiative       NGO     East Africa Lions & Leopards             0.2727             3
+            3        Savanna Research Center  Research     East Africa Multiple Species             0.2727             3
+            3 Community Conservation Program Community     East Africa Multiple Species             0.2727             3
+   ...
+     Community 1:
+       Size: 4 organizations
+       Primary Region: East Africa
+       Species Focus: Elephants, Multiple Species
+       Organization Types: Research (2), NGO (1), Medical (1)
+       Hub Organization: Serengeti Wildlife Trust (centrality: 0.4545)
+       Members: Serengeti Wildlife Trust, East African Research Station, Amboseli Elephant Project, Wildlife Veterinary Network
+   ...
+     • Total organizations: 12
+     • Number of communities detected: 3
+     • Average community size: 4.0 organizations
+     • Average partnerships per organization: 3.2
+     • Most connected organization: Serengeti Wildlife Trust (5 partnerships)
+     • Total partnerships in network: 19
    ```
 
-   The community ID numbers are arbitrary labels; what matters is which
-   organizations group together. The full report and a step-by-step walkthrough
-   are in `runbook.md`.
+   The community ID numbers are arbitrary labels; what matters is which organizations group together. The full report and a step-by-step walkthrough are in `runbook.md`.
+
+7. **Tear down the deployment**
+
+   Preview what the teardown removes, then remove it:
+
+   ```bash
+   rai models teardown
+   rai models teardown --force
+   ```
+
+   The first command lists the model's objects without dropping anything; the second drops them and keeps the two schemas.
+
+## Run the Streamlit app
+
+The Streamlit app is an optional interactive view of the same analysis. It only queries the deployed model, so run it after the deploy step of the Quickstart, from the template directory and with the same `raiconfig.yaml`:
+
+```bash
+python -m pip install ".[visualization]"
+streamlit run app.py
+```
+
+The Streamlit app provides:
+
+- Interactive network visualization colored by community with hover details
+- Community breakdown with detailed statistics and member listings
+- Geographic and species focus analysis
+- Cross-community connector identification
+- Summary statistics and key metrics
 
 ## Template structure
 
 ```text
 wildlife-conservation-network/
-  model_setup.py                     # Shared model, concepts, and graph (used by both runners)
-  wildlife_conservation_network.py   # CLI analysis script with detailed output
-  app.py                             # Optional Streamlit visualization app
+  model/
+    __init__.py                      # Deployed model: concepts, graph, and metrics
+  queries/
+    community_report.py              # CLI report from the deployed model
+  app.py                             # Optional Streamlit app (queries the deployed model)
   data/
     organizations.csv                # Conservation organizations (type, region, focus species)
     partnerships.csv                 # Undirected collaboration partnerships between organizations
@@ -159,7 +205,7 @@ wildlife-conservation-network/
   pyproject.toml                     # dependencies
 ```
 
-**Start here**: run `python wildlife_conservation_network.py` for the full CLI analysis end to end, or follow `runbook.md` to rebuild it step by step. The Streamlit app is an optional visualization layer over the same model.
+**Start here**: deploy with `rai models deploy --path model` and run `python -m queries.community_report` for the full CLI analysis end to end, or follow `runbook.md` to rebuild it step by step. The Streamlit app is an optional visualization layer over the same model.
 
 ## Sample data
 
@@ -170,27 +216,27 @@ The bundled data is a small, illustrative conservation network — designed to t
 
 ## Model overview
 
-A single shared ontology (defined in `model_setup.py`) backs both runners. The graph reasoner writes community and centrality results back onto the network.
+A single ontology (declared in `model/__init__.py`) backs both the report and the app. The graph reasoner writes community and centrality results back onto the network.
 
 - **Key entities**: `Organization` (the network's nodes), `Partnership` (the collaboration edges).
 - **Primary identifiers**: integer `id` on `Organization`; `Partnership` is identified by its two endpoint organizations.
 - **Important invariants**: every `Partnership` endpoint must reference a valid `Organization` id; the graph is undirected and unweighted, so a partnership counts once regardless of row order.
 
-For the full concept and property definitions, see `model_setup.py`; `runbook.md` builds them step by step with the RAI skills.
+For the full concept and property definitions, see `model/__init__.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
 ```text
-CSV files → model_setup.create_model() → apply Louvain + degree centrality → analyze communities → display results
+CSV files → model/ (deployed) → apply Louvain + degree centrality → analyze communities → display results
 ```
 
-Both runners share one model. `model_setup.py` builds the RelationalAI model container, defines the `Organization` concept and loads it from CSV, defines the `Partnership` edges and loads them, and constructs the undirected, unweighted graph — returning everything the analysis needs in a single call. This keeps the CLI script and the Streamlit app perfectly in sync, since neither redefines the model.
+Both the report and the app query one deployed model. `model/__init__.py` builds the RelationalAI model container, defines the `Organization` concept and loads it from CSV, defines the `Partnership` edges and loads them, constructs the undirected, unweighted graph, and declares the metrics, and `rai models deploy --path model` deploys it. This keeps the CLI report and the Streamlit app in sync, since neither declares or redefines anything.
 
 The graph reasoner then runs two algorithms over that graph. Louvain community detection partitions the network into collaboration clusters by optimizing modularity — iteratively grouping organizations to maximize connections within a cluster and minimize connections between clusters — and writes a community label onto each organization. Degree centrality normalizes each organization's partnership count to a 0-to-1 scale, which makes hubs comparable across clusters of different sizes; the highest-centrality organization inside a community is the one best placed to broker coordination there.
 
-Reading those results back is a query joining the community label, centrality score, and raw partnership count per organization. The CLI script deploys the model, waits for its first refresh, and renders a per-organization table, a per-community breakdown (size, region, species focus, hub), and network-wide summary statistics. The optional Streamlit app is a visualization layer over the same query: an interactive network graph colored by community, expandable per-cluster detail, and cross-community connector analysis.
+Reading those results back is a query joining the community label, centrality score, and raw partnership count per organization. `queries/community_report.py` renders a per-organization table, a per-community breakdown (size, region, species focus, hub), and network-wide summary statistics. The optional Streamlit app is a visualization layer over the same query: an interactive network graph colored by community, expandable per-cluster detail, and cross-community connector analysis.
 
-See `model_setup.py` and `wildlife_conservation_network.py` for the implementation, and `runbook.md` to reproduce it step by step with the RAI skills.
+See `model/__init__.py` and `queries/community_report.py` for the implementation, and `runbook.md` to reproduce it step by step with the RAI skills.
 
 ## Customize this template
 
@@ -198,17 +244,17 @@ Focus on the first changes most users will make.
 
 ### Use your own data
 
-- Replace the CSV files in `data/` with your own conservation network, keeping the same column names (or update the logic in `model_setup.py`).
+- Replace the CSV files in `data/` with your own conservation network, keeping the same column names (or update the logic in `model/__init__.py`).
 - Make sure organizations in `partnerships.csv` only reference valid organization ids from `organizations.csv`.
-- For Snowflake-backed runs, swap the `pd.read_csv(...)` calls for `data(snowflake_table)` calls in `model_setup.py`.
+- For Snowflake-backed runs, swap the `pd.read_csv(...)` calls for `data(snowflake_table)` calls in `model/__init__.py`.
 
 ### Tune parameters
 
-- The graph is built undirected and unweighted in `model_setup.py`. Adding edge weights (see *Extend the model*) is the main lever on how the community detection partitions the network.
+- The graph is built undirected and unweighted in `model/__init__.py`. Adding edge weights (see *Extend the model*) is the main lever on how the community detection partitions the network.
 
 ### Extend the model
 
-- **Add organization properties** — budget, staff size, years active — by adding columns to `organizations.csv` and corresponding properties in `model_setup.py`.
+- **Add organization properties** — budget, staff size, years active — by adding columns to `organizations.csv` and corresponding properties in `model/__init__.py`.
 - **Add weighted partnerships** — weight edges by collaboration intensity (joint projects, shared funding, interaction frequency). Set `weighted=True` in the Graph definition and add weight values to edges.
 - **Try different community-detection algorithms** — `graph.label_propagation()` (faster, less accurate on small networks) or `graph.weakly_connected_component()` (completely disconnected groups); experiment to see which best reveals your network's structure.
 - **Add temporal analysis** — include partnership start dates to study how communities evolve over time.
@@ -223,13 +269,13 @@ Focus on the first changes most users will make.
 <details>
   <summary>Why does authentication/configuration fail?</summary>
 
-- Run `rai init` to create/update `raiconfig.yaml`.
+- Re-create `raiconfig.yaml` with the configuration builder (Quickstart step 4).
 - If you have multiple profiles, set `RAI_PROFILE` or switch profiles in your config.
 
 </details>
 
 <details>
-  <summary>Why does the script fail to connect to the RAI Native App?</summary>
+  <summary>Why does the deploy fail to connect to the RAI Native App?</summary>
 
 - Verify the Snowflake account/role/warehouse and `rai_app_name` are correct in `raiconfig.yaml`.
 - Ensure the RAI Native App is installed and you have access.
@@ -246,7 +292,7 @@ Focus on the first changes most users will make.
 </details>
 
 <details>
-  <summary>Why are community IDs different each time I run the script?</summary>
+  <summary>Why are community IDs different each time I run the report?</summary>
 
 - Community ID numbers (0, 1, 2...) are arbitrary labels assigned by the algorithm.
 - What matters is which organizations are grouped together, not the specific ID number.

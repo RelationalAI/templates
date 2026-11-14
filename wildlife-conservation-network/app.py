@@ -4,14 +4,15 @@ This interactive app visualizes the community detection analysis from the
 wildlife conservation network using RelationalAI and Streamlit.
 
 Run:
-    streamlit run app.py
+    Deploy the model first with `rai models deploy --path model`, then run
+    `streamlit run app.py`. The app only queries the deployed model.
 """
 
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
-from model_setup import DATA_DIR, create_model
+from model import Partnership, degree, degree_centrality, graph, louvain_communities, model
 from relationalai.semantics import Float, Integer, where
 
 # --------------------------------------------------
@@ -25,25 +26,14 @@ st.set_page_config(
 )
 
 # --------------------------------------------------
-# Define semantic model & load data
+# Query the deployed model
 # --------------------------------------------------
 
-@st.cache_resource
-def load_model():
-    """Load and cache the RelationalAI model."""
-    return create_model()
-
-
 @st.cache_data
-def get_results(_model, _graph, _Organization):
+def get_results():
     """Query and return analysis results."""
-    # Calculate graph metrics
-    louvain_communities = _graph.louvain()
-    degree_centrality = _graph.degree_centrality()
-    degree = _graph.degree()
-
     # Create variable references
-    org = _graph.Node.ref("org")
+    org = graph.Node.ref("org")
     community_id = Integer.ref("community_id")
     centr_score = Float.ref("centr_score")
     partner_count = Integer.ref("partner_count")
@@ -72,6 +62,15 @@ def get_results(_model, _graph, _Organization):
     results = results.sort_values(["community", "degree_centrality"], ascending=[True, False])
 
     return results
+
+
+@st.cache_data
+def get_partnerships():
+    """Query the partnerships (edges) of the deployed network."""
+    return model.select(
+        Partnership.org1.id.alias("from_org_id"),
+        Partnership.org2.id.alias("to_org_id"),
+    ).to_df().astype(int)
 
 
 def create_network_graph(results, partnerships_df):
@@ -212,9 +211,8 @@ def main():
 
     # Load data
     with st.spinner("Loading RelationalAI model and analyzing network..."):
-        model, graph, Organization = load_model()
-        results = get_results(model, graph, Organization)
-        partnerships_df = pd.read_csv(DATA_DIR / "partnerships.csv")
+        results = get_results()
+        partnerships_df = get_partnerships()
 
     # Sidebar with summary stats
     st.sidebar.header("📊 Network Summary")

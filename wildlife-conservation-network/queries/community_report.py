@@ -1,50 +1,14 @@
-"""Wildlife Conservation Network (graph analytics) template.
+"""Community report: reads the deployed wildlife_conservation model.
 
-This script demonstrates community detection and centrality analysis in a wildlife
-conservation network with RelationalAI:
-
-- Load a network of conservation organizations and their partnerships from CSV.
-- Apply the Louvain algorithm to detect communities (clusters of closely collaborating orgs).
-- Calculate degree centrality to identify hub organizations within each community.
-- Identify distinct conservation clusters working on different species/regions.
-- Analyze community structure to optimize resource sharing and identify coordination leaders.
-
-Run:
-    `python wildlife_conservation_network.py` deploys the model to the schema in
-    raiconfig.yaml, waits for its first refresh, and prints the report from the
-    deployed model.
-
-Output:
-    Prints community clusters of conservation organizations with centrality metrics,
-    showing which groups work closely together and which organizations are hubs within
-    those communities. This helps identify collaboration patterns, partnership opportunities,
-    gaps in cross-community coordination, and organizations well-positioned for leadership
-    roles.
+Run `python -m queries.community_report` after `rai models deploy --path model`. Prints the
+conservation communities (Louvain) with centrality metrics, showing which groups work
+closely together and which organizations are hubs within those communities. This helps
+identify collaboration patterns, partnership opportunities, gaps in cross-community
+coordination, and organizations well-positioned for leadership roles.
 """
 
-from model_setup import create_model
+from model import degree, degree_centrality, graph, louvain_communities
 from relationalai.semantics import Float, Integer, where
-
-# --------------------------------------------------
-# Create model and calculate graph metrics
-# --------------------------------------------------
-
-model, graph, Organization = create_model()
-
-# Apply Louvain algorithm for community detection.
-# Louvain identifies clusters (communities) of organizations that work closely together.
-# Organizations in the same community have dense connections within the group and
-# sparse connections to other groups.
-louvain_communities = graph.louvain()
-
-# Calculate degree centrality to identify hub organizations within communities.
-# Centrality is a normalized measure (0-1) of how well-connected an organization is,
-# making it useful for identifying organizations that could lead coordination efforts,
-# manage resource sharing, and bridge different initiatives within their community.
-degree_centrality = graph.degree_centrality()
-
-# Calculate degree (number of partnerships) for each organization.
-degree = graph.degree()
 
 # Create variable references for use in queries.
 org = graph.Node.ref("org")
@@ -52,20 +16,7 @@ community_id = Integer.ref("community_id")
 centr_score = Float.ref("centr_score")
 partner_count = Integer.ref("partner_count")
 
-
-# --------------------------------------------------
-# Query and display results (`rai models deploy` skips the report)
-# --------------------------------------------------
-
-def main() -> None:
-    """
-    Main analysis function that:
-    1. Queries the graph for Louvain community assignments
-    2. Combines organization data with community membership
-    3. Groups and analyzes conservation clusters
-    4. Displays results in a user-friendly format
-    """
-
+if __name__ == "__main__":
     # Query the graph to retrieve:
     # - Basic organization information (id, name, type, region, focus_species)
     # - Louvain community assignment (which cluster this org belongs to)
@@ -166,9 +117,3 @@ def main() -> None:
     print(f"  • Total partnerships in network: {total_partnerships}")
 
     print("\n✅ Analysis complete!")
-
-
-if __name__ == "__main__":
-    # Deploy and wait for the first refresh, which computes the graph metrics.
-    model.deploy()
-    main()
