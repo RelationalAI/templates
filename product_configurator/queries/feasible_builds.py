@@ -1,25 +1,28 @@
 """Feasible builds report: reads the deployed product_configurator model.
 
 Run `python -m queries.feasible_builds` after `rai models deploy --path model`. Prints the
-result of the latest refresh's solve and every feasible build as a pivot table (one row per
-build, one column per slot, sorted ascending by total price).
+status and number of solutions of the latest refresh's solve and every feasible build as a
+pivot table (one row per build, one column per slot, sorted ascending by total price).
 """
 
 from model import (
     MAX_CONFIGURATIONS,
     PRICE_CEILING_CENTS,
     TARGET_REGION,
+    NumPoints,
+    SolveStatus,
     model,
-    problem,
     selected_var,
 )
 from relationalai.semantics import Integer
 
 if __name__ == "__main__":
-    si = problem.solve_info()
-    si.display()
+    status = model.select(SolveStatus).to_df().iloc[:, 0].tolist()
+    points = model.select(NumPoints).to_df().iloc[:, 0].tolist()
+    num_points = points[0] if points else 0
+    print(f"\nSolve result:\n• status: {', '.join(status)}\n• num_points: {num_points}\n")
 
-    if si.num_points is None or si.num_points == 0:
+    if num_points == 0:
         print(
             f"\nNo feasible build for region {TARGET_REGION!r} under the encoded "
             "constraints. See the README troubleshooting section for likely causes."

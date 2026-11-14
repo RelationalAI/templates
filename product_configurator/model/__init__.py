@@ -14,7 +14,14 @@ Run:
     `python -m queries.feasible_builds` then prints the report from the deployed model.
 """
 
-from .reasoning import MAX_CONFIGURATIONS, PRICE_CEILING_CENTS, problem, selected_var
+from .reasoning import (
+    MAX_CONFIGURATIONS,
+    PRICE_CEILING_CENTS,
+    NumPoints,
+    SolveStatus,
+    problem,
+    selected_var,
+)
 from .schema import Excludes, Implies, Option, Slot, model
 from .source import DATA_DIR, TARGET_REGION
 
@@ -25,8 +32,10 @@ __all__ = [
     "TARGET_REGION",
     "Excludes",
     "Implies",
+    "NumPoints",
     "Option",
     "Slot",
+    "SolveStatus",
     "model",
     "problem",
     "selected_var",
