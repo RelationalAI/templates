@@ -85,7 +85,7 @@ Each SKU has a concave demand curve over facing counts — demand rises with fac
 
 **Response**
 
-Total predicted weekly demand around **1,600+ units** — the decision picks facings per SKU (binding each SKU's realized demand to its predicted-demand row via a table lookup), with shelf-length and category-cardinality constraints; `Sku.facings`, `Sku.realized_demand`, and `Sku.active` are written back. (MiniZinc runs to its time limit and returns a strong incumbent surfaced as OPTIMAL, so the exact objective and the specific SKUs dropped vary slightly run to run; the structure below is stable.)
+Total predicted weekly demand around **1,600+ units** — the decision picks facings per SKU (binding each SKU's realized demand to its predicted-demand row via a table lookup), with shelf-length and category-cardinality constraints; `Sku.facings`, `Sku.realized_demand`, and `Sku.active` are written back. (MiniZinc runs to its time limit and returns a strong incumbent surfaced as OPTIMAL, so the exact objective and the specific SKUs dropped vary slightly run to run; the structure below is stable.) In `planogram_optimization.py` the solve is declared with `problem.configure(...)`, so each refresh of the deployed model runs it.
 
 ### 6. Read the planogram
 

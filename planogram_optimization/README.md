@@ -40,11 +40,11 @@ The same pattern applies to any predict-then-optimize problem where the predicti
 - An element-style decision-indexed table lookup binding `realized_demand` to the matching `PredictedDemand` row via an `implies` cascade
 - Shelf-length capacity (`sum(Sku.facings * Sku.width_cm).per(Shelf) <= Shelf.length_cm`) and per-category cardinality (`sum(Sku.active).per(Category)` in `[min_skus_active, max_skus_active]`)
 - A linear `sum(realized_demand)` objective the CSP maximizes
-- Post-solve verification via `problem.verify()` for the capacity, cardinality, and active-coupling ICs, plus a Python dict lookup confirming `(sku_id, facings) -> demand_units` matches the input table
+- A post-solve check in the report: a Python dict lookup confirming `(sku_id, facings) -> demand_units` matches the input table, and the solver status is `OPTIMAL`
 
 ## What's included
 
-- `planogram_optimization.py` -- main script with ontology, decisions, constraints, and solver call
+- `planogram_optimization.py` -- main script with ontology, decisions, constraints, and solver configuration; it deploys the model and prints the report from the deployed model
 - **Runbook**: `runbook.md` -- a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - `data/skus.csv` -- 18 SKUs across 4 categories (snacks, beverages, candy, household_paper) with width, max-facings, and pre-assigned shelf; `sku_id` must be unique, `category` must match a `categories.csv` name, and `assigned_shelf_id` must reference a `shelves.csv` id. The `brand` column is loaded but not used by the bundled CSP -- it is reserved for the brand-block contiguity customization described under "Customize this template"
 - `data/shelves.csv` -- 4 shelves (Top Eye-Level 100cm, Upper-Middle 80cm, Lower-Middle 80cm, Bottom 90cm); `id` must be unique and is the foreign-key target of `skus.assigned_shelf_id`
@@ -56,7 +56,8 @@ The same pattern applies to any predict-then-optimize problem where the predicti
 
 ### Access
 - A Snowflake account that has the RAI Native App installed.
-- A Snowflake user with permissions to access the RAI Native App.
+- The one-time model deployment setup on that account, done by an account administrator: follow [Set up model deployment](https://private.relational.ai/early-access/model-deploy-setup) through **Governed setup**, **PAT authentication**, and steps 1-2 of **Additional setup for the prescriptive reasoner** (Quickstart step 4 below covers this template's own schema). It gives you a model role, a programmatic access token (PAT) stored as a secret, an external access integration, a PAT user, and a warehouse.
+- A Snowflake user that holds the model role.
 
 ### Tools
 - Python >= 3.10
@@ -85,24 +86,62 @@ The same pattern applies to any predict-then-optimize problem where the predicti
    python -m pip install .
    ```
 
-4. Configure:
-   ```bash
-   rai init
+4. Configure: run `rai init` to create `raiconfig.yaml` with your Snowflake connection, set the connection `role` to the model role, then add a `deployment` section. Give each template its own schema pair so two deployed templates never share one.
+   ```yaml
+   reasoners:
+     prescriptive:
+       name: planogram_optimization_solver            # created on first deploy if it doesn't exist
+   deployment:
+     role: <MODEL_ROLE>
+     public_schema: <DB>.PLANOGRAM_OPTIMIZATION               # published views and tables
+     identity:
+       internal_schema: <DB>.PLANOGRAM_OPTIMIZATION_META      # solver inputs, results, refresh procedures
+     schedules:
+       standard:
+         interval_s: 0              # refresh only on deploy or on demand
+     schedule: standard
+     pat_secret: <PAT_SECRET>       # these four come from the setup page
+     pat_eai: <PAT_EAI>
+     pat_user: <PAT_USER>
+     pat_warehouse: <PAT_WAREHOUSE>
    ```
+   Without the `deployment` section, `python planogram_optimization.py` stops with an error naming the missing setting.
+
+   Before the first run, create the internal schema as the model role, and have an administrator grant the RAI Native App caller access to it. The internal schema holds only this model's objects, so the grants cover all of it, including the solver's result tables that the deploy creates:
+   ```sql
+   -- as the model role
+   CREATE SCHEMA IF NOT EXISTS <DB>.PLANOGRAM_OPTIMIZATION_META;
+
+   -- as an administrator
+   GRANT CALLER USAGE ON DATABASE <DB> TO APPLICATION <RAI_APP_NAME>;
+   GRANT CALLER USAGE ON SCHEMA <DB>.PLANOGRAM_OPTIMIZATION_META TO APPLICATION <RAI_APP_NAME>;
+   GRANT CALLER USAGE ON WAREHOUSE <PAT_WAREHOUSE> TO APPLICATION <RAI_APP_NAME>;
+   GRANT INHERITED CALLER SELECT ON ALL TABLES IN SCHEMA <DB>.PLANOGRAM_OPTIMIZATION_META TO APPLICATION <RAI_APP_NAME>;
+   GRANT INHERITED CALLER SELECT ON ALL DYNAMIC TABLES IN SCHEMA <DB>.PLANOGRAM_OPTIMIZATION_META TO APPLICATION <RAI_APP_NAME>;
+   GRANT INHERITED CALLER SELECT ON ALL VIEWS IN SCHEMA <DB>.PLANOGRAM_OPTIMIZATION_META TO APPLICATION <RAI_APP_NAME>;
+   GRANT INHERITED CALLER INSERT, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA <DB>.PLANOGRAM_OPTIMIZATION_META TO APPLICATION <RAI_APP_NAME>;
+   GRANT CALLER CREATE TABLE, CREATE STAGE ON SCHEMA <DB>.PLANOGRAM_OPTIMIZATION_META TO APPLICATION <RAI_APP_NAME>;
+   GRANT INHERITED CALLER READ, WRITE ON ALL STAGES IN SCHEMA <DB>.PLANOGRAM_OPTIMIZATION_META TO APPLICATION <RAI_APP_NAME>;
+   ```
+   The deploy creates the public schema `<DB>.PLANOGRAM_OPTIMIZATION` if it doesn't exist.
 
 5. Run:
    ```bash
    python planogram_optimization.py
    ```
+   The script deploys the model, waits for the first refresh, which runs the solve, and prints the report from the deployed model. Each refresh of the deployed model runs the solve again; `rai models deploy` deploys without printing the report.
+
+   Running the script again without changing the model redeploys nothing and does not solve again; it reports the latest refresh. A change to the model or to `problem.configure(...)` redeploys, and the redeploy's refresh solves. To solve again without a change, refresh the deployed model, then run the script:
+   ```sql
+   CALL <DB>.PLANOGRAM_OPTIMIZATION_META._INTERNAL_REFRESH_MODEL('standard', NULL);
+   ```
+   To remove the deployment, run `rai models teardown --force` from this directory; it keeps the two schemas.
 
 6. Expected output (the solver maximizes total predicted weekly demand; the exact selection may vary across solver versions if multiple allocations achieve the same optimal objective). The script first prints the formulation (~30 lines, omitted here for brevity), then the solve-result block, then the per-SKU allocation, shelf utilization, and category active counts:
    ```text
    Solve result:
    • status: OPTIMAL
    • objective: 1656
-   • solve time: 1.4s
-   • num_points: 1
-   • solver: MiniZinc_unknown
 
    Optimal facings per SKU:
        id               name         category                shelf  facings  realized_demand
@@ -140,7 +179,7 @@ The same pattern applies to any predict-then-optimize problem where the predicti
    3           snacks            5                3                5
    ```
 
-   `MiniZinc_unknown` is the version string MiniZinc reports for itself today; the underlying solver binary is selected by the RAI Native App. Total weekly demand of `1656` units, 16 of 18 SKUs active. Two SKUs go inactive because the candy and household_paper categories each have 4 SKUs but `max_skus_active=3`: Mint Roll loses the candy cap (lowest predicted demand at every k), Paper Towels 6pk loses the household_paper cap (lowest predicted demand-per-cm). The bottom shelf is fully binding (90/90cm); the other three are within 1-3cm of capacity.
+   Total weekly demand of `1656` units, 16 of 18 SKUs active. Two SKUs go inactive because the candy and household_paper categories each have 4 SKUs but `max_skus_active=3`: Mint Roll loses the candy cap (lowest predicted demand at every k), Paper Towels 6pk loses the household_paper cap (lowest predicted demand-per-cm). The bottom shelf is fully binding (90/90cm); the other three are within 1-3cm of capacity.
 
 ## Template structure
 ```text
@@ -181,14 +220,14 @@ For the full concept and property definitions, see `planogram_optimization.py`; 
 The CSP picks integer facings per SKU; the predictive output binds each SKU's realized demand via a decision-indexed table lookup, and the solver maximizes total predicted demand under shelf and category limits.
 
 ```text
-skus + shelves + categories + predicted-demand table → facings / realized_demand / active decisions → lookup + capacity + cardinality constraints → maximize demand → solve → verify
+skus + shelves + categories + predicted-demand table → facings / realized_demand / active decisions → lookup + capacity + cardinality constraints → maximize demand → configure solve → deploy → check and report
 ```
 
 **The decision-indexed table lookup is the predict-to-CSP hand-off.** For each SKU, `realized_demand` must equal the `PredictedDemand` row whose `facings_count` matches the chosen `facings`. Because equating a data property with a decision variable inside a `where` binding isn't a form the prescriptive rewriter lowers today, the lookup is written with an `implies` cascade — one half-reified equality per candidate facing count, of which only the row matching the chosen `facings` activates. This is the element-style lookup: no bilinearity, no big-M, no SOS2.
 
 **An `active` indicator couples to `facings` via two linear inequalities.** The per-category cardinality is a relational sum over a 0/1 `active` variable (a sum over a Boolean expression like `facings >= 1` is not a valid form). Two linear constraints pin `active = 1` whenever `facings >= 1` and `active = 0` otherwise, after which the per-category count reads as a plain `sum(active).per(Category)` with min/max bounds. Shelf capacity is likewise a plain relational inequality: facings times width, summed per shelf, cannot exceed the shelf length.
 
-**Verification is split by constraint kind.** The `implies`-bodied lookup is solver-only — it goes to the solver but is not passed to `verify()`, which would return silently OK without evaluating it; instead a post-solve Python dict re-checks each `(sku_id, facings) -> demand_units` against the input table. The pure relational-arithmetic constraints (capacity, cardinality, active coupling) *are* re-evaluated by `verify()`, and a post-solve assertion confirms the solver reached `OPTIMAL`.
+**Checks run in the report.** The `implies`-bodied lookup is solver-only; after the deploy, a Python dict re-checks each `(sku_id, facings) -> demand_units` against the input table, and an assertion confirms the solver reached `OPTIMAL`. The constraints (lookup, capacity, cardinality, active coupling) all go to the solver; the report does not re-evaluate them, and a refresh started outside the script (`rai models deploy`, the refresh procedure, a schedule) runs no checks, so read `SolveStatus` before relying on a refreshed solution.
 
 For the exact PyRel formulation, see `planogram_optimization.py`; `runbook.md` reproduces the pipeline step by step with the RAI skills.
 
@@ -223,7 +262,7 @@ For the exact PyRel formulation, see `planogram_optimization.py`; `runbook.md` r
 
 - For a live catalog, replace the `read_csv(...)` loads with `model.data(snowflake_table)` calls so the SKUs, shelves, categories, and predicted-demand table read directly from your warehouse; the CSP is unchanged.
 - The vendored `predicted_demand_table.csv` becomes a materialized inference output on a schedule — refresh it from your demand model, and the pre-solve completeness guard (`_assert_demand_table_complete`) gates each run.
-- The bundled data is 18 SKUs across 4 shelves; the CSP scales to whatever the constraint solver's budget allows. Raise `time_limit_sec` in the `problem.solve(...)` call for larger catalogs.
+- The bundled data is 18 SKUs across 4 shelves; the CSP scales to whatever the constraint solver's budget allows. Raise `time_limit_sec` in the `problem.configure(...)` call for larger catalogs.
 - Pin `relationalai` (see Prerequisites) so runs stay reproducible across environments.
 
 ## Troubleshooting
@@ -241,7 +280,7 @@ For the exact PyRel formulation, see `planogram_optimization.py`; `runbook.md` r
   <summary>Import error or AttributeError on <code>relationalai</code></summary>
 
 - Confirm your virtual environment is active: `which python` should point to `.venv`.
-- Reinstall dependencies: `python -m pip install .`. The pinned version (`relationalai==2.1.1`) ships the `solve_info()`, `verify()`, and `where().require()` APIs this template uses; older versions lack them and produce attribute errors.
+- Reinstall dependencies: `python -m pip install .`. The pinned version (`relationalai==2.1.1`) ships the `configure()`, `install_display_strings()`, and `where().require()` APIs this template uses; older versions lack them and produce attribute errors.
 - If you share a venv across templates, run `python -m pip install --upgrade --force-reinstall relationalai==2.1.1`.
 
 </details>
@@ -283,7 +322,7 @@ For the exact PyRel formulation, see `planogram_optimization.py`; `runbook.md` r
 ### Core concepts
 
 - [Predict-then-optimize patterns](https://docs.relational.ai/) — feeding a predictive model's output into a prescriptive solve on one ontology.
-- [Prescriptive reasoner](https://docs.relational.ai/) — the `Problem` API: integer decisions (`solve_for`), constraints (`satisfy`), objective (`maximize`), and `verify`.
+- [Prescriptive reasoner](https://docs.relational.ai/) — the `Problem` API: integer decisions (`solve_for`), constraints (`satisfy`), objective (`maximize`), and `configure`.
 
 ### Language / modeling reference
 
