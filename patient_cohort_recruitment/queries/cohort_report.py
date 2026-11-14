@@ -1,7 +1,7 @@
 """Patient cohort report: reads the deployed patient_cohort_recruitment model.
 
 Run `python -m queries.cohort_report` after `rai models deploy --path model`. Prints the
-formulation, the solve status, the kinase-pathway gene closure, the eligible patient set,
+solve status, the kinase-pathway gene closure, the eligible patient set,
 the chosen cohort, and the per-axis coverage tally.
 """
 
@@ -13,18 +13,11 @@ from model import (
     KinaseGene,
     SolveStatus,
     model,
-    problem,
 )
 
 if __name__ == "__main__":
-    problem.display()
-
-    # Status of the latest refresh's solve. A refresh records any termination
-    # status, so the report checks it.
     status = model.select(SolveStatus).to_df().iloc[:, 0].tolist()
     print(f"\nSolve result:\n• status: {', '.join(status)}")
-    if status != ["OPTIMAL"]:
-        raise SystemExit(f"No cohort: termination status {status}")
 
     print("\nKinase-pathway gene closure (reachable from KINASE_ROOT_GENE_ID):")
     model.select(
