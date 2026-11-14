@@ -2,11 +2,11 @@
 
 Run `python -m queries.allocation_report` after `rai models deploy --path model`. Prints
 the eigenvector centrality ranking, the weakly-connected-component summary, the bridge
-routes between regions, the formulation, the status and total holding cost of the latest
-refresh's solve, and the inventory allocation plan.
+routes between regions, the result of the latest refresh's solve, and the inventory
+allocation plan.
 """
 
-from model import Route, Site, SolveStatus, TotalHoldingCost, graph, model, problem, wcc
+from model import Route, Site, graph, model, problem, wcc
 from relationalai.semantics import where
 from relationalai.semantics.std import aggregates as aggs
 
@@ -74,16 +74,11 @@ if __name__ == "__main__":
     print("Stage 2: Inventory Allocation")
     print("=" * 50)
 
-    problem.display()
+    si = problem.solve_info()
+    si.display()
 
-    # Status and objective of the latest refresh's solve. A refresh records any
-    # termination status, so the report checks it.
-    status = model.select(SolveStatus).to_df().iloc[:, 0].tolist()
-    holding_cost = model.select(TotalHoldingCost).to_df().iloc[:, 0].tolist()
-    print(f"\nStatus: {', '.join(status)}")
-    if status != ["OPTIMAL"] or not holding_cost:
-        raise SystemExit(f"No optimal allocation: termination status {status}, holding cost {holding_cost}")
-    print(f"Total holding cost: ${holding_cost[0]:.2f}")
+    print(f"\nStatus: {si.termination_status}")
+    print(f"Total holding cost: ${si.objective_value:.2f}")
 
     print("\nAllocation plan:")
     model.select(
