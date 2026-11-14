@@ -21,7 +21,7 @@ tags:
 
 Healthcare payer engineering teams, RegTech rule-certification harnesses, and claim-engine fuzzers all need *batches* of internally consistent member eligibility records to test against. Real beneficiary data is gated behind PII rules; sampled production data carries cohort biases; hand-crafted fixtures drift out of sync with the regulations they are meant to exercise. The right alternative is a constrained generative model: declare the eligibility rules once, ask the solver for K records that satisfy every rule simultaneously.
 
-Synthetic-data tooling consumers want a *batch* of K diverse records per solve, not one. A single record can't expose a CFD cascade or a network-attribution corner case; K records spread across age bands, plan types, and provider networks can. This template encodes member eligibility as a **constraint satisfaction** model using RelationalAI's **prescriptive** reasoning and runs the solver in multi-solution mode: pass `solution_limit=K` to `problem.solve(...)`, then enumerate each generated record via `Variable.values(solution_index, value)`. The output is one row per generated member -- ready to drop into a test fixture, a fuzzing oracle, or a coverage matrix.
+Synthetic-data tooling consumers want a *batch* of K diverse records per solve, not one. A single record can't expose a CFD cascade or a network-attribution corner case; K records spread across age bands, plan types, and provider networks can. This template encodes member eligibility as a **constraint satisfaction** model using RelationalAI's **prescriptive** reasoning and runs the solver in multi-solution mode: pass `solution_limit=K` to `problem.configure(...)`, so each refresh of the deployed model enumerates the records, then enumerate each generated record via `Variable.values(solution_index, value)`. The output is one row per generated member -- ready to drop into a test fixture, a fuzzing oracle, or a coverage matrix.
 
 The rule structure here is drawn from the public [CMS Medicare](https://www.cms.gov/Medicare/Medicare) and [NCQA](https://www.ncqa.org/) regulatory shape: age-by-plan-type CFDs (over-65 must be on Medicare-Advantage; under-65 must not) and PCP-network attribution (the chosen primary-care provider must be in-network for the chosen plan). The same template structure -- decision-valued tuple per record, reference-data lookups via composition, multi-solution enumeration -- applies to any rule-driven synthetic-data domain: KYC member records (banking), tenant lease attributes (proptech), shipment manifests (logistics).
 
@@ -39,13 +39,13 @@ The rule structure here is drawn from the public [CMS Medicare](https://www.cms.
 - A pair of CFD ICs encoding the two arms of the age-by-plan rule using the forbidden-pair `implies(age_bucket_id == AgeBucket.id, plan_id != Plan.id)` idiom -- safe under the CSP rewriter
 - A PCP-network attribution IC iterating over reference-data `(Plan, Provider)` tuples in different networks and forbidding the cross-network combination
 - A pre-solve dense-ID check on `plans.csv`, `providers.csv`, and `age_buckets.csv` so the solver's integer decision bounds line up with the reference rows the CFDs iterate over (sparse IDs would let the solver pick a value with no matching row, leaving the rules unconstrained for that record and silently dropping it from the post-solve display join)
-- **Multi-solution enumeration as the primary code path**: `problem.solve(..., solution_limit=MAX_RECORDS)` runs the search in enumeration mode; `Variable.values(solution_index, value)` joins the three decision variables on a shared solution index to reconstruct each record
+- **Multi-solution enumeration as the primary code path**: `problem.configure(..., solution_limit=MAX_RECORDS)` makes each refresh run the search in enumeration mode; `Variable.values(solution_index, value)` joins the three decision variables on a shared solution index to reconstruct each record
 - An empty-result branch driven by `solve_info().num_points`: when no feasible record exists, the script prints a diagnostic instead of hard-failing, which is the right shape for a reusable generator
-- No `problem.verify()` call: every IC uses `implies`, which is solver-only -- passing implies-bodied ICs to `verify()` returns silently-OK without actually evaluating them, so the convention is that they must NOT be passed. The CFD and network-attribution invariants are directly visible in the expected-output block in the Quickstart: every record's `age_years` vs `plan_type` and every record's `network` vs `provider` are printed side-by-side
+- No check re-evaluates the ICs: every IC uses `implies`, which is solver-only. The CFD and network-attribution invariants are directly visible in the expected-output block in the Quickstart: every record's `age_years` vs `plan_type` and every record's `network` vs `provider` are printed side-by-side
 
 ## What's included
 
-- `synthetic_eligibility_records.py` -- main script with ontology, decisions, constraints, and solver call
+- `synthetic_eligibility_records.py` -- main script with ontology, decisions, constraints, and solver configuration; it deploys the model and prints the report from the deployed model
 - `data/age_buckets.csv` -- 4 representative ages spanning the adult/senior split (2 under 65, 2 at or above)
 - `data/plans.csv` -- 3 plans (PPO, HMO, MedicareAdvantage) each on its own network
 - `data/providers.csv` -- 4 primary-care providers (1 PPO, 1 HMO, 2 Medicare) so each plan-network has at least one in-network PCP and the bundled K=8 enumeration spans all three plans
@@ -55,7 +55,8 @@ The rule structure here is drawn from the public [CMS Medicare](https://www.cms.
 
 ### Access
 - A Snowflake account that has the RAI Native App installed.
-- A Snowflake user with permissions to access the RAI Native App.
+- The one-time model deployment setup on that account, done by an account administrator: follow [Set up model deployment](https://private.relational.ai/early-access/model-deploy-setup) through **Governed setup**, **PAT authentication**, and steps 1-2 of **Additional setup for the prescriptive reasoner** (Quickstart step 4 below covers this template's own schema). It gives you a model role, a programmatic access token (PAT) stored as a secret, an external access integration, a PAT user, and a warehouse.
+- A Snowflake user that holds the model role.
 
 ### Tools
 - Python >= 3.10
@@ -83,24 +84,62 @@ The rule structure here is drawn from the public [CMS Medicare](https://www.cms.
    python -m pip install .
    ```
 
-4. Configure (prompts for Snowflake account, role, and profile name):
-   ```bash
-   rai init
+4. Configure: run `rai init` to create `raiconfig.yaml` with your Snowflake connection, set the connection `role` to the model role, then add a `deployment` section. Give each template its own schema pair so two deployed templates never share one.
+   ```yaml
+   reasoners:
+     prescriptive:
+       name: synthetic_eligibility_records_solver            # created on first deploy if it doesn't exist
+   deployment:
+     role: <MODEL_ROLE>
+     public_schema: <DB>.SYNTHETIC_ELIGIBILITY_RECORDS               # published views and tables
+     identity:
+       internal_schema: <DB>.SYNTHETIC_ELIGIBILITY_RECORDS_META      # solver inputs, results, refresh procedures
+     schedules:
+       standard:
+         interval_s: 0              # refresh only on deploy or on demand
+     schedule: standard
+     pat_secret: <PAT_SECRET>       # these four come from the setup page
+     pat_eai: <PAT_EAI>
+     pat_user: <PAT_USER>
+     pat_warehouse: <PAT_WAREHOUSE>
    ```
+   Without the `deployment` section, `python synthetic_eligibility_records.py` stops with an error naming the missing setting.
+
+   Before the first run, create the internal schema as the model role, and have an administrator grant the RAI Native App caller access to it. The internal schema holds only this model's objects, so the grants cover all of it, including the solver's result tables that the deploy creates:
+   ```sql
+   -- as the model role
+   CREATE SCHEMA IF NOT EXISTS <DB>.SYNTHETIC_ELIGIBILITY_RECORDS_META;
+
+   -- as an administrator
+   GRANT CALLER USAGE ON DATABASE <DB> TO APPLICATION <RAI_APP_NAME>;
+   GRANT CALLER USAGE ON SCHEMA <DB>.SYNTHETIC_ELIGIBILITY_RECORDS_META TO APPLICATION <RAI_APP_NAME>;
+   GRANT CALLER USAGE ON WAREHOUSE <PAT_WAREHOUSE> TO APPLICATION <RAI_APP_NAME>;
+   GRANT INHERITED CALLER SELECT ON ALL TABLES IN SCHEMA <DB>.SYNTHETIC_ELIGIBILITY_RECORDS_META TO APPLICATION <RAI_APP_NAME>;
+   GRANT INHERITED CALLER SELECT ON ALL DYNAMIC TABLES IN SCHEMA <DB>.SYNTHETIC_ELIGIBILITY_RECORDS_META TO APPLICATION <RAI_APP_NAME>;
+   GRANT INHERITED CALLER SELECT ON ALL VIEWS IN SCHEMA <DB>.SYNTHETIC_ELIGIBILITY_RECORDS_META TO APPLICATION <RAI_APP_NAME>;
+   GRANT INHERITED CALLER INSERT, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA <DB>.SYNTHETIC_ELIGIBILITY_RECORDS_META TO APPLICATION <RAI_APP_NAME>;
+   GRANT CALLER CREATE TABLE, CREATE STAGE ON SCHEMA <DB>.SYNTHETIC_ELIGIBILITY_RECORDS_META TO APPLICATION <RAI_APP_NAME>;
+   GRANT INHERITED CALLER READ, WRITE ON ALL STAGES IN SCHEMA <DB>.SYNTHETIC_ELIGIBILITY_RECORDS_META TO APPLICATION <RAI_APP_NAME>;
+   ```
+   The deploy creates the public schema `<DB>.SYNTHETIC_ELIGIBILITY_RECORDS` if it doesn't exist.
 
 5. Run:
    ```bash
    python synthetic_eligibility_records.py
    ```
+   The script deploys the model, waits for the first refresh, which runs the solve, and prints the report from the deployed model. Each refresh of the deployed model runs the solve again; `rai models deploy` deploys without printing the report.
+
+   Running the script again without changing the model redeploys nothing and does not solve again; it reports the latest refresh. A change to the model or to `problem.configure(...)` redeploys, and the redeploy's refresh solves. To solve again without a change, refresh the deployed model, then run the script:
+   ```sql
+   CALL <DB>.SYNTHETIC_ELIGIBILITY_RECORDS_META._INTERNAL_REFRESH_MODEL('standard', NULL);
+   ```
+   To remove the deployment, run `rai models teardown --force` from this directory; it keeps the two schemas.
 
 6. Expected output. With `MAX_RECORDS = 16` and a bundled feasible set of 8 records, the solver exhausts the search space and returns status `OPTIMAL` with all 8 records. Each row carries its `solution` index. Solver build strings, exact wall times, and per-solution ordering will vary; the structure of the output and the *set* of returned records is stable:
    ```text
    Solve result:
    • status: OPTIMAL
-   • objective: 0
-   • solve time: 0.12s
    • num_points: 8
-   • solver: MiniZinc_unknown
 
    Generated member records (up to 16 per run):
    solution age_years         plan_type plan_network provider_network     provider
@@ -174,9 +213,10 @@ network_match_ic = model.where(Plan.network_id != Provider.network_id).require(
 **5. Multi-solution enumeration via `Variable.values(solution_index, value)`.** Capturing the variable subconcept from `solve_for(...)` exposes a `.values(sol_idx, val)` relationship that indexes the per-solution outputs. Binding the value slot directly to a reference Concept's `.id` walks the chosen ID back to that record's columns in one step:
 
 ```python
-problem.solve("minizinc", time_limit_sec=60, solution_limit=MAX_RECORDS)
+problem.configure("minizinc", time_limit_sec=60, solution_limit=MAX_RECORDS)
+
+# in the report, after model.deploy():
 si = problem.solve_info()
-si.display()
 
 sol_idx = Integer.ref()
 records_df = (
@@ -275,7 +315,7 @@ To extend to a fleet of N members, reintroduce a `Member` concept inside the mod
 <details>
   <summary>How many records will the solver return?</summary>
 
-- Up to `MAX_RECORDS` (16 by default) or however many feasible records exist in the reference data, whichever is smaller. `solve_info().num_points` reports the actual count after the solve; `solve_info().status` reports `SOLUTION_LIMIT` when the limit was hit (more records available) and `OPTIMAL` when the search has been exhausted.
+- Up to `MAX_RECORDS` (16 by default) or however many feasible records exist in the reference data, whichever is smaller. The report's `num_points` line shows the actual count after the solve; its `status` line shows `SOLUTION_LIMIT` when the limit was hit (more records available) and `OPTIMAL` when the search has been exhausted.
 - Solution ordering is not guaranteed across runs or solver versions; the *set* of returned records may also shift if MiniZinc's branching heuristics see new ties. Treat the `solution` column as a label, not a ranking.
 - The K returned records are guaranteed to be pairwise *distinct* on at least one decision (age bucket, plan, or provider) but not maximally diverse and not ranked. For broader spread, raise `MAX_RECORDS` past the size of the feasible set so the solver exhausts every distinct case, or add stratification buckets and re-solve per stratum.
 
