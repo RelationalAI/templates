@@ -120,7 +120,7 @@ Use this sequence to deploy the model and query it:
    rai models deploy --path model
    ```
 
-   The deploy creates the public schema `<DB>.ENTITY_RESOLUTION` if it doesn't exist and waits for the model's first refresh, which resolves the records and runs the reinsurance solve. Each refresh of the deployed model runs them again.
+   The deploy creates the public schema named in `raiconfig.yaml` if it doesn't exist and waits for the model's first refresh, which resolves the records and runs the reinsurance solve. Each refresh of the deployed model runs them again.
 
 6. **Query the results**
 

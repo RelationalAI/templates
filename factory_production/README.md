@@ -143,7 +143,7 @@ Use this sequence to deploy the model and query it:
    rai models deploy --path model
    ```
 
-   The deploy creates the public schema `<DB>.FACTORY_PRODUCTION` if it doesn't exist and waits for the model's first refresh, which runs the solve with sensitivity analysis. Each refresh of the deployed model runs the solve again.
+   The deploy creates the public schema named in `raiconfig.yaml` if it doesn't exist and waits for the model's first refresh, which runs the solve with sensitivity analysis. Each refresh of the deployed model runs the solve again.
 
    Deploying again without changing the model applies no updates and does not solve again. A change to the model or to `problem.configure(...)` redeploys, and the redeploy's refresh solves.
 
