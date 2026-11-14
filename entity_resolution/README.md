@@ -138,8 +138,7 @@ Use this sequence to deploy the model and query it:
 
    No single policy breaches the $1M limit, but resolution surfaces four
    over-limit households and the optimizer cedes the most excess it can afford
-   within budget. The lines above are excerpts of the full report, which checks the
-   reinsurance solve's status and stops unless it is `OPTIMAL`. See `runbook.md`
+   within budget. The lines above are excerpts of the full report. See `runbook.md`
    for the full workflow.
 
    To solve again without changing the model, refresh the deployed model, then run the query again:

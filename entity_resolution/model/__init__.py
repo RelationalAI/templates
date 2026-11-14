@@ -3,11 +3,6 @@
 `rai models deploy --path model` deploys everything this package declares.
 """
 
-from .schema import CandidateMatch, CandidatePairCount, Record, ResolvedParty, ReviewPair, model
-from .source import AUTO_MERGE, REVIEW_FLOOR, load_ground_truth
-
-# isort: split
-# The reasoning declares rules over the facts loaded above.
 from .reasoning import (
     ACCUMULATION_LIMIT,
     REINSURANCE_BUDGET,
@@ -17,6 +12,8 @@ from .reasoning import (
     num_nodes,
     problem,
 )
+from .schema import CandidateMatch, CandidatePairCount, Record, ResolvedParty, ReviewPair, model
+from .source import AUTO_MERGE, REVIEW_FLOOR, load_ground_truth
 
 __all__ = [
     "ACCUMULATION_LIMIT",
