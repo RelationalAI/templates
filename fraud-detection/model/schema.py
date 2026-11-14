@@ -1,6 +1,6 @@
 """Stable semantic schema shared by the fraud-detection runners."""
 
-from relationalai.semantics import Any, DateTime, Float, Integer, Model, String
+from relationalai.semantics import DateTime, Float, Integer, Model, String
 
 model = Model("fraud_detection")
 
@@ -50,6 +50,8 @@ TrainTable = model.Concept("TrainTable")
 ValTable = model.Concept("ValTable")
 TestTable = model.Concept("TestTable")
 
-Train = model.Relationship(f"{Transaction} at {Any:step_ts} has {Any:label}")
-Val = model.Relationship(f"{Transaction} at {Any:step_ts} has {Any:label}")
-Test = model.Relationship(f"{Transaction} at {Any:step_ts}")
+# Binary classification task relationships; each carries the transaction's
+# timestamp, since the GNN is trained with has_time_column=True.
+Train = model.Relationship(f"{Transaction} at {DateTime:step_ts} has {Integer:label}")
+Val = model.Relationship(f"{Transaction} at {DateTime:step_ts} has {Integer:label}")
+Test = model.Relationship(f"{Transaction} at {DateTime:step_ts}")
