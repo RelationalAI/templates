@@ -38,7 +38,7 @@ Built using **graph analysis** (a directed, weighted graph with `Facility` as th
 
 ## What's included
 
-- **Model**: `model/__init__.py` — the `Facility` concept, the `FacilityConnection` edge concept (with `transfer_volume`, `contact_intensity`, and a derived `risk_weight`), the directed weighted `Graph` built from them, and the weighted degree centrality, indegree, and outdegree metrics. `rai models deploy --path model` deploys it to your Snowflake account, where each refresh computes the metrics.
+- **Model**: the `Facility` concept, the `FacilityConnection` edge concept (with `transfer_volume`, `contact_intensity`, and a derived `risk_weight`), the directed weighted `Graph` built from them, and the weighted degree centrality, indegree, and outdegree metrics, in the `model/` package (`schema.py` declares the concepts, `source.py` loads the sample data, `reasoning.py` states the graph and metrics). `rai models deploy --path model` deploys it to your Snowflake account, where each refresh computes the metrics.
 - **Query**: `queries/facility_ranking.py` — prints the ranked report from the deployed model.
 - **App**: `app.py` — an optional Streamlit web app that queries the deployed model.
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
@@ -191,7 +191,10 @@ The Streamlit app provides:
 ```text
 disease-outbreak-prevention/
   model/
-    __init__.py                           # deployed model: graph and metrics
+    __init__.py                           # exports of the deployed model
+    schema.py                             # Facility and FacilityConnection concepts
+    source.py                             # loads the sample CSVs
+    reasoning.py                          # risk weight, graph, and metrics
   queries/
     facility_ranking.py                   # report from the deployed model
   app.py                                  # optional Streamlit app (queries the deployed model)
@@ -220,7 +223,7 @@ The model is a directed, weighted graph with one node concept and one edge conce
 - **Primary identifiers**: `Facility.id` (integer); `FacilityConnection` is identified by its `(from_facility, to_facility)` pair.
 - **Important invariants**: `transfer_volume` and `contact_intensity` are non-negative; `risk_weight` is derived, not loaded (`transfer_volume x contact_intensity`); every connection endpoint references an existing `Facility`.
 
-For the full concept and property definitions, see `model/__init__.py`; `runbook.md` builds them step by step with the RAI skills.
+For the full concept and property definitions, see `model/schema.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
@@ -230,7 +233,7 @@ The deployed model computes weighted centrality on the graph; the report and the
 CSV files → model/ (deployed) → weighted centrality + degree metrics → rank facilities → display / export
 ```
 
-1. **Deployed model.** `model/__init__.py` declares everything the report and the app need and `rai models deploy --path model` deploys it: the RelationalAI model, the `Facility` node concept, the `FacilityConnection` edge concept, the CSV loads, the derived `risk_weight` (`transfer_volume x contact_intensity`), and the directed, weighted graph that uses `risk_weight` as its edge weight.
+1. **Deployed model.** The `model/` package declares everything the report and the app need and `rai models deploy --path model` deploys it: the RelationalAI model, the `Facility` node concept, the `FacilityConnection` edge concept, the CSV loads, the derived `risk_weight` (`transfer_volume x contact_intensity`), and the directed, weighted graph that uses `risk_weight` as its edge weight.
 
 2. **Calculate graph metrics.** Each refresh of the deployed model runs the Graph API, which computes weighted degree centrality (summing risk-weighted edges, so the score reflects cumulative transmission risk rather than a raw connection count) alongside indegree and outdegree counts.
 
@@ -238,7 +241,7 @@ CSV files → model/ (deployed) → weighted centrality + degree metrics → ran
 
 4. **Present results.** `queries/facility_ranking.py` prints the ranked table, a top-priority breakdown, network summary statistics, and response recommendations from the deployed model. The optional Streamlit app queries the same deployed model and renders the ranking as an interactive network graph with a filterable table and CSV export.
 
-See `model/__init__.py` and `queries/facility_ranking.py` for the implementation and `runbook.md` for the skill-driven reproduction.
+See `model/reasoning.py` and `queries/facility_ranking.py` for the implementation and `runbook.md` for the skill-driven reproduction.
 
 ## Customize this template
 
@@ -246,13 +249,13 @@ Focus on the first changes most users will make.
 
 ### Use your own data
 
-- Replace the CSV files in `data/` with your own network, keeping the same column names (or update the loading logic in `model/__init__.py`).
+- Replace the CSV files in `data/` with your own network, keeping the same column names (or update the loading logic in `model/source.py`).
 - Make sure every facility referenced in `connections.csv` is a valid id in `facilities.csv`.
-- For Snowflake-backed runs, swap the `pd.read_csv(...)` calls in `model/__init__.py` for `model.data(snowflake_table)` calls.
+- For Snowflake-backed runs, swap the `pd.read_csv(...)` calls in `model/source.py` for `model.data(snowflake_table)` calls.
 
 ### Tune parameters
 
-- The risk formula is `risk_weight = transfer_volume x contact_intensity`, defined in `model/__init__.py`. Change how the two factors combine (for example, a weighted average) to reweight what "risk" means.
+- The risk formula is `risk_weight = transfer_volume x contact_intensity`, defined in `model/reasoning.py`. Change how the two factors combine (for example, a weighted average) to reweight what "risk" means.
 - Switch the graph's centrality metric if you want a different notion of importance (for example, betweenness or eigenvector centrality) in place of weighted degree.
 
 ### Extend the model
