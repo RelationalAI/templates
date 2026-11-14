@@ -168,7 +168,7 @@ Baseline: 110 workloads, $25.28M revenue, $4.18M cost, 83% margin, 95% anchor, b
 
 **Response**
 
-Ontology gains a singleton `AllocationPlan(id="DCCA_BASELINE")` with `revenue_usd` ≈ $25.28M, `total_cost_usd` ≈ $4.18M, `realized_margin` ≈ 0.83, `anchor_share` ≈ 0.95, `n_assigned` = 110, `status` = `OPTIMAL`, `binding_axis` = `power_envelope`; plus `Assignment.is_chosen` (110 rows), `DemandScenario` (4 rows), and `DemandScenarioOutlook` (per-scenario realized + stranded revenue). All queryable as ontology, not stdout.
+Ontology gains a singleton `AllocationPlan(id="DCCA_BASELINE")` with `revenue_usd` ≈ $25.28M, `total_cost_usd` ≈ $4.18M, `realized_margin` ≈ 0.83, `anchor_share` ≈ 0.95, `n_assigned` = 110, `status` = `OPTIMAL` (`FEASIBLE` when HiGHS stops at its time limit), `binding_axis` = `power_envelope`; plus `Assignment.is_chosen` (110 rows), `DemandScenario` (4 rows), and `DemandScenarioOutlook` (per-scenario realized + stranded revenue). All queryable as ontology, not stdout.
 
 ## Data
 

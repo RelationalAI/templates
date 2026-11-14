@@ -274,13 +274,13 @@ guided_walkthrough:
       focus:
         file: model/reasoning.py
         anchors:
-          - start: problem.configure("highs", time_limit_sec=240)
+          - start: problem.configure("highs", time_limit_sec=300)
             end: model.define(SolveStatus(problem.termination_status()), TotalResidual(problem.objective_value()))
       references:
         problem.configure(...):
           anchor:
-            start: problem.configure("highs", time_limit_sec=240)
-            end: problem.configure("highs", time_limit_sec=240)
+            start: problem.configure("highs", time_limit_sec=300)
+            end: problem.configure("highs", time_limit_sec=300)
         SolveStatus:
           symbol: SolveStatus
         TotalResidual:

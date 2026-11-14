@@ -11,7 +11,7 @@ A portfolio manager wants to track a broad benchmark without holding all of its 
    • constraints: exactly 20 names; weights sum to 1; ≤ 10% per name; sectors within ±4% of benchmark;
      trading-capacity (ADV) limit; residual = benchmark − basket return each month
    • objective: minimize total absolute monthly tracking error (L1)
-   • HiGHS mixed-integer program (240s cap)      -> feasible basket, ~0.4% annualized tracking error
+   • HiGHS mixed-integer program (300s cap)      -> feasible basket, ~0.4% annualized tracking error
       │
       ▼
 /rai-prescriptive-results

@@ -139,7 +139,7 @@ Use this sequence to deploy the model and query it:
    Wrote benchmark-vs-replica returns to: data/replica_returns.csv
    ```
 
-   The solve selects exactly 20 names, though a selected stock may have zero weight. The solve ends as `OPTIMAL` or at its 240 second time limit (`TIME_LIMIT`) with the best basket found so far. The report accepts both, stops on any other termination status, and writes `data/replica_returns.csv` for plotting. See `runbook.md` for the basket, sector exposures, tracking quality, and baseline comparison.
+   The solve selects exactly 20 names, though a selected stock may have zero weight. The solve ends as `OPTIMAL` or at its 300 second time limit (`TIME_LIMIT`) with the best basket found so far. The report accepts both, stops on any other termination status, and writes `data/replica_returns.csv` for plotting. See `runbook.md` for the basket, sector exposures, tracking quality, and baseline comparison.
 
    To solve again without changing the model, refresh the deployed model, then run the query again:
 

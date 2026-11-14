@@ -171,7 +171,7 @@ problem.minimize(
 # --------------------------------------------------
 
 # Each refresh of the deployed model runs this solve.
-problem.configure("highs", time_limit_sec=240)
+problem.configure("highs", time_limit_sec=300)
 
 # The solve's status and objective, published through the model's own relationships.
 SolveStatus = model.Relationship(f"financial index replication solve status is {String:status}")
