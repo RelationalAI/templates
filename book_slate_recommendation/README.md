@@ -42,11 +42,11 @@ This template composes the slate as a single optimization decision rather than a
 ## What's included
 
 - **Ontology**: a three-stage pipeline (knowledge-graph path walks, then graph analysis, then prescriptive optimization) on a single shared ontology, wired to the bundled CSVs.
-- **Model**: `model/__init__.py` — the three-stage pipeline, which `rai models deploy --path model` deploys to your Snowflake account, where each refresh runs the solve.
+- **Model**: the `model/` package — the three-stage pipeline (`schema.py` declares the concepts, `source.py` loads the sample data and checks it, `reasoning.py` states the path walks, graph analysis, and slot-selection problem), which `rai models deploy --path model` deploys to your Snowflake account, where each refresh runs the solve.
 - **Query**: `queries/slate_report.py` — prints the report from the deployed model.
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - **Sample data**: a deterministic Open Library (CC0 public domain) slice of roughly 59 books, 52 authors, and 12 subjects, with synthetic users and read events layered on top. See *Sample data* below.
-- **Outputs**: the formulation, the solve-result block, the chosen slate (with per-book `path_count_total` and `triangle_count`), the per-user subject distribution, per-pick explanation-path support, and diagnostic candidate-set and structural-embeddedness tables.
+- **Outputs**: the solve-result block, the chosen slate (with per-book `path_count_total` and `triangle_count`), the per-user subject distribution, per-pick explanation-path support, and diagnostic candidate-set and structural-embeddedness tables.
 
 ## Prerequisites
 
@@ -169,7 +169,7 @@ Use this sequence to deploy the model and query it:
    ...
    ```
 
-   The status is OPTIMAL when the solver proves the slate optimal within time_limit_sec, and TIME_LIMIT when the limit ends the search first with the best slate found, as on the bundled slice with the default 180 seconds. The report accepts either status with an objective and stops on any other termination status. The objective and the chosen slate can differ between runs.
+   The status is OPTIMAL when the solver proves the slate optimal within time_limit_sec, and TIME_LIMIT when the limit ends the search first with the best slate found, as on the bundled slice with the default 180 seconds. The objective and the chosen slate can differ between runs.
 
    To pull a larger Open Library slice, see Scale up / productionize below.
 
@@ -197,7 +197,10 @@ Short annotated tree of the template folder:
 ```text
 book_slate_recommendation/
 ├── model/
-│   └── __init__.py                  # the deployed model (paths walk + graph + prescriptive)
+│   ├── __init__.py                  # exports of the deployed model
+│   ├── schema.py                    # concepts, properties, and edges
+│   ├── source.py                    # loads the CSVs and checks them
+│   └── reasoning.py                 # paths walk + graph + prescriptive slot selection
 ├── queries/
 │   └── slate_report.py              # report from the deployed model
 ├── runbook.md                       # paste-testable walkthrough (RAI skills)
@@ -240,7 +243,7 @@ One shared ontology threads all three stages. The path-walk stage derives candid
 
 The typed edges (`read`, `written_by`, `about`, `similar_to`) carry the graph structure; the unified `Item.connected_to` super-edge is their symmetric union, so the path walker can traverse one 2-arity relationship across the heterogeneous graph. Each `Candidate` carries typed evidence counts (`path_count_via_author`, `path_count_via_subject`, `path_count_via_kg_walk`, summed into `path_count_total`) and a `slot` decision.
 
-For the full concept and property definitions, see `model/__init__.py`; `runbook.md` builds them step by step with the RAI skills.
+For the full concept and property definitions, see `model/schema.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
@@ -250,9 +253,9 @@ The pipeline runs in three stages over the shared ontology. Its architectural ce
 
 **Stage 2 — Graph analysis (hero-slot embeddedness).** A `Graph` is built from `Book.similar_to`, and triangle count returns the per-book count of similarity triangles each book participates in, stored as `Book.triangle_count`. Triangle count is graph-derived: it depends on the topology of the similarity graph, not on a per-book scalar that could be supplied externally. Stage 3 uses it to pin the hero slot to a densely embedded book.
 
-**Stage 3 — Prescriptive constraint program (slot assignment).** Each candidate's slot is a decision in `1..K+1`, where slots `1..K` are slate positions (1 = hero, K = bottom of row) and slot K+1 is the unpicked sentinel. The K+1 encoding lets the position weight `(K + 1 - slot)` be zero for unpicked candidates, so no auxiliary picked/unpicked indicator is needed. The model enforces ten constraints — cardinality (exactly K picks per user), slot uniqueness, already-read exclusion, author uniqueness, subject-concentration cap, freshness floor, originals-exposure floor, cold-start cap, hero pin, and explanation-path floor — under a position-weighted engagement-decay objective. The objective weights each pick by `(K + 1 - slot) * path_count_total`, largest at slot 1, so the solver places the highest-path-support candidates at the top of the row — the canonical position-decay engagement model. After the deploy's refresh runs the solve, the report requires an `OPTIMAL` or `TIME_LIMIT` status with an objective and prints the chosen slate, subject distribution, and per-pick explanation support.
+**Stage 3 — Prescriptive constraint program (slot assignment).** Each candidate's slot is a decision in `1..K+1`, where slots `1..K` are slate positions (1 = hero, K = bottom of row) and slot K+1 is the unpicked sentinel. The K+1 encoding lets the position weight `(K + 1 - slot)` be zero for unpicked candidates, so no auxiliary picked/unpicked indicator is needed. The model enforces ten constraints — cardinality (exactly K picks per user), slot uniqueness, already-read exclusion, author uniqueness, subject-concentration cap, freshness floor, originals-exposure floor, cold-start cap, hero pin, and explanation-path floor — under a position-weighted engagement-decay objective. The objective weights each pick by `(K + 1 - slot) * path_count_total`, largest at slot 1, so the solver places the highest-path-support candidates at the top of the row — the canonical position-decay engagement model. After the deploy's refresh runs the solve, the report prints the status and objective, the chosen slate, subject distribution, and per-pick explanation support.
 
-See `model/__init__.py` for the implementation and `runbook.md` for the skill-driven reproduction.
+See `model/reasoning.py` for the implementation and `runbook.md` for the skill-driven reproduction.
 
 **Where this fits in production.** Production recommender systems run a multi-stage funnel: catalog, then retrieval, then pre-ranking, then ranking, then slate optimization. This template implements the final slate-optimization stage — where business rules, diversity, exposure floors, and explainability constraints land — with the upstream graph and path-walk signals in the same declarative model. The per-typed evidence counts the report prints for each pick (`paths_via_author`, `paths_via_subject`, `paths_via_kg_walk`) are a decomposable, graph-grounded justification suitable for transparency workflows.
 
@@ -273,7 +276,7 @@ Focus on the first changes most users will make.
 
 ### Tune parameters
 
-The constraint dials are top-of-file constants in `model/__init__.py`:
+The constraint dials are constants in `model/reasoning.py`, except `SLATE_SIZE_K`, which is in `model/source.py` because the slot rows use it:
 
 - **Slate size** — `SLATE_SIZE_K` (default `3`), the K of "row of K things".
 - **Walk depth** — `MAX_HOPS` (default `2`); bumping to 3 or more saturates fast on a heterogeneous graph.
@@ -306,7 +309,7 @@ See *Troubleshooting* for the joint-feasibility relationships between these dial
 <details>
 <summary>Solve returns INFEASIBLE / the final slate is empty</summary>
 
-The model enforces ten constraints and the report requires an `OPTIMAL` or `TIME_LIMIT` status with a slate. If the data is too sparse or too clustered, the joint constraints can be infeasible. The dominant causes on customer slices are:
+The model enforces ten constraints. If the data is too sparse or too clustered, the joint constraints can be infeasible. The dominant causes on customer slices are:
 
 1. **Too few candidates after the already-read exclusion.** Each user needs at least `SLATE_SIZE_K` candidates in their 2-hop reach after already-read books are excluded. Recommendable candidates come from length-2 `read_Book -> similar_Book` walks, so a user whose reads have no `similar_to` neighbors will be infeasible. Inspect the candidate-set diagnostic printed at the end of the report.
 2. **Disjoint floors.** `FRESHNESS_FLOOR` and `ORIGINALS_FLOOR` are independent. A user with no candidate that is both fresh and in-house must spend `FRESHNESS_FLOOR + ORIGINALS_FLOOR` distinct picks, not the maximum of the two.
