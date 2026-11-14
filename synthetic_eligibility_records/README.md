@@ -41,7 +41,7 @@ The rule structure here is drawn from the public [CMS Medicare](https://www.cms.
 - A pre-solve dense-ID check on `plans.csv`, `providers.csv`, and `age_buckets.csv` so the solver's integer decision bounds line up with the reference rows the CFDs iterate over (sparse IDs would let the solver pick a value with no matching row, leaving the rules unconstrained for that record and silently dropping it from the post-solve display join)
 - **Multi-solution enumeration as the primary code path**: `problem.configure(..., solution_limit=MAX_RECORDS)` makes each refresh run the search in enumeration mode; `Variable.values(solution_index, value)` joins the three decision variables on a shared solution index to reconstruct each record
 - An empty-result branch driven by `solve_info().num_points`: when no feasible record exists, the report prints a diagnostic instead of hard-failing, which is the right shape for a reusable generator
-- No check re-evaluates the ICs: every IC uses `implies`, which is solver-only. The CFD and network-attribution invariants are directly visible in the expected-output block in the Quickstart: every record's `age_years` vs `plan_type` and every record's `network` vs `provider` are printed side-by-side
+- No check re-evaluates the ICs: every IC uses `implies`, which is solver-only, and `problem.verify()` returns without evaluating implies-bodied ICs, so passing them to it checks nothing. The CFD and network-attribution invariants are directly visible in the expected-output block in the Quickstart: every record's `age_years` vs `plan_type` and every record's `network` vs `provider` are printed side-by-side
 
 ## What's included
 
