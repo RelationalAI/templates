@@ -1,36 +1,17 @@
 """Facings plan report: reads the deployed planogram_optimization model.
 
 Run `python -m queries.facings_plan` after `rai models deploy --path model`. Prints the
-formulation, the termination status and objective of the latest refresh's solve, the optimal
-facings per SKU, per-shelf utilization, and per-category active counts. It first checks that
-each SKU's realized demand matches the predicted-demand table at its chosen facings.
+result of the latest refresh's solve, checks that each SKU's realized demand matches the
+predicted-demand table at its chosen facings, then prints the optimal facings per SKU,
+per-shelf utilization, and per-category active counts.
 """
 
-from model import (
-    Category,
-    PredictedDemand,
-    Shelf,
-    Sku,
-    SolveStatus,
-    TotalDemand,
-    model,
-    problem,
-)
+from model import Category, PredictedDemand, Shelf, Sku, model, problem
 from relationalai.semantics import sum
 
 if __name__ == "__main__":
-    problem.display()
-
-    # Status and objective of the latest refresh's solve. A refresh records any
-    # termination status, so the report checks it.
-    status = model.select(SolveStatus).to_df().iloc[:, 0].tolist()
-    demand = model.select(TotalDemand).to_df().iloc[:, 0].tolist()
-    print(f"\nSolve result:\n• status: {', '.join(status)}")
-    if status != ["OPTIMAL"]:
-        raise SystemExit(f"termination status {status}")
-    if len(demand) != 1:
-        raise SystemExit(f"expected one objective value, got {demand}")
-    print(f"• objective: {demand[0]}\n")
+    si = problem.solve_info()
+    si.display()
 
     # Post-solve table-lookup check. Pull the chosen `(Sku.id, Sku.facings,
     # Sku.realized_demand)` triples and confirm `realized_demand` matches the
@@ -65,9 +46,7 @@ if __name__ == "__main__":
             f"{len(mismatches)} SKU(s). Pre-solve guards rule out the common "
             "case (missing rows in predicted_demand_table.csv); reaching this "
             "check means the implies cascade did not bind realized_demand for "
-            "the chosen `facings`. Inspect the formulation printed by "
-            "`problem.display()` to confirm the demand-lookup constraint expanded "
-            "as expected. Mismatches "
+            "the chosen `facings`. Mismatches "
             "(sku_id, facings, realized_demand, expected_demand):\n"
             f"{mismatches}"
         )
