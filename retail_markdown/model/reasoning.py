@@ -1,6 +1,6 @@
 """Retail markdown decision problem: discount selection, sales, and revenue with salvage."""
 
-from relationalai.semantics import Float, Integer, count, sum
+from relationalai.semantics import Float, Integer, String, count, sum
 from relationalai.semantics.reasoners.prescriptive import Problem
 
 from .schema import Discount, Product, Week, model
@@ -121,3 +121,8 @@ problem.maximize(revenue + salvage)
 
 # Each refresh of the deployed model runs this solve.
 problem.configure("highs", time_limit_sec=60)
+
+# The solve's status and objective, which the deployed model publishes for the queries.
+SolveStatus = model.Relationship(f"retail markdown solve status is {String:status}")
+TotalRevenue = model.Relationship(f"retail markdown total revenue is {Float:revenue}")
+model.define(SolveStatus(problem.termination_status()), TotalRevenue(problem.objective_value()))

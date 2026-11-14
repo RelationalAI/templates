@@ -156,10 +156,6 @@ Use this sequence to deploy the model and query it:
    Solve result:
    • status: OPTIMAL
    • objective: 23374.65
-   • solve time: 0.02s
-   • num_points: 1
-   • solver: HiGHS_1.15.1
-   ...
 
    Status: OPTIMAL
    Total revenue (sales + salvage): $23374.65
@@ -173,7 +169,7 @@ Use this sequence to deploy the model and query it:
    ...
    ```
 
-   The solver details in the solve result are trimmed here, and the selected discounts are cut after four rows; the report also prints the units sold and the cumulative sales for each product and week. Discounts start shallow (20 percent) and deepen to 30 percent later in the season; no product needs the 50 percent tier. See `runbook.md` for the full discount, sales, and cumulative-sales schedule.
+   The selected discounts are cut after four rows; the report also prints the units sold and the cumulative sales for each product and week. Discounts start shallow (20 percent) and deepen to 30 percent later in the season; no product needs the 50 percent tier. See `runbook.md` for the full discount, sales, and cumulative-sales schedule.
 
    To solve again without changing the model, refresh the deployed model, then run the query again:
 

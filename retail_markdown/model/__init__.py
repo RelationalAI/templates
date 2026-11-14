@@ -19,6 +19,8 @@ Run:
 
 from .reasoning import (
     Discount_ref,
+    SolveStatus,
+    TotalRevenue,
     Week_ref,
     cumulative_ref,
     problem,
@@ -33,6 +35,8 @@ __all__ = [
     "Discount",
     "Discount_ref",
     "Product",
+    "SolveStatus",
+    "TotalRevenue",
     "Week",
     "Week_ref",
     "cumulative_ref",
