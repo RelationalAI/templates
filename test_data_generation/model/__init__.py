@@ -1,31 +1,23 @@
-"""Test Data Generation (prescriptive optimization) template.
+"""Test Data Generation (prescriptive optimization) template: the model.
 
-This script demonstrates an LP-based test data sizing workflow in RelationalAI:
+This package demonstrates an LP-based test data sizing workflow in RelationalAI:
 
 - Load schema definitions, referential integrity constraints, and row-count targets
   from CSV.
 - Model database tables as *concepts* with target, min, and max row counts.
 - Solve an LP to choose feasible table row counts close to targets, respecting
   foreign key relationships, cardinality bounds, and coverage requirements.
-- Generate synthetic records consistent with the solved row counts.
 
 Run:
-    `python test_data_generation.py` deploys the model to the schema in raiconfig.yaml,
-    waits for its first refresh (which runs the solve), and prints the report from
-    the deployed model.
-
-Output:
-    Prints the solver status, total weighted deviation, optimal row counts per
-    table, and a small sample of generated rows for each table.
+    `rai models deploy --path model` deploys this model to the schema in raiconfig.yaml
+    and waits for its first refresh, which runs the solve.
+    `python -m queries.test_data_plan` then prints the report from the deployed model.
 """
 
-import random
-import string as string_module
-from datetime import date, timedelta
 from pathlib import Path
 
 import pandas as pd
-from pandas import DataFrame, read_csv
+from pandas import read_csv
 from relationalai.semantics import Float, Integer, Model, String
 from relationalai.semantics import sum as rai_sum
 from relationalai.semantics.reasoners.prescriptive import Problem
@@ -37,7 +29,7 @@ Concept, Property = model.Concept, model.Property
 # Define semantic model & load data
 # --------------------------------------------------
 
-data_dir = Path(__file__).parent / "data"
+data_dir = Path(__file__).resolve().parents[1] / "data"
 scale_factor = 1.0
 
 # Load schema and constraint data
@@ -69,11 +61,6 @@ model.define(
 # Decision variable properties
 Table.x_actual_rows = Property(f"{Table} has actual {Float:actual_rows}")
 Table.x_deviation = Property(f"{Table} has {Float:deviation}")
-
-# Build lookup for table objects by name
-table_objs = {}
-for _, row in targets_df.iterrows():
-    table_objs[row['table_name']] = row
 
 # Extract FK relationships from schema
 fk_df = schema_df[schema_df['is_foreign_key']].copy()
@@ -206,104 +193,3 @@ TotalDeviation = model.Relationship(
     f"test data generation total weighted deviation is {Float:total_deviation}"
 )
 model.define(SolveStatus(problem.termination_status()), TotalDeviation(problem.objective_value()))
-
-# --------------------------------------------------
-# Phase 2: Generate actual test data (optional)
-# --------------------------------------------------
-
-def generate_test_data(row_counts, seed=42):
-    """Generate actual test data records based on optimal row counts."""
-    random.seed(seed)
-
-    def random_email(i):
-        domains = ['gmail.com', 'yahoo.com', 'outlook.com', 'company.com']
-        return f"user{i}_{''.join(random.choices(string_module.ascii_lowercase, k=4))}@{random.choice(domains)}"
-
-    def random_date(start_year=2020, end_year=2024):
-        start = date(start_year, 1, 1)
-        end = date(end_year, 12, 31)
-        delta = (end - start).days
-        return start + timedelta(days=random.randint(0, delta))
-
-    def random_float(min_val, max_val):
-        return round(random.uniform(min_val, max_val), 2)
-
-    generated = {}
-
-    # Customer table
-    n_customers = row_counts.get('Customer', {}).get('actual', 100)
-    regions = ['North', 'South', 'East', 'West', 'Central']
-    customers = [{'customer_id': i, 'email': random_email(i), 'region': random.choice(regions), 'created_date': random_date(2018, 2023)} for i in range(1, n_customers + 1)]
-    generated['Customer'] = DataFrame(customers)
-
-    # Product table
-    n_products = row_counts.get('Product', {}).get('actual', 50)
-    categories = ['Electronics', 'Clothing', 'Home', 'Sports', 'Books']
-    products = [{'product_id': i, 'name': f"{random.choice(categories)} Item {i}", 'category': random.choice(categories), 'price': random_float(0.99, 999.99)} for i in range(1, n_products + 1)]
-    generated['Product'] = DataFrame(products)
-
-    # Order table
-    n_orders = row_counts.get('Order', {}).get('actual', 500)
-    statuses = ['pending', 'shipped', 'delivered', 'cancelled']
-    orders = [{'order_id': i, 'customer_id': random.randint(1, max(1, n_customers)), 'order_date': random_date(2023, 2024), 'status': random.choice(statuses)} for i in range(1, n_orders + 1)]
-    generated['Order'] = DataFrame(orders)
-
-    # OrderLine table
-    n_orderlines = row_counts.get('OrderLine', {}).get('actual', 1500)
-    orderlines = [{'orderline_id': i, 'order_id': random.randint(1, max(1, n_orders)), 'product_id': random.randint(1, max(1, n_products)), 'quantity': random.randint(1, 10), 'unit_price': random_float(0.99, 999.99)} for i in range(1, n_orderlines + 1)]
-    generated['OrderLine'] = DataFrame(orderlines)
-
-    # Supplier table
-    n_suppliers = row_counts.get('Supplier', {}).get('actual', 50)
-    countries = ['USA', 'China', 'Germany', 'Japan', 'UK']
-    suppliers = [{'supplier_id': i, 'name': f"Supplier_{i}", 'country': random.choice(countries), 'reliability_score': random_float(50.0, 100.0)} for i in range(1, n_suppliers + 1)]
-    generated['Supplier'] = DataFrame(suppliers)
-
-    # SupplierProduct table
-    n_supplier_products = row_counts.get('SupplierProduct', {}).get('actual', 200)
-    supplier_products = [{'supplierproduct_id': i, 'supplier_id': random.randint(1, max(1, n_suppliers)), 'product_id': random.randint(1, max(1, n_products)), 'lead_time_days': random.randint(1, 90), 'unit_cost': random_float(0.50, 500.0)} for i in range(1, n_supplier_products + 1)]
-    generated['SupplierProduct'] = DataFrame(supplier_products)
-
-    return generated
-
-# --------------------------------------------------
-# Deploy, then report (`rai models deploy` skips this block)
-# --------------------------------------------------
-
-if __name__ == "__main__":
-    # Deploy and wait for the first refresh, which runs the solve.
-    model.deploy()
-
-    problem.display()
-
-    # Status and objective of the latest refresh's solve. A refresh records any
-    # termination status, so the report checks it.
-    status = model.select(SolveStatus).to_df().iloc[:, 0].tolist()
-    deviation = model.select(TotalDeviation).to_df().iloc[:, 0].tolist()
-    assert status == ["OPTIMAL"], f"termination status {status}"
-
-    print(f"Status: {status[0]}")
-    print(f"Total weighted deviation: {deviation[0]:.2f}")
-
-    # Extract row counts
-    row_counts = {}
-    results_df = model.select(Table.table_name, Table.x_actual_rows, Table.target_rows).to_df()
-    for _, row in results_df.iterrows():
-        actual = int(round(row['actual_rows']))
-        target = int(row['target_rows'])
-        row_counts[row['table_name']] = {'actual': actual, 'target': target}
-
-    print("\nOptimal row counts:")
-    for table, counts in row_counts.items():
-        dev = abs(counts['actual'] - counts['target'])
-        print(f"  {table}: {counts['actual']} rows (target: {counts['target']}, deviation: {dev})")
-
-    # Generate data and show samples
-    print("\n" + "=" * 50)
-    print("GENERATED TEST DATA")
-    print("=" * 50)
-
-    generated_data = generate_test_data(row_counts)
-    for table, df in generated_data.items():
-        print(f"\n{table}: {len(df)} rows")
-        print(df.head(3).to_string(index=False))
