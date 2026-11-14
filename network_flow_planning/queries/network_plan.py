@@ -1,18 +1,22 @@
 """Network plan report: reads the deployed network_flow_planning model.
 
 Run `python -m queries.network_plan` after `rai models deploy --path model`. Prints the
-result of the latest refresh's solve, the opened fulfillment centers, and the active flow
-on each lane.
+status and objective of the latest refresh's solve, the opened fulfillment centers, and the
+active flow on each lane.
 """
 
-from model import Lane, Site, model, problem
+from model import Lane, Site, SolveStatus, TotalCost, model
 
 if __name__ == "__main__":
-    si = problem.solve_info()
-    si.display()
+    status = model.select(SolveStatus).to_df().iloc[:, 0].tolist()
+    cost = model.select(TotalCost).to_df().iloc[:, 0].tolist()
+    print(f"\nSolve result:\n• status: {', '.join(status)}")
+    if cost:
+        print(f"• objective: {round(cost[0], 9)}\n")
 
-    print(f"\nStatus: {si.termination_status}")
-    print(f"Total cost: ${si.objective_value:,.2f}")
+    print(f"\nStatus: {status[0]}")
+    if cost:
+        print(f"Total cost: ${cost[0]:,.2f}")
 
     print("\nOpened fulfillment centers:")
     model.select(

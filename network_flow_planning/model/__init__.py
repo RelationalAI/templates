@@ -21,8 +21,8 @@ Run:
     `python -m queries.network_plan` then prints the report from the deployed model.
 """
 
-from .reasoning import problem
+from .reasoning import SolveStatus, TotalCost, problem
 from .schema import Demand, Lane, Site, model
 from .source import DATA_DIR
 
-__all__ = ["DATA_DIR", "Demand", "Lane", "Site", "model", "problem"]
+__all__ = ["DATA_DIR", "Demand", "Lane", "Site", "SolveStatus", "TotalCost", "model", "problem"]

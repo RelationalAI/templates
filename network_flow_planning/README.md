@@ -170,10 +170,6 @@ Use this sequence to deploy the model and query it:
    Solve result:
    • status: OPTIMAL
    • objective: 5280.0
-   • solve time: 0.01s
-   • num_points: 1
-   • solver: HiGHS_1.15.1
-   ...
 
    Status: OPTIMAL
    Total cost: $5,280.00
@@ -196,7 +192,7 @@ Use this sequence to deploy the model and query it:
    8        Memphis_Hub      FC_Northeast  200.0        1.5
    ```
 
-   The solver details in the solve result are trimmed here. The optimizer opens the two largest fulfillment centers and routes LA's demand split across both — the savings from not opening FC_West ($1,000 fixed) outweigh the extra transport cost incurred by routing 120 units of LA demand through the more expensive FC_Northeast and FC_Southwest paths.
+   The optimizer opens the two largest fulfillment centers and routes LA's demand split across both — the savings from not opening FC_West ($1,000 fixed) outweigh the extra transport cost incurred by routing 120 units of LA demand through the more expensive FC_Northeast and FC_Southwest paths.
 
    To solve again without changing the model, refresh the deployed model, then run the query again:
 

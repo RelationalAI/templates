@@ -1,6 +1,6 @@
 """Network flow problem: lane flows and fulfillment center openings at minimum total cost."""
 
-from relationalai.semantics import Float, sum
+from relationalai.semantics import Float, String, sum
 from relationalai.semantics.reasoners.prescriptive import Problem
 
 from .schema import Demand, Lane, Site, model
@@ -94,3 +94,8 @@ problem.minimize(
 
 # Each refresh of the deployed model runs this solve.
 problem.configure("highs", time_limit_sec=60)
+
+# The solve's status and objective, which the deployed model publishes for the queries.
+SolveStatus = model.Relationship(f"network flow solve status is {String:status}")
+TotalCost = model.Relationship(f"network flow total cost is {Float:cost}")
+model.define(SolveStatus(problem.termination_status()), TotalCost(problem.objective_value()))
