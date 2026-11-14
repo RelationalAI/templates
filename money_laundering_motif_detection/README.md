@@ -18,13 +18,13 @@ tags:
 
 Banking compliance and financial-crime teams hunt for "layering" -- the obfuscation phase of money laundering, where a launderer routes funds across a coordinated cohort of intermediary accounts so no single transaction triggers a [FinCEN currency-transaction-report](https://www.ecfr.gov/current/title-31/subtitle-B/chapter-X/part-1010/subpart-C/section-1010.311) (CTR) filing. Launderers hide these schemes behind ordinary-looking transaction shapes, padding them with decoy edges and lookalike account clusters so the fraudulent cohort blends into the noise. What separates a real motif from its lookalikes is a condition that must hold jointly across the whole cohort the detector picks, not any single account or transaction on its own.
 
-**This template detects three classes of layering motif on one shared transaction ledger using constraint-satisfaction (CSP) reasoning, which enforces such joint conditions across a solver-chosen subset of accounts and edges.** The three motifs run as independent scripts over a shared ontology:
+**This template detects three classes of layering motif on one shared transaction ledger using constraint-satisfaction (CSP) reasoning, which enforces such joint conditions across a solver-chosen subset of accounts and edges.** The three motifs share one ontology and deploy together as one model, with one report each:
 
-| Motif | Joint condition it enforces | Topology | Runner |
+| Motif | Joint condition it enforces | Topology | Model / report |
 |---|---|---|---|
-| **Butterfly** | Per-hub flow balance: each chosen hub's incoming dollars equal its outgoing dollars | Scatter-gather (one source -> K hubs -> one destination) | `motif_butterfly.py` |
-| **Smurf army** | Pairwise-distinct beneficial owners across the chosen cohort, plus a sum-to-target within a tight time window | Fan-in (K sources -> one destination) | `motif_smurf_army.py` |
-| **KYC-mix burst** | Cardinality: at least a floor number of the chosen accounts are retail-tier | Fan-in within a tight time window | `motif_kyc_burst.py` |
+| **Butterfly** | Per-hub flow balance: each chosen hub's incoming dollars equal its outgoing dollars | Scatter-gather (one source -> K hubs -> one destination) | `model/butterfly.py` / `queries/butterfly_motifs.py` |
+| **Smurf army** | Pairwise-distinct beneficial owners across the chosen cohort, plus a sum-to-target within a tight time window | Fan-in (K sources -> one destination) | `model/smurf_army.py` / `queries/smurf_army_motifs.py` |
+| **KYC-mix burst** | Cardinality: at least a floor number of the chosen accounts are retail-tier | Fan-in within a tight time window | `model/kyc_burst.py` / `queries/kyc_burst_motifs.py` |
 
 Each motif is grounded in a documented anti-money-laundering (AML) typology -- the eight-pattern taxonomy from [IBM AMLworld](https://arxiv.org/abs/2306.16424) (Altman et al., NeurIPS 2023) and the structuring / smurf-army typology from FATF and FinCEN (31 CFR § 1010.311). The same joint-condition patterns generalize beyond banking: per-hub flow balance surfaces collusion rings in marketplace fraud, pairwise distinctness surfaces identity-cohort scams in subscription services, and cardinality floors surface compliance-mix violations in regulatory audits.
 
@@ -37,16 +37,16 @@ Each motif is grounded in a documented anti-money-laundering (AML) typology -- t
 
 ## What you'll build
 
-A shared ontology in `model_setup.py` and three independent CSP runners, each adding its own decision properties and constraints to the same `Account` / `Transaction` model. Every runner solves a separate `Problem` and prints the analyst-facing motif tables.
+A shared ontology in `model/ontology.py` and three CSP motifs, each adding its own decision properties and constraints to the same `Account` / `Transaction` model. Each motif configures a separate, named `Problem`; every refresh of the deployed model solves all three, and each motif's report prints its analyst-facing tables.
 
-Shared ontology (in `model_setup.py`):
+Shared ontology (in `model/ontology.py`):
 
 - `Account` concept with `bo_id` (beneficial owner cluster), `kyc_tier`, and `jurisdiction` properties
 - `Transaction` concept with `src`, `dst`, `amount_dollars`, `ts_minutes`
 
 Each motif owns its own decisions and constraints. The bullets below summarise the integrity constraints per motif, with the load-bearing joint condition in bold; the "How it works" section walks each one with code.
 
-- **Butterfly** (`motif_butterfly.py`):
+- **Butterfly** (`model/butterfly.py`):
   - Decisions: `Transaction.is_motif`, `Account.is_source` / `is_hub` / `is_dest`
   - Per-account flow conservation in *count* (source out-degree K, hub in/out-degree 1, dest in-degree K)
   - Global motif-edge count (= 2K) -- closes a gap in the per-account ICs above for accounts with one-sided traffic (no outgoing or no incoming rows), where the per-account IC isn't instantiated and the role variables would otherwise be free
@@ -55,7 +55,7 @@ Each motif owns its own decisions and constraints. The bullets below summarise t
   - Same-beneficial-owner pairwise filter over chosen hub pairs
   - Sub-threshold amount filter
 
-- **Smurf army** (`motif_smurf_army.py`):
+- **Smurf army** (`model/smurf_army.py`):
   - Decisions: `Account.is_smurf`, `Transaction.is_smurf_tx`
   - Exactly N smurfs sending to a single target merchant
   - **Pairwise distinct beneficial owners** across chosen smurfs
@@ -63,22 +63,24 @@ Each motif owns its own decisions and constraints. The bullets below summarise t
   - All chosen smurf-tx within `SMURF_WINDOW_MINUTES` of each other
   - Sub-threshold amount filter
 
-- **KYC-mix burst** (`motif_kyc_burst.py`):
+- **KYC-mix burst** (`model/kyc_burst.py`):
   - Decisions: `Account.is_burst`, `Transaction.is_burst_tx`
   - Exactly N accounts in a coordinated burst to a single target merchant
   - **`>= RETAIL_FLOOR` retail-tier accounts among chosen** -- a cardinality constraint over the *selected* subset
   - All chosen burst-tx within `BURST_WINDOW_MINUTES` of each other
   - Sub-threshold amount filter
 
-Multi-solution enumeration via `problem.configure(..., solution_limit=K)` is available on every runner for batch analyst-triage workflows. The butterfly and KYC-burst runners exhaust to `OPTIMAL` on the bundled data; the smurf runner hits `SOLUTION_LIMIT` because pairwise-distinct beneficial-owner cohorts can swap any one chosen smurf for the dup-BO decoys (47 or 48), opening more cohorts than `MAX_SMURF_MOTIFS=5`. Raise the limit to enumerate further.
+Multi-solution enumeration via `problem.configure(..., solution_limit=K)` is available on every motif for batch analyst-triage workflows. The butterfly and KYC-burst motifs exhaust to `OPTIMAL` on the bundled data; the smurf motif hits `SOLUTION_LIMIT` because pairwise-distinct beneficial-owner cohorts can swap any one chosen smurf for the dup-BO decoys (47 or 48), opening more cohorts than `MAX_SMURF_MOTIFS=5`. Raise the limit to enumerate further.
 
 ## What's included
 
-- `model_setup.py` -- shared ontology (`Account`, `Transaction`) + CSV load. Every motif runner imports `create_model()` and adds its own decisions and constraints on top.
-- `motif_butterfly.py` -- per-hub flow conservation over a decision-selected edge subset.
-- `motif_smurf_army.py` -- pairwise distinct beneficial owners + sum-target + tight time window.
-- `motif_kyc_burst.py` -- cardinality on the chosen subset + tight time window.
-- **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
+- `model/` -- the model that `rai models deploy --path model` deploys:
+  - `ontology.py` -- shared ontology (`Account`, `Transaction`) + CSV load. Every motif module imports the model from here and adds its own decisions and constraints on top.
+  - `butterfly.py` -- per-hub flow conservation over a decision-selected edge subset.
+  - `smurf_army.py` -- pairwise distinct beneficial owners + sum-target + tight time window.
+  - `kyc_burst.py` -- cardinality on the chosen subset + tight time window.
+- `queries/` -- one report per motif, printed from the deployed model: `butterfly_motifs.py`, `smurf_army_motifs.py`, `kyc_burst_motifs.py`.
+- **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the code itself.
 - `data/accounts.csv` -- 90 accounts across 69 beneficial-owner clusters, including two butterfly-cluster hubs (`bo_id=100`, `bo_id=200`), a five-account smurf cohort with pairwise-distinct BOs (`bo_id=1701..1705`), a five-account KYC-mix burst cohort (4 retail + 1 business across 4 jurisdictions), plus dup-BO / out-of-window / over-amount decoys for each motif and 30 unrelated noise accounts.
 - `data/transactions.csv` -- 138 directed transactions: 12 butterfly motif edges, 5 smurf motif edges, 5 KYC-burst motif edges, named decoys / cross-cluster traffic, and 60 noise transactions deterministically generated via `data/generate.py`.
 - `data/generate.py` -- the deterministic generator that produced the bundled CSVs. Re-run only if you change the planted-motif design or want to regenerate at a different size; the template ships its outputs so users don't need to run it.
@@ -88,7 +90,7 @@ Multi-solution enumeration via `problem.configure(..., solution_limit=K)` is ava
 
 ### Access
 - A Snowflake account that has the RAI Native App installed.
-- The one-time model deployment setup on that account, done by an account administrator: follow [Set up model deployment](https://private.relational.ai/early-access/model-deploy-setup) through **Governed setup**, **PAT authentication**, and steps 1-2 of **Additional setup for the prescriptive reasoner** (Quickstart step 4 below covers this template's own schema). It gives you a model role, a programmatic access token (PAT) stored as a secret, an external access integration, a PAT user, and a warehouse.
+- The one-time model deployment setup on that account, done by an account administrator: follow [Set up model deployment](https://private.relational.ai/early-access/model-deploy-setup) through **Governed setup**, **PAT authentication**, and steps 1-2 of **Additional setup for the prescriptive reasoner** (the Quickstart's setup block covers this template's own schema). It gives you a model role, a programmatic access token (PAT) stored as a secret, an external access integration, a PAT user, and a warehouse.
 - A Snowflake user that holds the model role.
 
 ### Tools
@@ -96,28 +98,61 @@ Multi-solution enumeration via `problem.configure(..., solution_limit=K)` is ava
 
 ## Quickstart
 
-1. Download ZIP:
+Before you start, install Python 3.10 or later, and have an account administrator complete the one-time model deployment setup described under Access.
+
+Before the first deploy, create the internal schema as the model role, and have an administrator grant the RAI Native App caller access to it. The internal schema holds only this model's objects, so the grants cover all of it, including the solver's result tables that the deploy creates:
+
+```sql
+-- as the model role
+CREATE SCHEMA IF NOT EXISTS <DB>.MONEY_LAUNDERING_MOTIF_DETECTION_META;
+
+-- as an administrator
+GRANT CALLER USAGE ON DATABASE <DB> TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER USAGE ON SCHEMA <DB>.MONEY_LAUNDERING_MOTIF_DETECTION_META TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER USAGE ON WAREHOUSE <PAT_WAREHOUSE> TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL TABLES IN SCHEMA <DB>.MONEY_LAUNDERING_MOTIF_DETECTION_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL DYNAMIC TABLES IN SCHEMA <DB>.MONEY_LAUNDERING_MOTIF_DETECTION_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL VIEWS IN SCHEMA <DB>.MONEY_LAUNDERING_MOTIF_DETECTION_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER INSERT, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA <DB>.MONEY_LAUNDERING_MOTIF_DETECTION_META TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER CREATE TABLE, CREATE STAGE ON SCHEMA <DB>.MONEY_LAUNDERING_MOTIF_DETECTION_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER READ, WRITE ON ALL STAGES IN SCHEMA <DB>.MONEY_LAUNDERING_MOTIF_DETECTION_META TO APPLICATION <RAI_APP_NAME>;
+```
+
+Run these steps from a terminal:
+
+1. **Download the template**
+
+   [Download the ZIP](https://docs.relational.ai/templates/zips/v1/money_laundering_motif_detection.zip). Unzip it and enter the template directory:
+
    ```bash
-   curl -O https://docs.relational.ai/templates/zips/v1/money_laundering_motif_detection.zip
    unzip money_laundering_motif_detection.zip
    cd money_laundering_motif_detection
    ```
-   > [!TIP]
-   > You can also download the template ZIP using the "Download ZIP" button at the top of this page.
 
-2. Create venv:
+2. **Create a Python environment**
+
+   Create and activate a virtual environment, then update pip:
+
    ```bash
    python -m venv .venv
    source .venv/bin/activate
    python -m pip install --upgrade pip
    ```
 
-3. Install:
+3. **Install the template**
+
+   Install the template's dependencies, including the `rai` CLI, in the active environment:
+
    ```bash
    python -m pip install .
    ```
 
-4. Configure: run `rai init` to create `raiconfig.yaml` with your Snowflake connection, set the connection `role` to the model role, then add a `deployment` section. Give each template its own schema pair so two deployed templates never share one.
+4. **Configure your project**
+
+   Use the configuration builder in [Install and run PyRel](https://docs.relational.ai/get-started/install-and-run-pyrel/#configure-your-project) to create `raiconfig.yaml` in the template directory, with the model role as the connection `role`.
+
+   Then add the prescriptive reasoner and a `deployment` section. Give each template its own schema pair so two deployed templates never share one:
+
    ```yaml
    reasoners:
      prescriptive:
@@ -136,43 +171,27 @@ Multi-solution enumeration via `problem.configure(..., solution_limit=K)` is ava
      pat_user: <PAT_USER>
      pat_warehouse: <PAT_WAREHOUSE>
    ```
-   Without the `deployment` section, each runner stops with an error naming the missing setting.
 
-   Before the first run, create the internal schema as the model role, and have an administrator grant the RAI Native App caller access to it. The internal schema holds only this model's objects, so the grants cover all of it, including the solver's result tables that the deploy creates:
-   ```sql
-   -- as the model role
-   CREATE SCHEMA IF NOT EXISTS <DB>.MONEY_LAUNDERING_MOTIF_DETECTION_META;
+5. **Deploy the model**
 
-   -- as an administrator
-   GRANT CALLER USAGE ON DATABASE <DB> TO APPLICATION <RAI_APP_NAME>;
-   GRANT CALLER USAGE ON SCHEMA <DB>.MONEY_LAUNDERING_MOTIF_DETECTION_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT CALLER USAGE ON WAREHOUSE <PAT_WAREHOUSE> TO APPLICATION <RAI_APP_NAME>;
-   GRANT INHERITED CALLER SELECT ON ALL TABLES IN SCHEMA <DB>.MONEY_LAUNDERING_MOTIF_DETECTION_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT INHERITED CALLER SELECT ON ALL DYNAMIC TABLES IN SCHEMA <DB>.MONEY_LAUNDERING_MOTIF_DETECTION_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT INHERITED CALLER SELECT ON ALL VIEWS IN SCHEMA <DB>.MONEY_LAUNDERING_MOTIF_DETECTION_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT INHERITED CALLER INSERT, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA <DB>.MONEY_LAUNDERING_MOTIF_DETECTION_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT CALLER CREATE TABLE, CREATE STAGE ON SCHEMA <DB>.MONEY_LAUNDERING_MOTIF_DETECTION_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT INHERITED CALLER READ, WRITE ON ALL STAGES IN SCHEMA <DB>.MONEY_LAUNDERING_MOTIF_DETECTION_META TO APPLICATION <RAI_APP_NAME>;
-   ```
-   The deploy creates the public schema `<DB>.MONEY_LAUNDERING_MOTIF_DETECTION` if it doesn't exist.
+   Deploy the model in `model/` to the schemas in `raiconfig.yaml`:
 
-5. Run any of the three motif detectors. They share the bundled data and the configured schema pair:
    ```bash
-   python motif_butterfly.py
-   python motif_smurf_army.py
-   python motif_kyc_burst.py
+   rai models deploy --path model
    ```
-   Each runner deploys the model, waits for the first refresh, which runs that runner's solve, and prints its report from the deployed model. `rai models deploy --path motif_butterfly.py` (or another runner) deploys without printing the report.
 
-   The three runners deploy the same model, `money_laundering_motif_detection`, each with only its own motif. Running a different runner than the last one redeploys, replacing the previous runner's motif, and its refresh solves the new motif; the deployed model then holds only that runner's motif. Running the same runner again without changing it redeploys nothing and does not solve again; it reports the latest refresh. A change to a runner or to its `problem.configure(...)` redeploys, and the redeploy's refresh solves. To solve again without a change, refresh the deployed model, then run the same runner:
-   ```sql
-   CALL <DB>.MONEY_LAUNDERING_MOTIF_DETECTION_META._INTERNAL_REFRESH_MODEL('standard', NULL);
+   The model holds all three motifs. The deploy creates the public schema `<DB>.MONEY_LAUNDERING_MOTIF_DETECTION` if it doesn't exist and waits for the first refresh, which runs the three motif solves. Without the `deployment` section, it stops with an error naming the missing setting.
+
+   Deploying again without changing the model redeploys nothing and does not solve again; the queries report the latest refresh. A change to a motif module or to its `problem.configure(...)` call redeploys, and the redeploy's refresh solves all three motifs. To solve again without a change, refresh the deployed model in Snowflake with `CALL <DB>.MONEY_LAUNDERING_MOTIF_DETECTION_META._INTERNAL_REFRESH_MODEL('standard', NULL);`, then run the queries again.
+
+6. **Query the results**
+
+   Print each motif's report from the deployed model. The bundled dataset plants exactly the motifs each detector targets, plus dup-BO, out-of-window, and over-amount decoys for each. Solver build strings and exact wall times will vary; the structure of the output is stable:
+
+   ```bash
+   python -m queries.butterfly_motifs
    ```
-   To remove the deployment, run `rai models teardown --force` from this directory; it keeps the two schemas.
 
-6. Expected output. The bundled dataset plants exactly the motifs each detector targets, plus dup-BO / out-of-window / over-amount decoys for each. Solver build strings and exact wall times will vary; the structure of the output is stable.
-
-   `motif_butterfly.py` finds the two planted scatter-gathers (cluster `100` -> `WireRecipientCorp`, cluster `200` -> `OffshoreLLC`) and exhausts the search:
    ```text
    Solve result:
    • status: OPTIMAL
@@ -187,7 +206,12 @@ Multi-solution enumeration via `problem.configure(..., solution_limit=K)` is ava
    11         1     12               9         HubAccB3              10        OffshoreLLC    7780      44
    ```
 
-   `motif_smurf_army.py` hits `MAX_SMURF_MOTIFS=5` because the bundled data admits multiple sum-target cohorts: the planted five-distinct-BO cohort plus cohorts that swap one of the dup-BO decoys (47 or 48, both `bo_id=1706`) in for one of the planted smurfs. `distinct_bo_ic` is the IC that prevents the {47, 48, + three planted} cohort -- which sums in-range -- from being returned. The first cohort enumerated by the solver is typically the planted one:
+   The butterfly search finds the two planted scatter-gathers (cluster `100` -> `WireRecipientCorp`, cluster `200` -> `OffshoreLLC`) and exhausts the search.
+
+   ```bash
+   python -m queries.smurf_army_motifs
+   ```
+
    ```text
    Solve result:
    • status: SOLUTION_LIMIT
@@ -206,7 +230,12 @@ Multi-solution enumeration via `problem.configure(..., solution_limit=K)` is ava
    ...
    ```
 
-   `motif_kyc_burst.py` finds two valid 5-account cohorts that satisfy the retail floor (4 retail, all within 60 min) -- the planted cohort with Brookline Industries plus an alternative-business swap (Newland Capital Inc):
+   The smurf-army search hits `MAX_SMURF_MOTIFS=5` because the bundled data admits multiple sum-target cohorts: the planted five-distinct-BO cohort plus cohorts that swap one of the dup-BO decoys (47 or 48, both `bo_id=1706`) in for one of the planted smurfs. `distinct_bo_ic` is the constraint that prevents the 47, 48, and three-planted cohort, which sums in range, from being returned. The first cohort the solver enumerates is typically the planted one.
+
+   ```bash
+   python -m queries.kyc_burst_motifs
+   ```
+
    ```text
    Solve result:
    • status: OPTIMAL
@@ -226,22 +255,41 @@ Multi-solution enumeration via `problem.configure(..., solution_limit=K)` is ava
    9         1        57   Newland Capital Inc  business       Germany   2206
    ```
 
+   The KYC-mix burst search finds two valid 5-account cohorts that satisfy the retail floor (4 retail, all within 60 min): the planted cohort with Brookline Industries plus an alternative-business swap (Newland Capital Inc).
+
+7. **Tear down the deployment**
+
+   Preview what the teardown removes, then remove it:
+
+   ```bash
+   rai models teardown
+   rai models teardown --force
+   ```
+
+   The teardown removes the deployed objects and keeps the two schemas.
+
 ## Template structure
 ```text
 .
 ├── README.md
 ├── pyproject.toml
-├── model_setup.py             # shared ontology + data load
-├── motif_butterfly.py         # per-hub flow conservation
-├── motif_smurf_army.py        # pairwise distinct BOs + sum-target
-├── motif_kyc_burst.py         # cardinality on chosen subset
+├── model/
+│   ├── __init__.py            # the deployed model: ontology + all three motifs
+│   ├── ontology.py            # shared ontology + data load
+│   ├── butterfly.py           # per-hub flow conservation
+│   ├── smurf_army.py          # pairwise distinct BOs + sum-target
+│   └── kyc_burst.py           # cardinality on chosen subset
+├── queries/
+│   ├── butterfly_motifs.py    # butterfly report
+│   ├── smurf_army_motifs.py   # smurf-army report
+│   └── kyc_burst_motifs.py    # KYC-mix burst report
 └── data/
     ├── accounts.csv
     ├── transactions.csv
     └── generate.py            # deterministic generator (one-time, not runtime)
 ```
 
-**Start here**: run `python motif_butterfly.py` (or `motif_smurf_army.py` / `motif_kyc_burst.py`) for a motif detector end to end, or follow `runbook.md` to reproduce the template step by step with the RAI skills. Each runner is self-contained -- it imports the shared ontology from `model_setup.py`, loads the bundled data, and solves its own motif independently.
+**Start here**: deploy with `rai models deploy --path model`, then run `python -m queries.butterfly_motifs` (or `smurf_army_motifs` / `kyc_burst_motifs`) for a motif report, or follow `runbook.md` to reproduce the template step by step with the RAI skills. Each motif module adds its own decisions and constraints to the shared ontology in `model/ontology.py`, and each motif is solved as its own `Problem`.
 
 ## Sample data
 
@@ -252,17 +300,17 @@ The bundled CSVs are synthetic and tuned so each of the three motifs is visible 
 
 ## Model overview
 
-All three runners share one ontology, defined in `model_setup.py`: `Account` vertices and `Transaction` directed edges. Each runner adds its own decision-valued properties (which account or transaction is part of the motif) on top of these base concepts at solve time.
+All three motifs share one ontology, defined in `model/ontology.py`: `Account` vertices and `Transaction` directed edges. Each motif adds its own decision-valued properties (which account or transaction is part of the motif) on top of these base concepts.
 
 - **Key entities**: `Account` (a bank account) and `Transaction` (a directed transfer between two accounts).
 - **Primary identifiers**: integer `id` on `Account`; integer `tx_id` on `Transaction`.
 - **Important invariants**: `Transaction.src` and `Transaction.dst` reference existing accounts; `amount_dollars` is positive; layering edges sit under the `AMOUNT_THRESHOLD_DOLLARS` CTR line (default `$10,000`); `ts_minutes` is non-negative.
 
-`Account` carries `name`, `bo_id` (beneficial-owner cluster), `kyc_tier`, and `jurisdiction`; `Transaction` carries `src`, `dst`, `amount_dollars`, and `ts_minutes`. Each runner then adds its own motif-specific decision properties on top -- e.g. `Account.is_hub` / `is_smurf` / `is_burst` and `Transaction.is_motif` / `is_smurf_tx` / `is_burst_tx` -- populated by the solver. For the full concept and property definitions, see `model_setup.py`; `runbook.md` builds them step by step with the RAI skills.
+`Account` carries `name`, `bo_id` (beneficial-owner cluster), `kyc_tier`, and `jurisdiction`; `Transaction` carries `src`, `dst`, `amount_dollars`, and `ts_minutes`. Each motif then adds its own motif-specific decision properties on top -- e.g. `Account.is_hub` / `is_smurf` / `is_burst` and `Transaction.is_motif` / `is_smurf_tx` / `is_burst_tx` -- populated by the solver. For the full concept and property definitions, see `model/ontology.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
-The three motifs share an `Account` / `Transaction` ontology defined in `model_setup.py`. Each runner adds its own decision-valued properties, builds its own `Problem`, and constrains it with a different *class* of CSP technique. The "What you'll build" section above lists every constraint per motif; below is the load-bearing joint condition for each, with the part that rules / paths / graph reasoning cannot express called out explicitly.
+The three motifs share an `Account` / `Transaction` ontology defined in `model/ontology.py`. Each motif adds its own decision-valued properties, builds its own `Problem`, and constrains it with a different *class* of CSP technique. The "What you'll build" section above lists every constraint per motif; below is the load-bearing joint condition for each, with the part that rules / paths / graph reasoning cannot express called out explicitly.
 
 **Butterfly: per-vertex aggregate equality over a decision-selected edge subset.** For every account the solver picks as a hub, the dollars it receives via motif edges must equal what it forwards, within `CONSERVATION_TOLERANCE_DOLLARS`. The constraint is arithmetic over a *decision-selected subset* of edges -- it cannot be evaluated until the solver has chosen which transactions are in the motif and which accounts are hubs. It is written in big-M form so it is active when an account is a hub and vacuous otherwise, with the M coefficient computed from the data. (Big-M rather than half-reification: a half-reified `implies` introduces a free Boolean auxiliary per non-hub account that the solver treats as search space, returning thousands of trivially-distinct solutions; big-M with a data-computed bound has no auxiliary, so enumeration stays clean and the solver exhausts after the data's actual motifs.) A path enumeration sees one walk at a time and never the joint condition; a rules-only encoding can sum-per-vertex but cannot bind that sum to "the chosen subset of edges, where the chosen accounts are hubs."
 
@@ -270,22 +318,22 @@ The three motifs share an `Account` / `Transaction` ontology defined in `model_s
 
 **KYC-mix burst: cardinality over a decision-selected vertex subset.** Among the N chosen burst accounts, at least `RETAIL_FLOOR` must be retail-tier. Rules can label each account's tier; only CSP enforces the count *over the selected subset*. The launder-grade burst signature is "K accounts with a retail-tier floor transacting together in a tight window." A graph-pattern matcher can find the time-window cluster but has no way to express "and at least M of the chosen K are retail-tier."
 
-**Solver call and enumeration.** Every runner calls the MiniZinc solver with a `solution_limit`. The variable subconcept returned by `solve_for(...)` exposes a per-solution values relationship; filtering on the chosen rows surfaces what the solver picked, since the populated property reflects only the first solution. These are pure satisfaction problems with no objective, so `status: OPTIMAL` means the solver enumerated all feasible motifs up to `solution_limit` -- not an optimisation verdict -- while `SOLUTION_LIMIT` means the limit was hit before enumeration exhausted (raise `MAX_*_MOTIFS` to surface more).
+**Solver call and enumeration.** Every motif configures the MiniZinc solver with a `solution_limit`. The variable subconcept returned by `solve_for(...)` exposes a per-solution values relationship; filtering on the chosen rows surfaces what the solver picked, since the populated property reflects only the first solution. These are pure satisfaction problems with no objective, so `status: OPTIMAL` means the solver enumerated all feasible motifs up to `solution_limit` -- not an optimisation verdict -- while `SOLUTION_LIMIT` means the limit was hit before enumeration exhausted (raise `MAX_*_MOTIFS` to surface more).
 
-See `model_setup.py` and the three motif runners for the implementation, and `runbook.md` for the skill-driven reproduction.
+See `model/` for the implementation, `queries/` for the reports, and `runbook.md` for the skill-driven reproduction.
 
 ## Customize this template
 
 ### Use your own data
 
-- Replace the two CSV files with your own accounts and transactions; every runner picks them up automatically. The shared ontology in `model_setup.py` reads columns by name (`id`, `name`, `bo_id`, `kyc_tier`, `jurisdiction`, `tx_id`, `src_id`, `dst_id`, `amount_dollars`, `ts_minutes`). Drop a column you don't have by deleting the corresponding `Account.<name> = model.Property(...)` line and any constraint that references it.
-- Point the smurf and burst runners at a different target merchant by editing `SMURF_TARGET_DESTINATION_ID` in `motif_smurf_army.py` and `BURST_TARGET_DESTINATION_ID` in `motif_kyc_burst.py`. On a real ledger you would set these from your watchlist of known-launder destinations.
+- Replace the two CSV files with your own accounts and transactions; every motif picks them up on the next deploy. The shared ontology in `model/ontology.py` reads columns by name (`id`, `name`, `bo_id`, `kyc_tier`, `jurisdiction`, `tx_id`, `src_id`, `dst_id`, `amount_dollars`, `ts_minutes`). Drop a column you don't have by deleting the corresponding `Account.<name> = model.Property(...)` line and any constraint that references it.
+- Point the smurf and burst motifs at a different target merchant by editing `SMURF_TARGET_DESTINATION_ID` in `model/smurf_army.py` and `BURST_TARGET_DESTINATION_ID` in `model/kyc_burst.py`. On a real ledger you would set these from your watchlist of known-launder destinations.
 
-**Test against real public data.** The bundled CSVs are synthetic and tuned to make the three motifs visible. For production-style validation, point the runners at a slice of [IBM AMLworld HI-Small / LI-Small](https://github.com/IBM/AML-Data) (CDLA-Sharing-1.0; the dataset paper is Altman et al., NeurIPS 2023). AMLworld natively labels the eight-pattern taxonomy used in the butterfly motif (scatter-gather), and a 500-2000 transaction slice will solve in seconds. KYC tiers and jurisdictions are not in AMLworld natively; the smurf-army and KYC-burst runners would need either synthetic augmentation columns or a different vertex category mapped from AMLworld's `Bank` / `Payment Format` columns.
+**Test against real public data.** The bundled CSVs are synthetic and tuned to make the three motifs visible. For production-style validation, point the model at a slice of [IBM AMLworld HI-Small / LI-Small](https://github.com/IBM/AML-Data) (CDLA-Sharing-1.0; the dataset paper is Altman et al., NeurIPS 2023). AMLworld natively labels the eight-pattern taxonomy used in the butterfly motif (scatter-gather), and a 500-2000 transaction slice will solve in seconds. KYC tiers and jurisdictions are not in AMLworld natively; the smurf-army and KYC-burst motifs would need either synthetic augmentation columns or a different vertex category mapped from AMLworld's `Bank` / `Payment Format` columns.
 
 ### Tune parameters
 
-- Edit the per-runner constants to tune the thresholds. The FinCEN CTR threshold (`AMOUNT_THRESHOLD_DOLLARS = 10_000`) lives in `model_setup.py`. Per-hub conservation tolerance, smurf target dollars, smurf window, burst window, and retail floor are at the top of each motif's runner.
+- Edit the per-motif constants to tune the thresholds, then deploy again. The FinCEN CTR threshold (`AMOUNT_THRESHOLD_DOLLARS = 10_000`) lives in `model/ontology.py`. Per-hub conservation tolerance, smurf target dollars, smurf window, burst window, and retail floor are at the top of each motif's module in `model/`.
 - Sweep the smurf target by parameterizing `SMURF_TARGET_DOLLARS` and re-running; alternatively, replace the equality with a minimum cumulative deposit constraint (`>= SMURF_TARGET_DOLLARS - tol`) if your watchlist tracks "at least $X laundered through this merchant" rather than a known exact total.
 
 ### Extend the model
@@ -295,15 +343,15 @@ See `model_setup.py` and the three motif runners for the implementation, and `ru
 
 ### Scale up / productionize
 
-- Raise the solution limit on a real ledger. Each runner's `MAX_*_MOTIFS` is sized for the demo. On a production ledger with thousands of accounts you may want 100+ so the analyst inbox surfaces the full population of candidates. The `time_limit_sec` argument to `problem.configure` is your safety net.
-- Pin `relationalai` to a known-good version for reproducible runs, and schedule the runners after each ledger refresh so candidate cases stay current for analyst triage.
+- Raise the solution limit on a real ledger. Each motif's `MAX_*_MOTIFS` is sized for the demo. On a production ledger with thousands of accounts you may want 100+ so the analyst inbox surfaces the full population of candidates. The `time_limit_sec` argument to `problem.configure` is your safety net.
+- Pin `relationalai` to a known-good version for reproducible runs, and give the `standard` schedule in `raiconfig.yaml` a nonzero `interval_s` so the deployed model re-solves on a timer and candidate cases stay current for analyst triage.
 
 ## References
 
 - [Altman et al., *Realistic Synthetic Financial Transactions for Anti-Money Laundering Models*, NeurIPS 2023](https://arxiv.org/abs/2306.16424). The IBM AMLworld paper. Defines the canonical eight-pattern AML topology taxonomy (fan-in, fan-out, scatter-gather, gather-scatter, cycle, bipartite, stack, random) and explicitly notes "total in equals total out" for the conservation patterns -- the property the butterfly motif here encodes. Public dataset releases at [IBM/AML-Data](https://github.com/IBM/AML-Data) under CDLA-Sharing-1.0.
 - [Starnini et al., *Smurf-Based Anti-Money Laundering in Time-Evolving Transaction Networks*, ECML PKDD 2021](https://link.springer.com/chapter/10.1007/978-3-030-86514-6_11). Time-window plus flow-balance signal in real-world transaction graphs (>180M transactions, >31M bank accounts).
 - [Pareja et al., *The Shape of Money Laundering: Subgraph Representation*, arXiv:2404.19109](https://arxiv.org/pdf/2404.19109). Subgraph-classification benchmark on Elliptic2; multi-leg / multi-account topologies.
-- [FATF (Financial Action Task Force) Typologies Reports](https://www.fatf-gafi.org/en/publications/Methodsandtrends.html) -- canonical typology source for placement / layering / integration stages, including the structuring and smurf-army patterns the motif runners encode.
+- [FATF (Financial Action Task Force) Typologies Reports](https://www.fatf-gafi.org/en/publications/Methodsandtrends.html) -- canonical typology source for placement / layering / integration stages, including the structuring and smurf-army patterns the motifs encode.
 - [FinCEN Currency Transaction Report (CTR) regulation, 31 CFR § 1010.311](https://www.ecfr.gov/current/title-31/subtitle-B/chapter-X/part-1010/subpart-C/section-1010.311) -- the $10K reporting threshold whose evasion drives the structuring typology.
 - [Tookitaki, *Smurfing and Structuring: AML Detection and Reporting*](https://www.tookitaki.com/compliance-hub/smurfing-structuring-aml-detection-reporting). Practitioner guidance on the KYC-tier-diverse smurf-army profile that the KYC-mix burst motif encodes.
 
@@ -322,20 +370,20 @@ See `model_setup.py` and the three motif runners for the implementation, and `ru
 </details>
 
 <details>
-  <summary>How many motifs / cohorts will each runner return?</summary>
+  <summary>How many motifs / cohorts will each motif return?</summary>
 
-- Up to `MAX_*_MOTIFS` (10/5/5 by default for butterfly/smurf/burst) or however many feasible motifs exist in the data, whichever is smaller. `solve_info().num_points` reports the actual count after the solve. On the bundled data, butterfly exhausts at 2 motifs and KYC-burst at 2 cohorts; the smurf runner hits the limit (5) because pairwise-distinct-BO cohorts can swap any chosen smurf for a dup-BO decoy that still sums in-range -- the `distinct_bo_ic` is the constraint that prevents the dup-BO cohort, and seeing it bind is the point of running the smurf demo.
+- Up to `MAX_*_MOTIFS` (10/5/5 by default for butterfly/smurf/burst) or however many feasible motifs exist in the data, whichever is smaller. `solve_info().num_points` reports the actual count after the solve. On the bundled data, butterfly exhausts at 2 motifs and KYC-burst at 2 cohorts; the smurf motif hits the limit (5) because pairwise-distinct-BO cohorts can swap any chosen smurf for a dup-BO decoy that still sums in-range -- the `distinct_bo_ic` is the constraint that prevents the dup-BO cohort, and seeing it bind is the point of running the smurf demo.
 - Solution ordering is not guaranteed across runs or solver versions; the *set* of motifs is, but solution index 0 may swap with solution index 1 between runs. Treat the `solution` column as a label, not a ranking.
 - To get a ranked answer (e.g. surface the largest scheme first), switch to optimisation -- `problem.maximize(sum(Transaction.is_motif * Transaction.amount_dollars))` returns the motif with the largest total laundered amount under `solution_limit=1`. For a top-K ranked list, run an iterative exclusion-cut loop (re-solve after forbidding each previous motif's edge set) or sort the enumerated motifs in post-processing.
 
 </details>
 
 <details>
-  <summary>Import error for <code>relationalai</code> or <code>model_setup</code></summary>
+  <summary>Import error for <code>relationalai</code> or <code>model</code></summary>
 
 - Confirm your virtual environment is active: `which python` should point to `.venv`.
 - Reinstall dependencies: `python -m pip install .`.
-- The motif runners import from `model_setup` as a sibling module. Run them from inside the template directory (so the directory is on Python's path) or `python -m motif_butterfly` from the parent.
+- The reports import the `model` package from the template directory. Run `rai models deploy --path model` and `python -m queries.<name>` from inside the template directory, so the directory is on Python's path.
 
 </details>
 
@@ -363,7 +411,7 @@ See `model_setup.py` and the three motif runners for the implementation, and `ru
 
 ### Reasoner reference
 
-- [Prescriptive reasoner](https://docs.relational.ai/) -- the `Problem` API, decision variables, integrity constraints, and multi-solution enumeration with `solution_limit`, as all three motif runners use.
+- [Prescriptive reasoner](https://docs.relational.ai/) -- the `Problem` API, decision variables, integrity constraints, and multi-solution enumeration with `solution_limit`, as all three motifs use.
 
 ## Support
 

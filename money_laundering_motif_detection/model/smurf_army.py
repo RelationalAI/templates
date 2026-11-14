@@ -21,23 +21,18 @@ recruits N separate identities with distinct beneficial owners to break
 a known total ($SMURF_TARGET_DOLLARS) into under-threshold deposits all
 arriving at the target merchant within a short coordinated burst.
 
-Run:
-    `python motif_smurf_army.py` deploys the model to the schema in
-    raiconfig.yaml, waits for its first refresh (which runs the solve),
-    and prints the report from the deployed model.
-
-Output:
-    Prints the formulation, the solve-result block, and two
-    per-solution inspect tables: the chosen smurf transactions
-    and the chosen smurf accounts annotated with their distinct
-    beneficial owners and jurisdictions.
+Deploy:
+    Part of the model in `model/`, deployed with `rai models deploy --path model`;
+    each refresh of the deployment runs this solve. `python -m queries.smurf_army_motifs`
+    prints its report from the deployed model.
 """
 
-from model_setup import AMOUNT_THRESHOLD_DOLLARS, create_model
 from relationalai.semantics import Integer, String, sum
 from relationalai.semantics.reasoners.prescriptive import Problem
 
-# Runner-level parameters.
+from .ontology import AMOUNT_THRESHOLD_DOLLARS, Account, Transaction, model
+
+# Motif parameters.
 # The target merchant the smurfs deposit into. In production this could be a
 # known launder destination from a watchlist; for the demo it's the bundled
 # data's planted target ("Pacific Receivables Inc", id 41).
@@ -55,13 +50,12 @@ N_SMURFS = 5
 # Solver solution-limit: enumerate up to this many distinct smurf cohorts.
 MAX_SMURF_MOTIFS = 5
 
-model, Account, Transaction = create_model()
-
 # Decision-valued properties for the smurf-army motif.
 Account.is_smurf = model.Property(f"{Account} is smurf if {Integer:is_smurf}")
 Transaction.is_smurf_tx = model.Property(f"{Transaction} is smurf tx if {Integer:is_smurf_tx}")
 
-problem = Problem(model, Integer)
+# The model configures three Problems, one per motif, so each has a unique name.
+problem = Problem(model, Integer, name="smurf_army")
 
 # Full-Account scope for is_smurf and full-Transaction scope for is_smurf_tx
 # -- not narrowed via `where=[...]` on the `solve_for(...)` call. Tight scoping
@@ -178,74 +172,3 @@ problem.install_display_strings()
 # The solve's status, published through the model's own relationship.
 SolveStatus = model.Relationship(f"smurf army solve status is {String:status}")
 model.define(SolveStatus(problem.termination_status()))
-
-# Deploy, then report (`rai models deploy` skips this block).
-if __name__ == "__main__":
-    # Deploy and wait for the first refresh, which runs the solve.
-    model.deploy()
-
-    print("\n" + "=" * 70)
-    print(f"SMURF ARMY (fan-in to account id {SMURF_TARGET_DESTINATION_ID})")
-    print("CSP technique: pairwise distinctness + sum-target over chosen subset")
-    print("=" * 70)
-    problem.display()
-
-    # No `problem.verify(...)` call: `populate=False` on the `solve_for(...)`
-    # calls above means the decision-variable values are NOT written back to
-    # the relational `is_smurf` / `is_smurf_tx` properties. Without those values
-    # in the relational layer, verify() cannot re-evaluate ICs that reference
-    # them and prints spurious "Requirements not met" warnings instead of
-    # doing real verification. The inspect tables below surface the solver's
-    # choices directly; manual inspection against the IC formulas is the
-    # verification path here.
-
-    # Status of the latest refresh's solve and the number of solutions it found.
-    status = ", ".join(model.select(SolveStatus).to_df().iloc[:, 0])
-    motif_count = problem.solve_info().num_points or 0
-    print(f"\nSolve result:\n• status: {status}\n• num_points: {motif_count}\n")
-    if status == "INFEASIBLE":
-        print(
-            "\nResult: no smurf-army cohort exists under the encoded constraints "
-            f"for target id {SMURF_TARGET_DESTINATION_ID}. The search space was "
-            "exhausted with zero feasible cohorts."
-        )
-    elif status == "OPTIMAL":
-        print(
-            f"\nResult: {motif_count} smurf-army cohort(s) found and search exhausted "
-            "(no further cohorts exist under the encoded constraints)."
-        )
-    elif status == "SOLUTION_LIMIT":
-        print(
-            f"\nResult: {motif_count} smurf-army cohort(s) found; "
-            f"hit MAX_SMURF_MOTIFS={MAX_SMURF_MOTIFS}. "
-            "More may exist -- raise the limit to enumerate further."
-        )
-    else:
-        print(
-            f"\nResult: search returned status={status} with {motif_count} cohort(s); "
-            "did not finish. Raise time_limit_sec or check the README troubleshooting."
-        )
-
-    print("\nSmurf army: chosen smurf-tx per solution:")
-    sol_idx = Integer.ref()
-    val = Integer.ref()
-    model.select(
-        sol_idx.alias("solution"),
-        is_smurf_tx_var.transaction.tx_id.alias("tx_id"),
-        is_smurf_tx_var.transaction.src.id.alias("src_account_id"),
-        is_smurf_tx_var.transaction.src.name.alias("src_name"),
-        is_smurf_tx_var.transaction.src.bo_id.alias("src_bo_id"),
-        is_smurf_tx_var.transaction.dst.name.alias("dst_name"),
-        is_smurf_tx_var.transaction.amount_dollars.alias("amount"),
-        is_smurf_tx_var.transaction.ts_minutes.alias("ts_min"),
-    ).where(is_smurf_tx_var.values(sol_idx, val), val == 1).inspect()
-
-    print("\nSmurf army: chosen smurf accounts per solution (with distinct BOs and jurisdictions):")
-    model.select(
-        sol_idx.alias("solution"),
-        is_smurf_var.account.id.alias("smurf_id"),
-        is_smurf_var.account.name.alias("smurf_name"),
-        is_smurf_var.account.bo_id.alias("bo_id"),
-        is_smurf_var.account.kyc_tier.alias("kyc_tier"),
-        is_smurf_var.account.jurisdiction.alias("jurisdiction"),
-    ).where(is_smurf_var.values(sol_idx, val), val == 1).inspect()

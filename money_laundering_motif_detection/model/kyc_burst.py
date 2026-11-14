@@ -18,23 +18,18 @@ smurf-army signature -- launderers recruit a tier-diverse cohort of
 mules to defeat single-tier-pattern alerts ([Tookitaki AML guidance](
 https://www.tookitaki.com/compliance-hub/smurfing-structuring-aml-detection-reporting)).
 
-Run:
-    `python motif_kyc_burst.py` deploys the model to the schema in
-    raiconfig.yaml, waits for its first refresh (which runs the solve),
-    and prints the report from the deployed model.
-
-Output:
-    Prints the formulation, the solve-result block, and two
-    per-solution inspect tables: the chosen burst transactions
-    and the chosen burst accounts annotated with KYC tier and
-    jurisdiction so the retail-floor mix is visible.
+Deploy:
+    Part of the model in `model/`, deployed with `rai models deploy --path model`;
+    each refresh of the deployment runs this solve. `python -m queries.kyc_burst_motifs`
+    prints its report from the deployed model.
 """
 
-from model_setup import AMOUNT_THRESHOLD_DOLLARS, create_model
 from relationalai.semantics import Integer, String, sum
 from relationalai.semantics.reasoners.prescriptive import Problem
 
-# Runner-level parameters.
+from .ontology import AMOUNT_THRESHOLD_DOLLARS, Account, Transaction, model
+
+# Motif parameters.
 # Target destination receiving the coordinated burst. Bundled data plants
 # Continental Settlements LLC (id 51).
 BURST_TARGET_DESTINATION_ID = 51
@@ -51,13 +46,12 @@ RETAIL_FLOOR = 4
 # Solver solution-limit: enumerate up to this many distinct burst cohorts.
 MAX_BURST_MOTIFS = 5
 
-model, Account, Transaction = create_model()
-
 # Decision-valued properties for the KYC-burst motif.
 Account.is_burst = model.Property(f"{Account} is burst if {Integer:is_burst}")
 Transaction.is_burst_tx = model.Property(f"{Transaction} is burst tx if {Integer:is_burst_tx}")
 
-problem = Problem(model, Integer)
+# The model configures three Problems, one per motif, so each has a unique name.
+problem = Problem(model, Integer, name="kyc_burst")
 
 # Full-Account scope for is_burst and full-Transaction scope for is_burst_tx
 # -- not narrowed via `where=[...]` on the `solve_for(...)` call. Tight scoping
@@ -153,74 +147,3 @@ problem.install_display_strings()
 # The solve's status, published through the model's own relationship.
 SolveStatus = model.Relationship(f"kyc burst solve status is {String:status}")
 model.define(SolveStatus(problem.termination_status()))
-
-# Deploy, then report (`rai models deploy` skips this block).
-if __name__ == "__main__":
-    # Deploy and wait for the first refresh, which runs the solve.
-    model.deploy()
-
-    print("\n" + "=" * 70)
-    print(f"KYC-MIX BURST (fan-in to account id {BURST_TARGET_DESTINATION_ID})")
-    print("CSP technique: cardinality over chosen subset")
-    print("=" * 70)
-    problem.display()
-
-    # No `problem.verify(...)` call: `populate=False` on the `solve_for(...)`
-    # calls above means the decision-variable values are NOT written back to
-    # the relational `is_burst` / `is_burst_tx` properties. Without those values
-    # in the relational layer, verify() cannot re-evaluate ICs that reference
-    # them and prints spurious "Requirements not met" warnings instead of
-    # doing real verification. The inspect tables below surface the solver's
-    # choices directly; manual inspection against the IC formulas is the
-    # verification path here.
-
-    # Status of the latest refresh's solve and the number of solutions it found.
-    status = ", ".join(model.select(SolveStatus).to_df().iloc[:, 0])
-    motif_count = problem.solve_info().num_points or 0
-    print(f"\nSolve result:\n• status: {status}\n• num_points: {motif_count}\n")
-    if status == "INFEASIBLE":
-        print(
-            "\nResult: no KYC-mix burst cohort exists under the encoded constraints "
-            f"for target id {BURST_TARGET_DESTINATION_ID}. The search space was "
-            "exhausted with zero feasible cohorts."
-        )
-    elif status == "OPTIMAL":
-        print(
-            f"\nResult: {motif_count} KYC-mix burst cohort(s) found and search exhausted "
-            "(no further cohorts exist under the encoded constraints)."
-        )
-    elif status == "SOLUTION_LIMIT":
-        print(
-            f"\nResult: {motif_count} KYC-mix burst cohort(s) found; "
-            f"hit MAX_BURST_MOTIFS={MAX_BURST_MOTIFS}. "
-            "More may exist -- raise the limit to enumerate further."
-        )
-    else:
-        print(
-            f"\nResult: search returned status={status} with {motif_count} cohort(s); "
-            "did not finish. Raise time_limit_sec or check the README troubleshooting."
-        )
-
-    print("\nKYC-burst: chosen burst-tx per solution:")
-    sol_idx = Integer.ref()
-    val = Integer.ref()
-    model.select(
-        sol_idx.alias("solution"),
-        is_burst_tx_var.transaction.tx_id.alias("tx_id"),
-        is_burst_tx_var.transaction.src.id.alias("src_account_id"),
-        is_burst_tx_var.transaction.src.name.alias("src_name"),
-        is_burst_tx_var.transaction.src.kyc_tier.alias("src_kyc_tier"),
-        is_burst_tx_var.transaction.dst.name.alias("dst_name"),
-        is_burst_tx_var.transaction.amount_dollars.alias("amount"),
-        is_burst_tx_var.transaction.ts_minutes.alias("ts_min"),
-    ).where(is_burst_tx_var.values(sol_idx, val), val == 1).inspect()
-
-    print("\nKYC-burst: chosen burst accounts per solution (with KYC tier and jurisdiction):")
-    model.select(
-        sol_idx.alias("solution"),
-        is_burst_var.account.id.alias("burst_id"),
-        is_burst_var.account.name.alias("burst_name"),
-        is_burst_var.account.kyc_tier.alias("kyc_tier"),
-        is_burst_var.account.jurisdiction.alias("jurisdiction"),
-        is_burst_var.account.bo_id.alias("bo_id"),
-    ).where(is_burst_var.values(sol_idx, val), val == 1).inspect()
