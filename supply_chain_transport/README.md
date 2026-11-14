@@ -38,7 +38,8 @@ The model demonstrates several advanced techniques: multi-period inventory flow 
 
 ## What's included
 
-- `supply_chain_transport.py` -- main script with ontology, formulation, and solver configuration; it deploys the model and prints the report from the deployed model
+- `model/__init__.py` -- ontology, formulation, and solver configuration; `rai models deploy --path model` deploys it to your Snowflake account, where each refresh runs the solve
+- `queries/transport_plan.py` -- prints the report from the deployed model: the solve status and cost and the inventory, transport, and arrival tables
 - `runbook.md` -- a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself
 - `data/freight_groups.csv` -- 2 freight groups with inventory/transport/arrival windows
 - `pyproject.toml` -- Python package configuration
@@ -56,28 +57,61 @@ The model demonstrates several advanced techniques: multi-period inventory flow 
 
 ## Quickstart
 
-1. Download ZIP:
+Before you start, install Python 3.10 or later and complete the access prerequisites above: a Snowflake account with the RAI Native App, the one-time model deployment setup, and a Snowflake user that holds the model role.
+
+Before the first deploy, create this template's internal schema as the model role, and have an administrator grant the RAI Native App caller access to it. The internal schema holds only this model's objects, so the grants cover all of it, including the solver's result tables that the deploy creates:
+
+```sql
+-- as the model role
+CREATE SCHEMA IF NOT EXISTS <DB>.SUPPLY_CHAIN_TRANSPORT_META;
+
+-- as an administrator
+GRANT CALLER USAGE ON DATABASE <DB> TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER USAGE ON SCHEMA <DB>.SUPPLY_CHAIN_TRANSPORT_META TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER USAGE ON WAREHOUSE <PAT_WAREHOUSE> TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL TABLES IN SCHEMA <DB>.SUPPLY_CHAIN_TRANSPORT_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL DYNAMIC TABLES IN SCHEMA <DB>.SUPPLY_CHAIN_TRANSPORT_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL VIEWS IN SCHEMA <DB>.SUPPLY_CHAIN_TRANSPORT_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER INSERT, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA <DB>.SUPPLY_CHAIN_TRANSPORT_META TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER CREATE TABLE, CREATE STAGE ON SCHEMA <DB>.SUPPLY_CHAIN_TRANSPORT_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER READ, WRITE ON ALL STAGES IN SCHEMA <DB>.SUPPLY_CHAIN_TRANSPORT_META TO APPLICATION <RAI_APP_NAME>;
+```
+
+Use this sequence to deploy the model and query it:
+
+1. **Download the template**
+
+   [Download the ZIP](https://docs.relational.ai/templates/zips/v1/supply_chain_transport.zip), unzip it, and enter the template directory:
+
    ```bash
-   curl -O https://docs.relational.ai/templates/zips/v1/supply_chain_transport.zip
    unzip supply_chain_transport.zip
    cd supply_chain_transport
    ```
-   > [!TIP]
-   > You can also download the template ZIP using the "Download ZIP" button at the top of this page.
 
-2. Create venv:
+2. **Create a Python environment**
+
+   Create and activate a virtual environment, then update pip:
+
    ```bash
    python -m venv .venv
    source .venv/bin/activate
    python -m pip install --upgrade pip
    ```
 
-3. Install:
+3. **Install the template**
+
+   Install the dependencies pinned in `pyproject.toml`:
+
    ```bash
    python -m pip install .
    ```
 
-4. Configure: run `rai init` to create `raiconfig.yaml` with your Snowflake connection, set the connection `role` to the model role, then add a `deployment` section. Give each template its own schema pair so two deployed templates never share one.
+4. **Configure your project**
+
+   Use the configuration builder in [Install and run PyRel](https://docs.relational.ai/get-started/install-and-run-pyrel/#configure-your-project) to create `raiconfig.yaml` in the template directory and verify your connection.
+
+   Set the connection `role` to the model role, then add the prescriptive reasoner and a `deployment` section. Give each template its own schema pair so two deployed templates never share one:
+
    ```yaml
    reasoners:
      prescriptive:
@@ -96,78 +130,90 @@ The model demonstrates several advanced techniques: multi-period inventory flow 
      pat_user: <PAT_USER>
      pat_warehouse: <PAT_WAREHOUSE>
    ```
-   Without the `deployment` section, `python supply_chain_transport.py` stops with an error naming the missing setting.
 
-   Before the first run, create the internal schema as the model role, and have an administrator grant the RAI Native App caller access to it. The internal schema holds only this model's objects, so the grants cover all of it, including the solver's result tables that the deploy creates:
-   ```sql
-   -- as the model role
-   CREATE SCHEMA IF NOT EXISTS <DB>.SUPPLY_CHAIN_TRANSPORT_META;
+5. **Deploy the model**
 
-   -- as an administrator
-   GRANT CALLER USAGE ON DATABASE <DB> TO APPLICATION <RAI_APP_NAME>;
-   GRANT CALLER USAGE ON SCHEMA <DB>.SUPPLY_CHAIN_TRANSPORT_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT CALLER USAGE ON WAREHOUSE <PAT_WAREHOUSE> TO APPLICATION <RAI_APP_NAME>;
-   GRANT INHERITED CALLER SELECT ON ALL TABLES IN SCHEMA <DB>.SUPPLY_CHAIN_TRANSPORT_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT INHERITED CALLER SELECT ON ALL DYNAMIC TABLES IN SCHEMA <DB>.SUPPLY_CHAIN_TRANSPORT_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT INHERITED CALLER SELECT ON ALL VIEWS IN SCHEMA <DB>.SUPPLY_CHAIN_TRANSPORT_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT INHERITED CALLER INSERT, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA <DB>.SUPPLY_CHAIN_TRANSPORT_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT CALLER CREATE TABLE, CREATE STAGE ON SCHEMA <DB>.SUPPLY_CHAIN_TRANSPORT_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT INHERITED CALLER READ, WRITE ON ALL STAGES IN SCHEMA <DB>.SUPPLY_CHAIN_TRANSPORT_META TO APPLICATION <RAI_APP_NAME>;
-   ```
-   The deploy creates the public schema `<DB>.SUPPLY_CHAIN_TRANSPORT` if it doesn't exist.
+   Deploy the model in `model/` to the schemas in `raiconfig.yaml`:
 
-5. Run:
    ```bash
-   python supply_chain_transport.py
+   rai models deploy --path model
    ```
-   The script deploys the model, waits for the first refresh, which runs the solve, and prints the report from the deployed model. Each refresh of the deployed model runs the solve again; `rai models deploy` deploys without printing the report.
 
-   Running the script again without changing the model redeploys nothing and does not solve again; it reports the latest refresh. A change to the model or to `problem.configure(...)` redeploys, and the redeploy's refresh solves. To solve again without a change, refresh the deployed model, then run the script:
-   ```sql
-   CALL <DB>.SUPPLY_CHAIN_TRANSPORT_META._INTERNAL_REFRESH_MODEL('standard', NULL);
+   The deploy creates the public schema named in `raiconfig.yaml` if it doesn't exist and waits for the model's first refresh, which runs the solve. Each refresh of the deployed model runs the solve again.
+
+   Deploying again without changing the model applies no updates and does not solve again. A change to the model or to `problem.configure(...)` redeploys, and the redeploy's refresh solves.
+
+6. **Query the results**
+
+   Print the report from the deployed model:
+
+   ```bash
+   python -m queries.transport_plan
    ```
-   To remove the deployment, run `rai models teardown --force` from this directory; it keeps the two schemas.
 
-6. Expected output:
    ```text
+   Solve result:
+   • status: OPTIMAL
+   • objective: 1444.0
+
    Status: OPTIMAL
    Total cost: $1444.00
 
    === Transport Quantities ===
-   type freight_group  day  quantity
-    ltl           fg1    2    4000.0
-    ltl           fg2    2    5000.0
+     type freight_group  day  quantity
+   0  ltl           fg1    2    4000.0
+   1  ltl           fg2    2    5000.0
    ```
 
-   Both freight groups ship less-than-truckload on day 2 (zero truckload trucks); see `runbook.md` for the full inventory and arrival-day tables.
+   The formulation printed above the solve result is trimmed here, and so are the inventory-level and arrival-day tables that the report also prints. The report checks the solve's termination status and stops unless it is `OPTIMAL`. Both freight groups ship less-than-truckload on day 2 (zero truckload trucks); see `runbook.md` for the full inventory and arrival-day tables.
+
+   To solve again without changing the model, refresh the deployed model, then run the query again:
+
+   ```sql
+   CALL <DB>.SUPPLY_CHAIN_TRANSPORT_META._INTERNAL_REFRESH_MODEL('standard', NULL);
+   ```
+
+7. **Tear down the deployment**
+
+   Preview what the teardown removes, then remove it:
+
+   ```bash
+   rai models teardown
+   rai models teardown --force
+   ```
+
+   The first command lists the model's objects without dropping anything; the second drops them and keeps the two schemas.
 
 ## Template structure
 ```text
 .
 ├── README.md
 ├── pyproject.toml
-├── supply_chain_transport.py
+├── model/
+│   └── __init__.py
+├── queries/
+│   └── transport_plan.py
 └── data/
     └── freight_groups.csv
 ```
 
-**Start here**: run `python supply_chain_transport.py` for the full formulation and solve end to end, or follow `runbook.md` to reproduce it step by step with the RAI skills.
+**Start here**: deploy with `rai models deploy --path model` and run `python -m queries.transport_plan` for the full formulation and solve end to end, or follow `runbook.md` to reproduce it step by step with the RAI skills.
 
 ## Sample data
 
-The bundled data is synthetic and illustrative -- a minimal two-group example designed to teach the formulation on a Snowflake-connected RAI account, not to match a specific shipper's freight book. The transport modes and cost segments are defined inline in the script, not loaded from CSV.
+The bundled data is synthetic and illustrative -- a minimal two-group example designed to teach the formulation on a Snowflake-connected RAI account, not to match a specific shipper's freight book. The transport modes and cost segments are defined inline in `model/__init__.py`, not loaded from CSV.
 
 - **`freight_groups.csv`** (2 rows) -- one row per freight group, giving its inventory window (`inv_start_t` to `inv_end_t`), transport window (`tra_start_t` to `tra_end_t`), arrival window (`arr_start_t` to `arr_end_t`), and starting inventory weight (`inv_start`).
 
 ## Model overview
 
-The formulation is built on three concepts: the freight groups loaded from CSV, and the transport types and LTL cost segments defined inline in the script.
+The formulation is built on three concepts: the freight groups loaded from CSV, and the transport types and LTL cost segments defined inline in `model/__init__.py`.
 
 - **Key entities**: `FreightGroup` — a batch of freight with its own inventory, transport, and arrival time windows (the optimization solves for its per-day inventory, shipment quantities, and arrival day); `TransportType` — a shipping mode (truckload or less-than-truckload), with its transit time; `LTLSegment` — a breakpoint in the piecewise-linear less-than-truckload cost curve.
 - **Primary identifiers**: `name` on `FreightGroup` and `TransportType`; integer `seg` on `LTLSegment`.
 - **Important invariants**: window start days are less than or equal to window end days; `inv_start` weights are non-negative; transport-mode indicators and segment activation variables are binary; each freight group ships all inventory out by the end of its inventory window.
 
-For the full concept and property definitions, see `supply_chain_transport.py`; `runbook.md` builds them step by step with the RAI skills.
+For the full concept and property definitions, see `model/__init__.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
@@ -185,7 +231,7 @@ CSV freight groups + inline modes/segments → decision variables → inventory 
 
 **5. Minimize total cost.** The objective combines inventory holding cost, TL fixed cost, and piecewise LTL variable cost, and the MIP is solved end to end.
 
-For the implementation, see `supply_chain_transport.py`; to reproduce it step by step with the RAI skills, follow `runbook.md`.
+For the implementation, see `model/__init__.py`; to reproduce it step by step with the RAI skills, follow `runbook.md`.
 
 ## Customize this template
 
@@ -198,7 +244,7 @@ Focus on the first changes most users will make.
 
 ### Tune parameters
 
-- **Cost parameters** -- change `inv_cost`, `tl_tra_cost`, or the LTL segment costs and limits in the script.
+- **Cost parameters** -- change `inv_cost`, `tl_tra_cost`, or the LTL segment costs and limits in `model/__init__.py`.
 - **Transit times** -- adjust the inline `transit_time` values on the `tl` and `ltl` transport types.
 
 ### Extend the model
@@ -235,7 +281,7 @@ Focus on the first changes most users will make.
 <details>
   <summary>Authentication or configuration errors</summary>
 
-- Run `rai init` to create or update your RelationalAI/Snowflake configuration.
+- Re-create `raiconfig.yaml` with the configuration builder (Quickstart step 4).
 - If you have multiple profiles, set `export RAI_PROFILE=<your_profile>`.
 
 </details>
