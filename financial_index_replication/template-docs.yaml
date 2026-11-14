@@ -335,7 +335,7 @@ guided_walkthrough:
             occurrence: 4
         portfolio_returns:
           anchor:
-            start: returns_wide = stock_returns_csv.pivot(
+            start: weights = solution_df.set_index("ticker")["weight"]
             end: portfolio_returns = returns_wide[weights.index].mul(weights, axis=1).sum(axis=1)
         tracking_diff:
           anchor:

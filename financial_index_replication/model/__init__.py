@@ -4,7 +4,7 @@
 """
 
 from .schema import ReturnMonth, Sector, Stock, model
-from .source import DATA_DIR, index_returns_csv, stock_returns_csv, stocks_csv
+from .source import DATA_DIR
 
 # isort: split
 # The decision problem declares variables and constraints over the facts loaded above.
@@ -18,6 +18,7 @@ from .reasoning import (
     SolveStatus,
     TotalResidual,
     selected,
+    stock_return,
     weight,
 )
 
@@ -34,10 +35,8 @@ __all__ = [
     "SolveStatus",
     "Stock",
     "TotalResidual",
-    "index_returns_csv",
     "model",
     "selected",
-    "stock_returns_csv",
-    "stocks_csv",
+    "stock_return",
     "weight",
 ]

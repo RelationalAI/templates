@@ -4,8 +4,9 @@ Run after `rai models deploy --path model`:
     python -m queries.replication_report
 
 Prints the selected 20-stock basket, sector exposures, tracking quality metrics,
-and a top-correlation baseline comparison. Writes data/replica_returns.csv with
-date, index_return, and replica_return columns for downstream plotting.
+and a top-correlation baseline comparison. Every input comes from the deployed
+model. Writes data/replica_returns.csv with date, index_return, and replica_return
+columns for downstream plotting.
 """
 
 from math import sqrt
@@ -19,14 +20,14 @@ from model import (
     N_REPLICATION_NAMES,
     PORTFOLIO_VALUE,
     SECTOR_ACTIVE_BAND,
+    ReturnMonth,
+    Sector,
     SolveStatus,
     Stock,
     TotalResidual,
-    index_returns_csv,
     model,
     selected,
-    stock_returns_csv,
-    stocks_csv,
+    stock_return,
     weight,
 )
 
@@ -75,10 +76,26 @@ if __name__ == "__main__":
         .sort_values("weight", ascending=False)
     )
 
-    returns_wide = stock_returns_csv.pivot(
-        index="date", columns="ticker", values="return"
-    ).sort_index()
-    index_series = index_returns_csv.set_index("date").sort_index()
+    returns_wide = (
+        model.select(
+            Stock.ticker.alias("ticker"),
+            ReturnMonth.date.alias("date"),
+            stock_return.alias("return"),
+        )
+        .where(Stock.monthly_return(ReturnMonth, stock_return))
+        .to_df()
+        .pivot(index="date", columns="ticker", values="return")
+        .sort_index()
+    )
+    index_series = (
+        model.select(
+            ReturnMonth.date.alias("date"),
+            ReturnMonth.index_return.alias("index_return"),
+        )
+        .to_df()
+        .set_index("date")
+        .sort_index()
+    )
     weights = solution_df.set_index("ticker")["weight"]
     portfolio_returns = returns_wide[weights.index].mul(weights, axis=1).sum(axis=1)
     tracking_diff = portfolio_returns - index_series["index_return"]
@@ -115,7 +132,10 @@ if __name__ == "__main__":
     sector_report = (
         solution_df.groupby("sector", as_index=False)["weight"].sum()
         .merge(
-            stocks_csv.groupby("sector", as_index=False)["benchmark_weight"].sum(),
+            model.select(
+                Sector.sector_name.alias("sector"),
+                Sector.benchmark_weight.alias("benchmark_weight"),
+            ).to_df(),
             on="sector",
         )
     )
@@ -135,10 +155,14 @@ if __name__ == "__main__":
         )
     )
 
+    previous_df = model.select(
+        Stock.ticker.alias("ticker"),
+        Stock.previous_weight.alias("previous_weight"),
+    ).to_df()
     turnover = (
         solution_df.set_index("ticker")["weight"]
-        .reindex(stocks_csv["ticker"], fill_value=0.0)
-        .sub(stocks_csv.set_index("ticker")["previous_weight"])
+        .reindex(previous_df["ticker"], fill_value=0.0)
+        .sub(previous_df.set_index("ticker")["previous_weight"])
         .abs()
         .sum()
     )
