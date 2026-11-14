@@ -44,7 +44,8 @@ Built using RelationalAI's **variable-length path enumeration** (`model.path(...
 
 ## What's included
 
-- **Self-contained script**: `it_dependency_mapping.py` -- Runs the full analysis end-to-end
+- **Model**: `model/__init__.py` -- the features, dependency edges, path pattern, and depth rule that `rai models deploy --path model` deploys to your Snowflake account.
+- **Query**: `queries/dependency_chain_report.py` -- prints the path counts, maximal chains, and owner blast radius from the deployed model.
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - **Data**: `data/features.csv` (14 features across tiers) and `data/dependencies.csv` (15 dependency edges)
 
@@ -64,34 +65,42 @@ Built using RelationalAI's **variable-length path enumeration** (`model.path(...
 
 ## Quickstart
 
-1. Download and extract this template:
+Before you start, install Python 3.10 or later and get a Snowflake role that can deploy models, as described under Access. This template has no prescriptive solve, so it needs no setup beyond that role.
+
+Run these steps from a terminal:
+
+1. **Download the template**
+
+   [Download the ZIP](https://docs.relational.ai/templates/zips/v1/it-dependency-mapping.zip). Unzip it and enter the template directory:
 
    ```bash
-   curl -O https://docs.relational.ai/templates/zips/v1/it-dependency-mapping.zip
    unzip it-dependency-mapping.zip
    cd it-dependency-mapping
    ```
 
-   > [!TIP]
-   > You can also download the template ZIP using the "Download ZIP" button at the top of this page.
+2. **Create a Python environment**
 
-2. **Create and activate a virtual environment**
+   Create and activate a virtual environment, then update pip:
 
    ```bash
    python -m venv .venv
    source .venv/bin/activate
-   python -m pip install -U pip
+   python -m pip install --upgrade pip
    ```
 
-3. **Install dependencies**
+3. **Install the template**
+
+   Install the template's dependencies, including the `rai` CLI, in the active environment:
 
    ```bash
    python -m pip install .
    ```
 
-4. **Configure the Snowflake connection and the deployment**
+4. **Configure your project**
 
-   Run `rai init` to create `raiconfig.yaml` with your Snowflake connection, set the connection `role` to the model role, then add a `deployment` section. Give each template its own schema pair so two deployed templates never share one; the deploy creates both schemas if they don't exist.
+   Use the configuration builder in [Install and run PyRel](https://docs.relational.ai/get-started/install-and-run-pyrel/#configure-your-project) to create `raiconfig.yaml` in the template directory, with the model role as the connection `role`.
+
+   Then add a `deployment` section. Give each template its own schema pair so two deployed templates never share one; the deploy creates both schemas if they don't exist:
 
    ```yaml
    deployment:
@@ -105,17 +114,23 @@ Built using RelationalAI's **variable-length path enumeration** (`model.path(...
      schedule: standard
    ```
 
-   Without the `deployment` section, `python it_dependency_mapping.py` stops with an error naming the missing setting.
+5. **Deploy the model**
 
-5. **Run the template**
+   Deploy the model in `model/` to the schemas in `raiconfig.yaml`:
 
    ```bash
-   python it_dependency_mapping.py
+   rai models deploy --path model
    ```
 
-   The script deploys the model, waits for its first refresh, and prints the report from the deployed model. `rai models deploy` deploys without printing the report. To remove the deployment, run `rai models teardown --force` from this directory; it keeps the two schemas.
+   The deploy waits for the model's first refresh, which enumerates the downstream paths and computes each feature's longest downstream depth. Without the `deployment` section, it stops with an error naming the missing setting.
 
-6. **Expected output** (a few lines confirm success):
+6. **Query the results**
+
+   Print the report from the deployed model:
+
+   ```bash
+   python -m queries.dependency_chain_report
+   ```
 
    ```text
    Total downstream dependency paths (1-8 hops): 46
@@ -124,21 +139,35 @@ Built using RelationalAI's **variable-length path enumeration** (`model.path(...
    === Longest dependency chain: 5 hops ===
    ```
 
-   The full printout -- per-feature reach, all six maximal chains, and the owners along the longest chain -- is in the `## Expected output` section below.
+   The lines above are excerpts of the report. The full printout, with per-feature reach, all six maximal chains, and the owners along the longest chain, is in the Expected output section below.
+
+7. **Tear down the deployment**
+
+   Preview what the teardown removes, then remove it:
+
+   ```bash
+   rai models teardown
+   rai models teardown --force
+   ```
+
+   The teardown removes the deployed objects and keeps the two schemas.
 
 ## Template structure
 
 ```text
 it-dependency-mapping/
-├── it_dependency_mapping.py    # Self-contained analysis script
 ├── pyproject.toml              # Dependencies and project metadata
 ├── README.md                   # This file
+├── model/
+│   └── __init__.py             # features, dependency edges, path pattern, and depth rule
+├── queries/
+│   └── dependency_chain_report.py   # report printed from the deployed model
 └── data/
     ├── features.csv            # 14 features (id, name, owner, deploy_tier)
     └── dependencies.csv        # 15 dependency edges (from_feature, to_feature)
 ```
 
-**Start here**: run `python it_dependency_mapping.py` for the full analysis end to end, or follow `runbook.md` to rebuild it step by step.
+**Start here**: deploy with `rai models deploy --path model` and run `python -m queries.dependency_chain_report` for the full analysis end to end, or follow `runbook.md` to rebuild it step by step.
 
 ## Sample data
 
@@ -168,7 +197,7 @@ A single concept, `Feature`, represents every node in the estate, and one self-r
 - **Primary identifiers**: the string `id` on `Feature`.
 - **Important invariants**: the `contributes_to` graph is acyclic — a feature does not depend on itself, so every enumerated traversal path is a simple chain.
 
-For the full concept and property definitions, see `it_dependency_mapping.py`; `runbook.md` builds them step by step with the RAI skills.
+For the full concept and property definitions, see `model/__init__.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
@@ -180,11 +209,11 @@ CSV files --> Define Feature + contributes_to --> Enumerate downstream paths -->
 
 **Enumerate downstream paths.** A variable-length traversal of 1 to `MAX_DEPTH` `contributes_to` edges, enumerated with `.all().paths()`, walks every downstream dependency path. Each path arrives as one row per visited node; grouping by path reassembles the ordered chain, and the hop count comes from the maximum node index. (Selecting the path length alongside the nodes would fan the rows out, so the code derives hops from the index and dedupes before reassembly.)
 
-**Persist longest downstream depth.** The longest path starting at each feature is its downstream depth. RelationalAI computes it in PyRel — a max over path length per source endpoint — and defines it straight onto the feature as a first-class `max_downstream_depth` property, with no DataFrame round-trip, so later queries can rank features by reach without re-enumerating paths.
+**Persist longest downstream depth.** The longest path starting at each feature is its downstream depth. RelationalAI computes it in PyRel — a max over path length per source endpoint — and defines it straight onto the feature as a first-class `max_downstream_depth` relationship, with no DataFrame round-trip, so later queries can rank features by reach without re-enumerating paths.
 
 **Reduce to maximal chains.** The full path set contains every sub-chain. A path is *maximal* when its node sequence is not a contiguous sub-chain of any other enumerated path -- it cannot be extended upstream or downstream. Filtering to maximal chains leaves only the end-to-end propagation paths. The single longest maximal chain is the worst-case blast radius: joining owner metadata onto its features shows every person a change at the root would have to clear before it reaches the final consumer.
 
-See `it_dependency_mapping.py` for the implementation, and `runbook.md` for the skill-driven reproduction.
+See `model/__init__.py` for the implementation, `queries/dependency_chain_report.py` for the report, and `runbook.md` for the skill-driven reproduction.
 
 ## Expected output
 
@@ -221,7 +250,7 @@ The deepest chain runs five hops from a raw source all the way to a downstream d
 
 ### Tune parameters
 
-- `MAX_DEPTH` (default `8`, at the top of `it_dependency_mapping.py`) bounds the traversal length. Raise it if your estate has longer chains than the sample; lower it to cap enumeration on a denser graph.
+- `MAX_DEPTH` (default `8`, at the top of `model/__init__.py`) bounds the traversal length. Raise it if your estate has longer chains than the sample; lower it to cap enumeration on a denser graph.
 
 ### Extend the model
 
