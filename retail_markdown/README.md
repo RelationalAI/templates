@@ -38,8 +38,8 @@ This template finds the discount schedule that maximizes revenue across a multi-
 
 ## What's included
 
-- `model/__init__.py` -- The MIP model with discount selection, sales tracking, and revenue optimization; `rai models deploy --path model` deploys it to your Snowflake account, where each refresh runs the solve
-- `queries/markdown_plan.py` -- Prints the report from the deployed model: the solve's status and objective and the discount, sales, and cumulative-sales tables
+- `model/` -- The MIP model with discount selection, sales tracking, and revenue optimization, as a package (`schema.py` declares the concepts, `source.py` loads the sample data, `reasoning.py` states the decision problem); `rai models deploy --path model` deploys it to your Snowflake account, where each refresh runs the solve
+- `queries/markdown_plan.py` -- Prints the report from the deployed model: the solve result and the discount, sales, and cumulative-sales tables
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - `data/products.csv` -- Products with initial price, cost, inventory, base demand, and salvage rate
 - `data/discounts.csv` -- Discount levels with percentage and demand lift factor
@@ -156,6 +156,10 @@ Use this sequence to deploy the model and query it:
    Solve result:
    • status: OPTIMAL
    • objective: 23374.65
+   • solve time: 0.02s
+   • num_points: 1
+   • solver: HiGHS_1.15.1
+   ...
 
    Status: OPTIMAL
    Total revenue (sales + salvage): $23374.65
@@ -169,7 +173,7 @@ Use this sequence to deploy the model and query it:
    ...
    ```
 
-   The formulation printed above the solve result is trimmed here, and the selected discounts are cut after four rows; the report also prints the units sold and the cumulative sales for each product and week. The report checks the solve's termination status and stops unless it is `OPTIMAL`. Discounts start shallow (20 percent) and deepen to 30 percent later in the season; no product needs the 50 percent tier. See `runbook.md` for the full discount, sales, and cumulative-sales schedule.
+   The solver details in the solve result are trimmed here, and the selected discounts are cut after four rows; the report also prints the units sold and the cumulative sales for each product and week. Discounts start shallow (20 percent) and deepen to 30 percent later in the season; no product needs the 50 percent tier. See `runbook.md` for the full discount, sales, and cumulative-sales schedule.
 
    To solve again without changing the model, refresh the deployed model, then run the query again:
 
@@ -196,7 +200,10 @@ retail_markdown/
 ├── pyproject.toml       # dependencies
 ├── runbook.md           # analyst-facing walkthrough
 ├── model/
-│   └── __init__.py      # the deployed model (MIP, solve)
+│   ├── __init__.py      # exports of the deployed model
+│   ├── schema.py        # product, discount, and week concepts
+│   ├── source.py        # loads the sample CSVs
+│   └── reasoning.py     # decisions, constraints, objective, solve
 ├── queries/
 │   └── markdown_plan.py # report from the deployed model (result tables)
 └── data/
@@ -221,7 +228,7 @@ The bundled data is small and illustrative — a short seasonal clearance across
 - **Primary identifiers**: string `name` on `Product`; integer `level` on `Discount`; integer `num` on `Week`.
 - **Important invariants**: exactly one discount level is active per product-week; discounts can only deepen over successive weeks (price ladder); cumulative sales never exceed `initial_inventory`; `discount_pct`, `demand_lift`, and `demand_multiplier` are non-negative; the selection variable is binary and sales variables are non-negative.
 
-For the full concept and property definitions, see `model/__init__.py`; `runbook.md` builds them step by step with the RAI skills.
+For the full concept and property definitions, see `model/schema.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
@@ -237,7 +244,7 @@ CSV inputs → load Product / Discount / Week → decision variables (discount c
 3. **Constrain the schedule.** Exactly one discount level is active per product-week; discounts can only deepen from one week to the next (the price ladder); and cumulative sales can never exceed starting inventory.
 4. **Maximize revenue.** The objective adds sales revenue — discounted price times units sold — to the salvage value of unsold units at the end of the horizon, and the solver returns the revenue-maximizing discount schedule.
 
-See `model/__init__.py` for the implementation and `runbook.md` for the skill-driven reproduction.
+See `model/reasoning.py` for the implementation and `runbook.md` for the skill-driven reproduction.
 
 ## Customize this template
 
@@ -247,13 +254,13 @@ Focus on the first changes most users will make.
 
 - Replace the CSVs in `data/` with your own, keeping the column names listed in *Sample data* above.
 - Keep a `level` 0 / 0% row in `discounts.csv` so "no markdown" remains a feasible choice.
-- For Snowflake-backed runs, swap the `read_csv(...)` calls for `model.data(snowflake_table)`.
+- For Snowflake-backed runs, swap the `read_csv(...)` calls in `model/source.py` for `model.data(snowflake_table)`.
 
 ### Tune parameters
 
 - **Discount levels** — modify `discounts.csv` to add finer or coarser tiers with different demand lifts.
 - **Planning horizon** — add or remove rows in `weeks.csv`; the model scales with longer horizons.
-- **Solver time limit** — `time_limit_sec` (default `60`) on the `problem.configure(...)` call.
+- **Solver time limit** — `time_limit_sec` (default `60`) on the `problem.configure(...)` call in `model/reasoning.py`.
 
 ### Extend the model
 
