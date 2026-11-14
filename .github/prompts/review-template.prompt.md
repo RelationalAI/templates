@@ -18,7 +18,7 @@ Check:
 
 - Required files, entrypoint, pinned dependencies, and complete sample data.
 - README commands, paths, headings, expected output, and troubleshooting.
-- `model/schema.py`, `model/source.py`, `model/__init__.py`, and runner
+- `model/schema.py`, `model/source.py`, `model/__init__.py`, and `queries/`
   responsibility boundaries when the template uses the standard layout.
 - `runbook.md` consistency with the final code paths.
 - Every existing `template-docs.yaml` key, symbol, source, reference, anchor,

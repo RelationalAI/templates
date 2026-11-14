@@ -31,7 +31,7 @@ guided_walkthrough:
       title: Define the stable schema
       explanation: >-
         Item establishes the shared business vocabulary used by source mappings
-        and runner logic.
+        and queries.
       focus:
         file: model/schema.py
         symbols:
