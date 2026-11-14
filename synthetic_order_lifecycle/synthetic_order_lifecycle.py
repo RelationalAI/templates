@@ -5,7 +5,7 @@ This script demonstrates a CSP-based synthetic order-lifecycle trace generator i
 - Pre-allocate (order, event-slot) rows and load order, symbol, and venue reference data from CSV.
 - Model each event slot as a decision over type (PLACE / MODIFY / CANCEL / FILL), timestamp, venue, quantity, and tick price.
 - Encode MiFID II / Reg NMS-flavour sequencing rules: PLACE first, nothing after CANCEL, exactly one PLACE per order, fill-quantity conservation, venue eligibility per symbol.
-- Solve as constraint satisfaction (MiniZinc) and verify the relational arithmetic ICs against the returned trace.
+- Solve as constraint satisfaction (MiniZinc) and print the returned trace.
 
 Event types are modelled as a `model.Enum` (requires relationalai>=1.12):
 a single enum-indexed property carries one binary decision variable per
@@ -16,11 +16,13 @@ All decisions are integer: prices are integer ticks (1c, so 17500 reads as
 $175.00), times are integer milliseconds, quantities are integer shares.
 
 Run:
-    `python synthetic_order_lifecycle.py`
+    `python synthetic_order_lifecycle.py` deploys the model to the schema in
+    raiconfig.yaml, waits for its first refresh (which runs the solve), and
+    prints the report from the deployed model.
 
 Output:
     Prints the formulation, the generated event trace (one row per slot),
-    the per-order filled-quantity totals, and post-solve verification.
+    and the per-order filled-quantity totals.
 """
 
 from pathlib import Path
@@ -265,35 +267,11 @@ fill_sum_ic = model.where(OrderEvent.order == Order).require(
 )
 problem.satisfy(fill_sum_ic)
 
-# --------------------------------------------------
-# Solve and check solution
-# --------------------------------------------------
-
-problem.display()
-problem.solve("minizinc", time_limit_sec=60)
-problem.solve_info().display()
-
-# Re-check the relational arithmetic ICs in the returned solution. The
-# all_different- and implies-bodied ICs are solver-only and are NOT passed
-# here -- verify() returns silently-OK on them without actually checking.
-problem.verify(
-    type_sum_ic,
-    exactly_one_place_ic,
-    at_most_one_cancel_ic,
-    qty_upper_ic,
-    venue_ok_ic,
-    fill_sum_ic,
-)
-model.require(problem.termination_status() == "OPTIMAL")
-
-# Inspect the generated trace.
-
-print("\nGenerated event trace (one row per slot, sorted by order then timestamp):")
-# Derived enum-typed property mapping each event to its chosen type: the
+# Derived enum-typed relationship mapping each event to its chosen type: the
 # member whose (event, type) indicator the solver set to 1 -- exactly one
 # per event, guaranteed by the one-hot IC. The trace then reads the type
 # label off the member's built-in `.name`.
-OrderEvent.event_type = model.Property(
+OrderEvent.event_type = model.Relationship(
     f"{OrderEvent} has decided {EventType:event_type}"
 )
 for member in EventType:
@@ -302,40 +280,73 @@ for member in EventType:
         OrderEvent.has_type(member, chosen_ind), chosen_ind == 1
     )
 
-trace_df = (
-    model.select(
-        OrderEvent.order.id.alias("order_id"),
-        OrderEvent.order.symbol.name.alias("symbol"),
-        OrderEvent.event_id.alias("event_id"),
-        OrderEvent.ts_ms.alias("ts_ms"),
-        OrderEvent.event_type.name.alias("type"),
-        OrderEvent.qty.alias("qty"),
-        OrderEvent.tick_price.alias("tick_price"),
-        Venue.name.alias("venue"),
-    )
-    .where(Venue.id(OrderEvent.venue_id))
-    .to_df()
-)
-trace_df = (
-    trace_df.astype(
-        {
-            "order_id": "int64",
-            "event_id": "int64",
-            "ts_ms": "int64",
-            "qty": "int64",
-            "tick_price": "int64",
-        }
-    )
-    .sort_values(["order_id", "ts_ms"])
-    .reset_index(drop=True)[
-        ["order_id", "symbol", "event_id", "ts_ms", "type", "qty", "tick_price", "venue"]
-    ]
-)
-print(trace_df.to_string(index=False))
+# --------------------------------------------------
+# Solve
+# --------------------------------------------------
 
-print("\nFilled quantity per order (cannot exceed Order.original_qty):")
-model.select(
-    Order.id.alias("order_id"),
-    Order.original_qty.alias("original_qty"),
-    rai_sum(OrderEvent.fill_qty).per(Order).alias("filled_qty"),
-).where(OrderEvent.order(Order)).inspect()
+# Each refresh of the deployed model runs this solve.
+problem.configure("minizinc", time_limit_sec=60)
+
+# Deploy the rules behind problem.display() with the model.
+problem.install_display_strings()
+
+# The solve's status, published through the model's own relationship.
+SolveStatus = model.Relationship(f"synthetic order lifecycle solve status is {String:status}")
+model.define(SolveStatus(problem.termination_status()))
+
+# --------------------------------------------------
+# Deploy, then report (`rai models deploy` skips this block)
+# --------------------------------------------------
+
+if __name__ == "__main__":
+    # Deploy and wait for the first refresh, which runs the solve.
+    model.deploy()
+
+    problem.display()
+
+    # Status of the latest refresh's solve. A refresh records any termination
+    # status, so the report checks it.
+    status = model.select(SolveStatus).to_df().iloc[:, 0].tolist()
+    print(f"\nSolve result:\n• status: {', '.join(status)}\n")
+    assert status == ["OPTIMAL"], f"termination status {status}"
+
+    # Inspect the generated trace.
+
+    print("\nGenerated event trace (one row per slot, sorted by order then timestamp):")
+    trace_df = (
+        model.select(
+            OrderEvent.order.id.alias("order_id"),
+            OrderEvent.order.symbol.name.alias("symbol"),
+            OrderEvent.event_id.alias("event_id"),
+            OrderEvent.ts_ms.alias("ts_ms"),
+            OrderEvent.event_type.name.alias("type"),
+            OrderEvent.qty.alias("qty"),
+            OrderEvent.tick_price.alias("tick_price"),
+            Venue.name.alias("venue"),
+        )
+        .where(Venue.id(OrderEvent.venue_id))
+        .to_df()
+    )
+    trace_df = (
+        trace_df.astype(
+            {
+                "order_id": "int64",
+                "event_id": "int64",
+                "ts_ms": "int64",
+                "qty": "int64",
+                "tick_price": "int64",
+            }
+        )
+        .sort_values(["order_id", "ts_ms"])
+        .reset_index(drop=True)[
+            ["order_id", "symbol", "event_id", "ts_ms", "type", "qty", "tick_price", "venue"]
+        ]
+    )
+    print(trace_df.to_string(index=False))
+
+    print("\nFilled quantity per order (cannot exceed Order.original_qty):")
+    model.select(
+        Order.id.alias("order_id"),
+        Order.original_qty.alias("original_qty"),
+        rai_sum(OrderEvent.fill_qty).per(Order).alias("filled_qty"),
+    ).where(OrderEvent.order(Order)).inspect()
