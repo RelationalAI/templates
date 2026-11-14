@@ -1,6 +1,6 @@
 """Campaign budget reallocation problem: maximize expected conversions under floors and caps."""
 
-from relationalai.semantics import Float, sum
+from relationalai.semantics import Float, String, sum
 from relationalai.semantics.reasoners.prescriptive import Problem
 
 from .schema import Campaign, model
@@ -58,3 +58,8 @@ problem.maximize(sum(Campaign.x_budget * Campaign.conversion_rate))
 
 # Each refresh of the deployed model runs this solve.
 problem.configure("highs", time_limit_sec=60)
+
+# The solve's status and objective, which the deployed model publishes for the queries.
+SolveStatus = model.Relationship(f"campaign roi solve status is {String:status}")
+TotalConversions = model.Relationship(f"campaign roi total conversions is {Float:conversions}")
+model.define(SolveStatus(problem.termination_status()), TotalConversions(problem.objective_value()))

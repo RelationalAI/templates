@@ -1,18 +1,31 @@
 """Budget reallocation report: reads the deployed campaign_roi model.
 
 Run `python -m queries.budget_reallocation` after `rai models deploy --path model`. Prints the
-result of the latest refresh's solve, the total expected conversions against the current
-budgets, the optimized budget per campaign, and the regional spend against the paused-region cap.
+status and objective of the latest refresh's solve, the total expected conversions against
+the current budgets, the optimized budget per campaign, and the regional spend against the
+paused-region cap.
 """
 
-from model import PAUSED_CAP_FRACTION, PAUSED_REGION, TOTAL_BUDGET, Campaign, model, problem
+from model import (
+    PAUSED_CAP_FRACTION,
+    PAUSED_REGION,
+    TOTAL_BUDGET,
+    Campaign,
+    SolveStatus,
+    TotalConversions,
+    model,
+)
 
 if __name__ == "__main__":
-    si = problem.solve_info()
-    si.display()
+    status = model.select(SolveStatus).to_df().iloc[:, 0].tolist()
+    conversions = model.select(TotalConversions).to_df().iloc[:, 0].tolist()
+    print(f"\nSolve result:\n• status: {', '.join(status)}")
+    if conversions:
+        print(f"• objective: {round(conversions[0], 9)}\n")
 
-    print(f"\nStatus: {si.termination_status}")
-    print(f"Total expected conversions (optimized): {si.objective_value:,.1f}")
+    print(f"\nStatus: {status[0]}")
+    objective_value = conversions[0]
+    print(f"Total expected conversions (optimized): {objective_value:,.1f}")
 
     results_df = model.select(
         Campaign.name.alias("campaign"),
@@ -24,7 +37,7 @@ if __name__ == "__main__":
 
     current_total = (results_df["current"] * results_df["rate"]).sum()
     print(f"Total expected conversions (current):   {current_total:,.1f}")
-    print(f"Lift: {(si.objective_value - current_total) / current_total * 100:+.1f}%")
+    print(f"Lift: {(objective_value - current_total) / current_total * 100:+.1f}%")
 
     print("\nBudget reallocation per campaign (sorted by largest absolute change):")
     results_df["delta"] = results_df["optimized"] - results_df["current"]

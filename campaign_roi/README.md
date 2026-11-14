@@ -41,7 +41,7 @@ Every marketing team eventually faces the same question: the portfolio of campai
 - **Query**: `queries/budget_reallocation.py` prints the report from the deployed model.
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - **Sample data**: `data/campaigns.csv` — 12 campaigns across 5 regions with current budgets and empirical conversion rates.
-- **Outputs**: the solve result (termination status, objective value, solver details), optimized-versus-current conversions and lift, a per-campaign reallocation table, and a regional-spend summary against the paused-region cap.
+- **Outputs**: solver status, objective value, optimized-versus-current conversions and lift, a per-campaign reallocation table, and a regional-spend summary against the paused-region cap.
 
 ## Prerequisites
 
@@ -156,10 +156,6 @@ Use this sequence to deploy the model and query it:
    Solve result:
    • status: OPTIMAL
    • objective: 3151.1
-   • solve time: 0.00s
-   • num_points: 1
-   • solver: HiGHS_1.15.1
-   ...
 
    Status: OPTIMAL
    Total expected conversions (optimized): 3,151.1
@@ -169,7 +165,7 @@ Use this sequence to deploy the model and query it:
    Paused region 'WEST' cap: 565.0 (50% of $1,130K total)
    ```
 
-   The solver details in the solve result, the per-campaign reallocation table, and the regional spend table are trimmed here. The optimum hits the WEST regional cap exactly (50% of $1,130K = $565K), reaches the 3x cap on three high-performing campaigns (`WEST_Premium_Upgrade`, `CENTRAL_Retention_3`, `SOUTH_WinBack_6`), and pushes six low-performing campaigns down to the 10% floor. Despite holding total spend constant, conversions increase by 17.1%. The full printout, including the per-campaign reallocation table and regional-spend summary, is in `runbook.md`.
+   The per-campaign reallocation table and the regional spend table are trimmed here. The optimum hits the WEST regional cap exactly (50% of $1,130K = $565K), reaches the 3x cap on three high-performing campaigns (`WEST_Premium_Upgrade`, `CENTRAL_Retention_3`, `SOUTH_WinBack_6`), and pushes six low-performing campaigns down to the 10% floor. Despite holding total spend constant, conversions increase by 17.1%. The full printout, including the per-campaign reallocation table and regional-spend summary, is in `runbook.md`.
 
    To solve again without changing the model, refresh the deployed model, then run the query again:
 

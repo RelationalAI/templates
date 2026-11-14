@@ -24,6 +24,8 @@ from .reasoning import (
     PAUSED_CAP_FRACTION,
     PAUSED_REGION,
     TOTAL_BUDGET,
+    SolveStatus,
+    TotalConversions,
     problem,
 )
 from .schema import Campaign, model
@@ -37,6 +39,8 @@ __all__ = [
     "PAUSED_REGION",
     "TOTAL_BUDGET",
     "Campaign",
+    "SolveStatus",
+    "TotalConversions",
     "model",
     "problem",
 ]
