@@ -202,7 +202,7 @@ print(f"Max ADV participation per name: {MAX_ADV_PARTICIPATION:.0%}")
 
 # Uncomment to print the formulated problem for debugging.
 # problem.display()
-problem.solve("highs", time_limit_sec=240)
+problem.solve("highs", time_limit_sec=300)
 si = problem.solve_info()
 si.display()
 assert si.termination_status == "OPTIMAL" or si.termination_status == "TIME_LIMIT", "Solver did not find an optimal solution."
