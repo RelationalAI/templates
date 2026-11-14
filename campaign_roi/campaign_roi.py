@@ -13,7 +13,9 @@ This script demonstrates a marketing budget reallocation LP in RelationalAI:
 - Maximize total expected conversions = sum(budget * conversion_rate).
 
 Run:
-    `python campaign_roi.py`
+    `python campaign_roi.py` deploys the model to the schema in raiconfig.yaml, waits for
+    its first refresh (which runs the solve), and prints the report from the deployed
+    model.
 
 Output:
     Prints solver termination status, total conversions vs current,
@@ -98,42 +100,67 @@ problem.maximize(sum(Campaign.x_budget * Campaign.conversion_rate))
 # Solve and check solution
 # --------------------------------------------------
 
-problem.display()
-problem.solve("highs", time_limit_sec=60)
-model.require(problem.termination_status() == "OPTIMAL")
-si = problem.solve_info()
-si.display()
+# Each refresh of the deployed model runs this solve.
+problem.configure("highs", time_limit_sec=60)
 
-print(f"\nStatus: {si.termination_status}")
-print(f"Total expected conversions (optimized): {si.objective_value:,.1f}")
+# Deploy the rules behind problem.display() with the model.
+problem.install_display_strings()
 
-current_total = (campaign_csv["current_budget"] * campaign_csv["conversion_rate"]).sum()
-print(f"Total expected conversions (current):   {current_total:,.1f}")
-print(f"Lift: {(si.objective_value - current_total) / current_total * 100:+.1f}%")
+# The solve's status and objective, published through the model's own relationships.
+SolveStatus = model.Relationship(f"campaign roi solve status is {String:status}")
+TotalConversions = model.Relationship(f"campaign roi total conversions is {Float:conversions}")
+model.define(SolveStatus(problem.termination_status()), TotalConversions(problem.objective_value()))
 
-print("\nBudget reallocation per campaign (sorted by largest absolute change):")
-results_df = model.select(
-    Campaign.name.alias("campaign"),
-    Campaign.region.alias("region"),
-    Campaign.current_budget.alias("current"),
-    Campaign.x_budget.alias("optimized"),
-    Campaign.conversion_rate.alias("rate"),
-).to_df()
-results_df["delta"] = results_df["optimized"] - results_df["current"]
-results_df["multiple"] = results_df["optimized"] / results_df["current"]
-results_df = results_df.sort_values("delta", key=abs, ascending=False).reset_index(drop=True)
-print(results_df.to_string(index=False))
+# --------------------------------------------------
+# Deploy, then report (`rai models deploy` skips this block)
+# --------------------------------------------------
 
-print("\nRegional spend (optimized):")
-regional = (
-    results_df.groupby("region")[["current", "optimized"]]
-    .sum()
-    .reset_index()
-    .sort_values("optimized", ascending=False)
-)
-regional["share_of_total"] = regional["optimized"] / TOTAL_BUDGET
-print(regional.to_string(index=False))
-print(
-    f"\nPaused region '{PAUSED_REGION}' cap: "
-    f"{PAUSED_CAP_FRACTION * TOTAL_BUDGET:.1f} ({PAUSED_CAP_FRACTION:.0%} of ${TOTAL_BUDGET:,.0f}K total)"
-)
+if __name__ == "__main__":
+    # Deploy and wait for the first refresh, which runs the solve.
+    model.deploy()
+
+    problem.display()
+
+    # Status and objective of the latest refresh's solve. A refresh records any
+    # termination status, so the report checks it.
+    status = model.select(SolveStatus).to_df().iloc[:, 0].tolist()
+    conversions = model.select(TotalConversions).to_df().iloc[:, 0].tolist()
+    print(f"\nSolve result:\n• status: {', '.join(status)}")
+    if status != ["OPTIMAL"]:
+        raise SystemExit(f"No optimal budget reallocation: termination status {status}")
+    objective_value = conversions[0]
+    print(f"• objective: {round(objective_value, 9)}\n")
+
+    print(f"\nStatus: {status[0]}")
+    print(f"Total expected conversions (optimized): {objective_value:,.1f}")
+
+    current_total = (campaign_csv["current_budget"] * campaign_csv["conversion_rate"]).sum()
+    print(f"Total expected conversions (current):   {current_total:,.1f}")
+    print(f"Lift: {(objective_value - current_total) / current_total * 100:+.1f}%")
+
+    print("\nBudget reallocation per campaign (sorted by largest absolute change):")
+    results_df = model.select(
+        Campaign.name.alias("campaign"),
+        Campaign.region.alias("region"),
+        Campaign.current_budget.alias("current"),
+        Campaign.x_budget.alias("optimized"),
+        Campaign.conversion_rate.alias("rate"),
+    ).to_df()
+    results_df["delta"] = results_df["optimized"] - results_df["current"]
+    results_df["multiple"] = results_df["optimized"] / results_df["current"]
+    results_df = results_df.sort_values("delta", key=abs, ascending=False).reset_index(drop=True)
+    print(results_df.to_string(index=False))
+
+    print("\nRegional spend (optimized):")
+    regional = (
+        results_df.groupby("region")[["current", "optimized"]]
+        .sum()
+        .reset_index()
+        .sort_values("optimized", ascending=False)
+    )
+    regional["share_of_total"] = regional["optimized"] / TOTAL_BUDGET
+    print(regional.to_string(index=False))
+    print(
+        f"\nPaused region '{PAUSED_REGION}' cap: "
+        f"{PAUSED_CAP_FRACTION * TOTAL_BUDGET:.1f} ({PAUSED_CAP_FRACTION:.0%} of ${TOTAL_BUDGET:,.0f}K total)"
+    )
