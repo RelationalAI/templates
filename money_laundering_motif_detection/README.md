@@ -180,9 +180,9 @@ Run these steps from a terminal:
    rai models deploy --path model
    ```
 
-   The model holds all three motifs. The deploy creates the public schema `<DB>.MONEY_LAUNDERING_MOTIF_DETECTION` if it doesn't exist and waits for the first refresh, which runs the three motif solves. Without the `deployment` section, it stops with an error naming the missing setting.
+   The model holds all three motifs. The deploy creates the public schema named in `raiconfig.yaml` if it doesn't exist and waits for the first refresh, which runs the three motif solves.
 
-   Deploying again without changing the model redeploys nothing and does not solve again; the queries report the latest refresh. A change to a motif module or to its `problem.configure(...)` call redeploys, and the redeploy's refresh solves all three motifs. To solve again without a change, refresh the deployed model in Snowflake with `CALL <DB>.MONEY_LAUNDERING_MOTIF_DETECTION_META._INTERNAL_REFRESH_MODEL('standard', NULL);`, then run the queries again.
+   Deploying again without changing the model applies no updates and does not solve again; the queries report the latest refresh. A change to a motif module or to its `problem.configure(...)` call redeploys, and the redeploy's refresh solves all three motifs.
 
 6. **Query the results**
 
@@ -206,7 +206,7 @@ Run these steps from a terminal:
    11         1     12               9         HubAccB3              10        OffshoreLLC    7780      44
    ```
 
-   The butterfly search finds the two planted scatter-gathers (cluster `100` -> `WireRecipientCorp`, cluster `200` -> `OffshoreLLC`) and exhausts the search.
+   The butterfly search finds the two planted scatter-gathers (cluster `100` sending to `WireRecipientCorp`, cluster `200` sending to `OffshoreLLC`) and exhausts the search.
 
    ```bash
    python -m queries.smurf_army_motifs
@@ -256,6 +256,12 @@ Run these steps from a terminal:
    ```
 
    The KYC-mix burst search finds two valid 5-account cohorts that satisfy the retail floor (4 retail, all within 60 min): the planted cohort with Brookline Industries plus an alternative-business swap (Newland Capital Inc).
+
+   To solve again without changing the model, refresh the deployed model, then run the queries again:
+
+   ```sql
+   CALL <DB>.MONEY_LAUNDERING_MOTIF_DETECTION_META._INTERNAL_REFRESH_MODEL('standard', NULL);
+   ```
 
 7. **Tear down the deployment**
 
