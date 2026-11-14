@@ -68,6 +68,8 @@ Run these steps from a terminal:
    cd sample-template
    ```
 
+   The starter itself is not published as a ZIP. To start a new template, copy this directory instead, as described under Customize this template.
+
 2. **Create a Python environment**
 
    Create and activate a virtual environment, then update pip:
@@ -173,7 +175,8 @@ source records -> model/source.py -> model/schema.py -> deploy -> queries/item_r
 1. Copy this directory to a new root-level template directory and rename it
    (`cp -R sample-template your_template_name`). Update the package metadata,
    the name of the query module, the Quickstart download link and directory
-   name, the README, and `template-docs.yaml`.
+   name (and drop the note under its first step), the README, and
+   `template-docs.yaml`.
 1. Replace `Item` with the concepts and relationships for the business
    problem.
 1. Replace the in-memory record with local or remote source mappings.
