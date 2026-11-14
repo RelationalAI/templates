@@ -24,13 +24,15 @@ layout without prescribing a business domain.
 
 - Contributors creating a new template.
 - Authors who need a consistent boundary between schema, source loading, and
-  runner logic.
+  queries.
 
 ## What you'll build
 
 - A stable schema in `model/schema.py`.
 - Source reads and base-fact mappings in `model/source.py`.
-- A runner that owns reasoning, solves, queries, and reporting.
+- Reasoning and solves declared at module level in the model package, so one
+  deploy publishes them.
+- A query module that reads the deployed model and prints the report.
 - A `template-docs.yaml` sidecar for the generated documentation experience.
 
 ## What's included
@@ -39,8 +41,8 @@ layout without prescribing a business domain.
   and relationships.
 - **Sources**: `model/source.py` reads or constructs source data and maps base
   facts into the shared model.
-- **Runner**: `template.py` imports the model package and owns executable
-  reasoning and reporting.
+- **Query**: `queries/item_report.py` imports the model package, reads the
+  deployed model, and prints the report.
 - **Documentation metadata**: `template-docs.yaml` selects the model subset,
   walkthrough, guide links, and optional sample tables for the docs site.
 
@@ -53,29 +55,42 @@ layout without prescribing a business domain.
 
 ## Quickstart
 
-1. Copy this directory to a new root-level template directory and rename it:
+Before you start, install Python 3.10 or later and get a Snowflake role that can deploy models, as described under Prerequisites. This starter has no prescriptive solve, so it needs no setup beyond that role.
+
+Run these steps from a terminal:
+
+1. **Download the template**
+
+   [Download the ZIP](https://docs.relational.ai/templates/zips/v1/sample-template.zip). Unzip it and enter the template directory:
 
    ```bash
-   cp -R sample-template your_template_name
-   cd your_template_name
+   unzip sample-template.zip
+   cd sample-template
    ```
 
-1. Update the package metadata, runner name, source files, README, and
-   `template-docs.yaml`.
+2. **Create a Python environment**
 
-1. Create an environment and install the template:
+   Create and activate a virtual environment, then update pip:
 
    ```bash
    python -m venv .venv
    source .venv/bin/activate
+   python -m pip install --upgrade pip
+   ```
+
+3. **Install the template**
+
+   Install the template's dependencies, including the `rai` CLI, in the active environment:
+
+   ```bash
    python -m pip install .
    ```
 
-1. Configure the Snowflake connection and the deployment: run `rai init` to
-   create `raiconfig.yaml` with your Snowflake connection, set the connection
-   `role` to the model role, then add a `deployment` section. Give each template
-   its own schema pair so two deployed templates never share one; the deploy
-   creates both schemas if they don't exist.
+4. **Configure your project**
+
+   Use the configuration builder in [Install and run PyRel](https://docs.relational.ai/get-started/install-and-run-pyrel/#configure-your-project) to create `raiconfig.yaml` in the template directory, with the model role as the connection `role`.
+
+   Then add a `deployment` section. Give each template its own schema pair so two deployed templates never share one; the deploy creates both schemas if they don't exist:
 
    ```yaml
    deployment:
@@ -89,27 +104,43 @@ layout without prescribing a business domain.
      schedule: standard
    ```
 
-   Without the `deployment` section, `python template.py` stops with an error
-   naming the missing setting.
+5. **Deploy the model**
 
-1. Run the renamed entrypoint:
+   Deploy the model in `model/` to the schemas in `raiconfig.yaml`:
 
    ```bash
-   python template.py
+   rai models deploy --path model
    ```
 
-   The script deploys the model, waits for its first refresh, and prints the
-   report from the deployed model. `rai models deploy` deploys without printing
-   the report.
+   The deploy waits for the model's first refresh. Without the `deployment` section, it stops with an error naming the missing setting.
 
-   Running the script again without changing the model redeploys nothing; it
-   prints the item from the deployed model. A change to the model redeploys it.
+   Deploying again without changing the model applies no updates. A change to the model redeploys it.
 
-   To remove the deployment, run `rai models teardown --force` from
-   this directory; it keeps the two schemas.
+6. **Query the results**
 
-The example prints the item loaded by `model/source.py`. Your template should
-document a similarly small success signal.
+   Print the report from the deployed model:
+
+   ```bash
+   python -m queries.item_report
+   ```
+
+   ```text
+      id          name
+   0   1  Example item
+   ```
+
+   The example prints the item loaded by `model/source.py`. Your template should document a similarly small success signal.
+
+7. **Tear down the deployment**
+
+   Preview what the teardown removes, then remove it:
+
+   ```bash
+   rai models teardown
+   rai models teardown --force
+   ```
+
+   The teardown removes the deployed objects and keeps the two schemas.
 
 ## Sample data
 
@@ -129,21 +160,26 @@ do not duplicate them in `template-docs.yaml`.
 ## How it works
 
 `model/schema.py` creates the model and stable vocabulary. Importing `model`
-loads the single source in `model/source.py`. The runner then deploys the model,
-waits for its first refresh, and selects the modeled records from the deployed
-model and prints them.
+loads the single source in `model/source.py`. `rai models deploy --path model`
+deploys the model and waits for its first refresh. The query module then selects
+the modeled records from the deployed model and prints them.
 
 ```text
-source records -> model/source.py -> model/schema.py -> runner -> output
+source records -> model/source.py -> model/schema.py -> deploy -> queries/item_report.py -> output
 ```
 
 ## Customize this template
 
+1. Copy this directory to a new root-level template directory and rename it
+   (`cp -R sample-template your_template_name`). Update the package metadata,
+   the name of the query module, the Quickstart download link and directory
+   name, the README, and `template-docs.yaml`.
 1. Replace `Item` with the concepts and relationships for the business
    problem.
 1. Replace the in-memory record with local or remote source mappings.
-1. Declare reasoning and solves at the top level of the runner, before the
-   deploy, and put queries and reporting after `model.deploy()`.
+1. Declare reasoning and solves at the top level of the `model/` package, which
+   the deploy publishes, and put queries and reporting in modules under
+   `queries/` that only read the deployed model.
 1. Update every sidecar symbol, source path, walkthrough focus, and sample
    column after changing the code.
 

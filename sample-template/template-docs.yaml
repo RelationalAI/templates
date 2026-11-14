@@ -7,12 +7,14 @@ page:
   omit_from_readme:
     - model-overview
     - how-it-works
+  download_and_run_from_readme: true
+  deployment: true
 
 model_explorer:
   title: How the starter model fits together
   description: >-
     The starter separates stable schema declarations from source mappings and
-    keeps executable queries and reporting in the runner.
+    keeps executable queries and reporting in a query module.
   concepts:
     - symbol: Item
       description: A generic business record to replace with a domain concept.
@@ -23,7 +25,7 @@ guided_walkthrough:
   title: Follow the starter flow
   description: >-
     These three steps show where a template declares its model, loads base
-    facts, and inspects results.
+    facts, and queries the deployed model.
   steps:
     - id: define-schema
       title: Define the stable schema
@@ -59,10 +61,10 @@ guided_walkthrough:
     - id: inspect-results
       title: Inspect modeled records
       explanation: >-
-        inspect_items queries the model and returns the records printed by the
-        runner.
+        inspect_items queries the deployed model and returns the records printed
+        by the query module.
       focus:
-        file: template.py
+        file: queries/item_report.py
         symbols:
           - inspect_items
       references:
