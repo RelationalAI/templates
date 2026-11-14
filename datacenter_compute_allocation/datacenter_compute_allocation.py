@@ -1036,19 +1036,21 @@ else:
         cells_df = cells_df.merge(df_pt, on=["envelope", "margin", "diversity"], how="left")
         cells_df[f"n_{pt}"] = pd.to_numeric(cells_df[f"n_{pt}"], errors="coerce").fillna(0).astype(int)
 
-    # Per-cell status: cells with assignments are OPTIMAL; cells with none
-    # are INFEASIBLE when the global solve proved optimality, or UNSOLVED when
-    # the wall-clock ran out before the solver could explore that cell.
-    _empty_label = "INFEASIBLE" if si.termination_status == "OPTIMAL" else "UNSOLVED"
+    # Per-cell status: when the global solve proved optimality, cells with
+    # assignments are OPTIMAL and cells with none are INFEASIBLE. When the
+    # wall-clock ran out first, they are FEASIBLE and UNSOLVED.
+    _proved = si.termination_status == "OPTIMAL"
+    _filled_label = "OPTIMAL" if _proved else "FEASIBLE"
+    _empty_label = "INFEASIBLE" if _proved else "UNSOLVED"
     cells_df["status"] = cells_df["n_assigned"].apply(
-        lambda n: "OPTIMAL" if n > 0 else _empty_label
+        lambda n: _filled_label if n > 0 else _empty_label
     )
     cells_df = cells_df.sort_values(["envelope", "margin", "diversity"])
 
     n_cells_total = len(cells_df)
-    n_feasible = (cells_df["status"] == "OPTIMAL").sum()
-    n_empty = n_cells_total - n_feasible
-    print(f"\n  Per-cell summary ({n_cells_total} cells: {n_feasible} optimal, {n_empty} {_empty_label.lower()}):")
+    n_filled = (cells_df["status"] == _filled_label).sum()
+    n_empty = n_cells_total - n_filled
+    print(f"\n  Per-cell summary ({n_cells_total} cells: {n_filled} {_filled_label.lower()}, {n_empty} {_empty_label.lower()}):")
 
     display_cols = ["envelope", "margin", "diversity", "status",
                     "n_assigned", "revenue_usd", "total_cost_usd",
@@ -1098,8 +1100,8 @@ else:
     else:
         _r = chosen_row.iloc[0]
         _status = _r["status"]
-        if _status == "INFEASIBLE":
-            _binding_axis = "infeasible"
+        if _status == _empty_label:
+            _binding_axis = _empty_label.lower()
         else:
             _binding_axis = "power_envelope"
 
