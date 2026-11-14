@@ -36,7 +36,7 @@ This template finds the profit-maximizing production plan across a set of machin
 
 ## What's included
 
-- `model/__init__.py` -- The scenario model, constraints, and objective; `rai models deploy --path model` deploys it to your Snowflake account, where each refresh runs the solve
+- `model/` -- The model package: `schema.py` declares the concepts, `source.py` loads the sample data, and `reasoning.py` states the decision problem (the scenario model, constraints, and objective); `rai models deploy --path model` deploys it to your Snowflake account, where each refresh runs the solve
 - `queries/production_plan.py` -- Prints the report from the deployed model: the solve's status and objective and the production plan for each scenario
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - `data/products.csv` -- Products with base demand and per-unit profit margins
@@ -174,7 +174,7 @@ Use this sequence to deploy the model and query it:
    14   low_demand  Machine_3  Widget_B       1.0
    ```
 
-   The formulation printed above the solve result is trimmed here. The report checks the solve's termination status and stops unless it is `OPTIMAL`. All three scenarios are solved together in a single call. The single objective (44735.0) is the combined profit across all three scenarios. Per-scenario profit is $15,020 (0.8x), $14,945 (1.0x), and $14,770 (1.1x): profit falls as the demand floor rises, because a looser floor leaves more capacity for the highest-margin mix. See `runbook.md` for the step-by-step walkthrough.
+   All three scenarios are solved together in a single call. The single objective (44735.0) is the combined profit across all three scenarios. Per-scenario profit is $15,020 (0.8x), $14,945 (1.0x), and $14,770 (1.1x): profit falls as the demand floor rises, because a looser floor leaves more capacity for the highest-margin mix. See `runbook.md` for the step-by-step walkthrough.
 
    To solve again without changing the model, refresh the deployed model, then run the query again:
 
@@ -201,7 +201,10 @@ production_planning/
 ├── pyproject.toml          # dependencies
 ├── runbook.md              # analyst-facing walkthrough
 ├── model/
-│   └── __init__.py         # the deployed model (single solve over all scenarios)
+│   ├── __init__.py         # exports of the deployed model
+│   ├── schema.py           # products, machines, rates, and scenarios
+│   ├── source.py           # loads the sample CSVs and the demand scenarios
+│   └── reasoning.py        # production decision concept, constraints, objective, solve
 ├── queries/
 │   └── production_plan.py  # report from the deployed model
 └── data/
@@ -220,7 +223,7 @@ The bundled data is small and illustrative — three CSVs describing a plant wit
 - **`machines.csv`** — one row per machine, with `hours_available` per planning period.
 - **`production_rates.csv`** — one row per machine-product pair, with `hours_per_unit` (machine time to make one unit). A missing pair means that machine cannot make that product.
 
-The three demand scenarios (`low_demand` 0.8, `baseline` 1.0, `high_demand` 1.1) are defined inline in `model/__init__.py`, not loaded from a CSV.
+The three demand scenarios (`low_demand` 0.8, `baseline` 1.0, `high_demand` 1.1) are defined inline in `model/source.py`, not loaded from a CSV.
 
 ## Model overview
 
@@ -228,7 +231,7 @@ The three demand scenarios (`low_demand` 0.8, `baseline` 1.0, `high_demand` 1.1)
 - **Primary identifiers**: integer `id` on `Product` and `Machine`; string `name` on `Scenario`. `ProductionRate` and `Production` are identified structurally by the entities they link.
 - **Important invariants**: `demand`, `profit`, `hours_available`, and `hours_per_unit` are non-negative; the decision variable `x_quantity` is a non-negative integer; total machine hours used cannot exceed `hours_available`; total units produced must meet demand scaled by the scenario multiplier.
 
-For the full concept and property definitions, see `model/__init__.py`; `runbook.md` builds them step by step with the RAI skills.
+For the full concept and property definitions, see `model/schema.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
@@ -245,7 +248,7 @@ CSV inputs → load Product / Machine / ProductionRate → add Scenario multipli
 3. **Constrain the plan.** For each machine and scenario, total hours used cannot exceed the machine's available hours. For each product and scenario, total units produced must meet that product's demand scaled by the scenario's multiplier.
 4. **Maximize profit.** The objective sums per-unit profit across every production assignment, and the solver returns the profit-maximizing plan for all scenarios at once.
 
-See `model/__init__.py` for the implementation and `runbook.md` for the skill-driven reproduction.
+See `model/reasoning.py` for the implementation and `runbook.md` for the skill-driven reproduction.
 
 ## Customize this template
 
@@ -259,7 +262,7 @@ Focus on the first changes most users will make.
 
 ### Tune parameters
 
-- **Demand scenarios** — edit the `scenario_data` list in `model/__init__.py` to change the multipliers or add scenarios.
+- **Demand scenarios** — edit the `scenario_data` list in `model/source.py` to change the multipliers or add scenarios.
 - **Solver time limit** — `time_limit_sec` (default `60`) on the `problem.configure(...)` call.
 - **Extend scenario analysis** to vary other parameters, such as machine availability or profit margins.
 
