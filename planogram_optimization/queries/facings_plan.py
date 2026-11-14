@@ -1,17 +1,28 @@
 """Facings plan report: reads the deployed planogram_optimization model.
 
 Run `python -m queries.facings_plan` after `rai models deploy --path model`. Prints the
-result of the latest refresh's solve, checks that each SKU's realized demand matches the
-predicted-demand table at its chosen facings, then prints the optimal facings per SKU,
-per-shelf utilization, and per-category active counts.
+status and objective of the latest refresh's solve, checks that each SKU's realized demand
+matches the predicted-demand table at its chosen facings, then prints the optimal facings per
+SKU, per-shelf utilization, and per-category active counts.
 """
 
-from model import Category, PredictedDemand, Shelf, Sku, model, problem
+from model import (
+    Category,
+    PredictedDemand,
+    Shelf,
+    Sku,
+    SolveStatus,
+    TotalDemand,
+    model,
+)
 from relationalai.semantics import sum
 
 if __name__ == "__main__":
-    si = problem.solve_info()
-    si.display()
+    status = model.select(SolveStatus).to_df().iloc[:, 0].tolist()
+    demand = model.select(TotalDemand).to_df().iloc[:, 0].tolist()
+    print(f"\nSolve result:\n• status: {', '.join(status)}")
+    if demand:
+        print(f"• objective: {demand[0]}\n")
 
     # Post-solve table-lookup check. Pull the chosen `(Sku.id, Sku.facings,
     # Sku.realized_demand)` triples and confirm `realized_demand` matches the

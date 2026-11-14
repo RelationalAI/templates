@@ -164,10 +164,6 @@ Use this sequence to deploy the model and query it:
    Solve result:
    • status: OPTIMAL
    • objective: 1656
-   • solve time: 0.67s
-   • num_points: 1
-   • solver: MiniZinc_unknown
-   ...
 
    Optimal facings per SKU:
        id               name         category                shelf  facings  realized_demand
@@ -205,7 +201,7 @@ Use this sequence to deploy the model and query it:
    3           snacks            5                3                5
    ```
 
-   The solver details in the solve result are trimmed here. The solver maximizes total predicted weekly demand, and the exact selection may vary across solver versions if several allocations reach the same optimal objective. The report stops if any SKU's realized demand does not match the demand table at its chosen facings.
+   The solver maximizes total predicted weekly demand, and the exact selection may vary across solver versions if several allocations reach the same optimal objective. The report stops if any SKU's realized demand does not match the demand table at its chosen facings.
 
    Total weekly demand of `1656` units, 16 of 18 SKUs active. Two SKUs go inactive because the candy and household_paper categories each have 4 SKUs but `max_skus_active=3`: Mint Roll loses the candy cap (lowest predicted demand at every k), Paper Towels 6pk loses the household_paper cap (lowest predicted demand-per-cm). The bottom shelf is fully binding (90/90cm); the other three are within 1-3cm of capacity.
 
@@ -278,7 +274,7 @@ skus + shelves + categories + predicted-demand table → facings / realized_dema
 
 **An `active` indicator couples to `facings` via two linear inequalities.** The per-category cardinality is a relational sum over a 0/1 `active` variable (a sum over a Boolean expression like `facings >= 1` is not a valid form). Two linear constraints pin `active = 1` whenever `facings >= 1` and `active = 0` otherwise, after which the per-category count reads as a plain `sum(active).per(Category)` with min/max bounds. Shelf capacity is likewise a plain relational inequality: facings times width, summed per shelf, cannot exceed the shelf length.
 
-**Checks run in the report.** The `implies`-bodied lookup is solver-only; after the deploy, a Python dict re-checks each `(sku_id, facings) -> demand_units` against the deployed demand table, and the report stops if one does not match. The constraints (lookup, capacity, cardinality, active coupling) all go to the solver; the report does not re-evaluate them, and a refresh started outside the report (`rai models deploy`, the refresh procedure, a schedule) runs no checks, so read the solve result (`problem.solve_info()`) before relying on a refreshed solution.
+**Checks run in the report.** The `implies`-bodied lookup is solver-only; after the deploy, a Python dict re-checks each `(sku_id, facings) -> demand_units` against the deployed demand table, and the report stops if one does not match. The constraints (lookup, capacity, cardinality, active coupling) all go to the solver; the report does not re-evaluate them, and a refresh started outside the report (`rai models deploy`, the refresh procedure, a schedule) runs no checks, so read the solve status (`SolveStatus`) before relying on a refreshed solution.
 
 For the exact PyRel formulation, see `model/reasoning.py`; `runbook.md` reproduces the pipeline step by step with the RAI skills.
 
@@ -331,7 +327,7 @@ For the exact PyRel formulation, see `model/reasoning.py`; `runbook.md` reproduc
   <summary>Import error or AttributeError on <code>relationalai</code></summary>
 
 - Confirm your virtual environment is active: `which python` should point to `.venv`.
-- Reinstall dependencies: `python -m pip install .`. The pinned version (`relationalai==2.1.1`) ships the `configure()`, `solve_info()`, and `where().require()` APIs this template uses; older versions lack them and produce attribute errors.
+- Reinstall dependencies: `python -m pip install .`. The pinned version (`relationalai==2.1.1`) ships the `configure()` and `where().require()` APIs this template uses; older versions lack them and produce attribute errors.
 - If you share a venv across templates, run `python -m pip install --upgrade --force-reinstall relationalai==2.1.1`.
 
 </details>

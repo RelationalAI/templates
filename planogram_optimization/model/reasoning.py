@@ -1,6 +1,6 @@
 """Planogram problem: integer facings per SKU that maximize total predicted demand."""
 
-from relationalai.semantics import Integer, sum
+from relationalai.semantics import Integer, String, sum
 from relationalai.semantics.reasoners.prescriptive import Problem, implies
 
 from .schema import Category, PredictedDemand, Shelf, Sku, model
@@ -73,3 +73,8 @@ problem.maximize(sum(Sku.realized_demand))
 
 # Each refresh of the deployed model runs this solve.
 problem.configure("minizinc", time_limit_sec=60)
+
+# The solve's status and objective, which the deployed model publishes for the queries.
+SolveStatus = model.Relationship(f"planogram solve status is {String:status}")
+TotalDemand = model.Relationship(f"planogram total demand is {Integer:demand}")
+model.define(SolveStatus(problem.termination_status()), TotalDemand(problem.objective_value()))

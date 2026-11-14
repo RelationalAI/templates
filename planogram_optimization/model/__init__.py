@@ -29,8 +29,18 @@ Run:
     `python -m queries.facings_plan` then prints the report from the deployed model.
 """
 
-from .reasoning import problem
+from .reasoning import SolveStatus, TotalDemand, problem
 from .schema import Category, PredictedDemand, Shelf, Sku, model
 from .source import DATA_DIR
 
-__all__ = ["DATA_DIR", "Category", "PredictedDemand", "Shelf", "Sku", "model", "problem"]
+__all__ = [
+    "DATA_DIR",
+    "Category",
+    "PredictedDemand",
+    "Shelf",
+    "Sku",
+    "SolveStatus",
+    "TotalDemand",
+    "model",
+    "problem",
+]
