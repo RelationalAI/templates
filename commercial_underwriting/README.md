@@ -170,7 +170,7 @@ Run these steps from a terminal:
        STANDARD       1   18000.0  18000.000000
    ```
 
-   Each entity falls into exactly one tier, because the four tier concepts partition the insured entities, and the report stops if any entity lands in no tier or in two. The premium-by-tier rollup is the underwriting business view: about $150K of bound premium is associated with submissions that today's rules would decline; about $236K is non-standard and could be repriced.
+   Each entity falls into exactly one tier, because the four tier concepts partition the insured entities, and the report prints a warning if any entity lands in no tier or in two. The premium-by-tier rollup is the underwriting business view: about $150K of bound premium is associated with submissions that today's rules would decline; about $236K is non-standard and could be repriced.
 
 7. **Tear down the deployment**
 
@@ -289,13 +289,13 @@ All thresholds are at the top of `model/__init__.py` under `# Configure inputs`:
 <details>
   <summary>An entity isn't classified into any tier.</summary>
 
-  The report verifies mutual exclusivity and stops with an error if any entity is unclassified. The most likely cause is a rule condition that doesn't match the data — verify with `model.select(InsuredEntity.id).where(InsuredEntity.has_decline_factor()).to_df()` and the analogous `has_marginal_factor` query that those flags fire as expected.
+  The report verifies mutual exclusivity and prints a warning if any entity is unclassified. The most likely cause is a rule condition that doesn't match the data — verify with `model.select(InsuredEntity.id).where(InsuredEntity.has_decline_factor()).to_df()` and the analogous `has_marginal_factor` query that those flags fire as expected.
 </details>
 
 <details>
   <summary>Two tiers fire for the same entity.</summary>
 
-  This indicates the tier conditions are not mutually exclusive. The report stops with an error if it finds any overlap. Check the `model.not_()` clauses on the lower-priority tier rules (NonStandard / Preferred / Standard) — each must explicitly exclude the higher-priority tier's flag.
+  This indicates the tier conditions are not mutually exclusive. The report prints a warning if it finds any overlap. Check the `model.not_()` clauses on the lower-priority tier rules (NonStandard / Preferred / Standard) — each must explicitly exclude the higher-priority tier's flag.
 </details>
 
 <details>
