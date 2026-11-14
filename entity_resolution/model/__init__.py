@@ -3,17 +3,8 @@
 `rai models deploy --path model` deploys everything this package declares.
 """
 
-from .schema import CandidateMatch, Record, ResolvedParty, ReviewPair, model
-from .source import (
-    AUTO_MERGE,
-    REVIEW_FLOOR,
-    candidate_count,
-    load_ground_truth,
-    matches_df,
-    record_ids,
-    records_df,
-    review_df,
-)
+from .schema import CandidateMatch, CandidatePairCount, Record, ResolvedParty, ReviewPair, model
+from .source import AUTO_MERGE, REVIEW_FLOOR, load_ground_truth
 
 # isort: split
 # The reasoning declares rules over the facts loaded above.
@@ -34,18 +25,14 @@ __all__ = [
     "REINSURANCE_RATE",
     "REVIEW_FLOOR",
     "CandidateMatch",
+    "CandidatePairCount",
     "Record",
     "ResolvedParty",
     "ReviewPair",
     "SolveStatus",
-    "candidate_count",
     "load_ground_truth",
-    "matches_df",
     "model",
     "num_edges",
     "num_nodes",
     "problem",
-    "record_ids",
-    "records_df",
-    "review_df",
 ]

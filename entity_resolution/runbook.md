@@ -129,7 +129,7 @@ A binary `ResolvedParty.cede` over the 4 breached households; budget constraint 
 **Prompt**
 
 ```
-/rai-pyrel In queries/resolution_report.py, using the source frames exported by model/__init__.py and queries of the deployed model, report how many matches are held in the review queue and whether confirming them changes the accumulation picture. Also score the auto-resolution against the data/ground_truth.csv labels: pairwise precision, recall, and F1.
+/rai-pyrel In queries/resolution_report.py, query the deployed model to report how many matches are held in the review queue and whether confirming them changes the accumulation picture. Also score the auto-resolution against the data/ground_truth.csv labels: pairwise precision, recall, and F1.
 ```
 
 **Response**

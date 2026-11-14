@@ -4,6 +4,8 @@ Run `python -m queries.resolution_report` after `rai models deploy --path model`
 Prints blocking/banding stats, graph size, resolved-party and golden-record
 summary, the accumulation contrast, the reinsurance cession plan, the review
 queue, and pairwise precision / recall / F1 against the ground-truth labels.
+Every figure comes from the deployed model except the labels, which are evaluation
+data read from `data/ground_truth.csv`.
 """
 
 from itertools import combinations
@@ -14,20 +16,42 @@ from model import (
     REINSURANCE_BUDGET,
     REINSURANCE_RATE,
     REVIEW_FLOOR,
+    CandidateMatch,
+    CandidatePairCount,
     Record,
     ResolvedParty,
+    ReviewPair,
     SolveStatus,
-    candidate_count,
     load_ground_truth,
-    matches_df,
     model,
     num_edges,
     num_nodes,
-    record_ids,
-    review_df,
 )
 
 if __name__ == "__main__":
+    resolved = model.select(
+        Record.record_id.alias("record_id"),
+        Record.entity_key.alias("entity_id"),
+        Record.source_system.alias("source_system"),
+        Record.full_name.alias("full_name"),
+        Record.created_at.alias("created_at"),
+        Record.coverage_amount.alias("coverage_amount"),
+    ).to_df()
+    resolved["entity_id"] = resolved["entity_id"].astype(str)
+    record_ids = sorted(int(record_id) for record_id in resolved["record_id"])
+
+    candidate_count = int(model.select(CandidatePairCount).to_df().iloc[0, 0])
+    n_matches = len(model.select(CandidateMatch.pair_id).to_df())
+    review_df = (
+        model.select(
+            ReviewPair.pair_id.alias("pair_id"),
+            ReviewPair.rec_a.record_id.alias("rec_a"),
+            ReviewPair.rec_b.record_id.alias("rec_b"),
+        )
+        .to_df()
+        .sort_values("pair_id")
+    )
+
     n_records = len(record_ids)
     all_pairs = n_records * (n_records - 1) // 2
     print("=" * 64)
@@ -39,22 +63,12 @@ if __name__ == "__main__":
         f"Candidate pairs:         {candidate_count}  "
         f"({100 * (1 - candidate_count / all_pairs):.1f}% fewer comparisons)"
     )
-    print(f"Auto-merge matches:      {len(matches_df)}  (score >= {AUTO_MERGE})")
+    print(f"Auto-merge matches:      {n_matches}  (score >= {AUTO_MERGE})")
     print(f"Held for review:         {len(review_df)}  ([{REVIEW_FLOOR}, {AUTO_MERGE}))")
 
     n_nodes = int(model.select(num_nodes.alias("n")).to_df()["n"].iloc[0])
     n_edges = int(model.select(num_edges.alias("n")).to_df()["n"].iloc[0])
     print(f"Graph:                   {n_nodes} nodes, {n_edges} match edges")
-
-    resolved = model.select(
-        Record.record_id.alias("record_id"),
-        Record.entity_key.alias("entity_id"),
-        Record.source_system.alias("source_system"),
-        Record.full_name.alias("full_name"),
-        Record.created_at.alias("created_at"),
-        Record.coverage_amount.alias("coverage_amount"),
-    ).to_df()
-    resolved["entity_id"] = resolved["entity_id"].astype(str)
 
     n_entities = resolved["entity_id"].nunique()
     print("\n" + "=" * 64)
