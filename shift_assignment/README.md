@@ -32,11 +32,11 @@ The template also demonstrates scenario analysis by sweeping over different mini
 
 - A constraint model that assigns workers to shifts respecting availability and capacity limits
 - Scenario analysis across multiple minimum-coverage levels (1, 2, 3 workers per shift)
-- Post-solve verification via `problem.verify()` to confirm constraint satisfaction across all scenarios
+- A report that prints the solve status and stops unless the solver returned `OPTIMAL`
 
 ## What's included
 
-- `shift_assignment.py` -- main script with ontology, constraints, and scenario analysis
+- `shift_assignment.py` -- main script with ontology, constraints, and scenario analysis; it deploys the model and prints the report from the deployed model
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - `data/workers.csv` -- 10 workers with IDs and names
 - `data/shifts.csv` -- 3 shifts (Morning, Afternoon, Night) with capacity limits
@@ -47,7 +47,8 @@ The template also demonstrates scenario analysis by sweeping over different mini
 
 ### Access
 - A Snowflake account that has the RAI Native App installed.
-- A Snowflake user with permissions to access the RAI Native App.
+- The one-time model deployment setup on that account, done by an account administrator: follow [Set up model deployment](https://private.relational.ai/early-access/model-deploy-setup) through **Governed setup**, **PAT authentication**, and steps 1-2 of **Additional setup for the prescriptive reasoner** (Quickstart step 4 below covers this template's own schema). It gives you a model role, a programmatic access token (PAT) stored as a secret, an external access integration, a PAT user, and a warehouse.
+- A Snowflake user that holds the model role.
 
 ### Tools
 - Python >= 3.10
@@ -76,15 +77,56 @@ The template also demonstrates scenario analysis by sweeping over different mini
    python -m pip install .
    ```
 
-4. Configure:
-   ```bash
-   rai init
+4. Configure: run `rai init` to create `raiconfig.yaml` with your Snowflake connection, set the connection `role` to the model role, then add a `deployment` section. Give each template its own schema pair so two deployed templates never share one.
+   ```yaml
+   reasoners:
+     prescriptive:
+       name: shift_assignment_solver            # created on first deploy if it doesn't exist
+   deployment:
+     role: <MODEL_ROLE>
+     public_schema: <DB>.SHIFT_ASSIGNMENT               # published views and tables
+     identity:
+       internal_schema: <DB>.SHIFT_ASSIGNMENT_META      # solver inputs, results, refresh procedures
+     schedules:
+       standard:
+         interval_s: 0              # refresh only on deploy or on demand
+     schedule: standard
+     pat_secret: <PAT_SECRET>       # these four come from the setup page
+     pat_eai: <PAT_EAI>
+     pat_user: <PAT_USER>
+     pat_warehouse: <PAT_WAREHOUSE>
    ```
+   Without the `deployment` section, `python shift_assignment.py` stops with an error naming the missing setting.
+
+   Before the first run, create the internal schema as the model role, and have an administrator grant the RAI Native App caller access to it. The internal schema holds only this model's objects, so the grants cover all of it, including the solver's result tables that the deploy creates:
+   ```sql
+   -- as the model role
+   CREATE SCHEMA IF NOT EXISTS <DB>.SHIFT_ASSIGNMENT_META;
+
+   -- as an administrator
+   GRANT CALLER USAGE ON DATABASE <DB> TO APPLICATION <RAI_APP_NAME>;
+   GRANT CALLER USAGE ON SCHEMA <DB>.SHIFT_ASSIGNMENT_META TO APPLICATION <RAI_APP_NAME>;
+   GRANT CALLER USAGE ON WAREHOUSE <PAT_WAREHOUSE> TO APPLICATION <RAI_APP_NAME>;
+   GRANT INHERITED CALLER SELECT ON ALL TABLES IN SCHEMA <DB>.SHIFT_ASSIGNMENT_META TO APPLICATION <RAI_APP_NAME>;
+   GRANT INHERITED CALLER SELECT ON ALL DYNAMIC TABLES IN SCHEMA <DB>.SHIFT_ASSIGNMENT_META TO APPLICATION <RAI_APP_NAME>;
+   GRANT INHERITED CALLER SELECT ON ALL VIEWS IN SCHEMA <DB>.SHIFT_ASSIGNMENT_META TO APPLICATION <RAI_APP_NAME>;
+   GRANT INHERITED CALLER INSERT, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA <DB>.SHIFT_ASSIGNMENT_META TO APPLICATION <RAI_APP_NAME>;
+   GRANT CALLER CREATE TABLE, CREATE STAGE ON SCHEMA <DB>.SHIFT_ASSIGNMENT_META TO APPLICATION <RAI_APP_NAME>;
+   GRANT INHERITED CALLER READ, WRITE ON ALL STAGES IN SCHEMA <DB>.SHIFT_ASSIGNMENT_META TO APPLICATION <RAI_APP_NAME>;
+   ```
+   The deploy creates the public schema `<DB>.SHIFT_ASSIGNMENT` if it doesn't exist.
 
 5. Run:
    ```bash
    python shift_assignment.py
    ```
+   The script deploys the model, waits for the first refresh, which runs the solve, and prints the report from the deployed model. Each refresh of the deployed model runs the solve again; `rai models deploy` deploys without printing the report.
+
+   Running the script again without changing the model redeploys nothing and does not solve again; it reports the latest refresh. A change to the model or to `problem.configure(...)` redeploys, and the redeploy's refresh solves. To solve again without a change, refresh the deployed model, then run the script:
+   ```sql
+   CALL <DB>.SHIFT_ASSIGNMENT_META._INTERNAL_REFRESH_MODEL('standard', NULL);
+   ```
+   To remove the deployment, run `rai models teardown --force` from this directory; it keeps the two schemas.
 
 6. Expected output (a few representative rows confirm a successful run):
    ```text
@@ -149,13 +191,13 @@ The pipeline loads workers, shifts, and availability pairs, adds a `Scenario` co
 ```text
 CSV inputs → load Worker / Shift / availability → add Scenario coverage levels
   → binary assignment variable (per worker-shift-scenario, scoped to availability)
-  → coverage + workload + capacity constraints → solve → verify → per-scenario roster
+  → coverage + workload + capacity constraints → configure solve → deploy → per-scenario roster
 ```
 
 1. **Load the data.** Workers and shifts come from their CSVs; availability pairs become a `Worker.available_for(Shift)` relationship that scopes which assignments are even possible.
 2. **Set up the decision.** A binary `x_assign` variable indicates whether a worker takes a given shift in a given scenario. Each coverage level (`coverage_1` / `_2` / `_3`) is a `Scenario` with a `min_coverage`, and the variable is scoped to the availability relationship so unavailable pairs are never considered.
-3. **Constrain the roster.** Three constraints govern every scenario: each shift meets its `min_coverage`, each worker takes no more than `max_shifts` shifts (default 1), and no shift exceeds its `capacity`. The constraints are named so they can be re-checked after solving.
-4. **Solve and verify.** A single solve handles all scenarios simultaneously; this is a feasibility problem with no objective, so the solver returns any assignment satisfying every constraint. `problem.verify()` then re-fires the named constraints as integrity checks to confirm the solution holds.
+3. **Constrain the roster.** Three constraints govern every scenario: each shift meets its `min_coverage`, each worker takes no more than `max_shifts` shifts (default 1), and no shift exceeds its `capacity`.
+4. **Solve and deploy.** A single solve handles all scenarios simultaneously; this is a feasibility problem with no objective, so the solver returns any assignment satisfying every constraint. `problem.configure(...)` declares the solve, the script deploys the model, and each refresh of the deployed model runs the solve. The report checks the solve status; it does not re-evaluate the constraints, and a refresh started outside the script (`rai models deploy`, the refresh procedure, a schedule) runs no checks, so read `SolveStatus` before relying on a refreshed solution.
 
 See `shift_assignment.py` for the implementation and `runbook.md` for the skill-driven reproduction.
 
@@ -214,7 +256,7 @@ See `shift_assignment.py` for the implementation and `runbook.md` for the skill-
   <summary>MiniZinc solver not available</summary>
 
 - This template uses the MiniZinc constraint solver. Ensure the RAI Native App version supports MiniZinc.
-- As an alternative, you can try switching to `"highs"` in the `problem.solve()` call, though HiGHS is designed for linear/MIP problems.
+- As an alternative, you can try switching to `"highs"` in the `problem.configure()` call, though HiGHS is designed for linear/MIP problems.
 
 </details>
 

@@ -17,7 +17,9 @@ Modeling approach:
 - One solve handles all coverage levels; results extracted via model.select().
 
 Run:
-    `python shift_assignment.py`
+    `python shift_assignment.py` deploys the model to the schema in raiconfig.yaml,
+    waits for its first refresh (which runs the solve), and prints the report
+    from the deployed model.
 
 Output:
     Prints per-scenario termination status and a table of assignments, followed
@@ -117,23 +119,41 @@ problem.satisfy(capacity_ic)
 # Solve (single solve for all scenarios)
 # --------------------------------------------------
 
-problem.display()
-problem.solve("minizinc", time_limit_sec=60)
-problem.solve_info().display()
+# Each refresh of the deployed model runs this solve.
+problem.configure("minizinc", time_limit_sec=60)
 
-# Verify constraints hold in the solver's solution — fires ICs without a separate query.
-problem.verify(coverage_ic, workload_ic, capacity_ic)
-model.require(problem.termination_status() == "OPTIMAL")
+# Deploy the rules behind problem.display() with the model.
+problem.install_display_strings()
+
+# The solve's status, published through the model's own relationship.
+SolveStatus = model.Relationship(f"shift assignment solve status is {String:status}")
+model.define(SolveStatus(problem.termination_status()))
 
 # --------------------------------------------------
-# Extract results per scenario
+# Deploy, then report (`rai models deploy` skips this block)
 # --------------------------------------------------
 
-print("\nAssignments per scenario:")
-model.select(
-    Scenario.name.alias("scenario"),
-    Worker.name.alias("worker"),
-    Shift.name.alias("shift"),
-).where(
-    Worker.x_assign(Shift, Scenario, assigned_ref), assigned_ref > 0
-).inspect()
+if __name__ == "__main__":
+    # Deploy and wait for the first refresh, which runs the solve.
+    model.deploy()
+
+    problem.display()
+
+    # Status of the latest refresh's solve. A refresh records any termination
+    # status, so the report checks it.
+    status = model.select(SolveStatus).to_df().iloc[:, 0].tolist()
+    print(f"\nSolve result:\n• status: {', '.join(status)}\n")
+    assert status == ["OPTIMAL"], f"termination status {status}"
+
+    # ----------------------------------------------
+    # Extract results per scenario
+    # ----------------------------------------------
+
+    print("\nAssignments per scenario:")
+    model.select(
+        Scenario.name.alias("scenario"),
+        Worker.name.alias("worker"),
+        Shift.name.alias("shift"),
+    ).where(
+        Worker.x_assign(Shift, Scenario, assigned_ref), assigned_ref > 0
+    ).inspect()
