@@ -42,4 +42,4 @@ Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` 
 
 ## Data
 
-Bundled CSVs in `data/`: 18 distribution points, 28 supply routes. The model is in `model/__init__.py`, the report in `queries/distribution_point_ranking.py`, and `app.py` is an optional Streamlit UI over the deployed model.
+Bundled CSVs in `data/`: 18 distribution points, 28 supply routes. The model is in `model/`, the report in `queries/distribution_point_ranking.py`, and `app.py` is an optional Streamlit UI over the deployed model.
