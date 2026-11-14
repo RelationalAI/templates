@@ -73,17 +73,16 @@ Modeling approach:
   so the floor constrains the cohort to span at least
   ``MIN_GENES_COVERED`` / ``MIN_THERAPIES_COVERED`` /
   ``MIN_AES_COVERED`` distinct values.
-- All ten ICs (cohort size + 3 upper + 3 lower + 3 floor) are pure
-  relational arithmetic, so ``problem.verify()`` re-evaluates every
-  one in the returned solution.
 
 Run:
-    `python patient_cohort_recruitment.py`
+    `python patient_cohort_recruitment.py` deploys the model to the schema in
+    raiconfig.yaml, waits for its first refresh (which runs the solve), and
+    prints the report from the deployed model.
 
 Output:
-    Prints the formulation, the kinase-pathway gene closure, the
-    eligible patient set, the chosen cohort, the per-axis coverage
-    tally, and post-solve constraint verification.
+    Prints the formulation, the solve status, the kinase-pathway gene closure,
+    the eligible patient set, the chosen cohort, and the per-axis coverage
+    tally.
 """
 
 from pathlib import Path
@@ -553,66 +552,69 @@ ae_min_ic = model.require(sum(CoverableAdverseEvent.is_covered) >= MIN_AES_COVER
 problem.satisfy(ae_min_ic)
 
 # --------------------------------------------------
-# Solve and verify
+# Configure the solve
 # --------------------------------------------------
 
-problem.display()
-problem.solve("minizinc", time_limit_sec=60)
-problem.solve_info().display()
+# Each refresh of the deployed model runs this solve.
+problem.configure("minizinc", time_limit_sec=60)
 
-# All ten ICs are pure relational arithmetic, so `verify` re-evaluates
-# every one in the returned solution.
-problem.verify(
-    cohort_size_ic,
-    gene_cover_ub_ic,
-    therapy_cover_ub_ic,
-    ae_cover_ub_ic,
-    gene_cover_lb_ic,
-    therapy_cover_lb_ic,
-    ae_cover_lb_ic,
-    gene_min_ic,
-    therapy_min_ic,
-    ae_min_ic,
-)
-model.require(problem.termination_status() == "OPTIMAL")
+# Deploy the rules behind problem.display() with the model.
+problem.install_display_strings()
+
+# The solve's status, published through the model's own relationship.
+SolveStatus = model.Relationship(f"cohort solve status is {String:status}")
+model.define(SolveStatus(problem.termination_status()))
 
 # --------------------------------------------------
-# Inspect results
+# Deploy, then report (`rai models deploy` skips this block)
 # --------------------------------------------------
 
-print("\nKinase-pathway gene closure (reachable from KINASE_ROOT_GENE_ID):")
-model.select(
-    KinaseGene.id.alias("gene_id"),
-    KinaseGene.name.alias("gene_name"),
-).inspect()
+if __name__ == "__main__":
+    # Deploy and wait for the first refresh, which runs the solve.
+    model.deploy()
 
-print("\nEligible patients (carry a kinase mutation and have a qualifying pair):")
-model.select(
-    EligiblePatient.id.alias("patient_id"),
-    EligiblePatient.name.alias("patient_name"),
-).inspect()
+    problem.display()
 
-print("\nSelected cohort:")
-model.select(
-    EligiblePatient.id.alias("patient_id"),
-    EligiblePatient.name.alias("patient_name"),
-    EligiblePatient.age_years.alias("age_years"),
-).where(EligiblePatient.is_in_cohort == 1).inspect()
+    # Status of the latest refresh's solve. A refresh records any termination
+    # status, so the report checks it.
+    status = model.select(SolveStatus).to_df().iloc[:, 0].tolist()
+    print(f"\nSolve result:\n• status: {', '.join(status)}")
+    if status != ["OPTIMAL"]:
+        raise SystemExit(f"No cohort: termination status {status}")
 
-print("\nKinase-pathway genes covered by the cohort:")
-model.select(
-    CoverableGene.id.alias("gene_id"),
-    CoverableGene.name.alias("gene_name"),
-).where(CoverableGene.is_covered == 1).inspect()
+    print("\nKinase-pathway gene closure (reachable from KINASE_ROOT_GENE_ID):")
+    model.select(
+        KinaseGene.id.alias("gene_id"),
+        KinaseGene.name.alias("gene_name"),
+    ).inspect()
 
-print("\nTherapies covered by the cohort:")
-model.select(
-    CoverableTherapy.id.alias("therapy_id"),
-    CoverableTherapy.name.alias("therapy_name"),
-).where(CoverableTherapy.is_covered == 1).inspect()
+    print("\nEligible patients (carry a kinase mutation and have a qualifying pair):")
+    model.select(
+        EligiblePatient.id.alias("patient_id"),
+        EligiblePatient.name.alias("patient_name"),
+    ).inspect()
 
-print("\nAdverse events covered by the cohort:")
-model.select(
-    CoverableAdverseEvent.id.alias("ae_id"),
-    CoverableAdverseEvent.term.alias("ae_term"),
-).where(CoverableAdverseEvent.is_covered == 1).inspect()
+    print("\nSelected cohort:")
+    model.select(
+        EligiblePatient.id.alias("patient_id"),
+        EligiblePatient.name.alias("patient_name"),
+        EligiblePatient.age_years.alias("age_years"),
+    ).where(EligiblePatient.is_in_cohort == 1).inspect()
+
+    print("\nKinase-pathway genes covered by the cohort:")
+    model.select(
+        CoverableGene.id.alias("gene_id"),
+        CoverableGene.name.alias("gene_name"),
+    ).where(CoverableGene.is_covered == 1).inspect()
+
+    print("\nTherapies covered by the cohort:")
+    model.select(
+        CoverableTherapy.id.alias("therapy_id"),
+        CoverableTherapy.name.alias("therapy_name"),
+    ).where(CoverableTherapy.is_covered == 1).inspect()
+
+    print("\nAdverse events covered by the cohort:")
+    model.select(
+        CoverableAdverseEvent.id.alias("ae_id"),
+        CoverableAdverseEvent.term.alias("ae_term"),
+    ).where(CoverableAdverseEvent.is_covered == 1).inspect()
