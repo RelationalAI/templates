@@ -17,110 +17,22 @@ Modeling approach:
 - One solve handles all coverage levels; results extracted via model.select().
 
 Run:
-    `rai models deploy --path model` deploys this model to the schema in raiconfig.yaml
+    `rai models deploy --path model` deploys this package to the schemas in raiconfig.yaml
     and waits for its first refresh, which runs the solve.
     `python -m queries.shift_assignments` then prints the report from the deployed model.
 """
 
-from pathlib import Path
+from .reasoning import SolveStatus, assigned_ref, problem
+from .schema import Scenario, Shift, Worker, model
+from .source import DATA_DIR
 
-from pandas import read_csv
-from relationalai.semantics import Integer, Model, String, sum
-from relationalai.semantics.reasoners.prescriptive import Problem
-
-model = Model("shift_assignment")
-
-# --------------------------------------------------
-# Define semantic model & load data
-# --------------------------------------------------
-
-data_dir = Path(__file__).resolve().parents[1] / "data"
-
-# Concept: workers
-Worker = model.Concept("Worker", identify_by={"id": Integer})
-Worker.name = model.Property(f"{Worker} has {String:name}")
-worker_csv = read_csv(data_dir / "workers.csv")
-model.define(Worker.new(model.data(worker_csv).to_schema()))
-
-# Concept: shifts with capacity limits
-Shift = model.Concept("Shift", identify_by={"id": Integer})
-Shift.name = model.Property(f"{Shift} has {String:name}")
-Shift.capacity = model.Property(f"{Shift} has {Integer:capacity}")
-shift_csv = read_csv(data_dir / "shifts.csv")
-model.define(Shift.new(model.data(shift_csv).to_schema()))
-
-# Relationship: worker availability for shifts
-Worker.available_for = model.Relationship(f"{Worker} is available for {Shift}")
-availability_csv = read_csv(data_dir / "availability.csv")
-availability_data = model.data(availability_csv)
-model.define(Worker.available_for(Shift)).where(
-    Worker.id(availability_data.worker_id),
-    Shift.id(availability_data.shift_id)
-)
-
-# --------------------------------------------------
-# Scenario Concept — min_coverage parameter variations
-# --------------------------------------------------
-
-Scenario = model.Concept("Scenario", identify_by={"name": String})
-Scenario.min_coverage = model.Property(f"{Scenario} has {Integer:min_coverage}")
-scenario_data = model.data(
-    [("coverage_1", 1), ("coverage_2", 2), ("coverage_3", 3)],
-    columns=["name", "min_coverage"],
-)
-model.define(Scenario.new(scenario_data.to_schema()))
-
-# --------------------------------------------------
-# Model the decision problem
-# --------------------------------------------------
-
-# Parameters
-max_shifts = 1  # Maximum shifts per worker
-
-# Decision variable — triple-arg: Worker x Shift x Scenario
-Worker.x_assign = model.Property(f"{Worker} has {Shift} in {Scenario} if {Integer:assigned}")
-
-# Ref for binding multi-arg variable in constraints
-assigned_ref = Integer.ref()
-
-problem = Problem(model, Integer)
-
-# Variable: binary assignment per available worker-shift-scenario
-problem.solve_for(
-    Worker.x_assign(Shift, Scenario, assigned_ref),
-    type="bin",
-    name=["x", Scenario.name, Worker.name, Shift.name],
-    where=[Worker.available_for(Shift)],
-)
-
-# Constraint: minimum coverage per shift (per scenario)
-coverage_ic = model.where(
-    Worker.x_assign(Shift, Scenario, assigned_ref),
-).require(sum(Worker, assigned_ref).per(Shift, Scenario) >= Scenario.min_coverage)
-problem.satisfy(coverage_ic)
-
-# Constraint: max shifts per worker (per scenario)
-workload_ic = model.where(
-    Worker.x_assign(Shift, Scenario, assigned_ref),
-).require(sum(Shift, assigned_ref).per(Worker, Scenario) <= max_shifts)
-problem.satisfy(workload_ic)
-
-# Constraint: max workers per shift (capacity limit per scenario)
-capacity_ic = model.where(
-    Worker.x_assign(Shift, Scenario, assigned_ref),
-).require(sum(Worker, assigned_ref).per(Shift, Scenario) <= Shift.capacity)
-problem.satisfy(capacity_ic)
-
-# --------------------------------------------------
-# Solve (single solve for all scenarios)
-# --------------------------------------------------
-
-# Each refresh of the deployed model runs this solve.
-problem.configure("minizinc", time_limit_sec=60)
-
-# Deploy the rules behind problem.display() with the model.
-problem.install_display_strings()
-
-# The solve's status, published through the model's own relationship.
-SolveStatus = model.Relationship(f"shift assignment solve status is {String:status}")
-model.define(SolveStatus(problem.termination_status()))
+__all__ = [
+    "DATA_DIR",
+    "Scenario",
+    "Shift",
+    "SolveStatus",
+    "Worker",
+    "assigned_ref",
+    "model",
+    "problem",
+]

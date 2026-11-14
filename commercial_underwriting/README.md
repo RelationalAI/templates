@@ -40,7 +40,7 @@ This template shows how to express that rulebook as declarative logic on a four-
 ## What's included
 
 - **Model**: the four-level `InsuredEntity` / `Policy` / `Location` / `Coverage` ontology, eight lower-level eligibility rules, two entity-level rollup rules (decline factors, marginal factors), and four mutually exclusive risk-tier subtype concepts — all as declarative derived Relationships.
-- **Model**: `model/__init__.py` — loads the CSVs and declares the rules and risk tiers that `rai models deploy --path model` deploys to your Snowflake account.
+- **Model**: the `model/` package (`schema.py` declares the concepts, `source.py` loads the sample data, `reasoning.py` states the rules and risk tiers) that `rai models deploy --path model` deploys to your Snowflake account.
 - **Query**: `queries/underwriting_report.py` — prints the eligibility flags, flag matrix, tier classification, and premium by tier from the deployed model.
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - **Sample data**: four CSVs under `data/` — 8 insured businesses across 5 industries (`insured_entities.csv`), 8 commercial property policies one per insured (`policies.csv`), 11 scheduled locations (`locations.csv`), and 33 coverage lines at every location (`coverages.csv`).
@@ -190,7 +190,10 @@ Run these steps from a terminal:
 ├── README.md                       # this file
 ├── pyproject.toml                  # dependencies
 ├── model/
-│   └── __init__.py                 # hierarchy, rules, and risk tiers
+│   ├── __init__.py                 # exports of the deployed model
+│   ├── schema.py                   # hierarchy of concepts and properties
+│   ├── source.py                   # loads the CSVs
+│   └── reasoning.py                # thresholds, rules, and risk tiers
 ├── queries/
 │   └── underwriting_report.py      # report printed from the deployed model
 └── data/
@@ -223,7 +226,7 @@ The eight insureds are designed so each tier is represented and every rule fires
 - **Primary identifiers**: each level has an integer `id`; the hierarchy is threaded by relationships (`Policy.insured_entity`, `Location.policy`, `Coverage.location`) rather than by shared keys.
 - **Important invariants**: every policy belongs to exactly one insured entity, every location to one policy, every coverage to one location; the ITV check applies to `BUILDING` coverages only; the four risk tiers partition the `InsuredEntity` set (each entity lands in exactly one).
 
-For the full concept and property definitions, see `model/__init__.py`; `runbook.md` builds them step by step with the RAI skills.
+For the full concept and property definitions, see `model/schema.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
@@ -235,17 +238,17 @@ Those lower-level flags then roll up. Entity-level rollup rules traverse the `In
 InsuredEntity -> Policy -> Location -> Coverage
 ```
 
-See `model/__init__.py` for the implementation, `queries/underwriting_report.py` for the report, and `runbook.md` to reproduce it step by step with the RAI skills.
+See `model/reasoning.py` for the implementation, `queries/underwriting_report.py` for the report, and `runbook.md` to reproduce it step by step with the RAI skills.
 
 ## Customize this template
 
 ### Use your own data
 
-Replace the four CSVs with your own underwriting submissions. Required columns are listed in the *Model overview* section. The `Concept.new(...)` and `Relationship` definitions in `model/__init__.py` match the CSV column names exactly — keep the same headers or update the `model.data(...)` calls to match.
+Replace the four CSVs with your own underwriting submissions. Required columns are listed in the *Model overview* section. The `Concept.new(...)` and `Relationship` definitions in `model/source.py` and `model/schema.py` match the CSV column names exactly — keep the same headers or update the `model.data(...)` calls in `model/source.py` to match.
 
 ### Tune parameters
 
-All thresholds are at the top of `model/__init__.py` under `# Configure inputs`:
+All thresholds are at the top of `model/reasoning.py` under `# Configure inputs`:
 
 | Parameter | Default | Effect |
 |---|---|---|
@@ -270,7 +273,7 @@ All thresholds are at the top of `model/__init__.py` under `# Configure inputs`:
 
 - **Point at Snowflake tables.** Swap the CSV `model.data(...)` calls for `model.Table(...)` references to your submission tables; the ontology, rules, and tier classification are unchanged. Size the RAI engine to the submission volume — rules-based classification is lightweight, so a small engine handles large books.
 - **Schedule triage runs.** Redeploy the model from your submission-intake pipeline (nightly batch or on-submission trigger) so every new account is scored as it arrives, and persist the per-entity tier and flag matrix for downstream underwriting review.
-- **Pin dependencies for reproducibility.** Keep the `relationalai` version pinned in `pyproject.toml` so rule outcomes stay stable across runs, and version-control your threshold constants (top of `model/__init__.py`) as auditable underwriting parameters.
+- **Pin dependencies for reproducibility.** Keep the `relationalai` version pinned in `pyproject.toml` so rule outcomes stay stable across runs, and version-control your threshold constants (top of `model/reasoning.py`) as auditable underwriting parameters.
 
 ## Troubleshooting
 

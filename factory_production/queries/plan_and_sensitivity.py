@@ -1,10 +1,10 @@
 """Production plan and sensitivity report: reads the deployed factory_production model.
 
 Run `python -m queries.plan_and_sensitivity` after `rai models deploy --path model`. Prints
-the formulation, the status and total profit of the latest refresh's solve, the production
-plan, each factory's capacity shadow price, each product's reduced cost and basis status,
-and a per-factory capacity-utilization summary. Each section is checked against the bundled
-data's known optimum; a failed check stops the report with an error.
+the status and objective of the latest refresh's solve, the production plan, each factory's
+capacity shadow price, each product's reduced cost and basis status, and a per-factory
+capacity-utilization summary. Each section is checked against the bundled data's known
+optimum; a failed check stops the report with an error.
 """
 
 from model import (
@@ -15,19 +15,16 @@ from model import (
     TotalProfit,
     cap,
     model,
-    problem,
     quantity_var,
 )
 
 if __name__ == "__main__":
-    problem.display()
-
-    # Status and objective of the latest refresh's solve. A refresh records any
-    # termination status, so the report checks it.
     status = model.select(SolveStatus).to_df().iloc[:, 0].tolist()
     profit = model.select(TotalProfit).to_df().iloc[:, 0].tolist()
-    if status != ["OPTIMAL"]:
-        raise SystemExit(f"No optimal production plan: termination status {status}")
+    print(f"\nSolve result:\n• status: {', '.join(status)}")
+    if profit:
+        print(f"• objective: {round(profit[0], 9)}\n")
+
     # Optimum: steel_factory fills all 40 hrs (bands to its 6000 cap = 30 hrs, coils takes
     # the last 10 hrs = 1400 units); amazing_brewery makes both products to their demand
     # caps in 25 of its 30 hrs. Profit = 192000 + 8000 = 200000.

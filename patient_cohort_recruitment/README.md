@@ -40,13 +40,12 @@ The same shape recurs across knowledge-graph cohort and set-cover problems where
 - A constraint model with four binary decision streams targeting sub-concepts directly: `EligiblePatient.is_in_cohort` (eligible patients only), `CoverableGene.is_covered` (coverable kinase genes only), `CoverableTherapy.is_covered`, and `CoverableAdverseEvent.is_covered`
 - Per-axis coverage upper-bound ICs that link `is_covered` to in-cohort patient decisions (`Sub.is_covered <= sum(EligiblePatient.is_in_cohort).per(Sub)`), and lower-bound ICs (`sum(Sub.is_covered) >= MIN_*`) that force the cohort to span enough distinct values
 - Pre-solve Python invariants that catch silent-failure modes (duplicate keys, dangling foreign keys, missing kinase root, negative timestamps) before the solver runs
-- A check in the report that stops unless the solve's `termination_status()` is `OPTIMAL`
 
 ## What's included
 
 The bundled CSVs are illustrative, fully synthetic demo data (e.g. patient names `P_Alpha`...`P_Oscar`, fictional gene/therapy/AE labels) sized so the solve takes a few seconds; swap in your own ontology and patient KG to apply the template to real cohorts.
 
-- `model/__init__.py` -- the deployed model: concepts, the Graph closure, the rules, the decisions and constraints, and the solve configuration. `rai models deploy --path model` deploys it to your Snowflake account, where each refresh runs the solve.
+- `model/` -- the model package: `schema.py` declares the concepts, `source.py` loads the sample data and checks it, and `reasoning.py` states the Graph closure, the rules, the decisions and constraints, and the solve configuration. `rai models deploy --path model` deploys it to your Snowflake account, where each refresh runs the solve.
 - `queries/cohort_report.py` -- the report, which reads the deployed model
 - **Runbook**: `runbook.md` -- a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - `data/genes.csv` -- 10 sample genes: 7 in the kinase pathway sub-ontology (a root plus two intermediate sub-roots and four leaves) and 3 unrelated metabolism genes
@@ -170,13 +169,13 @@ Use this sequence to deploy the model and query it:
 
    Selected cohort:
       patient_id patient_name  age_years
-   0           2      P_Bravo         61
+   0           1      P_Alpha         52
    1           4      P_Delta         58
    2           5       P_Echo         69
-   3           8      P_Hotel         49
+   3           9      P_India         57
    ```
 
-   The report also prints the formulation, the gene closure, the eligible-patient set, and the per-axis coverage tally, and it stops unless the solve's termination status is OPTIMAL. Eight of the 15 patients are eligible (the seven excluded patients each fail either the kinase-mutation test or the qualifying-pair test within the 90-day window). Several four-patient cohorts hit the `MIN_GENES_COVERED = 3` / `MIN_THERAPIES_COVERED = 2` / `MIN_AES_COVERED = 2` floors; the solver returns one of them, so the specific cohort can vary across runs.
+   The report also prints the gene closure, the eligible-patient set, and the per-axis coverage tally. Eight of the 15 patients are eligible (the seven excluded patients each fail either the kinase-mutation test or the qualifying-pair test within the 90-day window). Several four-patient cohorts hit the `MIN_GENES_COVERED = 3` / `MIN_THERAPIES_COVERED = 2` / `MIN_AES_COVERED = 2` floors; the solver returns one of them, so the specific cohort can vary across runs.
 
    To solve again without changing the model, refresh the deployed model, then run the query again:
 
@@ -201,7 +200,10 @@ Use this sequence to deploy the model and query it:
 ├── README.md
 ├── pyproject.toml
 ├── model/
-│   └── __init__.py
+│   ├── __init__.py       # exports of the deployed model
+│   ├── schema.py         # genes, therapies, adverse events, patients, and their events
+│   ├── source.py         # loads the sample CSVs and checks them
+│   └── reasoning.py      # Graph closure, rules, cohort decisions, constraints, solve
 ├── queries/
 │   └── cohort_report.py
 └── data/
@@ -240,7 +242,7 @@ One ontology threads all three stages: the graph closure writes a `KinaseGene` s
 - **Primary identifiers**: integer `id` on each base concept, loaded from the corresponding CSV; `GeneIsA` is keyed by the composite `(child_id, parent_id)`.
 - **Important invariants**: every foreign key resolves (event tables reference real patients and dictionary concepts); event `t_days` values are non-negative; the pathway root gene exists; a sub-concept's membership *is* its predicate (a patient is eligible exactly when they are a `KinaseMutationCarrier` and a `QualifyingPairPatient`).
 
-For the full concept and property definitions, see `model/__init__.py`; `runbook.md` builds them step by step with the RAI skills.
+For the full concept and property definitions, see `model/schema.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
@@ -258,7 +260,7 @@ gene ontology → graph closure (KinaseGene) → rules (eligibility + coverage s
 
 The CSP signature is coverage upper bound + per-pair lower bound + floor. For each coverable value, `is_covered` is bounded above by the number of in-cohort patients that cover it (an unsupported value can't be marked covered) and bounded below per pair by each covering in-cohort patient (any in-cohort patient covering it forces `is_covered` to 1). The two bounds pin the indicator to the actual coverage; the floor constraint (`sum(is_covered) >= MIN_*`) then forces the cohort to span at least the required number of distinct genes, therapies, and adverse events.
 
-For the exact PyRel formulation, see `model/__init__.py`; `runbook.md` reproduces the three stages step by step with the RAI skills.
+For the exact PyRel formulation, see `model/reasoning.py`; `runbook.md` reproduces the three stages step by step with the RAI skills.
 
 ## Customize this template
 

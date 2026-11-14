@@ -40,7 +40,7 @@ Built using **graph analysis** (eigenvector centrality, weakly connected compone
 
 ## What's included
 
-- **Model**: a two-stage pipeline (graph, then prescriptive) on a single shared ontology — `Site`, `Route`, and `Demand` concepts wired to the bundled CSVs, plus the centrality enrichment Stage 1 writes back — all in `model/__init__.py`, which `rai models deploy --path model` deploys to your Snowflake account, where each refresh runs both stages.
+- **Model**: a two-stage pipeline (graph, then prescriptive) on a single shared ontology — `Site`, `Route`, and `Demand` concepts wired to the bundled CSVs, plus the centrality enrichment Stage 1 writes back — in the `model/` package (`schema.py` declares the concepts, `source.py` loads the sample data, `reasoning.py` holds both stages), which `rai models deploy --path model` deploys to your Snowflake account, where each refresh runs both stages.
 - **Query**: `queries/allocation_report.py`, which prints the report from the deployed model.
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - **Sample data**: a small distribution network of warehouses and stores with routes and per-site demand. See *Sample data* below.
@@ -169,12 +169,16 @@ Use this sequence to deploy the model and query it:
    ==================================================
    Stage 2: Inventory Allocation
    ==================================================
-   ...
+
+   Solve result:
+   • status: OPTIMAL
+   • objective: 13713.292897685
+
    Status: OPTIMAL
    Total holding cost: $13713.29
    ```
 
-   The report also prints the bridge routes, the formulation, and the allocation plan, and it stops unless the solve's termination status is OPTIMAL. The full printout and a step-by-step walkthrough are in `runbook.md`.
+   The report also prints the bridge routes and the allocation plan. The full printout and a step-by-step walkthrough are in `runbook.md`.
 
    To solve again without changing the model, refresh the deployed model, then run the query again:
 
@@ -198,7 +202,10 @@ Use this sequence to deploy the model and query it:
 ```text
 warehouse_allocation/
   model/
-    __init__.py             # the deployed model (Stage 1 graph + Stage 2 prescriptive)
+    __init__.py             # exports of the deployed model
+    schema.py               # Site, Route, and Demand concepts
+    source.py               # loads the sample CSVs
+    reasoning.py            # Stage 1 graph + Stage 2 prescriptive
   queries/
     allocation_report.py    # report from the deployed model
   data/
@@ -228,7 +235,7 @@ One shared ontology threads both stages. Stage 1 (graph) writes centrality onto 
 - **Primary identifiers**: integer `id` on each of `Site`, `Route`, and `Demand`.
 - **Important invariants**: `holding_cost`, `capacity`, and `quantity` are non-negative; the centrality floor applies only to `Site.type == "WAREHOUSE"`; allocation variables are continuous and non-negative.
 
-For the full concept and property definitions, see `model/__init__.py`; `runbook.md` builds them step by step with the RAI skills.
+For the full concept and property definitions, see `model/schema.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
@@ -246,7 +253,7 @@ Stage 1 characterizes the route topology three ways, then Stage 2 allocates inve
 sites/routes/demands CSVs → graph (centrality, components, bridges) → Site.centrality → optimizer (budget, demand, centrality floor) → allocation plan
 ```
 
-See `model/__init__.py` for the implementation, and `runbook.md` to reproduce it step by step with the RAI skills.
+See `model/reasoning.py` for the implementation, and `runbook.md` to reproduce it step by step with the RAI skills.
 
 ## Customize this template
 

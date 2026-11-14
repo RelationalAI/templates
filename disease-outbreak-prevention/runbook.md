@@ -42,4 +42,4 @@ Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` 
 
 ## Data
 
-Bundled CSVs in `data/`: 10 facilities, 15 connections. The model is in `model/__init__.py`, the report in `queries/facility_ranking.py`, and `app.py` is an optional Streamlit UI over the deployed model.
+Bundled CSVs in `data/`: 10 facilities, 15 connections. The model is in `model/`, the report in `queries/facility_ranking.py`, and `app.py` is an optional Streamlit UI over the deployed model.

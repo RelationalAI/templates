@@ -39,7 +39,7 @@ Built using **prescriptive reasoning** (mixed-integer programming with the HiGHS
 
 ## What's included
 
-- `model/__init__.py` -- ontology, MTZ formulation, and solver configuration; `rai models deploy --path model` deploys it to your Snowflake account, where each refresh runs the solve
+- `model/` -- ontology, MTZ formulation, and solver configuration, as a package (`schema.py` declares the concepts, `source.py` loads the sample data, `reasoning.py` states the decision problem); `rai models deploy --path model` deploys it to your Snowflake account, where each refresh runs the solve
 - `queries/tour.py` -- prints the report from the deployed model: the solve status, the tour distance, and the tour edges
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - `data/edges.csv` -- 12 directed edges between 4 nodes with distances
@@ -153,6 +153,10 @@ Use this sequence to deploy the model and query it:
    ```
 
    ```text
+   Solve result:
+   • status: OPTIMAL
+   • objective: 8.5
+
    HiGHS: OPTIMAL, tour distance=8.5
 
    Tour edges:
@@ -163,7 +167,7 @@ Use this sequence to deploy the model and query it:
    3     4   3
    ```
 
-   The formulation printed above the status line is trimmed here. Before printing, the report checks the problem's size against the deployed model's distinct edges and nodes (one variable per edge and per node, one minimization objective), and it stops unless the termination status is `OPTIMAL`. The tour is 1, 2, 4, 3 and back to 1, for a total distance of 8.5. See `runbook.md` for the step-by-step walkthrough.
+   The tour is 1, 2, 4, 3 and back to 1, for a total distance of 8.5. See `runbook.md` for the step-by-step walkthrough.
 
    To solve again without changing the model, refresh the deployed model, then run the query again:
 
@@ -189,7 +193,10 @@ traveling_salesman/
 ├── README.md            # this file
 ├── pyproject.toml       # dependencies
 ├── model/
-│   └── __init__.py      # the deployed model (ontology, MTZ formulation, solve)
+│   ├── __init__.py      # exports of the deployed model
+│   ├── schema.py        # edge and node concepts
+│   ├── source.py        # loads the distance matrix
+│   └── reasoning.py     # tour variables, MTZ constraints, objective, solve
 ├── queries/
 │   └── tour.py          # report from the deployed model
 └── data/
@@ -210,7 +217,7 @@ The model has two concepts: the `Edge` rows loaded from CSV, and the `Node` set 
 - **Primary identifiers**: an `Edge` is identified by its endpoint pair `(i, j)`; a `Node` is identified by its index `v`.
 - **Important invariants**: distances are non-negative; every node needs exactly one in-edge and one out-edge; the selected edges must form a single cycle (no subtours).
 
-For the full concept and property definitions, see `model/__init__.py`; `runbook.md` builds them step by step with the RAI skills.
+For the full concept and property definitions, see `model/schema.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
@@ -222,13 +229,13 @@ Two families of constraints shape the tour. Degree constraints require exactly o
 edges.csv → load edges → derive nodes → edge + ordering variables → degree + MTZ constraints → minimize distance → optimal tour
 ```
 
-See `model/__init__.py` for the implementation, and `runbook.md` to reproduce it step by step with the RAI skills.
+See `model/reasoning.py` for the implementation, and `runbook.md` to reproduce it step by step with the RAI skills.
 
 ## Customize this template
 
 ### Use your own data
 
-- Replace `data/edges.csv` with your own city-to-city distance matrix, as a list of directed edges with the columns `i`, `j`, and `dist`, or change the `read_csv(...)` path in `model/__init__.py`.
+- Replace `data/edges.csv` with your own city-to-city distance matrix, as a list of directed edges with the columns `i`, `j`, and `dist`, or change the `read_csv(...)` path in `model/source.py`.
 - Provide an edge in both directions for every pair of nodes so the graph stays strongly connected. Asymmetric costs are supported: give the forward and reverse edges different `dist` values.
 
 ### Tune parameters

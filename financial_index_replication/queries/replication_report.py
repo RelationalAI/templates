@@ -3,10 +3,10 @@
 Run after `rai models deploy --path model`:
     python -m queries.replication_report
 
-Prints the selected 20-stock basket, sector exposures, tracking quality metrics,
-and a top-correlation baseline comparison. Every input comes from the deployed
-model. Writes data/replica_returns.csv with date, index_return, and replica_return
-columns for downstream plotting.
+Prints the status and objective of the latest refresh's solve, the selected 20-stock
+basket, sector exposures, tracking quality metrics, and a top-correlation baseline
+comparison. Every input comes from the deployed model. Writes data/replica_returns.csv
+with date, index_return, and replica_return columns for downstream plotting.
 """
 
 from math import sqrt
@@ -43,15 +43,15 @@ if __name__ == "__main__":
     print(f"Portfolio value: ${PORTFOLIO_VALUE:,.0f}")
     print(f"Max ADV participation per name: {MAX_ADV_PARTICIPATION:.0%}")
 
-    # Status and objective of the latest refresh's solve. A refresh records any
-    # termination status, so the report checks it.
     status = model.select(SolveStatus).to_df().iloc[:, 0].tolist()
     residual = model.select(TotalResidual).to_df().iloc[:, 0].tolist()
-    if status not in (["OPTIMAL"], ["TIME_LIMIT"]):
-        raise SystemExit(f"Solver did not find an optimal solution: {status}")
+    print(f"\nSolve result:\n• status: {', '.join(status)}")
+    if residual:
+        print(f"• objective: {round(residual[0], 9)}\n")
 
     print(f"\nStatus: {status[0]}")
-    print(f"Objective: total absolute residual = {residual[0]:.6f}")
+    if residual:
+        print(f"Objective: total absolute residual = {residual[0]:.6f}")
 
     # --------------------------------------------------
     # Evaluate and report

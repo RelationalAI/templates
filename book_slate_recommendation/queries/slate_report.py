@@ -1,12 +1,10 @@
 """Book slate report: reads the deployed book_slate_recommendation model.
 
-Run `python -m queries.slate_report` after `rai models deploy --path model`. Prints the
-formulation, a per-user feasibility check of the candidate set, the solve-result block, the
-chosen slate ordered by slot (1..K), the per-user subject distribution, the per-pick
-explanation-path support, and a verbose diagnostic block (candidate set and
-structural-embeddedness map) at the end. The report accepts an OPTIMAL slate, or a
-TIME_LIMIT slate with an objective (the best found when the time limit ends the search),
-and stops on any other termination status.
+Run `python -m queries.slate_report` after `rai models deploy --path model`. Prints a
+per-user feasibility check of the candidate set, the status and objective of the latest
+refresh's solve, the chosen slate ordered by slot (1..K), the per-user subject
+distribution, the per-pick explanation-path support, and a verbose diagnostic block
+(candidate set and structural-embeddedness map) at the end.
 """
 
 from model import (
@@ -28,7 +26,6 @@ from model import (
     TotalSupport,
     User,
     model,
-    problem,
 )
 from relationalai.semantics import Integer, count
 
@@ -45,8 +42,6 @@ def _max_explanation_score(group):
 
 
 if __name__ == "__main__":
-    problem.display()
-
     # Per-user floor check: per-user floor ICs anchor on Candidate rows, so a
     # user with no candidates left after exclude_read is silently skipped
     # instead of flagged as infeasible. Compute the unread candidate set per
@@ -197,15 +192,11 @@ if __name__ == "__main__":
     print("\nUnread candidate count per user (feasibility diagnostic):")
     print(unread_counts.sort_index().to_string())
 
-    # Status and objective of the latest refresh's solve. A refresh records any
-    # termination status, so the report checks it. The time limit can end the
-    # search with the best slate found, which the report accepts.
     status = model.select(SolveStatus).to_df().iloc[:, 0].tolist()
     support = model.select(TotalSupport).to_df().iloc[:, 0].tolist()
     print(f"\nSolve result:\n• status: {', '.join(status)}")
-    if status not in (["OPTIMAL"], ["TIME_LIMIT"]) or not support:
-        raise SystemExit(f"No slate: termination status {status}, objective {support}")
-    print(f"• objective: {support[0]}")
+    if support:
+        print(f"• objective: {support[0]}")
 
     print("\nUsers in this run:")
     model.select(

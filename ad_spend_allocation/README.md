@@ -39,8 +39,8 @@ This template also answers the follow-up question every planner asks: if we had 
 
 ## What's included
 
-- **Model**: a single ontology with `Channel`, `Campaign`, `Effectiveness`, `Scenario`, and an `Allocation` decision concept — plus the prescriptive formulation (decision variables, constraints, objective) that runs on it.
-- **Deployment**: `model/__init__.py` loads the CSVs, builds the model, and configures the solve; `rai models deploy --path model` deploys it to your Snowflake account, where each refresh solves all scenarios at once.
+- **Model**: a single ontology with `Channel`, `Campaign`, `Effectiveness`, `Scenario`, and an `Allocation` decision concept — plus the prescriptive formulation (decision variables, constraints, objective) that runs on it — in the `model/` package (`schema.py` declares the concepts, `source.py` loads the sample data, `reasoning.py` states the decision problem).
+- **Deployment**: `rai models deploy --path model` deploys the package to your Snowflake account, where each refresh solves all scenarios at once.
 - **Query**: `queries/spend_allocation.py` prints the allocation table from the deployed model.
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - **Sample data**: 5 channels with spend bounds, 3 campaigns with budgets, and the 15 channel-campaign conversion rates. See *Sample data* below.
@@ -171,7 +171,7 @@ Use this sequence to deploy the model and query it:
    ...
    ```
 
-   The formulation printed above the solve result is trimmed here, and so are the budget_45k and budget_55k scenarios that the full report prints. All three budgets invest heavily in Search and Video (highest ROI channels). The $35K budget activates 6 channel-campaign pairs. The $45K and $55K budgets add Search Brand_Awareness ($5K) and increase Social Brand_Awareness to $8K — diminishing returns mean the extra $10K from $45K to $55K produces no new activations. The report checks the solve's termination status and stops unless it is OPTIMAL. See `runbook.md` for the full printout and a step-by-step walkthrough.
+   The budget_45k and budget_55k scenarios that the full report prints are trimmed here. All three budgets invest heavily in Search and Video (highest ROI channels). The $35K budget activates 6 channel-campaign pairs. The $45K and $55K budgets add Search Brand_Awareness ($5K) and increase Social Brand_Awareness to $8K — diminishing returns mean the extra $10K from $45K to $55K produces no new activations. See `runbook.md` for the full printout and a step-by-step walkthrough.
 
    To solve again without changing the model, refresh the deployed model, then run the query again:
 
@@ -197,7 +197,10 @@ The tree below shows the top-level layout:
 ```text
 ad_spend_allocation/
 ├── model/
-│   └── __init__.py          # the deployed model (ontology, formulation, scenario sweep)
+│   ├── __init__.py          # exports of the deployed model
+│   ├── schema.py            # concepts and properties
+│   ├── source.py            # loads the CSVs and the budget scenarios
+│   └── reasoning.py         # decision variables, constraints, objective, solve
 ├── queries/
 │   └── spend_allocation.py  # report from the deployed model
 ├── data/
@@ -219,7 +222,7 @@ The bundled data is synthetic and illustrative — designed to teach the optimiz
 - **`campaigns.csv`** (3 rows) — the campaigns (Brand_Awareness, Product_Launch, Seasonal_Sale), each with a budget and a target-conversions figure.
 - **`effectiveness.csv`** (15 rows) — one row per channel-campaign pair, giving the conversion rate (conversions per dollar spent) for that pair.
 
-The three budget levels ($35K, $45K, $55K) that drive the scenario sweep are defined in `model/__init__.py`, not in a CSV.
+The three budget levels ($35K, $45K, $55K) that drive the scenario sweep are defined in `model/source.py`, not in a CSV.
 
 ## Model overview
 
@@ -229,7 +232,7 @@ One ontology holds the inputs and the decision variables. The three source CSVs 
 - **Primary identifiers**: integer `id` on `Channel` and `Campaign`; a composite `channel_id` + `campaign_id` on `Effectiveness`; a string `name` on `Scenario`; and the linked `Effectiveness` on `Allocation`.
 - **Important invariants**: spend is non-negative; `x_active` is binary (0/1); spend on a pair sits within its channel's min/max only when the pair is active; per-campaign spend stays within the campaign budget; every campaign has at least one funded channel; and total spend stays within the scenario's total budget.
 
-For the full concept and property definitions, see `model/__init__.py`; `runbook.md` builds them step by step with the RAI skills.
+For the full concept and property definitions, see `model/schema.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
@@ -247,7 +250,7 @@ The model loads the CSVs into concepts, defines the decision variables, adds the
 
 6. **Solve once for all scenarios.** A single HiGHS solve covers all three budget levels; results are extracted per scenario and printed as a table.
 
-See `model/__init__.py` for the implementation and `runbook.md` for the skill-driven reproduction. The end-to-end flow:
+See `model/reasoning.py` for the implementation and `runbook.md` for the skill-driven reproduction. The end-to-end flow:
 
 ```text
 CSV inputs → load into concepts → decision variables (spend + funding, per scenario)
@@ -267,9 +270,9 @@ Focus on the first changes most users will make.
 
 ### Tune parameters
 
-- **Budget levels** — the three scenarios (`budget_35k`, `budget_45k`, `budget_55k`) are defined in the `scenario_data` block near the top of `model/__init__.py`. Add, remove, or change levels there to sweep a different range.
+- **Budget levels** — the three scenarios (`budget_35k`, `budget_45k`, `budget_55k`) are defined in the `scenario_data` block in `model/source.py`. Add, remove, or change levels there to sweep a different range.
 - **Spend bounds and budgets** — per-channel `min_spend` / `max_spend` live in `channels.csv`; per-campaign `budget` lives in `campaigns.csv`. These are usually the binding limits, so they are the first knobs to adjust when the total-budget cap stops mattering.
-- **Solver settings** — the solve uses HiGHS with a 60-second time limit (`problem.configure("highs", time_limit_sec=60)`); adjust the limit for larger instances.
+- **Solver settings** — the solve uses HiGHS with a 60-second time limit (`problem.configure("highs", time_limit_sec=60)` in `model/reasoning.py`); adjust the limit for larger instances.
 
 ### Extend the model
 

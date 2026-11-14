@@ -32,7 +32,8 @@ as ontology so the plan survives the chain run.
   ─────────────────────────────────────────────────────────────────
   STAGE 4  Prescriptive ──►  Assignment.x_assign(env, mar, div)
                  (MIP)       24 cells: 16 OPTIMAL, 8 INFEASIBLE.
-                             OPTIMAL in 6 s with Gurobi.
+                             OPTIMAL in 6 s with Gurobi. HiGHS (default)
+                             stops at 240 s: 16 FEASIBLE, 8 UNSOLVED.
                              Baseline (100pct / unconstrained / none):
                              110 assigned · $25.28M revenue · 83% margin
                              · 95% anchor · binding axis: power envelope.
@@ -144,7 +145,7 @@ Frontier labs (Anthropic, OpenAI, xAI Internal) carry the 15 P0 pretrains (256�
 
 **Response**
 
-Single MIP across 24 cells: `Assignment.x_assign(PowerEnvelopeLevel, MarginFloor, DiversityCap)` written back per cell — 16 OPTIMAL, 8 INFEASIBLE (designed signal at the strictest anchor-cap + type-floor combinations). OPTIMAL in ~6 s with Gurobi. Baseline (100pct / unconstrained / none): 110 workloads, $25.28M revenue, 83% margin, 95% anchor.
+Single MIP across 24 cells: `Assignment.x_assign(PowerEnvelopeLevel, MarginFloor, DiversityCap)` written back per cell — 16 OPTIMAL, 8 INFEASIBLE (designed signal at the strictest anchor-cap + type-floor combinations). OPTIMAL in ~6 s with Gurobi; HiGHS, the default, stops at its 240 s limit with 16 FEASIBLE and 8 UNSOLVED. Baseline (100pct / unconstrained / none): 110 workloads, $25.28M revenue, 83% margin, 95% anchor.
 
 ### 9. Read the frontiers and the demand-risk overlay
 
@@ -168,7 +169,7 @@ Baseline: 110 workloads, $25.28M revenue, $4.18M cost, 83% margin, 95% anchor, b
 
 **Response**
 
-Ontology gains a singleton `AllocationPlan(id="DCCA_BASELINE")` with `revenue_usd` ≈ $25.28M, `total_cost_usd` ≈ $4.18M, `realized_margin` ≈ 0.83, `anchor_share` ≈ 0.95, `n_assigned` = 110, `status` = `OPTIMAL`, `binding_axis` = `power_envelope`; plus `Assignment.is_chosen` (110 rows), `DemandScenario` (4 rows), and `DemandScenarioOutlook` (per-scenario realized + stranded revenue). All queryable as ontology, not stdout.
+Ontology gains a singleton `AllocationPlan(id="DCCA_BASELINE")` with `revenue_usd` ≈ $25.28M, `total_cost_usd` ≈ $4.18M, `realized_margin` ≈ 0.83, `anchor_share` ≈ 0.95, `n_assigned` = 110, `status` = `OPTIMAL` (`FEASIBLE` when HiGHS stops at its time limit), `binding_axis` = `power_envelope`; plus `Assignment.is_chosen` (110 rows), `DemandScenario` (4 rows), and `DemandScenarioOutlook` (per-scenario realized + stranded revenue). All queryable as ontology, not stdout.
 
 ## Data
 

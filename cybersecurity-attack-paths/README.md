@@ -39,7 +39,7 @@ This template enumerates multi-step attack paths across an enterprise asset grap
 
 ## What's included
 
-- **Model**: `model/__init__.py` — the asset graph, technique edges, path patterns, and rules that `rai models deploy --path model` deploys to your Snowflake account.
+- **Model**: the `model/` package (`schema.py` declares the concepts, `source.py` loads the sample data, `reasoning.py` states the path patterns and rules) — the asset graph, technique edges, path patterns, and rules that `rai models deploy --path model` deploys to your Snowflake account.
 - **Query**: `queries/attack_path_report.py` — prints the kill-chains, point-query routes, exposure ranking, and flagged assets from the deployed model.
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - **Data**: `data/assets.csv` (12 assets) and `data/attack_steps.csv` (16 technique-tagged edges)
@@ -153,7 +153,10 @@ cybersecurity-attack-paths/
 ├── README.md
 ├── runbook.md
 ├── model/
-│   └── __init__.py              # assets, technique edges, path patterns, and rules
+│   ├── __init__.py              # exports of the deployed model
+│   ├── schema.py                # assets and technique edges
+│   ├── source.py                # loads the CSVs
+│   └── reasoning.py             # path patterns and rules
 ├── queries/
 │   └── attack_path_report.py    # report printed from the deployed model
 └── data/
@@ -175,7 +178,7 @@ cybersecurity-attack-paths/
 - **Primary identifiers**: `Asset` by `id`.
 - **Important invariants**: the three technique edges are directed (`src` reaches `dst`, not the reverse); `internet_facing` and `crown_jewel` are `yes`/`no` flags that pin the kill-chain endpoints; `on_attack_path` is set only on assets that lie on a crown-jewel-reaching chain.
 
-For the full concept and property definitions — including the four directed self-relationships (`exploit_to`, `cred_to`, `pivot_to`, and the technique-agnostic `can_reach` union edge) — see `model/__init__.py`; `runbook.md` builds them step by step with the RAI skills.
+For the full concept and property definitions — including the four directed self-relationships (`exploit_to`, `cred_to`, `pivot_to`, and the technique-agnostic `can_reach` union edge) — see `model/schema.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
@@ -190,7 +193,7 @@ The centerpiece is a multi-edge path pattern (which needs `relationalai>=1.21`) 
 
 A separate point query pins both endpoints by id to enumerate every route between a chosen entry point and a chosen crown jewel over the union edge. The kill-chains are then ranked by the exposure summed along each one. Finally, the assets lying on any crown-jewel chain are flagged back onto the ontology as `Asset.on_attack_path`, so a later query can pull them without re-enumerating paths.
 
-See `model/__init__.py` for the implementation, `queries/attack_path_report.py` for the report, and `runbook.md` to reproduce it step by step with the RAI skills.
+See `model/reasoning.py` for the implementation, `queries/attack_path_report.py` for the report, and `runbook.md` to reproduce it step by step with the RAI skills.
 
 ## Customize this template
 

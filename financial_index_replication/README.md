@@ -135,11 +135,15 @@ Use this sequence to deploy the model and query it:
 
    ```text
    Selected names: exactly 20
-   Status: TIME_LIMIT
+   Solve result:
+   • status: OPTIMAL
+   • objective: 0.031395466
+   Status: OPTIMAL
+   Objective: total absolute residual = 0.031395
    Wrote benchmark-vs-replica returns to: data/replica_returns.csv
    ```
 
-   The solve selects exactly 20 names, though a selected stock may have zero weight. The solve ends as `OPTIMAL` or at its 240 second time limit (`TIME_LIMIT`) with the best basket found so far. The report accepts both, stops on any other termination status, and writes `data/replica_returns.csv` for plotting. See `runbook.md` for the basket, sector exposures, tracking quality, and baseline comparison.
+   The solve selects exactly 20 names, though a selected stock may have zero weight. The solve ends as `OPTIMAL` or at its 300 second time limit (`TIME_LIMIT`) with the best basket found so far. The report prints the status either way and writes `data/replica_returns.csv` for plotting. See `runbook.md` for the basket, sector exposures, tracking quality, and baseline comparison.
 
    To solve again without changing the model, refresh the deployed model, then run the query again:
 

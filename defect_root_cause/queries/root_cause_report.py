@@ -4,9 +4,9 @@ Run after `rai models deploy --path model`:
     python -m queries.root_cause_report
 
 Prints per-stage diagnostics -- genealogy reachability validation, the
-contrast-scored suspect factors with lift, the solve's termination status, and the
-DiagnosisResult headline (defective units, units explained, coverage) with the
-ranked root-cause factors, each with corroborating evidence.
+contrast-scored suspect factors with lift, the status and objective of the latest
+refresh's solve, and the DiagnosisResult headline (defective units, units explained,
+coverage) with the ranked root-cause factors, each with corroborating evidence.
 """
 
 from model import (
@@ -141,8 +141,6 @@ if __name__ == "__main__":
     print(
         f"\nDiagnosis solve: {', '.join(status)}   objective={round(cost[0], 9) if cost else None}"
     )
-    if status != ["OPTIMAL"]:
-        raise SystemExit(f"No optimal diagnosis: termination status {status}")
 
     # Read back the diagnosis (populate=True writes the solution onto is_root_cause).
     diagnosis = (

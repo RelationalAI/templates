@@ -42,7 +42,7 @@ Built on RelationalAI's graph reasoner: **reachability** for transitive dependen
 ## What's included
 
 - **Ontology**: two concepts (`SKU` and `BillOfMaterials`) wired into a directed dependency graph, plus a derived `feeds` self-relationship on `SKU` and a persisted `assembly_depth` property.
-- **Model**: `model/__init__.py` — the concepts, data, graph, and rules that `rai models deploy --path model` deploys to your Snowflake account.
+- **Model**: the concepts, data, graph, and rules in the `model/` package (`schema.py` declares the concepts, `source.py` loads the sample data, `reasoning.py` states the graph and rules), which `rai models deploy --path model` deploys to your Snowflake account.
 - **Query**: `queries/dependency_report.py` — prints the reachability, betweenness centrality, and assembly-path report from the deployed model.
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - **Sample data**: `data/skus.csv` (9 SKUs across 3 tiers) and `data/bill_of_materials.csv` (14 BOM entries with site-specific assembly). See *Sample data* below.
@@ -161,7 +161,10 @@ Run these steps from a terminal:
 ├── runbook.md                   # paste-able graph-analysis walkthrough (RAI skills)
 ├── pyproject.toml               # dependencies
 ├── model/
-│   └── __init__.py              # concepts, data, graph, and rules (reachability + betweenness + assembly paths)
+│   ├── __init__.py              # exports of the deployed model
+│   ├── schema.py                # SKU and BillOfMaterials concepts
+│   ├── source.py                # loads the sample CSVs
+│   └── reasoning.py             # graph and rules (reachability + betweenness + assembly paths)
 ├── queries/
 │   └── dependency_report.py     # report printed from the deployed model
 └── data/
@@ -185,7 +188,7 @@ Run these steps from a terminal:
 
 The model also derives a `feeds` self-relationship on `SKU` (input SKU feeds output SKU), built from the `BillOfMaterials` intermediary and used to enumerate assembly paths, plus a persisted `assembly_depth` property (the longest assembly chain terminating at each SKU that feeds nothing further).
 
-For the full concept and property definitions, see `model/__init__.py`; `runbook.md` builds them step by step with the RAI skills.
+For the full concept and property definitions, see `model/schema.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
@@ -215,7 +218,7 @@ Betweenness centrality ranks components by how many shortest dependency paths pa
 
 Where reachability returns dependency *pairs*, path enumeration returns the actual *build sequences*. It walks the derived `feeds` edge to enumerate every assembly path; because the BOM is acyclic, this yields exactly the simple paths with no cycle risk. A maximal-paths view keeps only the longest non-extendable chains, and the longest assembly depth is persisted as `SKU.assembly_depth`.
 
-See `model/__init__.py` for the implementation, `queries/dependency_report.py` for the report, and `runbook.md` for the skill-driven reproduction.
+See `model/reasoning.py` for the implementation, `queries/dependency_report.py` for the report, and `runbook.md` for the skill-driven reproduction.
 
 ## Customize this template
 

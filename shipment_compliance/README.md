@@ -42,7 +42,7 @@ The four rules demonstrate different rule patterns:
 
 ## What's included
 
-- **Model**: `model/__init__.py` -- the data model and four rules that `rai models deploy --path model` deploys to your Snowflake account.
+- **Model**: the `model/` package (`schema.py` declares the concepts, `source.py` loads the sample data, `reasoning.py` states the four rules) that `rai models deploy --path model` deploys to your Snowflake account.
 - **Query**: `queries/compliance_report.py` -- prints the entities each rule flags from the deployed model.
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - `data/suppliers.csv` -- Supplier names and reliability scores
@@ -169,7 +169,10 @@ Run these steps from a terminal:
 ├── README.md               # this file
 ├── pyproject.toml          # dependencies
 ├── model/
-│   └── __init__.py         # data model + four derived rules
+│   ├── __init__.py         # exports of the deployed model
+│   ├── schema.py           # concepts and the status and priority vocabularies
+│   ├── source.py           # loads the sample CSVs
+│   └── reasoning.py        # four derived rules
 ├── queries/
 │   └── compliance_report.py   # report printed from the deployed model
 ├── runbook.md              # analyst-facing paste-testable walkthrough
@@ -205,7 +208,7 @@ Six concepts model a small supply chain, linked by SKU and supplier references. 
 - **Primary identifiers**: an integer `id` on every concept.
 - **Important invariants**: `Supplier.reliability_score` is a fraction in `[0, 1]`; `Shipment.status` is a `ShipmentStatus` member (`PENDING` / `IN_TRANSIT` / `DELIVERED`); `Demand.priority` is a `Priority` member (`LOW` / `STANDARD` / `HIGH` / `URGENT`); `delay_days`, `quantity`, and `input_quantity` are non-negative. Each rule adds a derived boolean flag back onto its concept: `Shipment.is_late` (Rule 1), `Shipment.is_at_risk` (Rule 2), `BillOfMaterials.is_single_sourced` (Rule 3), and `Demand.is_escalated` (Rule 4).
 
-For the full concept and property definitions, see `model/__init__.py`; `runbook.md` builds them step by step with the RAI skills.
+For the full concept and property definitions, see `model/schema.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
@@ -220,7 +223,7 @@ CSV inputs → load Supplier / SKU / Shipment / Operation / BOM / Demand
 2. **Define four rule patterns.** Each rule uses the `model.where(...).define(...)` pattern to set a boolean flag, and together they show four shapes: a simple threshold (Rule 1: `delay_days > 0`), a cross-entity join (Rule 2: undelivered shipments from suppliers scoring below `0.8`), an aggregation (Rule 3: BOM inputs produced by exactly one operation route), and OR semantics via multiple `define()` calls on the same relationship (Rule 4: `HIGH` or `URGENT` priority).
 3. **Query the flags.** Each rule is queried with `model.select(...).where(Concept.rule_flag())` to display the matching entities.
 
-See `model/__init__.py` for the implementation, `queries/compliance_report.py` for the report, and `runbook.md` for the skill-driven reproduction.
+See `model/reasoning.py` for the implementation, `queries/compliance_report.py` for the report, and `runbook.md` for the skill-driven reproduction.
 
 ## Customize this template
 

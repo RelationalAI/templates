@@ -38,7 +38,7 @@ Built using **prescriptive reasoning** (nonlinear program over continuous flow v
 ## What's included
 
 - **Model**: a single-stage nonlinear optimization on a shared ontology — `Source`, `User`, and `Connection` concepts wired to the bundled CSVs.
-- **Deployment**: `model/__init__.py` — builds the model, constraints, and objective; `rai models deploy --path model` deploys it to your Snowflake account, where each refresh calls the solver.
+- **Deployment**: the `model/` package (`schema.py` declares the concepts, `source.py` loads the sample data, `reasoning.py` states the decision problem) — builds the model, constraints, and objective; `rai models deploy --path model` deploys it to your Snowflake account, where each refresh calls the solver.
 - **Query**: `queries/flow_allocations.py` — prints the report from the deployed model.
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - **Sample data**: a small water-distribution network of sources, user groups, and the connections between them. See *Sample data* below.
@@ -152,6 +152,10 @@ Use this sequence to deploy the model and query it:
    ```
 
    ```text
+   Solve result:
+   • status: LOCALLY_SOLVED
+   • objective: 853.392097856
+
    Status: LOCALLY_SOLVED
    Total cost: $853.39
 
@@ -165,7 +169,7 @@ Use this sequence to deploy the model and query it:
    5  Reservoir_B     Municipal  228.989014
    ```
 
-   The formulation printed above the status line is trimmed here. The report stops unless the termination status is `OPTIMAL` or `LOCALLY_SOLVED`; Ipopt returns `LOCALLY_SOLVED` for a nonlinear program it solved to a local optimum. See `runbook.md` for the step-by-step walkthrough.
+   Ipopt returns `LOCALLY_SOLVED` for a nonlinear program it solved to a local optimum. See `runbook.md` for the step-by-step walkthrough.
 
    To solve again without changing the model, refresh the deployed model, then run the query again:
 
@@ -189,7 +193,10 @@ Use this sequence to deploy the model and query it:
 ```text
 water_allocation/
   model/
-    __init__.py         # The deployed model (network model, constraints, solver call)
+    __init__.py         # Exports of the deployed model
+    schema.py           # Source, user, and connection concepts
+    source.py           # Loads the sample CSVs
+    reasoning.py        # Flow variable, constraints, objective, solver call
   queries/
     flow_allocations.py # Report from the deployed model
   data/
@@ -219,7 +226,7 @@ A single shared ontology holds the network. The `Connection` concept carries the
 - **Primary identifiers**: integer `id` on `Source` and `User`; `Connection` is identified by its `source` and `user` endpoints.
 - **Important invariants**: `capacity`, `demand`, `max_flow`, and `cost_per_unit` are non-negative; `loss_rate` is a fraction in `[0, 1]`; each connection's flow is continuous and bounded between 0 and its `max_flow`.
 
-For the full concept and property definitions, see `model/__init__.py`; `runbook.md` builds them step by step with the RAI skills.
+For the full concept and property definitions, see `model/schema.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
@@ -233,7 +240,7 @@ Two families of constraints shape the plan. A source-capacity constraint holds t
 sources/users/connections CSVs → per-connection flow variables → capacity + loss-adjusted demand constraints → minimize cost → allocation plan
 ```
 
-See `model/__init__.py` for the implementation, and `runbook.md` to reproduce it step by step with the RAI skills.
+See `model/reasoning.py` for the implementation, and `runbook.md` to reproduce it step by step with the RAI skills.
 
 ## Customize this template
 

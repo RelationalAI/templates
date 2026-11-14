@@ -42,7 +42,7 @@ Built using **graph analysis** — PageRank (an iterative random-walk algorithm)
 
 ## What's included
 
-- **Model**: `model/__init__.py` - the model configuration, graph creation, and the PageRank, degree centrality, indegree, and outdegree metrics. `rai models deploy --path model` deploys it to your Snowflake account, where each refresh computes the metrics.
+- **Model**: the model configuration, graph creation, and the PageRank, degree centrality, indegree, and outdegree metrics, in the `model/` package (`schema.py` declares the concepts, `source.py` loads the sample data, `reasoning.py` states the graph and metrics). `rai models deploy --path model` deploys it to your Snowflake account, where each refresh computes the metrics.
 - **Query**: `queries/distribution_point_ranking.py` - prints the detailed report from the deployed model
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - **Interactive app**: `app.py` - Streamlit web application with visualizations and interactive analysis, querying the deployed model
@@ -187,7 +187,10 @@ humanitarian-aid-supply-chain/
 ├── README.md                          # this file
 ├── pyproject.toml                     # dependencies
 ├── model/
-│   └── __init__.py                    # deployed model: graph and metrics
+│   ├── __init__.py                    # exports of the deployed model
+│   ├── schema.py                      # DistributionPoint and SupplyRoute concepts
+│   ├── source.py                      # loads the sample CSVs
+│   └── reasoning.py                   # flow weight, graph, and metrics
 ├── queries/
 │   └── distribution_point_ranking.py  # report from the deployed model
 ├── app.py                             # optional Streamlit dashboard (queries the deployed model)
@@ -216,7 +219,7 @@ The model is a small graph ontology: distribution points connected by directed, 
 
 The two centrality metrics (`pagerank`, `degree_centrality`) and the degree counts (`incoming_routes`, `outgoing_routes`) are computed by the Graph API over the route graph at query time, not stored as `DistributionPoint` properties.
 
-For the full concept and property definitions, see `model/__init__.py`; `runbook.md` builds them step by step with the RAI skills.
+For the full concept and property definitions, see `model/schema.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
@@ -226,7 +229,7 @@ The template follows this flow:
 CSV files → model/ (deployed) → Calculate PageRank → Calculate Degree Centrality → Analyze strategic categories → Display results
 ```
 
-**Deployed model.** `model/__init__.py` creates the model container, defines the `DistributionPoint` and weighted `SupplyRoute` concepts, loads both CSVs, and constructs the weighted, directed route graph, and `rai models deploy --path model` deploys it. The CLI report and the Streamlit app both query that deployed model.
+**Deployed model.** The `model/` package creates the model container, defines the `DistributionPoint` and weighted `SupplyRoute` concepts, loads both CSVs, and constructs the weighted, directed route graph, and `rai models deploy --path model` deploys it. The CLI report and the Streamlit app both query that deployed model.
 
 **Calculate PageRank.** PageRank simulates random walks through the network to find where aid naturally concentrates. Starting from equal probability at every node, it iteratively propagates probability along edges, applying a damping factor (85% chance of following a route, 15% chance of teleporting to a random node) until the scores stabilize. A higher score means a node is more central to network flow.
 
@@ -236,7 +239,7 @@ CSV files → model/ (deployed) → Calculate PageRank → Calculate Degree Cent
 
 **Display strategic analysis and recommendations.** `queries/distribution_point_ranking.py` prints a ranked table of all points with both metrics, the strategic-category breakdown, network-wide and regional statistics, and recommendations for response teams. The Streamlit app adds an interactive overview, a color-coded network visualization, filterable rankings with CSV export, and per-category detail.
 
-See `model/__init__.py` and `queries/distribution_point_ranking.py` for the implementation, and `runbook.md` for the skill-driven reproduction.
+See `model/reasoning.py` and `queries/distribution_point_ranking.py` for the implementation, and `runbook.md` for the skill-driven reproduction.
 
 ## Customize this template
 
@@ -244,14 +247,14 @@ Focus on the first changes most users will make.
 
 ### Use your own data
 
-- Replace the CSVs in `data/` with your own network, keeping the same column names (or update the loading logic in `model/__init__.py`).
+- Replace the CSVs in `data/` with your own network, keeping the same column names (or update the loading logic in `model/source.py`).
 - Ensure supply routes only reference valid distribution-point IDs.
-- Add properties to distribution points (organization, contact info, GPS coordinates) by adding CSV columns and the corresponding properties in `model/__init__.py`.
+- Add properties to distribution points (organization, contact info, GPS coordinates) by adding CSV columns and the corresponding properties in `model/schema.py`.
 
 ### Tune parameters
 
 - **PageRank damping factor** — higher damping (0.90-0.95) emphasizes network structure over teleportation; lower damping (0.70-0.80) emphasizes direct connections over global influence.
-- **Edge-weight formula** — change the `flow_weight` formula in `model/__init__.py` to reweight the graph. Higher weights indicate stronger connections that PageRank favors.
+- **Edge-weight formula** — change the `flow_weight` formula in `model/reasoning.py` to reweight the graph. Higher weights indicate stronger connections that PageRank favors.
 
   The current formula `(route_capacity * reliability_score) / distance_km` balances all three factors. Alternatives:
   - Capacity-focused: `route_capacity` (maximize throughput)
@@ -270,7 +273,7 @@ Focus on the first changes most users will make.
 
 ### Scale up / productionize
 
-- Swap the `read_csv(...)` loads in `model/__init__.py` for `model.data(snowflake_table)` calls to run against a network catalog maintained in Snowflake.
+- Swap the `read_csv(...)` loads in `model/source.py` for `model.data(snowflake_table)` calls to run against a network catalog maintained in Snowflake.
 - Pin `relationalai` in `pyproject.toml` for reproducible runs, and schedule a refresh of the deployed model to update rankings as the network changes.
 
 ## Troubleshooting
