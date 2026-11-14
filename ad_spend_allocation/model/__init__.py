@@ -1,6 +1,6 @@
-"""Ad spend allocation (prescriptive optimization) template.
+"""Ad spend allocation (prescriptive optimization) template: the model.
 
-This script demonstrates a mixed-integer linear optimization (MILP) workflow
+This package demonstrates a mixed-integer linear optimization (MILP) workflow
 in RelationalAI:
 
 - Load sample CSVs describing marketing channels, campaigns, and channel-campaign
@@ -21,13 +21,9 @@ Modeling approach:
 - One solve handles all budget levels; results extracted via model.select().
 
 Run:
-    `python ad_spend_allocation.py` deploys the model to the schema in raiconfig.yaml,
-    waits for its first refresh (which runs the solve), and prints the report from the
-    deployed model.
-
-Output:
-    Prints the solver termination status, objective value, and a table of
-    non-trivial allocations for each budget scenario.
+    `rai models deploy --path model` deploys this model to the schema in
+    raiconfig.yaml and waits for its first refresh, which runs the solve.
+    `python -m queries.spend_allocation` then prints the report from the deployed model.
 """
 
 from pathlib import Path
@@ -40,7 +36,7 @@ from relationalai.semantics.reasoners.prescriptive import Problem
 # Configure inputs
 # --------------------------------------------------
 
-DATA_DIR = Path(__file__).parent / "data"
+DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 
 # --------------------------------------------------
 # Define semantic model & load data
@@ -183,34 +179,3 @@ problem.install_display_strings()
 SolveStatus = model.Relationship(f"ad spend solve status is {String:status}")
 TotalConversions = model.Relationship(f"ad spend total conversions is {Float:conversions}")
 model.define(SolveStatus(problem.termination_status()), TotalConversions(problem.objective_value()))
-
-# --------------------------------------------------
-# Deploy, then report (`rai models deploy` skips this block)
-# --------------------------------------------------
-
-if __name__ == "__main__":
-    # Deploy and wait for the first refresh, which runs the solve.
-    model.deploy()
-
-    problem.display()
-
-    # Status and objective of the latest refresh's solve. A refresh records any
-    # termination status, so the report checks it.
-    status = model.select(SolveStatus).to_df().iloc[:, 0].tolist()
-    conversions = model.select(TotalConversions).to_df().iloc[:, 0].tolist()
-    print(f"\nSolve result:\n• status: {', '.join(status)}")
-    if status != ["OPTIMAL"]:
-        raise SystemExit(f"No optimal spend allocation: termination status {status}")
-    print(f"• objective: {round(conversions[0], 9)}\n")
-
-    # --------------------------------------------------
-    # Extract results per scenario
-    # --------------------------------------------------
-
-    print("\nSpend allocation per scenario:")
-    model.select(
-        Scenario.name.alias("scenario"),
-        Allocation.effectiveness.channel.name.alias("channel"),
-        Allocation.effectiveness.campaign.name.alias("campaign"),
-        x_spend.alias("spend"),
-    ).where(Allocation.x_spend(Scenario, x_spend), x_spend > 0.001).inspect()
