@@ -38,7 +38,7 @@ The model demonstrates several advanced techniques: multi-period inventory flow 
 
 ## What's included
 
-- `model/__init__.py` -- ontology, formulation, and solver configuration; `rai models deploy --path model` deploys it to your Snowflake account, where each refresh runs the solve
+- `model/` -- ontology, formulation, and solver configuration, as a package (`schema.py` declares the concepts, `source.py` loads the sample data, `reasoning.py` states the decision problem); `rai models deploy --path model` deploys it to your Snowflake account, where each refresh runs the solve
 - `queries/transport_plan.py` -- prints the report from the deployed model: the solve status and cost and the inventory, transport, and arrival tables
 - `runbook.md` -- a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself
 - `data/freight_groups.csv` -- 2 freight groups with inventory/transport/arrival windows
@@ -165,7 +165,7 @@ Use this sequence to deploy the model and query it:
    1  ltl           fg2    2    5000.0
    ```
 
-   The formulation printed above the solve result is trimmed here, and so are the inventory-level and arrival-day tables that the report also prints. The report checks the solve's termination status and stops unless it is `OPTIMAL`. Both freight groups ship less-than-truckload on day 2 (zero truckload trucks); see `runbook.md` for the full inventory and arrival-day tables.
+   The inventory-level and arrival-day tables that the report also prints are trimmed here. Both freight groups ship less-than-truckload on day 2 (zero truckload trucks); see `runbook.md` for the full inventory and arrival-day tables.
 
    To solve again without changing the model, refresh the deployed model, then run the query again:
 
@@ -190,7 +190,10 @@ Use this sequence to deploy the model and query it:
 ├── README.md
 ├── pyproject.toml
 ├── model/
-│   └── __init__.py
+│   ├── __init__.py      # exports of the deployed model
+│   ├── schema.py        # freight group, transport type, and LTL segment concepts
+│   ├── source.py        # loads the freight groups; defines the modes and LTL segments
+│   └── reasoning.py     # decisions, constraints, objective, solve
 ├── queries/
 │   └── transport_plan.py
 └── data/
@@ -201,19 +204,19 @@ Use this sequence to deploy the model and query it:
 
 ## Sample data
 
-The bundled data is synthetic and illustrative -- a minimal two-group example designed to teach the formulation on a Snowflake-connected RAI account, not to match a specific shipper's freight book. The transport modes and cost segments are defined inline in `model/__init__.py`, not loaded from CSV.
+The bundled data is synthetic and illustrative -- a minimal two-group example designed to teach the formulation on a Snowflake-connected RAI account, not to match a specific shipper's freight book. The transport modes and cost segments are defined inline in `model/source.py`, not loaded from CSV.
 
 - **`freight_groups.csv`** (2 rows) -- one row per freight group, giving its inventory window (`inv_start_t` to `inv_end_t`), transport window (`tra_start_t` to `tra_end_t`), arrival window (`arr_start_t` to `arr_end_t`), and starting inventory weight (`inv_start`).
 
 ## Model overview
 
-The formulation is built on three concepts: the freight groups loaded from CSV, and the transport types and LTL cost segments defined inline in `model/__init__.py`.
+The formulation is built on three concepts: the freight groups loaded from CSV, and the transport types and LTL cost segments defined inline in `model/source.py`.
 
 - **Key entities**: `FreightGroup` — a batch of freight with its own inventory, transport, and arrival time windows (the optimization solves for its per-day inventory, shipment quantities, and arrival day); `TransportType` — a shipping mode (truckload or less-than-truckload), with its transit time; `LTLSegment` — a breakpoint in the piecewise-linear less-than-truckload cost curve.
 - **Primary identifiers**: `name` on `FreightGroup` and `TransportType`; integer `seg` on `LTLSegment`.
 - **Important invariants**: window start days are less than or equal to window end days; `inv_start` weights are non-negative; transport-mode indicators and segment activation variables are binary; each freight group ships all inventory out by the end of its inventory window.
 
-For the full concept and property definitions, see `model/__init__.py`; `runbook.md` builds them step by step with the RAI skills.
+For the full concept and property definitions, see `model/schema.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
@@ -231,7 +234,7 @@ CSV freight groups + inline modes/segments → decision variables → inventory 
 
 **5. Minimize total cost.** The objective combines inventory holding cost, TL fixed cost, and piecewise LTL variable cost, and the MIP is solved end to end.
 
-For the implementation, see `model/__init__.py`; to reproduce it step by step with the RAI skills, follow `runbook.md`.
+For the implementation, see `model/reasoning.py`; to reproduce it step by step with the RAI skills, follow `runbook.md`.
 
 ## Customize this template
 
@@ -244,7 +247,7 @@ Focus on the first changes most users will make.
 
 ### Tune parameters
 
-- **Cost parameters** -- change `inv_cost`, `tl_tra_cost`, or the LTL segment costs and limits in `model/__init__.py`.
+- **Cost parameters** -- change `inv_cost`, `tl_tra_cost`, or the LTL segment costs and limits in `model/reasoning.py` and `model/source.py`.
 - **Transit times** -- adjust the inline `transit_time` values on the `tl` and `ltl` transport types.
 
 ### Extend the model
