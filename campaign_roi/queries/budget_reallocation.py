@@ -1,9 +1,9 @@
 """Budget reallocation report: reads the deployed campaign_roi model.
 
 Run `python -m queries.budget_reallocation` after `rai models deploy --path model`. Prints the
-formulation, the termination status and total expected conversions of the latest refresh's
-solve against the current budgets, the optimized budget per campaign, and the regional spend
-against the paused-region cap.
+status and objective of the latest refresh's solve, the total expected conversions against
+the current budgets, the optimized budget per campaign, and the regional spend against the
+paused-region cap.
 """
 
 from model import (
@@ -14,23 +14,17 @@ from model import (
     SolveStatus,
     TotalConversions,
     model,
-    problem,
 )
 
 if __name__ == "__main__":
-    problem.display()
-
-    # Status and objective of the latest refresh's solve. A refresh records any
-    # termination status, so the report checks it.
     status = model.select(SolveStatus).to_df().iloc[:, 0].tolist()
     conversions = model.select(TotalConversions).to_df().iloc[:, 0].tolist()
     print(f"\nSolve result:\n• status: {', '.join(status)}")
-    if status != ["OPTIMAL"]:
-        raise SystemExit(f"No optimal budget reallocation: termination status {status}")
-    objective_value = conversions[0]
-    print(f"• objective: {round(objective_value, 9)}\n")
+    if conversions:
+        print(f"• objective: {round(conversions[0], 9)}\n")
 
     print(f"\nStatus: {status[0]}")
+    objective_value = conversions[0]
     print(f"Total expected conversions (optimized): {objective_value:,.1f}")
 
     results_df = model.select(

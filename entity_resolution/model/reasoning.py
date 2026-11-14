@@ -95,7 +95,7 @@ def derive_exposure_and_breaches() -> None:
 
 def choose_reinsurance_cessions():
     """Declare the reinsurance-budget knapsack for breached parties."""
-    problem = Problem(model, Float)
+    problem = Problem(model, Float, name="entity_resolution")
     problem.solve_for(
         ResolvedParty.cede,
         where=[ResolvedParty.is_over_limit()],
@@ -124,6 +124,6 @@ num_nodes, num_edges = cluster_accepted_matches()
 derive_exposure_and_breaches()
 problem = choose_reinsurance_cessions()
 
-# The solve's status, published through the model's own relationship.
+# The solve's status, which the deployed model publishes for the queries.
 SolveStatus = model.Relationship(f"reinsurance solve status is {String:status}")
 model.define(SolveStatus(problem.termination_status()))

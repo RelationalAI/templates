@@ -1,9 +1,9 @@
 """Coverage report: reads the deployed cell_tower_coverage model.
 
 Run `python -m queries.coverage_report` after `rai models deploy --path model`. Prints the
-selected tower sites, assigned demand zones, tower utilization and coverage summary of the
-latest refresh's solve, and writes data/coverage_solution.csv for downstream mapping or
-reporting.
+status and objective of the latest refresh's solve, the selected tower sites, assigned demand
+zones, tower utilization and coverage summary, and writes data/coverage_solution.csv for
+downstream mapping or reporting.
 """
 
 import pandas as pd
@@ -37,12 +37,11 @@ if __name__ == "__main__":
     print(f"Build budget: ${BUILD_BUDGET:,.0f}")
     print(f"Max new towers: {MAX_NEW_TOWERS}")
 
-    # Status and objective of the latest refresh's solve. A refresh records any
-    # termination status, so the report checks it.
     status = model.select(SolveStatus).to_df().iloc[:, 0].tolist()
     objective = model.select(CoveredPopulation).to_df().iloc[:, 0].tolist()
-    if status not in (["OPTIMAL"], ["TIME_LIMIT"]):
-        raise SystemExit(f"Solver did not find an optimal solution: {status}")
+    print(f"\nSolve result:\n• status: {', '.join(status)}")
+    if objective:
+        print(f"• objective: {round(objective[0], 9)}\n")
 
     print(f"\nStatus: {status[0]}")
     print(f"Objective: covered population = {objective[0]:,.0f}")

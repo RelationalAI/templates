@@ -1,6 +1,6 @@
 """Graph analysis of the distribution network, then the inventory allocation problem."""
 
-from relationalai.semantics import Float, sum
+from relationalai.semantics import Float, String, sum
 from relationalai.semantics.reasoners.graph import Graph
 from relationalai.semantics.reasoners.prescriptive import Problem
 
@@ -81,3 +81,8 @@ problem.minimize(sum(Site.x_inventory * Site.holding_cost))
 
 # Each refresh of the deployed model runs the graph analysis, then this solve.
 problem.configure("highs", time_limit_sec=60)
+
+# The solve's status and objective, which the deployed model publishes for the queries.
+SolveStatus = model.Relationship(f"warehouse allocation solve status is {String:status}")
+TotalHoldingCost = model.Relationship(f"warehouse allocation total holding cost is {Float:holding_cost}")
+model.define(SolveStatus(problem.termination_status()), TotalHoldingCost(problem.objective_value()))

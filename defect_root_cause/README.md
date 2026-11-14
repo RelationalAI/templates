@@ -45,7 +45,7 @@ At a high level, this exercises three RelationalAI capabilities on one shared mo
 
 ## What's included
 
-- **Model** (`model/__init__.py`): the ontology and all three reasoning stages, which `rai models deploy --path model` deploys to your Snowflake account.
+- **Model** (`model/` package): the ontology and all three reasoning stages, which `rai models deploy --path model` deploys to your Snowflake account. `schema.py` declares the concepts, `source.py` loads the sample data, and `reasoning.py` states the three reasoning stages.
 - **Query** (`queries/root_cause_report.py`): prints the report from the deployed model.
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - **Data generator** (`generate_data.py`): rebuilds the sample corpus deterministically from a fixed seed. The generated files are already included, so you do not need to run it to use the template.
@@ -167,7 +167,7 @@ Use this sequence to deploy the model and query it:
    MACHINE::REF-02 Reflow oven 2 (REFLOW) MACHINE                73 2.167304
    ```
 
-   The lines above are the end of the report. The report checks the solve's termination status and stops unless it is OPTIMAL. The full annotated output appears in the Sample output section below.
+   The lines above are the end of the report. The full annotated output appears in the Sample output section below.
 
    To solve again without changing the model, refresh the deployed model, then run the query again:
 
@@ -194,7 +194,10 @@ defect_root_cause/
 ├── runbook.md                # analyst-facing, paste-testable walkthrough
 ├── pyproject.toml
 ├── model/
-│   └── __init__.py           # ontology and the three reasoning stages
+│   ├── __init__.py           # exports of the deployed model
+│   ├── schema.py             # concepts and properties
+│   ├── source.py             # loads the CSVs
+│   └── reasoning.py          # genealogy graph, contrast scoring, and the diagnosis solve
 ├── queries/
 │   └── root_cause_report.py  # report printed from the deployed model
 ├── generate_data.py          # regenerates the corpus (CSVs already included)
@@ -227,7 +230,7 @@ The genealogy is the backbone: a built `Lot` consumes its input lots, so followi
 - **Primary identifiers**: every concept carries a string `id` (for example `LOT::SP-0423` on `Factor`); the genealogy and process history are threaded by relationships (`Lot consumes Lot`, `Unit consumes Lot`, `Unit ran on Machine`) rather than shared keys.
 - **Important invariants**: `Unit.defective` is `0` or `1`; `Factor.lift` is the touched-unit defect rate over the plant baseline (≈ 1.0 for non-causal high-volume factors); the `is_root_cause` decision variable is binary; a defective unit is either explained by a named cause it touches or marked unexplained.
 
-For the full concept and property definitions — including the relations the reasoning traces (`Lot consumes Lot`, `Unit consumes Lot`, `Unit ran on Machine`, and the derived `Factor touches Unit` incidence) — see `model/__init__.py`; `runbook.md` builds them step by step with the RAI skills.
+For the full concept and property definitions — including the relations the reasoning traces (`Lot consumes Lot`, `Unit consumes Lot`, `Unit ran on Machine`, and the derived `Factor touches Unit` incidence) — see `model/schema.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
@@ -253,7 +256,7 @@ Each candidate is scored by how concentrated defects are among the units it touc
 
 A binary decision variable names each suspect a root cause, and a binary slack lets a defective unit be left unexplained. The coverage constraint requires every defective unit to be explained by a named cause it touches or else marked unexplained. The objective trades off three things: a cost for each named cause (so the diagnosis stays small), a penalty for naming a cause that also touches many good units (so it stays specific), and a cost for leaving a defect unexplained. Together these make the optimizer prefer the single deep root over the several proximate sub-assemblies that merely carry it.
 
-See `model/__init__.py` for the implementation, `queries/root_cause_report.py` for the report, and `runbook.md` to reproduce each stage step by step with the RAI skills.
+See `model/reasoning.py` for the implementation, `queries/root_cause_report.py` for the report, and `runbook.md` to reproduce each stage step by step with the RAI skills.
 
 ## Sample output
 

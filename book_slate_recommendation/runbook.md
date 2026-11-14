@@ -85,7 +85,7 @@ For every (user, unread book) candidate, the connecting paths are counted across
 
 **Response**
 
-OPTIMAL or TIME_LIMIT (the solver may stop at its time limit with the best slate found; on the bundled data it does, with an objective that varies between runs, and the report accepts both) — all 25 users get an ordered 3-book slate (`Candidate.slot`) that maximizes high-slot path support subject to subject diversity and the per-user explanation floor; the chosen books and slots are written back. A TIME_LIMIT slate is the best found, not proven optimal. (The objective value depends on how explanation paths are counted and where the diversity grain and explanation floor are set — and a near-ubiquitous subject may force the diversity rule onto each book's primary subject to stay feasible — so the exact total varies with those modeling choices. What's stable: every user receives a full, subject-diverse, ordered slate that clears the floor, each pick backed by concrete graph paths.)
+OPTIMAL or TIME_LIMIT (the solver may stop at its time limit with the best slate found; on the bundled data it does, with an objective that varies between runs) — all 25 users get an ordered 3-book slate (`Candidate.slot`) that maximizes high-slot path support subject to subject diversity and the per-user explanation floor; the chosen books and slots are written back. A TIME_LIMIT slate is the best found, not proven optimal. (The objective value depends on how explanation paths are counted and where the diversity grain and explanation floor are set — and a near-ubiquitous subject may force the diversity rule onto each book's primary subject to stay feasible — so the exact total varies with those modeling choices. What's stable: every user receives a full, subject-diverse, ordered slate that clears the floor, each pick backed by concrete graph paths.)
 
 ### 6. Read the slates
 
@@ -102,4 +102,4 @@ Each user has a 3-book slate ordered by explanation strength, every pick backed 
 
 ## Data
 
-Bundled CSVs in `data/`: 59 books, 52 authors, 12 subjects, 25 users, 150 reads, plus the author/subject/similar knowledge-graph edges. The slate size (K=3), explanation floor, and cold-start threshold are constants in the model. Full chain in `model/__init__.py`; the report in `queries/slate_report.py`.
+Bundled CSVs in `data/`: 59 books, 52 authors, 12 subjects, 25 users, 150 reads, plus the author/subject/similar knowledge-graph edges. The slate size (K=3), explanation floor, and cold-start threshold are constants in the model. Full chain in `model/`; the report in `queries/slate_report.py`.

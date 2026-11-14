@@ -169,12 +169,16 @@ Use this sequence to deploy the model and query it:
    ==================================================
    Stage 2: Inventory Allocation
    ==================================================
-   ...
+
+   Solve result:
+   • status: OPTIMAL
+   • objective: 13713.292897685
+
    Status: OPTIMAL
    Total holding cost: $13713.29
    ```
 
-   The report also prints the bridge routes, the solver details, and the allocation plan. The full printout and a step-by-step walkthrough are in `runbook.md`.
+   The report also prints the bridge routes and the allocation plan. The full printout and a step-by-step walkthrough are in `runbook.md`.
 
    To solve again without changing the model, refresh the deployed model, then run the query again:
 
