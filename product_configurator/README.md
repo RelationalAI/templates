@@ -41,7 +41,8 @@ The configurator scenario here is automotive trim, drawn from the public Renault
 
 ## What's included
 
-- `product_configurator.py` -- main script with ontology, decisions, constraints, and solver call
+- `model/__init__.py` -- ontology, decisions, constraints, and solver configuration; `rai models deploy --path model` deploys it
+- `queries/feasible_builds.py` -- prints the report from the deployed model
 - **Runbook**: `runbook.md` -- a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - `data/slots.csv` -- 6 slots (Engine, Transmission, Trim, Sound, Wheels, Roof)
 - `data/options.csv` -- 16 options across the 6 slots, each with a price in integer cents
@@ -54,7 +55,7 @@ The configurator scenario here is automotive trim, drawn from the public Renault
 
 ### Access
 - A Snowflake account that has the RAI Native App installed.
-- The one-time model deployment setup on that account, done by an account administrator: follow [Set up model deployment](https://private.relational.ai/early-access/model-deploy-setup) through **Governed setup**, **PAT authentication**, and steps 1-2 of **Additional setup for the prescriptive reasoner** (Quickstart step 4 below covers this template's own schema). It gives you a model role, a programmatic access token (PAT) stored as a secret, an external access integration, a PAT user, and a warehouse.
+- The one-time model deployment setup on that account, done by an account administrator: follow [Set up model deployment](https://private.relational.ai/early-access/model-deploy-setup) through **Governed setup**, **PAT authentication**, and steps 1-2 of **Additional setup for the prescriptive reasoner** (the Quickstart covers this template's own schema). It gives you a model role, a programmatic access token (PAT) stored as a secret, an external access integration, a PAT user, and a warehouse.
 - A Snowflake user that holds the model role.
 
 ### Tools
@@ -63,28 +64,61 @@ The configurator scenario here is automotive trim, drawn from the public Renault
 
 ## Quickstart
 
-1. Download ZIP:
+Before you start, install Python 3.10 or later and complete the access prerequisites above: a Snowflake account with the RAI Native App, the one-time model deployment setup, and a Snowflake user that holds the model role.
+
+Before the first deploy, create this template's internal schema as the model role, and have an administrator grant the RAI Native App caller access to it. The internal schema holds only this model's objects, so the grants cover all of it, including the solver's result tables that the deploy creates:
+
+```sql
+-- as the model role
+CREATE SCHEMA IF NOT EXISTS <DB>.PRODUCT_CONFIGURATOR_META;
+
+-- as an administrator
+GRANT CALLER USAGE ON DATABASE <DB> TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER USAGE ON SCHEMA <DB>.PRODUCT_CONFIGURATOR_META TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER USAGE ON WAREHOUSE <PAT_WAREHOUSE> TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL TABLES IN SCHEMA <DB>.PRODUCT_CONFIGURATOR_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL DYNAMIC TABLES IN SCHEMA <DB>.PRODUCT_CONFIGURATOR_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL VIEWS IN SCHEMA <DB>.PRODUCT_CONFIGURATOR_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER INSERT, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA <DB>.PRODUCT_CONFIGURATOR_META TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER CREATE TABLE, CREATE STAGE ON SCHEMA <DB>.PRODUCT_CONFIGURATOR_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER READ, WRITE ON ALL STAGES IN SCHEMA <DB>.PRODUCT_CONFIGURATOR_META TO APPLICATION <RAI_APP_NAME>;
+```
+
+Use this sequence to deploy the model and query it:
+
+1. **Download the template**
+
+   [Download the ZIP](https://docs.relational.ai/templates/zips/v1/product_configurator.zip), unzip it, and enter the template directory:
+
    ```bash
-   curl -O https://docs.relational.ai/templates/zips/v1/product_configurator.zip
    unzip product_configurator.zip
    cd product_configurator
    ```
-   > [!TIP]
-   > You can also download the template ZIP using the "Download ZIP" button at the top of this page.
 
-2. Create venv:
+2. **Create a Python environment**
+
+   Create and activate a virtual environment, then update pip:
+
    ```bash
    python -m venv .venv
    source .venv/bin/activate
    python -m pip install --upgrade pip
    ```
 
-3. Install:
+3. **Install the template**
+
+   Install the dependencies pinned in `pyproject.toml`:
+
    ```bash
    python -m pip install .
    ```
 
-4. Configure: run `rai init` to create `raiconfig.yaml` with your Snowflake connection, set the connection `role` to the model role, then add a `deployment` section. Give each template its own schema pair so two deployed templates never share one.
+4. **Configure your project**
+
+   Use the configuration builder in [Install and run PyRel](https://docs.relational.ai/get-started/install-and-run-pyrel/#configure-your-project) to create `raiconfig.yaml` in the template directory and verify your connection.
+
+   Set the connection `role` to the model role, then add the prescriptive reasoner and a `deployment` section. Give each template its own schema pair so two deployed templates never share one:
+
    ```yaml
    reasoners:
      prescriptive:
@@ -103,39 +137,26 @@ The configurator scenario here is automotive trim, drawn from the public Renault
      pat_user: <PAT_USER>
      pat_warehouse: <PAT_WAREHOUSE>
    ```
-   Without the `deployment` section, `python product_configurator.py` stops with an error naming the missing setting.
 
-   Before the first run, create the internal schema as the model role, and have an administrator grant the RAI Native App caller access to it. The internal schema holds only this model's objects, so the grants cover all of it, including the solver's result tables that the deploy creates:
-   ```sql
-   -- as the model role
-   CREATE SCHEMA IF NOT EXISTS <DB>.PRODUCT_CONFIGURATOR_META;
+5. **Deploy the model**
 
-   -- as an administrator
-   GRANT CALLER USAGE ON DATABASE <DB> TO APPLICATION <RAI_APP_NAME>;
-   GRANT CALLER USAGE ON SCHEMA <DB>.PRODUCT_CONFIGURATOR_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT CALLER USAGE ON WAREHOUSE <PAT_WAREHOUSE> TO APPLICATION <RAI_APP_NAME>;
-   GRANT INHERITED CALLER SELECT ON ALL TABLES IN SCHEMA <DB>.PRODUCT_CONFIGURATOR_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT INHERITED CALLER SELECT ON ALL DYNAMIC TABLES IN SCHEMA <DB>.PRODUCT_CONFIGURATOR_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT INHERITED CALLER SELECT ON ALL VIEWS IN SCHEMA <DB>.PRODUCT_CONFIGURATOR_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT INHERITED CALLER INSERT, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA <DB>.PRODUCT_CONFIGURATOR_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT CALLER CREATE TABLE, CREATE STAGE ON SCHEMA <DB>.PRODUCT_CONFIGURATOR_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT INHERITED CALLER READ, WRITE ON ALL STAGES IN SCHEMA <DB>.PRODUCT_CONFIGURATOR_META TO APPLICATION <RAI_APP_NAME>;
-   ```
-   The deploy creates the public schema `<DB>.PRODUCT_CONFIGURATOR` if it doesn't exist.
+   Deploy the model in `model/` to the schemas in `raiconfig.yaml`:
 
-5. Run:
    ```bash
-   python product_configurator.py
+   rai models deploy --path model
    ```
-   The script deploys the model, waits for the first refresh, which runs the solve, and prints the report from the deployed model. Each refresh of the deployed model runs the solve again; `rai models deploy` deploys without printing the report.
 
-   Running the script again without changing the model redeploys nothing and does not solve again; it reports the latest refresh. A change to the model or to `problem.configure(...)` redeploys, and the redeploy's refresh solves. To solve again without a change, refresh the deployed model, then run the script:
-   ```sql
-   CALL <DB>.PRODUCT_CONFIGURATOR_META._INTERNAL_REFRESH_MODEL('standard', NULL);
+   The deploy creates the public schema named in `raiconfig.yaml` if it doesn't exist and waits for the model's first refresh, which runs the solve. Each refresh of the deployed model runs the solve again.
+
+   Deploying again without changing the model applies no updates and does not solve again. A change to the model or to `problem.configure(...)` redeploys, and the redeploy's refresh solves.
+
+6. **Query the results**
+
+   Print the report from the deployed model:
+
+   ```bash
+   python -m queries.feasible_builds
    ```
-   To remove the deployment, run `rai models teardown --force` from this directory; it keeps the two schemas.
-
-6. Expected output. With `MAX_CONFIGURATIONS = 100` and `TARGET_REGION = "EU"`, the solver exhausts the search and returns every distinct feasible build (status `OPTIMAL`, 63 builds), pivoted to one row per configuration and sorted ascending by total dollars. A few representative lines (the script prints all 63):
 
    ```text
    Solve result:
@@ -144,19 +165,39 @@ The configurator scenario here is automotive trim, drawn from the public Renault
 
    Feasible builds for region 'EU' (ceiling $20,000, up to 100 per run):
     solution        Engine            Roof          Sound Transmission         Trim              Wheels  total_$
-          60 1.6L Inline-4      Steel Roof Standard Sound       Manual    Base Trim       16-inch Alloy     1500
-          59 1.6L Inline-4      Steel Roof Standard Sound       Manual    Base Trim       18-inch Sport     2700
-           ... 60 more builds omitted (script prints all 63) ...
-           2    2.0L Turbo Panoramic Glass  Premium Audio          DCT Premium Trim       18-inch Sport    18200
+          40 1.6L Inline-4      Steel Roof Standard Sound       Manual    Base Trim       16-inch Alloy     1500
+          39 1.6L Inline-4      Steel Roof Standard Sound       Manual    Base Trim       18-inch Sport     2700
+              ... 60 more builds omitted (the report prints all 63) ...
+           1    2.0L Turbo Panoramic Glass  Premium Audio          DCT Premium Trim       18-inch Sport    18200
    ```
 
-   With `TARGET_REGION = "EU"` the V6 engine is unavailable, and the 63 returned builds span $1,500-$18,200 -- every legal combination across the six slots, satisfying every implies/excludes rule. Lower `MAX_CONFIGURATIONS` to cap how many the solver returns (status flips to `SOLUTION_LIMIT` once hit). The full 63-row printout and a step-by-step walkthrough are in `runbook.md`.
+   The formulation printed above the solve result is trimmed here. The solution column is the solver's index of each build and is not stable across solves, so the report sorts the builds by total price. With `TARGET_REGION = "EU"` the V6 engine is unavailable, and the 63 returned builds span $1,500-$18,200 -- every legal combination across the six slots, satisfying every implies/excludes rule. Lower `MAX_CONFIGURATIONS` to cap how many the solver returns (status flips to `SOLUTION_LIMIT` once hit). The full 63-row printout and a step-by-step walkthrough are in `runbook.md`. The report stops on a status other than OPTIMAL, SOLUTION_LIMIT, or INFEASIBLE.
+
+   To solve again without changing the model, refresh the deployed model, then run the query again:
+
+   ```sql
+   CALL <DB>.PRODUCT_CONFIGURATOR_META._INTERNAL_REFRESH_MODEL('standard', NULL);
+   ```
+
+7. **Tear down the deployment**
+
+   Preview what the teardown removes, then remove it:
+
+   ```bash
+   rai models teardown
+   rai models teardown --force
+   ```
+
+   The first command lists the model's objects without dropping anything; the second drops them and keeps the two schemas.
 
 ## Template structure
 
 ```text
 product_configurator/
-  product_configurator.py    # Main script (ontology, decisions, constraints, solver configuration, deploy, inspection)
+  model/
+    __init__.py              # the deployed model (ontology, decisions, constraints, solver configuration)
+  queries/
+    feasible_builds.py       # report from the deployed model
   data/
     slots.csv                # 6 slots (Engine, Transmission, Trim, Sound, Wheels, Roof)
     options.csv              # 16 options across the 6 slots, each priced in integer cents
@@ -168,7 +209,7 @@ product_configurator/
   pyproject.toml             # dependencies
 ```
 
-**Start here**: run `python product_configurator.py` to enumerate every feasible build end to end, or follow `runbook.md` to rebuild it step by step.
+**Start here**: deploy with `rai models deploy --path model` and run `python -m queries.feasible_builds` to enumerate every feasible build end to end, or follow `runbook.md` to rebuild it step by step.
 
 ## Sample data
 
@@ -182,7 +223,7 @@ The bundled CSVs are illustrative demo data for an automotive trim configurator,
 
 ## Model overview
 
-The script builds a small ontology from the CSVs, then layers the binary decision and the four constraint families on top.
+The model builds a small ontology from the CSVs, then layers the binary decision and the four constraint families on top.
 
 - **Key entities**: `Slot` — a configurable position on the product (e.g. engine), filled by exactly one option per build; `Option` — a choice that can fill a slot, with a price and region availability; plus the `Implies` and `Excludes` rule tables that constrain which options can combine.
 - **Primary identifiers**: integer `id` on `Slot` and `Option`; composite key on each rule table (`head_id` + `tail_id` on `Implies`, `left_id` + `right_id` on `Excludes`).
@@ -190,7 +231,7 @@ The script builds a small ontology from the CSVs, then layers the binary decisio
 
 The two rule tables — `Implies(head_id, tail_id)` (selecting the head requires the tail) and `Excludes(left_id, right_id)` (at most one of the pair) — are concepts identified by the pair of option ids they link, and the constraint families read them directly.
 
-For the full concept and property definitions, see `product_configurator.py`; `runbook.md` builds them step by step with the RAI skills.
+For the full concept and property definitions, see `model/__init__.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
@@ -211,16 +252,16 @@ slots + options + implies + excludes + regional rules → region-filtered select
 - **Excludes** — for each region-allowed pair, `selected[left] + selected[right] <= 1`: at most one of the pair.
 - **Price ceiling** — the price-weighted sum of selected options stays within `PRICE_CEILING_CENTS`.
 
-**4. Solve in multi-solution mode, deploy, and pivot.** Passing `solution_limit=MAX_CONFIGURATIONS` to `problem.configure(...)` makes each refresh of the deployed model run the search in enumeration mode, returning up to that many distinct feasible builds; the report prints the status and the number of builds, and does not re-evaluate the constraints. The variable handle exposes a `.values(solution_index, value)` relationship over the per-solution outputs; binding the value slot to `1` surfaces just the picked options, and a `pandas.pivot` collapses the per-option rows into one row per build (one column per slot, plus a dollar total, sorted ascending by price) for buyer-facing display.
+**4. Solve in multi-solution mode, deploy, and pivot.** Passing `solution_limit=MAX_CONFIGURATIONS` to `problem.configure(...)` makes each refresh of the deployed model run the search in enumeration mode, returning up to that many distinct feasible builds; the report prints the status and the number of builds, stops on a status other than `OPTIMAL`, `SOLUTION_LIMIT`, or `INFEASIBLE`, and does not re-evaluate the constraints. The variable handle exposes a `.values(solution_index, value)` relationship over the per-solution outputs; binding the value slot to `1` surfaces just the picked options, and a `pandas.pivot` collapses the per-option rows into one row per build (one column per slot, plus a dollar total, sorted ascending by price) for buyer-facing display.
 
-For the exact PyRel formulation, see `product_configurator.py`; `runbook.md` reproduces the model step by step with the RAI skills.
+For the exact PyRel formulation, see `model/__init__.py`; `runbook.md` reproduces the model step by step with the RAI skills.
 
 ## Customize this template
 
 ### Use your own data
 
 - Replace the five CSV files with your slots, options, implies, excludes, and regional_rules tables. The constraint structure does not change.
-- **Add a new region** by adding rows to `regional_rules.csv` for the new region and changing `TARGET_REGION` in the runner.
+- **Add a new region** by adding rows to `regional_rules.csv` for the new region and changing `TARGET_REGION` in `model/__init__.py`.
 
 ### Tune parameters
 
@@ -250,7 +291,7 @@ For the exact PyRel formulation, see `product_configurator.py`; `runbook.md` rep
 <details>
   <summary>Authentication or configuration errors</summary>
 
-- Run `rai init` to create or update your RelationalAI/Snowflake configuration.
+- Re-create `raiconfig.yaml` with the configuration builder (Quickstart step 4) and verify the connection settings.
 - If you have multiple profiles, set `export RAI_PROFILE=<your_profile>`.
 
 </details>
