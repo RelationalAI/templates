@@ -38,4 +38,4 @@ Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` 
 
 ## Data
 
-Bundled CSVs in `data/`: 8 insured entities, 8 policies, 11 locations, 33 coverages. Full model in `commercial_underwriting.py`.
+Bundled CSVs in `data/`: 8 insured entities, 8 policies, 11 locations, 33 coverages. Full model in `model/__init__.py`.
