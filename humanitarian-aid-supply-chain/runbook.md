@@ -32,7 +32,7 @@ Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` 
 
 **Prompt:** /rai-graph-analysis Two questions on the flow-weighted route graph: first, where does aid concentrate when influence flows along the routes — the points that many high-flow routes ultimately feed into (PageRank)? Second, which points are the most-connected coordination hubs — the highest total weighted connections (weighted degree centrality)? Report the top points by each.
 
-**Response:** The two metrics rank different nodes, which is the point. By **PageRank** (where aid concentrates), the top point is the **Emergency Field Hospital (0.1097)**, followed by Remote Highland Camp and Central Warehouse. By **weighted degree centrality** (total flow-weighted connections), the top is the **Central Warehouse (794.81, 9 routes)** — the busiest transshipment hub. Influence and connectivity are not the same: a field hospital absorbs flow without being highly connected, while the warehouse is a connector that routes aid onward.
+**Response:** The two metrics rank different nodes, which is the point. By **PageRank** (where aid concentrates), the top point is the **Emergency Field Hospital (0.1097)**, followed by Remote Highland Camp and Central Warehouse. By **weighted degree centrality** (total flow-weighted connections), the top is the **Central Warehouse (46.7535, 9 routes)** — the busiest transshipment hub. Influence and connectivity are not the same: a field hospital absorbs flow without being highly connected, while the warehouse is a connector that routes aid onward.
 
 ## 4. Classify points strategically
 
@@ -42,4 +42,4 @@ Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` 
 
 ## Data
 
-Bundled CSVs in `data/`: 18 distribution points, 28 supply routes. Entry point `humanitarian_aid_supply_chain.py` (shared model in `model_setup.py`; `app.py` is an optional Streamlit UI).
+Bundled CSVs in `data/`: 18 distribution points, 28 supply routes. The model is in `model/__init__.py`, the report in `queries/distribution_point_ranking.py`, and `app.py` is an optional Streamlit UI over the deployed model.

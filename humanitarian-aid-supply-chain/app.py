@@ -4,14 +4,14 @@ This interactive app visualizes the PageRank and Degree Centrality analysis
 from the humanitarian aid supply chain network using RelationalAI and Streamlit.
 
 Run:
-    streamlit run app.py
+    Deploy the model first with `rai models deploy --path model`, then run
+    `streamlit run app.py`. The app only queries the deployed model.
 """
 
 import numpy as np
-import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
-from model_setup import DATA_DIR, create_model
+from model import SupplyRoute, degree_centrality, graph, indegree, model, outdegree, pagerank
 from relationalai.semantics import Float, Integer, where
 
 # --------------------------------------------------
@@ -25,26 +25,14 @@ st.set_page_config(
 )
 
 # --------------------------------------------------
-# Define semantic model & load data
+# Query the deployed model
 # --------------------------------------------------
 
-@st.cache_resource
-def load_model():
-    """Load and cache the RelationalAI model."""
-    return create_model()
-
-
 @st.cache_data
-def get_results(_model, _graph, _DistributionPoint, _SupplyRoute):
+def get_results():
     """Query and return analysis results."""
-    # Calculate graph metrics
-    pagerank = _graph.pagerank(damping_factor=0.85, tolerance=1e-6, max_iter=100)
-    degree_centrality = _graph.degree_centrality()
-    indegree = _graph.indegree()
-    outdegree = _graph.outdegree()
-
     # Create variable references
-    point = _graph.Node.ref("point")
+    point = graph.Node.ref("point")
     pr_score = Float.ref("pr_score")
     dc_score = Float.ref("dc_score")
     in_routes = Integer.ref("in_routes")
@@ -77,6 +65,15 @@ def get_results(_model, _graph, _DistributionPoint, _SupplyRoute):
     results['total_routes'] = results['incoming_routes'] + results['outgoing_routes']
 
     return results
+
+
+@st.cache_data
+def get_routes():
+    """Query the supply routes (edges) of the deployed network."""
+    return model.select(
+        SupplyRoute.from_point.id.alias("from_point_id"),
+        SupplyRoute.to_point.id.alias("to_point_id"),
+    ).to_df().astype(int)
 
 
 def create_network_graph(results, routes_df):
@@ -223,9 +220,8 @@ def main():
 
     # Load data
     with st.spinner("Loading RelationalAI model and analyzing network..."):
-        model, graph, DistributionPoint, SupplyRoute = load_model()
-        results = get_results(model, graph, DistributionPoint, SupplyRoute)
-        routes_df = pd.read_csv(DATA_DIR / "supply_routes.csv")
+        results = get_results()
+        routes_df = get_routes()
 
     # Sidebar with summary stats
     st.sidebar.header("📊 Network Summary")

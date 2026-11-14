@@ -42,10 +42,10 @@ Built using **graph analysis** — PageRank (an iterative random-walk algorithm)
 
 ## What's included
 
-- **Shared model setup**: `model_setup.py` - Common model configuration and graph creation (used by both scripts)
-- **Command-line script**: `humanitarian_aid_supply_chain.py` - CLI analysis script with detailed output, run from a model deployed to your Snowflake account
+- **Model**: `model/__init__.py` - the model configuration, graph creation, and the PageRank, degree centrality, indegree, and outdegree metrics. `rai models deploy --path model` deploys it to your Snowflake account, where each refresh computes the metrics.
+- **Query**: `queries/distribution_point_ranking.py` - prints the detailed report from the deployed model
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
-- **Interactive app**: `app.py` - Streamlit web application with visualizations and interactive analysis
+- **Interactive app**: `app.py` - Streamlit web application with visualizations and interactive analysis, querying the deployed model
 - **Data**: `data/distribution_points.csv` and `data/supply_routes.csv`
 
 ## Prerequisites
@@ -64,39 +64,42 @@ Built using **graph analysis** — PageRank (an iterative random-walk algorithm)
 
 ## Quickstart
 
-Follow these steps to run the template with the included sample data.
-You can customize the data and model as needed after you have it running end-to-end.
+Before you start, install Python 3.10 or later and get a Snowflake role that can deploy models, as described under Access. This template has no prescriptive solve, so it needs no setup beyond that role.
 
-1. Download the ZIP file for this template and extract it:
+Run these steps from a terminal:
+
+1. **Download the template**
+
+   [Download the ZIP](https://docs.relational.ai/templates/zips/v1/humanitarian-aid-supply-chain.zip), unzip it, and enter the template directory:
 
    ```bash
-   curl -O https://docs.relational.ai/templates/zips/v1/humanitarian-aid-supply-chain.zip
    unzip humanitarian-aid-supply-chain.zip
    cd humanitarian-aid-supply-chain
    ```
 
-   > [!TIP]
-   > You can also download the template ZIP using the "Download ZIP" button at the top of this page.
+2. **Create a Python environment**
 
-2. **Create and activate a virtual environment**
+   Create and activate a virtual environment, then update pip:
 
    ```bash
    python -m venv .venv
    source .venv/bin/activate
-   python -m pip install -U pip
+   python -m pip install --upgrade pip
    ```
 
-3. **Install dependencies**
+3. **Install the template**
 
-   From this folder:
+   Install the dependencies pinned in `pyproject.toml`:
 
    ```bash
    python -m pip install .
    ```
 
-4. **Configure the Snowflake connection and the deployment**
+4. **Configure your project**
 
-   Run `rai init` to create `raiconfig.yaml` with your Snowflake connection, set the connection `role` to the model role, then add a `deployment` section. Give each template its own schema pair so two deployed templates never share one; the deploy creates both schemas if they don't exist.
+   Use the configuration builder in [Install and run PyRel](https://docs.relational.ai/get-started/install-and-run-pyrel/#configure-your-project) to create `raiconfig.yaml` in the template directory, with the model role as the connection `role`.
+
+   Then add a `deployment` section. Give each template its own schema pair so two deployed templates never share one; the deploy creates both schemas if they don't exist:
 
    ```yaml
    deployment:
@@ -110,47 +113,72 @@ You can customize the data and model as needed after you have it running end-to-
      schedule: standard
    ```
 
-   Without the `deployment` section, `python humanitarian_aid_supply_chain.py` stops with an error naming the missing setting.
+5. **Deploy the model**
 
-5. **Run the template**
-
-   **Option A: Command-line script**
+   Deploy the model in `model/` to the schemas in `raiconfig.yaml`:
 
    ```bash
-   python humanitarian_aid_supply_chain.py
+   rai models deploy --path model
    ```
 
-   The script deploys the model, waits for its first refresh, and prints the report from the deployed model. `rai models deploy` deploys without printing the report. To remove the deployment, run `rai models teardown --force` from this directory; it keeps the two schemas.
+   The deploy waits for the model's first refresh, which computes PageRank, weighted degree centrality, and the incoming and outgoing route counts.
 
-   **Option B: Interactive Streamlit app**
+6. **Query the results**
+
+   Print the report from the deployed model:
 
    ```bash
-   # Install additional dependencies for visualization
-   python -m pip install .[visualization]
-
-   # Launch the interactive app
-   streamlit run app.py
+   python -m queries.distribution_point_ranking
    ```
-
-   The Streamlit app provides:
-   - Interactive network visualization with directional arrows
-   - Filterable distribution-point rankings table
-   - Detailed strategic-category analysis
-   - CSV export functionality
-
-6. Expected output (a few lines confirm a successful run):
 
    ```text
-   By PageRank (where aid concentrates):
-     Emergency Field Hospital   0.1097
-   By weighted degree centrality (coordination hubs):
-     Central Warehouse          794.81  (9 routes)
-
-   Strategic categories: 2 critical coordination hubs,
-     4 influential endpoints, 4 network connectors
+   HUMANITARIAN AID SUPPLY CHAIN NETWORK - PAGERANK & DEGREE CENTRALITY ANALYSIS
+   ...
+    rank                               name                type  region  capacity  population_served  pagerank  degree_centrality  incoming_routes  outgoing_routes  total_routes
+       1           Emergency Field Hospital      Medical Center Capital      2500              10000    0.1097            10.5000                2                0             2
+       2               Remote Highland Camp        Refugee Camp   North      1800              20000    0.0986             1.3859                2                0             2
+       3                  Central Warehouse           Warehouse Capital      8000                  0    0.0859            46.7535                3                6             9
+       4       Food Distribution Point West      Relief Station    West      1000               7000    0.0821             1.6471                2                0             2
+       5        Rural Community Center East       Community Hub    East       800               4000    0.0769             1.0700                2                0             2
+   ...
+     • Total distribution points: 18
+     • Total supply routes: 28
+     • Average routes per point: 3.1
+     • Most connected point: Central Warehouse (9 routes)
+     • Total population served: 152,000 people
+     • Total network capacity: 64,600 units
+     • Most influential (PageRank): Emergency Field Hospital (0.1097)
+     • Most connected (Degree Centrality): Central Warehouse (46.7535)
    ```
 
-   See `runbook.md` for the full ranked tables and the strategic-category walkthrough.
+   The report ranks every distribution point by PageRank and degree centrality, groups the points into strategic categories, and prints network-wide and regional statistics. The full ranked tables and the strategic-category walkthrough are in `runbook.md`.
+
+7. **Tear down the deployment**
+
+   Preview what the teardown removes, then remove it:
+
+   ```bash
+   rai models teardown
+   rai models teardown --force
+   ```
+
+   The first command lists the model's objects without dropping anything; the second drops them and keeps the two schemas.
+
+## Run the Streamlit app
+
+The Streamlit app is an optional interactive view of the same analysis. It only queries the deployed model, so run it after the deploy step of the Quickstart, from the template directory and with the same `raiconfig.yaml`:
+
+```bash
+python -m pip install ".[visualization]"
+streamlit run app.py
+```
+
+The Streamlit app provides:
+
+- Interactive network visualization with directional arrows
+- Filterable distribution-point rankings table
+- Detailed strategic-category analysis
+- CSV export functionality
 
 ## Template structure
 
@@ -158,16 +186,18 @@ You can customize the data and model as needed after you have it running end-to-
 humanitarian-aid-supply-chain/
 ├── README.md                          # this file
 ├── pyproject.toml                     # dependencies
-├── model_setup.py                     # shared model + graph construction
-├── humanitarian_aid_supply_chain.py   # CLI analysis script
-├── app.py                             # optional Streamlit dashboard
+├── model/
+│   └── __init__.py                    # deployed model: graph and metrics
+├── queries/
+│   └── distribution_point_ranking.py  # report from the deployed model
+├── app.py                             # optional Streamlit dashboard (queries the deployed model)
 ├── runbook.md                         # analyst-facing walkthrough
 └── data/
     ├── distribution_points.csv        # 18 distribution points
     └── supply_routes.csv              # 28 directed supply routes
 ```
 
-**Start here**: run `python humanitarian_aid_supply_chain.py` for the full command-line analysis end to end, or follow `runbook.md` to reproduce it step by step with the RAI skills. You can also launch `streamlit run app.py` for the interactive dashboard. All paths build the model through `model_setup.create_model()`.
+**Start here**: deploy with `rai models deploy --path model` and run `python -m queries.distribution_point_ranking` for the full analysis end to end, or follow `runbook.md` to reproduce it step by step with the RAI skills. You can also launch `streamlit run app.py` for the interactive dashboard. Both query the same deployed model.
 
 ## Sample data
 
@@ -186,17 +216,17 @@ The model is a small graph ontology: distribution points connected by directed, 
 
 The two centrality metrics (`pagerank`, `degree_centrality`) and the degree counts (`incoming_routes`, `outgoing_routes`) are computed by the Graph API over the route graph at query time, not stored as `DistributionPoint` properties.
 
-For the full concept and property definitions, see `model_setup.py`; `runbook.md` builds them step by step with the RAI skills.
+For the full concept and property definitions, see `model/__init__.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
 The template follows this flow:
 
 ```text
-CSV files → model_setup.create_model() → Calculate PageRank → Calculate Degree Centrality → Analyze strategic categories → Display results
+CSV files → model/ (deployed) → Calculate PageRank → Calculate Degree Centrality → Analyze strategic categories → Display results
 ```
 
-**Shared model setup.** Both the CLI script and the Streamlit app build the model through `model_setup.create_model()`, which creates the model container, defines the `DistributionPoint` and weighted `SupplyRoute` concepts, loads both CSVs, and constructs the weighted, directed route graph — returning every component the analysis needs.
+**Deployed model.** `model/__init__.py` creates the model container, defines the `DistributionPoint` and weighted `SupplyRoute` concepts, loads both CSVs, and constructs the weighted, directed route graph, and `rai models deploy --path model` deploys it. The CLI report and the Streamlit app both query that deployed model.
 
 **Calculate PageRank.** PageRank simulates random walks through the network to find where aid naturally concentrates. Starting from equal probability at every node, it iteratively propagates probability along edges, applying a damping factor (85% chance of following a route, 15% chance of teleporting to a random node) until the scores stabilize. A higher score means a node is more central to network flow.
 
@@ -204,9 +234,9 @@ CSV files → model_setup.create_model() → Calculate PageRank → Calculate De
 
 **Query and analyze strategic categories.** Both metrics are queried together into a DataFrame, then each distribution point is classified against the 70th-percentile thresholds on the two scores: critical coordination hubs (high on both), influential endpoints (high PageRank, lower degree), and network connectors (lower PageRank, high degree).
 
-**Display strategic analysis and recommendations.** The CLI script deploys the model, waits for its first refresh, and prints a ranked table of all points with both metrics, the strategic-category breakdown, network-wide and regional statistics, and recommendations for response teams. The Streamlit app adds an interactive overview, a color-coded network visualization, filterable rankings with CSV export, and per-category detail.
+**Display strategic analysis and recommendations.** `queries/distribution_point_ranking.py` prints a ranked table of all points with both metrics, the strategic-category breakdown, network-wide and regional statistics, and recommendations for response teams. The Streamlit app adds an interactive overview, a color-coded network visualization, filterable rankings with CSV export, and per-category detail.
 
-See `model_setup.py` and `humanitarian_aid_supply_chain.py` for the implementation, and `runbook.md` for the skill-driven reproduction.
+See `model/__init__.py` and `queries/distribution_point_ranking.py` for the implementation, and `runbook.md` for the skill-driven reproduction.
 
 ## Customize this template
 
@@ -214,14 +244,14 @@ Focus on the first changes most users will make.
 
 ### Use your own data
 
-- Replace the CSVs in `data/` with your own network, keeping the same column names (or update the loading logic in `model_setup.py`).
+- Replace the CSVs in `data/` with your own network, keeping the same column names (or update the loading logic in `model/__init__.py`).
 - Ensure supply routes only reference valid distribution-point IDs.
-- Add properties to distribution points (organization, contact info, GPS coordinates) by adding CSV columns and the corresponding properties in `model_setup.py`.
+- Add properties to distribution points (organization, contact info, GPS coordinates) by adding CSV columns and the corresponding properties in `model/__init__.py`.
 
 ### Tune parameters
 
 - **PageRank damping factor** — higher damping (0.90-0.95) emphasizes network structure over teleportation; lower damping (0.70-0.80) emphasizes direct connections over global influence.
-- **Edge-weight formula** — change the `flow_weight` formula in `model_setup.py` to reweight the graph. Higher weights indicate stronger connections that PageRank favors.
+- **Edge-weight formula** — change the `flow_weight` formula in `model/__init__.py` to reweight the graph. Higher weights indicate stronger connections that PageRank favors.
 
   The current formula `(route_capacity * reliability_score) / distance_km` balances all three factors. Alternatives:
   - Capacity-focused: `route_capacity` (maximize throughput)
@@ -240,21 +270,21 @@ Focus on the first changes most users will make.
 
 ### Scale up / productionize
 
-- Swap the `read_csv(...)` loads in `model_setup.py` for `model.data(snowflake_table)` calls to run against a network catalog maintained in Snowflake.
-- Pin `relationalai` in `pyproject.toml` for reproducible runs, and schedule the CLI script to refresh rankings as the network changes.
+- Swap the `read_csv(...)` loads in `model/__init__.py` for `model.data(snowflake_table)` calls to run against a network catalog maintained in Snowflake.
+- Pin `relationalai` in `pyproject.toml` for reproducible runs, and schedule a refresh of the deployed model to update rankings as the network changes.
 
 ## Troubleshooting
 
 <details>
   <summary>Why does authentication/configuration fail?</summary>
 
-- Run `rai init` to create/update `raiconfig.yaml`.
+- Re-create `raiconfig.yaml` with the configuration builder (Quickstart step 4).
 - If you have multiple profiles, set `RAI_PROFILE` or switch profiles in your config.
 
 </details>
 
 <details>
-  <summary>Why does the script fail to connect to the RAI Native App?</summary>
+  <summary>Why does the deploy fail to connect to the RAI Native App?</summary>
 
 - Verify the Snowflake account/role/warehouse and `rai_app_name` are correct in `raiconfig.yaml`.
 - Ensure the RAI Native App is installed and you have access.

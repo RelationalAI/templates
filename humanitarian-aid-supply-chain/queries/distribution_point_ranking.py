@@ -1,47 +1,13 @@
-"""Humanitarian Aid Supply Chain Network (graph analytics) template.
+"""Distribution point ranking report: reads the deployed humanitarian_aid_supply_chain model.
 
-This script demonstrates PageRank and Degree Centrality analysis in a humanitarian
-aid supply chain network with RelationalAI:
-
-- Load a network of distribution points and supply routes from CSV files.
-- Apply PageRank to identify the most influential distribution hubs where aid naturally flows.
-- Calculate Degree Centrality to find highly connected critical nodes that serve as network hubs.
-- Combine both metrics to optimize resource deployment and identify vulnerabilities.
-- Analyze weighted, directed supply chains to prioritize humanitarian response.
-
-Run:
-    `python humanitarian_aid_supply_chain.py` deploys the model to the schema in
-    raiconfig.yaml, waits for its first refresh, and prints the report from the
-    deployed model.
-
-Output:
-    Displays ranked distribution points showing both influence (PageRank) and connectivity
-    (Degree Centrality), helping emergency response teams optimize aid distribution, identify
-    critical network hubs, and make strategic resource allocation decisions.
+Run `python -m queries.distribution_point_ranking` after `rai models deploy --path model`.
+Prints the distribution points ranked by PageRank (influence) and Degree Centrality
+(connectivity), the strategic categories they fall into, and network and regional
+summaries for emergency response planning.
 """
 
-from model_setup import create_model
+from model import degree_centrality, graph, indegree, outdegree, pagerank
 from relationalai.semantics import Float, Integer, where
-
-# --------------------------------------------------
-# Create model and calculate graph metrics
-# --------------------------------------------------
-
-model, graph, DistributionPoint, SupplyRoute = create_model()
-
-# PageRank: Identifies influential hubs where aid naturally flows
-# The damping factor (0.85) models the probability of continuing along supply routes
-# vs. "teleporting" to a random point (simulates external aid injections)
-pagerank = graph.pagerank(damping_factor=0.85, tolerance=1e-6, max_iter=100)
-
-# Degree Centrality: Identifies highly connected network hubs
-# Points with high degree centrality have many connections and serve as critical coordination points
-# These are essential for network resilience and aid distribution capacity
-degree_centrality = graph.degree_centrality()
-
-# Also calculate basic degree metrics for context
-indegree = graph.indegree()  # Number of incoming supply routes
-outdegree = graph.outdegree()  # Number of outgoing supply routes
 
 # Create variable references for use in queries
 point = graph.Node.ref("point")
@@ -50,20 +16,7 @@ dc_score = Float.ref("dc_score")
 in_routes = Integer.ref("in_routes")
 out_routes = Integer.ref("out_routes")
 
-
-# --------------------------------------------------
-# Query and display results (`rai models deploy` skips the report)
-# --------------------------------------------------
-
-def main() -> None:
-    """
-    Main analysis function that:
-    1. Queries the graph for PageRank and Degree Centrality scores
-    2. Combines distribution point data with both metrics
-    3. Identifies influential hubs and highly connected network nodes
-    4. Displays results with strategic recommendations
-    """
-
+if __name__ == "__main__":
     # Query the graph to retrieve:
     # - Basic distribution point information (id, name, type, region, capacity, population)
     # - PageRank score (influence/importance in aid flow)
@@ -204,9 +157,3 @@ def main() -> None:
     print(regional_stats.to_string())
 
     print("\n✅ Analysis complete!")
-
-
-if __name__ == "__main__":
-    # Deploy and wait for the first refresh, which computes the graph metrics.
-    model.deploy()
-    main()
