@@ -131,7 +131,7 @@ Four derived health properties (`avg_packet_loss`, `avg_latency_ms`, `avg_error_
 
 **Response**
 
-Where PageRank scores a *subscriber*, paths scores the *route*. From the top-PageRank hub (SUB-CON-00900), 198 simple call paths (≤ 3 hops) are enumerated over an arity-3 caller-via-tower-callee edge, recovering 54 distinct routing towers; each path is ranked by summed PageRank. Top route: `SUB-CON-00900 → SUB-CON-00814 → SUB-ENT-0038 → SUB-CON-00644` (PageRank sum 0.009041). Persists the hub's top route as `Subscriber.top_call_path_influence`. (Scoped to a seed hub — the full call graph is large and cyclic.)
+Where PageRank scores a *subscriber*, paths scores the *route*. From the top-PageRank hub (SUB-CON-00900), 198 simple call paths (≤ 3 hops) are enumerated over an arity-3 caller-via-tower-callee edge, recovering 54 distinct routing towers; each path is ranked by summed PageRank. The highest influence load is 0.009041, persisted for the hub as `Subscriber.top_call_path_influence`. (Scoped to a seed hub — the full call graph is large and cyclic.)
 
 ### 8. Optimize tier selection
 
@@ -171,4 +171,4 @@ Ontology gains a singleton `RestorePlan` Concept with `total_cost`, `total_insta
 
 ## Data
 
-Bundled CSVs in `data/`: 250 cell towers (15 WEST DEGRADED), 1,500 `NetworkEquipment` items across 18 consolidated MODELs, 1,500 `EquipmentHealth` snapshots, 5,000 `NetworkPerformance` measurements, 1,200 subscribers, 6,000 CDRs, 750 `TowerUpgradeOption` rows (3 tiers × 250 towers), 8 `ModelAdvisory` rows on 7 distinct MODELs (severities 0.50–0.95). `data/_synthesize_advisory_data.py` regenerates the equipment / health / advisory / upgrade-option CSVs deterministically from a seed. All four chain stages run end-to-end via `telco_network_recovery.py`.
+Bundled CSVs in `data/`: 250 cell towers (15 WEST DEGRADED), 1,500 `NetworkEquipment` items across 18 consolidated MODELs, 1,500 `EquipmentHealth` snapshots, 5,000 `NetworkPerformance` measurements, 1,200 subscribers, 6,000 CDRs, 750 `TowerUpgradeOption` rows (3 tiers × 250 towers), 8 `ModelAdvisory` rows on 7 distinct MODELs (severities 0.50–0.95). `data/_synthesize_advisory_data.py` regenerates the equipment / health / advisory / upgrade-option CSVs deterministically from a seed. The chain's stages are declared in `model/` (`schema.py`, `source.py`, `reasoning.py`), trained with `train.py`, and read by `queries/recovery_report.py`.
