@@ -234,7 +234,7 @@ if __name__ == "__main__":
         .to_df()
         .sort_values("factory", ignore_index=True)
     )
-    assert len(cap_df) == len(EXPECTED_FACTORIES), "missing capacity shadow prices"
+    assert sorted(cap_df["factory"]) == sorted(EXPECTED_FACTORIES), "expected one shadow price per factory"
     print("\nFactory capacity shadow prices (d profit / d hour):")
     print(cap_df.to_string(index=False))
     # Maximize + a <= capacity => shadow_price >= 0: an extra hour can only help. The
@@ -259,7 +259,7 @@ if __name__ == "__main__":
         .to_df()
         .sort_values(["factory", "product"], ignore_index=True)
     )
-    assert len(rc_df) == len(EXPECTED_PRODUCTS), "missing reduced costs"
+    assert sorted(rc_df["product"]) == sorted(EXPECTED_PRODUCTS), "expected one reduced cost per product"
     print("\nProduct reduced costs and basis status:")
     print(rc_df.to_string(index=False))
     # A product pinned at its demand cap is NONBASIC_AT_UPPER with reduced_cost >= 0 (the
