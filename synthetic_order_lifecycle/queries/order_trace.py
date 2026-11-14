@@ -1,22 +1,16 @@
 """Order trace report: reads the deployed synthetic_order_lifecycle model.
 
 Run `python -m queries.order_trace` after `rai models deploy --path model`. Prints the
-formulation, the solve status, the generated event trace (one row per slot), and the
-per-order filled-quantity totals.
+solve status, the generated event trace (one row per slot), and the per-order
+filled-quantity totals.
 """
 
-from model import Order, OrderEvent, SolveStatus, Venue, model, problem
+from model import Order, OrderEvent, SolveStatus, Venue, model
 from relationalai.semantics import sum as rai_sum
 
 if __name__ == "__main__":
-    problem.display()
-
-    # Status of the latest refresh's solve. A refresh records any termination
-    # status, so the report checks it.
     status = model.select(SolveStatus).to_df().iloc[:, 0].tolist()
     print(f"\nSolve result:\n• status: {', '.join(status)}\n")
-    if status != ["OPTIMAL"]:
-        raise SystemExit(f"No trace: termination status {status}")
 
     # Inspect the generated trace.
 

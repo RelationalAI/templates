@@ -40,11 +40,11 @@ The same pattern applies to any test-data-generation problem where rows have to 
 - An auxiliary `fill_qty` decision channeled to `qty` when the `FILL` indicator is 1 (else 0) via two `implies` so the per-order fill-conservation aggregate stays linear
 - Value-pinning: PLACE event's `qty` and `tick_price` pinned to the order's `original_qty` and `original_tick_price` via `implies`
 - Venue eligibility encoded as a relationship lookup against the event's chosen `venue_id`
-- A report that prints the solve status and stops unless the solver returned `OPTIMAL` (the constraints are not re-evaluated against the returned trace -- see step 5)
+- A report that prints the solve status and the generated trace (the constraints are not re-evaluated against the returned trace -- see step 5)
 
 ## What's included
 
-- `model/__init__.py` -- the deployed model: ontology, decisions, constraints, and solver configuration. `rai models deploy --path model` deploys it to your Snowflake account, where each refresh runs the solve.
+- `model/` -- the deployed model: ontology, decisions, constraints, and solver configuration, as a package (`schema.py` declares the concepts, `source.py` loads the sample data, `reasoning.py` states the decision problem). `rai models deploy --path model` deploys it to your Snowflake account, where each refresh runs the solve.
 - `queries/order_trace.py` -- the report, which prints the trace from the deployed model
 - `data/symbols.csv` -- 5 tradable symbols (AAPL, MSFT, GOOG, NVDA, TSLA)
 - `data/venues.csv` -- 5 trading venues (NYSE, NASDAQ, ARCA, BATS, IEX)
@@ -182,7 +182,7 @@ Use this sequence to deploy the model and query it:
    5         6            60          60
    ```
 
-   The report prints the formulation (every variable and constraint, about 1,000 lines on the sample data, omitted here), the solve-result block, the full event trace (all 36 rows; abridged above to the first AAPL block), and per-order fill totals. Each event's four type indicators all print as is_type followed by the event id, because variable names are keyed by event id. Rows are sorted by order and timestamp; the type column reads each event's chosen EventType member name back from a derived enum-typed relationship (OrderEvent.event_type.name). The report stops unless the solve's termination status is OPTIMAL. Exact event types, timestamps, quantities, prices, and venues vary across runs and solver versions.
+   The report prints the solve-result block, the full event trace (all 36 rows; abridged above to the first AAPL block), and per-order fill totals. Each event's four type indicators all print as is_type followed by the event id, because variable names are keyed by event id. Rows are sorted by order and timestamp; the type column reads each event's chosen EventType member name back from a derived enum-typed relationship (OrderEvent.event_type.name). Exact event types, timestamps, quantities, prices, and venues vary across runs and solver versions.
 
    The AAPL block above is one of six orders; the others follow the same shape. PLACE has the smallest timestamp per order with its quantity and tick price pinned to the order row, and venues are constrained to the symbol's eligible set (here NYSE, NASDAQ, and ARCA for AAPL). The conservation constraint is that the sum of fill_qty is at most original_qty; the run above fills exactly original_qty on every order, and any fill total at or below the original quantity is a valid trace.
 
@@ -209,7 +209,10 @@ Use this sequence to deploy the model and query it:
 ├── README.md
 ├── pyproject.toml
 ├── model/
-│   └── __init__.py
+│   ├── __init__.py      # exports of the deployed model
+│   ├── schema.py        # symbol, venue, order, and event concepts; the event-type vocabulary
+│   ├── source.py        # loads the sample CSVs and derives the disallowed venue pairs
+│   └── reasoning.py     # event decisions, sequencing rules, solve
 ├── queries/
 │   └── order_trace.py
 └── data/
@@ -289,7 +292,7 @@ place_price_match_ic = model.where(OrderEvent.has_type(EventType.PLACE, place_pr
 )
 ```
 
-**5. Solve and deploy.** Every IC goes to the solver through `satisfy()`; the report does not re-evaluate them against the returned trace. `problem.configure(...)` declares the solve, `rai models deploy --path model` deploys the model, and each refresh of the deployed model runs the solve. The report checks the solve status through the model's own `SolveStatus` relationship; a refresh itself (the deploy, the refresh procedure, a schedule) runs no checks, so read `SolveStatus` before relying on a refreshed trace:
+**5. Solve and deploy.** Every IC goes to the solver through `satisfy()`; the report does not re-evaluate them against the returned trace. `problem.configure(...)` declares the solve, `rai models deploy --path model` deploys the model, and each refresh of the deployed model runs the solve. The report prints the solve status through the model's own `SolveStatus` relationship; a refresh itself (the deploy, the refresh procedure, a schedule) runs no checks, so read `SolveStatus` before relying on a refreshed trace:
 
 ```python
 problem.configure("minizinc", time_limit_sec=60)
@@ -318,7 +321,7 @@ model.define(SolveStatus(problem.termination_status()))
   ).require(implies(a_modify_ind == 1, A.ts_ms < B.ts_ms))
   ```
 - **Generate a "smallest violating trace" instead of a positive trace** by negating one of the rules (e.g. drop `no_after_cancel_ic`, bind `A`'s `CANCEL` and `B`'s `FILL` indicators via `has_type` in a `where`, and add `model.require(sum(a_cancel_ind + b_fill_ind - 1).per(Order) >= 0)` plus a temporal predicate) and minimizing the number of events. The model is already in optimization-ready shape -- the termination-status gate stays at `"OPTIMAL"`.
-- **Replace the synthetic time horizon** by reading `ts_ms` bounds from your real session schedule (market open / market close) and updating `TS_MIN` / `TS_MAX`.
+- **Replace the synthetic time horizon** by reading `ts_ms` bounds from your real session schedule (market open / market close) and updating `TS_MIN` / `TS_MAX` in `model/reasoning.py`.
 
 ## Troubleshooting
 
