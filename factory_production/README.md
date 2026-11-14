@@ -41,7 +41,8 @@ Manufacturing operations must decide how much of each product to make at each fa
 
 ## What's included
 
-- `factory_production.py` -- Main script defining the optimization model, constraints, objective, and sensitivity read-back
+- `model/__init__.py` -- the deployed model: concepts, data, constraints, objective, and the solve with sensitivity analysis, deployed with `rai models deploy --path model`
+- `queries/plan_and_sensitivity.py` -- the report from the deployed model: production plan, shadow prices, reduced costs, basis statuses, and capacity utilization
 - `runbook.md` -- a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself
 - `data/factories.csv` -- Factory names and available resource-hours
 - `data/products.csv` -- Products with factory assignment, production rate, profit, and demand cap
@@ -51,7 +52,7 @@ Manufacturing operations must decide how much of each product to make at each fa
 
 ### Access
 - A Snowflake account that has the RAI Native App installed.
-- The one-time model deployment setup on that account, done by an account administrator: follow [Set up model deployment](https://private.relational.ai/early-access/model-deploy-setup) through **Governed setup**, **PAT authentication**, and steps 1-2 of **Additional setup for the prescriptive reasoner** (Quickstart step 4 below covers this template's own schema). It gives you a model role, a programmatic access token (PAT) stored as a secret, an external access integration, a PAT user, and a warehouse.
+- The one-time model deployment setup on that account, done by an account administrator: follow [Set up model deployment](https://private.relational.ai/early-access/model-deploy-setup) through **Governed setup**, **PAT authentication**, and steps 1-2 of **Additional setup for the prescriptive reasoner** (the Quickstart covers this template's own schema). It gives you a model role, a programmatic access token (PAT) stored as a secret, an external access integration, a PAT user, and a warehouse.
 - A Snowflake user that holds the model role.
 
 ### Tools
@@ -60,28 +61,61 @@ Manufacturing operations must decide how much of each product to make at each fa
 
 ## Quickstart
 
-1. Download ZIP:
+Before you start, install Python 3.10 or later and complete the access prerequisites above: a Snowflake account with the RAI Native App, the one-time model deployment setup, and a Snowflake user that holds the model role.
+
+Before the first deploy, create this template's internal schema as the model role, and have an administrator grant the RAI Native App caller access to it. The internal schema holds only this model's objects, so the grants cover all of it, including the solver's result tables that the deploy creates:
+
+```sql
+-- as the model role
+CREATE SCHEMA IF NOT EXISTS <DB>.FACTORY_PRODUCTION_META;
+
+-- as an administrator
+GRANT CALLER USAGE ON DATABASE <DB> TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER USAGE ON SCHEMA <DB>.FACTORY_PRODUCTION_META TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER USAGE ON WAREHOUSE <PAT_WAREHOUSE> TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL TABLES IN SCHEMA <DB>.FACTORY_PRODUCTION_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL DYNAMIC TABLES IN SCHEMA <DB>.FACTORY_PRODUCTION_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL VIEWS IN SCHEMA <DB>.FACTORY_PRODUCTION_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER INSERT, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA <DB>.FACTORY_PRODUCTION_META TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER CREATE TABLE, CREATE STAGE ON SCHEMA <DB>.FACTORY_PRODUCTION_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER READ, WRITE ON ALL STAGES IN SCHEMA <DB>.FACTORY_PRODUCTION_META TO APPLICATION <RAI_APP_NAME>;
+```
+
+Use this sequence to deploy the model and query it:
+
+1. **Download the template**
+
+   [Download the ZIP](https://docs.relational.ai/templates/zips/v1/factory_production.zip), unzip it, and enter the template directory:
+
    ```bash
-   curl -O https://docs.relational.ai/templates/zips/v1/factory_production.zip
    unzip factory_production.zip
    cd factory_production
    ```
-   > [!TIP]
-   > You can also download the template ZIP using the "Download ZIP" button at the top of this page.
 
-2. Create venv:
+2. **Create a Python environment**
+
+   Create and activate a virtual environment, then update pip:
+
    ```bash
    python -m venv .venv
    source .venv/bin/activate
    python -m pip install --upgrade pip
    ```
 
-3. Install:
+3. **Install the template**
+
+   Install the dependencies pinned in `pyproject.toml`:
+
    ```bash
    python -m pip install .
    ```
 
-4. Configure: run `rai init` to create `raiconfig.yaml` with your Snowflake connection, set the connection `role` to the model role, then add a `deployment` section. Give each template its own schema pair so two deployed templates never share one.
+4. **Configure your project**
+
+   Use the configuration builder in [Install and run PyRel](https://docs.relational.ai/get-started/install-and-run-pyrel/#configure-your-project) to create `raiconfig.yaml` in the template directory and verify your connection.
+
+   Set the connection `role` to the model role, then add the prescriptive reasoner and a `deployment` section. Give each template its own schema pair so two deployed templates never share one:
+
    ```yaml
    reasoners:
      prescriptive:
@@ -100,39 +134,27 @@ Manufacturing operations must decide how much of each product to make at each fa
      pat_user: <PAT_USER>
      pat_warehouse: <PAT_WAREHOUSE>
    ```
-   Without the `deployment` section, `python factory_production.py` stops with an error naming the missing setting.
 
-   Before the first run, create the internal schema as the model role, and have an administrator grant the RAI Native App caller access to it. The internal schema holds only this model's objects, so the grants cover all of it, including the solver's result tables that the deploy creates:
-   ```sql
-   -- as the model role
-   CREATE SCHEMA IF NOT EXISTS <DB>.FACTORY_PRODUCTION_META;
+5. **Deploy the model**
 
-   -- as an administrator
-   GRANT CALLER USAGE ON DATABASE <DB> TO APPLICATION <RAI_APP_NAME>;
-   GRANT CALLER USAGE ON SCHEMA <DB>.FACTORY_PRODUCTION_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT CALLER USAGE ON WAREHOUSE <PAT_WAREHOUSE> TO APPLICATION <RAI_APP_NAME>;
-   GRANT INHERITED CALLER SELECT ON ALL TABLES IN SCHEMA <DB>.FACTORY_PRODUCTION_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT INHERITED CALLER SELECT ON ALL DYNAMIC TABLES IN SCHEMA <DB>.FACTORY_PRODUCTION_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT INHERITED CALLER SELECT ON ALL VIEWS IN SCHEMA <DB>.FACTORY_PRODUCTION_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT INHERITED CALLER INSERT, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA <DB>.FACTORY_PRODUCTION_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT CALLER CREATE TABLE, CREATE STAGE ON SCHEMA <DB>.FACTORY_PRODUCTION_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT INHERITED CALLER READ, WRITE ON ALL STAGES IN SCHEMA <DB>.FACTORY_PRODUCTION_META TO APPLICATION <RAI_APP_NAME>;
-   ```
-   The deploy creates the public schema `<DB>.FACTORY_PRODUCTION` if it doesn't exist.
+   Deploy the model in `model/` to the schemas in `raiconfig.yaml`:
 
-5. Run:
    ```bash
-   python factory_production.py
+   rai models deploy --path model
    ```
-   The script deploys the model, waits for the first refresh, which runs the solve, and prints the report from the deployed model. Each refresh of the deployed model runs the solve again; `rai models deploy` deploys without printing the report.
 
-   Running the script again without changing the model redeploys nothing and does not solve again; it reports the latest refresh. A change to the model or to `problem.configure(...)` redeploys, and the redeploy's refresh solves. To solve again without a change, refresh the deployed model, then run the script:
-   ```sql
-   CALL <DB>.FACTORY_PRODUCTION_META._INTERNAL_REFRESH_MODEL('standard', NULL);
+   The deploy creates the public schema `<DB>.FACTORY_PRODUCTION` if it doesn't exist and waits for the model's first refresh, which runs the solve with sensitivity analysis. Each refresh of the deployed model runs the solve again.
+
+   Deploying again without changing the model applies no updates and does not solve again. A change to the model or to `problem.configure(...)` redeploys, and the redeploy's refresh solves.
+
+6. **Query the results**
+
+   Print the production plan and its sensitivity report from the deployed model:
+
+   ```bash
+   python -m queries.plan_and_sensitivity
    ```
-   To remove the deployment, run `rai models teardown --force` from this directory; it keeps the two schemas.
 
-6. Expected output (model and solver display trimmed):
    ```text
    Baseline status: OPTIMAL, total profit: 200000.00
 
@@ -165,7 +187,26 @@ Manufacturing operations must decide how much of each product to make at each fa
      steel_factory   40.0        40.0   0.0
    ```
 
-   Reading the result: `steel_factory` fills all 40 hours (it is the binding factory, so its capacity prices at **+4200/hour** -- the per-hour profit of the swing product `coils`, i.e. its 30/unit profit times its 140 units/hour rate). `amazing_brewery` meets all demand in 25 of its 30 hours, so its capacity is **slack** and prices at **0** -- its bottleneck is demand, not capacity. Each of these demand-capped products (`bands`, `stouts`, `ales`) carries a positive reduced cost here: the profit you would gain per extra unit of demand allowed.
+   The formulation printed above the plan is trimmed here. The report checks the solve's status, the plan, and the marginals against the bundled data's optimum, and stops with an error if any of them differs.
+
+   Reading the result: `steel_factory` fills all 40 hours (it is the binding factory, so its capacity prices at +4200/hour -- the per-hour profit of the swing product `coils`, i.e. its 30/unit profit times its 140 units/hour rate). `amazing_brewery` meets all demand in 25 of its 30 hours, so its capacity is slack and prices at 0 -- its bottleneck is demand, not capacity. Each of these demand-capped products (`bands`, `stouts`, `ales`) carries a positive reduced cost here: the profit you would gain per extra unit of demand allowed.
+
+   To solve again without changing the model, refresh the deployed model, then run the query again:
+
+   ```sql
+   CALL <DB>.FACTORY_PRODUCTION_META._INTERNAL_REFRESH_MODEL('standard', NULL);
+   ```
+
+7. **Tear down the deployment**
+
+   Preview what the teardown removes, then remove it:
+
+   ```bash
+   rai models teardown
+   rai models teardown --force
+   ```
+
+   The first command lists the model's objects without dropping anything; the second drops them and keeps the two schemas.
 
 ## Template structure
 
@@ -174,13 +215,16 @@ Manufacturing operations must decide how much of each product to make at each fa
 ├── README.md                 # this file
 ├── runbook.md                # step-by-step analyst walkthrough
 ├── pyproject.toml            # dependencies
-├── factory_production.py     # main script (LP model + sensitivity read-back)
+├── model/
+│   └── __init__.py           # the deployed model (LP + sensitivity solve)
+├── queries/
+│   └── plan_and_sensitivity.py  # report and sensitivity read-back from the deployed model
 └── data/
     ├── factories.csv         # factory names and available resource-hours
     └── products.csv          # products with factory, rate, profit, demand cap
 ```
 
-**Start here**: run `python factory_production.py` for the full solve and sensitivity report end to end, or follow `runbook.md` to reproduce it step by step with the RAI skills.
+**Start here**: deploy with `rai models deploy --path model` and run `python -m queries.plan_and_sensitivity` for the full solve and sensitivity report end to end, or follow `runbook.md` to reproduce it step by step with the RAI skills.
 
 ## Sample data
 
@@ -189,7 +233,7 @@ The bundled data is a small, hand-checkable product-mix setting -- two factories
 - **`data/factories.csv`** (2 rows) -- `steel_factory` (40 available hours) and `amazing_brewery` (30 available hours).
 - **`data/products.csv`** (4 rows) -- `bands` and `coils` at `steel_factory`, `stouts` and `ales` at `amazing_brewery`, each with a production `rate` (units per hour), a unit `profit`, and a `demand` cap.
 
-Product names are unique across factories, so the plan can be keyed by product name alone. The script asserts the expected factory and product names on load, so an edit to `data/` fails loudly rather than silently passing the name-gated sensitivity checks on zero rows.
+Product names are unique across factories, so the plan can be keyed by product name alone. `model/__init__.py` checks the expected factory and product names on load, so an edit to `data/` fails loudly rather than silently passing the name-gated sensitivity checks on zero rows.
 
 ## Model overview
 
@@ -199,7 +243,7 @@ The model has two concepts and one relationship linking them; the decision varia
 - **Primary identifiers**: `Factory` by `name`; `Product` by `name` plus `factory_name` (a composite identity).
 - **Important invariants**: production quantities are non-negative and capped at each product's demand; each factory's total resource usage stays within its available hours; profit and rate are positive.
 
-For the full concept and property definitions, see `factory_production.py`; `runbook.md` builds them step by step with the RAI skills.
+For the full concept and property definitions, see `model/__init__.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
@@ -225,7 +269,7 @@ Because the objective is a maximization, the signs mirror a minimize-cost model:
 
 Sensitivity marginals are exact for a linear program. They describe the rate of change at the current optimum -- the range over which that rate holds is not reported (there is no RHS/coefficient ranging) -- and a large, discrete change (adding a factory, removing a product) is a structural change best answered by re-solving.
 
-See `factory_production.py` for the implementation and `runbook.md` for the skill-driven reproduction.
+See `model/__init__.py` and `queries/plan_and_sensitivity.py` for the implementation and `runbook.md` for the skill-driven reproduction.
 
 ## Customize this template
 
@@ -233,7 +277,7 @@ See `factory_production.py` for the implementation and `runbook.md` for the skil
 
 - Replace `data/factories.csv` (columns `name`, `avail`) and `data/products.csv` (columns `factory_name`, `name`, `rate`, `profit`, `demand`) with your own rows. The model and the per-factory marginals pick up new factories and products automatically.
 - Keep product names unique across factories, or key the plan by the composite `(factory_name, name)` instead of by name alone.
-- Update the `EXPECTED_FACTORIES` / `EXPECTED_PRODUCTS` guard sets at the top of the script (or remove them) so the load-time assertions match your data.
+- Update the `EXPECTED_FACTORIES` / `EXPECTED_PRODUCTS` guard sets in `model/__init__.py` (or remove them) so the load-time checks match your data, and update or remove the report's checks of the bundled optimum in `queries/plan_and_sensitivity.py`.
 
 ### Tune parameters
 
@@ -265,9 +309,9 @@ Usually that factory has idle resource-hours -- slack capacity, so an extra hour
 </details>
 
 <details>
-<summary>rai init fails or connection errors</summary>
+<summary>Connection errors</summary>
 
-Ensure your Snowflake credentials are configured correctly and that the RAI Native App is installed on your account. Run `rai init` again and verify the connection settings.
+Ensure your Snowflake credentials are configured correctly and that the RAI Native App is installed on your account. Re-create `raiconfig.yaml` with the configuration builder (Quickstart step 4) and verify the connection settings.
 </details>
 
 <details>
