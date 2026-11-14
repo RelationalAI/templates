@@ -45,7 +45,7 @@ At a high level, this exercises three RelationalAI capabilities on one shared mo
 
 ## What's included
 
-- **Model and pipeline** (`defect_root_cause.py`): a single script that defines the ontology and runs all three reasoning stages end to end.
+- **Model and pipeline** (`defect_root_cause.py`): a single script that defines the ontology and all three reasoning stages, deploys the model to your Snowflake account, and prints the report from the deployed model.
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - **Data generator** (`generate_data.py`): rebuilds the sample corpus deterministically from a fixed seed. The generated files are already included, so you do not need to run it to use the template.
 - **Sample data** (`data/`): ten CSV files describing the product structure, the material lots and their genealogy, the finished units and their test results, the process history, and the list of candidate causes.
@@ -56,7 +56,8 @@ At a high level, this exercises three RelationalAI capabilities on one shared mo
 ### Access
 
 - A Snowflake account with the RelationalAI Native App installed.
-- A Snowflake user with permission to access the RelationalAI Native App.
+- The one-time model deployment setup on that account, done by an account administrator: follow [Set up model deployment](https://private.relational.ai/early-access/model-deploy-setup) through **Governed setup**, **PAT authentication**, and steps 1-2 of **Additional setup for the prescriptive reasoner** (Quickstart step 4 below covers this template's own schema). It gives you a model role, a programmatic access token (PAT) stored as a secret, an external access integration, a PAT user, and a warehouse.
+- A Snowflake user that holds the model role.
 - A prescriptive engine for the optimization step. The template solves with the open-source HiGHS solver, so no additional solver license is required.
 
 ### Tools
@@ -91,17 +92,54 @@ At a high level, this exercises three RelationalAI capabilities on one shared mo
    python -m pip install .
    ```
 
-4. Configure your Snowflake connection and RelationalAI profile:
-
-   ```bash
-   rai init
+4. Configure the Snowflake connection and the deployment: run `rai init` to create `raiconfig.yaml` with your Snowflake connection, set the connection `role` to the model role, then add a `deployment` section. Give each template its own schema pair so two deployed templates never share one.
+   ```yaml
+   reasoners:
+     prescriptive:
+       name: defect_root_cause_solver            # created on first deploy if it doesn't exist
+   deployment:
+     role: <MODEL_ROLE>
+     public_schema: <DB>.DEFECT_ROOT_CAUSE               # published views and tables
+     identity:
+       internal_schema: <DB>.DEFECT_ROOT_CAUSE_META      # solver inputs, results, refresh procedures
+     schedules:
+       standard:
+         interval_s: 0              # refresh only on deploy or on demand
+     schedule: standard
+     pat_secret: <PAT_SECRET>       # these four come from the setup page
+     pat_eai: <PAT_EAI>
+     pat_user: <PAT_USER>
+     pat_warehouse: <PAT_WAREHOUSE>
    ```
+   Without the `deployment` section, `python defect_root_cause.py` stops with an error naming the missing setting.
+
+   Before the first run, create the internal schema as the model role, and have an administrator grant the RAI Native App caller access to it. The internal schema holds only this model's objects, so the grants cover all of it, including the solver's result tables that the deploy creates:
+   ```sql
+   -- as the model role
+   CREATE SCHEMA IF NOT EXISTS <DB>.DEFECT_ROOT_CAUSE_META;
+
+   -- as an administrator
+   GRANT CALLER USAGE ON DATABASE <DB> TO APPLICATION <RAI_APP_NAME>;
+   GRANT CALLER USAGE ON SCHEMA <DB>.DEFECT_ROOT_CAUSE_META TO APPLICATION <RAI_APP_NAME>;
+   GRANT CALLER USAGE ON WAREHOUSE <PAT_WAREHOUSE> TO APPLICATION <RAI_APP_NAME>;
+   GRANT INHERITED CALLER SELECT ON ALL TABLES IN SCHEMA <DB>.DEFECT_ROOT_CAUSE_META TO APPLICATION <RAI_APP_NAME>;
+   GRANT INHERITED CALLER SELECT ON ALL DYNAMIC TABLES IN SCHEMA <DB>.DEFECT_ROOT_CAUSE_META TO APPLICATION <RAI_APP_NAME>;
+   GRANT INHERITED CALLER SELECT ON ALL VIEWS IN SCHEMA <DB>.DEFECT_ROOT_CAUSE_META TO APPLICATION <RAI_APP_NAME>;
+   GRANT INHERITED CALLER INSERT, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA <DB>.DEFECT_ROOT_CAUSE_META TO APPLICATION <RAI_APP_NAME>;
+   GRANT CALLER CREATE TABLE, CREATE STAGE ON SCHEMA <DB>.DEFECT_ROOT_CAUSE_META TO APPLICATION <RAI_APP_NAME>;
+   GRANT INHERITED CALLER READ, WRITE ON ALL STAGES IN SCHEMA <DB>.DEFECT_ROOT_CAUSE_META TO APPLICATION <RAI_APP_NAME>;
+   ```
+   The deploy creates the public schema `<DB>.DEFECT_ROOT_CAUSE` if it doesn't exist.
 
 5. Run the template:
 
    ```bash
    python defect_root_cause.py
    ```
+
+   The script deploys the model, waits for the first refresh, which runs the solve, and prints the report from the deployed model. Each refresh of the deployed model runs the solve again; `rai models deploy` deploys without printing the report.
+
+   To remove the deployment, run `rai models teardown --force` from this directory; it keeps the two schemas.
 
 6. Confirm success. The run ends with the diagnosis; the final lines should look like this:
 
@@ -148,7 +186,7 @@ The model represents a manufacturing genealogy: finished units built from materi
 
 The genealogy is the backbone: a built `Lot` consumes its input lots, so following those links from a finished unit reaches every material beneath it.
 
-- **Key entities**: `SKU`, `Lot`, `Unit`, `Machine`, and `Factor` (a candidate root cause — any lot, machine, or shift, put on a common footing); plus a `DiagnosisResult` summary the prescriptive stage writes back.
+- **Key entities**: `SKU`, `Lot`, `Unit`, `Machine`, and `Factor` (a candidate root cause — any lot, machine, or shift, put on a common footing); plus a `DiagnosisResult` summary derived from the prescriptive stage's result.
 - **Primary identifiers**: every concept carries a string `id` (for example `LOT::SP-0423` on `Factor`); the genealogy and process history are threaded by relationships (`Lot consumes Lot`, `Unit consumes Lot`, `Unit ran on Machine`) rather than shared keys.
 - **Important invariants**: `Unit.defective` is `0` or `1`; `Factor.lift` is the touched-unit defect rate over the plant baseline (≈ 1.0 for non-causal high-volume factors); the `is_root_cause` decision variable is binary; a defective unit is either explained by a named cause it touches or marked unexplained.
 
@@ -215,7 +253,7 @@ LOT::SA-PCBA-L15     LOT    93      16 0.172043 3.028926
  LOT::CP-PCB-L03     LOT   332      31 0.093373 1.643900
   LOT::RM-CU-L02     LOT   803      71 0.088418 1.556663
 
-Pre-solve audit: 142 coverage constraints grounded (one per defective unit).
+Formulation audit: 142 coverage constraints grounded (one per defective unit).
 Diagnosis solve: OPTIMAL   objective=46.32
 Root-cause diagnosis: 2 factors explain 120/142 defective units (85% coverage)
          factor                  label    kind defects_on_factor     lift
