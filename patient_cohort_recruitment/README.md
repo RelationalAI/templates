@@ -46,7 +46,8 @@ The same shape recurs across knowledge-graph cohort and set-cover problems where
 
 The bundled CSVs are illustrative, fully synthetic demo data (e.g. patient names `P_Alpha`...`P_Oscar`, fictional gene/therapy/AE labels) sized so the solve takes a few seconds; swap in your own ontology and patient KG to apply the template to real cohorts.
 
-- `patient_cohort_recruitment.py` -- main script with concepts, the Graph closure, the rules, the decisions and constraints, and the solve configuration
+- `model/__init__.py` -- the deployed model: concepts, the Graph closure, the rules, the decisions and constraints, and the solve configuration. `rai models deploy --path model` deploys it to your Snowflake account, where each refresh runs the solve.
+- `queries/cohort_report.py` -- the report, which reads the deployed model
 - **Runbook**: `runbook.md` -- a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - `data/genes.csv` -- 10 sample genes: 7 in the kinase pathway sub-ontology (a root plus two intermediate sub-roots and four leaves) and 3 unrelated metabolism genes
 - `data/gene_is_a.csv` -- 8 `is_a` edges that lay out the kinase-pathway tree and a parallel unrelated tree
@@ -62,7 +63,7 @@ The bundled CSVs are illustrative, fully synthetic demo data (e.g. patient names
 
 ### Access
 - A Snowflake account that has the RAI Native App installed.
-- The one-time model deployment setup on that account, done by an account administrator: follow [Set up model deployment](https://private.relational.ai/early-access/model-deploy-setup) through **Governed setup**, **PAT authentication**, and steps 1-2 of **Additional setup for the prescriptive reasoner** (Quickstart step 4 below covers this template's own schema). It gives you a model role, a programmatic access token (PAT) stored as a secret, an external access integration, a PAT user, and a warehouse.
+- The one-time model deployment setup on that account, done by an account administrator: follow [Set up model deployment](https://private.relational.ai/early-access/model-deploy-setup) through **Governed setup**, **PAT authentication**, and steps 1-2 of **Additional setup for the prescriptive reasoner** (the Quickstart covers this template's own schema). It gives you a model role, a programmatic access token (PAT) stored as a secret, an external access integration, a PAT user, and a warehouse.
 - A Snowflake user that holds the model role.
 
 ### Tools
@@ -71,28 +72,61 @@ The bundled CSVs are illustrative, fully synthetic demo data (e.g. patient names
 
 ## Quickstart
 
-1. Download ZIP:
+Before you start, install Python 3.10 or later and complete the access prerequisites above: a Snowflake account with the RAI Native App, the one-time model deployment setup, and a Snowflake user that holds the model role.
+
+Before the first deploy, create this template's internal schema as the model role, and have an administrator grant the RAI Native App caller access to it. The internal schema holds only this model's objects, so the grants cover all of it, including the solver's result tables that the deploy creates:
+
+```sql
+-- as the model role
+CREATE SCHEMA IF NOT EXISTS <DB>.PATIENT_COHORT_RECRUITMENT_META;
+
+-- as an administrator
+GRANT CALLER USAGE ON DATABASE <DB> TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER USAGE ON SCHEMA <DB>.PATIENT_COHORT_RECRUITMENT_META TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER USAGE ON WAREHOUSE <PAT_WAREHOUSE> TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL TABLES IN SCHEMA <DB>.PATIENT_COHORT_RECRUITMENT_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL DYNAMIC TABLES IN SCHEMA <DB>.PATIENT_COHORT_RECRUITMENT_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL VIEWS IN SCHEMA <DB>.PATIENT_COHORT_RECRUITMENT_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER INSERT, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA <DB>.PATIENT_COHORT_RECRUITMENT_META TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER CREATE TABLE, CREATE STAGE ON SCHEMA <DB>.PATIENT_COHORT_RECRUITMENT_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER READ, WRITE ON ALL STAGES IN SCHEMA <DB>.PATIENT_COHORT_RECRUITMENT_META TO APPLICATION <RAI_APP_NAME>;
+```
+
+Use this sequence to deploy the model and query it:
+
+1. **Download the template**
+
+   [Download the ZIP](https://docs.relational.ai/templates/zips/v1/patient_cohort_recruitment.zip), unzip it, and enter the template directory:
+
    ```bash
-   curl -O https://docs.relational.ai/templates/zips/v1/patient_cohort_recruitment.zip
    unzip patient_cohort_recruitment.zip
    cd patient_cohort_recruitment
    ```
-   > [!TIP]
-   > You can also download the template ZIP using the "Download ZIP" button at the top of this page.
 
-2. Create venv:
+2. **Create a Python environment**
+
+   Create and activate a virtual environment, then update pip:
+
    ```bash
    python -m venv .venv
    source .venv/bin/activate
    python -m pip install --upgrade pip
    ```
 
-3. Install:
+3. **Install the template**
+
+   Install the dependencies pinned in `pyproject.toml`:
+
    ```bash
    python -m pip install .
    ```
 
-4. Configure the Snowflake connection and the deployment: run `rai init` to create `raiconfig.yaml` with your Snowflake connection, set the connection `role` to the model role, then add a `deployment` section. Give each template its own schema pair so two deployed templates never share one.
+4. **Configure your project**
+
+   Use the configuration builder in [Install and run PyRel](https://docs.relational.ai/get-started/install-and-run-pyrel/#configure-your-project) to create `raiconfig.yaml` in the template directory and verify your connection.
+
+   Set the connection `role` to the model role, then add the prescriptive reasoner and a `deployment` section. Give each template its own schema pair so two deployed templates never share one:
+
    ```yaml
    reasoners:
      prescriptive:
@@ -111,57 +145,65 @@ The bundled CSVs are illustrative, fully synthetic demo data (e.g. patient names
      pat_user: <PAT_USER>
      pat_warehouse: <PAT_WAREHOUSE>
    ```
-   Without the `deployment` section, `python patient_cohort_recruitment.py` stops with an error naming the missing setting.
 
-   Before the first run, create the internal schema as the model role, and have an administrator grant the RAI Native App caller access to it. The internal schema holds only this model's objects, so the grants cover all of it, including the solver's result tables that the deploy creates:
-   ```sql
-   -- as the model role
-   CREATE SCHEMA IF NOT EXISTS <DB>.PATIENT_COHORT_RECRUITMENT_META;
+5. **Deploy the model**
 
-   -- as an administrator
-   GRANT CALLER USAGE ON DATABASE <DB> TO APPLICATION <RAI_APP_NAME>;
-   GRANT CALLER USAGE ON SCHEMA <DB>.PATIENT_COHORT_RECRUITMENT_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT CALLER USAGE ON WAREHOUSE <PAT_WAREHOUSE> TO APPLICATION <RAI_APP_NAME>;
-   GRANT INHERITED CALLER SELECT ON ALL TABLES IN SCHEMA <DB>.PATIENT_COHORT_RECRUITMENT_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT INHERITED CALLER SELECT ON ALL DYNAMIC TABLES IN SCHEMA <DB>.PATIENT_COHORT_RECRUITMENT_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT INHERITED CALLER SELECT ON ALL VIEWS IN SCHEMA <DB>.PATIENT_COHORT_RECRUITMENT_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT INHERITED CALLER INSERT, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA <DB>.PATIENT_COHORT_RECRUITMENT_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT CALLER CREATE TABLE, CREATE STAGE ON SCHEMA <DB>.PATIENT_COHORT_RECRUITMENT_META TO APPLICATION <RAI_APP_NAME>;
-   GRANT INHERITED CALLER READ, WRITE ON ALL STAGES IN SCHEMA <DB>.PATIENT_COHORT_RECRUITMENT_META TO APPLICATION <RAI_APP_NAME>;
-   ```
-   The deploy creates the public schema `<DB>.PATIENT_COHORT_RECRUITMENT` if it doesn't exist.
+   Deploy the model in `model/` to the schemas in `raiconfig.yaml`:
 
-5. Run:
    ```bash
-   python patient_cohort_recruitment.py
+   rai models deploy --path model
    ```
 
-   The script deploys the model, waits for the first refresh, which runs the solve, and prints the report from the deployed model. Each refresh of the deployed model runs the solve again; `rai models deploy` deploys without printing the report.
+   The deploy creates the public schema named in `raiconfig.yaml` if it doesn't exist and waits for the model's first refresh, which runs the solve. Each refresh of the deployed model runs the solve again.
 
-   To remove the deployment, run `rai models teardown --force` from this directory; it keeps the two schemas.
+6. **Query the results**
 
-6. Expected output — a few lines confirm a successful run (the script also prints the gene closure, the eligible-patient set, and the per-axis coverage tally):
+   Print the report from the deployed model:
+
+   ```bash
+   python -m queries.cohort_report
+   ```
 
    ```text
    Solve result:
    • status: OPTIMAL
 
    Selected cohort:
-     patient_id patient_name age_years
-              2      P_Bravo        61
-              7       P_Golf        63
-              8      P_Hotel        49
-              9      P_India        57
+      patient_id patient_name  age_years
+   0           2      P_Bravo         61
+   1           4      P_Delta         58
+   2           5       P_Echo         69
+   3           8      P_Hotel         49
    ```
 
-   Eight of the 15 patients are eligible (the seven excluded patients each fail either the kinase-mutation test or the qualifying-pair test within the 90-day window). Several four-patient cohorts hit the `MIN_GENES_COVERED = 3` / `MIN_THERAPIES_COVERED = 2` / `MIN_AES_COVERED = 2` floors; the solver returns one of them, so the specific cohort can vary across runs.
+   The report also prints the formulation, the gene closure, the eligible-patient set, and the per-axis coverage tally, and it stops unless the solve's termination status is OPTIMAL. Eight of the 15 patients are eligible (the seven excluded patients each fail either the kinase-mutation test or the qualifying-pair test within the 90-day window). Several four-patient cohorts hit the `MIN_GENES_COVERED = 3` / `MIN_THERAPIES_COVERED = 2` / `MIN_AES_COVERED = 2` floors; the solver returns one of them, so the specific cohort can vary across runs.
+
+   To solve again without changing the model, refresh the deployed model, then run the query again:
+
+   ```sql
+   CALL <DB>.PATIENT_COHORT_RECRUITMENT_META._INTERNAL_REFRESH_MODEL('standard', NULL);
+   ```
+
+7. **Tear down the deployment**
+
+   Preview what the teardown removes, then remove it:
+
+   ```bash
+   rai models teardown
+   rai models teardown --force
+   ```
+
+   The first command lists the model's objects without dropping anything; the second drops them and keeps the two schemas.
 
 ## Template structure
 ```text
 .
 ├── README.md
 ├── pyproject.toml
-├── patient_cohort_recruitment.py
+├── model/
+│   └── __init__.py
+├── queries/
+│   └── cohort_report.py
 └── data/
     ├── genes.csv
     ├── gene_is_a.csv
@@ -173,7 +215,7 @@ The bundled CSVs are illustrative, fully synthetic demo data (e.g. patient names
     └── ae_terms.csv
 ```
 
-**Start here**: run `python patient_cohort_recruitment.py` for the full three-stage pipeline (graph closure, rules, then the cohort-selection solve) end to end, or follow `runbook.md` to reproduce it step by step with the RAI skills.
+**Start here**: deploy with `rai models deploy --path model` and run `python -m queries.cohort_report` for the full three-stage pipeline (graph closure, rules, then the cohort-selection solve) end to end, or follow `runbook.md` to reproduce it step by step with the RAI skills.
 
 ## Sample data
 
@@ -198,7 +240,7 @@ One ontology threads all three stages: the graph closure writes a `KinaseGene` s
 - **Primary identifiers**: integer `id` on each base concept, loaded from the corresponding CSV; `GeneIsA` is keyed by the composite `(child_id, parent_id)`.
 - **Important invariants**: every foreign key resolves (event tables reference real patients and dictionary concepts); event `t_days` values are non-negative; the pathway root gene exists; a sub-concept's membership *is* its predicate (a patient is eligible exactly when they are a `KinaseMutationCarrier` and a `QualifyingPairPatient`).
 
-For the full concept and property definitions, see `patient_cohort_recruitment.py`; `runbook.md` builds them step by step with the RAI skills.
+For the full concept and property definitions, see `model/__init__.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
@@ -216,7 +258,7 @@ gene ontology → graph closure (KinaseGene) → rules (eligibility + coverage s
 
 The CSP signature is coverage upper bound + per-pair lower bound + floor. For each coverable value, `is_covered` is bounded above by the number of in-cohort patients that cover it (an unsupported value can't be marked covered) and bounded below per pair by each covering in-cohort patient (any in-cohort patient covering it forces `is_covered` to 1). The two bounds pin the indicator to the actual coverage; the floor constraint (`sum(is_covered) >= MIN_*`) then forces the cohort to span at least the required number of distinct genes, therapies, and adverse events.
 
-For the exact PyRel formulation, see `patient_cohort_recruitment.py`; `runbook.md` reproduces the three stages step by step with the RAI skills.
+For the exact PyRel formulation, see `model/__init__.py`; `runbook.md` reproduces the three stages step by step with the RAI skills.
 
 ## Customize this template
 
@@ -294,7 +336,7 @@ Two encoding pitfalls produce this symptom; both must be guarded against.
 <details>
   <summary>Authentication or configuration errors</summary>
 
-- Run `rai init` to create or update your RelationalAI/Snowflake configuration.
+- Re-create `raiconfig.yaml` with the configuration builder (Quickstart step 4) to update your RelationalAI/Snowflake configuration.
 - If you have multiple profiles, set `export RAI_PROFILE=<your_profile>`.
 
 </details>

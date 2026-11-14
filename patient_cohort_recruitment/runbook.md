@@ -118,4 +118,4 @@ The cohort is 4 eligible patients whose combined coverage is **4 genes (EGFR, HE
 
 ## Data
 
-Bundled CSVs in `data/`: 10 genes (8 is_a edges), 5 therapies, 4 adverse-event terms, 15 patients, and 26 / 15 / 12 mutation / therapy / adverse-event events. The kinase root gene, the 90-day window, the cohort size (4), and the diversity floors (3 / 2 / 2) are constants in the script. Full chain in `patient_cohort_recruitment.py`.
+Bundled CSVs in `data/`: 10 genes (8 is_a edges), 5 therapies, 4 adverse-event terms, 15 patients, and 26 / 15 / 12 mutation / therapy / adverse-event events. The kinase root gene, the 90-day window, the cohort size (4), and the diversity floors (3 / 2 / 2) are constants in the model. Full chain in `model/__init__.py`; the report in `queries/cohort_report.py`.
