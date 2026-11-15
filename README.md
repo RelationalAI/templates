@@ -17,11 +17,10 @@ The index below covers the current templates. Expand an industry to see its temp
 <!-- BEGIN TEMPLATE INDEX -->
 
 <details>
-<summary>Cross-Industry (4)</summary>
+<summary>Cross-Industry (3)</summary>
 
 | Template | Reasoners | Description |
 | --- | --- | --- |
-| [rai-agent-scaffold](rai-agent-scaffold/) | Graph | Scaffold for packaging a RelationalAI semantic model as a Snowflake Cortex agent and exposing it through Snowflake Intelligence. |
 | [shift_assignment](shift_assignment/) | Prescriptive | Assign workers to shifts based on availability to meet coverage requirements. |
 | [simple-start](simple-start/) | Graph | A minimal notebook to connect to Snowflake, model a small graph, and compute betweenness centrality with RelationalAI. |
 | [wildlife-conservation-network](wildlife-conservation-network/) | Graph | Identify collaboration clusters among wildlife-conservation organizations with Louvain community detection and degree centrality, surfacing key coordination hubs for resource sharing. |
