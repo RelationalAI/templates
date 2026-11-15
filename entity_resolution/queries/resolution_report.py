@@ -137,10 +137,13 @@ if __name__ == "__main__":
             f"${row['exposure']:>11,.0f}  excess ${row['excess']:>9,.0f}  "
             f"premium ${row['premium']:>8,.0f}"
         )
-    print(
-        f"  -> ceded ${total_ceded:,.0f} of excess exposure for "
-        f"${total_premium:,.0f} premium (of ${REINSURANCE_BUDGET:,.0f})"
-    )
+    if len(over) and ceded.empty:
+        print("  No cession plan: the solve returned no solution (see the status above).")
+    else:
+        print(
+            f"  -> ceded ${total_ceded:,.0f} of excess exposure for "
+            f"${total_premium:,.0f} premium (of ${REINSURANCE_BUDGET:,.0f})"
+        )
 
     auto_entity = dict(zip(resolved["record_id"], resolved["entity_id"]))
     coverage_by_record = dict(zip(resolved["record_id"], resolved["coverage_amount"]))

@@ -37,7 +37,7 @@ The configurator scenario here is automotive trim, drawn from the public Renault
 - A region-filtered decision domain so options not allowed in the target region simply don't appear as decisions
 - A pre-solve catalog validation pass that fails fast on two pathologies the region filter can hide: a slot with zero region-allowed options (the exactly-one IC would not bind), and an implies rule whose tail option is not allowed in the region (the implies IC would not bind)
 - **Multi-solution enumeration as the primary code path**: `problem.configure(..., solution_limit=MAX_CONFIGURATIONS)` makes each refresh run the search in enumeration mode and `Variable.values(solution_index, value)` surfaces every distinct feasible build; the bundled demo's `MAX_CONFIGURATIONS = 100` is set above the feasible-set size so the solver exhausts the search (status `OPTIMAL`), and a post-solve `pandas.pivot` collapses the per-option rows into one row per build (one column per slot, sorted ascending by total price) for buyer-facing display
-- A report that prints the solve status and the number of builds, and says so when no feasible build exists; the model itself enforces the constraints across every solution the solver returns
+- A report that prints the solve status and the number of builds, and says so when the solver finds no build; the model itself enforces the constraints across every solution the solver returns
 
 ## What's included
 

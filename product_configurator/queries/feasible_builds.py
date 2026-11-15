@@ -24,8 +24,8 @@ if __name__ == "__main__":
 
     if num_points == 0:
         print(
-            f"\nNo feasible build for region {TARGET_REGION!r} under the encoded "
-            "constraints. See the README troubleshooting section for likely causes."
+            f"\nThe solver found no build for region {TARGET_REGION!r}. See the solve "
+            "status above and the README troubleshooting section for likely causes."
         )
     else:
         # ------------------------------------------
