@@ -126,7 +126,7 @@ Four derived health properties (`avg_packet_loss`, `avg_latency_ms`, `avg_error_
 **Prompt**
 
 ```
-/rai-graph-analysis Starting from our most influential subscriber, what are the call paths of up to three hops through the network, which cell towers do they route through, and how much social influence does the strongest path carry — the path running through the subscribers with the highest combined importance, where a subscriber is influential when influential subscribers call them? Don't revisit a subscriber.
+/rai-graph-analysis Starting from our most influential subscriber, how many call paths of up to three hops run through the network, how many distinct cell towers carry them, and how much social influence does the strongest path carry — the path running through the subscribers with the highest combined importance, where a subscriber is influential when influential subscribers call them? Don't revisit a subscriber.
 ```
 
 **Response**
