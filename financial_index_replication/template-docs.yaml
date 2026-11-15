@@ -153,8 +153,8 @@ guided_walkthrough:
             end: Stock.x_weight = model.Property
         Problem(model, Float):
           anchor:
-            start: problem = Problem(model, Float)
-            end: problem = Problem(model, Float)
+            start: 'problem = Problem(model, Float, name="financial_index_replication")'
+            end: 'problem = Problem(model, Float, name="financial_index_replication")'
         problem.solve_for(...):
           anchor:
             start: problem.solve_for(

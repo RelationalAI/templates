@@ -298,8 +298,8 @@ guided_walkthrough:
       references:
         Problem(model, Float):
           anchor:
-            start: problem = Problem(model, Float)
-            end: problem = Problem(model, Float)
+            start: 'problem = Problem(model, Float, name="entity_resolution")'
+            end: 'problem = Problem(model, Float, name="entity_resolution")'
         problem.solve_for(...):
           anchor:
             start: problem.solve_for(

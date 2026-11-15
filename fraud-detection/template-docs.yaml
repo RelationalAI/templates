@@ -6,6 +6,7 @@ page:
     - what-this-template-is-for
   omit_from_readme: []
   download_and_run_from_readme: true
+  deployment: true
 
 model_explorer:
   title: Explore the model
