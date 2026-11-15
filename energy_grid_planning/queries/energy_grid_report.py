@@ -444,37 +444,14 @@ def main() -> None:
     portfolio_query_df["budget"] = portfolio_query_df["budget"].astype(float)
     portfolio_query_df["dc_count"] = portfolio_query_df["dc_count"].astype(int)
 
-    # marginal: ($net_value_next - $net_value_this) / ($M_next - $M_this); null at last
-    marginal = []
-    for j in range(len(portfolio_query_df)):
-        if j == len(portfolio_query_df) - 1:
-            marginal.append(None)
-        else:
-            d_val = float(portfolio_query_df.loc[j + 1, "net_value"]) - float(portfolio_query_df.loc[j, "net_value"])
-            d_budget = portfolio_query_df.loc[j + 1, "budget"] - portfolio_query_df.loc[j, "budget"]
-            marginal.append(d_val / d_budget if abs(d_budget) > 1e-6 else None)
-    portfolio_query_df["marginal"] = marginal
-
-    # is_knee: row whose marginal-rate represents the largest jump from the prior row's rate.
-    # We measure the "jump" at row j as |rate[j-1]| / |rate[j]| (steepest drop from a high marginal
-    # to a lower one, i.e. diminishing-returns inflection). The knee is the row where this ratio peaks.
-    is_knee = [False] * len(portfolio_query_df)
-    rates = [r for r in marginal if r is not None]
-    if len(rates) >= 2:
-        max_jump, knee_idx = 0.0, 1
-        for j in range(len(rates) - 1):
-            prev_rate, next_rate = rates[j], rates[j + 1]
-            if abs(next_rate) > 1e-6:
-                jump = abs(prev_rate / next_rate)
-            elif abs(prev_rate) > 1e-6:
-                jump = float("inf")
-            else:
-                jump = 0.0
-            if jump > max_jump:
-                max_jump = jump
-                knee_idx = j + 1
-        is_knee[knee_idx] = True
-    portfolio_query_df["is_knee"] = is_knee
+    # Marginal value per added $M (none for the largest budget) and the knee flag.
+    marginal_df = model.select(
+        PortRef.investment_level_name.alias("level"),
+        PortRef.marginal_per_m_to_next_level.alias("marginal"),
+    ).to_df()
+    knee_levels = model.where(PortRef.is_knee_point()).select(PortRef.investment_level_name.alias("level")).to_df()
+    portfolio_query_df = portfolio_query_df.merge(marginal_df, on="level", how="left")
+    portfolio_query_df["is_knee"] = portfolio_query_df["level"].isin(knee_levels["level"])
 
     # Per-level totals for the detail sections below.
     pareto_rows = []
@@ -530,7 +507,7 @@ def main() -> None:
             for _, row in level_upg.iterrows():
                 print(f"    {row['upgrade_id']}: +{float(row['capacity_mw']):.0f} MW, ${float(row['cost_m']):.1f}M")
 
-    # Marginal analysis and knee, computed above from the queried portfolio rows
+    # Marginal analysis and knee, from the model
     if len(portfolio_query_df) >= 3:
         print("\n  MARGINAL ANALYSIS (value gained per additional $M budget):")
         for j in range(len(portfolio_query_df) - 1):

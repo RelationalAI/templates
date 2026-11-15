@@ -150,6 +150,9 @@ DCSubstation = model.Concept("DCSubstation", extends=[Substation])
 # InvestmentLevel Scenario Concept: 5 budget levels
 InvestmentLevel = model.Concept("InvestmentLevel", identify_by={"name": String})
 InvestmentLevel.budget_cap = model.Property(f"{InvestmentLevel} has {Float:budget_cap}")
+InvestmentLevel.next_level = model.Relationship(
+    f"{InvestmentLevel:level} is followed by {InvestmentLevel:next_level}"
+)
 
 # InvestmentPortfolio: one row per InvestmentLevel scenario, derived from the solve.
 InvestmentPortfolio = model.Concept(
@@ -167,3 +170,8 @@ InvestmentPortfolio.upgrade_cost = model.Property(
     f"{InvestmentPortfolio} has {Float:upgrade_cost}"
 )
 InvestmentPortfolio.net_value = model.Property(f"{InvestmentPortfolio} has {Float:net_value}")
+InvestmentPortfolio.marginal_per_m_to_next_level = model.Property(
+    f"{InvestmentPortfolio} has {Float:marginal_per_m_to_next_level}"
+)
+InvestmentPortfolio.marginal_drop = model.Property(f"{InvestmentPortfolio} has {Float:marginal_drop}")
+InvestmentPortfolio.is_knee_point = model.Relationship(f"{InvestmentPortfolio} is the knee point")

@@ -400,3 +400,38 @@ model.define(
         InvestmentPortfolio.annual_revenue - InvestmentPortfolio.upgrade_cost / AMORTIZATION_YEARS
     )
 )
+
+# Marginal value of each budget step: net value gained per added $M from a level
+# to the next larger budget. The largest level has no next step.
+higher, step_from, step_to = InvestmentLevel.ref(), InvestmentLevel.ref(), InvestmentLevel.ref()
+model.define(InvestmentLevel.next_level(step_to)).where(
+    step_to.budget_cap
+    == aggs.min(higher.budget_cap).where(higher.budget_cap > InvestmentLevel.budget_cap).per(InvestmentLevel)
+)
+next_portfolio = InvestmentPortfolio.ref()
+model.define(
+    InvestmentPortfolio.marginal_per_m_to_next_level(
+        (next_portfolio.net_value - InvestmentPortfolio.net_value) / (step_to.budget_cap - step_from.budget_cap)
+    )
+).where(
+    InvestmentPortfolio.investment_level(step_from),
+    step_from.next_level(step_to),
+    next_portfolio.investment_level(step_to),
+)
+
+# The knee is the level where the marginal value falls the most, from the step
+# into it to the step out of it.
+prev_portfolio = InvestmentPortfolio.ref()
+model.define(
+    InvestmentPortfolio.marginal_drop(
+        prev_portfolio.marginal_per_m_to_next_level - InvestmentPortfolio.marginal_per_m_to_next_level
+    )
+).where(
+    prev_portfolio.investment_level(step_from),
+    step_from.next_level(step_to),
+    InvestmentPortfolio.investment_level(step_to),
+)
+knee_rival = InvestmentPortfolio.ref()
+model.define(InvestmentPortfolio.is_knee_point()).where(
+    InvestmentPortfolio.marginal_drop == aggs.max(knee_rival.marginal_drop)
+)

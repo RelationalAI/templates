@@ -159,12 +159,12 @@ Pareto frontier with knee at $300M (6 DCs, 1,530 MW, $252M net); marginal $1,013
 **Prompt**
 
 ```
-/rai-ontology Add an InvestmentPortfolio concept indexed by InvestmentLevel that materializes the per-budget aggregates (approved-DC count, total MW, annual revenue, upgrade cost, net value).
+/rai-ontology Add an InvestmentPortfolio concept indexed by InvestmentLevel that materializes the per-budget aggregates (approved-DC count, total MW, annual revenue, upgrade cost, net value, marginal value per added $M) and flags the knee point, where that marginal value falls the most.
 ```
 
 **Response**
 
-Ontology gains an `InvestmentPortfolio(InvestmentLevel)` Concept (5 rows, one per budget) with `dc_count`, `total_mw`, `annual_revenue`, `upgrade_cost`, `net_value`. All five frontier rows — $200M ($151M net) → $300M ($252M net, knee) → $600M ($398M net) — are queryable as ontology rather than stdout; the report computes the marginal value per added $M and the knee from those rows.
+Ontology gains an `InvestmentPortfolio(InvestmentLevel)` Concept (5 rows, one per budget) with `dc_count`, `total_mw`, `annual_revenue`, `upgrade_cost`, `net_value`, `marginal_per_m_to_next_level`, `marginal_drop` and the `is_knee_point` flag, each a rule over the solve results. All five frontier rows — $200M ($151M net) → $300M ($252M net, knee) → $600M ($398M net) — are queryable as ontology rather than stdout.
 
 ## Data
 
