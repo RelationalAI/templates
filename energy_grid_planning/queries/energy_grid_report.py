@@ -225,8 +225,8 @@ def main() -> None:
         """Highest total-betweenness SIMPLE corridor terminating at each DC substation.
 
         Used to recover each winning corridor's node names (for printing) and for the
-        contingency re-enumeration. The baseline per-DC max load is computed natively
-        above (fragility_per_dc); this reproduces it and adds the route node sequence.
+        contingency re-enumeration. The model publishes the per-DC maximum load as
+        Substation.fragility_load; this reproduces it and adds the route node sequence.
         """
         best = {}
         for _, grp in corridor_df.groupby("corridor"):

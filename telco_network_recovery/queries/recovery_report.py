@@ -254,8 +254,8 @@ def stage_4_paths() -> None:
     print("STAGE 4: PATHS -- Call-path enumeration through critical towers")
     print("=" * 60)
 
-    # The model enumerates the paths: from the single highest-PageRank subscriber
-    # (the seed hub), call paths up to PATH_MAX_HOPS hops, simple paths only.
+    # The model enumerates the paths: from the highest-PageRank subscriber (the seed
+    # hub; each of them on an exact tie), call paths up to PATH_MAX_HOPS hops, simple paths only.
     hub_df = model.where(Subscriber.is_seed_hub()).select(Subscriber.id.alias("sub_id")).to_df()
     hubs = sorted(hub_df["sub_id"].tolist())
     n_paths = model.select(SimplePathCount).to_df().iloc[:, 0].tolist()
@@ -268,7 +268,7 @@ def stage_4_paths() -> None:
     print(f"  Distinct routing towers recovered across those paths: {n_towers[0] if n_towers else 0}")
     top_load = model.select(Subscriber.top_call_path_influence).to_df().iloc[:, 0].tolist()
     if top_load:
-        print(f"  Top call-path influence load (PageRank summed along the route): {round(float(top_load[0]), 6)}")
+        print(f"  Top call-path influence load (PageRank summed along the route): {round(float(max(top_load)), 6)}")
 
 
 def stage_5_prescriptive(flagged_df: pd.DataFrame, blast_df: pd.DataFrame) -> None:
@@ -306,16 +306,11 @@ def stage_5_prescriptive(flagged_df: pd.DataFrame, blast_df: pd.DataFrame) -> No
         how="left",
     ).sort_values(["region", "tier"])
 
-    # Per-tower selection rationale: tag which upstream signal(s) drove
-    # inclusion. The opening business question ends with "...and why?" --
-    # this turns the plan output into a defensible answer per tower.
-    #
-    # Three signal categories, OR-combined per tower:
+    # Per-tower selection rationale: the upstream signals that flagged the
+    # tower, OR-combined:
     #   - operational       : WEST tower in DEGRADED status (Stage 2 branches 1/2)
     #   - advisory/predicted: failure_intensity > threshold (Stage 1 GNN -> Stage 2 branch 3)
     #   - high-value        : weighted_impact in top quartile of critical towers
-    # A natural extension: surface GNN-confidence and data-quality flags
-    # alongside the rationale tag.
     selected_df = selected_df.merge(
         blast_df[["tower_id", "weighted_impact", "weighted_pagerank"]],
         on="tower_id",

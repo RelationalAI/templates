@@ -166,19 +166,11 @@ corridor = (
     .paths()
 )
 
-# Score each corridor IN PyRel by Stage 2's betweenness summed ALONG its hops, and
-# roll the most-fragile (max-load) corridor up per DC substation -- all native paths.
-#
-# Three operations move into PyRel:
-#   1. Per-corridor score: aggs.sum(Substation(p.nodes).betweenness).per(p) sums the
-#      per-node betweenness over each corridor's node sequence (the core paths-only op).
-#   2. Simple-path filter: the grid is cyclic, so walk-semantics .all().paths() revisits
-#      nodes; not_(where(i < j, p.nodes(i) == p.nodes(j))) drops any node-repeating walk
-#      via a negated existential over positions. It sits in the SAME where() as the sum,
-#      so the sum only sees simple corridors -- on a simple corridor the position-sum
-#      equals the distinct-substation sum.
-#   3. Per-DC rollup: aggs.max(total).per(corridor_dst) takes the highest-load corridor
-#      terminating at each DC substation (corridor_dst is auto-unified at p.nodes(length)).
+# Each DC substation's fragility load is the highest corridor score among the simple
+# corridors ending at it, where a corridor's score sums Stage 2's betweenness over its
+# nodes. The grid is cyclic, so .all().paths() also yields walks that revisit a node;
+# not_(where(i < j, p.nodes(i) == p.nodes(j))) drops them in the same where() as the sum,
+# so on every corridor that remains the position sum equals the distinct-substation sum.
 i, j = Integer.ref(), Integer.ref()
 Substation.fragility_load = model.Property(f"{Substation} has {Float:fragility_load}")
 model.where(
@@ -349,46 +341,58 @@ model.define(
 )
 model.define(
     InvestmentPortfolio.dc_count(
-        aggs.count(DataCenterRequest)
-        .where(
-            InvestmentPortfolio.investment_level(InvestmentLevel),
-            DataCenterRequest.x_approve(InvestmentLevel, x_ap),
-            x_ap > 0.5,
+        (
+            aggs.count(DataCenterRequest)
+            .where(
+                InvestmentPortfolio.investment_level(InvestmentLevel),
+                DataCenterRequest.x_approve(InvestmentLevel, x_ap),
+                x_ap > 0.5,
+            )
+            .per(InvestmentPortfolio)
         )
-        .per(InvestmentPortfolio)
+        | 0
     )
 )
 model.define(
     InvestmentPortfolio.total_mw(
-        sum(DataCenterRequest, DataCenterRequest.requested_mw)
-        .where(
-            InvestmentPortfolio.investment_level(InvestmentLevel),
-            DataCenterRequest.x_approve(InvestmentLevel, x_ap),
-            x_ap > 0.5,
+        (
+            sum(DataCenterRequest, DataCenterRequest.requested_mw)
+            .where(
+                InvestmentPortfolio.investment_level(InvestmentLevel),
+                DataCenterRequest.x_approve(InvestmentLevel, x_ap),
+                x_ap > 0.5,
+            )
+            .per(InvestmentPortfolio)
         )
-        .per(InvestmentPortfolio)
+        | 0.0
     )
 )
 model.define(
     InvestmentPortfolio.annual_revenue(
-        sum(DataCenterRequest, DataCenterRequest.requested_mw * DataCenterRequest.annual_revenue_per_mw)
-        .where(
-            InvestmentPortfolio.investment_level(InvestmentLevel),
-            DataCenterRequest.x_approve(InvestmentLevel, x_ap),
-            x_ap > 0.5,
+        (
+            sum(DataCenterRequest, DataCenterRequest.requested_mw * DataCenterRequest.annual_revenue_per_mw)
+            .where(
+                InvestmentPortfolio.investment_level(InvestmentLevel),
+                DataCenterRequest.x_approve(InvestmentLevel, x_ap),
+                x_ap > 0.5,
+            )
+            .per(InvestmentPortfolio)
         )
-        .per(InvestmentPortfolio)
+        | 0.0
     )
 )
 model.define(
     InvestmentPortfolio.upgrade_cost(
-        sum(SubstationUpgrade, SubstationUpgrade.cost_million * 1e6)
-        .where(
-            InvestmentPortfolio.investment_level(InvestmentLevel),
-            SubstationUpgrade.x_upgrade(InvestmentLevel, x_up),
-            x_up > 0.5,
+        (
+            sum(SubstationUpgrade, SubstationUpgrade.cost_million * 1e6)
+            .where(
+                InvestmentPortfolio.investment_level(InvestmentLevel),
+                SubstationUpgrade.x_upgrade(InvestmentLevel, x_up),
+                x_up > 0.5,
+            )
+            .per(InvestmentPortfolio)
         )
-        .per(InvestmentPortfolio)
+        | 0.0
     )
 )
 model.define(

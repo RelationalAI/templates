@@ -279,7 +279,7 @@ The pipeline builds a heterogeneous graph, trains a regression GNN over it, and 
 
 **Split temporally.** Forecasting requires training on the past and evaluating on the future; a random split would leak future signal into training. The split is done in pandas before the task tables are built — the last 60 days become the test window and the 60 before that the validation window.
 
-**Train and predict.** The GNN runs a regression task with `has_time_column=False`, a deliberate simplicity choice (the temporal split is preserved at the pandas level above; the GNN just doesn't use the date as a temporal index inside the graph — see [Customize this template](#customize-this-template) for the temporal-indexing variant). Predictions are attached back to each Sale.
+**Train and predict.** The GNN runs a regression task with `has_time_column=True`: each Train, Val and Test row carries its sale date, and `Sale.date` is the property transformer's time column. Predictions are attached back to each Sale.
 
 **Aggregate to a weekly forecast.** A single declarative query pulls the per-Sale predictions and joins them to store and item metadata; pandas then rolls them up into weekly per-(city, family) buckets against the actuals.
 
@@ -295,7 +295,6 @@ See `model/reasoning.py` for the graph and the GNN, `queries/forecast_report.py`
 ### Tune parameters
 
 - **Forecast different granularity** — change `TEST_DAYS` / `VAL_DAYS` in `model/source.py`. Default is a 60-day test window after a 60-day val window.
-- **Use temporal indexing instead** — for tighter holiday/seasonal spike capture, set `has_time_column=True`, restore `time_col=[Sale.date]` in the PropertyTransformer, restore the date arg in the Train/Val/Test relationships (`f"{Sale} at {Any:date} has {Any:value}"`), and add `temporal_strategy="last"` to the `GNN(...)` constructor. Trades simplicity for the GNN aggregating over time windows.
 
 ### Extend the model
 

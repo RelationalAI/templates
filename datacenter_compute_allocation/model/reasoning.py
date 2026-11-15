@@ -60,9 +60,7 @@ WORKLOAD_TYPES = ("pretrain", "finetune", "inference", "eval")
 #        labs share a workload_type (cross-lab industry co-movement)
 # --------------------------------------------------
 
-# Heterogeneous graph (three cross-concept edge types). All edges cross
-# concept boundaries -- same-entity-only edges (e.g. pure temporal lag)
-# would not give the GNN message-passing lift over a tabular model.
+# Heterogeneous graph over LabMetric and Workload with three edge types.
 gnn_graph = Graph(model, directed=False, weighted=False)
 
 # Edge 1: LabMetric -> Workload owned by the same lab.
@@ -77,8 +75,8 @@ model.define(
 ).where(dep_ref.dependency_type == "blocks")
 
 # Edge 3: LabMetric -> LabMetric, cross-lab same-date pairs whose labs
-# share a workload_type. LOAD-BEARING -- carries cross-lab co-movement
-# signal a per-workload tabular baseline cannot replicate.
+# share a workload_type. They carry the cross-lab co-movement signal that
+# a per-workload tabular model cannot see.
 LM_a = LabMetric.ref()
 LM_b = LabMetric.ref()
 Wl_a = Workload.ref()
@@ -464,16 +462,16 @@ def _assigned_in_cell():
 
 
 model.define(ScenarioCell.n_assigned(
-    aggs.count(Assignment).where(*_assigned_in_cell()).per(ScenarioCell)
+    aggs.count(Assignment).where(*_assigned_in_cell()).per(ScenarioCell) | 0
 ))
 model.define(ScenarioCell.revenue_usd(
     sum(Assignment, Assignment.workload.strategic_value_usd)
-    .where(*_assigned_in_cell()).per(ScenarioCell)
+    .where(*_assigned_in_cell()).per(ScenarioCell) | 0.0
 ))
 model.define(ScenarioCell.anchor_revenue_usd(
     sum(Assignment, Assignment.workload.strategic_value_usd)
     .where(*_assigned_in_cell(), Assignment.workload.lab.is_strategic_anchor == True)
-    .per(ScenarioCell)
+    .per(ScenarioCell) | 0.0
 ))
 model.define(ScenarioCell.energy_cost_usd(
     sum(Assignment,
@@ -482,20 +480,23 @@ model.define(ScenarioCell.energy_cost_usd(
         * Assignment.gpu_pool.power_per_gpu_kw
         * Assignment.gpu_pool.data_center.pue
         * Assignment.gpu_pool.data_center.dollars_per_mwh / 1000.0)
-    .where(*_assigned_in_cell()).per(ScenarioCell)
+    .where(*_assigned_in_cell()).per(ScenarioCell) | 0.0
 ))
 model.define(ScenarioCell.dep_cost_usd(
     sum(Assignment,
         Assignment.workload.gpu_count_required
         * Assignment.workload.duration_hours
         * Assignment.gpu_pool.hourly_depreciation_rate)
-    .where(*_assigned_in_cell()).per(ScenarioCell)
+    .where(*_assigned_in_cell()).per(ScenarioCell) | 0.0
 ))
 model.define(ScenarioCell.total_cost_usd(ScenarioCell.energy_cost_usd + ScenarioCell.dep_cost_usd))
-model.define(ScenarioCell.realized_margin(
-    (ScenarioCell.revenue_usd - ScenarioCell.total_cost_usd) / ScenarioCell.revenue_usd
-))
-model.define(ScenarioCell.anchor_share(ScenarioCell.anchor_revenue_usd / ScenarioCell.revenue_usd))
+# A cell with no revenue has no margin or anchor share.
+model.where(ScenarioCell.revenue_usd > 0).define(
+    ScenarioCell.realized_margin(
+        (ScenarioCell.revenue_usd - ScenarioCell.total_cost_usd) / ScenarioCell.revenue_usd
+    ),
+    ScenarioCell.anchor_share(ScenarioCell.anchor_revenue_usd / ScenarioCell.revenue_usd),
+)
 
 # Per-(cell, workload_type) and per-(cell, priority_tier) counts.
 wtype = String.ref()
@@ -613,10 +614,10 @@ model.define(DemandScenarioOutlook.new(scenario=DemandScenario))
 
 p0_revenue = sum(Assignment, Assignment.workload.strategic_value_usd).where(
     Assignment.is_chosen(), Assignment.workload.priority_tier == "P0"
-)
+) | 0.0
 other_revenue = sum(Assignment, Assignment.workload.strategic_value_usd).where(
     Assignment.is_chosen(), Assignment.workload.priority_tier != "P0"
-)
+) | 0.0
 model.where(DemandScenarioOutlook.scenario == DemandScenario).define(
     DemandScenarioOutlook.realized_revenue_usd(p0_revenue + other_revenue * DemandScenario.factor)
 )

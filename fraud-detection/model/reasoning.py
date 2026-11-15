@@ -181,8 +181,8 @@ problem.satisfy(model.where(
 
 # Objective: maximize expected loss averted
 #   E[loss averted | audit] = alert_score * transaction_amount
-# Ranking by alert_score alone is suboptimal here: a high-score $5M transfer
-# consumes 5 hours but yields less $/hour than two medium-score $500K at 1hr.
+# Ranking by alert_score alone is suboptimal here: it ignores both the amount
+# at stake and the hours each audit takes.
 sel_obj = Float.ref()
 Txn_obj = Transaction.ref()
 Cand_obj = AuditCandidate.ref()

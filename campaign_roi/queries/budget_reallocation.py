@@ -20,8 +20,9 @@ if __name__ == "__main__":
     status = model.select(SolveStatus).to_df().iloc[:, 0].tolist()
     conversions = model.select(TotalConversions).to_df().iloc[:, 0].tolist()
     print(f"\nSolve result:\n• status: {', '.join(status)}")
-    if conversions:
-        print(f"• objective: {round(conversions[0], 9)}\n")
+    if not conversions:
+        raise SystemExit("The solve returned no budget plan, so there is nothing to report.")
+    print(f"• objective: {round(conversions[0], 9)}\n")
 
     print(f"\nStatus: {status[0]}")
     objective_value = conversions[0]

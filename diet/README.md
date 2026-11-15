@@ -151,10 +151,6 @@ Use this sequence to deploy the model and query it:
    Solve result:
    • status: OPTIMAL
    • objective: 35.486583333
-   • solve time: 0.00s
-   • num_points: 1
-   • solver: HiGHS_1.15.1
-   ...
 
    Diet plan per scenario:
             scenario       food  cost    amount

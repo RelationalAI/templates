@@ -85,7 +85,7 @@ For every (user, unread book) candidate, the connecting paths are counted across
 
 **Response**
 
-OPTIMAL or TIME_LIMIT (the solver may stop at its time limit with the best slate found; on the bundled data it does, with an objective that varies between runs) — all 25 users get an ordered 3-book slate (`Candidate.slot`) that maximizes high-slot path support subject to subject diversity and the per-user explanation floor; the chosen books and slots are written back. A TIME_LIMIT slate is the best found, not proven optimal. (The objective value depends on how explanation paths are counted and where the diversity grain and explanation floor are set — and a near-ubiquitous subject may force the diversity rule onto each book's primary subject to stay feasible — so the exact total varies with those modeling choices. What's stable: every user receives a full, subject-diverse, ordered slate that clears the floor, each pick backed by concrete graph paths.)
+OPTIMAL or TIME_LIMIT (the solver may stop at its time limit with the best slate found; on the bundled data it does, with an objective that varies between runs) — all 25 users get an ordered 3-book slate (`Candidate.slot`) that maximizes high-slot path support subject to subject diversity and the per-user explanation floor; the chosen books and slots are written back. A TIME_LIMIT slate is the best found, not proven optimal.
 
 ### 6. Read the slates
 

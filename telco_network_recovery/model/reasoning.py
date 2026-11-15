@@ -314,9 +314,10 @@ model.where(
 
 # Path enumeration is declared here, in the model: a deployed model only has the
 # path tables its own rules ask for, so a query cannot enumerate new paths. The
-# scope is a deterministic seed -- the highest-PageRank subscriber -- and call
-# paths of up to PATH_MAX_HOPS hops, keeping simple paths only (the call graph is
-# cyclic, so the negated existential drops walks that revisit a node).
+# scope is a deterministic seed -- the highest-PageRank subscriber, or each of
+# them on an exact tie -- and call paths of up to PATH_MAX_HOPS hops, keeping
+# simple paths only (the call graph is cyclic, so the negated existential drops
+# walks that revisit a node).
 PATH_MAX_HOPS = 3
 
 hub_rival = Subscriber.ref()
@@ -439,11 +440,8 @@ model.where(TowerUpgradeOption.selected > 0.5).define(
 )
 
 # --------------------------------------------------
-# Plan summary, published back to the ontology so every headline metric
-# (total cost, install weeks, capacity, tier mix, binding constraint) is
-# first-class ontology -- not stage-local Python state. A downstream
-# analyst (or Cortex Agent) can query RestorePlan and
-# TowerUpgradeOption.is_selected_upgrade directly.
+# Plan summary: the RestorePlan singleton publishes the headline metrics
+# (total cost, install weeks, capacity, tier mix, binding constraint).
 # --------------------------------------------------
 
 # RestorePlan concept: singleton holding the headline plan metrics

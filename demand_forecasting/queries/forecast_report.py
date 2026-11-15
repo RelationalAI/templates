@@ -9,8 +9,8 @@ item family) over the test window, and the test-set RMSE.
 
 import numpy as np
 import pandas as pd
-from model import Item, Sale, Store, TestTable, TrainTable, ValTable, model, test_start, val_start
-from relationalai.semantics import Float, count, select
+from model import Item, Sale, Store, TestTable, TrainTable, ValTable, model
+from relationalai.semantics import Float, count, min, select
 
 
 def main() -> None:
@@ -22,6 +22,8 @@ def main() -> None:
             count(TrainTable).alias("train"),
             count(ValTable).alias("val"),
             count(TestTable).alias("test"),
+            min(ValTable.date).alias("val_start"),
+            min(TestTable.date).alias("test_start"),
         )
         .to_df()
         .iloc[0]
@@ -31,10 +33,9 @@ def main() -> None:
     print(
         f"Splits (temporal): train={counts['train']:,}  val={counts['val']:,}  test={counts['test']:,}"
     )
-    print(
-        f"Train: < {val_start.date()}; Val: {val_start.date()} -- {test_start.date()}; "
-        f"Test: >= {test_start.date()}"
-    )
+    val_start = pd.Timestamp(counts["val_start"]).date()
+    test_start = pd.Timestamp(counts["test_start"]).date()
+    print(f"Train: < {val_start}; Val: {val_start} -- {test_start}; Test: >= {test_start}")
     print(f"unit_sales: min={unit_sales.min()} mean={unit_sales.mean():.2f} max={unit_sales.max()}")
 
     print("\n" + "=" * 60)

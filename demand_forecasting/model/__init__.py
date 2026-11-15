@@ -4,13 +4,14 @@
 """
 
 from .schema import Item, ItemFamily, Sale, Store, TestTable, TrainTable, ValTable, model
-from .source import test_start, val_start
+from .source import DATA_DIR
 
 # isort: split
 # The reasoning declares the graph and the GNN over the facts loaded above.
 from .reasoning import gnn
 
 __all__ = [
+    "DATA_DIR",
     "Item",
     "ItemFamily",
     "Sale",
@@ -20,6 +21,4 @@ __all__ = [
     "ValTable",
     "gnn",
     "model",
-    "test_start",
-    "val_start",
 ]

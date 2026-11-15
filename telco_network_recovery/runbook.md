@@ -16,7 +16,7 @@ figures shift run to run; the structural outcome holds.)
 
   ─────────────────────────────────────────────────────────────────
   STAGE 1  Predictive   ──►  NetworkEquipment.predictions (1,500)
-   /rai-predictive-           CellTower.failure_intensity (190)
+   /rai-predictive-           TowerFailureScore.failure_intensity (190)
    modeling                   Per-tower SUM of equipment failure
                               probabilities; range 0.02-10.47.
   ─────────────────────────────────────────────────────────────────
@@ -83,7 +83,7 @@ Concepts: `CellTower`, `NetworkEquipment` (with `tower_id_fk` FK property), `Equ
 
 **Response**
 
-Plans the 5-reasoner chain on the shared ontology — descriptive (`/rai-pyrel`) to scope the ontology and advisory landscape; predictive (`/rai-predictive-modeling` + `/rai-predictive-training`) to train an equipment-failure binary classification GNN with a `ModelAdvisory → NetworkEquipment` edge and bind the per-tower `failure_intensity` back to `CellTower`; rules (`/rai-pyrel`) to flag critical-restore towers via a three-branch rule combining operational degradation with the predictive intensity; graph (`/rai-graph-analysis`) to compute subscriber PageRank and aggregate per-tower customer impact (revenue × churn across ACTIVE callers); prescriptive (`/rai-prescriptive-problem` + `/rai-prescriptive-results`) to compose all three signals into the tier-selection MIP and explain the binding constraint.
+Plans the 5-reasoner chain on the shared ontology — descriptive (`/rai-pyrel`) to scope the ontology and advisory landscape; predictive (`/rai-predictive-modeling` + `/rai-predictive-training`) to train an equipment-failure binary classification GNN with a `ModelAdvisory → NetworkEquipment` edge and sum the predictions per tower into `TowerFailureScore.failure_intensity`; rules (`/rai-pyrel`) to flag critical-restore towers via a three-branch rule combining operational degradation with the predictive intensity; graph (`/rai-graph-analysis`) to compute subscriber PageRank and aggregate per-tower customer impact (revenue × churn across ACTIVE callers); prescriptive (`/rai-prescriptive-problem` + `/rai-prescriptive-results`) to compose all three signals into the tier-selection MIP and explain the binding constraint.
 
 ### 4. Train the equipment-failure GNN
 
@@ -95,7 +95,7 @@ Plans the 5-reasoner chain on the shared ontology — descriptive (`/rai-pyrel`)
 
 **Response**
 
-GNN binary classification with `eval_metric=roc_auc`, 80 epochs, three FK / shared-MODEL edges on an **undirected** graph (`directed=False`) so signal flows both ways across `Equipment ↔ Tower ↔ Equipment` and propagates the 2-hop neighbor-advisory pattern. PropertyTransformer pulls equipment / health / tower / advisory features (category, continuous, integer, datetime). Train/val/test split is 1050/225/1500 (test = all equipment so every item gets a prediction). Per-equipment positive-class probabilities are summed per tower in pandas and loaded back as `CellTower.failure_intensity` via a `TowerFailureScore` bridge concept. Per-tower `failure_intensity` distribution: min 0.02, median 2.92, max 10.47 — graded enough to give the prescriptive objective a real priority signal.
+GNN binary classification with `eval_metric=roc_auc`, 80 epochs, three FK / shared-MODEL edges on an **undirected** graph (`directed=False`) so signal flows both ways across `Equipment ↔ Tower ↔ Equipment` and propagates the 2-hop neighbor-advisory pattern. PropertyTransformer pulls equipment / health / tower / advisory features (category, continuous, integer, datetime). Train/val/test split is 1050/225/1500 (test = all equipment so every item gets a prediction). A rule sums the per-equipment positive-class probabilities per tower into `TowerFailureScore.failure_intensity`, a concept keyed by tower id: a `CellTower` property derived from the predictions would make the predictions depend on themselves, because the GNN reads the `CellTower` table. Per-tower `failure_intensity` distribution: min 0.02, median 2.92, max 10.47 — graded enough to give the prescriptive objective a real priority signal.
 
 ### 5. Flag critical-restore towers
 

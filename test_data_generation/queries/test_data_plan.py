@@ -73,12 +73,12 @@ if __name__ == "__main__":
     status = model.select(SolveStatus).to_df().iloc[:, 0].tolist()
     deviation = model.select(TotalDeviation).to_df().iloc[:, 0].tolist()
     print(f"\nSolve result:\n• status: {', '.join(status)}")
-    if deviation:
-        print(f"• objective: {round(deviation[0], 9)}\n")
+    if not deviation:
+        raise SystemExit("The solve returned no row counts, so no test data is generated.")
+    print(f"• objective: {round(deviation[0], 9)}\n")
 
     print(f"Status: {status[0]}")
-    if deviation:
-        print(f"Total weighted deviation: {deviation[0]:.2f}")
+    print(f"Total weighted deviation: {deviation[0]:.2f}")
 
     # Extract row counts
     row_counts = {}

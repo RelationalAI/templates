@@ -31,15 +31,21 @@ the investigations that maximize expected loss averted within a fixed
 investigator-hours budget. Adapt its transaction data, fraud signals,
 predictive model, and review constraints for your workflow.
 
+## Prerequisites
+
+- A Snowflake account that has the RAI Native App installed.
+- The one-time model deployment setup on that account, done by an account administrator: follow [Set up model deployment](https://private.relational.ai/early-access/model-deploy-setup) through **Governed setup**, **PAT authentication**, and steps 1-2 of **Additional setup for the prescriptive reasoner**. It creates the model role, a programmatic access token (PAT) stored as a secret, an external access integration, a PAT user, and a warehouse.
+- A Snowflake user that holds the model role.
+
 ## Quickstart
 
-Before you start, install Python 3.10 or later and get access to a Snowflake
-account with the RAI Native App. Graph, Predictive, and Prescriptive reasoning
-are in Public Preview; ask your RelationalAI support representative to enable
-Prescriptive reasoning. Preview features are for evaluation and testing, not
-production applications. The bundled example uses local CSVs and runs on CPU
-without an external dataset or GPU. The template pins
-`relationalai[gnn]==2.1.1` in `pyproject.toml`. You also need a model role, a programmatic access token (PAT) stored as a secret, an external access integration, a PAT user, and a warehouse, set up once by an account administrator following the Set up model deployment guide through Governed setup, PAT authentication, and steps 1-2 of Additional setup for the prescriptive reasoner.
+Before you start, install Python 3.10 or later and complete the model
+deployment setup listed under Prerequisites. Graph, Predictive, and
+Prescriptive reasoning are in Public Preview; ask your RelationalAI support
+representative to enable Prescriptive reasoning. Preview features are for
+evaluation and testing, not production applications. The bundled example uses
+local CSVs and runs on CPU without an external dataset or GPU. The template
+pins `relationalai[gnn]==2.1.1` in `pyproject.toml`.
 
 Before the first deploy, create this template's two schemas as the model role, and have an administrator grant the RAI Native App access to them. The classifier keeps its experiments and registered versions in the public schema, and the internal schema holds only this model's objects, so the grants cover all of it, including the solver's result tables that the deploy creates:
 
