@@ -99,4 +99,4 @@ Joining predictions back to subscriber metadata and ranking by predicted risk wi
 
 ## Data
 
-Bundled CSVs in `data/telco_mini/`: 1,200 subscribers, 1,200 plan contracts, 6,000 call detail records (plus billing events for the customize section). Train/validation/test splits are derived in the script, stratified by segment. Full chain in `subscriber_retention.py`.
+Bundled CSVs in `data/telco_mini/`: 1,200 subscribers, 1,200 plan contracts, 6,000 call detail records (plus billing events for the customize section). Train/validation/test splits are derived in `model/source.py`, stratified by segment. Full model in `model/`; training in `train.py`; the report in `queries/churn_report.py`.
