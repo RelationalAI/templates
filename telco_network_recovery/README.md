@@ -44,9 +44,10 @@ Built using **predictive reasoning** (GNN on a heterogeneous graph), **rules-bas
 
 ## What's included
 
-- **Model**: a 5-stage pipeline (predictive, then rules, then graph, then paths, then prescriptive) on a single shared ontology — 8 source-data concepts wired to the bundled CSVs, plus the enrichments each stage writes back.
-- **Runner**: `telco_network_recovery.py` — a single Python script with five module-scope stages, runs end-to-end against a Snowflake-connected RAI account.
-- **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
+- **Model**: a 5-stage pipeline (predictive, then rules, then graph, then paths, then prescriptive) on a single shared ontology, in the `model/` package (`schema.py` declares the 8 source-data concepts and the GNN task relationships, `source.py` loads the bundled CSVs and the equipment split, `reasoning.py` states the GNN, rules, graphs, and the upgrade MIP). `rai models deploy --path model` deploys it to your Snowflake account, where each refresh scores the equipment, derives the critical towers, and solves the upgrade MIP.
+- **Training**: `train.py` — trains the equipment-failure GNN over the deployed splits and registers its version.
+- **Query**: `queries/recovery_report.py` — prints the per-stage diagnostics and the plan from the deployed model.
+- **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the code itself.
 - **Sample data**: 250 cell towers, 1,500 equipment items, 8 manufacturer advisories on 7 MODELs, 1,200 subscribers, 6,000 call records, 750 upgrade options. See *Sample data* below.
 - **Outputs**: per-stage stdout diagnostics plus an ontology-resident `RestorePlan` singleton holding cost, capacity, install-weeks, tier mix, towers covered, and binding constraint.
 
@@ -54,46 +55,58 @@ Built using **predictive reasoning** (GNN on a heterogeneous graph), **rules-bas
 
 ### Access
 
-- A Snowflake account with the RelationalAI native app installed.
-- A Snowflake user with permissions on the RAI native app and on `EXP_DATABASE` (the schema for GNN experiment artifacts).
-- A gurobi-enabled prescriptive engine for Stage 5 (if gurobi is unavailable or unlicensed, the script catches the solver error and falls back to the bundled HiGHS solver automatically).
+- A Snowflake account that has the RAI Native App installed.
+- The one-time model deployment setup on that account, done by an account administrator: follow [Set up model deployment](https://private.relational.ai/early-access/model-deploy-setup) through **Governed setup**, **PAT authentication**, and steps 1-2 of **Additional setup for the prescriptive reasoner** (the Quickstart covers this template's own schemas). It gives you a model role, a programmatic access token (PAT) stored as a secret, an external access integration, a PAT user, and a warehouse.
+- A Snowflake user that holds the model role.
+
+The bundled CSVs ship with the template; there is no source-table setup. The GNN trains on the predictive reasoner and stores its experiments and registered versions in the template's public schema.
 
 ### Tools
 
 - Python >= 3.10.
-- RelationalAI Python SDK (`relationalai[gnn] == 2.1.1`).
-
-### One-time Snowflake setup for GNN experiment artifacts
-
-Grant the RelationalAI Native App access to a schema for experiment artifacts. The local script uses `TELCO_ENRICHMENT.EXPERIMENTS` by default (or change the constants at the top of the script). Update the SET statements below to match your database, schema, and Native App name, then run the following in a Snowflake SQL worksheet:
-
-```sql
-SET db_name            = 'TELCO_ENRICHMENT';
-SET schema_experiments = 'TELCO_ENRICHMENT.EXPERIMENTS';
-SET app_name           = 'RELATIONALAI';   -- replace with your app name
-
-CREATE DATABASE IF NOT EXISTS identifier($db_name);
-CREATE SCHEMA   IF NOT EXISTS identifier($schema_experiments);
-
-GRANT USAGE             ON DATABASE identifier($db_name)            TO APPLICATION identifier($app_name);
-GRANT USAGE             ON SCHEMA   identifier($schema_experiments) TO APPLICATION identifier($app_name);
-GRANT CREATE EXPERIMENT ON SCHEMA   identifier($schema_experiments) TO APPLICATION identifier($app_name);
-GRANT CREATE MODEL      ON SCHEMA   identifier($schema_experiments) TO APPLICATION identifier($app_name);
-```
-
-Set `EXP_DATABASE` at the top of `telco_network_recovery.py` to that database (default: `TELCO_ENRICHMENT`).
+- The `relationalai[gnn]` SDK and the `rai` CLI (installed by the Quickstart's `python -m pip install .`).
 
 ## Quickstart
 
-1. Download the template and extract it:
+Before you start, install Python 3.10 or later and complete the access prerequisites above: a Snowflake account with the RAI Native App, the one-time model deployment setup, and a Snowflake user that holds the model role.
+
+Before the first deploy, create this template's two schemas as the model role, and have an administrator grant the RAI Native App access to them. The GNN keeps its experiments and registered versions in the public schema, and the internal schema holds only this model's objects, so the grants cover all of it, including the solver's result tables that the deploy creates:
+
+```sql
+-- as the model role
+CREATE SCHEMA IF NOT EXISTS <DB>.TELCO_NETWORK_RECOVERY;
+CREATE SCHEMA IF NOT EXISTS <DB>.TELCO_NETWORK_RECOVERY_META;
+
+-- as an administrator
+GRANT USAGE ON DATABASE <DB> TO APPLICATION <RAI_APP_NAME>;
+GRANT USAGE ON SCHEMA <DB>.TELCO_NETWORK_RECOVERY TO APPLICATION <RAI_APP_NAME>;
+GRANT CREATE EXPERIMENT ON SCHEMA <DB>.TELCO_NETWORK_RECOVERY TO APPLICATION <RAI_APP_NAME>;
+GRANT CREATE MODEL ON SCHEMA <DB>.TELCO_NETWORK_RECOVERY TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER USAGE ON DATABASE <DB> TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER USAGE ON SCHEMA <DB>.TELCO_NETWORK_RECOVERY_META TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER USAGE ON WAREHOUSE <PAT_WAREHOUSE> TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL TABLES IN SCHEMA <DB>.TELCO_NETWORK_RECOVERY_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL DYNAMIC TABLES IN SCHEMA <DB>.TELCO_NETWORK_RECOVERY_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL VIEWS IN SCHEMA <DB>.TELCO_NETWORK_RECOVERY_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER INSERT, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA <DB>.TELCO_NETWORK_RECOVERY_META TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER CREATE TABLE, CREATE STAGE ON SCHEMA <DB>.TELCO_NETWORK_RECOVERY_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER READ, WRITE ON ALL STAGES IN SCHEMA <DB>.TELCO_NETWORK_RECOVERY_META TO APPLICATION <RAI_APP_NAME>;
+```
+
+Use this sequence to deploy the model, train the GNN, and query the recovery plan:
+
+1. **Download the template**
+
+   [Download the ZIP](https://docs.relational.ai/templates/zips/v1/telco_network_recovery.zip), unzip it, and enter the template directory:
 
    ```bash
-   curl -O https://docs.relational.ai/templates/zips/v1/telco_network_recovery.zip
    unzip telco_network_recovery.zip
    cd telco_network_recovery
    ```
 
-2. Create a virtual environment and activate it:
+2. **Create a Python environment**
+
+   Create and activate a virtual environment, then update pip:
 
    ```bash
    python -m venv .venv
@@ -101,75 +114,165 @@ Set `EXP_DATABASE` at the top of `telco_network_recovery.py` to that database (d
    python -m pip install --upgrade pip
    ```
 
-3. Install dependencies:
+3. **Install the template**
+
+   Install the dependencies pinned in `pyproject.toml`:
 
    ```bash
    python -m pip install .
    ```
 
-4. Configure:
+4. **Configure your project**
 
-   ```bash
-   rai init
-   ```
+   Use the configuration builder in [Install and run PyRel](https://docs.relational.ai/get-started/install-and-run-pyrel/#configure-your-project) to create `raiconfig.yaml` in the template directory and verify your connection.
 
-   After `rai init` generates the config file, add the following to your `raiconfig.yaml`:
+   Set the connection `role` to the model role, then add the predictive and prescriptive reasoners, the registered version the GNN predicts with, and a `deployment` section. Give each template its own schema pair so two deployed templates never share one:
 
    ```yaml
-   data:
-       ensure_change_tracking: true
+   reasoners:
+     predictive:
+       name: telco_failure_gnn          # created on first use if it doesn't exist
+       gnns:
+         equipment_failure:             # the GNN's name in model/reasoning.py
+           registry: <DB>.TELCO_NETWORK_RECOVERY
+           model: EQUIPMENT_FAILURE
+           version: V1                  # train.py registers this version
+     prescriptive:
+       name: telco_recovery_solver      # created on first deploy if it doesn't exist
+   deployment:
+     role: <MODEL_ROLE>
+     public_schema: <DB>.TELCO_NETWORK_RECOVERY          # published views and tables
+     identity:
+       internal_schema: <DB>.TELCO_NETWORK_RECOVERY_META # solver inputs, results, refresh procedures
+     schedules:
+       standard:
+         interval_s: 0                  # refresh only on deploy or on demand
+     schedule: standard
+     pat_secret: <PAT_SECRET>           # these four come from the setup page
+     pat_eai: <PAT_EAI>
+     pat_user: <PAT_USER>
+     pat_warehouse: <PAT_WAREHOUSE>
    ```
 
-5. (Optional) Regenerate the synthetic data corpus with a fresh seed:
+5. **Deploy the model**
+
+   Deploy the model in `model/` to the schemas in `raiconfig.yaml`:
 
    ```bash
-   cd data && python _synthesize_advisory_data.py && cd ..
+   rai models deploy --path model
    ```
 
-6. Run the template end-to-end:
+   The deploy creates the reasoners and the public schema named in `raiconfig.yaml` if they don't exist and waits for the model's first refresh, which loads the data and runs the rules, the graph analysis, and the upgrade solve. No version of the GNN is registered yet, so this refresh makes no failure predictions.
+
+6. **Train the GNN**
+
+   Train the GNN over the deployed splits and register it as the version named in `raiconfig.yaml`:
 
    ```bash
-   python telco_network_recovery.py
+   python train.py
    ```
 
-   The five stages print diagnostics and then a final plan as queryable ontology.
+   Then refresh the deployed model so it predicts with this version and solves again over those predictions: `CALL DB.TELCO_NETWORK_RECOVERY_META._INTERNAL_REFRESH_MODEL('standard', NULL);` with your database in place of `DB`. The registry refuses to overwrite a version, so to retrain, set a new `version` in `raiconfig.yaml` first.
 
-7. Expected output (a few lines confirm a successful run):
+7. **Query the results**
+
+   Print the diagnostics and the plan from the deployed model:
+
+   ```bash
+   python -m queries.recovery_report
+   ```
 
    ```text
-   STAGE 5: PRESCRIPTIVE -- tower upgrade selection MIP
-     Status: OPTIMAL
-     Selected upgrades: 27
-     Total cost:               $4,992,276
-     Capacity restored:        180 Gbps
-     Towers covered:           27 of 142 critical (all 5 regions)
+   Equipment split: train=1050 val=225 test=1500 (all)
+   Label distribution: at_risk=1 597 / 1500 (39.8%)
+   Advisories: 7 on 7 distinct models
+   ...
+   ============================================================
+   STAGE 1: PREDICTIVE -- equipment-failure binary classification GNN
+   ============================================================
 
-   PIPELINE COMPLETE: 5 stages executed on the shared Telco ontology
+     Top 10 towers by predicted failure intensity (sum of equipment failure probs):
+   TOWER_ID  FAILURE_INTENSITY
+   TWR-0021             8.9240
+   TWR-0159             8.5622
+   TWR-0067             7.3455
+   ...
+
+     failure_intensity distribution: min=0.05, median=2.93, max=8.92
+     Towers with failure_intensity > 1.5: 156 / 190
+   ...
+   ============================================================
+   STAGE 2: RULES -- flag is_critical_restore towers
+   ============================================================
+
+     Flagged critical_restore towers: 158
+   ...
+   ============================================================
+   STAGE 5: PRESCRIPTIVE -- tower upgrade selection MIP
+   ============================================================
+
+   Solve result:
+   • status: OPTIMAL
+   • objective: 1062056637.585094
+
+     Selected upgrades: 26
+   ...
+     Total cost:               $4,993,173
+     Total install crew-weeks: 168
+     Capacity restored:        179 Gbps
+     Tier mix:                 {'BRONZE': 12, 'GOLD': 9, 'SILVER': 5}
+     Towers covered:           26 of 158 critical
+   ...
+   PIPELINE COMPLETE: 5 stages read from the deployed Telco ontology
    ```
 
-   The GNN is stochastic, so exact figures shift run-to-run; the structural outcome reproduces — status OPTIMAL, budget binding (~$4.99M of $5M), all 5 regions covered, ~180-210 Gbps restored across ~25-40 towers. The full printout and a step-by-step walkthrough are in `runbook.md`.
+   The report prints all five stages; the lines above are trimmed. The GNN is stochastic, so the predicted figures, the critical-tower count, and the plan shift from one training run to the next; the structural outcome reproduces: status OPTIMAL, budget binding (about $4.99M of $5M), and all 5 regions covered. The model keeps the highest-severity advisory for each MODEL, so the data summary counts the eight advisories in the CSV as seven. The full printout and a step-by-step walkthrough are in `runbook.md`.
+
+   To predict and solve again without changing the model, refresh the deployed model, then run the query again:
+
+   ```sql
+   CALL <DB>.TELCO_NETWORK_RECOVERY_META._INTERNAL_REFRESH_MODEL('standard', NULL);
+   ```
+
+8. **Tear down the deployment**
+
+   Preview what the teardown removes, then remove it:
+
+   ```bash
+   rai models teardown
+   rai models teardown --force
+   ```
+
+   The teardown removes the deployed objects and keeps the two schemas, with the GNN's experiments and registered versions in the public schema.
 
 ## Template structure
 
 ```text
-telco_network_recovery/
-  telco_network_recovery.py       # Main script (4 chained reasoning stages)
-  data/
-    cell_towers.csv               # 250 towers across 5 regions (15 WEST DEGRADED)
-    network_equipment.csv         # 1,500 equipment installs, 18 MODELs
-    equipment_health.csv          # 1,500 per-equipment health snapshots
-    network_performance.csv       # 5,000 per-tower measurements
-    subscribers.csv               # 1,200 subscribers (consumer + enterprise)
-    call_detail_records.csv       # 6,000 directed CDRs
-    tower_upgrade_options.csv     # 750 (tower, tier) options
-    model_advisories.csv          # 8 manufacturer advisories on 7 MODELs
-    _synthesize_advisory_data.py  # reproducibility script for the synthetic data
-  README.md                       # this file
-  runbook.md                      # analyst-facing paste-testable walkthrough
-  pyproject.toml                  # dependencies
+.
+├── README.md                       # this file
+├── runbook.md                      # analyst-facing paste-testable walkthrough
+├── pyproject.toml                  # dependencies
+├── model/
+│   ├── __init__.py                 # exports for train.py and the query
+│   ├── schema.py                   # concepts, GNN task relationships, plan relationships
+│   ├── source.py                   # bundled CSVs and the equipment split
+│   └── reasoning.py                # GNN, rules, graph analysis, and the upgrade MIP
+├── train.py                        # trains the GNN and registers its version
+├── queries/
+│   └── recovery_report.py          # per-stage diagnostics and the plan
+└── data/
+    ├── cell_towers.csv             # 250 towers across 5 regions (15 WEST DEGRADED)
+    ├── network_equipment.csv       # 1,500 equipment installs, 18 MODELs
+    ├── equipment_health.csv        # 1,500 per-equipment health snapshots
+    ├── network_performance.csv     # 5,000 per-tower measurements
+    ├── subscribers.csv             # 1,200 subscribers (consumer + enterprise)
+    ├── call_detail_records.csv     # 6,000 directed CDRs
+    ├── tower_upgrade_options.csv   # 750 (tower, tier) options
+    ├── model_advisories.csv        # 8 manufacturer advisories on 7 MODELs
+    └── _synthesize_advisory_data.py  # reproducibility script for the synthetic data
 ```
 
-**Start here**: run `python telco_network_recovery.py` for the full five-stage chain end to end, or follow `runbook.md` to reproduce it step by step with the RAI skills.
+**Start here**: follow the [Quickstart](#quickstart) to deploy the model, train the GNN, and print the five-stage report, or follow `runbook.md` to reproduce it step by step with the RAI skills.
 
 ## Sample data
 
@@ -207,7 +310,7 @@ One shared ontology threads all five stages. Each stage reads concepts and prope
 - **Primary identifiers**: string ids on the base entities (e.g. `TOWER_ID`, `EQUIPMENT_ID`, `SUB_ID`); composite key on `TowerUpgradeOption` (`tower_id` + `tier`); MODEL string on `ModelAdvisory`.
 - **Important invariants**: `severity`, `churn_risk_score`, and `health_score` are fractions in `[0, 1]`; `capacity_gbps` and `cost` are non-negative; the GNN's `at_risk` label is `1` if `STATUS` is `FAILING` or `WARNING`; Stage 5 decision variables are binary.
 
-For the full concept and property definitions, see `telco_network_recovery.py`; `runbook.md` builds them step by step with the RAI skills.
+For the full concept and property definitions, see `model/`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
@@ -217,13 +320,13 @@ For the full concept and property definitions, see `telco_network_recovery.py`; 
 
 **Stage 3 — Graph (customer impact analysis).** PageRank on the directed `Subscriber -> Subscriber` call graph lands on `Subscriber.influence_score` (the graph reasoner's network-effect signal). The headline per-tower measure is `CellTower.weighted_impact` — sum of `Subscriber.customer_value` (= `lifetime_value x (1 + churn_risk_score)`) across the active callers (`Subscriber.status == SubscriberStatus.ACTIVE`) whose calls route through each tower. `weighted_pagerank` is the parallel PageRank-weighted view, exposed as a secondary signal queryable alongside the revenue-based headline.
 
-**Stage 4 — Paths (PREVIEW).** Where Stage 3 scores a *subscriber*, the paths capability scores the *route*: from the top-PageRank hub it enumerates the simple call paths (up to three hops) over an arity-3 caller-via-tower-callee edge and ranks them by summed PageRank influence. On the bundled data this is 198 simple call paths recovering 54 distinct routing towers; the hub's top route is persisted as `Subscriber.top_call_path_influence`.
+**Stage 4 — Paths (PREVIEW).** Where Stage 3 scores a *subscriber*, the paths capability scores the *route*: from the top-PageRank hub it enumerates the simple call paths (up to three hops) over an arity-3 caller-via-tower-callee edge and ranks them by summed PageRank influence. On the bundled data this is 198 simple call paths recovering 54 distinct routing towers; the hub's highest influence load is persisted as `Subscriber.top_call_path_influence`.
 
 **Stage 5 — Prescriptive (MIP).** Binary `TowerUpgradeOption.selected`, scoped to critical-restore towers, with three constraints (at most one tier per tower, total cost at most $5M, total install-weeks at most 200). The objective maximizes restored capacity weighted by two upstream signals per tower — Stage 3's `weighted_impact` (revenue × churn) and Stage 1's `failure_intensity` (GNN-predicted risk) — so capacity spent on high-value, high-risk towers counts most.
 
 After the solve, a `RestorePlan` singleton is populated and each selected option is tagged `is_selected_upgrade`. Every selected tower carries a `rationale` tag in the printed plan noting which upstream signal(s) drove its inclusion (`operational` / `advisory/predicted` / `high-value`).
 
-For the implementation, see `telco_network_recovery.py`; to reproduce it step by step with the RAI skills, follow `runbook.md`.
+For the implementation, see `model/reasoning.py`; to reproduce it step by step with the RAI skills, follow `runbook.md`.
 
 ## Customize this template
 
@@ -232,8 +335,9 @@ Focus on the first changes most users will make.
 ### Use your own data
 
 - Replace the CSVs in `data/` with your own; keep the column names listed in *Sample data* above.
+- Regenerate the synthetic corpus with a fresh seed: run `python _synthesize_advisory_data.py` in `data/`, then deploy again and train a new version.
 - The subscriber `STATUS` column is enum-mapped: values must exactly match the `SubscriberStatus` member names (`ACTIVE` / `SUSPENDED`). `lookup()` cannot validate values that arrive from data columns — unrecognized values silently map to a nonexistent member, and those subscribers drop out of the Stage 3 customer-impact aggregates. Extend the enum if your feed has more statuses.
-- For Snowflake-backed runs, swap the `pd.read_csv(...)` calls for `model.data(snowflake_table)` calls and adjust `EXP_DATABASE` / `EXP_SCHEMA` at the top of the script.
+- For Snowflake-backed runs, swap the CSV reads in `model/source.py` for `model.data(snowflake_table)` calls.
 - If your subscriber feed lacks `LIFETIME_VALUE_USD` or `CHURN_RISK_SCORE`, supply a `CUSTOMER_VALUE` column directly and skip the pandas precompute.
 
 ### Tune parameters
@@ -258,12 +362,15 @@ Focus on the first changes most users will make.
 ## Troubleshooting
 
 <details>
-<summary>GNN training fails with permission errors on <code>EXP_DATABASE</code></summary>
+<summary><code>Experiment tracking database ... does not exist or is not accessible</code> when training</summary>
 
-The `RELATIONALAI` native app must own the `EXPERIMENTS` schema. Run the one-time setup DDL from the Prerequisites section.
+The GNN keeps its experiments and registered versions in the public schema named in `raiconfig.yaml`, and the RAI Native App needs USAGE on its database and schema plus CREATE EXPERIMENT and CREATE MODEL on the schema. Run the setup grants from the [Quickstart](#quickstart) as an administrator, then run `python train.py` again.
+</details>
 
-Verify with `SHOW GRANTS ON SCHEMA <DB>.EXPERIMENTS` — you should see `OWNERSHIP` granted to `APPLICATION RELATIONALAI`.
+<details>
+<summary>The report prints <code>(no predictions returned)</code></summary>
 
+The deployed model has not refreshed since a version was registered: the refresh that `rai models deploy` waits for runs before `python train.py`. Run `python train.py` if you haven't, then the refresh call from step 6 of the Quickstart, and query again.
 </details>
 
 <details>
@@ -288,9 +395,9 @@ The bundled subscriber data has 50 enterprise (~$300K LTV avg) vs. 1,150 consume
 </details>
 
 <details>
-<summary>Gurobi unavailable / unlicensed</summary>
+<summary>Using Gurobi instead of HiGHS</summary>
 
-The script requests gurobi first. If gurobi errors at runtime (license, integration), it catches the failure and retries with `solver="highs"` — no edit needed. To always use HiGHS, change `problem.solve("gurobi")` to `problem.solve("highs")`.
+The model solves with HiGHS, an open-source solver that needs no license. Where Gurobi is licensed, change `problem.configure("highs", ...)` in `model/reasoning.py` to `problem.configure("gurobi", ...)` and deploy again.
 
 </details>
 

@@ -11,7 +11,7 @@ The headline baseline cell (100pct / unconstrained / none) is persisted
 as ontology so the plan survives the chain run.
 
   ─────────────────────────────────────────────────────────────────
-  STAGE 1  Predictive   ──►  Workload.utilization_probability  (110)
+  STAGE 1  Predictive   ──►  WorkloadForecast.utilization_probability (110)
                  (temporal    Binary classification on 770 historical
                   hetero GNN) (workload, month) observations + 110 val.
                               Probability each workload actually uses its
@@ -39,7 +39,8 @@ as ontology so the plan survives the chain run.
                              · 95% anchor · binding axis: power envelope.
                              Margin cliff at 85% (-13% rev, 90 dropped).
                              Diversity cliff at any cap (-82% at 70%).
-                             Persisted as AllocationPlan singleton +
+                             Persisted as ScenarioCell rows +
+                             AllocationPlan singleton +
                              Assignment.is_chosen (110 rows) +
                              DemandScenarioOutlook (4 risk scenarios:
                              expected / diffusion_slowdown / scaling_break
@@ -104,12 +105,12 @@ Frontier labs (Anthropic, OpenAI, xAI Internal) carry the 15 P0 pretrains (256�
 **Prompt**
 
 ```
-/rai-predictive-modeling + /rai-predictive-training Which workloads will actually use their allocated capacity at high duty cycle next period, vs stall or be repaced? Train a temporal binary-classification GNN over a heterogeneous graph spanning lab-side activity (LabMetric → Workload), dependency propagation (WorkloadDependency.blocks), and cross-lab industry co-movement (LabMetric ↔ LabMetric on the same date when labs share a workload_type). Labels are per-(workload, observation_date): 7 historical months in workload_utilization_train.csv plus 1 validation month in _val.csv; the test split is the current month, unlabeled. Bind the positive-class probability back as Workload.utilization_probability.
+/rai-predictive-modeling + /rai-predictive-training Which workloads will actually use their allocated capacity at high duty cycle next period, vs stall or be repaced? Train a temporal binary-classification GNN over a heterogeneous graph spanning lab-side activity (LabMetric → Workload), dependency propagation (WorkloadDependency.blocks), and cross-lab industry co-movement (LabMetric ↔ LabMetric on the same date when labs share a workload_type). Labels are per-(workload, observation_date): 7 historical months in workload_utilization_train.csv plus 1 validation month in _val.csv; the test split is the current month, unlabeled. Write the positive-class probability as WorkloadForecast.utilization_probability, on a concept of its own so the Workload table the GNN reads does not depend on its predictions.
 ```
 
 **Response**
 
-`Workload.utilization_probability` bound for all 110: 95 at p ≥ 0.5, 15 at p < 0.5. Frontier pretrain shards top the distribution (p ≈ 0.78), Stability evals sit at the bottom (p ≈ 0.38). Trained as a temporal binary-classification GNN on 770 training + 110 validation + 110 test `(workload, observation_date)` observations across three cross-concept edges (`LabMetric→Workload`, `WorkloadDependency.blocks`, cross-lab `co_dated`).
+`WorkloadForecast.utilization_probability` written for all 110: 95 at p ≥ 0.5, 15 at p < 0.5. Frontier pretrain shards top the distribution (p ≈ 0.78), Stability evals sit at the bottom (p ≈ 0.38). Trained as a temporal binary-classification GNN on 770 training + 110 validation + 110 test `(workload, observation_date)` observations across three cross-concept edges (`LabMetric→Workload`, `WorkloadDependency.blocks`, cross-lab `co_dated`).
 
 ### 6. Screen hardware compatibility and priority
 
@@ -164,13 +165,13 @@ Baseline: 110 workloads, $25.28M revenue, $4.18M cost, 83% margin, 95% anchor, b
 **Prompt**
 
 ```
-/rai-ontology Add an AllocationPlan singleton holding the baseline-cell summary (chosen envelope/margin/diversity, revenue_usd, total_cost_usd, realized_margin, anchor_share, n_assigned, status, binding_axis), an Assignment.is_chosen unary Relationship narrowing Assignment to the decision rows in the chosen cell, and a DemandScenario / DemandScenarioOutlook pair carrying the four risk scenarios and their realized/stranded revenue so the overlay survives the chain run.
+/rai-ontology Add a ScenarioCell concept with one row per scenario cell (n_assigned, revenue_usd, total_cost_usd, realized_margin, anchor_share, per-type and per-tier counts, status), an AllocationPlan singleton holding the baseline-cell summary (chosen envelope/margin/diversity, revenue_usd, total_cost_usd, realized_margin, anchor_share, n_assigned, status, binding_axis), an Assignment.is_chosen unary Relationship narrowing Assignment to the decision rows in the chosen cell, and a DemandScenario / DemandScenarioOutlook pair carrying the four risk scenarios and their realized/stranded revenue so the overlay survives the chain run.
 ```
 
 **Response**
 
-Ontology gains a singleton `AllocationPlan(id="DCCA_BASELINE")` with `revenue_usd` ≈ $25.28M, `total_cost_usd` ≈ $4.18M, `realized_margin` ≈ 0.83, `anchor_share` ≈ 0.95, `n_assigned` = 110, `status` = `OPTIMAL` (`FEASIBLE` when HiGHS stops at its time limit), `binding_axis` = `power_envelope`; plus `Assignment.is_chosen` (110 rows), `DemandScenario` (4 rows), and `DemandScenarioOutlook` (per-scenario realized + stranded revenue). All queryable as ontology, not stdout.
+Ontology gains 24 `ScenarioCell` rows and a singleton `AllocationPlan(id="DCCA_BASELINE")` with `revenue_usd` ≈ $25.28M, `total_cost_usd` ≈ $4.18M, `realized_margin` ≈ 0.83, `anchor_share` ≈ 0.95, `n_assigned` = 110, `status` = `OPTIMAL` (`FEASIBLE` when HiGHS stops at its time limit), `binding_axis` = `power_envelope`; plus `Assignment.is_chosen` (110 rows), `DemandScenario` (4 rows), and `DemandScenarioOutlook` (per-scenario realized + stranded revenue). All queryable as ontology, not stdout.
 
 ## Data
 
-Bundled CSVs in `data/`: 5 data centers, 28 GPU pools, 6 AI labs, 110 workloads (15 P0 pretrain / 30 P1 finetune / 50 P1 inference / 15 P2 eval), 138 workload dependencies, 2,190 lab-metric rows (365 days × 6 labs) split into train/val/test, plus 2 / 3 / 4 scenario rows. Full chain implemented in `datacenter_compute_allocation.py`.
+Bundled CSVs in `data/`: 5 data centers, 28 GPU pools, 6 AI labs, 110 workloads (15 P0 pretrain / 30 P1 finetune / 50 P1 inference / 15 P2 eval), 138 workload dependencies, 2,190 lab-metric rows (365 days × 6 labs) split into train/val/test, plus 2 / 3 / 4 scenario rows. Full chain implemented in the `model/` package.
