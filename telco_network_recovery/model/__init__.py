@@ -16,7 +16,7 @@ recoverable from the other alone, so the chain integrates both.
   passing across Equipment <-> Tower <-> Equipment, so the GNN learns
   that a piece of equipment is at elevated risk when its tower-mate
   sits on a recalled MODEL. Per-equipment predicted-failure
-  probability is summed per tower into `CellTower.failure_intensity`.
+  probability is summed per tower into `TowerFailureScore.failure_intensity`.
 - Stage 2 -- Rules: derive per-tower averages from NetworkPerformance
   and EquipmentHealth, then flag `CellTower.is_critical_restore` via
   three branches: WEST + DEGRADED + low equipment health; WEST + high

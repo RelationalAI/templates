@@ -4,6 +4,7 @@ page:
   lead_from_readme:
     - what-this-template-is-for
     - what-youll-build
+    - prerequisites
   omit_from_readme:
     - model-overview
     - how-it-works

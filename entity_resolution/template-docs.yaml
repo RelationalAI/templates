@@ -4,6 +4,7 @@ page:
   omit_readme_preamble: true
   lead_from_readme:
     - what-this-template-is-for
+    - prerequisites
   omit_from_readme: []
   download_and_run_from_readme: true
   deployment: true

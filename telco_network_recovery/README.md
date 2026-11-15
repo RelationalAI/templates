@@ -314,7 +314,7 @@ For the full concept and property definitions, see `model/`; `runbook.md` builds
 
 ## How it works
 
-**Stage 1 — Predictive (GNN).** A binary `at_risk` classifier message-passes over three heterogeneous edges on an undirected graph (`EquipmentHealth -> NetworkEquipment -> CellTower`, plus `ModelAdvisory -> NetworkEquipment` via shared MODEL). The undirected setting matters: bidirectional message passing lets the GNN reach tower-mate equipment via 2-hop paths through `CellTower`, so the *"my tower-mate sits on a recalled MODEL"* pattern is learnable. Per-equipment positive probabilities are summed per tower into `CellTower.failure_intensity` via a `TowerFailureScore` bridge concept.
+**Stage 1 — Predictive (GNN).** A binary `at_risk` classifier message-passes over three heterogeneous edges on an undirected graph (`EquipmentHealth -> NetworkEquipment -> CellTower`, plus `ModelAdvisory -> NetworkEquipment` via shared MODEL). The undirected setting matters: bidirectional message passing lets the GNN reach tower-mate equipment via 2-hop paths through `CellTower`, so the *"my tower-mate sits on a recalled MODEL"* pattern is learnable. Per-equipment positive probabilities are summed per tower into `TowerFailureScore.failure_intensity`, a concept keyed by tower id.
 
 **Stage 2 — Rules.** A three-branch `CellTower.is_critical_restore` flag fires when (1) `region == "WEST"` + `status == "DEGRADED"` + low avg equipment health, (2) WEST + high packet loss + low health, or (3) `failure_intensity > 1.5` (any region). Per-tower averages (`avg_packet_loss`, `avg_latency_ms`, `avg_error_rate`, `avg_health_score`) are derived first from `NetworkPerformance` and a two-hop `EquipmentHealth -> NetworkEquipment -> CellTower` join.
 

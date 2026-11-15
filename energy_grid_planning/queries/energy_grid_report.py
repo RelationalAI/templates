@@ -530,7 +530,7 @@ def main() -> None:
             for _, row in level_upg.iterrows():
                 print(f"    {row['upgrade_id']}: +{float(row['capacity_mw']):.0f} MW, ${float(row['cost_m']):.1f}M")
 
-    # Marginal analysis + knee detection (read from ontology)
+    # Marginal analysis and knee, computed above from the queried portfolio rows
     if len(portfolio_query_df) >= 3:
         print("\n  MARGINAL ANALYSIS (value gained per additional $M budget):")
         for j in range(len(portfolio_query_df) - 1):

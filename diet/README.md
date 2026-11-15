@@ -39,7 +39,7 @@ Built using **prescriptive reasoning** (linear programming with continuous decis
 - **Query**: `queries/diet_plan.py`, which prints the report from the deployed model.
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - **Sample data**: `data/foods.csv` (foods with cost and per-nutrient content) and `data/nutrients.csv` (nutrient min/max bounds).
-- **Outputs**: the solve result (termination status, objective cost, solver details) and a table of the foods (and amounts) in each least-cost basket, printed to stdout.
+- **Outputs**: the solve result (termination status and objective cost) and a table of the foods (and amounts) in each least-cost basket, printed to stdout.
 
 ## Prerequisites
 
@@ -165,7 +165,7 @@ Use this sequence to deploy the model and query it:
    8   scaling_80pct       milk  0.89  5.576111
    ```
 
-   The solver details in the solve result are trimmed here. The least-cost basket is the same three foods in every scenario, scaled with the requirements, for a per-scenario cost of $9.46 / $11.83 / $14.19 at 0.8 / 1.0 / 1.2 times the bounds. See `runbook.md` for the step-by-step walkthrough.
+   The least-cost basket is the same three foods in every scenario, scaled with the requirements, for a per-scenario cost of $9.46 / $11.83 / $14.19 at 0.8 / 1.0 / 1.2 times the bounds. See `runbook.md` for the step-by-step walkthrough.
 
    To solve again without changing the model, refresh the deployed model, then run the query again:
 

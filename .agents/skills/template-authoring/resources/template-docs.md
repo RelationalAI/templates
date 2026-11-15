@@ -55,7 +55,10 @@ sample_data:
   block containing exactly `rai models deploy --path model`), query (one `bash`
   block per report containing exactly `python -m queries.<name>`, each optionally
   followed by a `text` output block), and tear down (`rai models teardown`, then
-  `rai models teardown --force`).
+  `rai models teardown --force`). List the README's `prerequisites` section in
+  `lead_from_readme`: the page renders only the lead sections and the generated
+  Quickstart, so the deployment setup the Quickstart points to appears only
+  through the lead.
 - `omit_readme_preamble: true` (optional) excludes the text before the first
   README `##` heading from the enhanced HTML and Markdown pages. Use it when
   the README opens with links to its own generated model explorer and

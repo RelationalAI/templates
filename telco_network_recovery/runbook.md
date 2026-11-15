@@ -34,7 +34,7 @@ figures shift run to run; the structural outcome holds.)
   STAGE 4  Paths        ──►  Subscriber.top_call_path_influence
    /rai-graph-analysis        198 simple call paths (≤ 3 hops) from
                               the top-PageRank hub; 54 routing towers
-                              recovered. Top route persisted.
+                              recovered; top influence load kept.
   ─────────────────────────────────────────────────────────────────
   STAGE 5  Prescriptive ──►  TowerUpgradeOption.selected  (27)
    /rai-prescriptive-problem  OPTIMAL · 12 BRONZE · 7 SILVER · 8 GOLD
@@ -126,7 +126,7 @@ Four derived health properties (`avg_packet_loss`, `avg_latency_ms`, `avg_error_
 **Prompt**
 
 ```
-/rai-graph-analysis Starting from our most influential subscriber, what are the call paths of up to three hops through the network, which cell tower carried each hop, and which path carries the most social influence — the path running through the subscribers with the highest combined importance, where a subscriber is influential when influential subscribers call them? Don't revisit a subscriber.
+/rai-graph-analysis Starting from our most influential subscriber, what are the call paths of up to three hops through the network, which cell towers do they route through, and how much social influence does the strongest path carry — the path running through the subscribers with the highest combined importance, where a subscriber is influential when influential subscribers call them? Don't revisit a subscriber.
 ```
 
 **Response**
