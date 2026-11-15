@@ -420,7 +420,8 @@ model.define(
 )
 
 # The knee is the level where the marginal value falls the most, from the step
-# into it to the step out of it.
+# into it to the step out of it; on a tie, the smaller budget. A frontier whose
+# marginal value never falls has no knee.
 prev_portfolio = InvestmentPortfolio.ref()
 model.define(
     InvestmentPortfolio.marginal_drop(
@@ -431,7 +432,8 @@ model.define(
     step_from.next_level(step_to),
     InvestmentPortfolio.investment_level(step_to),
 )
-knee_rival = InvestmentPortfolio.ref()
 model.define(InvestmentPortfolio.is_knee_point()).where(
-    InvestmentPortfolio.marginal_drop == aggs.max(knee_rival.marginal_drop)
+    InvestmentPortfolio.investment_level(step_to),
+    InvestmentPortfolio.marginal_drop > 0,
+    aggs.rank(aggs.desc(InvestmentPortfolio.marginal_drop), step_to.budget_cap) == 1,
 )

@@ -534,6 +534,8 @@ def main() -> None:
                 f"{float(knee['total_mw']):,.0f} MW"
             )
             print("  Diminishing returns beyond this investment level.")
+        else:
+            print("\n  No knee point: the marginal value never falls between budget levels.")
 
 
     print(f"\n{'=' * 80}")
