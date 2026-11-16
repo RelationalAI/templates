@@ -49,4 +49,4 @@ Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` 
 
 ## Data
 
-Bundled CSVs in `data/`: 6 nurses, 3 shifts, 18 availability pairs. The epsilon sweep (5 interior points across the unmet range) is built into the script. Full model in `hospital_staffing.py`.
+Bundled CSVs in `data/`: 6 nurses, 3 shifts, 18 availability pairs. The epsilon sweep (5 interior points across the unmet range) is built into the model. Full model in `model/`.
