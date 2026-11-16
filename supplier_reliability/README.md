@@ -19,7 +19,7 @@ Procurement teams must choose which suppliers to source from when multiple optio
 
 This template answers all of those in one place: it finds the cost-minimizing sourcing plan, reads off the marginal values that rank where to invest next, and re-solves under supplier-disruption scenarios to test resilience.
 
-**Prescriptive reasoning formulates supplier selection as a linear program**, solved once with sensitivity analysis for the marginals and re-solved per scenario for the disruption tests.
+**Prescriptive reasoning formulates supplier selection as a linear program**, solved once with sensitivity analysis for the marginals, and solved again in a separate Problem per scenario for the disruption tests.
 
 ## Who this is for
 
@@ -32,14 +32,14 @@ This template answers all of those in one place: it finds the cost-minimizing so
 - A linear programming model that allocates order quantities across suppliers and products
 - Capacity and demand satisfaction constraints
 - A baseline solve with sensitivity analysis: capacity and demand shadow prices, plus lane reduced costs and basis status, read back by entity key
-- A scenario loop that excludes suppliers one at a time to assess supply chain risk
+- A scenario Problem per excluded supplier, to assess supply chain risk
 - A summary comparing cost and feasibility across scenarios
 
 ## What's included
 
-- **Model**: `Supplier`, `Product`, and `SupplyOption` concepts, a `SupplyOrder` decision concept holding the order-quantity variable, capacity and demand constraints, and a cost-minimizing objective.
-- **Runner**: `supplier_reliability.py` -- a single Python script that loads data, runs the baseline solve with sensitivity analysis, reads the marginals, and runs the disruption scenarios end to end.
-- **Runbook**: `runbook.md` -- a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
+- `model/` -- the deployed model package, deployed with `rai models deploy --path model`: `schema.py` declares the `Supplier`, `Product`, `SupplyOption`, and `SupplyOrder` concepts, `source.py` loads the sample data, `reasoning.py` states the baseline sourcing problem with its sensitivity analysis and the disruption-scenario problems
+- `queries/sourcing_report.py` -- the report from the deployed model: baseline plan, capacity and demand shadow prices, lane reduced costs and basis status, an order plan per scenario, and a scenario summary
+- **Runbook**: `runbook.md` -- a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the code itself.
 - **Sample data**: three CSVs under `data/` describing suppliers, products, and per-supplier-product supply options. See *Sample data* below.
 - **Outputs**: the baseline plan with capacity and demand shadow prices, lane reduced costs and basis status, a per-scenario order plan, and a scenario-analysis summary printed to stdout.
 
@@ -47,7 +47,8 @@ This template answers all of those in one place: it finds the cost-minimizing so
 
 ### Access
 - A Snowflake account that has the RAI Native App installed.
-- A Snowflake user with permissions to access the RAI Native App.
+- The one-time model deployment setup on that account, done by an account administrator: follow [Set up model deployment](https://private.relational.ai/early-access/model-deploy-setup) through **Governed setup**, **PAT authentication**, and steps 1-2 of **Additional setup for the prescriptive reasoner** (the Quickstart covers this template's own schema). It gives you a model role, a programmatic access token (PAT) stored as a secret, an external access integration, a PAT user, and a warehouse.
+- A Snowflake user that holds the model role.
 
 ### Tools
 - Python >= 3.10
@@ -55,39 +56,105 @@ This template answers all of those in one place: it finds the cost-minimizing so
 
 ## Quickstart
 
-1. Download ZIP:
+Before you start, install Python 3.10 or later and complete the access prerequisites above: a Snowflake account with the RAI Native App, the one-time model deployment setup, and a Snowflake user that holds the model role.
+
+Before the first deploy, create this template's internal schema as the model role, and have an administrator grant the RAI Native App caller access to it. The internal schema holds only this model's objects, so the grants cover all of it, including the solver's result tables that the deploy creates:
+
+```sql
+-- as the model role
+CREATE SCHEMA IF NOT EXISTS <DB>.SUPPLIER_RELIABILITY_META;
+
+-- as an administrator
+GRANT CALLER USAGE ON DATABASE <DB> TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER USAGE ON SCHEMA <DB>.SUPPLIER_RELIABILITY_META TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER USAGE ON WAREHOUSE <PAT_WAREHOUSE> TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL TABLES IN SCHEMA <DB>.SUPPLIER_RELIABILITY_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL DYNAMIC TABLES IN SCHEMA <DB>.SUPPLIER_RELIABILITY_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL VIEWS IN SCHEMA <DB>.SUPPLIER_RELIABILITY_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER INSERT, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA <DB>.SUPPLIER_RELIABILITY_META TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER CREATE TABLE, CREATE STAGE ON SCHEMA <DB>.SUPPLIER_RELIABILITY_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER READ, WRITE ON ALL STAGES IN SCHEMA <DB>.SUPPLIER_RELIABILITY_META TO APPLICATION <RAI_APP_NAME>;
+```
+
+Use this sequence to deploy the model and query it:
+
+1. **Download the template**
+
+   [Download the ZIP](https://docs.relational.ai/templates/zips/v1/supplier_reliability.zip), unzip it, and enter the template directory:
+
    ```bash
-   curl -O https://docs.relational.ai/templates/zips/v1/supplier_reliability.zip
    unzip supplier_reliability.zip
    cd supplier_reliability
    ```
-   > [!TIP]
-   > You can also download the template ZIP using the "Download ZIP" button at the top of this page.
 
-2. Create venv:
+2. **Create a Python environment**
+
+   Create and activate a virtual environment, then update pip:
+
    ```bash
    python -m venv .venv
    source .venv/bin/activate
    python -m pip install --upgrade pip
    ```
 
-3. Install:
+3. **Install the template**
+
+   Install the dependencies pinned in `pyproject.toml`:
+
    ```bash
    python -m pip install .
    ```
 
-4. Configure:
-   ```bash
-   rai init
+4. **Configure your project**
+
+   Use the configuration builder in [Install and run PyRel](https://docs.relational.ai/get-started/install-and-run-pyrel/#configure-your-project) to create `raiconfig.yaml` in the template directory and verify your connection.
+
+   Set the connection `role` to the model role, then add the prescriptive reasoner and a `deployment` section. Give each template its own schema pair so two deployed templates never share one:
+
+   ```yaml
+   reasoners:
+     prescriptive:
+       name: supplier_reliability_solver            # created on first deploy if it doesn't exist
+   deployment:
+     role: <MODEL_ROLE>
+     public_schema: <DB>.SUPPLIER_RELIABILITY               # published views and tables
+     identity:
+       internal_schema: <DB>.SUPPLIER_RELIABILITY_META      # solver inputs, results, refresh procedures
+     schedules:
+       standard:
+         interval_s: 0              # refresh only on deploy or on demand
+     schedule: standard
+     pat_secret: <PAT_SECRET>       # these four come from the setup page
+     pat_eai: <PAT_EAI>
+     pat_user: <PAT_USER>
+     pat_warehouse: <PAT_WAREHOUSE>
    ```
 
-5. Run:
+5. **Deploy the model**
+
+   Deploy the model in `model/` to the schemas in `raiconfig.yaml`:
+
    ```bash
-   python supplier_reliability.py
+   rai models deploy --path model
    ```
 
-6. Expected output (model and solver display trimmed; marginal tables are read back by entity key):
+   The deploy creates the public schema named in `raiconfig.yaml` if it doesn't exist and waits for the model's first refresh, which runs the baseline solve with sensitivity analysis and both disruption scenarios. Each refresh of the deployed model runs the three solves again.
+
+   Deploying again without changing the model applies no updates and does not solve again. A change to the model or to `problem.configure(...)` redeploys, and the redeploy's refresh solves all three problems.
+
+6. **Query the results**
+
+   Print the baseline plan, its marginals, and the disruption scenarios from the deployed model:
+
+   ```bash
+   python -m queries.sourcing_report
+   ```
+
    ```text
+   Solve result:
+   • status: OPTIMAL
+   • objective: 4850.0
+
    Baseline status: OPTIMAL, objective: 4850.00
 
    Baseline orders:
@@ -111,39 +178,49 @@ This template answers all of those in one place: it finds the cost-minimizing so
    SupplierD    Gadget           2.0 NONBASIC_AT_LOWER
 
    Supplier capacity shadow prices (d cost / d capacity):
-    supplier capacity  shadow_price
-   SupplierA      500           0.0
-   SupplierB      400           0.0
-   SupplierC      600          -2.0
-   SupplierD      350           0.0
+    supplier  capacity  shadow_price
+   SupplierA       500           0.0
+   SupplierB       400           0.0
+   SupplierC       600          -2.0
+   SupplierD       350           0.0
 
    Product demand shadow prices (d cost / d demand):
-     product demand  shadow_price
-   Component    200           7.0
-      Gadget    250           9.0
-      Widget    300           8.0
+     product  demand  shadow_price
+   Component     200           7.0
+      Gadget     250           9.0
+      Widget     300           8.0
 
    Most cost-sensitive capacity: SupplierC (d cost / d capacity = -2.00)
 
    Running scenario: without_SupplierC
+
+   Solve result:
+   • status: OPTIMAL
+   • objective: 6750.0
+
      Status: OPTIMAL, Objective: 6750.0
 
      Orders:
-     supplier   product  quantity
-    SupplierA    Widget     300.0
-    SupplierB Component     200.0
-    SupplierB    Gadget     200.0
-    SupplierD    Gadget      50.0
+    supplier   product  quantity
+   SupplierA    Widget     150.0
+   SupplierB    Gadget     250.0
+   SupplierB    Widget     150.0
+   SupplierD Component     200.0
 
    Running scenario: without_SupplierB
+
+   Solve result:
+   • status: OPTIMAL
+   • objective: 5150.0
+
      Status: OPTIMAL, Objective: 5150.0
 
      Orders:
-     supplier   product  quantity
-    SupplierC Component     200.0
-    SupplierC    Gadget     100.0
-    SupplierC    Widget     300.0
-    SupplierD    Gadget     150.0
+    supplier   product  quantity
+   SupplierC Component      50.0
+   SupplierC    Gadget     250.0
+   SupplierC    Widget     300.0
+   SupplierD Component     150.0
 
    ==================================================
    Scenario Analysis Summary
@@ -153,40 +230,66 @@ This template answers all of those in one place: it finds the cost-minimizing so
      without_SupplierB: OPTIMAL, obj=5150.00
    ```
 
-   **Reading the marginals.** SupplierC is the cheapest source for every product, so
-   it fills its 600-unit capacity and is the only **binding** capacity -- its shadow
+   The report checks the marginals against the economics they must satisfy (priced-out lanes, lanes in use, the binding capacity, positive demand prices), and stops with an error if any check fails.
+
+   Reading the marginals: SupplierC is the cheapest source for every product, so
+   it fills its 600-unit capacity and is the only binding capacity -- its shadow
    price of `-2.0` means each extra unit of SupplierC capacity would lower total cost
    by $2. Every other capacity has room to spare and prices at `0`. The demand shadow
    prices (`7`, `9`, `8` for Component, Gadget, Widget) are the marginal cost of one
    more unit of each product.
-   SupplierA's and SupplierD's lanes are **priced out** (positive reduced cost); note
+   SupplierA's and SupplierD's lanes are priced out (positive reduced cost); note
    SupplierB's unused lanes price at `~0` because each is exactly $2 above SupplierC --
-   an alternate-optimum tie, which is why the script asserts only that *used* lanes
-   have ~0 reduced cost, never that *every* unused lane is strictly positive. The
+   an alternate-optimum tie, which is why the report checks only that used lanes
+   have ~0 reduced cost, never that every unused lane is strictly positive. The
    exact order quantities (and the matching basis statuses) above are one of several
    cost-equal optima -- a different HiGHS build may land on another vertex with the
    same $4,850 objective and the same shadow prices.
 
-   **Scenario analysis.** Removing SupplierC entirely increases cost by 39% ($4,850 to
+   Scenario analysis: Removing SupplierC entirely increases cost by 39% ($4,850 to
    $6,750) as demand shifts to the more expensive SupplierA, SupplierB, and SupplierD -- consistent
    with SupplierC's high marginal value, though the duals (local marginals) do not by
    themselves predict the full impact of removing all 600 units. Removing SupplierB has
    less impact (+6%) since SupplierC absorbs most of the displaced volume.
+
+   To solve again without changing the model, refresh the deployed model, then run the query again:
+
+   ```sql
+   CALL <DB>.SUPPLIER_RELIABILITY_META._INTERNAL_REFRESH_MODEL('standard', NULL);
+   ```
+
+7. **Tear down the deployment**
+
+   Preview what the teardown removes, then remove it:
+
+   ```bash
+   rai models teardown
+   rai models teardown --force
+   ```
+
+   The first command lists the model's objects without dropping anything; the second drops them and keeps the two schemas.
 
 ## Template structure
 
 ```text
 .
 ├── README.md                # this file
+├── runbook.md               # step-by-step analyst walkthrough
 ├── pyproject.toml           # dependencies
-├── supplier_reliability.py  # main script (load, baseline solve, marginals, scenarios)
+├── model/
+│   ├── __init__.py          # exports of the deployed model
+│   ├── schema.py            # concepts and properties
+│   ├── source.py            # sample data load
+│   └── reasoning.py         # baseline sensitivity solve, disruption scenarios, and their published status and objective
+├── queries/
+│   └── sourcing_report.py   # baseline plan, marginals, and scenario report from the deployed model
 └── data/
     ├── products.csv         # products with demand requirements
     ├── suppliers.csv        # suppliers with capacity and reliability scores
     └── supply_options.csv   # per-unit cost for each supplier-product pair
 ```
 
-**Start here**: run `python supplier_reliability.py` for the full baseline solve, marginal reads, and disruption scenarios end to end, or follow `runbook.md` to reproduce it step by step with the RAI skills.
+**Start here**: deploy with `rai models deploy --path model` and run `python -m queries.sourcing_report` for the baseline solve, marginal reads, and disruption scenarios end to end, or follow `runbook.md` to reproduce it step by step with the RAI skills.
 
 ## Sample data
 
@@ -204,12 +307,12 @@ The model has three source concepts loaded from CSV, plus a derived `SupplyOrder
 - **Primary identifiers**: integer `id` on `Supplier`, `Product`, and `SupplyOption`; `SupplyOrder` is identified by the `SupplyOption` it uses.
 - **Important invariants**: `capacity` and `demand` are non-negative integers; `cost_per_unit` is non-negative; order quantities are continuous and non-negative; total ordered per supplier stays within capacity; total ordered per product meets demand.
 
-For the full concept and property definitions, see `supplier_reliability.py`; `runbook.md` builds them step by step with the RAI skills.
+For the full concept and property definitions, see `model/schema.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
 ```text
-CSV inputs → load Supplier/Product/SupplyOption → SupplyOrder decision variables → capacity + demand constraints + cost objective → baseline solve with sensitivity → read marginals → scenario re-solves
+CSV inputs → load Supplier/Product/SupplyOption → SupplyOrder decision variables → capacity + demand constraints + cost objective → baseline solve with sensitivity → read marginals → scenario solves
 ```
 
 **1. Define the ontology and load data.** Three source concepts -- `Supplier`, `Product`, and `SupplyOption` -- load from CSV. `SupplyOption` links each supplier to each product it can supply with a per-unit cost, forming the many-to-many sourcing lanes.
@@ -227,11 +330,11 @@ CSV inputs → load Supplier/Product/SupplyOption → SupplyOrder decision varia
 Because each constraint carries an entity back-pointer, a marginal joins to that entity's own data by key -- no name parsing, no pandas. The economics are also stated as integrity constraints, but only the always-true directions of complementary slackness (a lane in use prices at ~0; SupplierA's lanes are priced out). The converse "every unused lane has a positive reduced cost" is **not** asserted, because SupplierB's lanes tie SupplierC at the margin (alternate optima).
 
 > [!NOTE]
-> Sensitivity analysis returns marginals only for LP/QP models (linear constraints with a linear or quadratic objective). For mixed-integer models the duals are empty -- use scenario analysis instead. The marginal reads must happen on the **baseline** Problem, before the scenario loop rebuilds a fresh Problem.
+> Sensitivity analysis returns marginals only for LP/QP models (linear constraints with a linear or quadratic objective). For mixed-integer models the duals are empty -- use scenario analysis instead. Read the marginals off the **baseline** Problem's handles; the scenario Problems are solved without sensitivity.
 
-**5. Scenario analysis.** Each disruption scenario is a separate Problem that excludes one supplier via a filter on the decision variable, then re-solves. This is a finite, structural change the marginals contextualize but do not by themselves predict -- removing all of a supplier's capacity can move cost further than the local shadow price suggests.
+**5. Scenario analysis.** Each disruption scenario is a separate, named Problem that excludes one supplier via a filter on the decision variable and has its own solve, so one infeasible scenario leaves the others unaffected. This is a finite, structural change the marginals contextualize but do not by themselves predict -- removing all of a supplier's capacity can move cost further than the local shadow price suggests.
 
-For the implementation, see `supplier_reliability.py`; to reproduce it step by step with the RAI skills, follow `runbook.md`.
+For the implementation, see `model/reasoning.py` and `queries/sourcing_report.py`; to reproduce it step by step with the RAI skills, follow `runbook.md`.
 
 ## Customize this template
 
@@ -241,13 +344,13 @@ Focus on the first changes most users will make.
 
 - Replace the three CSVs in `data/` with your own, keeping the column names listed in *Sample data* above. `suppliers.csv`, `products.csv`, and `supply_options.csv` each map directly to a concept.
 - Every product in `products.csv` needs at least one supply option in `supply_options.csv`, and total capacity across suppliers must cover total demand, or the baseline solve is infeasible.
-- For Snowflake-backed runs, swap the `read_csv(...)` calls for `model.data(snowflake_table)` calls.
+- For Snowflake-backed runs, swap the `read_csv(...)` calls in `model/source.py` for `model.data(snowflake_table)` calls.
 
 ### Tune parameters
 
 - **Capacity and demand** -- edit `capacity` in `suppliers.csv` and `demand` in `products.csv` to change where the bottleneck lands; the shadow prices track which constraint binds.
 - **Costs** -- adjust `cost_per_unit` in `supply_options.csv` to shift the optimal sourcing mix and the reduced costs of unused lanes.
-- **Scenarios** -- edit the excluded-supplier list in the scenario loop to test different disruptions.
+- **Scenarios** -- edit `EXCLUDED_SUPPLIERS` in `model/reasoning.py` to test different disruptions.
 
 ### Extend the model
 
@@ -259,7 +362,7 @@ Focus on the first changes most users will make.
 ### Scale up / productionize
 
 - The model is a linear program that solves quickly; it scales to larger supplier-product catalogs within the solver's time budget.
-- Pin the `relationalai` SDK version (see *Prerequisites*) for reproducible solves. Note that the optimum has cost-equal alternates, so exact order quantities can vary across HiGHS builds while the objective and shadow prices stay fixed.
+- Pin the `relationalai` SDK version (see *Prerequisites*) for reproducible solves, and give the `standard` schedule in `raiconfig.yaml` a nonzero `interval_s` so the deployed model re-solves on a timer. Note that the optimum has cost-equal alternates, so exact order quantities can vary across HiGHS builds while the objective and shadow prices stay fixed.
 
 ## Troubleshooting
 
@@ -296,7 +399,7 @@ The solver minimizes cost, so it will avoid expensive supply options when cheape
 ### Reasoner reference
 
 - [Prescriptive reasoner](https://docs.relational.ai/) -- the `Problem` API, `solve_for` decision variables, `satisfy` constraints, and `minimize` objectives.
-- [Sensitivity analysis](https://docs.relational.ai/) -- shadow prices, reduced costs, and basis status returned by `solve(sensitivity=True)`, and reading them back by entity key.
+- [Sensitivity analysis](https://docs.relational.ai/) -- shadow prices, reduced costs, and basis status returned by `configure(sensitivity=True)`, and reading them back by entity key.
 
 ### CLI / SDK guides
 
