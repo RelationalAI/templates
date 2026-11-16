@@ -39,7 +39,7 @@ Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` 
 
 **Prompt:** /rai-prescriptive-problem Assign each in-scope issue to exactly one developer in one sprint to minimize weighted completion time — where an urgent (low-priority-number) issue costs more the later its sprint. A developer can only take an issue if their team matches the issue's team and the sprint is at or after the issue's target sprint, and each developer's assigned story points per sprint can't exceed their capacity. Solve three capacity scenarios — scaling every developer's capacity to 35%, 50%, and 100% — and persist the assignment.
 
-**Response:** The decision is a binary assignment over the 259 valid (developer, issue, sprint) combinations, with 57 constraints per scenario (HiGHS). At **0.35x capacity the problem is INFEASIBLE** — the backlog can't fit — while **0.5x and 1.0x are both OPTIMAL with objective 112.0**. The assignment is read back per scenario from the solved decision.
+**Response:** The decision is a binary assignment over the 259 valid (developer, issue, sprint) combinations, with 57 constraints per scenario (HiGHS). At **0.35x capacity the problem is INFEASIBLE** — the backlog can't fit — while **0.5x and 1.0x are both OPTIMAL with objective 112.0**. The assignment is read back per scenario from the solved decision. In `model/reasoning.py` each scenario's solve is declared with `problem.configure(...)`, so each refresh of the deployed model runs them.
 
 ## 4. Read the plan
 
@@ -49,4 +49,4 @@ Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` 
 
 ## Data
 
-Bundled CSVs in `data/`: 8 developers, 30 issues, 4 sprints, 10 skill rows. The capacity multipliers (0.35, 0.5, 1.0) and planning horizon are constants in the script. Full model in `sprint_scheduling.py`.
+Bundled CSVs in `data/`: 8 developers, 30 issues, 4 sprints, 10 skill rows. The capacity multipliers (0.35, 0.5, 1.0) and planning horizon are constants in the model. Full model in `model/`; the report in `queries/sprint_plan.py`.
