@@ -133,20 +133,20 @@ OPTIMAL · $1,865 · 8 active flows · 0 unmet. MILP on `Operation.x_flow` + `De
 
 **Response**
 
-Baseline OPTIMAL $1,865 / 8 flows / 0 unmet; S004 offline +88.5%; watch->avoid +0.0% (B003 already off optimal lanes).
+Baseline OPTIMAL $1,865 / 8 flows / 0 unmet; S004 offline +88.5%; watch->avoid +0.0% (B003 already off optimal lanes). Each scenario is its own problem in the deployed model.
 
-### 9. Persist solution concepts into the ontology
+### 9. Compare the scenarios
 
 **Prompt**
 
 ```
-/rai-ontology Add a RoutingScenario concept that materializes each scenario solve (Baseline, S004-offline, Watch->Avoid) with its status, total cost, cost delta versus baseline, active flow count, unmet total, and any blocked businesses.
+/rai-prescriptive-results Compare the three solves (Baseline, S004-offline, Watch->Avoid) in one table: status, total cost, cost delta versus baseline, and unmet demand.
 ```
 
 **Response**
 
-Ontology gains a `RoutingScenario` Concept (3 rows: Baseline, S004-offline, Watch-Avoid) with `status`, `total_cost`, `cost_delta_pct`, `active_flow_count`, `unmet_total`, `blocked_businesses`. The disruption deltas — Baseline $1,865 / 8 flows / 0 unmet, S004-offline +88.5%, Watch->Avoid +0.0% — are queryable as ontology rather than scenario-comparison stdout.
+Each solve is its own problem in `model/reasoning.py` and publishes its own status and objective, so one infeasible scenario never affects the others; the report assembles the table. Baseline OPTIMAL 1,865.00, 0 unmet; S004-offline OPTIMAL 3,515.00 (+88.5%), 0 unmet; Watch-Avoid OPTIMAL 1,865.00 (0.0%), 0 unmet.
 
 ## Data
 
-Bundled CSVs in `data/`: 31 sites (APAC/AMERICAS/EMEA), 31 businesses, 9 SKUs, 70 operations, 20 demand orders, 262 shipments (37 late), 36 quarterly delay predictions. Combined script with stage banners: `supply_chain_resilience.py`.
+Bundled CSVs in `data/`: 31 sites (APAC/AMERICAS/EMEA), 31 businesses, 9 SKUs, 70 operations, 20 demand orders, 262 shipments (37 late), 36 quarterly delay predictions. Full model in `model/`; the report in `queries/resilience_report.py`.
