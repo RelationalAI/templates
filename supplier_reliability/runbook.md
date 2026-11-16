@@ -54,4 +54,4 @@ Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` 
 
 ## Data
 
-Bundled CSVs in `data/`: 4 suppliers, 3 products, 10 supply options. The disruption scenarios (remove SupplierC, SupplierB) are defined in the script. Full model in `supplier_reliability.py`.
+Bundled CSVs in `data/`: 4 suppliers, 3 products, 10 supply options. The disruption scenarios (remove SupplierC, SupplierB) are defined in `model/reasoning.py`. Full model in `model/`.
