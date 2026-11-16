@@ -13,8 +13,8 @@ with disruption scenarios):
 
 A plain solve answers "what is the cheapest sourcing plan?". Configuring the baseline solve
 with ``sensitivity=True`` ALSO answers the marginal questions -- in one solve, with the
-answers read straight off the variable / constraint objects (the same attribute style as
-``.name`` or ``.lower``):
+answers read off the variable / constraint objects (the same attribute style as ``.name``
+or ``.lower``) and published through relationships the queries select:
 
 - **Shadow price** of a supplier's capacity (``cap.shadow_price``): how much total
   cost moves per unit of capacity. A capacity with room to spare prices at zero; a
@@ -53,9 +53,10 @@ from .reasoning import (
     BaselineCost,
     BaselineOrder,
     BaselineStatus,
-    cap,
-    meet,
-    qty_var,
+    CapacityShadowPrice,
+    DemandShadowPrice,
+    LaneBasisStatus,
+    LaneReducedCost,
     scenarios,
 )
 from .schema import Product, Supplier, SupplyOption, SupplyOrder, model
@@ -67,13 +68,14 @@ __all__ = [
     "BaselineCost",
     "BaselineOrder",
     "BaselineStatus",
+    "CapacityShadowPrice",
+    "DemandShadowPrice",
+    "LaneBasisStatus",
+    "LaneReducedCost",
     "Product",
     "Supplier",
     "SupplyOption",
     "SupplyOrder",
-    "cap",
-    "meet",
     "model",
-    "qty_var",
     "scenarios",
 ]

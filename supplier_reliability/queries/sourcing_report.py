@@ -13,14 +13,17 @@ from model import (
     BaselineCost,
     BaselineOrder,
     BaselineStatus,
+    CapacityShadowPrice,
+    DemandShadowPrice,
+    LaneBasisStatus,
+    LaneReducedCost,
+    Product,
+    Supplier,
     SupplyOrder,
-    cap,
-    meet,
     model,
-    qty_var,
     scenarios,
 )
-from relationalai.semantics import Float
+from relationalai.semantics import Float, String
 
 
 def solve_result(status_rel, cost_rel):
@@ -60,15 +63,17 @@ if __name__ == "__main__":
     print(orders_df.to_string(index=False))
 
     # --- Reduced costs: which lanes are priced out? ---------------------------------
-    # Each marginal reads straight off the variable; the variable's back-pointer
-    # (qty_var.supplyorder) joins it to the lane's supplier / product by ENTITY KEY.
+    # The model publishes each lane's marginals keyed by the supply order, which joins to the
+    # lane's supplier / product by ENTITY KEY.
+    reduced_cost, basis_status = Float.ref(), String.ref()
     lane_rc_df = (
         model.select(
-            qty_var.supplyorder.supplier.name.alias("supplier"),
-            qty_var.supplyorder.product.name.alias("product"),
-            qty_var.reduced_cost.alias("reduced_cost"),
-            qty_var.basis_status.alias("basis_status"),
+            SupplyOrder.supplier.name.alias("supplier"),
+            SupplyOrder.product.name.alias("product"),
+            reduced_cost.alias("reduced_cost"),
+            basis_status.alias("basis_status"),
         )
+        .where(LaneReducedCost(SupplyOrder, reduced_cost), LaneBasisStatus(SupplyOrder, basis_status))
         .to_df()
         .sort_values(["supplier", "product"], ignore_index=True)
     )
@@ -93,15 +98,17 @@ if __name__ == "__main__":
     # at ~0. The strict converse holds only under a unique optimum.
 
     # --- Shadow prices: the marginal value of capacity and demand -------------------
-    # A constraint carries its declared entity key as a back-pointer too (cap.supplier /
-    # meet.product), so a shadow price joins to that entity's own data by KEY -- no name
-    # parsing, no pandas.
+    # The model publishes each shadow price keyed by the supplier / product its constraint was
+    # declared over (keyed_by), so it joins to that entity's own data by KEY -- no name parsing,
+    # no pandas.
+    shadow_price = Float.ref()
     cap_sp_df = (
         model.select(
-            cap.supplier.name.alias("supplier"),
-            cap.supplier.capacity.alias("capacity"),
-            cap.shadow_price.alias("shadow_price"),
+            Supplier.name.alias("supplier"),
+            Supplier.capacity.alias("capacity"),
+            shadow_price.alias("shadow_price"),
         )
+        .where(CapacityShadowPrice(Supplier, shadow_price))
         .to_df()
         .sort_values("supplier", ignore_index=True)
     )
@@ -118,10 +125,11 @@ if __name__ == "__main__":
 
     demand_sp_df = (
         model.select(
-            meet.product.name.alias("product"),
-            meet.product.demand.alias("demand"),
-            meet.shadow_price.alias("shadow_price"),
+            Product.name.alias("product"),
+            Product.demand.alias("demand"),
+            shadow_price.alias("shadow_price"),
         )
+        .where(DemandShadowPrice(Product, shadow_price))
         .to_df()
         .sort_values("product", ignore_index=True)
     )

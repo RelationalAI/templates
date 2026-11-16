@@ -202,10 +202,10 @@ Use this sequence to deploy the model and query it:
 
      Orders:
     supplier   product  quantity
-   SupplierA    Widget     150.0
-   SupplierB    Gadget     250.0
-   SupplierB    Widget     150.0
-   SupplierD Component     200.0
+   SupplierA    Widget     300.0
+   SupplierB Component     200.0
+   SupplierB    Gadget     200.0
+   SupplierD    Gadget      50.0
 
    Running scenario: without_SupplierB
 
@@ -217,10 +217,10 @@ Use this sequence to deploy the model and query it:
 
      Orders:
     supplier   product  quantity
-   SupplierC Component      50.0
+   SupplierA    Widget     150.0
+   SupplierC Component     200.0
    SupplierC    Gadget     250.0
-   SupplierC    Widget     300.0
-   SupplierD Component     150.0
+   SupplierC    Widget     150.0
 
    ==================================================
    Scenario Analysis Summary
