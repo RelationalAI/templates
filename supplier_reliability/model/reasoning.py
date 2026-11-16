@@ -71,6 +71,19 @@ baseline_amount = Float.ref()
 BaselineOrder = model.Relationship(f"supplier_reliability_baseline orders {SupplyOrder} in quantity {Float:quantity}")
 model.where(qty_var.values(0, baseline_amount)).define(BaselineOrder(qty_var.supplyorder, baseline_amount))
 
+# The sensitivity marginals, which the deployed model publishes for the queries: each lane's
+# reduced cost and basis status, and each capacity's and demand's shadow price, keyed by the
+# entity they belong to.
+lane_reduced_cost, lane_basis, capacity_price, demand_price = Float.ref(), String.ref(), Float.ref(), Float.ref()
+LaneReducedCost = model.Relationship(f"supplier_reliability_baseline {SupplyOrder} has reduced cost {Float:reduced_cost}")
+LaneBasisStatus = model.Relationship(f"supplier_reliability_baseline {SupplyOrder} has basis status {String:basis_status}")
+CapacityShadowPrice = model.Relationship(f"supplier_reliability_baseline {Supplier} has capacity shadow price {Float:shadow_price}")
+DemandShadowPrice = model.Relationship(f"supplier_reliability_baseline {Product} has demand shadow price {Float:shadow_price}")
+model.where(qty_var.reduced_cost(lane_reduced_cost)).define(LaneReducedCost(qty_var.supplyorder, lane_reduced_cost))
+model.where(qty_var.basis_status(lane_basis)).define(LaneBasisStatus(qty_var.supplyorder, lane_basis))
+model.where(cap.shadow_price(capacity_price)).define(CapacityShadowPrice(cap.supplier, capacity_price))
+model.where(meet.shadow_price(demand_price)).define(DemandShadowPrice(meet.product, demand_price))
+
 # --------------------------------------------------
 # Phase B -- disruption scenarios (separate solves)
 # --------------------------------------------------
