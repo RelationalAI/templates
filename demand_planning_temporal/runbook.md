@@ -19,7 +19,7 @@ A supply planner wants a least-cost, multi-week production-and-inventory plan: h
    • the abundant opening inventory covers demand — zero production, cost is pure holding
 ```
 
-Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` skill (named at the start of each prompt). They run in order in a single session — the formulate step reads the `Site`/`SKU`/`DemandOrder`/`ProdCapacity` concepts the build step created, and the interpret step reads the production, inventory, and unmet-demand decisions the solve wrote back.
+Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` skill (named at the start of each prompt). They run in order in a single session — the formulate step reads the `Site`/`SKU`/`DemandOrder`/`ProdCapacity` concepts the build step created, and the interpret step reads the production, inventory, and unmet-demand decisions the deployed model publishes for each horizon.
 
 ---
 
@@ -37,9 +37,9 @@ Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` 
 
 ## 3. Build the least-cost multi-week plan across horizons
 
-**Prompt:** /rai-prescriptive-problem Map each order's due date to a week and build a weekly time grid, then decide weekly production, end-of-week inventory, and any unmet demand per site-SKU (all non-negative). Inventory must carry over week to week — end-of-week inventory equals last week's inventory plus this week's production minus this week's demand, starting from opening inventory — weekly production can't exceed capacity, at least 95% of total demand must be met, and end-of-week inventory must stay above one week of average demand (safety stock). Minimize total cost — production plus holding plus a penalty on unmet demand. Solve three planning horizons in a scenario sweep — ending 2026-01-31, 2026-02-28, and 2026-03-31 — and persist the decisions to the ontology.
+**Prompt:** /rai-prescriptive-problem Map each order's due date to a week and build a weekly time grid, then decide weekly production, end-of-week inventory, and any unmet demand per site-SKU (all non-negative). Inventory must carry over week to week — end-of-week inventory equals last week's inventory plus this week's production minus this week's demand, starting from opening inventory — weekly production can't exceed capacity, at least 95% of total demand must be met, and end-of-week inventory must stay above one week of average demand (safety stock). Minimize total cost — production plus holding plus a penalty on unmet demand. Solve three planning horizons as separate problems — ending 2026-01-31, 2026-02-28, and 2026-03-31 — and persist the decisions to the ontology.
 
-**Response:** OPTIMAL in all three horizons (HiGHS). Total cost **rises with the horizon** — a longer plan carries the same inventory for more weeks and pulls in more orders, so more holding cost accrues. (The absolute dollar totals depend on the planning-start date and how the weekly grid is anchored, so the reproducible result is the upward trend across horizons, not a specific figure.) Production, inventory, and unmet decisions are written back as `ProdCapacity.x_production`, `ProdCapacity.x_inventory`, and `DemandOrder.x_unmet`.
+**Response:** OPTIMAL in all three horizons (HiGHS). Total cost **rises with the horizon** — a longer plan carries the same inventory for more weeks and pulls in more orders, so more holding cost accrues. (The absolute dollar totals depend on the planning-start date and how the weekly grid is anchored, so the reproducible result is the upward trend across horizons, not a specific figure.) Each horizon is its own problem in `model/reasoning.py`, configured with `problem.configure(...)` so each refresh of the deployed model runs all three. The production, inventory, and unmet decisions (`ProdCapacity.x_production`, `ProdCapacity.x_inventory`, `DemandOrder.x_unmet`) are published per horizon for the report.
 
 ## 4. Read the plan across horizons
 
@@ -49,4 +49,4 @@ Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` 
 
 ## Data
 
-Bundled CSVs in `data/`: 3 sites, 3 SKUs, 25 demand orders, 9 production-capacity rows, 9 opening-inventory rows. The three horizon end dates are constants in the script. Full model in `demand_planning_temporal.py`.
+Bundled CSVs in `data/`: 3 sites, 3 SKUs, 25 demand orders, 9 production-capacity rows, 9 opening-inventory rows. The three horizon end dates are constants in `model/source.py`. Full model in `model/`; the report in `queries/demand_planning.py`.
