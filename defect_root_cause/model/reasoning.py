@@ -38,8 +38,13 @@ W_UNEXPLAINED = 1.0  # cost of leaving a defective unit unexplained (relief valv
 graph = Graph(model, directed=True, weighted=False, node_concept=Lot)
 parent, child = Lot.ref(), Lot.ref()
 model.where(parent.consumes(child)).define(graph.Edge.new(src=parent, dst=child))
-num_nodes = graph.num_nodes()
-num_edges = graph.num_edges()
+
+# The graph's size, which the deployed model publishes for the queries.
+node_count, edge_count = Integer.ref(), Integer.ref()
+num_nodes = model.Relationship(f"the lot genealogy graph has {Integer:num_nodes} nodes")
+num_edges = model.Relationship(f"the lot genealogy graph has {Integer:num_edges} edges")
+model.where(graph.num_nodes()(node_count)).define(num_nodes(node_count))
+model.where(graph.num_edges()(edge_count)).define(num_edges(edge_count))
 
 # Transitive closure: which lots each top-tier lot reaches.
 reach = graph.reachable(full=True)
@@ -155,11 +160,20 @@ problem.minimize(
 # Each refresh of the deployed model runs this solve.
 problem.configure("highs", time_limit_sec=120)
 
-# Problem-structure relations the formulation audit reads, declared here so they
-# deploy with the model.
-num_vars = problem.num_variables()
-num_cons = problem.num_constraints()
-num_min_objs = problem.num_min_objectives()
+# The problem-structure counts the formulation audit reads, which the deployed model
+# publishes for the queries.
+num_vars = model.Relationship(f"defect diagnosis has {Integer:num_variables} variables")
+num_cons = model.Relationship(f"defect diagnosis has {Integer:num_constraints} constraints")
+num_min_objs = model.Relationship(
+    f"defect diagnosis has {Integer:num_min_objectives} minimization objectives"
+)
+num_cover = model.Relationship(f"defect diagnosis grounds {Integer:num_cover} coverage constraints")
+model.define(
+    num_vars(problem.num_variables()),
+    num_cons(problem.num_constraints()),
+    num_min_objs(problem.num_min_objectives()),
+    num_cover(aggs.count(cover)),
+)
 
 # The solve's status and objective, which the deployed model publishes for the queries.
 SolveStatus = model.Relationship(f"defect diagnosis solve status is {String:status}")

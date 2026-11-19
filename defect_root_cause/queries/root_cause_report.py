@@ -22,9 +22,9 @@ from model import (
     SolveStatus,
     Supplier,
     Unit,
-    cover,
     model,
     num_cons,
+    num_cover,
     num_edges,
     num_min_objs,
     num_nodes,
@@ -128,7 +128,8 @@ if __name__ == "__main__":
         raise SystemExit(f"no constraints: {n_cons}")
     if n_objs != [1]:
         raise SystemExit(f"expected one minimization objective, got {n_objs}")
-    n_cover = len(model.select(cover).to_df())
+    n_cover = model.select(num_cover).to_df().iloc[:, 0].tolist()
+    n_cover = n_cover[0] if n_cover else 0
     if n_cover != len(n_def):
         raise SystemExit(f"coverage grounded {n_cover} rows, expected {len(n_def)}")
     print(
