@@ -76,6 +76,7 @@ This template models that allocation as a scenario sweep across three axes (powe
 - A Snowflake account that has the RAI Native App installed.
 - The one-time model deployment setup on that account, done by an account administrator: follow [Set up model deployment](https://private.relational.ai/early-access/model-deploy-setup) through **Governed setup**, **PAT authentication**, and steps 1-2 of **Additional setup for the prescriptive reasoner** (the Quickstart covers this template's own schemas). It gives you a model role, a programmatic access token (PAT) stored as a secret, an external access integration, a PAT user, and a warehouse.
 - A Snowflake user that holds the model role.
+- The predictive reasoner's compute pool added to the compute-pool network rule that admits the PAT user (the rule from the prescriptive reasoner setup), because the deployed model runs this template's GNN training, scoring, and registration jobs as the PAT user. Check the pool names in your account with `SHOW COMPUTE POOLS` (for example `RELATIONAL_AI_HIGHMEM_X64_S_ML`), and have an administrator run `ALTER NETWORK RULE <PAT_POOL_NETWORK_RULE> SET VALUE_LIST = (...)`, listing the pools already in the rule plus the predictive one.
 
 The bundled CSVs ship with the template; there is no source-table setup. The GNN trains on the predictive reasoner and stores its experiments and registered versions in the template's public schema.
 
@@ -88,7 +89,7 @@ The bundled CSVs ship with the template; there is no source-table setup. The GNN
 
 Before you start, install Python 3.10 or later and complete the access prerequisites above: a Snowflake account with the RAI Native App, the one-time model deployment setup, and a Snowflake user that holds the model role.
 
-Before the first deploy, create this template's two schemas as the model role, and have an administrator grant the RAI Native App access to them. The GNN keeps its experiments and registered versions in the public schema, and the internal schema holds only this model's objects, so the grants cover all of it, including the solver's result tables that the deploy creates:
+Before the first deploy, create this template's two schemas as the model role, and have an administrator grant the RAI Native App access to them. The GNN keeps its experiments and registered versions in the public schema, and the internal schema holds only this model's objects, so the grants cover all of it, including the solver's result tables that the deploy creates. The deployed model runs the GNN's training, scoring, and registration jobs as the PAT user, so the last group also grants the PAT user's role (`<PAT_ROLE>`) and the matching caller access:
 
 ```sql
 -- as the model role
@@ -109,6 +110,22 @@ GRANT INHERITED CALLER SELECT ON ALL VIEWS IN SCHEMA <DB>.DATACENTER_COMPUTE_ALL
 GRANT INHERITED CALLER INSERT, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA <DB>.DATACENTER_COMPUTE_ALLOCATION_META TO APPLICATION <RAI_APP_NAME>;
 GRANT CALLER CREATE TABLE, CREATE STAGE ON SCHEMA <DB>.DATACENTER_COMPUTE_ALLOCATION_META TO APPLICATION <RAI_APP_NAME>;
 GRANT INHERITED CALLER READ, WRITE ON ALL STAGES IN SCHEMA <DB>.DATACENTER_COMPUTE_ALLOCATION_META TO APPLICATION <RAI_APP_NAME>;
+
+-- for the GNN jobs, which run as the PAT user
+GRANT USAGE ON WAREHOUSE <PAT_WAREHOUSE> TO ROLE <PAT_ROLE>;
+GRANT USAGE ON DATABASE <DB> TO ROLE <PAT_ROLE>;
+GRANT USAGE ON SCHEMA <DB>.DATACENTER_COMPUTE_ALLOCATION_META TO ROLE <PAT_ROLE>;
+GRANT SELECT ON ALL VIEWS IN SCHEMA <DB>.DATACENTER_COMPUTE_ALLOCATION_META TO ROLE <PAT_ROLE>;
+GRANT SELECT ON FUTURE VIEWS IN SCHEMA <DB>.DATACENTER_COMPUTE_ALLOCATION_META TO ROLE <PAT_ROLE>;
+GRANT USAGE, CREATE TABLE, CREATE STAGE, CREATE FILE FORMAT ON SCHEMA <DB>.DATACENTER_COMPUTE_ALLOCATION TO ROLE <PAT_ROLE>;
+GRANT CREATE EXPERIMENT, CREATE MODEL ON SCHEMA <DB>.DATACENTER_COMPUTE_ALLOCATION TO ROLE <PAT_ROLE>;
+GRANT CALLER USAGE, CREATE TABLE, CREATE STAGE, CREATE FILE FORMAT ON SCHEMA <DB>.DATACENTER_COMPUTE_ALLOCATION TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT, INSERT ON ALL TABLES IN SCHEMA <DB>.DATACENTER_COMPUTE_ALLOCATION TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER READ, WRITE ON ALL STAGES IN SCHEMA <DB>.DATACENTER_COMPUTE_ALLOCATION TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER USAGE ON ALL FILE FORMATS IN SCHEMA <DB>.DATACENTER_COMPUTE_ALLOCATION TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER CREATE EXPERIMENT, CREATE MODEL ON SCHEMA <DB>.DATACENTER_COMPUTE_ALLOCATION TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER USAGE, MODIFY ON ALL EXPERIMENTS IN SCHEMA <DB>.DATACENTER_COMPUTE_ALLOCATION TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER OWNERSHIP ON ALL MODELS IN SCHEMA <DB>.DATACENTER_COMPUTE_ALLOCATION TO APPLICATION <RAI_APP_NAME>;
 ```
 
 Use this sequence to deploy the model, train the GNN, and query the allocation plan:
