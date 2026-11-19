@@ -6,7 +6,7 @@ routes between regions, the status and objective of the latest refresh's solve, 
 inventory allocation plan.
 """
 
-from model import Route, Site, SolveStatus, TotalHoldingCost, graph, model, wcc
+from model import Route, Site, SiteComponent, SolveStatus, TotalHoldingCost, model
 from relationalai.semantics import where
 from relationalai.semantics.std import aggregates as aggs
 
@@ -24,11 +24,11 @@ if __name__ == "__main__":
     ).inspect()
 
     # Stage 1b: connected components
-    site_ref = graph.Node.ref("site")
-    comp_ref = graph.Node.ref("component_id")
+    site_ref = Site.ref("site")
+    comp_ref = Site.ref("component_id")
 
     wcc_df = (
-        where(wcc(site_ref, comp_ref))
+        where(SiteComponent(site_ref, comp_ref))
         .select(
             site_ref.id.alias("site_id"),
             site_ref.name.alias("site"),

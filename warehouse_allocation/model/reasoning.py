@@ -26,7 +26,11 @@ Site.centrality = graph.eigenvector_centrality()
 # Stage 1b: Weakly Connected Components -- surface fragmentation
 # --------------------------------------------------
 
+# Each site's component, named by one of its sites, which the deployed model publishes for the queries.
 wcc = graph.weakly_connected_component()
+SiteComponent = model.Relationship(f"{Site} is in the component of {Site:component}")
+site_member, site_component = Site.ref(), Site.ref()
+model.where(wcc(site_member, site_component)).define(SiteComponent(site_member, site_component))
 
 # --------------------------------------------------
 # Stage 1c: Bridge Routes -- cross-region connectors

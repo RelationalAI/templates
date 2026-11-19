@@ -27,7 +27,7 @@ Run:
     from the deployed model.
 """
 
-from .reasoning import SolveStatus, TotalHoldingCost, graph, problem, wcc
+from .reasoning import SiteComponent, SolveStatus, TotalHoldingCost, graph, problem
 from .schema import Demand, Route, Site, model
 from .source import DATA_DIR
 
@@ -36,10 +36,10 @@ __all__ = [
     "Demand",
     "Route",
     "Site",
+    "SiteComponent",
     "SolveStatus",
     "TotalHoldingCost",
     "graph",
     "model",
     "problem",
-    "wcc",
 ]
