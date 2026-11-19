@@ -41,3 +41,9 @@ degree_centrality = graph.degree_centrality()
 # Also calculate basic degree metrics for context
 indegree = graph.indegree()  # Number of incoming supply routes
 outdegree = graph.outdegree()  # Number of outgoing supply routes
+
+# Attach each result to DistributionPoint, so the deployed model publishes it for the queries.
+DistributionPoint.pagerank = pagerank
+DistributionPoint.degree_centrality = degree_centrality
+DistributionPoint.indegree = indegree
+DistributionPoint.outdegree = outdegree
