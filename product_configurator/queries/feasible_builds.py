@@ -10,9 +10,10 @@ from model import (
     PRICE_CEILING_CENTS,
     TARGET_REGION,
     NumPoints,
+    Option,
+    SelectedOption,
     SolveStatus,
     model,
-    selected_var,
 )
 from relationalai.semantics import Integer
 
@@ -32,18 +33,17 @@ if __name__ == "__main__":
         # Inspect every feasible configuration
         # ------------------------------------------
 
-        # `selected_var.values(sol_idx, 1)` indexes the per-solution outputs and
-        # filters to the options the solver picked. Pivot to one row per build,
-        # one column per slot, sorted ascending by total dollars.
+        # `SelectedOption` holds, per solution, the options the solver picked. Pivot to
+        # one row per build, one column per slot, sorted ascending by total dollars.
         sol_idx = Integer.ref()
         selections_df = (
             model.select(
                 sol_idx.alias("solution"),
-                selected_var.option.slot.name.alias("slot"),
-                selected_var.option.name.alias("option"),
-                selected_var.option.price_cents.alias("price_cents"),
+                Option.slot.name.alias("slot"),
+                Option.name.alias("option"),
+                Option.price_cents.alias("price_cents"),
             )
-            .where(selected_var.values(sol_idx, 1))
+            .where(SelectedOption(sol_idx, Option))
             .to_df()
             .astype({"solution": "int64", "price_cents": "int64"})
         )

@@ -79,10 +79,18 @@ problem.satisfy(price_ic)
 
 # Each refresh of the deployed model runs this solve.
 # `solution_limit=MAX_CONFIGURATIONS` asks the solver to enumerate up to that
-# many distinct feasible builds; query each one via `.values(sol_idx, val)`.
+# many distinct feasible builds; `.values(sol_idx, val)` reads each one.
 problem.configure("minizinc", time_limit_sec=60, solution_limit=MAX_CONFIGURATIONS)
 
 # The solve's status and number of solutions, which the deployed model publishes for the queries.
 SolveStatus = model.Relationship(f"product configurator solve status is {String:status}")
 NumPoints = model.Relationship(f"product configurator number of solutions is {Integer:count}")
 model.define(SolveStatus(problem.termination_status()), NumPoints(problem.num_points()))
+
+# The solutions, which the deployed model publishes for the queries: the options each
+# solution selects.
+solution = Integer.ref()
+SelectedOption = model.Relationship(
+    f"product configurator solution {Integer:solution} selects {Option:option}"
+)
+model.where(selected_var.values(solution, 1)).define(SelectedOption(solution, selected_var.option))
