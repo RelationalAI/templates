@@ -1,6 +1,6 @@
 """Dependency graph, bottleneck scores, and assembly chains over the BOM."""
 
-from relationalai.semantics import Integer, not_
+from relationalai.semantics import Hash, Integer, not_
 from relationalai.semantics.reasoners.graph import Graph
 from relationalai.semantics.std import aggregates as aggs
 
@@ -21,15 +21,22 @@ graph = Graph(
     edge_dst_relationship=BillOfMaterials.input_sku,
 )
 
-# Graph size.
-num_nodes = graph.num_nodes()
-num_edges = graph.num_edges()
+# Graph size, which the deployed model publishes for the queries.
+node_count, edge_count = Integer.ref(), Integer.ref()
+num_nodes = model.Relationship(f"the BOM graph has {Integer:num_nodes} nodes")
+num_edges = model.Relationship(f"the BOM graph has {Integer:num_edges} edges")
+model.where(graph.num_nodes()(node_count)).define(num_nodes(node_count))
+model.where(graph.num_edges()(edge_count)).define(num_edges(edge_count))
 
 # Reachability: all transitive dependency pairs.
 reachable = graph.reachable(full=True)
 
 # Betweenness centrality: structural bottlenecks.
 betweenness = graph.betweenness_centrality()
+
+# Attach both results to SKU, so the deployed model publishes them for the queries.
+SKU.reaches = reachable
+SKU.betweenness = betweenness
 
 # --------------------------------------------------
 # Assembly path enumeration
@@ -59,6 +66,13 @@ model.where(
 # allow extra headroom so deeper BOMs enumerate fully.
 MAX_ASSEMBLY_HOPS = 4
 p = model.path(SKU.feeds.repeat(1, MAX_ASSEMBLY_HOPS)).all().paths()
+
+# The chains, which the deployed model publishes for the queries: the SKU at each step of
+# each chain, keyed by the chain's path id.
+AssemblyStep = model.Relationship(
+    f"assembly chain {Hash:path} has {SKU:sku} at step {Integer:step}"
+)
+model.where(p).define(AssemblyStep(p, SKU(p.nodes), p.nodes["index"]))
 
 # Persist an assembly depth onto every SKU that ends an assembly chain (it feeds
 # nothing further): the length of the longest chain that ends at it.
