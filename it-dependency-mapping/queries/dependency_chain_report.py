@@ -8,23 +8,22 @@ downstream depth, the deepest maximal dependency chains, and the chain of owners
 along the single longest chain (the upgrade / incident blast radius).
 """
 
-from model import MAX_DEPTH, Feature, model, p, src
-from relationalai.semantics.std import aggregates as aggs
+from model import MAX_DEPTH, DependencyPathStep, Feature, model
+from relationalai.semantics import Hash, Integer
 
 if __name__ == "__main__":
     print("=== IT Dependency Mapping: downstream paths ===")
 
-    # Project the node sequence of each path (for display-side reassembly). Keep this
-    # its own query: selecting p.length or a path aggregate alongside p.nodes fans the
-    # node rows out (known paths issue), so the per-path rollups below are SEPARATE
-    # model.where(...) queries.
+    # The node sequence of each path (for display-side reassembly), as the model
+    # publishes it.
+    path, step = Hash.ref(), Integer.ref()
     paths_df = (
-        model.where(p)
+        model.where(DependencyPathStep(path, Feature, step))
         .select(
-            p.alias("path_id"),
-            p.nodes["index"].alias("step"),
-            Feature(p.nodes).id.alias("feature_id"),
-            Feature(p.nodes).name.alias("feature_name"),
+            path.alias("path_id"),
+            step.alias("step"),
+            Feature.id.alias("feature_id"),
+            Feature.name.alias("feature_name"),
         )
         .to_df()
     )
@@ -59,12 +58,11 @@ if __name__ == "__main__":
         Feature.deploy_tier.alias("deploy_tier"),
     ).to_df()
 
-    # Paths starting at each feature: aggregates.count(p).per(src) groups the
-    # enumerated paths by their (typed) source endpoint -- a path-level rollup keyed
-    # on src, computed IN PyRel rather than via a pandas groupby on the chains frame.
+    # Paths starting at each feature, counted in the model (see model/reasoning.py).
+    paths_started = Integer.ref()
     paths_started_df = (
-        model.where(p, n := aggs.count(p).per(src))
-        .select(src.id.alias("feature_id"), n.alias("paths_downstream"))
+        model.where(Feature.paths_downstream(paths_started))
+        .select(Feature.id.alias("feature_id"), paths_started.alias("paths_downstream"))
         .to_df()
     )
     # Count column arrives as Int128 -- cast before pandas merge/arithmetic.

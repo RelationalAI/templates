@@ -1,6 +1,6 @@
 """Downstream dependency paths: path enumeration and each feature's longest downstream depth."""
 
-from relationalai.semantics import Integer
+from relationalai.semantics import Hash, Integer
 from relationalai.semantics.std import aggregates as aggs
 
 from .schema import Feature, model
@@ -34,3 +34,14 @@ Feature.max_downstream_depth = model.Relationship(
     f"{Feature} has {Integer:max_downstream_depth}"
 )
 model.define(src.max_downstream_depth(aggs.max(p.length).per(src))).where(p)
+
+# The paths, which the deployed model publishes for the queries: the feature at each step of
+# each path, keyed by the path id, and the number of paths that start at each feature.
+# aggregates.count(p).per(src) groups the enumerated paths by their (typed) source endpoint
+# -- a path-level rollup keyed on src, computed IN PyRel rather than via a pandas groupby.
+DependencyPathStep = model.Relationship(
+    f"dependency path {Hash:path} has {Feature:feature} at step {Integer:step}"
+)
+model.where(p).define(DependencyPathStep(p, Feature(p.nodes), p.nodes["index"]))
+Feature.paths_downstream = model.Relationship(f"{Feature} starts {Integer:paths_downstream} paths")
+model.define(src.paths_downstream(aggs.count(p).per(src))).where(p)
