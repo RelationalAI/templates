@@ -2,7 +2,7 @@
 
 from typing import Any, NamedTuple
 
-from relationalai.semantics import Float, String, sum
+from relationalai.semantics import Float, Integer, String, sum
 from relationalai.semantics.reasoners.graph import Graph
 from relationalai.semantics.reasoners.prescriptive import Problem
 from relationalai.semantics.std import aggregates as aggs
@@ -70,14 +70,20 @@ model.where(Business.ships_to(b_src, b_dst)).define(
     biz_graph.Edge.new(src=b_src, dst=b_dst)
 )
 
-biz_num_nodes = biz_graph.num_nodes()
-biz_num_edges = biz_graph.num_edges()
+# The business graph's size, which the deployed model publishes for the queries.
+biz_node_count, biz_edge_count = Integer.ref(), Integer.ref()
+biz_num_nodes = model.Relationship(f"the business graph has {Integer:num_nodes} nodes")
+biz_num_edges = model.Relationship(f"the business graph has {Integer:num_edges} edges")
+model.where(biz_graph.num_nodes()(biz_node_count)).define(biz_num_nodes(biz_node_count))
+model.where(biz_graph.num_edges()(biz_edge_count)).define(biz_num_edges(biz_edge_count))
 
 # Upstream reachability: which suppliers do high-priority customers depend on?
 target_customer = model.Relationship(f"target customer {Business}")
 model.where(Business.is_high_priority_customer()).define(target_customer(Business))
 
 reachable_to = biz_graph.reachable(to=target_customer)
+# Attach it to Business, so the deployed model publishes it for the queries.
+Business.reaches_target_customer = reachable_to
 
 # --------------------------------------------------
 # Stage 1: Graph -- network criticality
@@ -95,14 +101,22 @@ model.define(
     op_ref.op_type == "SHIP",
 )
 
-num_nodes = graph.num_nodes()
-num_edges = graph.num_edges()
+# The site graph's size, which the deployed model publishes for the queries.
+node_count, edge_count = Integer.ref(), Integer.ref()
+num_nodes = model.Relationship(f"the site graph has {Integer:num_nodes} nodes")
+num_edges = model.Relationship(f"the site graph has {Integer:num_edges} edges")
+model.where(graph.num_nodes()(node_count)).define(num_nodes(node_count))
+model.where(graph.num_edges()(edge_count)).define(num_edges(edge_count))
 
 # Weakly connected components.
 wcc = graph.weakly_connected_component()
 
 # Eigenvector centrality: identify most critical sites.
 eigenvector = graph.eigenvector_centrality()
+
+# Attach both results to Site, so the deployed model publishes them for the queries.
+Site.component = wcc
+Site.eigenvector_centrality = eigenvector
 
 # Store centrality on Site for use in optimization objective: the eigenvector score
 # of each site other than stores and offices, divided by the largest such score.
