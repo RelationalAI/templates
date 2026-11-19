@@ -39,7 +39,7 @@ Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` 
 
 **Prompt:** /rai-prescriptive-problem Which runner should each job run on to minimize total pipeline cost — runner cost-per-minute times the job's estimated minutes — given that each job must go to exactly one compatible runner and each runner can run at most its concurrency cap of jobs? Solve it for three capacity scenarios that scale every runner's concurrency cap to 0.5x, 1.0x, and 1.5x. Persist the assignment to the ontology.
 
-**Response:** OPTIMAL in all three scenarios (HiGHS), all 20 jobs assigned each time. Minimum total cost is **$10.18 at 0.5x, $9.62 at 1.0x, and $9.53 at 1.5x**. The binary assignment is written back as `Assignment.x_assigned`; the assign-one and per-runner concurrency constraints are keyed by workflow and runner so their conflict membership can be read back later.
+**Response:** OPTIMAL in all three scenarios (HiGHS), all 20 jobs assigned each time. Minimum total cost is **$10.18 at 0.5x, $9.62 at 1.0x, and $9.53 at 1.5x**. Each scenario's assignments are published as a relationship of their own; the assign-one and per-runner concurrency constraints are keyed by workflow and runner so their conflict membership can be read back later.
 
 ## 4. Read the cost-vs-capacity curve
 
@@ -55,4 +55,4 @@ Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` 
 
 ## Data
 
-Bundled CSVs in `data/`: 8 runners, 20 workflows, 70 compatibility pairs. The concurrency multipliers (0.5, 1.0, 1.5) and the outage runner list are constants in the script. Full model in `cicd_runner_allocation.py`.
+Bundled CSVs in `data/`: 8 runners, 20 workflows, 70 compatibility pairs. The concurrency multipliers (0.5, 1.0, 1.5) and the outage runner list are constants in the model. Full model in `model/`.

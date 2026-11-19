@@ -37,38 +37,58 @@ Every merge kicks off a pipeline of build, test, and deploy jobs, and each job c
 
 ## What's included
 
-- **Model**: three source concepts (`Runner`, `Workflow`, `Compatibility`) plus an `Assignment` decision concept, with a binary assignment variable, an assign-one-runner rule, a per-runner concurrency rule, and a cost-minimizing objective.
-- **Runner**: `cicd_runner_allocation.py` — a single Python script that runs the scenario sweep and the outage diagnosis end to end against a Snowflake-connected RAI account.
-- **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
+- **Model**: three source concepts (`Runner`, `Workflow`, `Compatibility`) plus an `Assignment` decision concept, with a binary assignment variable, an assign-one-runner rule, a per-runner concurrency rule, and a cost-minimizing objective, in the `model/` package (`schema.py` declares the concepts, `source.py` loads the sample data and checks it, `reasoning.py` states one decision problem per concurrency scenario and one for the maintenance outage), which `rai models deploy --path model` deploys to your Snowflake account, where each refresh runs the solves.
+- **Query**: `queries/allocation_report.py`, which prints the report from the deployed model.
+- **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the model itself.
 - **Sample data**: 8 runner types, 20 workflow jobs, and their pre-computed compatibility pairs. See *Sample data* below.
 - **Outputs**: per-scenario solver status, total pipeline cost, and the runner-to-workflow assignment table printed to stdout; then the outage diagnosis naming the stranded jobs and the binding concurrency cap.
 
 ## Prerequisites
 
 ### Access
-
-- A Snowflake account with the RelationalAI Native App installed.
-- A Snowflake user with permissions to access the RelationalAI Native App.
+- A Snowflake account that has the RAI Native App installed.
+- The one-time model deployment setup on that account, done by an account administrator: follow [Set up model deployment](https://private.relational.ai/early-access/model-deploy-setup) through **Governed setup**, **PAT authentication**, and steps 1-2 of **Additional setup for the prescriptive reasoner** (the Quickstart covers this template's own schema). It gives you a model role, a programmatic access token (PAT) stored as a secret, an external access integration, a PAT user, and a warehouse.
+- A Snowflake user that holds the model role.
 
 ### Tools
-
-- Python >= 3.10.
-- RelationalAI Python SDK (`relationalai == 2.1.1`).
+- Python >= 3.10
 
 ## Quickstart
 
-1. Download the template and extract it:
+Before you start, install Python 3.10 or later and complete the access prerequisites above: a Snowflake account with the RAI Native App, the one-time model deployment setup, and a Snowflake user that holds the model role.
+
+Before the first deploy, create this template's internal schema as the model role, and have an administrator grant the RAI Native App caller access to it. The internal schema holds only this model's objects, so the grants cover all of it, including the solver's result tables that the deploy creates:
+
+```sql
+-- as the model role
+CREATE SCHEMA IF NOT EXISTS <DB>.CICD_RUNNER_ALLOCATION_META;
+
+-- as an administrator
+GRANT CALLER USAGE ON DATABASE <DB> TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER USAGE ON SCHEMA <DB>.CICD_RUNNER_ALLOCATION_META TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER USAGE ON WAREHOUSE <PAT_WAREHOUSE> TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL TABLES IN SCHEMA <DB>.CICD_RUNNER_ALLOCATION_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL DYNAMIC TABLES IN SCHEMA <DB>.CICD_RUNNER_ALLOCATION_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL VIEWS IN SCHEMA <DB>.CICD_RUNNER_ALLOCATION_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER INSERT, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA <DB>.CICD_RUNNER_ALLOCATION_META TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER CREATE TABLE, CREATE STAGE ON SCHEMA <DB>.CICD_RUNNER_ALLOCATION_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER READ, WRITE ON ALL STAGES IN SCHEMA <DB>.CICD_RUNNER_ALLOCATION_META TO APPLICATION <RAI_APP_NAME>;
+```
+
+Use this sequence to deploy the model and query it:
+
+1. **Download the template**
+
+   [Download the ZIP](https://docs.relational.ai/templates/zips/v1/cicd_runner_allocation.zip), unzip it, and enter the template directory:
 
    ```bash
-   curl -O https://docs.relational.ai/templates/zips/v1/cicd_runner_allocation.zip
    unzip cicd_runner_allocation.zip
    cd cicd_runner_allocation
    ```
 
-   > [!TIP]
-   > You can also download the template ZIP using the "Download ZIP" button at the top of this page.
+2. **Create a Python environment**
 
-2. Create a virtual environment and activate it:
+   Create and activate a virtual environment, then update pip:
 
    ```bash
    python -m venv .venv
@@ -76,31 +96,114 @@ Every merge kicks off a pipeline of build, test, and deploy jobs, and each job c
    python -m pip install --upgrade pip
    ```
 
-3. Install dependencies:
+3. **Install the template**
+
+   Install the dependencies pinned in `pyproject.toml`:
 
    ```bash
    python -m pip install .
    ```
 
-4. Configure credentials:
+4. **Configure your project**
 
-   ```bash
-   rai init
+   Use the configuration builder in [Install and run PyRel](https://docs.relational.ai/get-started/install-and-run-pyrel/#configure-your-project) to create `raiconfig.yaml` in the template directory and verify your connection.
+
+   Set the connection `role` to the model role, then add the prescriptive reasoner and a `deployment` section. Give each template its own schema pair so two deployed templates never share one:
+
+   ```yaml
+   reasoners:
+     prescriptive:
+       name: cicd_runner_allocation_solver            # created on first deploy if it doesn't exist
+   deployment:
+     role: <MODEL_ROLE>
+     public_schema: <DB>.CICD_RUNNER_ALLOCATION               # published views and tables
+     identity:
+       internal_schema: <DB>.CICD_RUNNER_ALLOCATION_META      # solver inputs, results, refresh procedures
+     schedules:
+       standard:
+         interval_s: 0              # refresh only on deploy or on demand
+     schedule: standard
+     pat_secret: <PAT_SECRET>       # these four come from the setup page
+     pat_eai: <PAT_EAI>
+     pat_user: <PAT_USER>
+     pat_warehouse: <PAT_WAREHOUSE>
    ```
 
-5. Run the template end to end:
+5. **Deploy the model**
+
+   Deploy the model in `model/` to the schemas in `raiconfig.yaml`:
 
    ```bash
-   python cicd_runner_allocation.py
+   rai models deploy --path model
    ```
 
-6. Expected output (a few representative lines confirm a successful run):
+   The deploy creates the public schema named in `raiconfig.yaml` if it doesn't exist and waits for the model's first refresh, which runs one solve per concurrency scenario and one for the maintenance outage. Each refresh of the deployed model runs the solves again.
+
+   Deploying again without changing the model applies no updates and does not solve again. A change to the model or to `problem.configure(...)` redeploys, and the redeploy's refresh solves.
+
+6. **Query the results**
+
+   Print the report from the deployed model:
+
+   ```bash
+   python -m queries.allocation_report
+   ```
 
    ```text
+   Running scenario: concurrency_multiplier = 0.5
+   --------------------------------------------------
+
+   Solve result:
+   • status: OPTIMAL
+   • objective: 10.175
+
+     Status: OPTIMAL
+     Total pipeline cost: $10.18
+
+     Assignments:
+       macos-large (1 jobs): ios-testflight
+       macos-latest (2 jobs): build-mobile-ios, e2e-tests-safari
+       self-hosted-linux (4 jobs): e2e-tests-chrome, integration-tests, nightly-build, performance-tests
+       ubuntu-22.04 (3 jobs): deploy-production, release-notes, unit-tests-frontend
+       ubuntu-large (3 jobs): build-mobile-android, docker-build, unit-tests-api
+       ubuntu-latest (6 jobs): build-api, build-frontend, dependency-audit, deploy-staging, lint-and-format, security-scan
+       windows-latest (1 jobs): windows-installer
+
    Running scenario: concurrency_multiplier = 1.0
    --------------------------------------------------
+
+   Solve result:
+   • status: OPTIMAL
+   • objective: 9.622
+
      Status: OPTIMAL
      Total pipeline cost: $9.62
+
+     Assignments:
+       macos-large (1 jobs): ios-testflight
+       macos-latest (2 jobs): build-mobile-ios, e2e-tests-safari
+       self-hosted-linux (8 jobs): build-api, build-mobile-android, docker-build, e2e-tests-chrome, integration-tests, nightly-build, performance-tests, unit-tests-api
+       ubuntu-22.04 (7 jobs): build-frontend, dependency-audit, deploy-production, deploy-staging, lint-and-format, security-scan, unit-tests-frontend
+       ubuntu-latest (1 jobs): release-notes
+       windows-latest (1 jobs): windows-installer
+
+   Running scenario: concurrency_multiplier = 1.5
+   --------------------------------------------------
+
+   Solve result:
+   • status: OPTIMAL
+   • objective: 9.526
+
+     Status: OPTIMAL
+     Total pipeline cost: $9.53
+
+     Assignments:
+       macos-large (1 jobs): ios-testflight
+       macos-latest (2 jobs): build-mobile-ios, e2e-tests-safari
+       self-hosted-linux (12 jobs): build-api, build-frontend, build-mobile-android, dependency-audit, docker-build, e2e-tests-chrome, integration-tests, nightly-build, performance-tests, security-scan, unit-tests-api, unit-tests-frontend
+       ubuntu-22.04 (3 jobs): deploy-staging, lint-and-format, release-notes
+       ubuntu-latest (1 jobs): deploy-production
+       windows-latest (1 jobs): windows-installer
 
    ==================================================
    Scenario Analysis Summary
@@ -112,31 +215,67 @@ Every merge kicks off a pipeline of build, test, and deploy jobs, and each job c
    ==================================================
    Maintenance outage: ubuntu-large, self-hosted-linux offline
    ==================================================
+
+   Solve result:
    • status: INFEASIBLE
-   • conflict status: CONFLICT_FOUND
+
+   Stranded jobs (assign-one rule in conflict):
+               workflow
+   build-mobile-android
+           docker-build
+       e2e-tests-chrome
+      integration-tests
+          nightly-build
+      performance-tests
+         unit-tests-api
 
    Binding runner caps (concurrency rule in conflict):
-          runner max_concurrent
-   ubuntu-xlarge              5
+          runner  max_concurrent
+   ubuntu-xlarge               5
+
+   To restore feasibility, relax one member of the conflict: bring ubuntu-large or self-hosted-linux back online, or raise ubuntu-xlarge's concurrency cap. All seven high-CPU jobs share the one survivor, so lift the cap (or restore a runner) enough for all of them and re-deploy to confirm -- clearing a single stranded job only resolves that row of the conflict.
    ```
 
-   Equal-cost runners may be swapped between tied optima, and the IIS may name a different six of the seven stranded jobs; the statuses, costs, and the binding runner cap are stable. The full printout and a step-by-step walkthrough are in `runbook.md`.
+   Equal-cost runners may be swapped between tied optima; the statuses, costs, and conflict are stable. See `runbook.md` for the step-by-step walkthrough.
+
+   To solve again without changing the model, refresh the deployed model, then run the query again:
+
+   ```sql
+   CALL <DB>.CICD_RUNNER_ALLOCATION_META._INTERNAL_REFRESH_MODEL('standard', NULL);
+   ```
+
+7. **Tear down the deployment**
+
+   Preview what the teardown removes, then remove it:
+
+   ```bash
+   rai models teardown
+   rai models teardown --force
+   ```
+
+   The first command lists the model's objects without dropping anything; the second drops them and keeps the two schemas.
 
 ## Template structure
 
 ```text
-cicd_runner_allocation/
-  cicd_runner_allocation.py       # Main script (scenario sweep + outage diagnosis)
-  data/
-    runners.csv                   # 8 runner types (specs, cost, concurrency cap)
-    workflows.csv                 # 20 CI/CD jobs (requirements, duration)
-    compatibility.csv             # pre-computed (workflow, runner) compatible pairs
-  README.md                       # this file
-  runbook.md                      # analyst-facing paste-testable walkthrough
-  pyproject.toml                  # dependencies
+.
+├── README.md                  # this file
+├── runbook.md                 # step-by-step analyst walkthrough
+├── pyproject.toml             # dependencies
+├── model/
+│   ├── __init__.py            # exports of the deployed model
+│   ├── schema.py              # concepts and properties
+│   ├── source.py              # sample data and the outage's runner check
+│   └── reasoning.py           # one solve per scenario, the outage solve and its conflict
+├── queries/
+│   └── allocation_report.py   # report from the deployed model
+└── data/
+    ├── runners.csv            # 8 runner types (specs, cost, concurrency cap)
+    ├── workflows.csv          # 20 CI/CD jobs (requirements, duration)
+    └── compatibility.csv      # pre-computed (workflow, runner) compatible pairs
 ```
 
-**Start here**: run `python cicd_runner_allocation.py` for the full scenario sweep and outage diagnosis end to end, or follow `runbook.md` to reproduce it step by step with the RAI skills.
+**Start here**: deploy with `rai models deploy --path model` and run `python -m queries.allocation_report` for the full scenario sweep and outage diagnosis end to end, or follow `runbook.md` to reproduce it step by step with the RAI skills.
 
 ## Sample data
 
@@ -156,11 +295,11 @@ The model has three source concepts loaded from the CSVs plus one decision conce
 
 `Compatibility` is a standalone relation, not a set of properties on `Runner` or `Workflow`: it enumerates which runners can execute which workflows (operating-system and resource match), and it seeds the `Assignment` decision space — `Assignment` is defined over exactly the `Compatibility` pairs.
 
-For the full concept and property definitions, see `cicd_runner_allocation.py`; `runbook.md` builds them step by step with the RAI skills.
+For the full concept and property definitions, see `model/schema.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
-The script defines the source concepts, seeds the decision space, adds the constraints and objective, sweeps the capacity scenarios, and finally diagnoses a maintenance outage.
+The model defines the source concepts, seeds the decision space, adds the constraints and objective, declares one problem per capacity scenario, and finally diagnoses a maintenance outage.
 
 ### Define concepts and load CSV data
 
@@ -172,24 +311,24 @@ Each assignment is a binary variable — assign this workflow to this runner or 
 
 ### Solve with scenario analysis
 
-The script loops over three concurrency multipliers (0.5x, 1.0x, 1.5x), creating a fresh Problem for each. This reveals the cost of operating at reduced capacity (maintenance window) versus full or burst capacity.
+The model declares one Problem per concurrency multiplier (0.5x, 1.0x, 1.5x), each with its own name, so an infeasible scenario leaves the others solved; each refresh of the deployed model runs all of them. This reveals the cost of operating at reduced capacity (maintenance window) versus full or burst capacity.
 
 At full capacity (1.0x), `self-hosted-linux` absorbs 8 of 20 jobs at `$0.005/min` — the cheapest runner. At half capacity (0.5x), its 4-job cap forces overflow to `ubuntu-large` and `ubuntu-22.04`, raising cost by 6%. Burst mode (1.5x) pushes 12 jobs to self-hosted, saving another `$0.09` by pulling four more low-CPU jobs off the pricier ubuntu runners (the high-CPU jobs already fit on self-hosted at 1.0x). How the cheap, low-CPU jobs split between the two equal-cost ubuntu runners is one of several tied optima — a different HiGHS build may place them differently at the same total cost. A summary table then compares status and cost across the scenarios.
 
 ### Diagnose a maintenance outage with conflict analysis
 
-The final section models a maintenance outage: `ubuntu-large` and `self-hosted-linux` go offline (their assignments are dropped with a filter). Every high-CPU Linux job (`min_cpu` at least 4) is compatible only with runners in `{ubuntu-large, ubuntu-xlarge, self-hosted-linux}` (the two heaviest jobs with just the latter two), so with two of those three down, all seven funnel onto `ubuntu-xlarge` — whose concurrency cap of 5 cannot hold them. The solve requests a conflict diagnosis.
+The final section models a maintenance outage: `ubuntu-large` and `self-hosted-linux` go offline (their assignments are dropped with a filter). Every high-CPU Linux job (`min_cpu` at least 4) is compatible only with runners in `{ubuntu-large, ubuntu-xlarge, self-hosted-linux}` (the two heaviest jobs with just the latter two), so with two of those three down, all seven funnel onto `ubuntu-xlarge` — whose concurrency cap of 5 cannot hold them. Its Problem is configured with `conflict=True`, so its solve also computes a conflict diagnosis.
 
-A `conflict_status` field gates whether an irreducible infeasible subsystem (IIS) is available: on `CONFLICT_FOUND` the script reads back the stranded jobs and binding cap; otherwise it reports the status rather than reading an IIS that is not there. (The template's own branch raises in that case, because its outage is infeasible by construction, but code where infeasibility is not guaranteed should report and move on.)
+The diagnosis is an irreducible infeasible subsystem (IIS). `in_conflict` is a predicate on each constraint instance, true when the solver reports that instance in the IIS, and the model publishes the members as two relationships the report selects: the stranded jobs and the binding runner caps. When the solver finds no IIS (the model is feasible, or the solver build has no conflict support), both tables print empty.
 
 Each constraint's declared key gives it an entity back-pointer (`assign_one.workflow`, `conc.runner`), mirroring the variable's automatic back-pointer, so the conflict reads back as the actual stranded jobs and the binding runner cap, joined by key — no rule-name parsing.
 
-The IIS is minimal: it names six of the seven high-CPU jobs (any six already exceed the cap of five, so which six is solver-dependent) plus the `ubuntu-xlarge` concurrency rule. To restore feasibility, relax one member — bring a runner back online or raise the cap. Because all seven jobs share the one survivor, lift the cap enough for all of them (or restore a runner) and re-solve to confirm; clearing a single job only resolves that one row of the conflict.
+The IIS is minimal: it names six of the seven high-CPU jobs (any six already exceed the cap of five, so which six is solver-dependent) plus the `ubuntu-xlarge` concurrency rule. To restore feasibility, relax one member — bring a runner back online or raise the cap. Because all seven jobs share the one survivor, lift the cap enough for all of them (or restore a runner) and redeploy to confirm; clearing a single job only resolves that one row of the conflict.
 
-See `cicd_runner_allocation.py` for the implementation and `runbook.md` for the skill-driven reproduction.
+See `model/reasoning.py` and `queries/allocation_report.py` for the implementation and `runbook.md` for the skill-driven reproduction.
 
 > [!NOTE]
-> Conflict analysis works for mixed-integer models like this one (unlike sensitivity analysis, which needs a linear or quadratic program). It requires no objective — it diagnoses feasibility. Request `conflict=True` on the solve whose infeasibility you want to explain — up front, or on a fresh build: a `Problem` already solved without it cannot add it on a re-solve.
+> Conflict analysis works for mixed-integer models like this one (unlike sensitivity analysis, which needs a linear or quadratic program). It requires no objective — it diagnoses feasibility. Pass `conflict=True` to the `configure(...)` of the Problem whose infeasibility you want to explain.
 
 ## Customize this template
 
@@ -199,13 +338,13 @@ Focus on the first changes most users will make.
 
 - Replace the CSVs in `data/` with your own; keep the column headers listed in *Sample data* (`runners.csv`, `workflows.csv`, `compatibility.csv`).
 - `compatibility.csv` must hold one `(workflow_id, runner_id)` row per runner that can execute a workflow (operating-system and resource match). If a workflow has no compatible runner, it cannot be assigned and the model becomes infeasible — see *Troubleshooting*.
-- For Snowflake-backed runs, swap the `read_csv(...)` calls for `model.data(snowflake_table)` calls.
+- For Snowflake-backed runs, swap the `read_csv(...)` calls in `model/source.py` for `model.data(snowflake_table)` calls.
 
 ### Tune parameters
 
 - **Concurrency scenarios** — `SCENARIO_VALUES` (default `[0.5, 1.0, 1.5]`) is the list of concurrency multipliers swept; each scales every runner's `max_concurrent`.
 - **Per-runner caps** — change `max_concurrent` in `runners.csv` to model a different fleet size or capacity policy.
-- **Solve budget** — the solve uses `time_limit_sec=60`; raise it for larger fleets.
+- **Solve budget** — each `problem.configure(...)` in `model/reasoning.py` uses `time_limit_sec=60`; raise it for larger fleets.
 
 ### Extend the model
 
@@ -224,13 +363,13 @@ Focus on the first changes most users will make.
 <details>
 <summary>Problem is infeasible</summary>
 
-The concurrency limits are too tight for the number of workflows, or a workflow has no compatible runner. Rather than guess, request a conflict diagnosis — `solve(conflict=True)` returns the irreducible infeasible subsystem (the stranded jobs and the binding runner cap), as shown in the maintenance-outage section. Then increase `max_concurrent` for the named runner in `runners.csv`, reduce the number of workflows competing for it, or raise the concurrency multiplier.
+The concurrency limits are too tight for the number of workflows, or a workflow has no compatible runner. Rather than guess, request a conflict diagnosis — `problem.configure(..., conflict=True)` makes the solve return the irreducible infeasible subsystem (the stranded jobs and the binding runner cap), as shown in the maintenance-outage section. Then increase `max_concurrent` for the named runner in `runners.csv`, reduce the number of workflows competing for it, or raise the concurrency multiplier.
 </details>
 
 <details>
-<summary>rai init fails or connection errors</summary>
+<summary>Connection errors</summary>
 
-Ensure your Snowflake credentials are configured correctly and that the RelationalAI Native App is installed on your account. Run `rai init` again and verify the connection settings.
+Ensure your Snowflake account has the RAI Native App installed and your user has the required permissions. Re-create `raiconfig.yaml` with the configuration builder (Quickstart step 4) and verify the connection settings.
 </details>
 
 <details>
