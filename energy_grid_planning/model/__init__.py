@@ -31,9 +31,9 @@ Run:
 from .reasoning import (
     CRITICAL_THRESHOLD,
     MAX_CORRIDOR_HOPS,
+    CorridorStep,
     SolveObjective,
     SolveStatus,
-    corridor,
 )
 from .schema import (
     DataCenterRequest,
@@ -50,6 +50,7 @@ __all__ = [
     "CRITICAL_THRESHOLD",
     "DATA_DIR",
     "MAX_CORRIDOR_HOPS",
+    "CorridorStep",
     "DataCenterRequest",
     "DemandForecast",
     "InvestmentLevel",
@@ -58,6 +59,5 @@ __all__ = [
     "SolveStatus",
     "Substation",
     "SubstationUpgrade",
-    "corridor",
     "model",
 ]

@@ -1,6 +1,6 @@
 """Reasoning for the energy grid template: forecast, topology, corridors, compliance, and investment."""
 
-from relationalai.semantics import Float, Integer, String, not_, sum, where
+from relationalai.semantics import Float, Hash, Integer, String, not_, sum, where
 from relationalai.semantics.reasoners.graph import Graph
 from relationalai.semantics.reasoners.prescriptive import Problem
 from relationalai.semantics.std import aggregates as aggs
@@ -164,6 +164,14 @@ corridor = (
     )
     .all()
     .paths()
+)
+
+# Each corridor's substations in hop order, which the deployed model publishes for the queries.
+CorridorStep = model.Relationship(
+    f"corridor {Hash:corridor} has {Substation:substation} at hop {Integer:hop}"
+)
+model.where(corridor).define(
+    CorridorStep(corridor, Substation(corridor.nodes), corridor.nodes["index"])
 )
 
 # Each DC substation's fragility load is the highest corridor score among the simple

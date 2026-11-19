@@ -14,6 +14,7 @@ import pandas as pd
 from model import (
     CRITICAL_THRESHOLD,
     MAX_CORRIDOR_HOPS,
+    CorridorStep,
     DataCenterRequest,
     DemandForecast,
     InvestmentLevel,
@@ -22,10 +23,9 @@ from model import (
     SolveStatus,
     Substation,
     SubstationUpgrade,
-    corridor,
     model,
 )
-from relationalai.semantics import Float, sum
+from relationalai.semantics import Float, Hash, Integer, sum
 
 
 def main() -> None:
@@ -204,11 +204,12 @@ def main() -> None:
     # joining names is a pandas job) and for the contingency re-enumeration below. Selecting
     # names alongside the score would fan out rows, so the node-sequence projection is a
     # SEPARATE query from the scoring above.
-    corridor_df = model.where(corridor).select(
+    corridor, hop = Hash.ref(), Integer.ref()
+    corridor_df = model.where(CorridorStep(corridor, Substation, hop)).select(
         corridor.alias("corridor"),
-        corridor.nodes["index"].alias("hop"),
-        Substation(corridor.nodes).id.alias("substation_id"),
-        Substation(corridor.nodes).name.alias("substation_name"),
+        hop.alias("hop"),
+        Substation.id.alias("substation_id"),
+        Substation.name.alias("substation_name"),
     ).to_df()
     betw_df = model.select(
         Substation.id.alias("substation_id"),
