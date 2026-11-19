@@ -105,10 +105,23 @@ problem.satisfy(non_senior_no_medicare_ic)
 
 # Each refresh of the deployed model runs this solve.
 # `solution_limit=MAX_RECORDS` asks the solver to enumerate up to that
-# many distinct feasible records; query each one via `.values(idx, val)`.
+# many distinct feasible records; `.values(idx, val)` reads each one.
 problem.configure("minizinc", time_limit_sec=60, solution_limit=MAX_RECORDS)
 
 # The solve's status and number of solutions, which the deployed model publishes for the queries.
 SolveStatus = model.Relationship(f"synthetic eligibility solve status is {String:status}")
 NumPoints = model.Relationship(f"synthetic eligibility number of solutions is {Integer:count}")
 model.define(SolveStatus(problem.termination_status()), NumPoints(problem.num_points()))
+
+# The records, which the deployed model publishes for the queries: binding each value slot
+# to a reference concept's `.id` walks the chosen ID back to that record's rows.
+solution = Integer.ref()
+MemberRecord = model.Relationship(
+    f"synthetic eligibility record {Integer:solution} has {AgeBucket:age_bucket}, "
+    f"{Plan:plan} and {Provider:provider}"
+)
+model.where(
+    age_bucket_var.values(solution, AgeBucket.id),
+    plan_id_var.values(solution, Plan.id),
+    provider_id_var.values(solution, Provider.id),
+).define(MemberRecord(solution, AgeBucket, Plan, Provider))

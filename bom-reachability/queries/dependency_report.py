@@ -7,15 +7,15 @@ Run after `rai models deploy --path model`:
 from model import (
     MAX_ASSEMBLY_HOPS,
     SKU,
+    AssemblyStep,
     betweenness,
     graph,
     model,
     num_edges,
     num_nodes,
-    p,
     reachable,
 )
-from relationalai.semantics import Float, where
+from relationalai.semantics import Float, Hash, Integer, where
 
 
 def _is_contiguous_subsequence(short, long):
@@ -114,13 +114,14 @@ if __name__ == "__main__":
 
     print("\n=== Assembly Path Enumeration (PREVIEW) ===")
 
+    path, step = Hash.ref(), Integer.ref()
     assembly_df = (
-        model.where(p)
+        model.where(AssemblyStep(path, SKU, step))
         .select(
-            p.alias("path"),
-            p.nodes["index"].alias("step"),
-            SKU(p.nodes).id.alias("sku_id"),
-            SKU(p.nodes).name.alias("sku_name"),
+            path.alias("path"),
+            step.alias("step"),
+            SKU.id.alias("sku_id"),
+            SKU.name.alias("sku_name"),
         )
         .to_df()
     )

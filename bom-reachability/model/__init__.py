@@ -24,13 +24,22 @@ Deploy:
     queries.dependency_report` then prints the report from the deployed model.
 """
 
-from .reasoning import MAX_ASSEMBLY_HOPS, betweenness, graph, num_edges, num_nodes, p, reachable
+from .reasoning import (
+    MAX_ASSEMBLY_HOPS,
+    AssemblyStep,
+    betweenness,
+    graph,
+    num_edges,
+    num_nodes,
+    reachable,
+)
 from .schema import SKU, BillOfMaterials, model
 from .source import DATA_DIR
 
 __all__ = [
     "DATA_DIR",
     "MAX_ASSEMBLY_HOPS",
+    "AssemblyStep",
     "SKU",
     "BillOfMaterials",
     "betweenness",
@@ -38,6 +47,5 @@ __all__ = [
     "model",
     "num_edges",
     "num_nodes",
-    "p",
     "reachable",
 ]

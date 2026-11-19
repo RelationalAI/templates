@@ -35,3 +35,8 @@ incoming_edges = graph.indegree()
 # Calculate outgoing edges: number of facilities this facility connects TO.
 # Indicates facilities that coordinate with or refer patients to others.
 outgoing_edges = graph.outdegree()
+
+# Attach each result to Facility, so the deployed model publishes it for the queries.
+Facility.degree_centrality = degree_centrality
+Facility.incoming_edges = incoming_edges
+Facility.outgoing_edges = outgoing_edges

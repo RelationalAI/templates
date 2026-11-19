@@ -20,8 +20,8 @@ Run:
     queries.dependency_chain_report` then prints the report from the deployed model.
 """
 
-from .reasoning import MAX_DEPTH, p, src
+from .reasoning import MAX_DEPTH, DependencyPathStep
 from .schema import Feature, model
 from .source import DATA_DIR
 
-__all__ = ["DATA_DIR", "MAX_DEPTH", "Feature", "model", "p", "src"]
+__all__ = ["DATA_DIR", "MAX_DEPTH", "DependencyPathStep", "Feature", "model"]

@@ -1,6 +1,7 @@
 """Kill-chain attack paths, the entry-to-crown-jewel route query, and the on-attack-path flag."""
 
-from relationalai.semantics import Integer, String
+from relationalai.semantics import Hash, Integer, String, not_, where
+from relationalai.semantics.std import aggregates as aggs
 
 from .schema import Asset, model
 
@@ -48,3 +49,49 @@ model.where(
     dst.crown_jewel == "yes",
     on_path == kill.nodes(pos),
 ).define(on_path.on_attack_path("yes"))
+
+# --------------------------------------------------
+# Published paths
+# --------------------------------------------------
+# The deployed model publishes the paths the report reads, keyed by each path's id: the
+# crown-jewel kill-chains' assets, techniques, and total exposure, and the point query's
+# simple routes.
+crown_kill = [kill, a.internet_facing == "yes", dst.crown_jewel == "yes"]
+KillChainStep = model.Relationship(
+    f"kill chain {Hash:path} has {Asset:asset} at step {Integer:step}"
+)
+model.where(*crown_kill).define(KillChainStep(kill, Asset(kill.nodes), kill.nodes["index"]))
+
+# The technique at each hop is the traversed relationship's label, e.g. "Asset.exploit_to".
+KillChainHop = model.Relationship(
+    f"kill chain {Hash:path} uses {String:technique} at hop {Integer:hop}"
+)
+model.where(*crown_kill).define(
+    KillChainHop(kill, kill.relationships["relationship"], kill.relationships["index"])
+)
+
+# Exposure is a per-asset score (a stand-in for a CVSS / attack-surface metric) summed ALONG
+# each kill-chain IN PYREL: aggregates.sum(Asset(kill.nodes).exposure_score).per(kill) sums
+# the per-node value over each path's node sequence -- the core paths-only aggregation. This
+# is a position-sum (every node position, with repetition); it equals the distinct-asset sum
+# because each kill-chain here is a simple path (no asset revisited).
+KillChainExposure = model.Relationship(
+    f"kill chain {Hash:path} has total exposure {Integer:total_exposure}"
+)
+model.where(*crown_kill, total := aggs.sum(Asset(kill.nodes).exposure_score).per(kill)).define(
+    KillChainExposure(kill, total)
+)
+
+# Keep only SIMPLE routes (no asset revisited). .all().paths() has WALK semantics and no
+# native simple-path mode, so drop node-repeating walks with a negated existential over
+# positions -- expressed natively in the route's where() (no pandas).
+i, j = Integer.ref(), Integer.ref()
+RouteStep = model.Relationship(
+    f"entry-to-target route {Hash:path} has {Asset:asset} at step {Integer:step}"
+)
+model.where(
+    route,
+    src_pt.id == ENTRY_ASSET,
+    dst_pt.id == TARGET_ASSET,
+    not_(where(i < j, route.nodes(i) == route.nodes(j))),
+).define(RouteStep(route, Asset(route.nodes), route.nodes["index"]))

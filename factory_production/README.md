@@ -223,7 +223,7 @@ Use this sequence to deploy the model and query it:
 │   ├── __init__.py           # exports of the deployed model
 │   ├── schema.py             # concepts and properties
 │   ├── source.py             # sample data and its checks
-│   └── reasoning.py          # LP, sensitivity solve, and the published status and objective
+│   └── reasoning.py          # LP, sensitivity solve, and the published status, objective, and marginals
 ├── queries/
 │   └── plan_and_sensitivity.py  # report and sensitivity read-back from the deployed model
 └── data/

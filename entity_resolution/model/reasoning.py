@@ -22,7 +22,7 @@ record-level vs resolved-level contrast, the review queue (and the breach it sti
 hides), the cession plan, and pairwise precision / recall / F1.
 """
 
-from relationalai.semantics import Float, String
+from relationalai.semantics import Float, Integer, String
 from relationalai.semantics.reasoners.graph import Graph
 from relationalai.semantics.reasoners.prescriptive import Problem
 from relationalai.semantics.std import aggregates
@@ -53,7 +53,13 @@ def cluster_accepted_matches():
         Record.entity_key(rep_node.record_id)
     )
 
-    return graph.num_nodes(), graph.num_edges()
+    # The graph's size, which the deployed model publishes for the queries.
+    node_count, edge_count = Integer.ref(), Integer.ref()
+    num_nodes = model.Relationship(f"the match graph has {Integer:node_count} nodes")
+    num_edges = model.Relationship(f"the match graph has {Integer:edge_count} edges")
+    model.where(graph.num_nodes()(node_count)).define(num_nodes(node_count))
+    model.where(graph.num_edges()(edge_count)).define(num_edges(edge_count))
+    return num_nodes, num_edges
 
 
 def derive_exposure_and_breaches() -> None:

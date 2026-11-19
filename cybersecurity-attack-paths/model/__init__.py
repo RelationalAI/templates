@@ -30,12 +30,10 @@ from .reasoning import (
     MAX_PIVOTS,
     MAX_ROUTE_HOPS,
     TARGET_ASSET,
-    a,
-    dst,
-    dst_pt,
-    kill,
-    route,
-    src_pt,
+    KillChainExposure,
+    KillChainHop,
+    KillChainStep,
+    RouteStep,
 )
 from .schema import Asset, model
 from .source import DATA_DIR
@@ -47,11 +45,9 @@ __all__ = [
     "MAX_ROUTE_HOPS",
     "TARGET_ASSET",
     "Asset",
-    "a",
-    "dst",
-    "dst_pt",
-    "kill",
+    "KillChainExposure",
+    "KillChainHop",
+    "KillChainStep",
+    "RouteStep",
     "model",
-    "route",
-    "src_pt",
 ]

@@ -15,45 +15,32 @@ from model import (
     MAX_ROUTE_HOPS,
     TARGET_ASSET,
     Asset,
-    a,
-    dst,
-    dst_pt,
-    kill,
+    KillChainExposure,
+    KillChainHop,
+    KillChainStep,
+    RouteStep,
     model,
-    route,
-    src_pt,
 )
-from relationalai.semantics import Integer, not_, where
-from relationalai.semantics.std import aggregates as aggs
+from relationalai.semantics import Hash, Integer, String
 
 if __name__ == "__main__":
     print("=== Cybersecurity Attack Paths: kill-chain into crown jewels ===")
+    # The crown-jewel kill-chains the model publishes: the asset at each step, and the
+    # technique at each hop (the relationship label), as a separate projection.
+    path, step, hop, technique = Hash.ref(), Integer.ref(), Integer.ref(), String.ref()
     kill_df = (
-        model.where(
-            kill,
-            a.internet_facing == "yes",
-            dst.crown_jewel == "yes",
-        )
+        model.where(KillChainStep(path, Asset, step))
         .select(
-            kill.alias("path_id"),
-            kill.nodes["index"].alias("step"),
-            Asset(kill.nodes).id.alias("asset_id"),
-            Asset(kill.nodes).name.alias("asset_name"),
+            path.alias("path_id"),
+            step.alias("step"),
+            Asset.id.alias("asset_id"),
+            Asset.name.alias("asset_name"),
         )
         .to_df()
     )
-    # Technique at each hop (the relationship label), as a separate projection.
     hop_df = (
-        model.where(
-            kill,
-            a.internet_facing == "yes",
-            dst.crown_jewel == "yes",
-        )
-        .select(
-            kill.alias("path_id"),
-            kill.relationships["index"].alias("hop"),
-            kill.relationships["relationship"].alias("technique"),
-        )
+        model.where(KillChainHop(path, technique, hop))
+        .select(path.alias("path_id"), hop.alias("hop"), technique.alias("technique"))
         .to_df()
     )
 
@@ -83,26 +70,12 @@ if __name__ == "__main__":
     # --------------------------------------------------
     # Point query: every route between one entry and one crown jewel
     # --------------------------------------------------
-    # Pin both endpoints by id and enumerate all simple routes between them over the
-    # technique-agnostic can_reach edge (any technique, 1..MAX_ROUTE_HOPS). This is the
-    # >=1.15-era native point query (still current) -- src/dst unified to specific assets inside .all().paths().
-
-    i, j = Integer.ref(), Integer.ref()
-    # Keep only SIMPLE routes (no asset revisited). .all().paths() has WALK semantics and
-    # no native simple-path mode, so drop node-repeating walks with a negated existential
-    # over positions -- expressed natively in the route's where() (no pandas).
+    # The model pins both endpoints by id and enumerates all simple routes between them
+    # over the technique-agnostic can_reach edge (any technique, 1..MAX_ROUTE_HOPS); see
+    # model/reasoning.py.
     route_df = (
-        model.where(
-            route,
-            src_pt.id == ENTRY_ASSET,
-            dst_pt.id == TARGET_ASSET,
-            not_(where(i < j, route.nodes(i) == route.nodes(j))),
-        )
-        .select(
-            route.alias("path_id"),
-            route.nodes["index"].alias("step"),
-            Asset(route.nodes).id.alias("asset_id"),
-        )
+        model.where(RouteStep(path, Asset, step))
+        .select(path.alias("path_id"), step.alias("step"), Asset.id.alias("asset_id"))
         .to_df()
     )
     route_df["step"] = route_df["step"].astype(int)
@@ -122,21 +95,12 @@ if __name__ == "__main__":
     # Rank kill-chains by total asset exposure
     # --------------------------------------------------
     # The riskiest chain is the one whose assets carry the most exposure overall -- the
-    # first remediation target. Exposure is a per-asset score (a stand-in for a CVSS /
-    # attack-surface metric) summed ALONG each kill-chain IN PYREL:
-    # aggregates.sum(Asset(kill.nodes).exposure_score).per(kill) sums the per-node value
-    # over each path's node sequence -- the core paths-only aggregation, reusing the same
-    # kill pattern and its internet-facing/crown-jewel endpoint filters. This is a
-    # position-sum (every node position, with repetition); it equals the distinct-asset
-    # sum because each kill-chain here is a simple path (no asset revisited).
+    # first remediation target. The model sums each kill-chain's per-asset exposure along
+    # its node sequence (see model/reasoning.py).
+    total = Integer.ref()
     totals = (
-        model.where(
-            kill,
-            a.internet_facing == "yes",
-            dst.crown_jewel == "yes",
-            total := aggs.sum(Asset(kill.nodes).exposure_score).per(kill),
-        )
-        .select(kill.alias("path_id"), total.alias("total_exposure"))
+        model.where(KillChainExposure(path, total))
+        .select(path.alias("path_id"), total.alias("total_exposure"))
         .to_df()
     )
     # Join total_exposure onto the assembled chains by path id (label string-join is pandas).

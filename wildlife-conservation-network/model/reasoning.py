@@ -29,3 +29,8 @@ degree_centrality = graph.degree_centrality()
 
 # Calculate degree (number of partnerships) for each organization.
 degree = graph.degree()
+
+# Attach each result to Organization, so the deployed model publishes it for the queries.
+Organization.community = louvain_communities
+Organization.degree_centrality = degree_centrality
+Organization.degree = degree
