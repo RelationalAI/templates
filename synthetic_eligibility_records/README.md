@@ -255,12 +255,23 @@ network_match_ic = model.where(Plan.network_id != Provider.network_id).require(
 )
 ```
 
-**5. Multi-solution enumeration via `Variable.values(solution_index, value)`.** Capturing the variable subconcept from `solve_for(...)` exposes a `.values(sol_idx, val)` relationship that indexes the per-solution outputs. Binding the value slot directly to a reference Concept's `.id` walks the chosen ID back to that record's columns in one step:
+**5. Multi-solution enumeration via `Variable.values(solution_index, value)`.** Capturing the variable subconcept from `solve_for(...)` exposes a `.values(sol_idx, val)` relationship that indexes the per-solution outputs. Binding the value slot directly to a reference Concept's `.id` walks the chosen ID back to that record's rows in one step, and the model publishes each record as a relationship the report selects:
 
 ```python
 problem.configure("minizinc", time_limit_sec=60, solution_limit=MAX_RECORDS)
 NumPoints = model.Relationship(f"synthetic eligibility number of solutions is {Integer:count}")
 model.define(NumPoints(problem.num_points()))
+
+solution = Integer.ref()
+MemberRecord = model.Relationship(
+    f"synthetic eligibility record {Integer:solution} has {AgeBucket:age_bucket}, "
+    f"{Plan:plan} and {Provider:provider}"
+)
+model.where(
+    age_bucket_var.values(solution, AgeBucket.id),
+    plan_id_var.values(solution, Plan.id),
+    provider_id_var.values(solution, Provider.id),
+).define(MemberRecord(solution, AgeBucket, Plan, Provider))
 
 # in the report, after the deploy:
 points = model.select(NumPoints).to_df().iloc[:, 0].tolist()
@@ -275,11 +286,7 @@ records_df = (
         Provider.network_id.alias("provider_network"),
         Provider.name.alias("provider"),
     )
-    .where(
-        age_bucket_var.values(sol_idx, AgeBucket.id),
-        plan_id_var.values(sol_idx, Plan.id),
-        provider_id_var.values(sol_idx, Provider.id),
-    )
+    .where(MemberRecord(sol_idx, AgeBucket, Plan, Provider))
     .to_df()
     .sort_values("solution")
     .reset_index(drop=True)

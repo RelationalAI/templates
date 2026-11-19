@@ -9,14 +9,12 @@ over-constrained or the search budget expired.
 from model import (
     MAX_RECORDS,
     AgeBucket,
+    MemberRecord,
     NumPoints,
     Plan,
     Provider,
     SolveStatus,
-    age_bucket_var,
     model,
-    plan_id_var,
-    provider_id_var,
 )
 from relationalai.semantics import Integer
 
@@ -38,9 +36,8 @@ if __name__ == "__main__":
     # Inspect every generated member record
     # ----------------------------------------------
 
-    # `Variable.values(sol_idx, value)` indexes the solver's outputs across
-    # every returned solution; binding the value slot to a reference Concept's
-    # `.id` walks the chosen ID back to that record's columns in one step.
+    # `MemberRecord` holds every returned solution's age bucket, plan and
+    # provider, so one select reads each record's columns in one step.
     # Every row prints `age_years` next to `plan_type` and `plan_network` next to
     # `provider_network`, so the age-by-plan rule and the network attribution
     # can be read off the table.
@@ -55,11 +52,7 @@ if __name__ == "__main__":
             Provider.network_id.alias("provider_network"),
             Provider.name.alias("provider"),
         )
-        .where(
-            age_bucket_var.values(sol_idx, AgeBucket.id),
-            plan_id_var.values(sol_idx, Plan.id),
-            provider_id_var.values(sol_idx, Provider.id),
-        )
+        .where(MemberRecord(sol_idx, AgeBucket, Plan, Provider))
         .to_df()
         .sort_values("solution")
         .reset_index(drop=True)

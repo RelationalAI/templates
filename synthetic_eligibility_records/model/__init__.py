@@ -5,7 +5,7 @@ solve. Each record is a tuple of three categorical decisions (age bucket,
 plan, primary care provider) that satisfies CMS Medicare-eligibility,
 age-by-plan-type cascading functional dependencies, and PCP-network
 attribution. Solve as constraint satisfaction with `solution_limit=K`
-(MiniZinc) and enumerate every feasible record via
+(MiniZinc) and publish every feasible record, read via
 `Variable.values(solution_index, value)` -- synthetic-data tooling consumers
 (test-data generation, claim-engine fuzzing, RegTech rules certification)
 want a batch of records per solve, not one.
@@ -19,12 +19,10 @@ Run:
 from .reasoning import (
     MAX_RECORDS,
     SENIOR_THRESHOLD_YEARS,
+    MemberRecord,
     NumPoints,
     SolveStatus,
-    age_bucket_var,
-    plan_id_var,
     problem,
-    provider_id_var,
 )
 from .schema import AgeBucket, Plan, Provider, model
 from .source import DATA_DIR
@@ -34,13 +32,11 @@ __all__ = [
     "MAX_RECORDS",
     "SENIOR_THRESHOLD_YEARS",
     "AgeBucket",
+    "MemberRecord",
     "NumPoints",
     "Plan",
     "Provider",
     "SolveStatus",
-    "age_bucket_var",
     "model",
-    "plan_id_var",
     "problem",
-    "provider_id_var",
 ]
