@@ -13,8 +13,8 @@ the *marginals* a planner asks next:
 
 A plain solve answers "what is the most profitable production plan?". Requesting
 ``sensitivity=True`` on the solve ALSO answers the marginal questions -- in one solve,
-read straight off the variable / constraint objects (the same attribute style as
-``.name`` or ``.lower``):
+read off the variable / constraint objects (the same attribute style as ``.name`` or
+``.lower``) and published through relationships the queries select:
 
 - **Shadow price** of a factory's capacity (``cap.shadow_price``): how much total
   profit moves per extra hour of that factory. A capacity with idle hours prices at
@@ -49,20 +49,28 @@ Run:
     per-factory capacity-utilization summary from the deployed model.
 """
 
-from .reasoning import SolveStatus, TotalProfit, cap, problem, quantity_var
+from .reasoning import (
+    CapacityShadowPrice,
+    ProductBasisStatus,
+    ProductReducedCost,
+    SolveStatus,
+    TotalProfit,
+    problem,
+)
 from .schema import Factory, Product, model
 from .source import DATA_DIR, EXPECTED_FACTORIES, EXPECTED_PRODUCTS
 
 __all__ = [
+    "CapacityShadowPrice",
     "DATA_DIR",
     "EXPECTED_FACTORIES",
     "EXPECTED_PRODUCTS",
     "Factory",
     "Product",
+    "ProductBasisStatus",
+    "ProductReducedCost",
     "SolveStatus",
     "TotalProfit",
-    "cap",
     "model",
     "problem",
-    "quantity_var",
 ]

@@ -57,6 +57,23 @@ SolveStatus = model.Relationship(f"factory production solve status is {String:st
 TotalProfit = model.Relationship(f"factory production total profit is {Float:profit}")
 model.define(SolveStatus(problem.termination_status()), TotalProfit(problem.objective_value()))
 
+# The sensitivity marginals, which the deployed model publishes for the queries: each factory
+# capacity's shadow price and each product's reduced cost and basis status, keyed by the entity
+# they belong to.
+capacity_price, reduced_cost, basis_status = Float.ref(), Float.ref(), String.ref()
+CapacityShadowPrice = model.Relationship(f"{Factory} has capacity shadow price {Float:shadow_price}")
+ProductReducedCost = model.Relationship(f"{Product} has reduced cost {Float:reduced_cost}")
+ProductBasisStatus = model.Relationship(f"{Product} has basis status {String:basis_status}")
+model.where(cap.shadow_price(capacity_price)).define(
+    CapacityShadowPrice(cap.factory, capacity_price)
+)
+model.where(quantity_var.reduced_cost(reduced_cost)).define(
+    ProductReducedCost(quantity_var.product, reduced_cost)
+)
+model.where(quantity_var.basis_status(basis_status)).define(
+    ProductBasisStatus(quantity_var.product, basis_status)
+)
+
 # --------------------------------------------------
 # Customize
 # --------------------------------------------------

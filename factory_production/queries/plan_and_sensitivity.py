@@ -10,13 +10,16 @@ optimum; a failed check stops the report with an error.
 from model import (
     EXPECTED_FACTORIES,
     EXPECTED_PRODUCTS,
+    CapacityShadowPrice,
+    Factory,
     Product,
+    ProductBasisStatus,
+    ProductReducedCost,
     SolveStatus,
     TotalProfit,
-    cap,
     model,
-    quantity_var,
 )
+from relationalai.semantics import Float, String
 
 if __name__ == "__main__":
     status = model.select(SolveStatus).to_df().iloc[:, 0].tolist()
@@ -65,14 +68,17 @@ if __name__ == "__main__":
             raise SystemExit(f"{product_name}: expected {expected_qty}, got {actual_qty}")
 
     # --- Capacity shadow prices: which factory to expand first ----------------------
-    # A constraint carries its declared entity key as a back-pointer (cap.factory), so a
-    # shadow price joins to that factory's own data by KEY -- no name parsing, no pandas join.
+    # The model publishes each shadow price keyed by the factory its constraint was declared
+    # over (keyed_by), so it joins to that factory's own data by KEY -- no name parsing, no
+    # pandas join.
+    shadow_price = Float.ref()
     cap_df = (
         model.select(
-            cap.factory.name.alias("factory"),
-            cap.factory.avail.alias("avail"),
-            cap.shadow_price.alias("shadow_price"),
+            Factory.name.alias("factory"),
+            Factory.avail.alias("avail"),
+            shadow_price.alias("shadow_price"),
         )
+        .where(CapacityShadowPrice(Factory, shadow_price))
         .to_df()
         .sort_values("factory", ignore_index=True)
     )
@@ -92,15 +98,17 @@ if __name__ == "__main__":
         raise SystemExit("factories with idle hours should price their capacity at 0")
 
     # --- Reduced costs: which products are demand-capped? ---------------------------
-    # Each marginal reads straight off the variable; the variable's back-pointer
-    # (quantity_var.product) joins it to the product's factory by ENTITY KEY.
+    # The model publishes each product's reduced cost and basis status keyed by the product,
+    # so they join to the product's factory by ENTITY KEY.
+    reduced_cost, basis_status = Float.ref(), String.ref()
     rc_df = (
         model.select(
-            quantity_var.product.factory.name.alias("factory"),
-            quantity_var.product.name.alias("product"),
-            quantity_var.reduced_cost.alias("reduced_cost"),
-            quantity_var.basis_status.alias("basis_status"),
+            Product.factory.name.alias("factory"),
+            Product.name.alias("product"),
+            reduced_cost.alias("reduced_cost"),
+            basis_status.alias("basis_status"),
         )
+        .where(ProductReducedCost(Product, reduced_cost), ProductBasisStatus(Product, basis_status))
         .to_df()
         .sort_values(["factory", "product"], ignore_index=True)
     )
