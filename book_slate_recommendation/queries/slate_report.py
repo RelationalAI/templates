@@ -53,15 +53,13 @@ if __name__ == "__main__":
         Candidate.book_id.alias("book_id"),
         Candidate.path_count_total.alias("path_count_total"),
     ).to_df()
-    for col in ("user_id", "book_id", "path_count_total"):
-        candidate_df[col] = candidate_df[col].astype(int)
     # The read history, book attributes, authorship, subjects and users all
     # come from the deployed model.
     rating = Integer.ref()
     reads_df = model.select(
         User.id.alias("user_id"),
         Book.id.alias("book_id"),
-    ).where(User.read(User, Book, rating)).to_df().astype(int)
+    ).where(User.read(User, Book, rating)).to_df()
     unread = candidate_df.merge(
         reads_df,
         on=["user_id", "book_id"],
@@ -75,24 +73,19 @@ if __name__ == "__main__":
         Book.id.alias("book_id"),
         Book.triangle_count.alias("triangle_count"),
     ).to_df()
-    # PyRel returns Int128Array-backed columns; cast to native int so
-    # pandas comparisons against Python ints work in the feasibility
-    # checks below.
-    triangle_df["book_id"] = triangle_df["book_id"].astype(int)
-    triangle_df["triangle_count"] = triangle_df["triangle_count"].astype(int)
     books_df = model.select(
         Book.id.alias("book_id"),
         Book.age_days.alias("age_days"),
         Book.in_house.alias("in_house"),
-    ).to_df().astype(int)
+    ).to_df()
     book_authors_df = model.select(
         Book.id.alias("book_id"),
         Author.id.alias("author_id"),
-    ).where(Book.written_by(Book, Author)).to_df().astype(int)
+    ).where(Book.written_by(Book, Author)).to_df()
     book_subjects_df = model.select(
         Book.id.alias("book_id"),
         Subject.id.alias("subject_id"),
-    ).where(Book.about(Book, Subject)).to_df().astype(int)
+    ).where(Book.about(Book, Subject)).to_df()
     unread_with_book = unread.merge(books_df, on="book_id", how="left").merge(
         triangle_df, on="book_id", how="left"
     )
@@ -119,7 +112,7 @@ if __name__ == "__main__":
 
     max_explanation = unread.groupby("user_id")["path_count_total"].apply(_max_explanation_score)
 
-    all_users = set(model.select(User.id.alias("user_id")).to_df()["user_id"].astype(int))
+    all_users = set(model.select(User.id.alias("user_id")).to_df()["user_id"])
     absent_from_unread = sorted(all_users - set(unread_counts.index))
     short_total = sorted(unread_counts[unread_counts < SLATE_SIZE_K].index.tolist())
     short_fresh = sorted(list(all_users - set(fresh_counts[fresh_counts >= FRESHNESS_FLOOR].index)))
