@@ -16,7 +16,7 @@ def parse(path: str) -> ast.Module:
 class RefactoredTemplateContractTests(unittest.TestCase):
     def test_portfolio_explorer_declarations_are_stable_schema_symbols(self) -> None:
         schema_module = parse("portfolio_balancing/model/schema.py")
-        runner_module = parse("portfolio_balancing/portfolio_balancing.py")
+        runner_module = parse("portfolio_balancing/queries/portfolio_report.py")
 
         declarations: dict[str, set[str]] = {
             "Concept": set(),
