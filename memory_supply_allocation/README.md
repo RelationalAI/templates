@@ -57,6 +57,26 @@ This template shows how RelationalAI answers that question on a single shared mo
 - A Snowflake account that has the RAI Native App installed.
 - The one-time model deployment setup on that account, done by an account administrator: follow [Set up model deployment](https://private.relational.ai/early-access/model-deploy-setup) through **Governed setup**, **PAT authentication**, and steps 1-2 of **Additional setup for the prescriptive reasoner** (the Quickstart covers this template's own schemas). It gives you a model role, a programmatic access token (PAT) stored as a secret, an external access integration, a PAT user, and a warehouse.
 - A Snowflake user that holds the model role.
+- The predictive reasoner's compute pool added to the compute-pool network rule that admits the PAT user (the rule from the prescriptive reasoner setup), because the deployed model runs this template's GNN training, scoring, and registration jobs as the PAT user. Check the pool names in your account with `SHOW COMPUTE POOLS` (for example `RELATIONAL_AI_HIGHMEM_X64_S_ML`), and have an administrator run `ALTER NETWORK RULE <PAT_POOL_NETWORK_RULE> SET VALUE_LIST = (...)`, listing the pools already in the rule plus the predictive one.
+
+Those jobs need grants for the PAT user's role (`<PAT_ROLE>`) and matching caller grants for the RAI Native App. Once the Quickstart's first step has created this template's schemas, have an administrator run:
+
+```sql
+GRANT USAGE ON WAREHOUSE <PAT_WAREHOUSE> TO ROLE <PAT_ROLE>;
+GRANT USAGE ON DATABASE <DB> TO ROLE <PAT_ROLE>;
+GRANT USAGE ON SCHEMA <DB>.MEMORY_SUPPLY_ALLOCATION_META TO ROLE <PAT_ROLE>;
+GRANT SELECT ON ALL VIEWS IN SCHEMA <DB>.MEMORY_SUPPLY_ALLOCATION_META TO ROLE <PAT_ROLE>;
+GRANT SELECT ON FUTURE VIEWS IN SCHEMA <DB>.MEMORY_SUPPLY_ALLOCATION_META TO ROLE <PAT_ROLE>;
+GRANT USAGE, CREATE TABLE, CREATE STAGE, CREATE FILE FORMAT ON SCHEMA <DB>.MEMORY_SUPPLY_ALLOCATION TO ROLE <PAT_ROLE>;
+GRANT CREATE EXPERIMENT, CREATE MODEL ON SCHEMA <DB>.MEMORY_SUPPLY_ALLOCATION TO ROLE <PAT_ROLE>;
+GRANT CALLER USAGE, CREATE TABLE, CREATE STAGE, CREATE FILE FORMAT ON SCHEMA <DB>.MEMORY_SUPPLY_ALLOCATION TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT, INSERT ON ALL TABLES IN SCHEMA <DB>.MEMORY_SUPPLY_ALLOCATION TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER READ, WRITE ON ALL STAGES IN SCHEMA <DB>.MEMORY_SUPPLY_ALLOCATION TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER USAGE ON ALL FILE FORMATS IN SCHEMA <DB>.MEMORY_SUPPLY_ALLOCATION TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER CREATE EXPERIMENT, CREATE MODEL ON SCHEMA <DB>.MEMORY_SUPPLY_ALLOCATION TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER USAGE, MODIFY ON ALL EXPERIMENTS IN SCHEMA <DB>.MEMORY_SUPPLY_ALLOCATION TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER OWNERSHIP ON ALL MODELS IN SCHEMA <DB>.MEMORY_SUPPLY_ALLOCATION TO APPLICATION <RAI_APP_NAME>;
+```
 
 The bundled CSVs ship with the template; there is no source-table setup. The GNN trains on the predictive reasoner and stores its experiments and registered versions in the template's public schema.
 
@@ -90,6 +110,7 @@ GRANT INHERITED CALLER SELECT ON ALL VIEWS IN SCHEMA <DB>.MEMORY_SUPPLY_ALLOCATI
 GRANT INHERITED CALLER INSERT, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA <DB>.MEMORY_SUPPLY_ALLOCATION_META TO APPLICATION <RAI_APP_NAME>;
 GRANT CALLER CREATE TABLE, CREATE STAGE ON SCHEMA <DB>.MEMORY_SUPPLY_ALLOCATION_META TO APPLICATION <RAI_APP_NAME>;
 GRANT INHERITED CALLER READ, WRITE ON ALL STAGES IN SCHEMA <DB>.MEMORY_SUPPLY_ALLOCATION_META TO APPLICATION <RAI_APP_NAME>;
+
 ```
 
 Use this sequence to deploy the model, train the GNN, and query the rolling-horizon plans:
@@ -375,12 +396,6 @@ The base + elevated service floors define a minimum amount of supply each custom
 <summary>Warning: <code>Dependency does not have a upstream_id property declared</code></summary>
 
 This is a known false-positive of RAI's static typo-detection check that fires during model construction when same-typed `identify_by` fields are processed. The property is correctly auto-created (confirm by checking that Photonic Lithography reaches its 95% elevated floor in the output). The warning has no effect on results.
-</details>
-
-<details>
-<summary><code>TypeError: '&gt;' not supported between instances of 'Int128Array' and 'int'</code></summary>
-
-Integer columns read into pandas, such as a dependency chain's `hops` and `step`, can arrive as `Int128Array`. Cast them with `.astype(int)` before comparing or filtering in pandas. The report already does this for `hops` and `step`; if you read more integer columns, cast them too.
 </details>
 
 <details>

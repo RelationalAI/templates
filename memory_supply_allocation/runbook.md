@@ -149,8 +149,6 @@ model.where(
 ).define(Customer.depends_on(c_down, c_up))
 ```
 
-Cast `PathTraversal.length` to int before pandas comparisons (the paths library returns Int128).
-
 **Prompt**
 
 ```

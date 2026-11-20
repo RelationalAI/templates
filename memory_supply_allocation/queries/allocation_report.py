@@ -199,8 +199,6 @@ def main() -> None:
         )
         .to_df()
     )
-    paths_df["hops"] = paths_df["hops"].astype(int)
-    paths_df["step"] = paths_df["step"].astype(int)
 
     chains = (
         paths_df.sort_values(["path_id", "step"])
