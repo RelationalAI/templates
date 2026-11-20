@@ -27,7 +27,6 @@ if __name__ == "__main__":
         )
         .to_df()
     )
-    paths_df["step"] = paths_df["step"].astype(int)
     # Projecting p.nodes can emit duplicate (path, step) rows -- dedupe to one node
     # per step before reassembly.
     paths_df = paths_df.drop_duplicates(["path_id", "step"]).sort_values(["path_id", "step"])
@@ -65,8 +64,6 @@ if __name__ == "__main__":
         .select(Feature.id.alias("feature_id"), paths_started.alias("paths_downstream"))
         .to_df()
     )
-    # Count column arrives as Int128 -- cast before pandas merge/arithmetic.
-    paths_started_df["paths_downstream"] = paths_started_df["paths_downstream"].astype(int)
 
     # Read the persisted depth back for the display table. Features with no outgoing
     # path (the leaf dashboards) have no max_downstream_depth row -- fill them as 0.
@@ -74,9 +71,6 @@ if __name__ == "__main__":
         Feature.id.alias("feature_id"),
         Feature.max_downstream_depth.alias("max_downstream_depth"),
     ).to_df()
-    max_depth_df["max_downstream_depth"] = max_depth_df["max_downstream_depth"].astype(
-        "Int64"
-    )
 
     # Build the per-feature display table from the query results above (NOT from a
     # pandas groupby on chains): paths_downstream from the count query, depth from the
