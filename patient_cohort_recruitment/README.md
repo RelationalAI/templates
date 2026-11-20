@@ -66,7 +66,7 @@ The bundled CSVs are illustrative, fully synthetic demo data (e.g. patient names
 
 ### Tools
 - Python >= 3.10
-- RelationalAI Python SDK (`relationalai == 1.1.0`)
+- RelationalAI Python SDK (`relationalai == 2.1.1`)
 
 ## Quickstart
 

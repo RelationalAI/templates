@@ -52,7 +52,7 @@ The value of the template is that you can try this entire workflow with nothing 
 ### Tools
 
 - Python 3.10 or later.
-- `relationalai` version 1.13.0 or later. DuckDB is included with the package, and 1.13 is the minimum version for the local path.
+- `relationalai` 2.1.1, the version pinned in `pyproject.toml`. DuckDB is included with the package.
 
 Local DuckDB execution relies on deploy mode, which the package currently flags as experimental.
 
@@ -145,7 +145,7 @@ For the full concept and property definitions, see `transaction_screening_local.
 
 ## How it works
 
-The script starts by configuring a local DuckDB connection with automatic deployment, so the model materializes and runs on your machine with no Snowflake connection. It then loads the transfer ledger from CSV and derives an `Account` for every party seen at either end of a transfer.
+The script starts by configuring a local DuckDB connection with a `deployment` section, so the model materializes and runs on your machine with no Snowflake connection. The section sets `public_schema` (`main`, where the model's views are published), `identity.internal_schema` (`main_internal`, where RelationalAI keeps the model's internal objects), and `auto_deploy`, which deploys the model before each query. It then loads the transfer ledger from CSV and derives an `Account` for every party seen at either end of a transfer.
 
 Next it builds the `transfers_to` relationship, linking each sender to its receiver, one row per transfer. The classification rules follow as declarative derived relationships: an account is flagged as structuring when it sends a transfer just under the reporting threshold, and as a large sender when it sends a transfer over the large-transfer limit. An account is a suspect if either flag holds — expressed as two rules that together read as a logical OR.
 
@@ -186,13 +186,13 @@ DuckDB tables need a three-part name. Reference them as `memory.<schema>.<table>
 <details>
 <summary>A query falls back to a Snowflake path, or reads an empty model relation</summary>
 
-Make sure the configuration includes a `deployment` section with `auto_deploy` set to true, so that the model is routed to the DuckDB executor and materialized before queries run.
+Make sure the configuration includes a `deployment` section with `public_schema`, `identity.internal_schema`, and `auto_deploy` set to true, so that the model is routed to the DuckDB executor and materialized before queries run.
 </details>
 
 <details>
 <summary><code>Existing object ... is of type Table, trying to replace with type View</code></summary>
 
-DuckDB is case-insensitive, so a source table named like a concept collides with the installed view. Keep source tables in a schema named `raw`, separate from the model install schema named `main`.
+DuckDB is case-insensitive, so a source table named like a concept collides with the installed view. Keep source tables in a schema named `raw`, separate from the model's public schema `main`.
 </details>
 
 ## Learn more

@@ -4,8 +4,8 @@ Multi-reasoner pipeline that picks K books per reader AND orders
 them by slate position. Slot 1 is hero (top of row); position-decay
 engagement is the canonical recsys model, so the order matters as
 much as the selection. The architectural centerpiece is bounded
-heterogeneous-KG walks via the PyRel paths library
-(``relationalai.semantics.std.paths``): the walks generate the
+heterogeneous-KG walks via the PyRel path library
+(``relationalai.semantics.std.path``): the walks generate the
 Candidate concept and the per-(user, candidate) explanation
 evidence that feeds the Prescriptive reasoner. The Graph
 reasoner separately contributes per-Book ``triangle_count``
@@ -13,15 +13,16 @@ over the similarity graph, which the hero-pin IC ties to slot
 1 so the highest-engagement position carries graph-derived
 structural quality:
 
-- Bounded KG walks (paths library, central):
-  ``Item.connected_to.repeat(1, 2).all_paths()`` walks enumerate
-  ``User -> read_Book`` (length 1; pruned downstream by the
+- Bounded KG walks (path library, central):
+  ``model.path(user, Item.connected_to.repeat(1, 2), book)`` matches
+  ``User -> read_Book`` walks (length 1; pruned downstream by the
   already-read exclusion) and ``User -> read_Book -> similar_Book``
-  (length 2). Each walker-reachable (user, book) becomes a
-  ``Candidate``. The per-(user, candidate) typed counts
-  (``path_count_via_author``, ``_via_subject``, ``_via_kg_walk``)
-  feed the engagement-weighted explanation floor and objective, and
-  surface as the per-pick explanation block.
+  walks (length 2). Each user and book joined by a walk
+  (``.exists()``) becomes a ``Candidate``. The per-(user, candidate)
+  typed counts (``path_count_via_author``, ``_via_subject``,
+  ``_via_kg_walk``, the last from ``.all().count()``) feed the
+  engagement-weighted explanation floor and objective, and surface
+  as the per-pick explanation block.
 - Graph reasoner (hero pin): triangle count over ``Book.similar_to``
   per Book. Drives ``hero_pin_ic`` -- slot 1 (top of row) must come
   from the densely-embedded subset, so the most-impressed position
@@ -63,7 +64,6 @@ from relationalai.semantics import (
 )
 from relationalai.semantics.reasoners.graph import Graph
 from relationalai.semantics.reasoners.prescriptive import Problem
-from relationalai.semantics.std.paths import PathTraversal
 
 # --------------------------------------------------
 # Configure inputs
@@ -374,37 +374,36 @@ model.define(Item.connected_to(b_s2, b_s1)).where(Book.similar_to(b_s1, b_s2))
 # --------------------------------------------------
 
 # Walk the unified ``Item.connected_to`` edge from each User up to
-# MAX_HOPS hops. The path-walker bounds enumeration to MAX_HOPS, so
-# the candidate set is the bounded reachable set under the KG.
-kg_paths = model.path(
+# MAX_HOPS hops. The path pattern bounds the walk to MAX_HOPS, so the
+# candidate set is the bounded reachable set under the KG. Naming the
+# endpoints as a User and a Book lets the same pattern answer both
+# "is this book reachable from this user" (``exists``, no
+# enumeration) and "how many walks reach it" (``count``).
+walk_user, walk_book = User.ref(), Book.ref()
+kg_walks = model.path(
+    walk_user,
     Item.connected_to.repeat(1, MAX_HOPS),
-).all_paths()
+    walk_book,
+)
 
-# Candidate set: any (user, book) reached by a User-anchored bounded
-# KG walk ending at a Book node. The already-read exclusion lands as
-# a ``slot == K+1`` IC (``exclude_read_ic`` below) rather than as a
-# pre-pruning filter on this rule -- which keeps the candidate-
-# derivation rule a pure positive join over the path walker, at the
-# minor CSP cost of a few wasted integer variables forced to K+1.
+# Candidate set: any (user, book) joined by a bounded KG walk. Books the
+# user already read stay candidates; the already-read exclusion below
+# forces them to the unpicked slot K+1.
 Candidate = model.Concept(
     "Candidate",
     identify_by={"user_id": Integer, "book_id": Integer},
 )
-u_cand, b_cand = User.ref(), Book.ref()
-p_cand = PathTraversal.ref()
-model.define(Candidate.new(user_id=u_cand.id, book_id=b_cand.id)).where(
-    kg_paths(p_cand),
-    p_cand.nodes(0, u_cand),
-    p_cand.nodes(p_cand.length, b_cand),
+model.define(Candidate.new(user_id=walk_user.id, book_id=walk_book.id)).where(
+    kg_walks.exists(),
 )
 
 # Per-(user, candidate) explanation features: counts of distinct
 # typed connections between the candidate and the user's read
 # history.
 #
-# Each ``count`` expression is followed by ``| 0`` so the property is
-# defined for *every* Candidate (not only those with at least one
-# match). PyRel aggregates over an empty group produce no row, and
+# The author and subject ``count`` expressions are followed by ``| 0``
+# so the property is defined for *every* Candidate (not only those
+# with at least one match). PyRel aggregates over an empty group produce no row, and
 # the position-weighted explanation IC would silently drop Candidates
 # whose property is undefined.
 #
@@ -467,21 +466,13 @@ model.define(Candidate.path_count_via_subject(c, n)).where(
 
 # via-walk: number of bounded heterogeneous KG paths from this user
 # to the candidate (the actual paths-walk count -- the headline
-# explanation-strength signal).
-p_s = PathTraversal.ref()
+# explanation-strength signal). Every Candidate has at least one walk,
+# so this count is always defined.
 model.define(Candidate.path_count_via_kg_walk(c, n)).where(
     Candidate(c),
-    n
-    == count(p_s)
-    .per(c)
-    .where(
-        kg_paths(p_s),
-        c.user_id == u_c.id,
-        c.book_id == b_c.id,
-        p_s.nodes(0, u_c),
-        p_s.nodes(p_s.length, b_c),
-    )
-    | 0,
+    c.user_id == walk_user.id,
+    c.book_id == walk_book.id,
+    n == kg_walks.all().count().per(walk_user, walk_book),
 )
 
 # Total: sum across types as a single integer feature for cold-start
@@ -563,8 +554,11 @@ problem.solve_for(
 # ``Candidate.slot <= SLATE_SIZE_K`` lives inside ``count``'s second
 # argument, not the outer ``where`` -- PyRel rejects decision-
 # variable-dependent expressions in top-level ``where`` clauses
-# because those iterate over data rows.
-slate_size_ic = model.require(
+# because those iterate over data rows. Every per-group IC below names
+# its group keys (``Candidate.user_id``, plus ``Slot``, ``Author`` or
+# ``Subject``) in the ``where`` clause: that clause is what gives the
+# constraint one instance per group.
+slate_size_ic = model.where(Candidate.user_id).require(
     count(Candidate, Candidate.slot <= SLATE_SIZE_K).per(Candidate.user_id) == SLATE_SIZE_K
 )
 problem.satisfy(slate_size_ic)
@@ -576,7 +570,7 @@ problem.satisfy(slate_size_ic)
 # positions 1..K. Per-pair count cap is the CSP-native shape for
 # all-different over decision variables once you also pin the
 # total-pick count.
-slot_uniqueness_ic = model.require(
+slot_uniqueness_ic = model.where(Candidate.user_id, Slot).require(
     count(Candidate, Candidate.slot == Slot.pos).per(Candidate.user_id, Slot) <= 1
 )
 problem.satisfy(slot_uniqueness_ic)
@@ -608,6 +602,7 @@ problem.satisfy(exclude_read_ic)
 author_uniqueness_ic = model.where(
     Book.id == Candidate.book_id,
     Book.written_by(Book, Author),
+    Candidate.user_id,
 ).require(count(Candidate, Candidate.slot <= SLATE_SIZE_K).per(Candidate.user_id, Author) <= 1)
 problem.satisfy(author_uniqueness_ic)
 
@@ -620,6 +615,7 @@ problem.satisfy(author_uniqueness_ic)
 subject_span_ic = model.where(
     Book.id == Candidate.book_id,
     Book.about(Book, Subject),
+    Candidate.user_id,
 ).require(
     count(Candidate, Candidate.slot <= SLATE_SIZE_K).per(Candidate.user_id, Subject)
     <= MAX_PER_SUBJECT
@@ -631,6 +627,7 @@ problem.satisfy(subject_span_ic)
 freshness_ic = model.where(
     Book.id == Candidate.book_id,
     Book.age_days <= FRESH_WINDOW_DAYS,
+    Candidate.user_id,
 ).require(
     count(Candidate, Candidate.slot <= SLATE_SIZE_K).per(Candidate.user_id) >= FRESHNESS_FLOOR
 )
@@ -640,6 +637,7 @@ problem.satisfy(freshness_ic)
 originals_ic = model.where(
     Book.id == Candidate.book_id,
     Book.in_house == 1,
+    Candidate.user_id,
 ).require(
     count(Candidate, Candidate.slot <= SLATE_SIZE_K).per(Candidate.user_id) >= ORIGINALS_FLOOR
 )
@@ -648,6 +646,7 @@ problem.satisfy(originals_ic)
 # Cold-start cap: at most COLD_START_CAP weakly-explained picks.
 cold_start_ic = model.where(
     Candidate.path_count_total < WEAK_EXPLANATION_THRESHOLD,
+    Candidate.user_id,
 ).require(count(Candidate, Candidate.slot <= SLATE_SIZE_K).per(Candidate.user_id) <= COLD_START_CAP)
 problem.satisfy(cold_start_ic)
 
@@ -661,6 +660,7 @@ problem.satisfy(cold_start_ic)
 hero_pin_ic = model.where(
     Book.id == Candidate.book_id,
     Book.triangle_count >= HERO_EMBEDDEDNESS_THRESHOLD,
+    Candidate.user_id,
 ).require(count(Candidate, Candidate.slot == 1).per(Candidate.user_id) >= 1)
 problem.satisfy(hero_pin_ic)
 
@@ -671,7 +671,7 @@ problem.satisfy(hero_pin_ic)
 # picked items without needing an indicator multiplier. Top picks
 # count more, matching the engagement-decay model the objective
 # also encodes.
-explanation_ic = model.require(
+explanation_ic = model.where(Candidate.user_id).require(
     sum((SLATE_SIZE_K + 1 - Candidate.slot) * Candidate.path_count_total).per(Candidate.user_id)
     >= EXPLANATION_FLOOR
 )

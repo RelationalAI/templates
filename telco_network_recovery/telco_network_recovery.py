@@ -894,7 +894,7 @@ for hub_id in seed_hub_ids:
     i, j = Integer.ref(), Integer.ref()
     p = model.path(
         seed, Subscriber.calls_via.repeat(1, PATH_MAX_HOPS)
-    ).all_paths()
+    ).all().paths()
     score_df = model.where(
         seed.id == hub_id,
         p,
@@ -921,7 +921,7 @@ for hub_id in seed_hub_ids:
         seed_n.id == hub_id,
         pn := model.path(
             seed_n, Subscriber.calls_via.repeat(1, PATH_MAX_HOPS)
-        ).all_paths(),
+        ).all().paths(),
     ).select(
         pn.alias("path_id"),
         pn.nodes["index"].alias("step"),
@@ -937,7 +937,7 @@ for hub_id in seed_hub_ids:
         seed_h.id == hub_id,
         ph := model.path(
             seed_h, Subscriber.calls_via.repeat(1, PATH_MAX_HOPS)
-        ).all_paths(),
+        ).all().paths(),
     ).select(
         ph.alias("path_id"),
         ph.relationship_fields["index"].alias("hop"),

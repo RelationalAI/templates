@@ -184,7 +184,7 @@ Focus on the first changes most users will make.
 
 ### Tune parameters
 
-- **Assembly-path depth** — `MAX_ASSEMBLY_HOPS` (the `repeat(1, MAX_ASSEMBLY_HOPS)` bound) caps how many tiers `all_paths()` enumerates. Raise it if your BOM is deeper than the bundled three tiers; lower it to keep path counts manageable on wide structures.
+- **Assembly-path depth** — `MAX_ASSEMBLY_HOPS` (the `repeat(1, MAX_ASSEMBLY_HOPS)` bound) caps how many tiers `.all().paths()` enumerates. Raise it if your BOM is deeper than the bundled three tiers; lower it to keep path counts manageable on wide structures.
 
 ### Extend the model
 

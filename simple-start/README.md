@@ -115,7 +115,7 @@ At a high level, the notebook:
 
 1. Creates and populates the `CONNECTIONS` table in Snowflake.
 2. Defines `Station` and `Connection` concepts and loads them from the Snowflake source table.
-3. Builds an undirected graph from the station connectivity relation.
+3. Builds an undirected graph with `Station` as the node concept and the station connectivity relation as its edges.
 4. Lists the resulting edges as a table.
 5. Computes betweenness centrality and queries the scores into a pandas DataFrame.
 

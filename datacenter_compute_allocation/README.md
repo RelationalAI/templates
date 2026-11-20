@@ -49,7 +49,7 @@ This template models that allocation as a scenario sweep across three axes (powe
 - Reverse-PageRank scoring on a workload dependency DAG (4-5 deep chains rooted at frontier pretrains)
 - Declarative hardware-compatibility rules + lex-emulating priority weights (P0=100, P1=10, P2=1)
 - Two headline Pareto frontiers (margin × revenue and diversity × revenue) at the 100% envelope, with the 85% envelope drawn as an overlay sensitivity band
-- Per-cell results queryable directly from the ontology — realized revenue, energy + depreciation cost, anchor share, per-workload-type counts, binding-constraint signal (OPTIMAL vs INFEASIBLE)
+- Per-cell results queryable directly from the ontology — realized revenue, energy + depreciation cost, anchor share, per-workload-type counts, binding-constraint signal (OPTIMAL vs INFEASIBLE, or FEASIBLE vs UNSOLVED when the solve stops at its time limit)
 
 ## What's included
 
@@ -142,13 +142,13 @@ Set `EXP_DATABASE` at the top of `datacenter_compute_allocation.py` to that data
 
    ```text
    STAGE 4: PRESCRIPTIVE -- compute allocation MIP (24-cell sweep)
-     Termination status: OPTIMAL
-     Per-cell summary (24 cells: 16 optimal, 8 infeasible)
+     Termination status: TIME_LIMIT
+     Per-cell summary (24 cells: 16 feasible, 8 unsolved)
      AllocationPlan singleton (100pct / unconstrained / none):
        110 workloads assigned, $25.28M revenue, 83% margin, 95% anchor share
    ```
 
-   Full stage-by-stage log (GNN distribution, PageRank scores, both Pareto frontiers, the demand-scenario overlay, and expected per-cell behavior) is in `runbook.md`. GNN probabilities depend on seed and predictive engine; the `--no-gnn` fallback values are deterministic. Stage 4 reaches `OPTIMAL` in seconds with Gurobi; the open-source HiGHS default returns a feasible solution at the `time_limit_sec=240` wall and may surface `TIME_LIMIT` (signal, not failure, per `rai-prescriptive-results`). Set `SOLVER` in `datacenter_compute_allocation.py` to switch.
+   Full stage-by-stage log (GNN distribution, PageRank scores, both Pareto frontiers, the demand-scenario overlay, and expected per-cell behavior) is in `runbook.md`. GNN probabilities depend on seed and predictive engine; the `--no-gnn` fallback values are deterministic. The output above is from the open-source HiGHS default, which returns a feasible solution at the `time_limit_sec=240` wall and reports `TIME_LIMIT` (signal, not failure, per `rai-prescriptive-results`), so cells are labelled FEASIBLE or UNSOLVED. With Gurobi, Stage 4 reaches `OPTIMAL` in seconds and the cells are labelled OPTIMAL or INFEASIBLE. Set `SOLVER` in `datacenter_compute_allocation.py` to switch.
 
 ## Template structure
 

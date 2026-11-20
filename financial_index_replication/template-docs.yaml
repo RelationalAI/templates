@@ -295,13 +295,13 @@ guided_walkthrough:
       focus:
         file: financial_index_replication.py
         anchors:
-          - start: problem.solve("highs", time_limit_sec=240)
+          - start: problem.solve("highs", time_limit_sec=300)
             end: return monthly_rms * sqrt(MONTHS_PER_YEAR)
       references:
         problem.solve(...):
           anchor:
-            start: problem.solve("highs", time_limit_sec=240)
-            end: problem.solve("highs", time_limit_sec=240)
+            start: problem.solve("highs", time_limit_sec=300)
+            end: problem.solve("highs", time_limit_sec=300)
         model.select(...):
           anchor:
             start: model.select(

@@ -2,7 +2,7 @@
 
 from relationalai.semantics import Integer, Model, String
 
-model = Model("Template", use_lqp=False)
+model = Model("Template")
 
 Item = model.Concept("Item", identify_by={"id": Integer})
 Item.name = model.Property(f"{Item} has {String:name}")

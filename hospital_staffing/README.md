@@ -52,7 +52,7 @@ The result is a Pareto frontier that reveals exactly how much overtime cost each
 
 ### Tools
 - Python >= 3.10
-- RelationalAI Python SDK (`relationalai`) >= 1.0.14
+- RelationalAI Python SDK (`relationalai`) == 2.1.1
 
 ## Quickstart
 

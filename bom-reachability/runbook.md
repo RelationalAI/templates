@@ -45,7 +45,7 @@ Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` 
 
 **Prompt:** /rai-graph-analysis Reachability gives dependency pairs, but we want the actual build sequences. Enumerate every bottom-up assembly chain — each ordered route from a raw material up through its components to a finished good. Treat an input that feeds an output as a step in the chain.
 
-**Response:** Where reachability returns pairs, path enumeration returns the ordered build routes. Deriving a SKU→SKU "feeds into" edge from the `BillOfMaterials` intermediary (input feeds output — the reverse of "depends on") and enumerating it with `.all_paths()` yields 18 assembly paths (up to 4 hops). Because the BOM is acyclic, every enumerated path is already a simple chain — no cycle risk. They range from 1-hop direct feeds (e.g. Mobile Processor A15 → ProPhone X1) to 2-hop chains like NAND Flash Memory Die → Mobile Processor A15 → ProPhone X1.
+**Response:** Where reachability returns pairs, path enumeration returns the ordered build routes. Deriving a SKU→SKU "feeds into" edge from the `BillOfMaterials` intermediary (input feeds output — the reverse of "depends on") and enumerating it with `.all().paths()` yields 18 assembly paths (up to 4 hops). Because the BOM is acyclic, every enumerated path is already a simple chain — no cycle risk. They range from 1-hop direct feeds (e.g. Mobile Processor A15 → ProPhone X1) to 2-hop chains like NAND Flash Memory Die → Mobile Processor A15 → ProPhone X1.
 
 ## 6. Maximal chains and assembly depth
 

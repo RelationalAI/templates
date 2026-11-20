@@ -53,7 +53,7 @@ This template enumerates multi-step attack paths across an enterprise asset grap
 ### Tools
 
 - Python >= 3.10.
-- `relationalai` SDK >= 1.21 (path enumeration with multi-edge patterns is a preview capability) and the `rai` CLI, both installed by the Quickstart steps below.
+- `relationalai` SDK 2.1.1, the version pinned in `pyproject.toml` (path enumeration with multi-edge patterns is a preview capability) and the `rai` CLI, both installed by the Quickstart steps below.
 - OS notes: works on macOS, Linux, and Windows; the Quickstart's virtual-environment activation command assumes macOS or Linux.
 
 ## Quickstart

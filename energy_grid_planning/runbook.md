@@ -8,7 +8,7 @@ ERCOT processes 10 hyperscaler interconnection requests (2,930 MW) against a 12-
 ERCOT has 10 hyperscaler interconnection requests totalling 2,930 MW
 on a 12-substation grid where DFW is the binding capacity bottleneck.
 The chain produces a Pareto frontier across 5 budget levels — the knee at
-$300M unlocks 5 DCs (1,500 MW, $264M net value) including xAI Colossus.
+$300M unlocks 6 DCs (1,530 MW, $252M net value) including Google and Lambda at DFW.
 
   ─────────────────────────────────────────────────────────────────
   STAGE 1  Predictive   ──►  Substation.predicted_load        (12)
@@ -37,8 +37,8 @@ $300M unlocks 5 DCs (1,500 MW, $264M net value) including xAI Colossus.
   STAGE 5  Prescriptive ──►  DataCenterRequest.x_approve  (per InvestmentLevel)
                               SubstationUpgrade.x_upgrade  (per InvestmentLevel)
                               OPTIMAL across 5 budget levels in one solve.
-                              Knee $300M · 5 DCs · 1,500 MW · $264M net.
-                              Google + Lambda never approved — DFW full.
+                              Knee $300M · 6 DCs · 1,530 MW · $252M net.
+                              xAI never approved — DFW headroom fits Google + Lambda.
   ─────────────────────────────────────────────────────────────────
 ```
 
@@ -152,7 +152,7 @@ OPTIMAL MIP across 5 `InvestmentLevel` values in one solve; `x_approve` and `x_u
 
 **Response**
 
-Pareto frontier with knee at $300M (5 DCs, 1,500 MW, $264M net); marginal $995K/$M at knee, declining to $400K/$M by $600M; Google + Lambda never approved (DFW full).
+Pareto frontier with knee at $300M (6 DCs, 1,530 MW, $252M net); marginal $1,013K/$M into the knee, declining to $439K/$M by $500M; xAI Colossus never approved (DFW headroom goes to Google + Lambda).
 
 ### 10. Persist solution concepts into the ontology
 
@@ -164,7 +164,7 @@ Pareto frontier with knee at $300M (5 DCs, 1,500 MW, $264M net); marginal $995K/
 
 **Response**
 
-Ontology gains an `InvestmentPortfolio(InvestmentLevel)` Concept (5 rows, one per budget) with `dc_count`, `total_mw`, `annual_revenue`, `upgrade_cost`, `net_value`, `marginal_per_m_to_next_level`, `is_knee_point`. All five frontier rows — $200M ($165M net) → $300M ($264M net, knee) → $600M ($395M net) — are queryable as ontology rather than stdout.
+Ontology gains an `InvestmentPortfolio(InvestmentLevel)` Concept (5 rows, one per budget) with `dc_count`, `total_mw`, `annual_revenue`, `upgrade_cost`, `net_value`, `marginal_per_m_to_next_level`, `is_knee_point`. All five frontier rows — $200M ($151M net) → $300M ($252M net, knee) → $600M ($398M net) — are queryable as ontology rather than stdout.
 
 ## Data
 

@@ -55,7 +55,7 @@ This template shows how to express that rulebook as declarative logic on a four-
 ### Tools
 
 - Python >= 3.10
-- RelationalAI Python SDK (`relationalai`) == 1.11.0
+- RelationalAI Python SDK (`relationalai`) == 2.1.1
 
 ## Quickstart
 

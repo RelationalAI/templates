@@ -13,7 +13,7 @@ Algorithms: reachable(full=True) for transitive dependency tracing,
 Assembly path enumeration (PREVIEW, requires relationalai>=1.15): enumerate the
   bottom-up assembly chains that build each finished good. Derives a binary
   SKU->SKU "feeds into" edge from the BillOfMaterials intermediary (input feeds
-  output), enumerates every assembly path with model.path(...).all_paths(),
+  output), enumerates every assembly path with model.path(...).all().paths(),
   filters to the maximal (longest non-extendable) chains so sub-paths are
   suppressed, and persists each finished good's longest assembly depth back onto
   the SKU ontology.
@@ -201,12 +201,12 @@ model.where(
 ).define(sku_in.feeds(sku_out))
 
 # Enumerate every assembly chain. The BOM is a DAG (raw materials -> components
-# -> finished goods, never back), so .all_paths() already yields simple paths --
+# -> finished goods, never back), so .all().paths() already yields simple paths --
 # there is no cycle risk, and the repeat bound only needs to cover the BOM depth.
 # Deepest chain here is raw_material -> component -> finished_good (2 hops); we
 # allow extra headroom so deeper BOMs enumerate fully.
 MAX_ASSEMBLY_HOPS = 4
-p = model.path(SKU.feeds.repeat(1, MAX_ASSEMBLY_HOPS)).all_paths()
+p = model.path(SKU.feeds.repeat(1, MAX_ASSEMBLY_HOPS)).all().paths()
 assembly_df = (
     model.where(p)
     .select(

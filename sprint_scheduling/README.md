@@ -53,7 +53,7 @@ Built using **prescriptive reasoning** (mixed-integer programming solved with Hi
 
 ### Tools
 - Python >= 3.10
-- RelationalAI Python SDK (`relationalai`) >= 1.0.14
+- RelationalAI Python SDK (`relationalai`) == 2.1.1
 
 ## Quickstart
 

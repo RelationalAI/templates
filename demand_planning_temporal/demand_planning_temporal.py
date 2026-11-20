@@ -168,9 +168,6 @@ inventory_ref = Float.ref()
 x_inv_prev = Float.ref()
 x_inv_curr = Float.ref()
 
-# Static constraint expression: demand fulfillment bound (no scenario param dependency)
-demand_bound = model.require(DemandOrder.x_unmet <= DemandOrder.quantity)
-
 # Static constraint expression: global service level (no scenario param dependency)
 service_level_constraint = model.require(
     sum(DemandOrder.x_unmet) <= (1 - min_service_level) * sum(DemandOrder.quantity)
@@ -322,9 +319,6 @@ for scenario_value in SCENARIO_VALUES:
         ).require(x_inv_curr == x_inv_prev + production_ref - WeeklyDemand.wk_quantity)
     )
 
-    # Static constraint: demand fulfillment bound
-    problem.satisfy(demand_bound)
-
     # Static constraint: global service level
     problem.satisfy(service_level_constraint)
 
@@ -346,15 +340,16 @@ for scenario_value in SCENARIO_VALUES:
             ).require(inventory_ref >= avg_weekly_demand * safety_stock_weeks)
         )
 
-    # Parameterized objective: minimize total cost (depends on week ranges via production/inventory refs)
-    prod_cost = ProdCapacity.production_cost * sum(production_ref).per(
-        ProdCapacity
+    # Objective: minimize total cost, each term summed over its own rows.
+    prod_cost = sum(
+        ProdCapacity, week_ref, ProdCapacity.production_cost * production_ref
     ).where(ProdCapacity.x_production(week_ref, production_ref))
-    hold_cost = ProdCapacity.holding_cost_per_week * sum(inventory_ref).per(
-        ProdCapacity
+    hold_cost = sum(
+        ProdCapacity, week_ref, ProdCapacity.holding_cost_per_week * inventory_ref
     ).where(ProdCapacity.x_inventory(week_ref, inventory_ref), week_ref >= 1)
-    unmet_cost = unmet_penalty * DemandOrder.x_unmet
-    problem.minimize(sum(model.union(prod_cost, hold_cost, unmet_cost)))
+    unmet_cost = sum(DemandOrder, unmet_penalty * DemandOrder.x_unmet)
+    # With no orders in the horizon the unmet sum is empty; `| 0.0` makes it zero.
+    problem.minimize(prod_cost + hold_cost + (unmet_cost | 0.0))
 
     problem.display()
     problem.solve("highs", time_limit_sec=60)

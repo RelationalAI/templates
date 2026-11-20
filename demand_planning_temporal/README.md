@@ -34,7 +34,7 @@ Prescriptive reasoning makes this practical because the solver simultaneously ba
 - A service-level guarantee (a 95% minimum-fulfillment constraint) plus an unmet-demand report showing whether any demand went unserved.
 - A three-scenario what-if sweep that shows how total cost changes as the planning horizon extends, all sharing one model.
 
-Built using **prescriptive reasoning**: continuous decision variables for production, inventory, and unmet demand; a multi-period flow-conservation constraint; and a total-cost objective assembled with `model.union()`.
+Built using **prescriptive reasoning**: continuous decision variables for production, inventory, and unmet demand; a multi-period flow-conservation constraint; and a total-cost objective that adds separately summed cost terms.
 
 ## What's included
 
@@ -51,7 +51,7 @@ Built using **prescriptive reasoning**: continuous decision variables for produc
 
 ### Tools
 - Python >= 3.10
-- RelationalAI Python SDK (`relationalai`) >= 1.0.14
+- RelationalAI Python SDK (`relationalai`) == 2.1.1
 
 ## Quickstart
 
@@ -157,7 +157,7 @@ For the full concept and property definitions — including the time-indexed `x_
 
 **Enforce flow conservation.** The core multi-period constraint ties adjacent weeks together: inventory at the end of week `t` equals inventory at the end of week `t-1` plus production in week `t` minus demand in week `t`. A `WeeklyDemand` concept pre-aggregates orders into weekly buckets — including zero-demand weeks — so the constraint covers every period.
 
-**Minimize total cost.** The objective combines production cost, holding cost, and an unmet-demand penalty from different concepts using `model.union()`, and the solver minimizes their sum subject to the flow-conservation and service-level constraints.
+**Minimize total cost.** The objective adds production cost, holding cost, and an unmet-demand penalty, each summed over its own concept, and the solver minimizes the total subject to the flow-conservation and service-level constraints.
 
 The script also includes a commented-out Pattern B for data that carries Unix epoch-second timestamps instead of date strings: convert the horizon boundaries to epochs and filter identically.
 
@@ -178,7 +178,7 @@ See `demand_planning_temporal.py` for the implementation and `runbook.md` to rep
 
 ### Extend the model
 
-- Add new cost components (for example a per-site fixed operating cost) as additional terms in the `model.union()` objective, following the `prod_cost` / `hold_cost` / `unmet_cost` pattern.
+- Add new cost components (for example a per-site fixed operating cost) as another summed term in the objective, following the `prod_cost` / `hold_cost` / `unmet_cost` pattern.
 - Add new constraints (for example a per-site total-capacity cap across SKUs) with additional `problem.satisfy(...)` calls alongside the flow-conservation constraint.
 
 ### Scale up / productionize
@@ -226,7 +226,7 @@ Ensure your Snowflake account has the RAI Native App installed and your user has
 
 ### Reasoner reference
 
-- [Prescriptive reasoner](https://docs.relational.ai/) — `Problem`, `solve_for` decision variables, `satisfy` constraints, `minimize` objectives, and `model.union()`.
+- [Prescriptive reasoner](https://docs.relational.ai/) — `Problem`, `solve_for` decision variables, `satisfy` constraints, and `minimize` objectives.
 - [Solver management](https://docs.relational.ai/) — configuring the HiGHS solve and `time_limit_sec`.
 
 ## Support

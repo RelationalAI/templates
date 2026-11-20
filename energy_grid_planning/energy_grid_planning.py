@@ -712,9 +712,13 @@ model.where(dc_ref.substation(dc_sub)).define(DCSubstation(dc_sub))
 # Enumerate generator-sub -> DC-sub corridors (finite repeat; the grid is meshed/cyclic).
 MAX_CORRIDOR_HOPS = 6
 corridor_src, corridor_dst = GeneratorSubstation.ref(), DCSubstation.ref()
-corridor = model.path(
-    corridor_src, Substation.connects_to.repeat(1, MAX_CORRIDOR_HOPS), corridor_dst
-).all_paths()
+corridor = (
+    model.path(
+        corridor_src, Substation.connects_to.repeat(1, MAX_CORRIDOR_HOPS), corridor_dst
+    )
+    .all()
+    .paths()
+)
 
 # Score each corridor IN PyRel by Stage 2's betweenness summed ALONG its hops, and
 # roll the most-fragile (max-load) corridor up per DC substation -- all native paths.
@@ -722,7 +726,7 @@ corridor = model.path(
 # Three operations move into PyRel:
 #   1. Per-corridor score: aggs.sum(Substation(p.nodes).betweenness).per(p) sums the
 #      per-node betweenness over each corridor's node sequence (the core paths-only op).
-#   2. Simple-path filter: the grid is cyclic, so walk-semantics all_paths() revisits
+#   2. Simple-path filter: the grid is cyclic, so walk-semantics .all().paths() revisits
 #      nodes; not_(where(i < j, p.nodes(i) == p.nodes(j))) drops any node-repeating walk
 #      via a negated existential over positions. It sits in the SAME where() as the sum,
 #      so the sum only sees simple corridors -- on a simple corridor the position-sum
@@ -1010,18 +1014,32 @@ x_a_c = Float.ref("xa_c")
 x_u_c = Float.ref("xu_c")
 effective_load = Substation.predicted_load | Substation.current_load_mw
 
-problem.satisfy(model.where(
-    DataCenterRequest.x_approve(InvestmentLevel, x_a_c),
-    SubstationUpgrade.x_upgrade(InvestmentLevel, x_u_c),
-    DataCenterRequest.substation(Substation),
-    SubstationUpgrade.substation(Substation),
-).require(
-    Substation.max_capacity_mw - effective_load
-    + sum(x_u_c * UpgRef.capacity_increase_mw).where(
-        UpgRef.substation == Substation).per(Substation, InvestmentLevel)
-    >= sum(x_a_c * DCRef.requested_mw).where(
-        DCRef.substation == Substation).per(Substation, InvestmentLevel)
-))
+# Each upgrade's capacity and each request's MW is weighted by its own variable.
+# A substation with no upgrade options adds no capacity (`| 0.0`).
+problem.satisfy(
+    model.where(
+        InvestmentLevel,
+        DataCenterRequest.substation(Substation),
+    ).require(
+        Substation.max_capacity_mw
+        - effective_load
+        + (
+            sum(UpgRef, x_u_c * UpgRef.capacity_increase_mw)
+            .where(
+                UpgRef.substation == Substation,
+                UpgRef.x_upgrade(InvestmentLevel, x_u_c),
+            )
+            .per(Substation, InvestmentLevel)
+            | 0.0
+        )
+        >= sum(DCRef, x_a_c * DCRef.requested_mw)
+        .where(
+            DCRef.substation == Substation,
+            DCRef.x_approve(InvestmentLevel, x_a_c),
+        )
+        .per(Substation, InvestmentLevel)
+    )
+)
 
 # C2: Budget per investment level
 problem.satisfy(model.where(
@@ -1032,7 +1050,7 @@ problem.satisfy(model.where(
 
 # Objective: maximize total DC revenue across all levels
 problem.maximize(
-    sum(x_a * DataCenterRequest.annual_revenue_per_mw * DataCenterRequest.requested_mw).where(
+    sum(InvestmentLevel, x_a * DataCenterRequest.annual_revenue_per_mw * DataCenterRequest.requested_mw).where(
         DataCenterRequest.x_approve(InvestmentLevel, x_a)
     )
 )

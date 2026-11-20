@@ -166,7 +166,7 @@ problem.satisfy(model.where(
     FreightGroup.x_inv(time_period_ref + 1, x_inv_next),
     TransportType.x_qty_tra(FreightGroup, time_period_ref, x_qty_tra),
 ).require(
-    x_inv_current == x_inv_next + sum(x_qty_tra).per(FreightGroup, time_period_ref)
+    x_inv_current == x_inv_next + sum(TransportType, x_qty_tra).per(FreightGroup, time_period_ref)
 ))
 
 # Constraint: initial inventory equals starting position; final inventory is zero
@@ -192,7 +192,7 @@ problem.satisfy(model.require(
 
 # Constraint: weight[type,t] = sum of quantities shipped by that type on day t
 problem.satisfy(model.require(
-    x_weight == sum(x_qty_tra).per(TransportType, time_period_ref)
+    x_weight == sum(FreightGroup, x_qty_tra).per(TransportType, time_period_ref)
 ).where(
     TransportType.x_weight(time_period_ref, x_weight),
     TransportType.x_qty_tra(FreightGroup, time_period_ref, x_qty_tra),
@@ -209,7 +209,7 @@ problem.satisfy(model.require(
 
 # Constraint: piecewise LTL cost — exactly one segment active, remainder within limit
 problem.satisfy(model.require(
-    sum(y_bin_ltl).per(time_period_ref) == 1,
+    sum(LTLSegment, y_bin_ltl).per(time_period_ref) == 1,
     x_rem_ltl <= LTLSegment.limit * y_bin_ltl,
 ).where(
     LTLSegment.x_rem_ltl(time_period_ref, x_rem_ltl),
@@ -220,34 +220,32 @@ problem.satisfy(model.require(
 LTLSegment_outer = LTLSegment.ref()
 LTLSegment_inner = LTLSegment.ref()
 problem.satisfy(model.where(
-    LTLSegment_outer := LTLSegment.ref(),
-    LTLSegment_inner := LTLSegment.ref(),
     TransportType.name("ltl"),
     TransportType.x_weight(time_period_ref, x_weight),
 ).require(
     x_weight ==
-    sum(x_rem_ltl).where(LTLSegment.x_rem_ltl(time_period_ref, x_rem_ltl)).per(time_period_ref) +
-    sum(LTLSegment_outer.limit * y_bin_ltl).where(
+    sum(LTLSegment, x_rem_ltl).where(LTLSegment.x_rem_ltl(time_period_ref, x_rem_ltl)).per(time_period_ref) +
+    sum(LTLSegment_inner, LTLSegment_outer.limit * y_bin_ltl).where(
         LTLSegment_inner.y_bin_ltl(time_period_ref, y_bin_ltl),
         LTLSegment_outer.seg == LTLSegment_inner.seg - 1,
     ).per(time_period_ref)
 ))
 
 # Objective: minimize total cost (inventory holding + TL fixed + LTL variable)
-total_inv_cost = inv_cost * sum(x_inv).where(
+total_inv_cost = inv_cost * sum(FreightGroup, time_period_ref, x_inv).where(
     FreightGroup.x_inv(time_period_ref, x_inv), time_period_ref > FreightGroup.inv_start_t
 )
-total_tl_cost = tl_tra_cost * sum(y_bin_tl).where(bin_tl(Integer.ref(), y_bin_tl))
-total_ltl_rem_cost = LTLSegment.cost * sum(x_rem_ltl).per(LTLSegment).where(
-    LTLSegment.x_rem_ltl(Integer.ref(), x_rem_ltl)
+total_tl_cost = tl_tra_cost * sum(time_period_ref, y_bin_tl).where(bin_tl(time_period_ref, y_bin_tl))
+total_ltl_rem_cost = sum(LTLSegment, time_period_ref, LTLSegment.cost * x_rem_ltl).where(
+    LTLSegment.x_rem_ltl(time_period_ref, x_rem_ltl)
 )
-LTLSegment_outer = LTLSegment.ref()
-LTLSegment_inner = LTLSegment.ref()
-total_ltl_bin_cost = (LTLSegment_outer.cost * LTLSegment_outer.limit) * sum(y_bin_ltl).per(LTLSegment_outer).where(
-    LTLSegment_inner.y_bin_ltl(Integer.ref(), y_bin_ltl),
+total_ltl_bin_cost = sum(
+    LTLSegment_inner, time_period_ref, LTLSegment_outer.cost * LTLSegment_outer.limit * y_bin_ltl
+).where(
+    LTLSegment_inner.y_bin_ltl(time_period_ref, y_bin_ltl),
     LTLSegment_outer.seg == LTLSegment_inner.seg - 1,
 )
-total_cost = sum(model.union(total_inv_cost, total_tl_cost, total_ltl_rem_cost, total_ltl_bin_cost))
+total_cost = total_inv_cost + total_tl_cost + total_ltl_rem_cost + total_ltl_bin_cost
 problem.minimize(total_cost)
 
 # --------------------------------------------------
