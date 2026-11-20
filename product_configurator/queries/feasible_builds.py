@@ -45,7 +45,6 @@ if __name__ == "__main__":
             )
             .where(SelectedOption(sol_idx, Option))
             .to_df()
-            .astype({"solution": "int64", "price_cents": "int64"})
         )
         build_view = selections_df.pivot(index="solution", columns="slot", values="option")
         build_view["total_$"] = selections_df.groupby("solution")["price_cents"].sum() // 100
