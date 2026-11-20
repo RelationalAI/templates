@@ -54,7 +54,6 @@ def main() -> None:
         forecast_df["predicted_load"] = forecast_df["predicted_load"].astype(float)
         forecast_df["current_load"] = forecast_df["current_load"].astype(float)
         forecast_df["max_capacity"] = forecast_df["max_capacity"].astype(float)
-        forecast_df["forecast_period"] = forecast_df["forecast_period"].astype(int)
 
         sub_forecast = (
             forecast_df.groupby(["sub_id", "sub_name", "current_load", "max_capacity"])
@@ -134,7 +133,6 @@ def main() -> None:
         Substation.name.alias("name"),
         Substation.grid_community.alias("community"),
     ).to_df()
-    community_df["community"] = community_df["community"].astype(int)
 
     num_communities = community_df["community"].nunique()
     print(f"\n  Grid community structure (Louvain): {num_communities} region(s)")
@@ -155,7 +153,6 @@ def main() -> None:
         .sort_values("critical_rank")
         .reset_index(drop=True)
     )
-    centrality_df["critical_rank"] = centrality_df["critical_rank"].astype(int)
 
     print(f"\n  All substations by centrality (top {CRITICAL_THRESHOLD} marked CRITICAL):")
     for i, (_, row) in enumerate(centrality_df.iterrows(), 1):
@@ -218,7 +215,6 @@ def main() -> None:
     ).to_df()
     betw_by_id = dict(zip(betw_df["substation_id"], betw_df["betweenness"].fillna(0.0)))
     name_by_id = dict(zip(betw_df["substation_id"], betw_df["substation_name"]))
-    corridor_df["hop"] = corridor_df["hop"].astype(int)
     corridor_df["betweenness"] = corridor_df["substation_id"].map(betw_by_id).fillna(0.0)
 
 
@@ -443,7 +439,6 @@ def main() -> None:
         .reset_index(drop=True)
     )
     portfolio_query_df["budget"] = portfolio_query_df["budget"].astype(float)
-    portfolio_query_df["dc_count"] = portfolio_query_df["dc_count"].astype(int)
 
     # Marginal value per added $M (none for the largest budget) and the knee flag.
     marginal_df = model.select(
