@@ -127,7 +127,6 @@ if __name__ == "__main__":
     )
 
     # Reassemble each path in pandas: group on the path id, order by step index.
-    assembly_df["step"] = assembly_df["step"].astype(int)
     paths = []
     for path_id, grp in assembly_df.groupby("path"):
         ordered = grp.sort_values("step")
