@@ -34,10 +34,6 @@ if __name__ == "__main__":
         out_edges.alias("outgoing_connections")
     ).to_df()
 
-    # Convert integer columns to standard int type for compatibility with pandas operations
-    results['incoming_connections'] = results['incoming_connections'].astype(int)
-    results['outgoing_connections'] = results['outgoing_connections'].astype(int)
-
     # Sort by weighted degree centrality (descending) to rank facilities by highest cumulative risk first.
     results = results.sort_values("degree_centrality", ascending=False)
     results.insert(0, "rank", range(1, len(results) + 1))
