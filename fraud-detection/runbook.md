@@ -22,10 +22,10 @@ that captures the most expected loss within an 80 investigator-hour budget.
                              transaction-account graph; pagerank + activity
                              count are features. Scores the 2,465 test txns.
   ─────────────────────────────────────────────────────────────────
-  STAGE 4  Rules/bridge ──►  Transaction.alert_score
+  STAGE 4  Rules/bridge ──►  AuditCandidate.alert_score
                              0.3 x is_flagged_fraud + 0.7 x predicted prob.
   ─────────────────────────────────────────────────────────────────
-  STAGE 5  Prescriptive ──►  Transaction.x_audit  (knapsack MILP)
+  STAGE 5  Prescriptive ──►  AuditCandidate.x_audit  (knapsack MILP)
                              Maximize captured expected loss within 80
                              investigator-hours, then compare the result with
                              a naive top-by-score queue.
@@ -37,23 +37,25 @@ that captures the most expected loss within an 80 investigator-hour budget.
 - `model/schema.py` declares the stable `Account` and `Transaction` concepts,
   sender and receiver relationships, and train/validation/test task surfaces.
 - `model/source.py` provides explicit `load_local_data()` and
-  `load_snowflake_data()` functions. Importing `model` does not select or load
-  a data source.
-- `fraud_detection_local.py` is the primary runner. It loads the bundled CSVs,
-  trains on CPU, solves the 80-hour audit problem, and prints the audit queue.
-- `fraud_detection.py` is the Snowflake adaptation. It loads equivalent tables,
-  trains on GPU, and uses a 2,000-hour budget by default.
+  `load_snowflake_data()` functions; `model/__init__.py` calls the local one,
+  and deploys with `rai models deploy --path model`.
+- `model/reasoning.py` declares the account graph signals, the fraud GNN, the
+  alert score, and the 80-hour audit problem.
+- `train.py` trains the GNN over the deployed splits and registers its version.
+- `queries/fraud_report.py` prints the alert queue and the audit schedule from
+  the deployed model.
 - `fraud_detection_rules.ipynb` remains a complementary rule-based
   identity-graph introduction.
 
 ## Workflow
 
-> **How to use this walkthrough.** Run `python fraud_detection_local.py` for
+> **How to use this walkthrough.** Run `rai models deploy --path model`, then
+> `python train.py`, refresh, and run `python -m queries.fraud_report` for
 > the complete bundled example. The prompts below describe the same stages for
 > an analyst using the named `/rai-*` skills. Run them **in order, in one
 > session** because each step adds data or properties to the shared model.
 > The local path uses CSV data and CPU training; it still requires a configured
-> RelationalAI connection and a writable experiment schema.
+> RelationalAI connection and a deployment schema pair.
 
 ### 1. Build ontology
 
@@ -148,12 +150,12 @@ depends on the connected engine and environment.
 **Prompt**
 
 ```text
-/rai-pyrel Combine the existing fraud flag and the model's probability into a single alert score — 30% the flag, 70% the predicted probability — and persist it as Transaction.alert_score.
+/rai-pyrel Combine the existing fraud flag and the model's probability into a single alert score — 30% the flag, 70% the predicted probability — and persist it as AuditCandidate.alert_score, a concept of its own so the score does not feed back into the table the model reads.
 ```
 
 **Response**
 
-`Transaction.alert_score = 0.3 x is_flagged_fraud + 0.7 x predicted probability` is written back, giving each transaction a single prioritization score.
+`AuditCandidate.alert_score = 0.3 x is_flagged_fraud + 0.7 x predicted probability` is written for each scored transaction, giving it a single prioritization score.
 
 ### 8. Allocate the investigator budget
 
@@ -164,14 +166,14 @@ depends on the connected engine and environment.
 captured expected loss — alert score times amount — within an 80
 investigator-hour budget (each audit costs its transaction's audit_cost in
 hours), with at most one audit per receiving account. Persist the audit
-decision as Transaction.x_audit.
+decision as AuditCandidate.x_audit.
 ```
 
 **Response**
 
 The verified bundled run reaches an `OPTIMAL` HiGHS solution and captures
-about **$111.9M** of expected loss within the 80-hour budget.
-`Transaction.x_audit` stores the selected transactions. Exact values may shift
+about **$111.8M** of expected loss within the 80-hour budget.
+`AuditCandidate.x_audit` stores the selected transactions. Exact values may shift
 slightly with GNN numerical variation.
 
 ### 9. Compare to the naive queue
@@ -184,8 +186,8 @@ slightly with GNN numerical variation.
 
 **Response**
 
-The verified bundled run captures about **$43.9M more** than the naive
-sort-by-score queue (~$111.9M vs ~$67.9M). The MILP trades each audit's
+The verified bundled run captures about **$39.5M more** than the naive
+sort-by-score queue (~$111.8M vs ~$72.3M). The MILP trades each audit's
 hour-cost against its catch value and respects the one-audit-per-receiver cap,
 rather than spending the budget on the highest-scored but expensive or
 redundant transactions first. Exact values depend on the trained model's
@@ -193,18 +195,20 @@ probabilities.
 
 ## Adapt the flow to Snowflake
 
-Use `fraud_detection.py` when your accounts, transactions, and task splits
+Use `load_snowflake_data()` when your accounts, transactions, and task splits
 already live in Snowflake:
 
-1. Set `DATABASE` and `SCHEMA` to the location of `ACCOUNTS`,
-   `TRANSACTIONS`, `TRAIN`, `VAL`, and `TEST`.
+1. Call `load_snowflake_data(DATABASE, SCHEMA)` in `model/__init__.py` in place
+   of `load_local_data(...)`, with the location of `ACCOUNTS`, `TRANSACTIONS`,
+   `TRAIN`, `VAL`, and `TEST`.
 2. Provide `audit_cost` on `TRANSACTIONS`; the loader maps the column without
    recomputing it.
-3. Update the feature mapping and task-column accesses in the runner for your
-   schema.
-4. Run `python fraud_detection.py` on a GPU-enabled RAI engine.
+3. Update the feature mapping and task-column accesses in `model/reasoning.py`
+   for your schema.
+4. Deploy, train, and size the predictive reasoner for your data in
+   `raiconfig.yaml`.
 
-The Snowflake runner calls `load_snowflake_data()` explicitly and retains the
-same schema, reasoning stages, output comparison, and `Transaction.x_audit`
-result as the local runner. Its default investigator budget is 2,000 hours to
-match the larger dataset.
+The Snowflake loader maps the same schema, so the reasoning stages and the
+`AuditCandidate.x_audit` result are unchanged. Raise `AUDIT_BUDGET_HOURS` (80 by
+default) and the training settings in `model/reasoning.py` to match the larger
+dataset.

@@ -37,6 +37,8 @@ ReviewPair.rec_a = model.Relationship(f"{ReviewPair} has first review {Record:re
 ReviewPair.rec_b = model.Relationship(f"{ReviewPair} has second review {Record:rec_b}")
 ReviewPair.score = model.Property(f"{ReviewPair} has {Float:score}")
 
+CandidatePairCount = model.Relationship(f"blocking produced {Integer:pair_count} candidate pairs")
+
 ResolvedParty = model.Concept("ResolvedParty", identify_by={"key": Integer})
 Record.resolved_party = model.Relationship(
     f"{Record} contributes exposure to {ResolvedParty:resolved_party}"

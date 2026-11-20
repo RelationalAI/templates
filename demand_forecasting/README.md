@@ -35,8 +35,10 @@ Assumes familiarity with Python, basic ML concepts (regression, RMSE), and time-
 
 ## What's included
 
-- **Runner**: `demand_forecasting.py` — runs the full pipeline (graph build, GNN training, predictions, weekly aggregation) on the bundled CSVs
-- **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
+- **Model**: `model/` — the deployed model: concepts and splits (`schema.py`, `source.py`), the graph, the GNN and its predictions (`reasoning.py`)
+- **Training**: `train.py` — trains the GNN over the deployed splits and registers its version
+- **Query**: `queries/forecast_report.py` — prints the weekly forecast and test-set RMSE from the deployed model
+- **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the code itself.
 - **Synthetic data generator**: `data/generate_favorita_mini.py` — reproducible Favorita-shaped data generator (run once if you need to regenerate; output is committed under `data/favorita_mini/`)
 - **Model**: `Store`, `Item`, `ItemFamily`, `Sale`, plus three task-table concepts (`TrainTable`, `ValTable`, `TestTable`) carrying the unit-sales targets
 - **Sample data**: bundled synthetic Favorita-shaped dataset (3 stores × 25 items × 365 days); see [Sample data](#sample-data)
@@ -46,105 +48,167 @@ Assumes familiarity with Python, basic ML concepts (regression, RMSE), and time-
 
 ### Access
 
-Any Snowflake account with the **RelationalAI Native App** installed. The bundled CSVs ship with the template; there is no source-table setup. The GNN trains on CPU.
+- A Snowflake account that has the RAI Native App installed.
+- A role that can deploy models, set up once by an account administrator: follow [Set up model deployment](https://private.relational.ai/early-access/model-deploy-setup) (**Try it out**, or **Governed setup** for a shared account). This template has no prescriptive solve, so it needs no PAT setup.
+- A Snowflake user that holds that role.
 
-The predictive reasoner needs a writable Snowflake schema where it can create experiments and models. The script defaults to `FAVORITA_MINI.EXPERIMENTS` (configurable via `EXP_DATABASE` / `EXP_SCHEMA` near the top of the script). One-time setup, run as `ACCOUNTADMIN`, or any role with privileges to run the commands below:
-
-```sql
--- Use a database you own (FAVORITA_MINI shown; pick anything writable)
-CREATE DATABASE IF NOT EXISTS FAVORITA_MINI;
-CREATE SCHEMA IF NOT EXISTS FAVORITA_MINI.EXPERIMENTS;
-
-GRANT USAGE ON DATABASE FAVORITA_MINI TO APPLICATION RELATIONALAI;
-GRANT USAGE ON SCHEMA FAVORITA_MINI.EXPERIMENTS TO APPLICATION RELATIONALAI;
-GRANT CREATE EXPERIMENT ON SCHEMA FAVORITA_MINI.EXPERIMENTS TO APPLICATION RELATIONALAI;
-GRANT CREATE MODEL ON SCHEMA FAVORITA_MINI.EXPERIMENTS TO APPLICATION RELATIONALAI;
-```
+The bundled CSVs ship with the template; there is no source-table setup. The GNN trains on the predictive reasoner and stores its experiments and registered versions in the template's public schema.
 
 ### Tools
 
 - Python >= 3.10
-- RelationalAI Python SDK (`relationalai[gnn] == 2.1.1`)
+- The `relationalai[gnn]` SDK and the `rai` CLI (installed by the Quickstart's `python -m pip install .`).
 
 ## Quickstart
 
-1. Download ZIP:
+Before you start, install Python 3.10 or later and complete the access prerequisites above: a Snowflake account with the RAI Native App, a role that can deploy models, and a Snowflake user that holds it.
+
+Before the first deploy, create this template's two schemas as the model role, and have an administrator grant the RAI Native App access to them. The GNN keeps its experiments and registered versions in the public schema, and the internal schema holds only this model's objects, so the grants cover all of it:
+
+```sql
+-- as the model role
+CREATE SCHEMA IF NOT EXISTS <DB>.DEMAND_FORECASTING;
+CREATE SCHEMA IF NOT EXISTS <DB>.DEMAND_FORECASTING_META;
+
+-- as an administrator
+GRANT USAGE ON DATABASE <DB> TO APPLICATION <RAI_APP_NAME>;
+GRANT USAGE ON SCHEMA <DB>.DEMAND_FORECASTING TO APPLICATION <RAI_APP_NAME>;
+GRANT CREATE EXPERIMENT ON SCHEMA <DB>.DEMAND_FORECASTING TO APPLICATION <RAI_APP_NAME>;
+GRANT CREATE MODEL ON SCHEMA <DB>.DEMAND_FORECASTING TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER USAGE ON DATABASE <DB> TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER USAGE ON SCHEMA <DB>.DEMAND_FORECASTING_META TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER USAGE ON WAREHOUSE <WAREHOUSE> TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL TABLES IN SCHEMA <DB>.DEMAND_FORECASTING_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL DYNAMIC TABLES IN SCHEMA <DB>.DEMAND_FORECASTING_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL VIEWS IN SCHEMA <DB>.DEMAND_FORECASTING_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER INSERT, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA <DB>.DEMAND_FORECASTING_META TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER CREATE TABLE, CREATE STAGE ON SCHEMA <DB>.DEMAND_FORECASTING_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER READ, WRITE ON ALL STAGES IN SCHEMA <DB>.DEMAND_FORECASTING_META TO APPLICATION <RAI_APP_NAME>;
+```
+
+Use this sequence to deploy the model, train the GNN, and query its forecast:
+
+1. **Download the template**
+
+   [Download the ZIP](https://docs.relational.ai/templates/zips/v1/demand_forecasting.zip), unzip it, and enter the template directory:
+
    ```bash
-   curl -O https://docs.relational.ai/templates/zips/v1/demand_forecasting.zip
    unzip demand_forecasting.zip
    cd demand_forecasting
    ```
-   > [!TIP]
-   > You can also download the template ZIP using the "Download ZIP" button at the top of this page.
 
-2. Create venv:
+2. **Create a Python environment**
+
+   Create and activate a virtual environment, then update pip:
+
    ```bash
    python -m venv .venv
    source .venv/bin/activate
    python -m pip install --upgrade pip
    ```
 
-3. Install:
+3. **Install the template**
+
+   Install the dependencies pinned in `pyproject.toml`:
+
    ```bash
    python -m pip install .
    ```
 
-4. Configure:
-   ```bash
-   rai init
-   ```
+4. **Configure your project**
 
-   After `rai init` generates the config file, add the following to your `raiconfig.yaml`:
+   Use the configuration builder in [Install and run PyRel](https://docs.relational.ai/get-started/install-and-run-pyrel/#configure-your-project) to create `raiconfig.yaml` in the template directory and verify your connection.
+
+   Set the connection `role` to the model role, then add the predictive reasoner, the registered version the GNN predicts with, and a `deployment` section. Give each template its own schema pair so two deployed templates never share one:
 
    ```yaml
-   data:
-       ensure_change_tracking: true
+   reasoners:
+     predictive:
+       name: demand_forecasting_gnn     # created on first use if it doesn't exist
+       gnns:
+         demand_forecast:               # the GNN's name in model/reasoning.py
+           registry: <DB>.DEMAND_FORECASTING
+           model: DEMAND_FORECAST
+           version: V1                  # train.py registers this version
+   deployment:
+     role: <MODEL_ROLE>
+     public_schema: <DB>.DEMAND_FORECASTING
+     identity:
+       internal_schema: <DB>.DEMAND_FORECASTING_META
+     schedules:
+       standard:
+         interval_s: 0                  # refresh only on deploy or on demand
+     schedule: standard
    ```
 
-5. Run the experiments-schema setup DDL above (one-time per Snowflake account).
+5. **Deploy the model**
 
-6. Run:
+   Deploy the model in `model/` to the schemas in `raiconfig.yaml`:
+
    ```bash
-   python demand_forecasting.py
+   rai models deploy --path model
    ```
 
-### Expected output (abbreviated)
+   The deploy waits for the model's first refresh, which loads the sales data and the train, validation, and test splits. No version of the GNN is registered yet, so this refresh makes no predictions.
 
-Real numbers from a verified end-to-end run on the bundled subset (CPU). Exact predicted values shift slightly with numerical noise.
+   Deploying again without changing the model applies no updates and does not refresh.
 
-```text
-Stores: 3  Items: 25  Sales: 27,375
-Splits (temporal): train=18,375  val=4,500  test=4,500
-Train: < 2024-11-02; Val: 2024-11-02 -- 2025-01-01; Test: >= 2025-01-01
-unit_sales: min=0 mean=15.30 max=92
+6. **Train the GNN**
 
-============================================================
-Predictive: demand-forecasting regression GNN (CPU)
-============================================================
-=== Start GNN Training ===
-  ✓ Step 1 completed (~5s)    # prepare dataset + GNN tables
-  ✓ Step 2 completed (~2s)    # trainer config
-  ✓ Step 3 completed (~6s)    # submit training job
-=== Start GNN Prediction ===
-  ✓ GNN Prediction Complete (~221s)
+   Train the GNN over the deployed splits and register it as the version named in `raiconfig.yaml`:
 
-============================================================
-Forecast (test window) -- weekly aggregate per (store, item family)
-============================================================
-  city    family week_start  actual  predicted    abs_err
-Cuenca    BAKERY 2024-10-28   173.0     189.28      16.28
-Cuenca    BAKERY 2024-11-25   335.0     378.79      43.79
-Cuenca    BAKERY 2024-12-02   494.0     349.67     144.33
-Cuenca BEVERAGES 2024-12-02   658.0     483.66     174.34
-Cuenca BEVERAGES 2024-12-30    75.0      63.16      11.84
-... (one row per (city, family, week))
+   ```bash
+   python train.py
+   ```
 
-Test-set RMSE (per-Sale):                  7.2792
-Test-set RMSE (per (city, family, week)): 150.8997
-```
+   Then refresh the deployed model so it predicts with this version: `CALL DB.DEMAND_FORECASTING_META._INTERNAL_REFRESH_MODEL('standard', NULL);` with your database in place of `DB`. The registry refuses to overwrite a version, so to retrain, set a new `version` in `raiconfig.yaml` first.
 
-> [!NOTE]
-> The GNN learns base-level demand and weekday/weekend seasonality cleanly. The December holiday spike is partially captured but under-shot — Sale.date is exposed as a flat datetime feature, not a temporal index, so the GNN doesn't aggregate over time windows. The pandas-level temporal split is preserved (we still train on the past and evaluate on the future). To trade simplicity for tighter spike capture, see the "Use temporal indexing" variant in [Customize this template](#customize-this-template).
+7. **Query the results**
+
+   Print the forecast from the deployed model:
+
+   ```bash
+   python -m queries.forecast_report
+   ```
+
+   ```text
+   Stores: 3  Items: 25  Sales: 27,375
+   Splits (temporal): train=18,375  val=4,500  test=4,500
+   Train: < 2024-09-02; Val: 2024-09-02 -- 2024-11-01; Test: >= 2024-11-01
+   unit_sales: min=0 mean=18.22 max=90
+
+   ============================================================
+   Forecast (test window) -- weekly aggregate per (store, item family)
+   ============================================================
+     city    family week_start  actual  predicted    abs_err
+   Cuenca    BAKERY 2024-10-28   173.0 190.663560  17.663560
+   Cuenca    BAKERY 2024-11-04   330.0 376.962092  46.962092
+   Cuenca    BAKERY 2024-12-02   494.0 358.614115 135.385885
+   Cuenca BEVERAGES 2024-12-02   658.0 483.350180 174.649820
+   Cuenca BEVERAGES 2024-12-30    75.0  64.095143  10.904857
+
+   Test-set RMSE (per-Sale):           7.3313
+   Test-set RMSE (per (city, family, week)): 153.2000
+   ```
+
+   The forecast table is trimmed here: the report prints the first 20 (city, family, week) rows. The forecast follows the weekly swings, and its largest gaps fall in the December holiday weeks. Predicted values and the RMSE vary a little from one training run to the next; the data summary and actuals do not. See `runbook.md` for the step-by-step walkthrough.
+
+   To predict again without changing the model, refresh the deployed model, then run the query again:
+
+   ```sql
+   CALL <DB>.DEMAND_FORECASTING_META._INTERNAL_REFRESH_MODEL('standard', NULL);
+   ```
+
+8. **Tear down the deployment**
+
+   Preview what the teardown removes, then remove it:
+
+   ```bash
+   rai models teardown
+   rai models teardown --force
+   ```
+
+   The teardown removes the deployed objects and keeps the two schemas, with the GNN's experiments and registered versions in the public schema.
 
 ## Template structure
 
@@ -152,7 +216,14 @@ Test-set RMSE (per (city, family, week)): 150.8997
 .
 ├── README.md                       # this file
 ├── pyproject.toml                  # dependencies
-├── demand_forecasting.py           # GNN regression pipeline on bundled CSVs (CPU)
+├── model/
+│   ├── __init__.py                 # exports for train.py and the query
+│   ├── schema.py                   # concepts and the Train/Val/Test task relationships
+│   ├── source.py                   # bundled CSVs and the temporal split
+│   └── reasoning.py                # graph, feature types, the GNN and its predictions
+├── train.py                        # trains the GNN and registers its version
+├── queries/
+│   └── forecast_report.py          # weekly forecast and test-set RMSE
 └── data/
     ├── generate_favorita_mini.py   # reproducible synthetic-data generator
     └── favorita_mini/
@@ -161,7 +232,7 @@ Test-set RMSE (per (city, family, week)): 150.8997
         └── sales.csv               # ~27K daily (store, item, date) rows with unit_sales + onpromotion
 ```
 
-**Start here**: run `python demand_forecasting.py` for the full pipeline — graph build, GNN training, predictions, and weekly aggregation — end to end on the bundled CSVs, or follow `runbook.md` to reproduce it step by step with the RAI skills.
+**Start here**: follow the [Quickstart](#quickstart) to deploy the model, train the GNN, and print the weekly forecast, or follow `runbook.md` to reproduce it step by step with the RAI skills.
 
 ## Sample data
 
@@ -188,7 +259,7 @@ The model is a small retail ontology whose only purpose is to give the graph neu
 - **Primary identifiers**: `Store.store_id`, `Item.item_id`, `Sale.sale_id` (all integers); `ItemFamily.family` (the family string).
 - **Important invariants**: `unit_sales` is a non-negative integer and is the regression target (dropped from features to prevent leakage); every `Sale` links to exactly one `Store` and one `Item`; every `Item` links to exactly one `ItemFamily`; `ItemFamily` is derived from the distinct `Item.family` values rather than loaded.
 
-For the full concept and property definitions — including the GNN edges (`Sale → Store`, `Sale → Item`, `Item → ItemFamily`) and the Train/Val/Test task relationships — see `demand_forecasting.py`; `runbook.md` builds them step by step with the RAI skills.
+For the full concept and property definitions — including the GNN edges (`Sale → Store`, `Sale → Item`, `Item → ItemFamily`) and the Train/Val/Test task relationships — see `model/`; `runbook.md` builds them step by step with the RAI skills.
 
 ```text
 Stores + Items + Sales (bundled CSVs)
@@ -208,23 +279,22 @@ The pipeline builds a heterogeneous graph, trains a regression GNN over it, and 
 
 **Split temporally.** Forecasting requires training on the past and evaluating on the future; a random split would leak future signal into training. The split is done in pandas before the task tables are built — the last 60 days become the test window and the 60 before that the validation window.
 
-**Train and predict.** The GNN runs a regression task with `has_time_column=False`, a deliberate simplicity choice (the temporal split is preserved at the pandas level above; the GNN just doesn't use the date as a temporal index inside the graph — see [Customize this template](#customize-this-template) for the temporal-indexing variant). Predictions are attached back to each Sale.
+**Train and predict.** The GNN runs a regression task with `has_time_column=True`: each Train, Val and Test row carries its sale date, and `Sale.date` is the property transformer's time column. Predictions are attached back to each Sale.
 
 **Aggregate to a weekly forecast.** A single declarative query pulls the per-Sale predictions and joins them to store and item metadata; pandas then rolls them up into weekly per-(city, family) buckets against the actuals.
 
-See `demand_forecasting.py` for the implementation and `runbook.md` to reproduce it step by step with the RAI skills.
+See `model/reasoning.py` for the graph and the GNN, `queries/forecast_report.py` for the rollup, and `runbook.md` to reproduce it step by step with the RAI skills.
 
 ## Customize this template
 
 ### Use your own data
 
-- **Repoint to your own retail data** — replace the CSVs under `data/favorita_mini/` with your real store / item / sales exports (matching column names) and re-run.
+- **Repoint to your own retail data** — replace the CSVs under `data/favorita_mini/` with your real store / item / sales exports (matching column names), redeploy, and train a new version.
 - **Add weather, promotions calendar, holiday flags** — extend `Sale` with extra columns and add them to `PropertyTransformer.category` or `.continuous` as appropriate. The same hierarchical-graph plus GNN scaffold absorbs new features without restructuring.
 
 ### Tune parameters
 
-- **Forecast different granularity** — change `TEST_DAYS` / `VAL_DAYS` at the top of the script. Default is a 60-day test window after a 60-day val window.
-- **Use temporal indexing instead** — for tighter holiday/seasonal spike capture, set `has_time_column=True`, restore `time_col=[Sale.date]` in the PropertyTransformer, restore the date arg in the Train/Val/Test relationships (`f"{Sale} at {Any:date} has {Any:value}"`), and add `temporal_strategy="last"` to the `GNN(...)` constructor. Trades simplicity for the GNN aggregating over time windows.
+- **Forecast different granularity** — change `TEST_DAYS` / `VAL_DAYS` in `model/source.py`. Default is a 60-day test window after a 60-day val window.
 
 ### Extend the model
 
@@ -240,7 +310,7 @@ The bundled `favorita_mini` is intentionally tiny so the template runs in minute
 
 1. Download the dataset from [Kaggle: Corporación Favorita Grocery Sales Forecasting](https://www.kaggle.com/c/favorita-grocery-sales-forecasting). License is "Subject to Competition Rules" — review before redistributing.
 2. Load the CSVs into Snowflake (`stores.csv`, `items.csv`, `train.csv` is the sales table). Rename `train.csv → sales.csv` to match the template.
-3. Replace the `pd.read_csv(...)` calls at the top of the script with Snowpark queries against your loaded tables (or use `model.Table("<DB>.<SCHEMA>.<TABLE>")` per `rai-pyrel` skill's data-loading guidance):
+3. Replace the `pd.read_csv(...)` calls in `model/source.py` with Snowpark queries against your loaded tables (or use `model.Table("<DB>.<SCHEMA>.<TABLE>")` per `rai-pyrel` skill's data-loading guidance):
    ```python
    from relationalai.config import SnowflakeConnection, create_config
    from snowflake import snowpark
@@ -251,28 +321,22 @@ The bundled `favorita_mini` is intentionally tiny so the template runs in minute
        "SELECT * FROM YOUR_DB.FAVORITA.SALES WHERE date >= '2017-01-01'"
    ).to_pandas(parse_dates=["date"])
    ```
-4. Switch `device="cpu"` to `device="cuda"` and a GPU-backed RAI engine — full Favorita on CPU will take many hours.
+4. Size the predictive reasoner for the data with `reasoners.predictive.size` in `raiconfig.yaml` (a GPU size for the full corpus): a deployed GNN runs on the device that size provides.
 5. Trim the date window in the SQL `WHERE` clause if you don't need the full 5 years; the template's `TEST_DAYS` / `VAL_DAYS` parameters control the temporal split inside that window.
 6. Real Favorita has additional tables (`oil.csv`, `holidays_events.csv`, `transactions.csv`) you may want to fold in as features — see [Customize this template](#customize-this-template) above for the pattern.
 
 ## Troubleshooting
 
 <details>
-<summary><code>Schema does not exist or the GNN RelationalAI Native App lacks permissions</code> on first run</summary>
+<summary><code>Experiment tracking database ... does not exist or is not accessible</code> when training</summary>
 
-The GNN training service writes experiment artifacts to a Snowflake schema, and the `RELATIONALAI` native app must have write access. If the run fails with a message like *"The experiment is configured to use database 'X' and schema 'EXPERIMENTS' ... grant the necessary permissions ..."*, run the [setup DDL](#access) as `ACCOUNTADMIN`.
-
-The error also fires if you've changed `EXP_DATABASE` to a database you own but haven't granted USAGE on the database itself; both grants (USAGE on database + ALL on schema) are required.
+The GNN keeps its experiments and registered versions in the public schema named in `raiconfig.yaml`, and the RAI Native App needs USAGE on its database and schema plus CREATE EXPERIMENT and CREATE MODEL on the schema. Run the setup grants from the [Quickstart](#quickstart) as an administrator, then run `python train.py` again.
 </details>
 
 <details>
-<summary>Re-running with a stale experiment causes <code>training job failed</code> at the prediction step</summary>
+<summary>The report prints <code>(no predictions returned)</code></summary>
 
-The SDK matches submitted training jobs to existing experiments by `Model("...")` name. If a previous failed run left a model_run_id behind, a re-run can match the stale model and fail trying to predict against incompatible artifacts (or hang at "Step 2/4: Preparing model for prediction" indefinitely). Bump the model name to force a fresh experiment:
-
-```python
-model = Model("demand_forecasting_local_v2")  # bump on each re-run if needed
-```
+The deployed model has not refreshed since a version was registered: the refresh that `rai models deploy` waits for runs before `python train.py`. Run `python train.py` if you haven't, then the refresh call from step 6 of the Quickstart, and query again.
 </details>
 
 ## Related templates
@@ -293,7 +357,7 @@ model = Model("demand_forecasting_local_v2")  # bump on each re-run if needed
 
 ### CLI / SDK guides
 
-- [Setup and configuration](https://docs.relational.ai/) — `rai init`, `raiconfig.yaml`, and granting the Native App access to an experiments schema.
+- [Setup and configuration](https://docs.relational.ai/) — `raiconfig.yaml`, deployment, and granting the Native App access to the template's schemas.
 
 ## Support
 

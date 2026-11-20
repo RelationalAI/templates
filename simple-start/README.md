@@ -42,7 +42,8 @@ It walks through a small end-to-end example: create a Snowflake table, model it 
 
 - Python >= 3.10
 - A Snowflake account with the RelationalAI Native App installed
-- A Snowflake user and role that can:
+- A role that can deploy models, set up once by an account administrator: follow [Set up model deployment](https://private.relational.ai/early-access/model-deploy-setup) (**Try it out**, or **Governed setup** for a shared account). This template has no prescriptive solve, so it needs no PAT setup.
+- A Snowflake user that holds that role, where the role can also:
   - Create schemas and tables or write into a schema you control
   - Create and refresh a stream into the RelationalAI app, as prompted by the notebook
 
@@ -75,15 +76,23 @@ It walks through a small end-to-end example: create a Snowflake table, model it 
    python -m pip install .
    ```
 
-4. **Configure credentials**
+4. **Configure the Snowflake connection and the deployment**
 
-   This notebook reads data from Snowflake and executes RelationalAI queries, so you need a working RelationalAI and Snowflake configuration.
+   Run `rai init` to create `raiconfig.yaml` with your Snowflake connection, set the connection `role` to the model role, then add a `deployment` section. Give each template its own schema pair so two deployed templates never share one, and keep both apart from `RAI_DEMO.SIMPLE_START`, which holds the source table; the deploy creates both schemas if they don't exist.
 
-   If you use the RelationalAI CLI, run:
-
-   ```bash
-   rai init
+   ```yaml
+   deployment:
+     role: <MODEL_ROLE>
+     public_schema: <DB>.SIMPLE_START_MODEL            # published views and tables
+     identity:
+       internal_schema: <DB>.SIMPLE_START_MODEL_META   # refresh procedures and metadata
+     schedules:
+       standard:
+         interval_s: 0           # refresh only on deploy or on demand
+     schedule: standard
    ```
+
+   Without the `deployment` section, the notebook's `model.deploy()` cell stops with an error naming the missing setting.
 
    If you have multiple profiles, set one explicitly:
 
@@ -99,7 +108,7 @@ It walks through a small end-to-end example: create a Snowflake table, model it 
 
 6. **Run the template**
 
-   Open `simple-start.ipynb` and run the cells top-to-bottom or "Run All".
+   Open `simple-start.ipynb` and run the cells top-to-bottom or "Run All". The `model.deploy()` cell deploys the model and waits for its first refresh; the cells after it query the deployed model. To remove the deployment, run `rai models teardown --force` from this directory; it keeps the two schemas.
 
 7. **Expected output**
 
@@ -115,9 +124,10 @@ At a high level, the notebook:
 
 1. Creates and populates the `CONNECTIONS` table in Snowflake.
 2. Defines `Station` and `Connection` concepts and loads them from the Snowflake source table.
-3. Builds an undirected graph with `Station` as the node concept and the station connectivity relation as its edges.
-4. Lists the resulting edges as a table.
-5. Computes betweenness centrality and queries the scores into a pandas DataFrame.
+3. Builds an undirected graph with `Station` as the node concept and the station connectivity relation as its edges, and declares betweenness centrality over it.
+4. Deploys the model and waits for its first refresh.
+5. Lists the resulting edges as a table.
+6. Queries the betweenness centrality scores into a pandas DataFrame.
 
 > [!TIP]
 > At any point after step 2 you can run `inspect.schema(model)` to see exactly what's registered. See [Inspect the model schema](#inspect-the-model-schema) below.
@@ -206,6 +216,7 @@ concept_or_none = inspect.to_concept(some_handle, default=None)
 
 - Replace `RAI_DEMO.SIMPLE_START.CONNECTIONS` with your own edge table.
 - Ensure your table has two columns that represent the endpoints of each edge.
+- Make sure the model role can read your table (`SELECT` on it, `USAGE` on its database and schema): the deploy reads the table with the model role alone and stops with an error naming the table otherwise.
 
 **Extend the model:**
 

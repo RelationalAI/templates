@@ -23,7 +23,7 @@ tags:
 
 ERCOT's interconnection planning team faces a queue of 10 AI data center requests from hyperscalers (Microsoft, Google, Amazon, Meta, xAI, Oracle, CoreWeave, Lambda Labs, Crusoe Energy, Apple) competing for scarce grid capacity across the Texas grid. They must decide which requests to approve, what substation upgrades to invest in, and how to keep the grid reliable -- all under budget constraints and renewable energy mandates.
 
-A defensible answer needs all four signals at once: which substations will run out of headroom, which are structurally critical to keep the grid connected, which requests clear interconnection compliance, and which approval-and-upgrade portfolio maximizes value at each budget. **The template chains RelationalAI's predictive load forecasting, graph topology and centrality analysis, rules-based interconnection compliance, and prescriptive multi-objective optimization on a single, accretively-enriched ontology** -- each reasoner writes derived properties the next consumes, so capacity, criticality, and compliance signals stay consistent end to end without DataFrame hand-offs between stages.
+A defensible answer needs all four signals at once: which substations will run out of headroom, which are structurally critical to keep the grid connected, which requests clear interconnection compliance, and which approval-and-upgrade portfolio maximizes value at each budget. **The template chains load forecasts, RelationalAI's graph topology and centrality analysis, rules-based interconnection compliance, and prescriptive multi-objective optimization on a single, accretively-enriched ontology** -- each reasoner writes derived properties the next consumes, so capacity, criticality, and compliance signals stay consistent end to end without DataFrame hand-offs between stages.
 
 ## Why this problem matters
 
@@ -36,11 +36,11 @@ Texas is now the fastest-growing market for AI data center development. Hypersca
 - Utility planners and grid operators managing interconnection queues (especially ERCOT)
 - Energy infrastructure investors evaluating capacity expansion portfolios
 - Operations researchers exploring multi-reasoner pipelines in RelationalAI
-- Developers learning how to chain predictive, graph, rules, and optimization in a single model
+- Developers learning how to chain graph, rules, and optimization in a single model
 
 ## What you'll build
 
-- A substation load forecasting pipeline (predictive or pre-baked fallback)
+- A substation load forecast derived from the bundled demand forecasts
 - Grid topology analysis with WCC, Louvain community detection, and multi-metric centrality ranking
 - Three declarative compliance rules consuming upstream reasoner outputs
 - Binary decision variables for DC approval and substation upgrades, indexed by InvestmentLevel (Scenario Concept)
@@ -50,7 +50,8 @@ Texas is now the fastest-growing market for AI data center development. Hypersca
 
 ## What's included
 
-- `energy_grid_planning.py` -- Main script with five chained reasoning stages
+- `model/` -- the deployed model: `schema.py` declares the concepts, `source.py` loads the sample data and the investment levels, and `reasoning.py` states the forecast, graph, rules, and decision problem
+- `queries/energy_grid_report.py` -- Prints the five-stage report from the deployed model
 - `runbook.md` -- a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself
 - `data/substations.csv` -- 12 Texas substations with capacity, load, and coordinates
 - `data/generators.csv` -- 15 generators (2 nuclear: STP + Comanche Peak, plus gas, coal, wind, solar, battery)
@@ -65,32 +66,55 @@ Texas is now the fastest-growing market for AI data center development. Hypersca
 - `data/demand_forecasts.csv` -- Pre-computed substation load forecasts (6/12/18/24 month horizons)
 - `data/load_history.csv` -- 4 years of monthly substation load readings
 - `data/dc_announcements.csv` -- Hyperscaler announcement events
-- `data/train_forecasts.csv`, `data/val_forecasts.csv`, `data/test_forecasts.csv` -- graph neural network (GNN) training splits (used by optional GNN training workflow, not by the main script)
+- `data/train_forecasts.csv`, `data/val_forecasts.csv`, `data/test_forecasts.csv` -- graph neural network (GNN) training splits (not read by the model)
 
 ## Prerequisites
 
 ### Access
 - A Snowflake account that has the RAI Native App installed.
-- A Snowflake user with permissions to access the RAI Native App.
+- The one-time model deployment setup on that account, done by an account administrator: follow [Set up model deployment](https://private.relational.ai/early-access/model-deploy-setup) through **Governed setup**, **PAT authentication**, and steps 1-2 of **Additional setup for the prescriptive reasoner** (the Quickstart covers this template's own schema). It gives you a model role, a programmatic access token (PAT) stored as a secret, an external access integration, a PAT user, and a warehouse.
+- A Snowflake user that holds the model role.
 
 ### Tools
-- Python >= 3.10
-- RelationalAI Python SDK (`relationalai[gnn]`) == 2.1.1
+- Python >= 3.10.
+- RelationalAI Python SDK (`relationalai == 2.1.1`).
 
 ## Quickstart
 
-1. Download the template and extract it:
+Before you start, install Python 3.10 or later and complete the access prerequisites above: a Snowflake account with the RAI Native App, the one-time model deployment setup, and a Snowflake user that holds the model role.
+
+Before the first deploy, create this template's internal schema as the model role, and have an administrator grant the RAI Native App caller access to it. The internal schema holds only this model's objects, so the grants cover all of it, including the solver's result tables that the deploy creates:
+
+```sql
+-- as the model role
+CREATE SCHEMA IF NOT EXISTS <DB>.ENERGY_GRID_PLANNING_META;
+
+-- as an administrator
+GRANT CALLER USAGE ON DATABASE <DB> TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER USAGE ON SCHEMA <DB>.ENERGY_GRID_PLANNING_META TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER USAGE ON WAREHOUSE <PAT_WAREHOUSE> TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL TABLES IN SCHEMA <DB>.ENERGY_GRID_PLANNING_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL DYNAMIC TABLES IN SCHEMA <DB>.ENERGY_GRID_PLANNING_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL VIEWS IN SCHEMA <DB>.ENERGY_GRID_PLANNING_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER INSERT, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA <DB>.ENERGY_GRID_PLANNING_META TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER CREATE TABLE, CREATE STAGE ON SCHEMA <DB>.ENERGY_GRID_PLANNING_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER READ, WRITE ON ALL STAGES IN SCHEMA <DB>.ENERGY_GRID_PLANNING_META TO APPLICATION <RAI_APP_NAME>;
+```
+
+Use this sequence to deploy the model and query it:
+
+1. **Download the template**
+
+   [Download the ZIP](https://docs.relational.ai/templates/zips/v1/energy_grid_planning.zip), unzip it, and enter the template directory:
 
    ```bash
-   curl -O https://docs.relational.ai/templates/zips/v1/energy_grid_planning.zip
    unzip energy_grid_planning.zip
    cd energy_grid_planning
    ```
 
-   > [!TIP]
-   > You can also download the template ZIP using the "Download ZIP" button at the top of this page.
+2. **Create a Python environment**
 
-2. Create a virtual environment and activate it:
+   Create and activate a virtual environment, then update pip:
 
    ```bash
    python -m venv .venv
@@ -98,43 +122,104 @@ Texas is now the fastest-growing market for AI data center development. Hypersca
    python -m pip install --upgrade pip
    ```
 
-3. Install dependencies:
+3. **Install the template**
+
+   Install the dependencies pinned in `pyproject.toml`:
 
    ```bash
    python -m pip install .
    ```
 
-4. Configure your RAI connection:
+4. **Configure your project**
 
-   ```bash
-   rai init
+   Use the configuration builder in [Install and run PyRel](https://docs.relational.ai/get-started/install-and-run-pyrel/#configure-your-project) to create `raiconfig.yaml` in the template directory and verify your connection.
+
+   Set the connection `role` to the model role, then add the prescriptive reasoner and a `deployment` section. Give each template its own schema pair so two deployed templates never share one:
+
+   ```yaml
+   reasoners:
+     prescriptive:
+       name: energy_grid_planning_solver            # created on first deploy if it doesn't exist
+   deployment:
+     role: <MODEL_ROLE>
+     public_schema: <DB>.ENERGY_GRID_PLANNING               # published views and tables
+     identity:
+       internal_schema: <DB>.ENERGY_GRID_PLANNING_META      # solver inputs, results, refresh procedures
+     schedules:
+       standard:
+         interval_s: 0              # refresh only on deploy or on demand
+     schedule: standard
+     pat_secret: <PAT_SECRET>       # these four come from the setup page
+     pat_eai: <PAT_EAI>
+     pat_user: <PAT_USER>
+     pat_warehouse: <PAT_WAREHOUSE>
    ```
 
-5. Run the template:
+5. **Deploy the model**
+
+   Deploy the model in `model/` to the schemas in `raiconfig.yaml`:
 
    ```bash
-   python energy_grid_planning.py
+   rai models deploy --path model
    ```
 
-6. Expected output (a few lines confirm a successful run):
+   The deploy creates the public schema named in `raiconfig.yaml` if it doesn't exist and waits for the model's first refresh, which runs the graph analysis, the corridor search, and the solve. Each refresh of the deployed model runs all three again.
+
+6. **Query the results**
+
+   Print the report from the deployed model:
+
+   ```bash
+   python -m queries.energy_grid_report
+   ```
 
    ```text
+   ============================================================
    STAGE 5: OPTIMIZE -- Joint Interconnection + Upgrade
+   ============================================================
+
+     Solving across 5 investment levels ($200M-$600M)...
      Status: OPTIMAL
      Objective: 1,562,600,000.00
+   ...
 
      KNEE POINT: $300M -- $300M budget, $252,450,000 net value, 6 DCs, 1,530 MW
+     Diminishing returns beyond this investment level.
 
-   PIPELINE COMPLETE: 5 stages executed on shared Energy Grid ontology
+   ================================================================================
+     PIPELINE COMPLETE: 5 stages executed on shared Energy Grid ontology
    ```
 
-   See `runbook.md` for the full log.
+   The report prints all five stages; the lines above are the end of Stage 5. See `runbook.md` for the full log.
+
+   To solve again without changing the model, refresh the deployed model, then run the query again:
+
+   ```sql
+   CALL <DB>.ENERGY_GRID_PLANNING_META._INTERNAL_REFRESH_MODEL('standard', NULL);
+   ```
+
+7. **Tear down the deployment**
+
+   Preview what the teardown removes, then remove it:
+
+   ```bash
+   rai models teardown
+   rai models teardown --force
+   ```
+
+   The first command lists the model's objects without dropping anything; the second drops them and keeps the two schemas.
 
 ## Template structure
 
 ```text
 energy_grid_planning/
-  energy_grid_planning.py    # Main script (5 chained reasoning stages)
+  model/
+    __init__.py              # Exports of the deployed model
+    schema.py                # Concepts and properties
+    source.py                # Sample data and investment levels
+    reasoning.py             # Forecast, graph, corridors, rules, investment solve
+  queries/
+    energy_grid_report.py    # Five-stage report from the deployed model
   data/
     substations.csv          # 12 Texas grid nodes
     generators.csv           # 15 generators (nuclear, gas, coal, wind, solar, battery)
@@ -149,20 +234,21 @@ energy_grid_planning/
     demand_forecasts.csv     # Pre-computed load forecasts
     load_history.csv         # Historical load readings
     dc_announcements.csv     # Hyperscaler announcements
-    train_forecasts.csv      # GNN training split (optional, not used by main script)
-    val_forecasts.csv        # GNN validation split (optional, not used by main script)
-    test_forecasts.csv       # GNN test split (optional, not used by main script)
+    train_forecasts.csv      # GNN training split (not read by the model)
+    val_forecasts.csv        # GNN validation split (not read by the model)
+    test_forecasts.csv       # GNN test split (not read by the model)
   README.md                  # This file
+  runbook.md                 # Step-by-step analyst walkthrough
   pyproject.toml             # Dependencies
 ```
 
-**Start here**: run `python energy_grid_planning.py` for the full five-stage chain end to end, or follow `runbook.md` to rebuild it step by step.
+**Start here**: deploy with `rai models deploy --path model` and run `python -m queries.energy_grid_report` for the full five-stage chain end to end, or follow `runbook.md` to rebuild it step by step.
 
 ## Sample data
 
 The bundled data is **synthetic and illustrative** — modeled on the public shape of the ERCOT (Texas) grid and the wave of hyperscaler AI data center announcements, not a specific operator's network export. It is sized to teach the five-stage reasoning flow on a Snowflake-connected RAI account; production attributes a real interconnection study carries (sub-hourly SCADA telemetry, nodal pricing, contingency sets, protection settings) are extension points (see *Customize this template*), not gaps in the reasoning pattern.
 
-The script loads thirteen CSVs from `data/` into the ontology (`energy_grid_planning.py` lines 77-89). Three additional GNN-split files ship for the optional training workflow and are **not** read by the main script.
+The model loads thirteen CSVs from `data/` into the ontology (`model/source.py`). Three additional GNN-split files ship with the template and are **not** read by the model.
 
 - **`substations.csv`** (12 rows) — Texas grid nodes (Houston Ship Channel, Dallas-Fort Worth, San Antonio Metro, …) with `VOLTAGE_KV`, `MAX_CAPACITY_MW`, `CURRENT_LOAD_MW`, and lat/long coordinates.
 - **`generators.csv`** (15 rows) — generation units across 7 types (2 nuclear — STP + Comanche Peak — plus gas, coal, wind, solar, battery, hydro), each linked to a substation, with capacity, ramp, cost, emissions, and a renewable flag.
@@ -174,11 +260,11 @@ The script loads thirteen CSVs from `data/` into the ontology (`energy_grid_plan
 - **`customers.csv`** (10 rows) — end-use customers with contracted demand, flexibility, and curtailment cost.
 - **`data_center_requests.csv`** (10 rows) — hyperscaler interconnection requests (Microsoft, Google, Amazon, Meta, xAI, Oracle, CoreWeave, Lambda Labs, Crusoe Energy, Apple), 2,930 MW total, each targeting one substation with a requested MW, annual revenue per MW, power usage effectiveness (PUE), cooling type, low-carbon requirement, and queue position.
 - **`substation_upgrades.csv`** (10 rows) — candidate capacity upgrades, each on one substation, with `CAPACITY_INCREASE_MW`, `COST_MILLION`, lead time, and a low-carbon-enablement flag.
-- **`demand_forecasts.csv`** (96 rows) — pre-computed substation load forecasts at 6/12/18/24-month horizons, with confidence and a DC-growth-included flag. Stage 1 reads this directly (the GNN fallback path).
+- **`demand_forecasts.csv`** (96 rows) — pre-computed substation load forecasts at 6/12/18/24-month horizons, with confidence and a DC-growth-included flag. Stage 1 reads this directly.
 - **`load_history.csv`** (576 rows) — 4 years of monthly per-substation load readings with temperature and a peak-season flag.
 - **`dc_announcements.csv`** (8 rows) — hyperscaler announcement events (date, MW, target substation).
 
-Optional GNN training splits, **not loaded by the main script**: `train_forecasts.csv` (360 rows), `val_forecasts.csv` (108 rows), `test_forecasts.csv` (108 rows) — `substation_id` / `timestamp` / `target_load_mw` series for the optional predictive-training workflow.
+GNN training splits, **not loaded by the model**: `train_forecasts.csv` (360 rows), `val_forecasts.csv` (108 rows), `test_forecasts.csv` (108 rows) — `substation_id` / `timestamp` / `target_load_mw` series for training a load forecaster of your own.
 
 ## Model overview
 
@@ -188,7 +274,7 @@ One shared ontology threads all five stages. Each stage reads concepts and prope
 - **Primary identifiers**: string `id` on the base entities (e.g. `SUB-001`, `TL-001`); `name` on `InvestmentLevel` (e.g. `"$300M"`); `investment_level_name` on `InvestmentPortfolio`.
 - **Important invariants**: `predicted_load`, `max_capacity_mw`, `current_load_mw`, `requested_mw`, and `capacity_increase_mw` are non-negative MW; `low_carbon_requirement_pct` is a percentage; a generator is low-carbon when `emissions_rate == 0`; Stage 5 decision variables (`x_approve`, `x_upgrade`) are binary.
 
-`Substation` is the hub: Stages 1-3 enrich it with forecast, topology, and corridor-fragility properties that Stages 4-5 consume. The Stage 3 paths analysis also derives two transient sub-concepts, `GeneratorSubstation` and `DCSubstation` (both `extends=[Substation]`), to type the corridor endpoints. For the full concept and property definitions, see `energy_grid_planning.py`; `runbook.md` builds them step by step with the RAI skills.
+`Substation` is the hub: Stages 1-3 enrich it with forecast, topology, and corridor-fragility properties that Stages 4-5 consume. The Stage 3 paths analysis also derives two transient sub-concepts, `GeneratorSubstation` and `DCSubstation` (both `extends=[Substation]`), to type the corridor endpoints. For the full concept and property definitions, see `model/schema.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
@@ -227,7 +313,7 @@ An `InvestmentLevel` Scenario Concept holds 5 budget levels ($200M-$600M), each 
 
 One solve produces the entire frontier. The knee point at $300M (6 DCs, 1,530 MW, $252M net value) shows the highest marginal return: both DFW upgrades fit the budget, and Google Metroplex DC and Lambda Labs DFW join. At $200M, 4 DCs are approved (Microsoft, Amazon SA, Crusoe, Oracle); beyond the knee each additional $100M adds one more DC with diminishing returns ($1,013K/$M into the knee vs $439K/$M from $400M to $500M). Revenue is the objective, so where several upgrade sets earn the same revenue (as at $500M), the net value depends on which set the solver returns. xAI Colossus (500 MW) is never approved at any budget — DFW headroom goes to Google and Lambda. Per-level results (approvals, upgrades, MW) are all queried from the ontology via `model.select()` rather than parsed from solver output.
 
-See `energy_grid_planning.py` for the implementation of all five stages and `runbook.md` for the skill-driven reproduction.
+See `model/reasoning.py` for the implementation of the five stages and `runbook.md` for the skill-driven reproduction.
 
 ## Customize this template
 
@@ -236,14 +322,13 @@ Focus on the first changes most users will make.
 ### Use your own data
 
 - Replace the CSVs in `data/` with your own substation/transmission-line topology; keep the column names listed in *Sample data* above.
-- For Snowflake-backed runs, swap the `pd.read_csv(...)` calls for `model.data(snowflake_table)` calls.
-- Use real GNN predictions by installing the predictive reasoner and training on `load_history.csv` (the GNN training splits ship in `data/` for this), then let Stage 1 read the trained model instead of the `demand_forecasts.csv` fallback.
+- For Snowflake-backed runs, swap the `load_csv(...)` calls in `model/source.py` for `model.data(snowflake_table)` calls.
 
 ### Tune parameters
 
 - **Investment levels** — the budget scenarios (`$200M-$600M`) are `InvestmentLevel` rows; add rows for finer Pareto resolution or shift the budget caps to match your capex envelope.
-- **Corridor hop bound** — `MAX_CORRIDOR_HOPS` caps the Stage 3 path enumeration; raise it to trace longer generator-to-DC corridors.
-- **Structural-criticality cutoff** — `CRITICAL_THRESHOLD` sets how many top-betweenness substations Stage 2 flags critical, feeding Stage 4's structural rule.
+- **Corridor hop bound** — `MAX_CORRIDOR_HOPS` in `model/reasoning.py` caps the Stage 3 path enumeration; raise it to trace longer generator-to-DC corridors.
+- **Structural-criticality cutoff** — `CRITICAL_THRESHOLD` in `model/reasoning.py` sets how many top-betweenness substations Stage 2 flags critical, feeding Stage 4's structural rule.
 - **Objective weights** — Stage 5 maximizes annual interconnection revenue; adjust `annual_revenue_per_mw` or the net-value amortization to reweight which requests clear at each budget.
 
 ### Extend the model
@@ -305,7 +390,6 @@ Focus on the first changes most users will make.
 
 ### Reasoner reference
 
-- [Predictive reasoner (GNN)](https://docs.relational.ai/) — heterogeneous-graph classification, PropertyTransformer, edge patterns.
 - [Graph reasoner](https://docs.relational.ai/) — node-concept and edge-concept patterns, PageRank and centrality.
 - [Prescriptive reasoner](https://docs.relational.ai/) — `Problem` API, decision variables, constraints, objective.
 

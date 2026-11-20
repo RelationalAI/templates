@@ -89,6 +89,8 @@ Local DuckDB execution relies on deploy mode, which the package currently flags 
    python transaction_screening_local.py
    ```
 
+   The script deploys the model into the in-memory DuckDB database, waits for its first refresh, and prints the report from the deployed model. The database lasts only for the run, so every run deploys the model again.
+
 5. Expected output (abbreviated). The suspects and the investigation set confirm a successful run — 6 of 54 accounts flag, and the review set expands to 8:
 
    ```text
@@ -145,11 +147,11 @@ For the full concept and property definitions, see `transaction_screening_local.
 
 ## How it works
 
-The script starts by configuring a local DuckDB connection with a `deployment` section, so the model materializes and runs on your machine with no Snowflake connection. The section sets `public_schema` (`main`, where the model's views are published), `identity.internal_schema` (`main_internal`, where RelationalAI keeps the model's internal objects), and `auto_deploy`, which deploys the model before each query. It then loads the transfer ledger from CSV and derives an `Account` for every party seen at either end of a transfer.
+The script starts by configuring a local DuckDB connection with a `deployment` section, so the model materializes and runs on your machine with no Snowflake connection. The section sets `public_schema` (`main`, where the model's views are published) and `identity.internal_schema` (`main_internal`, where RelationalAI keeps the model's internal objects). It then loads the transfer ledger from CSV and derives an `Account` for every party seen at either end of a transfer.
 
 Next it builds the `transfers_to` relationship, linking each sender to its receiver, one row per transfer. The classification rules follow as declarative derived relationships: an account is flagged as structuring when it sends a transfer just under the reporting threshold, and as a large sender when it sends a transfer over the large-transfer limit. An account is a suspect if either flag holds — expressed as two rules that together read as a logical OR.
 
-Finally, connectivity comes from a self-join over `transfers_to` rather than a graph reasoner: an account sits near a suspect if it transacted directly with one in either direction. The investigation set — accounts under review — is the union of suspects and their direct counterparties. The queries at the bottom of the script summarize the network and print the review set.
+Finally, connectivity comes from a self-join over `transfers_to` rather than a graph reasoner: an account sits near a suspect if it transacted directly with one in either direction. The investigation set — accounts under review — is the union of suspects and their direct counterparties. The bottom of the script deploys the model, then its queries summarize the network and print the review set.
 
 ```text
 transactions.csv → load → Account + transfers_to → classification rules → suspects → one-hop expansion → review set
@@ -186,7 +188,7 @@ DuckDB tables need a three-part name. Reference them as `memory.<schema>.<table>
 <details>
 <summary>A query falls back to a Snowflake path, or reads an empty model relation</summary>
 
-Make sure the configuration includes a `deployment` section with `public_schema`, `identity.internal_schema`, and `auto_deploy` set to true, so that the model is routed to the DuckDB executor and materialized before queries run.
+Make sure the configuration includes a `deployment` section with `public_schema` and `identity.internal_schema`, so that the model is routed to the DuckDB executor, and that `model.deploy()` runs before the queries, so that the model is materialized when they read it.
 </details>
 
 <details>

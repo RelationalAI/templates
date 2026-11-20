@@ -16,7 +16,7 @@ figures shift run to run; the structural outcome holds.)
 
   ─────────────────────────────────────────────────────────────────
   STAGE 1  Predictive   ──►  NetworkEquipment.predictions (1,500)
-   /rai-predictive-           CellTower.failure_intensity (190)
+   /rai-predictive-           TowerFailureScore.failure_intensity (190)
    modeling                   Per-tower SUM of equipment failure
                               probabilities; range 0.02-10.47.
   ─────────────────────────────────────────────────────────────────
@@ -34,7 +34,7 @@ figures shift run to run; the structural outcome holds.)
   STAGE 4  Paths        ──►  Subscriber.top_call_path_influence
    /rai-graph-analysis        198 simple call paths (≤ 3 hops) from
                               the top-PageRank hub; 54 routing towers
-                              recovered. Top route persisted.
+                              recovered; top influence load kept.
   ─────────────────────────────────────────────────────────────────
   STAGE 5  Prescriptive ──►  TowerUpgradeOption.selected  (27)
    /rai-prescriptive-problem  OPTIMAL · 12 BRONZE · 7 SILVER · 8 GOLD
@@ -83,7 +83,7 @@ Concepts: `CellTower`, `NetworkEquipment` (with `tower_id_fk` FK property), `Equ
 
 **Response**
 
-Plans the 5-reasoner chain on the shared ontology — descriptive (`/rai-pyrel`) to scope the ontology and advisory landscape; predictive (`/rai-predictive-modeling` + `/rai-predictive-training`) to train an equipment-failure binary classification GNN with a `ModelAdvisory → NetworkEquipment` edge and bind the per-tower `failure_intensity` back to `CellTower`; rules (`/rai-pyrel`) to flag critical-restore towers via a three-branch rule combining operational degradation with the predictive intensity; graph (`/rai-graph-analysis`) to compute subscriber PageRank and aggregate per-tower customer impact (revenue × churn across ACTIVE callers); prescriptive (`/rai-prescriptive-problem` + `/rai-prescriptive-results`) to compose all three signals into the tier-selection MIP and explain the binding constraint.
+Plans the 5-reasoner chain on the shared ontology — descriptive (`/rai-pyrel`) to scope the ontology and advisory landscape; predictive (`/rai-predictive-modeling` + `/rai-predictive-training`) to train an equipment-failure binary classification GNN with a `ModelAdvisory → NetworkEquipment` edge and sum the predictions per tower into `TowerFailureScore.failure_intensity`; rules (`/rai-pyrel`) to flag critical-restore towers via a three-branch rule combining operational degradation with the predictive intensity; graph (`/rai-graph-analysis`) to compute subscriber PageRank and aggregate per-tower customer impact (revenue × churn across ACTIVE callers); prescriptive (`/rai-prescriptive-problem` + `/rai-prescriptive-results`) to compose all three signals into the tier-selection MIP and explain the binding constraint.
 
 ### 4. Train the equipment-failure GNN
 
@@ -95,7 +95,7 @@ Plans the 5-reasoner chain on the shared ontology — descriptive (`/rai-pyrel`)
 
 **Response**
 
-GNN binary classification with `eval_metric=roc_auc`, 80 epochs, three FK / shared-MODEL edges on an **undirected** graph (`directed=False`) so signal flows both ways across `Equipment ↔ Tower ↔ Equipment` and propagates the 2-hop neighbor-advisory pattern. PropertyTransformer pulls equipment / health / tower / advisory features (category, continuous, integer, datetime). Train/val/test split is 1050/225/1500 (test = all equipment so every item gets a prediction). Per-equipment positive-class probabilities are summed per tower in pandas and loaded back as `CellTower.failure_intensity` via a `TowerFailureScore` bridge concept. Per-tower `failure_intensity` distribution: min 0.02, median 2.92, max 10.47 — graded enough to give the prescriptive objective a real priority signal.
+GNN binary classification with `eval_metric=roc_auc`, 80 epochs, three FK / shared-MODEL edges on an **undirected** graph (`directed=False`) so signal flows both ways across `Equipment ↔ Tower ↔ Equipment` and propagates the 2-hop neighbor-advisory pattern. PropertyTransformer pulls equipment / health / tower / advisory features (category, continuous, integer, datetime). Train/val/test split is 1050/225/1500 (test = all equipment so every item gets a prediction). A rule sums the per-equipment positive-class probabilities per tower into `TowerFailureScore.failure_intensity`, a concept keyed by tower id: a `CellTower` property derived from the predictions would make the predictions depend on themselves, because the GNN reads the `CellTower` table. Per-tower `failure_intensity` distribution: min 0.02, median 2.92, max 10.47 — graded enough to give the prescriptive objective a real priority signal.
 
 ### 5. Flag critical-restore towers
 
@@ -126,12 +126,12 @@ Four derived health properties (`avg_packet_loss`, `avg_latency_ms`, `avg_error_
 **Prompt**
 
 ```
-/rai-graph-analysis Starting from our most influential subscriber, what are the call paths of up to three hops through the network, which cell tower carried each hop, and which path carries the most social influence — the path running through the subscribers with the highest combined importance, where a subscriber is influential when influential subscribers call them? Don't revisit a subscriber.
+/rai-graph-analysis Starting from our most influential subscriber, how many call paths of up to three hops run through the network, how many distinct cell towers carry them, and how much social influence does the strongest path carry — the path running through the subscribers with the highest combined importance, where a subscriber is influential when influential subscribers call them? Don't revisit a subscriber.
 ```
 
 **Response**
 
-Where PageRank scores a *subscriber*, paths scores the *route*. From the top-PageRank hub (SUB-CON-00900), 198 simple call paths (≤ 3 hops) are enumerated over an arity-3 caller-via-tower-callee edge, recovering 54 distinct routing towers; each path is ranked by summed PageRank. Top route: `SUB-CON-00900 → SUB-CON-00814 → SUB-ENT-0038 → SUB-CON-00644` (PageRank sum 0.009041). Persists the hub's top route as `Subscriber.top_call_path_influence`. (Scoped to a seed hub — the full call graph is large and cyclic.)
+Where PageRank scores a *subscriber*, paths scores the *route*. From the top-PageRank hub (SUB-CON-00900), 198 simple call paths (≤ 3 hops) are enumerated over an arity-3 caller-via-tower-callee edge, recovering 54 distinct routing towers; each path is ranked by summed PageRank. The highest influence load is 0.009041, persisted for the hub as `Subscriber.top_call_path_influence`. (Scoped to a seed hub — the full call graph is large and cyclic.)
 
 ### 8. Optimize tier selection
 
@@ -171,4 +171,4 @@ Ontology gains a singleton `RestorePlan` Concept with `total_cost`, `total_insta
 
 ## Data
 
-Bundled CSVs in `data/`: 250 cell towers (15 WEST DEGRADED), 1,500 `NetworkEquipment` items across 18 consolidated MODELs, 1,500 `EquipmentHealth` snapshots, 5,000 `NetworkPerformance` measurements, 1,200 subscribers, 6,000 CDRs, 750 `TowerUpgradeOption` rows (3 tiers × 250 towers), 8 `ModelAdvisory` rows on 7 distinct MODELs (severities 0.50–0.95). `data/_synthesize_advisory_data.py` regenerates the equipment / health / advisory / upgrade-option CSVs deterministically from a seed. All four chain stages run end-to-end via `telco_network_recovery.py`.
+Bundled CSVs in `data/`: 250 cell towers (15 WEST DEGRADED), 1,500 `NetworkEquipment` items across 18 consolidated MODELs, 1,500 `EquipmentHealth` snapshots, 5,000 `NetworkPerformance` measurements, 1,200 subscribers, 6,000 CDRs, 750 `TowerUpgradeOption` rows (3 tiers × 250 towers), 8 `ModelAdvisory` rows on 7 distinct MODELs (severities 0.50–0.95). `data/_synthesize_advisory_data.py` regenerates the equipment / health / advisory / upgrade-option CSVs deterministically from a seed. The chain's stages are declared in `model/` (`schema.py`, `source.py`, `reasoning.py`), trained with `train.py`, and read by `queries/recovery_report.py`.

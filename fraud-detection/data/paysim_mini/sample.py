@@ -1,4 +1,4 @@
-"""Sample PaySim into the bundled mini subset used by fraud_detection_local.py.
+"""Sample PaySim into the bundled mini subset the model package loads.
 
 One-time author-run script. The output CSVs (transactions/accounts/train/val/test)
 are checked in alongside this script; re-run only to regenerate from a local

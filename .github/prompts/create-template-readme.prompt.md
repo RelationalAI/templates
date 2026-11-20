@@ -20,7 +20,7 @@ for a new template, a strict `template-docs.yaml` in the same change.
 - Keep the README complete and runnable from a fresh environment.
 - Begin with the business problem and outcome.
 - For a long-form README, keep the solution stages in **What you'll build**.
-  Name the model schema, source mapping, runner, runbook, sample data, and
+  Name the model schema, source mapping, queries, runbook, sample data, and
   outputs in **What's included**.
 - For a short enhanced README, use **What this template is for** and
   **Quickstart** with an opening link to its docs-page model and walkthrough.

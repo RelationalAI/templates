@@ -49,4 +49,4 @@ Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` 
 
 ## Data
 
-Bundled CSV in `data/`: 2 freight groups with day-windows and weights. The transport modes and LTL rate tiers are defined in the script, along with TL cost/capacity and the holding rate. Full model in `supply_chain_transport.py`.
+Bundled CSV in `data/`: 2 freight groups with day-windows and weights. The transport modes and LTL rate tiers are defined in `model/source.py`, along with TL cost/capacity and the holding rate in `model/reasoning.py`. Full model in `model/`; the report in `queries/transport_plan.py`.

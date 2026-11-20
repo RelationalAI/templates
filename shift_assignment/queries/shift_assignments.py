@@ -1,0 +1,25 @@
+"""Shift assignment report: reads the deployed shift_assignment model.
+
+Run `python -m queries.shift_assignments` after `rai models deploy --path model`. Prints the
+status of the latest refresh's solve and the worker assigned to each shift in every
+coverage scenario.
+"""
+
+from model import Scenario, Shift, SolveStatus, Worker, assigned_ref, model
+
+if __name__ == "__main__":
+    status = model.select(SolveStatus).to_df().iloc[:, 0].tolist()
+    print(f"\nSolve result:\n• status: {', '.join(status)}\n")
+
+    # ----------------------------------------------
+    # Extract results per scenario
+    # ----------------------------------------------
+
+    print("\nAssignments per scenario:")
+    model.select(
+        Scenario.name.alias("scenario"),
+        Worker.name.alias("worker"),
+        Shift.name.alias("shift"),
+    ).where(
+        Worker.x_assign(Shift, Scenario, assigned_ref), assigned_ref > 0
+    ).inspect()

@@ -6,7 +6,7 @@ from pathlib import Path
 
 from pandas import DataFrame, read_csv
 
-from .schema import CandidateMatch, Record, ReviewPair, model
+from .schema import CandidateMatch, CandidatePairCount, Record, ReviewPair, model
 
 DATA_DIR = Path(__file__).parent.parent / "data"
 
@@ -206,7 +206,7 @@ def load_records() -> DataFrame:
 
 
 def build_candidate_pairs(records: DataFrame):
-    """Block and score records, returning accepted and review-band pairs."""
+    """Block and score records: the candidate-pair count, accepted pairs, and review-band pairs."""
     rows = {int(row["record_id"]): row for _, row in records.iterrows()}
     ids = sorted(rows)
 
@@ -238,7 +238,7 @@ def build_candidate_pairs(records: DataFrame):
         accepted, columns=["pair_id", "rec_a", "rec_b", "score"]
     )
     reviews = DataFrame(review, columns=["pair_id", "rec_a", "rec_b", "score"])
-    return ids, len(candidates), matches, reviews
+    return len(candidates), matches, reviews
 
 
 def load_candidate_facts(matches: DataFrame, reviews: DataFrame) -> None:
@@ -265,22 +265,16 @@ def load_candidate_facts(matches: DataFrame, reviews: DataFrame) -> None:
 
 
 def load_ground_truth() -> DataFrame:
-    """Read the optional labels used by the runner's evaluation section."""
+    """Read the optional labels used by the report's evaluation section."""
     return read_csv(DATA_DIR / "ground_truth.csv")
 
 
-def load_source_data():
-    """Load records, candidate facts, and review facts."""
+def load_source_data() -> None:
+    """Load records, candidate facts, review facts, and the candidate-pair count."""
     records = load_records()
-    ids, candidate_total, matches, reviews = build_candidate_pairs(records)
+    candidate_total, matches, reviews = build_candidate_pairs(records)
     load_candidate_facts(matches, reviews)
-    return records, ids, candidate_total, matches, reviews
+    model.define(CandidatePairCount(candidate_total))
 
 
-(
-    records_df,
-    record_ids,
-    candidate_count,
-    matches_df,
-    review_df,
-) = load_source_data()
+load_source_data()
