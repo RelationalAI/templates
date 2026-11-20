@@ -42,4 +42,4 @@ Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` 
 
 ## Data
 
-Bundled CSVs in `data/`: 38,984 people with health attributes, 58,355 related-person edges, and train/validation/test smoking labels. `smoker_status_prediction_local.py` is the primary runnable (loads the CSVs via `model.data()`, trains the GNN on the RelationalAI engine); `smoker_status_prediction.py` is the Snowflake-tables reference. Full model in `smoker_status_prediction_local.py`.
+Bundled CSVs in `data/`: 38,984 people with health attributes, 58,355 related-person edges, and train/validation/test smoking labels. The model in `model/` loads the CSVs via `model.data()`; `train.py` trains the GNN on the predictive reasoner and registers its version; the report is `queries/smoker_report.py`.
