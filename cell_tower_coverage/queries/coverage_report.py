@@ -68,7 +68,6 @@ if __name__ == "__main__":
         .sort_values(["region", "site_id"])
     )
     selected_sites_df["build_cost"] = pd.to_numeric(selected_sites_df["build_cost"])
-    selected_sites_df["capacity"] = pd.to_numeric(selected_sites_df["capacity"])
     selected_sites_df["selected"] = (
         pd.to_numeric(selected_sites_df["selected"]) > 0.5
     ).astype(int)
@@ -85,7 +84,6 @@ if __name__ == "__main__":
         .to_df()
         .sort_values(["covered", "population"], ascending=[False, False])
     )
-    zone_solution_df["population"] = pd.to_numeric(zone_solution_df["population"])
     zone_solution_df["covered"] = (
         pd.to_numeric(zone_solution_df["covered"]) > 0.5
     ).astype(int)
@@ -117,7 +115,7 @@ if __name__ == "__main__":
     zone_solution_df["assigned_site_id"] = zone_solution_df["assigned_site_id"].fillna("")
     zone_solution_df["assigned_site"] = zone_solution_df["assigned_site"].fillna("")
 
-    total_population = pd.to_numeric(zones_df["population"]).sum()
+    total_population = zones_df["population"].sum()
     covered_population = zone_solution_df.loc[
         zone_solution_df["covered"] > 0.5, "population"
     ].sum()
