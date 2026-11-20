@@ -30,8 +30,7 @@ def main() -> None:
         train_label.alias("label"),
     ).where(Train(train_txn, train_ts, train_label)).to_df()
     if len(_label_df):
-        # Cast out of pyarrow's Int128 to Python int for aggregation
-        _l = _label_df["label"].astype("int64")
+        _l = _label_df["label"]
         print("\n=== Fraud class balance (train split) ===")
         print(f"  n={len(_l)}  fraud={int(_l.sum())}  "
               f"fraud_rate={_l.mean():.1%}")
