@@ -44,9 +44,7 @@ if __name__ == "__main__":
         .to_df()
     )
 
-    kill_df["step"] = kill_df["step"].astype(int)
     kill_df = kill_df.drop_duplicates(["path_id", "step"]).sort_values(["path_id", "step"])
-    hop_df["hop"] = hop_df["hop"].astype(int)
     hop_df = hop_df.drop_duplicates(["path_id", "hop"]).sort_values(["path_id", "hop"])
 
     # Reassemble each kill-chain: ordered asset names + the technique used at each hop.
@@ -78,7 +76,6 @@ if __name__ == "__main__":
         .select(path.alias("path_id"), step.alias("step"), Asset.id.alias("asset_id"))
         .to_df()
     )
-    route_df["step"] = route_df["step"].astype(int)
     route_df = route_df.drop_duplicates(["path_id", "step"]).sort_values(["path_id", "step"])
     routes = sorted(
         {tuple(g.sort_values("step")["asset_id"]) for _, g in route_df.groupby("path_id")},
