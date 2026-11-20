@@ -44,8 +44,6 @@ def main() -> None:
         print("(no test-set predictions returned)")
         return
 
-    predictions_df["predicted_label"] = predictions_df["predicted_label"].astype(int)
-    predictions_df["actual_smoking"] = predictions_df["actual_smoking"].astype(int)
     predictions_df["prob"] = predictions_df["prob"].astype(float)
 
     print("\n=== Smoker predictions (sample) ===")

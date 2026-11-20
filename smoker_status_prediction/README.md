@@ -194,7 +194,7 @@ Use this sequence to deploy the model, train the GNN, and query its predictions:
      Predicted class dist: {0: 0.6055, 1: 0.3945}
    ```
 
-   The sample table is trimmed here: it shows the first 10 test people by Id. Predicted probabilities and the metrics vary a little from one training run to the next, and the predicted class distribution with them; the data summary and the actual labels do not. See `runbook.md` for the step-by-step walkthrough.
+   The sample shows the first 10 test people by Id. Predicted probabilities and the metrics vary a little from one training run to the next, and the predicted class distribution with them; the data summary and the actual labels do not. See `runbook.md` for the step-by-step walkthrough.
 
    To predict again without changing the model, refresh the deployed model, then run the query again:
 
