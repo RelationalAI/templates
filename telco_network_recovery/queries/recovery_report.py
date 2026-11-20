@@ -53,7 +53,6 @@ def stage_1_predictive() -> bool:
         NetworkEquipment.tower_id_fk.alias("TOWER_ID"),
         NetworkEquipment.at_risk.alias("AT_RISK"),
     ).to_df()
-    equipment_df["AT_RISK"] = equipment_df["AT_RISK"].astype("int64")
     advisories_df = select(
         ModelAdvisory.model.alias("MODEL"),
         ModelAdvisory.advisory_type.alias("ADVISORY_TYPE"),
@@ -98,7 +97,6 @@ def stage_1_predictive() -> bool:
         print("(no predictions returned)")
         return False
     pred_df["pos_prob"] = pred_df["pos_prob"].astype(float)
-    pred_df["predicted_label"] = pred_df["predicted_label"].astype("int64")
 
     # Per-tower SUM of positive probabilities (= expected count of at-risk
     # equipment on the tower), published by the model as
@@ -282,8 +280,7 @@ def stage_5_prescriptive(flagged_df: pd.DataFrame, blast_df: pd.DataFrame) -> No
     if objective:
         print(f"• objective: {round(objective[0], 9)}\n")
 
-    # Extract selected upgrades. Cast int128 (returned by RAI select) to
-    # int64 so pandas .sum() works.
+    # Extract selected upgrades.
     selected_df = (
         model.where(TowerUpgradeOption.is_selected_upgrade())
         .select(
@@ -295,9 +292,6 @@ def stage_5_prescriptive(flagged_df: pd.DataFrame, blast_df: pd.DataFrame) -> No
         )
         .to_df()
     )
-    for _col in ("capacity_gbps", "install_weeks"):
-        if _col in selected_df.columns:
-            selected_df[_col] = selected_df[_col].astype("int64")
     selected_df["cost"] = selected_df["cost"].astype(float)
 
     selected_df = selected_df.merge(
