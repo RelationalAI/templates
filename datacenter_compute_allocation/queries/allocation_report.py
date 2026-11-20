@@ -109,7 +109,6 @@ def stage_3_graph() -> None:
         Workload.name.alias("name"),
         Workload.gating_score.alias("gating_score"),
     ).to_df()
-    g_df["gating_score"] = pd.to_numeric(g_df["gating_score"], errors="coerce")
     top = g_df.dropna(subset=["gating_score"]).sort_values("gating_score", ascending=False).head(10)
     print("  Top-10 gating workloads (frontier pretrains expected to dominate):")
     for _, r in top.iterrows():
@@ -134,7 +133,6 @@ def cell_table() -> pd.DataFrame:
     ):
         part = select(*keys, prop.alias(col)).to_df()
         cells_df = cells_df.merge(part, on=CELL_KEYS, how="left")
-        cells_df[col] = pd.to_numeric(cells_df[col], errors="coerce")
     for col in ("n_assigned", "revenue_usd", "anchor_revenue_usd", "total_cost_usd"):
         cells_df[col] = cells_df[col].fillna(0)
 
@@ -146,7 +144,6 @@ def cell_table() -> pd.DataFrame:
         part = select(*keys, kind.alias("kind"), count_ref.alias("n")).where(
             relationship(kind, count_ref)
         ).to_df()
-        part["n"] = pd.to_numeric(part["n"], errors="coerce")
         wide = part.pivot_table(index=CELL_KEYS, columns="kind", values="n", aggfunc="sum").reset_index()
         for k in kinds:
             if k not in wide:
