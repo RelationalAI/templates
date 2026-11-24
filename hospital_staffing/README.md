@@ -15,7 +15,7 @@ tags:
 
 ## What this template is for
 
-This template uses **prescriptive reasoning (optimization)** to frame hospital nurse scheduling as a bi-objective problem with two competing objectives: minimize overtime cost versus minimize unmet patient demand. The original single-objective formulation bundled both goals into one weighted penalty sum, forcing the modeler to choose a penalty weight up front. This version unbundles them using the epsilon constraint method: it sweeps a range of caps on allowable unmet demand, and at each cap the solver minimizes overtime cost subject to that service-level constraint.
+This template uses **prescriptive reasoning (optimization)** to frame hospital nurse scheduling as a bi-objective problem with two competing objectives: minimize overtime cost versus minimize unmet patient demand. A single weighted objective would bundle both goals into one penalty sum, forcing the modeler to choose a penalty weight up front. This template instead unbundles them using the epsilon constraint method: it sweeps a range of caps on allowable unmet demand, and at each cap the solver minimizes overtime cost subject to that service-level constraint.
 
 The result is a Pareto frontier that reveals exactly how much overtime cost each level of patient service requires -- making the tradeoff explicit and auditable rather than hidden inside a penalty weight.
 
@@ -223,7 +223,7 @@ Use this sequence to deploy the model and query it:
        Night: Nurse_B, Nurse_E
    ```
 
-   All seven solves are `OPTIMAL`. The frontier has a sharp knee at point 5: cutting unmet demand from 130 to 43 patients costs no overtime, the next 21.7 patients cost $15.51 each, and the last 21.7 cost $89.17 each ($2,268 in all at full service). See `runbook.md` for the step-by-step walkthrough.
+   All seven solves are `OPTIMAL`. Each sweep point's cost is the least overtime that meets its cap: no overtime down to 43.3 unmet patients, then $336 at 21.7. Each anchor optimizes only its own objective, so its other number comes from whichever optimal schedule the solver returns: the cheapest anchor reports all 130 patients unmet because nothing in that solve rewards serving them, and the best-service anchor's $2,268 is not the least overtime that full service needs (the bundled data serves every patient for $1,116). The marginal rates and knee that involve an anchor inherit that arbitrariness. See `runbook.md` for the step-by-step walkthrough.
 
    To solve again without changing the model, refresh the deployed model, then run the query again:
 
@@ -317,7 +317,7 @@ Focus on the first changes most users will make.
 
 ### Scale up / productionize
 
-- Swap the `read_csv(...)` loads for `model.data(snowflake_table)` calls to run against roster and demand tables maintained in Snowflake.
+- Replace the `read_csv(...)` loads in `model/source.py` with `model.Table("<db>.<schema>.<table>")` sources, defining the same concepts and properties from each table's columns, to run against roster and demand tables maintained in Snowflake.
 - Pin `relationalai` in `pyproject.toml` for reproducible solves, and set a refresh schedule in `raiconfig.yaml` to refresh the frontier as demand forecasts update.
 
 ## Troubleshooting

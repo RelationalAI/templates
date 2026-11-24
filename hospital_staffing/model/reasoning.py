@@ -101,9 +101,7 @@ def staffing_problem(name, position, objective="min_overtime", sweep_index=None)
     # Unmet demand >= patient demand - patients served
     problem.satisfy(model.where(Shift).require(Shift.x_unmet_demand >= Shift.patient_demand - Shift.x_patients_served))
 
-    # --- Epsilon constraint (if sweeping) ---
-    # SINGLE-OBJECTIVE: unmet demand was penalized in the objective
-    # BI-OBJECTIVE: unmet demand is bounded by epsilon
+    # --- Epsilon constraint: a sweep point caps total unmet demand at its eps ---
     if sweep_index is not None:
         problem.satisfy(model.where(SweepPoint.index == sweep_index).require(
             sum(Shift.x_unmet_demand) <= SweepPoint.eps_unmet

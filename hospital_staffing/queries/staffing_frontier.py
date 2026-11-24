@@ -43,28 +43,27 @@ if __name__ == "__main__":
     print("=" * 70)
     print("ANCHOR SOLVE 1: Minimize overtime cost (no unmet demand constraint)")
     print("=" * 70)
-    print(f"Status: {points.loc[cheapest, 'status'] if cheapest in points.index else 'none'}")
+    anchor_status = points.loc[cheapest, "status"] if cheapest in points.index else "none"
+    print(f"Status: {anchor_status}")
     if not solved(cheapest):
-        raise SystemExit("anchor solve 1 (min overtime) did not solve to OPTIMAL")
-    if solved(cheapest):
-        print(f"Overtime cost: ${points.loc[cheapest, 'overtime_cost']:.2f}")
-        print(f"Unmet demand: {points.loc[cheapest, 'unmet_demand']:.1f} patients")
+        raise SystemExit(f"termination status {anchor_status}")
+    print(f"Overtime cost: ${points.loc[cheapest, 'overtime_cost']:.2f}")
+    print(f"Unmet demand: {points.loc[cheapest, 'unmet_demand']:.1f} patients")
 
     print(f"\n{'=' * 70}")
     print("ANCHOR SOLVE 2: Minimize unmet demand (no overtime cost objective)")
     print("=" * 70)
-    print(f"Status: {points.loc[best, 'status'] if best in points.index else 'none'}")
+    anchor_status = points.loc[best, "status"] if best in points.index else "none"
+    print(f"Status: {anchor_status}")
     if not solved(best):
-        raise SystemExit("anchor solve 2 (min unmet) did not solve to OPTIMAL")
-    if solved(best):
-        print(f"Min unmet demand: {points.loc[best, 'unmet_demand']:.1f} patients")
-        print(f"Overtime cost at best service: ${points.loc[best, 'overtime_cost']:.2f}")
+        raise SystemExit(f"termination status {anchor_status}")
+    print(f"Min unmet demand: {points.loc[best, 'unmet_demand']:.1f} patients")
+    print(f"Overtime cost at best service: ${points.loc[best, 'overtime_cost']:.2f}")
 
-    if solved(cheapest) and solved(best):
-        print(
-            f"\nFeasible unmet demand range: [{points.loc[best, 'unmet_demand']:.1f}, "
-            f"{points.loc[cheapest, 'unmet_demand']:.1f}]"
-        )
+    print(
+        f"\nFeasible unmet demand range: [{points.loc[best, 'unmet_demand']:.1f}, "
+        f"{points.loc[cheapest, 'unmet_demand']:.1f}]"
+    )
 
     # --------------------------------------------------
     # Epsilon sweep: minimize overtime s.t. unmet <= eps
@@ -75,24 +74,22 @@ if __name__ == "__main__":
     print(f"Unmet demand targets: {[f'{eps_by_index[i]:.1f}' for i in sorted(eps_by_index)]}")
     print(f"{'=' * 70}")
 
-    pareto = []
-    if solved(cheapest):
-        pareto.append({"position": cheapest, **points.loc[cheapest].to_dict()})
+    # The sweep stops at its first failed point: later points would span the failed interval.
+    pareto = [{"position": cheapest, **points.loc[cheapest].to_dict()}]
     for i in range(1, N_INTERIOR + 1):
         eps = eps_by_index.get(i)
         eps_text = f"{eps:.1f}" if eps is not None else "?"
         if not solved(i):
             point_status = points.loc[i, "status"] if i in points.index else "none"
-            print(f"  Point {i} (unmet<={eps_text}): {point_status}")
-            continue
+            print(f"  Point {i} (unmet<={eps_text}): {point_status} -- stopping")
+            break
         pt = points.loc[i]
         pareto.append({"position": i, **pt.to_dict()})
         print(
             f"  Point {i} (unmet<={eps_text}): overtime=${pt['overtime_cost']:.2f}, "
             f"actual_unmet={pt['unmet_demand']:.1f}  [{pt['status']}]"
         )
-    if solved(best):
-        pareto.append({"position": best, **points.loc[best].to_dict()})
+    pareto.append({"position": best, **points.loc[best].to_dict()})
     for pt in pareto:
         pt["label"] = frontier_label(pt["position"])
 
