@@ -281,7 +281,7 @@ See `model/reasoning.py` and `queries/plan_and_sensitivity.py` for the implement
 ### Use your own data
 
 - Replace `data/factories.csv` (columns `name`, `avail`) and `data/products.csv` (columns `factory_name`, `name`, `rate`, `profit`, `demand`) with your own rows. The model and the per-factory marginals pick up new factories and products automatically.
-- Keep product names unique across factories, or key the plan by the composite `(factory_name, name)` instead of by name alone.
+- Keep product names unique across factories (`model/source.py` rejects repeats), or key the report's plan by the composite `(factory_name, name)` and remove that uniqueness check together.
 - Update the `EXPECTED_FACTORIES` / `EXPECTED_PRODUCTS` guard sets in `model/source.py` so the load-time checks match your data, and update or remove the report's checks of the bundled optimum in `queries/plan_and_sensitivity.py`.
 
 ### Tune parameters
