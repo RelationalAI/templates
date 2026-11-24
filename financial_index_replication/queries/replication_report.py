@@ -9,6 +9,7 @@ comparison. Every input comes from the deployed model. Writes data/replica_retur
 with date, index_return, and replica_return columns for downstream plotting.
 """
 
+import os
 from math import sqrt
 
 import pandas as pd
@@ -72,11 +73,13 @@ if __name__ == "__main__":
         .where(
             Stock.x_selected(selected),
             Stock.x_weight(weight),
-            weight > 0.0001,
         )
         .to_df()
         .sort_values("weight", ascending=False)
     )
+    # Returns, sector exposure and turnover use every solved weight; the printed basket
+    # lists only weights above 0.01% of the portfolio.
+    basket_df = solution_df[solution_df["weight"] > 0.0001]
 
     returns_wide = (
         model.select(
@@ -111,7 +114,7 @@ if __name__ == "__main__":
 
     print("\n=== Selected Replication Basket ===")
     print(
-        solution_df[
+        basket_df[
             [
                 "ticker",
                 "sector",
@@ -200,4 +203,4 @@ if __name__ == "__main__":
     print("\n=== Baseline Comparison ===")
     print("Baseline: equal-weight top-20 stocks by full-history correlation")
     print(f"Baseline annualized tracking error: {baseline_tracking_error:.2%}")
-    print(f"\nWrote benchmark-vs-replica returns to: {replica_returns_csv}")
+    print(f"\nWrote benchmark-vs-replica returns to: {os.path.relpath(replica_returns_csv)}")

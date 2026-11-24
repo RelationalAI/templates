@@ -36,6 +36,7 @@ portfolio.
 - A Snowflake account that has the RAI Native App installed.
 - The one-time model deployment setup on that account, done by an account administrator: follow [Set up model deployment](https://private.relational.ai/early-access/model-deploy-setup) through **Governed setup**, **PAT authentication**, and steps 1-2 of **Additional setup for the prescriptive reasoner** (the Quickstart covers this template's own schema). It gives you a model role, a programmatic access token (PAT) stored as a secret, an external access integration, a PAT user, and a warehouse.
 - A Snowflake user that holds the model role.
+- Python 3.10 through 3.14 (the range relationalai 2.3.0 supports).
 
 ## Quickstart
 
@@ -143,7 +144,7 @@ Use this sequence to deploy the model and query it:
    Wrote benchmark-vs-replica returns to: data/replica_returns.csv
    ```
 
-   The solve selects exactly 20 names, though a selected stock may have zero weight. The solve ends as `OPTIMAL` or at its 300 second time limit (`TIME_LIMIT`) with the best basket found so far. The report prints the status either way and writes `data/replica_returns.csv` for plotting. See `runbook.md` for the basket, sector exposures, tracking quality, and baseline comparison.
+   The solve selects exactly 20 names, though a selected stock may have zero weight. The solve ends as `OPTIMAL` or at its 300 second time limit (`TIME_LIMIT`) with the best basket found so far. The report prints the status either way and, when the solve returned a basket, writes `data/replica_returns.csv` for plotting. See `runbook.md` for the basket, sector exposures, tracking quality, and baseline comparison.
 
    To solve again without changing the model, refresh the deployed model, then run the query again:
 
@@ -161,4 +162,3 @@ Use this sequence to deploy the model and query it:
    ```
 
    The first command lists the model's objects without dropping anything; the second drops them and keeps the two schemas.
-
