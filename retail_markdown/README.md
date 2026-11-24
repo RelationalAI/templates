@@ -246,7 +246,7 @@ Focus on the first changes most users will make.
 ### Use your own data
 
 - Replace the CSVs in `data/` with your own, keeping the column names listed in *Sample data* above.
-- Number `level` in `discounts.csv` in order of increasing `discount_pct`: the price ladder lets a product move only to a higher level. Keep a `level` 0 / 0% row if "no markdown" should remain an option.
+- Number `level` in `discounts.csv` in order of increasing `discount_pct`: the price ladder lets a product stay at its level or move to a higher one from week to week. Keep a `level` 0 / 0% row if "no markdown" should remain an option.
 - For Snowflake-backed runs, replace the `read_csv(...)` loads in `model/source.py` with `model.Table("<db>.<schema>.<table>")` sources, defining the same concepts and properties from each table's columns.
 
 ### Tune parameters
@@ -271,7 +271,7 @@ Focus on the first changes most users will make.
 <details>
 <summary>Problem is infeasible</summary>
 
-Selling nothing is always feasible when the inputs are non-negative and `discounts.csv` has at least one tier, so check for negative inventory, demand, lift, or multiplier values, and for an empty `discounts.csv`.
+Selling nothing is always feasible when the inputs are non-negative and `discounts.csv` has at least one tier, so check for negative inventory, demand, lift, or multiplier values. A `discounts.csv` with no tiers is invalid input rather than a cause of infeasibility: with no tier there is no discount decision to make, and the template does not check for it.
 </details>
 
 <details>
