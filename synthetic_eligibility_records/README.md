@@ -1,6 +1,6 @@
 ---
 title: "Synthetic Eligibility Records"
-description: "Generate K distinct, internally consistent member eligibility records per solve in multi-solution mode: each satisfies CMS Medicare-eligibility, age-by-plan-type CFDs, and PCP-network attribution."
+description: "Generate K distinct, internally consistent member eligibility records per solve in multi-solution mode: each satisfies a Medicare-style age-by-plan-type policy and PCP-network attribution."
 featured: false
 experience_level: intermediate
 industry: "Healthcare & Life Sciences"
@@ -23,7 +23,7 @@ Healthcare payer engineering teams, RegTech rule-certification harnesses, and cl
 
 Synthetic-data tooling consumers want a *batch* of K diverse records per solve, not one. A single record can't expose a CFD cascade or a network-attribution corner case; K records spread across age bands, plan types, and provider networks can. This template encodes member eligibility as a **constraint satisfaction** model using RelationalAI's **prescriptive** reasoning and runs the solver in multi-solution mode: pass `solution_limit=K` to `problem.configure(...)`, so each refresh of the deployed model enumerates the records, then enumerate each generated record via `Variable.values(solution_index, value)`. The output is one row per generated member -- ready to drop into a test fixture, a fuzzing oracle, or a coverage matrix.
 
-The rule structure here is drawn from the public [CMS Medicare](https://www.cms.gov/Medicare/Medicare) and [NCQA](https://www.ncqa.org/) regulatory shape: age-by-plan-type CFDs (over-65 must be on Medicare-Advantage; under-65 must not) and PCP-network attribution (the chosen primary-care provider must be in-network for the chosen plan). The same template structure -- decision-valued tuple per record, reference-data lookups via composition, multi-solution enumeration -- applies to any rule-driven synthetic-data domain: KYC member records (banking), tenant lease attributes (proptech), shipment manifests (logistics).
+The rule structure here is a synthetic fixture policy modeled on the public [CMS Medicare](https://www.cms.gov/Medicare/Medicare) and [NCQA](https://www.ncqa.org/) regulatory shape, not a statement of actual eligibility rules: age-by-plan-type CFDs (age 65 or above must be on the `MedicareAdvantage` plan type; under 65 must not) and PCP-network attribution (the chosen primary-care provider must be in-network for the chosen plan). The same template structure -- decision-valued tuple per record, reference-data lookups via composition, multi-solution enumeration -- applies to any rule-driven synthetic-data domain: KYC member records (banking), tenant lease attributes (proptech), shipment manifests (logistics).
 
 ## Who this is for
 
@@ -49,7 +49,7 @@ The rule structure here is drawn from the public [CMS Medicare](https://www.cms.
 - `queries/eligibility_records.py` -- prints the report from the deployed model: the solve status, the number of solutions, and every generated member record
 - `data/age_buckets.csv` -- 4 representative ages spanning the adult/senior split (2 under 65, 2 at or above)
 - `data/plans.csv` -- 3 plans (PPO, HMO, MedicareAdvantage) each on its own network
-- `data/providers.csv` -- 4 primary-care providers (1 PPO, 1 HMO, 2 Medicare) so each plan-network has at least one in-network PCP and the bundled K=8 enumeration spans all three plans
+- `data/providers.csv` -- 4 primary-care providers (1 PPO, 1 HMO, 2 Medicare) so each plan-network has at least one in-network PCP and the 8 feasible records span all three plans
 - `pyproject.toml` -- Python package configuration
 
 ## Prerequisites
@@ -175,7 +175,7 @@ Use this sequence to deploy the model and query it:
            7         28               PPO             1                 1 Dr_North_PPO
    ```
 
-   With `MAX_RECORDS = 16` and a bundled feasible set of 8 records, the solver exhausts the search space and returns status `OPTIMAL` with all 8 records. Each row carries its `solution` index. Solver build strings, exact wall times, and per-solution ordering vary from run to run; the structure of the output and the set of returned records is stable. Each row is one full member: an age of 65 or more always pairs with `MedicareAdvantage`, and `plan_network` always equals `provider_network`. On a real catalog the feasible set typically exceeds `MAX_RECORDS`, and the solver returns status `SOLUTION_LIMIT` once the cap is hit. The report prints the status either way, and prints a diagnostic when the solver returned no records.
+   With `MAX_RECORDS = 16` and a bundled feasible set of 8 records, the solver exhausts the search space and returns status `OPTIMAL` with all 8 records. Each row carries its `solution` index. The per-solution ordering varies from run to run; the structure of the output and the set of returned records is stable. Each row is one full member: an age of 65 or more always pairs with `MedicareAdvantage`, and `plan_network` always equals `provider_network`. On a real catalog the feasible set typically exceeds `MAX_RECORDS`, and the solver returns status `SOLUTION_LIMIT` once the cap is hit. The report prints the status either way, and prints a diagnostic when the solver returned no records.
 
    To solve again without changing the model, refresh the deployed model, then run the query again:
 
@@ -353,7 +353,7 @@ To extend to a fleet of N members, reintroduce a `Member` concept inside the mod
 <details>
   <summary>Warning: plan network(s) [...] have no providers in providers.csv</summary>
 
-- The pre-solve coverage check found a `network_id` value in `plans.csv` that does not appear in any `providers.csv` row. The PCP-network-attribution IC forbids cross-network `(plan, provider)` combinations, so any record that picks one of the listed plans has no satisfying provider and that plan can never appear in a generated record. The model is still solvable from the records that pick the other plans -- this is a warning, not an error.
+- The pre-solve coverage check found a `network_id` value in `plans.csv` that does not appear in any `providers.csv` row. The PCP-network-attribution IC forbids cross-network `(plan, provider)` combinations, so any record that picks one of the listed plans has no satisfying provider and that plan can never appear in a generated record. Records that pick the other plans can still be feasible, so this is a warning, not an error; if no record satisfies every rule, the report prints its zero-record diagnostic.
 - Add at least one provider for the listed network(s), or remove the affected plan rows from `plans.csv`.
 
 </details>

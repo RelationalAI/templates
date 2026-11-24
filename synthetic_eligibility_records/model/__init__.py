@@ -2,8 +2,9 @@
 
 Generate K distinct, internally consistent member eligibility records per
 solve. Each record is a tuple of three categorical decisions (age bucket,
-plan, primary care provider) that satisfies CMS Medicare-eligibility,
-age-by-plan-type cascading functional dependencies, and PCP-network
+plan, primary care provider) that satisfies a synthetic fixture policy
+modeled on Medicare eligibility (age 65 or above must be on the
+`MedicareAdvantage` plan type, under 65 must not) and PCP-network
 attribution. Solve as constraint satisfaction with `solution_limit=K`
 (MiniZinc) and publish every feasible record, read via
 `Variable.values(solution_index, value)` -- synthetic-data tooling consumers

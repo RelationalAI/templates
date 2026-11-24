@@ -32,9 +32,8 @@ plan_id = model.Relationship(f"{Integer:plan_id}")
 provider_id = model.Relationship(f"{Integer:provider_id}")
 
 problem = Problem(model, Integer, name="synthetic_eligibility_records")
-# All output goes through `Variable.values(sol_idx, value)`, so the
-# populated property is unused. `populate=False` skips the first-solution
-# write-back to avoid the latent FDError it invites under `solution_limit`.
+# The report reads every record through `Variable.values(sol_idx, value)`, so the
+# variables skip the write-back of the first solution (`populate=False`).
 age_bucket_var = problem.solve_for(
     age_bucket_id,
     type="int",

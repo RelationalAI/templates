@@ -3,33 +3,37 @@
 from pathlib import Path
 
 from pandas import read_csv
+from pandas.api.types import is_integer_dtype
 
 from .schema import AgeBucket, Plan, Provider, model
 
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 
 
-# Reference-data IDs must be dense and contiguous so the solver's
+# Reference-data IDs must be distinct consecutive integers so the solver's
 # `lower=min(id), upper=max(id)` decision bounds line up with the rows
 # the implies ICs iterate over. See the README troubleshooting block.
 def _assert_dense_ids(df, name):
-    ids = sorted(int(v) for v in df["id"].tolist())
-    if not ids:
+    ids = df["id"]
+    if ids.empty:
         raise ValueError(
             f"{name} has no rows; at least one row is required to set the "
             "decision-variable bounds (`lower=min(id), upper=max(id)`)."
         )
-    expected = list(range(ids[0], ids[-1] + 1))
-    if ids != expected:
+    if not is_integer_dtype(ids):
+        raise ValueError(f"{name} `id` column must hold integers; got dtype {ids.dtype}.")
+    ordered = ids.sort_values().tolist()
+    gaps = [(a, b) for a, b in zip(ordered, ordered[1:]) if b - a != 1]
+    if gaps:
         raise ValueError(
-            f"{name} `id` column must be dense and contiguous; got {ids}. "
+            f"{name} `id` column must be distinct and contiguous; {gaps[0][0]} is followed by {gaps[0][1]}. "
             "Renumber the rows or add explicit ID-membership ICs before solving."
         )
 
 
 # Pre-solve coverage warnings: a plan whose network has zero providers
-# (or a provider whose network has zero plans) is locally unreachable but
-# leaves the model globally feasible, so warn rather than raise.
+# (or a provider whose network has zero plans) can never appear in a
+# record, but the other plans and providers may still, so warn rather than raise.
 def _warn_orphan_networks(plans_csv, providers_csv):
     plan_networks = {int(v) for v in plans_csv["network_id"].tolist()}
     provider_networks = {int(v) for v in providers_csv["network_id"].tolist()}
