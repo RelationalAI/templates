@@ -293,7 +293,7 @@ Focus on the first changes most users will make.
   <summary>Unexpected cost values</summary>
 
 - The LTL cost is piecewise: the first 6000 lbs cost $0.18/lb, the next 7000 lbs cost $0.12/lb.
-- TL has a flat $2000 per truck with a 24,000 lb capacity.
+- TL has a flat $2000 per truck with a 24,000 lb capacity, and the model sends at most one truck per departure day.
 - Inventory holding is 0.1% of weight per day. Double-check that your freight weights match expectations.
 
 </details>
