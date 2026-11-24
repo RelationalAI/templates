@@ -37,7 +37,7 @@ Built using **prescriptive reasoning** (linear programming with continuous decis
 
 - **Model**: two concepts (`Food`, `Nutrient`), a `Scenario` concept, per-food decision variables, nutrient-bound constraints, and a cost-minimizing objective — in the `model/` package (`schema.py` declares the concepts, `source.py` loads the sample data, `reasoning.py` states the decision problem), which `rai models deploy --path model` deploys to your Snowflake account, where each refresh runs the solve.
 - **Query**: `queries/diet_plan.py`, which prints the report from the deployed model.
-- **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
+- **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the code in `model/`.
 - **Sample data**: `data/foods.csv` (foods with cost and per-nutrient content) and `data/nutrients.csv` (nutrient min/max bounds).
 - **Outputs**: the solve result (termination status and objective cost) and a table of the foods (and amounts) in each least-cost basket, printed to stdout.
 
