@@ -175,37 +175,48 @@ if __name__ == "__main__":
     )
 
     truth_df = load_ground_truth()
-    truth_map = dict(zip(truth_df["record_id"], truth_df["true_entity_id"]))
-    true_pairs = {
-        (rec_a, rec_b)
-        for rec_a, rec_b in combinations(record_ids, 2)
-        if truth_map[rec_a] == truth_map[rec_b]
-    }
-    predicted_pairs = {
-        (rec_a, rec_b)
-        for rec_a, rec_b in combinations(record_ids, 2)
-        if auto_entity[rec_a] == auto_entity[rec_b]
-    }
-    true_positives = len(predicted_pairs & true_pairs)
-    false_positives = len(predicted_pairs - true_pairs)
-    false_negatives = len(true_pairs - predicted_pairs)
-    precision = (
-        true_positives / (true_positives + false_positives)
-        if true_positives + false_positives
-        else 1.0
+    truth_map = (
+        {} if truth_df is None else dict(zip(truth_df["record_id"], truth_df["true_entity_id"]))
     )
-    recall = (
-        true_positives / (true_positives + false_negatives)
-        if true_positives + false_negatives
-        else 1.0
-    )
-    f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
     print("\n" + "=" * 64)
     print("Evaluation vs ground truth (pairwise, auto-resolution)")
     print("=" * 64)
-    print(f"  precision: {precision:.3f}   recall: {recall:.3f}   f1: {f1:.3f}")
-    print(
-        f"  (true positives={true_positives}, false positives={false_positives}, "
-        f"false negatives={false_negatives}; the {false_negatives} miss is the "
-        "held review pair)"
-    )
+    n_labeled = sum(record_id in truth_map for record_id in record_ids)
+    if n_labeled < n_records:
+        print(f"  skipped: {n_labeled} of {n_records} records have a label in data/ground_truth.csv")
+    else:
+        true_pairs = {
+            (rec_a, rec_b)
+            for rec_a, rec_b in combinations(record_ids, 2)
+            if truth_map[rec_a] == truth_map[rec_b]
+        }
+        predicted_pairs = {
+            (rec_a, rec_b)
+            for rec_a, rec_b in combinations(record_ids, 2)
+            if auto_entity[rec_a] == auto_entity[rec_b]
+        }
+        review_pairs = {
+            (min(rec_a, rec_b), max(rec_a, rec_b))
+            for rec_a, rec_b in zip(review_df["rec_a"].astype(int), review_df["rec_b"].astype(int))
+        }
+        true_positives = len(predicted_pairs & true_pairs)
+        false_positives = len(predicted_pairs - true_pairs)
+        false_negatives = len(true_pairs - predicted_pairs)
+        misses_held_for_review = len((true_pairs - predicted_pairs) & review_pairs)
+        precision = (
+            true_positives / (true_positives + false_positives)
+            if true_positives + false_positives
+            else 1.0
+        )
+        recall = (
+            true_positives / (true_positives + false_negatives)
+            if true_positives + false_negatives
+            else 1.0
+        )
+        f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
+        print(f"  precision: {precision:.3f}   recall: {recall:.3f}   f1: {f1:.3f}")
+        print(
+            f"  (true positives={true_positives}, false positives={false_positives}, "
+            f"false negatives={false_negatives}, of which {misses_held_for_review} "
+            "held for review)"
+        )

@@ -38,7 +38,7 @@ REINSURANCE_BUDGET = 120_000.0
 
 def cluster_accepted_matches():
     """Cluster records connected by accepted match edges."""
-    graph = Graph(model, directed=False, weighted=False, node_concept=Record)
+    graph = Graph(model, directed=False, weighted=False, node_concept=Record, name="match_graph")
 
     match_ref = CandidateMatch.ref()
     rec_a, rec_b = Record.ref(), Record.ref()

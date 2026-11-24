@@ -211,8 +211,8 @@ guided_walkthrough:
       references:
         Graph(...):
           anchor:
-            start: graph = Graph(model, directed=False, weighted=False, node_concept=Record)
-            end: graph = Graph(model, directed=False, weighted=False, node_concept=Record)
+            start: 'graph = Graph(model, directed=False, weighted=False, node_concept=Record, name="match_graph")'
+            end: 'graph = Graph(model, directed=False, weighted=False, node_concept=Record, name="match_graph")'
         CandidateMatch:
           anchor:
             start: match_ref = CandidateMatch.ref()

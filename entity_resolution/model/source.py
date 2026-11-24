@@ -264,9 +264,10 @@ def load_candidate_facts(matches: DataFrame, reviews: DataFrame) -> None:
     )
 
 
-def load_ground_truth() -> DataFrame:
-    """Read the optional labels used by the report's evaluation section."""
-    return read_csv(DATA_DIR / "ground_truth.csv")
+def load_ground_truth() -> DataFrame | None:
+    """Read the optional labels used by the report's evaluation section (None when absent)."""
+    path = DATA_DIR / "ground_truth.csv"
+    return read_csv(path) if path.exists() else None
 
 
 def load_source_data() -> None:
