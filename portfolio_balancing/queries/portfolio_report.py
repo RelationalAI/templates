@@ -329,6 +329,20 @@ if __name__ == "__main__":
         marginal_df, on=["scenario", "solve"], how="left"
     ).set_index(["solve", "scenario"])
 
+    # Every solve with a return floor should report the floor's shadow price. Without it
+    # the point shows a 0 marginal, and the drivers steer by a 0 slope.
+    no_duals = sorted(
+        {name for name, _ in solves.index[solves["marginal"].isna()]}
+        - {"min_risk", "max_return"}
+    )
+    if no_duals:
+        warnings.warn(
+            f"Solve(s) {no_duals} returned no sensitivity duals for the return floor "
+            "(e.g. a time-limit exit); their shadow prices show as 0, and the adaptive "
+            "and dichotomic drivers placed the following points with a 0 slope.",
+            stacklevel=1,
+        )
+
     # Every solve publishes one point per scenario; a missing point means that solve
     # returned no solution (infeasible, or the solver handed back an empty result).
     expected_solves = [
@@ -348,19 +362,6 @@ if __name__ == "__main__":
     if missing:
         raise SystemExit(f"Frontier solve(s) {missing} returned no solution.")
 
-    # Every solve with a return floor should report the floor's shadow price. Without it
-    # the point shows a 0 marginal, and the drivers that steer by it lose their guide.
-    no_duals = sorted(
-        {name for name, _ in solves.index[solves["marginal"].isna()]}
-        - {"min_risk", "max_return"}
-    )
-    if no_duals:
-        warnings.warn(
-            f"Solve(s) {no_duals} returned no sensitivity duals for the return floor "
-            "(e.g. a time-limit exit); their shadow prices show as 0, and the adaptive "
-            "and dichotomic frontiers may be incomplete.",
-            stacklevel=1,
-        )
     solves = solves.fillna({"marginal": 0.0})
 
     # Stock amounts of every solve, above the solver's 1e-6 noise floor.
@@ -639,6 +640,10 @@ if __name__ == "__main__":
             (allocation_df["scenario"] == sn)
             & (allocation_df["solve"] == knee_row["solve"])
         ]
+        if knee_allocation.empty:
+            raise SystemExit(
+                f"The knee solve {knee_row['solve']} returned no allocation for {sn}."
+            )
         allocations = dict(zip(knee_allocation["ticker"], knee_allocation["amount"]))
 
         meta = scenario_meta[sn]

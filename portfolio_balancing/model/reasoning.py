@@ -440,9 +440,11 @@ def frontier_problem(label, *, maximize_return=False, floor=None):
         ),
     )
     if return_floor is not None:
+        # A solve without sensitivity duals (e.g. at its time limit) steers the drivers with
+        # a 0 slope, so the later targets stay defined.
         model.where(return_floor.scenario == Scenario).define(
             r := Result.new(scenario=Scenario),
-            r.sp(maximum(0.0, return_floor.shadow_price)),
+            r.sp(maximum(0.0, return_floor.shadow_price) | 0.0),
         )
 
     # The solve's results as FrontierPoints, which the deployed model publishes for the
@@ -454,9 +456,10 @@ def frontier_problem(label, *, maximize_return=False, floor=None):
         fp.risk(Result.risk),
     )
     if return_floor is not None:
-        model.where(Result.scenario == Scenario).define(
+        # The published marginal is the solver's dual alone, so a missing one stays visible.
+        model.where(Result.scenario == Scenario, return_floor.scenario == Scenario).define(
             fp := FrontierPoint.new(scenario_label=Scenario.name, solve=label),
-            fp.marginal_risk_per_return(Result.sp),
+            fp.marginal_risk_per_return(maximum(0.0, return_floor.shadow_price)),
         )
     amount = Float.ref()
     model.where(
