@@ -88,7 +88,7 @@ if __name__ == "__main__":
     if len(bottlenecks) > 0:
         top = bottlenecks.iloc[0]
         print(f"\nTop bottleneck: {top['sku_name']} (betweenness={top['betweenness']:.4f})")
-        print("  Sits on the most dependency paths -- disruption here affects the most product lines.")
+        print("  Sits on the most shortest dependency paths between other SKUs.")
 
     # --------------------------------------------------
     # Assembly path enumeration

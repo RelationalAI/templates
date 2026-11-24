@@ -140,7 +140,7 @@ Run these steps from a terminal:
    Maximal assembly chains (8 of 18, sub-paths suppressed):
    ```
 
-   The 14 site-specific BOM rows collapse to 10 dependency edges. Both finished goods resolve to 7 transitive dependencies, the processor is the single most disruptive component, and each finished good lands at assembly depth 2. `runbook.md` walks through the analysis step by step.
+   The 14 site-specific BOM rows collapse to 10 dependency edges. Both finished goods resolve to 7 transitive dependencies, the processor is the top structural bottleneck, and each finished good lands at assembly depth 2. `runbook.md` walks through the analysis step by step.
 
 7. **Tear down the deployment**
 
@@ -212,7 +212,7 @@ All-pairs reachability computes every source-and-destination pair where a direct
 
 ### 4. Identify bottlenecks
 
-Betweenness centrality ranks components by how many shortest dependency paths pass through them. Components with high betweenness are structural bottlenecks — disrupting them affects the most product lines.
+Betweenness centrality ranks components by how many shortest dependency paths pass through them. Components with high betweenness are structural bottlenecks: they sit on the most dependency chains between other SKUs, which is not the same as how many finished goods depend on them.
 
 ### 5. Enumerate assembly paths (PREVIEW, requires `relationalai>=1.15`)
 
@@ -235,7 +235,7 @@ Focus on the first changes most users will make.
 
 ### Extend the model
 
-- Use `reachable(from_=target)` to trace the downstream impact of a specific component disruption.
+- Use `reachable(to=target)` to find the products that depend on a disrupted component: edges point from a product to its inputs, so the products are the sources that reach it.
 - Add cost or lead-time properties to quantify dependency exposure.
 - Combine with supplier data to map component-to-supplier risk chains.
 
