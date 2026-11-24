@@ -319,7 +319,6 @@ model.define(SolveStatus(problem.termination_status()))
   ).require(implies(a_modify_ind + b_fill_ind == 2, A.ts_ms < B.ts_ms))
   problem.satisfy(no_modify_after_fill_ic)
   ```
-- **Generate a "smallest violating trace" instead of a positive trace** by negating one of the rules (e.g. drop `no_after_cancel_ic`, bind `A`'s `CANCEL` and `B`'s `FILL` indicators via `has_type` in a `where`, and add `model.require(sum(a_cancel_ind + b_fill_ind - 1).per(Order) >= 0)` plus a temporal predicate). Every slot in `events.csv` is always part of the trace, so to find the smallest violating trace, solve with fewer event slots per order until the problem becomes infeasible: the smallest slot count that still solves gives it.
 - **Replace the synthetic time horizon** by reading `ts_ms` bounds from your real session schedule (market open / market close) and updating `TS_MIN` / `TS_MAX` in `model/reasoning.py`.
 
 ## Troubleshooting
@@ -370,6 +369,6 @@ model.define(SolveStatus(problem.termination_status()))
   <summary>The generated trace differs between runs</summary>
 
 - This is constraint satisfaction, not optimization. Any feasible trace is a valid answer; the solver is free to return different ones across runs.
-- To pin a single answer, switch to optimization -- e.g. `problem.minimize(sum(OrderEvent.ts_ms))` returns the trace with the earliest event timestamps overall.
+- To make the answer less arbitrary, switch to optimization -- e.g. `problem.minimize(sum(OrderEvent.ts_ms))` returns a trace with the smallest total event time; traces that tie on it can still differ.
 
 </details>

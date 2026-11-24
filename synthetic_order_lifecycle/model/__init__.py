@@ -7,7 +7,7 @@ This package demonstrates a CSP-based synthetic order-lifecycle trace generator 
 - Encode MiFID II / Reg NMS-flavour sequencing rules: PLACE first, nothing after CANCEL, exactly one PLACE per order, fill-quantity conservation, venue eligibility per symbol.
 - Solve as constraint satisfaction (MiniZinc) and print the returned trace.
 
-Event types are modelled as a `model.Enum` (requires relationalai>=1.12):
+Event types are modelled as a `model.Enum`:
 a single enum-indexed property carries one binary decision variable per
 (event slot, type), and the trace reads each event's chosen type label
 from the member's built-in `.name`.
