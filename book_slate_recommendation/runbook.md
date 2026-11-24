@@ -98,7 +98,7 @@ OPTIMAL or TIME_LIMIT (the solver may stop at its time limit with the best slate
 
 **Response**
 
-Each user has a 3-book slate ordered by explanation strength, every pick backed by its path support broken out by route — paths via a shared author, via a shared subject, and via similar books already read. The subject-diversity rule keeps a slate from being three books on one topic, and the explanation floor keeps weakly-connected (cold-start) books out unless nothing better connects — so every recommendation comes with a concrete, queryable "why."
+Each user has a 3-book slate placed by the position-weighted objective within the constraints and the time limit, every pick backed by its path support broken out by route — paths via a shared author, via a shared subject, and via similar books already read. The subject-diversity rule keeps a slate from being three books on one topic, and the explanation floor keeps weakly-connected (cold-start) books out unless nothing better connects — so every recommendation comes with a concrete, queryable "why."
 
 ## Data
 

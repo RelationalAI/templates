@@ -44,7 +44,7 @@ This template composes the slate as a single optimization decision rather than a
 - **Ontology**: a three-stage pipeline (knowledge-graph path walks, then graph analysis, then prescriptive optimization) on a single shared ontology, wired to the bundled CSVs.
 - **Model**: the `model/` package — the three-stage pipeline (`schema.py` declares the concepts, `source.py` loads the sample data and checks it, `reasoning.py` states the path walks, graph analysis, and slot-selection problem), which `rai models deploy --path model` deploys to your Snowflake account, where each refresh runs the solve.
 - **Query**: `queries/slate_report.py` — prints the report from the deployed model.
-- **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
+- **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the code in `model/`.
 - **Sample data**: a deterministic Open Library (CC0 public domain) slice of roughly 59 books, 52 authors, and 12 subjects, with synthetic users and read events layered on top. See *Sample data* below.
 - **Outputs**: the solve-result block, the chosen slate (with per-book `path_count_total` and `triangle_count`), the per-user subject distribution, per-pick explanation-path support, and diagnostic candidate-set and structural-embeddedness tables.
 
@@ -270,7 +270,7 @@ Focus on the first changes most users will make.
 ### Use your own data
 
 - Replace the CSVs in `data/` with your own, keeping the column names listed in *Sample data* above.
-- The model runs pre-solve validation before installing any model rules: it checks for unique keys, no null required columns, resolving foreign keys, non-negative `age_days`, and an `in_house` value in `{0, 1}`. Each failing check raises a focused error naming the offending rows.
+- The model runs pre-solve validation before installing any model rules: it checks for unique keys, no nulls in key and foreign-key columns, resolving foreign keys, non-negative `age_days`, and an `in_house` value in `{0, 1}`. Each failing check raises a focused error naming the input and columns.
 - The `book_similar.csv` similarity edges are the retrieval artifact. Swap the bundled shared-author-or-shared-subject recipe for any retrieval source (learned-embedding nearest neighbors, a behavioral co-engagement matrix, a third-party recommendation API); the rest of the pipeline is unchanged.
 - For Snowflake-backed runs, swap the `read_csv(...)` calls for `model.data(snowflake_table)` calls.
 
@@ -283,12 +283,12 @@ The constraint dials are constants in `model/reasoning.py`, except `SLATE_SIZE_K
 - **Diversity and exposure** — `MAX_PER_SUBJECT` (default `2`), `FRESHNESS_FLOOR` (default `1`), `FRESH_WINDOW_DAYS` (default `365 * 30`), `ORIGINALS_FLOOR` (default `1`), `COLD_START_CAP` (default `2`).
 - **Explainability** — `EXPLANATION_FLOOR` (default `8`), `WEAK_EXPLANATION_THRESHOLD` (default `2`), `HERO_EMBEDDEDNESS_THRESHOLD` (default `4`).
 
-See *Troubleshooting* for the joint-feasibility relationships between these dials. The explainability and threshold defaults are tuned to the bundled `sm` slice's `path_count_total` distribution (range 2 to 12); rescale them when you change the data size.
+See *Troubleshooting* for the joint-feasibility relationships between these dials. The explainability and threshold defaults are tuned to the bundled `sm` slice's `path_count_total` distribution; rescale them when you change the data size.
 
 ### Extend the model
 
 - **Add a per-book popularity scalar to the objective.** Declare a `Book.cf_score` Float (from collaborative filtering, learned-embedding affinity, or a third-party score), populate it from your retrieval stage, and rewrite the objective as `sum((K+1-slot) * (PATH_WEIGHT * path_count_total + CF_WEIGHT * cf_score))`. HiGHS handles the float-coefficient blend natively; the structural graph contribution (`triangle_count`, hero pin) stays in place because it constrains the slate rather than scoring it.
-- **Enumerate alternative slates.** `solve("minizinc", solution_limit=N)` returns N alternative slates for A/B exposure or human-in-the-loop editorial review.
+- **Enumerate alternative slates.** The deployed model publishes one slate per refresh. Returning several, for A/B exposure or editorial review, needs a solver solution limit plus a solution index on the published slots and in the report.
 - **Surface natural-language explanations.** Pipe each pick's per-typed counts (and, optionally, materialized top-N paths) into a language-model call to render explanations grounded in graph facts.
 - **Retarget to another domain.** Replace `Book` with `Product`, `read` with `purchased`, and `similar_to` with co-purchase for a "frequently bought together" slate with category coverage and brand exclusivity; or replace `Book` with `Course`, add prerequisite edges, and run a career-navigation slate with prerequisite respect.
 

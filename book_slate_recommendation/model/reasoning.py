@@ -326,9 +326,8 @@ exclude_read_ic = model.where(
 problem.satisfy(exclude_read_ic)
 
 # Author uniqueness: at most one picked Candidate per (user, Author).
-# GCC-style per-pair count cap. With every Book having exactly one
-# Author in the bundled data, this is equivalent to "the K picks
-# come from K distinct Authors". Per-pair caps are PyRel's CSP-
+# GCC-style per-pair count cap: no two picks share an author (a book
+# can have several authors). Per-pair caps are PyRel's CSP-
 # native shape for "no value repeats more than X times across
 # decisions" -- the same shape ``slot_uniqueness_ic`` uses to keep
 # slot positions unique.
