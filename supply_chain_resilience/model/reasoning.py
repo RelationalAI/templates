@@ -121,9 +121,8 @@ Site.component = wcc
 Site.eigenvector_centrality = eigenvector
 
 # Store centrality on Site for use in optimization objective: the eigenvector score
-# of each site other than stores and offices, divided by the largest such score. A
-# largest score of 0 leaves every site unscored, so no division by zero and no site
-# counts as most critical.
+# of each site other than stores and offices, divided by the largest such score. When
+# the largest score is 0, every score is 0 and is kept as is.
 Site.centrality = model.Property(f"{Site} has centrality {Float:centrality}")
 MaxCentrality = model.Relationship(f"max eigenvector centrality is {Float:max_score}")
 site_max, score_max = Site.ref(), Float.ref()
@@ -140,17 +139,25 @@ model.where(
     MaxCentrality(max_score),
     max_score > 0,
 ).define(site_eig.centrality(score_eig / max_score))
-
-# The site with the highest centrality; the site-offline scenario takes it offline.
-Site.is_most_critical = model.Relationship(f"{Site} is the most critical site")
-site_top, score_top = Site.ref(), Float.ref()
 model.where(
+    eigenvector(site_eig, score_eig),
+    site_eig.site_type != "STORE",
+    site_eig.site_type != "OFFICE",
+    MaxCentrality(0.0),
+).define(site_eig.centrality(score_eig))
+
+# The site with the highest centrality, the lowest ID among ties; the site-offline
+# scenario takes this one site offline.
+MostCriticalSiteId = model.Relationship(f"the most critical site has id {String:site_id}")
+site_top, score_top = Site.ref(), Float.ref()
+model.define(MostCriticalSiteId(aggs.min(site_top.id))).where(
     eigenvector(site_top, score_top),
     site_top.site_type != "STORE",
     site_top.site_type != "OFFICE",
     MaxCentrality(score_top),
-    score_top > 0,
-).define(site_top.is_most_critical())
+)
+Site.is_most_critical = model.Relationship(f"{Site} is the most critical site")
+model.where(MostCriticalSiteId(Site.id)).define(Site.is_most_critical())
 
 # --------------------------------------------------
 # Stage 2: Rules -- supplier risk classification

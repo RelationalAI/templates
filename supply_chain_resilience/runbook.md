@@ -29,7 +29,7 @@ watch->avoid downgrade = +0.0% (optimizer already routed around it).
                               [X] B017 avoid · [!] B003 watch
                               37 of 262 shipments late (14%).
   ─────────────────────────────────────────────────────────────────
-  STAGE 3  Prescriptive ──►  Operation.x_flow / Demand.x_unmet
+  STAGE 3  Prescriptive ──►  per-problem routes / unmet demand
                               OPTIMAL · $1,865 · 8 active flows · 0 unmet
                               + 2 scenario re-solves (S004 offline, watch->avoid)
   ─────────────────────────────────────────────────────────────────
@@ -121,7 +121,7 @@ Reasoner-routing plan: (1) Graph reachability for upstream supplier exposure, (2
 
 **Response**
 
-OPTIMAL · $1,865 · 8 active flows · 0 unmet. MILP on `Operation.x_flow` + `Demand.x_unmet`; objective = transport + risk surcharge + centrality weight + unmet penalty.
+OPTIMAL · $1,865 · 8 active flows · 0 unmet. MILP on `Operation.x_flow` + `Demand.x_unmet`, whose values each problem publishes as its own routes and unmet-demand relationships (the decisions themselves are not written back); objective = transport + risk surcharge + centrality weight + unmet penalty.
 
 ### 8. Quantify disruption scenarios
 

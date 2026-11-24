@@ -283,17 +283,20 @@ if __name__ == "__main__":
     print("SCENARIO ANALYSIS")
     print("=" * 70)
 
-    # Scenario 1: the highest-centrality site goes offline. Sites tied at the highest
-    # score all go offline together, so name every one.
+    # Scenario 1: the highest-centrality site goes offline (none when no site is scored,
+    # which leaves this solve equal to the baseline).
     top_df = (
         model.select(Site.id.alias("site_id"), Site.name.alias("site_name"))
         .where(Site.is_most_critical())
         .to_df()
         .sort_values("site_id")
     )
-    top_site_id = "+".join(top_df["site_id"]) or "none"
-    top_site_name = ", ".join(top_df["site_name"]) or "no scored site"
-    print(f"\nScenario: {top_site_name} ({top_site_id}) goes offline")
+    if top_df.empty:
+        top_site_id = "none"
+        print("\nScenario: no site is scored, so no site goes offline")
+    else:
+        top_site_id = top_df.iloc[0]["site_id"]
+        print(f"\nScenario: {top_df.iloc[0]['site_name']} ({top_site_id}) goes offline")
     results.append(report_flow(site_offline, f"Site {top_site_id} offline"))
 
     # Scenario 2: all "watch" suppliers are downgraded to "avoid".
