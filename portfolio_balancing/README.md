@@ -33,6 +33,7 @@ workflow.
 - A Snowflake account that has the RAI Native App installed.
 - The one-time model deployment setup on that account, done by an account administrator: follow [Set up model deployment](https://private.relational.ai/early-access/model-deploy-setup) through **Governed setup**, **PAT authentication**, and steps 1-2 of **Additional setup for the prescriptive reasoner** (the Quickstart covers this template's own schema). It gives you a model role, a programmatic access token (PAT) stored as a secret, an external access integration, a PAT user, and a warehouse.
 - A Snowflake user that holds the model role.
+- Python 3.10 through 3.14 (the range relationalai 2.3.0 supports).
 
 ## Quickstart
 

@@ -128,6 +128,7 @@ model.where(
 # against the derived Stock.correlation property.
 corr_graph = Graph(
     model,
+    name="corr_graph",
     directed=False,
     weighted=False,
     node_concept=Stock,
@@ -676,7 +677,9 @@ model.where(
     target_dvar((_var_at_hi - _var_lo) / (N_SOLVES - 1)),
     min_step((_ret_hi - _ret_lo) / (4 * (N_SOLVES - 1))),
     max_step((_ret_hi - _ret_lo) / (N_SOLVES - 2)),
-    lam0((_var_at_hi - _var_lo) / (_ret_at_hi - _ret_lo)),
+    # A single-point frontier (equal anchor returns) has no chord; the floor on the span
+    # keeps the bootstrap defined, and the zero step sizes keep every target at the anchor.
+    lam0((_var_at_hi - _var_lo) / maximum(_ret_at_hi - _ret_lo, 1e-9)),
 )
 previous_target, previous_lam = LO["ret"], lam0
 for k, label in enumerate(ADAPTIVE_SOLVES, start=1):

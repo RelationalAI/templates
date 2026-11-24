@@ -206,7 +206,6 @@ if __name__ == "__main__":
         StockQ3.sector.alias("sector"),
         StockQ3.cluster.alias("cluster_id"),
     ).to_df()
-    cluster_df["cluster_id"] = cluster_df["cluster_id"].astype(int)
     num_clusters = cluster_df["cluster_id"].nunique()
 
     # Query the derived correlation property for stats and edge count.
@@ -222,8 +221,6 @@ if __name__ == "__main__":
         .where(StockCQ.correlation(PairedCQ, corr_q_ref))
         .to_df()
     )
-    corr_df["i"] = corr_df["i"].astype(int)
-    corr_df["j"] = corr_df["j"].astype(int)
     corr_df["correlation"] = corr_df["correlation"].astype(float)
     # Upper triangle only (i < j) -- correlation is symmetric.
     upper_corr = corr_df[corr_df["i"] < corr_df["j"]].copy()
@@ -328,11 +325,43 @@ if __name__ == "__main__":
         FrontierPoint.solve.alias("solve"),
         FrontierPoint.marginal_risk_per_return.alias("marginal"),
     ).to_df()
-    solves = (
-        return_risk_df.merge(marginal_df, on=["scenario", "solve"], how="left")
-        .fillna({"marginal": 0.0})
-        .set_index(["solve", "scenario"])
+    solves = return_risk_df.merge(
+        marginal_df, on=["scenario", "solve"], how="left"
+    ).set_index(["solve", "scenario"])
+
+    # Every solve publishes one point per scenario; a missing point means that solve
+    # returned no solution (infeasible, or the solver handed back an empty result).
+    expected_solves = [
+        "min_risk",
+        "max_return",
+        "hi",
+        *GRID_SOLVES,
+        *ADAPTIVE_SOLVES,
+        *DICHOTOMIC_SOLVES,
+    ]
+    missing = [
+        name
+        for name in expected_solves
+        if name not in status
+        or any((name, sn) not in solves.index for sn in scenario_names)
+    ]
+    if missing:
+        raise SystemExit(f"Frontier solve(s) {missing} returned no solution.")
+
+    # Every solve with a return floor should report the floor's shadow price. Without it
+    # the point shows a 0 marginal, and the drivers that steer by it lose their guide.
+    no_duals = sorted(
+        {name for name, _ in solves.index[solves["marginal"].isna()]}
+        - {"min_risk", "max_return"}
     )
+    if no_duals:
+        warnings.warn(
+            f"Solve(s) {no_duals} returned no sensitivity duals for the return floor "
+            "(e.g. a time-limit exit); their shadow prices show as 0, and the adaptive "
+            "and dichotomic frontiers may be incomplete.",
+            stacklevel=1,
+        )
+    solves = solves.fillna({"marginal": 0.0})
 
     # Stock amounts of every solve, above the solver's 1e-6 noise floor.
     amount_ref = Float.ref()
@@ -516,6 +545,22 @@ if __name__ == "__main__":
         r["vol_gap_pct"] = (vol_gap / vol_base * 100.0) if vol_base > 1e-9 else 0.0
 
     frontier_df = DataFrame(fp_rows).sort_values(["scenario_label", "k"])
+
+    # Along a Pareto-efficient frontier neither return nor risk decreases, so no point
+    # dominates another. The interior targets come from the reference scenario only, so
+    # under the crisis covariance two adjacent points can price out (near-)equal: the
+    # check allows a small relative slack and stops on an actual decrease beyond it.
+    MONOTONIC_TOL = 1e-4
+    violations = []
+    for sn, sub in frontier_df.groupby("scenario_label"):
+        rows = sub.to_dict("records")
+        for a, b in zip(rows, rows[1:]):
+            if b["return"] < (1.0 - MONOTONIC_TOL) * a["return"] or b["risk"] < (
+                1.0 - MONOTONIC_TOL
+            ) * a["risk"]:
+                violations.append(f"{sn} {a['eps_label']}->{b['eps_label']}")
+    if violations:
+        raise SystemExit(f"Frontier points decrease in return or risk: {violations}")
 
     # --------------------------------------------------
     # Efficient frontier per scenario (exact dual marginals)
