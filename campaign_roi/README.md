@@ -274,7 +274,7 @@ Tightening `CAP_MULTIPLIER` toward 1.5 distributes increases across more campaig
 
 ### Scale up / productionize
 
-- For Snowflake-backed runs, swap the `read_csv(...)` call for a `model.data(snowflake_table)` call so the campaigns load directly from your warehouse.
+- For Snowflake-backed runs, replace `model.data(campaign_csv)` in `model/source.py` with `model.Table("<DB>.<SCHEMA>.<TABLE>")` over a table with the same columns, so the campaigns load directly from your warehouse.
 - The LP scales comfortably to thousands of campaigns; solve time grows with the number of decision variables and constraints, not the budget size.
 - Pin `relationalai` (see Prerequisites) and keep the parameters under `# Configure inputs` in version control so runs are reproducible.
 

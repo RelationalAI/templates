@@ -30,7 +30,9 @@ if __name__ == "__main__":
     objective_value = conversions[0]
     print(f"Total expected conversions (optimized): {objective_value:,.1f}")
 
+    # The id keeps campaigns that share every displayed value as separate rows.
     results_df = model.select(
+        Campaign.id.alias("id"),
         Campaign.name.alias("campaign"),
         Campaign.region.alias("region"),
         Campaign.current_budget.alias("current"),
@@ -46,7 +48,7 @@ if __name__ == "__main__":
     results_df["delta"] = results_df["optimized"] - results_df["current"]
     results_df["multiple"] = results_df["optimized"] / results_df["current"]
     results_df = results_df.sort_values("delta", key=abs, ascending=False).reset_index(drop=True)
-    print(results_df.to_string(index=False))
+    print(results_df.drop(columns="id").to_string(index=False))
 
     print("\nRegional spend (optimized):")
     regional = (
