@@ -250,7 +250,9 @@ Use this sequence to deploy the model and query it:
    $6,750) as demand shifts to the more expensive SupplierA, SupplierB, and SupplierD -- consistent
    with SupplierC's high marginal value, though the duals (local marginals) do not by
    themselves predict the full impact of removing all 600 units. Removing SupplierB has
-   less impact (+6%) since SupplierC absorbs most of the displaced volume.
+   less impact (+6%, $4,850 to $5,150): SupplierC, already at capacity, moves 150 units
+   from Widget to Component to replace SupplierB's Component orders, and SupplierA
+   supplies the 150 Widget units this frees up.
 
    To solve again without changing the model, refresh the deployed model, then run the query again:
 
@@ -327,7 +329,7 @@ CSV inputs → load Supplier/Product/SupplyOption → SupplyOrder decision varia
 - **What does one more unit of demand cost?** The shadow price of each demand constraint is the marginal cost to serve one more unit of that product.
 - **Which supply lanes are priced out?** A lane's *reduced cost* and *basis status* show which options are unused and how far their cost must fall before they enter the plan.
 
-Because each constraint carries an entity back-pointer, a marginal joins to that entity's own data by key -- no name parsing, no pandas. The economics are also stated as integrity constraints, but only the always-true directions of complementary slackness (a lane in use prices at ~0; SupplierA's lanes are priced out). The converse "every unused lane has a positive reduced cost" is **not** asserted, because SupplierB's lanes tie SupplierC at the margin (alternate optima).
+Because each constraint carries an entity back-pointer, a marginal joins to that entity's own data by key -- no name parsing, no pandas. The report also checks the economics, but only the always-true directions of complementary slackness (a lane in use prices at ~0; SupplierA's and SupplierD's lanes are priced out). The converse "every unused lane has a positive reduced cost" is **not** asserted, because SupplierB's lanes tie SupplierC at the margin (alternate optima).
 
 > [!NOTE]
 > Sensitivity analysis returns marginals only for LP/QP models (linear constraints with a linear or quadratic objective). For mixed-integer models the duals are empty -- use scenario analysis instead. Read the marginals off the **baseline** Problem's handles; the scenario Problems are solved without sensitivity.

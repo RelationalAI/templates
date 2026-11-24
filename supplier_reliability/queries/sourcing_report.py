@@ -47,8 +47,8 @@ if __name__ == "__main__":
 
     # --- The baseline sourcing plan -------------------------------------------------
     # The solved quantity of every lane, as the deployed model publishes it. (The optimum has
-    # cost-equal alternates, so the exact split is solver-build-dependent -- contrast
-    # factory_production, whose unique plan is checked.) The plan lists the lanes in use.
+    # cost-equal alternates, so the exact split is solver-build-dependent.) The plan lists the
+    # lanes in use.
     amt = Float.ref()
     lanes_df = (
         model.select(
@@ -81,6 +81,9 @@ if __name__ == "__main__":
     )
     print("\nLane reduced costs and basis status:")
     print(lane_rc_df.to_string(index=False))
+    # The checks below hold vacuously on empty tables, so first require the marginals.
+    if lane_rc_df.empty:
+        raise SystemExit("the baseline solve published no sensitivity marginals")
     # A lane in use is BASIC with ~0 reduced cost; a priced-out lane is NONBASIC_AT_LOWER
     # with a positive reduced cost (how far its cost must fall before using it pays off).
     #
