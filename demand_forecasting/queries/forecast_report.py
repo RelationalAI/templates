@@ -9,8 +9,8 @@ item family) over the test window, and the test-set RMSE.
 
 import numpy as np
 import pandas as pd
-from model import Item, Sale, Store, TestTable, TrainTable, ValTable, model
-from relationalai.semantics import Float, count, min, select
+from model import TEST_START, VAL_START, Item, Sale, Store, TestTable, TrainTable, ValTable, model
+from relationalai.semantics import Float, count, select
 
 
 def main() -> None:
@@ -19,11 +19,9 @@ def main() -> None:
             count(Store).alias("stores"),
             count(Item).alias("items"),
             count(Sale).alias("sales"),
-            count(TrainTable).alias("train"),
-            count(ValTable).alias("val"),
-            count(TestTable).alias("test"),
-            min(ValTable.date).alias("val_start"),
-            min(TestTable.date).alias("test_start"),
+            (count(TrainTable) | 0).alias("train"),
+            (count(ValTable) | 0).alias("val"),
+            (count(TestTable) | 0).alias("test"),
         )
         .to_df()
         .iloc[0]
@@ -33,9 +31,9 @@ def main() -> None:
     print(
         f"Splits (temporal): train={counts['train']:,}  val={counts['val']:,}  test={counts['test']:,}"
     )
-    val_start = pd.Timestamp(counts["val_start"]).date()
-    test_start = pd.Timestamp(counts["test_start"]).date()
-    print(f"Train: < {val_start}; Val: {val_start} -- {test_start}; Test: >= {test_start}")
+    # The cutoffs that model/source.py split the sales on.
+    print(f"Train: < {VAL_START.date()}; Val: {VAL_START.date()} -- {TEST_START.date()}; "
+          f"Test: >= {TEST_START.date()}")
     print(f"unit_sales: min={unit_sales.min()} mean={unit_sales.mean():.2f} max={unit_sales.max()}")
 
     print("\n" + "=" * 60)
@@ -57,7 +55,7 @@ def main() -> None:
     )
     dimensions_df = select(
         Sale.sale_id.alias("sale_id"), Store.city.alias("city"), Item.family.alias("family")
-    ).where(Sale.store_id == Store.store_id, Sale.item_id == Item.item_id).to_df()
+    ).where(Sale.predictions, Sale.store_id == Store.store_id, Sale.item_id == Item.item_id).to_df()
     results_df = results_df.merge(dimensions_df, on="sale_id", how="left")
 
     if results_df.empty:
@@ -67,6 +65,10 @@ def main() -> None:
         results_df["predicted"] = results_df["predicted"].astype(float).clip(lower=0)
         results_df["actual"] = results_df["actual"].astype(float)
         results_df["week_start"] = results_df["date"].dt.to_period("W").dt.start_time
+        unlabeled = int((results_df["city"].isna() | results_df["family"].isna()).sum())
+        if unlabeled:
+            print(f"{unlabeled} predictions have no store city or item family: they count toward "
+                  "the per-Sale RMSE but not the weekly table.")
 
         weekly = (
             results_df.groupby(["city", "family", "week_start"])[["actual", "predicted"]]

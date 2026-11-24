@@ -21,7 +21,7 @@ Retail planners forecast unit sales at fine granularity — per store, per item,
 ## Who this is for
 
 - Retail data scientists building per-(store, item, day) demand-forecasting pipelines who want to add hierarchical signal (item family, store cluster) without manually engineering features
-- Demand-planning teams who need a per-(store, family) weekly forecast that aggregates from per-Sale predictions
+- Demand-planning teams who need a per-(city, family) weekly forecast that aggregates from per-Sale predictions
 - ML engineers exploring GNN regression over heterogeneous retail graphs
 - Teams already querying RelationalAI on a Store/Item/Sale ontology who want to layer a predictive head onto it
 
@@ -281,7 +281,7 @@ The pipeline builds a heterogeneous graph, trains a regression GNN over it, and 
 
 **Train and predict.** The GNN runs a regression task with `has_time_column=True`: each Train, Val and Test row carries its sale date, and `Sale.date` is the property transformer's time column. Predictions are attached back to each Sale.
 
-**Aggregate to a weekly forecast.** A single declarative query pulls the per-Sale predictions and joins them to store and item metadata; pandas then rolls them up into weekly per-(city, family) buckets against the actuals.
+**Aggregate to a weekly forecast.** Two queries pull the per-Sale predictions and their store city and item family; pandas then rolls them up into weekly per-(city, family) buckets against the actuals, pooling stores that share a city.
 
 See `model/reasoning.py` for the graph and the GNN, `queries/forecast_report.py` for the rollup, and `runbook.md` to reproduce it step by step with the RAI skills.
 
@@ -302,27 +302,17 @@ See `model/reasoning.py` for the graph and the GNN, `queries/forecast_report.py`
 
 ### Scale up / productionize
 
-- **Run on the full public Favorita dataset** — the bundled `favorita_mini` is intentionally tiny so the template runs in minutes on CPU. See the walkthrough below to point the pipeline at the full Kaggle corpus on a GPU-backed engine.
+- **Run on the full public Favorita dataset** — the bundled `favorita_mini` is intentionally tiny so the template runs in minutes on CPU. The section below lists what changes to run it on the full Kaggle corpus on a GPU-backed engine.
 
 ### Run on the full public Favorita dataset
 
-The bundled `favorita_mini` is intentionally tiny so the template runs in minutes on CPU. To run on the full Kaggle Favorita corpus (~125M sales rows across 54 stores × 4,100 items × ~5 years):
+The bundled `favorita_mini` is intentionally tiny so the template runs in minutes on CPU. The template does not ship an adaptation for the full Kaggle Favorita corpus (~125M sales rows across 54 stores × 4,100 items × ~5 years); running on it takes these changes:
 
 1. Download the dataset from [Kaggle: Corporación Favorita Grocery Sales Forecasting](https://www.kaggle.com/c/favorita-grocery-sales-forecasting). License is "Subject to Competition Rules" — review before redistributing.
-2. Load the CSVs into Snowflake (`stores.csv`, `items.csv`, `train.csv` is the sales table). Rename `train.csv → sales.csv` to match the template.
-3. Replace the `pd.read_csv(...)` calls in `model/source.py` with Snowpark queries against your loaded tables (or use `model.Table("<DB>.<SCHEMA>.<TABLE>")` per `rai-pyrel` skill's data-loading guidance):
-   ```python
-   from relationalai.config import SnowflakeConnection, create_config
-   from snowflake import snowpark
-   session = create_config().get_session(SnowflakeConnection)
-   stores_df = session.sql("SELECT * FROM YOUR_DB.FAVORITA.STORES").to_pandas()
-   items_df = session.sql("SELECT * FROM YOUR_DB.FAVORITA.ITEMS").to_pandas()
-   sales_df = session.sql(
-       "SELECT * FROM YOUR_DB.FAVORITA.SALES WHERE date >= '2017-01-01'"
-   ).to_pandas(parse_dates=["date"])
-   ```
+2. Load `stores.csv`, `items.csv`, and `train.csv` (the sales table) into Snowflake, and map their columns to the ones the model reads: the Kaggle files name the keys `store_nbr`, `item_nbr`, and `id` (the model reads `store_id`, `item_id`, and `sale_id`), and the store and item types `type` and `class` (the model reads `store_type` and `item_class`). Raw `unit_sales` includes returns (negative values) and fractional quantities for items sold by weight, while the model's target is a non-negative integer, so decide how to filter or round them.
+3. Read the tables through `model.Table("<db>.<schema>.<table>")` sources in `model/source.py` instead of pandas frames: the deployed model writes each pandas frame into its definition as inline rows, which does not scale to the full corpus. The temporal split in `model/source.py` works on pandas frames, so restate it as rules over `Sale.date`.
 4. Size the predictive reasoner for the data with `reasoners.predictive.size` in `raiconfig.yaml` (a GPU size for the full corpus): a deployed GNN runs on the device that size provides.
-5. Trim the date window in the SQL `WHERE` clause if you don't need the full 5 years; the template's `TEST_DAYS` / `VAL_DAYS` parameters control the temporal split inside that window.
+5. Trim the date window in the tables you map if you don't need the full 5 years; `TEST_DAYS` / `VAL_DAYS` control the temporal split inside that window.
 6. Real Favorita has additional tables (`oil.csv`, `holidays_events.csv`, `transactions.csv`) you may want to fold in as features — see [Customize this template](#customize-this-template) above for the pattern.
 
 ## Troubleshooting
