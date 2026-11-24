@@ -151,7 +151,7 @@ Run these steps from a terminal:
      • Most connected (Degree Centrality): Central Warehouse (46.7535)
    ```
 
-   The report ranks every distribution point by PageRank and degree centrality, groups the points into strategic categories, and prints network-wide and regional statistics. The full ranked tables and the strategic-category walkthrough are in `runbook.md`.
+   The report ranks every distribution point by PageRank and degree centrality, groups the points into strategic categories, and prints network-wide and regional statistics. `runbook.md` walks through the ranking and the strategic categories step by step.
 
 7. **Tear down the deployment**
 
@@ -175,7 +175,7 @@ streamlit run app.py
 
 The Streamlit app provides:
 
-- Interactive network visualization with directional arrows
+- Interactive network visualization, color-coded by strategic category
 - Filterable distribution-point rankings table
 - Detailed strategic-category analysis
 - CSV export functionality
@@ -211,13 +211,13 @@ The bundled data is small and illustrative — an 18-node humanitarian relief ne
 
 ## Model overview
 
-The model is a small graph ontology: distribution points connected by directed, weighted supply routes. Graph metrics are computed at query time from the route graph rather than stored on the point.
+The model is a small graph ontology: distribution points connected by directed, weighted supply routes. Each refresh of the deployed model computes the graph metrics and publishes them as `DistributionPoint` properties.
 
 - **Key entities**: `DistributionPoint` — a node in the relief network (airport, warehouse, border crossing, or relief camp); `SupplyRoute` — a directed route between two distribution points, with weighted attributes (throughput capacity, reliability, distance).
 - **Primary identifiers**: `DistributionPoint.id` (integer); `SupplyRoute` is keyed by its `(from_point, to_point)` pair.
 - **Important invariants**: `reliability_score` is a fraction in `[0, 1]`; capacity and distance are positive; the derived `flow_weight` combines all three into the edge weight the graph algorithms read.
 
-The two centrality metrics (`pagerank`, `degree_centrality`) and the degree counts (`incoming_routes`, `outgoing_routes`) are computed by the Graph API over the route graph at query time, not stored as `DistributionPoint` properties.
+The two centrality metrics (`pagerank`, `degree_centrality`) and the degree counts (`indegree`, `outdegree`) are computed by the Graph API over the route graph on each refresh and attached to `DistributionPoint`, along with each point's `total_routes` and strategic `category`.
 
 For the full concept and property definitions, see `model/schema.py`; `runbook.md` builds them step by step with the RAI skills.
 
@@ -233,9 +233,9 @@ CSV files → model/ (deployed) → Calculate PageRank → Calculate Degree Cent
 
 **Calculate PageRank.** PageRank simulates random walks through the network to find where aid naturally concentrates. Starting from equal probability at every node, it iteratively propagates probability along edges, applying a damping factor (85% chance of following a route, 15% chance of teleporting to a random node) until the scores stabilize. A higher score means a node is more central to network flow.
 
-**Calculate weighted degree centrality.** This sums each node's flow weights (capacity × reliability across its routes), so it rewards not just how many connections a node has but how strong they are. A high weighted degree marks a coordination hub with substantial aid throughput. Indegree and outdegree are also computed for context.
+**Calculate weighted degree centrality.** This sums the flow weights of each node's routes (capacity × reliability / distance) and divides by the number of other nodes, so it rewards not just how many connections a node has but how strong they are. A high weighted degree marks a coordination hub with substantial aid throughput. Indegree and outdegree are also computed for context.
 
-**Query and analyze strategic categories.** Both metrics are queried together into a DataFrame, then each distribution point is classified against the 70th-percentile thresholds on the two scores: critical coordination hubs (high on both), influential endpoints (high PageRank, lower degree), and network connectors (lower PageRank, high degree).
+**Classify strategic categories.** The model classifies each distribution point against the 70th-percentile thresholds on the two scores (a point at a threshold counts as high): critical coordination hubs (high on both), influential endpoints (high PageRank, lower degree), network connectors (lower PageRank, high degree), and regular distribution points (lower on both).
 
 **Display strategic analysis and recommendations.** `queries/distribution_point_ranking.py` prints a ranked table of all points with both metrics, the strategic-category breakdown, network-wide and regional statistics, and recommendations for response teams. The Streamlit app adds an interactive overview, a color-coded network visualization, filterable rankings with CSV export, and per-category detail.
 

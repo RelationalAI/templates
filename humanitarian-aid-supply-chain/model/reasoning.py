@@ -1,7 +1,8 @@
-"""Supply route graph: PageRank, degree centrality, and in/out route counts."""
+"""Supply route graph: PageRank, degree centrality, route counts, and strategic categories."""
 
-from relationalai.semantics import Float, define
+from relationalai.semantics import Float, Integer, String, define
 from relationalai.semantics.reasoners.graph import Graph
+from relationalai.semantics.std import aggregates as aggs
 
 from .schema import DistributionPoint, SupplyRoute, model
 
@@ -17,6 +18,7 @@ define(SupplyRoute.flow_weight((SupplyRoute.route_capacity * SupplyRoute.reliabi
 # Define directed, weighted graph with DistributionPoint nodes and SupplyRoute edges
 graph = Graph(
     model,
+    name="supply_network",
     directed=True,
     weighted=True,
     node_concept=DistributionPoint,
@@ -47,3 +49,21 @@ DistributionPoint.pagerank = pagerank
 DistributionPoint.degree_centrality = degree_centrality
 DistributionPoint.indegree = indegree
 DistributionPoint.outdegree = outdegree
+
+DistributionPoint.total_routes = model.Property(f"{DistributionPoint} has {Integer:total_routes} routes")
+model.define(DistributionPoint.total_routes(DistributionPoint.indegree + DistributionPoint.outdegree))
+
+# Strategic category: whether a point's PageRank and degree centrality reach the network's
+# 70th percentile (inclusive, interpolated linearly between ranks).
+other = DistributionPoint.ref()
+pagerank_cut = aggs.percentile(70, other, other.pagerank)
+degree_cut = aggs.percentile(70, other, other.degree_centrality)
+high_pagerank = DistributionPoint.pagerank >= pagerank_cut
+low_pagerank = DistributionPoint.pagerank < pagerank_cut
+high_degree = DistributionPoint.degree_centrality >= degree_cut
+low_degree = DistributionPoint.degree_centrality < degree_cut
+DistributionPoint.category = model.Property(f"{DistributionPoint} is a {String:category}")
+model.where(high_pagerank, high_degree).define(DistributionPoint.category("Critical Coordination Hub"))
+model.where(high_pagerank, low_degree).define(DistributionPoint.category("Influential Endpoint"))
+model.where(low_pagerank, high_degree).define(DistributionPoint.category("Network Connector"))
+model.where(low_pagerank, low_degree).define(DistributionPoint.category("Regular Distribution Point"))

@@ -6,48 +6,25 @@ Prints the distribution points ranked by PageRank (influence) and Degree Central
 summaries for emergency response planning.
 """
 
-from model import degree_centrality, graph, indegree, outdegree, pagerank
-from relationalai.semantics import Float, Integer, where
-
-# Create variable references for use in queries
-point = graph.Node.ref("point")
-pr_score = Float.ref("pr_score")
-dc_score = Float.ref("dc_score")
-in_routes = Integer.ref("in_routes")
-out_routes = Integer.ref("out_routes")
+from model import DistributionPoint, model
 
 if __name__ == "__main__":
-    # Query the graph to retrieve:
-    # - Basic distribution point information (id, name, type, region, capacity, population)
-    # - PageRank score (influence/importance in aid flow)
-    # - Degree Centrality score (connectivity/hub importance)
-    # - Incoming and outgoing route counts
-    results = where(
-        pagerank(point, pr_score),
-        degree_centrality(point, dc_score),
-        indegree(point, in_routes),
-        outdegree(point, out_routes)
-    ).select(
-        point.id,
-        point.name,
-        point.type,
-        point.region,
-        point.capacity,
-        point.population_served,
-        pr_score.alias("pagerank"),
-        dc_score.alias("degree_centrality"),
-        in_routes.alias("incoming_routes"),
-        out_routes.alias("outgoing_routes")
+    # Each point's attributes, graph metrics, route counts, and strategic category, as the
+    # deployed model publishes them.
+    results = model.select(
+        DistributionPoint.id,
+        DistributionPoint.name,
+        DistributionPoint.type,
+        DistributionPoint.region,
+        DistributionPoint.capacity,
+        DistributionPoint.population_served,
+        DistributionPoint.pagerank.alias("pagerank"),
+        DistributionPoint.degree_centrality.alias("degree_centrality"),
+        DistributionPoint.indegree.alias("incoming_routes"),
+        DistributionPoint.outdegree.alias("outgoing_routes"),
+        DistributionPoint.total_routes.alias("total_routes"),
+        DistributionPoint.category.alias("category"),
     ).to_df()
-
-    # Convert to standard types
-    results['incoming_routes'] = results['incoming_routes'].astype(int)
-    results['outgoing_routes'] = results['outgoing_routes'].astype(int)
-    results['capacity'] = results['capacity'].astype(int)
-    results['population_served'] = results['population_served'].astype(int)
-
-    # Calculate total routes
-    results['total_routes'] = results['incoming_routes'] + results['outgoing_routes']
 
     # Sort by PageRank (primary) then Degree Centrality (secondary)
     results = results.sort_values(["pagerank", "degree_centrality"], ascending=False)
@@ -61,7 +38,7 @@ if __name__ == "__main__":
     print("\n📊 KEY METRICS EXPLAINED:")
     print("  • PageRank: Measures influence in the supply network (0-1 scale)")
     print("    Higher scores indicate points where aid naturally concentrates through the network")
-    print("  • Degree Centrality: Sum of flow weights for all connected routes (higher = more influential hub)")
+    print("  • Degree Centrality: Flow weight of all connected routes, divided by the number of other points")
     print("    Higher scores indicate highly connected nodes that serve as critical coordination hubs")
     print("\n🎯 STRATEGIC PRIORITIES:")
     print("  High PageRank + High Degree → Critical coordination hubs (maximize capacity & redundancy)")
@@ -83,14 +60,8 @@ if __name__ == "__main__":
     # Identify strategic categories
     print("\n🎯 STRATEGIC ANALYSIS:\n")
 
-    pr_threshold = results['pagerank'].quantile(0.70)
-    dc_threshold = results['degree_centrality'].quantile(0.70)
-
     # Category 1: Critical Coordination Hubs (High PageRank + High Degree Centrality)
-    critical_hubs = results[
-        (results['pagerank'] >= pr_threshold) &
-        (results['degree_centrality'] >= dc_threshold)
-    ]
+    critical_hubs = results[results['category'] == "Critical Coordination Hub"]
 
     if len(critical_hubs) > 0:
         print("  1️⃣  CRITICAL COORDINATION HUBS (High Influence + High Connectivity)")
@@ -103,10 +74,7 @@ if __name__ == "__main__":
             print()
 
     # Category 2: Influential Endpoints (High PageRank + Lower Degree Centrality)
-    influential_endpoints = results[
-        (results['pagerank'] >= pr_threshold) &
-        (results['degree_centrality'] < dc_threshold)
-    ]
+    influential_endpoints = results[results['category'] == "Influential Endpoint"]
 
     if len(influential_endpoints) > 0:
         print("  2️⃣  INFLUENTIAL ENDPOINTS (High Influence + Lower Connectivity)")
@@ -118,10 +86,7 @@ if __name__ == "__main__":
             print()
 
     # Category 3: Network Connectors (Lower PageRank + High Degree Centrality)
-    connectors = results[
-        (results['pagerank'] < pr_threshold) &
-        (results['degree_centrality'] >= dc_threshold)
-    ]
+    connectors = results[results['category'] == "Network Connector"]
 
     if len(connectors) > 0:
         print("  3️⃣  NETWORK CONNECTORS (Lower Influence + High Connectivity)")

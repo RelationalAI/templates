@@ -11,8 +11,7 @@ Run:
 import numpy as np
 import plotly.graph_objects as go
 import streamlit as st
-from model import SupplyRoute, degree_centrality, graph, indegree, model, outdegree, pagerank
-from relationalai.semantics import Float, Integer, where
+from model import DistributionPoint, SupplyRoute, model
 
 # --------------------------------------------------
 # Page configuration
@@ -31,30 +30,19 @@ st.set_page_config(
 @st.cache_data
 def get_results():
     """Query and return analysis results."""
-    # Create variable references
-    point = graph.Node.ref("point")
-    pr_score = Float.ref("pr_score")
-    dc_score = Float.ref("dc_score")
-    in_routes = Integer.ref("in_routes")
-    out_routes = Integer.ref("out_routes")
-
-    # Query results
-    results = where(
-        pagerank(point, pr_score),
-        degree_centrality(point, dc_score),
-        indegree(point, in_routes),
-        outdegree(point, out_routes)
-    ).select(
-        point.id,
-        point.name,
-        point.type,
-        point.region,
-        point.capacity,
-        point.population_served,
-        pr_score.alias("pagerank"),
-        dc_score.alias("degree_centrality"),
-        in_routes.alias("incoming_routes"),
-        out_routes.alias("outgoing_routes")
+    results = model.select(
+        DistributionPoint.id,
+        DistributionPoint.name,
+        DistributionPoint.type,
+        DistributionPoint.region,
+        DistributionPoint.capacity,
+        DistributionPoint.population_served,
+        DistributionPoint.pagerank.alias("pagerank"),
+        DistributionPoint.degree_centrality.alias("degree_centrality"),
+        DistributionPoint.indegree.alias("incoming_routes"),
+        DistributionPoint.outdegree.alias("outgoing_routes"),
+        DistributionPoint.total_routes.alias("total_routes"),
+        DistributionPoint.category.alias("category"),
     ).to_df()
 
     # Convert to standard types
@@ -62,7 +50,7 @@ def get_results():
     results['outgoing_routes'] = results['outgoing_routes'].astype(int)
     results['capacity'] = results['capacity'].astype(int)
     results['population_served'] = results['population_served'].astype(int)
-    results['total_routes'] = results['incoming_routes'] + results['outgoing_routes']
+    results['total_routes'] = results['total_routes'].astype(int)
 
     return results
 
@@ -111,43 +99,17 @@ def create_network_graph(results, routes_df):
         showlegend=False
     )
 
-    # Create node traces (separate by strategic category for color coding)
-    pr_threshold = results['pagerank'].quantile(0.70)
-    dc_threshold = results['degree_centrality'].quantile(0.70)
-
+    # Create node traces, one per strategic category, for color coding
     node_traces = []
-
-    # Critical Coordination Hubs
-    critical = results[
-        (results['pagerank'] >= pr_threshold) &
-        (results['degree_centrality'] >= dc_threshold)
-    ]
-    if len(critical) > 0:
-        node_traces.append(create_node_trace(critical, node_positions, 'red', 'Critical Coordination Hubs'))
-
-    # Influential Endpoints
-    influential = results[
-        (results['pagerank'] >= pr_threshold) &
-        (results['degree_centrality'] < dc_threshold)
-    ]
-    if len(influential) > 0:
-        node_traces.append(create_node_trace(influential, node_positions, 'orange', 'Influential Endpoints'))
-
-    # Network Connectors
-    connectors = results[
-        (results['pagerank'] < pr_threshold) &
-        (results['degree_centrality'] >= dc_threshold)
-    ]
-    if len(connectors) > 0:
-        node_traces.append(create_node_trace(connectors, node_positions, 'yellow', 'Network Connectors'))
-
-    # Regular nodes
-    regular = results[
-        (results['pagerank'] < pr_threshold) &
-        (results['degree_centrality'] < dc_threshold)
-    ]
-    if len(regular) > 0:
-        node_traces.append(create_node_trace(regular, node_positions, 'lightblue', 'Regular Distribution Points'))
+    for category, color, label in [
+        ("Critical Coordination Hub", 'red', 'Critical Coordination Hubs'),
+        ("Influential Endpoint", 'orange', 'Influential Endpoints'),
+        ("Network Connector", 'yellow', 'Network Connectors'),
+        ("Regular Distribution Point", 'lightblue', 'Regular Distribution Points'),
+    ]:
+        points = results[results['category'] == category]
+        if len(points) > 0:
+            node_traces.append(create_node_trace(points, node_positions, color, label))
 
     # Create figure
     fig = go.Figure(data=[edge_trace] + node_traces,
@@ -217,6 +179,10 @@ def create_node_trace(df, node_positions, color, name):
 def main():
     st.title("🚁 Humanitarian Aid Supply Chain Network")
     st.markdown("**PageRank & Degree Centrality Analysis**")
+
+    # The cached reads keep a running app on the results it first loaded; reload after a refresh.
+    if st.sidebar.button("Reload results"):
+        st.cache_data.clear()
 
     # Load data
     with st.spinner("Loading RelationalAI model and analyzing network..."):
@@ -333,14 +299,8 @@ def main():
     with tab4:
         st.header("Strategic Analysis")
 
-        pr_threshold = results['pagerank'].quantile(0.70)
-        dc_threshold = results['degree_centrality'].quantile(0.70)
-
         # Category 1: Critical Coordination Hubs
-        critical_hubs = results[
-            (results['pagerank'] >= pr_threshold) &
-            (results['degree_centrality'] >= dc_threshold)
-        ].sort_values('pagerank', ascending=False)
+        critical_hubs = results[results['category'] == "Critical Coordination Hub"].sort_values('pagerank', ascending=False)
 
         st.subheader("🔴 Critical Coordination Hubs")
         st.markdown(f"**{len(critical_hubs)} points** with high influence AND high connectivity")
@@ -362,10 +322,7 @@ def main():
         st.divider()
 
         # Category 2: Influential Endpoints
-        influential_endpoints = results[
-            (results['pagerank'] >= pr_threshold) &
-            (results['degree_centrality'] < dc_threshold)
-        ].sort_values('pagerank', ascending=False)
+        influential_endpoints = results[results['category'] == "Influential Endpoint"].sort_values('pagerank', ascending=False)
 
         st.subheader("🟠 Influential Endpoints")
         st.markdown(f"**{len(influential_endpoints)} points** with high influence but lower connectivity")
@@ -386,10 +343,7 @@ def main():
         st.divider()
 
         # Category 3: Network Connectors
-        connectors = results[
-            (results['pagerank'] < pr_threshold) &
-            (results['degree_centrality'] >= dc_threshold)
-        ].sort_values('degree_centrality', ascending=False)
+        connectors = results[results['category'] == "Network Connector"].sort_values('degree_centrality', ascending=False)
 
         st.subheader("🟡 Network Connectors")
         st.markdown(f"**{len(connectors)} points** with lower influence but high connectivity")
