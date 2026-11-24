@@ -14,9 +14,8 @@ Assembly path enumeration (PREVIEW, requires relationalai>=1.15): enumerate the
   bottom-up assembly chains that build each finished good. Derives a binary
   SKU->SKU "feeds into" edge from the BillOfMaterials intermediary (input feeds
   output), enumerates every assembly path with model.path(...).all().paths(),
-  filters to the maximal (longest non-extendable) chains so sub-paths are
-  suppressed, and persists the longest assembly depth of each SKU that ends a
-  chain (feeds nothing further) back onto the SKU ontology.
+  marks the maximal (non-extendable) chains so sub-paths can be suppressed, and
+  persists the longest maximal chain ending at each SKU as its assembly depth.
 
 Deploy:
     `rai models deploy --path model` deploys this package to the schemas in
@@ -27,6 +26,7 @@ Deploy:
 from .reasoning import (
     MAX_ASSEMBLY_HOPS,
     AssemblyStep,
+    MaximalChain,
     betweenness,
     graph,
     num_edges,
@@ -40,6 +40,7 @@ __all__ = [
     "DATA_DIR",
     "MAX_ASSEMBLY_HOPS",
     "AssemblyStep",
+    "MaximalChain",
     "SKU",
     "BillOfMaterials",
     "betweenness",

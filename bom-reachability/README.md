@@ -133,14 +133,14 @@ Run these steps from a terminal:
 
    ```text
    === BOM Dependency Graph ===
-   9          # SKUs (nodes)
-   10         # dependency edges (14 site-specific BOM rows deduplicated)
+   9 SKUs (nodes)
+   10 dependency edges
    Top bottleneck: Mobile Processor A15 (betweenness=4.0000)
    Enumerated 18 assembly path(s) (<= 4 hops).
    Maximal assembly chains (8 of 18, sub-paths suppressed):
    ```
 
-   Both finished goods resolve to 7 transitive dependencies, the processor is the single most disruptive component, and each finished good lands at assembly depth 2. The full printout and a step-by-step walkthrough are in `runbook.md`.
+   The 14 site-specific BOM rows collapse to 10 dependency edges. Both finished goods resolve to 7 transitive dependencies, the processor is the single most disruptive component, and each finished good lands at assembly depth 2. `runbook.md` walks through the analysis step by step.
 
 7. **Tear down the deployment**
 
@@ -186,7 +186,7 @@ Run these steps from a terminal:
 - **Primary identifiers**: `SKU` by `id`; `BillOfMaterials` by `id`.
 - **Important invariants**: each `BillOfMaterials` row points an output SKU at one input SKU ("depends on"); the BOM is acyclic (raw materials feed components feed finished goods, never back).
 
-The model also derives a `feeds` self-relationship on `SKU` (input SKU feeds output SKU), built from the `BillOfMaterials` intermediary and used to enumerate assembly paths, plus a persisted `assembly_depth` property (the longest assembly chain terminating at each SKU that feeds nothing further).
+The model also derives a `feeds` self-relationship on `SKU` (input SKU feeds output SKU), built from the `BillOfMaterials` intermediary and used to enumerate assembly paths, a `MaximalChain` relationship marking each chain that starts at an SKU nothing feeds and ends at an SKU that feeds nothing, a `depended_on_by` count of the SKUs that transitively depend on each SKU, and a persisted `assembly_depth` property (the longest maximal chain ending at each SKU).
 
 For the full concept and property definitions, see `model/schema.py`; `runbook.md` builds them step by step with the RAI skills.
 
@@ -216,7 +216,7 @@ Betweenness centrality ranks components by how many shortest dependency paths pa
 
 ### 5. Enumerate assembly paths (PREVIEW, requires `relationalai>=1.15`)
 
-Where reachability returns dependency *pairs*, path enumeration returns the actual *build sequences*. It walks the derived `feeds` edge to enumerate every assembly path; because the BOM is acyclic, this yields exactly the simple paths with no cycle risk. A maximal-paths view keeps only the longest non-extendable chains, and the longest assembly depth is persisted as `SKU.assembly_depth`.
+Where reachability returns dependency *pairs*, path enumeration returns the actual *build sequences*. It walks the derived `feeds` edge to enumerate every assembly path; because the BOM is acyclic, this yields exactly the simple paths with no cycle risk. The model marks the maximal (non-extendable) chains, which the report prints with sub-paths suppressed, and persists the longest maximal chain ending at each SKU as `SKU.assembly_depth`.
 
 See `model/reasoning.py` for the implementation, `queries/dependency_report.py` for the report, and `runbook.md` for the skill-driven reproduction.
 
@@ -231,7 +231,7 @@ Focus on the first changes most users will make.
 
 ### Tune parameters
 
-- **Assembly-path depth** — `MAX_ASSEMBLY_HOPS` (the `repeat(1, MAX_ASSEMBLY_HOPS)` bound) caps how many tiers `.all().paths()` enumerates. Raise it if your BOM is deeper than the bundled three tiers; lower it to keep path counts manageable on wide structures.
+- **Assembly-path depth** — `MAX_ASSEMBLY_HOPS` (the `repeat(1, MAX_ASSEMBLY_HOPS)` bound) caps how many tiers `.all().paths()` enumerates. Raise it if your BOM is deeper than the bundled three tiers, because a chain longer than the bound is not enumerated and so has no maximal chain or assembly depth; lower it to keep path counts manageable on wide structures.
 
 ### Extend the model
 

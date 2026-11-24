@@ -13,6 +13,7 @@ from .schema import SKU, BillOfMaterials, model
 
 graph = Graph(
     model,
+    name="bom_graph",
     directed=True,
     weighted=False,
     node_concept=SKU,
@@ -38,6 +39,13 @@ betweenness = graph.betweenness_centrality()
 SKU.reaches = reachable
 SKU.betweenness = betweenness
 
+# How many other SKUs transitively depend on each SKU.
+dependent = SKU.ref()
+SKU.depended_on_by = model.Property(f"{SKU} is depended on by {Integer:depended_on_by} SKUs")
+model.where(dependent.reaches(SKU), dependent != SKU).define(
+    SKU.depended_on_by(aggs.count(dependent).per(SKU))
+)
+
 # --------------------------------------------------
 # Assembly path enumeration
 #   PREVIEW capability; requires relationalai>=1.15.
@@ -46,8 +54,8 @@ SKU.betweenness = betweenness
 # that build each finished good: every bottom-up assembly path from a raw
 # material up through its components to the finished good. We derive a binary
 # SKU->SKU "feeds into" edge from the BillOfMaterials intermediary (the input
-# SKU feeds the output SKU), enumerate all such paths, then keep only the
-# maximal (longest, non-extendable) chains so that sub-paths are suppressed.
+# SKU feeds the output SKU), enumerate all such paths, then mark the
+# maximal (non-extendable) chains so that sub-paths can be suppressed.
 
 # Binary SKU->SKU edge: input_sku "feeds into" output_sku. This is the
 # build-direction (bottom-up) reverse of the depends-on graph edge above.
@@ -74,11 +82,21 @@ AssemblyStep = model.Relationship(
 )
 model.where(p).define(AssemblyStep(p, SKU(p.nodes), p.nodes["index"]))
 
-# Persist an assembly depth onto every SKU that ends an assembly chain (it feeds
-# nothing further): the length of the longest chain that ends at it.
-built, next_sku = SKU.ref(), SKU.ref()
-chain = model.path(SKU.feeds.repeat(1, MAX_ASSEMBLY_HOPS), built).all().paths()
+# A chain is maximal when nothing feeds its first SKU and its last SKU feeds nothing.
+# A chain longer than MAX_ASSEMBLY_HOPS is not enumerated, so it is never marked maximal.
+MaximalChain = model.Relationship(f"assembly chain {Hash:path} is maximal")
+first, last, upstream, downstream = SKU.ref(), SKU.ref(), SKU.ref(), SKU.ref()
+model.where(
+    p,
+    p.nodes(0) == first,
+    p.nodes(p.length) == last,
+    not_(upstream.feeds(first)),
+    not_(last.feeds(downstream)),
+).define(MaximalChain(p))
+
+# Assembly depth of each SKU that ends a maximal chain: the length of the longest one.
+end = SKU.ref()
 SKU.assembly_depth = model.Property(f"{SKU} has assembly depth {Integer:assembly_depth}")
-model.where(chain, not_(built.feeds(next_sku))).define(
-    built.assembly_depth(aggs.max(chain.length).per(built))
+model.where(MaximalChain(p), p.nodes(p.length) == end).define(
+    end.assembly_depth(aggs.max(p.length).per(end))
 )

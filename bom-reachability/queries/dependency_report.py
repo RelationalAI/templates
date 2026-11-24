@@ -4,35 +4,17 @@ Run after `rai models deploy --path model`:
     python -m queries.dependency_report
 """
 
-from model import (
-    MAX_ASSEMBLY_HOPS,
-    SKU,
-    AssemblyStep,
-    betweenness,
-    graph,
-    model,
-    num_edges,
-    num_nodes,
-    reachable,
-)
-from relationalai.semantics import Float, Hash, Integer, where
-
-
-def _is_contiguous_subsequence(short, long):
-    """True if `short` appears as a contiguous run inside `long`."""
-    if len(short) >= len(long):
-        return False
-    return any(long[i:i + len(short)] == short for i in range(len(long) - len(short) + 1))
-
+from model import MAX_ASSEMBLY_HOPS, SKU, AssemblyStep, MaximalChain, model, num_edges, num_nodes
+from relationalai.semantics import Hash, Integer, where
 
 if __name__ == "__main__":
     print("=== BOM Dependency Graph ===")
-    num_nodes.inspect()
-    num_edges.inspect()
+    print(f"{model.select(num_nodes).to_df().iloc[0, 0]} SKUs (nodes)")
+    print(f"{model.select(num_edges).to_df().iloc[0, 0]} dependency edges")
 
-    src, dst = graph.Node.ref("src"), graph.Node.ref("dst")
+    src, dst = SKU.ref("src"), SKU.ref("dst")
     all_deps_df = (
-        where(reachable(src, dst))
+        where(src.reaches(dst))
         .select(
             src.id.alias("product_id"),
             src.name.alias("product_name"),
@@ -68,14 +50,17 @@ if __name__ == "__main__":
     # Most depended-on components
     # --------------------------------------------------
 
-    non_self = all_deps_df[all_deps_df["product_id"] != all_deps_df["dep_id"]]
-    if len(non_self) > 0:
-        dep_counts = (
-            non_self.groupby(["dep_id", "dep_name", "dep_type"])
-            .size()
-            .reset_index(name="depended_on_by")
-            .sort_values("depended_on_by", ascending=False)
+    dep_counts = (
+        model.select(
+            SKU.id.alias("dep_id"),
+            SKU.name.alias("dep_name"),
+            SKU.type.alias("dep_type"),
+            SKU.depended_on_by.alias("depended_on_by"),
         )
+        .to_df()
+        .sort_values(["depended_on_by", "dep_id"], ascending=[False, True])
+    )
+    if len(dep_counts) > 0:
         print("\n=== Most Depended-On SKUs ===")
         print(dep_counts.to_string(index=False))
 
@@ -83,16 +68,13 @@ if __name__ == "__main__":
     # Betweenness centrality: structural bottlenecks
     # --------------------------------------------------
 
-    node = graph.Node.ref("n")
-    score = Float.ref("s")
     btw_df = (
-        where(betweenness(node, score))
-        .select(
-            node.id.alias("sku_id"),
-            node.name.alias("sku_name"),
-            node.type.alias("type"),
-            node.category.alias("category"),
-            score.alias("betweenness"),
+        model.select(
+            SKU.id.alias("sku_id"),
+            SKU.name.alias("sku_name"),
+            SKU.type.alias("type"),
+            SKU.category.alias("category"),
+            SKU.betweenness.alias("betweenness"),
         )
         .to_df()
         .sort_values("betweenness", ascending=False)
@@ -120,19 +102,17 @@ if __name__ == "__main__":
         .select(
             path.alias("path"),
             step.alias("step"),
-            SKU.id.alias("sku_id"),
             SKU.name.alias("sku_name"),
         )
         .to_df()
     )
+    maximal_ids = set(model.select(MaximalChain).to_df().iloc[:, 0])
 
-    # Reassemble each path in pandas: group on the path id, order by step index.
+    # Order each chain's steps for display: group on the path id, sort by step index.
     paths = []
     for path_id, grp in assembly_df.groupby("path"):
-        ordered = grp.sort_values("step")
-        ids = ordered["sku_id"].tolist()
-        names = ordered["sku_name"].tolist()
-        paths.append({"ids": ids, "names": names, "length": len(ids) - 1})
+        names = grp.sort_values("step")["sku_name"].tolist()
+        paths.append({"names": names, "length": len(names) - 1, "maximal": path_id in maximal_ids})
 
     print(f"\n  Enumerated {len(paths)} assembly path(s) (<= {MAX_ASSEMBLY_HOPS} hops).")
 
@@ -141,20 +121,15 @@ if __name__ == "__main__":
     for path in sorted(paths, key=lambda x: -x["length"]):
         print(f"    [{path['length']} hop] " + " -> ".join(path["names"]))
 
-    # (b) Maximal paths: keep only the longest, non-extendable chains -- a chain
-    # that is NOT a contiguous sub-sequence (prefix or suffix) of any longer chain.
-    # Suppressing these sub-paths leaves just the end-to-end assembly routes.
-    maximal = [
-        path
-        for path in paths
-        if not any(other is not path and _is_contiguous_subsequence(path["ids"], other["ids"]) for other in paths)
-    ]
+    # (b) Maximal chains, as the deployed model marks them: suppressing sub-paths
+    # leaves just the end-to-end assembly routes.
+    maximal = [path for path in paths if path["maximal"]]
 
     print(f"\n  Maximal assembly chains ({len(maximal)} of {len(paths)}, sub-paths suppressed):")
     for path in sorted(maximal, key=lambda x: -x["length"]):
         print(f"    [{path['length']} hop] " + " -> ".join(path["names"]))
 
-    print("\n  Assembly depth persisted onto SKU (longest chain terminating at each):")
+    print("\n  Assembly depth persisted onto SKU (longest maximal chain ending at each):")
     depth_df = (
         where(SKU.assembly_depth > 0)
         .select(
