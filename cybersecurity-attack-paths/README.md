@@ -134,7 +134,7 @@ Run these steps from a terminal:
      [3 hops] VPN Gateway  --[Asset.exploit_to]-->  Jump Host  --[Asset.cred_to]-->  File Server  --[Asset.pivot_to]-->  Customer Database
    ```
 
-   The lines above are the start of the report. The full report continues with the routes between one entry point and one crown jewel, the kill-chains ranked by total exposure, and the assets flagged on a crown-jewel attack path. `runbook.md` walks through each section's results.
+   The lines above are the start of the report; the two 3-hop chains tie on length, so either can be listed first. The full report continues with the routes between one entry point and one crown jewel, the kill-chains ranked by total exposure, and the assets flagged on a crown-jewel attack path. `runbook.md` walks through each section's results.
 
 7. **Tear down the deployment**
 

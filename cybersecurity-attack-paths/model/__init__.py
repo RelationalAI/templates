@@ -1,8 +1,8 @@
 """Cybersecurity attack-path analysis (graph paths) template.
 
 Enumerates multi-step attack chains across an enterprise asset graph by composing
-distinct attacker techniques in series -- a capability unlocked by multi-edge path
-patterns (a preview capability):
+distinct attacker techniques in series with multi-edge path patterns (a preview
+capability):
 
 - Loads Asset nodes (hosts, services, accounts) and three DISTINCT directed edges
   between them, one per technique: exploit_to (vulnerability exploitation),
