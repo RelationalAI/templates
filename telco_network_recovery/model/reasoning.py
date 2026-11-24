@@ -5,6 +5,7 @@ from relationalai.semantics.reasoners.graph import Graph
 from relationalai.semantics.reasoners.predictive import GNN, PropertyTransformer
 from relationalai.semantics.reasoners.prescriptive import Problem
 from relationalai.semantics.std import aggregates as aggs
+from relationalai.semantics.std import math
 
 from .schema import (
     CallDetailRecord,
@@ -373,20 +374,25 @@ model.define(
 )
 
 # Rank the simple paths by influence load, the PageRank summed along each path's
-# nodes, and keep the seed hub's highest.
+# nodes and rounded to six decimals, so paths whose printed loads agree tie, and
+# keep the seed hub's highest.
+def path_influence_load():
+    return math.round(aggs.sum(Subscriber(call_path.nodes).influence_score).per(call_path), 6)
+
+
 Subscriber.top_call_path_influence = model.Property(f"{Subscriber} has {Float:top_call_path_influence}")
 model.where(
     *simple_hub_path,
-    total := aggs.sum(Subscriber(call_path.nodes).influence_score).per(call_path),
-    top := aggs.max(total).per(seed),
+    load := path_influence_load(),
+    top := aggs.max(load).per(seed),
 ).define(seed.top_call_path_influence(top))
 
-# The winning route: the simple path with the highest influence load (on an exact
-# tie, the smallest path ID), published step by step with the tower on each hop.
+# The winning route: the simple path with the highest influence load (on a tie,
+# the smallest path ID), published step by step with the tower on each hop.
 TopCallPath = model.Relationship(f"{Hash:path} is the seed hub's top call path")
 model.where(
     *simple_hub_path,
-    load := aggs.sum(Subscriber(call_path.nodes).influence_score).per(call_path),
+    load := path_influence_load(),
     aggs.rank(aggs.desc(load), call_path) == 1,
 ).define(TopCallPath(call_path))
 TopCallPathStep = model.Relationship(

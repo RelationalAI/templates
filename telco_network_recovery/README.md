@@ -229,7 +229,7 @@ Use this sequence to deploy the model, train the GNN, and query the recovery pla
      Flagged critical_restore towers: 158
    ...
    ============================================================
-   STAGE 4: PATHS -- Call-path enumeration through critical towers
+   STAGE 4: PATHS -- Call-path enumeration from the seed hub
    ============================================================
 
      Seed scope: 1 highest-PageRank hub(s) ['SUB-CON-00900']; enumeration <= 3 hops, simple paths only.
@@ -350,7 +350,7 @@ For the full concept and property definitions, see `model/`; `runbook.md` builds
 
 **Stage 3 — Graph (customer impact analysis).** PageRank on the directed `Subscriber -> Subscriber` call graph lands on `Subscriber.influence_score` (the graph reasoner's network-effect signal). The headline per-tower measure is `CellTower.weighted_impact` — sum of `Subscriber.customer_value` (= `lifetime_value x (1 + churn_risk_score)`) across the distinct active callers (`Subscriber.status == SubscriberStatus.ACTIVE`) whose calls route through each tower; a caller counts once per tower however many calls it routes there. `weighted_pagerank` is the parallel PageRank-weighted view, exposed as a secondary signal queryable alongside the revenue-based headline.
 
-**Stage 4 — Paths (PREVIEW).** Where Stage 3 scores a *subscriber*, the paths capability scores the *route*: from the top-PageRank hub (the smallest subscriber ID on an exact tie) it enumerates the simple call paths (up to three hops) over an arity-3 caller-via-tower-callee edge and ranks them by summed PageRank influence. On the bundled data this is 198 simple call paths recovering 54 distinct routing towers. The model persists the hub's highest influence load as `Subscriber.top_call_path_influence` and publishes the winning route (the smallest path ID on an exact tie) through `TopCallPathStep` (its subscribers in order) and `TopCallPathHop` (the routing tower on each hop), which the report prints.
+**Stage 4 — Paths (PREVIEW).** Where Stage 3 scores a *subscriber*, the paths capability scores the *route*: from the top-PageRank hub (the smallest subscriber ID on an exact tie) it enumerates the simple call paths (up to three hops) over an arity-3 caller-via-tower-callee edge and ranks them by summed PageRank influence, rounded to six decimals. On the bundled data this is 198 simple call paths recovering 54 distinct routing towers. The model persists the hub's highest influence load as `Subscriber.top_call_path_influence` and publishes the winning route (the smallest path ID among paths with the same rounded load) through `TopCallPathStep` (its subscribers in order) and `TopCallPathHop` (the routing tower on each hop), which the report prints.
 
 **Stage 5 — Prescriptive (MIP).** Binary `TowerUpgradeOption.selected`, scoped to critical-restore towers, with three constraints (at most one tier per tower, total cost at most $5M, total install-weeks at most 200). The objective maximizes restored capacity weighted by two upstream signals per tower — Stage 3's `weighted_impact` (revenue × churn) and Stage 1's `failure_intensity` (GNN-predicted risk) — so capacity spent on high-value, high-risk towers counts most.
 

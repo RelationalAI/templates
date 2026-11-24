@@ -135,27 +135,27 @@ def stage_1_predictive() -> bool:
     total_atrisk = int(equipment_df["AT_RISK"].sum())
     if total_atrisk == 0:
         print("\n  GNN recall: no at-risk items in the labels, so recall is undefined.")
-        return True
-    gnn_flagged_atrisk = pred_df.merge(equipment_df[["equipment_id", "AT_RISK"]], on="equipment_id", how="left")
-    gnn_recall_argmax = int(
-        gnn_flagged_atrisk[
-            (gnn_flagged_atrisk["AT_RISK"] == 1)
-            & (gnn_flagged_atrisk["predicted_label"] == 1)
-        ].shape[0]
-    )
-    gnn_recall_p05 = int(
-        gnn_flagged_atrisk[
-            (gnn_flagged_atrisk["AT_RISK"] == 1)
-            & (gnn_flagged_atrisk["pos_prob"] >= 0.5)
-        ].shape[0]
-    )
-    print(
-        f"\n  GNN recall on {total_atrisk} true at-risk items:"
-        f"\n    argmax (predicted_label == 1):                    "
-        f"{gnn_recall_argmax:>4} ({gnn_recall_argmax / total_atrisk:>5.1%})"
-        f"\n    p>=0.5 (probabilistic threshold):                 "
-        f"{gnn_recall_p05:>4} ({gnn_recall_p05 / total_atrisk:>5.1%})"
-    )
+    else:
+        gnn_flagged_atrisk = pred_df.merge(equipment_df[["equipment_id", "AT_RISK"]], on="equipment_id", how="left")
+        gnn_recall_argmax = int(
+            gnn_flagged_atrisk[
+                (gnn_flagged_atrisk["AT_RISK"] == 1)
+                & (gnn_flagged_atrisk["predicted_label"] == 1)
+            ].shape[0]
+        )
+        gnn_recall_p05 = int(
+            gnn_flagged_atrisk[
+                (gnn_flagged_atrisk["AT_RISK"] == 1)
+                & (gnn_flagged_atrisk["pos_prob"] >= 0.5)
+            ].shape[0]
+        )
+        print(
+            f"\n  GNN recall on {total_atrisk} true at-risk items:"
+            f"\n    argmax (predicted_label == 1):                    "
+            f"{gnn_recall_argmax:>4} ({gnn_recall_argmax / total_atrisk:>5.1%})"
+            f"\n    p>=0.5 (probabilistic threshold):                 "
+            f"{gnn_recall_p05:>4} ({gnn_recall_p05 / total_atrisk:>5.1%})"
+        )
     # Per-equipment positive-prediction distribution for transparency.
     print(
         f"\n  GNN per-equipment positive-prob distribution: "
@@ -167,38 +167,37 @@ def stage_1_predictive() -> bool:
     return True
 
 
+def critical_tower_measures(**measures) -> pd.DataFrame:
+    """Critical towers with each measure and the GNN failure intensity read on its
+    own and joined by tower, so a tower missing one measure keeps the others."""
+    df = model.where(CellTower.is_critical_restore()).select(CellTower.id.alias("tower_id")).to_df()
+    reads = [
+        model.where(CellTower.is_critical_restore()).select(CellTower.id.alias("tower_id"), measure.alias(name))
+        for name, measure in measures.items()
+    ]
+    reads.append(
+        model.where(CellTower.is_critical_restore(), TowerFailureScore.tower_id == CellTower.id).select(
+            CellTower.id.alias("tower_id"),
+            TowerFailureScore.failure_intensity.alias("failure_intensity"),
+        )
+    )
+    for read in reads:
+        df = df.merge(read.to_df(), on="tower_id", how="left")
+    return df
+
+
 def stage_2_rules() -> pd.DataFrame:
     print(f"\n{'=' * 60}")
     print("STAGE 2: RULES -- flag is_critical_restore towers")
     print("=" * 60)
 
-    flagged_df = (
-        model.where(CellTower.is_critical_restore())
-        .select(
-            CellTower.id.alias("tower_id"),
-            CellTower.region.alias("region"),
-            CellTower.status.alias("status"),
-            CellTower.capacity_gbps.alias("capacity_gbps"),
-        )
-        .to_df()
-    )
-    # Diagnostics and branch flags join by tower, so a tower missing one still counts as flagged.
-    details_df = model.where(CellTower.is_critical_restore()).select(
-        CellTower.id.alias("tower_id"),
-        CellTower.avg_packet_loss.alias("avg_loss"),
-        CellTower.avg_health_score.alias("avg_health"),
-    ).to_df()
-    intensity_df = model.where(
-        CellTower.is_critical_restore(), TowerFailureScore.tower_id == CellTower.id
-    ).select(
-        CellTower.id.alias("tower_id"),
-        TowerFailureScore.failure_intensity.alias("failure_intensity"),
-    ).to_df()
-    flagged_df = (
-        flagged_df.merge(details_df, on="tower_id", how="left")
-        .merge(intensity_df, on="tower_id", how="left")
-        .sort_values("failure_intensity", ascending=False)
-    )
+    flagged_df = critical_tower_measures(
+        region=CellTower.region,
+        status=CellTower.status,
+        capacity_gbps=CellTower.capacity_gbps,
+        avg_loss=CellTower.avg_packet_loss,
+        avg_health=CellTower.avg_health_score,
+    ).sort_values("failure_intensity", ascending=False)
     for column, branch in [
         ("branch_degraded", CellTower.fires_degraded_branch),
         ("branch_packet_loss", CellTower.fires_packet_loss_branch),
@@ -251,19 +250,12 @@ def stage_3_graph() -> pd.DataFrame:
     print("\n  Top 10 subscribers by customer_value (PageRank shown for reference):")
     print(top_subs.to_string(index=False))
 
-    blast_df = (
-        model.where(CellTower.is_critical_restore(), TowerFailureScore.tower_id == CellTower.id)
-        .select(
-            CellTower.id.alias("tower_id"),
-            CellTower.region.alias("region"),
-            CellTower.impact_count.alias("impact_count"),
-            CellTower.weighted_impact.alias("weighted_impact"),
-            CellTower.weighted_pagerank.alias("weighted_pagerank"),
-            TowerFailureScore.failure_intensity.alias("failure_intensity"),
-        )
-        .to_df()
-        .sort_values("weighted_impact", ascending=False)
-    )
+    blast_df = critical_tower_measures(
+        region=CellTower.region,
+        impact_count=CellTower.impact_count,
+        weighted_impact=CellTower.weighted_impact,
+        weighted_pagerank=CellTower.weighted_pagerank,
+    ).sort_values("weighted_impact", ascending=False)
     print("\n  Per-critical-tower customer impact "
           "(weighted_impact = sum of caller customer_value; "
           "weighted_pagerank shown as secondary):")
@@ -273,7 +265,7 @@ def stage_3_graph() -> pd.DataFrame:
 
 def stage_4_paths() -> None:
     print(f"\n{'=' * 60}")
-    print("STAGE 4: PATHS -- Call-path enumeration through critical towers")
+    print("STAGE 4: PATHS -- Call-path enumeration from the seed hub")
     print("=" * 60)
 
     # The model enumerates the paths: from the highest-PageRank subscriber (the seed
@@ -299,13 +291,16 @@ def stage_4_paths() -> None:
         .sort_values("step")["sub_id"]
         .tolist()
     )
-    towers = (
+    hops_df = (
         model.where(TopCallPathHop(hop, CellTower))
-        .select(hop.alias("hop"), CellTower.name.alias("tower"))
+        .select(hop.alias("hop"), CellTower.id.alias("tower_id"))
         .to_df()
-        .sort_values("hop")["tower"]
-        .tolist()
+        .sort_values("hop")
     )
+    names_df = model.select(CellTower.id.alias("tower_id"), CellTower.name.alias("tower")).to_df()
+    # A tower without a name is shown by its ID.
+    hops_df = hops_df.merge(names_df, on="tower_id", how="left")
+    towers = hops_df["tower"].fillna(hops_df["tower_id"]).tolist()
     top_load = model.select(Subscriber.top_call_path_influence).to_df().iloc[:, 0].tolist()
     if route and top_load:
         tower_str = " via towers [" + ", ".join(towers) + "]" if towers else ""
