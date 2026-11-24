@@ -46,7 +46,7 @@ Built using RelationalAI's **variable-length path enumeration** (`model.path(...
 
 - **Model**: the features, dependency edges, path pattern, and depth rule in the `model/` package (`schema.py` declares the concepts, `source.py` loads the sample data, `reasoning.py` states the path pattern and depth rule), which `rai models deploy --path model` deploys to your Snowflake account.
 - **Query**: `queries/dependency_chain_report.py` -- prints the path counts, maximal chains, and owner blast radius from the deployed model.
-- **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
+- **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the code in `model/`.
 - **Data**: `data/features.csv` (14 features across tiers) and `data/dependencies.csv` (15 dependency edges)
 
 ## Prerequisites
@@ -253,7 +253,7 @@ The deepest chain runs five hops from a raw source all the way to a downstream d
 
 ### Tune parameters
 
-- `MAX_DEPTH` (default `8`, at the top of `model/reasoning.py`) bounds the traversal length. Raise it if your estate has longer chains than the sample; lower it to cap enumeration on a denser graph.
+- `MAX_DEPTH` (default `8`, at the top of `model/reasoning.py`) bounds the traversal length. Raise it if your estate has longer chains than the sample; lower it to cap enumeration on a denser graph. Chains longer than `MAX_DEPTH` are not enumerated, so below the estate's longest chain the report's maximal chains are maximal only within that bound, not end to end.
 
 ### Extend the model
 
