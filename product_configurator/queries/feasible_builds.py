@@ -19,7 +19,8 @@ if __name__ == "__main__":
     status = model.select(SolveStatus).to_df().iloc[:, 0].tolist()
     points = model.select(NumPoints).to_df().iloc[:, 0].tolist()
     num_points = points[0] if points else 0
-    region, price_ceiling_cents, max_configurations = model.select(SolveSettings).to_df().iloc[0]
+    # `to_df()` on the relationship reads all three fields, in declaration order.
+    region, price_ceiling_cents, max_configurations = SolveSettings.to_df().iloc[0]
     print(f"\nSolve result:\n• status: {', '.join(status)}\n• num_points: {num_points}\n")
 
     if num_points == 0:
