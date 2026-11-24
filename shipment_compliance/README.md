@@ -149,7 +149,7 @@ Run these steps from a terminal:
    ...  4 rows: demand_id, sku, quantity, priority
    ```
 
-   The block above abbreviates each rule's table to its row count and columns; the report prints the flagged rows themselves, as a table under each rule's heading. On the bundled data the four rules catch 2 late shipments, 6 at-risk shipments, 2 single-sourced BOM inputs, and 4 escalated demands. See `runbook.md` for the full record-by-record walkthrough of each flag.
+   The block above abbreviates each rule's table to its row count and columns; the report prints the flagged rows themselves, as a table under each rule's heading. On the bundled data the four rules catch 2 late shipments, 6 at-risk shipments, 2 single-sourced BOM inputs, and 4 escalated demands. See `runbook.md` for how to interpret each rule's flags.
 
 7. **Tear down the deployment**
 
@@ -234,7 +234,7 @@ See `model/reasoning.py` for the implementation, `queries/compliance_report.py` 
 
 ### Tune parameters
 
-- **At-risk threshold** — Rule 2 flags suppliers scoring below `0.8`; adjust the `reliability_score < 0.8` comparison to match your risk tolerance.
+- **At-risk threshold** — Rule 2 flags undelivered shipments from suppliers scoring below `0.8`; adjust the `reliability_score < 0.8` comparison to match your risk tolerance.
 - **Escalation tiers** — Rule 4 fires on `HIGH` or `URGENT`; add or remove `define()` calls to change which priorities escalate.
 
 ### Extend the model
