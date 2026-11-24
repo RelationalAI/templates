@@ -165,7 +165,7 @@ Use this sequence to deploy the model and query it:
    1  ltl           fg2    2    5000.0
    ```
 
-   The inventory-level and arrival-day tables that the report also prints are trimmed here. Both freight groups ship less-than-truckload on day 2 (zero truckload trucks); the report prints the full inventory and arrival-day tables.
+   The inventory-level and arrival-day tables that the report also prints are trimmed here. Both freight groups ship less-than-truckload on day 2 (zero truckload trucks); the report prints both tables in full for the bundled data, while pandas abbreviates a table longer than its `display.max_rows` setting.
 
    To solve again without changing the model, refresh the deployed model, then run the query again:
 
