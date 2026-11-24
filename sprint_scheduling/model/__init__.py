@@ -36,7 +36,7 @@ from .reasoning import (
     problems,
 )
 from .schema import Assignment, Developer, Issue, Skill, Sprint, model
-from .source import DATA_DIR, filtered_issues, issues_df, planning_end, planning_start
+from .source import DATA_DIR, PlanningHorizon
 
 __all__ = [
     "DATA_DIR",
@@ -46,14 +46,11 @@ __all__ = [
     "Assignment",
     "Developer",
     "Issue",
+    "PlanningHorizon",
     "Skill",
     "SolveStatus",
     "Sprint",
     "WeightedCompletion",
-    "filtered_issues",
-    "issues_df",
     "model",
-    "planning_end",
-    "planning_start",
     "problems",
 ]

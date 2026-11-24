@@ -17,7 +17,7 @@ tags:
 
 Software development teams need to decide which developer works on which issue in which sprint. Manually balancing priorities, story points, skill requirements, and capacity across multiple sprints is error-prone and time-consuming, especially as the backlog grows. An optimization model can produce an assignment plan that minimizes delay on high-priority work while keeping every developer within their capacity.
 
-This template assigns 30 backlog issues to 8 developers across 4 two-week sprints. It demonstrates how to filter issues by epoch timestamp to scope the backlog to a planning horizon, map epoch-based creation dates to categorical sprint periods, and build a binary assignment optimization that respects developer capacity and team skill constraints.
+This template assigns backlog issues to 8 developers across 4 two-week sprints: 30 input issues, 25 of them inside the planning horizon. It demonstrates how to filter issues by epoch timestamp to scope the backlog to a planning horizon, map epoch-based creation dates to categorical sprint periods, and build a binary assignment optimization that respects developer capacity and team skill constraints.
 
 **Prescriptive** reasoning is well suited here because the problem has combinatorial structure -- each issue must go to exactly one developer in one sprint, developers have capacity limits, and only developers with matching team skills can take on an issue. The solver explores the full space of valid assignments to find the schedule that minimizes weighted completion time, prioritizing high-urgency issues into earlier sprints.
 
@@ -284,7 +284,7 @@ CSV inputs → epoch filter → target-sprint mapping → assignment domain → 
 
 **4. Binary assignment variables and constraints.** Each valid placement gets a binary variable (1 = assigned). Two constraints govern the solve: each issue is assigned exactly once, and each developer's assigned story points per sprint stay within capacity scaled by the scenario's `capacity_multiplier`.
 
-**5. Weighted completion time objective.** The objective minimizes a weighted sum where higher-priority issues (lower priority number) cost more when placed in later sprints -- a priority-1 issue in Sprint 4 costs `(4-1+1) * 4 = 12`, a priority-3 issue in Sprint 4 costs `(4-3+1) * 4 = 8`. This pushes the most urgent work into the earliest sprints.
+**5. Weighted completion time objective.** The objective minimizes a weighted sum where higher-priority issues (lower priority number) cost more when placed in later sprints -- with `max_priority = 3`, a priority-1 issue in Sprint 4 costs `(3+1-1) * 4 = 12` and a priority-3 issue in Sprint 4 costs `(3+1-3) * 4 = 4`. This pushes the most urgent work into the earliest sprints.
 
 For the implementation, see `model/reasoning.py`; to reproduce it step by step with the RAI skills, follow `runbook.md`.
 
@@ -296,7 +296,7 @@ Focus on the first changes most users will make.
 
 - Replace the four CSVs in `data/` with your own, keeping the column names listed in *Sample data* above. `developers.csv`, `sprints.csv`, `issues.csv`, and `skills.csv` each map directly to a concept.
 - `sprints.csv` and `issues.csv` use Unix epoch seconds for dates; convert your date strings to epochs before loading, or adapt the epoch-mapping helper.
-- Make sure every team present in `issues.csv` has at least one skilled developer in `skills.csv`, or those issues cannot be assigned.
+- Make sure every team present in `issues.csv` has at least one skilled developer in `skills.csv`: an issue with no eligible developer gets no assignment constraint, so it is left out of the plan rather than making the model infeasible.
 
 ### Tune parameters
 
@@ -330,13 +330,13 @@ python -m pip install .
 <details>
 <summary>Solver returns INFEASIBLE</summary>
 
-Check that total developer capacity across all sprints is sufficient to cover the total story points in the backlog. With the default data, 8 developers with 14-20 points each across 4 sprints provide ample capacity for 30 issues. If you have added issues or reduced capacity, try increasing `capacity_multiplier` or adding more sprints.
+Check that total developer capacity across all sprints is sufficient to cover the total story points in the backlog. With the default data, 8 developers with 14-20 points each across 4 sprints provide ample capacity for the 25 in-scope issues. If you have added issues or reduced capacity, try increasing `capacity_multiplier` or adding more sprints.
 </details>
 
 <details>
 <summary>Some issues are not assigned</summary>
 
-Every issue must have at least one developer with a matching team skill. Verify that `skills.csv` covers all teams present in `issues.csv`. If a team has no skilled developers, the solver cannot assign those issues and will report infeasibility.
+Every issue must have at least one developer with a matching team skill. Verify that `skills.csv` covers all teams present in `issues.csv`. If a team has no skilled developers, its issues have no candidate assignments and no assign-once constraint, so the solve still succeeds and leaves them out of the plan; compare the assigned issues with the in-scope count the report prints.
 </details>
 
 <details>

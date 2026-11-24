@@ -1,9 +1,9 @@
 """Load the sample developers, sprints, issues, and skills into the sprint_scheduling model."""
 
-from datetime import datetime
 from pathlib import Path
 
-from pandas import read_csv
+from pandas import Timestamp, read_csv
+from relationalai.semantics import Integer, String
 
 from .schema import Developer, Issue, Skill, Sprint, model
 
@@ -16,9 +16,10 @@ from .schema import Developer, Issue, Skill, Sprint, model
 planning_start = "2024-10-01"  # Start of planning horizon (Q4 2024)
 planning_end = "2024-11-26"  # End of planning horizon (end of Sprint 4)
 
-# Convert date strings to epoch integers for filtering
-start_epoch = int(datetime.strptime(planning_start, "%Y-%m-%d").timestamp())
-end_epoch = int(datetime.strptime(planning_end, "%Y-%m-%d").timestamp())
+# Convert date strings to epoch integers for filtering: midnight in US Pacific time, the zone
+# the sprint boundaries in sprints.csv use, so the horizon does not depend on the machine's zone.
+start_epoch = int(Timestamp(planning_start, tz="America/Los_Angeles").timestamp())
+end_epoch = int(Timestamp(planning_end, tz="America/Los_Angeles").timestamp())
 
 # --------------------------------------------------
 # Load data
@@ -42,12 +43,11 @@ filtered_issues = issues_df[
 
 # EPOCH-TO-PERIOD MAPPING: Map each issue to its target sprint based on created_at epoch
 # Issues created during a sprint -> assigned to that sprint (earliest eligible)
-sprints_df = read_csv(DATA_DIR / "sprints.csv")
 
 
 def map_to_sprint(created_at_epoch):
     """Map an issue's created_at epoch to its target sprint number."""
-    for _, sprint in sprints_df.iterrows():
+    for _, sprint in sprints_csv.iterrows():
         if created_at_epoch < sprint["startdate"]:
             # Created before this sprint starts -> eligible from this sprint
             return int(sprint["number"])
@@ -55,7 +55,7 @@ def map_to_sprint(created_at_epoch):
             # Created during this sprint -> target this sprint
             return int(sprint["number"])
     # Created after all sprints -> last sprint
-    return int(sprints_df["number"].max())
+    return int(sprints_csv["number"].max())
 
 
 filtered_issues["target_sprint_number"] = filtered_issues["created_at"].apply(
@@ -76,3 +76,10 @@ model.define(
 
 skills_csv = read_csv(DATA_DIR / "skills.csv")
 model.define(Skill.new(model.data(skills_csv).to_schema()))
+
+# The planning horizon and the number of input issues, which the deployed model publishes so the
+# report describes the data its solves used.
+PlanningHorizon = model.Relationship(
+    f"planning horizon runs from {String:start} to {String:end} over {Integer:input_issues} input issues"
+)
+model.define(PlanningHorizon(planning_start, planning_end, len(issues_df)))

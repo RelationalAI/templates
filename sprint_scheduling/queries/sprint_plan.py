@@ -12,17 +12,17 @@ from model import (
     Assigned,
     Developer,
     Issue,
+    PlanningHorizon,
     SolveStatus,
     Sprint,
     WeightedCompletion,
-    filtered_issues,
-    issues_df,
     model,
-    planning_end,
-    planning_start,
 )
+from relationalai.semantics import count
 
 if __name__ == "__main__":
+    planning_start, planning_end, input_issues = model.select(PlanningHorizon).to_df().iloc[0]
+    issues_in_scope = model.select(count(Issue)).to_df().iloc[0, 0]
     scenario_results = []
 
     for scenario_value in SCENARIO_VALUES:
@@ -46,7 +46,7 @@ if __name__ == "__main__":
             continue
         print(f"  Status: {status[0]}, Objective: {round(objective[0], 9)}")
         print(f"  Planning horizon: {planning_start} to {planning_end}")
-        print(f"  Issues in scope: {len(filtered_issues)} (of {len(issues_df)} total)")
+        print(f"  Issues in scope: {issues_in_scope} (of {input_issues} total)")
 
         # Assignment results
         assigned = model.select(
