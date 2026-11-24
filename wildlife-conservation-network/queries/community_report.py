@@ -37,10 +37,6 @@ if __name__ == "__main__":
         partner_count.alias("partnerships")
     ).to_df()
 
-    # Convert to standard types
-    results['community'] = results['community'].astype(int)
-    results['partnerships'] = results['partnerships'].astype(int)
-
     # Sort by community, then by centrality within each community
     results = results.sort_values(["community", "degree_centrality"], ascending=[True, False])
 

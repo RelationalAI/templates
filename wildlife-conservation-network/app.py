@@ -209,6 +209,10 @@ def main():
     identify partnership opportunities, and strengthen cross-community coordination.
     """)
 
+    # The results are cached for the session; reload them after the deployed model refreshes.
+    if st.sidebar.button("Reload from the deployed model"):
+        st.cache_data.clear()
+
     # Load data
     with st.spinner("Loading RelationalAI model and analyzing network..."):
         results = get_results()
@@ -325,13 +329,14 @@ def main():
                     partner_ids.append(partner_id)
 
                 partner_comms = results[results['id'].isin(partner_ids)]['community'].unique()
+                external_comms = set(partner_comms) - {org['community']}
 
-                if len(partner_comms) > 1:
+                if external_comms:
                     connectors.append({
                         'name': org['name'],
                         'community': org['community'],
                         'partnerships': org['partnerships'],
-                        'connections_to_communities': len(partner_comms)
+                        'connections_to_communities': len(external_comms)
                     })
 
         if connectors:

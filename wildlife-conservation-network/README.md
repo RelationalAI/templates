@@ -158,7 +158,7 @@ Run these steps from a terminal:
      • Total partnerships in network: 19
    ```
 
-   The community ID numbers are arbitrary labels; what matters is which organizations group together. The full report and a step-by-step walkthrough are in `runbook.md`.
+   The community ID numbers are arbitrary labels; what matters is which organizations group together. `runbook.md` reproduces the analysis step by step.
 
 7. **Tear down the deployment**
 
@@ -173,7 +173,7 @@ Run these steps from a terminal:
 
 ## Run the Streamlit app
 
-The Streamlit app is an optional interactive view of the same analysis. It only queries the deployed model, so run it after the deploy step of the Quickstart, from the template directory and with the same `raiconfig.yaml`:
+The Streamlit app is an optional interactive view of the same analysis. It only queries the deployed model, so run it after the deploy step of the Quickstart and before the teardown step, which removes the objects it reads, from the template directory and with the same `raiconfig.yaml`:
 
 ```bash
 python -m pip install ".[visualization]"
@@ -290,16 +290,16 @@ Focus on the first changes most users will make.
 
 - Your network might be very densely connected, or too small for meaningful community structure.
 - Try adding more organizations and partnerships, or ensure there are distinct clusters in your data.
-- For completely disconnected groups, use `graph.weakly_connected_components()` instead.
+- For completely disconnected groups, use `graph.weakly_connected_component()` instead.
 
 </details>
 
 <details>
-  <summary>Why are community IDs different each time I run the report?</summary>
+  <summary>Why do community IDs change after a refresh?</summary>
 
 - Community ID numbers (0, 1, 2...) are arbitrary labels assigned by the algorithm.
 - What matters is which organizations are grouped together, not the specific ID number.
-- The Louvain algorithm can have some randomness, so community assignments might vary slightly between runs, but the overall structure should be consistent.
+- The Louvain algorithm can have some randomness, so community assignments might vary slightly when the deployed model refreshes, but the overall structure should be consistent. Running the report again without a refresh reads the same assignments.
 
 </details>
 

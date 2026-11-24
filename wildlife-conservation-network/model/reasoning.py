@@ -12,7 +12,8 @@ graph = Graph(
     node_concept=Organization,
     edge_concept=Partnership,
     edge_src_relationship=Partnership.org1,
-    edge_dst_relationship=Partnership.org2
+    edge_dst_relationship=Partnership.org2,
+    name="partnership_network",
 )
 
 # Apply Louvain algorithm for community detection.
