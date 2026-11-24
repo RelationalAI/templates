@@ -84,7 +84,7 @@ Concepts created and bound to the bundled CSVs: Customer (11 rows), Product (5 S
 
 **Response**
 
-Four-reasoner chain on the shared ontology. **Rules** (`/rai-pyrel`) to derive per-customer max_declared_yield_pct + elevated_floor_pct + a single-point-of-failure flag from the Dependency junction. **Predictive** (`/rai-predictive-modeling` or pre-computed table) to provide a SupplierCapabilityForecast per (supplier, month). **Prescriptive** (`/rai-prescriptive-problem`) to solve revenue-max LP as a rolling horizon — baseline plus one re-solve per disruption reveal, with effective capacity recomputed against the current forecast and input-availability state each time. **Graph** (`/rai-graph-analysis` with the paths library) to enumerate variable-length customer dependency chains, flag the dependency SPOF, and run two cascade what-if branches (supplier-offline, input-shortage).
+Four-reasoner chain on the shared ontology. **Rules** (`/rai-pyrel`) to derive per-customer max_declared_yield_pct + elevated_floor_pct + a single-point-of-failure flag from the Dependency junction. **Predictive** (`/rai-predictive-modeling` or pre-computed table) to provide a SupplierCapabilityForecast per (supplier, month). **Prescriptive** (`/rai-prescriptive-problem`) to solve a margin-max LP as a rolling horizon — baseline plus one re-solve per disruption reveal, with effective capacity recomputed against the current forecast and input-availability state each time. **Graph** (`/rai-graph-analysis` with the paths library) to enumerate variable-length customer dependency chains, flag the dependency SPOF, and run two cascade what-if branches (supplier-offline, input-shortage).
 
 ### 4. Derive customer yield, elevated floor, and SPOF flag
 
@@ -115,7 +115,7 @@ Predictions bind into `SupplierCapabilityForecast` (216 rows) with per-supplier 
 **Prompt**
 
 ```
-/rai-prescriptive-problem What is the revenue-maximizing 36-month monthly allocation of supply across customers, subject to: (1) capacity per (product, month) computed as the sum over suppliers of nominal_capacity_usd × capability_pct, scaled by the product across raw-material inputs of (1 − intensity × (1 − input_availability)); (2) per-cell upper bound of (1 − max_declared_yield_pct) × demand_usd; (3) per-cell lower bound of max(base_service_floor_pct, elevated_floor_pct) × demand_usd. Solve under baseline forecast with no disruption applied. Report total margin and per-customer service level (alloc / demand aggregated per customer over the horizon).
+/rai-prescriptive-problem What is the margin-maximizing 36-month monthly allocation of supply across customers, subject to: (1) capacity per (product, month) computed as the sum over suppliers of nominal_capacity_usd × capability_pct, scaled by the product across raw-material inputs of (1 − intensity × (1 − input_availability)); (2) per-cell upper bound of (1 − max_declared_yield_pct) × demand_usd; (3) per-cell lower bound of max(base_service_floor_pct, elevated_floor_pct) × demand_usd. Solve under baseline forecast with no disruption applied. Report total margin and per-customer service level (alloc / demand aggregated per customer over the horizon).
 ```
 
 **Response**
@@ -181,7 +181,7 @@ Widest supplier impact: Orion Foundry — 72 cells affected, max 60.0% capacity 
 
 **Response**
 
-Equipment-maker customers (Photonic Lithography, Vertex Test Systems, Crystal Wafer Tools, Apex Photonic Components) stay pinned at their elevated floors (88–95%) across all three iterations — protected by the dependency mechanic the hyperscalers have declared. Hyperscalers absorb the entire disruption surface: Hyperion takes a cumulative −$2.43B vs the baseline plan, Aether −$2.21B. The 36-month-baseline-to-24-month-tail margin headline is $47.09B → $30.19B (the $16.9B gap mixes disruption impact with the shorter remaining horizon). Structural risk surfaced by Stage 4: Apex is a single point of failure on the customer dependency graph; Orion Foundry is the single supplier whose outage casts the highest-magnitude shadow on HBM3E; Helium is the single input with the broadest cross-SKU exposure.
+Equipment-maker customers (Photonic Lithography, Vertex Test Systems, Crystal Wafer Tools, Apex Photonic Components) stay pinned at their elevated floors (88–95%) across all three iterations — protected by the dependency mechanic the hyperscalers have declared. Hyperscalers absorb the entire disruption surface: Hyperion takes a cumulative −$2.43B vs the baseline plan, Aether −$2.21B. The 36-month-baseline-to-24-month-tail margin headline ($45.49B → $28.97B in the run above) mixes disruption impact with the shorter remaining horizon. Structural risk surfaced by Stage 4: Apex is a single point of failure on the customer dependency graph; Orion Foundry is the single supplier whose outage casts the highest-magnitude shadow on HBM3E; Helium is the single input with the broadest cross-SKU exposure.
 
 ## Data
 

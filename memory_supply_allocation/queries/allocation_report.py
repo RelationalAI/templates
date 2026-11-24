@@ -323,17 +323,23 @@ def main() -> None:
         print("  Multi-hop dependency chains:")
         for chain in multihop["chain"]:
             print(f"    {chain}")
-    worst_supplier = impact_df.loc[impact_df["n_affected_cells"].idxmax()]
-    print(
-        f"  Supplier with widest offline impact: {worst_supplier['supplier']} "
-        f"({worst_supplier['n_affected_cells']} affected cells, "
-        f"max cap drop {worst_supplier['max_cap_drop_pct'] * 100:.1f}%)"
-    )
-    worst_input = inputs_df.loc[inputs_df["n_affected_cells"].idxmax()]
-    print(
-        f"  Input with widest shortage impact: {worst_input['input']} "
-        f"({worst_input['n_affected_cells']} affected cells)"
-    )
+    if impact_df["n_affected_cells"].max() > 0:
+        worst_supplier = impact_df.loc[impact_df["n_affected_cells"].idxmax()]
+        print(
+            f"  Supplier with widest offline impact: {worst_supplier['supplier']} "
+            f"({worst_supplier['n_affected_cells']} affected cells, "
+            f"max cap drop {worst_supplier['max_cap_drop_pct'] * 100:.1f}%)"
+        )
+    else:
+        print("  Supplier with widest offline impact: none (no affected cells)")
+    if inputs_df["n_affected_cells"].max() > 0:
+        worst_input = inputs_df.loc[inputs_df["n_affected_cells"].idxmax()]
+        print(
+            f"  Input with widest shortage impact: {worst_input['input']} "
+            f"({worst_input['n_affected_cells']} affected cells)"
+        )
+    else:
+        print("  Input with widest shortage impact: none (no affected cells)")
     # The horizons shrink from one iteration to the next, so the two totals cover
     # different months and their difference is not the disruptions' cost alone.
     solved = [r for r in scenario_results if r["objective"] is not None]
