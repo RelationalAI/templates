@@ -167,7 +167,7 @@ Use this sequence to deploy the model and query it:
    3     4   3
    ```
 
-   The tour is 1, 2, 4, 3 and back to 1, for a total distance of 8.5. See `runbook.md` for the step-by-step walkthrough.
+   The tour is 1, 2, 4, 3 and back to 1, for a total distance of 8.5. The bundled distances are symmetric, so the reverse cycle is an equally short optimum and a solve may return either. See `runbook.md` for the step-by-step walkthrough.
 
    To solve again without changing the model, refresh the deployed model, then run the query again:
 
@@ -223,7 +223,7 @@ For the full concept and property definitions, see `model/schema.py`; `runbook.m
 
 The model loads the directed edges with their distances from CSV, then derives the `Node` set from the edge endpoints so nodes never need their own file. On the ontology it lays down the decision variables the solver will fill in: a binary variable per edge (1 if the edge is on the tour) and an integer ordering value per node used for subtour elimination.
 
-Two families of constraints shape the tour. Degree constraints require exactly one incoming and one outgoing selected edge at every node, so the route enters and leaves each stop once. Miller-Tucker-Zemlin (MTZ) constraints tie the ordering values together: whenever an edge is selected, the destination's order must exceed the source's, which is what rules out disconnected subtours and forces a single connected cycle. The objective minimizes the total distance of the selected edges, and the HiGHS solver returns the optimal tour.
+Two families of constraints shape the tour. Degree constraints require exactly one incoming and one outgoing selected edge at every node, so the route enters and leaves each stop once. Miller-Tucker-Zemlin (MTZ) constraints tie the ordering values together: whenever an edge between two non-depot nodes is selected, the destination's order must exceed the source's, which is what rules out disconnected subtours and forces a single connected cycle. Node 1 is the depot: its order is fixed at 1 and its edges are exempt, so the cycle can close back to it. The objective minimizes the total distance of the selected edges, and the HiGHS solver returns the optimal tour.
 
 ```text
 edges.csv → load edges → derive nodes → edge + ordering variables → degree + MTZ constraints → minimize distance → optimal tour
@@ -237,6 +237,7 @@ See `model/reasoning.py` for the implementation, and `runbook.md` to reproduce i
 
 - Replace `data/edges.csv` with your own city-to-city distance matrix, as a list of directed edges with the columns `i`, `j`, and `dist`, or change the `read_csv(...)` path in `model/source.py`.
 - Provide an edge in both directions for every pair of nodes so the graph stays strongly connected. Asymmetric costs are supported: give the forward and reverse edges different `dist` values.
+- Number the nodes from 1, with node 1 as the depot where the tour starts: the model anchors the ordering at node 1 and exempts only edges touching it from the ordering constraints, so data without a node 1 makes every tour infeasible.
 
 ### Tune parameters
 

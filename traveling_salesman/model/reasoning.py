@@ -5,9 +5,8 @@ from relationalai.semantics.reasoners.prescriptive import Problem
 
 from .schema import Edge, Node, model
 
-# Rule: node count stored as a relationship
-# WORKAROUND: direct count(Node.ref()) in solver bounds is broken (pending pyrel compiler fix).
-# Store count as a Relationship and reference it in solve_for(upper=node_count).
+# Rule: node count stored as a relationship, the bound on each ordering value in
+# solve_for(upper=node_count) and the big-M coefficient in the MTZ constraints.
 node_count = model.Relationship(f"node count is {Integer}")
 model.define(node_count(count(Node)))
 
@@ -25,7 +24,7 @@ problem.solve_for(Node.u, name=["u", Node.v], type="int", lower=1, upper=node_co
 total_dist = sum(Edge.dist * Edge.x)
 problem.minimize(total_dist)
 
-# Constraint: fix u[1] = 1 as symmetry-breaking anchor
+# Constraint: fix u[1] = 1 as symmetry-breaking anchor; node 1 is the depot
 problem.satisfy(model.require(Node.u == 1).where(Node.v(1)))
 
 # Constraint: degree constraints (exactly one in-edge and one out-edge per node)
@@ -33,7 +32,7 @@ node_flow = sum(Edge.x).per(Node)
 problem.satisfy(model.where(Edge.j == Node.v).require(node_flow.where(Edge.j == Node.v) == 1))
 problem.satisfy(model.where(Edge.i == Node.v).require(node_flow.where(Edge.i == Node.v) == 1))
 
-# Constraint: MTZ subtour elimination
+# Constraint: MTZ subtour elimination, over the edges that do not touch the depot (node 1)
 # If edge (i,j) is in tour (x=1), then u[j] >= u[i]+1.
 # Big-M form: u[i] - u[j] + n*x <= n-1
 problem.satisfy(model.where(
