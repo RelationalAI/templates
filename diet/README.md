@@ -247,7 +247,7 @@ Focus on the first changes most users will make.
 ### Use your own data
 
 - Replace `data/foods.csv` and `data/nutrients.csv` with your own; keep the column names described in *Sample data* above. Each food's nutrient columns must match the nutrient `name`s in `nutrients.csv` — the model reads one food column per nutrient row.
-- For Snowflake-backed runs, swap the `read_csv(...)` calls for `model.data(snowflake_table)` calls. The foods loader in `model/source.py` still needs the nutrient names as a Python list to pick each food's nutrient columns, so keep a local list of them or store food nutrients in long form (`food`, `nutrient`, `quantity`) and join on the nutrient name.
+- For Snowflake-backed runs, replace each `read_csv(...)` load and its `model.data(...)` wrapper in `model/source.py` with one `model.Table("<db>.<schema>.<table>")` source, defining the same concepts and properties from the table's columns. The foods loader picks each food's nutrient columns by the nutrient names in a Python list, so either keep that list locally or store food nutrients in long form (`food`, `nutrient`, `quantity`) and define `Food.contains` by matching each row's `food` to `Food.name` and its `nutrient` to `Nutrient.name`.
 
 ### Tune parameters
 
@@ -270,7 +270,7 @@ Focus on the first changes most users will make.
 <details>
 <summary>Problem is infeasible</summary>
 
-The nutritional bounds may be too tight for the available foods. Check that at least one combination of foods can satisfy all min/max constraints simultaneously. Changing the scaling factor does not help: it scales each nutrient's minimum and maximum by the same amount, so any feasible basket at one factor rescales to a feasible basket at another. Instead, check the nutrient units and the food columns in `data/foods.csv`, relax the specific bound that conflicts, or add a food that supplies the missing nutrient.
+The nutritional bounds may be too tight for the available foods. Check that at least one combination of foods can satisfy all min/max constraints simultaneously. Changing to another positive scaling factor does not help: it scales each nutrient's minimum and maximum by the same amount, so any feasible basket at one factor rescales to a feasible basket at another. Instead, check the nutrient units and the food columns in `data/foods.csv`, relax the specific bound that conflicts, or add a food that supplies the missing nutrient.
 </details>
 
 <details>
