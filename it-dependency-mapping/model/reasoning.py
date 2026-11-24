@@ -11,7 +11,7 @@ MAX_DEPTH = 8
 
 # --------------------------------------------------
 # Paths: enumerate downstream dependency paths
-#   PREVIEW capability; requires relationalai>=1.15.
+#   PREVIEW capability.
 # --------------------------------------------------
 # model.path(src, Feature.contributes_to.repeat(1, MAX_DEPTH)) describes a
 # variable-length traversal of 1..MAX_DEPTH contributes_to edges starting from a
@@ -28,8 +28,8 @@ p = model.path(src, Feature.contributes_to.repeat(1, MAX_DEPTH)).all().paths()
 # aggregates.max(p.length).per(src) takes the max hop count over the paths rooted
 # at each src and defines it directly onto Feature -- no pandas groupby and no
 # model.data round-trip. Kept SEPARATE from the node projection. It is a
-# Relationship, not a Property: deploying this rule as a Property fails planning
-# on relationalai 2.1.1.
+# Relationship, not a Property: deploying a rule over model.path(...) that writes a
+# Property onto the concept the path walks fails planning.
 Feature.max_downstream_depth = model.Relationship(
     f"{Feature} has {Integer:max_downstream_depth}"
 )

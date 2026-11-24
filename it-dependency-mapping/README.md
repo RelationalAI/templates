@@ -139,7 +139,7 @@ Run these steps from a terminal:
    === Longest dependency chain: 5 hops ===
    ```
 
-   The lines above are excerpts of the report. The full printout, with per-feature reach, all six maximal chains, and the owners along the longest chain, is in the Expected output section below.
+   The lines above are excerpts of the report. The Expected output section below shows all six maximal chains and the owners along the longest chain; the report also prints each feature's path count and downstream depth.
 
 7. **Tear down the deployment**
 
@@ -271,7 +271,7 @@ The deepest chain runs five hops from a raw source all the way to a downstream d
 <details>
   <summary>Why does <code>model.path(...)</code> raise an <code>AttributeError</code> or <code>ImportError</code>?</summary>
 
-- The path-traversal API is a preview capability that requires `relationalai >= 1.15`. Confirm your installed version with `python -c "import relationalai; print(relationalai.__version__)"` and upgrade if it is older.
+- The path-traversal API is a preview capability, and `pyproject.toml` pins the `relationalai` version this template uses. Confirm your installed version with `python -c "import relationalai; print(relationalai.__version__)"` and run `python -m pip install .` again if it differs.
 
 </details>
 

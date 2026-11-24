@@ -8,11 +8,12 @@ by enumerating variable-length traversal paths over an acyclic dependency DAG:
 - Enumerates every downstream dependency path with
   ``model.path(Feature.contributes_to.repeat(1, N)).all().paths()`` -- because the
   estate is acyclic, every enumerated path is simple.
-- Reduces the full path set to its maximal chains (longest non-extendable
-  dependency chains, with shorter sub-chains dropped).
-- Persists each feature's longest downstream depth back to the ontology as
-  Feature.max_downstream_depth, then reports per-feature path counts, the
-  deepest dependency chains, and the owners that sit along the longest chain.
+- Publishes each path's steps, the number of paths starting at each feature,
+  and each feature's longest downstream depth (Feature.max_downstream_depth).
+
+The report reduces the published paths to their maximal chains (longest
+non-extendable dependency chains, with shorter sub-chains dropped) and prints
+per-feature path counts, the deepest chains, and the owners along the longest.
 
 Run:
     `rai models deploy --path model` deploys this package to the schemas in

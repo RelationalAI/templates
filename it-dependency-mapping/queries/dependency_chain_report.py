@@ -27,9 +27,7 @@ if __name__ == "__main__":
         )
         .to_df()
     )
-    # Projecting p.nodes can emit duplicate (path, step) rows -- dedupe to one node
-    # per step before reassembly.
-    paths_df = paths_df.drop_duplicates(["path_id", "step"]).sort_values(["path_id", "step"])
+    paths_df = paths_df.sort_values(["path_id", "step"])
 
     # Reassemble each path: order steps by node index, join the visited features into
     # an ordered chain. The hop count is the max node index (a path over N edges has
