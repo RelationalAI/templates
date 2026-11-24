@@ -289,7 +289,7 @@ Tightening `CAP_MULTIPLIER` toward 1.5 distributes increases across more campaig
 <details>
   <summary>Why does the total optimized budget exactly equal TOTAL_BUDGET?</summary>
 
-  Because every campaign has a positive conversion rate, the maximization objective always benefits from spending more. The total budget constraint binds at the upper limit. To let the optimizer leave budget unspent when spending does not pay off, keep the `<=` constraint and subtract a cost per dollar spent from the objective; a campaign then receives budget above its floor only while its conversion rate exceeds that cost.
+  Because every campaign has a positive conversion rate, the maximization objective always benefits from spending more. The total budget constraint binds at the upper limit. To let the optimizer leave budget unspent when spending does not pay off, keep the `<=` constraint and subtract a cost per dollar spent from the objective; a campaign then receives budget above its floor only while its conversion rate exceeds that cost (at a rate equal to the cost, extra spend leaves the objective unchanged). The published objective is then conversions net of that cost, so compute gross conversions from the optimized budgets times the conversion rates before comparing them with the current baseline.
 </details>
 
 <details>
