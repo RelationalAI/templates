@@ -1,6 +1,6 @@
 ---
 title: "Retail Planning"
-description: "Predict article sales and customer churn with graph neural networks (GNNs), then optimize markdown pricing and inventory planning to maximize revenue and minimize costs."
+description: "Predict article sales with a graph neural network (GNN), then optimize markdown pricing and inventory planning to maximize revenue and minimize costs."
 featured: true
 experience_level: advanced
 industry: "Retail & Consumer"
@@ -246,7 +246,7 @@ Use this sequence to deploy the model, train the GNN, and query the markdown and
      ...
    ```
 
-   The report prints more lines than shown here: all 12 planning articles, every selected discount, and the production, inventory, and unmet-demand rows for each planning article and week. The GNN's predictions, and with them the demand and both objectives, shift from one training run to the next; the structural outcome is stable: status OPTIMAL for the markdown and the planning problems. Alternative optimal discount schedules can differ between refreshes at the same revenue.
+   The report prints more lines than shown here: all 12 planning articles, every selected discount, and the demand-planning tables: production and unmet demand above 0.01 units, and the inventory at the end of each week. The GNN's predictions, and with them the demand and both objectives, shift from one training run to the next; the structural outcome is stable: status OPTIMAL for the markdown and the planning problems. Alternative optimal discount schedules can differ between refreshes at the same revenue.
 
    To predict and solve again without changing the model, refresh the deployed model, then run the query again:
 
@@ -318,7 +318,7 @@ The H&M core data (customers, articles, transactions) and the sales task splits 
 - **OptArticle** (`opt_article_id`) and **ProdCapacity** (`pc_article_id`): the 12 planning articles with pricing, inventory, and production parameters
 - **Discount** (`level`) and **Week** (`num`): the markdown tiers and the planning weeks
 
-**Important invariants**: `opt_article_id` and `pc_article_id` must match real `a_article_id` values that carry test-period transactions, since an article's adjusted demand sums its predicted sales; the discount tiers include a 0% level (feasible starting point) and only increase across weeks (price ladder); prices, costs, inventory, and demand are non-negative.
+**Important invariants**: `opt_article_id` and `pc_article_id` must match real `a_article_id` values that carry test-period transactions, since an article's adjusted demand sums its predicted sales; a product's discount level can stay the same or move higher from one week to the next (price ladder); prices, costs, inventory, and demand are non-negative.
 
 ### Pipeline stages
 
@@ -386,7 +386,7 @@ Both problems are solved by HiGHS on each refresh of the deployed model, and the
 <details>
 <summary>The report prints no adjusted demand</summary>
 
-- Run `python train.py`, then refresh the deployed model: the first deploy registers no GNN version, so it makes no predictions. Until every planning article has demand, the report stops before the plans.
+- Run `python train.py`, then refresh the deployed model: the first deploy registers no GNN version, so it makes no predictions. Until every planning article has demand, the report lists the articles that lack it and stops before the plans.
 - Check that `raiconfig.yaml` names the same model and version that `train.py` registered.
 </details>
 
@@ -394,7 +394,7 @@ Both problems are solved by HiGHS on each refresh of the deployed model, and the
 <summary>Markdown optimization is infeasible</summary>
 
 - Selling nothing is feasible whenever the inputs are non-negative and `discounts.csv` has at least one tier, so check the CSVs for negative values and keep the week numbers in `weeks.csv` consecutive from 1.
-- Ensure the article IDs in the CSVs match articles that have predictions (they appear in the sales test set); the report stops before the plans and lists any planning article without predicted demand.
+- Ensure the article IDs in the CSVs match articles that have predictions (they appear in the sales test set); until they do, the report lists the articles that lack demand or have a capacity row outside the planning set, and stops before the plans.
 </details>
 
 <details>
@@ -409,7 +409,7 @@ Both problems are solved by HiGHS on each refresh of the deployed model, and the
 
 - Ensure the GNN training completed successfully (check for `fit()` errors).
 - Verify that the test relationship has rows and that the keys link to the core entities.
-- Compare the validation RMSE with a predict-the-mean baseline evaluated on the same validation rows; an RMSE no better than that baseline means the model has learned nothing beyond the mean, so revisit the PropertyTransformer and task setup.
+- Compare the validation RMSE with a predict-the-mean baseline evaluated on the same validation rows; an RMSE no better than that baseline means the model does not beat predicting the mean on that metric, so revisit the PropertyTransformer and task setup.
 </details>
 
 <details>

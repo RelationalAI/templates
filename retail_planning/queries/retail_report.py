@@ -20,6 +20,7 @@ from model import (
     MarkdownRevenue,
     MarkdownStatus,
     OptArticle,
+    PlanningGap,
     ProdCapacity,
     Train,
     Transaction,
@@ -57,16 +58,11 @@ def stage_1_predictive() -> bool:
     else:
         print(demand.to_string(index=False, float_format=lambda v: f"{v:.2f}"))
 
-    # Both problems bound an article only where it has demand: without it the markdown MILP
-    # loses the article's sales bound and the planning LP its inventory balance, so their
-    # plans for that article mean nothing.
-    planned = set(select(OptArticle.opt_article_id).to_df().iloc[:, 0])
-    planned |= set(select(ProdCapacity.pc_article_id).to_df().iloc[:, 0])
-    with_demand = set(select(ArticleDemand.article_id).where(ArticleDemand.adjusted_demand).to_df().iloc[:, 0])
-    missing = sorted(planned - with_demand)
-    if missing:
-        print(f"\n  Planning articles without predicted demand: {missing}")
-    return not missing
+    # Both plans are meaningless for an article without demand.
+    gap = sorted(select(PlanningGap).to_df().iloc[:, 0])
+    if gap:
+        print(f"\n  Articles {gap} lack predicted demand or sit outside the planning set.")
+    return not gap
 
 
 def _print_solve(label: str, status_relation, objective_relation, objective_label: str) -> list[str]:
@@ -98,9 +94,21 @@ def stage_2_markdown() -> None:
 
 def stage_3_demand_planning() -> None:
     banner("PRESCRIPTIVE B: Demand / Inventory Planning")
-    _print_solve("Demand Planning", DemandPlanStatus, DemandPlanCost,
-                 "Total cost (production + holding + unmet penalty)")
+    status = _print_solve("Demand Planning", DemandPlanStatus, DemandPlanCost,
+                          "Total cost (production + holding + unmet penalty)")
     week, end_week, value = Week.ref(), Integer.ref(), Float.ref()
+    # Every solution has an inventory row for each article at week 0, so no inventory rows
+    # means the solve returned no solution, not an empty plan.
+    inv_rows = select(
+        ProdCapacity.pc_article_id.alias("article_id"),
+        end_week.alias("week"),
+        value.alias("inventory"),
+    ).where(ProdCapacity.planned_inventory(end_week, value)).to_df()
+    if inv_rows.empty:
+        print("  (no plan: the solve returned no solution)")
+        return
+    if status != ["OPTIMAL"]:
+        print(f"  The plan below is the best solution of a {', '.join(status)} solve, not a proven optimum.")
 
     print("\n=== Demand Planning: Production Plan (non-zero) ===")
     prod_rows = select(
@@ -111,16 +119,10 @@ def stage_3_demand_planning() -> None:
     if not prod_rows.empty:
         print(prod_rows.sort_values(["article_id", "week"]).to_string(index=False))
     else:
-        print("  No production needed.")
+        print("  No production needed (none above 0.01 units).")
 
     print("\n=== Demand Planning: Inventory Levels ===")
-    inv_rows = select(
-        ProdCapacity.pc_article_id.alias("article_id"),
-        end_week.alias("week"),
-        value.alias("inventory"),
-    ).where(ProdCapacity.planned_inventory(end_week, value)).to_df()
-    if not inv_rows.empty:
-        print(inv_rows.sort_values(["article_id", "week"]).to_string(index=False))
+    print(inv_rows.sort_values(["article_id", "week"]).to_string(index=False))
 
     print("\n=== Demand Planning: Unmet Demand ===")
     unmet_rows = select(
@@ -129,7 +131,7 @@ def stage_3_demand_planning() -> None:
         value.alias("unmet"),
     ).where(ProdCapacity.planned_unmet(week, value), value > 0.01).to_df()
     if unmet_rows.empty:
-        print("  All demand fulfilled!")
+        print("  All demand fulfilled! (no shortfall above 0.01 units)")
     else:
         print(unmet_rows.sort_values(["article_id", "week"]).to_string(index=False))
 

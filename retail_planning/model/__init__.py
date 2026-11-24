@@ -25,6 +25,7 @@ from .reasoning import (
     DemandPlanStatus,
     MarkdownRevenue,
     MarkdownStatus,
+    PlanningGap,
     gnn,
 )
 from .schema import (
@@ -47,6 +48,7 @@ __all__ = [
     "MarkdownRevenue",
     "MarkdownStatus",
     "OptArticle",
+    "PlanningGap",
     "ProdCapacity",
     "Train",
     "Transaction",

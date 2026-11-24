@@ -101,6 +101,27 @@ model.define(
     )
 )
 
+# Both problems bound an article only where its demand is known: without it the markdown MILP
+# drops the article's sales bound and the planning LP its inventory balance, so their plans for
+# it mean nothing. Every planning article without predicted demand, and every capacity row
+# outside the markdown planning set, is published here for the report to check. The first
+# refresh, before `train.py` registers a GNN version, has no demand at all.
+PlanningGap = model.Relationship(f"planning article {Integer:article_id} cannot be planned")
+known_demand = ArticleDemand.ref()
+model.where(
+    OptArticle,
+    model.not_(known_demand.article_id == OptArticle.opt_article_id, known_demand.adjusted_demand),
+).define(PlanningGap(OptArticle.opt_article_id))
+planned_article = OptArticle.ref()
+model.where(
+    ProdCapacity,
+    model.not_(
+        planned_article.opt_article_id == ProdCapacity.pc_article_id,
+        known_demand.article_id == ProdCapacity.pc_article_id,
+        known_demand.adjusted_demand,
+    ),
+).define(PlanningGap(ProdCapacity.pc_article_id))
+
 # --------------------------------------------------
 # Phase 4: Markdown optimization (MILP, maximize revenue)
 # --------------------------------------------------
