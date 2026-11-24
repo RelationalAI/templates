@@ -24,7 +24,7 @@ from relationalai.semantics import Integer, String, sum
 from relationalai.semantics.reasoners.prescriptive import Problem
 
 from .schema import Account, Transaction, model
-from .source import AMOUNT_THRESHOLD_DOLLARS, tx_csv
+from .source import AMOUNT_THRESHOLD_DOLLARS
 
 # Motif parameters.
 # K = 3 is the smallest hub count that's clearly a fan-out-then-fan-in pattern
@@ -39,19 +39,12 @@ CONSERVATION_TOLERANCE_DOLLARS = 100
 # your own ledger.
 MAX_BUTTERFLY_MOTIFS = 10
 
-# Tightest big-M coefficient for the per-hub conservation IC below. The big-M
-# form makes that IC active when `is_hub == 1` and vacuous when `is_hub == 0`;
-# M needs to bound |sum_in - sum_out| over decision-selected motif edges,
-# which is at most the per-account total of incoming or outgoing amounts.
-CONSERVATION_BIG_M = (
-    int(
-        max(
-            tx_csv.groupby("dst_id")["amount_dollars"].sum().max(),
-            tx_csv.groupby("src_id")["amount_dollars"].sum().max(),
-        )
-    )
-    + AMOUNT_THRESHOLD_DOLLARS
-)
+# Big-M coefficient for the per-hub conservation IC below. The big-M form makes
+# that IC active when `is_hub == 1` and vacuous when `is_hub == 0`, so M must bound
+# |sum_in - sum_out| over the motif edges at any account. The ICs below allow
+# exactly 2K motif edges, each under AMOUNT_THRESHOLD_DOLLARS, so with nonnegative
+# amounts 2K times the threshold bounds either sum.
+CONSERVATION_BIG_M = 2 * K * AMOUNT_THRESHOLD_DOLLARS
 
 # Decision-valued properties for the butterfly motif.
 Transaction.is_motif = model.Property(f"{Transaction} is in motif if {Integer:is_motif}")
