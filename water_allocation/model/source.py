@@ -22,8 +22,9 @@ conn_csv = read_csv(DATA_DIR / "connections.csv")
 unknown = ~conn_csv["source_id"].isin(source_csv["id"]) | ~conn_csv["user_id"].isin(user_csv["id"])
 if unknown.any():
     raise ValueError(f"connections.csv rows {conn_csv.index[unknown].tolist()} name an unknown source or user.")
-if (conn_csv["max_flow"] <= 0).any():
-    raise ValueError("Every connection in connections.csv needs a positive max_flow.")
+bad_flow = ~conn_csv["max_flow"].between(0, float("inf"), inclusive="neither")
+if bad_flow.any():
+    raise ValueError(f"connections.csv rows {conn_csv.index[bad_flow].tolist()} need a positive, finite max_flow.")
 unconnected = user_csv[(user_csv["demand"] > 0) & ~user_csv["id"].isin(conn_csv["user_id"])]
 if len(unconnected):
     raise ValueError(f"Users {unconnected['id'].tolist()} have demand but no connection.")
