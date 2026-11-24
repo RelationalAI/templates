@@ -92,7 +92,7 @@ The index below covers the current templates. Expand an industry to see its temp
 | [demand_forecasting](demand_forecasting/) | Predictive | Forecast next-period unit sales per store, item, and day with a regression graph neural network (GNN) over a heterogeneous retail graph linking sales to stores, items, and item families. |
 | [planogram_optimization](planogram_optimization/) | Predictive, Prescriptive | Decide integer facing counts per SKU to maximize predicted weekly demand under shelf capacity and category cardinality limits, where per-(SKU, facing_count) demand comes from a regression model. |
 | [retail_markdown](retail_markdown/) | Prescriptive | Set discount levels across weeks to maximize revenue while clearing inventory. |
-| [retail_planning](retail_planning/) | Predictive, Prescriptive | Predict article sales and customer churn with graph neural networks (GNNs), then optimize markdown pricing and inventory planning to maximize revenue and minimize costs. |
+| [retail_planning](retail_planning/) | Predictive, Prescriptive | Predict article sales with a graph neural network (GNN), then optimize markdown pricing and inventory planning to maximize revenue and minimize costs. |
 
 </details>
 
