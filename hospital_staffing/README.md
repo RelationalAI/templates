@@ -41,7 +41,7 @@ The result is a frontier of overtime cost against unmet demand: each sweep point
 - **Query**: `queries/staffing_frontier.py`, which prints the report from the deployed model.
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the model itself.
 - **Sample data**: `data/nurses.csv` (nurse roster with skill levels, hourly costs, and overtime parameters), `data/shifts.csv` (shift definitions with timing, staffing requirements, and patient demand), and `data/availability.csv` (nurse-to-shift availability matrix).
-- **Outputs**: the status and result of each solve, the efficient frontier of overtime cost against unmet demand, the marginal analysis with the knee, and the nurse assignments at the knee, printed to stdout.
+- **Outputs**: the status and result of each solve, the frontier (cap sweep) of overtime cost against unmet demand, the marginal analysis with the knee, and the nurse assignments at the knee, printed to stdout.
 
 ## Prerequisites
 
@@ -223,7 +223,7 @@ Use this sequence to deploy the model and query it:
        Night: Nurse_B, Nurse_E
    ```
 
-   All seven solves are `OPTIMAL`. Each sweep point's cost is the least overtime that meets its cap: no overtime down to 43.3 unmet patients, then $336 at 21.7. Each anchor optimizes only its own objective, so its other number comes from whichever optimal schedule the solver returns: the cheapest anchor reports all 130 patients unmet because nothing in that solve rewards serving them, and the best-service anchor's $2,268 is not the least overtime that full service needs (the bundled data serves every patient for $1,116). The marginal rates and knee that involve an anchor inherit that arbitrariness. See `runbook.md` for the step-by-step walkthrough.
+   All seven solves are `OPTIMAL`. Each sweep point's cost is the least overtime that meets its cap: no overtime down to 43.3 unmet patients, then $336 at 21.7. Each anchor optimizes only its own objective, so its other number comes from whichever optimal schedule the solver returns: the cheapest anchor reports all 130 patients unmet because nothing in that solve rewards serving them, and the best-service anchor's $2,268 is not the least overtime that full service needs (the bundled data serves every patient for $1,116). The marginal rates and knee that involve an anchor inherit that arbitrariness. The same holds between anchors: a sweep point can leave as many patients unmet as its cap allows even when serving more costs nothing extra, so eps_1 to eps_3 are dominated by eps_4 (same $0, fewer patients unmet), and the knee is only as fine as the sampled caps. See `runbook.md` for the step-by-step walkthrough.
 
    To solve again without changing the model, refresh the deployed model, then run the query again:
 
@@ -278,7 +278,7 @@ The model is a small optimization ontology: two entities (nurses, shifts) linked
 
 - **Key entities**: `Nurse` — a nurse with a skill level and cost parameters (the solver adds overtime hours); `Shift` — a shift with coverage requirements and patient demand (the solver adds patients-served and unmet-demand quantities); `Availability` — a nurse's eligibility for a shift; `Assignment` — the decision to staff a nurse on a shift, the MILP's decision space.
 - **Primary identifiers**: `Nurse.id` and `Shift.id` (integers); `Availability` is keyed by the `(nurse_id, shift_id)` pair; `Assignment` is keyed by its `Availability`.
-- **Important invariants**: overtime hours, patients served, and unmet demand are non-negative continuous quantities; each nurse works one to two shifts; every shift meets its minimum-nurse and minimum-skill floor; assignment decisions are binary.
+- **Important invariants**: overtime hours, patients served, and unmet demand are non-negative continuous quantities; each nurse works one to two shifts; every shift meets its minimum-nurse floor, and its minimum-skill floor provided at least one available nurse meets that skill level (a shift without one gets no skill constraint); assignment decisions are binary.
 
 For the full concept and property definitions, see `model/schema.py`; `runbook.md` builds them step by step with the RAI skills.
 
@@ -290,7 +290,7 @@ For the full concept and property definitions, see `model/schema.py`; `runbook.m
 
 **Solve anchor points and run the epsilon sweep.** Two anchor solves establish the feasible unmet-demand range: anchor 1 minimizes overtime with no demand constraint (the cheapest schedule, which may leave patients unserved), and anchor 2 minimizes unmet demand (the best achievable service level). The epsilon sweep then traces interior points between the anchors, each solve minimizing overtime cost subject to a progressively tighter cap on unmet demand. Every solve is declared in the model: each sweep point's cap is a rule over the two anchors' results, so a refresh solves the anchors first and the sweep after them. Each solve publishes its status, overtime cost, unmet demand, and assignments as a `FrontierPoint`.
 
-**Pareto analysis output.** The query prints the efficient frontier showing how overtime cost rises as the unmet-demand cap tightens. Marginal analysis computes the cost of reducing unmet demand by one patient, and a knee detector flags the last point reached at no extra cost, or, when no improvement is free, the point where the marginal cost per patient jumps by the largest ratio. The knee is a starting point for choosing a cost-service balance, not a proven optimum. If a sweep point fails, the report stops the sweep there and leaves the best-service anchor out of the frontier.
+**Pareto analysis output.** The query prints the frontier (a cap sweep) showing how overtime cost rises as the unmet-demand cap tightens. Marginal analysis computes the cost of reducing unmet demand by one patient, and a knee detector flags the last point reached at no extra cost, or, when no improvement is free, the point where the marginal cost per patient jumps by the largest ratio. The knee is a starting point for choosing a cost-service balance, not a proven optimum. If a sweep point fails, the report stops the sweep there and leaves the best-service anchor out of the frontier.
 
 See `model/reasoning.py` for the implementation, and `runbook.md` for the skill-driven reproduction.
 

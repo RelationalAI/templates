@@ -159,10 +159,12 @@ if __name__ == "__main__":
 
         # When service improves for free before the first paid step, the knee is the last free
         # point; otherwise it is the largest ratio between consecutive positive rates. A rate
-        # ($ per patient) is never compared with a ratio.
+        # ($ per patient) is never compared with a ratio. With no paid step there is no knee.
         if len(rates) >= 2:
             first_paid = next((j for j, rate in enumerate(rates) if rate > 1e-6), None)
-            if first_paid is not None and first_paid > 0:
+            if first_paid is None:
+                knee_idx = None
+            elif first_paid > 0:
                 knee_idx = first_paid
                 knee_text = (f"the last free improvement; the next costs "
                              f"${rates[first_paid]:.2f}/patient")
@@ -172,22 +174,25 @@ if __name__ == "__main__":
                     if rates[j] > 1e-6 and rates[j+1] / rates[j] > max_jump:
                         max_jump, knee_idx = rates[j+1] / rates[j], j + 1
                 knee_text = f"marginal cost jumps {max_jump:.1f}x beyond this point"
-            print(f"\n  Knee: Point {knee_idx + 1} ({pareto[knee_idx]['label']}) -- {knee_text}")
-            print(f"  Recommendation: Target {pareto[knee_idx]['unmet_demand']:.0f} unmet patients "
-                  f"at ${pareto[knee_idx]['overtime_cost']:.2f} overtime cost -- "
-                  f"further service improvement costs significantly more per patient.")
+            if knee_idx is None:
+                print("\n  No knee: no sampled step costs overtime.")
+            else:
+                print(f"\n  Knee: Point {knee_idx + 1} ({pareto[knee_idx]['label']}) -- {knee_text}")
+                print(f"  Recommendation: Target {pareto[knee_idx]['unmet_demand']:.0f} unmet patients "
+                      f"at ${pareto[knee_idx]['overtime_cost']:.2f} overtime cost -- "
+                      f"further service improvement costs significantly more per patient.")
 
-            # Print nurse assignments at the knee point
-            knee_assignments = model.select(
-                Nurse.name.alias("nurse"), Shift.name.alias("shift")
-            ).where(
-                FrontierPoint.position == int(pareto[knee_idx]["position"]),
-                FrontierPoint.assigns(Nurse, Shift),
-            ).to_df()
-            if not knee_assignments.empty:
-                print("\n  Knee-point assignments:")
-                by_shift = knee_assignments.groupby("shift")["nurse"]
+                # Print nurse assignments at the knee point
+                knee_assignments = model.select(
+                    Nurse.name.alias("nurse"), Shift.name.alias("shift")
+                ).where(
+                    FrontierPoint.position == int(pareto[knee_idx]["position"]),
+                    FrontierPoint.assigns(Nurse, Shift),
+                ).to_df()
+                if not knee_assignments.empty:
+                    print("\n  Knee-point assignments:")
+                    by_shift = knee_assignments.groupby("shift")["nurse"]
 
-                for shift, nurses in by_shift:
-                    nurses = ", ".join(sorted(nurses))
-                    print(f"    {shift}: {nurses}")
+                    for shift, nurses in by_shift:
+                        nurses = ", ".join(sorted(nurses))
+                        print(f"    {shift}: {nurses}")
