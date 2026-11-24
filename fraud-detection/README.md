@@ -33,6 +33,7 @@ predictive model, and review constraints for your workflow.
 
 ## Prerequisites
 
+- Python 3.10 through 3.14 (the range relationalai 2.3.0 supports).
 - A Snowflake account that has the RAI Native App installed.
 - The one-time model deployment setup on that account, done by an account administrator: follow [Set up model deployment](https://private.relational.ai/early-access/model-deploy-setup) through **Governed setup**, **PAT authentication**, and steps 1-2 of **Additional setup for the prescriptive reasoner**. It creates the model role, a programmatic access token (PAT) stored as a secret, an external access integration, a PAT user, and a warehouse.
 - A Snowflake user that holds the model role.
@@ -210,7 +211,7 @@ Use this sequence to deploy the model, train the classifier, and print the audit
    ============================================================
    ```
 
-   The report prints the class balance, the top-20 alert queue, the audit solve against a naive sort-by-score queue, and the selected audits; the lines above are trimmed. The classifier is stochastic, so the scores, the naive baseline, and the selected audits shift from one training run to the next; the structural outcome reproduces: status OPTIMAL, all 80 investigator hours used, and a captured loss well above the naive queue. The full printout and a step-by-step walkthrough are in `runbook.md`. The bundled PaySim sample
+   The report prints the class balance, the top-20 alert queue, the audit solve against a naive sort-by-score queue, and the selected audits; the lines above are trimmed. The classifier is stochastic, so the scores, the naive baseline, and the selected audits shift from one training run to the next; the structural outcome reproduces: status OPTIMAL, all 80 investigator hours used, and a captured loss well above the naive queue. A step-by-step walkthrough is in `runbook.md`. The bundled PaySim sample
    overrepresents fraud for CPU training, so its scores don't estimate
    real-world detection accuracy. The sample comes from Edgar Lopez-Rojas's
    PaySim synthetic mobile-money dataset under CC BY-SA 4.0. See
