@@ -1,6 +1,6 @@
 ---
 title: "Warehouse Allocation"
-description: "Allocate inventory across a distribution network using centrality, weakly-connected components, and bridge-route detection to prioritize critical hubs."
+description: "Allocate inventory across a distribution network using centrality, weakly-connected components, and cross-region route flags to prioritize critical hubs."
 featured: false
 experience_level: intermediate
 industry: "Supply Chain & Logistics"
@@ -32,7 +32,7 @@ This template chains graph analysis and prescriptive optimization so that the al
 
 ## What you'll build
 
-- A distribution-network graph enriched with eigenvector-centrality scores, weakly-connected-component labels, and cross-region bridge routes — all written back onto the ontology as queryable `Site` and `Route` properties.
+- A distribution-network graph enriched with eigenvector-centrality scores, weakly-connected-component labels, and cross-region bridge routes — all written back onto the ontology as queryable `Site` and `Route` properties and the `SiteComponent` relationship.
 - An inventory-allocation plan that satisfies demand and budget while holding buffer stock at critical hubs proportional to their centrality.
 - A two-stage chain where the graph reasoner's centrality output becomes a direct input to the prescriptive reasoner's constraints — no DataFrame hand-off between stages.
 
@@ -42,7 +42,7 @@ Built using **graph analysis** (eigenvector centrality, weakly connected compone
 
 - **Model**: a two-stage pipeline (graph, then prescriptive) on a single shared ontology — `Site`, `Route`, and `Demand` concepts wired to the bundled CSVs, plus the centrality enrichment Stage 1 writes back — in the `model/` package (`schema.py` declares the concepts, `source.py` loads the sample data, `reasoning.py` holds both stages), which `rai models deploy --path model` deploys to your Snowflake account, where each refresh runs both stages.
 - **Query**: `queries/allocation_report.py`, which prints the report from the deployed model.
-- **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
+- **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the code in `model/`.
 - **Sample data**: a small distribution network of warehouses and stores with routes and per-site demand. See *Sample data* below.
 - **Outputs**: stdout diagnostics (centrality scores, connected-component summary, bridge routes, solver status) plus the inventory allocation plan as queryable `Site.x_inventory`.
 

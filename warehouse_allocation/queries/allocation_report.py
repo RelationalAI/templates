@@ -81,8 +81,9 @@ if __name__ == "__main__":
         print(f"• objective: {round(holding_cost[0], 9)}\n")
 
     print(f"\nStatus: {', '.join(status)}")
-    if holding_cost:
-        print(f"Total holding cost: ${holding_cost[0]:.2f}")
+    if not holding_cost:
+        raise SystemExit(f"termination status {status}")
+    print(f"Total holding cost: ${holding_cost[0]:.2f}")
 
     print("\nAllocation plan:")
     model.select(
