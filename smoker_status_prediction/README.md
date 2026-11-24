@@ -300,7 +300,7 @@ For the full hyperparameter list, see the [Configure a GNN](https://docs.relatio
 ### Extend the model
 
 - **Add categorical demographics** (e.g. occupation, income bracket): list them under `category=[...]` in the `PropertyTransformer`.
-- **Try a multiclass task**: if your label has more than two values (e.g. never / light / heavy smoker), change `task_type="multiclass_classification"` and use `eval_metric="macro_f1"` or `"accuracy"`.
+- **Try a multiclass task**: if your label has more than two values (e.g. never / light / heavy smoker), change `task_type="multiclass_classification"` and use `eval_metric="macro_f1"` or `"accuracy"`. The published prediction then carries per-class scores rather than one probability, so update `SmokerPrediction` in `model/reasoning.py` and replace the report's binary ROC-AUC and its fixed classes `0` and `1` with a multiclass metric.
 - **Train a new version**: the registry refuses to overwrite a version, so set a new `version` under `reasoners.predictive.gnns.smoker_status` in `raiconfig.yaml`, then run `python train.py` and the refresh call again.
 
 ### Scale up / productionize
@@ -325,7 +325,11 @@ model.define(TestTable.new(Table("TEST").to_schema()))
 ```yaml
 tables:
   default_schema: MY_DB.MY_SCHEMA   # resolves the unqualified table names above
+data:
+  ensure_change_tracking: true      # importing Snowflake tables requires change tracking
 ```
+
+Importing Snowflake tables requires change tracking on them: without `ensure_change_tracking: true`, the SDK warns that GNN workflows using Snowflake tables will fail. If your role cannot enable tracking on the five source tables, have their owner run `ALTER TABLE <table> SET CHANGE_TRACKING = TRUE` on each.
 
 The tables carry the same columns as the CSVs, created with quoted names so Snowflake keeps their case and matching the names the model uses: `PEOPLE` with `"Id"` and the lowercase feature names that `model/reasoning.py` reads (`"height_cm"`, `"fasting_blood_sugar"`, ...), `RELATED` with `"person1"` and `"person2"`, and `TRAIN`, `VALIDATION`, and `TEST` with `"Id"` and `"smoking"`.
 

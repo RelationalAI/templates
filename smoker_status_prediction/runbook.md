@@ -38,7 +38,7 @@ Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` 
 
 **Prompt:** /rai-predictive-training How well does the model separate smokers from non-smokers, and what does the score mean operationally?
 
-**Response:** A test **ROC-AUC of about 0.85** means the model ranks a random smoker above a random non-smoker ~85% of the time — strong separation from routine biosignals plus the relational graph — at about **76% accuracy**. The per-person predicted probabilities let the team rank-order people by smoking likelihood (e.g. for screening or outreach) rather than relying on a single hard threshold.
+**Response:** A test **ROC-AUC of about 0.85** means the model ranks a random smoker above a random non-smoker ~85% of the time — strong separation from routine biosignals plus the relational graph — at about **76% accuracy**. The bundled `RELATED` edges were constructed so that linked people tend to share smoking status, so the graph itself carries label information: the score demonstrates the GNN workflow, not a screening signal.
 
 ## Data
 

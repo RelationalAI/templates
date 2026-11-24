@@ -76,6 +76,9 @@ def main() -> None:
     )
 
     print(f"\n=== Test-set metrics (n={n_test}) ===")
+    if n_test < counts["test"]:
+        print(f"  Partial: {counts['test'] - n_test:,} test people have no prediction; "
+              "the metrics cover the scored ones only.")
     print(f"  Test-set ROC-AUC:   {test_auc:.4f}")
     print(f"  Test-set accuracy:  {accuracy:.4f}")
     print(

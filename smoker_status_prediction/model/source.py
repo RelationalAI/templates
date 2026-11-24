@@ -18,14 +18,15 @@ from .schema import (
 
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 
-# Identifier-safe column names (RAI-55920); before removing, check that a deploy accepts the raw headers.
+# Identifier-safe column names: the raw headers contain spaces and parentheses.
 people_df = read_csv(DATA_DIR / "people.csv")
 people_df.columns = [
     c if c == "Id" else c.replace("(", "_").replace(")", "").replace(" ", "_").lower()
     for c in people_df.columns
 ]
 
-# Frames of at most 9,746 rows (RAI-52357); before removing, check that a deploy accepts people.csv as one frame.
+# The deploy writes each frame into its store view as inline rows, and Snowflake rejects a view
+# definition past about 1 MB: frames of at most 9,746 rows of people.csv stay under it.
 PEOPLE_ROWS_PER_FRAME = 9_746
 for start in range(0, len(people_df), PEOPLE_ROWS_PER_FRAME):
     frame = people_df.iloc[start : start + PEOPLE_ROWS_PER_FRAME]

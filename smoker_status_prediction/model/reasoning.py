@@ -16,7 +16,7 @@ STREAM_LOGS = False
 # Each row of `Related` connects two People (person1 -> person2). Use a
 # self-referential Edge to express it: same concept on both ends, so the
 # destination is `People.ref()`.
-gnn_graph = Graph(model, directed=True, weighted=False)
+gnn_graph = Graph(model, name="people_graph", directed=True, weighted=False)
 Edge = gnn_graph.Edge
 
 PeopleRef = People.ref()
