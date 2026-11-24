@@ -167,8 +167,8 @@ def stage_4_prescriptive() -> None:
     if objective:
         print(f"  Objective:          {float(objective[0]):,.2f}")
     if status == ["TIME_LIMIT"]:
-        print("  Note: TIME_LIMIT means solver returned a feasible but not "
-              "proven-optimal solution. Per-cell results below remain valid.")
+        print("  Note: TIME_LIMIT means the solve stopped at its time limit; the per-cell "
+              "results below are its best solution found, not proven optimal.")
 
     cells_df = cell_table()
     if cells_df.empty:
@@ -235,7 +235,8 @@ def stage_4_prescriptive() -> None:
     print("\n  AllocationPlan singleton (queryable as ontology):")
     print(plan_df.to_string(index=False))
 
-    n_chosen = int(select(count(Assignment).alias("n")).where(Assignment.is_chosen()).to_df()["n"].iloc[0])
+    chosen = select(count(Assignment).alias("n")).where(Assignment.is_chosen()).to_df()["n"]
+    n_chosen = int(chosen.iloc[0]) if len(chosen) else 0
     print(f"  Assignment.is_chosen rows: {n_chosen} (matches n_assigned above)")
 
     overlay_df = select(

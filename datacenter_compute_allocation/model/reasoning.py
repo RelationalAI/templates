@@ -253,9 +253,9 @@ model.define(wl_ref.gating_score(score_ref)).where(pagerank(wl_ref, score_ref))
 #
 #   Constraints:
 #     C1+C2 -- At most one assignment per workload per cell, P0 included:
-#              priority_weight=100 in the objective assigns P0 workloads
-#              wherever the cell's other constraints allow, and a P0
-#              workload left unassigned in a cell is a diagnostic signal.
+#              priority_weight=100 in the objective weights P0 workloads
+#              heavily but does not force them in, so a P0 workload left
+#              unassigned in a cell is a diagnostic signal.
 #     C3    -- Per-pool GPU-count capacity.
 #     C4    -- Per-DC power envelope: gpu_count * power_per_gpu * pue <=
 #              approved_mw * 1000 * envelope_multiplier.
