@@ -175,15 +175,21 @@ if __name__ == "__main__":
     )
 
     truth_df = load_ground_truth()
-    truth_map = (
-        {} if truth_df is None else dict(zip(truth_df["record_id"], truth_df["true_entity_id"]))
-    )
+    truth_map = {}
+    if truth_df is not None:
+        # A blank label, or two different labels for one record, leaves the record unlabeled.
+        labels = truth_df.dropna(subset=["true_entity_id"]).drop_duplicates()
+        labels = labels.drop_duplicates("record_id", keep=False)
+        truth_map = dict(zip(labels["record_id"], labels["true_entity_id"]))
     print("\n" + "=" * 64)
     print("Evaluation vs ground truth (pairwise, auto-resolution)")
     print("=" * 64)
     n_labeled = sum(record_id in truth_map for record_id in record_ids)
     if n_labeled < n_records:
-        print(f"  skipped: {n_labeled} of {n_records} records have a label in data/ground_truth.csv")
+        print(
+            f"  skipped: {n_labeled} of {n_records} records have exactly one label "
+            "in data/ground_truth.csv"
+        )
     else:
         true_pairs = {
             (rec_a, rec_b)
