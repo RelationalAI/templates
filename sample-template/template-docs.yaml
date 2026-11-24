@@ -62,8 +62,8 @@ guided_walkthrough:
     - id: inspect-results
       title: Inspect modeled records
       explanation: >-
-        inspect_items queries the deployed model and returns the records printed
-        by the query module.
+        inspect_items builds a query over the deployed model; main() runs it
+        with to_df() and prints the records.
       focus:
         file: queries/item_report.py
         symbols:
