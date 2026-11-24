@@ -13,6 +13,8 @@ if __name__ == "__main__":
     if status != ["OPTIMAL"]:
         raise SystemExit(f"termination status {status}")
     conversions = model.select(TotalConversions).to_df().iloc[:, 0].tolist()
+    if not conversions:
+        raise SystemExit(f"termination status {status}: the solve published no objective value")
     print(f"• objective: {round(conversions[0], 9)}\n")
 
     # --------------------------------------------------
