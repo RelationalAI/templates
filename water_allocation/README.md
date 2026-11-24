@@ -249,7 +249,7 @@ Focus on the first changes most users will make.
 ### Use your own data
 
 - Replace the CSVs in `data/` with your own; keep the column names shown in *Sample data* above (`sources.csv`, `users.csv`, `connections.csv`).
-- For Snowflake-backed runs, swap the `read_csv(...)` calls for `model.data(snowflake_table)` calls.
+- For Snowflake-backed runs, replace each `model.data(...)` source in `model/source.py` with `model.Table("<DB>.<SCHEMA>.<TABLE>")` over a table with the same columns, and rewrite the input checks there, which read the CSVs with pandas.
 - Confirm `source_id` and `user_id` in `connections.csv` match the `id` columns in `sources.csv` and `users.csv` — a mismatched key stops the deploy with an error naming the row.
 
 ### Tune parameters
@@ -278,9 +278,9 @@ Total source capacity (after losses) is insufficient to meet all user demands. C
 </details>
 
 <details>
-<summary>Some connections show zero flow</summary>
+<summary>Some connections are missing from the flow report</summary>
 
-The solver avoids expensive routes when cheaper alternatives exist. If a source has a high cost per unit, its connections may carry zero flow. This is expected behavior for a cost-minimizing solution.
+The report lists only connections carrying more than 0.001 units. The solver avoids expensive routes when cheaper alternatives exist, so if a source has a high cost per unit, its connections may carry zero flow. This is expected behavior for a cost-minimizing solution.
 </details>
 
 <details>
