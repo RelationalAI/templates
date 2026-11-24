@@ -249,10 +249,10 @@ For the full concept and property definitions, see `model/schema.py`; `runbook.m
 The pipeline runs three stages in order: Graph closes the ontology, Rules lift the closure to patient-level facts, and the CSP solver selects the cohort.
 
 ```text
-gene ontology → graph closure (KinaseGene) → rules (eligibility + coverage sub-concepts) → CSP cohort selection → deploy → report
+deploy → refresh: gene ontology → graph closure (KinaseGene) → rules (eligibility + coverage sub-concepts) → CSP cohort selection → report
 ```
 
-**Graph reasoner: one call to close the ontology.** The `is_a` CSV is in OMOP / SNOMED convention (child -> parent), but the graph is built with source and destination swapped, so reachability from the pathway root flows *downwards* through the subclass tree onto every descendant gene. The full transitive closure (every ancestor-descendant pair) is materialized as a sub-concept `KinaseGene extends Gene` — the genes reachable from the configured pathway root.
+**Graph reasoner: one call to close the ontology.** The `is_a` CSV is in OMOP / SNOMED convention (child -> parent), but the graph is built with source and destination swapped, so reachability from the pathway root flows *downwards* through the subclass tree onto every descendant gene. `reachable(full=True)` computes the full transitive closure (every ancestor-descendant pair), and the genes reachable from the configured pathway root become the sub-concept `KinaseGene extends Gene`.
 
 **Rules: lift the closure to patient-level sub-concepts.** Pure relational arithmetic, no decisions. Predicates are encoded as sub-concepts — a patient's *membership* in `KinaseMutationCarrier`, `QualifyingPairPatient`, or `EligiblePatient` is the predicate itself, which downstream rules and the CSP test by a simple membership check. The AE-window predicate ("an adverse event follows a therapy within `MAX_THERAPY_TO_AE_DAYS`") is lifted once into a 3-arity `Patient.qualifying_pair` relationship, and the three downstream rules (eligibility, therapy coverage, AE coverage) all project from it — so redefining the qualifying pair is an edit to one rule rather than three. A patient is eligible exactly when they are both a kinase-mutation carrier and a qualifying-pair patient.
 
@@ -273,7 +273,7 @@ For the exact PyRel formulation, see `model/reasoning.py`; `runbook.md` reproduc
 
 ### Tune parameters
 
-- **Cohort target** — adjust `COHORT_SIZE` and the three `MIN_*_COVERED` floors at the top. Tightening any one shrinks the feasible region; setting `MIN_GENES_COVERED = COHORT_SIZE` forces every patient in the cohort to cover a distinct gene (rules out two patients with identical mutation patterns).
+- **Cohort target** — adjust `COHORT_SIZE` and the three `MIN_*_COVERED` floors at the top. Tightening any one shrinks the feasible region; each floor counts distinct values across the whole cohort, so `MIN_GENES_COVERED = COHORT_SIZE` requires the cohort's mutations to span that many kinase genes in total. It does not give each patient a distinct gene (one patient can cover several); that would need patient-to-gene assignment decisions of its own.
 - **Qualifying window** — edit `MAX_THERAPY_TO_AE_DAYS`. The 90-day window is a common attribution choice for treatment-emergent AEs in oncology trials; some indications use 28 days for acute toxicity, others 180 days for late-onset events.
 
 ### Extend the model
@@ -285,7 +285,7 @@ For the exact PyRel formulation, see `model/reasoning.py`; `runbook.md` reproduc
 
 ### Scale up / productionize
 
-- For a live patient store, replace the `read_csv(...)` loads with `model.data(snowflake_table)` calls so the ontology reads directly from your OMOP / FHIR tables; the rules and CSP are unchanged.
+- For a live patient store, replace the `read_csv(...)` loads in `model/source.py` with `model.Table("<db>.<schema>.<table>")` sources, defining the same concepts and properties from each table's columns, so the ontology reads directly from your OMOP / FHIR tables; the rules and CSP are unchanged. The pre-solve invariants read the CSV frames, so restate them as checks over your tables.
 - The pre-solve invariants (unique keys, foreign-key integrity, root presence, non-negative timestamps) become your first-pass data-quality gate on real feeds — keep them.
 - The bundled data runs in seconds; larger cohorts scale to whatever the constraint solver's budget allows. Raise `time_limit_sec` in the `problem.configure(...)` call for bigger eligible sets.
 - Pin `relationalai` (see Prerequisites) so runs stay reproducible across environments.
@@ -296,8 +296,8 @@ For the exact PyRel formulation, see `model/reasoning.py`; `runbook.md` reproduc
   <summary>Solver returns INFEASIBLE</summary>
 
 - The data may not contain a feasible cohort under the current floors. Loosen one constraint at a time -- drop `MIN_GENES_COVERED`, drop `MIN_THERAPIES_COVERED`, lower `COHORT_SIZE` -- to confirm whether the data or a specific floor is the bottleneck.
-- The kinase-pathway closure may be empty: if `KINASE_ROOT_GENE_ID` doesn't appear in the gene table, `KinaseGene` is empty and no patient can be eligible. Print the closure (`model.select(KinaseGene.id).inspect()`) before the solve to confirm.
-- The eligible-patient set may be smaller than `COHORT_SIZE`. Print `EligiblePatient.id` before the solve; if fewer than `COHORT_SIZE` patients are eligible, lower the floor or relax the qualifying-pair window.
+- The report stops on a non-`OPTIMAL` status before it prints the closure and the eligible patients, so select those deployed facts in a query of your own, for example `model.select(KinaseGene.id).inspect()` and `model.select(EligiblePatient.id).inspect()` after `from model import EligiblePatient, KinaseGene, model`. (A `KINASE_ROOT_GENE_ID` missing from `genes.csv` stops the load with a `ValueError` before any solve.)
+- The eligible-patient set may be smaller than `COHORT_SIZE`; if so, lower `COHORT_SIZE` or relax the qualifying-pair window.
 - Coverage floors may be unsatisfiable in principle: if the eligible patients only cover two distinct therapies, `MIN_THERAPIES_COVERED >= 3` is infeasible. Inspect the `Patient.covers_therapy` / `Patient.covers_kinase_gene` / `Patient.covers_ae` relations to see what's actually reachable.
 
 </details>
@@ -306,8 +306,8 @@ For the exact PyRel formulation, see `model/reasoning.py`; `runbook.md` reproduc
   <summary>Multiple feasible cohorts exist; which one does the solver return?</summary>
 
 - This is constraint satisfaction, not optimization. Any cohort that hits the floors is a correct answer; the solver is free to return different ones across runs.
-- To enumerate cohorts (e.g., for clinical-team review), pass `solution_limit=N` to `problem.configure(...)` and iterate over `problem.num_points()` solutions.
-- To pin a single answer, switch to optimization -- e.g. `problem.maximize(sum(CoverableGene.is_covered) + sum(CoverableTherapy.is_covered) + sum(CoverableAdverseEvent.is_covered))` returns the cohort with the broadest joint span.
+- To enumerate cohorts (e.g., for clinical-team review), pass `solution_limit=N` to `problem.configure(...)`, declare the cohort decision with `populate=False`, and in `model/reasoning.py` publish each solution's membership keyed by solution index from the variable's `values(index, value)`; a report then selects those rows. The shipped report reads one cohort.
+- To narrow the answer, switch to optimization -- e.g. `problem.maximize(sum(CoverableGene.is_covered) + sum(CoverableTherapy.is_covered) + sum(CoverableAdverseEvent.is_covered))` keeps only cohorts with the broadest joint span (several can still tie).
 
 </details>
 

@@ -43,6 +43,7 @@ MIN_AES_COVERED = 2
 # the rest of the file just consumes the relation.
 gene_reachable = Graph(
     model,
+    name="gene_ontology",
     directed=True,
     weighted=False,
     node_concept=Gene,
