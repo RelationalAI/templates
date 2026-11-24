@@ -37,12 +37,35 @@ model.define(
     )
 )
 
+# Growth of the predicted peak over the current load, and the first forecast month
+# whose predicted load exceeds the substation's capacity.
+Substation.growth_rate = model.Property(f"{Substation} has load growth {Float:growth_rate}")
+model.where(Substation.current_load_mw > 0).define(
+    Substation.growth_rate(
+        (Substation.predicted_load - Substation.current_load_mw) / Substation.current_load_mw
+    )
+)
+Substation.breach_period = model.Property(
+    f"{Substation} first exceeds capacity at {Integer:breach_period} months"
+)
+model.define(
+    Substation.breach_period(
+        aggs.min(DemandForecast.forecast_period)
+        .where(
+            DemandForecast.substation(Substation),
+            DemandForecast.predicted_load_mw > Substation.max_capacity_mw,
+        )
+        .per(Substation)
+    )
+)
+
 # --------------------------------------------------
 # Stage 2: Graph -- Grid Topology & Structural Vulnerability
 # --------------------------------------------------
 
 grid_graph = Graph(
     model,
+    name="grid_graph",
     directed=False,
     weighted=False,
     node_concept=Substation,
@@ -215,7 +238,8 @@ model.where(
 ).define(DataCenterRequest.fails_structural())
 
 # Rule 3: Low-carbon mandate -- check if DC's low-carbon requirement can be met
-# Low-carbon = zero-emission generation (renewable + nuclear), keyed on emissions_rate == 0
+# Low-carbon = zero-emission generation (renewable + nuclear), keyed on emissions_rate == 0.
+# The requirement is a fraction of the substation's generation (0.60 means 60%).
 Substation.low_carbon_gen_mw = model.Property(f"{Substation} has {Float:low_carbon_gen_mw}")
 Substation.total_gen_mw = model.Property(f"{Substation} has {Float:total_gen_mw}")
 model.define(
@@ -237,7 +261,8 @@ DataCenterRequest.fails_low_carbon = model.Relationship(f"{DataCenterRequest} fa
 SubRef_lc = Substation.ref()
 model.where(
     DataCenterRequest.substation(SubRef_lc),
-    (SubRef_lc.low_carbon_gen_mw | 0.0) * 100 < DataCenterRequest.low_carbon_requirement_pct * (SubRef_lc.total_gen_mw | 0.001),
+    (SubRef_lc.low_carbon_gen_mw | 0.0)
+    < DataCenterRequest.low_carbon_requirement_pct * (SubRef_lc.total_gen_mw | 0.001),
 ).define(DataCenterRequest.fails_low_carbon())
 
 # Composite: compliant if none of the checks fail
@@ -393,6 +418,34 @@ model.define(
     InvestmentPortfolio.upgrade_cost(
         (
             sum(SubstationUpgrade, SubstationUpgrade.cost_million * 1e6)
+            .where(
+                InvestmentPortfolio.investment_level(InvestmentLevel),
+                SubstationUpgrade.x_upgrade(InvestmentLevel, x_up),
+                x_up > 0.5,
+            )
+            .per(InvestmentPortfolio)
+        )
+        | 0.0
+    )
+)
+model.define(
+    InvestmentPortfolio.upgrade_count(
+        (
+            aggs.count(SubstationUpgrade)
+            .where(
+                InvestmentPortfolio.investment_level(InvestmentLevel),
+                SubstationUpgrade.x_upgrade(InvestmentLevel, x_up),
+                x_up > 0.5,
+            )
+            .per(InvestmentPortfolio)
+        )
+        | 0
+    )
+)
+model.define(
+    InvestmentPortfolio.upgrade_mw(
+        (
+            sum(SubstationUpgrade, SubstationUpgrade.capacity_increase_mw)
             .where(
                 InvestmentPortfolio.investment_level(InvestmentLevel),
                 SubstationUpgrade.x_upgrade(InvestmentLevel, x_up),

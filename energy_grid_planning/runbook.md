@@ -28,11 +28,11 @@ $300M unlocks 6 DCs (1,530 MW, $252M net value) including Google and Lambda at D
                               Worth / Abilene Central / Houston Ship
                               Channel. ~421 corridors enumerated.
   ─────────────────────────────────────────────────────────────────
-  STAGE 4  Rules        ──►  DataCenterRequest.is_compliant    (2)
+  STAGE 4  Rules        ──►  DataCenterRequest.is_compliant    (1)
                               fails_capacity / fails_structural /
                               fails_low_carbon flags written back.
-                              Only Crusoe (Midland) and Oracle
-                              (Corpus Christi) pass all three.
+                              Only Oracle (Corpus Christi) passes
+                              all three.
   ─────────────────────────────────────────────────────────────────
   STAGE 5  Prescriptive ──►  DataCenterRequest.x_approve  (per InvestmentLevel)
                               SubstationUpgrade.x_upgrade  (per InvestmentLevel)
@@ -128,7 +128,7 @@ Plan routing sub-questions to graph, rules, and prescriptive reasoners.
 
 **Response**
 
-`fails_capacity` / `fails_structural` / `fails_low_carbon` + `is_compliant`; 2 pass (Crusoe, Oracle), 8 flagged.
+`fails_capacity` / `fails_structural` / `fails_low_carbon` + `is_compliant`; 1 passes (Oracle), 9 flagged. Crusoe clears capacity and structural risk but its substation's generation is about 53% zero-emission against a 100% requirement.
 
 ### 8. Approve DCs and fund upgrades
 

@@ -169,6 +169,8 @@ InvestmentPortfolio.annual_revenue = model.Property(
 InvestmentPortfolio.upgrade_cost = model.Property(
     f"{InvestmentPortfolio} has {Float:upgrade_cost}"
 )
+InvestmentPortfolio.upgrade_count = model.Property(f"{InvestmentPortfolio} has {Integer:upgrade_count}")
+InvestmentPortfolio.upgrade_mw = model.Property(f"{InvestmentPortfolio} has {Float:upgrade_mw}")
 InvestmentPortfolio.net_value = model.Property(f"{InvestmentPortfolio} has {Float:net_value}")
 InvestmentPortfolio.marginal_per_m_to_next_level = model.Property(
     f"{InvestmentPortfolio} has {Float:marginal_per_m_to_next_level}"

@@ -44,7 +44,7 @@ Texas is now the fastest-growing market for AI data center development. Hypersca
 - Grid topology analysis with WCC, Louvain community detection, and multi-metric centrality ranking
 - Three declarative compliance rules consuming upstream reasoner outputs
 - Binary decision variables for DC approval and substation upgrades, indexed by InvestmentLevel (Scenario Concept)
-- Substation capacity, budget, and low-carbon mandate constraints scoped per investment level
+- Substation capacity and budget constraints scoped per investment level (the compliance flags are informational and do not constrain the solve)
 - A revenue-maximizing objective producing the Pareto frontier across budget scenarios
 - Ontology-native result extraction -- no variable parsing, all queryable via `model.select()`
 
@@ -178,7 +178,7 @@ Use this sequence to deploy the model and query it:
    STAGE 5: OPTIMIZE -- Joint Interconnection + Upgrade
    ============================================================
 
-     Solving across 5 investment levels ($200M-$600M)...
+     Solved across 5 investment levels ($200M-$600M)
      Status: OPTIMAL
      Objective: 1,562,600,000.00
    ...
@@ -190,7 +190,7 @@ Use this sequence to deploy the model and query it:
      PIPELINE COMPLETE: 5 stages executed on shared Energy Grid ontology
    ```
 
-   The report prints all five stages; the lines above are the end of Stage 5. See `runbook.md` for the full log.
+   The report prints all five stages; the lines above are the end of Stage 5. `runbook.md` walks through each stage.
 
    To solve again without changing the model, refresh the deployed model, then run the query again:
 
@@ -272,7 +272,7 @@ One shared ontology threads all five stages. Each stage reads concepts and prope
 
 - **Key entities**: `Substation`, `Generator`, `TransmissionLine`, `DataCenterRequest`, `SubstationUpgrade`, `DemandForecast`; plus the Stage 5 Scenario Concept `InvestmentLevel` and the results concept `InvestmentPortfolio`. Supporting concepts (`LoadZone`, `DemandPeriod`, `RenewableProfile`, `MaintenanceWindow`, `Customer`, `LoadHistory`, `DCAnnouncement`) mirror their CSVs and back the aggregations.
 - **Primary identifiers**: string `id` on the base entities (e.g. `SUB-001`, `TL-001`); `name` on `InvestmentLevel` (e.g. `"$300M"`); `investment_level_name` on `InvestmentPortfolio`.
-- **Important invariants**: `predicted_load`, `max_capacity_mw`, `current_load_mw`, `requested_mw`, and `capacity_increase_mw` are non-negative MW; `low_carbon_requirement_pct` is a percentage; a generator is low-carbon when `emissions_rate == 0`; Stage 5 decision variables (`x_approve`, `x_upgrade`) are binary.
+- **Important invariants**: `predicted_load`, `max_capacity_mw`, `current_load_mw`, `requested_mw`, and `capacity_increase_mw` are non-negative MW; `low_carbon_requirement_pct` is a fraction of the substation's generation capacity (`0.60` means 60%); a generator is low-carbon when `emissions_rate == 0`; Stage 5 decision variables (`x_approve`, `x_upgrade`) are binary.
 
 `Substation` is the hub: Stages 1-3 enrich it with forecast, topology, and corridor-fragility properties that Stages 4-5 consume. The Stage 3 paths analysis also derives two transient sub-concepts, `GeneratorSubstation` and `DCSubstation` (both `extends=[Substation]`), to type the corridor endpoints. For the full concept and property definitions, see `model/schema.py`; `runbook.md` builds them step by step with the RAI skills.
 
@@ -304,14 +304,14 @@ Where Stage 2 scores a *substation*, the paths capability scores the *corridor* 
 Three declarative rules consume upstream outputs, then a composite flag combines them:
 - **Capacity check**: `requested_mw + predicted_load > max_capacity_mw` (uses Stage 1, with a `current_load_mw` fallback). Most requests fail — the existing grid lacks headroom for new AI load without upgrades.
 - **Structural risk**: request targets a structurally critical substation (uses Stage 2 centrality). 7 of 10 requests fail.
-- **Low-carbon mandate**: substation's low-carbon generation fraction below the DC's requirement. All requests pass — ERCOT's nuclear plants (STP, Comanche Peak) and wind/solar fleet supply enough low-carbon generation.
-- **Composite**: `is_compliant` passes all checks. Only Crusoe Permian DC and Oracle Coastal DC are fully compliant.
+- **Low-carbon mandate**: the substation's zero-emission share of generation capacity is below the DC's required fraction. Only Oracle Coastal DC passes: its substation's generation is entirely zero-emission, while the other requested substations have no zero-emission generation, no generation at all, or about 53% against requirements of 60-100%.
+- **Composite**: `is_compliant` passes all checks. Only Oracle Coastal DC is fully compliant.
 
 ### Stage 5: Prescriptive -- Multi-Objective Optimization
 
 An `InvestmentLevel` Scenario Concept holds 5 budget levels ($200M-$600M), each parameterizing one MIP solve into a Pareto frontier. Binary variables `x_approve` (per DC request) and `x_upgrade` (per substation upgrade) are indexed by investment level; substation-capacity constraints use `predicted_load` from Stage 1 so the optimizer sees the same forecasted headroom as the rules engine, and budget constraints are scoped `.per(InvestmentLevel)`. Revenue reflects annual interconnection capacity revenue ($145K-$210K per MW/yr), not energy revenue.
 
-One solve produces the entire frontier. The knee point at $300M (6 DCs, 1,530 MW, $252M net value) shows the highest marginal return: both DFW upgrades fit the budget, and Google Metroplex DC and Lambda Labs DFW join. At $200M, 4 DCs are approved (Microsoft, Amazon SA, Crusoe, Oracle); beyond the knee each additional $100M adds one more DC with diminishing returns ($1,013K/$M into the knee vs $439K/$M from $400M to $500M). Revenue is the objective, so where several upgrade sets earn the same revenue (as at $500M), the net value depends on which set the solver returns. xAI Colossus (500 MW) is never approved at any budget — DFW headroom goes to Google and Lambda. Per-level results (approvals, upgrades, MW) are all queried from the ontology via `model.select()` rather than parsed from solver output.
+One solve produces the entire frontier. The knee point at $300M (6 DCs, 1,530 MW, $252M net value) is the budget level where the marginal net value per added $M falls the most from the step into it to the step out of it (on a tie, the smaller budget; if the marginal value never falls, the report names no knee): both DFW upgrades fit the budget, and Google Metroplex DC and Lambda Labs DFW join. At $200M, 4 DCs are approved (Microsoft, Amazon SA, Crusoe, Oracle); beyond the knee each additional $100M adds one more DC with diminishing returns ($1,013K/$M into the knee vs $439K/$M from $400M to $500M). Revenue is the objective, so where several upgrade sets earn the same revenue (as at $500M), the net value depends on which set the solver returns. xAI Colossus (500 MW) is never approved at any budget — DFW headroom goes to Google and Lambda. Per-level results (approvals, upgrades, MW) are all queried from the ontology via `model.select()` rather than parsed from solver output.
 
 See `model/reasoning.py` for the implementation of the five stages and `runbook.md` for the skill-driven reproduction.
 
@@ -328,7 +328,7 @@ Focus on the first changes most users will make.
 
 - **Investment levels** — the budget scenarios (`$200M-$600M`) are `InvestmentLevel` rows; add rows for finer Pareto resolution or shift the budget caps to match your capex envelope.
 - **Corridor hop bound** — `MAX_CORRIDOR_HOPS` in `model/reasoning.py` caps the Stage 3 path enumeration; raise it to trace longer generator-to-DC corridors.
-- **Structural-criticality cutoff** — `CRITICAL_THRESHOLD` in `model/reasoning.py` sets how many top-betweenness substations Stage 2 flags critical, feeding Stage 4's structural rule.
+- **Structural-criticality cutoff** — `CRITICAL_THRESHOLD` in `model/reasoning.py` sets how many substations Stage 2 flags critical, ranked by the sum of their betweenness, degree, and eigenvector centrality ranks, feeding Stage 4's structural rule.
 - **Objective weights** — Stage 5 maximizes annual interconnection revenue; adjust `annual_revenue_per_mw` or the net-value amortization to reweight which requests clear at each budget.
 
 ### Extend the model
@@ -346,18 +346,10 @@ Focus on the first changes most users will make.
 ## Troubleshooting
 
 <details>
-<summary>Stage 2 graph queries work but Stage 5 fails with <code>UnsupportedRecursionError</code></summary>
-
-- SDK versions before 1.0.13 could hit this when recursive graph rules and
-  prescriptive result queries shared one model. Upgrade to `relationalai` 2.3.0, the version pinned in `pyproject.toml`.
-
-</details>
-
-<details>
 <summary>Most DCs fail the capacity check</summary>
 
 - This is expected -- the existing ERCOT grid doesn't have headroom for 2,930 MW of new AI load without upgrades.
-- Only Crusoe (Midland-Permian) and Oracle (Corpus Christi) pass all checks because they target substations with sufficient spare capacity and low structural criticality.
+- Crusoe (Midland-Permian) and Oracle (Corpus Christi) target substations with spare capacity and low structural criticality; Oracle is the only request that also meets its low-carbon requirement.
 - The optimizer selects which upgrades to build to unlock the remaining requests.
 
 </details>

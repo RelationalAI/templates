@@ -16,7 +16,6 @@ from model import (
     MAX_CORRIDOR_HOPS,
     CorridorStep,
     DataCenterRequest,
-    DemandForecast,
     InvestmentLevel,
     InvestmentPortfolio,
     SolveObjective,
@@ -25,7 +24,7 @@ from model import (
     SubstationUpgrade,
     model,
 )
-from relationalai.semantics import Float, Hash, Integer, sum
+from relationalai.semantics import Float, Hash, Integer
 
 
 def main() -> None:
@@ -33,51 +32,25 @@ def main() -> None:
     print("STAGE 1: PREDICT -- Substation Load Forecasting")
     print("=" * 60)
 
-    # Query demand forecasts for structured enrichments.
-    DemandForecast_ref = DemandForecast.ref()
-    SubRef = Substation.ref()
-    forecast_df = (
+    sub_forecast = (
         model.select(
-            SubRef.id.alias("sub_id"),
-            SubRef.name.alias("sub_name"),
-            SubRef.current_load_mw.alias("current_load"),
-            SubRef.max_capacity_mw.alias("max_capacity"),
-            DemandForecast_ref.forecast_period.alias("forecast_period"),
-            DemandForecast_ref.predicted_load_mw.alias("predicted_load"),
-            DemandForecast_ref.confidence.alias("confidence"),
+            Substation.id.alias("sub_id"),
+            Substation.name.alias("sub_name"),
+            Substation.current_load_mw.alias("current_load"),
+            Substation.max_capacity_mw.alias("max_capacity"),
+            Substation.predicted_load.alias("predicted_load"),
+            Substation.growth_rate.alias("growth_rate"),
         )
-        .where(DemandForecast_ref.substation(SubRef))
         .to_df()
     )
+    breach_df = model.select(
+        Substation.id.alias("sub_id"),
+        Substation.breach_period.alias("breach_months"),
+    ).to_df()
 
-    if len(forecast_df) > 0:
-        forecast_df["predicted_load"] = forecast_df["predicted_load"].astype(float)
-        forecast_df["current_load"] = forecast_df["current_load"].astype(float)
-        forecast_df["max_capacity"] = forecast_df["max_capacity"].astype(float)
-
-        sub_forecast = (
-            forecast_df.groupby(["sub_id", "sub_name", "current_load", "max_capacity"])
-            .agg(
-                predicted_load=("predicted_load", "max"),
-                min_breach_period=("forecast_period", "min"),
-            )
-            .reset_index()
-        )
-
-        sub_forecast["growth_rate"] = (
-            sub_forecast["predicted_load"] - sub_forecast["current_load"]
-        ) / sub_forecast["current_load"].clip(lower=0.1)
-
-        breach_df = forecast_df[forecast_df["predicted_load"] > forecast_df["max_capacity"]]
-        breach_months = breach_df.groupby("sub_id")["forecast_period"].min().reset_index()
-        breach_months.columns = ["sub_id", "breach_months"]
-
-        sub_forecast = sub_forecast.merge(breach_months, on="sub_id", how="left")
-        sub_forecast["breach_months"] = (
-            sub_forecast["breach_months"].fillna(999).astype(int)
-        )
-
-        at_risk = sub_forecast[sub_forecast["breach_months"] < 999].sort_values("breach_months")
+    if len(sub_forecast) > 0:
+        sub_forecast = sub_forecast.merge(breach_df, on="sub_id", how="left")
+        at_risk = sub_forecast.dropna(subset=["breach_months"]).sort_values("breach_months")
         print("\n  Substations at risk of capacity breach:")
         print(
             f"  {'Substation':<25} {'Current':>10} {'Predicted':>10} {'Max Cap':>10} {'Breach Mo':>10} {'Growth':>8}"
@@ -86,7 +59,7 @@ def main() -> None:
         for _, r in at_risk.iterrows():
             print(
                 f"  {r['sub_name']:<25} {r['current_load']:>10.1f} {r['predicted_load']:>10.1f} "
-                f"{r['max_capacity']:>10.1f} {r['breach_months']:>10} {r['growth_rate']:>7.1%}"
+                f"{r['max_capacity']:>10.1f} {int(r['breach_months']):>10} {r['growth_rate']:>7.1%}"
             )
 
         if len(at_risk) == 0:
@@ -94,7 +67,7 @@ def main() -> None:
 
         print("\n  All substation forecasts:")
         for _, r in sub_forecast.sort_values("predicted_load", ascending=False).iterrows():
-            breach_str = f"{r['breach_months']}mo" if r["breach_months"] < 999 else "safe"
+            breach_str = "safe" if pd.isna(r["breach_months"]) else f"{int(r['breach_months'])}mo"
             print(
                 f"    {r['sub_name']:<25} pred={r['predicted_load']:.1f} MW  growth={r['growth_rate']:.1%}  breach={breach_str}"
             )
@@ -102,7 +75,6 @@ def main() -> None:
         print(
             "  No demand forecasts available -- Stage 1 outputs will use current_load as fallback"
         )
-        sub_forecast = pd.DataFrame()
 
 
     print(f"\n{'=' * 60}")
@@ -153,44 +125,40 @@ def main() -> None:
         .sort_values("critical_rank")
         .reset_index(drop=True)
     )
+    critical_ids = set(
+        model.where(Substation.is_structurally_critical()).select(Substation.id).to_df().iloc[:, 0]
+    )
 
     print(f"\n  All substations by centrality (top {CRITICAL_THRESHOLD} marked CRITICAL):")
     for i, (_, row) in enumerate(centrality_df.iterrows(), 1):
-        flag = " [CRITICAL]" if row["critical_rank"] <= CRITICAL_THRESHOLD else ""
+        flag = " [CRITICAL]" if row["substation_id"] in critical_ids else ""
         print(
             f"    #{i}: {row['name']} (betw={row['betweenness']:.4f}, "
             f"deg={row['degree_centrality']:.4f}, eig={row['eigenvector_centrality']:.4f}){flag}"
         )
 
-    # Cross-reference: DC-targeted substations that are ALSO critical bottlenecks
+    # Cross-reference: DC requests whose substation is a critical bottleneck (Stage 4's structural rule).
     DCRef = DataCenterRequest.ref()
     SubRef2 = Substation.ref()
-    dc_sub_df = (
-        model.where(DCRef.substation(SubRef2))
+    dc_at_bottleneck = (
+        model.where(DCRef.fails_structural(), DCRef.substation(SubRef2))
         .select(
             DCRef.name.alias("dc_name"),
             DCRef.requested_mw.alias("requested_mw"),
-            SubRef2.id.alias("sub_id"),
             SubRef2.name.alias("sub_name"),
         )
         .to_df()
     )
-
-    if len(dc_sub_df) > 0 and len(centrality_df) > 0:
-        critical_ids = centrality_df.loc[
-            centrality_df["critical_rank"] <= CRITICAL_THRESHOLD, "substation_id"
-        ]
-        dc_at_bottleneck = dc_sub_df[dc_sub_df["sub_id"].isin(critical_ids)]
-        if len(dc_at_bottleneck) > 0:
+    if len(dc_at_bottleneck) > 0:
+        print(
+            "\n  KEY INSIGHT: DC requests targeting structurally critical substations:"
+        )
+        for _, row in dc_at_bottleneck.iterrows():
             print(
-                "\n  KEY INSIGHT: DC requests targeting structurally critical substations:"
+                f"    {row['dc_name']} ({row['requested_mw']} MW) -> {row['sub_name']} [CRITICAL]"
             )
-            for _, row in dc_at_bottleneck.iterrows():
-                print(
-                    f"    {row['dc_name']} ({row['requested_mw']} MW) -> {row['sub_name']} [CRITICAL]"
-                )
-        else:
-            print("\n  No DC requests target structurally critical substations.")
+    else:
+        print("\n  No DC requests target structurally critical substations.")
 
 
     print(f"\n{'=' * 60}")
@@ -233,10 +201,11 @@ def main() -> None:
                 continue  # simple paths only (the grid is cyclic)
             if removed_id is not None and removed_id in ids:
                 continue
-            load = round(float(ordered["betweenness"].sum()), 3)
+            load = float(ordered["betweenness"].sum())
             dest = ids[-1]
-            if dest not in best or load > best[dest][1]:
-                best[dest] = (ordered["substation_name"].tolist(), load)
+            # On equal loads, keep the route whose substation IDs sort first, so the pick is stable.
+            if dest not in best or load > best[dest][1] or (load == best[dest][1] and ids < best[dest][2]):
+                best[dest] = (ordered["substation_name"].tolist(), load, ids)
         return best
 
 
@@ -244,7 +213,7 @@ def main() -> None:
     # Count only SIMPLE corridors (drop node-repeating walks; the grid is cyclic). Kept in
     # pandas via node-sequence reassembly: native count(corridor) fans out over the simple-
     # path filter and count(distinct(corridor)) collapses to all-walks -- neither is the
-    # simple-corridor count. `len([...])`, not `sum(...)`: `sum` is shadowed by the relationalai import.
+    # simple-corridor count.
     n_corridors = len([
         cid
         for cid, grp in corridor_df.groupby("corridor")
@@ -254,14 +223,13 @@ def main() -> None:
         f"\n  {n_corridors} generator-sub -> DC-sub corridors (<= {MAX_CORRIDOR_HOPS} hops, simple); "
         f"most-fragile corridor for {len(baseline_corridors)} DC substation(s):"
     )
-    for dest, (route, load) in sorted(baseline_corridors.items(), key=lambda kv: -kv[1][1])[:5]:
-        print(f"    betweenness-load {load}: " + " -> ".join(route))
+    for dest, (route, load, _) in sorted(baseline_corridors.items(), key=lambda kv: (-kv[1][1], kv[0]))[:5]:
+        print(f"    betweenness-load {round(load, 3)}: " + " -> ".join(route))
 
     # Contingency: take the highest-betweenness substation offline and re-enumerate.
     if betw_by_id:
         top_id = max(betw_by_id, key=betw_by_id.get)
         after_corridors = most_fragile_corridor_per_dc(removed_id=top_id)
-        # NB: `sum` is shadowed by the relationalai import, so count with len([...]).
         rerouted = len(
             [d for d in baseline_corridors if d in after_corridors and baseline_corridors[d][0] != after_corridors[d][0]]
         )
@@ -349,19 +317,21 @@ def main() -> None:
     print("STAGE 5: OPTIMIZE -- Joint Interconnection + Upgrade")
     print("=" * 60)
 
+    budgets = model.select(InvestmentLevel.budget_cap).to_df().iloc[:, 0].astype(float)
     status = model.select(SolveStatus).to_df().iloc[:, 0].tolist()
     objective = model.select(SolveObjective).to_df().iloc[:, 0].tolist()
-    print("\n  Solving across 5 investment levels ($200M-$600M)...")
+    print(f"\n  Solved across {len(budgets)} investment levels (${budgets.min():,.0f}M-${budgets.max():,.0f}M)")
     print(f"  Status: {', '.join(status)}")
-    if objective:
-        print(f"  Objective: {float(objective[0]):,.2f}")
+    # Portfolio totals default to zero, so without a solution they would read as an empty plan.
+    if not objective:
+        raise SystemExit(f"termination status {status}: no solution available")
+    print(f"  Objective: {float(objective[0]):,.2f}")
 
     # --------------------------------------------------
     # Results -- Pareto Frontier from Ontology
     # --------------------------------------------------
 
     x_a = Float.ref("xa")
-    x_u = Float.ref("xu")
 
     # Approved DCs per level
     print("\n  PARETO FRONTIER (queried from ontology):")
@@ -375,21 +345,14 @@ def main() -> None:
         DataCenterRequest.x_approve(InvestmentLevel, x_a), x_a > 0.5
     ).inspect()
 
-    # Revenue and cost per level
-    rev_per_level = sum(x_a * DataCenterRequest.annual_revenue_per_mw * DataCenterRequest.requested_mw).per(
-        InvestmentLevel
-    ).where(DataCenterRequest.x_approve(InvestmentLevel, x_a))
-
-    cost_per_level = sum(x_u * SubstationUpgrade.cost_million).per(
-        InvestmentLevel
-    ).where(SubstationUpgrade.x_upgrade(InvestmentLevel, x_u))
-
-    print("\n  Revenue and upgrade cost by investment level:")
-    model.select(
-        InvestmentLevel.name.alias("level"),
-        InvestmentLevel.budget_cap.alias("budget_cap"),
-        rev_per_level.alias("revenue"),
-        cost_per_level.alias("upgrade_cost"),
+    InvLvlRef = InvestmentLevel.ref()
+    PortRef = InvestmentPortfolio.ref()
+    print("\n  Revenue and upgrade cost ($M) by investment level:")
+    model.where(PortRef.investment_level(InvLvlRef)).select(
+        InvLvlRef.name.alias("level"),
+        InvLvlRef.budget_cap.alias("budget_cap"),
+        PortRef.annual_revenue.alias("revenue"),
+        (PortRef.upgrade_cost / 1e6).alias("upgrade_cost"),
     ).inspect()
 
     # Per-level detail via pandas
@@ -421,8 +384,6 @@ def main() -> None:
     )
 
     # Portfolio rows from the ontology: one per investment level.
-    InvLvlRef = InvestmentLevel.ref()
-    PortRef = InvestmentPortfolio.ref()
     portfolio_query_df = (
         model.where(PortRef.investment_level(InvLvlRef))
         .select(
@@ -432,6 +393,8 @@ def main() -> None:
             PortRef.total_mw.alias("total_mw"),
             PortRef.annual_revenue.alias("annual_revenue"),
             PortRef.upgrade_cost.alias("upgrade_cost"),
+            PortRef.upgrade_count.alias("upgrade_count"),
+            PortRef.upgrade_mw.alias("upgrade_mw"),
             PortRef.net_value.alias("net_value"),
         )
         .to_df()
@@ -452,16 +415,15 @@ def main() -> None:
     # Per-level totals for the detail sections below.
     pareto_rows = []
     for _, row in portfolio_query_df.iterrows():
-        level_upg = upgrade_result_df[upgrade_result_df["level"] == row["level"]]
         pareto_rows.append({
             "level": row["level"],
             "budget": float(row["budget"]),
             "n_approved": int(row["dc_count"]),
             "total_mw": float(row["total_mw"]),
             "revenue": float(row["annual_revenue"]),
-            "n_upgrades": len(level_upg),
+            "n_upgrades": int(row["upgrade_count"]),
             "upgrade_cost_m": float(row["upgrade_cost"]) / 1e6,
-            "upgrade_mw": float(level_upg["capacity_mw"].astype(float).sum()) if len(level_upg) > 0 else 0.0,
+            "upgrade_mw": float(row["upgrade_mw"]),
             "net_value": float(row["net_value"]),
         })
 
