@@ -29,17 +29,6 @@ SEED = 42
 
 cell_towers_df = pd.read_csv(DATA_DIR / "cell_towers.csv", parse_dates=["INSTALL_DATE"])
 subscribers_df = pd.read_csv(DATA_DIR / "subscribers.csv")
-# Per-subscriber customer_value = lifetime value weighted by churn risk:
-# at-risk subscribers (high churn_risk_score) get up to ~1.9x the weight
-# of stable ones. Precomputed in pandas to keep loading straightforward;
-# downstream PyRel just reads it as another Float Property on Subscriber.
-# Possible refinements: SLA-tier and emergency-service multipliers;
-# NPS-deterioration weighting; log-scaling to compress the
-# enterprise-vs-consumer LTV gap (~130x in the bundled corpus).
-subscribers_df["CUSTOMER_VALUE"] = (
-    subscribers_df["LIFETIME_VALUE_USD"]
-    * (1.0 + subscribers_df["CHURN_RISK_SCORE"])
-)
 cdr_df = pd.read_csv(DATA_DIR / "call_detail_records.csv")
 network_perf_df = pd.read_csv(DATA_DIR / "network_performance.csv")
 network_equipment_df = pd.read_csv(DATA_DIR / "network_equipment.csv", parse_dates=["INSTALL_DATE"])
@@ -158,7 +147,6 @@ model.define(
         segment=src.SEGMENT,
         lifetime_value=src.LIFETIME_VALUE_USD,
         churn_risk_score=src.CHURN_RISK_SCORE,
-        customer_value=src.CUSTOMER_VALUE,
     ),
     sub.status(SubscriberStatus.lookup(src.STATUS)),
 )

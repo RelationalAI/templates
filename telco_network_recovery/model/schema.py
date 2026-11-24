@@ -100,8 +100,8 @@ Subscriber.segment = Property(f"{Subscriber} has {String:segment}")
 Subscriber.lifetime_value = Property(f"{Subscriber} has {Float:lifetime_value}")
 Subscriber.churn_risk_score = Property(f"{Subscriber} has {Float:churn_risk_score}")
 Subscriber.status = Property(f"{Subscriber} has {SubscriberStatus:status}")
-# Composite revenue-at-risk signal (LTV * (1 + churn)), precomputed in
-# pandas; this is the per-subscriber weight that sums into
+# Composite revenue-at-risk signal (LTV * (1 + churn)), derived in
+# reasoning.py; this is the per-subscriber weight that sums into
 # `CellTower.weighted_impact` and drives the upgrade objective.
 Subscriber.customer_value = Property(f"{Subscriber} has {Float:customer_value}")
 

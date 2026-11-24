@@ -27,15 +27,16 @@ recoverable from the other alone, so the chain integrates both.
   Subscriber -> Subscriber call graph (caller -> callee) is the
   graph-reasoner signal. Per-critical-tower `weighted_impact`
   aggregates the *customer value* (revenue weighted by churn risk)
-  of ACTIVE subscribers whose calls route through the tower;
+  of the distinct ACTIVE subscribers whose calls route through the tower;
   PageRank-weighted impact is exposed alongside as a secondary
   network-effect signal.
-- Stage 4 -- Paths (PREVIEW, relationalai>=1.15): the arity-3
+- Stage 4 -- Paths (PREVIEW): the arity-3
   `{Subscriber} via {CellTower} calls {Subscriber}` edge; the model
   enumerates caller -> callee call paths over it (<=3 hops, simple, from
   the highest-PageRank subscriber), counts the paths and the routing
-  towers on each hop via `relationship_fields`, and keeps the highest
-  influence load (PageRank summed along a path).
+  towers on each hop via `relationship_fields`, keeps the highest
+  influence load (PageRank summed along a path), and publishes that
+  winning route with its routing towers.
 - Stage 5 -- Prescriptive: tower-upgrade MIP. Decision variable
   `TowerUpgradeOption.selected` is binary (one of three tiers per
   tower). Constraints: at most one tier per tower, total cost <=
@@ -46,8 +47,8 @@ Each stage enriches the shared ontology, and downstream stages consume
 those enrichments as first-class properties -- the accretive enrichment
 pattern.
 
-Subscriber account status is modelled as a `model.Enum` (requires
-relationalai>=1.12): CSV strings map to members by name on load, and the
+Subscriber account status is modelled as a `model.Enum`: CSV strings
+map to members by name on load, and the
 Stage 3 aggregates filter on `SubscriberStatus.ACTIVE` instead of a raw
 string. Tower status intentionally stays a String property -- it feeds
 the Stage 1 GNN's PropertyTransformer as a categorical feature.
@@ -67,6 +68,8 @@ from .reasoning import (
     SimplePathCount,
     SolveObjective,
     SolveStatus,
+    TopCallPathHop,
+    TopCallPathStep,
     TowerFailureScore,
     gnn,
     problem,
@@ -103,6 +106,8 @@ __all__ = [
     "SimplePathCount",
     "SolveObjective",
     "SolveStatus",
+    "TopCallPathHop",
+    "TopCallPathStep",
     "Subscriber",
     "SubscriberStatus",
     "TestEqTable",

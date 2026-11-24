@@ -229,6 +229,15 @@ Use this sequence to deploy the model, train the GNN, and query the recovery pla
      Flagged critical_restore towers: 158
    ...
    ============================================================
+   STAGE 4: PATHS -- Call-path enumeration through critical towers
+   ============================================================
+
+     Seed scope: 1 highest-PageRank hub(s) ['SUB-CON-00900']; enumeration <= 3 hops, simple paths only.
+     Simple call paths enumerated from the seed hub(s): 198
+     Distinct routing towers recovered across those paths: 54
+     Top influence-weighted call path (PageRank sum 0.009041): SUB-CON-00900 -> ... via towers [...]
+
+   ============================================================
    STAGE 5: PRESCRIPTIVE -- tower upgrade selection MIP
    ============================================================
 
@@ -241,13 +250,13 @@ Use this sequence to deploy the model, train the GNN, and query the recovery pla
      Total cost:               $4,993,173
      Total install crew-weeks: 168
      Capacity restored:        179 Gbps
-     Tier mix:                 {'BRONZE': 12, 'GOLD': 9, 'SILVER': 5}
+     Tier mix:                 {'GOLD': 9, 'SILVER': 5, 'BRONZE': 12}
      Towers covered:           26 of 158 critical
    ...
    PIPELINE COMPLETE: 5 stages read from the deployed Telco ontology
    ```
 
-   The report prints all five stages; the lines above are trimmed. The GNN is stochastic, so the predicted figures, the critical-tower count, and the plan shift from one training run to the next; the structural outcome reproduces: status OPTIMAL, budget binding (about $4.99M of $5M), and all 5 regions covered. The model keeps the highest-severity advisory for each MODEL, so the data summary counts the eight advisories in the CSV as seven. The full printout and a step-by-step walkthrough are in `runbook.md`.
+   The report prints all five stages; the lines above are trimmed. The GNN is stochastic, so the predicted figures, the critical-tower count, and the plan shift from one training run to the next; on the bundled data, runs have ended with status OPTIMAL, the budget binding (about $4.99M of $5M), and all 5 regions covered, though a different trained model can change that. The model keeps the highest-severity advisory for each MODEL, so the data summary counts the eight advisories in the CSV as seven. `runbook.md` walks through each stage.
 
    To predict and solve again without changing the model, refresh the deployed model, then run the query again:
 
@@ -339,9 +348,9 @@ For the full concept and property definitions, see `model/`; `runbook.md` builds
 
 **Stage 2 — Rules.** A three-branch `CellTower.is_critical_restore` flag fires when (1) `region == "WEST"` + `status == "DEGRADED"` + low avg equipment health, (2) WEST + high packet loss + low health, or (3) `failure_intensity > 1.5` (any region). Per-tower averages (`avg_packet_loss`, `avg_latency_ms`, `avg_error_rate`, `avg_health_score`) are derived first from `NetworkPerformance` and a two-hop `EquipmentHealth -> NetworkEquipment -> CellTower` join.
 
-**Stage 3 — Graph (customer impact analysis).** PageRank on the directed `Subscriber -> Subscriber` call graph lands on `Subscriber.influence_score` (the graph reasoner's network-effect signal). The headline per-tower measure is `CellTower.weighted_impact` — sum of `Subscriber.customer_value` (= `lifetime_value x (1 + churn_risk_score)`) across the active callers (`Subscriber.status == SubscriberStatus.ACTIVE`) whose calls route through each tower. `weighted_pagerank` is the parallel PageRank-weighted view, exposed as a secondary signal queryable alongside the revenue-based headline.
+**Stage 3 — Graph (customer impact analysis).** PageRank on the directed `Subscriber -> Subscriber` call graph lands on `Subscriber.influence_score` (the graph reasoner's network-effect signal). The headline per-tower measure is `CellTower.weighted_impact` — sum of `Subscriber.customer_value` (= `lifetime_value x (1 + churn_risk_score)`) across the distinct active callers (`Subscriber.status == SubscriberStatus.ACTIVE`) whose calls route through each tower; a caller counts once per tower however many calls it routes there. `weighted_pagerank` is the parallel PageRank-weighted view, exposed as a secondary signal queryable alongside the revenue-based headline.
 
-**Stage 4 — Paths (PREVIEW).** Where Stage 3 scores a *subscriber*, the paths capability scores the *route*: from the top-PageRank hub it enumerates the simple call paths (up to three hops) over an arity-3 caller-via-tower-callee edge and ranks them by summed PageRank influence. On the bundled data this is 198 simple call paths recovering 54 distinct routing towers; the hub's highest influence load is persisted as `Subscriber.top_call_path_influence`.
+**Stage 4 — Paths (PREVIEW).** Where Stage 3 scores a *subscriber*, the paths capability scores the *route*: from the top-PageRank hub (the smallest subscriber ID on an exact tie) it enumerates the simple call paths (up to three hops) over an arity-3 caller-via-tower-callee edge and ranks them by summed PageRank influence. On the bundled data this is 198 simple call paths recovering 54 distinct routing towers. The model persists the hub's highest influence load as `Subscriber.top_call_path_influence` and publishes the winning route (the smallest path ID on an exact tie) through `TopCallPathStep` (its subscribers in order) and `TopCallPathHop` (the routing tower on each hop), which the report prints.
 
 **Stage 5 — Prescriptive (MIP).** Binary `TowerUpgradeOption.selected`, scoped to critical-restore towers, with three constraints (at most one tier per tower, total cost at most $5M, total install-weeks at most 200). The objective maximizes restored capacity weighted by two upstream signals per tower — Stage 3's `weighted_impact` (revenue × churn) and Stage 1's `failure_intensity` (GNN-predicted risk) — so capacity spent on high-value, high-risk towers counts most.
 
@@ -356,10 +365,10 @@ Focus on the first changes most users will make.
 ### Use your own data
 
 - Replace the CSVs in `data/` with your own; keep the column names listed in *Sample data* above.
-- Regenerate the synthetic corpus with a fresh seed: run `python _synthesize_advisory_data.py` in `data/`, then deploy again and train a new version.
+- Regenerate the synthetic corpus: run `python _synthesize_advisory_data.py` in `data/`, then deploy again and train a new version. The generator uses a fixed seed, so it reproduces the bundled files; change its `SEED` for a different corpus.
 - The subscriber `STATUS` column is enum-mapped: values must exactly match the `SubscriberStatus` member names (`ACTIVE` / `SUSPENDED`). `lookup()` cannot validate values that arrive from data columns — unrecognized values silently map to a nonexistent member, and those subscribers drop out of the Stage 3 customer-impact aggregates. Extend the enum if your feed has more statuses.
 - For Snowflake-backed runs, swap the CSV reads in `model/source.py` for `model.data(snowflake_table)` calls.
-- If your subscriber feed lacks `LIFETIME_VALUE_USD` or `CHURN_RISK_SCORE`, supply a `CUSTOMER_VALUE` column directly and skip the pandas precompute.
+- The model derives `Subscriber.customer_value` from `lifetime_value` and `churn_risk_score` in `model/reasoning.py`, so a subscriber feed needs both `LIFETIME_VALUE_USD` and `CHURN_RISK_SCORE`.
 
 ### Tune parameters
 
@@ -371,7 +380,7 @@ Focus on the first changes most users will make.
 
 - **Add more advisories** — extend `data/model_advisories.csv` with new advisory types and severities; the GNN picks them up on the next training run.
 - **Add a fourth GNN edge** — e.g., `NetworkEquipment -> SimilarEquipment` via shared `FIRMWARE_VERSION` or `MANUFACTURER` to test other heterogeneous-neighborhood patterns.
-- **Add SLA-tier weighting** — add `SLA_TIER` / `is_emergency_service` columns to `subscribers.csv` and fold them into the `customer_value` precompute; the rest of the chain is unchanged.
+- **Add SLA-tier weighting** — add `SLA_TIER` / `is_emergency_service` columns to `subscribers.csv` and fold them into the `customer_value` rule in `model/reasoning.py`; the rest of the chain is unchanged.
 - **Add backhaul coupling** — model `BackhaulPath` / `AggregationNode` as Concepts and add a per-node capacity constraint to Stage 5 (`aggs.sum(selected * capacity).per(AggregationNode) <= node_headroom`).
 - **Swap PageRank for another graph algorithm** — `weighted_pagerank` is the secondary network-effect signal; replace `call_graph.pagerank()` with `betweenness_centrality()` or `eigenvector_centrality()` to surface different structural roles without changing the optimizer.
 
@@ -397,7 +406,7 @@ The deployed model has not refreshed since a version was registered: the refresh
 <details>
 <summary>Stage 5 returns an infeasible status</summary>
 
-Stage 5 is feasible whenever the flagged-tower set has at least one BRONZE option that fits under the remaining budget. The bundled data has BRONZE options on every tower; tightening `BUDGET_USD` below the minimum total cost of one BRONZE per flagged tower will produce infeasibility.
+All three Stage 5 constraints are upper bounds (at most one tier per tower, total cost, total install-weeks), so selecting no upgrades is always feasible with a nonnegative budget: a tight `BUDGET_USD` yields a smaller plan, not infeasibility. An infeasible status points at a constraint you added or at negative budget values.
 
 </details>
 

@@ -25,13 +25,15 @@ from model import (
     SolveStatus,
     Subscriber,
     TestEqTable,
+    TopCallPathHop,
+    TopCallPathStep,
     TowerFailureScore,
     TowerUpgradeOption,
     TrainEqTable,
     ValEqTable,
     model,
 )
-from relationalai.semantics import count, select
+from relationalai.semantics import Integer, count, select
 
 pd.set_option("display.float_format", lambda v: f"{v:,.4f}")
 
@@ -131,6 +133,9 @@ def stage_1_predictive() -> bool:
     # probability." They can diverge if the model's calibration is shifted
     # (the argmax can be conservative even when probs are well-separated).
     total_atrisk = int(equipment_df["AT_RISK"].sum())
+    if total_atrisk == 0:
+        print("\n  GNN recall: no at-risk items in the labels, so recall is undefined.")
+        return True
     gnn_flagged_atrisk = pred_df.merge(equipment_df[["equipment_id", "AT_RISK"]], on="equipment_id", how="left")
     gnn_recall_argmax = int(
         gnn_flagged_atrisk[
@@ -168,29 +173,48 @@ def stage_2_rules() -> pd.DataFrame:
     print("=" * 60)
 
     flagged_df = (
-        model.where(CellTower.is_critical_restore(), TowerFailureScore.tower_id == CellTower.id)
+        model.where(CellTower.is_critical_restore())
         .select(
             CellTower.id.alias("tower_id"),
             CellTower.region.alias("region"),
             CellTower.status.alias("status"),
             CellTower.capacity_gbps.alias("capacity_gbps"),
-            CellTower.avg_packet_loss.alias("avg_loss"),
-            CellTower.avg_health_score.alias("avg_health"),
-            TowerFailureScore.failure_intensity.alias("failure_intensity"),
         )
         .to_df()
+    )
+    # Diagnostics and branch flags join by tower, so a tower missing one still counts as flagged.
+    details_df = model.where(CellTower.is_critical_restore()).select(
+        CellTower.id.alias("tower_id"),
+        CellTower.avg_packet_loss.alias("avg_loss"),
+        CellTower.avg_health_score.alias("avg_health"),
+    ).to_df()
+    intensity_df = model.where(
+        CellTower.is_critical_restore(), TowerFailureScore.tower_id == CellTower.id
+    ).select(
+        CellTower.id.alias("tower_id"),
+        TowerFailureScore.failure_intensity.alias("failure_intensity"),
+    ).to_df()
+    flagged_df = (
+        flagged_df.merge(details_df, on="tower_id", how="left")
+        .merge(intensity_df, on="tower_id", how="left")
         .sort_values("failure_intensity", ascending=False)
     )
+    for column, branch in [
+        ("branch_degraded", CellTower.fires_degraded_branch),
+        ("branch_packet_loss", CellTower.fires_packet_loss_branch),
+        ("branch_predictive", CellTower.fires_predictive_branch),
+        ("high_value", CellTower.is_high_value),
+    ]:
+        fired = set(model.where(branch()).select(CellTower.id).to_df().iloc[:, 0])
+        flagged_df[column] = flagged_df["tower_id"].isin(fired)
     print(f"\n  Flagged critical_restore towers: {len(flagged_df)}")
     print("  Breakdown by region:")
     print(flagged_df["region"].value_counts().to_string())
 
-    # Per-branch contribution. Each branch is independently evaluable
-    # against the per-tower properties already on the flagged_df rows, so
-    # we can attribute each flag to one or more branches.
-    _b1 = (flagged_df["region"] == "WEST") & (flagged_df["status"] == "DEGRADED") & (flagged_df["avg_health"] < 0.85)
-    _b2 = (flagged_df["region"] == "WEST") & (flagged_df["avg_loss"] > 5.0) & (flagged_df["avg_health"] < 0.85)
-    _b3 = flagged_df["failure_intensity"] > FAILURE_INTENSITY_THRESHOLD
+    # Per-branch contribution, from the branch flags the model publishes.
+    _b1 = flagged_df["branch_degraded"]
+    _b2 = flagged_df["branch_packet_loss"]
+    _b3 = flagged_df["branch_predictive"]
     print("\n  Per-branch contribution (a tower can fire on multiple branches):")
     print(f"    Branch 1 (WEST + DEGRADED + low health):                  {int(_b1.sum())} towers")
     print(f"    Branch 2 (WEST + high packet loss + low health):          {int(_b2.sum())} towers")
@@ -253,7 +277,7 @@ def stage_4_paths() -> None:
     print("=" * 60)
 
     # The model enumerates the paths: from the highest-PageRank subscriber (the seed
-    # hub; each of them on an exact tie), call paths up to PATH_MAX_HOPS hops, simple paths only.
+    # hub; the smallest ID on an exact tie), call paths up to PATH_MAX_HOPS hops, simple paths only.
     hub_df = model.where(Subscriber.is_seed_hub()).select(Subscriber.id.alias("sub_id")).to_df()
     hubs = sorted(hub_df["sub_id"].tolist())
     n_paths = model.select(SimplePathCount).to_df().iloc[:, 0].tolist()
@@ -264,9 +288,32 @@ def stage_4_paths() -> None:
     )
     print(f"  Simple call paths enumerated from the seed hub(s): {n_paths[0] if n_paths else 0}")
     print(f"  Distinct routing towers recovered across those paths: {n_towers[0] if n_towers else 0}")
+
+    # The winning route the model publishes: its subscribers in step order and the
+    # routing tower on each hop.
+    step, hop = Integer.ref(), Integer.ref()
+    route = (
+        model.where(TopCallPathStep(Subscriber, step))
+        .select(step.alias("step"), Subscriber.id.alias("sub_id"))
+        .to_df()
+        .sort_values("step")["sub_id"]
+        .tolist()
+    )
+    towers = (
+        model.where(TopCallPathHop(hop, CellTower))
+        .select(hop.alias("hop"), CellTower.name.alias("tower"))
+        .to_df()
+        .sort_values("hop")["tower"]
+        .tolist()
+    )
     top_load = model.select(Subscriber.top_call_path_influence).to_df().iloc[:, 0].tolist()
-    if top_load:
-        print(f"  Top call-path influence load (PageRank summed along the route): {round(float(max(top_load)), 6)}")
+    if route and top_load:
+        tower_str = " via towers [" + ", ".join(towers) + "]" if towers else ""
+        print(
+            f"  Top influence-weighted call path (PageRank sum {round(float(top_load[0]), 6)}): "
+            + " -> ".join(route)
+            + tower_str
+        )
 
 
 def stage_5_prescriptive(flagged_df: pd.DataFrame, blast_df: pd.DataFrame) -> None:
@@ -295,29 +342,25 @@ def stage_5_prescriptive(flagged_df: pd.DataFrame, blast_df: pd.DataFrame) -> No
     selected_df["cost"] = selected_df["cost"].astype(float)
 
     selected_df = selected_df.merge(
-        flagged_df[["tower_id", "region", "status", "failure_intensity"]],
+        flagged_df[["tower_id", "region", "status", "failure_intensity",
+                    "branch_degraded", "branch_packet_loss", "branch_predictive", "high_value"]],
         on="tower_id",
         how="left",
     ).sort_values(["region", "tier"])
 
     # Per-tower selection rationale: the upstream signals that flagged the
-    # tower, OR-combined:
-    #   - operational       : WEST tower in DEGRADED status (Stage 2 branches 1/2)
-    #   - advisory/predicted: failure_intensity > threshold (Stage 1 GNN -> Stage 2 branch 3)
-    #   - high-value        : weighted_impact in top quartile of critical towers
+    # tower, OR-combined, from the flags the model publishes:
+    #   - operational       : Stage 2 branch 1 (degraded) or 2 (packet loss)
+    #   - advisory/predicted: Stage 2 branch 3 (GNN failure intensity)
+    #   - high-value        : weighted_impact in the top quartile of critical towers
     selected_df = selected_df.merge(
         blast_df[["tower_id", "weighted_impact", "weighted_pagerank"]],
         on="tower_id",
         how="left",
     )
-    selected_df["sig_operational"] = (
-        (selected_df["region"] == "WEST") & (selected_df["status"] == "DEGRADED")
-    )
-    selected_df["sig_predictive"] = (
-        selected_df["failure_intensity"] > FAILURE_INTENSITY_THRESHOLD
-    )
-    _q75_impact = blast_df["weighted_impact"].quantile(0.75)
-    selected_df["sig_high_value"] = selected_df["weighted_impact"] >= _q75_impact
+    selected_df["sig_operational"] = selected_df["branch_degraded"] | selected_df["branch_packet_loss"]
+    selected_df["sig_predictive"] = selected_df["branch_predictive"]
+    selected_df["sig_high_value"] = selected_df["high_value"]
 
     def _rationale(row):
         sigs = []
@@ -347,16 +390,7 @@ def stage_5_prescriptive(flagged_df: pd.DataFrame, blast_df: pd.DataFrame) -> No
         f"(towers can fire on multiple signals)"
     )
 
-    if len(selected_df) > 0:
-        print(f"\n  Total cost:               ${selected_df['cost'].sum():,.0f}")
-        print(f"  Total install crew-weeks: {int(selected_df['install_weeks'].sum())}")
-        print(f"  Capacity restored:        {int(selected_df['capacity_gbps'].sum())} Gbps")
-        print(f"  Tier mix:                 {selected_df['tier'].value_counts().to_dict()}")
-        print(f"  Towers covered:           {len(selected_df)} of {len(flagged_df)} critical")
-        print(f"  Region breakdown:         {selected_df['region'].value_counts().to_dict()}")
-
     # The plan headline, published by the model as ontology.
-    print("\n  Plan (queryable as ontology):")
     plan_df = (
         model.select(
             RestorePlan.id.alias("plan_id"),
@@ -371,6 +405,16 @@ def stage_5_prescriptive(flagged_df: pd.DataFrame, blast_df: pd.DataFrame) -> No
         )
         .to_df()
     )
+    if len(plan_df) > 0:
+        plan = plan_df.iloc[0]
+        print(f"\n  Total cost:               ${float(plan['total_cost']):,.0f}")
+        print(f"  Total install crew-weeks: {int(plan['install_weeks'])}")
+        print(f"  Capacity restored:        {int(plan['capacity_gbps'])} Gbps")
+        print(f"  Tier mix:                 {{'GOLD': {plan['gold']}, 'SILVER': {plan['silver']}, 'BRONZE': {plan['bronze']}}}")
+        print(f"  Towers covered:           {plan['towers']} of {len(flagged_df)} critical")
+        print(f"  Region breakdown:         {selected_df['region'].value_counts().to_dict()}")
+
+    print("\n  Plan (queryable as ontology):")
     print(plan_df.to_string(index=False))
 
     print(f"\n{'=' * 60}")

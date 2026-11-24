@@ -1,6 +1,6 @@
 """Telco reasoning chain: equipment-failure GNN, critical-tower rules, customer-impact graph, call paths, and the upgrade MIP."""
 
-from relationalai.semantics import Float, Integer, String, distinct, not_, where
+from relationalai.semantics import Float, Hash, Integer, String, distinct, not_, where
 from relationalai.semantics.reasoners.graph import Graph
 from relationalai.semantics.reasoners.predictive import GNN, PropertyTransformer
 from relationalai.semantics.reasoners.prescriptive import Problem
@@ -49,7 +49,7 @@ FAILURE_INTENSITY_THRESHOLD = 1.5
 # equipment whose own MODEL has no advisory can still inherit risk
 # from a tower-mate whose MODEL does, via the path
 #   ModelAdvisory -> tower_mate -> CellTower -> this_equipment.
-gnn_graph = Graph(model, directed=False, weighted=False)
+gnn_graph = Graph(model, name="equipment_graph", directed=False, weighted=False)
 
 model.define(gnn_graph.Edge.new(src=EquipmentHealth, dst=NetworkEquipment)).where(
     EquipmentHealth.equipment_id_fk == NetworkEquipment.id,
@@ -195,24 +195,32 @@ model.define(
 #   1. WEST + DEGRADED status + low equipment health  (operational)
 #   2. WEST + high packet loss + low equipment health (ACTIVE-but-failing)
 #   3. failure_intensity > threshold                  (predictive, any region)
+# Each branch is published on its own, so the report can say which ones fired.
+CellTower.fires_degraded_branch = model.Relationship(f"{CellTower} fires the degraded-status restore branch")
+CellTower.fires_packet_loss_branch = model.Relationship(f"{CellTower} fires the packet-loss restore branch")
+CellTower.fires_predictive_branch = model.Relationship(f"{CellTower} fires the predictive restore branch")
 CellTower.is_critical_restore = model.Relationship(f"{CellTower} is critical restore")
 
 model.where(
     CellTower.region == "WEST",
     CellTower.status == "DEGRADED",
     CellTower.avg_health_score < 0.85,
-).define(CellTower.is_critical_restore())
+).define(CellTower.fires_degraded_branch())
 
 model.where(
     CellTower.region == "WEST",
     CellTower.avg_packet_loss > 5.0,
     CellTower.avg_health_score < 0.85,
-).define(CellTower.is_critical_restore())
+).define(CellTower.fires_packet_loss_branch())
 
 model.where(
     TowerFailureScore.tower_id == CellTower.id,
     TowerFailureScore.failure_intensity > FAILURE_INTENSITY_THRESHOLD,
-).define(CellTower.is_critical_restore())
+).define(CellTower.fires_predictive_branch())
+
+model.where(CellTower.fires_degraded_branch()).define(CellTower.is_critical_restore())
+model.where(CellTower.fires_packet_loss_branch()).define(CellTower.is_critical_restore())
+model.where(CellTower.fires_predictive_branch()).define(CellTower.is_critical_restore())
 
 # --------------------------------------------------
 # Stage 3: Graph -- Customer impact analysis
@@ -223,6 +231,7 @@ model.where(
 
 call_graph = Graph(
     model,
+    name="call_graph",
     directed=True,
     weighted=False,
     node_concept=Subscriber,
@@ -233,17 +242,23 @@ call_graph = Graph(
 )
 call_graph.Node.influence_score = call_graph.pagerank()
 
+# Per-subscriber customer_value = lifetime value weighted by churn risk:
+# at-risk subscribers (high churn_risk_score) get up to ~1.9x the weight
+# of stable ones. Possible refinements: SLA-tier and emergency-service
+# multipliers; NPS-deterioration weighting; log-scaling to compress the
+# enterprise-vs-consumer LTV gap (~130x in the bundled corpus).
+model.define(Subscriber.customer_value(Subscriber.lifetime_value * (1.0 + Subscriber.churn_risk_score)))
+
 CellTower.impact_count = model.Property(f"{CellTower} has {Float:impact_count}")
 # weighted_impact is the headline per-tower customer-impact score: the
-# sum of customer_value (revenue x churn) over ACTIVE subscribers whose
-# calls route through the tower. The Stage 5 MIP objective consumes
-# this directly to prioritize towers by revenue-at-risk weighted by
-# churn urgency.
+# sum of customer_value (revenue x churn) over the distinct ACTIVE
+# subscribers whose calls route through the tower. The Stage 5 MIP
+# objective consumes this directly to prioritize towers by
+# revenue-at-risk weighted by churn urgency.
 #
-# This is CDR-weighted (each call from a subscriber contributes their
-# customer_value once), so a heavy-calling high-value account lifts a
-# tower more than the same account calling once. A distinct-subscriber-
-# per-tower variant is a defensible refinement.
+# The sum is keyed by subscriber, so a subscriber's value counts once per
+# tower however many of their calls it carries: revenue at risk does not
+# grow with call volume.
 CellTower.weighted_impact = model.Property(f"{CellTower} has {Float:weighted_impact}")
 # Secondary signal: PageRank-weighted impact retained so the graph
 # reasoner's network-effect view is still queryable alongside the
@@ -284,9 +299,19 @@ model.define(
     )
 )
 
+# A critical tower is high-value when its weighted_impact reaches the 75th
+# percentile of the critical towers' (interpolated linearly between ranks).
+peer = CellTower.ref()
+CellTower.is_high_value = model.Relationship(f"{CellTower} is a high-value critical tower")
+model.where(
+    CellTower.is_critical_restore(),
+    CellTower.weighted_impact
+    >= aggs.percentile(75, peer, peer.weighted_impact).where(peer.is_critical_restore()),
+).define(CellTower.is_high_value())
+
 # --------------------------------------------------
 # Stage 4: Paths -- Call-path enumeration through critical towers
-#   PREVIEW capability; requires relationalai>=1.15.
+#   PREVIEW capability.
 # --------------------------------------------------
 # Composes on Stage 3's Subscriber.influence_score (PageRank). Where
 # PageRank scores a *node*, paths scores the *call route*: the model
@@ -314,16 +339,15 @@ model.where(
 
 # Path enumeration is declared here, in the model: a deployed model only has the
 # path tables its own rules ask for, so a query cannot enumerate new paths. The
-# scope is a deterministic seed -- the highest-PageRank subscriber, or each of
-# them on an exact tie -- and call paths of up to PATH_MAX_HOPS hops, keeping
+# scope is a deterministic seed -- the highest-PageRank subscriber, the smallest
+# ID on an exact tie -- and call paths of up to PATH_MAX_HOPS hops, keeping
 # simple paths only (the call graph is cyclic, so the negated existential drops
 # walks that revisit a node).
 PATH_MAX_HOPS = 3
 
-hub_rival = Subscriber.ref()
 Subscriber.is_seed_hub = model.Relationship(f"{Subscriber} is the seed hub")
 model.define(Subscriber.is_seed_hub()).where(
-    Subscriber.influence_score == aggs.max(hub_rival.influence_score)
+    aggs.rank(aggs.desc(Subscriber.influence_score), Subscriber.id) == 1
 )
 
 seed = Subscriber.ref()
@@ -356,6 +380,34 @@ model.where(
     total := aggs.sum(Subscriber(call_path.nodes).influence_score).per(call_path),
     top := aggs.max(total).per(seed),
 ).define(seed.top_call_path_influence(top))
+
+# The winning route: the simple path with the highest influence load (on an exact
+# tie, the smallest path ID), published step by step with the tower on each hop.
+TopCallPath = model.Relationship(f"{Hash:path} is the seed hub's top call path")
+model.where(
+    *simple_hub_path,
+    load := aggs.sum(Subscriber(call_path.nodes).influence_score).per(call_path),
+    aggs.rank(aggs.desc(load), call_path) == 1,
+).define(TopCallPath(call_path))
+TopCallPathStep = model.Relationship(
+    f"the top call path visits {Subscriber:subscriber} at step {Integer:step}"
+)
+model.where(*simple_hub_path, TopCallPath(call_path)).define(
+    TopCallPathStep(Subscriber(call_path.nodes), call_path.nodes["index"])
+)
+TopCallPathHop = model.Relationship(
+    f"the top call path routes hop {Integer:hop} through {CellTower:tower}"
+)
+model.where(
+    *simple_hub_path,
+    TopCallPath(call_path),
+    call_path.relationship_fields["field_index"] == 1,
+).define(
+    TopCallPathHop(
+        call_path.relationship_fields["index"],
+        CellTower(call_path.relationship_fields["field"]),
+    )
+)
 
 # --------------------------------------------------
 # Stage 5: Prescriptive -- tower upgrade MIP
@@ -486,8 +538,7 @@ model.where(RestorePlan.id == RESTORE_PLAN_ID).define(
 
 # 0.995: residual headroom below ~0.5% is too small to fit another
 # whole-tier upgrade (cheapest BRONZE > $25k vs $25k of slack), so
-# the cap is effectively hit. Earlier 0.999 misclassified clearly-
-# budget-bound runs as "none" when the optimizer left ~$5-10k slack.
+# the cap is effectively hit.
 BINDING_COST = BUDGET_USD * 0.995
 model.where(RestorePlan.total_cost > BINDING_COST).define(
     RestorePlan.binding_constraint("budget")

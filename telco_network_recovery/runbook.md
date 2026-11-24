@@ -119,7 +119,7 @@ Four derived health properties (`avg_packet_loss`, `avg_latency_ms`, `avg_error_
 
 **Response**
 
-`Subscriber.influence_score` (PageRank, 1,200 subs) plus two per-tower properties on the 142 critical towers: `CellTower.weighted_impact` (headline — sum of `Subscriber.customer_value = LTV × (1 + churn_risk_score)` over ACTIVE callers routed through; CDR-weighted so heavy callers count more than once) and `CellTower.weighted_pagerank` (secondary — sum of PageRank influence over the same set). The prescriptive MIP consumes `weighted_impact` in its objective.
+`Subscriber.influence_score` (PageRank, 1,200 subs) plus two per-tower properties on the 142 critical towers: `CellTower.weighted_impact` (headline — sum of `Subscriber.customer_value = LTV × (1 + churn_risk_score)` over the distinct ACTIVE callers routed through, each counted once per tower) and `CellTower.weighted_pagerank` (secondary — sum of PageRank influence over the same set). The prescriptive MIP consumes `weighted_impact` in its objective.
 
 ### 7. Trace the most-influential call paths (PREVIEW, requires `relationalai>=1.15`)
 
@@ -131,7 +131,7 @@ Four derived health properties (`avg_packet_loss`, `avg_latency_ms`, `avg_error_
 
 **Response**
 
-Where PageRank scores a *subscriber*, paths scores the *route*. From the top-PageRank hub (SUB-CON-00900), 198 simple call paths (≤ 3 hops) are enumerated over an arity-3 caller-via-tower-callee edge, recovering 54 distinct routing towers; each path is ranked by summed PageRank. The highest influence load is 0.009041, persisted for the hub as `Subscriber.top_call_path_influence`. (Scoped to a seed hub — the full call graph is large and cyclic.)
+Where PageRank scores a *subscriber*, paths scores the *route*. From the top-PageRank hub (SUB-CON-00900), 198 simple call paths (≤ 3 hops) are enumerated over an arity-3 caller-via-tower-callee edge, recovering 54 distinct routing towers; each path is ranked by summed PageRank. The highest influence load is 0.009041, persisted for the hub as `Subscriber.top_call_path_influence`, and the winning route is published hop by hop, with its routing towers, as `TopCallPathStep` and `TopCallPathHop`. (Scoped to a seed hub — the full call graph is large and cyclic.)
 
 ### 8. Optimize tier selection
 
