@@ -34,7 +34,7 @@ PageRank simulates how aid flows through the network using iterative random walk
 - A weighted, directed supply-chain graph over distribution points and routes, built with RelationalAI's Graph API
 - A per-node PageRank score identifying where aid naturally concentrates (influence)
 - A per-node Weighted Degree Centrality score surfacing highly connected coordination hubs
-- A strategic classification of every distribution point (critical coordination hub, influential endpoint, or network connector) from the two metrics together
+- A strategic classification of every distribution point (critical coordination hub, influential endpoint, network connector, or regular distribution point) from the two metrics together
 - A ranked deployment-priority table with actionable recommendations, exportable to CSV
 - An optional Streamlit dashboard visualizing the network and rankings interactively
 
