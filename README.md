@@ -64,7 +64,7 @@ The index below covers the current templates. Expand an industry to see its temp
 | [hospital_staffing](hospital_staffing/) | Prescriptive | Explore the tradeoff between overtime cost and patient service level using bi-objective optimization with epsilon constraint. |
 | [patient_cohort_recruitment](patient_cohort_recruitment/) | Graph, Rules-based, Prescriptive | Build a clinical-research cohort over a patient knowledge graph. It selects a small set of eligible patients that together span enough distinct genes, therapies, and adverse events for a study to generalize. |
 | [smoker_status_prediction](smoker_status_prediction/) | Predictive | Predict whether a person is a smoker from demographic and medical attributes plus a network of social connections. |
-| [synthetic_eligibility_records](synthetic_eligibility_records/) | Prescriptive | Generate K distinct, internally consistent member eligibility records per solve in multi-solution mode: each satisfies CMS Medicare-eligibility, age-by-plan-type CFDs, and PCP-network attribution. |
+| [synthetic_eligibility_records](synthetic_eligibility_records/) | Prescriptive | Generate K distinct, internally consistent member eligibility records per solve in multi-solution mode: each satisfies a Medicare-style age-by-plan-type policy and PCP-network attribution. |
 
 </details>
 
