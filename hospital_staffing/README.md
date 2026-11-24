@@ -17,7 +17,7 @@ tags:
 
 This template uses **prescriptive reasoning (optimization)** to frame hospital nurse scheduling as a bi-objective problem with two competing objectives: minimize overtime cost versus minimize unmet patient demand. A single weighted objective would bundle both goals into one penalty sum, forcing the modeler to choose a penalty weight up front. This template instead unbundles them using the epsilon constraint method: it sweeps a range of caps on allowable unmet demand, and at each cap the solver minimizes overtime cost subject to that service-level constraint.
 
-The result is a Pareto frontier that reveals exactly how much overtime cost each level of patient service requires -- making the tradeoff explicit and auditable rather than hidden inside a penalty weight.
+The result is a frontier of overtime cost against unmet demand: each sweep point gives the least overtime cost that meets its cap on unmet demand, making the tradeoff explicit and auditable rather than hidden inside a penalty weight. The two endpoints each optimize one objective only (see the note after the sample output).
 
 ## Who this is for
 
@@ -214,7 +214,7 @@ Use this sequence to deploy the model and query it:
               eps_4 → eps_5         : Δcost=$   +336.00, Δunmet= -21.7, marginal=$   15.51/patient
               eps_5 → best_service  : Δcost=$  +1932.00, Δunmet= -21.7, marginal=$   89.17/patient
 
-     Knee: Point 5 (eps_4) -- marginal cost jumps 15.5x beyond this point
+     Knee: Point 5 (eps_4) -- the last free improvement; the next costs $15.51/patient
      Recommendation: Target 43 unmet patients at $0.00 overtime cost -- further service improvement costs significantly more per patient.
 
      Knee-point assignments:
@@ -286,11 +286,11 @@ For the full concept and property definitions, see `model/schema.py`; `runbook.m
 
 **Define concepts and load CSV data.** The model defines three core concepts: nurses with skill levels and cost parameters, shifts with coverage requirements and patient demand, and an availability relationship linking nurses to shifts. A per-availability `Assignment` carries the binary staffing decision the solver fills in.
 
-**Define decision variables, constraints, and objective.** A `staffing_problem` helper in `model/reasoning.py` declares one named Problem with the full formulation. It registers four variable types -- the binary assignment, each nurse's overtime hours, and each shift's patients-served and unmet-demand quantities -- and applies all constraints: availability, minimum staffing, skill coverage, overtime tracking, and patient-demand accounting (each nurse works one to two shifts; every shift meets its minimum-nurse floor). The original single-objective template bundled overtime cost and unmet demand into one weighted penalty sum, forcing the modeler to pick a penalty weight up front. The bi-objective version splits them: the primary objective minimizes overtime cost, while unmet demand is bounded by an epsilon constraint that caps total unmet demand across all shifts. This eliminates the arbitrary penalty weight and reveals the true tradeoff.
+**Define decision variables, constraints, and objective.** A `staffing_problem` helper in `model/reasoning.py` declares one named Problem with the full formulation. It registers four variable types -- the binary assignment, each nurse's overtime hours, and each shift's patients-served and unmet-demand quantities -- and applies all constraints: availability, minimum staffing, skill coverage, overtime tracking, and patient-demand accounting (each nurse works one to two shifts; every shift meets its minimum-nurse floor). A single weighted objective would bundle overtime cost and unmet demand into one penalty sum, forcing the modeler to pick a penalty weight up front. This template splits them: the primary objective minimizes overtime cost, while unmet demand is bounded by an epsilon constraint that caps total unmet demand across all shifts. This eliminates the arbitrary penalty weight and reveals the true tradeoff.
 
 **Solve anchor points and run the epsilon sweep.** Two anchor solves establish the feasible unmet-demand range: anchor 1 minimizes overtime with no demand constraint (the cheapest schedule, which may leave patients unserved), and anchor 2 minimizes unmet demand (the best achievable service level). The epsilon sweep then traces interior points between the anchors, each solve minimizing overtime cost subject to a progressively tighter cap on unmet demand. Every solve is declared in the model: each sweep point's cap is a rule over the two anchors' results, so a refresh solves the anchors first and the sweep after them. Each solve publishes its status, overtime cost, unmet demand, and assignments as a `FrontierPoint`.
 
-**Pareto analysis output.** The query prints the efficient frontier showing how overtime cost rises as the unmet-demand cap tightens. Marginal analysis computes the cost of reducing unmet demand by one patient, and a knee detector flags the point where that marginal cost jumps sharply -- recommending the best cost-service balance.
+**Pareto analysis output.** The query prints the efficient frontier showing how overtime cost rises as the unmet-demand cap tightens. Marginal analysis computes the cost of reducing unmet demand by one patient, and a knee detector flags the last point reached at no extra cost, or, when no improvement is free, the point where the marginal cost per patient jumps by the largest ratio. The knee is a starting point for choosing a cost-service balance, not a proven optimum. If a sweep point fails, the report stops the sweep there and leaves the best-service anchor out of the frontier.
 
 See `model/reasoning.py` for the implementation, and `runbook.md` for the skill-driven reproduction.
 

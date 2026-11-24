@@ -74,14 +74,17 @@ if __name__ == "__main__":
     print(f"Unmet demand targets: {[f'{eps_by_index[i]:.1f}' for i in sorted(eps_by_index)]}")
     print(f"{'=' * 70}")
 
-    # The sweep stops at its first failed point: later points would span the failed interval.
+    # The report stops reading the sweep at its first failed point, and then leaves the
+    # best-service anchor out of the frontier, so no marginal rate spans the failed interval.
     pareto = [{"position": cheapest, **points.loc[cheapest].to_dict()}]
+    sweep_complete = True
     for i in range(1, N_INTERIOR + 1):
         eps = eps_by_index.get(i)
         eps_text = f"{eps:.1f}" if eps is not None else "?"
         if not solved(i):
             point_status = points.loc[i, "status"] if i in points.index else "none"
             print(f"  Point {i} (unmet<={eps_text}): {point_status} -- stopping")
+            sweep_complete = False
             break
         pt = points.loc[i]
         pareto.append({"position": i, **pt.to_dict()})
@@ -89,7 +92,10 @@ if __name__ == "__main__":
             f"  Point {i} (unmet<={eps_text}): overtime=${pt['overtime_cost']:.2f}, "
             f"actual_unmet={pt['unmet_demand']:.1f}  [{pt['status']}]"
         )
-    pareto.append({"position": best, **points.loc[best].to_dict()})
+    if sweep_complete:
+        pareto.append({"position": best, **points.loc[best].to_dict()})
+    else:
+        print("  The frontier below ends at the last solved sweep point.")
     for pt in pareto:
         pt["label"] = frontier_label(pt["position"])
 
@@ -151,22 +157,22 @@ if __name__ == "__main__":
             else:
                 rates.append(0)
 
-        # Knee detection: rates[j+1]/rates[j] finds where marginal cost
-        # per patient jumps most sharply (cost-per-patient is INCREASING
-        # along the frontier, so the biggest jump ratio marks the knee).
+        # When service improves for free before the first paid step, the knee is the last free
+        # point; otherwise it is the largest ratio between consecutive positive rates. A rate
+        # ($ per patient) is never compared with a ratio.
         if len(rates) >= 2:
-            max_jump = 0
-            knee_idx = 1
-            for j in range(len(rates) - 1):
-                if rates[j] > 1e-6:
-                    jump = rates[j+1] / rates[j]
-                else:
-                    jump = rates[j+1] if rates[j+1] > 0 else 0
-                if jump > max_jump:
-                    max_jump = jump
-                    knee_idx = j + 1
-            print(f"\n  Knee: Point {knee_idx + 1} ({pareto[knee_idx]['label']}) "
-                  f"-- marginal cost jumps {max_jump:.1f}x beyond this point")
+            first_paid = next((j for j, rate in enumerate(rates) if rate > 1e-6), None)
+            if first_paid is not None and first_paid > 0:
+                knee_idx = first_paid
+                knee_text = (f"the last free improvement; the next costs "
+                             f"${rates[first_paid]:.2f}/patient")
+            else:
+                max_jump, knee_idx = 0, 1
+                for j in range(len(rates) - 1):
+                    if rates[j] > 1e-6 and rates[j+1] / rates[j] > max_jump:
+                        max_jump, knee_idx = rates[j+1] / rates[j], j + 1
+                knee_text = f"marginal cost jumps {max_jump:.1f}x beyond this point"
+            print(f"\n  Knee: Point {knee_idx + 1} ({pareto[knee_idx]['label']}) -- {knee_text}")
             print(f"  Recommendation: Target {pareto[knee_idx]['unmet_demand']:.0f} unmet patients "
                   f"at ${pareto[knee_idx]['overtime_cost']:.2f} overtime cost -- "
                   f"further service improvement costs significantly more per patient.")
