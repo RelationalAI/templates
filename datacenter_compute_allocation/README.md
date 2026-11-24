@@ -244,7 +244,7 @@ Use this sequence to deploy the model, train the GNN, and query the allocation p
      Termination status: TIME_LIMIT
      Solve time:         240.0s
      Objective:          651,852,520.64
-     Note: TIME_LIMIT means solver returned a feasible but not proven-optimal solution. Per-cell results below remain valid.
+     Note: TIME_LIMIT means the solve stopped at its time limit; the per-cell results below are its best solution found, not proven optimal.
 
      Per-cell summary (24 cells: 16 feasible, 8 unsolved):
    envelope        margin                        diversity   status  n_assigned   revenue_usd  total_cost_usd  realized_margin  anchor_share ...
@@ -371,7 +371,7 @@ The decision variable `Assignment.x_assign` is a binary variable indexed by the 
 - **C6** anchor-concentration cap (skipped when `DiversityCap.anchor_max_share < 0`).
 - **C7** workload-type floor (skipped unless `DiversityCap.workload_type_floor >= 0`).
 
-The objective is what makes this a real chain rather than four disjoint reasoners: it maximizes the sum over chosen assignments of `priority_weight` (Stage 2) × `gating_score` (Stage 3) × `WorkloadForecast.utilization_probability` (Stage 1) × `strategic_value_usd` (raw $ baseline) — every prior stage's signal enters the same product. Only workloads with a forecast are assignable, so a refresh before a GNN version exists assigns nothing. The deployed model derives the per-cell summary from the solved values with ontology-side aggregation: one `ScenarioCell` row per cell, with its revenue, cost, margin, anchor share, and per-type and per-tier counts, and a status that is OPTIMAL or INFEASIBLE when the solve proved optimality and FEASIBLE or UNSOLVED when it stopped at its time limit. The chosen baseline cell (`100pct / unconstrained / none`) is persisted as a singleton `AllocationPlan` concept with revenue / total_cost / margin / anchor_share / n_assigned / status / binding_axis, plus an `Assignment.is_chosen` flag over its decision rows. `binding_axis` is a fixed label (`power_envelope` for any plan with assignments); the template does not test which constraint binds.
+The objective is what makes this a real chain rather than four disjoint reasoners: it maximizes the sum over chosen assignments of `priority_weight` (Stage 2) × `gating_score` (Stage 3) × `WorkloadForecast.utilization_probability` (Stage 1) × `strategic_value_usd` (raw $ baseline) × (1 + `under_provisioning_penalty`) — every prior stage's signal enters the same product. Only workloads with a forecast are assignable, so a refresh before a GNN version exists assigns nothing. The deployed model derives the per-cell summary from the solved values with ontology-side aggregation: one `ScenarioCell` row per cell, with its revenue, cost, margin, anchor share, and per-type and per-tier counts, and a status that is OPTIMAL or INFEASIBLE when the solve proved optimality and FEASIBLE or UNSOLVED when it stopped at its time limit. The chosen baseline cell (`100pct / unconstrained / none`) is persisted as a singleton `AllocationPlan` concept with revenue / total_cost / margin / anchor_share / n_assigned / status / binding_axis, plus an `Assignment.is_chosen` flag over its decision rows. `binding_axis` is a fixed label (`power_envelope` for any plan with assignments); the template does not test which constraint binds.
 
 Finally, a `DemandScenario` overlay replays the locked-in plan under four risk scenarios. Anchor (P0) revenue is treated as contractual (factor 1.0) — the operator gets paid for the seat regardless of utilization — while opportunistic (P1/P2) seats realize only the scenario factor of their assigned revenue. The overlay reports realized and stranded revenue per scenario and persists each as a `DemandScenarioOutlook(scenario)` concept row, so the stranded-capacity exposure of the chosen plan is queryable as ontology, not just printed.
 
@@ -427,7 +427,7 @@ Then download the `problems.json` artifact. The most common fix is moving the of
 <details>
 <summary>Solver returns <code>INFEASIBLE</code> for the global solve</summary>
 
-Some cell's constraints are mutually unsatisfiable AND the C1 P0 commitment is a hard `==1`. C1 should be soft `<=1`; the `priority_weight=100` in the objective drives P0 to 1 wherever feasible. Per-cell infeasibility then surfaces as `INFEASIBLE` in the per-cell summary, not as global failure.
+The shipped constraints admit an empty allocation in every cell: C1 is a soft `<=1`, and `priority_weight=100` in the objective draws P0 workloads in wherever they fit. A global `INFEASIBLE` therefore comes from a change to the model, such as a hard P0 `==1` commitment or another positive lower bound; make it soft so the solve can leave a cell empty, which the per-cell summary labels INFEASIBLE.
 </details>
 
 <details>
