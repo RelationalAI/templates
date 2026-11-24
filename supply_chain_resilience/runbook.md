@@ -73,7 +73,7 @@ Concepts: `Site`, `Business`, `SKU`, `Operation`, `Demand`, `Shipment`, `DelayPr
 
 **Response**
 
-Reasoner-routing plan: (1) Graph reachability for upstream supplier exposure, (2) Graph centrality for hub identification, (3) Rules for supplier reliability classification, (4) Prescriptive MILP for risk-adjusted flow, (5) Scenario re-solves for disruption quantification.
+Reasoner-routing plan: (1) Graph reachability for upstream supplier exposure, (2) Graph centrality for hub identification, (3) Rules for supplier reliability classification, (4) Prescriptive LP for risk-adjusted flow, (5) Scenario re-solves for disruption quantification.
 
 ### 4. Map upstream supplier exposure
 
@@ -97,7 +97,7 @@ Reasoner-routing plan: (1) Graph reachability for upstream supplier exposure, (2
 
 **Response**
 
-`Site.centrality` (eigenvector): S004=0.5016, S006=0.3895, S003=0.3688; 2 weakly-connected components.
+Eigenvector scores: S004=0.5016, S006=0.3895, S003=0.3688, which `Site.centrality` divides by the largest (S004=1.0); 2 weakly-connected components.
 
 ### 6. Classify supplier reliability
 
@@ -121,7 +121,7 @@ Reasoner-routing plan: (1) Graph reachability for upstream supplier exposure, (2
 
 **Response**
 
-OPTIMAL · $1,865 · 8 active flows · 0 unmet. MILP on `Operation.x_flow` + `Demand.x_unmet`, whose values each problem publishes as its own routes and unmet-demand relationships (the decisions themselves are not written back); objective = transport + risk surcharge + centrality weight + unmet penalty.
+OPTIMAL · $1,865 · 8 active flows · 0 unmet. LP on `Operation.x_flow` + `Demand.x_unmet`, whose values each problem publishes as its own routes and unmet-demand relationships (the decisions themselves are not written back); objective = transport + risk surcharge + centrality weight + unmet penalty.
 
 ### 8. Quantify disruption scenarios
 
