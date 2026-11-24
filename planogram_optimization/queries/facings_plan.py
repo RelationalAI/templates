@@ -15,6 +15,7 @@ from model import (
     TotalDemand,
     model,
 )
+from pandas import isna
 from relationalai.semantics import sum
 
 if __name__ == "__main__":
@@ -42,8 +43,8 @@ if __name__ == "__main__":
         PredictedDemand.facings_count.alias("facings_count"),
         PredictedDemand.demand_units.alias("demand_units"),
     ).to_df()
-    # A SKU with no facings or realized demand drops out of the select above, so it
-    # counts as a mismatch too.
+    # A SKU with no facings or realized demand either drops out of the select above or
+    # comes back with a null value; both count as mismatches.
     sku_ids = set(model.select(Sku.id).to_df().iloc[:, 0].astype(int))
     expected_lookup = {
         (int(row.sku_id), int(row.facings_count)): int(row.demand_units)
@@ -51,6 +52,9 @@ if __name__ == "__main__":
     }
     mismatches = []
     for row in solution_df.itertuples(index=False):
+        if isna(row.facings_count) or isna(row.realized_demand):
+            mismatches.append((int(row.sku_id), None, None, None))
+            continue
         key = (int(row.sku_id), int(row.facings_count))
         expected = expected_lookup.get(key)
         if expected is None or int(row.realized_demand) != expected:
