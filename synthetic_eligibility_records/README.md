@@ -338,15 +338,15 @@ To extend to a fleet of N members, reintroduce a `Member` concept inside the mod
   <summary>Solver returns INFEASIBLE / no feasible eligibility records</summary>
 
 - Check the solve status the report prints. `INFEASIBLE` means the reference data admits no record; `UNKNOWN` or `TIME_LIMIT` means the budget expired before a record was found (raise `time_limit_sec` or shrink the decision domains).
-- For genuine infeasibility: each solution picks one age bucket, so the model is infeasible only when *every* bucket lands on a side of the senior threshold that has no compatible plan-and-provider combination. Confirm there is at least one Medicare-Advantage plan whose network has a provider iff any age bucket has `age_years >= SENIOR_THRESHOLD_YEARS`, and at least one non-Medicare plan whose network has a provider iff any bucket has `age_years < SENIOR_THRESHOLD_YEARS`. The pre-solve coverage check also warns on either-direction asymmetry between `plans.csv` and `providers.csv`; read the startup warnings before assuming the data is sound.
+- For genuine infeasibility: each solution picks one age bucket, so the model is infeasible only when *every* bucket lands on a side of the senior threshold that has no compatible plan-and-provider combination. One feasible side is enough: confirm there is either an age bucket with `age_years >= SENIOR_THRESHOLD_YEARS` and a Medicare-Advantage plan whose network has a provider, or a bucket with `age_years < SENIOR_THRESHOLD_YEARS` and a non-Medicare plan whose network has a provider. The pre-solve coverage check also warns on either-direction asymmetry between `plans.csv` and `providers.csv`; read the startup warnings before assuming the data is sound.
 
 </details>
 
 <details>
-  <summary>ValueError: <code>&lt;file&gt;</code> <code>id</code> column must be dense and contiguous</summary>
+  <summary>ValueError: <code>&lt;file&gt;</code> <code>id</code> column must be distinct and contiguous</summary>
 
-- The pre-solve check ran on `plans.csv`, `providers.csv`, or `age_buckets.csv` and found gaps in the `id` column (the file name is included in the error message). The solver bounds each decision by `lower=min(id), upper=max(id)`; without dense IDs it can pick a value with no matching reference row, the relational-time `implies` rules gated on the matching row will not fire, and the post-solve display join will silently drop the record.
-- Renumber the rows so IDs run consecutively from the minimum to the maximum (e.g., 1, 2, 3, ... or 10, 11, 12, ...).
+- The pre-solve check ran on `plans.csv`, `providers.csv`, or `age_buckets.csv` and found a duplicate or a gap in the `id` column (the error names the file and the first offending pair; an empty file or a non-integer `id` column gets its own error). The solver bounds each decision by `lower=min(id), upper=max(id)`; without dense IDs it can pick a value with no matching reference row, the relational-time `implies` rules gated on the matching row will not fire, and the post-solve display join will silently drop the record.
+- Renumber the rows so integer IDs run consecutively, each once, from the minimum to the maximum (e.g., 1, 2, 3, ... or 10, 11, 12, ...).
 
 </details>
 

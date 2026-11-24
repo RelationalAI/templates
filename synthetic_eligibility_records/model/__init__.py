@@ -6,7 +6,7 @@ plan, primary care provider) that satisfies a synthetic fixture policy
 modeled on Medicare eligibility (age 65 or above must be on the
 `MedicareAdvantage` plan type, under 65 must not) and PCP-network
 attribution. Solve as constraint satisfaction with `solution_limit=K`
-(MiniZinc) and publish every feasible record, read via
+(MiniZinc) and publish the feasible records found, up to K, read via
 `Variable.values(solution_index, value)` -- synthetic-data tooling consumers
 (test-data generation, claim-engine fuzzing, RegTech rules certification)
 want a batch of records per solve, not one.
