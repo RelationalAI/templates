@@ -20,7 +20,7 @@ TARGET_ASSET = "db-01"
 
 # --------------------------------------------------
 # Paths: kill-chain attack paths (multi-relationship sequence)
-#   PREVIEW capability; requires relationalai>=1.21.
+#   PREVIEW capability.
 # --------------------------------------------------
 # model.path(a.exploit_to, b.cred_to, c.pivot_to.repeat(1, MAX_PIVOTS), dst) is a
 # MULTI-EDGE pattern: distinct relationships in series. It matches the kill-chain
@@ -37,18 +37,15 @@ kill = model.path(a.exploit_to, b.cred_to, c.pivot_to.repeat(1, MAX_PIVOTS), dst
 src_pt, dst_pt = Asset.ref(), Asset.ref()
 route = model.path(src_pt.can_reach.repeat(1, MAX_ROUTE_HOPS), dst_pt).all().paths()
 
+# The crown-jewel kill-chains: an internet-facing foothold that ends on a crown jewel.
+crown_kill = [kill, a.internet_facing == "yes", dst.crown_jewel == "yes"]
+
 # Asset.on_attack_path marks the assets that lie on a crown-jewel kill-chain, so a
 # downstream query can pull them without re-enumerating paths. It is a
-# Relationship, not a Property: deploying this rule as a Property fails planning
-# on relationalai 2.1.1.
+# Relationship, not a Property: deploying this rule as a Property fails planning.
 Asset.on_attack_path = model.Relationship(f"{Asset} on attack path {String:on_attack_path}")
 on_path, pos = Asset.ref(), Integer.ref()
-model.where(
-    kill,
-    a.internet_facing == "yes",
-    dst.crown_jewel == "yes",
-    on_path == kill.nodes(pos),
-).define(on_path.on_attack_path("yes"))
+model.where(*crown_kill, on_path == kill.nodes(pos)).define(on_path.on_attack_path("yes"))
 
 # --------------------------------------------------
 # Published paths
@@ -56,7 +53,6 @@ model.where(
 # The deployed model publishes the paths the report reads, keyed by each path's id: the
 # crown-jewel kill-chains' assets, techniques, and total exposure, and the point query's
 # simple routes.
-crown_kill = [kill, a.internet_facing == "yes", dst.crown_jewel == "yes"]
 KillChainStep = model.Relationship(
     f"kill chain {Hash:path} has {Asset:asset} at step {Integer:step}"
 )

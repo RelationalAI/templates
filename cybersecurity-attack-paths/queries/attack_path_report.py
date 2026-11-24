@@ -33,7 +33,6 @@ if __name__ == "__main__":
         .select(
             path.alias("path_id"),
             step.alias("step"),
-            Asset.id.alias("asset_id"),
             Asset.name.alias("asset_name"),
         )
         .to_df()
@@ -52,13 +51,12 @@ if __name__ == "__main__":
     # e.g. "Asset.exploit_to".
     chains = []
     for pid, g in kill_df.groupby("path_id"):
-        assets = list(g.sort_values("step")["asset_name"])
-        techs = list(hop_df[hop_df["path_id"] == pid].sort_values("hop")["technique"])
+        assets = list(g["asset_name"])
+        techs = list(hop_df[hop_df["path_id"] == pid]["technique"])
         labelled = assets[0]
         for nm, tech in zip(assets[1:], techs):
             labelled += f"  --[{tech}]-->  {nm}"
-        chains.append({"path_id": pid, "hops": len(assets) - 1, "asset_ids": tuple(
-            g.sort_values("step")["asset_id"]), "labelled": labelled})
+        chains.append({"path_id": pid, "hops": len(assets) - 1, "labelled": labelled})
 
     print(f"\n{len(chains)} kill-chain attack path(s) reach a crown jewel "
           f"(exploit -> cred -> 1-{MAX_PIVOTS} pivots, from an internet-facing asset):")
@@ -78,8 +76,8 @@ if __name__ == "__main__":
     )
     route_df = route_df.drop_duplicates(["path_id", "step"]).sort_values(["path_id", "step"])
     routes = sorted(
-        {tuple(g.sort_values("step")["asset_id"]) for _, g in route_df.groupby("path_id")},
-        key=len,
+        {tuple(g["asset_id"]) for _, g in route_df.groupby("path_id")},
+        key=lambda seq: (len(seq), seq),
     )
 
     print(f"\n=== Point query: all routes from {ENTRY_ASSET} to {TARGET_ASSET} "

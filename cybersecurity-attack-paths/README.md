@@ -128,11 +128,13 @@ Run these steps from a terminal:
    ```
 
    ```text
+   === Cybersecurity Attack Paths: kill-chain into crown jewels ===
+
    3 kill-chain attack path(s) reach a crown jewel (exploit -> cred -> 1-2 pivots, from an internet-facing asset):
      [3 hops] VPN Gateway  --[Asset.exploit_to]-->  Jump Host  --[Asset.cred_to]-->  File Server  --[Asset.pivot_to]-->  Customer Database
    ```
 
-   The lines above are the start of the report. The full report continues with the routes between one entry point and one crown jewel, the kill-chains ranked by total exposure, and the assets flagged on a crown-jewel attack path. See `runbook.md` for the full output.
+   The lines above are the start of the report. The full report continues with the routes between one entry point and one crown jewel, the kill-chains ranked by total exposure, and the assets flagged on a crown-jewel attack path. `runbook.md` walks through each section's results.
 
 7. **Tear down the deployment**
 
@@ -189,7 +191,7 @@ CSV files --> Define Asset + technique edges --> Kill-chain enumeration (multi-e
 
 The analysis starts by modeling each attacker technique as its own directed relationship between assets — `exploit_to`, `cred_to`, `pivot_to` — plus a technique-agnostic `can_reach` union edge that the point query uses.
 
-The centerpiece is a multi-edge path pattern (which needs `relationalai>=1.21`) that composes the techniques in series: an exploit first, then credential reuse, then one or more lateral pivots, ending at an explicit destination. Filtering the source to an internet-facing asset and the destination to a crown jewel pins the threat model. Enforcing edge order is the whole point — a single union edge or a flat join cannot express "exploit first, then credentials, then pivots," which is exactly the kill-chain signature analysts care about, and each hop records the technique it used.
+The centerpiece is a multi-edge path pattern (a preview capability) that composes the techniques in series: an exploit first, then credential reuse, then one or more lateral pivots, ending at an explicit destination. Filtering the source to an internet-facing asset and the destination to a crown jewel pins the threat model. Enforcing edge order is the whole point — a single union edge or a flat join cannot express "exploit first, then credentials, then pivots," which is exactly the kill-chain signature analysts care about, and each hop records the technique it used.
 
 A separate point query pins both endpoints by id to enumerate every route between a chosen entry point and a chosen crown jewel over the union edge. The kill-chains are then ranked by the exposure summed along each one. Finally, the assets lying on any crown-jewel chain are flagged back onto the ontology as `Asset.on_attack_path`, so a later query can pull them without re-enumerating paths.
 
@@ -223,7 +225,7 @@ See `model/reasoning.py` for the implementation, `queries/attack_path_report.py`
 <details>
   <summary>Why do I see <code>relationalai</code> version or path import errors?</summary>
 
-- Path enumeration with multi-edge patterns requires `relationalai` 1.21 or newer. Confirm your installed version with `python -m pip show relationalai`.
+- The model uses the path-enumeration API (`model.path(...).all().paths()`) of the `relationalai` version pinned in `pyproject.toml` (2.3.0). Confirm your installed version with `python -m pip show relationalai`, and reinstall with `python -m pip install .` (Quickstart) if it differs.
 
 </details>
 
