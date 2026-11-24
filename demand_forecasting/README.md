@@ -294,7 +294,7 @@ See `model/reasoning.py` for the graph and the GNN, `queries/forecast_report.py`
 
 ### Tune parameters
 
-- **Forecast different granularity** — change `TEST_DAYS` / `VAL_DAYS` in `model/source.py`. Default is a 60-day test window after a 60-day val window.
+- **Change the forecast windows** — change `TEST_DAYS` / `VAL_DAYS` in `model/source.py` to set the lengths of the test and validation windows. Default is a 60-day test window after a 60-day val window; the report still aggregates by week.
 
 ### Extend the model
 

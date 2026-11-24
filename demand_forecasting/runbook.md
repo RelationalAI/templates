@@ -15,7 +15,7 @@ A retail planner wants per-(store, item, date) unit-sales forecasts that borrow 
    • weekly forecast per (city, item family): predicted vs actual unit sales
 ```
 
-Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` skill (named at the start of each prompt). They run in order in a single session — the predictive step reads the `Store`/`Item`/`Sale` concepts the build step created, and writes forecasts back. (This trains a GNN on a GPU predictive engine — a prerequisite.)
+Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` skill (named at the start of each prompt). They run in order in a single session — the predictive step reads the `Store`/`Item`/`Sale` concepts the build step created, and writes forecasts back. (This trains a GNN on a predictive reasoner; the bundled data needs no GPU.)
 
 ---
 
