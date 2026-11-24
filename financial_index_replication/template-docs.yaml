@@ -298,8 +298,8 @@ guided_walkthrough:
         and weight. The printed basket lists only weights above 0.01% of the
         portfolio, so a selected stock with zero weight does not appear in it.
 
-        portfolio_returns calculates the basket’s monthly returns from all the
-        solved weights and stock returns, and tracking_diff compares them with the
+        portfolio_returns calculates the basket’s monthly returns from every
+        nonzero solved weight and the stock returns, and tracking_diff compares them with the
         index returns. annualized_tracking_error() summarizes the monthly gaps
         as a yearly tracking measure, showing how closely this basket followed
         the index in the sample months.

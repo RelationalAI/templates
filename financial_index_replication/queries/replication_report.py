@@ -77,6 +77,8 @@ if __name__ == "__main__":
         .to_df()
         .sort_values("weight", ascending=False)
     )
+    if solution_df.empty:
+        raise SystemExit("The solve returned no portfolio, so there is nothing to export.")
     # Returns, sector exposure and turnover use every solved weight; the printed basket
     # lists only weights above 0.01% of the portfolio.
     basket_df = solution_df[solution_df["weight"] > 0.0001]
@@ -102,6 +104,11 @@ if __name__ == "__main__":
         .sort_index()
     )
     weights = solution_df.set_index("ticker")["weight"]
+    # A zero-weight stock needs no return history; a held one needs a return every month.
+    weights = weights[weights != 0]
+    unpriced = [t for t in weights.index if t not in returns_wide or returns_wide[t].isna().any()]
+    if unpriced:
+        raise SystemExit(f"Held stocks {unpriced} lack a monthly return in the deployed model.")
     portfolio_returns = returns_wide[weights.index].mul(weights, axis=1).sum(axis=1)
     tracking_diff = portfolio_returns - index_series["index_return"]
 
