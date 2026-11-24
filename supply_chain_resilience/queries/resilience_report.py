@@ -63,7 +63,7 @@ def report_flow(flow, label):
         n_unmet = len(unmet_df)
         total_unmet = unmet_df["unmet"].sum() if len(unmet_df) > 0 else 0.0
     else:
-        n_active, n_unmet, total_unmet = 0, 0, 0
+        n_active, n_unmet, total_unmet = 0, 0, None
 
     print(f"\n  [{label}]")
     print(f"  Status: {status}")
@@ -216,7 +216,8 @@ if __name__ == "__main__":
     late_shipments = shipments_df[shipments_df["delay_days"] > 0]
     total_n = len(shipments_df)
     late_n = len(late_shipments)
-    print(f"\nLate shipments: {late_n} of {total_n} ({100*late_n/total_n:.0f}%)")
+    late_pct = f" ({100 * late_n / total_n:.0f}%)" if total_n else ""
+    print(f"\nLate shipments: {late_n} of {total_n}{late_pct}")
     late_by_supplier = (
         late_shipments.groupby("supplier_id")
         .size()
@@ -226,21 +227,13 @@ if __name__ == "__main__":
     for _, row in late_by_supplier.head(5).iterrows():
         print(f"  {row['supplier_id']}: {row['late_count']} late shipments")
 
-    # Read the risk flags from the rules.
-    unreliable_df = (
-        model.select(Business.id.alias("id"))
-        .where(Business.is_unreliable())
-        .to_df()
+    # Read the risk classes from the same rules the solves block and surcharge on:
+    # avoid (both flags) and watch level (either flag, a superset of avoid).
+    avoid_ids = set(model.select(Business.id).where(Business.is_avoid()).to_df().iloc[:, 0])
+    watch_ids = set(
+        model.select(Business.id).where(Business.is_watch_level()).to_df().iloc[:, 0]
     )
-    high_delay_df = (
-        model.select(Business.id.alias("id"))
-        .where(Business.has_high_delay_risk())
-        .to_df()
-    )
-    unreliable_ids = set(unreliable_df["id"]) if len(unreliable_df) > 0 else set()
-    high_delay_ids = set(high_delay_df["id"]) if len(high_delay_df) > 0 else set()
 
-    # Build risk classification from the two RAI-derived flags.
     rel_score_ref = Float.ref()
     all_biz_df = (
         model.select(Business.id.alias("id"), Business.name.alias("name"),
@@ -252,11 +245,9 @@ if __name__ == "__main__":
     print("\nSupplier risk classification:")
     for _, row in all_biz_df.sort_values("reliability").iterrows():
         biz_id = row["id"]
-        is_unrel = biz_id in unreliable_ids
-        is_delay = biz_id in high_delay_ids
-        if is_unrel and is_delay:
+        if biz_id in avoid_ids:
             rc, marker = "avoid", "[X]"
-        elif is_unrel or is_delay:
+        elif biz_id in watch_ids:
             rc, marker = "watch", "[!]"
         else:
             rc, marker = "reliable", "[ ]"
@@ -264,13 +255,6 @@ if __name__ == "__main__":
             f"  {marker} {biz_id} {row['name']}: "
             f"reliability={row['reliability']:.2f}, class={rc}"
         )
-
-    avoid_df = (
-        model.select(Business.id.alias("id"))
-        .where(Business.is_avoid())
-        .to_df()
-    )
-    avoid_ids = set(avoid_df["id"]) if len(avoid_df) > 0 else set()
 
     esc_df = (
         model.select(aggs.count(Demand).alias("count"))
@@ -299,21 +283,22 @@ if __name__ == "__main__":
     print("SCENARIO ANALYSIS")
     print("=" * 70)
 
-    # Scenario 1: the highest-centrality site goes offline.
+    # Scenario 1: the highest-centrality site goes offline. Sites tied at the highest
+    # score all go offline together, so name every one.
     top_df = (
         model.select(Site.id.alias("site_id"), Site.name.alias("site_name"))
         .where(Site.is_most_critical())
         .to_df()
+        .sort_values("site_id")
     )
-    top_site_id = top_df.iloc[0]["site_id"]
-    top_site_name = top_df.iloc[0]["site_name"]
+    top_site_id = "+".join(top_df["site_id"]) or "none"
+    top_site_name = ", ".join(top_df["site_name"]) or "no scored site"
     print(f"\nScenario: {top_site_name} ({top_site_id}) goes offline")
     results.append(report_flow(site_offline, f"Site {top_site_id} offline"))
 
     # Scenario 2: all "watch" suppliers are downgraded to "avoid".
-    watch_and_avoid_ids = unreliable_ids | high_delay_ids
     print("\nScenario: All 'watch' suppliers downgraded to 'avoid'")
-    print(f"  Blocked businesses: {sorted(watch_and_avoid_ids)}")
+    print(f"  Blocked businesses: {sorted(watch_ids)}")
     results.append(report_flow(watch_avoid, "Watch->Avoid"))
 
     # --------------------------------------------------
@@ -335,13 +320,14 @@ if __name__ == "__main__":
     baseline_obj = results[0]["objective"]
     for r in results:
         name = canonical_names[r["label"]]
-        obj = float(r["objective"]) if r["objective"] is not None else 0.0
-        cost_str = f"{obj:,.2f}"
-        unmet_str = f"{r['unmet']:,.0f}" if r["unmet"] else "0"
+        # A scenario with no solution has no cost or unmet demand to compare.
+        cost_str = f"{float(r['objective']):,.2f}" if r["objective"] is not None else "N/A"
+        unmet_str = f"{r['unmet']:,.0f}" if r["unmet"] is not None else "N/A"
         delta = ""
         if r["label"] != "Baseline":
-            pct = 0.0
             if baseline_obj and r["objective"] is not None:
                 pct = (r["objective"] - baseline_obj) / baseline_obj * 100
-            delta = f" (+{pct:.1f}%)" if pct > 0 else f" ({pct:.1f}%)"
+                delta = f" (+{pct:.1f}%)" if pct > 0 else f" ({pct:.1f}%)"
+            else:
+                delta = " (N/A)"
         print(f"  {name:<25} {r['status']:<18} {cost_str:>12}{delta} {unmet_str:>10}")

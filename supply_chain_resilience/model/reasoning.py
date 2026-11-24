@@ -64,7 +64,7 @@ model.where(
 # scenario analysis in Stage 3 can be read in context: "if supplier X is
 # downgraded, the optimizer is rerouting around the demands listed here."
 
-biz_graph = Graph(model, directed=True, weighted=False, node_concept=Business)
+biz_graph = Graph(model, directed=True, weighted=False, node_concept=Business, name="business_graph")
 b_src, b_dst = Business.ref(), Business.ref()
 model.where(Business.ships_to(b_src, b_dst)).define(
     biz_graph.Edge.new(src=b_src, dst=b_dst)
@@ -90,7 +90,9 @@ Business.reaches_target_customer = reachable_to
 # --------------------------------------------------
 
 # Build undirected unweighted graph: Sites as nodes, SHIP operations as edges.
-graph = Graph(model, directed=False, weighted=False, node_concept=Site, aggregator="sum")
+graph = Graph(
+    model, directed=False, weighted=False, node_concept=Site, aggregator="sum", name="shipping_network"
+)
 
 s1, s2, op_ref = Site.ref(), Site.ref(), Operation.ref()
 model.define(
@@ -119,7 +121,9 @@ Site.component = wcc
 Site.eigenvector_centrality = eigenvector
 
 # Store centrality on Site for use in optimization objective: the eigenvector score
-# of each site other than stores and offices, divided by the largest such score.
+# of each site other than stores and offices, divided by the largest such score. A
+# largest score of 0 leaves every site unscored, so no division by zero and no site
+# counts as most critical.
 Site.centrality = model.Property(f"{Site} has centrality {Float:centrality}")
 MaxCentrality = model.Relationship(f"max eigenvector centrality is {Float:max_score}")
 site_max, score_max = Site.ref(), Float.ref()
@@ -134,6 +138,7 @@ model.where(
     site_eig.site_type != "STORE",
     site_eig.site_type != "OFFICE",
     MaxCentrality(max_score),
+    max_score > 0,
 ).define(site_eig.centrality(score_eig / max_score))
 
 # The site with the highest centrality; the site-offline scenario takes it offline.
@@ -144,6 +149,7 @@ model.where(
     site_top.site_type != "STORE",
     site_top.site_type != "OFFICE",
     MaxCentrality(score_top),
+    score_top > 0,
 ).define(site_top.is_most_critical())
 
 # --------------------------------------------------
