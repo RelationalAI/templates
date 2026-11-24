@@ -35,7 +35,7 @@ W_UNEXPLAINED = 1.0  # cost of leaving a defective unit unexplained (relief valv
 
 # Directed parent -> child genealogy graph on Lot. Following edges from a
 # top-tier lot reaches every lot consumed beneath it.
-graph = Graph(model, directed=True, weighted=False, node_concept=Lot)
+graph = Graph(model, directed=True, weighted=False, node_concept=Lot, name="lot_genealogy")
 parent, child = Lot.ref(), Lot.ref()
 model.where(parent.consumes(child)).define(graph.Edge.new(src=parent, dst=child))
 
@@ -184,6 +184,7 @@ model.define(
 
 # Persist the headline as queryable ontology: a DiagnosisResult singleton derived
 # from the named root causes (populate=True writes the solution onto is_root_cause).
+# A diagnosis that names no cause explains zero units, so both counts default to 0.
 DiagnosisResult = model.Concept("DiagnosisResult", identify_by={"id": Integer})
 DiagnosisResult.n_defective = model.Property(f"{DiagnosisResult} has {Integer:n_defective}")
 DiagnosisResult.n_explained = model.Property(f"{DiagnosisResult} has {Integer:n_explained}")
@@ -204,11 +205,12 @@ model.define(
             (f := Factor.ref()).is_root_cause > 0.5,
             f.touches(Unit),
         )
+        | 0
     )
 )
 model.define(
     DiagnosisResult.n_root_causes(
-        aggs.count(Factor).per(DiagnosisResult).where(Factor.is_root_cause > 0.5)
+        aggs.count(Factor).per(DiagnosisResult).where(Factor.is_root_cause > 0.5) | 0
     )
 )
 model.define(

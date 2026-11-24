@@ -16,11 +16,8 @@ from model import (
     DiagnosisCost,
     DiagnosisResult,
     Factor,
-    Lot,
-    Machine,
     PlantBaseline,
     SolveStatus,
-    Supplier,
     Unit,
     model,
     num_cons,
@@ -32,10 +29,16 @@ from model import (
 )
 
 if __name__ == "__main__":
-    n_units = model.select(Unit.id).to_df()
-    n_def = model.where(Unit.is_defective()).select(Unit.id).to_df()
+    baseline = model.select(
+        PlantBaseline.n_units.alias("units"),
+        PlantBaseline.n_defective.alias("defective"),
+        PlantBaseline.failure_rate.alias("rate"),
+    ).to_df()
+    n_units = int(baseline["units"].iloc[0])
+    n_def = int(baseline["defective"].iloc[0])
+    baseline_rate = float(baseline["rate"].iloc[0])
     print(
-        f"Loaded {len(n_units)} units, {len(n_def)} defective ({len(n_def) / len(n_units):.2%} final-test failure rate)"
+        f"Loaded {n_units} units, {n_def} defective ({baseline_rate:.2%} final-test failure rate)"
     )
 
     # Descriptive: when did the spike start? A real investigation begins on the
@@ -45,7 +48,6 @@ if __name__ == "__main__":
     wk = model.select(
         Unit.build_week.alias("week"), Unit.defective.alias("defective")
     ).to_df()
-    wk["defective"] = wk["defective"].astype(int)
     timeline = wk.groupby("week").agg(
         units=("defective", "size"), defects=("defective", "sum")
     )
@@ -72,24 +74,21 @@ if __name__ == "__main__":
     # everything. That is exactly the trap the contrast stage corrects. Genealogy
     # closure puts lots and machines on the same footing: a deep lot is "touched by"
     # every finished unit that carries it.
-    incidence = (
-        model.where((f := Factor.ref()).touches(u := Unit.ref()))
-        .select(
-            f.id.alias("factor"), f.kind.alias("kind"), u.defective.alias("defective")
+    n_incidence = model.select(Factor.touched_count).to_df().iloc[:, 0].sum()
+    top_raw = (
+        model.select(
+            Factor.id.alias("factor"),
+            Factor.kind.alias("kind"),
+            Factor.touched_count.alias("units"),
+            Factor.defect_count.alias("defects"),
         )
         .to_df()
-    )
-    incidence["defective"] = incidence["defective"].astype(int)
-    top_raw = (
-        incidence.groupby(["factor", "kind"])
-        .agg(units=("defective", "size"), defects=("defective", "sum"))
-        .reset_index()
-        .sort_values("defects", ascending=False)
+        .sort_values(["defects", "factor"], ascending=[False, True])
         .head(6)
         .reset_index(drop=True)
     )
     print(
-        f"\nBackward reachability built {len(incidence):,} (factor, unit) incidence facts."
+        f"\nBackward reachability built {n_incidence:,} (factor, unit) incidence facts."
     )
     print(
         "Top candidate factors by RAW defective units touched (pre-contrast -- note the high-volume bias):"
@@ -110,7 +109,6 @@ if __name__ == "__main__":
         .sort_values("lift", ascending=False)
         .reset_index(drop=True)
     )
-    baseline_rate = float(model.select(PlantBaseline.failure_rate).to_df().iloc[0, 0])
     print(
         f"\nContrast scoring: {len(suspects)} suspect factors (baseline failure rate {baseline_rate:.2%}, "
         f"lift>={LIFT_THRESHOLD}, support>={MIN_SUPPORT}, defects>={MIN_DEFECTS})"
@@ -130,8 +128,8 @@ if __name__ == "__main__":
         raise SystemExit(f"expected one minimization objective, got {n_objs}")
     n_cover = model.select(num_cover).to_df().iloc[:, 0].tolist()
     n_cover = n_cover[0] if n_cover else 0
-    if n_cover != len(n_def):
-        raise SystemExit(f"coverage grounded {n_cover} rows, expected {len(n_def)}")
+    if n_cover != n_def:
+        raise SystemExit(f"coverage grounded {n_cover} rows, expected {n_def}")
     print(
         f"\nFormulation audit: {n_cover} coverage constraints grounded (one per defective unit)."
     )
@@ -194,21 +192,30 @@ if __name__ == "__main__":
         types = sig[sig["factor"] == fid]["defect_type"]
         dom = types.value_counts()
         signature = f"{dom.iloc[0] / len(types):.0%} {dom.index[0]}"
-        ref = fid.split("::", 1)[1]
+        # Each kind's evidence is read through the factor's typed pointer to its lot,
+        # machine, or shift.
         if kind == "LOT":
             tell_df = (
-                model.where(
-                    (lo := Lot.ref()).id == ref, lo.supplier(sp := Supplier.ref())
+                model.where((fl := Factor.ref()).id == fid)
+                .select(
+                    fl.lot.supplier.name.alias("supplier"),
+                    fl.lot.received_date.alias("recv"),
                 )
-                .select(sp.name.alias("supplier"), lo.received_date.alias("recv"))
                 .to_df()
             )
             tell = f"supplier {tell_df['supplier'].iloc[0]}, received {tell_df['recv'].iloc[0]}"
-        else:
+        elif kind == "MACHINE":
             tell_df = (
-                model.where((mm := Machine.ref()).id == ref)
-                .select(mm.calibration_age_days.alias("age"))
+                model.where((fm := Factor.ref()).id == fid)
+                .select(fm.machine.calibration_age_days.alias("age"))
                 .to_df()
             )
             tell = f"{int(tell_df['age'].iloc[0])} days since last calibration"
+        else:
+            shift_df = (
+                model.where((fs := Factor.ref()).id == fid)
+                .select(fs.shift_name.alias("shift"))
+                .to_df()
+            )
+            tell = f"{shift_df['shift'].iloc[0]} shift"
         print(f"  {label:<26} {signature:<18} {tell}")

@@ -2,8 +2,8 @@
 
 Three-stage RelationalAI pipeline that turns a batch of final-test failures
 into a defensible root-cause diagnosis over a serialized electronics-assembly
-genealogy. The narrative: final-test failures have spiked from ~1.2% to 6.3%.
-Every finished unit carries its full material genealogy (which lots,
+genealogy. The narrative: final-test failures have spiked from 1.9% in the
+first build week to 6.6% in the second. Every finished unit carries its full material genealogy (which lots,
 transitively, went into it through a multi-tier BOM) and its process history
 (which machine and shift ran each operation). The chain works backward from
 the failures to the smallest, most specific set of causes that explains them.

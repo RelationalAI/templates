@@ -167,7 +167,7 @@ Use this sequence to deploy the model and query it:
    MACHINE::REF-02 Reflow oven 2 (REFLOW) MACHINE                73 2.167304
    ```
 
-   The lines above are the end of the report. The full annotated output appears in the Sample output section below.
+   The lines above are the diagnosis portion of the report; the corroborating evidence for each root cause follows them. The full annotated output appears in the Sample output section below.
 
    To solve again without changing the model, refresh the deployed model, then run the query again:
 
