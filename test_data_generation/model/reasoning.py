@@ -48,6 +48,15 @@ for fk_info in fk_objs:
         ParentTable.table_name == parent_name
     ))
 
+    # Lower bound: at least the declared minimum of children per parent
+    if fk_info['min'] > 0:
+        problem.satisfy(model.require(
+            Table.x_actual_rows >= ParentTable.x_actual_rows * fk_info['min']
+        ).where(
+            Table.table_name == child_name,
+            ParentTable.table_name == parent_name
+        ))
+
     # Lower bound for mandatory participation
     mandatory = constraints_df[
         (constraints_df['constraint_type'] == 'mandatory_participation') &

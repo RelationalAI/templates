@@ -33,36 +33,36 @@ def generate_test_data(row_counts, seed=42):
     generated = {}
 
     # Customer table
-    n_customers = row_counts.get('Customer', {}).get('actual', 100)
+    n_customers = row_counts['Customer']['actual']
     regions = ['North', 'South', 'East', 'West', 'Central']
     customers = [{'customer_id': i, 'email': random_email(i), 'region': random.choice(regions), 'created_date': random_date(2018, 2023)} for i in range(1, n_customers + 1)]
     generated['Customer'] = DataFrame(customers)
 
     # Product table
-    n_products = row_counts.get('Product', {}).get('actual', 50)
+    n_products = row_counts['Product']['actual']
     categories = ['Electronics', 'Clothing', 'Home', 'Sports', 'Books']
     products = [{'product_id': i, 'name': f"{random.choice(categories)} Item {i}", 'category': random.choice(categories), 'price': random_float(0.99, 999.99)} for i in range(1, n_products + 1)]
     generated['Product'] = DataFrame(products)
 
     # Order table
-    n_orders = row_counts.get('Order', {}).get('actual', 500)
+    n_orders = row_counts['Order']['actual']
     statuses = ['pending', 'shipped', 'delivered', 'cancelled']
     orders = [{'order_id': i, 'customer_id': random.randint(1, max(1, n_customers)), 'order_date': random_date(2023, 2024), 'status': random.choice(statuses)} for i in range(1, n_orders + 1)]
     generated['Order'] = DataFrame(orders)
 
     # OrderLine table
-    n_orderlines = row_counts.get('OrderLine', {}).get('actual', 1500)
+    n_orderlines = row_counts['OrderLine']['actual']
     orderlines = [{'orderline_id': i, 'order_id': random.randint(1, max(1, n_orders)), 'product_id': random.randint(1, max(1, n_products)), 'quantity': random.randint(1, 10), 'unit_price': random_float(0.99, 999.99)} for i in range(1, n_orderlines + 1)]
     generated['OrderLine'] = DataFrame(orderlines)
 
     # Supplier table
-    n_suppliers = row_counts.get('Supplier', {}).get('actual', 50)
+    n_suppliers = row_counts['Supplier']['actual']
     countries = ['USA', 'China', 'Germany', 'Japan', 'UK']
     suppliers = [{'supplier_id': i, 'name': f"Supplier_{i}", 'country': random.choice(countries), 'reliability_score': random_float(50.0, 100.0)} for i in range(1, n_suppliers + 1)]
     generated['Supplier'] = DataFrame(suppliers)
 
     # SupplierProduct table
-    n_supplier_products = row_counts.get('SupplierProduct', {}).get('actual', 200)
+    n_supplier_products = row_counts['SupplierProduct']['actual']
     supplier_products = [{'supplierproduct_id': i, 'supplier_id': random.randint(1, max(1, n_suppliers)), 'product_id': random.randint(1, max(1, n_products)), 'lead_time_days': random.randint(1, 90), 'unit_cost': random_float(0.50, 500.0)} for i in range(1, n_supplier_products + 1)]
     generated['SupplierProduct'] = DataFrame(supplier_products)
 

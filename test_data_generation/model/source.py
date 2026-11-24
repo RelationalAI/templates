@@ -46,14 +46,14 @@ for _, fk_row in fk_df.iterrows():
         (cardinality_constraints['related_table'] == parent_table)
     ]
 
-    min_per = 1
+    # Children per parent: no lower bound and at most 100 unless a cardinality_bound or
+    # frequency constraint declares the range.
+    min_per = 0
     max_per = 100
 
     for _, c in card.iterrows():
-        if c['constraint_type'] == 'cardinality_bound':
-            min_per = int(c['min_value']) if not pd.isna(c['min_value']) else 1
-            max_per = int(c['max_value']) if not pd.isna(c['max_value']) else 100
-        elif c['constraint_type'] == 'frequency':
+        if c['constraint_type'] in ('cardinality_bound', 'frequency'):
+            min_per = int(c['min_value']) if not pd.isna(c['min_value']) else 0
             max_per = int(c['max_value']) if not pd.isna(c['max_value']) else 100
 
     coverage = constraints_df[

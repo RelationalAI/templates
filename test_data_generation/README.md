@@ -20,7 +20,7 @@ Generating realistic test databases requires careful coordination of row counts 
 
 This template uses **Prescriptive** reasoning to find optimal row counts for each table in a test database. It encodes referential integrity constraints, cardinality bounds, mandatory participation rules, and coverage requirements as a linear program, then minimizes weighted deviation from target row counts. Higher-priority tables stay closer to their targets.
 
-After determining row counts, the report generates actual test data records with realistic values -- emails, dates, prices, and proper foreign key references -- giving you a complete, constraint-consistent test dataset.
+After determining row counts, the report generates sample test records with realistic values -- emails, dates, prices, and foreign key references to existing parent rows. The row counts satisfy the constraints; the generated records are illustrative: each foreign key is drawn at random, so per-parent bounds and coverage are not guaranteed row by row, and the generator fills a few columns of the six bundled tables rather than every column in `testgen_schema.csv`.
 
 ## Who this is for
 
@@ -263,6 +263,13 @@ problem.satisfy(model.require(
     Table.table_name == child_name,
     ParentTable.table_name == parent_name
 ))
+if fk_info['min'] > 0:
+    problem.satisfy(model.require(
+        Table.x_actual_rows >= ParentTable.x_actual_rows * fk_info['min']
+    ).where(
+        Table.table_name == child_name,
+        ParentTable.table_name == parent_name
+    ))
 ```
 
 ### 4. Minimize weighted deviation
@@ -284,7 +291,7 @@ generated_data = generate_test_data(row_counts)
 
 ## Customize this template
 
-- **Add your own schema** by editing the three CSV files to match your database structure with its constraints and targets.
+- **Add your own schema** by editing the three CSV files to match your database structure with its constraints and targets. The row-count model reads any tables in them; the record generator in `queries/test_data_plan.py` is written for the six bundled tables, so extend it for new ones.
 - **Adjust the scale factor** by changing `scale_factor` in `model/source.py` to proportionally scale all targets up or down.
 - **Extend data generation** to produce additional column types or more realistic value distributions for your domain.
 - **Add uniqueness constraints** to ensure generated foreign key references follow realistic distributions rather than uniform random.
@@ -294,7 +301,7 @@ generated_data = generate_test_data(row_counts)
 <details>
 <summary>Solver returns INFEASIBLE</summary>
 
-The constraints are contradictory -- for example, a cardinality bound may require more child rows than the maximum allows. Review `testgen_constraints.csv` and check that the min/max row ranges in `testgen_targets.csv` are compatible with the cardinality bounds. Widen the min/max row ranges or relax cardinality constraints.
+The report prints `• status: INFEASIBLE` and stops with `termination status ['INFEASIBLE']`. The constraints are contradictory -- for example, a cardinality bound may require more child rows than the maximum allows. Review `testgen_constraints.csv` and check that the min/max row ranges in `testgen_targets.csv` are compatible with the cardinality bounds. Widen the min/max row ranges or relax cardinality constraints.
 </details>
 
 <details>
