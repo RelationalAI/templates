@@ -236,7 +236,7 @@ Use this sequence to deploy the model and query it:
    To restore feasibility, relax one member of the conflict: bring ubuntu-large or self-hosted-linux back online, or raise ubuntu-xlarge's concurrency cap. All seven high-CPU jobs share the one survivor, so lift the cap (or restore a runner) enough for all of them and re-deploy to confirm -- clearing a single stranded job only resolves that row of the conflict.
    ```
 
-   Equal-cost runners may be swapped between tied optima; the statuses, costs, and conflict are stable. See `runbook.md` for the step-by-step walkthrough.
+   Equal-cost runners may be swapped between tied optima, and the conflict may name a different set of the high-CPU jobs (at least six of the seven); the statuses, costs, and the binding runner cap are stable. See `runbook.md` for the step-by-step walkthrough.
 
    To solve again without changing the model, refresh the deployed model, then run the query again:
 
@@ -319,11 +319,11 @@ At full capacity (1.0x), `self-hosted-linux` absorbs 8 of 20 jobs at `$0.005/min
 
 The final section models a maintenance outage: `ubuntu-large` and `self-hosted-linux` go offline (their assignments are dropped with a filter). Every high-CPU Linux job (`min_cpu` at least 4) is compatible only with runners in `{ubuntu-large, ubuntu-xlarge, self-hosted-linux}` (the two heaviest jobs with just the latter two), so with two of those three down, all seven funnel onto `ubuntu-xlarge` — whose concurrency cap of 5 cannot hold them. Its Problem is configured with `conflict=True`, so its solve also computes a conflict diagnosis.
 
-The diagnosis is an irreducible infeasible subsystem (IIS). `in_conflict` is a predicate on each constraint instance, true when the solver reports that instance in the IIS, and the model publishes the members as two relationships the report selects: the stranded jobs and the binding runner caps. When the solver finds no IIS (the model is feasible, or the solver build has no conflict support), both tables print empty.
+The diagnosis is an irreducible infeasible subsystem (IIS). `in_conflict` is a predicate on each constraint instance, true when the solver reports that instance in the IIS, and the model publishes the members as two relationships the report selects: the stranded jobs and the binding runner caps. When the solver finds no IIS (the model is feasible, or the solver build has no conflict support), the report stops and prints the termination or conflict status instead of the tables.
 
 Each constraint's declared key gives it an entity back-pointer (`assign_one.workflow`, `conc.runner`), mirroring the variable's automatic back-pointer, so the conflict reads back as the actual stranded jobs and the binding runner cap, joined by key — no rule-name parsing.
 
-The IIS is minimal: it names six of the seven high-CPU jobs (any six already exceed the cap of five, so which six is solver-dependent) plus the `ubuntu-xlarge` concurrency rule. To restore feasibility, relax one member — bring a runner back online or raise the cap. Because all seven jobs share the one survivor, lift the cap enough for all of them (or restore a runner) and redeploy to confirm; clearing a single job only resolves that one row of the conflict.
+Any six of the seven high-CPU jobs already exceed the cap of five, so a minimal IIS needs six of them plus the `ubuntu-xlarge` concurrency rule. `in_conflict` also counts the constraint instances the solver marks as possibly in the conflict, so the stranded list can name all seven, as in the sample output above. To restore feasibility, relax one member — bring a runner back online or raise the cap. Because all seven jobs share the one survivor, lift the cap enough for all of them (or restore a runner) and redeploy to confirm; clearing a single job only resolves that one row of the conflict.
 
 See `model/reasoning.py` and `queries/allocation_report.py` for the implementation and `runbook.md` for the skill-driven reproduction.
 
@@ -337,7 +337,7 @@ Focus on the first changes most users will make.
 ### Use your own data
 
 - Replace the CSVs in `data/` with your own; keep the column headers listed in *Sample data* (`runners.csv`, `workflows.csv`, `compatibility.csv`).
-- `compatibility.csv` must hold one `(workflow_id, runner_id)` row per runner that can execute a workflow (operating-system and resource match). If a workflow has no compatible runner, it cannot be assigned and the model becomes infeasible — see *Troubleshooting*.
+- `compatibility.csv` must hold one `(workflow_id, runner_id)` row per runner that can execute a workflow (operating-system and resource match). Give every workflow at least one compatible runner that stays online in each scenario: the assign-one constraint is grounded over a workflow's compatible pairs, so a workflow with none gets no constraint and is left unassigned rather than making the model infeasible.
 - For Snowflake-backed runs, swap the `read_csv(...)` calls in `model/source.py` for `model.data(snowflake_table)` calls.
 
 ### Tune parameters
@@ -363,7 +363,7 @@ Focus on the first changes most users will make.
 <details>
 <summary>Problem is infeasible</summary>
 
-The concurrency limits are too tight for the number of workflows, or a workflow has no compatible runner. Rather than guess, request a conflict diagnosis — `problem.configure(..., conflict=True)` makes the solve return the irreducible infeasible subsystem (the stranded jobs and the binding runner cap), as shown in the maintenance-outage section. Then increase `max_concurrent` for the named runner in `runners.csv`, reduce the number of workflows competing for it, or raise the concurrency multiplier.
+The concurrency limits are too tight for the number of workflows. Rather than guess, request a conflict diagnosis — `problem.configure(..., conflict=True)` makes the solve return the irreducible infeasible subsystem (the stranded jobs and the binding runner cap), as shown in the maintenance-outage section. Then increase `max_concurrent` for the named runner in `runners.csv`, reduce the number of workflows competing for it, or raise the concurrency multiplier.
 </details>
 
 <details>

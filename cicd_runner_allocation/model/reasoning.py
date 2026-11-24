@@ -132,6 +132,9 @@ def declare_allocation(key, name, concurrency_multiplier, offline_runners=(), co
         model.where(assign_one.in_conflict).define(Stranded[key](assign_one.workflow))
         BindingCap[key] = model.Relationship(f"{name} has binding cap {Runner}")
         model.where(conc.in_conflict).define(BindingCap[key](conc.runner))
+        # The solve's metadata, which carries the conflict status the report checks before
+        # reading the conflict (problem.solve_info() reads it from the deployed model).
+        problem.install_solve_info()
 
     problems[key] = problem
 

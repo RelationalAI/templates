@@ -18,6 +18,7 @@ from model import (
     TotalCost,
     Workflow,
     model,
+    problems,
 )
 
 
@@ -85,7 +86,17 @@ if __name__ == "__main__":
     print(f"Maintenance outage: {', '.join(OFFLINE_RUNNERS)} offline")
     print("=" * 50)
 
-    solve_result("outage")
+    # The outage is infeasible on purpose, so anything but a conflict found means the tables
+    # below would not be a diagnosis: the outage was feasible, or the solver found no IIS.
+    status, _ = solve_result("outage")
+    if status not in (["INFEASIBLE"], ["INFEASIBLE_OR_UNBOUNDED"]):
+        raise SystemExit(f"termination status {status}")
+    conflict_status = problems["outage"].solve_info().conflict_status
+    if conflict_status != "CONFLICT_FOUND":
+        raise SystemExit(
+            f"conflict status {conflict_status}: conflict analysis needs HiGHS 1.13 or later "
+            "with MIP IIS support"
+        )
 
     # The model publishes the conflict keyed by the workflow / runner each constraint was
     # declared over, so the stranded jobs and the binding cap read back by entity key.
@@ -107,11 +118,14 @@ if __name__ == "__main__":
     )
     print(caps_df.to_string(index=False))
 
-    if len(stranded_df) or len(caps_df):
-        print(
-            "\nTo restore feasibility, relax one member of the conflict: bring "
-            "ubuntu-large or self-hosted-linux back online, or raise ubuntu-xlarge's "
-            "concurrency cap. All seven high-CPU jobs share the one survivor, so lift the "
-            "cap (or restore a runner) enough for all of them and re-deploy to confirm -- "
-            "clearing a single stranded job only resolves that row of the conflict."
-        )
+    # The surviving large runner's cap binds, and any six of the seven high-CPU jobs already
+    # exceed it, so the conflict holds at least six (the solver chooses which).
+    if set(caps_df["runner"]) != {"ubuntu-xlarge"} or len(stranded_df) < 6:
+        raise SystemExit("expected ubuntu-xlarge's cap and at least six stranded jobs in the conflict")
+    print(
+        "\nTo restore feasibility, relax one member of the conflict: bring "
+        "ubuntu-large or self-hosted-linux back online, or raise ubuntu-xlarge's "
+        "concurrency cap. All seven high-CPU jobs share the one survivor, so lift the "
+        "cap (or restore a runner) enough for all of them and re-deploy to confirm -- "
+        "clearing a single stranded job only resolves that row of the conflict."
+    )
