@@ -34,7 +34,7 @@ def _classify_verdict(status, num_points):
       which falsifies the property regardless of whether the search was
       exhaustive. The witness count is partial when status is not
       OPTIMAL/SOLUTION_LIMIT, but the verdict itself is conclusive.
-    - INFEASIBLE, or OPTIMAL with zero witnesses -> PASS: solver proved
+    - INFEASIBLE, or OPTIMAL with a published count of zero -> PASS: solver proved
       no counterexample exists (or exhausted the search and found none),
       so the property holds under the encoded rule pack. Soundness is
       bounded by encoding fidelity: missing rule arms can produce a
@@ -42,12 +42,13 @@ def _classify_verdict(status, num_points):
       solver) do not count as exhaustion and route to INCONCLUSIVE
       below.
     - Anything else (TIME_LIMIT, MEMORY_LIMIT, OTHER_ERROR, ... with
-      zero witnesses) -> INCONCLUSIVE: the audit did not finish and no
-      witness was found, so neither pass nor fail can be concluded.
+      zero witnesses, or OPTIMAL with no published count) -> INCONCLUSIVE:
+      the audit did not finish or its count is missing, and no witness was
+      found, so neither pass nor fail can be concluded.
     """
-    if num_points >= 1:
+    if num_points is not None and num_points >= 1:
         return "FAIL"
-    if status in ("INFEASIBLE", "OPTIMAL"):
+    if status == "INFEASIBLE" or (status == "OPTIMAL" and num_points == 0):
         return "PASS"
     return "INCONCLUSIVE"
 
@@ -63,9 +64,10 @@ def report_audit(name, description):
     statuses = model.select(SolveStatus[name]).to_df().iloc[:, 0].tolist()
     points = model.select(NumPoints[name]).to_df().iloc[:, 0].tolist()
     status = ", ".join(statuses)
-    n_witnesses = points[0] if points else 0
+    n_witnesses = points[0] if points else None
     verdict = _classify_verdict(status, n_witnesses)
-    print(f"Verdict: {verdict}  ({n_witnesses} witness(es), status={status})")
+    count_text = "no count" if n_witnesses is None else str(n_witnesses)
+    print(f"Verdict: {verdict}  ({count_text} witness(es), status={status})")
     if verdict == "FAIL" and status == "SOLUTION_LIMIT":
         print(
             f"Note: hit MAX_WITNESSES={MAX_WITNESSES}; raise it to enumerate more counterexamples."
@@ -97,7 +99,7 @@ def report_audit(name, description):
         "name": name,
         "description": description,
         "verdict": verdict,
-        "num_witnesses": n_witnesses,
+        "num_witnesses": count_text,
         "status": status,
     }
 

@@ -34,10 +34,10 @@ Modeling shape:
   counterexample ICs, and solves with `solution_limit=K` (MiniZinc). Each
   property needs its own `Problem` because constraints on a `Problem` are
   add-only, so a previous property's counterexample ICs cannot be detached
-  from a reused `Problem`. The deployed model publishes each solve's status
-  and number of witnesses; `queries/audit_report.py` classifies the verdict
-  and enumerates every distinct witness via `Variable.values(solution_index,
-  value)`.
+  from a reused `Problem`. The deployed model publishes each solve's status,
+  its number of witnesses, and every distinct witness, read from
+  `Variable.values(solution_index, value)`; `queries/audit_report.py`
+  classifies the verdict and prints the witnesses.
 
 The bundled ruleset has a deliberate bug: `is_manual_review` is defined as
 "senior", but `is_frail` is defined as "senior OR has chronic condition".

@@ -185,8 +185,7 @@ for name, description, counterexample_fn in PROPERTIES:
     # `populate=False` skips the first-solution write-back to the scalar
     # relationships, which every audit Problem shares; every witness is read through
     # `Variable.values(...)`, published below as the property's `Witness` relationship, so
-    # the populated state is unused, and `populate=False` sidesteps the latent FDError
-    # under `solution_limit`.
+    # the populated state is unused.
     age_bucket_var = problem.solve_for(
         age_bucket_id,
         type="int",

@@ -179,7 +179,7 @@ Use this sequence to deploy the model and query it:
      senior_implies_review            PASS                    0  every senior applicant goes through manual review
    ```
 
-   FAIL is the audit's finding about the ruleset, not a template error; a PASS means the solver proved no counterexample exists. The full printout and a step-by-step walkthrough are in `runbook.md`.
+   FAIL is the audit's finding about the ruleset, not a template error; a PASS means the solver proved no counterexample exists. The report also prints each failing property's witness table; `runbook.md` walks through the audit step by step.
 
    To solve again without changing the model, refresh the deployed model, then run the query again:
 
