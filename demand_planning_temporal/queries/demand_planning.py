@@ -36,11 +36,8 @@ if __name__ == "__main__":
         print(
             f"  Planning horizon: {planning_start} to {plan.planning_end} ({plan.num_weeks} weeks)"
         )
-        orders_in_scope = (
-            model.select(count(DemandOrder))
-            .where(OrderInPlan(DemandOrder, plan.planning_end))
-            .to_df()
-            .iloc[0, 0]
+        orders_in_scope = len(
+            model.select(DemandOrder.id).where(OrderInPlan(DemandOrder, plan.planning_end)).to_df()
         )
         print(f"  Demand orders in scope: {orders_in_scope} (of {total_orders} total)")
 

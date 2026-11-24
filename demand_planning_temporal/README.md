@@ -29,7 +29,7 @@ Prescriptive reasoning makes this practical because the solver simultaneously ba
 - **Operations researchers** looking for a multi-period flow-conservation pattern in RelationalAI
 
 - A cost-minimizing weekly production plan per (site, SKU, week), produced by **prescriptive** decision variables and a HiGHS solve.
-- A date-filtered planning horizon: only demand orders inside the configured window enter the model, with due dates mapped to integer week periods via `std.common.range()`.
+- A date-filtered planning horizon: each horizon's problem uses only the demand orders inside its window; `model/source.py` maps due dates to integer week numbers, and `std.common.range()` builds each horizon's weeks.
 - An inventory schedule that satisfies flow conservation (`inv[t] = inv[t-1] + production[t] - demand[t]`) enforced as prescriptive constraints.
 - A service-level guarantee (a 95% minimum-fulfillment constraint) plus an unmet-demand report showing whether any demand went unserved.
 - A three-scenario what-if sweep that shows how total cost changes as the planning horizon extends, with each horizon solved as its own problem in one deployed model.
@@ -40,7 +40,7 @@ Built using **prescriptive reasoning**: continuous decision variables for produc
 
 - **Model**: concepts for sites, SKUs, demand orders, production capacity, and weekly demand, time-indexed production and inventory variables, and one cost-minimizing problem per planning horizon, in the `model/` package (`schema.py` declares the concepts, `source.py` loads the sample data and scopes the orders to each horizon, `reasoning.py` states the decision problems), which `rai models deploy --path model` deploys to your Snowflake account, where each refresh runs the solves.
 - **Query**: `queries/demand_planning.py`, which prints the report from the deployed model.
-- **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
+- **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the code in `model/`.
 - **Data**: `data/sites.csv`, `data/skus.csv`, `data/demand_orders.csv`, `data/production_capacity.csv`, `data/initial_inventory.csv`
 - **Config**: `pyproject.toml`
 
@@ -273,7 +273,7 @@ See `model/reasoning.py` for the implementation and `runbook.md` to reproduce it
 
 ### Scale up / productionize
 
-- The scenario sweep shares one model across horizons; for production, replace the CSV loads in `model/source.py` with Snowflake-backed `model.data(...)` sources and refresh the deployed model on a schedule.
+- The scenario sweep shares one model across horizons; for production, read your Snowflake tables into DataFrames (for example with Snowpark's `to_pandas()`) in place of the CSV loads in `model/source.py`, so its week-number and weekly-demand preparation still runs. That preparation happens at deploy time, so new order data needs a redeploy, not only a refresh.
 - Solve time is controlled by `time_limit_sec` on `problem.configure("highs", ...)` in `model/reasoning.py`; raise it if larger site/SKU/week grids need more time.
 
 ## Troubleshooting
