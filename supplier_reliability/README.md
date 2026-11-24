@@ -230,7 +230,7 @@ Use this sequence to deploy the model and query it:
      without_SupplierB: OPTIMAL, obj=5150.00
    ```
 
-   The report checks the marginals against the economics they must satisfy (priced-out lanes, lanes in use, the binding capacity, positive demand prices), and stops with an error if any marginal is missing or any check fails. It does not check the objective values or re-check the solved orders against the constraints; compare the objectives with the sample output above.
+   The report checks the marginals against the economics they must satisfy (priced-out lanes, lanes in use, the binding capacity, positive demand prices), and stops with an error if a lane, supplier or product in the published plan lacks a marginal, or if any check fails. It does not check the objective values or re-check the solved orders against the constraints; compare the objectives with the sample output above.
 
    Reading the marginals: SupplierC is the cheapest source for every product, so
    it fills its 600-unit capacity and is the only binding capacity -- its shadow
@@ -345,12 +345,12 @@ Focus on the first changes most users will make.
 ### Use your own data
 
 - Replace the three CSVs in `data/` with your own, keeping the column names listed in *Sample data* above. `suppliers.csv`, `products.csv`, and `supply_options.csv` each map directly to a concept.
-- Every product in `products.csv` needs at least one supply option in `supply_options.csv`, and total capacity across suppliers must cover total demand, or the baseline solve is infeasible.
-- For Snowflake-backed runs, swap the `read_csv(...)` calls in `model/source.py` for `model.data(snowflake_table)` calls.
+- Every product in `products.csv` needs at least one supply option in `supply_options.csv`. The demand constraint covers only products with a supply option, so a product with none drops out of the problem and goes unserved without making the solve infeasible; the same happens in a scenario that excludes a product's only supplier. Total capacity across suppliers must also cover total demand, or the baseline solve is infeasible.
+- For Snowflake-backed runs, replace each `read_csv(...)` load and its `model.data(...)` wrapper in `model/source.py` with one `model.Table("<db>.<schema>.<table>")` source, defining the same concepts and properties from the table's columns.
 
 ### Tune parameters
 
-- **Capacity and demand** -- edit `capacity` in `suppliers.csv` and `demand` in `products.csv` to change where the bottleneck lands; the shadow prices track which constraint binds.
+- **Capacity and demand** -- edit `capacity` in `suppliers.csv` and `demand` in `products.csv` to change where the bottleneck lands; the shadow prices track which constraint binds. The report's marginal checks name the bundled suppliers (SupplierA and SupplierD priced out, SupplierC binding), so update them in `queries/sourcing_report.py` when the bottleneck moves.
 - **Costs** -- adjust `cost_per_unit` in `supply_options.csv` to shift the optimal sourcing mix and the reduced costs of unused lanes.
 - **Scenarios** -- edit `EXCLUDED_SUPPLIERS` in `model/reasoning.py` to test different disruptions.
 
@@ -371,7 +371,7 @@ Focus on the first changes most users will make.
 <details>
 <summary>Solver returns INFEASIBLE for a scenario</summary>
 
-This means total remaining supplier capacity cannot meet product demand after excluding a supplier. Check that the remaining suppliers have enough combined capacity by reviewing `suppliers.csv` and `products.csv`. You may need to relax demand constraints or add alternative suppliers.
+This means total remaining supplier capacity cannot meet product demand after excluding a supplier. A scenario that excludes a product's only supplier is not reported as infeasible: that product drops out of the demand constraint and goes unserved, so also check that every product keeps a supply option. Check that the remaining suppliers have enough combined capacity by reviewing `suppliers.csv` and `products.csv`. You may need to relax demand constraints or add alternative suppliers.
 </details>
 
 <details>
