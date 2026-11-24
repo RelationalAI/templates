@@ -51,3 +51,9 @@ problem.configure("highs", time_limit_sec=60)
 SolveStatus = model.Relationship(f"tsp solve status is {String:status}")
 TourDistance = model.Relationship(f"tsp tour distance is {Float:distance}")
 model.define(SolveStatus(problem.termination_status()), TourDistance(problem.objective_value()))
+
+# The problem-structure counts the report's formulation check reads: one variable per edge
+# plus one per node, and exactly one minimization objective.
+NumVariables = model.Relationship(f"tsp problem has {Integer:num_variables} variables")
+NumMinObjectives = model.Relationship(f"tsp problem has {Integer:num_min_objectives} minimization objectives")
+model.define(NumVariables(problem.num_variables()), NumMinObjectives(problem.num_min_objectives()))

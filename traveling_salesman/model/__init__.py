@@ -14,8 +14,18 @@ Run:
     `python -m queries.tour` then prints the report from the deployed model.
 """
 
-from .reasoning import SolveStatus, TourDistance, problem
+from .reasoning import NumMinObjectives, NumVariables, SolveStatus, TourDistance, problem
 from .schema import Edge, Node, model
 from .source import DATA_DIR
 
-__all__ = ["DATA_DIR", "Edge", "Node", "SolveStatus", "TourDistance", "model", "problem"]
+__all__ = [
+    "DATA_DIR",
+    "Edge",
+    "Node",
+    "NumMinObjectives",
+    "NumVariables",
+    "SolveStatus",
+    "TourDistance",
+    "model",
+    "problem",
+]
