@@ -230,7 +230,7 @@ The genealogy is the backbone: a built `Lot` consumes its input lots, so followi
 - **Primary identifiers**: every concept carries a string `id` (for example `LOT::SP-0423` on `Factor`); the genealogy and process history are threaded by relationships (`Lot consumes Lot`, `Unit consumes Lot`, `Unit ran on Machine`) rather than shared keys.
 - **Important invariants**: `Unit.defective` is `0` or `1`; `Factor.lift` is the touched-unit defect rate over the plant baseline (≈ 1.0 for non-causal high-volume factors); the `is_root_cause` decision variable is binary; a defective unit is either explained by a named cause it touches or marked unexplained.
 
-For the full concept and property definitions — including the relations the reasoning traces (`Lot consumes Lot`, `Unit consumes Lot`, `Unit ran on Machine`, and the derived `Factor touches Unit` incidence) — see `model/schema.py`; `runbook.md` builds them step by step with the RAI skills.
+For the full concept and property definitions — including the relations the reasoning traces (`Lot consumes Lot`, `Unit consumes Lot`, `Unit ran on Machine`, and the derived `Factor touches Unit` incidence) — see `model/schema.py` and, for `Factor touches Unit` and the rest of the derived relations, `model/reasoning.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
@@ -254,7 +254,7 @@ Each candidate is scored by how concentrated defects are among the units it touc
 
 ### Find the minimal diagnosis (Prescriptive)
 
-A binary decision variable names each suspect a root cause, and a binary slack lets a defective unit be left unexplained. The coverage constraint requires every defective unit to be explained by a named cause it touches or else marked unexplained. The objective trades off three things: a cost for each named cause (so the diagnosis stays small), a penalty for naming a cause that also touches many good units (so it stays specific), and a cost for leaving a defect unexplained. Together these make the optimizer prefer the single deep root over the several proximate sub-assemblies that merely carry it.
+A binary decision variable names each suspect a root cause, and a binary slack lets a defective unit be left unexplained. The coverage constraint requires every defective unit to be explained by a named cause it touches or else marked unexplained. The objective trades off three things: a cost for each named cause (so the diagnosis stays small), a penalty for naming a cause that also touches many good units (so it stays specific), and a cost for leaving a defect unexplained. Together these make the optimizer prefer the single deep root over the several proximate sub-assemblies that merely carry it. The deployed model publishes the problem's structure counts, and the report's formulation audit checks them after the refresh has solved; a failed audit stops the report, not the refresh.
 
 See `model/reasoning.py` for the implementation, `queries/root_cause_report.py` for the report, and `runbook.md` to reproduce each stage step by step with the RAI skills.
 
