@@ -74,7 +74,12 @@ if __name__ == "__main__":
     # everything. That is exactly the trap the contrast stage corrects. Genealogy
     # closure puts lots and machines on the same footing: a deep lot is "touched by"
     # every finished unit that carries it.
-    n_incidence = model.select(Factor.touched_count).to_df().iloc[:, 0].sum()
+    # One row per factor (selecting the count alone would merge factors with equal counts).
+    n_incidence = (
+        model.select(Factor.id.alias("factor"), Factor.touched_count.alias("units"))
+        .to_df()["units"]
+        .sum()
+    )
     top_raw = (
         model.select(
             Factor.id.alias("factor"),
@@ -163,59 +168,64 @@ if __name__ == "__main__":
         DiagnosisResult.n_root_causes.alias("n_root_causes"),
         DiagnosisResult.coverage.alias("coverage"),
     ).to_df()
-    n_defective = int(headline["n_defective"].iloc[0])
-    n_explained = int(headline["n_explained"].iloc[0])
-    print(
-        f"\nRoot-cause diagnosis: {int(headline['n_root_causes'].iloc[0])} factors explain {n_explained}/{n_defective} "
-        f"defective units ({headline['coverage'].iloc[0]:.0%} coverage)"
-    )
-    print(diagnosis.to_string(index=False))
-
-    # Corroborating evidence per named cause, the way a real RCA write-up reads:
-    # the defect signature it concentrates (a paste fault should present as cold
-    # solder, a reflow fault as solder bridging), plus a kind-specific tell --
-    # supplier and receipt date for a lot, calibration age for a machine. All of it
-    # is read back from ontology already loaded; the diagnosis is the hypothesis,
-    # this is the supporting evidence an engineer would confirm physically.
-    sig = (
-        model.where(
-            (f := Factor.ref()).is_root_cause > 0.5,
-            f.touches(u := Unit.ref()),
-            u.is_defective(),
+    # The headline has no explained-unit count (no row, or a null) when the solve returned
+    # no solution.
+    if headline.empty or headline["n_explained"].isna().any():
+        print("\nNo diagnosis: the solve returned no solution (see its status above).")
+    else:
+        n_defective = int(headline["n_defective"].iloc[0])
+        n_explained = int(headline["n_explained"].iloc[0])
+        print(
+            f"\nRoot-cause diagnosis: {int(headline['n_root_causes'].iloc[0])} factors explain {n_explained}/{n_defective} "
+            f"defective units ({headline['coverage'].iloc[0]:.0%} coverage)"
         )
-        .select(f.id.alias("factor"), u.defect_type.alias("defect_type"))
-        .to_df()
-    )
-    print("\nCorroborating evidence per root cause:")
-    for _, row in diagnosis.iterrows():
-        fid, kind, label = row["factor"], row["kind"], row["label"]
-        types = sig[sig["factor"] == fid]["defect_type"]
-        dom = types.value_counts()
-        signature = f"{dom.iloc[0] / len(types):.0%} {dom.index[0]}"
-        # Each kind's evidence is read through the factor's typed pointer to its lot,
-        # machine, or shift.
-        if kind == "LOT":
-            tell_df = (
-                model.where((fl := Factor.ref()).id == fid)
-                .select(
-                    fl.lot.supplier.name.alias("supplier"),
-                    fl.lot.received_date.alias("recv"),
+        print(diagnosis.to_string(index=False))
+
+        # Corroborating evidence per named cause, the way a real RCA write-up reads:
+        # the defect signature it concentrates (a paste fault should present as cold
+        # solder, a reflow fault as solder bridging), plus a kind-specific tell --
+        # supplier and receipt date for a lot, calibration age for a machine. All of it
+        # is read back from ontology already loaded; the diagnosis is the hypothesis,
+        # this is the supporting evidence an engineer would confirm physically.
+        sig = (
+            model.where(
+                (f := Factor.ref()).is_root_cause > 0.5,
+                f.touches(u := Unit.ref()),
+                u.is_defective(),
+            )
+            .select(f.id.alias("factor"), u.defect_type.alias("defect_type"))
+            .to_df()
+        )
+        print("\nCorroborating evidence per root cause:")
+        for _, row in diagnosis.iterrows():
+            fid, kind, label = row["factor"], row["kind"], row["label"]
+            types = sig[sig["factor"] == fid]["defect_type"]
+            dom = types.value_counts()
+            signature = f"{dom.iloc[0] / len(types):.0%} {dom.index[0]}"
+            # Each kind's evidence is read through the factor's typed pointer to its lot,
+            # machine, or shift.
+            if kind == "LOT":
+                tell_df = (
+                    model.where((fl := Factor.ref()).id == fid)
+                    .select(
+                        fl.lot.supplier.name.alias("supplier"),
+                        fl.lot.received_date.alias("recv"),
+                    )
+                    .to_df()
                 )
-                .to_df()
-            )
-            tell = f"supplier {tell_df['supplier'].iloc[0]}, received {tell_df['recv'].iloc[0]}"
-        elif kind == "MACHINE":
-            tell_df = (
-                model.where((fm := Factor.ref()).id == fid)
-                .select(fm.machine.calibration_age_days.alias("age"))
-                .to_df()
-            )
-            tell = f"{int(tell_df['age'].iloc[0])} days since last calibration"
-        else:
-            shift_df = (
-                model.where((fs := Factor.ref()).id == fid)
-                .select(fs.shift_name.alias("shift"))
-                .to_df()
-            )
-            tell = f"{shift_df['shift'].iloc[0]} shift"
-        print(f"  {label:<26} {signature:<18} {tell}")
+                tell = f"supplier {tell_df['supplier'].iloc[0]}, received {tell_df['recv'].iloc[0]}"
+            elif kind == "MACHINE":
+                tell_df = (
+                    model.where((fm := Factor.ref()).id == fid)
+                    .select(fm.machine.calibration_age_days.alias("age"))
+                    .to_df()
+                )
+                tell = f"{int(tell_df['age'].iloc[0])} days since last calibration"
+            else:
+                shift_df = (
+                    model.where((fs := Factor.ref()).id == fid)
+                    .select(fs.shift_name.alias("shift"))
+                    .to_df()
+                )
+                tell = f"{shift_df['shift'].iloc[0]} shift"
+            print(f"  {label:<26} {signature:<18} {tell}")

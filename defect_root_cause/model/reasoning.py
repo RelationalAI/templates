@@ -184,7 +184,9 @@ model.define(
 
 # Persist the headline as queryable ontology: a DiagnosisResult singleton derived
 # from the named root causes (populate=True writes the solution onto is_root_cause).
-# A diagnosis that names no cause explains zero units, so both counts default to 0.
+# A solved diagnosis that names no cause explains zero units, so both counts default
+# to 0; they are defined only when the solve returned a solution (an objective value),
+# so a failed solve publishes no diagnosis rather than an empty one.
 DiagnosisResult = model.Concept("DiagnosisResult", identify_by={"id": Integer})
 DiagnosisResult.n_defective = model.Property(f"{DiagnosisResult} has {Integer:n_defective}")
 DiagnosisResult.n_explained = model.Property(f"{DiagnosisResult} has {Integer:n_explained}")
@@ -196,7 +198,7 @@ model.define(
         aggs.count(Unit).per(DiagnosisResult).where(Unit.is_defective())
     )
 )
-model.define(
+model.where(DiagnosisCost(Float.ref())).define(
     DiagnosisResult.n_explained(
         aggs.count(Unit)
         .per(DiagnosisResult)
@@ -208,7 +210,7 @@ model.define(
         | 0
     )
 )
-model.define(
+model.where(DiagnosisCost(Float.ref())).define(
     DiagnosisResult.n_root_causes(
         aggs.count(Factor).per(DiagnosisResult).where(Factor.is_root_cause > 0.5) | 0
     )
