@@ -41,7 +41,7 @@ The rule structure here is a synthetic fixture policy modeled on the public [CMS
 - A pre-solve dense-ID check on `plans.csv`, `providers.csv`, and `age_buckets.csv` so the solver's integer decision bounds line up with the reference rows the CFDs iterate over (sparse IDs would let the solver pick a value with no matching row, leaving the rules unconstrained for that record and silently dropping it from the post-solve display join)
 - **Multi-solution enumeration as the primary code path**: `problem.configure(..., solution_limit=MAX_RECORDS)` makes each refresh run the search in enumeration mode; `Variable.values(solution_index, value)` joins the three decision variables on a shared solution index to reconstruct each record
 - An empty-result branch driven by the `NumPoints` relationship (`problem.num_points()`): when no feasible record exists, the report prints a diagnostic instead of hard-failing, which is the right shape for a reusable generator
-- No check re-evaluates the ICs: every IC uses `implies`, which is solver-only, and `problem.verify()` returns without evaluating implies-bodied ICs, so passing them to it checks nothing. The CFD and network-attribution invariants are directly visible in the expected-output block in the Quickstart: every record's `age_years` vs `plan_type` and every record's `network` vs `provider` are printed side-by-side
+- No check re-evaluates the ICs after the solve: `problem.verify()` refuses constraint fragments when model deployments are enabled. The CFD and network-attribution invariants are directly visible in the expected-output block in the Quickstart: every record's `age_years` vs `plan_type` and every record's `network` vs `provider` are printed side-by-side
 
 ## What's included
 
@@ -337,7 +337,7 @@ To extend to a fleet of N members, reintroduce a `Member` concept inside the mod
 <details>
   <summary>Solver returns INFEASIBLE / no feasible eligibility records</summary>
 
-- Check the solve status the report prints. `INFEASIBLE` means the reference data admits no record; `UNKNOWN` or `TIME_LIMIT` means the budget expired before a record was found (raise `time_limit_sec` or shrink the decision domains).
+- Check the solve status the report prints. `INFEASIBLE` means the reference data admits no record; `UNKNOWN` or `TIME_LIMIT` means the budget expired before the search finished; the report still lists any records found, counted by `num_points` (raise `time_limit_sec` or shrink the decision domains).
 - For genuine infeasibility: each solution picks one age bucket, so the model is infeasible only when *every* bucket lands on a side of the senior threshold that has no compatible plan-and-provider combination. One feasible side is enough: confirm there is either an age bucket with `age_years >= SENIOR_THRESHOLD_YEARS` and a Medicare-Advantage plan whose network has a provider, or a bucket with `age_years < SENIOR_THRESHOLD_YEARS` and a non-Medicare plan whose network has a provider. The pre-solve coverage check also warns on either-direction asymmetry between `plans.csv` and `providers.csv`; read the startup warnings before assuming the data is sound.
 
 </details>
@@ -361,7 +361,7 @@ To extend to a fleet of N members, reintroduce a `Member` concept inside the mod
 <details>
   <summary>Warning: provider network(s) [...] have no plans in plans.csv</summary>
 
-- The model's symmetric coverage check found a `network_id` value in `providers.csv` that does not appear in any `plans.csv` row. The PCP-network-attribution IC forbids cross-network `(plan, provider)` combinations, so providers in those networks can never be matched to any plan and will never appear in a generated record. The model is still solvable -- this is a warning, not an error.
+- The model's symmetric coverage check found a `network_id` value in `providers.csv` that does not appear in any `plans.csv` row. The PCP-network-attribution IC forbids cross-network `(plan, provider)` combinations, so providers in those networks can never be matched to any plan and will never appear in a generated record. Those orphaned providers alone do not make the model infeasible -- this is a warning, not an error -- but records still need at least one compatible age, plan and provider combination.
 - Add a plan on the listed network(s) to make those providers reachable, or remove the dead provider rows from `providers.csv`.
 
 </details>
@@ -369,7 +369,7 @@ To extend to a fleet of N members, reintroduce a `Member` concept inside the mod
 <details>
   <summary>How many records will the solver return?</summary>
 
-- Up to `MAX_RECORDS` (16 by default) or however many feasible records exist in the reference data, whichever is smaller. The report's `num_points` line shows the actual count after the solve; its `status` line shows `SOLUTION_LIMIT` when the limit was hit (more records available) and `OPTIMAL` when the search has been exhausted.
+- Up to `MAX_RECORDS` (16 by default) or however many feasible records exist in the reference data, whichever is smaller. The report's `num_points` line shows the actual count after the solve; its `status` line shows `SOLUTION_LIMIT` when the limit was hit (more records may exist) and `OPTIMAL` when the search has been exhausted.
 - Solution ordering is not guaranteed across runs or solver versions; the *set* of returned records may also shift if MiniZinc's branching heuristics see new ties. Treat the `solution` column as a label, not a ranking.
 - The K returned records are guaranteed to be pairwise *distinct* on at least one decision (age bucket, plan, or provider) but not maximally diverse and not ranked. For broader spread, raise `MAX_RECORDS` past the size of the feasible set so the solver exhausts every distinct case, or add stratification buckets and re-solve per stratum.
 
