@@ -34,7 +34,7 @@ if __name__ == "__main__":
     # Optimum: steel_factory fills all 40 hrs (bands to its 6000 cap = 30 hrs, coils takes
     # the last 10 hrs = 1400 units); amazing_brewery makes both products to their demand
     # caps in 25 of its 30 hrs. Profit = 192000 + 8000 = 200000.
-    if len(profit) != 1 or abs(profit[0] - 200000) >= 0.01:
+    if len(profit) != 1 or not abs(profit[0] - 200000) < 0.01:
         raise SystemExit(f"total profit changed: expected 200000, got {profit}")
 
     # --- The solved production plan -------------------------------------------------
@@ -65,7 +65,7 @@ if __name__ == "__main__":
         raise SystemExit(f"expected one plan row per product, got {sorted(plan_df['product'])}")
     for product_name, expected_qty in EXPECTED_PLAN.items():
         actual_qty = plan_df.loc[plan_df["product"] == product_name, "quantity"].iloc[0]
-        if abs(actual_qty - expected_qty) >= 0.01:
+        if not abs(actual_qty - expected_qty) < 0.01:
             raise SystemExit(f"{product_name}: expected {expected_qty}, got {actual_qty}")
 
     # --- Capacity shadow prices: which factory to expand first ----------------------
