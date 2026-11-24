@@ -17,7 +17,7 @@ from model import (
     model,
 )
 from pandas import set_option as pd_set_option
-from relationalai.semantics import Integer
+from relationalai.semantics import Integer, String
 
 # Make sure every column of the witness table makes it into the printed
 # output; the default pandas display width collapses to "..." when more
@@ -61,10 +61,19 @@ def report_audit(name, description):
     print(f"\n===== Auditing property: {name} =====")
     print(f"Description: {description}")
 
-    statuses = model.select(SolveStatus[name]).to_df().iloc[:, 0].tolist()
-    points = model.select(NumPoints[name]).to_df().iloc[:, 0].tolist()
+    # Status and count are read in one query, so both come from the same refresh. The status
+    # is read alone only when no count is published.
+    status_ref, count_ref = String.ref(), Integer.ref()
+    result = model.select(status_ref.alias("status"), count_ref.alias("count")).where(
+        SolveStatus[name](status_ref), NumPoints[name](count_ref)
+    ).to_df()
+    if result.empty:
+        statuses = model.select(SolveStatus[name]).to_df().iloc[:, 0].tolist()
+        n_witnesses = None
+    else:
+        statuses = result["status"].tolist()
+        n_witnesses = result["count"].iloc[0]
     status = ", ".join(statuses)
-    n_witnesses = points[0] if points else None
     verdict = _classify_verdict(status, n_witnesses)
     count_text = "no count" if n_witnesses is None else str(n_witnesses)
     print(f"Verdict: {verdict}  ({count_text} witness(es), status={status})")
