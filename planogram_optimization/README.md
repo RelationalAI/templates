@@ -61,7 +61,7 @@ The same pattern applies to any predict-then-optimize problem where the predicti
 - A Snowflake user that holds the model role.
 
 ### Tools
-- Python >= 3.10
+- Python 3.10 through 3.14 (the range relationalai 2.3.0 supports)
 - RelationalAI Python SDK (`relationalai == 2.3.0`)
 
 ## Quickstart

@@ -58,7 +58,7 @@ Built on RelationalAI's graph reasoner: **reachability** for transitive dependen
 
 ### Tools
 
-- Python >= 3.10
+- Python 3.10 through 3.14 (the range relationalai 2.3.0 supports)
 - The `relationalai` SDK and the `rai` CLI (installed by the Quickstart's `python -m pip install .`).
 - Assembly-path enumeration is a PREVIEW capability that requires `relationalai>=1.15`; reachability and betweenness run on earlier versions.
 

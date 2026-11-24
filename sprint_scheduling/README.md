@@ -53,7 +53,7 @@ Built using **prescriptive reasoning** (mixed-integer programming solved with Hi
 - A Snowflake user that holds the model role.
 
 ### Tools
-- Python >= 3.10
+- Python 3.10 through 3.14 (the range relationalai 2.3.0 supports)
 
 ## Quickstart
 

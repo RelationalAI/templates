@@ -95,6 +95,7 @@ class RefactoredTemplateContractTests(unittest.TestCase):
 
         self.assertIn("ground_truth.csv", ast.dump(functions["load_ground_truth"]))
         self.assertNotIn("ground_truth.csv", ast.dump(functions["load_source_data"]))
+        self.assertNotIn("load_ground_truth", ast.dump(functions["load_source_data"]))
 
         report_module = parse("entity_resolution/queries/resolution_report.py")
         ground_truth_calls = [

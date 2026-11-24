@@ -85,7 +85,7 @@ The bundled CSVs ship with the template; there is no source-table setup and no G
 
 ### Tools
 
-- Python >= 3.10.
+- Python 3.10 through 3.14 (the range relationalai 2.3.0 supports).
 - The `relationalai[gnn]` SDK and the `rai` CLI (installed by the Quickstart's `python -m pip install .`).
 
 ## Quickstart

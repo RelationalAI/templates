@@ -63,7 +63,7 @@ At a high level, this exercises three RelationalAI capabilities on one shared mo
 
 ### Tools
 
-- Python 3.10 or later.
+- Python 3.10 through 3.14 (the range relationalai 2.3.0 supports).
 - The RelationalAI Python library and the `rai` CLI, installed by the Quickstart's `python -m pip install .`.
 
 ## Quickstart

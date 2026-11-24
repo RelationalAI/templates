@@ -58,7 +58,7 @@ Built using **graph analysis** — PageRank (an iterative random-walk algorithm)
 
 ### Tools
 
-- Python >= 3.10
+- Python 3.10 through 3.14 (the range relationalai 2.3.0 supports)
 - RelationalAI Python SDK (`relationalai == 2.3.0`)
 - For the interactive app only: the `visualization` extra (`python -m pip install .[visualization]`)
 

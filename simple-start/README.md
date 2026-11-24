@@ -40,7 +40,7 @@ It walks through a small end-to-end example: create a Snowflake table, model it 
 
 ## Prerequisites
 
-- Python >= 3.10
+- Python 3.10 through 3.14 (the range relationalai 2.3.0 supports)
 - A Snowflake account with the RelationalAI Native App installed
 - A role that can deploy models, set up once by an account administrator: follow [Set up model deployment](https://private.relational.ai/early-access/model-deploy-setup) (**Try it out**, or **Governed setup** for a shared account). This template has no prescriptive solve, so it needs no PAT setup.
 - A Snowflake user that holds that role, where the role can also:

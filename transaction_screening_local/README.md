@@ -51,7 +51,7 @@ The value of the template is that you can try this entire workflow with nothing 
 
 ### Tools
 
-- Python 3.10 or later.
+- Python 3.10 through 3.14 (the range relationalai 2.3.0 supports).
 - `relationalai` 2.3.0, the version pinned in `pyproject.toml`. DuckDB is included with the package.
 
 Local DuckDB execution relies on deploy mode, which the package currently flags as experimental.

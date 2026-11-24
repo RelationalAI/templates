@@ -55,7 +55,7 @@ Built using **graph analysis** (a directed, weighted graph with `Facility` as th
 
 ### Tools
 
-- Python >= 3.10
+- Python 3.10 through 3.14 (the range relationalai 2.3.0 supports)
 - RelationalAI Python SDK (`relationalai == 2.3.0`).
 - Optional: `streamlit`, `plotly`, `numpy` for the interactive app (installed via the `visualization` extra).
 

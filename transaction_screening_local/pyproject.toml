@@ -7,7 +7,7 @@ name = "rai-template-transaction-screening-local"
 version = "0.0.0"
 description = "RelationalAI template: transaction_screening_local (PyRel v1, local DuckDB)"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.10,<3.15"
 dependencies = [
   "relationalai==2.3.0",
 ]

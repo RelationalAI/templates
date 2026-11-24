@@ -7,7 +7,7 @@ name = "rai-template-subscriber-retention"
 version = "0.0.0"
 description = "RelationalAI template: subscriber_retention (PyRel v1)"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.10,<3.15"
 dependencies = [
   "relationalai[gnn]==2.3.0",
   "pandas",

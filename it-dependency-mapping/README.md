@@ -59,7 +59,7 @@ Built using RelationalAI's **variable-length path enumeration** (`model.path(...
 
 ### Tools
 
-- Python >= 3.10
+- Python 3.10 through 3.14 (the range relationalai 2.3.0 supports)
 - `relationalai` 2.3.0, the version pinned in `pyproject.toml` -- the path-traversal API is a preview capability.
 - The `rai` CLI (ships with the `relationalai` SDK) for configuring your connection.
 

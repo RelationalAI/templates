@@ -51,7 +51,7 @@ This template answers all of those in one place: it finds the cost-minimizing so
 - A Snowflake user that holds the model role.
 
 ### Tools
-- Python >= 3.10
+- Python 3.10 through 3.14 (the range relationalai 2.3.0 supports)
 - RelationalAI Python SDK (`relationalai`) == 2.3.0
 
 ## Quickstart

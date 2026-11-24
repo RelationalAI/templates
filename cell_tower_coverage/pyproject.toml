@@ -7,7 +7,7 @@ name = "rai-template-cell-tower-coverage"
 version = "0.0.0"
 description = "RelationalAI template: cell_tower_coverage (PyRel v1)"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.10,<3.15"
 dependencies = [
   "relationalai==2.3.0",
   "pandas>=2.0",
