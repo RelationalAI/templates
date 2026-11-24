@@ -37,7 +37,7 @@ This template scores the held-out test subscribers for churn risk using both the
 
 - A per-subscriber churn-risk score, predicted by a **graph neural network (GNN) regression head** (the predictive reasoner) from plan attributes, demographics, and call-network features.
 - Call-network features enriched onto each subscriber by the **graph reasoner** -- a PageRank "social influence" score plus aggregate-derived `outgoing_calls` / `incoming_calls` counts -- so the GNN sees who each subscriber talks to.
-- A retention-ready report of the top-N highest-predicted-risk subscribers per segment, queryable straight from the ontology.
+- A retention-ready report of the top-N highest-predicted-risk subscribers per segment: the deployed model publishes each test subscriber's predicted risk, and the report ranks and truncates it per segment.
 - A pipeline that runs end-to-end on the small bundled telco dataset (~1,200 subscribers, ~6,000 calls) with no Snowflake source-data setup and no GPU.
 
 Built using the **graph reasoner** (PageRank on the call graph) and the **predictive reasoner** (GNN regression scored per subscriber).
