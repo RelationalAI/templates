@@ -24,11 +24,7 @@ if __name__ == "__main__":
     if status != ["OPTIMAL"]:
         raise SystemExit(f"termination status {status}")
     if total_revenue:
-        print(f"• objective: {round(total_revenue[0], 9)}\n")
-
-    print(f"Status: {status[0]}")
-    if total_revenue:
-        print(f"Total revenue (sales + salvage): ${total_revenue[0]:.2f}")
+        print(f"• objective (sales + salvage revenue): {round(total_revenue[0], 9)}")
 
     # Extract the solution with model.select(); the solved values are populated.
     print("\n=== Selected Discounts by Product-Week ===")

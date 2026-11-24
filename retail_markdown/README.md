@@ -155,10 +155,7 @@ Use this sequence to deploy the model and query it:
    ```text
    Solve result:
    • status: OPTIMAL
-   • objective: 23374.65
-
-   Status: OPTIMAL
-   Total revenue (sales + salvage): $23374.65
+   • objective (sales + salvage revenue): 23374.65
 
    === Selected Discounts by Product-Week ===
        product  week  discount_pct
@@ -169,7 +166,7 @@ Use this sequence to deploy the model and query it:
    ...
    ```
 
-   The selected discounts are cut after four rows; the report also prints the units sold and the cumulative sales for each product and week. Discounts start shallow (20 percent) and deepen to 30 percent later in the season; no product needs the 50 percent tier. See `runbook.md` for the full discount, sales, and cumulative-sales schedule.
+   The selected discounts are cut after four rows; the report also prints the units sold and the cumulative sales for each product and week. Discounts start shallow (20 percent) and deepen to 30 percent later in the season; no product needs the 50 percent tier. The report's three tables give the full schedule; `runbook.md` summarizes how it evolves.
 
    To solve again without changing the model, refresh the deployed model, then run the query again:
 
@@ -249,13 +246,13 @@ Focus on the first changes most users will make.
 ### Use your own data
 
 - Replace the CSVs in `data/` with your own, keeping the column names listed in *Sample data* above.
-- Keep a `level` 0 / 0% row in `discounts.csv` so "no markdown" remains a feasible choice.
-- For Snowflake-backed runs, swap the `read_csv(...)` calls in `model/source.py` for `model.data(snowflake_table)`.
+- Number `level` in `discounts.csv` in order of increasing `discount_pct`: the price ladder lets a product move only to a higher level. Keep a `level` 0 / 0% row if "no markdown" should remain an option.
+- For Snowflake-backed runs, replace the `read_csv(...)` loads in `model/source.py` with `model.Table("<db>.<schema>.<table>")` sources, defining the same concepts and properties from each table's columns.
 
 ### Tune parameters
 
 - **Discount levels** — modify `discounts.csv` to add finer or coarser tiers with different demand lifts.
-- **Planning horizon** — add or remove rows in `weeks.csv`; the model scales with longer horizons.
+- **Planning horizon** — add or remove rows in `weeks.csv`, keeping `num` consecutive from 1 (renumber after removing a week): the inventory recurrence and price ladder link each week to week `num - 1`, and salvage is credited at week `num` equal to the number of weeks.
 - **Solver time limit** — `time_limit_sec` (default `60`) on the `problem.configure(...)` call in `model/reasoning.py`.
 
 ### Extend the model
@@ -267,20 +264,20 @@ Focus on the first changes most users will make.
 ### Scale up / productionize
 
 - Replace the CSV bundle with ingestion from your merchandising or point-of-sale tables.
-- Mixed-integer programs grow harder with more products, weeks, and discount tiers; give the solver more time via `time_limit_sec`, or accept a near-optimal solution by checking the MIP gap.
+- Mixed-integer programs grow harder with more products, weeks, and discount tiers; give the solver more time via `time_limit_sec`. The report stops unless the solve is `OPTIMAL`.
 
 ## Troubleshooting
 
 <details>
 <summary>Problem is infeasible</summary>
 
-Check that initial inventory is sufficient for at least one week of base demand. Also verify that the discount levels include a 0% option (no discount) so the model has a feasible starting point.
+Selling nothing is always feasible when the inputs are non-negative and `discounts.csv` has at least one tier, so check for negative inventory, demand, lift, or multiplier values, and for an empty `discounts.csv`.
 </details>
 
 <details>
 <summary>Solver is slow or times out</summary>
 
-Mixed-integer programs can be computationally expensive. Reduce the number of products, weeks, or discount levels. You can also increase `time_limit_sec` or accept a near-optimal solution by checking the MIP gap.
+Mixed-integer programs can be computationally expensive. Reduce the number of products, weeks, or discount levels, or increase `time_limit_sec`. The report stops on any status other than `OPTIMAL`, so a time-limited incumbent is not printed.
 </details>
 
 <details>
