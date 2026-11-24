@@ -50,7 +50,7 @@ if __name__ == "__main__":
         raise SystemExit(f"termination status {status}")
     covered_population = _scalar(CoveredPopulation)
     if covered_population is None:
-        raise SystemExit(f"termination status {status}: no solution found within the time limit")
+        raise SystemExit(f"termination status {status}: the solve published no objective value")
     print(f"• objective: {round(covered_population, 9)}\n")
 
     # --------------------------------------------------

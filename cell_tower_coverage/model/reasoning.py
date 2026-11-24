@@ -107,12 +107,12 @@ CoveredPopulation = model.Relationship(
 model.define(SolveStatus(problem.termination_status()), CoveredPopulation(problem.objective_value()))
 
 # Policy limits and plan totals, which the deployed model publishes for the report.
-BuildBudget = model.Relationship(f"cell tower coverage build budget is {Integer:budget}")
+BuildBudget = model.Relationship(f"cell tower coverage build budget is {Float:budget}")
 MaxNewTowers = model.Relationship(f"cell tower coverage tower cap is {Integer:max_towers}")
 TotalPopulation = model.Relationship(f"cell tower coverage total population is {Integer:population}")
 SelectedBuildCost = model.Relationship(f"cell tower coverage selected build cost is {Float:cost}")
 model.define(
-    BuildBudget(BUILD_BUDGET),
+    BuildBudget(float(BUILD_BUDGET)),
     MaxNewTowers(MAX_NEW_TOWERS),
     TotalPopulation(sum(DemandZone, DemandZone.population)),
     SelectedBuildCost(
