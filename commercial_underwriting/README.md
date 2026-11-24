@@ -246,7 +246,7 @@ See `model/reasoning.py` for the implementation, `queries/underwriting_report.py
 
 ### Use your own data
 
-Replace the four CSVs with your own underwriting submissions. Required columns are listed in the *Model overview* section. The `Concept.new(...)` and `Relationship` definitions in `model/source.py` and `model/schema.py` match the CSV column names exactly — keep the same headers or update the `model.data(...)` calls in `model/source.py` to match.
+Replace the four CSVs with your own underwriting submissions, keeping the headers of the bundled files in `data/`. `model/source.py` loads each column into the property of the same name, except the foreign keys `insured_entity_id`, `policy_id`, and `location_id`, which link each policy, location, and coverage to its parent row. To use other headers, update the column references in `model/source.py` to match.
 
 ### Tune parameters
 
@@ -288,7 +288,7 @@ All thresholds are at the top of `model/reasoning.py` under `# Configure inputs`
 <details>
   <summary>Why is <code>GoodOps Inc</code> Standard rather than Preferred?</summary>
 
-  GoodOps Inc has only 8 years in business, which is below the `PREFERRED_MIN_YEARS=15` floor. It also has FP class 4 at its single location, which exceeds the `PREFERRED_MAX_FP_CLASS=3` cap. Either factor alone disqualifies it from Preferred. Lowering both thresholds (e.g., `PREFERRED_MIN_YEARS=5`, `PREFERRED_MAX_FP_CLASS=4`) would promote it.
+  GoodOps Inc has only 8 years in business, which is below the `PREFERRED_MIN_YEARS=15` floor. It also has FP class 4 at its single location, which exceeds the `PREFERRED_MAX_FP_CLASS=3` cap. Either factor alone disqualifies it from Preferred. Lowering the years floor and raising the fire-class cap (e.g., `PREFERRED_MIN_YEARS=5`, `PREFERRED_MAX_FP_CLASS=4`) would promote it.
 </details>
 
 <details>
