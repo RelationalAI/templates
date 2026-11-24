@@ -1,12 +1,11 @@
 """Test data generation decision problem: row counts closest to the targets, within the bounds."""
 
-import pandas as pd
 from relationalai.semantics import Float, String
 from relationalai.semantics import sum as rai_sum
 from relationalai.semantics.reasoners.prescriptive import Problem
 
 from .schema import Property, Table, model
-from .source import constraints_df, fk_objs
+from .source import fk_objs
 
 # Decision variable properties
 Table.x_actual_rows = Property(f"{Table} has actual {Float:actual_rows}")
@@ -48,25 +47,11 @@ for fk_info in fk_objs:
         ParentTable.table_name == parent_name
     ))
 
-    # Lower bound: at least the declared minimum of children per parent
+    # Lower bound: at least the declared minimum of children per parent (cardinality,
+    # frequency, or mandatory participation)
     if fk_info['min'] > 0:
         problem.satisfy(model.require(
             Table.x_actual_rows >= ParentTable.x_actual_rows * fk_info['min']
-        ).where(
-            Table.table_name == child_name,
-            ParentTable.table_name == parent_name
-        ))
-
-    # Lower bound for mandatory participation
-    mandatory = constraints_df[
-        (constraints_df['constraint_type'] == 'mandatory_participation') &
-        (constraints_df['table_name'] == child_name) &
-        (constraints_df['related_table'] == parent_name)
-    ]
-    if len(mandatory) > 0:
-        min_per = int(mandatory.iloc[0]['min_value']) if not pd.isna(mandatory.iloc[0]['min_value']) else 1
-        problem.satisfy(model.require(
-            Table.x_actual_rows >= ParentTable.x_actual_rows * min_per
         ).where(
             Table.table_name == child_name,
             ParentTable.table_name == parent_name
