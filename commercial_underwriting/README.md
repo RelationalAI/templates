@@ -172,7 +172,7 @@ Run these steps from a terminal:
 
    The output above is an excerpt: it leaves out the stage banners, the Stage 2 flag matrix, and the tier table's `id` column.
 
-   Each entity falls into exactly one tier, because the four tier concepts partition the insured entities, and the report prints a warning if any entity lands in no tier or in two. The premium-by-tier rollup is the underwriting business view: about $150K of bound premium is associated with submissions that today's rules would decline; about $236K is non-standard and could be repriced.
+   Each entity falls into exactly one tier, because the four tier concepts partition the insured entities, and the report prints a warning if any entity lands in no tier or in two. The premium-by-tier rollup is the underwriting business view. Each observation in it is one insured, whose premium is the sum of its policies' premiums (zero for an insured without a policy), so `count` is insureds per tier and `mean` is premium per insured: about $150K of bound premium is associated with submissions that today's rules would decline; about $236K is non-standard and could be repriced.
 
 7. **Tear down the deployment**
 
