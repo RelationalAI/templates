@@ -182,7 +182,7 @@ Use this sequence to deploy the model and query it:
    5         6            60          60
    ```
 
-   The report prints the solve-result block, the full event trace (all 36 rows; abridged above to the first AAPL block), and per-order fill totals. Each event's four type indicators all print as is_type followed by the event id, because variable names are keyed by event id. Rows are sorted by order and timestamp; the type column reads each event's chosen EventType member name back from a derived enum-typed relationship (OrderEvent.event_type.name). Exact event types, timestamps, quantities, prices, and venues vary across runs and solver versions.
+   The report prints the solve-result block, the full event trace (all 36 rows; abridged above to the first AAPL block), and per-order fill totals. Rows are sorted by order and timestamp; the type column reads each event's chosen EventType member name back from a derived enum-typed relationship (OrderEvent.event_type.name). Exact event types, timestamps, quantities, prices, and venues vary across runs and solver versions.
 
    The AAPL block above is one of six orders; the others follow the same shape. PLACE has the smallest timestamp per order with its quantity and tick price pinned to the order row, and venues are constrained to the symbol's eligible set (here NYSE, NASDAQ, and ARCA for AAPL). The conservation constraint is that the sum of fill_qty is at most original_qty; the run above fills exactly original_qty on every order, and any fill total at or below the original quantity is a valid trace.
 
@@ -227,7 +227,7 @@ Use this sequence to deploy the model and query it:
 
 The solver decides every event's type, timestamp, venue, and quantity. The template proceeds in five steps.
 
-**1. Define the ontology and load data.** `Symbol`, `Venue`, `Order`, and `OrderEvent` concepts are declared with their identifying properties; `SymbolVenue` and a derived `NotAllowedSymbolVenue` capture the eligible (and dual disallowed) symbol/venue pairs. CSV rows from `data/` populate every concept and relationship. `NotAllowedSymbolVenue` is an encoding artifact, not a domain concept: the CSP arithmetic supports only `!=, *, +, -`, so the rule is encoded as "forbid these pairs" rather than the more natural "require an allowed pair".
+**1. Define the ontology and load data.** `Symbol`, `Venue`, `Order`, and `OrderEvent` concepts are declared with their identifying properties; `NotAllowedSymbolVenue` holds the disallowed symbol/venue pairs: `model/source.py` derives them as every pair not listed in `data/symbol_venues.csv`. CSV rows from `data/` populate every concept and relationship. `NotAllowedSymbolVenue` is an encoding artifact, not a domain concept: the CSP arithmetic supports only `!=, *, +, -`, so the rule is encoded as "forbid these pairs" rather than the more natural "require an allowed pair".
 
 **2. Declare decision variables.** The event-type vocabulary is a `model.Enum` (`EventType`: `PLACE`, `MODIFY`, `CANCEL`, `FILL`), and a single enum-indexed property `OrderEvent.has_type` carries one binary indicator per (event slot, type), declared with a single `solve_for` call. Each slot also gets integer decisions (`ts_ms`, `qty`, `tick_price`, `venue_id`). An auxiliary `fill_qty` decision channels `qty` when the `FILL` indicator is 1 (else 0) so the per-order fill-conservation aggregate stays linear:
 
@@ -305,7 +305,6 @@ model.define(SolveStatus(problem.termination_status()))
 
 - **Use your own pool** by replacing the five CSV files with your symbols, venues, allowed (symbol, venue) pairs, orders, and event slots. The constraint structure does not change. Add more events per order to allow longer traces; the model adapts to the number of rows in `events.csv`. Two assumptions on your data:
   - `venues.csv` ids should be contiguous `1..N` -- the `venue_id` decision domain is `[1, max(venue_id)]`, so non-contiguous ids would let the solver pick venue ids that don't exist.
-  - At least one disallowed `(symbol, venue)` pair must exist -- if your `symbol_venues.csv` covers every symbol×venue combination, the empty disallowed list breaks `model.data(...).to_schema()`. In that case drop `venue_ok_ic`.
 - **Force a CANCEL on every order** by changing `at_most_one_cancel_ic` from `<= 1` to `== 1`, then bumping the per-order event count so the order has room for a `PLACE` plus other events before the `CANCEL`.
 - **Add the inverse rule "no MODIFY after FILL"** with the same shape as `place_first_ic`, but filtering `B` to fills. `A` and `B` are the two `OrderEvent.ref()` aliases declared earlier in the model alongside `place_first_ic`:
   ```python
@@ -317,8 +316,7 @@ model.define(SolveStatus(problem.termination_status()))
       A.event_id != B.event_id,
       A.has_type(EventType.MODIFY, a_modify_ind),
       B.has_type(EventType.FILL, b_fill_ind),
-      b_fill_ind == 1,
-  ).require(implies(a_modify_ind == 1, A.ts_ms < B.ts_ms))
+  ).require(implies(a_modify_ind + b_fill_ind == 2, A.ts_ms < B.ts_ms))
   ```
 - **Generate a "smallest violating trace" instead of a positive trace** by negating one of the rules (e.g. drop `no_after_cancel_ic`, bind `A`'s `CANCEL` and `B`'s `FILL` indicators via `has_type` in a `where`, and add `model.require(sum(a_cancel_ind + b_fill_ind - 1).per(Order) >= 0)` plus a temporal predicate) and minimizing the number of events. The model is already in optimization-ready shape.
 - **Replace the synthetic time horizon** by reading `ts_ms` bounds from your real session schedule (market open / market close) and updating `TS_MIN` / `TS_MAX` in `model/reasoning.py`.
@@ -329,7 +327,7 @@ model.define(SolveStatus(problem.termination_status()))
   <summary>Import error or AttributeError on <code>relationalai</code></summary>
 
 - Confirm your virtual environment is active: `which python` should point to `.venv`.
-- Reinstall dependencies: `python -m pip install .`. The pinned version (`relationalai==2.3.0`) ships enum members as constants across the DSL and prescriptive reasoning (alongside the `configure()`, `install_display_strings()`, and chained-`where().require()` APIs); older versions reject the enum-indexed decision variable and produce type or attribute errors.
+- Reinstall dependencies: `python -m pip install .`, which installs the pinned `relationalai==2.3.0` this template is written against. Its enum-indexed decision variable and the `configure()`, `install_display_strings()`, and chained-`where().require()` APIs it uses may differ in other versions and raise type or attribute errors.
 - If you share a venv across templates, run `python -m pip install --upgrade --force-reinstall relationalai==2.3.0`.
 
 </details>
@@ -364,13 +362,6 @@ model.define(SolveStatus(problem.termination_status()))
 - The pool may be too small. If you reduce `events.csv` below the per-order slot count required by your constraints (e.g. one `PLACE` plus a forced `CANCEL` with no room for fills), no trace can satisfy all the rules. Add more rows to `events.csv` for that order.
 - A symbol with zero allowed venues in `symbol_venues.csv` will block the `venue_ok_ic` constraint -- every event has to land on an allowed venue. Confirm at least one (symbol, venue) row exists per symbol used in `orders.csv`.
 - Every order in `orders.csv` must have `original_qty >= 1` and `original_tick_price >= 1`. The `qty` and `tick_price` decision domains start at `1`, and the PLACE-event pinning ICs equate them to the order's stated values; a row with zero in either column produces an empty domain and immediate INFEASIBLE.
-
-</details>
-
-<details>
-  <summary>Empty disallowed pairs (full venue coverage)</summary>
-
-- If you replace `symbol_venues.csv` with a list that covers every (symbol, venue) combination, the derived `disallowed_csv` is empty and `model.data(...).to_schema()` raises `ValueError: empty data` (or a similar zero-row schema error from pandas). Drop the `venue_ok_ic` constraint when full coverage is intentional.
 
 </details>
 

@@ -26,7 +26,9 @@ disallowed_csv = DataFrame(
     ]
 )
 
-model.define(NotAllowedSymbolVenue.new(model.data(disallowed_csv).to_schema()))
+# With full venue coverage there are no disallowed pairs and nothing to load.
+if not disallowed_csv.empty:
+    model.define(NotAllowedSymbolVenue.new(model.data(disallowed_csv).to_schema()))
 
 orders_csv = read_csv(DATA_DIR / "orders.csv")
 orders_data = model.data(orders_csv)

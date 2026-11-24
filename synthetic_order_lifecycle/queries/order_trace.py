@@ -31,22 +31,7 @@ if __name__ == "__main__":
         .where(Venue.id(OrderEvent.venue_id))
         .to_df()
     )
-    trace_df = (
-        trace_df.astype(
-            {
-                "order_id": "int64",
-                "event_id": "int64",
-                "ts_ms": "int64",
-                "qty": "int64",
-                "tick_price": "int64",
-            }
-        )
-        .sort_values(["order_id", "ts_ms"])
-        .reset_index(drop=True)[
-            ["order_id", "symbol", "event_id", "ts_ms", "type", "qty", "tick_price", "venue"]
-        ]
-    )
-    print(trace_df.to_string(index=False))
+    print(trace_df.sort_values(["order_id", "ts_ms"]).to_string(index=False))
 
     print("\nFilled quantity per order (cannot exceed Order.original_qty):")
     model.select(
