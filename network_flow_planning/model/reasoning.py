@@ -24,19 +24,18 @@ problem.solve_for(
 )
 
 # Variable: open/close decision per fulfillment center (binary).
-# Restricted to sites with positive fixed_cost — i.e., the FC sites.
 problem.solve_for(
     Site.x_open,
     type="bin",
     name=["open", Site.name],
-    where=[Site.fixed_cost > 0],
+    where=[Site.type == "FULFILLMENT_CENTER"],
 )
 
 # Constraint: source supply — outflow from each warehouse cannot exceed its
-# inventory.
+# inventory (a warehouse with zero inventory ships nothing).
 out_lane = Lane.ref()
 problem.satisfy(model.where(
-    Site.inventory > 0,
+    Site.type == "WAREHOUSE",
 ).require(
     sum(out_lane.x_flow).where(out_lane.source == Site).per(Site) <= Site.inventory
 ))
@@ -61,11 +60,11 @@ problem.satisfy(model.where(
     == sum(out_lane.x_flow).where(out_lane.source == Site).per(Site)
 ))
 
-# Constraint: FC capacity gated by open decision — total inflow at an FC cannot
-# exceed its capacity unless x_open == 1.
+# Constraint: FC capacity gated by open decision — an FC takes no inflow unless
+# x_open == 1, and at most its capacity when open (also when it costs nothing to open).
 in_lane = Lane.ref()
 problem.satisfy(model.where(
-    Site.fixed_cost > 0,
+    Site.type == "FULFILLMENT_CENTER",
 ).require(
     sum(in_lane.x_flow).where(in_lane.dest == Site).per(Site)
     <= Site.capacity * Site.x_open

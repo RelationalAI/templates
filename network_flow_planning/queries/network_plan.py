@@ -14,11 +14,7 @@ if __name__ == "__main__":
     if status != ["OPTIMAL"]:
         raise SystemExit(f"termination status {status}")
     if cost:
-        print(f"• objective: {round(cost[0], 9)}\n")
-
-    print(f"\nStatus: {status[0]}")
-    if cost:
-        print(f"Total cost: ${cost[0]:,.2f}")
+        print(f"• objective (total cost): {round(cost[0], 9)}")
 
     print("\nOpened fulfillment centers:")
     model.select(

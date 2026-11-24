@@ -169,10 +169,7 @@ Use this sequence to deploy the model and query it:
    ```text
    Solve result:
    • status: OPTIMAL
-   • objective: 5280.0
-
-   Status: OPTIMAL
-   Total cost: $5,280.00
+   • objective (total cost): 5280.0
 
    Opened fulfillment centers:
      fulfillment_center  capacity  fixed_cost
@@ -241,7 +238,7 @@ The data describes a small but non-trivial multi-tier network where the optimize
 - **3 fulfillment centers**:
   - **FC_Northeast** — capacity 350, fixed cost $1,500
   - **FC_Southwest** — capacity 200, fixed cost $1,200
-  - **FC_West** — capacity 180, fixed cost $1,000 (cheapest direct path to LA but highest fixed cost per unit of capacity)
+  - **FC_West** — capacity 180, fixed cost $1,000 (cheapest direct path to LA, and the smallest capacity)
 - **3 customers**: NYC (demand 180), LA (demand 120), Houston (demand 150). Total 450.
 
 Lane costs are set so that opening FC_West would unlock the cheapest LA route (`FC_West → LA` at 1.5/unit). The optimizer must weigh that against the $1,000 fixed cost of opening it. With this data it elects not to.
@@ -252,7 +249,7 @@ The model uses three concepts. A single `Site` concept carries all four network 
 
 - **Key entities**: `Site` — a node in the distribution network, its `type` distinguishing the role each plays (warehouse, hub, fulfillment center, customer); `Lane` — a directed transport link between two sites with a per-unit cost and a flow capacity; `Demand` — a customer order placed at a particular site.
 - **Primary identifiers**: integer `id` on each of `Site`, `Lane`, and `Demand`, loaded from the corresponding CSV.
-- **Important invariants**: `inventory`, `capacity`, `fixed_cost`, `cost_per_unit`, and `quantity` are non-negative; only fulfillment centers carry a positive `fixed_cost` (that is what scopes the binary open decision); every `Lane.source` / `Lane.dest` and every `Demand.site` resolves to a real `Site`.
+- **Important invariants**: `inventory`, `capacity`, `fixed_cost`, `cost_per_unit`, and `quantity` are non-negative; only fulfillment centers use `capacity` and `fixed_cost`, and only warehouses use `inventory`; every `Lane.source` / `Lane.dest` and every `Demand.site` resolves to a real `Site`.
 
 For the full concept and property definitions, see `model/schema.py`; `runbook.md` builds them step by step with the RAI skills.
 
@@ -260,7 +257,7 @@ For the full concept and property definitions, see `model/schema.py`; `runbook.m
 
 The model runs as a single MILP that decides flow on every lane and which fulfillment centers to open, in one solve.
 
-**Decision variables.** Each lane carries a continuous `x_flow` bounded by its capacity. Each fulfillment center carries a binary `x_open`; the open decision is scoped to sites with a positive `fixed_cost`, so warehouses, hubs, and customers never get an open variable.
+**Decision variables.** Each lane carries a continuous `x_flow` bounded by its capacity. Each fulfillment center carries a binary `x_open`; the open decision is scoped to sites of type `FULFILLMENT_CENTER`, so warehouses, hubs, and customers never get an open variable.
 
 **Constraints.** Each site type contributes the constraint that matches its role. Warehouses cap total outflow at their inventory. Transit hubs and fulfillment centers conserve flow — inflow equals outflow. A fulfillment center's inflow is bounded by `capacity × x_open`, so an unopened FC (open = 0) can carry no flow and the fixed cost is only incurred when it is opened. Customers require inflow to meet their aggregate demand.
 
@@ -276,16 +273,16 @@ CSV inputs → load Site / Lane / Demand → flow + open decisions → role-base
 
 ### Use your own data
 
-Replace the three CSVs in `data/` with your own:
+Replace the three CSVs in `data/` with your own, keeping these headers:
 
-- `sites.csv` — every site needs an `id`, `name`, `type` (one of the four canonical strings), and the role-specific quantitative columns. Set unused columns to 0.
-- `lanes.csv` — every lane needs a `source_id`, `dest_id`, `cost_per_unit`, and `capacity`.
-- `demand.csv` — every demand row needs a `site_id` matching a `CUSTOMER` site, plus a `quantity`.
+- `sites.csv` — `id,name,type,inventory,capacity,fixed_cost`; `type` is one of the four canonical strings. Set columns a site's role doesn't use to 0.
+- `lanes.csv` — `id,source_id,dest_id,cost_per_unit,capacity`.
+- `demand.csv` — `id,site_id,quantity,customer,priority`; `site_id` matches a `CUSTOMER` site.
 
 ### Tune parameters
 
-- Add or remove fulfillment centers by changing `sites.csv` (rows with `fixed_cost > 0`).
-- Change FC fixed costs to study the open-set sensitivity — lowering FC_West's fixed cost below ~$345 will swing the optimum to opening it.
+- Add or remove fulfillment centers by changing `sites.csv` (rows of type `FULFILLMENT_CENTER`).
+- Change FC fixed costs to study the open-set sensitivity — opening FC_West saves $300 of transport, so a fixed cost below $300 swings the optimum to opening it (at $300 the two plans tie).
 - Add lane capacity constraints to force splitting flow across multiple paths.
 
 ### Extend the model
@@ -296,7 +293,7 @@ Replace the three CSVs in `data/` with your own:
 
 ### Scale up / productionize
 
-- For a live network, replace the three `data/` CSVs with `model.data(snowflake_table)` calls so the model reads sites, lanes, and demand directly from your warehouse tables.
+- For a live network, replace the `read_csv(...)` loads in `model/source.py` with `model.Table("<db>.<schema>.<table>")` sources, defining the same concepts and properties from each table's columns, so the model reads sites, lanes, and demand directly from your warehouse tables.
 - The bundled data is 12 sites and 17 lanes; the MILP scales to whatever fits the prescriptive engine's solve budget. If solves grow slow, tighten lane capacities to prune the flow space or size up the engine.
 - The template solves with HiGHS by default (`problem.configure("highs", time_limit_sec=60)`); swap to `"gurobi"` for larger integer programs if a Gurobi-enabled engine is available.
 - Pin `relationalai` (see Prerequisites) so runs stay reproducible across environments.
@@ -312,7 +309,7 @@ Replace the three CSVs in `data/` with your own:
 <details>
   <summary>Why does <code>Site.x_open</code> get only three variables?</summary>
 
-  The `where=[Site.fixed_cost > 0]` clause restricts the variable to fulfillment-center sites. Warehouses, hubs, and customers all have `fixed_cost = 0` and don't need an open decision. The constraint linking capacity to `x_open` is similarly scoped to FC sites.
+  The `where=[Site.type == "FULFILLMENT_CENTER"]` clause restricts the variable to fulfillment-center sites; warehouses, hubs, and customers don't need an open decision. The constraint linking capacity to `x_open` is scoped to the same sites.
 </details>
 
 <details>
