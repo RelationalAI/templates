@@ -29,7 +29,7 @@ By analyzing a network of hospitals, clinics, testing centers, and community org
 
 ## What you'll build
 
-- A risk-weighted facility ranking — every facility scored by weighted degree centrality (`transfer_volume x contact_intensity` summed over its edges) — produced by **graph analysis**.
+- A risk-weighted facility ranking — every facility scored by weighted degree centrality (`transfer_volume x contact_intensity` summed over its edges, divided by the number of other facilities) — produced by **graph analysis**.
 - Per-facility connectivity signals: incoming and outgoing connection counts (indegree and outdegree) alongside the centrality score.
 - A prioritized shortlist of the highest-risk facilities to guide where limited outbreak-response resources go first.
 - An optional interactive Streamlit view of the same ranking, with a network visualization and CSV export.
@@ -154,7 +154,7 @@ Run these steps from a terminal:
      • Total facilities analyzed: 10
      • Average degree centrality: 15.2444
      • Average connections per facility: 3.0
-     • Most connected facility: Central Hospital (4 connections)
+     • Highest weighted centrality: Central Hospital (4 connections)
    ```
 
    The report ranks every facility, lists the top three priority facilities with their connection breakdown, and prints network summary statistics. The full ranked table and a step-by-step walkthrough are in `runbook.md`.
@@ -235,9 +235,9 @@ CSV files → model/ (deployed) → weighted centrality + degree metrics → ran
 
 1. **Deployed model.** The `model/` package declares everything the report and the app need and `rai models deploy --path model` deploys it: the RelationalAI model, the `Facility` node concept, the `FacilityConnection` edge concept, the CSV loads, the derived `risk_weight` (`transfer_volume x contact_intensity`), and the directed, weighted graph that uses `risk_weight` as its edge weight.
 
-2. **Calculate graph metrics.** Each refresh of the deployed model runs the Graph API, which computes weighted degree centrality (summing risk-weighted edges, so the score reflects cumulative transmission risk rather than a raw connection count) alongside indegree and outdegree counts.
+2. **Calculate graph metrics.** Each refresh of the deployed model runs the Graph API, which computes weighted degree centrality (summing risk-weighted edges and dividing by the number of other facilities, so the score reflects cumulative transmission risk rather than a raw connection count) alongside indegree and outdegree counts.
 
-3. **Query and rank.** A single query pulls each facility's identity, type, region, centrality score, and in/out connection counts, then sorts descending by centrality to produce the ranked shortlist.
+3. **Query and rank.** A single query, shared by the report and the app, pulls each facility's identity, type, region, published centrality score, and in/out and total connection counts, then sorts descending by centrality (ties by facility id) to produce the ranked shortlist.
 
 4. **Present results.** `queries/facility_ranking.py` prints the ranked table, a top-priority breakdown, network summary statistics, and response recommendations from the deployed model. The optional Streamlit app queries the same deployed model and renders the ranking as an interactive network graph with a filterable table and CSV export.
 
@@ -289,7 +289,7 @@ Focus on the first changes most users will make.
 <details>
   <summary>Why is the Streamlit app missing dependencies?</summary>
 
-- Install the visualization extra: `python -m pip install .[visualization]` (adds `streamlit`, `plotly`, `numpy`).
+- Install the visualization extra: `python -m pip install ".[visualization]"` (adds `streamlit`, `plotly`, `numpy`).
 
 </details>
 

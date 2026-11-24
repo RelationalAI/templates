@@ -14,7 +14,7 @@ Run:
     `streamlit run app.py` starts the interactive app, both from the deployed model.
 """
 
-from .reasoning import degree_centrality, graph, incoming_edges, outgoing_edges
+from .reasoning import graph
 from .schema import Facility, FacilityConnection, model
 from .source import DATA_DIR
 
@@ -22,9 +22,6 @@ __all__ = [
     "DATA_DIR",
     "Facility",
     "FacilityConnection",
-    "degree_centrality",
     "graph",
-    "incoming_edges",
     "model",
-    "outgoing_edges",
 ]

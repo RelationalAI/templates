@@ -5,48 +5,41 @@ ranked list of healthcare facilities by degree centrality, showing which facilit
 receive priority for vaccines, testing stations, and emergency response teams.
 """
 
-from model import degree_centrality, graph, incoming_edges, outgoing_edges
-from relationalai.semantics import Float, Integer, where
+from model import Facility, model
 
-# Create variable references for use in queries.
-facility = graph.Node.ref("facility")
-centr_score = Float.ref("centr_score")
-in_edges = Integer.ref("in_edges")
-out_edges = Integer.ref("out_edges")
+
+def ranked_facilities():
+    """Every facility's published metrics, ranked by weighted degree centrality.
+
+    Shared by this report and the Streamlit app. Ties rank by facility id.
+    """
+    results = model.select(
+        Facility.id.alias("id"),
+        Facility.name.alias("name"),
+        Facility.type.alias("type"),
+        Facility.region.alias("region"),
+        Facility.degree_centrality.alias("degree_centrality"),
+        Facility.incoming_connections.alias("incoming_connections"),
+        Facility.outgoing_connections.alias("outgoing_connections"),
+        Facility.total_connections.alias("total_connections"),
+    ).to_df()
+    results = results.sort_values(
+        ["degree_centrality", "id"], ascending=[False, True]
+    ).reset_index(drop=True)
+    results.insert(0, "rank", range(1, len(results) + 1))
+    return results
+
 
 if __name__ == "__main__":
-    # Query the graph to retrieve:
-    # - Basic facility information (id, name, type, region)
-    # - Weighted degree centrality score (sum of edge weights for all connections)
-    # - Incoming edges count (how many facilities connect TO this one)
-    # - Outgoing edges count (how many facilities this one connects TO)
-    results = where(
-        degree_centrality(facility, centr_score),
-        incoming_edges(facility, in_edges),
-        outgoing_edges(facility, out_edges)
-    ).select(
-        facility.id,
-        facility.name,
-        facility.type,
-        facility.region,
-        centr_score.alias("degree_centrality"),
-        in_edges.alias("incoming_connections"),
-        out_edges.alias("outgoing_connections")
-    ).to_df()
-
-    # Sort by weighted degree centrality (descending) to rank facilities by highest cumulative risk first.
-    results = results.sort_values("degree_centrality", ascending=False)
-    results.insert(0, "rank", range(1, len(results) + 1))
-
-    # Calculate total connections for each facility
-    results['total_connections'] = results['incoming_connections'] + results['outgoing_connections']
+    results = ranked_facilities()
 
     # Display results in a formatted table
     print("=" * 100)
     print("DISEASE OUTBREAK PREVENTION NETWORK - DEGREE CENTRALITY ANALYSIS")
     print("=" * 100)
-    print("\nFacilities ranked by degree centrality (most connected first):")
-    print("\nWeighted Degree Centrality: Sum of risk-weighted connections (transfer_volume × contact_intensity)")
+    print("\nFacilities ranked by weighted degree centrality (highest first):")
+    print("\nWeighted Degree Centrality: risk weights (transfer_volume × contact_intensity) of each facility's")
+    print("connections, summed and divided by (number of facilities - 1)")
     print("Higher scores indicate greater cumulative risk and more critical facilities for outbreak response coordination")
     print("\nThese facilities should receive priority for:")
     print("  • Vaccine and medical supply deployment")
@@ -82,6 +75,6 @@ if __name__ == "__main__":
     print(f"  • Total facilities analyzed: {len(results)}")
     print(f"  • Average degree centrality: {results['degree_centrality'].mean():.4f}")
     print(f"  • Average connections per facility: {results['total_connections'].mean():.1f}")
-    print(f"  • Most connected facility: {results.iloc[0]['name']} ({int(results.iloc[0]['total_connections'])} connections)")
+    print(f"  • Highest weighted centrality: {results.iloc[0]['name']} ({int(results.iloc[0]['total_connections'])} connections)")
 
     print("\n✅ Analysis complete!")
