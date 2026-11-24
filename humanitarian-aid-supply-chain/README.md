@@ -35,7 +35,7 @@ PageRank simulates how aid flows through the network using iterative random walk
 - A per-node PageRank score identifying where aid naturally concentrates (influence)
 - A per-node Weighted Degree Centrality score surfacing highly connected coordination hubs
 - A strategic classification of every distribution point (critical coordination hub, influential endpoint, network connector, or regular distribution point) from the two metrics together
-- A ranked deployment-priority table with actionable recommendations, exportable to CSV
+- A ranked deployment-priority table with actionable recommendations, and a CSV export of the rankings from the dashboard
 - An optional Streamlit dashboard visualizing the network and rankings interactively
 
 Built using **graph analysis** — PageRank (an iterative random-walk algorithm) and Weighted Degree Centrality (network-connectivity analysis) on a shared supply-chain ontology.
@@ -60,7 +60,7 @@ Built using **graph analysis** — PageRank (an iterative random-walk algorithm)
 
 - Python 3.10 through 3.14 (the range relationalai 2.3.0 supports)
 - RelationalAI Python SDK (`relationalai == 2.3.0`)
-- For the interactive app only: the `visualization` extra (`python -m pip install .[visualization]`)
+- For the interactive app only: the `visualization` extra (`python -m pip install ".[visualization]"`)
 
 ## Quickstart
 
@@ -264,10 +264,10 @@ Focus on the first changes most users will make.
 ### Extend the model
 
 - **Try additional algorithms**:
-  - `graph.louvain()` — community detection to find regional distribution clusters
-  - `graph.is_reachable(point1, point2)` — verify connectivity between two locations
-  - `graph.distance(point1, point2)` — shortest-path length between points
-  - `graph.weakly_connected_components()` — identify disconnected network regions
+  - `louvain()` — community detection to find regional distribution clusters; it needs an undirected graph, so build an undirected `Graph` over the same routes
+  - `graph.reachable(full=True)` — the pairs of points joined by a chain of routes; filter it on two points to check their connectivity
+  - `graph.distance(full=True)` — shortest-path length between pairs of points
+  - `graph.weakly_connected_component()` — the component of each point, identifying disconnected network regions
 - **Add temporal analysis** — include route availability schedules or seasonal variations to model time-dependent supply chains.
 - **Incorporate risk factors** — add node properties for conflict zones, disease prevalence, or disaster risk to prioritize safe routes.
 
