@@ -287,7 +287,7 @@ demand forecasts → predicted_load → grid topology + centrality → corridor 
 
 ### Stage 1: Predict -- Substation Load Forecasting
 
-Derives `Substation.predicted_load` as an ontology property by taking the max `DemandForecast` per substation. Substations near announced data center projects show 32-55% growth; Dallas-Fort Worth is the only substation predicted to breach capacity (1,700 MW predicted vs 1,600 MW capacity at 24 months, 54.6% growth), while Houston Ship Channel shows the highest absolute load (1,797 MW) but stays within its larger capacity. Because both downstream reasoners read `predicted_load` as a first-class attribute, changing the forecast propagates through the rules engine and optimizer without code changes — the first link in the accretive chain.
+Derives `Substation.predicted_load` as an ontology property by taking the max `DemandForecast` per substation, with `growth_rate` (growth over the current load, floored at 0.1 MW) and `breach_period` (the first month a forecast exceeds capacity) alongside. Substations near announced data center projects show 32-55% growth; Dallas-Fort Worth is the only substation predicted to breach capacity (1,700 MW predicted vs 1,600 MW capacity at 24 months, 54.6% growth), while Houston Ship Channel shows the highest absolute load (1,797 MW) but stays within its larger capacity. Because both downstream reasoners read `predicted_load` as a first-class attribute, changing the forecast propagates through the rules engine and optimizer without code changes — the first link in the accretive chain.
 
 ### Stage 2: Graph -- Grid Topology & Structural Vulnerability
 
@@ -304,7 +304,7 @@ Where Stage 2 scores a *substation*, the paths capability scores the *corridor* 
 Three declarative rules consume upstream outputs, then a composite flag combines them:
 - **Capacity check**: `requested_mw + predicted_load > max_capacity_mw` (uses Stage 1, with a `current_load_mw` fallback). Most requests fail — the existing grid lacks headroom for new AI load without upgrades.
 - **Structural risk**: request targets a structurally critical substation (uses Stage 2 centrality). 7 of 10 requests fail.
-- **Low-carbon mandate**: the substation's zero-emission share of generation capacity is below the DC's required fraction. Only Oracle Coastal DC passes: its substation's generation is entirely zero-emission, while the other requested substations have no zero-emission generation, no generation at all, or about 53% against requirements of 60-100%.
+- **Low-carbon mandate**: the substation's zero-emission share of generation capacity is below the DC's required fraction; a substation with no generating capacity fails any positive requirement. Only Oracle Coastal DC passes: its substation's generation is entirely zero-emission, while the other requested substations have no zero-emission generation, no generation at all, or about 53% against requirements of 60-100%.
 - **Composite**: `is_compliant` passes all checks. Only Oracle Coastal DC is fully compliant.
 
 ### Stage 5: Prescriptive -- Multi-Objective Optimization

@@ -97,7 +97,7 @@ DataCenterRequest.is_ai_workload = model.Property(
 DataCenterRequest.cooling_type = model.Property(
     f"{DataCenterRequest} has cooling type {String:cooling_type}")
 DataCenterRequest.low_carbon_requirement_pct = model.Property(
-    f"{DataCenterRequest} has low-carbon requirement {Float:low_carbon_requirement_pct} percent")
+    f"{DataCenterRequest} has low-carbon requirement {Float:low_carbon_requirement_pct} as a fraction of generation")
 DataCenterRequest.queue_position = model.Property(
     f"{DataCenterRequest} has queue position {Integer:queue_position}")
 DataCenterRequest.status = model.Property(f"{DataCenterRequest} has status {String:status}")

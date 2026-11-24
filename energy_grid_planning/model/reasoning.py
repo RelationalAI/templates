@@ -4,6 +4,7 @@ from relationalai.semantics import Float, Hash, Integer, String, not_, sum, wher
 from relationalai.semantics.reasoners.graph import Graph
 from relationalai.semantics.reasoners.prescriptive import Problem
 from relationalai.semantics.std import aggregates as aggs
+from relationalai.semantics.std.math import maximum
 
 from .schema import (
     DataCenterRequest,
@@ -37,12 +38,14 @@ model.define(
     )
 )
 
-# Growth of the predicted peak over the current load, and the first forecast month
-# whose predicted load exceeds the substation's capacity.
+# Growth of the predicted peak over the current load (floored at 0.1 MW, so an idle
+# substation still gets a growth figure), and the first forecast month whose
+# predicted load exceeds the substation's capacity.
 Substation.growth_rate = model.Property(f"{Substation} has load growth {Float:growth_rate}")
-model.where(Substation.current_load_mw > 0).define(
+model.define(
     Substation.growth_rate(
-        (Substation.predicted_load - Substation.current_load_mw) / Substation.current_load_mw
+        (Substation.predicted_load - Substation.current_load_mw)
+        / maximum(Substation.current_load_mw, 0.1)
     )
 )
 Substation.breach_period = model.Property(
@@ -262,7 +265,13 @@ SubRef_lc = Substation.ref()
 model.where(
     DataCenterRequest.substation(SubRef_lc),
     (SubRef_lc.low_carbon_gen_mw | 0.0)
-    < DataCenterRequest.low_carbon_requirement_pct * (SubRef_lc.total_gen_mw | 0.001),
+    < DataCenterRequest.low_carbon_requirement_pct * SubRef_lc.total_gen_mw,
+).define(DataCenterRequest.fails_low_carbon())
+# A substation without generating capacity cannot meet any positive requirement.
+model.where(
+    DataCenterRequest.substation(SubRef_lc),
+    DataCenterRequest.low_carbon_requirement_pct > 0,
+    not_(SubRef_lc.total_gen_mw > 0),
 ).define(DataCenterRequest.fails_low_carbon())
 
 # Composite: compliant if none of the checks fail

@@ -228,7 +228,8 @@ def main() -> None:
 
     # Contingency: take the highest-betweenness substation offline and re-enumerate.
     if betw_by_id:
-        top_id = max(betw_by_id, key=betw_by_id.get)
+        # On a betweenness tie, the smallest substation ID goes offline.
+        top_id = min(betw_by_id, key=lambda sub_id: (-betw_by_id[sub_id], sub_id))
         after_corridors = most_fragile_corridor_per_dc(removed_id=top_id)
         rerouted = len(
             [d for d in baseline_corridors if d in after_corridors and baseline_corridors[d][0] != after_corridors[d][0]]
@@ -347,12 +348,12 @@ def main() -> None:
 
     InvLvlRef = InvestmentLevel.ref()
     PortRef = InvestmentPortfolio.ref()
-    print("\n  Revenue and upgrade cost ($M) by investment level:")
+    print("\n  Revenue and upgrade cost by investment level:")
     model.where(PortRef.investment_level(InvLvlRef)).select(
         InvLvlRef.name.alias("level"),
         InvLvlRef.budget_cap.alias("budget_cap"),
-        PortRef.annual_revenue.alias("revenue"),
-        (PortRef.upgrade_cost / 1e6).alias("upgrade_cost"),
+        PortRef.annual_revenue.alias("revenue_usd_per_year"),
+        (PortRef.upgrade_cost / 1e6).alias("upgrade_cost_million"),
     ).inspect()
 
     # Per-level detail via pandas
