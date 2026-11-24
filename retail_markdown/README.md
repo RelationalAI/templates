@@ -166,7 +166,7 @@ Use this sequence to deploy the model and query it:
    ...
    ```
 
-   The selected discounts are cut after four rows; the report also prints the units sold and the cumulative sales for each product and week. Discounts start shallow (20 percent) and deepen to 30 percent later in the season; no product needs the 50 percent tier. The report's three tables give the full schedule; `runbook.md` summarizes how it evolves.
+   The selected discounts are cut after four rows; the report also prints the units sold for each product-week-discount above 0.01 units and the cumulative sales for each product and week. Discounts start shallow (20 percent) and deepen to 30 percent later in the season; no product needs the 50 percent tier. The report's three tables give the full schedule; `runbook.md` summarizes how it evolves.
 
    To solve again without changing the model, refresh the deployed model, then run the query again:
 
