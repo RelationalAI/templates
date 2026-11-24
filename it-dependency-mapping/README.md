@@ -210,7 +210,7 @@ CSV files --> Define Feature + contributes_to --> Enumerate downstream paths -->
 
 **Load the ontology.** A `Feature` is any node in the estate -- a raw source, pipeline, feature job, service, or dashboard -- with `id`, `name`, `owner`, and `deploy_tier` loaded from `data/features.csv`. The `contributes_to` self-relationship records that an upstream feature feeds a downstream one, forming the dependency DAG from `data/dependencies.csv`.
 
-**Enumerate downstream paths.** A variable-length traversal of 1 to `MAX_DEPTH` `contributes_to` edges, enumerated with `.all().paths()`, walks every downstream dependency path. The model publishes each path as one row per visited node, and the number of paths that start at each feature; grouping by path reassembles the ordered chain, and the hop count comes from the maximum node index.
+**Enumerate downstream paths.** A variable-length traversal of 1 to `MAX_DEPTH` `contributes_to` edges, enumerated with `.all().paths()`, walks every downstream dependency path. The model publishes each path as one row per visited node, and the number of paths that start at each feature (a feature with no downstream path has no count or depth row, and the report shows it as 0); grouping by path reassembles the ordered chain, and the hop count comes from the maximum node index.
 
 **Persist longest downstream depth.** The longest path starting at each feature is its downstream depth. RelationalAI computes it in PyRel — a max over path length per source endpoint — and defines it straight onto the feature as a first-class `max_downstream_depth` relationship, with no DataFrame round-trip, so later queries can rank features by reach without re-enumerating paths.
 

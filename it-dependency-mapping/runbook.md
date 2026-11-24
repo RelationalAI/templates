@@ -6,7 +6,7 @@ A platform engineer wants the downstream blast radius of any component in a soft
 Dependency DAG  (14 features: sources -> pipelines -> jobs -> services -> dashboards, 15 edges)
       │
       ▼
-/rai-graph-analysis  — Variable-length path enumeration (paths: relationalai>=1.15)
+/rai-graph-analysis  — Variable-length path enumeration (paths, a preview capability)
    • every downstream dependency path (1-8 hops, all().paths()) -> 46 paths
    • per-feature reach + persist Feature.max_downstream_depth   -> Clickstream Ingest: 7 paths / depth 5
    • maximal end-to-end chains (sub-chains dropped)             -> 6 of 46
@@ -29,7 +29,7 @@ Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` 
 
 **Response:** One concept, `Feature`, with a single `contributes_to` self-relationship. The 14 features flow from two critical raw sources (Clickstream Ingest, Transaction CDC Stream) and a CRM sync, through enrichment and feature-engineering pipelines, into services (Churn Scoring API, Billing API, Recommendation Service), and finally two leaf dashboards (Retention Dashboard, Executive Revenue Dashboard). 15 edges, no cycles.
 
-## 3. Downstream reach of every feature (paths, requires `relationalai>=1.15`)
+## 3. Downstream reach of every feature (paths)
 
 **Prompt:** /rai-graph-analysis For every feature, how far does its blast radius reach downstream? Enumerate all downstream dependency paths of any length, count how many start at each feature, and record each feature's longest downstream depth so we can rank features by reach.
 
