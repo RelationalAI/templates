@@ -214,8 +214,8 @@ concept_or_none = inspect.to_concept(some_handle, default=None)
 
 **Use your own data:**
 
-- Replace `RAI_DEMO.SIMPLE_START.CONNECTIONS` with your own edge table, and skip the notebook's seed cell, which replaces the demo table each time it runs.
-- Ensure your table has two columns that represent the endpoints of each edge.
+- Replace `RAI_DEMO.SIMPLE_START.CONNECTIONS` with your own edge table in the model cell and the table preview cell, and skip the notebook's seed cell, which replaces the demo table each time it runs.
+- Give your table integer endpoint columns named `station_1` and `station_2`, or rename them in the model cell, and enable change tracking on it.
 - Make sure the model role can read your table (`SELECT` on it, `USAGE` on its database and schema): the deploy reads the table with the model role alone and stops with an error naming the table otherwise.
 
 **Extend the model:**
