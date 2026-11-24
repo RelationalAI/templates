@@ -10,7 +10,9 @@ from .schema import Demand, Property, Route, Site, model
 # Stage 1: Graph Analysis -- identify critical network hubs
 # --------------------------------------------------
 
-graph = Graph(model, directed=False, weighted=True, node_concept=Site, aggregator="sum")
+graph = Graph(
+    model, directed=False, weighted=True, node_concept=Site, aggregator="sum", name="warehouse_network"
+)
 
 # Build edges from routes (undirected, weighted by capacity)
 route_ref = Route.ref()
@@ -35,8 +37,9 @@ model.where(wcc(site_member, site_component)).define(SiteComponent(site_member, 
 # --------------------------------------------------
 # Stage 1c: Bridge Routes -- cross-region connectors
 # --------------------------------------------------
-# Routes whose endpoints lie in different regions; losing one of these
-# fragments the corresponding inter-region flow.
+# Routes whose endpoints lie in different regions: the links that carry
+# inter-region flow. This compares region labels only; it does not test
+# whether removing a route disconnects the graph.
 
 route_ref = Route.ref()
 src, dst = Site.ref(), Site.ref()

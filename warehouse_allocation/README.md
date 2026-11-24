@@ -44,7 +44,7 @@ Built using **graph analysis** (eigenvector centrality, weakly connected compone
 - **Query**: `queries/allocation_report.py`, which prints the report from the deployed model.
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - **Sample data**: a small distribution network of warehouses and stores with routes and per-site demand. See *Sample data* below.
-- **Outputs**: stdout diagnostics (centrality ranking, connected-component summary, bridge routes, solver status) plus the inventory allocation plan as queryable `Site.x_inventory`.
+- **Outputs**: stdout diagnostics (centrality scores, connected-component summary, bridge routes, solver status) plus the inventory allocation plan as queryable `Site.x_inventory`.
 
 ## Prerequisites
 
@@ -178,7 +178,7 @@ Use this sequence to deploy the model and query it:
    Total holding cost: $13713.29
    ```
 
-   The report also prints the bridge routes and the allocation plan. The full printout and a step-by-step walkthrough are in `runbook.md`.
+   The report also prints the bridge routes and the allocation plan; `runbook.md` walks through each step and interprets its results.
 
    To solve again without changing the model, refresh the deployed model, then run the query again:
 
@@ -245,7 +245,7 @@ Stage 1 characterizes the route topology three ways, then Stage 2 allocates inve
 
 **Stage 1b — Weakly connected components.** The same graph is checked for fragmentation. Weakly connected components reveal whether every site is reachable from every other, or whether the network has split into isolated clusters that no route bridges. The report states whether the network is unified or fragmented and lists the size and regions of each component.
 
-**Stage 1c — Bridge routes.** Cross-region routes are flagged as bridges: links whose two endpoints lie in different regions, so losing one fragments the corresponding inter-region flow.
+**Stage 1c — Bridge routes.** Cross-region routes are flagged as bridges: links whose two endpoints lie in different regions, which carry the inter-region flow. The flag compares region labels only, so losing one need not disconnect the network: in the sample data, Chicago_Hub and Dallas_Hub stay connected through Atlanta_DC.
 
 **Stage 2 — Inventory allocation.** The optimizer allocates inventory across sites to minimize total holding cost, subject to a total budget, demand satisfaction at each site, and a centrality-based floor that requires each warehouse to hold buffer stock proportional to its centrality score. That floor reads the `Site.centrality` property Stage 1 wrote, so the more structurally critical a warehouse, the more stock the plan holds there.
 
@@ -263,7 +263,8 @@ Focus on the first changes most users will make.
 
 - Replace the CSVs in `data/` with your own; keep the column names shown in *Sample data* above (`sites.csv`, `routes.csv`, `demands.csv`). The graph and optimization adapt automatically to new topology.
 - For Snowflake-backed runs, swap the `read_csv(...)` calls for `model.data(snowflake_table)` calls.
-- Confirm `site_id` values in `routes.csv` and `demands.csv` match the `id` column in `sites.csv` — a mismatched key drops the route or demand silently.
+- Confirm the `source_id` and `dest_id` values in `routes.csv` and the `site_id` values in `demands.csv` match the `id` column in `sites.csv` — a mismatched key drops the route or demand silently.
+- Give each site at most one row in `demands.csv`: the demand constraint applies to each row on its own, so two rows for one site would both be met by the same stock.
 
 ### Tune parameters
 

@@ -1,7 +1,7 @@
 """Warehouse allocation report: reads the deployed warehouse_allocation model.
 
 Run `python -m queries.allocation_report` after `rai models deploy --path model`. Prints
-the eigenvector centrality ranking, the weakly-connected-component summary, the bridge
+the eigenvector centrality scores, the weakly-connected-component summary, the bridge
 routes between regions, the status and objective of the latest refresh's solve, and the
 inventory allocation plan.
 """
@@ -80,8 +80,9 @@ if __name__ == "__main__":
     if holding_cost:
         print(f"• objective: {round(holding_cost[0], 9)}\n")
 
-    print(f"\nStatus: {status[0]}")
-    print(f"Total holding cost: ${holding_cost[0]:.2f}")
+    print(f"\nStatus: {', '.join(status)}")
+    if holding_cost:
+        print(f"Total holding cost: ${holding_cost[0]:.2f}")
 
     print("\nAllocation plan:")
     model.select(
