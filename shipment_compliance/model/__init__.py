@@ -3,13 +3,12 @@
 This model declares derived business rules in RelationalAI:
 
 - Load sample CSVs describing suppliers, SKUs, shipments, operations, BOMs, and demand.
-- Define four rules as derived Relationships (boolean flags) on existing concepts.
-- Query and display which entities match each rule.
+- Define four rules as derived Relationships (boolean flags) on existing concepts; the
+  deployed model publishes the flags, and `queries/compliance_report.py` displays them.
 
 Closed vocabularies (shipment status, demand priority) are modelled as
-`model.Enum` types (requires relationalai>=1.12): CSV strings map to enum
-members on load, rules compare against members instead of raw strings, and
-queries read the member name back.
+`model.Enum` types: CSV strings map to enum members on load, rules compare against
+members instead of raw strings, and queries read the member name back.
 
 Rules defined:
   1. Shipment.is_late -- shipment arrived after expected date (delay_days > 0)

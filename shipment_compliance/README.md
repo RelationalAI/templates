@@ -17,7 +17,7 @@ tags:
 
 This template uses **rules-based reasoning** to define derived business rules for shipment compliance, sourcing risk, and demand escalation.
 
-Supply chain operations generate large volumes of shipment, procurement, and demand data. Business rules help surface exceptions and risks automatically: which shipments are late, which inputs depend on a single supplier, which demands need urgent attention.
+Supply chain operations generate large volumes of shipment, procurement, and demand data. Business rules help surface exceptions and risks automatically: which shipments are late, which inputs only one operation produces, which demands need urgent attention.
 
 This template uses RelationalAI's logic reasoner to define four derived rules as boolean flags on existing concepts. No optimization solver is involved -- rules are pure declarative logic evaluated over the data model.
 
@@ -137,19 +137,19 @@ Run these steps from a terminal:
 
    ```text
    === Rule 1: Late Shipments (delay_days > 0) ===
-   (2 rows)
+   ...  2 rows: shipment_id, sku, supplier, delay_days
 
    === Rule 2: At-Risk Shipments (undelivered + unreliable supplier) ===
-   (6 rows)
+   ...  6 rows: shipment_id, sku, supplier, status, reliability
 
    === Rule 3: Single-Sourced BOM Inputs (only 1 operation route) ===
-   (2 rows)
+   ...  2 rows: bom_id, input_sku, qty
 
    === Rule 4: Escalated Demands (HIGH or URGENT priority) ===
-   (4 rows)
+   ...  4 rows: demand_id, sku, quantity, priority
    ```
 
-   The report prints the entities each rule flags, under that rule's heading. On the bundled data the four rules catch 2 late shipments, 6 at-risk shipments, 2 single-sourced BOM inputs, and 4 escalated demands. See `runbook.md` for the full record-by-record walkthrough of each flag.
+   The block above abbreviates each rule's table to its row count and columns; the report prints the flagged rows themselves, as a table under each rule's heading. On the bundled data the four rules catch 2 late shipments, 6 at-risk shipments, 2 single-sourced BOM inputs, and 4 escalated demands. See `runbook.md` for the full record-by-record walkthrough of each flag.
 
 7. **Tear down the deployment**
 
@@ -245,7 +245,7 @@ See `model/reasoning.py` for the implementation, `queries/compliance_report.py` 
 
 ### Scale up / productionize
 
-- For Snowflake-backed runs, swap the `read_csv(...)` calls for `model.data(snowflake_table)` and load the concepts from your tables.
+- For Snowflake-backed runs, replace the `read_csv(...)` loads in `model/source.py` with `model.Table("<db>.<schema>.<table>")` sources, defining the same concepts and properties from each table's columns.
 - Rules are pure declarative logic and re-evaluate as the underlying data changes, so they slot naturally into a change-data-capture pipeline. Pin the `relationalai` version for reproducibility.
 
 ## Troubleshooting
