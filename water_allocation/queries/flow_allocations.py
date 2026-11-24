@@ -10,6 +10,8 @@ from model import Connection, SolveStatus, TotalCost, model
 if __name__ == "__main__":
     status = model.select(SolveStatus).to_df().iloc[:, 0].tolist()
     cost = model.select(TotalCost).to_df().iloc[:, 0].tolist()
+    if not status:
+        raise SystemExit("The deployed model has no solve result yet; refresh it, then run the query again.")
     print(f"\nSolve result:\n• status: {', '.join(status)}")
     if cost:
         print(f"• objective: {round(cost[0], 9)}\n")

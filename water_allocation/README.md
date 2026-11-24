@@ -223,8 +223,8 @@ The bundled data is a small, illustrative water-distribution network — designe
 A single shared ontology holds the network. The `Connection` concept carries the flow decision variable the solver assigns.
 
 - **Key entities**: `Source` (reservoirs, groundwater), `User` (demand groups), `Connection` (source-to-user links).
-- **Primary identifiers**: integer `id` on `Source` and `User`; `Connection` is identified by its `source` and `user` endpoints.
-- **Important invariants**: `capacity`, `demand`, `max_flow`, and `cost_per_unit` are non-negative; `loss_rate` is a fraction in `[0, 1]`; each connection's flow is continuous and bounded between 0 and its `max_flow`.
+- **Primary identifiers**: integer `id` on `Source` and `User`; each row of `connections.csv` creates one `Connection` from its `source` and `user` endpoints and its attributes; an endpoint id that matches no source or user stops the deploy with an error.
+- **Important invariants**: `capacity`, `demand`, and `cost_per_unit` are non-negative; `max_flow` is positive; `loss_rate` is a fraction in `[0, 1]`; every user with demand has at least one connection; each connection's flow is continuous and bounded between 0 and its `max_flow`.
 
 For the full concept and property definitions, see `model/schema.py`; `runbook.md` builds them step by step with the RAI skills.
 
@@ -234,7 +234,7 @@ This is a network-flow problem: source-capacity limits, per-connection flow boun
 
 The model loads three concepts from CSV — sources with a capacity and an extraction cost, users with a demand, and connections that link a source to a user with a maximum flow and a loss rate. Each connection then gets a continuous flow decision variable, bounded between zero and its maximum flow, that the solver assigns.
 
-Two families of constraints shape the plan. A source-capacity constraint holds the total outflow from each source within its capacity. A demand constraint requires each user's effective inflow — the flow delivered after losses — to meet its demand. The loss term is where the nonlinearity enters: the fraction lost on a connection grows with how hard the route is being pushed, so effective delivery falls as a connection approaches its maximum flow. That utilization-dependent loss makes the demand constraint quadratic, which is why the model needs the Ipopt nonlinear solver rather than a linear one. The objective minimizes total extraction cost across all flows, so the solver leans on cheaper sources and lightly loaded routes.
+Two families of constraints shape the plan. A source-capacity constraint holds the total outflow from each source within its capacity. A demand constraint requires each user's effective inflow — the flow delivered after losses — to meet its demand. The loss term is where the nonlinearity enters: the fraction lost on a connection grows with how hard the route is being pushed, so the fraction of the flow delivered falls as a connection approaches its maximum flow. That utilization-dependent loss makes the demand constraint quadratic, which is why the model needs the Ipopt nonlinear solver rather than a linear one. The objective minimizes total extraction cost across all flows, so the solver leans on cheaper sources and lightly loaded routes.
 
 ```text
 sources/users/connections CSVs → per-connection flow variables → capacity + loss-adjusted demand constraints → minimize cost → allocation plan
@@ -250,12 +250,12 @@ Focus on the first changes most users will make.
 
 - Replace the CSVs in `data/` with your own; keep the column names shown in *Sample data* above (`sources.csv`, `users.csv`, `connections.csv`).
 - For Snowflake-backed runs, swap the `read_csv(...)` calls for `model.data(snowflake_table)` calls.
-- Confirm `source_id` and `user_id` in `connections.csv` match the `id` columns in `sources.csv` and `users.csv` — a mismatched key silently drops the connection.
+- Confirm `source_id` and `user_id` in `connections.csv` match the `id` columns in `sources.csv` and `users.csv` — a mismatched key stops the deploy with an error naming the row.
 
 ### Tune parameters
 
 - **Source capacity and cost** — edit `capacity` and `cost_per_unit` in `sources.csv` to change which sources the solver prefers.
-- **Loss rate** — `loss_rate` in `connections.csv` controls how steeply delivery falls as a route approaches capacity.
+- **Loss rate** — `loss_rate` in `connections.csv` controls how steeply the fraction delivered falls as a route approaches capacity.
 
 ### Extend the model
 
