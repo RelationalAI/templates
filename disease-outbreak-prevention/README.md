@@ -157,7 +157,7 @@ Run these steps from a terminal:
      • Highest weighted centrality: Central Hospital (4 connections)
    ```
 
-   The report ranks every facility, lists the top three priority facilities with their connection breakdown, and prints network summary statistics. The full ranked table and a step-by-step walkthrough are in `runbook.md`.
+   The report ranks every facility, lists the top three priority facilities with their connection breakdown, and prints network summary statistics. The ranked table above is the full ranking; `runbook.md` walks through the analysis step by step.
 
 7. **Tear down the deployment**
 
@@ -251,7 +251,7 @@ Focus on the first changes most users will make.
 
 - Replace the CSV files in `data/` with your own network, keeping the same column names (or update the loading logic in `model/source.py`).
 - Make sure every facility referenced in `connections.csv` is a valid id in `facilities.csv`.
-- For Snowflake-backed runs, swap the `pd.read_csv(...)` calls in `model/source.py` for `model.data(snowflake_table)` calls.
+- For Snowflake-backed runs, replace each `data(pd.read_csv(...))` source in `model/source.py` with `model.Table("<DB>.<SCHEMA>.<TABLE>")` over a table with the same columns.
 
 ### Tune parameters
 
