@@ -73,7 +73,7 @@ Routes to a graph step (count the explanation paths from each user to each candi
 
 **Response**
 
-For every (user, unread book) candidate, the connecting paths are counted across the author, subject, and similar-book routes and persisted as `Candidate.path_count_total` (with `triangle_count`). Books with more independent paths to a user's history score as better-explained candidates; books below a weak-explanation threshold are treated as cold-start.
+For every (user, book) candidate the knowledge-graph walks reach, the connecting paths are counted across the author, subject, and similar-book routes and persisted as `Candidate.path_count_total` (with `triangle_count`). Books with more independent paths to a user's history score as better-explained candidates; books below a weak-explanation threshold are treated as cold-start.
 
 ### 5. Assemble each user's slate
 
