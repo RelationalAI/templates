@@ -22,7 +22,7 @@ Run:
     `python -m queries.shift_assignments` then prints the report from the deployed model.
 """
 
-from .reasoning import SolveStatus, assigned_ref, problem
+from .reasoning import SolveStatus, problem
 from .schema import Scenario, Shift, Worker, model
 from .source import DATA_DIR
 
@@ -32,7 +32,6 @@ __all__ = [
     "Shift",
     "SolveStatus",
     "Worker",
-    "assigned_ref",
     "model",
     "problem",
 ]

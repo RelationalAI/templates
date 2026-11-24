@@ -213,7 +213,7 @@ The bundled data is a small, illustrative workforce — 10 workers, 3 shifts, an
 
 ## Model overview
 
-The model has three concepts plus a `Scenario` concept that parameterizes the coverage sweep. Availability is a standalone relationship, and the assignment decision is a per-scenario decision variable.
+The model has three concepts: `Worker`, `Shift`, and a `Scenario` concept that parameterizes the coverage sweep. Availability is a standalone relationship, and the assignment decision is a per-scenario decision variable.
 
 - **Key entities**: `Worker` — a person who can be assigned to shifts; `Shift` — a shift that needs to be staffed; `Scenario` — one coverage level in the sweep, solved simultaneously with the others.
 - **Primary identifiers**: `Worker.id` and `Shift.id` are integers; `Scenario.name` is a string.

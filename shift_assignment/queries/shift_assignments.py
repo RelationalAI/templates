@@ -5,7 +5,8 @@ status of the latest refresh's solve and the worker assigned to each shift in ev
 coverage scenario.
 """
 
-from model import Scenario, Shift, SolveStatus, Worker, assigned_ref, model
+from model import Scenario, Shift, SolveStatus, Worker, model
+from relationalai.semantics import Integer
 
 if __name__ == "__main__":
     status = model.select(SolveStatus).to_df().iloc[:, 0].tolist()
@@ -18,10 +19,11 @@ if __name__ == "__main__":
     # ----------------------------------------------
 
     print("\nAssignments per scenario:")
+    assigned = Integer.ref()
     model.select(
         Scenario.name.alias("scenario"),
         Worker.name.alias("worker"),
         Shift.name.alias("shift"),
     ).where(
-        Worker.x_assign(Shift, Scenario, assigned_ref), assigned_ref > 0
+        Worker.x_assign(Shift, Scenario, assigned), assigned > 0
     ).inspect()
