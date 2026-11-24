@@ -351,7 +351,7 @@ The diagnosis names a contaminated solder-paste lot (`SP-0423`) and a reflow ove
 <details>
   <summary>Why does authentication or configuration fail?</summary>
 
-- Run <code>rai init</code> to create or update <code>raiconfig.yaml</code>.
+- Re-create <code>raiconfig.yaml</code> with the configuration builder (Quickstart step 4) and verify the connection settings.
 - If you have multiple profiles, set <code>RAI_PROFILE</code> or switch profiles in your configuration.
 
 </details>

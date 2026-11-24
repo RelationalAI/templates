@@ -59,7 +59,7 @@ This template shows how RelationalAI answers that question on a single shared mo
 - A Snowflake user that holds the model role.
 - The predictive reasoner's compute pool added to the compute-pool network rule that admits the PAT user (the rule from the prescriptive reasoner setup), because the deployed model runs this template's GNN training, scoring, and registration jobs as the PAT user. Check the pool names in your account with `SHOW COMPUTE POOLS` (for example `RELATIONAL_AI_HIGHMEM_X64_S_ML`), and have an administrator run `ALTER NETWORK RULE <PAT_POOL_NETWORK_RULE> SET VALUE_LIST = (...)`, listing the pools already in the rule plus the predictive one.
 
-Those jobs need grants for the PAT user's role (`<PAT_ROLE>`) and matching caller grants for the RAI Native App. Once the Quickstart's first step has created this template's schemas, have an administrator run:
+Those jobs need grants for the PAT user's role (`<PAT_ROLE>`) and matching caller grants for the RAI Native App. Once the SQL at the start of the Quickstart has created this template's schemas, have an administrator run:
 
 ```sql
 GRANT USAGE ON WAREHOUSE <PAT_WAREHOUSE> TO ROLE <PAT_ROLE>;
@@ -192,7 +192,7 @@ Use this sequence to deploy the model, train the GNN, and query the rolling-hori
    python train.py
    ```
 
-   Then refresh the deployed model so it forecasts supplier capability with this version and solves the three problems over it: `CALL DB.MEMORY_SUPPLY_ALLOCATION_META._INTERNAL_REFRESH_MODEL('standard', NULL);` with your database in place of `DB`. The registry refuses to overwrite a version, so to retrain, set a new `version` in `raiconfig.yaml` first.
+   Then refresh the deployed model so it forecasts supplier capability with this version and solves the three problems over it: `CALL <DB>.MEMORY_SUPPLY_ALLOCATION_META._INTERNAL_REFRESH_MODEL('standard', NULL);` with your database in place of `<DB>`. The registry refuses to overwrite a version, so to retrain, set a new `version` in `raiconfig.yaml` first.
 
 7. **Query the results**
 
@@ -411,9 +411,9 @@ Multi-hop chains require dependency rows that chain together (A depends on B and
 </details>
 
 <details>
-<summary>rai init fails or connection errors</summary>
+<summary>Connection errors</summary>
 
-Ensure your Snowflake account has the RAI Native App installed and your user has the required permissions. Run `rai init` to configure your connection profile. See the [RelationalAI documentation](https://docs.relational.ai) for setup details.
+Ensure your Snowflake account has the RAI Native App installed and your user has the required permissions. Re-create `raiconfig.yaml` with the configuration builder (Quickstart step 4) and verify the connection settings. See the [RelationalAI documentation](https://docs.relational.ai) for setup details.
 </details>
 
 ## Learn more

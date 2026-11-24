@@ -46,7 +46,7 @@ sample_data:
   into a generated "Download and run the template" section. State access and
   Python requirements before the first step, include any required SQL setup
   there, then provide five ordered steps: download, Python environment,
-  install, configure with the Start building with PyRel configuration builder,
+  install, configure with the Install and run PyRel configuration builder,
   and run. Keep any representative output directly after its runner command.
   Templates without this flag retain their existing rendering.
 - `deployment: true` (optional, requires `download_and_run_from_readme: true`)
@@ -54,9 +54,12 @@ sample_data:
   steps: download, Python environment, install, configure, deploy (one `bash`
   block containing exactly `rai models deploy --path model`), query (one `bash`
   block per report containing exactly `python -m queries.<name>`, each optionally
-  followed by a `text` output block), and tear down (`rai models teardown`, then
-  `rai models teardown --force`). A template that trains a GNN adds an eighth
-  step between deploy and query: one `bash` block containing exactly
+  followed by a `text` output block, and optionally ending with an instruction
+  and one `sql` block, such as
+  `CALL <DB>.<SCHEMA>_META._INTERNAL_REFRESH_MODEL('standard', NULL);`), and
+  tear down (`rai models teardown`, then `rai models teardown --force`). A
+  template that trains a GNN adds an eighth step between deploy and query: one
+  `bash` block containing exactly
   `python train.py`, optionally followed by a `text` output block, and then only
   paragraphs, such as the refresh that makes the deployed model predict with
   the new version. List the README's `prerequisites` section in

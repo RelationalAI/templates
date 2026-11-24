@@ -38,7 +38,7 @@ predictive model, and review constraints for your workflow.
 - A Snowflake user that holds the model role.
 - The predictive reasoner's compute pool added to the compute-pool network rule that admits the PAT user (the rule from the prescriptive reasoner setup), because the deployed model runs this template's GNN training, scoring, and registration jobs as the PAT user. Check the pool names in your account with `SHOW COMPUTE POOLS` (for example `RELATIONAL_AI_HIGHMEM_X64_S_ML`), and have an administrator run `ALTER NETWORK RULE <PAT_POOL_NETWORK_RULE> SET VALUE_LIST = (...)`, listing the pools already in the rule plus the predictive one.
 
-Those jobs need grants for the PAT user's role (`<PAT_ROLE>`) and matching caller grants for the RAI Native App. Once the Quickstart's first step has created this template's schemas, have an administrator run:
+Those jobs need grants for the PAT user's role (`<PAT_ROLE>`) and matching caller grants for the RAI Native App. Once the SQL at the start of the Quickstart has created this template's schemas, have an administrator run:
 
 ```sql
 GRANT USAGE ON WAREHOUSE <PAT_WAREHOUSE> TO ROLE <PAT_ROLE>;
@@ -122,7 +122,7 @@ Use this sequence to deploy the model, train the classifier, and print the audit
 
 4. **Configure your project**
 
-   Use the configuration builder in [Start building with PyRel](https://docs.relational.ai/get-started/start-building-with-pyrel/#configure-your-project) to create `raiconfig.yaml` in the template directory and verify your connection.
+   Use the configuration builder in [Install and run PyRel](https://docs.relational.ai/get-started/install-and-run-pyrel/#configure-your-project) to create `raiconfig.yaml` in the template directory and verify your connection.
 
    Set the connection `role` to the model role, then add the predictive and prescriptive reasoners, the registered version the classifier predicts with, and a `deployment` section. Give each template its own schema pair so two deployed templates never share one:
 
@@ -170,7 +170,7 @@ Use this sequence to deploy the model, train the classifier, and print the audit
    python train.py
    ```
 
-   Then refresh the deployed model so it scores the test transfers with this version and solves the audit selection over those scores: `CALL DB.FRAUD_DETECTION_META._INTERNAL_REFRESH_MODEL('standard', NULL);` with your database in place of `DB`. The registry refuses to overwrite a version, so to retrain, set a new `version` in `raiconfig.yaml` first.
+   Then refresh the deployed model so it scores the test transfers with this version and solves the audit selection over those scores: `CALL <DB>.FRAUD_DETECTION_META._INTERNAL_REFRESH_MODEL('standard', NULL);` with your database in place of `<DB>`. The registry refuses to overwrite a version, so to retrain, set a new `version` in `raiconfig.yaml` first.
 
 7. **Query the results**
 

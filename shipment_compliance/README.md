@@ -259,7 +259,7 @@ Make sure you activated the virtual environment and ran `python -m pip install .
 <details>
 <summary>Connection or authentication errors</summary>
 
-Run `rai init` to configure your Snowflake connection. Verify that the RAI Native App is installed and your user has the required permissions.
+Re-create `raiconfig.yaml` with the configuration builder (Quickstart step 4) and verify the connection settings. Verify that the RAI Native App is installed and your user has the required permissions.
 </details>
 
 <details>

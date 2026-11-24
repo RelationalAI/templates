@@ -357,7 +357,7 @@ Ensure your Snowflake account has the RAI Native App installed and your user has
 
 ### CLI / SDK guides
 
-- [RelationalAI setup and `rai init`](https://docs.relational.ai/) -- connecting the SDK to your Snowflake account.
+- [Install and run PyRel](https://docs.relational.ai/get-started/install-and-run-pyrel/) -- installing the SDK and configuring `raiconfig.yaml` to connect to your Snowflake account.
 
 ## Support
 

@@ -306,7 +306,7 @@ Focus on the first changes most users will make.
 
 ### CLI / SDK guides
 
-- [RelationalAI setup](https://docs.relational.ai/) — `rai init`, profiles, and `raiconfig.yaml`.
+- [Install and run PyRel](https://docs.relational.ai/get-started/install-and-run-pyrel/) — installing the SDK and configuring `raiconfig.yaml`.
 
 ## Support
 

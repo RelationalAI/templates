@@ -381,7 +381,7 @@ Make sure you activated the virtual environment and ran `python -m pip install .
 <details>
 <summary>Connection or authentication errors</summary>
 
-Run `rai init` to configure your Snowflake connection. Verify that your account has the RAI Native App installed and that your user has the required permissions.
+Re-create `raiconfig.yaml` with the configuration builder (Quickstart step 4) and verify the connection settings. Verify that your account has the RAI Native App installed and that your user has the required permissions.
 </details>
 
 <details>
@@ -403,7 +403,7 @@ The solver minimizes cost, so it will avoid expensive supply options when cheape
 
 ### CLI / SDK guides
 
-- [RelationalAI setup and `rai init`](https://docs.relational.ai/) -- connecting the SDK to your Snowflake account.
+- [Install and run PyRel](https://docs.relational.ai/get-started/install-and-run-pyrel/) -- installing the SDK and configuring `raiconfig.yaml` to connect to your Snowflake account.
 
 ## Support
 

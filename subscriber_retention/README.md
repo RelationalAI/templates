@@ -169,7 +169,7 @@ Use this sequence to deploy the model, train the GNN, and query the churn report
    python train.py
    ```
 
-   Then refresh the deployed model so it predicts with this version: `CALL DB.SUBSCRIBER_RETENTION_META._INTERNAL_REFRESH_MODEL('standard', NULL);` with your database in place of `DB`. The registry refuses to overwrite a version, so to retrain, set a new `version` in `raiconfig.yaml` first.
+   Then refresh the deployed model so it predicts with this version: `CALL <DB>.SUBSCRIBER_RETENTION_META._INTERNAL_REFRESH_MODEL('standard', NULL);` with your database in place of `<DB>`. The registry refuses to overwrite a version, so to retrain, set a new `version` in `raiconfig.yaml` first.
 
 7. **Query the results**
 
@@ -391,7 +391,7 @@ The deployed model has not refreshed since a version was registered: the refresh
 
 ### CLI / SDK guides
 
-- [RelationalAI setup and `rai init`](https://docs.relational.ai/) — connecting the SDK and configuring the experiments schema.
+- [Install and run PyRel](https://docs.relational.ai/get-started/install-and-run-pyrel/) — installing the SDK and configuring `raiconfig.yaml` to connect to your Snowflake account.
 
 ## Support
 

@@ -230,7 +230,7 @@ See `model/reasoning.py` for the implementation, `queries/attack_path_report.py`
 <details>
   <summary>Why does authentication or configuration fail?</summary>
 
-- Run `rai init` to create or update `raiconfig.yaml`.
+- Re-create `raiconfig.yaml` with the configuration builder (Quickstart step 4) and verify the connection settings.
 - If you have multiple profiles, set `RAI_PROFILE` or switch profiles in your config.
 
 </details>

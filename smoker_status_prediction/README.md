@@ -160,7 +160,7 @@ Use this sequence to deploy the model, train the GNN, and query its predictions:
    python train.py
    ```
 
-   Then refresh the deployed model so it predicts with this version: `CALL DB.SMOKER_STATUS_PREDICTION_META._INTERNAL_REFRESH_MODEL('standard', NULL);` with your database in place of `DB`. The registry refuses to overwrite a version, so to retrain, set a new `version` in `raiconfig.yaml` first.
+   Then refresh the deployed model so it predicts with this version: `CALL <DB>.SMOKER_STATUS_PREDICTION_META._INTERNAL_REFRESH_MODEL('standard', NULL);` with your database in place of `<DB>`. The registry refuses to overwrite a version, so to retrain, set a new `version` in `raiconfig.yaml` first.
 
 7. **Query the results**
 
@@ -356,9 +356,9 @@ The deployed model has not refreshed since a version was registered: the refresh
 </details>
 
 <details>
-<summary>rai init fails or connection errors</summary>
+<summary>Connection errors</summary>
 
-Ensure your Snowflake credentials are configured correctly and that the RAI Native App is installed on your account. Run `rai init` again and verify the connection settings.
+Ensure your Snowflake credentials are configured correctly and that the RAI Native App is installed on your account. Re-create `raiconfig.yaml` with the configuration builder (Quickstart step 4) and verify the connection settings.
 </details>
 
 ## Learn more

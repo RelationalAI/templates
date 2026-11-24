@@ -397,7 +397,7 @@ This is expected if one runner is cheapest and has enough concurrency. Check tha
 
 ### CLI / SDK guides
 
-- [RelationalAI CLI and setup](https://docs.relational.ai/) — `rai init`, credentials, and connecting to your Snowflake account.
+- [Install and run PyRel](https://docs.relational.ai/get-started/install-and-run-pyrel/) — installing the SDK and configuring `raiconfig.yaml` to connect to your Snowflake account.
 
 ## Support
 

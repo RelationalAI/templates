@@ -321,7 +321,7 @@ All thresholds are at the top of `model/reasoning.py` under `# Configure inputs`
 
 ### CLI / SDK guides
 
-- [`rai init` and `raiconfig.yaml`](https://docs.relational.ai/) — connecting the template to your RelationalAI account.
+- [Install and run PyRel](https://docs.relational.ai/get-started/install-and-run-pyrel/) — installing the SDK and configuring `raiconfig.yaml` to connect the template to your RelationalAI account.
 
 ## Support
 

@@ -257,7 +257,7 @@ Focus on the first changes most users will make.
 <details>
   <summary>Why does authentication/configuration fail?</summary>
 
-- Run `rai init` to create/update `raiconfig.yaml`.
+- Re-create `raiconfig.yaml` with the configuration builder (Quickstart step 4) and verify the connection settings.
 - If you have multiple profiles, set `RAI_PROFILE` or switch profiles in your config.
 
 </details>

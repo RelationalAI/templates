@@ -404,7 +404,7 @@ See `model/` for the implementation, `queries/` for the reports, and `runbook.md
 <details>
   <summary>Authentication or configuration errors</summary>
 
-- Run `rai init` to create or update your RelationalAI/Snowflake configuration.
+- Re-create `raiconfig.yaml` with the configuration builder (Quickstart step 4) to update your RelationalAI/Snowflake configuration.
 - If you have multiple profiles, set `export RAI_PROFILE=<your_profile>`.
 
 </details>
