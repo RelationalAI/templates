@@ -231,7 +231,7 @@ The three demand scenarios (`low_demand` 0.8, `baseline` 1.0, `high_demand` 1.1)
 - **Primary identifiers**: integer `id` on `Product` and `Machine`; string `name` on `Scenario`. `ProductionRate` and `Production` are identified structurally by the entities they link.
 - **Important invariants**: `demand`, `profit`, `hours_available`, and `hours_per_unit` are non-negative; the decision variable `x_quantity` is a non-negative integer; total machine hours used cannot exceed `hours_available`; total units produced must meet demand scaled by the scenario multiplier.
 
-For the full concept and property definitions, see `model/schema.py`; `runbook.md` builds them step by step with the RAI skills.
+For the full definitions, see `model/schema.py` for the concepts and `model/reasoning.py` for `Production`, its `rate`, and the `x_quantity` decision; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
