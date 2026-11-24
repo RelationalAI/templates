@@ -121,7 +121,7 @@ if __name__ == "__main__":
     results = [report_audit(name, description) for name, description, _ in PROPERTIES]
 
     # The verdict matrix is the audit's headline deliverable: one line per
-    # property, grouped by outcome. The PASS-and-FAIL mix in a single run
+    # property, in catalog order. The PASS-and-FAIL mix in a single run
     # is the demo -- the audit isn't rigged to always fail; it
     # distinguishes properties the ruleset satisfies from those it
     # violates. Cross-referencing FAIL witness tables for shared decision

@@ -270,7 +270,7 @@ See `model/reasoning.py` and `queries/audit_report.py` for the implementation, a
 - Add a scoped property by adding a `model.where(<data filter>).require(<decision constraint>)` IC alongside the unconditional counterexample ICs. `chronic_under_50_implies_review` shows the pattern: the `where` iterates `AgeBucket` rows outside the scope (a pure data filter), and the `require` body forbids the applicant decision from picking those rows. PyRel rejects decision-variable expressions inside `where`, so the decision-variable constraint must live in `require`.
 - Audit a corrected ruleset by changing the buggy rule in `model/reasoning.py`: the manual-review rule pins `is_manual_review == is_senior`; change the right-hand side to `is_frail`. With the fix in place, the failing verdicts in the bundled run turn to PASS and the verdict matrix reports 3 PASS, 0 FAIL.
 - Add more rule indicators by introducing additional decisions and their defining ICs in `model/reasoning.py`, then appending them to `rule_pack`. A logical AND over binaries is encoded with the dual of the OR pattern used for `is_frail`.
-- Switch from "any counterexample" to "worst counterexample" by adding a `problem.minimize(...)` over a violation-severity score with `solution_limit=1`, when triage capacity is limited and you want the single most severe failure first.
+- Switch from "any counterexample" to "worst counterexample" by adding a `problem.maximize(...)` over a violation-severity score and letting the solve finish `OPTIMAL`, when triage capacity is limited and you want the single most severe failure first; a time-limited solve returns only the most severe counterexample it found.
 
 ### Extend to many applicants
 
