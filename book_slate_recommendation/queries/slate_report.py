@@ -188,7 +188,8 @@ if __name__ == "__main__":
     status = model.select(SolveStatus).to_df().iloc[:, 0].tolist()
     support = model.select(TotalSupport).to_df().iloc[:, 0].tolist()
     print(f"\nSolve result:\n• status: {', '.join(status)}")
-    if status not in (["OPTIMAL"], ["TIME_LIMIT"]):
+    # A TIME_LIMIT solve still reports its best slate; without one there is nothing to report.
+    if status not in (["OPTIMAL"], ["TIME_LIMIT"]) or not support:
         raise SystemExit(f"termination status {status}")
     if support:
         print(f"• objective: {support[0]}")

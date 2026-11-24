@@ -60,10 +60,10 @@ WEAK_EXPLANATION_THRESHOLD = 2
 HERO_EMBEDDEDNESS_THRESHOLD = 4
 
 # Unified KG edge: a single 2-arity Item.connected_to relationship
-# the path walker traverses. Workaround for the current paths-lib
-# composite-edge gap (see Item-concept comment above). Each define()
-# below contributes one direction of one typed edge to the union; the
-# walker treats them all as the same generic hop. The typed-evidence
+# the path walker traverses, because a path() call walks one 2-arity
+# relationship at a time. Each define() below contributes one direction
+# of one typed edge to this symmetric union; the walker treats them all
+# as the same generic hop. The typed-evidence
 # properties below join candidate books directly against the user's
 # read history via Book.written_by / Book.about rather than
 # introspecting walker paths -- simpler and faster.
@@ -157,12 +157,9 @@ c = Candidate.ref()
 n = Integer.ref()
 u_c, b_c = User.ref(), Book.ref()
 
-# via-author: shared-author connections between the candidate and
-# the user's read books. Bag count -- one match per
-# (read_book, shared_author) pair, so the same author appearing on
-# multiple read books contributes more weight (intentional: a user
-# who read three books by Author A reveals more affinity than a
-# user who read one).
+# via-author: the number of distinct authors the candidate shares
+# with the user's read books. count(a_ref) counts each shared author
+# once, however many of the user's read books it appears on.
 b_read_a = Book.ref()
 a_ref = Author.ref()
 model.define(Candidate.path_count_via_author(c, n)).where(
@@ -180,8 +177,8 @@ model.define(Candidate.path_count_via_author(c, n)).where(
     | 0,
 )
 
-# via-subject: shared-subject connections, bag count -- same shape
-# as via-author (read books and candidates can be multi-subject).
+# via-subject: the number of distinct subjects the candidate shares
+# with the user's read books, counted like via-author.
 b_read_s = Book.ref()
 s_ref = Subject.ref()
 model.define(Candidate.path_count_via_subject(c, n)).where(
@@ -241,6 +238,7 @@ sim_graph = Graph(
     weighted=False,
     node_concept=Book,
     aggregator="sum",
+    name="book_similarity_graph",
 )
 src_g, dst_g = Book.ref(), Book.ref()
 model.define(sim_graph.Edge.new(src=src_g, dst=dst_g)).where(

@@ -58,7 +58,7 @@ This template composes the slate as a single optimization decision rather than a
 
 ### Tools
 
-- Python 3.10 or newer.
+- Python 3.10 through 3.14 (the range relationalai 2.3.0 supports).
 - RelationalAI Python SDK (`relationalai == 2.3.0`).
 
 ## Quickstart
@@ -237,7 +237,7 @@ The bibliographic data is a deterministic slice of [Open Library](https://openli
 
 One shared ontology threads all three stages. The path-walk stage derives candidates and their evidence, the graph stage adds a structural measure, and the prescriptive stage reads both to compose the slate.
 
-- **Key entities**: `User` — a reader; `Book` — a catalog title (an `Item` sub-concept); `Author` and `Subject` — a book's authors and topics; `Slot` — one of the K ordered recommendation positions in a user's slate; the derived `Candidate` — a (user, unread book) pair scored by its knowledge-graph explanation paths.
+- **Key entities**: `User` — a reader; `Book` — a catalog title (an `Item` sub-concept); `Author` and `Subject` — a book's authors and topics; `Slot` — one of the K ordered recommendation positions in a user's slate; the derived `Candidate` — a (user, book) pair the knowledge-graph walks reach, scored by its explanation paths; a book the user already read is held at the unpicked sentinel slot.
 - **Primary identifiers**: integer `id` on `User`, `Book`, `Author`, `Subject`; `pos` on `Slot`; composite `(user_id, book_id)` on `Candidate`.
 - **Important invariants**: `Book.in_house` is a 0/1 flag; `Book.age_days` is non-negative; similarity edges are unique on `(src_book_id, dst_book_id)`; every foreign key resolves; slot decisions take values in `1..K+1`, where slot 1 is the hero position and slot K+1 is the unpicked sentinel.
 
@@ -311,12 +311,12 @@ See *Troubleshooting* for the joint-feasibility relationships between these dial
 
 The model enforces ten constraints. If the data is too sparse or too clustered, the joint constraints can be infeasible. The dominant causes on customer slices are:
 
-1. **Too few candidates after the already-read exclusion.** Each user needs at least `SLATE_SIZE_K` candidates in their 2-hop reach after already-read books are excluded. Recommendable candidates come from length-2 `read_Book -> similar_Book` walks, so a user whose reads have no `similar_to` neighbors will be infeasible. Inspect the candidate-set diagnostic printed at the end of the report.
+1. **Too few candidates after the already-read exclusion.** Each user needs at least `SLATE_SIZE_K` candidates in their 2-hop reach after already-read books are excluded. Recommendable candidates come from length-2 `read_Book -> similar_Book` walks, so a user whose reads have no `similar_to` neighbors will be infeasible. Inspect the per-user candidate floor check and the unread candidate counts, which the report prints before the solve result.
 2. **Disjoint floors.** `FRESHNESS_FLOOR` and `ORIGINALS_FLOOR` are independent. A user with no candidate that is both fresh and in-house must spend `FRESHNESS_FLOOR + ORIGINALS_FLOOR` distinct picks, not the maximum of the two.
 3. **Author uniqueness versus slate size.** Author uniqueness caps at one pick per `(user, author)`, so each user needs at least `SLATE_SIZE_K` distinct authors in reach.
 4. **Cold-start cap and explanation floor.** `EXPLANATION_FLOOR` is position-weighted. With at most `COLD_START_CAP` weakly-explained picks, the floor must still be reachable; inspect the per-user path-count distribution first.
 5. **Missing edges.** Every picked book must have at least one `Book.about(Subject)` and one `Book.written_by(Author)` row, or the diversity and uniqueness caps silently exempt it.
-6. **Hero pin.** Each user needs at least one candidate whose book has `triangle_count >= HERO_EMBEDDEDNESS_THRESHOLD`, or there is no eligible book for slot 1. Inspect the structural-embeddedness diagnostic table, then either lower `HERO_EMBEDDEDNESS_THRESHOLD` or densify the similarity input.
+6. **Hero pin.** Each user needs at least one candidate whose book has `triangle_count >= HERO_EMBEDDEDNESS_THRESHOLD`, or there is no eligible book for slot 1. The report's per-user candidate floor check names users with no hero-eligible candidate; either lower `HERO_EMBEDDEDNESS_THRESHOLD` or densify the similarity input.
 
 The report first runs a Python-level check that reads the candidate set and the read history from the deployed model, anti-joins them, and stops with an error naming the affected users per shortfall, with a strategy block keyed by which condition fired. It also prints an unread-candidate-count table before the solve result.
 
