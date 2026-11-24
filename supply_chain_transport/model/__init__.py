@@ -16,28 +16,16 @@ Run:
     `python -m queries.transport_plan` then prints the report from the deployed model.
 """
 
-from .reasoning import (
-    FreightGroup_ref,
-    SolveStatus,
-    TotalTransportCost,
-    problem,
-    time_period_ref,
-    x_inv,
-    x_qty_tra,
-)
+from .reasoning import SolveStatus, TotalTransportCost, problem
 from .schema import FreightGroup, TransportType, model
 from .source import DATA_DIR
 
 __all__ = [
     "DATA_DIR",
     "FreightGroup",
-    "FreightGroup_ref",
     "SolveStatus",
     "TotalTransportCost",
     "TransportType",
     "model",
     "problem",
-    "time_period_ref",
-    "x_inv",
-    "x_qty_tra",
 ]

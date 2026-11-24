@@ -5,17 +5,11 @@ status and objective of the latest refresh's solve and tables of the inventory l
 transport quantities, and the arrival days.
 """
 
-from model import (
-    FreightGroup,
-    FreightGroup_ref,
-    SolveStatus,
-    TotalTransportCost,
-    TransportType,
-    model,
-    time_period_ref,
-    x_inv,
-    x_qty_tra,
-)
+from model import FreightGroup, SolveStatus, TotalTransportCost, TransportType, model
+from relationalai.semantics import Float, Integer
+
+day, inventory, quantity = Integer.ref(), Float.ref(), Float.ref()
+shipped_group = FreightGroup.ref()
 
 if __name__ == "__main__":
     status = model.select(SolveStatus).to_df().iloc[:, 0].tolist()
@@ -33,16 +27,16 @@ if __name__ == "__main__":
     # Extract the solution with model.select(); the solved values are populated.
     print("\n=== Inventory Levels ===")
     model.select(
-        FreightGroup.name.alias("freight_group"), time_period_ref.alias("day"),
-        x_inv.alias("inventory"),
-    ).where(FreightGroup.x_inv(time_period_ref, x_inv)).inspect()
+        FreightGroup.name.alias("freight_group"), day.alias("day"),
+        inventory.alias("inventory"),
+    ).where(FreightGroup.x_inv(day, inventory)).inspect()
 
     print("\n=== Transport Quantities ===")
     model.select(
-        TransportType.name.alias("type"), FreightGroup_ref.name.alias("freight_group"),
-        time_period_ref.alias("day"), x_qty_tra.alias("quantity"),
+        TransportType.name.alias("type"), shipped_group.name.alias("freight_group"),
+        day.alias("day"), quantity.alias("quantity"),
     ).where(
-        TransportType.x_qty_tra(FreightGroup_ref, time_period_ref, x_qty_tra), x_qty_tra > 0.001
+        TransportType.x_qty_tra(shipped_group, day, quantity), quantity > 0.001
     ).inspect()
 
     print("\n=== Arrival Days ===")

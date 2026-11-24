@@ -165,7 +165,7 @@ Use this sequence to deploy the model and query it:
    1  ltl           fg2    2    5000.0
    ```
 
-   The inventory-level and arrival-day tables that the report also prints are trimmed here. Both freight groups ship less-than-truckload on day 2 (zero truckload trucks); see `runbook.md` for the full inventory and arrival-day tables.
+   The inventory-level and arrival-day tables that the report also prints are trimmed here. Both freight groups ship less-than-truckload on day 2 (zero truckload trucks); the report prints the full inventory and arrival-day tables.
 
    To solve again without changing the model, refresh the deployed model, then run the query again:
 
@@ -200,7 +200,7 @@ Use this sequence to deploy the model and query it:
     └── freight_groups.csv
 ```
 
-**Start here**: deploy with `rai models deploy --path model` and run `python -m queries.transport_plan` for the full formulation and solve end to end, or follow `runbook.md` to reproduce it step by step with the RAI skills.
+**Start here**: deploy with `rai models deploy --path model` and run `python -m queries.transport_plan` to print the solved plan (`model/reasoning.py` states the formulation), or follow `runbook.md` to reproduce it step by step with the RAI skills.
 
 ## Sample data
 
@@ -253,7 +253,7 @@ Focus on the first changes most users will make.
 ### Extend the model
 
 - Add more freight groups by extending `freight_groups.csv` with additional rows and time windows.
-- Add more LTL segments by defining additional `LTLSegment` instances for finer cost granularity.
+- Add more LTL segments for finer cost granularity. The weight decomposition and the fixed part of the LTL charge each look back exactly one segment, so the formulation supports two tiers; a third tier also needs both sums to run over every lower segment.
 - Extend to multiple origins/destinations by adding location concepts and routing constraints.
 - Add capacity constraints on warehouses or transport links.
 
@@ -267,7 +267,7 @@ Focus on the first changes most users will make.
 <details>
   <summary>Solver returns INFEASIBLE</summary>
 
-- Verify that each freight group's transport window overlaps with the departure days (1-4).
+- Keep each freight group's transport window inside the departure days (`dep_start` to `dep_end`, 1-4): the model weighs, caps, and prices shipments only on those days. Its inventory window should run from the first transport day to the day after the last, since inventory carries between days only where a shipment can depart.
 - Check that arrival windows are reachable given transit times (TL=2, LTL=3 days).
 - Ensure `inv_start` values are positive and time windows are consistent (start <= end).
 

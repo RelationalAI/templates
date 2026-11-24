@@ -45,7 +45,7 @@ Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` 
 
 **Prompt:** /rai-prescriptive-results How does the optimal plan ship each group, and why does it pick that mode?
 
-**Response:** The plan ships **both groups by LTL on day 2** (9,000 lb combined), each arriving on day 5, and uses **zero truckload trucks**. LTL consolidation wins here: the combined LTL cost of $1,444 undercuts the $2,000 fixed cost of even a single TL truck, so paying per-pound on LTL beats committing to truckload at these volumes.
+**Response:** The plan ships **both groups by LTL on day 2** (9,000 lb combined), each arriving on day 5, and uses **zero truckload trucks**. LTL consolidation wins here: the plan's $1,444 total ($1,440 of LTL freight plus $4 of holding cost) undercuts the $2,000 fixed cost of even a single TL truck, so paying per-pound on LTL beats committing to truckload at these volumes.
 
 ## Data
 
