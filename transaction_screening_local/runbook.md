@@ -65,4 +65,4 @@ Requires `relationalai` 2.3.0. Local DuckDB execution uses deploy mode (flagged 
 
 ## Cohesion
 
-Every number above matches the script's printed output (`transaction_screening_local.py`): 75 transfers and 870,000 moved; 6 suspects (of 54 accounts); 8 suspect-to-counterparty pairs; 8 accounts in the investigation set. Re-run the script to refresh these if the data or thresholds change.
+The script (`transaction_screening_local.py`) prints the transfer count and volume (75 transfers, 870,000 moved) and lists the suspects, the suspect-to-counterparty pairs and the investigation set, whose rows give 6 suspects, 8 pairs and 8 accounts. It prints no total account or distinct-link count; the 54 accounts and 75 links come from the data. Re-run the script to refresh these if the data or thresholds change.
