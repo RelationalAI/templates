@@ -233,7 +233,7 @@ The model is a multi-period production and inventory ontology. Sites and SKUs ar
 
 - **Key entities**: `Site`, `SKU`, `DemandOrder`, `ProdCapacity`, and `WeeklyDemand` (pre-aggregated demand per planning horizon, site, SKU, and week, including zero-demand weeks).
 - **Primary identifiers**: `Site.id` and `SKU.id` (integers); `DemandOrder.id` (integer); the composite key `ProdCapacity(site_id, sku_id)`; the composite key `WeeklyDemand(wk_planning_end, wk_site_id, wk_sku_id, wk_week_num)`.
-- **Important invariants**: quantities, costs, production, and inventory are non-negative; inventory obeys flow conservation (`inv[t] = inv[t-1] + production[t] - demand[t]`); week 0 inventory equals the initial inventory; unmet demand per order is bounded by the order quantity; total unmet demand is capped by the 95% service level.
+- **Important invariants**: quantities, costs, production, and inventory are non-negative; inventory obeys flow conservation (`inv[t] = inv[t-1] + production[t] - demand[t]`); week 0 inventory equals the initial inventory; unmet demand per order is bounded by the order quantity; total unmet demand is capped by the 95% service level. Unmet demand is not subtracted from the inventory withdrawal: inventory must cover all demand, and `x_unmet` counts only toward the service level and the penalty.
 
 For the full concept and property definitions, see `model/schema.py`; the time-indexed `x_production` / `x_inventory` decision variables on `ProdCapacity` are declared in `model/reasoning.py`, and the relationships linking orders and capacity to their `Site` and `SKU` in `model/source.py`; `runbook.md` builds them step by step with the RAI skills.
 
@@ -292,7 +292,7 @@ python -m pip install .
 <details>
 <summary>A horizon's solve status is INFEASIBLE</summary>
 
-The 95% service level constraint may be too strict for your data. Try lowering `min_service_level` in `model/reasoning.py` to 0.90, or check that production capacities in `production_capacity.csv` are large enough to cover weekly demand. Also verify that `initial_inventory.csv` has entries for every site-SKU pair. If you increased `safety_stock_weeks`, try setting it to 0 to check whether the safety stock floor is causing infeasibility.
+Inventory balance withdraws every unit of weekly demand, so initial inventory plus production must cover all demand plus safety stock; lowering `min_service_level` does not relieve a stock shortage. Check that production capacities in `production_capacity.csv` are large enough to cover weekly demand. Also verify that `initial_inventory.csv` has entries for every site-SKU pair. If you increased `safety_stock_weeks`, try setting it to 0 to check whether the safety stock floor is causing infeasibility.
 </details>
 
 <details>

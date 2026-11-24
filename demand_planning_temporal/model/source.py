@@ -152,10 +152,13 @@ for planning_end in SCENARIO_VALUES:
     full_demand["planning_end"] = planning_end
     demand_frames.append(full_demand)
 
-scope_data = model.data(pd.concat(scope_frames, ignore_index=True))
-model.define(OrderInPlan(DemandOrder, scope_data.planning_end)).where(
-    DemandOrder.id == scope_data.id
-)
+scope_df = pd.concat(scope_frames, ignore_index=True)
+# With no order inside any horizon there is nothing to scope.
+if not scope_df.empty:
+    scope_data = model.data(scope_df)
+    model.define(OrderInPlan(DemandOrder, scope_data.planning_end)).where(
+        DemandOrder.id == scope_data.id
+    )
 
 wd_data = model.data(pd.concat(demand_frames, ignore_index=True))
 model.define(
