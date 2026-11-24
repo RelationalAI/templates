@@ -283,7 +283,7 @@ Replace the three CSVs in `data/` with your own, keeping these headers:
 
 - Add or remove fulfillment centers by changing `sites.csv` (rows of type `FULFILLMENT_CENTER`).
 - Change FC fixed costs to study the open-set sensitivity — opening FC_West saves $300 of transport, so a fixed cost below $300 swings the optimum to opening it (at $300 the two plans tie).
-- Add lane capacity constraints to force splitting flow across multiple paths.
+- Tighten lane capacities in `lanes.csv` to force splitting flow across multiple paths.
 
 ### Extend the model
 
