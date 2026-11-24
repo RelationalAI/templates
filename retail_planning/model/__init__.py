@@ -30,6 +30,7 @@ from .reasoning import (
 from .schema import (
     Discount,
     OptArticle,
+    ProdCapacity,
     Train,
     Transaction,
     Week,
@@ -46,6 +47,7 @@ __all__ = [
     "MarkdownRevenue",
     "MarkdownStatus",
     "OptArticle",
+    "ProdCapacity",
     "Train",
     "Transaction",
     "Week",

@@ -32,7 +32,7 @@ DEMAND_SCALE = 200.0
 # --------------------------------------------------
 # Phase 1: Graph
 # --------------------------------------------------
-gnn_graph = Graph(model, directed=True, weighted=False)
+gnn_graph = Graph(model, name="transaction_graph", directed=True, weighted=False)
 Edge = gnn_graph.Edge
 model.define(Edge.new(src=Transaction, dst=Customer)).where(
     Transaction.t_customer_id == Customer.c_customer_id)
@@ -313,3 +313,20 @@ dp.configure("highs", time_limit_sec=120)
 DemandPlanStatus = model.Relationship(f"retail demand planning status is {String:status}")
 DemandPlanCost = model.Relationship(f"retail demand planning cost is {Float:cost}")
 model.define(DemandPlanStatus(dp.termination_status()), DemandPlanCost(dp.objective_value()))
+
+# The plan, which the deployed model publishes for the queries: production and unmet demand
+# for each planning article and week, and inventory at the end of each week (week 0 is the
+# opening stock).
+ProdCapacity.planned_production = model.Relationship(
+    f"{ProdCapacity} in week {Week} has planned production {Float:production}")
+ProdCapacity.planned_inventory = model.Relationship(
+    f"{ProdCapacity} at end of week {Integer:week} has planned inventory {Float:inventory}")
+ProdCapacity.planned_unmet = model.Relationship(
+    f"{ProdCapacity} in week {Week} has planned unmet demand {Float:unmet}")
+plan_week, plan_end_week, plan_value = Week.ref(), Integer.ref(), Float.ref()
+model.where(ProdCapacity.x_production(plan_week, plan_value)).define(
+    ProdCapacity.planned_production(plan_week, plan_value))
+model.where(ProdCapacity.x_inventory(plan_end_week, plan_value)).define(
+    ProdCapacity.planned_inventory(plan_end_week, plan_value))
+model.where(ProdCapacity.x_unmet(plan_week, plan_value)).define(
+    ProdCapacity.planned_unmet(plan_week, plan_value))

@@ -51,7 +51,7 @@ Assumes familiarity with Python, basic ML concepts (classification, regression, 
 - Sample data:
   - `data/hm_mini/` -- bundled H&M subset (~10K customers / 5K articles / 9.6K transactions) with sales task splits, the 12-article planning inventory, and its production capacity
   - `data/discounts.csv`, `data/weeks.csv` -- the discount tiers and planning weeks
-- Outputs: the adjusted demand, the optimal discount schedule, and the cost and revenue summaries
+- Outputs: the adjusted demand, the optimal discount schedule, the production plan with inventory levels and unmet demand, and the cost and revenue summaries
 
 ## Prerequisites
 
@@ -235,9 +235,18 @@ Use this sequence to deploy the model, train the GNN, and query the markdown and
 
    Demand Planning Status: OPTIMAL
    Total cost (production + holding + unmet penalty): $9,318.44
+
+   === Demand Planning: Production Plan (non-zero) ===
+     ...
+
+   === Demand Planning: Inventory Levels ===
+     ...
+
+   === Demand Planning: Unmet Demand ===
+     ...
    ```
 
-   The report prints more lines than shown here: all 12 planning articles and every selected discount. The GNN's predictions, and with them the demand and both objectives, shift from one training run to the next; the structural outcome is stable: status OPTIMAL for the markdown and the planning problems. Alternative optimal discount schedules can differ between refreshes at the same revenue.
+   The report prints more lines than shown here: all 12 planning articles, every selected discount, and the production, inventory, and unmet-demand rows for each planning article and week. The GNN's predictions, and with them the demand and both objectives, shift from one training run to the next; the structural outcome is stable: status OPTIMAL for the markdown and the planning problems. Alternative optimal discount schedules can differ between refreshes at the same revenue.
 
    To predict and solve again without changing the model, refresh the deployed model, then run the query again:
 
@@ -377,16 +386,15 @@ Both problems are solved by HiGHS on each refresh of the deployed model, and the
 <details>
 <summary>The report prints no adjusted demand</summary>
 
-- Run `python train.py`, then refresh the deployed model: the first deploy registers no GNN version, so it makes no predictions.
+- Run `python train.py`, then refresh the deployed model: the first deploy registers no GNN version, so it makes no predictions. Until every planning article has demand, the report stops before the plans.
 - Check that `raiconfig.yaml` names the same model and version that `train.py` registered.
 </details>
 
 <details>
 <summary>Markdown optimization is infeasible</summary>
 
-- Verify that `discounts.csv` includes a 0% discount level (the model needs a feasible starting point).
-- Check that initial inventory in `articles_inventory.csv` is sufficient for at least one week of base demand.
-- Ensure the article IDs in the CSVs match articles that have predictions (they appear in the sales test set).
+- Selling nothing is feasible whenever the inputs are non-negative and `discounts.csv` has at least one tier, so check the CSVs for negative values and keep the week numbers in `weeks.csv` consecutive from 1.
+- Ensure the article IDs in the CSVs match articles that have predictions (they appear in the sales test set); the report stops before the plans and lists any planning article without predicted demand.
 </details>
 
 <details>
@@ -401,7 +409,7 @@ Both problems are solved by HiGHS on each refresh of the deployed model, and the
 
 - Ensure the GNN training completed successfully (check for `fit()` errors).
 - Verify that the test relationship has rows and that the keys link to the core entities.
-- If the validation RMSE is at or above the `stddev` that the report prints for the target, the regression model has collapsed to the mean; revisit the PropertyTransformer and task setup.
+- Compare the validation RMSE with a predict-the-mean baseline evaluated on the same validation rows; an RMSE no better than that baseline means the model has learned nothing beyond the mean, so revisit the PropertyTransformer and task setup.
 </details>
 
 <details>

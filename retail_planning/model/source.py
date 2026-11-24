@@ -26,8 +26,7 @@ HM_DIR = DATA_DIR / "hm_mini"
 
 # The deploy writes each frame into its store view as inline rows, and Snowflake rejects a view
 # definition past about 1 MB. Load only the columns the GNN reads: the full customer and article
-# files are 1.2 MB and 2 MB inline. Workaround for RAI-52357; load every column once the deploy
-# handles large frames.
+# files are 1.2 MB and 2 MB inline.
 CUSTOMER_COLUMNS = [
     "C_CUSTOMER_ID", "FN", "ACTIVE", "CLUB_MEMBER_STATUS", "FASHION_NEWS_FREQUENCY", "AGE",
 ]

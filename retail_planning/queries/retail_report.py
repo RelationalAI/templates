@@ -5,9 +5,11 @@ Run after `rai models deploy --path model`, `python train.py` and a refresh:
 
 Prints the sales target profile of the train split, the adjusted demand per
 planning article that the sales GNN's predictions aggregate to, then the
-status and objective of the markdown MILP and the demand/inventory planning LP,
-the selected discount for each article and week, and the planned production
-quantities for the planning set.
+status and objective of the markdown MILP with the selected discount for each
+article and week, and the status and total cost of the demand/inventory
+planning LP with its production plan, inventory levels, and unmet demand for
+each planning article and week. It stops before the plans if a planning
+article has no demand.
 """
 
 from model import (
@@ -18,19 +20,21 @@ from model import (
     MarkdownRevenue,
     MarkdownStatus,
     OptArticle,
+    ProdCapacity,
     Train,
     Transaction,
     Week,
     model,
 )
-from relationalai.semantics import Float, String, select
+from relationalai.semantics import Float, Integer, String, select
 
 
 def banner(title: str) -> None:
     print(f"\n{'=' * 60}\n{title}\n{'=' * 60}")
 
 
-def stage_1_predictive() -> None:
+def stage_1_predictive() -> bool:
+    """Print the target profile and the demand; return whether every planning article has demand."""
     banner("PREDICTIVE: sales regression GNN (HM_MINI)")
     timestamp, value = String.ref(), Float.ref()
     target = select(
@@ -50,8 +54,19 @@ def stage_1_predictive() -> None:
     print("\n=== Adjusted Demand per Article (from sales GNN, aggregated) ===")
     if demand.empty:
         print("  (no predictions) Run `python train.py`, then refresh the deployed model.")
-        return
-    print(demand.to_string(index=False, float_format=lambda v: f"{v:.2f}"))
+    else:
+        print(demand.to_string(index=False, float_format=lambda v: f"{v:.2f}"))
+
+    # Both problems bound an article only where it has demand: without it the markdown MILP
+    # loses the article's sales bound and the planning LP its inventory balance, so their
+    # plans for that article mean nothing.
+    planned = set(select(OptArticle.opt_article_id).to_df().iloc[:, 0])
+    planned |= set(select(ProdCapacity.pc_article_id).to_df().iloc[:, 0])
+    with_demand = set(select(ArticleDemand.article_id).where(ArticleDemand.adjusted_demand).to_df().iloc[:, 0])
+    missing = sorted(planned - with_demand)
+    if missing:
+        print(f"\n  Planning articles without predicted demand: {missing}")
+    return not missing
 
 
 def _print_solve(label: str, status_relation, objective_relation, objective_label: str) -> list[str]:
@@ -85,10 +100,43 @@ def stage_3_demand_planning() -> None:
     banner("PRESCRIPTIVE B: Demand / Inventory Planning")
     _print_solve("Demand Planning", DemandPlanStatus, DemandPlanCost,
                  "Total cost (production + holding + unmet penalty)")
+    week, end_week, value = Week.ref(), Integer.ref(), Float.ref()
+
+    print("\n=== Demand Planning: Production Plan (non-zero) ===")
+    prod_rows = select(
+        ProdCapacity.pc_article_id.alias("article_id"),
+        week.num.alias("week"),
+        value.alias("production"),
+    ).where(ProdCapacity.planned_production(week, value), value > 0.01).to_df()
+    if not prod_rows.empty:
+        print(prod_rows.sort_values(["article_id", "week"]).to_string(index=False))
+    else:
+        print("  No production needed.")
+
+    print("\n=== Demand Planning: Inventory Levels ===")
+    inv_rows = select(
+        ProdCapacity.pc_article_id.alias("article_id"),
+        end_week.alias("week"),
+        value.alias("inventory"),
+    ).where(ProdCapacity.planned_inventory(end_week, value)).to_df()
+    if not inv_rows.empty:
+        print(inv_rows.sort_values(["article_id", "week"]).to_string(index=False))
+
+    print("\n=== Demand Planning: Unmet Demand ===")
+    unmet_rows = select(
+        ProdCapacity.pc_article_id.alias("article_id"),
+        week.num.alias("week"),
+        value.alias("unmet"),
+    ).where(ProdCapacity.planned_unmet(week, value), value > 0.01).to_df()
+    if unmet_rows.empty:
+        print("  All demand fulfilled!")
+    else:
+        print(unmet_rows.sort_values(["article_id", "week"]).to_string(index=False))
 
 
 def main() -> None:
-    stage_1_predictive()
+    if not stage_1_predictive():
+        raise SystemExit("no plan: every planning article needs predicted demand")
     stage_2_markdown()
     stage_3_demand_planning()
     banner("PIPELINE COMPLETE: read from the deployed retail planning model")
