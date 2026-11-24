@@ -1,4 +1,4 @@
-"""Forecast report: weekly per-(store, item family) forecast from the deployed model.
+"""Forecast report: weekly per-(city, item family) forecast from the deployed model.
 
 Run after `rai models deploy --path model`, `python train.py` and a refresh:
     python -m queries.forecast_report
@@ -39,26 +39,26 @@ def main() -> None:
     print(f"unit_sales: min={unit_sales.min()} mean={unit_sales.mean():.2f} max={unit_sales.max()}")
 
     print("\n" + "=" * 60)
-    print("Forecast (test window) -- weekly aggregate per (store, item family)")
+    print("Forecast (test window) -- weekly aggregate per (city, item family)")
     print("=" * 60)
 
+    # Predictions and store/item metadata are read separately and left-joined, so a
+    # prediction whose store or item is missing still counts toward the per-Sale RMSE.
     predicted_value_ref = Float.ref()
     results_df = (
-        model.where(
-            Sale.predictions.predicted_value(predicted_value_ref),
-            Sale.store_id == Store.store_id,
-            Sale.item_id == Item.item_id,
-        )
+        model.where(Sale.predictions.predicted_value(predicted_value_ref))
         .select(
             Sale.sale_id.alias("sale_id"),
             Sale.date.alias("date"),
-            Store.city.alias("city"),
-            Item.family.alias("family"),
             Sale.unit_sales.alias("actual"),
             predicted_value_ref.alias("predicted"),
         )
         .to_df()
     )
+    dimensions_df = select(
+        Sale.sale_id.alias("sale_id"), Store.city.alias("city"), Item.family.alias("family")
+    ).where(Sale.store_id == Store.store_id, Sale.item_id == Item.item_id).to_df()
+    results_df = results_df.merge(dimensions_df, on="sale_id", how="left")
 
     if results_df.empty:
         print("(no predictions returned)")

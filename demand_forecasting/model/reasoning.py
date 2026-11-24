@@ -15,7 +15,7 @@ STREAM_LOGS = False
 # connects to its ItemFamily. The GNN aggregates over these neighborhoods
 # while the time column (Sale.date) drives temporal causality.
 
-gnn_graph = Graph(model, directed=True, weighted=False)
+gnn_graph = Graph(model, name="sales_graph", directed=True, weighted=False)
 Edge = gnn_graph.Edge
 model.define(Edge.new(src=Sale, dst=Store)).where(Sale.store_id == Store.store_id)
 model.define(Edge.new(src=Sale, dst=Item)).where(Sale.item_id == Item.item_id)

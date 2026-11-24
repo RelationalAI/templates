@@ -178,7 +178,7 @@ Use this sequence to deploy the model, train the GNN, and query its forecast:
    unit_sales: min=0 mean=18.22 max=90
 
    ============================================================
-   Forecast (test window) -- weekly aggregate per (store, item family)
+   Forecast (test window) -- weekly aggregate per (city, item family)
    ============================================================
      city    family week_start  actual  predicted    abs_err
    Cuenca    BAKERY 2024-10-28   173.0 190.663560  17.663560
