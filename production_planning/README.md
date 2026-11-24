@@ -257,7 +257,7 @@ Focus on the first changes most users will make.
 ### Use your own data
 
 - Replace the CSVs in `data/` with your own, keeping the column names listed in *Sample data* above.
-- Add a `production_rates.csv` row for every machine-product pair a machine can actually make; omit pairs it cannot make.
+- Add a `production_rates.csv` row for every machine-product pair a machine can actually make; omit pairs it cannot make. Keep at least one row for every product with demand: the demand constraint is grounded over a product's rates, so a product with none gets no demand constraint and is left unproduced rather than making the model infeasible.
 - For Snowflake-backed runs, swap the `read_csv(...)` calls for `model.data(snowflake_table)`.
 
 ### Tune parameters

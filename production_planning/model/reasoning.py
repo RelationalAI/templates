@@ -20,8 +20,6 @@ Production.x_quantity = model.Property(f"{Production} in {Scenario} has {Float:q
 # Ref for binding multi-arg variable in constraints
 x_qty = Float.ref()
 
-ProductionRef = Production.ref()
-
 problem = Problem(model, Float, name="production_planning")
 
 # Variable: production quantity (integer, non-negative)
