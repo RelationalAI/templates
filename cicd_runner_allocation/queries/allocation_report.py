@@ -118,10 +118,26 @@ if __name__ == "__main__":
     )
     print(caps_df.to_string(index=False))
 
-    # The surviving large runner's cap binds, and any six of the seven high-CPU jobs already
-    # exceed it, so the conflict holds at least six (the solver chooses which).
-    if set(caps_df["runner"]) != {"ubuntu-xlarge"} or len(stranded_df) < 6:
-        raise SystemExit("expected ubuntu-xlarge's cap and at least six stranded jobs in the conflict")
+    # The surviving large runner's cap binds, and any six of the seven high-CPU Linux jobs
+    # already exceed it, so the conflict holds at least six distinct ones of those seven (the
+    # solver chooses which).
+    high_cpu_linux = set(
+        model.select(Workflow.name)
+        .where(Workflow.min_cpu >= 4, Workflow.required_os == "linux")
+        .to_df()
+        .iloc[:, 0]
+    )
+    stranded = set(stranded_df["workflow"])
+    if (
+        set(caps_df["runner"]) != {"ubuntu-xlarge"}
+        or len(high_cpu_linux) != 7
+        or len(stranded) < 6
+        or not stranded <= high_cpu_linux
+    ):
+        raise SystemExit(
+            "expected ubuntu-xlarge's cap and at least six of the seven high-CPU Linux jobs "
+            f"in the conflict, got caps {sorted(caps_df['runner'])} and jobs {sorted(stranded)}"
+        )
     print(
         "\nTo restore feasibility, relax one member of the conflict: bring "
         "ubuntu-large or self-hosted-linux back online, or raise ubuntu-xlarge's "

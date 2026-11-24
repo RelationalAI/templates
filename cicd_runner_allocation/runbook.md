@@ -16,7 +16,7 @@ A platform team wants to assign every CI/CD workflow job to a compatible runner 
 /rai-prescriptive-results
    • cheaper self-hosted-linux absorbs more jobs as the cap loosens, so cost falls
    • outage (2 runners offline) → INFEASIBLE; the IIS pins ubuntu-xlarge's cap (5) against
-     6 of the 7 high-CPU Linux jobs — restore a runner or raise that one cap
+     at least 6 of the 7 high-CPU Linux jobs — restore a runner or raise that one cap
 ```
 
 Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` skill (named at the start of each prompt). They run in order in a single session — later steps read the `Runner`/`Workflow`/`Compatibility` concepts and the assignment decisions earlier steps wrote back.
@@ -51,7 +51,7 @@ Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` 
 
 **Prompt:** /rai-prescriptive-results If two runners — ubuntu-large and self-hosted-linux — go offline for maintenance at normal (1.0x) capacity, can every job still be scheduled? If not, return the minimal conflict (the IIS): which runner's concurrency cap, and which jobs, make it infeasible?
 
-**Response:** INFEASIBLE — the solver returns a conflict. The irreducible infeasible subsystem pins **ubuntu-xlarge's concurrency cap (max 5)** against the high-CPU Linux jobs that, with the two runners offline, have nowhere else to go: **6 of the 7 high-CPU Linux jobs are stranded** (the minimal conflict names cap-plus-one = 6; exactly which 6 is solver-dependent). The fix is named directly: restore one of the offline runners or raise ubuntu-xlarge's cap — far more actionable than a bare "infeasible."
+**Response:** INFEASIBLE — the solver returns a conflict. The irreducible infeasible subsystem pins **ubuntu-xlarge's concurrency cap (max 5)** against the high-CPU Linux jobs that, with the two runners offline, have nowhere else to go: **at least 6 of the 7 high-CPU Linux jobs are stranded** (a minimal conflict needs cap-plus-one = 6, which 6 is solver-dependent, and the seventh can also appear when the solver marks it as possibly in the conflict). The fix is named directly: restore one of the offline runners or raise ubuntu-xlarge's cap — far more actionable than a bare "infeasible."
 
 ## Data
 
