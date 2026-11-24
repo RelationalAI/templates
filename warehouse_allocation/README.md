@@ -36,7 +36,7 @@ This template chains graph analysis and prescriptive optimization so that the al
 - An inventory-allocation plan that satisfies demand and budget while holding buffer stock at critical hubs proportional to their centrality.
 - A two-stage chain where the graph reasoner's centrality output becomes a direct input to the prescriptive reasoner's constraints — no DataFrame hand-off between stages.
 
-Built using **graph analysis** (eigenvector centrality, weakly connected components, bridge detection) and **prescriptive reasoning** (linear program over continuous allocation variables).
+Built using **graph analysis** (eigenvector centrality, weakly connected components, cross-region route flags) and **prescriptive reasoning** (linear program over continuous allocation variables).
 
 ## What's included
 
@@ -243,7 +243,7 @@ Stage 1 characterizes the route topology three ways, then Stage 2 allocates inve
 
 **Stage 1a — Eigenvector centrality.** The model builds an undirected weighted graph from the route network, using route capacity as the edge weight, and scores each site with eigenvector centrality. This surfaces sites that are structurally important because of where they sit in the network, not merely how much throughput passes through them. The scores are written back onto `Site.centrality`.
 
-**Stage 1b — Weakly connected components.** The same graph is checked for fragmentation. Weakly connected components reveal whether every site is reachable from every other, or whether the network has split into isolated clusters that no route bridges. The report states whether the network is unified or fragmented and lists the size and regions of each component.
+**Stage 1b — Weakly connected components.** The same graph is checked for fragmentation. Weakly connected components reveal whether every site is reachable from every other, or whether the network has split into isolated clusters that no route bridges. The report states whether the network is unified or fragmented and, when it is fragmented, lists the size and regions of each component.
 
 **Stage 1c — Bridge routes.** Cross-region routes are flagged as bridges: links whose two endpoints lie in different regions, which carry the inter-region flow. The flag compares region labels only, so losing one need not disconnect the network: in the sample data, Chicago_Hub and Dallas_Hub stay connected through Atlanta_DC.
 

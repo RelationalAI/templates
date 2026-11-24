@@ -11,7 +11,7 @@ from relationalai.semantics import where
 from relationalai.semantics.std import aggregates as aggs
 
 if __name__ == "__main__":
-    # Display centrality ranking
+    # Display centrality scores
     print("=" * 50)
     print("Stage 1a: Eigenvector Centrality")
     print("=" * 50)
