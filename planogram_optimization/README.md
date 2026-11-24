@@ -47,9 +47,9 @@ The same pattern applies to any predict-then-optimize problem where the predicti
 - `model/` -- the model package: `schema.py` (ontology), `source.py` (sample data and its pre-solve checks), and `reasoning.py` (decisions, constraints, and solver configuration); `rai models deploy --path model` deploys it
 - `queries/facings_plan.py` -- prints the report from the deployed model
 - **Runbook**: `runbook.md` -- a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
-- `data/skus.csv` -- 18 SKUs across 4 categories (snacks, beverages, candy, household_paper) with width, max-facings, and pre-assigned shelf; `sku_id` must be unique, `category` must match a `categories.csv` name, and `assigned_shelf_id` must reference a `shelves.csv` id. The `brand` column is loaded but not used by the bundled CSP -- it is reserved for the brand-block contiguity customization described under "Customize this template"
-- `data/shelves.csv` -- 4 shelves (Top Eye-Level 100cm, Upper-Middle 80cm, Lower-Middle 80cm, Bottom 90cm); `id` must be unique and is the foreign-key target of `skus.assigned_shelf_id`
-- `data/categories.csv` -- per-category min/max active SKU bounds; `name` must be unique and is the foreign-key target of `skus.category`
+- `data/skus.csv` -- 18 SKUs across 4 categories (snacks, beverages, candy, household_paper) with width, max-facings, and pre-assigned shelf; `sku_id` must be unique, `category` must match a `categories.csv` `category`, and `assigned_shelf_id` must reference a `shelves.csv` `shelf_id`. The `brand` column is loaded but not used by the bundled CSP -- it is reserved for the brand-block contiguity customization described under "Customize this template"
+- `data/shelves.csv` -- 4 shelves (Top Eye-Level 100cm, Upper-Middle 80cm, Lower-Middle 80cm, Bottom 90cm); `shelf_id` must be unique and is the foreign-key target of `skus.assigned_shelf_id`
+- `data/categories.csv` -- per-category min/max active SKU bounds; `category` must be unique and is the foreign-key target of `skus.category`
 - `data/predicted_demand_table.csv` -- vendored regression output: one row per `(sku_id, facings_count)` for `k in {0, 1, ..., sku.max_facings}` with concave per-SKU demand curves; the `k=0` row is `demand_units=0` so the lookup is total over the decision domain
 - `pyproject.toml` -- Python package configuration
 
@@ -282,7 +282,7 @@ For the exact PyRel formulation, see `model/reasoning.py`; `runbook.md` reproduc
 
 ### Use your own data
 
-- Replace the four CSV files with your SKUs, shelves, categories, and predicted demand table. The constraint structure does not change. The data invariant: `predicted_demand_table.csv` must contain a row for every `(sku_id, k)` for `k in {0, 1, ..., sku.max_facings}` — if a row is missing, the implies cascade leaves `Sku.realized_demand` unconstrained for that combination and the solver may pick an arbitrary value.
+- Replace the four CSV files with your SKUs, shelves, categories, and predicted demand table. The constraint structure does not change. The data invariant: `predicted_demand_table.csv` must contain a row for every `(sku_id, k)` for `k in {0, 1, ..., sku.max_facings}`, because the implies cascade would leave `Sku.realized_demand` unconstrained for a missing combination; the load stops with a `ValueError` naming any missing pairs.
 - **Wire in a real demand model.** In production, `PredictedDemand` is the output of any model that predicts weekly demand at each candidate facing count — linear or GBM (gradient-boosted machine) regression over engineered features, a per-tier head, or a graph-aware regressor over `(sku, week, facings_count, units_sold)` history. The structural requirement is that `facings_count` is a feature (or there is a head per tier) so the model can be queried at every `k`. Produce `data/predicted_demand_table.csv` in the format `sku_id,facings_count,demand_units` (integer demand) from your inference pipeline and drop it in — the script picks it up unchanged. To call inference inline, replace the `read_csv(DATA_DIR / "predicted_demand_table.csv")` line with code that returns a DataFrame with those three columns.
 
 ### Tune parameters
@@ -319,7 +319,6 @@ For the exact PyRel formulation, see `model/reasoning.py`; `runbook.md` reproduc
 
 - The category cardinality bounds may be inconsistent with the SKU pool. If `sum(min_skus_active)` exceeds the number of SKUs whose categories appear in the data, no allocation can satisfy every category's minimum. Check that each category's `min_skus_active` is `<=` the number of SKUs in that category.
 - Shelf-capacity binding can starve a category. If the SKUs in a category all share a small shelf and their widths exceed the shelf's `length_cm` even at `facings = 1`, the category's `min_skus_active` is unreachable. Inspect `data/skus.csv` against `data/shelves.csv`.
-- Missing rows in `predicted_demand_table.csv` for some `(sku, k)` combination cause the lookup to leave `realized_demand` unconstrained for that pair. The solver is free to pick a feasible value, but the resulting solution does not reflect real demand. Confirm that every SKU has rows for `k in {0, 1, ..., sku.max_facings}`.
 
 </details>
 
@@ -329,6 +328,13 @@ For the exact PyRel formulation, see `model/reasoning.py`; `runbook.md` reproduc
 - Confirm your virtual environment is active: `which python` should point to `.venv`.
 - Reinstall dependencies: `python -m pip install .`. The pinned version (`relationalai==2.3.0`) ships the `configure()` and `where().require()` APIs this template uses; older versions lack them and produce attribute errors.
 - If you share a venv across templates, run `python -m pip install --upgrade --force-reinstall relationalai==2.3.0`.
+
+</details>
+
+<details>
+  <summary>ValueError when loading the data</summary>
+
+- The pre-solve checks in `model/source.py` stop the load before any solve when an input breaks an invariant: duplicate keys, a SKU whose `category` or `assigned_shelf_id` has no match, a `categories.csv` row with no SKUs, or a `predicted_demand_table.csv` missing a `(sku_id, k)` row for some `k in {0, 1, ..., sku.max_facings}` or with nonzero demand at `facings_count = 0`. The message names the offending rows; fix the CSV and deploy again.
 
 </details>
 

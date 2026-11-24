@@ -42,6 +42,9 @@ if __name__ == "__main__":
         PredictedDemand.facings_count.alias("facings_count"),
         PredictedDemand.demand_units.alias("demand_units"),
     ).to_df()
+    # A SKU with no facings or realized demand drops out of the select above, so it
+    # counts as a mismatch too.
+    sku_ids = set(model.select(Sku.id).to_df().iloc[:, 0].astype(int))
     expected_lookup = {
         (int(row.sku_id), int(row.facings_count)): int(row.demand_units)
         for row in demand_table_df.itertuples(index=False)
@@ -52,6 +55,8 @@ if __name__ == "__main__":
         expected = expected_lookup.get(key)
         if expected is None or int(row.realized_demand) != expected:
             mismatches.append((*key, int(row.realized_demand), expected))
+    for sku_id in sorted(sku_ids - set(solution_df["sku_id"].astype(int))):
+        mismatches.append((sku_id, None, None, None))
     if mismatches:
         raise SystemExit(
             "Demand-lookup verification failed: Sku.realized_demand does not "
