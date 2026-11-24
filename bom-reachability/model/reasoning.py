@@ -94,9 +94,22 @@ model.where(
     not_(last.feeds(downstream)),
 ).define(MaximalChain(p))
 
-# Assembly depth of each SKU that ends a maximal chain: the length of the longest one.
+# A finished SKU reached by a chain longer than MAX_ASSEMBLY_HOPS: the chain's last
+# MAX_ASSEMBLY_HOPS hops are enumerated, and something feeds their first SKU.
 end = SKU.ref()
+SKU.exceeds_hop_bound = model.Relationship(f"{SKU} ends an assembly chain longer than the hop bound")
+model.where(
+    p,
+    p.length == MAX_ASSEMBLY_HOPS,
+    p.nodes(0) == first,
+    p.nodes(p.length) == end,
+    upstream.feeds(first),
+    not_(end.feeds(downstream)),
+).define(end.exceeds_hop_bound())
+
+# Assembly depth of each SKU that ends a maximal chain: the length of the longest one.
+# A SKU whose deepest chain exceeds the bound gets no depth rather than an understated one.
 SKU.assembly_depth = model.Property(f"{SKU} has assembly depth {Integer:assembly_depth}")
-model.where(MaximalChain(p), p.nodes(p.length) == end).define(
+model.where(MaximalChain(p), p.nodes(p.length) == end, not_(end.exceeds_hop_bound())).define(
     end.assembly_depth(aggs.max(p.length).per(end))
 )

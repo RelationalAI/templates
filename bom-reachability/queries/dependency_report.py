@@ -142,3 +142,9 @@ if __name__ == "__main__":
         .sort_values(["assembly_depth", "sku_id"], ascending=[False, True], ignore_index=True)
     )
     print(depth_df.to_string(index=False))
+    too_deep = where(SKU.exceeds_hop_bound()).select(SKU.id.alias("sku_id")).to_df()["sku_id"]
+    if len(too_deep) > 0:
+        print(
+            f"\n  Deeper than {MAX_ASSEMBLY_HOPS} hops, so no depth is published "
+            f"(raise MAX_ASSEMBLY_HOPS): {', '.join(sorted(too_deep))}"
+        )

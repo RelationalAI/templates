@@ -231,7 +231,7 @@ Focus on the first changes most users will make.
 
 ### Tune parameters
 
-- **Assembly-path depth** — `MAX_ASSEMBLY_HOPS` (the `repeat(1, MAX_ASSEMBLY_HOPS)` bound) caps how many tiers `.all().paths()` enumerates. Raise it if your BOM is deeper than the bundled three tiers, because a chain longer than the bound is not enumerated and so has no maximal chain or assembly depth; lower it to keep path counts manageable on wide structures.
+- **Assembly-path depth** — `MAX_ASSEMBLY_HOPS` (the `repeat(1, MAX_ASSEMBLY_HOPS)` bound) caps how many tiers `.all().paths()` enumerates. Raise it if your BOM is deeper than the bundled three tiers: a chain longer than the bound is not enumerated, so it has no maximal chain, and a finished good it reaches gets no `assembly_depth` but is flagged `SKU.exceeds_hop_bound` and listed by the report as deeper than the bound; lower it to keep path counts manageable on wide structures.
 
 ### Extend the model
 
