@@ -30,7 +30,7 @@ This template discovers natural collaboration clusters — based on geography, s
 - A conservation partnership network modeled with RelationalAI's Graph API, built from the bundled organization and partnership CSVs.
 - Community assignments from the Louvain algorithm — the collaboration clusters within the network — written onto each `Organization`.
 - A degree-centrality ranking that surfaces the hub organization inside each cluster, the one best placed to lead coordination.
-- Community-level insight: region and species-focus makeup, hub identity, and cross-community connectors, available both as a CLI report and an interactive Streamlit visualization.
+- Community-level insight: region and species-focus makeup and hub identity, in both a CLI report and an interactive Streamlit visualization; the Streamlit app also identifies cross-community connectors.
 
 Built using **graph analysis** (Louvain community detection and degree centrality on an undirected, unweighted partnership graph).
 

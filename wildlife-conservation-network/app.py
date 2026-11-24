@@ -209,9 +209,11 @@ def main():
     identify partnership opportunities, and strengthen cross-community coordination.
     """)
 
-    # The results are cached for the session; reload them after the deployed model refreshes.
+    # The two cached reads are shared by every session of the app; reload them after the
+    # deployed model refreshes.
     if st.sidebar.button("Reload from the deployed model"):
-        st.cache_data.clear()
+        get_results.clear()
+        get_partnerships.clear()
 
     # Load data
     with st.spinner("Loading RelationalAI model and analyzing network..."):
