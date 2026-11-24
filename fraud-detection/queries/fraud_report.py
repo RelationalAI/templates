@@ -106,7 +106,7 @@ def main() -> None:
         print(f"Captured expected loss ({quality} within budget): ${objective_value:,.0f}")
         print(f"  MILP (cost-aware + per-receiver cap) -> ${objective_value:,.0f} "
               f"captured across the audit queue")
-        print(f"  Naive top-by-alert-score (budget only, same {AUDIT_BUDGET_HOURS:.0f}-hour budget) -> "
+        print(f"  Naive top-by-alert-score (budget only, same {AUDIT_BUDGET_HOURS:g}-hour budget) -> "
               f"${_naive_obj:,.0f} captured across {len(_naive_fit)} audits "
               f"(by type: {_naive_types})")
         uplift = objective_value - _naive_obj

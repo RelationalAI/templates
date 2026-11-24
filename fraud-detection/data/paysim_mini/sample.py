@@ -126,7 +126,7 @@ def main() -> None:
     transactions.to_csv(args.out / "transactions.csv", index=False)
     accounts.to_csv(args.out / "accounts.csv", index=False)
     # Train and val carry the label; test omits it, keeping only
-    # `transaction_id` and `step_ts`, so the GNN sees test as held-out.
+    # `transaction_id`, `step`, and `step_ts`, so the GNN sees test as held-out.
     for name, split_df in [("train", train), ("val", val)]:
         split_df[["transaction_id", "step", "step_ts", "is_fraud"]].to_csv(
             args.out / f"{name}.csv", index=False)
