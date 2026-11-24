@@ -22,7 +22,7 @@ PER_ACCOUNT_CAP = 1  # at most 1 audit per receiver account (avoid flooding)
 
 # Directed Transaction->Account bipartite graph: used by the GNN for
 # sender/receiver message-passing.
-gnn_graph = Graph(model, directed=True, weighted=False)
+gnn_graph = Graph(model, directed=True, weighted=False, name="transaction_account_graph")
 Edge = gnn_graph.Edge
 model.define(Edge.new(src=Transaction, dst=Account)).where(
     Transaction.sender(Account)
@@ -39,6 +39,7 @@ model.define(Edge.new(src=Transaction, dst=Account)).where(
 acct_graph = Graph(
     model, directed=True, weighted=False,
     node_concept=Account, aggregator="sum",
+    name="funds_flow_graph",
 )
 _sender = Account.ref()
 _receiver = Account.ref()

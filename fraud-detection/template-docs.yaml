@@ -139,7 +139,7 @@ guided_walkthrough:
         Graph(...):
           anchor:
             start: acct_graph = Graph(
-            end: node_concept=Account, aggregator="sum",
+            end: name="funds_flow_graph",
             end_offset: 1
         acct_graph.Edge.new(...):
           anchor:

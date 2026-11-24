@@ -95,15 +95,18 @@ def main() -> None:
         _full_df["alert_score"] = _full_df["alert_score"].astype("float64")
         _full_df["audit_cost"] = _full_df["audit_cost"].astype("float64")
         _full_df["expected_loss"] = _full_df["alert_score"] * _full_df["amount"]
-        _naive = _full_df.sort_values("alert_score", ascending=False).copy()
+        _naive = _full_df.sort_values(
+            ["alert_score", "transaction_id"], ascending=[False, True]
+        ).copy()
         _naive["cumulative_hours"] = _naive["audit_cost"].cumsum()
         _naive_fit = _naive[_naive["cumulative_hours"] <= AUDIT_BUDGET_HOURS]
         _naive_obj = float(_naive_fit["expected_loss"].sum())
         _naive_types = {k: int(v) for k, v in _naive_fit["trans_type"].value_counts().items()}
-        print(f"Captured expected loss (optimal within budget): ${objective_value:,.0f}")
+        quality = "optimal" if status == ["OPTIMAL"] else "best found"
+        print(f"Captured expected loss ({quality} within budget): ${objective_value:,.0f}")
         print(f"  MILP (cost-aware + per-receiver cap) -> ${objective_value:,.0f} "
               f"captured across the audit queue")
-        print(f"  Naive top-by-alert-score (budget only, same hours) -> "
+        print(f"  Naive top-by-alert-score (budget only, same {AUDIT_BUDGET_HOURS:.0f}-hour budget) -> "
               f"${_naive_obj:,.0f} captured across {len(_naive_fit)} audits "
               f"(by type: {_naive_types})")
         uplift = objective_value - _naive_obj

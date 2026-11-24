@@ -196,7 +196,7 @@ Use this sequence to deploy the model, train the classifier, and print the audit
    MILP Status: OPTIMAL
    Captured expected loss (optimal within budget): $111,827,688
      MILP (cost-aware + per-receiver cap) -> $111,827,688 captured across the audit queue
-     Naive top-by-alert-score (budget only, same hours) -> $72,288,588 captured across 17 audits
+     Naive top-by-alert-score (budget only, same 80-hour budget) -> $72,288,588 captured across 17 audits (by type: ...)
      MILP uplift over naive sort: $+39,539,099
    === Selected audit queue ===
      16 audits scheduled; 80.0/80 investigator hours used
@@ -233,4 +233,4 @@ Use this sequence to deploy the model, train the classifier, and print the audit
 
    The teardown removes the deployed objects and keeps the two schemas, with the classifier's experiments and registered versions in the public schema.
 
-To run the same pipeline over your own Snowflake tables, call `load_snowflake_data()` in `model/__init__.py` in place of `load_local_data()`. It reads `ACCOUNTS`, `TRANSACTIONS`, `TRAIN`, `VAL`, and `TEST` from the database and schema you pass, which need change tracking and a derived `audit_cost` column on the transactions table. Size the predictive reasoner for your data with `reasoners.predictive.size` in `raiconfig.yaml`, and raise `AUDIT_BUDGET_HOURS` and the training settings in `model/reasoning.py` to match its scale.
+To run the same pipeline over your own Snowflake tables, call `load_snowflake_data()` in `model/__init__.py` in place of `load_local_data()`. It reads `ACCOUNTS`, `TRANSACTIONS`, `TRAIN`, `VAL`, and `TEST` from the database and schema you pass, which need change tracking and a derived `audit_cost` column on the transactions table. Size the predictive reasoner for your data with `reasoners.predictive.size` in `raiconfig.yaml` (a GPU size for the full PaySim tables; a deployed GNN runs on its reasoner's device), and raise `AUDIT_BUDGET_HOURS` and the training settings in `model/reasoning.py` to match its scale. A profile sized for the full PaySim tables trains with `n_epochs=20`, `train_batch_size=512`, and `head_layers=2`, budgets `AUDIT_BUDGET_HOURS = 2000.0`, and solves with `time_limit_sec=300`.
