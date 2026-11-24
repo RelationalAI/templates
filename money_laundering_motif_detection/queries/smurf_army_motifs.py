@@ -71,7 +71,7 @@ if __name__ == "__main__":
         Transaction.ts_minutes.alias("ts_min"),
     ).where(SmurfTx(solution, Transaction)).inspect()
 
-    print("\nSmurf army: chosen smurf accounts per solution (with distinct BOs and jurisdictions):")
+    print("\nSmurf army: chosen smurf accounts per solution (distinct BOs, jurisdiction shown):")
     model.select(
         solution.alias("solution"),
         Account.id.alias("smurf_id"),

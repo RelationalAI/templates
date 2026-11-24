@@ -229,7 +229,7 @@ Run these steps from a terminal:
 
    Result: 5 smurf-army cohort(s) found; hit MAX_SMURF_MOTIFS=5. More may exist -- raise the limit to enumerate further.
 
-   Smurf army: chosen smurf accounts per solution (with distinct BOs and jurisdictions):
+   Smurf army: chosen smurf accounts per solution (distinct BOs, jurisdiction shown):
        solution  smurf_id        smurf_name  bo_id kyc_tier jurisdiction
    0          0        42       Adrian Park   1701   retail           US
    1          0        44   Dimitri Solanki   1703  private       Cayman
@@ -388,7 +388,7 @@ See `model/` for the implementation, `queries/` for the reports, and `runbook.md
 
 - Up to `MAX_*_MOTIFS` (10/5/5 by default for butterfly/smurf/burst) or however many feasible motifs exist in the data, whichever is smaller. The report prints `num_points`, the actual count after the solve. On the bundled data, butterfly exhausts at 2 motifs and KYC-burst at 2 cohorts; the smurf motif hits the limit (5) because pairwise-distinct-BO cohorts can swap any chosen smurf for a dup-BO decoy that still sums in-range -- the `distinct_bo_ic` is the constraint that prevents the dup-BO cohort, and seeing it bind is the point of running the smurf demo.
 - Solution ordering is not guaranteed across runs or solver versions, so treat the `solution` column as a label, not a ranking. When a search exhausts (butterfly and KYC-burst on the bundled data), the *set* of motifs is stable; when it stops at `solution_limit` (smurf), which motifs it returns can also change.
-- To get a ranked answer (e.g. surface the largest scheme first), switch to optimisation -- `problem.maximize(sum(Transaction.is_motif * Transaction.amount_dollars))` returns the motif with the largest total laundered amount under `solution_limit=1`. For a top-K ranked list, run an iterative exclusion-cut loop (re-solve after forbidding each previous motif's edge set) or sort the enumerated motifs in post-processing.
+- To get a ranked answer (e.g. surface the largest scheme first), switch to optimisation -- `problem.maximize(sum(Transaction.is_motif * Transaction.amount_dollars))` with no solution limit returns the motif with the largest total laundered amount once the status is `OPTIMAL`. For a top-K ranked list, run an iterative exclusion-cut loop (re-solve to optimality after forbidding each previous motif's edge set); sorting the enumerated motifs in post-processing ranks only the motifs the search returned.
 
 </details>
 

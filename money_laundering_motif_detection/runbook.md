@@ -16,7 +16,7 @@ shared ledger: 90 accounts (beneficial owner, KYC tier, jurisdiction) · 138 tra
       │
       ▼
 /rai-prescriptive-results
-   • each motif is a joint constraint a rules/path query alone can't express; the planted decoys are correctly excluded
+   • each motif is a joint constraint a rules/path query alone can't express; the dup-BO decoy pair never appears together in a cohort
 ```
 
 Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` skill (named at the start of each prompt). They run in order in a single session — the three motif detectors all read the shared `Account`/`Transaction` ledger the build step created. (In the template these are three motif modules — `model/butterfly.py`, `model/smurf_army.py`, `model/kyc_burst.py` — sharing `model/schema.py` and `model/source.py` in one deployed model, with one report each in `queries/`.)
