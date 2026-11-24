@@ -215,13 +215,23 @@ def stage_4_prescriptive() -> None:
         AllocationPlan.n_assigned.alias("n_assigned"),
         AllocationPlan.revenue_usd.alias("revenue_usd"),
         AllocationPlan.total_cost_usd.alias("total_cost_usd"),
-        AllocationPlan.realized_margin.alias("realized_margin"),
-        AllocationPlan.anchor_share.alias("anchor_share"),
         AllocationPlan.binding_axis.alias("binding_axis"),
     ).to_df()
     if plan_df.empty:
-        print("\n  AllocationPlan has no summary: the chosen cell has no assignments.")
+        print("\n  AllocationPlan has no summary: the chosen cell has no results.")
         return
+    # The margin and anchor share exist only for a plan with revenue, so they join on
+    # separately and an empty plan still reports its status and counts.
+    for col, prop in (
+        ("realized_margin", AllocationPlan.realized_margin),
+        ("anchor_share", AllocationPlan.anchor_share),
+    ):
+        part = select(AllocationPlan.id.alias("plan_id"), prop.alias(col)).to_df()
+        plan_df = plan_df.merge(part, on="plan_id", how="left")
+    plan_df = plan_df[
+        ["plan_id", "envelope", "margin", "diversity", "status", "n_assigned", "revenue_usd",
+         "total_cost_usd", "realized_margin", "anchor_share", "binding_axis"]
+    ]
     print("\n  AllocationPlan singleton (queryable as ontology):")
     print(plan_df.to_string(index=False))
 
@@ -245,11 +255,12 @@ def stage_4_prescriptive() -> None:
 
 def main() -> None:
     stage_0_ontology()
-    if not stage_1_predictive():
-        return
+    has_predictions = stage_1_predictive()
     stage_2_rules()
     stage_3_graph()
-    stage_4_prescriptive()
+    # Only forecast workloads are assignable, so the allocation needs the predictions.
+    if has_predictions:
+        stage_4_prescriptive()
 
 
 if __name__ == "__main__":

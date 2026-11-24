@@ -48,7 +48,7 @@ This template models that allocation as a scenario sweep across three axes (powe
 - A heterogeneous-graph GNN that **classifies per-workload utilization probability** (will this workload actually use its allocated capacity?) — the operator's real forward-looking signal, propagated through lab→workload, dep-DAG, and cross-lab co_dated edges
 - Reverse-PageRank scoring on a workload dependency DAG (4-5 deep chains rooted at frontier pretrains)
 - Declarative hardware-compatibility rules + lex-emulating priority weights (P0=100, P1=10, P2=1)
-- Two headline Pareto frontiers (margin × revenue and diversity × revenue) at the 100% envelope, with the 85% envelope drawn as an overlay sensitivity band
+- Two headline Pareto frontiers (margin × revenue and diversity × revenue) at the 100% envelope; the 85% envelope's cells are in the per-cell summary for comparison
 - Per-cell results queryable directly from the ontology — realized revenue, energy + depreciation cost, anchor share, per-workload-type counts, binding-constraint signal (OPTIMAL vs INFEASIBLE, or FEASIBLE vs UNSOLVED when the solve stops at its time limit)
 
 ## What's included
@@ -266,7 +266,7 @@ Use this sequence to deploy the model, train the GNN, and query the allocation p
         frontier_loss    0.50         24,611,119.95            666,690.99          2.64
    ```
 
-   The report prints all four stages and the demand overlay; the lines above are trimmed. The GNN is stochastic, so the utilization probabilities shift from one training run to the next; the structural outcome reproduces: the frontier pretrains rank first, the baseline cell assigns all 110 workloads, and the margin and diversity cliffs sit at the same cells. The solve above is the open-source HiGHS default, which returns a feasible solution at its `SOLVER_TIME_LIMIT_SEC` of 240 seconds and reports `TIME_LIMIT` (signal, not failure), so each refresh takes about that long and the cells are labelled FEASIBLE or UNSOLVED. With Gurobi, the solve reaches `OPTIMAL` in seconds and the cells are labelled OPTIMAL or INFEASIBLE; set `SOLVER` in `model/reasoning.py` to switch. The full printout and a step-by-step walkthrough are in `runbook.md`.
+   The report prints all four stages and the demand overlay; the lines above are trimmed. The GNN is stochastic, so the utilization probabilities shift from one training run to the next; the frontier pretrains rank first on every run. In the run shown, the baseline cell assigns all 110 workloads; because the solve stops at its time limit with its best solution so far, the cells and workload counts can differ from one refresh to the next. The solve above is the open-source HiGHS default, which returns a feasible solution at its `SOLVER_TIME_LIMIT_SEC` of 240 seconds and reports `TIME_LIMIT` (signal, not failure), so each refresh takes about that long and the cells are labelled FEASIBLE or UNSOLVED. With Gurobi, the solve reaches `OPTIMAL` in seconds and the cells are labelled OPTIMAL or INFEASIBLE; set `SOLVER` in `model/reasoning.py` to switch. The full printout and a step-by-step walkthrough are in `runbook.md`.
 
    To predict and solve again without changing the model, refresh the deployed model, then run the query again:
 

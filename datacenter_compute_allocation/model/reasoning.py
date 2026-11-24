@@ -61,7 +61,7 @@ WORKLOAD_TYPES = ("pretrain", "finetune", "inference", "eval")
 # --------------------------------------------------
 
 # Heterogeneous graph over LabMetric and Workload with three edge types.
-gnn_graph = Graph(model, directed=False, weighted=False)
+gnn_graph = Graph(model, name="gnn_graph", directed=False, weighted=False)
 
 # Edge 1: LabMetric -> Workload owned by the same lab.
 model.define(gnn_graph.Edge.new(src=LabMetric, dst=Workload)).where(
@@ -227,7 +227,7 @@ model.where(
 #   the top).
 # --------------------------------------------------
 
-dag = Graph(model, directed=True, weighted=False, node_concept=Workload)
+dag = Graph(model, name="dependency_dag", directed=True, weighted=False, node_concept=Workload)
 
 # Edge reversal: PageRank flows toward upstream gating workloads.
 # We define edges as (successor -> predecessor) so a node's PageRank
@@ -252,11 +252,10 @@ model.define(wl_ref.gating_score(score_ref)).where(pagerank(wl_ref, score_ref))
 #                      in Compatibility, per scenario cell.
 #
 #   Constraints:
-#     C1+C2 -- At most one assignment per workload per cell.
-#              (Hard P0 commitment relaxed to <=1; priority_weight=100 in
-#               the objective dominates so P0 is pushed to 1 wherever
-#               feasible. Per-cell P0 drops surface as the diagnostic
-#               signal the design specifies.)
+#     C1+C2 -- At most one assignment per workload per cell, P0 included:
+#              priority_weight=100 in the objective assigns P0 workloads
+#              wherever the cell's other constraints allow, and a P0
+#              workload left unassigned in a cell is a diagnostic signal.
 #     C3    -- Per-pool GPU-count capacity.
 #     C4    -- Per-DC power envelope: gpu_count * power_per_gpu * pue <=
 #              approved_mw * 1000 * envelope_multiplier.
