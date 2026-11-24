@@ -157,7 +157,7 @@ Crisis vol runs 22-30% above base at every frontier point (budget 1000: min_risk
 
 **Response**
 
-Ontology gains a `FrontierPoint(scenario_label, solve)` Concept (6 scenarios x 15 solves) with `return_value`, `risk`, `marginal_risk_per_return`, and `allocates`, which each solve publishes in `model/reasoning.py`. The points and allocations are queryable from the deployed model. The report selects the dichotomic solves' points, sorts them by return (adjacent targets that collapse are deduped), checks that neither return nor risk decreases along each scenario's frontier, and derives the knee flag and the volatilities from them: the frontier shape (base_1000 return 64.87->84.00, variance 4641->8528), knee at p3, and the crisis vol gap (+28.4% min_risk -> +29.6% peak at p1 -> +21.7% at p5).
+Ontology gains a `FrontierPoint(scenario_label, solve)` Concept (6 scenarios x 15 solves) with `return_value`, `risk`, `marginal_risk_per_return`, and `allocates`, which each solve that reaches an accepted status publishes in `model/reasoning.py`. The points and allocations are queryable from the deployed model. The report selects the dichotomic solves' points, sorts them by return (adjacent targets that collapse are deduped), checks that neither return nor risk decreases along each scenario's frontier, and derives the knee flag and the volatilities from them: the frontier shape (base_1000 return 64.87->84.00, variance 4641->8528), knee at p3, and the crisis vol gap (+28.4% min_risk -> +29.6% peak at p1 -> +21.7% at p5).
 
 ### 10. Review candidate allocations
 

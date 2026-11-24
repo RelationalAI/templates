@@ -448,19 +448,26 @@ def frontier_problem(label, *, maximize_return=False, floor=None):
         )
 
     # The solve's results as FrontierPoints, which the deployed model publishes for the
-    # queries: one per Scenario, with its return, risk, shadow price, and allocations.
-    model.where(Result.scenario == Scenario).define(
-        fp := FrontierPoint.new(scenario_label=Scenario.name, solve=label),
-        fp.scenario(Scenario),
-        fp.return_value(Result.ret),
-        fp.risk(Result.risk),
-    )
-    if return_floor is not None:
-        # The published marginal is the solver's dual alone, so a missing one stays visible.
-        model.where(Result.scenario == Scenario, return_floor.scenario == Scenario).define(
+    # queries: one per Scenario, with its return, risk, shadow price, and allocations. Only
+    # a solve with an accepted status publishes them, so a failed solve's incumbent never
+    # enters the frontier ("LOCALLY_SOLVED" covers non-HiGHS back ends).
+    for accepted in ("OPTIMAL", "LOCALLY_SOLVED"):
+        solved = (problem.termination_status()(status), status == accepted)
+        model.where(Result.scenario == Scenario, *solved).define(
             fp := FrontierPoint.new(scenario_label=Scenario.name, solve=label),
-            fp.marginal_risk_per_return(maximum(0.0, return_floor.shadow_price)),
+            fp.scenario(Scenario),
+            fp.return_value(Result.ret),
+            fp.risk(Result.risk),
         )
+        if return_floor is not None:
+            # The published marginal is the solver's dual alone, so a missing one stays
+            # visible.
+            model.where(
+                Result.scenario == Scenario, return_floor.scenario == Scenario, *solved
+            ).define(
+                fp := FrontierPoint.new(scenario_label=Scenario.name, solve=label),
+                fp.marginal_risk_per_return(maximum(0.0, return_floor.shadow_price)),
+            )
     amount = Float.ref()
     model.where(
         FrontierPoint.solve == label,

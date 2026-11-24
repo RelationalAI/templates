@@ -370,6 +370,7 @@ if __name__ == "__main__":
         model.select(
             FrontierPoint.scenario_label.alias("scenario"),
             FrontierPoint.solve.alias("solve"),
+            Stock.index.alias("stock_index"),
             Stock.ticker.alias("ticker"),
             amount_ref.alias("amount"),
         )
@@ -644,7 +645,7 @@ if __name__ == "__main__":
             raise SystemExit(
                 f"The knee solve {knee_row['solve']} returned no allocation for {sn}."
             )
-        allocations = dict(zip(knee_allocation["ticker"], knee_allocation["amount"]))
+        allocations = zip(knee_allocation["ticker"], knee_allocation["amount"])
 
         meta = scenario_meta[sn]
         budget = meta["budget"]
@@ -659,7 +660,7 @@ if __name__ == "__main__":
         print(f"  {'Ticker':<8}{'Amount':>12}{'Weight':>10}")
         print(f"  {'-' * 30}")
         ordered_allocations = sorted(
-            allocations.items(),
+            allocations,
             key=lambda item: (-item[1], item[0]),
         )
         for ticker, quantity in ordered_allocations:

@@ -458,7 +458,7 @@ guided_walkthrough:
         file: queries/portfolio_report.py
         anchors:
           - start: knee_rows = frontier_df[
-            end: allocations = dict(zip(knee_allocation["ticker"], knee_allocation["amount"]))
+            end: allocations = zip(knee_allocation["ticker"], knee_allocation["amount"])
           - start: ordered_allocations = sorted(
             end: '{float(quantity) / budget:>9.1%}'
             end_offset: 1
