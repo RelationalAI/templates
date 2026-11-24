@@ -11,7 +11,7 @@ chained on one ontology:
   (supplier, month); the clipped prediction is `SupplierCapabilityForecast`.
   Set `USE_PRECOMPUTED_FORECAST = True` in `model/reasoning.py` to load the
   bundled forecast CSV instead.
-- Stage 3 (Prescriptive): monthly revenue-max LP over a 36-month horizon, run
+- Stage 3 (Prescriptive): monthly margin-max LP over a 36-month horizon, run
   as a 3-step rolling horizon. A baseline solve at month 1, then disruption
   reveals at months 5 and 13 re-solve the remaining horizon. Effective capacity
   per (product, period) = sum over suppliers of nominal x predicted capability,

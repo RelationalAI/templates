@@ -247,7 +247,7 @@ Use this sequence to deploy the model, train the GNN, and query the rolling-hori
      Horizon margin, iter 0 (months 1-36) -> iter 2 (months 13-36): $45,672,092,437.49 -> $29,100,819,663.45
    ```
 
-   The report prints more than shown here: each iteration's plan diff and per-customer service levels, the dependency chains, and both what-if tables. The GNN's forecast, and with it the margins and the plan diffs, shifts from one training run to the next; the structure is stable: three OPTIMAL solves whose horizon margin falls as the horizon shortens and each disruption is revealed, Apex Photonic Components as the dependency SPOF, Orion Foundry and Helium as the widest supplier and input impacts. Alternative optimal allocations can differ between refreshes at the same margin.
+   The report prints more than shown here: each iteration's plan diff and per-customer service levels, the dependency chains, and both what-if tables. The GNN's forecast, and with it the margins and the plan diffs, shifts from one training run to the next; the structure is stable: three OPTIMAL solves whose horizon margin falls as the horizon shortens and each disruption is revealed, Apex Photonic Components as the dependency SPOF, and Helium as the widest input impact. With the bundled snapshot, four suppliers tie at 72 affected cells; the headline names the first by supplier id, Orion Foundry. Alternative optimal allocations can differ between refreshes at the same margin.
 
    To forecast and solve again without changing the model, refresh the deployed model, then run the query again:
 
@@ -342,7 +342,7 @@ CSV inputs → load → Stage 1 rules → Stage 2 forecast → Stage 3 rolling-h
 effective_capacity = Σ_suppliers (nominal × capability_pct) × Π_inputs (1 − intensity × (1 − availability))
 ```
 
-Each solve is its own named `Problem` (`memory_supply_allocation_iter_0` to `_2`), constrained by capacity, a yield-aware demand cap, and the base and elevated service floors; the model computes each iteration's effective capacity with rules and publishes each solve's status, total margin, and allocations as relationships the report reads. A per-customer plan-diff against the previous solve is the headline: hyperscalers absorb the disruption while equipment-maker customers stay pinned at their elevated floors.
+Each solve is its own named `Problem` (`memory_supply_allocation_iter_0` to `_2`), constrained by capacity, a yield-aware demand cap, and the base and elevated service floors; the model computes each iteration's effective capacity with rules from the supplier overrides and input multipliers that `model/source.py` prepares from the disruption schedule, and publishes each solve's status, total margin, and allocations as relationships the report reads. A per-customer plan-diff against the previous solve is the headline: in the bundled run, hyperscalers absorb the disruption while equipment-maker customers sit at their elevated floors. Only Photonic Lithography is pinned there by its constraints (its 5% outgoing yield caps it at its 95% floor); the margin objective values a unit of a product the same for every customer, so other optimal plans can move allocation between customers.
 
 **Stage 4 (Graph)** enumerates variable-length dependency chains with `model.path(Customer.depends_on.repeat(1, 3)).all().paths()` for root-cause analysis, then runs two what-if branches as rules over the same baseline forecast capacity that Stage 3 uses, so impact stays consistent with the optimization: one takes each supplier offline, the other drops each input to 30% availability, ranking the widest blast radius. The supplier-offline results live on a separate `SupplierOfflineImpact` concept rather than on `Supplier`: the GNN reads `Supplier`, and these results derive from its forecast.
 
@@ -358,13 +358,13 @@ Each solve is its own named `Problem` (`memory_supply_allocation_iter_0` to `_2`
 
 - **`USE_PRECOMPUTED_FORECAST`** (`model/reasoning.py`): `True` deploys no GNN and loads the bundled forecast snapshot instead — the fastest path for iteration; skip the Train step.
 - **`HORIZON_END_PERIOD`** (`model/source.py`) and `data/periods.csv`: change the horizon length (keep the two in sync).
-- **`data/disruption_reveal.csv`**: edit the rolling-horizon disruption schedule. Each row is `(reveal_period, target_type, target_id, parameter_name, parameter_value, start_period, end_period, narrative)`; lower `parameter_value` to increase severity.
+- **`data/disruption_reveal.csv`**: edit the rolling-horizon disruption schedule. Each row is `(reveal_period, target_type, target_id, parameter_name, parameter_value, start_period, end_period, narrative)`; lower `parameter_value` to increase severity. A supplier disruption applies from `start_period` through `end_period`; an input disruption holds from its reveal through the end of the horizon, ignoring `end_period`.
 - **GNN knobs** (`GNN_N_EPOCHS`, `GNN_LR`, `GNN_SEED` in `model/reasoning.py`): training depth, learning rate, and reproducibility seed. The predictive reasoner's size in `raiconfig.yaml` decides the device.
 
 ### Extend the model
 
 - **Adjust floors and yields**: edit `base_service_floor_pct` in `customers.csv` and `declared_yield_pct` / `elevated_floor_pct` in `dependencies.csv`; the Stage-1 rules pick up new values without code changes.
-- **Change the objective**: swap `Product.margin_pct` in the Stage-3 objective for `unit_price_usd_per_gb * margin_pct` (or a new derived net-revenue property) to optimize revenue instead of margin.
+- **Change the objective**: allocations are already in USD, so maximize `sum(Demand.x_alloc)` over the horizon instead of the margin-weighted sum to optimize revenue instead of margin.
 - **Add constraints or outputs**: add a `problem.satisfy(...)` block in Stage 3 of `model/reasoning.py`, or persist a new derived property back to the ontology as Stages 1 and 4 do.
 
 ### Scale up / productionize
@@ -401,7 +401,7 @@ This is a known false-positive of RAI's static typo-detection check that fires d
 <details>
 <summary>Plan-diff shows zero delta for every equipment-maker customer</summary>
 
-This is expected and is the headline narrative of the template. Equipment-maker customers have elevated floors of 88–95% driven by the dependency graph, so their LP allocations are pinned at the floor and disruptions land on the hyperscalers (whose base floor is 55%) instead. To see plan diffs across equipment makers too, remove rows from `dependencies.csv` or raise hyperscaler base floors above 0.85.
+This is the bundled run's result, not a guarantee. Equipment-maker customers have elevated floors of 88–95% driven by the dependency graph; Photonic Lithography is pinned at its floor by its outgoing yield, and in the bundled optimum the others also sit at their floors while disruptions land on the hyperscalers (whose base floor is 55%). The margin objective values a unit of a product the same for every customer, so another optimal plan can shift allocation between them. To see plan diffs across equipment makers too, remove rows from `dependencies.csv` or raise hyperscaler base floors above 0.85.
 </details>
 
 <details>
