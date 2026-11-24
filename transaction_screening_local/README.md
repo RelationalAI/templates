@@ -149,7 +149,7 @@ For the full concept and property definitions, see `transaction_screening_local.
 
 The script starts by configuring a local DuckDB connection with a `deployment` section, so the model materializes and runs on your machine with no Snowflake connection. The section sets `public_schema` (`main`, where the model's views are published) and `identity.internal_schema` (`main_internal`, where RelationalAI keeps the model's internal objects). It then loads the transfer ledger from CSV and derives an `Account` for every party seen at either end of a transfer.
 
-Next it builds the `transfers_to` relationship, linking each sender to its receiver, one row per transfer. The classification rules follow as declarative derived relationships: an account is flagged as structuring when it sends a transfer just under the reporting threshold, and as a large sender when it sends a transfer over the large-transfer limit. An account is a suspect if either flag holds — expressed as two rules that together read as a logical OR.
+Next it builds the `transfers_to` relationship, linking each sender to its receiver, one fact per distinct sender/receiver pair (repeated transfers between the same two accounts collapse to one link). The classification rules follow as declarative derived relationships: an account is flagged as structuring when it sends a transfer just under the reporting threshold, and as a large sender when it sends a transfer over the large-transfer limit. An account is a suspect if either flag holds — expressed as two rules that together read as a logical OR.
 
 Finally, connectivity comes from a self-join over `transfers_to` rather than a graph reasoner: an account sits near a suspect if it transacted directly with one in either direction. The investigation set — accounts under review — is the union of suspects and their direct counterparties. The bottom of the script deploys the model, then its queries summarize the network and print the review set.
 
@@ -175,7 +175,7 @@ Add new derived relationships in the same `define()` and `where()` style to capt
 
 ### Scale up / productionize
 
-To move from local development to production scale, point `model.Table(...)` at a Snowflake table instead of the DuckDB connection. The ontology, rules, and queries stay the same. Because deploy mode on local DuckDB is flagged as experimental, confirm the support stance before relying on it for customer-facing work.
+To move from local development to production scale, replace three local pieces: use a Snowflake connection in the configuration instead of the DuckDB one, point `model.Table(...)` at the Snowflake table instead of loading `raw.txn` through the DuckDB session, and set the `deployment` section's schemas to Snowflake schemas. The ontology, rules, and queries stay the same. Because deploy mode on local DuckDB is flagged as experimental, confirm the support stance before relying on it for customer-facing work.
 
 ## Troubleshooting
 
