@@ -115,4 +115,4 @@ The markdown plan sets per-article-week discounts that lift revenue to ~$65,536 
 
 ## Data
 
-Bundled CSVs in `data/hm_mini/` (articles, customers, transactions, sales splits) plus `data/` planning inputs (article inventory, weeks, discount tiers). The deployed model in `model/` runs the full chain (real GNN on the bundled subset, both optimizers); `retail_planning.py` is the separate script-mode reference against Snowflake tables.
+Bundled CSVs in `data/hm_mini/` (articles, customers, transactions, sales splits, and the planning articles' inventory and production capacity) plus `data/` weeks and discount tiers. The deployed model in `model/` runs the full chain (real GNN on the bundled subset, both optimizers); `retail_planning.py` is the separate script-mode reference against Snowflake tables.

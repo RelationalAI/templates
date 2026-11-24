@@ -185,7 +185,7 @@ Use this sequence to deploy the model, train the GNN, and query the markdown and
    rai models deploy --path model
    ```
 
-   The deploy creates the reasoners and the public schema named in `raiconfig.yaml` if they don't exist and waits for the model's first refresh, which loads the data and sets up both problems. No version of the GNN is registered yet, so this refresh makes no sales predictions and the plans have no demand to act on.
+   The deploy creates the reasoners and the public schema named in `raiconfig.yaml` if they don't exist and waits for the model's first refresh, which loads the data and sets up both problems. No version of the GNN is registered yet, so this refresh makes no sales predictions. It still publishes markdown and production plans, but with no demand behind them those plans are not meaningful, and the report refuses to print them until you have run `train.py` and a refresh.
 
 6. **Train the GNN**
 
