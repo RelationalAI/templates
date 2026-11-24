@@ -19,6 +19,7 @@ from .reasoning import (
     PRICE_CEILING_CENTS,
     NumPoints,
     SelectedOption,
+    SolveSettings,
     SolveStatus,
     problem,
 )
@@ -36,6 +37,7 @@ __all__ = [
     "Option",
     "SelectedOption",
     "Slot",
+    "SolveSettings",
     "SolveStatus",
     "model",
     "problem",

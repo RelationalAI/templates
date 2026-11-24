@@ -87,6 +87,14 @@ SolveStatus = model.Relationship(f"product configurator solve status is {String:
 NumPoints = model.Relationship(f"product configurator number of solutions is {Integer:count}")
 model.define(SolveStatus(problem.termination_status()), NumPoints(problem.num_points()))
 
+# The region, price ceiling, and solution cap the solve ran with, which the deployed model
+# publishes so the report labels the deployed builds with the settings that produced them.
+SolveSettings = model.Relationship(
+    f"product configurator solves region {String:region} under {Integer:price_ceiling_cents} "
+    f"cents for up to {Integer:max_configurations} builds"
+)
+model.define(SolveSettings(TARGET_REGION, PRICE_CEILING_CENTS, MAX_CONFIGURATIONS))
+
 # The solutions, which the deployed model publishes for the queries: the options each
 # solution selects.
 solution = Integer.ref()

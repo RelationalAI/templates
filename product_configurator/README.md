@@ -37,7 +37,7 @@ The configurator scenario here is automotive trim, drawn from the public Renault
 - A region-filtered decision domain so options not allowed in the target region simply don't appear as decisions
 - A pre-solve catalog validation pass that fails fast on two pathologies the region filter can hide: a slot with zero region-allowed options (the exactly-one IC would not bind), and an implies rule whose tail option is not allowed in the region (the implies IC would not bind)
 - **Multi-solution enumeration as the primary code path**: `problem.configure(..., solution_limit=MAX_CONFIGURATIONS)` makes each refresh run the search in enumeration mode and `Variable.values(solution_index, value)` surfaces every distinct feasible build; the bundled demo's `MAX_CONFIGURATIONS = 100` is set above the feasible-set size so the solver exhausts the search (status `OPTIMAL`), and a post-solve `pandas.pivot` collapses the per-option rows into one row per build (one column per slot, sorted ascending by total price) for buyer-facing display
-- A report that prints the solve status and the number of builds, and says so when the solver finds no build; the model itself enforces the constraints across every solution the solver returns
+- A report that prints the solve status and the number of builds, and says so when the solver finds no build; the solver enforces the constraints across every solution it returns, and the report does not re-check them
 
 ## What's included
 
@@ -163,15 +163,15 @@ Use this sequence to deploy the model and query it:
    • status: OPTIMAL
    • num_points: 63
 
-   Feasible builds for region 'EU' (ceiling $20,000, up to 100 per run):
+   Feasible builds for region 'EU' (ceiling $20,000.00, up to 100 per run):
     solution        Engine            Roof          Sound Transmission         Trim              Wheels  total_$
-          40 1.6L Inline-4      Steel Roof Standard Sound       Manual    Base Trim       16-inch Alloy     1500
-          39 1.6L Inline-4      Steel Roof Standard Sound       Manual    Base Trim       18-inch Sport     2700
+          40 1.6L Inline-4      Steel Roof Standard Sound       Manual    Base Trim       16-inch Alloy   1500.0
+          39 1.6L Inline-4      Steel Roof Standard Sound       Manual    Base Trim       18-inch Sport   2700.0
               ... 60 more builds omitted (the report prints all 63) ...
-           1    2.0L Turbo Panoramic Glass  Premium Audio          DCT Premium Trim       18-inch Sport    18200
+           1    2.0L Turbo Panoramic Glass  Premium Audio          DCT Premium Trim       18-inch Sport  18200.0
    ```
 
-   The solution column is the solver's index of each build and is not stable across solves, so the report sorts the builds by total price. With `TARGET_REGION = "EU"` the V6 engine is unavailable, and the 63 returned builds span $1,500-$18,200 -- every legal combination across the six slots, satisfying every implies/excludes rule. Lower `MAX_CONFIGURATIONS` to cap how many the solver returns (status flips to `SOLUTION_LIMIT` once hit). The full 63-row printout and a step-by-step walkthrough are in `runbook.md`.
+   The solution column is the solver's index of each build and is not stable across solves, so the report sorts the builds by total price. With `TARGET_REGION = "EU"` the V6 engine is unavailable, and the 63 returned builds span $1,500-$18,200 -- every legal combination across the six slots, satisfying every implies/excludes rule. Lower `MAX_CONFIGURATIONS` to cap how many the solver returns (status flips to `SOLUTION_LIMIT` once hit). The report prints all 63 rows; `runbook.md` reproduces the run step by step.
 
    To solve again without changing the model, refresh the deployed model, then run the query again:
 

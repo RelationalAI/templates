@@ -6,12 +6,10 @@ pivot table (one row per build, one column per slot, sorted ascending by total p
 """
 
 from model import (
-    MAX_CONFIGURATIONS,
-    PRICE_CEILING_CENTS,
-    TARGET_REGION,
     NumPoints,
     Option,
     SelectedOption,
+    SolveSettings,
     SolveStatus,
     model,
 )
@@ -21,11 +19,12 @@ if __name__ == "__main__":
     status = model.select(SolveStatus).to_df().iloc[:, 0].tolist()
     points = model.select(NumPoints).to_df().iloc[:, 0].tolist()
     num_points = points[0] if points else 0
+    region, price_ceiling_cents, max_configurations = model.select(SolveSettings).to_df().iloc[0]
     print(f"\nSolve result:\n• status: {', '.join(status)}\n• num_points: {num_points}\n")
 
     if num_points == 0:
         print(
-            f"\nThe solver found no build for region {TARGET_REGION!r}. See the solve "
+            f"\nThe solver found no build for region {region!r}. See the solve "
             "status above and the README troubleshooting section for likely causes."
         )
     else:
@@ -34,7 +33,7 @@ if __name__ == "__main__":
         # ------------------------------------------
 
         # `SelectedOption` holds, per solution, the options the solver picked. Pivot to
-        # one row per build, one column per slot, sorted ascending by total dollars.
+        # one row per build, one column per slot, sorted ascending by the exact total in cents.
         sol_idx = Integer.ref()
         selections_df = (
             model.select(
@@ -47,11 +46,12 @@ if __name__ == "__main__":
             .to_df()
         )
         build_view = selections_df.pivot(index="solution", columns="slot", values="option")
-        build_view["total_$"] = selections_df.groupby("solution")["price_cents"].sum() // 100
-        build_view = build_view.sort_values("total_$").reset_index()
+        total_cents = selections_df.groupby("solution")["price_cents"].sum()
+        build_view["total_$"] = total_cents / 100
+        build_view = build_view.loc[total_cents.sort_values().index].reset_index()
         build_view.columns.name = None
         print(
-            f"\nFeasible builds for region {TARGET_REGION!r} "
-            f"(ceiling ${PRICE_CEILING_CENTS // 100:,}, up to {MAX_CONFIGURATIONS} per run):"
+            f"\nFeasible builds for region {region!r} "
+            f"(ceiling ${price_ceiling_cents / 100:,.2f}, up to {max_configurations} per run):"
         )
         print(build_view.to_string(index=False))
