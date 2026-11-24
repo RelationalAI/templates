@@ -248,7 +248,7 @@ pod_placement/
   pyproject.toml                # dependencies
 ```
 
-**Start here**: deploy with `rai models deploy --path model` and run `python -m queries.placement_report` for the full formulation, solve, and post-solve inspection, or follow `runbook.md` to rebuild it step by step.
+**Start here**: deploy with `rai models deploy --path model` and run `python -m queries.placement_report` for the solve status and post-solve inspection (the formulation is in `model/reasoning.py`), or follow `runbook.md` to rebuild it step by step.
 
 ## Sample data
 
@@ -321,12 +321,13 @@ For the exact PyRel formulation, see `model/reasoning.py`; `runbook.md` reproduc
 ## Troubleshooting
 
 <details>
-  <summary>Solver returns INFEASIBLE</summary>
+  <summary>Fewer deployments are placed than expected</summary>
 
-- A deployment's replica count may exceed what the failure-domain spread allows. With two zones and a replica count of 5, the default `max_per_zone = ceil(5/2) = 3` requires at least one zone to host 3 replicas of that deployment -- if no three-node subset in any zone fits them, the model is infeasible.
-- Tenant anti-affinity may over-partition the cluster. If `tenant_a` and `tenant_b` are anti-affine and your cluster has only enough capacity for one of them on each node, the model can't fit both. Loosen by adding more nodes, dropping the anti-affinity pair, or shrinking workload demands.
-- The bundled affinity-paired deployments must be able to land on a single node. If `cache_alpha` and `cache_delta` have a combined demand that doesn't fit on any one node, the affinity IC is unsatisfiable. Check the affinity-paired demands against the largest node's capacity.
-- Distributed-training rack-cliques interact with failure-domain spread when the GPU racks all sit in the same zone. On the bundled data, both GPU racks (`rack-b1`, `rack-b2`) are in zone `us-east-1b`, so a 4-pod training job that must share a rack also ends up sharing that zone -- but the default `max_per_zone = ceil(4/2) = 2` allows only 2 of the 4 replicas in any one zone. Combined with gang placement (all 4 or none), the deployment would be left fully unplaced and the objective would drop to `11`. The bundled `deployments.csv` sets `max_per_zone_override = 4` on `ml_gamma_train` to opt out of spread for the training group only, which is what lets the bundled solve hit `objective = 12`. To reproduce the infeasibility for the training deployment, blank that override and re-run; to widen the fix to your own workload, raise `max_per_zone_override` on the training row, or drop the rack-clique IC AND spread the GPU nodes across zones (so the 4 pods can split across racks in different zones and still satisfy spread). Note that simply spreading the GPU nodes across zones is not enough on its own: a rack belongs to exactly one zone, so as long as rack-clique forces all 4 pods onto a single rack, those 4 pods still share a zone.
+- Leaving every deployment unplaced satisfies all the constraints, so tight inputs lower the objective (the number of placed deployments; 12 of 12 on the bundled data) rather than making the solve `INFEASIBLE`. An `INFEASIBLE` status points at malformed input, such as a negative capacity or demand.
+- A deployment's replica count may exceed what the failure-domain spread allows. With two zones and a replica count of 5, the default `max_per_zone = ceil(5/2) = 3` requires at least one zone to host 3 replicas of that deployment -- if no three-node subset in any zone fits them, that deployment is left unplaced.
+- Tenant anti-affinity may over-partition the cluster. If `tenant_a` and `tenant_b` are anti-affine and your cluster has only enough capacity for one of them on each node, one tenant's deployments are left unplaced. Loosen by adding more nodes, dropping the anti-affinity pair, or shrinking workload demands.
+- The bundled affinity-paired deployments must be able to land on a single node. If `cache_alpha` and `cache_delta` have a combined demand that doesn't fit on any one node, the affinity IC can hold only with both left unplaced. Check the affinity-paired demands against the largest node's capacity.
+- Distributed-training rack-cliques interact with failure-domain spread when the GPU racks all sit in the same zone. On the bundled data, both GPU racks (`rack-b1`, `rack-b2`) are in zone `us-east-1b`, so a 4-pod training job that must share a rack also ends up sharing that zone -- but the default `max_per_zone = ceil(4/2) = 2` allows only 2 of the 4 replicas in any one zone. Combined with gang placement (all 4 or none), the deployment would be left fully unplaced and the objective would drop to `11`. The bundled `deployments.csv` sets `max_per_zone_override = 4` on `ml_gamma_train` to opt out of spread for the training group only, which is what lets the bundled solve hit `objective = 12`. To see the training deployment left unplaced, blank that override and redeploy; to widen the fix to your own workload, raise `max_per_zone_override` on the training row, or drop the rack-clique IC AND spread the GPU nodes across zones (so the 4 pods can split across racks in different zones and still satisfy spread). Note that simply spreading the GPU nodes across zones is not enough on its own: a rack belongs to exactly one zone, so as long as rack-clique forces all 4 pods onto a single rack, those 4 pods still share a zone.
 
 </details>
 
@@ -342,7 +343,7 @@ For the exact PyRel formulation, see `model/reasoning.py`; `runbook.md` reproduc
   <summary>The `Pod.deployment.tenant` chained navigation produces a runtime error on inspection</summary>
 
 - Multi-hop property navigation inside `model.select(...)` combined with a decision-variable filter (`where(Pod.on_node(Node, 1))`) can produce a query the engine refuses to evaluate within its runtime budget. The bundled inspection avoids the issue by keeping each query to single-hop navigation (`Node.id`, `Pod.id`).
-- If you need richer post-solve reporting (e.g. a `(pod, deployment_name, tenant_name, node, zone, rack)` table), pull the placement into pandas in the query module and join in Python: `placements = model.select(Pod.id, Node.id).where(Pod.on_node(Node, 1)).to_df()`, then `placements.merge(pods_csv, on="pod_id").merge(deployments_csv, on="deployment_id")...`.
+- If you need richer post-solve reporting (e.g. a `(pod, deployment_name, tenant_name, node, zone, rack)` table), select the placement and the published properties in separate queries and join them in pandas: `placements = model.select(Pod.id.alias("pod_id"), Node.id.alias("node_id")).where(Pod.on_node(Node, 1)).to_df()`, then merge it with queries such as `model.select(Pod.id.alias("pod_id"), Deployment.name.alias("deployment")).where(Pod.deployment == Deployment).to_df()` on `pod_id`.
 
 </details>
 
@@ -381,14 +382,14 @@ For the exact PyRel formulation, see `model/reasoning.py`; `runbook.md` reproduc
   <summary>Solver hits the time limit (status is not `OPTIMAL`) and the report stops</summary>
 
 - The report's `if status != ["OPTIMAL"]` check raises `SystemExit`: if you raise `time_limit_sec` and the solver returns a feasible-but-not-proven-optimal result (`SOLUTION_LIMIT` or `LOCALLY_SOLVED`), the report stops rather than print a partial solution.
-- For a tutorial run on the bundled data this is the right posture (the oracle is "the solver proved 11/12"). For larger user data, either (a) raise `time_limit_sec` until the solver proves optimality, or (b) replace the check in `queries/placement_report.py` with a `print(...)` warning and let the inspection blocks run on the best feasible placement found.
+- For a tutorial run on the bundled data this is the right posture (the oracle is "the solver proved 12/12"). For larger user data, either (a) raise `time_limit_sec` until the solver proves optimality, or (b) replace the check in `queries/placement_report.py` with a `print(...)` warning and let the inspection blocks run on the best feasible placement found.
 
 </details>
 
 <details>
   <summary>A distributed-training group is silently splitting across racks</summary>
 
-- The `rack_clique_ic` fires once per row in `distributed_training.csv`. The IC enforces "same rack" only for the pairs of pods listed there -- it does NOT close the relation transitively. The bundled CSV provides all `C(4, 2) = 6` pairs for the 4-pod `ml_gamma_train` group, so every pair is constrained. If you supply only a spanning tree (e.g. 3 edges instead of 6 for a 4-pod group), non-adjacent pods can legally land on different racks.
+- The `rack_clique_ic` fires once per row in `distributed_training.csv` and enforces "same rack" only for listed pairs whose pods are both placed. The bundled CSV provides all `C(4, 2) = 6` pairs for the 4-pod `ml_gamma_train` group, so every pair is constrained. A connected spanning tree (e.g. 3 edges instead of 6 for a 4-pod group) still forces one rack when every pod is placed, as gang placement guarantees within one deployment; but if the group spans deployments placed independently, an unplaced intermediate pod lets its neighbours land on different racks.
 - To model an N-pod training group, enumerate all `C(N, 2)` pairs in `distributed_training.csv`. Alternatively, pre-compute the transitive closure of the group graph in Python before passing it to `model.data(...)`.
 
 </details>

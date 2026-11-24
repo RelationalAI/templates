@@ -132,12 +132,12 @@ problem.satisfy(spread_ic)
 # Encoded as the pairwise "no different-rack co-placement" sum
 # constraint: at most one of (Pa, Pb) is on any (Na, Nb) pair of
 # nodes that are in different racks. The IC fires once per
-# `DistributedTraining` edge -- so the input relation must enumerate
-# ALL pairs of pods in each training group (the bundled CSV does:
-# C(4,2)=6 rows for pods 27-30). A spanning-tree of edges would only
-# constrain adjacent pods to share a rack; non-adjacent pairs would
-# be free to land on different racks, silently weakening the clique
-# guarantee.
+# `DistributedTraining` edge and binds only pods that are both placed,
+# so the input relation enumerates ALL pairs of pods in each training
+# group (the bundled CSV does: C(4,2)=6 rows for pods 27-30). A
+# connected spanning tree also forces one rack when every pod in the
+# group is placed, as gang placement does for a single deployment, but
+# an unplaced intermediate pod would let its neighbours split.
 Pa = Pod
 Pb = Pod.ref()
 Na = Node
