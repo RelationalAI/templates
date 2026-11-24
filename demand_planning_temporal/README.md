@@ -219,10 +219,10 @@ Use this sequence to deploy the model and query it:
 
 ## Sample data
 
-The bundled data is a small, illustrative multi-site production dataset covering three warehouse sites and two SKUs, with demand orders spanning October 2025 through March 2026. It is synthetic and sized to run the temporal-filtering and multi-period optimization pattern quickly, not to match any real plant.
+The bundled data is a small, illustrative multi-site production dataset covering three warehouse sites and three SKUs, with demand orders spanning October 2025 through March 2026. It is synthetic and sized to run the temporal-filtering and multi-period optimization pattern quickly, not to match any real plant.
 
 - **`sites.csv`** — warehouse/distribution sites (`Chicago_DC`, `Atlanta_DC`, …) with a weekly throughput capacity.
-- **`skus.csv`** — products (`Widget_A`, `Widget_B`) with a unit cost and a weekly holding cost.
+- **`skus.csv`** — products (`Widget_A`, `Widget_B`, `Gadget_C`) with a unit cost and a weekly holding cost.
 - **`demand_orders.csv`** — dated demand orders (`id`, `sku_id`, `site_id`, `quantity`, `due_date`); only orders inside the configured horizon enter each scenario.
 - **`production_capacity.csv`** — per-(site, SKU) maximum weekly production and production cost.
 - **`initial_inventory.csv`** — per-(site, SKU) starting inventory, used as the week-0 condition.
@@ -235,7 +235,7 @@ The model is a multi-period production and inventory ontology. Sites and SKUs ar
 - **Primary identifiers**: `Site.id` and `SKU.id` (integers); `DemandOrder.id` (integer); the composite key `ProdCapacity(site_id, sku_id)`; the composite key `WeeklyDemand(wk_planning_end, wk_site_id, wk_sku_id, wk_week_num)`.
 - **Important invariants**: quantities, costs, production, and inventory are non-negative; inventory obeys flow conservation (`inv[t] = inv[t-1] + production[t] - demand[t]`); week 0 inventory equals the initial inventory; unmet demand per order is bounded by the order quantity; total unmet demand is capped by the 95% service level.
 
-For the full concept and property definitions — including the time-indexed `x_production` / `x_inventory` decision variables on `ProdCapacity` and the relationships linking orders and capacity to their `Site` and `SKU` — see `model/schema.py`; `runbook.md` builds them step by step with the RAI skills.
+For the full concept and property definitions, see `model/schema.py`; the time-indexed `x_production` / `x_inventory` decision variables on `ProdCapacity` are declared in `model/reasoning.py`, and the relationships linking orders and capacity to their `Site` and `SKU` in `model/source.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 

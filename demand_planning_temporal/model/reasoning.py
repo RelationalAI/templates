@@ -37,11 +37,10 @@ x_inv_curr = Float.ref()
 
 
 class Plan(NamedTuple):
-    """One planning horizon's problem, its decision variables, and its published result."""
+    """One planning horizon and the relationships its solve publishes."""
 
     planning_end: str
     num_weeks: int
-    problem: Any
     production: Any
     inventory: Any
     unmet: Any
@@ -188,7 +187,7 @@ def build_plan(planning_end):
     )
     model.where(unmet_var.values(0, value)).define(unmet(value, unmet_var.demandorder.id))
 
-    return Plan(planning_end, num_weeks, problem, production, inventory, unmet, status, cost)
+    return Plan(planning_end, num_weeks, production, inventory, unmet, status, cost)
 
 
 # One problem per planning horizon, so an infeasible horizon leaves the others solved.

@@ -24,7 +24,6 @@ planning_start = "2025-11-01"  # Start of planning horizon
 
 # Scenarios (what-if analysis): each planning_end value is one planning horizon,
 # solved by its own Problem in model/reasoning.py.
-SCENARIO_PARAM = "planning_end"
 SCENARIO_VALUES = ["2026-01-31", "2026-02-28", "2026-03-31"]
 
 
@@ -36,7 +35,7 @@ def weeks_in_horizon(planning_end):
 
 
 # Map sites data from CSV.
-site_csv = pd.read_csv(DATA_DIR / "sites.csv")
+site_csv = pd.read_csv(DATA_DIR / "sites.csv").rename(columns={"type": "site_type"})
 model.define(Site.new(model.data(site_csv).to_schema()))
 
 # Map SKUs data from CSV.
@@ -87,8 +86,8 @@ model.define(
 )
 
 # Link demand orders to SKU and Site via foreign keys
-model.define(DemandOrder.sku(SKU)).where(SKU.id == order_data.sku_id)
-model.define(DemandOrder.site(Site)).where(Site.id == order_data.site_id)
+model.define(DemandOrder.sku(SKU)).where(DemandOrder.id == order_data.id, SKU.id == order_data.sku_id)
+model.define(DemandOrder.site(Site)).where(DemandOrder.id == order_data.id, Site.id == order_data.site_id)
 
 # Map production capacity data from CSV.
 pc_df = pd.read_csv(DATA_DIR / "production_capacity.csv")
@@ -113,8 +112,8 @@ pc_data = model.data(pc_df)
 model.define(ProdCapacity.new(pc_data.to_schema()))
 
 # Link to Site and SKU
-model.define(ProdCapacity.site(Site)).where(Site.id == pc_data.site_id)
-model.define(ProdCapacity.sku(SKU)).where(SKU.id == pc_data.sku_id)
+model.define(ProdCapacity.site(Site)).where(Site.id == ProdCapacity.site_id)
+model.define(ProdCapacity.sku(SKU)).where(SKU.id == ProdCapacity.sku_id)
 
 # Per planning horizon: the orders in scope and the weekly demand over its weeks.
 scope_frames = []
