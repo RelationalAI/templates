@@ -201,7 +201,7 @@ See `model/reasoning.py` for the implementation, `queries/attack_path_report.py`
 
 ### Use your own data
 
-- Replace the CSVs in `data/` with your own assets and attack steps, keeping the same column names. Tag each step with the technique an attacker would use (`exploit`, `cred`, `pivot`, or your own taxonomy).
+- Replace the CSVs in `data/` with your own assets and attack steps, keeping the same column names. Tag each step with the technique an attacker would use: `exploit`, `cred`, or `pivot`. The kill-chain rules match only these three labels, so map your own taxonomy onto them; a step with any other label appears only in the point-to-point routes.
 - Mark internet-facing assets and crown jewels with `yes` or `no` so the kill-chain endpoints match your environment.
 - Feed `Asset.exposure_score` from a real vulnerability or attack-surface feed so the ranking reflects live risk.
 
