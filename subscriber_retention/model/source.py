@@ -34,8 +34,11 @@ calls_df = pd.read_csv(
     DATA_DIR / "call_detail_records.csv", parse_dates=["CALL_START_TIME"]
 )
 
-# Drop unused identifier columns -- not useful as features.
-sub_df = sub_df.drop(columns=["FIRST_NAME", "LAST_NAME", "EMAIL", "PHONE"])
+# Drop unused identifier columns -- not useful as features. A source that already
+# omits them loads unchanged.
+sub_df = sub_df.drop(
+    columns=["FIRST_NAME", "LAST_NAME", "EMAIL", "PHONE"], errors="ignore"
+)
 
 # Each subscriber has exactly one active contract; left-join plan attrs onto
 # the subscriber row (1:1 denormalization).

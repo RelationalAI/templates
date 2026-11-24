@@ -1,6 +1,6 @@
 """The call graph and its PageRank, the call-volume features, and the churn-risk GNN."""
 
-from relationalai.semantics import Float, Integer, count
+from relationalai.semantics import Float, Integer, String, count
 from relationalai.semantics.reasoners.graph import Graph
 from relationalai.semantics.reasoners.predictive import GNN, PropertyTransformer
 
@@ -17,6 +17,7 @@ STREAM_LOGS = False
 
 call_graph = Graph(
     model,
+    name="call_graph",
     directed=True,
     weighted=False,
     node_concept=Subscriber,
@@ -112,3 +113,17 @@ gnn = GNN(
     lr=0.005,
 )
 Subscriber.predictions = gnn.predictions(domain=Test)
+
+# The predicted churn risk of each scored (test) subscriber, which the deployed model
+# publishes for the report. It is a concept of its own, not a Subscriber property: the
+# GNN reads Subscriber, so a Subscriber property derived from the predictions would feed
+# back into them.
+ChurnRiskPrediction = model.Concept("ChurnRiskPrediction", identify_by={"sub_id": String})
+ChurnRiskPrediction.predicted_risk = model.Property(
+    f"{ChurnRiskPrediction} has predicted churn risk {Float:predicted_risk}"
+)
+predicted_risk = Float.ref()
+model.where(Subscriber.predictions.predicted_value(predicted_risk)).define(
+    prediction := ChurnRiskPrediction.new(sub_id=Subscriber.sub_id),
+    prediction.predicted_risk(predicted_risk),
+)

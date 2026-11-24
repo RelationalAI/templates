@@ -7,8 +7,16 @@ Prints the data and split summary, the top-N highest-predicted-risk test
 subscribers per segment, and the test-set RMSE.
 """
 
-from model import Call, Subscriber, TestTable, TrainTable, ValTable, model
-from relationalai.semantics import Float, count, select
+from model import (
+    Call,
+    ChurnRiskPrediction,
+    Subscriber,
+    TestTable,
+    TrainTable,
+    ValTable,
+    model,
+)
+from relationalai.semantics import count, select
 
 TOP_N_PER_SEGMENT = 5
 
@@ -39,16 +47,15 @@ def main() -> None:
     print(f"Top {TOP_N_PER_SEGMENT} highest-predicted-risk subscribers per segment")
     print("=" * 60)
 
-    risk_ref = Float.ref()
     results_df = (
-        model.where(Subscriber.predictions.predicted_value(risk_ref))
+        model.where(ChurnRiskPrediction.sub_id == Subscriber.sub_id)
         .select(
             Subscriber.sub_id.alias("sub_id"),
             Subscriber.segment.alias("segment"),
             Subscriber.subscriber_type.alias("type"),
             Subscriber.lifetime_value_usd.alias("lifetime_value"),
             Subscriber.churn_risk_score.alias("actual_risk"),
-            risk_ref.alias("predicted_risk"),
+            ChurnRiskPrediction.predicted_risk.alias("predicted_risk"),
         )
         .to_df()
     )
@@ -59,9 +66,9 @@ def main() -> None:
         results_df["predicted_risk"] = results_df["predicted_risk"].astype(float)
         results_df["actual_risk"] = results_df["actual_risk"].astype(float)
         for seg, group in results_df.groupby("segment"):
-            top = group.sort_values("predicted_risk", ascending=False).head(
-                TOP_N_PER_SEGMENT
-            )
+            top = group.sort_values(
+                ["predicted_risk", "sub_id"], ascending=[False, True]
+            ).head(TOP_N_PER_SEGMENT)
             print(f"\n[{seg}]  ({len(group)} test subscribers)")
             print(top.to_string(index=False))
 

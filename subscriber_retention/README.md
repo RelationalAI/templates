@@ -20,7 +20,7 @@ tags:
 
 Telco retention teams need to know which subscribers are most likely to churn, so they can spend a limited campaign budget on the people most worth keeping. Traditional churn models lean on plan attributes and demographics alone, and miss a signal the operator already owns: the call network. A subscriber who talks to many others, or sits at the center of a tight calling community, behaves differently from an isolated one -- and that structure predicts retention.
 
-This template scores every subscriber for churn risk using both their plan attributes and their standing in the call network, then ranks the highest-risk subscribers within each segment so a retention team can act on them first.
+This template scores the held-out test subscribers for churn risk using both their plan attributes and their standing in the call network, then ranks the highest-risk subscribers within each segment so a retention team can act on them first.
 
 **A graph neural network learns per-subscriber churn risk from plan and demographic attributes enriched with call-network features**, so who a subscriber talks to shapes the score, not just what plan they hold.
 
@@ -48,9 +48,9 @@ Built using the **graph reasoner** (PageRank on the call graph) and the **predic
 - **Training**: `train.py` — trains the GNN over the deployed splits and registers its version
 - **Query**: `queries/churn_report.py` — prints the top-N highest-predicted-risk subscribers per segment from the deployed model
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the code itself.
-- **Ontology**: `Subscriber` (with denormalized plan attributes), `Call` (edge-intermediary for the call graph), and three task-table concepts (`TrainTable`, `ValTable`, `TestTable`) carrying the churn-risk labels
+- **Ontology**: `Subscriber` (with denormalized plan attributes), `Call` (edge-intermediary for the call graph), and three task-table concepts: `TrainTable` and `ValTable` carry the churn-risk labels, and `TestTable` lists the subscribers to score; `ChurnRiskPrediction` publishes each scored subscriber's predicted risk
 - **Sample data**: small telco subset (subscribers + plans + call detail records); see [Sample data](#sample-data) below
-- **Outputs**: subscriber/call counts, churn-risk distribution, GNN training/prediction metrics, top-5 highest-risk subscribers per segment, test-set RMSE
+- **Outputs**: subscriber/call counts, churn-risk distribution, GNN training/prediction metrics, up to 5 highest-risk test subscribers per segment, test-set RMSE
 
 ## Prerequisites
 
@@ -209,7 +209,7 @@ Use this sequence to deploy the model, train the GNN, and query the churn report
    Test-set RMSE: 0.1399
    ```
 
-   The report is trimmed here: it prints the top five test subscribers for each of the five segments. On this small synthetic dataset the GNN converges close to the segment-mean risk (~0.24): there isn't enough learnable signal in 837 training rows of synthetic plan and call data to spread the predictions further. The template demonstrates the pipeline shape, not score quality; pointed at real telco data with stronger churn-correlated features (tenure, billing-event history, support-ticket patterns), the same pipeline produces discriminative per-subscriber scores. Predicted scores and the RMSE vary a little from one training run to the next; the data summary and actual scores do not. See `runbook.md` for the step-by-step walkthrough.
+   The report is trimmed here: it prints up to five test subscribers for each of the five segments (the smallest segment has only three). On this small synthetic dataset the GNN converges close to the segment-mean risk (~0.24): there isn't enough learnable signal in 837 training rows of synthetic plan and call data to spread the predictions further. The template demonstrates the pipeline shape, not score quality; pointed at real telco data with stronger churn-correlated features (tenure, billing-event history, support-ticket patterns), the same pipeline produces discriminative per-subscriber scores. Predicted scores and the RMSE vary a little from one training run to the next; the data summary and actual scores do not. See `runbook.md` for the step-by-step walkthrough.
 
    To predict again without changing the model, refresh the deployed model, then run the query again:
 
@@ -257,7 +257,7 @@ Use this sequence to deploy the model, train the GNN, and query the churn report
 Two ways to feed this template:
 
 1. **Bundled (light)** — `data/telco_mini/` ships with the template ZIP. ~1,200 subscribers + ~6,000 calls + 1,200 plans. Demo data. The four identifier columns (`FIRST_NAME`, `LAST_NAME`, `EMAIL`, `PHONE`) are dropped at load time as unused features. No external setup. **Quickstart uses this.**
-2. **Bring-your-own** — replace the four CSVs under `data/telco_mini/` with your own subscriber / plan / CDR exports (same column names) and redeploy. There is no widely-known public telco churn dataset that includes a caller-to-callee call graph (the popular [IBM Telco Customer Churn](https://www.kaggle.com/datasets/blastchar/telco-customer-churn) benchmark is tabular only — no calls, no graph), so the GNN graph path requires real CDR data or a synthetic call-graph generator. See [Run on your own Snowflake data](#run-on-your-own-snowflake-data) for the loading pattern.
+2. **Bring-your-own** — replace the three CSVs the pipeline reads (`subscribers.csv`, `plans_contracts.csv`, `call_detail_records.csv`) under `data/telco_mini/` with your own subscriber / plan / CDR exports (same column names) and redeploy; `billing_events.csv` is optional. There is no widely-known public telco churn dataset that includes a caller-to-callee call graph (the popular [IBM Telco Customer Churn](https://www.kaggle.com/datasets/blastchar/telco-customer-churn) benchmark is tabular only — no calls, no graph), so the GNN graph path requires real CDR data or a synthetic call-graph generator. See [Scale up / productionize](#scale-up--productionize) for loading from Snowflake.
 
 About the bundled mini set:
 
@@ -296,9 +296,9 @@ Subscribers + Plans + Call records (bundled CSVs, denormalized to Subscriber)
 
 **3. Declare features and target.** A `PropertyTransformer` declares each feature's type explicitly — categorical, continuous, integer, datetime — and drops the primary key, high-cardinality `postal_code`, and the `churn_risk_score` target from the feature set.
 
-**4. Train and predict.** The split is stratified by `SEGMENT` so each segment's risk distribution carries through train/val/test. The GNN trains as a regression head evaluated with RMSE, then scores the held-out test subscribers; predictions bind back as `Subscriber.predictions` for downstream queries.
+**4. Train and predict.** The split is stratified by `SEGMENT` so each segment's risk distribution carries through train/val/test. The GNN trains as a regression head evaluated with RMSE, then scores the held-out test subscribers; predictions bind back as `Subscriber.predictions`, and a rule publishes each one on its own `ChurnRiskPrediction` concept for downstream queries.
 
-**5. Top-N per segment.** A single declarative query joins predicted risk back to subscriber metadata and groups by segment, surfacing the highest-predicted-risk subscribers a retention team should act on first.
+**5. Top-N per segment.** A query joins the published predicted risk to subscriber metadata, and the report ranks it within each segment (ties by subscriber ID), surfacing the highest-predicted-risk subscribers a retention team should act on first.
 
 For the implementation, see `model/reasoning.py` and `queries/churn_report.py`; to reproduce it step by step with the RAI skills, follow `runbook.md`.
 
