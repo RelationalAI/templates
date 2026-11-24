@@ -177,6 +177,8 @@ Use this sequence to deploy the model and query it:
 
    The report also prints the gene closure, the eligible-patient set, and the per-axis coverage tally. Eight of the 15 patients are eligible (the seven excluded patients each fail either the kinase-mutation test or the qualifying-pair test within the 90-day window). Several four-patient cohorts hit the `MIN_GENES_COVERED = 3` / `MIN_THERAPIES_COVERED = 2` / `MIN_AES_COVERED = 2` floors; the solver returns one of them, so the specific cohort can vary across runs.
 
+   The report checks that the solve is `OPTIMAL` but does not re-check the returned cohort against the ten constraints (cohort size, the per-axis coverage bounds, and the coverage floors) on its own; it relies on the solver having enforced them.
+
    To solve again without changing the model, refresh the deployed model, then run the query again:
 
    ```sql
