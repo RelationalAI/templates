@@ -19,7 +19,7 @@ Workforce scheduling is a common operational challenge: given a set of workers, 
 
 This template uses **Prescriptive** reasoning to formulate the shift assignment problem as a constraint satisfaction model. Workers are assigned to shifts they are available for, subject to minimum coverage requirements per shift and a limit on how many shifts each worker can take. The solver (MiniZinc) finds feasible assignments that satisfy all constraints simultaneously.
 
-The template also demonstrates scenario analysis by sweeping over different minimum coverage levels. This lets you quickly see which staffing targets are achievable with your current workforce and availability data, and where you might need to hire or adjust schedules.
+The template also demonstrates scenario analysis by sweeping over different minimum coverage levels. All coverage levels are solved together as one feasibility problem, so the solve succeeds only if every target is achievable with your current workforce and availability data; an infeasible result means at least one target needs more workers or availability (see *Troubleshooting*).
 
 ## Who this is for
 
@@ -38,7 +38,7 @@ The template also demonstrates scenario analysis by sweeping over different mini
 
 - `model/` -- ontology, constraints, and scenario analysis, as a package (`schema.py` declares the concepts, `source.py` loads the sample data, `reasoning.py` states the decision problem); `rai models deploy --path model` deploys it to your Snowflake account, where each refresh runs the solve
 - `queries/shift_assignments.py` -- prints the report from the deployed model: the solve status and the assignments for each scenario
-- **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
+- **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the code in `model/`.
 - `data/workers.csv` -- 10 workers with IDs and names
 - `data/shifts.csv` -- 3 shifts (Morning, Afternoon, Night) with capacity limits
 - `data/availability.csv` -- worker-to-shift availability mappings
@@ -259,7 +259,7 @@ See `model/reasoning.py` for the implementation and `runbook.md` for the skill-d
 ### Scale up / productionize
 
 - For Snowflake-backed runs, swap the `read_csv(...)` calls in `model/source.py` for `model.data(snowflake_table)` and adjust the loaders accordingly.
-- The feasibility CSP scales to whatever fits the solver's time budget (`time_limit_sec`, default 60). For a scheduled pipeline, pin the `relationalai` version and add an objective so results are reproducible rather than any-feasible.
+- The feasibility CSP scales to whatever fits the solver's time budget (`time_limit_sec`, default 60). For a scheduled pipeline, pin the `relationalai` version and add an objective (with a tie-break, such as a small per-worker weight, if you need a unique roster) so results are less arbitrary than any-feasible.
 
 ## Troubleshooting
 
