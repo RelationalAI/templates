@@ -354,7 +354,7 @@ For the full concept and property definitions, see `model/`; `runbook.md` builds
 
 **Stage 5 — Prescriptive (MIP).** Binary `TowerUpgradeOption.selected`, scoped to critical-restore towers, with three constraints (at most one tier per tower, total cost at most $5M, total install-weeks at most 200). The objective maximizes restored capacity weighted by two upstream signals per tower — Stage 3's `weighted_impact` (revenue × churn) and Stage 1's `failure_intensity` (GNN-predicted risk) — so capacity spent on high-value, high-risk towers counts most.
 
-After the solve, a `RestorePlan` singleton is populated and each selected option is tagged `is_selected_upgrade`. Every selected tower carries a `rationale` tag in the printed plan noting which upstream signal(s) drove its inclusion (`operational` / `advisory/predicted` / `high-value`).
+After the solve, a `RestorePlan` singleton is populated and each selected option is tagged `is_selected_upgrade`. Every selected tower carries a `rationale` tag in the printed plan noting which upstream signal(s) drove its inclusion: `operational` (Stage 2 Branch 1 or 2 fired), `advisory/predicted` (Branch 3 fired), `high-value` (weighted impact in the top quartile of critical towers).
 
 For the implementation, see `model/reasoning.py`; to reproduce it step by step with the RAI skills, follow `runbook.md`.
 
@@ -367,7 +367,7 @@ Focus on the first changes most users will make.
 - Replace the CSVs in `data/` with your own; keep the column names listed in *Sample data* above.
 - Regenerate the synthetic corpus: run `python _synthesize_advisory_data.py` in `data/`, then deploy again and train a new version. The generator uses a fixed seed, so it reproduces the bundled files; change its `SEED` for a different corpus.
 - The subscriber `STATUS` column is enum-mapped: values must exactly match the `SubscriberStatus` member names (`ACTIVE` / `SUSPENDED`). `lookup()` cannot validate values that arrive from data columns — unrecognized values silently map to a nonexistent member, and those subscribers drop out of the Stage 3 customer-impact aggregates. Extend the enum if your feed has more statuses.
-- For Snowflake-backed runs, swap the CSV reads in `model/source.py` for `model.data(snowflake_table)` calls.
+- For Snowflake-backed runs, replace the CSV reads in `model/source.py` with Snowflake reads that return pandas DataFrames: the label derivation, the seeded train/validation/test split and the advisory selection there run in pandas.
 - The model derives `Subscriber.customer_value` from `lifetime_value` and `churn_risk_score` in `model/reasoning.py`, so a subscriber feed needs both `LIFETIME_VALUE_USD` and `CHURN_RISK_SCORE`.
 
 ### Tune parameters
@@ -413,7 +413,7 @@ All three Stage 5 constraints are upper bounds (at most one tier per tower, tota
 <details>
 <summary>The 15 WEST DEGRADED towers don't show up in Stage 5 selections</summary>
 
-The Stage 2 rule still fires on them (Branches 1 and 2) — they're in the flagged set. Whether they're picked by Stage 5 depends on the multiplicative objective: a WEST tower with low `failure_intensity` (healthy equipment) and low `weighted_impact` (few high-value callers) gets a small objective contribution and may be deprioritized vs. higher-risk, higher-value towers elsewhere. This is the intended behavior of the chain.
+Only the ones whose average equipment health is below 0.85 fire Branch 1 (12 of the 15 on the bundled data); the others are flagged only if their predicted failure intensity crosses the Branch 3 threshold. Whether they're picked by Stage 5 depends on the multiplicative objective: a WEST tower with low `failure_intensity` (healthy equipment) and low `weighted_impact` (few high-value callers) gets a small objective contribution and may be deprioritized vs. higher-risk, higher-value towers elsewhere. This is the intended behavior of the chain.
 
 </details>
 

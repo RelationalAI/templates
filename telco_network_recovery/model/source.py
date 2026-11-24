@@ -40,7 +40,7 @@ upgrade_options_df = pd.read_csv(DATA_DIR / "tower_upgrade_options.csv")
 advisories_df = pd.read_csv(DATA_DIR / "model_advisories.csv", parse_dates=["ISSUED_DATE"])
 
 # Binary at_risk label for the GNN: STATUS in {FAILING, WARNING} are
-# the positive class (~20% of equipment). OPERATIONAL is the negative
+# the positive class (597 of 1,500 equipment items in the bundled data). OPERATIONAL is the negative
 # class. STATUS itself is never loaded, and at_risk is dropped from the
 # feature set to prevent leakage.
 network_equipment_df["AT_RISK"] = (
