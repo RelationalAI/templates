@@ -21,6 +21,18 @@ from model import (
     problems,
 )
 
+# The bundled data's high-CPU Linux jobs (min_cpu >= 4, Linux); the conflict check below
+# stops when workflows.csv no longer matches them.
+HIGH_CPU_LINUX_JOBS = {
+    "build-mobile-android",
+    "unit-tests-api",
+    "integration-tests",
+    "e2e-tests-chrome",
+    "docker-build",
+    "performance-tests",
+    "nightly-build",
+}
+
 
 def solve_result(key):
     """Print and return one solve's published status and cost."""
@@ -130,13 +142,14 @@ if __name__ == "__main__":
     stranded = set(stranded_df["workflow"])
     if (
         set(caps_df["runner"]) != {"ubuntu-xlarge"}
-        or len(high_cpu_linux) != 7
+        or high_cpu_linux != HIGH_CPU_LINUX_JOBS
         or len(stranded) < 6
         or not stranded <= high_cpu_linux
     ):
         raise SystemExit(
             "expected ubuntu-xlarge's cap and at least six of the seven high-CPU Linux jobs "
-            f"in the conflict, got caps {sorted(caps_df['runner'])} and jobs {sorted(stranded)}"
+            f"in the conflict, got caps {sorted(caps_df['runner'])} and jobs {sorted(stranded)} "
+            f"(high-CPU Linux jobs in the data: {sorted(high_cpu_linux)})"
         )
     print(
         "\nTo restore feasibility, relax one member of the conflict: bring "
