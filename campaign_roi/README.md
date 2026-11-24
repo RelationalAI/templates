@@ -165,7 +165,7 @@ Use this sequence to deploy the model and query it:
    Paused region 'WEST' cap: 565.0 (50% of $1,130K total)
    ```
 
-   The per-campaign reallocation table and the regional spend table are trimmed here. The optimum hits the WEST regional cap exactly (50% of $1,130K = $565K), reaches the 3x cap on three high-performing campaigns (`WEST_Premium_Upgrade`, `CENTRAL_Retention_3`, `SOUTH_WinBack_6`), and pushes six low-performing campaigns down to the 10% floor. Despite holding total spend constant, conversions increase by 17.1%. The full printout, including the per-campaign reallocation table and regional-spend summary, is in `runbook.md`.
+   The per-campaign reallocation table and the regional spend table are trimmed here. The optimum hits the WEST regional cap exactly (50% of $1,130K = $565K), reaches the 3x cap on three high-performing campaigns (`WEST_Premium_Upgrade`, `CENTRAL_Retention_3`, `SOUTH_WinBack_6`), and pushes seven low-performing campaigns down to the 10% floor. Despite holding total spend constant, conversions increase by 17.1%. The report prints both tables in full; `runbook.md` walks through the same results step by step.
 
    To solve again without changing the model, refresh the deployed model, then run the query again:
 
@@ -226,7 +226,7 @@ The model is a single concept: one `Campaign` per row of `campaigns.csv`, enrich
 - **Primary identifiers**: integer `id` on `Campaign`, loaded from `data/campaigns.csv`.
 - **Important invariants**: `current_budget` and `conversion_rate` are non-negative; the optimized budget `x_budget` stays between the per-campaign floor and cap; total spend does not exceed `TOTAL_BUDGET`; and the paused region's spend does not exceed its share cap.
 
-For the full concept and property definitions, see `model/schema.py`; `runbook.md` builds them step by step with the RAI skills.
+For the full concept and property definitions, see `model/schema.py` (the decision variable `Campaign.x_budget` is declared in `model/reasoning.py`); `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
@@ -289,11 +289,11 @@ Tightening `CAP_MULTIPLIER` toward 1.5 distributes increases across more campaig
 <details>
   <summary>Why does the total optimized budget exactly equal TOTAL_BUDGET?</summary>
 
-  Because every campaign has a positive conversion rate, the maximization objective always benefits from spending more. The total budget constraint binds at the upper limit. If you want to allow under-spending, change the objective to penalize unspent budget, or change the budget constraint from `<=` to `==`.
+  Because every campaign has a positive conversion rate, the maximization objective always benefits from spending more. The total budget constraint binds at the upper limit. To let the optimizer leave budget unspent when spending does not pay off, keep the `<=` constraint and subtract a cost per dollar spent from the objective; a campaign then receives budget above its floor only while its conversion rate exceeds that cost.
 </details>
 
 <details>
-  <summary>Why are six campaigns at exactly 10% of current?</summary>
+  <summary>Why are seven campaigns at exactly 10% of current?</summary>
 
   These are campaigns whose conversion rates are below the marginal rate of the binding budget constraint. The optimizer cannot fully shut them down because the floor constraint forces 10%. If you set `FLOOR_FRACTION = 0`, those campaigns would go to zero.
 </details>
