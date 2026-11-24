@@ -334,12 +334,15 @@ def main() -> None:
         f"  Input with widest shortage impact: {worst_input['input']} "
         f"({worst_input['n_affected_cells']} affected cells)"
     )
-    margins = [r["objective"] for r in scenario_results if r["objective"] is not None]
-    if len(margins) >= 2:
-        erosion = margins[0] - margins[-1]
+    # The horizons shrink from one iteration to the next, so the two totals cover
+    # different months and their difference is not the disruptions' cost alone.
+    solved = [r for r in scenario_results if r["objective"] is not None]
+    if len(solved) >= 2:
+        first, last = solved[0], solved[-1]
         print(
-            f"  Margin erosion across rolling horizon (iter 0 -> iter "
-            f"{len(margins) - 1}): ${erosion:,.2f}"
+            f"  Horizon margin, iter {first['iter_id']} (months {first['horizon_start']}-"
+            f"{HORIZON_END_PERIOD}) -> iter {last['iter_id']} (months {last['horizon_start']}-"
+            f"{HORIZON_END_PERIOD}): ${first['objective']:,.2f} -> ${last['objective']:,.2f}"
         )
 
 

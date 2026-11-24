@@ -25,7 +25,7 @@ tags:
 
 When advanced memory chips are scarce, every manufacturer faces the same monthly question: who gets how much? Demand outstrips supply, foundry health swings month to month, raw-material shocks ripple through production, and strategic customers expect to be protected even when others are cut. Replanning this by spreadsheet is slow, opaque, and hard to defend.
 
-This template shows how RelationalAI answers that question on a single shared model of the business. Forecasting, business rules, optimization, and graph analysis all read and write the same ontology, so a planner can predict supplier health, encode who-protects-whom policies, compute the revenue-maximizing allocation, and trace which suppliers and materials put the plan most at risk — then re-run the whole chain the moment a disruption surfaces.
+This template shows how RelationalAI answers that question on a single shared model of the business. Forecasting, business rules, optimization, and graph analysis all read and write the same ontology, so a planner can predict supplier health, encode who-protects-whom policies, compute the margin-maximizing allocation, and trace which suppliers and materials put the plan most at risk — then re-run the whole chain the moment a disruption surfaces.
 
 ## Who this is for
 
@@ -48,7 +48,7 @@ This template shows how RelationalAI answers that question on a single shared mo
 - `queries/allocation_report.py` -- prints the forecast summary, each rolling-horizon solve with its plan diff and service levels, the dependency chains, the what-if rankings, and a headline from the deployed model
 - `runbook.md` -- a paste-testable walkthrough that reproduces the template step by step with the RAI skills, one prompt per stage
 - Sample data: 13 CSVs under `data/` (customers, products, periods, demand, suppliers, capacity, inputs, dependencies, and the disruption schedule)
-- Outputs: per-iteration LP status and margin, plan diffs, service levels, dependency chains, and what-if rankings, all queryable from the deployed ontology
+- Outputs: per-iteration LP status, margin and allocations, dependency chains, and what-if rankings, all queryable from the deployed ontology; the report derives plan diffs and service levels from the published allocations
 
 ## Prerequisites
 
@@ -182,7 +182,7 @@ Use this sequence to deploy the model, train the GNN, and query the rolling-hori
    rai models deploy --path model
    ```
 
-   The deploy creates the reasoners and the public schema named in `raiconfig.yaml` if they don't exist and waits for the model's first refresh, which loads the data and sets up the three rolling-horizon problems. No version of the GNN is registered yet, so this refresh makes no capability forecast and the problems have no capacity to allocate.
+   The deploy creates the reasoners and the public schema named in `raiconfig.yaml` if they don't exist and waits for the model's first refresh, which loads the data and sets up the three rolling-horizon problems. No version of the GNN is registered yet, so this refresh makes no capability forecast: every demanded month has zero capacity and the three problems are infeasible until the next step.
 
 6. **Train the GNN**
 
@@ -244,10 +244,10 @@ Use this sequence to deploy the model, train the GNN, and query the rolling-hori
        Hyperion Compute -> Photonic Lithography -> Apex Photonic Components
      Supplier with widest offline impact: Orion Foundry (72 affected cells, max cap drop 60.1%)
      Input with widest shortage impact: Helium (180 affected cells)
-     Margin erosion across rolling horizon (iter 0 -> iter 2): $16,571,272,774.04
+     Horizon margin, iter 0 (months 1-36) -> iter 2 (months 13-36): $45,672,092,437.49 -> $29,100,819,663.45
    ```
 
-   The report prints more than shown here: each iteration's plan diff and per-customer service levels, the dependency chains, and both what-if tables. The GNN's forecast, and with it the margins and the plan diffs, shifts from one training run to the next; the structure is stable: three OPTIMAL solves with margin eroding as each disruption is revealed, Apex Photonic Components as the dependency SPOF, Orion Foundry and Helium as the widest supplier and input impacts. Alternative optimal allocations can differ between refreshes at the same margin.
+   The report prints more than shown here: each iteration's plan diff and per-customer service levels, the dependency chains, and both what-if tables. The GNN's forecast, and with it the margins and the plan diffs, shifts from one training run to the next; the structure is stable: three OPTIMAL solves whose horizon margin falls as the horizon shortens and each disruption is revealed, Apex Photonic Components as the dependency SPOF, Orion Foundry and Helium as the widest supplier and input impacts. Alternative optimal allocations can differ between refreshes at the same margin.
 
    To forecast and solve again without changing the model, refresh the deployed model, then run the query again:
 
@@ -312,7 +312,7 @@ The sample data models a memory-chip maker allocating constrained supply across 
 - **`supplier_observations_historical.csv`** (144 rows) — 24 months of past `capability_pct` per supplier (periods −23…0), the GNN's training labels.
 - **`supplier_product_capacity.csv`** (360 rows) — nominal monthly USD capacity per `(supplier, product, period)`.
 - **`inputs.csv`** (3 rows) and **`input_usage.csv`** (10 rows) — raw materials (helium, neon, palladium) and each SKU's exposure (`intensity`, 0–1) to them.
-- **`supplier_capability_forecast.csv`** (216 rows) — a checked-in snapshot of the GNN's output, used only when `USE_PRECOMPUTED_FORECAST = True`. Both paths produce bit-identical downstream results.
+- **`supplier_capability_forecast.csv`** (216 rows) — a checked-in snapshot of one GNN training run's output, used only when `USE_PRECOMPUTED_FORECAST = True`. It gives one fixed forecast; a retrained GNN gives a slightly different forecast and different margins.
 - **`dependencies.csv`** (7 rows) — directed customer-customer protection edges with `declared_yield_pct` and `elevated_floor_pct`.
 - **`disruption_reveal.csv`** (2 rows) — the rolling-horizon disruption schedule (Orion downtime at month 5, helium shortage at month 13).
 
@@ -389,7 +389,7 @@ python -m pip install .
 <details>
 <summary>Solver returns INFEASIBLE on a rolling-horizon iteration</summary>
 
-The base + elevated service floors define a minimum amount of supply each customer must receive. If a disruption combination pushes the total floor obligation above effective capacity, the LP returns INFEASIBLE. Tune `data/disruption_reveal.csv` to less severe `parameter_value` settings, lower hyperscaler base floors in `customers.csv`, or lower elevated floors in `dependencies.csv`.
+Before the GNN is trained and the model refreshed (Quickstart step 6), every iteration is INFEASIBLE: no capability is forecast, so every demanded month has zero capacity. After that, the base + elevated service floors define a minimum amount of supply each customer must receive. If a disruption combination pushes the total floor obligation above effective capacity, the LP returns INFEASIBLE. Tune `data/disruption_reveal.csv` to less severe `parameter_value` settings, lower hyperscaler base floors in `customers.csv`, or lower elevated floors in `dependencies.csv`.
 </details>
 
 <details>

@@ -124,7 +124,7 @@ if USE_PRECOMPUTED_FORECAST:
 else:
     # GNN graph: each observation links to its supplier; suppliers in the same
     # region link to each other so feature signal flows between similar fabs.
-    gnn_graph = Graph(model, directed=True, weighted=False)
+    gnn_graph = Graph(model, directed=True, weighted=False, name="gnn_graph")
     GEdge = gnn_graph.Edge
     model.define(GEdge.new(src=SupplierObservation, dst=Supplier)).where(
         SupplierObservation.supplier_id == Supplier.id
@@ -234,18 +234,29 @@ model.where(
         iter_id=Iteration.iter_id, product_id=SPC.product_id, period_id=SPC.period_id
     )
 )
+# Every demanded cell in the horizon also gets a row, at zero capacity when no
+# capability covers it (before the GNN is trained, or a gap in the forecast), so
+# the capacity constraint below never leaves a demanded cell unbounded.
+model.where(Demand.period_id >= Iteration.horizon_start).define(
+    EffectiveCapacity.new(
+        iter_id=Iteration.iter_id, product_id=Demand.product_id, period_id=Demand.period_id
+    )
+)
 model.where(
     InputMultiplier.iter_id == EffectiveCapacity.iter_id,
     InputMultiplier.product_id == EffectiveCapacity.product_id,
 ).define(
     EffectiveCapacity.effective_capacity_usd(
-        sum(SPC, SPC.nominal_capacity_usd * capability)
-        .per(EffectiveCapacity)
-        .where(
-            Iteration.iter_id == EffectiveCapacity.iter_id,
-            SPC.product_id == EffectiveCapacity.product_id,
-            SPC.period_id == EffectiveCapacity.period_id,
-            Capability(Iteration, SPC.supplier_id, SPC.period_id, capability),
+        (
+            sum(SPC, SPC.nominal_capacity_usd * capability)
+            .per(EffectiveCapacity)
+            .where(
+                Iteration.iter_id == EffectiveCapacity.iter_id,
+                SPC.product_id == EffectiveCapacity.product_id,
+                SPC.period_id == EffectiveCapacity.period_id,
+                Capability(Iteration, SPC.supplier_id, SPC.period_id, capability),
+            )
+            | 0.0
         )
         * InputMultiplier.mult
     )
@@ -370,6 +381,9 @@ model.where(
 )
 baseline = Float.ref()
 
+# Both what-ifs measure drops relative to baseline capacity, so they skip cells
+# with zero baseline capacity, where the relative drop is undefined.
+
 # What-if 1: a supplier going offline removes its share of each cell's capacity.
 OfflineDrop = model.Relationship(
     f"{Supplier} offline cuts product {Integer:product_id} in period {Integer:period_id} by {Float:drop_pct}"
@@ -379,6 +393,7 @@ model.where(
     SupplierCapabilityForecast.supplier_id == SPC.supplier_id,
     SupplierCapabilityForecast.period_id == SPC.period_id,
     BaselineCapacity(SPC.product_id, SPC.period_id, baseline),
+    baseline > 0,
 ).define(
     OfflineDrop(
         Supplier,
@@ -415,6 +430,7 @@ ShortageDrop = model.Relationship(
 model.where(
     InputUsage.input_id == Input.id,
     BaselineCapacity(InputUsage.product_id, offline_period, baseline),
+    baseline > 0,
 ).define(
     ShortageDrop(
         Input,

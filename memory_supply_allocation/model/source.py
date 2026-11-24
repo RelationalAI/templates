@@ -185,5 +185,9 @@ for spec in iter_specs:
             }
         )
 
-model.define(CapabilityOverride.new(model.data(pd.DataFrame(override_rows)).to_schema()))
+# Where supplier disruptions overlap, the later row in the schedule sets the capability.
+overrides_df = pd.DataFrame(
+    override_rows, columns=["iter_id", "supplier_id", "period_id", "capability_pct"]
+).drop_duplicates(["iter_id", "supplier_id", "period_id"], keep="last")
+model.define(CapabilityOverride.new(model.data(overrides_df).to_schema()))
 model.define(InputMultiplier.new(model.data(pd.DataFrame(mult_rows)).to_schema()))
