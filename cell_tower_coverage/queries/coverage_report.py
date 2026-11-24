@@ -8,45 +8,50 @@ downstream mapping or reporting.
 
 import pandas as pd
 from model import (
-    BUILD_BUDGET,
     DATA_DIR,
-    MAX_NEW_TOWERS,
+    BuildBudget,
     CoveragePair,
     CoveredPopulation,
     DemandZone,
+    MaxNewTowers,
+    SelectedBuildCost,
     SolveStatus,
+    TotalPopulation,
     TowerSite,
     assigned,
     covered,
     model,
     selected,
 )
+from relationalai.semantics import count
+
+
+def _scalar(relationship, default=None):
+    """The single value of a published scalar relationship, or `default` when it has none."""
+    values = model.select(relationship).to_df().iloc[:, 0].tolist()
+    return values[0] if values else default
+
 
 if __name__ == "__main__":
-    # Entity counts and total population come from the deployed model.
-    sites_df = model.select(TowerSite.site_id).to_df()
-    zones_df = model.select(DemandZone.zone_id, DemandZone.population).to_df()
-    pairs_df = model.select(CoveragePair.site_id, CoveragePair.zone_id).to_df()
+    build_budget = _scalar(BuildBudget)
 
     print("=" * 70)
     print("CELL TOWER COVERAGE")
     print("=" * 70)
-    print(f"Candidate tower sites: {len(sites_df)}")
-    print(f"Demand zones: {len(zones_df)}")
-    print(f"Coverage pairs: {len(pairs_df)}")
-    print(f"Build budget: ${BUILD_BUDGET:,.0f}")
-    print(f"Max new towers: {MAX_NEW_TOWERS}")
+    print(f"Candidate tower sites: {model.select(count(TowerSite)).to_df().iloc[0, 0]}")
+    print(f"Demand zones: {model.select(count(DemandZone)).to_df().iloc[0, 0]}")
+    print(f"Coverage pairs: {model.select(count(CoveragePair)).to_df().iloc[0, 0]}")
+    print(f"Build budget: ${build_budget:,.0f}")
+    print(f"Max new towers: {_scalar(MaxNewTowers)}")
 
     status = model.select(SolveStatus).to_df().iloc[:, 0].tolist()
-    objective = model.select(CoveredPopulation).to_df().iloc[:, 0].tolist()
     print(f"\nSolve result:\n• status: {', '.join(status)}")
     if status not in (["OPTIMAL"], ["TIME_LIMIT"]):
         raise SystemExit(f"termination status {status}")
-    if objective:
-        print(f"• objective: {round(objective[0], 9)}\n")
-
-    print(f"\nStatus: {status[0]}")
-    print(f"Objective: covered population = {objective[0]:,.0f}")
+    covered_population = _scalar(CoveredPopulation)
+    if covered_population is None:
+        raise SystemExit(f"termination status {status}: no solution found within the time limit")
+    print(f"• objective: {round(covered_population, 9)}\n")
 
     # --------------------------------------------------
     # Evaluate and report
@@ -60,7 +65,6 @@ if __name__ == "__main__":
             TowerSite.region.alias("region"),
             TowerSite.build_cost.alias("build_cost"),
             TowerSite.capacity.alias("capacity"),
-            selected.alias("selected"),
         )
         .where(
             TowerSite.x_selected(selected),
@@ -70,9 +74,10 @@ if __name__ == "__main__":
         .sort_values(["region", "site_id"])
     )
     selected_sites_df["build_cost"] = pd.to_numeric(selected_sites_df["build_cost"])
-    selected_sites_df["selected"] = (
-        pd.to_numeric(selected_sites_df["selected"]) > 0.5
-    ).astype(int)
+    tower_load_df = model.select(
+        TowerSite.site_id.alias("site_id"),
+        TowerSite.assigned_population.alias("assigned_population"),
+    ).to_df()
 
     zone_solution_df = (
         model.select(
@@ -95,7 +100,6 @@ if __name__ == "__main__":
             CoveragePair.site_id.alias("assigned_site_id"),
             TowerSite.name.alias("assigned_site"),
             CoveragePair.zone_id.alias("zone_id"),
-            assigned.alias("assigned"),
         )
         .where(
             CoveragePair.z_assigned(assigned),
@@ -103,47 +107,21 @@ if __name__ == "__main__":
             assigned > 0.5,
         )
         .to_df()
-        .sort_values(["assigned_site_id", "zone_id"])
     )
-    assignment_df["assigned"] = (
-        pd.to_numeric(assignment_df["assigned"]) > 0.5
-    ).astype(int)
 
-    zone_solution_df = zone_solution_df.merge(
-        assignment_df[["zone_id", "assigned_site_id", "assigned_site"]],
-        on="zone_id",
-        how="left",
-    )
+    zone_solution_df = zone_solution_df.merge(assignment_df, on="zone_id", how="left")
     zone_solution_df["assigned_site_id"] = zone_solution_df["assigned_site_id"].fillna("")
     zone_solution_df["assigned_site"] = zone_solution_df["assigned_site"].fillna("")
 
-    total_population = zones_df["population"].sum()
-    covered_population = zone_solution_df.loc[
-        zone_solution_df["covered"] > 0.5, "population"
-    ].sum()
-    uncovered_population = total_population - covered_population
-    selected_cost = selected_sites_df["build_cost"].sum()
-
-    tower_load_df = (
-        zone_solution_df[
-            zone_solution_df["covered"] > 0.5
-        ]
-        .groupby("assigned_site_id", as_index=False)["population"]
-        .sum()
-        .rename(columns={"population": "assigned_population"})
-    )
-    selected_sites_df = selected_sites_df.merge(
-        tower_load_df,
-        left_on="site_id",
-        right_on="assigned_site_id",
-        how="left",
-    ).drop(columns=["assigned_site_id"])
+    # A selected tower with no assigned zone has no published load; it serves zero people.
+    selected_sites_df = selected_sites_df.merge(tower_load_df, on="site_id", how="left")
     selected_sites_df["assigned_population"] = (
         selected_sites_df["assigned_population"].fillna(0).astype(int)
     )
+    capacity = selected_sites_df["capacity"]
     selected_sites_df["utilization"] = (
-        selected_sites_df["assigned_population"] / selected_sites_df["capacity"]
-    )
+        selected_sites_df["assigned_population"] / capacity.where(capacity > 0)
+    ).fillna(0.0)
 
     print("\n=== Selected Tower Sites ===")
     print(
@@ -193,11 +171,13 @@ if __name__ == "__main__":
             )
         )
 
+    total_population = _scalar(TotalPopulation)
+    coverage_rate = covered_population / total_population if total_population else 0.0
     print("\n=== Coverage Summary ===")
-    print(f"Selected build cost: ${selected_cost:,.0f} of ${BUILD_BUDGET:,.0f}")
+    print(f"Selected build cost: ${_scalar(SelectedBuildCost, 0):,.0f} of ${build_budget:,.0f}")
     print(f"Covered population: {covered_population:,.0f} of {total_population:,.0f}")
-    print(f"Coverage rate: {covered_population / total_population:.2%}")
-    print(f"Uncovered population: {uncovered_population:,.0f}")
+    print(f"Coverage rate: {coverage_rate:.2%}")
+    print(f"Uncovered population: {total_population - covered_population:,.0f}")
 
     coverage_solution_csv = DATA_DIR / "coverage_solution.csv"
     zone_solution_df[

@@ -18,7 +18,18 @@ Run:
     `python -m queries.coverage_report` then prints the report from the deployed model.
 """
 
-from .reasoning import CoveredPopulation, SolveStatus, assigned, covered, problem, selected
+from .reasoning import (
+    BuildBudget,
+    CoveredPopulation,
+    MaxNewTowers,
+    SelectedBuildCost,
+    SolveStatus,
+    TotalPopulation,
+    assigned,
+    covered,
+    problem,
+    selected,
+)
 from .schema import CoveragePair, DemandZone, TowerSite, model
 from .source import BUILD_BUDGET, DATA_DIR, MAX_NEW_TOWERS
 
@@ -26,10 +37,14 @@ __all__ = [
     "BUILD_BUDGET",
     "DATA_DIR",
     "MAX_NEW_TOWERS",
+    "BuildBudget",
     "CoveragePair",
     "CoveredPopulation",
     "DemandZone",
+    "MaxNewTowers",
+    "SelectedBuildCost",
     "SolveStatus",
+    "TotalPopulation",
     "TowerSite",
     "assigned",
     "covered",

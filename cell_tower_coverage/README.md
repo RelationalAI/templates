@@ -34,11 +34,11 @@ Telecommunications and infrastructure teams routinely have to decide where to bu
 - A funded tower-build plan that maximizes covered population within a fixed capital budget and a cap on new towers, produced by **prescriptive reasoning** (a mixed-integer program).
 - A semantic model of candidate tower sites, demand zones, and feasible tower-zone coverage pairs, expressed as RelationalAI concepts and relationships.
 - A coverage-linking rule that counts a zone as covered only when it is assigned to exactly one selected, serving tower, plus a capacity rule that prevents any tower from being overloaded.
-- A coverage report — selected sites with utilization, assigned zones, uncovered zones, and total coverage rate — written to `data/coverage_solution.csv` for downstream mapping or reporting.
+- A coverage report — selected sites with utilization, assigned zones, uncovered zones, and total coverage rate — printed to stdout, plus the per-zone assignments written to `data/coverage_solution.csv` for downstream mapping or reporting.
 
 ## What's included
 
-- **Model**: the `model/` package builds the semantic model (three concepts, two coverage relationships), the mixed-integer optimization problem (three binary variable families, four constraints, one objective), and the solve (`schema.py` declares the concepts, `source.py` loads the sample data, `reasoning.py` states the decision problem); `rai models deploy --path model` deploys it to your Snowflake account, where each refresh runs the solve.
+- **Model**: the `model/` package builds the semantic model (three concepts, two coverage relationships), the mixed-integer optimization problem (three binary variable families, five constraint families, one objective), and the solve (`schema.py` declares the concepts, `source.py` loads the sample data, `reasoning.py` states the decision problem); `rai models deploy --path model` deploys it to your Snowflake account, where each refresh runs the solve.
 - **Query**: `queries/coverage_report.py` prints the report from the deployed model and writes `data/coverage_solution.csv`.
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - **Sample data**: 6 candidate tower sites, 10 demand zones, and 19 feasible tower-zone coverage pairs. See *Sample data* below.
@@ -167,9 +167,6 @@ Use this sequence to deploy the model and query it:
    • status: OPTIMAL
    • objective: 90000.0
 
-   Status: OPTIMAL
-   Objective: covered population = 90,000
-
    ...
 
    === Coverage Summary ===
@@ -278,7 +275,7 @@ Two portfolio constraints bound the plan: total build cost stays at or under `BU
 
 ### 7. Maximize covered population
 
-The objective rewards covering high-population zones, weighting each covered zone by its population. Because each zone has a single binary covered variable and each covered zone has exactly one assignment, the model handles overlapping tower coverage without double-counting population or overloading selected towers. After the solve, the query builds report tables (selected sites with utilization, assigned zones, uncovered zones, coverage summary) and writes `data/coverage_solution.csv`.
+The objective rewards covering high-population zones, weighting each covered zone by its population. Because each zone has a single binary covered variable and each covered zone has exactly one assignment, the model handles overlapping tower coverage without double-counting population or overloading selected towers. After the solve, the model publishes the plan totals (selected build cost, total population, and each selected tower's assigned population) along with the budget and tower cap it solved with; the query reads them to print the report tables (selected sites with utilization, assigned zones, uncovered zones, coverage summary) and writes the per-zone assignments to `data/coverage_solution.csv`.
 
 See `model/reasoning.py` for the implementation and `runbook.md` for the skill-driven reproduction.
 
@@ -315,10 +312,10 @@ Focus on the first changes most users will make.
 <details>
   <summary>Solver returns INFEASIBLE</summary>
 
-- Check that `BUILD_BUDGET` is positive and large enough to select at least one candidate tower.
-- Verify that every demand zone appears in `coverage_pairs.csv` at least once.
-- Confirm that coverage pairs reference valid `site_id` and `zone_id` values.
-- Check that at least one feasible set of selected towers has enough capacity to serve at least one zone.
+- With valid inputs the model is always feasible: selecting no towers and covering no zones satisfies every constraint, so an infeasible status points at the data or the formulation rather than the budget.
+- Input problems stop the deploy before the solve: `model/source.py` raises a `ValueError` when a CSV is empty, `BUILD_BUDGET` or `MAX_NEW_TOWERS` is not positive, a coverage pair references an unknown `site_id` or `zone_id`, or a demand zone has no coverage pair.
+- If you added constraints (for example a minimum coverage per region), check that the bundled budget and tower cap can still satisfy them.
+- If the plan is optimal but covers nobody, see *Solver selects no towers* below.
 
 </details>
 

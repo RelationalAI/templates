@@ -1,6 +1,6 @@
 """Cell tower coverage decision problem: choose sites and assign demand zones to maximize covered population."""
 
-from relationalai.semantics import Float, String, sum
+from relationalai.semantics import Float, Integer, String, sum
 from relationalai.semantics.reasoners.prescriptive import Problem
 
 from .schema import CoveragePair, DemandZone, TowerSite, model
@@ -105,3 +105,34 @@ CoveredPopulation = model.Relationship(
     f"cell tower coverage covered population is {Float:covered_population}"
 )
 model.define(SolveStatus(problem.termination_status()), CoveredPopulation(problem.objective_value()))
+
+# Policy limits and plan totals, which the deployed model publishes for the report.
+BuildBudget = model.Relationship(f"cell tower coverage build budget is {Integer:budget}")
+MaxNewTowers = model.Relationship(f"cell tower coverage tower cap is {Integer:max_towers}")
+TotalPopulation = model.Relationship(f"cell tower coverage total population is {Integer:population}")
+SelectedBuildCost = model.Relationship(f"cell tower coverage selected build cost is {Float:cost}")
+model.define(
+    BuildBudget(BUILD_BUDGET),
+    MaxNewTowers(MAX_NEW_TOWERS),
+    TotalPopulation(sum(DemandZone, DemandZone.population)),
+    SelectedBuildCost(
+        sum(TowerSite, TowerSite.build_cost).where(TowerSite.x_selected(selected), selected > 0.5)
+    ),
+)
+
+# Population each selected tower serves through its assigned zones.
+TowerSite.assigned_population = model.Property(
+    f"{TowerSite} serves assigned population {Integer:assigned_population}"
+)
+model.define(
+    TowerSite.assigned_population(
+        sum(CoveragePair, DemandZone.population)
+        .per(TowerSite)
+        .where(
+            CoveragePair.site(TowerSite),
+            CoveragePair.zone(DemandZone),
+            CoveragePair.z_assigned(assigned),
+            assigned > 0.5,
+        )
+    )
+)
