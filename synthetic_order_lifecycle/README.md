@@ -303,7 +303,7 @@ model.define(SolveStatus(problem.termination_status()))
 
 ## Customize this template
 
-- **Use your own pool** by replacing the five CSV files with your symbols, venues, allowed (symbol, venue) pairs, orders, and event slots. The constraint structure does not change. Add more events per order to allow longer traces; the model adapts to the number of rows in `events.csv`. Two assumptions on your data:
+- **Use your own pool** by replacing the five CSV files with your symbols, venues, allowed (symbol, venue) pairs, orders, and event slots. The constraint structure does not change. Add more events per order to allow longer traces; the model adapts to the number of rows in `events.csv`. One assumption on your data:
   - `venues.csv` ids should be contiguous `1..N` -- the `venue_id` decision domain is `[1, max(venue_id)]`, so non-contiguous ids would let the solver pick venue ids that don't exist.
 - **Force a CANCEL on every order** by changing `at_most_one_cancel_ic` from `<= 1` to `== 1`, then bumping the per-order event count so the order has room for a `PLACE` plus other events before the `CANCEL`.
 - **Add the inverse rule "no MODIFY after FILL"** with the same shape as `place_first_ic`, but filtering `B` to fills. `A` and `B` are the two `OrderEvent.ref()` aliases declared earlier in the model alongside `place_first_ic`:
@@ -317,8 +317,9 @@ model.define(SolveStatus(problem.termination_status()))
       A.has_type(EventType.MODIFY, a_modify_ind),
       B.has_type(EventType.FILL, b_fill_ind),
   ).require(implies(a_modify_ind + b_fill_ind == 2, A.ts_ms < B.ts_ms))
+  problem.satisfy(no_modify_after_fill_ic)
   ```
-- **Generate a "smallest violating trace" instead of a positive trace** by negating one of the rules (e.g. drop `no_after_cancel_ic`, bind `A`'s `CANCEL` and `B`'s `FILL` indicators via `has_type` in a `where`, and add `model.require(sum(a_cancel_ind + b_fill_ind - 1).per(Order) >= 0)` plus a temporal predicate) and minimizing the number of events. The model is already in optimization-ready shape.
+- **Generate a "smallest violating trace" instead of a positive trace** by negating one of the rules (e.g. drop `no_after_cancel_ic`, bind `A`'s `CANCEL` and `B`'s `FILL` indicators via `has_type` in a `where`, and add `model.require(sum(a_cancel_ind + b_fill_ind - 1).per(Order) >= 0)` plus a temporal predicate). Every slot in `events.csv` is always part of the trace, so to find the smallest violating trace, solve with fewer event slots per order until the problem becomes infeasible: the smallest slot count that still solves gives it.
 - **Replace the synthetic time horizon** by reading `ts_ms` bounds from your real session schedule (market open / market close) and updating `TS_MIN` / `TS_MAX` in `model/reasoning.py`.
 
 ## Troubleshooting
@@ -327,7 +328,7 @@ model.define(SolveStatus(problem.termination_status()))
   <summary>Import error or AttributeError on <code>relationalai</code></summary>
 
 - Confirm your virtual environment is active: `which python` should point to `.venv`.
-- Reinstall dependencies: `python -m pip install .`, which installs the pinned `relationalai==2.3.0` this template is written against. Its enum-indexed decision variable and the `configure()`, `install_display_strings()`, and chained-`where().require()` APIs it uses may differ in other versions and raise type or attribute errors.
+- Reinstall dependencies: `python -m pip install .`, which installs the pinned `relationalai==2.3.0` this template is written against. Its enum-indexed decision variable and the `configure()` and chained-`where().require()` APIs it uses may differ in other versions and raise type or attribute errors.
 - If you share a venv across templates, run `python -m pip install --upgrade --force-reinstall relationalai==2.3.0`.
 
 </details>
