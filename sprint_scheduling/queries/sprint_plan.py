@@ -21,7 +21,8 @@ from model import (
 from relationalai.semantics import count
 
 if __name__ == "__main__":
-    planning_start, planning_end, input_issues = model.select(PlanningHorizon).to_df().iloc[0]
+    # `to_df()` on the relationship reads all three fields, in declaration order.
+    planning_start, planning_end, input_issues = PlanningHorizon.to_df().iloc[0]
     issues_in_scope = model.select(count(Issue)).to_df().iloc[0, 0]
     scenario_results = []
 
