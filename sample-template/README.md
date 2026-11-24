@@ -30,8 +30,8 @@ layout without prescribing a business domain.
 
 - A stable schema in `model/schema.py`.
 - Source reads and base-fact mappings in `model/source.py`.
-- Reasoning and solves declared at module level in the model package, so one
-  deploy publishes them.
+- A model package where rules and solve declarations go at module level, so one
+  deploy publishes them; the starter itself declares a single base fact.
 - A query module that reads the deployed model and prints the report.
 - A `template-docs.yaml` sidecar for the generated documentation experience.
 
@@ -170,17 +170,21 @@ source records -> model/source.py -> model/schema.py -> deploy -> queries/item_r
 
 ## Customize this template
 
-1. Copy this directory to a new root-level template directory and rename it
-   (`cp -R sample-template your_template_name`). Update the package metadata,
+1. Copy this directory to a new root-level template directory and enter it
+   (`cp -R sample-template your_template_name`, then `cd your_template_name`).
+   Rename the `SAMPLE_TEMPLATE` and `SAMPLE_TEMPLATE_META` schemas in the
+   Quickstart's `deployment` section. Update the package metadata,
    the name of the query module, the Quickstart download link and directory
    name (and drop the two sentences about the starter before its steps), the
    README, and `template-docs.yaml`.
 1. Replace `Item` with the concepts and relationships for the business
    problem.
 1. Replace the in-memory record with local or remote source mappings.
-1. Declare reasoning and solves at the top level of the `model/` package, which
-   the deploy publishes, and put queries and reporting in modules under
-   `queries/` that only read the deployed model.
+1. Declare rules, and declare and configure any `Problem`, at module level in
+   the `model/` package, which the deploy publishes; the deployed model's
+   refresh runs the solves, so never call `solve()` or run a query during
+   import. Put queries and reporting in modules under `queries/` that only
+   read the deployed model.
 1. Update every sidecar symbol, source path, walkthrough focus, and sample
    column after changing the code.
 
