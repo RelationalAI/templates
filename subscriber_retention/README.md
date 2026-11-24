@@ -50,7 +50,7 @@ Built using the **graph reasoner** (PageRank on the call graph) and the **predic
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the code itself.
 - **Ontology**: `Subscriber` (with denormalized plan attributes), `Call` (edge-intermediary for the call graph), and three task-table concepts: `TrainTable` and `ValTable` carry the churn-risk labels, and `TestTable` lists the subscribers to score; `ChurnRiskPrediction` publishes each scored subscriber's predicted risk
 - **Sample data**: small telco subset (subscribers + plans + call detail records); see [Sample data](#sample-data) below
-- **Outputs**: subscriber/call counts, churn-risk distribution, GNN training/prediction metrics, up to 5 highest-risk test subscribers per segment, test-set RMSE
+- **Outputs**: subscriber/call counts, churn-risk distribution, GNN training job status, up to 5 highest-risk test subscribers per segment, test-set RMSE
 
 ## Prerequisites
 
@@ -157,7 +157,7 @@ Use this sequence to deploy the model, train the GNN, and query the churn report
    rai models deploy --path model
    ```
 
-   The deploy waits for the model's first refresh, which loads the subscriber and call data, computes PageRank on the call graph, and builds the train, validation, and test splits. No version of the GNN is registered yet, so this refresh makes no predictions.
+   The deploy waits for the model's first refresh, which loads the subscriber and call data with the train, validation, and test splits (drawn in Python from the CSVs when the model package is imported) and computes PageRank on the call graph. No version of the GNN is registered yet, so this refresh makes no predictions.
 
    Deploying again without changing the model applies no updates and does not refresh.
 
@@ -290,7 +290,7 @@ Subscribers + Plans + Call records (bundled CSVs, denormalized to Subscriber)
 
 ## How it works
 
-**1. Build the call graph.** A directed `Subscriber → Subscriber` graph is built with one edge per call record. PageRank runs over it and is bound back to a `Subscriber.pagerank` property, so each subscriber's "social influence" in the call network becomes a continuous feature the GNN can learn from.
+**1. Build the call graph.** A directed `Subscriber → Subscriber` graph is built with one edge per caller–callee pair. PageRank runs over it and is bound back to a `Subscriber.pagerank` property, so each subscriber's "social influence" in the call network becomes a continuous feature the GNN can learn from.
 
 **2. Derive call-volume features.** Two count-based rules derive `outgoing_calls` and `incoming_calls` per subscriber via `count(Call).per(Subscriber)` aggregates. These attach to the same `Subscriber` row PageRank is on, so the GNN sees one feature row per subscriber with graph structure and call volume blended in.
 
