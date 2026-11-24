@@ -171,7 +171,7 @@ Use this sequence to deploy the model and query it:
    ...
    ```
 
-   The budget_45k and budget_55k scenarios that the full report prints are trimmed here. All three budgets invest heavily in Search and Video (highest ROI channels). The $35K budget activates 6 channel-campaign pairs. The $45K and $55K budgets add Search Brand_Awareness ($5K) and increase Social Brand_Awareness to $8K — diminishing returns mean the extra $10K from $45K to $55K produces no new activations. See `runbook.md` for the full printout and a step-by-step walkthrough.
+   The budget_45k and budget_55k scenarios that the full report prints are trimmed here. All three budgets invest heavily in Search and Video, which pair good conversion rates with the highest spend caps; the objective uses each pair's `conversion_rate`, not the channel's `roi_coefficient`. The $35K budget activates 6 channel-campaign pairs. The $45K and $55K budgets add Search Brand_Awareness ($5K) and increase Social Brand_Awareness to $8K. The $55K plan matches the $45K plan because the three campaign budgets sum to $45K, so the extra $10K of total budget cannot be spent. See `runbook.md` for a step-by-step walkthrough.
 
    To solve again without changing the model, refresh the deployed model, then run the query again:
 
