@@ -370,7 +370,7 @@ Each solve is its own named `Problem` (`memory_supply_allocation_iter_0` to `_2`
 ### Scale up / productionize
 
 - **Engine sizing**: the GNN trains on the predictive reasoner named in `raiconfig.yaml` (`reasoners.predictive.size` sets its size); the LPs solve on the default `highs` solver.
-- **Reproducibility**: pin `relationalai[gnn]==2.1.1`, set `GNN_SEED`, and prefer `USE_PRECOMPUTED_FORECAST = True` for deterministic reruns.
+- **Reproducibility**: pin `relationalai[gnn]==2.3.0`, set `GNN_SEED`, and prefer `USE_PRECOMPUTED_FORECAST = True` for deterministic reruns.
 - **Scheduling**: the deployed model refreshes on its schedule in `raiconfig.yaml` (`interval_s: 0` refreshes only on deploy or on demand); each refresh forecasts with the registered version and re-solves the three problems.
 
 ## Troubleshooting

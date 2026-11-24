@@ -39,7 +39,7 @@ portfolio.
 
 ## Quickstart
 
-Before you start, install Python 3.10 or later and complete the access prerequisites above. Prescriptive reasoning is in Public Preview; ask your RelationalAI support representative to enable it. Preview features are for evaluation and testing, not production applications. The template pins `relationalai==2.1.1` in `pyproject.toml`.
+Before you start, install Python 3.10 or later and complete the access prerequisites above. Prescriptive reasoning is in Public Preview; ask your RelationalAI support representative to enable it. Preview features are for evaluation and testing, not production applications. The template pins `relationalai==2.3.0` in `pyproject.toml`.
 
 Before the first deploy, create this template's internal schema as the model role, and have an administrator grant the RAI Native App caller access to it. The internal schema holds only this model's objects, so the grants cover all of it, including the solver's result tables that the deploy creates:
 

@@ -65,7 +65,7 @@ Prescriptive reasoning are in Public Preview; ask your RelationalAI support
 representative to enable Prescriptive reasoning. Preview features are for
 evaluation and testing, not production applications. The bundled example uses
 local CSVs and runs on CPU without an external dataset or GPU. The template
-pins `relationalai[gnn]==2.1.1` in `pyproject.toml`.
+pins `relationalai[gnn]==2.3.0` in `pyproject.toml`.
 
 Before the first deploy, create this template's two schemas as the model role, and have an administrator grant the RAI Native App access to them. The classifier keeps its experiments and registered versions in the public schema, and the internal schema holds only this model's objects, so the grants cover all of it, including the solver's result tables that the deploy creates:
 

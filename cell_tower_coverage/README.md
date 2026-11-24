@@ -55,7 +55,7 @@ Telecommunications and infrastructure teams routinely have to decide where to bu
 ### Tools
 
 - Python >= 3.10.
-- RelationalAI Python SDK (`relationalai == 2.1.1`).
+- RelationalAI Python SDK (`relationalai == 2.3.0`).
 
 ## Quickstart
 

@@ -62,7 +62,7 @@ The same pattern applies to any predict-then-optimize problem where the predicti
 
 ### Tools
 - Python >= 3.10
-- RelationalAI Python SDK (`relationalai == 2.1.1`)
+- RelationalAI Python SDK (`relationalai == 2.3.0`)
 
 ## Quickstart
 
@@ -327,8 +327,8 @@ For the exact PyRel formulation, see `model/reasoning.py`; `runbook.md` reproduc
   <summary>Import error or AttributeError on <code>relationalai</code></summary>
 
 - Confirm your virtual environment is active: `which python` should point to `.venv`.
-- Reinstall dependencies: `python -m pip install .`. The pinned version (`relationalai==2.1.1`) ships the `configure()` and `where().require()` APIs this template uses; older versions lack them and produce attribute errors.
-- If you share a venv across templates, run `python -m pip install --upgrade --force-reinstall relationalai==2.1.1`.
+- Reinstall dependencies: `python -m pip install .`. The pinned version (`relationalai==2.3.0`) ships the `configure()` and `where().require()` APIs this template uses; older versions lack them and produce attribute errors.
+- If you share a venv across templates, run `python -m pip install --upgrade --force-reinstall relationalai==2.3.0`.
 
 </details>
 

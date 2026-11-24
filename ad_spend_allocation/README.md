@@ -57,7 +57,7 @@ This template also answers the follow-up question every planner asks: if we had 
 ### Tools
 
 - Python >= 3.10.
-- RelationalAI Python SDK (`relationalai == 2.1.1`).
+- RelationalAI Python SDK (`relationalai == 2.3.0`).
 
 ## Quickstart
 

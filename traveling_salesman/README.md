@@ -54,7 +54,7 @@ Built using **prescriptive reasoning** (mixed-integer programming with the HiGHS
 
 ### Tools
 - Python >= 3.10
-- RelationalAI Python SDK (`relationalai == 2.1.1`)
+- RelationalAI Python SDK (`relationalai == 2.3.0`)
 
 ## Quickstart
 

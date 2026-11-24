@@ -60,7 +60,7 @@ The configurator scenario here is automotive trim, drawn from the public Renault
 
 ### Tools
 - Python >= 3.10
-- RelationalAI Python SDK (`relationalai`) == 2.1.1
+- RelationalAI Python SDK (`relationalai`) == 2.3.0
 
 ## Quickstart
 

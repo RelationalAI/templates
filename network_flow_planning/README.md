@@ -68,7 +68,7 @@ The objective minimizes transport cost plus fixed-cost FC opening cost.
 ### Tools
 
 - Python >= 3.10
-- RelationalAI Python SDK (`relationalai`) == 2.1.1
+- RelationalAI Python SDK (`relationalai`) == 2.3.0
 
 ## Quickstart
 
