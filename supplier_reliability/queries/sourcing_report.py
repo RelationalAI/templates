@@ -41,9 +41,8 @@ if __name__ == "__main__":
     if status != "OPTIMAL":
         raise SystemExit(f"termination status {status}")
     if baseline_objective is None:
-        print(f"\nBaseline status: {status}")
-    else:
-        print(f"\nBaseline status: {status}, objective: {baseline_objective:.2f}")
+        raise SystemExit("the baseline solve published no objective")
+    print(f"\nBaseline status: {status}, objective: {baseline_objective:.2f}")
 
     # --- The baseline sourcing plan -------------------------------------------------
     # The solved quantity of every lane, as the deployed model publishes it. (The optimum has
@@ -81,9 +80,12 @@ if __name__ == "__main__":
     )
     print("\nLane reduced costs and basis status:")
     print(lane_rc_df.to_string(index=False))
-    # The checks below hold vacuously on empty tables, so first require the marginals.
-    if lane_rc_df.empty:
-        raise SystemExit("the baseline solve published no sensitivity marginals")
+    # The checks below hold vacuously on missing rows, so first require a marginal for
+    # every lane, supplier and product in the plan.
+    if len(lane_rc_df) != len(lanes_df):
+        raise SystemExit(
+            f"the baseline solve published marginals for {len(lane_rc_df)} of {len(lanes_df)} lanes"
+        )
     # A lane in use is BASIC with ~0 reduced cost; a priced-out lane is NONBASIC_AT_LOWER
     # with a positive reduced cost (how far its cost must fall before using it pays off).
     #
@@ -119,6 +121,8 @@ if __name__ == "__main__":
     )
     print("\nSupplier capacity shadow prices (d cost / d capacity):")
     print(cap_sp_df.to_string(index=False))
+    if set(cap_sp_df["supplier"]) != set(lanes_df["supplier"]):
+        raise SystemExit("the baseline solve did not publish a capacity shadow price for every supplier")
     # Minimize + a <= capacity constraint => shadow_price <= 0: loosening a binding
     # capacity lowers cost. SupplierC is the only binding capacity (cheapest source, fills
     # up), so it carries the marginal value; the others have room to spare and price at 0.
@@ -140,6 +144,8 @@ if __name__ == "__main__":
     )
     print("\nProduct demand shadow prices (d cost / d demand):")
     print(demand_sp_df.to_string(index=False))
+    if set(demand_sp_df["product"]) != set(lanes_df["product"]):
+        raise SystemExit("the baseline solve did not publish a demand shadow price for every product")
     # Minimize + a >= demand constraint => shadow_price >= 0: the marginal cost to serve
     # one more unit of that product. Every product's demand binds here, and each demand
     # shadow price is strictly positive because the marginal serving cost of each is > 0.

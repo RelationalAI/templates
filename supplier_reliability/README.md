@@ -230,7 +230,7 @@ Use this sequence to deploy the model and query it:
      without_SupplierB: OPTIMAL, obj=5150.00
    ```
 
-   The report checks the marginals against the economics they must satisfy (priced-out lanes, lanes in use, the binding capacity, positive demand prices), and stops with an error if any check fails.
+   The report checks the marginals against the economics they must satisfy (priced-out lanes, lanes in use, the binding capacity, positive demand prices), and stops with an error if any marginal is missing or any check fails. It does not check the objective values or re-check the solved orders against the constraints; compare the objectives with the sample output above.
 
    Reading the marginals: SupplierC is the cheapest source for every product, so
    it fills its 600-unit capacity and is the only binding capacity -- its shadow
