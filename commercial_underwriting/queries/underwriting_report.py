@@ -74,12 +74,10 @@ if __name__ == "__main__":
     print("=" * 70)
 
 
-    def query_flag(rel, label):
-        """Return a list of insured-entity IDs that match a unary boolean Relationship."""
+    def query_flag(rel):
+        """Return the set of insured-entity IDs that match a unary boolean Relationship."""
         df = model.where(rel()).select(InsuredEntity.id.alias("id")).to_df()
-        if df.empty:
-            return set(), label
-        return set(df["id"]), label
+        return set(df["id"])
 
 
     decline_factor_rels = [
@@ -102,8 +100,7 @@ if __name__ == "__main__":
     ).to_df().sort_values("id").reset_index(drop=True)
 
     for rel, label in decline_factor_rels + marginal_factor_rels:
-        ids, _ = query_flag(rel, label)
-        ie_df[label] = ie_df["id"].isin(ids)
+        ie_df[label] = ie_df["id"].isin(query_flag(rel))
 
     print("\nFlag matrix (True = flag set):")
     print(ie_df.to_string(index=False))
@@ -157,11 +154,12 @@ if __name__ == "__main__":
     if overlap:
         print(f"\nWARNING: {len(overlap)} entities classified into multiple tiers: {sorted(overlap)}")
 
-    # Aggregate premium by tier — the underwriting business view.
+    # Aggregate premium by tier — the underwriting business view. Premium is per insured,
+    # summed over its policies; an insured without a policy counts in its tier with zero premium.
     premium_df = model.where(Policy.insured_entity(InsuredEntity)).select(
         InsuredEntity.id.alias("id"),
         sum(Policy, Policy.total_premium).per(InsuredEntity).alias("premium"),
     ).to_df()
-    tier_df = tier_df.merge(premium_df, on="id")
+    tier_df = tier_df.merge(premium_df, on="id", how="left").fillna({"premium": 0.0})
     print("\nPremium by tier:")
     print(tier_df.groupby("tier")["premium"].agg(["count", "sum", "mean"]).to_string())

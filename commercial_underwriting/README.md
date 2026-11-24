@@ -43,7 +43,7 @@ This template shows how to express that rulebook as declarative logic on a four-
 - **Model**: the `model/` package (`schema.py` declares the concepts, `source.py` loads the sample data, `reasoning.py` states the rules and risk tiers) that `rai models deploy --path model` deploys to your Snowflake account.
 - **Query**: `queries/underwriting_report.py` — prints the eligibility flags, flag matrix, tier classification, and premium by tier from the deployed model.
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
-- **Sample data**: four CSVs under `data/` — 8 insured businesses across 5 industries (`insured_entities.csv`), 8 commercial property policies one per insured (`policies.csv`), 11 scheduled locations (`locations.csv`), and 33 coverage lines at every location (`coverages.csv`).
+- **Sample data**: four CSVs under `data/` — 8 insured businesses across 6 industries (`insured_entities.csv`), 8 commercial property policies one per insured (`policies.csv`), 11 scheduled locations (`locations.csv`), and 33 coverage lines, three per location (`coverages.csv`).
 - **Outputs**: the printed eligibility flag matrix, the final per-entity tier classification, and the premium-by-tier business rollup.
 
 ## Prerequisites
@@ -170,6 +170,8 @@ Run these steps from a terminal:
        STANDARD       1   18000.0  18000.000000
    ```
 
+   The output above is an excerpt: it leaves out the stage banners, the Stage 2 flag matrix, and the tier table's `id` column.
+
    Each entity falls into exactly one tier, because the four tier concepts partition the insured entities, and the report prints a warning if any entity lands in no tier or in two. The premium-by-tier rollup is the underwriting business view: about $150K of bound premium is associated with submissions that today's rules would decline; about $236K is non-standard and could be repriced.
 
 7. **Tear down the deployment**
@@ -207,7 +209,7 @@ Run these steps from a terminal:
 
 ## Sample data
 
-The eight insureds are designed so each tier is represented and every rule fires at least once:
+The eight insureds are designed so each tier is represented and every rule except the two fire-protection flags (no bundled location is above class 6) fires at least once:
 
 | Entity | Industry | Years | Why this tier |
 |---|---|---|---|
@@ -272,7 +274,7 @@ All thresholds are at the top of `model/reasoning.py` under `# Configure inputs`
 ### Scale up / productionize
 
 - **Point at Snowflake tables.** Swap the CSV `model.data(...)` calls for `model.Table(...)` references to your submission tables; the ontology, rules, and tier classification are unchanged. Size the RAI engine to the submission volume — rules-based classification is lightweight, so a small engine handles large books.
-- **Schedule triage runs.** Redeploy the model from your submission-intake pipeline (nightly batch or on-submission trigger) so every new account is scored as it arrives, and persist the per-entity tier and flag matrix for downstream underwriting review.
+- **Schedule triage runs.** With table-backed sources, refresh the deployed model so every new account is scored as it arrives: set `interval_s` on the `standard` schedule in `raiconfig.yaml` for a periodic refresh, or call `<DB>.COMMERCIAL_UNDERWRITING_META._INTERNAL_REFRESH_MODEL('standard', NULL)` from your submission-intake pipeline. Redeploy only when the rules or declarations change. Persist the per-entity tier and flag matrix for downstream underwriting review.
 - **Pin dependencies for reproducibility.** Keep the `relationalai` version pinned in `pyproject.toml` so rule outcomes stay stable across runs, and version-control your threshold constants (top of `model/reasoning.py`) as auditable underwriting parameters.
 
 ## Troubleshooting
