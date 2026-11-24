@@ -43,11 +43,11 @@ It walks through a small end-to-end example: create a Snowflake table, model it 
 - Python 3.10 through 3.14 (the range relationalai 2.3.0 supports)
 - A Snowflake account with the RelationalAI Native App installed
 - A role that can deploy models, set up once by an account administrator: follow [Set up model deployment](https://private.relational.ai/early-access/model-deploy-setup) (**Try it out**, or **Governed setup** for a shared account). This template has no prescriptive solve, so it needs no PAT setup.
-- A Snowflake user that holds that role, where the role can also:
-  - Create schemas and tables or write into a schema you control
-  - Create and refresh a stream into the RelationalAI app, as prompted by the notebook
+- A Snowflake user that holds that role, where the role can also create a schema and a table in the existing `RAI_DEMO` database (the notebook's seed cell does this), or read a table you already have (see *Customize this template*)
 
 ## Quickstart
+
+Before you start, install Python 3.10 or later and complete the prerequisites above: a Snowflake role that can deploy models, and a `RAI_DEMO` database where the notebook can create its demo table. This template has no prescriptive solve, so it needs no setup beyond that role.
 
 1. **Download the ZIP file for this template and extract it:**
 
@@ -78,7 +78,7 @@ It walks through a small end-to-end example: create a Snowflake table, model it 
 
 4. **Configure the Snowflake connection and the deployment**
 
-   Run `rai init` to create `raiconfig.yaml` with your Snowflake connection, set the connection `role` to the model role, then add a `deployment` section. Give each template its own schema pair so two deployed templates never share one, and keep both apart from `RAI_DEMO.SIMPLE_START`, which holds the source table; the deploy creates both schemas if they don't exist.
+   Use the configuration builder in [Install and run PyRel](https://docs.relational.ai/get-started/install-and-run-pyrel/#configure-your-project) to create `raiconfig.yaml` in the template directory and verify your connection, set the connection `role` to the model role, then add a `deployment` section. Give each template its own schema pair so two deployed templates never share one, and keep both apart from `RAI_DEMO.SIMPLE_START`, which holds the source table; the deploy creates both schemas if they don't exist.
 
    ```yaml
    deployment:
@@ -214,7 +214,7 @@ concept_or_none = inspect.to_concept(some_handle, default=None)
 
 **Use your own data:**
 
-- Replace `RAI_DEMO.SIMPLE_START.CONNECTIONS` with your own edge table.
+- Replace `RAI_DEMO.SIMPLE_START.CONNECTIONS` with your own edge table, and skip the notebook's seed cell, which replaces the demo table each time it runs.
 - Ensure your table has two columns that represent the endpoints of each edge.
 - Make sure the model role can read your table (`SELECT` on it, `USAGE` on its database and schema): the deploy reads the table with the model role alone and stops with an error naming the table otherwise.
 
