@@ -21,6 +21,8 @@ if __name__ == "__main__":
     status = model.select(SolveStatus).to_df().iloc[:, 0].tolist()
     cost = model.select(TotalTransportCost).to_df().iloc[:, 0].tolist()
     print(f"\nSolve result:\n• status: {', '.join(status)}")
+    if status != ["OPTIMAL"]:
+        raise SystemExit(f"termination status {status}")
     if cost:
         print(f"• objective: {round(cost[0], 9)}\n")
 

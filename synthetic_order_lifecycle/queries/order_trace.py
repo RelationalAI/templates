@@ -11,6 +11,8 @@ from relationalai.semantics import sum as rai_sum
 if __name__ == "__main__":
     status = model.select(SolveStatus).to_df().iloc[:, 0].tolist()
     print(f"\nSolve result:\n• status: {', '.join(status)}\n")
+    if status != ["OPTIMAL"]:
+        raise SystemExit(f"termination status {status}")
 
     # Inspect the generated trace.
 

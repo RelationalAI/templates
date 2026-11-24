@@ -21,6 +21,8 @@ if __name__ == "__main__":
     status = model.select(SolveStatus).to_df().iloc[:, 0].tolist()
     total_revenue = model.select(TotalRevenue).to_df().iloc[:, 0].tolist()
     print(f"\nSolve result:\n• status: {', '.join(status)}")
+    if status != ["OPTIMAL"]:
+        raise SystemExit(f"termination status {status}")
     if total_revenue:
         print(f"• objective: {round(total_revenue[0], 9)}\n")
 

@@ -54,17 +54,20 @@ def stage_1_predictive() -> None:
     print(demand.to_string(index=False, float_format=lambda v: f"{v:.2f}"))
 
 
-def _print_solve(label: str, status_relation, objective_relation, objective_label: str) -> None:
+def _print_solve(label: str, status_relation, objective_relation, objective_label: str) -> list[str]:
     status = model.select(status_relation).to_df().iloc[:, 0].tolist()
     objective = model.select(objective_relation).to_df().iloc[:, 0].tolist()
     print(f"\n{label} Status: {', '.join(status) if status else '(no solve yet)'}")
     if objective:
         print(f"{objective_label}: ${float(objective[0]):,.2f}")
+    return status
 
 
 def stage_2_markdown() -> None:
     banner("PRESCRIPTIVE A: Markdown Optimization")
-    _print_solve("Markdown", MarkdownStatus, MarkdownRevenue, "Total revenue (sales + salvage)")
+    status = _print_solve("Markdown", MarkdownStatus, MarkdownRevenue, "Total revenue (sales + salvage)")
+    if status != ["OPTIMAL"]:
+        raise SystemExit(f"termination status {status}")
     week, discount = Week.ref(), Discount.ref()
     picks = select(
         OptArticle.name.alias("article"),

@@ -11,6 +11,8 @@ if __name__ == "__main__":
     status = model.select(SolveStatus).to_df().iloc[:, 0].tolist()
     conversions = model.select(TotalConversions).to_df().iloc[:, 0].tolist()
     print(f"\nSolve result:\n• status: {', '.join(status)}")
+    if status != ["OPTIMAL"]:
+        raise SystemExit(f"termination status {status}")
     if conversions:
         print(f"• objective: {round(conversions[0], 9)}\n")
 

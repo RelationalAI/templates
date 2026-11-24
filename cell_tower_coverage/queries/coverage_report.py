@@ -40,6 +40,8 @@ if __name__ == "__main__":
     status = model.select(SolveStatus).to_df().iloc[:, 0].tolist()
     objective = model.select(CoveredPopulation).to_df().iloc[:, 0].tolist()
     print(f"\nSolve result:\n• status: {', '.join(status)}")
+    if status not in (["OPTIMAL"], ["TIME_LIMIT"]):
+        raise SystemExit(f"termination status {status}")
     if objective:
         print(f"• objective: {round(objective[0], 9)}\n")
 

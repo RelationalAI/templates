@@ -311,6 +311,9 @@ if __name__ == "__main__":
         .to_df()
     )
     status = dict(zip(status_df["solve"], status_df["status"]))
+    failed = {name: s for name, s in status.items() if s not in ("OPTIMAL", "LOCALLY_SOLVED")}
+    if failed:
+        raise SystemExit(f"termination status {failed}")
 
     # Every solve's return, risk (variance), and shadow price per scenario. The min-risk
     # anchor declares no return floor, so it has no shadow price and its dual is 0.

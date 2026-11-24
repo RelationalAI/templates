@@ -21,6 +21,8 @@ if __name__ == "__main__":
     status = model.select(SolveStatus).to_df().iloc[:, 0].tolist()
     demand = model.select(TotalDemand).to_df().iloc[:, 0].tolist()
     print(f"\nSolve result:\n• status: {', '.join(status)}")
+    if status != ["OPTIMAL"]:
+        raise SystemExit(f"termination status {status}")
     if demand:
         print(f"• objective: {demand[0]}\n")
 

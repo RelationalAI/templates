@@ -44,6 +44,8 @@ if __name__ == "__main__":
     print("ANCHOR SOLVE 1: Minimize overtime cost (no unmet demand constraint)")
     print("=" * 70)
     print(f"Status: {points.loc[cheapest, 'status'] if cheapest in points.index else 'none'}")
+    if not solved(cheapest):
+        raise SystemExit("anchor solve 1 (min overtime) did not solve to OPTIMAL")
     if solved(cheapest):
         print(f"Overtime cost: ${points.loc[cheapest, 'overtime_cost']:.2f}")
         print(f"Unmet demand: {points.loc[cheapest, 'unmet_demand']:.1f} patients")
@@ -52,6 +54,8 @@ if __name__ == "__main__":
     print("ANCHOR SOLVE 2: Minimize unmet demand (no overtime cost objective)")
     print("=" * 70)
     print(f"Status: {points.loc[best, 'status'] if best in points.index else 'none'}")
+    if not solved(best):
+        raise SystemExit("anchor solve 2 (min unmet) did not solve to OPTIMAL")
     if solved(best):
         print(f"Min unmet demand: {points.loc[best, 'unmet_demand']:.1f} patients")
         print(f"Overtime cost at best service: ${points.loc[best, 'overtime_cost']:.2f}")

@@ -46,6 +46,8 @@ if __name__ == "__main__":
     status = model.select(SolveStatus).to_df().iloc[:, 0].tolist()
     residual = model.select(TotalResidual).to_df().iloc[:, 0].tolist()
     print(f"\nSolve result:\n• status: {', '.join(status)}")
+    if status not in (["OPTIMAL"], ["TIME_LIMIT"]):
+        raise SystemExit(f"termination status {status}")
     if not residual:
         raise SystemExit("The solve returned no portfolio, so there is nothing to export.")
     print(f"• objective: {round(residual[0], 9)}\n")

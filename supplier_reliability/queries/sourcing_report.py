@@ -38,6 +38,8 @@ def solve_result(status_rel, cost_rel):
 
 if __name__ == "__main__":
     status, baseline_objective = solve_result(BaselineStatus, BaselineCost)
+    if status != "OPTIMAL":
+        raise SystemExit(f"termination status {status}")
     if baseline_objective is None:
         print(f"\nBaseline status: {status}")
     else:

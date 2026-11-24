@@ -10,6 +10,8 @@ from model import Scenario, Shift, SolveStatus, Worker, assigned_ref, model
 if __name__ == "__main__":
     status = model.select(SolveStatus).to_df().iloc[:, 0].tolist()
     print(f"\nSolve result:\n• status: {', '.join(status)}\n")
+    if status != ["OPTIMAL"]:
+        raise SystemExit(f"termination status {status}")
 
     # ----------------------------------------------
     # Extract results per scenario
