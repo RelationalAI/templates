@@ -109,7 +109,7 @@ The index below covers the current templates. Expand an industry to see its temp
 | [supply_chain_resilience](supply_chain_resilience/) | Graph, Rules-based, Prescriptive | Chain blast-radius reachability, network analysis, and rule-based risk classification into a risk-adjusted minimum-cost network flow for supply-chain routing. |
 | [supply_chain_transport](supply_chain_transport/) | Prescriptive | Minimize inventory holding and transport costs with TL/LTL mode selection. |
 | [traveling_salesman](traveling_salesman/) | Prescriptive | Find the shortest route that visits every city exactly once and returns home. A self-contained starting point for building route optimization on RelationalAI. |
-| [warehouse_allocation](warehouse_allocation/) | Graph, Prescriptive | Allocate inventory across a distribution network using centrality, weakly-connected components, and bridge-route detection to prioritize critical hubs. |
+| [warehouse_allocation](warehouse_allocation/) | Graph, Prescriptive | Allocate inventory across a distribution network using centrality, weakly-connected components, and cross-region route flags to prioritize critical hubs. |
 
 </details>
 
