@@ -3,8 +3,9 @@
 Run `python -m queries.plan_and_sensitivity` after `rai models deploy --path model`. Prints
 the status and objective of the latest refresh's solve, the production plan, each factory's
 capacity shadow price, each product's reduced cost and basis status, and a per-factory
-capacity-utilization summary. Each section is checked against the bundled data's known
-optimum; a failed check stops the report with an error.
+capacity-utilization summary. The profit and the plan are checked against the bundled data's
+known optimum, and the marginals' signs and basis statuses against what that optimum implies;
+a failed check stops the report with an error.
 """
 
 from model import (
@@ -28,15 +29,13 @@ if __name__ == "__main__":
     if status != ["OPTIMAL"]:
         raise SystemExit(f"termination status {status}")
     if profit:
-        print(f"• objective: {round(profit[0], 9)}\n")
+        print(f"• objective: {round(profit[0], 9)}")
 
     # Optimum: steel_factory fills all 40 hrs (bands to its 6000 cap = 30 hrs, coils takes
     # the last 10 hrs = 1400 units); amazing_brewery makes both products to their demand
     # caps in 25 of its 30 hrs. Profit = 192000 + 8000 = 200000.
     if len(profit) != 1 or abs(profit[0] - 200000) >= 0.01:
         raise SystemExit(f"total profit changed: expected 200000, got {profit}")
-
-    print(f"\nBaseline status: {status[0]}, total profit: {profit[0]:.2f}")
 
     # --- The solved production plan -------------------------------------------------
     # Read populated quantities once for the plan checks and capacity summary.

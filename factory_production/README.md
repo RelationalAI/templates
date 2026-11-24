@@ -160,8 +160,6 @@ Use this sequence to deploy the model and query it:
    • status: OPTIMAL
    • objective: 200000.0
 
-   Baseline status: OPTIMAL, total profit: 200000.00
-
    Production plan:
            factory product  quantity
    amazing_brewery    ales    2000.0
@@ -191,7 +189,7 @@ Use this sequence to deploy the model and query it:
      steel_factory   40.0        40.0   0.0
    ```
 
-   The report checks the total profit, the plan, and the marginals against the bundled data's optimum, and stops with an error if any of them differs.
+   The report checks the total profit and the plan against the bundled data's optimum, and the marginals' signs and basis statuses against what that optimum implies (not their values), and stops with an error if any check fails.
 
    Reading the result: `steel_factory` fills all 40 hours (it is the binding factory, so its capacity prices at +4200/hour -- the per-hour profit of the swing product `coils`, i.e. its 30/unit profit times its 140 units/hour rate). `amazing_brewery` meets all demand in 25 of its 30 hours, so its capacity is slack and prices at 0 -- its bottleneck is demand, not capacity. Each of these demand-capped products (`bands`, `stouts`, `ales`) carries a positive reduced cost here: the profit you would gain per extra unit of demand allowed.
 
@@ -284,7 +282,7 @@ See `model/reasoning.py` and `queries/plan_and_sensitivity.py` for the implement
 
 - Replace `data/factories.csv` (columns `name`, `avail`) and `data/products.csv` (columns `factory_name`, `name`, `rate`, `profit`, `demand`) with your own rows. The model and the per-factory marginals pick up new factories and products automatically.
 - Keep product names unique across factories, or key the plan by the composite `(factory_name, name)` instead of by name alone.
-- Update the `EXPECTED_FACTORIES` / `EXPECTED_PRODUCTS` guard sets in `model/source.py` (or remove them) so the load-time checks match your data, and update or remove the report's checks of the bundled optimum in `queries/plan_and_sensitivity.py`.
+- Update the `EXPECTED_FACTORIES` / `EXPECTED_PRODUCTS` guard sets in `model/source.py` so the load-time checks match your data, and update or remove the report's checks of the bundled optimum in `queries/plan_and_sensitivity.py`.
 
 ### Tune parameters
 
@@ -299,7 +297,7 @@ See `model/reasoning.py` and `queries/plan_and_sensitivity.py` for the implement
 ### Scale up / productionize
 
 - **Integer production**: change the variable type from continuous to integer if products must be produced in whole units. Sensitivity marginals are an LP concept -- they are reported only for continuous (LP/QP) problems, and are empty for integer models.
-- Point the `read_csv` calls at Snowflake tables via `model.data(...)` to run the same model over warehouse-scale reference data.
+- Replace the `read_csv` loads in `model/source.py` with `model.Table("<db>.<schema>.<table>")` sources, defining the same concepts and properties from each table's columns, to run the same model over warehouse-scale reference data. The `EXPECTED_*` checks read the CSV frames, so replace them with checks over your tables.
 
 ## Troubleshooting
 
@@ -330,7 +328,7 @@ Make sure you activated the virtual environment and ran `python -m pip install .
 <details>
 <summary>Products missing from the plan</summary>
 
-A product with zero quantity is not profitable enough to justify its resource usage given tighter, more profitable competitors. Its reduced cost tells you how far its economics are from being worth producing. Increase factory `avail`, raise the product's profit, or lower its production rate to bring it into the plan.
+A product with zero quantity is not profitable enough to justify its resource usage given tighter, more profitable competitors. Its reduced cost tells you how far its economics are from being worth producing. Increase factory `avail`, raise the product's profit, or raise its production `rate` (units per hour) to bring it into the plan.
 </details>
 
 ## Learn more
