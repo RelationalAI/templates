@@ -1,4 +1,4 @@
-"""Traveling salesman decision problem: the shortest tour, with MTZ subtour elimination."""
+"""Shortest tour: the traveling salesman decision problem, with MTZ subtour elimination."""
 
 from relationalai.semantics import Float, Integer, String, count, sum
 from relationalai.semantics.reasoners.prescriptive import Problem
