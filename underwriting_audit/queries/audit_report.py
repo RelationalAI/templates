@@ -74,6 +74,9 @@ def report_audit(name, description):
         statuses = result["status"].tolist()
         n_witnesses = result["count"].iloc[0]
     status = ", ".join(statuses)
+    # An infeasible audit has no witness, and its solve publishes no count.
+    if n_witnesses is None and status == "INFEASIBLE":
+        n_witnesses = 0
     verdict = _classify_verdict(status, n_witnesses)
     count_text = "no count" if n_witnesses is None else str(n_witnesses)
     print(f"Verdict: {verdict}  ({count_text} witness(es), status={status})")
