@@ -1,4 +1,5 @@
-"""Lifecycle trace: the decision problem that yields one valid event trace for the pre-allocated slots."""
+"""Lifecycle trace: the decision problem that yields one valid event trace for the pre-allocated slots,
+and each order's filled quantity in that trace."""
 
 from relationalai.semantics import Integer, String
 from relationalai.semantics import sum as rai_sum
@@ -172,3 +173,17 @@ problem.configure("minizinc", time_limit_sec=60)
 # The solve's status, which the deployed model publishes for the queries.
 SolveStatus = model.Relationship(f"synthetic order lifecycle solve status is {String:status}")
 model.define(SolveStatus(problem.termination_status()))
+
+# The quantity filled across each order's events in the trace. The total lives on a concept of
+# its own, not on Order: a value computed from the solution on a concept the solve reads fails
+# the deploy. An order with no event has no fill total.
+OrderFill = model.Concept("OrderFill", identify_by={"order_id": Integer})
+OrderFill.filled_qty = model.Property(f"{OrderFill} has filled qty {Integer:filled_qty}")
+model.where(OrderEvent.order(Order)).define(OrderFill.new(order_id=Order.id))
+model.define(
+    OrderFill.filled_qty(
+        rai_sum(OrderEvent, OrderEvent.fill_qty)
+        .per(OrderFill)
+        .where(OrderEvent.order.id == OrderFill.order_id)
+    )
+)
