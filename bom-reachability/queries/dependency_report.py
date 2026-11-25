@@ -50,8 +50,10 @@ if __name__ == "__main__":
     # Most depended-on components
     # --------------------------------------------------
 
+    # Finished goods have no dependents and no depended_on_by value; list only SKUs something depends on.
     dep_counts = (
-        model.select(
+        where(SKU.depended_on_by > 0)
+        .select(
             SKU.id.alias("dep_id"),
             SKU.name.alias("dep_name"),
             SKU.type.alias("dep_type"),
