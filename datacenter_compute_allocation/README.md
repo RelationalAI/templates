@@ -53,7 +53,7 @@ This template models that allocation as a scenario sweep across three axes (powe
 
 ## What's included
 
-- `model/` — the deployed model: `schema.py` declares the concepts and the GNN task relationships, `source.py` loads the bundled CSVs, `reasoning.py` states the GNN, the rules, the PageRank, the 24-cell allocation MIP, and the rules that summarize its solution
+- `model/` — the deployed model: `schema.py` declares the concepts and the GNN task relationships, `source.py` loads the bundled CSVs, and five modules state the reasoning: `utilization_forecast.py` (the GNN and its forecasts), `workload_eligibility.py` (priority tiers and hardware compatibility), `gating_scores.py` (the dependency PageRank), `compute_allocation.py` (the 24-cell allocation MIP), and `allocation_outcomes.py` (the rules that summarize its solution)
 - `train.py` — trains the utilization GNN over the deployed splits and registers its version
 - `queries/allocation_report.py` — prints the per-stage diagnostics, the per-cell summary, the Pareto frontiers, the plan, and the demand overlay from the deployed model
 - `data/data_centers.csv` — 5 DCs (snapshot of the upstream $300M-approved set)
@@ -172,7 +172,7 @@ Use this sequence to deploy the model, train the GNN, and query the allocation p
      predictive:
        name: workload_utilization_gnn          # created on first use if it doesn't exist
        gnns:
-         workload_utilization:             # the GNN's name in model/reasoning.py
+         workload_utilization:             # the GNN's name in model/utilization_forecast.py
            registry: <DB>.DATACENTER_COMPUTE_ALLOCATION
            model: WORKLOAD_UTILIZATION
            version: V1                  # train.py registers this version
@@ -266,7 +266,7 @@ Use this sequence to deploy the model, train the GNN, and query the allocation p
         frontier_loss    0.50         24,611,119.95            666,690.99          2.64
    ```
 
-   The report prints all four stages and the demand overlay; the lines above are trimmed. The GNN is stochastic, so the utilization probabilities shift from one training run to the next; the dependency PageRank is deterministic, so the frontier pretrains rank first by gating score on every run. In the run shown, the baseline cell assigns all 110 workloads; because the solve stops at its time limit with its best solution so far, the cells and workload counts can differ from one refresh to the next. The solve above is the open-source HiGHS default, which returns a feasible solution at its `SOLVER_TIME_LIMIT_SEC` of 240 seconds and reports `TIME_LIMIT` (signal, not failure), so each refresh takes about that long and the cells are labelled FEASIBLE or UNSOLVED. With Gurobi, the solve reaches `OPTIMAL` in seconds and the cells are labelled OPTIMAL or INFEASIBLE; set `SOLVER` in `model/reasoning.py` to switch. The full printout and a step-by-step walkthrough are in `runbook.md`.
+   The report prints all four stages and the demand overlay; the lines above are trimmed. The GNN is stochastic, so the utilization probabilities shift from one training run to the next; the dependency PageRank is deterministic, so the frontier pretrains rank first by gating score on every run. In the run shown, the baseline cell assigns all 110 workloads; because the solve stops at its time limit with its best solution so far, the cells and workload counts can differ from one refresh to the next. The solve above is the open-source HiGHS default, which returns a feasible solution at its `SOLVER_TIME_LIMIT_SEC` of 240 seconds and reports `TIME_LIMIT` (signal, not failure), so each refresh takes about that long and the cells are labelled FEASIBLE or UNSOLVED. With Gurobi, the solve reaches `OPTIMAL` in seconds and the cells are labelled OPTIMAL or INFEASIBLE; set `SOLVER` in `model/compute_allocation.py` to switch. The full printout and a step-by-step walkthrough are in `runbook.md`.
 
    To predict and solve again without changing the model, refresh the deployed model, then run the query again:
 
@@ -293,7 +293,11 @@ datacenter_compute_allocation/
     __init__.py                     # exports for train.py and the query
     schema.py                       # concepts, GNN task relationships
     source.py                       # bundled CSVs, demand scenarios, base facts
-    reasoning.py                    # GNN, rules, PageRank, allocation MIP, cell outcomes, plan
+    utilization_forecast.py         # Stage 1: GNN, utilization forecasts and their ranks
+    workload_eligibility.py         # Stage 2: priority tiers, hardware compatibility
+    gating_scores.py                # Stage 3: dependency PageRank, gating ranking
+    compute_allocation.py           # Stage 4: allocation MIP and its solve status
+    allocation_outcomes.py          # cell outcomes, plan, chosen assignments, demand overlay
   train.py                          # trains the GNN and registers its version
   queries/
     allocation_report.py            # per-stage diagnostics, per-cell summary, frontiers, plan, overlay
@@ -340,7 +344,7 @@ One shared ontology threads all four stages: each stage reads concepts and prope
 - **Primary identifiers**: string ids on `DataCenterRequest`, `GpuPool`, `AILab`, and `Workload`; the scenario concepts are identified by `name`; `WorkloadForecast` by workload id; `WorkloadGpuCompat`, `WorkloadDependency`, `Compatibility`, `Assignment`, and `ScenarioCell` carry composite keys.
 - **Important invariants**: `envelope_multiplier`, `fraction`, and `anchor_max_share` are fractions; a negative sentinel on `MarginFloor.fraction` / `DiversityCap.anchor_max_share` marks the unconstrained row (its constraint is skipped); the `is_high_utilization` label is binary; `Assignment.x_assign` decision variables are binary; power / cost / GPU counts are non-negative.
 
-For the full concept and property definitions — the entity concepts and the three scenario concepts in `model/schema.py`, and the derived `WorkloadForecast` / `Compatibility` / `Assignment` / `ScenarioCell` / `AllocationPlan` / `DemandScenarioOutlook` concepts each stage writes in `model/reasoning.py` — `runbook.md` builds them step by step with the RAI skills.
+For the full concept and property definitions — the entity concepts and the three scenario concepts in `model/schema.py`, and the derived `WorkloadForecast` / `Compatibility` / `Assignment` / `ScenarioCell` / `AllocationPlan` / `DemandScenarioOutlook` concepts each stage writes in `model/` — `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
@@ -375,7 +379,7 @@ The objective is what makes this a real chain rather than four disjoint reasoner
 
 Finally, a `DemandScenario` overlay replays the locked-in plan under four risk scenarios. Anchor (P0) revenue is treated as contractual (factor 1.0) — the operator gets paid for the seat regardless of utilization — while opportunistic (P1/P2) seats realize only the scenario factor of their assigned revenue. The overlay reports realized and stranded revenue per scenario and persists each as a `DemandScenarioOutlook(scenario)` concept row, so the stranded-capacity exposure of the chosen plan is queryable as ontology, not just printed.
 
-See `model/reasoning.py` for the implementation and `runbook.md` to reproduce each stage step by step with the RAI skills.
+See the modules in `model/` for the implementation and `runbook.md` to reproduce each stage step by step with the RAI skills.
 
 ## Customize this template
 
@@ -387,7 +391,7 @@ See `model/reasoning.py` for the implementation and `runbook.md` to reproduce ea
 ### Tune parameters
 
 - Tune the scenario axes: edit `power_envelope_levels.csv`, `margin_floors.csv`, and `diversity_caps.csv`. Adding rows scales the cell count multiplicatively.
-- Change the priority spread by editing the weights in the Stage 2 rules of `model/reasoning.py` (default 100 / 10 / 1).
+- Change the priority spread by editing the weights in the Stage 2 rules of `model/workload_eligibility.py` (default 100 / 10 / 1).
 
 ### Extend the model
 
@@ -395,7 +399,7 @@ See `model/reasoning.py` for the implementation and `runbook.md` to reproduce ea
 
 ### Scale up / productionize
 
-- Tune the Stage 4 solve by adjusting `SOLVER` or `SOLVER_TIME_LIMIT_SEC` in `model/reasoning.py`. The default works on any prescriptive engine; faster commercial solvers (when licensed) can reach OPTIMAL in a fraction of the time.
+- Tune the Stage 4 solve by adjusting `SOLVER` or `SOLVER_TIME_LIMIT_SEC` in `model/compute_allocation.py`. The default works on any prescriptive engine; faster commercial solvers (when licensed) can reach OPTIMAL in a fraction of the time.
 - Replace the bundled CSVs with CDC ingestion from the operator's inventory, telemetry, and contract systems; the ontology shape is independent of the load pipeline.
 
 ## Troubleshooting
@@ -433,7 +437,7 @@ The shipped constraints admit an empty allocation in every cell: C1 is a soft `<
 <details>
 <summary>Solver returns <code>TIME_LIMIT</code> with sensible per-cell results</summary>
 
-Expected at the default `time_limit_sec=240`. Per-cell numbers remain valid with `TIME_LIMIT` (`rai-prescriptive-results`: `TIME_LIMIT` is signal, not error). Raise `SOLVER_TIME_LIMIT_SEC` or switch to a faster solver in `model/reasoning.py` if you need a tighter MIP gap.
+Expected at the default `time_limit_sec=240`. Per-cell numbers remain valid with `TIME_LIMIT` (`rai-prescriptive-results`: `TIME_LIMIT` is signal, not error). Raise `SOLVER_TIME_LIMIT_SEC` or switch to a faster solver in `model/compute_allocation.py` if you need a tighter MIP gap.
 </details>
 
 <details>
@@ -445,7 +449,7 @@ Likely an upstream constraint (C5 / C6 / C7) firing at unintended cells. Check t
 <details>
 <summary>Per-workload utilization probabilities do not match the README's distribution</summary>
 
-The GNN is stochastic, so the probabilities shift from one training run to the next, and a different `seed` or `n_epochs` in `model/reasoning.py` changes them too. The structural outcome (frontier pretrains near the top, evals near the bottom) reproduces.
+The GNN is stochastic, so the probabilities shift from one training run to the next, and a different `seed` or `n_epochs` in `model/utilization_forecast.py` changes them too. The structural outcome (frontier pretrains near the top, evals near the bottom) reproduces.
 </details>
 
 ## What this template abstracts
