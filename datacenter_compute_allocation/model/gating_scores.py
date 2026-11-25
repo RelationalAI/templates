@@ -5,6 +5,9 @@ from relationalai.semantics import Float, Integer, String
 from relationalai.semantics.reasoners.graph import Graph
 from relationalai.semantics.std import aggregates as aggs
 
+# The GNN takes as features the Workload properties declared before its predictions, so it is
+# declared first: the gating score is a graph result, not a feature.
+from . import utilization_forecast  # noqa: F401
 from .schema import Workload, WorkloadDependency, model
 
 # --------------------------------------------------
@@ -34,8 +37,8 @@ wl_ref = Workload.ref()
 model.define(wl_ref.gating_score(score_ref)).where(pagerank(wl_ref, score_ref))
 
 # The gating ranking, highest gating score first, ties broken by the lower workload id. It
-# lives on a concept of its own: the GNN reads every property of Workload as a feature, so a
-# rank on Workload would feed it. The score is negated so both keys sort ascending.
+# lives on a concept of its own, which keeps it out of the GNN's Workload features. The score
+# is negated so both keys sort ascending.
 GatingRank = model.Concept("GatingRank", identify_by={"workload_id": String})
 GatingRank.gating_score = model.Property(f"{GatingRank} has {Float:gating_score} gating score")
 GatingRank.gating_rank = model.Property(f"{GatingRank} has {Integer:gating_rank}")
