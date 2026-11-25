@@ -41,7 +41,7 @@ Manufacturing operations must decide how much of each product to make at each fa
 
 ## What's included
 
-- `model/` -- the deployed model package, deployed with `rai models deploy --path model`: `schema.py` declares the concepts, `source.py` loads the sample data and checks it, `reasoning.py` states the constraints, objective, and the solve with sensitivity analysis
+- `model/` -- the deployed model package, deployed with `rai models deploy --path model`: `schema.py` declares the concepts, `source.py` loads the sample data and checks it, `production_plan.py` states the constraints, objective, and the solve with sensitivity analysis, `plan_marginals.py` publishes the shadow prices, reduced costs, basis statuses, and the capacity ranking, and `capacity_utilization.py` publishes each factory's hours used and idle
 - `queries/plan_and_sensitivity.py` -- the report from the deployed model: production plan, shadow prices, reduced costs, basis statuses, and capacity utilization
 - `runbook.md` -- a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself
 - `data/factories.csv` -- Factory names and available resource-hours
@@ -221,7 +221,9 @@ Use this sequence to deploy the model and query it:
 │   ├── __init__.py           # exports of the deployed model
 │   ├── schema.py             # concepts and properties
 │   ├── source.py             # sample data and its checks
-│   └── reasoning.py          # LP, sensitivity solve, and the published status, objective, and marginals
+│   ├── production_plan.py    # LP, sensitivity solve, and the published status and objective
+│   ├── plan_marginals.py     # published shadow prices, reduced costs, basis statuses, and capacity ranking
+│   └── capacity_utilization.py  # published hours used and idle hours per factory
 ├── queries/
 │   └── plan_and_sensitivity.py  # report and sensitivity read-back from the deployed model
 └── data/
@@ -274,7 +276,7 @@ Because the objective is a maximization, the signs mirror a minimize-cost model:
 
 Sensitivity marginals are exact for a linear program. They describe the rate of change at the current optimum -- the range over which that rate holds is not reported (there is no RHS/coefficient ranging) -- and a large, discrete change (adding a factory, removing a product) is a structural change best answered by re-solving.
 
-See `model/reasoning.py` and `queries/plan_and_sensitivity.py` for the implementation and `runbook.md` for the skill-driven reproduction.
+See `model/production_plan.py`, `model/plan_marginals.py`, `model/capacity_utilization.py`, and `queries/plan_and_sensitivity.py` for the implementation and `runbook.md` for the skill-driven reproduction.
 
 ## Customize this template
 

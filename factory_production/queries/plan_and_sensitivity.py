@@ -11,8 +11,11 @@ a failed check stops the report with an error.
 from model import (
     EXPECTED_FACTORIES,
     EXPECTED_PRODUCTS,
+    CapacityPriceRank,
     CapacityShadowPrice,
     Factory,
+    FactoryHoursUsed,
+    FactoryIdleHours,
     Product,
     ProductBasisStatus,
     ProductReducedCost,
@@ -20,7 +23,7 @@ from model import (
     TotalProfit,
     model,
 )
-from relationalai.semantics import Float, String
+from relationalai.semantics import Float, Integer, String
 
 if __name__ == "__main__":
     status = model.select(SolveStatus).to_df().iloc[:, 0].tolist()
@@ -38,13 +41,11 @@ if __name__ == "__main__":
         raise SystemExit(f"total profit changed: expected 200000, got {profit}")
 
     # --- The solved production plan -------------------------------------------------
-    # Read populated quantities once for the plan checks and capacity summary.
+    # Read populated quantities once for the plan checks.
     plan_df = (
         model.select(
             Product.factory.name.alias("factory"),
             Product.name.alias("product"),
-            Product.factory.avail.alias("avail"),
-            Product.rate.alias("rate"),
             Product.x_quantity.alias("quantity"),
         )
         .to_df()
@@ -137,11 +138,22 @@ if __name__ == "__main__":
 
     # --- Acting on it: which factory's capacity is the bottleneck? ------------------
     # With a maximize objective every capacity shadow price is >= 0, so the largest one is
-    # the factory whose marginal hour earns the most -- the capacity to expand first.
-    bottleneck = max(zip(cap_df["factory"], cap_df["shadow_price"]), key=lambda fp: fp[1])
+    # the factory whose marginal hour earns the most -- the capacity to expand first. The
+    # model ranks the capacities by shadow price; the bottleneck is the first.
+    price_rank = Integer.ref()
+    bottleneck = (
+        model.select(Factory.name.alias("factory"), shadow_price.alias("shadow_price"))
+        .where(
+            CapacityShadowPrice(Factory, shadow_price),
+            CapacityPriceRank(Factory, price_rank),
+            price_rank == 1,
+        )
+        .to_df()
+        .iloc[0]
+    )
     print(
-        f"\nMost profit-sensitive capacity: {bottleneck[0]} "
-        f"(d profit / d hour = {bottleneck[1]:+.2f})"
+        f"\nMost profit-sensitive capacity: {bottleneck['factory']} "
+        f"(d profit / d hour = {float(bottleneck['shadow_price']):+.2f})"
     )
 
     # --------------------------------------------------
@@ -150,14 +162,20 @@ if __name__ == "__main__":
     # Ties the shadow prices above back to the plan: in this data the binding factory has
     # zero idle hours and a positive shadow price, while idle hours mean slack and a zero
     # price. Only idle => zero-price holds in general; a binding capacity can still price at
-    # zero under degeneracy, so read the prices, not just the idle column.
-    plan_df["hours"] = plan_df["quantity"] / plan_df["rate"]
+    # zero under degeneracy, so read the prices, not just the idle column. The model
+    # publishes each factory's hours used and idle hours.
+    hours_used, idle_hours = Float.ref(), Float.ref()
     util = (
-        plan_df.groupby("factory")
-        .agg(avail=("avail", "first"), hours_used=("hours", "sum"))
-        .reset_index()
+        model.select(
+            Factory.name.alias("factory"),
+            Factory.avail.alias("avail"),
+            hours_used.alias("hours_used"),
+            idle_hours.alias("idle"),
+        )
+        .where(FactoryHoursUsed(Factory, hours_used), FactoryIdleHours(Factory, idle_hours))
+        .to_df()
+        .sort_values("factory", ignore_index=True)
     )
-    util["idle"] = util["avail"] - util["hours_used"]
     print("\n" + "=" * 50)
     print("Factory Capacity Summary")
     print("=" * 50)
