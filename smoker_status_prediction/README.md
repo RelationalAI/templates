@@ -224,7 +224,7 @@ Use this sequence to deploy the model, train the GNN, and query its predictions:
 │   ├── schema.py                   # concepts and the Train/Validation/Test task relationships
 │   ├── source.py                   # bundled CSVs bound to the schema
 │   ├── smoker_gnn.py               # graph, feature types, the GNN and its predictions
-│   └── prediction_metrics.py       # table counts, held-out labels, accuracy, ROC-AUC, class shares
+│   └── prediction_metrics.py       # table counts, test-set accuracy, ROC-AUC, class shares
 ├── train.py                        # trains the GNN and registers its version
 ├── queries/
 │   └── smoker_report.py            # data summary, prediction sample, and test-set metrics

@@ -14,6 +14,7 @@ from model import (
     TestAccuracy,
     TestAuc,
     TestCohort,
+    TestTable,
 )
 from relationalai.semantics import Float, Integer, select
 
@@ -35,15 +36,16 @@ def main() -> None:
     print(f"People: {counts['people']:,}  Related: {counts['related']:,}")
     print(f"Splits: train={counts['train']:,}  val={counts['val']:,}  test={counts['test']:,}")
 
-    # Pull per-person predictions with their held-out actual labels, so the sample shows the
+    # Pull per-person predictions joined to the held-out actual labels, so the sample shows the
     # GNN's test-cohort scores next to the truth.
     predictions_df = (
         select(
             SmokerPrediction.person_id.alias("Id"),
             SmokerPrediction.predicted_label.alias("predicted_label"),
             SmokerPrediction.probability.alias("prob"),
-            SmokerPrediction.actual_smoking.alias("actual_smoking"),
+            TestTable.smoking.alias("actual_smoking"),
         )
+        .where(SmokerPrediction.person_id == TestTable.Id)
         .to_df()
         .sort_values("Id")
     )
