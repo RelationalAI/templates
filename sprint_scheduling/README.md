@@ -39,7 +39,7 @@ Built using **prescriptive reasoning** (mixed-integer programming solved with Hi
 
 ## What's included
 
-- **Model**: developers, sprints, issues, and skill mappings as concepts, plus a cross-product `Assignment` decision concept with binary assignment variables, capacity and once-per-issue constraints, and a weighted-completion-time objective, in the `model/` package (`schema.py` declares the concepts, `source.py` loads the sample data and applies the planning horizon, `reasoning.py` states one decision problem per capacity scenario), which `rai models deploy --path model` deploys to your Snowflake account, where each refresh runs the solves.
+- **Model**: developers, sprints, issues, and skill mappings as concepts, plus a cross-product `Assignment` decision concept with binary assignment variables, capacity and once-per-issue constraints, and a weighted-completion-time objective, in the `model/` package (`schema.py` declares the concepts, `source.py` loads the sample data and applies the planning horizon, `target_sprints.py` maps each issue to its target sprint, `sprint_assignment.py` states one decision problem per capacity scenario), which `rai models deploy --path model` deploys to your Snowflake account, where each refresh runs the solves.
 - **Query**: `queries/sprint_plan.py`, which prints the report from the deployed model.
 - **Runbook**: `runbook.md` -- a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - **Sample data**: four CSVs under `data/` describing 8 developers, 4 sprints, 30 backlog issues, and developer-team skills. See *Sample data* below.
@@ -239,7 +239,8 @@ Use this sequence to deploy the model and query it:
 │   ├── __init__.py        # exports of the deployed model
 │   ├── schema.py          # concepts and properties
 │   ├── source.py          # sample data, planning horizon, epoch filter
-│   └── reasoning.py       # assignment domain, constraints, objective, one solve per scenario
+│   ├── target_sprints.py  # target sprint of each issue from its created_at epoch
+│   └── sprint_assignment.py # assignment domain, constraints, objective, one solve per scenario
 ├── queries/
 │   └── sprint_plan.py     # report from the deployed model
 └── data/
@@ -286,7 +287,7 @@ CSV inputs → epoch filter → target-sprint mapping → assignment domain → 
 
 **5. Weighted completion time objective.** The objective minimizes a weighted sum where higher-priority issues (lower priority number) cost more when placed in later sprints -- with `max_priority = 3`, a priority-1 issue in Sprint 4 costs `(3+1-1) * 4 = 12` and a priority-3 issue in Sprint 4 costs `(3+1-3) * 4 = 4`. This pushes the most urgent work into the earliest sprints.
 
-For the implementation, see `model/reasoning.py`; to reproduce it step by step with the RAI skills, follow `runbook.md`.
+For the implementation, see `model/sprint_assignment.py` and `model/target_sprints.py`; to reproduce it step by step with the RAI skills, follow `runbook.md`.
 
 ## Customize this template
 
@@ -295,14 +296,14 @@ Focus on the first changes most users will make.
 ### Use your own data
 
 - Replace the four CSVs in `data/` with your own, keeping the column names listed in *Sample data* above. `developers.csv`, `sprints.csv`, `issues.csv`, and `skills.csv` each map directly to a concept.
-- `sprints.csv` and `issues.csv` use Unix epoch seconds for dates; convert your date strings to epochs before loading, or adapt the epoch-mapping helper.
+- `sprints.csv` and `issues.csv` use Unix epoch seconds for dates; convert your date strings to epochs before loading, or adapt the target-sprint rule in `model/target_sprints.py`.
 - Make sure every team present in `issues.csv` has at least one skilled developer in `skills.csv`: an issue with no eligible developer gets no assignment constraint, so it is left out of the plan rather than making the model infeasible.
 
 ### Tune parameters
 
 - **Planning horizon** -- edit `planning_start` and `planning_end` in `model/source.py` to include more or fewer sprints, and add matching rows to `sprints.csv`.
-- **Capacity** -- modify `capacity_points_per_sprint` in `developers.csv`, or edit `SCENARIO_VALUES` in `model/reasoning.py` to sweep different `capacity_multiplier` levels (default `[0.35, 0.5, 1.0]`).
-- **Priority scheme** -- adjust `max_priority` and the weight formula in the objective in `model/reasoning.py` to match your team's priority scale.
+- **Capacity** -- modify `capacity_points_per_sprint` in `developers.csv`, or edit `SCENARIO_VALUES` in `model/sprint_assignment.py` to sweep different `capacity_multiplier` levels (default `[0.35, 0.5, 1.0]`).
+- **Priority scheme** -- adjust `max_priority` and the weight formula in the objective in `model/sprint_assignment.py` to match your team's priority scale.
 
 ### Extend the model
 

@@ -1,8 +1,10 @@
-"""Sprint assignment decision problems: one weighted-completion-time problem per capacity scenario."""
+"""Sprint assignment: one weighted-completion-time decision problem per capacity scenario."""
 
 from relationalai.semantics import Float, String, sum
 from relationalai.semantics.reasoners.prescriptive import Problem
 
+# Declares Issue.target_sprint_number, the first sprint each issue can be assigned to.
+from . import target_sprints  # noqa: F401
 from .schema import Assignment, Developer, Issue, Skill, Sprint, model
 
 # Build assignment domain: developer can work on issue if they have the matching skill,
