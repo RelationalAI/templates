@@ -7,10 +7,15 @@ paused-region cap.
 """
 
 from model import (
+    PAUSED_CAP,
     PAUSED_CAP_FRACTION,
     PAUSED_REGION,
     TOTAL_BUDGET,
     Campaign,
+    CampaignPlan,
+    ConversionLift,
+    CurrentConversions,
+    RegionSpend,
     SolveStatus,
     TotalConversions,
     model,
@@ -30,7 +35,13 @@ if __name__ == "__main__":
     objective_value = conversions[0]
     print(f"Total expected conversions (optimized): {objective_value:,.1f}")
 
+    current_total = model.select(CurrentConversions).to_df().iloc[0, 0]
+    lift = model.select(ConversionLift).to_df().iloc[0, 0]
+    print(f"Total expected conversions (current):   {current_total:,.1f}")
+    print(f"Lift: {lift * 100:+.1f}%")
+
     # The id keeps campaigns that share every displayed value as separate rows.
+    plan = CampaignPlan.ref()
     results_df = model.select(
         Campaign.id.alias("id"),
         Campaign.name.alias("campaign"),
@@ -38,28 +49,27 @@ if __name__ == "__main__":
         Campaign.current_budget.alias("current"),
         Campaign.x_budget.alias("optimized"),
         Campaign.conversion_rate.alias("rate"),
-    ).to_df()
-
-    current_total = (results_df["current"] * results_df["rate"]).sum()
-    print(f"Total expected conversions (current):   {current_total:,.1f}")
-    print(f"Lift: {(objective_value - current_total) / current_total * 100:+.1f}%")
+        plan.delta.alias("delta"),
+        plan.multiple.alias("multiple"),
+    ).where(plan.campaign == Campaign).to_df()
 
     print("\nBudget reallocation per campaign (sorted by largest absolute change):")
-    results_df["delta"] = results_df["optimized"] - results_df["current"]
-    results_df["multiple"] = results_df["optimized"] / results_df["current"]
     results_df = results_df.sort_values("delta", key=abs, ascending=False).reset_index(drop=True)
     print(results_df.drop(columns="id").to_string(index=False))
 
     print("\nRegional spend (optimized):")
     regional = (
-        results_df.groupby("region")[["current", "optimized"]]
-        .sum()
-        .reset_index()
+        model.select(
+            RegionSpend.region.alias("region"),
+            RegionSpend.current_spend.alias("current"),
+            RegionSpend.optimized_spend.alias("optimized"),
+            RegionSpend.share_of_total.alias("share_of_total"),
+        )
+        .to_df()
         .sort_values("optimized", ascending=False)
     )
-    regional["share_of_total"] = regional["optimized"] / TOTAL_BUDGET
     print(regional.to_string(index=False))
     print(
         f"\nPaused region '{PAUSED_REGION}' cap: "
-        f"{PAUSED_CAP_FRACTION * TOTAL_BUDGET:.1f} ({PAUSED_CAP_FRACTION:.0%} of ${TOTAL_BUDGET:,.0f}K total)"
+        f"{PAUSED_CAP:.1f} ({PAUSED_CAP_FRACTION:.0%} of ${TOTAL_BUDGET:,.0f}K total)"
     )

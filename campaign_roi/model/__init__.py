@@ -11,6 +11,8 @@ This package demonstrates a marketing budget reallocation LP in RelationalAI:
   cannot exceed PAUSED_CAP_FRACTION of TOTAL_BUDGET.
 - Enforce a total budget constraint.
 - Maximize total expected conversions = sum(budget * conversion_rate).
+- Compare the optimized plan with the current budgets: conversions and lift,
+  each campaign's change, and spend per region (`budget_plan.py`).
 
 Run:
     `rai models deploy --path model` deploys this package to the schemas in
@@ -18,12 +20,17 @@ Run:
     `python -m queries.budget_reallocation` then prints the report from the deployed model.
 """
 
-from .reasoning import (
+from .budget_plan import (
     CAP_MULTIPLIER,
     FLOOR_FRACTION,
+    PAUSED_CAP,
     PAUSED_CAP_FRACTION,
     PAUSED_REGION,
     TOTAL_BUDGET,
+    CampaignPlan,
+    ConversionLift,
+    CurrentConversions,
+    RegionSpend,
     SolveStatus,
     TotalConversions,
     problem,
@@ -35,10 +42,15 @@ __all__ = [
     "CAP_MULTIPLIER",
     "DATA_DIR",
     "FLOOR_FRACTION",
+    "PAUSED_CAP",
     "PAUSED_CAP_FRACTION",
     "PAUSED_REGION",
     "TOTAL_BUDGET",
     "Campaign",
+    "CampaignPlan",
+    "ConversionLift",
+    "CurrentConversions",
+    "RegionSpend",
     "SolveStatus",
     "TotalConversions",
     "model",
