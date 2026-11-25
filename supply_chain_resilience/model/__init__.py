@@ -21,38 +21,61 @@ optimization for supply chain risk management:
 - Scenario analysis: re-solve with disruptions (critical site offline,
   supplier downgrade) to quantify resilience costs. Each scenario is its own problem.
 
+Modules, one per stage (each module imports the modules whose declarations
+it reads):
+
+- ``blast_radius.py``: Stage 0, the Business graph, the high-priority
+  customers, and their upstream suppliers.
+- ``network_criticality.py``: Stage 1, the site graph, its components, and
+  centrality.
+- ``supplier_risk.py``: Stage 2, the risk flags and classes, late shipments,
+  and escalated demand.
+- ``risk_adjusted_flows.py``: Stage 3 and the scenarios, the network flow
+  problems and the scenario cost comparison.
+
 Run:
     `rai models deploy --path model` deploys this package to the schemas in
     raiconfig.yaml and waits for its first refresh, which runs the solves.
     `python -m queries.resilience_report` then prints the report from the deployed model.
 """
 
-from .reasoning import (
-    baseline,
+from .blast_radius import (
     biz_graph,
     biz_num_edges,
     biz_num_nodes,
+    reachable_to,
+    target_customer,
+)
+from .network_criticality import (
+    SiteCluster,
     eigenvector,
     graph,
+    num_components,
     num_edges,
     num_nodes,
-    reachable_to,
-    site_offline,
-    target_customer,
-    watch_avoid,
     wcc,
+)
+from .risk_adjusted_flows import (
+    CostChangePct,
+    baseline,
+    num_source_links,
+    site_offline,
+    watch_avoid,
 )
 from .schema import Business, DelayPrediction, Demand, Operation, Shipment, Site, model
 from .source import DATA_DIR
+from .supplier_risk import num_escalated, num_late_shipments, num_shipments
 
 __all__ = [
     "DATA_DIR",
     "Business",
+    "CostChangePct",
     "DelayPrediction",
     "Demand",
     "Operation",
     "Shipment",
     "Site",
+    "SiteCluster",
     "baseline",
     "biz_graph",
     "biz_num_edges",
@@ -60,8 +83,13 @@ __all__ = [
     "eigenvector",
     "graph",
     "model",
+    "num_components",
     "num_edges",
+    "num_escalated",
+    "num_late_shipments",
     "num_nodes",
+    "num_shipments",
+    "num_source_links",
     "reachable_to",
     "site_offline",
     "target_customer",

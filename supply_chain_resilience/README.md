@@ -40,7 +40,7 @@ Supply chain networks route goods from suppliers through factories and distribut
 
 ## What's included
 
-- **Model**: concepts for sites, businesses, SKUs, operations, demand, shipments, and delay predictions, the graph, rules, and risk-adjusted network flow problems, in the `model/` package (`schema.py` declares the concepts, `source.py` loads the sample data, `reasoning.py` states the graphs, rules, and decision problems), which `rai models deploy --path model` deploys to your Snowflake account, where each refresh runs the graph analysis and the solves.
+- **Model**: concepts for sites, businesses, SKUs, operations, demand, shipments, and delay predictions, the graph, rules, and risk-adjusted network flow problems, in the `model/` package (`schema.py` declares the concepts, `source.py` loads the sample data, `blast_radius.py`, `network_criticality.py`, `supplier_risk.py`, and `risk_adjusted_flows.py` state the graphs, rules, and decision problems, one module per stage), which `rai models deploy --path model` deploys to your Snowflake account, where each refresh runs the graph analysis and the solves.
 - **Query**: `queries/resilience_report.py`, which prints the report from the deployed model.
 - `runbook.md` -- a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself
 - `data/site.csv` -- 31 sites (factories, distribution centers, offices, stores) across multiple regions
@@ -233,7 +233,10 @@ Use this sequence to deploy the model and query it:
 │   ├── __init__.py               # exports of the deployed model
 │   ├── schema.py                 # concepts and properties
 │   ├── source.py                 # sample data
-│   └── reasoning.py              # graphs, risk rules, and the network flow problems
+│   ├── blast_radius.py           # Stage 0: Business graph, high-priority customers, upstream suppliers
+│   ├── network_criticality.py    # Stage 1: site graph, components, centrality
+│   ├── supplier_risk.py          # Stage 2: risk flags and classes, late shipments, escalated demand
+│   └── risk_adjusted_flows.py    # Stage 3: network flow problems and scenario cost change
 ├── queries/
 │   └── resilience_report.py      # report from the deployed model
 └── data/
@@ -278,21 +281,21 @@ One shared ontology threads a pre-analysis and three chained reasoning stages --
 CSV inputs → blast-radius reachability → Graph criticality → Rules risk classification → Prescriptive risk-adjusted flow → scenario re-solves
 ```
 
-**Configure inputs.** A handful of parameters at the top of `model/reasoning.py` control the run: risk thresholds (`RELIABILITY_THRESHOLD`, `DELAY_PROB_THRESHOLD`), objective penalties (`UNMET_PENALTY`, `RISK_SURCHARGE`, `CENTRALITY_WEIGHT`), and which quarter's delay predictions to use (`PREDICTION_QUARTER`).
+**Configure inputs.** A handful of parameters at the top of the module that uses them control the run: risk thresholds (`RELIABILITY_THRESHOLD`, `DELAY_PROB_THRESHOLD`) and which quarter's delay predictions to use (`PREDICTION_QUARTER`) in `model/supplier_risk.py`, and objective penalties (`UNMET_PENALTY`, `RISK_SURCHARGE`, `CENTRALITY_WEIGHT`) and the solver-noise cutoff `FLOW_TOLERANCE` in `model/risk_adjusted_flows.py`.
 
 **Define concepts and load data.** The seven source concepts load from CSV (`model/schema.py` and `model/source.py`). A derived `Operation.source_business` relationship links each operation to its source business by matching the operation's source site to the business's site, avoiding an explicit join table.
 
-**Stage 0 -- blast-radius pre-analysis.** A directed `Business` graph is built from the derived supplier-to-customer `ships_to` edges. Upstream reachability from each high-priority customer traces every supplier it transitively depends on, making the exposure footprint explicit so the later scenario results can be read in context.
+**Stage 0 -- blast-radius pre-analysis.** A directed `Business` graph is built from the derived supplier-to-customer `ships_to` edges. Upstream reachability from each high-priority customer traces every supplier it transitively depends on, making the exposure footprint explicit so the later scenario results can be read in context. The `SUPPLIER`-type businesses a customer reaches are published as `Business.upstream_supplier`, with their count per customer.
 
-**Stage 1 -- Graph, network criticality.** An undirected graph with sites as nodes and SHIP operations as edges captures the physical shipping network. Weakly connected components reveal whether the network is fragmented or unified; eigenvector centrality scores each site by its structural influence. Scores are normalized by the largest score and stored as `Site.centrality` for the optimizer to penalize; the site with the largest score (the lowest site ID among ties) is flagged `Site.is_most_critical`.
+**Stage 1 -- Graph, network criticality.** An undirected graph with sites as nodes and SHIP operations as edges captures the physical shipping network. Weakly connected components reveal whether the network is fragmented or unified; eigenvector centrality scores each site by its structural influence. Scores are normalized by the largest score and stored as `Site.centrality` for the optimizer to penalize; the site with the largest score (the lowest site ID among ties) is flagged `Site.is_most_critical`. Each site's rank by centrality (`Site.centrality_rank`) and each component's site count and regions (`SiteCluster`) are published too.
 
-**Stage 2 -- Rules, supplier risk classification.** Derived relationships flag suppliers below the reliability threshold and suppliers with high predicted delay probability. Suppliers with both flags are classified "avoid" (blocked from flow); suppliers with either flag are "watch" (allowed but surcharged). A further rule flags `HIGH`-priority demand as escalated. These classifications feed the optimizer as hard constraints and cost surcharges.
+**Stage 2 -- Rules, supplier risk classification.** Derived relationships flag suppliers below the reliability threshold and suppliers with high predicted delay probability. Suppliers with both flags are classified "avoid" (blocked from flow); suppliers with either flag are "watch" (allowed but surcharged). Each business with a reliability score gets one risk class (`Business.risk_class`: avoid, watch, or reliable). A shipment with a recorded delay over zero days is late (`Shipment.is_late`), with late counts per supplier and in total, and a further rule flags `HIGH`-priority demand as escalated. These classifications feed the optimizer as hard constraints and cost surcharges.
 
 **Stage 3 -- Prescriptive, risk-adjusted network flow.** Two continuous decision variables drive the solve: `x_flow` per operation (bounded by capacity) and `x_unmet` slack per order. A demand-satisfaction constraint requires inbound flow at each customer's site for the demanded SKU, plus slack, to cover the order. Each order is checked against the whole inbound flow for its site and SKU, so several orders for the same site and SKU can count the same units, and an order with no inbound operation for its site and SKU gets no constraint; "All demand satisfied" means every constrained order is covered by that inbound flow, not that the orders are fulfilled separately. Operations from "avoid" suppliers are pinned to zero flow. The objective minimizes four components: base transport cost, a surcharge on flow through "watch" suppliers, a centrality penalty that discourages over-reliance on bottleneck sites, and a high penalty on unmet demand.
 
-**Solve and run scenarios.** The baseline solves with HiGHS. Two disruption scenarios are their own problems with modified constraints -- taking the most critical site offline, and downgrading all "watch" suppliers to "avoid" -- so one infeasible scenario never affects the others, and the cost increase across scenarios quantifies the network's resilience to each type of disruption. The report assembles the scenario comparison from each problem's published status and objective.
+**Solve and run scenarios.** The baseline solves with HiGHS. Two disruption scenarios are their own problems with modified constraints -- taking the most critical site offline, and downgrading all "watch" suppliers to "avoid" -- so one infeasible scenario never affects the others, and the cost increase across scenarios quantifies the network's resilience to each type of disruption. Each problem also publishes its count of active flows and unmet orders and units, and `CostChangePct` publishes each scenario's cost change against the baseline, so the report assembles the scenario comparison from published values.
 
-For the implementation, see `model/reasoning.py`; to reproduce it step by step with the RAI skills, follow `runbook.md`.
+For the implementation, see `model/blast_radius.py`, `model/network_criticality.py`, `model/supplier_risk.py`, and `model/risk_adjusted_flows.py`; to reproduce it step by step with the RAI skills, follow `runbook.md`.
 
 ## Customize this template
 
@@ -314,7 +317,7 @@ Focus on the first changes most users will make.
 
 ### Extend the model
 
-- Add new scenarios by calling `build_flow()` in `model/reasoning.py` with a new problem name and different `exclude_critical_site` or `block_watch_level` arguments, then report the new problem in `queries/resilience_report.py`.
+- Add new scenarios by calling `build_flow()` in `model/risk_adjusted_flows.py` with a new problem name and different `exclude_critical_site` or `block_watch_level` arguments, then report the new problem in `queries/resilience_report.py`.
 - Add rows to the CSV files -- more sites, operations, or demand orders scale the network flow problem.
 - Swap eigenvector centrality for another graph algorithm (e.g. betweenness) to surface a different notion of structural criticality without changing the optimizer.
 

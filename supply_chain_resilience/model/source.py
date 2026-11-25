@@ -82,17 +82,22 @@ model.define(
 )
 
 # Shipment data: only the columns the graph and the late-shipment statistics need.
-# Shipments still in transit have no delay yet, so they count as 0 days late.
 shipments_csv = read_csv(DATA_DIR / "shipment.csv")
-ship_cols = ["ID", "SUPPLIER_BUSINESS_ID", "CUSTOMER_BUSINESS_ID", "SKU_ID", "QUANTITY", "DELAY_DAYS"]
-ship_data = model.data(shipments_csv[ship_cols].fillna({"DELAY_DAYS": 0}))
+ship_cols = ["ID", "SUPPLIER_BUSINESS_ID", "CUSTOMER_BUSINESS_ID", "SKU_ID", "QUANTITY"]
+ship_data = model.data(shipments_csv[ship_cols])
 model.define(
     sh := Shipment.new(id=ship_data["ID"]),
     sh.supplier(Business.lookup(id=ship_data["SUPPLIER_BUSINESS_ID"])),
     sh.customer(Business.lookup(id=ship_data["CUSTOMER_BUSINESS_ID"])),
     sh.sku_id(ship_data["SKU_ID"]),
     sh.quantity(ship_data["QUANTITY"]),
-    sh.delay_days(ship_data["DELAY_DAYS"]),
+)
+
+# A shipment's delay is recorded once it has arrived; a shipment still in transit has none.
+delay_data = model.data(shipments_csv.dropna(subset=["DELAY_DAYS"])[["ID", "DELAY_DAYS"]])
+model.define(
+    sh_delay := Shipment.new(id=delay_data["ID"]),
+    sh_delay.delay_days(delay_data["DELAY_DAYS"]),
 )
 
 pred_data = model.data(read_csv(DATA_DIR / "delay_prediction.csv"))

@@ -145,7 +145,7 @@ Baseline OPTIMAL $1,865 / 8 flows / 0 unmet; S004 offline +88.5%; watch->avoid +
 
 **Response**
 
-Each solve is its own problem in `model/reasoning.py` and publishes its own status and objective, so one infeasible scenario never affects the others; the report assembles the table. Baseline OPTIMAL 1,865.00, 0 unmet; S004-offline OPTIMAL 3,515.00 (+88.5%), 0 unmet; Watch-Avoid OPTIMAL 1,865.00 (0.0%), 0 unmet.
+Each solve is its own problem in `model/risk_adjusted_flows.py` and publishes its own status and objective, so one infeasible scenario never affects the others; the report assembles the table. Baseline OPTIMAL 1,865.00, 0 unmet; S004-offline OPTIMAL 3,515.00 (+88.5%), 0 unmet; Watch-Avoid OPTIMAL 1,865.00 (0.0%), 0 unmet.
 
 ## Data
 
