@@ -35,7 +35,7 @@ Run:
 """
 
 from . import load_forecast
-from .corridor_fragility import MAX_CORRIDOR_HOPS, CorridorStep, CorridorSummary
+from .corridor_fragility import MAX_CORRIDOR_HOPS, CorridorSummary
 from .grid_topology import CRITICAL_THRESHOLD, GridRegion, GridTopology
 from .interconnection_compliance import ComplianceSummary
 from .investment_frontier import InvestmentRange
@@ -56,7 +56,6 @@ __all__ = [
     "DATA_DIR",
     "MAX_CORRIDOR_HOPS",
     "ComplianceSummary",
-    "CorridorStep",
     "CorridorSummary",
     "DataCenterRequest",
     "DemandForecast",

@@ -69,14 +69,6 @@ corridor = (
     .paths()
 )
 
-# Each corridor's substations in hop order, which the deployed model publishes for the queries.
-CorridorStep = model.Relationship(
-    f"corridor {Hash:corridor} has {Substation:substation} at hop {Integer:hop}"
-)
-model.where(corridor).define(
-    CorridorStep(corridor, Substation(corridor.nodes), corridor.nodes["index"])
-)
-
 # Simple corridors: no substation appears twice. The grid is cyclic, so .all().paths() also yields walks
 # that revisit a node; the negated existential drops them in the same where() as the sums below, so on
 # every corridor that remains the position sum equals the distinct-substation sum.
