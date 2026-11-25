@@ -1,8 +1,11 @@
-"""The GNN graph, the regression GNN, and the per-Sale predictions it declares."""
+"""Demand forecast: the GNN graph, the regression GNN, and the per-Sale predictions it declares."""
 
 from relationalai.semantics.reasoners.graph import Graph
 from relationalai.semantics.reasoners.predictive import GNN, PropertyTransformer
 
+# Declare the loaded Sale, Store, and Item properties, and derive the Train, Val, and Test
+# relationships the GNN trains and predicts over.
+from . import source, temporal_split  # noqa: F401
 from .schema import Item, ItemFamily, Sale, Store, Test, Train, Val, model
 
 SEED = 42

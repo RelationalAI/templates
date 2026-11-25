@@ -20,13 +20,8 @@ ItemFamily = Concept("ItemFamily", identify_by={"family": String})
 # onpromotion flag. The GNN target is Sale.unit_sales.
 Sale = Concept("Sale", identify_by={"sale_id": Integer})
 
-# Task tables: one row per Sale in each temporal split.
-TrainTable = Concept("TrainTable")
-ValTable = Concept("ValTable")
-TestTable = Concept("TestTable")
-
-# Regression task relationships. Each carries the timestamp (Sale.date)
-# since the GNN is trained with has_time_column=True.
+# Regression task relationships: the Sales in each temporal split. Each carries
+# the timestamp (Sale.date) since the GNN is trained with has_time_column=True.
 Train = Relationship(f"{Sale} at {DateTime:timestamp} has {Integer:value}")
 Val = Relationship(f"{Sale} at {DateTime:timestamp} has {Integer:value}")
 Test = Relationship(f"{Sale} at {DateTime:timestamp}")

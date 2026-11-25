@@ -35,12 +35,12 @@ Assumes familiarity with Python, basic ML concepts (regression, RMSE), and time-
 
 ## What's included
 
-- **Model**: `model/` — the deployed model: concepts and splits (`schema.py`, `source.py`), the graph, the GNN and its predictions (`reasoning.py`)
+- **Model**: `model/` — the deployed model: concepts and the CSV loaders (`schema.py`, `source.py`), the temporal split (`temporal_split.py`), the graph, the GNN and its predictions (`demand_forecast.py`), the weekly rollup and RMSEs (`forecast_accuracy.py`), and the data summary (`sales_summary.py`)
 - **Training**: `train.py` — trains the GNN over the deployed splits and registers its version
 - **Query**: `queries/forecast_report.py` — prints the weekly forecast and test-set RMSE from the deployed model
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the code itself.
 - **Synthetic data generator**: `data/generate_favorita_mini.py` — reproducible Favorita-shaped data generator (run once if you need to regenerate; output is committed under `data/favorita_mini/`)
-- **Model**: `Store`, `Item`, `ItemFamily`, `Sale`, plus three task-table concepts (`TrainTable`, `ValTable`, `TestTable`) carrying the unit-sales targets
+- **Model**: `Store`, `Item`, `ItemFamily`, `Sale`, plus the `Train`, `Val`, and `Test` relationships carrying the sales of each temporal split
 - **Sample data**: bundled synthetic Favorita-shaped dataset (3 stores × 25 items × 365 days); see [Sample data](#sample-data)
 - **Outputs**: store/item counts, temporal split summary, GNN training/prediction metrics, weekly per-(city, family) forecast table, per-Sale and per-week RMSE
 
@@ -126,7 +126,7 @@ Use this sequence to deploy the model, train the GNN, and query its forecast:
      predictive:
        name: demand_forecasting_gnn     # created on first use if it doesn't exist
        gnns:
-         demand_forecast:               # the GNN's name in model/reasoning.py
+         demand_forecast:               # the GNN's name in model/demand_forecast.py
            registry: <DB>.DEMAND_FORECASTING
            model: DEMAND_FORECAST
            version: V1                  # train.py registers this version
@@ -219,8 +219,11 @@ Use this sequence to deploy the model, train the GNN, and query its forecast:
 ├── model/
 │   ├── __init__.py                 # exports for train.py and the query
 │   ├── schema.py                   # concepts and the Train/Val/Test task relationships
-│   ├── source.py                   # bundled CSVs and the temporal split
-│   └── reasoning.py                # graph, feature types, the GNN and its predictions
+│   ├── source.py                   # bundled CSVs
+│   ├── temporal_split.py           # test and validation cutoffs, the Train/Val/Test split
+│   ├── demand_forecast.py          # graph, feature types, the GNN and its predictions
+│   ├── forecast_accuracy.py        # per-sale and weekly forecasts against actuals, RMSEs
+│   └── sales_summary.py            # record counts and the range of unit sales
 ├── train.py                        # trains the GNN and registers its version
 ├── queries/
 │   └── forecast_report.py          # weekly forecast and test-set RMSE
@@ -255,7 +258,7 @@ Customers adapting this template would replace these CSVs with a real Favorita s
 
 The model is a small retail ontology whose only purpose is to give the graph neural network (GNN) a heterogeneous neighborhood: sales linked to their store and item, and items rolled up to a family.
 
-- **Key entities**: `Store`, `Item`, `ItemFamily`, `Sale`, plus three task-table concepts (`TrainTable`, `ValTable`, `TestTable`) that carry the split targets into the trainer.
+- **Key entities**: `Store`, `Item`, `ItemFamily`, `Sale`, plus the `Train`, `Val`, and `Test` relationships that carry the split targets into the trainer.
 - **Primary identifiers**: `Store.store_id`, `Item.item_id`, `Sale.sale_id` (all integers); `ItemFamily.family` (the family string).
 - **Important invariants**: `unit_sales` is a non-negative integer and is the regression target (dropped from features to prevent leakage); every `Sale` links to exactly one `Store` and one `Item`; every `Item` links to exactly one `ItemFamily`; `ItemFamily` is derived from the distinct `Item.family` values rather than loaded.
 
@@ -264,7 +267,7 @@ For the full concept and property definitions — including the GNN edges (`Sale
 ```text
 Stores + Items + Sales (bundled CSVs)
   -> Build heterogeneous graph: Sale -> Store, Sale -> Item, Item -> ItemFamily
-  -> Temporal train/val/test split in pandas (last 60 days = test, previous 60 = val)
+  -> Temporal train/val/test split as rules over Sale.date (last 60 days = test, previous 60 = val)
   -> Predictive: GNN regression on Sale.unit_sales
   -> Reporting: aggregate per-Sale predictions to weekly per-(city, family) forecasts
 ```
@@ -277,13 +280,13 @@ The pipeline builds a heterogeneous graph, trains a regression GNN over it, and 
 
 **Declare features and target.** Primary and foreign keys are dropped because the graph carries identity, and `Sale.unit_sales` is dropped from the features because it is the regression target — keeping it would leak the answer. The remaining columns are declared explicitly as categorical, continuous, integer, or datetime features.
 
-**Split temporally.** Forecasting requires training on the past and evaluating on the future; a random split would leak future signal into training. The split is done in pandas before the task tables are built — the last 60 days become the test window and the 60 before that the validation window.
+**Split temporally.** Forecasting requires training on the past and evaluating on the future; a random split would leak future signal into training. Rules over `Sale.date` derive the split from the latest sale date — the last 60 days become the test window and the 60 before that the validation window.
 
 **Train and predict.** The GNN runs a regression task with `has_time_column=True`: each Train, Val and Test row carries its sale date, and `Sale.date` is the property transformer's time column. Predictions are attached back to each Sale.
 
-**Aggregate to a weekly forecast.** Two queries pull the per-Sale predictions and their store city and item family; pandas then rolls them up into weekly per-(city, family) buckets against the actuals, pooling stores that share a city.
+**Aggregate to a weekly forecast.** Rules pair each per-Sale prediction with its store city and item family and roll them up into weekly per-(city, family) buckets against the actuals, pooling stores that share a city. The same module computes the per-Sale and per-week RMSE.
 
-See `model/reasoning.py` for the graph and the GNN, `queries/forecast_report.py` for the rollup, and `runbook.md` to reproduce it step by step with the RAI skills.
+See `model/demand_forecast.py` for the graph and the GNN, `model/forecast_accuracy.py` for the rollup, `queries/forecast_report.py` for the printed report, and `runbook.md` to reproduce it step by step with the RAI skills.
 
 ## Customize this template
 
@@ -294,7 +297,7 @@ See `model/reasoning.py` for the graph and the GNN, `queries/forecast_report.py`
 
 ### Tune parameters
 
-- **Change the forecast windows** — change `TEST_DAYS` / `VAL_DAYS` in `model/source.py` to set the lengths of the test and validation windows. Default is a 60-day test window after a 60-day val window; the report still aggregates by week.
+- **Change the forecast windows** — change `TEST_DAYS` / `VAL_DAYS` in `model/temporal_split.py` to set the lengths of the test and validation windows. Default is a 60-day test window after a 60-day val window; the report still aggregates by week.
 
 ### Extend the model
 
@@ -310,7 +313,7 @@ The bundled `favorita_mini` is intentionally tiny so the template runs in minute
 
 1. Download the dataset from [Kaggle: Corporación Favorita Grocery Sales Forecasting](https://www.kaggle.com/c/favorita-grocery-sales-forecasting). License is "Subject to Competition Rules" — review before redistributing.
 2. Load `stores.csv`, `items.csv`, and `train.csv` (the sales table) into Snowflake, and map their columns to the ones the model reads: the Kaggle files name the keys `store_nbr`, `item_nbr`, and `id` (the model reads `store_id`, `item_id`, and `sale_id`), and the store and item types `type` and `class` (the model reads `store_type` and `item_class`). Raw `unit_sales` includes returns (negative values) and fractional quantities for items sold by weight, while the model's target is a non-negative integer, so decide how to filter or round them.
-3. Read the tables through `model.Table("<db>.<schema>.<table>")` sources in `model/source.py` instead of pandas frames: the deployed model writes each pandas frame into its definition as inline rows, which does not scale to the full corpus. The temporal split in `model/source.py` works on pandas frames, so restate it as rules over `Sale.date`.
+3. Read the tables through `model.Table("<db>.<schema>.<table>")` sources in `model/source.py` instead of pandas frames: the deployed model writes each pandas frame into its definition as inline rows, which does not scale to the full corpus. The temporal split in `model/temporal_split.py` is written over `Sale.date`, so it needs no change.
 4. Size the predictive reasoner for the data with `reasoners.predictive.size` in `raiconfig.yaml` (a GPU size for the full corpus): a deployed GNN runs on the device that size provides.
 5. Trim the date window in the tables you map if you don't need the full 5 years; `TEST_DAYS` / `VAL_DAYS` control the temporal split inside that window.
 6. Real Favorita has additional tables (`oil.csv`, `holidays_events.csv`, `transactions.csv`) you may want to fold in as features — see [Customize this template](#customize-this-template) above for the pattern.

@@ -1,26 +1,36 @@
 """Demand-forecasting model: Favorita-shaped sales data and a regression GNN.
 
+Modules: `temporal_split.py` (the validation and test cutoffs from the latest sale date, and the
+Train, Val, and Test relationships), `demand_forecast.py` (the graph, the GNN, and its
+predictions), `forecast_accuracy.py` (each predicted sale's forecast against its actual sales,
+the weekly rollup per store city and item family, and the RMSEs), and `sales_summary.py` (the
+record counts and the range of unit sales). Each module imports the modules whose declarations
+it reads.
+
 `rai models deploy --path model` deploys everything this package declares.
 """
 
-from .schema import Item, ItemFamily, Sale, Store, TestTable, TrainTable, ValTable, model
-from .source import DATA_DIR, TEST_START, VAL_START
-
-# isort: split
-# The reasoning declares the graph and the GNN over the facts loaded above.
-from .reasoning import gnn
+from .demand_forecast import gnn
+from .forecast_accuracy import SaleForecast, SaleRmse, WeeklyForecast, WeeklyRmse
+from .sales_summary import SalesCounts, UnitSales
+from .schema import Item, ItemFamily, Sale, Store, model
+from .source import DATA_DIR
+from .temporal_split import TestStart, ValStart
 
 __all__ = [
     "DATA_DIR",
     "Item",
     "ItemFamily",
     "Sale",
+    "SaleForecast",
+    "SaleRmse",
+    "SalesCounts",
     "Store",
-    "TEST_START",
-    "TestTable",
-    "TrainTable",
-    "VAL_START",
-    "ValTable",
+    "TestStart",
+    "UnitSales",
+    "ValStart",
+    "WeeklyForecast",
+    "WeeklyRmse",
     "gnn",
     "model",
 ]
