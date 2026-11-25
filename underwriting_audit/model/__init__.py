@@ -67,7 +67,7 @@ Run:
     `python -m queries.audit_report` then prints the report from the deployed model.
 """
 
-from .audit_verdicts import HitWitnessLimit, NumProperties, PropertyVerdict, VerdictTally
+from .audit_verdicts import PropertyVerdict, VerdictTally
 from .property_audits import MAX_WITNESSES, PROPERTIES, NumPoints, SolveStatus, Witness
 from .schema import AgeBucket, CoverageBand, model
 from .source import DATA_DIR
@@ -78,9 +78,7 @@ __all__ = [
     "PROPERTIES",
     "AgeBucket",
     "CoverageBand",
-    "HitWitnessLimit",
     "NumPoints",
-    "NumProperties",
     "PropertyVerdict",
     "SolveStatus",
     "VerdictTally",

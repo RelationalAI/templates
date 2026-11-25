@@ -11,9 +11,7 @@ from model import (
     PROPERTIES,
     AgeBucket,
     CoverageBand,
-    HitWitnessLimit,
     NumPoints,
-    NumProperties,
     PropertyVerdict,
     SolveStatus,
     VerdictTally,
@@ -64,9 +62,7 @@ def report_audit(name, description):
     )
     count_text = "no count" if n_witnesses is None else str(n_witnesses)
     print(f"Verdict: {verdict}  ({count_text} witness(es), status={status})")
-    limit_ref = String.ref()
-    hit_limit = model.select(limit_ref).where(HitWitnessLimit(limit_ref), limit_ref == name).to_df()
-    if not hit_limit.empty:
+    if verdict == "FAIL" and status == "SOLUTION_LIMIT":
         print(
             f"Note: hit MAX_WITNESSES={MAX_WITNESSES}; raise it to enumerate more counterexamples."
         )
@@ -122,10 +118,9 @@ if __name__ == "__main__":
         .to_df()
         .set_index("verdict")["n"]
     )
-    n_properties = int(model.select(NumProperties).to_df().iloc[0, 0])
     print("\n" + "=" * 80)
     print(
-        f"Audit report ({n_properties} properties: "
+        f"Audit report ({len(results)} properties: "
         f"{tally['PASS']} PASS, {tally['FAIL']} FAIL, {tally['INCONCLUSIVE']} INCONCLUSIVE)"
     )
     print("=" * 80)

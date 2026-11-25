@@ -1,5 +1,5 @@
-"""Audit verdicts: each property's PASS, FAIL, or INCONCLUSIVE verdict, whether its search stopped at
-the witness limit, and how many properties received each verdict."""
+"""Audit verdicts: each property's PASS, FAIL, or INCONCLUSIVE verdict, and how many properties
+received each verdict."""
 
 from relationalai.semantics import Integer, String
 from relationalai.semantics.std import aggregates as aggs
@@ -24,7 +24,6 @@ from .schema import model
 #   witnesses, or OPTIMAL with no published count). The audit did not finish or its count is
 #   missing, and no witness was found, so neither pass nor fail can be concluded.
 PropertyVerdict = model.Relationship(f"property {String:property_name} has verdict {String:verdict}")
-HitWitnessLimit = model.Relationship(f"property {String:property_name} stopped at the witness limit")
 
 _n_witnesses = Integer.ref()
 for name in SolveStatus:
@@ -38,14 +37,11 @@ for name in SolveStatus:
         model.not_(*found), model.not_(infeasible), model.not_(*exhausted)
     ).define(PropertyVerdict(name, "INCONCLUSIVE"))
 
-    # A FAIL whose search stopped at the witness limit: more counterexamples may exist.
-    model.where(*found, SolveStatus[name]("SOLUTION_LIMIT")).define(HitWitnessLimit(name))
-
 # --------------------------------------------------
 # Verdict tallies
 # --------------------------------------------------
 
-# The number of properties with each verdict, zero when none has it, and the number of properties.
+# The number of properties with each verdict, zero when none has it.
 VerdictTally = model.Concept("VerdictTally", identify_by={"verdict": String})
 VerdictTally.n_properties = model.Property(f"{VerdictTally} has {Integer:n_properties} properties")
 model.define(
@@ -53,7 +49,7 @@ model.define(
     VerdictTally.new(verdict="FAIL"),
     VerdictTally.new(verdict="INCONCLUSIVE"),
 )
-_property_name, _verdict = String.ref(), String.ref()
+_property_name = String.ref()
 model.define(
     VerdictTally.n_properties(
         aggs.count(_property_name)
@@ -62,6 +58,3 @@ model.define(
         | 0
     )
 )
-
-NumProperties = model.Relationship(f"the audit covers {Integer:n_properties} properties")
-model.define(NumProperties(aggs.count(_property_name).where(PropertyVerdict(_property_name, _verdict))))
