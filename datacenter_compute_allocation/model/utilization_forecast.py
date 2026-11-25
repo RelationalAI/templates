@@ -1,5 +1,5 @@
 """Utilization forecast: the per-workload utilization-probability GNN, each workload's forecast
-probability and its rank, and the split of workloads at the high-utilization cutoff."""
+probability, and the split of workloads at the high-utilization cutoff."""
 
 from relationalai.semantics import Float, Integer, String
 from relationalai.semantics.reasoners.graph import Graph
@@ -122,19 +122,6 @@ model.define(WorkloadForecast.utilization_probability(Workload.predictions.probs
     Workload.predictions,
     Workload.id == WorkloadForecast.workload_id,
 )
-
-# Each forecast's place from either end, ties broken by the lower workload id: high_rank 1 is
-# the workload most likely to run at high utilization, low_rank 1 the one most likely to stall.
-# The probability is negated so both keys sort ascending: the Logic engine's rank does not mix
-# ascending and descending keys.
-WorkloadForecast.high_rank = model.Property(f"{WorkloadForecast} has {Integer:high_rank}")
-WorkloadForecast.low_rank = model.Property(f"{WorkloadForecast} has {Integer:low_rank}")
-model.define(WorkloadForecast.high_rank(
-    aggs.rank(-WorkloadForecast.utilization_probability, WorkloadForecast.workload_id)
-))
-model.define(WorkloadForecast.low_rank(
-    aggs.rank(WorkloadForecast.utilization_probability, WorkloadForecast.workload_id)
-))
 
 # How many workloads have a forecast, how many of them are at or above the
 # high-utilization cutoff, and how many are below it.

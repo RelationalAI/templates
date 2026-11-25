@@ -1,9 +1,7 @@
-"""Gating scores: reverse PageRank on the workload-dependency DAG, and each workload's place in the
-gating ranking."""
+"""Gating scores: each workload's gating score, from reverse PageRank on the workload-dependency DAG."""
 
-from relationalai.semantics import Float, Integer, String
+from relationalai.semantics import Float
 from relationalai.semantics.reasoners.graph import Graph
-from relationalai.semantics.std import aggregates as aggs
 
 # The GNN takes as features the Workload properties declared before its predictions, so it is
 # declared first: the gating score is a graph result, not a feature.
@@ -35,17 +33,3 @@ Workload.gating_score = model.Property(
 score_ref = Float.ref("g")
 wl_ref = Workload.ref()
 model.define(wl_ref.gating_score(score_ref)).where(pagerank(wl_ref, score_ref))
-
-# The gating ranking, highest gating score first, ties broken by the lower workload id. It
-# lives on a concept of its own, which keeps it out of the GNN's Workload features. The score
-# is negated so both keys sort ascending.
-GatingRank = model.Concept("GatingRank", identify_by={"workload_id": String})
-GatingRank.gating_score = model.Property(f"{GatingRank} has {Float:gating_score} gating score")
-GatingRank.gating_rank = model.Property(f"{GatingRank} has {Integer:gating_rank}")
-model.define(GatingRank.new(workload_id=Workload.id)).where(Workload.gating_score)
-model.define(GatingRank.gating_score(Workload.gating_score)).where(
-    Workload.id == GatingRank.workload_id
-)
-model.define(GatingRank.gating_rank(
-    aggs.rank(-GatingRank.gating_score, GatingRank.workload_id)
-))

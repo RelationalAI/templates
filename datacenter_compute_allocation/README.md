@@ -293,9 +293,9 @@ datacenter_compute_allocation/
     __init__.py                     # exports for train.py and the query
     schema.py                       # concepts, GNN task relationships
     source.py                       # bundled CSVs, demand scenarios, base facts
-    utilization_forecast.py         # Stage 1: GNN, utilization forecasts and their ranks
+    utilization_forecast.py         # Stage 1: GNN, utilization forecasts and their split
     workload_eligibility.py         # Stage 2: priority tiers, hardware compatibility
-    gating_scores.py                # Stage 3: dependency PageRank, gating ranking
+    gating_scores.py                # Stage 3: dependency PageRank (gating score)
     compute_allocation.py           # Stage 4: allocation MIP and its solve status
     allocation_outcomes.py          # cell outcomes, plan, chosen assignments, demand overlay
   train.py                          # trains the GNN and registers its version

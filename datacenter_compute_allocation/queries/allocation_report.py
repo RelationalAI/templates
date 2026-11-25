@@ -32,7 +32,6 @@ from model import (
     DemandScenario,
     DemandScenarioOutlook,
     DiversityCap,
-    GatingRank,
     GpuPool,
     MarginFloor,
     PowerEnvelopeLevel,
@@ -83,20 +82,6 @@ def stage_0_ontology() -> None:
           f"scenario cells")
 
 
-def forecast_extremes(rank_property):
-    """The TOP_FORECASTS workloads with the lowest `rank_property` of the forecast, rank first."""
-    return (
-        select(
-            Workload.name.alias("name"),
-            WorkloadForecast.utilization_probability.alias("p"),
-            rank_property.alias("rank"),
-        )
-        .where(WorkloadForecast.workload_id == Workload.id, rank_property <= TOP_FORECASTS)
-        .to_df()
-        .sort_values("rank")
-    )
-
-
 def stage_1_predictive() -> bool:
     banner("STAGE 1: PREDICT -- per-workload utilization-probability GNN")
     total_ref, high_ref, low_ref = Integer.ref(), Integer.ref(), Integer.ref()
@@ -111,11 +96,18 @@ def stage_1_predictive() -> bool:
     n_total, n_high, n_low = (int(split[c].iloc[0]) for c in ("n_total", "n_high", "n_low"))
     print(f"  Workload utilization-probability distribution: "
           f"n_total={n_total}, n>={HIGH_UTILIZATION}: {n_high}, n<{HIGH_UTILIZATION}: {n_low}")
+    probs_df = select(
+        Workload.id.alias("id"),
+        Workload.name.alias("name"),
+        WorkloadForecast.utilization_probability.alias("p"),
+    ).where(WorkloadForecast.workload_id == Workload.id).to_df()
+    probs_df["p"] = pd.to_numeric(probs_df["p"], errors="coerce")
     print(f"  Top {TOP_FORECASTS} (most likely to be high-utilization):")
-    for _, r in forecast_extremes(WorkloadForecast.high_rank).iterrows():
+    # Ties on the probability list the lower workload id first.
+    for _, r in probs_df.sort_values(["p", "id"], ascending=[False, True]).head(TOP_FORECASTS).iterrows():
         print(f"    + {r['name']:<45} p={float(r['p']):.3f}")
     print(f"  Bottom {TOP_FORECASTS} (most likely to stall / be repaced):")
-    for _, r in forecast_extremes(WorkloadForecast.low_rank).iterrows():
+    for _, r in probs_df.sort_values(["p", "id"]).head(TOP_FORECASTS).iterrows():
         print(f"    - {r['name']:<45} p={float(r['p']):.3f}")
     return True
 
@@ -137,15 +129,16 @@ def stage_2_rules() -> None:
 
 def stage_3_graph() -> None:
     banner("STAGE 3: GRAPH -- workload-dependency PageRank (gating score)")
+    g_df = select(
+        Workload.id.alias("id"),
+        Workload.name.alias("name"),
+        Workload.gating_score.alias("gating_score"),
+    ).to_df()
+    # Ties on the gating score list the lower workload id first.
     top = (
-        select(
-            Workload.name.alias("name"),
-            GatingRank.gating_score.alias("gating_score"),
-            GatingRank.gating_rank.alias("rank"),
-        )
-        .where(GatingRank.workload_id == Workload.id, GatingRank.gating_rank <= TOP_GATING)
-        .to_df()
-        .sort_values("rank")
+        g_df.dropna(subset=["gating_score"])
+        .sort_values(["gating_score", "id"], ascending=[False, True])
+        .head(TOP_GATING)
     )
     print(f"  Top-{TOP_GATING} gating workloads (frontier pretrains expected to dominate):")
     for _, r in top.iterrows():
@@ -177,10 +170,13 @@ def cell_table() -> pd.DataFrame:
             relationship(kind, count_ref)
         ).to_df()
         wide = part.pivot_table(index=CELL_KEYS, columns="kind", values="n", aggfunc="sum").reset_index()
+        for k in kinds:
+            if k not in wide:
+                wide[k] = 0
         wide = wide[CELL_KEYS + list(kinds)].rename(columns={k: f"n_{k}" for k in kinds})
         cells_df = cells_df.merge(wide, on=CELL_KEYS, how="left")
         for k in kinds:
-            cells_df[f"n_{k}"] = cells_df[f"n_{k}"].astype(int)
+            cells_df[f"n_{k}"] = cells_df[f"n_{k}"].fillna(0).astype(int)
     return cells_df.sort_values(CELL_KEYS)
 
 

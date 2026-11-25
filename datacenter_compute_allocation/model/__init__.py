@@ -59,7 +59,6 @@ from .compute_allocation import (
     SolveTime,
     problem,
 )
-from .gating_scores import GatingRank
 from .schema import (
     AILab,
     DataCenterRequest,
@@ -93,7 +92,6 @@ __all__ = [
     "DemandScenario",
     "DemandScenarioOutlook",
     "DiversityCap",
-    "GatingRank",
     "GpuPool",
     "MarginFloor",
     "PowerEnvelopeLevel",

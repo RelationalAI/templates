@@ -5,9 +5,8 @@ from relationalai.semantics import Float, Integer, String, not_, sum
 from relationalai.semantics.std import aggregates as aggs
 from relationalai.semantics.std import math, strings
 
-from .compute_allocation import WORKLOAD_TYPES, Assignment, SolveStatus
+from .compute_allocation import Assignment, SolveStatus
 from .schema import DemandScenario, DiversityCap, MarginFloor, PowerEnvelopeLevel, model
-from .workload_eligibility import PRIORITY_TIERS
 
 # --------------------------------------------------
 # Configure inputs
@@ -26,8 +25,8 @@ PLAN_ID = "DCCA_BASELINE"
 # Stage 4 (cont.): Per-cell outcomes + headline-plan persistence
 #   One ScenarioCell per (env, mar, div). Its aggregates are computed from the
 #   solved Assignment.x_assign values (mirrors energy_grid_planning's
-#   InvestmentPortfolio). An infeasible cell has no assignments, so its
-#   aggregates have no value. The chosen baseline cell is persisted as an
+#   InvestmentPortfolio). A cell with no assignments has a zero n_assigned,
+#   revenue and cost. The chosen baseline cell is persisted as an
 #   AllocationPlan singleton + Assignment.is_chosen flag + DemandScenario
 #   overlay so the plan is queryable as ontology.
 # --------------------------------------------------
@@ -104,26 +103,28 @@ model.where(ScenarioCell.revenue_usd > 0).define(
     ScenarioCell.anchor_share(ScenarioCell.anchor_revenue_usd / ScenarioCell.revenue_usd),
 )
 
-# Per-(cell, workload_type) and per-(cell, priority_tier) counts, zero for a kind with no
-# assignment in the cell.
-for workload_type in WORKLOAD_TYPES:
-    model.define(ScenarioCell.n_by_type(
-        workload_type,
-        aggs.count(Assignment)
-        .where(*_assigned_in_cell(), Assignment.workload.workload_type == workload_type)
-        .per(ScenarioCell) | 0,
-    ))
-for priority_tier in PRIORITY_TIERS:
-    model.define(ScenarioCell.n_by_tier(
-        priority_tier,
-        aggs.count(Assignment)
-        .where(*_assigned_in_cell(), Assignment.workload.priority_tier == priority_tier)
-        .per(ScenarioCell) | 0,
-    ))
+# Per-(cell, workload_type) and per-(cell, priority_tier) counts; a kind with no assignment
+# in the cell has no row.
+wtype = String.ref()
+model.define(ScenarioCell.n_by_type(
+    wtype,
+    aggs.count(Assignment)
+    .where(*_assigned_in_cell(), Assignment.workload.workload_type == wtype)
+    .per(ScenarioCell, wtype),
+))
+tier = String.ref()
+model.define(ScenarioCell.n_by_tier(
+    tier,
+    aggs.count(Assignment)
+    .where(*_assigned_in_cell(), Assignment.workload.priority_tier == tier)
+    .per(ScenarioCell, tier),
+))
 
-# Per-cell status: when the global solve proved optimality, cells with
-# assignments are OPTIMAL and cells with none are INFEASIBLE. When the
-# wall-clock ran out first, they are FEASIBLE and UNSOLVED.
+# Per-cell status, set by the cell's assignment count: when the global solve
+# proved optimality, cells with assignments are OPTIMAL and cells with none
+# are INFEASIBLE, a label for an empty optimum rather than a proof (an empty
+# allocation satisfies every cell's constraints). When the wall-clock ran out
+# first, they are FEASIBLE and UNSOLVED.
 solve_status = String.ref()
 model.where(
     SolveStatus(solve_status), solve_status == "OPTIMAL", ScenarioCell.n_assigned > 0
