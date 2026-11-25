@@ -165,7 +165,7 @@ Run these steps from a terminal:
 │   ├── schema.py                # SKU and BillOfMaterials concepts
 │   ├── source.py                # loads the sample CSVs
 │   ├── dependency_graph.py      # graph, reachability, dependency counts, betweenness, bottleneck rank
-│   └── assembly_chains.py       # assembly paths, maximal chains, chain counts, assembly depth
+│   └── assembly_chains.py       # assembly paths, maximal chains, assembly depth
 ├── queries/
 │   └── dependency_report.py     # report printed from the deployed model
 └── data/

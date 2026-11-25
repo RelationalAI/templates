@@ -33,8 +33,6 @@ from .assembly_chains import (
     AssemblyStep,
     ChainLength,
     MaximalChain,
-    num_chains,
-    num_maximal_chains,
 )
 from .dependency_graph import betweenness, graph, num_edges, num_nodes, reachable
 from .schema import SKU, BillOfMaterials, model
@@ -51,9 +49,7 @@ __all__ = [
     "betweenness",
     "graph",
     "model",
-    "num_chains",
     "num_edges",
-    "num_maximal_chains",
     "num_nodes",
     "reachable",
 ]

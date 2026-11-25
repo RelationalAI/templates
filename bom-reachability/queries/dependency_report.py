@@ -11,9 +11,7 @@ from model import (
     ChainLength,
     MaximalChain,
     model,
-    num_chains,
     num_edges,
-    num_maximal_chains,
     num_nodes,
 )
 from relationalai.semantics import Hash, Integer, String, where
@@ -146,9 +144,7 @@ if __name__ == "__main__":
         names = grp.sort_values("step")["sku_name"].tolist()
         paths.append({"names": names, "length": int(grp["hops"].iloc[0]), "maximal": path_id in maximal_ids})
 
-    n_chains = model.select(num_chains).to_df().iloc[0, 0]
-    n_maximal = model.select(num_maximal_chains).to_df().iloc[0, 0]
-    print(f"\n  Enumerated {n_chains} assembly path(s) (<= {MAX_ASSEMBLY_HOPS} hops).")
+    print(f"\n  Enumerated {len(paths)} assembly path(s) (<= {MAX_ASSEMBLY_HOPS} hops).")
 
     # (a) All assembly paths, longest first.
     print("\n  All assembly chains (feeds-into order):")
@@ -159,7 +155,7 @@ if __name__ == "__main__":
     # leaves just the end-to-end assembly routes.
     maximal = [path for path in paths if path["maximal"]]
 
-    print(f"\n  Maximal assembly chains ({n_maximal} of {n_chains}, sub-paths suppressed):")
+    print(f"\n  Maximal assembly chains ({len(maximal)} of {len(paths)}, sub-paths suppressed):")
     for path in sorted(maximal, key=lambda x: -x["length"]):
         print(f"    [{path['length']} hop] " + " -> ".join(path["names"]))
 

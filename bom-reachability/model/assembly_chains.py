@@ -74,11 +74,6 @@ model.where(MaximalChain(p), p.nodes(p.length) == end, not_(end.exceeds_hop_boun
     end.assembly_depth(aggs.max(p.length).per(end))
 )
 
-# Each chain's length in hops, and how many chains are enumerated and how many are maximal.
+# Each chain's length in hops.
 ChainLength = model.Relationship(f"assembly chain {Hash:path} has {Integer:hops} hops")
 model.where(p).define(ChainLength(p, p.length))
-num_chains = model.Relationship(f"{Integer:num_chains} assembly chains are enumerated")
-num_maximal_chains = model.Relationship(f"{Integer:num_maximal_chains} assembly chains are maximal")
-chain, hops = Hash.ref(), Integer.ref()
-model.define(num_chains(aggs.count(chain).where(ChainLength(chain, hops)) | 0))
-model.define(num_maximal_chains(aggs.count(chain).where(MaximalChain(chain)) | 0))
