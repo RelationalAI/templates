@@ -29,7 +29,7 @@ Prescriptive reasoning makes this practical because the solver simultaneously ba
 - **Operations researchers** looking for a multi-period flow-conservation pattern in RelationalAI
 
 - A cost-minimizing weekly production plan per (site, SKU, week), produced by **prescriptive** decision variables and a HiGHS solve.
-- A date-filtered planning horizon: each horizon's problem uses only the demand orders inside its window; `model/source.py` maps due dates to integer week numbers, and `std.common.range()` builds each horizon's weeks.
+- A date-filtered planning horizon: each horizon's problem uses only the demand orders inside its window; `model/horizon_scope.py` maps due dates to integer week numbers and selects each horizon's orders, and `std.common.range()` builds each horizon's weeks.
 - An inventory schedule that satisfies flow conservation (`inv[t] = inv[t-1] + production[t] - demand[t]`) enforced as prescriptive constraints.
 - A service-level guarantee (a 95% minimum-fulfillment constraint) plus an unmet-demand report showing whether any demand went unserved.
 - A three-scenario what-if sweep that shows how total cost changes as the planning horizon extends, with each horizon solved as its own problem in one deployed model.
@@ -38,7 +38,7 @@ Built using **prescriptive reasoning**: continuous decision variables for produc
 
 ## What's included
 
-- **Model**: concepts for sites, SKUs, demand orders, production capacity, and weekly demand, time-indexed production and inventory variables, and one cost-minimizing problem per planning horizon, in the `model/` package (`schema.py` declares the concepts, `source.py` loads the sample data and scopes the orders to each horizon, `reasoning.py` states the decision problems), which `rai models deploy --path model` deploys to your Snowflake account, where each refresh runs the solves.
+- **Model**: concepts for sites, SKUs, demand orders, production capacity, and weekly demand, time-indexed production and inventory variables, and one cost-minimizing problem per planning horizon, in the `model/` package (`schema.py` declares the concepts, `source.py` loads the sample data, `horizon_scope.py` maps due dates to weeks and scopes the orders to each horizon, `capacity_inputs.py` sets each site-SKU pair's starting inventory and holding cost, `weekly_demand.py` builds the weekly demand, `production_plans.py` states the decision problems), which `rai models deploy --path model` deploys to your Snowflake account, where each refresh runs the solves.
 - **Query**: `queries/demand_planning.py`, which prints the report from the deployed model.
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the code in `model/`.
 - **Data**: `data/sites.csv`, `data/skus.csv`, `data/demand_orders.csv`, `data/production_capacity.csv`, `data/initial_inventory.csv`
@@ -203,8 +203,11 @@ Use this sequence to deploy the model and query it:
 ├── model/
 │   ├── __init__.py               # exports of the deployed model
 │   ├── schema.py                 # concepts and properties
-│   ├── source.py                 # sample data, planning horizons, and order scoping
-│   └── reasoning.py              # decision variables, constraints, objective, one problem per horizon
+│   ├── source.py                 # sample data and planning horizons
+│   ├── horizon_scope.py          # order weeks, orders in each horizon, order counts
+│   ├── capacity_inputs.py        # starting inventory and holding cost per site-SKU pair
+│   ├── weekly_demand.py          # demand per site, SKU, and week in each horizon
+│   └── production_plans.py       # decision variables, constraints, objective, one problem per horizon
 ├── queries/
 │   └── demand_planning.py        # report from the deployed model
 └── data/
@@ -229,29 +232,29 @@ The bundled data is a small, illustrative multi-site production dataset covering
 
 ## Model overview
 
-The model is a multi-period production and inventory ontology. Sites and SKUs are reference entities; demand orders are the dated event table that temporal filtering scopes; production capacity carries the pre-joined data the solver's decision variables attach to.
+The model is a multi-period production and inventory ontology. Sites and SKUs are reference entities; demand orders are the dated event table that temporal filtering scopes; production capacity carries the data the solver's decision variables attach to, including each pair's starting inventory and holding cost.
 
-- **Key entities**: `Site`, `SKU`, `DemandOrder`, `ProdCapacity`, and `WeeklyDemand` (pre-aggregated demand per planning horizon, site, SKU, and week, including zero-demand weeks).
+- **Key entities**: `Site`, `SKU`, `DemandOrder`, `ProdCapacity`, and `InitialInventory` (starting inventory per site and SKU), and `WeeklyDemand` (demand per planning horizon, site, SKU, and week, including zero-demand weeks).
 - **Primary identifiers**: `Site.id` and `SKU.id` (integers); `DemandOrder.id` (integer); the composite key `ProdCapacity(site_id, sku_id)`; the composite key `WeeklyDemand(wk_planning_end, wk_site_id, wk_sku_id, wk_week_num)`.
 - **Important invariants**: quantities, costs, production, and inventory are non-negative; inventory obeys flow conservation (`inv[t] = inv[t-1] + production[t] - demand[t]`); week 0 inventory equals the initial inventory; unmet demand per order is bounded by the order quantity; total unmet demand is capped by the 95% service level. Unmet demand is not subtracted from the inventory withdrawal: inventory must cover all demand, and `x_unmet` counts only toward the service level and the penalty.
 
-For the full concept and property definitions, see `model/schema.py`; the time-indexed `x_production` / `x_inventory` decision variables on `ProdCapacity` are declared in `model/reasoning.py`, and the relationships linking orders and capacity to their `Site` and `SKU` in `model/source.py`; `runbook.md` builds them step by step with the RAI skills.
+For the full concept and property definitions, see `model/schema.py`; the time-indexed `x_production` / `x_inventory` decision variables on `ProdCapacity` are declared in `model/production_plans.py`, and the relationships linking orders and capacity to their `Site` and `SKU` in `model/source.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
-**Sweep planning horizons.** `model/source.py` lists three `planning_end` dates to analyze how the horizon length affects cost. For each, it selects the demand orders inside the window (so each problem sees only relevant demand) and builds the weekly demand over the horizon's weeks. `model/reasoning.py` defines one problem per horizon, so an infeasible horizon never affects the others.
+**Sweep planning horizons.** `model/source.py` lists three `planning_end` dates to analyze how the horizon length affects cost. For each, `model/horizon_scope.py` selects the demand orders inside the window (so each problem sees only relevant demand) and `model/weekly_demand.py` builds the weekly demand over the horizon's weeks. `model/production_plans.py` defines one problem per horizon, so an infeasible horizon never affects the others.
 
 **Map dates to integer weeks.** `std.common.range()` requires integer periods, so each order's due date is converted into a week number relative to the planning start, and the number of weeks is derived from the horizon length. The week count varies by scenario (14 weeks for January, 18 for February, 22 for March).
 
 **Index decision variables by time.** Production and inventory variables are indexed by both concept (site × SKU) and time period via a multi-arity property pattern, creating one continuous variable per (site, SKU, week) combination, bounded by the per-line weekly capacity.
 
-**Enforce flow conservation.** The core multi-period constraint ties adjacent weeks together: inventory at the end of week `t` equals inventory at the end of week `t-1` plus production in week `t` minus demand in week `t`. A `WeeklyDemand` concept pre-aggregates orders into weekly buckets — including zero-demand weeks — so the constraint covers every period.
+**Enforce flow conservation.** The core multi-period constraint ties adjacent weeks together: inventory at the end of week `t` equals inventory at the end of week `t-1` plus production in week `t` minus demand in week `t`. A `WeeklyDemand` concept sums orders into weekly buckets — including zero-demand weeks — so the constraint covers every period.
 
 **Minimize total cost.** The objective adds production cost, holding cost, and an unmet-demand penalty, each summed over its own concept, and the solver minimizes the total subject to the flow-conservation and service-level constraints.
 
 `model/source.py` also includes a commented-out Pattern B for data that carries Unix epoch-second timestamps instead of date strings: convert the horizon boundaries to epochs and filter identically.
 
-See `model/reasoning.py` for the implementation and `runbook.md` to reproduce it step by step with the RAI skills.
+See `model/production_plans.py` for the implementation and `runbook.md` to reproduce it step by step with the RAI skills.
 
 ## Customize this template
 
@@ -263,8 +266,8 @@ See `model/reasoning.py` for the implementation and `runbook.md` to reproduce it
 ### Tune parameters
 
 - **Change the planning horizon**: Edit `planning_start` and the `SCENARIO_VALUES` list in `model/source.py` to shift the optimization window. Each value becomes its own problem, and the week count and date filter update automatically per scenario.
-- **Adjust service level**: Change `min_service_level` in `model/reasoning.py` (default 0.95) to require higher or lower demand fulfillment.
-- **Adjust safety stock**: The `safety_stock_weeks` parameter in `model/reasoning.py` (default 1) requires inventory at the end of each week to be at least `safety_stock_weeks × average weekly demand` per site-SKU pair. Set to 0 to disable, or increase for more conservative buffering.
+- **Adjust service level**: Change `min_service_level` in `model/production_plans.py` (default 0.95) to require higher or lower demand fulfillment.
+- **Adjust safety stock**: The `safety_stock_weeks` parameter in `model/production_plans.py` (default 1) requires inventory at the end of each week to be at least `safety_stock_weeks × average weekly demand` per site-SKU pair. Set to 0 to disable, or increase for more conservative buffering.
 
 ### Extend the model
 
@@ -273,8 +276,8 @@ See `model/reasoning.py` for the implementation and `runbook.md` to reproduce it
 
 ### Scale up / productionize
 
-- The scenario sweep shares one model across horizons; for production, read your Snowflake tables into DataFrames (for example with Snowpark's `to_pandas()`) in place of the CSV loads in `model/source.py`, so its week-number and weekly-demand preparation still runs. That preparation happens at deploy time, so new order data needs a redeploy, not only a refresh.
-- Solve time is controlled by `time_limit_sec` on `problem.configure("highs", ...)` in `model/reasoning.py`; raise it if larger site/SKU/week grids need more time.
+- The scenario sweep shares one model across horizons; for production, read your Snowflake tables into DataFrames (for example with Snowpark's `to_pandas()`) in place of the CSV loads in `model/source.py`. The frames are read at deploy time, so new order data needs a redeploy, not only a refresh.
+- Solve time is controlled by `time_limit_sec` on `problem.configure("highs", ...)` in `model/production_plans.py`; raise it if larger site/SKU/week grids need more time.
 
 ## Troubleshooting
 

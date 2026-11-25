@@ -1,10 +1,13 @@
-"""Demand planning decision problems: a least-cost multi-week plan for each planning horizon."""
+"""Production plans: a least-cost multi-week production and inventory plan for each planning
+horizon."""
 
 from typing import Any, NamedTuple
 
 from relationalai.semantics import Float, Integer, String, std, sum
 from relationalai.semantics.reasoners.prescriptive import Problem
 
+# Declare the orders in each horizon, the weekly demand, and the capacity inputs the problems read.
+from . import capacity_inputs, horizon_scope, weekly_demand  # noqa: F401
 from .schema import DemandOrder, OrderInPlan, ProdCapacity, WeeklyDemand, model
 from .source import SCENARIO_VALUES, weeks_in_horizon
 

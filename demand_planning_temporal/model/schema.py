@@ -22,6 +22,8 @@ SKU.holding_cost_per_week = Property(f"{SKU} has {Float:holding_cost_per_week}")
 DemandOrder = Concept("DemandOrder", identify_by={"id": Integer})
 DemandOrder.quantity = Property(f"{DemandOrder} has {Integer:quantity}")
 DemandOrder.due_date = Property(f"{DemandOrder} has {String:due_date}")
+DemandOrder.site_id = Property(f"{DemandOrder} ships from site {Integer:site_id}")
+DemandOrder.sku_id = Property(f"{DemandOrder} is for SKU {Integer:sku_id}")
 DemandOrder.week_num = Property(f"{DemandOrder} falls in week {Integer:week_num}")
 
 # The orders inside each planning horizon, keyed by the horizon's planning_end date.
@@ -41,6 +43,12 @@ ProdCapacity.initial_inventory = Property(
 ProdCapacity.holding_cost_per_week = Property(
     f"{ProdCapacity} has {Float:holding_cost_per_week}"
 )
+
+# Concept: starting inventory per site x SKU (REFERENCE TABLE - no filtering needed)
+InitialInventory = Concept(
+    "InitialInventory", identify_by={"site_id": Integer, "sku_id": Integer}
+)
+InitialInventory.quantity = Property(f"{InitialInventory} has {Integer:quantity}")
 
 # Concept: demand per site x SKU x week in each planning horizon (0 for weeks with no orders)
 WeeklyDemand = Concept(
