@@ -1,7 +1,10 @@
-"""Facility network graph: risk-weighted degree centrality and in/out connection counts."""
+"""Facility network: each connection's risk weight, the risk-weighted facility graph, each
+facility's weighted degree centrality, connection counts and priority rank, and the network
+summary."""
 
 from relationalai.semantics import Float, Integer, define
 from relationalai.semantics.reasoners.graph import Graph
+from relationalai.semantics.std import aggregates as aggs
 
 from .schema import Facility, FacilityConnection, model
 
@@ -49,3 +52,21 @@ model.where(outgoing_edges(Facility, n_out)).define(Facility.outgoing_connection
 model.define(
     Facility.total_connections(Facility.incoming_connections + Facility.outgoing_connections)
 )
+
+# Priority rank: 1 is the facility with the highest weighted degree centrality, ties broken by
+# the lower facility id. The centrality is negated so both keys sort ascending: the Logic
+# engine's rank does not mix ascending and descending keys.
+Facility.priority_rank = model.Property(f"{Facility} has {Integer:priority_rank}")
+model.define(Facility.priority_rank(aggs.rank(-Facility.degree_centrality, Facility.id)))
+
+# The network's facility count and its mean degree centrality and connections per facility.
+NetworkSummary = model.Relationship(
+    f"the network has {Integer:n_facilities} facilities, a mean degree centrality of "
+    f"{Float:mean_centrality}, and a mean of {Float:mean_connections} connections per facility"
+)
+_scored = (Facility.degree_centrality, Facility.total_connections)
+model.define(NetworkSummary(
+    aggs.count(Facility).where(*_scored),
+    aggs.avg(Facility, Facility.degree_centrality).where(*_scored),
+    aggs.avg(Facility, Facility.total_connections).where(*_scored),
+))

@@ -6,6 +6,7 @@ RelationalAI:
 - Load a network of healthcare facilities and their connections from CSV.
 - Calculate weighted degree centrality for each facility (considering connection weights).
 - Calculate each facility's incoming and outgoing connection counts.
+- Rank the facilities by centrality and summarize the network (`facility_network.py`).
 
 Run:
     `rai models deploy --path model` deploys this package to the schemas in
@@ -14,7 +15,7 @@ Run:
     `streamlit run app.py` starts the interactive app, both from the deployed model.
 """
 
-from .reasoning import graph
+from .facility_network import NetworkSummary, graph
 from .schema import Facility, FacilityConnection, model
 from .source import DATA_DIR
 
@@ -22,6 +23,7 @@ __all__ = [
     "DATA_DIR",
     "Facility",
     "FacilityConnection",
+    "NetworkSummary",
     "graph",
     "model",
 ]

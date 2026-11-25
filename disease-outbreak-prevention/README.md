@@ -38,7 +38,7 @@ Built using **graph analysis** (a directed, weighted graph with `Facility` as th
 
 ## What's included
 
-- **Model**: the `Facility` concept, the `FacilityConnection` edge concept (with `transfer_volume`, `contact_intensity`, and a derived `risk_weight`), the directed weighted `Graph` built from them, and the weighted degree centrality, indegree, and outdegree metrics, in the `model/` package (`schema.py` declares the concepts, `source.py` loads the sample data, `reasoning.py` states the graph and metrics). `rai models deploy --path model` deploys it to your Snowflake account, where each refresh computes the metrics.
+- **Model**: the `Facility` concept, the `FacilityConnection` edge concept (with `transfer_volume`, `contact_intensity`, and a derived `risk_weight`), the directed weighted `Graph` built from them, the weighted degree centrality, indegree, and outdegree metrics, and each facility's priority rank, in the `model/` package (`schema.py` declares the concepts, `source.py` loads the sample data, `facility_network.py` states the graph, the metrics, the rank, and the network summary). `rai models deploy --path model` deploys it to your Snowflake account, where each refresh computes the metrics.
 - **Query**: `queries/facility_ranking.py` — prints the ranked report from the deployed model.
 - **App**: `app.py` — an optional Streamlit web app that queries the deployed model.
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
@@ -194,7 +194,7 @@ disease-outbreak-prevention/
     __init__.py                           # exports of the deployed model
     schema.py                             # Facility and FacilityConnection concepts
     source.py                             # loads the sample CSVs
-    reasoning.py                          # risk weight, graph, and metrics
+    facility_network.py                   # risk weight, graph, metrics, priority rank, network summary
   queries/
     facility_ranking.py                   # report from the deployed model
   app.py                                  # optional Streamlit app (queries the deployed model)
@@ -227,7 +227,7 @@ For the full concept and property definitions, see `model/schema.py`; `runbook.m
 
 ## How it works
 
-The deployed model computes weighted centrality on the graph; the report and the app query it and rank facilities:
+The deployed model computes weighted centrality on the graph; it also ranks the facilities, and the report and the app query the result:
 
 ```text
 CSV files → model/ (deployed) → weighted centrality + degree metrics → rank facilities → display / export
@@ -237,11 +237,11 @@ CSV files → model/ (deployed) → weighted centrality + degree metrics → ran
 
 2. **Calculate graph metrics.** Each refresh of the deployed model runs the Graph API, which computes weighted degree centrality (summing risk-weighted edges and dividing by the number of other facilities, so the score reflects cumulative transmission risk rather than a raw connection count) alongside indegree and outdegree counts.
 
-3. **Query and rank.** A single query, shared by the report and the app, pulls each facility's identity, type, region, published centrality score, and in/out and total connection counts, then sorts descending by centrality (ties by facility id) to produce the ranked shortlist.
+3. **Query the ranking.** Each refresh also ranks the facilities by centrality, highest first with ties by facility id, and computes the network summary (facility count, mean centrality, mean connections). A single query, shared by the report and the app, pulls each facility's priority rank, identity, type, region, published centrality score, and in/out and total connection counts, and orders them by rank to produce the ranked shortlist.
 
 4. **Present results.** `queries/facility_ranking.py` prints the ranked table, a top-priority breakdown, network summary statistics, and response recommendations from the deployed model. The optional Streamlit app queries the same deployed model and renders the ranking as an interactive network graph with a filterable table and CSV export.
 
-See `model/reasoning.py` and `queries/facility_ranking.py` for the implementation and `runbook.md` for the skill-driven reproduction.
+See `model/facility_network.py` and `queries/facility_ranking.py` for the implementation and `runbook.md` for the skill-driven reproduction.
 
 ## Customize this template
 
@@ -255,7 +255,7 @@ Focus on the first changes most users will make.
 
 ### Tune parameters
 
-- The risk formula is `risk_weight = transfer_volume x contact_intensity`, defined in `model/reasoning.py`. Change how the two factors combine (for example, a weighted average) to reweight what "risk" means.
+- The risk formula is `risk_weight = transfer_volume x contact_intensity`, defined in `model/facility_network.py`. Change how the two factors combine (for example, a weighted average) to reweight what "risk" means.
 - Switch the graph's centrality metric if you want a different notion of importance (for example, betweenness or eigenvector centrality) in place of weighted degree.
 
 ### Extend the model
