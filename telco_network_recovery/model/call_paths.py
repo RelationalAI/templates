@@ -39,17 +39,17 @@ model.where(
 
 # Path enumeration is declared here, in the model: a deployed model only has the
 # path tables its own rules ask for, so a query cannot enumerate new paths. The
-# scope is a deterministic seed -- the highest-PageRank subscriber, the largest
+# scope is a deterministic seed -- the highest-PageRank subscriber, the smallest
 # ID on an exact tie -- and call paths of up to PATH_MAX_HOPS hops, keeping
 # simple paths only (the call graph is cyclic, so the negated existential drops
-# walks that revisit a node). Both rank keys sort in one direction because the
-# rules that read graph results run on the Logic engine, whose rank does not mix
-# ascending and descending keys.
+# walks that revisit a node). Both rank keys sort ascending, with the score
+# negated, because the rules that read graph results run on the Logic engine,
+# whose rank does not mix ascending and descending keys.
 PATH_MAX_HOPS = 3
 
 Subscriber.is_seed_hub = model.Relationship(f"{Subscriber} is the seed hub")
 model.define(Subscriber.is_seed_hub()).where(
-    aggs.rank(aggs.desc(Subscriber.influence_score, Subscriber.id)) == 1
+    aggs.rank(-Subscriber.influence_score, Subscriber.id) == 1
 )
 
 seed = Subscriber.ref()
@@ -89,12 +89,12 @@ model.where(
 ).define(seed.top_call_path_influence(top))
 
 # The winning route: the simple path with the highest influence load (on a tie,
-# the largest path ID), published step by step with the tower on each hop.
+# the smallest path ID), published step by step with the tower on each hop.
 TopCallPath = model.Relationship(f"{Hash:path} is the seed hub's top call path")
 model.where(
     *simple_hub_path,
     load := path_influence_load(),
-    aggs.rank(aggs.desc(load, call_path)) == 1,
+    aggs.rank(-load, call_path) == 1,
 ).define(TopCallPath(call_path))
 TopCallPathStep = model.Relationship(
     f"the top call path visits {Subscriber:subscriber} at step {Integer:step}"
