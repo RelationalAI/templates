@@ -224,8 +224,8 @@ model.define(SolveStatus(problem.termination_status()), TotalSupport(problem.obj
 # --------------------------------------------------
 
 # Values computed from the solution live on Slate, not Candidate: such a
-# property on the concept the solve reads leaves the solution empty after the
-# first refresh. A user's picks are the candidates in slots 1..K.
+# property on the concept the solve reads fails the deploy. A user's picks are the
+# candidates in slots 1..K.
 Slate = model.Concept("Slate", identify_by={"user_id": Integer})
 Slate.picks = model.Relationship(f"{Slate} picks {Candidate}")
 model.define(Slate.new(user_id=User.id))

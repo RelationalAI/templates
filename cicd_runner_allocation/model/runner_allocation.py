@@ -127,7 +127,7 @@ def declare_allocation(key, name, concurrency_multiplier, offline_runners=(), co
     # Each runner's load: how many jobs it runs and their names in alphabetical order, joined
     # with commas (the id keeps jobs that share a name). A runner with no job has no row. It is
     # a relationship of its own, not a property of Runner: a property computed from the
-    # solution on a concept the solve reads leaves the solution empty after the first refresh.
+    # solution on a concept the solve reads fails the deploy.
     RunnerLoad[key] = model.Relationship(
         f"{name} loads {Runner} with {Integer:n_jobs} jobs {String:workflows}"
     )

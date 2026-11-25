@@ -52,7 +52,7 @@ model.where(TotalPopulation(_population), CoveredPopulation(_covered)).define(
 # Each tower's load: the population of the zones assigned to it (zero for a tower with none) and
 # that load as a share of its capacity (zero for a tower without capacity). The values live on
 # TowerLoad, not TowerSite: a property computed from the solution on a concept the solve reads
-# leaves the solution empty after the first refresh.
+# fails the deploy.
 TowerLoad = model.Concept("TowerLoad", identify_by={"site_id": String})
 TowerLoad.assigned_population = model.Property(
     f"{TowerLoad} serves assigned population {Integer:assigned_population}"

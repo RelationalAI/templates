@@ -8,7 +8,7 @@ from . import lifecycle_trace  # noqa: F401
 from .schema import Order, OrderEvent, model
 
 # The total lives on a concept of its own, not on Order: a value computed from the solution on
-# a concept the solve reads leaves the solution empty after the first refresh. An order with no
+# a concept the solve reads fails the deploy. An order with no
 # event has no fill total.
 OrderFill = model.Concept("OrderFill", identify_by={"order_id": Integer})
 OrderFill.filled_qty = model.Property(f"{OrderFill} has filled qty {Integer:filled_qty}")

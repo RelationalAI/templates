@@ -9,7 +9,7 @@ from . import facing_allocation  # noqa: F401
 from .schema import Category, Shelf, Sku, model
 
 # Values computed from the solution live on concepts of their own, not on Shelf or Category:
-# such a property on a concept the solve reads leaves the solution empty after the first refresh.
+# such a property on a concept the solve reads fails the deploy.
 
 # Each shelf's used length: facings times SKU width, summed over the SKUs on it. A shelf with no
 # SKU has no usage.

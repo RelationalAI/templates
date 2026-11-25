@@ -8,7 +8,7 @@ from . import pod_assignment  # noqa: F401
 from .schema import Node, Pod, model
 
 # Values computed from the solution live on a concept of their own, not on Node: such a property
-# on a concept the solve reads leaves the solution empty after the first refresh.
+# on a concept the solve reads fails the deploy.
 NodeUsage = model.Concept("NodeUsage", identify_by={"node_id": Integer})
 NodeUsage.cpu_used = model.Property(f"{NodeUsage} has {Integer:cpu_used}")
 NodeUsage.memory_used = model.Property(f"{NodeUsage} has {Integer:memory_used}")

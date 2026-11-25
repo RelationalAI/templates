@@ -8,7 +8,7 @@ from .schema import Factory, Product, model
 
 # Each product takes quantity / rate hours of its factory, and a factory uses the sum over its
 # products. These are relationships, not Factory properties: the solve reads Factory, and a
-# Factory property computed from the solution leaves the solution empty after the first refresh.
+# Factory property computed from the solution fails the deploy.
 FactoryHoursUsed = model.Relationship(f"{Factory} uses {Float:hours_used} hours")
 model.define(
     FactoryHoursUsed(

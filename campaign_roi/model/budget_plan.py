@@ -83,7 +83,7 @@ model.where(TotalConversions(_optimized), CurrentConversions(_current)).define(
 
 # Each campaign's change from its current budget. These values are computed from the
 # solution, so they live on CampaignPlan, not Campaign: such a property on the concept
-# the solve reads leaves the solution empty after the first refresh.
+# the solve reads fails the deploy.
 CampaignPlan = model.Concept("CampaignPlan", identify_by={"campaign": Campaign})
 CampaignPlan.delta = model.Property(f"{CampaignPlan} changes its budget by {Float:delta}")
 CampaignPlan.multiple = model.Property(

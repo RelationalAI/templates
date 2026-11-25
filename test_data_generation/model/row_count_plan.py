@@ -72,7 +72,7 @@ model.define(SolveStatus(problem.termination_status()), TotalDeviation(problem.o
 
 # The plan's whole-row counts and each table's deviation from its target. They are computed
 # from the solution, so they live on TablePlan, not Table: such a property on the concept the
-# solve reads leaves the solution empty after the first refresh.
+# solve reads fails the deploy.
 TablePlan = model.Concept("TablePlan", identify_by={"table": Table})
 TablePlan.actual_rows = Property(f"{TablePlan} has {Integer:actual_rows} rows")
 TablePlan.deviation = Property(f"{TablePlan} deviates from its target by {Integer:deviation}")

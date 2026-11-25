@@ -50,8 +50,8 @@ SolveStatus = model.Relationship(f"reinsurance solve status is {String:status}")
 model.define(SolveStatus(problem.termination_status()))
 
 # The excess exposure and premium of the ceded parties (zero for an empty plan). They are
-# nullary relationships: a property computed from the solution on ResolvedParty would leave the
-# solve's result empty after the first refresh.
+# nullary relationships: a property computed from the solution on ResolvedParty would fail
+# the deploy.
 ceded_excess = model.Relationship(f"the cession plan cedes {Float:excess} of excess exposure")
 ceded_premium = model.Relationship(f"the cession plan pays {Float:premium} of premium")
 _ceded = ResolvedParty.cede > 0.5

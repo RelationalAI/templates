@@ -21,8 +21,7 @@ MONTHS_PER_YEAR = 12
 # --------------------------------------------------
 
 # One row per month, kept apart from ReturnMonth: the solve reads ReturnMonth, so a
-# property computed from the solution there leaves the solution empty after the
-# first refresh.
+# property computed from the solution there fails the deploy.
 TrackingMonth = model.Concept("TrackingMonth", identify_by={"date": String})
 TrackingMonth.replica_return = model.Property(
     f"{TrackingMonth} has replica return {Float:replica_return}"

@@ -14,7 +14,7 @@ from .schema import Sector, Stock, model
 # --------------------------------------------------
 
 # One row per sector, kept apart from Sector: the solve reads Sector, so a property
-# computed from the solution there leaves the solution empty after the first refresh.
+# computed from the solution there fails the deploy.
 SectorExposure = model.Concept("SectorExposure", identify_by={"sector_name": String})
 SectorExposure.weight = model.Property(f"{SectorExposure} holds {Float:weight} of the portfolio")
 SectorExposure.benchmark_weight = model.Property(

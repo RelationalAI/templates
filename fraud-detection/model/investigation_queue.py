@@ -101,8 +101,7 @@ model.define(AuditCandidate.naive_cumulative_hours(
 )).where(Transaction.transaction_id == AuditCandidate.transaction_id)
 
 # One queue per strategy. Values computed from the solution live on AuditQueue,
-# not AuditCandidate: such a property on the concept the solve reads leaves the
-# solution empty after the first refresh.
+# not AuditCandidate: such a property on the concept the solve reads fails the deploy.
 AuditQueue = model.Concept("AuditQueue", identify_by={"strategy": String})
 AuditQueue.audits = model.Relationship(f"{AuditQueue} audits {AuditCandidate}")
 model.define(AuditQueue.new(strategy="optimized"), AuditQueue.new(strategy="naive"))
