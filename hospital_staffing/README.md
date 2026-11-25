@@ -254,7 +254,7 @@ Use this sequence to deploy the model and query it:
 │   ├── schema.py              # concepts, properties, sweep and frontier points
 │   ├── source.py              # sample data
 │   ├── shift_staffing.py      # anchor and sweep problems, published results
-│   └── frontier_analysis.py   # frontier order, marginal rates, knee, knee roster
+│   └── frontier_analysis.py   # frontier order, marginal rates, knee
 ├── queries/
 │   └── staffing_frontier.py   # report from the deployed model
 └── data/

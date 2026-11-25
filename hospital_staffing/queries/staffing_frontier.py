@@ -12,12 +12,12 @@ from model import (
     FrontierPoint,
     FrontierStep,
     JumpKnee,
-    KneeRoster,
+    Nurse,
     Shift,
     SweepPoint,
     model,
 )
-from relationalai.semantics import Float, Integer, String
+from relationalai.semantics import Float, Integer
 
 if __name__ == "__main__":
     status = model.select(
@@ -208,14 +208,16 @@ if __name__ == "__main__":
                   f"further service improvement costs significantly more per patient.")
 
             # Print nurse assignments at the knee point
-            nurses_ref = String.ref()
-            knee_assignments = (
-                model.where(KneeRoster(Shift, nurses_ref))
-                .select(Shift.name.alias("shift"), nurses_ref.alias("nurses"))
-                .to_df()
-                .sort_values("shift")
-            )
+            knee_assignments = model.select(
+                Nurse.name.alias("nurse"), Shift.name.alias("shift")
+            ).where(
+                FrontierPoint.position == int(knee["position"]),
+                FrontierPoint.assigns(Nurse, Shift),
+            ).to_df()
             if not knee_assignments.empty:
                 print("\n  Knee-point assignments:")
-                for assignment in knee_assignments.itertuples():
-                    print(f"    {assignment.shift}: {assignment.nurses}")
+                by_shift = knee_assignments.groupby("shift")["nurse"]
+
+                for shift, nurses in by_shift:
+                    nurses = ", ".join(sorted(nurses))
+                    print(f"    {shift}: {nurses}")

@@ -1,11 +1,11 @@
-"""Frontier analysis: which solves lie on the efficient frontier and in what order, the marginal
-cost of each service improvement along it, the knee, and the nurses on each shift at the knee."""
+"""Frontier analysis: which solves form the frontier and in what order, the marginal cost of each
+service improvement along it, and the knee."""
 
 from relationalai.semantics import Float, Integer, String, not_, where
 from relationalai.semantics.std import aggregates as aggs
 from relationalai.semantics.std import math, strings
 
-from .schema import FrontierPoint, Nurse, Shift, model
+from .schema import FrontierPoint, model
 from .shift_staffing import N_INTERIOR
 
 # --------------------------------------------------
@@ -59,11 +59,10 @@ model.where(
     FrontierPoint.sweep_solved == N_INTERIOR,
 ).define(FrontierPoint.on_frontier())
 
-# The frontier's order: 1 for the cheapest anchor.
+# The frontier's order: 1 for the cheapest anchor. The frontier is the positions from 0 up to
+# its end, so point n is position n - 1.
 FrontierPoint.number = model.Property(f"{FrontierPoint} is number {Integer:number} on the frontier")
-model.where(FrontierPoint.on_frontier()).define(
-    FrontierPoint.number(aggs.rank(FrontierPoint.position))
-)
+model.where(FrontierPoint.on_frontier()).define(FrontierPoint.number(FrontierPoint.position + 1))
 
 # --------------------------------------------------
 # Marginal analysis
@@ -138,19 +137,3 @@ model.where(
     FrontierStep.number == 2,
     not_(where(any_step.rate_multiple > 0)),
 ).define(JumpKnee(2, 0.0))
-
-# The knee's frontier point, and the nurses on each shift there, comma-joined by name.
-FrontierPoint.is_knee = model.Relationship(f"{FrontierPoint} is the knee")
-knee_number = Integer.ref()
-model.where(FreeKnee(knee_number, Float.ref()), FrontierPoint.number == knee_number).define(
-    FrontierPoint.is_knee()
-)
-model.where(JumpKnee(knee_number, Float.ref()), FrontierPoint.number == knee_number).define(
-    FrontierPoint.is_knee()
-)
-KneeRoster = model.Relationship(f"at the knee, {Shift} is staffed by {String:nurses}")
-model.where(FrontierPoint.is_knee(), FrontierPoint.assigns(Nurse, Shift)).define(
-    KneeRoster(
-        Shift, aggs.string_join(Nurse.name, sep=", ", index=[Nurse.name, Nurse.id]).per(Shift)
-    )
-)
