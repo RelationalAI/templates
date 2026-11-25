@@ -18,22 +18,25 @@ Assembly path enumeration (PREVIEW): enumerate the
   persists the longest maximal chain ending at each SKU as its assembly depth,
   flagging instead a finished SKU reached by a chain longer than MAX_ASSEMBLY_HOPS.
 
+The model has two rule modules: `dependency_graph.py` (reachability,
+dependency counts, betweenness, bottleneck rank) and `assembly_chains.py` (chain
+enumeration, maximal chains, chain counts, assembly depth).
+
 Deploy:
     `rai models deploy --path model` deploys this package to the schemas in
     raiconfig.yaml and waits for its first refresh; `python -m
     queries.dependency_report` then prints the report from the deployed model.
 """
 
-from .reasoning import (
+from .assembly_chains import (
     MAX_ASSEMBLY_HOPS,
     AssemblyStep,
+    ChainLength,
     MaximalChain,
-    betweenness,
-    graph,
-    num_edges,
-    num_nodes,
-    reachable,
+    num_chains,
+    num_maximal_chains,
 )
+from .dependency_graph import betweenness, graph, num_edges, num_nodes, reachable
 from .schema import SKU, BillOfMaterials, model
 from .source import DATA_DIR
 
@@ -41,13 +44,16 @@ __all__ = [
     "DATA_DIR",
     "MAX_ASSEMBLY_HOPS",
     "AssemblyStep",
+    "ChainLength",
     "MaximalChain",
     "SKU",
     "BillOfMaterials",
     "betweenness",
     "graph",
     "model",
+    "num_chains",
     "num_edges",
+    "num_maximal_chains",
     "num_nodes",
     "reachable",
 ]

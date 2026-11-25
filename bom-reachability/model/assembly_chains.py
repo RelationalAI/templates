@@ -1,50 +1,10 @@
-"""Dependency graph, bottleneck scores, and assembly chains over the BOM."""
+"""Assembly chains: every bottom-up chain that builds each finished good, which chains are maximal,
+each chain's length, and each SKU's assembly depth."""
 
 from relationalai.semantics import Hash, Integer, not_
-from relationalai.semantics.reasoners.graph import Graph
 from relationalai.semantics.std import aggregates as aggs
 
 from .schema import SKU, BillOfMaterials, model
-
-# --------------------------------------------------
-# Build graph: SKU nodes, BOM edges (directed)
-# Edge: output_sku -> input_sku ("depends on")
-# --------------------------------------------------
-
-graph = Graph(
-    model,
-    name="bom_graph",
-    directed=True,
-    weighted=False,
-    node_concept=SKU,
-    edge_concept=BillOfMaterials,
-    edge_src_relationship=BillOfMaterials.output_sku,
-    edge_dst_relationship=BillOfMaterials.input_sku,
-)
-
-# Graph size, which the deployed model publishes for the queries.
-node_count, edge_count = Integer.ref(), Integer.ref()
-num_nodes = model.Relationship(f"the BOM graph has {Integer:num_nodes} nodes")
-num_edges = model.Relationship(f"the BOM graph has {Integer:num_edges} edges")
-model.where(graph.num_nodes()(node_count)).define(num_nodes(node_count))
-model.where(graph.num_edges()(edge_count)).define(num_edges(edge_count))
-
-# Reachability: all transitive dependency pairs.
-reachable = graph.reachable(full=True)
-
-# Betweenness centrality: structural bottlenecks.
-betweenness = graph.betweenness_centrality()
-
-# Attach both results to SKU, so the deployed model publishes them for the queries.
-SKU.reaches = reachable
-SKU.betweenness = betweenness
-
-# How many other SKUs transitively depend on each SKU.
-dependent = SKU.ref()
-SKU.depended_on_by = model.Property(f"{SKU} is depended on by {Integer:depended_on_by} SKUs")
-model.where(dependent.reaches(SKU), dependent != SKU).define(
-    SKU.depended_on_by(aggs.count(dependent).per(SKU))
-)
 
 # --------------------------------------------------
 # Assembly path enumeration
@@ -113,3 +73,12 @@ SKU.assembly_depth = model.Property(f"{SKU} has assembly depth {Integer:assembly
 model.where(MaximalChain(p), p.nodes(p.length) == end, not_(end.exceeds_hop_bound())).define(
     end.assembly_depth(aggs.max(p.length).per(end))
 )
+
+# Each chain's length in hops, and how many chains are enumerated and how many are maximal.
+ChainLength = model.Relationship(f"assembly chain {Hash:path} has {Integer:hops} hops")
+model.where(p).define(ChainLength(p, p.length))
+num_chains = model.Relationship(f"{Integer:num_chains} assembly chains are enumerated")
+num_maximal_chains = model.Relationship(f"{Integer:num_maximal_chains} assembly chains are maximal")
+chain, hops = Hash.ref(), Integer.ref()
+model.define(num_chains(aggs.count(chain).where(ChainLength(chain, hops)) | 0))
+model.define(num_maximal_chains(aggs.count(chain).where(MaximalChain(chain)) | 0))
