@@ -45,8 +45,17 @@ for occ in HIGH_RISK_OCCUPANCIES:
         Location.has_high_risk_occupancy()
     )
 
-# Insurance to value (ITV) of a BUILDING coverage: its limit as a fraction of
-# the location's replacement value.
+# Rule (marginal flag): a building coverage is underinsured if its limit is
+# below the insurance-to-value (ITV) threshold of the location's replacement
+# value. Only applies to BUILDING coverages.
+Coverage.is_underinsured = model.Relationship(f"{Coverage} is underinsured")
+model.where(
+    Coverage.coverage_type == "BUILDING",
+    Coverage.coverage_limit < ITV_THRESHOLD * Coverage.location.replacement_value,
+).define(Coverage.is_underinsured())
+
+# Insurance to value (ITV) of a BUILDING coverage, as the report shows it: its
+# limit as a fraction of the location's replacement value.
 Coverage.insurance_to_value = model.Property(f"{Coverage} has {Float:insurance_to_value}")
 model.where(
     Coverage.coverage_type == "BUILDING",
@@ -54,10 +63,3 @@ model.where(
 ).define(
     Coverage.insurance_to_value(Coverage.coverage_limit / Coverage.location.replacement_value)
 )
-
-# Rule (marginal flag): a building coverage is underinsured if its ITV is
-# below the threshold.
-Coverage.is_underinsured = model.Relationship(f"{Coverage} is underinsured")
-model.where(
-    Coverage.insurance_to_value < ITV_THRESHOLD,
-).define(Coverage.is_underinsured())
