@@ -40,7 +40,7 @@ This template shows how to express that rulebook as declarative logic on a four-
 ## What's included
 
 - **Model**: the four-level `InsuredEntity` / `Policy` / `Location` / `Coverage` ontology, eight lower-level eligibility rules, two entity-level rollup rules (decline factors, marginal factors), and four mutually exclusive risk-tier subtype concepts — all as declarative derived Relationships.
-- **Model**: the `model/` package (`schema.py` declares the concepts, `source.py` loads the sample data, `reasoning.py` states the rules and risk tiers) that `rai models deploy --path model` deploys to your Snowflake account.
+- **Model**: the `model/` package (`schema.py` declares the concepts, `source.py` loads the sample data, `eligibility_flags.py` states the location and coverage flags, `underwriting_factors.py` rolls them up to each insured, and `risk_tiers.py` classifies each insured into a risk tier and totals premium by tier) that `rai models deploy --path model` deploys to your Snowflake account.
 - **Query**: `queries/underwriting_report.py` — prints the eligibility flags, flag matrix, tier classification, and premium by tier from the deployed model.
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - **Sample data**: four CSVs under `data/` — 8 insured businesses across 6 industries (`insured_entities.csv`), 8 commercial property policies one per insured (`policies.csv`), 11 scheduled locations (`locations.csv`), and 33 coverage lines, three per location (`coverages.csv`).
@@ -195,7 +195,9 @@ Run these steps from a terminal:
 │   ├── __init__.py                 # exports of the deployed model
 │   ├── schema.py                   # hierarchy of concepts and properties
 │   ├── source.py                   # loads the CSVs
-│   └── reasoning.py                # thresholds, rules, and risk tiers
+│   ├── eligibility_flags.py        # location and coverage flags
+│   ├── underwriting_factors.py     # entity decline and marginal factors
+│   └── risk_tiers.py               # risk tiers and premium by tier
 ├── queries/
 │   └── underwriting_report.py      # report printed from the deployed model
 └── data/
@@ -232,15 +234,15 @@ For the full concept and property definitions, see `model/schema.py`; `runbook.m
 
 ## How it works
 
-Rules run at three altitudes on the hierarchy and feed each other. A coverage is checked for insurance-to-value (ITV) adequacy; a location for fire-protection class, year-built, and occupancy class; an insured entity for industry and operating history. Each check is a declarative flag: a single `where(...).define(...)`, defined once per member for list-based checks (industry, occupancy) so PyRel unions the matches, and joining across concept levels in one clause for the ITV check.
+Rules run at three altitudes on the hierarchy and feed each other. A coverage is checked for insurance-to-value (ITV) adequacy; a location for fire-protection class, year-built, and occupancy class; an insured entity for industry and operating history. Each check is a declarative flag: a single `where(...).define(...)`, defined once per member for list-based checks (industry, occupancy) so PyRel unions the matches. The ITV check reads `Coverage.insurance_to_value`, a ratio that joins each building coverage to its location's replacement value in one clause.
 
-Those lower-level flags then roll up. Entity-level rollup rules traverse the `InsuredEntity → Policy → Location → Coverage` chain to raise a flag on the entity if any descendant matches, and an OR-style aggregator (`has_decline_factor`, `has_marginal_factor`) unions the contributing flags via PyRel's set-union semantics. The tiers themselves are typed sub-concepts that extend `InsuredEntity`: any decline factor pushes the entity to **Decline**, marginal factors to **Non-Standard**, clean entities are **Standard**, and clean long-tenured entities with the highest fire-protection grades are **Preferred**. The tier conditions are written with explicit exclusions so the four sets partition the `InsuredEntity` set — Preferred being a tightened subset of "no decline, no marginal." Everything is declarative: lower-level rules feed entity-level rollups, which feed the tier classification, and PyRel resolves the ordering.
+Those lower-level flags then roll up. Entity-level rollup rules traverse the `InsuredEntity → Policy → Location → Coverage` chain to raise a flag on the entity if any descendant matches, and an OR-style aggregator (`has_decline_factor`, `has_marginal_factor`) unions the contributing flags via PyRel's set-union semantics. The tiers themselves are typed sub-concepts that extend `InsuredEntity`: any decline factor pushes the entity to **Decline**, marginal factors to **Non-Standard**, clean entities are **Standard**, and clean long-tenured entities with the highest fire-protection grades are **Preferred**. The tier conditions are written with explicit exclusions so the four sets partition the `InsuredEntity` set — Preferred being a tightened subset of "no decline, no marginal." Each insured's tier label (`InsuredEntity.tier`) and each tier's insured count and premium (`TierPremium`) are rules too, so the report only formats them. Everything is declarative: lower-level rules feed entity-level rollups, which feed the tier classification, and PyRel resolves the ordering.
 
 ```text
 InsuredEntity -> Policy -> Location -> Coverage
 ```
 
-See `model/reasoning.py` for the implementation, `queries/underwriting_report.py` for the report, and `runbook.md` to reproduce it step by step with the RAI skills.
+See `model/eligibility_flags.py`, `model/underwriting_factors.py`, and `model/risk_tiers.py` for the implementation, `queries/underwriting_report.py` for the report, and `runbook.md` to reproduce it step by step with the RAI skills.
 
 ## Customize this template
 
@@ -250,19 +252,19 @@ Replace the four CSVs with your own underwriting submissions, keeping the header
 
 ### Tune parameters
 
-All thresholds are at the top of `model/reasoning.py` under `# Configure inputs`:
+Each threshold is at the top of the module that uses it, under `# Configure inputs`:
 
-| Parameter | Default | Effect |
-|---|---|---|
-| `MIN_YEARS_IN_BUSINESS` | 3 | Below this → decline |
-| `MAX_FP_CLASS_FOR_ELIGIBILITY` | 6 | Above this → decline |
-| `MIN_YEAR_BUILT` | 1950 | Older → decline |
-| `ITV_THRESHOLD` | 0.80 | Building coverage limit must reach this fraction of replacement value |
-| `RESTRICTED_INDUSTRIES` | tuple | Industries that decline outright |
-| `MARGINAL_INDUSTRIES` | tuple | Industries that flag the entity as marginal but acceptable |
-| `HIGH_RISK_OCCUPANCIES` | tuple | Occupancy classes that flag the location as marginal |
-| `PREFERRED_MIN_YEARS` | 15 | Years-in-business floor for the Preferred tier |
-| `PREFERRED_MAX_FP_CLASS` | 3 | All locations must be at this FP class or better |
+| Parameter | Module | Default | Effect |
+|---|---|---|---|
+| `MIN_YEARS_IN_BUSINESS` | `underwriting_factors.py` | 3 | Below this → decline |
+| `MAX_FP_CLASS_FOR_ELIGIBILITY` | `eligibility_flags.py` | 6 | Above this → decline |
+| `MIN_YEAR_BUILT` | `eligibility_flags.py` | 1950 | Older → decline |
+| `ITV_THRESHOLD` | `eligibility_flags.py` | 0.80 | Building coverage limit must reach this fraction of replacement value |
+| `RESTRICTED_INDUSTRIES` | `underwriting_factors.py` | tuple | Industries that decline outright |
+| `MARGINAL_INDUSTRIES` | `underwriting_factors.py` | tuple | Industries that flag the entity as marginal but acceptable |
+| `HIGH_RISK_OCCUPANCIES` | `eligibility_flags.py` | tuple | Occupancy classes that flag the location as marginal |
+| `PREFERRED_MIN_YEARS` | `risk_tiers.py` | 15 | Years-in-business floor for the Preferred tier |
+| `PREFERRED_MAX_FP_CLASS` | `risk_tiers.py` | 3 | All locations must be at this FP class or better |
 
 ### Extend the model
 
@@ -275,7 +277,7 @@ All thresholds are at the top of `model/reasoning.py` under `# Configure inputs`
 
 - **Point at Snowflake tables.** Swap the CSV `model.data(...)` calls for `model.Table(...)` references to your submission tables; the ontology, rules, and tier classification are unchanged. Size the RAI engine to the submission volume — rules-based classification is lightweight, so a small engine handles large books.
 - **Schedule triage runs.** With table-backed sources, refresh the deployed model so every new account is scored as it arrives: set `interval_s` on the `standard` schedule in `raiconfig.yaml` for a periodic refresh, or call `<DB>.COMMERCIAL_UNDERWRITING_META._INTERNAL_REFRESH_MODEL('standard', NULL)` from your submission-intake pipeline. Redeploy only when the rules or declarations change. Persist the per-entity tier and flag matrix for downstream underwriting review.
-- **Pin dependencies for reproducibility.** Keep the `relationalai` version pinned in `pyproject.toml` so rule outcomes stay stable across runs, and version-control your threshold constants (top of `model/reasoning.py`) as auditable underwriting parameters.
+- **Pin dependencies for reproducibility.** Keep the `relationalai` version pinned in `pyproject.toml` so rule outcomes stay stable across runs, and version-control your threshold constants (top of each module in `model/`) as auditable underwriting parameters.
 
 ## Troubleshooting
 
