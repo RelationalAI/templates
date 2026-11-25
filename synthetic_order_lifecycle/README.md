@@ -44,7 +44,7 @@ The same pattern applies to any test-data-generation problem where rows have to 
 
 ## What's included
 
-- `model/` -- the deployed model: ontology, decisions, constraints, and solver configuration, as a package (`schema.py` declares the concepts, `source.py` loads the sample data, `reasoning.py` states the decision problem). `rai models deploy --path model` deploys it to your Snowflake account, where each refresh runs the solve.
+- `model/` -- the deployed model: ontology, decisions, constraints, and solver configuration, as a package (`schema.py` declares the concepts, `source.py` loads the sample data, `lifecycle_trace.py` states the decision problem, `order_fills.py` totals each order's fills). `rai models deploy --path model` deploys it to your Snowflake account, where each refresh runs the solve.
 - `queries/order_trace.py` -- the report, which prints the trace from the deployed model
 - `data/symbols.csv` -- 5 tradable symbols (AAPL, MSFT, GOOG, NVDA, TSLA)
 - `data/venues.csv` -- 5 trading venues (NYSE, NASDAQ, ARCA, BATS, IEX)
@@ -212,7 +212,8 @@ Use this sequence to deploy the model and query it:
 │   ├── __init__.py      # exports of the deployed model
 │   ├── schema.py        # symbol, venue, order, and event concepts; the event-type vocabulary
 │   ├── source.py        # loads the sample CSVs and derives the disallowed venue pairs
-│   └── reasoning.py     # event decisions, sequencing rules, solve
+│   ├── lifecycle_trace.py # event decisions, sequencing rules, solve
+│   └── order_fills.py   # filled quantity per order
 ├── queries/
 │   └── order_trace.py
 └── data/
@@ -319,7 +320,7 @@ model.define(SolveStatus(problem.termination_status()))
   ).require(implies(a_modify_ind + b_fill_ind == 2, A.ts_ms < B.ts_ms))
   problem.satisfy(no_modify_after_fill_ic)
   ```
-- **Replace the synthetic time horizon** by reading `ts_ms` bounds from your real session schedule (market open / market close) and updating `TS_MIN` / `TS_MAX` in `model/reasoning.py`.
+- **Replace the synthetic time horizon** by reading `ts_ms` bounds from your real session schedule (market open / market close) and updating `TS_MIN` / `TS_MAX` in `model/lifecycle_trace.py`.
 
 ## Troubleshooting
 

@@ -12,8 +12,11 @@ Symbol.name = model.Property(f"{Symbol} has {String:name}")
 Venue = model.Concept("Venue", identify_by={"id": Integer})
 Venue.name = model.Property(f"{Venue} has {String:name}")
 
+# The (symbol, venue) pairs a symbol may trade on, loaded from symbol_venues.csv.
+AllowedSymbolVenue = model.Relationship(f"{Symbol} trades on {Venue}")
+
 # NotAllowedSymbolVenue (encoding artifact, not a domain concept): the
-# disallowed dual of the allowed (symbol, venue) pairs in symbol_venues.csv.
+# disallowed dual of the allowed (symbol, venue) pairs.
 # The CSP supports only the arithmetic operators !=, *, +, -, so the rule
 # is encoded as "forbid these pairs" rather than "require an allowed pair".
 NotAllowedSymbolVenue = model.Concept(

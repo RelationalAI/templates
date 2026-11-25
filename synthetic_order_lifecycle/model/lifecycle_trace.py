@@ -1,4 +1,4 @@
-"""Order lifecycle decision problem: one valid event trace for the pre-allocated slots."""
+"""Lifecycle trace: the decision problem that yields one valid event trace for the pre-allocated slots."""
 
 from relationalai.semantics import Integer, String
 from relationalai.semantics import sum as rai_sum

@@ -5,8 +5,7 @@ solve status, the generated event trace (one row per slot), and the per-order
 filled-quantity totals.
 """
 
-from model import Order, OrderEvent, SolveStatus, Venue, model
-from relationalai.semantics import sum as rai_sum
+from model import Order, OrderEvent, OrderFill, SolveStatus, Venue, model
 
 if __name__ == "__main__":
     status = model.select(SolveStatus).to_df().iloc[:, 0].tolist()
@@ -37,5 +36,5 @@ if __name__ == "__main__":
     model.select(
         Order.id.alias("order_id"),
         Order.original_qty.alias("original_qty"),
-        rai_sum(OrderEvent.fill_qty).per(Order).alias("filled_qty"),
-    ).where(OrderEvent.order(Order)).inspect()
+        OrderFill.filled_qty.alias("filled_qty"),
+    ).where(OrderFill.order_id == Order.id).inspect()
