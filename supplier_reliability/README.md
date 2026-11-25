@@ -37,7 +37,7 @@ This template answers all of those in one place: it finds the cost-minimizing so
 
 ## What's included
 
-- `model/` -- the deployed model package, deployed with `rai models deploy --path model`: `schema.py` declares the `Supplier`, `Product`, `SupplyOption`, and `SupplyOrder` concepts, `source.py` loads the sample data, `reasoning.py` states the baseline sourcing problem with its sensitivity analysis and the disruption-scenario problems
+- `model/` -- the deployed model package, deployed with `rai models deploy --path model`: `schema.py` declares the `Supplier`, `Product`, `SupplyOption`, and `SupplyOrder` concepts, `source.py` loads the sample data, `sourcing_plan.py` states the baseline sourcing problem with its sensitivity analysis, `plan_marginals.py` publishes the reduced costs, basis statuses, shadow prices, and the capacity ranking, and `disruption_scenarios.py` states the disruption-scenario problems
 - `queries/sourcing_report.py` -- the report from the deployed model: baseline plan, capacity and demand shadow prices, lane reduced costs and basis status, an order plan per scenario, and a scenario summary
 - **Runbook**: `runbook.md` -- a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the code itself.
 - **Sample data**: three CSVs under `data/` describing suppliers, products, and per-supplier-product supply options. See *Sample data* below.
@@ -282,7 +282,9 @@ Use this sequence to deploy the model and query it:
 │   ├── __init__.py          # exports of the deployed model
 │   ├── schema.py            # concepts and properties
 │   ├── source.py            # sample data load
-│   └── reasoning.py         # baseline sensitivity solve, disruption scenarios, and their published status and objective
+│   ├── sourcing_plan.py     # baseline sensitivity solve and its published status, cost, and orders
+│   ├── plan_marginals.py    # published reduced costs, basis statuses, shadow prices, and capacity ranking
+│   └── disruption_scenarios.py  # disruption scenarios and their published status, cost, and orders
 ├── queries/
 │   └── sourcing_report.py   # baseline plan, marginals, and scenario report from the deployed model
 └── data/
@@ -336,7 +338,7 @@ Because each constraint carries an entity back-pointer, a marginal joins to that
 
 **5. Scenario analysis.** Each disruption scenario is a separate, named Problem that excludes one supplier via a filter on the decision variable and has its own solve, so one infeasible scenario leaves the others unaffected. This is a finite, structural change the marginals contextualize but do not by themselves predict -- removing all of a supplier's capacity can move cost further than the local shadow price suggests.
 
-For the implementation, see `model/reasoning.py` and `queries/sourcing_report.py`; to reproduce it step by step with the RAI skills, follow `runbook.md`.
+For the implementation, see `model/sourcing_plan.py`, `model/plan_marginals.py`, `model/disruption_scenarios.py`, and `queries/sourcing_report.py`; to reproduce it step by step with the RAI skills, follow `runbook.md`.
 
 ## Customize this template
 
@@ -352,7 +354,7 @@ Focus on the first changes most users will make.
 
 - **Capacity and demand** -- edit `capacity` in `suppliers.csv` and `demand` in `products.csv` to change where the bottleneck lands; the shadow prices track which constraint binds. The report's marginal checks name the bundled suppliers (SupplierA and SupplierD priced out, SupplierC binding), so update them in `queries/sourcing_report.py` when the bottleneck moves.
 - **Costs** -- adjust `cost_per_unit` in `supply_options.csv` to shift the optimal sourcing mix and the reduced costs of unused lanes.
-- **Scenarios** -- edit `EXCLUDED_SUPPLIERS` in `model/reasoning.py` to test different disruptions.
+- **Scenarios** -- edit `EXCLUDED_SUPPLIERS` in `model/disruption_scenarios.py` to test different disruptions.
 
 ### Extend the model
 

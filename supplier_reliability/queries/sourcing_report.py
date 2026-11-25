@@ -13,6 +13,7 @@ from model import (
     BaselineCost,
     BaselineOrder,
     BaselineStatus,
+    CapacityPriceRank,
     CapacityShadowPrice,
     DemandShadowPrice,
     LaneBasisStatus,
@@ -23,7 +24,7 @@ from model import (
     model,
     scenarios,
 )
-from relationalai.semantics import Float, String
+from relationalai.semantics import Float, Integer, String
 
 
 def solve_result(status_rel, cost_rel):
@@ -154,13 +155,22 @@ if __name__ == "__main__":
 
     # --- Acting on it: which supplier capacity is the bottleneck? -------------------
     # The largest-magnitude capacity shadow price is the capacity whose marginal unit
-    # moves the bill the most -- the supplier to expand (or protect) first.
-    bottleneck = max(
-        zip(cap_sp_df["supplier"], cap_sp_df["shadow_price"]),
-        key=lambda sp: abs(sp[1]),
+    # moves the bill the most -- the supplier to expand (or protect) first. The model ranks
+    # the capacities by that magnitude; the bottleneck is the first.
+    price_rank = Integer.ref()
+    bottleneck = (
+        model.select(Supplier.name.alias("supplier"), shadow_price.alias("shadow_price"))
+        .where(
+            CapacityShadowPrice(Supplier, shadow_price),
+            CapacityPriceRank(Supplier, price_rank),
+            price_rank == 1,
+        )
+        .to_df()
+        .iloc[0]
     )
     print(
-        f"\nMost cost-sensitive capacity: {bottleneck[0]} (d cost / d capacity = {bottleneck[1]:+.2f})"
+        f"\nMost cost-sensitive capacity: {bottleneck['supplier']} "
+        f"(d cost / d capacity = {float(bottleneck['shadow_price']):+.2f})"
     )
 
     # --------------------------------------------------

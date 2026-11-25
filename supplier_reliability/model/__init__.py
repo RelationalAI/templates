@@ -39,6 +39,14 @@ Modeling approach:
   separate Problem with a where= filter -- a FINITE structural change the local
   marginals contextualize but do not by themselves predict.
 
+The model is split by stage, and each module imports the modules whose declarations it reads:
+
+- `sourcing_plan.py`: Phase A's baseline sourcing LP, its solve with sensitivity analysis, and the
+  published status, total cost, and order quantities.
+- `plan_marginals.py`: the lane reduced costs and basis statuses, the capacity and demand shadow
+  prices, and the ranking of the capacities by shadow price magnitude.
+- `disruption_scenarios.py`: Phase B's supplier-exclusion problems and their published results.
+
 Run:
     `rai models deploy --path model` deploys this package to the schemas in raiconfig.yaml
     and waits for its first refresh, which runs all three solves. Then
@@ -48,19 +56,17 @@ Run:
     deployed model.
 """
 
-from .reasoning import (
-    EXCLUDED_SUPPLIERS,
-    BaselineCost,
-    BaselineOrder,
-    BaselineStatus,
+from .disruption_scenarios import EXCLUDED_SUPPLIERS, scenarios
+from .plan_marginals import (
+    CapacityPriceRank,
     CapacityShadowPrice,
     DemandShadowPrice,
     LaneBasisStatus,
     LaneReducedCost,
-    scenarios,
 )
 from .schema import Product, Supplier, SupplyOption, SupplyOrder, model
 from .source import DATA_DIR
+from .sourcing_plan import BaselineCost, BaselineOrder, BaselineStatus
 
 __all__ = [
     "DATA_DIR",
@@ -68,6 +74,7 @@ __all__ = [
     "BaselineCost",
     "BaselineOrder",
     "BaselineStatus",
+    "CapacityPriceRank",
     "CapacityShadowPrice",
     "DemandShadowPrice",
     "LaneBasisStatus",
