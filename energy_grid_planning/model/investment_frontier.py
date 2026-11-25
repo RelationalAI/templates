@@ -1,7 +1,7 @@
 """Investment frontier: each investment level's portfolio of approved requests and upgrades, the budget
 range, the gains from each level to the next, the marginal value per added budget, and the knee point."""
 
-from relationalai.semantics import Float, Integer
+from relationalai.semantics import Float, Integer, sum
 from relationalai.semantics.std import aggregates as aggs
 
 # Declare the approval and upgrade variables each portfolio reads.
