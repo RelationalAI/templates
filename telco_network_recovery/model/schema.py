@@ -23,8 +23,9 @@ CellTower.install_date = Property(f"{CellTower} has {DateTime:install_date}")
 # target. tower_id_fk is an explicit FK property used by the GNN
 # graph via property equality, so heterogeneous edges are expressed as
 # property-level equality conditions rather than `Relationship`
-# traversal. at_risk is the label (1 if STATUS is FAILING or WARNING);
-# the GNN drops it from the features to prevent leakage.
+# traversal. at_risk is the label (1 if status is FAILING or WARNING,
+# derived in equipment_failure.py); the GNN drops both status and at_risk
+# from the features to prevent leakage.
 NetworkEquipment = Concept("NetworkEquipment", identify_by={"id": String})
 NetworkEquipment.equipment_type = Property(f"{NetworkEquipment} has {String:equipment_type}")
 NetworkEquipment.manufacturer = Property(f"{NetworkEquipment} has {String:manufacturer}")
@@ -32,6 +33,7 @@ NetworkEquipment.eqp_model = Property(f"{NetworkEquipment} has {String:eqp_model
 NetworkEquipment.firmware_version = Property(f"{NetworkEquipment} has {String:firmware_version}")
 NetworkEquipment.install_date = Property(f"{NetworkEquipment} has {DateTime:install_date}")
 NetworkEquipment.tower_id_fk = Property(f"{NetworkEquipment} has {String:tower_id_fk}")
+NetworkEquipment.status = Property(f"{NetworkEquipment} has {String:status}")
 NetworkEquipment.at_risk = Property(f"{NetworkEquipment} has {Integer:at_risk}")
 
 # EquipmentHealth concept: per-equipment health snapshot (MTBF, failure
@@ -48,21 +50,27 @@ EquipmentHealth.health_score = Property(f"{EquipmentHealth} has {Float:health_sc
 EquipmentHealth.measurement_date = Property(f"{EquipmentHealth} has {DateTime:measurement_date}")
 EquipmentHealth.equipment_id_fk = Property(f"{EquipmentHealth} has {String:equipment_id_fk}")
 
-# ModelAdvisory concept: a manufacturer-issued recall / defect batch /
-# firmware bug / EOL / security-patch notice that applies to an
-# equipment MODEL. The relational signal the GNN propagates to every
-# NetworkEquipment sharing the affected MODEL. Multiple advisories on
-# the same MODEL collapse to one row (the max severity) so the GNN sees
-# one ModelAdvisory node per affected fleet.
+# Advisory concept: a manufacturer-issued recall / defect batch /
+# firmware bug / EOL / security-patch notice as issued. A MODEL can carry
+# several, of different types.
+Advisory = Concept("Advisory", identify_by={"model": String, "advisory_type": String})
+Advisory.severity = Property(f"{Advisory} has {Float:severity}")
+Advisory.issued_date = Property(f"{Advisory} has {DateTime:issued_date}")
+
+# ModelAdvisory concept: the most severe advisory that applies to an
+# equipment MODEL (derived in advisory_signals.py). The relational signal
+# the GNN propagates to every NetworkEquipment sharing the affected MODEL.
+# Multiple advisories on the same MODEL collapse to one row so the GNN
+# sees one ModelAdvisory node per affected fleet.
 ModelAdvisory = Concept("ModelAdvisory", identify_by={"model": String})
 ModelAdvisory.advisory_type = Property(f"{ModelAdvisory} has {String:advisory_type}")
 ModelAdvisory.severity = Property(f"{ModelAdvisory} has {Float:severity}")
 ModelAdvisory.issued_date = Property(f"{ModelAdvisory} has {DateTime:issued_date}")
 
 # TrainEqTable / ValEqTable / TestEqTable concepts: GNN task tables
-# holding (equipment_id, at_risk) pairs for training / validation /
-# inference. Test = all equipment so every NetworkEquipment receives
-# a prediction, independent of train/val split.
+# holding the equipment_id of each item used for training / validation /
+# inference, labeled by NetworkEquipment.at_risk. Test = all equipment so
+# every NetworkEquipment receives a prediction, independent of train/val split.
 TrainEqTable = Concept("TrainEqTable")
 ValEqTable = Concept("ValEqTable")
 TestEqTable = Concept("TestEqTable")
@@ -101,7 +109,7 @@ Subscriber.lifetime_value = Property(f"{Subscriber} has {Float:lifetime_value}")
 Subscriber.churn_risk_score = Property(f"{Subscriber} has {Float:churn_risk_score}")
 Subscriber.status = Property(f"{Subscriber} has {SubscriberStatus:status}")
 # Composite revenue-at-risk signal (LTV * (1 + churn)), derived in
-# reasoning.py; this is the per-subscriber weight that sums into
+# customer_impact.py; this is the per-subscriber weight that sums into
 # `CellTower.weighted_impact` and drives the upgrade objective.
 Subscriber.customer_value = Property(f"{Subscriber} has {Float:customer_value}")
 

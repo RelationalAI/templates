@@ -7,8 +7,8 @@ A regional telco operator must allocate a fixed $5M capex budget and 200 crew-we
 ## The chain
 
 ```
-Ontology: 8 source-data concepts including ModelAdvisory; 1,500 equipment items,
-8 advisories on 7 MODELs. The chain produces a multi-region preventive-
+Ontology: 8 source-data concepts including Advisory, which the model reduces to
+ModelAdvisory; 1,500 equipment items, 8 advisories on 7 MODELs. The chain produces a multi-region preventive-
 maintenance plan within the $5M / 200-week envelope, restoring ~180 Gbps
 of capacity across ~27 selected towers (out of 142 flagged
 critical-restore) in all 5 regions. (The GNN is stochastic — exact
@@ -71,7 +71,7 @@ Concepts: `CellTower`, `NetworkEquipment` (with `tower_id_fk` FK property), `Equ
 
 **Response**
 
-8 source-data concepts wired to the bundled CSVs: 250 `CellTower`, 1,500 `NetworkEquipment`, 1,500 `EquipmentHealth`, 5,000 `NetworkPerformance`, 1,200 `Subscriber`, 6,000 `CallDetailRecord`, 750 `TowerUpgradeOption` (3 tiers × 250 towers), 8 `ModelAdvisory` rows on 7 distinct MODELs (severities `0.50–0.95`). 572 of 1,500 equipment items (38.1%) sit on an advised MODEL — the relational-neighbor signal the GNN's `ModelAdvisory → NetworkEquipment` edge propagates; 597 (39.8%) carry the binary `AT_RISK` label (`STATUS in FAILING / WARNING`) — the GNN's prediction target, distinct from advised-MODEL coverage.
+8 source-data concepts wired to the bundled CSVs: 250 `CellTower`, 1,500 `NetworkEquipment`, 1,500 `EquipmentHealth`, 5,000 `NetworkPerformance`, 1,200 `Subscriber`, 6,000 `CallDetailRecord`, 750 `TowerUpgradeOption` (3 tiers × 250 towers), 8 `Advisory` rows on 7 distinct MODELs (severities `0.50–0.95`), which the model keeps as 7 `ModelAdvisory` rows, the most severe per MODEL. 572 of 1,500 equipment items (38.1%) sit on an advised MODEL — the relational-neighbor signal the GNN's `ModelAdvisory → NetworkEquipment` edge propagates; 597 (39.8%) carry the binary `AT_RISK` label (`STATUS in FAILING / WARNING`) — the GNN's prediction target, distinct from advised-MODEL coverage.
 
 ### 3. Discover reasoner questions
 
@@ -171,4 +171,4 @@ Ontology gains a singleton `RestorePlan` Concept with `total_cost`, `total_insta
 
 ## Data
 
-Bundled CSVs in `data/`: 250 cell towers (15 WEST DEGRADED), 1,500 `NetworkEquipment` items across 18 consolidated MODELs, 1,500 `EquipmentHealth` snapshots, 5,000 `NetworkPerformance` measurements, 1,200 subscribers, 6,000 CDRs, 750 `TowerUpgradeOption` rows (3 tiers × 250 towers), 8 `ModelAdvisory` rows on 7 distinct MODELs (severities 0.50–0.95). `data/_synthesize_advisory_data.py` regenerates the equipment / health / advisory / upgrade-option CSVs deterministically from a seed. The chain's stages are declared in `model/` (`schema.py`, `source.py`, `reasoning.py`), trained with `train.py`, and read by `queries/recovery_report.py`.
+Bundled CSVs in `data/`: 250 cell towers (15 WEST DEGRADED), 1,500 `NetworkEquipment` items across 18 consolidated MODELs, 1,500 `EquipmentHealth` snapshots, 5,000 `NetworkPerformance` measurements, 1,200 subscribers, 6,000 CDRs, 750 `TowerUpgradeOption` rows (3 tiers × 250 towers), 8 `Advisory` rows on 7 distinct MODELs (severities 0.50–0.95). `data/_synthesize_advisory_data.py` regenerates the equipment / health / advisory / upgrade-option CSVs deterministically from a seed. The chain's stages are declared in `model/` (`schema.py`, `source.py`, and one module per stage: `equipment_failure.py`, `advisory_signals.py`, `critical_towers.py`, `customer_impact.py`, `call_paths.py`, `tower_upgrades.py`), trained with `train.py`, and read by `queries/recovery_report.py`.

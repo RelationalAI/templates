@@ -15,46 +15,79 @@ import pandas as pd
 from model import (
     FAILURE_INTENSITY_THRESHOLD,
     PATH_MAX_HOPS,
+    POSITIVE_PROBABILITY_CUTOFF,
+    AdvisedEquipmentCount,
+    AdvisedModelEquipment,
+    AdvisoryCount,
+    AtRiskBalance,
     CellTower,
+    CriticalRegionCount,
+    EquipmentSplitSize,
+    FailureIntensitySpread,
+    GnnRecallCounts,
     ModelAdvisory,
     NetworkEquipment,
+    PositiveProbabilitySpread,
+    RationaleTally,
+    RestoreBranchCounts,
     RestorePlan,
     RoutingTowerCount,
+    SelectedRegionCount,
     SimplePathCount,
     SolveObjective,
     SolveStatus,
     Subscriber,
-    TestEqTable,
     TopCallPathHop,
     TopCallPathStep,
     TowerFailureScore,
     TowerUpgradeOption,
-    TrainEqTable,
-    ValEqTable,
     model,
 )
-from relationalai.semantics import Integer, count, select
+from relationalai.semantics import Float, Integer, String, select
 
 pd.set_option("display.float_format", lambda v: f"{v:,.4f}")
 
+TOP_TOWERS = 10
+TOP_SUBSCRIBERS = 10
+
+
+def published_row(relationship, **field_types) -> dict:
+    """The row a nullary relationship publishes, by field name; the field types name its fields in order."""
+    refs = {name: kind.ref() for name, kind in field_types.items()}
+    df = model.where(relationship(*refs.values())).select(*(ref.alias(name) for name, ref in refs.items())).to_df()
+    return {name: df[name].iloc[0] for name in refs}
+
+
+def restore_branch_counts() -> dict:
+    return published_row(
+        RestoreBranchCounts,
+        critical=Integer,
+        degraded=Integer,
+        packet_loss=Integer,
+        predictive=Integer,
+        only_predictive=Integer,
+    )
+
+
+def region_counts(relationship, first_seen: pd.Series) -> pd.Series:
+    """A relationship's towers per region, most first; ties keep the order in which their regions
+    first appear in `first_seen`."""
+    towers, region = Integer.ref(), String.ref()
+    counts = (
+        model.where(relationship(towers, region))
+        .select(region.alias("region"), towers.alias("towers"))
+        .to_df()
+        .set_index("region")["towers"]
+    )
+    order = pd.Index(first_seen.drop_duplicates(), name="region")
+    return counts.reindex(order).astype(int).sort_values(ascending=False, kind="stable")
 
 
 def stage_1_predictive() -> bool:
-    counts = (
-        select(
-            count(TrainEqTable).alias("train"),
-            count(ValEqTable).alias("val"),
-            count(TestEqTable).alias("test"),
-        )
-        .to_df()
-        .iloc[0]
-    )
-    equipment_df = select(
-        NetworkEquipment.id.alias("equipment_id"),
-        NetworkEquipment.eqp_model.alias("MODEL"),
-        NetworkEquipment.tower_id_fk.alias("TOWER_ID"),
-        NetworkEquipment.at_risk.alias("AT_RISK"),
-    ).to_df()
+    split = published_row(EquipmentSplitSize, train_items=Integer, validation_items=Integer, test_items=Integer)
+    balance = published_row(AtRiskBalance, items=Integer, at_risk_items=Integer, at_risk_rate=Float)
+    advisories = published_row(AdvisoryCount, advisories=Integer, models=Integer)
+    n_items = int(balance["items"])
     advisories_df = select(
         ModelAdvisory.model.alias("MODEL"),
         ModelAdvisory.advisory_type.alias("ADVISORY_TYPE"),
@@ -62,67 +95,73 @@ def stage_1_predictive() -> bool:
         ModelAdvisory.issued_date.alias("ISSUED_DATE"),
     ).to_df()
 
-    print(f"Equipment split: train={counts['train']} val={counts['val']} test={counts['test']} (all)")
-    print(f"Label distribution: at_risk=1 {equipment_df['AT_RISK'].sum()} / "
-          f"{len(equipment_df)} ({equipment_df['AT_RISK'].mean():.1%})")
-    print(f"Advisories: {len(advisories_df)} on {advisories_df['MODEL'].nunique()} distinct models")
+    print(
+        f"Equipment split: train={int(split['train_items'])} val={int(split['validation_items'])} "
+        f"test={int(split['test_items'])} (all)"
+    )
+    print(f"Label distribution: at_risk=1 {int(balance['at_risk_items'])} / "
+          f"{n_items} ({float(balance['at_risk_rate']):.1%})")
+    print(f"Advisories: {int(advisories['advisories'])} on {int(advisories['models'])} distinct models")
 
     # Descriptive: advisory landscape -- which MODELs are affected, severity,
     # and how many equipment items sit on each. This is the relational
     # neighbor signal the GNN propagates in Stage 1.
     print("\n  Advisory landscape -- equipment count per advised MODEL:")
+    advised_model, advised_items = String.ref(), Integer.ref()
+    eq_counts = (
+        model.where(AdvisedModelEquipment(advised_model, advised_items))
+        .select(advised_model.alias("MODEL"), advised_items.alias("eq_count"))
+        .to_df()
+    )
     adv_landscape = (
         advisories_df
-        .merge(equipment_df.groupby("MODEL").size().rename("eq_count").reset_index(), on="MODEL", how="left")
+        .merge(eq_counts, on="MODEL", how="left")
         .sort_values("SEVERITY", ascending=False)
         [["MODEL", "ADVISORY_TYPE", "SEVERITY", "ISSUED_DATE", "eq_count"]]
     )
     print(adv_landscape.to_string(index=False))
-    n_on_advised = int(equipment_df["MODEL"].isin(set(advisories_df["MODEL"])).sum())
-    print(f"  Equipment on an advised MODEL: {n_on_advised} / {len(equipment_df)} "
-          f"({n_on_advised / len(equipment_df):.1%})")
+    n_on_advised = int(published_row(AdvisedEquipmentCount, equipment_items=Integer)["equipment_items"])
+    print(f"  Equipment on an advised MODEL: {n_on_advised} / {n_items} "
+          f"({n_on_advised / n_items:.1%})")
 
     print(f"\n{'=' * 60}")
     print("STAGE 1: PREDICTIVE -- equipment-failure binary classification GNN")
     print("=" * 60)
 
-    pred_df = (
-        select(
-            NetworkEquipment.id.alias("equipment_id"),
-            NetworkEquipment.predictions.probs.alias("pos_prob"),
-            NetworkEquipment.predictions.predicted_labels.alias("predicted_label"),
-        )
-        .where(NetworkEquipment.predictions)
-        .to_df()
-    )
+    pred_df = select(NetworkEquipment.id.alias("equipment_id")).where(NetworkEquipment.predictions).to_df()
     if pred_df.empty:
         print("(no predictions returned)")
         return False
-    pred_df["pos_prob"] = pred_df["pos_prob"].astype(float)
 
     # Per-tower SUM of positive probabilities (= expected count of at-risk
     # equipment on the tower), published by the model as
-    # TowerFailureScore.failure_intensity.
+    # TowerFailureScore.failure_intensity and ranked by TowerFailureScore.failure_rank.
     per_tower = (
         select(
             TowerFailureScore.tower_id.alias("TOWER_ID"),
             TowerFailureScore.failure_intensity.alias("FAILURE_INTENSITY"),
+            TowerFailureScore.failure_rank.alias("failure_rank"),
         )
+        .where(TowerFailureScore.failure_rank <= TOP_TOWERS)
         .to_df()
-        .sort_values("FAILURE_INTENSITY", ascending=False)
+        .sort_values("failure_rank")
+        .drop(columns="failure_rank")
     )
     per_tower["FAILURE_INTENSITY"] = per_tower["FAILURE_INTENSITY"].astype(float)
-    print("\n  Top 10 towers by predicted failure intensity (sum of equipment failure probs):")
-    print(per_tower.head(10).to_string(index=False))
+    print(f"\n  Top {TOP_TOWERS} towers by predicted failure intensity (sum of equipment failure probs):")
+    print(per_tower.to_string(index=False))
+    spread = published_row(
+        FailureIntensitySpread, scored_towers=Integer, minimum=Float, maximum=Float, median=Float
+    )
     print(
         f"\n  failure_intensity distribution: "
-        f"min={per_tower['FAILURE_INTENSITY'].min():.2f}, "
-        f"median={per_tower['FAILURE_INTENSITY'].median():.2f}, "
-        f"max={per_tower['FAILURE_INTENSITY'].max():.2f}"
+        f"min={float(spread['minimum']):.2f}, "
+        f"median={float(spread['median']):.2f}, "
+        f"max={float(spread['maximum']):.2f}"
     )
     print(
         f"  Towers with failure_intensity > {FAILURE_INTENSITY_THRESHOLD}: "
-        f"{int((per_tower['FAILURE_INTENSITY'] > FAILURE_INTENSITY_THRESHOLD).sum())} / {len(per_tower)}"
+        f"{int(restore_branch_counts()['predictive'])} / {int(spread['scored_towers'])}"
     )
 
     # GNN end-to-end recall on at-risk items. Two views:
@@ -132,37 +171,35 @@ def stage_1_predictive() -> bool:
     # answers "what a downstream rule would catch using the GNN's calibrated
     # probability." They can diverge if the model's calibration is shifted
     # (the argmax can be conservative even when probs are well-separated).
-    total_atrisk = int(equipment_df["AT_RISK"].sum())
+    total_atrisk = int(balance["at_risk_items"])
     if total_atrisk == 0:
         print("\n  GNN recall: no at-risk items in the labels, so recall is undefined.")
     else:
-        gnn_flagged_atrisk = pred_df.merge(equipment_df[["equipment_id", "AT_RISK"]], on="equipment_id", how="left")
-        gnn_recall_argmax = int(
-            gnn_flagged_atrisk[
-                (gnn_flagged_atrisk["AT_RISK"] == 1)
-                & (gnn_flagged_atrisk["predicted_label"] == 1)
-            ].shape[0]
-        )
-        gnn_recall_p05 = int(
-            gnn_flagged_atrisk[
-                (gnn_flagged_atrisk["AT_RISK"] == 1)
-                & (gnn_flagged_atrisk["pos_prob"] >= 0.5)
-            ].shape[0]
-        )
+        recall = published_row(GnnRecallCounts, by_label=Integer, by_cutoff=Integer)
+        gnn_recall_argmax = int(recall["by_label"])
+        gnn_recall_p05 = int(recall["by_cutoff"])
         print(
             f"\n  GNN recall on {total_atrisk} true at-risk items:"
             f"\n    argmax (predicted_label == 1):                    "
             f"{gnn_recall_argmax:>4} ({gnn_recall_argmax / total_atrisk:>5.1%})"
-            f"\n    p>=0.5 (probabilistic threshold):                 "
+            f"\n    p>={POSITIVE_PROBABILITY_CUTOFF} (probabilistic threshold):                 "
             f"{gnn_recall_p05:>4} ({gnn_recall_p05 / total_atrisk:>5.1%})"
         )
     # Per-equipment positive-prediction distribution for transparency.
+    probs = published_row(
+        PositiveProbabilitySpread,
+        scored_items=Integer,
+        minimum=Float,
+        maximum=Float,
+        median=Float,
+        at_cutoff=Integer,
+    )
     print(
         f"\n  GNN per-equipment positive-prob distribution: "
-        f"min={pred_df['pos_prob'].min():.3f}, "
-        f"median={pred_df['pos_prob'].median():.3f}, "
-        f"max={pred_df['pos_prob'].max():.3f}; "
-        f"items with pos_prob>=0.5: {int((pred_df['pos_prob'] >= 0.5).sum())} / {len(pred_df)}"
+        f"min={float(probs['minimum']):.3f}, "
+        f"median={float(probs['median']):.3f}, "
+        f"max={float(probs['maximum']):.3f}; "
+        f"items with pos_prob>={POSITIVE_PROBABILITY_CUTOFF}: {int(probs['at_cutoff'])} / {int(probs['scored_items'])}"
     )
     return True
 
@@ -206,22 +243,21 @@ def stage_2_rules() -> pd.DataFrame:
     ]:
         fired = set(model.where(branch()).select(CellTower.id).to_df().iloc[:, 0])
         flagged_df[column] = flagged_df["tower_id"].isin(fired)
-    print(f"\n  Flagged critical_restore towers: {len(flagged_df)}")
+    branches = restore_branch_counts()
+    n_critical = int(branches["critical"])
+    print(f"\n  Flagged critical_restore towers: {n_critical}")
     print("  Breakdown by region:")
-    print(flagged_df["region"].value_counts().to_string())
+    print(region_counts(CriticalRegionCount, flagged_df["region"]).to_string())
 
-    # Per-branch contribution, from the branch flags the model publishes.
-    _b1 = flagged_df["branch_degraded"]
-    _b2 = flagged_df["branch_packet_loss"]
-    _b3 = flagged_df["branch_predictive"]
+    # Per-branch contribution, from the branch counts the model publishes.
+    only_predictive = int(branches["only_predictive"])
     print("\n  Per-branch contribution (a tower can fire on multiple branches):")
-    print(f"    Branch 1 (WEST + DEGRADED + low health):                  {int(_b1.sum())} towers")
-    print(f"    Branch 2 (WEST + high packet loss + low health):          {int(_b2.sum())} towers")
+    print(f"    Branch 1 (WEST + DEGRADED + low health):                  {int(branches['degraded'])} towers")
+    print(f"    Branch 2 (WEST + high packet loss + low health):          {int(branches['packet_loss'])} towers")
     print(f"    Branch 3 (failure_intensity > {FAILURE_INTENSITY_THRESHOLD}, any region):  "
-          f"{int(_b3.sum())} towers")
-    _only_predictive = (_b3 & ~_b1 & ~_b2).sum()
-    print(f"    Towers flagged ONLY by the predictive branch:             {int(_only_predictive)} "
-          f"({_only_predictive / len(flagged_df):.0%} of flagged set)")
+          f"{int(branches['predictive'])} towers")
+    print(f"    Towers flagged ONLY by the predictive branch:             {only_predictive} "
+          f"({only_predictive / n_critical:.0%} of flagged set)")
 
     print("\n  Top 20 by predicted failure intensity:")
     print(flagged_df.head(20).to_string(index=False))
@@ -242,12 +278,14 @@ def stage_3_graph() -> pd.DataFrame:
             Subscriber.churn_risk_score.alias("churn"),
             Subscriber.customer_value.alias("customer_value"),
             Subscriber.influence_score.alias("pagerank"),
+            Subscriber.customer_rank.alias("customer_rank"),
         )
+        .where(Subscriber.customer_rank <= TOP_SUBSCRIBERS)
         .to_df()
-        .sort_values("customer_value", ascending=False)
-        .head(10)
+        .sort_values("customer_rank")
+        .drop(columns="customer_rank")
     )
-    print("\n  Top 10 subscribers by customer_value (PageRank shown for reference):")
+    print(f"\n  Top {TOP_SUBSCRIBERS} subscribers by customer_value (PageRank shown for reference):")
     print(top_subs.to_string(index=False))
 
     blast_df = critical_tower_measures(
@@ -322,7 +360,11 @@ def stage_5_prescriptive(flagged_df: pd.DataFrame, blast_df: pd.DataFrame) -> No
     if objective:
         print(f"• objective: {round(objective[0], 9)}\n")
 
-    # Extract selected upgrades.
+    # Extract selected upgrades. Each carries the rationale the model publishes: the upstream
+    # signals that flagged its tower, OR-combined:
+    #   - operational       : Stage 2 branch 1 (degraded) or 2 (packet loss)
+    #   - advisory/predicted: Stage 2 branch 3 (GNN failure intensity)
+    #   - high-value        : weighted_impact in the top quartile of critical towers
     selected_df = (
         model.where(TowerUpgradeOption.is_selected_upgrade())
         .select(
@@ -331,58 +373,22 @@ def stage_5_prescriptive(flagged_df: pd.DataFrame, blast_df: pd.DataFrame) -> No
             TowerUpgradeOption.capacity_increase_gbps.alias("capacity_gbps"),
             TowerUpgradeOption.cost.alias("cost"),
             TowerUpgradeOption.install_weeks.alias("install_weeks"),
+            TowerUpgradeOption.rationale.alias("rationale"),
         )
         .to_df()
     )
     selected_df["cost"] = selected_df["cost"].astype(float)
 
     selected_df = selected_df.merge(
-        flagged_df[["tower_id", "region", "status", "failure_intensity",
-                    "branch_degraded", "branch_packet_loss", "branch_predictive", "high_value"]],
+        flagged_df[["tower_id", "region", "failure_intensity"]],
         on="tower_id",
         how="left",
     ).sort_values(["region", "tier"])
 
-    # Per-tower selection rationale: the upstream signals that flagged the
-    # tower, OR-combined, from the flags the model publishes:
-    #   - operational       : Stage 2 branch 1 (degraded) or 2 (packet loss)
-    #   - advisory/predicted: Stage 2 branch 3 (GNN failure intensity)
-    #   - high-value        : weighted_impact in the top quartile of critical towers
     selected_df = selected_df.merge(
         blast_df[["tower_id", "weighted_impact", "weighted_pagerank"]],
         on="tower_id",
         how="left",
-    )
-    selected_df["sig_operational"] = selected_df["branch_degraded"] | selected_df["branch_packet_loss"]
-    selected_df["sig_predictive"] = selected_df["branch_predictive"]
-    selected_df["sig_high_value"] = selected_df["high_value"]
-
-    def _rationale(row):
-        sigs = []
-        if row["sig_operational"]:
-            sigs.append("operational")
-        if row["sig_predictive"]:
-            sigs.append("advisory/predicted")
-        if row["sig_high_value"]:
-            sigs.append("high-value")
-        return ", ".join(sigs) if sigs else "(low signal)"
-
-    selected_df["rationale"] = selected_df.apply(_rationale, axis=1)
-
-    print(f"\n  Selected upgrades: {len(selected_df)}")
-    print(
-        selected_df[
-            ["tower_id", "region", "tier", "capacity_gbps", "cost",
-             "install_weeks", "failure_intensity", "weighted_impact",
-             "rationale"]
-        ].to_string(index=False)
-    )
-    print(
-        f"\n  Rationale tally: "
-        f"operational={int(selected_df['sig_operational'].sum())}, "
-        f"advisory/predicted={int(selected_df['sig_predictive'].sum())}, "
-        f"high-value={int(selected_df['sig_high_value'].sum())} "
-        f"(towers can fire on multiple signals)"
     )
 
     # The plan headline, published by the model as ontology.
@@ -400,21 +406,42 @@ def stage_5_prescriptive(flagged_df: pd.DataFrame, blast_df: pd.DataFrame) -> No
         )
         .to_df()
     )
+    n_selected = int(plan_df["towers"].iloc[0]) if len(plan_df) > 0 else 0
+
+    print(f"\n  Selected upgrades: {n_selected}")
+    print(
+        selected_df[
+            ["tower_id", "region", "tier", "capacity_gbps", "cost",
+             "install_weeks", "failure_intensity", "weighted_impact",
+             "rationale"]
+        ].to_string(index=False)
+    )
+    tally = published_row(RationaleTally, operational=Integer, predictive=Integer, high_value=Integer)
+    print(
+        f"\n  Rationale tally: "
+        f"operational={int(tally['operational'])}, "
+        f"advisory/predicted={int(tally['predictive'])}, "
+        f"high-value={int(tally['high_value'])} "
+        f"(towers can fire on multiple signals)"
+    )
+
     if len(plan_df) > 0:
         plan = plan_df.iloc[0]
         print(f"\n  Total cost:               ${float(plan['total_cost']):,.0f}")
         print(f"  Total install crew-weeks: {int(plan['install_weeks'])}")
         print(f"  Capacity restored:        {int(plan['capacity_gbps'])} Gbps")
         print(f"  Tier mix:                 {{'GOLD': {plan['gold']}, 'SILVER': {plan['silver']}, 'BRONZE': {plan['bronze']}}}")
-        print(f"  Towers covered:           {plan['towers']} of {len(flagged_df)} critical")
-        print(f"  Region breakdown:         {selected_df['region'].value_counts().to_dict()}")
+        print(f"  Towers covered:           {plan['towers']} of {int(restore_branch_counts()['critical'])} critical")
+        by_region = region_counts(SelectedRegionCount, selected_df["region"])
+        region_mix = {region: int(n) for region, n in by_region.items()}
+        print(f"  Region breakdown:         {region_mix}")
 
     print("\n  Plan (queryable as ontology):")
     print(plan_df.to_string(index=False))
 
     print(f"\n{'=' * 60}")
     print("PIPELINE COMPLETE: 5 stages read from the deployed Telco ontology")
-    print(f"Plan headline + {len(selected_df)}-row SelectedUpgrade view are queryable")
+    print(f"Plan headline + {n_selected}-row SelectedUpgrade view are queryable")
     print("as ontology -- RestorePlan and TowerUpgradeOption.is_selected_upgrade.")
     print("=" * 60)
 

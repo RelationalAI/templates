@@ -5,10 +5,10 @@ from pathlib import Path
 import pandas as pd
 
 from .schema import (
+    Advisory,
     CallDetailRecord,
     CellTower,
     EquipmentHealth,
-    ModelAdvisory,
     NetworkEquipment,
     NetworkPerformance,
     Subscriber,
@@ -39,17 +39,10 @@ equipment_health_df = pd.read_csv(
 upgrade_options_df = pd.read_csv(DATA_DIR / "tower_upgrade_options.csv")
 advisories_df = pd.read_csv(DATA_DIR / "model_advisories.csv", parse_dates=["ISSUED_DATE"])
 
-# Binary at_risk label for the GNN: STATUS in {FAILING, WARNING} are
-# the positive class (597 of 1,500 equipment items in the bundled data). OPERATIONAL is the negative
-# class. STATUS itself is never loaded, and at_risk is dropped from the
-# feature set to prevent leakage.
-network_equipment_df["AT_RISK"] = (
-    network_equipment_df["STATUS"].isin(["FAILING", "WARNING"]).astype(int)
-)
-
 # Train/val/test split. Train + val carry labels for fit + evaluation;
 # test = ALL equipment so every item receives a prediction (inference
-# domain) for the chain's per-tower aggregation.
+# domain) for the chain's per-tower aggregation. The shuffle runs in pandas
+# because PyRel 2.3.0 has no seeded random shuffle.
 eq_shuf = network_equipment_df.sample(frac=1, random_state=SEED).reset_index(drop=True)
 n = len(eq_shuf)
 train_n = int(n * 0.70)
@@ -58,11 +51,11 @@ val_n = int(n * 0.15)
 # types via df[col][0], a 0-based label lookup. An .iloc slice keeps
 # the parent index (val/test start mid-frame), so without this reset
 # the val split has no row labeled 0 -> KeyError: 0.
-train_eq_df = eq_shuf.iloc[:train_n][["EQUIPMENT_ID", "AT_RISK"]].rename(
-    columns={"EQUIPMENT_ID": "equipment_id", "AT_RISK": "at_risk"}
+train_eq_df = eq_shuf.iloc[:train_n][["EQUIPMENT_ID"]].rename(
+    columns={"EQUIPMENT_ID": "equipment_id"}
 ).reset_index(drop=True)
-val_eq_df = eq_shuf.iloc[train_n:train_n + val_n][["EQUIPMENT_ID", "AT_RISK"]].rename(
-    columns={"EQUIPMENT_ID": "equipment_id", "AT_RISK": "at_risk"}
+val_eq_df = eq_shuf.iloc[train_n:train_n + val_n][["EQUIPMENT_ID"]].rename(
+    columns={"EQUIPMENT_ID": "equipment_id"}
 ).reset_index(drop=True)
 test_eq_df = network_equipment_df[["EQUIPMENT_ID"]].rename(
     columns={"EQUIPMENT_ID": "equipment_id"}
@@ -88,7 +81,7 @@ model.define(NetworkEquipment.new(
     firmware_version=src.FIRMWARE_VERSION,
     install_date=src.INSTALL_DATE,
     tower_id_fk=src.TOWER_ID,
-    at_risk=src.AT_RISK,
+    status=src.STATUS,
 ))
 
 src = model.data(equipment_health_df)
@@ -104,12 +97,8 @@ model.define(EquipmentHealth.new(
     equipment_id_fk=src.EQUIPMENT_ID,
 ))
 
-adv_collapsed = (
-    advisories_df.sort_values("SEVERITY", ascending=False)
-    .drop_duplicates(subset=["MODEL"], keep="first")
-)
-src = model.data(adv_collapsed)
-model.define(ModelAdvisory.new(
+src = model.data(advisories_df)
+model.define(Advisory.new(
     model=src.MODEL,
     advisory_type=src.ADVISORY_TYPE,
     severity=src.SEVERITY,
@@ -120,10 +109,10 @@ model.define(TrainEqTable.new(model.data(train_eq_df).to_schema()))
 model.define(ValEqTable.new(model.data(val_eq_df).to_schema()))
 model.define(TestEqTable.new(model.data(test_eq_df).to_schema()))
 
-model.define(Train(NetworkEquipment, TrainEqTable.at_risk)).where(
+model.define(Train(NetworkEquipment, NetworkEquipment.at_risk)).where(
     NetworkEquipment.id == TrainEqTable.equipment_id,
 )
-model.define(Val(NetworkEquipment, ValEqTable.at_risk)).where(
+model.define(Val(NetworkEquipment, NetworkEquipment.at_risk)).where(
     NetworkEquipment.id == ValEqTable.equipment_id,
 )
 model.define(Test(NetworkEquipment)).where(
