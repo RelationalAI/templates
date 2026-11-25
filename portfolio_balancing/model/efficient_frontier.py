@@ -9,7 +9,7 @@ from relationalai.semantics.reasoners.prescriptive import Problem
 from relationalai.semantics.std import aggregates as aggs
 from relationalai.semantics.std.math import clip, maximum, minimum
 
-# Declares Stock.is_non_representative and Stock.regime_covar, which the constraints and the objective read.
+# These derive Stock.is_non_representative and Stock.regime_covar, which the constraints and the objective read.
 from . import correlation_clusters, regime_covariance  # noqa: F401
 from .compliance_flags import SECTOR_LIMIT
 from .schema import FrontierPoint, Scenario, Stock, model

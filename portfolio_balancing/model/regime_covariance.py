@@ -3,7 +3,7 @@ under the crisis regime (the observed covariance shrunk toward the product of th
 
 from relationalai.semantics import Float
 
-# Declares Stock.volatility, which the crisis covariance reads.
+# Derives Stock.volatility, which the crisis covariance reads.
 from . import correlation_clusters  # noqa: F401
 from .schema import Regime, Stock, model
 

@@ -48,9 +48,8 @@ without the cluster collapse, the gap would grow.
 - `model/correlation_clusters.py` derives volatility and correlation, builds the correlation graph and its Louvain clusters, picks each cluster's representative, and summarizes the clustering (edge and cluster counts, `Cluster` sizes, intra- and inter-cluster average correlation).
 - `model/regime_covariance.py` derives the base and crisis covariance.
 - `model/efficient_frontier.py` defines the 15 solves of the frontier. Each solve is a named Problem, and each later solve's return target is a rule over earlier solves' results. Every solve publishes a `FrontierPoint` per scenario, with the weight of each allocated stock.
-- `model/crisis_volatility.py` computes each frontier point's volatility and its base-versus-crisis gap.
 - `model/__init__.py` exports the deployed model for the query.
-- `queries/portfolio_report.py` reads the deployed model, prints the four stages, finds the knee of each frontier, and reports the volatility comparison and the stock amounts and weights for each scenario's candidate portfolio.
+- `queries/portfolio_report.py` reads the deployed model, prints the four stages, creates the frontier summaries (knee and volatility comparison), and reports the stock amounts and weights for each scenario's candidate portfolio.
 
 ## Workflow
 
@@ -162,7 +161,7 @@ Crisis vol runs 22-30% above base at every frontier point (budget 1000: min_risk
 
 **Response**
 
-Ontology gains a `FrontierPoint(scenario_label, solve)` Concept (6 scenarios x 15 solves) with `return_value`, `risk`, `marginal_risk_per_return`, and `allocates`, which each solve that reaches an accepted status publishes in `model/efficient_frontier.py`. The points and allocations are queryable from the deployed model. The report selects the dichotomic solves' points, sorts them by return (adjacent targets that collapse are deduped), checks that neither return nor risk decreases along each scenario's frontier, and derives the knee flag from them, and reads each point's base and crisis volatility from `model/crisis_volatility.py`: the frontier shape (base_1000 return 64.87->84.00, variance 4641->8528), knee at p3, and the crisis vol gap (+28.4% min_risk -> +29.6% peak at p1 -> +21.7% at p5).
+Ontology gains a `FrontierPoint(scenario_label, solve)` Concept (6 scenarios x 15 solves) with `return_value`, `risk`, `marginal_risk_per_return`, and `allocates`, which each solve that reaches an accepted status publishes in `model/efficient_frontier.py`. The points and allocations are queryable from the deployed model. The report selects the dichotomic solves' points, sorts them by return (adjacent targets that collapse are deduped), checks that neither return nor risk decreases along each scenario's frontier, and derives the knee flag and the volatilities from them: the frontier shape (base_1000 return 64.87->84.00, variance 4641->8528), knee at p3, and the crisis vol gap (+28.4% min_risk -> +29.6% peak at p1 -> +21.7% at p5).
 
 ### 10. Review candidate allocations
 

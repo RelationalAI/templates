@@ -381,11 +381,11 @@ guided_walkthrough:
         increases by one unit. The report reads these points with
         model.select() and keeps the points of the dichotomic solves.
 
-        For every scenario, the report orders those points by return and labels
-        them min_risk, p1, p2, and so on. It marks the knee, the point before
-        variance begins to increase much faster, and reads vol_base and
-        vol_crisis, the volatility of the matching base and crisis results,
-        which the model computes for every point.
+        For every scenario, the report orders those points by the reference
+        scenario's return and labels them min_risk, p1, p2, and so on. It marks
+        the knee, the point before variance begins to increase much faster, and
+        adds vol_base and vol_crisis, the volatility of the matching base and
+        crisis results.
 
         These summaries let the final step compare the calculated portfolios
         and identify the knee of each scenario. The next step shows its stock
@@ -397,9 +397,8 @@ guided_walkthrough:
             end: '.set_index(["solve", "scenario"])'
           - start: knee_idx, max_jump = None, 0.0
             end: 'rows_for_sn[knee_idx]["is_knee"] = True'
-          - start: volatility_df = model.select(
-            end: '.sort_values(["scenario_label", "k"])'
-            end_offset: 1
+          - start: 'risk_by_key = {(r["scenario_label"], r["eps_label"]): r["risk"] for r in fp_rows}'
+            end: 'r["vol_gap_pct"] = (vol_gap / vol_base * 100.0) if vol_base > 1e-9 else 0.0'
       references:
         model.select():
           anchor:
@@ -415,12 +414,12 @@ guided_walkthrough:
             end: 'rows_for_sn[knee_idx]["is_knee"] = True'
         vol_base:
           anchor:
-            start: 'FrontierPoint.vol_base.alias("vol_base"),'
-            end: 'FrontierPoint.vol_base.alias("vol_base"),'
+            start: 'vol_base = base_risk**0.5 if base_risk is not None else 0.0'
+            end: 'vol_base = base_risk**0.5 if base_risk is not None else 0.0'
         vol_crisis:
           anchor:
-            start: 'FrontierPoint.vol_crisis.alias("vol_crisis"),'
-            end: 'FrontierPoint.vol_crisis.alias("vol_crisis"),'
+            start: 'vol_crisis = crisis_risk**0.5 if crisis_risk is not None else 0.0'
+            end: 'vol_crisis = crisis_risk**0.5 if crisis_risk is not None else 0.0'
       links:
         - title: Define base facts from tabular data
           href: /build/guides/modeling/define-base-facts/#map-columns-explicitly

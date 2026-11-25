@@ -532,22 +532,22 @@ if __name__ == "__main__":
             rows_for_sn[knee_idx]["is_knee"] = True
         fp_rows.extend(rows_for_sn)
 
-    # Each point's volatility and the volatility of its base and crisis twins (the same solve
-    # at the same budget), as the model computes them.
-    volatility_df = model.select(
-        FrontierPoint.scenario_label.alias("scenario_label"),
-        FrontierPoint.solve.alias("solve"),
-        FrontierPoint.volatility.alias("volatility"),
-        FrontierPoint.vol_base.alias("vol_base"),
-        FrontierPoint.vol_crisis.alias("vol_crisis"),
-        FrontierPoint.vol_gap.alias("vol_gap"),
-        FrontierPoint.vol_gap_ratio.alias("vol_gap_ratio"),
-    ).to_df()
-    frontier_df = (
-        DataFrame(fp_rows)
-        .merge(volatility_df, on=["scenario_label", "solve"], how="left")
-        .sort_values(["scenario_label", "k"])
-    )
+    # Pair base and crisis rows by (budget, eps_label) so vol_base / vol_crisis carry on
+    # BOTH the base-regime row and its matching crisis-regime row.
+    risk_by_key = {(r["scenario_label"], r["eps_label"]): r["risk"] for r in fp_rows}
+    for r in fp_rows:
+        budget_suffix = r["scenario_label"].split("_", 1)[1]
+        base_risk = risk_by_key.get((f"base_{budget_suffix}", r["eps_label"]))
+        crisis_risk = risk_by_key.get((f"crisis_{budget_suffix}", r["eps_label"]))
+        vol_base = base_risk**0.5 if base_risk is not None else 0.0
+        vol_crisis = crisis_risk**0.5 if crisis_risk is not None else 0.0
+        vol_gap = vol_crisis - vol_base
+        r["vol_base"] = vol_base
+        r["vol_crisis"] = vol_crisis
+        r["vol_gap"] = vol_gap
+        r["vol_gap_pct"] = (vol_gap / vol_base * 100.0) if vol_base > 1e-9 else 0.0
+
+    frontier_df = DataFrame(fp_rows).sort_values(["scenario_label", "k"])
 
     # Along a Pareto-efficient frontier neither return nor risk decreases, so no point
     # dominates another. The interior targets come from the reference scenario only, so
@@ -608,7 +608,7 @@ if __name__ == "__main__":
             print(
                 f"  {row['eps_label']:>9} {float(row['vol_base']):>12.4f} "
                 f"{float(row['vol_crisis']):>12.4f} {float(row['vol_gap']):>+10.4f} "
-                f"{float(row['vol_gap_ratio']) * 100.0:>+7.1f}%"
+                f"{float(row['vol_gap_pct']):>+7.1f}%"
             )
 
     print(
@@ -652,7 +652,7 @@ if __name__ == "__main__":
 
         meta = scenario_meta[sn]
         budget = meta["budget"]
-        volatility = float(knee_row["volatility"])
+        volatility = float(knee_row["risk"]) ** 0.5
         print(
             f"\n  {sn} (budget={budget:.0f}, regime={meta['regime']}, point={knee_row['eps_label']})"
         )

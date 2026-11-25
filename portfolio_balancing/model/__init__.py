@@ -23,10 +23,9 @@ targets of the grid, adaptive, and dichotomic drivers are rules over earlier sol
 solve publishes its status and a FrontierPoint per scenario.
 
 Modules: `compliance_flags.py` (Stage 1), `correlation_clusters.py` (Stage 2),
-`regime_covariance.py` (the base and crisis covariance), `efficient_frontier.py` (Stage 3,
-the solves and the frontier points they publish), and `crisis_volatility.py` (Stage 4,
-the base-versus-crisis volatility of each frontier point). Each module imports the modules
-whose declarations it reads.
+`regime_covariance.py` (the base and crisis covariance), and `efficient_frontier.py` (Stage 3,
+the solves and the frontier points they publish). Each module imports the modules whose
+declarations it reads.
 
 Run:
     `rai models deploy --path model` deploys this package to the schemas in
@@ -44,7 +43,6 @@ Output:
         then a base-vs-crisis volatility table per frontier point.
 """
 
-from . import crisis_volatility
 from .compliance_flags import POSITION_LIMIT, SECTOR_LIMIT, SectorExposure
 from .correlation_clusters import (
     CORR_THRESHOLD,
@@ -102,7 +100,6 @@ __all__ = [
     "Stock",
     "Transaction",
     "User",
-    "crisis_volatility",
     "inter_cluster_correlation",
     "intra_cluster_correlation",
     "model",
