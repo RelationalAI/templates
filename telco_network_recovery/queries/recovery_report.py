@@ -269,7 +269,7 @@ def stage_4_paths() -> None:
     print("=" * 60)
 
     # The model enumerates the paths: from the highest-PageRank subscriber (the seed
-    # hub; the largest ID on an exact tie), call paths up to PATH_MAX_HOPS hops, simple paths only.
+    # hub; the smallest ID on an exact tie), call paths up to PATH_MAX_HOPS hops, simple paths only.
     hub_df = model.where(Subscriber.is_seed_hub()).select(Subscriber.id.alias("sub_id")).to_df()
     hubs = sorted(hub_df["sub_id"].tolist())
     n_paths = model.select(SimplePathCount).to_df().iloc[:, 0].tolist()
