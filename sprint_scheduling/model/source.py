@@ -35,9 +35,9 @@ model.define(Sprint.new(model.data(sprints_csv).to_schema()))
 
 issues_df = read_csv(DATA_DIR / "issues.csv")
 
-# EPOCH FILTERING: Only issues created within the planning horizon enter the model.
-# This is the key epoch pattern -- the rule filters event rows by their epoch column as
-# they are loaded. The epoch-to-period mapping is in `target_sprints.py`.
+# EPOCH FILTERING: every row of the CSV is embedded as data, and the rule below makes an Issue
+# only of a row created within the planning horizon -- the key epoch pattern. The
+# epoch-to-period mapping is in `sprint_assignment.py`.
 issue_data = model.data(issues_df)
 model.where(
     issue_data.created_at >= start_epoch,

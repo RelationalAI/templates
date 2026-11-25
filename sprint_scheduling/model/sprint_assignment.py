@@ -1,11 +1,22 @@
-"""Sprint assignment: one weighted-completion-time decision problem per capacity scenario."""
+"""Sprint assignment: the first sprint each issue can be assigned to, and one
+weighted-completion-time decision problem per capacity scenario."""
 
 from relationalai.semantics import Float, String, sum
 from relationalai.semantics.reasoners.prescriptive import Problem
+from relationalai.semantics.std import aggregates as aggs
 
-# Declares Issue.target_sprint_number, the first sprint each issue can be assigned to.
-from . import target_sprints  # noqa: F401
 from .schema import Assignment, Developer, Issue, Skill, Sprint, model
+
+# EPOCH-TO-PERIOD MAPPING: an issue created before a sprint starts is eligible from that sprint,
+# and one created during a sprint targets it, so the target is the first sprint that ends after
+# the issue was created. An issue created after the last sprint ended targets the last sprint.
+_ending_after, _last = Sprint.ref(), Sprint.ref()
+model.define(
+    Issue.target_sprint_number(
+        aggs.min(_ending_after.number).per(Issue).where(Issue.created_at < _ending_after.enddate)
+        | aggs.max(_last.number)
+    )
+)
 
 # Build assignment domain: developer can work on issue if they have the matching skill,
 # and the sprint is >= the issue's target sprint (can't assign to earlier sprints)

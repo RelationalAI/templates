@@ -8,7 +8,7 @@ epoch-based temporal filtering (Pattern B):
 - Filter issues by epoch timestamp (created_at) to scope the planning horizon
   (`source.py`).
 - Map each issue's created_at epoch to a target sprint via epoch-to-period mapping
-  (`target_sprints.py`).
+  (`sprint_assignment.py`).
 - Assign each issue to exactly one developer in one sprint (binary variables).
 - Enforce developer capacity per sprint and skill-matching constraints.
 - Minimize weighted completion time (high-priority issues penalized more for delay).
@@ -23,8 +23,7 @@ Temporal filtering pattern (epoch integers -- Pattern B):
 - Compare with Pattern A (native date strings) in the demand_planning_temporal
   template.
 
-The sprint assignment problem is in `sprint_assignment.py`, which imports the
-module declaring the target sprints it reads.
+The target sprints and the sprint assignment problem are in `sprint_assignment.py`.
 
 Run:
     `rai models deploy --path model` deploys this package to the schemas in
