@@ -6,7 +6,7 @@ model = Model("book_slate_recommendation")
 
 # Item super-concept: heterogeneous-KG node base for User/Book/Author/
 # Subject. The path walker traverses a single 2-arity edge relationship
-# (Item.connected_to, defined in reasoning.py) across the whole KG. The
+# (Item.connected_to, defined in candidate_paths.py) across the whole KG. The
 # unified-edge layer is needed because a path() call walks one 2-arity
 # relationship at a time, so the symmetric union of typed edges is
 # pre-materialised onto Item.connected_to.

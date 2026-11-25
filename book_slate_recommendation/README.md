@@ -42,7 +42,7 @@ This template composes the slate as a single optimization decision rather than a
 ## What's included
 
 - **Ontology**: a three-stage pipeline (knowledge-graph path walks, then graph analysis, then prescriptive optimization) on a single shared ontology, wired to the bundled CSVs.
-- **Model**: the `model/` package — the three-stage pipeline (`schema.py` declares the concepts, `source.py` loads the sample data and checks it, `reasoning.py` states the path walks, graph analysis, and slot-selection problem), which `rai models deploy --path model` deploys to your Snowflake account, where each refresh runs the solve.
+- **Model**: the `model/` package — the three-stage pipeline (`schema.py` declares the concepts, `source.py` loads the sample data and checks it, `candidate_paths.py` states the path walks and the candidates they reach, `book_embeddedness.py` the graph analysis, and `slate_selection.py` the slot-selection problem and each user's slate), which `rai models deploy --path model` deploys to your Snowflake account, where each refresh runs the solve.
 - **Query**: `queries/slate_report.py` — prints the report from the deployed model.
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the code in `model/`.
 - **Sample data**: a deterministic Open Library (CC0 public domain) slice of roughly 59 books, 52 authors, and 12 subjects, with synthetic users and read events layered on top. See *Sample data* below.
@@ -200,7 +200,9 @@ book_slate_recommendation/
 │   ├── __init__.py                  # exports of the deployed model
 │   ├── schema.py                    # concepts, properties, and edges
 │   ├── source.py                    # loads the CSVs and checks them
-│   └── reasoning.py                 # paths walk + graph + prescriptive slot selection
+│   ├── candidate_paths.py           # KG path walks, candidates, explanation counts
+│   ├── book_embeddedness.py         # similarity-graph triangle counts
+│   └── slate_selection.py           # prescriptive slot selection and each user's slate
 ├── queries/
 │   └── slate_report.py              # report from the deployed model
 ├── runbook.md                       # paste-testable walkthrough (RAI skills)
@@ -237,8 +239,8 @@ The bibliographic data is a deterministic slice of [Open Library](https://openli
 
 One shared ontology threads all three stages. The path-walk stage derives candidates and their evidence, the graph stage adds a structural measure, and the prescriptive stage reads both to compose the slate.
 
-- **Key entities**: `User` — a reader; `Book` — a catalog title (an `Item` sub-concept); `Author` and `Subject` — a book's authors and topics; `Slot` — one of the K ordered recommendation positions in a user's slate; the derived `Candidate` — a (user, book) pair the knowledge-graph walks reach, scored by its explanation paths; a book the user already read is held at the unpicked sentinel slot.
-- **Primary identifiers**: integer `id` on `User`, `Book`, `Author`, `Subject`; `pos` on `Slot`; composite `(user_id, book_id)` on `Candidate`.
+- **Key entities**: `User` — a reader; `Book` — a catalog title (an `Item` sub-concept); `Author` and `Subject` — a book's authors and topics; `Slot` — one of the K ordered recommendation positions in a user's slate; the derived `Candidate` — a (user, book) pair the knowledge-graph walks reach, scored by its explanation paths, and flagged read or unread (`is_read`, `is_unread`), where a read book is held at the unpicked sentinel slot; the derived `Slate` — a user's picks (the candidates in slots `1..K`) and their picks per subject.
+- **Primary identifiers**: integer `id` on `User`, `Book`, `Author`, `Subject`; `pos` on `Slot`; `user_id` on `Slate`; composite `(user_id, book_id)` on `Candidate`.
 - **Important invariants**: `Book.in_house` is a 0/1 flag; `Book.age_days` is non-negative; similarity edges are unique on `(src_book_id, dst_book_id)`; every foreign key resolves; slot decisions take values in `1..K+1`, where slot 1 is the hero position and slot K+1 is the unpicked sentinel.
 
 The typed edges (`read`, `written_by`, `about`, `similar_to`) carry the graph structure; the unified `Item.connected_to` super-edge is their symmetric union, so the path walker can traverse one 2-arity relationship across the heterogeneous graph. Each `Candidate` carries typed evidence counts (`path_count_via_author`, `path_count_via_subject`, `path_count_via_kg_walk`, summed into `path_count_total`) and a `slot` decision.
@@ -253,9 +255,9 @@ The pipeline runs in three stages over the shared ontology. Its architectural ce
 
 **Stage 2 — Graph analysis (hero-slot embeddedness).** A `Graph` is built from `Book.similar_to`, and triangle count returns the per-book count of similarity triangles each book participates in, stored as `Book.triangle_count`. Triangle count is graph-derived: it depends on the topology of the similarity graph, not on a per-book scalar that could be supplied externally. Stage 3 uses it to pin the hero slot to a densely embedded book.
 
-**Stage 3 — Prescriptive constraint program (slot assignment).** Each candidate's slot is a decision in `1..K+1`, where slots `1..K` are slate positions (1 = hero, K = bottom of row) and slot K+1 is the unpicked sentinel. The K+1 encoding lets the position weight `(K + 1 - slot)` be zero for unpicked candidates, so no auxiliary picked/unpicked indicator is needed. The model enforces ten constraints — cardinality (exactly K picks per user), slot uniqueness, already-read exclusion, author uniqueness, subject-concentration cap, freshness floor, originals-exposure floor, cold-start cap, hero pin, and explanation-path floor — under a position-weighted engagement-decay objective. The objective weights each pick by `(K + 1 - slot) * path_count_total`, largest at slot 1, so the solver places the highest-path-support candidates at the top of the row — the canonical position-decay engagement model. After the deploy's refresh runs the solve, the report prints the status and objective, the chosen slate, subject distribution, and per-pick explanation support. It does not re-check the chosen slate against the ten constraints; it relies on the solver's status.
+**Stage 3 — Prescriptive constraint program (slot assignment).** Each candidate's slot is a decision in `1..K+1`, where slots `1..K` are slate positions (1 = hero, K = bottom of row) and slot K+1 is the unpicked sentinel. The K+1 encoding lets the position weight `(K + 1 - slot)` be zero for unpicked candidates, so no auxiliary picked/unpicked indicator is needed. The model enforces ten constraints — cardinality (exactly K picks per user), slot uniqueness, already-read exclusion, author uniqueness, subject-concentration cap, freshness floor, originals-exposure floor, cold-start cap, hero pin, and explanation-path floor — under a position-weighted engagement-decay objective. The objective weights each pick by `(K + 1 - slot) * path_count_total`, largest at slot 1, so the solver places the highest-path-support candidates at the top of the row — the canonical position-decay engagement model. After the deploy's refresh runs the solve, rules over the solved slots publish each user's picks and picks per subject (`Slate.picks`, `Slate.picks_by_subject`), and the report prints the status and objective, the chosen slate, subject distribution, and per-pick explanation support. It does not re-check the chosen slate against the ten constraints; it relies on the solver's status.
 
-See `model/reasoning.py` for the implementation and `runbook.md` for the skill-driven reproduction.
+See `model/candidate_paths.py`, `model/book_embeddedness.py`, and `model/slate_selection.py` for the implementation and `runbook.md` for the skill-driven reproduction.
 
 **Where this fits in production.** Production recommender systems run a multi-stage funnel: catalog, then retrieval, then pre-ranking, then ranking, then slate optimization. This template implements the final slate-optimization stage — where business rules, diversity, exposure floors, and explainability constraints land — with the upstream graph and path-walk signals in the same declarative model. The per-typed evidence counts the report prints for each pick (`paths_via_author`, `paths_via_subject`, `paths_via_kg_walk`) are a decomposable, graph-grounded justification suitable for transparency workflows.
 
@@ -276,7 +278,7 @@ Focus on the first changes most users will make.
 
 ### Tune parameters
 
-The constraint dials are constants in `model/reasoning.py`, except `SLATE_SIZE_K`, which is in `model/source.py` because the slot rows use it:
+Each dial is a constant at the top of the module that uses it under `# Configure inputs`: `MAX_HOPS` in `model/candidate_paths.py` and the rest in `model/slate_selection.py`:
 
 - **Slate size** — `SLATE_SIZE_K` (default `3`), the K of "row of K things".
 - **Walk depth** — `MAX_HOPS` (default `2`); bumping to 3 or more saturates fast on a heterogeneous graph.
@@ -318,7 +320,7 @@ The model enforces ten constraints. If the data is too sparse or too clustered, 
 5. **Missing edges.** Every picked book must have at least one `Book.about(Subject)` and one `Book.written_by(Author)` row, or the diversity and uniqueness caps silently exempt it.
 6. **Hero pin.** Each user needs at least one candidate whose book has `triangle_count >= HERO_EMBEDDEDNESS_THRESHOLD`, or there is no eligible book for slot 1. The report's per-user candidate floor check names users with no hero-eligible candidate; either lower `HERO_EMBEDDEDNESS_THRESHOLD` or densify the similarity input.
 
-The report first runs a Python-level check that reads the candidate set and the read history from the deployed model, anti-joins them, and stops with an error naming the affected users per shortfall, with a strategy block keyed by which condition fired. It also prints an unread-candidate-count table before the solve result.
+The report first runs a Python-level check that reads the unread candidates (`Candidate.is_unread`) from the deployed model and stops with an error naming the affected users per shortfall, with a strategy block keyed by which condition fired. It also prints an unread-candidate-count table before the solve result.
 
 </details>
 

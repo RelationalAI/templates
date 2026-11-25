@@ -42,6 +42,16 @@ Bundled data: a deterministic Open Library (CC0) slice (~59 books,
 ~52 authors, 12 subjects) pulled by ``data/fetch_open_library_slice.py``.
 Customers fetch larger slices by re-running with ``--size md``/``--size lg``.
 
+Modules, one per stage (each module imports the modules whose
+declarations it reads):
+
+- ``candidate_paths.py``: the bounded KG walks, the candidates they reach,
+  their explanation path counts, and which candidates are already read.
+- ``book_embeddedness.py``: the triangle count of each book over the
+  similarity graph.
+- ``slate_selection.py``: the slot constraint program, its status and
+  objective, and each user's slate of picks.
+
 Run:
     `rai models deploy --path model` deploys this package to the schemas in
     raiconfig.yaml and waits for its first refresh, which runs the solve.
@@ -49,23 +59,24 @@ Run:
     model.
 """
 
-from .reasoning import (
+from .candidate_paths import MAX_HOPS, Candidate
+from .schema import Author, Book, Subject, User, model
+from .slate_selection import (
     COLD_START_CAP,
     EXPLANATION_FLOOR,
     FRESH_WINDOW_DAYS,
     FRESHNESS_FLOOR,
     HERO_EMBEDDEDNESS_THRESHOLD,
-    MAX_HOPS,
     MAX_PER_SUBJECT,
     ORIGINALS_FLOOR,
+    SLATE_SIZE_K,
     WEAK_EXPLANATION_THRESHOLD,
-    Candidate,
+    Slate,
     SolveStatus,
     TotalSupport,
     problem,
 )
-from .schema import Author, Book, Subject, User, model
-from .source import DATA_DIR, SLATE_SIZE_K
+from .source import DATA_DIR
 
 __all__ = [
     "COLD_START_CAP",
@@ -82,6 +93,7 @@ __all__ = [
     "Author",
     "Book",
     "Candidate",
+    "Slate",
     "SolveStatus",
     "Subject",
     "TotalSupport",
