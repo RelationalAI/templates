@@ -1,27 +1,18 @@
-"""Portfolio compliance rules, correlation graph, and the efficient frontier's decision problems for the portfolio template."""
+"""Efficient frontier: the bi-objective portfolio problems of every scenario (the two anchors, the
+minimum-variance solve at the maximum return, and the grid, adaptive, and dichotomic drivers), and the
+frontier points each solve publishes with the stock amounts and weights they allocate."""
 
 import warnings
 
 from relationalai.semantics import Float, Integer, String, sum
-from relationalai.semantics.reasoners.graph import Graph
 from relationalai.semantics.reasoners.prescriptive import Problem
 from relationalai.semantics.std import aggregates as aggs
-from relationalai.semantics.std.math import abs as math_abs
-from relationalai.semantics.std.math import clip, maximum, minimum, sqrt
+from relationalai.semantics.std.math import clip, maximum, minimum
 
-from .schema import (
-    Account,
-    FrontierPoint,
-    Holding,
-    Regime,
-    Scenario,
-    Sector,
-    Stock,
-    Transaction,
-    User,
-    model,
-)
-from .source import SCENARIOS
+# Declares Stock.is_non_representative and Stock.regime_covar, which the constraints and the objective read.
+from . import correlation_clusters, regime_covariance  # noqa: F401
+from .compliance_flags import SECTOR_LIMIT
+from .schema import FrontierPoint, Scenario, Stock, model
 
 # The frontier below creates rules in Python loops (one chained solve per return target),
 # which trips PyRel's "rules created in a loop" perf heuristic. The pattern is deliberate and
@@ -32,188 +23,10 @@ warnings.filterwarnings("ignore", message=r"\[Rules created in a loop\]")
 # Configure inputs
 # --------------------------------------------------
 
-POSITION_LIMIT = 0.15  # max fraction per stock in Stage 1 compliance rules
 REP_POSITION_LIMIT = 0.30  # max fraction per representative in Stage 3 optimization
 # (reps carry combined cluster exposure, so cap is higher;
 # feasibility needs REP_POSITION_LIMIT * num_reps >= 1.0 --
 # floor is 1/5 = 0.20, so 0.30 leaves headroom)
-SECTOR_LIMIT = 0.30  # max fraction of budget per sector (both stages)
-CORR_THRESHOLD = 0.3  # |correlation| >= threshold to create a graph edge (Stage 2)
-CRISIS_ALPHA = 0.7  # shrinkage weight for base correlation in crisis regime (Stage 4)
-
-# --------------------------------------------------
-# Stage 1: Rules -- compliance flags
-# --------------------------------------------------
-
-# Derived holding value = quantity * purchase_price.
-model.define(Holding.value(Holding.quantity * Holding.purchase_price))
-
-# Rule 1: Overconcentrated holdings -- position value > POSITION_LIMIT of balance.
-AccountR1 = Account.ref()
-model.where(
-    Holding.account(AccountR1),
-    Holding.value > POSITION_LIMIT * AccountR1.balance,
-).define(Holding.is_overconcentrated())
-
-# Rule 2: Sector concentration -- total sector exposure > SECTOR_LIMIT of balance.
-HoldingSC = Holding.ref()
-StockSC = Stock.ref()
-AccountSC = Account.ref()
-SectorSC = Sector.ref()
-
-sector_exposure = (
-    sum(HoldingSC.value)
-    .where(
-        HoldingSC.account(AccountSC),
-        HoldingSC.stock(StockSC),
-        StockSC.sector_ref(SectorSC),
-    )
-    .per(AccountSC, SectorSC)
-)
-
-StockR2 = Stock.ref()
-model.where(
-    Holding.account(AccountSC),
-    Holding.stock(StockR2),
-    StockR2.sector_ref(SectorSC),
-    sector_exposure > SECTOR_LIMIT * AccountSC.balance,
-).define(Holding.is_sector_concentrated())
-
-# Rule 3: High-risk traders -- risk_score > 0.8 AND >5 flagged transactions.
-TransactionHR = Transaction.ref()
-flagged_count = (
-    sum(TransactionHR.is_flagged_val)
-    .where(
-        TransactionHR.user(User),
-    )
-    .per(User)
-)
-
-model.where(
-    User.risk_score > 0.8,
-    flagged_count > 5,
-).define(User.is_high_risk_trader())
-
-# --------------------------------------------------
-# Stage 2: Graph -- covariance clustering
-# --------------------------------------------------
-
-# Derived per-stock variance (covar diagonal, i == j).
-PairedStockVar = Stock.ref()
-var_ref = Float.ref()
-model.where(
-    Stock.covar(PairedStockVar, var_ref),
-    Stock.index == PairedStockVar.index,
-).define(Stock.variance(var_ref))
-
-# Derived per-stock volatility (sqrt of variance). Used downstream to derive
-# correlation and the crisis regime covariance -- no numpy, no precompute.
-model.define(Stock.volatility(sqrt(Stock.variance)))
-
-# Derived pairwise correlation: corr(i, j) = covar(i, j) / (vol_i * vol_j).
-# Stored as a two-argument property on Stock (keyed by the paired Stock).
-PairedStockCorr = Stock.ref()
-cov_ij_ref = Float.ref()
-model.where(
-    Stock.covar(PairedStockCorr, cov_ij_ref),
-).define(
-    Stock.correlation(
-        PairedStockCorr,
-        cov_ij_ref / (Stock.volatility * PairedStockCorr.volatility),
-    )
-)
-
-# Build the undirected correlation graph. Nodes are Stocks; edges link stocks
-# with |correlation| >= CORR_THRESHOLD. Correlations are filtered in PyRel
-# against the derived Stock.correlation property.
-corr_graph = Graph(
-    model,
-    name="corr_graph",
-    directed=False,
-    weighted=False,
-    node_concept=Stock,
-    aggregator="sum",
-)
-
-stock_i_ref = Stock.ref()
-stock_j_ref = Stock.ref()
-corr_ref = Float.ref()
-model.define(corr_graph.Edge.new(src=stock_i_ref, dst=stock_j_ref)).where(
-    stock_i_ref.correlation(stock_j_ref, corr_ref),
-    stock_i_ref.index < stock_j_ref.index,
-    math_abs(corr_ref) >= CORR_THRESHOLD,
-)
-
-# Louvain community detection -- stored as Stock.cluster (integer id).
-community = corr_graph.louvain()
-cluster_label = Integer.ref("cluster_label")
-stock_clust_ref = Stock.ref()
-model.define(stock_clust_ref.cluster(cluster_label)).where(
-    community(stock_clust_ref, cluster_label)
-)
-
-# Representative selection: for each cluster, the single stock with the
-# highest Sharpe (return / volatility) is the cluster representative. If
-# several stocks co-move strongly they carry near-identical exposure --
-# prefer the best risk-adjusted one and drop the rest from the investable
-# universe. This collapses redundant bets instead of merely capping them.
-model.define(Stock.sharpe(Stock.returns / Stock.volatility))
-
-# Per-cluster maximum Sharpe, written back onto each Stock.
-peer_for_max = Stock.ref()
-model.define(
-    Stock.cluster_max_sharpe(
-        aggs.max(peer_for_max.sharpe)
-        .where(peer_for_max.cluster == Stock.cluster)
-        .per(Stock)
-    )
-)
-
-# Representative Relationship: stock whose Sharpe equals its cluster's max.
-model.where(Stock.sharpe == Stock.cluster_max_sharpe).define(Stock.is_representative())
-
-# Complementary Relationship used positively in solver constraints
-# (the prescriptive rewriter doesn't accept `model.not_(...)` in a .where()).
-model.where(Stock.sharpe < Stock.cluster_max_sharpe).define(
-    Stock.is_non_representative()
-)
-
-# --------------------------------------------------
-# Stage 3: regime covariance
-# --------------------------------------------------
-
-# Regime-conditioned covariance is derived in PyRel from the base covariance
-# and the derived volatilities:
-#   base:   Sigma(i, j)
-#   crisis: alpha * Sigma(i, j) + (1 - alpha) * vol_i * vol_j
-# The crisis formula is equivalent to correlation shrinkage toward all-ones
-# (rho_crisis = alpha * rho + (1 - alpha) * J) re-expressed in covariance
-# units. PSD is preserved because the construction is a convex combination of
-# PSD matrices.
-# Base regime: covariance unchanged.
-PairedStockBase = Stock.ref()
-base_cov_ref = Float.ref()
-base_regime_ref = Regime.ref()
-model.where(
-    Stock.covar(PairedStockBase, base_cov_ref),
-    base_regime_ref.regime_name == "base",
-).define(Stock.regime_covar(PairedStockBase, base_regime_ref, base_cov_ref))
-
-# Crisis regime: convex combination of base covariance and vol_i * vol_j.
-PairedStockCrisis = Stock.ref()
-crisis_cov_ref = Float.ref()
-crisis_regime_ref = Regime.ref()
-model.where(
-    Stock.covar(PairedStockCrisis, crisis_cov_ref),
-    crisis_regime_ref.regime_name == "crisis",
-).define(
-    Stock.regime_covar(
-        PairedStockCrisis,
-        crisis_regime_ref,
-        CRISIS_ALPHA * crisis_cov_ref
-        + (1 - CRISIS_ALPHA) * Stock.volatility * PairedStockCrisis.volatility,
-    )
-)
 
 # --------------------------------------------------
 # Stage 3: Prescriptive -- bi-objective QP with epsilon constraint
@@ -239,9 +52,6 @@ model.where(
 N_SOLVES = 6
 N_INTERIOR = N_SOLVES - 2
 REFERENCE_SCENARIO = "base_1000"  # mid-budget, base regime
-REF_BUDGET = float(
-    next(budget for name, budget, _ in SCENARIOS if name == REFERENCE_SCENARIO)
-)
 
 GRID_SOLVES = [f"grid_{k}" for k in range(1, N_INTERIOR + 1)]
 ADAPTIVE_SOLVES = [f"adaptive_{k}" for k in range(1, N_INTERIOR + 1)]
@@ -510,6 +320,12 @@ def reference_point(name, result, sp=None):
     return point
 
 
+
+# The reference scenario's budget, which turns a return target into a return rate.
+REF_BUDGET = scalar("ref_budget")
+model.where(Scenario.name == REFERENCE_SCENARIO).define(REF_BUDGET(Scenario.budget))
+_ref_budget = Float.ref()
+
 # --------------------------------------------------
 # Anchors
 # --------------------------------------------------
@@ -528,7 +344,7 @@ model.where(_r.scenario.name == REFERENCE_SCENARIO).define(RETURN_HI(_r.ret))
 # The minimum-variance solve at the maximum return, shared by all three drivers.
 hi_rate = scalar("hi_rate")
 _ret_hi = Float.ref()
-model.where(RETURN_HI(_ret_hi)).define(hi_rate(_ret_hi / REF_BUDGET))
+model.where(RETURN_HI(_ret_hi), REF_BUDGET(_ref_budget)).define(hi_rate(_ret_hi / _ref_budget))
 hi = frontier_problem("hi", floor=floor_from_rate("hi", hi_rate))
 HI = reference_point("hi", hi)
 
@@ -543,8 +359,8 @@ model.where(LO["ret"](_ret_lo), RETURN_HI(_ret_hi)).define(
 )
 for k, label in enumerate(GRID_SOLVES, start=1):
     rate = scalar(f"{label}_rate")
-    model.where(LO["ret"](_ret_lo), grid_step(_span)).define(
-        rate((_ret_lo + k * _span) / REF_BUDGET)
+    model.where(LO["ret"](_ret_lo), grid_step(_span), REF_BUDGET(_ref_budget)).define(
+        rate((_ret_lo + k * _span) / _ref_budget)
     )
     frontier_problem(label, floor=floor_from_rate(label, rate))
 
@@ -642,8 +458,8 @@ for k, label in enumerate(DICHOTOMIC_SOLVES, start=1):
     }
     rate = scalar(f"{label}_rate")
     c = Integer.ref()
-    model.where(popped(c), current.ctr == c).define(
-        rate(current.estar / REF_BUDGET),
+    model.where(popped(c), current.ctr == c, REF_BUDGET(_ref_budget)).define(
+        rate(current.estar / _ref_budget),
         *[popped_end[n](getattr(current, n)) for n in popped_end],
     )
     result = frontier_problem(label, floor=floor_from_rate(label, rate))
@@ -703,7 +519,20 @@ for k, label in enumerate(ADAPTIVE_SOLVES, start=1):
         max_step(mx),
         RETURN_HI(h),
     ).define(target(minimum(pe + clip(t / maximum(pl, 1e-9), mn, mx), h)))
-    model.where(target(pe)).define(rate(pe / REF_BUDGET))
+    model.where(target(pe), REF_BUDGET(_ref_budget)).define(rate(pe / _ref_budget))
     result = frontier_problem(label, floor=floor_from_rate(label, rate))
     if k < N_INTERIOR:
         previous_target, previous_lam = target, reference_point(label, result)["sp"]
+
+# --------------------------------------------------
+# Allocation weights
+# --------------------------------------------------
+
+# Each allocated stock's share of its scenario's budget.
+FrontierPoint.weight = model.Relationship(
+    f"{FrontierPoint} holds {Stock} at weight {Float:fp_weight}"
+)
+_allocated = Float.ref()
+model.where(FrontierPoint.allocates(Stock, _allocated)).define(
+    FrontierPoint.weight(Stock, _allocated / FrontierPoint.scenario.budget)
+)

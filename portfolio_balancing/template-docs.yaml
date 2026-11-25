@@ -257,11 +257,13 @@ guided_walkthrough:
       title: "Stage 1: Check the current portfolio"
       explanation: |-
         Stage 1 checks the current portfolio for three problems. This example
-        calculates each holding's value, finds its account, and flags the
-        holding when its value is more than 15% of the account balance.
+        calculates each holding's value and its share of the account balance,
+        finds its account, and flags the holding when its value is more than
+        15% of the account balance.
 
-        Stage 1 also flags an account when one sector makes up more than 30% of
-        its balance. It flags a user when the user's risk score is above 0.8
+        Stage 1 also totals each account's exposure to each sector and flags the
+        account and sector pair when the exposure is more than 30% of the
+        account balance. It flags a user when the user's risk score is above 0.8
         and the user has more than five flagged transactions. In the sample
         data, these checks flag four holdings, two account and sector
         combinations, and two users.
@@ -269,7 +271,7 @@ guided_walkthrough:
         These flags give investment managers a short list of holdings, sector
         exposures, and users that may need review.
       focus:
-        file: model/reasoning.py
+        file: model/compliance_flags.py
         anchors:
           - start: '# Derived holding value = quantity * purchase_price.'
             end: ).define(Holding.is_overconcentrated())
@@ -294,7 +296,7 @@ guided_walkthrough:
         Using one representative from each cluster reduces the chance that a
         new portfolio will include several stocks that behave alike.
       focus:
-        file: model/reasoning.py
+        file: model/correlation_clusters.py
         anchors:
           - start: stock_i_ref = Stock.ref()
             end: community(stock_clust_ref, cluster_label)
@@ -349,7 +351,7 @@ guided_walkthrough:
         earlier Problems. One refresh of the deployed model therefore runs all
         of them in order.
       focus:
-        file: model/reasoning.py
+        file: model/efficient_frontier.py
         anchors:
           - start: problem.minimize(
             end: PairedStock.x_quantity(Scenario, x_qty_paired),
@@ -381,8 +383,9 @@ guided_walkthrough:
 
         For every scenario, the report orders those points by return and labels
         them min_risk, p1, p2, and so on. It marks the knee, the point before
-        variance begins to increase much faster, and adds vol_base and
-        vol_crisis, the volatility of the matching base and crisis results.
+        variance begins to increase much faster, and reads vol_base and
+        vol_crisis, the volatility of the matching base and crisis results,
+        which the model computes for every point.
 
         These summaries let the final step compare the calculated portfolios
         and identify the knee of each scenario. The next step shows its stock
@@ -394,8 +397,9 @@ guided_walkthrough:
             end: '.set_index(["solve", "scenario"])'
           - start: knee_idx, max_jump = None, 0.0
             end: 'rows_for_sn[knee_idx]["is_knee"] = True'
-          - start: 'risk_by_key = {(r["scenario_label"], r["eps_label"]): r["risk"] for r in fp_rows}'
-            end: 'r["vol_gap_pct"] = (vol_gap / vol_base * 100.0) if vol_base > 1e-9 else 0.0'
+          - start: volatility_df = model.select(
+            end: '.sort_values(["scenario_label", "k"])'
+            end_offset: 1
       references:
         model.select():
           anchor:
@@ -411,12 +415,12 @@ guided_walkthrough:
             end: 'rows_for_sn[knee_idx]["is_knee"] = True'
         vol_base:
           anchor:
-            start: 'vol_base = base_risk**0.5 if base_risk is not None else 0.0'
-            end: 'vol_base = base_risk**0.5 if base_risk is not None else 0.0'
+            start: 'FrontierPoint.vol_base.alias("vol_base"),'
+            end: 'FrontierPoint.vol_base.alias("vol_base"),'
         vol_crisis:
           anchor:
-            start: 'vol_crisis = crisis_risk**0.5 if crisis_risk is not None else 0.0'
-            end: 'vol_crisis = crisis_risk**0.5 if crisis_risk is not None else 0.0'
+            start: 'FrontierPoint.vol_crisis.alias("vol_crisis"),'
+            end: 'FrontierPoint.vol_crisis.alias("vol_crisis"),'
       links:
         - title: Define base facts from tabular data
           href: /build/guides/modeling/define-base-facts/#map-columns-explicitly
@@ -437,10 +441,10 @@ guided_walkthrough:
         rise much faster for each additional unit of required return. It is a
         candidate to review, not a recommendation.
 
-        The final loop uses allocation_df to retrieve the stock amounts that
-        the knee point's solve published for each of the six scenarios. Amount
-        shows how much of the scenario's budget is assigned to a stock. Weight
-        shows the stock's share of the budget. The output excerpt shows the
+        The final loop uses allocation_df to retrieve the stock amounts and
+        weights that the knee point's solve published for each of the six
+        scenarios. Amount shows how much of the scenario's budget is assigned to
+        a stock. Weight shows the stock's share of the budget. The output excerpt shows the
         base portfolio for a budget of 1,000. To turn it into a rebalancing
         plan, link the scenario to an account and compare these target amounts
         with its current holdings.
@@ -458,10 +462,10 @@ guided_walkthrough:
         file: queries/portfolio_report.py
         anchors:
           - start: knee_rows = frontier_df[
-            end: allocations = zip(knee_allocation["ticker"], knee_allocation["amount"])
-          - start: ordered_allocations = sorted(
-            end: '{float(quantity) / budget:>9.1%}'
+            end: 'knee_allocation["ticker"], knee_allocation["amount"], knee_allocation["weight"]'
             end_offset: 1
+          - start: ordered_allocations = sorted(
+            end: '{float(weight):>9.1%}'
       references:
         frontier_df:
           anchor:
@@ -483,8 +487,8 @@ guided_walkthrough:
             end: '{float(quantity):>12.2f}'
         Weight:
           anchor:
-            start: '{float(quantity) / budget:>9.1%}'
-            end: '{float(quantity) / budget:>9.1%}'
+            start: '{float(weight):>9.1%}'
+            end: '{float(weight):>9.1%}'
       links:
         - title: Work with solutions
           href: /build/guides/reasoning/prescriptive/decision-problems/solutions/
