@@ -22,17 +22,21 @@ with ``keyed_by``, so it carries an entity back-pointer to what it grounds over
 (``assign_one.workflow`` / ``conc.runner``) and the model publishes the conflict as the
 actual *stranded jobs* and the *binding runner cap*, joined by KEY -- no rule-name parsing.
 
+The model also publishes, per solve, each runner's load: its job count and the alphabetical list of
+the jobs assigned to it (`runner_allocation.py`).
+
 Run:
     `rai models deploy --path model` deploys this package to the schemas in
     raiconfig.yaml and waits for its first refresh, which runs the solves.
     `python -m queries.allocation_report` then prints the report from the deployed model.
 """
 
-from .reasoning import (
+from .runner_allocation import (
     SCENARIO_PARAM,
     SCENARIO_VALUES,
     Assigned,
     BindingCap,
+    RunnerLoad,
     SolveStatus,
     Stranded,
     TotalCost,
@@ -51,6 +55,7 @@ __all__ = [
     "BindingCap",
     "Compatibility",
     "Runner",
+    "RunnerLoad",
     "SolveStatus",
     "Stranded",
     "TotalCost",

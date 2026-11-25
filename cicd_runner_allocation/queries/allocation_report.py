@@ -10,9 +10,9 @@ from model import (
     OFFLINE_RUNNERS,
     SCENARIO_PARAM,
     SCENARIO_VALUES,
-    Assigned,
     BindingCap,
     Runner,
+    RunnerLoad,
     SolveStatus,
     Stranded,
     TotalCost,
@@ -20,6 +20,7 @@ from model import (
     model,
     problems,
 )
+from relationalai.semantics import Integer, String
 
 # The bundled data's high-CPU Linux jobs (min_cpu >= 4, Linux); the conflict check below
 # stops when workflows.csv no longer matches them.
@@ -63,16 +64,20 @@ if __name__ == "__main__":
         print(f"  Total pipeline cost: ${cost[0]:.2f}")
 
         # Print assignments grouped by runner.
-        assign_df = (
-            model.select(Workflow.name.alias("workflow"), Runner.name.alias("runner"))
-            .where(Assigned[multiplier](Workflow, Runner))
+        n_ref, workflows_ref = Integer.ref(), String.ref()
+        load_df = (
+            model.select(
+                Runner.name.alias("runner"),
+                n_ref.alias("n_jobs"),
+                workflows_ref.alias("workflows"),
+            )
+            .where(RunnerLoad[multiplier](Runner, n_ref, workflows_ref))
             .to_df()
+            .sort_values("runner")
         )
         print("\n  Assignments:")
-        for runner_name in sorted(assign_df["runner"].unique()):
-            jobs = assign_df[assign_df["runner"] == runner_name]
-            workflows = ", ".join(sorted(jobs["workflow"]))
-            print(f"    {runner_name} ({len(jobs)} jobs): {workflows}")
+        for load in load_df.itertuples():
+            print(f"    {load.runner} ({int(load.n_jobs)} jobs): {load.workflows}")
 
         scenario_results.append({"scenario": multiplier, "status": status[0], "objective": cost[0]})
 

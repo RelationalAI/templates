@@ -1,9 +1,11 @@
-"""Runner allocation decision problems: three concurrency scenarios and a maintenance outage with its conflict."""
+"""Runner allocation decision problems: three concurrency scenarios and a maintenance outage with its
+conflict, and each solve's load per runner."""
 
 import warnings
 
-from relationalai.semantics import Float, String, sum
+from relationalai.semantics import Float, Integer, String, sum
 from relationalai.semantics.reasoners.prescriptive import Problem
+from relationalai.semantics.std import aggregates as aggs
 
 from .schema import Assignment, Compatibility, Runner, Workflow, model
 from .source import OFFLINE_RUNNERS
@@ -23,12 +25,13 @@ SCENARIO_VALUES = [0.5, 1.0, 1.5]
 # --------------------------------------------------
 
 # Each scenario is its own Problem, so an infeasible one leaves the others solved. Each
-# Problem's status, cost, and assignments are keyed by the scenario value ("outage" for the
-# maintenance outage, which also publishes its conflict).
+# Problem's status, cost, assignments, and runner loads are keyed by the scenario value
+# ("outage" for the maintenance outage, which also publishes its conflict).
 problems = {}
 SolveStatus = {}
 TotalCost = {}
 Assigned = {}
+RunnerLoad = {}
 Stranded = {}
 BindingCap = {}
 
@@ -120,6 +123,22 @@ def declare_allocation(key, name, concurrency_multiplier, offline_runners=(), co
     model.where(assign_var.values(0, value_ref), value_ref > 0.5).define(
         Assigned[key](assign_var.assignment.workflow, assign_var.assignment.runner)
     )
+
+    # Each runner's load: how many jobs it runs and their names in alphabetical order, joined
+    # with commas (the id keeps jobs that share a name). A runner with no job has no row. It is
+    # a relationship of its own, not a property of Runner: a property computed from the
+    # solution on a concept the solve reads leaves the solution empty after the first refresh.
+    RunnerLoad[key] = model.Relationship(
+        f"{name} loads {Runner} with {Integer:n_jobs} jobs {String:workflows}"
+    )
+    runs = Assigned[key](Workflow, Runner)
+    model.define(RunnerLoad[key](
+        Runner,
+        aggs.count(Workflow).per(Runner).where(runs),
+        aggs.string_join(Workflow.name, sep=", ", index=[Workflow.name, Workflow.workflow_id])
+        .per(Runner)
+        .where(runs),
+    ))
 
     if conflict:
         # The conflict, which the deployed model publishes for the queries. ``in_conflict``
