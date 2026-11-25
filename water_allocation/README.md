@@ -272,7 +272,7 @@ Focus on the first changes most users will make.
 ## Troubleshooting
 
 <details>
-<summary><code>Status: INFEASIBLE</code></summary>
+<summary><code>termination status ['LOCALLY_INFEASIBLE']: no solution available</code></summary>
 
 Total source capacity (after losses) is insufficient to meet all user demands. Check that the sum of source capacities minus worst-case losses covers total demand. You can increase source capacity in `sources.csv`, reduce demands in `users.csv`, or add new connections in `connections.csv`.
 </details>

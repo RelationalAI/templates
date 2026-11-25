@@ -18,7 +18,7 @@ if __name__ == "__main__":
     if cost:
         print(f"• objective: {round(cost[0], 9)}\n")
 
-    print(f"Status: {status[0]}")  # Ipopt returns LOCALLY_SOLVED
+    print(f"Status: {status[0]}")
     if cost:
         print(f"Total cost: ${cost[0]:.2f}")
 
