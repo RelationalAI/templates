@@ -12,9 +12,6 @@ from datetime import date, timedelta
 from model import SolveStatus, Table, TotalDeviation, model
 from pandas import DataFrame
 
-# The tables generate_test_data fills; a schema without one of them gets row counts only.
-GENERATED_TABLES = ("Customer", "Product", "Order", "OrderLine", "Supplier", "SupplierProduct")
-
 
 def generate_test_data(row_counts, seed=42):
     """Generate actual test data records based on optimal row counts."""
@@ -98,19 +95,12 @@ if __name__ == "__main__":
         dev = abs(counts['actual'] - counts['target'])
         print(f"  {table}: {counts['actual']} rows (target: {counts['target']}, deviation: {dev})")
 
-    absent = [t for t in GENERATED_TABLES if t not in row_counts]
-    if absent:
-        print(
-            f"\nNo sample rows: the generator fills the bundled tables, and {absent} have no "
-            "solved row count. Extend generate_test_data for your tables."
-        )
-    else:
-        # Generate data and show samples
-        print("\n" + "=" * 50)
-        print("GENERATED TEST DATA")
-        print("=" * 50)
+    # Generate data and show samples
+    print("\n" + "=" * 50)
+    print("GENERATED TEST DATA")
+    print("=" * 50)
 
-        generated_data = generate_test_data(row_counts)
-        for table, df in generated_data.items():
-            print(f"\n{table}: {len(df)} rows")
-            print(df.head(3).to_string(index=False))
+    generated_data = generate_test_data(row_counts)
+    for table, df in generated_data.items():
+        print(f"\n{table}: {len(df)} rows")
+        print(df.head(3).to_string(index=False))
