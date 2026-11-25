@@ -51,8 +51,11 @@ model.define(SKU.new(model.data(sku_csv).to_schema()))
 #   # Period mapping from epoch: week_num = (created_at - start_epoch) // (7 * 86400) + 1
 # --------------------------------------------------
 
-# Map demand orders data (all orders; horizon_scope.py selects each horizon's).
-order_data = model.data(pd.read_csv(DATA_DIR / "demand_orders.csv"))
+# Map demand orders data (all orders; horizon_scope.py selects each horizon's). Due dates are
+# loaded as yyyy-mm-dd strings, the one form horizon_scope.py both parses and compares.
+orders_df = pd.read_csv(DATA_DIR / "demand_orders.csv")
+orders_df["due_date"] = pd.to_datetime(orders_df["due_date"]).dt.strftime("%Y-%m-%d")
+order_data = model.data(orders_df)
 model.define(
     o := DemandOrder.new(id=order_data.id),
     o.quantity(order_data.quantity),
