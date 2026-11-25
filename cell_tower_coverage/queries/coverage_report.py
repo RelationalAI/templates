@@ -17,6 +17,7 @@ from model import (
     SelectedBuildCost,
     SolveStatus,
     TotalPopulation,
+    TowerLoad,
     TowerSite,
     assigned,
     covered,
@@ -75,8 +76,8 @@ if __name__ == "__main__":
     )
     selected_sites_df["build_cost"] = pd.to_numeric(selected_sites_df["build_cost"])
     tower_load_df = model.select(
-        TowerSite.site_id.alias("site_id"),
-        TowerSite.assigned_population.alias("assigned_population"),
+        TowerLoad.site_id.alias("site_id"),
+        TowerLoad.assigned_population.alias("assigned_population"),
     ).to_df()
 
     zone_solution_df = (

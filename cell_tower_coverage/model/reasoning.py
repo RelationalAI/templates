@@ -120,16 +120,19 @@ model.define(
     ),
 )
 
-# Population each selected tower serves through its assigned zones.
-TowerSite.assigned_population = model.Property(
-    f"{TowerSite} serves assigned population {Integer:assigned_population}"
+# Population each tower serves through its assigned zones. It lives on TowerLoad, not TowerSite:
+# a property computed from the solution on a concept the solve reads fails the deploy.
+TowerLoad = model.Concept("TowerLoad", identify_by={"site_id": String})
+TowerLoad.assigned_population = model.Property(
+    f"{TowerLoad} serves assigned population {Integer:assigned_population}"
 )
+model.define(TowerLoad.new(site_id=TowerSite.site_id))
 model.define(
-    TowerSite.assigned_population(
+    TowerLoad.assigned_population(
         sum(CoveragePair, DemandZone.population)
-        .per(TowerSite)
+        .per(TowerLoad)
         .where(
-            CoveragePair.site(TowerSite),
+            CoveragePair.site_id == TowerLoad.site_id,
             CoveragePair.zone(DemandZone),
             CoveragePair.z_assigned(assigned),
             assigned > 0.5,
