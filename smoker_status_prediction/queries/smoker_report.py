@@ -7,35 +7,43 @@ Prints the data and split summary, a sample of the test-cohort predictions, and
 the test-set ROC-AUC, accuracy, and class distributions.
 """
 
-from model import People, Related, SmokerPrediction, TestTable, TrainTable, ValidationTable
-from relationalai.semantics import count, select
+from model import (
+    ClassShare,
+    DataSummary,
+    SmokerPrediction,
+    TestAccuracy,
+    TestAuc,
+    TestCohort,
+)
+from relationalai.semantics import Float, Integer, select
 
 
 def main() -> None:
+    people, related, train, validation, test = (Integer.ref() for _ in range(5))
     counts = (
         select(
-            count(People).alias("people"),
-            count(Related).alias("related"),
-            count(TrainTable).alias("train"),
-            count(ValidationTable).alias("val"),
-            count(TestTable).alias("test"),
+            people.alias("people"),
+            related.alias("related"),
+            train.alias("train"),
+            validation.alias("val"),
+            test.alias("test"),
         )
+        .where(DataSummary(people, related, train, validation, test))
         .to_df()
         .iloc[0]
     )
     print(f"People: {counts['people']:,}  Related: {counts['related']:,}")
     print(f"Splits: train={counts['train']:,}  val={counts['val']:,}  test={counts['test']:,}")
 
-    # Pull per-person predictions joined to the held-out actual labels in a
-    # single query, so we can score the GNN on the test cohort.
+    # Pull per-person predictions with their held-out actual labels, so the sample shows the
+    # GNN's test-cohort scores next to the truth.
     predictions_df = (
         select(
             SmokerPrediction.person_id.alias("Id"),
             SmokerPrediction.predicted_label.alias("predicted_label"),
             SmokerPrediction.probability.alias("prob"),
-            TestTable.smoking.alias("actual_smoking"),
+            SmokerPrediction.actual_smoking.alias("actual_smoking"),
         )
-        .where(SmokerPrediction.person_id == TestTable.Id)
         .to_df()
         .sort_values("Id")
     )
@@ -53,27 +61,32 @@ def main() -> None:
         .to_string(index=False)
     )
 
-    # Test-set metrics. Rank-based ROC-AUC keeps the script sklearn-free:
-    # AUC = (sum_of_ranks_of_positives - n_pos*(n_pos+1)/2) / (n_pos * n_neg).
-    n_test = len(predictions_df)
-    accuracy = float(
-        (predictions_df["predicted_label"] == predictions_df["actual_smoking"]).mean()
+    # Test-set metrics, as the model publishes them. ROC-AUC is rank-based (ties share the
+    # average rank), so the script stays sklearn-free. It is undefined when the scored cohort
+    # has one class only.
+    n_test_ref, n_correct_ref, accuracy_ref, auc_ref = (
+        Integer.ref(),
+        Integer.ref(),
+        Float.ref(),
+        Float.ref(),
     )
-    ranks = predictions_df["prob"].rank(method="average")
-    pos_mask = predictions_df["actual_smoking"] == 1
-    n_pos = int(pos_mask.sum())
-    n_neg = int((~pos_mask).sum())
-    test_auc = (
-        float((ranks[pos_mask].sum() - n_pos * (n_pos + 1) / 2) / (n_pos * n_neg))
-        if n_pos > 0 and n_neg > 0
-        else float("nan")
+    n_test = int(
+        select(n_test_ref).where(TestCohort(n_test_ref, n_correct_ref)).to_df().iloc[0, 0]
     )
-    actual_dist = (
-        predictions_df["actual_smoking"].value_counts(normalize=True).sort_index().to_dict()
+    accuracy = float(select(accuracy_ref).where(TestAccuracy(accuracy_ref)).to_df().iloc[0, 0])
+    auc_values = select(auc_ref).where(TestAuc(auc_ref)).to_df().iloc[:, 0].tolist()
+    test_auc = float(auc_values[0]) if auc_values else float("nan")
+    shares = (
+        select(
+            ClassShare.label.alias("label"),
+            ClassShare.actual_share.alias("actual"),
+            ClassShare.predicted_share.alias("predicted"),
+        )
+        .to_df()
+        .set_index("label")
     )
-    predicted_dist = (
-        predictions_df["predicted_label"].value_counts(normalize=True).sort_index().to_dict()
-    )
+    actual_dist = shares["actual"].to_dict()
+    predicted_dist = shares["predicted"].to_dict()
 
     print(f"\n=== Test-set metrics (n={n_test}) ===")
     if n_test < counts["test"]:
