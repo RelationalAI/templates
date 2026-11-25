@@ -103,8 +103,8 @@ guided_walkthrough:
             end: model.define(Account.new(model.data(accounts_df).to_schema()))
         Transaction.new(...):
           anchor:
-            start: model.define(Transaction.new(model.data(transactions_df).to_schema()))
-            end: model.define(Transaction.new(model.data(transactions_df).to_schema()))
+            start: model.define(Transaction.new(model.data(transactions_df).to_schema(
+            end: model.define(Transaction.new(model.data(transactions_df).to_schema(
         Transaction.sender(...):
           anchor:
             start: model.define(Transaction.sender(Transaction, Account)).where(

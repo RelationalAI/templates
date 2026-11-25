@@ -28,7 +28,8 @@ def load_local_data(data_dir: Path = PAYSIM_DIR) -> None:
     test_df = read_csv(data_dir / "test.csv", parse_dates=["step_ts"])
 
     model.define(Account.new(model.data(accounts_df).to_schema()))
-    model.define(Transaction.new(model.data(transactions_df).to_schema()))
+    # Audit cost is a rule on the amount (investigation_queue.py), never a loaded column.
+    model.define(Transaction.new(model.data(transactions_df).to_schema(exclude=["audit_cost"])))
     model.define(TrainTable.new(model.data(train_df).to_schema()))
     model.define(ValTable.new(model.data(val_df).to_schema()))
     model.define(TestTable.new(model.data(test_df).to_schema()))
@@ -63,7 +64,8 @@ def load_snowflake_data(database: str, schema: str) -> None:
     test = model.Table(f"{database}.{schema}.TEST")
 
     model.define(Account.new(accounts.to_schema()))
-    model.define(Transaction.new(transactions.to_schema()))
+    # Audit cost is a rule on the amount (investigation_queue.py), never a loaded column.
+    model.define(Transaction.new(transactions.to_schema(exclude=["audit_cost"])))
     model.define(TrainTable.new(train.to_schema()))
     model.define(ValTable.new(validation.to_schema()))
     model.define(TestTable.new(test.to_schema()))

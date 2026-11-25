@@ -21,10 +21,12 @@ LARGE_AUDIT_COST_HOURS = 5.0  # audit of a transaction > $1M
 AUDIT_BUDGET_HOURS = 80.0  # total investigator hours available
 PER_ACCOUNT_CAP = 1  # at most 1 audit per receiver account (avoid flooding)
 
+# Audit hours: the large cost over the threshold, the small cost otherwise
+# (a transaction without an amount included).
 model.where(Transaction.amount > LARGE_AMOUNT_THRESHOLD).define(
     Transaction.audit_cost(LARGE_AUDIT_COST_HOURS)
 )
-model.where(Transaction.amount <= LARGE_AMOUNT_THRESHOLD).define(
+model.where(model.not_(Transaction.amount > LARGE_AMOUNT_THRESHOLD)).define(
     Transaction.audit_cost(SMALL_AUDIT_COST_HOURS)
 )
 

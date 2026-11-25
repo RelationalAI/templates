@@ -84,7 +84,6 @@ def main() -> None:
         .where(
             Cand_ref.alert_score(score_ref),
             Txn_ref.transaction_id == Cand_ref.transaction_id,
-            Cand_ref.alert_rank <= TOP_ALERTS,
         )
         .to_df()
     )
@@ -93,7 +92,8 @@ def main() -> None:
         return
 
     print(f"\n=== Top-{TOP_ALERTS} alert-scored transactions ===")
-    print(_alert_df.sort_values("alert_rank").drop(columns="alert_rank").to_string(index=False))
+    top_alerts = _alert_df.sort_values("alert_rank").head(TOP_ALERTS).drop(columns="alert_rank")
+    print(top_alerts.to_string(index=False))
 
     print("\n" + "=" * 60)
     print("Stage 5: Prescriptive -- investigator-budget allocation")
