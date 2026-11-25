@@ -374,12 +374,12 @@ guided_walkthrough:
     - id: stage-4-publish-and-compare
       title: "Stage 4: Summarize the results"
       explanation: |-
-        Each solve in Stage 3 publishes a FrontierPoint for every scenario: the
-        portfolio's expected return, its risk (the variance), and
-        marginal_risk_per_return, the shadow price of its return floor. It
-        records how much more variance is needed when the required return
-        increases by one unit. The report reads these points with
-        model.select() and keeps the points of the dichotomic solves.
+        Each solve in Stage 3 publishes a FrontierPoint for every scenario. The
+        report reads these points with model.select() and keeps the points of
+        the dichotomic solves. Each point holds the portfolio's expected return,
+        its risk (the variance), and marginal_risk_per_return, the shadow price
+        of its return floor. It records how much more variance is needed when
+        the required return increases by one unit.
 
         For every scenario, the report orders those points by the reference
         scenario's return and labels them min_risk, p1, p2, and so on. It marks
