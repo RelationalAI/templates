@@ -205,7 +205,7 @@ guided_walkthrough:
       focus:
         file: model/match_graph.py
         anchors:
-          - start: 'def cluster_accepted_matches():'
+          - start: 'graph = Graph(model, directed=False, weighted=False, node_concept=Record, name="match_graph")'
             end: Record.entity_key(rep_node.record_id)
             end_offset: 1
       references:
@@ -294,8 +294,8 @@ guided_walkthrough:
       focus:
         file: model/reinsurance_cessions.py
         anchors:
-          - start: 'def choose_reinsurance_cessions():'
-            end: return problem
+          - start: 'problem = Problem(model, Float, name="entity_resolution")'
+            end: problem.configure("highs", time_limit_sec=60)
       references:
         Problem(model, Float):
           anchor:

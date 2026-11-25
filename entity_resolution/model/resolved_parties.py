@@ -16,52 +16,50 @@ from .schema import Record, ResolvedParty, model
 ACCUMULATION_LIMIT = 1_000_000.0
 REINSURANCE_RATE = 0.12
 
+# --------------------------------------------------
+# Resolved membership, exposure, and breaches
+# --------------------------------------------------
 
-def derive_exposure_and_breaches() -> None:
-    """Derive the duplicate flag, resolved membership, exposure, and breaches."""
-    records_per_entity = aggs.count(Record).per(Record.entity_key)
-    model.define(Record.is_duplicate(Record)).where(records_per_entity >= 2)
+model.define(ResolvedParty.new(key=Record.entity_key))
+record, party = Record.ref(), ResolvedParty.ref()
+model.where(record.entity_key == party.key).define(
+    record.resolved_party(party)
+)
 
-    model.define(ResolvedParty.new(key=Record.entity_key))
-    record, party = Record.ref(), ResolvedParty.ref()
-    model.where(record.entity_key == party.key).define(
-        record.resolved_party(party)
+party_record = Record.ref()
+model.where(party_record.entity_key == ResolvedParty.key).define(
+    ResolvedParty.total_exposure(
+        aggs.sum(party_record, party_record.coverage_amount).per(ResolvedParty)
     )
-
-    party_record = Record.ref()
-    model.where(party_record.entity_key == ResolvedParty.key).define(
-        ResolvedParty.total_exposure(
-            aggs.sum(party_record, party_record.coverage_amount).per(ResolvedParty)
-        )
+)
+model.define(ResolvedParty.is_over_limit(ResolvedParty)).where(
+    ResolvedParty.total_exposure > ACCUMULATION_LIMIT
+)
+model.where(ResolvedParty.total_exposure > ACCUMULATION_LIMIT).define(
+    ResolvedParty.excess(
+        ResolvedParty.total_exposure - ACCUMULATION_LIMIT
     )
-    model.define(ResolvedParty.is_over_limit(ResolvedParty)).where(
-        ResolvedParty.total_exposure > ACCUMULATION_LIMIT
-    )
-    model.where(ResolvedParty.total_exposure > ACCUMULATION_LIMIT).define(
-        ResolvedParty.excess(
-            ResolvedParty.total_exposure - ACCUMULATION_LIMIT
-        )
-    )
-    model.define(
-        ResolvedParty.premium(ResolvedParty.excess * REINSURANCE_RATE)
-    )
-
-
-derive_exposure_and_breaches()
+)
+model.define(
+    ResolvedParty.premium(ResolvedParty.excess * REINSURANCE_RATE)
+)
 
 # --------------------------------------------------
 # Party size and golden record
 # --------------------------------------------------
 
-# Records per party; a party is multi-record when it holds a duplicate record.
+# Records per party; a party with more than one record is multi-record, and each of its
+# records is a duplicate.
 ResolvedParty.n_records = model.Property(f"{ResolvedParty} has {Integer:n_records} records")
 _member = Record.ref()
 model.where(_member.entity_key == ResolvedParty.key).define(
     ResolvedParty.n_records(aggs.count(_member).per(ResolvedParty))
 )
 ResolvedParty.is_multi_record = model.Relationship(f"{ResolvedParty} holds more than one record")
-_party = ResolvedParty.ref()
-model.where(Record.is_duplicate(), Record.resolved_party(_party)).define(_party.is_multi_record())
+model.where(ResolvedParty.n_records > 1).define(ResolvedParty.is_multi_record())
+model.where(
+    Record.resolved_party(ResolvedParty), ResolvedParty.is_multi_record(),
+).define(Record.is_duplicate())
 
 # The golden record is the party's latest record by creation date (ISO dates sort as text), the
 # higher record id breaking a tie.

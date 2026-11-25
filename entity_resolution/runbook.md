@@ -98,7 +98,7 @@ Weakly-connected-components over 51 nodes and 25 auto-merge edges resolves the r
 
 **Response**
 
-`CandidateMatch.confidence_tier` set to HIGH (20) or MEDIUM (5) across the 25 auto-merge matches. `Record.is_duplicate` flags 35 records -- every record sharing its party with at least one other -- derived by counting records per `entity_key` and flagging parties of size two or more.
+`CandidateMatch.confidence_tier` set to HIGH (20) or MEDIUM (5) across the 25 auto-merge matches. `Record.is_duplicate` flags 35 records -- every record sharing its party with at least one other -- derived from each party's record count (`ResolvedParty.n_records`), flagging the records of parties of size two or more.
 
 ### 6. Aggregate exposure and flag accumulation breaches
 

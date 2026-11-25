@@ -15,35 +15,29 @@ from .schema import ResolvedParty, model
 
 REINSURANCE_BUDGET = 120_000.0
 
-
-def choose_reinsurance_cessions():
-    """Declare the reinsurance-budget knapsack for breached parties."""
-    problem = Problem(model, Float, name="entity_resolution")
-    problem.solve_for(
-        ResolvedParty.cede,
-        where=[ResolvedParty.is_over_limit()],
-        name=["cede", ResolvedParty.key],
-        type="bin",
-        lower=0.0,
-        upper=1.0,
-    )
-    problem.satisfy(
-        model.require(
-            aggs.sum(
-                ResolvedParty.premium * ResolvedParty.cede
-            )
-            <= REINSURANCE_BUDGET
-        ),
-        name=["reinsurance_budget"],
-    )
-    problem.maximize(
-        aggs.sum(ResolvedParty.excess * ResolvedParty.cede)
-    )
-    problem.configure("highs", time_limit_sec=60)
-    return problem
-
-
-problem = choose_reinsurance_cessions()
+# The reinsurance-budget knapsack for breached parties.
+problem = Problem(model, Float, name="entity_resolution")
+problem.solve_for(
+    ResolvedParty.cede,
+    where=[ResolvedParty.is_over_limit()],
+    name=["cede", ResolvedParty.key],
+    type="bin",
+    lower=0.0,
+    upper=1.0,
+)
+problem.satisfy(
+    model.require(
+        aggs.sum(
+            ResolvedParty.premium * ResolvedParty.cede
+        )
+        <= REINSURANCE_BUDGET
+    ),
+    name=["reinsurance_budget"],
+)
+problem.maximize(
+    aggs.sum(ResolvedParty.excess * ResolvedParty.cede)
+)
+problem.configure("highs", time_limit_sec=60)
 
 # The solve's status, which the deployed model publishes for the queries.
 SolveStatus = model.Relationship(f"reinsurance solve status is {String:status}")
