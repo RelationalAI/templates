@@ -12,16 +12,20 @@ the two what-if analyses, and a headline.
 import pandas as pd
 from model import (
     HORIZON_END_PERIOD,
-    OFFLINE_DROP_THRESHOLD,
-    SHORTAGE_DROP_THRESHOLD,
     Customer,
-    Demand,
-    DependencyChainStep,
-    EffectiveCapacity,
+    CustomerService,
+    DependencyChain,
+    EffectiveCapacityCells,
+    FirstSolvedIteration,
     Input,
-    OfflineDrop,
+    IterationMargin,
+    LastSolvedIteration,
+    MultiHopChain,
+    NumDependencyChains,
+    NumForecastRows,
+    PlanDiff,
     Product,
-    ShortageDrop,
+    ShortageAverageDrop,
     Supplier,
     SupplierCapabilityForecast,
     SupplierOfflineImpact,
@@ -29,7 +33,7 @@ from model import (
     gnn,
     model,
 )
-from relationalai.semantics import Float, Integer
+from relationalai.semantics import Float, Integer, String
 from relationalai.semantics.std.path import PathTraversal
 
 pd.set_option("display.float_format", lambda v: f"{v:,.2f}")
@@ -38,17 +42,7 @@ pd.set_option("display.width", 200)
 
 
 def main() -> None:
-    customers_df = model.select(
-        Customer.id.alias("id"), Customer.name.alias("name"), Customer.industry.alias("industry")
-    ).to_df()
     products_df = model.select(Product.id.alias("id"), Product.name.alias("name")).to_df()
-    demand_df = model.select(
-        Demand.customer_id.alias("customer_id"),
-        Demand.product_id.alias("product_id"),
-        Demand.period_id.alias("period_id"),
-        Demand.demand_usd.alias("demand_usd"),
-    ).to_df()
-
     forecast_df = model.select(
         SupplierCapabilityForecast.supplier_id.alias("supplier_id"),
         SupplierCapabilityForecast.period_id.alias("period_id"),
@@ -56,8 +50,11 @@ def main() -> None:
     ).to_df()
     supplier_names = model.select(Supplier.id.alias("id"), Supplier.name.alias("name")).to_df()
     if gnn is not None:
-        print(f"GNN predictions: {len(forecast_df)} rows for periods 1..{HORIZON_END_PERIOD}")
+        num_forecast_rows = int(model.select(NumForecastRows).to_df().iloc[0, 0])
+        print(f"GNN predictions: {num_forecast_rows} rows for periods 1..{HORIZON_END_PERIOD}")
     print("\nPer-supplier capability_pct summary (post-Stage 2):")
+    # Computed here: on the bundled forecast snapshot one supplier's mean lies exactly on a
+    # 3-decimal rounding boundary, so an engine's summation order could change the printed digit.
     fc_summary = (
         forecast_df.groupby("supplier_id")["capability_pct"].agg(["mean", "min", "max"]).round(3)
     )
@@ -68,16 +65,17 @@ def main() -> None:
     # Stage 3: rolling-horizon solves
     # --------------------------------------------------
     scenario_results = []
-    prior_alloc_df = None  # for plan-diff between iterations
 
-    for spec, status_rel, margin_rel, allocated in allocations:
+    for spec, status_rel, margin_rel, _ in allocations:
         iter_id = spec["iter_id"]
         horizon_start = spec["horizon_start"]
         print(f"\n{'=' * 60}\nStage 3 iteration {iter_id}: {spec['label']}\n{'=' * 60}")
-        n_cells = len(
-            model.where(EffectiveCapacity.iter_id == iter_id)
-            .select(EffectiveCapacity.product_id, EffectiveCapacity.period_id)
+        n_cells_ref = Integer.ref()
+        n_cells = int(
+            model.where(EffectiveCapacityCells(iter_id, n_cells_ref))
+            .select(n_cells_ref)
             .to_df()
+            .iloc[0, 0]
         )
         print(
             f"  Horizon: months {horizon_start}-{HORIZON_END_PERIOD}, "
@@ -103,7 +101,6 @@ def main() -> None:
         )
         if termination_status != "OPTIMAL":
             print(f"  Status: {termination_status} -- skipping detail output.")
-            prior_alloc_df = None
             continue
 
         print(f"  Status: {termination_status}")
@@ -112,33 +109,20 @@ def main() -> None:
             f"${objective:,.2f}"
         )
 
-        # This iteration's allocations, which the deployed model publishes.
-        value_ref = Float.ref()
-        sol = (
-            model.where(allocated(value_ref, Demand))
+        # Plan-diff vs prior iteration's allocation (only overlapping periods), which the
+        # deployed model publishes for every iteration after the first.
+        delta_ref = Float.ref()
+        per_customer_delta = (
+            model.where(PlanDiff(iter_id, Customer, delta_ref))
             .select(
-                Demand.customer_id.alias("customer_id"),
-                Demand.product_id.alias("product_id"),
-                Demand.period_id.alias("period_id"),
-                value_ref.alias("alloc_usd"),
+                Customer.id.alias("customer_id"),
+                Customer.name.alias("name"),
+                delta_ref.alias("delta_usd_total"),
             )
             .to_df()
+            .sort_values("customer_id")
         )
-
-        # Plan-diff vs prior iteration's allocation (only overlapping periods).
-        if prior_alloc_df is not None:
-            overlap = sol.merge(
-                prior_alloc_df,
-                on=["customer_id", "product_id", "period_id"],
-                suffixes=("_now", "_prior"),
-            )
-            overlap["delta_usd"] = overlap["alloc_usd_now"] - overlap["alloc_usd_prior"]
-            per_customer_delta = (
-                overlap.groupby("customer_id")["delta_usd"].sum().rename("delta_usd_total")
-            )
-            per_customer_delta = per_customer_delta.reset_index().merge(
-                customers_df[["id", "name"]], left_on="customer_id", right_on="id"
-            )
+        if not per_customer_delta.empty:
             per_customer_delta["delta_$M"] = per_customer_delta["delta_usd_total"] / 1e6
             per_customer_delta = per_customer_delta[["name", "delta_$M"]].sort_values("delta_$M")
             print(
@@ -146,18 +130,20 @@ def main() -> None:
             )
             print(per_customer_delta.to_string(index=False))
 
-        prior_alloc_df = sol.copy()
-
-        # Per-customer service level over the current horizon.
-        sol_merged = sol.merge(
-            demand_df[["customer_id", "product_id", "period_id", "demand_usd"]],
-            on=["customer_id", "product_id", "period_id"],
-        )
+        # Per-customer service level over the current horizon, which the deployed model publishes.
+        alloc_ref, demand_ref, level_ref = Float.ref(), Float.ref(), Float.ref()
         per_customer = (
-            sol_merged.groupby("customer_id")[["alloc_usd", "demand_usd"]]
-            .sum()
-            .assign(service_level=lambda d: d["alloc_usd"] / d["demand_usd"])
-            .join(customers_df.set_index("id")[["name", "industry"]])
+            model.where(CustomerService(iter_id, Customer, alloc_ref, demand_ref, level_ref))
+            .select(
+                Customer.id.alias("customer_id"),
+                Customer.name.alias("name"),
+                Customer.industry.alias("industry"),
+                alloc_ref.alias("alloc_usd"),
+                demand_ref.alias("demand_usd"),
+                level_ref.alias("service_level"),
+            )
+            .to_df()
+            .sort_values("customer_id")
             .sort_values("demand_usd", ascending=False)
         )
         per_customer["alloc_$B"] = per_customer["alloc_usd"] / 1e9
@@ -188,29 +174,15 @@ def main() -> None:
     print("Stage 4: Dependency-chain analysis (PATHS), RCA, and what-if")
     print("=" * 60)
 
-    chain_ref, hops_ref, step_ref = PathTraversal.ref(), Integer.ref(), Integer.ref()
-    paths_df = (
-        model.where(DependencyChainStep(chain_ref, hops_ref, Customer, step_ref))
-        .select(
-            chain_ref.alias("path_id"),
-            hops_ref.alias("hops"),
-            step_ref.alias("step"),
-            Customer.name.alias("customer"),
-        )
-        .to_df()
-    )
-
+    chain_ref, hops_ref, route_ref = PathTraversal.ref(), Integer.ref(), String.ref()
     chains = (
-        paths_df.sort_values(["path_id", "step"])
-        .groupby("path_id")
-        .agg(
-            hops=("hops", "first"),
-            chain=("customer", lambda s: " -> ".join(s)),
-        )
-        .reset_index()
+        model.where(DependencyChain(chain_ref, hops_ref, route_ref))
+        .select(hops_ref.alias("hops"), route_ref.alias("chain"), chain_ref.alias("path_id"))
+        .to_df()
         .sort_values(["hops", "chain"])
     )
-    print(f"\n  Total customer-customer dependency paths (1-3 hops): {len(chains)}")
+    num_chains = int(model.select(NumDependencyChains).to_df().iloc[0, 0])
+    print(f"\n  Total customer-customer dependency paths (1-3 hops): {num_chains}")
     print("\n  === Dependency chains ===")
     print(chains[["hops", "chain"]].to_string(index=False))
 
@@ -230,19 +202,6 @@ def main() -> None:
     print("What-if 1: supplier-offline impact (no re-solve)")
     print("=" * 60)
     product_names = products_df.set_index("id")["name"]
-    product_ref, period_ref, drop_ref = Integer.ref(), Integer.ref(), Float.ref()
-    offline_df = (
-        model.where(
-            OfflineDrop(Supplier, product_ref, period_ref, drop_ref),
-            drop_ref > OFFLINE_DROP_THRESHOLD,
-        )
-        .select(
-            Supplier.id.alias("supplier_id"),
-            product_ref.alias("product_id"),
-            period_ref.alias("period_id"),
-        )
-        .to_df()
-    )
     impact_df = (
         model.where(SupplierOfflineImpact.supplier_id == Supplier.id)
         .select(
@@ -250,18 +209,11 @@ def main() -> None:
             Supplier.name.alias("supplier"),
             SupplierOfflineImpact.n_affected_cells.alias("n_affected_cells"),
             SupplierOfflineImpact.max_cap_drop_pct.alias("max_cap_drop_pct"),
+            SupplierOfflineImpact.affected_products.alias("affected_products"),
         )
         .to_df()
         .sort_values("supplier_id")
     )
-    impact_df["affected_products"] = [
-        ", ".join(
-            product_names.loc[
-                offline_df.loc[offline_df["supplier_id"] == s, "product_id"].unique()
-            ].tolist()
-        )
-        for s in impact_df["supplier_id"]
-    ]
     print("\n  === Supplier-offline impact (each supplier in isolation) ===")
     display_supplier = impact_df.drop(columns=["supplier_id"]).copy()
     display_supplier["max_cap_drop_%"] = (display_supplier["max_cap_drop_pct"] * 100).round(1)
@@ -274,16 +226,13 @@ def main() -> None:
     print("\n" + "=" * 60)
     print("What-if 2: input-shortage impact (no re-solve)")
     print("=" * 60)
+    product_ref, avg_drop_ref = Integer.ref(), Float.ref()
     shortage_df = (
-        model.where(
-            ShortageDrop(Input, product_ref, period_ref, drop_ref),
-            drop_ref > SHORTAGE_DROP_THRESHOLD,
-        )
+        model.where(ShortageAverageDrop(Input, product_ref, avg_drop_ref))
         .select(
             Input.id.alias("input_id"),
             product_ref.alias("product_id"),
-            period_ref.alias("period_id"),
-            drop_ref.alias("cap_drop_pct"),
+            avg_drop_ref.alias("avg_drop_pct"),
         )
         .to_df()
     )
@@ -300,8 +249,8 @@ def main() -> None:
     for i in inputs_df["input_id"]:
         by_product = (
             shortage_df[shortage_df["input_id"] == i]
-            .groupby("product_id")["cap_drop_pct"]
-            .mean()
+            .set_index("product_id")["avg_drop_pct"]
+            .sort_index()
             .round(3)
         )
         avg_drops.append(
@@ -318,13 +267,30 @@ def main() -> None:
     spof_names = spof_df["spof_customer"].tolist()
     if spof_names:
         print(f"  Customer-graph SPOF(s): {', '.join(spof_names)}")
-    multihop = chains[chains["hops"] > 1]
+    multihop = (
+        model.where(MultiHopChain(chain_ref), DependencyChain(chain_ref, hops_ref, route_ref))
+        .select(hops_ref.alias("hops"), route_ref.alias("chain"))
+        .to_df()
+        .sort_values(["hops", "chain"])
+    )
     if not multihop.empty:
         print("  Multi-hop dependency chains:")
         for chain in multihop["chain"]:
             print(f"    {chain}")
-    if impact_df["n_affected_cells"].max() > 0:
-        worst_supplier = impact_df.loc[impact_df["n_affected_cells"].idxmax()]
+    widest_supplier = (
+        model.where(
+            SupplierOfflineImpact.has_widest_impact(),
+            SupplierOfflineImpact.supplier_id == Supplier.id,
+        )
+        .select(
+            Supplier.name.alias("supplier"),
+            SupplierOfflineImpact.n_affected_cells.alias("n_affected_cells"),
+            SupplierOfflineImpact.max_cap_drop_pct.alias("max_cap_drop_pct"),
+        )
+        .to_df()
+    )
+    if not widest_supplier.empty:
+        worst_supplier = widest_supplier.iloc[0]
         print(
             f"  Supplier with widest offline impact: {worst_supplier['supplier']} "
             f"({worst_supplier['n_affected_cells']} affected cells, "
@@ -332,8 +298,16 @@ def main() -> None:
         )
     else:
         print("  Supplier with widest offline impact: none (no affected cells)")
-    if inputs_df["n_affected_cells"].max() > 0:
-        worst_input = inputs_df.loc[inputs_df["n_affected_cells"].idxmax()]
+    widest_input = (
+        model.where(Input.has_widest_shortage_impact())
+        .select(
+            Input.name.alias("input"),
+            Input.shortage_impact_cells.alias("n_affected_cells"),
+        )
+        .to_df()
+    )
+    if not widest_input.empty:
+        worst_input = widest_input.iloc[0]
         print(
             f"  Input with widest shortage impact: {worst_input['input']} "
             f"({worst_input['n_affected_cells']} affected cells)"
@@ -342,14 +316,33 @@ def main() -> None:
         print("  Input with widest shortage impact: none (no affected cells)")
     # The horizons shrink from one iteration to the next, so the two totals cover
     # different months and their difference is not the disruptions' cost alone.
-    solved = [r for r in scenario_results if r["objective"] is not None]
-    if len(solved) >= 2:
-        first, last = solved[0], solved[-1]
-        print(
-            f"  Horizon margin, iter {first['iter_id']} (months {first['horizon_start']}-"
-            f"{HORIZON_END_PERIOD}) -> iter {last['iter_id']} (months {last['horizon_start']}-"
-            f"{HORIZON_END_PERIOD}): ${first['objective']:,.2f} -> ${last['objective']:,.2f}"
+    first_iter, first_start, last_iter, last_start = (Integer.ref() for _ in range(4))
+    first_margin, last_margin = Float.ref(), Float.ref()
+    margin_span = (
+        model.where(
+            FirstSolvedIteration(first_iter),
+            IterationMargin(first_iter, first_start, first_margin),
+            LastSolvedIteration(last_iter),
+            IterationMargin(last_iter, last_start, last_margin),
         )
+        .select(
+            first_iter.alias("first_iter"),
+            first_start.alias("first_start"),
+            first_margin.alias("first_margin"),
+            last_iter.alias("last_iter"),
+            last_start.alias("last_start"),
+            last_margin.alias("last_margin"),
+        )
+        .to_df()
+    )
+    # One row, or none when no iteration solved; the line needs two different iterations.
+    for span in margin_span.itertuples(index=False):
+        if span.first_iter != span.last_iter:
+            print(
+                f"  Horizon margin, iter {span.first_iter} (months {span.first_start}-"
+                f"{HORIZON_END_PERIOD}) -> iter {span.last_iter} (months {span.last_start}-"
+                f"{HORIZON_END_PERIOD}): ${span.first_margin:,.2f} -> ${span.last_margin:,.2f}"
+            )
 
 
 if __name__ == "__main__":

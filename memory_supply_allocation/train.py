@@ -15,7 +15,7 @@ from model.source import test_split_df, train_split_df, val_split_df
 
 def main() -> None:
     if gnn is None:
-        raise SystemExit("USE_PRECOMPUTED_FORECAST is set in model/reasoning.py: there is no GNN to train.")
+        raise SystemExit("USE_PRECOMPUTED_FORECAST is set in model/capability_forecast.py: there is no GNN to train.")
     print("=" * 60)
     print("Stage 2: Training supplier-capability GNN (regression)")
     print("=" * 60)

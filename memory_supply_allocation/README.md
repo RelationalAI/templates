@@ -43,12 +43,12 @@ This template shows how RelationalAI answers that question on a single shared mo
 
 ## What's included
 
-- `model/` -- the deployed model: `schema.py` declares the concepts and the forecast task relationships, `source.py` loads the bundled CSVs and the rolling-horizon disruption data, `reasoning.py` states the rules, the supplier-capability GNN, the three rolling-horizon problems with the rules that publish their results, the dependency-chain paths, and the two what-ifs
+- `model/` -- the deployed model: `schema.py` declares the concepts and the forecast task relationships, `source.py` loads the bundled CSVs and the rolling-horizon disruption data, and one module per stage states the rules: `customer_dependencies.py` (Stage 1 yield and floor rules), `capability_forecast.py` (the supplier-capability GNN and its forecast), `rolling_horizon.py` (the three rolling-horizon problems with the rules that publish their results, plan diffs, and service levels), `dependency_chains.py` (the dependency-chain paths and routes), and `disruption_what_ifs.py` (the two what-ifs and their widest impacts)
 - `train.py` -- trains the supplier-capability GNN over the deployed splits and registers its version
 - `queries/allocation_report.py` -- prints the forecast summary, each rolling-horizon solve with its plan diff and service levels, the dependency chains, the what-if rankings, and a headline from the deployed model
 - `runbook.md` -- a paste-testable walkthrough that reproduces the template step by step with the RAI skills, one prompt per stage
 - Sample data: 13 CSVs under `data/` (customers, products, periods, demand, suppliers, capacity, inputs, dependencies, and the disruption schedule)
-- Outputs: per-iteration LP status, margin and allocations, dependency chains, and what-if rankings, all queryable from the deployed ontology; the report derives plan diffs and service levels from the published allocations
+- Outputs: per-iteration LP status, margin and allocations, dependency chains, and what-if rankings, all queryable from the deployed ontology; the model publishes each iteration's plan diff against the prior plan and each customer's service level
 
 ## Prerequisites
 
@@ -153,7 +153,7 @@ Use this sequence to deploy the model, train the GNN, and query the rolling-hori
      predictive:
        name: memory_supply_gnn          # created on first use if it doesn't exist
        gnns:
-         supplier_capability:           # the GNN's name in model/reasoning.py
+         supplier_capability:           # the GNN's name in model/capability_forecast.py
            registry: <DB>.MEMORY_SUPPLY_ALLOCATION
            model: SUPPLIER_CAPABILITY
            version: V1                  # train.py registers this version
@@ -278,7 +278,11 @@ Use this sequence to deploy the model, train the GNN, and query the rolling-hori
 │   ├── __init__.py               # exports for train.py and the query
 │   ├── schema.py                 # concepts and the forecast task relationships
 │   ├── source.py                 # loads the CSVs, the GNN splits, and the disruption data
-│   └── reasoning.py              # rules, GNN, rolling-horizon problems, paths, what-ifs
+│   ├── customer_dependencies.py  # Stage 1: yield, floor, and SPOF rules
+│   ├── capability_forecast.py    # Stage 2: GNN and forecast
+│   ├── rolling_horizon.py        # Stage 3: rolling-horizon problems, plan diffs, service levels
+│   ├── dependency_chains.py      # Stage 4: dependency chains and routes
+│   └── disruption_what_ifs.py    # Stage 4: supplier-offline and input-shortage what-ifs
 ├── queries/
 │   └── allocation_report.py      # prints the forecast, plans, chains, and what-ifs
 └── data/                         # sample input CSVs
@@ -324,7 +328,7 @@ The model is one shared ontology that all four reasoners read and write.
 - **Primary identifiers**: single-column integer ids for the base entities; composite keys for the junctions (e.g. `Demand` is keyed by `(customer_id, product_id, period_id)`).
 - **Important invariants**: demand and capacity are non-negative USD; `base_service_floor_pct`, `elevated_floor_pct`, `declared_yield_pct`, `intensity`, and `capability_pct` are fractions in `[0, 1]`; each customer's allocation must lie between its service floor and its yield-adjusted demand.
 
-Alongside the base entities, Stage 1 rules-authors several derived `Customer` attributes (yield limits, elevated floors, single-point-of-failure flags), and Stages 2–4 create intermediate and output concepts — a supplier-capability forecast, per-iteration effective capacity, and per-scenario margin — that persist in the ontology for later querying. For the full concept and property definitions, see `model/schema.py`; `model/reasoning.py` holds the rules, the GNN, and the problems, and `runbook.md` builds them step by step with the RAI skills.
+Alongside the base entities, Stage 1 rules-authors several derived `Customer` attributes (yield limits, elevated floors, single-point-of-failure flags), and Stages 2–4 create intermediate and output concepts — a supplier-capability forecast, per-iteration effective capacity, and per-scenario margin — that persist in the ontology for later querying. For the full concept and property definitions, see `model/schema.py`; the stage modules in `model/` hold the rules, the GNN, and the problems, and `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
@@ -356,16 +360,16 @@ Each solve is its own named `Problem` (`memory_supply_allocation_iter_0` to `_2`
 
 ### Tune parameters
 
-- **`USE_PRECOMPUTED_FORECAST`** (`model/reasoning.py`): `True` deploys no GNN and loads the bundled forecast snapshot instead — the fastest path for iteration; skip the Train step.
+- **`USE_PRECOMPUTED_FORECAST`** (`model/capability_forecast.py`): `True` deploys no GNN and loads the bundled forecast snapshot instead — the fastest path for iteration; skip the Train step.
 - **`HORIZON_END_PERIOD`** (`model/source.py`) and `data/periods.csv`: change the horizon length (keep the two in sync).
 - **`data/disruption_reveal.csv`**: edit the rolling-horizon disruption schedule. Each row is `(reveal_period, target_type, target_id, parameter_name, parameter_value, start_period, end_period, narrative)`; lower `parameter_value` to increase severity. A supplier disruption applies from `start_period` through `end_period`; an input disruption holds from its reveal through the end of the horizon, ignoring `end_period`.
-- **GNN knobs** (`GNN_N_EPOCHS`, `GNN_LR`, `GNN_SEED` in `model/reasoning.py`): training depth, learning rate, and reproducibility seed. The predictive reasoner's size in `raiconfig.yaml` decides the device.
+- **GNN knobs** (`GNN_N_EPOCHS`, `GNN_LR`, `GNN_SEED` in `model/capability_forecast.py`): training depth, learning rate, and reproducibility seed. The predictive reasoner's size in `raiconfig.yaml` decides the device.
 
 ### Extend the model
 
 - **Adjust floors and yields**: edit `base_service_floor_pct` in `customers.csv` and `declared_yield_pct` / `elevated_floor_pct` in `dependencies.csv`; the Stage-1 rules pick up new values without code changes.
 - **Change the objective**: allocations are already in USD, so maximize `sum(Demand.x_alloc)` over the horizon instead of the margin-weighted sum to optimize revenue instead of margin.
-- **Add constraints or outputs**: add a `problem.satisfy(...)` block in Stage 3 of `model/reasoning.py`, or persist a new derived property back to the ontology as Stages 1 and 4 do.
+- **Add constraints or outputs**: add a `problem.satisfy(...)` block in Stage 3 of `model/rolling_horizon.py`, or persist a new derived property back to the ontology as Stages 1 and 4 do.
 
 ### Scale up / productionize
 
