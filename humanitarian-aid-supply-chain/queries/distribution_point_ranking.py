@@ -6,15 +6,10 @@ Prints the distribution points ranked by PageRank (influence) and Degree Central
 summaries for emergency response planning.
 """
 
-from model import DistributionPoint, NetworkSummary, PointCategory, RegionSummary, model
-
-# How many points each strategic category lists.
-TOP_HUBS = 5
-TOP_ENDPOINTS = 3
-TOP_CONNECTORS = 3
+from model import DistributionPoint, model
 
 if __name__ == "__main__":
-    # Each point's attributes, graph metrics, route counts, strategic category, and ranks, as the
+    # Each point's attributes, graph metrics, route counts, and strategic category, as the
     # deployed model publishes them.
     results = model.select(
         DistributionPoint.id,
@@ -29,12 +24,11 @@ if __name__ == "__main__":
         DistributionPoint.outdegree.alias("outgoing_routes"),
         DistributionPoint.total_routes.alias("total_routes"),
         DistributionPoint.category.alias("category"),
-        DistributionPoint.influence_rank.alias("rank"),
-        DistributionPoint.category_rank.alias("category_rank"),
     ).to_df()
 
-    # Order by influence rank: PageRank (primary), then Degree Centrality (secondary)
-    results = results.sort_values("rank")
+    # Sort by PageRank (primary) then Degree Centrality (secondary), ties to the smaller id
+    results = results.sort_values(["pagerank", "degree_centrality", "id"], ascending=[False, False, True])
+    results.insert(0, 'rank', range(1, len(results) + 1))
 
     # Display header
     print("=" * 140)
@@ -66,91 +60,64 @@ if __name__ == "__main__":
     # Identify strategic categories
     print("\n🎯 STRATEGIC ANALYSIS:\n")
 
-    category_counts = (
-        model.select(PointCategory.label.alias("category"), PointCategory.n_points.alias("points"))
-        .to_df()
-        .set_index("category")["points"]
-    )
-
-    def category_leaders(category, top):
-        """The category's point count and its `top` most influential points."""
-        leaders = results[(results['category'] == category) & (results['category_rank'] <= top)]
-        return int(category_counts.get(category, 0)), leaders
-
     # Category 1: Critical Coordination Hubs (High PageRank + High Degree Centrality)
-    n_hubs, critical_hubs = category_leaders("Critical Coordination Hub", TOP_HUBS)
+    critical_hubs = results[results['category'] == "Critical Coordination Hub"]
 
-    if n_hubs > 0:
+    if len(critical_hubs) > 0:
         print("  1️⃣  CRITICAL COORDINATION HUBS (High Influence + High Connectivity)")
-        print(f"      These {n_hubs} points are both influential AND highly connected:")
+        print(f"      These {len(critical_hubs)} points are both influential AND highly connected:")
         print("      ⚠️  PRIORITY: Maximize capacity, deploy redundancy, ensure resilience\n")
-        for _, hub in critical_hubs.iterrows():
+        for _, hub in critical_hubs.head(5).iterrows():
             print(f"      • {hub['name']} ({hub['type']})")
             print(f"        Region: {hub['region']} | PageRank: {hub['pagerank']:.4f} | Degree Centrality: {hub['degree_centrality']:.4f}")
             print(f"        Capacity: {hub['capacity']:,} units | Serves: {hub['population_served']:,} people | Routes: {hub['total_routes']}")
             print()
 
     # Category 2: Influential Endpoints (High PageRank + Lower Degree Centrality)
-    n_endpoints, influential_endpoints = category_leaders("Influential Endpoint", TOP_ENDPOINTS)
+    influential_endpoints = results[results['category'] == "Influential Endpoint"]
 
-    if n_endpoints > 0:
+    if len(influential_endpoints) > 0:
         print("  2️⃣  INFLUENTIAL ENDPOINTS (High Influence + Lower Connectivity)")
-        print(f"      These {n_endpoints} points concentrate aid flow despite fewer connections:")
+        print(f"      These {len(influential_endpoints)} points concentrate aid flow despite fewer connections:")
         print("      ✅ PRIORITY: Optimize throughput, increase capacity, monitor closely\n")
-        for _, hub in influential_endpoints.iterrows():
+        for _, hub in influential_endpoints.head(3).iterrows():
             print(f"      • {hub['name']} ({hub['type']})")
             print(f"        Region: {hub['region']} | PageRank: {hub['pagerank']:.4f} | Degree Centrality: {hub['degree_centrality']:.4f}")
             print()
 
     # Category 3: Network Connectors (Lower PageRank + High Degree Centrality)
-    n_connectors, connectors = category_leaders("Network Connector", TOP_CONNECTORS)
+    connectors = results[results['category'] == "Network Connector"]
 
-    if n_connectors > 0:
+    if len(connectors) > 0:
         print("  3️⃣  NETWORK CONNECTORS (Lower Influence + High Connectivity)")
-        print(f"      These {n_connectors} points provide critical network connectivity:")
+        print(f"      These {len(connectors)} points provide critical network connectivity:")
         print("      ⚠️  PRIORITY: Strengthen infrastructure, maintain reliability, prevent failures\n")
-        for _, hub in connectors.iterrows():
+        for _, hub in connectors.head(3).iterrows():
             print(f"      • {hub['name']} ({hub['type']})")
             print(f"        Region: {hub['region']} | PageRank: {hub['pagerank']:.4f} | Degree Centrality: {hub['degree_centrality']:.4f}")
             print()
 
-    # Network-wide statistics, as the deployed model totals them
-    totals = model.select(
-        NetworkSummary.n_points.alias("points"),
-        NetworkSummary.n_routes.alias("routes"),
-        NetworkSummary.mean_routes.alias("mean_routes"),
-        NetworkSummary.total_population.alias("population"),
-        NetworkSummary.total_capacity.alias("capacity"),
-    ).to_df().iloc[0]
-    most_connected = model.where(DistributionPoint.is_most_connected()).select(
-        DistributionPoint.name.alias("name"), DistributionPoint.total_routes.alias("routes")
-    ).to_df().iloc[0]
-    most_central = model.where(DistributionPoint.is_most_central()).select(
-        DistributionPoint.name.alias("name"), DistributionPoint.degree_centrality.alias("degree_centrality")
-    ).to_df().iloc[0]
+    # Network-wide statistics
     print("\n📊 NETWORK SUMMARY:")
-    print(f"  • Total distribution points: {int(totals['points'])}")
-    print(f"  • Total supply routes: {int(totals['routes'])}")
-    print(f"  • Average routes per point: {float(totals['mean_routes']):.1f}")
-    print(f"  • Most connected point: {most_connected['name']} ({int(most_connected['routes'])} routes)")
-    print(f"  • Total population served: {int(totals['population']):,} people")
-    print(f"  • Total network capacity: {int(totals['capacity']):,} units")
+    print(f"  • Total distribution points: {len(results)}")
+    print(f"  • Total supply routes: {results['incoming_routes'].sum()}")
+    print(f"  • Average routes per point: {results['total_routes'].mean():.1f}")
+    print(f"  • Most connected point: {results.loc[results['total_routes'].idxmax(), 'name']} ({int(results['total_routes'].max())} routes)")
+    print(f"  • Total population served: {results['population_served'].sum():,} people")
+    print(f"  • Total network capacity: {results['capacity'].sum():,} units")
     print(f"  • Most influential (PageRank): {results.iloc[0]['name']} ({results.iloc[0]['pagerank']:.4f})")
-    print(f"  • Most connected (Degree Centrality): {most_central['name']} "
-          f"({float(most_central['degree_centrality']):.4f})")
+    print(f"  • Most connected (Degree Centrality): {results.loc[results['degree_centrality'].idxmax(), 'name']} "
+          f"({results['degree_centrality'].max():.4f})")
 
     # Regional analysis
     print("\n🌍 REGIONAL DISTRIBUTION:")
-    regional_stats = model.select(
-        RegionSummary.region.alias("region"),
-        RegionSummary.n_points.alias("points"),
-        RegionSummary.total_capacity.alias("capacity"),
-        RegionSummary.total_population.alias("population_served"),
-        RegionSummary.mean_pagerank.alias("pagerank"),
-        RegionSummary.mean_degree_centrality.alias("degree_centrality"),
-    ).to_df().set_index("region").sort_index().astype(
-        {"points": "int64", "capacity": "int64", "population_served": "int64"}
-    ).round(4)
+    regional_stats = results.groupby('region').agg({
+        'name': 'count',
+        'capacity': 'sum',
+        'population_served': 'sum',
+        'pagerank': 'mean',
+        'degree_centrality': 'mean'
+    }).round(4)
     regional_stats.columns = ['Points', 'Total Capacity', 'Population Served', 'Avg PageRank', 'Avg Degree Centrality']
     print(regional_stats.to_string())
 

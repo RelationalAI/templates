@@ -42,7 +42,7 @@ Built using **graph analysis** — PageRank (an iterative random-walk algorithm)
 
 ## What's included
 
-- **Model**: the model configuration, graph creation, and the PageRank, degree centrality, indegree, and outdegree metrics, in the `model/` package (`schema.py` declares the concepts, `source.py` loads the sample data, `supply_network.py` states the graph and metrics, `point_rankings.py` ranks the points, `strategic_categories.py` classifies them, and `network_summary.py` totals the network and each region). `rai models deploy --path model` deploys it to your Snowflake account, where each refresh computes the metrics.
+- **Model**: the model configuration, graph creation, and the PageRank, degree centrality, indegree, and outdegree metrics, in the `model/` package (`schema.py` declares the concepts, `source.py` loads the sample data, `supply_network.py` states the graph, the metrics, and the strategic categories). `rai models deploy --path model` deploys it to your Snowflake account, where each refresh computes the metrics.
 - **Query**: `queries/distribution_point_ranking.py` - prints the detailed report from the deployed model
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - **Interactive app**: `app.py` - Streamlit web application with visualizations and interactive analysis, querying the deployed model
@@ -190,10 +190,7 @@ humanitarian-aid-supply-chain/
 │   ├── __init__.py                    # exports of the deployed model
 │   ├── schema.py                      # DistributionPoint and SupplyRoute concepts
 │   ├── source.py                      # loads the sample CSVs
-│   ├── supply_network.py              # flow weight, graph, and metrics
-│   ├── point_rankings.py              # influence rank and the most connected points
-│   ├── strategic_categories.py        # categories and the rank within each
-│   └── network_summary.py             # network and regional totals
+│   └── supply_network.py              # flow weight, graph, metrics, and categories
 ├── queries/
 │   └── distribution_point_ranking.py  # report from the deployed model
 ├── app.py                             # optional Streamlit dashboard (queries the deployed model)
@@ -220,7 +217,7 @@ The model is a small graph ontology: distribution points connected by directed, 
 - **Primary identifiers**: `DistributionPoint.id` (integer); `SupplyRoute` is keyed by its `(from_point, to_point)` pair.
 - **Important invariants**: `reliability_score` is a fraction in `[0, 1]`; capacity and distance are positive; the derived `flow_weight` combines all three into the edge weight the graph algorithms read.
 
-The two centrality metrics (`pagerank`, `degree_centrality`) and the degree counts (`indegree`, `outdegree`) are computed by the Graph API over the route graph on each refresh and attached to `DistributionPoint`, along with each point's `total_routes`, `influence_rank` (PageRank first, then degree centrality), strategic `category`, and `category_rank`. The model also totals the network (`NetworkSummary`), each category (`PointCategory`), and each region (`RegionSummary`).
+The two centrality metrics (`pagerank`, `degree_centrality`) and the degree counts (`indegree`, `outdegree`) are computed by the Graph API over the route graph on each refresh and attached to `DistributionPoint`, along with each point's `total_routes` and strategic `category`.
 
 For the full concept and property definitions, see `model/schema.py`; `runbook.md` builds them step by step with the RAI skills.
 
@@ -238,11 +235,11 @@ CSV files → model/ (deployed) → Calculate PageRank → Calculate Degree Cent
 
 **Calculate weighted degree centrality.** This sums the flow weights of each node's routes (capacity × reliability / distance) and divides by the number of other nodes, so it rewards not just how many connections a node has but how strong they are. A high weighted degree marks a coordination hub with substantial aid throughput. Indegree and outdegree are also computed for context.
 
-**Classify strategic categories.** The model classifies each distribution point against the 70th-percentile thresholds on the two scores (a point at a threshold counts as high): critical coordination hubs (high on both), influential endpoints (high PageRank, lower degree), network connectors (lower PageRank, high degree), and regular distribution points (lower on both). Each point is also ranked within its category.
+**Classify strategic categories.** The model classifies each distribution point against the 70th-percentile thresholds on the two scores (a point at a threshold counts as high): critical coordination hubs (high on both), influential endpoints (high PageRank, lower degree), network connectors (lower PageRank, high degree), and regular distribution points (lower on both).
 
-**Display strategic analysis and recommendations.** `queries/distribution_point_ranking.py` prints a ranked table of all points with both metrics, the strategic-category breakdown, network-wide and regional statistics, and recommendations for response teams, reading each rank and total from the deployed model. The Streamlit app adds an interactive overview, a color-coded network visualization, filterable rankings with CSV export, and per-category detail.
+**Display strategic analysis and recommendations.** `queries/distribution_point_ranking.py` prints a ranked table of all points with both metrics, the strategic-category breakdown, network-wide and regional statistics, and recommendations for response teams. The Streamlit app adds an interactive overview, a color-coded network visualization, filterable rankings with CSV export, and per-category detail.
 
-See the modules in `model/` and `queries/distribution_point_ranking.py` for the implementation, and `runbook.md` for the skill-driven reproduction.
+See `model/supply_network.py` and `queries/distribution_point_ranking.py` for the implementation, and `runbook.md` for the skill-driven reproduction.
 
 ## Customize this template
 
