@@ -90,11 +90,13 @@ if __name__ == "__main__":
         )
         .where(DemandZone.y_covered(covered))
         .to_df()
-        .sort_values(["covered", "population"], ascending=[False, False])
     )
     zone_solution_df["covered"] = (
         pd.to_numeric(zone_solution_df["covered"]) > 0.5
     ).astype(int)
+    zone_solution_df = zone_solution_df.sort_values(
+        ["covered", "population"], ascending=[False, False]
+    )
 
     assignment_df = (
         model.select(
