@@ -22,17 +22,17 @@ from .schema import (
 # --------------------------------------------------
 
 MAX_CORRIDOR_HOPS = 6
-LOAD_DECIMALS = 3  # corridor loads that agree to this many decimals count as equal
+LOAD_DECIMALS = 6  # corridor loads that agree to this many decimals count as equal (absorbs summation noise)
 
 # --------------------------------------------------
 # Stage 3: Paths -- Transmission Corridors & Contingency
-#   PREVIEW capability; requires relationalai>=1.15.
+#   PREVIEW capability; requires relationalai>=1.27 (ordered string_join).
 # --------------------------------------------------
 # Composes on Stage 2's Substation.betweenness. Where Stage 2 scores a *node*,
 # paths scores the *corridor* feeding each data center: enumerate generator-sub ->
 # DC-sub transmission routes, rank each by total betweenness summed along its hops
-# (most fragile = greatest through-traffic exposure), then re-enumerate with the
-# highest-betweenness substation offline to see which DC substations reroute.
+# (most fragile = greatest through-traffic exposure), then drop every corridor through
+# the highest-betweenness substation to see which DC substations reroute.
 
 # Bidirectional Substation<->Substation grid edge from active transmission lines.
 Substation.connects_to = model.Relationship(
@@ -99,8 +99,8 @@ model.where(
 ).define(corridor_dst.fragility_load(frag))
 
 # The DC substations ranked by fragility load, highest first, ties to the smaller id. Loads compare to
-# LOAD_DECIMALS, so float noise in a sum cannot reorder equal loads. The load is negated so both keys
-# sort ascending, a form every backend ranks.
+# LOAD_DECIMALS, so float noise from the order a sum adds its terms cannot reorder equal loads. The load
+# is negated so both keys sort ascending.
 Substation.fragility_rank = model.Property(f"{Substation} has fragility rank {Integer:fragility_rank}")
 model.define(
     Substation.fragility_rank(aggs.rank(-math.round(Substation.fragility_load, LOAD_DECIMALS), Substation.id))
@@ -128,6 +128,15 @@ model.where(
 Substation.is_offline = model.Relationship(f"{Substation} is offline in the contingency")
 model.where(aggs.rank(-Substation.betweenness, Substation.id) == 1).define(Substation.is_offline())
 
+
+# Corridors that avoid the offline substation. The node is read at its own index, as in _simple_corridor, so
+# the test applies to the whole corridor; a bare corridor.nodes would bind the node the sums below iterate
+# over and only drop the offline substation from them.
+def _avoids_offline():
+    k, offline = Integer.ref(), Substation.ref()
+    return not_(where(offline.is_offline(), corridor.nodes(k) == offline))
+
+
 # Each DC substation's most fragile route with the offline substation removed; a DC substation with no
 # corridor left has none.
 Substation.contingency_route = model.Property(
@@ -136,7 +145,7 @@ Substation.contingency_route = model.Property(
 model.where(
     corridor,
     _simple_corridor(),
-    not_(where(Substation(corridor.nodes).is_offline())),
+    _avoids_offline(),
     total := aggs.sum(Substation(corridor.nodes).betweenness).per(corridor),
     ids := aggs.string_join(
         Substation(corridor.nodes).id, sep=",", index=corridor.nodes["index"]

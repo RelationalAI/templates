@@ -1,5 +1,5 @@
 """Investment frontier: each investment level's portfolio of approved requests and upgrades, the budget
-range, the gains from each level to the next, the marginal value per added budget, and the knee point."""
+range, the marginal value per added budget, and the knee point."""
 
 from relationalai.semantics import Float, Integer, sum
 from relationalai.semantics.std import aggregates as aggs
@@ -133,39 +133,27 @@ model.define(
     InvestmentRange.max_budget(aggs.max(InvestmentLevel.budget_cap).per(InvestmentRange)),
 )
 
-# Gains from each level to the next larger budget: net value, budget, megawatts approved, and requests
-# approved. The largest level has no next step.
+# Marginal value of each budget step: net value gained per added $M from a level
+# to the next larger budget. The largest level has no next step.
 higher, step_from, step_to = InvestmentLevel.ref(), InvestmentLevel.ref(), InvestmentLevel.ref()
 model.define(InvestmentLevel.next_level(step_to)).where(
     step_to.budget_cap
     == aggs.min(higher.budget_cap).where(higher.budget_cap > InvestmentLevel.budget_cap).per(InvestmentLevel)
 )
-InvestmentPortfolio.value_gain = model.Property(f"{InvestmentPortfolio} gains {Float:value_gain} net value")
-InvestmentPortfolio.budget_gain = model.Property(f"{InvestmentPortfolio} gains {Float:budget_gain} budget")
-InvestmentPortfolio.mw_gain = model.Property(f"{InvestmentPortfolio} gains {Float:mw_gain} approved MW")
-InvestmentPortfolio.dc_gain = model.Property(f"{InvestmentPortfolio} gains {Integer:dc_gain} approved requests")
 next_portfolio = InvestmentPortfolio.ref()
 model.define(
-    InvestmentPortfolio.value_gain(next_portfolio.net_value - InvestmentPortfolio.net_value),
-    InvestmentPortfolio.budget_gain(step_to.budget_cap - step_from.budget_cap),
-    InvestmentPortfolio.mw_gain(next_portfolio.total_mw - InvestmentPortfolio.total_mw),
-    InvestmentPortfolio.dc_gain(next_portfolio.dc_count - InvestmentPortfolio.dc_count),
+    InvestmentPortfolio.marginal_per_m_to_next_level(
+        (next_portfolio.net_value - InvestmentPortfolio.net_value) / (step_to.budget_cap - step_from.budget_cap)
+    )
 ).where(
     InvestmentPortfolio.investment_level(step_from),
     step_from.next_level(step_to),
     next_portfolio.investment_level(step_to),
 )
 
-# Marginal value of each budget step: net value gained per added $M from a level
-# to the next larger budget.
-model.define(
-    InvestmentPortfolio.marginal_per_m_to_next_level(InvestmentPortfolio.value_gain / InvestmentPortfolio.budget_gain)
-)
-
 # The knee is the level where the marginal value falls the most, from the step
 # into it to the step out of it; on a tie, the smaller budget. A frontier whose
-# marginal value never falls has no knee. The drop is negated so both rank keys sort ascending, a form
-# every backend ranks.
+# marginal value never falls has no knee. The drop is negated so both rank keys sort ascending.
 prev_portfolio = InvestmentPortfolio.ref()
 model.define(
     InvestmentPortfolio.marginal_drop(

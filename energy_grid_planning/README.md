@@ -302,9 +302,9 @@ The Graph reasoner uses `Substation` directly as its node concept, with edges be
 
 ### Stage 3: Paths -- Transmission Corridors & Contingency
 
-> PREVIEW capability; requires `relationalai>=1.15`.
+> PREVIEW capability; requires `relationalai>=1.27`.
 
-Where Stage 2 scores a *substation*, the paths capability scores the *corridor* feeding each data center. It derives a bidirectional substation-to-substation edge from active transmission lines, enumerates generator-substation to DC-substation routes, and ranks each by the Stage 2 betweenness summed along its hops — the most fragile corridor carries the greatest through-traffic exposure. A contingency pass removes the highest-betweenness substation and re-enumerates to show which data centers reroute; the model persists each data center substation's most fragile load (`Substation.fragility_load`), its rank, its most fragile route (`Substation.fragile_route`), and its route with the offline substation removed (`Substation.contingency_route`), with the corridor and reroute counts in `CorridorSummary`. On the bundled grid this enumerates 421 generator-to-DC corridors; the most fragile carries a betweenness-load of 99.833 through the Dallas-Fort Worth, Abilene Central, and Houston Ship Channel hubs.
+Where Stage 2 scores a *substation*, the paths capability scores the *corridor* feeding each data center. It derives a bidirectional substation-to-substation edge from active transmission lines, enumerates generator-substation to DC-substation routes, and ranks each by the Stage 2 betweenness summed along its hops — the most fragile corridor carries the greatest through-traffic exposure. A contingency pass drops every corridor through the highest-betweenness substation, keeping the baseline betweenness, to show which data centers reroute; the model persists each data center substation's most fragile load (`Substation.fragility_load`), its rank, its most fragile route (`Substation.fragile_route`), and its route with the offline substation removed (`Substation.contingency_route`), with the corridor and reroute counts in `CorridorSummary`. On the bundled grid this enumerates 421 generator-to-DC corridors; the most fragile carries a betweenness-load of 99.833 through the Dallas-Fort Worth, Abilene Central, and Houston Ship Channel hubs.
 
 ### Stage 4: Rules -- Interconnection Queue Compliance
 

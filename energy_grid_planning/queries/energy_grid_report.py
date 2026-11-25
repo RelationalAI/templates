@@ -192,7 +192,7 @@ def main() -> None:
     for _, row in most_fragile.iterrows():
         print(f"    betweenness-load {round(float(row['load']), 3)}: {row['route']}")
 
-    # Contingency: the highest-betweenness substation goes offline and the corridors are re-enumerated.
+    # Contingency: the highest-betweenness substation goes offline and every corridor through it is dropped.
     offline = model.where(Substation.is_offline()).select(Substation.name.alias("name")).to_df()
     if len(offline) > 0:
         print(
@@ -376,15 +376,10 @@ def main() -> None:
     )
     portfolio_query_df["budget"] = portfolio_query_df["budget"].astype(float)
 
-    # Gains to the next level and the marginal value per added $M (none for the largest budget), and the
-    # knee flag.
+    # Marginal value per added $M (none for the largest budget) and the knee flag.
     marginal_df = model.select(
         PortRef.investment_level_name.alias("level"),
         PortRef.marginal_per_m_to_next_level.alias("marginal"),
-        PortRef.value_gain.alias("value_gain"),
-        PortRef.budget_gain.alias("budget_gain"),
-        PortRef.mw_gain.alias("mw_gain"),
-        PortRef.dc_gain.alias("dc_gain"),
     ).to_df()
     knee_levels = model.where(PortRef.is_knee_point()).select(PortRef.investment_level_name.alias("level")).to_df()
     portfolio_query_df = portfolio_query_df.merge(marginal_df, on="level", how="left")
@@ -449,11 +444,11 @@ def main() -> None:
         for j in range(len(portfolio_query_df) - 1):
             cur = portfolio_query_df.iloc[j]
             nxt = portfolio_query_df.iloc[j + 1]
-            d_val = float(cur["value_gain"])
-            d_budget = float(cur["budget_gain"])
-            d_mw = float(cur["mw_gain"])
-            d_dcs = int(cur["dc_gain"])
-            rate = float(cur["marginal"])
+            d_val = float(nxt["net_value"]) - float(cur["net_value"])
+            d_budget = float(nxt["budget"]) - float(cur["budget"])
+            d_mw = float(nxt["total_mw"]) - float(cur["total_mw"])
+            d_dcs = int(nxt["dc_count"]) - int(cur["dc_count"])
+            rate = float(cur["marginal"]) if pd.notna(cur["marginal"]) else 0.0
             print(
                 f"    {cur['level']:>6} -> {nxt['level']:<6}: "
                 f"dValue={d_val:>+14,.0f}, dBudget={d_budget:>+6,.0f}$M, "

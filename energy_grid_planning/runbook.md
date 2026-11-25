@@ -106,7 +106,7 @@ Plan routing sub-questions to graph, rules, and prescriptive reasoners.
 
 1 connected component, 3 Louvain communities (North Texas, West Texas, Gulf Coast); DFW, Houston, San Antonio flagged `is_structurally_critical`; 7 of 10 DC requests target critical nodes.
 
-### 6. Trace fragile transmission corridors (PREVIEW, requires `relationalai>=1.15`)
+### 6. Trace fragile transmission corridors (PREVIEW, requires `relationalai>=1.27`)
 
 **Prompt**
 

@@ -10,10 +10,10 @@ rules-based compliance, and prescriptive optimization on a single shared ontolog
   detection, and multi-metric centrality (betweenness, degree, eigenvector) on
   the transmission grid topology. Results are stored directly as Substation
   properties on the shared ontology.
-- Stage 3 -- Paths (PREVIEW, relationalai>=1.15): enumerate generator-sub ->
+- Stage 3 -- Paths (PREVIEW, relationalai>=1.27): enumerate generator-sub ->
   DC-sub transmission corridors, rank each by Stage 2 betweenness summed along
-  the route (most fragile = greatest through-traffic exposure), and re-enumerate
-  with the highest-betweenness substation offline. Persists each DC substation's
+  the route (most fragile = greatest through-traffic exposure), and drop every
+  corridor through the highest-betweenness substation. Persists each DC substation's
   fragility load and most fragile route, with and without the offline substation.
 - Stage 4 -- Rules: declarative interconnection queue compliance checks
   (capacity, structural criticality, low-carbon mandate) that consume Stage 1
