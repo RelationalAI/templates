@@ -1,7 +1,7 @@
-"""Coverage summary: the size of the inputs, the policy limits and plan totals, each tower's load and
-utilization, the tower serving each covered zone, and the coverage rate and uncovered population."""
+"""Coverage summary: the policy limits and plan totals, each tower's load and utilization, the tower
+serving each covered zone, and the coverage rate and uncovered population."""
 
-from relationalai.semantics import Float, Integer, String, count, sum
+from relationalai.semantics import Float, Integer, String, sum
 from relationalai.semantics.std import floats
 
 from .schema import CoveragePair, DemandZone, TowerSite, model
@@ -9,16 +9,6 @@ from .schema import CoveragePair, DemandZone, TowerSite, model
 # Declares the solution values the totals and loads read, and the covered population.
 from .site_selection import CoveredPopulation, assigned, selected
 from .source import BUILD_BUDGET, MAX_NEW_TOWERS
-
-# The number of candidate sites, demand zones, and coverage pairs loaded.
-CandidateSiteCount = model.Relationship(f"cell tower coverage has {Integer:sites} candidate sites")
-DemandZoneCount = model.Relationship(f"cell tower coverage has {Integer:zones} demand zones")
-CoveragePairCount = model.Relationship(f"cell tower coverage has {Integer:pairs} coverage pairs")
-model.define(
-    CandidateSiteCount(count(TowerSite)),
-    DemandZoneCount(count(DemandZone)),
-    CoveragePairCount(count(CoveragePair)),
-)
 
 # Policy limits and plan totals, which the deployed model publishes for the report.
 BuildBudget = model.Relationship(f"cell tower coverage build budget is {Float:budget}")
@@ -50,21 +40,19 @@ model.where(TotalPopulation(_population), CoveredPopulation(_covered)).define(
 )
 
 # Each tower's load: the population of the zones assigned to it (zero for a tower with none) and
-# that load as a share of its capacity (zero for a tower without capacity). The values live on
-# TowerLoad, not TowerSite: a property computed from the solution on a concept the solve reads
-# fails the deploy.
-TowerLoad = model.Concept("TowerLoad", identify_by={"site_id": String})
-TowerLoad.assigned_population = model.Property(
-    f"{TowerLoad} serves assigned population {Integer:assigned_population}"
+# that load as a share of its capacity (zero for a tower without capacity). They are
+# relationships, not properties: a property is stored with its concept, and one computed from
+# the solution on a concept the solve reads fails the deploy.
+TowerSite.assigned_population = model.Relationship(
+    f"{TowerSite} serves assigned population {Integer:assigned_population}"
 )
-TowerLoad.utilization = model.Property(f"{TowerLoad} has utilization {Float:utilization}")
-model.define(TowerLoad.new(site_id=TowerSite.site_id))
+TowerSite.utilization = model.Relationship(f"{TowerSite} has utilization {Float:utilization}")
 model.define(
-    TowerLoad.assigned_population(
+    TowerSite.assigned_population(
         sum(CoveragePair, DemandZone.population)
-        .per(TowerLoad)
+        .per(TowerSite)
         .where(
-            CoveragePair.site_id == TowerLoad.site_id,
+            CoveragePair.site(TowerSite),
             CoveragePair.zone(DemandZone),
             CoveragePair.z_assigned(assigned),
             assigned > 0.5,
@@ -72,14 +60,12 @@ model.define(
         | 0
     )
 )
-model.where(TowerSite.site_id == TowerLoad.site_id, TowerSite.capacity > 0).define(
-    TowerLoad.utilization(
-        floats.float(TowerLoad.assigned_population) / floats.float(TowerSite.capacity)
+model.where(TowerSite.capacity > 0).define(
+    TowerSite.utilization(
+        floats.float(TowerSite.assigned_population) / floats.float(TowerSite.capacity)
     )
 )
-model.where(TowerSite.site_id == TowerLoad.site_id, TowerSite.capacity <= 0).define(
-    TowerLoad.utilization(0.0)
-)
+model.where(TowerSite.capacity <= 0).define(TowerSite.utilization(0.0))
 
 # The tower each covered zone is assigned to.
 ZoneAssignment = model.Relationship(

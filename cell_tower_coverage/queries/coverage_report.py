@@ -10,17 +10,14 @@ import pandas as pd
 from model import (
     DATA_DIR,
     BuildBudget,
-    CandidateSiteCount,
-    CoveragePairCount,
+    CoveragePair,
     CoverageRate,
     CoveredPopulation,
     DemandZone,
-    DemandZoneCount,
     MaxNewTowers,
     SelectedBuildCost,
     SolveStatus,
     TotalPopulation,
-    TowerLoad,
     TowerSite,
     UncoveredPopulation,
     ZoneAssignment,
@@ -28,7 +25,7 @@ from model import (
     model,
     selected,
 )
-from relationalai.semantics import String
+from relationalai.semantics import String, count
 
 
 def _scalar(relationship, default=None):
@@ -43,9 +40,9 @@ if __name__ == "__main__":
     print("=" * 70)
     print("CELL TOWER COVERAGE")
     print("=" * 70)
-    print(f"Candidate tower sites: {_scalar(CandidateSiteCount)}")
-    print(f"Demand zones: {_scalar(DemandZoneCount)}")
-    print(f"Coverage pairs: {_scalar(CoveragePairCount)}")
+    print(f"Candidate tower sites: {model.select(count(TowerSite)).to_df().iloc[0, 0]}")
+    print(f"Demand zones: {model.select(count(DemandZone)).to_df().iloc[0, 0]}")
+    print(f"Coverage pairs: {model.select(count(CoveragePair)).to_df().iloc[0, 0]}")
     print(f"Build budget: ${build_budget:,.0f}")
     print(f"Max new towers: {_scalar(MaxNewTowers)}")
 
@@ -80,9 +77,9 @@ if __name__ == "__main__":
     )
     selected_sites_df["build_cost"] = pd.to_numeric(selected_sites_df["build_cost"])
     tower_load_df = model.select(
-        TowerLoad.site_id.alias("site_id"),
-        TowerLoad.assigned_population.alias("assigned_population"),
-        TowerLoad.utilization.alias("utilization"),
+        TowerSite.site_id.alias("site_id"),
+        TowerSite.assigned_population.alias("assigned_population"),
+        TowerSite.utilization.alias("utilization"),
     ).to_df()
 
     zone_solution_df = (
