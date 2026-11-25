@@ -16,11 +16,7 @@ from model import (
     CustomerService,
     DependencyChain,
     EffectiveCapacityCells,
-    FirstSolvedIteration,
     Input,
-    IterationMargin,
-    LastSolvedIteration,
-    MultiHopChain,
     NumDependencyChains,
     NumForecastRows,
     PlanDiff,
@@ -130,20 +126,21 @@ def main() -> None:
             )
             print(per_customer_delta.to_string(index=False))
 
-        # Per-customer service level over the current horizon, which the deployed model publishes.
-        alloc_ref, demand_ref, level_ref = Float.ref(), Float.ref(), Float.ref()
+        # Per-customer service level over the current horizon, from the allocation and demand totals the
+        # deployed model publishes.
+        alloc_ref, demand_ref = Float.ref(), Float.ref()
         per_customer = (
-            model.where(CustomerService(iter_id, Customer, alloc_ref, demand_ref, level_ref))
+            model.where(CustomerService(iter_id, Customer, alloc_ref, demand_ref))
             .select(
                 Customer.id.alias("customer_id"),
                 Customer.name.alias("name"),
                 Customer.industry.alias("industry"),
                 alloc_ref.alias("alloc_usd"),
                 demand_ref.alias("demand_usd"),
-                level_ref.alias("service_level"),
             )
             .to_df()
             .sort_values("customer_id")
+            .assign(service_level=lambda d: d["alloc_usd"] / d["demand_usd"])
             .sort_values("demand_usd", ascending=False)
         )
         per_customer["alloc_$B"] = per_customer["alloc_usd"] / 1e9
@@ -267,12 +264,7 @@ def main() -> None:
     spof_names = spof_df["spof_customer"].tolist()
     if spof_names:
         print(f"  Customer-graph SPOF(s): {', '.join(spof_names)}")
-    multihop = (
-        model.where(MultiHopChain(chain_ref), DependencyChain(chain_ref, hops_ref, route_ref))
-        .select(hops_ref.alias("hops"), route_ref.alias("chain"))
-        .to_df()
-        .sort_values(["hops", "chain"])
-    )
+    multihop = chains[chains["hops"] > 1]
     if not multihop.empty:
         print("  Multi-hop dependency chains:")
         for chain in multihop["chain"]:
@@ -316,33 +308,14 @@ def main() -> None:
         print("  Input with widest shortage impact: none (no affected cells)")
     # The horizons shrink from one iteration to the next, so the two totals cover
     # different months and their difference is not the disruptions' cost alone.
-    first_iter, first_start, last_iter, last_start = (Integer.ref() for _ in range(4))
-    first_margin, last_margin = Float.ref(), Float.ref()
-    margin_span = (
-        model.where(
-            FirstSolvedIteration(first_iter),
-            IterationMargin(first_iter, first_start, first_margin),
-            LastSolvedIteration(last_iter),
-            IterationMargin(last_iter, last_start, last_margin),
+    solved = [r for r in scenario_results if r["objective"] is not None]
+    if len(solved) >= 2:
+        first, last = solved[0], solved[-1]
+        print(
+            f"  Horizon margin, iter {first['iter_id']} (months {first['horizon_start']}-"
+            f"{HORIZON_END_PERIOD}) -> iter {last['iter_id']} (months {last['horizon_start']}-"
+            f"{HORIZON_END_PERIOD}): ${first['objective']:,.2f} -> ${last['objective']:,.2f}"
         )
-        .select(
-            first_iter.alias("first_iter"),
-            first_start.alias("first_start"),
-            first_margin.alias("first_margin"),
-            last_iter.alias("last_iter"),
-            last_start.alias("last_start"),
-            last_margin.alias("last_margin"),
-        )
-        .to_df()
-    )
-    # One row, or none when no iteration solved; the line needs two different iterations.
-    for span in margin_span.itertuples(index=False):
-        if span.first_iter != span.last_iter:
-            print(
-                f"  Horizon margin, iter {span.first_iter} (months {span.first_start}-"
-                f"{HORIZON_END_PERIOD}) -> iter {span.last_iter} (months {span.last_start}-"
-                f"{HORIZON_END_PERIOD}): ${span.first_margin:,.2f} -> ${span.last_margin:,.2f}"
-            )
 
 
 if __name__ == "__main__":

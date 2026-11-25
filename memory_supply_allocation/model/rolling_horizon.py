@@ -1,5 +1,5 @@
 """Rolling-horizon allocation: the capability each iteration sees, its effective capacity per product
-and month, one margin-maximising LP per iteration, and the plan diff and service level of each plan."""
+and month, one margin-maximising LP per iteration, and each plan's diff and per-customer allocation and demand."""
 
 from relationalai.semantics import Float, Integer, String, not_, sum
 from relationalai.semantics.reasoners.prescriptive import Problem
@@ -124,21 +124,17 @@ model.define(
 )
 
 # One Problem per iteration, each over its own horizon. Each Problem's status,
-# total margin, and allocations are published under the Problem's name; the
-# margin, the plan diff against the prior iteration, and each customer's service
-# level are also published per iteration number.
+# total margin, and allocations are published under the Problem's name; the plan
+# diff against the prior iteration and each customer's allocated and demanded
+# totals are also published per iteration number.
 allocations = []
-IterationMargin = model.Relationship(
-    f"in iteration {Integer:iter_id} from month {Integer:horizon_start} the total margin is {Float:margin}"
-)
 PlanDiff = model.Relationship(
     f"in iteration {Integer:iter_id} {Customer} shifts {Float:delta_usd} against the prior plan"
 )
 CustomerService = model.Relationship(
-    f"in iteration {Integer:iter_id} {Customer} is allocated {Float:alloc_usd} of "
-    f"{Float:demand_usd} demand, a service level of {Float:service_level}"
+    f"in iteration {Integer:iter_id} {Customer} is allocated {Float:alloc_usd} of {Float:demand_usd} demand"
 )
-_margin, _alloc_usd, _prior_usd = Float.ref(), Float.ref(), Float.ref()
+_alloc_usd, _prior_usd, _demand_alloc_usd = Float.ref(), Float.ref(), Float.ref()
 _cell, _demand_cell = Demand.ref(), Demand.ref()
 
 for spec in iter_specs:
@@ -221,9 +217,6 @@ for spec in iter_specs:
     alloc_value = Float.ref()
     model.where(alloc.values(0, alloc_value)).define(allocated(alloc_value, alloc.demand))
 
-    # This iteration's margin, with the month its horizon starts.
-    model.where(margin(_margin)).define(IterationMargin(iter_id, horizon_start, _margin))
-
     # The plan diff against the prior iteration's plan: the change in each customer's allocation
     # over the cells both plans cover, once the prior solve is OPTIMAL.
     if allocations:
@@ -240,7 +233,8 @@ for spec in iter_specs:
             ),
         ).define(PlanDiff(iter_id, Customer, delta_usd))
 
-    # Each customer's service level over this horizon: allocation against demand.
+    # Each customer's allocation and demand over the cells this iteration allocates; the report
+    # divides them for the service level.
     model.where(
         Customer,
         alloc_usd := sum(_cell, _alloc_usd)
@@ -248,19 +242,7 @@ for spec in iter_specs:
         .where(allocated(_alloc_usd, _cell), _cell.customer_id == Customer.id),
         demand_usd := sum(_demand_cell, _demand_cell.demand_usd)
         .per(Customer)
-        .where(_demand_cell.customer_id == Customer.id, _demand_cell.period_id >= horizon_start),
-        demand_usd > 0,
-    ).define(CustomerService(iter_id, Customer, alloc_usd, demand_usd, alloc_usd / demand_usd))
+        .where(allocated(_demand_alloc_usd, _demand_cell), _demand_cell.customer_id == Customer.id),
+    ).define(CustomerService(iter_id, Customer, alloc_usd, demand_usd))
 
     allocations.append((spec, status, margin, allocated))
-
-# The first and the last iteration that solved with a margin.
-FirstSolvedIteration = model.Relationship(f"iteration {Integer:iter_id} is the first with a margin")
-LastSolvedIteration = model.Relationship(f"iteration {Integer:iter_id} is the last with a margin")
-_solved, _month, _total = Integer.ref(), Integer.ref(), Float.ref()
-model.define(
-    FirstSolvedIteration(aggregates.min(_solved).where(IterationMargin(_solved, _month, _total)))
-)
-model.define(
-    LastSolvedIteration(aggregates.max(_solved).where(IterationMargin(_solved, _month, _total)))
-)

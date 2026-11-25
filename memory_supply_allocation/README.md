@@ -43,12 +43,12 @@ This template shows how RelationalAI answers that question on a single shared mo
 
 ## What's included
 
-- `model/` -- the deployed model: `schema.py` declares the concepts and the forecast task relationships, `source.py` loads the bundled CSVs and the rolling-horizon disruption data, and one module per stage states the rules: `customer_dependencies.py` (Stage 1 yield and floor rules), `capability_forecast.py` (the supplier-capability GNN and its forecast), `rolling_horizon.py` (the three rolling-horizon problems with the rules that publish their results, plan diffs, and service levels), `dependency_chains.py` (the dependency-chain paths and routes), and `disruption_what_ifs.py` (the two what-ifs and their widest impacts)
+- `model/` -- the deployed model: `schema.py` declares the concepts and the forecast task relationships, `source.py` loads the bundled CSVs and the rolling-horizon disruption data, and one module per stage states the rules: `customer_dependencies.py` (Stage 1 yield and floor rules), `capability_forecast.py` (the supplier-capability GNN and its forecast), `rolling_horizon.py` (the three rolling-horizon problems with the rules that publish their results, plan diffs, and per-customer allocation and demand), `dependency_chains.py` (the dependency-chain paths and routes), and `disruption_what_ifs.py` (the two what-ifs and their widest impacts)
 - `train.py` -- trains the supplier-capability GNN over the deployed splits and registers its version
 - `queries/allocation_report.py` -- prints the forecast summary, each rolling-horizon solve with its plan diff and service levels, the dependency chains, the what-if rankings, and a headline from the deployed model
 - `runbook.md` -- a paste-testable walkthrough that reproduces the template step by step with the RAI skills, one prompt per stage
 - Sample data: 13 CSVs under `data/` (customers, products, periods, demand, suppliers, capacity, inputs, dependencies, and the disruption schedule)
-- Outputs: per-iteration LP status, margin and allocations, dependency chains, and what-if rankings, all queryable from the deployed ontology; the model publishes each iteration's plan diff against the prior plan and each customer's service level
+- Outputs: per-iteration LP status, margin and allocations, dependency chains, and what-if rankings, all queryable from the deployed ontology; the model publishes each iteration's plan diff against the prior plan and each customer's allocation and demand
 
 ## Prerequisites
 
@@ -280,7 +280,7 @@ Use this sequence to deploy the model, train the GNN, and query the rolling-hori
 │   ├── source.py                 # loads the CSVs, the GNN splits, and the disruption data
 │   ├── customer_dependencies.py  # Stage 1: yield, floor, and SPOF rules
 │   ├── capability_forecast.py    # Stage 2: GNN and forecast
-│   ├── rolling_horizon.py        # Stage 3: rolling-horizon problems, plan diffs, service levels
+│   ├── rolling_horizon.py        # Stage 3: rolling-horizon problems, plan diffs, allocation and demand
 │   ├── dependency_chains.py      # Stage 4: dependency chains and routes
 │   └── disruption_what_ifs.py    # Stage 4: supplier-offline and input-shortage what-ifs
 ├── queries/

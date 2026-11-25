@@ -36,7 +36,6 @@ from .capability_forecast import NumForecastRows, gnn
 from .dependency_chains import (
     DependencyChain,
     DependencyChainStep,
-    MultiHopChain,
     NumDependencyChains,
 )
 from .disruption_what_ifs import (
@@ -49,9 +48,6 @@ from .disruption_what_ifs import (
 from .rolling_horizon import (
     CustomerService,
     EffectiveCapacityCells,
-    FirstSolvedIteration,
-    IterationMargin,
-    LastSolvedIteration,
     PlanDiff,
     allocations,
 )
@@ -79,11 +75,7 @@ __all__ = [
     "DependencyChainStep",
     "EffectiveCapacity",
     "EffectiveCapacityCells",
-    "FirstSolvedIteration",
     "Input",
-    "IterationMargin",
-    "LastSolvedIteration",
-    "MultiHopChain",
     "NumDependencyChains",
     "NumForecastRows",
     "OfflineDrop",

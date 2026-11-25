@@ -1,5 +1,5 @@
 """Dependency chains: every 1-3 hop customer-customer dependency chain, each chain read as a route of
-customer names, the number of chains, and the chains with more than one hop."""
+customer names, and the number of chains."""
 
 from relationalai.semantics import Integer, String
 from relationalai.semantics.std import aggregates
@@ -38,11 +38,9 @@ model.where(chain).define(
     )
 )
 
-# The number of chains, and the chains with more than one hop.
+# The number of chains.
 NumDependencyChains = model.Relationship(f"there are {Integer:num_chains} dependency chains")
-MultiHopChain = model.Relationship(f"{PathTraversal:chain} has more than one hop")
 _counted, _route = PathTraversal.ref(), String.ref()
 model.define(
     NumDependencyChains(aggregates.count(_counted).where(DependencyChain(_counted, _hops, _route)))
 )
-model.where(DependencyChain(_counted, _hops, _route), _hops > 1).define(MultiHopChain(_counted))
