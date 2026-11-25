@@ -1,5 +1,5 @@
 """Entry-to-target routes: every simple route over any technique from one internet-facing entry
-asset to one crown jewel, each route's assets and hop count, and how many routes there are."""
+asset to one crown jewel, each route's assets, and how many routes there are."""
 
 from relationalai.semantics import Hash, Integer, not_, where
 from relationalai.semantics.std import aggregates as aggs
@@ -36,13 +36,13 @@ simple_route = [
 ]
 
 # The deployed model publishes the routes the report reads, keyed by each route's id: the
-# assets in order, each route's length in hops, and how many routes there are.
+# assets in order, and how many routes there are.
 RouteStep = model.Relationship(
     f"entry-to-target route {Hash:path} has {Asset:asset} at step {Integer:step}"
 )
 model.where(*simple_route).define(RouteStep(route, Asset(route.nodes), route.nodes["index"]))
-RouteHops = model.Relationship(f"entry-to-target route {Hash:path} has {Integer:hops} hops")
-model.where(*simple_route).define(RouteHops(route, route.length))
 RouteCount = model.Relationship(f"there are {Integer:n_routes} entry-to-target routes")
-counted_route, route_hops = Hash.ref(), Integer.ref()
-model.define(RouteCount(aggs.count(counted_route).where(RouteHops(counted_route, route_hops)) | 0))
+counted_route, route_asset, route_step = Hash.ref(), Asset.ref(), Integer.ref()
+model.define(RouteCount(
+    aggs.count(counted_route).where(RouteStep(counted_route, route_asset, route_step)) | 0
+))

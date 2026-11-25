@@ -19,7 +19,6 @@ from model import (
     KillChainCount,
     KillChainExposure,
     KillChainHop,
-    KillChainHops,
     KillChainPriority,
     KillChainStep,
     RouteCount,
@@ -50,14 +49,6 @@ if __name__ == "__main__":
 
     kill_df = kill_df.drop_duplicates(["path_id", "step"]).sort_values(["path_id", "step"])
     hop_df = hop_df.drop_duplicates(["path_id", "hop"]).sort_values(["path_id", "hop"])
-    # Each kill-chain's length in hops, and how many kill-chains there are, from the model.
-    hops_ref = Integer.ref()
-    hops_df = (
-        model.where(KillChainHops(path, hops_ref))
-        .select(path.alias("path_id"), hops_ref.alias("hops"))
-        .to_df()
-    )
-    hops_by_path = dict(hops_df.itertuples(index=False, name=None))
     n_chains = int(model.select(KillChainCount).to_df().iloc[0, 0])
 
     # Reassemble each kill-chain: ordered asset names + the technique used at each hop.
@@ -70,7 +61,7 @@ if __name__ == "__main__":
         labelled = assets[0]
         for nm, tech in zip(assets[1:], techs):
             labelled += f"  --[{tech}]-->  {nm}"
-        chains.append({"path_id": pid, "hops": int(hops_by_path[pid]), "labelled": labelled})
+        chains.append({"path_id": pid, "hops": len(assets) - 1, "labelled": labelled})
 
     print(f"\n{n_chains} kill-chain attack path(s) reach a crown jewel "
           f"(exploit -> cred -> 1-{MAX_PIVOTS} pivots, from an internet-facing asset):")

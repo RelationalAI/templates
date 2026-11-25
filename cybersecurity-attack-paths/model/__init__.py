@@ -41,7 +41,6 @@ from .kill_chains import (
     KillChainCount,
     KillChainExposure,
     KillChainHop,
-    KillChainHops,
     KillChainPriority,
     KillChainStep,
 )
@@ -59,7 +58,6 @@ __all__ = [
     "KillChainCount",
     "KillChainExposure",
     "KillChainHop",
-    "KillChainHops",
     "KillChainPriority",
     "KillChainStep",
     "RouteCount",

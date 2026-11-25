@@ -39,7 +39,7 @@ This template enumerates multi-step attack paths across an enterprise asset grap
 
 ## What's included
 
-- **Model**: the `model/` package (`schema.py` declares the concepts, `source.py` loads the sample data, `kill_chains.py` states the kill-chain paths, their hop counts, exposure, and remediation priority, and the on-attack-path flag, and `entry_to_target_routes.py` states the point query's routes) — the asset graph, technique edges, path patterns, and rules that `rai models deploy --path model` deploys to your Snowflake account.
+- **Model**: the `model/` package (`schema.py` declares the concepts, `source.py` loads the sample data, `kill_chains.py` states the kill-chain paths, their exposure and remediation priority, and the on-attack-path flag, and `entry_to_target_routes.py` states the point query's routes) — the asset graph, technique edges, path patterns, and rules that `rai models deploy --path model` deploys to your Snowflake account.
 - **Query**: `queries/attack_path_report.py` — prints the kill-chains, point-query routes, exposure ranking, and flagged assets from the deployed model.
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - **Data**: `data/assets.csv` (12 assets) and `data/attack_steps.csv` (16 technique-tagged edges)
@@ -194,7 +194,7 @@ The analysis starts by modeling each attacker technique as its own directed rela
 
 The centerpiece is a multi-edge path pattern (a preview capability) that composes the techniques in series: an exploit first, then credential reuse, then one or more lateral pivots, ending at an explicit destination. Filtering the source to an internet-facing asset and the destination to a crown jewel pins the threat model. Enforcing edge order is the whole point — a single union edge or a flat join cannot express "exploit first, then credentials, then pivots," which is exactly the kill-chain signature analysts care about, and each hop records the technique it used.
 
-A separate point query pins both endpoints by id to enumerate every route between a chosen entry point and a chosen crown jewel over the union edge. The kill-chains are then ranked by the exposure summed along each one, and the model publishes each chain's hop count and remediation priority along with the counts of chains, routes, and flagged assets that the report prints. Finally, the assets lying on any crown-jewel chain are flagged back onto the ontology as `Asset.on_attack_path`, so a later query can pull them without re-enumerating paths.
+A separate point query pins both endpoints by id to enumerate every route between a chosen entry point and a chosen crown jewel over the union edge. The kill-chains are then ranked by the exposure summed along each one, and the model publishes each chain's remediation priority along with the counts of chains, routes, and flagged assets that the report prints. Finally, the assets lying on any crown-jewel chain are flagged back onto the ontology as `Asset.on_attack_path`, so a later query can pull them without re-enumerating paths.
 
 See `model/kill_chains.py` and `model/entry_to_target_routes.py` for the implementation, `queries/attack_path_report.py` for the report, and `runbook.md` to reproduce it step by step with the RAI skills.
 

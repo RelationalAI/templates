@@ -1,6 +1,6 @@
 """Kill-chain attack paths: the exploit, credential-reuse, and pivot chains from an internet-facing
-asset into a crown jewel, each chain's steps, techniques, hop count, exposure, and remediation
-priority, and the assets that lie on a chain."""
+asset into a crown jewel, each chain's steps, techniques, exposure, and remediation priority, how
+many chains there are, and the assets that lie on a chain."""
 
 from relationalai.semantics import Hash, Integer, String
 from relationalai.semantics.std import aggregates as aggs
@@ -43,7 +43,7 @@ model.where(*crown_kill, on_path == kill.nodes(pos)).define(on_path.on_attack_pa
 # Published paths
 # --------------------------------------------------
 # The deployed model publishes the paths the report reads, keyed by each path's id: the
-# crown-jewel kill-chains' assets, techniques, hop counts, and total exposure.
+# crown-jewel kill-chains' assets, techniques, and total exposure, and how many chains there are.
 KillChainStep = model.Relationship(
     f"kill chain {Hash:path} has {Asset:asset} at step {Integer:step}"
 )
@@ -57,12 +57,12 @@ model.where(*crown_kill).define(
     KillChainHop(kill, kill.relationships["relationship"], kill.relationships["index"])
 )
 
-# Each kill-chain's length in hops, and how many kill-chains there are.
-KillChainHops = model.Relationship(f"kill chain {Hash:path} has {Integer:hops} hops")
-model.where(*crown_kill).define(KillChainHops(kill, kill.length))
+# How many kill-chains there are.
 KillChainCount = model.Relationship(f"there are {Integer:n_chains} kill chains")
-chain, chain_hops = Hash.ref(), Integer.ref()
-model.define(KillChainCount(aggs.count(chain).where(KillChainHops(chain, chain_hops)) | 0))
+chain, chain_asset, chain_step = Hash.ref(), Asset.ref(), Integer.ref()
+model.define(KillChainCount(
+    aggs.count(chain).where(KillChainStep(chain, chain_asset, chain_step)) | 0
+))
 
 # Exposure is a per-asset score (a stand-in for a CVSS / attack-surface metric) summed ALONG
 # each kill-chain IN PYREL: aggregates.sum(Asset(kill.nodes).exposure_score).per(kill) sums
