@@ -41,7 +41,7 @@ Built using **prescriptive reasoning** (constraint satisfaction with multi-solut
 
 ## What's included
 
-- **Model**: the reference concepts, the scalar applicant decisions, the rule pack, the property catalog, and one counterexample search per property, in the `model/` package (`schema.py` declares the concepts, `source.py` loads the reference data, `reasoning.py` states the decisions, rules, and searches), which `rai models deploy --path model` deploys to your Snowflake account, where each refresh runs one search per property.
+- **Model**: the reference concepts, the scalar applicant decisions, the rule pack, the property catalog, and one counterexample search per property, in the `model/` package (`schema.py` declares the concepts, `source.py` loads the reference data, `applicant_rules.py` states the decisions and rules, `property_audits.py` states the catalog and the searches, `audit_verdicts.py` classifies and tallies the verdicts), which `rai models deploy --path model` deploys to your Snowflake account, where each refresh runs one search per property.
 - **Query**: `queries/audit_report.py`, which prints each property's verdict and witness table and the verdict matrix from the deployed model.
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - `data/age_buckets.csv` -- 4 representative ages (28, 45, 55, 72) -- three under the 70 senior threshold, one above
@@ -209,7 +209,9 @@ underwriting_audit/
 │   ├── __init__.py        # exports of the deployed model
 │   ├── schema.py          # reference concepts
 │   ├── source.py          # reference data and its checks
-│   └── reasoning.py       # scalar decisions, rule pack, property catalog, one search per property
+│   ├── applicant_rules.py # scalar decisions, derived indicators, rule pack
+│   ├── property_audits.py # property catalog, one search per property, published status and witnesses
+│   └── audit_verdicts.py  # verdict per property, witness-limit flag, verdict tallies
 ├── queries/
 │   └── audit_report.py    # verdicts, witness tables, and verdict matrix from the deployed model
 └── data/
@@ -236,11 +238,11 @@ Rather than a table of applicants, the model has one applicant slot described by
 - **Primary identifiers**: `AgeBucket` and `CoverageBand` are each identified by an integer `id`.
 - **Important invariants**: reference ids are dense and contiguous; the free decisions `age_bucket_id`, `has_chronic`, and `coverage_band_id` select one reference row (or a binary flag); the rule indicators `is_senior`, `is_frail`, and `is_manual_review` are binaries pinned to those decisions by the rule pack.
 
-For the full concept and property definitions, see `model/schema.py` and `model/reasoning.py`; `runbook.md` builds them step by step with the RAI skills.
+For the full concept and property definitions, see `model/schema.py`, `model/applicant_rules.py`, and `model/property_audits.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
-The template factors the audit into three artifacts. The scalar decisions that describe an applicant and the rule pack are declared once in the model. A property catalog pairs each property's name and description with a builder for its counterexample constraints. And one `Problem` per property in the catalog attaches the rule pack and that property's counterexample constraints and solves in multi-solution mode on each refresh of the deployed model. The query classifies each verdict from the published status and number of witnesses, reads back the witnesses, and prints a verdict matrix at the end.
+The template factors the audit into three artifacts. The scalar decisions that describe an applicant and the rule pack are declared once in the model. A property catalog pairs each property's name and description with a builder for its counterexample constraints. And one `Problem` per property in the catalog attaches the rule pack and that property's counterexample constraints and solves in multi-solution mode on each refresh of the deployed model. The model classifies each verdict from the published status and number of witnesses and tallies the verdicts; the query reads back the verdicts and witnesses and prints a verdict matrix at the end.
 
 An applicant is described entirely by free decisions the solver fills in — which age bucket they fall into, whether they have a chronic condition, which coverage band they sit in — rather than by a row in an applicant table. On top of those, three rule indicators (`is_senior`, `is_frail`, `is_manual_review`) are also modeled as decisions, so the property check can compare them directly. The rule pack pins each indicator to a function of the free decisions: the senior indicator turns on when the chosen age bucket is at or above the senior threshold; the frailty indicator is the logical OR of senior-or-chronic, encoded as the standard three-constraint arithmetic for OR over binaries; and the manual-review indicator is pinned by the bundled — deliberately buggy — rule to the senior indicator alone, omitting the chronic arm that the audit is designed to expose.
 
@@ -250,7 +252,7 @@ Each property in the catalog is checked by asserting its logical negation and as
 reference CSVs → free decisions + rule indicators → rule pack → per-property: assert negation → solve → PASS/FAIL/INCONCLUSIVE + witnesses → verdict matrix
 ```
 
-See `model/reasoning.py` and `queries/audit_report.py` for the implementation, and `runbook.md` to reproduce it step by step with the RAI skills.
+See `model/applicant_rules.py`, `model/property_audits.py`, `model/audit_verdicts.py`, and `queries/audit_report.py` for the implementation, and `runbook.md` to reproduce it step by step with the RAI skills.
 
 ## Customize this template
 
@@ -261,15 +263,15 @@ See `model/reasoning.py` and `queries/audit_report.py` for the implementation, a
 
 ### Tune parameters
 
-- Raise `MAX_WITNESSES` in `model/reasoning.py` to surface more counterexamples per failing property. Production audits typically want 50 to 500 witnesses per failure to cover the rule pack's failure modes. Raising it past the size of the feasible set makes the solver exhaust every distinct case.
-- The solve time cap is `time_limit_sec` (default 60) in the `problem.configure("minizinc", ...)` call in `model/reasoning.py`.
+- Raise `MAX_WITNESSES` in `model/property_audits.py` to surface more counterexamples per failing property. Production audits typically want 50 to 500 witnesses per failure to cover the rule pack's failure modes. Raising it past the size of the feasible set makes the solver exhaust every distinct case.
+- The solve time cap is `time_limit_sec` (default 60) in the `problem.configure("minizinc", ...)` call in `model/property_audits.py`.
 
 ### Extend the model
 
-- Add a property to the catalog by appending a `(name, description, counterexample_builder)` tuple to `PROPERTIES` in `model/reasoning.py`. The builder takes no arguments and returns the property's counterexample ICs — the logical negation of the property. For example, to audit "no senior is in the cheapest coverage band", add `("no_senior_cheap_band", "no senior is in the cheapest coverage band", lambda: [model.require(is_senior == 1), model.require(coverage_band_id == 1)])`. The loop below the catalog creates its `Problem`, and the query reports it; redeploy and no other code changes.
+- Add a property to the catalog by appending a `(name, description, counterexample_builder)` tuple to `PROPERTIES` in `model/property_audits.py`. The builder takes no arguments and returns the property's counterexample ICs — the logical negation of the property. For example, to audit "no senior is in the cheapest coverage band", add `("no_senior_cheap_band", "no senior is in the cheapest coverage band", lambda: [model.require(is_senior == 1), model.require(coverage_band_id == 1)])`. The loop below the catalog creates its `Problem`, and the query reports it; redeploy and no other code changes.
 - Add a scoped property by adding a `model.where(<data filter>).require(<decision constraint>)` IC alongside the unconditional counterexample ICs. `chronic_under_50_implies_review` shows the pattern: the `where` iterates `AgeBucket` rows outside the scope (a pure data filter), and the `require` body forbids the applicant decision from picking those rows. PyRel rejects decision-variable expressions inside `where`, so the decision-variable constraint must live in `require`.
-- Audit a corrected ruleset by changing the buggy rule in `model/reasoning.py`: the manual-review rule pins `is_manual_review == is_senior`; change the right-hand side to `is_frail`. With the fix in place, the failing verdicts in the bundled run turn to PASS and the verdict matrix reports 3 PASS, 0 FAIL.
-- Add more rule indicators by introducing additional decisions and their defining ICs in `model/reasoning.py`, then appending them to `rule_pack`. A logical AND over binaries is encoded with the dual of the OR pattern used for `is_frail`.
+- Audit a corrected ruleset by changing the buggy rule in `model/applicant_rules.py`: the manual-review rule pins `is_manual_review == is_senior`; change the right-hand side to `is_frail`. With the fix in place, the failing verdicts in the bundled run turn to PASS and the verdict matrix reports 3 PASS, 0 FAIL.
+- Add more rule indicators by introducing additional decisions and their defining ICs in `model/applicant_rules.py`, appending them to `rule_pack`, and adding a `solve_for` for each new decision in `model/property_audits.py`. A logical AND over binaries is encoded with the dual of the OR pattern used for `is_frail`.
 - Switch from "any counterexample" to "worst counterexample" by adding a `problem.maximize(...)` over a violation-severity score and letting the solve finish `OPTIMAL`, when triage capacity is limited and you want the single most severe failure first; a time-limited solve returns only the most severe counterexample it found.
 
 ### Extend to many applicants
