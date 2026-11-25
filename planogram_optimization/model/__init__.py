@@ -23,21 +23,28 @@ Modeling approach:
   solver-only; the report re-validates `(sku_id, facings) -> demand_units`
   against the deployed demand table via a Python dict lookup.
 
+The model has two rule modules: `facing_allocation.py` (decisions, constraints,
+objective, and solve) and `allocation_usage.py` (shelf length used and active
+SKUs per category under the chosen facings).
+
 Run:
     `rai models deploy --path model` deploys this package to the schemas in
     raiconfig.yaml and waits for its first refresh, which runs the solve.
     `python -m queries.facings_plan` then prints the report from the deployed model.
 """
 
-from .reasoning import SolveStatus, TotalDemand, problem
+from .allocation_usage import CategoryUsage, ShelfUsage
+from .facing_allocation import SolveStatus, TotalDemand, problem
 from .schema import Category, PredictedDemand, Shelf, Sku, model
 from .source import DATA_DIR
 
 __all__ = [
     "DATA_DIR",
     "Category",
+    "CategoryUsage",
     "PredictedDemand",
     "Shelf",
+    "ShelfUsage",
     "Sku",
     "SolveStatus",
     "TotalDemand",

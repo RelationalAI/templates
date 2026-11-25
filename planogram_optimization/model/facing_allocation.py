@@ -1,4 +1,5 @@
-"""Planogram problem: integer facings per SKU that maximize total predicted demand."""
+"""Facing allocation: the integer facings per SKU that maximize total predicted demand within shelf
+capacity and category bounds."""
 
 from relationalai.semantics import Integer, String, sum
 from relationalai.semantics.reasoners.prescriptive import Problem, implies
