@@ -145,7 +145,7 @@ Use this sequence to deploy the model and query it:
      the sample scenario, not to a specific account.
    ```
 
-   The lines above are excerpts of the full report. It flags four holdings and two sectors, groups eight stocks into five correlation clusters, and selects `p3` as the candidate frontier point in each of six budget-and-market scenarios. Estimated crisis volatility is 22% to 30% above the base regime. The deployed model publishes the return, risk, shadow price, and allocations of each solve that reached an accepted status as `FrontierPoint`s; the report labels the points, checks that return and risk rise along each frontier, and derives the knees and the base-versus-crisis volatilities.
+   The lines above are excerpts of the full report. It flags four holdings and two sectors, groups eight stocks into five correlation clusters, and selects `p3` as the candidate frontier point in each of six budget-and-market scenarios. Estimated crisis volatility is 22% to 30% above the base regime. The deployed model publishes the return, risk, allocations and, where the solve has a return floor, the shadow price of each solve that reached an accepted status as `FrontierPoint`s; the report labels the points, checks that return and risk rise along each frontier, and derives the knees and the base-versus-crisis volatilities.
 
    These candidates are starting points for review, not recommendations or trades for a specific account. See `runbook.md` for the full workflow and result interpretation.
 
