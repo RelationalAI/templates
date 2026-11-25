@@ -77,7 +77,6 @@ model.define(Discount.new(model.data(discount_csv).to_schema()))
 
 week_csv = read_csv(DATA_DIR / "weeks.csv")
 model.define(Week.new(model.data(week_csv).to_schema()))
-NUM_WEEKS = len(week_csv)
 
 prod_csv = read_csv(HM_DIR / "production_capacity.csv", dtype={"article_id": int})
 prod_data = model.data(prod_csv)
