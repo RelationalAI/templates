@@ -2,9 +2,10 @@
 
 from pathlib import Path
 
-from pandas import read_csv
+from pandas import DataFrame, read_csv
+from relationalai.semantics.std import math, numbers
 
-from .schema import Table, model
+from .schema import ForeignKey, Table, model
 
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 scale_factor = 1.0
@@ -14,22 +15,18 @@ schema_df = read_csv(DATA_DIR / "testgen_schema.csv")
 constraints_df = read_csv(DATA_DIR / "testgen_constraints.csv")
 targets_df = read_csv(DATA_DIR / "testgen_targets.csv")
 
-# Scale targets
-targets_df = targets_df.copy()
-targets_df['target_rows'] = (targets_df['target_rows'] * scale_factor).astype(int)
-targets_df['min_rows'] = (targets_df['min_rows'] * scale_factor).astype(int)
-targets_df['max_rows'] = (targets_df['max_rows'] * scale_factor).astype(int)
-
+# Load the tables. Each count is scaled by scale_factor and truncated to a whole number.
 table_data = model.data(targets_df)
 model.define(
     t := Table.new(table_name=table_data.table_name),
-    t.target_rows(table_data.target_rows),
-    t.min_rows(table_data.min_rows),
-    t.max_rows(table_data.max_rows),
+    t.target_rows(numbers.integer(math.floor(table_data.target_rows * scale_factor))),
+    t.min_rows(numbers.integer(math.floor(table_data.min_rows * scale_factor))),
+    t.max_rows(numbers.integer(math.floor(table_data.max_rows * scale_factor))),
     t.priority(table_data.priority),
 )
 
-# Extract FK relationships from schema
+# Extract FK relationships from schema. The bounds each foreign key declares are combined
+# here because the constraints CSV has blank cells, which model.data does not load reliably.
 fk_df = schema_df[schema_df['is_foreign_key']].copy()
 
 fk_objs = []
@@ -59,8 +56,22 @@ for _, fk_row in fk_df.iterrows():
 
     fk_objs.append({
         'child': child_table,
+        'column_name': fk_row['column_name'],
         'parent': parent_table,
-        'min': min_per,
-        'max': max_per,
+        'min_per': min_per,
+        'max_per': max_per,
         'coverage': coverage_pct
     })
+
+# Load the foreign keys with their combined bounds.
+fk_data = model.data(
+    DataFrame(fk_objs, columns=['child', 'column_name', 'parent', 'min_per', 'max_per', 'coverage'])
+)
+child, parent = Table.ref(), Table.ref()
+model.where(child.table_name == fk_data['child'], parent.table_name == fk_data['parent']).define(
+    fk := ForeignKey.new(child=child, column_name=fk_data['column_name']),
+    fk.parent(parent),
+    fk.min_per(fk_data['min_per']),
+    fk.max_per(fk_data['max_per']),
+    fk.coverage(fk_data['coverage']),
+)
