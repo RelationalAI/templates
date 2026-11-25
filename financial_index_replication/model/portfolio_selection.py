@@ -1,7 +1,8 @@
-"""Sparse index replication: decision problem and solver settings.
+"""Portfolio selection: the number of stocks in the universe, the replication policy, the decision
+problem that picks the basket, and the solver settings.
 
-Declares, at module level, everything the deployment needs beyond the source
-facts in `model/source.py`:
+Declares, at module level, everything the deployment needs to choose the basket
+beyond the source facts in `model/source.py`:
 
 - Choose exactly 20 names and their portfolio weights.
 - Minimize full-history tracking residuals versus the benchmark.
@@ -13,8 +14,9 @@ tracking residuals. Each refresh of the deployed model runs the solve.
 `queries/replication_report.py` prints the report from the deployed model.
 """
 
-from relationalai.semantics import Float, String, sum
+from relationalai.semantics import Float, Integer, String, sum
 from relationalai.semantics.reasoners.prescriptive import Problem
+from relationalai.semantics.std import aggregates as aggs
 
 from .schema import ReturnMonth, Sector, Stock, model
 from .source import stocks_csv
@@ -28,7 +30,6 @@ MAX_WEIGHT = 0.10
 SECTOR_ACTIVE_BAND = 0.04
 PORTFOLIO_VALUE = 10_000_000
 MAX_ADV_PARTICIPATION = 0.05
-MONTHS_PER_YEAR = 12
 
 # Basic feasibility checks before building and solving the optimization model.
 eligible_stock_count = stocks_csv["ticker"].nunique()
@@ -42,6 +43,10 @@ if N_REPLICATION_NAMES * MAX_WEIGHT < 1.0:
         f"N_REPLICATION_NAMES * MAX_WEIGHT must be at least 1.0 for full "
         f"investment, got {N_REPLICATION_NAMES * MAX_WEIGHT:.2f}."
     )
+
+# The number of stocks the basket is chosen from.
+num_stocks = model.Relationship(f"the universe has {Integer:n_stocks} stocks")
+model.define(num_stocks(aggs.count(Stock)))
 
 # --------------------------------------------------
 # Model the decision problem

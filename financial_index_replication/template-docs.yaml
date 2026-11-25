@@ -138,7 +138,7 @@ guided_walkthrough:
         monthly tracking fields prepare the model to compare the basket’s
         returns with the index in the next step.
       focus:
-        file: model/reasoning.py
+        file: model/portfolio_selection.py
         anchors:
           - start: Stock.x_selected = model.Property
             end: name=["weight", Stock.ticker],
@@ -183,7 +183,7 @@ guided_walkthrough:
         the index. This comparison uses past returns and does not guarantee
         the basket will follow the index as closely in future months.
       focus:
-        file: model/reasoning.py
+        file: model/portfolio_selection.py
         anchors:
           - start: '# Monthly benchmark residual:'
             end: sum(ReturnMonth, pos_error + neg_error).where(
@@ -223,7 +223,7 @@ guided_walkthrough:
         average daily trading value, which limits the trades needed to move
         from the previous portfolio.
       focus:
-        file: model/reasoning.py
+        file: model/portfolio_selection.py
         anchors:
           - start: '# Select exactly N names and invest all capital.'
             end: PORTFOLIO_VALUE * (Stock.previous_weight - weight)
@@ -273,7 +273,7 @@ guided_walkthrough:
         and total tracking residual through the model's own relationships, so
         the report can read them after the deployment.
       focus:
-        file: model/reasoning.py
+        file: model/portfolio_selection.py
         anchors:
           - start: problem.configure("highs", time_limit_sec=300)
             end: model.define(SolveStatus(problem.termination_status()), TotalResidual(problem.objective_value()))
@@ -294,38 +294,39 @@ guided_walkthrough:
     - id: inspect-basket
       title: Check tracking against the index
       explanation: |-
-        model.select(...) queries the model for every stock's solved selection
-        and weight. The printed basket lists only weights above 0.01% of the
-        portfolio, so a selected stock with zero weight does not appear in it.
+        Each month's gap is the replica's return less the index return.
+        TrackingMonth.replica_return weights every stock's return that month by
+        its solved Stock.x_weight and adds them, and
+        TrackingMonth.replica_difference subtracts the index return from that
+        sum.
 
-        portfolio_returns calculates the basket’s monthly returns from every
-        nonzero solved weight and the stock returns, and tracking_diff compares them with the
-        index returns. annualized_tracking_error() summarizes the monthly gaps
-        as a yearly tracking measure, showing how closely this basket followed
-        the index in the sample months.
+        AnnualizedTrackingError scales the root mean square of the monthly
+        differences to a yearly tracking measure, showing how closely this
+        basket followed the index in the sample months. The report queries the
+        model for these figures and for every stock's solved selection and
+        weight. The printed basket lists only weights above 0.01% of the
+        portfolio, so a selected stock with zero weight does not appear in it.
       focus:
-        file: queries/replication_report.py
+        file: model/tracking_quality.py
         anchors:
-          - start: solution_df = (
-            end: return monthly_rms * sqrt(MONTHS_PER_YEAR)
+          - start: "# The replica's return is the weighted sum"
+            end: '* math.sqrt(MONTHS_PER_YEAR)'
+            end_offset: 2
       references:
-        model.select(...):
+        TrackingMonth.replica_return:
           anchor:
-            start: model.select(
-            end: .to_df()
-            occurrence: 4
-        portfolio_returns:
+            start: TrackingMonth.replica_return(
+            end: .where(*_priced)
+            end_offset: 1
+        TrackingMonth.replica_difference:
           anchor:
-            start: weights = solution_df.set_index("ticker")["weight"]
-            end: portfolio_returns = returns_wide[weights.index].mul(weights, axis=1).sum(axis=1)
-        tracking_diff:
+            start: TrackingMonth.replica_difference(
+            end: TrackingMonth.replica_difference(
+        AnnualizedTrackingError:
           anchor:
-            start: tracking_diff = portfolio_returns - index_series["index_return"]
-            end: tracking_diff = portfolio_returns - index_series["index_return"]
-        annualized_tracking_error():
-          anchor:
-            start: 'def annualized_tracking_error():'
-            end: return monthly_rms * sqrt(MONTHS_PER_YEAR)
+            start: AnnualizedTrackingError = model.Relationship(
+            end: '* math.sqrt(MONTHS_PER_YEAR)'
+            end_offset: 2
       links:
         - title: Query a model
           href: /build/guides/modeling/query-a-model/
