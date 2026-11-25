@@ -9,7 +9,7 @@ import random
 import string as string_module
 from datetime import date, timedelta
 
-from model import SolveStatus, Table, TablePlan, TotalDeviation, model
+from model import SolveStatus, Table, TotalDeviation, model
 from pandas import DataFrame
 
 
@@ -88,27 +88,19 @@ if __name__ == "__main__":
     # Extract row counts
     row_counts = {}
     results_df = (
-        model.select(
-            Table.table_name,
-            TablePlan.actual_rows,
-            Table.target_rows,
-            TablePlan.deviation,
-        )
-        .where(TablePlan.table == Table)
+        model.select(Table.table_name, Table.x_actual_rows, Table.target_rows)
         .to_df()
         .sort_values("table_name")
     )
     for _, row in results_df.iterrows():
-        row_counts[row['table_name']] = {
-            'actual': int(row['actual_rows']),
-            'target': int(row['target_rows']),
-            'deviation': int(row['deviation']),
-        }
+        actual = int(round(row['actual_rows']))
+        target = int(row['target_rows'])
+        row_counts[row['table_name']] = {'actual': actual, 'target': target}
 
     print("\nOptimal row counts:")
     for table, counts in row_counts.items():
-        print(f"  {table}: {counts['actual']} rows (target: {counts['target']}, "
-              f"deviation: {counts['deviation']})")
+        dev = abs(counts['actual'] - counts['target'])
+        print(f"  {table}: {counts['actual']} rows (target: {counts['target']}, deviation: {dev})")
 
     # Generate data and show samples
     print("\n" + "=" * 50)

@@ -1,10 +1,8 @@
-"""Row-count plan: the decision problem for row counts closest to the targets within the bounds,
-and the plan's whole-row counts and deviations."""
+"""Row-count plan: the decision problem for row counts closest to the targets within the bounds."""
 
-from relationalai.semantics import Float, Integer, String
+from relationalai.semantics import Float, String
 from relationalai.semantics import sum as rai_sum
 from relationalai.semantics.reasoners.prescriptive import Problem
-from relationalai.semantics.std import math, numbers
 
 from .schema import ForeignKey, Property, Table, model
 
@@ -69,17 +67,3 @@ TotalDeviation = model.Relationship(
     f"test data generation total weighted deviation is {Float:total_deviation}"
 )
 model.define(SolveStatus(problem.termination_status()), TotalDeviation(problem.objective_value()))
-
-# The plan's whole-row counts and each table's deviation from its target. They are computed
-# from the solution, so they live on TablePlan, not Table: such a property on the concept the
-# solve reads fails the deploy.
-TablePlan = model.Concept("TablePlan", identify_by={"table": Table})
-TablePlan.actual_rows = Property(f"{TablePlan} has {Integer:actual_rows} rows")
-TablePlan.deviation = Property(f"{TablePlan} deviates from its target by {Integer:deviation}")
-model.define(TablePlan.new(table=Table))
-model.where(TablePlan.table == Table).define(
-    TablePlan.actual_rows(numbers.integer(math.round(Table.x_actual_rows)))
-)
-model.where(TablePlan.table == Table).define(
-    TablePlan.deviation(math.abs(TablePlan.actual_rows - Table.target_rows))
-)

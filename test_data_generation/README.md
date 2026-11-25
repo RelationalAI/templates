@@ -20,7 +20,7 @@ Generating realistic test databases requires careful coordination of row counts 
 
 This template uses **Prescriptive** reasoning to find optimal row counts for each table in a test database. It encodes referential integrity constraints, cardinality bounds, mandatory participation rules, and coverage requirements as a linear program, then minimizes weighted deviation from target row counts. Higher-priority tables stay closer to their targets.
 
-After determining row counts, the report generates sample test records with realistic values -- emails, dates, prices, and foreign key references drawn from each parent table's ID range. The solved row counts satisfy the constraints; the solve treats them as continuous and the model rounds each to a whole number, so on a custom schema with tight ratios the rounded counts can miss a bound, and a parent table that rounds to zero rows leaves its children's references with no parent row. The generated records are illustrative: each foreign key is drawn at random, so per-parent bounds and coverage are not guaranteed row by row, and the generator fills a few columns of the six bundled tables rather than every column in `testgen_schema.csv`.
+After determining row counts, the report generates sample test records with realistic values -- emails, dates, prices, and foreign key references drawn from each parent table's ID range. The solved row counts satisfy the constraints; the solve treats them as continuous and the report rounds each to a whole number, so on a custom schema with tight ratios the rounded counts can miss a bound, and a parent table that rounds to zero rows leaves its children's references with no parent row. The generated records are illustrative: each foreign key is drawn at random, so per-parent bounds and coverage are not guaranteed row by row, and the generator fills a few columns of the six bundled tables rather than every column in `testgen_schema.csv`.
 
 ## Who this is for
 
@@ -37,7 +37,7 @@ After determining row counts, the report generates sample test records with real
 
 ## What's included
 
-- `model/` -- Row count optimization model, as a package (`schema.py` declares the concepts, `source.py` loads the sample data, `row_count_plan.py` states the decision problem and the rounded row counts); `rai models deploy --path model` deploys it to your Snowflake account, where each refresh runs the solve
+- `model/` -- Row count optimization model, as a package (`schema.py` declares the concepts, `source.py` loads the sample data, `row_count_plan.py` states the decision problem); `rai models deploy --path model` deploys it to your Snowflake account, where each refresh runs the solve
 - `queries/test_data_plan.py` -- Prints the report from the deployed model: the optimal row counts and the generated test data
 - `data/testgen_schema.csv` -- Table and column definitions with types and foreign keys
 - `data/testgen_constraints.csv` -- Cardinality bounds, coverage, and participation rules
@@ -218,7 +218,7 @@ Use this sequence to deploy the model and query it:
 │   ├── __init__.py      # exports of the deployed model
 │   ├── schema.py        # the table and foreign-key concepts
 │   ├── source.py        # loads the CSVs and extracts the foreign keys
-│   └── row_count_plan.py  # decision variables, constraints, objective, solve, rounded counts
+│   └── row_count_plan.py  # decision variables, constraints, objective, solve
 ├── queries/
 │   └── test_data_plan.py
 └── data/

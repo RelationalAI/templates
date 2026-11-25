@@ -25,8 +25,7 @@ model.define(
     t.priority(table_data.priority),
 )
 
-# Extract FK relationships from schema. The bounds each foreign key declares are combined
-# here because the constraints CSV has blank cells, which model.data does not load reliably.
+# Extract FK relationships from schema, with the bounds each foreign key declares combined.
 fk_df = schema_df[schema_df['is_foreign_key']].copy()
 
 fk_objs = []
