@@ -1,7 +1,7 @@
 """Downstream dependency paths: path enumeration, each feature's path count and longest downstream
 depth, and each path's hop count, feature count, owner count, and chain label."""
 
-from relationalai.semantics import Hash, Integer, String
+from relationalai.semantics import Hash, Integer, String, distinct
 from relationalai.semantics.std import aggregates as aggs
 
 from .schema import Feature, model
@@ -73,7 +73,7 @@ model.where(DependencyPathStep(_path, _node, _step)).define(
         _path,
         aggs.max(_step).per(_path),
         aggs.count(_step).per(_path),
-        aggs.count(_node.owner).per(_path),
+        aggs.count(distinct(_node.owner)).per(_path),
         aggs.string_join(_node.name, sep=" -> ", index=_step).per(_path),
     )
 )
