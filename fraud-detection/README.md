@@ -132,7 +132,7 @@ Use this sequence to deploy the model, train the classifier, and print the audit
      predictive:
        name: fraud_gnn                  # created on first use if it doesn't exist
        gnns:
-         fraud_classifier:              # the GNN's name in model/reasoning.py
+         fraud_classifier:              # the GNN's name in model/fraud_classifier.py
            registry: <DB>.FRAUD_DETECTION
            model: FRAUD_CLASSIFIER
            version: V1                  # train.py registers this version
@@ -234,4 +234,4 @@ Use this sequence to deploy the model, train the classifier, and print the audit
 
    The teardown removes the deployed objects and keeps the two schemas, with the classifier's experiments and registered versions in the public schema.
 
-To run the same pipeline over your own Snowflake tables, call `load_snowflake_data()` in `model/__init__.py` in place of `load_local_data()`. It reads `ACCOUNTS`, `TRANSACTIONS`, `TRAIN`, `VAL`, and `TEST` from the database and schema you pass, which need change tracking and a derived `audit_cost` column on the transactions table. Size the predictive reasoner for your data with `reasoners.predictive.size` in `raiconfig.yaml` (a GPU size for the full PaySim tables; a deployed GNN runs on its reasoner's device), and raise `AUDIT_BUDGET_HOURS` and the training settings in `model/reasoning.py` to match its scale. A profile sized for the full PaySim tables trains with `n_epochs=20`, `train_batch_size=512`, and `head_layers=2`, budgets `AUDIT_BUDGET_HOURS = 2000.0`, and solves with `time_limit_sec=300`.
+To run the same pipeline over your own Snowflake tables, call `load_snowflake_data()` in `model/__init__.py` in place of `load_local_data()`. It reads `ACCOUNTS`, `TRANSACTIONS`, `TRAIN`, `VAL`, and `TEST` from the database and schema you pass, which need change tracking. Size the predictive reasoner for your data with `reasoners.predictive.size` in `raiconfig.yaml` (a GPU size for the full PaySim tables; a deployed GNN runs on its reasoner's device), and raise `AUDIT_BUDGET_HOURS` in `model/investigation_queue.py` and the training settings in `model/fraud_classifier.py` to match its scale. A profile sized for the full PaySim tables trains with `n_epochs=20`, `train_batch_size=512`, and `head_layers=2`, budgets `AUDIT_BUDGET_HOURS = 2000.0`, and solves with `time_limit_sec=300`.
