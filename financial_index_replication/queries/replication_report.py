@@ -103,8 +103,6 @@ if __name__ == "__main__":
         .set_index("date")
         .sort_index()
     )
-    # A month with no stock returns at all still counts as a benchmark month.
-    returns_wide = returns_wide.reindex(index_series.index)
     weights = solution_df.set_index("ticker")["weight"]
     # A zero-weight stock needs no return history; a held one needs a return every month.
     weights = weights[weights != 0]
