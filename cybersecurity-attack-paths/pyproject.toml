@@ -7,9 +7,9 @@ name = "rai-template-cybersecurity-attack-paths"
 version = "0.0.0"
 description = "RelationalAI template: enumerate multi-step cyber attack chains across an asset graph by composing distinct attacker techniques in series with multi-edge path patterns"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.10,<3.15"
 dependencies = [
-  "relationalai==2.1.1",
+  "relationalai==2.3.0",
   "pandas>=2.0.0",
 ]
 

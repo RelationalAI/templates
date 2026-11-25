@@ -49,7 +49,8 @@ The objective minimizes transport cost plus fixed-cost FC opening cost.
 
 ## What's included
 
-- `network_flow_planning.py` — main script (single end-to-end run)
+- `model/` — the model package (`schema.py` declares the concepts, `source.py` loads the sample data, `reasoning.py` states the decision problem); `rai models deploy --path model` deploys it
+- `queries/network_plan.py` — prints the report from the deployed model
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - `data/sites.csv` — 12 sites: 3 warehouses, 3 transit hubs, 3 fulfillment centers, 3 customers
 - `data/lanes.csv` — 17 directed lanes connecting the tiers, each with a cost-per-unit and capacity
@@ -61,75 +62,151 @@ The objective minimizes transport cost plus fixed-cost FC opening cost.
 ### Access
 
 - A Snowflake account that has the RAI Native App installed.
-- A Snowflake user with permissions to access the RAI Native App.
+- The one-time model deployment setup on that account, done by an account administrator: follow [Set up model deployment](https://private.relational.ai/early-access/model-deploy-setup) through **Governed setup**, **PAT authentication**, and steps 1-2 of **Additional setup for the prescriptive reasoner** (the Quickstart covers this template's own schema). It gives you a model role, a programmatic access token (PAT) stored as a secret, an external access integration, a PAT user, and a warehouse.
+- A Snowflake user that holds the model role.
 
 ### Tools
 
-- Python >= 3.10
-- RelationalAI Python SDK (`relationalai`) == 2.1.1
+- Python 3.10 through 3.14 (the range relationalai 2.3.0 supports)
+- RelationalAI Python SDK (`relationalai`) == 2.3.0
 
 ## Quickstart
 
-1. Download the ZIP file for this template and extract it:
+Before you start, install Python 3.10 or later and complete the access prerequisites above: a Snowflake account with the RAI Native App, the one-time model deployment setup, and a Snowflake user that holds the model role.
+
+Before the first deploy, create this template's internal schema as the model role, and have an administrator grant the RAI Native App caller access to it. The internal schema holds only this model's objects, so the grants cover all of it, including the solver's result tables that the deploy creates:
+
+```sql
+-- as the model role
+CREATE SCHEMA IF NOT EXISTS <DB>.NETWORK_FLOW_PLANNING_META;
+
+-- as an administrator
+GRANT CALLER USAGE ON DATABASE <DB> TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER USAGE ON SCHEMA <DB>.NETWORK_FLOW_PLANNING_META TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER USAGE ON WAREHOUSE <PAT_WAREHOUSE> TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL TABLES IN SCHEMA <DB>.NETWORK_FLOW_PLANNING_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL DYNAMIC TABLES IN SCHEMA <DB>.NETWORK_FLOW_PLANNING_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL VIEWS IN SCHEMA <DB>.NETWORK_FLOW_PLANNING_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER INSERT, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA <DB>.NETWORK_FLOW_PLANNING_META TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER CREATE TABLE, CREATE STAGE ON SCHEMA <DB>.NETWORK_FLOW_PLANNING_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER READ, WRITE ON ALL STAGES IN SCHEMA <DB>.NETWORK_FLOW_PLANNING_META TO APPLICATION <RAI_APP_NAME>;
+```
+
+Use this sequence to deploy the model and query it:
+
+1. **Download the template**
+
+   [Download the ZIP](https://docs.relational.ai/templates/zips/v1/network_flow_planning.zip), unzip it, and enter the template directory:
 
    ```bash
-   curl -O https://docs.relational.ai/templates/zips/v1/network_flow_planning.zip
    unzip network_flow_planning.zip
    cd network_flow_planning
    ```
 
-   > [!TIP]
-   > You can also download the template ZIP using the "Download ZIP" button at the top of this page.
+2. **Create a Python environment**
 
-2. Create and activate a virtual environment:
+   Create and activate a virtual environment, then update pip:
 
    ```bash
    python -m venv .venv
    source .venv/bin/activate
-   python -m pip install -U pip
+   python -m pip install --upgrade pip
    ```
 
-3. Install dependencies:
+3. **Install the template**
+
+   Install the dependencies pinned in `pyproject.toml`:
 
    ```bash
    python -m pip install .
    ```
 
-4. Configure Snowflake connection and RAI profile:
+4. **Configure your project**
 
-   ```bash
-   rai init
+   Use the configuration builder in [Install and run PyRel](https://docs.relational.ai/get-started/install-and-run-pyrel/#configure-your-project) to create `raiconfig.yaml` in the template directory and verify your connection.
+
+   Set the connection `role` to the model role, then add the prescriptive reasoner and a `deployment` section. Give each template its own schema pair so two deployed templates never share one:
+
+   ```yaml
+   reasoners:
+     prescriptive:
+       name: network_flow_planning_solver            # created on first deploy if it doesn't exist
+   deployment:
+     role: <MODEL_ROLE>
+     public_schema: <DB>.NETWORK_FLOW_PLANNING               # published views and tables
+     identity:
+       internal_schema: <DB>.NETWORK_FLOW_PLANNING_META      # solver inputs, results, refresh procedures
+     schedules:
+       standard:
+         interval_s: 0              # refresh only on deploy or on demand
+     schedule: standard
+     pat_secret: <PAT_SECRET>       # these four come from the setup page
+     pat_eai: <PAT_EAI>
+     pat_user: <PAT_USER>
+     pat_warehouse: <PAT_WAREHOUSE>
    ```
 
-5. Run the template:
+5. **Deploy the model**
+
+   Deploy the model in `model/` to the schemas in `raiconfig.yaml`:
 
    ```bash
-   python network_flow_planning.py
+   rai models deploy --path model
    ```
 
-6. Expected output (truncated):
+   The deploy creates the public schema named in `raiconfig.yaml` if it doesn't exist and waits for the model's first refresh, which runs the solve. Each refresh of the deployed model runs the solve again.
+
+   Deploying again without changing the model applies no updates and does not solve again. A change to the model or to `problem.configure(...)` redeploys, and the redeploy's refresh solves.
+
+6. **Query the results**
+
+   Print the report from the deployed model:
+
+   ```bash
+   python -m queries.network_plan
+   ```
 
    ```text
-   Status: OPTIMAL
-   Total cost: $5,280.00
+   Solve result:
+   • status: OPTIMAL
+   • objective (total cost): 5280.0
+
    Opened fulfillment centers:
      fulfillment_center  capacity  fixed_cost
-          FC_Northeast     350.0      1500.0
-          FC_Southwest     200.0      1200.0
+   0       FC_Northeast     350.0      1500.0
+   1       FC_Southwest     200.0      1200.0
+
    Active flows:
               from_site           to_site   flow  unit_cost
-      Chicago_Warehouse       Memphis_Hub  200.0        2.0
-       Dallas_Warehouse    KansasCity_Hub  250.0        2.5
-            Memphis_Hub      FC_Northeast  200.0        1.5
-         KansasCity_Hub      FC_Northeast   50.0        2.0
-         KansasCity_Hub      FC_Southwest  200.0        1.5
-           FC_Northeast      Customer_NYC  180.0        1.0
-           FC_Northeast       Customer_LA   70.0        5.0
-           FC_Southwest  Customer_Houston  150.0        1.0
-           FC_Southwest       Customer_LA   50.0        3.5
+   0  Chicago_Warehouse       Memphis_Hub  200.0        2.0
+   1   Dallas_Warehouse    KansasCity_Hub  250.0        2.5
+   2       FC_Northeast       Customer_LA   70.0        5.0
+   3       FC_Northeast      Customer_NYC  180.0        1.0
+   4       FC_Southwest  Customer_Houston  150.0        1.0
+   5       FC_Southwest       Customer_LA   50.0        3.5
+   6     KansasCity_Hub      FC_Northeast   50.0        2.0
+   7     KansasCity_Hub      FC_Southwest  200.0        1.5
+   8        Memphis_Hub      FC_Northeast  200.0        1.5
    ```
 
    The optimizer opens the two largest fulfillment centers and routes LA's demand split across both — the savings from not opening FC_West ($1,000 fixed) outweigh the extra transport cost incurred by routing 120 units of LA demand through the more expensive FC_Northeast and FC_Southwest paths.
+
+   To solve again without changing the model, refresh the deployed model, then run the query again:
+
+   ```sql
+   CALL <DB>.NETWORK_FLOW_PLANNING_META._INTERNAL_REFRESH_MODEL('standard', NULL);
+   ```
+
+7. **Tear down the deployment**
+
+   Preview what the teardown removes, then remove it:
+
+   ```bash
+   rai models teardown
+   rai models teardown --force
+   ```
+
+   The first command lists the model's objects without dropping anything; the second drops them and keeps the two schemas.
 
 ## Template structure
 
@@ -137,14 +214,20 @@ The objective minimizes transport cost plus fixed-cost FC opening cost.
 .
 ├── README.md                       # this file
 ├── pyproject.toml                  # dependencies
-├── network_flow_planning.py        # main script (end-to-end)
+├── model/
+│   ├── __init__.py                 # exports of the deployed model
+│   ├── schema.py                   # Site, Lane, and Demand concepts
+│   ├── source.py                   # loads the sample CSVs
+│   └── reasoning.py                # flow and open decisions, constraints, objective, solve
+├── queries/
+│   └── network_plan.py             # report from the deployed model
 └── data/
     ├── sites.csv                   # 12 sites across 4 types
     ├── lanes.csv                   # 17 directed transport lanes
     └── demand.csv                  # 3 customer demands
 ```
 
-**Start here:** run `python network_flow_planning.py` for the full run end to end, or follow `runbook.md` to reproduce it step by step with the RAI skills.
+**Start here:** deploy with `rai models deploy --path model` and run `python -m queries.network_plan` for the full run end to end, or follow `runbook.md` to reproduce it step by step with the RAI skills.
 
 ## Sample data
 
@@ -155,7 +238,7 @@ The data describes a small but non-trivial multi-tier network where the optimize
 - **3 fulfillment centers**:
   - **FC_Northeast** — capacity 350, fixed cost $1,500
   - **FC_Southwest** — capacity 200, fixed cost $1,200
-  - **FC_West** — capacity 180, fixed cost $1,000 (cheapest direct path to LA but highest fixed cost per unit of capacity)
+  - **FC_West** — capacity 180, fixed cost $1,000 (cheapest direct path to LA, and the smallest capacity)
 - **3 customers**: NYC (demand 180), LA (demand 120), Houston (demand 150). Total 450.
 
 Lane costs are set so that opening FC_West would unlock the cheapest LA route (`FC_West → LA` at 1.5/unit). The optimizer must weigh that against the $1,000 fixed cost of opening it. With this data it elects not to.
@@ -166,21 +249,21 @@ The model uses three concepts. A single `Site` concept carries all four network 
 
 - **Key entities**: `Site` — a node in the distribution network, its `type` distinguishing the role each plays (warehouse, hub, fulfillment center, customer); `Lane` — a directed transport link between two sites with a per-unit cost and a flow capacity; `Demand` — a customer order placed at a particular site.
 - **Primary identifiers**: integer `id` on each of `Site`, `Lane`, and `Demand`, loaded from the corresponding CSV.
-- **Important invariants**: `inventory`, `capacity`, `fixed_cost`, `cost_per_unit`, and `quantity` are non-negative; only fulfillment centers carry a positive `fixed_cost` (that is what scopes the binary open decision); every `Lane.source` / `Lane.dest` and every `Demand.site` resolves to a real `Site`.
+- **Important invariants**: `inventory`, `capacity`, `fixed_cost`, `cost_per_unit`, and `quantity` are non-negative; only fulfillment centers use `capacity` and `fixed_cost`, and only warehouses use `inventory`; every `Lane.source` / `Lane.dest` and every `Demand.site` resolves to a real `Site`.
 
-For the full concept and property definitions, see `network_flow_planning.py`; `runbook.md` builds them step by step with the RAI skills.
+For the full concept and property definitions, see `model/schema.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
 The model runs as a single MILP that decides flow on every lane and which fulfillment centers to open, in one solve.
 
-**Decision variables.** Each lane carries a continuous `x_flow` bounded by its capacity. Each fulfillment center carries a binary `x_open`; the open decision is scoped to sites with a positive `fixed_cost`, so warehouses, hubs, and customers never get an open variable.
+**Decision variables.** Each lane carries a continuous `x_flow` bounded by its capacity. Each fulfillment center carries a binary `x_open`; the open decision is scoped to sites of type `FULFILLMENT_CENTER`, so warehouses, hubs, and customers never get an open variable.
 
 **Constraints.** Each site type contributes the constraint that matches its role. Warehouses cap total outflow at their inventory. Transit hubs and fulfillment centers conserve flow — inflow equals outflow. A fulfillment center's inflow is bounded by `capacity × x_open`, so an unopened FC (open = 0) can carry no flow and the fixed cost is only incurred when it is opened. Customers require inflow to meet their aggregate demand.
 
 **Objective.** Minimize transport cost (per-unit lane cost times flow, summed over lanes) plus the fixed cost of every opened fulfillment center. The two cost terms live on different concepts (`Lane` and `Site`), so the objective adds one sum per concept.
 
-For the exact PyRel formulation, see `network_flow_planning.py`; `runbook.md` reproduces the model step by step with the RAI skills.
+For the exact PyRel formulation, see `model/reasoning.py`; `runbook.md` reproduces the model step by step with the RAI skills.
 
 ```text
 CSV inputs → load Site / Lane / Demand → flow + open decisions → role-based constraints → minimize transport + fixed cost → solve → export
@@ -190,17 +273,17 @@ CSV inputs → load Site / Lane / Demand → flow + open decisions → role-base
 
 ### Use your own data
 
-Replace the three CSVs in `data/` with your own:
+Replace the three CSVs in `data/` with your own, keeping these headers:
 
-- `sites.csv` — every site needs an `id`, `name`, `type` (one of the four canonical strings), and the role-specific quantitative columns. Set unused columns to 0.
-- `lanes.csv` — every lane needs a `source_id`, `dest_id`, `cost_per_unit`, and `capacity`.
-- `demand.csv` — every demand row needs a `site_id` matching a `CUSTOMER` site, plus a `quantity`.
+- `sites.csv` — `id,name,type,inventory,capacity,fixed_cost`; `type` is one of the four canonical strings. Set columns a site's role doesn't use to 0.
+- `lanes.csv` — `id,source_id,dest_id,cost_per_unit,capacity`.
+- `demand.csv` — `id,site_id,quantity,customer,priority`; `site_id` matches a `CUSTOMER` site.
 
 ### Tune parameters
 
-- Add or remove fulfillment centers by changing `sites.csv` (rows with `fixed_cost > 0`).
-- Change FC fixed costs to study the open-set sensitivity — lowering FC_West's fixed cost below ~$345 will swing the optimum to opening it.
-- Add lane capacity constraints to force splitting flow across multiple paths.
+- Add or remove fulfillment centers by changing `sites.csv` (rows of type `FULFILLMENT_CENTER`).
+- Change FC fixed costs to study the open-set sensitivity — opening FC_West saves $300 of transport, so a fixed cost below $300 swings the optimum to opening it (at $300 the two plans tie).
+- Tighten lane capacities in `lanes.csv` to force splitting flow across multiple paths.
 
 ### Extend the model
 
@@ -210,9 +293,9 @@ Replace the three CSVs in `data/` with your own:
 
 ### Scale up / productionize
 
-- For a live network, replace the three `data/` CSVs with `model.data(snowflake_table)` calls so the model reads sites, lanes, and demand directly from your warehouse tables.
+- For a live network, replace the `read_csv(...)` loads in `model/source.py` with `model.Table("<db>.<schema>.<table>")` sources, defining the same concepts and properties from each table's columns, so the model reads sites, lanes, and demand directly from your warehouse tables.
 - The bundled data is 12 sites and 17 lanes; the MILP scales to whatever fits the prescriptive engine's solve budget. If solves grow slow, tighten lane capacities to prune the flow space or size up the engine.
-- The template solves with HiGHS by default (`problem.solve("highs")`); swap to `"gurobi"` for larger integer programs if a Gurobi-enabled engine is available.
+- The template solves with HiGHS by default (`problem.configure("highs", time_limit_sec=60)`); swap to `"gurobi"` for larger integer programs if a Gurobi-enabled engine is available.
 - Pin `relationalai` (see Prerequisites) so runs stay reproducible across environments.
 
 ## Troubleshooting
@@ -226,7 +309,7 @@ Replace the three CSVs in `data/` with your own:
 <details>
   <summary>Why does <code>Site.x_open</code> get only three variables?</summary>
 
-  The `where=[Site.fixed_cost > 0]` clause restricts the variable to fulfillment-center sites. Warehouses, hubs, and customers all have `fixed_cost = 0` and don't need an open decision. The constraint linking capacity to `x_open` is similarly scoped to FC sites.
+  The `where=[Site.type == "FULFILLMENT_CENTER"]` clause restricts the variable to fulfillment-center sites; warehouses, hubs, and customers don't need an open decision. The constraint linking capacity to `x_open` is scoped to the same sites.
 </details>
 
 <details>

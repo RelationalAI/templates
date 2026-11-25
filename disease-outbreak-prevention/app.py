@@ -5,15 +5,14 @@ disease outbreak prevention network using RelationalAI and Streamlit, incorporat
 transfer volume and contact intensity risk metrics.
 
 Run:
-    streamlit run app.py
+    Deploy the model first with `rai models deploy --path model`, then run
+    `streamlit run app.py`. The app only queries the deployed model.
 """
 
-
-import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
-from model_setup import DATA_DIR, create_model
-from relationalai.semantics import Float, Integer, where
+from model import FacilityConnection, model
+from queries.facility_ranking import ranked_facilities
 
 # --------------------------------------------------
 # Page configuration
@@ -26,55 +25,28 @@ st.set_page_config(
 )
 
 # --------------------------------------------------
-# Define semantic model & load data
+# Query the deployed model
 # --------------------------------------------------
 
-@st.cache_resource
-def load_model():
-    """Load and cache the RelationalAI model."""
-    return create_model()
-
-@st.cache_data
-def get_results(_model, _graph, _Facility):
-    """Query and return analysis results."""
-    # Calculate graph metrics
-    degree_centrality = _graph.degree_centrality()
-    incoming_edges = _graph.indegree()
-    outgoing_edges = _graph.outdegree()
-
-    # Create variable references
-    facility = _graph.Node.ref("facility")
-    centr_score = Float.ref("centr_score")
-    in_edges = Integer.ref("in_edges")
-    out_edges = Integer.ref("out_edges")
-
-    # Query results
-    results = where(
-        degree_centrality(facility, centr_score),
-        incoming_edges(facility, in_edges),
-        outgoing_edges(facility, out_edges)
-    ).select(
-        facility.id,
-        facility.name,
-        facility.type,
-        facility.region,
-        centr_score.alias("degree_centrality"),
-        in_edges.alias("incoming_connections"),
-        out_edges.alias("outgoing_connections")
-    ).to_df()
-
-    # Convert to standard types
-    results['incoming_connections'] = results['incoming_connections'].astype(int)
-    results['outgoing_connections'] = results['outgoing_connections'].astype(int)
-
-    # Sort by degree centrality
-    results = results.sort_values("degree_centrality", ascending=False)
-    results.insert(0, "rank", range(1, len(results) + 1))
-
-    # Calculate total connections
-    results['total_connections'] = results['incoming_connections'] + results['outgoing_connections']
-
+# Each cached result expires after five minutes, so a refresh of the deployed model shows up
+# without restarting the app.
+@st.cache_data(ttl=300)
+def get_results():
+    """The facilities ranked by their published metrics (the same query as the report)."""
+    results = ranked_facilities()
+    # Convert to standard integer types for Arrow
+    int_cols = ["id", "incoming_connections", "outgoing_connections", "total_connections"]
+    results[int_cols] = results[int_cols].astype(int)
     return results
+
+@st.cache_data(ttl=300)
+def get_connections():
+    """Query the facility connections (edges) of the deployed network."""
+    return model.select(
+        FacilityConnection.from_facility.id.alias("from_facility_id"),
+        FacilityConnection.to_facility.id.alias("to_facility_id"),
+    ).to_df().astype(int)
+
 
 def create_network_graph(results, connections_df):
     """Create an interactive network visualization using Plotly."""
@@ -237,9 +209,8 @@ def main():
 
     # Load data
     with st.spinner("Loading model and analyzing network..."):
-        model, graph, Facility = load_model()
-        results = get_results(model, graph, Facility)
-        connections_df = pd.read_csv(DATA_DIR / "connections.csv")
+        results = get_results()
+        connections_df = get_connections()
 
     # Sidebar with summary statistics
     st.sidebar.header("📊 Network Summary")
@@ -249,7 +220,7 @@ def main():
     st.sidebar.metric("Avg Degree Centrality", f"{results['degree_centrality'].mean():.4f}")
 
     most_connected = results.iloc[0]
-    st.sidebar.markdown(f"**Most Connected:**  \n{most_connected['name']}  \n({int(most_connected['total_connections'])} connections)")
+    st.sidebar.markdown(f"**Highest Weighted Centrality:**  \n{most_connected['name']}  \n({int(most_connected['total_connections'])} connections)")
 
     # Tabs for different views
     tab1, tab2, tab3 = st.tabs(["📈 Network Visualization", "📋 Facility Rankings", "🎯 Priority Facilities"])
@@ -309,7 +280,7 @@ def main():
 
         st.markdown("""
         **Weighted Degree Centrality** measures the cumulative transmission risk for each facility:
-        - **Formula**: Sum of (transfer_volume × contact_intensity) for all connections
+        - **Formula**: Sum of (transfer_volume × contact_intensity) for all connections, divided by (number of facilities − 1)
         - **Higher scores** = Greater risk = More critical for outbreak response
         - **Transfer Volume** = Patient transfers, samples, or resource exchanges (1-10)
         - **Contact Intensity** = Frequency/intensity of staff and data interactions (1-10)

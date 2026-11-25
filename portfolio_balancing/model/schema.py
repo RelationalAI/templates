@@ -1,6 +1,6 @@
-"""Stable concepts and relationships for the portfolio model."""
+"""Semantic schema for the portfolio template: stocks, accounts, holdings, scenarios, and frontier points."""
 
-from relationalai.semantics import Boolean, Float, Integer, Model, String
+from relationalai.semantics import Float, Integer, Model, String
 
 model = Model("portfolio")
 
@@ -79,12 +79,13 @@ Stock.regime_covar = model.Property(
 )
 Stock.x_quantity = model.Property(f"{Stock} in {Scenario} has {Float:quantity}")
 
+# One solve's published result for one Scenario: its expected return, its risk (variance),
+# the shadow price of its return floor, and the stocks it allocates.
 FrontierPoint = model.Concept(
     "FrontierPoint",
-    identify_by={"scenario_label": String, "eps_label": String},
+    identify_by={"scenario_label": String, "solve": String},
 )
 FrontierPoint.scenario = model.Property(f"{FrontierPoint} for {Scenario}")
-FrontierPoint.k = model.Property(f"{FrontierPoint} has order {Integer:fp_k}")
 FrontierPoint.return_value = model.Property(
     f"{FrontierPoint} has return {Float:fp_return}"
 )
@@ -92,20 +93,8 @@ FrontierPoint.risk = model.Property(f"{FrontierPoint} has risk {Float:fp_risk}")
 FrontierPoint.marginal_risk_per_return = model.Property(
     f"{FrontierPoint} has marginal {Float:fp_marginal}"
 )
-FrontierPoint.is_knee = model.Property(
-    f"{FrontierPoint} is knee {Boolean:fp_is_knee}"
-)
-FrontierPoint.vol_base = model.Property(
-    f"{FrontierPoint} has vol_base {Float:fp_vol_base}"
-)
-FrontierPoint.vol_crisis = model.Property(
-    f"{FrontierPoint} has vol_crisis {Float:fp_vol_crisis}"
-)
-FrontierPoint.vol_gap = model.Property(
-    f"{FrontierPoint} has vol_gap {Float:fp_vol_gap}"
-)
-FrontierPoint.vol_gap_pct = model.Property(
-    f"{FrontierPoint} has vol_gap_pct {Float:fp_vol_gap_pct}"
+FrontierPoint.allocates = model.Relationship(
+    f"{FrontierPoint} allocates {Stock} amount {Float:fp_amount}"
 )
 
 __all__ = [

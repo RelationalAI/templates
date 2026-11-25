@@ -11,8 +11,8 @@ Produces three CSVs under data/favorita_mini/:
 Run once to regenerate:
     python data/generate_favorita_mini.py
 
-The output is committed under data/favorita_mini/. The actual template
-script (demand_forecasting.py) reads those CSVs.
+The output is committed under data/favorita_mini/. The template's model
+(model/source.py) reads those CSVs.
 """
 
 from datetime import date, timedelta

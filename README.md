@@ -8,7 +8,7 @@ Each template lives in its own root-level folder. Within a folder, you will usua
 
 - `README.md` with the problem statement, prerequisites, and run instructions
 - `pyproject.toml` for template-local dependencies
-- a main runner such as `<template>.py` or a notebook
+- `model/`, the model package that `rai models deploy --path model` deploys, and `queries/`, one module per report, run as `python -m queries.<name>` (a few templates use a single script or a notebook instead)
 - `data/` containing sample input data when the template uses local files
 - `runbook.md` with ordered prompts to recreate or adapt the template using a coding agent with RelationalAI skills (multi-reasoner templates)
 
@@ -64,7 +64,7 @@ The index below covers the current templates. Expand an industry to see its temp
 | [hospital_staffing](hospital_staffing/) | Prescriptive | Explore the tradeoff between overtime cost and patient service level using bi-objective optimization with epsilon constraint. |
 | [patient_cohort_recruitment](patient_cohort_recruitment/) | Graph, Rules-based, Prescriptive | Build a clinical-research cohort over a patient knowledge graph. It selects a small set of eligible patients that together span enough distinct genes, therapies, and adverse events for a study to generalize. |
 | [smoker_status_prediction](smoker_status_prediction/) | Predictive | Predict whether a person is a smoker from demographic and medical attributes plus a network of social connections. |
-| [synthetic_eligibility_records](synthetic_eligibility_records/) | Prescriptive | Generate K distinct, internally consistent member eligibility records per solve in multi-solution mode: each satisfies CMS Medicare-eligibility, age-by-plan-type CFDs, and PCP-network attribution. |
+| [synthetic_eligibility_records](synthetic_eligibility_records/) | Prescriptive | Generate K distinct, internally consistent member eligibility records per solve in multi-solution mode: each satisfies a Medicare-style age-by-plan-type policy and PCP-network attribution. |
 
 </details>
 
@@ -92,7 +92,7 @@ The index below covers the current templates. Expand an industry to see its temp
 | [demand_forecasting](demand_forecasting/) | Predictive | Forecast next-period unit sales per store, item, and day with a regression graph neural network (GNN) over a heterogeneous retail graph linking sales to stores, items, and item families. |
 | [planogram_optimization](planogram_optimization/) | Predictive, Prescriptive | Decide integer facing counts per SKU to maximize predicted weekly demand under shelf capacity and category cardinality limits, where per-(SKU, facing_count) demand comes from a regression model. |
 | [retail_markdown](retail_markdown/) | Prescriptive | Set discount levels across weeks to maximize revenue while clearing inventory. |
-| [retail_planning](retail_planning/) | Predictive, Prescriptive | Predict article sales and customer churn with graph neural networks (GNNs), then optimize markdown pricing and inventory planning to maximize revenue and minimize costs. |
+| [retail_planning](retail_planning/) | Predictive, Prescriptive | Predict article sales with a graph neural network (GNN), then optimize markdown pricing and inventory planning to maximize revenue and minimize costs. |
 
 </details>
 
@@ -109,7 +109,7 @@ The index below covers the current templates. Expand an industry to see its temp
 | [supply_chain_resilience](supply_chain_resilience/) | Graph, Rules-based, Prescriptive | Chain blast-radius reachability, network analysis, and rule-based risk classification into a risk-adjusted minimum-cost network flow for supply-chain routing. |
 | [supply_chain_transport](supply_chain_transport/) | Prescriptive | Minimize inventory holding and transport costs with TL/LTL mode selection. |
 | [traveling_salesman](traveling_salesman/) | Prescriptive | Find the shortest route that visits every city exactly once and returns home. A self-contained starting point for building route optimization on RelationalAI. |
-| [warehouse_allocation](warehouse_allocation/) | Graph, Prescriptive | Allocate inventory across a distribution network using centrality, weakly-connected components, and bridge-route detection to prioritize critical hubs. |
+| [warehouse_allocation](warehouse_allocation/) | Graph, Prescriptive | Allocate inventory across a distribution network using centrality, weakly-connected components, and cross-region route flags to prioritize critical hubs. |
 
 </details>
 
@@ -151,7 +151,7 @@ The exact setup is documented in each template's README, but the workflow is con
 2. Create a virtual environment inside that folder.
 3. Install the template's dependencies.
 4. Configure RelationalAI access if the template connects to a live environment.
-5. Run the script or notebook described in the template README.
+5. Deploy the model and run its queries, or run the script or notebook, as the template README describes.
 
 Example workflow:
 
@@ -179,7 +179,7 @@ Most templates are designed to be runnable and inspectable without additional re
 To add or update a template:
 
 1. Copy [`sample-template/`](sample-template/) to a new root-level directory.
-2. Implement the model, runner, sample data, and metadata.
+2. Implement the model package, queries, sample data, and metadata.
 3. Replace the README placeholders with template-specific content.
 4. Review the result before opening a pull request.
 

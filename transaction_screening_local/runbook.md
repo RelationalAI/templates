@@ -21,7 +21,7 @@ transactions.csv — 75 transfers, 54 accounts  (in-memory DuckDB, no Snowflake)
 
 **These prompts are designed to run in order, in a single session** — each builds on the ontology state created by the ones before it.
 
-Requires `relationalai` 2.1.1. Local DuckDB execution uses deploy mode (flagged experimental in the package).
+Requires `relationalai` 2.3.0. Local DuckDB execution uses deploy mode (flagged experimental in the package).
 
 ---
 
@@ -31,13 +31,13 @@ Requires `relationalai` 2.1.1. Local DuckDB execution uses deploy mode (flagged 
 
 > Set up a RelationalAI model on local DuckDB (no Snowflake) over `data/transactions.csv` (columns: `id, src, dst, amount`). Create an `Account` concept identified by `id`, drawn from both the `src` and `dst` of every transfer, and a self-referential `transfers_to` relationship linking each transfer's sender to its receiver.
 
-**Response.** A model on an in-memory DuckDB database, configured with a `deployment` section (`public_schema`, `identity.internal_schema`, and `auto_deploy`). `Account` has 54 instances; `transfers_to` has 75 directed links, one per transfer. (To count the links, count the transfers — `aggs.count(<transfer id>)`. Counting a single account ref instead collapses to distinct senders, not arcs.)
+**Response.** A model on an in-memory DuckDB database, configured with a `deployment` section (`public_schema` and `identity.internal_schema`) and deployed with `model.deploy()` before any query. `Account` has 54 instances; `transfers_to` has 75 directed links, one per distinct sender/receiver pair (the bundled ledger repeats no pair, so this equals its 75 transfers). (To count the links, count the sender/receiver pairs; counting a single account ref instead collapses to distinct senders, not arcs.)
 
 ### Examine the ontology
 
 > What concepts and relationships does the model have, and how much money does the ledger move?
 
-**Response.** `Account` has 54 instances, linked by a self-referential `transfers_to` (75 links, one per transfer). The ledger holds 75 transfers totalling 870,000. (The exact concept inventory is a modeling choice — e.g. transfers may be a relationship or a `Transfer` row entity; the counts above are what matters.)
+**Response.** `Account` has 54 instances, linked by a self-referential `transfers_to` (75 links, one per distinct sender/receiver pair). The ledger holds 75 transfers totalling 870,000. (The exact concept inventory is a modeling choice — e.g. transfers may be a relationship or a `Transfer` row entity; the counts above are what matters.)
 
 ---
 
@@ -65,4 +65,4 @@ Requires `relationalai` 2.1.1. Local DuckDB execution uses deploy mode (flagged 
 
 ## Cohesion
 
-Every number above matches the script's printed output (`transaction_screening_local.py`): 75 transfers and 870,000 moved; 6 suspects (of 54 accounts); 8 suspect-to-counterparty pairs; 8 accounts in the investigation set. Re-run the script to refresh these if the data or thresholds change.
+The script (`transaction_screening_local.py`) prints the transfer count and volume (75 transfers, 870,000 moved) and lists the suspects, the suspect-to-counterparty pairs and the investigation set, whose rows give 6 suspects, 8 pairs and 8 accounts. It prints no total account or distinct-link count; the 54 accounts and 75 links come from the data. Re-run the script to refresh these if the data or thresholds change.

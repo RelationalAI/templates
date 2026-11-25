@@ -43,8 +43,9 @@ without the cluster collapse, the gap would grow.
 ## Implementation map
 
 - `model/schema.py` creates the shared model and declares all nine concepts, their properties, and their relationships.
-- `model/source.py` loads the bundled CSVs and maps source fields onto that schema. `model/__init__.py` re-exports the loaded model for the runner.
-- `portfolio_balancing.py` defines the derived facts, executes the four reasoning stages, solves the frontier, creates frontier point summaries, and reports the stock amounts and weights for each scenario's candidate portfolio.
+- `model/source.py` loads the bundled CSVs, creates the six budget-by-regime scenarios, and maps source fields onto that schema.
+- `model/reasoning.py` defines the derived facts, the correlation graph, and the 15 solves of the frontier. Each solve is a named Problem, and each later solve's return target is a rule over earlier solves' results. Every solve publishes a `FrontierPoint` per scenario. `model/__init__.py` exports the deployed model for the query.
+- `queries/portfolio_report.py` reads the deployed model, prints the four stages, creates the frontier summaries (knee and volatility comparison), and reports the stock amounts and weights for each scenario's candidate portfolio.
 
 ## Workflow
 
@@ -60,7 +61,7 @@ without the cluster collapse, the gap would grow.
 
 **Response**
 
-`model/schema.py` declares `Stock` (with the binary `Stock.covar(Stock, Stock)` property carrying covariance), `Sector`, `User`, `Account`, `Holding`, `Transaction`, `Regime`, `Scenario`, and `FrontierPoint`. `model/source.py` binds the portfolio concepts to the bundled CSVs (8 stocks, 64 covariance entries). Stage 3 in `portfolio_balancing.py` creates 2 regimes x 3 budgets = 6 scenarios, and Stage 4 materializes the solved frontier points.
+`model/schema.py` declares `Stock` (with the binary `Stock.covar(Stock, Stock)` property carrying covariance), `Sector`, `User`, `Account`, `Holding`, `Transaction`, `Regime`, `Scenario`, and `FrontierPoint`. `model/source.py` binds the portfolio concepts to the bundled CSVs (8 stocks, 64 covariance entries). `model/source.py` creates 2 regimes x 3 budgets = 6 scenarios, and each solve in `model/reasoning.py` publishes its frontier points.
 
 ### 2. Examine ontology
 
@@ -72,7 +73,7 @@ without the cluster collapse, the gap would grow.
 
 **Response**
 
-Concepts: 8 `Stock` across 5 `Sector`, the binary `Stock.covar` covariance property (64 entries), 6 `User`, 4 `Account`, 15 `Holding`, and 21 `Transaction`. The schema also declares `Regime`, `Scenario`, and `FrontierPoint`; the runner populates them as it solves the base and crisis frontiers.
+Concepts: 8 `Stock` across 5 `Sector`, the binary `Stock.covar` covariance property (64 entries), 6 `User`, 4 `Account`, 15 `Holding`, and 21 `Transaction`. The schema also declares `Regime`, `Scenario`, and `FrontierPoint`; `Regime` and `Scenario` come from `model/source.py`, and the deployed model populates `FrontierPoint` as each refresh solves the base and crisis frontiers.
 
 ### 3. Discover reasoner questions
 
@@ -120,7 +121,7 @@ Plan: rules for compliance flags, graph for correlation clustering + representat
 
 **Response**
 
-48 decision vars (`Stock.x_quantity`, 8 stocks x 6 scenarios; non-reps forced to 0). Constraint families: non-negativity, budget equality (sum = budget per scenario), position cap (30%), sector cap (30%), non-representative = 0, plus a per-scenario epsilon return-rate floor on the sweep solves. HiGHS solves the convex QP to `OPTIMAL` with `sensitivity=True`, returning each return-floor's dual. The reference scenario base_1000 spans return [64.87, 84.00] (rate [0.0649, 0.0840]).
+48 decision vars (`Stock.x_quantity`, 8 stocks x 6 scenarios; non-reps forced to 0). Constraint families: non-negativity, budget equality (sum = budget per scenario), position cap (30%), sector cap (30%), non-representative = 0, plus a per-scenario epsilon return-rate floor on the sweep solves. HiGHS solves the convex QP to `OPTIMAL` with `sensitivity=True`, returning each return-floor's dual. The reference scenario base_1000 spans return [64.87, 84.00] (rate [0.0649, 0.0840]). The deployed model declares 15 solves, each a named Problem: the two anchors, the minimum-variance solve at the maximum return, and four interior solves for each of the grid, adaptive, and dichotomic drivers. Each interior solve's return floor is a rule over earlier solves' returns, variances, and shadow prices, so one refresh runs them in order.
 
 ### 7. Read the frontier
 
@@ -151,25 +152,25 @@ Crisis vol runs 22-30% above base at every frontier point (budget 1000: min_risk
 **Prompt**
 
 ```
-/rai-ontology Add a FrontierPoint concept indexed by (Scenario, eps_label) that materializes each Pareto point's metadata: return, risk, marginal risk-per-return, knee flag, base-regime volatility, crisis-regime volatility, and the percentage gap between them.
+/rai-ontology Add a FrontierPoint concept indexed by (scenario label, solve) that publishes each solve's result for each scenario: return, risk, marginal risk-per-return, and the stock amounts it allocates. Then derive each scenario's knee flag and its base-regime and crisis-regime volatility from those points.
 ```
 
 **Response**
 
-Ontology gains a `FrontierPoint(Scenario, eps_label)` Concept (6 scenarios x up to 6 points; adjacent targets that collapse are deduped) with `return`, `risk`, `marginal_risk_per_return`, `is_knee`, `vol_base`, `vol_crisis`, `vol_gap`, `vol_gap_pct`. The frontier shape (base_1000 return 64.87->84.00, variance 4641->8528), knee at p3, and the crisis vol gap (+28.4% min_risk -> +29.6% peak at p1 -> +21.7% at p5) are now queryable as ontology rather than stdout.
+Ontology gains a `FrontierPoint(scenario_label, solve)` Concept (6 scenarios x 15 solves) with `return_value`, `risk`, `marginal_risk_per_return`, and `allocates`, which each solve that reaches an accepted status publishes in `model/reasoning.py`. The points and allocations are queryable from the deployed model. The report selects the dichotomic solves' points, sorts them by return (adjacent targets that collapse are deduped), checks that neither return nor risk decreases along each scenario's frontier, and derives the knee flag and the volatilities from them: the frontier shape (base_1000 return 64.87->84.00, variance 4641->8528), knee at p3, and the crisis vol gap (+28.4% min_risk -> +29.6% peak at p1 -> +21.7% at p5).
 
 ### 10. Review candidate allocations
 
 **Prompt**
 
 ```
-/rai-prescriptive-results For each scenario, show the stock amounts and portfolio weights for the portfolio associated with the FrontierPoint marked as is_knee.
+/rai-prescriptive-results For each scenario, show the stock amounts and portfolio weights for the portfolio at the knee of its frontier.
 ```
 
 **Response**
 
-The final report selects the `FrontierPoint` marked as `is_knee` for each of the six scenarios and retrieves the matching Stage 3 allocation. `Amount` shows how much of the scenario's budget is assigned to each stock. `Weight` shows the stock's share of that budget. These are candidate portfolios, not recommendations. To produce trades for an account, link a scenario to that account and compare the target amounts with its current holdings.
+The report finds the knee of each of the six scenarios' frontiers and prints the stock amounts that the knee point's solve published. `Amount` shows how much of the scenario's budget is assigned to each stock. `Weight` shows the stock's share of that budget. These are candidate portfolios, not recommendations. To produce trades for an account, link a scenario to that account and compare the target amounts with its current holdings.
 
 ## Data
 
-Bundled CSVs in `data/`: `users.csv` (6), `accounts.csv` (4), `holdings.csv` (15), `transactions.csv` (21), `returns.csv` (8 stocks across 5 sectors), and `covar.csv` (64 symmetric covariance entries). `model/source.py` loads these files; `portfolio_balancing.py` runs all four reasoning stages.
+Bundled CSVs in `data/`: `users.csv` (6), `accounts.csv` (4), `holdings.csv` (15), `transactions.csv` (21), `returns.csv` (8 stocks across 5 sectors), and `covar.csv` (64 symmetric covariance entries). `model/source.py` loads these files; `model/reasoning.py` states the rules, the graph, and the solves; `queries/portfolio_report.py` prints the report.

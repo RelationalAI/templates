@@ -7,9 +7,9 @@ name = "rai-template-supplier-reliability"
 version = "0.0.0"
 description = "RelationalAI template: supplier_reliability (PyRel v1)"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.10,<3.15"
 dependencies = [
-  "relationalai==2.1.1",
+  "relationalai==2.3.0",
   "pandas",
 ]
 

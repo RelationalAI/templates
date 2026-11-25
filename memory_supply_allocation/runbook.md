@@ -31,7 +31,7 @@ maker customers stay pinned at their elevated floors.
   ─────────────────────────────────────────────────────────────────
   STAGE 3  Prescriptive ──►  Demand.x_alloc                  (decisions)
                               EffectiveCapacity (iter-tagged)
-                              ScenarioOutcome (3 iterations)
+                              status · margin · allocations (3 iterations)
                               iter 0 OPTIMAL · $45.49B · months 1-36
                               iter 1 OPTIMAL · $40.52B · months 5-36
                               iter 2 OPTIMAL · $28.97B · months 13-36
@@ -40,7 +40,7 @@ maker customers stay pinned at their elevated floors.
   ─────────────────────────────────────────────────────────────────
   STAGE 4  Graph        ──►  9 paths (7 one-hop + 2 two-hop)
             (paths)           Customer.is_dependency_spof query
-                              Supplier.offline_impact_cells (6)
+                              SupplierOfflineImpact (6)
                               Input.shortage_impact_cells   (3)
                               Apex SPOF · Orion widest supplier impact
                               (72 cells, 60.0% drop) · Helium widest
@@ -84,7 +84,7 @@ Concepts created and bound to the bundled CSVs: Customer (11 rows), Product (5 S
 
 **Response**
 
-Four-reasoner chain on the shared ontology. **Rules** (`/rai-pyrel`) to derive per-customer max_declared_yield_pct + elevated_floor_pct + a single-point-of-failure flag from the Dependency junction. **Predictive** (`/rai-predictive-modeling` or pre-computed table) to provide a SupplierCapabilityForecast per (supplier, month). **Prescriptive** (`/rai-prescriptive-problem`) to solve revenue-max LP as a rolling horizon — baseline plus one re-solve per disruption reveal, with effective capacity recomputed against the current forecast and input-availability state each time. **Graph** (`/rai-graph-analysis` with the paths library) to enumerate variable-length customer dependency chains, flag the dependency SPOF, and run two cascade what-if branches (supplier-offline, input-shortage).
+Four-reasoner chain on the shared ontology. **Rules** (`/rai-pyrel`) to derive per-customer max_declared_yield_pct + elevated_floor_pct + a single-point-of-failure flag from the Dependency junction. **Predictive** (`/rai-predictive-modeling` or pre-computed table) to provide a SupplierCapabilityForecast per (supplier, month). **Prescriptive** (`/rai-prescriptive-problem`) to solve a margin-max LP as a rolling horizon — baseline plus one re-solve per disruption reveal, with effective capacity recomputed against the current forecast and input-availability state each time. **Graph** (`/rai-graph-analysis` with the paths library) to enumerate variable-length customer dependency chains, flag the dependency SPOF, and run two cascade what-if branches (supplier-offline, input-shortage).
 
 ### 4. Derive customer yield, elevated floor, and SPOF flag
 
@@ -103,24 +103,24 @@ Four-reasoner chain on the shared ontology. **Rules** (`/rai-pyrel`) to derive p
 **Prompt**
 
 ```
-/rai-predictive-modeling Train a node-regression GNN on Supplier predicting capability_pct per (supplier, month) over a 36-month horizon. Use 5 static features per supplier (equipment_age_months, geopolitical_exposure_score, region, process_node_nm, workforce_size_k) and 24 months of historical observations as training labels. The graph should connect each SupplierObservation to its Supplier, and suppliers in the same region to each other (so feature signal flows between similar fabs). Bind predictions into the SupplierCapabilityForecast concept so the allocation solve reads them directly. Report per-supplier mean and range so a planner can sanity-check the predictions.
+/rai-predictive-modeling Train a node-regression GNN on Supplier predicting capability_pct per (supplier, month) over a 36-month horizon. Use 5 static features per supplier (equipment_age_months, geopolitical_exposure_score, region, process_node_nm, workforce_size_k) and 24 months of historical observations as training labels. Identify each SupplierObservation by its own id, with supplier and period as properties (a deployed GNN reads node concepts identified by one field). The graph should connect each SupplierObservation to its Supplier, and suppliers in the same region to each other (so feature signal flows between similar fabs). Bind predictions into the SupplierCapabilityForecast concept so the allocation solve reads them directly. Report per-supplier mean and range so a planner can sanity-check the predictions.
 ```
 
 **Response**
 
-Predictions bind into `SupplierCapabilityForecast` (216 rows) with per-supplier mean capability_pct in the 0.92–0.93 range — the GNN learns from features, so predictions reflect each supplier's geopolitical exposure and equipment age. The CSV fallback (`USE_PRECOMPUTED_FORECAST=True`) skips training and loads `supplier_capability_forecast.csv` directly (per-supplier mean 0.95–0.97 in that path). Trained as a 30-epoch node-regression GNN over a temporal train/val split (periods −23..−4 train, −3..0 val) predicting the 216 future cells (periods 1..36); training completes in ~60-90 seconds.
+Predictions bind into `SupplierCapabilityForecast` (216 rows) with per-supplier mean capability_pct in the 0.92–0.93 range — the GNN learns from features, so predictions reflect each supplier's geopolitical exposure and equipment age. The CSV fallback (`USE_PRECOMPUTED_FORECAST=True`) skips training and loads `supplier_capability_forecast.csv` directly (per-supplier mean 0.92–0.93 in that path). Trained as a 30-epoch node-regression GNN over a temporal train/val split (periods −23..−4 train, −3..0 val) predicting the 216 future cells (periods 1..36); training completes in ~60-90 seconds.
 
 ### 6. Solve baseline allocation across the full horizon
 
 **Prompt**
 
 ```
-/rai-prescriptive-problem What is the revenue-maximizing 36-month monthly allocation of supply across customers, subject to: (1) capacity per (product, month) computed as the sum over suppliers of nominal_capacity_usd × capability_pct, scaled by the product across raw-material inputs of (1 − intensity × (1 − input_availability)); (2) per-cell upper bound of (1 − max_declared_yield_pct) × demand_usd; (3) per-cell lower bound of max(base_service_floor_pct, elevated_floor_pct) × demand_usd. Solve under baseline forecast with no disruption applied. Report total margin and per-customer service level (alloc / demand aggregated per customer over the horizon).
+/rai-prescriptive-problem What is the margin-maximizing 36-month monthly allocation of supply across customers, subject to: (1) capacity per (product, month) computed as the sum over suppliers of nominal_capacity_usd × capability_pct, scaled by the product across raw-material inputs of (1 − intensity × (1 − input_availability)); (2) per-cell upper bound of (1 − max_declared_yield_pct) × demand_usd; (3) per-cell lower bound of max(base_service_floor_pct, elevated_floor_pct) × demand_usd. Solve under baseline forecast with no disruption applied. Report total margin and per-customer service level (alloc / demand aggregated per customer over the horizon).
 ```
 
 **Response**
 
-OPTIMAL · margin $45,488,032,436 over months 1–36 · binding constraint is HBM3E capacity. Equipment-maker customers run at their elevated floors (Photonic 0.95 pinned; Vertex / Crystal / Apex 0.92 / 0.90 / 0.90); hyperscalers run in the 75–84% range under HBM3E scarcity. ScenarioOutcome with iter_id=0 persists the headline. (Per-customer service-level splits are LP-degenerate — see Reproducibility notes.)
+OPTIMAL · margin $45,488,032,436 over months 1–36 · binding constraint is HBM3E capacity. Equipment-maker customers run at their elevated floors (Photonic 0.95 pinned; Vertex / Crystal / Apex 0.92 / 0.90 / 0.90); hyperscalers run in the 75–84% range under HBM3E scarcity. The iteration's status, total margin, and allocations are published as relationships named for its Problem. (Per-customer service-level splits are LP-degenerate — see Reproducibility notes.)
 
 ### 7. Apply disruption reveals and re-solve rolling horizon
 
@@ -132,7 +132,7 @@ OPTIMAL · margin $45,488,032,436 over months 1–36 · binding constraint is HB
 
 **Response**
 
-Two additional OPTIMAL solves: iter_id=1 (months 5–36) margin $40,523,678,803; iter_id=2 (months 13–36) margin $28,972,506,958. Margin erosion across the rolling horizon $16,515,525,478. Plan-diff iter 0 → iter 1 (over months 5–36): hyperscalers absorb the Orion downtime; equipment makers stay at zero delta (pinned at elevated floor). Plan-diff iter 1 → iter 2 (over months 13–36): hyperscalers absorb the helium shortage; equipment makers still at zero delta.
+Two additional OPTIMAL solves: iter_id=1 (months 5–36) margin $40,523,678,803; iter_id=2 (months 13–36) margin $28,972,506,958. Horizon margin falls from $45,488,032,436 (months 1–36) to $28,972,506,958 (months 13–36), partly because the later horizons cover fewer months. Plan-diff iter 0 → iter 1 (over months 5–36): hyperscalers absorb the Orion downtime; equipment makers stay at zero delta (pinned at elevated floor). Plan-diff iter 1 → iter 2 (over months 13–36): hyperscalers absorb the helium shortage; equipment makers still at zero delta.
 
 ### 8. Enumerate dependency chains and confirm the SPOF
 
@@ -149,8 +149,6 @@ model.where(
 ).define(Customer.depends_on(c_down, c_up))
 ```
 
-Cast `PathTraversal.length` to int before pandas comparisons (the paths library returns Int128).
-
 **Prompt**
 
 ```
@@ -166,12 +164,12 @@ Cast `PathTraversal.length` to int before pandas comparisons (the paths library 
 **Prompt**
 
 ```
-/rai-graph-analysis For each supplier, recompute effective capacity with that supplier's capability_pct forced to 0 across all 36 months and count the (product, period) cells whose capacity drops more than 10% vs the baseline forecast. Do the same for each raw-material input by forcing its availability to 0.30 and counting cells whose drop exceeds 5%. Which supplier(s) and which input(s) cast the widest cascade footprint (ties allowed)? Persist the per-supplier and per-input cell counts back to the ontology so a downstream analyst can query the risk ranking without re-running the cascade.
+/rai-graph-analysis For each supplier, recompute effective capacity with that supplier's capability_pct forced to 0 across all 36 months and count the (product, period) cells whose capacity drops more than 10% vs the baseline forecast. Do the same for each raw-material input by forcing its availability to 0.30 and counting cells whose drop exceeds 5%. Which supplier(s) and which input(s) cast the widest cascade footprint (ties allowed)? Persist the per-supplier and per-input cell counts back to the ontology so a downstream analyst can query the risk ranking without re-running the cascade; keep the per-supplier results on a concept of their own, since the GNN reads Supplier.
 ```
 
 **Response**
 
-Widest supplier impact: Orion Foundry — 72 cells affected, max 60.0% capacity drop across HBM3E + HBM3 (Nimbus Foundry and Pelican Memory Works also at 72 cells but with different SKU mixes and 70.5% / 70.9% max drops). Widest input impact: Helium — 180 cells across all 5 SKUs (HBM3E avg −35%, HBM3 −28%, DDR5 −18%, LPDDR5X −10%, NAND −7%). `Supplier.offline_impact_cells`, `Supplier.offline_max_cap_drop_pct`, and `Input.shortage_impact_cells` are now ontology-resident — `model.where(Supplier.offline_impact_cells > 50).select(Supplier.name).to_df()` returns the high-impact suppliers.
+Widest supplier impact: Orion Foundry — 72 cells affected, max 60.0% capacity drop across HBM3E + HBM3 (Nimbus Foundry and Pelican Memory Works also at 72 cells but with different SKU mixes and 70.5% / 70.9% max drops). Widest input impact: Helium — 180 cells across all 5 SKUs (HBM3E avg −35%, HBM3 −28%, DDR5 −18%, LPDDR5X −10%, NAND −7%). `SupplierOfflineImpact.n_affected_cells`, `SupplierOfflineImpact.max_cap_drop_pct`, and `Input.shortage_impact_cells` are now ontology-resident — `model.where(SupplierOfflineImpact.n_affected_cells > 50, SupplierOfflineImpact.supplier_id == Supplier.id).select(Supplier.name).to_df()` returns the high-impact suppliers.
 
 ### 10. Interpret the plan
 
@@ -183,17 +181,17 @@ Widest supplier impact: Orion Foundry — 72 cells affected, max 60.0% capacity 
 
 **Response**
 
-Equipment-maker customers (Photonic Lithography, Vertex Test Systems, Crystal Wafer Tools, Apex Photonic Components) stay pinned at their elevated floors (88–95%) across all three iterations — protected by the dependency mechanic the hyperscalers have declared. Hyperscalers absorb the entire disruption surface: Hyperion takes a cumulative −$2.43B vs the baseline plan, Aether −$2.21B. The 36-month-baseline-to-24-month-tail margin headline is $47.09B → $30.19B (the $16.9B gap mixes disruption impact with the shorter remaining horizon). Structural risk surfaced by Stage 4: Apex is a single point of failure on the customer dependency graph; Orion Foundry is the single supplier whose outage casts the highest-magnitude shadow on HBM3E; Helium is the single input with the broadest cross-SKU exposure.
+Equipment-maker customers (Photonic Lithography, Vertex Test Systems, Crystal Wafer Tools, Apex Photonic Components) stay pinned at their elevated floors (88–95%) across all three iterations — protected by the dependency mechanic the hyperscalers have declared. Hyperscalers absorb the entire disruption surface: Hyperion takes a cumulative −$2.43B vs the baseline plan, Aether −$2.21B. The 36-month-baseline-to-24-month-tail margin headline ($45.49B → $28.97B in the run above) mixes disruption impact with the shorter remaining horizon. Structural risk surfaced by Stage 4: Apex is a single point of failure on the customer dependency graph; Orion Foundry is the single supplier whose outage casts the highest-magnitude shadow on HBM3E; Helium is the single input with the broadest cross-SKU exposure.
 
 ## Data
 
-Bundled CSVs in `data/`: 11 customers (3 hyperscalers, 1 consumer OEM, 1 automotive, 1 industrial, 4 foundry-equipment makers, 1 distributor — service floors 0.45 to 0.75), 5 chip SKUs (HBM3E / HBM3 / DDR5 / LPDDR5X / NAND with margin 0.18–0.55), 36 monthly periods spanning 2026-01 to 2028-12, 1,476 demand cells (customer × SKU × month, USD), 6 named foundries (Orion / Helios / Nimbus / Pelican / Stellar / Vega) with 5 static features each (equipment_age_months, geopolitical_exposure_score, region, process_node_nm, workforce_size_k), 144 historical supplier-capability observations (periods −23..0) used as GNN training labels, 360 supplier-product-month nominal capacities, 3 raw-material inputs (Helium / Neon / Palladium), 10 input-usage intensities, 216 future-period CSV-fallback forecasts (loaded when `USE_PRECOMPUTED_FORECAST=True`; capability_pct ∈ [0.93, 0.99] in that path), 7 dependency declarations (yield 0.03–0.10, elevated floor 0.88–0.95), 2 disruption-reveal rows (Orion at month 5, helium at month 13). The data generator `dev_temp/gen_memory_alloc_data_v2.py` regenerates the CSVs deterministically from a seed and prints a baseline-feasibility precheck. All four chain stages run end-to-end via `memory_supply_allocation.py`.
+Bundled CSVs in `data/`: 11 customers (3 hyperscalers, 1 consumer OEM, 1 automotive, 1 industrial, 4 foundry-equipment makers, 1 distributor — service floors 0.45 to 0.75), 5 chip SKUs (HBM3E / HBM3 / DDR5 / LPDDR5X / NAND with margin 0.18–0.55), 36 monthly periods spanning 2026-01 to 2028-12, 1,476 demand cells (customer × SKU × month, USD), 6 named foundries (Orion / Helios / Nimbus / Pelican / Stellar / Vega) with 5 static features each (equipment_age_months, geopolitical_exposure_score, region, process_node_nm, workforce_size_k), 144 historical supplier-capability observations (periods −23..0) used as GNN training labels, 360 supplier-product-month nominal capacities, 3 raw-material inputs (Helium / Neon / Palladium), 10 input-usage intensities, 216 future-period CSV-fallback forecasts (loaded when `USE_PRECOMPUTED_FORECAST=True`; capability_pct ∈ [0.9196, 0.9249] in that path), 7 dependency declarations (yield 0.03–0.10, elevated floor 0.88–0.95), 2 disruption-reveal rows (Orion at month 5, helium at month 13). All four chain stages run end-to-end in the deployed model in `model/` (see the README Quickstart).
 
 ## Reproducibility notes
 
 This runbook was paste-tested against fresh `/rai-*` skill sessions on 2026-05-29; results below are from that test and inform the wording above:
 
-- **Margin totals are invariant across runs and across Stage-2 paths.** HiGHS produces the same LP objective bit-exactly. The bundled `supplier_capability_forecast.csv` is a snapshot of the GNN's output, so `USE_PRECOMPUTED_FORECAST=True` and `USE_PRECOMPUTED_FORECAST=False` produce identical $45,488,032,436 / $40,523,678,803 / $28,972,506,958 margins on the three iterations, plus identical Stage 9 cascade rankings (Orion 72 cells / 60.0% drop, Helium 180 cells). The CSV is refreshed via `dev_temp/snapshot_gnn_forecast.py` whenever supplier features or historical observations change.
+- **Margin totals follow the forecast.** HiGHS returns the same LP objective for the same forecast. The bundled `supplier_capability_forecast.csv` is a snapshot of one GNN run's output, so `USE_PRECOMPUTED_FORECAST=True` reproduces one fixed set of margins ($45,488,032,436 / $40,523,678,803 / $28,972,506,958 on the three iterations in this test); a retrained GNN gives a slightly different forecast and different margins. The Stage 9 cascade rankings (Orion 72 cells / 60.0% drop, Helium 180 cells) were the same on both paths.
 - **Per-customer service-level splits are LP-degenerate** — multiple optimal allocations with identical total margin exist on the feasible face. Step 6's documented hyperscaler service levels are representative ranges; the exact per-customer split may drift a few percentage points run-to-run while structural facts (equipment makers pinned at elevated floor, hyperscalers below 100%) hold.
 - **Input disruption semantics**: the script applies input disruptions (helium shortage) persistently from the reveal period through end-of-horizon, not just within the `start_period`–`end_period` window in `disruption_reveal.csv` (suppliers DO respect the window). The runbook's iter 2 margin reflects this. A future revision could symmetrize the semantics.
 - **Step 8 (paths library)** is the only step that needed an explicit Setup note to reproduce, because the `model.path(...).all().paths()` API is new and not yet documented in `rai-graph-analysis`. Both the relationship signature (role short_names) AND the entity-binding population pattern (via two `Customer.ref()`, not via FK-Property navigation) are required — paste-testing surfaced both gaps. The underlying API is documented at `relationalai/semantics/std/path/README.md`; full integration into the graph-analysis skill is a planned follow-up that will obviate the Setup note.

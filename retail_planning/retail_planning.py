@@ -109,7 +109,7 @@ model.define(Transaction.new(transactions_table.to_schema()))
 
 # Shared knowledge graph -- all three GNN tasks use the same Customer-Transaction-Article
 # graph structure. Only the PropertyTransformer and task relationships differ.
-graph = Graph(model, directed=True, weighted=False)
+graph = Graph(model, name="transaction_graph", directed=True, weighted=False)
 Edge = graph.Edge
 model.define(Edge.new(src=Transaction, dst=Customer)).where(
     Transaction.customer_id == Customer.customer_id)

@@ -40,9 +40,10 @@ This template shows how to express that rulebook as declarative logic on a four-
 ## What's included
 
 - **Model**: the four-level `InsuredEntity` / `Policy` / `Location` / `Coverage` ontology, eight lower-level eligibility rules, two entity-level rollup rules (decline factors, marginal factors), and four mutually exclusive risk-tier subtype concepts — all as declarative derived Relationships.
-- **Runner**: `commercial_underwriting.py` — a single Python script that loads the CSVs, applies the rules, and prints results end to end.
+- **Model**: the `model/` package (`schema.py` declares the concepts, `source.py` loads the sample data, `reasoning.py` states the rules and risk tiers) that `rai models deploy --path model` deploys to your Snowflake account.
+- **Query**: `queries/underwriting_report.py` — prints the eligibility flags, flag matrix, tier classification, and premium by tier from the deployed model.
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
-- **Sample data**: four CSVs under `data/` — 8 insured businesses across 5 industries (`insured_entities.csv`), 8 commercial property policies one per insured (`policies.csv`), 11 scheduled locations (`locations.csv`), and 33 coverage lines at every location (`coverages.csv`).
+- **Sample data**: four CSVs under `data/` — 8 insured businesses across 6 industries (`insured_entities.csv`), 8 commercial property policies one per insured (`policies.csv`), 11 scheduled locations (`locations.csv`), and 33 coverage lines, three per location (`coverages.csv`).
 - **Outputs**: the printed eligibility flag matrix, the final per-entity tier classification, and the premium-by-tier business rollup.
 
 ## Prerequisites
@@ -50,53 +51,84 @@ This template shows how to express that rulebook as declarative logic on a four-
 ### Access
 
 - A Snowflake account that has the RAI Native App installed.
-- A Snowflake user with permissions to access the RAI Native App.
+- A role that can deploy models, set up once by an account administrator: follow [Set up model deployment](https://private.relational.ai/early-access/model-deploy-setup) (**Try it out**, or **Governed setup** for a shared account). This template has no prescriptive solve, so it needs no PAT setup.
+- A Snowflake user that holds that role.
 
 ### Tools
 
-- Python >= 3.10
-- RelationalAI Python SDK (`relationalai`) == 2.1.1
+- Python 3.10 through 3.14 (the range relationalai 2.3.0 supports)
+- RelationalAI Python SDK (`relationalai`) == 2.3.0
 
 ## Quickstart
 
-1. Download the ZIP file for this template and extract it:
+Before you start, install Python 3.10 or later and get a Snowflake role that can deploy models, as described under Access. This template has no prescriptive solve, so it needs no setup beyond that role.
+
+Run these steps from a terminal:
+
+1. **Download the template**
+
+   [Download the ZIP](https://docs.relational.ai/templates/zips/v1/commercial_underwriting.zip). Unzip it and enter the template directory:
 
    ```bash
-   curl -O https://docs.relational.ai/templates/zips/v1/commercial_underwriting.zip
    unzip commercial_underwriting.zip
    cd commercial_underwriting
    ```
 
-   > [!TIP]
-   > You can also download the template ZIP using the "Download ZIP" button at the top of this page.
+2. **Create a Python environment**
 
-2. Create and activate a virtual environment:
+   Create and activate a virtual environment, then update pip:
 
    ```bash
    python -m venv .venv
    source .venv/bin/activate
-   python -m pip install -U pip
+   python -m pip install --upgrade pip
    ```
 
-3. Install dependencies:
+3. **Install the template**
+
+   Install the template's dependencies, including the `rai` CLI, in the active environment:
 
    ```bash
    python -m pip install .
    ```
 
-4. Configure Snowflake connection and RAI profile:
+4. **Configure your project**
 
-   ```bash
-   rai init
+   Use the configuration builder in [Install and run PyRel](https://docs.relational.ai/get-started/install-and-run-pyrel/#configure-your-project) to create `raiconfig.yaml` in the template directory, with the model role as the connection `role`.
+
+   Then add a `deployment` section. Give each template its own schema pair so two deployed templates never share one; the deploy creates both schemas if they don't exist:
+
+   ```yaml
+   deployment:
+     role: <MODEL_ROLE>
+     public_schema: <DB>.COMMERCIAL_UNDERWRITING              # published views and tables
+     identity:
+       internal_schema: <DB>.COMMERCIAL_UNDERWRITING_META     # refresh procedures and metadata
+     schedules:
+       standard:
+         interval_s: 0           # refresh only on deploy or on demand
+     schedule: standard
    ```
 
-5. Run the template:
+5. **Deploy the model**
+
+   Deploy the model in `model/` to the schemas in `raiconfig.yaml`:
 
    ```bash
-   python commercial_underwriting.py
+   rai models deploy --path model
    ```
 
-6. Expected output (truncated):
+   The deploy waits for the model's first refresh, which evaluates the eligibility rules and the risk-tier classification. Without the `deployment` section, it stops with an error naming the missing setting.
+
+   Deploying again without changing the model applies no updates. A change to the model redeploys it.
+
+6. **Query the results**
+
+   Print the report from the deployed model:
+
+   ```bash
+   python -m queries.underwriting_report
+   ```
 
    ```text
    Stage 1: Location- and coverage-level eligibility flags
@@ -138,7 +170,20 @@ This template shows how to express that rulebook as declarative logic on a four-
        STANDARD       1   18000.0  18000.000000
    ```
 
-   Each entity falls into exactly one tier — the four tier concepts partition the `InsuredEntity` set. The premium-by-tier rollup is the underwriting business view: about $150K of bound premium is associated with submissions that today's rules would decline; about $236K is non-standard and could be repriced.
+   The output above is an excerpt: it leaves out the stage banners, the Stage 2 flag matrix, and the tier table's `id` column.
+
+   Each entity falls into exactly one tier, because the four tier concepts partition the insured entities, and the report prints a warning if any entity lands in no tier or in two. The premium-by-tier rollup is the underwriting business view. Each observation in it is one insured, whose premium is the sum of its policies' premiums (zero for an insured without a policy), so `count` is insureds per tier and `mean` is premium per insured: about $150K of bound premium is associated with submissions that today's rules would decline; about $236K is non-standard and could be repriced.
+
+7. **Tear down the deployment**
+
+   Preview what the teardown removes, then remove it:
+
+   ```bash
+   rai models teardown
+   rai models teardown --force
+   ```
+
+   The teardown removes the deployed objects and keeps the two schemas.
 
 ## Template structure
 
@@ -146,7 +191,13 @@ This template shows how to express that rulebook as declarative logic on a four-
 .
 ├── README.md                       # this file
 ├── pyproject.toml                  # dependencies
-├── commercial_underwriting.py      # main script (end-to-end)
+├── model/
+│   ├── __init__.py                 # exports of the deployed model
+│   ├── schema.py                   # hierarchy of concepts and properties
+│   ├── source.py                   # loads the CSVs
+│   └── reasoning.py                # thresholds, rules, and risk tiers
+├── queries/
+│   └── underwriting_report.py      # report printed from the deployed model
 └── data/
     ├── insured_entities.csv        # top of the hierarchy
     ├── policies.csv                # one policy per insured
@@ -154,11 +205,11 @@ This template shows how to express that rulebook as declarative logic on a four-
     └── coverages.csv               # coverage lines at each location
 ```
 
-**Start here:** run `python commercial_underwriting.py` for the full run end to end, or follow `runbook.md` to reproduce it step by step with the RAI skills.
+**Start here:** deploy with `rai models deploy --path model` and run `python -m queries.underwriting_report` for the full run end to end, or follow `runbook.md` to reproduce it step by step with the RAI skills.
 
 ## Sample data
 
-The eight insureds are designed so each tier is represented and every rule fires at least once:
+The eight insureds are designed so each tier is represented and every rule except the two fire-protection flags (no bundled location is above class 6) fires at least once:
 
 | Entity | Industry | Years | Why this tier |
 |---|---|---|---|
@@ -177,7 +228,7 @@ The eight insureds are designed so each tier is represented and every rule fires
 - **Primary identifiers**: each level has an integer `id`; the hierarchy is threaded by relationships (`Policy.insured_entity`, `Location.policy`, `Coverage.location`) rather than by shared keys.
 - **Important invariants**: every policy belongs to exactly one insured entity, every location to one policy, every coverage to one location; the ITV check applies to `BUILDING` coverages only; the four risk tiers partition the `InsuredEntity` set (each entity lands in exactly one).
 
-For the full concept and property definitions, see `commercial_underwriting.py`; `runbook.md` builds them step by step with the RAI skills.
+For the full concept and property definitions, see `model/schema.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
@@ -189,17 +240,17 @@ Those lower-level flags then roll up. Entity-level rollup rules traverse the `In
 InsuredEntity -> Policy -> Location -> Coverage
 ```
 
-See `commercial_underwriting.py` for the implementation and `runbook.md` to reproduce it step by step with the RAI skills.
+See `model/reasoning.py` for the implementation, `queries/underwriting_report.py` for the report, and `runbook.md` to reproduce it step by step with the RAI skills.
 
 ## Customize this template
 
 ### Use your own data
 
-Replace the four CSVs with your own underwriting submissions. Required columns are listed in the *Model overview* section. The script's `Concept.new(...)` and `Relationship` definitions match the CSV column names exactly — keep the same headers or update the script's `model.data(...)` calls to match.
+Replace the four CSVs with your own underwriting submissions, keeping the headers of the bundled files in `data/`. `model/source.py` loads each column into the property of the same name, except the foreign keys `insured_entity_id`, `policy_id`, and `location_id`, which link each policy, location, and coverage to its parent row. To use other headers, update the column references in `model/source.py` to match.
 
 ### Tune parameters
 
-All thresholds are at the top of the script under `# Configure inputs`:
+All thresholds are at the top of `model/reasoning.py` under `# Configure inputs`:
 
 | Parameter | Default | Effect |
 |---|---|---|
@@ -223,8 +274,8 @@ All thresholds are at the top of the script under `# Configure inputs`:
 ### Scale up / productionize
 
 - **Point at Snowflake tables.** Swap the CSV `model.data(...)` calls for `model.Table(...)` references to your submission tables; the ontology, rules, and tier classification are unchanged. Size the RAI engine to the submission volume — rules-based classification is lightweight, so a small engine handles large books.
-- **Schedule triage runs.** Wire the script into your submission-intake pipeline (nightly batch or on-submission trigger) so every new account is scored as it arrives, and persist the per-entity tier and flag matrix for downstream underwriting review.
-- **Pin dependencies for reproducibility.** Keep the `relationalai` version pinned in `pyproject.toml` so rule outcomes stay stable across runs, and version-control your threshold constants (top of the script) as auditable underwriting parameters.
+- **Schedule triage runs.** With table-backed sources, refresh the deployed model so every new account is scored as it arrives: set `interval_s` on the `standard` schedule in `raiconfig.yaml` for a periodic refresh, or call `<DB>.COMMERCIAL_UNDERWRITING_META._INTERNAL_REFRESH_MODEL('standard', NULL)` from your submission-intake pipeline. Redeploy only when the rules or declarations change. Persist the per-entity tier and flag matrix for downstream underwriting review.
+- **Pin dependencies for reproducibility.** Keep the `relationalai` version pinned in `pyproject.toml` so rule outcomes stay stable across runs, and version-control your threshold constants (top of `model/reasoning.py`) as auditable underwriting parameters.
 
 ## Troubleshooting
 
@@ -237,19 +288,19 @@ All thresholds are at the top of the script under `# Configure inputs`:
 <details>
   <summary>Why is <code>GoodOps Inc</code> Standard rather than Preferred?</summary>
 
-  GoodOps Inc has only 8 years in business, which is below the `PREFERRED_MIN_YEARS=15` floor. It also has FP class 4 at its single location, which exceeds the `PREFERRED_MAX_FP_CLASS=3` cap. Either factor alone disqualifies it from Preferred. Lowering both thresholds (e.g., `PREFERRED_MIN_YEARS=5`, `PREFERRED_MAX_FP_CLASS=4`) would promote it.
+  GoodOps Inc has only 8 years in business, which is below the `PREFERRED_MIN_YEARS=15` floor. It also has FP class 4 at its single location, which exceeds the `PREFERRED_MAX_FP_CLASS=3` cap. Either factor alone disqualifies it from Preferred. Lowering the years floor and raising the fire-class cap (e.g., `PREFERRED_MIN_YEARS=5`, `PREFERRED_MAX_FP_CLASS=4`) would promote it.
 </details>
 
 <details>
   <summary>An entity isn't classified into any tier.</summary>
 
-  The script verifies mutual exclusivity and prints a warning if any entity is unclassified. The most likely cause is a rule condition that doesn't match the data — verify with `model.select(InsuredEntity.id).where(InsuredEntity.has_decline_factor()).to_df()` and the analogous `has_marginal_factor` query that those flags fire as expected.
+  The report verifies mutual exclusivity and prints a warning if any entity is unclassified. The most likely cause is a rule condition that doesn't match the data — verify with `model.select(InsuredEntity.id).where(InsuredEntity.has_decline_factor()).to_df()` and the analogous `has_marginal_factor` query that those flags fire as expected.
 </details>
 
 <details>
   <summary>Two tiers fire for the same entity.</summary>
 
-  This indicates the tier conditions are not mutually exclusive. The script prints a warning if it finds any overlap. Check the `model.not_()` clauses on the lower-priority tier rules (NonStandard / Preferred / Standard) — each must explicitly exclude the higher-priority tier's flag.
+  This indicates the tier conditions are not mutually exclusive. The report prints a warning if it finds any overlap. Check the `model.not_()` clauses on the lower-priority tier rules (NonStandard / Preferred / Standard) — each must explicitly exclude the higher-priority tier's flag.
 </details>
 
 <details>
@@ -272,7 +323,7 @@ All thresholds are at the top of the script under `# Configure inputs`:
 
 ### CLI / SDK guides
 
-- [`rai init` and `raiconfig.yaml`](https://docs.relational.ai/) — connecting the template to your RelationalAI account.
+- [Install and run PyRel](https://docs.relational.ai/get-started/install-and-run-pyrel/) — installing the SDK and configuring `raiconfig.yaml` to connect the template to your RelationalAI account.
 
 ## Support
 

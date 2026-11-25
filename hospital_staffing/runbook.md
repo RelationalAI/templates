@@ -45,8 +45,8 @@ Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` 
 
 **Prompt:** /rai-prescriptive-results Where's the knee of the cost-vs-service frontier — the best-value operating point — and how fast does overtime cost rise as we push toward full service?
 
-**Response:** The frontier has a clear knee: overtime stays flat (the cheapest schedules) across a range of service levels, then rises steeply as you push toward serving every patient — the last increments of service are the most expensive, so the cost-per-patient accelerates as the frontier turns convex. The recommended operating point is the knee, capturing most of the achievable service before overtime cost takes off; closing the final gap to zero unmet is disproportionately expensive.
+**Response:** The frontier has a clear knee: overtime stays flat (the cheapest schedules) across a range of service levels, then rises steeply as you push toward serving every patient — the last increments of service are the most expensive, so the cost-per-patient accelerates as the frontier turns convex. The knee is a natural candidate operating point, capturing most of the achievable service before overtime cost takes off. The best-service endpoint minimizes unmet demand only, so its overtime cost is that of the schedule the solver returned, not the least overtime that full service needs.
 
 ## Data
 
-Bundled CSVs in `data/`: 6 nurses, 3 shifts, 18 availability pairs. The epsilon sweep (5 interior points across the unmet range) is built into the script. Full model in `hospital_staffing.py`.
+Bundled CSVs in `data/`: 6 nurses, 3 shifts, 18 availability pairs. The epsilon sweep (5 interior points across the unmet range) is built into the model. Full model in `model/`.

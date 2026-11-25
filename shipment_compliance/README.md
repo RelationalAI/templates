@@ -17,7 +17,7 @@ tags:
 
 This template uses **rules-based reasoning** to define derived business rules for shipment compliance, sourcing risk, and demand escalation.
 
-Supply chain operations generate large volumes of shipment, procurement, and demand data. Business rules help surface exceptions and risks automatically: which shipments are late, which inputs depend on a single supplier, which demands need urgent attention.
+Supply chain operations generate large volumes of shipment, procurement, and demand data. Business rules help surface exceptions and risks automatically: which shipments are late, which inputs only one operation produces, which demands need urgent attention.
 
 This template uses RelationalAI's logic reasoner to define four derived rules as boolean flags on existing concepts. No optimization solver is involved -- rules are pure declarative logic evaluated over the data model.
 
@@ -42,7 +42,8 @@ The four rules demonstrate different rule patterns:
 
 ## What's included
 
-- `shipment_compliance.py` -- Main script defining the data model and four rules
+- **Model**: the `model/` package (`schema.py` declares the concepts, `source.py` loads the sample data, `reasoning.py` states the four rules) that `rai models deploy --path model` deploys to your Snowflake account.
+- **Query**: `queries/compliance_report.py` -- prints the entities each rule flags from the deployed model.
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - `data/suppliers.csv` -- Supplier names and reliability scores
 - `data/skus.csv` -- Product and component catalog
@@ -56,66 +57,110 @@ The four rules demonstrate different rule patterns:
 
 ### Access
 - A Snowflake account that has the RAI Native App installed.
-- A Snowflake user with permissions to access the RAI Native App.
+- A role that can deploy models, set up once by an account administrator: follow [Set up model deployment](https://private.relational.ai/early-access/model-deploy-setup) (**Try it out**, or **Governed setup** for a shared account). This template has no prescriptive solve, so it needs no PAT setup.
+- A Snowflake user that holds that role.
 
 ### Tools
-- Python >= 3.10
-- RelationalAI Python SDK (`relationalai == 2.1.1`)
+- Python 3.10 through 3.14 (the range relationalai 2.3.0 supports)
+- RelationalAI Python SDK (`relationalai == 2.3.0`)
 
 ## Quickstart
 
-1. Download ZIP:
+Before you start, install Python 3.10 or later and get a Snowflake role that can deploy models, as described under Access. This template has no prescriptive solve, so it needs no setup beyond that role.
+
+Run these steps from a terminal:
+
+1. **Download the template**
+
+   [Download the ZIP](https://docs.relational.ai/templates/zips/v1/shipment_compliance.zip). Unzip it and enter the template directory:
+
    ```bash
-   curl -O https://docs.relational.ai/templates/zips/v1/shipment_compliance.zip
    unzip shipment_compliance.zip
    cd shipment_compliance
    ```
-   > [!TIP]
-   > You can also download the template ZIP using the "Download ZIP" button at the top of this page.
 
-2. Create venv:
+2. **Create a Python environment**
+
+   Create and activate a virtual environment, then update pip:
+
    ```bash
    python -m venv .venv
    source .venv/bin/activate
    python -m pip install --upgrade pip
    ```
 
-3. Install:
+3. **Install the template**
+
+   Install the template's dependencies, including the `rai` CLI, in the active environment:
+
    ```bash
    python -m pip install .
    ```
 
-4. Configure:
-   ```bash
-   rai init
+4. **Configure your project**
+
+   Use the configuration builder in [Install and run PyRel](https://docs.relational.ai/get-started/install-and-run-pyrel/#configure-your-project) to create `raiconfig.yaml` in the template directory, with the model role as the connection `role`.
+
+   Then add a `deployment` section. Give each template its own schema pair so two deployed templates never share one; the deploy creates both schemas if they don't exist:
+
+   ```yaml
+   deployment:
+     role: <MODEL_ROLE>
+     public_schema: <DB>.SHIPMENT_COMPLIANCE              # published views and tables
+     identity:
+       internal_schema: <DB>.SHIPMENT_COMPLIANCE_META     # refresh procedures and metadata
+     schedules:
+       standard:
+         interval_s: 0           # refresh only on deploy or on demand
+     schedule: standard
    ```
 
-5. Run:
+5. **Deploy the model**
+
+   Deploy the model in `model/` to the schemas in `raiconfig.yaml`:
+
    ```bash
-   python shipment_compliance.py
+   rai models deploy --path model
    ```
 
-6. Expected output (a few lines confirm a successful run):
+   The deploy waits for the model's first refresh, which evaluates the four rules. Without the `deployment` section, it stops with an error naming the missing setting.
 
-   The script prints the entities each rule flags. On the bundled data the four
-   rules catch **2 late shipments**, **6 at-risk shipments**, **2 single-sourced
-   BOM inputs**, and **4 escalated demands**:
+   Deploying again without changing the model applies no updates. A change to the model redeploys it.
+
+6. **Query the results**
+
+   Print the report from the deployed model:
+
+   ```bash
+   python -m queries.compliance_report
+   ```
 
    ```text
    === Rule 1: Late Shipments (delay_days > 0) ===
-   (2 rows)
+   ...  2 rows: shipment_id, sku, supplier, delay_days
 
    === Rule 2: At-Risk Shipments (undelivered + unreliable supplier) ===
-   (6 rows)
+   ...  6 rows: shipment_id, sku, supplier, status, reliability
 
    === Rule 3: Single-Sourced BOM Inputs (only 1 operation route) ===
-   (2 rows)
+   ...  2 rows: bom_id, input_sku, qty
 
    === Rule 4: Escalated Demands (HIGH or URGENT priority) ===
-   (4 rows)
+   ...  4 rows: demand_id, sku, quantity, priority
    ```
 
-   See `runbook.md` for the full record-by-record walkthrough of each flag.
+   The block above abbreviates each rule's table to its row count and columns; the report prints the flagged rows themselves, as a table under each rule's heading. On the bundled data the four rules catch 2 late shipments, 6 at-risk shipments, 2 single-sourced BOM inputs, and 4 escalated demands. See `runbook.md` for how to interpret each rule's flags.
+
+7. **Tear down the deployment**
+
+   Preview what the teardown removes, then remove it:
+
+   ```bash
+   rai models teardown
+   rai models teardown --force
+   ```
+
+   The teardown removes the deployed objects and keeps the two schemas.
 
 ## Template structure
 
@@ -123,7 +168,13 @@ The four rules demonstrate different rule patterns:
 .
 ├── README.md               # this file
 ├── pyproject.toml          # dependencies
-├── shipment_compliance.py  # main script: data model + four derived rules
+├── model/
+│   ├── __init__.py         # exports of the deployed model
+│   ├── schema.py           # concepts and the status and priority vocabularies
+│   ├── source.py           # loads the sample CSVs
+│   └── reasoning.py        # four derived rules
+├── queries/
+│   └── compliance_report.py   # report printed from the deployed model
 ├── runbook.md              # analyst-facing paste-testable walkthrough
 └── data/
     ├── suppliers.csv          # 5 suppliers (id, name, reliability_score)
@@ -134,7 +185,7 @@ The four rules demonstrate different rule patterns:
     └── demands.csv            # 8 demand orders (SKU, quantity, priority)
 ```
 
-**Start here**: run `python shipment_compliance.py` for the full run end to end — authoring all four rules and printing the flagged records — or follow `runbook.md` to reproduce it step by step with the RAI skills.
+**Start here**: deploy with `rai models deploy --path model` and run `python -m queries.compliance_report` for the full run end to end — the four rules and the flagged records — or follow `runbook.md` to reproduce it step by step with the RAI skills.
 
 ## Sample data
 
@@ -157,7 +208,7 @@ Six concepts model a small supply chain, linked by SKU and supplier references. 
 - **Primary identifiers**: an integer `id` on every concept.
 - **Important invariants**: `Supplier.reliability_score` is a fraction in `[0, 1]`; `Shipment.status` is a `ShipmentStatus` member (`PENDING` / `IN_TRANSIT` / `DELIVERED`); `Demand.priority` is a `Priority` member (`LOW` / `STANDARD` / `HIGH` / `URGENT`); `delay_days`, `quantity`, and `input_quantity` are non-negative. Each rule adds a derived boolean flag back onto its concept: `Shipment.is_late` (Rule 1), `Shipment.is_at_risk` (Rule 2), `BillOfMaterials.is_single_sourced` (Rule 3), and `Demand.is_escalated` (Rule 4).
 
-For the full concept and property definitions, see `shipment_compliance.py`; `runbook.md` builds them step by step with the RAI skills.
+For the full concept and property definitions, see `model/schema.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
@@ -172,7 +223,7 @@ CSV inputs → load Supplier / SKU / Shipment / Operation / BOM / Demand
 2. **Define four rule patterns.** Each rule uses the `model.where(...).define(...)` pattern to set a boolean flag, and together they show four shapes: a simple threshold (Rule 1: `delay_days > 0`), a cross-entity join (Rule 2: undelivered shipments from suppliers scoring below `0.8`), an aggregation (Rule 3: BOM inputs produced by exactly one operation route), and OR semantics via multiple `define()` calls on the same relationship (Rule 4: `HIGH` or `URGENT` priority).
 3. **Query the flags.** Each rule is queried with `model.select(...).where(Concept.rule_flag())` to display the matching entities.
 
-See `shipment_compliance.py` for the implementation and `runbook.md` for the skill-driven reproduction.
+See `model/reasoning.py` for the implementation, `queries/compliance_report.py` for the report, and `runbook.md` for the skill-driven reproduction.
 
 ## Customize this template
 
@@ -183,7 +234,7 @@ See `shipment_compliance.py` for the implementation and `runbook.md` for the ski
 
 ### Tune parameters
 
-- **At-risk threshold** — Rule 2 flags suppliers scoring below `0.8`; adjust the `reliability_score < 0.8` comparison to match your risk tolerance.
+- **At-risk threshold** — Rule 2 flags undelivered shipments from suppliers scoring below `0.8`; adjust the `reliability_score < 0.8` comparison to match your risk tolerance.
 - **Escalation tiers** — Rule 4 fires on `HIGH` or `URGENT`; add or remove `define()` calls to change which priorities escalate.
 
 ### Extend the model
@@ -194,7 +245,7 @@ See `shipment_compliance.py` for the implementation and `runbook.md` for the ski
 
 ### Scale up / productionize
 
-- For Snowflake-backed runs, swap the `read_csv(...)` calls for `model.data(snowflake_table)` and load the concepts from your tables.
+- For Snowflake-backed runs, replace the `read_csv(...)` loads in `model/source.py` with `model.Table("<db>.<schema>.<table>")` sources, defining the same concepts and properties from each table's columns.
 - Rules are pure declarative logic and re-evaluate as the underlying data changes, so they slot naturally into a change-data-capture pipeline. Pin the `relationalai` version for reproducibility.
 
 ## Troubleshooting
@@ -208,7 +259,7 @@ Make sure you activated the virtual environment and ran `python -m pip install .
 <details>
 <summary>Connection or authentication errors</summary>
 
-Run `rai init` to configure your Snowflake connection. Verify that the RAI Native App is installed and your user has the required permissions.
+Re-create `raiconfig.yaml` with the configuration builder (Quickstart step 4) and verify the connection settings. Verify that the RAI Native App is installed and your user has the required permissions.
 </details>
 
 <details>

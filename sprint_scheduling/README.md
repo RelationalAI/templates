@@ -17,7 +17,7 @@ tags:
 
 Software development teams need to decide which developer works on which issue in which sprint. Manually balancing priorities, story points, skill requirements, and capacity across multiple sprints is error-prone and time-consuming, especially as the backlog grows. An optimization model can produce an assignment plan that minimizes delay on high-priority work while keeping every developer within their capacity.
 
-This template assigns 30 backlog issues to 8 developers across 4 two-week sprints. It demonstrates how to filter issues by epoch timestamp to scope the backlog to a planning horizon, map epoch-based creation dates to categorical sprint periods, and build a binary assignment optimization that respects developer capacity and team skill constraints.
+This template assigns backlog issues to 8 developers across 4 two-week sprints: 30 input issues, 25 of them inside the planning horizon. It demonstrates how to filter issues by epoch timestamp to scope the backlog to a planning horizon, map epoch-based creation dates to categorical sprint periods, and build a binary assignment optimization that respects developer capacity and team skill constraints.
 
 **Prescriptive** reasoning is well suited here because the problem has combinatorial structure -- each issue must go to exactly one developer in one sprint, developers have capacity limits, and only developers with matching team skills can take on an issue. The solver explores the full space of valid assignments to find the schedule that minimizes weighted completion time, prioritizing high-urgency issues into earlier sprints.
 
@@ -33,95 +33,170 @@ This template assigns 30 backlog issues to 8 developers across 4 two-week sprint
 - A sprint assignment plan that places each in-scope issue with exactly one developer in one sprint, minimizing weighted completion time within capacity and skill limits, produced by **prescriptive reasoning** (a mixed-integer program).
 - An `Assignment` decision concept whose binary variables span only the valid (developer, issue, sprint) combinations, pruned by an epoch-based temporal filter and skill-matching `.where()` clauses.
 - A scenario comparison across capacity-multiplier levels (0.35, 0.5, 1.0), showing how reduced team capacity moves the objective and tips the problem into infeasibility.
-- Per-scenario stdout: solver status, objective value, planning-horizon summary, and the assignment table.
+- Per-scenario stdout: solve status, objective value, planning-horizon summary, and the assignment table.
 
 Built using **prescriptive reasoning** (mixed-integer programming solved with HiGHS), with epoch-based temporal filtering to scope the backlog.
 
 ## What's included
 
-- **Model**: developers, sprints, issues, and skill mappings as concepts, plus a cross-product `Assignment` decision concept with binary assignment variables, capacity and once-per-issue constraints, and a weighted-completion-time objective.
-- **Runner**: `sprint_scheduling.py` -- a single Python script that loads data, builds the model, and sweeps the capacity scenarios end to end.
+- **Model**: developers, sprints, issues, and skill mappings as concepts, plus a cross-product `Assignment` decision concept with binary assignment variables, capacity and once-per-issue constraints, and a weighted-completion-time objective, in the `model/` package (`schema.py` declares the concepts, `source.py` loads the sample data and applies the planning horizon, `reasoning.py` states one decision problem per capacity scenario), which `rai models deploy --path model` deploys to your Snowflake account, where each refresh runs the solves.
+- **Query**: `queries/sprint_plan.py`, which prints the report from the deployed model.
 - **Runbook**: `runbook.md` -- a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - **Sample data**: four CSVs under `data/` describing 8 developers, 4 sprints, 30 backlog issues, and developer-team skills. See *Sample data* below.
-- **Outputs**: per-scenario solver status, objective, planning-horizon summary, and assignment table printed to stdout, plus a scenario-analysis summary.
+- **Outputs**: per-scenario solve result (status and objective), planning-horizon summary, and assignment table printed to stdout, plus a scenario-analysis summary.
 
 ## Prerequisites
 
 ### Access
 - A Snowflake account that has the RAI Native App installed.
-- A Snowflake user with permissions to access the RAI Native App.
+- The one-time model deployment setup on that account, done by an account administrator: follow [Set up model deployment](https://private.relational.ai/early-access/model-deploy-setup) through **Governed setup**, **PAT authentication**, and steps 1-2 of **Additional setup for the prescriptive reasoner** (the Quickstart covers this template's own schema). It gives you a model role, a programmatic access token (PAT) stored as a secret, an external access integration, a PAT user, and a warehouse.
+- A Snowflake user that holds the model role.
 
 ### Tools
-- Python >= 3.10
-- RelationalAI Python SDK (`relationalai`) == 2.1.1
+- Python 3.10 through 3.14 (the range relationalai 2.3.0 supports)
 
 ## Quickstart
 
-1. Download ZIP:
+Before you start, install Python 3.10 or later and complete the access prerequisites above: a Snowflake account with the RAI Native App, the one-time model deployment setup, and a Snowflake user that holds the model role.
+
+Before the first deploy, create this template's internal schema as the model role, and have an administrator grant the RAI Native App caller access to it. The internal schema holds only this model's objects, so the grants cover all of it, including the solver's result tables that the deploy creates:
+
+```sql
+-- as the model role
+CREATE SCHEMA IF NOT EXISTS <DB>.SPRINT_SCHEDULING_META;
+
+-- as an administrator
+GRANT CALLER USAGE ON DATABASE <DB> TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER USAGE ON SCHEMA <DB>.SPRINT_SCHEDULING_META TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER USAGE ON WAREHOUSE <PAT_WAREHOUSE> TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL TABLES IN SCHEMA <DB>.SPRINT_SCHEDULING_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL DYNAMIC TABLES IN SCHEMA <DB>.SPRINT_SCHEDULING_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL VIEWS IN SCHEMA <DB>.SPRINT_SCHEDULING_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER INSERT, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA <DB>.SPRINT_SCHEDULING_META TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER CREATE TABLE, CREATE STAGE ON SCHEMA <DB>.SPRINT_SCHEDULING_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER READ, WRITE ON ALL STAGES IN SCHEMA <DB>.SPRINT_SCHEDULING_META TO APPLICATION <RAI_APP_NAME>;
+```
+
+Use this sequence to deploy the model and query it:
+
+1. **Download the template**
+
+   [Download the ZIP](https://docs.relational.ai/templates/zips/v1/sprint_scheduling.zip), unzip it, and enter the template directory:
+
    ```bash
-   curl -O https://docs.relational.ai/templates/zips/v1/sprint_scheduling.zip
    unzip sprint_scheduling.zip
    cd sprint_scheduling
    ```
-   > [!TIP]
-   > You can also download the template ZIP using the "Download ZIP" button at the top of this page.
 
-2. Create venv:
+2. **Create a Python environment**
+
+   Create and activate a virtual environment, then update pip:
+
    ```bash
    python -m venv .venv
    source .venv/bin/activate
    python -m pip install --upgrade pip
    ```
 
-3. Install:
+3. **Install the template**
+
+   Install the dependencies pinned in `pyproject.toml`:
+
    ```bash
    python -m pip install .
    ```
 
-4. Configure:
-   ```bash
-   rai init
+4. **Configure your project**
+
+   Use the configuration builder in [Install and run PyRel](https://docs.relational.ai/get-started/install-and-run-pyrel/#configure-your-project) to create `raiconfig.yaml` in the template directory and verify your connection.
+
+   Set the connection `role` to the model role, then add the prescriptive reasoner and a `deployment` section. Give each template its own schema pair so two deployed templates never share one:
+
+   ```yaml
+   reasoners:
+     prescriptive:
+       name: sprint_scheduling_solver            # created on first deploy if it doesn't exist
+   deployment:
+     role: <MODEL_ROLE>
+     public_schema: <DB>.SPRINT_SCHEDULING               # published views and tables
+     identity:
+       internal_schema: <DB>.SPRINT_SCHEDULING_META      # solver inputs, results, refresh procedures
+     schedules:
+       standard:
+         interval_s: 0              # refresh only on deploy or on demand
+     schedule: standard
+     pat_secret: <PAT_SECRET>       # these four come from the setup page
+     pat_eai: <PAT_EAI>
+     pat_user: <PAT_USER>
+     pat_warehouse: <PAT_WAREHOUSE>
    ```
 
-5. Run:
+5. **Deploy the model**
+
+   Deploy the model in `model/` to the schemas in `raiconfig.yaml`:
+
    ```bash
-   python sprint_scheduling.py
+   rai models deploy --path model
    ```
 
-6. Expected output:
+   The deploy creates the public schema named in `raiconfig.yaml` if it doesn't exist and waits for the model's first refresh, which runs one solve per capacity scenario. Each refresh of the deployed model runs the solves again.
+
+   Deploying again without changing the model applies no updates and does not solve again. A change to the model or to `problem.configure(...)` redeploys, and the redeploy's refresh solves.
+
+6. **Query the results**
+
+   Print the report from the deployed model:
+
+   ```bash
+   python -m queries.sprint_plan
+   ```
+
    ```text
    Running scenario: capacity_multiplier = 0.35
-     Status: INFEASIBLE -- skipping results
+
+   Solve result:
+   • status: INFEASIBLE
+     Status: INFEASIBLE — skipping results
 
    Running scenario: capacity_multiplier = 0.5
+
+   Solve result:
+   • status: OPTIMAL
+   • objective: 112.0
+
      Status: OPTIMAL, Objective: 112.0
      Planning horizon: 2024-10-01 to 2024-11-26
      Issues in scope: 25 (of 30 total)
 
      Assignments:
-     assign_PROJ-106_Alice_Sprint 1    1.0
-     assign_PROJ-107_Carol_Sprint 1    1.0
-     assign_PROJ-108_Frank_Sprint 1    1.0
-       assign_PROJ-109_Bob_Sprint 1    1.0
-      assign_PROJ-110_Dave_Sprint 1    1.0
-      assign_PROJ-111_Hank_Sprint 1    1.0
-     assign_PROJ-112_Grace_Sprint 1    1.0
-      assign_PROJ-113_Dave_Sprint 1    1.0
-       assign_PROJ-114_Bob_Sprint 1    1.0
-       assign_PROJ-115_Eve_Sprint 1    1.0
-      assign_PROJ-116_Dave_Sprint 2    1.0
-     assign_PROJ-117_Alice_Sprint 2    1.0
-     ...
+      issue developer   sprint
+   PROJ-106     Alice Sprint 1
+   PROJ-107     Carol Sprint 1
+   PROJ-108     Frank Sprint 1
+   PROJ-109       Bob Sprint 1
+   PROJ-110      Dave Sprint 1
+   PROJ-111      Hank Sprint 1
+   ...
 
    Running scenario: capacity_multiplier = 1.0
+
+   Solve result:
+   • status: OPTIMAL
+   • objective: 112.0
+
      Status: OPTIMAL, Objective: 112.0
      Planning horizon: 2024-10-01 to 2024-11-26
      Issues in scope: 25 (of 30 total)
 
      Assignments:
-     assign_PROJ-106_Alice_Sprint 1    1.0
-     assign_PROJ-107_Carol_Sprint 1    1.0
-     ...
+      issue developer   sprint
+   PROJ-106       Bob Sprint 1
+   PROJ-107      Dave Sprint 1
+   PROJ-108     Frank Sprint 1
+   PROJ-109       Bob Sprint 1
+   PROJ-110      Dave Sprint 1
+   PROJ-111     Frank Sprint 1
+   ...
 
    ==================================================
    Scenario Analysis Summary
@@ -134,16 +209,39 @@ Built using **prescriptive reasoning** (mixed-integer programming solved with Hi
    At 35% capacity the problem is infeasible -- not enough hours to schedule
    all in-scope issues. At 50% and 100% capacity the solver finds the same
    optimal objective (112.0), meaning half capacity is sufficient to schedule
-   all 25 issues within the 4-sprint horizon. The assignments front-load
-   10 issues into Sprint 1 and distribute the rest across Sprints 2-3.
+   all 25 issues within the 4-sprint horizon. See `runbook.md` for the step-by-step walkthrough.
+
+   To solve again without changing the model, refresh the deployed model, then run the query again:
+
+   ```sql
+   CALL <DB>.SPRINT_SCHEDULING_META._INTERNAL_REFRESH_MODEL('standard', NULL);
+   ```
+
+7. **Tear down the deployment**
+
+   Preview what the teardown removes, then remove it:
+
+   ```bash
+   rai models teardown
+   rai models teardown --force
+   ```
+
+   The first command lists the model's objects without dropping anything; the second drops them and keeps the two schemas.
 
 ## Template structure
 
 ```text
 .
 ├── README.md              # this file
+├── runbook.md             # step-by-step analyst walkthrough
 ├── pyproject.toml         # dependencies
-├── sprint_scheduling.py   # main script (load, model, scenario sweep, results)
+├── model/
+│   ├── __init__.py        # exports of the deployed model
+│   ├── schema.py          # concepts and properties
+│   ├── source.py          # sample data, planning horizon, epoch filter
+│   └── reasoning.py       # assignment domain, constraints, objective, one solve per scenario
+├── queries/
+│   └── sprint_plan.py     # report from the deployed model
 └── data/
     ├── developers.csv     # 8 developers with team and per-sprint capacity
     ├── sprints.csv        # 4 two-week sprints with epoch start/end dates
@@ -151,7 +249,7 @@ Built using **prescriptive reasoning** (mixed-integer programming solved with Hi
     └── skills.csv         # developer-team skill mappings
 ```
 
-**Start here**: run `python sprint_scheduling.py` for the full load, model, and capacity-scenario sweep end to end, or follow `runbook.md` to reproduce it step by step with the RAI skills.
+**Start here**: deploy with `rai models deploy --path model` and run `python -m queries.sprint_plan` for the full load, model, and capacity-scenario sweep end to end, or follow `runbook.md` to reproduce it step by step with the RAI skills.
 
 ## Sample data
 
@@ -170,7 +268,7 @@ The model has four source concepts loaded from CSV, plus a derived `Assignment` 
 - **Primary identifiers**: integer `id` on `Developer`, `Sprint`, `Issue`, and `Skill`; `Assignment` is identified by its `(developer, issue, sprint)` triple.
 - **Important invariants**: `story_points`, `priority`, and `capacity_points_per_sprint` are positive integers; each issue is assigned exactly once; a developer's assigned story points per sprint stay within capacity (scaled by the scenario's `capacity_multiplier`); a sprint can only host issues whose target sprint is at or before it.
 
-For the full concept and property definitions, see `sprint_scheduling.py`; `runbook.md` builds them step by step with the RAI skills.
+For the full concept and property definitions, see `model/schema.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
@@ -178,7 +276,7 @@ For the full concept and property definitions, see `sprint_scheduling.py`; `runb
 CSV inputs → epoch filter → target-sprint mapping → assignment domain → constraints + objective → solve → results
 ```
 
-**1. Epoch filtering -- scope the backlog to the planning horizon.** Issues carry a `created_at` column in Unix epoch seconds. The script converts the planning-horizon boundaries to epochs and keeps only issues created within the window; issues created before or after are excluded from scheduling.
+**1. Epoch filtering -- scope the backlog to the planning horizon.** Issues carry a `created_at` column in Unix epoch seconds. The model converts the planning-horizon boundaries to epochs and keeps only issues created within the window; issues created before or after are excluded from scheduling.
 
 **2. Epoch-to-categorical-period mapping -- assign target sprints.** Each in-scope issue is mapped to its earliest eligible sprint based on when it was created. An issue created during Sprint 2 cannot be scheduled into Sprint 1 -- only Sprint 2 or later.
 
@@ -186,9 +284,9 @@ CSV inputs → epoch filter → target-sprint mapping → assignment domain → 
 
 **4. Binary assignment variables and constraints.** Each valid placement gets a binary variable (1 = assigned). Two constraints govern the solve: each issue is assigned exactly once, and each developer's assigned story points per sprint stay within capacity scaled by the scenario's `capacity_multiplier`.
 
-**5. Weighted completion time objective.** The objective minimizes a weighted sum where higher-priority issues (lower priority number) cost more when placed in later sprints -- a priority-1 issue in Sprint 4 costs `(4-1+1) * 4 = 12`, a priority-3 issue in Sprint 4 costs `(4-3+1) * 4 = 8`. This pushes the most urgent work into the earliest sprints.
+**5. Weighted completion time objective.** The objective minimizes a weighted sum where higher-priority issues (lower priority number) cost more when placed in later sprints -- with `max_priority = 3`, a priority-1 issue in Sprint 4 costs `(3+1-1) * 4 = 12` and a priority-3 issue in Sprint 4 costs `(3+1-3) * 4 = 4`. This pushes the most urgent work into the earliest sprints.
 
-For the implementation, see `sprint_scheduling.py`; to reproduce it step by step with the RAI skills, follow `runbook.md`.
+For the implementation, see `model/reasoning.py`; to reproduce it step by step with the RAI skills, follow `runbook.md`.
 
 ## Customize this template
 
@@ -198,13 +296,13 @@ Focus on the first changes most users will make.
 
 - Replace the four CSVs in `data/` with your own, keeping the column names listed in *Sample data* above. `developers.csv`, `sprints.csv`, `issues.csv`, and `skills.csv` each map directly to a concept.
 - `sprints.csv` and `issues.csv` use Unix epoch seconds for dates; convert your date strings to epochs before loading, or adapt the epoch-mapping helper.
-- Make sure every team present in `issues.csv` has at least one skilled developer in `skills.csv`, or those issues cannot be assigned.
+- Make sure every team present in `issues.csv` has at least one skilled developer in `skills.csv`: an issue with no eligible developer gets no assignment constraint, so it is left out of the plan rather than making the model infeasible.
 
 ### Tune parameters
 
-- **Planning horizon** -- edit `planning_start` and `planning_end` to include more or fewer sprints, and add matching rows to `sprints.csv`.
-- **Capacity** -- modify `capacity_points_per_sprint` in `developers.csv`, or edit `SCENARIO_VALUES` to sweep different `capacity_multiplier` levels (default `[0.35, 0.5, 1.0]`).
-- **Priority scheme** -- adjust `max_priority` and the weight formula in the objective to match your team's priority scale.
+- **Planning horizon** -- edit `planning_start` and `planning_end` in `model/source.py` to include more or fewer sprints, and add matching rows to `sprints.csv`.
+- **Capacity** -- modify `capacity_points_per_sprint` in `developers.csv`, or edit `SCENARIO_VALUES` in `model/reasoning.py` to sweep different `capacity_multiplier` levels (default `[0.35, 0.5, 1.0]`).
+- **Priority scheme** -- adjust `max_priority` and the weight formula in the objective in `model/reasoning.py` to match your team's priority scale.
 
 ### Extend the model
 
@@ -232,19 +330,19 @@ python -m pip install .
 <details>
 <summary>Solver returns INFEASIBLE</summary>
 
-Check that total developer capacity across all sprints is sufficient to cover the total story points in the backlog. With the default data, 8 developers with 14-20 points each across 4 sprints provide ample capacity for 30 issues. If you have added issues or reduced capacity, try increasing `capacity_multiplier` or adding more sprints.
+Check that total developer capacity across all sprints is sufficient to cover the total story points in the backlog. With the default data, 8 developers with 14-20 points each across 4 sprints provide ample capacity for the 25 in-scope issues. If you have added issues or reduced capacity, try increasing `capacity_multiplier` or adding more sprints.
 </details>
 
 <details>
 <summary>Some issues are not assigned</summary>
 
-Every issue must have at least one developer with a matching team skill. Verify that `skills.csv` covers all teams present in `issues.csv`. If a team has no skilled developers, the solver cannot assign those issues and will report infeasibility.
+Every issue must have at least one developer with a matching team skill. Verify that `skills.csv` covers all teams present in `issues.csv`. If a team has no skilled developers, its issues have no candidate assignments and no assign-once constraint, so the solve still succeeds and leaves them out of the plan; compare the assigned issues with the in-scope count the report prints.
 </details>
 
 <details>
-<summary>rai init fails or connection errors</summary>
+<summary>Connection errors</summary>
 
-Ensure your Snowflake account has the RAI Native App installed and your user has the required permissions. Run `rai init` to configure your connection profile. See the [RelationalAI documentation](https://docs.relational.ai) for setup details.
+Ensure your Snowflake account has the RAI Native App installed and your user has the required permissions. Re-create `raiconfig.yaml` with the configuration builder (Quickstart step 4) and verify the connection settings. See the [RelationalAI documentation](https://docs.relational.ai) for setup details.
 </details>
 
 ## Learn more
@@ -259,7 +357,7 @@ Ensure your Snowflake account has the RAI Native App installed and your user has
 
 ### CLI / SDK guides
 
-- [RelationalAI setup and `rai init`](https://docs.relational.ai/) -- connecting the SDK to your Snowflake account.
+- [Install and run PyRel](https://docs.relational.ai/get-started/install-and-run-pyrel/) -- installing the SDK and configuring `raiconfig.yaml` to connect to your Snowflake account.
 
 ## Support
 

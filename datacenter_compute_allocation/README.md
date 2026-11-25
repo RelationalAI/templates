@@ -31,7 +31,7 @@ tags:
 
 A datacenter operator — a neocloud, a colocation provider, or a hyperscaler running its own campuses — has energized GPU pools across several sites and must decide which AI lab's workloads get which GPUs in which pool right now. Frontier labs want long-running training reservations on the largest contiguous pools at anchor-customer rates; inference customers want a steady slice of right-sized GPUs; research orgs want bursty best-effort capacity. They all compete for the same physical pools under the same power envelope, and the operator has to keep three tensions in balance at once: staying under each campus's substation-bound power cap, holding gross margin after energy and depreciation, and serving anchor customers without letting any one customer's share grow into a concentration risk. Getting the allocation wrong strands expensive capacity — depreciation accruing on GPUs that sit idle — which is the operator's biggest economic exposure.
 
-This template models that allocation as a scenario sweep across three axes (power envelope, margin floor, and anchor-diversity cap, for 24 combinations in all), tracing the trade-off frontiers the operator actually reasons about: how much revenue a tighter margin floor costs, and how much a tighter anchor cap costs. The strictest combinations come back infeasible, which is itself the answer — a signal that those constraints cannot all be met at once. A follow-on demand overlay then replays the chosen plan under softening-demand scenarios so the operator can see stranded-capacity exposure before committing. It picks up where the [energy_grid_planning](https://github.com/RelationalAI/templates/tree/main/energy_grid_planning) template leaves off: that upstream template decides which campuses get built and energized, and the bundled `data_centers.csv` here is a snapshot of its approved campus set.
+This template models that allocation as a scenario sweep across three axes (power envelope, margin floor, and anchor-diversity cap, for 24 combinations in all), tracing the trade-off frontiers the operator actually reasons about: how much revenue a tighter margin floor costs, and how much a tighter anchor cap costs. The strictest combinations come back with no workloads assigned, which is itself the answer — a signal that those constraints leave no worthwhile allocation. The per-cell summary labels such a cell INFEASIBLE (UNSOLVED at a time limit), but the template does not prove infeasibility: an empty allocation satisfies every cell's constraints. A follow-on demand overlay then replays the chosen plan under softening-demand scenarios so the operator can see stranded-capacity exposure before committing. It picks up where the [energy_grid_planning](https://github.com/RelationalAI/templates/tree/main/energy_grid_planning) template leaves off: that upstream template decides which campuses get built and energized, and the bundled `data_centers.csv` here is a snapshot of its approved campus set.
 
 **The reasoning approach chains four reasoners on one shared ontology — a graph neural network (GNN) predicting per-workload utilization, declarative hardware-compatibility and priority rules, dependency-graph PageRank scoring how much downstream work each workload unblocks, and a scenario-parameterized mixed-integer program (MIP) that makes the assignment — with each stage writing signals the next stage reads.**
 
@@ -48,12 +48,14 @@ This template models that allocation as a scenario sweep across three axes (powe
 - A heterogeneous-graph GNN that **classifies per-workload utilization probability** (will this workload actually use its allocated capacity?) — the operator's real forward-looking signal, propagated through lab→workload, dep-DAG, and cross-lab co_dated edges
 - Reverse-PageRank scoring on a workload dependency DAG (4-5 deep chains rooted at frontier pretrains)
 - Declarative hardware-compatibility rules + lex-emulating priority weights (P0=100, P1=10, P2=1)
-- Two headline Pareto frontiers (margin × revenue and diversity × revenue) at the 100% envelope, with the 85% envelope drawn as an overlay sensitivity band
+- Two headline Pareto frontiers (margin × revenue and diversity × revenue) at the 100% envelope; the 85% envelope's cells are in the per-cell summary for comparison
 - Per-cell results queryable directly from the ontology — realized revenue, energy + depreciation cost, anchor share, per-workload-type counts, binding-constraint signal (OPTIMAL vs INFEASIBLE, or FEASIBLE vs UNSOLVED when the solve stops at its time limit)
 
 ## What's included
 
-- `datacenter_compute_allocation.py` — main script: 4 reasoner stages + Pareto reporting + ontology persistence
+- `model/` — the deployed model: `schema.py` declares the concepts and the GNN task relationships, `source.py` loads the bundled CSVs, `reasoning.py` states the GNN, the rules, the PageRank, the 24-cell allocation MIP, and the rules that summarize its solution
+- `train.py` — trains the utilization GNN over the deployed splits and registers its version
+- `queries/allocation_report.py` — prints the per-stage diagnostics, the per-cell summary, the Pareto frontiers, the plan, and the demand overlay from the deployed model
 - `data/data_centers.csv` — 5 DCs (snapshot of the upstream $300M-approved set)
 - `data/gpu_pools.csv` — 28 pools across 5 DCs (H100 / H200 / GB200 mix), with per-GPU `hourly_depreciation_rate` ($1.14 H100, $1.52 H200, $2.66 GB200; capex/3-year amortization)
 - `data/ai_labs.csv` — 6 labs: 3 frontier anchors (Anthropic, OpenAI, xAI Internal) + 2 applied (Cohere Inference, Together AI Multi-Lab) + 1 research (Stability Open)
@@ -62,7 +64,6 @@ This template models that allocation as a scenario sweep across three axes (powe
 - `data/workload_dependencies.csv` — 138 edges (~130 blocks + ~10 informs), DAG depth 4-5 rooted at frontier pretrains
 - `data/lab_metrics.csv` — 365 days × 6 labs = 2,190 rows with cross-lab co-movement
 - `data/workload_utilization_train.csv`, `_val.csv`, `_test.csv` — GNN temporal binary-classification splits. **Train**: 7 historical months × 110 workloads = 770 `(workload, observation_date, is_high_utilization)` observations. **Val**: 1 month × 110 = 110. **Test**: the current month × 110 = 110 observations with no label (every workload gets a probability for the upcoming period).
-- `data/workload_utilization_fallback.csv` — Stage 1 fallback (per-workload deterministic probability for the current period, used when `--no-gnn` is set)
 - `data/power_envelope_levels.csv` — 2 scenario rows (0.85 / 1.00)
 - `data/margin_floors.csv` — 3 scenario rows (unconstrained / 80% / 85% gross margin post-depreciation)
 - `data/diversity_caps.csv` — 4 scenario rows (none / anchor_max_70pct / anchor_max_50pct CoreWeave-target / anchor_max_40pct_with_type_floor)
@@ -72,41 +73,79 @@ This template models that allocation as a scenario sweep across three axes (powe
 
 ### Access
 
-- A Snowflake account with the RelationalAI native app installed.
-- A Snowflake user with permissions on the RAI native app and on `EXP_DATABASE` (the schema for GNN experiment artifacts).
-- A prescriptive engine for Stage 4. Optionally a GPU-backed predictive engine for Stage 1.
+- A Snowflake account that has the RAI Native App installed.
+- The one-time model deployment setup on that account, done by an account administrator: follow [Set up model deployment](https://private.relational.ai/early-access/model-deploy-setup) through **Governed setup**, **PAT authentication**, and steps 1-2 of **Additional setup for the prescriptive reasoner** (the Quickstart covers this template's own schemas). It gives you a model role, a programmatic access token (PAT) stored as a secret, an external access integration, a PAT user, and a warehouse.
+- A Snowflake user that holds the model role.
+- The predictive reasoner's compute pool added to the compute-pool network rule that admits the PAT user (the rule from the prescriptive reasoner setup), because the deployed model runs this template's GNN training, scoring, and registration jobs as the PAT user. Check the pool names in your account with `SHOW COMPUTE POOLS` (for example `RELATIONAL_AI_HIGHMEM_X64_S_ML`), and have an administrator run `ALTER NETWORK RULE <PAT_POOL_NETWORK_RULE> SET VALUE_LIST = (...)`, listing the pools already in the rule plus the predictive one.
+
+Those jobs need grants for the PAT user's role (`<PAT_ROLE>`) and matching caller grants for the RAI Native App. Once the SQL at the start of the Quickstart has created this template's schemas, have an administrator run:
+
+```sql
+GRANT USAGE ON WAREHOUSE <PAT_WAREHOUSE> TO ROLE <PAT_ROLE>;
+GRANT USAGE ON DATABASE <DB> TO ROLE <PAT_ROLE>;
+GRANT USAGE ON SCHEMA <DB>.DATACENTER_COMPUTE_ALLOCATION_META TO ROLE <PAT_ROLE>;
+GRANT SELECT ON ALL VIEWS IN SCHEMA <DB>.DATACENTER_COMPUTE_ALLOCATION_META TO ROLE <PAT_ROLE>;
+GRANT SELECT ON FUTURE VIEWS IN SCHEMA <DB>.DATACENTER_COMPUTE_ALLOCATION_META TO ROLE <PAT_ROLE>;
+GRANT USAGE, CREATE TABLE, CREATE STAGE, CREATE FILE FORMAT ON SCHEMA <DB>.DATACENTER_COMPUTE_ALLOCATION TO ROLE <PAT_ROLE>;
+GRANT CREATE EXPERIMENT, CREATE MODEL ON SCHEMA <DB>.DATACENTER_COMPUTE_ALLOCATION TO ROLE <PAT_ROLE>;
+GRANT CALLER USAGE, CREATE TABLE, CREATE STAGE, CREATE FILE FORMAT ON SCHEMA <DB>.DATACENTER_COMPUTE_ALLOCATION TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT, INSERT ON ALL TABLES IN SCHEMA <DB>.DATACENTER_COMPUTE_ALLOCATION TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER READ, WRITE ON ALL STAGES IN SCHEMA <DB>.DATACENTER_COMPUTE_ALLOCATION TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER USAGE ON ALL FILE FORMATS IN SCHEMA <DB>.DATACENTER_COMPUTE_ALLOCATION TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER CREATE EXPERIMENT, CREATE MODEL ON SCHEMA <DB>.DATACENTER_COMPUTE_ALLOCATION TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER USAGE, MODIFY ON ALL EXPERIMENTS IN SCHEMA <DB>.DATACENTER_COMPUTE_ALLOCATION TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER OWNERSHIP ON ALL MODELS IN SCHEMA <DB>.DATACENTER_COMPUTE_ALLOCATION TO APPLICATION <RAI_APP_NAME>;
+```
+
+The bundled CSVs ship with the template; there is no source-table setup. The GNN trains on the predictive reasoner and stores its experiments and registered versions in the template's public schema.
 
 ### Tools
 
-- Python ≥ 3.10.
-- RelationalAI Python SDK with the predictive submodule (`relationalai[gnn]`, providing `relationalai.semantics.reasoners.predictive`) for Stage 1's GNN. Without it, Stage 1 falls back to the precomputed `workload_utilization_fallback.csv` automatically.
-
-### One-time Snowflake setup for GNN experiment artifacts
-
-The predictive reasoner writes training artifacts (model checkpoints, metrics, predictions) to a Snowflake schema that the `RELATIONALAI` native app must own. Pick a database you control, then create + grant the schema:
-
-```sql
-CREATE DATABASE IF NOT EXISTS DATACENTER_ENRICHMENT;
-CREATE SCHEMA   IF NOT EXISTS DATACENTER_ENRICHMENT.EXPERIMENTS;
-GRANT USAGE             ON DATABASE DATACENTER_ENRICHMENT             TO APPLICATION RELATIONALAI;
-GRANT USAGE             ON SCHEMA   DATACENTER_ENRICHMENT.EXPERIMENTS TO APPLICATION RELATIONALAI;
-GRANT CREATE EXPERIMENT ON SCHEMA   DATACENTER_ENRICHMENT.EXPERIMENTS TO APPLICATION RELATIONALAI;
-GRANT CREATE MODEL      ON SCHEMA   DATACENTER_ENRICHMENT.EXPERIMENTS TO APPLICATION RELATIONALAI;
-```
-
-Set `EXP_DATABASE` at the top of `datacenter_compute_allocation.py` to that database (default: `DATACENTER_ENRICHMENT`).
+- Python 3.10 through 3.14 (the range relationalai 2.3.0 supports).
+- The `relationalai[gnn]` SDK and the `rai` CLI (installed by the Quickstart's `python -m pip install .`).
 
 ## Quickstart
 
-1. Download the template and extract it:
+Before you start, install Python 3.10 or later and complete the access prerequisites above: a Snowflake account with the RAI Native App, the one-time model deployment setup, and a Snowflake user that holds the model role.
+
+Before the first deploy, create this template's two schemas as the model role, and have an administrator grant the RAI Native App access to them. The GNN keeps its experiments and registered versions in the public schema, and the internal schema holds only this model's objects, so the grants cover all of it, including the solver's result tables that the deploy creates:
+
+```sql
+-- as the model role
+CREATE SCHEMA IF NOT EXISTS <DB>.DATACENTER_COMPUTE_ALLOCATION;
+CREATE SCHEMA IF NOT EXISTS <DB>.DATACENTER_COMPUTE_ALLOCATION_META;
+
+-- as an administrator
+GRANT USAGE ON DATABASE <DB> TO APPLICATION <RAI_APP_NAME>;
+GRANT USAGE ON SCHEMA <DB>.DATACENTER_COMPUTE_ALLOCATION TO APPLICATION <RAI_APP_NAME>;
+GRANT CREATE EXPERIMENT ON SCHEMA <DB>.DATACENTER_COMPUTE_ALLOCATION TO APPLICATION <RAI_APP_NAME>;
+GRANT CREATE MODEL ON SCHEMA <DB>.DATACENTER_COMPUTE_ALLOCATION TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER USAGE ON DATABASE <DB> TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER USAGE ON SCHEMA <DB>.DATACENTER_COMPUTE_ALLOCATION_META TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER USAGE ON WAREHOUSE <PAT_WAREHOUSE> TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL TABLES IN SCHEMA <DB>.DATACENTER_COMPUTE_ALLOCATION_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL DYNAMIC TABLES IN SCHEMA <DB>.DATACENTER_COMPUTE_ALLOCATION_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL VIEWS IN SCHEMA <DB>.DATACENTER_COMPUTE_ALLOCATION_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER INSERT, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA <DB>.DATACENTER_COMPUTE_ALLOCATION_META TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER CREATE TABLE, CREATE STAGE ON SCHEMA <DB>.DATACENTER_COMPUTE_ALLOCATION_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER READ, WRITE ON ALL STAGES IN SCHEMA <DB>.DATACENTER_COMPUTE_ALLOCATION_META TO APPLICATION <RAI_APP_NAME>;
+
+```
+
+Use this sequence to deploy the model, train the GNN, and query the allocation plan:
+
+1. **Download the template**
+
+   [Download the ZIP](https://docs.relational.ai/templates/zips/v1/datacenter_compute_allocation.zip), unzip it, and enter the template directory:
 
    ```bash
-   curl -O https://docs.relational.ai/templates/zips/v1/datacenter_compute_allocation.zip
    unzip datacenter_compute_allocation.zip
    cd datacenter_compute_allocation
    ```
 
-2. Create a virtual environment and activate it:
+2. **Create a Python environment**
+
+   Create and activate a virtual environment, then update pip:
 
    ```bash
    python -m venv .venv
@@ -114,47 +153,150 @@ Set `EXP_DATABASE` at the top of `datacenter_compute_allocation.py` to that data
    python -m pip install --upgrade pip
    ```
 
-3. Install dependencies:
+3. **Install the template**
+
+   Install the dependencies pinned in `pyproject.toml`:
 
    ```bash
    python -m pip install .
    ```
 
-4. Configure your RAI connection:
+4. **Configure your project**
 
-   ```bash
-   rai init
+   Use the configuration builder in [Install and run PyRel](https://docs.relational.ai/get-started/install-and-run-pyrel/#configure-your-project) to create `raiconfig.yaml` in the template directory and verify your connection.
+
+   Set the connection `role` to the model role, then add the predictive and prescriptive reasoners, the registered version the GNN predicts with, and a `deployment` section. Give each template its own schema pair so two deployed templates never share one:
+
+   ```yaml
+   reasoners:
+     predictive:
+       name: workload_utilization_gnn          # created on first use if it doesn't exist
+       gnns:
+         workload_utilization:             # the GNN's name in model/reasoning.py
+           registry: <DB>.DATACENTER_COMPUTE_ALLOCATION
+           model: WORKLOAD_UTILIZATION
+           version: V1                  # train.py registers this version
+     prescriptive:
+       name: datacenter_allocation_solver      # created on first deploy if it doesn't exist
+   deployment:
+     role: <MODEL_ROLE>
+     public_schema: <DB>.DATACENTER_COMPUTE_ALLOCATION          # published views and tables
+     identity:
+       internal_schema: <DB>.DATACENTER_COMPUTE_ALLOCATION_META # solver inputs, results, refresh procedures
+     schedules:
+       standard:
+         interval_s: 0                  # refresh only on deploy or on demand
+     schedule: standard
+     pat_secret: <PAT_SECRET>           # these four come from the setup page
+     pat_eai: <PAT_EAI>
+     pat_user: <PAT_USER>
+     pat_warehouse: <PAT_WAREHOUSE>
    ```
 
-5. Run the template:
+5. **Deploy the model**
+
+   Deploy the model in `model/` to the schemas in `raiconfig.yaml`:
 
    ```bash
-   python datacenter_compute_allocation.py
+   rai models deploy --path model
    ```
 
-6. Skip the GNN and load `workload_utilization_fallback.csv` directly (useful for fast iteration on Stages 2–4):
+   The deploy creates the reasoners and the public schema named in `raiconfig.yaml` if they don't exist and waits for the model's first refresh, which loads the data, derives the eligibility rules and the gating scores, and sets up the allocation problem. No version of the GNN is registered yet, so this refresh makes no utilization predictions and assigns no workloads.
+
+6. **Train the GNN**
+
+   Train the GNN over the deployed splits and register it as the version named in `raiconfig.yaml`:
 
    ```bash
-   python datacenter_compute_allocation.py --no-gnn
+   python train.py
    ```
 
-7. Expected output (abbreviated):
+   Then refresh the deployed model so it predicts utilization with this version and solves the allocation over those predictions: `CALL <DB>.DATACENTER_COMPUTE_ALLOCATION_META._INTERNAL_REFRESH_MODEL('standard', NULL);` with your database in place of `<DB>`. The solve runs to its 240-second time limit, so this refresh takes several minutes. The registry refuses to overwrite a version, so to retrain, set a new `version` in `raiconfig.yaml` first.
+
+7. **Query the results**
+
+   Print the diagnostics and the plan from the deployed model:
+
+   ```bash
+   python -m queries.allocation_report
+   ```
 
    ```text
+   ============================================================
+   STAGE 1: PREDICT -- per-workload utilization-probability GNN
+   ============================================================
+     Workload utilization-probability distribution: n_total=110, n>=0.5: 110, n<0.5: 0
+     Top 5 (most likely to be high-utilization):
+       + Grok-Next pretrain shard 04                   p=0.931
+       + GPT-Next pretrain shard 05                    p=0.931
+   ...
+   ============================================================
+   STAGE 3: GRAPH -- workload-dependency PageRank (gating score)
+   ============================================================
+     Top-10 gating workloads (frontier pretrains expected to dominate):
+       GPT-Next pretrain shard 02                    score=0.0310
+       Grok-Next pretrain shard 04                   score=0.0266
+   ...
+   ============================================================
    STAGE 4: PRESCRIPTIVE -- compute allocation MIP (24-cell sweep)
+   ============================================================
+     Latest refresh's solve of the 24-cell scenario sweep:
      Termination status: TIME_LIMIT
-     Per-cell summary (24 cells: 16 feasible, 8 unsolved)
-     AllocationPlan singleton (100pct / unconstrained / none):
-       110 workloads assigned, $25.28M revenue, 83% margin, 95% anchor share
+     Solve time:         240.0s
+     Objective:          651,852,520.64
+     Note: TIME_LIMIT means the solve stopped at its time limit; the per-cell results below are its best solution found, not proven optimal.
+
+     Per-cell summary (24 cells: 16 feasible, 8 unsolved):
+   envelope        margin                        diversity   status  n_assigned   revenue_usd  total_cost_usd  realized_margin  anchor_share ...
+     100pct         80pct anchor_max_40pct_with_type_floor UNSOLVED           0          0.00            0.00              NaN           NaN ...
+     100pct         80pct                 anchor_max_50pct FEASIBLE          74  2,473,858.46      490,512.99             0.80          0.49 ...
+   ...
+     100pct unconstrained                             none FEASIBLE         110 25,277,810.94    4,204,733.51             0.83          0.95 ...
+   ...
+     AllocationPlan singleton (queryable as ontology):
+         plan_id envelope        margin diversity   status  n_assigned  revenue_usd  total_cost_usd  realized_margin  anchor_share   binding_axis
+   DCCA_BASELINE   100pct unconstrained      none FEASIBLE         110  25277810.94    4.204734e+06         0.833659      0.947251 power_envelope
+     Assignment.is_chosen rows: 110 (matches n_assigned above)
+
+     DemandScenario overlay (chosen plan replayed under risk):
+             scenario  factor  realized_revenue_usd  stranded_revenue_usd  stranded_pct
+             expected    1.00         25,277,810.94                  0.00          0.00
+   diffusion_slowdown    0.85         25,077,803.64            200,007.30          0.79
+        scaling_break    0.70         24,877,796.35            400,014.59          1.58
+        frontier_loss    0.50         24,611,119.95            666,690.99          2.64
    ```
 
-   Full stage-by-stage log (GNN distribution, PageRank scores, both Pareto frontiers, the demand-scenario overlay, and expected per-cell behavior) is in `runbook.md`. GNN probabilities depend on seed and predictive engine; the `--no-gnn` fallback values are deterministic. The output above is from the open-source HiGHS default, which returns a feasible solution at the `time_limit_sec=240` wall and reports `TIME_LIMIT` (signal, not failure, per `rai-prescriptive-results`), so cells are labelled FEASIBLE or UNSOLVED. With Gurobi, Stage 4 reaches `OPTIMAL` in seconds and the cells are labelled OPTIMAL or INFEASIBLE. Set `SOLVER` in `datacenter_compute_allocation.py` to switch.
+   The report prints all four stages and the demand overlay; the lines above are trimmed. The GNN is stochastic, so the utilization probabilities shift from one training run to the next; the dependency PageRank is deterministic, so the frontier pretrains rank first by gating score on every run. In the run shown, the baseline cell assigns all 110 workloads; because the solve stops at its time limit with its best solution so far, the cells and workload counts can differ from one refresh to the next. The solve above is the open-source HiGHS default, which returns a feasible solution at its `SOLVER_TIME_LIMIT_SEC` of 240 seconds and reports `TIME_LIMIT` (signal, not failure), so each refresh takes about that long and the cells are labelled FEASIBLE or UNSOLVED. With Gurobi, the solve reaches `OPTIMAL` in seconds and the cells are labelled OPTIMAL or INFEASIBLE; set `SOLVER` in `model/reasoning.py` to switch. The full printout and a step-by-step walkthrough are in `runbook.md`.
+
+   To predict and solve again without changing the model, refresh the deployed model, then run the query again:
+
+   ```sql
+   CALL <DB>.DATACENTER_COMPUTE_ALLOCATION_META._INTERNAL_REFRESH_MODEL('standard', NULL);
+   ```
+
+8. **Tear down the deployment**
+
+   Preview what the teardown removes, then remove it:
+
+   ```bash
+   rai models teardown
+   rai models teardown --force
+   ```
+
+   The teardown removes the deployed objects and keeps the two schemas, with the GNN's experiments and registered versions in the public schema.
 
 ## Template structure
 
 ```text
 datacenter_compute_allocation/
-  datacenter_compute_allocation.py  # Main script (4 chained reasoning stages + ontology persistence)
+  model/
+    __init__.py                     # exports for train.py and the query
+    schema.py                       # concepts, GNN task relationships
+    source.py                       # bundled CSVs, demand scenarios, base facts
+    reasoning.py                    # GNN, rules, PageRank, allocation MIP, cell outcomes, plan
+  train.py                          # trains the GNN and registers its version
+  queries/
+    allocation_report.py            # per-stage diagnostics, per-cell summary, frontiers, plan, overlay
   data/
     data_centers.csv                # 5 DCs (snapshot of upstream $300M-approved set)
     gpu_pools.csv                   # 28 GPU pools across 5 DCs (H100/H200/GB200 mix)
@@ -166,7 +308,6 @@ datacenter_compute_allocation/
     workload_utilization_train.csv  # GNN train split: 7 historical months × 110 = 770 obs
     workload_utilization_val.csv    # GNN val split: 1 month × 110 = 110 obs
     workload_utilization_test.csv   # GNN test: current period × 110, no label
-    workload_utilization_fallback.csv  # Stage 1 fallback (GNN-shape per-workload p)
     power_envelope_levels.csv       # 2 scenario rows (envelope multiplier)
     margin_floors.csv               # 3 scenario rows (gross margin floors)
     diversity_caps.csv              # 4 scenario rows (anchor concentration caps)
@@ -175,7 +316,7 @@ datacenter_compute_allocation/
   pyproject.toml                    # dependencies
 ```
 
-**Start here**: run `python datacenter_compute_allocation.py` for the full four-stage chain end to end (add `--no-gnn` to skip Stage 1's GNN and load the deterministic fallback), or follow `runbook.md` to rebuild it step by step.
+**Start here**: follow the [Quickstart](#quickstart) to deploy the model, train the GNN, and print the four-stage report, or follow `runbook.md` to rebuild it step by step.
 
 ## Sample data
 
@@ -189,18 +330,17 @@ The bundled data is synthetic and illustrative — designed to teach the four-st
 - **`workload_dependencies.csv`** (138 rows) — directed dependency edges (`blocks` / `informs`), DAG depth 4-5 rooted at frontier pretrains.
 - **`lab_metrics.csv`** (2,190 rows) — 365 days x 6 labs of daily lab-activity KPIs with cross-lab co-movement, the GNN's temporal feature source.
 - **`workload_utilization_train.csv` / `_val.csv` / `_test.csv`** — the GNN's temporal binary-classification splits (7 historical months / 1 validation month / current period, no label).
-- **`workload_utilization_fallback.csv`** — the deterministic Stage 1 fallback used when `--no-gnn` is set.
 - **`power_envelope_levels.csv` / `margin_floors.csv` / `diversity_caps.csv`** — the three scenario-axis tables (2 / 3 / 4 rows) that index the 24-cell sweep.
 
 ## Model overview
 
 One shared ontology threads all four stages: each stage reads concepts and properties earlier stages wrote and writes new ones for downstream stages.
 
-- **Key entities**: `DataCenterRequest` (a campus), `GpuPool`, `AILab`, `Workload`, `WorkloadGpuCompat` and `WorkloadDependency` (workload relationships as their own concepts), the three scenario concepts `PowerEnvelopeLevel` / `MarginFloor` / `DiversityCap`, plus the derived `Compatibility` and `Assignment` (decision space), the `AllocationPlan` singleton, and the `DemandScenario` overlay.
-- **Primary identifiers**: string ids on `DataCenterRequest`, `GpuPool`, `AILab`, and `Workload`; the scenario concepts are identified by `name`; `WorkloadGpuCompat`, `WorkloadDependency`, `Compatibility`, and `Assignment` carry composite keys.
+- **Key entities**: `DataCenterRequest` (a campus), `GpuPool`, `AILab`, `Workload`, `WorkloadGpuCompat` and `WorkloadDependency` (workload relationships as their own concepts), the three scenario concepts `PowerEnvelopeLevel` / `MarginFloor` / `DiversityCap`, plus the derived `WorkloadForecast` (the GNN's probability), `Compatibility` and `Assignment` (decision space), `ScenarioCell` (one row per scenario cell), the `AllocationPlan` singleton, and the `DemandScenario` overlay.
+- **Primary identifiers**: string ids on `DataCenterRequest`, `GpuPool`, `AILab`, and `Workload`; the scenario concepts are identified by `name`; `WorkloadForecast` by workload id; `WorkloadGpuCompat`, `WorkloadDependency`, `Compatibility`, `Assignment`, and `ScenarioCell` carry composite keys.
 - **Important invariants**: `envelope_multiplier`, `fraction`, and `anchor_max_share` are fractions; a negative sentinel on `MarginFloor.fraction` / `DiversityCap.anchor_max_share` marks the unconstrained row (its constraint is skipped); the `is_high_utilization` label is binary; `Assignment.x_assign` decision variables are binary; power / cost / GPU counts are non-negative.
 
-For the full concept and property definitions — the entity concepts, the three scenario concepts, and the derived `Compatibility` / `Assignment` / `AllocationPlan` / `DemandScenario` concepts each stage writes — see `datacenter_compute_allocation.py`; `runbook.md` builds them step by step with the RAI skills.
+For the full concept and property definitions — the entity concepts and the three scenario concepts in `model/schema.py`, and the derived `WorkloadForecast` / `Compatibility` / `Assignment` / `ScenarioCell` / `AllocationPlan` / `DemandScenarioOutlook` concepts each stage writes in `model/reasoning.py` — `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
@@ -210,7 +350,7 @@ Binary node classification on `Workload`: predict the probability that each work
 
 The graph is heterogeneous with three cross-concept edge types: a `LabMetric → Workload` edge that carries lab-side recent activity into a workload's prediction neighborhood (a workload owned by a fast-ramping lab inherits its signal); the `WorkloadDependency.blocks` DAG shared with Stage 3, so a workload downstream of a high-utilization gating pretrain inherits signal through the dependency chain; and a load-bearing `LabMetric → LabMetric` edge between cross-lab same-date pairs sharing a workload type, which carries cross-lab co-movement (funding waves, supply shocks).
 
-The task tables carry per-`(workload, observation_date)` historical labels. Each row is one monthly utilization observation, so the same workload appears in 7 training rows (one per historical month), giving the GNN per-period variety to learn from instead of a single label per entity — Train (7 months × 110 = 770) / Val (1 month × 110 = 110) / Test (current month × 110, no label, so every workload gets a probability for the upcoming period). The task relationships use `at` time slots and the GNN runs with `has_time_column=True` so LabMetric features are time-aligned with each (workload, month) prediction. The positive-class probability is bound back to the ontology as `Workload.utilization_probability` and consumed by Stage 4's objective.
+The task tables carry per-`(workload, observation_date)` historical labels. Each row is one monthly utilization observation, so the same workload appears in 7 training rows (one per historical month), giving the GNN per-period variety to learn from instead of a single label per entity — Train (7 months × 110 = 770) / Val (1 month × 110 = 110) / Test (current month × 110, no label, so every workload gets a probability for the upcoming period). The task relationships use `at` time slots and the GNN runs with `has_time_column=True` so LabMetric features are time-aligned with each (workload, month) prediction. The positive-class probability is written to the ontology as `WorkloadForecast.utilization_probability`, on a concept of its own because the GNN reads the `Workload` table, and consumed by Stage 4's objective.
 
 ### Stage 2: Rules — eligibility + priority tiers + Compatibility precompute
 
@@ -218,7 +358,7 @@ Two rule families run on the workload-pool product. The eligibility rule joins t
 
 ### Stage 3: Graph — reverse-PageRank for downstream gating
 
-A directed `Workload` graph is built with edge reversal (successor → predecessor) so a node's PageRank accumulates flow from everything it gates downstream. The resulting score lands on `Workload.gating_score`. Workloads absent from the DAG get a backstop `gating_score = 1.0` so they enter the Stage 4 objective product without zeroing out.
+A directed `Workload` graph is built with edge reversal (successor → predecessor) so a node's PageRank accumulates flow from everything it gates downstream. The resulting score lands on `Workload.gating_score`.
 
 ### Stage 4: Prescriptive — assignment MIP under a 3D Scenario sweep
 
@@ -231,11 +371,11 @@ The decision variable `Assignment.x_assign` is a binary variable indexed by the 
 - **C6** anchor-concentration cap (skipped when `DiversityCap.anchor_max_share < 0`).
 - **C7** workload-type floor (skipped unless `DiversityCap.workload_type_floor >= 0`).
 
-The objective is what makes this a real chain rather than four disjoint reasoners: it maximizes the sum over chosen assignments of `priority_weight` (Stage 2) × `gating_score` (Stage 3) × `utilization_probability` (Stage 1) × `strategic_value_usd` (raw $ baseline) — every prior stage's signal enters the same product. After the solve, the per-cell summary is assembled with ontology-side aggregation (no pandas groupby). The chosen baseline cell (`100pct / unconstrained / none`) is persisted as a singleton `AllocationPlan` concept with revenue / total_cost / margin / anchor_share / n_assigned / status / binding_axis, plus an `Assignment.is_chosen` flag over its decision rows.
+The objective is what makes this a real chain rather than four disjoint reasoners: it maximizes the sum over chosen assignments of `priority_weight` (Stage 2) × `gating_score` (Stage 3) × `WorkloadForecast.utilization_probability` (Stage 1) × `strategic_value_usd` (raw $ baseline) × (1 + `under_provisioning_penalty`) — every prior stage's signal enters the same product. Only workloads with a forecast are assignable, so a refresh before a GNN version exists assigns nothing. The deployed model derives the per-cell summary from the solved values with ontology-side aggregation: one `ScenarioCell` row per cell, with its revenue, cost, margin, anchor share, and per-type and per-tier counts, and a status that is OPTIMAL or INFEASIBLE when the solve proved optimality and FEASIBLE or UNSOLVED when it stopped at its time limit. The chosen baseline cell (`100pct / unconstrained / none`) is persisted as a singleton `AllocationPlan` concept with revenue / total_cost / margin / anchor_share / n_assigned / status / binding_axis, plus an `Assignment.is_chosen` flag over its decision rows. `binding_axis` is a fixed label (`power_envelope` for any plan with assignments); the template does not test which constraint binds.
 
 Finally, a `DemandScenario` overlay replays the locked-in plan under four risk scenarios. Anchor (P0) revenue is treated as contractual (factor 1.0) — the operator gets paid for the seat regardless of utilization — while opportunistic (P1/P2) seats realize only the scenario factor of their assigned revenue. The overlay reports realized and stranded revenue per scenario and persists each as a `DemandScenarioOutlook(scenario)` concept row, so the stranded-capacity exposure of the chosen plan is queryable as ontology, not just printed.
 
-See `datacenter_compute_allocation.py` for the implementation and `runbook.md` to reproduce each stage step by step with the RAI skills.
+See `model/reasoning.py` for the implementation and `runbook.md` to reproduce each stage step by step with the RAI skills.
 
 ## Customize this template
 
@@ -243,12 +383,11 @@ See `datacenter_compute_allocation.py` for the implementation and `runbook.md` t
 
 - Add or remove campuses by editing `data_centers.csv`. The bundled set is a snapshot of the upstream $300M-approved campuses; re-running `energy_grid_planning` at a different `InvestmentLevel` produces a different approved set you can copy in.
 - Adjust the lab roster in `ai_labs.csv`. The anchor flag drives the `DiversityCap` constraint.
-- Replace the GNN with the deterministic fallback by setting `--no-gnn` and editing `workload_utilization_fallback.csv` directly.
 
 ### Tune parameters
 
 - Tune the scenario axes: edit `power_envelope_levels.csv`, `margin_floors.csv`, and `diversity_caps.csv`. Adding rows scales the cell count multiplicatively.
-- Change the priority spread by editing the weights in the `# Stage 2: Rules` section (default 100 / 10 / 1).
+- Change the priority spread by editing the weights in the Stage 2 rules of `model/reasoning.py` (default 100 / 10 / 1).
 
 ### Extend the model
 
@@ -256,21 +395,21 @@ See `datacenter_compute_allocation.py` for the implementation and `runbook.md` t
 
 ### Scale up / productionize
 
-- Tune the Stage 4 solve by adjusting the solver name or `time_limit_sec` in `problem.solve(...)`. The default works on any prescriptive engine; faster commercial solvers (when licensed) can reach OPTIMAL in a fraction of the time.
+- Tune the Stage 4 solve by adjusting `SOLVER` or `SOLVER_TIME_LIMIT_SEC` in `model/reasoning.py`. The default works on any prescriptive engine; faster commercial solvers (when licensed) can reach OPTIMAL in a fraction of the time.
 - Replace the bundled CSVs with CDC ingestion from the operator's inventory, telemetry, and contract systems; the ontology shape is independent of the load pipeline.
 
 ## Troubleshooting
 
 <details>
-<summary><code>ModuleNotFoundError: relationalai.semantics.reasoners.predictive</code></summary>
+<summary><code>Experiment tracking database ... does not exist or is not accessible</code> when training</summary>
 
-The installed `relationalai` predates the predictive submodule. Pin a release that ships the GNN, or run with `--no-gnn` to load the deterministic fallback CSV.
+The GNN keeps its experiments and registered versions in the public schema named in `raiconfig.yaml`, and the RAI Native App needs USAGE on its database and schema plus CREATE EXPERIMENT and CREATE MODEL on the schema. Run the setup grants from the [Quickstart](#quickstart) as an administrator, then run `python train.py` again.
 </details>
 
 <details>
-<summary><code>Database does not exist or the GNN RelationalAI Native App lacks permissions</code></summary>
+<summary>The report prints <code>(no predictions returned)</code></summary>
 
-The `DATACENTER_ENRICHMENT.EXPERIMENTS` schema is not provisioned with the required grants. Run the four `GRANT` statements in [Prerequisites](#prerequisites).
+The deployed model has not refreshed since a version was registered: the refresh that `rai models deploy` waits for runs before `python train.py`. Run `python train.py` if you haven't, then the refresh call from step 6 of the Quickstart, and query again.
 </details>
 
 <details>
@@ -288,13 +427,13 @@ Then download the `problems.json` artifact. The most common fix is moving the of
 <details>
 <summary>Solver returns <code>INFEASIBLE</code> for the global solve</summary>
 
-Some cell's constraints are mutually unsatisfiable AND the C1 P0 commitment is a hard `==1`. C1 should be soft `<=1`; the `priority_weight=100` in the objective drives P0 to 1 wherever feasible. Per-cell infeasibility then surfaces as `INFEASIBLE` in the per-cell summary, not as global failure.
+The shipped constraints admit an empty allocation in every cell: C1 is a soft `<=1`, and `priority_weight=100` in the objective draws P0 workloads in wherever they fit. A global `INFEASIBLE` therefore comes from a change to the model, such as a hard P0 `==1` commitment or another positive lower bound; make it soft so the solve can leave a cell empty, which the per-cell summary labels INFEASIBLE.
 </details>
 
 <details>
 <summary>Solver returns <code>TIME_LIMIT</code> with sensible per-cell results</summary>
 
-Expected at the default `time_limit_sec=240`. Per-cell numbers remain valid with `TIME_LIMIT` (`rai-prescriptive-results`: `TIME_LIMIT` is signal, not error). Raise `time_limit_sec` or switch to a faster solver in the `# Stage 4: Prescriptive` section if you need a tighter MIP gap.
+Expected at the default `time_limit_sec=240`. Per-cell numbers remain valid with `TIME_LIMIT` (`rai-prescriptive-results`: `TIME_LIMIT` is signal, not error). Raise `SOLVER_TIME_LIMIT_SEC` or switch to a faster solver in `model/reasoning.py` if you need a tighter MIP gap.
 </details>
 
 <details>
@@ -306,7 +445,7 @@ Likely an upstream constraint (C5 / C6 / C7) firing at unintended cells. Check t
 <details>
 <summary>Per-workload utilization probabilities do not match the README's distribution</summary>
 
-GNN trained with non-default seed/epochs, or `--no-gnn` fallback used. The fallback values in `workload_utilization_fallback.csv` are the deterministic reference (the latent probability used to generate the synthetic labels); these are what downstream stages consume when `--no-gnn` is set.
+The GNN is stochastic, so the probabilities shift from one training run to the next, and a different `seed` or `n_epochs` in `model/reasoning.py` changes them too. The structural outcome (frontier pretrains near the top, evals near the bottom) reproduces.
 </details>
 
 ## What this template abstracts

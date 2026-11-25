@@ -6,7 +6,7 @@ A security team wants to see how an external attacker could chain techniques to 
 Asset graph  (12 assets, 16 technique-tagged steps: exploit / cred / pivot)
       │
       ▼
-/rai-graph-analysis  — Path enumeration (multi-edge, relationalai>=1.21)
+/rai-graph-analysis  — Path enumeration (multi-edge, preview)
    • kill-chain signature: exploit (from an internet-facing asset),
      then credential reuse, then 1-2 lateral pivots, into a crown jewel   -> 3 chains
    • point query: every route from Public Web Server to Customer Database

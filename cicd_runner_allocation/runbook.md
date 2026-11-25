@@ -16,7 +16,7 @@ A platform team wants to assign every CI/CD workflow job to a compatible runner 
 /rai-prescriptive-results
    • cheaper self-hosted-linux absorbs more jobs as the cap loosens, so cost falls
    • outage (2 runners offline) → INFEASIBLE; the IIS pins ubuntu-xlarge's cap (5) against
-     6 of the 7 high-CPU Linux jobs — restore a runner or raise that one cap
+     at least 6 of the 7 high-CPU Linux jobs — restore a runner or raise that one cap
 ```
 
 Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` skill (named at the start of each prompt). They run in order in a single session — later steps read the `Runner`/`Workflow`/`Compatibility` concepts and the assignment decisions earlier steps wrote back.
@@ -39,7 +39,7 @@ Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` 
 
 **Prompt:** /rai-prescriptive-problem Which runner should each job run on to minimize total pipeline cost — runner cost-per-minute times the job's estimated minutes — given that each job must go to exactly one compatible runner and each runner can run at most its concurrency cap of jobs? Solve it for three capacity scenarios that scale every runner's concurrency cap to 0.5x, 1.0x, and 1.5x. Persist the assignment to the ontology.
 
-**Response:** OPTIMAL in all three scenarios (HiGHS), all 20 jobs assigned each time. Minimum total cost is **$10.18 at 0.5x, $9.62 at 1.0x, and $9.53 at 1.5x**. The binary assignment is written back as `Assignment.x_assigned`; the assign-one and per-runner concurrency constraints are keyed by workflow and runner so their conflict membership can be read back later.
+**Response:** OPTIMAL in all three scenarios (HiGHS), all 20 jobs assigned each time. Minimum total cost is **$10.18 at 0.5x, $9.62 at 1.0x, and $9.53 at 1.5x**. Each scenario's assignments are published as a relationship of their own; the assign-one and per-runner concurrency constraints are keyed by workflow and runner so their conflict membership can be read back later.
 
 ## 4. Read the cost-vs-capacity curve
 
@@ -51,8 +51,8 @@ Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` 
 
 **Prompt:** /rai-prescriptive-results If two runners — ubuntu-large and self-hosted-linux — go offline for maintenance at normal (1.0x) capacity, can every job still be scheduled? If not, return the minimal conflict (the IIS): which runner's concurrency cap, and which jobs, make it infeasible?
 
-**Response:** INFEASIBLE — the solver returns a conflict. The irreducible infeasible subsystem pins **ubuntu-xlarge's concurrency cap (max 5)** against the high-CPU Linux jobs that, with the two runners offline, have nowhere else to go: **6 of the 7 high-CPU Linux jobs are stranded** (the minimal conflict names cap-plus-one = 6; exactly which 6 is solver-dependent). The fix is named directly: restore one of the offline runners or raise ubuntu-xlarge's cap — far more actionable than a bare "infeasible."
+**Response:** INFEASIBLE — the solver returns a conflict. The irreducible infeasible subsystem pins **ubuntu-xlarge's concurrency cap (max 5)** against the high-CPU Linux jobs that, with the two runners offline, have nowhere else to go: **at least 6 of the 7 high-CPU Linux jobs are stranded** (a minimal conflict needs cap-plus-one = 6, which 6 is solver-dependent, and the seventh can also appear when the solver marks it as possibly in the conflict). The fix is named directly: restore one of the offline runners or raise ubuntu-xlarge's cap — far more actionable than a bare "infeasible."
 
 ## Data
 
-Bundled CSVs in `data/`: 8 runners, 20 workflows, 70 compatibility pairs. The concurrency multipliers (0.5, 1.0, 1.5) and the outage runner list are constants in the script. Full model in `cicd_runner_allocation.py`.
+Bundled CSVs in `data/`: 8 runners, 20 workflows, 70 compatibility pairs. The concurrency multipliers (0.5, 1.0, 1.5) and the outage runner list are constants in the model. Full model in `model/`.

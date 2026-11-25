@@ -25,9 +25,9 @@ Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` 
 
 ## 1. Build the ontology
 
-**Prompt:** /rai-ontology Build an ontology from `data/freight_groups.csv` — each freight group has an inventory window, a transport window, an arrival window (each a start and end day), and a starting weight. Also model two transport types — truckload (transit 2 days, $2,000 per truck, 24,000 lb capacity) and less-than-truckload (transit 3 days) — and the LTL cost segments as a piecewise per-pound rate: up to 6,000 lb at $0.18/lb, then up to 7,000 lb at $0.12/lb. Inventory holding costs 0.1% of weight per day held.
+**Prompt:** /rai-ontology Build an ontology from `data/freight_groups.csv` — each freight group has an inventory window, a transport window, an arrival window (each a start and end day), and a starting weight. Also model two transport types — truckload (transit 2 days, $2,000 per truck, 24,000 lb capacity) and less-than-truckload (transit 3 days) — and the LTL cost segments as a piecewise per-pound rate: the first 6,000 lb at $0.18/lb, then the next 7,000 lb at $0.12/lb. Inventory holding costs 0.1% of weight per day held.
 
-**Response:** Loads `FreightGroup` (2: fg1 4,000 lb, fg2 5,000 lb, each with inventory/transport/arrival day-windows), `TransportType` (2: TL transit 2 days, LTL transit 3 days), and `LTLSegment` (2 piecewise tiers: up to 6,000 lb at $0.18/lb, then to 7,000 lb at $0.12/lb).
+**Response:** Loads `FreightGroup` (2: fg1 4,000 lb, fg2 5,000 lb, each with inventory/transport/arrival day-windows), `TransportType` (2: TL transit 2 days, LTL transit 3 days), and `LTLSegment` (2 piecewise tiers: the first 6,000 lb at $0.18/lb, then the next 7,000 lb at $0.12/lb).
 
 ## 2. Examine the ontology
 
@@ -45,8 +45,8 @@ Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` 
 
 **Prompt:** /rai-prescriptive-results How does the optimal plan ship each group, and why does it pick that mode?
 
-**Response:** The plan ships **both groups by LTL on day 2** (9,000 lb combined), each arriving on day 5, and uses **zero truckload trucks**. LTL consolidation wins here: the combined LTL cost of $1,444 undercuts the $2,000 fixed cost of even a single TL truck, so paying per-pound on LTL beats committing to truckload at these volumes.
+**Response:** The plan ships **both groups by LTL on day 2** (9,000 lb combined), each arriving on day 5, and uses **zero truckload trucks**. LTL consolidation wins here: the plan's $1,444 total ($1,440 of LTL freight plus $4 of holding cost) undercuts the $2,000 fixed cost of even a single TL truck, so paying per-pound on LTL beats committing to truckload at these volumes.
 
 ## Data
 
-Bundled CSV in `data/`: 2 freight groups with day-windows and weights. The transport modes and LTL rate tiers are defined in the script, along with TL cost/capacity and the holding rate. Full model in `supply_chain_transport.py`.
+Bundled CSV in `data/`: 2 freight groups with day-windows and weights. The transport modes and LTL rate tiers are defined in `model/source.py`, along with TL cost/capacity and the holding rate in `model/reasoning.py`. Full model in `model/`; the report in `queries/transport_plan.py`.

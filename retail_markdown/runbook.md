@@ -45,8 +45,8 @@ Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` 
 
 **Prompt:** /rai-prescriptive-results How does the discount schedule evolve over the season, and how much inventory clears?
 
-**Response:** Discounts start shallow — **20% across the board early** — and **deepen to 30% in the later weeks** for the slower movers (Shirt and Sweater move to 30% by week 3, Pants by week 4; Jacket holds at 20% throughout). **No product ever needs the deepest 50% tier.** By the final week Pants, Shirt, and Sweater have nearly cleared their inventory (roughly 99%, 99%, and 99% sold), while the higher-margin Jacket sells through about two-thirds — the plan protects Jacket's margin rather than discounting hard to clear it.
+**Response:** Discounts start shallow — **20% across the board early** — and **deepen to 30% in the later weeks** for the slower movers (Shirt and Sweater move to 30% by week 3, Pants by week 4; Jacket holds at 20% throughout). **No product ever needs the deepest 50% tier.** By the final week Pants, Shirt, and Sweater have nearly cleared their inventory (roughly 99%, 99%, and 99% sold), while the higher-priced Jacket sells through about two-thirds — a deeper discount would not raise its sales-plus-salvage revenue, so the plan holds it at 20% rather than discounting hard to clear it.
 
 ## Data
 
-Bundled CSVs in `data/`: 4 products, 5 discount levels, 4 weeks. Full model in `retail_markdown.py`.
+Bundled CSVs in `data/`: 4 products, 5 discount levels, 4 weeks. Full model in `model/`; the report in `queries/markdown_plan.py`.

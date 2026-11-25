@@ -24,7 +24,7 @@ removed while the template remains.
 
 ## Required workflow
 
-1. Read the entire template directory, including its runner, `pyproject.toml`,
+1. Read the entire template directory, including its queries, `pyproject.toml`,
    README, runbook, data files, and existing sidecar.
 1. Preserve the entrypoint, solver choices, constraints, thresholds, output
    labels, and data semantics unless the request explicitly changes them.
@@ -38,7 +38,8 @@ removed while the template remains.
    │   ├── __init__.py
    │   ├── schema.py
    │   └── source.py
-   ├── <runner>.py
+   ├── queries/
+   │   └── <name>.py
    ├── runbook.md
    ├── pyproject.toml
    └── data/
@@ -49,12 +50,15 @@ removed while the template remains.
    relationships with direct `model.Concept`, `model.Property`, and
    `model.Relationship` calls.
 1. Put source reads, normalization, and base-fact mappings in
-   `model/source.py`. Keep solver declarations, derived reasoning, result
-   queries, and reporting in the runner.
+   `model/source.py`. `rai models deploy --path model` deploys what the
+   package declares, so put solver declarations and derived reasoning in the
+   package too (for example `model/reasoning.py`). Keep result queries and
+   reporting in `queries/<name>.py`, which imports from `model`, declares
+   nothing, and runs as `python -m queries.<name>`.
 1. Re-export the model and stable schema symbols from `model/__init__.py`.
    A single-source template may load its source on import. A multi-source
-   template must expose explicit loader functions and let each runner choose
-   the correct one.
+   template must expose explicit loader functions and let each entry point
+   choose the correct one.
 1. Keep README commands, code links, `runbook.md`, and `template-docs.yaml`
    aligned with the final paths and symbols.
 1. Follow [the sidecar contract](./resources/template-docs.md) and select only
@@ -73,7 +77,7 @@ provides the model explorer and walkthrough.
 
 - Explain the problem before implementation details.
 - For a long-form README, put the solution flow in **What you'll build** and
-  use **What's included** to identify the schema, source, runner, runbook,
+  use **What's included** to identify the schema, source, queries, runbook,
   sample data, and outputs.
 - When the sidecar sets `page.download_and_run_from_readme: true`, a README may
   contain only **What this template is for** and **Quickstart**, plus an

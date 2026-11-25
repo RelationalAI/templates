@@ -1,0 +1,66 @@
+"""Load the sample tables, targets, and foreign-key constraints into the model."""
+
+from pathlib import Path
+
+from pandas import read_csv
+
+from .schema import Table, model
+
+DATA_DIR = Path(__file__).resolve().parents[1] / "data"
+scale_factor = 1.0
+
+# Load schema and constraint data
+schema_df = read_csv(DATA_DIR / "testgen_schema.csv")
+constraints_df = read_csv(DATA_DIR / "testgen_constraints.csv")
+targets_df = read_csv(DATA_DIR / "testgen_targets.csv")
+
+# Scale targets
+targets_df = targets_df.copy()
+targets_df['target_rows'] = (targets_df['target_rows'] * scale_factor).astype(int)
+targets_df['min_rows'] = (targets_df['min_rows'] * scale_factor).astype(int)
+targets_df['max_rows'] = (targets_df['max_rows'] * scale_factor).astype(int)
+
+table_data = model.data(targets_df)
+model.define(
+    t := Table.new(table_name=table_data.table_name),
+    t.target_rows(table_data.target_rows),
+    t.min_rows(table_data.min_rows),
+    t.max_rows(table_data.max_rows),
+    t.priority(table_data.priority),
+)
+
+# Extract FK relationships from schema
+fk_df = schema_df[schema_df['is_foreign_key']].copy()
+
+fk_objs = []
+for _, fk_row in fk_df.iterrows():
+    child_table = fk_row['table_name']
+    parent_table = fk_row['references_table']
+
+    # The constraints on this foreign key: same child table, column, and parent table.
+    rules = constraints_df[
+        (constraints_df['table_name'] == child_table) &
+        (constraints_df['column_name'] == fk_row['column_name']) &
+        (constraints_df['related_table'] == parent_table)
+    ]
+
+    # Children per parent: every declared bound applies, so the range is their
+    # intersection. Mandatory participation means at least 1 unless it states a minimum;
+    # with nothing declared, there is no lower bound and at most 100.
+    kind = rules['constraint_type']
+    mins = list(rules.loc[kind.isin(['cardinality_bound', 'frequency']), 'min_value'].dropna())
+    mins += list(rules.loc[kind == 'mandatory_participation', 'min_value'].fillna(1))
+    maxes = list(rules.loc[kind.isin(['cardinality_bound', 'frequency']), 'max_value'].dropna())
+    min_per = int(max(mins, default=0))
+    max_per = int(min(maxes, default=100))
+
+    coverage = rules.loc[kind == 'coverage', 'percentage'].dropna()
+    coverage_pct = float(coverage.max()) / 100.0 if len(coverage) else 0.0
+
+    fk_objs.append({
+        'child': child_table,
+        'parent': parent_table,
+        'min': min_per,
+        'max': max_per,
+        'coverage': coverage_pct
+    })

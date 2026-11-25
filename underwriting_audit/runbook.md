@@ -38,7 +38,7 @@ Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` 
 
 **Prompt:** /rai-prescriptive-problem Encode the underwriting rules as constraints over an applicant's attributes: an applicant is senior if their age is at least 70; frail if senior or chronically ill; and the ruleset flags an applicant for manual review if they are senior. Then audit three properties — (a) every senior is flagged for review, (b) every frail applicant is flagged for review, (c) every chronically-ill applicant under 50 is flagged for review — by searching for a counterexample for each: an applicant who satisfies the rules but violates the property. Enumerate up to 16 distinct counterexample applicants per property (multi-solution mode). A property passes only if no counterexample exists.
 
-**Response:** Each property is audited as a fresh constraint problem (MiniZinc) over 6 applicant decision variables. A property with no feasible counterexample is INFEASIBLE — meaning it holds (PASS); a property with feasible counterexamples FAILS, and each witness is a concrete applicant exhibiting the gap.
+**Response:** Each property is audited as its own constraint problem (MiniZinc) over 6 applicant decision variables, declared in `model/reasoning.py` with `problem.configure(...)`, so each refresh of the deployed model runs the searches. A property with no feasible counterexample is INFEASIBLE — meaning it holds (PASS); a property with feasible counterexamples FAILS, and each witness is a concrete applicant exhibiting the gap.
 
 ## 4. Read the audit report
 
@@ -48,4 +48,4 @@ Each prompt is pasted into a fresh agent session loaded with the named `/rai-*` 
 
 ## Data
 
-Bundled CSVs in `data/`: 4 age buckets, 4 coverage bands. The rule pack, the audited properties, and the witness cap (16) are defined in the script. Full model in `underwriting_audit.py`.
+Bundled CSVs in `data/`: 4 age buckets, 4 coverage bands. The rule pack, the audited properties, and the witness cap (16) are defined in the model. Full model in `model/`; the report in `queries/audit_report.py`.

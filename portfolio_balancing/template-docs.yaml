@@ -11,8 +11,10 @@ page:
   omit_readme_preamble: true
   lead_from_readme:
     - what-this-template-is-for
+    - prerequisites
   omit_from_readme: []
   download_and_run_from_readme: true
+  deployment: true
 
 model_explorer:
   title: Explore the model
@@ -50,7 +52,7 @@ model_explorer:
       description: A budget and market-regime combination solved as one portfolio optimization scenario.
 
     - symbol: FrontierPoint
-      description: A point on a scenario's efficient frontier, including its return, risk, exact marginal risk, knee indicator, and base-to-crisis volatility change.
+      description: A point on a scenario's efficient frontier, published by one of the model's solves, with its expected return, risk, exact marginal risk, and the stock amounts it allocates.
 
   # Concept-valued properties appear as roads. Override their short labels
   # here without changing the model declarations.
@@ -169,8 +171,8 @@ guided_walkthrough:
         combines a budget with a regime. Stock.regime_covar records the
         covariance between each pair of stocks for a regime. Stock.x_quantity
         represents how much of a stock the optimizer assigns to a scenario.
-        FrontierPoint represents one risk and return result.
-        FrontierPoint.scenario links that result to its scenario.
+        FrontierPoint represents one solve's risk and return result for a
+        scenario. FrontierPoint.scenario links that result to its scenario.
       focus:
         file: model/schema.py
         anchors:
@@ -197,7 +199,7 @@ guided_walkthrough:
         FrontierPoint:
           anchor:
             start: FrontierPoint = model.Concept(
-            end: 'identify_by={"scenario_label": String, "eps_label": String},'
+            end: 'identify_by={"scenario_label": String, "solve": String},'
             end_offset: 1
         FrontierPoint.scenario:
           anchor:
@@ -267,7 +269,7 @@ guided_walkthrough:
         These flags give investment managers a short list of holdings, sector
         exposures, and users that may need review.
       focus:
-        file: portfolio_balancing.py
+        file: model/reasoning.py
         anchors:
           - start: '# Derived holding value = quantity * purchase_price.'
             end: ).define(Holding.is_overconcentrated())
@@ -292,7 +294,7 @@ guided_walkthrough:
         Using one representative from each cluster reduces the chance that a
         new portfolio will include several stocks that behave alike.
       focus:
-        file: portfolio_balancing.py
+        file: model/reasoning.py
         anchors:
           - start: stock_i_ref = Stock.ref()
             end: community(stock_clust_ref, cluster_label)
@@ -341,8 +343,13 @@ guided_walkthrough:
         where the risk and return curve bends most. It calculates a portfolio
         at that return level and repeats until it has six points. Together,
         these points show the lowest risk available across a range of returns.
+
+        Every one of these calculations is a separate Problem in the model, and
+        each return level after the first two is a rule over the results of
+        earlier Problems. One refresh of the deployed model therefore runs all
+        of them in order.
       focus:
-        file: portfolio_balancing.py
+        file: model/reasoning.py
         anchors:
           - start: problem.minimize(
             end: PairedStock.x_quantity(Scenario, x_qty_paired),
@@ -362,69 +369,54 @@ guided_walkthrough:
         - title: Estimate the effect of changing a constraint limit
           href: /build/guides/reasoning/prescriptive/decision-problems/solutions/#estimate-the-effect-of-changing-a-constraint-limit
 
-    - id: stage-4-materialize-and-compare
+    - id: stage-4-publish-and-compare
       title: "Stage 4: Summarize the results"
       explanation: |-
-        Stage 4 starts with stage3_solves, which contains the cached allocation
-        table and shadow prices for each point calculated in Stage 3. For every
-        scenario and point, evaluate_return() and evaluate_risk() calculate the
-        summary measures. marginal_risk_per_return records how much more
-        variance is needed when the required return increases by one unit.
+        Each solve in Stage 3 publishes a FrontierPoint for every scenario. The
+        report reads these points with model.select() and keeps the points of
+        the dichotomic solves. Each point holds the portfolio's expected return,
+        its risk (the variance), and marginal_risk_per_return, the shadow price
+        of its return floor. It records how much more variance is needed when
+        the required return increases by one unit.
 
-        After the code marks the knee and adds the stress comparison,
-        FrontierPoint.new() stores each completed summary in the model. A
-        frontier point represents one calculated portfolio using measures of
-        risk and return. The individual stock amounts remain in the Stage 3
-        results. is_knee marks the point before variance begins to increase much
-        faster. vol_base and vol_crisis record volatility for the matching base
-        and crisis results.
+        For every scenario, the report orders those points by return and labels
+        them min_risk, p1, p2, and so on. It marks the knee, the point before
+        variance begins to increase much faster, and adds vol_base and
+        vol_crisis, the volatility of the matching base and crisis results.
 
-        These summaries let the final queries compare the calculated portfolios
-        and identify the portfolio associated with the FrontierPoint marked as
-        is_knee. The next step shows its stock amounts.
+        These summaries let the final step compare the calculated portfolios
+        and identify the knee of each scenario. The next step shows its stock
+        amounts.
       focus:
-        file: portfolio_balancing.py
+        file: queries/portfolio_report.py
         anchors:
-          - start: fp_rows = []
-            end: '"is_knee": False,'
-            end_offset: 2
-          - start: fp_data = model.data(DataFrame(fp_rows))
-            end: 'fp.vol_gap_pct(fp_data["vol_gap_pct"]),'
-            end_offset: 1
+          - start: return_risk_df = model.select(
+            end: '.set_index(["solve", "scenario"])'
+          - start: knee_idx, max_jump = None, 0.0
+            end: 'rows_for_sn[knee_idx]["is_knee"] = True'
+          - start: 'risk_by_key = {(r["scenario_label"], r["eps_label"]): r["risk"] for r in fp_rows}'
+            end: 'r["vol_gap_pct"] = (vol_gap / vol_base * 100.0) if vol_base > 1e-9 else 0.0'
       references:
-        stage3_solves:
+        model.select():
           anchor:
-            start: 'for k, (label, allocation_df, shadow) in enumerate(stage3_solves):'
-            end: 'for k, (label, allocation_df, shadow) in enumerate(stage3_solves):'
-        evaluate_return():
-          anchor:
-            start: '"return": evaluate_return(allocation_df, sn),'
-            end: '"return": evaluate_return(allocation_df, sn),'
-        evaluate_risk():
-          anchor:
-            start: '"risk": evaluate_risk(allocation_df, sn),'
-            end: '"risk": evaluate_risk(allocation_df, sn),'
+            start: return_risk_df = model.select(
+            end: return_risk_df = model.select(
         marginal_risk_per_return:
           anchor:
-            start: '"marginal_risk_per_return": marginal,'
-            end: '"marginal_risk_per_return": marginal,'
-        FrontierPoint.new():
+            start: 'FrontierPoint.marginal_risk_per_return.alias("marginal"),'
+            end: 'FrontierPoint.marginal_risk_per_return.alias("marginal"),'
+        knee:
           anchor:
-            start: 'fp := FrontierPoint.new('
-            end: 'eps_label=fp_data["eps_label"],'
-            end_offset: 1
-        is_knee:
-          anchor:
-            start: 'fp.is_knee(fp_data["is_knee"]),'
-            end: 'fp.is_knee(fp_data["is_knee"]),'
+            start: 'rows_for_sn[knee_idx]["is_knee"] = True'
+            end: 'rows_for_sn[knee_idx]["is_knee"] = True'
         vol_base:
           anchor:
-            start: 'fp.vol_base(fp_data["vol_base"]),'
-            end: 'fp.vol_base(fp_data["vol_base"]),'
+            start: 'vol_base = base_risk**0.5 if base_risk is not None else 0.0'
+            end: 'vol_base = base_risk**0.5 if base_risk is not None else 0.0'
         vol_crisis:
           anchor:
-            start: 'fp.vol_crisis(fp_data["vol_crisis"]),'
-            end: 'fp.vol_crisis(fp_data["vol_crisis"]),'
+            start: 'vol_crisis = crisis_risk**0.5 if crisis_risk is not None else 0.0'
+            end: 'vol_crisis = crisis_risk**0.5 if crisis_risk is not None else 0.0'
       links:
         - title: Define base facts from tabular data
           href: /build/guides/modeling/define-base-facts/#map-columns-explicitly
@@ -435,23 +427,23 @@ guided_walkthrough:
         After Stage 4, frontier_df lists the calculated portfolios for every
         budget and market regime. Each row shows expected return, variance, the
         extra variance needed for another unit of required return, and whether
-        its FrontierPoint is marked as is_knee. A second table compares
-        volatility under base and crisis conditions.
+        the row is_knee. A second table compares volatility under base and
+        crisis conditions.
 
         To choose a candidate portfolio, first select the budget and market
         regime you want to plan for. Then compare return and risk across that
-        scenario's rows. The portfolio associated with the FrontierPoint marked
-        as is_knee is a useful place to start because it is the last point
-        before variance begins to rise much faster for each additional unit of
-        required return. It is a candidate to review, not a recommendation.
+        scenario's rows. The portfolio at the row marked is_knee is a useful
+        place to start because it is the last point before variance begins to
+        rise much faster for each additional unit of required return. It is a
+        candidate to review, not a recommendation.
 
-        The final loop uses _extract_frontier_point_allocations() to retrieve
-        that portfolio's stock amounts from Stage 3 for each of the six
-        scenarios. Amount shows how much of the scenario's budget is assigned
-        to a stock. Weight shows the stock's share of the budget. The output
-        excerpt shows the base portfolio for a budget of 1,000. To turn it into
-        a rebalancing plan, link the scenario to an account and compare these
-        target amounts with its current holdings.
+        The final loop uses allocation_df to retrieve the stock amounts that
+        the knee point's solve published for each of the six scenarios. Amount
+        shows how much of the scenario's budget is assigned to a stock. Weight
+        shows the stock's share of the budget. The output excerpt shows the
+        base portfolio for a budget of 1,000. To turn it into a rebalancing
+        plan, link the scenario to an account and compare these target amounts
+        with its current holdings.
       output: |-
           base_1000 (budget=1000, regime=base, point=p3)
           expected return=80.46, volatility=83.33
@@ -463,37 +455,36 @@ guided_walkthrough:
           JPM           135.49    13.5%
           PG             51.87     5.2%
       focus:
-        file: portfolio_balancing.py
+        file: queries/portfolio_report.py
         anchors:
-          - start: '    knee_rows = frontier_df['
-            end: label, allocations = _extract_frontier_point_allocations(
-            end_offset: 4
-          - start: '    ordered_allocations = sorted('
-            end: '            f"{float(quantity) / budget:>9.1%}"'
+          - start: knee_rows = frontier_df[
+            end: allocations = zip(knee_allocation["ticker"], knee_allocation["amount"])
+          - start: ordered_allocations = sorted(
+            end: '{float(quantity) / budget:>9.1%}'
             end_offset: 1
       references:
         frontier_df:
           anchor:
-            start: '    knee_rows = frontier_df['
-            end: '        & frontier_df["is_knee"]'
+            start: knee_rows = frontier_df[
+            end: '& frontier_df["is_knee"]'
             end_offset: 1
         is_knee:
           anchor:
-            start: '        & frontier_df["is_knee"]'
-            end: '        & frontier_df["is_knee"]'
-        _extract_frontier_point_allocations():
+            start: '& frontier_df["is_knee"]'
+            end: '& frontier_df["is_knee"]'
+        allocation_df:
           anchor:
-            start: label, allocations = _extract_frontier_point_allocations(
-            end: label, allocations = _extract_frontier_point_allocations(
-            end_offset: 4
+            start: knee_allocation = allocation_df[
+            end: knee_allocation = allocation_df[
+            end_offset: 2
         Amount:
           anchor:
-            start: '            f"  {ticker:<8}{float(quantity):>12.2f}"'
-            end: '            f"  {ticker:<8}{float(quantity):>12.2f}"'
+            start: '{float(quantity):>12.2f}'
+            end: '{float(quantity):>12.2f}'
         Weight:
           anchor:
-            start: '            f"{float(quantity) / budget:>9.1%}"'
-            end: '            f"{float(quantity) / budget:>9.1%}"'
+            start: '{float(quantity) / budget:>9.1%}'
+            end: '{float(quantity) / budget:>9.1%}'
       links:
         - title: Work with solutions
           href: /build/guides/reasoning/prescriptive/decision-problems/solutions/

@@ -38,7 +38,8 @@ Built using **prescriptive reasoning** (nonlinear program over continuous flow v
 ## What's included
 
 - **Model**: a single-stage nonlinear optimization on a shared ontology — `Source`, `User`, and `Connection` concepts wired to the bundled CSVs.
-- **Runner**: `water_allocation.py` — a single Python script that builds the model, constraints, and objective and calls the solver against a Snowflake-connected RAI account.
+- **Deployment**: the `model/` package (`schema.py` declares the concepts, `source.py` loads the sample data, `reasoning.py` states the decision problem) — builds the model, constraints, and objective; `rai models deploy --path model` deploys it to your Snowflake account, where each refresh calls the solver.
+- **Query**: `queries/flow_allocations.py` — prints the report from the deployed model.
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - **Sample data**: a small water-distribution network of sources, user groups, and the connections between them. See *Sample data* below.
 - **Outputs**: solver status, total cost, and the per-connection flow allocations.
@@ -47,63 +48,157 @@ Built using **prescriptive reasoning** (nonlinear program over continuous flow v
 
 ### Access
 - A Snowflake account that has the RAI Native App installed.
-- A Snowflake user with permissions to access the RAI Native App.
+- The one-time model deployment setup on that account, done by an account administrator: follow [Set up model deployment](https://private.relational.ai/early-access/model-deploy-setup) through **Governed setup**, **PAT authentication**, and steps 1-2 of **Additional setup for the prescriptive reasoner** (the Quickstart covers this template's own schema). It gives you a model role, a programmatic access token (PAT) stored as a secret, an external access integration, a PAT user, and a warehouse.
+- A Snowflake user that holds the model role.
 
 ### Tools
-- Python >= 3.10.
-- RelationalAI Python SDK (`relationalai == 2.1.1`).
+- Python 3.10 through 3.14 (the range relationalai 2.3.0 supports).
+- RelationalAI Python SDK (`relationalai == 2.3.0`).
 
 ## Quickstart
 
-1. Download ZIP:
+Before you start, install Python 3.10 or later and complete the access prerequisites above: a Snowflake account with the RAI Native App, the one-time model deployment setup, and a Snowflake user that holds the model role.
+
+Before the first deploy, create this template's internal schema as the model role, and have an administrator grant the RAI Native App caller access to it. The internal schema holds only this model's objects, so the grants cover all of it, including the solver's result tables that the deploy creates:
+
+```sql
+-- as the model role
+CREATE SCHEMA IF NOT EXISTS <DB>.WATER_ALLOCATION_META;
+
+-- as an administrator
+GRANT CALLER USAGE ON DATABASE <DB> TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER USAGE ON SCHEMA <DB>.WATER_ALLOCATION_META TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER USAGE ON WAREHOUSE <PAT_WAREHOUSE> TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL TABLES IN SCHEMA <DB>.WATER_ALLOCATION_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL DYNAMIC TABLES IN SCHEMA <DB>.WATER_ALLOCATION_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL VIEWS IN SCHEMA <DB>.WATER_ALLOCATION_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER INSERT, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA <DB>.WATER_ALLOCATION_META TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER CREATE TABLE, CREATE STAGE ON SCHEMA <DB>.WATER_ALLOCATION_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER READ, WRITE ON ALL STAGES IN SCHEMA <DB>.WATER_ALLOCATION_META TO APPLICATION <RAI_APP_NAME>;
+```
+
+Use this sequence to deploy the model and query it:
+
+1. **Download the template**
+
+   [Download the ZIP](https://docs.relational.ai/templates/zips/v1/water_allocation.zip), unzip it, and enter the template directory:
+
    ```bash
-   curl -O https://docs.relational.ai/templates/zips/v1/water_allocation.zip
    unzip water_allocation.zip
    cd water_allocation
    ```
-   > [!TIP]
-   > You can also download the template ZIP using the "Download ZIP" button at the top of this page.
 
-2. Create venv:
+2. **Create a Python environment**
+
+   Create and activate a virtual environment, then update pip:
+
    ```bash
    python -m venv .venv
    source .venv/bin/activate
    python -m pip install --upgrade pip
    ```
 
-3. Install:
+3. **Install the template**
+
+   Install the dependencies pinned in `pyproject.toml`:
+
    ```bash
    python -m pip install .
    ```
 
-4. Configure:
-   ```bash
-   rai init
+4. **Configure your project**
+
+   Use the configuration builder in [Install and run PyRel](https://docs.relational.ai/get-started/install-and-run-pyrel/#configure-your-project) to create `raiconfig.yaml` in the template directory and verify your connection.
+
+   Set the connection `role` to the model role, then add the prescriptive reasoner and a `deployment` section. Give each template its own schema pair so two deployed templates never share one:
+
+   ```yaml
+   reasoners:
+     prescriptive:
+       name: water_allocation_solver            # created on first deploy if it doesn't exist
+   deployment:
+     role: <MODEL_ROLE>
+     public_schema: <DB>.WATER_ALLOCATION               # published views and tables
+     identity:
+       internal_schema: <DB>.WATER_ALLOCATION_META      # solver inputs, results, refresh procedures
+     schedules:
+       standard:
+         interval_s: 0              # refresh only on deploy or on demand
+     schedule: standard
+     pat_secret: <PAT_SECRET>       # these four come from the setup page
+     pat_eai: <PAT_EAI>
+     pat_user: <PAT_USER>
+     pat_warehouse: <PAT_WAREHOUSE>
    ```
 
-5. Run:
+5. **Deploy the model**
+
+   Deploy the model in `model/` to the schemas in `raiconfig.yaml`:
+
    ```bash
-   python water_allocation.py
+   rai models deploy --path model
    ```
 
-6. Expected output (a few lines confirm a successful run):
+   The deploy creates the public schema named in `raiconfig.yaml` if it doesn't exist and waits for the model's first refresh, which runs the solve. Each refresh of the deployed model runs the solve again.
+
+   Deploying again without changing the model applies no updates and does not solve again. A change to the model or to `problem.configure(...)` redeploys, and the redeploy's refresh solves.
+
+6. **Query the results**
+
+   Print the report from the deployed model:
+
+   ```bash
+   python -m queries.flow_allocations
+   ```
+
    ```text
+   Solve result:
+   • status: LOCALLY_SOLVED
+   • objective: 853.392097856
+
    Status: LOCALLY_SOLVED
    Total cost: $853.39
 
    Flow allocations:
-     Reservoir_A     Municipal  400.00
-     Reservoir_B  Agricultural  182.06
-     ...
+           source          user        flow
+   0  Reservoir_A  Agricultural  352.769782
+   1  Reservoir_A    Industrial  247.230225
+   2  Reservoir_A     Municipal  400.000004
+   3  Reservoir_B  Agricultural  182.063671
+   4  Reservoir_B    Industrial  177.934136
+   5  Reservoir_B     Municipal  228.989014
    ```
 
-   The full printout and a step-by-step walkthrough are in `runbook.md`.
+   Ipopt returns `LOCALLY_SOLVED` for a nonlinear program it solved to a local optimum. See `runbook.md` for the step-by-step walkthrough.
+
+   To solve again without changing the model, refresh the deployed model, then run the query again:
+
+   ```sql
+   CALL <DB>.WATER_ALLOCATION_META._INTERNAL_REFRESH_MODEL('standard', NULL);
+   ```
+
+7. **Tear down the deployment**
+
+   Preview what the teardown removes, then remove it:
+
+   ```bash
+   rai models teardown
+   rai models teardown --force
+   ```
+
+   The first command lists the model's objects without dropping anything; the second drops them and keeps the two schemas.
 
 ## Template structure
 
 ```text
 water_allocation/
-  water_allocation.py   # Main script (network model, constraints, solver call)
+  model/
+    __init__.py         # Exports of the deployed model
+    schema.py           # Source, user, and connection concepts
+    source.py           # Loads the sample CSVs
+    reasoning.py        # Flow variable, constraints, objective, solver call
+  queries/
+    flow_allocations.py # Report from the deployed model
   data/
     sources.csv         # Water sources with capacity and cost per unit
     users.csv           # User groups with demand and priority
@@ -113,7 +208,7 @@ water_allocation/
   pyproject.toml        # dependencies
 ```
 
-**Start here**: run `python water_allocation.py` for the full solve end to end, or follow `runbook.md` to rebuild it step by step.
+**Start here**: deploy with `rai models deploy --path model` and run `python -m queries.flow_allocations` for the full solve end to end, or follow `runbook.md` to rebuild it step by step.
 
 ## Sample data
 
@@ -128,24 +223,24 @@ The bundled data is a small, illustrative water-distribution network — designe
 A single shared ontology holds the network. The `Connection` concept carries the flow decision variable the solver assigns.
 
 - **Key entities**: `Source` (reservoirs, groundwater), `User` (demand groups), `Connection` (source-to-user links).
-- **Primary identifiers**: integer `id` on `Source` and `User`; `Connection` is identified by its `source` and `user` endpoints.
-- **Important invariants**: `capacity`, `demand`, `max_flow`, and `cost_per_unit` are non-negative; `loss_rate` is a fraction in `[0, 1]`; each connection's flow is continuous and bounded between 0 and its `max_flow`.
+- **Primary identifiers**: integer `id` on `Source` and `User`; each row of `connections.csv` creates one `Connection` from its `source` and `user` endpoints and its attributes; an endpoint id that matches no source or user stops the deploy with an error.
+- **Important invariants**: `capacity`, `demand`, and `cost_per_unit` are non-negative; `max_flow` is positive; `loss_rate` is a fraction in `[0, 1]`; every user with demand has at least one connection; each connection's flow is continuous and bounded between 0 and its `max_flow`.
 
-For the full concept and property definitions, see `water_allocation.py`; `runbook.md` builds them step by step with the RAI skills.
+For the full concept and property definitions, see `model/schema.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
 This is a network-flow problem: source-capacity limits, per-connection flow bounds, and demand constraints whose nonlinear loss term makes it quadratic, solved with the Ipopt nonlinear solver.
 
-The script loads three concepts from CSV — sources with a capacity and an extraction cost, users with a demand, and connections that link a source to a user with a maximum flow and a loss rate. Each connection then gets a continuous flow decision variable, bounded between zero and its maximum flow, that the solver assigns.
+The model loads three concepts from CSV — sources with a capacity and an extraction cost, users with a demand, and connections that link a source to a user with a maximum flow and a loss rate. Each connection then gets a continuous flow decision variable, bounded between zero and its maximum flow, that the solver assigns.
 
-Two families of constraints shape the plan. A source-capacity constraint holds the total outflow from each source within its capacity. A demand constraint requires each user's effective inflow — the flow delivered after losses — to meet its demand. The loss term is where the nonlinearity enters: the fraction lost on a connection grows with how hard the route is being pushed, so effective delivery falls as a connection approaches its maximum flow. That utilization-dependent loss makes the demand constraint quadratic, which is why the model needs the Ipopt nonlinear solver rather than a linear one. The objective minimizes total extraction cost across all flows, so the solver leans on cheaper sources and lightly loaded routes.
+Two families of constraints shape the plan. A source-capacity constraint holds the total outflow from each source within its capacity. A demand constraint requires each user's effective inflow — the flow delivered after losses — to meet its demand. The loss term is where the nonlinearity enters: the fraction lost on a connection grows with how hard the route is being pushed, so the fraction of the flow delivered falls as a connection approaches its maximum flow. That utilization-dependent loss makes the demand constraint quadratic, which is why the model needs the Ipopt nonlinear solver rather than a linear one. The objective minimizes total extraction cost across all flows, so the solver leans on cheaper sources and lightly loaded routes.
 
 ```text
 sources/users/connections CSVs → per-connection flow variables → capacity + loss-adjusted demand constraints → minimize cost → allocation plan
 ```
 
-See `water_allocation.py` for the implementation, and `runbook.md` to reproduce it step by step with the RAI skills.
+See `model/reasoning.py` for the implementation, and `runbook.md` to reproduce it step by step with the RAI skills.
 
 ## Customize this template
 
@@ -154,13 +249,13 @@ Focus on the first changes most users will make.
 ### Use your own data
 
 - Replace the CSVs in `data/` with your own; keep the column names shown in *Sample data* above (`sources.csv`, `users.csv`, `connections.csv`).
-- For Snowflake-backed runs, swap the `read_csv(...)` calls for `model.data(snowflake_table)` calls.
-- Confirm `source_id` and `user_id` in `connections.csv` match the `id` columns in `sources.csv` and `users.csv` — a mismatched key silently drops the connection.
+- For Snowflake-backed runs, replace each `model.data(...)` source in `model/source.py` with `model.Table("<DB>.<SCHEMA>.<TABLE>")` over a table with the same columns, and rewrite the input checks there, which read the CSVs with pandas.
+- Confirm `source_id` and `user_id` in `connections.csv` match the `id` columns in `sources.csv` and `users.csv` — a mismatched key stops the deploy with an error naming the row.
 
 ### Tune parameters
 
 - **Source capacity and cost** — edit `capacity` and `cost_per_unit` in `sources.csv` to change which sources the solver prefers.
-- **Loss rate** — `loss_rate` in `connections.csv` controls how steeply delivery falls as a route approaches capacity.
+- **Loss rate** — `loss_rate` in `connections.csv` controls how steeply the fraction delivered falls as a route approaches capacity.
 
 ### Extend the model
 
@@ -177,15 +272,15 @@ Focus on the first changes most users will make.
 ## Troubleshooting
 
 <details>
-<summary><code>Status: INFEASIBLE</code></summary>
+<summary><code>termination status ['LOCALLY_INFEASIBLE']: no solution available</code></summary>
 
 Total source capacity (after losses) is insufficient to meet all user demands. Check that the sum of source capacities minus worst-case losses covers total demand. You can increase source capacity in `sources.csv`, reduce demands in `users.csv`, or add new connections in `connections.csv`.
 </details>
 
 <details>
-<summary>Some connections show zero flow</summary>
+<summary>Some connections are missing from the flow report</summary>
 
-The solver avoids expensive routes when cheaper alternatives exist. If a source has a high cost per unit, its connections may carry zero flow. This is expected behavior for a cost-minimizing solution.
+The report lists only connections carrying more than 0.001 units. The solver avoids expensive routes when cheaper alternatives exist, so if a source has a high cost per unit, its connections may carry zero flow. This is expected behavior for a cost-minimizing solution.
 </details>
 
 <details>
@@ -197,7 +292,7 @@ Make sure you activated the virtual environment and ran `python -m pip install .
 <details>
 <summary>Connection or authentication errors</summary>
 
-Run `rai init` to configure your Snowflake connection. Verify that your account has the RAI Native App installed and that your user has the required permissions.
+Re-create `raiconfig.yaml` with the configuration builder (Quickstart step 4) and verify the connection settings. Verify that your account has the RAI Native App installed and that your user has the required permissions.
 </details>
 
 ## Learn more

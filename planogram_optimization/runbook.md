@@ -85,7 +85,7 @@ Each SKU has a concave demand curve over facing counts — demand rises with fac
 
 **Response**
 
-Total predicted weekly demand around **1,600+ units** — the decision picks facings per SKU (binding each SKU's realized demand to its predicted-demand row via a table lookup), with shelf-length and category-cardinality constraints; `Sku.facings`, `Sku.realized_demand`, and `Sku.active` are written back. (MiniZinc runs to its time limit and returns a strong incumbent surfaced as OPTIMAL, so the exact objective and the specific SKUs dropped vary slightly run to run; the structure below is stable.)
+Total predicted weekly demand around **1,600+ units** — the decision picks facings per SKU (binding each SKU's realized demand to its predicted-demand row via a table lookup), with shelf-length and category-cardinality constraints; `Sku.facings`, `Sku.realized_demand`, and `Sku.active` are written back. (The README's sample run reports `OPTIMAL` at 1,656 units; the report stops on any other status, such as a time-limited incumbent.) In `model/reasoning.py` the solve is declared with `problem.configure(...)`, so each refresh of the deployed model runs it.
 
 ### 6. Read the planogram
 
@@ -97,8 +97,8 @@ Total predicted weekly demand around **1,600+ units** — the decision picks fac
 
 **Response**
 
-**16 of 18 SKUs are active**; two are squeezed out because the candy and household-paper categories each cap active SKUs at 3 while holding 4 candidates, so each drops its lowest-value SKU. The **binding force is the category-max caps**, all four of which are full (snacks 5/5, beverages 5/5, candy 3/3, household-paper 3/3) — the shelves run near capacity (~89–99% full) but it's the per-category count, not shelf length or demand, that decides which SKUs make the set.
+**16 of 18 SKUs are active**; two are squeezed out because the candy and household-paper categories each cap active SKUs at 3 while holding 4 candidates, so each drops its lowest-value SKU. The **binding force is the category-max caps**, all four of which are full (snacks 5/5, beverages 5/5, candy 3/3, household-paper 3/3) — the shelves run near capacity (98/100, 79/80, 77/80 and 90/90 cm used in the README's sample run) but it's the per-category count, not shelf length or demand, that decides which SKUs make the set.
 
 ## Data
 
-Bundled CSVs in `data/`: 18 SKUs, 4 shelves, 4 categories, 73 predicted-demand rows. The predicted demand is supplied as a table (standing in for a demand regression — see the template's customize section to swap in a trained model). Full chain in `planogram_optimization.py`.
+Bundled CSVs in `data/`: 18 SKUs, 4 shelves, 4 categories, 73 predicted-demand rows. The predicted demand is supplied as a table (standing in for a demand regression — see the template's customize section to swap in a trained model). Full chain in `model/`; the report in `queries/facings_plan.py`.

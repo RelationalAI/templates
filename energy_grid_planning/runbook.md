@@ -11,7 +11,7 @@ The chain produces a Pareto frontier across 5 budget levels — the knee at
 $300M unlocks 6 DCs (1,530 MW, $252M net value) including Google and Lambda at DFW.
 
   ─────────────────────────────────────────────────────────────────
-  STAGE 1  Predictive   ──►  Substation.predicted_load        (12)
+  STAGE 1  Forecast     ──►  Substation.predicted_load        (12)
                               DFW: 1,100 → 1,700 MW (+54.6%) ── breaches
                               1,600 MW capacity at 24mo. The only
                               substation predicted to breach.
@@ -28,11 +28,11 @@ $300M unlocks 6 DCs (1,530 MW, $252M net value) including Google and Lambda at D
                               Worth / Abilene Central / Houston Ship
                               Channel. ~421 corridors enumerated.
   ─────────────────────────────────────────────────────────────────
-  STAGE 4  Rules        ──►  DataCenterRequest.is_compliant    (2)
+  STAGE 4  Rules        ──►  DataCenterRequest.is_compliant    (1)
                               fails_capacity / fails_structural /
                               fails_low_carbon flags written back.
-                              Only Crusoe (Midland) and Oracle
-                              (Corpus Christi) pass all three.
+                              Only Oracle (Corpus Christi) passes
+                              all three.
   ─────────────────────────────────────────────────────────────────
   STAGE 5  Prescriptive ──►  DataCenterRequest.x_approve  (per InvestmentLevel)
                               SubstationUpgrade.x_upgrade  (per InvestmentLevel)
@@ -68,7 +68,7 @@ Concepts: `Substation`, `Generator`, `TransmissionLine`, `LoadZone`, `DemandPeri
 
 **Response**
 
-13 concepts: 12 `Substation`, 15 `Generator`, 18 `TransmissionLine`, 5 `LoadZone`, 120 `DemandPeriod`, 120 `RenewableProfile`, 5 `MaintenanceWindow`, 10 `Customer`, 10 `DataCenterRequest` (2,930 MW total), 10 `SubstationUpgrade` ($630M total), historical `LoadHistory` and forward `DemandForecast` rows backing the predictive stage.
+13 concepts: 12 `Substation`, 15 `Generator`, 18 `TransmissionLine`, 5 `LoadZone`, 120 `DemandPeriod`, 120 `RenewableProfile`, 5 `MaintenanceWindow`, 10 `Customer`, 10 `DataCenterRequest` (2,930 MW total), 10 `SubstationUpgrade` ($630M total), historical `LoadHistory` and forward `DemandForecast` rows backing the forecast stage.
 
 ### 3. Discover reasoner questions
 
@@ -80,14 +80,14 @@ Concepts: `Substation`, `Generator`, `TransmissionLine`, `LoadZone`, `DemandPeri
 
 **Response**
 
-Plan routing sub-questions to predictive, graph, rules, and prescriptive reasoners.
+Plan routing sub-questions to graph, rules, and prescriptive reasoners.
 
 ### 4. Forecast substation load
 
 **Prompt**
 
 ```
-/rai-predictive-modeling + /rai-predictive-training What's each substation's predicted peak load over the next 24 months, given historical demand, planned generator additions, and the DC request pipeline? Bind the predictions back to the ontology so the rules engine and optimizer can read them. Use the pre-trained model from the DemandForecast table if available, or train fresh.
+/rai-pyrel What's each substation's predicted peak load over the next 24 months? Derive Substation.predicted_load as the largest DemandForecast per substation, so the rules engine and optimizer can read it.
 ```
 
 **Response**
@@ -128,7 +128,7 @@ Plan routing sub-questions to predictive, graph, rules, and prescriptive reasone
 
 **Response**
 
-`fails_capacity` / `fails_structural` / `fails_low_carbon` + `is_compliant`; 2 pass (Crusoe, Oracle), 8 flagged.
+`fails_capacity` / `fails_structural` / `fails_low_carbon` + `is_compliant`; 1 passes (Oracle), 9 flagged. Crusoe clears capacity and structural risk but its substation's generation is about 53% zero-emission against a 100% requirement.
 
 ### 8. Approve DCs and fund upgrades
 
@@ -159,13 +159,13 @@ Pareto frontier with knee at $300M (6 DCs, 1,530 MW, $252M net); marginal $1,013
 **Prompt**
 
 ```
-/rai-ontology Add an InvestmentPortfolio concept indexed by InvestmentLevel that materializes the per-budget aggregates (approved-DC count, total MW, annual revenue, upgrade cost, net value, marginal value per added $M) and flags the knee point.
+/rai-ontology Add an InvestmentPortfolio concept indexed by InvestmentLevel that materializes the per-budget aggregates (approved-DC count, total MW, annual revenue, upgrade cost, net value, marginal value per added $M) and flags the knee point, where that marginal value falls the most.
 ```
 
 **Response**
 
-Ontology gains an `InvestmentPortfolio(InvestmentLevel)` Concept (5 rows, one per budget) with `dc_count`, `total_mw`, `annual_revenue`, `upgrade_cost`, `net_value`, `marginal_per_m_to_next_level`, `is_knee_point`. All five frontier rows — $200M ($151M net) → $300M ($252M net, knee) → $600M ($398M net) — are queryable as ontology rather than stdout.
+Ontology gains an `InvestmentPortfolio(InvestmentLevel)` Concept (5 rows, one per budget) with `dc_count`, `total_mw`, `annual_revenue`, `upgrade_cost`, `net_value`, `marginal_per_m_to_next_level`, `marginal_drop` and the `is_knee_point` flag, each a rule over the solve results. All five frontier rows — $200M ($151M net) → $300M ($252M net, knee) → $600M ($398M net) — are queryable as ontology rather than stdout.
 
 ## Data
 
-Bundled CSVs in `data/`: 12 substations, 15 generators, 18 transmission lines, 10 DC requests (2,930 MW), 10 substation upgrades ($630M total), plus historical load and forecast tables. Full chain implemented in `energy_grid_planning.py`.
+Bundled CSVs in `data/`: 12 substations, 15 generators, 18 transmission lines, 10 DC requests (2,930 MW), 10 substation upgrades ($630M total), plus historical load and forecast tables. Full model in `model/`; the report in `queries/energy_grid_report.py`.

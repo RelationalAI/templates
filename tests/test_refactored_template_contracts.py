@@ -16,7 +16,7 @@ def parse(path: str) -> ast.Module:
 class RefactoredTemplateContractTests(unittest.TestCase):
     def test_portfolio_explorer_declarations_are_stable_schema_symbols(self) -> None:
         schema_module = parse("portfolio_balancing/model/schema.py")
-        runner_module = parse("portfolio_balancing/portfolio_balancing.py")
+        runner_module = parse("portfolio_balancing/queries/portfolio_report.py")
 
         declarations: dict[str, set[str]] = {
             "Concept": set(),
@@ -95,11 +95,12 @@ class RefactoredTemplateContractTests(unittest.TestCase):
 
         self.assertIn("ground_truth.csv", ast.dump(functions["load_ground_truth"]))
         self.assertNotIn("ground_truth.csv", ast.dump(functions["load_source_data"]))
+        self.assertNotIn("load_ground_truth", ast.dump(functions["load_source_data"]))
 
-        runner_module = parse("entity_resolution/entity_resolution.py")
+        report_module = parse("entity_resolution/queries/resolution_report.py")
         ground_truth_calls = [
             node
-            for node in ast.walk(runner_module)
+            for node in ast.walk(report_module)
             if isinstance(node, ast.Call)
             and isinstance(node.func, ast.Name)
             and node.func.id == "load_ground_truth"

@@ -30,14 +30,14 @@ Assumes familiarity with Python and basic ML concepts (binary classification, tr
 - A graph model where rows of a `PEOPLE` table become nodes and rows of a `RELATED` edge list become edges.
 - A `PropertyTransformer` that exposes 17 medical and demographic features (16 continuous + 1 binary category).
 - A binary-classification GNN trained to predict each person's smoking status.
-- (Optional) A registered model in the Snowflake Model Registry that can be loaded and reused without retraining.
+- A registered, versioned model in the template's public schema, which the deployed model predicts with.
 
 ## What's included
 
-- **Scripts**:
-  - `smoker_status_prediction_local.py` -- **primary, runnable out of the box.** Loads CSVs from `data/` via `model.data()`.
-  - `smoker_status_prediction.py` -- **reference pattern** for adapting the same pipeline to Snowflake-hosted tables.
-- **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
+- **Model**: `model/` -- the deployed model: concepts and splits (`schema.py`, `source.py`), the graph, the feature types, and the GNN with its predictions (`reasoning.py`)
+- **Training**: `train.py` -- trains the GNN over the deployed splits and registers its version
+- **Query**: `queries/smoker_report.py` -- prints the data summary, a sample of predictions, and the test-set metrics from the deployed model
+- **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the code itself.
 - **Sample data** (`data/`) -- bundled demo dataset for end-to-end runs; predictions are illustrative of the GNN methodology, not clinically meaningful (see [Sample data](#sample-data) for what's real vs. constructed):
   - `people.csv` -- 38,984 individuals with demographic and medical features.
   - `related.csv` -- 58,355 connection pairs between people.
@@ -47,210 +47,186 @@ Assumes familiarity with Python and basic ML concepts (binary classification, tr
 
 ### Access
 
-**To run the local demo (`smoker_status_prediction_local.py`)** you need a Snowflake account with the RelationalAI Native App. The bundled CSVs in `data/` ship with the template; GNN training runs on the RelationalAI engine, so the native app needs USAGE + CREATE EXPERIMENT / CREATE MODEL grants on the experiment schema (see the SQL block in [step 5 of the Quickstart](#quickstart)).
+- A Snowflake account that has the RAI Native App installed.
+- A role that can deploy models, set up once by an account administrator: follow [Set up model deployment](https://private.relational.ai/early-access/model-deploy-setup) (**Try it out**, or **Governed setup** for a shared account). This template has no prescriptive solve, so it needs no PAT setup.
+- A Snowflake user that holds that role.
 
-**To adapt to your own Snowflake pipeline (`smoker_status_prediction.py` as reference)** you'll additionally need the CSVs uploaded to Snowflake tables (or your own schema-equivalent dataset). Quote column names when creating the tables so spaces and parentheses are preserved (e.g. `"height(cm)"`, `"fasting blood sugar"`).
+The bundled CSVs in `data/` ship with the template; running it needs no source tables. To read your own Snowflake tables instead, see [Adapting to your own Snowflake data](#adapting-to-your-own-snowflake-data). The GNN trains on the predictive reasoner and stores its experiments and registered versions in the template's public schema.
 
 ### Tools
 
-- Python >= 3.10
-- RelationalAI Python SDK (`relationalai[gnn] == 2.1.1`)
+- Python 3.10 through 3.14 (the range relationalai 2.3.0 supports)
+- The `relationalai[gnn]` SDK and the `rai` CLI (installed by the Quickstart's `python -m pip install .`).
 
 ## Quickstart
 
-1. Download ZIP:
+Before you start, install Python 3.10 or later and complete the access prerequisites above: a Snowflake account with the RAI Native App, a role that can deploy models, and a Snowflake user that holds it.
+
+Before the first deploy, create this template's two schemas as the model role, and have an administrator grant the RAI Native App access to them. The GNN keeps its experiments and registered versions in the public schema, and the internal schema holds only this model's objects, so the grants cover all of it:
+
+```sql
+-- as the model role
+CREATE SCHEMA IF NOT EXISTS <DB>.SMOKER_STATUS_PREDICTION;
+CREATE SCHEMA IF NOT EXISTS <DB>.SMOKER_STATUS_PREDICTION_META;
+
+-- as an administrator
+GRANT USAGE ON DATABASE <DB> TO APPLICATION <RAI_APP_NAME>;
+GRANT USAGE ON SCHEMA <DB>.SMOKER_STATUS_PREDICTION TO APPLICATION <RAI_APP_NAME>;
+GRANT CREATE EXPERIMENT ON SCHEMA <DB>.SMOKER_STATUS_PREDICTION TO APPLICATION <RAI_APP_NAME>;
+GRANT CREATE MODEL ON SCHEMA <DB>.SMOKER_STATUS_PREDICTION TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER USAGE ON DATABASE <DB> TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER USAGE ON SCHEMA <DB>.SMOKER_STATUS_PREDICTION_META TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER USAGE ON WAREHOUSE <WAREHOUSE> TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL TABLES IN SCHEMA <DB>.SMOKER_STATUS_PREDICTION_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL DYNAMIC TABLES IN SCHEMA <DB>.SMOKER_STATUS_PREDICTION_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER SELECT ON ALL VIEWS IN SCHEMA <DB>.SMOKER_STATUS_PREDICTION_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER INSERT, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA <DB>.SMOKER_STATUS_PREDICTION_META TO APPLICATION <RAI_APP_NAME>;
+GRANT CALLER CREATE TABLE, CREATE STAGE ON SCHEMA <DB>.SMOKER_STATUS_PREDICTION_META TO APPLICATION <RAI_APP_NAME>;
+GRANT INHERITED CALLER READ, WRITE ON ALL STAGES IN SCHEMA <DB>.SMOKER_STATUS_PREDICTION_META TO APPLICATION <RAI_APP_NAME>;
+```
+
+Use this sequence to deploy the model, train the GNN, and query its predictions:
+
+1. **Download the template**
+
+   [Download the ZIP](https://docs.relational.ai/templates/zips/v1/smoker_status_prediction.zip), unzip it, and enter the template directory:
+
    ```bash
-   curl -O https://docs.relational.ai/templates/zips/v1/smoker_status_prediction.zip
    unzip smoker_status_prediction.zip
    cd smoker_status_prediction
    ```
-   > [!TIP]
-   > You can also download the template ZIP using the "Download ZIP" button at the top of this page.
 
-2. Create venv:
+2. **Create a Python environment**
+
+   Create and activate a virtual environment, then update pip:
+
    ```bash
    python -m venv .venv
    source .venv/bin/activate
    python -m pip install --upgrade pip
    ```
 
-3. Install:
+3. **Install the template**
+
+   Install the dependencies pinned in `pyproject.toml`:
+
    ```bash
    python -m pip install .
    ```
 
-4. Configure:
-   ```bash
-   rai init
-   ```
+4. **Configure your project**
 
-   After `rai init` generates the config file, add the following to your `raiconfig.yaml`:
+   Use the configuration builder in [Install and run PyRel](https://docs.relational.ai/get-started/install-and-run-pyrel/#configure-your-project) to create `raiconfig.yaml` in the template directory and verify your connection.
+
+   Set the connection `role` to the model role, then add the predictive reasoner, the registered version the GNN predicts with, and a `deployment` section. Give each template its own schema pair so two deployed templates never share one:
 
    ```yaml
-   data:
-       ensure_change_tracking: true
+   reasoners:
+     predictive:
+       name: smoker_status_prediction_gnn     # created on first use if it doesn't exist
+       gnns:
+         smoker_status:                 # the GNN's name in model/reasoning.py
+           registry: <DB>.SMOKER_STATUS_PREDICTION
+           model: SMOKER_STATUS
+           version: V1                  # train.py registers this version
+   deployment:
+     role: <MODEL_ROLE>
+     public_schema: <DB>.SMOKER_STATUS_PREDICTION
+     identity:
+       internal_schema: <DB>.SMOKER_STATUS_PREDICTION_META
+     schedules:
+       standard:
+         interval_s: 0                  # refresh only on deploy or on demand
+     schedule: standard
    ```
 
-5. Grant the RelationalAI Native App access to a schema for experiment artifacts. The local script uses `SMOKER_STATUS_PREDICTION.EXPERIMENTS` by default (or change the constants at the top of the script). Update the `SET` statements below to match your database, schema, and Native App name, then run the following in a Snowflake SQL worksheet:
-   ```sql
-   SET db_name            = 'SMOKER_STATUS_PREDICTION';
-   SET schema_experiments = 'SMOKER_STATUS_PREDICTION.EXPERIMENTS';
-   SET app_name           = 'RELATIONALAI';   -- replace with your app name
+5. **Deploy the model**
 
-   CREATE DATABASE IF NOT EXISTS identifier($db_name);
-   CREATE SCHEMA   IF NOT EXISTS identifier($schema_experiments);
+   Deploy the model in `model/` to the schemas in `raiconfig.yaml`:
 
-   GRANT USAGE             ON DATABASE identifier($db_name)            TO APPLICATION identifier($app_name);
-   GRANT USAGE             ON SCHEMA   identifier($schema_experiments) TO APPLICATION identifier($app_name);
-   GRANT CREATE EXPERIMENT ON SCHEMA   identifier($schema_experiments) TO APPLICATION identifier($app_name);
-   GRANT CREATE MODEL      ON SCHEMA   identifier($schema_experiments) TO APPLICATION identifier($app_name);
-   ```
-
-6. Run the local demo on the bundled CSVs:
    ```bash
-   python smoker_status_prediction_local.py
+   rai models deploy --path model
    ```
 
-### Expected output (abbreviated)
+   The deploy waits for the model's first refresh, which loads the people, their connections, and the train, validation, and test splits. No version of the GNN is registered yet, so this refresh makes no predictions.
 
-Real numbers from a verified end-to-end run on the bundled CSVs (`smoker_status_prediction_local.py`). Dataset shape: **38,984 People** with **58,355 Related edges**, split into **31,187 train / 3,898 validation / 3,899 test** rows. Exact predicted probabilities shift slightly with numerical noise; metric values are stable within a few hundredths.
+   Deploying again without changing the model applies no updates and does not refresh.
 
-```text
-============================================================
-PREDICTIVE: Smoker status binary classification
-============================================================
+6. **Train the GNN**
 
-=== Start GNN Training ===
-  ✓ Step 1 completed (4.77s)     # prepare trainer configuration
-  ✓ Step 2 completed (16.65s)    # prepare dataset and GNN tables
-  ✓ Step 3 completed (31.29s)    # submit training job and stream logs
-=== GNN Training Complete (52.71s) ===
+   Train the GNN over the deployed splits and register it as the version named in `raiconfig.yaml`:
 
-=== Start GNN Prediction ===
-  ✓ Step 1 completed (5.50s)     # prepare test table
-  ✓ Step 2 completed (4.85s)     # prepare model for prediction
-  ✓ Step 3 completed (31.87s)    # submit prediction job and stream logs
-  ✓ Step 4 completed (9.40s)     # load results into the logic engine
-=== GNN Prediction Complete (51.62s) ===
-
-=== Smoker predictions (sample) ===
-Id  predicted_label     prob  actual_smoking
- 1                1 0.645295               1
-16                0 0.351588               0
-21                0 0.178555               0
-24                0 0.352124               0
-29                1 0.855304               1
-35                1 0.836192               0
-49                1 0.576184               1
-75                0 0.045360               0
-92                1 0.707472               1
-97                1 0.851055               1
-
-=== Test-set metrics (n=3899) ===
-  Test-set ROC-AUC:   0.8485
-  Test-set accuracy:  0.7671
-  Actual class dist:    {0: 0.6327, 1: 0.3673}
-  Predicted class dist: {0: 0.6163, 1: 0.3837}
-
-============================================================
-Local run complete.
-============================================================
-```
-
-### Adapting to your own Snowflake data
-
-`smoker_status_prediction.py` shows the same pipeline against Snowflake-hosted tables. The script's defaults expect five tables -- `PEOPLE`, `RELATED`, `TRAIN`, `VALIDATION`, `TEST` -- inside `SMOKER_STATUS_PREDICTION.DATA`. To adapt:
-
-1. **Create the database and `DATA` schema, and define the five tables.** Run this in a Snowflake SQL worksheet. Column names are quoted so spaces and parentheses in feature names (`height(cm)`, `fasting blood sugar`, ...) are preserved as-is.
-   ```sql
-   SET db_name     = 'SMOKER_STATUS_PREDICTION';
-   SET schema_data = 'SMOKER_STATUS_PREDICTION.DATA';
-
-   CREATE DATABASE IF NOT EXISTS identifier($db_name);
-   CREATE SCHEMA   IF NOT EXISTS identifier($schema_data);
-
-   USE SCHEMA identifier($schema_data);
-
-   CREATE OR REPLACE TABLE PEOPLE (
-       "Id"                  NUMBER,
-       "age"                 NUMBER,
-       "height(cm)"          NUMBER,
-       "weight(kg)"          NUMBER,
-       "systolic"            NUMBER,
-       "relaxation"          NUMBER,
-       "fasting blood sugar" NUMBER,
-       "Cholesterol"         NUMBER,
-       "triglyceride"        NUMBER,
-       "HDL"                 NUMBER,
-       "LDL"                 NUMBER,
-       "hemoglobin"          FLOAT,
-       "Urine protein"       NUMBER,
-       "serum creatinine"    FLOAT,
-       "AST"                 NUMBER,
-       "ALT"                 NUMBER,
-       "Gtp"                 NUMBER,
-       "dental caries"       NUMBER
-   );
-
-   CREATE OR REPLACE TABLE RELATED    ("person1" NUMBER, "person2" NUMBER);
-   CREATE OR REPLACE TABLE TRAIN      ("Id" NUMBER, "smoking" NUMBER);
-   CREATE OR REPLACE TABLE VALIDATION ("Id" NUMBER, "smoking" NUMBER);
-   CREATE OR REPLACE TABLE TEST       ("Id" NUMBER, "smoking" NUMBER);
-   ```
-
-2. **Load the bundled CSVs into the five tables.** Two ways:
-
-   - **Snowsight UI**: For each table, open the table page and click *Load Data* -> upload the matching CSV from `data/`. The wizard auto-detects headers; confirm that each column maps to the quoted name created above.
-   - **SnowSQL / Snowflake CLI** (reproducible): Stage each CSV via `PUT` and load with `COPY INTO`. Run from a shell pointing at the template's `data/` directory:
-     ```sql
-     CREATE OR REPLACE FILE FORMAT csv_with_header
-         TYPE = CSV FIELD_DELIMITER = ',' SKIP_HEADER = 1
-         FIELD_OPTIONALLY_ENCLOSED_BY = '"';
-
-     PUT file://data/people.csv     @%PEOPLE     AUTO_COMPRESS=FALSE OVERWRITE=TRUE;
-     PUT file://data/related.csv    @%RELATED    AUTO_COMPRESS=FALSE OVERWRITE=TRUE;
-     PUT file://data/train.csv      @%TRAIN      AUTO_COMPRESS=FALSE OVERWRITE=TRUE;
-     PUT file://data/validation.csv @%VALIDATION AUTO_COMPRESS=FALSE OVERWRITE=TRUE;
-     PUT file://data/test.csv       @%TEST       AUTO_COMPRESS=FALSE OVERWRITE=TRUE;
-
-     COPY INTO PEOPLE     FROM @%PEOPLE     FILE_FORMAT = csv_with_header;
-     COPY INTO RELATED    FROM @%RELATED    FILE_FORMAT = csv_with_header;
-     COPY INTO TRAIN      FROM @%TRAIN      FILE_FORMAT = csv_with_header;
-     COPY INTO VALIDATION FROM @%VALIDATION FILE_FORMAT = csv_with_header;
-     COPY INTO TEST       FROM @%TEST       FILE_FORMAT = csv_with_header;
-     ```
-
-3. **Grant the Native App access** to the `EXPERIMENTS` schema for GNN artifacts -- same SQL block as [step 5 of the Quickstart](#quickstart).
-
-4. **Enable change tracking in your `raiconfig.yaml`.** The Snowflake-path script imports tables via `Table(...).to_schema()`, which requires change tracking to be on:
-   ```yaml
-   data:
-     ensure_change_tracking: true
-   ```
-   Without it, the SDK warns at startup that "GNN workflows using Snowflake tables will fail without it" and the script will not be able to import the source tables. The local CSV path (`smoker_status_prediction_local.py`) does not need this.
-
-5. **Edit the table references** at the top of the script if your database/schema names differ from the defaults:
-   ```python
-   DATABASE = "YOUR_DB"
-   SCHEMA = "YOUR_SCHEMA"           # holds PEOPLE and RELATED
-   TASK_SCHEMA = "YOUR_TASK_SCHEMA" # holds TRAIN, VALIDATION, TEST
-   GNN_EXP_DATABASE = "YOUR_DB"
-   GNN_EXP_SCHEMA = "EXPERIMENTS"
-   ```
-
-6. **Run:**
    ```bash
-   python smoker_status_prediction.py
+   python train.py
    ```
+
+   Then refresh the deployed model so it predicts with this version: `CALL <DB>.SMOKER_STATUS_PREDICTION_META._INTERNAL_REFRESH_MODEL('standard', NULL);` with your database in place of `<DB>`. The registry refuses to overwrite a version, so to retrain, set a new `version` in `raiconfig.yaml` first.
+
+7. **Query the results**
+
+   Print the predictions from the deployed model:
+
+   ```bash
+   python -m queries.smoker_report
+   ```
+
+   ```text
+   People: 38,984  Related: 58,355
+   Splits: train=31,187  val=3,898  test=3,899
+
+   === Smoker predictions (sample) ===
+    Id  predicted_label     prob  actual_smoking
+     1                1 0.716425               1
+    16                0 0.319361               0
+    21                0 0.205867               0
+    24                0 0.322035               0
+    29                1 0.856083               1
+    35                1 0.851715               0
+    49                1 0.571429               1
+    75                0 0.049680               0
+    92                1 0.706254               1
+    97                1 0.854486               1
+
+   === Test-set metrics (n=3899) ===
+     Test-set ROC-AUC:   0.8479
+     Test-set accuracy:  0.7630
+     Actual class dist:    {0: 0.6327, 1: 0.3673}
+     Predicted class dist: {0: 0.6055, 1: 0.3945}
+   ```
+
+   The sample shows the first 10 test people by Id. Predicted probabilities and the metrics vary a little from one training run to the next, and the predicted class distribution with them; the data summary and the actual labels do not. See `runbook.md` for the step-by-step walkthrough.
+
+   To predict again without changing the model, refresh the deployed model, then run the query again:
+
+   ```sql
+   CALL <DB>.SMOKER_STATUS_PREDICTION_META._INTERNAL_REFRESH_MODEL('standard', NULL);
+   ```
+
+8. **Tear down the deployment**
+
+   Preview what the teardown removes, then remove it:
+
+   ```bash
+   rai models teardown
+   rai models teardown --force
+   ```
+
+   The teardown removes the deployed objects and keeps the two schemas, with the GNN's experiments and registered versions in the public schema.
 
 ## Template structure
 
 ```text
 .
-├── README.md                               # this file
-├── pyproject.toml                          # dependencies
-├── smoker_status_prediction_local.py       # primary: CSV-based script
-├── smoker_status_prediction.py             # reference: Snowflake pipeline
+├── README.md                       # this file
+├── pyproject.toml                  # dependencies
+├── model/
+│   ├── __init__.py                 # exports for train.py and the query
+│   ├── schema.py                   # concepts and the Train/Validation/Test task relationships
+│   ├── source.py                   # bundled CSVs bound to the schema
+│   └── reasoning.py                # graph, feature types, the GNN and its predictions
+├── train.py                        # trains the GNN and registers its version
+├── queries/
+│   └── smoker_report.py            # data summary, prediction sample, and test-set metrics
 └── data/
     ├── people.csv          # 38,984 rows, 18 columns (Id + 17 features)
     ├── related.csv         # 58,355 (person1, person2) pairs
@@ -259,7 +235,7 @@ Local run complete.
     └── test.csv            # 3,899 rows
 ```
 
-**Start here**: run `python smoker_status_prediction_local.py` for the full run end to end (no external setup beyond Snowflake grants), or follow `runbook.md` to reproduce it step by step with the RAI skills. Use `smoker_status_prediction.py` as the adaptation reference when you wire this pattern into your own Snowflake data.
+**Start here**: follow the [Quickstart](#quickstart) to deploy the model, train the GNN, and print the predictions, or follow `runbook.md` to reproduce it step by step with the RAI skills. To read your own Snowflake tables, see [Adapting to your own Snowflake data](#adapting-to-your-own-snowflake-data).
 
 ## Sample data
 
@@ -272,6 +248,8 @@ The dataset contains medical and demographic attributes for a population of indi
 - **related.csv** -- pairs of `Id`s representing connections between persons.
 - **train / validation / test** -- split-specific `(Id, smoking)` rows where `smoking ∈ {0, 1}`.
 
+`model/source.py` renames the `people.csv` headers that contain spaces or parentheses as it loads them (`height(cm)` becomes `height_cm`, `fasting blood sugar` becomes `fasting_blood_sugar`, and so on, all lowercase); the files themselves are unchanged.
+
 ## Model overview
 
 - **Key entities**: `People` (individuals with demographic and medical attributes), `Related` (pairs of people, used as the edge list of the graph neural network (GNN) graph), and the split tables `TrainTable` / `ValidationTable` / `TestTable`.
@@ -281,56 +259,79 @@ The dataset contains medical and demographic attributes for a population of indi
 ### Pipeline stages
 
 ```text
-People + Related (CSVs or Snowflake tables)
+People + Related (bundled CSVs)
   → Build the graph: nodes as persons, self-referential edges People ↔ People (via Related)
   → Configure features: PropertyTransformer (continuous medical features + dental_caries category)
   → Define the task: Train / Validation / Test relationships
-  → Train and predict: binary-classification GNN → predictions on the Test cohort
-  → (Optional) Register and load the trained model
+  → Train: binary-classification GNN, registered as a model version
+  → Predict: every refresh scores the Test cohort with that version
 ```
 
-For the full concept and property definitions, see `smoker_status_prediction_local.py` (and `smoker_status_prediction.py` for the Snowflake pipeline); `runbook.md` builds them step by step with the RAI skills.
+For the full concept and property definitions, see `model/`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
 The pipeline turns the `PEOPLE` table into graph nodes and the `RELATED` pairs into edges, configures the medical/demographic features, defines the train/validation/test task, then trains a binary-classification GNN and predicts smoking status on the held-out test cohort (see the *Pipeline stages* diagram above).
 
 1. **Build the graph.** Each `RELATED` row becomes a directed edge from one `People` node to another. Because both endpoints are the same concept, the destination endpoint uses a `.ref()` of `People`.
-2. **Configure features.** A `PropertyTransformer` lists the medical and demographic columns as continuous features, treats the binary `dental caries` indicator as a category, and drops `Id` so the identifier isn't fed into the model. Column names with spaces or parentheses (`height(cm)`, `fasting blood sugar`) are accessed via `getattr`, and the schema is preserved as-is so the same names work against the underlying Snowflake tables.
+2. **Configure features.** A `PropertyTransformer` lists the medical and demographic columns as continuous features, treats the binary `dental caries` indicator as a category, and drops `Id` so the identifier isn't fed into the model. `model/source.py` renames the CSV headers that contain spaces or parentheses (`height(cm)`, `fasting blood sugar`) to identifier-safe names (`height_cm`, `fasting_blood_sugar`) as it loads them, so the transformer refers to each feature as a plain property.
 3. **Define the task.** A node-classification task pairs each labeled `People` row with its smoking status via train and validation relationships; the test relationship omits the label because it is held out.
 4. **Train and predict.** The GNN is instantiated with the graph, the transformer, and the train/validation relationships, fit, then used to attach predictions over the held-out test cohort back onto each `People` node.
-5. **(Optional) Register and load.** The bottom of each script has a commented-out block that registers the trained model in the Snowflake Model Registry and loads it back into a fresh `GNN` instance to predict without retraining.
+5. **Register and predict.** `train.py` registers the trained run as a version in the Snowflake Model Registry, and every refresh of the deployed model scores the test cohort with that version, so predictions need no retraining.
 
-See `smoker_status_prediction_local.py` / `smoker_status_prediction.py` for the implementation and `runbook.md` for the skill-driven reproduction.
+See `model/reasoning.py` for the graph and the GNN, `queries/smoker_report.py` for the metrics, and `runbook.md` for the skill-driven reproduction.
 
 ## Customize this template
 
 ### Use your own data
 
 - Replace the CSVs in `data/` with your own equivalent files (people, edges, splits). Column names need to match the `PropertyTransformer`, or you'll need to edit the transformer.
-- For Snowflake adaptation, edit the `DATABASE`, `SCHEMA`, `TASK_SCHEMA`, and `GNN_EXP_*` constants at the top of `smoker_status_prediction.py`.
+- To read Snowflake tables instead, see [Adapting to your own Snowflake data](#adapting-to-your-own-snowflake-data).
 
 ### Tune parameters
 
 - `n_epochs` -- increase for better convergence on a larger dataset.
 - `lr` -- lower if training loss bounces.
 - `eval_metric` -- switch to `"accuracy"` or `"f1"` if those metrics suit your problem better.
-- `device` -- use `"cuda"` for faster training on a GPU-enabled engine.
+- Predictive reasoner size -- set `reasoners.predictive.size` in `raiconfig.yaml` to a GPU size for faster training: a deployed GNN runs on the device that size provides.
 
 For the full hyperparameter list, see the [Configure a GNN](https://docs.relational.ai/build/guides/reasoning/predictive/configure-a-GNN) guide.
 
 ### Extend the model
 
 - **Add categorical demographics** (e.g. occupation, income bracket): list them under `category=[...]` in the `PropertyTransformer`.
-- **Try a multiclass task**: if your label has more than two values (e.g. never / light / heavy smoker), change `task_type="multiclass_classification"` and use `eval_metric="macro_f1"` or `"accuracy"`.
-- **Register the model** for reuse: uncomment the bonus section at the bottom of either script.
+- **Try a multiclass task**: if your label has more than two values (e.g. never / light / heavy smoker), change `task_type="multiclass_classification"` and use `eval_metric="macro_f1"` or `"accuracy"`. The published prediction then carries per-class scores rather than one probability, so update `SmokerPrediction` in `model/reasoning.py` and replace the report's binary ROC-AUC and its fixed classes `0` and `1` with a multiclass metric.
+- **Train a new version**: the registry refuses to overwrite a version, so set a new `version` under `reasoners.predictive.gnns.smoker_status` in `raiconfig.yaml`, then run `python train.py` and the refresh call again.
 
 ### Scale up / productionize
 
-- Move from the bundled CSVs to Snowflake-hosted tables with `smoker_status_prediction.py` (see *Adapting to your own Snowflake data* under Quickstart); the graph, features, and task setup are unchanged.
-- Train on a GPU-enabled engine (`device="cuda"`) for larger populations; CPU is fine for the bundled ~39K-person demo.
+- Move from the bundled CSVs to Snowflake-hosted tables (see [Adapting to your own Snowflake data](#adapting-to-your-own-snowflake-data)); the graph, features, and task setup are unchanged.
+- Train on a GPU predictive reasoner size for larger populations; the default size is fine for the bundled ~39K-person demo.
 - Pin `relationalai` (see Prerequisites) so runs stay reproducible across environments.
-- Register the trained model in the Snowflake Model Registry (the optional block at the bottom of each script) so downstream jobs load and predict without retraining.
+
+### Adapting to your own Snowflake data
+
+To read Snowflake tables instead of the bundled CSVs, replace the `read_csv` and `model.data(...)` definitions in `model/source.py` with table references, name the schema that holds the tables in `raiconfig.yaml`, then redeploy and train a new version:
+
+```python
+Table = model.Table
+model.define(People.new(Table("PEOPLE").to_schema()))
+model.define(Related.new(Table("RELATED").to_schema()))
+model.define(TrainTable.new(Table("TRAIN").to_schema()))
+model.define(ValidationTable.new(Table("VALIDATION").to_schema()))
+model.define(TestTable.new(Table("TEST").to_schema()))
+```
+
+```yaml
+tables:
+  default_schema: MY_DB.MY_SCHEMA   # resolves the unqualified table names above
+data:
+  ensure_change_tracking: true      # importing Snowflake tables requires change tracking
+```
+
+Importing Snowflake tables requires change tracking on them: without `ensure_change_tracking: true`, the SDK warns that GNN workflows using Snowflake tables will fail. If your role cannot enable tracking on the five source tables, have their owner run `ALTER TABLE <table> SET CHANGE_TRACKING = TRUE` on each.
+
+The tables carry the same columns as the CSVs, created with quoted names so Snowflake keeps their case and matching the names the model uses: `PEOPLE` with `"Id"` and the lowercase feature names that `model/reasoning.py` reads (`"height_cm"`, `"fasting_blood_sugar"`, ...), `RELATED` with `"person1"` and `"person2"`, and `TRAIN`, `VALIDATION`, and `TEST` with `"Id"` and `"smoking"`.
 
 ## Troubleshooting
 
@@ -343,33 +344,25 @@ Check the class balance in `train.csv` -- if it's heavily skewed, consider re-sa
 <details>
 <summary>GNN training is very slow</summary>
 
-GNN training runs on the RelationalAI engine you've provisioned. The `device` flag in the script picks which engine flavor to use -- `"cuda"` for GPU-enabled engines (default; significantly faster), `"cpu"` for CPU-only engines. If training is slow with `device="cuda"`, your engine may not actually have GPU; check the engine type or fall back to `"cpu"`.
+A deployed GNN trains on the predictive reasoner named in `raiconfig.yaml`, on the device its size provides. If training is slow, set `reasoners.predictive.size` to a GPU size.
 </details>
 
 <details>
-<summary>Permissions error from RelationalAI native app</summary>
+<summary><code>Experiment tracking database ... does not exist or is not accessible</code> when training</summary>
 
-The native app needs USAGE on the database and CREATE EXPERIMENT / CREATE MODEL on the experiment schema. Run:
-
-```sql
-SET db_name            = '<db>';
-SET schema_experiments = '<db>.<exp_schema>';
-SET app_name           = 'RELATIONALAI';   -- replace with your app name
-
-CREATE DATABASE IF NOT EXISTS identifier($db_name);
-CREATE SCHEMA   IF NOT EXISTS identifier($schema_experiments);
-
-GRANT USAGE             ON DATABASE identifier($db_name)            TO APPLICATION identifier($app_name);
-GRANT USAGE             ON SCHEMA   identifier($schema_experiments) TO APPLICATION identifier($app_name);
-GRANT CREATE EXPERIMENT ON SCHEMA   identifier($schema_experiments) TO APPLICATION identifier($app_name);
-GRANT CREATE MODEL      ON SCHEMA   identifier($schema_experiments) TO APPLICATION identifier($app_name);
-```
+The GNN keeps its experiments and registered versions in the public schema named in `raiconfig.yaml`, and the RAI Native App needs USAGE on its database and schema plus CREATE EXPERIMENT and CREATE MODEL on the schema. Run the setup grants from the [Quickstart](#quickstart) as an administrator, then run `python train.py` again.
 </details>
 
 <details>
-<summary>rai init fails or connection errors</summary>
+<summary>The report prints <code>(no test-set predictions returned)</code></summary>
 
-Ensure your Snowflake credentials are configured correctly and that the RAI Native App is installed on your account. Run `rai init` again and verify the connection settings.
+The deployed model has not refreshed since a version was registered: the refresh that `rai models deploy` waits for runs before `python train.py`. Run `python train.py` if you haven't, then the refresh call from step 6 of the Quickstart, and query again.
+</details>
+
+<details>
+<summary>Connection errors</summary>
+
+Ensure your Snowflake credentials are configured correctly and that the RAI Native App is installed on your account. Re-create `raiconfig.yaml` with the configuration builder (Quickstart step 4) and verify the connection settings.
 </details>
 
 ## Learn more
@@ -383,7 +376,7 @@ Ensure your Snowflake credentials are configured correctly and that the RAI Nati
 
 - [Configure a GNN](https://docs.relational.ai/build/guides/reasoning/predictive/configure-a-GNN) — the full hyperparameter list for `GNN(...)`.
 - [PropertyTransformer](https://docs.relational.ai/) — declaring continuous vs. category features and dropping identifier columns.
-- [Model Registry](https://docs.relational.ai/) — registering, loading, and reusing a trained model without retraining (the optional bonus block).
+- [Model Registry](https://docs.relational.ai/) — registering, loading, and reusing a trained model without retraining.
 
 ## Support
 
