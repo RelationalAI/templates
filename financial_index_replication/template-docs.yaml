@@ -302,10 +302,11 @@ guided_walkthrough:
 
         AnnualizedTrackingError scales the root mean square of the monthly
         differences to a yearly tracking measure, showing how closely this
-        basket followed the index in the sample months. The report queries the
-        model for these figures and for every stock's solved selection and
-        weight. The printed basket lists only weights above 0.01% of the
-        portfolio, so a selected stock with zero weight does not appear in it.
+        basket followed the index in the sample months. The report
+        queries the model for these figures and for every stock's solved
+        selection and weight. The printed basket lists only weights above
+        0.01% of the portfolio, so a selected stock with zero weight does
+        not appear in it.
       focus:
         file: model/tracking_quality.py
         anchors:
