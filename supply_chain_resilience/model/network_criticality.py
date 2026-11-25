@@ -68,23 +68,15 @@ model.where(
     MaxCentrality(0.0),
 ).define(site_eig.centrality(score_eig))
 
-# The site with the highest centrality, the lowest ID among ties; the site-offline
-# scenario takes this one site offline.
-MostCriticalSiteId = model.Relationship(f"the most critical site has id {String:site_id}")
-site_top, score_top = Site.ref(), Float.ref()
-model.define(MostCriticalSiteId(aggs.min(site_top.id))).where(
-    eigenvector(site_top, score_top),
-    site_top.site_type != "STORE",
-    site_top.site_type != "OFFICE",
-    MaxCentrality(score_top),
-)
-Site.is_most_critical = model.Relationship(f"{Site} is the most critical site")
-model.where(MostCriticalSiteId(Site.id)).define(Site.is_most_critical())
-
 # Each scored site's rank by centrality, highest first, ties broken by site id. The score is
-# negated so both keys sort ascending, a form every backend ranks.
+# negated so both keys sort ascending.
 Site.centrality_rank = model.Property(f"{Site} has centrality rank {Integer:centrality_rank}")
 model.define(Site.centrality_rank(aggs.rank(-Site.centrality, Site.id)))
+
+# The site ranked first, the lowest ID among those with the highest centrality; the
+# site-offline scenario takes this one site offline.
+Site.is_most_critical = model.Relationship(f"{Site} is the most critical site")
+model.where(Site.centrality_rank == 1).define(Site.is_most_critical())
 
 # Each weakly connected component, keyed by the id of its representative site, with its site
 # count and the sorted distinct regions its sites span.

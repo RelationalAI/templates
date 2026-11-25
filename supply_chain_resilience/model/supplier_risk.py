@@ -88,7 +88,7 @@ model.define(num_late_shipments(
 
 # Late shipments per supplier (a supplier with none has no count) and each supplier's rank by
 # them, most first, ties broken by business id. The count is negated so both keys sort
-# ascending, a form every backend ranks.
+# ascending.
 Business.late_shipment_count = model.Property(
     f"{Business} has {Integer:late_shipment_count} late shipments"
 )

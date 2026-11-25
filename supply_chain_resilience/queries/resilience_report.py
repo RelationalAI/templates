@@ -100,7 +100,6 @@ if __name__ == "__main__":
     blast_df = (
         model.select(
             customer.name.alias("customer"),
-            customer.n_upstream_suppliers.alias("n_suppliers"),
             supplier.id.alias("supplier_id"),
             supplier.name.alias("supplier"),
         )
@@ -119,7 +118,7 @@ if __name__ == "__main__":
     else:
         for cust in sorted(blast_df["customer"].unique()):
             cust_rows = blast_df[blast_df["customer"] == cust]
-            print(f"\n  {cust} depends on {int(cust_rows['n_suppliers'].iloc[0])} supplier(s):")
+            print(f"\n  {cust} depends on {len(cust_rows)} supplier(s):")
             for _, row in cust_rows.sort_values("supplier").iterrows():
                 rel = row["supplier_reliability"]
                 rel_str = f"{rel:.0%}" if rel == rel else "N/A"  # NaN check

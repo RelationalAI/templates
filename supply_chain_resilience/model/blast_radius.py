@@ -3,7 +3,6 @@ suppliers each of them transitively depends on."""
 
 from relationalai.semantics import Integer
 from relationalai.semantics.reasoners.graph import Graph
-from relationalai.semantics.std import aggregates as aggs
 
 from .schema import Business, Demand, Shipment, model
 
@@ -57,7 +56,7 @@ reachable_to = biz_graph.reachable(to=target_customer)
 Business.reaches_target_customer = reachable_to
 
 # Each high-priority customer's upstream suppliers: the SUPPLIER-type businesses that reach it
-# through shipments, and how many there are (a customer with none has no count).
+# through shipments.
 Business.upstream_supplier = model.Relationship(
     f"{Business:customer} depends on supplier {Business:supplier}"
 )
@@ -66,12 +65,3 @@ model.where(
     reachable_to(supplier_node, customer_node),
     supplier_node.business_type == "SUPPLIER",
 ).define(Business.upstream_supplier(customer_node, supplier_node))
-
-Business.n_upstream_suppliers = model.Property(
-    f"{Business} has {Integer:n_upstream_suppliers} upstream suppliers"
-)
-model.define(customer_node.n_upstream_suppliers(
-    aggs.count(supplier_node)
-    .per(customer_node)
-    .where(Business.upstream_supplier(customer_node, supplier_node))
-))
