@@ -1,10 +1,7 @@
-"""Sales forecast: the transaction graph, the sales-regression GNN, and the profile of its training
-target."""
+"""Sales forecast: the transaction graph and the sales-regression GNN."""
 
-from relationalai.semantics import Float, Integer, String
 from relationalai.semantics.reasoners.graph import Graph
 from relationalai.semantics.reasoners.predictive import GNN, PropertyTransformer
-from relationalai.semantics.std import aggregates as aggs
 
 from .schema import Article, Customer, Test, Train, Transaction, Val, model
 
@@ -56,20 +53,3 @@ gnn = GNN(
     n_epochs=20, lr=0.005, patience=10,
 )
 Transaction.predictions = gnn.predictions(domain=Test)
-
-# The train split's sales target: how many transactions it labels and the minimum, maximum, mean
-# and sample standard deviation of their sales. The standard deviation is also the RMSE of
-# predicting the mean.
-TrainTargetProfile = model.Relationship(
-    f"the train split has {Integer:n} sales labels from {Float:minimum} to {Float:maximum} "
-    f"with mean {Float:mean} and sample standard deviation {Float:stddev}"
-)
-_train_timestamp, _train_sales = String.ref(), Float.ref()
-_labeled = Train(Transaction, _train_timestamp, _train_sales)
-model.define(TrainTargetProfile(
-    aggs.count(Transaction).where(_labeled),
-    aggs.min(_train_sales).where(_labeled),
-    aggs.max(_train_sales).where(_labeled),
-    aggs.avg(Transaction, _train_sales).where(_labeled),
-    aggs.stddev_samp(Transaction, _train_sales).where(_labeled),
-))

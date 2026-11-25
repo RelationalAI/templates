@@ -22,11 +22,12 @@ from model import (
     OptArticle,
     PlanningGap,
     ProdCapacity,
-    TrainTargetProfile,
+    Train,
+    Transaction,
     Week,
     model,
 )
-from relationalai.semantics import Float, Integer, select
+from relationalai.semantics import Float, Integer, String, select
 
 
 def banner(title: str) -> None:
@@ -36,26 +37,15 @@ def banner(title: str) -> None:
 def stage_1_predictive() -> bool:
     """Print the target profile and the demand; return whether every planning article has demand."""
     banner("PREDICTIVE: sales regression GNN (HM_MINI)")
-    n_ref, min_ref, max_ref, mean_ref, stddev_ref = (
-        Integer.ref(), Float.ref(), Float.ref(), Float.ref(), Float.ref()
-    )
-    profile = (
-        select(
-            n_ref.alias("n"),
-            min_ref.alias("min"),
-            max_ref.alias("max"),
-            mean_ref.alias("mean"),
-            stddev_ref.alias("stddev"),
-        )
-        .where(TrainTargetProfile(n_ref, min_ref, max_ref, mean_ref, stddev_ref))
-        .to_df()
-    )
-    if len(profile):
-        target = profile.iloc[0]
-        print("\n=== Sales target profile (train split) ===")
-        print(f"  n={int(target['n'])}  min={target['min']:.4g}  max={target['max']:.4g}  "
-              f"mean={target['mean']:.4g}  stddev={target['stddev']:.4g}")
-        print(f"  Baseline RMSE (predict-the-mean) ~= stddev = {target['stddev']:.4g}")
+    timestamp, value = String.ref(), Float.ref()
+    target = select(
+        Transaction.transaction_id.alias("transaction_id"),
+        value.alias("value"),
+    ).where(Train(Transaction, timestamp, value)).to_df()["value"]
+    print("\n=== Sales target profile (train split) ===")
+    print(f"  n={len(target)}  min={target.min():.4g}  max={target.max():.4g}  "
+          f"mean={target.mean():.4g}  stddev={target.std():.4g}")
+    print(f"  Baseline RMSE (predict-the-mean) ~= stddev = {target.std():.4g}")
 
     demand = select(
         OptArticle.opt_article_id.alias("article_id"),

@@ -43,7 +43,7 @@ Assumes familiarity with Python, basic ML concepts (classification, regression, 
 
 ## What's included
 
-- `model/` -- the deployed model: `schema.py` declares the concepts and the sales task relationships, `source.py` loads the bundled CSVs, and five modules state the reasoning: `sales_forecast.py` (the graph, the GNN, and the profile of its training target), `article_demand.py` (the demand bridge), `planning_horizon.py` (the number of planning weeks), `markdown_plan.py` (the markdown problem), and `demand_planning.py` (the planning problem), each with the rules that publish its results
+- `model/` -- the deployed model: `schema.py` declares the concepts and the sales task relationships, `source.py` loads the bundled CSVs, and five modules state the reasoning: `sales_forecast.py` (the graph and the GNN), `article_demand.py` (the demand bridge), `planning_horizon.py` (the number of planning weeks), `markdown_plan.py` (the markdown problem), and `demand_planning.py` (the planning problem), each with the rules that publish its results
 - `train.py` -- trains the sales GNN over the deployed splits and registers its version
 - `queries/retail_report.py` -- prints the sales target profile, the adjusted demand, both solve results, and the selected discounts from the deployed model
 - `retail_planning.py` -- a separate script-mode reference for the full three-GNN pipeline (sales, churn, purchase) against H&M tables in Snowflake. It is not part of the deployed model, and the Quickstart does not run it
@@ -285,7 +285,7 @@ retail_planning/
     __init__.py                   # exports for train.py and the query
     schema.py                     # concepts, sales task relationships
     source.py                     # bundled CSVs and base facts
-    sales_forecast.py             # transaction graph, sales GNN, train target profile
+    sales_forecast.py             # transaction graph, sales GNN
     article_demand.py             # demand bridge, planning gaps
     planning_horizon.py           # number of planning weeks
     markdown_plan.py              # markdown MILP
