@@ -15,9 +15,12 @@ capability):
   pivots". ``p.relationships`` labels the technique used at each hop.
 - Runs a point query between one named internet-facing entry and one named crown
   jewel over a derived ``can_reach`` edge, enumerating every route between them.
-- Scores each kill-chain by the asset exposure summed along it, and persists
-  ``Asset.on_attack_path`` back to the ontology for the assets that lie on a
-  crown-jewel-reaching chain.
+- Scores each kill-chain by the asset exposure summed along it, ranks the chains
+  for remediation, and persists ``Asset.on_attack_path`` back to the ontology for
+  the assets that lie on a crown-jewel-reaching chain.
+
+The kill-chain paths and their scores live in ``kill_chains.py``; the point query's
+routes live in ``entry_to_target_routes.py``.
 
 Run:
     `rai models deploy --path model` deploys this package to the schemas in
@@ -25,15 +28,22 @@ Run:
     queries.attack_path_report` then prints the report from the deployed model.
 """
 
-from .reasoning import (
+from .entry_to_target_routes import (
     ENTRY_ASSET,
-    MAX_PIVOTS,
     MAX_ROUTE_HOPS,
     TARGET_ASSET,
+    RouteCount,
+    RouteStep,
+)
+from .kill_chains import (
+    MAX_PIVOTS,
+    AssetCoverage,
+    KillChainCount,
     KillChainExposure,
     KillChainHop,
+    KillChainHops,
+    KillChainPriority,
     KillChainStep,
-    RouteStep,
 )
 from .schema import Asset, model
 from .source import DATA_DIR
@@ -45,9 +55,14 @@ __all__ = [
     "MAX_ROUTE_HOPS",
     "TARGET_ASSET",
     "Asset",
+    "AssetCoverage",
+    "KillChainCount",
     "KillChainExposure",
     "KillChainHop",
+    "KillChainHops",
+    "KillChainPriority",
     "KillChainStep",
+    "RouteCount",
     "RouteStep",
     "model",
 ]

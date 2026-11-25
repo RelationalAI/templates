@@ -1,6 +1,8 @@
-"""Kill-chain attack paths, the entry-to-crown-jewel route query, and the on-attack-path flag."""
+"""Kill-chain attack paths: the exploit, credential-reuse, and pivot chains from an internet-facing
+asset into a crown jewel, each chain's steps, techniques, hop count, exposure, and remediation
+priority, and the assets that lie on a chain."""
 
-from relationalai.semantics import Hash, Integer, String, not_, where
+from relationalai.semantics import Hash, Integer, String
 from relationalai.semantics.std import aggregates as aggs
 
 from .schema import Asset, model
@@ -12,11 +14,6 @@ from .schema import Asset, model
 # Lateral-movement depth: how many pivot_to hops the kill-chain may take after the
 # initial exploit + credential reuse. The estate is small, so a low cap suffices.
 MAX_PIVOTS = 2
-# Maximum length (in edges) of a route in the point query between two named assets.
-MAX_ROUTE_HOPS = 6
-# The point query's endpoints: a specific internet-facing entry and a crown jewel.
-ENTRY_ASSET = "web-01"
-TARGET_ASSET = "db-01"
 
 # --------------------------------------------------
 # Paths: kill-chain attack paths (multi-relationship sequence)
@@ -32,11 +29,6 @@ TARGET_ASSET = "db-01"
 a, b, c, dst = Asset.ref(), Asset.ref(), Asset.ref(), Asset.ref()
 kill = model.path(a.exploit_to, b.cred_to, c.pivot_to.repeat(1, MAX_PIVOTS), dst).all().paths()
 
-# The point query's pattern: routes over the technique-agnostic can_reach edge from
-# a pinned entry asset to a pinned crown jewel, 1..MAX_ROUTE_HOPS hops.
-src_pt, dst_pt = Asset.ref(), Asset.ref()
-route = model.path(src_pt.can_reach.repeat(1, MAX_ROUTE_HOPS), dst_pt).all().paths()
-
 # The crown-jewel kill-chains: an internet-facing foothold that ends on a crown jewel.
 crown_kill = [kill, a.internet_facing == "yes", dst.crown_jewel == "yes"]
 
@@ -51,8 +43,7 @@ model.where(*crown_kill, on_path == kill.nodes(pos)).define(on_path.on_attack_pa
 # Published paths
 # --------------------------------------------------
 # The deployed model publishes the paths the report reads, keyed by each path's id: the
-# crown-jewel kill-chains' assets, techniques, and total exposure, and the point query's
-# simple routes.
+# crown-jewel kill-chains' assets, techniques, hop counts, and total exposure.
 KillChainStep = model.Relationship(
     f"kill chain {Hash:path} has {Asset:asset} at step {Integer:step}"
 )
@@ -66,6 +57,13 @@ model.where(*crown_kill).define(
     KillChainHop(kill, kill.relationships["relationship"], kill.relationships["index"])
 )
 
+# Each kill-chain's length in hops, and how many kill-chains there are.
+KillChainHops = model.Relationship(f"kill chain {Hash:path} has {Integer:hops} hops")
+model.where(*crown_kill).define(KillChainHops(kill, kill.length))
+KillChainCount = model.Relationship(f"there are {Integer:n_chains} kill chains")
+chain, chain_hops = Hash.ref(), Integer.ref()
+model.define(KillChainCount(aggs.count(chain).where(KillChainHops(chain, chain_hops)) | 0))
+
 # Exposure is a per-asset score (a stand-in for a CVSS / attack-surface metric) summed ALONG
 # each kill-chain IN PYREL: aggregates.sum(Asset(kill.nodes).exposure_score).per(kill) sums
 # the per-node value over each path's node sequence -- the core paths-only aggregation. This
@@ -78,16 +76,23 @@ model.where(*crown_kill, total := aggs.sum(Asset(kill.nodes).exposure_score).per
     KillChainExposure(kill, total)
 )
 
-# Keep only SIMPLE routes (no asset revisited). .all().paths() has WALK semantics and no
-# native simple-path mode, so drop node-repeating walks with a negated existential over
-# positions -- expressed natively in the route's where() (no pandas).
-i, j = Integer.ref(), Integer.ref()
-RouteStep = model.Relationship(
-    f"entry-to-target route {Hash:path} has {Asset:asset} at step {Integer:step}"
+# Remediation priority: 1 for the kill-chain with the most total exposure. Ties go to the
+# lower path id. The exposure is negated so both keys sort ascending.
+KillChainPriority = model.Relationship(
+    f"kill chain {Hash:path} has remediation priority {Integer:priority}"
 )
+exposed_chain, chain_exposure = Hash.ref(), Integer.ref()
 model.where(
-    route,
-    src_pt.id == ENTRY_ASSET,
-    dst_pt.id == TARGET_ASSET,
-    not_(where(i < j, route.nodes(i) == route.nodes(j))),
-).define(RouteStep(route, Asset(route.nodes), route.nodes["index"]))
+    KillChainExposure(exposed_chain, chain_exposure),
+    priority := aggs.rank(-chain_exposure, exposed_chain),
+).define(KillChainPriority(exposed_chain, priority))
+
+# How many assets there are, and how many of them lie on a crown-jewel kill-chain.
+AssetCoverage = model.Relationship(
+    f"the estate has {Integer:n_assets} assets, {Integer:n_on_attack_path} on an attack path"
+)
+flagged_asset = Asset.ref()
+model.define(AssetCoverage(
+    aggs.count(Asset),
+    aggs.count(flagged_asset).where(flagged_asset.on_attack_path == "yes") | 0,
+))
