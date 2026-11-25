@@ -2,7 +2,6 @@
 
 from pathlib import Path
 
-import numpy as np
 from pandas import read_csv
 
 from .schema import (
@@ -19,34 +18,18 @@ from .schema import (
 
 PAYSIM_DIR = Path(__file__).parents[1] / "data" / "paysim_mini"
 
-# Each audit consumes hours proportional to transaction size: an audit of a
-# transaction over the threshold takes deeper forensic work.
-LARGE_AMOUNT_THRESHOLD = 1_000_000.0
-SMALL_AUDIT_COST_HOURS = 1.0  # audit of a transaction <= $1M
-LARGE_AUDIT_COST_HOURS = 5.0  # audit of a transaction > $1M
 
-
-def load_local_data(
-    data_dir: Path = PAYSIM_DIR,
-    *,
-    large_amount_threshold: float,
-    small_audit_cost_hours: float,
-    large_audit_cost_hours: float,
-) -> None:
+def load_local_data(data_dir: Path = PAYSIM_DIR) -> None:
     """Load bundled PaySim CSVs and map them to the shared schema."""
     accounts_df = read_csv(data_dir / "accounts.csv")
     transactions_df = read_csv(data_dir / "transactions.csv", parse_dates=["step_ts"])
-    transactions_df["audit_cost"] = np.where(
-        transactions_df["amount"] > large_amount_threshold,
-        large_audit_cost_hours,
-        small_audit_cost_hours,
-    )
     train_df = read_csv(data_dir / "train.csv", parse_dates=["step_ts"])
     val_df = read_csv(data_dir / "val.csv", parse_dates=["step_ts"])
     test_df = read_csv(data_dir / "test.csv", parse_dates=["step_ts"])
 
     model.define(Account.new(model.data(accounts_df).to_schema()))
-    model.define(Transaction.new(model.data(transactions_df).to_schema()))
+    # Audit cost is a rule on the amount (investigation_queue.py), never a loaded column.
+    model.define(Transaction.new(model.data(transactions_df).to_schema(exclude=["audit_cost"])))
     model.define(TrainTable.new(model.data(train_df).to_schema()))
     model.define(ValTable.new(model.data(val_df).to_schema()))
     model.define(TestTable.new(model.data(test_df).to_schema()))
@@ -72,11 +55,7 @@ def load_snowflake_data(database: str, schema: str) -> None:
     """Load PaySim Snowflake tables and map them to the shared schema.
 
     To run the model over your own tables, call this from `model/__init__.py`
-    instead of `load_local_data()`. TRANSACTIONS carries the `audit_cost` column
-    (hours), derived in Snowflake:
-        SELECT *, CASE WHEN amount > 1000000 THEN 5.0 ELSE 1.0 END AS audit_cost
-        FROM RAW_TRANSACTIONS;
-    and the tables need change tracking.
+    instead of `load_local_data()`. The tables need change tracking.
     """
     accounts = model.Table(f"{database}.{schema}.ACCOUNTS")
     transactions = model.Table(f"{database}.{schema}.TRANSACTIONS")
@@ -85,7 +64,8 @@ def load_snowflake_data(database: str, schema: str) -> None:
     test = model.Table(f"{database}.{schema}.TEST")
 
     model.define(Account.new(accounts.to_schema()))
-    model.define(Transaction.new(transactions.to_schema()))
+    # Audit cost is a rule on the amount (investigation_queue.py), never a loaded column.
+    model.define(Transaction.new(transactions.to_schema(exclude=["audit_cost"])))
     model.define(TrainTable.new(train.to_schema()))
     model.define(ValTable.new(validation.to_schema()))
     model.define(TestTable.new(test.to_schema()))

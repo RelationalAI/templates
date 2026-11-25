@@ -5,29 +5,47 @@ ranked list of healthcare facilities by degree centrality, showing which facilit
 receive priority for vaccines, testing stations, and emergency response teams.
 """
 
-from model import Facility, model
+from model import Facility, NetworkSummary, model
+from relationalai.semantics import Float, Integer
 
 
 def ranked_facilities():
-    """Every facility's published metrics, ranked by weighted degree centrality.
+    """Every facility's published metrics, in priority-rank order (highest weighted degree
+    centrality first).
 
-    Shared by this report and the Streamlit app. Ties rank by facility id.
+    Shared by this report and the Streamlit app.
     """
-    results = model.select(
-        Facility.id.alias("id"),
-        Facility.name.alias("name"),
-        Facility.type.alias("type"),
-        Facility.region.alias("region"),
-        Facility.degree_centrality.alias("degree_centrality"),
-        Facility.incoming_connections.alias("incoming_connections"),
-        Facility.outgoing_connections.alias("outgoing_connections"),
-        Facility.total_connections.alias("total_connections"),
-    ).to_df()
-    results = results.sort_values(
-        ["degree_centrality", "id"], ascending=[False, True]
-    ).reset_index(drop=True)
-    results.insert(0, "rank", range(1, len(results) + 1))
-    return results
+    return (
+        model.select(
+            Facility.priority_rank.alias("rank"),
+            Facility.id.alias("id"),
+            Facility.name.alias("name"),
+            Facility.type.alias("type"),
+            Facility.region.alias("region"),
+            Facility.degree_centrality.alias("degree_centrality"),
+            Facility.incoming_connections.alias("incoming_connections"),
+            Facility.outgoing_connections.alias("outgoing_connections"),
+            Facility.total_connections.alias("total_connections"),
+        )
+        .to_df()
+        .sort_values("rank")
+        .reset_index(drop=True)
+    )
+
+
+def network_summary():
+    """The facility count and the mean centrality and connections per facility, from the model."""
+    n_ref, centrality_ref, connections_ref = Integer.ref(), Float.ref(), Float.ref()
+    return (
+        model.where(NetworkSummary(n_ref, centrality_ref, connections_ref))
+        .select(
+            n_ref.alias("n_facilities"),
+            centrality_ref.alias("mean_centrality"),
+            connections_ref.alias("mean_connections"),
+        )
+        .to_df()
+        .iloc[0]
+    )
 
 
 if __name__ == "__main__":
@@ -71,10 +89,11 @@ if __name__ == "__main__":
         print()
 
     # Summary statistics
+    summary = network_summary()
     print("\n📊 NETWORK SUMMARY:")
-    print(f"  • Total facilities analyzed: {len(results)}")
-    print(f"  • Average degree centrality: {results['degree_centrality'].mean():.4f}")
-    print(f"  • Average connections per facility: {results['total_connections'].mean():.1f}")
+    print(f"  • Total facilities analyzed: {int(summary['n_facilities'])}")
+    print(f"  • Average degree centrality: {float(summary['mean_centrality']):.4f}")
+    print(f"  • Average connections per facility: {float(summary['mean_connections']):.1f}")
     print(f"  • Highest weighted centrality: {results.iloc[0]['name']} ({int(results.iloc[0]['total_connections'])} connections)")
 
     print("\n✅ Analysis complete!")

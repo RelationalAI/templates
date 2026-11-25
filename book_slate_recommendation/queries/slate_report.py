@@ -21,13 +21,14 @@ from model import (
     Author,
     Book,
     Candidate,
+    Slate,
     SolveStatus,
     Subject,
     TotalSupport,
     User,
     model,
 )
-from relationalai.semantics import Integer, count
+from relationalai.semantics import Integer
 
 
 # explanation_ic requires sum((K+1-slot)*path_count_total) >= EXPLANATION_FLOOR.
@@ -48,25 +49,17 @@ if __name__ == "__main__":
     # user explicitly and refuse to report if any user fails any of the per-IC
     # feasibility necessary conditions below, so sparse customer reach hits a
     # clear Python-level error.
-    candidate_df = model.select(
-        Candidate.user_id.alias("user_id"),
-        Candidate.book_id.alias("book_id"),
-        Candidate.path_count_total.alias("path_count_total"),
-    ).to_df()
-    # The read history, book attributes, authorship, subjects and users all
-    # come from the deployed model.
-    rating = Integer.ref()
-    reads_df = model.select(
-        User.id.alias("user_id"),
-        Book.id.alias("book_id"),
-    ).where(User.read(User, Book, rating)).to_df()
-    unread = candidate_df.merge(
-        reads_df,
-        on=["user_id", "book_id"],
-        how="left",
-        indicator=True,
+    unread = (
+        model.select(
+            Candidate.user_id.alias("user_id"),
+            Candidate.book_id.alias("book_id"),
+            Candidate.path_count_total.alias("path_count_total"),
+        )
+        .where(model.not_(Candidate.is_read()))
+        .to_df()
     )
-    unread = unread[unread["_merge"] == "left_only"][["user_id", "book_id", "path_count_total"]]
+    # The book attributes, authorship, subjects and users all come from the
+    # deployed model.
     # Pull triangle counts so the hero-eligible feasibility check can
     # count books meeting HERO_EMBEDDEDNESS_THRESHOLD per user.
     triangle_df = model.select(
@@ -214,7 +207,7 @@ if __name__ == "__main__":
             tc_pick.alias("triangle_count"),
         )
         .where(
-            Candidate.slot <= SLATE_SIZE_K,
+            Slate.picks(Candidate),
             b_pick.id == Candidate.book_id,
             b_pick.triangle_count == tc_pick,
         )
@@ -223,20 +216,14 @@ if __name__ == "__main__":
     print(slate_df.sort_values(["user_id", "slot"]).to_string(index=False))
 
     print("\nSubject distribution per user's slate:")
-    u_disp = User.ref()
-    b_disp = Book.ref()
-    s_disp = Subject.ref()
-    # Only subjects with at least one pick are listed.
-    model.where(
-        Candidate.user_id == u_disp.id,
-        Candidate.book_id == b_disp.id,
-        Book.about(b_disp, s_disp),
-        Candidate.slot <= SLATE_SIZE_K,
-    ).select(
-        u_disp.id.alias("user_id"),
-        s_disp.name.alias("subject"),
-        count(Candidate).per(u_disp, s_disp).alias("n_picked"),
-    ).inspect()
+    slate = Slate.ref()
+    subject = Subject.ref()
+    n_picked = Integer.ref()
+    model.select(
+        slate.user_id.alias("user_id"),
+        subject.name.alias("subject"),
+        n_picked.alias("n_picked"),
+    ).where(slate.picks_by_subject(n_picked, subject)).inspect()
 
     print("\nExplanation-path support per picked item (ordered by slot):")
     expl_df = (
@@ -248,7 +235,7 @@ if __name__ == "__main__":
             Candidate.path_count_via_author.alias("paths_via_author"),
             Candidate.path_count_via_subject.alias("paths_via_subject"),
         )
-        .where(Candidate.slot <= SLATE_SIZE_K)
+        .where(Slate.picks(Candidate))
         .to_df()
     )
     print(expl_df.sort_values(["user_id", "slot"]).to_string(index=False))

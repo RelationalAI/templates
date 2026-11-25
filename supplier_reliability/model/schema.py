@@ -7,7 +7,7 @@ Concept, Property = model.Concept, model.Property
 
 # Concept: suppliers with capacity and a reliability score. (reliability is carried as
 # data only -- it is NOT priced into the cost objective and does NOT drive the hard-coded
-# disruption scenarios in `model/reasoning.py`; it is here for you to extend, see "Customize".)
+# disruption scenarios in `model/disruption_scenarios.py`; it is here for you to extend, see "Customize".)
 Supplier = Concept("Supplier", identify_by={"id": Integer})
 Supplier.name = Property(f"{Supplier} has {String:name}")
 Supplier.reliability = Property(f"{Supplier} has {Float:reliability}")
@@ -28,7 +28,7 @@ SupplyOption.cost_per_unit = Property(f"{SupplyOption} has {Float:cost_per_unit}
 SupplyOrder = Concept("SupplyOrder")
 SupplyOrder.option = Property(f"{SupplyOrder} uses {SupplyOption}", short_name="option")
 
-# Derived relationships for direct access (avoids multi-hop traversals); `model/reasoning.py`
+# Derived relationships for direct access (avoids multi-hop traversals); `model/sourcing_plan.py`
 # defines them.
 SupplyOrder.supplier = Property(f"{SupplyOrder} has {Supplier}", short_name="supplier")
 SupplyOrder.product = Property(f"{SupplyOrder} has {Product}", short_name="product")

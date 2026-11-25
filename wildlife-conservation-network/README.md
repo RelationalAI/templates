@@ -36,7 +36,7 @@ Built using **graph analysis** (Louvain community detection and degree centralit
 
 ## What's included
 
-- **Model**: a single shared ontology — `Organization` nodes and `Partnership` edges — plus the Louvain community and degree-centrality enrichment the graph reasoner writes back. Declared in the `model/` package (`schema.py` declares the concepts, `source.py` loads the sample data, `reasoning.py` builds the graph and its metrics), which `rai models deploy --path model` deploys to your Snowflake account, where each refresh computes the metrics.
+- **Model**: a single shared ontology — `Organization` nodes and `Partnership` edges — plus the Louvain community and degree-centrality enrichment the graph reasoner writes back. Declared in the `model/` package (`schema.py` declares the concepts, `source.py` loads the sample data, `partnership_network.py` builds the graph and its metrics, `community_profiles.py` ranks each community's members, regions, species focuses, and organization types, `network_summary.py` computes the network-wide figures), which `rai models deploy --path model` deploys to your Snowflake account, where each refresh computes the metrics and the rules over them.
 - **Query and app**: `queries/community_report.py` (CLI report) and `app.py` (interactive Streamlit visualization), both querying the deployed model.
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - **Sample data**: a small network of conservation organizations and the partnerships between them. See *Sample data* below.
@@ -196,7 +196,9 @@ wildlife-conservation-network/
     __init__.py                      # Exports of the deployed model
     schema.py                        # Organization and partnership concepts
     source.py                        # Loads the sample CSVs
-    reasoning.py                     # Graph, communities, and centrality metrics
+    partnership_network.py           # Graph, communities, and centrality metrics
+    community_profiles.py            # Each community's members, hub, region, species, and types
+    network_summary.py               # Network-wide counts and averages
   queries/
     community_report.py              # CLI report from the deployed model
   app.py                             # Optional Streamlit app (queries the deployed model)
@@ -222,6 +224,7 @@ The bundled data is a small, illustrative conservation network — designed to t
 A single ontology (declared in `model/schema.py`) backs both the report and the app. The graph reasoner writes community and centrality results back onto the network.
 
 - **Key entities**: `Organization` (the network's nodes), `Partnership` (the collaboration edges).
+- **Derived entities**: `Community` (a Louvain cluster, with its hub, primary region, and member order), `CommunityTrait` (a region, focus species, or organization type among a community's members, ranked), and `NetworkSummary` (the network-wide figures).
 - **Primary identifiers**: integer `id` on `Organization`; `Partnership` is identified by its two endpoint organizations.
 - **Important invariants**: every `Partnership` endpoint must reference a valid `Organization` id; the graph is undirected and unweighted, so a partnership counts once regardless of row order.
 
@@ -233,13 +236,13 @@ For the full concept and property definitions, see `model/schema.py`; `runbook.m
 CSV files → model/ (deployed) → apply Louvain + degree centrality → analyze communities → display results
 ```
 
-Both the report and the app query one deployed model. The `model/` package builds the RelationalAI model container and defines the `Organization` concept and the `Partnership` edges (`schema.py`), loads them from CSV (`source.py`), and constructs the undirected, unweighted graph and declares the metrics (`reasoning.py`), and `rai models deploy --path model` deploys it. This keeps the CLI report and the Streamlit app in sync, since neither declares or redefines anything.
+Both the report and the app query one deployed model. The `model/` package builds the RelationalAI model container and defines the `Organization` concept and the `Partnership` edges (`schema.py`), loads them from CSV (`source.py`), and constructs the undirected, unweighted graph and declares the metrics (`partnership_network.py`), ranks each community's members and traits (`community_profiles.py`), and computes the network-wide figures (`network_summary.py`), and `rai models deploy --path model` deploys it. This keeps the CLI report and the Streamlit app in sync, since neither declares or redefines anything.
 
 The graph reasoner then runs two algorithms over that graph. Louvain community detection partitions the network into collaboration clusters by optimizing modularity — iteratively grouping organizations to maximize connections within a cluster and minimize connections between clusters — and writes a community label onto each organization. Degree centrality normalizes each organization's partnership count to a 0-to-1 scale, which makes hubs comparable across clusters of different sizes; the highest-centrality organization inside a community is the one best placed to broker coordination there.
 
-Reading those results back is a query joining the community label, centrality score, and raw partnership count per organization. `queries/community_report.py` renders a per-organization table, a per-community breakdown (size, region, species focus, hub), and network-wide summary statistics. The optional Streamlit app is a visualization layer over the same query: an interactive network graph colored by community, expandable per-cluster detail, and cross-community connector analysis.
+Rules over those results rank each community's members by centrality and each community's regions, species focuses, and organization types by how many members hold them, and compute the network-wide counts and averages. `queries/community_report.py` reads them back with a query joining the community label, centrality score, and raw partnership count per organization, and renders a per-organization table, a per-community breakdown (size, region, species focus, hub), and network-wide summary statistics. The optional Streamlit app is a visualization layer over the same query: an interactive network graph colored by community, expandable per-cluster detail, and cross-community connector analysis.
 
-See `model/reasoning.py` and `queries/community_report.py` for the implementation, and `runbook.md` to reproduce it step by step with the RAI skills.
+See the `model/` modules and `queries/community_report.py` for the implementation, and `runbook.md` to reproduce it step by step with the RAI skills.
 
 ## Customize this template
 
@@ -253,7 +256,7 @@ Focus on the first changes most users will make.
 
 ### Tune parameters
 
-- The graph is built undirected and unweighted in `model/reasoning.py`. Adding edge weights (see *Extend the model*) is the main lever on how the community detection partitions the network.
+- The graph is built undirected and unweighted in `model/partnership_network.py`. Adding edge weights (see *Extend the model*) is the main lever on how the community detection partitions the network.
 
 ### Extend the model
 

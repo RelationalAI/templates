@@ -38,7 +38,7 @@ Telecommunications and infrastructure teams routinely have to decide where to bu
 
 ## What's included
 
-- **Model**: the `model/` package builds the semantic model (three concepts, two coverage relationships), the mixed-integer optimization problem (three binary variable families, five constraint families, one objective), and the solve (`schema.py` declares the concepts, `source.py` loads the sample data, `reasoning.py` states the decision problem); `rai models deploy --path model` deploys it to your Snowflake account, where each refresh runs the solve.
+- **Model**: the `model/` package builds the semantic model (three concepts, two coverage relationships), the mixed-integer optimization problem (three binary variable families, five constraint families, one objective), and the solve (`schema.py` declares the concepts, `source.py` loads the sample data, `site_selection.py` states the decision problem, `coverage_summary.py` publishes the plan totals, tower loads, and coverage rate); `rai models deploy --path model` deploys it to your Snowflake account, where each refresh runs the solve.
 - **Query**: `queries/coverage_report.py` prints the report from the deployed model and writes `data/coverage_solution.csv`.
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - **Sample data**: 6 candidate tower sites, 10 demand zones, and 19 feasible tower-zone coverage pairs. See *Sample data* below.
@@ -205,7 +205,8 @@ cell_tower_coverage/
     __init__.py                   # exports of the deployed model
     schema.py                     # concepts and properties
     source.py                     # loads the CSVs, checks them, sets the build budget and tower cap
-    reasoning.py                  # decision variables, constraints, objective, solve
+    site_selection.py             # decision variables, constraints, objective, solve
+    coverage_summary.py           # plan totals, tower loads, zone assignments, coverage rate
   queries/
     coverage_report.py            # report from the deployed model
   data/
@@ -275,9 +276,9 @@ Two portfolio constraints bound the plan: total build cost stays at or under `BU
 
 ### 7. Maximize covered population
 
-The objective rewards covering high-population zones, weighting each covered zone by its population. Because each zone has a single binary covered variable and each covered zone has exactly one assignment, the model handles overlapping tower coverage without double-counting population or overloading selected towers. After the solve, the model publishes the plan totals (selected build cost, total population, and each selected tower's assigned population) along with the budget and tower cap it solved with; the query reads them to print the report tables (selected sites with utilization, assigned zones, uncovered zones, coverage summary) and writes the per-zone assignments to `data/coverage_solution.csv`.
+The objective rewards covering high-population zones, weighting each covered zone by its population. Because each zone has a single binary covered variable and each covered zone has exactly one assignment, the model handles overlapping tower coverage without double-counting population or overloading selected towers. After the solve, the model publishes the plan totals (selected build cost, total population, each tower's assigned population and utilization, the tower serving each covered zone, and the coverage rate and uncovered population) along with the budget and tower cap it solved with; the query reads them to print the report tables (selected sites with utilization, assigned zones, uncovered zones, coverage summary) and writes the per-zone assignments to `data/coverage_solution.csv`.
 
-See `model/reasoning.py` for the implementation and `runbook.md` for the skill-driven reproduction.
+See `model/site_selection.py` and `model/coverage_summary.py` for the implementation and `runbook.md` for the skill-driven reproduction.
 
 ## Customize this template
 

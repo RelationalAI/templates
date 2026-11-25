@@ -24,20 +24,12 @@ model.where(Asset.id == asset_data["id"]).define(
     Asset.exposure_score(asset_data["exposure_score"]),
 )
 
-# Load attack steps. Each row is one technique-specific edge; split by technique to
-# populate the three typed edges, and load every row into the can_reach union.
-steps_df = load_csv("attack_steps.csv")
-for technique, rel in [("exploit", "exploit_to"), ("cred", "cred_to"), ("pivot", "pivot_to")]:
-    sub = model.data(steps_df[steps_df["technique"] == technique][["src", "dst"]])
-    u, v = Asset.ref(), Asset.ref()
-    model.where(
-        u.id == sub["src"],
-        v.id == sub["dst"],
-    ).define(getattr(u, rel)(v))
-
-all_steps = model.data(steps_df[["src", "dst"]])
-ru, rv = Asset.ref(), Asset.ref()
-model.where(
-    ru.id == all_steps["src"],
-    rv.id == all_steps["dst"],
-).define(ru.can_reach(rv))
+# Load attack steps. Each row is one technique-specific edge: its technique picks the
+# typed edge it populates, and every row populates the can_reach union.
+steps = model.data(load_csv("attack_steps.csv"))
+u, v = Asset.ref(), Asset.ref()
+step_ends = (u.id == steps["src"], v.id == steps["dst"])
+model.where(*step_ends, steps["technique"] == "exploit").define(u.exploit_to(v))
+model.where(*step_ends, steps["technique"] == "cred").define(u.cred_to(v))
+model.where(*step_ends, steps["technique"] == "pivot").define(u.pivot_to(v))
+model.where(*step_ends).define(u.can_reach(v))

@@ -13,20 +13,24 @@ from model import (
     LIFT_THRESHOLD,
     MIN_DEFECTS,
     MIN_SUPPORT,
+    BuildWeek,
     DiagnosisCost,
     DiagnosisResult,
     Factor,
     PlantBaseline,
     SolveStatus,
-    Unit,
+    SpikeOnset,
     model,
     num_cons,
     num_cover,
     num_edges,
+    num_incidence,
     num_min_objs,
     num_nodes,
     num_vars,
 )
+
+TOP_RAW_FACTORS = 6
 
 if __name__ == "__main__":
     baseline = model.select(
@@ -45,15 +49,18 @@ if __name__ == "__main__":
     # timeline -- failures by build week -- before touching genealogy. The onset is
     # the first week whose rate runs well above the opening week's baseline; it
     # tells the rest of the chain which window's changes to interrogate.
-    wk = model.select(
-        Unit.build_week.alias("week"), Unit.defective.alias("defective")
-    ).to_df()
-    timeline = wk.groupby("week").agg(
-        units=("defective", "size"), defects=("defective", "sum")
+    timeline = (
+        model.select(
+            BuildWeek.week.alias("week"),
+            BuildWeek.n_units.alias("units"),
+            BuildWeek.failure_rate.alias("rate"),
+        )
+        .to_df()
+        .set_index("week")
+        .sort_index()
     )
-    timeline["rate"] = timeline["defects"] / timeline["units"]
-    opening = timeline["rate"].iloc[0]
-    onset = next((int(w) for w, r in timeline["rate"].items() if r > 2 * opening), None)
+    onset_weeks = model.select(SpikeOnset).to_df().iloc[:, 0].tolist()
+    onset = int(onset_weeks[0]) if onset_weeks else None
     print("\nWhen did the spike start? Final-test failure rate by build week:")
     for week, r in timeline.iterrows():
         mark = "  <- spike onset" if onset == int(week) else ""
@@ -74,12 +81,7 @@ if __name__ == "__main__":
     # everything. That is exactly the trap the contrast stage corrects. Genealogy
     # closure puts lots and machines on the same footing: a deep lot is "touched by"
     # every finished unit that carries it.
-    # One row per factor (selecting the count alone would merge factors with equal counts).
-    n_incidence = (
-        model.select(Factor.id.alias("factor"), Factor.touched_count.alias("units"))
-        .to_df()["units"]
-        .sum()
-    )
+    n_incidence = int(model.select(num_incidence).to_df().iloc[0, 0])
     top_raw = (
         model.select(
             Factor.id.alias("factor"),
@@ -89,7 +91,7 @@ if __name__ == "__main__":
         )
         .to_df()
         .sort_values(["defects", "factor"], ascending=[False, True])
-        .head(6)
+        .head(TOP_RAW_FACTORS)
         .reset_index(drop=True)
     )
     print(
@@ -184,24 +186,24 @@ if __name__ == "__main__":
         # Corroborating evidence per named cause, the way a real RCA write-up reads:
         # the defect signature it concentrates (a paste fault should present as cold
         # solder, a reflow fault as solder bridging), plus a kind-specific tell --
-        # supplier and receipt date for a lot, calibration age for a machine. All of it
-        # is read back from ontology already loaded; the diagnosis is the hypothesis,
-        # this is the supporting evidence an engineer would confirm physically.
-        sig = (
-            model.where(
-                (f := Factor.ref()).is_root_cause > 0.5,
-                f.touches(u := Unit.ref()),
-                u.is_defective(),
+        # supplier and receipt date for a lot, calibration age for a machine. The model
+        # publishes the signature of every suspect factor; the diagnosis is the
+        # hypothesis, this is the supporting evidence an engineer would confirm physically.
+        signatures = (
+            model.where((f := Factor.ref()).is_root_cause > 0.5)
+            .select(
+                f.id.alias("factor"),
+                f.signature_type.alias("signature_type"),
+                f.signature_share.alias("signature_share"),
             )
-            .select(f.id.alias("factor"), u.defect_type.alias("defect_type"))
             .to_df()
+            .set_index("factor")
         )
         print("\nCorroborating evidence per root cause:")
         for _, row in diagnosis.iterrows():
             fid, kind, label = row["factor"], row["kind"], row["label"]
-            types = sig[sig["factor"] == fid]["defect_type"]
-            dom = types.value_counts()
-            signature = f"{dom.iloc[0] / len(types):.0%} {dom.index[0]}"
+            sig = signatures.loc[fid]
+            signature = f"{sig['signature_share']:.0%} {sig['signature_type']}"
             # Each kind's evidence is read through the factor's typed pointer to its lot,
             # machine, or shift.
             if kind == "LOT":

@@ -5,11 +5,11 @@ horizon, prints the status and objective of the latest refresh's solve, the prod
 inventory levels, and unmet demand, then a summary of the horizons.
 """
 
-from model import PLANS, DemandOrder, OrderInPlan, model, planning_start
-from relationalai.semantics import Float, Integer, count
+from model import PLANS, NumOrders, PlanOrderCount, model, planning_start
+from relationalai.semantics import Float, Integer
 
 if __name__ == "__main__":
-    total_orders = model.select(count(DemandOrder)).to_df().iloc[0, 0]
+    total_orders = int(model.select(NumOrders).to_df().iloc[0, 0])
     scenario_results = []
 
     for plan in PLANS:
@@ -36,8 +36,12 @@ if __name__ == "__main__":
         print(
             f"  Planning horizon: {planning_start} to {plan.planning_end} ({plan.num_weeks} weeks)"
         )
-        orders_in_scope = len(
-            model.select(DemandOrder.id).where(OrderInPlan(DemandOrder, plan.planning_end)).to_df()
+        n_orders_ref = Integer.ref()
+        orders_in_scope = int(
+            model.where(PlanOrderCount(plan.planning_end, n_orders_ref))
+            .select(n_orders_ref)
+            .to_df()
+            .iloc[0, 0]
         )
         print(f"  Demand orders in scope: {orders_in_scope} (of {total_orders} total)")
 

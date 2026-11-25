@@ -34,7 +34,7 @@ Assumes familiarity with Python and basic ML concepts (binary classification, tr
 
 ## What's included
 
-- **Model**: `model/` -- the deployed model: concepts and splits (`schema.py`, `source.py`), the graph, the feature types, and the GNN with its predictions (`reasoning.py`)
+- **Model**: `model/` -- the deployed model: concepts and splits (`schema.py`, `source.py`), the graph, the feature types, and the GNN with its predictions (`smoker_gnn.py`), and the table counts and test-set metrics (`prediction_metrics.py`)
 - **Training**: `train.py` -- trains the GNN over the deployed splits and registers its version
 - **Query**: `queries/smoker_report.py` -- prints the data summary, a sample of predictions, and the test-set metrics from the deployed model
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the code itself.
@@ -125,7 +125,7 @@ Use this sequence to deploy the model, train the GNN, and query its predictions:
      predictive:
        name: smoker_status_prediction_gnn     # created on first use if it doesn't exist
        gnns:
-         smoker_status:                 # the GNN's name in model/reasoning.py
+         smoker_status:                 # the GNN's name in model/smoker_gnn.py
            registry: <DB>.SMOKER_STATUS_PREDICTION
            model: SMOKER_STATUS
            version: V1                  # train.py registers this version
@@ -223,7 +223,8 @@ Use this sequence to deploy the model, train the GNN, and query its predictions:
 │   ├── __init__.py                 # exports for train.py and the query
 │   ├── schema.py                   # concepts and the Train/Validation/Test task relationships
 │   ├── source.py                   # bundled CSVs bound to the schema
-│   └── reasoning.py                # graph, feature types, the GNN and its predictions
+│   ├── smoker_gnn.py               # graph, feature types, the GNN and its predictions
+│   └── prediction_metrics.py       # table counts, test-set accuracy, ROC-AUC, class shares
 ├── train.py                        # trains the GNN and registers its version
 ├── queries/
 │   └── smoker_report.py            # data summary, prediction sample, and test-set metrics
@@ -279,7 +280,7 @@ The pipeline turns the `PEOPLE` table into graph nodes and the `RELATED` pairs i
 4. **Train and predict.** The GNN is instantiated with the graph, the transformer, and the train/validation relationships, fit, then used to attach predictions over the held-out test cohort back onto each `People` node.
 5. **Register and predict.** `train.py` registers the trained run as a version in the Snowflake Model Registry, and every refresh of the deployed model scores the test cohort with that version, so predictions need no retraining.
 
-See `model/reasoning.py` for the graph and the GNN, `queries/smoker_report.py` for the metrics, and `runbook.md` for the skill-driven reproduction.
+See `model/smoker_gnn.py` for the graph and the GNN, `model/prediction_metrics.py` for the metrics, `queries/smoker_report.py` for the report, and `runbook.md` for the skill-driven reproduction.
 
 ## Customize this template
 
@@ -300,7 +301,7 @@ For the full hyperparameter list, see the [Configure a GNN](https://docs.relatio
 ### Extend the model
 
 - **Add categorical demographics** (e.g. occupation, income bracket): list them under `category=[...]` in the `PropertyTransformer`.
-- **Try a multiclass task**: if your label has more than two values (e.g. never / light / heavy smoker), change `task_type="multiclass_classification"` and use `eval_metric="macro_f1"` or `"accuracy"`. The published prediction then carries per-class scores rather than one probability, so update `SmokerPrediction` in `model/reasoning.py` and replace the report's binary ROC-AUC and its fixed classes `0` and `1` with a multiclass metric.
+- **Try a multiclass task**: if your label has more than two values (e.g. never / light / heavy smoker), change `task_type="multiclass_classification"` and use `eval_metric="macro_f1"` or `"accuracy"`. The published prediction then carries per-class scores rather than one probability, so update `SmokerPrediction` in `model/smoker_gnn.py` and replace the binary ROC-AUC and the fixed classes `0` and `1` in `model/prediction_metrics.py` with a multiclass metric.
 - **Train a new version**: the registry refuses to overwrite a version, so set a new `version` under `reasoners.predictive.gnns.smoker_status` in `raiconfig.yaml`, then run `python train.py` and the refresh call again.
 
 ### Scale up / productionize
@@ -331,7 +332,7 @@ data:
 
 Importing Snowflake tables requires change tracking on them: without `ensure_change_tracking: true`, the SDK warns that GNN workflows using Snowflake tables will fail. If your role cannot enable tracking on the five source tables, have their owner run `ALTER TABLE <table> SET CHANGE_TRACKING = TRUE` on each.
 
-The tables carry the same columns as the CSVs, created with quoted names so Snowflake keeps their case and matching the names the model uses: `PEOPLE` with `"Id"` and the lowercase feature names that `model/reasoning.py` reads (`"height_cm"`, `"fasting_blood_sugar"`, ...), `RELATED` with `"person1"` and `"person2"`, and `TRAIN`, `VALIDATION`, and `TEST` with `"Id"` and `"smoking"`.
+The tables carry the same columns as the CSVs, created with quoted names so Snowflake keeps their case and matching the names the model uses: `PEOPLE` with `"Id"` and the lowercase feature names that `model/smoker_gnn.py` reads (`"height_cm"`, `"fasting_blood_sugar"`, ...), `RELATED` with `"person1"` and `"person2"`, and `TRAIN`, `VALIDATION`, and `TEST` with `"Id"` and `"smoking"`.
 
 ## Troubleshooting
 

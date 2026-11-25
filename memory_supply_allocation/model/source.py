@@ -146,6 +146,8 @@ iterations_df = pd.DataFrame(iter_specs)[["iter_id", "horizon_start", "label"]]
 model.define(Iteration.new(model.data(iterations_df).to_schema()))
 
 
+# A rule form of the multiplier needs a product aggregate; `aggregates.product` is computed as
+# exp(sum(log)), an approximation, so the exact float product stays here.
 def input_multipliers(input_avail):
     """Capacity multiplier per product given input availability per input id:
     product over inputs of (1 - intensity * (1 - avail))."""

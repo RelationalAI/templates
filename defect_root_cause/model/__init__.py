@@ -30,27 +30,30 @@ the failures to the smallest, most specific set of causes that explains them.
 Each stage enriches the shared ontology, and downstream stages consume those
 enrichments as first-class properties -- the accretive enrichment pattern.
 
+Modules: `failure_timeline.py` (failure rate per build week and the spike
+onset), `genealogy.py` (Stage 1), `contrast_scoring.py` (Stage 2),
+`diagnosis.py` (Stage 3), and `root_cause_evidence.py` (each suspect's defect
+signature). Each module imports the modules whose declarations it reads.
+
 Run:
     `rai models deploy --path model` deploys this package to the schemas in
     raiconfig.yaml and waits for its first refresh, which runs the solve; `python
     -m queries.root_cause_report` then prints the report from the deployed model.
 """
 
-from .reasoning import (
-    LIFT_THRESHOLD,
-    MIN_DEFECTS,
-    MIN_SUPPORT,
+from . import root_cause_evidence
+from .contrast_scoring import LIFT_THRESHOLD, MIN_DEFECTS, MIN_SUPPORT, PlantBaseline
+from .diagnosis import (
     DiagnosisCost,
     DiagnosisResult,
-    PlantBaseline,
     SolveStatus,
     num_cons,
     num_cover,
-    num_edges,
     num_min_objs,
-    num_nodes,
     num_vars,
 )
+from .failure_timeline import BuildWeek, SpikeOnset
+from .genealogy import num_edges, num_incidence, num_nodes
 from .schema import Factor, Lot, Machine, Supplier, Unit, model
 from .source import DATA_DIR
 
@@ -59,6 +62,7 @@ __all__ = [
     "LIFT_THRESHOLD",
     "MIN_DEFECTS",
     "MIN_SUPPORT",
+    "BuildWeek",
     "DiagnosisCost",
     "DiagnosisResult",
     "Factor",
@@ -66,13 +70,16 @@ __all__ = [
     "Machine",
     "PlantBaseline",
     "SolveStatus",
+    "SpikeOnset",
     "Supplier",
     "Unit",
     "model",
     "num_cons",
     "num_cover",
     "num_edges",
+    "num_incidence",
     "num_min_objs",
     "num_nodes",
     "num_vars",
+    "root_cause_evidence",
 ]

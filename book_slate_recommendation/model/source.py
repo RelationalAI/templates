@@ -2,13 +2,10 @@
 
 from pathlib import Path
 
-from pandas import DataFrame, read_csv
+from pandas import read_csv
 from relationalai.semantics import Integer
 
-from .schema import Author, Book, Slot, Subject, User, model
-
-# Slate size: the K of "row of K things". Tune to taste.
-SLATE_SIZE_K = 3
+from .schema import Author, Book, Subject, User, model
 
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 
@@ -25,13 +22,6 @@ reads_csv = read_csv(DATA_DIR / "read.csv")
 book_authors_csv = read_csv(DATA_DIR / "book_author.csv")
 book_subjects_csv = read_csv(DATA_DIR / "book_subject.csv")
 book_similarities_csv = read_csv(DATA_DIR / "book_similar.csv")
-
-# Slot positions 1..K. The Slot concept exists so the slot-uniqueness
-# IC counts distinct slot Concept values (the social_golfer idiom)
-# rather than distinct anonymous Integer values. K+1 is the unpicked
-# sentinel and is intentionally not a Slot row -- only filled
-# positions are counted.
-slots_df = DataFrame({"pos": list(range(1, SLATE_SIZE_K + 1))})
 
 # --------------------------------------------------
 # Pre-solve invariants
@@ -131,7 +121,6 @@ model.define(User.new(model.data(users_csv).to_schema()))
 model.define(Book.new(model.data(books_csv).to_schema()))
 model.define(Author.new(model.data(authors_csv).to_schema()))
 model.define(Subject.new(model.data(subjects_csv).to_schema()))
-model.define(Slot.new(model.data(slots_df).to_schema()))
 
 read_data = model.data(reads_csv)
 rating_ref = Integer.ref()

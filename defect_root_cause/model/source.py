@@ -61,11 +61,14 @@ model.define(Unit.lookup(id=uld.UNIT_ID).consumes_lot(Lot.lookup(id=uld.LOT_ID))
 ppd = model.data(read_csv(DATA_DIR / "unit_process.csv"))
 model.define(Unit.lookup(id=ppd.UNIT_ID).ran_on(Machine.lookup(id=ppd.MACHINE_ID)))
 
-# Candidate factors, loaded per kind so each gets the right back-pointer.
-fac = read_csv(DATA_DIR / "factors.csv")
-lf = model.data(fac[fac.KIND == "LOT"])
-model.define(f := Factor.new(id=lf.FACTOR_ID), f.kind(lf.KIND), f.label(lf.LABEL), f.lot(Lot.lookup(id=lf.REF_ID)))
-mf = model.data(fac[fac.KIND == "MACHINE"])
-model.define(f := Factor.new(id=mf.FACTOR_ID), f.kind(mf.KIND), f.label(mf.LABEL), f.machine(Machine.lookup(id=mf.REF_ID)))
-sf = model.data(fac[fac.KIND == "SHIFT"])
-model.define(f := Factor.new(id=sf.FACTOR_ID), f.kind(sf.KIND), f.label(sf.LABEL), f.shift_name(sf.REF_ID))
+# Candidate factors. REF_ID names the factor's lot, machine, or shift, so each
+# kind's rule binds the matching back-pointer.
+fd = model.data(read_csv(DATA_DIR / "factors.csv"))
+model.define(f := Factor.new(id=fd.FACTOR_ID), f.kind(fd.KIND), f.label(fd.LABEL))
+model.where(fd.KIND == "LOT").define(
+    Factor.lookup(id=fd.FACTOR_ID).lot(Lot.lookup(id=fd.REF_ID))
+)
+model.where(fd.KIND == "MACHINE").define(
+    Factor.lookup(id=fd.FACTOR_ID).machine(Machine.lookup(id=fd.REF_ID))
+)
+model.where(fd.KIND == "SHIFT").define(Factor.lookup(id=fd.FACTOR_ID).shift_name(fd.REF_ID))

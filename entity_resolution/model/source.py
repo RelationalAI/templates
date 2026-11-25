@@ -97,6 +97,7 @@ def digits_only(s: str) -> str:
     return re.sub(r"\D", "", s or "")
 
 
+# PyRel has no Jaro-Winkler (windowed character-matching) primitive, so pair scoring runs here.
 def jaro_winkler(s1: str, s2: str) -> float:
     """Return Jaro-Winkler string similarity in [0, 1]."""
     if s1 == s2:

@@ -37,7 +37,7 @@ The result is a frontier of overtime cost against unmet demand: each sweep point
 
 ## What's included
 
-- **Model**: nurse, shift, availability, and assignment concepts, the staffing constraints, two anchor solves, and an epsilon-constraint sweep between them — in the `model/` package (`schema.py` declares the concepts, `source.py` loads the sample data, `reasoning.py` states the decision problems), which `rai models deploy --path model` deploys to your Snowflake account, where each refresh runs every solve.
+- **Model**: nurse, shift, availability, and assignment concepts, the staffing constraints, two anchor solves, and an epsilon-constraint sweep between them — in the `model/` package (`schema.py` declares the concepts, `source.py` loads the sample data, `shift_staffing.py` states the decision problems, `frontier_analysis.py` states the frontier, marginal analysis, and knee), which `rai models deploy --path model` deploys to your Snowflake account, where each refresh runs every solve.
 - **Query**: `queries/staffing_frontier.py`, which prints the report from the deployed model.
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the model itself.
 - **Sample data**: `data/nurses.csv` (nurse roster with skill levels, hourly costs, and overtime parameters), `data/shifts.csv` (shift definitions with timing, staffing requirements, and patient demand), and `data/availability.csv` (nurse-to-shift availability matrix).
@@ -253,7 +253,8 @@ Use this sequence to deploy the model and query it:
 │   ├── __init__.py            # exports of the deployed model
 │   ├── schema.py              # concepts, properties, sweep and frontier points
 │   ├── source.py              # sample data
-│   └── reasoning.py           # anchor and sweep problems, published results
+│   ├── shift_staffing.py      # anchor and sweep problems, published results
+│   └── frontier_analysis.py   # frontier order, marginal rates, knee
 ├── queries/
 │   └── staffing_frontier.py   # report from the deployed model
 └── data/
@@ -286,13 +287,13 @@ For the full concept and property definitions, see `model/schema.py`; `runbook.m
 
 **Define concepts and load CSV data.** The model defines three core concepts: nurses with skill levels and cost parameters, shifts with coverage requirements and patient demand, and an availability relationship linking nurses to shifts. A per-availability `Assignment` carries the binary staffing decision the solver fills in.
 
-**Define decision variables, constraints, and objective.** A `staffing_problem` helper in `model/reasoning.py` declares one named Problem with the full formulation. It registers four variable types -- the binary assignment, each nurse's overtime hours, and each shift's patients-served and unmet-demand quantities -- and applies all constraints: availability, minimum staffing, skill coverage, overtime tracking, and patient-demand accounting (each nurse works one to two shifts; every shift meets its minimum-nurse floor). A single weighted objective would bundle overtime cost and unmet demand into one penalty sum, forcing the modeler to pick a penalty weight up front. This template splits them: the primary objective minimizes overtime cost, while unmet demand is bounded by an epsilon constraint that caps total unmet demand across all shifts. This eliminates the arbitrary penalty weight and reveals the true tradeoff.
+**Define decision variables, constraints, and objective.** A `staffing_problem` helper in `model/shift_staffing.py` declares one named Problem with the full formulation. It registers four variable types -- the binary assignment, each nurse's overtime hours, and each shift's patients-served and unmet-demand quantities -- and applies all constraints: availability, minimum staffing, skill coverage, overtime tracking, and patient-demand accounting (each nurse works one to two shifts; every shift meets its minimum-nurse floor). A single weighted objective would bundle overtime cost and unmet demand into one penalty sum, forcing the modeler to pick a penalty weight up front. This template splits them: the primary objective minimizes overtime cost, while unmet demand is bounded by an epsilon constraint that caps total unmet demand across all shifts. This eliminates the arbitrary penalty weight and reveals the true tradeoff.
 
 **Solve anchor points and run the epsilon sweep.** Two anchor solves establish the feasible unmet-demand range: anchor 1 minimizes overtime with no demand constraint (the cheapest schedule, which may leave patients unserved), and anchor 2 minimizes unmet demand (the best achievable service level). The epsilon sweep then traces interior points between the anchors, each solve minimizing overtime cost subject to a progressively tighter cap on unmet demand. Every solve is declared in the model: each sweep point's cap is a rule over the two anchors' results, so a refresh solves the anchors first and the sweep after them. Each solve publishes its status, overtime cost, unmet demand, and assignments as a `FrontierPoint`.
 
-**Pareto analysis output.** The query prints the frontier (a cap sweep) showing how overtime cost rises as the unmet-demand cap tightens. Marginal analysis computes the cost of reducing unmet demand by one patient, and a knee detector flags the last point reached at no extra cost, or, when no improvement is free, the point where the marginal cost per patient jumps by the largest ratio. The knee is a starting point for choosing a cost-service balance, not a proven optimum. If a sweep point fails, the report stops the sweep there and leaves the best-service anchor out of the frontier.
+**Pareto analysis output.** The model reads the published points as a frontier: the cheapest anchor, the sweep points up to the first that failed, and the best-service anchor when the whole sweep solved, each labeled and numbered in order. The query prints the frontier (a cap sweep) showing how overtime cost rises as the unmet-demand cap tightens. Marginal analysis, a rule over consecutive frontier points, computes the cost of reducing unmet demand by one patient, and the knee rules flag the last point reached at no extra cost, or, when no improvement is free, the point where the marginal cost per patient jumps by the largest ratio. The model also lists the nurses on each shift at the knee. The knee is a starting point for choosing a cost-service balance, not a proven optimum. If a sweep point fails, the frontier ends there and leaves the best-service anchor out.
 
-See `model/reasoning.py` for the implementation, and `runbook.md` for the skill-driven reproduction.
+See `model/shift_staffing.py` and `model/frontier_analysis.py` for the implementation, and `runbook.md` for the skill-driven reproduction.
 
 ## Customize this template
 
@@ -306,8 +307,8 @@ Focus on the first changes most users will make.
 
 ### Tune parameters
 
-- **Frontier resolution** — increase `N_INTERIOR` in `model/reasoning.py` for a finer-grained Pareto frontier (more interior epsilon points between the two anchors).
-- **Solve budget** — `time_limit_sec` on `problem.configure("highs", ...)` in `model/reasoning.py` caps each solve; raise it if larger rosters time out.
+- **Frontier resolution** — increase `N_INTERIOR` in `model/shift_staffing.py` for a finer-grained Pareto frontier (more interior epsilon points between the two anchors).
+- **Solve budget** — `time_limit_sec` on `problem.configure("highs", ...)` in `model/shift_staffing.py` caps each solve; raise it if larger rosters time out.
 
 ### Extend the model
 

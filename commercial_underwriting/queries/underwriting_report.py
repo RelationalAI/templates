@@ -15,14 +15,14 @@ from model import (
     Coverage,
     InsuredEntity,
     Location,
-    Policy,
     RiskTier_Decline,
     RiskTier_NonStandard,
     RiskTier_Preferred,
     RiskTier_Standard,
+    TierPremium,
     model,
 )
-from relationalai.semantics import sum
+from pandas import Index
 
 if __name__ == "__main__":
     print("=" * 70)
@@ -61,10 +61,9 @@ if __name__ == "__main__":
         Coverage.location.address.alias("location_address"),
         Coverage.coverage_limit.alias("limit"),
         Coverage.location.replacement_value.alias("replacement_value"),
+        Coverage.insurance_to_value.alias("itv"),
     ).to_df()
-    underinsured["itv_pct"] = (
-        underinsured["limit"] / underinsured["replacement_value"] * 100
-    ).round(1)
+    underinsured["itv_pct"] = (underinsured.pop("itv") * 100).round(1)
     print(f"\nUnderinsured BUILDING coverages (ITV < {int(ITV_THRESHOLD * 100)}%): {len(underinsured)}")
     if not underinsured.empty:
         print(underinsured.to_string(index=False))
@@ -122,27 +121,29 @@ if __name__ == "__main__":
         model.where(RiskTier_Standard(InsuredEntity)).select(InsuredEntity.id.alias("id")).to_df()["id"]
     )
 
-
-    def classify(entity_id):
-        if entity_id in decline_ids:
-            return "DECLINE"
-        if entity_id in nonstandard_ids:
-            return "NON-STANDARD"
-        if entity_id in preferred_ids:
-            return "PREFERRED"
-        if entity_id in standard_ids:
-            return "STANDARD"
-        return "UNCLASSIFIED"
-
-
-    tier_df = ie_df[["id", "name", "industry", "years"]].copy()
-    tier_df["tier"] = tier_df["id"].apply(classify)
+    tier_labels = model.select(
+        InsuredEntity.id.alias("id"), InsuredEntity.tier.alias("tier")
+    ).to_df()
+    tier_df = ie_df[["id", "name", "industry", "years"]].merge(tier_labels, on="id", how="left")
     print("\nFinal risk tiers:")
     print(tier_df.to_string(index=False))
 
+    # Per-tier insured counts and premium, as the model publishes them.
+    tier_premium = model.select(
+        TierPremium.tier.alias("tier"),
+        TierPremium.n_insureds.alias("count"),
+        TierPremium.total_premium.alias("sum"),
+        TierPremium.mean_premium.alias("mean"),
+    ).to_df().set_index("tier").sort_index()
+
     # Sanity check: every entity must land in exactly one tier (mutual exclusivity).
+    # Most insureds first; equal counts keep the order the tiers first appear above.
     print("\nTier counts:")
-    print(tier_df["tier"].value_counts().to_string())
+    first_seen = Index(tier_df["tier"].drop_duplicates(), name="tier")
+    print(
+        tier_premium["count"].reindex(first_seen).sort_values(ascending=False, kind="stable")
+        .to_string()
+    )
 
     unclassified = tier_df[tier_df["tier"] == "UNCLASSIFIED"]
     if not unclassified.empty:
@@ -154,12 +155,7 @@ if __name__ == "__main__":
     if overlap:
         print(f"\nWARNING: {len(overlap)} entities classified into multiple tiers: {sorted(overlap)}")
 
-    # Aggregate premium by tier — the underwriting business view. Premium is per insured,
-    # summed over its policies; an insured without a policy counts in its tier with zero premium.
-    premium_df = model.where(Policy.insured_entity(InsuredEntity)).select(
-        InsuredEntity.id.alias("id"),
-        sum(Policy, Policy.total_premium).per(InsuredEntity).alias("premium"),
-    ).to_df()
-    tier_df = tier_df.merge(premium_df, on="id", how="left").fillna({"premium": 0.0})
+    # Premium by tier — the underwriting business view. Premium is per insured, summed
+    # over its policies; an insured without a policy counts in its tier with zero premium.
     print("\nPremium by tier:")
-    print(tier_df.groupby("tier")["premium"].agg(["count", "sum", "mean"]).to_string())
+    print(tier_premium.to_string())

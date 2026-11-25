@@ -15,6 +15,9 @@ from the member's built-in `.name`.
 All decisions are integer: prices are integer ticks (1c, so 17500 reads as
 $175.00), times are integer milliseconds, quantities are integer shares.
 
+The decision problem, and each order's filled quantity in the returned trace, are
+in `lifecycle_trace.py`.
+
 Run:
     `rai models deploy --path model` deploys this package to the schemas in
     raiconfig.yaml and waits for its first refresh, which runs the solve.
@@ -22,8 +25,17 @@ Run:
     model.
 """
 
-from .reasoning import SolveStatus, problem
+from .lifecycle_trace import OrderFill, SolveStatus, problem
 from .schema import Order, OrderEvent, Venue, model
 from .source import DATA_DIR
 
-__all__ = ["DATA_DIR", "Order", "OrderEvent", "SolveStatus", "Venue", "model", "problem"]
+__all__ = [
+    "DATA_DIR",
+    "Order",
+    "OrderEvent",
+    "OrderFill",
+    "SolveStatus",
+    "Venue",
+    "model",
+    "problem",
+]

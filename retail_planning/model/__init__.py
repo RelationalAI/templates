@@ -15,19 +15,19 @@ tables and no GPU are required.
   week to maximize revenue plus salvage, and a demand/inventory planning (LP)
   that minimizes production, holding, and unmet-demand cost.
 
+The stages live in `sales_forecast.py` (the graph and the GNN),
+`article_demand.py` (the demand bridge), `planning_horizon.py` (the number of
+planning weeks), `markdown_plan.py` (the MILP), and `demand_planning.py` (the
+LP). Each module imports the modules whose declarations it reads.
+
 `rai models deploy --path model` deploys this package, `python train.py` trains and
 registers the GNN, and `python -m queries.retail_report` prints the results of a refresh.
 """
 
-from .reasoning import (
-    ArticleDemand,
-    DemandPlanCost,
-    DemandPlanStatus,
-    MarkdownRevenue,
-    MarkdownStatus,
-    PlanningGap,
-    gnn,
-)
+from .article_demand import ArticleDemand, PlanningGap
+from .demand_planning import DemandPlanCost, DemandPlanStatus
+from .markdown_plan import MarkdownRevenue, MarkdownStatus
+from .sales_forecast import gnn
 from .schema import (
     Discount,
     OptArticle,

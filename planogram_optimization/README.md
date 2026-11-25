@@ -44,7 +44,7 @@ The same pattern applies to any predict-then-optimize problem where the predicti
 
 ## What's included
 
-- `model/` -- the model package: `schema.py` (ontology), `source.py` (sample data and its pre-solve checks), and `reasoning.py` (decisions, constraints, and solver configuration); `rai models deploy --path model` deploys it
+- `model/` -- the model package: `schema.py` (ontology), `source.py` (sample data and its pre-solve checks), `facing_allocation.py` (decisions, constraints, and solver configuration), and `allocation_usage.py` (each shelf's used length and each category's active SKUs under the chosen facings); `rai models deploy --path model` deploys it
 - `queries/facings_plan.py` -- prints the report from the deployed model
 - **Runbook**: `runbook.md` -- a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - `data/skus.csv` -- 18 SKUs across 4 categories (snacks, beverages, candy, household_paper) with width, max-facings, and pre-assigned shelf; `sku_id` must be unique, `category` must match a `categories.csv` `category`, and `assigned_shelf_id` must reference a `shelves.csv` `shelf_id`. The `brand` column is loaded but not used by the bundled CSP -- it is reserved for the brand-block contiguity customization described under "Customize this template"
@@ -231,7 +231,8 @@ Use this sequence to deploy the model and query it:
 │   ├── __init__.py
 │   ├── schema.py
 │   ├── source.py
-│   └── reasoning.py
+│   ├── facing_allocation.py
+│   └── allocation_usage.py
 ├── queries/
 │   └── facings_plan.py
 └── data/
@@ -276,7 +277,7 @@ skus + shelves + categories + predicted-demand table → facings / realized_dema
 
 **Checks run in the report.** The `implies`-bodied lookup is solver-only; after the deploy, a Python dict re-checks each `(sku_id, facings) -> demand_units` against the deployed demand table, and the report stops if one does not match. The constraints (lookup, capacity, cardinality, active coupling) all go to the solver; the report does not re-evaluate them, and a refresh started outside the report (`rai models deploy`, the refresh procedure, a schedule) runs no checks, so read the solve status (`SolveStatus`) before relying on a refreshed solution.
 
-For the exact PyRel formulation, see `model/reasoning.py`; `runbook.md` reproduces the pipeline step by step with the RAI skills.
+For the exact PyRel formulation, see `model/facing_allocation.py` and `model/allocation_usage.py`; `runbook.md` reproduces the pipeline step by step with the RAI skills.
 
 ## Customize this template
 

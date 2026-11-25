@@ -43,7 +43,7 @@ Assumes familiarity with Python, basic ML concepts (classification, regression, 
 
 ## What's included
 
-- `model/` -- the deployed model: `schema.py` declares the concepts and the sales task relationships, `source.py` loads the bundled CSVs, `reasoning.py` states the graph, the GNN, the demand bridge, and the markdown and planning problems with the rules that publish their solutions
+- `model/` -- the deployed model: `schema.py` declares the concepts and the sales task relationships, `source.py` loads the bundled CSVs, and five modules state the reasoning: `sales_forecast.py` (the graph and the GNN), `article_demand.py` (the demand bridge), `planning_horizon.py` (the number of planning weeks), `markdown_plan.py` (the markdown problem), and `demand_planning.py` (the planning problem), each with the rules that publish its results
 - `train.py` -- trains the sales GNN over the deployed splits and registers its version
 - `queries/retail_report.py` -- prints the sales target profile, the adjusted demand, both solve results, and the selected discounts from the deployed model
 - `retail_planning.py` -- a separate script-mode reference for the full three-GNN pipeline (sales, churn, purchase) against H&M tables in Snowflake. It is not part of the deployed model, and the Quickstart does not run it
@@ -156,7 +156,7 @@ Use this sequence to deploy the model, train the GNN, and query the markdown and
      predictive:
        name: retail_sales_gnn          # created on first use if it doesn't exist
        gnns:
-         sales_regression:             # the GNN's name in model/reasoning.py
+         sales_regression:             # the GNN's name in model/sales_forecast.py
            registry: <DB>.RETAIL_PLANNING
            model: SALES_REGRESSION
            version: V1                  # train.py registers this version
@@ -285,7 +285,11 @@ retail_planning/
     __init__.py                   # exports for train.py and the query
     schema.py                     # concepts, sales task relationships
     source.py                     # bundled CSVs and base facts
-    reasoning.py                  # graph, GNN, demand bridge, markdown MILP, planning LP
+    sales_forecast.py             # transaction graph, sales GNN
+    article_demand.py             # demand bridge, planning gaps
+    planning_horizon.py           # number of planning weeks
+    markdown_plan.py              # markdown MILP
+    demand_planning.py            # demand/inventory planning LP
   train.py                        # trains the GNN and registers its version
   queries/
     retail_report.py              # target profile, adjusted demand, both plans
@@ -344,7 +348,7 @@ Customer / Article / Transaction data (bundled CSVs)
 
 The deployed model trains only the sales GNN (the most demonstrative task): HM_MINI does not ship churn or purchase splits, so the aggregation step uses the sales predictions alone. `retail_planning.py` is the script-mode reference that adds the churn and purchase GNNs against the full H&M tables.
 
-For the full concept and property definitions, see `model/schema.py` and `model/reasoning.py`; `runbook.md` builds them step by step with the RAI skills.
+For the full concept and property definitions, see `model/schema.py` and the modules in `model/`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
@@ -367,8 +371,8 @@ Both problems are solved by HiGHS on each refresh of the deployed model, and the
 
 ### Tune parameters
 
-- **Demand scale** (`DEMAND_SCALE` in `model/reasoning.py`): scales the aggregated predictions into demand units.
-- **Unmet demand penalty** (`UNMET_PENALTY`): higher values force the demand planner to fulfill more demand at the cost of higher production.
+- **Demand scale** (`DEMAND_SCALE` in `model/article_demand.py`): scales the aggregated predictions into demand units.
+- **Unmet demand penalty** (`UNMET_PENALTY` in `model/demand_planning.py`): higher values force the demand planner to fulfill more demand at the cost of higher production.
 - **Solve time limits** (`time_limit_sec` in the `configure` calls): the longest each solve may run on a refresh.
 - **Discount tiers and demand lifts**: edit `discounts.csv` for finer or coarser pricing granularity.
 
@@ -382,7 +386,7 @@ Both problems are solved by HiGHS on each refresh of the deployed model, and the
 ### Scale up / productionize
 
 - Move from the bundled `data/hm_mini/` CSVs to Snowflake source tables by reading them in `model/source.py`, as `retail_planning.py` does.
-- Churn and purchase GNNs need their own task relationships; add them to `model/schema.py` and `model/reasoning.py` and register each under its own name in `raiconfig.yaml`.
+- Churn and purchase GNNs need their own task relationships; add them to `model/schema.py` and `model/sales_forecast.py` and register each under its own name in `raiconfig.yaml`.
 - Pin `relationalai` (see Prerequisites) and keep the GNN `seed` fixed so training stays reproducible across environments.
 - Set `interval_s` in the deployment `schedules` to refresh the model on a schedule once the registered version is settled.
 

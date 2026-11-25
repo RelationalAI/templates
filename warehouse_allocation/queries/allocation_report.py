@@ -6,9 +6,16 @@ routes between regions, the status and objective of the latest refresh's solve, 
 inventory allocation plan.
 """
 
-from model import Route, Site, SiteComponent, SolveStatus, TotalHoldingCost, model
-from relationalai.semantics import where
-from relationalai.semantics.std import aggregates as aggs
+from model import (
+    NetworkComponent,
+    NetworkState,
+    Route,
+    Site,
+    SolveStatus,
+    TotalHoldingCost,
+    model,
+    num_components,
+)
 
 if __name__ == "__main__":
     # Display centrality scores
@@ -23,35 +30,28 @@ if __name__ == "__main__":
         Site.centrality.alias("centrality"),
     ).inspect()
 
-    # Stage 1b: connected components
-    site_ref = Site.ref("site")
-    comp_ref = Site.ref("component_id")
-
-    wcc_df = (
-        where(SiteComponent(site_ref, comp_ref))
-        .select(
-            site_ref.id.alias("site_id"),
-            site_ref.name.alias("site"),
-            site_ref.region.alias("region"),
-            comp_ref.id.alias("component_id"),
-            aggs.count(site_ref).per(comp_ref).alias("component_size"),
+    # Stage 1b: connected components, as the model publishes them
+    components = (
+        model.select(
+            NetworkComponent.component_id.alias("component_id"),
+            NetworkComponent.n_sites.alias("n_sites"),
+            NetworkComponent.regions.alias("regions"),
         )
         .to_df()
+        .sort_values("component_id")
     )
+    network_state = model.select(NetworkState).to_df().iloc[0, 0]
+    n_components = model.select(num_components).to_df().iloc[0, 0]
 
     print("\n" + "=" * 50)
     print("Stage 1b: Connected Components")
     print("=" * 50)
-    num_components = wcc_df["component_id"].nunique()
-    if num_components == 1:
-        print(f"UNIFIED NETWORK: all {len(wcc_df)} sites in a single component")
+    if network_state == "UNIFIED":
+        print(f"UNIFIED NETWORK: all {components['n_sites'].iloc[0]} sites in a single component")
     else:
-        print(f"FRAGMENTED NETWORK: {num_components} separate components detected")
-        for comp_id in sorted(wcc_df["component_id"].unique()):
-            comp_df = wcc_df[wcc_df["component_id"] == comp_id]
-            size = int(comp_df["component_size"].iloc[0])
-            regions = ", ".join(sorted(comp_df["region"].unique()))
-            print(f"  Component {comp_id}: {size} sites ({regions})")
+        print(f"FRAGMENTED NETWORK: {n_components} separate components detected")
+        for comp in components.itertuples():
+            print(f"  Component {comp.component_id}: {comp.n_sites} sites ({comp.regions})")
 
     # Stage 1c: bridge routes
     bridge_df = model.select(

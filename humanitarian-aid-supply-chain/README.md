@@ -42,7 +42,7 @@ Built using **graph analysis** — PageRank (an iterative random-walk algorithm)
 
 ## What's included
 
-- **Model**: the model configuration, graph creation, and the PageRank, degree centrality, indegree, and outdegree metrics, in the `model/` package (`schema.py` declares the concepts, `source.py` loads the sample data, `reasoning.py` states the graph and metrics). `rai models deploy --path model` deploys it to your Snowflake account, where each refresh computes the metrics.
+- **Model**: the model configuration, graph creation, and the PageRank, degree centrality, indegree, and outdegree metrics, in the `model/` package (`schema.py` declares the concepts, `source.py` loads the sample data, `supply_network.py` states the graph, the metrics, and the strategic categories). `rai models deploy --path model` deploys it to your Snowflake account, where each refresh computes the metrics.
 - **Query**: `queries/distribution_point_ranking.py` - prints the detailed report from the deployed model
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - **Interactive app**: `app.py` - Streamlit web application with visualizations and interactive analysis, querying the deployed model
@@ -190,7 +190,7 @@ humanitarian-aid-supply-chain/
 │   ├── __init__.py                    # exports of the deployed model
 │   ├── schema.py                      # DistributionPoint and SupplyRoute concepts
 │   ├── source.py                      # loads the sample CSVs
-│   └── reasoning.py                   # flow weight, graph, and metrics
+│   └── supply_network.py              # flow weight, graph, metrics, and categories
 ├── queries/
 │   └── distribution_point_ranking.py  # report from the deployed model
 ├── app.py                             # optional Streamlit dashboard (queries the deployed model)
@@ -239,7 +239,7 @@ CSV files → model/ (deployed) → Calculate PageRank → Calculate Degree Cent
 
 **Display strategic analysis and recommendations.** `queries/distribution_point_ranking.py` prints a ranked table of all points with both metrics, the strategic-category breakdown, network-wide and regional statistics, and recommendations for response teams. The Streamlit app adds an interactive overview, a color-coded network visualization, filterable rankings with CSV export, and per-category detail.
 
-See `model/reasoning.py` and `queries/distribution_point_ranking.py` for the implementation, and `runbook.md` for the skill-driven reproduction.
+See `model/supply_network.py` and `queries/distribution_point_ranking.py` for the implementation, and `runbook.md` for the skill-driven reproduction.
 
 ## Customize this template
 
@@ -254,7 +254,7 @@ Focus on the first changes most users will make.
 ### Tune parameters
 
 - **PageRank damping factor** — higher damping (0.90-0.95) emphasizes network structure over teleportation; lower damping (0.70-0.80) emphasizes direct connections over global influence.
-- **Edge-weight formula** — change the `flow_weight` formula in `model/reasoning.py` to reweight the graph. Higher weights indicate stronger connections that PageRank favors.
+- **Edge-weight formula** — change the `flow_weight` formula in `model/supply_network.py` to reweight the graph. Higher weights indicate stronger connections that PageRank favors.
 
   The current formula `(route_capacity * reliability_score) / distance_km` balances all three factors. Alternatives:
   - Capacity-focused: `route_capacity` (maximize throughput)

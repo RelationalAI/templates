@@ -28,7 +28,7 @@ Run:
     `python -m queries.allocation_report` then prints the report from the deployed model.
 """
 
-from .reasoning import (
+from .runner_allocation import (
     SCENARIO_PARAM,
     SCENARIO_VALUES,
     Assigned,

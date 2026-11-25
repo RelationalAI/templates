@@ -8,39 +8,47 @@ subscribers per segment, and the test-set RMSE.
 """
 
 from model import (
-    Call,
     ChurnRiskPrediction,
-    Subscriber,
-    TestTable,
-    TrainTable,
-    ValTable,
+    ChurnRiskRange,
+    DataCounts,
+    ScoredPerSegment,
+    TestRmse,
     model,
 )
-from relationalai.semantics import count, select
+from relationalai.semantics import Float, Integer, String
 
 TOP_N_PER_SEGMENT = 5
 
 
 def main() -> None:
+    subscribers, calls, train, val, test = (Integer.ref() for _ in range(5))
     counts = (
-        select(
-            count(Subscriber).alias("subscribers"),
-            count(Call).alias("calls"),
-            count(TrainTable).alias("train"),
-            count(ValTable).alias("val"),
-            count(TestTable).alias("test"),
+        model.where(DataCounts(subscribers, calls, train, val, test))
+        .select(
+            subscribers.alias("subscribers"),
+            calls.alias("calls"),
+            train.alias("train"),
+            val.alias("val"),
+            test.alias("test"),
         )
         .to_df()
         .iloc[0]
     )
-    risk = select(Subscriber.sub_id, Subscriber.churn_risk_score).to_df()["churn_risk_score"]
-    print(f"Subscribers: {counts['subscribers']}  Calls: {counts['calls']}")
+    lowest, mean, highest = (Float.ref() for _ in range(3))
+    risk = (
+        model.where(ChurnRiskRange(lowest, mean, highest))
+        .select(lowest.alias("min"), mean.alias("mean"), highest.alias("max"))
+        .to_df()
+        .iloc[0]
+    )
+    print(f"Subscribers: {int(counts['subscribers'])}  Calls: {int(counts['calls'])}")
     print(
-        f"Splits: train={counts['train']}  val={counts['val']}  test={counts['test']}"
+        f"Splits: train={int(counts['train'])}  val={int(counts['val'])}  test={int(counts['test'])}"
         "  (stratified by SEGMENT)"
     )
     print(
-        f"CHURN_RISK_SCORE: min={risk.min():.2f}  mean={risk.mean():.2f}  max={risk.max():.2f}"
+        f"CHURN_RISK_SCORE: min={float(risk['min']):.2f}  mean={float(risk['mean']):.2f}"
+        f"  max={float(risk['max']):.2f}"
     )
 
     print("\n" + "=" * 60)
@@ -48,14 +56,15 @@ def main() -> None:
     print("=" * 60)
 
     results_df = (
-        model.where(ChurnRiskPrediction.sub_id == Subscriber.sub_id)
+        model.where(ChurnRiskPrediction.segment_rank <= TOP_N_PER_SEGMENT)
         .select(
-            Subscriber.sub_id.alias("sub_id"),
-            Subscriber.segment.alias("segment"),
-            Subscriber.subscriber_type.alias("type"),
-            Subscriber.lifetime_value_usd.alias("lifetime_value"),
-            Subscriber.churn_risk_score.alias("actual_risk"),
+            ChurnRiskPrediction.sub_id.alias("sub_id"),
+            ChurnRiskPrediction.subscriber.segment.alias("segment"),
+            ChurnRiskPrediction.subscriber.subscriber_type.alias("type"),
+            ChurnRiskPrediction.subscriber.lifetime_value_usd.alias("lifetime_value"),
+            ChurnRiskPrediction.subscriber.churn_risk_score.alias("actual_risk"),
             ChurnRiskPrediction.predicted_risk.alias("predicted_risk"),
+            ChurnRiskPrediction.segment_rank.alias("segment_rank"),
         )
         .to_df()
     )
@@ -65,16 +74,23 @@ def main() -> None:
     else:
         results_df["predicted_risk"] = results_df["predicted_risk"].astype(float)
         results_df["actual_risk"] = results_df["actual_risk"].astype(float)
-        for seg, group in results_df.groupby("segment"):
-            top = group.sort_values(
-                ["predicted_risk", "sub_id"], ascending=[False, True]
-            ).head(TOP_N_PER_SEGMENT)
-            print(f"\n[{seg}]  ({len(group)} test subscribers)")
+        segment, n_scored = String.ref(), Integer.ref()
+        scored = (
+            model.where(ScoredPerSegment(segment, n_scored))
+            .select(segment.alias("segment"), n_scored.alias("n_scored"))
+            .to_df()
+            .sort_values("segment")
+        )
+        for seg, n in zip(scored["segment"], scored["n_scored"]):
+            top = (
+                results_df[results_df["segment"] == seg]
+                .sort_values("segment_rank")
+                .drop(columns="segment_rank")
+            )
+            print(f"\n[{seg}]  ({int(n)} test subscribers)")
             print(top.to_string(index=False))
 
-        rmse = float(
-            ((results_df["predicted_risk"] - results_df["actual_risk"]) ** 2).mean() ** 0.5
-        )
+        rmse = float(model.select(TestRmse).to_df().iloc[0, 0])
         print(f"\nTest-set RMSE: {rmse:.4f}")
 
 

@@ -106,7 +106,7 @@ Plan routing sub-questions to graph, rules, and prescriptive reasoners.
 
 1 connected component, 3 Louvain communities (North Texas, West Texas, Gulf Coast); DFW, Houston, San Antonio flagged `is_structurally_critical`; 7 of 10 DC requests target critical nodes.
 
-### 6. Trace fragile transmission corridors (PREVIEW, requires `relationalai>=1.15`)
+### 6. Trace fragile transmission corridors (PREVIEW, requires `relationalai>=1.27`)
 
 **Prompt**
 
@@ -116,7 +116,7 @@ Plan routing sub-questions to graph, rules, and prescriptive reasoners.
 
 **Response**
 
-421 generator-substation to DC-substation corridors. The most fragile carries a betweenness-load of 99.833, routing through the Dallas-Fort Worth / Abilene Central / Houston Ship Channel hubs. Taking the top substation (Dallas-Fort Worth) offline reroutes the other DC substations' corridors; the meshed grid stays connected (no full isolation). Persists `Substation.fragility_load`.
+421 generator-substation to DC-substation corridors. The most fragile carries a betweenness-load of 99.833, routing through the Dallas-Fort Worth / Abilene Central / Houston Ship Channel hubs. Taking the top substation (Dallas-Fort Worth) offline reroutes the other DC substations' corridors; the meshed grid stays connected (no full isolation). Persists each DC substation's `Substation.fragility_load`, its most fragile route (`fragile_route`), and its route with the offline substation removed (`contingency_route`).
 
 ### 7. Screen DC requests
 

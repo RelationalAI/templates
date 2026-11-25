@@ -9,7 +9,7 @@ chained on one ontology:
   `Customer.is_dependency_spof`, from the dependency relation.
 - Stage 2 (Predictive): a node-regression GNN predicts `capability_pct` per
   (supplier, month); the clipped prediction is `SupplierCapabilityForecast`.
-  Set `USE_PRECOMPUTED_FORECAST = True` in `model/reasoning.py` to load the
+  Set `USE_PRECOMPUTED_FORECAST = True` in `model/capability_forecast.py` to load the
   bundled forecast CSV instead.
 - Stage 3 (Prescriptive): monthly margin-max LP over a 36-month horizon, run
   as a 3-step rolling horizon. A baseline solve at month 1, then disruption
@@ -22,19 +22,34 @@ chained on one ontology:
   offline, (2) raw-material input shortage. Each surfaces affected (product,
   period) cells without re-solving the LP.
 
+Each stage lives in its own module, and each module imports the modules whose
+declarations it reads: `customer_dependencies.py` (Stage 1), `capability_forecast.py`
+(Stage 2), `rolling_horizon.py` (Stage 3), `dependency_chains.py` and
+`disruption_what_ifs.py` (Stage 4).
+
 `rai models deploy --path model` deploys this package to the schemas in
 raiconfig.yaml, `python train.py` trains and registers the GNN, and
 `python -m queries.allocation_report` prints the results of a refresh.
 """
 
-from .reasoning import (
+from .capability_forecast import NumForecastRows, gnn
+from .dependency_chains import (
+    DependencyChain,
+    DependencyChainStep,
+    NumDependencyChains,
+)
+from .disruption_what_ifs import (
     OFFLINE_DROP_THRESHOLD,
     SHORTAGE_DROP_THRESHOLD,
-    DependencyChainStep,
     OfflineDrop,
+    ShortageAverageDrop,
     ShortageDrop,
+)
+from .rolling_horizon import (
+    CustomerService,
+    EffectiveCapacityCells,
+    PlanDiff,
     allocations,
-    gnn,
 )
 from .schema import (
     Customer,
@@ -54,12 +69,19 @@ __all__ = [
     "OFFLINE_DROP_THRESHOLD",
     "SHORTAGE_DROP_THRESHOLD",
     "Customer",
+    "CustomerService",
     "Demand",
+    "DependencyChain",
     "DependencyChainStep",
     "EffectiveCapacity",
+    "EffectiveCapacityCells",
     "Input",
+    "NumDependencyChains",
+    "NumForecastRows",
     "OfflineDrop",
+    "PlanDiff",
     "Product",
+    "ShortageAverageDrop",
     "ShortageDrop",
     "Supplier",
     "SupplierCapabilityForecast",

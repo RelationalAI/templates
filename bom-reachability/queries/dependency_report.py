@@ -4,8 +4,17 @@ Run after `rai models deploy --path model`:
     python -m queries.dependency_report
 """
 
-from model import MAX_ASSEMBLY_HOPS, SKU, AssemblyStep, MaximalChain, model, num_edges, num_nodes
-from relationalai.semantics import Hash, Integer, where
+from model import (
+    MAX_ASSEMBLY_HOPS,
+    SKU,
+    AssemblyStep,
+    ChainLength,
+    MaximalChain,
+    model,
+    num_edges,
+    num_nodes,
+)
+from relationalai.semantics import Hash, Integer, String, where
 
 if __name__ == "__main__":
     print("=== BOM Dependency Graph ===")
@@ -32,17 +41,31 @@ if __name__ == "__main__":
     # Dependencies of each finished good
     # --------------------------------------------------
 
+    # Dependency counts, in total and by type, as the model publishes them.
+    n_deps = (
+        model.select(SKU.id.alias("sku_id"), SKU.n_dependencies.alias("n"))
+        .to_df()
+        .set_index("sku_id")["n"]
+    )
+    n_type, type_ref = Integer.ref(), String.ref()
+    n_deps_by_type = (
+        model.where(SKU.n_dependencies_by_type(n_type, type_ref))
+        .select(SKU.id.alias("sku_id"), type_ref.alias("dep_type"), n_type.alias("n"))
+        .to_df()
+        .set_index(["sku_id", "dep_type"])["n"]
+    )
+
     finished = all_deps_df[all_deps_df["product_type"] == "FINISHED_GOOD"]
     for product_id in sorted(finished["product_id"].unique()):
         deps = finished[(finished["product_id"] == product_id) & (finished["dep_id"] != product_id)]
         if len(deps) > 0:
             product_name = deps["product_name"].iloc[0]
             print(f"\n--- Dependencies of '{product_name}' ({product_id}) ---")
-            print(f"  {len(deps)} transitive dependencies:")
+            print(f"  {n_deps[product_id]} transitive dependencies:")
             for dep_type in ["COMPONENT", "RAW_MATERIAL"]:
                 type_deps = deps[deps["dep_type"] == dep_type]
                 if len(type_deps) > 0:
-                    print(f"\n  {dep_type}s ({len(type_deps)}):")
+                    print(f"\n  {dep_type}s ({n_deps_by_type[product_id, dep_type]}):")
                     for _, row in type_deps.sort_values("dep_name").iterrows():
                         print(f"    - {row['dep_name']} ({row['dep_id']})")
 
@@ -86,9 +109,13 @@ if __name__ == "__main__":
     print("\n=== Betweenness Centrality (bottleneck components) ===")
     print(btw_df.to_string(index=False))
 
-    bottlenecks = btw_df[btw_df["betweenness"] > 0]
-    if len(bottlenecks) > 0:
-        top = bottlenecks.iloc[0]
+    top_df = (
+        where(SKU.bottleneck_rank == 1)
+        .select(SKU.name.alias("sku_name"), SKU.betweenness.alias("betweenness"))
+        .to_df()
+    )
+    if len(top_df) > 0:
+        top = top_df.iloc[0]
         print(f"\nTop bottleneck: {top['sku_name']} (betweenness={top['betweenness']:.4f})")
         print("  Sits on the most shortest dependency paths between other SKUs.")
 
@@ -98,12 +125,13 @@ if __name__ == "__main__":
 
     print("\n=== Assembly Path Enumeration (PREVIEW) ===")
 
-    path, step = Hash.ref(), Integer.ref()
+    path, step, hops = Hash.ref(), Integer.ref(), Integer.ref()
     assembly_df = (
-        model.where(AssemblyStep(path, SKU, step))
+        model.where(AssemblyStep(path, SKU, step), ChainLength(path, hops))
         .select(
             path.alias("path"),
             step.alias("step"),
+            hops.alias("hops"),
             SKU.name.alias("sku_name"),
         )
         .to_df()
@@ -114,7 +142,7 @@ if __name__ == "__main__":
     paths = []
     for path_id, grp in assembly_df.groupby("path"):
         names = grp.sort_values("step")["sku_name"].tolist()
-        paths.append({"names": names, "length": len(names) - 1, "maximal": path_id in maximal_ids})
+        paths.append({"names": names, "length": int(grp["hops"].iloc[0]), "maximal": path_id in maximal_ids})
 
     print(f"\n  Enumerated {len(paths)} assembly path(s) (<= {MAX_ASSEMBLY_HOPS} hops).")
 

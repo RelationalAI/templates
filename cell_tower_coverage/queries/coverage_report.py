@@ -11,20 +11,21 @@ from model import (
     DATA_DIR,
     BuildBudget,
     CoveragePair,
+    CoverageRate,
     CoveredPopulation,
     DemandZone,
     MaxNewTowers,
     SelectedBuildCost,
     SolveStatus,
     TotalPopulation,
-    TowerLoad,
     TowerSite,
-    assigned,
+    UncoveredPopulation,
+    ZoneAssignment,
     covered,
     model,
     selected,
 )
-from relationalai.semantics import count
+from relationalai.semantics import String, count
 
 
 def _scalar(relationship, default=None):
@@ -76,8 +77,9 @@ if __name__ == "__main__":
     )
     selected_sites_df["build_cost"] = pd.to_numeric(selected_sites_df["build_cost"])
     tower_load_df = model.select(
-        TowerLoad.site_id.alias("site_id"),
-        TowerLoad.assigned_population.alias("assigned_population"),
+        TowerSite.site_id.alias("site_id"),
+        TowerSite.assigned_population.alias("assigned_population"),
+        TowerSite.utilization.alias("utilization"),
     ).to_df()
 
     zone_solution_df = (
@@ -98,17 +100,14 @@ if __name__ == "__main__":
         ["covered", "population"], ascending=[False, False]
     )
 
+    zone_id, site_id, site_name = String.ref(), String.ref(), String.ref()
     assignment_df = (
         model.select(
-            CoveragePair.site_id.alias("assigned_site_id"),
-            TowerSite.name.alias("assigned_site"),
-            CoveragePair.zone_id.alias("zone_id"),
+            site_id.alias("assigned_site_id"),
+            site_name.alias("assigned_site"),
+            zone_id.alias("zone_id"),
         )
-        .where(
-            CoveragePair.z_assigned(assigned),
-            CoveragePair.site(TowerSite),
-            assigned > 0.5,
-        )
+        .where(ZoneAssignment(zone_id, site_id, site_name))
         .to_df()
     )
 
@@ -116,15 +115,7 @@ if __name__ == "__main__":
     zone_solution_df["assigned_site_id"] = zone_solution_df["assigned_site_id"].fillna("")
     zone_solution_df["assigned_site"] = zone_solution_df["assigned_site"].fillna("")
 
-    # A selected tower with no assigned zone has no published load; it serves zero people.
     selected_sites_df = selected_sites_df.merge(tower_load_df, on="site_id", how="left")
-    selected_sites_df["assigned_population"] = (
-        selected_sites_df["assigned_population"].fillna(0).astype(int)
-    )
-    capacity = selected_sites_df["capacity"]
-    selected_sites_df["utilization"] = (
-        selected_sites_df["assigned_population"] / capacity.where(capacity > 0)
-    ).fillna(0.0)
 
     print("\n=== Selected Tower Sites ===")
     print(
@@ -175,12 +166,11 @@ if __name__ == "__main__":
         )
 
     total_population = _scalar(TotalPopulation)
-    coverage_rate = covered_population / total_population if total_population else 0.0
     print("\n=== Coverage Summary ===")
     print(f"Selected build cost: ${_scalar(SelectedBuildCost, 0):,.0f} of ${build_budget:,.0f}")
     print(f"Covered population: {covered_population:,.0f} of {total_population:,.0f}")
-    print(f"Coverage rate: {coverage_rate:.2%}")
-    print(f"Uncovered population: {total_population - covered_population:,.0f}")
+    print(f"Coverage rate: {_scalar(CoverageRate):.2%}")
+    print(f"Uncovered population: {_scalar(UncoveredPopulation):,.0f}")
 
     coverage_solution_csv = DATA_DIR / "coverage_solution.csv"
     zone_solution_df[

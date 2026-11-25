@@ -37,7 +37,7 @@ Every merge kicks off a pipeline of build, test, and deploy jobs, and each job c
 
 ## What's included
 
-- **Model**: three source concepts (`Runner`, `Workflow`, `Compatibility`) plus an `Assignment` decision concept, with a binary assignment variable, an assign-one-runner rule, a per-runner concurrency rule, and a cost-minimizing objective, in the `model/` package (`schema.py` declares the concepts, `source.py` loads the sample data and checks it, `reasoning.py` states one decision problem per concurrency scenario and one for the maintenance outage), which `rai models deploy --path model` deploys to your Snowflake account, where each refresh runs the solves.
+- **Model**: three source concepts (`Runner`, `Workflow`, `Compatibility`) plus an `Assignment` decision concept, with a binary assignment variable, an assign-one-runner rule, a per-runner concurrency rule, and a cost-minimizing objective, in the `model/` package (`schema.py` declares the concepts, `source.py` loads the sample data and checks it, `runner_allocation.py` states one decision problem per concurrency scenario and one for the maintenance outage), which `rai models deploy --path model` deploys to your Snowflake account, where each refresh runs the solves.
 - **Query**: `queries/allocation_report.py`, which prints the report from the deployed model.
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the model itself.
 - **Sample data**: 8 runner types, 20 workflow jobs, and their pre-computed compatibility pairs. See *Sample data* below.
@@ -266,7 +266,7 @@ Use this sequence to deploy the model and query it:
 │   ├── __init__.py            # exports of the deployed model
 │   ├── schema.py              # concepts and properties
 │   ├── source.py              # sample data and the outage's runner check
-│   └── reasoning.py           # one solve per scenario, the outage solve and its conflict
+│   └── runner_allocation.py   # one solve per scenario, the outage solve and its conflict
 ├── queries/
 │   └── allocation_report.py   # report from the deployed model
 └── data/
@@ -325,7 +325,7 @@ Each constraint's declared key gives it an entity back-pointer (`assign_one.work
 
 Any six of the seven high-CPU jobs already exceed the cap of five, so a minimal IIS needs six of them plus the `ubuntu-xlarge` concurrency rule. `in_conflict` also counts the constraint instances the solver marks as possibly in the conflict, so the stranded list can name all seven, as in the sample output above. To restore feasibility, relax one member — bring a runner back online or raise the cap. Because all seven jobs share the one survivor, lift the cap enough for all of them (or restore a runner) and redeploy to confirm; clearing a single job only resolves that one row of the conflict.
 
-See `model/reasoning.py` and `queries/allocation_report.py` for the implementation and `runbook.md` for the skill-driven reproduction.
+See `model/runner_allocation.py` and `queries/allocation_report.py` for the implementation and `runbook.md` for the skill-driven reproduction.
 
 > [!NOTE]
 > Conflict analysis works for mixed-integer models like this one (unlike sensitivity analysis, which needs a linear or quadratic program). It requires no objective — it diagnoses feasibility. Pass `conflict=True` to the `configure(...)` of the Problem whose infeasibility you want to explain.
@@ -344,7 +344,7 @@ Focus on the first changes most users will make.
 
 - **Concurrency scenarios** — `SCENARIO_VALUES` (default `[0.5, 1.0, 1.5]`) is the list of concurrency multipliers swept; each scales every runner's `max_concurrent`.
 - **Per-runner caps** — change `max_concurrent` in `runners.csv` to model a different fleet size or capacity policy.
-- **Solve budget** — each `problem.configure(...)` in `model/reasoning.py` uses `time_limit_sec=60`; raise it for larger fleets.
+- **Solve budget** — each `problem.configure(...)` in `model/runner_allocation.py` uses `time_limit_sec=60`; raise it for larger fleets.
 
 ### Extend the model
 

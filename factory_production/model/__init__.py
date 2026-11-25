@@ -41,6 +41,14 @@ entity's own data by ENTITY KEY (``cap.factory.avail``) -- never by parsing the
 constraint name string. (A variable's back-pointer, such as ``quantity_var.product``,
 is derived automatically from its field names; a constraint's is declared.)
 
+The model is split by concern, and each module imports the modules whose declarations it reads:
+
+- `production_plan.py`: the product-mix LP, its solve with sensitivity analysis, and the solve's
+  status and objective.
+- `plan_marginals.py`: the shadow prices, reduced costs, and basis statuses, and the ranking of the
+  capacities by shadow price.
+- `capacity_utilization.py`: the hours each factory's plan uses and leaves idle.
+
 Run:
     `rai models deploy --path model` deploys this package to the schemas in raiconfig.yaml
     and waits for its first refresh, which runs the solve. Then
@@ -49,23 +57,26 @@ Run:
     per-factory capacity-utilization summary from the deployed model.
 """
 
-from .reasoning import (
+from .capacity_utilization import FactoryHoursUsed, FactoryIdleHours
+from .plan_marginals import (
+    CapacityPriceRank,
     CapacityShadowPrice,
     ProductBasisStatus,
     ProductReducedCost,
-    SolveStatus,
-    TotalProfit,
-    problem,
 )
+from .production_plan import SolveStatus, TotalProfit, problem
 from .schema import Factory, Product, model
 from .source import DATA_DIR, EXPECTED_FACTORIES, EXPECTED_PRODUCTS
 
 __all__ = [
+    "CapacityPriceRank",
     "CapacityShadowPrice",
     "DATA_DIR",
     "EXPECTED_FACTORIES",
     "EXPECTED_PRODUCTS",
     "Factory",
+    "FactoryHoursUsed",
+    "FactoryIdleHours",
     "Product",
     "ProductBasisStatus",
     "ProductReducedCost",

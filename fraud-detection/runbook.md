@@ -39,8 +39,14 @@ that captures the most expected loss within an 80 investigator-hour budget.
 - `model/source.py` provides explicit `load_local_data()` and
   `load_snowflake_data()` functions; `model/__init__.py` calls the local one,
   and deploys with `rai models deploy --path model`.
-- `model/reasoning.py` declares the account graph signals, the fraud GNN, the
-  alert score, and the 80-hour audit problem.
+- `model/account_signals.py` declares the account graph signals: PageRank on
+  the funds-flow graph and each account's sent-transfer count.
+- `model/fraud_classifier.py` declares the fraud GNN and the class balance of
+  its training labels.
+- `model/alert_scores.py` declares the alert score, the alert queue order, and
+  each candidate's expected loss.
+- `model/investigation_queue.py` declares the audit costs, the 80-hour audit
+  problem, and the optimized and naive audit queues the report compares.
 - `train.py` trains the GNN over the deployed splits and registers its version.
 - `queries/fraud_report.py` prints the alert queue and the audit schedule from
   the deployed model.
@@ -64,8 +70,8 @@ that captures the most expected loss within an 80 investigator-hour budget.
 ```text
 /rai-ontology Load the bundled PaySim CSVs with load_local_data(): accounts
 (each with an id and account-type prefix), transactions (each with a type,
-amount, sender and receiver balances, sender and receiver accounts, fraud flag,
-and derived audit cost), and the train/validation/test task files. Use the
+amount, sender and receiver balances, sender and receiver accounts, and fraud
+flag), and the train/validation/test task files. Use the
 Account and Transaction declarations from model/schema.py and connect each
 transaction to its sender and receiver accounts.
 ```
@@ -73,8 +79,8 @@ transaction to its sender and receiver accounts.
 **Response**
 
 `load_local_data()` loads `Account` (~32,661 customer and merchant accounts),
-`Transaction` (~16,426 rows with `trans_type`, `amount`, balance fields,
-`is_flagged_fraud`, and a derived audit cost), and the train/validation/test
+`Transaction` (~16,426 rows with `trans_type`, `amount`, balance fields, and
+`is_flagged_fraud`), and the train/validation/test
 task files (~11,498 / 2,463 / 2,465 rows). The test set is the unlabeled
 decision set.
 
@@ -165,8 +171,8 @@ depends on the connected engine and environment.
 /rai-prescriptive-problem Choose which test transactions to audit to maximize
 captured expected loss — alert score times amount — within an 80
 investigator-hour budget (each audit costs its transaction's audit_cost in
-hours), with at most one audit per receiving account. Persist the audit
-decision as AuditCandidate.x_audit.
+hours: 5 for a transaction over $1M, 1 otherwise), with at most one audit per
+receiving account. Persist the audit decision as AuditCandidate.x_audit.
 ```
 
 **Response**
@@ -199,16 +205,15 @@ Use `load_snowflake_data()` when your accounts, transactions, and task splits
 already live in Snowflake:
 
 1. Call `load_snowflake_data(DATABASE, SCHEMA)` in `model/__init__.py` in place
-   of `load_local_data(...)`, with the location of `ACCOUNTS`, `TRANSACTIONS`,
+   of `load_local_data()`, with the location of `ACCOUNTS`, `TRANSACTIONS`,
    `TRAIN`, `VAL`, and `TEST`.
-2. Provide `audit_cost` on `TRANSACTIONS`; the loader maps the column without
-   recomputing it.
-3. Update the feature mapping and task-column accesses in `model/reasoning.py`
-   for your schema.
-4. Deploy, train, and size the predictive reasoner for your data in
+2. Update the feature mapping and task-column accesses in
+   `model/fraud_classifier.py` for your schema.
+3. Deploy, train, and size the predictive reasoner for your data in
    `raiconfig.yaml`.
 
 The Snowflake loader maps the same schema, so the reasoning stages and the
 `AuditCandidate.x_audit` result are unchanged. Raise `AUDIT_BUDGET_HOURS` (80 by
-default) and the training settings in `model/reasoning.py` to match the larger
+default) in `model/investigation_queue.py` and the training settings in
+`model/fraud_classifier.py` to match the larger
 dataset.

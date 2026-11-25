@@ -14,7 +14,7 @@ Run:
     `python -m queries.test_data_plan` then prints the report from the deployed model.
 """
 
-from .reasoning import SolveStatus, TotalDeviation, problem
+from .row_count_plan import SolveStatus, TotalDeviation, problem
 from .schema import Table, model
 from .source import DATA_DIR
 

@@ -7,83 +7,98 @@ Prints the data and split summary, a weekly forecast table per (store city,
 item family) over the test window, and the test-set RMSE.
 """
 
-import numpy as np
 import pandas as pd
-from model import TEST_START, VAL_START, Item, Sale, Store, TestTable, TrainTable, ValTable, model
-from relationalai.semantics import Float, count, select
+from model import (
+    SaleForecast,
+    SaleRmse,
+    SalesCounts,
+    TestStart,
+    UnitSales,
+    ValStart,
+    WeeklyForecast,
+    WeeklyRmse,
+    model,
+)
+from relationalai.semantics import Float, Integer
+
+
+def published(relationship) -> float:
+    """The one figure a nullary relationship of the model publishes, NaN when it derives none."""
+    values = model.select(relationship).to_df().iloc[:, 0]
+    return float(values.iloc[0]) if len(values) else float("nan")
 
 
 def main() -> None:
+    stores, items, sales, train, val, test = (Integer.ref() for _ in range(6))
     counts = (
-        select(
-            count(Store).alias("stores"),
-            count(Item).alias("items"),
-            count(Sale).alias("sales"),
-            (count(TrainTable) | 0).alias("train"),
-            (count(ValTable) | 0).alias("val"),
-            (count(TestTable) | 0).alias("test"),
+        model.where(SalesCounts(stores, items, sales, train, val, test))
+        .select(
+            stores.alias("stores"),
+            items.alias("items"),
+            sales.alias("sales"),
+            train.alias("train"),
+            val.alias("val"),
+            test.alias("test"),
         )
         .to_df()
         .iloc[0]
     )
-    unit_sales = select(Sale.sale_id, Sale.unit_sales).to_df()["unit_sales"]
+    lowest, highest, mean = Integer.ref(), Integer.ref(), Float.ref()
+    unit_sales = (
+        model.where(UnitSales(lowest, highest, mean))
+        .select(lowest.alias("min"), highest.alias("max"), mean.alias("mean"))
+        .to_df()
+    )
     print(f"Stores: {counts['stores']}  Items: {counts['items']}  Sales: {counts['sales']:,}")
     print(
         f"Splits (temporal): train={counts['train']:,}  val={counts['val']:,}  test={counts['test']:,}"
     )
-    # The cutoffs that model/source.py split the sales on.
-    print(f"Train: < {VAL_START.date()}; Val: {VAL_START.date()} -- {TEST_START.date()}; "
-          f"Test: >= {TEST_START.date()}")
-    print(f"unit_sales: min={unit_sales.min()} mean={unit_sales.mean():.2f} max={unit_sales.max()}")
+    # The cutoffs that the model splits the sales on.
+    val_start = pd.Timestamp(model.select(ValStart).to_df().iloc[0, 0])
+    test_start = pd.Timestamp(model.select(TestStart).to_df().iloc[0, 0])
+    print(f"Train: < {val_start.date()}; Val: {val_start.date()} -- {test_start.date()}; "
+          f"Test: >= {test_start.date()}")
+    print(f"unit_sales: min={unit_sales['min'].iloc[0]} mean={unit_sales['mean'].iloc[0]:.2f} "
+          f"max={unit_sales['max'].iloc[0]}")
 
     print("\n" + "=" * 60)
     print("Forecast (test window) -- weekly aggregate per (city, item family)")
     print("=" * 60)
 
-    # Predictions and store/item metadata are read separately and left-joined, so a
-    # prediction whose store or item is missing still counts toward the per-Sale RMSE.
-    predicted_value_ref = Float.ref()
-    results_df = (
-        model.where(Sale.predictions.predicted_value(predicted_value_ref))
-        .select(
-            Sale.sale_id.alias("sale_id"),
-            Sale.date.alias("date"),
-            Sale.unit_sales.alias("actual"),
-            predicted_value_ref.alias("predicted"),
-        )
-        .to_df()
-    )
-    dimensions_df = select(
-        Sale.sale_id.alias("sale_id"), Store.city.alias("city"), Item.family.alias("family")
-    ).where(Sale.predictions, Sale.store_id == Store.store_id, Sale.item_id == Item.item_id).to_df()
-    results_df = results_df.merge(dimensions_df, on="sale_id", how="left")
-
-    if results_df.empty:
+    # A prediction whose store or item is missing has no city or family: it counts toward
+    # the per-Sale RMSE but is left out of the weekly table.
+    n_predictions = len(model.select(SaleForecast.sale_id).to_df())
+    if n_predictions == 0:
         print("(no predictions returned)")
     else:
-        results_df["date"] = pd.to_datetime(results_df["date"])
-        results_df["predicted"] = results_df["predicted"].astype(float).clip(lower=0)
-        results_df["actual"] = results_df["actual"].astype(float)
-        results_df["week_start"] = results_df["date"].dt.to_period("W").dt.start_time
-        unlabeled = int((results_df["city"].isna() | results_df["family"].isna()).sum())
+        labeled = model.select(
+            SaleForecast.sale_id.alias("sale_id"),
+            SaleForecast.city.alias("city"),
+            SaleForecast.family.alias("family"),
+        ).to_df()
+        unlabeled = n_predictions - len(labeled)
         if unlabeled:
             print(f"{unlabeled} predictions have no store city or item family: they count toward "
                   "the per-Sale RMSE but not the weekly table.")
 
         weekly = (
-            results_df.groupby(["city", "family", "week_start"])[["actual", "predicted"]]
-            .sum()
-            .reset_index()
+            model.select(
+                WeeklyForecast.city.alias("city"),
+                WeeklyForecast.family.alias("family"),
+                WeeklyForecast.week_start.alias("week_start"),
+                WeeklyForecast.actual.alias("actual"),
+                WeeklyForecast.predicted.alias("predicted"),
+                WeeklyForecast.abs_err.alias("abs_err"),
+            )
+            .to_df()
             .sort_values(["city", "family", "week_start"])
         )
-        weekly["abs_err"] = (weekly["predicted"] - weekly["actual"]).abs()
+        weekly["week_start"] = pd.to_datetime(weekly["week_start"])
 
         print(weekly.head(20).to_string(index=False))
 
-        test_rmse = float(np.sqrt(((results_df["predicted"] - results_df["actual"]) ** 2).mean()))
-        weekly_rmse = float(np.sqrt(((weekly["predicted"] - weekly["actual"]) ** 2).mean()))
-        print(f"\nTest-set RMSE (per-Sale):           {test_rmse:.4f}")
-        print(f"Test-set RMSE (per (city, family, week)): {weekly_rmse:.4f}")
+        print(f"\nTest-set RMSE (per-Sale):           {published(SaleRmse):.4f}")
+        print(f"Test-set RMSE (per (city, family, week)): {published(WeeklyRmse):.4f}")
 
 
 if __name__ == "__main__":

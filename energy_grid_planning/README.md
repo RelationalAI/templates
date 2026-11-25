@@ -50,7 +50,7 @@ Texas is now the fastest-growing market for AI data center development. Hypersca
 
 ## What's included
 
-- `model/` -- the deployed model: `schema.py` declares the concepts, `source.py` loads the sample data and the investment levels, and `reasoning.py` states the forecast, graph, rules, and decision problem
+- `model/` -- the deployed model: `schema.py` declares the concepts, `source.py` loads the sample data and the investment levels, and one module per stage states the forecast (`load_forecast.py`), graph (`grid_topology.py`), corridors (`corridor_fragility.py`), rules (`interconnection_compliance.py`), and decision problem (`investment_solve.py`, with the per-level portfolios and knee point in `investment_frontier.py`)
 - `queries/energy_grid_report.py` -- Prints the five-stage report from the deployed model
 - `runbook.md` -- a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself
 - `data/substations.csv` -- 12 Texas substations with capacity, load, and coordinates
@@ -217,7 +217,12 @@ energy_grid_planning/
     __init__.py              # Exports of the deployed model
     schema.py                # Concepts and properties
     source.py                # Sample data and investment levels
-    reasoning.py             # Forecast, graph, corridors, rules, investment solve
+    load_forecast.py         # Stage 1: predicted load, growth, capacity breach
+    grid_topology.py         # Stage 2: components, communities, centrality, criticality
+    corridor_fragility.py    # Stage 3: corridors, most fragile routes, contingency
+    interconnection_compliance.py  # Stage 4: compliance rules and counts
+    investment_solve.py      # Stage 5: the approval and upgrade solve
+    investment_frontier.py   # Stage 5: portfolios, marginal value, knee point
   queries/
     energy_grid_report.py    # Five-stage report from the deployed model
   data/
@@ -274,7 +279,7 @@ One shared ontology threads all five stages. Each stage reads concepts and prope
 - **Primary identifiers**: string `id` on the base entities (e.g. `SUB-001`, `TL-001`); `name` on `InvestmentLevel` (e.g. `"$300M"`); `investment_level_name` on `InvestmentPortfolio`.
 - **Important invariants**: `predicted_load`, `max_capacity_mw`, `current_load_mw`, `requested_mw`, and `capacity_increase_mw` are non-negative MW; `low_carbon_requirement_pct` is a fraction of the substation's generation capacity (`0.60` means 60%); a generator is low-carbon when `emissions_rate == 0`; Stage 5 decision variables (`x_approve`, `x_upgrade`) are binary.
 
-`Substation` is the hub: Stages 1-2 enrich it with forecast and topology properties that Stages 4-5 consume, and Stage 3 adds corridor fragility for the report. The Stage 3 paths analysis also derives two transient sub-concepts, `GeneratorSubstation` and `DCSubstation` (both `extends=[Substation]`), to type the corridor endpoints. For the full concept and property definitions, see `model/schema.py`; `runbook.md` builds them step by step with the RAI skills.
+`Substation` is the hub: Stages 1-2 enrich it with forecast and topology properties that Stages 4-5 consume, and Stage 3 adds corridor fragility and the contingency routes. The Stage 3 paths analysis also derives two transient sub-concepts, `GeneratorSubstation` and `DCSubstation` (both `extends=[Substation]`), to type the corridor endpoints. For the full concept and property definitions, see `model/schema.py`; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
@@ -283,7 +288,7 @@ One shared ontology threads all five stages. Each stage reads properties earlier
 ```text
 demand forecasts → predicted_load ───────────────┬→ compliance rules (with generation mix)
 grid topology + centrality → structural flags ───┘
-                           └→ corridor fragility (reported)
+                           └→ corridor fragility and contingency
 predicted_load + upgrade costs + revenue → one MIP across the budget levels → Pareto frontier
 ```
 
@@ -297,9 +302,9 @@ The Graph reasoner uses `Substation` directly as its node concept, with edges be
 
 ### Stage 3: Paths -- Transmission Corridors & Contingency
 
-> PREVIEW capability; requires `relationalai>=1.15`.
+> PREVIEW capability; requires `relationalai>=1.27`.
 
-Where Stage 2 scores a *substation*, the paths capability scores the *corridor* feeding each data center. It derives a bidirectional substation-to-substation edge from active transmission lines, enumerates generator-substation to DC-substation routes, and ranks each by the Stage 2 betweenness summed along its hops — the most fragile corridor carries the greatest through-traffic exposure. A contingency pass removes the highest-betweenness substation and re-enumerates to show which data centers reroute; the most-fragile load is persisted as `Substation.fragility_load`. The report, not the model, picks each data center's winning corridor and runs the contingency, in pandas over the published corridor steps. On the bundled grid this enumerates 421 generator-to-DC corridors; the most fragile carries a betweenness-load of 99.833 through the Dallas-Fort Worth, Abilene Central, and Houston Ship Channel hubs.
+Where Stage 2 scores a *substation*, the paths capability scores the *corridor* feeding each data center. It derives a bidirectional substation-to-substation edge from active transmission lines, enumerates generator-substation to DC-substation routes, and ranks each by the Stage 2 betweenness summed along its hops — the most fragile corridor carries the greatest through-traffic exposure. A contingency pass drops every corridor through the highest-betweenness substation, keeping the baseline betweenness, to show which data centers reroute; the model persists each data center substation's most fragile load (`Substation.fragility_load`), its rank, its most fragile route (`Substation.fragile_route`), and its route with the offline substation removed (`Substation.contingency_route`), with the corridor and reroute counts in `CorridorSummary`. On the bundled grid this enumerates 421 generator-to-DC corridors; the most fragile carries a betweenness-load of 99.833 through the Dallas-Fort Worth, Abilene Central, and Houston Ship Channel hubs.
 
 ### Stage 4: Rules -- Interconnection Queue Compliance
 
@@ -315,7 +320,7 @@ An `InvestmentLevel` Scenario Concept holds 5 budget levels ($200M-$600M), each 
 
 One solve produces the entire frontier. The knee point at $300M (6 DCs, 1,530 MW, $252M net value) is the budget level where the marginal net value per added $M falls the most from the step into it to the step out of it (on a tie, the smaller budget; if the marginal value never falls, the report names no knee): both DFW upgrades fit the budget, and Google Metroplex DC and Lambda Labs DFW join. At $200M, 4 DCs are approved (Microsoft, Amazon SA, Crusoe, Oracle); beyond the knee each additional $100M adds one more DC with diminishing returns ($1,013K/$M into the knee vs $439K/$M from $400M to $500M). Revenue is the objective, so where several upgrade sets earn the same revenue (as at $500M), the net value depends on which set the solver returns. xAI Colossus (500 MW) is never approved at any budget — DFW headroom goes to Google and Lambda. Per-level results (approvals, upgrades, MW) are all queried from the ontology via `model.select()` rather than parsed from solver output.
 
-See `model/reasoning.py` for the implementation of the five stages and `runbook.md` for the skill-driven reproduction.
+See the modules in `model/` for the implementation of the five stages and `runbook.md` for the skill-driven reproduction.
 
 ## Customize this template
 
@@ -329,8 +334,8 @@ Focus on the first changes most users will make.
 ### Tune parameters
 
 - **Investment levels** — the budget scenarios (`$200M-$600M`) are `InvestmentLevel` rows; add rows for finer Pareto resolution or shift the budget caps to match your capex envelope.
-- **Corridor hop bound** — `MAX_CORRIDOR_HOPS` in `model/reasoning.py` caps the Stage 3 path enumeration; raise it to trace longer generator-to-DC corridors.
-- **Structural-criticality cutoff** — `CRITICAL_THRESHOLD` in `model/reasoning.py` sets how many substations Stage 2 flags critical, ranked by the sum of their betweenness, degree, and eigenvector centrality ranks, feeding Stage 4's structural rule.
+- **Corridor hop bound** — `MAX_CORRIDOR_HOPS` in `model/corridor_fragility.py` caps the Stage 3 path enumeration; raise it to trace longer generator-to-DC corridors.
+- **Structural-criticality cutoff** — `CRITICAL_THRESHOLD` in `model/grid_topology.py` sets how many substations Stage 2 flags critical, ranked by the sum of their betweenness, degree, and eigenvector centrality ranks, feeding Stage 4's structural rule.
 - **Objective weights** — Stage 5 maximizes annual interconnection revenue; adjust `annual_revenue_per_mw` to reweight which requests clear at each budget; the net-value amortization changes only the reported net value, marginal value per budget step and knee, not the approvals.
 
 ### Extend the model

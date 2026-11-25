@@ -20,7 +20,7 @@ Generating realistic test databases requires careful coordination of row counts 
 
 This template uses **Prescriptive** reasoning to find optimal row counts for each table in a test database. It encodes referential integrity constraints, cardinality bounds, mandatory participation rules, and coverage requirements as a linear program, then minimizes weighted deviation from target row counts. Higher-priority tables stay closer to their targets.
 
-After determining row counts, the report generates sample test records with realistic values -- emails, dates, prices, and foreign key references drawn from each parent table's ID range. The solved row counts satisfy the constraints; the model treats them as continuous and the report rounds each to a whole number, so on a custom schema with tight ratios the rounded counts can miss a bound, and a parent table that rounds to zero rows leaves its children's references with no parent row. The generated records are illustrative: each foreign key is drawn at random, so per-parent bounds and coverage are not guaranteed row by row, and the generator fills a few columns of the six bundled tables rather than every column in `testgen_schema.csv`.
+After determining row counts, the report generates sample test records with realistic values -- emails, dates, prices, and foreign key references drawn from each parent table's ID range. The solved row counts satisfy the constraints; the solve treats them as continuous and the report rounds each to a whole number, so on a custom schema with tight ratios the rounded counts can miss a bound, and a parent table that rounds to zero rows leaves its children's references with no parent row. The generated records are illustrative: each foreign key is drawn at random, so per-parent bounds and coverage are not guaranteed row by row, and the generator fills a few columns of the six bundled tables rather than every column in `testgen_schema.csv`.
 
 ## Who this is for
 
@@ -37,7 +37,7 @@ After determining row counts, the report generates sample test records with real
 
 ## What's included
 
-- `model/` -- Row count optimization model, as a package (`schema.py` declares the concepts, `source.py` loads the sample data, `reasoning.py` states the decision problem); `rai models deploy --path model` deploys it to your Snowflake account, where each refresh runs the solve
+- `model/` -- Row count optimization model, as a package (`schema.py` declares the concepts, `source.py` loads the sample data, `row_count_plan.py` states the decision problem); `rai models deploy --path model` deploys it to your Snowflake account, where each refresh runs the solve
 - `queries/test_data_plan.py` -- Prints the report from the deployed model: the optimal row counts and the generated test data
 - `data/testgen_schema.csv` -- Table and column definitions with types and foreign keys
 - `data/testgen_constraints.csv` -- Cardinality bounds, coverage, and participation rules
@@ -216,9 +216,9 @@ Use this sequence to deploy the model and query it:
 ├── pyproject.toml
 ├── model/
 │   ├── __init__.py      # exports of the deployed model
-│   ├── schema.py        # the table concept
+│   ├── schema.py        # the table and foreign-key concepts
 │   ├── source.py        # loads the CSVs and extracts the foreign keys
-│   └── reasoning.py     # decision variables, constraints, objective, solve
+│   └── row_count_plan.py  # decision variables, constraints, objective, solve
 ├── queries/
 │   └── test_data_plan.py
 └── data/
@@ -256,20 +256,14 @@ problem.solve_for(Table.x_deviation, name=["dev", Table.table_name], lower=0)
 Foreign key relationships impose bounds linking child and parent row counts. For example, if each order has 1-3 order lines, the OrderLine count must be between 1x and 3x the Order count:
 
 ```python
-ParentTable = Table.ref()
-problem.satisfy(model.require(
-    Table.x_actual_rows <= ParentTable.x_actual_rows * fk_info['max']
-).where(
-    Table.table_name == child_name,
-    ParentTable.table_name == parent_name
+ChildTable, ParentTable = Table.ref(), Table.ref()
+foreign_key = [ForeignKey.child == ChildTable, ForeignKey.parent == ParentTable]
+problem.satisfy(model.where(*foreign_key).require(
+    ChildTable.x_actual_rows <= ParentTable.x_actual_rows * ForeignKey.max_per
 ))
-if fk_info['min'] > 0:
-    problem.satisfy(model.require(
-        Table.x_actual_rows >= ParentTable.x_actual_rows * fk_info['min']
-    ).where(
-        Table.table_name == child_name,
-        ParentTable.table_name == parent_name
-    ))
+problem.satisfy(model.where(*foreign_key, ForeignKey.min_per > 0).require(
+    ChildTable.x_actual_rows >= ParentTable.x_actual_rows * ForeignKey.min_per
+))
 ```
 
 ### 4. Minimize weighted deviation

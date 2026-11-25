@@ -21,19 +21,25 @@ from model import (
     REFERENCE_SCENARIO,
     SECTOR_LIMIT,
     Account,
+    Cluster,
     FrontierPoint,
     Holding,
     Regime,
     Scenario,
-    Sector,
+    SectorExposure,
     SolveStatus,
     Stock,
     User,
+    inter_cluster_correlation,
+    intra_cluster_correlation,
     model,
+    num_clusters,
+    num_edges,
+    num_representatives,
+    num_stocks,
 )
 from pandas import DataFrame
 from relationalai.semantics import Float, String
-from relationalai.semantics.std import aggregates as aggs
 
 
 @dataclass(frozen=True)
@@ -81,6 +87,7 @@ def dedupe(points):
     """Sort by return; drop points that collapse onto a neighbour so the frontier is
     strictly increasing in return."""
     out = []
+    # Each point is compared with the last point kept, a sequential scan PyRel has no primitive for.
     for p in sorted(points, key=lambda q: q.ret):
         if not out or p.ret - out[-1].ret > 1e-6:
             out.append(p)
@@ -106,6 +113,7 @@ if __name__ == "__main__":
             AccountQ1.account_id.alias("account_id"),
             Holding.value.alias("value"),
             AccountQ1.balance.alias("balance"),
+            Holding.share_of_balance.alias("share_of_balance"),
         )
         .where(
             Holding.is_overconcentrated(),
@@ -127,30 +135,21 @@ if __name__ == "__main__":
                 f"  holding_id={int(row['holding_id'])}, ticker={row['ticker']}, "
                 f"account_id={int(row['account_id'])}, "
                 f"value={row['value']:.2f}, balance={row['balance']:.2f}, "
-                f"pct={row['value'] / row['balance']:.1%}"
+                f"pct={row['share_of_balance']:.1%}"
             )
 
     # ---- Rule 2: Sector Concentration ----
-    StockQ2 = Stock.ref()
-    AccountQ2 = Account.ref()
-    SectorQ2 = Sector.ref()
-    HoldingQ2 = Holding.ref()
-
     sector_df = (
         model.select(
-            AccountQ2.account_id.alias("account_id"),
-            SectorQ2.sector_name.alias("sector"),
-            aggs.sum(HoldingQ2.value).per(AccountQ2, SectorQ2).alias("sector_value"),
-            AccountQ2.balance.alias("balance"),
+            SectorExposure.account.account_id.alias("account_id"),
+            SectorExposure.sector.sector_name.alias("sector"),
+            SectorExposure.exposure.alias("sector_value"),
+            SectorExposure.account.balance.alias("balance"),
+            SectorExposure.share_of_balance.alias("share_of_balance"),
         )
-        .where(
-            HoldingQ2.is_sector_concentrated(),
-            HoldingQ2.account(AccountQ2),
-            HoldingQ2.stock(StockQ2),
-            StockQ2.sector_ref(SectorQ2),
-        )
+        .where(SectorExposure.is_concentrated())
         .to_df()
-        .drop_duplicates(subset=["account_id", "sector"])
+        .sort_values(["account_id", "sector"])
     )
 
     print(
@@ -165,7 +164,7 @@ if __name__ == "__main__":
                 f"  account_id={int(row['account_id'])}, sector={row['sector']}, "
                 f"sector_value={row['sector_value']:.2f}, "
                 f"balance={row['balance']:.2f}, "
-                f"pct={row['sector_value'] / row['balance']:.1%}"
+                f"pct={row['share_of_balance']:.1%}"
             )
 
     # ---- Rule 3: High-Risk Traders ----
@@ -206,48 +205,43 @@ if __name__ == "__main__":
         StockQ3.sector.alias("sector"),
         StockQ3.cluster.alias("cluster_id"),
     ).to_df()
-    num_clusters = cluster_df["cluster_id"].nunique()
 
-    # Query the derived correlation property for stats and edge count.
-    StockCQ = Stock.ref()
-    PairedCQ = Stock.ref()
-    corr_q_ref = Float.ref()
-    corr_df = (
+    # The graph's and the clustering's figures, as the model publishes them.
+    cluster_stats = (
         model.select(
-            StockCQ.index.alias("i"),
-            PairedCQ.index.alias("j"),
-            corr_q_ref.alias("correlation"),
+            num_edges.alias("edges"),
+            num_clusters.alias("clusters"),
+            num_stocks.alias("stocks"),
+            num_representatives.alias("representatives"),
+            intra_cluster_correlation.alias("intra"),
+            inter_cluster_correlation.alias("inter"),
         )
-        .where(StockCQ.correlation(PairedCQ, corr_q_ref))
         .to_df()
+        .iloc[0]
     )
-    corr_df["correlation"] = corr_df["correlation"].astype(float)
-    # Upper triangle only (i < j) -- correlation is symmetric.
-    upper_corr = corr_df[corr_df["i"] < corr_df["j"]].copy()
-    num_edges = int((upper_corr["correlation"].abs() >= CORR_THRESHOLD).sum())
+    cluster_size_df = model.select(
+        Cluster.cluster_id.alias("cluster_id"), Cluster.size.alias("size")
+    ).to_df()
+    cluster_sizes = {
+        int(cid): int(size)
+        for cid, size in zip(cluster_size_df["cluster_id"], cluster_size_df["size"])
+    }
 
     print(
-        f"\n  Correlation graph: {num_edges} edges (|correlation| >= {CORR_THRESHOLD})"
+        f"\n  Correlation graph: {int(cluster_stats['edges'])} edges "
+        f"(|correlation| >= {CORR_THRESHOLD})"
     )
-    print(f"  Louvain communities: {num_clusters} cluster(s)")
+    print(f"  Louvain communities: {int(cluster_stats['clusters'])} cluster(s)")
     for cid, group in cluster_df.sort_values("cluster_id").groupby("cluster_id"):
         members = ", ".join(
             f"{row['ticker']} ({row['sector']})" for _, row in group.iterrows()
         )
-        print(f"    Cluster {cid} (size {len(group)}): {members}")
+        print(f"    Cluster {cid} (size {cluster_sizes[int(cid)]}): {members}")
 
     # Intra- vs inter-cluster average correlation (from the derived property).
-    cluster_map = dict(zip(cluster_df["stock_index"], cluster_df["cluster_id"]))
-    is_intra = upper_corr.apply(
-        lambda r: cluster_map.get(int(r["i"])) == cluster_map.get(int(r["j"])), axis=1
-    )
-    intra_series = upper_corr.loc[is_intra, "correlation"]
-    inter_series = upper_corr.loc[~is_intra, "correlation"]
-    intra_avg = float(intra_series.mean()) if len(intra_series) else 0.0
-    inter_avg = float(inter_series.mean()) if len(inter_series) else 0.0
     print(
-        f"\n  Avg correlation: intra-cluster = {intra_avg:+.3f}, "
-        f"inter-cluster = {inter_avg:+.3f}"
+        f"\n  Avg correlation: intra-cluster = {float(cluster_stats['intra']):+.3f}, "
+        f"inter-cluster = {float(cluster_stats['inter']):+.3f}"
     )
 
     # Cluster representatives -- the investable universe after redundancy removal.
@@ -264,7 +258,8 @@ if __name__ == "__main__":
         .sort_values("cluster_id")
     )
     print(
-        f"\n  Cluster representatives ({len(rep_df)} of {len(cluster_df)} stocks, "
+        f"\n  Cluster representatives ({int(cluster_stats['representatives'])} of "
+        f"{int(cluster_stats['stocks'])} stocks, "
         f"picked by highest Sharpe):"
     )
     for _, row in rep_df.iterrows():
@@ -364,8 +359,10 @@ if __name__ == "__main__":
 
     solves = solves.fillna({"marginal": 0.0})
 
-    # Stock amounts of every solve, above the solver's 1e-6 noise floor.
+    # Stock amounts of every solve, above the solver's 1e-6 noise floor, and each amount's
+    # share of the scenario's budget.
     amount_ref = Float.ref()
+    weight_ref = Float.ref()
     allocation_df = (
         model.select(
             FrontierPoint.scenario_label.alias("scenario"),
@@ -373,8 +370,12 @@ if __name__ == "__main__":
             Stock.index.alias("stock_index"),
             Stock.ticker.alias("ticker"),
             amount_ref.alias("amount"),
+            weight_ref.alias("weight"),
         )
-        .where(FrontierPoint.allocates(Stock, amount_ref))
+        .where(
+            FrontierPoint.allocates(Stock, amount_ref),
+            FrontierPoint.weight(Stock, weight_ref),
+        )
         .to_df()
     )
 
@@ -409,7 +410,7 @@ if __name__ == "__main__":
         ret, risk, marginal = solves.loc[
             (solve, REFERENCE_SCENARIO), ["ret", "risk", "marginal"]
         ]
-        return Point(solve, float(ret), float(risk), max(0.0, float(marginal)))
+        return Point(solve, float(ret), float(risk), float(marginal))
 
     RETURN_LO = float(solves.loc[("min_risk", REFERENCE_SCENARIO), "ret"])
     RETURN_HI = float(solves.loc[("max_return", REFERENCE_SCENARIO), "ret"])
@@ -645,7 +646,9 @@ if __name__ == "__main__":
             raise SystemExit(
                 f"The knee solve {knee_row['solve']} returned no allocation for {sn}."
             )
-        allocations = zip(knee_allocation["ticker"], knee_allocation["amount"])
+        allocations = zip(
+            knee_allocation["ticker"], knee_allocation["amount"], knee_allocation["weight"]
+        )
 
         meta = scenario_meta[sn]
         budget = meta["budget"]
@@ -663,10 +666,8 @@ if __name__ == "__main__":
             allocations,
             key=lambda item: (-item[1], item[0]),
         )
-        for ticker, quantity in ordered_allocations:
-            print(
-                f"  {ticker:<8}{float(quantity):>12.2f}{float(quantity) / budget:>9.1%}"
-            )
+        for ticker, quantity, weight in ordered_allocations:
+            print(f"  {ticker:<8}{float(quantity):>12.2f}{float(weight):>9.1%}")
 
     print(
         "\n  Each knee is a candidate portfolio, not a recommendation. "

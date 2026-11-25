@@ -2,9 +2,18 @@
 
 from pathlib import Path
 
-from pandas import DataFrame, read_csv
+from pandas import read_csv
+from relationalai.semantics import not_
 
-from .schema import NotAllowedSymbolVenue, Order, OrderEvent, Symbol, Venue, model
+from .schema import (
+    AllowedSymbolVenue,
+    NotAllowedSymbolVenue,
+    Order,
+    OrderEvent,
+    Symbol,
+    Venue,
+    model,
+)
 
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 
@@ -14,21 +23,16 @@ model.define(Symbol.new(model.data(symbols_csv).to_schema()))
 venues_csv = read_csv(DATA_DIR / "venues.csv")
 model.define(Venue.new(model.data(venues_csv).to_schema()))
 
-# NotAllowedSymbolVenue rows: every (symbol, venue) pair not listed in symbol_venues.csv.
-sv_csv = read_csv(DATA_DIR / "symbol_venues.csv")
-all_pairs = [(int(s), int(v)) for s in symbols_csv["id"] for v in venues_csv["id"]]
-allowed_pairs = {(int(r.symbol_id), int(r.venue_id)) for r in sv_csv.itertuples()}
-disallowed_csv = DataFrame(
-    [
-        {"symbol_id": s, "venue_id": v}
-        for (s, v) in all_pairs
-        if (s, v) not in allowed_pairs
-    ]
+# The allowed pairs from symbol_venues.csv, and NotAllowedSymbolVenue: every (symbol, venue)
+# pair that is not allowed. With full venue coverage there are no disallowed pairs.
+sv_data = model.data(read_csv(DATA_DIR / "symbol_venues.csv"))
+model.define(AllowedSymbolVenue(Symbol, Venue)).where(
+    Symbol.id == sv_data.symbol_id,
+    Venue.id == sv_data.venue_id,
 )
-
-# With full venue coverage there are no disallowed pairs and nothing to load.
-if not disallowed_csv.empty:
-    model.define(NotAllowedSymbolVenue.new(model.data(disallowed_csv).to_schema()))
+model.where(Symbol, Venue, not_(AllowedSymbolVenue(Symbol, Venue))).define(
+    NotAllowedSymbolVenue.new(symbol_id=Symbol.id, venue_id=Venue.id)
+)
 
 orders_csv = read_csv(DATA_DIR / "orders.csv")
 orders_data = model.data(orders_csv)

@@ -36,7 +36,7 @@ Every marketing team eventually faces the same question: the portfolio of campai
 
 ## What's included
 
-- **Model**: a continuous LP over a single `Campaign` concept, with per-campaign floor and cap bounds, a total-budget constraint, a paused-region share cap, and a conversion-maximizing objective — in the `model/` package (`schema.py` declares the concept, `source.py` loads the sample data, `reasoning.py` states the decision problem).
+- **Model**: a continuous LP over a `Campaign` concept, with per-campaign floor and cap bounds, a total-budget constraint, a paused-region share cap, and a conversion-maximizing objective, and the optimized plan's comparison with the current budgets — in the `model/` package (`schema.py` declares the concept, `source.py` loads the sample data, `budget_plan.py` states the decision problem and compares the optimized plan with the current budgets).
 - **Deployment**: `rai models deploy --path model` deploys the package to your Snowflake account, where each refresh runs the solve.
 - **Query**: `queries/budget_reallocation.py` prints the report from the deployed model.
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
@@ -195,7 +195,7 @@ Use this sequence to deploy the model and query it:
 │   ├── __init__.py         # exports of the deployed model
 │   ├── schema.py           # the Campaign concept
 │   ├── source.py           # loads the sample campaigns
-│   └── reasoning.py        # constants, decision variable, constraints, objective, solve
+│   └── budget_plan.py      # constants, decision variable, constraints, objective, solve, plan comparison
 ├── queries/
 │   └── budget_reallocation.py  # report from the deployed model
 └── data/
@@ -220,17 +220,18 @@ Total current budget across all campaigns: $1,130K. WEST has the two highest-rat
 
 ## Model overview
 
-The model is a single concept: one `Campaign` per row of `campaigns.csv`, enriched with a decision-variable property after the solve.
+The model has one source concept: one `Campaign` per row of `campaigns.csv`, enriched with a decision-variable property after the solve. Two further concepts summarize the solved plan.
 
 - **Key entities**: `Campaign` — a marketing campaign with a current budget, region tag, and empirical conversion rate; its optimized budget is the decision variable populated after the solve.
+- **Plan summaries**: `CampaignPlan` — each campaign's change from its current budget; `RegionSpend` — each region's current and optimized spend and the optimized share of `TOTAL_BUDGET`. A nullary relationship publishes the expected conversions at the current budgets.
 - **Primary identifiers**: integer `id` on `Campaign`, loaded from `data/campaigns.csv`.
 - **Important invariants**: `current_budget` and `conversion_rate` are non-negative; the optimized budget `x_budget` stays between the per-campaign floor and cap; total spend does not exceed `TOTAL_BUDGET`; and the paused region's spend does not exceed its share cap.
 
-For the full concept and property definitions, see `model/schema.py` (the decision variable `Campaign.x_budget` is declared in `model/reasoning.py`); `runbook.md` builds them step by step with the RAI skills.
+For the full concept and property definitions, see `model/schema.py` (the decision variable `Campaign.x_budget` is declared in `model/budget_plan.py`); `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
-The model loads the campaigns into a single `Campaign` concept, defines one continuous decision variable per campaign, adds the floor, cap, total-budget, and regional-cap constraints, and maximizes conversions; the report prints the reallocation.
+The model loads the campaigns into a `Campaign` concept, defines one continuous decision variable per campaign, adds the floor, cap, total-budget, and regional-cap constraints, and maximizes conversions. It then compares the optimized plan with the current budgets by campaign and by region; the report prints the reallocation.
 
 ### 1. Decision variable
 
@@ -244,7 +245,11 @@ The per-campaign floor and cap are derived from each campaign's current spend: t
 
 The objective maximizes total expected conversions — the sum over campaigns of budget times conversion rate.
 
-See `model/reasoning.py` for the implementation and `runbook.md` for the skill-driven reproduction.
+### 4. Plan comparison
+
+Rules publish the expected conversions at the current budgets and, from the solved budgets, each campaign's change and each region's current and optimized spend. The solution-derived values sit on `CampaignPlan` and `RegionSpend`, not on `Campaign`, which the solve reads. The report divides by the current figures for the lift and each campaign's multiple, so a campaign with a zero current budget keeps its row with a missing multiple.
+
+See `model/budget_plan.py` for the implementation and `runbook.md` for the skill-driven reproduction.
 
 ## Customize this template
 
@@ -254,7 +259,7 @@ Replace `data/campaigns.csv` with your own. Required columns: `id`, `name`, `reg
 
 ### Tune parameters
 
-All parameters live at the top of `model/reasoning.py` under `# Configure inputs`:
+All parameters live at the top of `model/budget_plan.py` under `# Configure inputs`:
 
 | Parameter | Default | Effect |
 |---|---|---|

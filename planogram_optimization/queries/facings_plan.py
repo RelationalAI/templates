@@ -8,15 +8,16 @@ SKU, per-shelf utilization, and per-category active counts.
 
 from model import (
     Category,
+    CategoryUsage,
     PredictedDemand,
     Shelf,
+    ShelfUsage,
     Sku,
     SolveStatus,
     TotalDemand,
     model,
 )
 from pandas import isna
-from relationalai.semantics import sum
 
 if __name__ == "__main__":
     status = model.select(SolveStatus).to_df().iloc[:, 0].tolist()
@@ -91,14 +92,14 @@ if __name__ == "__main__":
     model.select(
         Shelf.id,
         Shelf.name,
-        sum(Sku.facings * Sku.width_cm).per(Shelf).alias("used_cm"),
+        ShelfUsage.used_cm.alias("used_cm"),
         Shelf.length_cm,
-    ).where(Sku.shelf == Shelf).inspect()
+    ).where(ShelfUsage.shelf_id == Shelf.id).inspect()
 
     print("\nCategory active counts:")
     model.select(
         Category.name,
-        sum(Sku.active).per(Category).alias("active_skus"),
+        CategoryUsage.active_skus.alias("active_skus"),
         Category.min_skus_active,
         Category.max_skus_active,
-    ).where(Sku.category == Category.name).inspect()
+    ).where(CategoryUsage.name == Category.name).inspect()

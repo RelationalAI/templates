@@ -14,17 +14,24 @@ import pandas as pd
 from model import (
     CRITICAL_THRESHOLD,
     MAX_CORRIDOR_HOPS,
-    CorridorStep,
+    ComplianceSummary,
+    CorridorSummary,
     DataCenterRequest,
+    GridRegion,
+    GridTopology,
     InvestmentLevel,
     InvestmentPortfolio,
+    InvestmentRange,
     SolveObjective,
     SolveStatus,
     Substation,
     SubstationUpgrade,
     model,
 )
-from relationalai.semantics import Float, Hash, Integer
+from relationalai.semantics import Float
+
+# How many corridors Stage 3 lists.
+TOP_CORRIDORS = 5
 
 
 def main() -> None:
@@ -81,36 +88,30 @@ def main() -> None:
     print("STAGE 2: GRAPH -- Grid Topology & Structural Vulnerability")
     print("=" * 60)
 
-    wcc_df = (
-        model.select(
-            Substation.id.alias("substation_id"),
-            Substation.name.alias("substation_name"),
-            Substation.component.alias("component_id"),
-        )
-        .to_df()
-    )
+    topology = model.select(
+        GridTopology.n_substations.alias("substations"),
+        GridTopology.n_components.alias("components"),
+        GridTopology.n_communities.alias("communities"),
+        GridTopology.connectivity.alias("connectivity"),
+    ).to_df().iloc[0]
 
-    num_components = wcc_df["component_id"].nunique()
-    total_substations = len(wcc_df)
+    num_components = int(topology["components"])
     print(
-        f"\n  Grid connectivity: {total_substations} substations, {num_components} component(s)"
+        f"\n  Grid connectivity: {int(topology['substations'])} substations, {num_components} component(s)"
     )
-    if num_components == 1:
+    if topology["connectivity"] == "CONNECTED":
         print("  CONNECTED: All substations reachable from any other.")
     else:
         print(f"  FRAGMENTED: {num_components} isolated grid segments detected!")
 
-    community_df = model.select(
-        Substation.id.alias("substation_id"),
-        Substation.name.alias("name"),
-        Substation.grid_community.alias("community"),
-    ).to_df()
-
-    num_communities = community_df["community"].nunique()
-    print(f"\n  Grid community structure (Louvain): {num_communities} region(s)")
-    for comm_id, group in community_df.groupby("community"):
-        members = ", ".join(group["name"].tolist())
-        print(f"    Region {comm_id}: {members}")
+    regions = (
+        model.select(GridRegion.community.alias("community"), GridRegion.members.alias("members"))
+        .to_df()
+        .sort_values("community")
+    )
+    print(f"\n  Grid community structure (Louvain): {int(topology['communities'])} region(s)")
+    for _, region in regions.iterrows():
+        print(f"    Region {int(region['community'])}: {region['members']}")
 
     centrality_df = (
         model.select(
@@ -165,80 +166,39 @@ def main() -> None:
     print("STAGE 3: PATHS -- Transmission Corridors & Contingency")
     print("=" * 60)
 
-    # Reassemble corridor node sequences in pandas for human-readable route labels (string-
-    # joining names is a pandas job) and for the contingency re-enumeration below. Selecting
-    # names alongside the score would fan out rows, so the node-sequence projection is a
-    # SEPARATE query from the scoring above.
-    corridor, hop = Hash.ref(), Integer.ref()
-    corridor_df = model.where(CorridorStep(corridor, Substation, hop)).select(
-        corridor.alias("corridor"),
-        hop.alias("hop"),
-        Substation.id.alias("substation_id"),
-        Substation.name.alias("substation_name"),
-    ).to_df()
-    betw_df = model.select(
-        Substation.id.alias("substation_id"),
-        Substation.name.alias("substation_name"),
-        Substation.betweenness.alias("betweenness"),
-    ).to_df()
-    betw_by_id = dict(zip(betw_df["substation_id"], betw_df["betweenness"].fillna(0.0)))
-    name_by_id = dict(zip(betw_df["substation_id"], betw_df["substation_name"]))
-    corridor_df["betweenness"] = corridor_df["substation_id"].map(betw_by_id).fillna(0.0)
-
-
-    def most_fragile_corridor_per_dc(removed_id=None):
-        """Highest total-betweenness SIMPLE corridor terminating at each DC substation.
-
-        Used to recover each winning corridor's node names (for printing) and for the
-        contingency re-enumeration. The model publishes the per-DC maximum load as
-        Substation.fragility_load; this reproduces it and adds the route node sequence.
-        """
-        best = {}
-        for _, grp in corridor_df.groupby("corridor"):
-            ordered = grp.sort_values("hop")
-            ids = ordered["substation_id"].tolist()
-            if len(set(ids)) != len(ids):
-                continue  # simple paths only (the grid is cyclic)
-            if removed_id is not None and removed_id in ids:
-                continue
-            load = float(ordered["betweenness"].sum())
-            dest = ids[-1]
-            # On equal loads, keep the route whose substation IDs sort first, so the pick is stable.
-            if dest not in best or load > best[dest][1] or (load == best[dest][1] and ids < best[dest][2]):
-                best[dest] = (ordered["substation_name"].tolist(), load, ids)
-        return best
-
-
-    baseline_corridors = most_fragile_corridor_per_dc()
-    # Count only SIMPLE corridors (drop node-repeating walks; the grid is cyclic). Kept in
-    # pandas via node-sequence reassembly: native count(corridor) fans out over the simple-
-    # path filter and count(distinct(corridor)) collapses to all-walks -- neither is the
-    # simple-corridor count.
-    n_corridors = len([
-        cid
-        for cid, grp in corridor_df.groupby("corridor")
-        if len(set(grp["substation_id"])) == len(grp["substation_id"])
-    ])
-    print(
-        f"\n  {n_corridors} generator-sub -> DC-sub corridors (<= {MAX_CORRIDOR_HOPS} hops, simple); "
-        f"most-fragile corridor for {len(baseline_corridors)} DC substation(s):"
-    )
-    for dest, (route, load, _) in sorted(baseline_corridors.items(), key=lambda kv: (-kv[1][1], kv[0]))[:5]:
-        print(f"    betweenness-load {round(load, 3)}: " + " -> ".join(route))
-
-    # Contingency: take the highest-betweenness substation offline and re-enumerate.
-    if betw_by_id:
-        # On a betweenness tie, the smallest substation ID goes offline.
-        top_id = min(betw_by_id, key=lambda sub_id: (-betw_by_id[sub_id], sub_id))
-        after_corridors = most_fragile_corridor_per_dc(removed_id=top_id)
-        rerouted = len(
-            [d for d in baseline_corridors if d in after_corridors and baseline_corridors[d][0] != after_corridors[d][0]]
+    # The deployed model publishes the corridor counts, each DC substation's most fragile route, and
+    # the contingency's reroutes.
+    corridors = model.select(
+        CorridorSummary.n_corridors.alias("corridors"),
+        CorridorSummary.n_served.alias("served"),
+        CorridorSummary.n_served_contingency.alias("served_contingency"),
+        CorridorSummary.n_rerouted.alias("rerouted"),
+        CorridorSummary.n_lost.alias("lost"),
+    ).to_df().iloc[0]
+    most_fragile = (
+        model.where(Substation.fragility_rank <= TOP_CORRIDORS)
+        .select(
+            Substation.fragility_rank.alias("rank"),
+            Substation.fragility_load.alias("load"),
+            Substation.fragile_route.alias("route"),
         )
-        lost = [d for d in baseline_corridors if d not in after_corridors]
+        .to_df()
+        .sort_values("rank")
+    )
+    print(
+        f"\n  {int(corridors['corridors'])} generator-sub -> DC-sub corridors (<= {MAX_CORRIDOR_HOPS} hops, simple); "
+        f"most-fragile corridor for {int(corridors['served'])} DC substation(s):"
+    )
+    for _, row in most_fragile.iterrows():
+        print(f"    betweenness-load {round(float(row['load']), 3)}: {row['route']}")
+
+    # Contingency: the highest-betweenness substation goes offline and every corridor through it is dropped.
+    offline = model.where(Substation.is_offline()).select(Substation.name.alias("name")).to_df()
+    if len(offline) > 0:
         print(
             f"\n  Contingency -- highest-betweenness substation offline "
-            f"({name_by_id.get(top_id, top_id)}): {len(baseline_corridors)} -> {len(after_corridors)} "
-            f"DC substations served, {rerouted} reroute, {len(lost)} lose all corridors."
+            f"({offline['name'].iloc[0]}): {int(corridors['served'])} -> {int(corridors['served_contingency'])} "
+            f"DC substations served, {int(corridors['rerouted'])} reroute, {int(corridors['lost'])} lose all corridors."
         )
 
 
@@ -292,7 +252,12 @@ def main() -> None:
     compliance_df = compliance_df.merge(compliant_ids_df, on="dc_id", how="left")
     compliance_df["is_compliant"] = compliance_df["is_compliant"].fillna("N")
 
-    num_dc = len(compliance_df)
+    compliance_counts = model.select(
+        ComplianceSummary.n_requests.alias("requests"),
+        ComplianceSummary.n_compliant.alias("compliant"),
+        ComplianceSummary.n_flagged.alias("flagged"),
+    ).to_df().iloc[0]
+    num_dc = int(compliance_counts["requests"])
     print(f"\n  Evaluating {num_dc} DC requests against 3 declarative compliance rules...")
 
     print(
@@ -307,8 +272,8 @@ def main() -> None:
             f"{r['structural_flag']:>5} {r['is_compliant']:>4}"
         )
 
-    compliant_count = len(compliance_df[compliance_df["is_compliant"] == "Y"])
-    flagged_count = len(compliance_df[compliance_df["is_compliant"] == "N"])
+    compliant_count = int(compliance_counts["compliant"])
+    flagged_count = int(compliance_counts["flagged"])
     print(
         f"\n  Summary: {compliant_count} compliant, {flagged_count} flagged (out of {num_dc} requests)"
     )
@@ -318,10 +283,17 @@ def main() -> None:
     print("STAGE 5: OPTIMIZE -- Joint Interconnection + Upgrade")
     print("=" * 60)
 
-    budgets = model.select(InvestmentLevel.budget_cap).to_df().iloc[:, 0].astype(float)
+    levels = model.select(
+        InvestmentRange.n_levels.alias("n_levels"),
+        InvestmentRange.min_budget.alias("min_budget"),
+        InvestmentRange.max_budget.alias("max_budget"),
+    ).to_df().iloc[0]
     status = model.select(SolveStatus).to_df().iloc[:, 0].tolist()
     objective = model.select(SolveObjective).to_df().iloc[:, 0].tolist()
-    print(f"\n  Solved across {len(budgets)} investment levels (${budgets.min():,.0f}M-${budgets.max():,.0f}M)")
+    print(
+        f"\n  Solved across {int(levels['n_levels'])} investment levels "
+        f"(${float(levels['min_budget']):,.0f}M-${float(levels['max_budget']):,.0f}M)"
+    )
     print(f"  Status: {', '.join(status)}")
     # Portfolio totals default to zero, so without a solution they would read as an empty plan.
     if not objective:
@@ -367,7 +339,7 @@ def main() -> None:
             DataCenterRequest.name.alias("dc_name"),
             DataCenterRequest.hyperscaler.alias("hyperscaler"),
             DataCenterRequest.requested_mw.alias("requested_mw"),
-            DataCenterRequest.annual_revenue_per_mw.alias("rev_per_mw"),
+            DataCenterRequest.annual_revenue.alias("revenue"),
         )
         .to_df()
     )
@@ -457,7 +429,7 @@ def main() -> None:
                 print(
                     f"    {row['dc_name']} ({row['hyperscaler']}): "
                     f"{float(row['requested_mw']):.0f} MW, "
-                    f"${float(row['requested_mw']) * float(row['rev_per_mw']):,.0f}/yr"
+                    f"${float(row['revenue']):,.0f}/yr"
                 )
 
         level_upg = upgrade_result_df[upgrade_result_df["level"] == level_name] if len(upgrade_result_df) > 0 else pd.DataFrame()

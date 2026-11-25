@@ -26,8 +26,8 @@ if __name__ == "__main__":
         DistributionPoint.category.alias("category"),
     ).to_df()
 
-    # Sort by PageRank (primary) then Degree Centrality (secondary)
-    results = results.sort_values(["pagerank", "degree_centrality"], ascending=False)
+    # Sort by PageRank (primary) then Degree Centrality (secondary), ties to the smaller id
+    results = results.sort_values(["pagerank", "degree_centrality", "id"], ascending=[False, False, True])
     results.insert(0, 'rank', range(1, len(results) + 1))
 
     # Display header

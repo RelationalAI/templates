@@ -39,7 +39,7 @@ Built using **prescriptive reasoning** (mixed-integer programming with the HiGHS
 
 ## What's included
 
-- `model/` -- ontology, MTZ formulation, and solver configuration, as a package (`schema.py` declares the concepts, `source.py` loads the sample data, `reasoning.py` states the decision problem); `rai models deploy --path model` deploys it to your Snowflake account, where each refresh runs the solve
+- `model/` -- ontology, MTZ formulation, and solver configuration, as a package (`schema.py` declares the concepts, `source.py` loads the sample data, `shortest_tour.py` states the decision problem); `rai models deploy --path model` deploys it to your Snowflake account, where each refresh runs the solve
 - `queries/tour.py` -- prints the report from the deployed model: the solve status, the tour distance, and the tour edges
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - `data/edges.csv` -- 12 directed edges between 4 nodes with distances
@@ -196,7 +196,7 @@ traveling_salesman/
 │   ├── __init__.py      # exports of the deployed model
 │   ├── schema.py        # edge and node concepts
 │   ├── source.py        # loads the distance matrix
-│   └── reasoning.py     # tour variables, MTZ constraints, objective, solve
+│   └── shortest_tour.py # tour variables, MTZ constraints, objective, solve
 ├── queries/
 │   └── tour.py          # report from the deployed model
 └── data/
@@ -229,7 +229,7 @@ Two families of constraints shape the tour. Degree constraints require exactly o
 edges.csv → load edges → derive nodes → edge + ordering variables → degree + MTZ constraints → minimize distance → optimal tour
 ```
 
-See `model/reasoning.py` for the implementation, and `runbook.md` to reproduce it step by step with the RAI skills.
+See `model/shortest_tour.py` for the implementation, and `runbook.md` to reproduce it step by step with the RAI skills.
 
 ## Customize this template
 

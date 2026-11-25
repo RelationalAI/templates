@@ -42,9 +42,13 @@ without the cluster collapse, the gap would grow.
 
 ## Implementation map
 
-- `model/schema.py` creates the shared model and declares all nine concepts, their properties, and their relationships.
+- `model/schema.py` creates the shared model and declares the nine concepts that the data and the solves populate, with their properties and relationships. The rule modules declare what they derive from them, such as `SectorExposure` and `Cluster`.
 - `model/source.py` loads the bundled CSVs, creates the six budget-by-regime scenarios, and maps source fields onto that schema.
-- `model/reasoning.py` defines the derived facts, the correlation graph, and the 15 solves of the frontier. Each solve is a named Problem, and each later solve's return target is a rule over earlier solves' results. Every solve publishes a `FrontierPoint` per scenario. `model/__init__.py` exports the deployed model for the query.
+- `model/compliance_flags.py` states the Stage 1 rules: each holding's value and share of its account balance, the overconcentrated holdings, each account's `SectorExposure` and the concentrated ones, and the high-risk traders.
+- `model/correlation_clusters.py` derives volatility and correlation, builds the correlation graph and its Louvain clusters, picks each cluster's representative, and summarizes the clustering (edge and cluster counts, `Cluster` sizes, intra- and inter-cluster average correlation).
+- `model/regime_covariance.py` derives the base and crisis covariance.
+- `model/efficient_frontier.py` defines the 15 solves of the frontier. Each solve is a named Problem, and each later solve's return target is a rule over earlier solves' results. Every solve publishes a `FrontierPoint` per scenario, with the weight of each allocated stock.
+- `model/__init__.py` exports the deployed model for the query.
 - `queries/portfolio_report.py` reads the deployed model, prints the four stages, creates the frontier summaries (knee and volatility comparison), and reports the stock amounts and weights for each scenario's candidate portfolio.
 
 ## Workflow
@@ -61,7 +65,7 @@ without the cluster collapse, the gap would grow.
 
 **Response**
 
-`model/schema.py` declares `Stock` (with the binary `Stock.covar(Stock, Stock)` property carrying covariance), `Sector`, `User`, `Account`, `Holding`, `Transaction`, `Regime`, `Scenario`, and `FrontierPoint`. `model/source.py` binds the portfolio concepts to the bundled CSVs (8 stocks, 64 covariance entries). `model/source.py` creates 2 regimes x 3 budgets = 6 scenarios, and each solve in `model/reasoning.py` publishes its frontier points.
+`model/schema.py` declares `Stock` (with the binary `Stock.covar(Stock, Stock)` property carrying covariance), `Sector`, `User`, `Account`, `Holding`, `Transaction`, `Regime`, `Scenario`, and `FrontierPoint`. `model/source.py` binds the portfolio concepts to the bundled CSVs (8 stocks, 64 covariance entries). `model/source.py` creates 2 regimes x 3 budgets = 6 scenarios, and each solve in `model/efficient_frontier.py` publishes its frontier points.
 
 ### 2. Examine ontology
 
@@ -157,7 +161,7 @@ Crisis vol runs 22-30% above base at every frontier point (budget 1000: min_risk
 
 **Response**
 
-Ontology gains a `FrontierPoint(scenario_label, solve)` Concept (6 scenarios x 15 solves) with `return_value`, `risk`, `marginal_risk_per_return`, and `allocates`, which each solve that reaches an accepted status publishes in `model/reasoning.py`. The points and allocations are queryable from the deployed model. The report selects the dichotomic solves' points, sorts them by return (adjacent targets that collapse are deduped), checks that neither return nor risk decreases along each scenario's frontier, and derives the knee flag and the volatilities from them: the frontier shape (base_1000 return 64.87->84.00, variance 4641->8528), knee at p3, and the crisis vol gap (+28.4% min_risk -> +29.6% peak at p1 -> +21.7% at p5).
+Ontology gains a `FrontierPoint(scenario_label, solve)` Concept (6 scenarios x 15 solves) with `return_value`, `risk`, `marginal_risk_per_return`, and `allocates`, which each solve that reaches an accepted status publishes in `model/efficient_frontier.py`. The points and allocations are queryable from the deployed model. The report selects the dichotomic solves' points, sorts them by return (adjacent targets that collapse are deduped), checks that neither return nor risk decreases along each scenario's frontier, and derives the knee flag and the volatilities from them: the frontier shape (base_1000 return 64.87->84.00, variance 4641->8528), knee at p3, and the crisis vol gap (+28.4% min_risk -> +29.6% peak at p1 -> +21.7% at p5).
 
 ### 10. Review candidate allocations
 
@@ -173,4 +177,4 @@ The report finds the knee of each of the six scenarios' frontiers and prints the
 
 ## Data
 
-Bundled CSVs in `data/`: `users.csv` (6), `accounts.csv` (4), `holdings.csv` (15), `transactions.csv` (21), `returns.csv` (8 stocks across 5 sectors), and `covar.csv` (64 symmetric covariance entries). `model/source.py` loads these files; `model/reasoning.py` states the rules, the graph, and the solves; `queries/portfolio_report.py` prints the report.
+Bundled CSVs in `data/`: `users.csv` (6), `accounts.csv` (4), `holdings.csv` (15), `transactions.csv` (21), `returns.csv` (8 stocks across 5 sectors), and `covar.csv` (64 symmetric covariance entries). `model/source.py` loads these files; the other modules in `model/` state the rules, the graph, and the solves; `queries/portfolio_report.py` prints the report.

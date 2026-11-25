@@ -45,7 +45,7 @@ At a high level, this exercises three RelationalAI capabilities on one shared mo
 
 ## What's included
 
-- **Model** (`model/` package): the ontology and all three reasoning stages, which `rai models deploy --path model` deploys to your Snowflake account. `schema.py` declares the concepts, `source.py` loads the sample data, and `reasoning.py` states the three reasoning stages.
+- **Model** (`model/` package): the ontology and all three reasoning stages, which `rai models deploy --path model` deploys to your Snowflake account. `schema.py` declares the concepts and `source.py` loads the sample data. `failure_timeline.py` rolls failures up by build week, `genealogy.py`, `contrast_scoring.py`, and `diagnosis.py` state the three reasoning stages, and `root_cause_evidence.py` derives each suspect's defect signature.
 - **Query** (`queries/root_cause_report.py`): prints the report from the deployed model.
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - **Data generator** (`generate_data.py`): rebuilds the sample corpus deterministically from a fixed seed. The generated files are already included, so you do not need to run it to use the template.
@@ -197,7 +197,11 @@ defect_root_cause/
 │   ├── __init__.py           # exports of the deployed model
 │   ├── schema.py             # concepts and properties
 │   ├── source.py             # loads the CSVs
-│   └── reasoning.py          # genealogy graph, contrast scoring, and the diagnosis solve
+│   ├── failure_timeline.py   # failure rate by build week and the spike onset
+│   ├── genealogy.py          # genealogy graph and backward reachability
+│   ├── contrast_scoring.py   # baseline, lift, and suspects
+│   ├── diagnosis.py          # the diagnosis solve and its headline
+│   └── root_cause_evidence.py # defect signature of each suspect
 ├── queries/
 │   └── root_cause_report.py  # report printed from the deployed model
 ├── generate_data.py          # regenerates the corpus (CSVs already included)
@@ -230,7 +234,7 @@ The genealogy is the backbone: a built `Lot` consumes its input lots, so followi
 - **Primary identifiers**: every concept carries a string `id` (for example `LOT::SP-0423` on `Factor`); the genealogy and process history are threaded by relationships (`Lot consumes Lot`, `Unit consumes Lot`, `Unit ran on Machine`) rather than shared keys.
 - **Important invariants**: `Unit.defective` is `0` or `1`; `Factor.lift` is the touched-unit defect rate over the plant baseline (≈ 1.0 for non-causal high-volume factors); the `is_root_cause` decision variable is binary; a defective unit is either explained by a named cause it touches or marked unexplained.
 
-For the full concept and property definitions — including the relations the reasoning traces (`Lot consumes Lot`, `Unit consumes Lot`, `Unit ran on Machine`, and the derived `Factor touches Unit` incidence) — see `model/schema.py` and, for `Factor touches Unit` and the rest of the derived relations, `model/reasoning.py`; `runbook.md` builds them step by step with the RAI skills.
+For the full concept and property definitions — including the relations the reasoning traces (`Lot consumes Lot`, `Unit consumes Lot`, `Unit ran on Machine`, and the derived `Factor touches Unit` incidence) — see `model/schema.py` and, for `Factor touches Unit` and the rest of the derived relations, the modules next to it; `runbook.md` builds them step by step with the RAI skills.
 
 ## How it works
 
@@ -242,7 +246,7 @@ failure timeline -> genealogy graph -> contrast scoring -> minimal-diagnosis opt
 
 ### Locate the spike onset
 
-A real investigation starts on the timeline rather than the genealogy. Rolling failures up by build week locates the onset — the first week whose rate runs well above the opening baseline — which tells the rest of the chain which window to interrogate. Here the rate steps from 1.9 percent in week one to 6.6 percent in week two, so the onset is week two.
+A real investigation starts on the timeline rather than the genealogy. Rolling failures up by build week (`BuildWeek`) locates the onset (`SpikeOnset`) — the first week whose rate runs above twice the opening week's — which marks the window an investigator interrogates first. Here the rate steps from 1.9 percent in week one to 6.6 percent in week two, so the onset is week two.
 
 ### Trace the genealogy backward (Graph)
 
@@ -256,7 +260,7 @@ Each candidate is scored by how concentrated defects are among the units it touc
 
 A binary decision variable names each suspect a root cause, and a binary slack lets a defective unit be left unexplained. The coverage constraint requires every defective unit to be explained by a named cause it touches or else marked unexplained. The objective trades off three things: a cost for each named cause (so the diagnosis stays small), a penalty for naming a cause that also touches many good units (so it stays specific), and a cost for leaving a defect unexplained. Together these make the optimizer prefer the single deep root over the several proximate sub-assemblies that merely carry it. The deployed model publishes the problem's structure counts, and the report's formulation audit checks them after the refresh has solved; a failed audit stops the report, not the refresh.
 
-See `model/reasoning.py` for the implementation, `queries/root_cause_report.py` for the report, and `runbook.md` to reproduce each stage step by step with the RAI skills.
+See `model/genealogy.py`, `model/contrast_scoring.py`, and `model/diagnosis.py` for the implementation, `queries/root_cause_report.py` for the report, and `runbook.md` to reproduce each stage step by step with the RAI skills.
 
 ## Sample output
 
@@ -312,7 +316,7 @@ The diagnosis names a contaminated solder-paste lot (`SP-0423`) and a reflow ove
 ### Use your own data
 
 - Replace the CSVs in `data/` with your own genealogy, keeping the same column names. The genealogy can be any depth, because backward reachability handles arbitrary bill-of-materials tiers.
-- To add another kind of candidate cause (an operator, a work order, or a supplier site), append rows to `factors.csv` with the new kind, add a matching back-pointer property, and add one `Factor.touches` rule, mirroring the existing lot, machine, and shift pattern.
+- To add another kind of candidate cause (an operator, a work order, or a supplier site), append rows to `factors.csv` with the new kind, add a matching back-pointer property and its loader rule in `model/source.py`, one `Factor.touches` rule in `model/genealogy.py`, and one `Factor.evidence` rule in `model/root_cause_evidence.py`, mirroring the existing lot, machine, and shift pattern.
 
 ### Tune parameters
 

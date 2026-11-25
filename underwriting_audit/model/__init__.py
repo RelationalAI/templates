@@ -36,8 +36,19 @@ Modeling shape:
   add-only, so a previous property's counterexample ICs cannot be detached
   from a reused `Problem`. The deployed model publishes each solve's status,
   its number of witnesses, and every distinct witness, read from
-  `Variable.values(solution_index, value)`; `queries/audit_report.py`
-  classifies the verdict and prints the witnesses.
+  `Variable.values(solution_index, value)`. It also classifies each
+  property's verdict and tallies the verdicts; `queries/audit_report.py`
+  prints them with the witnesses.
+
+The model package has one module per stage, and each module imports the
+modules whose declarations it reads:
+
+- `source.py` loads the reference data.
+- `applicant_rules.py` declares the free decisions, the derived indicators,
+  and the rule pack.
+- `property_audits.py` declares the property catalog and one search per
+  property.
+- `audit_verdicts.py` classifies each property's verdict and tallies them.
 
 The bundled ruleset has a deliberate bug: `is_manual_review` is defined as
 "senior", but `is_frail` is defined as "senior OR has chronic condition".
@@ -56,13 +67,8 @@ Run:
     `python -m queries.audit_report` then prints the report from the deployed model.
 """
 
-from .reasoning import (
-    MAX_WITNESSES,
-    PROPERTIES,
-    NumPoints,
-    SolveStatus,
-    Witness,
-)
+from .audit_verdicts import PropertyVerdict, VerdictTally
+from .property_audits import MAX_WITNESSES, PROPERTIES, NumPoints, SolveStatus, Witness
 from .schema import AgeBucket, CoverageBand, model
 from .source import DATA_DIR
 
@@ -73,7 +79,9 @@ __all__ = [
     "AgeBucket",
     "CoverageBand",
     "NumPoints",
+    "PropertyVerdict",
     "SolveStatus",
+    "VerdictTally",
     "Witness",
     "model",
 ]

@@ -6,16 +6,18 @@ the efficient frontier of overtime cost against unmet demand, the marginal analy
 detection, and the nurse assignments at the knee.
 """
 
-from model import N_INTERIOR, FrontierPoint, Nurse, Shift, SweepPoint, model
-
-
-def frontier_label(position):
-    if position == 0:
-        return "cheapest"
-    if position == N_INTERIOR + 1:
-        return "best_service"
-    return f"eps_{position}"
-
+from model import (
+    N_INTERIOR,
+    FreeKnee,
+    FrontierPoint,
+    FrontierStep,
+    JumpKnee,
+    Nurse,
+    Shift,
+    SweepPoint,
+    model,
+)
+from relationalai.semantics import Float, Integer
 
 if __name__ == "__main__":
     status = model.select(
@@ -74,30 +76,39 @@ if __name__ == "__main__":
     print(f"Unmet demand targets: {[f'{eps_by_index[i]:.1f}' for i in sorted(eps_by_index)]}")
     print(f"{'=' * 70}")
 
-    # The report stops reading the sweep at its first failed point, and then leaves the
-    # best-service anchor out of the frontier, so no marginal rate spans the failed interval.
-    pareto = [{"position": cheapest, **points.loc[cheapest].to_dict()}]
+    # The model publishes the frontier: the cheapest anchor and the sweep points up to the first
+    # that failed, then the best-service anchor only when the whole sweep solved, so no marginal
+    # rate spans a failed interval. The report stops reading the sweep at the first failed point.
+    pareto = (
+        model.select(
+            FrontierPoint.position.alias("position"),
+            FrontierPoint.number.alias("number"),
+            FrontierPoint.label.alias("label"),
+            FrontierPoint.overtime_cost.alias("overtime_cost"),
+            FrontierPoint.unmet_demand.alias("unmet_demand"),
+        )
+        .where(FrontierPoint.on_frontier())
+        .to_df()
+        .sort_values("number")
+        .to_dict("records")
+    )
+    on_frontier = {pt["position"] for pt in pareto}
     sweep_complete = True
     for i in range(1, N_INTERIOR + 1):
         eps = eps_by_index.get(i)
         eps_text = f"{eps:.1f}" if eps is not None else "?"
-        if not solved(i):
+        if i not in on_frontier:
             point_status = points.loc[i, "status"] if i in points.index else "none"
             print(f"  Point {i} (unmet<={eps_text}): {point_status} -- stopping")
             sweep_complete = False
             break
         pt = points.loc[i]
-        pareto.append({"position": i, **pt.to_dict()})
         print(
             f"  Point {i} (unmet<={eps_text}): overtime=${pt['overtime_cost']:.2f}, "
             f"actual_unmet={pt['unmet_demand']:.1f}  [{pt['status']}]"
         )
-    if sweep_complete:
-        pareto.append({"position": best, **points.loc[best].to_dict()})
-    else:
+    if not sweep_complete:
         print("  The frontier below ends at the last solved sweep point.")
-    for pt in pareto:
-        pt["label"] = frontier_label(pt["position"])
 
     # --------------------------------------------------
     # Pareto analysis
@@ -108,8 +119,8 @@ if __name__ == "__main__":
     print(f"{'=' * 70}")
     print(f"{'#':>3} {'Label':>14} {'Unmet Demand':>14} {'Overtime Cost':>14}")
     print("-" * 48)
-    for j, pt in enumerate(pareto):
-        print(f"{j+1:>3} {pt['label']:>14} {pt['unmet_demand']:>14.1f} ${pt['overtime_cost']:>13.2f}")
+    for pt in pareto:
+        print(f"{pt['number']:>3} {pt['label']:>14} {pt['unmet_demand']:>14.1f} ${pt['overtime_cost']:>13.2f}")
 
     # ASCII Pareto plot: Overtime Cost (y) vs Unmet Demand (x)
     if len(pareto) >= 2:
@@ -144,55 +155,69 @@ if __name__ == "__main__":
     # Marginal analysis
     if len(pareto) >= 3:
         print("\nMarginal analysis (cost of reducing unmet demand by 1 patient):")
-        rates = []
-        for j in range(len(pareto) - 1):
-            d_cost = pareto[j+1]['overtime_cost'] - pareto[j]['overtime_cost']
-            d_unmet = pareto[j]['unmet_demand'] - pareto[j+1]['unmet_demand']
-            if abs(d_unmet) > 1e-6:
-                rate = d_cost / d_unmet
-                rates.append(rate)
-                print(f"  {pareto[j]['label']:>14} → {pareto[j+1]['label']:<14}: "
-                      f"Δcost=${d_cost:>+10.2f}, Δunmet={-d_unmet:>+6.1f}, "
-                      f"marginal=${rate:>8.2f}/patient")
-            else:
-                rates.append(0)
+        # The model publishes each step between consecutive frontier points; a flat step has
+        # no rate, so it has no line.
+        steps = (
+            model.select(
+                FrontierStep.number.alias("number"),
+                FrontierStep.cost_added.alias("cost_added"),
+                FrontierStep.unmet_removed.alias("unmet_removed"),
+                FrontierStep.rate.alias("rate"),
+            )
+            .to_df()
+            .sort_values("number")
+        )
+        for step in steps.itertuples():
+            j = step.number - 1
+            print(f"  {pareto[j]['label']:>14} → {pareto[j+1]['label']:<14}: "
+                  f"Δcost=${step.cost_added:>+10.2f}, Δunmet={-step.unmet_removed:>+6.1f}, "
+                  f"marginal=${step.rate:>8.2f}/patient")
 
-        # When service improves for free before the first paid step, the knee is the last free
-        # point; otherwise it is the largest ratio between consecutive positive rates. A rate
-        # ($ per patient) is never compared with a ratio. With no paid step there is no knee.
-        if len(rates) >= 2:
-            first_paid = next((j for j, rate in enumerate(rates) if rate > 1e-6), None)
-            if first_paid is None:
-                knee_idx = None
-            elif first_paid > 0:
-                knee_idx = first_paid
-                knee_text = (f"the last free improvement; the next costs "
-                             f"${rates[first_paid]:.2f}/patient")
-            else:
-                max_jump, knee_idx = 0, 1
-                for j in range(len(rates) - 1):
-                    if rates[j] > 1e-6 and rates[j+1] / rates[j] > max_jump:
-                        max_jump, knee_idx = rates[j+1] / rates[j], j + 1
-                knee_text = f"marginal cost jumps {max_jump:.1f}x beyond this point"
-            if knee_idx is None:
-                print("\n  No knee: no service improvement has a positive marginal cost.")
-            else:
-                print(f"\n  Knee: Point {knee_idx + 1} ({pareto[knee_idx]['label']}) -- {knee_text}")
-                print(f"  Recommendation: Target {pareto[knee_idx]['unmet_demand']:.0f} unmet patients "
-                      f"at ${pareto[knee_idx]['overtime_cost']:.2f} overtime cost -- "
-                      f"further service improvement costs significantly more per patient.")
+        # The model publishes the knee: when service improves for free before the first paid
+        # step, the last free point; otherwise the point after the largest jump between
+        # consecutive rates. With no paid step there is no knee.
+        free_number, next_rate, jump_number, jump = (
+            Integer.ref(), Float.ref(), Integer.ref(), Float.ref()
+        )
+        free_knee = (
+            model.where(FreeKnee(free_number, next_rate))
+            .select(free_number.alias("number"), next_rate.alias("next_rate"))
+            .to_df()
+        )
+        jump_knee = (
+            model.where(JumpKnee(jump_number, jump))
+            .select(jump_number.alias("number"), jump.alias("jump"))
+            .to_df()
+        )
+        if not free_knee.empty:
+            knee_number = int(free_knee["number"].iloc[0])
+            knee_text = (f"the last free improvement; the next costs "
+                         f"${free_knee['next_rate'].iloc[0]:.2f}/patient")
+        elif not jump_knee.empty:
+            knee_number = int(jump_knee["number"].iloc[0])
+            knee_text = f"marginal cost jumps {jump_knee['jump'].iloc[0]:.1f}x beyond this point"
+        else:
+            knee_number = None
+        if knee_number is None:
+            print("\n  No knee: no service improvement has a positive marginal cost.")
+        else:
+            knee = pareto[knee_number - 1]
+            print(f"\n  Knee: Point {knee_number} ({knee['label']}) -- {knee_text}")
+            print(f"  Recommendation: Target {knee['unmet_demand']:.0f} unmet patients "
+                  f"at ${knee['overtime_cost']:.2f} overtime cost -- "
+                  f"further service improvement costs significantly more per patient.")
 
-                # Print nurse assignments at the knee point
-                knee_assignments = model.select(
-                    Nurse.name.alias("nurse"), Shift.name.alias("shift")
-                ).where(
-                    FrontierPoint.position == int(pareto[knee_idx]["position"]),
-                    FrontierPoint.assigns(Nurse, Shift),
-                ).to_df()
-                if not knee_assignments.empty:
-                    print("\n  Knee-point assignments:")
-                    by_shift = knee_assignments.groupby("shift")["nurse"]
+            # Print nurse assignments at the knee point
+            knee_assignments = model.select(
+                Nurse.name.alias("nurse"), Shift.name.alias("shift")
+            ).where(
+                FrontierPoint.position == int(knee["position"]),
+                FrontierPoint.assigns(Nurse, Shift),
+            ).to_df()
+            if not knee_assignments.empty:
+                print("\n  Knee-point assignments:")
+                by_shift = knee_assignments.groupby("shift")["nurse"]
 
-                    for shift, nurses in by_shift:
-                        nurses = ", ".join(sorted(nurses))
-                        print(f"    {shift}: {nurses}")
+                for shift, nurses in by_shift:
+                    nurses = ", ".join(sorted(nurses))
+                    print(f"    {shift}: {nurses}")

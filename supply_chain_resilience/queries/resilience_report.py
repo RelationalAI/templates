@@ -8,27 +8,31 @@ classification, the status and objective of each network flow problem's latest r
 
 from model import (
     Business,
-    Demand,
+    CostChangePct,
     Operation,
-    Shipment,
     Site,
+    SiteCluster,
     baseline,
-    biz_graph,
     biz_num_edges,
     biz_num_nodes,
     eigenvector,
     graph,
     model,
+    num_components,
     num_edges,
+    num_escalated,
+    num_late_shipments,
     num_nodes,
-    reachable_to,
+    num_shipments,
+    num_source_links,
     site_offline,
-    target_customer,
     watch_avoid,
-    wcc,
 )
-from relationalai.semantics import Float, String, where
-from relationalai.semantics.std import aggregates as aggs
+from relationalai.semantics import Float, where
+
+# How many of the top-ranked sites and late-shipment suppliers the report lists.
+TOP_SITES = 8
+TOP_LATE_SUPPLIERS = 5
 
 
 def report_flow(flow, label):
@@ -40,28 +44,11 @@ def report_flow(flow, label):
         print(f"• objective: {round(cost[0], 9)}\n")
     obj = cost[0] if cost and status in ("OPTIMAL", "LOCALLY_SOLVED") else None
 
-    # Extract active flows.
+    # The published count of active flows and the unmet orders and units.
     if obj is not None:
-        value_ref, op_ref, demand_ref = Float.ref(), String.ref(), String.ref()
-        flow_df = (
-            model.select(
-                op_ref.alias("operation_id"),
-                value_ref.alias("flow"),
-            )
-            .where(flow.routes(value_ref, op_ref), value_ref > 0.001)
-            .to_df()
-        )
-        unmet_df = (
-            model.select(
-                demand_ref.alias("demand_id"),
-                value_ref.alias("unmet"),
-            )
-            .where(flow.unmet(value_ref, demand_ref), value_ref > 0.001)
-            .to_df()
-        )
-        n_active = len(flow_df)
-        n_unmet = len(unmet_df)
-        total_unmet = unmet_df["unmet"].sum() if len(unmet_df) > 0 else 0.0
+        n_active = int(model.select(flow.active_flows).to_df().iloc[0, 0])
+        n_unmet = int(model.select(flow.unmet_orders).to_df().iloc[0, 0])
+        total_unmet = float(model.select(flow.unmet_units).to_df().iloc[0, 0])
     else:
         n_active, n_unmet, total_unmet = 0, 0, None
 
@@ -75,20 +62,27 @@ def report_flow(flow, label):
         else:
             print("  All demand satisfied")
 
-    return {"label": label, "status": status, "objective": obj, "unmet": total_unmet}
+    return {
+        "label": label,
+        "problem": flow.name,
+        "status": status,
+        "objective": obj,
+        "unmet": total_unmet,
+    }
 
 
 if __name__ == "__main__":
     # Verify source_business derived relationship populates correctly.
-    sb_df = (
-        model.select(Operation.id.alias("op"), Business.id.alias("biz"))
-        .where(Operation.source_business(Operation, Business))
-        .to_df()
-    )
-    print(f"Source-business links: {len(sb_df)}")
-    if len(sb_df) == 0:
+    n_links = int(model.select(num_source_links).to_df().iloc[0, 0])
+    print(f"Source-business links: {n_links}")
+    if n_links == 0:
         print("WARNING: source_business derived relationship is empty!")
     else:
+        sb_df = (
+            model.select(Operation.id.alias("op"), Business.id.alias("biz"))
+            .where(Operation.source_business(Operation, Business))
+            .to_df()
+        )
         print(f"  Sample: {sb_df.head(5).to_string(index=False)}")
 
     # --------------------------------------------------
@@ -102,20 +96,21 @@ if __name__ == "__main__":
     biz_num_nodes.inspect()
     biz_num_edges.inspect()
 
-    supplier_node = biz_graph.Node.ref()
+    customer, supplier = Business.ref(), Business.ref()
     blast_df = (
-        where(
-            reachable_to(supplier_node, target_customer),
-            supplier_node.business_type == "SUPPLIER",
+        model.select(
+            customer.name.alias("customer"),
+            supplier.id.alias("supplier_id"),
+            supplier.name.alias("supplier"),
         )
-        .select(
-            target_customer.name.alias("customer"),
-            supplier_node.id.alias("supplier_id"),
-            supplier_node.name.alias("supplier"),
-            supplier_node.reliability_score.alias("supplier_reliability"),
-        )
+        .where(Business.upstream_supplier(customer, supplier))
         .to_df()
     )
+    reliability_df = model.select(
+        Business.id.alias("supplier_id"),
+        Business.reliability_score.alias("supplier_reliability"),
+    ).to_df()
+    blast_df = blast_df.merge(reliability_df, on="supplier_id", how="left")
 
     print("\nUpstream supplier dependencies for high-priority customers:")
     if blast_df.empty:
@@ -140,31 +135,17 @@ if __name__ == "__main__":
     num_nodes.inspect()
     num_edges.inspect()
 
-    node_ref = graph.Node.ref("n")
-    comp_ref = graph.Node.ref("comp")
-
-    wcc_df = (
-        where(wcc(node_ref, comp_ref))
-        .select(
-            node_ref.id.alias("site_id"),
-            node_ref.name.alias("site_name"),
-            node_ref.site_type.alias("site_type"),
-            node_ref.region.alias("region"),
-            comp_ref.id.alias("component_id"),
-            aggs.count(node_ref).per(comp_ref).alias("cluster_size"),
-        )
-        .to_df()
-    )
-
-    num_components = wcc_df["component_id"].nunique()
-    print(f"\nConnected components: {num_components}")
-    if num_components == 1:
+    n_clusters = int(model.select(num_components).to_df().iloc[0, 0])
+    print(f"\nConnected components: {n_clusters}")
+    if n_clusters == 1:
         print("UNIFIED NETWORK: All sites in a single connected component")
-    for comp_id in sorted(wcc_df["component_id"].unique()):
-        comp_df = wcc_df[wcc_df["component_id"] == comp_id]
-        size = int(comp_df["cluster_size"].iloc[0])
-        regions = ", ".join(sorted(comp_df["region"].unique()))
-        print(f"  Component {comp_id}: {size} sites ({regions})")
+    cluster_df = model.select(
+        SiteCluster.id.alias("component_id"),
+        SiteCluster.n_sites.alias("n_sites"),
+        SiteCluster.regions.alias("regions"),
+    ).to_df()
+    for _, row in cluster_df.sort_values("component_id").iterrows():
+        print(f"  Component {row['component_id']}: {int(row['n_sites'])} sites ({row['regions']})")
 
     node_eig = graph.Node.ref("ne")
     eig_score = Float.ref("es")
@@ -172,8 +153,7 @@ if __name__ == "__main__":
     eig_df = (
         where(
             eigenvector(node_eig, eig_score),
-            node_eig.site_type != "STORE",
-            node_eig.site_type != "OFFICE",
+            node_eig.centrality_rank <= TOP_SITES,
         )
         .select(
             node_eig.id.alias("site_id"),
@@ -181,14 +161,14 @@ if __name__ == "__main__":
             node_eig.site_type.alias("site_type"),
             node_eig.region.alias("region"),
             eig_score.alias("centrality_score"),
+            node_eig.centrality_rank.alias("rank"),
         )
         .to_df()
-        .sort_values("centrality_score", ascending=False)
-        .reset_index(drop=True)
+        .sort_values("rank")
     )
 
     print("\nTop critical sites (eigenvector centrality):")
-    for _, row in eig_df.head(8).iterrows():
+    for _, row in eig_df.iterrows():
         print(
             f"  {row['site_id']} {row['site_name']} ({row['site_type']}, {row['region']}): "
             f"centrality={row['centrality_score']:.4f}"
@@ -203,29 +183,22 @@ if __name__ == "__main__":
     print("=" * 70)
 
     # Late shipment analysis.
-    supplier_ref = Business.ref()
-    shipments_df = (
-        model.select(
-            Shipment.id.alias("id"),
-            supplier_ref.id.alias("supplier_id"),
-            Shipment.delay_days.alias("delay_days"),
-        )
-        .where(Shipment.supplier(supplier_ref))
-        .to_df()
-    )
-    late_shipments = shipments_df[shipments_df["delay_days"] > 0]
-    total_n = len(shipments_df)
-    late_n = len(late_shipments)
+    total_n = int(model.select(num_shipments).to_df().iloc[0, 0])
+    late_n = int(model.select(num_late_shipments).to_df().iloc[0, 0])
     late_pct = f" ({100 * late_n / total_n:.0f}%)" if total_n else ""
     print(f"\nLate shipments: {late_n} of {total_n}{late_pct}")
     late_by_supplier = (
-        late_shipments.groupby("supplier_id")
-        .size()
-        .reset_index(name="late_count")
-        .sort_values("late_count", ascending=False)
+        model.select(
+            Business.id.alias("supplier_id"),
+            Business.late_shipment_count.alias("late_count"),
+            Business.late_rank.alias("rank"),
+        )
+        .where(Business.late_rank <= TOP_LATE_SUPPLIERS)
+        .to_df()
+        .sort_values("rank")
     )
-    for _, row in late_by_supplier.head(5).iterrows():
-        print(f"  {row['supplier_id']}: {row['late_count']} late shipments")
+    for _, row in late_by_supplier.iterrows():
+        print(f"  {row['supplier_id']}: {int(row['late_count'])} late shipments")
 
     # Read the risk classes from the same rules the solves block and surcharge on:
     # avoid (both flags) and watch level (either flag, a superset of avoid).
@@ -242,26 +215,18 @@ if __name__ == "__main__":
         .to_df()
     )
 
+    risk_df = model.select(Business.id.alias("id"), Business.risk_class.alias("risk_class")).to_df()
+    all_biz_df = all_biz_df.merge(risk_df, on="id", how="left")
+    markers = {"avoid": "[X]", "watch": "[!]", "reliable": "[ ]"}
+
     print("\nSupplier risk classification:")
     for _, row in all_biz_df.sort_values("reliability").iterrows():
-        biz_id = row["id"]
-        if biz_id in avoid_ids:
-            rc, marker = "avoid", "[X]"
-        elif biz_id in watch_ids:
-            rc, marker = "watch", "[!]"
-        else:
-            rc, marker = "reliable", "[ ]"
         print(
-            f"  {marker} {biz_id} {row['name']}: "
-            f"reliability={row['reliability']:.2f}, class={rc}"
+            f"  {markers[row['risk_class']]} {row['id']} {row['name']}: "
+            f"reliability={row['reliability']:.2f}, class={row['risk_class']}"
         )
 
-    esc_df = (
-        model.select(aggs.count(Demand).alias("count"))
-        .where(Demand.is_escalated())
-        .to_df()
-    )
-    esc_n = int(esc_df["count"].iloc[0]) if len(esc_df) > 0 else 0
+    esc_n = int(model.select(num_escalated).to_df().iloc[0, 0])
     print(f"\nEscalated demands (HIGH priority): {esc_n}")
 
     # --------------------------------------------------
@@ -321,6 +286,7 @@ if __name__ == "__main__":
     print(f"  {'-' * 65}")
 
     baseline_obj = results[0]["objective"]
+    pct_ref = Float.ref()
     for r in results:
         name = canonical_names[r["label"]]
         # A scenario with no solution has no cost or unmet demand to compare.
@@ -329,7 +295,12 @@ if __name__ == "__main__":
         delta = ""
         if r["label"] != "Baseline":
             if baseline_obj and r["objective"] is not None:
-                pct = (r["objective"] - baseline_obj) / baseline_obj * 100
+                pct = float(
+                    model.where(CostChangePct(r["problem"], pct_ref))
+                    .select(pct_ref)
+                    .to_df()
+                    .iloc[0, 0]
+                )
                 delta = f" (+{pct:.1f}%)" if pct > 0 else f" ({pct:.1f}%)"
             else:
                 delta = " (N/A)"

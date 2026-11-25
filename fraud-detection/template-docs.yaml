@@ -76,9 +76,8 @@ guided_walkthrough:
       title: Connect transactions to the account network
       explanation: |-
         Python’s read_csv function reads the two CSV data sources into DataFrames
-        named accounts_df and transactions_df. The source loader also estimates
-        the time needed to review each transfer from its amount. Account.new(...)
-        and Transaction.new(...) map the imported records to instances of the
+        named accounts_df and transactions_df. Account.new(...) and
+        Transaction.new(...) map the imported records to instances of the
         Account and Transaction concepts shown in the Model Explorer.
 
         Transaction.sender(...) and Transaction.receiver(...) define
@@ -97,16 +96,15 @@ guided_walkthrough:
         transactions_df:
           anchor:
             start: transactions_df = read_csv
-            end: small_audit_cost_hours,
-            end_offset: 1
+            end: transactions_df = read_csv
         Account.new(...):
           anchor:
             start: model.define(Account.new(model.data(accounts_df).to_schema()))
             end: model.define(Account.new(model.data(accounts_df).to_schema()))
         Transaction.new(...):
           anchor:
-            start: model.define(Transaction.new(model.data(transactions_df).to_schema()))
-            end: model.define(Transaction.new(model.data(transactions_df).to_schema()))
+            start: model.define(Transaction.new(model.data(transactions_df).to_schema(
+            end: model.define(Transaction.new(model.data(transactions_df).to_schema(
         Transaction.sender(...):
           anchor:
             start: model.define(Transaction.sender(Transaction, Account)).where(
@@ -131,7 +129,7 @@ guided_walkthrough:
 
         acct_graph.pagerank() runs a graph algorithm that scores each account based on which other accounts send it money, giving more weight to connections from higher-scoring senders. Account.pagerank stores the score as an account property, which the fraud classifier uses alongside payment details to estimate whether a transfer may be fraudulent.
       focus:
-        file: model/reasoning.py
+        file: model/account_signals.py
         anchors:
           - start: acct_graph = Graph(
             end: model.define(_a_pr.pagerank(_score_pr)).where(pagerank_rel(_a_pr, _score_pr))
@@ -167,7 +165,7 @@ guided_walkthrough:
 
         count(Transaction).per(Account) counts transfers by account, and the .where(...) condition matches each transfer’s sender ID to an account ID so that only outgoing transfers contribute. The classifier uses the result with the network score from step 2 and payment details to estimate whether a transfer may be fraudulent.
       focus:
-        file: model/reasoning.py
+        file: model/account_signals.py
         anchors:
           - start: Account.activity_count = model.Property(
             end: )).where(Transaction.name_orig == Account.account_id)
@@ -199,7 +197,7 @@ guided_walkthrough:
 
         gnn.predictions(domain=Test) assigns a predicted fraud probability to each transaction in the test set each time the deployed model refreshes. The next step combines that probability with the source data’s fraud flag to help prioritize cases for review.
       focus:
-        file: model/reasoning.py
+        file: model/fraud_classifier.py
         anchors:
           - start: gnn = GNN(
             end: Transaction.predictions = gnn.predictions(domain=Test)
@@ -228,7 +226,7 @@ guided_walkthrough:
 
         The combined score helps prioritize reviews, but it does not prove that a transfer is fraudulent. The next step uses the score alongside transfer amount and available investigator time to choose cases for review.
       focus:
-        file: model/reasoning.py
+        file: model/alert_scores.py
         anchors:
           - start: AuditCandidate = model.Concept(
             end: Transaction.transaction_id == AuditCandidate.transaction_id,
@@ -258,11 +256,11 @@ guided_walkthrough:
     - id: allocate-investigation-capacity
       title: Choose the highest-value investigations within capacity
       explanation: |-
-        problem.solve_for(...) defines a decision variable: a yes-or-no choice to investigate each transfer with an alert score. Two constraints narrow those choices: an investigator-hours budget caps total review time, and a receiver-account cap limits how many selected transfers go to the same account.
+        problem.solve_for(...) defines a decision variable: a yes-or-no choice to investigate each transfer with an alert score. Two constraints narrow those choices: an investigator-hours budget caps total review time, and a receiver-account cap limits how many selected transfers go to the same account. A rule on each transfer’s amount sets its review time, Transaction.audit_cost: a transfer over $1M takes five hours, any other one hour.
 
-        problem.maximize(...) seeks the set of reviews with the most estimated loss averted, calculated from each selected transfer’s alert score and amount. problem.configure(...) sets the solver the deployed model runs on each refresh to find a choice that satisfies both constraints instead of simply ranking transfers by score.
+        problem.maximize(...) seeks the set of reviews with the most estimated loss averted, the sum of each selected transfer’s AuditCandidate.expected_loss: its alert score times its amount. problem.configure(...) sets the solver the deployed model runs on each refresh to find a choice that satisfies both constraints instead of simply ranking transfers by score.
       focus:
-        file: model/reasoning.py
+        file: model/investigation_queue.py
         anchors:
           - start: problem.solve_for(
             end: problem.configure("highs", time_limit_sec=120)
@@ -287,7 +285,7 @@ guided_walkthrough:
         problem.maximize(...):
           anchor:
             start: problem.maximize(sum(
-            end: Txn_obj.transaction_id == Cand_obj.transaction_id,
+            end: Cand_obj.x_audit(sel_obj),
             end_offset: 1
         problem.configure(...):
           anchor:

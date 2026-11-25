@@ -22,6 +22,11 @@ targets of the grid, adaptive, and dichotomic drivers are rules over earlier sol
 (values and shadow prices), so one refresh runs the whole sensitivity-guided frontier. Each
 solve publishes its status and a FrontierPoint per scenario.
 
+Modules: `compliance_flags.py` (Stage 1), `correlation_clusters.py` (Stage 2),
+`regime_covariance.py` (the base and crisis covariance), and `efficient_frontier.py` (Stage 3,
+the solves and the frontier points they publish). Each module imports the modules whose
+declarations it reads.
+
 Run:
     `rai models deploy --path model` deploys this package to the schemas in
     raiconfig.yaml and waits for its first refresh, which runs the rules, the graph,
@@ -38,18 +43,26 @@ Output:
         then a base-vs-crisis volatility table per frontier point.
 """
 
-from .reasoning import (
-    ADAPTIVE_SOLVES,
+from .compliance_flags import POSITION_LIMIT, SECTOR_LIMIT, SectorExposure
+from .correlation_clusters import (
     CORR_THRESHOLD,
-    CRISIS_ALPHA,
+    Cluster,
+    inter_cluster_correlation,
+    intra_cluster_correlation,
+    num_clusters,
+    num_edges,
+    num_representatives,
+    num_stocks,
+)
+from .efficient_frontier import (
+    ADAPTIVE_SOLVES,
     DICHOTOMIC_SOLVES,
     GRID_SOLVES,
     N_SOLVES,
-    POSITION_LIMIT,
     REFERENCE_SCENARIO,
-    SECTOR_LIMIT,
     SolveStatus,
 )
+from .regime_covariance import CRISIS_ALPHA
 from .schema import (
     Account,
     FrontierPoint,
@@ -76,14 +89,22 @@ __all__ = [
     "REFERENCE_SCENARIO",
     "SECTOR_LIMIT",
     "Account",
+    "Cluster",
     "FrontierPoint",
     "Holding",
     "Regime",
     "Scenario",
     "Sector",
+    "SectorExposure",
     "SolveStatus",
     "Stock",
     "Transaction",
     "User",
+    "inter_cluster_correlation",
+    "intra_cluster_correlation",
     "model",
+    "num_clusters",
+    "num_edges",
+    "num_representatives",
+    "num_stocks",
 ]
