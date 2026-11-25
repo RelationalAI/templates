@@ -8,41 +8,23 @@ downstream depth, the deepest maximal dependency chains, and the chain of owners
 along the single longest chain (the upgrade / incident blast radius).
 """
 
-from model import MAX_DEPTH, DependencyPathStep, Feature, model
-from relationalai.semantics import Hash, Integer
+from model import (
+    MAX_DEPTH,
+    DependencyPathStep,
+    Feature,
+    LongestChain,
+    MaximalChain,
+    NumPaths,
+    PathSummary,
+    model,
+)
+from relationalai.semantics import Hash, Integer, String
 
 if __name__ == "__main__":
     print("=== IT Dependency Mapping: downstream paths ===")
 
-    # The node sequence of each path (for display-side reassembly), as the model
-    # publishes it.
-    path, step = Hash.ref(), Integer.ref()
-    paths_df = (
-        model.where(DependencyPathStep(path, Feature, step))
-        .select(
-            path.alias("path_id"),
-            step.alias("step"),
-            Feature.id.alias("feature_id"),
-            Feature.name.alias("feature_name"),
-        )
-        .to_df()
-    )
-    paths_df = paths_df.sort_values(["path_id", "step"])
-
-    # Reassemble each path: order steps by node index, join the visited features into
-    # an ordered chain. The hop count is the max node index (a path over N edges has
-    # nodes at indices 0..N). String-joining names into a chain label is a pandas job.
-    chains = (
-        paths_df.groupby("path_id")
-        .agg(
-            hops=("step", "max"),
-            node_ids=("feature_id", lambda s: tuple(s)),
-            chain=("feature_name", lambda s: " -> ".join(s)),
-        )
-        .reset_index()
-    )
-
-    print(f"\nTotal downstream dependency paths (1-{MAX_DEPTH} hops): {len(chains)}")
+    total_paths = int(model.select(NumPaths).to_df().iloc[0, 0])
+    print(f"\nTotal downstream dependency paths (1-{MAX_DEPTH} hops): {total_paths}")
 
     # --------------------------------------------------
     # Per-feature path counts and longest downstream depth (in-PyRel aggregates)
@@ -55,7 +37,7 @@ if __name__ == "__main__":
         Feature.deploy_tier.alias("deploy_tier"),
     ).to_df()
 
-    # Paths starting at each feature, counted in the model (see model/reasoning.py).
+    # Paths starting at each feature, counted in the model (see model/downstream_paths.py).
     paths_started = Integer.ref()
     paths_started_df = (
         model.where(Feature.paths_downstream(paths_started))
@@ -63,25 +45,17 @@ if __name__ == "__main__":
         .to_df()
     )
 
-    # Read the persisted depth back for the display table. Features with no outgoing
-    # path (the leaf dashboards) have no max_downstream_depth row -- fill them as 0.
+    # Read the persisted depth back for the display table; leaf features carry 0.
     max_depth_df = model.select(
         Feature.id.alias("feature_id"),
         Feature.max_downstream_depth.alias("max_downstream_depth"),
     ).to_df()
 
-    # Build the per-feature display table from the query results above (NOT from a
-    # pandas groupby on chains): paths_downstream from the count query, depth from the
-    # persisted property.
+    # Build the per-feature display table from the query results above: paths_downstream
+    # from the count query, depth from the persisted property.
     feature_summary = feature_df.merge(
         paths_started_df, on="feature_id", how="left"
     ).merge(max_depth_df, on="feature_id", how="left")
-    feature_summary["paths_downstream"] = (
-        feature_summary["paths_downstream"].fillna(0).astype(int)
-    )
-    feature_summary["max_downstream_depth"] = (
-        feature_summary["max_downstream_depth"].fillna(0).astype(int)
-    )
 
     print("\n=== Per-feature downstream reach ===")
     print(
@@ -99,34 +73,31 @@ if __name__ == "__main__":
     # --------------------------------------------------
     # Maximal chains: longest non-extendable dependency chains
     # --------------------------------------------------
-    # A path is maximal when its node sequence is not a contiguous sub-chain of any
-    # other enumerated path -- i.e. it cannot be extended upstream or downstream.
-    # This collapses the full path set to the small set of end-to-end chains.
+    # The model marks the paths no other enumerated path extends upstream or downstream,
+    # collapsing the full path set to the small set of end-to-end chains.
 
-    all_sequences = list(chains["node_ids"])
-
-
-    def is_sub_chain(short, long):
-        """True if `short` is a contiguous sub-sequence of the longer `long`."""
-        if len(short) >= len(long):
-            return False
-        return any(
-            long[i : i + len(short)] == short
-            for i in range(len(long) - len(short) + 1)
-        )
-
-
-    maximal = chains[
-        chains["node_ids"].apply(
-            lambda seq: not any(
-                is_sub_chain(seq, other) for other in all_sequences if other != seq
-            )
-        )
-    ].copy()
-    maximal = maximal.sort_values(["hops", "chain"], ascending=[False, True])
+    path, hops, n_features, n_owners, chain = (
+        Hash.ref(),
+        Integer.ref(),
+        Integer.ref(),
+        Integer.ref(),
+        String.ref(),
+    )
+    summary_columns = (
+        hops.alias("hops"),
+        n_features.alias("n_features"),
+        n_owners.alias("n_owners"),
+        chain.alias("chain"),
+    )
+    maximal = (
+        model.where(MaximalChain(path), PathSummary(path, hops, n_features, n_owners, chain))
+        .select(*summary_columns)
+        .to_df()
+        .sort_values(["hops", "chain"], ascending=[False, True])
+    )
 
     print(
-        f"\n=== Maximal dependency chains ({len(maximal)} of {len(chains)} paths) ==="
+        f"\n=== Maximal dependency chains ({len(maximal)} of {total_paths} paths) ==="
     )
     for _, r in maximal.iterrows():
         print(f"  {r['hops']} hops: {r['chain']}")
@@ -135,23 +106,35 @@ if __name__ == "__main__":
     # Owners along the single longest chain (blast radius)
     # --------------------------------------------------
     # The longest chain is the worst-case propagation path: a change at its root has
-    # to clear every owner along the way. Join owner metadata onto its features.
+    # to clear every owner along the way. The model publishes its span; its features
+    # are read back in step order.
 
-    owner_by_id = dict(zip(feature_df["feature_id"], feature_df["owner"]))
-    name_by_id = dict(zip(feature_df["feature_id"], feature_df["feature_name"]))
-    tier_by_id = dict(zip(feature_df["feature_id"], feature_df["deploy_tier"]))
-
-    longest = maximal.iloc[0]
-    longest_ids = longest["node_ids"]
-    distinct_owners = len({owner_by_id[i] for i in longest_ids})
+    longest = (
+        model.where(LongestChain(path), PathSummary(path, hops, n_features, n_owners, chain))
+        .select(*summary_columns)
+        .to_df()
+        .iloc[0]
+    )
+    step = Integer.ref()
+    longest_features = (
+        model.where(LongestChain(path), DependencyPathStep(path, Feature, step))
+        .select(
+            step.alias("step"),
+            Feature.name.alias("feature_name"),
+            Feature.owner.alias("owner"),
+            Feature.deploy_tier.alias("deploy_tier"),
+        )
+        .to_df()
+        .sort_values("step")
+    )
 
     print(f"\n=== Longest dependency chain: {longest['hops']} hops ===")
     print(f"  Chain: {longest['chain']}")
-    print(f"  Spans {len(longest_ids)} features and {distinct_owners} owners:")
-    for i in longest_ids:
-        print(f"    - {name_by_id[i]:<30} owner={owner_by_id[i]:<14} tier={tier_by_id[i]}")
+    print(f"  Spans {longest['n_features']} features and {longest['n_owners']} owners:")
+    for _, f in longest_features.iterrows():
+        print(f"    - {f['feature_name']:<30} owner={f['owner']:<14} tier={f['deploy_tier']}")
     print(
-        f"\n  A change at '{name_by_id[longest_ids[0]]}' propagates through "
-        f"{len(longest_ids) - 1} downstream feature(s) before reaching "
-        f"'{name_by_id[longest_ids[-1]]}'."
+        f"\n  A change at '{longest_features['feature_name'].iloc[0]}' propagates through "
+        f"{longest['hops']} downstream feature(s) before reaching "
+        f"'{longest_features['feature_name'].iloc[-1]}'."
     )

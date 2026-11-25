@@ -44,7 +44,7 @@ Built using RelationalAI's **variable-length path enumeration** (`model.path(...
 
 ## What's included
 
-- **Model**: the features, dependency edges, path pattern, and depth rule in the `model/` package (`schema.py` declares the concepts, `source.py` loads the sample data, `reasoning.py` states the path pattern and depth rule), which `rai models deploy --path model` deploys to your Snowflake account.
+- **Model**: the features, dependency edges, path pattern, and depth rule in the `model/` package (`schema.py` declares the concepts, `source.py` loads the sample data, `downstream_paths.py` states the path pattern, depth rule, and path summaries, `maximal_chains.py` marks the maximal and longest chains), which `rai models deploy --path model` deploys to your Snowflake account.
 - **Query**: `queries/dependency_chain_report.py` -- prints the path counts, maximal chains, and owner blast radius from the deployed model.
 - **Runbook**: `runbook.md` — a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the code in `model/`.
 - **Data**: `data/features.csv` (14 features across tiers) and `data/dependencies.csv` (15 dependency edges)
@@ -162,7 +162,8 @@ it-dependency-mapping/
 │   ├── __init__.py             # exports of the deployed model
 │   ├── schema.py               # Feature concept and contributes_to relationship
 │   ├── source.py               # loads the sample CSVs
-│   └── reasoning.py            # path pattern and depth rule
+│   ├── downstream_paths.py     # path pattern, depth rule, path counts and summaries
+│   └── maximal_chains.py       # maximal chains and the longest one
 ├── queries/
 │   └── dependency_chain_report.py   # report printed from the deployed model
 └── data/
@@ -210,13 +211,13 @@ CSV files --> Define Feature + contributes_to --> Enumerate downstream paths -->
 
 **Load the ontology.** A `Feature` is any node in the estate -- a raw source, pipeline, feature job, service, or dashboard -- with `id`, `name`, `owner`, and `deploy_tier` loaded from `data/features.csv`. The `contributes_to` self-relationship records that an upstream feature feeds a downstream one, forming the dependency DAG from `data/dependencies.csv`.
 
-**Enumerate downstream paths.** A variable-length traversal of 1 to `MAX_DEPTH` `contributes_to` edges, enumerated with `.all().paths()`, walks every downstream dependency path. The model publishes each path as one row per visited node, and the number of paths that start at each feature (a feature with no downstream path has no count or depth row, and the report shows it as 0); grouping by path reassembles the ordered chain, and the hop count comes from the maximum node index.
+**Enumerate downstream paths.** A variable-length traversal of 1 to `MAX_DEPTH` `contributes_to` edges, enumerated with `.all().paths()`, walks every downstream dependency path. The model publishes each path as one row per visited node, and the number of paths that start at each feature (a feature with no downstream path has a count and depth of 0). It also publishes a summary of each path: its hop count (the maximum node index), number of features and distinct owners, and its chain label, the feature names in step order joined with `->`.
 
 **Persist longest downstream depth.** The longest path starting at each feature is its downstream depth. RelationalAI computes it in PyRel — a max over path length per source endpoint — and defines it straight onto the feature as a first-class `max_downstream_depth` relationship, with no DataFrame round-trip, so later queries can rank features by reach without re-enumerating paths.
 
-**Reduce to maximal chains.** The full path set contains every sub-chain. A path is *maximal* when its node sequence is not a contiguous sub-chain of any other enumerated path -- it cannot be extended upstream or downstream. Filtering to maximal chains leaves only the end-to-end propagation paths. The single longest maximal chain is the worst-case blast radius: joining owner metadata onto its features shows every person a change at the root would have to clear before it reaches the final consumer.
+**Reduce to maximal chains.** The full path set contains every sub-chain. A path is *maximal* when its node sequence is not a contiguous sub-chain of any other enumerated path -- it cannot be extended upstream or downstream. The model marks the maximal chains, which leaves only the end-to-end propagation paths, and the single longest one (most hops, ties by chain label). The longest maximal chain is the worst-case blast radius: its owner count and the owner metadata of its features show every person a change at the root would have to clear before it reaches the final consumer.
 
-See `model/reasoning.py` for the implementation, `queries/dependency_chain_report.py` for the report, and `runbook.md` for the skill-driven reproduction.
+See `model/downstream_paths.py` and `model/maximal_chains.py` for the implementation, `queries/dependency_chain_report.py` for the report, and `runbook.md` for the skill-driven reproduction.
 
 ## Expected output
 
@@ -253,7 +254,7 @@ The deepest chain runs five hops from a raw source all the way to a downstream d
 
 ### Tune parameters
 
-- `MAX_DEPTH` (default `8`, at the top of `model/reasoning.py`) bounds the traversal length. Raise it if your estate has longer chains than the sample; lower it to cap enumeration on a denser graph. Chains longer than `MAX_DEPTH` are not enumerated, so below the estate's longest chain the report's maximal chains are maximal only within that bound, not end to end.
+- `MAX_DEPTH` (default `8`, at the top of `model/downstream_paths.py`) bounds the traversal length. Raise it if your estate has longer chains than the sample; lower it to cap enumeration on a denser graph. Chains longer than `MAX_DEPTH` are not enumerated, so below the estate's longest chain the report's maximal chains are maximal only within that bound, not end to end.
 
 ### Extend the model
 

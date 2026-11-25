@@ -1,6 +1,7 @@
-"""Downstream dependency paths: path enumeration and each feature's longest downstream depth."""
+"""Downstream dependency paths: path enumeration, each feature's path count and longest downstream
+depth, and each path's hop count, feature count, owner count, and chain label."""
 
-from relationalai.semantics import Hash, Integer
+from relationalai.semantics import Hash, Integer, String
 from relationalai.semantics.std import aggregates as aggs
 
 from .schema import Feature, model
@@ -45,3 +46,34 @@ DependencyPathStep = model.Relationship(
 model.where(p).define(DependencyPathStep(p, Feature(p.nodes), p.nodes["index"]))
 Feature.paths_downstream = model.Relationship(f"{Feature} starts {Integer:paths_downstream} paths")
 model.define(src.paths_downstream(aggs.count(p).per(src))).where(p)
+
+# A feature with no outgoing edge starts no path, so its count and depth are zero.
+Feature.has_downstream = model.Relationship(f"{Feature} has a downstream feature")
+Feature.has_upstream = model.Relationship(f"{Feature} has an upstream feature")
+_next, _previous = Feature.ref(), Feature.ref()
+model.where(Feature.contributes_to(_next)).define(Feature.has_downstream())
+model.where(_previous.contributes_to(Feature)).define(Feature.has_upstream())
+model.where(model.not_(Feature.has_downstream())).define(
+    Feature.paths_downstream(0), Feature.max_downstream_depth(0)
+)
+
+# The number of enumerated paths.
+NumPaths = model.Relationship(f"the estate has {Integer:num_paths} downstream dependency paths")
+model.define(NumPaths(aggs.count(p))).where(p)
+
+# Each path's hop count (its last step), number of features, number of distinct owners, and chain
+# label: the feature names in step order joined with " -> ".
+PathSummary = model.Relationship(
+    f"dependency path {Hash:path} has {Integer:hops} hops over {Integer:n_features} features "
+    f"with {Integer:n_owners} owners as chain {String:chain}"
+)
+_path, _node, _step = Hash.ref(), Feature.ref(), Integer.ref()
+model.where(DependencyPathStep(_path, _node, _step)).define(
+    PathSummary(
+        _path,
+        aggs.max(_step).per(_path),
+        aggs.count(_step).per(_path),
+        aggs.count(_node.owner).per(_path),
+        aggs.string_join(_node.name, sep=" -> ", index=_step).per(_path),
+    )
+)
