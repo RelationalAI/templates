@@ -175,7 +175,7 @@ if __name__ == "__main__":
                         max_jump, knee_idx = rates[j+1] / rates[j], j + 1
                 knee_text = f"marginal cost jumps {max_jump:.1f}x beyond this point"
             if knee_idx is None:
-                print("\n  No knee: no sampled step costs overtime.")
+                print("\n  No knee: no service improvement has a positive marginal cost.")
             else:
                 print(f"\n  Knee: Point {knee_idx + 1} ({pareto[knee_idx]['label']}) -- {knee_text}")
                 print(f"  Recommendation: Target {pareto[knee_idx]['unmet_demand']:.0f} unmet patients "
