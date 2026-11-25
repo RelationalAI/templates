@@ -171,7 +171,7 @@ Use this sequence to deploy the model, train the classifier, and print the audit
    python train.py
    ```
 
-   Then refresh the deployed model so it scores the test transfers with this version and solves the audit selection over those scores: `CALL <DB>.FRAUD_DETECTION_META._INTERNAL_REFRESH_MODEL('standard', NULL);` with your database in place of `<DB>`. The registry refuses to overwrite a version, so to retrain, set a new `version` in `raiconfig.yaml` first.
+   Then refresh the deployed model so it scores the test transfers with this version and solves the audit selection over those scores: `CALL DB.FRAUD_DETECTION_META._INTERNAL_REFRESH_MODEL('standard', NULL);` with your database in place of `DB`. The registry refuses to overwrite a version, so to retrain, set a new `version` in `raiconfig.yaml` first.
 
 7. **Query the results**
 
