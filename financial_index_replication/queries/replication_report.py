@@ -10,17 +10,18 @@ with date, index_return, and replica_return columns for downstream plotting.
 """
 
 import os
+from math import sqrt
 
+import pandas as pd
 from model import (
-    BASELINE_NAMES,
     DATA_DIR,
     MAX_ADV_PARTICIPATION,
     MAX_WEIGHT,
+    MONTHS_PER_YEAR,
     N_REPLICATION_NAMES,
     PORTFOLIO_VALUE,
     SECTOR_ACTIVE_BAND,
     AnnualizedTrackingError,
-    BaselineTrackingError,
     ImpliedTurnover,
     MeanAbsResidual,
     ReturnMonth,
@@ -103,6 +104,15 @@ if __name__ == "__main__":
         .pivot(index="date", columns="ticker", values="return")
         .sort_index()
     )
+    index_series = (
+        model.select(
+            ReturnMonth.date.alias("date"),
+            ReturnMonth.index_return.alias("index_return"),
+        )
+        .to_df()
+        .set_index("date")
+        .sort_index()
+    )
     weights = solution_df.set_index("ticker")["weight"]
     # A zero-weight stock needs no return history; a held one needs a return every month.
     weights = weights[weights != 0]
@@ -156,20 +166,40 @@ if __name__ == "__main__":
     print(f"Mean abs monthly residual: {published(MeanAbsResidual):.4%}")
     print(f"Implied turnover: {published(ImpliedTurnover):.2%}")
 
-    replica_returns_csv = DATA_DIR / "replica_returns.csv"
-    (
-        model.where(ReturnMonth.date == TrackingMonth.date)
-        .select(
-            ReturnMonth.date.alias("date"),
-            ReturnMonth.index_return.alias("index_return"),
+    # Simple benchmark: equal-weight the 20 most correlated stocks. It stays in pandas, whose
+    # ranking keeps a stock with an undefined correlation (constant returns) last.
+    top_corr_ids = (
+        returns_wide
+        .corrwith(index_series["index_return"])
+        .abs()
+        .sort_values(ascending=False)
+        .head(20)
+        .index
+    )
+    baseline_returns = returns_wide[top_corr_ids].mean(axis=1)
+    baseline_diff = baseline_returns - index_series["index_return"]
+
+    baseline_tracking_error = sqrt((baseline_diff ** 2).mean()) * sqrt(
+        MONTHS_PER_YEAR
+    )
+
+    # Every index month is written; a month without stock returns has an empty replica return.
+    replica_returns = (
+        model.select(
+            TrackingMonth.date.alias("date"),
             TrackingMonth.replica_return.alias("replica_return"),
         )
         .to_df()
-        .sort_values("date")
-        .to_csv(replica_returns_csv, index=False)
+        .set_index("date")["replica_return"]
     )
+    replica_returns_csv = DATA_DIR / "replica_returns.csv"
+    pd.DataFrame({
+        "date": index_series.index,
+        "index_return": index_series["index_return"].values,
+        "replica_return": replica_returns.reindex(index_series.index).values,
+    }).to_csv(replica_returns_csv, index=False)
 
     print("\n=== Baseline Comparison ===")
-    print(f"Baseline: equal-weight top-{BASELINE_NAMES} stocks by full-history correlation")
-    print(f"Baseline annualized tracking error: {published(BaselineTrackingError):.2%}")
+    print("Baseline: equal-weight top-20 stocks by full-history correlation")
+    print(f"Baseline annualized tracking error: {baseline_tracking_error:.2%}")
     print(f"\nWrote benchmark-vs-replica returns to: {os.path.relpath(replica_returns_csv)}")
