@@ -1,4 +1,5 @@
-"""Hospital staffing decision problems: two anchor solves and an epsilon-constraint sweep between them."""
+"""Shift staffing decision problems: two anchor solves and an epsilon-constraint sweep between
+them."""
 
 from relationalai.semantics import Float, String, std, sum
 from relationalai.semantics.reasoners.prescriptive import Problem

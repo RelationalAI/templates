@@ -33,7 +33,7 @@ Assignment = Concept("Assignment", identify_by={"availability": Availability})
 Assignment.x_assigned = Property(f"{Assignment} is {Float:assigned}")
 
 # Epsilon-constraint points: SweepPoint i bounds total unmet demand by its eps_unmet,
-# a rule over the two anchor solves' results (model/reasoning.py).
+# a rule over the two anchor solves' results (model/shift_staffing.py).
 SweepPoint = Concept("SweepPoint", identify_by={"index": Integer})
 SweepPoint.eps_unmet = Property(f"{SweepPoint} allows {Float:eps_unmet}")
 
