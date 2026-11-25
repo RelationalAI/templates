@@ -55,7 +55,7 @@ if __name__ == "__main__":
             Candidate.book_id.alias("book_id"),
             Candidate.path_count_total.alias("path_count_total"),
         )
-        .where(Candidate.is_unread())
+        .where(model.not_(Candidate.is_read()))
         .to_df()
     )
     # The book attributes, authorship, subjects and users all come from the

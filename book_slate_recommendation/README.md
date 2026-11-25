@@ -320,7 +320,7 @@ The model enforces ten constraints. If the data is too sparse or too clustered, 
 5. **Missing edges.** Every picked book must have at least one `Book.about(Subject)` and one `Book.written_by(Author)` row, or the diversity and uniqueness caps silently exempt it.
 6. **Hero pin.** Each user needs at least one candidate whose book has `triangle_count >= HERO_EMBEDDEDNESS_THRESHOLD`, or there is no eligible book for slot 1. The report's per-user candidate floor check names users with no hero-eligible candidate; either lower `HERO_EMBEDDEDNESS_THRESHOLD` or densify the similarity input.
 
-The report first runs a Python-level check that reads the unread candidates (`Candidate.is_unread`) from the deployed model and stops with an error naming the affected users per shortfall, with a strategy block keyed by which condition fired. It also prints an unread-candidate-count table before the solve result.
+The report first runs a Python-level check that reads the unread candidates (those without `Candidate.is_read`) from the deployed model and stops with an error naming the affected users per shortfall, with a strategy block keyed by which condition fired. It also prints an unread-candidate-count table before the solve result.
 
 </details>
 

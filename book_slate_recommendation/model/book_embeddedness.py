@@ -6,16 +6,13 @@ from relationalai.semantics.reasoners.graph import Graph
 from .schema import Book, model
 
 # --------------------------------------------------
-# Stage 1: Graph reasoner -- structural embeddedness over book-similarity
+# Stage 2: Graph reasoner -- structural embeddedness over book-similarity
 #
-# Per-Book triangle count over the similarity graph, used by
-# ``hero_pin_ic`` to pin slot 1 (the highest-engagement position) to
-# a structurally-central pick. The triangle-count signal is graph-
-# derived (it depends on the similarity-graph topology), so unlike a
-# per-Book popularity scalar, it cannot be supplied externally
-# without reconstructing the graph -- which is what makes this an
-# irreducible Graph-reasoner contribution, not just a data-layer
-# input.
+# Per-Book triangle count over the similarity graph, which the hero pin
+# (``hero_pin_ic`` in slate_selection.py) uses to keep slot 1, the
+# highest-engagement position, for a structurally central pick. The count
+# depends on the graph's topology, so unlike a per-Book popularity scalar it
+# cannot be supplied as a data-layer input.
 # --------------------------------------------------
 
 # Book-Book similarity graph derived from shared authors / subjects.
@@ -37,13 +34,8 @@ model.define(sim_graph.Edge.new(src=src_g, dst=dst_g)).where(
 )
 
 # Triangle count: per-Book count of similar_to triangles the book
-# participates in -- a structural-embeddedness measure. Used by
-# ``hero_pin_ic`` below to pin the hero slot (slot 1) to a densely-
-# embedded book, distinguishing books central to dense neighborhoods
-# from books that sit on isolated edges of the similarity graph.
-# Triangle count is graph-derived: it depends on the topology of
-# ``Book.similar_to``, not on a per-book scalar that could be
-# supplied externally.
+# participates in, which distinguishes books central to dense neighborhoods
+# from books on isolated edges of the similarity graph.
 Book.triangle_count = model.Property(f"{Book} has structural embeddedness {Integer:triangle_count}")
 triangle_rel = sim_graph.triangle_count()
 b_tc = Book.ref()

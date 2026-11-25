@@ -55,7 +55,7 @@ model.define(Item.connected_to(b_s1, b_s2)).where(Book.similar_to(b_s1, b_s2))
 model.define(Item.connected_to(b_s2, b_s1)).where(Book.similar_to(b_s1, b_s2))
 
 # --------------------------------------------------
-# Bounded KG walks via the paths library (architectural centerpiece)
+# Stage 1: Bounded KG walks via the paths library (architectural centerpiece)
 #
 # This is the load-bearing stage. The Candidate concept is derived
 # from the path walker; without paths there are no candidates and no
@@ -170,14 +170,12 @@ model.define(Candidate.path_count_total(c, n)).where(
     n == c.path_count_via_author + c.path_count_via_subject + c.path_count_via_kg_walk,
 )
 
-# Already-read candidates: the user has read the book. A candidate the user has
-# not read is unread, the only kind the slate can pick.
+# Already-read candidates: the user has read the book. Only a candidate the user
+# has not read can be picked for the slate.
 Candidate.is_read = model.Relationship(f"{Candidate} is a book its user has read")
-Candidate.is_unread = model.Relationship(f"{Candidate} is a book its user has not read")
 u_read, b_read = User.ref(), Book.ref()
 model.where(
     User.read(u_read, b_read, Integer.ref()),
     Candidate.user_id == u_read.id,
     Candidate.book_id == b_read.id,
 ).define(Candidate.is_read())
-model.where(model.not_(Candidate.is_read())).define(Candidate.is_unread())

@@ -54,7 +54,7 @@ WEAK_EXPLANATION_THRESHOLD = 2
 HERO_EMBEDDEDNESS_THRESHOLD = 4
 
 # --------------------------------------------------
-# Stage 2: Prescriptive reasoner -- CSP slate selection (MiniZinc)
+# Stage 3: Prescriptive reasoner -- CSP slate selection (MiniZinc)
 #
 # Decision: ``Candidate.slot`` ∈ {1, 2, ..., K, K+1}. Slot 1..K are
 # slate positions (1 = top of row); slot K+1 is the unpicked sentinel.
