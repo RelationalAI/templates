@@ -212,17 +212,17 @@ Use this sequence to deploy the model, train the GNN, and query the markdown and
 
    === Adjusted Demand per Article (from sales GNN, aggregated) ===
     article_id                     name  adjusted_demand
-            74         3p Sneaker Socks            22.25
-         53892 Jade HW Skinny Denim TRS           153.27
-         57700      Pour It Up Push Bra            37.08
-         64286      Maggie high support            77.34
-         66518        Rose thong 7-pack            33.06
-         84950                  Nirvana            38.33
-         93584 SPEED ELLA BELTED BLOUSE            53.05
+            74         3p Sneaker Socks            19.36
+         53892 Jade HW Skinny Denim TRS           133.01
+         57700      Pour It Up Push Bra            32.22
+         64286      Maggie high support            77.47
+         66518        Rose thong 7-pack            30.50
+         84950                  Nirvana            30.85
+         93584 SPEED ELLA BELTED BLOUSE            47.60
      ...
 
    Markdown Status: OPTIMAL
-   Total revenue (sales + salvage): $65,535.59
+   Total revenue (sales + salvage): $60,942.48
 
    === Markdown: Selected Discounts by Article-Week ===
                     article  week  discount_pct
@@ -234,16 +234,28 @@ Use this sequence to deploy the model, train the GNN, and query the markdown and
      ...
 
    Demand Planning Status: OPTIMAL
-   Total cost (production + holding + unmet penalty): $9,318.44
+   Total cost (production + holding + unmet penalty): $6,599.60
 
    === Demand Planning: Production Plan (non-zero) ===
+    article_id  week  production
+         53892     1   62.218213
+         53892     2   80.000000
+         53892     3   80.000000
+         53892     4   80.000000
+         64286     2   49.177964
      ...
 
    === Demand Planning: Inventory Levels ===
+    article_id  week  inventory
+            74     0 350.000000
+            74     1 330.644379
+            74     2 313.224320
+            74     3 297.739823
+            74     4 284.190888
      ...
 
    === Demand Planning: Unmet Demand ===
-     ...
+     All demand fulfilled! (no shortfall above 0.01 units)
    ```
 
    The report prints more lines than shown here: all 12 planning articles, every selected discount, and the demand-planning tables: production and unmet demand above 0.01 units, and the inventory at the end of each week. The GNN's predictions, and with them the demand and both objectives, shift from one training run to the next; the structural outcome is stable: status OPTIMAL for the markdown and the planning problems. Alternative optimal discount schedules can differ between refreshes at the same revenue.
