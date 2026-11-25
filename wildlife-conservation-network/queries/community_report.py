@@ -7,7 +7,16 @@ identify collaboration patterns, partnership opportunities, gaps in cross-commun
 coordination, and organizations well-positioned for leadership roles.
 """
 
-from model import degree, degree_centrality, graph, louvain_communities
+from model import (
+    Community,
+    CommunityTrait,
+    NetworkSummary,
+    degree,
+    degree_centrality,
+    graph,
+    louvain_communities,
+    model,
+)
 from relationalai.semantics import Float, Integer, where
 
 # Create variable references for use in queries.
@@ -15,6 +24,11 @@ org = graph.Node.ref("org")
 community_id = Integer.ref("community_id")
 centr_score = Float.ref("centr_score")
 partner_count = Integer.ref("partner_count")
+member = graph.Node.ref("member")
+member_rank = Integer.ref("member_rank")
+
+# The species focus lists the community's most common species, up to this many.
+TOP_SPECIES = 3
 
 if __name__ == "__main__":
     # Query the graph to retrieve:
@@ -37,8 +51,10 @@ if __name__ == "__main__":
         partner_count.alias("partnerships")
     ).to_df()
 
-    # Sort by community, then by centrality within each community
-    results = results.sort_values(["community", "degree_centrality"], ascending=[True, False])
+    # Sort by community, then by centrality within each community, ties by organization id
+    results = results.sort_values(
+        ["community", "degree_centrality", "id"], ascending=[True, False, True]
+    )
 
     # Display overall results
     print("=" * 110)
@@ -62,54 +78,99 @@ if __name__ == "__main__":
     print(display_df.to_string(index=False))
     print("-" * 110)
 
+    # The model publishes the network totals, each community's profile, the ranked region,
+    # species, and organization-type values, and each community's member order.
+    summary = (
+        model.select(
+            NetworkSummary.n_organizations.alias("n_organizations"),
+            NetworkSummary.n_communities.alias("n_communities"),
+            NetworkSummary.mean_community_size.alias("mean_community_size"),
+            NetworkSummary.mean_partnerships.alias("mean_partnerships"),
+            NetworkSummary.n_partnerships.alias("n_partnerships"),
+            NetworkSummary.most_connected.name.alias("most_connected"),
+            NetworkSummary.most_connected.degree.alias("most_connected_partnerships"),
+        )
+        .to_df()
+        .iloc[0]
+    )
+    communities = (
+        model.select(
+            Community.id.alias("community"),
+            Community.n_organizations.alias("size"),
+            Community.primary_region.alias("primary_region"),
+            Community.hub.name.alias("hub"),
+            Community.hub.degree_centrality.alias("hub_centrality"),
+        )
+        .to_df()
+        .sort_values("community")
+    )
+    traits = (
+        model.select(
+            CommunityTrait.community.id.alias("community"),
+            CommunityTrait.kind.alias("kind"),
+            CommunityTrait.value.alias("value"),
+            CommunityTrait.n_organizations.alias("n_organizations"),
+            CommunityTrait.rank.alias("rank"),
+        )
+        .to_df()
+        .sort_values(["community", "rank"])
+    )
+    members = (
+        model.where(Community.member(member, member_rank))
+        .select(
+            Community.id.alias("community"),
+            member.name.alias("name"),
+            member_rank.alias("rank"),
+        )
+        .to_df()
+        .sort_values(["community", "rank"])
+    )
+
     # Analyze each community in detail
-    num_communities = results['community'].nunique()
+    num_communities = int(summary["n_communities"])
     print(f"\n🌍 DETECTED {num_communities} CONSERVATION COMMUNITIES:")
     print()
 
-    for comm_id in sorted(results['community'].unique()):
-        community_orgs = results[results['community'] == comm_id]
+    for _, comm in communities.iterrows():
+        comm_id = int(comm["community"])
+        community_traits = traits[traits["community"] == comm_id]
 
         print(f"  Community {comm_id}:")
-        print(f"    Size: {len(community_orgs)} organizations")
+        print(f"    Size: {int(comm['size'])} organizations")
+        print(f"    Primary Region: {comm['primary_region']}")
 
-        # Identify primary region
-        regions = community_orgs['region'].value_counts()
-        primary_region = regions.index[0]
-        print(f"    Primary Region: {primary_region}")
-
-        # Identify primary species focus
-        species = community_orgs['focus_species'].value_counts()
-        species_summary = ", ".join([f"{sp}" for sp in species.index[:3]])
+        # Most common species first
+        species = community_traits[
+            (community_traits["kind"] == "species") & (community_traits["rank"] <= TOP_SPECIES)
+        ]
+        species_summary = ", ".join(species["value"])
         print(f"    Species Focus: {species_summary}")
 
-        # Identify organization types
-        types = community_orgs['type'].value_counts()
-        types_summary = ", ".join([f"{t} ({c})" for t, c in types.items()])
+        # Most common organization types first, with their counts
+        types = community_traits[community_traits["kind"] == "type"]
+        types_summary = ", ".join(
+            f"{t} ({c})" for t, c in zip(types["value"], types["n_organizations"])
+        )
         print(f"    Organization Types: {types_summary}")
 
-        # Identify hub organization (highest centrality) in this community
+        # Hub organization (highest centrality) in this community
         # Hub organizations are well-connected within their community and are ideal candidates for leadership,
         # coordination, and resource-sharing coordination roles
-        most_central = community_orgs.iloc[0]
-        print(f"    Hub Organization: {most_central['name']} (centrality: {most_central['degree_centrality']:.4f})")
+        print(f"    Hub Organization: {comm['hub']} (centrality: {comm['hub_centrality']:.4f})")
 
-        # List all members
-        member_names = ", ".join(community_orgs['name'].tolist())
+        # List all members, most central first
+        member_names = ", ".join(members[members["community"] == comm_id]["name"])
         print(f"    Members: {member_names}")
         print()
 
     # Overall network statistics
     print("📊 NETWORK SUMMARY:")
-    print(f"  • Total organizations: {len(results)}")
+    print(f"  • Total organizations: {int(summary['n_organizations'])}")
     print(f"  • Number of communities detected: {num_communities}")
-    print(f"  • Average community size: {len(results) / num_communities:.1f} organizations")
-    print(f"  • Average partnerships per organization: {results['partnerships'].mean():.1f}")
-    print(f"  • Most connected organization: {results.loc[results['degree_centrality'].idxmax(), 'name']} "
-          f"({int(results['partnerships'].max())} partnerships)")
-
-    # Calculate inter-community vs intra-community partnerships
-    total_partnerships = results['partnerships'].sum() // 2  # Divide by 2 for undirected graph
-    print(f"  • Total partnerships in network: {total_partnerships}")
+    print(f"  • Average community size: {summary['mean_community_size']:.1f} organizations")
+    print(f"  • Average partnerships per organization: {summary['mean_partnerships']:.1f}")
+    print(f"  • Most connected organization: {summary['most_connected']} "
+          f"({int(summary['most_connected_partnerships'])} partnerships)")
+    print(f"  • Total partnerships in network: {int(summary['n_partnerships'])}")
 
     print("\n✅ Analysis complete!")

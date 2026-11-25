@@ -1,4 +1,5 @@
-"""Wildlife conservation graph: Louvain communities, degree centrality, and degree."""
+"""Partnership network: the undirected partnership graph with its Louvain communities, degree
+centrality, and degree."""
 
 from relationalai.semantics.reasoners.graph import Graph
 
