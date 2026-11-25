@@ -52,7 +52,7 @@ This template encodes that stack as a pure constraint satisfaction and optimizat
 
 The bundled CSVs are illustrative demo data tuned so multiple ICs bind at the optimum -- rack-clique forces the distributed-training group onto one rack, CPU / memory / GPU bin-packing then pin it to a single node at exact 100% utilization on all three resources, anti-affinity partitions the alpha-beta and gamma-delta tenant pods across disjoint node sets, deployment co-location affinity co-locates the cache pair, and the spread cap binds for every multi-replica non-overridden deployment. Swap in your own cluster topology and workload to apply the template to a real cluster.
 
-- `model/` -- the model package: `schema.py` declares the concepts, `source.py` loads the sample data, and `reasoning.py` states the decision problem (decisions, constraints, and the solver configuration); `rai models deploy --path model` deploys it
+- `model/` -- the model package: `schema.py` declares the concepts, `source.py` loads the sample data, `zone_spread.py` states each deployment's spread cap, `pod_assignment.py` states the decision problem (decisions, constraints, and the solver configuration), and `node_usage.py` totals each node's placed demand; `rai models deploy --path model` deploys it
 - `queries/placement_report.py` -- prints the report from the deployed model
 - **Runbook**: `runbook.md` -- a paste-testable walkthrough that reproduces the template step by step with the RAI skills; as important a reference as the script itself.
 - `data/nodes.csv` -- 8 nodes across 2 zones (`us-east-1a`, `us-east-1b`) and 4 racks; six general-purpose nodes (12000 millicores, 49152 MiB) and two GPU nodes (8000 millicores, 32768 MiB, 4 GPUs each). Total cluster: 88000 millicores, 360448 MiB, 8 GPUs
@@ -232,7 +232,9 @@ pod_placement/
     __init__.py                 # exports of the deployed model
     schema.py                   # zones, racks, nodes, tenants, deployments, pods
     source.py                   # loads the sample CSVs
-    reasoning.py                # decisions, constraints, objective, solve
+    zone_spread.py              # zone count and each deployment's spread cap
+    pod_assignment.py           # decisions, constraints, objective, solve
+    node_usage.py               # CPU, memory, and GPU used per node
   queries/
     placement_report.py         # report from the deployed model
   data/
@@ -248,7 +250,7 @@ pod_placement/
   pyproject.toml                # dependencies
 ```
 
-**Start here**: deploy with `rai models deploy --path model` and run `python -m queries.placement_report` for the solve status and post-solve inspection (the formulation is in `model/reasoning.py`), or follow `runbook.md` to rebuild it step by step.
+**Start here**: deploy with `rai models deploy --path model` and run `python -m queries.placement_report` for the solve status and post-solve inspection (the formulation is in `model/pod_assignment.py`), or follow `runbook.md` to rebuild it step by step.
 
 ## Sample data
 
@@ -288,11 +290,11 @@ nodes + pods + deployments + affinity / anti-affinity / training relations → 2
 
 **Gang placement is a reified cardinality constraint.** A 0/1 deployment-level indicator forces every replica of a deployment to be placed together or not at all — the per-deployment placed-pod count equals `replicas × placed`, so a partial schedule is impossible. No big-M, no auxiliary indicator stack.
 
-**Failure-domain spread is a two-key aggregate.** With `max_per_zone` precomputed (default `ceil(replicas / num_zones)`, or the row's `max_per_zone_override`), the count of a deployment's pods per zone must stay under its cap. The override is a per-deployment escape hatch: the bundled data uses it on the distributed-training job, whose rack-clique requirement forces all its pods onto one rack — and therefore one zone — which would otherwise collide with the default spread cap.
+**Failure-domain spread is a two-key aggregate.** With `max_per_zone` a rule on each deployment (default `ceil(replicas / num_zones)`, or the row's `max_per_zone_override`), the count of a deployment's pods per zone must stay under its cap. The override is a per-deployment escape hatch: the bundled data uses it on the distributed-training job, whose rack-clique requirement forces all its pods onto one rack — and therefore one zone — which would otherwise collide with the default spread cap.
 
 Every constraint is pure relational arithmetic (no `implies` bodies), and the report stops unless the solver proved `OPTIMAL` rather than timing out. The report does not re-evaluate the constraints, and a refresh started outside the report (`rai models deploy`, the refresh procedure, a schedule) runs no checks, so read `SolveStatus` before relying on a refreshed solution.
 
-For the exact PyRel formulation, see `model/reasoning.py`; `runbook.md` reproduces the model step by step with the RAI skills.
+For the exact PyRel formulation, see `model/pod_assignment.py` and `model/zone_spread.py`; `runbook.md` reproduces the model step by step with the RAI skills.
 
 ## Customize this template
 
@@ -308,7 +310,7 @@ For the exact PyRel formulation, see `model/reasoning.py`; `runbook.md` reproduc
 
 ### Extend the model
 
-- **Tier-aware placement.** Mark pods with `gpu_units > 0` and add an IC forcing them onto GPU-capable nodes only -- e.g. `model.where(Pod.on_node(Node, 1), Pod.gpu_units >= 1).require(Node.gpu_units >= 1)` (matches the `model.where(...).require(...)` chaining used by every IC in `model/reasoning.py`). Conversely, mark some nodes as "general-purpose only" and forbid GPU workloads there.
+- **Tier-aware placement.** Mark pods with `gpu_units > 0` and add an IC forcing them onto GPU-capable nodes only -- e.g. `model.where(Pod.on_node(Node, 1), Pod.gpu_units >= 1).require(Node.gpu_units >= 1)` (matches the `model.where(...).require(...)` chaining used by every IC in `model/pod_assignment.py`). Conversely, mark some nodes as "general-purpose only" and forbid GPU workloads there.
 - **Migration cost under churn.** Add a `Pod.current_node` data property reflecting the existing assignment, then introduce a per-pod "moved" indicator (`moved = (1 - Pod.on_node(current_node, x))`) and minimize the total move count -- multi-solution then enumerates the N least-disruptive placements.
 - **NVLink-clique with explicit edges.** The bundled `data/distributed_training.csv` lists every pair in the training group, encoding rack-clique implicitly via the pairwise IC. To model a true edge-restricted clique (e.g. NVLink-2 connectivity between specific GPU pairs only), pre-compute the set of `(node_a, node_b)` pairs that lack a direct NVLink edge in Python and load them as a `NoNVLink` data relationship; then drop the `Na.rack != Nb.rack` clause from `rack_clique_ic` and replace it with `NoNVLink(Na, Nb)` to forbid co-placement on any pair of hosts without a direct NVLink path.
 - **Spot / preemptible tier.** Mark a subset of pods as preemptible (`Pod.is_preemptible == 1`) and let them displace lower-priority workloads when capacity is tight. Express as a per-node tiered capacity: preemptible pods consume "remaining" capacity, on-demand pods consume the primary allotment.

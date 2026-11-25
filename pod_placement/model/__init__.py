@@ -45,13 +45,19 @@ Modeling approach:
   can use either argument order.
 - All ICs are pure relational arithmetic -- no ``implies`` bodies.
 
+The model has three rule modules, and each imports the modules whose
+declarations it reads: `zone_spread.py` (the zone count and each deployment's
+spread cap), `pod_assignment.py` (decisions, constraints, objective, and
+solve), and `node_usage.py` (the CPU, memory, and GPU each node carries).
+
 Run:
     `rai models deploy --path model` deploys this package to the schemas in
     raiconfig.yaml and waits for its first refresh, which runs the solve.
     `python -m queries.placement_report` then prints the report from the deployed model.
 """
 
-from .reasoning import PlacedDeployments, SolveStatus, problem, x
+from .node_usage import NodeUsage
+from .pod_assignment import PlacedDeployments, SolveStatus, problem, x
 from .schema import Deployment, Node, Pod, Rack, Tenant, Zone, model
 from .source import DATA_DIR
 
@@ -59,6 +65,7 @@ __all__ = [
     "DATA_DIR",
     "Deployment",
     "Node",
+    "NodeUsage",
     "PlacedDeployments",
     "Pod",
     "Rack",

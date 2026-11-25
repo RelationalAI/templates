@@ -1,8 +1,10 @@
-"""Pod placement problem: binary pod-to-node assignments that maximize the number of placed deployments."""
+"""Pod assignment: binary pod-to-node assignments that maximize the number of placed deployments."""
 
 from relationalai.semantics import Integer, String, sum
 from relationalai.semantics.reasoners.prescriptive import Problem
 
+# Declares Deployment.max_per_zone, the spread cap the spread constraint reads.
+from . import zone_spread  # noqa: F401
 from .schema import (
     Deployment,
     DeploymentAffinity,

@@ -1,9 +1,8 @@
 """Load the sample cluster, tenants, deployments, and pods, and check the topology."""
 
-from math import ceil
 from pathlib import Path
 
-from pandas import isna, read_csv
+from pandas import read_csv
 
 from .schema import (
     Deployment,
@@ -21,15 +20,9 @@ from .schema import (
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 
 # --------------------------------------------------
-# Load CSVs and pre-compute per-deployment failure-domain spread caps.
-# With N zones, at most ceil(replicas / N) replicas of any one
-# deployment land in any single zone -- unless the row supplies an
-# explicit `max_per_zone_override` (used for deployments where the
-# operator has accepted a wider blast radius, e.g. distributed-
-# training groups whose rack-clique requirement is incompatible with
-# cross-zone spread). Computed in Python and joined onto Deployment
-# as a data property so the spread IC reads as a plain relational
-# inequality.
+# Load CSVs. The failure-domain spread cap of each deployment is a rule
+# over its replicas, the zone count, and the optional
+# `max_per_zone_override` (see `zone_spread.py`).
 # --------------------------------------------------
 
 nodes_csv = read_csv(DATA_DIR / "nodes.csv")
@@ -40,52 +33,22 @@ da_csv = read_csv(DATA_DIR / "deployment_affinity.csv")
 pods_csv = read_csv(DATA_DIR / "pods.csv")
 dt_csv = read_csv(DATA_DIR / "distributed_training.csv")
 
-num_zones = nodes_csv["zone"].nunique()
-if num_zones == 0:
+if nodes_csv["zone"].nunique() == 0:
     raise ValueError("nodes.csv must contain at least one row to define the cluster topology.")
 
-
-def _compute_max_per_zone(replicas, override):
-    if override is not None and not isna(override):
-        return int(override)
-    return int(ceil(int(replicas) / num_zones))
-
-
-deployments_csv = deployments_csv.assign(
-    max_per_zone=[
-        _compute_max_per_zone(r, o)
-        for r, o in zip(
-            deployments_csv["replicas"].tolist(),
-            deployments_csv["max_per_zone_override"].tolist(),
-        )
-    ]
-).drop(columns=["max_per_zone_override"])
-# Drop the override column before passing to model.data: rows with NaN
-# in any column get silently filtered, so leaving the override column
-# in (where it is NaN for most rows) would drop those Deployment rows
-# from the model -- breaking the gang IC and the objective.
-
-
-# Zones are derived from the unique values in `nodes.csv` rather than
-# committed as a separate CSV -- a node always belongs to exactly one
-# zone, and the zone column on nodes.csv is the single source of truth.
-_zones_df = nodes_csv[["zone"]].drop_duplicates().rename(columns={"zone": "name"})
-_zone_data = model.data(_zones_df)
-model.define(Zone.new(name=_zone_data.name))
-
-# Racks and the zone each belongs to.
-_racks_df = nodes_csv[["rack"]].drop_duplicates().rename(columns={"rack": "name"})
-_rack_data = model.data(_racks_df)
-model.define(Rack.new(name=_rack_data.name))
-_rack_zone_df = nodes_csv[["rack", "zone"]].drop_duplicates()
-_rack_zone_data = model.data(_rack_zone_df)
+# Zones and racks are derived from the values in `nodes.csv` rather than
+# committed as separate CSVs -- a node always belongs to exactly one
+# zone and rack, and the zone and rack columns on nodes.csv are the
+# single source of truth.
+node_data = model.data(nodes_csv)
+model.define(Zone.new(name=node_data.zone))
+model.define(Rack.new(name=node_data.rack))
 model.define(Rack.zone(Zone)).where(
-    Rack.name == _rack_zone_data.rack,
-    Zone.name == _rack_zone_data.zone,
+    Rack.name == node_data.rack,
+    Zone.name == node_data.zone,
 )
 
 # Nodes.
-node_data = model.data(nodes_csv)
 model.define(
     Node.new(
         id=node_data.node_id,
@@ -107,16 +70,26 @@ model.define(
     )
 )
 
-# Deployments.
-dep_data = model.data(deployments_csv)
+# Deployments. The override column is loaded as a table of its own: rows with NaN in any
+# column get silently filtered by model.data, so leaving it in (where it is NaN for most
+# rows) would drop those Deployment rows from the model -- breaking the gang IC and the
+# objective.
+dep_data = model.data(deployments_csv.drop(columns=["max_per_zone_override"]))
 model.define(
     Deployment.new(
         id=dep_data.deployment_id,
         name=dep_data.name,
         replicas=dep_data.replicas,
-        max_per_zone=dep_data.max_per_zone,
     )
 )
+overrides_csv = (
+    deployments_csv[["deployment_id", "max_per_zone_override"]].dropna().astype(int)
+)
+if not overrides_csv.empty:
+    override_data = model.data(overrides_csv)
+    model.define(Deployment.max_per_zone_override(override_data.max_per_zone_override)).where(
+        Deployment.id == override_data.deployment_id
+    )
 model.define(Deployment.tenant(Tenant)).where(
     Deployment.id == dep_data.deployment_id,
     Tenant.id == dep_data.tenant_id,

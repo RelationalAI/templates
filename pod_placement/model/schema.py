@@ -30,6 +30,7 @@ Tenant.name = model.Property(f"{Tenant} has {String:name}")
 Deployment = model.Concept("Deployment", identify_by={"id": Integer})
 Deployment.name = model.Property(f"{Deployment} has {String:name}")
 Deployment.replicas = model.Property(f"{Deployment} has {Integer:replicas}")
+Deployment.max_per_zone_override = model.Property(f"{Deployment} has {Integer:max_per_zone_override}")
 Deployment.max_per_zone = model.Property(f"{Deployment} has {Integer:max_per_zone}")
 Deployment.tenant = model.Property(f"{Deployment} belongs to {Tenant:tenant}")
 

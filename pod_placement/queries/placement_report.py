@@ -8,13 +8,12 @@ status and objective of the latest refresh's solve, per-node utilization, the ch
 from model import (
     Deployment,
     Node,
+    NodeUsage,
     PlacedDeployments,
     Pod,
     SolveStatus,
     model,
-    x,
 )
-from relationalai.semantics import sum
 
 if __name__ == "__main__":
     # The report stops unless the solver proved OPTIMAL: if you raise `time_limit_sec` and the
@@ -36,11 +35,11 @@ if __name__ == "__main__":
     model.select(
         Node.id.alias("node_id"),
         Node.name.alias("node"),
-        sum(Pod.cpu_millicores * x).where(Pod.on_node(Node, x)).per(Node).alias("cpu_used"),
+        NodeUsage.cpu_used.alias("cpu_used"),
         Node.cpu_millicores.alias("cpu_cap"),
-        sum(Pod.memory_mib * x).where(Pod.on_node(Node, x)).per(Node).alias("memory_used"),
-        sum(Pod.gpu_units * x).where(Pod.on_node(Node, x)).per(Node).alias("gpu_used"),
-    ).inspect()
+        NodeUsage.memory_used.alias("memory_used"),
+        NodeUsage.gpu_used.alias("gpu_used"),
+    ).where(NodeUsage.node_id == Node.id).inspect()
 
     print("\nPlaced pods (pod_id -> node_id):")
     model.select(
