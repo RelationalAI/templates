@@ -45,7 +45,7 @@ The rule structure here is a synthetic fixture policy modeled on the public [CMS
 
 ## What's included
 
-- `model/` -- `schema.py` (ontology), `source.py` (reference data and its pre-solve checks), and `reasoning.py` (decisions, constraints, and solver configuration); `rai models deploy --path model` deploys the package to your Snowflake account, where each refresh runs the solve
+- `model/` -- `schema.py` (ontology), `source.py` (reference data and its pre-solve checks), and `member_records.py` (decisions, constraints, solver configuration, and the published records); `rai models deploy --path model` deploys the package to your Snowflake account, where each refresh runs the solve
 - `queries/eligibility_records.py` -- prints the report from the deployed model: the solve status, the number of solutions, and every generated member record
 - `data/age_buckets.csv` -- 4 representative ages spanning the adult/senior split (2 under 65, 2 at or above)
 - `data/plans.csv` -- 3 plans (PPO, HMO, MedicareAdvantage) each on its own network
@@ -201,9 +201,9 @@ Use this sequence to deploy the model and query it:
 ├── pyproject.toml
 ├── model/
 │   ├── __init__.py
+│   ├── member_records.py
 │   ├── schema.py
-│   ├── source.py
-│   └── reasoning.py
+│   └── source.py
 ├── queries/
 │   └── eligibility_records.py
 └── data/
@@ -380,6 +380,6 @@ To extend to a fleet of N members, reintroduce a `Member` concept inside the mod
 
 - `model.where(...)` filters at relational time only -- decision variables are not legal inside it. The rewriter raises this error when it encounters a decision-valued comparison in a `where` clause.
 - Move the decision condition into `implies` and use a tautological relational filter (or a real one) to scope any reference-data Concepts the IC needs. For example, replace `model.where(Plan.id == plan_id).require(num_dependents <= Plan.max_dependents)` with `model.where(Plan.max_dependents >= 0).require(implies(plan_id == Plan.id, num_dependents <= Plan.max_dependents))`.
-- See the three constraint definitions in `model/reasoning.py` (`network_match_ic`, `senior_must_medicare_ic`, `non_senior_no_medicare_ic`) for the canonical idiom.
+- See the three constraint definitions in `model/member_records.py` (`network_match_ic`, `senior_must_medicare_ic`, `non_senior_no_medicare_ic`) for the canonical idiom.
 
 </details>

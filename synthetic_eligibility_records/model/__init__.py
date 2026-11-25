@@ -11,13 +11,16 @@ attribution. Solve as constraint satisfaction with `solution_limit=K`
 (test-data generation, claim-engine fuzzing, RegTech rules certification)
 want a batch of records per solve, not one.
 
+The decision problem, its constraints and the published records are declared in
+`member_records.py`; `source.py` loads and checks the reference data.
+
 Run:
     `rai models deploy --path model` deploys this package to the schemas in raiconfig.yaml
     and waits for its first refresh, which runs the solve.
     `python -m queries.eligibility_records` then prints the report from the deployed model.
 """
 
-from .reasoning import (
+from .member_records import (
     MAX_RECORDS,
     SENIOR_THRESHOLD_YEARS,
     MemberRecord,

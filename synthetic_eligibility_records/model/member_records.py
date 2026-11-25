@@ -2,9 +2,9 @@
 
 from relationalai.semantics import Integer, String
 from relationalai.semantics.reasoners.prescriptive import Problem, implies
+from relationalai.semantics.std import aggregates as aggs
 
 from .schema import AgeBucket, Plan, Provider, model
-from .source import age_buckets_csv, plans_csv, providers_csv
 
 # Senior status (age >= 65) drives the Medicare-Advantage CFD.
 SENIOR_THRESHOLD_YEARS = 65
@@ -33,29 +33,30 @@ provider_id = model.Relationship(f"{Integer:provider_id}")
 
 problem = Problem(model, Integer, name="synthetic_eligibility_records")
 # The report reads every record through `Variable.values(sol_idx, value)`, so the
-# variables skip the write-back of the first solution (`populate=False`).
+# variables skip the write-back of the first solution (`populate=False`). Each
+# variable ranges over the smallest to the largest reference ID.
 age_bucket_var = problem.solve_for(
     age_bucket_id,
     type="int",
     name="age_bucket",
-    lower=int(age_buckets_csv["id"].min()),
-    upper=int(age_buckets_csv["id"].max()),
+    lower=aggs.min(AgeBucket.id),
+    upper=aggs.max(AgeBucket.id),
     populate=False,
 )
 plan_id_var = problem.solve_for(
     plan_id,
     type="int",
     name="plan_id",
-    lower=int(plans_csv["id"].min()),
-    upper=int(plans_csv["id"].max()),
+    lower=aggs.min(Plan.id),
+    upper=aggs.max(Plan.id),
     populate=False,
 )
 provider_id_var = problem.solve_for(
     provider_id,
     type="int",
     name="provider_id",
-    lower=int(providers_csv["id"].min()),
-    upper=int(providers_csv["id"].max()),
+    lower=aggs.min(Provider.id),
+    upper=aggs.max(Provider.id),
     populate=False,
 )
 
